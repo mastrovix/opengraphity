@@ -7,6 +7,7 @@ import { SeverityBadge } from '@/components/ui/badges'
 import { StatusBadge } from '@/components/StatusBadge'
 import { GET_CI_INCIDENTS } from '@/graphql/queries'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { colors, palette } from '@/lib/tokens'
 
 interface Incident {
   id:        string
@@ -40,7 +41,7 @@ export function CIIncidentsCard({ ciId }: { ciId: string }) {
         style={{
           display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%',
           background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left',
-          padding: '6px 0', borderBottom: '1px solid #f9fafb',
+          padding: '6px 0', borderBottom: `1px solid ${palette.neutral.borderLight}`,
           cursor: 'pointer', opacity: faded ? 0.5 : 1,
         }}
       >
@@ -65,7 +66,7 @@ export function CIIncidentsCard({ ciId }: { ciId: string }) {
         <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 0 6px 0' }}>
           {label}
         </div>
-        <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>
+        <div style={{ paddingLeft: 12, borderLeft: `2px solid ${palette.neutral.borderLight}`, marginLeft: 4 }}>
           {items.map(i => renderRow(i, faded))}
         </div>
       </div>
@@ -73,12 +74,12 @@ export function CIIncidentsCard({ ciId }: { ciId: string }) {
   }
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+    <div style={{ background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(p => !p)}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer', padding: '14px 20px', borderBottom: open ? '1px solid #e5e7eb' : 'none' }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer', padding: '14px 20px', borderBottom: open ? `1px solid ${colors.border}` : 'none' }}
       >
         <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', display: 'flex', alignItems: 'center' }}>
           Incident <CountBadge count={incidents.length} />

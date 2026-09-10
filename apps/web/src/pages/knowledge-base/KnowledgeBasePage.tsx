@@ -11,6 +11,7 @@ import { QueryError } from '@/components/QueryError'
 import { Pill } from '@/components/ui/Pill'
 import { kbCategoryColor, kbCategoryIcon } from '@/lib/kbCategories'
 import { formatDate } from '@/lib/datetime'
+import { colors, alpha } from '@/lib/tokens'
 
 const GET_CATEGORIES = gql`
   query KBCategories { kbCategories { name count } }
@@ -62,7 +63,7 @@ export function KnowledgeBasePage() {
   return (
     <PageContainer>
       {/* Header */}
-      <div style={{ textAlign: 'center', paddingBottom: 32, borderBottom: '1px solid #e2e8f0', marginBottom: 32 }}>
+      <div style={{ textAlign: 'center', paddingBottom: 32, borderBottom: `1px solid ${colors.border}`, marginBottom: 32 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 12 }}>
           <BookOpen size={28} color="var(--color-brand)" />
           <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-slate-dark)', margin: 0 }}>
@@ -78,19 +79,19 @@ export function KnowledgeBasePage() {
               value={inputVal}
               onChange={(e) => setInputVal(e.target.value)}
               placeholder={t('pages.kb.searchPlaceholder')}
-              style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: 8, border: '2px solid #e2e8f0', fontSize: 'var(--font-size-body)', boxSizing: 'border-box', outline: 'none' }}
+              style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: 8, border: `2px solid ${colors.border}`, fontSize: 'var(--font-size-body)', boxSizing: 'border-box', outline: 'none' }}
               onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--color-brand)' }}
-              onBlur={(e)  => { e.currentTarget.style.borderColor = '#e2e8f0' }}
+              onBlur={(e)  => { e.currentTarget.style.borderColor = colors.border }}
             />
           </div>
-          <button type="submit" style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: '#fff', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}>
+          <button type="submit" style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}>
             {t('common.search')}
           </button>
           {(search || category) && (
             <button
               type="button"
               onClick={() => { setSearch(''); setInputVal(''); setCategory(''); setPage(0) }}
-              style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', fontSize: 'var(--font-size-card-title)', cursor: 'pointer', color: 'var(--color-slate)' }}
+              style={{ padding: '10px 12px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, fontSize: 'var(--font-size-card-title)', cursor: 'pointer', color: 'var(--color-slate)' }}
             >
               ✕
             </button>
@@ -111,15 +112,15 @@ export function KnowledgeBasePage() {
                 type="button"
                 onClick={() => { setCategory(cat.name); setPage(0) }}
                 style={{
-                  padding: '16px 12px', borderRadius: 10, border: '1px solid #e2e8f0',
-                  background: '#fff', cursor: 'pointer', textAlign: 'center',
+                  padding: '16px 12px', borderRadius: 10, border: `1px solid ${colors.border}`,
+                  background: colors.white, cursor: 'pointer', textAlign: 'center',
                   transition: 'all 150ms',
                 }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = kbCategoryColor(cat.name) }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#e2e8f0' }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
               >
                 <div style={{ fontSize: 'var(--font-size-page-title)', marginBottom: 6 }}>{kbCategoryIcon(cat.name)}</div>
-                <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#1a2332', marginBottom: 2 }}>{cat.name}</div>
+                <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slateDark, marginBottom: 2 }}>{cat.name}</div>
                 <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{cat.count} articoli</div>
               </button>
             ))}
@@ -131,9 +132,9 @@ export function KnowledgeBasePage() {
       {category && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
           <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{t('pages.kb.category')}:</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 12, background: kbCategoryColor(category), color: '#fff', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 12, background: kbCategoryColor(category), color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
             {kbCategoryIcon(category)} {category}
-            <button type="button" onClick={() => { setCategory(''); setPage(0) }} style={{ marginLeft: 4, background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, fontSize: 'var(--font-size-body)' }}>✕</button>
+            <button type="button" onClick={() => { setCategory(''); setPage(0) }} style={{ marginLeft: 4, background: 'none', border: 'none', color: colors.white, cursor: 'pointer', padding: 0, fontSize: 'var(--font-size-body)' }}>✕</button>
           </span>
         </div>
       )}
@@ -163,9 +164,9 @@ export function KnowledgeBasePage() {
                 style={{ display: 'block', textDecoration: 'none', marginBottom: 8 }}
               >
                 <div
-                  style={{ padding: '16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', transition: 'all 150ms' }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(56,189,248,0.1)' }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#e2e8f0'; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}
+                  style={{ padding: '16px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, transition: 'all 150ms' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)'; (e.currentTarget as HTMLElement).style.boxShadow = `0 2px 8px ${alpha.iconAccent12}` }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = colors.border; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                     <div style={{ flex: 1 }}>
@@ -174,12 +175,12 @@ export function KnowledgeBasePage() {
                           {kbCategoryIcon(a.category)} {a.category}
                         </Pill>
                         {a.tags.slice(0, 3).map((tag) => (
-                          <span key={tag} style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 8, background: '#f1f5f9', color: 'var(--color-slate)' }}>
+                          <span key={tag} style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 8, background: colors.slateBg, color: 'var(--color-slate)' }}>
                             <Tag size={8} style={{ verticalAlign: 'middle' }} /> {tag}
                           </span>
                         ))}
                       </div>
-                      <h3 style={{ margin: '0 0 4px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332' }}>{a.title}</h3>
+                      <h3 style={{ margin: '0 0 4px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark }}>{a.title}</h3>
                       <div style={{ display: 'flex', gap: 12, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
                         <span>{a.authorName}</span>
                         <span>{formatDate(a.publishedAt)}</span>

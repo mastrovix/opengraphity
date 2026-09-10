@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { lookupOrError } from '@/lib/tokens'
+import { colors, palette, alpha, lookupOrError } from '@/lib/tokens'
 import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { gql } from '@apollo/client'
@@ -23,10 +23,10 @@ const GET_LOGS = gql`
 `
 
 const LEVEL_STYLES: Record<string, { backgroundColor: string; color: string }> = {
-  trace:   { backgroundColor: '#f1f5f9', color: 'var(--color-slate-light)' },
-  debug:   { backgroundColor: '#f1f5f9', color: 'var(--color-slate-light)' },
-  info:    { backgroundColor: 'rgba(2,132,199,0.12)', color: '#2563eb' },
-  warn:    { backgroundColor: '#fff7ed', color: 'var(--color-trigger-timer)' },
+  trace:   { backgroundColor: colors.slateBg, color: 'var(--color-slate-light)' },
+  debug:   { backgroundColor: colors.slateBg, color: 'var(--color-slate-light)' },
+  info:    { backgroundColor: alpha.brand13, color: colors.brand },
+  warn:    { backgroundColor: palette.orange.bg, color: 'var(--color-trigger-timer)' },
   error:   { backgroundColor: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)' },
   fatal:   { backgroundColor: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)' },
 }
@@ -53,20 +53,20 @@ function LogDataView({ data, notJsonLabel }: { data: string; notJsonLabel: strin
   const preStyle: React.CSSProperties = {
     margin:          0,
     padding:         12,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.slateBg,
     color:           'var(--color-slate-dark)',
     borderRadius:    6,
     fontSize:        11,
     overflowX:       'auto',
     whiteSpace:      'pre-wrap',
     wordBreak:       'break-all',
-    border:          '1px solid #e2e8f0',
+    border:          `1px solid ${colors.border}`,
   }
   if (pretty !== null) return <pre style={preStyle}>{pretty}</pre>
   return (
     <div>
       <div style={{ marginBottom: 6 }}>
-        <Pill bg="#fff7ed" color="var(--color-trigger-timer)" radius={4} style={{ fontSize: 11 }}>{notJsonLabel}</Pill>
+        <Pill bg={palette.orange.bg} color="var(--color-trigger-timer)" radius={4} style={{ fontSize: 11 }}>{notJsonLabel}</Pill>
       </div>
       <pre style={preStyle}>{data}</pre>
     </div>
@@ -198,7 +198,7 @@ export function LogsPage() {
             onClick={() => void refetch()}
             style={{
               height: 32, padding: '0 14px', borderRadius: 6,
-              border: '1px solid var(--border)', background: '#fff',
+              border: '1px solid var(--border)', background: colors.white,
               fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer',
             }}
           >

@@ -6,6 +6,7 @@ import { Input, Select } from '@/components/ui/FormControls'
 import { inputS, selectS, labelS, btnPrimary, btnSecondary, btnDanger } from '@/components/ui/styles'
 import { useConfirm } from '@/hooks/useConfirm'
 import type { CITypeDef, CIRelationDef } from '@/contexts/MetamodelContext'
+import { palette } from '@/lib/tokens'
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -117,7 +118,7 @@ export function CIRelationTable({ relations, onRemove }: RelationTableProps) {
       </thead>
       <tbody>
         {[...relations].sort((a: CIRelationDef, b: CIRelationDef) => a.order - b.order).map(r => (
-          <tr key={r.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+          <tr key={r.id} style={{ borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
             <td style={{ padding: '8px', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 'var(--font-size-body)' }}>{r.name}</td>
             <td style={{ padding: '8px' }}>{r.label}</td>
             <td style={{ padding: '8px', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 'var(--font-size-body)' }}>{r.relationshipType}</td>

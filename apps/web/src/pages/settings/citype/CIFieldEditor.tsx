@@ -11,6 +11,7 @@ import {
 import { Input, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import type { EnumTypeRef } from '../shared/designerStyles'
+import { palette } from '@/lib/tokens'
 
 // Re-export shared button styles for any remaining consumers (E-09: one definition, in ui/styles).
 export { btnPrimary, btnSecondary, btnDanger } from '@/components/ui/styles'
@@ -134,7 +135,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
           {selectedEnum && (
             <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {selectedEnum.values.map((v) => (
-                <Pill key={v} bg="#f0f4ff" color="var(--color-brand)" radius={12} style={{ fontWeight: 400 }}>
+                <Pill key={v} bg={palette.info.bg} color="var(--color-brand)" radius={12} style={{ fontWeight: 400 }}>
                   {v}
                 </Pill>
               ))}

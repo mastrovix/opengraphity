@@ -10,7 +10,7 @@ import type { LucideIcon } from 'lucide-react'
 import { apolloClient } from '@/lib/apollo'
 import { keyActivate } from '@/lib/a11y'
 import { ciPath } from '@/lib/ciPath'
-import { layoutPalette as C } from '@/lib/tokens'
+import { layoutPalette as C, alpha, colors } from '@/lib/tokens'
 
 const GLOBAL_SEARCH = gql`
   query GlobalSearch($query: String!, $limit: Int) {
@@ -282,10 +282,10 @@ export function GlobalSearch() {
             width:         440,
             maxHeight:     '60vh',
             overflowY:     'auto',
-            background:    '#fff',
+            background:    colors.white,
             border:        '1px solid var(--border)',
             borderRadius:  10,
-            boxShadow:     '0 12px 40px rgba(0,0,0,0.2)',
+            boxShadow:     `0 12px 40px ${alpha.black20}`,
             zIndex:        60,
             padding:       '4px 0',
           }}
@@ -347,7 +347,7 @@ export function GlobalSearch() {
                       gap:             8,
                       padding:         '7px 14px',
                       cursor:          'pointer',
-                      backgroundColor: selected ? '#f1f5f9' : 'transparent',
+                      backgroundColor: selected ? colors.slateBg : 'transparent',
                       fontSize:        13,
                     }}
                   >

@@ -4,6 +4,7 @@
  * native keyboard support (Space / Enter) and a required accessible name.
  */
 import type { CSSProperties } from 'react'
+import { alpha, colors, palette } from '@/lib/tokens'
 
 interface ToggleProps {
   checked:   boolean
@@ -40,7 +41,7 @@ export function Toggle({ checked, onChange, label, labelledBy, id, disabled = fa
       onClick={() => onChange(!checked)}
       style={{
         width: w, height: h, borderRadius: h / 2, border: 'none', padding: 0,
-        background: checked ? 'var(--color-brand)' : '#cbd5e1',
+        background: checked ? 'var(--color-brand)' : palette.neutral.borderStrong,
         position: 'relative', cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.6 : 1, transition: 'background .2s', flexShrink: 0,
         ...style,
@@ -50,8 +51,8 @@ export function Toggle({ checked, onChange, label, labelledBy, id, disabled = fa
         aria-hidden="true"
         style={{
           position: 'absolute', top: 2, left: checked ? w - knob - 2 : 2,
-          width: knob, height: knob, borderRadius: '50%', background: '#fff',
-          boxShadow: '0 1px 3px rgba(0,0,0,.15)', transition: 'left .2s',
+          width: knob, height: knob, borderRadius: '50%', background: colors.white,
+          boxShadow: `0 1px 3px ${alpha.black15}`, transition: 'left .2s',
         }}
       />
     </button>

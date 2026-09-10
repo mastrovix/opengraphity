@@ -48,12 +48,12 @@ export function chartPalette(): string[] {
     cssVar('--color-trigger-automatic'),
     cssVar('--color-warning'),
     cssVar('--color-danger'),
-    '#8b5cf6',
-    '#06b6d4',
-    '#84cc16',
+    cssVar('--color-purple-light'),
+    cssVar('--color-teal-light'),
+    cssVar('--color-lime'),
     cssVar('--color-trigger-timer'),
-    '#0d9488',
-    '#ec4899',
+    cssVar('--color-teal'),
+    cssVar('--color-pink'),
   ]
 }
 
@@ -185,7 +185,7 @@ export function buildLineOption(points: ChartPoint[], style: ChartStyle & { area
       symbol: 'circle',
       symbolSize: 6,
       lineStyle: { color, width: 2.5 },
-      itemStyle: { color, borderWidth: 2, borderColor: '#fff' },
+      itemStyle: { color, borderWidth: 2, borderColor: cssVar('--color-white') },
       ...(style.area
         ? { areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: `${color}33` }, { offset: 1, color: `${color}05` }] } } }
         : {}),
@@ -216,13 +216,13 @@ export function buildPieOption(points: ChartPoint[], style: ChartStyle & { donut
       data: points.map((p, i) => ({
         name: p.label,
         value: p.value,
-        itemStyle: { color: palette[i % palette.length], borderRadius: 4, borderWidth: 2, borderColor: '#fff' },
+        itemStyle: { color: palette[i % palette.length], borderRadius: 4, borderWidth: 2, borderColor: cssVar('--color-white') },
       })),
       label: style.showValueLabels
         ? { show: true, formatter: '{b}\n{d}%', fontSize: t.fsBody, color: t.text, fontFamily: t.font }
         : { show: false },
       labelLine: { show: style.showValueLabels ?? false },
-      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)' } },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: cssVar('--color-black-a20') } },
     }],
   }
 }

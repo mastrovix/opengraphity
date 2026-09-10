@@ -12,7 +12,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { GET_BASE_CI_TYPE } from '@/graphql/queries'
-import { lookupStyle } from '@/lib/tokens'
+import { lookupStyle, palette } from '@/lib/tokens'
 
 interface BaseCITypeData {
   baseCIType: {
@@ -69,9 +69,9 @@ export function toEnumOptions(values: string[]): { value: string; label: string 
 // ── Palette stato CI (unica: prima solo TopologyPage la coloriva) ────────────
 
 export const CI_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  active:         { bg: '#dcfce7', color: '#166534' },
-  inactive:       { bg: '#fee2e2', color: '#991b1b' },
-  maintenance:    { bg: '#fef9c3', color: '#854d0e' },
+  active:         { bg: palette.success.tint, color: palette.success.strong },
+  inactive:       { bg: palette.danger.tint, color: palette.danger.strong },
+  maintenance:    { bg: palette.yellow.bg, color: palette.yellow.text },
   decommissioned: { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' },
 }
 

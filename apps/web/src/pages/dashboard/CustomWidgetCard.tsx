@@ -2,7 +2,7 @@ import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Hash, BarChart2, PieChart, TrendingUp, Table, Gauge, Activity, X, Radar } from 'lucide-react'
 import { GET_WIDGET_DATA } from '@/graphql/queries'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, colors } from '@/lib/tokens'
 import { WidgetBody, type WidgetSeriesData } from '@/components/WidgetBody'
 import { ActiveAlarmsWidget, ACTIVE_ALARMS_WIDGET_TYPE } from './ActiveAlarmsWidget'
 
@@ -75,18 +75,18 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
 
   const cardStyle: React.CSSProperties = {
     gridColumn:    `span ${colSpan}`,
-    background:    '#fff',
-    border:        editMode ? `2px dashed ${widget.color}` : '1px solid #e5e7eb',
+    background:    colors.white,
+    border:        editMode ? `2px dashed ${widget.color}` : '1px solid var(--color-border)',
     borderRadius:  10,
     overflow:      'hidden',
     position:      'relative',
-    boxShadow:     '0 1px 4px rgba(0,0,0,0.06)',
+    boxShadow:     '0 1px 4px var(--color-black-a06)',
     transition:    'border 0.15s',
   }
 
   const headerStyle: React.CSSProperties = {
     padding:      '10px 14px',
-    borderBottom: '1px solid #f3f4f6',
+    borderBottom: '1px solid var(--color-border-light)',
     display:      'flex',
     alignItems:   'center',
     gap:          7,
@@ -103,7 +103,7 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
         {widget.title}
       </span>
       {widget.timeRange && widget.timeRange !== 'all' && (
-        <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 5px', borderRadius: 4, background: '#f1f5f9', color: 'var(--color-slate-light)' }}>
+        <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 5px', borderRadius: 4, background: colors.slateBg, color: 'var(--color-slate-light)' }}>
           {timeLabelKey ? t(timeLabelKey) : widget.timeRange}
         </span>
       )}
@@ -112,14 +112,14 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
           <button
             type="button"
             onClick={onEdit}
-            style={{ width: 20, height: 20, border: '1px solid #d1d5db', background: '#fff', borderRadius: 4, cursor: 'pointer', fontSize: 'var(--font-size-table)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ width: 20, height: 20, border: '1px solid var(--color-border-strong)', background: colors.white, borderRadius: 4, cursor: 'pointer', fontSize: 'var(--font-size-table)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             title={t('pages.dashboard.editWidget')}
             aria-label={t('pages.dashboard.editWidget')}
           >✏</button>
           <button
             type="button"
             onClick={onRemove}
-            style={{ width: 20, height: 20, border: '1px solid #fca5a5', background: 'var(--color-danger-bg)', borderRadius: 4, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ width: 20, height: 20, border: '1px solid var(--color-danger-border-strong)', background: 'var(--color-danger-bg)', borderRadius: 4, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             title={t('pages.dashboard.removeWidget')}
             aria-label={t('pages.dashboard.removeWidget')}
           ><X size={12} aria-hidden="true" /></button>

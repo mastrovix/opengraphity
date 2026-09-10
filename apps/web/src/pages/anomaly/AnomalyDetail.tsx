@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { SeverityBadge } from '@/components/SeverityBadge'
-import { colors } from '@/lib/tokens'
+import { colors, alpha } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
 import { RULE_LABEL_KEYS, AnomalyStatusBadge, anomalyEntityTypeLabel } from './AnomalyPage'
 import { ResolutionForm } from './AnomalyModal'
@@ -42,7 +42,7 @@ export function DetailPanel({
       position: 'fixed', top: 0, right: 0, bottom: 0,
       width: 420, background: 'var(--surface)',
       borderLeft: '1px solid var(--border)',
-      boxShadow: '-4px 0 24px rgba(0,0,0,0.08)',
+      boxShadow: `-4px 0 24px ${alpha.black08}`,
       zIndex: 100,
       overflowY: 'auto',
       padding: 24,
@@ -96,7 +96,7 @@ export function DetailPanel({
           onClick={() => setShowForm(true)}
           style={{
             width: '100%', padding: '9px 14px', borderRadius: 6, border: 'none',
-            background: 'var(--color-brand)', color: '#fff',
+            background: 'var(--color-brand)', color: colors.white,
             fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer',
           }}
         >

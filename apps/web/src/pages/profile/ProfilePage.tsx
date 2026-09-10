@@ -15,6 +15,7 @@ import { QueryError } from '@/components/QueryError'
 import { useMe } from '@/hooks/useMe'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { RoleBadge } from '@/components/ui/badges'
+import { colors, palette } from '@/lib/tokens'
 
 const LINK_SLACK = gql`
   mutation LinkSlack($slackId: String!) {
@@ -29,7 +30,7 @@ const UNLINK_SLACK = gql`
 `
 
 const card: React.CSSProperties = {
-  background:   '#fff',
+  background:   colors.white,
   border:       '1px solid var(--border)',
   borderRadius: 10,
   padding:      '20px 24px',
@@ -106,7 +107,7 @@ export function ProfilePage() {
               border: '1px solid var(--border)',
               fontSize: 'var(--font-size-card-title)',
               color: 'var(--color-slate-dark)',
-              background: '#fff',
+              background: colors.white,
               cursor: 'pointer',
               minWidth: 160,
             }}
@@ -125,9 +126,9 @@ export function ProfilePage() {
             <div>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
-                background: 'var(--color-success-bg)', border: '1px solid #bbf7d0', borderRadius: 6, marginBottom: 12,
+                background: 'var(--color-success-bg)', border: `1px solid ${palette.success.border}`, borderRadius: 6, marginBottom: 12,
               }}>
-                <span style={{ fontSize: 'var(--font-size-body)', color: '#15803d', fontWeight: 500 }}>
+                <span style={{ fontSize: 'var(--font-size-body)', color: palette.success.text, fontWeight: 500 }}>
                   {t('pages.profile.slackLinkedAs')} <code>{slackId}</code>
                 </span>
               </div>

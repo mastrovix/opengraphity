@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { LucideIcon } from 'lucide-react'
-import { layoutPalette } from '@/lib/tokens'
+import { layoutPalette, colors } from '@/lib/tokens'
 
 // ── Colours: ONE palette shared with Topbar / GlobalSearch (E-23) ────────────
 export const C = layoutPalette
@@ -94,7 +94,7 @@ export function NavItem({ to, label, icon: Icon, collapsed, isActive, badge = 0 
       {!collapsed && badge > 0 && (
         <span
           aria-label={t('sidebar.pendingBadge', { count: badge })}
-          style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, lineHeight: 1, padding: '2px 5px', borderRadius: 8, background: 'var(--danger)', color: '#fff' }}
+          style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, lineHeight: 1, padding: '2px 5px', borderRadius: 8, background: 'var(--danger)', color: colors.white }}
         >
           {badge}
         </span>

@@ -11,6 +11,7 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import type { AvailableTransition, ChangeData } from '@/types/change'
 import { DescriptionField, DetailField, RiskBadge, fmtDate } from './shared'
+import { colors } from '@/lib/tokens'
 
 export function ChangeInfoCard({
   change, currentStep, initialStepName, isTerminal, isAdmin,
@@ -51,7 +52,7 @@ export function ChangeInfoCard({
         {change.aggregateRiskScore != null && <RiskBadge score={change.aggregateRiskScore} />}
         {currentStep === initialStepName && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 180 }}>
-            <div style={{ height: 6, borderRadius: 3, backgroundColor: '#e5e7eb', overflow: 'hidden', flex: 1 }}>
+            <div style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden', flex: 1 }}>
               <div style={{ height: '100%', width: `${totalTasks > 0 ? Math.round(completedTasks / totalTasks * 100) : 0}%`, backgroundColor: 'var(--color-brand)', borderRadius: 3, transition: 'width 200ms' }} />
             </div>
             <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', flexShrink: 0 }}>{completedTasks}/{totalTasks} task completati</span>
@@ -65,7 +66,7 @@ export function ChangeInfoCard({
             onClick={() => onTransitionClick(tr)}
             style={{
               padding: '6px 14px', borderRadius: 6, border: 'none',
-              background: 'var(--color-brand)', color: '#fff', fontWeight: 600,
+              background: 'var(--color-brand)', color: colors.white, fontWeight: 600,
               cursor: transitioning ? 'wait' : 'pointer', fontSize: 'var(--font-size-label)',
             }}
           >

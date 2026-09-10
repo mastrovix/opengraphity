@@ -24,7 +24,7 @@ export function DashboardWidget({ widget }: DashboardWidgetProps) {
   return (
     <div key={widget.id} style={{ gridColumn: `span ${widget.colSpan}` }}>
       <div className="card-border" style={{ overflow: 'hidden' }}>
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6' }}>
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--color-border-light)' }}>
           <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)' }}>
             {widget.reportSection?.title ?? t('pages.dashboard.widgetFallback')}
           </div>

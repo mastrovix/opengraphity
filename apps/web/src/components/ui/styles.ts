@@ -11,11 +11,12 @@
  * must use `<Button variant="…">`.
  */
 import type { CSSProperties } from 'react'
+import { colors, palette } from '@/lib/tokens'
 
 export const inputS: CSSProperties = {
   width: '100%', padding: '7px 10px', border: '1px solid var(--border)',
   borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)',
-  outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box',
+  outline: 'none', backgroundColor: colors.white, boxSizing: 'border-box',
 }
 
 export const selectS: CSSProperties = {
@@ -37,38 +38,38 @@ export const labelS: CSSProperties = {
 export const btnPrimary: CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6,
   padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
-  color: '#fff', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms',
+  color: colors.white, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms',
 }
 
 /** @deprecated use `<Button variant="secondary">` */
 export const btnSecondary: CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6,
-  padding: '7px 14px', border: '1px solid var(--border)', borderRadius: 6, background: '#fff',
+  padding: '7px 14px', border: '1px solid var(--border)', borderRadius: 6, background: colors.white,
   color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
 }
 
 /** @deprecated use `<Button variant="danger">` */
 export const btnDanger: CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
-  padding: '4px 10px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff',
+  padding: '4px 10px', border: `1px solid ${palette.danger.border}`, borderRadius: 6, background: colors.white,
   color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
 }
 
 /** Chip preview for enum values */
 export function enumChipStyle(): CSSProperties {
-  return { padding: '2px 8px', background: '#f0f4ff', borderRadius: 12, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)' }
+  return { padding: '2px 8px', background: palette.info.bg, borderRadius: 12, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)' }
 }
 
 /** Active card style (selected state in designer type lists) */
 export const activeCardStyle: CSSProperties = {
   border: '1px solid var(--color-brand)',
-  background: '#f0f9ff',
+  background: palette.info.light,
   color: 'var(--color-brand)',
 }
 
 /** Inactive card style */
 export const inactiveCardStyle: CSSProperties = {
   border: '1px solid var(--border)',
-  background: '#fff',
+  background: colors.white,
   color: 'var(--color-slate-dark)',
 }

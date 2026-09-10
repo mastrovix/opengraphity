@@ -1,8 +1,9 @@
 import { lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { PreviewData } from './useWidgetConfig'
-import { TIME_RANGES, DATA_FREE_WIDGET_TYPES } from './useWidgetConfig'
+import { TIME_RANGES, DATA_FREE_WIDGET_TYPES, widgetTint } from './useWidgetConfig'
 import { ActiveAlarmsWidget } from './ActiveAlarmsWidget'
+import { colors, palette } from '@/lib/tokens'
 
 // Stesso corpo della card reale (anteprima ≡ widget); lazy per non portare
 // ECharts nel bundle del modal di configurazione finché non serve.
@@ -33,15 +34,15 @@ export function WidgetPreview({ widgetType, color, title, previewData, previewLo
       </div>
 
       {/* Fake card */}
-      <div style={{ background: '#fff', border: `2px solid ${color}33`, borderRadius: 10, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+      <div style={{ background: colors.white, border: `2px solid ${widgetTint(color, '33')}`, borderRadius: 10, overflow: 'hidden', boxShadow: '0 2px 8px var(--color-black-a06)' }}>
         {/* Card header */}
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--color-border-light)', display: 'flex', alignItems: 'center', gap: 6 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
           <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', flex: 1 }}>
             {title || t('pages.dashboard.widgetTitlePlaceholder')}
           </span>
           {timeRange && timeRange !== 'all' && timeRangeKey && (
-            <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 5px', borderRadius: 4, background: '#f1f5f9', color: 'var(--color-slate-light)' }}>
+            <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 5px', borderRadius: 4, background: colors.slateBg, color: 'var(--color-slate-light)' }}>
               {t(timeRangeKey)}
             </span>
           )}
@@ -75,7 +76,7 @@ export function WidgetPreview({ widgetType, color, title, previewData, previewLo
 
       {/* Spacer + hint */}
       <div style={{ flex: 1 }} />
-      <div style={{ marginTop: 16, padding: 12, background: '#f0f9ff', borderRadius: 8, fontSize: 'var(--font-size-table)', color: '#0369a1', lineHeight: 1.5 }}>
+      <div style={{ marginTop: 16, padding: 12, background: palette.info.light, borderRadius: 8, fontSize: 'var(--font-size-table)', color: palette.info.text, lineHeight: 1.5 }}>
         {'💡'} {t('pages.dashboard.previewHint')}
       </div>
     </div>

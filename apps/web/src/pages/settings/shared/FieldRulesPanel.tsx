@@ -16,6 +16,7 @@ import {
 } from '@/graphql/mutations'
 import { inputS, selectS, labelS, btnPrimary, btnSecondary, btnDanger } from './designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
+import { colors, palette } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -187,7 +188,7 @@ function VisibilityRuleForm({ form, fields, isEnumTrigger, triggerField, onChang
 }) {
   const { t } = useTranslation()
   return (
-    <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '14px 16px', marginBottom: 10 }}>
+    <div style={{ background: palette.info.light, border: `1px solid ${palette.info.border}`, borderRadius: 8, padding: '14px 16px', marginBottom: 10 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 1fr', gap: 10, marginBottom: 10 }}>
         <div>
           <label style={labelS}>{t('fieldRules.visibility.triggerField')}</label>
@@ -282,7 +283,7 @@ function RequirementRulesSection({ entityType, fields, workflowSteps }: { entity
           </thead>
           <tbody>
             {fields.map((field) => (
-              <tr key={field.name} style={{ borderBottom: '1px solid #f3f4f6' }}>
+              <tr key={field.name} style={{ borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
                 <td style={{ padding: '7px 8px', color: 'var(--color-slate-dark)', fontWeight: 500 }}>
                   {field.label || field.name}
                   <span style={{ marginLeft: 5, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-table)' }}>{field.name}</span>
@@ -323,7 +324,7 @@ export function FieldRulesPanel({ entityType, fields, workflowSteps, flat = fals
   )
   if (flat) return content
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: '20px 24px', marginTop: 16 }}>
+    <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, padding: '20px 24px', marginTop: 16 }}>
       {content}
     </div>
   )

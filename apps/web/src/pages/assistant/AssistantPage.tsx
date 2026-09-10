@@ -8,6 +8,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Sparkles, Send, Search, Trash2 } from 'lucide-react'
 import { apiUrl, authHeader } from '@/lib/apiBase'
 import { PageContainer } from '@/components/PageContainer'
+import { colors, palette } from '@/lib/tokens'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -131,7 +132,7 @@ export function AssistantPage() {
             <button type="button"
               onClick={() => setMessages([])}
               disabled={streaming}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
             >
               <Trash2 size={13} /> Nuova conversazione
             </button>
@@ -152,7 +153,7 @@ export function AssistantPage() {
                   <button type="button"
                     key={s}
                     onClick={() => void send(s)}
-                    style={{ padding: '8px 14px', borderRadius: 18, border: '1px solid var(--border)', background: '#fff', color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
+                    style={{ padding: '8px 14px', borderRadius: 18, border: '1px solid var(--border)', background: colors.white, color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
                   >
                     {s}
                   </button>
@@ -172,9 +173,9 @@ export function AssistantPage() {
                 fontSize: 'var(--font-size-body)',
                 lineHeight: 1.5,
                 whiteSpace: 'pre-wrap',
-                background: m.error ? 'var(--color-danger-bg)' : m.role === 'user' ? 'var(--color-brand)' : '#fff',
-                color: m.error ? 'var(--color-trigger-sla-breach)' : m.role === 'user' ? '#fff' : 'var(--color-slate-dark)',
-                border: m.role === 'assistant' ? `1px solid ${m.error ? '#fecaca' : 'var(--border)'}` : 'none',
+                background: m.error ? 'var(--color-danger-bg)' : m.role === 'user' ? 'var(--color-brand)' : colors.white,
+                color: m.error ? 'var(--color-trigger-sla-breach)' : m.role === 'user' ? colors.white : 'var(--color-slate-dark)',
+                border: m.role === 'assistant' ? `1px solid ${m.error ? palette.danger.border : 'var(--border)'}` : 'none',
               }}
             >
               {m.content}
@@ -186,13 +187,13 @@ export function AssistantPage() {
               {activeTools.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {activeTools.map((t, i) => (
-                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '3px 8px', borderRadius: 10, background: '#f0f9ff', border: '1px solid #bae6fd', color: 'var(--color-brand)' }}>
+                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '3px 8px', borderRadius: 10, background: palette.info.light, border: `1px solid ${palette.info.border}`, color: 'var(--color-brand)' }}>
                       <Search size={10} /> {TOOL_LABEL[t] ?? t}
                     </span>
                   ))}
                 </div>
               )}
-              <div style={{ padding: '10px 14px', borderRadius: 12, background: '#fff', border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', lineHeight: 1.5, whiteSpace: 'pre-wrap', color: 'var(--color-slate-dark)' }}>
+              <div style={{ padding: '10px 14px', borderRadius: 12, background: colors.white, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', lineHeight: 1.5, whiteSpace: 'pre-wrap', color: 'var(--color-slate-dark)' }}>
                 {streamText || 'Sto consultando il grafo…'}
               </div>
             </div>
@@ -209,12 +210,12 @@ export function AssistantPage() {
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(input) } }}
             placeholder="Chiedi qualcosa sul tuo ambiente…"
             disabled={streaming}
-            style={{ flex: 1, padding: '11px 16px', borderRadius: 10, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', outline: 'none', background: '#fff' }}
+            style={{ flex: 1, padding: '11px 16px', borderRadius: 10, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', outline: 'none', background: colors.white }}
           />
           <button type="button"
             onClick={() => void send(input)}
             disabled={streaming || !input.trim()}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 18px', borderRadius: 10, border: 'none', background: streaming || !input.trim() ? '#93c5fd' : 'var(--color-brand)', color: '#fff', fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: streaming || !input.trim() ? 'not-allowed' : 'pointer' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 18px', borderRadius: 10, border: 'none', background: streaming || !input.trim() ? palette.info.border : 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: streaming || !input.trim() ? 'not-allowed' : 'pointer' }}
           >
             <Send size={14} /> Invia
           </button>

@@ -22,6 +22,7 @@ import { useDashboard } from './dashboard/useDashboard'
 import type { DashboardConfig, Team } from './dashboard/useDashboard'
 import type { ReportTemplate, ReportSection } from './dashboard/useDashboard'
 import type { CustomWidgetData } from './dashboard/CustomWidgetCard'
+import { colors, palette } from '@/lib/tokens'
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -37,9 +38,9 @@ function TeamPicker({ teams, selected, onToggle }: { teams: Team[]; selected: st
     <div style={{ marginBottom: 12 }}>
       {/* Titolo del gruppo di checkbox: non etichetta un singolo controllo */}
       <div style={fieldLabelStyle}>{t('detail.team')}</div>
-      <div style={{ border: '1px solid #d1d5db', borderRadius: 6, maxHeight: 120, overflowY: 'auto' }}>
+      <div style={{ border: '1px solid var(--color-border-strong)', borderRadius: 6, maxHeight: 120, overflowY: 'auto' }}>
         {teams.map((team) => (
-          <label key={team.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}>
+          <label key={team.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', borderBottom: '1px solid var(--color-border-light)' }}>
             <input type="checkbox" checked={selected.includes(team.id)} onChange={() => onToggle(team.id)} style={{ margin: 0 }} />
             <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{team.name}</span>
           </label>
@@ -105,13 +106,13 @@ function CreateDashboardDialog({ teams, onClose, onCreated }: CreateDashboardDia
       width={380}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose} style={{ padding: '7px 14px', border: '1px solid #d1d5db', fontSize: 'var(--font-size-card-title)' }}>
+          <Button variant="secondary" onClick={onClose} style={{ padding: '7px 14px', border: '1px solid var(--color-border-strong)', fontSize: 'var(--font-size-card-title)' }}>
             {t('common.cancel')}
           </Button>
           <Button
             onClick={() => void handleCreate()}
             disabled={creating || !name.trim()}
-            style={{ padding: '7px 14px', backgroundColor: creating || !name.trim() ? '#67e8f9' : 'var(--color-brand)', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }}
+            style={{ padding: '7px 14px', backgroundColor: creating || !name.trim() ? palette.teal.border : 'var(--color-brand)', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }}
           >
             {creating ? t('pages.dashboard.creating') : t('common.create')}
           </Button>
@@ -237,7 +238,7 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
               <Button
                 variant="secondary"
                 onClick={() => setConfirmDelete(true)}
-                style={{ padding: '7px 14px', border: '1px solid #fca5a5', background: 'var(--color-danger-bg)', color: 'var(--color-danger)', fontSize: 'var(--font-size-card-title)' }}
+                style={{ padding: '7px 14px', border: '1px solid var(--color-danger-border-strong)', background: 'var(--color-danger-bg)', color: 'var(--color-danger)', fontSize: 'var(--font-size-card-title)' }}
               >
                 {t('common.delete')}
               </Button>
@@ -253,13 +254,13 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
             )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <Button variant="secondary" onClick={onClose} style={{ padding: '7px 14px', border: '1px solid #d1d5db', fontSize: 'var(--font-size-card-title)' }}>
+            <Button variant="secondary" onClick={onClose} style={{ padding: '7px 14px', border: '1px solid var(--color-border-strong)', fontSize: 'var(--font-size-card-title)' }}>
               {t('common.cancel')}
             </Button>
             <Button
               onClick={() => void handleSave()}
               disabled={saving}
-              style={{ padding: '7px 14px', backgroundColor: saving ? '#67e8f9' : 'var(--color-brand)', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }}
+              style={{ padding: '7px 14px', backgroundColor: saving ? palette.teal.border : 'var(--color-brand)', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }}
             >
               {saving ? t('pages.dashboard.saving') : t('common.save')}
             </Button>
@@ -295,7 +296,7 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
           <button
             type="button"
             onClick={() => void handleSetDefault()}
-            style={{ width: '100%', padding: '7px 14px', borderRadius: 6, border: '1px solid #0284c7', background: 'var(--color-brand-light)', color: 'var(--color-brand)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', marginBottom: 8 }}
+            style={{ width: '100%', padding: '7px 14px', borderRadius: 6, border: '1px solid var(--color-brand)', background: 'var(--color-brand-light)', color: 'var(--color-brand)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', marginBottom: 8 }}
           >
             ★ {t('pages.dashboard.setDefault')}
           </button>
@@ -376,20 +377,20 @@ export function DashboardPage() {
             aria-haspopup="menu"
             aria-expanded={dropdownOpen}
             aria-label={t('pages.dashboard.selectDashboard')}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 6, border: '1px solid var(--color-border-strong)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
           >
             <span>{activeDashName}</span>
             <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>▼</span>
           </button>
 
           {dropdownOpen && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', minWidth: 220, zIndex: 100 }}>
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: colors.white, border: '1px solid var(--color-border)', borderRadius: 8, boxShadow: '0 4px 16px var(--color-black-a10)', minWidth: 220, zIndex: 100 }}>
               {dashboards.map((d) => (
                 <button
                   type="button"
                   key={d.id}
                   onClick={() => handleSelectDashboard(d.id)}
-                  style={{ width: '100%', padding: '8px 12px', textAlign: 'left', background: d.id === activeDashboardId ? '#f0f9ff' : 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: d.id === activeDashboardId ? 'var(--color-brand-hover)' : 'var(--color-slate)', display: 'flex', alignItems: 'center', gap: 6 }}
+                  style={{ width: '100%', padding: '8px 12px', textAlign: 'left', background: d.id === activeDashboardId ? palette.info.light : 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: d.id === activeDashboardId ? 'var(--color-brand-hover)' : 'var(--color-slate)', display: 'flex', alignItems: 'center', gap: 6 }}
                 >
                   {d.isDefault && <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-warning)' }}>★</span>}
                   <span>{d.name}</span>
@@ -400,7 +401,7 @@ export function DashboardPage() {
                   )}
                 </button>
               ))}
-              <div style={{ borderTop: '1px solid #f3f4f6', padding: 4 }}>
+              <div style={{ borderTop: '1px solid var(--color-border-light)', padding: 4 }}>
                 <button
                   type="button"
                   onClick={() => { setDropdownOpen(false); setShowCreate(true) }}
@@ -421,7 +422,7 @@ export function DashboardPage() {
               type="button"
               onClick={() => void handleSave()}
               disabled={saving}
-              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #0284c7', background: saving ? '#67e8f9' : 'var(--color-brand)', color: '#fff', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer' }}
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--color-brand)', background: saving ? palette.teal.border : 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer' }}
             >
               {saving ? t('pages.dashboard.saving') : `✓ ${t('common.save')}`}
             </button>
@@ -429,17 +430,17 @@ export function DashboardPage() {
               type="button"
               onClick={cancelEditMode}
               disabled={saving}
-              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--color-border-strong)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
             >
               ✕ {t('common.cancel')}
             </button>
           </>
         ) : (
           <>
-            <button type="button" onClick={enterEditMode} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}>
+            <button type="button" onClick={enterEditMode} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--color-border-strong)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}>
               ✏ {t('pages.dashboard.customize')}
             </button>
-            <button type="button" onClick={() => setShowSettings(true)} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}>
+            <button type="button" onClick={() => setShowSettings(true)} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--color-border-strong)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}>
               ⚙ {t('pages.dashboard.settings')}
             </button>
           </>
@@ -525,7 +526,7 @@ export function DashboardPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Header strip */}
-      <div style={{ flexShrink: 0, background: 'var(--color-slate-bg)', borderBottom: '1px solid #e5e7eb' }}>
+      <div style={{ flexShrink: 0, background: 'var(--color-slate-bg)', borderBottom: '1px solid var(--color-border)' }}>
         {header}
       </div>
 

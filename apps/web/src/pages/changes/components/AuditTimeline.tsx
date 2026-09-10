@@ -6,11 +6,12 @@ import { useState } from 'react'
 import { SectionCard } from '@/components/ui/SectionCard'
 import type { ChangeAuditEntryData } from '@/types/change'
 import { formatDateShort } from '@/lib/datetime'
+import { colors, palette } from '@/lib/tokens'
 
 type AuditCategory = 'stato' | 'assessment' | 'assegnazioni' | 'commenti' | 'sistema'
 const AUDIT_CAT_COLOR: Record<AuditCategory, string> = {
-  stato: 'var(--color-success)', assessment: '#2563eb',
-  assegnazioni: '#7c3aed', commenti: 'var(--color-slate)',
+  stato: 'var(--color-success)', assessment: colors.brand,
+  assegnazioni: palette.purple.base, commenti: 'var(--color-slate)',
   sistema: 'var(--color-slate-light)',
 }
 const AUDIT_CAT_LABEL: Record<AuditCategory, string> = {
@@ -38,7 +39,7 @@ export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
   return (
     <SectionCard title="Audit Trail" collapsible defaultOpen={false} count={audit.length}>
       <div style={{ marginBottom: 12 }}>
-        <select value={filter} onChange={(e) => { setFilter(e.target.value as AuditCategory | 'all'); setShowAll(false) }} style={{ padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)' }}>
+        <select value={filter} onChange={(e) => { setFilter(e.target.value as AuditCategory | 'all'); setShowAll(false) }} style={{ padding: '5px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)' }}>
           <option value="all">Tutti ({audit.length})</option>
           {(Object.keys(AUDIT_CAT_LABEL) as AuditCategory[]).map(cat => {
             const n = audit.filter(e => categorizeAction(e.action) === cat).length
@@ -55,11 +56,11 @@ export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
           return (
             <div key={i} style={{ display: 'flex', gap: 12 }}>
               <div style={{ width: 20, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: color, border: '2px solid #fff', boxShadow: '0 0 0 1px #e5e7eb', flexShrink: 0, zIndex: 1 }} />
-                {!isLast && <div style={{ width: 2, flex: 1, backgroundColor: '#e5e7eb' }} />}
+                <div style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: color, border: '2px solid var(--color-white)', boxShadow: '0 0 0 1px var(--color-border)', flexShrink: 0, zIndex: 1 }} />
+                {!isLast && <div style={{ width: 2, flex: 1, backgroundColor: colors.border }} />}
               </div>
               <div style={{ flex: 1, paddingBottom: 10 }}>
-                <div style={{ padding: '6px 10px', background: 'var(--color-slate-bg)', borderRadius: 6, border: '1px solid #f3f4f6' }}>
+                <div style={{ padding: '6px 10px', background: 'var(--color-slate-bg)', borderRadius: 6, border: '1px solid var(--color-border-light)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                     <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{fmtTS(e.timestamp)}</span>
                     <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 5px', borderRadius: 4, backgroundColor: `${color}15`, color }}>{e.action.replace(/_/g, ' ')}</span>
@@ -73,7 +74,7 @@ export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
           )
         })}
       </div>
-      {filtered.length > 20 && !showAll && <button type="button" onClick={() => setShowAll(true)} style={{ marginTop: 6, background: 'none', border: '1px solid #e5e7eb', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-brand)' }}>Mostra tutti ({filtered.length})</button>}
+      {filtered.length > 20 && !showAll && <button type="button" onClick={() => setShowAll(true)} style={{ marginTop: 6, background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-brand)' }}>Mostra tutti ({filtered.length})</button>}
     </SectionCard>
   )
 }

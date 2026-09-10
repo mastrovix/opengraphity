@@ -1,7 +1,7 @@
 import { gql } from '@apollo/client'
 import { useLazyQuery } from '@apollo/client/react'
 import { Sparkles } from 'lucide-react'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, colors, palette } from '@/lib/tokens'
 import { SeverityBadge } from '@/components/ui/badges'
 
 const TRIAGE_SUGGESTION = gql`
@@ -32,9 +32,9 @@ interface Suggestion extends TriageValues {
 }
 
 const CONF_LABEL: Record<string, { label: string; bg: string; color: string }> = {
-  high:   { label: 'confidenza alta',  bg: '#dcfce7', color: '#15803d' },
-  medium: { label: 'confidenza media', bg: '#fef3c7', color: '#b45309' },
-  low:    { label: 'confidenza bassa', bg: '#fee2e2', color: '#b91c1c' },
+  high:   { label: 'confidenza alta',  bg: palette.success.tint, color: palette.success.text },
+  medium: { label: 'confidenza media', bg: palette.warning.tint, color: palette.warning.text },
+  low:    { label: 'confidenza bassa', bg: palette.danger.tint, color: palette.danger.text },
 }
 
 /**
@@ -57,7 +57,7 @@ export function TriageSuggestionCard({
   })
 
   const s = data?.triageSuggestion
-  const conf = s ? lookupOrError(CONF_LABEL, s.confidence, 'CONF_LABEL', { label: s.confidence, bg: 'var(--color-danger)', color: '#fff' }) : null
+  const conf = s ? lookupOrError(CONF_LABEL, s.confidence, 'CONF_LABEL', { label: s.confidence, bg: 'var(--color-danger)', color: colors.white }) : null
 
   return (
     <div style={{ marginBottom: 20 }}>
@@ -79,13 +79,13 @@ export function TriageSuggestionCard({
       </button>
 
       {error && (
-        <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--color-danger-bg)', border: '1px solid #fecaca', borderRadius: 8, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>
+        <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--color-danger-bg)', border: `1px solid ${palette.danger.border}`, borderRadius: 8, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>
           Errore triage AI: {error.message}
         </div>
       )}
 
       {s && conf && !loading && (
-        <div style={{ marginTop: 10, padding: '14px 16px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10 }}>
+        <div style={{ marginTop: 10, padding: '14px 16px', background: palette.info.light, border: `1px solid ${palette.info.border}`, borderRadius: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
               <Sparkles size={13} color="var(--color-brand)" /> Suggerimento AI
@@ -96,14 +96,14 @@ export function TriageSuggestionCard({
           </div>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-            <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: '#fff', border: '1px solid #e5e7eb', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: colors.white, border: `1px solid ${colors.border}`, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               Severity: <SeverityBadge value={s.severity} />
             </span>
-            <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: '#fff', border: '1px solid #e5e7eb' }}>
+            <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: colors.white, border: `1px solid ${colors.border}` }}>
               Categoria: <strong>{s.category}</strong>
             </span>
             {s.teamName && (
-              <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: '#fff', border: '1px solid #e5e7eb' }}>
+              <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: colors.white, border: `1px solid ${colors.border}` }}>
                 Team: <strong>{s.teamName}</strong>
               </span>
             )}
@@ -129,7 +129,7 @@ export function TriageSuggestionCard({
           <button
             type="button"
             onClick={() => onApply({ severity: s.severity, category: s.category, teamName: s.teamName })}
-            style={{ padding: '6px 16px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: '#fff', fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: 'pointer' }}
+            style={{ padding: '6px 16px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: 'pointer' }}
           >
             Applica suggerimento
           </button>

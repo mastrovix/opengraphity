@@ -2,9 +2,10 @@ import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { FieldMeta } from './useWidgetConfig'
 import {
-  ENTITY_TYPES, METRICS, TIME_RANGES, SIZE_OPTIONS, PRESET_COLORS,
+  ENTITY_TYPES, METRICS, TIME_RANGES, SIZE_OPTIONS, presetColors, widgetTint,
   FIELD_TYPE_LABEL_KEYS,
 } from './useWidgetConfig'
+import { colors, palette } from '@/lib/tokens'
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -129,8 +130,8 @@ export function WidgetFilterConfig({
               aria-pressed={timeRange === value}
               style={{
                 padding: '5px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500,
-                border: timeRange === value ? `1.5px solid ${color}` : '1.5px solid #e5e7eb',
-                background: timeRange === value ? `${color}14` : '#fff',
+                border: timeRange === value ? `1.5px solid ${color}` : '1.5px solid var(--color-border)',
+                background: timeRange === value ? widgetTint(color) : colors.white,
                 color: timeRange === value ? color : 'var(--color-slate)',
               }}
             >
@@ -153,8 +154,8 @@ export function WidgetFilterConfig({
               aria-pressed={size === value}
               style={{
                 flex: 1, padding: '8px 6px', borderRadius: 8, cursor: 'pointer', textAlign: 'center',
-                border: size === value ? `2px solid ${color}` : '1.5px solid #e5e7eb',
-                background: size === value ? `${color}14` : '#fafafa',
+                border: size === value ? `2px solid ${color}` : '1.5px solid var(--color-border)',
+                background: size === value ? widgetTint(color) : palette.neutral.surface1,
                 color: size === value ? color : 'var(--color-slate)',
               }}
             >
@@ -169,7 +170,7 @@ export function WidgetFilterConfig({
       <div>
         <div id={ids.color} style={labelStyle}>{t('pages.dashboard.colorLabel')}</div>
         <div role="group" aria-labelledby={ids.color} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          {PRESET_COLORS.map(({ value: c, nameKey }) => (
+          {presetColors().map(({ value: c, nameKey }) => (
             <button
               type="button"
               key={c}
@@ -179,7 +180,7 @@ export function WidgetFilterConfig({
               title={t(nameKey)}
               style={{
                 width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer',
-                border: color === c ? '3px solid #1e293b' : '2.5px solid transparent',
+                border: color === c ? '3px solid var(--color-slate-dark)' : '2.5px solid transparent',
                 outline: color === c ? `2.5px solid ${c}` : 'none',
                 outlineOffset: 1,
                 transition: 'transform 0.1s',
@@ -193,7 +194,7 @@ export function WidgetFilterConfig({
             onChange={(e) => onColorChange(e.target.value)}
             title={t('pages.dashboard.customColor')}
             aria-label={t('pages.dashboard.customColor')}
-            style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #d1d5db', cursor: 'pointer', padding: 2 }}
+            style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid var(--color-border-strong)', cursor: 'pointer', padding: 2 }}
           />
         </div>
       </div>
@@ -237,8 +238,8 @@ function FilterValueInput({ meta, value, onChange, disabled, color }: {
             aria-pressed={value === v}
             style={{
               flex: 1, padding: '7px 0', borderRadius: 7, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, textAlign: 'center',
-              border: value === v ? `1.5px solid ${color}` : '1.5px solid #e5e7eb',
-              background: value === v ? `${color}14` : '#fff',
+              border: value === v ? `1.5px solid ${color}` : '1.5px solid var(--color-border)',
+              background: value === v ? widgetTint(color) : colors.white,
               color: value === v ? color : 'var(--color-slate)',
             }}
           >
@@ -273,13 +274,13 @@ const labelStyle: React.CSSProperties = {
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', borderRadius: 7,
-  border: '1.5px solid #e2e8f0', fontSize: 'var(--font-size-body)',
+  border: '1.5px solid var(--color-border)', fontSize: 'var(--font-size-body)',
   boxSizing: 'border-box', color: 'var(--color-slate-dark)',
   outline: 'none',
 }
 
 const selectStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', borderRadius: 7,
-  border: '1.5px solid #e2e8f0', fontSize: 'var(--font-size-body)',
-  background: '#fff', color: 'var(--color-slate-dark)',
+  border: '1.5px solid var(--color-border)', fontSize: 'var(--font-size-body)',
+  background: colors.white, color: 'var(--color-slate-dark)',
 }

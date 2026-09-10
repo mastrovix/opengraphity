@@ -5,7 +5,7 @@ import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, colors } from '@/lib/tokens'
 import {
   type ReportTemplate,
   VIS_LABELS, VIS_COLORS,
@@ -70,7 +70,7 @@ export function ReportListView(props: ReportListViewProps) {
           <button
             type="button"
             onClick={() => setShowNewDialog(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
           >
             {tr('pages.reportBuilder.new')}
           </button>
@@ -92,8 +92,8 @@ export function ReportListView(props: ReportListViewProps) {
             const isMenuOpen = menuOpenId === t.id
             return (
               <div key={t.id} style={{
-                background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                background: colors.white, borderRadius: 10, border: '1px solid var(--color-border)',
+                boxShadow: '0 1px 2px var(--color-black-a05)',
                 display: 'flex', flexDirection: 'column',
               }}>
                 {/* Card header row */}
@@ -113,8 +113,8 @@ export function ReportListView(props: ReportListViewProps) {
                       {isMenuOpen && (
                         <div style={{
                           position: 'absolute', top: '100%', right: 0, zIndex: 50,
-                          background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
-                          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 180, overflow: 'hidden',
+                          background: colors.white, border: '1px solid var(--color-border)', borderRadius: 8,
+                          boxShadow: '0 4px 16px var(--color-black-a12)', minWidth: 180, overflow: 'hidden',
                         }}>
                           {[
                             { label: '\u2699 Modifica impostazioni', action: () => openSettings(t), danger: false },
@@ -147,7 +147,7 @@ export function ReportListView(props: ReportListViewProps) {
                 </div>
 
                 {/* Card footer */}
-                <div style={{ padding: '8px 14px', borderTop: '1px solid #f3f4f6', display: 'flex', gap: 6 }}>
+                <div style={{ padding: '8px 14px', borderTop: '1px solid var(--color-border-light)', display: 'flex', gap: 6 }}>
                   <button
                     type="button"
                     onClick={() => handleExecuteAndGoToDetail(t)}
@@ -192,7 +192,7 @@ export function ReportListView(props: ReportListViewProps) {
             </div>
             <div style={{ marginBottom: 20 }}>
               <label htmlFor={ids.vis} style={labelStyle}>Visibilit&agrave;</label>
-              <select id={ids.vis} value={newVis} onChange={e => setNewVis(e.target.value)} style={{ ...inputStyle, background: '#fff' }}>
+              <select id={ids.vis} value={newVis} onChange={e => setNewVis(e.target.value)} style={{ ...inputStyle, background: colors.white }}>
                 <option value="private">Privato</option>
                 <option value="groups">Gruppi selezionati</option>
                 <option value="all">Tutti</option>

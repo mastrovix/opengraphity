@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/FormControls'
 import { CountBadge } from '@/components/ui/CountBadge'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import { ciPath } from '@/lib/ciPath'
+import { alpha, colors, palette } from '@/lib/tokens'
 
 export interface AffectedCIRef {
   id:          string
@@ -29,7 +30,7 @@ export interface CIRelationRule {
   description:  string | null
 }
 
-const STATUS_BG: Record<string, string> = { active: '#dcfce7', maintenance: '#fef9c3', decommissioned: '#fee2e2' }
+const STATUS_BG: Record<string, string> = { active: palette.success.tint, maintenance: palette.yellow.bg, decommissioned: palette.danger.tint }
 
 function groupByType<T extends { type: string }>(items: T[]): Record<string, T[]> {
   return items.reduce<Record<string, T[]>>((acc, item) => { (acc[item.type] ??= []).push(item); return acc }, {})
@@ -80,23 +81,23 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
   }
 
   return (
-    <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', padding: 0, marginBottom: 16 }}>
+    <div style={{ backgroundColor: colors.white, border: `1px solid ${colors.border}`, borderRadius: 10, boxShadow: `0 1px 2px ${alpha.black05}`, padding: 0, marginBottom: 16 }}>
       <div
         role="button" tabIndex={0}
         onClick={() => setOpen((p) => !p)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen((p) => !p) } }}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: open ? '1px solid #e5e7eb' : 'none', background: open ? '#0ea5e9' : undefined }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '14px 20px', borderBottom: open ? `1px solid ${colors.border}` : 'none', background: open ? colors.brand : undefined }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: open ? '#fff' : 'var(--color-slate-dark)' }}>CI Impattati</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: open ? colors.white : 'var(--color-slate-dark)' }}>CI Impattati</span>
           <CountBadge count={affectedCIs.length} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button type="button" onClick={toggleSearch}
-            style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: `1px solid ${open ? '#fff' : 'var(--border)'}`, background: 'transparent', cursor: 'pointer', color: open ? '#fff' : 'var(--accent)' }}>
+            style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: `1px solid ${open ? colors.white : 'var(--border)'}`, background: 'transparent', cursor: 'pointer', color: open ? colors.white : 'var(--accent)' }}>
             {showSearch ? 'Chiudi' : '+ Aggiungi CI'}
           </button>
-          {open ? <ChevronDown size={16} color="#fff" /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
+          {open ? <ChevronDown size={16} color={colors.white} /> : <ChevronRight size={16} color="var(--color-slate-light)" />}
         </div>
       </div>
       {open && (
@@ -108,7 +109,7 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
                 // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: campo di ricerca montato dopo il click su "Aggiungi CI"
                 autoFocus style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }} />
               {filteredResults.length > 0 && (
-                <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 240, overflowY: 'auto', backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+                <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 240, overflowY: 'auto', backgroundColor: colors.white, boxShadow: `0 4px 12px ${alpha.black10}` }}>
                   {filteredResults.map((ci) => {
                     const relTypes = getRelTypes(ci.type)
                     return (
@@ -128,10 +129,10 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
                               </select>
                             )}
                             {relTypes.length === 1 && (
-                              <span style={{ fontSize: 'var(--font-size-table)', padding: '2px 6px', borderRadius: 4, background: 'var(--color-info-bg)', color: '#2563eb', fontWeight: 500 }}>{relTypes[0]}</span>
+                              <span style={{ fontSize: 'var(--font-size-table)', padding: '2px 6px', borderRadius: 4, background: 'var(--color-info-bg)', color: colors.brand, fontWeight: 500 }}>{relTypes[0]}</span>
                             )}
                             <button type="button" onClick={() => handleAdd(ci)}
-                              style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 4, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 500 }}>+</button>
+                              style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 4, border: 'none', background: 'var(--accent)', color: colors.white, cursor: 'pointer', fontWeight: 500 }}>+</button>
                           </div>
                         </div>
                       </div>

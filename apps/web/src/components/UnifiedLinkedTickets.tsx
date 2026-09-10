@@ -20,6 +20,7 @@ import { Plus, X, Lock } from 'lucide-react'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { Input } from '@/components/ui/FormControls'
 import { GET_INCIDENTS, GET_PROBLEMS, GET_CHANGES } from '@/graphql/queries'
+import { colors, palette } from '@/lib/tokens'
 
 export interface LinkedTicketItem { id: string; number: string; title: string; status: string; removable?: boolean | null }
 
@@ -88,7 +89,7 @@ export function UnifiedLinkedTickets({ title, types, excludeId }: { title: strin
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
             {types.map((t) => (
               <button key={t.kind} type="button" onClick={() => { setActiveKind(t.kind); setTerm('') }}
-                style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 'var(--font-size-label)', fontWeight: 600, background: activeKind === t.kind ? 'var(--color-brand)' : 'transparent', color: activeKind === t.kind ? '#fff' : 'var(--color-slate)' }}>
+                style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 'var(--font-size-label)', fontWeight: 600, background: activeKind === t.kind ? 'var(--color-brand)' : 'transparent', color: activeKind === t.kind ? colors.white : 'var(--color-slate)' }}>
                 {t.label}
               </button>
             ))}
@@ -119,12 +120,12 @@ export function UnifiedLinkedTickets({ title, types, excludeId }: { title: strin
           <div key={g.kind} style={{ marginBottom: 12 }}>
             {/* Intestazione del gruppo per tipologia */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 6px', borderBottom: '2px solid var(--border)' }}>
-              <span style={{ fontSize: 'var(--font-size-caption)', fontWeight: 700, color: '#fff', background: BADGE[g.kind], borderRadius: 4, padding: '2px 6px' }}>{g.kind}</span>
+              <span style={{ fontSize: 'var(--font-size-caption)', fontWeight: 700, color: colors.white, background: BADGE[g.kind], borderRadius: 4, padding: '2px 6px' }}>{g.kind}</span>
               <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{g.label}</span>
               <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>({g.rows.length})</span>
             </div>
             {g.rows.map((r) => (
-              <div key={`${g.kind}-${r.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #f3f4f6', fontSize: 'var(--font-size-body)' }}>
+              <div key={`${g.kind}-${r.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: `1px solid ${palette.neutral.borderLight}`, fontSize: 'var(--font-size-body)' }}>
                 <span style={{ width: 130 }}><Link to={`${g.routeBase}/${r.id}`} style={{ fontWeight: 600, color: 'var(--color-brand)', textDecoration: 'none' }}>{r.number}</Link></span>
                 <span style={{ flex: 1, color: 'var(--color-slate-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</span>
                 <span style={{ width: 120, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>{(r.status || '—').replace(/_/g, ' ')}</span>

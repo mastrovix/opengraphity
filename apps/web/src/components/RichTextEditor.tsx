@@ -20,6 +20,7 @@ import {
   List, ListOrdered, Quote, Code, Square,
   LinkIcon, ImageIcon, TableIcon, Minus, Undo, Redo,
 } from 'lucide-react'
+import { colors, palette } from '@/lib/tokens'
 
 // ── lowlight instance ────────────────────────────────────────────────────────
 
@@ -114,8 +115,8 @@ function Btn({
         borderRadius: 4,
         border:      'none',
         cursor:      'pointer',
-        background:  active ? '#e0f2fe' : 'transparent',
-        color:       active ? '#0369a1' : '#475569',
+        background:  active ? palette.info.tint : 'transparent',
+        color:       active ? palette.info.text : palette.neutral.textStrong,
         flexShrink:  0,
       }}
     >
@@ -125,7 +126,7 @@ function Btn({
 }
 
 function Sep() {
-  return <div style={{ width: 1, height: 20, background: '#e2e8f0', margin: '0 4px', flexShrink: 0 }} />
+  return <div style={{ width: 1, height: 20, background: colors.border, margin: '0 4px', flexShrink: 0 }} />
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -226,10 +227,10 @@ export function RichTextEditor({
   if (!editor) return null
 
   return (
-    <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
+    <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden', background: colors.white }}>
       {/* ── Toolbar ── */}
       {!readOnly && (
-        <div style={{ background: 'var(--color-slate-bg)', borderBottom: '1px solid #e2e8f0', padding: '6px 8px', display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+        <div style={{ background: 'var(--color-slate-bg)', borderBottom: `1px solid ${colors.border}`, padding: '6px 8px', display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
           {/* Text formatting */}
           <Btn onClick={() => editor.chain().focus().toggleBold().run()}          active={editor.isActive('bold')}          title={t('richText.bold')}><Bold size={14} /></Btn>
           <Btn onClick={() => editor.chain().focus().toggleItalic().run()}        active={editor.isActive('italic')}        title={t('richText.italic')}><Italic size={14} /></Btn>
@@ -280,30 +281,30 @@ export function RichTextEditor({
           outline: none;
           font-size: 14px;
           font-family: system-ui, -apple-system, sans-serif;
-          color: #1a2332;
+          color: var(--color-slate-dark);
           line-height: 1.6;
         }
         .tiptap-editor .ProseMirror:focus {
           outline: none;
         }
         .tiptap-editor .ProseMirror > * + * { margin-top: 0.75em; }
-        .tiptap-editor .ProseMirror h1 { font-size: 24px; font-weight: 700; color: #0f172a; }
-        .tiptap-editor .ProseMirror h2 { font-size: 20px; font-weight: 600; color: #0f172a; }
-        .tiptap-editor .ProseMirror h3 { font-size: 16px; font-weight: 600; color: #0f172a; }
-        .tiptap-editor .ProseMirror a { color: #0ea5e9; text-decoration: underline; }
-        .tiptap-editor .ProseMirror code { background: #f1f5f9; font-family: monospace; font-size: 13px; padding: 2px 4px; border-radius: 3px; }
-        .tiptap-editor .ProseMirror pre { background: #f1f5f9; padding: 12px; border-radius: 6px; overflow-x: auto; }
+        .tiptap-editor .ProseMirror h1 { font-size: 24px; font-weight: 700; color: var(--color-slate-dark); }
+        .tiptap-editor .ProseMirror h2 { font-size: 20px; font-weight: 600; color: var(--color-slate-dark); }
+        .tiptap-editor .ProseMirror h3 { font-size: 16px; font-weight: 600; color: var(--color-slate-dark); }
+        .tiptap-editor .ProseMirror a { color: var(--color-brand); text-decoration: underline; }
+        .tiptap-editor .ProseMirror code { background: var(--color-slate-bg); font-family: monospace; font-size: 13px; padding: 2px 4px; border-radius: 3px; }
+        .tiptap-editor .ProseMirror pre { background: var(--color-slate-bg); padding: 12px; border-radius: 6px; overflow-x: auto; }
         .tiptap-editor .ProseMirror pre code { background: none; padding: 0; font-size: 13px; }
-        .tiptap-editor .ProseMirror blockquote { border-left: 3px solid #0ea5e9; padding-left: 12px; color: #64748b; font-style: italic; margin: 0; }
+        .tiptap-editor .ProseMirror blockquote { border-left: 3px solid var(--color-brand); padding-left: 12px; color: var(--color-slate); font-style: italic; margin: 0; }
         .tiptap-editor .ProseMirror ul { list-style: disc; padding-left: 20px; }
         .tiptap-editor .ProseMirror ol { list-style: decimal; padding-left: 20px; }
         .tiptap-editor .ProseMirror li { margin-top: 0.25em; }
         .tiptap-editor .ProseMirror img { max-width: 100%; border-radius: 4px; }
-        .tiptap-editor .ProseMirror hr { border: none; border-top: 1px solid #e2e8f0; margin: 1em 0; }
+        .tiptap-editor .ProseMirror hr { border: none; border-top: 1px solid var(--color-border); margin: 1em 0; }
         .tiptap-editor .ProseMirror table { border-collapse: collapse; width: 100%; }
-        .tiptap-editor .ProseMirror th, .tiptap-editor .ProseMirror td { border: 1px solid #e2e8f0; padding: 6px 10px; font-size: 13px; }
-        .tiptap-editor .ProseMirror th { background: #f8fafc; font-weight: 600; }
-        .tiptap-editor .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: #94a3b8; pointer-events: none; float: left; height: 0; }
+        .tiptap-editor .ProseMirror th, .tiptap-editor .ProseMirror td { border: 1px solid var(--color-border); padding: 6px 10px; font-size: 13px; }
+        .tiptap-editor .ProseMirror th { background: var(--color-surface-1); font-weight: 600; }
+        .tiptap-editor .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--color-slate-light); pointer-events: none; float: left; height: 0; }
       `}</style>
       <div className="tiptap-editor">
         <EditorContent editor={editor} />

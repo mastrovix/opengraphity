@@ -4,6 +4,7 @@ import {
   SCHEDULE_PRESETS,
   inputStyle, labelStyle, btnPrimary, btnGhost,
 } from './useCustomReports'
+import { colors, palette } from '@/lib/tokens'
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -75,7 +76,7 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
 
         <div style={{ marginBottom: 14 }}>
           <label htmlFor={ids.vis} style={labelStyle}>Visibilit&agrave;</label>
-          <select id={ids.vis} value={settingsVis} onChange={e => setSettingsVis(e.target.value)} style={{ ...inputStyle, background: '#fff' }}>
+          <select id={ids.vis} value={settingsVis} onChange={e => setSettingsVis(e.target.value)} style={{ ...inputStyle, background: colors.white }}>
             <option value="private">Privato</option>
             <option value="groups">Gruppi selezionati</option>
             <option value="all">Tutti</option>
@@ -97,7 +98,7 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
           </div>
         )}
 
-        <div style={{ marginBottom: 20, padding: 16, background: 'var(--color-slate-bg)', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+        <div style={{ marginBottom: 20, padding: 16, background: 'var(--color-slate-bg)', borderRadius: 8, border: '1px solid var(--color-border)' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: settingsSched ? 14 : 0 }}>
             <input type="checkbox" checked={settingsSched} onChange={e => setSettingsSched(e.target.checked)} />
             <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>Abilita schedulazione</span>
@@ -108,7 +109,7 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
                 <label htmlFor={ids.preset} style={labelStyle}>Frequenza</label>
                 <select id={ids.preset} value={schedulePreset}
                   onChange={e => { setSchedulePreset(e.target.value); if (e.target.value !== '__custom__') setSettingsSchedCron(e.target.value) }}
-                  style={{ ...inputStyle, background: '#fff' }}>
+                  style={{ ...inputStyle, background: colors.white }}>
                   {SCHEDULE_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
               </div>
@@ -122,7 +123,7 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
               {channels.length > 0 && (
                 <div style={{ marginBottom: 10 }}>
                   <label htmlFor={ids.channel} style={labelStyle}>Canale Slack</label>
-                  <select id={ids.channel} value={settingsChanId} onChange={e => setSettingsChanId(e.target.value)} style={{ ...inputStyle, background: '#fff' }}>
+                  <select id={ids.channel} value={settingsChanId} onChange={e => setSettingsChanId(e.target.value)} style={{ ...inputStyle, background: colors.white }}>
                     <option value="">Nessun canale</option>
                     {channels.map((c: Channel) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
@@ -132,12 +133,12 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
               {/* Recipients */}
               <div style={{ marginBottom: 10 }}>
                 <label htmlFor={ids.recipients} style={labelStyle}>Destinatari email</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', minHeight: 38 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '6px 8px', border: '1px solid var(--color-border-strong)', borderRadius: 6, background: colors.white, minHeight: 38 }}>
                   {settingsRecipients.map((r) => (
-                    <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 12, background: '#e0f2fe', color: '#0369a1', fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
+                    <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 12, background: palette.info.tint, color: palette.info.text, fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
                       {r}
                       <button type="button" aria-label={`Rimuovi ${r}`} onClick={() => setSettingsRecipients(prev => prev.filter(x => x !== r))}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: '#0369a1', fontWeight: 600 }}>&times;</button>
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: palette.info.text, fontWeight: 600 }}>&times;</button>
                     </span>
                   ))}
                   <input
@@ -170,7 +171,7 @@ export function ReportScheduleSettings(props: ReportScheduleSettingsProps) {
                 <div style={labelStyle}>Formato report</div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {(['pdf', 'excel'] as const).map((fmt) => (
-                    <label key={fmt} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 6, border: `1px solid ${settingsFormat === fmt ? 'var(--color-trigger-manual)' : '#d1d5db'}`, background: settingsFormat === fmt ? '#f0f9ff' : '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: settingsFormat === fmt ? 600 : 400, color: settingsFormat === fmt ? 'var(--color-brand)' : 'var(--color-slate)' }}>
+                    <label key={fmt} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 6, border: `1px solid ${settingsFormat === fmt ? 'var(--color-trigger-manual)' : 'var(--color-border-strong)'}`, background: settingsFormat === fmt ? palette.info.light : colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: settingsFormat === fmt ? 600 : 400, color: settingsFormat === fmt ? 'var(--color-brand)' : 'var(--color-slate)' }}>
                       <input type="radio" name="schedFormat" value={fmt} checked={settingsFormat === fmt} onChange={() => setSettingsFormat(fmt)} style={{ margin: 0 }} />
                       {fmt === 'pdf' ? '\uD83D\uDCC4 PDF' : '\uD83D\uDCCA Excel'}
                     </label>

@@ -10,7 +10,7 @@ import { ITILTypeFields } from './ITILTypeFields'
 import { ITILTypeCIRelations } from './ITILTypeCIRelations'
 import { ITILTypeRules } from './ITILTypeRules'
 import { ITILTypePreview } from './ITILTypePreview'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, colors, palette } from '@/lib/tokens'
 
 const ITIL_TYPE_ICONS: Record<string, LucideIcon> = {
   incident:        AlertCircle,
@@ -43,8 +43,8 @@ export function ITILTypeDesignerPage() {
       {!loading && (
         <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, alignItems: 'start' }}>
           {/* Left: Type list */}
-          <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-            <div style={{ padding: '5px 16px 4px', fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-slate-light)', background: 'var(--color-slate-bg)', borderBottom: '1px solid #f3f4f6' }}>
+          <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ padding: '5px 16px 4px', fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-slate-light)', background: 'var(--color-slate-bg)', borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
               ITIL Types
             </div>
             <div>
@@ -53,7 +53,7 @@ export function ITILTypeDesignerPage() {
                 const FallbackIcon = lookupOrError(ITIL_TYPE_ICONS, itilType.name, 'ITIL_TYPE_ICONS', Settings2)
                 return (
                   <button type="button" key={itilType.id} onClick={() => h.handleSelectType(itilType)}
-                    style={{ width: '100%', textAlign: 'left', padding: '10px 16px', background: isSelected ? '#f0f9ff' : 'transparent', borderLeft: `3px solid ${isSelected ? 'var(--color-brand)' : 'transparent'}`, borderTop: 'none', borderRight: 'none', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    style={{ width: '100%', textAlign: 'left', padding: '10px 16px', background: isSelected ? palette.info.light : 'transparent', borderLeft: `3px solid ${isSelected ? 'var(--color-brand)' : 'transparent'}`, borderTop: 'none', borderRight: 'none', borderBottom: `1px solid ${palette.neutral.borderLight}`, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
                     {itilType.icon
                       ? <CIIcon icon={itilType.icon} size={15} color={isSelected ? 'var(--color-brand)' : 'var(--color-slate)'} />
                       : <FallbackIcon size={15} color={isSelected ? 'var(--color-brand)' : 'var(--color-slate)'} style={{ flexShrink: 0 }} />}
@@ -71,7 +71,7 @@ export function ITILTypeDesignerPage() {
           {selectedType && settingsForm && (() => {
             const FallbackIcon = lookupOrError(ITIL_TYPE_ICONS, selectedType.name, 'ITIL_TYPE_ICONS', Settings2)
             return (
-              <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+              <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
                 {/* Card header */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -80,7 +80,7 @@ export function ITILTypeDesignerPage() {
                       <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{selectedType.label}</div>
                       <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{selectedType.name}</div>
                     </div>
-                    <button type="button" style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 100, fontSize: 'var(--font-size-body)', cursor: 'default', background: '#dcfce7', color: 'var(--color-success)', fontWeight: 500 }}>● active</button>
+                    <button type="button" style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 100, fontSize: 'var(--font-size-body)', cursor: 'default', background: palette.success.tint, color: 'var(--color-success)', fontWeight: 500 }}>● active</button>
                   </div>
                 </div>
                 {/* Tabs */}

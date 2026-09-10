@@ -18,7 +18,7 @@ import { Hash, BarChart2, TrendingUp, PieChart, Table, Gauge, Plus, Pencil, Tras
 import { ReportChartRenderer } from '@/components/ReportChartRenderer'
 import type { CustomWidgetData } from './CustomWidgetCard'
 const CustomWidgetCard = lazy(() => import('./CustomWidgetCard').then(m => ({ default: m.CustomWidgetCard })))
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, alpha, colors, palette } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -91,8 +91,8 @@ function SortableItem({
       style={{ transform: CSS.Transform.toString(transform), transition, gridColumn: `span ${widget.colSpan}`, opacity: isDragging ? 0.5 : 1 }}
       {...attributes}
     >
-      <div style={{ border: '2px dashed #0284c7', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
-        <div style={{ padding: '8px 12px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ border: '2px dashed var(--color-brand)', borderRadius: 10, background: colors.white, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--color-border-light)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span {...listeners} style={{ cursor: 'grab', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', userSelect: 'none' }} title={t('pages.dashboard.drag')}>⠿</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -107,7 +107,7 @@ function SortableItem({
             value={widget.colSpan}
             onChange={(e) => onUpdateColSpan(widget.tempId, Number(e.target.value))}
             aria-label={t('pages.dashboard.widthColumns')}
-            style={{ fontSize: 'var(--font-size-table)', padding: '2px 4px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)' }}
+            style={{ fontSize: 'var(--font-size-table)', padding: '2px 4px', borderRadius: 4, border: '1px solid var(--color-border-strong)', background: colors.white, color: 'var(--color-slate)' }}
           >
             {[2, 3, 4, 6, 12].map((s) => <option key={s} value={s}>{t('pages.dashboard.cols', { count: s })}</option>)}
           </select>
@@ -116,12 +116,12 @@ function SortableItem({
             onClick={() => onRemove(widget.tempId)}
             aria-label={t('pages.dashboard.removeWidget')}
             title={t('pages.dashboard.removeWidget')}
-            style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid #fca5a5', background: 'var(--color-danger-bg)', color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+            style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--color-danger-border-strong)', background: 'var(--color-danger-bg)', color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
           >×</button>
         </div>
         <div style={{ position: 'relative' }}>
           <ReportChartRenderer chartType={widget.reportSection?.chartType ?? 'bar'} data={widget.data ?? ''} title={widget.reportSection?.title ?? ''} error={null} />
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'rgba(255,255,255,0.4)' }} />
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: alpha.white40 }} />
         </div>
       </div>
     </div>
@@ -155,7 +155,7 @@ export function DashboardEditMode({
       {/* ── Main grid ─────────────────────────────────────────────────────── */}
       <div style={{ flex: 1, minWidth: 0 }}>
         {!hasAny ? (
-          <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-card-title)', border: '2px dashed #e5e7eb', borderRadius: 12, background: '#fafafa' }}>
+          <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-card-title)', border: '2px dashed var(--color-border)', borderRadius: 12, background: palette.neutral.surface1 }}>
             <div style={{ fontSize: 32, marginBottom: 10 }}>📊</div>
             <div style={{ fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>{t('pages.dashboard.emptyEditTitle')}</div>
             {t('pages.dashboard.emptyEditHint')}
@@ -199,8 +199,8 @@ export function DashboardEditMode({
       <div style={{ width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
 
         {/* ── SECTION 1: Widget personalizzati ────────────────────────────── */}
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
-          <div style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, background: colors.white, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--color-border-light)', display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--color-brand)' }} />
             <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>{t('pages.dashboard.customWidgets')}</span>
           </div>
@@ -213,7 +213,7 @@ export function DashboardEditMode({
                 width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
                 padding: '10px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600,
                 border: '2px dashed var(--color-brand)',
-                background: '#f0f9ff', color: 'var(--color-brand)',
+                background: palette.info.light, color: 'var(--color-brand)',
               }}
             >
               <Plus size={15} />
@@ -234,7 +234,7 @@ export function DashboardEditMode({
                 {customWidgets.map((w) => {
                   const Icon = lookupOrError(TYPE_ICONS, w.widgetType, 'TYPE_ICONS', BarChart2)
                   return (
-                    <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 6, border: '1px solid #f3f4f6', background: '#fafafa' }}>
+                    <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--color-border-light)', background: palette.neutral.surface1 }}>
                       <Icon size={12} color={w.color} />
                       <span style={{ flex: 1, fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.title}</span>
                       <button
@@ -249,7 +249,7 @@ export function DashboardEditMode({
                         onClick={() => onDeleteCustomWidget(w.id)}
                         title={t('common.delete')}
                         aria-label={t('common.delete')}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: '#fca5a5', display: 'flex', alignItems: 'center' }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: palette.danger.borderStrong, display: 'flex', alignItems: 'center' }}
                       ><Trash2 size={11} /></button>
                     </div>
                   )
@@ -260,9 +260,9 @@ export function DashboardEditMode({
         </div>
 
         {/* ── SECTION 2: Aggiungi da report ───────────────────────────────── */}
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
-          <div style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#10b981' }} />
+        <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, background: colors.white, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--color-border-light)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 7, height: 7, borderRadius: '50%', background: palette.success.base }} />
             <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>{t('pages.dashboard.addFromReport')}</span>
           </div>
 
@@ -271,7 +271,7 @@ export function DashboardEditMode({
               <div style={{ padding: '14px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>{t('pages.dashboard.noReports')}</div>
             ) : (
               templates.map((template) => (
-                <div key={template.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                <div key={template.id} style={{ borderBottom: '1px solid var(--color-border-light)' }}>
                   <button
                     type="button"
                     aria-expanded={expandedTemplates.has(template.id)}
@@ -288,12 +288,12 @@ export function DashboardEditMode({
                       )}
                       {(template.sections ?? []).map((section) => (
                         <div key={section.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 14px', gap: 8 }}>
-                          <span style={{ fontSize: 'var(--font-size-body)', color: '#4b5563', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{section.title}</span>
+                          <span style={{ fontSize: 'var(--font-size-body)', color: palette.neutral.textStrong, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{section.title}</span>
                           <button
                             type="button"
                             onClick={() => onAddWidget(template, section)}
                             aria-label={t('pages.dashboard.addSection', { name: section.title })}
-                            style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #0284c7', background: 'var(--color-brand-light)', color: 'var(--color-brand)', fontSize: 'var(--font-size-table)', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                            style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--color-brand)', background: 'var(--color-brand-light)', color: 'var(--color-brand)', fontSize: 'var(--font-size-table)', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
                           >+ {t('pages.dashboard.add')}</button>
                         </div>
                       ))}

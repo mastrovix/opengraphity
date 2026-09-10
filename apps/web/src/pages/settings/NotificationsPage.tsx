@@ -6,7 +6,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { Modal } from '@/components/Modal'
 import { Bell } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
-import { lookupStyle } from '@/lib/tokens'
+import { lookupStyle, colors, palette, vendorColors } from '@/lib/tokens'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useTranslation } from 'react-i18next'
 
@@ -80,8 +80,8 @@ const defaultForm = (): FormState => ({
 })
 
 const PLATFORM_BADGE: Record<string, { bg: string; color: string }> = {
-  slack: { bg: '#f0f4ff', color: '#4a154b' },
-  teams: { bg: '#f0f4ff', color: '#464eb8' },
+  slack: { bg: palette.info.bg, color: vendorColors.slack },
+  teams: { bg: palette.info.bg, color: vendorColors.teams },
 }
 
 export default function NotificationsPage() {
@@ -181,7 +181,7 @@ export default function NotificationsPage() {
         </PageTitle>
         <button type="button"
           onClick={openCreate}
-          style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#fff', background: 'var(--color-brand)', border: 'none', borderRadius: 6, padding: '8px 16px', cursor: 'pointer' }}
+          style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.white, background: 'var(--color-brand)', border: 'none', borderRadius: 6, padding: '8px 16px', cursor: 'pointer' }}
         >
           + Aggiungi canale
         </button>
@@ -197,7 +197,7 @@ export default function NotificationsPage() {
             const pb = lookupStyle(PLATFORM_BADGE, ch.platform, 'PLATFORM_BADGE')
             const tr = testResult[ch.id]
             return (
-              <div key={ch.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px', background: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div key={ch.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px', background: colors.white, display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', padding: '2px 8px', borderRadius: 4, background: pb.bg, color: pb.color }}>
                   {ch.platform}
                 </span>
@@ -209,7 +209,7 @@ export default function NotificationsPage() {
                 {tr === false && <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>✗ Errore</span>}
                 <button type="button" onClick={() => void handleTest(ch.id)}   style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>Testa</button>
                 <button type="button" onClick={() => openEdit(ch)}              style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>Modifica</button>
-                <button type="button" onClick={() => void handleDelete(ch.id)}  style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)', background: 'none', border: '1px solid #fee2e2', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>Elimina</button>
+                <button type="button" onClick={() => void handleDelete(ch.id)}  style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)', background: 'none', border: `1px solid ${palette.danger.tint}`, borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>Elimina</button>
               </div>
             )
           })}
@@ -222,8 +222,8 @@ export default function NotificationsPage() {
         title={editingId ? 'Modifica canale' : 'Aggiungi canale'}
         footer={
           <>
-            <button type="button" onClick={() => setDialogOpen(false)} style={{ fontSize: 'var(--font-size-card-title)', padding: '8px 16px', border: '1px solid var(--border)', borderRadius: 6, background: '#fff', color: 'var(--color-slate)', cursor: 'pointer' }}>Annulla</button>
-            <button type="button" onClick={() => void handleSave()} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)', color: '#fff', cursor: 'pointer' }}>Salva</button>
+            <button type="button" onClick={() => setDialogOpen(false)} style={{ fontSize: 'var(--font-size-card-title)', padding: '8px 16px', border: '1px solid var(--border)', borderRadius: 6, background: colors.white, color: 'var(--color-slate)', cursor: 'pointer' }}>Annulla</button>
+            <button type="button" onClick={() => void handleSave()} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)', color: colors.white, cursor: 'pointer' }}>Salva</button>
           </>
         }
       >
@@ -235,7 +235,7 @@ export default function NotificationsPage() {
                 key={p}
                 aria-pressed={form.platform === p}
                 onClick={() => setForm((f) => ({ ...f, platform: p }))}
-                style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '6px 18px', borderRadius: 6, cursor: 'pointer', border: '2px solid', borderColor: form.platform === p ? 'var(--color-brand)' : 'var(--border)', background: form.platform === p ? '#eff0ff' : '#fff', color: form.platform === p ? 'var(--color-brand)' : 'var(--color-slate)' }}
+                style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '6px 18px', borderRadius: 6, cursor: 'pointer', border: '2px solid', borderColor: form.platform === p ? 'var(--color-brand)' : 'var(--border)', background: form.platform === p ? palette.info.bg : colors.white, color: form.platform === p ? 'var(--color-brand)' : 'var(--color-slate)' }}
               >
                 {p.charAt(0).toUpperCase() + p.slice(1)}
               </button>
@@ -249,7 +249,7 @@ export default function NotificationsPage() {
             id={`${fid}-name`}
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
+            style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, boxSizing: 'border-box' }}
           />
         </div>
 
@@ -262,7 +262,7 @@ export default function NotificationsPage() {
                 value={form.webhookUrl}
                 onChange={(e) => setForm((f) => ({ ...f, webhookUrl: e.target.value }))}
                 placeholder="https://hooks.slack.com/services/..."
-                style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
+                style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, boxSizing: 'border-box' }}
               />
             </div>
             <div style={{ marginBottom: 14 }}>
@@ -274,7 +274,7 @@ export default function NotificationsPage() {
                 value={form.channelId}
                 onChange={(e) => setForm((f) => ({ ...f, channelId: e.target.value }))}
                 placeholder="C0XXXXXXXXX"
-                style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
+                style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, boxSizing: 'border-box' }}
               />
               <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4 }}>Usa Webhook URL per canali pubblici, Channel ID se hai configurato il Bot Token</div>
             </div>
@@ -289,7 +289,7 @@ export default function NotificationsPage() {
               value={form.webhookUrl}
               onChange={(e) => setForm((f) => ({ ...f, webhookUrl: e.target.value }))}
               placeholder="https://outlook.office.com/webhook/..."
-              style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
+              style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, boxSizing: 'border-box' }}
             />
           </div>
         )}

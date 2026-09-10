@@ -1,4 +1,5 @@
 import { fmtDateTime } from '@/lib/format'
+import { colors } from '@/lib/tokens'
 
 interface Props {
   body:        string
@@ -18,7 +19,7 @@ export function CommentBubble({ body, authorName, createdAt, isOwn }: Props) {
     }}>
       <div style={{
         fontSize:  11,
-        color:     '#94A3B8',
+        color:     colors.slateLight,
         marginBottom: 4,
         textAlign: isOwn ? 'right' : 'left',
       }}>
@@ -28,8 +29,8 @@ export function CommentBubble({ body, authorName, createdAt, isOwn }: Props) {
         maxWidth:        '75%',
         padding:         '10px 14px',
         borderRadius:    isOwn ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
-        backgroundColor: isOwn ? '#F0F9FF' : '#F1F5F9',
-        color:           '#0F172A',
+        backgroundColor: isOwn ? colors.brandLight : colors.slateBg,
+        color:           colors.slateDark,
         fontSize:        14,
         lineHeight:      1.6,
         whiteSpace:      'pre-wrap',

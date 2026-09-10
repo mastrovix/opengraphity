@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { MentionInput } from '@/components/MentionInput'
 import { MentionText } from '@/components/MentionText'
 import { timeAgo } from '@/lib/datetime'
+import { colors } from '@/lib/tokens'
 
 export interface TicketComment {
   id:        string
@@ -69,7 +70,7 @@ export function CommentsSection({ comments, onAdd, adding, defaultOpen = false }
           <MentionInput value={text} onChange={setText} placeholder={t('detail.commentPlaceholder')} rows={3} />
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button type="button" disabled={!canSend} onClick={() => void submit()}
-              style={{ padding: '7px 16px', backgroundColor: canSend ? 'var(--accent)' : 'var(--surface-2)', color: canSend ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: canSend ? 'pointer' : 'not-allowed' }}>
+              style={{ padding: '7px 16px', backgroundColor: canSend ? 'var(--accent)' : 'var(--surface-2)', color: canSend ? colors.white : 'var(--text-muted)', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: canSend ? 'pointer' : 'not-allowed' }}>
               {adding ? t('detail.sending') : t('detail.sendComment')}
             </button>
           </div>

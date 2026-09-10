@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { CITypeDef, CIFieldDef } from '@/contexts/MetamodelContext'
 import { validateCI, isFieldVisible, getFieldDefault } from '@/lib/ciValidator'
 import { useCIBaseEnums } from '@/lib/ciEnums'
+import { colors, palette } from '@/lib/tokens'
 
 // Base (__base__) fields every CI shares — the Create input requires `name`
 // and accepts status/environment/description. They aren't in a type's own
@@ -17,12 +18,12 @@ const DEFAULTS_DEBOUNCE_MS = 300
 const inputBase: React.CSSProperties = {
   width:           '100%',
   padding:         '10px 14px',
-  border:          '1px solid #e5e7eb',
+  border:          `1px solid ${colors.border}`,
   borderRadius:    6,
   fontSize:        14,
   color:           'var(--color-slate-dark)',
   outline:         'none',
-  backgroundColor: '#ffffff',
+  backgroundColor: colors.white,
   boxSizing:       'border-box',
   transition:      'border-color 150ms, box-shadow 150ms',
 }
@@ -41,10 +42,10 @@ function focusHandlers(hasError: boolean) {
   return {
     onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
       e.currentTarget.style.borderColor = 'var(--color-brand)'
-      e.currentTarget.style.boxShadow   = '0 0 0 3px #ecfeff'
+      e.currentTarget.style.boxShadow   = `0 0 0 3px ${colors.brandLight}`
     },
     onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
-      e.currentTarget.style.borderColor = hasError ? 'var(--color-trigger-sla-breach)' : '#e5e7eb'
+      e.currentTarget.style.borderColor = hasError ? 'var(--color-trigger-sla-breach)' : colors.border
       e.currentTarget.style.boxShadow   = 'none'
     },
   }
@@ -78,7 +79,7 @@ function FieldRenderer({
 }) {
   const { t } = useTranslation()
   const hasError = Boolean(error)
-  const borderColor = hasError ? 'var(--color-trigger-sla-breach)' : '#e5e7eb'
+  const borderColor = hasError ? 'var(--color-trigger-sla-breach)' : colors.border
 
   switch (field.fieldType) {
     case 'boolean':
@@ -294,7 +295,7 @@ export function CIDynamicForm({
         <div style={{
           padding:      '10px 14px',
           background:   'var(--color-danger-bg)',
-          border:       '1px solid #fecaca',
+          border:       `1px solid ${palette.danger.border}`,
           borderRadius: 6,
           color:        'var(--color-trigger-sla-breach)',
           fontSize:     14,
@@ -307,7 +308,7 @@ export function CIDynamicForm({
         <div style={{
           padding:      '10px 14px',
           background:   'var(--color-danger-bg)',
-          border:       '1px solid #fecaca',
+          border:       `1px solid ${palette.danger.border}`,
           borderRadius: 6,
           color:        'var(--color-trigger-sla-breach)',
           fontSize:     14,
@@ -337,7 +338,7 @@ export function CIDynamicForm({
         )}
       </div>
       {baseEnums.error && (
-        <div style={{ padding: '8px 14px', background: 'var(--color-danger-bg)', border: '1px solid #fecaca', borderRadius: 6, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>
+        <div style={{ padding: '8px 14px', background: 'var(--color-danger-bg)', border: `1px solid ${palette.danger.border}`, borderRadius: 6, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>
           <strong>{t('components.ciDynamicForm.metamodelError')}</strong> {baseEnums.error}
         </div>
       )}
@@ -411,9 +412,9 @@ export function CIDynamicForm({
           disabled={submitting || loading}
           style={{
             padding:      '9px 20px',
-            border:       '1px solid #e5e7eb',
+            border:       `1px solid ${colors.border}`,
             borderRadius: 6,
-            background:   '#ffffff',
+            background:   colors.white,
             fontSize:     14,
             cursor:       'pointer',
             color:        'var(--color-slate)',
@@ -428,8 +429,8 @@ export function CIDynamicForm({
             padding:      '9px 20px',
             border:       'none',
             borderRadius: 6,
-            background:   submitting || loading || scriptError ? '#67e8f9' : 'var(--color-brand)',
-            color:        '#ffffff',
+            background:   submitting || loading || scriptError ? palette.teal.border : 'var(--color-brand)',
+            color:        colors.white,
             fontSize:     14,
             fontWeight:   500,
             cursor:       submitting || loading || scriptError ? 'not-allowed' : 'pointer',

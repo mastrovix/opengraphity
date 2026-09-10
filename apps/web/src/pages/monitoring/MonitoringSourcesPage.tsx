@@ -28,7 +28,7 @@ import { errorMessage } from '@/hooks/useMutationWithToast'
 import { GET_MONITORING_SOURCES, GET_EVENT_STATS } from '@/graphql/queries'
 import { UPDATE_MONITORING_SOURCE, DELETE_MONITORING_SOURCE, REGENERATE_SOURCE_TOKEN, SEND_SAMPLE_EVENT } from '@/graphql/mutations'
 import { timeAgo, formatDateTime, currentLocale } from '@/lib/datetime'
-import { colors } from '@/lib/tokens'
+import { colors, palette } from '@/lib/tokens'
 import { pausedWhenHidden } from '@/lib/polling'
 import { Pill } from '@/components/ui/Pill'
 import type { MonitoringSource, EventStats, StormSource } from '@/types/events'
@@ -52,7 +52,7 @@ function StormBadge({ storm }: { storm: StormSource }) {
     ? t('monitoring.sources.stormBadgeHint', { rate: storm.ratePerMinute, time, number: storm.incidentNumber })
     : t('monitoring.sources.stormBadgeHintNoIncident', { rate: storm.ratePerMinute, time })
   return (
-    <Pill bg="#fef3c7" color="#b45309" style={{ fontSize: 'var(--font-size-label)', gap: 4 }}>
+    <Pill bg={palette.warning.tint} color={palette.warning.text} style={{ fontSize: 'var(--font-size-label)', gap: 4 }}>
       <span title={tip} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         <CloudLightning size={11} aria-hidden="true" />
         {t('monitoring.sources.stormBadge')}
@@ -160,7 +160,7 @@ export function MonitoringSourcesPage({ sampleRefetchDelayMs = SAMPLE_REFETCH_DE
       render: (_v, row) => row.errorCount === 0 && !row.lastError
         ? <span style={{ color: colors.slateLight }}>{t('monitoring.sources.noErrors')}</span>
         : (
-          <div style={{ color: '#b91c1c' }}>
+          <div style={{ color: palette.danger.text }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
               <AlertTriangle size={13} aria-hidden="true" />{t('monitoring.sources.errorCount', { count: row.errorCount })}
             </div>

@@ -25,6 +25,7 @@
  * rebuild whole button styles inline in pages.
  */
 import type { CSSProperties, MouseEvent, ReactNode } from 'react'
+import { colors, palette } from '@/lib/tokens'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'icon'
 export type ButtonSize = 'sm' | 'xs'
@@ -89,7 +90,7 @@ export function Button({
       variantStyle = {
         padding: PADDING[size],
         backgroundColor: 'var(--color-brand)',
-        color: '#fff',
+        color: colors.white,
         border: 'none',
         fontSize: PRIMARY_FONT[size],
         fontWeight: 500,
@@ -99,7 +100,7 @@ export function Button({
     case 'secondary':
       variantStyle = {
         padding: PADDING[size],
-        background: '#fff',
+        background: colors.white,
         color: 'var(--color-slate)',
         border: '1px solid var(--border)',
         fontSize: 'var(--font-size-body)',
@@ -108,9 +109,9 @@ export function Button({
     case 'danger':
       variantStyle = {
         padding: PADDING[size],
-        background: '#fff',
+        background: colors.white,
         color: 'var(--color-danger)',
-        border: '1px solid #fecaca',
+        border: `1px solid ${palette.danger.border}`,
         fontSize: 'var(--font-size-body)',
       }
       break
@@ -125,7 +126,7 @@ export function Button({
     case 'icon':
       variantStyle = {
         padding: size === 'sm' ? 6 : 4,
-        background: '#fff',
+        background: colors.white,
         color: 'var(--color-slate)',
         border: '1px solid var(--border)',
         lineHeight: 0,

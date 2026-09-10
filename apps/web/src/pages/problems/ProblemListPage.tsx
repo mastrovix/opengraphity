@@ -21,6 +21,7 @@ import { exportToCsv } from '@/lib/csvExport'
 import { apolloClient } from '@/lib/apollo'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
+import { colors, palette } from '@/lib/tokens'
 
 const PROBLEM_CANDIDATES = gql`
   query ProblemCandidates {
@@ -138,7 +139,7 @@ export function ProblemListPage() {
       />
 
       {candidates !== null && (
-        <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '14px 18px', marginBottom: 14 }}>
+        <div style={{ background: palette.info.light, border: `1px solid ${palette.info.border}`, borderRadius: 10, padding: '14px 18px', marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)', marginBottom: 8 }}>
             <Sparkles size={14} color="var(--color-brand)" /> Candidati Problem da incident ricorrenti
           </div>
@@ -147,12 +148,12 @@ export function ProblemListPage() {
               Nessun cluster di incident simili ricorrenti trovato (minimo 3 incident non chiusi con lo stesso pattern).
             </p>
           ) : candidates.map((c, i) => (
-            <div key={i} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
+            <div key={i} style={{ background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
               <div style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginBottom: 4 }}>{c.title}</div>
               <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', lineHeight: 1.45 }}>{c.motivation}</p>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {c.incidents.map((inc) => (
-                  <Link key={inc.id} to={`/incidents/${inc.id}`} style={{ fontSize: 'var(--font-size-label)', padding: '2px 8px', borderRadius: 6, background: '#f1f5f9', color: 'var(--color-slate-dark)', textDecoration: 'none', border: '1px solid #e5e7eb' }}>
+                  <Link key={inc.id} to={`/incidents/${inc.id}`} style={{ fontSize: 'var(--font-size-label)', padding: '2px 8px', borderRadius: 6, background: colors.slateBg, color: 'var(--color-slate-dark)', textDecoration: 'none', border: `1px solid ${colors.border}` }}>
                     {inc.number ?? inc.title.slice(0, 20)}
                   </Link>
                 ))}

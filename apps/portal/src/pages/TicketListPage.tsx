@@ -7,6 +7,7 @@ import { GET_MY_TICKETS } from '@/graphql/queries'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
 import { TICKET_POLL_INTERVAL_MS } from '@/lib/apollo'
 import { fmtDate } from '@/lib/format'
+import { colors, palette, alpha } from '@/lib/tokens'
 
 const PAGE_SIZE = 15
 
@@ -20,9 +21,9 @@ const FILTER_STATUS: Record<FilterKey, string | null> = {
 }
 
 const PRIORITY_COLORS: Record<string, string> = {
-  high:   '#EF4444',
-  medium: '#F59E0B',
-  low:    '#22C55E',
+  high:   colors.danger,
+  medium: colors.warning,
+  low:    colors.success,
 }
 
 interface Ticket {
@@ -61,7 +62,7 @@ export function TicketListPage() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0F172A' }}>{t('nav.tickets')}</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 600, color: colors.slateDark }}>{t('nav.tickets')}</h1>
         <Link
           to="/tickets/new"
           style={{
@@ -69,8 +70,8 @@ export function TicketListPage() {
             alignItems:      'center',
             gap:             6,
             padding:         '9px 18px',
-            backgroundColor: '#0EA5E9',
-            color:           '#fff',
+            backgroundColor: colors.brand,
+            color:           colors.white,
             borderRadius:    8,
             fontSize:        14,
             fontWeight:      600,
@@ -83,7 +84,7 @@ export function TicketListPage() {
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #E2E8F0', paddingBottom: 0 }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: `1px solid ${colors.border}`, paddingBottom: 0 }}>
         {FILTERS.map(f => (
           <button
             key={f.key}
@@ -92,11 +93,11 @@ export function TicketListPage() {
               padding:         '8px 16px',
               background:      'none',
               border:          'none',
-              borderBottom:    filter === f.key ? '2px solid #0EA5E9' : '2px solid transparent',
+              borderBottom:    filter === f.key ? `2px solid ${colors.brand}` : '2px solid transparent',
               cursor:          'pointer',
               fontSize:        14,
               fontWeight:      filter === f.key ? 600 : 400,
-              color:           filter === f.key ? '#0EA5E9' : '#64748B',
+              color:           filter === f.key ? colors.brand : colors.slate,
               marginBottom:    -1,
             }}
           >
@@ -107,13 +108,13 @@ export function TicketListPage() {
 
       {/* Tickets list */}
       {loading ? (
-        <div style={{ padding: 32, textAlign: 'center', color: '#94A3B8' }}>{t('common.loading')}</div>
+        <div style={{ padding: 32, textAlign: 'center', color: colors.slateLight }}>{t('common.loading')}</div>
       ) : tickets.length === 0 ? (
-        <div style={{ padding: '48px 0', textAlign: 'center', color: '#94A3B8' }}>
+        <div style={{ padding: '48px 0', textAlign: 'center', color: colors.slateLight }}>
           <p style={{ marginBottom: 16 }}>{t(`ticket.empty.${filter}`)}</p>
           <Link
             to="/tickets/new"
-            style={{ color: '#0EA5E9', fontWeight: 500, fontSize: 10 }}
+            style={{ color: colors.brand, fontWeight: 500, fontSize: 10 }}
           >
             + {t('ticket.new')}
           </Link>
@@ -129,30 +130,30 @@ export function TicketListPage() {
                 alignItems:      'center',
                 gap:             16,
                 padding:         '14px 18px',
-                backgroundColor: '#fff',
-                border:          '1px solid #E2E8F0',
+                backgroundColor: colors.white,
+                border:          `1px solid ${colors.border}`,
                 borderRadius:    10,
                 textDecoration:  'none',
                 transition:      'box-shadow 0.15s, border-color 0.15s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = '#BAE6FD'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(14,165,233,0.08)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.boxShadow = 'none' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = palette.info.border; e.currentTarget.style.boxShadow = `0 2px 8px ${alpha.brand08}` }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = colors.border; e.currentTarget.style.boxShadow = 'none' }}
             >
               {/* Priority indicator */}
               <div style={{
                 width:           4,
                 height:          40,
                 borderRadius:    4,
-                backgroundColor: PRIORITY_COLORS[ticket.priority] ?? '#94A3B8',
+                backgroundColor: PRIORITY_COLORS[ticket.priority] ?? colors.slateLight,
                 flexShrink:      0,
               }} />
 
               {/* Main info */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 10, fontWeight: 500, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
+                <div style={{ fontSize: 10, fontWeight: 500, color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
                   {ticket.title}
                 </div>
-                <div style={{ display: 'flex', gap: 12, fontSize: 10, color: '#94A3B8', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 12, fontSize: 10, color: colors.slateLight, flexWrap: 'wrap' }}>
                   <span>{t(`ticket.category.${ticket.category}`, { defaultValue: ticket.category })}</span>
                   <span>{t('ticket.openedOn', { date: fmtDate(ticket.createdAt) })}</span>
                   <span>{t('ticket.updatedOn', { date: fmtDate(ticket.updatedAt) })}</span>
@@ -167,8 +168,8 @@ export function TicketListPage() {
                   fontSize:        11,
                   padding:         '1px 8px',
                   borderRadius:    100,
-                  backgroundColor: '#F1F5F9',
-                  color:           PRIORITY_COLORS[ticket.priority] ?? '#94A3B8',
+                  backgroundColor: colors.slateBg,
+                  color:           PRIORITY_COLORS[ticket.priority] ?? colors.slateLight,
                   fontWeight:      600,
                 }}>
                   {t(`ticket.priority.${ticket.priority}`, { defaultValue: ticket.priority })}
@@ -187,17 +188,17 @@ export function TicketListPage() {
             onClick={() => setPage(p => p - 1)}
             style={{
               padding:      '8px 18px',
-              border:       '1px solid #E2E8F0',
+              border:       `1px solid ${colors.border}`,
               borderRadius: 7,
-              background:   '#fff',
+              background:   colors.white,
               cursor:       page === 1 ? 'not-allowed' : 'pointer',
-              color:        page === 1 ? '#CBD5E1' : '#64748B',
+              color:        page === 1 ? palette.neutral.textDisabled : colors.slate,
               fontSize:     13,
             }}
           >
             {t('ticket.prev')}
           </button>
-          <span style={{ padding: '8px 0', fontSize: 10, color: '#94A3B8' }}>
+          <span style={{ padding: '8px 0', fontSize: 10, color: colors.slateLight }}>
             {page} / {totalPages}
           </span>
           <button
@@ -205,11 +206,11 @@ export function TicketListPage() {
             onClick={() => setPage(p => p + 1)}
             style={{
               padding:      '8px 18px',
-              border:       '1px solid #E2E8F0',
+              border:       `1px solid ${colors.border}`,
               borderRadius: 7,
-              background:   '#fff',
+              background:   colors.white,
               cursor:       page >= totalPages ? 'not-allowed' : 'pointer',
-              color:        page >= totalPages ? '#CBD5E1' : '#64748B',
+              color:        page >= totalPages ? palette.neutral.textDisabled : colors.slate,
               fontSize:     13,
             }}
           >

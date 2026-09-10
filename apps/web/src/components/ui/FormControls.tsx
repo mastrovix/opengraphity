@@ -1,4 +1,5 @@
 import type { CSSProperties, InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
+import { colors, palette } from '@/lib/tokens'
 
 /**
  * Shared form controls replicating the dominant inline style used across
@@ -8,7 +9,7 @@ import type { CSSProperties, InputHTMLAttributes, SelectHTMLAttributes, Textarea
 export const controlStyle: CSSProperties = {
   width: '100%', boxSizing: 'border-box', padding: '6px 10px',
   fontSize: 'var(--font-size-body)', borderRadius: 6,
-  border: '1px solid #d1d5db', background: '#fff',
+  border: `1px solid ${palette.neutral.borderStrong}`, background: colors.white,
   fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
   outline: 'none',
 }

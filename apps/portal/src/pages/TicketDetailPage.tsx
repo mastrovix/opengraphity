@@ -11,6 +11,7 @@ import { downloadAttachment } from '@/lib/attachments'
 import { notifyError } from '@/lib/notify'
 import { TICKET_POLL_INTERVAL_MS } from '@/lib/apollo'
 import { fmtDateTimeLong, fmtRelative } from '@/lib/format'
+import { colors, palette } from '@/lib/tokens'
 
 interface EntityComment {
   id: string; body: string; isInternal: boolean
@@ -73,19 +74,19 @@ export function TicketDetailPage() {
   if (error) {
     return (
       <div style={{ maxWidth: 640, margin: '0 auto', padding: 24 }}>
-        <div role="alert" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '12px 16px', borderRadius: 8, fontSize: 14, marginBottom: 16 }}>
+        <div role="alert" style={{ background: palette.danger.bg, border: `1px solid ${palette.danger.border}`, color: palette.danger.strong, padding: '12px 16px', borderRadius: 8, fontSize: 14, marginBottom: 16 }}>
           {t('ticket.loadError', { message: error.message })}
         </div>
-        <Link to="/tickets" style={{ color: '#0EA5E9', fontSize: 14 }}>{t('common.back')}</Link>
+        <Link to="/tickets" style={{ color: colors.brand, fontSize: 14 }}>{t('common.back')}</Link>
       </div>
     )
   }
-  if (loading && !ticket) return <div style={{ padding: 48, textAlign: 'center', color: '#94A3B8' }}>{t('common.loading')}</div>
+  if (loading && !ticket) return <div style={{ padding: 48, textAlign: 'center', color: colors.slateLight }}>{t('common.loading')}</div>
   if (!ticket) {
     return (
-      <div style={{ maxWidth: 640, margin: '0 auto', padding: 24, textAlign: 'center', color: '#64748B' }}>
+      <div style={{ maxWidth: 640, margin: '0 auto', padding: 24, textAlign: 'center', color: colors.slate }}>
         <p style={{ marginBottom: 16 }}>{t('ticket.notFound')}</p>
-        <Link to="/tickets" style={{ color: '#0EA5E9', fontSize: 14 }}>{t('common.back')}</Link>
+        <Link to="/tickets" style={{ color: colors.brand, fontSize: 14 }}>{t('common.back')}</Link>
       </div>
     )
   }
@@ -119,10 +120,10 @@ export function TicketDetailPage() {
       {showCreatedMsg && (
         <div style={{
           padding:         '12px 16px',
-          backgroundColor: '#F0FDF4',
-          border:          '1px solid #BBF7D0',
+          backgroundColor: palette.success.bg,
+          border:          `1px solid ${palette.success.border}`,
           borderRadius:    8,
-          color:           '#15803D',
+          color:           palette.success.text,
           fontSize:        14,
           fontWeight:      500,
         }}>
@@ -133,14 +134,14 @@ export function TicketDetailPage() {
       {/* Header */}
       <div>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-          <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0F172A', flex: 1, minWidth: 0 }}>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: colors.slateDark, flex: 1, minWidth: 0 }}>
             {ticket.title}
           </h1>
           <TicketStatusBadge status={ticket.status} size="md" />
         </div>
 
         {/* Info bar */}
-        <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 10, color: '#94A3B8', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 10, color: colors.slateLight, flexWrap: 'wrap' }}>
           <span>{t(`ticket.category.${ticket.category}`, { defaultValue: ticket.category })}</span>
           <span>·</span>
           <span>{t('ticket.createdAt')}: {fmtDateTimeLong(ticket.createdAt)}</span>
@@ -149,7 +150,7 @@ export function TicketDetailPage() {
           {ticket.assignedTeam && (
             <>
               <span>·</span>
-              <span>{t('ticket.assignedTo')}: <strong style={{ color: '#0F172A' }}>{ticket.assignedTeam}</strong></span>
+              <span>{t('ticket.assignedTo')}: <strong style={{ color: colors.slateDark }}>{ticket.assignedTeam}</strong></span>
             </>
           )}
         </div>
@@ -162,13 +163,13 @@ export function TicketDetailPage() {
           alignItems:      'center',
           justifyContent:  'space-between',
           padding:         '12px 16px',
-          backgroundColor: '#F0FDF4',
-          border:          '1px solid #BBF7D0',
+          backgroundColor: palette.success.bg,
+          border:          `1px solid ${palette.success.border}`,
           borderRadius:    8,
           flexWrap:        'wrap',
           gap:             12,
         }}>
-          <span style={{ color: '#15803D', fontWeight: 500, fontSize: 10 }}>
+          <span style={{ color: palette.success.text, fontWeight: 500, fontSize: 10 }}>
             ✓ {t('ticket.resolved')}
           </span>
           <button
@@ -176,12 +177,12 @@ export function TicketDetailPage() {
             disabled={reopening}
             style={{
               padding:         '7px 16px',
-              backgroundColor: '#fff',
-              border:          '1px solid #BBF7D0',
+              backgroundColor: colors.white,
+              border:          `1px solid ${palette.success.border}`,
               borderRadius:    7,
               fontSize:        13,
               cursor:          'pointer',
-              color:           '#15803D',
+              color:           palette.success.text,
               fontWeight:      500,
             }}
           >
@@ -194,10 +195,10 @@ export function TicketDetailPage() {
       {ticket.description && (
         <div style={{
           padding:         16,
-          backgroundColor: '#F8FAFC',
+          backgroundColor: palette.neutral.surface1,
           borderRadius:    8,
           fontSize:        14,
-          color:           '#0F172A',
+          color:           colors.slateDark,
           lineHeight:      1.7,
           whiteSpace:      'pre-wrap',
         }}>
@@ -208,7 +209,7 @@ export function TicketDetailPage() {
       {/* Timeline */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 80 }}>
         {timeline.length === 0 && (
-          <p style={{ color: '#94A3B8', fontSize: 10, textAlign: 'center', padding: '24px 0' }}>
+          <p style={{ color: colors.slateLight, fontSize: 10, textAlign: 'center', padding: '24px 0' }}>
             {t('ticket.noMessages')}
           </p>
         )}
@@ -221,7 +222,7 @@ export function TicketDetailPage() {
           }
           const h = item.data
           return (
-            <div key={i} style={{ textAlign: 'center', padding: '6px 0', fontSize: 10, color: '#94A3B8' }}>
+            <div key={i} style={{ textAlign: 'center', padding: '6px 0', fontSize: 10, color: colors.slateLight }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <ChevronRight size={12} />
                 {h.fromStep} → {h.toStep}
@@ -236,7 +237,7 @@ export function TicketDetailPage() {
 
       {/* Attachments */}
       {ticket.attachments.length > 0 && (
-        <div style={{ border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden' }}>
           <button
             onClick={() => setAttachOpen(o => !o)}
             style={{
@@ -245,16 +246,16 @@ export function TicketDetailPage() {
               alignItems:      'center',
               justifyContent:  'space-between',
               padding:         '12px 16px',
-              background:      '#F8FAFC',
+              background:      palette.neutral.surface1,
               border:          'none',
               cursor:          'pointer',
               fontSize:        13,
               fontWeight:      600,
-              color:           '#0F172A',
+              color:           colors.slateDark,
             }}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Paperclip size={14} style={{ color: '#64748B' }} />
+              <Paperclip size={14} style={{ color: colors.slate }} />
               {t('ticket.attachments')} ({ticket.attachments.length})
             </span>
             {attachOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -271,17 +272,17 @@ export function TicketDetailPage() {
                     justifyContent:  'space-between',
                     width:           '100%',
                     padding:         '8px 12px',
-                    backgroundColor: '#F8FAFC',
+                    backgroundColor: palette.neutral.surface1,
                     border:          'none',
                     borderRadius:    6,
                     fontSize:        13,
-                    color:           '#0EA5E9',
+                    color:           colors.brand,
                     cursor:          'pointer',
                     textAlign:       'left',
                   }}
                 >
                   <span>{a.filename}</span>
-                  <span style={{ color: '#94A3B8', fontSize: 10 }}>{formatBytes(a.sizeBytes)}</span>
+                  <span style={{ color: colors.slateLight, fontSize: 10 }}>{formatBytes(a.sizeBytes)}</span>
                 </button>
               ))}
             </div>
@@ -294,8 +295,8 @@ export function TicketDetailPage() {
         <div style={{
           position:        'sticky',
           bottom:          0,
-          backgroundColor: '#fff',
-          borderTop:       '1px solid #E2E8F0',
+          backgroundColor: colors.white,
+          borderTop:       `1px solid ${colors.border}`,
           paddingTop:      16,
           paddingBottom:   8,
         }}>
@@ -308,15 +309,15 @@ export function TicketDetailPage() {
               style={{
                 flex:         1,
                 padding:      '10px 12px',
-                border:       '1.5px solid #E2E8F0',
+                border:       `1.5px solid ${colors.border}`,
                 borderRadius: 8,
                 fontSize:     14,
                 resize:       'none',
                 outline:      'none',
                 lineHeight:   1.5,
               }}
-              onFocus={e => { e.currentTarget.style.borderColor = '#0EA5E9' }}
-              onBlur={e  => { e.currentTarget.style.borderColor = '#E2E8F0' }}
+              onFocus={e => { e.currentTarget.style.borderColor = colors.brand }}
+              onBlur={e  => { e.currentTarget.style.borderColor = colors.border }}
               onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) sendReply() }}
             />
             <button
@@ -324,8 +325,8 @@ export function TicketDetailPage() {
               disabled={!reply.trim() || commenting}
               style={{
                 padding:         '10px 20px',
-                backgroundColor: reply.trim() ? '#0EA5E9' : '#E2E8F0',
-                color:           reply.trim() ? '#fff' : '#94A3B8',
+                backgroundColor: reply.trim() ? colors.brand : colors.border,
+                color:           reply.trim() ? colors.white : colors.slateLight,
                 border:          'none',
                 borderRadius:    8,
                 fontSize:        14,

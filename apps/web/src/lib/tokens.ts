@@ -50,6 +50,92 @@ export const colors = {
   },
 } as const
 
+// ── TAVOLOZZA SEMANTICA ESTESA ───────────────────────────────────────────────
+// Le pagine non contengono esadecimali (regola ESLint no-restricted-syntax):
+// ogni colore passa da qui e risolve a un token di index.css. Stessa scala per
+// ogni famiglia: bg (sfondo pieno), tint (sfondo marcato/hover), border, text
+// (testo su bg), strong (testo con più contrasto), base/dark (icone, riempimenti).
+// Nei contesti canvas (ECharts, D3 su canvas) usare lib/charts/cssVar per
+// ottenere il valore risolto: lì `var()` non viene interpretato.
+
+/** Una famiglia di colore semantico. */
+export interface ColorFamily {
+  bg: string; tint: string; border: string; text: string; strong: string; base: string; dark: string
+}
+
+export const palette = {
+  neutral: {
+    surface1:     v('--color-surface-1'),      // #f8fafc — sfondo pagina, righe alternate
+    surface2:     v('--color-surface-2'),      // #f1f3f9 — pannelli secondari, intestazioni
+    slateBg:      v('--color-slate-bg'),       // #f1f5f9 — badge neutri
+    border:       v('--color-border'),         // #e2e6f0
+    borderLight:  v('--color-border-light'),   // #f3f4f6
+    borderStrong: v('--color-border-strong'),  // #c8cfe0
+    textLight:    v('--color-slate-light'),    // #94a3b8
+    text:         v('--color-slate'),          // #64748b
+    textStrong:   v('--color-slate-strong'),   // #475569
+    textMuted:    v('--color-slate-muted'),    // #374151
+    textDark:     v('--color-slate-dark'),     // #0f172a
+    white:        v('--color-white'),
+    textDisabled: v('--color-text-disabled'), // #cbd5e1 — controlli disabilitati, numeri decorativi
+  },
+  success: {
+    bg: v('--color-success-bg'), tint: v('--color-success-tint'), border: v('--color-success-border'),
+    text: v('--color-success-text'), strong: v('--color-success-strong'), base: v('--color-success'), dark: v('--color-success-dark'),
+  } satisfies ColorFamily,
+  warning: {
+    bg: v('--color-warning-bg'), tint: v('--color-warning-tint'), border: v('--color-warning-border'),
+    text: v('--color-warning-text'), strong: v('--color-warning-strong'), base: v('--color-warning'), dark: v('--color-warning-dark'),
+  } satisfies ColorFamily,
+  /** Evidenziazione gialla (note, righe da rivedere): più chiara dell'avviso. */
+  yellow: { bg: v('--color-yellow-bg'), border: v('--color-yellow-border'), text: v('--color-yellow-text') },
+  danger: {
+    bg: v('--color-danger-bg'), tint: v('--color-danger-tint'), border: v('--color-danger-border'),
+    text: v('--color-danger-text'), strong: v('--color-danger-strong'), base: v('--color-danger'), dark: v('--color-danger-dark'),
+    borderStrong: v('--color-danger-border-strong'),
+  },
+  info: {
+    bg: v('--color-info-bg'), light: v('--color-info-light'), tint: v('--color-info-tint'), border: v('--color-info-border'),
+    text: v('--color-info-text'), strong: v('--color-info-strong'), base: v('--color-brand'), dark: v('--color-brand-hover'),
+  },
+  purple: {
+    bg: v('--color-purple-bg'), tint: v('--color-purple-tint'), border: v('--color-purple-border'),
+    text: v('--color-purple-dark'), strong: v('--color-purple-dark'), base: v('--color-purple'), dark: v('--color-purple-dark'),
+    light: v('--color-purple-light'),
+  },
+  orange: {
+    bg: v('--color-orange-bg'), tint: v('--color-orange-tint'), border: v('--color-orange-border'),
+    text: v('--color-orange-text'), strong: v('--color-orange-text'), base: v('--color-orange'), dark: v('--color-orange-dark'),
+  } satisfies ColorFamily,
+  /** Solo serie di grafici e categorie. */
+  teal: { base: v('--color-teal'), light: v('--color-teal-light'), bg: v('--color-teal-bg'), border: v('--color-teal-border') },
+  pink: v('--color-pink'),
+  lime: v('--color-lime'),
+  iconAccent: v('--color-icon-accent'),
+} as const
+
+/** Trasparenze per ombre, veli ed evidenziazioni. */
+export const alpha = {
+  scrim: v('--color-scrim'),   // velo dietro i modali
+  black05: v('--color-black-a05'), black06: v('--color-black-a06'), black08: v('--color-black-a08'),
+  black10: v('--color-black-a10'), black12: v('--color-black-a12'), black15: v('--color-black-a15'), black20: v('--color-black-a20'),
+  white08: v('--color-white-a08'), white40: v('--color-white-a40'), white92: v('--color-white-a92'),
+  success08: v('--color-success-a08'), success10: v('--color-success-a10'), danger08: v('--color-danger-a08'),
+  iconAccent12: v('--color-icon-accent-a12'),
+  brand08: v('--color-brand-a08'), brand13: v('--color-brand-a13'), brand20: v('--color-brand-a20'), brand53: v('--color-brand-a53'),
+} as const
+
+/** Identità dei fornitori esterni (ToolBadge, canali di notifica): non seguono il tema. */
+export const vendorColors = {
+  prometheus: v('--color-vendor-prometheus'),
+  grafana:    v('--color-vendor-grafana'),
+  zabbix:     v('--color-vendor-zabbix'),
+  datadog:    v('--color-vendor-datadog'),
+  dynatrace:  v('--color-vendor-dynatrace'),
+  slack:      v('--color-vendor-slack'),
+  teams:      v('--color-vendor-teams'),
+} as const
+
 // ── DARK CHROME (Sidebar / Topbar / GlobalSearch) ────────────────────────────
 // One palette for the three layout components (E-23): they used to declare
 // three different `C` objects with two different border colours.
@@ -99,7 +185,7 @@ export const spacing = {
 
 // ── LOOKUP HELPER ───────────────────────────────────────────────────────────
 
-const ERROR_STYLE = { bg: 'var(--color-danger)', color: '#fff' }
+const ERROR_STYLE = { bg: 'var(--color-danger)', color: 'var(--color-white)' }
 
 export function lookupOrError<T>(map: Record<string, T>, key: string, mapName: string, errorFallback: T): T {
   const val = map[key]

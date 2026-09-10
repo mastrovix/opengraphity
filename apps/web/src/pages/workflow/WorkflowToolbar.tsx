@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
-import { colors, lookupOrError } from '@/lib/tokens'
+import { colors, lookupOrError, palette } from '@/lib/tokens'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 import type { WorkflowDefinition, WorkflowKey } from './workflow-types'
@@ -62,8 +62,8 @@ export function WorkflowToolbar({
       alignItems:      'center',
       justifyContent:  'space-between',
       padding:         '12px 24px',
-      borderBottom:    '1px solid #e2e6f0',
-      backgroundColor: '#ffffff',
+      borderBottom:    '1px solid var(--color-border)',
+      backgroundColor: colors.white,
       flexShrink:      0,
     }}>
       <div>
@@ -98,11 +98,11 @@ export function WorkflowToolbar({
           )}
           {def?.changeSubtype && (() => {
             const subtypeStyles: Record<string, { bg: string; fg: string }> = {
-              standard:  { bg: '#dcfce7', fg: '#166534' },
-              normal:    { bg: '#dbeafe', fg: '#1e40af' },
-              emergency: { bg: '#fee2e2', fg: '#991b1b' },
+              standard:  { bg: palette.success.tint, fg: palette.success.strong },
+              normal:    { bg: palette.info.tint, fg: palette.info.text },
+              emergency: { bg: palette.danger.tint, fg: palette.danger.strong },
             }
-            const s = lookupOrError(subtypeStyles, def.changeSubtype, 'subtypeStyles', { bg: 'var(--color-danger)', fg: '#fff' })
+            const s = lookupOrError(subtypeStyles, def.changeSubtype, 'subtypeStyles', { bg: 'var(--color-danger)', fg: colors.white })
             return (
               <Pill bg={s.bg} color={s.fg} radius={4}>
                 {def.changeSubtype === 'standard' ? 'Standard' : def.changeSubtype === 'normal' ? 'Normal' : 'Emergency'}
@@ -117,7 +117,7 @@ export function WorkflowToolbar({
           <button
             type="button"
             onClick={() => setShowAddStep(true)}
-            style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #e2e6f0', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}
+            style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid var(--color-border)', background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}
           >
             + Step
           </button>
@@ -128,8 +128,8 @@ export function WorkflowToolbar({
           onClick={onSave}
           style={{
             padding:         '8px 18px',
-            backgroundColor: canSave ? accentColor : '#e2e6f0',
-            color:           canSave ? '#ffffff' : 'var(--color-slate-light)',
+            backgroundColor: canSave ? accentColor : colors.border,
+            color:           canSave ? colors.white : 'var(--color-slate-light)',
             border:          'none',
             borderRadius:    7,
             fontSize:        13,
@@ -165,7 +165,7 @@ export function WorkflowToolbar({
           width={380}
           footer={
             <>
-              <Button variant="secondary" onClick={() => setShowAddStep(false)} style={{ padding: '7px 14px', border: '1px solid #e2e6f0' }}>Annulla</Button>
+              <Button variant="secondary" onClick={() => setShowAddStep(false)} style={{ padding: '7px 14px', border: '1px solid var(--color-border)' }}>Annulla</Button>
               <Button
                 disabled={!stepLabel.trim() || addingStep}
                 onClick={() => {
@@ -188,7 +188,7 @@ export function WorkflowToolbar({
               <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>TIPO</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {SPECIAL_STEP_TYPES.map(s => (
-                  <button type="button" key={s.type} aria-pressed={stepType === s.type} onClick={() => setStepType(s.type)} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${stepType === s.type ? accentColor : '#e2e6f0'}`, background: stepType === s.type ? 'var(--color-brand-a08)' : '#fff', color: stepType === s.type ? accentColor : 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
+                  <button type="button" key={s.type} aria-pressed={stepType === s.type} onClick={() => setStepType(s.type)} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${stepType === s.type ? accentColor : 'var(--color-border)'}`, background: stepType === s.type ? 'var(--color-brand-a08)' : colors.white, color: stepType === s.type ? accentColor : 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
                     {s.label}
                   </button>
                 ))}
@@ -196,12 +196,12 @@ export function WorkflowToolbar({
             </div>
             <div>
               <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>LABEL</div>
-              <input value={stepLabel} onChange={e => setStepLabel(e.target.value)} placeholder="es. Attesa Timer" style={{ width: '100%', padding: '7px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
+              <input value={stepLabel} onChange={e => setStepLabel(e.target.value)} placeholder="es. Attesa Timer" style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
             </div>
             {stepType === 'timer_wait' && (
               <div>
                 <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>RITARDO (minuti)</div>
-                <input type="number" min={1} value={timerMins} onChange={e => setTimerMins(e.target.value)} placeholder="es. 60" style={{ width: '100%', padding: '7px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
+                <input type="number" min={1} value={timerMins} onChange={e => setTimerMins(e.target.value)} placeholder="es. 60" style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
               </div>
             )}
           </div>

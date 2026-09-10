@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { Sparkles, BookOpen } from 'lucide-react'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SeverityBadge } from '@/components/ui/badges'
+import { colors, palette } from '@/lib/tokens'
 
 const GET_SIMILAR_INCIDENTS = gql`
   query SimilarIncidents($incidentId: ID!, $limit: Int) {
@@ -62,7 +63,7 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
       defaultOpen
     >
       {error ? (
-        <div style={{ padding: '8px 10px', background: 'var(--color-danger-bg)', border: '1px solid #fecaca', borderRadius: 6, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>
+        <div style={{ padding: '8px 10px', background: 'var(--color-danger-bg)', border: `1px solid ${palette.danger.border}`, borderRadius: 6, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>
           Errore ricerca semantica: {error.message}
         </div>
       ) : loading && !data ? (
@@ -85,7 +86,7 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
                 <Link
                   key={it.id}
                   to={`/incidents/${it.id}`}
-                  style={{ display: 'block', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, textDecoration: 'none', background: '#fff' }}
+                  style={{ display: 'block', padding: '8px 10px', border: `1px solid ${colors.border}`, borderRadius: 8, textDecoration: 'none', background: colors.white }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                     <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
@@ -100,7 +101,7 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <SeverityBadge value={it.severity} />
-                    <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: closed ? '#dcfce7' : '#f1f5f9', color: closed ? '#15803d' : 'var(--color-slate)', textTransform: 'uppercase' }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: closed ? palette.success.tint : colors.slateBg, color: closed ? palette.success.text : 'var(--color-slate)', textTransform: 'uppercase' }}>
                       {it.status.replace(/_/g, ' ')}
                     </span>
                   </div>
@@ -119,7 +120,7 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
                   <Link
                     key={a.id}
                     to={a.slug ? `/knowledge-base/${a.slug}` : '/knowledge-base'}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 10px', border: '1px solid #e5e7eb', borderRadius: 8, textDecoration: 'none', background: '#fff' }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 10px', border: `1px solid ${colors.border}`, borderRadius: 8, textDecoration: 'none', background: colors.white }}
                   >
                     <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {a.title}

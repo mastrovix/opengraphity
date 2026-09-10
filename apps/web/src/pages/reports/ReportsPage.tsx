@@ -11,6 +11,7 @@ import { BarChart2, BrainCircuit, X } from 'lucide-react'
 import { SkeletonLine } from '@/components/SkeletonLoader'
 import { EmptyState } from '@/components/EmptyState'
 import { keyActivate } from '@/lib/a11y'
+import { colors } from '@/lib/tokens'
 
 // ── GraphQL ────────────────────────────────────────────────────────────────
 
@@ -333,9 +334,9 @@ export default function ReportsPage() {
       {/* ── Sidebar sinistra ────────────────────────────────────────────── */}
       <div style={{
         width: 240, flexShrink: 0, background: 'var(--color-slate-bg)',
-        borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column',
+        borderRight: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column',
       }}>
-        <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>Report</span>
           <button
             type="button"
@@ -360,7 +361,7 @@ export default function ReportsPage() {
                 onKeyDown={keyActivate(() => { setActiveId(c.id); setLocalMessages(c.messages) })}
                 style={{
                   padding: '8px 10px', borderRadius: 6, cursor: 'pointer', marginBottom: 2,
-                  background: activeId === c.id ? '#e5e7eb' : 'transparent',
+                  background: activeId === c.id ? colors.border : 'transparent',
                   transition: 'background 0.1s',
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6,
                 }}
@@ -376,7 +377,7 @@ export default function ReportsPage() {
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); void handleDelete(c.id) }}
-                  style={{ color: '#d1d5db', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 3, flexShrink: 0, display: 'flex', alignItems: 'center' }}
+                  style={{ color: colors.slateLight, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 3, flexShrink: 0, display: 'flex', alignItems: 'center' }}
                   title="Elimina"
                 ><X size={13} /></button>
               </div>
@@ -386,12 +387,12 @@ export default function ReportsPage() {
       </div>
 
       {/* ── Colonna centrale ────────────────────────────────────────────── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#fff' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: colors.white }}>
 
         {!activeId && !hasMessages ? (
           /* Welcome screen */
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, gap: 16 }}>
-            <BarChart2 size={48} color="#d1d5db" strokeWidth={1.5} />
+            <BarChart2 size={48} color={colors.slateLight} strokeWidth={1.5} />
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                 <BrainCircuit size={22} color="var(--color-icon-accent)" />
@@ -413,9 +414,9 @@ export default function ReportsPage() {
               >
                 <div style={{
                   maxWidth: msg.role === 'user' ? '70%' : '85%',
-                  background: msg.role === 'user' ? '#1e3a5f' : 'var(--color-slate-bg)',
-                  color: msg.role === 'user' ? '#fff' : 'var(--color-slate-dark)',
-                  border: msg.role === 'user' ? 'none' : '1px solid #e5e7eb',
+                  background: msg.role === 'user' ? colors.slateDark : 'var(--color-slate-bg)',
+                  color: msg.role === 'user' ? colors.white : 'var(--color-slate-dark)',
+                  border: msg.role === 'user' ? 'none' : '1px solid var(--color-border)',
                   borderRadius: 12,
                   padding: '10px 14px',
                   fontSize: 'var(--font-size-card-title)',
@@ -436,10 +437,10 @@ export default function ReportsPage() {
                           thead: ({ children }) => <thead style={{ background: 'var(--color-slate-bg)' }}>{children}</thead>,
                           tr: ({ children }) => <tr style={{ transition: 'background 0.1s' }}>{children}</tr>,
                           th: ({ children }) => (
-                            <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{children}</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid var(--color-border)', whiteSpace: 'nowrap' }}>{children}</th>
                           ),
                           td: ({ children }) => (
-                            <td style={{ padding: '7px 12px', borderBottom: '1px solid #f1f5f9', color: '#1f2937', fontSize: 'var(--font-size-card-title)', verticalAlign: 'top' }}>{children}</td>
+                            <td style={{ padding: '7px 12px', borderBottom: '1px solid var(--color-border-light)', color: colors.slateDark, fontSize: 'var(--font-size-card-title)', verticalAlign: 'top' }}>{children}</td>
                           ),
                           p: ({ children }) => (
                             <p style={{ margin: '4px 0 8px 0', lineHeight: 1.65, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{children}</p>
@@ -448,7 +449,7 @@ export default function ReportsPage() {
                             <strong style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{children}</strong>
                           ),
                           h2: ({ children }) => (
-                            <h2 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1e3a5f', margin: '16px 0 8px 0', paddingBottom: 4, borderBottom: '1px solid #e5e7eb' }}>{children}</h2>
+                            <h2 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark, margin: '16px 0 8px 0', paddingBottom: 4, borderBottom: '1px solid var(--color-border)' }}>{children}</h2>
                           ),
                           h3: ({ children }) => (
                             <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', margin: '12px 0 6px 0' }}>{children}</h3>
@@ -458,7 +459,7 @@ export default function ReportsPage() {
                           ),
                           li: ({ children }) => <li style={{ margin: '3px 0' }}>{children}</li>,
                           code: ({ children }) => (
-                            <code style={{ background: 'var(--color-slate-bg)', padding: '1px 6px', borderRadius: 4, fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: '#1e3a5f' }}>{children}</code>
+                            <code style={{ background: 'var(--color-slate-bg)', padding: '1px 6px', borderRadius: 4, fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: colors.slateDark }}>{children}</code>
                           ),
                         }}
                       >
@@ -476,7 +477,7 @@ export default function ReportsPage() {
                   maxWidth: '85%',
                   background: 'var(--color-slate-bg)',
                   color: 'var(--color-slate-dark)',
-                  border: '1px solid #e5e7eb',
+                  border: '1px solid var(--color-border)',
                   borderRadius: 12,
                   padding: '10px 14px',
                   fontSize: 'var(--font-size-card-title)',
@@ -501,10 +502,10 @@ export default function ReportsPage() {
                           thead: ({ children }) => <thead style={{ background: 'var(--color-slate-bg)' }}>{children}</thead>,
                           tr: ({ children }) => <tr style={{ transition: 'background 0.1s' }}>{children}</tr>,
                           th: ({ children }) => (
-                            <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{children}</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid var(--color-border)', whiteSpace: 'nowrap' }}>{children}</th>
                           ),
                           td: ({ children }) => (
-                            <td style={{ padding: '7px 12px', borderBottom: '1px solid #f1f5f9', color: '#1f2937', fontSize: 'var(--font-size-card-title)', verticalAlign: 'top' }}>{children}</td>
+                            <td style={{ padding: '7px 12px', borderBottom: '1px solid var(--color-border-light)', color: colors.slateDark, fontSize: 'var(--font-size-card-title)', verticalAlign: 'top' }}>{children}</td>
                           ),
                           p: ({ children }) => (
                             <p style={{ margin: '4px 0 8px 0', lineHeight: 1.65, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{children}</p>
@@ -513,7 +514,7 @@ export default function ReportsPage() {
                             <strong style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{children}</strong>
                           ),
                           h2: ({ children }) => (
-                            <h2 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1e3a5f', margin: '16px 0 8px 0', paddingBottom: 4, borderBottom: '1px solid #e5e7eb' }}>{children}</h2>
+                            <h2 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark, margin: '16px 0 8px 0', paddingBottom: 4, borderBottom: '1px solid var(--color-border)' }}>{children}</h2>
                           ),
                           h3: ({ children }) => (
                             <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', margin: '12px 0 6px 0' }}>{children}</h3>
@@ -523,7 +524,7 @@ export default function ReportsPage() {
                           ),
                           li: ({ children }) => <li style={{ margin: '3px 0' }}>{children}</li>,
                           code: ({ children }) => (
-                            <code style={{ background: 'var(--color-slate-bg)', padding: '1px 6px', borderRadius: 4, fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: '#1e3a5f' }}>{children}</code>
+                            <code style={{ background: 'var(--color-slate-bg)', padding: '1px 6px', borderRadius: 4, fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: colors.slateDark }}>{children}</code>
                           ),
                         }}
                       >
@@ -545,7 +546,7 @@ export default function ReportsPage() {
         )}
 
         {/* Input area */}
-        <div style={{ borderTop: '1px solid #e5e7eb', padding: '12px 24px', background: '#fff' }}>
+        <div style={{ borderTop: '1px solid var(--color-border)', padding: '12px 24px', background: colors.white }}>
           {hasMessages && (
             <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
               <button type="button" onClick={handlePrint} style={exportBtnStyle}>↓ PDF</button>
@@ -562,7 +563,7 @@ export default function ReportsPage() {
               rows={1}
               style={{
                 flex: 1, fontSize: 'var(--font-size-body)', padding: '10px 14px',
-                border: '1px solid #d1d5db', borderRadius: 8,
+                border: '1px solid var(--color-border-strong)', borderRadius: 8,
                 resize: 'none', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", lineHeight: 1.5,
                 maxHeight: 96, overflowY: 'auto', outline: 'none',
               }}
@@ -578,8 +579,8 @@ export default function ReportsPage() {
               disabled={loading || !input.trim()}
               style={{
                 fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '10px 18px',
-                background: loading || !input.trim() ? '#e5e7eb' : 'var(--color-brand)',
-                color: loading || !input.trim() ? 'var(--color-slate-light)' : '#fff',
+                background: loading || !input.trim() ? colors.border : 'var(--color-brand)',
+                color: loading || !input.trim() ? 'var(--color-slate-light)' : colors.white,
                 border: 'none', borderRadius: 8, cursor: loading || !input.trim() ? 'default' : 'pointer',
                 whiteSpace: 'nowrap', transition: 'background 0.15s',
               }}
@@ -598,16 +599,16 @@ export default function ReportsPage() {
           .report-print-area {
             position: absolute !important; left: 0 !important; top: 0 !important;
             width: 100% !important; height: auto !important; overflow: visible !important;
-            padding: 16px !important; background: #fff !important;
+            padding: 16px !important; background: var(--color-white) !important;
           }
         }
         .report-markdown p { margin: 0 0 8px; }
         .report-markdown p:last-child { margin-bottom: 0; }
         .report-markdown table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 8px 0; }
-        .report-markdown th, .report-markdown td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: left; }
-        .report-markdown th { background: #f3f4f6; font-weight: 600; }
-        .report-markdown code { background: #f3f4f6; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
-        .report-markdown pre { background: #f3f4f6; padding: 10px; border-radius: 6px; overflow-x: auto; }
+        .report-markdown th, .report-markdown td { border: 1px solid var(--color-border); padding: 6px 10px; text-align: left; }
+        .report-markdown th { background: var(--color-surface-2); font-weight: 600; }
+        .report-markdown code { background: var(--color-surface-2); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+        .report-markdown pre { background: var(--color-surface-2); padding: 10px; border-radius: 6px; overflow-x: auto; }
         .report-markdown ul, .report-markdown ol { margin: 4px 0 8px; padding-left: 20px; }
         .report-markdown li { margin-bottom: 2px; }
         @keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.3 } }
@@ -618,6 +619,6 @@ export default function ReportsPage() {
 
 const exportBtnStyle: React.CSSProperties = {
   fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', background: 'var(--color-slate-bg)',
-  border: '1px solid #e5e7eb', borderRadius: 5,
+  border: '1px solid var(--color-border)', borderRadius: 5,
   padding: '4px 10px', cursor: 'pointer',
 }

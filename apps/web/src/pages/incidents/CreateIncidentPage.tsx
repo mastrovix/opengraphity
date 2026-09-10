@@ -12,6 +12,7 @@ import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { FieldWrapper } from '@/components/FieldWrapper'
 import { TriageSuggestionCard } from '@/components/TriageSuggestionCard'
+import { colors, palette, alpha } from '@/lib/tokens'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -25,17 +26,17 @@ const fieldLabel: React.CSSProperties = {
 
 const inputBase: React.CSSProperties = {
   width: '100%', padding: '10px 14px',
-  border: '1.5px solid #e5e7eb', borderRadius: 8,
+  border: `1.5px solid ${colors.border}`, borderRadius: 8,
   fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', outline: 'none',
-  backgroundColor: '#fff', boxSizing: 'border-box',
+  backgroundColor: colors.white, boxSizing: 'border-box',
   fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", transition: 'border-color 150ms',
 }
 
 const SEVERITY_STYLES: Record<string, { bg: string; border: string; color: string }> = {
   critical: { bg: 'var(--color-danger-bg)', border: 'var(--color-danger)', color: 'var(--color-trigger-sla-breach)' },
-  high:     { bg: '#fff7ed', border: 'var(--color-brand)', color: 'var(--color-brand)' },
-  medium:   { bg: 'var(--color-warning-bg)', border: 'var(--color-warning)', color: '#b45309' },
-  low:      { bg: 'var(--color-success-bg)', border: 'var(--color-success)', color: '#15803d' },
+  high:     { bg: colors.severity.high.bg, border: 'var(--color-brand)', color: 'var(--color-brand)' },
+  medium:   { bg: 'var(--color-warning-bg)', border: 'var(--color-warning)', color: palette.warning.text },
+  low:      { bg: 'var(--color-success-bg)', border: 'var(--color-success)', color: palette.success.text },
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -126,7 +127,7 @@ export function CreateIncidentPage() {
         </p>
 
         {/* Card */}
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '28px 32px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+        <div style={{ background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 12, padding: '28px 32px', boxShadow: `0 1px 4px ${alpha.black06}` }}>
 
           {/* TITOLO */}
           <FieldWrapper
@@ -141,9 +142,9 @@ export function CreateIncidentPage() {
               value={title}
               onChange={e => { setTitle(e.target.value); setFieldErrors((p) => { const n = { ...p }; delete n['title']; return n }) }}
               placeholder="Es. Database produzione non raggiungibile"
-              style={{ ...inputBase, borderColor: fieldErrors['title'] ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
+              style={{ ...inputBase, borderColor: fieldErrors['title'] ? 'var(--color-trigger-sla-breach)' : colors.border }}
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = fieldErrors['title'] ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
+              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = fieldErrors['title'] ? 'var(--color-trigger-sla-breach)' : colors.border }}
             />
           </FieldWrapper>
 
@@ -159,7 +160,7 @@ export function CreateIncidentPage() {
                 id={ids.category}
                 value={category}
                 onChange={e => { setCategory(e.target.value); setFieldErrors(p => { const n = { ...p }; delete n['category']; return n }) }}
-                style={{ ...inputBase, borderColor: fieldErrors['category'] ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
+                style={{ ...inputBase, borderColor: fieldErrors['category'] ? 'var(--color-trigger-sla-breach)' : colors.border }}
               >
                 <option value="">-- Seleziona categoria --</option>
                 {categoryValues.map(c => (
@@ -181,8 +182,8 @@ export function CreateIncidentPage() {
                     return (
                       <button key={o} type="button" onClick={() => setVal(o)}
                         style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
-                          border: `1.5px solid ${sel ? 'var(--color-brand)' : '#e5e7eb'}`,
-                          background: sel ? '#f0f9ff' : 'var(--color-slate-bg)',
+                          border: `1.5px solid ${sel ? 'var(--color-brand)' : colors.border}`,
+                          background: sel ? palette.info.light : 'var(--color-slate-bg)',
                           color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}>
                         {IMPACT_URGENCY_LABEL[o]}
                       </button>
@@ -194,7 +195,7 @@ export function CreateIncidentPage() {
             <div>
               <div style={fieldLabel}>Priorità (calcolata)</div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 6,
-                border: `1.5px solid ${(SEVERITY_STYLES[priority]?.border ?? '#e5e7eb')}`,
+                border: `1.5px solid ${(SEVERITY_STYLES[priority]?.border ?? colors.border)}`,
                 background: SEVERITY_STYLES[priority]?.bg ?? 'var(--color-slate-bg)',
                 color: SEVERITY_STYLES[priority]?.color ?? 'var(--color-slate)', fontWeight: 600 }}>
                 <span>{priorityCode(priority)}</span>
@@ -218,7 +219,7 @@ export function CreateIncidentPage() {
               rows={3}
               style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
             />
           </FieldWrapper>
 
@@ -259,19 +260,19 @@ export function CreateIncidentPage() {
                 placeholder="Cerca per nome..."
                 style={{ ...inputBase, paddingLeft: 36 }}
                 onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-                onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+                onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
               />
 
               {/* Dropdown */}
               {ciResults.length > 0 && ciSearch.length >= 2 && (
-                <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
+                <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 8, boxShadow: `0 4px 12px ${alpha.black10}`, maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
                   {ciResults.map(ci => (
                     <button
                       type="button"
                       key={ci.id}
                       onClick={() => { setSelectedCIs(p => [...p, ci]); setCiSearch('') }}
                       className="hover-bg"
-                      style={{ width: '100%', background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
+                      style={{ width: '100%', background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${palette.neutral.borderLight}` }}
                     >
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{ci.name}</span>
                       <span style={{ fontSize: 'var(--font-size-body)', padding: '1px 6px', borderRadius: 4, backgroundColor: 'var(--color-border-light)', color: 'var(--color-slate)' }}>
@@ -287,7 +288,7 @@ export function CreateIncidentPage() {
             {selectedCIs.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                 {selectedCIs.map(ci => (
-                  <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-brand-light)', border: '1px solid #c7d2fe', color: 'var(--color-brand-hover)', fontSize: 'var(--font-size-body)' }}>
+                  <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-brand-light)', border: `1px solid ${palette.info.border}`, color: 'var(--color-brand-hover)', fontSize: 'var(--font-size-body)' }}>
                     {ci.name}
                     <button
                       type="button"
@@ -312,12 +313,12 @@ export function CreateIncidentPage() {
             {/* Tag team selezionato */}
             {selectedTeam && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-success-bg)', border: '1px solid #86efac', color: '#15803d', fontSize: 'var(--font-size-body)' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-success-bg)', border: `1px solid ${palette.success.border}`, color: palette.success.text, fontSize: 'var(--font-size-body)' }}>
                   {selectedTeam.name}
                   <button
                     type="button"
                     onClick={() => { setSelectedTeam(null); setTeamSearch('') }}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#15803d', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: palette.success.text, padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}
                   >
                     <X size={12} />
                   </button>
@@ -341,12 +342,12 @@ export function CreateIncidentPage() {
                   placeholder="Cerca team per nome..."
                   style={{ ...inputBase, paddingLeft: 36 }}
                   onFocusCapture={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-                  onBlurCapture={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+                  onBlurCapture={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
                 />
 
                 {/* Dropdown */}
                 {teamDropdownOpen && filteredTeams.length > 0 && (
-                  <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
+                  <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 8, boxShadow: `0 4px 12px ${alpha.black10}`, maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
                     {filteredTeams.map(tm => (
                       <button
                         type="button"
@@ -354,7 +355,7 @@ export function CreateIncidentPage() {
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => { setSelectedTeam(tm); setTeamSearch(''); setTeamDropdownOpen(false) }}
                         className="hover-bg"
-                        style={{ width: '100%', background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
+                        style={{ width: '100%', background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${palette.neutral.borderLight}` }}
                       >
                         <Users size={14} color="var(--color-slate-light)" />
                         <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{tm.name}</span>
@@ -367,7 +368,7 @@ export function CreateIncidentPage() {
           </div>
 
           {/* Footer */}
-          <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 8, paddingTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ borderTop: `1px solid ${palette.neutral.borderLight}`, marginTop: 8, paddingTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <button
               type="button"
               onClick={() => navigate('/incidents')}
@@ -411,7 +412,7 @@ export function CreateIncidentPage() {
                 })
               }}
               style={{
-                background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 8,
+                background: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 8,
                 padding: '10px 24px', fontSize: 'var(--font-size-card-title)', fontWeight: 600,
                 cursor: canSubmit && !loading ? 'pointer' : 'not-allowed',
                 opacity: canSubmit && !loading ? 1 : 0.5,

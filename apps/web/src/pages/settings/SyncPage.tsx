@@ -7,6 +7,7 @@ import { SyncSourcesTab } from './SyncSourcesTab'
 import { SyncHistoryTab } from './SyncHistoryTab'
 import { SyncConflictsTab } from './SyncConflictsTab'
 import { ImportTab } from './ImportTab'
+import { colors } from '@/lib/tokens'
 
 export function SyncPage() {
   const hook = useSyncPage()
@@ -25,7 +26,7 @@ export function SyncPage() {
       {hook.stats && <StatsBar stats={hook.stats} />}
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#f1f5f9', padding: 4, borderRadius: 8, width: 'fit-content' }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: colors.slateBg, padding: 4, borderRadius: 8, width: 'fit-content' }}>
         {TABS.map(t => (
           <button type="button"
             key={t}
@@ -34,7 +35,7 @@ export function SyncPage() {
               padding: '8px 20px', borderRadius: 6, border: 'none', cursor: 'pointer',
               fontSize: 'var(--font-size-body)', fontWeight: 500,
               background: hook.tab === t ? 'var(--color-brand)' : 'transparent',
-              color: hook.tab === t ? '#fff' : 'var(--color-slate)',
+              color: hook.tab === t ? colors.white : 'var(--color-slate)',
             }}
           >
             {t}

@@ -9,8 +9,7 @@ import { toast } from 'sonner'
 import { BellRing, ChartLine, ServerCog, Dog, Gauge, Webhook, Copy } from 'lucide-react'
 import { Pill } from '@/components/ui/Pill'
 import { Button } from '@/components/Button'
-import { lookupOrError } from '@/lib/tokens'
-import { colors } from '@/lib/tokens'
+import { lookupOrError, colors, palette, vendorColors } from '@/lib/tokens'
 import type { ConnectorKind } from '@/types/events'
 
 interface ToolMeta {
@@ -20,12 +19,12 @@ interface ToolMeta {
 
 /** Icona e colore per strumento; nome e descrizione stanno in i18n (`monitoring.tools.<kind>`). */
 export const TOOL_META: Record<ConnectorKind, ToolMeta> = {
-  alertmanager: { icon: BellRing,  color: '#e6522c' },
-  grafana:      { icon: ChartLine, color: '#f46800' },
-  zabbix:       { icon: ServerCog, color: '#d40000' },
-  datadog:      { icon: Dog,       color: '#632ca6' },
-  dynatrace:    { icon: Gauge,     color: '#1496ff' },
-  generic:      { icon: Webhook,   color: '#0284c7' },
+  alertmanager: { icon: BellRing,  color: vendorColors.prometheus },
+  grafana:      { icon: ChartLine, color: vendorColors.grafana },
+  zabbix:       { icon: ServerCog, color: vendorColors.zabbix },
+  datadog:      { icon: Dog,       color: vendorColors.datadog },
+  dynatrace:    { icon: Gauge,     color: vendorColors.dynatrace },
+  generic:      { icon: Webhook,   color: colors.brand },
 }
 
 const BROKEN: ToolMeta = { icon: Webhook, color: 'var(--color-danger)' }
@@ -50,7 +49,7 @@ export function ToolBadge({ kind }: { kind: ConnectorKind | null }) {
 export function EnabledPill({ enabled }: { enabled: boolean }) {
   const { t } = useTranslation()
   return enabled
-    ? <Pill bg="#dcfce7" color="#15803d" style={{ fontSize: 'var(--font-size-label)' }}>{t('monitoring.sources.active')}</Pill>
+    ? <Pill bg={palette.success.tint} color={palette.success.text} style={{ fontSize: 'var(--font-size-label)' }}>{t('monitoring.sources.active')}</Pill>
     : <Pill bg="var(--color-slate-bg)" color="var(--color-slate)" style={{ fontSize: 'var(--font-size-label)' }}>{t('monitoring.sources.inactive')}</Pill>
 }
 
@@ -94,7 +93,7 @@ export function SecretBox({ label, value, copyLabel, hint, onCopied }: { label: 
         <output style={monoBox} aria-label={label}>{value}</output>
         <CopyButton text={value} label={copyLabel} onCopied={onCopied} />
       </div>
-      {hint && <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-table)', color: '#b45309' }}>{hint}</p>}
+      {hint && <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-table)', color: palette.warning.text }}>{hint}</p>}
     </div>
   )
 }

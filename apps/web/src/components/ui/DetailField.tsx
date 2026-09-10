@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { colors } from '@/lib/tokens'
 
 interface DetailFieldProps {
   label: string
@@ -42,7 +43,7 @@ export function DetailField({ label, value, mono, editable, onSave }: DetailFiel
             type="button"
             onClick={startEdit}
             aria-label={`${t('common.edit')}: ${label}`}
-            style={{ fontSize: 'var(--font-size-label)', padding: '1px 7px', borderRadius: 4, border: '1px solid #e2e6f0', background: 'transparent', cursor: 'pointer', color: 'var(--color-slate-light)' }}
+            style={{ fontSize: 'var(--font-size-label)', padding: '1px 7px', borderRadius: 4, border: `1px solid ${colors.border}`, background: 'transparent', cursor: 'pointer', color: 'var(--color-slate-light)' }}
           >
             {t('common.edit')}
           </button>
@@ -58,13 +59,13 @@ export function DetailField({ label, value, mono, editable, onSave }: DetailFiel
             aria-labelledby={labelId}
             // eslint-disable-next-line jsx-a11y/no-autofocus -- editor inline montato dopo il click su "Modifica": il focus deve seguire l'azione dell'utente
             autoFocus
-            style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #0284c7', borderRadius: 6, fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", resize: 'vertical', outline: 'none', lineHeight: 1.6 }}
+            style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: `1px solid ${colors.brand}`, borderRadius: 6, fontSize: 'var(--font-size-body)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", resize: 'vertical', outline: 'none', lineHeight: 1.6 }}
           />
           <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-            <button type="button" onClick={handleSave} style={{ padding: '5px 14px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: '#fff', fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer' }}>
+            <button type="button" onClick={handleSave} style={{ padding: '5px 14px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer' }}>
               {t('common.save')}
             </button>
-            <button type="button" onClick={() => setEditing(false)} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #e2e6f0', background: 'transparent', fontSize: 'var(--font-size-body)', cursor: 'pointer', color: 'var(--color-slate)' }}>
+            <button type="button" onClick={() => setEditing(false)} style={{ padding: '5px 12px', borderRadius: 6, border: `1px solid ${colors.border}`, background: 'transparent', fontSize: 'var(--font-size-body)', cursor: 'pointer', color: 'var(--color-slate)' }}>
               {t('common.cancel')}
             </button>
           </div>
@@ -72,7 +73,7 @@ export function DetailField({ label, value, mono, editable, onSave }: DetailFiel
       ) : (
         <div style={{
           fontSize:   'var(--font-size-body)',
-          color:      value ? 'var(--color-slate-dark)' : '#c4c9d4',
+          color:      value ? 'var(--color-slate-dark)' : colors.slateLight,
           fontFamily: mono ? 'monospace' : "'Plus Jakarta Sans', system-ui, sans-serif",
           whiteSpace: 'pre-wrap',
           lineHeight: 1.6,

@@ -12,6 +12,7 @@ import { WorkflowToolbar } from './WorkflowToolbar'
 import { WorkflowStepPanel } from './WorkflowStepPanel'
 import { WorkflowTransitionPanel } from './WorkflowTransitionPanel'
 import { useWorkflowDesigner, defToWorkflowKey } from './useWorkflowDesigner'
+import { palette } from '@/lib/tokens'
 
 export function WorkflowDesignerPage() {
   const { t } = useTranslation()
@@ -154,10 +155,10 @@ export function WorkflowDesignerPage() {
       {def?.entityType === 'change' && (
         <div style={{
           padding: '10px 24px',
-          backgroundColor: '#fef9c3',
-          borderBottom: '1px solid #fde68a',
+          backgroundColor: palette.yellow.bg,
+          borderBottom: '1px solid var(--color-warning-border)',
           fontSize: 'var(--font-size-body)',
-          color: '#713f12',
+          color: palette.warning.strong,
         }}>
           Gli step di questo workflow sono fissi. Puoi personalizzare label, azioni e condizioni.
         </div>

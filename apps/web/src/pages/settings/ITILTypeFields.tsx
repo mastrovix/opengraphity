@@ -9,6 +9,7 @@ import { Input, Select } from '@/components/ui/FormControls'
 import type { EnumTypeRef } from './shared/designerStyles'
 import type { ITILField, FieldFormState, EnumTypeOption } from './useITILTypeDesigner'
 import { emptyForm, fieldToForm } from './useITILTypeDesigner'
+import { colors } from '@/lib/tokens'
 
 // ── FieldEditor (inline) ──────────────────────────────────────────────────────
 
@@ -28,13 +29,13 @@ function FieldEditor({
     setForm((f) => ({ ...f, [key]: val }))
 
   return (
-    <div style={{ background: 'var(--color-slate-bg)', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 8 }}>
+    <div style={{ background: 'var(--color-slate-bg)', border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, marginBottom: 8 }}>
       {/* name + label */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
         <div>
           <label style={labelS}>{t('itilDesigner.fieldName')}</label>
           <input
-            style={{ ...inputS, background: isSystem || !!field.name ? '#f1f5f9' : '#fff' }}
+            style={{ ...inputS, background: isSystem || !!field.name ? colors.slateBg : colors.white }}
             value={form.name}
             disabled={isSystem || !!field.name}
             onChange={(e) => set('name', e.target.value)}
@@ -57,7 +58,7 @@ function FieldEditor({
         <div>
           <label style={labelS}>{t('itilDesigner.fieldType')}</label>
           <Select
-            style={{ ...selectS, background: isSystem ? '#f1f5f9' : '#fff' }}
+            style={{ ...selectS, background: isSystem ? colors.slateBg : colors.white }}
             value={form.fieldType}
             disabled={isSystem}
             onChange={(e) => { set('fieldType', e.target.value); if (e.target.value !== 'enum') set('enumTypeId', null) }}
@@ -111,7 +112,7 @@ function FieldEditor({
             {(['validation', 'visibility', 'default'] as const).map((tab) => (
               <button type="button" key={tab} onClick={() => setScriptTab(tab)}
                 style={{ padding: '4px 12px', borderRadius: 4, border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
-                  background: scriptTab === tab ? 'var(--color-brand-light)' : '#f1f5f9',
+                  background: scriptTab === tab ? 'var(--color-brand-light)' : colors.slateBg,
                   color:      scriptTab === tab ? 'var(--color-brand)' : 'var(--color-slate)',
                   fontWeight: scriptTab === tab ? 600 : 400 }}>
                 {tab}Script

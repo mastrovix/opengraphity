@@ -27,7 +27,7 @@ describe('lookupOrError', () => {
 describe('lookupStyle', () => {
   it('chiave sconosciuta → stile "rotto" rosso/bianco', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect(lookupStyle({ ok: { bg: '#fff', color: '#000' } }, 'nope', 'STYLE')).toEqual({ bg: 'var(--color-danger)', color: '#fff' })
+    expect(lookupStyle({ ok: { bg: '#fff', color: '#000' } }, 'nope', 'STYLE')).toEqual({ bg: 'var(--color-danger)', color: 'var(--color-white)' })
   })
   it('chiave nota → lo stile mappato', () => {
     expect(lookupStyle({ ok: { bg: '#fff', color: '#000' } }, 'ok', 'STYLE')).toEqual({ bg: '#fff', color: '#000' })

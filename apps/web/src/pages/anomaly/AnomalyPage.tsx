@@ -11,7 +11,7 @@ import {
   GET_ANOMALIES, GET_ANOMALY_STATS, GET_ANOMALY_SCAN_STATUS,
   RESOLVE_ANOMALY, RUN_ANOMALY_SCANNER,
 } from '@/graphql/queries'
-import { colors, lookupOrError } from '@/lib/tokens'
+import { colors, alpha, lookupOrError } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
 import { ciTypeLabelKey } from '@/lib/ciEnums'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
@@ -80,10 +80,10 @@ export function AnomalyStatusBadge({ value }: { value: string }) {
 function StatCard({ label, value, accent }: { label: string; value: number; accent?: string }) {
   return (
     <div style={{
-      background: '#fff',
-      border: '1px solid #e5e7eb',
+      background: colors.white,
+      border: `1px solid ${colors.border}`,
       borderRadius: 10,
-      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+      boxShadow: `0 1px 2px ${alpha.black05}`,
       padding: '14px 18px',
       minWidth: 110,
       flex: 1,

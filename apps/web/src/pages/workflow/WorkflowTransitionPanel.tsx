@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import type { WFTransition, PendingTransitionChange } from './workflow-types'
 import { panelStyle, panelInputStyle, saveButtonStyle, PanelHeader, PanelField } from './workflow-panel-helpers'
 import { Input, Select } from '@/components/ui/FormControls'
+import { colors } from '@/lib/tokens'
 
 const inputStyle = panelInputStyle
 
@@ -132,7 +133,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
           }}
           style={{
             marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 6,
-            border: '1px solid var(--color-danger)', background: '#fff',
+            border: '1px solid var(--color-danger)', background: colors.white,
             color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600,
           }}
         >

@@ -50,6 +50,7 @@ import { AddCIModal } from './components/AddCIModal'
 import { fmtShort, fmtDate } from './components/shared'
 import { UnifiedLinkedTickets } from '@/components/UnifiedLinkedTickets'
 import { SuppressedAlarmsSection } from '@/pages/events/CorrelatedEventsSection'
+import { colors, palette } from '@/lib/tokens'
 
 interface ImpactedCIRow {
   ci: { id: string; name: string; type: string | null; environment: string | null }
@@ -259,7 +260,7 @@ export function ChangeDetailPage() {
             count={approvals.length}
             collapsible
             defaultOpen={atApproval}
-            activeColor="#FEF9C3"
+            activeColor={palette.yellow.bg}
             activeTextColor="var(--color-slate-dark)"
             headerRight={<span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{approvedN}/{approvals.length} approvate</span>}
           >
@@ -269,7 +270,7 @@ export function ChangeDetailPage() {
               </p>
             ) : (
               <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #e5e7eb', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border)', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
                   <span style={{ width: 150 }}>Requisito</span>
                   <span style={{ flex: 1 }}>Team</span>
                   <span style={{ width: 110 }}>Stato</span>
@@ -277,13 +278,13 @@ export function ChangeDetailPage() {
                   <span style={{ width: 200 }}>Azioni</span>
                 </div>
                 {approvals.map((a) => (
-                  <div key={`${a.kind}-${a.teamId}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid #f3f4f6', fontSize: 'var(--font-size-body)' }}>
+                  <div key={`${a.kind}-${a.teamId}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-body)' }}>
                     <span style={{ width: 150, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{a.kind === 'change_manager' ? 'Change Manager' : 'Owner Group'}</span>
                     <span style={{ flex: 1, color: 'var(--color-slate)' }}>{a.teamName ?? '—'}</span>
                     <span style={{ width: 110 }}>
                       {a.status === 'approved'
-                        ? <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: '#166534', background: '#DCFCE7', padding: '2px 8px', borderRadius: 12 }}>Approvato</span>
-                        : <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: '#854D0E', background: '#FEF9C3', padding: '2px 8px', borderRadius: 12 }}>In attesa</span>}
+                        ? <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: palette.success.strong, background: palette.success.tint, padding: '2px 8px', borderRadius: 12 }}>Approvato</span>
+                        : <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: palette.yellow.text, background: palette.yellow.bg, padding: '2px 8px', borderRadius: 12 }}>In attesa</span>}
                     </span>
                     <span style={{ flex: 1, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
                       {a.approvedByName ? `${a.approvedByName}${a.approvedAt ? ` · ${fmtDate(a.approvedAt)}` : ''}` : '—'}
@@ -292,11 +293,11 @@ export function ChangeDetailPage() {
                       {a.canApprove && a.teamId && (
                         <>
                           <button type="button" disabled={approving} onClick={() => void approveApproval({ variables: { changeId, teamId: a.teamId, note: null } })}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: approving ? 'wait' : 'pointer' }}>
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: 'none', background: palette.success.base, color: colors.white, fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: approving ? 'wait' : 'pointer' }}>
                             <CheckCircle size={14} /> Approva
                           </button>
                           <button type="button" onClick={() => { setRejectNote(''); setReopenMode('all'); setReopenIds(new Set()); setRejectModal({ teamId: a.teamId!, teamName: a.teamName ?? '' }) }}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-danger)', background: '#fff', color: 'var(--color-danger)', fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: 'pointer' }}>
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-danger)', background: colors.white, color: 'var(--color-danger)', fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: 'pointer' }}>
                             <XCircle size={14} /> Rigetta
                           </button>
                         </>
@@ -339,7 +340,7 @@ export function ChangeDetailPage() {
             const firstVal = steps[0]?.validationWindow?.start
             const firstRel = steps[0]?.releaseWindow?.start
             return (
-              <div key={a.ci.id} style={{ display: 'flex', gap: 16, padding: '6px 0', borderBottom: '1px solid #f3f4f6', fontSize: 'var(--font-size-label)' }}>
+              <div key={a.ci.id} style={{ display: 'flex', gap: 16, padding: '6px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-label)' }}>
                 <span style={{ width: 120, fontWeight: 500, color: 'var(--color-slate-dark)', flexShrink: 0 }}>{a.ci.name}</span>
                 {firstVal && <span style={{ color: 'var(--color-slate-light)' }}>Validation: <strong style={{ color: 'var(--color-slate)' }}>{fmtShort(firstVal)}</strong></span>}
                 {firstRel && <span style={{ color: 'var(--color-slate-light)' }}>Deploy: <strong style={{ color: 'var(--color-slate)' }}>{fmtShort(firstRel)}</strong></span>}
@@ -355,12 +356,12 @@ export function ChangeDetailPage() {
         isAdmin={isAdmin}
         userTeamIds={userTeamIds}
         defaultOpen={currentStep !== 'approval'}
-        activeColor={currentStep === 'approval' ? undefined : '#FEF9C3'}
+        activeColor={currentStep === 'approval' ? undefined : palette.yellow.bg}
         activeTextColor={currentStep === 'approval' ? undefined : 'var(--color-slate-dark)'}
       />
 
       <SectionCard title="CIs Involved" collapsible count={affected.length}>
-        <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb' }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)' }}>
           {(['affected', 'impacted'] as const).map(tab => {
             const active = ciTab === tab
             return (
@@ -372,7 +373,7 @@ export function ChangeDetailPage() {
                 fontWeight: active ? 600 : 500,
               }}>
                 {tab === 'affected' ? 'CI Affected' : 'CI Impacted'}
-                <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 8, backgroundColor: active ? 'var(--color-brand-light)' : '#f1f5f9', color: active ? 'var(--color-brand)' : 'var(--color-slate-light)' }}>
+                <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 8, backgroundColor: active ? 'var(--color-brand-light)' : colors.slateBg, color: active ? 'var(--color-brand)' : 'var(--color-slate-light)' }}>
                   {tab === 'affected' ? affected.length : impactedCIs.length}
                 </span>
               </button>
@@ -395,10 +396,10 @@ export function ChangeDetailPage() {
                 </div>
               )}
               {affected.map((a) => (
-                <div key={a.ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f3f4f6', fontSize: 'var(--font-size-body)' }}>
+                <div key={a.ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-body)' }}>
                   <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{a.ci.name}</span>
-                  {a.ci.type && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: '#f1f5f9', color: 'var(--color-slate)' }}>{a.ci.type}</span>}
-                  {a.ci.environment && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: '#f1f5f9', color: 'var(--color-slate)' }}>{a.ci.environment}</span>}
+                  {a.ci.type && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{a.ci.type}</span>}
+                  {a.ci.environment && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{a.ci.environment}</span>}
                   {currentStep === wfInitialStep?.name && (
                     <button
                       type="button"
@@ -418,20 +419,20 @@ export function ChangeDetailPage() {
             <>
               <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 500, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>Profondità</span>
-                <select value={impactDepth} onChange={e => setImpactDepth(Number(e.target.value))} style={{ padding: '4px 8px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)' }}>
+                <select value={impactDepth} onChange={e => setImpactDepth(Number(e.target.value))} style={{ padding: '4px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)' }}>
                   {[1, 2, 3, 4, 5].map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
               {impactError && (
-                <div style={{ padding: '10px 12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-danger, #ef4444)', marginBottom: 8 }}>
+                <div style={{ padding: '10px 12px', backgroundColor: palette.danger.bg, border: '1px solid var(--color-danger-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', marginBottom: 8 }}>
                   Errore nel calcolo dei CI impattati: {impactError.message}{' '}
-                  <button type="button" onClick={() => void refetchImpacted()} style={{ background: 'none', border: 'none', color: 'var(--color-danger, #ef4444)', textDecoration: 'underline', cursor: 'pointer', fontSize: 'var(--font-size-body)', padding: 0 }}>Riprova</button>
+                  <button type="button" onClick={() => void refetchImpacted()} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', textDecoration: 'underline', cursor: 'pointer', fontSize: 'var(--font-size-body)', padding: 0 }}>Riprova</button>
                 </div>
               )}
               {!impactError && impactedCIs.length === 0 && <EmptyState icon={<ChevronRight size={24} />} title="Nessun CI impattato" description={`Nessun CI impattato a profondità ${impactDepth}.`} />}
               {impactedCIs.length > 0 && (
                 <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #e5e7eb', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border)', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
                     <span style={{ width: 24, flexShrink: 0 }} />
                     <span style={{ flex: 1 }}>CI Impattato</span>
                     <span style={{ width: 80 }}>Tipo</span>
@@ -446,7 +447,7 @@ export function ChangeDetailPage() {
                     const hasPath = b.impactPath.length >= 2
                     return (
                       <div key={rowId}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #f3f4f6', fontSize: 'var(--font-size-body)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-body)' }}>
                           <span style={{ width: 24, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             {hasPath && (
                               <button type="button" aria-expanded={isOpen} aria-label={b.ci.name} onClick={() => setExpandedImpactId(prev => prev === rowId ? null : rowId)} style={{ cursor: 'pointer', background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', font: 'inherit', color: 'inherit' }}>
@@ -455,9 +456,9 @@ export function ChangeDetailPage() {
                             )}
                           </span>
                           <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{b.ci.name}</span>
-                          <span style={{ width: 80 }}>{b.ci.type ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: '#f1f5f9', color: 'var(--color-slate)' }}>{b.ci.type}</span> : null}</span>
-                          <span style={{ width: 80 }}>{b.ci.environment ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: '#f1f5f9', color: 'var(--color-slate)' }}>{b.ci.environment}</span> : null}</span>
-                          <span style={{ width: 60 }}><span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 4, backgroundColor: b.distance === 1 ? 'var(--color-danger-bg)' : b.distance === 2 ? '#fff7ed' : '#f1f5f9', color: b.distance === 1 ? 'var(--color-danger)' : b.distance === 2 ? '#b45309' : 'var(--color-slate)' }}>{b.distance} hop</span></span>
+                          <span style={{ width: 80 }}>{b.ci.type ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{b.ci.type}</span> : null}</span>
+                          <span style={{ width: 80 }}>{b.ci.environment ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{b.ci.environment}</span> : null}</span>
+                          <span style={{ width: 60 }}><span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 4, backgroundColor: b.distance === 1 ? 'var(--color-danger-bg)' : b.distance === 2 ? palette.orange.bg : colors.slateBg, color: b.distance === 1 ? 'var(--color-danger)' : b.distance === 2 ? palette.warning.text : 'var(--color-slate)' }}>{b.distance} hop</span></span>
                           <span style={{ width: 140, fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{b.affectedBy.name}</span>
                           {currentStep === wfInitialStep?.name && (
                             <span style={{ width: 100, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
@@ -570,7 +571,7 @@ export function ChangeDetailPage() {
             value={rejectNote}
             onChange={(e) => setRejectNote(e.target.value)}
             rows={3}
-            style={{ width: '100%', padding: 8, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 14 }}
+            style={{ width: '100%', padding: 8, border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 14 }}
             // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: textarea del modal di rigetto aperto dall'utente
             autoFocus
           />
@@ -590,7 +591,7 @@ export function ChangeDetailPage() {
           </fieldset>
 
           {reopenMode === 'some' && (
-            <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 12px', maxHeight: 240, overflowY: 'auto' }}>
+            <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '8px 12px', maxHeight: 240, overflowY: 'auto' }}>
               {taskGroups.length === 0 ? (
                 <p style={{ margin: 0, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>Nessun task disponibile.</p>
               ) : taskGroups.map((g) => (
@@ -646,7 +647,7 @@ export function ChangeDetailPage() {
             value={transitionNotes}
             onChange={(e) => setTransitionNotes(e.target.value)}
             rows={4}
-            style={{ width: '100%', padding: 8, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box', fontFamily: 'inherit' }}
+            style={{ width: '100%', padding: 8, border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box', fontFamily: 'inherit' }}
             // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: textarea del modal di transizione aperto dall'utente
             autoFocus
           />

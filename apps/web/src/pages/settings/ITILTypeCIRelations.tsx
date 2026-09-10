@@ -4,6 +4,7 @@ import { inputS, selectS, labelS, btnPrimary, btnSecondary } from './shared/desi
 import { Input, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import type { ITILCIRelationRule, RelFormState } from './useITILTypeDesigner'
+import { colors, palette } from '@/lib/tokens'
 
 const RELATION_SUGGESTIONS = ['IMPACTS', 'AFFECTED_BY', 'MODIFIES', 'TARGETS', 'ROOT_CAUSE', 'DEPENDS_ON', 'HOSTED_ON']
 
@@ -30,7 +31,7 @@ export function ITILTypeCIRelations({
     <div>
       {/* Add-relation inline form */}
       {showRelForm ? (
-        <div style={{ background: 'var(--color-slate-bg)', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+        <div style={{ background: 'var(--color-slate-bg)', border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, marginBottom: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
               <label style={labelS}>{t('itilDesigner.ciRelations.ciType')} *</label>
@@ -119,18 +120,18 @@ export function ITILTypeCIRelations({
             {rules.map((rule) => {
               const ciLabel = ciTypes.find((ct) => ct.name === rule.ciType)?.label ?? rule.ciType
               return (
-                <tr key={rule.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                  <td style={{ padding: '8px' }}><Pill bg="var(--color-info-bg)" color="#2563eb" radius={4} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500 }}>{ciLabel}</Pill></td>
+                <tr key={rule.id} style={{ borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
+                  <td style={{ padding: '8px' }}><Pill bg="var(--color-info-bg)" color={colors.brand} radius={4} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500 }}>{ciLabel}</Pill></td>
                   <td style={{ padding: '8px', fontFamily: 'monospace', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{rule.relationType}</td>
                   <td style={{ padding: '8px' }}>
-                    <Pill bg={rule.direction === 'outgoing' ? 'var(--color-success-bg)' : '#fef9c3'} color={rule.direction === 'outgoing' ? 'var(--color-success)' : '#854d0e'} radius={4} style={{ fontWeight: 400 }}>
+                    <Pill bg={rule.direction === 'outgoing' ? 'var(--color-success-bg)' : palette.yellow.bg} color={rule.direction === 'outgoing' ? 'var(--color-success)' : palette.yellow.text} radius={4} style={{ fontWeight: 400 }}>
                       {rule.direction === 'outgoing' ? '\u2192' : '\u2190'} {rule.direction}
                     </Pill>
                   </td>
                   <td style={{ padding: '8px', color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{rule.description ?? '\u2014'}</td>
                   <td style={{ padding: '8px' }}>
                     <button type="button"
-                      style={{ background: 'none', border: '1px solid #fecaca', borderRadius: 4, padding: '3px 8px', cursor: 'pointer', color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}
+                      style={{ background: 'none', border: `1px solid ${palette.danger.border}`, borderRadius: 4, padding: '3px 8px', cursor: 'pointer', color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}
                       onClick={() => onDeleteRule(rule.id)}
                     ><X size={12} /></button>
                   </td>

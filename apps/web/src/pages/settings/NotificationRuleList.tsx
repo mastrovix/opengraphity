@@ -1,15 +1,15 @@
 import { useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Lock, Unlock } from 'lucide-react'
-import { colors, fontSize, fontWeight } from '@/lib/tokens'
+import { colors, fontSize, fontWeight, palette } from '@/lib/tokens'
 import { Toggle as SharedToggle } from '@/components/ui/Toggle'
 
 // ── Re-exported from NotificationRulesPage ────────────────────────────────────
 
 export const SEVERITY_COLOR: Record<string, string> = {
   info:    'var(--color-trigger-manual)',
-  success: '#22c55e',
-  warning: '#eab308',
+  success: palette.success.base,
+  warning: palette.warning.base,
   error:   'var(--color-danger)',
 }
 
@@ -31,8 +31,8 @@ const TARGET_OPTIONS: { value: string; labelKey: string }[] = [
 ]
 
 const selectStyle: React.CSSProperties = {
-  padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 4,
-  fontSize: 'var(--font-size-body)', background: '#fafafa', cursor: 'pointer', width: '100%',
+  padding: '4px 8px', border: `1px solid ${colors.border}`, borderRadius: 4,
+  fontSize: 'var(--font-size-body)', background: palette.neutral.surface1, cursor: 'pointer', width: '100%',
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ export function RuleRow({
   const titleLabel = t(rule.titleKey, { defaultValue: '' }) || rule.eventType
 
   return (
-    <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+    <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
       {/* Enabled */}
       <td style={{ padding: '10px 12px', width: 52 }}>
         <Toggle value={rule.enabled} onChange={(v) => debounce({ enabled: v })} label={`${t('notificationRules.enabled')}: ${titleLabel}`} />
@@ -109,8 +109,8 @@ export function RuleRow({
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {titleLabel}
           {rule.isSeed
-            ? <span title={t('notificationRules.systemRule',   'Regola di sistema')}     style={{ display: 'inline-flex', flexShrink: 0 }}><Lock   size={14} color="#94a3b8" /></span>
-            : <span title={t('notificationRules.customRule',   'Regola personalizzata')} style={{ display: 'inline-flex', flexShrink: 0 }}><Unlock size={14} color="#94a3b8" /></span>
+            ? <span title={t('notificationRules.systemRule',   'Regola di sistema')}     style={{ display: 'inline-flex', flexShrink: 0 }}><Lock   size={14} color={colors.slateLight} /></span>
+            : <span title={t('notificationRules.customRule',   'Regola personalizzata')} style={{ display: 'inline-flex', flexShrink: 0 }}><Unlock size={14} color={colors.slateLight} /></span>
           }
         </div>
         <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontFamily: 'monospace', marginTop: 1 }}>{rule.eventType}</div>

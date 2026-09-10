@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Lightbulb } from 'lucide-react'
-import { colors } from '@/lib/tokens'
+import { colors, palette } from '@/lib/tokens'
 import { Textarea, FieldLabel } from '@/components/ui/FormControls'
 import { RULE_SUGGESTION_KEYS } from './AnomalyPage'
 import type { Anomaly } from '@/types/anomaly'
@@ -40,7 +40,7 @@ export function ResolutionForm({
       {/* Suggestion box */}
       {suggestion && (
         <div style={{
-          background: 'var(--color-brand-light, #eff6ff)',
+          background: colors.brandLight,
           borderLeft: `3px solid var(--color-brand)`,
           borderRadius: '0 6px 6px 0',
           padding: '10px 14px',
@@ -99,7 +99,7 @@ export function ResolutionForm({
 
       {/* Error */}
       {error && (
-        <div style={{ fontSize: 'var(--font-size-body)', color: colors.danger, padding: '8px 12px', background: '#fff5f5', border: `1px solid ${colors.danger}`, borderRadius: 6 }}>
+        <div style={{ fontSize: 'var(--font-size-body)', color: colors.danger, padding: '8px 12px', background: palette.danger.bg, border: `1px solid ${colors.danger}`, borderRadius: 6 }}>
           {error}
         </div>
       )}
@@ -112,8 +112,8 @@ export function ResolutionForm({
           onClick={() => onConfirm(resolutionStatus, note.trim())}
           style={{
             flex: 1, padding: '9px 14px', borderRadius: 6, border: 'none',
-            background: isValid && !loading ? 'var(--color-brand)' : '#c4c9d4',
-            color: '#fff', fontSize: 'var(--font-size-body)', fontWeight: 600,
+            background: isValid && !loading ? 'var(--color-brand)' : palette.neutral.borderStrong,
+            color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: 600,
             cursor: isValid && !loading ? 'pointer' : 'not-allowed',
             transition: 'background 150ms',
           }}

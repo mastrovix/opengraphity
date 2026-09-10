@@ -25,6 +25,7 @@ import { apolloClient } from '@/lib/apollo'
 import { toPascalCase, pluralize } from '@/lib/stringUtils'
 import { formatDate } from '@/lib/datetime'
 import { ciTypeLabelKey, toEnumOptions, useCIBaseEnums } from '@/lib/ciEnums'
+import { palette } from '@/lib/tokens'
 
 const PAGE_SIZE = 50
 
@@ -155,15 +156,15 @@ export function CIListPage() {
     { key: 'name', label: t('pages.cmdb.name'), sortable: true },
     {
       key: 'environment', label: t('pages.cmdb.environment'), sortable: true,
-      render: (v) => v ? <EnvBadge environment={v as string} /> : <span style={{ color: '#c4cad4' }}>—</span>,
+      render: (v) => v ? <EnvBadge environment={v as string} /> : <span style={{ color: palette.neutral.borderStrong }}>—</span>,
     },
     {
       key: 'status', label: t('pages.cmdb.status'), sortable: true,
-      render: (v) => v ? <StatusBadge value={v as string} /> : <span style={{ color: '#c4cad4' }}>—</span>,
+      render: (v) => v ? <StatusBadge value={v as string} /> : <span style={{ color: palette.neutral.borderStrong }}>—</span>,
     },
     {
       key: 'ownerGroup', label: t('pages.cmdb.ownerGroup'), sortable: true,
-      render: (v) => (v as CIItem['ownerGroup'])?.name ?? <span style={{ color: '#c4cad4' }}>—</span>,
+      render: (v) => (v as CIItem['ownerGroup'])?.name ?? <span style={{ color: palette.neutral.borderStrong }}>—</span>,
     },
     {
       key: 'createdAt', label: t('pages.cmdb.createdAt'), sortable: true,

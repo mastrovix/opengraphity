@@ -8,6 +8,7 @@ import { Eye, ExternalLink, X } from 'lucide-react'
 import { TASK_STATUS } from '@/lib/taskStatus'
 import { fmtShort } from '@/lib/datetime'
 import { StatusLabel } from '@/components/ui/badges'
+import { alpha, colors } from '@/lib/tokens'
 
 // Date e badge vivono nei moduli condivisi; i re-export mantengono i path
 // storici dei call site delle change.
@@ -31,7 +32,7 @@ export function EyeButton({ onClick }: { onClick: () => void }) {
   return (
     <button type="button" onClick={(e) => { e.stopPropagation(); onClick() }} style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
-      background: 'none', border: '1px solid #e5e7eb', borderRadius: 4,
+      background: 'none', border: '1px solid var(--color-border)', borderRadius: 4,
       padding: '2px 6px', cursor: 'pointer', fontSize: 'var(--font-size-label)',
       color: 'var(--color-brand)', fontWeight: 500,
     }}>
@@ -60,9 +61,9 @@ export function ModalOverlay({ title, onClose, children }: {
     // solo-mouse; l'equivalente da tastiera è Escape (keydown sopra) e il bottone "Chiudi".
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- overlay: chiusura via mouse, Escape/bottone per la tastiera
     <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+      style={{ position: 'fixed', inset: 0, background: alpha.scrim, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div ref={containerRef} role="dialog" aria-modal="true" aria-label={title} style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 600, width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }}>
+      <div ref={containerRef} role="dialog" aria-modal="true" aria-label={title} style={{ background: colors.white, borderRadius: 12, padding: 24, maxWidth: 600, width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 8px 24px var(--color-black-a15)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>{title}</h3>
           <button type="button" onClick={onClose} aria-label="Chiudi" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={18} color="var(--color-slate-light)" /></button>
@@ -82,14 +83,14 @@ export function TaskStatusRow({ label, code, status, scheduledDate, result, acto
   const isScheduled = scheduledDate && status === TASK_STATUS.PENDING && new Date(scheduledDate).getTime() > Date.now()
   const isCompleted = status === TASK_STATUS.COMPLETED
   return (
-    <div style={{ display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid #f3f4f6', fontSize: 'var(--font-size-label)' }}>
+    <div style={{ display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-label)' }}>
       <span style={{ width: 90, flexShrink: 0, color: 'var(--color-slate)', fontWeight: 500, paddingTop: 1 }}>{label}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {code && <span style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{code}</span>}
           {isScheduled
             ? <span style={{ color: 'var(--color-slate-light)' }}>Schedulato — {fmtShort(scheduledDate)}</span>
-            : status ? <StatusLabel status={status} /> : <span style={{ color: '#d1d5db' }}>—</span>
+            : status ? <StatusLabel status={status} /> : <span style={{ color: colors.slateLight }}>—</span>
           }
           {!isScheduled && result && <span style={{ color: 'var(--color-slate)' }}>· {result}</span>}
         </div>

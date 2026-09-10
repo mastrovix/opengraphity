@@ -7,6 +7,7 @@ import { errorMessage } from '@/hooks/useMutationWithToast'
 import { CREATE_CUSTOM_WIDGET, UPDATE_CUSTOM_WIDGET } from '@/graphql/mutations'
 import { GET_WIDGET_DATA_PREVIEW, GET_ITIL_TYPES, GET_CI_TYPES } from '@/graphql/queries'
 import type { CustomWidgetData } from './CustomWidgetCard'
+import { cssVar } from '@/lib/charts/cssVar'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 // Le etichette visibili sono chiavi i18n (`labelKey`, `descKey`, `subKey`,
@@ -72,14 +73,36 @@ export const TIME_RANGES = [
   { value: 'all', labelKey: 'pages.dashboard.timeRange.all' },
 ]
 
-export const PRESET_COLORS = [
-  { value: '#0EA5E9',              nameKey: 'pages.dashboard.color.cyan' },
-  { value: '#10b981',              nameKey: 'pages.dashboard.color.green' },
-  { value: 'var(--color-danger)',  nameKey: 'pages.dashboard.color.red' },
-  { value: 'var(--color-warning)', nameKey: 'pages.dashboard.color.amber' },
-  { value: '#8b5cf6',              nameKey: 'pages.dashboard.color.purple' },
-  { value: 'var(--color-slate)',   nameKey: 'pages.dashboard.color.slate' },
-]
+/**
+ * Colori proposti per un widget. Il colore del widget è un DATO scelto
+ * dall'utente (salvato sul widget, mostrato in <input type="color">, usato
+ * con suffisso alfa): deve essere un esadecimale concreto, non `var(--…)`.
+ * I preset partono comunque dai token: `cssVar` legge il valore risolto da
+ * :root, così un cambio di tavolozza cambia anche i preset (non i widget già
+ * salvati, che restano col colore scelto allora).
+ */
+export function presetColors(): { value: string; nameKey: string }[] {
+  return [
+    { value: cssVar('--color-brand'),        nameKey: 'pages.dashboard.color.cyan' },
+    { value: cssVar('--color-success'),      nameKey: 'pages.dashboard.color.green' },
+    { value: cssVar('--color-danger'),       nameKey: 'pages.dashboard.color.red' },
+    { value: cssVar('--color-warning'),      nameKey: 'pages.dashboard.color.amber' },
+    { value: cssVar('--color-purple-light'), nameKey: 'pages.dashboard.color.purple' },
+    { value: cssVar('--color-slate'),        nameKey: 'pages.dashboard.color.slate' },
+  ]
+}
+
+/**
+ * Tinta leggera del colore del widget (sfondo di chip e riquadri selezionati).
+ * Con un esadecimale a 6 cifre usa il suffisso alfa (`#rrggbb14` ≈ 8%); con
+ * qualsiasi altra forma (token, rgb) usa color-mix, così non si producono mai
+ * colori CSS non validi.
+ */
+export function widgetTint(color: string, alphaHex: '14' | '33' = '14'): string {
+  if (/^#[0-9a-fA-F]{6}$/.test(color)) return `${color}${alphaHex}`
+  const pct = alphaHex === '33' ? 20 : 8
+  return `color-mix(in srgb, ${color} ${pct}%, transparent)`
+}
 
 export const SIZE_OPTIONS = [
   { value: 'small',  labelKey: 'pages.dashboard.size.small',  subKey: 'pages.dashboard.sizeSub.small' },
@@ -171,7 +194,7 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
   const [filterValue,  setFilterValue]  = useState(widget?.filterValue  ?? '')
   const [timeRange,    setTimeRange]    = useState(widget?.timeRange     ?? 'all')
   const [size,         setSize]         = useState(widget?.size          ?? 'medium')
-  const [color,        setColor]        = useState(widget?.color         ?? '#0EA5E9')
+  const [color,        setColor]        = useState(widget?.color         ?? presetColors()[0]!.value)
   const [saving,       setSaving]       = useState(false)
 
   // Debounced preview vars

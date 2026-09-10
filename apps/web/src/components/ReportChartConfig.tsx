@@ -6,6 +6,7 @@ import {
 import { ReportPreview } from './ReportPreview'
 import type { SectionResult } from './ReportPreview'
 import type { NavigableField } from './ReportFlowNodes'
+import { colors, palette } from '@/lib/tokens'
 
 export const CHART_TYPES = [
   { value: 'kpi',            label: 'Numero totale',     desc: 'Quanti elementi ci sono?',       icon: <Hash size={18} /> },
@@ -63,9 +64,9 @@ const labelStyle: React.CSSProperties = {
 }
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 12px', borderRadius: 6,
-  border: '1px solid #d1d5db', fontSize: 'var(--font-size-body)', boxSizing: 'border-box',
+  border: `1px solid ${palette.neutral.borderStrong}`, fontSize: 'var(--font-size-body)', boxSizing: 'border-box',
 }
-const selectStyle: React.CSSProperties = { ...inputStyle, background: '#fff' }
+const selectStyle: React.CSSProperties = { ...inputStyle, background: colors.white }
 
 export function ReportChartConfig({
   chartType, onChartTypeChange,
@@ -110,14 +111,14 @@ export function ReportChartConfig({
                   display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
                   borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s',
                   font: 'inherit', textAlign: 'left', width: '100%',
-                  border:     chartType === ct.value ? '2px solid #0284c7' : '1px solid #e5e7eb',
-                  background: chartType === ct.value ? 'var(--color-brand-light)' : '#fff',
+                  border:     chartType === ct.value ? `2px solid ${colors.brand}` : `1px solid ${colors.border}`,
+                  background: chartType === ct.value ? 'var(--color-brand-light)' : colors.white,
                   color:      chartType === ct.value ? 'var(--color-brand)' : 'var(--color-slate)',
                 }}>
                   {ct.icon}
                   <div>
                     <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600 }}>{ct.label}</div>
-                    <div style={{ fontSize: 'var(--font-size-body)', color: chartType === ct.value ? '#22d3ee' : 'var(--color-slate-light)', marginTop: 2 }}>{ct.desc}</div>
+                    <div style={{ fontSize: 'var(--font-size-body)', color: chartType === ct.value ? palette.teal.light : 'var(--color-slate-light)', marginTop: 2 }}>{ct.desc}</div>
                   </div>
                 </button>
               ))}

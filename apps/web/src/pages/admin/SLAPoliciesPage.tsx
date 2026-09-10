@@ -53,7 +53,7 @@ const policyToForm = (p: SLAPolicy): FormState => ({
 })
 
 import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, palette } from '@/lib/tokens'
 
 const ENTITY_LABELS: Record<string, string> = {
   incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'Service Request',
@@ -174,12 +174,12 @@ export function SLAPoliciesPage() {
         <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{applicabilityText(row)}</div>
       </div>
     ) },
-    { key: 'priority', label: 'Priorita', sortable: true, render: (v) => v ? <Pill bg="#fef3c7" color="#92400e" radius={10}>{String(v)}</Pill> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>Tutte</span> },
-    { key: 'category', label: 'Categoria', sortable: true, render: (v) => v ? <Pill bg="#dbeafe" color="#1e40af" radius={10}>{String(v)}</Pill> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>Tutte</span> },
+    { key: 'priority', label: 'Priorita', sortable: true, render: (v) => v ? <Pill bg={palette.warning.tint} color={palette.warning.strong} radius={10}>{String(v)}</Pill> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>Tutte</span> },
+    { key: 'category', label: 'Categoria', sortable: true, render: (v) => v ? <Pill bg={palette.info.tint} color={palette.info.text} radius={10}>{String(v)}</Pill> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>Tutte</span> },
     { key: 'teamName', label: 'Team', sortable: true, render: (v) => <span style={{ color: v ? 'var(--color-slate-dark)' : 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{v ? String(v) : 'Tutti'}</span> },
     { key: 'responseMinutes', label: 'Risposta', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v))}</span> },
     { key: 'resolveMinutes', label: 'Risoluzione', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v))}</span> },
-    { key: 'businessHours', label: 'Business Hours', sortable: true, render: (v) => <Pill bg={v ? '#dcfce7' : 'var(--color-border-light)'} color={v ? '#15803d' : 'var(--color-slate)'} radius={10}>{v ? 'Si' : 'No'}</Pill> },
+    { key: 'businessHours', label: 'Business Hours', sortable: true, render: (v) => <Pill bg={v ? palette.success.tint : 'var(--color-border-light)'} color={v ? palette.success.text : 'var(--color-slate)'} radius={10}>{v ? 'Si' : 'No'}</Pill> },
     { key: 'enabled', label: 'Attiva', sortable: true, render: (_v, row) => (
       <Toggle checked={row.enabled} onChange={() => void handleToggle(row)} label={t('admin.sla.toggleLabel', { name: row.name })} />
     ) },
@@ -319,7 +319,7 @@ export function SLAPoliciesPage() {
             </div>
 
             {/* Preview */}
-            <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', fontSize: 'var(--font-size-body)', color: 'var(--accent-hover)' }}>
+            <div style={{ background: palette.info.light, border: `1px solid ${palette.info.border}`, borderRadius: 8, padding: '10px 14px', fontSize: 'var(--font-size-body)', color: 'var(--accent-hover)' }}>
               <strong>Anteprima:</strong> {formPreview()} — risposta entro {fmtMinutes(form.responseMinutes)}, risoluzione entro {fmtMinutes(form.resolveMinutes)}
               {form.businessHours ? ' (orario lavorativo)' : ' (24/7)'}
             </div>

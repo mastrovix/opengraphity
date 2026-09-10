@@ -1,6 +1,8 @@
 /**
  * Single "Conferma Deploy" button for the deployment task.
  */
+import { colors } from '@/lib/tokens'
+
 export function DeploymentTaskForm({ canEdit, onComplete }: {
   canEdit: boolean
   onComplete: () => void
@@ -12,7 +14,7 @@ export function DeploymentTaskForm({ canEdit, onComplete }: {
       </p>
       <button
         type="button" disabled={!canEdit} onClick={onComplete}
-        style={{ padding: '12px 32px', borderRadius: 8, border: 'none', background: 'var(--color-success)', color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: canEdit ? 'pointer' : 'not-allowed', opacity: canEdit ? 1 : 0.5 }}
+        style={{ padding: '12px 32px', borderRadius: 8, border: 'none', background: 'var(--color-success)', color: colors.white, fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: canEdit ? 'pointer' : 'not-allowed', opacity: canEdit ? 1 : 0.5 }}
       >
         Conferma Deploy
       </button>

@@ -1,6 +1,7 @@
 import { AlertCircle, GitPullRequest, Users, User, Box } from 'lucide-react'
 import type { Node } from '@xyflow/react'
 import type { NavigableEntity } from './ReportFlowNodes'
+import { colors, palette } from '@/lib/tokens'
 
 interface NodeDataEntry {
   entityType: string; neo4jLabel: string; label: string
@@ -17,9 +18,9 @@ interface Props {
 function getEntityIcon(entityType: string, size = 24): React.ReactNode {
   switch (entityType) {
     case 'Incident': return <AlertCircle    size={size} color="var(--color-danger)" />
-    case 'Change':   return <GitPullRequest  size={size} color="#3b82f6" />
-    case 'Team':     return <Users           size={size} color="#8b5cf6" />
-    case 'User':     return <User            size={size} color="#10b981" />
+    case 'Change':   return <GitPullRequest  size={size} color={colors.brand} />
+    case 'Team':     return <Users           size={size} color={palette.purple.light} />
+    case 'User':     return <User            size={size} color={colors.success} />
     default:         return <Box             size={size} color="var(--color-brand)" />
   }
 }
@@ -52,8 +53,8 @@ export function ReportQueryBuilder({ entities, nodes, nodeDataMap, onSelectRoot 
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                   gap: 10, padding: '20px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'center',
                   transition: 'all 0.15s', font: 'inherit',
-                  border:     isSelected ? '2px solid #0284c7' : '1px solid #e5e7eb',
-                  background: isSelected ? 'var(--color-brand-light)' : '#fff',
+                  border:     isSelected ? `2px solid ${colors.brand}` : `1px solid ${colors.border}`,
+                  background: isSelected ? 'var(--color-brand-light)' : colors.white,
                 }}
               >
                 {getEntityIcon(e.entityType, 28)}

@@ -1,5 +1,6 @@
 import { Lock, Trash2 } from 'lucide-react'
 import { btnSecondary, btnDanger } from './designerStyles'
+import { colors } from '../../../lib/tokens'
 
 export interface FieldRowData {
   id:           string
@@ -31,14 +32,14 @@ export function DesignerFieldRow({
     <div
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '10px 14px', background: '#fff', border: '1px solid var(--border)',
+        padding: '10px 14px', background: colors.white, border: '1px solid var(--border)',
         borderRadius: 6, marginBottom: 4,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
         {field.isSystem ? (
           <span title={systemFieldLabel}>
-            <Lock size={12} color="#94a3b8" style={{ flexShrink: 0 }} />
+            <Lock size={12} color={colors.slateLight} style={{ flexShrink: 0 }} />
           </span>
         ) : (
           <div style={{ width: 12 }} />

@@ -10,6 +10,7 @@ import { Button } from '@/components/Button'
 import { Input, Select, FieldLabel } from '@/components/ui/FormControls'
 import { apiUrl } from '@/lib/apiBase'
 import { useConfirm } from '@/hooks/useConfirm'
+import { colors, palette } from '@/lib/tokens'
 
 // ── Types (REST contract /api/v1/import/*) ────────────────────────────────────
 
@@ -193,7 +194,7 @@ export function ImportTab() {
             {file ? (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
                 {file.name}
-                <Pill bg="#f1f5f9" color="var(--color-slate)">{formatSize(file.size)}</Pill>
+                <Pill bg={colors.slateBg} color="var(--color-slate)">{formatSize(file.size)}</Pill>
                 <Button
                   variant="ghost"
                   icon={<X size={14} color="var(--color-slate)" />}
@@ -249,17 +250,17 @@ export function ImportTab() {
           collapsible={false}
         >
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Pill bg="#f1f5f9" color="var(--color-slate)">{t('pages.import.statTotal')}: {report.totalRows}</Pill>
-            <Pill bg="#dcfce7" color="var(--color-success)">{t('pages.import.statCreated')}: {report.created}</Pill>
-            <Pill bg="#f0f4ff" color="var(--color-brand)">{t('pages.import.statUpdated')}: {report.updated}</Pill>
-            <Pill bg="#fee2e2" color="var(--color-trigger-sla-breach)">{t('pages.import.statErrors')}: {report.errors.length}</Pill>
+            <Pill bg={colors.slateBg} color="var(--color-slate)">{t('pages.import.statTotal')}: {report.totalRows}</Pill>
+            <Pill bg={palette.success.tint} color="var(--color-success)">{t('pages.import.statCreated')}: {report.created}</Pill>
+            <Pill bg={palette.info.bg} color="var(--color-brand)">{t('pages.import.statUpdated')}: {report.updated}</Pill>
+            <Pill bg={palette.danger.tint} color="var(--color-trigger-sla-breach)">{t('pages.import.statErrors')}: {report.errors.length}</Pill>
           </div>
 
           {report.errors.length > 0 && (
             <div>
               <FieldLabel>
                 {t('pages.import.errors')}{' '}
-                <Pill bg="#fee2e2" color="var(--color-trigger-sla-breach)">{report.errors.length}</Pill>
+                <Pill bg={palette.danger.tint} color="var(--color-trigger-sla-breach)">{report.errors.length}</Pill>
               </FieldLabel>
               <SimpleTable<IssueRow> columns={issueColumns} rows={toIssueRows(report.errors)} />
             </div>
@@ -269,7 +270,7 @@ export function ImportTab() {
             <div>
               <FieldLabel>
                 {t('pages.import.warnings')}{' '}
-                <Pill bg="#fef3c7" color="#92400e">{report.warnings.length}</Pill>
+                <Pill bg={palette.warning.tint} color={palette.warning.strong}>{report.warnings.length}</Pill>
               </FieldLabel>
               <SimpleTable<IssueRow> columns={issueColumns} rows={toIssueRows(report.warnings)} />
             </div>

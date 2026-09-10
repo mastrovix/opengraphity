@@ -13,7 +13,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { useMe } from '@/hooks/useMe'
 import { keycloak } from '@/lib/keycloak'
-import { layoutPalette as C } from '@/lib/tokens'
+import { layoutPalette as C, alpha, colors } from '@/lib/tokens'
 import { useNotificationContext } from '@/contexts/NotificationContext'
 import { NotificationPanel } from '@/components/ui/NotificationPanel'
 
@@ -192,7 +192,7 @@ export function Topbar() {
                   height:          8,
                   borderRadius:    4,
                   backgroundColor: 'var(--warning)',
-                  border:          '1px solid #fff',
+                  border:          `1px solid ${colors.white}`,
                 }}
               />
             )}
@@ -207,7 +207,7 @@ export function Topbar() {
                   height:          14,
                   borderRadius:    7,
                   backgroundColor: 'var(--color-danger)',
-                  color:           '#fff',
+                  color:           colors.white,
                   fontSize:        9,
                   fontWeight:      700,
                   display:         'flex',
@@ -271,10 +271,10 @@ export function Topbar() {
           <DropdownMenuContent
             align="end"
             style={{
-              backgroundColor: '#ffffff',
+              backgroundColor: colors.white,
               border: '1px solid var(--border)',
               borderRadius: 10,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+              boxShadow: `0 4px 12px ${alpha.black10}`,
               minWidth: 180,
               padding: '8px 0',
               zIndex: 50,

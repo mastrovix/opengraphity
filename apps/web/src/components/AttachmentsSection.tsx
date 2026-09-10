@@ -8,6 +8,7 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { apiUrl, authHeader } from '@/lib/apiBase'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
+import { colors } from '@/lib/tokens'
 
 const GET_ATTACHMENTS = gql`
   query GetAttachments($entityType: String!, $entityId: String!) {
@@ -169,7 +170,7 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', backgroundColor: '#fff', border: '1px dashed var(--border-strong)', borderRadius: 6, cursor: uploading ? 'default' : 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', backgroundColor: colors.white, border: '1px dashed var(--border-strong)', borderRadius: 6, cursor: uploading ? 'default' : 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)' }}
           >
             {uploading ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Paperclip size={13} aria-hidden="true" />}
             {uploading ? t('attachments.uploading') : t('attachments.upload')}

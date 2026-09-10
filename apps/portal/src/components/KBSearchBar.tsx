@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Search } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { colors, alpha } from '@/lib/tokens'
 
 interface Props {
   initialValue?: string
@@ -33,7 +34,7 @@ export function KBSearchBar({ initialValue = '', onSearch, large = false }: Prop
           left:      large ? 16 : 12,
           top:       '50%',
           transform: 'translateY(-50%)',
-          color:     '#94A3B8',
+          color:     colors.slateLight,
           pointerEvents: 'none',
         }}
       />
@@ -45,15 +46,15 @@ export function KBSearchBar({ initialValue = '', onSearch, large = false }: Prop
         style={{
           width:          '100%',
           padding:        large ? '14px 16px 14px 48px' : '9px 12px 9px 36px',
-          border:         '1.5px solid #E2E8F0',
+          border:         `1.5px solid ${colors.border}`,
           borderRadius:   large ? 12 : 8,
           fontSize:       large ? 16 : 14,
           outline:        'none',
-          boxShadow:      large ? '0 2px 12px rgba(0,0,0,0.06)' : 'none',
+          boxShadow:      large ? `0 2px 12px ${alpha.black06}` : 'none',
           transition:     'border-color 0.15s',
         }}
-        onFocus={e => { e.currentTarget.style.borderColor = '#0EA5E9' }}
-        onBlur={e  => { e.currentTarget.style.borderColor = '#E2E8F0' }}
+        onFocus={e => { e.currentTarget.style.borderColor = colors.brand }}
+        onBlur={e  => { e.currentTarget.style.borderColor = colors.border }}
       />
       {q && (
         <button
@@ -64,8 +65,8 @@ export function KBSearchBar({ initialValue = '', onSearch, large = false }: Prop
             top:             '50%',
             transform:       'translateY(-50%)',
             padding:         '6px 14px',
-            backgroundColor: '#0EA5E9',
-            color:           '#fff',
+            backgroundColor: colors.brand,
+            color:           colors.white,
             border:          'none',
             borderRadius:    6,
             fontSize:        13,

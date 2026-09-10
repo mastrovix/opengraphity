@@ -7,7 +7,7 @@ import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
 import { Skeleton } from '@/components/ui/skeleton'
 import { GET_WORKFLOW_LIST } from '@/graphql/queries'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, colors, palette } from '@/lib/tokens'
 import { Pill } from '@/components/ui/Pill'
 
 interface WorkflowDef {
@@ -21,17 +21,17 @@ interface WorkflowDef {
 }
 
 const SUBTYPE_COLORS: Record<string, { bg: string; fg: string }> = {
-  standard:  { bg: '#dcfce7', fg: '#166534' },
-  normal:    { bg: '#dbeafe', fg: '#1e40af' },
-  emergency: { bg: '#fee2e2', fg: '#991b1b' },
+  standard:  { bg: palette.success.tint, fg: palette.success.strong },
+  normal:    { bg: palette.info.tint, fg: palette.info.text },
+  emergency: { bg: palette.danger.tint, fg: palette.danger.strong },
 }
 
 const ENTITY_META: Record<string, { label: string; Icon: typeof AlertCircle; color: string }> = {
   incident:        { label: 'Incident',        Icon: AlertCircle,    color: 'var(--color-danger)' },
-  change:          { label: 'Change',          Icon: GitPullRequest, color: '#8b5cf6' },
+  change:          { label: 'Change',          Icon: GitPullRequest, color: palette.purple.light },
   problem:         { label: 'Problem',         Icon: Search,         color: 'var(--color-warning)' },
   service_request: { label: 'Service Request', Icon: Inbox,          color: 'var(--color-brand)' },
-  kb_article:      { label: 'Knowledge Base',  Icon: BookOpen,       color: '#10b981' },
+  kb_article:      { label: 'Knowledge Base',  Icon: BookOpen,       color: palette.success.base },
 }
 
 const ENTITY_ORDER = ['incident', 'change', 'problem', 'service_request', 'kb_article']
@@ -101,7 +101,7 @@ export function WorkflowListPage() {
             return (
               <div key={entityType}>
                 {/* Column header */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, paddingBottom: 10, borderBottom: '2px solid #e5e7eb' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, paddingBottom: 10, borderBottom: '2px solid var(--color-border)' }}>
                   <meta.Icon size={18} color={meta.color} />
                   <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{meta.label}</span>
                   <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginLeft: 'auto' }}>{items.length}</span>
@@ -115,8 +115,8 @@ export function WorkflowListPage() {
                       key={def.id}
                       onClick={() => navigate(`/workflow/${def.id}`)}
                       style={{
-                        background:    '#fff',
-                        border:        '1px solid #e5e7eb',
+                        background:    colors.white,
+                        border:        '1px solid var(--color-border)',
                         borderRadius:  10,
                         padding:       16,
                         cursor:        'pointer',
@@ -130,12 +130,12 @@ export function WorkflowListPage() {
                         color:         'inherit',
                       }}
                       onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'
+                        (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px var(--color-black-a08)'
                         ;(e.currentTarget as HTMLElement).style.borderColor = meta.color
                       }}
                       onMouseLeave={(e) => {
                         (e.currentTarget as HTMLElement).style.boxShadow = 'none'
-                        ;(e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb'
+                        ;(e.currentTarget as HTMLElement).style.borderColor = colors.border
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
@@ -144,7 +144,7 @@ export function WorkflowListPage() {
                         </span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           {def.changeSubtype && (() => {
-                            const sc = lookupOrError(SUBTYPE_COLORS, def.changeSubtype, 'SUBTYPE_COLORS', { bg: 'var(--color-danger)', fg: '#fff' })
+                            const sc = lookupOrError(SUBTYPE_COLORS, def.changeSubtype, 'SUBTYPE_COLORS', { bg: 'var(--color-danger)', fg: colors.white })
                             return (
                               <Pill bg={sc.bg} color={sc.fg} radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
                                 {def.changeSubtype === 'standard' ? 'Standard' : def.changeSubtype === 'normal' ? 'Normal' : 'Emergency'}
@@ -152,11 +152,11 @@ export function WorkflowListPage() {
                             )
                           })()}
                           {def.category ? (
-                            <Pill bg="#fef3c7" color="#92400e" radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
+                            <Pill bg={palette.warning.tint} color={palette.warning.strong} radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
                               {def.category}
                             </Pill>
                           ) : (
-                            <Pill bg="#dcfce7" color="#166534" radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
+                            <Pill bg={palette.success.tint} color={palette.success.strong} radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
                               Default
                             </Pill>
                           )}
@@ -164,7 +164,7 @@ export function WorkflowListPage() {
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Pill bg={def.active ? 'var(--color-brand-light)' : 'var(--color-slate-bg)'} color={def.active ? 'var(--color-brand)' : 'var(--color-slate-light)'} radius={100} style={{ fontSize: 11, border: def.active ? '1px solid #a5f3fc' : '1px solid #e5e7eb' }}>
+                        <Pill bg={def.active ? 'var(--color-brand-light)' : 'var(--color-slate-bg)'} color={def.active ? 'var(--color-brand)' : 'var(--color-slate-light)'} radius={100} style={{ fontSize: 11, border: def.active ? '1px solid var(--color-teal-border)' : '1px solid var(--color-border)' }}>
                           {def.active ? 'Attivo' : 'Inattivo'}
                         </Pill>
                         <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>v{def.version}</span>

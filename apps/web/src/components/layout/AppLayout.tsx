@@ -5,6 +5,7 @@ import { keycloak } from '../../lib/keycloak'
 import { ConfirmProvider } from '@/hooks/useConfirm'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
+import { colors } from '@/lib/tokens'
 
 const SIDEBAR_WIDTH     = 240
 const SIDEBAR_COLLAPSED = 56
@@ -34,8 +35,8 @@ export function AppLayout() {
             left:            '16px',
             zIndex:          9999,
             padding:         '8px 16px',
-            backgroundColor: '#1a2332',
-            color:           '#fff',
+            backgroundColor: colors.slateDark,
+            color:           colors.white,
             textDecoration:  'none',
             borderRadius:    '4px',
             fontSize:        '14px',

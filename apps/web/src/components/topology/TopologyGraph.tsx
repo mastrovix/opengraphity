@@ -1,7 +1,7 @@
 import { useEffect, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as d3 from 'd3'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, alpha, colors, palette } from '@/lib/tokens'
 import { buildTypeIconMap, iconKeyForType } from '@/lib/ciIconPaths'
 import { CIIcon } from '@/lib/ciIcon'
 import {
@@ -53,12 +53,12 @@ interface Props {
 const NODE_RADIUS  = 16
 const NODE_COLOR   = 'var(--color-slate)'   // ardesia — uguale per tutti i tipi CI
 const EDGE_COLOR   = 'var(--color-trigger-manual)'   // cyan — uguale per tutti i tipi relazione
-const NODE_SELECTED_COLOR = '#f97316'  // arancione — nodo evidenziato
+const NODE_SELECTED_COLOR = palette.orange.base  // arancione — nodo evidenziato
 
 /** Colori della salute (stessa palette di CIHealthBadge in pages/events/eventShared). */
 export const HEALTH_COLOR: Record<string, { stroke: string; fill: string }> = {
-  down:     { stroke: '#dc2626', fill: '#fee2e2' },
-  degraded: { stroke: '#d97706', fill: '#fef3c7' },
+  down:     { stroke: palette.danger.dark, fill: palette.danger.tint },
+  degraded: { stroke: palette.warning.dark, fill: palette.warning.tint },
 }
 
 /** Bordo del nodo: salute (se evidenziata) > anelli incident/change (bordo assente) > ardesia. */
@@ -72,7 +72,7 @@ function nodeStroke(d: TopologyNode, highlightHealth: boolean): string {
 function nodeFill(d: TopologyNode, rootNodeId: string | null | undefined, highlightHealth: boolean): string {
   const h = highlightHealth && d.health ? HEALTH_COLOR[d.health] : undefined
   if (h) return h.fill
-  return d.id === rootNodeId ? EDGE_COLOR : '#ffffff'
+  return d.id === rootNodeId ? EDGE_COLOR : colors.white
 }
 
 const EDGE_DIST: Record<string, number> = {
@@ -121,7 +121,7 @@ function drawStatusRings(nodeEl: d3.Selection<SVGGElement, SimNode, SVGGElement,
   nodeEl.filter((d) => d.changeCount > 0).insert('circle', ':first-child')
     .attr('class', 'topo-pulse-change')
     .attr('r', r + 4).attr('fill', 'none')
-    .attr('stroke', '#8b5cf6').attr('stroke-width', 3).attr('pointer-events', 'none')
+    .attr('stroke', palette.purple.light).attr('stroke-width', 3).attr('pointer-events', 'none')
   nodeEl.filter((d) => d.incidentCount > 0).insert('circle', ':first-child')
     .attr('class', 'topo-pulse-incident')
     .attr('r', r + 6).attr('fill', 'none')
@@ -288,7 +288,7 @@ export default function TopologyGraph({
 
     // Layer 5: icon — white on root node (cyan bg), slate on all others
     nodeEl.each(function(d) {
-      const iconColor = d.id === rootNodeId && !(highlightHealthRef.current && d.health && HEALTH_COLOR[d.health]) ? '#ffffff' : NODE_COLOR
+      const iconColor = d.id === rootNodeId && !(highlightHealthRef.current && d.health && HEALTH_COLOR[d.health]) ? colors.white : NODE_COLOR
       appendIcon(d3.select(this), iconKeyForType(typeIconMap, d.type), iconColor, 18)
     })
 
@@ -509,11 +509,11 @@ export function TopologyLegend({ nodes, edges, ciTypes, highlightHealth = false 
   return (
     <div style={{
       position: 'absolute', bottom: 16, left: 16,
-      background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(4px)',
-      border: '1px solid #e2e8f0', borderRadius: 8,
+      background: alpha.white92, backdropFilter: 'blur(4px)',
+      border: `1px solid ${colors.border}`, borderRadius: 8,
       padding: '10px 14px', fontSize: 'var(--font-size-table)',
       fontFamily: GRAPH_FONT,
-      boxShadow: '0 2px 8px rgba(0,0,0,0.08)', minWidth: 190,
+      boxShadow: `0 2px 8px ${alpha.black08}`, minWidth: 190,
     }}>
       <div style={{ fontWeight: 700, color: 'var(--color-slate-dark)', marginBottom: 8 }}>{t('components.topologyGraph.legend')}</div>
 
@@ -558,11 +558,11 @@ export function TopologyLegend({ nodes, edges, ciTypes, highlightHealth = false 
       <div>
         <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }}>{t('components.topologyGraph.signals')}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-          <svg width={16} height={16} aria-hidden="true"><circle cx={8} cy={8} r={5} fill="none" stroke="#dc2626" strokeWidth={2} /></svg>
+          <svg width={16} height={16} aria-hidden="true"><circle cx={8} cy={8} r={5} fill="none" stroke={palette.danger.dark} strokeWidth={2} /></svg>
           <span style={{ color: 'var(--color-slate)' }}>{t('components.topologyGraph.activeIncident')}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <svg width={16} height={16} aria-hidden="true"><circle cx={8} cy={8} r={5} fill="none" stroke="#8b5cf6" strokeWidth={1.5} /></svg>
+          <svg width={16} height={16} aria-hidden="true"><circle cx={8} cy={8} r={5} fill="none" stroke={palette.purple.light} strokeWidth={1.5} /></svg>
           <span style={{ color: 'var(--color-slate)' }}>{t('components.topologyGraph.changeInProgress')}</span>
         </div>
       </div>

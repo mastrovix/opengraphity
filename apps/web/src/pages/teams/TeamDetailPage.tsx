@@ -18,7 +18,7 @@ import { GET_TEAM } from '@/graphql/queries'
 import { SET_TEAM_MANAGER, REMOVE_TEAM_MANAGER, SET_CHANGE_MANAGER_TEAM } from '@/graphql/mutations'
 import { ciPath } from '@/lib/ciPath'
 import { toast } from 'sonner'
-import { lookupStyle } from '@/lib/tokens'
+import { colors, palette, lookupStyle } from '@/lib/tokens'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 
 interface Member {
@@ -59,7 +59,7 @@ interface Team {
 function TypeBadge({ type }: { type: string | null }) {
   if (!type) return <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>—</span>
   const styles: Record<string, { bg: string; color: string }> = {
-    owner:   { bg: 'var(--color-info-bg)', color: '#2563eb' },
+    owner:   { bg: 'var(--color-info-bg)', color: colors.brand },
     support: { bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
   }
   const s = lookupStyle(styles, type, 'TEAM_TYPE_STYLES')
@@ -175,7 +175,7 @@ export function TeamDetailPage() {
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-bg)' }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
                   >
-                    <X size={12} color="#ef4444" />
+                    <X size={12} color={colors.danger} />
                   </button>
                 </div>
               ) : (
@@ -217,7 +217,7 @@ export function TeamDetailPage() {
               <div style={{ margin: -24 }}>
                 {/* Confirmation banner */}
                 {pendingManagerUser && (
-                  <div style={{ padding: '12px 20px', background: 'var(--color-warning-bg)', borderBottom: '1px solid #fbbf24' }}>
+                  <div style={{ padding: '12px 20px', background: 'var(--color-warning-bg)', borderBottom: `1px solid ${palette.warning.border}` }}>
                     <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginBottom: 10 }}>
                       Il manager attuale <strong>{team.manager?.name}</strong> verrà sostituito da <strong>{pendingManagerUser.name}</strong>. Confermi?
                     </div>
@@ -273,9 +273,9 @@ export function TeamDetailPage() {
                           }
                         }}
                         className="hover-bg"
-                        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '10px 20px', cursor: 'pointer', borderBottom: i < filtered.length - 1 ? '1px solid #f3f4f6' : 'none', ['--hover-bg' as string]: '#f0f9ff' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '10px 20px', cursor: 'pointer', borderBottom: i < filtered.length - 1 ? `1px solid ${palette.neutral.borderLight}` : 'none', ['--hover-bg' as string]: palette.info.light }}
                       >
-                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: palette.info.tint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           <Users size={13} color="var(--color-brand)" />
                         </div>
                         <div style={{ flex: 1 }}>

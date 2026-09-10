@@ -1,4 +1,5 @@
 import { ReportChartRenderer } from './ReportChartRenderer'
+import { colors, palette } from '@/lib/tokens'
 
 export interface SectionResult {
   sectionId:  string
@@ -19,8 +20,8 @@ interface Props {
 export function ReportPreview({ loading, data, title, placeholder }: Props) {
   return (
     <div style={{
-      border: '1px solid #e5e7eb', borderRadius: 8, padding: 16,
-      background: '#fafafa', minHeight: 220,
+      border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16,
+      background: palette.neutral.surface1, minHeight: 220,
       display: 'flex',
       alignItems:     loading || !data ? 'center' : 'flex-start',
       justifyContent: loading || !data ? 'center' : 'flex-start',

@@ -27,7 +27,7 @@ describe('ciStatusStyle', () => {
   })
   it('stato ignoto → stile rotto (rosso) e console.error', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect(ciStatusStyle('zombie')).toEqual({ bg: 'var(--color-danger)', color: '#fff' })
+    expect(ciStatusStyle('zombie')).toEqual({ bg: 'var(--color-danger)', color: 'var(--color-white)' })
     expect(err).toHaveBeenCalledWith('[CI_STATUS_STYLE] valore sconosciuto: "zombie"')
   })
 })

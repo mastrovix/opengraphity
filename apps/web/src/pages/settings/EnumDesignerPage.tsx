@@ -15,6 +15,7 @@ import {
   UPDATE_ENUM_TYPE,
   DELETE_ENUM_TYPE,
 } from '@/graphql/mutations'
+import { colors, palette } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -184,7 +185,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
         {e.isSystem && (
           <span style={{
             display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-table)',
-            background: '#f0f4ff', color: 'var(--color-brand)', padding: '2px 8px',
+            background: palette.info.bg, color: 'var(--color-brand)', padding: '2px 8px',
             borderRadius: 20, fontWeight: 500,
           }}>
             <Lock size={10} aria-hidden="true" /> {t('pages.dictionary.systemBadge')}
@@ -206,7 +207,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
         <label htmlFor="editor-name" style={labelS}>{t('pages.dictionary.nameLabel')}</label>
         <Input
           id="editor-name"
-          style={{ ...inputS, background: 'var(--color-slate-bg)', color: '#8892a4' }}
+          style={{ ...inputS, background: 'var(--color-slate-bg)', color: colors.slateLight }}
           value={e.name}
           readOnly
         />
@@ -228,7 +229,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
         <label htmlFor="editor-scope" style={labelS}>{t('pages.dictionary.scopeLabel')}</label>
         <Select
           id="editor-scope"
-          style={{ ...inputS, ...(e.isSystem ? { background: 'var(--color-slate-bg)', color: '#8892a4' } : {}) }}
+          style={{ ...inputS, ...(e.isSystem ? { background: 'var(--color-slate-bg)', color: colors.slateLight } : {}) }}
           value={scope}
           onChange={(ev) => setDirtyScope(ev.target.value)}
           disabled={e.isSystem}
@@ -248,7 +249,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
               key={v}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 4,
-                padding: '3px 10px', background: '#f0f4ff', borderRadius: 20,
+                padding: '3px 10px', background: palette.info.bg, borderRadius: 20,
                 fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', fontWeight: 500,
               }}
             >
@@ -258,7 +259,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
                 onClick={() => removeValue(v)}
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                  display: 'flex', color: '#8892a4', lineHeight: 1,
+                  display: 'flex', color: colors.slateLight, lineHeight: 1,
                 }}
                 aria-label={t('pages.dictionary.removeValueLabel', { value: v })}
               >
@@ -267,7 +268,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
             </span>
           ))}
           {values.length === 0 && (
-            <span style={{ fontSize: 'var(--font-size-body)', color: '#8892a4' }}>{t('pages.dictionary.noValues')}</span>
+            <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight }}>{t('pages.dictionary.noValues')}</span>
           )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -286,7 +287,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
       </div>
 
       {/* Actions */}
-      <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid #f1f3f9' }}>
+      <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: `1px solid ${palette.neutral.borderLight}` }}>
         {dirty && (
           <>
             <button type="button" style={btnPrimary} onClick={handleSave} disabled={saving}>
@@ -374,7 +375,7 @@ export function EnumDesignerPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, alignItems: 'start' }}>
         {/* Left: enum list */}
-        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('pages.dictionary.listHeader')}</span>
             <button
@@ -389,7 +390,7 @@ export function EnumDesignerPage() {
 
           <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
             {loading && !allEnums.length && (
-              <p style={{ padding: '20px 16px', fontSize: 'var(--font-size-body)', color: '#8892a4' }}>{t('pages.dictionary.loading')}</p>
+              <p style={{ padding: '20px 16px', fontSize: 'var(--font-size-body)', color: colors.slateLight }}>{t('pages.dictionary.loading')}</p>
             )}
             {Object.entries(groups).map(([groupName, items]) => (
               <div key={groupName}>
@@ -397,7 +398,7 @@ export function EnumDesignerPage() {
                   padding: '5px 16px 4px', fontSize: 'var(--font-size-label)', fontWeight: 600,
                   textTransform: 'uppercase', letterSpacing: '0.06em',
                   color: 'var(--color-slate-light)', background: 'var(--color-slate-bg)',
-                  borderBottom: '1px solid #f3f4f6',
+                  borderBottom: `1px solid ${palette.neutral.borderLight}`,
                 }}>
                   {groupName}
                 </div>
@@ -408,16 +409,16 @@ export function EnumDesignerPage() {
                     onClick={() => setSelectedId(e.id)}
                     style={{
                       width: '100%', textAlign: 'left', padding: '8px 16px',
-                      background: selectedId === e.id ? '#f0f9ff' : 'transparent',
+                      background: selectedId === e.id ? palette.info.light : 'transparent',
                       border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
                       borderLeft: selectedId === e.id ? '3px solid var(--color-brand)' : '3px solid transparent',
-                      borderBottom: '1px solid #f3f4f6',
+                      borderBottom: `1px solid ${palette.neutral.borderLight}`,
                     }}
                     aria-current={selectedId === e.id ? 'true' : undefined}
                   >
                     {e.isSystem
                       ? <Lock     size={11} style={{ color: 'var(--color-brand)', flexShrink: 0 }} aria-hidden="true" />
-                      : <LockOpen size={11} style={{ color: '#8892a4', flexShrink: 0 }} aria-hidden="true" />
+                      : <LockOpen size={11} style={{ color: colors.slateLight, flexShrink: 0 }} aria-hidden="true" />
                     }
                     <span style={{ flex: 1, fontSize: 'var(--font-size-body)', fontWeight: selectedId === e.id ? 600 : 500, color: selectedId === e.id ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {e.label}
@@ -442,7 +443,7 @@ export function EnumDesignerPage() {
             />
           ) : (
             <div style={{
-              background: '#fff', border: '1px solid var(--border)', borderRadius: 10,
+              background: colors.white, border: '1px solid var(--border)', borderRadius: 10,
               padding: 40, textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)',
             }}>
               {t('common.noResults')}

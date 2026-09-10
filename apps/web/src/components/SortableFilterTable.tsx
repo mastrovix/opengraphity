@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { SkeletonLine } from '@/components/SkeletonLoader'
-import { colors } from '@/lib/tokens'
+import { colors, palette } from '@/lib/tokens'
 
 export interface ColumnDef<T> {
   key:      keyof T
@@ -227,9 +227,9 @@ export function SortableFilterTable<T extends object>({
           {loading ? (
             Array.from({ length: 5 }).map((_, i) => (
               <tr key={i}>
-                {selectable && <td style={{ padding: '12px 0 12px 12px', borderBottom: '1px solid #f1f3f9' }} />}
+                {selectable && <td style={{ padding: '12px 0 12px 12px', borderBottom: `1px solid ${palette.neutral.borderLight}` }} />}
                 {columns.map((col, ci) => (
-                  <td key={String(col.key)} style={{ padding: '12px', borderBottom: '1px solid #f1f3f9' }}>
+                  <td key={String(col.key)} style={{ padding: '12px', borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
                     <SkeletonLine width={ci === 0 ? '80%' : ci % 2 === 0 ? '60%' : '70%'} />
                   </td>
                 ))}
@@ -259,7 +259,7 @@ export function SortableFilterTable<T extends object>({
                     tabIndex={onRowClick && focusableRows ? 0 : undefined}
                     onKeyDown={onRowClick ? (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onRowClick(row) } } : undefined}
                     style={{
-                      borderBottom:    expandedContent ? 'none' : '1px solid #f1f3f9',
+                      borderBottom:    expandedContent ? 'none' : `1px solid ${palette.neutral.borderLight}`,
                       cursor:          onRowClick ? 'pointer' : 'default',
                       backgroundColor: colors.white,
                       borderLeft:      '8px solid transparent',
@@ -301,7 +301,7 @@ export function SortableFilterTable<T extends object>({
                     ))}
                   </tr>
                   {expandedContent && (
-                    <tr style={{ backgroundColor: '#ffffff' }}>
+                    <tr style={{ backgroundColor: colors.white }}>
                       <td colSpan={totalCols} style={{ padding: 0 }}>
                         {expandedContent}
                       </td>

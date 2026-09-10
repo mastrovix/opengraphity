@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Share2 } from 'lucide-react'
 import { GET_TOPOLOGY, GET_ALL_CIS, GET_CI_TYPES } from '@/graphql/queries'
-import { fontFamily } from '@/lib/tokens'
+import { fontFamily, alpha, colors, palette } from '@/lib/tokens'
 import { pausedWhenHidden } from '@/lib/polling'
 import { Pill } from '@/components/ui/Pill'
 import { ciStatusStyle, enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
@@ -148,10 +148,10 @@ export function TopologyPage() {
   const selectStyle = {
     fontSize:     12,
     color:        'var(--color-slate-dark)',
-    border:       '1px solid #e2e8f0',
+    border:       '1px solid var(--color-border)',
     borderRadius: 6,
     padding:      '5px 10px',
-    background:   '#fff',
+    background:   colors.white,
     cursor:       'pointer',
     outline:      'none',
   }
@@ -165,8 +165,8 @@ export function TopologyPage() {
         alignItems:      'center',
         justifyContent:  'space-between',
         padding:         '12px 20px',
-        borderBottom:    '1px solid #e5e7eb',
-        background:      '#fff',
+        borderBottom:    '1px solid var(--color-border)',
+        background:      colors.white,
         flexShrink:      0,
       }}>
         <h1 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
@@ -278,7 +278,7 @@ export function TopologyPage() {
               gap:             16,
               userSelect:      'none',
             }}>
-              <Share2 size={48} color="#94a3b8" strokeWidth={1.5} />
+              <Share2 size={48} color={colors.slateLight} strokeWidth={1.5} />
               <div style={{
                 fontSize: 'var(--font-size-page-title)', fontWeight: 600,
                 color: 'var(--color-slate-dark)',
@@ -328,10 +328,10 @@ export function TopologyPage() {
           {data?.topology.truncated && (
             <div style={{
               position:   'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
-              background: '#fef9c3', border: '1px solid #fde047', borderRadius: 6,
-              padding:    '5px 14px', fontSize: 'var(--font-size-body)', color: '#854d0e',
+              background: palette.yellow.bg, border: '1px solid var(--color-yellow-border)', borderRadius: 6,
+              padding:    '5px 14px', fontSize: 'var(--font-size-body)', color: palette.yellow.text,
               fontFamily,
-              whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              whiteSpace: 'nowrap', boxShadow: '0 2px 8px var(--color-black-a08)',
             }}>
               {t('pages.topology.truncated', { limit: data.topology.nodeLimit })}
             </div>
@@ -340,8 +340,8 @@ export function TopologyPage() {
           {/* Stats bar */}
           <div style={{
             position:    'absolute', bottom: 16, right: selectedNode ? 316 : 16,
-            background:  'rgba(255,255,255,0.92)', backdropFilter: 'blur(4px)',
-            border:      '1px solid #e2e8f0', borderRadius: 6,
+            background:  alpha.white92, backdropFilter: 'blur(4px)',
+            border:      '1px solid var(--color-border)', borderRadius: 6,
             padding:     '5px 12px', fontSize: 'var(--font-size-body)',
             color:       'var(--color-slate)',
             fontFamily,
@@ -354,9 +354,9 @@ export function TopologyPage() {
               </span>
             )}
             {totalIncident > 0 && <span style={{ color: 'var(--color-trigger-sla-breach)', marginLeft: 8 }}>{t('pages.topology.activeIncidents', { count: totalIncident })}</span>}
-            {totalChange   > 0 && <span style={{ color: '#8b5cf6', marginLeft: 8 }}>{t('pages.topology.changesInProgress', { count: totalChange })}</span>}
-            {highlightHealth && totalDown     > 0 && <span style={{ color: '#dc2626', marginLeft: 8 }}>{t('components.topologyGraph.healthDown')}: {totalDown}</span>}
-            {highlightHealth && totalDegraded > 0 && <span style={{ color: '#d97706', marginLeft: 8 }}>{t('components.topologyGraph.healthDegraded')}: {totalDegraded}</span>}
+            {totalChange   > 0 && <span style={{ color: palette.purple.light, marginLeft: 8 }}>{t('pages.topology.changesInProgress', { count: totalChange })}</span>}
+            {highlightHealth && totalDown     > 0 && <span style={{ color: palette.danger.dark, marginLeft: 8 }}>{t('components.topologyGraph.healthDown')}: {totalDown}</span>}
+            {highlightHealth && totalDegraded > 0 && <span style={{ color: palette.warning.dark, marginLeft: 8 }}>{t('components.topologyGraph.healthDegraded')}: {totalDegraded}</span>}
           </div>
         </div>
 
@@ -364,8 +364,8 @@ export function TopologyPage() {
         {selectedNode && (
           <div style={{
             width:       300,
-            borderLeft:  '1px solid #e5e7eb',
-            background:  '#fff',
+            borderLeft:  '1px solid var(--color-border)',
+            background:  colors.white,
             flexShrink:  0,
             overflow:    'auto',
             padding:     '16px',
@@ -384,7 +384,7 @@ export function TopologyPage() {
                 type="button"
                 aria-label={t('common.close')}
                 onClick={() => setSelectedNode(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 'var(--font-size-section-title)', padding: 0 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.slateLight, fontSize: 'var(--font-size-section-title)', padding: 0 }}
               >
                 ✕
               </button>
@@ -439,7 +439,7 @@ export function TopologyPage() {
                     type="button"
                     onClick={() => navigate(`/changes?ci=${selectedNode.id}`)}
                     style={{
-                      fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#f97316',
+                      fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: palette.orange.base,
                       background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline',
                     }}
                   >
@@ -460,7 +460,7 @@ export function TopologyPage() {
                   width:        '100%',
                   padding:      '8px 0',
                   background:   'var(--color-brand)',
-                  color:        '#fff',
+                  color:        colors.white,
                   border:       'none',
                   borderRadius: 6,
                   fontSize:     13,
@@ -558,9 +558,9 @@ function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxPro
         display:      'flex',
         alignItems:   'center',
         gap:          4,
-        border:       '1px solid #e2e8f0',
+        border:       '1px solid var(--color-border)',
         borderRadius: 6,
-        background:   '#fff',
+        background:   colors.white,
         padding:      '4px 8px',
         fontSize:     12,
         cursor:       'text',
@@ -586,7 +586,7 @@ function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxPro
             type="button"
             aria-label={t('common.close')}
             onClick={(e) => { e.stopPropagation(); handleSelect(null) }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '0 2px', fontSize: 'var(--font-size-body)', lineHeight: 1 }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.slateLight, padding: '0 2px', fontSize: 'var(--font-size-body)', lineHeight: 1 }}
           >
             ✕
           </button>
@@ -596,8 +596,8 @@ function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxPro
       {open && (
         <div style={{
           position:   'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
-          background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6,
-          boxShadow:  '0 4px 16px rgba(0,0,0,0.1)',
+          background: colors.white, border: '1px solid var(--color-border)', borderRadius: 6,
+          boxShadow:  '0 4px 16px var(--color-black-a10)',
           maxHeight:  220, overflowY: 'auto', marginTop: 2,
         }}>
           <button
@@ -608,7 +608,7 @@ function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxPro
               display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', font: 'inherit',
               padding: '7px 10px', fontSize: 'var(--font-size-body)', cursor: 'pointer',
               color: 'var(--color-slate-light)',
-              borderBottom: '1px solid #f1f5f9',
+              borderBottom: '1px solid var(--color-border-light)',
             }}
           >
             {t('pages.topology.comboAll')}
@@ -631,7 +631,7 @@ function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxPro
               style={{
                 width: '100%', textAlign: 'left', border: 'none', font: 'inherit',
                 padding:    '7px 10px', fontSize: 'var(--font-size-body)', cursor: 'pointer',
-                background: o.id === value ? 'rgba(2,132,199,0.08)' : 'transparent',
+                background: o.id === value ? alpha.brand08 : 'transparent',
                 color:      o.id === value ? 'var(--color-brand)' : 'var(--color-slate-dark)',
                 fontWeight: o.id === value ? 600 : 400,
                 display:    'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -648,7 +648,7 @@ function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxPro
             </button>
           ))}
           {total > options.length && (
-            <div style={{ padding: '6px 10px', fontSize: 'var(--font-size-label)', color: '#854d0e', background: '#fef9c3', borderTop: '1px solid #fde68a' }}>
+            <div style={{ padding: '6px 10px', fontSize: 'var(--font-size-label)', color: palette.yellow.text, background: palette.yellow.bg, borderTop: '1px solid var(--color-warning-border)' }}>
               {t('pages.topology.comboShown', { shown: options.length, total })}
             </div>
           )}

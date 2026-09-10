@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, X, ChevronDown, ChevronRight } from 'lucide-react'
+import { alpha, colors, palette } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -88,10 +89,10 @@ const SEL: React.CSSProperties = {
   height:          28,
   padding:         '0 6px',
   borderRadius:    4,
-  border:          '1px solid #e2e8f0',
+  border:          `1px solid ${colors.border}`,
   fontSize:        12,
   color:           'var(--color-slate-dark)',
-  backgroundColor: '#fff',
+  backgroundColor: colors.white,
   outline:         'none',
   cursor:          'pointer',
 }
@@ -100,10 +101,10 @@ const INP: React.CSSProperties = {
   height:          28,
   padding:         '0 8px',
   borderRadius:    4,
-  border:          '1px solid #e2e8f0',
+  border:          `1px solid ${colors.border}`,
   fontSize:        12,
   color:           'var(--color-slate-dark)',
-  backgroundColor: '#fff',
+  backgroundColor: colors.white,
   outline:         'none',
 }
 
@@ -163,8 +164,8 @@ function ValueInput({
               fontSize:        11,
               padding:         '2px 8px',
               borderRadius:    4,
-              border:          `1px solid ${selected.includes(opt.value) ? 'var(--color-trigger-manual)' : '#e2e8f0'}`,
-              backgroundColor: selected.includes(opt.value) ? 'rgba(2,132,199,0.1)' : '#fff',
+              border:          `1px solid ${selected.includes(opt.value) ? 'var(--color-trigger-manual)' : colors.border}`,
+              backgroundColor: selected.includes(opt.value) ? alpha.brand08 : colors.white,
               color:           selected.includes(opt.value) ? 'var(--color-brand)' : 'var(--color-slate)',
               cursor:          'pointer',
               userSelect:      'none',
@@ -236,7 +237,7 @@ function LogicConnector({
   }
   return (
     <div style={{ display: 'flex', alignItems: 'center', padding: '4px 12px' }}>
-      <div style={{ display: 'flex', borderRadius: 5, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+      <div style={{ display: 'flex', borderRadius: 5, overflow: 'hidden', border: `1px solid ${colors.border}` }}>
         {(['AND', 'OR'] as const).map((l) => (
           <button type="button"
             key={l}
@@ -248,8 +249,8 @@ function LogicConnector({
               letterSpacing:   '0.04em',
               border:          'none',
               cursor:          'pointer',
-              backgroundColor: value === l ? 'var(--color-brand)' : '#fff',
-              color:           value === l ? '#fff' : 'var(--color-slate-light)',
+              backgroundColor: value === l ? 'var(--color-brand)' : colors.white,
+              color:           value === l ? colors.white : 'var(--color-slate-light)',
               transition:      'background 100ms',
             }}
           >
@@ -328,8 +329,8 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
             gap:             6,
             padding:         '5px 10px',
             borderRadius:    6,
-            border:          '1px solid #e2e8f0',
-            backgroundColor: activeCount > 0 ? 'rgba(2,132,199,0.08)' : '#fff',
+            border:          `1px solid ${colors.border}`,
+            backgroundColor: activeCount > 0 ? alpha.brand08 : colors.white,
             color:           activeCount > 0 ? 'var(--color-brand)' : 'var(--color-slate)',
             fontSize:        12,
             cursor:          'pointer',
@@ -342,7 +343,7 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
             <span style={{
               fontSize: 'var(--font-size-label)', fontWeight: 700, lineHeight: 1,
               padding: '1px 5px', borderRadius: 8,
-              background: 'var(--color-brand)', color: '#fff',
+              background: 'var(--color-brand)', color: colors.white,
             }}>
               {activeCount}
             </span>
@@ -359,8 +360,8 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
                 gap:             4,
                 padding:         '4px 10px',
                 borderRadius:    6,
-                border:          '1px solid #e2e8f0',
-                backgroundColor: '#fff',
+                border:          `1px solid ${colors.border}`,
+                backgroundColor: colors.white,
                 color:           'var(--color-slate)',
                 fontSize:        12,
                 cursor:          'pointer',
@@ -377,9 +378,9 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
               style={{
                 padding:         '4px 14px',
                 borderRadius:    6,
-                border:          '1px solid #0284c7',
+                border:          `1px solid ${colors.brand}`,
                 backgroundColor: 'var(--color-brand)',
-                color:           '#fff',
+                color:           colors.white,
                 fontSize:        12,
                 fontWeight:      600,
                 cursor:          'pointer',
@@ -393,8 +394,8 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
               style={{
                 padding:         '4px 14px',
                 borderRadius:    6,
-                border:          '1px solid #e2e8f0',
-                backgroundColor: '#fff',
+                border:          `1px solid ${colors.border}`,
+                backgroundColor: colors.white,
                 color:           'var(--color-slate)',
                 fontSize:        12,
                 cursor:          'pointer',
@@ -431,9 +432,9 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
                     alignItems:   'center',
                     gap:          8,
                     padding:      '8px 10px',
-                    border:       '1px solid #e2e8f0',
+                    border:       `1px solid ${colors.border}`,
                     borderRadius: 4,
-                    backgroundColor: '#fff',
+                    backgroundColor: colors.white,
                   }}>
                     {/* Field selector */}
                     <select
@@ -481,14 +482,14 @@ export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
                         width:           24,
                         height:          24,
                         borderRadius:    4,
-                        border:          '1px solid #fecaca',
-                        backgroundColor: '#fff',
+                        border:          `1px solid ${palette.danger.border}`,
+                        backgroundColor: colors.white,
                         color:           'var(--color-danger)',
                         cursor:          'pointer',
                         flexShrink:      0,
                       }}
                       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-danger-bg)' }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#fff' }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = colors.white }}
                     >
                       <X size={13} />
                     </button>

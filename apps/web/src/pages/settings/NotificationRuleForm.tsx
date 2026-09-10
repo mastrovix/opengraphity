@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
-import { colors, fontWeight, lookupOrError } from '@/lib/tokens'
+import { colors, fontWeight, lookupOrError, alpha, palette } from '@/lib/tokens'
 import { SEVERITY_COLOR } from './NotificationRuleList'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -93,8 +93,8 @@ export function NewRuleDialog({
     setChannels((prev) => prev.includes(ch) ? prev.filter((c) => c !== ch) : [...prev, ch])
 
   const inputStyle: React.CSSProperties = {
-    padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 6,
-    fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', background: '#fafafa', width: '100%', boxSizing: 'border-box',
+    padding: '7px 10px', border: `1px solid ${colors.border}`, borderRadius: 6,
+    fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', background: palette.neutral.surface1, width: '100%', boxSizing: 'border-box',
   }
 
   const labelStyle: React.CSSProperties = {
@@ -112,7 +112,7 @@ export function NewRuleDialog({
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- overlay: chiusura via mouse, bottone Chiudi per la tastiera
     <div
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
+        position: 'fixed', inset: 0, background: alpha.scrim,
         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
@@ -122,8 +122,8 @@ export function NewRuleDialog({
         aria-modal="true"
         aria-labelledby={titleId}
         style={{
-          background: '#fff', borderRadius: 12, padding: 28, width: 480,
-          boxShadow: '0 8px 40px rgba(0,0,0,0.18)', display: 'flex', flexDirection: 'column', gap: 16,
+          background: colors.white, borderRadius: 12, padding: 28, width: 480,
+          boxShadow: `0 8px 40px ${alpha.black20}`, display: 'flex', flexDirection: 'column', gap: 16,
         }}
       >
         {/* Header */}
@@ -256,8 +256,8 @@ export function NewRuleDialog({
           <button type="button"
             onClick={onClose}
             style={{
-              padding: '8px 18px', borderRadius: 6, border: '1px solid #e2e8f0',
-              fontSize: 'var(--font-size-body)', cursor: 'pointer', background: '#fafafa', color: 'var(--color-slate)',
+              padding: '8px 18px', borderRadius: 6, border: `1px solid ${colors.border}`,
+              fontSize: 'var(--font-size-body)', cursor: 'pointer', background: palette.neutral.surface1, color: 'var(--color-slate)',
             }}
           >
             {t('notificationRules.cancel')}
@@ -276,8 +276,8 @@ export function NewRuleDialog({
             style={{
               padding: '8px 18px', borderRadius: 6, border: 'none', fontSize: 'var(--font-size-body)', fontWeight: fontWeight.semibold,
               cursor: canSave && !saving ? 'pointer' : 'not-allowed',
-              background: canSave && !saving ? colors.brand : '#e2e8f0',
-              color: canSave && !saving ? '#fff' : 'var(--color-slate-light)',
+              background: canSave && !saving ? colors.brand : colors.border,
+              color: canSave && !saving ? colors.white : 'var(--color-slate-light)',
             }}
           >
             {saving ? '…' : t('notificationRules.save')}

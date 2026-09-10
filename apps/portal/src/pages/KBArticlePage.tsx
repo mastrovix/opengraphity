@@ -8,6 +8,7 @@ import { ThumbsUp, ThumbsDown } from 'lucide-react'
 import { GET_KB_ARTICLE_BY_SLUG, GET_KB_ARTICLES } from '@/graphql/queries'
 import { RATE_KB_ARTICLE } from '@/graphql/mutations'
 import { fmtDateLong } from '@/lib/format'
+import { colors, palette } from '@/lib/tokens'
 
 interface KBArticle {
   id: string; title: string; slug: string; body: string; category: string
@@ -43,34 +44,34 @@ export function KBArticlePage() {
     void rateArticle({ variables: { id: article.id, helpful } })
   }
 
-  if (loading) return <div style={{ padding: 48, textAlign: 'center', color: '#94A3B8' }}>{t('common.loading')}</div>
-  if (!article) return <div style={{ padding: 48, textAlign: 'center', color: '#94A3B8' }}>{t('kb.notFound')}</div>
+  if (loading) return <div style={{ padding: 48, textAlign: 'center', color: colors.slateLight }}>{t('common.loading')}</div>
+  if (!article) return <div style={{ padding: 48, textAlign: 'center', color: colors.slateLight }}>{t('kb.notFound')}</div>
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto' }}>
       {/* Breadcrumb */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#94A3B8', marginBottom: 20 }}>
-        <Link to="/kb" style={{ color: '#0EA5E9' }}>{t('kb.breadcrumb')}</Link>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: colors.slateLight, marginBottom: 20 }}>
+        <Link to="/kb" style={{ color: colors.brand }}>{t('kb.breadcrumb')}</Link>
         <span>›</span>
         <span style={{ textTransform: 'capitalize' }}>{article.category}</span>
         <span>›</span>
-        <span style={{ color: '#64748B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ color: colors.slate, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {article.title}
         </span>
       </div>
 
       {/* Article header */}
-      <h1 style={{ fontSize: 26, fontWeight: 700, color: '#0F172A', marginBottom: 12, lineHeight: 1.3 }}>
+      <h1 style={{ fontSize: 26, fontWeight: 700, color: colors.slateDark, marginBottom: 12, lineHeight: 1.3 }}>
         {article.title}
       </h1>
-      <div style={{ display: 'flex', gap: 16, fontSize: 10, color: '#94A3B8', marginBottom: 32, flexWrap: 'wrap' }}>
-        <span>{t('kb.by')} <strong style={{ color: '#64748B' }}>{article.authorName}</strong></span>
+      <div style={{ display: 'flex', gap: 16, fontSize: 10, color: colors.slateLight, marginBottom: 32, flexWrap: 'wrap' }}>
+        <span>{t('kb.by')} <strong style={{ color: colors.slate }}>{article.authorName}</strong></span>
         {article.publishedAt && <span>{t('kb.published')}: {fmtDateLong(article.publishedAt)}</span>}
         <span>{article.views} {t('kb.views')}</span>
       </div>
 
       {/* Article body */}
-      <div className="md-body" style={{ fontSize: 10, lineHeight: 1.8, color: '#0F172A', marginBottom: 40 }}>
+      <div className="md-body" style={{ fontSize: 10, lineHeight: 1.8, color: colors.slateDark, marginBottom: 40 }}>
         <ReactMarkdown remarkPlugins={[remarkGfm]}>
           {article.body}
         </ReactMarkdown>
@@ -79,16 +80,16 @@ export function KBArticlePage() {
       {/* Feedback */}
       <div style={{
         padding:         24,
-        backgroundColor: '#F8FAFC',
+        backgroundColor: palette.neutral.surface1,
         borderRadius:    12,
         textAlign:       'center',
         marginBottom:    32,
       }}>
-        <div style={{ fontSize: 10, fontWeight: 600, color: '#0F172A', marginBottom: 14 }}>
+        <div style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark, marginBottom: 14 }}>
           {t('kb.helpful')}
         </div>
         {voted !== null ? (
-          <p style={{ fontSize: 10, color: '#64748B' }}>Grazie per il tuo feedback!</p>
+          <p style={{ fontSize: 10, color: colors.slate }}>Grazie per il tuo feedback!</p>
         ) : (
           <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
             <button
@@ -99,11 +100,11 @@ export function KBArticlePage() {
                 gap:          6,
                 padding:      '9px 20px',
                 borderRadius: 8,
-                border:       '1px solid #E2E8F0',
-                background:   '#fff',
+                border:       `1px solid ${colors.border}`,
+                background:   colors.white,
                 cursor:       'pointer',
                 fontSize:     14,
-                color:        '#22C55E',
+                color:        colors.success,
                 fontWeight:   500,
               }}
             >
@@ -118,11 +119,11 @@ export function KBArticlePage() {
                 gap:          6,
                 padding:      '9px 20px',
                 borderRadius: 8,
-                border:       '1px solid #E2E8F0',
-                background:   '#fff',
+                border:       `1px solid ${colors.border}`,
+                background:   colors.white,
                 cursor:       'pointer',
                 fontSize:     14,
-                color:        '#EF4444',
+                color:        colors.danger,
                 fontWeight:   500,
               }}
             >
@@ -136,7 +137,7 @@ export function KBArticlePage() {
       {/* Related articles */}
       {related.length > 0 && (
         <div style={{ marginBottom: 32 }}>
-          <h2 style={{ fontSize: 10, fontWeight: 600, color: '#0F172A', marginBottom: 14 }}>
+          <h2 style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark, marginBottom: 14 }}>
             {t('kb.related')}
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -146,11 +147,11 @@ export function KBArticlePage() {
                 to={`/kb/${a.slug}`}
                 style={{
                   padding:         '12px 16px',
-                  backgroundColor: '#F8FAFC',
-                  border:          '1px solid #E2E8F0',
+                  backgroundColor: palette.neutral.surface1,
+                  border:          `1px solid ${colors.border}`,
                   borderRadius:    8,
                   fontSize:        14,
-                  color:           '#0EA5E9',
+                  color:           colors.brand,
                   textDecoration:  'none',
                   fontWeight:      500,
                   display:         'block',
@@ -166,8 +167,8 @@ export function KBArticlePage() {
       {/* CTA */}
       <div style={{
         padding:         20,
-        backgroundColor: '#FFF7ED',
-        border:          '1px solid #FED7AA',
+        backgroundColor: palette.orange.bg,
+        border:          `1px solid ${palette.orange.border}`,
         borderRadius:    10,
         display:         'flex',
         alignItems:      'center',
@@ -175,15 +176,15 @@ export function KBArticlePage() {
         flexWrap:        'wrap',
         gap:             12,
       }}>
-        <span style={{ fontSize: 10, color: '#92400E', fontWeight: 500 }}>
+        <span style={{ fontSize: 10, color: palette.warning.strong, fontWeight: 500 }}>
           {t('kb.notSolved')}
         </span>
         <Link
           to="/tickets/new"
           style={{
             padding:         '9px 18px',
-            backgroundColor: '#0EA5E9',
-            color:           '#fff',
+            backgroundColor: colors.brand,
+            color:           colors.white,
             borderRadius:    8,
             fontSize:        14,
             fontWeight:      600,

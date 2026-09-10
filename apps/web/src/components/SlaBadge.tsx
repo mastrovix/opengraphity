@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Timer, CheckCircle2, AlertTriangle, PauseCircle } from 'lucide-react'
+import { colors, palette } from '@/lib/tokens'
 
 export interface SlaStatusInfo {
   startedAt:        string
@@ -24,12 +25,12 @@ function formatDuration(ms: number): string {
 type SlaState = 'met' | 'breached' | 'overdue' | 'warning' | 'ontrack' | 'paused'
 
 const STATE_STYLE: Record<SlaState, { bg: string; fg: string }> = {
-  met:      { bg: '#dcfce7', fg: '#15803d' },
-  breached: { bg: '#fee2e2', fg: '#b91c1c' },
-  overdue:  { bg: '#fee2e2', fg: '#b91c1c' },
-  warning:  { bg: '#fef3c7', fg: '#b45309' },
-  ontrack:  { bg: '#f1f5f9', fg: '#475569' },
-  paused:   { bg: '#e0e7ff', fg: '#4338ca' },
+  met:      { bg: palette.success.tint, fg: palette.success.text },
+  breached: { bg: palette.danger.tint, fg: palette.danger.text },
+  overdue:  { bg: palette.danger.tint, fg: palette.danger.text },
+  warning:  { bg: palette.warning.tint, fg: palette.warning.text },
+  ontrack:  { bg: colors.slateBg, fg: palette.neutral.textStrong },
+  paused:   { bg: palette.info.tint, fg: palette.purple.dark },
 }
 
 /**

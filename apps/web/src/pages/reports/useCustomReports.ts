@@ -21,6 +21,7 @@ import {
 } from '@/graphql/mutations'
 import { toast } from 'sonner'
 import type { ReportSectionInput } from '@/components/ReportSectionBuilder'
+import { colors, palette } from '@/lib/tokens'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -42,8 +43,8 @@ export const SCHEDULE_PRESETS = [
 
 export const VIS_LABELS: Record<string, string> = { private: 'Privato', groups: 'Gruppi', all: 'Tutti' }
 export const VIS_COLORS: Record<string, { bg: string; fg: string }> = {
-  all:     { bg: '#dcfce7', fg: '#15803d' },
-  groups:  { bg: '#fef3c7', fg: '#92400e' },
+  all:     { bg: palette.success.tint, fg: palette.success.text },
+  groups:  { bg: palette.warning.tint, fg: palette.warning.strong },
   private: { bg: 'var(--color-border-light)', fg: 'var(--color-slate)' },
 }
 
@@ -52,10 +53,10 @@ const GET_TEAMS_SLIM    = gql`query GetTeamsSlim { teams { id name } }`
 
 // ── Styles (shared) ────────────────────────────────────────────────────────────
 
-export const inputStyle: React.CSSProperties = { width: '100%', padding: '6px 10px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }
+export const inputStyle: React.CSSProperties = { width: '100%', padding: '6px 10px', borderRadius: 5, border: '1px solid var(--color-border-strong)', fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }
 export const labelStyle: React.CSSProperties = { fontSize: 'var(--font-size-body)', fontWeight: 600 as const, color: 'var(--color-slate)', textTransform: 'uppercase' as const, marginBottom: 4, display: 'block' as const }
-export const btnPrimary: React.CSSProperties = { padding: '8px 18px', borderRadius: 7, border: 'none', background: 'var(--color-brand)', color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }
-export const btnGhost: React.CSSProperties  = { padding: '8px 14px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }
+export const btnPrimary: React.CSSProperties = { padding: '8px 18px', borderRadius: 7, border: 'none', background: 'var(--color-brand)', color: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }
+export const btnGhost: React.CSSProperties  = { padding: '8px 14px', borderRadius: 7, border: '1px solid var(--color-border)', background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }
 
 // ── Hook ───────────────────────────────────────────────────────────────────────
 

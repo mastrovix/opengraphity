@@ -53,6 +53,7 @@ import { pausedWhenHidden } from '@/lib/polling'
 import { GET_CI_HEALTH_OVERVIEW, GET_TEAMS } from '@/graphql/queries'
 import { CIHealthBadge, CI_HEALTH_ACCENT } from '@/pages/events/eventShared'
 import type { CIHealth, CIHealthOverview, CIHealthRow, CIHealthFilterVars } from '@/types/events'
+import { colors, palette } from '@/lib/tokens'
 
 const PAGE_SIZE       = 50
 const POLL_MS         = 15_000
@@ -71,9 +72,9 @@ const TILE_ORDER: TileKey[] = ['down', 'degraded', 'operational', 'unmonitored']
 
 /** Palette dei riquadri: stessi rosso/ambra/verde dei badge (CI_HEALTH_ACCENT), grigio per "senza monitoraggio". */
 const TILE_STYLE: Record<TileKey, { accent: string; tint: string; icon: LucideIcon }> = {
-  down:        { accent: CI_HEALTH_ACCENT.down,        tint: '#fee2e2',               icon: XCircle },
-  degraded:    { accent: CI_HEALTH_ACCENT.degraded,    tint: '#fef3c7',               icon: AlertTriangle },
-  operational: { accent: CI_HEALTH_ACCENT.operational, tint: '#dcfce7',               icon: CheckCircle2 },
+  down:        { accent: CI_HEALTH_ACCENT.down,        tint: palette.danger.tint,               icon: XCircle },
+  degraded:    { accent: CI_HEALTH_ACCENT.degraded,    tint: palette.warning.tint,               icon: AlertTriangle },
+  operational: { accent: CI_HEALTH_ACCENT.operational, tint: palette.success.tint,               icon: CheckCircle2 },
   unmonitored: { accent: 'var(--color-slate)',         tint: 'var(--color-slate-bg)', icon: EyeOff },
 }
 
@@ -166,7 +167,7 @@ function HealthTile({ tileKey, label, value, context, hint, extra, active, onCli
   )
   const style: React.CSSProperties = {
     textAlign: 'left', font: 'inherit', padding: '14px 16px', borderRadius: 12, minWidth: 0,
-    background: active ? tint : '#fff',
+    background: active ? tint : colors.white,
     border: active ? `2px solid ${accent}` : '1px solid var(--border)',
     boxShadow: 'var(--shadow-card)',
     cursor: onClick ? 'pointer' : 'default',
@@ -193,7 +194,7 @@ function ImpactChip({ dependents, describedBy }: { dependents: number; described
           display: 'inline-flex', alignItems: 'center', padding: '3px 8px', borderRadius: 999, whiteSpace: 'nowrap',
           fontSize: 'var(--font-size-table)', fontWeight: high ? 700 : 500, fontVariantNumeric: 'tabular-nums',
           background: high ? 'var(--color-slate-dark)' : 'var(--color-slate-bg)',
-          color: high ? '#fff' : 'var(--color-slate)',
+          color: high ? colors.white : 'var(--color-slate)',
         }}
       >
         {t('monitoring.health.dependents', { count: dependents })}
@@ -214,7 +215,7 @@ function SourceCell({ source, describedBy }: { source: CIHealthRow['healthSource
       <span
         title={hint}
         aria-describedby={describedBy}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: manual ? '#6d28d9' : 'var(--color-slate)', whiteSpace: 'nowrap' }}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: manual ? palette.purple.dark : 'var(--color-slate)', whiteSpace: 'nowrap' }}
       >
         <Icon size={13} aria-hidden="true" />
         {manual ? t('monitoring.health.sourceManual') : t('monitoring.health.sourceMonitoring')}
@@ -510,11 +511,11 @@ export function CIHealthPage() {
       )}
 
       {allGood && (
-        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', marginBottom: 16, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, color: CI_HEALTH_ACCENT.operational }}>
+        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', marginBottom: 16, background: palette.success.bg, border: `1px solid ${palette.success.border}`, borderRadius: 10, color: CI_HEALTH_ACCENT.operational }}>
           <CheckCircle2 size={22} aria-hidden="true" style={{ flexShrink: 0 }} />
           <div>
             <div style={{ fontWeight: 600, fontSize: 'var(--font-size-card-title)' }}>{t('monitoring.health.allGood')}</div>
-            <div style={{ fontSize: 'var(--font-size-table)', color: '#166534', marginTop: 2 }}>{t('monitoring.health.allGoodDetail', { count: monitored })}</div>
+            <div style={{ fontSize: 'var(--font-size-table)', color: palette.success.strong, marginTop: 2 }}>{t('monitoring.health.allGoodDetail', { count: monitored })}</div>
           </div>
         </div>
       )}

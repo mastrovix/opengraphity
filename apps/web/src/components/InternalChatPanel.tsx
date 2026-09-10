@@ -9,6 +9,7 @@ import { GET_INTERNAL_MESSAGES } from '@/graphql/queries'
 import { SEND_INTERNAL_MESSAGE, EDIT_INTERNAL_MESSAGE, DELETE_INTERNAL_MESSAGE } from '@/graphql/mutations'
 import { useConfirm } from '@/hooks/useConfirm'
 import { timeAgo } from '@/lib/datetime'
+import { colors, palette } from '@/lib/tokens'
 
 interface Message {
   id: string
@@ -77,14 +78,14 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
   const isOwn = (msg: Message) => msg.authorId === currentUserId
 
   return (
-    <div style={{ background: '#FFF7ED', border: '1px solid #fed7aa', borderRadius: 10, overflow: 'hidden' }}>
+    <div style={{ background: palette.orange.bg, border: `1px solid ${palette.orange.border}`, borderRadius: 10, overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid #fed7aa' }}>
-        <Lock size={15} color="#92400e" aria-hidden="true" />
-        <span style={{ fontWeight: 700, fontSize: 'var(--font-size-body)', color: '#92400e' }}>{t('internalChat.title')}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: `1px solid ${palette.orange.border}` }}>
+        <Lock size={15} color={palette.warning.strong} aria-hidden="true" />
+        <span style={{ fontWeight: 700, fontSize: 'var(--font-size-body)', color: palette.warning.strong }}>{t('internalChat.title')}</span>
         <span style={{
-          marginLeft: 'auto', fontSize: 'var(--font-size-table)', fontWeight: 600, color: '#92400e',
-          background: '#fde68a', padding: '2px 8px', borderRadius: 9999,
+          marginLeft: 'auto', fontSize: 'var(--font-size-table)', fontWeight: 600, color: palette.warning.strong,
+          background: palette.warning.tint, padding: '2px 8px', borderRadius: 9999,
         }}>
           {t('internalChat.agentsOnly')}
         </span>
@@ -105,7 +106,7 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
                 {/* Avatar */}
                 <div aria-hidden="true" style={{
                   width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-                  background: own ? 'var(--accent-hover)' : 'var(--color-slate)', color: '#fff',
+                  background: own ? 'var(--accent-hover)' : 'var(--color-slate)', color: colors.white,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 'var(--font-size-table)', fontWeight: 700,
                 }}>
@@ -113,7 +114,7 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
                 </div>
                 {/* Bubble */}
                 <div style={{
-                  background: own ? '#e0f2fe' : 'var(--color-slate-bg)', borderRadius: 8,
+                  background: own ? palette.info.tint : 'var(--color-slate-bg)', borderRadius: 8,
                   padding: '6px 10px', fontSize: 'var(--font-size-body)',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
@@ -139,9 +140,9 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
                         style={{ width: '100%', border: '1px solid var(--border-strong)', borderRadius: 6, padding: 6, fontSize: 'var(--font-size-body)', resize: 'vertical', boxSizing: 'border-box' }} />
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         <button type="button" onClick={() => { setEditingId(null); setEditBody('') }}
-                          style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 'var(--font-size-table)' }}>{t('common.cancel')}</button>
+                          style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 'var(--font-size-table)' }}>{t('common.cancel')}</button>
                         <button type="button" disabled={editing || !editBody.trim()} onClick={() => void editMessage({ variables: { messageId: msg.id, body: editBody.trim() } })}
-                          style={{ background: 'var(--accent-hover)', color: '#fff', border: 'none', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 'var(--font-size-table)', fontWeight: 600, opacity: (editing || !editBody.trim()) ? 0.6 : 1 }}>{t('common.save')}</button>
+                          style={{ background: 'var(--accent-hover)', color: colors.white, border: 'none', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 'var(--font-size-table)', fontWeight: 600, opacity: (editing || !editBody.trim()) ? 0.6 : 1 }}>{t('common.save')}</button>
                       </div>
                     </div>
                   ) : (
@@ -155,7 +156,7 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
       </div>
 
       {/* Input */}
-      <div style={{ padding: '8px 14px', borderTop: '1px solid #fed7aa', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+      <div style={{ padding: '8px 14px', borderTop: `1px solid ${palette.orange.border}`, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
         <MentionInput
           value={body}
           onChange={setBody}
@@ -171,7 +172,7 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
           aria-label={t('internalChat.send')}
           title={t('internalChat.send')}
           style={{
-            background: body.trim() ? 'var(--accent-hover)' : '#d1d5db', color: '#fff',
+            background: body.trim() ? 'var(--accent-hover)' : palette.neutral.borderStrong, color: colors.white,
             border: 'none', borderRadius: 8, padding: '8px 12px', cursor: body.trim() ? 'pointer' : 'default',
             display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
           }}

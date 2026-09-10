@@ -42,8 +42,7 @@ import { DetailField } from '@/components/ui/DetailField'
 import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import { formatDate, timeAgo, PRIORITY_COLOR, STATUS_BG, STATUS_FG } from './ProblemCard'
-import { lookupOrError } from '@/lib/tokens'
-
+import { colors, lookupOrError } from '@/lib/tokens'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface WorkflowInstance {
@@ -375,7 +374,7 @@ export function ProblemDetailPage() {
                       {showReassign && (
                         <button type="button" onClick={() => setShowReassign(false)} style={{ flex: 1, padding: '6px 0', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', cursor: 'pointer' }}>{t('common.cancel')}</button>
                       )}
-                      <button type="button" disabled={!selectedTeamId || assigningTeam} onClick={() => { if (!selectedTeamId) return; void assignToTeam({ variables: { problemId: problem.id, teamId: selectedTeamId } }) }} style={{ flex: 1, padding: '6px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}>
+                      <button type="button" disabled={!selectedTeamId || assigningTeam} onClick={() => { if (!selectedTeamId) return; void assignToTeam({ variables: { problemId: problem.id, teamId: selectedTeamId } }) }} style={{ flex: 1, padding: '6px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}>
                         {assigningTeam ? t('detail.assigning') : t('detail.assign')}
                       </button>
                     </div>
@@ -409,7 +408,7 @@ export function ProblemDetailPage() {
                           Nessun utente nel gruppo {problem.assignedTeam.name}.
                         </span>
                       )}
-                      <button type="button" disabled={!selectedUserId || assigningUser} onClick={() => { if (!selectedUserId) return; void assignToUser({ variables: { problemId: problem.id, userId: selectedUserId } }) }} style={{ padding: '6px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}>
+                      <button type="button" disabled={!selectedUserId || assigningUser} onClick={() => { if (!selectedUserId) return; void assignToUser({ variables: { problemId: problem.id, userId: selectedUserId } }) }} style={{ padding: '6px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}>
                         {assigningUser ? t('detail.assigning') : t('detail.assign')}
                       </button>
                     </div>
@@ -568,7 +567,7 @@ export function ProblemDetailPage() {
                   if (transitionNotes.trim().length < 10) { toast.error(t('toast.problem.notesTooShort')); return }
                   void execTransition({ variables: { problemId: problem.id, toStep: pendingTransition.toStep, notes: transitionNotes.trim() } })
                 }}
-                style={{ padding: '8px 16px', borderRadius: 8, fontSize: 'var(--font-size-card-title)', fontWeight: 500, backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)', color: transitionNotes.trim().length >= 10 ? '#fff' : 'var(--text-muted)' }}
+                style={{ padding: '8px 16px', borderRadius: 8, fontSize: 'var(--font-size-card-title)', fontWeight: 500, backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)', color: transitionNotes.trim().length >= 10 ? colors.white : 'var(--text-muted)' }}
               >
                 {transitioning ? 'Esecuzione...' : 'Conferma'}
               </Button>

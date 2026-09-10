@@ -15,7 +15,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { GET_TEAMS } from '@/graphql/queries'
 import { FilterBuilder, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
-import { lookupStyle } from '@/lib/tokens'
+import { colors, lookupStyle } from '@/lib/tokens'
 import { Pill } from '@/components/ui/Pill'
 import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
@@ -33,7 +33,7 @@ interface Team {
 function TypeBadge({ type }: { type: string | null }) {
   if (!type) return <span style={{ color: 'var(--color-slate-light)' }}>—</span>
   const styles: Record<string, { bg: string; color: string }> = {
-    owner:   { bg: 'var(--color-info-bg)', color: '#2563eb' },
+    owner:   { bg: 'var(--color-info-bg)', color: colors.brand },
     support: { bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
   }
   const s = lookupStyle(styles, type, 'TEAM_TYPE_STYLES')

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { palette } from '@/lib/tokens'
 
 export interface SimpleColumn<T> {
   key:     keyof T & string
@@ -39,7 +40,7 @@ export function SimpleTable<T extends { id: string }>({ columns, rows, onRowClic
             tabIndex={onRowClick ? 0 : undefined}
             onKeyDown={onRowClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(row) } } : undefined}
             className={onRowClick ? 'hover-bg' : undefined}
-            style={{ cursor: onRowClick ? 'pointer' : undefined, borderBottom: '1px solid #f3f4f6' }}
+            style={{ cursor: onRowClick ? 'pointer' : undefined, borderBottom: `1px solid ${palette.neutral.borderLight}` }}
           >
             {columns.map((c) => (
               <td key={c.key} style={{ padding: '8px 8px', color: 'var(--color-slate-dark)' }}>

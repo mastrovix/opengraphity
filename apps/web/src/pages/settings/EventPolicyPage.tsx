@@ -34,7 +34,7 @@ import { Toggle } from '@/components/ui/Toggle'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { GET_EVENT_POLICY } from '@/graphql/queries'
 import { UPDATE_EVENT_POLICY } from '@/graphql/mutations'
-import { colors } from '@/lib/tokens'
+import { colors, palette } from '@/lib/tokens'
 import { EVENT_SEVERITIES, type EventPolicy, type EventSeverity } from '@/types/events'
 
 const OPEN_FROM  = ['info', 'warning', 'critical', 'never'] as const
@@ -144,7 +144,7 @@ type GroupName = 'recognition' | 'incidents' | 'changeWindow' | 'flapStorm' | 'r
 function Group({ name, children }: { name: GroupName; children: React.ReactNode }) {
   const { t } = useTranslation()
   return (
-    <fieldset style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '14px 18px 18px', margin: 0, background: '#fff' }}>
+    <fieldset style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '14px 18px 18px', margin: 0, background: colors.white }}>
       <legend style={{ padding: '0 6px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark }}>{t(`events.policy.groups.${name}`)}</legend>
       {children}
     </fieldset>
@@ -275,7 +275,7 @@ export function EventPolicyPage() {
       </div>
 
       {/* Come funziona: le sei regole della correlazione in parole. */}
-      <section aria-labelledby={fid('how')} style={{ maxWidth: 760, marginBottom: 16, padding: '14px 18px', background: 'var(--color-brand-light)', border: '1px solid #bae6fd', borderRadius: 10 }}>
+      <section aria-labelledby={fid('how')} style={{ maxWidth: 760, marginBottom: 16, padding: '14px 18px', background: 'var(--color-brand-light)', border: `1px solid ${palette.info.border}`, borderRadius: 10 }}>
         <h2 id={fid('how')} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark }}>
           <Info size={15} aria-hidden="true" color="var(--color-brand)" />
           {t('events.policy.howItWorks.title')}
@@ -290,7 +290,7 @@ export function EventPolicyPage() {
       </section>
 
       {mapError && (
-        <div role="alert" style={{ background: 'var(--color-warning-bg)', border: '1px solid #fbbf24', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 'var(--font-size-body)', color: '#92400e' }}>
+        <div role="alert" style={{ background: 'var(--color-warning-bg)', border: `1px solid ${palette.warning.border}`, borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 'var(--font-size-body)', color: palette.warning.strong }}>
           {t('events.policy.severityMapInvalid', { error: mapError })}
         </div>
       )}
@@ -393,7 +393,7 @@ export function EventPolicyPage() {
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
           {/* Stato del form annunciato (role="status"): modifiche non salvate / nulla da salvare / campi da correggere */}
-          <span role="status" style={{ fontSize: 'var(--font-size-body)', color: invalid ? colors.danger : dirty ? '#b45309' : colors.slateLight }}>
+          <span role="status" style={{ fontSize: 'var(--font-size-body)', color: invalid ? colors.danger : dirty ? palette.warning.text : colors.slateLight }}>
             {invalid ? t('events.policy.validation.blocked') : dirty ? t('events.policy.unsaved') : t('events.policy.noChanges')}
           </span>
           <Button variant="secondary" disabled={saving || !dirty} icon={<RotateCcw size={14} aria-hidden="true" />} onClick={reset}>

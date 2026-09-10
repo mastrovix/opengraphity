@@ -6,6 +6,7 @@ import { CountBadge } from '@/components/ui/CountBadge'
 import { GET_CI_CHANGES } from '@/graphql/queries'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { PhaseBadge, RiskBadge } from '@/components/ui/badges'
+import { colors, palette } from '@/lib/tokens'
 
 interface ChangeRow {
   id:                 string
@@ -50,7 +51,7 @@ export function CIChangeList({ ciId }: { ciId: string }) {
           color:        'inherit',
           textAlign:    'left',
           padding:      '6px 0',
-          borderBottom: '1px solid #f9fafb',
+          borderBottom: `1px solid ${palette.neutral.borderLight}`,
           cursor:       'pointer',
           opacity:      faded ? 0.5 : 1,
         }}
@@ -99,7 +100,7 @@ export function CIChangeList({ ciId }: { ciId: string }) {
         }}>
           {label}
         </div>
-        <div style={{ paddingLeft: 12, borderLeft: '2px solid #f3f4f6', marginLeft: 4 }}>
+        <div style={{ paddingLeft: 12, borderLeft: `2px solid ${palette.neutral.borderLight}`, marginLeft: 4 }}>
           {items.map(c => renderRow(c, faded))}
         </div>
       </div>
@@ -108,8 +109,8 @@ export function CIChangeList({ ciId }: { ciId: string }) {
 
   return (
     <div style={{
-      background:   '#fff',
-      border:       '1px solid #e5e7eb',
+      background:   colors.white,
+      border:       `1px solid ${colors.border}`,
       borderRadius: 10,
       marginBottom: 16,
       overflow:     'hidden',
@@ -130,7 +131,7 @@ export function CIChangeList({ ciId }: { ciId: string }) {
           textAlign:      'left',
           cursor:         'pointer',
           padding:        '14px 20px',
-          borderBottom:   open ? '1px solid #e5e7eb' : 'none',
+          borderBottom:   open ? `1px solid ${colors.border}` : 'none',
         }}
       >
         <span style={{

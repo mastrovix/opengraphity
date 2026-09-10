@@ -6,6 +6,7 @@
  * Consumers should look up a step's category (via `useWorkflowSteps`) and
  * pass it to these helpers — never match on the step name.
  */
+import { colors, palette } from '@/lib/tokens'
 
 export interface CategoryStyle {
   bg:    string
@@ -13,17 +14,17 @@ export interface CategoryStyle {
 }
 
 const CATEGORY_STYLE: Record<string, CategoryStyle> = {
-  active:    { bg: '#dbeafe', color: '#2563eb' },
-  waiting:   { bg: '#ede9fe', color: '#7c3aed' },
-  escalated: { bg: '#fed7aa', color: '#b45309' },
-  resolved:  { bg: '#dcfce7', color: '#15803d' },
-  published: { bg: '#dcfce7', color: '#15803d' },
+  active:    { bg: palette.info.tint, color: colors.brand },
+  waiting:   { bg: palette.purple.tint, color: palette.purple.base },
+  escalated: { bg: palette.orange.tint, color: palette.warning.text },
+  resolved:  { bg: palette.success.tint, color: palette.success.text },
+  published: { bg: palette.success.tint, color: palette.success.text },
   closed:    { bg: 'var(--color-slate-bg)', color: 'var(--color-slate-light)' },
-  failed:    { bg: '#fee2e2', color: '#b91c1c' },
-  draft:     { bg: '#f1f5f9', color: 'var(--color-slate)' },
+  failed:    { bg: palette.danger.tint, color: palette.danger.text },
+  draft:     { bg: colors.slateBg, color: 'var(--color-slate)' },
 }
 
-const NEUTRAL_STYLE: CategoryStyle = { bg: '#f1f5f9', color: 'var(--color-slate)' }
+const NEUTRAL_STYLE: CategoryStyle = { bg: colors.slateBg, color: 'var(--color-slate)' }
 
 export function styleForCategory(category: string | null | undefined): CategoryStyle {
   if (!category) return NEUTRAL_STYLE
@@ -39,10 +40,10 @@ export function styleForCategory(category: string | null | undefined): CategoryS
 
 /** Solid-background style for primary action buttons (e.g. "Resolve"). */
 const BUTTON_SOLID: Record<string, { bg: string; fg: string; border: string }> = {
-  resolved:  { bg: 'var(--color-trigger-automatic)',  fg: '#fff', border: 'var(--color-trigger-automatic)'  },
-  published: { bg: 'var(--color-trigger-automatic)',  fg: '#fff', border: 'var(--color-trigger-automatic)'  },
-  escalated: { bg: 'var(--color-trigger-sla-breach)', fg: '#fff', border: 'var(--color-trigger-sla-breach)' },
-  failed:    { bg: 'var(--color-trigger-sla-breach)', fg: '#fff', border: 'var(--color-trigger-sla-breach)' },
+  resolved:  { bg: 'var(--color-trigger-automatic)',  fg: colors.white, border: 'var(--color-trigger-automatic)'  },
+  published: { bg: 'var(--color-trigger-automatic)',  fg: colors.white, border: 'var(--color-trigger-automatic)'  },
+  escalated: { bg: 'var(--color-trigger-sla-breach)', fg: colors.white, border: 'var(--color-trigger-sla-breach)' },
+  failed:    { bg: 'var(--color-trigger-sla-breach)', fg: colors.white, border: 'var(--color-trigger-sla-breach)' },
   closed:    { bg: 'transparent', fg: 'var(--text-primary)', border: 'var(--border)' },
 }
 
@@ -54,7 +55,7 @@ export function buttonStyleForCategory(category: string | null | undefined): {
   if (solid) return { backgroundColor: solid.bg, color: solid.fg, borderColor: solid.border }
   return {
     backgroundColor: 'var(--color-brand)',
-    color:           '#fff',
+    color:           colors.white,
     borderColor:     'var(--color-brand)',
   }
 }

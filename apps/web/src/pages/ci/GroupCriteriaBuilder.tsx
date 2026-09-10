@@ -11,6 +11,7 @@ import { useMetamodel } from '@/contexts/MetamodelContext'
 import { toPascalCase } from '@/lib/stringUtils'
 import { UPDATE_CI } from '@/graphql/mutations'
 import { useCIBaseEnums } from '@/lib/ciEnums'
+import { colors, palette } from '@/lib/tokens'
 
 const PREVIEW_COUNT = gql`
   query GroupCriteriaPreview($ciTypes: [String], $environment: String, $status: String, $search: String) {
@@ -125,8 +126,8 @@ export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
                   style={{
                     padding: '4px 12px', borderRadius: 100, fontSize: 'var(--font-size-body)', fontWeight: 500,
                     cursor: 'pointer', transition: 'all 120ms',
-                    border: active ? '1.5px solid var(--color-brand)' : '1.5px solid #e5e7eb',
-                    background: active ? 'var(--color-brand-light)' : '#fff',
+                    border: active ? '1.5px solid var(--color-brand)' : `1.5px solid ${colors.border}`,
+                    background: active ? 'var(--color-brand-light)' : colors.white,
                     color: active ? 'var(--color-brand)' : 'var(--color-slate)',
                   }}
                 >
@@ -168,7 +169,7 @@ export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
         </div>
 
         {/* Live preview + save */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px solid #f3f4f6' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4, borderTop: `1px solid ${palette.neutral.borderLight}` }}>
           <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)' }}>
             {previewLoading
               ? <Loader2 size={12} className="animate-spin" />

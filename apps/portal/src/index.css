@@ -14,6 +14,140 @@
 
   --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --radius: 8px;
+
+  /* ── Alias semantici (stessi nomi di apps/web/src/index.css) ───────────
+     Il portale condivide il vocabolario dei token con l'app web: i sorgenti
+     .ts/.tsx usano SOLO questi nomi (via lib/tokens.ts), mai esadecimali
+     (regola ESLint no-restricted-syntax nel .eslintrc.json di root).
+     Il brand del portale (#0EA5E9) è diverso da quello del web e resta tale. */
+  --color-brand:        var(--brand);
+  --color-brand-hover:  var(--brand-hover);
+  --color-brand-light:  var(--brand-light);
+  --color-slate:        var(--slate);
+  --color-slate-dark:   var(--slate-dark);
+  --color-slate-light:  var(--slate-light);
+  --color-slate-bg:     var(--slate-bg);
+  --color-white:        var(--white);
+  --color-border:       var(--border);
+  /* Accento delle icone di pagina/sezione */
+  --color-icon-accent:  #38bdf8;
+
+  /* Trasparenze del brand (#0EA5E9 = rgb(14,165,233)): ombre e aloni */
+  --color-brand-a08:    rgba(14, 165, 233, 0.08);
+  --color-brand-a13:    rgba(14, 165, 233, 0.13);
+  --color-brand-a20:    rgba(14, 165, 233, 0.20);
+  --color-brand-a53:    rgba(14, 165, 233, 0.53);
+
+  /* Feedback semantico */
+  --color-success:      var(--success);
+  --color-warning:      var(--warning);
+  --color-danger:       var(--danger);
+
+  /* Sfondi di badge di stato e avvisi */
+  --color-border-light: #f3f4f6;
+  --color-danger-bg:    #fef2f2;
+  --color-success-bg:   #ecfdf5;
+  --color-warning-bg:   #fffbeb;
+  --color-info-bg:      #eff6ff;
+  /* Allarme instabile (viola), come nel web */
+  --color-flapping:     #6d28d9;
+  --color-flapping-bg:  #f5f3ff;
+
+  /* ── Tavolozza semantica estesa ─────────────────────────────────────────
+     Copia del blocco omonimo di apps/web/src/index.css. Ogni famiglia ha la
+     stessa scala: bg (sfondo pieno), tint (sfondo più marcato / hover),
+     border, text (testo su bg), strong (testo con più contrasto), base
+     (icone e riempimenti). */
+
+  /* Neutri */
+  --color-surface-1:      #f8fafc;            /* sfondo pagina / righe alternate */
+  --color-surface-2:      #f1f3f9;            /* pannelli secondari, celle di intestazione */
+  --color-border-strong:  #c8cfe0;
+  --color-slate-strong:   #475569;            /* testo secondario con più contrasto */
+  --color-slate-muted:    #374151;            /* testo di supporto scuro */
+
+  /* Successo (verde) */
+  --color-success-tint:   #dcfce7;
+  --color-success-border: #bbf7d0;
+  --color-success-text:   #15803d;
+  --color-success-strong: #166534;
+  --color-success-dark:   #059669;
+
+  /* Avviso (ambra / giallo) */
+  --color-warning-tint:   #fef3c7;
+  --color-warning-border: #fde68a;
+  --color-warning-text:   #b45309;
+  --color-warning-strong: #92400e;
+  --color-warning-dark:   #d97706;
+  --color-yellow-bg:      #fef9c3;            /* evidenziazione (note, righe da rivedere) */
+  --color-yellow-border:  #fde047;
+  --color-yellow-text:    #854d0e;
+
+  /* Pericolo (rosso) */
+  --color-danger-tint:    #fee2e2;
+  --color-danger-border:  #fecaca;
+  --color-danger-border-strong: #fca5a5;
+  --color-danger-text:    #b91c1c;
+  --color-danger-strong:  #991b1b;
+  --color-danger-dark:    #dc2626;
+
+  /* Informazione (azzurro, stessa famiglia del brand) */
+  --color-info-tint:      #e0f2fe;
+  --color-info-border:    #bae6fd;
+  --color-info-text:      var(--brand-hover);
+  --color-info-strong:    #0c4a6e;
+  --color-info-light:     var(--brand-light); /* #F0F9FF */
+
+  /* Viola (instabile, automazioni, categorie) */
+  --color-purple:         #7c3aed;
+  --color-purple-light:   #8b5cf6;
+  --color-purple-dark:    var(--color-flapping);
+  --color-purple-bg:      var(--color-flapping-bg);
+  --color-purple-tint:    #ede9fe;
+  --color-purple-border:  #c4b5fd;
+
+  /* Arancione (severità alta, in corso) */
+  --color-orange:         #f97316;
+  --color-orange-dark:    #ea580c;
+  --color-orange-bg:      #fff7ed;
+  --color-orange-tint:    #ffedd5;
+  --color-orange-border:  #fed7aa;
+  --color-orange-text:    #c2410c;
+
+  /* Verde acqua e rosa: solo serie di grafici e categorie */
+  --color-teal:           #0891b2;
+  --color-teal-light:     #06b6d4;
+  --color-teal-bg:        #cffafe;
+  --color-teal-border:    #67e8f9;
+  --color-pink:           #ec4899;
+  --color-lime:           #84cc16;
+
+  /* Trasparenze: ombre, veli, evidenziazioni */
+  --color-black-a05:      rgba(0, 0, 0, 0.05);
+  --color-black-a06:      rgba(0, 0, 0, 0.06);
+  --color-black-a08:      rgba(0, 0, 0, 0.08);
+  --color-black-a10:      rgba(0, 0, 0, 0.10);
+  --color-black-a12:      rgba(0, 0, 0, 0.12);
+  --color-black-a15:      rgba(0, 0, 0, 0.15);
+  --color-black-a20:      rgba(0, 0, 0, 0.20);
+  --color-scrim:          rgba(15, 23, 42, 0.40);   /* velo dietro i modali */
+  --color-text-disabled:  #cbd5e1;                 /* testo di controlli disabilitati, numeri decorativi */
+  --color-white-a08:      rgba(255, 255, 255, 0.08);
+  --color-white-a40:      rgba(255, 255, 255, 0.40);
+  --color-white-a92:      rgba(255, 255, 255, 0.92);
+  --color-success-a08:    rgba(34, 197, 94, 0.08);
+  --color-success-a10:    rgba(34, 197, 94, 0.10);
+  --color-danger-a08:     rgba(239, 68, 68, 0.08);
+  --color-icon-accent-a12: rgba(56, 189, 248, 0.12);
+
+  /* Marchi di strumenti esterni: identità dei fornitori, non cambiano col tema. */
+  --color-vendor-prometheus: #e6522c;
+  --color-vendor-grafana:    #f46800;
+  --color-vendor-zabbix:     #d40000;
+  --color-vendor-datadog:    #632ca6;
+  --color-vendor-dynatrace:  #1496ff;
+  --color-vendor-slack:      #4a154b;
+  --color-vendor-teams:      #464eb8;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

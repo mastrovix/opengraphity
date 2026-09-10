@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { GET_KB_ARTICLES, GET_KB_CATEGORIES } from '@/graphql/queries'
 import { KBSearchBar } from '@/components/KBSearchBar'
 import { fmtDateLong } from '@/lib/format'
+import { colors, palette, alpha } from '@/lib/tokens'
 
 interface KBArticle {
   id: string; title: string; slug: string; body: string
@@ -50,7 +51,7 @@ export function KBListPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0F172A', marginBottom: 20 }}>
+      <h1 style={{ fontSize: 20, fontWeight: 600, color: colors.slateDark, marginBottom: 20 }}>
         {t('kb.title')}
       </h1>
 
@@ -62,7 +63,7 @@ export function KBListPage() {
       {/* No search: category grid */}
       {!search && categories.length > 0 && (
         <div style={{ marginBottom: 32 }}>
-          <h2 style={{ fontSize: 10, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>
+          <h2 style={{ fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>
             {t('kb.categories')}
           </h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
@@ -76,18 +77,18 @@ export function KBListPage() {
                   alignItems:      'center',
                   gap:             8,
                   padding:         '20px 16px',
-                  backgroundColor: '#F8FAFC',
-                  border:          '1px solid #E2E8F0',
+                  backgroundColor: palette.neutral.surface1,
+                  border:          `1px solid ${colors.border}`,
                   borderRadius:    10,
                   cursor:          'pointer',
                   transition:      'border-color 0.15s, background 0.15s',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = '#0EA5E9'; e.currentTarget.style.backgroundColor = '#F0F9FF' }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.backgroundColor = '#F8FAFC' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = colors.brand; e.currentTarget.style.backgroundColor = colors.brandLight }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = colors.border; e.currentTarget.style.backgroundColor = palette.neutral.surface1 }}
               >
                 <span style={{ fontSize: 28 }}>{CATEGORY_ICONS[cat.name.toLowerCase()] ?? '📄'}</span>
-                <span style={{ fontSize: 10, fontWeight: 600, color: '#0F172A', textTransform: 'capitalize' }}>{cat.name}</span>
-                <span style={{ fontSize: 10, color: '#94A3B8' }}>{cat.count} {t('kb.articles')}</span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark, textTransform: 'capitalize' }}>{cat.name}</span>
+                <span style={{ fontSize: 10, color: colors.slateLight }}>{cat.count} {t('kb.articles')}</span>
               </button>
             ))}
           </div>
@@ -96,13 +97,13 @@ export function KBListPage() {
 
       {/* Articles */}
       {loading ? (
-        <div style={{ padding: 32, textAlign: 'center', color: '#94A3B8' }}>{t('common.loading')}</div>
+        <div style={{ padding: 32, textAlign: 'center', color: colors.slateLight }}>{t('common.loading')}</div>
       ) : articles.length === 0 ? (
         <div style={{ padding: '48px 0', textAlign: 'center' }}>
-          <p style={{ color: '#94A3B8', marginBottom: 16 }}>{t('kb.noResults')}</p>
+          <p style={{ color: colors.slateLight, marginBottom: 16 }}>{t('kb.noResults')}</p>
           <Link
             to="/tickets/new"
-            style={{ color: '#0EA5E9', fontWeight: 500, fontSize: 10 }}
+            style={{ color: colors.brand, fontWeight: 500, fontSize: 10 }}
           >
             + Apri un ticket
           </Link>
@@ -110,10 +111,10 @@ export function KBListPage() {
       ) : (
         <div>
           {search && (
-            <div style={{ marginBottom: 16, fontSize: 10, color: '#64748B' }}>
+            <div style={{ marginBottom: 16, fontSize: 10, color: colors.slate }}>
               {articles.length} risultati per "<strong>{search}</strong>"
               {' '}
-              <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#0EA5E9', cursor: 'pointer', fontSize: 10 }}>
+              <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: colors.brand, cursor: 'pointer', fontSize: 10 }}>
                 Cancella
               </button>
             </div>
@@ -126,27 +127,27 @@ export function KBListPage() {
                 style={{
                   display:         'block',
                   padding:         16,
-                  backgroundColor: '#fff',
-                  border:          '1px solid #E2E8F0',
+                  backgroundColor: colors.white,
+                  border:          `1px solid ${colors.border}`,
                   borderRadius:    10,
                   textDecoration:  'none',
                   transition:      'box-shadow 0.15s, border-color 0.15s',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = '#BAE6FD'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(14,165,233,0.08)' }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.boxShadow = 'none' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = palette.info.border; e.currentTarget.style.boxShadow = `0 2px 8px ${alpha.brand08}` }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = colors.border; e.currentTarget.style.boxShadow = 'none' }}
               >
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: '#0EA5E9', marginBottom: 6 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: colors.brand, marginBottom: 6 }}>
                       {article.title}
                     </div>
-                    <div style={{ fontSize: 10, color: '#64748B', lineHeight: 1.6 }}>
+                    <div style={{ fontSize: 10, color: colors.slate, lineHeight: 1.6 }}>
                       {excerpt(article.body)}
                     </div>
-                    <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 10, color: '#94A3B8' }}>
+                    <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 10, color: colors.slateLight }}>
                       <span style={{
-                        backgroundColor: '#F0F9FF',
-                        color:           '#0EA5E9',
+                        backgroundColor: colors.brandLight,
+                        color:           colors.brand,
                         padding:         '2px 8px',
                         borderRadius:    100,
                         fontWeight:      500,

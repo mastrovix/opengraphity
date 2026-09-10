@@ -8,12 +8,13 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { PhaseBadge, RiskBadge } from '@/components/ui/badges'
 import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT, ROLE_LABEL } from '@/lib/taskStatus'
 import type { AffectedCI, AssessmentTaskData, ChangeData, DeployPlanTaskData } from '@/types/change'
+import { colors } from '@/lib/tokens'
 
 type DotState = 'not_started' | 'in_progress' | 'completed' | 'failed'
 const DOT_COLOR: Record<DotState, string> = {
   not_started: 'var(--color-slate-light)',
-  in_progress: '#eab308',
-  completed:   '#22c55e',
+  in_progress: colors.warning,
+  completed:   colors.success,
   failed:      'var(--color-danger)',
 }
 

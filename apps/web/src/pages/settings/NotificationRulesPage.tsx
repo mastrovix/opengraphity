@@ -8,7 +8,7 @@ import { Plus, Bell } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { GET_NOTIFICATION_RULES } from '@/graphql/queries'
 import { UPDATE_NOTIFICATION_RULE, CREATE_NOTIFICATION_RULE, DELETE_NOTIFICATION_RULE } from '@/graphql/mutations'
-import { fontSize, fontWeight } from '@/lib/tokens'
+import { fontSize, fontWeight, colors } from '@/lib/tokens'
 import { RuleRow } from './NotificationRuleList'
 import type { NotificationRule, UpdateInput } from './NotificationRuleList'
 import { NewRuleDialog } from './NotificationRuleForm'
@@ -116,7 +116,7 @@ export default function NotificationRulesPage() {
   const customRules = allRules.filter((r) => !STANDARD_EVENTS.includes(r.eventType))
 
   const tableHeader = (
-    <tr style={{ background: 'var(--color-slate-bg)', borderBottom: '1px solid #e2e8f0' }}>
+    <tr style={{ background: 'var(--color-slate-bg)', borderBottom: `1px solid ${colors.border}` }}>
       <th style={{ ...TH, width: 52 }}>{t('notificationRules.enabled')}</th>
       <th style={TH}>{t('notificationRules.event')}</th>
       <th style={{ ...TH, width: 120 }}>{t('notificationRules.header.severity')}</th>
@@ -142,7 +142,7 @@ export default function NotificationRulesPage() {
           onClick={() => setShowDialog(true)}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#fff',
+            padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: colors.white,
             border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500,
             cursor: 'pointer', transition: 'background-color 150ms',
           }}
@@ -164,11 +164,11 @@ export default function NotificationRulesPage() {
                 <h2 style={{
                   fontSize: fontSize.sectionTitle, fontWeight: fontWeight.semibold,
                   color: 'var(--color-slate-dark)', margin: '0 0 10px', paddingBottom: 8,
-                  borderBottom: '2px solid #e2e8f0',
+                  borderBottom: `2px solid ${colors.border}`,
                 }}>
                   {t(`notificationRules.category.${key.toLowerCase()}`, key)}
                 </h2>
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
+                <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden', background: colors.white }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>{tableHeader}</thead>
                     <tbody>
@@ -188,11 +188,11 @@ export default function NotificationRulesPage() {
               <h2 style={{
                 fontSize: fontSize.sectionTitle, fontWeight: fontWeight.semibold,
                 color: 'var(--color-slate-dark)', margin: '0 0 10px', paddingBottom: 8,
-                borderBottom: '2px solid #e2e8f0',
+                borderBottom: `2px solid ${colors.border}`,
               }}>
                 {t('notificationRules.category.custom', 'Custom')}
               </h2>
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
+              <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden', background: colors.white }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>{tableHeader}</thead>
                   <tbody>

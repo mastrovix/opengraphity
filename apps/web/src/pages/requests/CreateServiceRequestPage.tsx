@@ -8,19 +8,18 @@ import { toast } from 'sonner'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
 import { GET_SERVICE_REQUESTS, GET_SERVICE_CATALOG_ADMIN } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
-import { lookupOrError } from '@/lib/tokens'
-
+import { colors, palette, lookupOrError } from '@/lib/tokens'
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
 const inputBase: React.CSSProperties = {
   width:           '100%',
   padding:         '10px 14px',
-  border:          '1px solid #e2e6f0',
+  border:          `1px solid ${colors.border}`,
   borderRadius:    6,
   fontSize:        14,
   color:           'var(--color-slate-dark)',
   outline:         'none',
-  backgroundColor: '#ffffff',
+  backgroundColor: colors.white,
   boxSizing:       'border-box',
   transition:      'border-color 150ms, box-shadow 150ms',
 }
@@ -39,10 +38,10 @@ function focusHandlers(hasError: boolean) {
   return {
     onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       e.currentTarget.style.borderColor = 'var(--color-brand)'
-      e.currentTarget.style.boxShadow   = '0 0 0 3px #ecfeff'
+      e.currentTarget.style.boxShadow   = `0 0 0 3px ${colors.brandLight}`
     },
     onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-      e.currentTarget.style.borderColor = hasError ? 'var(--color-trigger-sla-breach)' : '#e2e6f0'
+      e.currentTarget.style.borderColor = hasError ? 'var(--color-trigger-sla-breach)' : colors.border
       e.currentTarget.style.boxShadow   = 'none'
     },
   }
@@ -134,7 +133,7 @@ export function CreateServiceRequestPage() {
       </div>
 
       {/* Form card */}
-      <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e6f0', borderRadius: 12, padding: 32 }}>
+      <div style={{ backgroundColor: colors.white, border: `1px solid ${colors.border}`, borderRadius: 12, padding: 32 }}>
         <form onSubmit={handleSubmit} noValidate>
 
           {/* Catalog item (consigliato, ma la richiesta generica resta possibile) */}
@@ -155,7 +154,7 @@ export function CreateServiceRequestPage() {
               ))}
             </select>
             {selectedItem?.requiresApproval && (
-              <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-body)', color: '#b45309' }}>
+              <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-body)', color: palette.warning.text }}>
                 Questa voce richiede approvazione: la richiesta passerà dal flusso di approvazione.
               </p>
             )}
@@ -172,7 +171,7 @@ export function CreateServiceRequestPage() {
               value={title}
               onChange={(e) => { setTitle(e.target.value); if (submitted) setSubmitted(false) }}
               placeholder="What do you need?"
-              style={{ ...inputBase, borderColor: titleError ? 'var(--color-trigger-sla-breach)' : '#e2e6f0' }}
+              style={{ ...inputBase, borderColor: titleError ? 'var(--color-trigger-sla-breach)' : colors.border }}
               {...focusHandlers(!!titleError)}
             />
             {titleError && (
@@ -235,20 +234,20 @@ export function CreateServiceRequestPage() {
           </div>
 
           {/* Footer */}
-          <div style={{ borderTop: '1px solid #f1f3f9', marginTop: 32, paddingTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+          <div style={{ borderTop: `1px solid ${palette.neutral.borderLight}`, marginTop: 32, paddingTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
             <button
               type="button"
               onClick={() => navigate('/requests')}
-              style={{ padding: '8px 20px', border: '1px solid #e2e6f0', backgroundColor: '#ffffff', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', color: 'var(--color-slate)' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f3f9' }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#ffffff' }}
+              style={{ padding: '8px 20px', border: `1px solid ${colors.border}`, backgroundColor: colors.white, borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', color: 'var(--color-slate)' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = palette.neutral.surface2 }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = colors.white }}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              style={{ padding: '8px 20px', backgroundColor: 'var(--color-brand)', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.8 : 1 }}
+              style={{ padding: '8px 20px', backgroundColor: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.8 : 1 }}
               onMouseEnter={(e) => { if (!loading) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)' }}
               onMouseLeave={(e) => { if (!loading) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
             >

@@ -6,6 +6,7 @@ import { GET_MY_TICKETS, GET_MY_TICKET_STATS, GET_ME } from '@/graphql/queries'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
 import { KBSearchBar } from '@/components/KBSearchBar'
 import { fmtRelative } from '@/lib/format'
+import { colors, palette, alpha } from '@/lib/tokens'
 
 interface Ticket {
   id: string; title: string; status: string; priority: string
@@ -39,14 +40,14 @@ export function HomePage() {
           ].map(({ label, value }) => (
             <div key={label} style={{
               padding:         '8px 16px',
-              backgroundColor: '#F8FAFC',
-              border:          '1px solid #E2E8F0',
+              backgroundColor: palette.neutral.surface1,
+              border:          `1px solid ${colors.border}`,
               borderRadius:    8,
               textAlign:       'center',
               minWidth:        64,
             }}>
-              <div style={{ fontSize: 20, fontWeight: 700, color: '#0EA5E9' }}>{value}</div>
-              <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>{label}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: colors.brand }}>{value}</div>
+              <div style={{ fontSize: 10, color: colors.slateLight, marginTop: 2 }}>{label}</div>
             </div>
           ))}
         </div>
@@ -54,7 +55,7 @@ export function HomePage() {
 
       {/* Hero */}
       <div style={{ textAlign: 'center', padding: '8px 0 8px' }}>
-        <h1 style={{ fontSize: 28, fontWeight: 600, color: '#0F172A', marginBottom: 24 }}>
+        <h1 style={{ fontSize: 28, fontWeight: 600, color: colors.slateDark, marginBottom: 24 }}>
           {t('home.greeting', { name })}
         </h1>
         <div style={{ maxWidth: 560, margin: '0 auto' }}>
@@ -72,19 +73,19 @@ export function HomePage() {
             alignItems:      'center',
             gap:             12,
             padding:         24,
-            backgroundColor: '#F0F9FF',
-            border:          '1.5px solid #BAE6FD',
+            backgroundColor: colors.brandLight,
+            border:          `1.5px solid ${palette.info.border}`,
             borderRadius:    12,
             cursor:          'pointer',
             transition:      'box-shadow 0.15s',
           }}
-          onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(14,165,233,0.15)' }}
+          onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 4px 12px ${alpha.brand13}` }}
           onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
         >
-          <PlusCircle size={32} style={{ color: '#0EA5E9' }} />
+          <PlusCircle size={32} style={{ color: colors.brand }} />
           <div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#0F172A' }}>{t('home.newTicket')}</div>
-            <div style={{ fontSize: 10, color: '#64748B', marginTop: 4 }}>{t('home.newTicketDesc')}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark }}>{t('home.newTicket')}</div>
+            <div style={{ fontSize: 10, color: colors.slate, marginTop: 4 }}>{t('home.newTicketDesc')}</div>
           </div>
         </button>
 
@@ -96,19 +97,19 @@ export function HomePage() {
             alignItems:      'center',
             gap:             12,
             padding:         24,
-            backgroundColor: '#F8FAFC',
-            border:          '1.5px solid #E2E8F0',
+            backgroundColor: palette.neutral.surface1,
+            border:          `1.5px solid ${colors.border}`,
             borderRadius:    12,
             cursor:          'pointer',
             transition:      'box-shadow 0.15s',
           }}
-          onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)' }}
+          onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 4px 12px ${alpha.black08}` }}
           onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
         >
-          <Search size={32} style={{ color: '#64748B' }} />
+          <Search size={32} style={{ color: colors.slate }} />
           <div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#0F172A' }}>{t('home.searchKB')}</div>
-            <div style={{ fontSize: 10, color: '#64748B', marginTop: 4 }}>{t('home.searchKBDesc')}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark }}>{t('home.searchKB')}</div>
+            <div style={{ fontSize: 10, color: colors.slate, marginTop: 4 }}>{t('home.searchKBDesc')}</div>
           </div>
         </button>
       </div>
@@ -116,14 +117,14 @@ export function HomePage() {
       {/* Recent tickets */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <h2 style={{ fontSize: 10, fontWeight: 600, color: '#0F172A' }}>{t('home.recentTickets')}</h2>
-          <Link to="/tickets" style={{ fontSize: 10, color: '#0EA5E9' }}>Tutti →</Link>
+          <h2 style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark }}>{t('home.recentTickets')}</h2>
+          <Link to="/tickets" style={{ fontSize: 10, color: colors.brand }}>Tutti →</Link>
         </div>
 
         {tickets.length === 0 ? (
-          <div style={{ padding: '32px 0', textAlign: 'center', color: '#94A3B8' }}>
+          <div style={{ padding: '32px 0', textAlign: 'center', color: colors.slateLight }}>
             <p style={{ marginBottom: 8 }}>{t('home.noTickets')}</p>
-            <Link to="/tickets/new" style={{ color: '#0EA5E9', fontWeight: 500 }}>
+            <Link to="/tickets/new" style={{ color: colors.brand, fontWeight: 500 }}>
               {t('home.needHelp')}
             </Link>
           </div>
@@ -138,20 +139,20 @@ export function HomePage() {
                   alignItems:      'center',
                   justifyContent:  'space-between',
                   padding:         '12px 16px',
-                  backgroundColor: '#FAFAFA',
-                  border:          '1px solid #E2E8F0',
+                  backgroundColor: palette.neutral.surface1,
+                  border:          `1px solid ${colors.border}`,
                   borderRadius:    8,
                   gap:             12,
                   transition:      'background 0.15s',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#F0F9FF' }}
-                onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#FAFAFA' }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = colors.brandLight }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = palette.neutral.surface1 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10, fontWeight: 500, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 10, fontWeight: 500, color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {ticket.title}
                   </div>
-                  <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>
+                  <div style={{ fontSize: 10, color: colors.slateLight, marginTop: 2 }}>
                     {fmtRelative(ticket.updatedAt, 'day')}
                   </div>
                 </div>

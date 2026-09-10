@@ -1,9 +1,10 @@
 /**
  * Presentational + styling helpers shared by the TaskViewPage form modules.
  */
+import { colors } from '@/lib/tokens'
 
 export const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6,
+  width: '100%', padding: '8px 12px', border: `1px solid ${colors.border}`, borderRadius: 6,
   fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', boxSizing: 'border-box',
 }
 
@@ -31,10 +32,10 @@ export function StickyAction({ label, disabled, blockReason, onClick }: {
   label: string; disabled: boolean; blockReason?: string; onClick: () => void
 }) {
   return (
-    <div style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: '1px solid #e5e7eb', padding: '12px 0', marginTop: 20 }}>
+    <div style={{ position: 'sticky', bottom: 0, background: colors.white, borderTop: `1px solid ${colors.border}`, padding: '12px 0', marginTop: 20 }}>
       <button type="button" disabled={disabled} onClick={onClick} style={{
         width: '100%', padding: '12px 24px', borderRadius: 8, border: 'none',
-        backgroundColor: 'var(--color-brand)', color: '#fff', fontSize: 'var(--font-size-card-title)',
+        backgroundColor: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-card-title)',
         fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
       }}>
         {label}

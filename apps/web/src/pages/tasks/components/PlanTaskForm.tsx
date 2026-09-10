@@ -8,6 +8,7 @@ import { Plus, X } from 'lucide-react'
 import { TASK_STATUS } from '@/lib/taskStatus'
 import type { DeployPlanTaskData, DeployStep } from '@/types/change'
 import { StickyAction, inputStyle, labelStyle, toLocal, fromLocal } from './shared'
+import { colors, palette } from '@/lib/tokens'
 
 const emptyStep = (): DeployStep => ({
   title: '',
@@ -41,14 +42,14 @@ export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, 
   return (
     <div>
       {steps.map((s, i) => (
-        <div key={i} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 14, marginBottom: 10, background: 'var(--color-slate-bg)' }}>
+        <div key={i} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 14, marginBottom: 10, background: 'var(--color-slate-bg)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <span style={labelStyle}>Step {i + 1}</span>
             {canEdit && !completed && (
               <button
                 type="button"
                 onClick={() => { setSteps(steps.filter((_, j) => j !== i)); setDirty(true) }}
-                style={{ background: 'none', border: '1px solid #fecaca', color: 'var(--color-danger)', cursor: 'pointer', padding: 4, borderRadius: 4 }}
+                style={{ background: 'none', border: `1px solid ${palette.danger.border}`, color: 'var(--color-danger)', cursor: 'pointer', padding: 4, borderRadius: 4 }}
               ><X size={12} /></button>
             )}
           </div>
@@ -94,14 +95,14 @@ export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, 
 
       {canEdit && !completed && (
         <button type="button" onClick={() => { setSteps([...steps, emptyStep()]); setDirty(true) }}
-          style={{ background: 'none', border: '1.5px dashed #e5e7eb', borderRadius: 8, padding: '8px 16px', color: 'var(--color-brand)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 12 }}>
+          style={{ background: 'none', border: `1.5px dashed ${colors.border}`, borderRadius: 8, padding: '8px 16px', color: 'var(--color-brand)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 12 }}>
           <Plus size={14} /> Aggiungi step
         </button>
       )}
 
       {canEdit && !completed && dirty && allComplete && (
         <button type="button" onClick={onSave}
-          style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid var(--color-brand)', background: '#fff', color: 'var(--color-brand)', fontWeight: 600, cursor: 'pointer', marginBottom: 12 }}>
+          style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid var(--color-brand)', background: colors.white, color: 'var(--color-brand)', fontWeight: 600, cursor: 'pointer', marginBottom: 12 }}>
           Salva piano
         </button>
       )}

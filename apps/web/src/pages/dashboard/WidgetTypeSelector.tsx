@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import {
   Hash, BarChart2, TrendingUp, PieChart, Table, Gauge, Radar,
 } from 'lucide-react'
-import { WIDGET_TYPES } from './useWidgetConfig'
+import { WIDGET_TYPES, widgetTint } from './useWidgetConfig'
+import { palette } from '@/lib/tokens'
 
 // ── Icon lookup ──────────────────────────────────────────────────────────────
 
@@ -42,8 +43,8 @@ export function WidgetTypeSelector({ widgetType, color, onSelect }: WidgetTypeSe
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
                 padding: '10px 6px', borderRadius: 8, cursor: 'pointer',
-                border: selected ? `2px solid ${color}` : '1.5px solid #e5e7eb',
-                background: selected ? `${color}14` : '#fafafa',
+                border: selected ? `2px solid ${color}` : '1.5px solid var(--color-border)',
+                background: selected ? widgetTint(color) : palette.neutral.surface1,
                 color: selected ? color : 'var(--color-slate)',
                 transition: 'all 0.1s',
               }}

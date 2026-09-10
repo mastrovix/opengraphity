@@ -27,6 +27,7 @@ import { formatDateTime } from '@/lib/datetime'
 // ── Constants ────────────────────────────────────────────────────────────────
 
 import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
+import { palette } from '@/lib/tokens'
 const EVENT_TYPES  = ['on_create', 'on_update', 'on_timer', 'on_sla_breach', 'on_field_change'] as const
 // Operators now handled by ConditionRowEditor component
 const ACTION_TYPES = ['set_field', 'assign_team', 'assign_user', 'transition_workflow', 'create_notification', 'create_comment', 'set_priority'] as const
@@ -180,7 +181,7 @@ export function AutoTriggersPage() {
     { key: 'id', label: 'Azioni', sortable: true, render: (_v, row) => (
       <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
         <Button variant="icon" size="xs" title={t('common.edit')} onClick={() => openEdit(row)}><Pencil size={14} aria-hidden="true" /></Button>
-        <Button variant="icon" size="xs" title={t('common.delete')} onClick={() => void handleDelete(row)} style={{ color: 'var(--color-danger)', borderColor: '#fecaca' }}><Trash2 size={14} aria-hidden="true" /></Button>
+        <Button variant="icon" size="xs" title={t('common.delete')} onClick={() => void handleDelete(row)} style={{ color: 'var(--color-danger)', borderColor: palette.danger.border }}><Trash2 size={14} aria-hidden="true" /></Button>
       </div>
     ) },
   ]

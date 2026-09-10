@@ -13,6 +13,7 @@ import { Input, Select } from '@/components/ui/FormControls'
 import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n/i18n'
+import { colors } from '@/lib/tokens'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -84,7 +85,7 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove, 
   )
 
   const valueInput = !hideValue && renderValueInput(condition, selectedField, onChange, usersData?.users ?? [], teamsData?.teams ?? [])
-  const removeButton = <button type="button" style={removeBtn} onClick={onRemove} title={t('conditionEditor.remove')} aria-label={t('conditionEditor.remove')}><X size={14} color="#ef4444" /></button>
+  const removeButton = <button type="button" style={removeBtn} onClick={onRemove} title={t('conditionEditor.remove')} aria-label={t('conditionEditor.remove')}><X size={14} color={colors.danger} /></button>
 
   const errorLine = fieldsError && (
     <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger)', marginBottom: 4 }}>

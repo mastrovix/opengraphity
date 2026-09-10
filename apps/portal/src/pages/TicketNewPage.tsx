@@ -8,6 +8,7 @@ import { GET_KB_ARTICLES } from '@/graphql/queries'
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
 import { notifyError } from '@/lib/notify'
 import { uploadAttachment } from '@/lib/attachments'
+import { colors, palette } from '@/lib/tokens'
 
 const CATEGORIES = [
   { key: 'hardware', icon: Monitor },
@@ -119,18 +120,18 @@ export function TicketNewPage() {
 
   return (
     <div style={{ maxWidth: 640, margin: '0 auto' }}>
-      <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0F172A', marginBottom: 28 }}>
+      <h1 style={{ fontSize: 20, fontWeight: 600, color: colors.slateDark, marginBottom: 28 }}>
         {t('ticket.new')}
       </h1>
       {Object.keys(fieldErrors).length > 0 && (
-        <div role="alert" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+        <div role="alert" style={{ background: palette.danger.bg, border: `1px solid ${palette.danger.border}`, color: palette.danger.strong, padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
           {t('common.required')}: {Object.keys(fieldErrors).join(', ')}
         </div>
       )}
 
       {/* Category selection */}
       <div style={{ marginBottom: 24 }}>
-        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
           {t('ticket.fields.category')} *
         </label>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
@@ -145,14 +146,14 @@ export function TicketNewPage() {
                 gap:             8,
                 padding:         '16px 8px',
                 borderRadius:    10,
-                border:          `2px solid ${category === key ? '#0EA5E9' : '#E2E8F0'}`,
-                backgroundColor: category === key ? '#F0F9FF' : '#fff',
+                border:          `2px solid ${category === key ? colors.brand : colors.border}`,
+                backgroundColor: category === key ? colors.brandLight : colors.white,
                 cursor:          'pointer',
                 transition:      'border-color 0.15s, background 0.15s',
               }}
             >
-              <Icon size={22} style={{ color: category === key ? '#0EA5E9' : '#64748B' }} />
-              <span style={{ fontSize: 10, fontWeight: 500, color: category === key ? '#0EA5E9' : '#64748B' }}>
+              <Icon size={22} style={{ color: category === key ? colors.brand : colors.slate }} />
+              <span style={{ fontSize: 10, fontWeight: 500, color: category === key ? colors.brand : colors.slate }}>
                 {t(`ticket.category.${key}`)}
               </span>
             </button>
@@ -162,7 +163,7 @@ export function TicketNewPage() {
 
       {/* Title */}
       <div style={{ marginBottom: 20 }}>
-        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
           {t('ticket.fields.title')} *
         </label>
         <input
@@ -171,10 +172,10 @@ export function TicketNewPage() {
           placeholder={t('ticket.fields.title')}
           style={{
             width: '100%', padding: '10px 12px',
-            border: '1.5px solid #E2E8F0', borderRadius: 8, fontSize: 10, outline: 'none',
+            border: `1.5px solid ${colors.border}`, borderRadius: 8, fontSize: 10, outline: 'none',
           }}
-          onFocus={e => { e.currentTarget.style.borderColor = '#0EA5E9' }}
-          onBlur={e  => { e.currentTarget.style.borderColor = '#E2E8F0' }}
+          onFocus={e => { e.currentTarget.style.borderColor = colors.brand }}
+          onBlur={e  => { e.currentTarget.style.borderColor = colors.border }}
         />
       </div>
 
@@ -183,11 +184,11 @@ export function TicketNewPage() {
         <div style={{
           marginBottom:    20,
           padding:         16,
-          backgroundColor: '#FFFBEB',
-          border:          '1px solid #FDE68A',
+          backgroundColor: palette.warning.bg,
+          border:          `1px solid ${palette.warning.border}`,
           borderRadius:    8,
         }}>
-          <div style={{ fontSize: 10, fontWeight: 600, color: '#92400E', marginBottom: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: palette.warning.strong, marginBottom: 10 }}>
             💡 {t('ticket.suggestedArticles')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -197,13 +198,13 @@ export function TicketNewPage() {
                 href={`/kb/${a.slug}`}
                 target="_blank"
                 rel="noreferrer"
-                style={{ fontSize: 10, color: '#0EA5E9', textDecoration: 'underline' }}
+                style={{ fontSize: 10, color: colors.brand, textDecoration: 'underline' }}
               >
                 {a.title}
               </a>
             ))}
           </div>
-          <div style={{ fontSize: 10, color: '#92400E', marginTop: 8 }}>
+          <div style={{ fontSize: 10, color: palette.warning.strong, marginTop: 8 }}>
             {t('ticket.foundAnswer')}
           </div>
         </div>
@@ -211,7 +212,7 @@ export function TicketNewPage() {
 
       {/* Description */}
       <div style={{ marginBottom: 20 }}>
-        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
           {t('ticket.fields.description')}
         </label>
         <textarea
@@ -221,29 +222,29 @@ export function TicketNewPage() {
           rows={6}
           style={{
             width: '100%', padding: '10px 12px',
-            border: '1.5px solid #E2E8F0', borderRadius: 8, fontSize: 10,
+            border: `1.5px solid ${colors.border}`, borderRadius: 8, fontSize: 10,
             resize: 'vertical', outline: 'none', lineHeight: 1.6,
           }}
-          onFocus={e => { e.currentTarget.style.borderColor = '#0EA5E9' }}
-          onBlur={e  => { e.currentTarget.style.borderColor = '#E2E8F0' }}
+          onFocus={e => { e.currentTarget.style.borderColor = colors.brand }}
+          onBlur={e  => { e.currentTarget.style.borderColor = colors.border }}
         />
       </div>
 
       {/* Priority */}
       <div style={{ marginBottom: 24 }}>
-        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
           {t('ticket.fields.priority')}
         </label>
         <div style={{ display: 'flex', gap: 12 }}>
           {PRIORITIES.map(p => (
-            <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 10, color: '#0F172A' }}>
+            <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 10, color: colors.slateDark }}>
               <input
                 type="radio"
                 name="priority"
                 value={p}
                 checked={priority === p}
                 onChange={() => setPriority(p)}
-                style={{ accentColor: '#0EA5E9' }}
+                style={{ accentColor: colors.brand }}
               />
               {t(`ticket.priority.${p}`)}
             </label>
@@ -253,7 +254,7 @@ export function TicketNewPage() {
 
       {/* File drop zone */}
       <div style={{ marginBottom: 28 }}>
-        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
           {t('ticket.fields.attachments')}
         </label>
         <div
@@ -262,25 +263,25 @@ export function TicketNewPage() {
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
           style={{
-            border:          `2px dashed ${isDragging ? '#0EA5E9' : '#CBD5E1'}`,
+            border:          `2px dashed ${isDragging ? colors.brand : palette.neutral.borderStrong}`,
             borderRadius:    8,
             padding:         24,
             textAlign:       'center',
             cursor:          'pointer',
-            backgroundColor: isDragging ? '#F0F9FF' : '#FAFAFA',
+            backgroundColor: isDragging ? colors.brandLight : palette.neutral.surface1,
             transition:      'border-color 0.15s, background 0.15s',
           }}
         >
-          <Paperclip size={20} style={{ color: '#94A3B8', marginBottom: 6 }} />
-          <div style={{ fontSize: 10, color: '#64748B' }}>{t('ticket.dropFiles')}</div>
+          <Paperclip size={20} style={{ color: colors.slateLight, marginBottom: 6 }} />
+          <div style={{ fontSize: 10, color: colors.slate }}>{t('ticket.dropFiles')}</div>
           <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleFileInput} />
         </div>
         {files.length > 0 && (
           <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {files.map((f, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', backgroundColor: '#F8FAFC', borderRadius: 6, fontSize: 10 }}>
-                <span style={{ color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                <button onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444', fontSize: 10, flexShrink: 0 }}>×</button>
+              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', backgroundColor: palette.neutral.surface1, borderRadius: 6, fontSize: 10 }}>
+                <span style={{ color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                <button onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.danger, fontSize: 10, flexShrink: 0 }}>×</button>
               </div>
             ))}
           </div>
@@ -294,8 +295,8 @@ export function TicketNewPage() {
         style={{
           width:           '100%',
           padding:         '13px 24px',
-          backgroundColor: canSubmit ? '#0EA5E9' : '#E2E8F0',
-          color:           canSubmit ? '#fff' : '#94A3B8',
+          backgroundColor: canSubmit ? colors.brand : colors.border,
+          color:           canSubmit ? colors.white : colors.slateLight,
           border:          'none',
           borderRadius:    8,
           fontSize:        15,

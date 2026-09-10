@@ -13,7 +13,7 @@ import {
 } from '@xyflow/react'
 import type { NodeProps, EdgeProps, Node, Edge, OnNodesChange, OnEdgesChange } from '@xyflow/react'
 import { Pencil, Settings2 } from 'lucide-react'
-import { colors, lookupOrError } from '@/lib/tokens'
+import { colors, lookupOrError, palette } from '@/lib/tokens'
 import type { StepNodeData, EdgeNodeData, WorkflowDefinition } from './workflow-types'
 
 // ── Per-workflow positions ─────────────────────────────────────────────────────
@@ -116,13 +116,13 @@ export const CHANGE_BACK   = new Set(['rejected→draft'])
 // ── Step node visual ──────────────────────────────────────────────────────────
 
 export const STEP_BG: Record<string, string> = {
-  start:          '#ECFDF5',
-  end:            '#F9FAFB',
-  standard:       '#FFFFFF',
-  parallel_fork:  '#EFF6FF',
-  parallel_join:  '#F0FDF4',
-  timer_wait:     '#FFF7ED',
-  sub_workflow:   '#F5F3FF',
+  start:          palette.success.bg,
+  end:            palette.neutral.surface1,
+  standard:       colors.white,
+  parallel_fork:  palette.info.bg,
+  parallel_join:  palette.success.bg,
+  timer_wait:     palette.orange.bg,
+  sub_workflow:   palette.purple.bg,
 }
 
 export const TRIGGER_COLOR: Record<string, string> = {
@@ -152,7 +152,7 @@ const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: Node
         borderRadius:    10,
         border:          `2px solid ${selected || hovered ? accentColor : 'var(--color-brand-a53)'}`,
         backgroundColor: bg,
-        boxShadow:       selected ? '0 0 0 3px var(--color-brand-a20)' : '0 2px 8px rgba(0,0,0,0.08)',
+        boxShadow:       selected ? '0 0 0 3px var(--color-brand-a20)' : '0 2px 8px var(--color-black-a08)',
         position:        'relative',
         transition:      'box-shadow 0.15s, border-color 0.15s',
         cursor:          'default',
@@ -170,7 +170,7 @@ const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: Node
         letterSpacing:   '0.07em',
         textTransform:   'uppercase',
         color:           accentColor,
-        backgroundColor: bg === '#FFFFFF' ? 'var(--color-brand-a08)' : 'var(--color-brand-a13)',
+        backgroundColor: step.type === 'standard' ? 'var(--color-brand-a08)' : 'var(--color-brand-a13)',
         padding:         '1px 6px',
         borderRadius:    4,
         marginBottom:    6,
@@ -250,7 +250,7 @@ const WorkflowEdge = memo(function WorkflowEdge({
             display:         'flex',
             alignItems:      'center',
             gap:             4,
-            backgroundColor: '#ffffff',
+            backgroundColor: colors.white,
             border:          `1px solid ${strokeColor}`,
             borderRadius:    4,
             padding:         '2px 6px',
@@ -259,7 +259,7 @@ const WorkflowEdge = memo(function WorkflowEdge({
             color:           strokeColor,
             whiteSpace:      'nowrap',
             cursor:          'pointer',
-            boxShadow:       '0 1px 4px rgba(0,0,0,0.1)',
+            boxShadow:       '0 1px 4px var(--color-black-a10)',
             opacity:         selected || hovered ? 1 : 0.85,
           }}
         >
@@ -343,7 +343,7 @@ export function WorkflowCanvas({
           onReconnect={onReconnect}
           onConnect={onConnect}
         >
-          <Background color="#e2e6f0" gap={20} size={1} />
+          <Background color={colors.border} gap={20} size={1} />
           <Controls position="bottom-left" style={{ marginBottom: 80 }} />
           <MiniMap
             position="bottom-right"
@@ -351,7 +351,7 @@ export function WorkflowCanvas({
               const step = (n.data as StepNodeData | undefined)?.step
               return lookupOrError(STEP_BG, step?.type ?? 'standard', 'STEP_BG', 'var(--color-danger)')
             }}
-            style={{ border: '1px solid #e2e6f0', borderRadius: 8 }}
+            style={{ border: '1px solid var(--color-border)', borderRadius: 8 }}
           />
         </ReactFlow>
       )}
@@ -365,8 +365,8 @@ export function WorkflowCanvas({
           bottom:          80,
           left:            16,
           zIndex:          10,
-          backgroundColor: '#ffffff',
-          border:          '1px solid #e2e6f0',
+          backgroundColor: colors.white,
+          border:          '1px solid var(--color-border)',
           borderRadius:    8,
           padding:         '10px 14px',
           display:         'flex',

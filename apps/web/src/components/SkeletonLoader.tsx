@@ -1,6 +1,7 @@
 // ── SkeletonLoader — shimmer animation for loading states ─────────────────────
 
 import { useEffect } from 'react'
+import { colors } from '@/lib/tokens'
 
 // Inject keyframes once into document head
 let _injected = false
@@ -32,7 +33,7 @@ export function SkeletonLine({ width = '100%', height = 14 }: SkeletonLineProps)
         width,
         height,
         borderRadius: 4,
-        background:       'linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)',
+        background:       `linear-gradient(90deg, ${colors.slateBg} 25%, ${colors.border} 50%, ${colors.slateBg} 75%)`,
         backgroundSize:   '200% 100%',
         animation:        'shimmer 1.5s infinite',
       }}
@@ -53,9 +54,9 @@ export function SkeletonCard({ rows = 3 }: SkeletonCardProps) {
   return (
     <div style={{
       padding:      20,
-      border:       '1px solid #e5e7eb',
+      border:       `1px solid ${colors.border}`,
       borderRadius: 8,
-      background:   '#fff',
+      background:   colors.white,
       marginBottom: 8,
       display:      'flex',
       flexDirection:'column',

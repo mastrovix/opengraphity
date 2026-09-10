@@ -2,11 +2,11 @@
  * Categorie della Knowledge Base: colori e icone — una sola copia
  * (prima CATEGORY_COLORS era duplicata in KnowledgeBasePage e KBArticlePage).
  */
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, colors, palette } from '@/lib/tokens'
 
 export const KB_CATEGORY_COLORS: Record<string, string> = {
-  hardware: '#3b82f6', software: '#8b5cf6', network: '#06b6d4',
-  security: 'var(--color-danger)', 'how-to': '#22c55e', faq: 'var(--color-warning)', general: 'var(--color-slate-light)',
+  hardware: colors.brand, software: palette.purple.light, network: palette.teal.light,
+  security: 'var(--color-danger)', 'how-to': colors.success, faq: 'var(--color-warning)', general: 'var(--color-slate-light)',
 }
 
 export const KB_CATEGORY_ICONS: Record<string, string> = {

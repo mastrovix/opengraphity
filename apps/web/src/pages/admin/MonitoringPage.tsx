@@ -6,6 +6,8 @@ import { Activity }         from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import ReactECharts         from 'echarts-for-react'
 import { GET_SYSTEM_HEALTH, GET_SYSTEM_METRICS, GET_TRACE_INFO } from '@/graphql/queries'
+import { colors, palette } from '@/lib/tokens'
+import { cssVar } from '@/lib/charts/cssVar'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -113,8 +115,9 @@ export function MonitoringPage() {
       type:      'line',
       data:      rpmChartData,
       smooth:    true,
-      lineStyle: { color: 'var(--color-brand)', width: 2 },
-      areaStyle: { color: 'rgba(56,189,248,0.12)' },
+      // ECharts disegna su canvas: `var()` non viene risolto, serve il valore concreto
+      lineStyle: { color: cssVar('--color-brand'), width: 2 },
+      areaStyle: { color: cssVar('--color-icon-accent-a12') },
       symbol:    'none',
     }],
   }
@@ -143,7 +146,7 @@ export function MonitoringPage() {
           <div style={{ ...statCard, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
             <StatusDot status={health?.status ?? 'unknown'} />
             <div>
-              <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.health.uptime')}</div>
+              <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.health.uptime')}</div>
               <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
                 {health ? formatUptime(health.uptime) : '—'}
               </div>
@@ -156,12 +159,12 @@ export function MonitoringPage() {
               <div key={key} style={{ ...statCard, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                 <StatusDot status={check?.status ?? 'unknown'} />
                 <div>
-                  <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{label}</div>
+                  <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{label}</div>
                   <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: check?.status === 'ok' ? 'var(--color-success)' : 'var(--color-danger)' }}>
                     {check?.status === 'ok' ? t('pages.monitoring.health.ok') : t('pages.monitoring.health.error')}
                   </div>
                   {check?.latencyMs !== null && check?.latencyMs !== undefined && (
-                    <div style={{ fontSize: 'var(--font-size-table)', color: '#9ca3af', marginTop: 2 }}>
+                    <div style={{ fontSize: 'var(--font-size-table)', color: colors.slateLight, marginTop: 2 }}>
                       {t('pages.monitoring.health.latency')}: {check.latencyMs}ms
                     </div>
                   )}
@@ -182,25 +185,25 @@ export function MonitoringPage() {
         <p style={sectionTitle}>{t('pages.monitoring.requests.title')}</p>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
           <div style={statCard}>
-            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.requests.rpm')}</div>
+            <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.requests.rpm')}</div>
             <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-brand)' }}>
               {metrics?.requests.requestsPerMinute.toFixed(0) ?? '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.requests.avg')}</div>
+            <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.requests.avg')}</div>
             <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics ? `${metrics.requests.averageResponseMs.toFixed(0)}ms` : '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.requests.p95')}</div>
+            <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.requests.p95')}</div>
             <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics ? `${metrics.requests.p95ResponseMs.toFixed(0)}ms` : '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.requests.errorRate')}</div>
+            <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.requests.errorRate')}</div>
             <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: metrics && metrics.requests.errorRate > 0.05 ? 'var(--color-danger)' : 'var(--color-slate-dark)' }}>
               {metrics ? `${(metrics.requests.errorRate * 100).toFixed(1)}%` : '—'}
             </div>
@@ -222,17 +225,17 @@ export function MonitoringPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                <th style={{ textAlign: 'left', padding: '6px 12px 6px 0', color: '#6b7280', fontWeight: 600 }}>Queue</th>
-                <th style={{ textAlign: 'right', padding: '6px 12px', color: '#3b82f6', fontWeight: 600 }}>{t('pages.monitoring.queues.waiting')}</th>
-                <th style={{ textAlign: 'right', padding: '6px 12px', color: '#22c55e', fontWeight: 600 }}>{t('pages.monitoring.queues.active')}</th>
-                <th style={{ textAlign: 'right', padding: '6px 12px', color: '#6b7280', fontWeight: 600 }}>{t('pages.monitoring.queues.completed')}</th>
+                <th style={{ textAlign: 'left', padding: '6px 12px 6px 0', color: colors.slate, fontWeight: 600 }}>Queue</th>
+                <th style={{ textAlign: 'right', padding: '6px 12px', color: colors.brand, fontWeight: 600 }}>{t('pages.monitoring.queues.waiting')}</th>
+                <th style={{ textAlign: 'right', padding: '6px 12px', color: palette.success.base, fontWeight: 600 }}>{t('pages.monitoring.queues.active')}</th>
+                <th style={{ textAlign: 'right', padding: '6px 12px', color: colors.slate, fontWeight: 600 }}>{t('pages.monitoring.queues.completed')}</th>
                 <th style={{ textAlign: 'right', padding: '6px 12px', color: 'var(--color-danger)', fontWeight: 600 }}>{t('pages.monitoring.queues.failed')}</th>
-                <th style={{ textAlign: 'right', padding: '6px 12px', color: '#8b5cf6', fontWeight: 600 }}>{t('pages.monitoring.queues.delayed')}</th>
+                <th style={{ textAlign: 'right', padding: '6px 12px', color: palette.purple.light, fontWeight: 600 }}>{t('pages.monitoring.queues.delayed')}</th>
               </tr>
             </thead>
             <tbody>
               {metrics.queues.map((q) => (
-                <tr key={q.name} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                <tr key={q.name} style={{ borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
                   <td style={{ padding: '8px 12px 8px 0', fontWeight: 600 }}>{q.name}</td>
                   <td style={{ textAlign: 'right', padding: '8px 12px' }}>{q.waiting}</td>
                   <td style={{ textAlign: 'right', padding: '8px 12px' }}>{q.active}</td>
@@ -244,7 +247,7 @@ export function MonitoringPage() {
             </tbody>
           </table>
         ) : (
-          <div style={{ fontSize: 'var(--font-size-body)', color: '#9ca3af', textAlign: 'center', padding: 24 }}>
+          <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, textAlign: 'center', padding: 24 }}>
             {t('common.noResults')}
           </div>
         )}
@@ -255,13 +258,13 @@ export function MonitoringPage() {
         <p style={sectionTitle}>{t('pages.monitoring.neo4j.title')}</p>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
           <div style={statCard}>
-            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.neo4j.totalQueries')}</div>
+            <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.neo4j.totalQueries')}</div>
             <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics?.neo4j.totalQueries ?? '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.neo4j.avgQuery')}</div>
+            <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.neo4j.avgQuery')}</div>
             <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics ? `${metrics.neo4j.averageQueryMs.toFixed(1)}ms` : '—'}
             </div>
@@ -270,20 +273,20 @@ export function MonitoringPage() {
 
         {metrics?.neo4j.slowQueries && metrics.neo4j.slowQueries.length > 0 && (
           <>
-            <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>
+            <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slate, marginBottom: 8 }}>
               {t('pages.monitoring.neo4j.slowQueries')}
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
               <tbody>
                 {metrics.neo4j.slowQueries.map((sq, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '6px 0', wordBreak: 'break-all', color: '#374151' }}>
+                  <tr key={i} style={{ borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
+                    <td style={{ padding: '6px 0', wordBreak: 'break-all', color: palette.neutral.textMuted }}>
                       {sq.query}
                     </td>
                     <td style={{ padding: '6px 12px', color: 'var(--color-danger)', fontWeight: 600, whiteSpace: 'nowrap' }}>
                       {sq.durationMs.toFixed(0)}ms
                     </td>
-                    <td style={{ padding: '6px 0', color: '#9ca3af', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '6px 0', color: colors.slateLight, whiteSpace: 'nowrap' }}>
                       {new Date(sq.timestamp).toLocaleTimeString()}
                     </td>
                   </tr>
@@ -306,7 +309,7 @@ export function MonitoringPage() {
                   {t('pages.monitoring.tracing.enabled')}
                 </span>
                 {trace.endpoint && (
-                  <span style={{ fontSize: 'var(--font-size-body)', color: '#9ca3af', marginLeft: 8 }}>{trace.endpoint}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, marginLeft: 8 }}>{trace.endpoint}</span>
                 )}
               </div>
 
@@ -314,19 +317,19 @@ export function MonitoringPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <th style={{ textAlign: 'left', padding: '6px 0', color: '#6b7280', fontWeight: 600 }}>Operation</th>
-                      <th style={{ textAlign: 'right', padding: '6px 12px', color: '#6b7280', fontWeight: 600 }}>Duration</th>
-                      <th style={{ textAlign: 'right', padding: '6px 12px', color: '#6b7280', fontWeight: 600 }}>Status</th>
-                      <th style={{ textAlign: 'right', padding: '6px 0', color: '#6b7280', fontWeight: 600 }}>Time</th>
+                      <th style={{ textAlign: 'left', padding: '6px 0', color: colors.slate, fontWeight: 600 }}>Operation</th>
+                      <th style={{ textAlign: 'right', padding: '6px 12px', color: colors.slate, fontWeight: 600 }}>Duration</th>
+                      <th style={{ textAlign: 'right', padding: '6px 12px', color: colors.slate, fontWeight: 600 }}>Status</th>
+                      <th style={{ textAlign: 'right', padding: '6px 0', color: colors.slate, fontWeight: 600 }}>Time</th>
                     </tr>
                   </thead>
                   <tbody>
                     {[...trace.recentTraces].reverse().slice(0, 20).map((tr) => (
-                      <tr key={tr.traceId} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <tr key={tr.traceId} style={{ borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
                         <td style={{ padding: '6px 0' }}>
                           {tr.operationName}
                           {tr.spanCount > 1 && (
-                            <span style={{ color: '#9ca3af', marginLeft: 8, fontSize: 'var(--font-size-table)' }}>
+                            <span style={{ color: colors.slateLight, marginLeft: 8, fontSize: 'var(--font-size-table)' }}>
                               — {tr.spanCount} spans
                             </span>
                           )}
@@ -337,7 +340,7 @@ export function MonitoringPage() {
                             {tr.status}
                           </span>
                         </td>
-                        <td style={{ textAlign: 'right', padding: '6px 0', color: '#9ca3af' }}>
+                        <td style={{ textAlign: 'right', padding: '6px 0', color: colors.slateLight }}>
                           {new Date(tr.timestamp).toLocaleTimeString()}
                         </td>
                       </tr>
@@ -345,11 +348,11 @@ export function MonitoringPage() {
                   </tbody>
                 </table>
               ) : (
-                <div style={{ fontSize: 'var(--font-size-body)', color: '#9ca3af' }}>No recent traces</div>
+                <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight }}>No recent traces</div>
               )}
             </>
           ) : (
-            <div style={{ fontSize: 'var(--font-size-body)', color: '#9ca3af', padding: '12px 0' }}>
+            <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, padding: '12px 0' }}>
               {t('pages.monitoring.tracing.noTracing')}
             </div>
           )
@@ -361,37 +364,37 @@ export function MonitoringPage() {
         <p style={sectionTitle}>{t('pages.monitoring.process.title')}</p>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <div style={statCard}>
-            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.process.memory')}</div>
+            <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.process.memory')}</div>
             <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics ? `${metrics.system.memoryUsageMb.toFixed(0)} MB` : '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.process.rss')}</div>
+            <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.process.rss')}</div>
             <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics ? `${metrics.system.memoryRssMb.toFixed(0)} MB` : '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.process.cpu')}</div>
+            <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.process.cpu')}</div>
             <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics ? `${metrics.system.cpuUsagePercent.toFixed(1)}%` : '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.process.version')}</div>
+            <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.process.version')}</div>
             <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics?.system.nodeVersion ?? '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.process.pid')}</div>
+            <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.process.pid')}</div>
             <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics?.system.pid ?? '—'}
             </div>
           </div>
           <div style={statCard}>
-            <div style={{ fontSize: 'var(--font-size-body)', color: '#6b7280' }}>{t('pages.monitoring.health.uptime')}</div>
+            <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.health.uptime')}</div>
             <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
               {metrics ? formatUptime(metrics.system.uptimeSeconds) : '—'}
             </div>

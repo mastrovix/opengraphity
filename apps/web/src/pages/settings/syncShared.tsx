@@ -1,6 +1,6 @@
 import { RefreshCw, CheckCircle, XCircle, Clock, AlertTriangle, Database, Cloud } from 'lucide-react'
 import type { SyncStats } from './useSyncPage'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, colors, palette } from '@/lib/tokens'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -19,13 +19,13 @@ export function formatDate(iso: string | null): string {
 export function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, { color: string; icon: React.ReactNode }> = {
     completed: { color: 'var(--color-success)', icon: <CheckCircle size={12} /> },
-    running:   { color: '#2563eb', icon: <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> },
+    running:   { color: colors.brand, icon: <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> },
     failed:    { color: 'var(--color-trigger-sla-breach)', icon: <XCircle size={12} /> },
-    queued:    { color: '#ca8a04', icon: <Clock size={12} /> },
-    open:      { color: '#ca8a04', icon: <AlertTriangle size={12} /> },
+    queued:    { color: palette.warning.text, icon: <Clock size={12} /> },
+    open:      { color: palette.warning.text, icon: <AlertTriangle size={12} /> },
     resolved:  { color: 'var(--color-success)', icon: <CheckCircle size={12} /> },
   }
-  const c = lookupOrError(cfg, status, 'StatusBadge:cfg', { color: '#6b7280', icon: null as React.ReactNode })
+  const c = lookupOrError(cfg, status, 'StatusBadge:cfg', { color: colors.slate, icon: null as React.ReactNode })
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: c.color, fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
       {c.icon}{status}
@@ -45,11 +45,11 @@ export function StatsBar({ stats }: { stats: SyncStats }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
       {cards.map(c => (
-        <div key={c.label} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#6b7280', fontSize: 'var(--font-size-body)', marginBottom: 4 }}>
+        <div key={c.label} style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: colors.slate, fontSize: 'var(--font-size-body)', marginBottom: 4 }}>
             {c.icon}{c.label}
           </div>
-          <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: '#111827' }}>{c.value}</div>
+          <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: colors.slateDark }}>{c.value}</div>
         </div>
       ))}
     </div>
@@ -65,13 +65,13 @@ export const inputStyle: React.CSSProperties = {
 }
 
 export const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 500, color: '#374151', marginBottom: 4,
+  display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 500, color: palette.neutral.textMuted, marginBottom: 4,
 }
 
 export function btnStyle(bg: string, color: string): React.CSSProperties {
   return {
     display: 'inline-flex', alignItems: 'center', gap: 4,
-    background: bg, color, border: `1px solid ${color === '#fff' ? bg : 'var(--border)'}`,
+    background: bg, color, border: `1px solid ${color === colors.white ? bg : 'var(--border)'}`,
     borderRadius: 6, padding: '6px 12px', fontSize: 'var(--font-size-body)', cursor: 'pointer', fontWeight: 500,
   }
 }

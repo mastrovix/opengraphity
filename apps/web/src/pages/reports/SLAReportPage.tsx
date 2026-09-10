@@ -13,6 +13,7 @@ import { Input, Textarea, Select, FieldLabel } from '@/components/ui/FormControl
 import { Pill } from '@/components/ui/Pill'
 import { GET_SLA_REPORT, GET_OLA_CONTRACTS } from '@/graphql/queries'
 import { CREATE_OLA_CONTRACT, UPDATE_OLA_CONTRACT } from '@/graphql/mutations'
+import { colors, palette } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -53,9 +54,9 @@ function fmtMinutes(m: number | null): string {
 }
 function pctColor(pct: number | null): string {
   if (pct == null) return 'var(--color-slate-light)'
-  if (pct >= 95) return '#15803d'
-  if (pct >= 80) return '#b45309'
-  return '#b91c1c'
+  if (pct >= 95) return palette.success.text
+  if (pct >= 80) return palette.warning.text
+  return palette.danger.text
 }
 
 type OLAForm = {
@@ -144,7 +145,7 @@ export function SLAReportPage() {
               type="button"
               aria-pressed={windowDays === w}
               onClick={() => setWindowDays(w)}
-              style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-border-light)', background: windowDays === w ? 'var(--color-brand)' : '#fff', color: windowDays === w ? '#fff' : 'var(--color-slate)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+              style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-border-light)', background: windowDays === w ? 'var(--color-brand)' : colors.white, color: windowDays === w ? colors.white : 'var(--color-slate)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
             >
               {w}g
             </button>
@@ -160,9 +161,9 @@ export function SLAReportPage() {
           {/* SLA compliance KPIs */}
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
             <Kpi label={`SLA nel periodo (${report.windowDays}g)`} value={String(report.sla.total)} />
-            <Kpi label="Rispettati" value={String(report.sla.met)} color="#15803d" />
-            <Kpi label="Violati" value={String(report.sla.breached)} color="#b91c1c" />
-            <Kpi label="In pausa" value={String(report.sla.paused)} color="#4338ca" />
+            <Kpi label="Rispettati" value={String(report.sla.met)} color={palette.success.text} />
+            <Kpi label="Violati" value={String(report.sla.breached)} color={palette.danger.text} />
+            <Kpi label="In pausa" value={String(report.sla.paused)} color={palette.purple.dark} />
             <Kpi label="Tasso di violazione" value={`${report.sla.breachRate.toFixed(1)}%`} color={pctColor(100 - report.sla.breachRate)} />
             <Kpi label="Tempo medio risoluzione" value={fmtMinutes(report.sla.avgResolutionMinutes)} />
           </div>
@@ -176,7 +177,7 @@ export function SLAReportPage() {
               <div style={{ border: '1px solid var(--color-border-light)', borderRadius: 10, overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
                   <thead>
-                    <tr style={{ background: 'var(--color-bg-subtle, #f8fafc)', textAlign: 'left', color: 'var(--color-slate-light)' }}>
+                    <tr style={{ background: palette.neutral.surface1, textAlign: 'left', color: 'var(--color-slate-light)' }}>
                       <th style={{ padding: '9px 14px', fontWeight: 600 }}>Priorità</th>
                       <th style={{ padding: '9px 14px', fontWeight: 600 }}>Totale</th>
                       <th style={{ padding: '9px 14px', fontWeight: 600 }}>Rispettati</th>
@@ -192,8 +193,8 @@ export function SLAReportPage() {
                         <tr key={r.priority} style={{ borderTop: '1px solid var(--color-border-light)' }}>
                           <td style={{ padding: '9px 14px', fontWeight: 600, color: 'var(--color-slate-dark)', textTransform: 'capitalize' }}>{r.priority}</td>
                           <td style={{ padding: '9px 14px', color: 'var(--color-slate)' }}>{r.total}</td>
-                          <td style={{ padding: '9px 14px', color: '#15803d' }}>{r.met}</td>
-                          <td style={{ padding: '9px 14px', color: '#b91c1c' }}>{r.breached}</td>
+                          <td style={{ padding: '9px 14px', color: palette.success.text }}>{r.met}</td>
+                          <td style={{ padding: '9px 14px', color: palette.danger.text }}>{r.breached}</td>
                           <td style={{ padding: '9px 14px', fontWeight: 600, color: pctColor(pct) }}>{pct == null ? '—' : `${pct.toFixed(0)}%`}</td>
                         </tr>
                       )
@@ -220,7 +221,7 @@ export function SLAReportPage() {
             <div style={{ border: '1px solid var(--color-border-light)', borderRadius: 10, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
                 <thead>
-                  <tr style={{ background: 'var(--color-bg-subtle, #f8fafc)', textAlign: 'left', color: 'var(--color-slate-light)' }}>
+                  <tr style={{ background: palette.neutral.surface1, textAlign: 'left', color: 'var(--color-slate-light)' }}>
                     <th style={{ padding: '9px 14px', fontWeight: 600 }}>Tipo</th>
                     <th style={{ padding: '9px 14px', fontWeight: 600 }}>Nome</th>
                     <th style={{ padding: '9px 14px', fontWeight: 600 }}>Ambito</th>
@@ -237,7 +238,7 @@ export function SLAReportPage() {
                     return (
                       <tr key={o.id} style={{ borderTop: '1px solid var(--color-border-light)', opacity: o.enabled ? 1 : 0.55 }}>
                         <td style={{ padding: '9px 14px' }}>
-                          <Pill bg={o.type === 'uc' ? '#ede9fe' : '#dbeafe'} color={o.type === 'uc' ? '#6d28d9' : '#1d4ed8'}>{o.type.toUpperCase()}</Pill>
+                          <Pill bg={o.type === 'uc' ? palette.purple.tint : palette.info.tint} color={o.type === 'uc' ? palette.purple.dark : palette.info.text}>{o.type.toUpperCase()}</Pill>
                         </td>
                         <td style={{ padding: '9px 14px', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{o.name}</td>
                         <td style={{ padding: '9px 14px', color: 'var(--color-slate)' }}>{ENTITY_LABELS[o.entityType] ?? o.entityType}</td>

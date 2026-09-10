@@ -15,6 +15,7 @@ import { Pill } from '@/components/ui/Pill'
 import { GET_SERVICE_CATALOG_ADMIN } from '@/graphql/queries'
 import { CREATE_SERVICE_CATALOG_ITEM, UPDATE_SERVICE_CATALOG_ITEM } from '@/graphql/mutations'
 import { useCrudModal } from '@/hooks/useCrudModal'
+import { palette } from '@/lib/tokens'
 
 interface CatalogItem {
   id: string
@@ -107,12 +108,12 @@ export function ServiceCatalogAdminPage() {
                   <td style={{ padding: '10px 14px', color: 'var(--color-slate)' }}>{it.category ?? '—'}</td>
                   <td style={{ padding: '10px 14px' }}>
                     {it.requiresApproval
-                      ? <Pill bg="#fef3c7" color="#92400e">Richiesta</Pill>
+                      ? <Pill bg={palette.warning.tint} color={palette.warning.strong}>Richiesta</Pill>
                       : <span style={{ color: 'var(--color-slate-light)' }}>No</span>}
                   </td>
                   <td style={{ padding: '10px 14px' }}>
                     {it.active
-                      ? <Pill bg="#d1fae5" color="#065f46">Attiva</Pill>
+                      ? <Pill bg={palette.success.tint} color={palette.success.strong}>Attiva</Pill>
                       : <Pill bg="var(--color-border-light)" color="var(--color-slate)">Disattivata</Pill>}
                   </td>
                   <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>

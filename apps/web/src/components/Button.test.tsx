@@ -47,8 +47,8 @@ describe('Button', () => {
   })
 
   it.each([
-    ['primary',   { backgroundColor: 'var(--color-brand)', color: '#fff' }],
-    ['secondary', { color: 'var(--color-slate)', background: '#fff' }],
+    ['primary',   { backgroundColor: 'var(--color-brand)', color: 'var(--color-white)' }],
+    ['secondary', { color: 'var(--color-slate)', background: 'var(--color-white)' }],
     ['danger',    { color: 'var(--color-danger)' }],
     ['ghost',     { padding: '0px', background: 'none' }],
   ] as const)('variante %s', (variant, style) => {

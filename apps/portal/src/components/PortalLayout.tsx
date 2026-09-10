@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Outlet } from 'react-router-dom'
 import { PortalHeader } from './PortalHeader'
 import { GET_ME } from '@/graphql/queries'
+import { colors } from '@/lib/tokens'
 
 interface MeData {
   me: { id: string; name: string; email: string; role: string } | null
@@ -15,7 +16,7 @@ export function PortalLayout() {
   const year       = new Date().getFullYear()
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#fff' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: colors.white }}>
       <PortalHeader userName={userName} />
 
       {/* Page content — below fixed header */}
@@ -30,11 +31,11 @@ export function PortalLayout() {
       </main>
 
       <footer style={{
-        borderTop:   '1px solid #E2E8F0',
+        borderTop:   `1px solid ${colors.border}`,
         padding:     '16px 24px',
         textAlign:   'center',
         fontSize:    12,
-        color:       '#94A3B8',
+        color:       colors.slateLight,
       }}>
         {t('portal.poweredBy')} · © {year}
       </footer>

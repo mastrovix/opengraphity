@@ -8,6 +8,7 @@ import {
 } from './useCustomReports'
 
 import { getReportIcon } from './reportIcons'
+import { colors } from '@/lib/tokens'
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -51,7 +52,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
   if (view === 'add-section') {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 32px', borderBottom: '1px solid #e5e7eb', background: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+        <div style={{ padding: '12px 32px', borderBottom: '1px solid var(--color-border)', background: colors.white, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
           <button type="button" onClick={() => setView('detail')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; Indietro</button>
           <span style={{ fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>Aggiungi sezione &mdash; {selected.name}</span>
         </div>
@@ -66,7 +67,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
   if (view === 'edit-section' && editSection) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 32px', borderBottom: '1px solid #e5e7eb', background: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+        <div style={{ padding: '12px 32px', borderBottom: '1px solid var(--color-border)', background: colors.white, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
           <button type="button" onClick={cancelEditSection} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; Indietro</button>
           <span style={{ fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>Modifica sezione: {editSection.title}</span>
         </div>
@@ -85,7 +86,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{ padding: '12px 32px', borderBottom: '1px solid #e5e7eb', background: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+      <div style={{ padding: '12px 32px', borderBottom: '1px solid var(--color-border)', background: colors.white, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <button type="button" onClick={() => setView('list')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)', display: 'flex', alignItems: 'center', gap: 6 }}>
           &larr; Tutti i report
         </button>
@@ -121,11 +122,11 @@ export function ReportDetailView(props: ReportDetailViewProps) {
         {[...selected.sections].sort((a, b) => a.order - b.order).map(sec => {
           const result = sectionResults[sec.id]
           return (
-            <div key={sec.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
-              <div style={{ padding: '10px 16px', background: 'var(--color-slate-bg)', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div key={sec.id} style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden', background: colors.white }}>
+              <div style={{ padding: '10px 16px', background: 'var(--color-slate-bg)', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{sec.title}</span>
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: '#e5e7eb', padding: '2px 6px', borderRadius: 4 }}>{sec.chartType}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: colors.border, padding: '2px 6px', borderRadius: 4 }}>{sec.chartType}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button type="button" onClick={() => startEditSection(sec)}

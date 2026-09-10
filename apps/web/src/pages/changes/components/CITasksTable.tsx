@@ -14,6 +14,7 @@ import type { AffectedCI, AssessmentTaskData } from '@/types/change'
 import { AssessmentModal } from './AssessmentModal'
 import { PlanModal } from './PlanModal'
 import { EyeButton, OpenTaskButton, RiskBadge, TaskStatusRow } from './shared'
+import { colors, palette } from '@/lib/tokens'
 
 function CIExpandedRow({ a }: { a: AffectedCI }) {
   const bothAssessDone = a.assessmentOwner?.status === TASK_STATUS.COMPLETED && a.assessmentSupport?.status === TASK_STATUS.COMPLETED
@@ -149,7 +150,7 @@ export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = tru
 
   return (
     <SectionCard title="Active Tasks" count={activeCount} collapsible defaultOpen={defaultOpen} activeColor={activeColor} activeTextColor={activeTextColor}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #e5e7eb', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border)', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
         <span style={{ width: 24, flexShrink: 0 }} />
         <span style={{ flex: 1 }}>Nome</span>
         <span style={{ width: 80 }}>Tipo</span>
@@ -164,7 +165,7 @@ export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = tru
         const done = isCIDone(a)
         return (
           <div key={a.ci.id} style={{ borderLeft: isOpen ? '3px solid var(--color-brand)' : '3px solid transparent', marginBottom: 2, transition: 'border-color 0.15s' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0 8px 4px', borderBottom: '1px solid #f3f4f6' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0 8px 4px', borderBottom: '1px solid var(--color-border-light)' }}>
               <button type="button" aria-expanded={isOpen} aria-label={a.ci.name} onClick={() => setExpandedCIId(prev => prev === a.ci.id ? null : a.ci.id)} style={{ width: 24, flexShrink: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', padding: 0, font: 'inherit', color: 'inherit' }}>
                 <ChevronRight size={16} color="var(--color-slate-light)" style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }} />
               </button>
@@ -172,7 +173,7 @@ export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = tru
               <span style={{ width: 80, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{a.ci.type ?? ''}</span>
               <span style={{ width: 80, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{a.ci.environment ?? ''}</span>
               <span style={{ width: 80 }}>{a.riskScore != null && (
-                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: a.riskScore <= 30 ? '#15803d' : a.riskScore <= 60 ? '#b45309' : '#b91c1c' }}>{a.riskScore}</span>
+                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: a.riskScore <= 30 ? palette.success.text : a.riskScore <= 60 ? palette.warning.text : palette.danger.text }}>{a.riskScore}</span>
               )}</span>
               <span style={{ width: 130 }}>
                 {done
@@ -180,7 +181,7 @@ export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = tru
                   : <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-trigger-sla-breach)', textTransform: 'uppercase' }}>NOT YET COMPLETED</span>
                 }
               </span>
-              <span style={{ width: 90 }}>{tid && <Link to={`/tasks/${tid}`} style={{ padding: '3px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, backgroundColor: 'var(--color-brand)', color: '#fff', textDecoration: 'none' }}>Apri task</Link>}</span>
+              <span style={{ width: 90 }}>{tid && <Link to={`/tasks/${tid}`} style={{ padding: '3px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, backgroundColor: 'var(--color-brand)', color: colors.white, textDecoration: 'none' }}>Apri task</Link>}</span>
             </div>
             {isOpen && <div style={{ paddingLeft: 28 }}><CIExpandedRow a={a} /></div>}
           </div>

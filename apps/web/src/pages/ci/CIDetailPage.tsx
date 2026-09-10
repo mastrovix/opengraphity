@@ -31,6 +31,7 @@ import { GET_BLAST_RADIUS, GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
 import { ADD_CI_RELATIONSHIP, REMOVE_CI_RELATIONSHIP, UPDATE_CI, ASSIGN_CI_OWNER, ASSIGN_CI_SUPPORT_GROUP } from '@/graphql/mutations'
 import { X, Plus, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
+import { colors, palette, alpha } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -92,7 +93,7 @@ function RelationList({
               key={rel.ci.id}
               role="button"
               tabIndex={0}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb', cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? 0.6 : 1 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${palette.neutral.borderLight}`, cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? 0.6 : 1 }}
               title={navigationLockedReason}
               aria-disabled={locked || undefined}
               onClick={open}
@@ -115,7 +116,7 @@ function RelationList({
                   title={t('common.delete')}
                   aria-label={t('common.delete')}
                 >
-                  <X size={14} color="#ef4444" />
+                  <X size={14} color={colors.danger} />
                 </button>
               )}
             </div>
@@ -183,7 +184,7 @@ function CIGroupMembersCard({ groupId }: { groupId: string }) {
   return (
     <SectionCard title={`${t('pages.ci.members')} (${countLabel})`} defaultOpen={true}>
       {truncated && (
-        <p style={{ fontSize: 'var(--font-size-table)', color: '#854d0e', background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 10px', margin: '0 0 8px' }}>
+        <p style={{ fontSize: 'var(--font-size-table)', color: palette.yellow.text, background: palette.yellow.bg, border: `1px solid ${palette.warning.border}`, borderRadius: 6, padding: '6px 10px', margin: '0 0 8px' }}>
           {t('pages.ci.membersTruncated', { shown: members.length, total })}
         </p>
       )}
@@ -552,17 +553,17 @@ export function CIDetailPage() {
                 </div>
 
                 {/* Editable description & notes */}
-                <div style={{ borderTop: '1px solid #f3f4f6', margin: '12px 0' }} />
+                <div style={{ borderTop: `1px solid ${palette.neutral.borderLight}`, margin: '12px 0' }} />
                 <EditField label={t('common.description')} value={editDraft['description'] ?? ''} multiline onChange={v => setEditDraft(d => ({ ...d, description: v }))} />
                 <div style={{ marginTop: 12 }} />
                 <EditField label={t('pages.ci.notes')} value={editDraft['notes'] ?? ''} multiline onChange={v => setEditDraft(d => ({ ...d, notes: v }))} />
 
                 {/* Save / Cancel */}
                 <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                  <button type="button" onClick={handleSaveAll} style={{ padding: '6px 18px', borderRadius: 6, border: 'none', background: 'var(--color-brand)', color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+                  <button type="button" onClick={handleSaveAll} style={{ padding: '6px 18px', borderRadius: 6, border: 'none', background: 'var(--color-brand)', color: colors.white, fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                     {t('common.save')}
                   </button>
-                  <button type="button" onClick={() => setEditMode(false)} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', color: 'var(--color-slate)', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+                  <button type="button" onClick={() => setEditMode(false)} style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, color: 'var(--color-slate)', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                     {t('common.cancel')}
                   </button>
                 </div>
@@ -695,7 +696,7 @@ export function CIDetailPage() {
                 )}
 
                 {(ci.dependencies as CIRelation[]).length > 0 && (ci.dependents as CIRelation[]).length > 0 && (
-                  <div style={{ borderTop: '1px solid #f3f4f6', margin: '8px 0 16px 0' }} />
+                  <div style={{ borderTop: `1px solid ${palette.neutral.borderLight}`, margin: '8px 0 16px 0' }} />
                 )}
 
                 {(ci.dependents as CIRelation[]).length > 0 && (
@@ -716,22 +717,22 @@ export function CIDetailPage() {
 
             {/* Delete confirmation */}
             {deleteRel && (
-              <div style={{ padding: '12px 16px', background: 'var(--color-danger-bg)', border: '1px solid #fecaca', borderRadius: 8, marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 'var(--font-size-body)', color: '#991b1b' }}>
+              <div style={{ padding: '12px 16px', background: 'var(--color-danger-bg)', border: `1px solid ${palette.danger.border}`, borderRadius: 8, marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 'var(--font-size-body)', color: palette.danger.strong }}>
                   {t('pages.ci.removeRelation', { relationType: deleteRel.relationType, name: deleteRel.name })}
                 </span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     type="button"
                     onClick={() => setDeleteRel(null)}
-                    style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', color: 'var(--color-slate-dark)' }}
+                    style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: 'var(--color-slate-dark)' }}
                   >
                     {t('common.cancel')}
                   </button>
                   <button
                     type="button"
                     onClick={handleRemoveRelation}
-                    style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: 'none', background: 'var(--color-danger)', color: '#fff', cursor: 'pointer' }}
+                    style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: 'none', background: 'var(--color-danger)', color: colors.white, cursor: 'pointer' }}
                   >
                     {t('common.delete')}
                   </button>
@@ -763,7 +764,7 @@ export function CIDetailPage() {
                     <Button
                       onClick={() => void handleAddRelation()}
                       disabled={!addRelForm.targetCI}
-                      style={{ fontSize: 'var(--font-size-body)', ...(addRelForm.targetCI ? {} : { backgroundColor: '#d1d5db' }) }}
+                      style={{ fontSize: 'var(--font-size-body)', ...(addRelForm.targetCI ? {} : { backgroundColor: palette.neutral.borderStrong }) }}
                     >
                       {t('pages.ci.addRelation')}
                     </Button>
@@ -814,20 +815,20 @@ export function CIDetailPage() {
                         style={{ padding: '8px 10px', outline: undefined }}
                       />
                       {addRelForm.targetCI && (
-                        <div style={{ marginTop: 6, padding: '6px 10px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 6, fontSize: 'var(--font-size-body)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ marginTop: 6, padding: '6px 10px', background: palette.info.light, border: `1px solid ${palette.info.border}`, borderRadius: 6, fontSize: 'var(--font-size-body)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <span><strong>{addRelForm.targetCI.name}</strong> <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>({addRelForm.targetCI.type})</span></span>
-                          <button type="button" aria-label={t('common.delete')} onClick={() => setAddRelForm(prev => ({ ...prev, targetCI: null, search: '' }))} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}><X size={14} color="#94a3b8" /></button>
+                          <button type="button" aria-label={t('common.delete')} onClick={() => setAddRelForm(prev => ({ ...prev, targetCI: null, search: '' }))} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}><X size={14} color={colors.slateLight} /></button>
                         </div>
                       )}
                       {ciSearchResults.length > 0 && !addRelForm.targetCI && (
-                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, maxHeight: 180, overflowY: 'auto', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,.08)', marginTop: 2 }}>
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 6, maxHeight: 180, overflowY: 'auto', zIndex: 10, boxShadow: `0 4px 12px ${alpha.black08}`, marginTop: 2 }}>
                           {ciSearchResults.map(c => (
                             <button
                               type="button"
                               key={c.id}
                               onClick={() => setAddRelForm(prev => ({ ...prev, targetCI: c, search: c.name }))}
                               className="hover-bg"
-                              style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', font: 'inherit', color: 'inherit', padding: '8px 12px', fontSize: 'var(--font-size-body)', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', ['--hover-bg' as string]: '#f1f5f9' }}
+                              style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', font: 'inherit', color: 'inherit', padding: '8px 12px', fontSize: 'var(--font-size-body)', cursor: 'pointer', borderBottom: `1px solid ${palette.neutral.borderLight}`, ['--hover-bg' as string]: colors.slateBg }}
                             >
                               <span style={{ fontWeight: 500 }}>{c.name}</span>{' '}
                               <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>({c.type.replace(/_/g, ' ')})</span>

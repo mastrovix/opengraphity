@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, alpha, colors, palette } from '@/lib/tokens'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, GitPullRequest, Shield, Clock, Bell, CheckCheck } from 'lucide-react'
@@ -24,12 +24,12 @@ function entityPath(notif: InAppNotification): string | null {
 const SEVERITY_ICON: Record<string, { icon: React.FC<{ size: number; color: string }>; color: string }> = {
   error:   { icon: AlertTriangle, color: 'var(--color-danger)' },
   warning: { icon: Clock,         color: 'var(--color-warning)' },
-  success: { icon: Shield,        color: '#22c55e' },
+  success: { icon: Shield,        color: colors.success },
   info:    { icon: Bell,          color: 'var(--color-trigger-manual)' },
 }
 
 function entityIcon(notif: InAppNotification) {
-  if (notif.entity_type === 'change') return { icon: GitPullRequest, color: '#7c3aed' }
+  if (notif.entity_type === 'change') return { icon: GitPullRequest, color: palette.purple.base }
   return lookupOrError(SEVERITY_ICON, notif.severity ?? 'info', 'SEVERITY_ICON', SEVERITY_ICON['error']!)
 }
 
@@ -59,12 +59,12 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
         gap:             12,
         padding:         '12px 16px',
         cursor:          entityPath(notif) ? 'pointer' : 'default',
-        backgroundColor: notif.read ? '#ffffff' : '#f0f9ff',
-        borderBottom:    '1px solid #f1f5f9',
+        backgroundColor: notif.read ? colors.white : palette.info.light,
+        borderBottom:    `1px solid ${palette.neutral.borderLight}`,
         transition:      'background 0.15s',
       }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--color-slate-bg)' }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = notif.read ? '#ffffff' : '#f0f9ff' }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = notif.read ? colors.white : palette.info.light }}
     >
       {/* Icon */}
       <div style={{ flexShrink: 0, marginTop: 2 }}>
@@ -144,10 +144,10 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
         right:           0,
         width:           360,
         maxHeight:       420,
-        backgroundColor: '#ffffff',
+        backgroundColor: colors.white,
         border:          '1px solid var(--border)',
         borderRadius:    10,
-        boxShadow:       '0 8px 24px rgba(0,0,0,0.12)',
+        boxShadow:       `0 8px 24px ${alpha.black12}`,
         zIndex:          50,
         display:         'flex',
         flexDirection:   'column',
@@ -160,7 +160,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
         alignItems:     'center',
         justifyContent: 'space-between',
         padding:        '12px 16px',
-        borderBottom:   '1px solid #f1f5f9',
+        borderBottom:   `1px solid ${palette.neutral.borderLight}`,
         flexShrink:     0,
       }}>
         <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
@@ -200,7 +200,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
             gap:            8,
             color:          'var(--color-slate-light)',
           }}>
-            <Bell size={24} color="#cbd5e1" />
+            <Bell size={24} color={colors.slateLight} />
             <span style={{ fontSize: 'var(--font-size-body)' }}>{t('notifications.empty')}</span>
           </div>
         ) : (

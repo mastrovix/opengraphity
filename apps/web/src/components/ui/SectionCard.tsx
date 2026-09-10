@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode, type CSSProperties } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { CountBadge } from './CountBadge'
+import { colors } from '@/lib/tokens'
 
 interface SectionCardProps {
   title:         ReactNode
@@ -24,8 +25,8 @@ export function SectionCard({
   title,
   collapsible = true,
   defaultOpen = false,
-  activeColor = '#0ea5e9',
-  activeTextColor = '#fff',
+  activeColor = colors.brand,
+  activeTextColor = colors.white,
   open: controlledOpen,
   onToggle,
   count,
@@ -54,7 +55,7 @@ export function SectionCard({
   )
 
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+    <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
       <div
         style={{
           display:        'flex',

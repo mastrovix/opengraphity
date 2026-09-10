@@ -17,6 +17,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { inputS } from '@/components/ui/styles'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { styleForCategory } from '@/lib/workflowStepStyle'
+import { colors } from '@/lib/tokens'
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 
@@ -100,10 +101,10 @@ function VersionHistory({ articleId, onRestored }: { articleId: string; onRestor
   if (versions.length === 0) return <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '12px 0 0' }}>Nessuna versione precedente. Le modifiche future creeranno lo storico.</p>
 
   return (
-    <div style={{ marginTop: 8, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ marginTop: 8, border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-table)' }}>
         <thead>
-          <tr style={{ background: '#fff', textAlign: 'left', color: 'var(--color-slate-light)' }}>
+          <tr style={{ background: colors.white, textAlign: 'left', color: 'var(--color-slate-light)' }}>
             <th style={{ padding: '7px 12px', fontWeight: 600 }}>Ver.</th>
             <th style={{ padding: '7px 12px', fontWeight: 600 }}>Titolo</th>
             <th style={{ padding: '7px 12px', fontWeight: 600 }}>Modificato da</th>
@@ -113,7 +114,7 @@ function VersionHistory({ articleId, onRestored }: { articleId: string; onRestor
         </thead>
         <tbody>
           {versions.map((v) => (
-            <tr key={v.version} style={{ borderTop: '1px solid #e2e8f0', background: '#fff' }}>
+            <tr key={v.version} style={{ borderTop: `1px solid ${colors.border}`, background: colors.white }}>
               <td style={{ padding: '7px 12px', color: 'var(--color-slate)' }}>v{v.version}</td>
               <td style={{ padding: '7px 12px', color: 'var(--color-slate-dark)' }}>{v.title}</td>
               <td style={{ padding: '7px 12px', color: 'var(--color-slate)' }}>{v.editedByName ?? '—'}</td>
@@ -122,7 +123,7 @@ function VersionHistory({ articleId, onRestored }: { articleId: string; onRestor
                 <button type="button"
                   disabled={restoring}
                   onClick={() => restore({ variables: { articleId, version: v.version } })}
-                  style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: 'var(--color-brand)', cursor: restoring ? 'default' : 'pointer', fontSize: 'var(--font-size-table)', fontWeight: 600, opacity: restoring ? 0.6 : 1 }}
+                  style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, color: 'var(--color-brand)', cursor: restoring ? 'default' : 'pointer', fontSize: 'var(--font-size-table)', fontWeight: 600, opacity: restoring ? 0.6 : 1 }}
                 >
                   Ripristina
                 </button>
@@ -372,7 +373,7 @@ export function KBAdminPage() {
   // a client-side sort would only reorder the current page.
   const articleColumns: ColumnDef<KBArticle>[] = [
     { key: 'title', label: 'Titolo', render: (v) => (
-      <div style={{ fontWeight: 500, color: '#1a2332', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(v)}</div>
+      <div style={{ fontWeight: 500, color: colors.slateDark, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(v)}</div>
     ) },
     { key: 'category', label: 'Categoria', render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
     { key: 'status', label: 'Status', render: (v) => {
@@ -388,8 +389,8 @@ export function KBAdminPage() {
         <button type="button" onClick={() => startEdit(row)} style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.edit')}><Pencil size={14} /></button>
         {deleteId === row.id ? (
           <div style={{ display: 'flex', gap: 4 }}>
-            <button type="button" onClick={() => void deleteArticle({ variables: { id: row.id } })} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: 'none', background: 'var(--color-danger)', color: '#fff', cursor: 'pointer' }}>{t('common.confirm')}</button>
-            <button type="button" onClick={() => setDeleteId(null)} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer' }}>{t('common.cancel')}</button>
+            <button type="button" onClick={() => void deleteArticle({ variables: { id: row.id } })} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: 'none', background: 'var(--color-danger)', color: colors.white, cursor: 'pointer' }}>{t('common.confirm')}</button>
+            <button type="button" onClick={() => setDeleteId(null)} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer' }}>{t('common.cancel')}</button>
           </div>
         ) : (
           <button type="button" onClick={() => setDeleteId(row.id)} style={{ color: 'var(--color-slate-light)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.delete')}><Trash2 size={14} /></button>
@@ -416,7 +417,7 @@ export function KBAdminPage() {
         </div>
         <button type="button"
           onClick={() => { closeForm(); setShowForm(true) }}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
         >
           <Plus size={14} /> {t('pages.kbAdmin.new')}
         </button>
@@ -424,10 +425,10 @@ export function KBAdminPage() {
 
       {/* ── Article form ── */}
       {showForm && (
-        <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 20, marginBottom: 20, background: 'var(--color-slate-bg)' }}>
+        <div style={{ border: `1px solid ${colors.border}`, borderRadius: 10, padding: 20, marginBottom: 20, background: 'var(--color-slate-bg)' }}>
           {/* Form header: title + status badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-            <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332' }}>
+            <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark }}>
               {editId ? t('pages.kbAdmin.editArticle') : t('pages.kbAdmin.newArticle')}
             </h3>
             {editArticle && (() => {
@@ -472,7 +473,7 @@ export function KBAdminPage() {
             <button type="button"
               onClick={handleSave}
               disabled={isBusy}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: colors.white, cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
             >
               {creating || updating ? t('common.loading') : t('common.save')}
             </button>
@@ -482,7 +483,7 @@ export function KBAdminPage() {
               <button type="button"
                 onClick={handlePublish}
                 disabled={isBusy}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: colors.white, cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
               >
                 <Send size={14} />
                 Invia per revisione
@@ -493,7 +494,7 @@ export function KBAdminPage() {
 
             <button type="button"
               onClick={closeForm}
-              style={{ display: 'inline-flex', alignItems: 'center', padding: '8px 16px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500 }}
+              style={{ display: 'inline-flex', alignItems: 'center', padding: '8px 16px', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, color: 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500 }}
             >
               {t('common.cancel')}
             </button>
@@ -508,8 +509,8 @@ export function KBAdminPage() {
 
           {/* Version history — only when editing an existing article */}
           {editId && (
-            <div style={{ marginTop: 20, borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
-              <h4 style={{ margin: '0 0 4px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ marginTop: 20, borderTop: `1px solid ${colors.border}`, paddingTop: 16 }}>
+              <h4 style={{ margin: '0 0 4px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <Clock size={14} /> Cronologia versioni
               </h4>
               <VersionHistory

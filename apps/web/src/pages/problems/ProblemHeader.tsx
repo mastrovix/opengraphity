@@ -1,6 +1,6 @@
 import { ArrowLeft } from 'lucide-react'
 import { Pill } from '@/components/ui/Pill'
-import { lookupOrError } from '@/lib/tokens'
+import { colors, palette, lookupOrError } from '@/lib/tokens'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { buttonStyleForCategory } from '@/lib/workflowStepStyle'
 
@@ -20,7 +20,12 @@ interface Problem {
 }
 
 const PRIORITY_COLOR: Record<string, string> = {
-  critical: 'var(--color-trigger-sla-breach)', high: 'var(--color-brand)', medium: '#ca8a04', low: 'var(--color-success)',
+  critical: 'var(--color-trigger-sla-breach)', high: 'var(--color-brand)', medium: palette.warning.text, low: 'var(--color-success)',
+}
+// Sfondo del badge priorità: i token sono `var(--…)`, quindi niente suffisso
+// alfa esadecimale — si usa la tinta della stessa famiglia.
+const PRIORITY_BG: Record<string, string> = {
+  critical: palette.danger.tint, high: palette.info.tint, medium: palette.warning.tint, low: palette.success.tint,
 }
 
 // Every problem status renders with the same brand colours — a single value,
@@ -62,7 +67,7 @@ export function ProblemHeader({
       </button>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
         <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>{problem.title}</h1>
-        <Pill bg={PRIORITY_COLOR[problem.priority] ? `${PRIORITY_COLOR[problem.priority]}22` : 'var(--color-border-light)'} color={lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)')} radius={4} style={{ fontSize: 'var(--font-size-body)', border: `1px solid ${lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', '#e5e7eb')}` }}>
+        <Pill bg={PRIORITY_BG[problem.priority] ?? 'var(--color-border-light)'} color={lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)')} radius={4} style={{ fontSize: 'var(--font-size-body)', border: `1px solid ${lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', colors.border)}` }}>
           {problem.priority}
         </Pill>
         <Pill bg={STATUS_BG} color={STATUS_FG} radius={4} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500 }}>

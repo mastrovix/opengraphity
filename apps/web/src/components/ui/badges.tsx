@@ -9,20 +9,20 @@
  */
 import { useTranslation } from 'react-i18next'
 import { Pill } from '@/components/ui/Pill'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, colors, palette } from '@/lib/tokens'
 import { styleForCategory } from '@/lib/workflowStepStyle'
 import { TASK_STATUS, REVIEW_RESULT } from '@/lib/taskStatus'
 
-const BROKEN = { bg: 'var(--color-danger)', color: '#fff' }
+const BROKEN = { bg: 'var(--color-danger)', color: colors.white }
 
 // ── Severità / priorità (incident, problem, change) ─────────────────────────
 
 /** Palette severità UNICA (incident, problem, anomalie, impatto what-if): niente copie locali. */
 export const SEVERITY_STYLE: Record<string, { bg: string; color: string }> = {
-  critical: { bg: '#fee2e2', color: '#b91c1c' },
-  high:     { bg: '#ffedd5', color: '#c2410c' },
-  medium:   { bg: '#fef3c7', color: '#b45309' },
-  low:      { bg: '#dcfce7', color: '#15803d' },
+  critical: { bg: palette.danger.tint, color: palette.danger.text },
+  high:     { bg: palette.orange.tint, color: palette.orange.text },
+  medium:   { bg: palette.warning.tint, color: palette.warning.text },
+  low:      { bg: palette.success.tint, color: palette.success.text },
 }
 
 export function SeverityBadge({ value }: { value: string | null | undefined }) {
@@ -36,9 +36,9 @@ export function SeverityBadge({ value }: { value: string | null | undefined }) {
 /** Stessi 4 ruoli accettati dall'API (`UserRole` in hooks/useMe.ts); etichette in `roles.*`. */
 const ROLE_STYLE: Record<string, { bg: string; color: string; labelKey: string }> = {
   admin:    { bg: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)', labelKey: 'roles.admin' },
-  operator: { bg: 'var(--color-info-bg)',   color: '#2563eb',                          labelKey: 'roles.operator' },
+  operator: { bg: 'var(--color-info-bg)',   color: colors.brand,                          labelKey: 'roles.operator' },
   viewer:   { bg: 'var(--color-slate-bg)',  color: 'var(--color-slate)',               labelKey: 'roles.viewer' },
-  end_user: { bg: '#f5f3ff',                color: '#6d28d9',                          labelKey: 'roles.end_user' },
+  end_user: { bg: palette.purple.bg,                color: palette.purple.dark,                          labelKey: 'roles.end_user' },
 }
 
 export function RoleBadge({ role }: { role: string | null | undefined }) {
@@ -55,9 +55,9 @@ export function RoleBadge({ role }: { role: string | null | undefined }) {
 // ── Rischio aggregato della change ───────────────────────────────────────────
 
 const RISK_STYLE: Record<string, { bg: string; color: string; labelKey: string }> = {
-  low:    { bg: '#dcfce7', color: '#15803d', labelKey: 'risk.low' },
-  medium: { bg: '#fef3c7', color: '#b45309', labelKey: 'risk.medium' },
-  high:   { bg: '#fee2e2', color: '#b91c1c', labelKey: 'risk.high' },
+  low:    { bg: palette.success.tint, color: palette.success.text, labelKey: 'risk.low' },
+  medium: { bg: palette.warning.tint, color: palette.warning.text, labelKey: 'risk.medium' },
+  high:   { bg: palette.danger.tint, color: palette.danger.text, labelKey: 'risk.high' },
 }
 
 /** Stesse soglie del backend (scoring.ts): ≤30 low, ≤60 medium, >60 high. */
@@ -100,7 +100,7 @@ export function StatusLabel({ status }: { status: string | null | undefined }) {
     s === TASK_STATUS.COMPLETED   ? 'var(--color-success)' :
     s === TASK_STATUS.IN_PROGRESS ? 'var(--color-warning)' :
     s === TASK_STATUS.PENDING     ? 'var(--color-danger)' :
-    s === 'failed' || s === REVIEW_RESULT.REJECTED ? 'var(--color-danger)' : '#d1d5db'
+    s === 'failed' || s === REVIEW_RESULT.REJECTED ? 'var(--color-danger)' : colors.slateLight
   const label = s === TASK_STATUS.PENDING ? t('taskStatus.toBeCompleted') : s.replace(/_/g, ' ')
   return <strong title={s} style={{ color, textTransform: 'uppercase' }}>{label}</strong>
 }

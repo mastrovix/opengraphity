@@ -12,6 +12,7 @@ import { Pill } from '@/components/ui/Pill'
 import { RoleBadge } from '@/components/ui/badges'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { GET_USER, GET_TEAMS } from '@/graphql/queries'
+import { colors, palette } from '@/lib/tokens'
 
 const UPDATE_USER_TEAMS = gql`
   mutation UpdateUserTeams($userId: ID!, $teamIds: [ID!]!) {
@@ -113,8 +114,8 @@ export function UserDetailPage() {
             ) : (
               <div style={{ marginBottom: 12 }}>
                 {user.teams.map((team, i) => (
-                  <div key={team.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: i < user.teams.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 6, background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <div key={team.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: i < user.teams.length - 1 ? `1px solid ${palette.neutral.borderLight}` : 'none' }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 6, background: palette.info.tint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <Users size={14} color="var(--color-brand)" />
                     </div>
                     <div style={{ flex: 1 }}>
@@ -123,7 +124,7 @@ export function UserDetailPage() {
                         {team.type && (
                           <Pill
                             bg={team.type === 'support' ? 'var(--color-success-bg)' : team.type === 'owner' ? 'var(--color-info-bg)' : 'var(--color-slate-bg)'}
-                            color={team.type === 'support' ? 'var(--color-success)' : team.type === 'owner' ? '#2563eb' : 'var(--color-slate)'}
+                            color={team.type === 'support' ? 'var(--color-success)' : team.type === 'owner' ? colors.brand : 'var(--color-slate)'}
                             radius={4}
                             style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px' }}
                           >{team.type}</Pill>
@@ -137,7 +138,7 @@ export function UserDetailPage() {
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-bg)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
                     >
-                      <X size={14} color="#ef4444" />
+                      <X size={14} color={colors.danger} />
                     </button>
                   </div>
                 ))}
@@ -166,7 +167,7 @@ export function UserDetailPage() {
                     key={team.id}
                     onClick={() => { void updateTeams({ variables: { userId: user.id, teamIds: [...userTeamIds, team.id] } }); setShowAddTeam(false) }}
                     className="hover-bg"
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '8px 12px', cursor: 'pointer', borderBottom: i < availableTeams.length - 1 ? '1px solid #f3f4f6' : 'none', ['--hover-bg' as string]: '#f0f9ff' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '8px 12px', cursor: 'pointer', borderBottom: i < availableTeams.length - 1 ? `1px solid ${palette.neutral.borderLight}` : 'none', ['--hover-bg' as string]: palette.info.light }}
                   >
                     <Plus size={14} color="var(--color-brand)" aria-hidden="true" />
                     <div style={{ flex: 1 }}>
@@ -175,7 +176,7 @@ export function UserDetailPage() {
                         {team.type && (
                           <Pill
                             bg={team.type === 'support' ? 'var(--color-success-bg)' : team.type === 'owner' ? 'var(--color-info-bg)' : 'var(--color-slate-bg)'}
-                            color={team.type === 'support' ? 'var(--color-success)' : team.type === 'owner' ? '#2563eb' : 'var(--color-slate)'}
+                            color={team.type === 'support' ? 'var(--color-success)' : team.type === 'owner' ? colors.brand : 'var(--color-slate)'}
                             radius={4}
                             style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px' }}
                           >{team.type}</Pill>

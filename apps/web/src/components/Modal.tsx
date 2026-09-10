@@ -2,6 +2,7 @@ import { useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
+import { alpha, colors } from '@/lib/tokens'
 
 interface ModalProps {
   open: boolean
@@ -88,9 +89,9 @@ export function Modal({
   if (!open) return null
 
   const panelStyle: React.CSSProperties = {
-    background:     '#fff',
+    background:     colors.white,
     borderRadius:   10,
-    boxShadow:      '0 20px 60px rgba(0,0,0,0.15)',
+    boxShadow:      `0 20px 60px ${alpha.black15}`,
     width,
     maxWidth:       '90vw',
     maxHeight:      '90vh',
@@ -165,7 +166,7 @@ export function Modal({
       style={{
         position:       'fixed',
         inset:          0,
-        background:     'rgba(0,0,0,0.45)',
+        background:     alpha.scrim,
         zIndex,
         display:        'flex',
         alignItems:     'center',

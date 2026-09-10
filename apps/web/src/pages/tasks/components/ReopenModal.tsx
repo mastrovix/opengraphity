@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 import { inputStyle } from './shared'
+import { colors } from '@/lib/tokens'
 
 export function ReopenModal({ onConfirm, onCancel }: {
   onConfirm: (reason: string) => void
@@ -27,7 +28,7 @@ export function ReopenModal({ onConfirm, onCancel }: {
             disabled={reason.trim().length < 10}
             onClick={() => onConfirm(reason.trim())}
             style={{
-              backgroundColor: '#eab308', fontWeight: 600,
+              backgroundColor: colors.warning, fontWeight: 600,
               opacity: reason.trim().length >= 10 ? 1 : 0.5,
               fontSize: 'var(--font-size-body)',
             }}

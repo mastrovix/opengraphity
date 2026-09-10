@@ -10,6 +10,7 @@ import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/
 import { EmptyState } from '@/components/EmptyState'
 import { QueryError } from '@/components/QueryError'
 import { Pagination } from '@/components/ui/Pagination'
+import { alpha, colors, palette } from '@/lib/tokens'
 
 const GET_AUDIT_LOG = gql`
   query GetAuditLog(
@@ -102,7 +103,7 @@ export function AuditLogPage() {
     },
     {
       key: 'ipAddress', label: t('pages.audit.colIp'), sortable: false,
-      render: (v) => v ? String(v) : <span style={{ color: '#c4cad4' }}>—</span>,
+      render: (v) => v ? String(v) : <span style={{ color: palette.neutral.borderStrong }}>—</span>,
     },
   ]
 
@@ -128,7 +129,7 @@ export function AuditLogPage() {
       ) : (
         <>
           {error && (
-            <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', marginBottom: 16 }}>
+            <div style={{ padding: '12px 16px', borderRadius: 8, background: alpha.danger08, color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', marginBottom: 16 }}>
               {error.message}
             </div>
           )}
@@ -157,7 +158,7 @@ export function AuditLogPage() {
             let parsed: unknown
             try { parsed = JSON.parse(entry.details) } catch { parsed = entry.details }
             return (
-              <div style={{ marginTop: 12, padding: 16, background: 'var(--color-slate-bg)', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+              <div style={{ marginTop: 12, padding: 16, background: 'var(--color-slate-bg)', borderRadius: 8, border: `1px solid ${colors.border}` }}>
                 <strong style={{ fontSize: 'var(--font-size-body)' }}>{t('pages.audit.details', { action: entry.action })}</strong>
                 <pre style={{ marginTop: 8, fontSize: 'var(--font-size-body)', overflowX: 'auto', margin: '8px 0 0 0' }}>
                   {JSON.stringify(parsed, null, 2)}

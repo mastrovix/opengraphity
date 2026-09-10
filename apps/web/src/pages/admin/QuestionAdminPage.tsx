@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { useConfirm } from '@/hooks/useConfirm'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, colors, palette } from '@/lib/tokens'
 import { HelpCircle, Plus, Trash2, X, ChevronUp, ChevronDown } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
@@ -70,13 +70,13 @@ const labelStyle: React.CSSProperties = {
 }
 
 const CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
-  functional: { bg: '#dbeafe', color: '#2563eb' },
-  technical:  { bg: '#dcfce7', color: 'var(--color-success)' },
+  functional: { bg: palette.info.tint, color: colors.brand },
+  technical:  { bg: palette.success.tint, color: 'var(--color-success)' },
 }
 
 function CategoryBadge({ category }: { category: string }) {
   // Unknown category → visible red pill + console error, not a benign grey.
-  const s = lookupOrError(CATEGORY_COLORS, category, 'CATEGORY_COLORS', { bg: 'var(--color-danger)', color: '#fff' })
+  const s = lookupOrError(CATEGORY_COLORS, category, 'CATEGORY_COLORS', { bg: 'var(--color-danger)', color: colors.white })
   return (
     <Pill bg={s.bg} color={s.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'uppercase' }}>
       {category}
@@ -251,7 +251,7 @@ export function QuestionAdminPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 20, alignItems: 'start' }}>
 
         {/* Left: question list */}
-        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+        <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>
               Domande ({questions.length}{filterCat && questions.length !== allQuestions.length ? ` / ${allQuestions.length}` : ''})
@@ -261,7 +261,7 @@ export function QuestionAdminPage() {
               onClick={handleNew}
               style={{
                 padding: '6px 12px', borderRadius: 6, border: 'none',
-                background: 'var(--color-brand)', color: '#fff',
+                background: 'var(--color-brand)', color: colors.white,
                 fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 4,
               }}
@@ -295,7 +295,7 @@ export function QuestionAdminPage() {
                     borderRadius: 8,
                     border: active ? '1.5px solid var(--color-brand)' : '1px solid var(--border)',
                     cursor: 'pointer',
-                    background: active ? 'var(--color-brand-light)' : '#fff',
+                    background: active ? 'var(--color-brand-light)' : colors.white,
                   }}
                 >
                   <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)', marginBottom: 6, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
@@ -304,10 +304,10 @@ export function QuestionAdminPage() {
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     <CategoryBadge category={q.category} />
                     {q.isCore && (
-                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: '#f1f5f9', color: 'var(--color-slate)' }}>CORE</span>
+                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: colors.slateBg, color: 'var(--color-slate)' }}>CORE</span>
                     )}
                     {!q.isActive && (
-                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: '#fee2e2', color: '#b91c1c' }}>INATTIVA</span>
+                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: palette.danger.tint, color: palette.danger.text }}>INATTIVA</span>
                     )}
                   </div>
                 </button>
@@ -320,7 +320,7 @@ export function QuestionAdminPage() {
         </div>
 
         {/* Right: editor panel */}
-        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
+        <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
           {!selectedId && !isNew && (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-slate-light)' }}>
               Seleziona una domanda o creane una nuova
@@ -378,7 +378,7 @@ export function QuestionAdminPage() {
                       const assign = assignments.find(a => a.ciTypeId === ct.id)
                       const assigned = !!assign
                       return (
-                        <div key={ct.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f3f4f6' }}>
+                        <div key={ct.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
                           <input
                             type="checkbox"
                             checked={assigned}
@@ -418,7 +418,7 @@ export function QuestionAdminPage() {
               )}
 
               {isCore && !isNew && (
-                <div style={{ marginBottom: 16, padding: 10, background: '#f1f5f9', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+                <div style={{ marginBottom: 16, padding: 10, background: colors.slateBg, borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
                   Questa domanda è <strong>core</strong>: assegnata automaticamente a tutti i CI Type attivi.
                 </div>
               )}
@@ -452,7 +452,7 @@ export function QuestionAdminPage() {
                     <button type="button" onClick={() => moveOption(i, 1)} disabled={i === options.length - 1} style={{ background: 'none', border: '1px solid var(--border)', cursor: i === options.length - 1 ? 'not-allowed' : 'pointer', padding: 6, borderRadius: 4 }}>
                       <ChevronDown size={12} />
                     </button>
-                    <button type="button" onClick={() => removeOption(i)} style={{ background: 'none', border: '1px solid #fecaca', color: 'var(--color-danger)', cursor: 'pointer', padding: 6, borderRadius: 4 }}>
+                    <button type="button" onClick={() => removeOption(i)} style={{ background: 'none', border: `1px solid ${palette.danger.border}`, color: 'var(--color-danger)', cursor: 'pointer', padding: 6, borderRadius: 4 }}>
                       <X size={12} />
                     </button>
                   </div>
@@ -460,12 +460,12 @@ export function QuestionAdminPage() {
               </div>
 
               {/* Actions */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f3f4f6', paddingTop: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${palette.neutral.borderLight}`, paddingTop: 16 }}>
                 {!isNew && selectedId && (
                   <button
                     type="button"
                     onClick={handleDelete}
-                    style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid var(--color-danger)', background: '#fff', color: 'var(--color-danger)', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                    style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid var(--color-danger)', background: colors.white, color: 'var(--color-danger)', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
                   >
                     <Trash2 size={14} /> Elimina
                   </button>
@@ -474,7 +474,7 @@ export function QuestionAdminPage() {
                   <button
                     type="button"
                     onClick={handleSave}
-                    style={{ padding: '8px 24px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: '#fff', fontWeight: 600, cursor: 'pointer' }}
+                    style={{ padding: '8px 24px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontWeight: 600, cursor: 'pointer' }}
                   >
                     Salva
                   </button>

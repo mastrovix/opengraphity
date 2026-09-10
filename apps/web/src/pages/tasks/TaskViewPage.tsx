@@ -52,6 +52,7 @@ import { ReopenModal } from './components/ReopenModal'
 import { TeamGatePanel } from './components/TeamGatePanel'
 import { KIND_TITLE, inputStyle } from './components/shared'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
+import { colors, palette } from '@/lib/tokens'
 
 interface TaskDetail {
   id: string; code: string; kind: string
@@ -194,7 +195,7 @@ export function TaskViewPage() {
     const teamUsers = getTeamUsers(teamId)
     const canAssign = canEdit && t.status !== TASK_STATUS.COMPLETED
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, padding: '10px 14px', background: 'var(--color-slate-bg)', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, padding: '10px 14px', background: 'var(--color-slate-bg)', borderRadius: 8, border: `1px solid ${colors.border}` }}>
         <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
           Team: {t.assignedTeam?.name ?? '—'}
         </span>
@@ -241,8 +242,8 @@ export function TaskViewPage() {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   padding: '6px 12px', borderRadius: 6,
-                  border: '1px solid #eab308', background: 'var(--color-warning-bg)',
-                  color: '#92400e', fontWeight: 600, cursor: 'pointer',
+                  border: `1px solid ${colors.warning}`, background: 'var(--color-warning-bg)',
+                  color: palette.warning.strong, fontWeight: 600, cursor: 'pointer',
                   fontSize: 'var(--font-size-body)',
                 }}
               >

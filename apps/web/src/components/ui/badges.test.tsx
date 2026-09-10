@@ -22,7 +22,7 @@ describe('SeverityBadge', () => {
   })
   it('valore ignoto → stile "rotto" rosso e console.error, il testo resta visibile', () => {
     render(<SeverityBadge value="blocker" />)
-    expect(screen.getByText('blocker')).toHaveStyle({ background: BROKEN_BG, color: '#fff' })
+    expect(screen.getByText('blocker')).toHaveStyle({ background: BROKEN_BG, color: 'var(--color-white)' })
     expect(consoleError).toHaveBeenCalledWith('[SEVERITY_STYLE] valore sconosciuto: "blocker"')
   })
 })

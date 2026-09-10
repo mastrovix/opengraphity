@@ -50,6 +50,7 @@ type RuleDraft = {
 }
 
 import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
+import { colors, palette } from '@/lib/tokens'
 const EVENT_TYPES   = ['on_create', 'on_update', 'on_transition'] as const
 // Operators now handled by ConditionRowEditor component
 const ACTION_TYPES  = ['set_field', 'assign_team', 'assign_user', 'transition_workflow', 'create_notification', 'create_comment', 'set_priority', 'execute_script', 'call_webhook', 'set_sla'] as const
@@ -214,15 +215,15 @@ export function BusinessRulesPage() {
     { key: 'name', label: 'Nome', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
     { key: 'entityType', label: 'Entità', sortable: true },
     { key: 'eventType', label: 'Evento', sortable: true, render: (v) => String(v).replace('on_', '') },
-    { key: 'conditionLogic', label: 'Logica', sortable: true, render: (v) => <Pill bg={v === 'AND' ? '#dbeafe' : '#fef3c7'} color={v === 'AND' ? '#1d4ed8' : '#92400e'} radius={10}>{String(v)}</Pill> },
-    { key: 'stopOnMatch', label: 'Stop', sortable: true, render: (v) => v ? <Pill bg="#fee2e2" color="var(--color-trigger-sla-breach)" radius={10}>STOP</Pill> : null },
+    { key: 'conditionLogic', label: 'Logica', sortable: true, render: (v) => <Pill bg={v === 'AND' ? palette.info.tint : palette.warning.tint} color={v === 'AND' ? palette.info.text : palette.warning.strong} radius={10}>{String(v)}</Pill> },
+    { key: 'stopOnMatch', label: 'Stop', sortable: true, render: (v) => v ? <Pill bg={palette.danger.tint} color="var(--color-trigger-sla-breach)" radius={10}>STOP</Pill> : null },
     { key: 'enabled', label: 'Attiva', sortable: true, render: (_v, row) => (
       <Toggle checked={row.enabled} onChange={() => void handleToggleEnabled(row)} label={t('admin.rules.toggleLabel', { name: row.name })} />
     ) },
     { key: 'id', label: 'Azioni', sortable: true, render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6 }}>
         <Button variant="icon" size="xs" title={t('common.edit')} onClick={() => openEdit(row)}><Pencil size={13} aria-hidden="true" /></Button>
-        <Button variant="icon" size="xs" title={t('common.delete')} onClick={() => void handleDelete(row)} style={{ color: 'var(--color-danger)', borderColor: '#fecaca' }}><Trash2 size={13} aria-hidden="true" /></Button>
+        <Button variant="icon" size="xs" title={t('common.delete')} onClick={() => void handleDelete(row)} style={{ color: 'var(--color-danger)', borderColor: palette.danger.border }}><Trash2 size={13} aria-hidden="true" /></Button>
       </div>
     ) },
   ]
@@ -326,8 +327,8 @@ export function BusinessRulesPage() {
               {(['AND', 'OR'] as const).map(v => (
                 <button key={v} type="button" aria-pressed={draft.conditionLogic === v} onClick={() => patch({ conditionLogic: v })} style={{
                   padding: '6px 18px', fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer',
-                  border: '1px solid var(--border)', background: draft.conditionLogic === v ? 'var(--color-brand)' : '#fff',
-                  color: draft.conditionLogic === v ? '#fff' : 'var(--color-slate)',
+                  border: '1px solid var(--border)', background: draft.conditionLogic === v ? 'var(--color-brand)' : colors.white,
+                  color: draft.conditionLogic === v ? colors.white : 'var(--color-slate)',
                   borderRadius: v === 'AND' ? '6px 0 0 6px' : '0 6px 6px 0',
                 }}>{v}</button>
               ))}

@@ -29,6 +29,7 @@ import { useMutationWithToast, errorMessage } from '@/hooks/useMutationWithToast
 import { useListQueryState } from '@/hooks/useListQueryState'
 import { useConfirm } from '@/hooks/useConfirm'
 import { sourceEndpointUrl } from '@/pages/monitoring/configSnippets'
+import { palette } from '@/lib/tokens'
 
 // ── GraphQL ─────────────────────────────────────────────────────────────────
 // Every operation is named: `operationName` shows up in the errorLink logs and
@@ -264,8 +265,8 @@ export function IntegrationsPage() {
 
   const inboundColumns: ColumnDef<InboundWebhook>[] = [
     { key: 'name', label: t('admin.integrations.columns.name'), sortable: true },
-    { key: 'entityType', label: t('admin.integrations.columns.entityType'), sortable: true, render: (v) => <Pill bg="#f0f4ff" color="var(--color-brand)" radius={12} style={PILL_S}>{String(v)}</Pill> },
-    { key: 'connectorKind', label: t('admin.integrations.connectorKind'), sortable: true, render: (v) => v ? <Pill bg="#f5f3ff" color="#6d28d9" radius={12} style={PILL_S}>{String(v)}</Pill> : '—' },
+    { key: 'entityType', label: t('admin.integrations.columns.entityType'), sortable: true, render: (v) => <Pill bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{String(v)}</Pill> },
+    { key: 'connectorKind', label: t('admin.integrations.connectorKind'), sortable: true, render: (v) => v ? <Pill bg={palette.purple.bg} color={palette.purple.dark} radius={12} style={PILL_S}>{String(v)}</Pill> : '—' },
     // Endpoint reale (rotta /api/webhooks/inbound/:id). Per le sorgenti evento
     // l'URL si copia da Monitoraggio → Sorgenti, insieme al token: qui solo il link.
     { key: 'id', label: t('admin.integrations.columns.endpoint'), sortable: true, render: (v, row) => {
@@ -299,14 +300,14 @@ export function IntegrationsPage() {
     { key: 'url', label: t('admin.integrations.columns.url'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
     { key: 'events', label: t('admin.integrations.columns.events'), sortable: true, render: (v) => {
       const events: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
-      return <>{events.map(e => <Pill key={e} bg="#f0f4ff" color="var(--color-brand)" radius={12} style={PILL_S}>{e}</Pill>)}</>
+      return <>{events.map(e => <Pill key={e} bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{e}</Pill>)}</>
     } },
     { key: 'enabled', label: t('admin.integrations.columns.enabled'), sortable: true, render: (_v, row) => <Toggle checked={row.enabled} onChange={() => handleToggleOutbound(row.id, row.enabled)} label={t('admin.integrations.toggleLabel', { name: row.name })} /> },
     { key: 'sendCount', label: t('admin.integrations.columns.sent'), sortable: true, render: (v) => String(v ?? 0) },
     { key: 'lastStatusCode', label: t('admin.integrations.columns.lastStatus'), sortable: true, render: (v) => {
       if (!v) return '—'
       const ok = Number(v) >= 200 && Number(v) < 300
-      return <Pill bg={ok ? '#dcfce7' : '#fee2e2'} color={ok ? 'var(--color-success)' : 'var(--color-trigger-sla-breach)'} radius={12} style={PILL_S}>{String(v)}</Pill>
+      return <Pill bg={ok ? palette.success.tint : palette.danger.tint} color={ok ? 'var(--color-success)' : 'var(--color-trigger-sla-breach)'} radius={12} style={PILL_S}>{String(v)}</Pill>
     } },
     { key: 'lastError', label: t('admin.integrations.columns.lastError'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-danger)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{v ? String(v) : '—'}</span> },
     { key: 'retryOnFailure', label: '', render: (_v, row) => (
@@ -322,7 +323,7 @@ export function IntegrationsPage() {
     { key: 'keyPrefix', label: t('admin.integrations.columns.keyPrefix'), sortable: true, render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-body)' }}>{String(v)}...</span> },
     { key: 'permissions', label: t('admin.integrations.columns.permissions'), sortable: true, render: (v) => {
       const perms: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
-      return <>{perms.map(p => <Pill key={p} bg="#f0f4ff" color="var(--color-brand)" radius={12} style={PILL_S}>{p}</Pill>)}</>
+      return <>{perms.map(p => <Pill key={p} bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{p}</Pill>)}</>
     } },
     { key: 'rateLimit', label: t('admin.integrations.columns.rateLimit'), sortable: true, render: (v) => `${String(v)}/min` },
     { key: 'enabled', label: t('admin.integrations.columns.enabled'), sortable: true, render: (_v, row) => <Toggle checked={row.enabled} onChange={() => handleToggleKey(row.id, row.enabled)} label={t('admin.integrations.toggleLabel', { name: row.name })} /> },
@@ -353,7 +354,7 @@ export function IntegrationsPage() {
 
       {/* ── TAB: Webhook In ─────────────────────────────────────────────────── */}
       {tab === 'inbound' && <>
-        <p style={{ margin: '0 0 12px', padding: '8px 12px', background: 'var(--color-brand-light)', borderRadius: 8, fontSize: 'var(--font-size-body)', color: '#0369a1' }}>
+        <p style={{ margin: '0 0 12px', padding: '8px 12px', background: 'var(--color-brand-light)', borderRadius: 8, fontSize: 'var(--font-size-body)', color: palette.info.text }}>
           {t('admin.integrations.eventsNote')}{' '}
           <Link to="/monitoring/sources" style={{ color: 'var(--color-brand)', fontWeight: 600 }}>{t('admin.integrations.eventsNoteLink')}</Link>.
         </p>
@@ -484,7 +485,7 @@ export function IntegrationsPage() {
       {/* Secret reveal modal */}
       {modal === 'secret' && (
         <ModalPortal modalType="secret" onClose={() => { setModal(null); setSecret('') }}>
-          <div role="alert" style={{ background: 'var(--color-warning-bg)', border: '1px solid #fbbf24', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 'var(--font-size-body)', color: '#92400e' }}>
+          <div role="alert" style={{ background: 'var(--color-warning-bg)', border: `1px solid ${palette.warning.border}`, borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 'var(--font-size-body)', color: palette.warning.strong }}>
             {t('admin.integrations.secretWarning')}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

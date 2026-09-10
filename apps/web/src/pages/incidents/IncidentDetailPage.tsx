@@ -37,6 +37,7 @@ import { formatDate, timeAgo } from './IncidentCard'
 import { SimilarIncidentsPanel } from '@/components/SimilarIncidentsPanel'
 import { MonitoringAlarmsSection } from '@/pages/events/CorrelatedEventsSection'
 import type { EventRow } from '@/types/events'
+import { colors } from '@/lib/tokens'
 
 const RESOLUTION_DRAFT = gql`
   query ResolutionDraft($incidentId: ID!) {
@@ -381,7 +382,7 @@ export function IncidentDetailPage() {
     <PageContainer>
 
       {incident.major && (
-        <div role="alert" style={{ background: 'var(--color-danger)', color: '#fff', padding: '10px 16px', borderRadius: 8, marginBottom: 12, fontWeight: 700, letterSpacing: '0.03em', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div role="alert" style={{ background: 'var(--color-danger)', color: colors.white, padding: '10px 16px', borderRadius: 8, marginBottom: 12, fontWeight: 700, letterSpacing: '0.03em', display: 'flex', alignItems: 'center', gap: 8 }}>
           ⚠ MAJOR INCIDENT
         </div>
       )}
@@ -595,7 +596,7 @@ export function IncidentDetailPage() {
                               void assignToTeam({ variables: { id: incident.id, teamId: selectedTeamId } })
                               setShowReassign(false)
                             }}
-                            style={{ flex: 1, padding: '7px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}
+                            style={{ flex: 1, padding: '7px 0', backgroundColor: (!selectedTeamId || assigningTeam) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedTeamId || assigningTeam) ? 'var(--text-muted)' : colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (!selectedTeamId || assigningTeam) ? 'not-allowed' : 'pointer' }}
                           >
                             {assigningTeam ? t('detail.assigning') : t('detail.assignTeam')}
                           </button>
@@ -627,7 +628,7 @@ export function IncidentDetailPage() {
                           if (!selectedUserId) return
                           void assignToUser({ variables: { id: incident.id, userId: selectedUserId } })
                         }}
-                        style={{ padding: '7px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}
+                        style={{ padding: '7px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}
                       >
                         {assigningUser ? t('detail.assigning') : t('detail.takeOwnership')}
                       </button>
@@ -789,7 +790,7 @@ export function IncidentDetailPage() {
                   onError: (err) => toast.error(err.message),
                 })
               }}
-              style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)', color: transitionNotes.trim().length >= 10 ? '#fff' : 'var(--text-muted)' }}
+              style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)', color: transitionNotes.trim().length >= 10 ? colors.white : 'var(--text-muted)' }}
             >
               {transitioning ? 'Esecuzione...' : 'Conferma'}
             </button>

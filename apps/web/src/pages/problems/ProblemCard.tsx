@@ -3,11 +3,12 @@
 // ── Utilities ─────────────────────────────────────────────────────────────────
 // Date: unica implementazione in lib/datetime.
 export { formatDateTime as formatDate, timeAgo } from '@/lib/datetime'
+import { palette } from '@/lib/tokens'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 export const PRIORITY_COLOR: Record<string, string> = {
-  critical: 'var(--color-trigger-sla-breach)', high: 'var(--color-brand)', medium: '#ca8a04', low: 'var(--color-success)',
+  critical: 'var(--color-trigger-sla-breach)', high: 'var(--color-brand)', medium: palette.warning.text, low: 'var(--color-success)',
 }
 
 export const STATUS_BG: Record<string, string> = {

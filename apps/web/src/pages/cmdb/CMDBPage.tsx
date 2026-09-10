@@ -15,6 +15,7 @@ import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/
 import { Pagination } from '@/components/ui/Pagination'
 import { formatDate } from '@/lib/datetime'
 import { toEnumOptions, useCIBaseEnums } from '@/lib/ciEnums'
+import { colors } from '@/lib/tokens'
 
 interface CI {
   id:          string
@@ -134,7 +135,7 @@ export function CMDBPage() {
           <button
             type="button"
             onClick={() => navigate(`/ci/${typeFromUrl}`)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#ffffff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
           >
             {t('common.create')}
           </button>

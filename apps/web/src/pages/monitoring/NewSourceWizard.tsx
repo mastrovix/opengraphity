@@ -33,7 +33,7 @@ import { errorMessage } from '@/hooks/useMutationWithToast'
 import { GET_MONITORING_SOURCES } from '@/graphql/queries'
 import { CREATE_MONITORING_SOURCE, SEND_SAMPLE_EVENT } from '@/graphql/mutations'
 import { formatDateTime } from '@/lib/datetime'
-import { colors } from '@/lib/tokens'
+import { colors, palette } from '@/lib/tokens'
 import { CONNECTOR_KINDS, type ConnectorKind, type MonitoringSource } from '@/types/events'
 import { GenericMapper, type PreviewState } from './GenericMapper'
 import { PresetRulesEditor } from './PresetRules'
@@ -183,7 +183,7 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
 
       <WizardProgress current={stepIdx} kind={kind} />
 
-      <section aria-labelledby="wizard-step-title" style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 10, padding: 20, marginTop: 16 }}>
+      <section aria-labelledby="wizard-step-title" style={{ background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 10, padding: 20, marginTop: 16 }}>
         <h2 id="wizard-step-title" style={{ ...sectionTitleStyle, fontSize: 'var(--font-size-section-title)', marginBottom: 12 }}>
           {t('monitoring.wizard.stepOf', { step: stepIdx + 1, total: STEPS.length })} · {t(stepLabelKey(step, kind))}
         </h2>
@@ -211,7 +211,7 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
               ? <GenericMapper mapping={mapping} onChange={setMapping} payload={payload} onPayloadChange={setPayload} onPreviewState={setPreviewState} />
               : (
                 <>
-                  <p style={{ ...hintStyle, fontSize: 'var(--font-size-body)', padding: '10px 12px', background: 'var(--color-brand-light)', borderRadius: 8, color: '#0369a1' }}>{t('monitoring.wizard.knownToolHint', { tool: toolName })}</p>
+                  <p style={{ ...hintStyle, fontSize: 'var(--font-size-body)', padding: '10px 12px', background: 'var(--color-brand-light)', borderRadius: 8, color: palette.info.text }}>{t('monitoring.wizard.knownToolHint', { tool: toolName })}</p>
                   <PresetRulesEditor kind={kind} rules={presetRules} onChange={setPresetRules} />
                 </>
               )}
@@ -231,10 +231,10 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
               </Button>
             </div>
             {sampleCount !== null && (
-              <p role="status" style={{ margin: 0, padding: '10px 12px', background: '#dcfce7', color: '#15803d', borderRadius: 8, fontSize: 'var(--font-size-body)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <p role="status" style={{ margin: 0, padding: '10px 12px', background: palette.success.tint, color: palette.success.text, borderRadius: 8, fontSize: 'var(--font-size-body)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <Check size={14} aria-hidden="true" />
                 {t('monitoring.wizard.sampleSent', { count: sampleCount })}
-                <Link to={`/events?sourceId=${created.id}`} style={{ color: '#15803d', fontWeight: 600 }}>{t('monitoring.wizard.openConsole')}</Link>
+                <Link to={`/events?sourceId=${created.id}`} style={{ color: palette.success.text, fontWeight: 600 }}>{t('monitoring.wizard.openConsole')}</Link>
               </p>
             )}
             {check.status !== 'idle' && (
@@ -250,7 +250,7 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {/* role="status": il motivo del blocco è annunciato anche da tastiera (D·3.4) */}
-            <span role="status" style={{ ...hintStyle, color: '#b45309' }}>{blocker ?? ''}</span>
+            <span role="status" style={{ ...hintStyle, color: palette.warning.text }}>{blocker ?? ''}</span>
             {step === 'test'
               ? <Button onClick={() => void leave()}>{t('monitoring.wizard.finish')}</Button>
               : (
@@ -284,7 +284,7 @@ function ReceptionStatus({ check, onCheckAgain }: { check: ReceptionCheck; onChe
   })()
   return (
     <div role="status" style={{ margin: 0, padding: '10px 12px', borderRadius: 8, fontSize: 'var(--font-size-body)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-      background: isError ? '#fee2e2' : isOk ? '#dcfce7' : 'var(--color-slate-bg)', color: isError ? '#b91c1c' : isOk ? '#15803d' : colors.slateDark }}>
+      background: isError ? palette.danger.tint : isOk ? palette.success.tint : 'var(--color-slate-bg)', color: isError ? palette.danger.text : isOk ? palette.success.text : colors.slateDark }}>
       {check.status === 'checking' && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
       {isError && <AlertTriangle size={14} aria-hidden="true" />}
       {isOk && <Check size={14} aria-hidden="true" />}
@@ -306,12 +306,12 @@ function WizardProgress({ current, kind }: { current: number; kind: ConnectorKin
         const done = i < current
         const active = i === current
         return (
-          <li key={s} aria-current={active ? 'step' : undefined} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', color: active ? colors.brand : done ? '#15803d' : colors.slateLight, fontWeight: active ? 600 : 400 }}>
-            <span aria-hidden="true" style={{ width: 24, height: 24, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--font-size-table)', fontWeight: 700, background: active ? colors.brand : done ? '#dcfce7' : 'var(--color-slate-bg)', color: active ? '#fff' : done ? '#15803d' : colors.slate }}>
+          <li key={s} aria-current={active ? 'step' : undefined} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', color: active ? colors.brand : done ? palette.success.text : colors.slateLight, fontWeight: active ? 600 : 400 }}>
+            <span aria-hidden="true" style={{ width: 24, height: 24, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--font-size-table)', fontWeight: 700, background: active ? colors.brand : done ? palette.success.tint : 'var(--color-slate-bg)', color: active ? colors.white : done ? palette.success.text : colors.slate }}>
               {done ? <Check size={13} /> : i + 1}
             </span>
             <span style={{ whiteSpace: 'nowrap' }}>{t(stepLabelKey(s, kind))}</span>
-            <span aria-hidden="true" style={{ flex: 1, height: 2, background: done ? '#86efac' : colors.border, borderRadius: 1 }} />
+            <span aria-hidden="true" style={{ flex: 1, height: 2, background: done ? palette.success.border : colors.border, borderRadius: 1 }} />
           </li>
         )
       })}
@@ -339,7 +339,7 @@ function ToolPicker({ value, onChange }: { value: ConnectorKind | null; onChange
             style={{
               textAlign: 'left', cursor: 'pointer', font: 'inherit', borderRadius: 10, padding: 14,
               border: selected ? `2px solid ${colors.brand}` : `1px solid ${colors.border}`,
-              background: selected ? 'var(--color-brand-light)' : '#fff',
+              background: selected ? 'var(--color-brand-light)' : colors.white,
               display: 'flex', flexDirection: 'column', gap: 8,
             }}
           >

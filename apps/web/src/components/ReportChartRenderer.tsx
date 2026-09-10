@@ -1,7 +1,7 @@
 import ReactECharts from 'echarts-for-react'
 import { useTranslation } from 'react-i18next'
 import { BarChart2 } from 'lucide-react'
-import { fontFamily } from '@/lib/tokens'
+import { fontFamily, colors, palette } from '@/lib/tokens'
 import {
   buildBarOption, buildHorizontalBarOption, buildLineOption, buildPieOption, toPoints,
   type LooseChartPoint,
@@ -38,11 +38,11 @@ function EmptyChart() {
 function ChartError({ title, message }: { title: string; message: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%', height: '100%', minHeight: 200, padding: '16px 20px', boxSizing: 'border-box' }}>
-      <div style={{ padding: '10px 12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6 }}>
-        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-danger, #ef4444)', marginBottom: 4 }}>
+      <div style={{ padding: '10px 12px', backgroundColor: palette.danger.bg, border: `1px solid ${palette.danger.border}`, borderRadius: 6 }}>
+        <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.danger, marginBottom: 4 }}>
           {title}
         </div>
-        <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger, #ef4444)', wordBreak: 'break-word' }}>
+        <div style={{ fontSize: 'var(--font-size-body)', color: colors.danger, wordBreak: 'break-word' }}>
           {message}
         </div>
       </div>
@@ -111,7 +111,7 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily }}>
             <thead>
-              <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+              <tr style={{ borderBottom: `2px solid ${colors.border}` }}>
                 {d.columns.map(col => (
                   <th key={col} style={{
                     textAlign: 'left', padding: '10px 14px',
@@ -125,7 +125,7 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
             </thead>
             <tbody>
               {d.rows.map((row, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafe' }}>
+                <tr key={i} style={{ borderBottom: `1px solid ${palette.neutral.borderLight}`, background: i % 2 === 0 ? colors.white : palette.neutral.surface1 }}>
                   {(row as unknown[]).map((cell, j) => (
                     <td key={j} style={{
                       padding: '10px 14px', fontSize: 'var(--font-size-card-title)',

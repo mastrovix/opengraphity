@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { colors } from '@/lib/tokens'
 
 interface PaginationProps {
   currentPage: number
@@ -12,8 +13,8 @@ const btnStyle = (disabled: boolean): React.CSSProperties => ({
   fontSize: 'var(--font-size-body)',
   border: '1px solid var(--border)',
   borderRadius: 4,
-  background: disabled ? 'var(--color-slate-bg)' : '#fff',
-  color: disabled ? '#c4c9d4' : 'var(--color-slate)',
+  background: disabled ? 'var(--color-slate-bg)' : colors.white,
+  color: disabled ? colors.slateLight : 'var(--color-slate)',
   cursor: disabled ? 'not-allowed' : 'pointer',
 })
 

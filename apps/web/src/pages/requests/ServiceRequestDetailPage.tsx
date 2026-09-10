@@ -18,7 +18,7 @@ import { Button } from '@/components/Button'
 import { Input, Textarea, Select, FieldLabel } from '@/components/ui/FormControls'
 import { Pencil } from 'lucide-react'
 import { keycloak } from '@/lib/keycloak'
-import { lookupOrError } from '@/lib/tokens'
+import { colors, palette, lookupOrError } from '@/lib/tokens'
 import { GET_SERVICE_REQUEST } from '@/graphql/queries'
 import { EXECUTE_WORKFLOW_TRANSITION, UPDATE_SERVICE_REQUEST } from '@/graphql/mutations'
 
@@ -33,12 +33,12 @@ interface ServiceRequest {
   availableTransitions: WorkflowTransition[]
 }
 
-const PRIORITY_COLOR: Record<string, string> = { critical: 'var(--color-danger)', high: '#f97316', medium: '#eab308', low: '#22c55e' }
+const PRIORITY_COLOR: Record<string, string> = { critical: 'var(--color-danger)', high: palette.orange.base, medium: colors.warning, low: colors.success }
 const STATUS_COLOR: Record<string, { bg: string; fg: string }> = {
-  open:        { bg: '#dbeafe', fg: '#1d4ed8' },
-  in_progress: { bg: '#fef3c7', fg: '#92400e' },
-  completed:   { bg: '#d1fae5', fg: '#065f46' },
-  cancelled:   { bg: 'var(--color-border-light)', fg: '#6b7280' },
+  open:        { bg: palette.info.tint, fg: palette.info.text },
+  in_progress: { bg: palette.warning.tint, fg: palette.warning.strong },
+  completed:   { bg: palette.success.tint, fg: palette.success.strong },
+  cancelled:   { bg: 'var(--color-border-light)', fg: colors.slate },
 }
 
 
@@ -102,7 +102,7 @@ export function ServiceRequestDetailPage() {
     </PageContainer>
   )
 
-  const stColor = lookupOrError(STATUS_COLOR, sr.status, 'STATUS_COLOR', { bg: 'var(--color-border-light)', fg: '#6b7280' })
+  const stColor = lookupOrError(STATUS_COLOR, sr.status, 'STATUS_COLOR', { bg: 'var(--color-border-light)', fg: colors.slate })
 
   return (
     <PageContainer>
@@ -121,7 +121,7 @@ export function ServiceRequestDetailPage() {
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>{sr.title}</h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <Pill bg={stColor.bg} color={stColor.fg}>{sr.status}</Pill>
-            <Pill bg="transparent" color={lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', '#9ca3af')} style={{ border: `1.5px solid ${lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', '#9ca3af')}` }}>{sr.priority}</Pill>
+            <Pill bg="transparent" color={lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', colors.slateLight)} style={{ border: `1.5px solid ${lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', colors.slateLight)}` }}>{sr.priority}</Pill>
             <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{timeAgo(sr.createdAt)}</span>
           </div>
         </div>
@@ -176,7 +176,7 @@ export function ServiceRequestDetailPage() {
                           runTransition(sr.workflowInstance!.id, tr.toStep, tr.label)
                         }
                       }}
-                      style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--color-brand)', background: 'var(--color-brand)', color: '#fff', cursor: transitioning ? 'default' : 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, opacity: transitioning ? 0.6 : 1, textAlign: 'left' }}
+                      style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--color-brand)', background: 'var(--color-brand)', color: colors.white, cursor: transitioning ? 'default' : 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, opacity: transitioning ? 0.6 : 1, textAlign: 'left' }}
                     >
                       {tr.label}
                     </button>
@@ -245,12 +245,12 @@ export function ServiceRequestDetailPage() {
           width={460}
           footer={
             <>
-              <button type="button" onClick={() => setTransitionModal(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--color-border-light)', background: '#fff', cursor: 'pointer', fontSize: 13 }}>Annulla</button>
+              <button type="button" onClick={() => setTransitionModal(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--color-border-light)', background: colors.white, cursor: 'pointer', fontSize: 13 }}>Annulla</button>
               <button
                 type="button"
                 disabled={transitioning || transitionNotes.trim().length === 0}
                 onClick={() => runTransition(sr.workflowInstance!.id, transitionModal.toStep, transitionModal.label, transitionNotes)}
-                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: (transitioning || transitionNotes.trim().length === 0) ? 0.6 : 1 }}
+                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: (transitioning || transitionNotes.trim().length === 0) ? 0.6 : 1 }}
               >
                 Conferma
               </button>

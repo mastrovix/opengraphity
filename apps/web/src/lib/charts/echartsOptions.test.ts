@@ -11,8 +11,20 @@ const POINTS: ChartPoint[] = [
 ]
 const MANY: ChartPoint[] = Array.from({ length: 8 }, (_, i) => ({ label: `L${i}`, value: i }))
 
+/** CHART_CSS_VARS copre solo il tema base: qui si aggiungono i token della palette categorica e degli accenti. */
+const PALETTE_CSS_VARS: Record<string, string> = {
+  ...CHART_CSS_VARS,
+  '--color-purple-light': '#8b5cf6',
+  '--color-teal-light':   '#06b6d4',
+  '--color-lime':         '#84cc16',
+  '--color-teal':         '#0891b2',
+  '--color-pink':         '#ec4899',
+  '--color-white':        '#ffffff',
+  '--color-black-a20':    'rgba(0, 0, 0, 0.20)',
+}
+
 let cleanup: () => void
-beforeEach(() => { resetCssVarCache(); cleanup = setCssVars(CHART_CSS_VARS) })
+beforeEach(() => { resetCssVarCache(); cleanup = setCssVars(PALETTE_CSS_VARS) })
 afterEach(() => { cleanup() })
 
 describe('toPoints', () => {

@@ -28,7 +28,7 @@ import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { GET_MONITORING_SOURCE_SETTINGS } from '@/graphql/queries'
 import { UPDATE_MONITORING_SOURCE, REGENERATE_SOURCE_TOKEN } from '@/graphql/mutations'
-import { colors } from '@/lib/tokens'
+import { colors, palette } from '@/lib/tokens'
 import type { MonitoringSource } from '@/types/events'
 import { GenericMapper } from './GenericMapper'
 import { PresetRulesEditor } from './PresetRules'
@@ -171,7 +171,7 @@ export function EditSourcePage() {
       {isGeneric && (
         <SectionCard title={t('monitoring.edit.mappingTitle')} defaultOpen>
           {configError && <p role="alert" style={{ ...hintStyle, color: colors.danger }}>{t('monitoring.mapper.keysError', { error: configError })}</p>}
-          {dropped.length > 0 && <p style={{ ...hintStyle, color: '#b45309' }}>{t('monitoring.edit.droppedFields', { fields: dropped.join(', ') })}</p>}
+          {dropped.length > 0 && <p style={{ ...hintStyle, color: palette.warning.text }}>{t('monitoring.edit.droppedFields', { fields: dropped.join(', ') })}</p>}
           <GenericMapper mapping={mapping} onChange={setMapping} payload={payload} onPayloadChange={setPayload} />
         </SectionCard>
       )}

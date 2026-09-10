@@ -5,6 +5,7 @@ import { ShieldOff } from 'lucide-react'
 import { useMe, type UserRole } from '@/hooks/useMe'
 import { PageLoader } from '@/components/PageLoader'
 import { QueryError } from '@/components/QueryError'
+import { colors } from '@/lib/tokens'
 
 interface Props {
   /** Roles allowed to render `children`; anything else gets the forbidden page. */
@@ -41,7 +42,7 @@ function Forbidden() {
   const { t } = useTranslation()
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12, textAlign: 'center', padding: 24 }}>
-      <ShieldOff size={36} color="var(--color-danger, #ef4444)" aria-hidden="true" />
+      <ShieldOff size={36} color={colors.danger} aria-hidden="true" />
       <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
         {t('auth.forbiddenTitle')}
       </h1>

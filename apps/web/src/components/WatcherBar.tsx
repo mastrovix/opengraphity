@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import { IS_WATCHING, GET_WATCHERS, SEARCH_USERS } from '@/graphql/queries'
 import { WATCH_ENTITY, UNWATCH_ENTITY, ADD_WATCHER, REMOVE_WATCHER } from '@/graphql/mutations'
 import { Input } from '@/components/ui/FormControls'
+import { alpha, colors, palette } from '@/lib/tokens'
 
 interface Props {
   entityType: string
@@ -63,7 +64,7 @@ export function WatcherBar({ entityType, entityId }: Props) {
           display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6,
           fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer',
           border: `1.5px solid ${watching ? 'var(--color-brand)' : 'var(--border)'}`,
-          background: watching ? '#e0f2fe' : '#fff',
+          background: watching ? palette.info.tint : colors.white,
           color: watching ? 'var(--color-brand)' : 'var(--color-slate)',
         }}
       >
@@ -91,8 +92,8 @@ export function WatcherBar({ entityType, entityId }: Props) {
       {showList && (
         <div id={listId} style={{
           position: 'absolute', top: '100%', right: 0, marginTop: 6,
-          background: '#fff', border: '1px solid var(--border)', borderRadius: 8,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)', minWidth: 240, zIndex: 50,
+          background: colors.white, border: '1px solid var(--border)', borderRadius: 8,
+          boxShadow: `0 4px 12px ${alpha.black10}`, minWidth: 240, zIndex: 50,
           padding: 8,
         }}>
           <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 6, textTransform: 'uppercase' }}>
@@ -100,7 +101,7 @@ export function WatcherBar({ entityType, entityId }: Props) {
           </div>
           {watchersList.map(w => (
             <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', fontSize: 'var(--font-size-body)' }}>
-              <div aria-hidden="true" style={{ width: 22, height: 22, borderRadius: '50%', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-brand)' }}>
+              <div aria-hidden="true" style={{ width: 22, height: 22, borderRadius: '50%', background: palette.info.tint, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-brand)' }}>
                 {(w.name || w.email).charAt(0).toUpperCase()}
               </div>
               <span style={{ flex: 1, color: 'var(--color-slate-dark)' }}>{w.name || w.email}</span>
@@ -147,7 +148,7 @@ export function WatcherBar({ entityType, entityId }: Props) {
                     type="button"
                     onClick={() => { void add({ variables: { entityType, entityId, userId: u.id } }); setShowAdd(false); setSearch('') }}
                     className="hover-bg"
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '4px 6px', cursor: 'pointer', fontSize: 'var(--font-size-body)', borderRadius: 4, background: 'none', border: 'none', ['--hover-bg' as string]: '#f0f9ff' }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '4px 6px', cursor: 'pointer', fontSize: 'var(--font-size-body)', borderRadius: 4, background: 'none', border: 'none', ['--hover-bg' as string]: palette.info.light }}
                   >
                     {u.name} <span style={{ color: 'var(--color-slate-light)' }}>({u.email})</span>
                   </button>

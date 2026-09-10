@@ -1,16 +1,16 @@
 import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { colors } from '@/lib/tokens'
+import { colors, palette } from '@/lib/tokens'
 
 // ── Panel styles ──────────────────────────────────────────────────────────────
 
 export const panelStyle: React.CSSProperties = {
   width:           300,
-  backgroundColor: '#ffffff',
-  border:          '1px solid #e2e6f0',
+  backgroundColor: colors.white,
+  border:          '1px solid var(--color-border)',
   borderRadius:    10,
   padding:         20,
-  boxShadow:       '0 4px 24px rgba(0,0,0,0.1)',
+  boxShadow:       '0 4px 24px var(--color-black-a10)',
   display:         'flex',
   flexDirection:   'column',
   gap:             14,
@@ -19,16 +19,16 @@ export const panelStyle: React.CSSProperties = {
 // Overrides on top of the shared FormControls base style (see ui/FormControls).
 export const panelInputStyle: React.CSSProperties = {
   padding:         '7px 10px',
-  border:          '1px solid #e2e6f0',
+  border:          '1px solid var(--color-border)',
   fontSize:        13,
   color:           'var(--color-slate-dark)',
-  backgroundColor: '#fafafa',
+  backgroundColor: palette.neutral.surface1,
 }
 
 export function saveButtonStyle(disabled: boolean): React.CSSProperties {
   return {
     padding:         '8px 0',
-    backgroundColor: disabled ? '#e2e6f0' : colors.brand,
+    backgroundColor: disabled ? colors.border : colors.brand,
     color:           disabled ? colors.slateLight : colors.white,
     border:          'none',
     borderRadius:    6,

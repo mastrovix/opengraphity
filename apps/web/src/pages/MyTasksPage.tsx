@@ -9,7 +9,7 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { Pill } from '@/components/ui/Pill'
 import { EmptyState } from '@/components/EmptyState'
 import { QueryError } from '@/components/QueryError'
-import { lookupOrError } from '@/lib/tokens'
+import { colors, palette, lookupOrError } from '@/lib/tokens'
 import { GET_MY_TASKS } from '@/graphql/queries'
 import { useMe } from '@/hooks/useMe'
 import { ASSIGN_ASSESSMENT_TASK_TO_USER } from '@/graphql/mutations'
@@ -44,17 +44,17 @@ const KIND_LABEL: Record<string, string> = {
 }
 
 const KIND_COLOR: Record<string, { bg: string; color: string }> = {
-  assessment:    { bg: '#dbeafe', color: '#2563eb' },
-  'deploy-plan': { bg: '#ede9fe', color: '#7c3aed' },
-  validation:    { bg: '#fef3c7', color: '#ca8a04' },
-  deployment:    { bg: '#dcfce7', color: 'var(--color-success)' },
-  review:        { bg: '#e0f2fe', color: '#0369a1' },
+  assessment:    { bg: palette.info.tint, color: colors.brand },
+  'deploy-plan': { bg: palette.purple.tint, color: palette.purple.base },
+  validation:    { bg: palette.warning.tint, color: palette.warning.text },
+  deployment:    { bg: palette.success.tint, color: 'var(--color-success)' },
+  review:        { bg: palette.info.tint, color: palette.info.text },
 }
 
 const STATE_COLOR: Record<string, { bg: string; color: string; label: string }> = {
-  pending:       { bg: '#f1f5f9', color: 'var(--color-slate-light)', label: 'Da fare' },
-  'in-progress': { bg: '#fef3c7', color: '#b45309',                  label: 'In corso' },
-  in_progress:   { bg: '#fef3c7', color: '#b45309',                  label: 'In corso' },
+  pending:       { bg: colors.slateBg, color: 'var(--color-slate-light)', label: 'Da fare' },
+  'in-progress': { bg: palette.warning.tint, color: palette.warning.text,                  label: 'In corso' },
+  in_progress:   { bg: palette.warning.tint, color: palette.warning.text,                  label: 'In corso' },
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -85,7 +85,7 @@ function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
         alignItems:   'center',
         gap:          12,
         padding:      '12px 0',
-        borderBottom: '1px solid #f3f4f6',
+        borderBottom: `1px solid ${palette.neutral.borderLight}`,
       }}
     >
       <Link
@@ -138,7 +138,7 @@ function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
             borderRadius:    6,
             border:          'none',
             backgroundColor: 'var(--color-brand)',
-            color:           '#fff',
+            color:           colors.white,
             fontSize:        'var(--font-size-label)',
             fontWeight:      600,
             cursor:          claimLoading ? 'not-allowed' : 'pointer',

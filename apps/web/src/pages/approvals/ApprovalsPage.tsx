@@ -11,7 +11,7 @@ import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/
 import { Pagination } from '@/components/ui/Pagination'
 import { QueryError } from '@/components/QueryError'
 import { toast } from 'sonner'
-import { lookupOrError } from '@/lib/tokens'
+import { colors, palette, lookupOrError } from '@/lib/tokens'
 import { Textarea } from '@/components/ui/FormControls'
 import { useConfirm } from '@/hooks/useConfirm'
 import ReactMarkdown from 'react-markdown'
@@ -88,15 +88,15 @@ interface KBPreviewData {
 }
 
 const STATUS_COLORS: Record<string, { bg: string; color: string; label: string }> = {
-  pending:   { bg: '#FEF9C3', color: '#854D0E', label: 'In attesa' },
-  approved:  { bg: '#DCFCE7', color: '#166534', label: 'Approvato' },
-  rejected:  { bg: '#FEE2E2', color: '#991B1B', label: 'Rifiutato' },
-  expired:   { bg: '#F1F5F9', color: '#475569', label: 'Scaduto' },
-  cancelled: { bg: '#F1F5F9', color: '#475569', label: 'Annullato' },
+  pending:   { bg: palette.yellow.bg, color: palette.yellow.text, label: 'In attesa' },
+  approved:  { bg: palette.success.tint, color: palette.success.strong, label: 'Approvato' },
+  rejected:  { bg: palette.danger.tint, color: palette.danger.strong, label: 'Rifiutato' },
+  expired:   { bg: colors.slateBg, color: palette.neutral.textStrong, label: 'Scaduto' },
+  cancelled: { bg: colors.slateBg, color: palette.neutral.textStrong, label: 'Annullato' },
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const s = lookupOrError(STATUS_COLORS, status, 'STATUS_COLORS', { bg: 'var(--color-danger)', color: '#fff', label: status })
+  const s = lookupOrError(STATUS_COLORS, status, 'STATUS_COLORS', { bg: 'var(--color-danger)', color: colors.white, label: status })
   return (
     <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: 'var(--font-size-table)', fontWeight: 600, background: s.bg, color: s.color }}>
       {s.label}
@@ -158,8 +158,8 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
           gap:         4,
           padding:     '4px 10px',
           borderRadius: 6,
-          border:      '1px solid #e2e8f0',
-          background:  open ? '#f0f9ff' : '#fff',
+          border:      `1px solid ${colors.border}`,
+          background:  open ? palette.info.light : colors.white,
           color:       open ? 'var(--color-brand)' : 'var(--color-slate)',
           fontSize:    12,
           cursor:      'pointer',
@@ -174,9 +174,9 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
       {open && (
         <div style={{
           marginTop:    8,
-          border:       '1px solid #e2e8f0',
+          border:       `1px solid ${colors.border}`,
           borderRadius: 8,
-          background:   '#fafbfc',
+          background:   palette.neutral.surface1,
           overflow:     'hidden',
         }}>
           {loading && (
@@ -190,10 +190,10 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
           {article && (
             <>
               {/* Header */}
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
+              <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.border}`, background: colors.white }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <div>
-                    <h4 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332' }}>{article.title}</h4>
+                    <h4 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark }}>{article.title}</h4>
                     <div style={{ display: 'flex', gap: 8, marginTop: 4, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
                       <span>{article.category}</span>
                       <span>·</span>
@@ -205,7 +205,7 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
                   {(article.tags ?? []).length > 0 && (
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       {(article.tags ?? []).map((tag) => (
-                        <span key={tag} style={{ padding: '1px 6px', borderRadius: 8, background: '#f1f5f9', color: 'var(--color-slate)', fontSize: 'var(--font-size-table)' }}>
+                        <span key={tag} style={{ padding: '1px 6px', borderRadius: 8, background: colors.slateBg, color: 'var(--color-slate)', fontSize: 'var(--font-size-table)' }}>
                           {tag}
                         </span>
                       ))}
@@ -216,7 +216,7 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
 
               {/* Body */}
               <div style={{ padding: '16px', maxHeight: 400, overflowY: 'auto' }}>
-                <div className="kb-preview-body" style={{ fontSize: 'var(--font-size-body)', lineHeight: 1.7, color: '#334155' }}>
+                <div className="kb-preview-body" style={{ fontSize: 'var(--font-size-body)', lineHeight: 1.7, color: palette.neutral.textMuted }}>
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {article.body}
                   </ReactMarkdown>
@@ -254,12 +254,12 @@ function ApprovalCard({
   }
 
   return (
-    <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, background: '#fff', marginBottom: 12 }}>
+    <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, background: colors.white, marginBottom: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <StatusBadge status={req.status} />
-            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>
+            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', background: colors.slateBg, padding: '2px 6px', borderRadius: 4 }}>
               {req.entityType}
             </span>
             <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
@@ -270,12 +270,12 @@ function ApprovalCard({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 4px' }}>
-            <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332' }}>{req.title}</h3>
+            <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark }}>{req.title}</h3>
             <EntityLink entityType={req.entityType} entityId={req.entityId} />
           </div>
 
           {req.description && (
-            <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-body)', color: '#475569' }}>{req.description}</p>
+            <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-body)', color: palette.neutral.textStrong }}>{req.description}</p>
           )}
           <div style={{ display: 'flex', gap: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
             <span><Clock size={11} style={{ verticalAlign: 'middle' }} /> {new Date(req.requestedAt).toLocaleString()}</span>
@@ -283,7 +283,7 @@ function ApprovalCard({
             {req.dueDate && <span>Scadenza: {new Date(req.dueDate).toLocaleDateString()}</span>}
           </div>
           {req.resolutionNote && (
-            <p style={{ margin: '8px 0 0', fontSize: 'var(--font-size-body)', color: '#475569', fontStyle: 'italic' }}>
+            <p style={{ margin: '8px 0 0', fontSize: 'var(--font-size-body)', color: palette.neutral.textStrong, fontStyle: 'italic' }}>
               Nota: {req.resolutionNote}
             </p>
           )}
@@ -298,13 +298,13 @@ function ApprovalCard({
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             <button type="button"
               onClick={() => setNoteOpen(noteOpen === 'approve' ? null : 'approve')}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none', background: colors.success, color: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
             >
               <CheckCircle size={14} /> Approva
             </button>
             <button type="button"
               onClick={() => setNoteOpen(noteOpen === 'reject' ? null : 'reject')}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none', background: 'var(--color-danger)', color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none', background: 'var(--color-danger)', color: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
             >
               <XCircle size={14} /> Rifiuta
             </button>
@@ -315,7 +315,7 @@ function ApprovalCard({
           <button
             type="button"
             onClick={() => void handleCancel()}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--color-danger)', background: '#fff', color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500, flexShrink: 0, alignSelf: 'flex-start' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--color-danger)', background: colors.white, color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500, flexShrink: 0, alignSelf: 'flex-start' }}
           >
             <XCircle size={14} /> Annulla richiesta
           </button>
@@ -323,13 +323,13 @@ function ApprovalCard({
       </div>
 
       {noteOpen && (
-        <div style={{ marginTop: 12, padding: 12, background: 'var(--color-slate-bg)', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+        <div style={{ marginTop: 12, padding: 12, background: 'var(--color-slate-bg)', borderRadius: 6, border: `1px solid ${colors.border}` }}>
           <Textarea
             placeholder={noteOpen === 'reject' ? 'Motivo del rifiuto (obbligatorio)...' : 'Nota opzionale...'}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={3}
-            style={{ padding: 8, borderRadius: 4, border: '1px solid #e2e8f0', lineHeight: 'normal', outline: undefined }}
+            style={{ padding: 8, borderRadius: 4, border: `1px solid ${colors.border}`, lineHeight: 'normal', outline: undefined }}
           />
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button type="button"
@@ -340,13 +340,13 @@ function ApprovalCard({
                   onReject(req.id, note); setNoteOpen(null); setNote('')
                 }
               }}
-              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: noteOpen === 'approve' ? '#22c55e' : 'var(--color-danger)', color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
+              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: noteOpen === 'approve' ? colors.success : 'var(--color-danger)', color: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
             >
               Conferma {noteOpen === 'approve' ? 'Approvazione' : 'Rifiuto'}
             </button>
             <button type="button"
               onClick={() => { setNoteOpen(null); setNote('') }}
-              style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
+              style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
             >
               Annulla
             </button>
@@ -414,7 +414,7 @@ export function ApprovalsPage() {
   const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: '8px 20px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500,
     background: active ? 'var(--color-brand)' : 'transparent',
-    color: active ? '#fff' : 'var(--color-slate)',
+    color: active ? colors.white : 'var(--color-slate)',
   })
 
   return (
@@ -430,11 +430,11 @@ export function ApprovalsPage() {
       />
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#f1f5f9', padding: 4, borderRadius: 8, width: 'fit-content' }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: colors.slateBg, padding: 4, borderRadius: 8, width: 'fit-content' }}>
         <button type="button" style={tabStyle(tab === 'mine')} onClick={() => setTab('mine')}>
           {t('pages.approvals.tabMine')}
           {myItems.length > 0 && (
-            <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 10, background: 'var(--color-danger)', color: '#fff', fontSize: 'var(--font-size-table)' }}>
+            <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 10, background: 'var(--color-danger)', color: colors.white, fontSize: 'var(--font-size-table)' }}>
               {myItems.length}
             </span>
           )}

@@ -52,6 +52,7 @@ import { CIIcon } from '@/lib/ciIcon'
 import { C, navItemStyle, NavItem, SubItem } from './SidebarNavItems'
 import { SidebarGroup, useGroupOpen } from './SidebarGroup'
 import { SidebarCollapseButton } from './SidebarUserMenu'
+import { colors } from '@/lib/tokens'
 
 const MY_PENDING_APPROVALS_COUNT = gql`
   query MyPendingApprovalsCount {
@@ -205,7 +206,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
       style={{
         fontSize: 'var(--font-size-label)', fontWeight: 700, lineHeight: 1,
         padding: '2px 5px', borderRadius: 8,
-        background: 'var(--danger)', color: '#fff',
+        background: 'var(--danger)', color: colors.white,
       }}
     >
       {anomalyError ? '!' : anomalyCritical}

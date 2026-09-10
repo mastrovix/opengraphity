@@ -19,6 +19,7 @@ import { ReportPreview, type SectionResult } from './ReportPreview'
 import { ReportQueryBuilder } from './ReportQueryBuilder'
 import { ReportChartConfig, CHART_TYPES, DATE_FIELD_NAMES } from './ReportChartConfig'
 import { useCIBaseEnums } from '@/lib/ciEnums'
+import { colors, palette } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ const WIZARD_STEPS: { n: 1 | 2 | 3 | 4; label: string }[] = [
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 12px', borderRadius: 6,
-  border: '1px solid #d1d5db', fontSize: 'var(--font-size-body)', boxSizing: 'border-box',
+  border: `1px solid ${palette.neutral.borderStrong}`, fontSize: 'var(--font-size-body)', boxSizing: 'border-box',
 }
 const labelStyle: React.CSSProperties = {
   fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase',
@@ -372,8 +373,8 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                 width: 32, height: 32, borderRadius: '50%', flexShrink: 0, border: 'none', padding: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 'var(--font-size-card-title)', fontWeight: 700, fontFamily: 'inherit',
-                background: wizardStep > s.n ? '#10b981' : wizardStep === s.n ? 'var(--color-brand)' : '#e5e7eb',
-                color:      wizardStep >= s.n ? '#fff' : 'var(--color-slate-light)',
+                background: wizardStep > s.n ? colors.success : wizardStep === s.n ? 'var(--color-brand)' : colors.border,
+                color:      wizardStep >= s.n ? colors.white : 'var(--color-slate-light)',
                 cursor:     wizardStep > s.n ? 'pointer' : 'default',
               }}
             >
@@ -381,13 +382,13 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
             </button>
             <span style={{
               fontSize: 'var(--font-size-body)', fontWeight: 500, whiteSpace: 'nowrap',
-              color: wizardStep === s.n ? 'var(--color-brand)' : wizardStep > s.n ? '#10b981' : 'var(--color-slate-light)',
+              color: wizardStep === s.n ? 'var(--color-brand)' : wizardStep > s.n ? colors.success : 'var(--color-slate-light)',
             }}>
               {s.label}
             </span>
           </div>
           {i < WIZARD_STEPS.length - 1 && (
-            <div style={{ flex: 1, height: 2, margin: '15px 8px 0', background: wizardStep > s.n ? '#10b981' : '#e5e7eb' }} />
+            <div style={{ flex: 1, height: 2, margin: '15px 8px 0', background: wizardStep > s.n ? colors.success : colors.border }} />
           )}
         </div>
       ))}
@@ -403,21 +404,21 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   ) => (
     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
       {onBack ? (
-        <button type="button" onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+        <button type="button" onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
           <ChevronLeft size={18} /> Indietro
         </button>
       ) : <div />}
       <div style={{ display: 'flex', gap: 10 }}>
         {isLastStep && (
-          <button type="button" onClick={onCancel} style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+          <button type="button" onClick={onCancel} style={{ padding: '10px 16px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
             Annulla
           </button>
         )}
         <button type="button" onClick={onNext} disabled={nextDisabled} style={{
           display: 'flex', alignItems: 'center', gap: 6, padding: '10px 24px',
           borderRadius: 8, border: 'none',
-          background: nextDisabled ? '#c7d2fe' : 'var(--color-brand)',
-          color: '#fff', cursor: nextDisabled ? 'not-allowed' : 'pointer',
+          background: nextDisabled ? palette.info.border : 'var(--color-brand)',
+          color: colors.white, cursor: nextDisabled ? 'not-allowed' : 'pointer',
           fontSize: 'var(--font-size-card-title)', fontWeight: 600,
         }}>
           {isLastStep ? <Check size={16} /> : null}
@@ -450,8 +451,8 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
           onReconnect={(oldEdge, newConnection) => setEdges(eds => reconnectEdge(oldEdge, newConnection, eds))}
           defaultEdgeOptions={{
             type: 'reportEdge', animated: false,
-            style: { stroke: '#c4b5fd', strokeWidth: 2 },
-            markerEnd: { type: MarkerType.ArrowClosed, color: '#c4b5fd' },
+            style: { stroke: palette.purple.border, strokeWidth: 2 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: palette.purple.border },
           }}
           proOptions={{ hideAttribution: true }}
         >
@@ -460,7 +461,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         </ReactFlow>
 
         {connectingNodeId && (
-          <div style={{ position: 'absolute', top: 0, right: 0, width: 260, height: '100%', background: '#fff', borderLeft: '1px solid #e5e7eb', overflowY: 'auto', padding: 16, zIndex: 10 }}>
+          <div style={{ position: 'absolute', top: 0, right: 0, width: 260, height: '100%', background: colors.white, borderLeft: `1px solid ${colors.border}`, overflowY: 'auto', padding: 16, zIndex: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)' }}>Connetti a...</span>
               <button type="button" onClick={() => setConnectingNodeId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)' }}>
@@ -476,15 +477,15 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                 <button key={`${re.neo4jLabel}:${re.relationshipType}:${re.direction}:${i}`}
                   type="button"
                   onClick={() => connectReachable(re)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid #cffafe', borderRadius: 8, cursor: 'pointer', background: '#fafafe', marginBottom: 6, width: '100%', textAlign: 'left', font: 'inherit', color: 'inherit' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: `1px solid ${palette.teal.bg}`, borderRadius: 8, cursor: 'pointer', background: palette.neutral.surface1, marginBottom: 6, width: '100%', textAlign: 'left', font: 'inherit', color: 'inherit' }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-brand-light)' }}
-                  onMouseLeave={e => { e.currentTarget.style.background = '#fafafe' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = palette.neutral.surface1 }}
                 >
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{re.label}</div>
                     <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{re.direction === 'outgoing' ? '→' : '←'} {re.relationshipType}</div>
                   </div>
-                  <div style={{ fontSize: 'var(--font-size-body)', color: '#c4b5fd' }}>{re.count}</div>
+                  <div style={{ fontSize: 'var(--font-size-body)', color: palette.purple.light }}>{re.count}</div>
                 </button>
               ))
             )}
@@ -533,7 +534,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
               )}
             </div>
 
-            <div style={{ background: 'var(--color-slate-bg)', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16 }}>
+            <div style={{ background: 'var(--color-slate-bg)', border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16 }}>
               <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Riepilogo</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {rootEntry && (
@@ -594,7 +595,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div style={{ flexShrink: 0, padding: '16px 32px', borderBottom: '1px solid #f3f4f6' }}>
+      <div style={{ flexShrink: 0, padding: '16px 32px', borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
         {renderProgressBar()}
       </div>
 
@@ -632,7 +633,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         )}
       </div>
 
-      <div style={{ flexShrink: 0, padding: '12px 32px', borderTop: '1px solid #e5e7eb', background: '#fff' }}>
+      <div style={{ flexShrink: 0, padding: '12px 32px', borderTop: `1px solid ${colors.border}`, background: colors.white }}>
         {navConfig && renderNavButtons(navConfig.onBack, navConfig.onNext, navConfig.nextDisabled, (navConfig as { nextLabel?: string }).nextLabel, (navConfig as { isLastStep?: boolean }).isLastStep)}
       </div>
     </div>

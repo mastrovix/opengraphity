@@ -23,6 +23,7 @@ import { applyFilterGroup } from '@/lib/filterGroup'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { useListQueryState } from '@/hooks/useListQueryState'
 import { ALL_ROLES } from '@/hooks/useMe'
+import { colors, palette, alpha } from '@/lib/tokens'
 
 // ── GraphQL ──────────────────────────────────────────────────────────────────
 
@@ -206,10 +207,10 @@ export function UsersPage() {
                       const team = teams.find(x => x.id === tid)
                       if (!team) return null
                       return (
-                        <span key={tid} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-success-bg)', border: '1px solid #86efac', color: '#15803d', fontSize: 'var(--font-size-body)' }}>
+                        <span key={tid} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-success-bg)', border: `1px solid ${palette.success.border}`, color: palette.success.text, fontSize: 'var(--font-size-body)' }}>
                           {team.name}{team.type ? ` (${team.type})` : ''}
                           <button type="button" aria-label={t('pages.users.removeTeam', { name: team.name })} onClick={() => setForm(prev => ({ ...prev, teamIds: prev.teamIds.filter(id => id !== tid) }))}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#15803d', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}>
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: palette.success.text, padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}>
                             <X size={12} aria-hidden="true" />
                           </button>
                         </span>
@@ -234,7 +235,7 @@ export function UsersPage() {
                   )
                   if (available.length === 0) return null
                   return (
-                    <div role="listbox" style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
+                    <div role="listbox" style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: colors.white, border: '1px solid var(--border)', borderRadius: 8, boxShadow: `0 4px 12px ${alpha.black10}`, maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
                       {available.map(team => (
                         <button
                           type="button"

@@ -3,7 +3,7 @@ import { useConfirm } from '@/hooks/useConfirm'
 import { useQuery } from '@apollo/client/react'
 import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { colors } from '@/lib/tokens'
+import { colors, palette } from '@/lib/tokens'
 import { GET_WORKFLOW_DEFINITION_BY_ID } from '@/graphql/queries'
 import { ConditionRowEditor, type Condition } from '@/components/ConditionRowEditor'
 import { ActionParamsEditor } from '@/components/ActionParamsEditor'
@@ -101,7 +101,7 @@ function ConditionsSection({ entityType, conditions, logic, onConditions, onLogi
       )}
 
       {conditions.map((cond, i) => (
-        <div key={i} style={{ padding: '8px 10px', background: 'var(--color-slate-bg)', border: '1px solid #e2e6f0', borderRadius: 6 }}>
+        <div key={i} style={{ padding: '8px 10px', background: 'var(--color-slate-bg)', border: '1px solid var(--color-border)', borderRadius: 6 }}>
           <ConditionRowEditor
             layout="stack"
             entityType={entityType}
@@ -121,7 +121,7 @@ function ConditionsSection({ entityType, conditions, logic, onConditions, onLogi
       <button
         type="button"
         onClick={addRow}
-        style={{ padding: '4px 8px', backgroundColor: 'transparent', border: '1px dashed #94a3b8', borderRadius: 5, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', cursor: 'pointer', textAlign: 'left' }}
+        style={{ padding: '4px 8px', backgroundColor: 'transparent', border: '1px dashed var(--color-slate-light)', borderRadius: 5, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', cursor: 'pointer', textAlign: 'left' }}
       >
         + Aggiungi condizione
       </button>
@@ -316,7 +316,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
   })
 
   const cancelBtnStyle: React.CSSProperties = {
-    flex: 1, padding: '6px 0', backgroundColor: '#f1f5f9', border: '1px solid #e2e6f0',
+    flex: 1, padding: '6px 0', backgroundColor: colors.slateBg, border: '1px solid var(--color-border)',
     borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer', color: 'var(--color-slate)',
   }
 
@@ -382,7 +382,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                 }}
                 style={{
                   background:   'none',
-                  border:       isEditing ? '1px solid #06b6d4' : '1px solid transparent',
+                  border:       isEditing ? '1px solid var(--color-teal-light)' : '1px solid transparent',
                   borderRadius: 5,
                   padding:      1,
                   cursor:       'pointer',
@@ -406,8 +406,8 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
             {isEditing && editingAction && (() => {
               const blocked = conditionsError(editingAction.conditions) !== null
               return (
-                <div style={{ border: '1px solid #06b6d4', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: '#ecfeff' }}>
-                  <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#0891b2' }}>
+                <div style={{ border: '1px solid var(--color-teal-light)', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: colors.brandLight }}>
+                  <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: palette.teal.base }}>
                     {actionLabel(t, a.type, a.params)}
                   </div>
                   {renderDraftEditor(editingAction, (updater) => setEditingAction((prev) => prev ? { ...prev, ...updater(prev) } : null))}
@@ -439,7 +439,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
       {addingFor === forKey ? (() => {
         const blocked = conditionsError(newAction.conditions) !== null
         return (
-          <div style={{ border: '1px solid #e2e6f0', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: 'var(--color-slate-bg)' }}>
+          <div style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: 'var(--color-slate-bg)' }}>
             {renderDraftEditor(newAction, (updater) => setNewAction((d) => updater(d)))}
             <div style={{ display: 'flex', gap: 6 }}>
               <button type="button" disabled={blocked} onClick={() => handleConfirmAdd(forKey)} style={{ ...saveButtonStyle(blocked), flex: 1, padding: '6px 0' }}>
@@ -489,7 +489,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
       )}
 
       {/* Tabs */}
-      <div role="tablist" style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: 4 }}>
+      <div role="tablist" style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', marginBottom: 4 }}>
         <button type="button" role="tab" aria-selected={activeTab === 'props'}    style={tabStyle(activeTab === 'props')}    onClick={() => setActiveTab('props')}>Proprietà</button>
         <button type="button" role="tab" aria-selected={activeTab === 'metadata'} style={tabStyle(activeTab === 'metadata')} onClick={() => setActiveTab('metadata')}>Metadati</button>
         <button type="button" role="tab" aria-selected={activeTab === 'notify'}   style={tabStyle(activeTab === 'notify')}   onClick={() => setActiveTab('notify')}>Notifiche</button>
@@ -586,14 +586,14 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                 style={{
                   width: 36, height: 20, borderRadius: 10, cursor: 'pointer',
                   border: 'none', padding: 0,
-                  backgroundColor: notifyEnabled ? ACCENT_COLOR : '#cbd5e1',
+                  backgroundColor: notifyEnabled ? ACCENT_COLOR : palette.neutral.borderStrong,
                   position: 'relative', transition: 'background 200ms', flexShrink: 0,
                 }}
               >
                 <span style={{
                   position: 'absolute', top: 2, left: notifyEnabled ? 18 : 2,
-                  width: 16, height: 16, borderRadius: '50%', background: '#fff',
-                  transition: 'left 200ms', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  width: 16, height: 16, borderRadius: '50%', background: colors.white,
+                  transition: 'left 200ms', boxShadow: '0 1px 3px var(--color-black-a20)',
                 }} />
               </button>
               <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
@@ -664,7 +664,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
           }}
           style={{
             marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 6,
-            border: '1px solid var(--color-danger)', background: '#fff',
+            border: '1px solid var(--color-danger)', background: colors.white,
             color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600,
           }}
         >

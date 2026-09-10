@@ -9,6 +9,7 @@ import { Input, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import type { EnumTypeRef } from '../shared/designerStyles'
 import type { FieldForm } from './CIFieldEditor'
+import { colors, palette } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -56,14 +57,14 @@ export function CIFieldInlineEditor({
   const selectedEnum = form.enumTypeId ? enumTypes.find((e) => e.id === form.enumTypeId) : null
 
   return (
-    <div style={{ background: 'var(--color-slate-bg)', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 8 }}>
+    <div style={{ background: 'var(--color-slate-bg)', border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, marginBottom: 8 }}>
       {/* name + label */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
         <div>
           <label htmlFor={`${id}-name`} style={labelS}>name (slug) *</label>
           <input
             id={`${id}-name`}
-            style={{ ...inputS, background: isSystem || !!initial ? '#f1f5f9' : '#fff' }}
+            style={{ ...inputS, background: isSystem || !!initial ? colors.slateBg : colors.white }}
             value={form.name}
             disabled={isSystem || !!initial}
             onChange={(e) => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
@@ -82,7 +83,7 @@ export function CIFieldInlineEditor({
           <label htmlFor={`${id}-type`} style={labelS}>Tipo</label>
           <Select
             id={`${id}-type`}
-            style={{ ...selectS, background: isSystem ? '#f1f5f9' : '#fff' }}
+            style={{ ...selectS, background: isSystem ? colors.slateBg : colors.white }}
             value={form.fieldType}
             disabled={isSystem}
             onChange={(e) => { set('fieldType', e.target.value); if (e.target.value !== 'enum') set('enumTypeId', null) }}
@@ -120,7 +121,7 @@ export function CIFieldInlineEditor({
           {selectedEnum && (
             <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {selectedEnum.values.map((v) => (
-                <Pill key={v} bg="#f0f4ff" color="var(--color-brand)" radius={12} style={{ fontWeight: 400 }}>
+                <Pill key={v} bg={palette.info.bg} color="var(--color-brand)" radius={12} style={{ fontWeight: 400 }}>
                   {v}
                 </Pill>
               ))}
@@ -145,7 +146,7 @@ export function CIFieldInlineEditor({
             {(['validation', 'visibility', 'default'] as const).map((tab) => (
               <button type="button" key={tab} onClick={() => setScriptTab(tab)}
                 style={{ padding: '4px 12px', borderRadius: 4, border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
-                  background: scriptTab === tab ? 'var(--color-brand-light)' : '#f1f5f9',
+                  background: scriptTab === tab ? 'var(--color-brand-light)' : colors.slateBg,
                   color: scriptTab === tab ? 'var(--color-brand)' : 'var(--color-slate)',
                   fontWeight: scriptTab === tab ? 600 : 400 }}>
                 {tab}Script

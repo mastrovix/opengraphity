@@ -64,10 +64,10 @@ initKeycloak().then((authenticated) => {
   const box = document.createElement('div')
   box.style.cssText = 'display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui;padding:24px;text-align:center'
   const title = document.createElement('div')
-  title.style.cssText = 'font-size:20px;font-weight:600;color:#EF4444'
+  title.style.cssText = 'font-size:20px;font-weight:600;color:var(--color-danger)'
   title.textContent = 'Errore di autenticazione'
   const detail = document.createElement('div')
-  detail.style.cssText = 'color:#64748B;font-size:14px;max-width:640px'
+  detail.style.cssText = 'color:var(--color-slate);font-size:14px;max-width:640px'
   detail.textContent = message   // textContent: the message may echo the hostname/URL
   box.append(title, detail)
   root.appendChild(box)

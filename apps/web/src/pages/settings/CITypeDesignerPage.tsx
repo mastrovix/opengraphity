@@ -32,6 +32,7 @@ import { CIFieldInlineEditor, FormField } from './citype/CIFieldInlineEditor'
 import { CreateTypeDialog } from './citype/CreateTypeDialog'
 import { FieldRulesPanel } from './shared/FieldRulesPanel'
 import { useConfirm } from '@/hooks/useConfirm'
+import { colors, palette } from '@/lib/tokens'
 
 // ── Style helpers ──────────────────────────────────────────────────────────────
 
@@ -143,7 +144,7 @@ export function CITypeDesignerPage() {
         {/* Right: type editor */}
         <div>
           {selectedBase && baseType ? (
-            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
                 <Layout size={20} color="var(--color-brand)" />
                 <div>
@@ -175,13 +176,13 @@ export function CITypeDesignerPage() {
             </div>
 
           ) : !selected ? (
-            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 40 }}>
-              <EmptyState icon={<Layers size={32} color="#94a3b8" />} title="Seleziona un tipo per modificarlo" />
+            <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, padding: 40 }}>
+              <EmptyState icon={<Layers size={32} color={colors.slateLight} />} title="Seleziona un tipo per modificarlo" />
             </div>
 
           ) : (
             <>
-            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
               {/* Type header */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -192,7 +193,7 @@ export function CITypeDesignerPage() {
                   </div>
                   <button type="button"
                     onClick={() => updateType({ variables: { id: selected.id, input: { active: !selected.active } } })}
-                    style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 100, fontSize: 'var(--font-size-body)', cursor: 'pointer', background: selected.active ? '#dcfce7' : 'var(--color-border-light)', color: selected.active ? 'var(--color-success)' : 'var(--color-slate-light)', fontWeight: 500 }}>
+                    style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 100, fontSize: 'var(--font-size-body)', cursor: 'pointer', background: selected.active ? palette.success.tint : 'var(--color-border-light)', color: selected.active ? 'var(--color-success)' : 'var(--color-slate-light)', fontWeight: 500 }}>
                     {selected.active ? '● active' : '○ inactive'}
                   </button>
                 </div>

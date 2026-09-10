@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { CREATE_CHANGE } from '@/graphql/mutations'
 import { GET_CHANGES, GET_ALL_CIS, GET_USERS, GET_PROBLEM, GET_INCIDENT } from '@/graphql/queries'
+import { colors, palette } from '@/lib/tokens'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface UserRef { id: string; name: string; email: string }
@@ -24,12 +25,12 @@ const fieldLabel: React.CSSProperties = {
 const inputBase: React.CSSProperties = {
   width:           '100%',
   padding:         '10px 14px',
-  border:          '1.5px solid #e5e7eb',
+  border:          '1.5px solid var(--color-border)',
   borderRadius:    8,
   fontSize:        'var(--font-size-body)',
   color:           'var(--color-slate-dark)',
   outline:         'none',
-  backgroundColor: '#fff',
+  backgroundColor: colors.white,
   boxSizing:       'border-box',
   fontFamily:      "'Plus Jakarta Sans', system-ui, sans-serif",
   transition:      'border-color 150ms',
@@ -172,11 +173,11 @@ export function CreateChangePage() {
         )}
 
         <div style={{
-          background:    '#fff',
-          border:        '1px solid #e5e7eb',
+          background:    colors.white,
+          border:        '1px solid var(--color-border)',
           borderRadius:  12,
           padding:       '28px 32px',
-          boxShadow:     '0 1px 4px rgba(0,0,0,0.06)',
+          boxShadow:     '0 1px 4px var(--color-black-a06)',
         }}>
           {/* TITOLO */}
           <div style={{ marginBottom: 20 }}>
@@ -191,7 +192,7 @@ export function CreateChangePage() {
               placeholder="Es. Upgrade database produzione a PostgreSQL 16"
               style={inputBase}
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
             />
           </div>
 
@@ -205,8 +206,8 @@ export function CreateChangePage() {
                 return (
                   <button key={t} type="button" onClick={() => setChangeType(t)}
                     style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
-                      border: `1.5px solid ${sel ? 'var(--color-brand)' : '#e5e7eb'}`,
-                      background: sel ? '#f0f9ff' : 'var(--color-slate-bg)',
+                      border: `1.5px solid ${sel ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                      background: sel ? palette.info.light : 'var(--color-slate-bg)',
                       color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}>
                     {labels[t]}
                   </button>
@@ -229,7 +230,7 @@ export function CreateChangePage() {
               rows={3}
               style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
             />
           </div>
 
@@ -244,7 +245,7 @@ export function CreateChangePage() {
               rows={3}
               style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
             />
           </div>
 
@@ -289,7 +290,7 @@ export function CreateChangePage() {
                 placeholder="Cerca CI per nome…"
                 style={{ ...inputBase, paddingLeft: 36 }}
                 onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-                onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+                onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
               />
               {ciResults.length > 0 && ciSearch.length >= 2 && (
                 <div style={{
@@ -298,10 +299,10 @@ export function CreateChangePage() {
                   right:        0,
                   top:          '100%',
                   marginTop:    4,
-                  background:   '#fff',
-                  border:       '1px solid #e5e7eb',
+                  background:   colors.white,
+                  border:       '1px solid var(--color-border)',
                   borderRadius: 8,
-                  boxShadow:    '0 4px 12px rgba(0,0,0,0.1)',
+                  boxShadow:    '0 4px 12px var(--color-black-a10)',
                   maxHeight:    220,
                   overflowY:    'auto',
                   zIndex:       20,
@@ -325,7 +326,7 @@ export function CreateChangePage() {
                         display:      'flex',
                         alignItems:   'center',
                         gap:          8,
-                        borderBottom: '1px solid #f3f4f6',
+                        borderBottom: '1px solid var(--color-border-light)',
                       }}
                     >
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>
@@ -358,7 +359,7 @@ export function CreateChangePage() {
                       padding:     '4px 10px',
                       borderRadius: 6,
                       background:  'var(--color-brand-light)',
-                      border:      '1px solid #c7d2fe',
+                      border:      '1px solid var(--color-info-border)',
                       color:       'var(--color-brand-hover)',
                       fontSize:    'var(--font-size-body)',
                     }}
@@ -416,7 +417,7 @@ export function CreateChangePage() {
 
           {/* Footer */}
           <div style={{
-            borderTop:      '1px solid #f3f4f6',
+            borderTop:      '1px solid var(--color-border-light)',
             marginTop:      8,
             paddingTop:     20,
             display:        'flex',
@@ -443,7 +444,7 @@ export function CreateChangePage() {
               onClick={handleSubmit}
               style={{
                 background:   'var(--color-brand)',
-                color:        '#fff',
+                color:        colors.white,
                 border:       'none',
                 borderRadius: 8,
                 padding:      '10px 24px',

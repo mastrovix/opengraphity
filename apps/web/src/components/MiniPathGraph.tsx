@@ -2,11 +2,12 @@ import { useRef, useEffect, useCallback } from 'react'
 import * as d3 from 'd3'
 import { iconKeyForType } from '@/lib/ciIconPaths'
 import { appendArrowMarker, appendIcon, styleText, truncate } from '@/lib/d3/graphPrimitives'
+import { colors, palette } from '@/lib/tokens'
 
 const MINI_R = 16
 const MINI_NODE_COLOR = 'var(--color-slate)'
 const MINI_EDGE_COLOR = 'var(--color-trigger-manual)'
-const MINI_IMPACTED_COLOR = '#f97316'
+const MINI_IMPACTED_COLOR = palette.orange.base
 
 interface MiniPathGraphProps {
   pathNames: string[]
@@ -56,13 +57,13 @@ export function MiniPathGraph({ pathNames, targetName, impactedName, nameTypeMap
 
     nodeSel.append('circle')
       .attr('r', MINI_R)
-      .attr('fill', d => accent(d) ?? '#ffffff')
+      .attr('fill', d => accent(d) ?? colors.white)
       .attr('stroke', d => accent(d) ?? MINI_NODE_COLOR)
       .attr('stroke-width', 2)
 
     nodeSel.each(function (d) {
       const g = d3.select(this)
-      const iconColor = accent(d) ? '#ffffff' : MINI_NODE_COLOR
+      const iconColor = accent(d) ? colors.white : MINI_NODE_COLOR
       // Un CI del percorso senza tipo noto è un dato incoerente: si vede ("?" rosso).
       const ciType = nameTypeMap.get(d.name)
       if (ciType === undefined) console.error(`[MiniPathGraph] CI "${d.name}" senza tipo nella mappa nome→tipo`)
@@ -79,7 +80,7 @@ export function MiniPathGraph({ pathNames, targetName, impactedName, nameTypeMap
   useEffect(() => { draw() }, [draw])
 
   return (
-    <div style={{ background: '#ffffff', borderRadius: 6, overflow: 'hidden', width: '100%' }}>
+    <div style={{ background: colors.white, borderRadius: 6, overflow: 'hidden', width: '100%' }}>
       <svg ref={svgRef} style={{ display: 'block', width: '100%', height: HEIGHT }} />
     </div>
   )

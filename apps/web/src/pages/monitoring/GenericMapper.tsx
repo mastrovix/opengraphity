@@ -25,7 +25,7 @@ import { Input, Select, Textarea, FieldLabel } from '@/components/ui/FormControl
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { GET_PAYLOAD_KEYS, GET_SAMPLE_INBOUND_PAYLOAD } from '@/graphql/queries'
 import { PREVIEW_INBOUND_EVENTS } from '@/graphql/mutations'
-import { colors } from '@/lib/tokens'
+import { colors, palette } from '@/lib/tokens'
 import { EventSeverityBadge, EventStatusBadge } from '@/pages/events/eventShared'
 import {
   EVENT_SEVERITIES, EVENT_INPUT_STATUSES, RESOURCE_KINDS,
@@ -285,7 +285,7 @@ export function GenericMapper({ mapping, onChange, payload, onPayloadChange, onP
       </div>
 
       {/* Anteprima */}
-      <aside aria-label={t('monitoring.mapper.preview.title')} style={{ position: 'sticky', top: 16, background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 10, padding: 16 }}>
+      <aside aria-label={t('monitoring.mapper.preview.title')} style={{ position: 'sticky', top: 16, background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 10, padding: 16 }}>
         <h3 style={sectionTitleStyle}>{t('monitoring.mapper.preview.title')}</h3>
         <p style={hintStyle}>{t('monitoring.mapper.preview.intro')}</p>
         <div style={{ marginTop: 12 }}>
@@ -311,7 +311,7 @@ export function GenericMapper({ mapping, onChange, payload, onPayloadChange, onP
             <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px 12px', fontSize: 'var(--font-size-body)' }}>
               <dt style={{ color: colors.slateLight }}>{t('monitoring.mapper.preview.eventTitle')}</dt>
               <dd style={{ margin: 0, fontWeight: 600, color: colors.slateDark, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <CheckCircle2 size={14} color="#15803d" aria-hidden="true" />{preview.title}
+                <CheckCircle2 size={14} color={palette.success.text} aria-hidden="true" />{preview.title}
               </dd>
               <dt style={{ color: colors.slateLight }}>{t('monitoring.mapper.preview.severity')}</dt>
               <dd style={{ margin: 0 }}><EventSeverityBadge severity={preview.severity as EventSeverity} /></dd>
@@ -391,11 +391,11 @@ export function ValueTable<T extends string>({ title, fieldPath, table, targets,
                   {t('monitoring.mapper.valueBecomes', { value: source })}
                 </label>
                 <div style={{ minWidth: 0 }}>
-                  <Select id={id} value={target} onChange={(e) => onChange({ ...table, [source]: e.target.value as T | '' })} required aria-invalid={target ? undefined : true} aria-describedby={target ? undefined : missingId} style={{ borderColor: target ? undefined : '#f59e0b' }}>
+                  <Select id={id} value={target} onChange={(e) => onChange({ ...table, [source]: e.target.value as T | '' })} required aria-invalid={target ? undefined : true} aria-describedby={target ? undefined : missingId} style={{ borderColor: target ? undefined : palette.warning.base }}>
                     <option value="">{t('monitoring.mapper.chooseTarget')}</option>
                     {targets.map((tv) => <option key={tv} value={tv}>{targetLabel(tv)}</option>)}
                   </Select>
-                  {!target && <p id={missingId} style={{ ...hintStyle, color: '#b45309', marginTop: 2 }}>{t('monitoring.mapper.missingTarget')}</p>}
+                  {!target && <p id={missingId} style={{ ...hintStyle, color: palette.warning.text, marginTop: 2 }}>{t('monitoring.mapper.missingTarget')}</p>}
                 </div>
                 <Button variant="icon" size="xs" aria-label={t('monitoring.mapper.remove', { value: source })} onClick={() => remove(source)}>
                   <X size={12} aria-hidden="true" />
