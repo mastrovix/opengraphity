@@ -8,6 +8,15 @@ interface RuleDef {
   channels:   string[]
   target:     string
   title_key:  string
+  /**
+   * Stato iniziale della regola per un tenant NUOVO (assente = attiva). Vale
+   * solo ON CREATE: nei tenant esistenti la regola resta com'è (MERGE).
+   * `event.received` nasce spenta (revisione, 3.3): con la dieta di rumore
+   * scatta solo all'apertura di un ciclo, ma per uno strumento con centinaia
+   * di allarmi è comunque un toast per allarme a tutto il tenant; l'incident
+   * correlato (`event.correlated`) e la salute del CI restano notificati.
+   */
+  enabled?:   boolean
 }
 
 export const DEFAULT_NOTIFICATION_RULES: readonly RuleDef[] = [
@@ -36,7 +45,7 @@ export const DEFAULT_NOTIFICATION_RULES: readonly RuleDef[] = [
   { event_type: 'sync.failed',                  severity: 'error',   channels: ['in_app', 'slack'], target: 'all',      title_key: 'notification.sync.failed.title'           },
   { event_type: 'conflict.created',             severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.sync.conflict.title'         },
   // Event Management (allarmi dal monitoraggio → salute del CI)
-  { event_type: 'event.received',               severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.received.title'        },
+  { event_type: 'event.received',               severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.received.title',       enabled: false },
   { event_type: 'event.resolved',               severity: 'success', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.resolved.title'        },
   { event_type: 'event.orphan',                 severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.orphan.title'          },
   { event_type: 'ci.health_changed',            severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.ci.health_changed.title'     },
@@ -54,7 +63,9 @@ export interface SeedNotificationRulesResult { created: number; skipped: number 
 
 /**
  * Crea le regole di notifica predefinite del tenant (MERGE per
- * tenant_id + event_type: idempotente, non ritocca quelle esistenti).
+ * tenant_id + event_type: idempotente, non ritocca quelle esistenti — anche
+ * `enabled` vale solo alla creazione, quindi un default che cambia non
+ * riaccende né spegne nulla nei tenant già seminati).
  * Accetta una sessione o una transazione gestita (`Queryable`), così la
  * chiamano sia l'onboarding sia le migrazioni.
  */
@@ -68,7 +79,7 @@ export async function seedNotificationRules(tenantId: string, session: Queryable
       `MERGE (r:NotificationRule {tenant_id: $tenantId, event_type: $eventType})
        ON CREATE SET
          r.id                = $id,
-         r.enabled           = true,
+         r.enabled           = $enabled,
          r.severity_override = $severity,
          r.title_key         = $titleKey,
          r.channels          = $channels,
@@ -86,6 +97,7 @@ export async function seedNotificationRules(tenantId: string, session: Queryable
         titleKey:  rule.title_key,
         channels:  rule.channels,
         target:    rule.target,
+        enabled:   rule.enabled ?? true,
         now,
       },
     )

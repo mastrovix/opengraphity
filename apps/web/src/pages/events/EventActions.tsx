@@ -20,19 +20,24 @@ import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 import { Input, Textarea, FieldLabel } from '@/components/ui/FormControls'
 import { useConfirm } from '@/hooks/useConfirm'
+import { useDebounced } from '@/hooks/useDebounced'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { GET_ALL_CIS } from '@/graphql/queries'
 import { ACKNOWLEDGE_EVENT, RESOLVE_EVENT, LINK_EVENT_TO_CI, CREATE_INCIDENT_FROM_EVENT, REEVALUATE_EVENT } from '@/graphql/mutations'
 import { isActiveEvent } from './eventShared'
 import { canReevaluate, isSuppressed } from './eventCorrelation'
-import type { MonitoringEvent } from '@/types/events'
+import type { EventRow, MonitoringEvent } from '@/types/events'
 
 interface CISearchRow { id: string; name: string; type: string; status: string; environment: string }
+
+/** La ricerca CI parte quando l'utente smette di scrivere (come la console). */
+const SEARCH_DEBOUNCE = 300
 
 export type EventActionKind = 'acknowledge' | 'resolve' | 'openIncident' | 'linkCI' | 'reevaluate'
 
 interface Props {
-  event:      MonitoringEvent
+  /** La riga leggera basta: il dettaglio passa l'evento completo, che la estende. */
+  event:      EventRow
   /** Dopo una mutation riuscita (refetch di lista/statistiche). */
   onChanged?: () => void
   /** `xs` nelle righe della tabella, `sm` nel dettaglio. */
@@ -142,7 +147,7 @@ export function EventActions({ event, onChanged, size = 'xs', only, exclude }: P
 
 // ── Risoluzione manuale (nota facoltativa) ──────────────────────────────────
 
-function ResolveDialog({ event, onClose, onDone }: { event: MonitoringEvent; onClose: () => void; onDone: () => void }) {
+function ResolveDialog({ event, onClose, onDone }: { event: EventRow; onClose: () => void; onDone: () => void }) {
   const { t } = useTranslation()
   const noteId = useId()
   const [note, setNote] = useState('')
@@ -179,7 +184,7 @@ function ResolveDialog({ event, onClose, onDone }: { event: MonitoringEvent; onC
 
 // ── Collegamento a un CI (ricerca + alias) ──────────────────────────────────
 
-function LinkCIDialog({ event, onClose, onDone }: { event: MonitoringEvent; onClose: () => void; onDone: () => void }) {
+function LinkCIDialog({ event, onClose, onDone }: { event: EventRow; onClose: () => void; onDone: () => void }) {
   const { t } = useTranslation()
   const searchId = useId()
   const aliasId  = useId()
@@ -188,12 +193,19 @@ function LinkCIDialog({ event, onClose, onDone }: { event: MonitoringEvent; onCl
   const [createAlias, setCreateAlias] = useState(true)
   const [link, { loading }] = useMutation(LINK_EVENT_TO_CI)
 
+  // Una richiesta per pausa di scrittura, non per tasto; finché il debounce
+  // non ha raggiunto il testo digitato la lista dice "caricamento", non
+  // "nessun risultato" (che sarebbe la risposta a una ricerca vecchia).
+  const term = search.trim()
+  const debouncedTerm = useDebounced(term, SEARCH_DEBOUNCE)
+  const pending = term !== debouncedTerm
   const { data, loading: searching, error } = useQuery<{ allCIs: { items: CISearchRow[] } }>(GET_ALL_CIS, {
-    variables: { search, limit: 20 },
-    skip: search.trim().length < 2,
+    variables: { search: debouncedTerm, limit: 20 },
+    skip: debouncedTerm.length < 2,
     fetchPolicy: 'cache-and-network',
   })
-  const results = data?.allCIs.items ?? []
+  const results = pending ? [] : (data?.allCIs.items ?? [])
+  const busy = searching || pending
 
   async function submit() {
     if (!selected) return
@@ -231,12 +243,12 @@ function LinkCIDialog({ event, onClose, onDone }: { event: MonitoringEvent; onCl
         disabled={loading}
       />
       {error && <p role="alert" style={{ color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', margin: '8px 0 0' }}>{error.message}</p>}
-      {search.trim().length >= 2 && (
+      {term.length >= 2 && (
         <ul aria-label={t('events.actions.searchResults')} style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, border: '1px solid var(--border)', borderRadius: 8, maxHeight: 240, overflowY: 'auto' }}>
-          {searching && results.length === 0 && (
+          {busy && results.length === 0 && (
             <li style={{ padding: '8px 12px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</li>
           )}
-          {!searching && results.length === 0 && (
+          {!busy && results.length === 0 && (
             <li style={{ padding: '8px 12px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.noResults')}</li>
           )}
           {results.map((ci) => {

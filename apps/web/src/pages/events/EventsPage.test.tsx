@@ -4,16 +4,17 @@ import { EventsPage } from './EventsPage'
 import { GET_EVENTS, GET_EVENT_STATS, GET_ENTITY_FILTER_FIELDS, GET_MONITORING_SOURCE_REFS, GET_EVENT_POLICY } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
-import type { MonitoringEvent, EventStats, StormSource } from '@/types/events'
+import type { EventRow, EventStats, StormSource } from '@/types/events'
 
 const STATS: EventStats = { firing: 4, critical: 2, warning: 1, orphan: 1, suppressed: 0, flapping: 1, resolved24h: 7, stormSources: [] }
 
-function eventFixture(over: Partial<MonitoringEvent> & { id: string }): MonitoringEvent {
+/** La console legge la riga leggera (EventRowFields): niente descrizione, etichette, impronta. */
+function eventFixture(over: Partial<EventRow> & { id: string }): EventRow {
   return {
-    fingerprint: `fp-${over.id}`, externalId: null, status: 'firing', severity: 'critical',
-    title: `Alert ${over.id}`, description: null, resource: 'web-01', resourceKind: 'hostname', labels: '{}',
-    count: 3, firstSeenAt: '2026-09-09T08:00:00Z', lastSeenAt: new Date().toISOString(), resolvedAt: null,
-    acknowledgedAt: null, acknowledgedBy: null,
+    status: 'firing', severity: 'critical',
+    title: `Alert ${over.id}`, resource: 'web-01', resourceKind: 'hostname',
+    count: 3, lastSeenAt: new Date().toISOString(),
+    acknowledgedAt: null,
     source: { id: 'wh1', name: 'Prometheus', connectorKind: 'alertmanager' },
     ci: { id: 'ci1', name: 'web-01', type: 'server', status: 'active', health: null },
     incident: null,
@@ -24,10 +25,9 @@ function eventFixture(over: Partial<MonitoringEvent> & { id: string }): Monitori
 }
 
 /** Aggiunge `__typename` come farebbe la cache Apollo. */
-function typed(ev: MonitoringEvent) {
+function typed(ev: EventRow) {
   return {
     __typename: 'Event', ...ev,
-    acknowledgedBy: ev.acknowledgedBy ? { __typename: 'User', ...ev.acknowledgedBy } : null,
     source:   ev.source   ? { __typename: 'MonitoringSourceRef', ...ev.source } : null,
     ci:       ev.ci       ? { __typename: 'ConfigurationItemRef', ...ev.ci } : null,
     incident: ev.incident ? { __typename: 'Incident', ...ev.incident } : null,
@@ -45,19 +45,20 @@ const policyMock = (): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
-const EVENTS: MonitoringEvent[] = [
+const EVENTS: EventRow[] = [
   eventFixture({ id: 'e1', title: 'CPU high on web-01' }),
   eventFixture({ id: 'e2', title: 'Disk full on unknown host', severity: 'warning', ci: null, resource: 'db-99', incident: { id: 'inc1', number: 'INC-0042', title: 'Disk', status: 'new' } }),
-  eventFixture({ id: 'e3', title: 'Old alert', status: 'resolved', resolvedAt: '2026-09-09T09:00:00Z' }),
+  eventFixture({ id: 'e3', title: 'Old alert', status: 'resolved' }),
 ]
 
 type Vars = { filter: Record<string, unknown> | null; limit: number; offset: number }
 
-function eventsMock(items = EVENTS, seen?: Vars[]): GqlMock {
+function eventsMock(items = EVENTS, seen?: Vars[], opts: { match?: (v: Vars) => boolean; delay?: number } = {}): GqlMock {
   return {
-    request: { query: GET_EVENTS, variables: (v) => { seen?.push(v as Vars); return true } },
+    request: { query: GET_EVENTS, variables: (v) => { const ok = opts.match ? opts.match(v as Vars) : true; if (ok) seen?.push(v as Vars); return ok } },
     result: { data: { events: { __typename: 'EventPage', total: items.length, items: items.map(typed) } } },
     maxUsageCount: Number.POSITIVE_INFINITY,
+    ...(opts.delay !== undefined ? { delay: opts.delay } : {}),
   }
 }
 
@@ -67,9 +68,15 @@ const statsMock = (stormSources: StormSource[] = []): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
+// Lo schema offre anche `description` e `labels`: la console non li propone,
+// perché la riga leggera non li porta e il FilterBuilder è applicato lato client.
 const fieldsMock = (): GqlMock => ({
   request: { query: GET_ENTITY_FILTER_FIELDS, variables: { typeName: 'Event' } },
-  result: { data: { entityFilterFields: [{ __typename: 'EntityFilterField', name: 'title', kind: 'SCALAR', scalarName: 'String', enumValues: null }] } },
+  result: { data: { entityFilterFields: [
+    { __typename: 'EntityFilterField', name: 'title',       kind: 'SCALAR', scalarName: 'String', enumValues: null },
+    { __typename: 'EntityFilterField', name: 'description', kind: 'SCALAR', scalarName: 'String', enumValues: null },
+    { __typename: 'EntityFilterField', name: 'labels',      kind: 'SCALAR', scalarName: 'String', enumValues: null },
+  ] } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
@@ -82,8 +89,8 @@ const sourcesMock = (names: string[] = ['Prometheus', 'Zabbix']): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
-function renderPage(role: string, seen?: Vars[], opts: { route?: string; sources?: string[]; events?: MonitoringEvent[]; storms?: StormSource[] } = {}) {
-  return renderWithProviders(<EventsPage />, { route: opts.route ?? '/events', mocks: [meMock(role), statsMock(opts.storms), eventsMock(opts.events ?? EVENTS, seen), fieldsMock(), sourcesMock(opts.sources), policyMock()] })
+function renderPage(role: string, seen?: Vars[], opts: { route?: string; sources?: string[]; events?: EventRow[]; storms?: StormSource[]; eventsMocks?: GqlMock[] } = {}) {
+  return renderWithProviders(<EventsPage />, { route: opts.route ?? '/events', mocks: [meMock(role), statsMock(opts.storms), ...(opts.eventsMocks ?? [eventsMock(opts.events ?? EVENTS, seen)]), fieldsMock(), sourcesMock(opts.sources), policyMock()] })
 }
 
 const bodyRows = () => within(screen.getAllByRole('rowgroup')[1]!).getAllByRole('row')
@@ -145,9 +152,47 @@ describe('EventsPage', () => {
   })
 })
 
+describe('EventsPage — prestazioni (ondata 3)', () => {
+  it('al cambio di filtro la tabella tiene le righe precedenti con "Updating…", senza skeleton', async () => {
+    const FILTERED = [eventFixture({ id: 'x1', title: 'Only critical one' })]
+    const { user } = renderPage('viewer', undefined, {
+      eventsMocks: [
+        eventsMock(EVENTS,   undefined, { match: (v) => v.filter === null }),
+        eventsMock(FILTERED, undefined, { match: (v) => v.filter !== null, delay: 150 }),
+      ],
+    })
+    expect(await screen.findByText('CPU high on web-01')).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Critical\s*2/ }))
+    // in attesa della nuova pagina: righe vecchie ancora visibili + indicatore discreto
+    expect(await screen.findByRole('status')).toHaveTextContent('Updating…')
+    expect(screen.getByText('CPU high on web-01')).toBeInTheDocument()
+    expect(screen.getByText('3 events')).toBeInTheDocument()
+
+    expect(await screen.findByText('Only critical one')).toBeInTheDocument()
+    expect(screen.queryByText('CPU high on web-01')).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByText(/^1 events?$/)).toBeInTheDocument()   // plurale: finding 6.1, fuori ondata
+  })
+
+  it('il FilterBuilder offre solo i campi della riga leggera (niente description/labels)', async () => {
+    const { user } = renderPage('viewer')
+    await screen.findByText('CPU high on web-01')
+    await user.click(screen.getByRole('button', { name: /Advanced filters/ }))
+    await user.click(screen.getByRole('button', { name: '+ Add filter' }))
+    // l'ultimo combobox è il campo della regola appena aggiunta (il primo è il filtro Sorgente)
+    const fieldSelect = screen.getAllByRole('combobox').at(-1) as HTMLSelectElement
+    const values = Array.from(fieldSelect.options).map((o) => o.value)
+    expect(values).toContain('title')
+    expect(values).not.toContain('description')
+    expect(values).not.toContain('labels')
+  })
+})
+
 describe('EventsPage — correlazione automatica (ondata 3)', () => {
   const CHG = { id: 'chg1', code: 'CHG-0007', title: 'Freeze DB' }
-  const CORRELATED: MonitoringEvent[] = [
+  const CORRELATED: EventRow[] = [
     eventFixture({ id: 'c1', title: 'Opened by policy', correlation: 'opened', correlationAt: '2026-09-09T08:00:00Z', incident: { id: 'inc1', number: 'INC-0042', title: 'CPU', status: 'new' } }),
     eventFixture({ id: 'c2', title: 'Silenced by change', status: 'suppressed', correlation: 'suppressed', correlationAt: '2026-09-09T08:00:00Z', suppressedBy: CHG }),
     eventFixture({ id: 'c3', title: 'Waiting for delay', correlation: 'delayed', correlationAt: new Date(Date.now() - 30_000).toISOString() }),
@@ -202,7 +247,7 @@ describe('EventsPage — correlazione automatica (ondata 3)', () => {
 
 describe('EventsPage — sfarfallio e tempeste (ondata 4)', () => {
   const STORM_INC = { id: 'inc9', number: 'INC-0099', title: 'Storm from Prometheus', status: 'new' }
-  const WAVE4: MonitoringEvent[] = [
+  const WAVE4: EventRow[] = [
     eventFixture({ id: 'f1', title: 'Flapping alarm', status: 'flapping', correlation: 'flapping', correlationAt: '2026-09-09T08:00:00Z', flappingSince: '2026-09-09T07:30:00Z', transitions24h: 12 }),
     eventFixture({ id: 's1', title: 'Storm alarm', correlation: 'storm', correlationAt: '2026-09-09T08:00:00Z', incident: STORM_INC }),
     eventFixture({ id: 's2', title: 'Storm orphan', ci: null, correlation: 'storm_no_ci', correlationAt: '2026-09-09T08:00:00Z' }),

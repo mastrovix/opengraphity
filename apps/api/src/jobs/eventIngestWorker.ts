@@ -33,6 +33,7 @@ import { logger } from '../lib/logger.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
 import { eventsIngestFailedTotal } from '../middleware/metrics.js'
 import { fingerprintOf, ingestEvent, type NormalizedEvent } from '../services/eventService.js'
+import { invalidateSourceCache } from '../services/events/sourceCache.js'
 
 const log = logger.child({ module: 'event-ingest' })
 
@@ -57,7 +58,7 @@ export function eventJobId(tenantId: string, fingerprint: string, receivedAt: st
 
 async function processEvent(job: Job<EventIngestJobData>): Promise<void> {
   const { tenantId, sourceId, ev, receivedAt } = job.data
-  const result = await ingestEvent({ tenantId, sourceId, ev, receivedAt })
+  const result = await ingestEvent({ tenantId, sourceId, ev, receivedAt, jobId: String(job.id) })
   if (result.sourceHasError) await clearSourceError(tenantId, sourceId)
 }
 
@@ -73,6 +74,7 @@ async function clearSourceError(tenantId: string, sourceId: string): Promise<voi
     `, { tenantId, sourceId })
   } finally {
     await session.close()
+    invalidateSourceCache(tenantId, sourceId)
   }
 }
 
@@ -98,6 +100,7 @@ export async function recordIngestFailure(data: EventIngestJobData, err: Error):
     log.error({ tenantId: data.tenantId, sourceId: data.sourceId, fingerprint, err: e }, 'Could not record event ingest failure on the source')
   } finally {
     await session.close()
+    invalidateSourceCache(data.tenantId, data.sourceId)
   }
 }
 

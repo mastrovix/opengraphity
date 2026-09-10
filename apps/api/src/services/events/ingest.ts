@@ -1,0 +1,171 @@
+/**
+ * Event Management — l'ingest: dall'evento normalizzato al grafo e alla
+ * pipeline. Orchestratore chiamato dal worker `events-ingest`
+ * (jobs/eventIngestWorker.ts); importa pipeline.ts, mai il contrario.
+ *
+ * UN solo statement Neo4j per evento prima della pipeline (M11):
+ * `ingestMergeCypher` scrive l'Event (MERGE per impronta con la transizione
+ * di stato in Cypher e la guardia d'ordine `last_received_at`), lo collega
+ * alla sorgente, riconosce il CI (alias → nome) e scrive RAISED_ON. Il record
+ * appena scritto viene passato alla pipeline, che non lo rilegge.
+ */
+import { v4 as uuidv4 } from 'uuid'
+import { getSession, runQueryOne } from '@opengraphity/neo4j'
+import { ValidationError } from '../../lib/errors.js'
+import { publishEvent } from '../../lib/publishEvent.js'
+import { logger } from '../../lib/logger.js'
+import { eventsDeduplicatedTotal, eventsOrphanTotal, eventsReceivedTotal, eventsStaleTotal } from '../../middleware/metrics.js'
+import { fingerprintOf, quoteValue, type NormalizedEvent } from './normalize.js'
+import { INGEST_WRITE_OUTCOMES, ciMatchCypher, ciMatchParams, ingestMergeCypher, type IngestWriteOutcome } from './transitions.js'
+import { SEVERITY_RANK, mapEventPayload, type Props } from './shared.js'
+import { runEventPipeline } from './pipeline.js'
+
+const log = logger.child({ module: 'event-service' })
+
+// ── Riconoscimento del CI (fuori dall'ingest: linkEventToCI, test) ───────────
+
+/**
+ * CI riconosciuto per l'evento (vedi ciMatchCypher): una sola query; null =
+ * orfano. L'ingest non la chiama: il riconoscimento gira dentro il MERGE.
+ */
+export async function matchCI(tenantId: string, ev: Pick<NormalizedEvent, 'externalId' | 'resource' | 'resourceKind'>): Promise<string | null> {
+  const session = getSession()
+  try {
+    const row = await runQueryOne<{ ciId: string | null }>(session, `
+      ${ciMatchCypher()}
+      WITH byExt, byKind, byName ORDER BY byName.created_at LIMIT 1
+      RETURN coalesce(byExt.id, byKind.id, byName.id) AS ciId
+    `, ciMatchParams(tenantId, ev))
+    return row?.ciId ?? null
+  } finally {
+    await session.close()
+  }
+}
+
+// ── Ingest ───────────────────────────────────────────────────────────────────
+
+export interface IngestInput {
+  tenantId: string
+  sourceId: string
+  ev: NormalizedEvent
+  /** ISO; default ora. Usato come last_seen_at (e first_seen_at se nuovo). */
+  receivedAt?: string
+  /** actor_id degli eventi di dominio; default 'monitoring'. */
+  actorId?: string
+  /** Id del job BullMQ: solo per i log (ritrova l'allarme in coda). */
+  jobId?: string
+}
+
+/** Esiti della pipeline per cui l'ingest NON pubblica event.received/resolved/orphan (l'avviso lo ha già dato la pipeline). */
+export const QUIET_OUTCOMES: ReadonlySet<string> = new Set(['suppressed', 'flapping', 'storm', 'storm_no_ci'])
+
+export interface IngestResult {
+  props: Props
+  ciId: string | null
+  created: boolean
+  /** Esito della scrittura (ingestMergeCypher): `stale` = payload scartato, nessuna pipeline. */
+  outcome: IngestWriteOutcome
+  /** true se la sorgente (InboundWebhook) porta un `last_error`: il worker lo azzera dopo un job riuscito. */
+  sourceHasError: boolean
+}
+
+/**
+ * Deduplica per impronta con UN solo MERGE (transizione di stato in Cypher,
+ * guardia d'ordine su `last_received_at`, riconoscimento e aggancio del CI),
+ * esegue la pipeline di correlazione (soppressione → salute del CI →
+ * incident), pubblica gli eventi di dominio. Restituisce le proprietà
+ * dell'Event (stato finale), il CI agganciato e l'esito della scrittura.
+ *
+ * - `stale` (payload più vecchio dell'ultimo applicato): nessuna modifica,
+ *   nessuna pipeline, nessun evento di dominio; metrica events_stale_total.
+ * - `duplicate` (retry dello stesso job, stessa receivedAt): nessuna modifica
+ *   al nodo (count non raddoppia), ma la pipeline VIENE rieseguita — il retry
+ *   esiste proprio perché un passo successivo alla scrittura può essere
+ *   fallito. Gli eventi di dominio possono quindi ripetersi (at-least-once).
+ *
+ * Dieta di rumore (3.3): `event.received` solo quando il payload apre un
+ * ciclo — evento nuovo, o `resolved → firing` (`first_seen_at` = istante di
+ * questo payload) — e `event.resolved` solo quando lo chiude (`resolved_at` =
+ * istante di questo payload); le ripetizioni (Alertmanager `repeat_interval`,
+ * Zabbix) non notificano nulla. La regola legge le proprietà post-scrittura
+ * con l'istante del payload, quindi vale anche per il retry `duplicate`
+ * (stessa receivedAt). `event.orphan` segue la stessa regola.
+ */
+export async function ingestEvent(input: IngestInput): Promise<IngestResult> {
+  const { tenantId, sourceId, ev, jobId } = input
+  if (ev.status !== 'firing' && ev.status !== 'resolved') {
+    throw new ValidationError(`Event status must be firing or resolved. Got: ${quoteValue(ev.status)}`)
+  }
+  // `now` è l'istante di ricezione del payload (last_seen_at, first_seen_at se
+  // nuovo, e la guardia d'ordine last_received_at): stesso valore per tutti i
+  // job della stessa richiesta, quindi confrontabile fra retry.
+  const now = input.receivedAt ?? new Date().toISOString()
+  const actorId = input.actorId ?? 'monitoring'
+  const fingerprint = fingerprintOf(sourceId, ev)
+  const labels = JSON.stringify(ev.labels)
+
+  const session = getSession(undefined, 'WRITE')
+  let row: { props: Props; outcome: IngestWriteOutcome; ciId: string | null; connectorKind: string | null; sourceHasError: boolean | null } | null
+  try {
+    row = await runQueryOne(session, ingestMergeCypher(), {
+      ...ciMatchParams(tenantId, ev),
+      id: uuidv4(), fingerprint,
+      status: ev.status, severity: ev.severity, severityRank: SEVERITY_RANK,
+      title: ev.title, description: ev.description ?? null,
+      resource: ev.resource, resourceKind: ev.resourceKind, labels,
+      startsAt: ev.startsAt ?? null, endsAt: ev.endsAt ?? null, sourceId, now, receivedAt: now,
+    })
+  } finally {
+    await session.close()
+  }
+  if (!row) throw new Error(`Event ${fingerprint} not written for tenant ${tenantId}`)
+  if (!INGEST_WRITE_OUTCOMES.includes(row.outcome)) throw new Error(`Event ${fingerprint}: unexpected ingest outcome ${JSON.stringify(row.outcome)}`)
+  const { props, outcome } = row
+  const created = outcome === 'created'
+  const ciId = row.ciId
+  const sourceHasError = row.sourceHasError === true
+  // connector_kind della sorgente (etichetta della metrica events_received_total;
+  // assente = webhook precedente all'Event Management → generic, come sourceConfigOf).
+  const connectorKind = row.connectorKind ?? 'generic'
+  const logCtx = { tenantId, sourceId, eventId: props['id'], fingerprint, jobId }
+
+  if (outcome === 'stale') {
+    eventsStaleTotal.inc({ connector: connectorKind })
+    log.info({ ...logCtx, receivedAt: now, lastReceivedAt: props['last_received_at'], payloadStatus: ev.status, status: props['status'] }, 'Stale event payload discarded (older than the last applied one)')
+    return { props, ciId, created: false, outcome, sourceHasError }
+  }
+  if (outcome === 'duplicate') {
+    log.info({ ...logCtx, receivedAt: now }, 'Event payload already applied (job retry): state untouched, pipeline re-run')
+  } else {
+    eventsReceivedTotal.inc({ connector: connectorKind })
+    if (!created) eventsDeduplicatedTotal.inc({})
+  }
+  if (!ciId) eventsOrphanTotal.inc({})
+
+  // Pipeline (services/events/pipeline.ts): soppressione in finestra di change
+  // → salute del CI → correlazione in incident / chiusura automatica. La
+  // soppressione blocca anche la salute, per questo il ricalcolo vive lì.
+  // `created` alimenta il contatore di tempesta della sorgente (un retry
+  // `duplicate` non è una creazione: non la conta due volte). Il record
+  // appena scritto viaggia con la chiamata: la pipeline non lo rilegge.
+  const pipeline = await runEventPipeline({ tenantId, eventId: String(props['id']), actorId, now, mode: 'ingest', created, record: { props, ciId }, jobId })
+  props['status'] = pipeline.status
+
+  // Nessun avviso "ricevuto"/"rientrato" quando l'avviso lo dà già la pipeline:
+  // silenziato (event.suppressed), sfarfallio (event.flapping, una volta per
+  // episodio) o tempesta (event.storm_started: un solo avviso per sorgente,
+  // non uno per ciascuno delle centinaia di allarmi al minuto). E nessun
+  // avviso per una ripetizione: solo il payload che apre o chiude il ciclo.
+  const resolved = props['status'] === 'resolved'
+  const opensCycle = created || props['first_seen_at'] === now
+  const closesCycle = props['resolved_at'] === now
+  const notify = resolved ? closesCycle : opensCycle
+  if (!QUIET_OUTCOMES.has(pipeline.outcome) && notify) {
+    const payload = mapEventPayload(props, ciId)
+    await publishEvent(resolved ? 'event.resolved' : 'event.received', tenantId, actorId, payload, now)
+    if (!ciId) await publishEvent('event.orphan', tenantId, actorId, payload, now)
+  }
+
+  log.info({ ...logCtx, outcome, created, ciId, status: props['status'], count: props['count'], correlation: pipeline.outcome, notified: notify }, 'Event ingested')
+  return { props, ciId, created, outcome, sourceHasError }
+}

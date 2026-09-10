@@ -1,8 +1,9 @@
 /**
  * eventRetention.ts — purge degli eventi risolti oltre retention_days per
  * tenant: solo status resolved con resolved_at più vecchio del cutoff, in
- * batch (CALL … IN TRANSACTIONS OF 1000 ROWS), retention 0 = mai, log e
- * metrica per tenant, un tenant senza policy fa fallire il job dopo gli altri.
+ * batch (CALL … IN TRANSACTIONS OF 1000 ROWS) con il conteggio restituito
+ * dalla STESSA query (revisione 2.3), retention 0 = mai, log e metrica per
+ * tenant, un tenant senza policy fa fallire il job dopo gli altri.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -11,11 +12,11 @@ const logInfo = vi.fn()
 const logError = vi.fn()
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ info: logInfo, warn: vi.fn(), error: logError, debug: vi.fn() }) } }))
 vi.mock('../../middleware/metrics.js', () => ({ eventsPurgedTotal: { inc: vi.fn() } }))
-vi.mock('../eventService.js', () => ({ getEventPolicy: vi.fn() }))
+vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn() }))
 
 const { purgeResolvedEvents, purgeTenantResolvedEvents, retentionCutoff, PURGE_BATCH_SIZE } = await import('../eventRetention.js')
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
-const { getEventPolicy } = await import('../eventService.js')
+const { getEventPolicy } = await import('../events/policy.js')
 const { eventsPurgedTotal } = await import('../../middleware/metrics.js')
 const { DEFAULT_EVENT_POLICY } = await import('../../lib/eventPolicy.js')
 
@@ -36,8 +37,7 @@ const callsMatching = (re: RegExp) => calls().filter((c) => re.test(c.cypher))
 
 const Q = {
   tenants: /MATCH \(t:Tenant\)\s+WHERE t\.id IS NOT NULL/,
-  count:   /RETURN count\(e\) AS n/,
-  purge:   /CALL \{ WITH e DETACH DELETE e \} IN TRANSACTIONS OF 1000 ROWS/,
+  purge:   /CALL \{ WITH e DETACH DELETE e \} IN TRANSACTIONS OF 1000 ROWS\s+RETURN count\(\*\) AS n/,
 }
 
 beforeEach(() => {
@@ -57,24 +57,21 @@ describe('retentionCutoff', () => {
 })
 
 describe('purgeTenantResolvedEvents', () => {
-  it('conta e poi elimina in batch SOLO gli Event resolved del tenant con resolved_at < cutoff (mai firing/suppressed/flapping); 0 → nessuna cancellazione', async () => {
-    onCypher([[Q.count, { n: 12 }], [Q.purge, null]])
+  it('UNA query: elimina in batch SOLO gli Event resolved del tenant con resolved_at < cutoff (mai firing/suppressed/flapping) e restituisce il conteggio della stessa query (2.3); nessuna riga → 0', async () => {
+    onCypher([[Q.purge, { n: 12 }]])
     await expect(purgeTenantResolvedEvents('acme', 'CUTOFF')).resolves.toBe(12)
-    const count = callsMatching(Q.count)[0]!
-    expect(count.cypher).toContain("MATCH (e:Event {tenant_id: $tenantId, status: 'resolved'})")
-    expect(count.cypher).toContain('WHERE e.resolved_at IS NOT NULL AND e.resolved_at < $cutoff')
-    expect(count.params).toEqual({ tenantId: 'acme', cutoff: 'CUTOFF' })
+    expect(calls()).toHaveLength(1)
     const purge = callsMatching(Q.purge)[0]!
     expect(purge.cypher).toContain("MATCH (e:Event {tenant_id: $tenantId, status: 'resolved'})")
     expect(purge.cypher).toContain('WHERE e.resolved_at IS NOT NULL AND e.resolved_at < $cutoff')
     expect(purge.cypher).not.toMatch(/firing|suppressed|flapping/)
     expect(purge.params).toEqual({ tenantId: 'acme', cutoff: 'CUTOFF' })
+    // CALL … IN TRANSACTIONS vuole una sessione auto-commit (runQuery → session.run, vedi eventRetentionAutocommit.test.ts)
     expect(getSession).toHaveBeenCalledWith(undefined, 'WRITE')
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
-    onCypher([[Q.count, { n: 0 }]])
+    onCypher([[Q.purge, null]])
     await expect(purgeTenantResolvedEvents('acme', 'CUTOFF')).resolves.toBe(0)
-    expect(callsMatching(Q.purge)).toHaveLength(0)
   })
 })
 
@@ -83,8 +80,7 @@ describe('purgeResolvedEvents', () => {
     vi.mocked(getEventPolicy).mockImplementation(async (t: string) => policy({ retention_days: t === 'acme' ? 90 : t === 'globex' ? 0 : 30 }))
     onCypher([
       [Q.tenants, [{ id: 'acme' }, { id: 'globex' }, { id: 'initech' }]],
-      [Q.count, (p: Record<string, unknown>) => ({ n: p['tenantId'] === 'acme' ? 12 : 0 })],
-      [Q.purge, null],
+      [Q.purge, (p: Record<string, unknown>) => ({ n: p['tenantId'] === 'acme' ? 12 : 0 })],
     ])
     const out = await purgeResolvedEvents(NOW)
     expect(out).toEqual({
@@ -95,9 +91,10 @@ describe('purgeResolvedEvents', () => {
         { tenantId: 'initech', retentionDays: 30, cutoff: '2026-08-10T03:30:00.000Z', purged: 0 },
       ],
     })
-    expect(callsMatching(Q.purge)).toHaveLength(1)
-    expect(callsMatching(Q.purge)[0]!.params).toEqual({ tenantId: 'acme', cutoff: '2026-06-11T03:30:00.000Z' })
-    expect(callsMatching(Q.count).map((c) => c.params['tenantId'])).toEqual(['acme', 'initech'])   // globex: mai interrogato
+    expect(callsMatching(Q.purge).map((c) => c.params)).toEqual([
+      { tenantId: 'acme', cutoff: '2026-06-11T03:30:00.000Z' },
+      { tenantId: 'initech', cutoff: '2026-08-10T03:30:00.000Z' },   // globex: mai interrogato
+    ])
     expect(eventsPurgedTotal.inc).toHaveBeenCalledTimes(1)
     expect(eventsPurgedTotal.inc).toHaveBeenCalledWith({}, 12)
     expect(logInfo).toHaveBeenCalledWith({ tenantId: 'acme', retentionDays: 90, cutoff: '2026-06-11T03:30:00.000Z', purged: 12 }, 'Resolved events purged')
@@ -106,7 +103,7 @@ describe('purgeResolvedEvents', () => {
 
   it('tenant senza policy → errore loggato, gli altri tenant vengono comunque purgati, il job fallisce alla fine con i conteggi', async () => {
     vi.mocked(getEventPolicy).mockImplementation(async (t: string) => { if (t === 'broken') throw new Error('Tenant broken has no event_policy'); return policy() })
-    onCypher([[Q.tenants, [{ id: 'broken' }, { id: 'acme' }]], [Q.count, { n: 3 }], [Q.purge, null]])
+    onCypher([[Q.tenants, [{ id: 'broken' }, { id: 'acme' }]], [Q.purge, { n: 3 }]])
     await expect(purgeResolvedEvents(NOW)).rejects.toThrow(/1\/2 tenants failed \(see logs\); purged 3 events on the others/)
     expect(callsMatching(Q.purge)).toHaveLength(1)
     expect(logError).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'broken' }), 'Event purge failed for tenant')

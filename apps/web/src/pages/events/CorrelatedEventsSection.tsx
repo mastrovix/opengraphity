@@ -18,14 +18,14 @@ import { formatDateTime, timeAgo } from '@/lib/datetime'
 import { ciPath } from '@/lib/ciPath'
 import { colors } from '@/lib/tokens'
 import { EventStatusBadge, EventSeverityBadge } from './eventShared'
-import type { MonitoringEvent } from '@/types/events'
+import type { EventRow } from '@/types/events'
 
 const th = { textAlign: 'left', padding: '4px 8px', color: colors.slateLight, fontWeight: 500, fontSize: 'var(--font-size-label)', textTransform: 'uppercase', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' } as const
 const td = { padding: '6px 8px', borderBottom: '1px solid #f1f3f9', verticalAlign: 'middle' } as const
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
 
 /** Tabella compatta degli eventi (condivisa da incident e change). */
-function EventRows({ events }: { events: MonitoringEvent[] }) {
+function EventRows({ events }: { events: EventRow[] }) {
   const { t } = useTranslation()
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -70,13 +70,13 @@ const emptyStyle = { fontSize: 'var(--font-size-body)', color: colors.slateLight
  * Primo evento che ha aperto l'incident: è la prova che l'attore è il
  * monitoraggio (l'API non espone un "creatore" dell'incident).
  */
-function openedByMonitoring(events: MonitoringEvent[]): MonitoringEvent | null {
+function openedByMonitoring(events: EventRow[]): EventRow | null {
   const opened = events.filter((e) => e.correlation === 'opened' && e.correlationAt)
   if (opened.length === 0) return null
   return opened.reduce((first, e) => (e.correlationAt! < first.correlationAt! ? e : first))
 }
 
-export function MonitoringAlarmsSection({ events }: { events: MonitoringEvent[] }) {
+export function MonitoringAlarmsSection({ events }: { events: EventRow[] }) {
   const { t } = useTranslation()
   const opener = openedByMonitoring(events)
   return (
@@ -94,7 +94,7 @@ export function MonitoringAlarmsSection({ events }: { events: MonitoringEvent[] 
   )
 }
 
-export function SuppressedAlarmsSection({ events }: { events: MonitoringEvent[] }) {
+export function SuppressedAlarmsSection({ events }: { events: EventRow[] }) {
   const { t } = useTranslation()
   return (
     <SectionCard title={t('pages.changes.suppressedAlarms.title')} count={events.length} collapsible defaultOpen={events.length > 0}>

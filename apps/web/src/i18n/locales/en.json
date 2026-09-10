@@ -2105,7 +2105,8 @@
       "noSourcesBanner": "No monitoring source is connected yet: no alarm can arrive.",
       "noSourcesCta": "Add the first source",
       "noSourcesAsk": "Ask an administrator to connect a monitoring tool.",
-      "ciFilter": "Only this CI"
+      "ciFilter": "Only this CI",
+      "updating": "Updating…"
     },
     "widget": {
       "openConsole": "Open the event console",

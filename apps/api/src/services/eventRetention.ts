@@ -4,9 +4,15 @@
  * `purgeResolvedEvents` elimina, per ogni :Tenant, gli `Event` in stato
  * `resolved` con `resolved_at` più vecchio di `retention_days` della policy
  * del tenant, in batch da PURGE_BATCH_SIZE (`CALL { … } IN TRANSACTIONS`, che
- * richiede una sessione auto-commit: runQuery usa `session.run`). Gli eventi
- * `firing`, `suppressed` e `flapping` non vengono mai toccati, qualunque sia
- * la loro età. `retention_days = 0` significa "mai" (nessuna cancellazione).
+ * richiede una sessione auto-commit: runQuery usa `session.run` — pinnato dal
+ * test eventRetentionAutocommit.test.ts). Gli eventi `firing`, `suppressed` e
+ * `flapping` non vengono mai toccati, qualunque sia la loro età.
+ * `retention_days = 0` significa "mai" (nessuna cancellazione).
+ *
+ * Il conteggio restituito è quello della STESSA query che cancella (`RETURN
+ * count(*)` dopo il CALL; revisione 2.3): prima era una count separata, e un
+ * evento risolto o riacceso fra le due dava un numero diverso da quanto
+ * cancellato davvero.
  *
  * Eseguita dal job ripetibile `purge_events` del maintenance worker (03:30);
  * esportata per poterla lanciare a mano. Un errore su un tenant (policy
@@ -15,7 +21,8 @@
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
 import { eventsPurgedTotal } from '../middleware/metrics.js'
-import { getEventPolicy } from './eventService.js'
+import { getEventPolicy } from './events/policy.js'
+import { toNumber } from './events/shared.js'
 
 const log = logger.child({ module: 'event-retention' })
 
@@ -24,35 +31,25 @@ export const PURGE_BATCH_SIZE = 1000
 export interface TenantPurge { tenantId: string; retentionDays: number; cutoff: string | null; purged: number }
 export interface PurgeResult { tenants: number; purged: number; failed: number; perTenant: TenantPurge[] }
 
-function toNumber(v: unknown): number {
-  if (v == null) return 0
-  if (typeof v === 'object' && 'toNumber' in v && typeof (v as { toNumber: unknown }).toNumber === 'function') return (v as { toNumber(): number }).toNumber()
-  return Number(v)
-}
-
 /** Istante ISO oltre il quale (all'indietro) gli eventi risolti sono da eliminare. */
 export function retentionCutoff(nowMs: number, retentionDays: number): string {
   if (!Number.isInteger(retentionDays) || retentionDays <= 0) throw new Error(`retentionCutoff: retention_days must be an integer >= 1, got ${JSON.stringify(retentionDays)}`)
   return new Date(nowMs - retentionDays * 24 * 3600 * 1000).toISOString()
 }
 
-/** Elimina (con le relazioni) gli eventi risolti di UN tenant più vecchi di `cutoff`; restituisce quanti erano. */
+/** Elimina (con le relazioni) gli eventi risolti di UN tenant più vecchi di `cutoff`; restituisce quanti ne ha cancellati. */
 export async function purgeTenantResolvedEvents(tenantId: string, cutoff: string): Promise<number> {
   const session = getSession(undefined, 'WRITE')
   try {
-    const counted = await runQueryOne<{ n: unknown }>(session, `
-      MATCH (e:Event {tenant_id: $tenantId, status: 'resolved'})
-      WHERE e.resolved_at IS NOT NULL AND e.resolved_at < $cutoff
-      RETURN count(e) AS n
-    `, { tenantId, cutoff })
-    const n = toNumber(counted?.n)
-    if (n === 0) return 0
-    await runQuery(session, `
+    // `CALL { … } IN TRANSACTIONS` vuole una sessione auto-commit (session.run,
+    // mai dentro executeWrite): ogni batch è una transazione propria.
+    const row = await runQueryOne<{ n: unknown }>(session, `
       MATCH (e:Event {tenant_id: $tenantId, status: 'resolved'})
       WHERE e.resolved_at IS NOT NULL AND e.resolved_at < $cutoff
       CALL { WITH e DETACH DELETE e } IN TRANSACTIONS OF ${PURGE_BATCH_SIZE} ROWS
+      RETURN count(*) AS n
     `, { tenantId, cutoff })
-    return n
+    return toNumber(row?.n)
   } finally { await session.close() }
 }
 

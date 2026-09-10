@@ -446,6 +446,8 @@ Normalised event (what every connector produces): `status` (`firing`|`resolved`)
 
 `sampleInboundPayload(connectorKind)` returns a realistic payload for each connector, `previewInboundEvents` normalises a pasted payload without ingesting it, `sendSampleEvent(sourceId)` pushes the sample through the real pipeline.
 
+Console reads: `events(filter, limit ≤ 500, offset)` returns page and `total` from one query, with `ci`, `source`, `incident` and `acknowledgedBy` resolved with the row; `filter.search` goes through the `event_search` full-text index (title + resource; every word must appear as a substring of a token, case-insensitive — `example` and `local` both find `api-03.example.local`). `Incident.correlatedEvents(limit = 100 ≤ 500, offset)` and `Change.suppressedEvents(limit, offset)` are paginated (a storm incident aggregates thousands of alerts); the totals are `correlatedEventCount` / `suppressedEventCount`.
+
 ---
 
 ## Schema Reference

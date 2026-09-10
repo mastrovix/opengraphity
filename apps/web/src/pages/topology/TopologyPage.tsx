@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Share2 } from 'lucide-react'
 import { GET_TOPOLOGY, GET_ALL_CIS, GET_CI_TYPES } from '@/graphql/queries'
 import { fontFamily } from '@/lib/tokens'
+import { pausedWhenHidden } from '@/lib/polling'
 import { Pill } from '@/components/ui/Pill'
 import { ciStatusStyle, enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
 import TopologyGraph, { TopologyLegend, type TopologyNode } from '@/components/topology/TopologyGraph'
@@ -92,13 +93,14 @@ export function TopologyPage() {
     status:       filters.status      ? filters.status      : undefined,
   }
 
-  // Polling a 30 s: TopologyGraph confronta la struttura (id nodi + archi) e a
-  // struttura invariata aggiorna solo contatori/stati in place, senza
-  // ricostruire simulazione, zoom e posizioni trascinate (F-06).
+  // Polling a 30 s (in pausa a scheda nascosta): TopologyGraph confronta la
+  // struttura (id nodi + archi) e a struttura invariata aggiorna solo
+  // contatori/stati in place, senza ricostruire simulazione, zoom e posizioni
+  // trascinate (F-06).
   const { data, loading, error } = useQuery<TopologyData>(GET_TOPOLOGY, {
     variables:   queryVars,
     skip:        !focusNodeId,
-    pollInterval: 30_000,
+    ...pausedWhenHidden(30_000),
     fetchPolicy:  'cache-and-network',
   })
 

@@ -8,9 +8,10 @@
  *    `reevaluate-change-window` = reevaluateSuppressedEvents; job sconosciuto
  *    → errore; all'avvio rimuove il repeat job legacy `reevaluate-windows`.
  *  - events-maintenance (concurrency 1, lockDuration 10 min): repeat job ogni
- *    5 minuti → quattro passate (finestre chiuse, pending, sfarfallio,
- *    tempeste raffreddate), ciascuna eseguita anche se un'altra fallisce, con
- *    errore cumulativo alla fine.
+ *    5 minuti → cinque passate (finestre chiuse, pending, sfarfallio,
+ *    tempeste raffreddate, gauge di salute), ciascuna eseguita e misurata
+ *    (event_pass_total/duration) anche se un'altra fallisce, con errore
+ *    cumulativo alla fine; il job `correlate` misura il ritardo dalla scadenza.
  * BullMQ è mockato attraverso lib/bullmq.ts; i processori sono catturati da createWorker.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -38,8 +39,12 @@ vi.mock('../../services/eventCorrelation.js', () => ({
   reevaluateClosedWindows: vi.fn(),
   reevaluatePendingEvents: vi.fn(),
   reevaluateFlappingEvents: vi.fn(),
+  refreshEventGauges: vi.fn().mockResolvedValue({ overdueDelayed: 0, firingUncorrelated: 0 }),
 }))
 vi.mock('../../services/eventStorm.js', () => ({ endCooledStorms: vi.fn() }))
+vi.mock('../../middleware/metrics.js', () => ({
+  eventCorrelateJobLagSeconds: { observe: vi.fn() }, eventPassTotal: { inc: vi.fn() }, eventPassDurationSeconds: { observe: vi.fn() },
+}))
 
 const worker = await import('../eventCorrelateWorker.js')
 const {
@@ -48,8 +53,9 @@ const {
   EVENT_CORRELATE_QUEUE, EVENT_MAINTENANCE_QUEUE, CHANGE_WINDOW_JOB, EVENT_MAINTENANCE_JOB, EVENT_MAINTENANCE_EVERY_MS, EVENT_MAINTENANCE_LOCK_MS, LEGACY_REEVALUATE_WINDOWS_JOB,
 } = worker
 const { createWorker, getQueue } = await import('../../lib/bullmq.js')
-const { runEventPipeline, reevaluateSuppressedEvents, reevaluateClosedWindows, reevaluatePendingEvents, reevaluateFlappingEvents } = await import('../../services/eventCorrelation.js')
+const { runEventPipeline, reevaluateSuppressedEvents, reevaluateClosedWindows, reevaluatePendingEvents, reevaluateFlappingEvents, refreshEventGauges } = await import('../../services/eventCorrelation.js')
 const { endCooledStorms } = await import('../../services/eventStorm.js')
+const metrics = await import('../../middleware/metrics.js')
 
 const job = (name: string, data: Record<string, unknown> = {}) => ({ name, data, id: 'j1', attemptsMade: 0 } as unknown as Job)
 const NOW = '2026-09-09T10:00:00.000Z'
@@ -113,11 +119,17 @@ describe('worker events-correlate', () => {
     expect(createWorker).toHaveBeenCalledWith(EVENT_CORRELATE_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 2 }))
   })
 
-  it('`correlate` → pipeline in modalità resume per (tenant, evento); un errore della pipeline fa fallire il job', async () => {
+  it('`correlate` → pipeline in modalità resume per (tenant, evento) con il job id nei log; ritardo dalla scadenza misurato (mai negativo); un errore della pipeline fa fallire il job', async () => {
     await startEventCorrelateWorker()
     const proc = processors.get(EVENT_CORRELATE_QUEUE)!
     await proc(job('correlate', { tenantId: 't1', eventId: 'ev-1', dueAt: '2026-09-09T10:00:30.000Z' }))
-    expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 't1', eventId: 'ev-1', mode: 'resume' })
+    expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 't1', eventId: 'ev-1', mode: 'resume', jobId: 'j1' })
+    const lag = vi.mocked(metrics.eventCorrelateJobLagSeconds.observe).mock.calls[0]!
+    expect(lag[0]).toEqual({})
+    expect(lag[1]).toBeGreaterThan(0)   // la scadenza è nel passato
+    vi.mocked(metrics.eventCorrelateJobLagSeconds.observe).mockClear()
+    await proc(job('correlate', { tenantId: 't1', eventId: 'ev-1', dueAt: new Date(Date.now() + 60_000).toISOString() }))
+    expect(vi.mocked(metrics.eventCorrelateJobLagSeconds.observe).mock.calls[0]![1]).toBe(0)
     vi.mocked(runEventPipeline).mockRejectedValueOnce(new Error('Event ev-1 not found'))
     await expect(proc(job('correlate', { tenantId: 't1', eventId: 'ev-1', dueAt: '2026-09-09T10:00:30.000Z' }))).rejects.toThrow(/not found/)
   })
@@ -145,7 +157,7 @@ describe('worker events-maintenance (periodico)', () => {
     expect(createWorker).toHaveBeenCalledWith(EVENT_MAINTENANCE_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 1, lockDuration: EVENT_MAINTENANCE_LOCK_MS }))
   })
 
-  it('`events-maintenance` → finestre chiuse + pending + sfarfallio + tempeste raffreddate, con lo stesso istante; job sconosciuto → errore', async () => {
+  it('`events-maintenance` → finestre chiuse + pending + sfarfallio + tempeste raffreddate + gauge, con lo stesso istante, ogni passata contata ok e misurata; job sconosciuto → errore', async () => {
     await startEventMaintenanceWorker()
     const proc = processors.get(EVENT_MAINTENANCE_QUEUE)!
     await proc(job(EVENT_MAINTENANCE_JOB))
@@ -153,20 +165,31 @@ describe('worker events-maintenance (periodico)', () => {
     expect(reevaluatePendingEvents).toHaveBeenCalledTimes(1)
     expect(reevaluateFlappingEvents).toHaveBeenCalledTimes(1)
     expect(endCooledStorms).toHaveBeenCalledTimes(1)
+    expect(refreshEventGauges).toHaveBeenCalledTimes(1)
     const now = vi.mocked(reevaluateClosedWindows).mock.calls[0]![0]
     expect(now).toMatch(/^\d{4}-\d{2}-\d{2}T/)
     expect(vi.mocked(reevaluatePendingEvents).mock.calls[0]![0]).toBe(now)
     expect(vi.mocked(reevaluateFlappingEvents).mock.calls[0]![0]).toBe(now)
     expect(vi.mocked(endCooledStorms).mock.calls[0]![0]).toBe(now)
+    expect(vi.mocked(refreshEventGauges).mock.calls[0]![0]).toBe(now)
+    expect(vi.mocked(metrics.eventPassTotal.inc).mock.calls.map((c) => c[0])).toEqual(
+      ['closed_windows', 'pending', 'flapping', 'storms', 'gauges'].map((pass) => ({ pass, result: 'ok' })))
+    expect(vi.mocked(metrics.eventPassDurationSeconds.observe).mock.calls.map((c) => c[0])).toEqual(
+      ['closed_windows', 'pending', 'flapping', 'storms', 'gauges'].map((pass) => ({ pass })))
     await expect(proc(job('nope'))).rejects.toThrow(/\[events-maintenance\] unknown job "nope"/)
   })
 
-  it('una passata fallita non ferma le altre, ma il job fallisce con tutti i motivi', async () => {
+  it('una passata fallita non ferma le altre (contata failed, durata comunque misurata), ma il job fallisce con tutti i motivi', async () => {
     vi.mocked(reevaluateClosedWindows).mockRejectedValueOnce(new Error('1/3 suppressed events failed'))
     vi.mocked(reevaluatePendingEvents).mockRejectedValueOnce(new Error('2/2 pending events failed'))
     vi.mocked(endCooledStorms).mockRejectedValueOnce(new Error('redis down'))
-    await expect(runPeriodicPasses(NOW)).rejects.toThrow(/closed windows: 1\/3 suppressed events failed; pending: 2\/2 pending events failed; storms: redis down/)
+    await expect(runPeriodicPasses(NOW)).rejects.toThrow(/closed_windows: 1\/3 suppressed events failed; pending: 2\/2 pending events failed; storms: redis down/)
     expect(reevaluateFlappingEvents).toHaveBeenCalledWith(NOW)
     expect(endCooledStorms).toHaveBeenCalledWith(NOW)
+    expect(refreshEventGauges).toHaveBeenCalledWith(NOW)
+    expect(vi.mocked(metrics.eventPassTotal.inc).mock.calls.map((c) => c[0])).toEqual([
+      { pass: 'closed_windows', result: 'failed' }, { pass: 'pending', result: 'failed' }, { pass: 'flapping', result: 'ok' }, { pass: 'storms', result: 'failed' }, { pass: 'gauges', result: 'ok' },
+    ])
+    expect(metrics.eventPassDurationSeconds.observe).toHaveBeenCalledTimes(5)
   })
 })

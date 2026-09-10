@@ -105,7 +105,7 @@ describe('processore', () => {
   it('`ingest` → ingestEvent con tenant, sorgente, evento e receivedAt del job; senza last_error sulla sorgente nessuna scrittura', async () => {
     startEventIngestWorker()
     await captured[0]!.processor(job())
-    expect(ingestEvent).toHaveBeenCalledWith({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: DATA.receivedAt })
+    expect(ingestEvent).toHaveBeenCalledWith({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: DATA.receivedAt, jobId: 'j1' })
     expect(runQueryOne).not.toHaveBeenCalled()
   })
 

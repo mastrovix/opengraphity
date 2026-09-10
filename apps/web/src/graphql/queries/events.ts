@@ -1,20 +1,21 @@
 import { gql } from '@apollo/client'
-import { EVENT_FIELDS } from '../fragments'
+import { EVENT_FIELDS, EVENT_ROW_FIELDS } from '../fragments'
 
 // ── Event Management (console allarmi) ──────────────────────────────────────
-// Contratto: apps/api/src/graphql/schema-events.ts (eventsSDL). La selezione
-// dell'evento è unica (EVENT_FIELDS in fragments.ts) così lista, dettaglio,
-// mutation e le liste di incident/change leggono la stessa forma e la cache
-// Apollo normalizza per id.
+// Contratto: apps/api/src/graphql/schema-events.ts (eventsSDL). Le liste
+// selezionano la riga leggera (EVENT_ROW_FIELDS in fragments.ts), dettaglio e
+// mutation l'evento completo (EVENT_FIELDS): la cache Apollo normalizza per id
+// e fa merge tra le due forme.
 
+/** Lista: console (50 righe in polling), ultimi eventi del CI. */
 export const GET_EVENTS = gql`
   query GetEvents($filter: EventFilter, $limit: Int, $offset: Int) {
     events(filter: $filter, limit: $limit, offset: $offset) {
       total
-      items { ...EventFields }
+      items { ...EventRowFields }
     }
   }
-  ${EVENT_FIELDS}
+  ${EVENT_ROW_FIELDS}
 `
 
 export const GET_EVENT = gql`

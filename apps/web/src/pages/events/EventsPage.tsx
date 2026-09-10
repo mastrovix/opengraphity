@@ -7,17 +7,20 @@
  * Ondata 4: chip "Instabile"/"Tempesta" nella stessa colonna e banner ambra
  * in testa quando una sorgente è in tempesta (`eventStats.stormSources`).
  *
- * Aggiornamento: polling ogni 15 s + pulsante Aggiorna (l'SSE arriva con
- * un'ondata successiva). Filtri iniziali dalla query string: `?stat=critical`
+ * Aggiornamento: polling ogni 15 s (in pausa a scheda nascosta) + pulsante
+ * Aggiorna (l'SSE arriva con un'ondata successiva). Al cambio di filtro o
+ * pagina la tabella tiene le righe precedenti con l'indicatore "Aggiornamento…"
+ * invece dello skeleton. Filtri iniziali dalla query string: `?stat=critical`
  * (widget dashboard), `?sourceId=` (sorgenti), `?ciId=` (dettaglio CI).
  * Il FilterBuilder è applicato lato client alla pagina corrente: `events(filter)`
- * non accetta un gruppo di filtri serializzato (contratto ondata 1).
+ * non accetta un gruppo di filtri serializzato (contratto ondata 1); offre
+ * solo i campi che la riga leggera (EventRowFields) porta con sé.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { Radar, RefreshCw, Plug } from 'lucide-react'
+import { Radar, RefreshCw, Plug, Loader2 } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
@@ -35,13 +38,14 @@ import { applyFilterGroup } from '@/lib/filterGroup'
 import { timeAgo } from '@/lib/datetime'
 import { ciPath } from '@/lib/ciPath'
 import { colors } from '@/lib/tokens'
+import { pausedWhenHidden } from '@/lib/polling'
 import { EventStatusBadge, EventSeverityBadge } from './eventShared'
 import { EventIncidentCell } from './eventCorrelation'
 import { EventActions } from './EventActions'
 import { StormBanner } from './StormBanner'
 import {
-  EVENT_STATUSES, EVENT_SEVERITIES,
-  type MonitoringEvent, type EventStats, type EventStatCounts, type EventStatus, type EventSeverity, type EventFilterVars, type MonitoringSourceRef, type EventPolicy,
+  EVENT_STATUSES, EVENT_SEVERITIES, EVENT_ROW_SCALAR_FIELDS,
+  type EventRow, type EventStats, type EventStatCounts, type EventStatus, type EventSeverity, type EventFilterVars, type MonitoringSourceRef, type EventPolicy,
 } from '@/types/events'
 
 const PAGE_SIZE       = 50
@@ -191,17 +195,25 @@ export function EventsPage() {
     setPage(0)
   }
 
-  const { fields: filterFields } = useEntityFields('Event')
+  // Solo i campi che la riga leggera porta con sé: una regola su `description`
+  // o `labels` non potrebbe essere valutata sulla pagina caricata.
+  const { fields: entityFields } = useEntityFields('Event')
+  const filterFields = useMemo(() => entityFields.filter((f) => EVENT_ROW_SCALAR_FIELDS.has(f.key)), [entityFields])
 
   const { data: statsData, error: statsError, refetch: refetchStats } = useQuery<{ eventStats: EventStats }>(GET_EVENT_STATS, {
-    pollInterval: POLL_MS, fetchPolicy: 'cache-and-network',
+    ...pausedWhenHidden(POLL_MS), fetchPolicy: 'cache-and-network',
   })
 
-  const { data, loading, error, refetch } = useQuery<{ events: { items: MonitoringEvent[]; total: number } }>(GET_EVENTS, {
+  // Al cambio di variabili (filtro, pagina) `liveData` torna undefined: si
+  // mostrano le righe precedenti con l'indicatore "Aggiornamento…" al posto
+  // dello skeleton, che a ogni click farebbe sfarfallare la tabella.
+  const { data: liveData, previousData, loading, error, refetch } = useQuery<{ events: { items: EventRow[]; total: number } }>(GET_EVENTS, {
     variables: { filter: toFilterVars(filter), limit: PAGE_SIZE, offset: page * PAGE_SIZE },
     fetchPolicy: 'cache-and-network',
-    pollInterval: POLL_MS,
+    ...pausedWhenHidden(POLL_MS),
   })
+  const data = liveData ?? previousData
+  const updating = loading && liveData === undefined && previousData !== undefined
 
   // Sorgenti: select del filtro + banner "nessuna sorgente" (nessun allarme può
   // arrivare). Riferimenti leggeri (id, nome, connettore): la configurazione
@@ -222,7 +234,7 @@ export function EventsPage() {
   const totalPages = Math.ceil(total / PAGE_SIZE)
   const stats = statsData?.eventStats
 
-  const columns: ColumnDef<MonitoringEvent>[] = [
+  const columns: ColumnDef<EventRow>[] = [
     { key: 'status',   label: t('events.columns.status'),   width: '120px', sortable: true, render: (_v, row) => <EventStatusBadge status={row.status} severity={row.severity} /> },
     { key: 'severity', label: t('events.columns.severity'), width: '110px', sortable: true, render: (_v, row) => <EventSeverityBadge severity={row.severity} /> },
     {
@@ -260,8 +272,13 @@ export function EventsPage() {
         icon={<Radar size={22} color="var(--color-icon-accent)" />}
         title={t('events.title')}
         subtitle={
-          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
             {loading && !data ? '—' : t('events.count', { count: total })}
+            {updating && (
+              <span role="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: colors.slateLight, fontSize: 'var(--font-size-table)' }}>
+                <Loader2 size={12} className="animate-spin" aria-hidden="true" />{t('monitoring.console.updating')}
+              </span>
+            )}
           </p>
         }
       />
@@ -328,7 +345,7 @@ export function EventsPage() {
         <QueryError message={error.message} onRetry={() => void refetch()} />
       ) : (
         <>
-          <SortableFilterTable<MonitoringEvent>
+          <SortableFilterTable<EventRow>
             columns={columns}
             data={items}
             loading={loading && !data}

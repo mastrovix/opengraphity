@@ -26,10 +26,12 @@ import { GET_MONITORING_SOURCES, GET_EVENT_STATS } from '@/graphql/queries'
 import { UPDATE_MONITORING_SOURCE, DELETE_MONITORING_SOURCE, REGENERATE_SOURCE_TOKEN, SEND_SAMPLE_EVENT } from '@/graphql/mutations'
 import { timeAgo, formatDateTime, currentLocale } from '@/lib/datetime'
 import { colors } from '@/lib/tokens'
+import { pausedWhenHidden } from '@/lib/polling'
 import { Pill } from '@/components/ui/Pill'
 import type { MonitoringSource, EventStats, StormSource } from '@/types/events'
 import { ToolBadge, EnabledPill, SecretBox } from './monitoringShared'
 
+/** Polling dei contatori (badge "Tempesta"), in pausa a scheda nascosta. */
 const STORM_POLL_MS = 15_000
 
 /** Badge "Tempesta" con tooltip: tasso, da che ora, incident di tempesta. */
@@ -60,7 +62,7 @@ export function MonitoringSourcesPage() {
 
   // Sorgenti in tempesta: badge sulla riga. Se la query fallisce il badge
   // manca e basta: l'elenco delle sorgenti non dipende dai contatori.
-  const { data: statsData } = useQuery<{ eventStats: EventStats }>(GET_EVENT_STATS, { fetchPolicy: 'cache-and-network', pollInterval: STORM_POLL_MS })
+  const { data: statsData } = useQuery<{ eventStats: EventStats }>(GET_EVENT_STATS, { fetchPolicy: 'cache-and-network', ...pausedWhenHidden(STORM_POLL_MS) })
   const stormBySource = useMemo(() => new Map((statsData?.eventStats.stormSources ?? []).map((s) => [s.sourceId, s])), [statsData])
 
   const [updateSource] = useMutation(UPDATE_MONITORING_SOURCE)

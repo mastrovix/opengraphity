@@ -58,14 +58,17 @@ vi.mock('../../lib/workflowHelpers.js', () => ({ getWorkflowSteps: vi.fn() }))
 vi.mock('../incidentService.js', () => ({
   createIncident: vi.fn(), resolveIncident: vi.fn(), addIncidentComment: vi.fn().mockResolvedValue(undefined), publishIncidentTransition: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('../eventService.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../eventService.js')>()),
-  getEventPolicy: vi.fn(), recomputeCIHealth: vi.fn().mockResolvedValue('down'),
+// Revisione (3.1): i moduli vivono in services/events/; le facciate ri-esportano,
+// quindi si mockano i moduli reali (policy, salute del CI) e si leggono dalla facciata.
+vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn(), setEventPolicy: vi.fn() }))
+vi.mock('../events/ciHealth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../events/ciHealth.js')>()),
+  recomputeCIHealth: vi.fn().mockResolvedValue('down'),
 }))
 vi.mock('../../jobs/eventCorrelateWorker.js', () => ({ enqueueCorrelation: vi.fn().mockResolvedValue(undefined) }))
 // Ondata 4: le tempeste vivono in eventStorm.ts (testato a parte); qui si
 // verifica che la pipeline le interroghi e ne rispetti lo stato.
-vi.mock('../eventStorm.js', () => ({
+vi.mock('../events/storm.js', () => ({
   trackSourceStorm: vi.fn(), getStormState: vi.fn(), replaceClosedStormIncident: vi.fn(),
   stormLockKey: (t: string, s: string) => `og:events:storm-open:${t}:${s}`,
   STORM_LOCK_TTL_SECONDS: 30, STORM_LOCK_WAIT_MS: 3_000, STORM_LOCK_POLL_MS: 100,
@@ -73,6 +76,7 @@ vi.mock('../eventStorm.js', () => ({
 vi.mock('../../middleware/metrics.js', () => ({
   eventsFlappingTotal: { inc: vi.fn() }, eventsSuppressedTotal: { inc: vi.fn() },
   incidentsAutoOpenedTotal: { inc: vi.fn() }, incidentsAutoResolvedTotal: { inc: vi.fn() }, incidentsReopenedTotal: { inc: vi.fn() },
+  eventsCorrelatedTotal: { inc: vi.fn() }, eventPipelineDurationSeconds: { observe: vi.fn() },
 }))
 
 const corr = await import('../eventCorrelation.js')

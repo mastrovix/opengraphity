@@ -2105,7 +2105,8 @@
       "noSourcesBanner": "Nessuna sorgente di monitoraggio è ancora collegata: nessun allarme può arrivare.",
       "noSourcesCta": "Aggiungi la prima sorgente",
       "noSourcesAsk": "Chiedi a un amministratore di collegare uno strumento di monitoraggio.",
-      "ciFilter": "Solo questo CI"
+      "ciFilter": "Solo questo CI",
+      "updating": "Aggiornamento…"
     },
     "widget": {
       "openConsole": "Apri la console eventi",

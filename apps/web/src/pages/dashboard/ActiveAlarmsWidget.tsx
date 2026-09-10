@@ -11,9 +11,11 @@ import { useTranslation } from 'react-i18next'
 import { Radar } from 'lucide-react'
 import { GET_EVENT_STATS } from '@/graphql/queries'
 import { colors } from '@/lib/tokens'
+import { pausedWhenHidden } from '@/lib/polling'
 import type { EventStats, EventStatCounts } from '@/types/events'
 
 export const ACTIVE_ALARMS_WIDGET_TYPE = 'active_alarms'
+/** Polling in pausa a scheda nascosta (lib/polling). */
 const POLL_MS = 30_000
 
 /** Contatori mostrati, con il preset della console (`/events?stat=…`) e il colore (stesso di EventsPage). */
@@ -26,7 +28,7 @@ const TILES: ReadonlyArray<{ key: keyof EventStatCounts; accent: string }> = [
 
 export function ActiveAlarmsWidget({ color, large = false }: { color: string; large?: boolean }) {
   const { t } = useTranslation()
-  const { data, loading, error } = useQuery<{ eventStats: EventStats }>(GET_EVENT_STATS, { pollInterval: POLL_MS, fetchPolicy: 'cache-and-network' })
+  const { data, loading, error } = useQuery<{ eventStats: EventStats }>(GET_EVENT_STATS, { ...pausedWhenHidden(POLL_MS), fetchPolicy: 'cache-and-network' })
   const stats = data?.eventStats
 
   if (error && !stats) {

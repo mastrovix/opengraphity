@@ -6,7 +6,7 @@
  * apps/web/src/graphql/queries/change.ts — keep them in sync.
  */
 
-import type { MonitoringEvent } from './events'
+import type { EventRow } from './events'
 
 // ── Common primitives ──────────────────────────────────────────────────────────
 
@@ -54,7 +54,7 @@ export interface ChangeData {
   resolvesProblems?:    LinkedTicketRef[]
   approvals?:           ChangeApproval[]
   /** Allarmi silenziati dalla finestra di rilascio di questa change (Event Management, ondata 3). */
-  suppressedEvents?:    MonitoringEvent[]
+  suppressedEvents?:    EventRow[]
 }
 
 export interface ChangeApproval {

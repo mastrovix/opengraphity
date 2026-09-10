@@ -27,7 +27,7 @@ import { SET_CI_HEALTH_OVERRIDE, CREATE_CI_ALIAS, DELETE_CI_ALIAS } from '@/grap
 import { formatDateTime, timeAgo } from '@/lib/datetime'
 import { colors } from '@/lib/tokens'
 import { CIHealthBadge, EventStatusBadge } from '@/pages/events/eventShared'
-import { CI_ALIAS_KINDS, CI_HEALTHS, type CIHealthInfo, type CIAlias, type CIAliasKind, type CIHealth, type MonitoringEvent } from '@/types/events'
+import { CI_ALIAS_KINDS, CI_HEALTHS, type CIHealthInfo, type CIAlias, type CIAliasKind, type CIHealth, type EventRow } from '@/types/events'
 
 const RECENT_LIMIT = 5
 
@@ -40,7 +40,8 @@ export function CIHealthSection({ ciId }: { ciId: string }) {
   const overrideId = useId()
 
   const { data, loading, error, refetch } = useQuery<{ ciHealth: CIHealthInfo }>(GET_CI_HEALTH, { variables: { ciId }, fetchPolicy: 'cache-and-network' })
-  const { data: eventsData, refetch: refetchEvents } = useQuery<{ events: { items: MonitoringEvent[]; total: number } }>(GET_EVENTS, {
+  // Righe leggere (EventRowFields): qui servono stato, titolo e ultimo visto.
+  const { data: eventsData, refetch: refetchEvents } = useQuery<{ events: { items: EventRow[]; total: number } }>(GET_EVENTS, {
     variables: { filter: { ciId }, limit: RECENT_LIMIT, offset: 0 }, fetchPolicy: 'cache-and-network',
   })
   const [setOverride, { loading: overriding }] = useMutation<{ setCIHealthOverride: CIHealthInfo }>(SET_CI_HEALTH_OVERRIDE)

@@ -9,7 +9,9 @@
  * informativo perché `ciHealthOverview.items` elenca SOLO i CI con salute),
  * pannello "tutto bene" quando giù + degradati = 0, filtri (tipo dal
  * metamodello, ambiente dall'enum base, squadra, ricerca con debounce) e
- * tabella con striscia colorata per riga. Polling ogni 15 s + Aggiorna.
+ * tabella con striscia colorata per riga. Polling ogni 15 s (in pausa a
+ * scheda nascosta) + Aggiorna; al cambio di filtro o pagina la tabella tiene
+ * le righe precedenti con l'indicatore "Aggiornamento…" invece di svuotarsi.
  *
  * Contratto: `ciHealthOverview` in apps/api/src/graphql/schema-events.ts.
  */
@@ -19,7 +21,7 @@ import { NetworkStatus } from '@apollo/client'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import {
-  HeartPulse, Share2, RefreshCw, XCircle, AlertTriangle, CheckCircle2, EyeOff, Radar, Hand, Plus, type LucideIcon,
+  HeartPulse, Share2, RefreshCw, XCircle, AlertTriangle, CheckCircle2, EyeOff, Radar, Hand, Plus, Loader2, type LucideIcon,
 } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { ListPageHeader } from '@/components/ListPageHeader'
@@ -34,6 +36,7 @@ import { CIIcon } from '@/lib/ciIcon'
 import { ciPath } from '@/lib/ciPath'
 import { ciTypeLabelKey, enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
 import { timeAgo, formatDateTime, formatDuration, currentLocale } from '@/lib/datetime'
+import { pausedWhenHidden } from '@/lib/polling'
 import { GET_CI_HEALTH_OVERVIEW, GET_TEAMS } from '@/graphql/queries'
 import { CIHealthBadge, CI_HEALTH_ACCENT } from '@/pages/events/eventShared'
 import type { CIHealth, CIHealthOverview, CIHealthRow, CIHealthFilterVars } from '@/types/events'
@@ -250,13 +253,18 @@ export function CIHealthPage() {
   const updateFilter = (patch: Partial<HealthFilter>) => { setFilter((f) => ({ ...f, ...patch })); setPage(0) }
   const toggleHealth = (h: CIHealth) => updateFilter({ health: filter.health === h ? null : h })
 
-  const { data, loading, error, refetch, networkStatus } = useQuery<{ ciHealthOverview: CIHealthOverview }>(GET_CI_HEALTH_OVERVIEW, {
+  // Al cambio di variabili (filtro, pagina) `liveData` torna undefined: la
+  // tabella mostra le righe precedenti con "Aggiornamento…" invece del testo
+  // di caricamento, così un click su un riquadro non la svuota.
+  const { data: liveData, previousData, loading, error, refetch, networkStatus } = useQuery<{ ciHealthOverview: CIHealthOverview }>(GET_CI_HEALTH_OVERVIEW, {
     variables: { filter: toFilterVars(filter), limit: PAGE_SIZE, offset: page * PAGE_SIZE },
     fetchPolicy: 'cache-and-network',
-    pollInterval: POLL_MS,
+    ...pausedWhenHidden(POLL_MS),
     notifyOnNetworkStatusChange: true,
   })
-  useEffect(() => { if (networkStatus === NetworkStatus.ready && data) setLastUpdated(Date.now()) }, [networkStatus, data])
+  const data = liveData ?? previousData
+  const updating = networkStatus === NetworkStatus.setVariables && previousData !== undefined
+  useEffect(() => { if (networkStatus === NetworkStatus.ready && liveData) setLastUpdated(Date.now()) }, [networkStatus, liveData])
 
   const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: 'cache-first' })
   const teams = teamsData?.teams ?? []
@@ -315,7 +323,14 @@ export function CIHealthPage() {
     tableBody = (
       <>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 8, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-          <span>{t('monitoring.health.count', { count: total })}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            {t('monitoring.health.count', { count: total })}
+            {updating && (
+              <span role="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-table)' }}>
+                <Loader2 size={12} className="animate-spin" aria-hidden="true" />{t('monitoring.console.updating')}
+              </span>
+            )}
+          </span>
           {totalPages > 1 && <span>{t('monitoring.health.page', { page: page + 1, total: totalPages })}</span>}
         </div>
         {/* Sotto ~900px la tabella scorre nel proprio contenitore, mai la pagina. */}

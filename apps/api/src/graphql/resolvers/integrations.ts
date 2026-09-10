@@ -1,5 +1,6 @@
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { CONNECTOR_KINDS, parseConfigJSON, sourceConfigOf } from '../../services/eventService.js'
+import { invalidateSourceCache } from '../../services/eventStorm.js'
 import { DEFAULT_WEBHOOK_RATE_LIMIT_PER_MINUTE, rateLimitOf, validateRateLimitPerMinute } from '../../lib/webhookRateLimit.js'
 
 /** Prima riga di una query scopata per tenant: assente = risorsa inesistente o di un altro tenant. */
@@ -166,12 +167,15 @@ async function updateInboundWebhook(_: unknown, args: { id: string; input: Props
       params['connectorKind'] = connectorKind
     }
     const rows = await runQuery<{ props: Props }>(s, `MATCH (w:InboundWebhook {id: $id, tenant_id: $t}) SET ${sets.join(', ')} RETURN properties(w) AS props`, params)
+    // La sorgente è in cache (10 s) nei servizi dell'Event Management: ogni scrittura la invalida.
+    invalidateSourceCache(ctx.tenantId, args.id)
     return mapInbound(firstRow(rows, 'InboundWebhook').props)
   }, true)
 }
 
 async function deleteInboundWebhook(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   await withSession(async (s) => { await runQuery(s, `MATCH (w:InboundWebhook {id: $id, tenant_id: $t}) DETACH DELETE w`, { id: args.id, t: ctx.tenantId }) }, true)
+  invalidateSourceCache(ctx.tenantId, args.id)
   return true
 }
 
@@ -181,6 +185,7 @@ async function regenerateWebhookToken(_: unknown, args: { id: string }, ctx: Gra
     const rows = await runQuery<{ props: Props }>(s, `
       MATCH (w:InboundWebhook {id: $id, tenant_id: $t}) SET w.secret = $secret, w.updated_at = $now RETURN properties(w) AS props
     `, { id: args.id, t: ctx.tenantId, secret: hash(token), now: new Date().toISOString() })
+    invalidateSourceCache(ctx.tenantId, args.id)
     return { ...mapInbound(firstRow(rows, 'InboundWebhook').props), token }
   }, true)
 }

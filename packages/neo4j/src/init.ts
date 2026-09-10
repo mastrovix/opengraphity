@@ -309,6 +309,15 @@ const INDEXES: SchemaStatement[] = [
   // rivalutazioni per stato di correlazione (eventCorrelation.ts: delayed/suppressed).
   { label: 'Event(tenant_id, source_id)', cypher: 'CREATE INDEX event_tenant_source IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.source_id)' },
   { label: 'Event(tenant_id, correlation)', cypher: 'CREATE INDEX event_tenant_correlation IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.correlation)' },
+  // Event Management (revisione, ondata 3 — prestazioni): la vista "tutti gli
+  // stati" della console ordina per last_seen_at senza filtro di stato (il
+  // composito sopra copre l'ordinamento solo con status in uguaglianza);
+  // conservazione (purge_events) e contatore resolved24h leggono per resolved_at;
+  // la ricerca della console per titolo/risorsa passa dal full-text
+  // (CONTAINS non usa gli indici range; query in resolvers/events.ts#eventSearchLucene).
+  { label: 'Event(tenant_id, last_seen_at)', cypher: 'CREATE INDEX event_tenant_last_seen IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.last_seen_at)' },
+  { label: 'Event(tenant_id, resolved_at)', cypher: 'CREATE INDEX event_tenant_resolved IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.resolved_at)' },
+  { label: 'event_search (fulltext)', cypher: 'CREATE FULLTEXT INDEX event_search IF NOT EXISTS FOR (n:Event) ON EACH [n.title, n.resource]' },
   // Riconoscimento del CI per nome negli allarmi (eventService.ts#matchCI):
   // `name_key` = toLower(name), scritto da chi crea/rinomina il CI
   // (apps/api/src/lib/ciNameKey.ts) e backfillato dalla migrazione

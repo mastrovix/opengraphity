@@ -1,4 +1,4 @@
-/** Event Management (GET_EVENTS / GET_EVENT) — unica definizione per lista, dettaglio e azioni. */
+/** Event Management (GET_EVENTS / GET_EVENT): `EventRow` per le liste, `MonitoringEvent` (completo) per dettaglio e mutation. */
 
 export type EventStatus   = 'firing' | 'resolved' | 'suppressed' | 'flapping'
 export type EventSeverity = 'info' | 'warning' | 'critical'
@@ -60,24 +60,23 @@ export interface ConfigurationItemRef {
   health: CIHealth | null
 }
 
-export interface MonitoringEvent {
+/**
+ * Evento come lo vedono le LISTE (fragment `EventRowFields`): console,
+ * allarmi di incident/change, ultimi eventi del CI. Solo i campi mostrati in
+ * riga o necessari alle azioni per riga: niente descrizione, etichette,
+ * impronta e altri campi pesanti, che restano al dettaglio.
+ */
+export interface EventRow {
   id:             string
-  fingerprint:    string
-  externalId:     string | null
   status:         EventStatus
   severity:       EventSeverity
   title:          string
-  description:    string | null
   resource:       string
   resourceKind:   string
-  /** Etichette della sorgente, JSON serializzato (sempre presente, almeno "{}"); un evento di prova ha sample = "true". */
-  labels:         string
   count:          number
-  firstSeenAt:    string
   lastSeenAt:     string
-  resolvedAt:     string | null
+  /** Serve a "Prendi in carico" nella riga (nascosto se già presa). */
   acknowledgedAt: string | null
-  acknowledgedBy: { id: string; name: string } | null
   /** Riferimento leggero alla sorgente (`MonitoringSourceRef`): la configurazione completa è `MonitoringSource`, solo admin. */
   source:         Pick<MonitoringSourceRef, 'id' | 'name' | 'connectorKind'> | null
   ci:             ConfigurationItemRef | null
@@ -91,6 +90,28 @@ export interface MonitoringEvent {
   flappingSince:  string | null
   /** Passaggi attivo/risolto nelle ultime 24 ore. */
   transitions24h: number
+}
+
+/**
+ * Campi scalari di `EventRow`: il FilterBuilder della console (applicato
+ * lato client alla pagina corrente) offre solo questi, perché una regola su
+ * un campo che la riga non porta non potrebbe essere valutata.
+ */
+export const EVENT_ROW_SCALAR_FIELDS: ReadonlySet<string> = new Set<keyof EventRow>([
+  'id', 'status', 'severity', 'title', 'resource', 'resourceKind', 'count', 'lastSeenAt', 'acknowledgedAt',
+  'correlation', 'correlationAt', 'flappingSince', 'transitions24h',
+])
+
+/** Evento completo (fragment `EventFields`): dettaglio e risultati delle mutation. */
+export interface MonitoringEvent extends EventRow {
+  fingerprint:    string
+  externalId:     string | null
+  description:    string | null
+  /** Etichette della sorgente, JSON serializzato (sempre presente, almeno "{}"); un evento di prova ha sample = "true". */
+  labels:         string
+  firstSeenAt:    string
+  resolvedAt:     string | null
+  acknowledgedBy: { id: string; name: string } | null
 }
 
 /** Contatori della console (un riquadro cliccabile per chiave). */

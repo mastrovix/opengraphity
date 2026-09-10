@@ -331,17 +331,27 @@ dal webhook in ingresso (`POST /api/webhooks/inbound/:hookId`, vedi
 `API.md`), diventano nodi `Event` deduplicati per impronta, aggiornano la
 **salute** dei CI (`ci.health`: operational/degraded/down — separata dal ciclo
 di vita `ci.status`) e vengono correlati in incident. Codice:
-`apps/api/src/services/eventService.ts` (normalizzazione, deduplica, salute),
-`eventCorrelation.ts` (pipeline), `eventStorm.ts` (tempeste),
-`eventRetention.ts` (conservazione), resolver `graphql/resolvers/events.ts`.
+`apps/api/src/services/events/` per responsabilità — `normalize.ts`
+(payload dei connettori), `transitions.ts` (stato dell'evento e MERGE
+dell'ingest), `ingest.ts` (orchestratore), `pipeline.ts` (solo l'ordine dei
+passi), `suppression.ts`, `flapping.ts`, `grouping.ts`, `autoResolve.ts`,
+`storm.ts` (tempeste), `passes.ts` (fine finestra e passate periodiche),
+`gauges.ts`, `ciHealth.ts`, `policy.ts`, `sourceCache.ts` — con le facciate
+storiche `services/eventService.ts`, `eventCorrelation.ts`, `eventStorm.ts`
+che ri-esportano tutto; `eventRetention.ts` (conservazione), resolver
+`graphql/resolvers/events.ts`. Per evento l'ingest fa **uno** statement
+Neo4j (MERGE con transizione di stato, collegamento alla sorgente,
+riconoscimento e aggancio del CI) più la pipeline, che legge la policy e la
+sorgente dalle cache in memoria (vedi *Cache in memoria*).
 
 ### Code BullMQ
 
 | Coda | Job | Cosa fa |
 |---|---|---|
 | `events-ingest` (concurrency 4) | `ingest` | uno per allarme normalizzato; job id `ev-<tenant>-<impronta>-<ms>` (una ri-consegna dello stesso batch non raddoppia i conteggi); 3 tentativi con backoff. Esegue `ingestEvent`: MERGE per impronta, aggancio al CI (alias → nome), pipeline di correlazione, eventi di dominio |
-| `events-correlate` (concurrency 2) | `correlate` | ritardato: con `open_delay_seconds > 0` l'apertura dell'incident aspetta la scadenza; se nel frattempo l'allarme è rientrato non apre nulla |
-| | `reevaluate-windows` | ripetuto ogni 5 minuti, tre passate indipendenti: (1) eventi `suppressed` la cui finestra di change è chiusa → tornano firing e vengono correlati; (2) eventi `flapping` senza passaggi da `flap_stable_minutes` → stabilizzati; (3) sorgenti in tempesta raffreddate che non ricevono più nulla → tempesta chiusa. Una passata fallita non ferma le altre; il job fallisce alla fine con tutti i motivi |
+| `events-correlate` (concurrency 2) | `correlate` | ritardato: con `open_delay_seconds > 0` l'apertura dell'incident aspetta la scadenza; se nel frattempo l'allarme è rientrato non apre nulla. Misura il proprio ritardo dalla scadenza (`event_correlate_job_lag_seconds`) |
+| | `reevaluate-change-window` | accodato dalle mutation della change quando esce dai passi di finestra con allarmi silenziati (e da `deleteChange`): rivaluta quegli eventi fuori dalla mutation |
+| `events-maintenance` (concurrency 1, lock 10 min) | `events-maintenance` | ripetuto ogni 5 minuti, cinque passate paginate e indipendenti: (1) `closed_windows` — eventi `suppressed` la cui finestra di change è chiusa → tornano firing e vengono correlati; (2) `pending` — eventi firing rimasti `pending`/`none` con scadenza passata → ripresi; (3) `flapping` — eventi senza passaggi da `flap_stable_minutes` → stabilizzati; (4) `storms` — sorgenti in tempesta raffreddate che non ricevono più nulla → tempesta chiusa; (5) `gauges` — riallinea `events_overdue_delayed` e `events_firing_uncorrelated`. Una passata fallita non ferma le altre; il job fallisce alla fine con tutti i motivi; ogni passata è contata e misurata (`event_pass_total{pass,result}`, `event_pass_duration_seconds{pass}`) |
 | `maintenance` | `purge_events` | ogni giorno alle 03:30: conservazione (vedi sotto) |
 
 Il webhook risponde **202** appena i job sono accodati: se Redis è giù risponde
@@ -396,9 +406,9 @@ canali senza che una migrazione le riscriva):
 
 | Evento di dominio | Quando | Predefinito |
 |---|---|---|
-| `event.received` | allarme nuovo o ripetuto (non durante soppressione, sfarfallio o tempesta) | in_app, warning |
-| `event.resolved` | allarme rientrato | in_app, success |
-| `event.orphan` | allarme senza CI riconosciuto | in_app, warning |
+| `event.received` | allarme **nuovo** o **nuovo ciclo** (resolved → firing); mai una ripetizione (Alertmanager `repeat_interval`, Zabbix); non durante soppressione, sfarfallio o tempesta | in_app, warning — **disattivata** nei tenant creati dopo la revisione (attivabile da *Notifiche → Regole*); nei tenant esistenti resta com'era |
+| `event.resolved` | allarme rientrato: solo il payload che chiude il ciclo, non le ripetizioni di `resolved` | in_app, success |
+| `event.orphan` | allarme senza CI riconosciuto, con la stessa regola di `event.received`/`resolved` (una volta per ciclo) | in_app, warning |
 | `ci.health_changed` | la salute derivata di un CI cambia | in_app, warning |
 | `event.suppressed` | allarme silenziato da una change in finestra (una volta per finestra) | in_app, info |
 | `event.correlated` | incident aperto / agganciato / riaperto / risolto automaticamente | in_app, warning |
@@ -410,6 +420,32 @@ canali senza che una migrazione le riscriva):
 Durante una tempesta **non** vengono pubblicati `event.received`/`event.orphan`
 per i singoli allarmi (sarebbero centinaia al minuto): l'avviso è
 `event.storm_started`. Anche gli outbound webhook seguono gli stessi tipi.
+
+Dieta di rumore (revisione, 3.3): una ripetizione di un allarme già agganciato
+allo stesso incident non produce `event.correlated`, audit né commento in
+timeline; la chiusura automatica lascia **un** commento (con il cammino
+percorso, es. *passando per Assegnato, In lavorazione*) e i passi intermedi
+restano nella storia del workflow. Il seed di `event.received` è `enabled:
+false` solo ON CREATE (MERGE per `tenant_id + event_type`): la migrazione
+1020 sui tenant esistenti non tocca nulla, i tenant nuovi (onboarding) nascono
+con la regola spenta. Per gli eventi di dominio innescati da una change
+eliminata a mano (`deleteChange` → rivalutazione degli allarmi silenziati)
+l'`actor_id` è l'utente che ha eliminato la change, mentre incident, commenti
+e audit restano di `monitoring` (è la correlazione automatica ad agire).
+
+### Cache in memoria
+
+Per processo, senza Redis (come le altre cache dell'API): con più repliche
+ogni replica ha la sua, e vale il TTL.
+
+| Cosa | TTL | Invalidata da | Cosa può essere stantio |
+|---|---|---|---|
+| `Tenant.event_policy` (`lib/eventPolicy.ts`) | 30 s | `updateEventPolicy` (stesso processo) | un ingest su un'altra replica usa la policy precedente per al più 30 s |
+| `InboundWebhook` (`services/events/sourceCache.ts`) | 10 s | ogni scrittura sulla sorgente fatta dai servizi (inizio/fine tempesta, marcatore del minuto, incident di tempesta, `last_error` dal worker) e dalle mutation `updateInboundWebhook`/`deleteInboundWebhook`/`regenerateWebhookToken` | solo lo stato di tempesta letto **fuori** dal lock: le decisioni (avvio, apertura/sostituzione dell'incident) rileggono sempre dal grafo sotto lock, e la fine per raffreddamento è una SET condizionale (`storm_since = $since`): al più un ritardo di 10 s, mai una doppia chiusura o un secondo `event.storm_ended` |
+
+`last_error`, `secret`, `enabled` **non** passano dalla cache: il webhook in
+ingresso legge la sorgente dal grafo a ogni richiesta, l'ingest la legge nel
+MERGE.
 
 ### Policy per tenant
 
@@ -504,9 +540,11 @@ Il job `purge_events` (coda `maintenance`, ogni giorno alle 03:30) elimina, per
 ogni tenant, gli `Event` in stato **`resolved`** con `resolved_at` più vecchio
 di `retention_days` della policy del tenant, con le loro relazioni
 (`RAISED_ON`, `FROM_SOURCE`, `CORRELATED_INTO`, `SUPPRESSED_BY`), in batch da
-1000 (`CALL { … } IN TRANSACTIONS`). Gli eventi `firing`, `suppressed` e
-`flapping` non vengono **mai** eliminati, qualunque sia la loro età.
-`retention_days = 0` = nessuna eliminazione. Log per tenant
+1000 (`CALL { … } IN TRANSACTIONS`, sessione auto-commit: `runQuery` usa
+`session.run`, pinnato dal test `eventRetentionAutocommit.test.ts`); il
+numero riportato è il `count(*)` della **stessa** query che cancella. Gli
+eventi `firing`, `suppressed` e `flapping` non vengono **mai** eliminati,
+qualunque sia la loro età. `retention_days = 0` = nessuna eliminazione. Log per tenant
 (`Resolved events purged` con `retentionDays`, `cutoff`, `purged`), metrica
 `events_purged_total`. Un tenant senza policy fa fallire il job **dopo** aver
 purgato gli altri. Per lanciarla a mano: `purgeResolvedEvents()` in
@@ -531,13 +569,27 @@ cruscotto Grafana `infra/grafana/dashboards/opengraphity-api.json`):
 | `incidents_reopened_total` | counter | riaperture per allarme tornato |
 | `events_purged_total` | counter | eventi eliminati dalla conservazione |
 | `event_storms_active` | gauge | sorgenti in tempesta (riallineato a ogni inizio/fine e dal job periodico) |
+| `events_correlated_total{outcome}` | counter | ogni passata della pipeline con l'esito finale: `opened`, `attached`, `reopened`, `skipped_severity`, `skipped_orphan`, `delayed`, `none`, `suppressed`, `flapping`, `storm`, `storm_no_ci`, `auto_resolved`, `auto_resolve_skipped`, `error` (la pipeline ha lanciato: il job ritenta) |
+| `event_pipeline_duration_seconds{mode}` | histogram | durata della pipeline per evento (`ingest`, `reevaluate`, `resume`) |
+| `event_pass_total{pass,result}` | counter | passate del job `events-maintenance` (`closed_windows`, `pending`, `flapping`, `storms`, `gauges`) per esito (`ok`, `failed`) |
+| `event_pass_duration_seconds{pass}` | histogram | durata di ogni passata (una passata oltre i minuti = 2.1: troppi eventi in stato di attesa) |
+| `events_overdue_delayed` | gauge | eventi `delayed` con `correlation_due_at` scaduta da più di 5 minuti: il job `correlate` non è arrivato (coda ferma o job id già usato) — riallineato dal job periodico |
+| `events_firing_uncorrelated` | gauge | eventi firing con correlazione `none`/`pending` da più di 15 minuti: pipeline fallita a ogni tentativo e mai ripresa — riallineato dal job periodico |
+| `event_correlate_job_lag_seconds` | histogram | ritardo del job `correlate` rispetto alla scadenza del ritardo (processedAt − dueAt) |
 
 Pannelli: *Eventi/s per esito* (ricevuti, deduplicati, soppressi, sfarfallio),
 *Incident automatici al minuto* (aperti/risolti/riaperti), *Tempeste di allarmi
 attive*. Allarmi consigliati: `event_storms_active >= 1` per più di 10 minuti;
 `rate(events_orphan_total[15m]) / rate(events_received_total[15m]) > 0.2`
 (alias/nomi dei CI non allineati con il monitoraggio);
-`bullmq_queue_depth{queue="events-ingest",status="failed"} > 0`.
+`bullmq_queue_depth{queue="events-ingest",status="failed"} > 0`;
+`events_overdue_delayed > 0` o `events_firing_uncorrelated > 0` per più di 15
+minuti (allarmi attivi senza incident: guardare i job falliti e il log
+`re-evaluation failed`); `rate(events_correlated_total{outcome="error"}[15m]) > 0`;
+`histogram_quantile(0.95, rate(event_correlate_job_lag_seconds_bucket[15m])) > 60`
+(coda `events-correlate` in ritardo). I log della pipeline portano
+`fingerprint` (ritrova l'allarme sullo strumento) e `jobId` (ritrova il job in
+coda) oltre a tenant, evento, incident, change e sorgente.
 
 ### Provare una sorgente
 
@@ -594,10 +646,11 @@ ritenta), 500 = Redis giù (lo strumento ritenta).
 (agganciato all'incident di tempesta). `reevaluateEvent` rilancia la pipeline
 per un evento soppresso, in attesa o orfano appena collegato.
 
-**Evento resta `suppressed` a finestra chiusa**: il job `reevaluate-windows`
-gira ogni 5 minuti; se la change è uscita dal passo `deployment`/`scheduled`
-da più tempo, guardare i job falliti della coda `events-correlate`
-(`bullmq_queue_depth{status="failed"}`) e il log `Suppressed event
+**Evento resta `suppressed` a finestra chiusa**: la passata `closed_windows`
+del job `events-maintenance` gira ogni 5 minuti; se la change è uscita dal
+passo `deployment`/`scheduled` da più tempo, guardare i job falliti delle code
+`events-correlate`/`events-maintenance` (`bullmq_queue_depth{status="failed"}`,
+`event_pass_total{result="failed"}`) e il log `Suppressed event
 re-evaluation failed`; `reevaluateEvent` dal dettaglio lo sblocca subito.
 
 **Salute del CI che non cambia**: `health_source = manual` (forzatura

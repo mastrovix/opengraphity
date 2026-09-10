@@ -109,11 +109,18 @@ describe('initSchema — clean database', () => {
       'CREATE INDEX event_tenant_source IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.source_id)',
       'CREATE INDEX event_tenant_correlation IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.correlation)',
       'CREATE INDEX ci_tenant_name_key IF NOT EXISTS FOR (n:ConfigurationItem) ON (n.tenant_id, n.name_key)',
+      // Event Management (revisione, ondata 3 — prestazioni): vista "tutti gli stati", conservazione/resolved24h, ricerca full-text della console
+      'CREATE INDEX event_tenant_last_seen IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.last_seen_at)',
+      'CREATE INDEX event_tenant_resolved IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.resolved_at)',
+      'CREATE FULLTEXT INDEX event_search IF NOT EXISTS FOR (n:Event) ON EACH [n.title, n.resource]',
       'CREATE INDEX notification_rule_tenant_event IF NOT EXISTS FOR (n:NotificationRule) ON (n.tenant_id, n.event_type)',
     ]) {
       expect(writes).toContain(expected)
     }
     expect(writes.some(c => c.startsWith('CREATE FULLTEXT INDEX global_search IF NOT EXISTS'))).toBe(true)
+    // ogni indice è dichiarato una volta sola (init.ts è la sorgente unica: niente doppioni fra ondate)
+    const names = writes.filter(c => c.startsWith('CREATE INDEX') || c.startsWith('CREATE FULLTEXT INDEX')).map(c => c.split(' IF NOT EXISTS')[0])
+    expect(new Set(names).size).toBe(names.length)
     // every schema statement is idempotent
     expect(writes.filter(c => c.startsWith('CREATE ')).every(c => c.includes('IF NOT EXISTS'))).toBe(true)
     expect(writes.filter(c => c.startsWith('DROP INDEX')).every(c => c.includes('IF EXISTS'))).toBe(true)

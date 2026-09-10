@@ -29,17 +29,17 @@ vi.mock('../../lib/logger.js', () => {
   return { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => child } }
 })
 vi.mock('../incidentService.js', () => ({ createIncident: vi.fn(), addIncidentComment: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../eventService.js', () => ({ getEventPolicy: vi.fn() }))
+vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn() }))
 vi.mock('../../middleware/metrics.js', () => ({ eventStormsActive: { set: vi.fn() }, incidentsAutoOpenedTotal: { inc: vi.fn() } }))
 
 const storm = await import('../eventStorm.js')
-const { trackSourceStorm, getStormState, endCooledStorms, listStormSources, countNewEvent, currentRate, replaceClosedStormIncident, stormCounterKey, stormLockKey, stormCooledDown, stormStateOf, minuteStartOf, STORM_COUNTER_TTL_SECONDS, STORM_LOCK_TTL_SECONDS, STORM_LOCK_WAIT_MS, STORM_LOCK_POLL_MS } = storm
+const { trackSourceStorm, getStormState, endCooledStorms, listStormSources, countNewEvent, currentRate, replaceClosedStormIncident, stormCounterKey, stormLockKey, stormCooledDown, stormStateOf, minuteStartOf, invalidateSourceCache, loadSource, STORM_COUNTER_TTL_SECONDS, STORM_LOCK_TTL_SECONDS, STORM_LOCK_WAIT_MS, STORM_LOCK_POLL_MS, SOURCE_CACHE_TTL_MS } = storm
 const { PAGE_SIZE } = await import('../../lib/pagedPass.js')
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { publishEvent } = await import('../../lib/publishEvent.js')
 const { audit } = await import('../../lib/audit.js')
 const incidentService = await import('../incidentService.js')
-const { getEventPolicy } = await import('../eventService.js')
+const { getEventPolicy } = await import('../events/policy.js')
 const metrics = await import('../../middleware/metrics.js')
 const { DEFAULT_EVENT_POLICY } = await import('../../lib/eventPolicy.js')
 
@@ -83,7 +83,7 @@ function baseRules(src: Record<string, unknown> | null = source()): Array<[RegEx
   return [
     [Q.source, src ? { props: src } : null],
     [Q.start, { id: 'hook-1' }], [Q.ciNames, [{ name: 'db-01' }, { name: 'web-02' }]], [Q.markInc, (p?: Record<string, unknown>) => ({ id: p!['incidentId'] })], [Q.setInc, { id: 'hook-1' }], [Q.markOver, null], [Q.detachInc, null],
-    [Q.countEv, { n: 340 }], [Q.end, null], [Q.gauge, { n: 1 }],
+    [Q.countEv, { n: 340 }], [Q.end, { id: 'hook-1' }], [Q.gauge, { n: 1 }],
   ]
 }
 
@@ -92,6 +92,7 @@ const track = (over: Partial<Parameters<typeof trackSourceStorm>[0]> = {}) =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  invalidateSourceCache()   // la cache della sorgente (10 s) è per processo: ogni test parte pulito
   vi.mocked(getSession).mockReturnValue(session as never)
   vi.mocked(getEventPolicy).mockResolvedValue(policy())
   vi.mocked(incidentService.createIncident).mockResolvedValue({ id: 'inc-storm', number: 'INC00000042' } as never)
@@ -147,9 +148,11 @@ describe('trackSourceStorm', () => {
     onCypher(baseRules())
     await expect(track({ created: false })).resolves.toEqual({ active: false, since: null, incidentId: null, sourceName: 'Zabbix prod' })
     expect(redis.incr).not.toHaveBeenCalled()
+    invalidateSourceCache()   // sorgente diversa nello stesso test: via la voce in cache
     onCypher(baseRules(null))
     await expect(track()).resolves.toMatchObject({ active: false, sourceName: 'hook-1' })
     expect(redis.incr).not.toHaveBeenCalled()
+    invalidateSourceCache()
     onCypher(baseRules())
     redis.incr.mockResolvedValue(999)
     await expect(track({ policy: policy({ storm_threshold_per_minute: 0 }) })).resolves.toMatchObject({ active: false })
@@ -389,7 +392,7 @@ describe('atomicità: lock Redis per (tenant, sorgente) + SET condizionali', () 
     expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-dup', { tenantId: 't1', userId: 'monitoring' }, expect.stringContaining('inc-winner'))
     expect(metrics.incidentsAutoOpenedTotal.inc).not.toHaveBeenCalled()
 
-    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); redis.set.mockResolvedValue('OK'); redis.eval.mockResolvedValue(1)
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); redis.set.mockResolvedValue('OK'); redis.eval.mockResolvedValue(1); invalidateSourceCache()
     onCypher([...baseRules(source({ storm_since: NOW, storm_last_over_at: NOW })), [Q.setInc, null]])
     redis.incr.mockResolvedValue(51)
     vi.mocked(incidentService.createIncident).mockResolvedValue({ id: 'inc-dup' } as never)
@@ -491,5 +494,64 @@ describe('listStormSources', () => {
     const q = callMatching(Q.list)!
     expect(q.cypher).toContain('OPTIONAL MATCH (i:Incident {id: w.storm_incident_id, tenant_id: $tenantId})')
     expect(q.params).toEqual({ tenantId: 't1' })
+  })
+})
+
+describe('cache della sorgente (sourceCache.ts, TTL 10 s) e fine condizionale', () => {
+  it('trackSourceStorm e getStormState leggono la sorgente dalla cache entro il TTL (una sola query); allo scadere si rilegge; invalidateSourceCache la azzera', async () => {
+    vi.useFakeTimers({ now: Date.parse(NOW) })
+    onCypher(baseRules(source(STORMING)))
+    redis.incr.mockResolvedValue(3)
+    await track()
+    await track()
+    await getStormState('t1', 'hook-1')
+    expect(calls().filter((c) => Q.source.test(c.cypher))).toHaveLength(1)
+    expect(SOURCE_CACHE_TTL_MS).toBe(10_000)
+    vi.setSystemTime(Date.parse(NOW) + SOURCE_CACHE_TTL_MS + 1)
+    await getStormState('t1', 'hook-1')
+    expect(calls().filter((c) => Q.source.test(c.cypher))).toHaveLength(2)
+    invalidateSourceCache('t1', 'hook-1')
+    await getStormState('t1', 'hook-1')
+    expect(calls().filter((c) => Q.source.test(c.cypher))).toHaveLength(3)
+    // chi riceve la copia non altera la voce in cache
+    const a = (await loadSource('t1', 'hook-1'))!
+    a['name'] = 'mutato'
+    expect((await loadSource('t1', 'hook-1'))!['name']).toBe('Zabbix prod')
+  })
+
+  it('sotto lock la sorgente è SEMPRE riletta dal grafo (fresh): la cache stantia "nessuna tempesta" non fa avviare una seconda tempesta', async () => {
+    inMemoryLock()
+    let reads = 0
+    onCypher([...baseRules(), [Q.source, () => ({ props: source(reads++ === 0 ? {} : STORMING) })]])
+    redis.incr.mockResolvedValue(50)
+    // prima lettura (cache): nessuna tempesta → si entra nel lock → rilettura fresca: STORMING → nessun avvio
+    await expect(track()).resolves.toEqual({ active: true, since: STORMING.storm_since, incidentId: 'inc-storm', sourceName: 'Zabbix prod' })
+    expect(callMatching(Q.start)).toBeUndefined()
+    expect(incidentService.createIncident).not.toHaveBeenCalled()
+    expect(publishEvent).not.toHaveBeenCalled()
+    expect(reads).toBe(2)
+  })
+
+  it('ogni scrittura sulla sorgente invalida la cache: dopo il marcatore del minuto la lettura successiva è fresca', async () => {
+    onCypher(baseRules(source(STORMING)))
+    redis.incr.mockResolvedValue(50)
+    await track()
+    expect(callMatching(Q.markOver)).toBeDefined()
+    await track()
+    expect(calls().filter((c) => Q.source.test(c.cypher))).toHaveLength(2)
+  })
+
+  it("fine tempesta condizionale (WHERE storm_since = $since): se un'altra replica l'ha già chiusa non si ripubblica storm_ended né si commenta; endCooledStorms non la conta", async () => {
+    onCypher([...baseRules(source({ ...STORMING, storm_since: minutesAgo(12), storm_last_over_at: minutesAgo(6) })), [Q.end, null], [Q.gauge, { n: 0 }]])
+    redis.incr.mockResolvedValue(2)
+    await expect(track()).resolves.toMatchObject({ active: false })
+    expect(callMatching(Q.end)!.cypher).toContain('WHERE w.storm_since = $since')
+    expect(publishEvent).not.toHaveBeenCalled()
+    expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); invalidateSourceCache()
+    onCypher([...baseRules(), [Q.allStorms, [{ props: source({ ...STORMING, storm_since: minutesAgo(20), storm_last_over_at: minutesAgo(7) }) }]], [Q.end, null], [Q.gauge, { n: 0 }]])
+    await expect(endCooledStorms(NOW)).resolves.toMatchObject({ evaluated: 1, ended: 0, active: 1, failed: 0 })
+    expect(publishEvent).not.toHaveBeenCalled()
   })
 })

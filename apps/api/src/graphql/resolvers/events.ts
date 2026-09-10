@@ -18,6 +18,15 @@
  * seconda linea. Revisione (ondata 2): guardie di stato su acknowledge/resolve/
  * createIncidentFromEvent (serializzata col lock del gruppo di correlazione),
  * alias mai ri-puntati in silenzio, `Event.source` come riferimento leggero.
+ *
+ * Revisione (ondata 3 — prestazioni): sorgente, incident e utente della presa
+ * in carico sono risolti nella STESSA query della riga (eventRowColumns) e i
+ * field resolver di Event sono cortocircuiti (P-1: la console faceva
+ * 1 + 1 + 50×3 query per pagina, ora 1); `events` calcola pagina e totale in
+ * una query e cerca sull'indice full-text `event_search` (P-4); `eventStats`
+ * legge per stato sull'indice (P-3); `ciHealthOverview` è una query con
+ * COUNT { } non moltiplicativi (P-2); le liste di Incident/Change sono
+ * paginate con un contatore separato (P-5).
  */
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
@@ -92,7 +101,15 @@ export function mapCIRef(row: CIRefRow) {
   }
 }
 
-export function mapEvent(props: Props, ci: CIRefRow) {
+/**
+ * Colonne risolte insieme alla riga (eventRowColumns): presenti (anche null)
+ * quando la riga viene da quel frammento, assenti quando l'evento è stato
+ * costruito altrove. I field resolver di Event distinguono i due casi:
+ * "chiave presente" = già risolto, niente query.
+ */
+export interface EventJoins { incident?: Props | null; source?: Props | null; acknowledgedBy?: Props | null }
+
+export function mapEvent(props: Props, ci: CIRefRow & EventJoins) {
   // `correlation` è non-null nel contratto: la migrazione 20260909_1030 lo
   // scrive sugli eventi esistenti e ingestEvent su quelli nuovi. Assente =
   // migrazione non eseguita → errore, non un valore inventato.
@@ -126,11 +143,15 @@ export function mapEvent(props: Props, ci: CIRefRow) {
     correlationAt:  toStrOrNull(props['correlation_at']),
     flappingSince:  toStrOrNull(props['flapping_since']),
     transitions24h: countTransitionsSince(transitionsOf(props), Date.now() - 24 * 3600 * 1000),
-    // risolti dai field resolver: acknowledgedBy, source, incident, suppressedBy
+    // suppressedBy resta un field resolver (loadChange); gli altri tre sono
+    // nella riga quando c'è la chiave (P-1), altrimenti li carica il field resolver.
     acknowledgedById:     toStrOrNull(props['acknowledged_by']),
     sourceId:             toStrOrNull(props['source_id']),
     suppressedByChangeId: toStrOrNull(props['suppressed_by_change_id']),
     ci:             mapCIRef(ci),
+    ...('incident'       in ci ? { incident:       ci.incident       ? mapIncident(ci.incident)       : null } : {}),
+    ...('source'         in ci ? { source:         ci.source         ? mapSourceRef(ci.source)        : null } : {}),
+    ...('acknowledgedBy' in ci ? { acknowledgedBy: ci.acknowledgedBy ? mapUser(ci.acknowledgedBy)    : null } : {}),
   }
 }
 
@@ -161,20 +182,47 @@ function mapAlias(props: Props, ci: CIRefRow) {
   }
 }
 
-/** OPTIONAL MATCH del CI + colonne per mapCIRef; `e` deve essere in scope. */
-const CI_REF = `
-  OPTIONAL MATCH (e)-[:RAISED_ON]->(ci:ConfigurationItem {tenant_id: $tenantId})
-  RETURN properties(e) AS props, ci.id AS ciId, ci.name AS ciName, ci.status AS ciStatus, ci.health AS ciHealth,
-         CASE WHEN ci IS NULL THEN null ELSE [l IN labels(ci) WHERE l <> 'ConfigurationItem'] END AS ciLabels`
+/** Colonne prodotte da eventRowColumns, nell'ordine del RETURN. */
+export const EVENT_ROW_KEYS = ['props', 'ciId', 'ciName', 'ciStatus', 'ciHealth', 'ciLabels', 'incident', 'source', 'acknowledgedBy'] as const
 
-type EventRow = { props: Props } & CIRefRow
+/**
+ * Le colonne di un evento per mapEvent, con `e` in scope: CI (RAISED_ON),
+ * incident più recente (CORRELATED_INTO), sorgente (solo i campi di
+ * MonitoringSourceRef: mai script, mappature o ultimo errore — A-2) e utente
+ * della presa in carico, tutti nella stessa query (P-1). Nessuna aggregazione
+ * né ORDER BY: l'incident più recente è scelto con `reduce` sulla list
+ * comprehension, così l'ordine delle righe in ingresso (la pagina già
+ * ordinata e tagliata) resta quello. Termina con un WITH: chi lo usa aggiunge
+ * `EVENT_ROW_RETURN` o un `collect`. `carry` = variabili da portare oltre.
+ */
+export function eventRowColumns(carry: readonly string[] = []): string {
+  const keep = ['e', ...carry].join(', ')
+  return `
+  OPTIONAL MATCH (e)-[:RAISED_ON]->(ci:ConfigurationItem {tenant_id: $tenantId})
+  WITH ${keep}, ci, [(e)-[:CORRELATED_INTO]->(inc:Incident {tenant_id: $tenantId}) | inc] AS incs
+  WITH ${keep}, ci, reduce(best = null, i IN incs | CASE WHEN best IS NULL OR i.created_at > best.created_at THEN i ELSE best END) AS inc
+  OPTIONAL MATCH (src:InboundWebhook {id: e.source_id, tenant_id: $tenantId})
+  OPTIONAL MATCH (ack:User {id: e.acknowledged_by, tenant_id: $tenantId})
+  WITH ${keep}, properties(e) AS props, ci.id AS ciId, ci.name AS ciName, ci.status AS ciStatus, ci.health AS ciHealth,
+       CASE WHEN ci IS NULL THEN null ELSE [l IN labels(ci) WHERE l <> 'ConfigurationItem'] END AS ciLabels,
+       CASE WHEN inc IS NULL THEN null ELSE properties(inc) END AS incident,
+       CASE WHEN src IS NULL THEN null ELSE {id: src.id, name: src.name, connector_kind: src.connector_kind, enabled: src.enabled} END AS source,
+       CASE WHEN ack IS NULL THEN null ELSE properties(ack) END AS acknowledgedBy`
+}
+
+export const EVENT_ROW_RETURN = `RETURN ${EVENT_ROW_KEYS.join(', ')}`
+/** La riga come mappa, per `collect` dentro un CALL { }. */
+const EVENT_ROW_MAP = `{${EVENT_ROW_KEYS.map((k) => `${k}: ${k}`).join(', ')}}`
+
+type EventRow = { props: Props } & CIRefRow & EventJoins
 
 async function loadEvent(id: string, tenantId: string): Promise<EventRow> {
   const session = getSession()
   try {
     const row = await runQueryOne<EventRow>(session, `
       MATCH (e:Event {id: $id, tenant_id: $tenantId})
-      ${CI_REF}
+      ${eventRowColumns()}
+      ${EVENT_ROW_RETURN}
     `, { id, tenantId })
     if (!row) throw new NotFoundError('Event', id)
     return row
@@ -197,12 +245,34 @@ interface EventFilter {
   suppressedByChangeId?: string | null
 }
 
+/**
+ * Query Lucene per l'indice full-text `event_search` (Event.title, resource):
+ * ogni run di lettere/cifre del testo diventa `*run*` (minuscolo), i run in AND.
+ * Perché la wildcard anche in testa e non il solo prefisso `run*`:
+ * l'analizzatore standard dell'indice tiene `example.local` come UN token
+ * (verificato su Neo4j 5.26: `local*` non trova `api-03.example.local`,
+ * `*local*` sì) e la console cercava per sottostringa (CONTAINS): `*run*`
+ * conserva quella semantica per token e resta sull'indice (scansione del
+ * dizionario dei termini, non dei nodi). I run sono solo lettere e cifre:
+ * nessun carattere speciale Lucene (`+ - && || ! ( ) { } [ ] ^ " ~ * ? : \\ /`)
+ * arriva al parser, quindi niente iniezione di sintassi e niente escape da
+ * mantenere. Senza alcun run (es. "---") → null: nessun token può combaciare.
+ */
+export function eventSearchLucene(raw: string): string | null {
+  const runs = raw.toLowerCase().match(/[\p{L}\p{N}]+/gu)
+  if (!runs?.length) return null
+  return runs.map((r) => `*${r}*`).join(' AND ')
+}
+
+export const EMPTY_EVENT_PAGE = Object.freeze({ items: [] as ReturnType<typeof mapEvent>[], total: 0 })
+
 async function events(_: unknown, args: { filter?: EventFilter | null; limit?: number | null; offset?: number | null }, ctx: GraphQLContext) {
   const f = args.filter ?? {}
   const limit  = Math.min(Math.max(args.limit ?? 50, 1), 500)
   const offset = Math.max(args.offset ?? 0, 0)
   const conditions: string[] = ['e.tenant_id = $tenantId']
   const params: Props = { tenantId: ctx.tenantId, limit, offset }
+  let lucene: string | null = null
 
   if (f.status?.length) {
     for (const s of f.status) if (!(EVENT_STATUSES as readonly string[]).includes(s)) throw new ValidationError(`Invalid status filter ${JSON.stringify(s)}`)
@@ -225,8 +295,12 @@ async function events(_: unknown, args: { filter?: EventFilter | null; limit?: n
   if (f.orphan === true)  conditions.push('NOT EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem {tenant_id: $tenantId}) }')
   if (f.orphan === false) conditions.push('EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem {tenant_id: $tenantId}) }')
   if (f.search?.trim()) {
-    conditions.push('(toLower(e.title) CONTAINS $search OR toLower(e.resource) CONTAINS $search)')
-    params['search'] = f.search.trim().toLowerCase()
+    // P-4: sull'indice full-text, non CONTAINS (scansione di tutti gli eventi
+    // del tenant). Testo senza lettere né cifre: nessun token può combaciare →
+    // pagina vuota senza query (è la risposta esatta, non un fallback).
+    lucene = eventSearchLucene(f.search)
+    if (lucene === null) return EMPTY_EVENT_PAGE
+    params['search'] = lucene
   }
   if (f.since) {
     // `last_seen_at` è ISO e il confronto in Cypher è lessicografico: una data
@@ -237,22 +311,35 @@ async function events(_: unknown, args: { filter?: EventFilter | null; limit?: n
     conditions.push('e.last_seen_at >= $since'); params['since'] = new Date(ms).toISOString()
   }
   const where = 'WHERE ' + conditions.join(' AND ')
+  // Con `search` la sorgente delle righe è l'indice full-text (P-4), poi lo
+  // stesso WHERE (tenant per primo); senza, il MATCH sull'indice
+  // (tenant_id, status, last_seen_at) o (tenant_id, last_seen_at).
+  const source = lucene === null
+    ? `MATCH (e:Event)\n      ${where}`
+    : `CALL db.index.fulltext.queryNodes('event_search', $search) YIELD node AS e\n      ${where}`
 
   const session = getSession()
   try {
-    const rows = await runQuery<EventRow>(session, `
-      MATCH (e:Event)
-      ${where}
-      WITH e ORDER BY e.last_seen_at DESC
-      SKIP toInteger($offset) LIMIT toInteger($limit)
-      ${CI_REF}
+    // Una sola query (P-1, P-4): il totale in un CALL { } senza importazioni
+    // (eseguito una volta), la pagina ordinata e tagliata PRIMA di risolvere
+    // CI/incident/sorgente/utente, raccolta con collect così la riga di
+    // risposta c'è anche a pagina vuota (un CALL senza righe la eliminerebbe).
+    const row = await runQueryOne<{ total: unknown; items: EventRow[] }>(session, `
+      CALL {
+        ${source}
+        RETURN count(e) AS total
+      }
+      CALL {
+        ${source}
+        WITH e ORDER BY e.last_seen_at DESC
+        SKIP toInteger($offset) LIMIT toInteger($limit)
+        ${eventRowColumns()}
+        RETURN collect(${EVENT_ROW_MAP}) AS items
+      }
+      RETURN total, items
     `, params)
-    const count = await runQueryOne<{ total: unknown }>(session, `
-      MATCH (e:Event)
-      ${where}
-      RETURN count(e) AS total
-    `, params)
-    return { items: rows.map((r) => mapEvent(r.props, r)), total: toNumber(count?.total) }
+    if (!row) throw new Error('events: the page query returned no row (count/collect must always yield one)')
+    return { items: row.items.map((r) => mapEvent(r.props, r)), total: toNumber(row.total) }
   } finally {
     await session.close()
   }
@@ -263,7 +350,8 @@ async function event(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   try {
     const row = await runQueryOne<EventRow>(session, `
       MATCH (e:Event {id: $id, tenant_id: $tenantId})
-      ${CI_REF}
+      ${eventRowColumns()}
+      ${EVENT_ROW_RETURN}
     `, { id: args.id, tenantId: ctx.tenantId })
     return row ? mapEvent(row.props, row) : null
   } finally {
@@ -271,24 +359,43 @@ async function event(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   }
 }
 
+/**
+ * Contatori per stato, ciascuno sull'indice (tenant_id, status, last_seen_at)
+ * (P-3): prima era una scansione di TUTTI gli eventi conservati (con
+ * retention 90 giorni quasi tutti risolti) con un OPTIONAL MATCH del CI per
+ * ognuno, solo per contare gli orfani fra i firing. `orphan` si calcola solo
+ * sui firing con NOT EXISTS; i risolti sono limitati alle 24 ore
+ * (indice (tenant_id, resolved_at)).
+ */
 async function eventStats(_: unknown, __: unknown, ctx: GraphQLContext) {
   const session = getSession()
   try {
     const since24h = new Date(Date.now() - 24 * 3600 * 1000).toISOString()
     const row = await runQueryOne<Record<string, unknown>>(session, `
-      MATCH (e:Event {tenant_id: $tenantId})
-      OPTIONAL MATCH (e)-[:RAISED_ON]->(ci:ConfigurationItem {tenant_id: $tenantId})
-      WITH e, ci IS NOT NULL AS hasCi
-      RETURN
-        count(CASE WHEN e.status = 'firing' THEN 1 END) AS firing,
-        count(CASE WHEN e.status = 'firing' AND e.severity = 'critical' THEN 1 END) AS critical,
-        count(CASE WHEN e.status = 'firing' AND e.severity = 'warning'  THEN 1 END) AS warning,
-        count(CASE WHEN e.status = 'firing' AND NOT hasCi THEN 1 END) AS orphan,
-        count(CASE WHEN e.status = 'suppressed' THEN 1 END) AS suppressed,
-        count(CASE WHEN e.status = 'flapping'   THEN 1 END) AS flapping,
-        count(CASE WHEN e.status = 'resolved' AND e.resolved_at >= $since24h THEN 1 END) AS resolved24h
+      CALL {
+        MATCH (e:Event {tenant_id: $tenantId, status: 'firing'})
+        RETURN count(e) AS firing,
+               count(CASE WHEN e.severity = 'critical' THEN 1 END) AS critical,
+               count(CASE WHEN e.severity = 'warning'  THEN 1 END) AS warning,
+               count(CASE WHEN NOT EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem {tenant_id: $tenantId}) } THEN 1 END) AS orphan
+      }
+      CALL {
+        MATCH (e:Event {tenant_id: $tenantId, status: 'suppressed'})
+        RETURN count(e) AS suppressed
+      }
+      CALL {
+        MATCH (e:Event {tenant_id: $tenantId, status: 'flapping'})
+        RETURN count(e) AS flapping
+      }
+      CALL {
+        MATCH (e:Event {tenant_id: $tenantId, status: 'resolved'})
+        WHERE e.resolved_at >= $since24h
+        RETURN count(e) AS resolved24h
+      }
+      RETURN firing, critical, warning, orphan, suppressed, flapping, resolved24h
     `, { tenantId: ctx.tenantId, since24h })
-    const n = (k: string) => toNumber(row?.[k])
+    if (!row) throw new Error('eventStats: the counters query returned no row (count must always yield one)')
+    const n = (k: string) => toNumber(row[k])
     const stormSources = await listStormSources(ctx.tenantId)
     return { firing: n('firing'), critical: n('critical'), warning: n('warning'), orphan: n('orphan'), suppressed: n('suppressed'), flapping: n('flapping'), resolved24h: n('resolved24h'), stormSources }
   } finally {
@@ -428,6 +535,14 @@ function mapCIHealthRow(r: CIHealthOverviewRow) {
  * per numero di dipendenti (impatto) poi per nome. `dependents` conta i
  * DEPENDS_ON entranti da CI dello stesso tenant; `ownerTeam` è il Team
  * raggiunto da OWNED_BY (stessa relazione di CMDB/ciFieldResolvers).
+ *
+ * Una sola query (P-2), tre CALL { } senza importazioni: contatori, totale
+ * filtrato, pagina. Niente OPTIONAL MATCH in sequenza (prima erano tre:
+ * firing × dipendenti × team righe intermedie per CI, poi count DISTINCT):
+ * `dependents` è un COUNT { } (grado della relazione, serve all'ORDER BY
+ * quindi si calcola per ogni CI filtrato), `firingEvents` e `ownerTeam` si
+ * calcolano solo sulle righe della pagina, dopo SKIP/LIMIT. La pagina è un
+ * collect così la riga c'è anche quando è vuota.
  */
 async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | null; limit?: number | null; offset?: number | null }, ctx: GraphQLContext) {
   const f = args.filter ?? {}
@@ -448,39 +563,44 @@ async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | nu
 
   const session = getSession()
   try {
-    const counts = await runQueryOne<Record<string, unknown>>(session, `
-      MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
-      RETURN
-        count(CASE WHEN ci.health = 'down'        THEN 1 END) AS down,
-        count(CASE WHEN ci.health = 'degraded'    THEN 1 END) AS degraded,
-        count(CASE WHEN ci.health = 'operational' THEN 1 END) AS operational,
-        count(CASE WHEN ci.health IS NULL         THEN 1 END) AS unmonitored
-    `, { tenantId: ctx.tenantId })
-    const rows = await runQuery<CIHealthOverviewRow>(session, `
-      MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
-      ${where}
-      OPTIONAL MATCH (e:Event {tenant_id: $tenantId, status: 'firing'})-[:RAISED_ON]->(ci)
-      OPTIONAL MATCH (dep:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci)
-      OPTIONAL MATCH (ci)-[:OWNED_BY]->(team:Team {tenant_id: $tenantId})
-      WITH ci, count(DISTINCT e) AS firingEvents, count(DISTINCT dep) AS dependents, head(collect(DISTINCT team.name)) AS ownerTeam
-      RETURN ci.id AS id, ci.name AS name,
-             head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label,
-             ci.environment AS environment, ci.health AS health, ci.health_source AS healthSource,
-             ci.health_since AS healthSince, ci.last_event_at AS lastEventAt,
-             firingEvents, dependents, ownerTeam
-      ORDER BY ${CI_HEALTH_SEVERITY_ORDER}, dependents DESC, ci.name
-      SKIP toInteger($offset) LIMIT toInteger($limit)
+    const row = await runQueryOne<Record<string, unknown> & { items: CIHealthOverviewRow[] }>(session, `
+      CALL {
+        MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
+        RETURN
+          count(CASE WHEN ci.health = 'down'        THEN 1 END) AS down,
+          count(CASE WHEN ci.health = 'degraded'    THEN 1 END) AS degraded,
+          count(CASE WHEN ci.health = 'operational' THEN 1 END) AS operational,
+          count(CASE WHEN ci.health IS NULL         THEN 1 END) AS unmonitored
+      }
+      CALL {
+        MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
+        ${where}
+        RETURN count(ci) AS total
+      }
+      CALL {
+        MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
+        ${where}
+        WITH ci, COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci) } AS dependents
+        ORDER BY ${CI_HEALTH_SEVERITY_ORDER}, dependents DESC, ci.name
+        SKIP toInteger($offset) LIMIT toInteger($limit)
+        RETURN collect({
+          id: ci.id, name: ci.name,
+          label: head([l IN labels(ci) WHERE l <> 'ConfigurationItem']),
+          environment: ci.environment, health: ci.health, healthSource: ci.health_source,
+          healthSince: ci.health_since, lastEventAt: ci.last_event_at,
+          firingEvents: COUNT { (:Event {tenant_id: $tenantId, status: 'firing'})-[:RAISED_ON]->(ci) },
+          dependents: dependents,
+          ownerTeam: head([(ci)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) | t.name])
+        }) AS items
+      }
+      RETURN down, degraded, operational, unmonitored, total, items
     `, params)
-    const count = await runQueryOne<{ total: unknown }>(session, `
-      MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
-      ${where}
-      RETURN count(ci) AS total
-    `, params)
-    const n = (k: string) => toNumber(counts?.[k])
+    if (!row) throw new Error('ciHealthOverview: the overview query returned no row (count/collect must always yield one)')
+    const n = (k: string) => toNumber(row[k])
     return {
       down: n('down'), degraded: n('degraded'), operational: n('operational'), unmonitored: n('unmonitored'),
-      items: rows.map(mapCIHealthRow),
-      total: toNumber(count?.total),
+      items: row.items.map(mapCIHealthRow),
+      total: n('total'),
     }
   } finally { await session.close() }
 }
@@ -647,7 +767,8 @@ async function acknowledgeEvent(_: unknown, args: { id: string }, ctx: GraphQLCo
       WITH e, e.acknowledged_by AS previous
       SET e.acknowledged_by = $userId, e.acknowledged_at = $now, e.updated_at = $now
       WITH e, previous
-      ${CI_REF}, previous
+      ${eventRowColumns(['previous'])}
+      ${EVENT_ROW_RETURN}, previous
     `, { id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, now })
   } finally {
     await session.close()
@@ -683,7 +804,8 @@ async function resolveEvent(_: unknown, args: { id: string; note?: string | null
       SET e.status = 'resolved', e.resolved_at = $now, e.resolved_by = $userId,
           e.resolution_note = $note, e.suppressed_by_change_id = null, e.flapping_since = null, e.updated_at = $now
       WITH e
-      ${CI_REF}
+      ${eventRowColumns()}
+      ${EVENT_ROW_RETURN}
     `, { id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, note: args.note ?? null, now, resolvable: RESOLVABLE_STATUSES })
   } finally {
     await session.close()
@@ -719,7 +841,8 @@ async function linkEventToCI(_: unknown, args: { eventId: string; ciId: string; 
   try {
     const current = await runQueryOne<EventRow>(session, `
       MATCH (e:Event {id: $id, tenant_id: $tenantId})
-      ${CI_REF}
+      ${eventRowColumns()}
+      ${EVENT_ROW_RETURN}
     `, { id: args.eventId, tenantId: ctx.tenantId })
     if (!current) throw new NotFoundError('Event', args.eventId)
     previousCiId = current.ciId
@@ -748,7 +871,8 @@ async function linkEventToCI(_: unknown, args: { eventId: string; ciId: string; 
       MERGE (e)-[:RAISED_ON]->(target)
       SET e.updated_at = $now
       WITH e
-      ${CI_REF}
+      ${eventRowColumns()}
+      ${EVENT_ROW_RETURN}
     `, { id: args.eventId, ciId: args.ciId, tenantId: ctx.tenantId, now })
     if (!row) throw new NotFoundError('ConfigurationItem', args.ciId)
 
@@ -942,9 +1066,22 @@ async function updateEventPolicy(_: unknown, args: { input: EventPolicyInputGQL 
 
 // ── Campi di Event ───────────────────────────────────────────────────────────
 
-interface EventParent { id: string; acknowledgedById: string | null; sourceId: string | null; suppressedByChangeId: string | null }
+/**
+ * Il parent è l'output di mapEvent: quando viene da eventRowColumns porta già
+ * `incident`/`source`/`acknowledgedBy` (anche null) e i field resolver li
+ * restituiscono senza query (P-1). Le query qui sotto restano per un parent
+ * costruito senza il frammento.
+ */
+interface EventParent {
+  id: string; correlation?: string
+  acknowledgedById: string | null; sourceId: string | null; suppressedByChangeId: string | null
+  incident?: ReturnType<typeof mapIncident> | null
+  source?: ReturnType<typeof mapSourceRef> | null
+  acknowledgedBy?: ReturnType<typeof mapUser> | null
+}
 
 async function eventAcknowledgedBy(parent: EventParent, _: unknown, ctx: GraphQLContext) {
+  if (parent.acknowledgedBy !== undefined) return parent.acknowledgedBy
   if (!parent.acknowledgedById) return null
   const session = getSession()
   try {
@@ -958,6 +1095,7 @@ async function eventAcknowledgedBy(parent: EventParent, _: unknown, ctx: GraphQL
 
 /** `Event.source` come MonitoringSourceRef: mai la configurazione completa (A-2). */
 async function eventSource(parent: EventParent, _: unknown, ctx: GraphQLContext) {
+  if (parent.source !== undefined) return parent.source
   if (!parent.sourceId) return null
   const session = getSession()
   try {
@@ -969,7 +1107,21 @@ async function eventSource(parent: EventParent, _: unknown, ctx: GraphQLContext)
   } finally { await session.close() }
 }
 
+/**
+ * Esiti di correlazione che garantiscono l'assenza di CORRELATED_INTO:
+ * `delayed` viene scritto solo su un evento MAI correlato (eventCorrelation.ts,
+ * passo 5: count(CORRELATED_INTO) = 0) e ogni aggancio successivo cambia
+ * l'esito. Gli altri esiti "senza incident" (none, skipped_*, pending,
+ * suppressed, flapping, storm_no_ci) NON lo garantiscono: la relazione non
+ * viene mai cancellata (un allarme rientrato e riacceso, o uscito dallo
+ * sfarfallio, resta collegato all'incident storico) e il contratto dice
+ * "incident a cui l'evento è correlato, se esiste": per quelli si interroga.
+ */
+export const CORRELATIONS_WITHOUT_INCIDENT: readonly string[] = ['delayed']
+
 async function eventIncident(parent: EventParent, _: unknown, ctx: GraphQLContext) {
+  if (parent.incident !== undefined) return parent.incident
+  if (parent.correlation !== undefined && CORRELATIONS_WITHOUT_INCIDENT.includes(parent.correlation)) return null
   const session = getSession()
   try {
     const row = await runQueryOne<{ props: Props }>(session, `
@@ -989,29 +1141,73 @@ async function eventSuppressedBy(parent: EventParent, _: unknown, ctx: GraphQLCo
 
 // ── Campi di Incident / Change ───────────────────────────────────────────────
 
-/** Allarmi correlati all'incident (CORRELATED_INTO), dal più recente. */
-async function incidentCorrelatedEvents(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+/** Pagina delle liste di allarmi di Incident/Change (P-5): default 100, cap 500. */
+export const LINKED_EVENTS_DEFAULT_LIMIT = 100
+export const LINKED_EVENTS_MAX_LIMIT = 500
+
+interface PageArgs { limit?: number | null; offset?: number | null }
+function pageOf(args: PageArgs | null | undefined) {
+  return {
+    limit:  Math.min(Math.max(args?.limit ?? LINKED_EVENTS_DEFAULT_LIMIT, 1), LINKED_EVENTS_MAX_LIMIT),
+    offset: Math.max(args?.offset ?? 0, 0),
+  }
+}
+
+/**
+ * Allarmi correlati all'incident (CORRELATED_INTO), dal più recente, paginati
+ * (P-5: un incident di tempesta ne aggrega migliaia). Il totale è
+ * `correlatedEventCount`, separato, così la lista non lo ripete a ogni riga.
+ */
+async function incidentCorrelatedEvents(parent: { id: string }, args: PageArgs, ctx: GraphQLContext) {
   const session = getSession()
   try {
     const rows = await runQuery<EventRow>(session, `
       MATCH (e:Event {tenant_id: $tenantId})-[:CORRELATED_INTO]->(i:Incident {id: $id, tenant_id: $tenantId})
       WITH e ORDER BY e.last_seen_at DESC
-      ${CI_REF}
-    `, { id: parent.id, tenantId: ctx.tenantId })
+      SKIP toInteger($offset) LIMIT toInteger($limit)
+      ${eventRowColumns()}
+      ${EVENT_ROW_RETURN}
+    `, { id: parent.id, tenantId: ctx.tenantId, ...pageOf(args) })
     return rows.map((r) => mapEvent(r.props, r))
   } finally { await session.close() }
 }
 
-/** Eventi silenziati dalla finestra della change (SUPPRESSED_BY, anche storici), dal più recente. */
-async function changeSuppressedEvents(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+async function incidentCorrelatedEventCount(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  const session = getSession()
+  try {
+    const row = await runQueryOne<{ n: unknown }>(session, `
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      RETURN COUNT { (:Event {tenant_id: $tenantId})-[:CORRELATED_INTO]->(i) } AS n
+    `, { id: parent.id, tenantId: ctx.tenantId })
+    if (!row) throw new NotFoundError('Incident', parent.id)
+    return toNumber(row.n)
+  } finally { await session.close() }
+}
+
+/** Eventi silenziati dalla finestra della change (SUPPRESSED_BY, anche storici), dal più recente, paginati (P-5). */
+async function changeSuppressedEvents(parent: { id: string }, args: PageArgs, ctx: GraphQLContext) {
   const session = getSession()
   try {
     const rows = await runQuery<EventRow>(session, `
       MATCH (e:Event {tenant_id: $tenantId})-[:SUPPRESSED_BY]->(c:Change {id: $id, tenant_id: $tenantId})
       WITH e ORDER BY e.last_seen_at DESC
-      ${CI_REF}
-    `, { id: parent.id, tenantId: ctx.tenantId })
+      SKIP toInteger($offset) LIMIT toInteger($limit)
+      ${eventRowColumns()}
+      ${EVENT_ROW_RETURN}
+    `, { id: parent.id, tenantId: ctx.tenantId, ...pageOf(args) })
     return rows.map((r) => mapEvent(r.props, r))
+  } finally { await session.close() }
+}
+
+async function changeSuppressedEventCount(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  const session = getSession()
+  try {
+    const row = await runQueryOne<{ n: unknown }>(session, `
+      MATCH (c:Change {id: $id, tenant_id: $tenantId})
+      RETURN COUNT { (:Event {tenant_id: $tenantId})-[:SUPPRESSED_BY]->(c) } AS n
+    `, { id: parent.id, tenantId: ctx.tenantId })
+    if (!row) throw new NotFoundError('Change', parent.id)
+    return toNumber(row.n)
   } finally { await session.close() }
 }
 
@@ -1022,6 +1218,6 @@ export const eventResolvers = {
     previewInboundEvents, sendSampleEvent, setCIHealthOverride,
   },
   Event:    { acknowledgedBy: eventAcknowledgedBy, source: eventSource, incident: eventIncident, suppressedBy: eventSuppressedBy },
-  Incident: { correlatedEvents: incidentCorrelatedEvents },
-  Change:   { suppressedEvents: changeSuppressedEvents },
+  Incident: { correlatedEvents: incidentCorrelatedEvents, correlatedEventCount: incidentCorrelatedEventCount },
+  Change:   { suppressedEvents: changeSuppressedEvents, suppressedEventCount: changeSuppressedEventCount },
 }

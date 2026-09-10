@@ -2,14 +2,15 @@ import { describe, it, expect } from 'vitest'
 import { screen, within } from '@testing-library/react'
 import { MonitoringAlarmsSection, SuppressedAlarmsSection } from './CorrelatedEventsSection'
 import { renderWithProviders } from '@/test/utils'
-import type { MonitoringEvent } from '@/types/events'
+import type { EventRow } from '@/types/events'
 
-function eventFixture(over: Partial<MonitoringEvent> & { id: string }): MonitoringEvent {
+/** Le sezioni leggono la riga leggera (EventRowFields), come incident e change. */
+function eventFixture(over: Partial<EventRow> & { id: string }): EventRow {
   return {
-    fingerprint: `fp-${over.id}`, externalId: null, status: 'firing', severity: 'critical',
-    title: `Alert ${over.id}`, description: null, resource: 'web-01', resourceKind: 'hostname', labels: '{}',
-    count: 3, firstSeenAt: '2026-09-09T08:00:00Z', lastSeenAt: new Date(Date.now() - 5 * 60_000).toISOString(), resolvedAt: null,
-    acknowledgedAt: null, acknowledgedBy: null,
+    status: 'firing', severity: 'critical',
+    title: `Alert ${over.id}`, resource: 'web-01', resourceKind: 'hostname',
+    count: 3, lastSeenAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    acknowledgedAt: null,
     source: { id: 'wh1', name: 'Prometheus', connectorKind: 'alertmanager' },
     ci: { id: 'ci1', name: 'web-01', type: 'server', status: 'active', health: 'down' },
     incident: { id: 'inc1', number: 'INC-0042', title: 'CPU', status: 'new' },

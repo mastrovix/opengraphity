@@ -18,19 +18,25 @@
  *
  * Coda `events-maintenance` (concurrency 1, separata così le passate lunghe
  * non rubano gli slot ai job ritardati; `lockDuration` di 10 minuti) — job
- * `events-maintenance` ripetuto ogni 5 minuti, quattro passate paginate e
+ * `events-maintenance` ripetuto ogni 5 minuti, cinque passate paginate e
  * indipendenti: eventi soppressi con finestra chiusa (copre le change che non
  * passano dalle mutation); eventi `pending` (fine soppressione /
  * stabilizzazione la cui correlazione era fallita); stabilizzazione degli
- * eventi `flapping`; chiusura delle tempeste raffreddate. Ogni passata gira
- * anche se la precedente fallisce; alla fine il job fallisce se una è fallita.
+ * eventi `flapping`; chiusura delle tempeste raffreddate; riallineamento dei
+ * gauge di salute (`events_overdue_delayed`, `events_firing_uncorrelated`).
+ * Ogni passata gira anche se la precedente fallisce; alla fine il job
+ * fallisce se una è fallita. Ogni passata è misurata
+ * (`event_pass_total{pass,result}`, `event_pass_duration_seconds{pass}`); il
+ * job `correlate` misura il proprio ritardo rispetto alla scadenza
+ * (`event_correlate_job_lag_seconds`).
  *
  * Gli id dei job non contengono ':' (BullMQ li rifiuta, vedi f36083a).
  */
 import type { Worker, Job } from 'bullmq'
 import { logger } from '../lib/logger.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
-import { reevaluateClosedWindows, reevaluateFlappingEvents, reevaluatePendingEvents, reevaluateSuppressedEvents, runEventPipeline } from '../services/eventCorrelation.js'
+import { eventCorrelateJobLagSeconds, eventPassDurationSeconds, eventPassTotal } from '../middleware/metrics.js'
+import { reevaluateClosedWindows, reevaluateFlappingEvents, reevaluatePendingEvents, reevaluateSuppressedEvents, refreshEventGauges, runEventPipeline } from '../services/eventCorrelation.js'
 import { endCooledStorms } from '../services/eventStorm.js'
 
 const log = logger.child({ module: 'event-correlate' })
@@ -77,8 +83,11 @@ async function processCorrelateJob(job: Job<CorrelateQueueData>): Promise<void> 
   switch (job.name) {
     case 'correlate': {
       const { tenantId, eventId, dueAt } = job.data as CorrelateJobData
-      const result = await runEventPipeline({ tenantId, eventId, mode: 'resume' })
-      log.info({ jobId: job.id, tenantId, eventId, dueAt, outcome: result.outcome }, 'Delayed correlation evaluated')
+      // Ritardo rispetto alla scadenza: mai negativo (un job non parte prima del suo delay).
+      const lagSeconds = Math.max(0, (Date.now() - Date.parse(dueAt)) / 1000)
+      if (Number.isFinite(lagSeconds)) eventCorrelateJobLagSeconds.observe({}, lagSeconds)
+      const result = await runEventPipeline({ tenantId, eventId, mode: 'resume', jobId: String(job.id) })
+      log.info({ jobId: job.id, tenantId, eventId, dueAt, lagSeconds, outcome: result.outcome }, 'Delayed correlation evaluated')
       return
     }
     case CHANGE_WINDOW_JOB: {
@@ -97,22 +106,33 @@ async function processMaintenanceJob(job: Job<Record<string, never>>): Promise<v
   await runPeriodicPasses()
 }
 
-/** Le quattro passate del job periodico, ciascuna eseguita anche se le altre falliscono. */
+/** Etichette `pass` di event_pass_total / event_pass_duration_seconds (insieme chiuso). */
+export const PERIODIC_PASSES = ['closed_windows', 'pending', 'flapping', 'storms', 'gauges'] as const
+export type PeriodicPass = (typeof PERIODIC_PASSES)[number]
+
+/** Le cinque passate del job periodico, ciascuna eseguita e misurata anche se le altre falliscono. */
 export async function runPeriodicPasses(now: string = new Date().toISOString()): Promise<void> {
   const failures: string[] = []
-  const pass = async (label: string, run: () => Promise<{ evaluated: number }>, what: string) => {
+  const pass = async <R extends object>(label: PeriodicPass, run: () => Promise<R>, what: string, worthLogging: (r: R) => boolean) => {
+    const startedAt = performance.now()
+    let result: 'ok' | 'failed' = 'ok'
     try {
       const r = await run()
-      if (r.evaluated > 0) log.info({ ...r }, what)
-    } catch (err) { failures.push(`${label}: ${err instanceof Error ? err.message : String(err)}`) }
+      if (worthLogging(r)) log.info({ pass: label, ...(r as Record<string, unknown>) }, what)
+    } catch (err) {
+      result = 'failed'
+      failures.push(`${label}: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      eventPassTotal.inc({ pass: label, result })
+      eventPassDurationSeconds.observe({ pass: label }, (performance.now() - startedAt) / 1000)
+    }
   }
-  await pass('closed windows', () => reevaluateClosedWindows(now), 'Suppressed events re-evaluated (periodic)')
-  await pass('pending', () => reevaluatePendingEvents(now), 'Pending events re-evaluated (periodic)')
-  await pass('flapping', () => reevaluateFlappingEvents(now), 'Flapping events evaluated for stabilisation (periodic)')
-  try {
-    const r = await endCooledStorms(now)
-    if (r.active > 0 || r.ended > 0) log.info(r, 'Alert storms checked for cooldown (periodic)')
-  } catch (err) { failures.push(`storms: ${err instanceof Error ? err.message : String(err)}`) }
+  const evaluatedSome = (r: { evaluated: number }) => r.evaluated > 0
+  await pass('closed_windows', () => reevaluateClosedWindows(now), 'Suppressed events re-evaluated (periodic)', evaluatedSome)
+  await pass('pending', () => reevaluatePendingEvents(now), 'Pending events re-evaluated (periodic)', evaluatedSome)
+  await pass('flapping', () => reevaluateFlappingEvents(now), 'Flapping events evaluated for stabilisation (periodic)', evaluatedSome)
+  await pass('storms', () => endCooledStorms(now), 'Alert storms checked for cooldown (periodic)', (r) => r.active > 0 || r.ended > 0)
+  await pass('gauges', () => refreshEventGauges(now), 'Event health gauges refreshed (periodic)', (r) => r.overdueDelayed > 0 || r.firingUncorrelated > 0)
   if (failures.length) throw new Error(`[${EVENT_MAINTENANCE_QUEUE}] ${EVENT_MAINTENANCE_JOB}: ${failures.join('; ')}`)
 }
 

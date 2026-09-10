@@ -106,13 +106,21 @@ export function eventsSDL(): string {
   }
 
   extend type Incident {
-    """Allarmi di monitoraggio correlati a questo incident."""
-    correlatedEvents: [Event!]!
+    """
+    Allarmi di monitoraggio correlati a questo incident, dal più recente.
+    Paginati (un incident di tempesta ne aggrega migliaia): limit ≤ 500
+    (default 100), offset ≥ 0; il totale è correlatedEventCount.
+    """
+    correlatedEvents(limit: Int = 100, offset: Int = 0): [Event!]!
+    """Numero totale di allarmi correlati, indipendente dalla pagina."""
+    correlatedEventCount: Int!
   }
 
   extend type Change {
-    """Eventi silenziati dalla finestra di questa change."""
-    suppressedEvents: [Event!]!
+    """Eventi silenziati dalla finestra di questa change (anche storici), dal più recente. Paginati come Incident.correlatedEvents: limit ≤ 500 (default 100), offset ≥ 0; il totale è suppressedEventCount."""
+    suppressedEvents(limit: Int = 100, offset: Int = 0): [Event!]!
+    """Numero totale di eventi silenziati da questa change, indipendente dalla pagina."""
+    suppressedEventCount: Int!
   }
 
   """Riferimento leggero a un CI, senza dipendere dal tipo dinamico."""
@@ -189,6 +197,12 @@ export function eventsSDL(): string {
     ciId:      ID
     sourceId:  ID
     orphan:    Boolean
+    """
+    Ricerca su titolo e risorsa tramite l'indice full-text event_search: ogni
+    parola (run di lettere/cifre) deve comparire come sottostringa di un token
+    ("example" e "local" trovano api-03.example.local), senza distinzione di
+    maiuscole. Un testo senza lettere né cifre non trova nulla.
+    """
     search:    String
     """Solo eventi visti da questo istante (data ISO 8601; una data parsabile in altro formato viene normalizzata a ISO prima del confronto)."""
     since:     String
@@ -304,6 +318,7 @@ export function eventsSDL(): string {
   }
 
   extend type Query {
+    """Console degli allarmi, dal più recente: limit ≤ 500 (default 50). Pagina e totale in una sola query; source, incident, ci e acknowledgedBy sono risolti con la riga."""
     events(filter: EventFilter, limit: Int, offset: Int): EventPage!
     event(id: ID!): Event
     eventStats: EventStats!

@@ -36,7 +36,7 @@ import { Pill } from '@/components/ui/Pill'
 import { formatDate, timeAgo } from './IncidentCard'
 import { SimilarIncidentsPanel } from '@/components/SimilarIncidentsPanel'
 import { MonitoringAlarmsSection } from '@/pages/events/CorrelatedEventsSection'
-import type { MonitoringEvent } from '@/types/events'
+import type { EventRow } from '@/types/events'
 
 const RESOLUTION_DRAFT = gql`
   query ResolutionDraft($incidentId: ID!) {
@@ -117,7 +117,7 @@ interface Incident {
   comments:             Comment[]
   slaStatus:            SlaStatusInfo | null
   /** Allarmi di monitoraggio correlati (Event Management, ondata 3). */
-  correlatedEvents:     MonitoringEvent[]
+  correlatedEvents:     EventRow[]
 }
 
 interface Comment {

@@ -10,6 +10,11 @@
  * setCIHealthOverride (manual / ripristino). Ondata 3: reevaluateEvent,
  * filtri incidentId/suppressedByChangeId, Event.suppressedBy/correlation,
  * Incident.correlatedEvents, Change.suppressedEvents (pipeline mockata).
+ * Revisione ondata 3 (prestazioni): riga con sorgente/incident/utente risolti
+ * nella stessa query e field resolver cortocircuitati (P-1), ciHealthOverview
+ * in una query senza OPTIONAL MATCH moltiplicativi (P-2), eventStats per
+ * stato sull'indice (P-3), ricerca full-text e pagina+totale in una query
+ * (P-4), liste di Incident/Change paginate con contatore (P-5).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
@@ -359,7 +364,7 @@ describe('createIncidentFromEvent', () => {
       onCypher([[/OPTIONAL MATCH/, eventRow({ status }, { ciId: 'ci-1' })]])
       await expectCode(eventResolvers.Mutation.createIncidentFromEvent(null, { eventId: 'ev-1' }, operator), 'BAD_USER_INPUT', new RegExp(`Event ev-1 is ${status}: only a firing event can open an incident`))
       expect(openIncidentFromEvent).not.toHaveBeenCalled()
-      expect(callMatching(/CORRELATED_INTO/)).toBeUndefined()
+      expect(callMatching(/RETURN i\.id AS incidentId/)).toBeUndefined()   // nessuna lettura "già correlato" (la riga porta CORRELATED_INTO nel frammento, non è quella)
     }
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     vi.mocked(getEventPolicy).mockResolvedValue({ ...structuredClone(DEFAULT_EVENT_POLICY), group_by: 'fingerprint' })
@@ -402,13 +407,13 @@ describe('reevaluateEvent', () => {
     onCypher([[/OPTIONAL MATCH/, eventRow({ correlation })]])
     await eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, admin)
     expect(runEventPipeline).toHaveBeenCalledTimes(1)
-    expect(callMatching(/CORRELATED_INTO/)).toBeUndefined()
+    expect(callMatching(/HAS_WORKFLOW/)).toBeUndefined()   // openIncidentOfEvent non viene letto
   })
 
   it.each([['opened'], ['attached'], ['reopened'], ['storm']])('evento firing %s con incident ancora aperto → rifiuto esplicito (BAD_USER_INPUT con numero e passo dell\'incident), nessuna pipeline; incident chiuso → rivalutabile', async (correlation) => {
     onCypher([[/OPTIONAL MATCH/, eventRow({ correlation })], [/CORRELATED_INTO/, { incidentId: 'inc-1', number: 'INC00000007', step: 'in_progress' }]])
     await expectCode(eventResolvers.Mutation.reevaluateEvent(null, { id: 'ev-1' }, operator), 'BAD_USER_INPUT', /already correlated into open incident INC00000007 \(step "in_progress"\): nothing to re-evaluate/)
-    expect(callMatching(/CORRELATED_INTO/)!.params).toMatchObject({ id: 'ev-1', tenantId: 'tenant-1', terminalSteps: ['resolved', 'closed'] })
+    expect(callMatching(/HAS_WORKFLOW/)!.params).toMatchObject({ id: 'ev-1', tenantId: 'tenant-1', terminalSteps: ['resolved', 'closed'] })
     expect(runEventPipeline).not.toHaveBeenCalled()
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
@@ -449,36 +454,60 @@ describe('campi di correlazione', () => {
     expect(loadChange).toHaveBeenCalledWith(null, { id: 'chg-1' }, operator)
   })
 
-  it('Incident.correlatedEvents e Change.suppressedEvents → query scoped per tenant, ordinate per last_seen_at DESC', async () => {
+  it('Incident.correlatedEvents e Change.suppressedEvents → query scoped per tenant, ordinate per last_seen_at DESC, paginate (P-5: default 100, cap 500) con la riga completa (P-1)', async () => {
     onCypher([[/CORRELATED_INTO\]->\(i:Incident \{id: \$id, tenant_id: \$tenantId\}\)/, [eventRow({ correlation: 'opened' }, { ciId: 'ci-1', ciLabels: ['Server'] })]]])
-    const ev = await eventResolvers.Incident.correlatedEvents({ id: 'inc-1' }, null, operator)
+    const ev = await eventResolvers.Incident.correlatedEvents({ id: 'inc-1' }, {}, operator)
     expect(ev).toEqual([expect.objectContaining({ id: 'ev-1', correlation: 'opened', ci: expect.objectContaining({ id: 'ci-1' }) })])
-    const q1 = callMatching(/CORRELATED_INTO/)!
+    const q1 = callMatching(/CORRELATED_INTO\]->\(i:Incident/)!
     expect(q1.cypher).toContain('MATCH (e:Event {tenant_id: $tenantId})-[:CORRELATED_INTO]->(i:Incident {id: $id, tenant_id: $tenantId})')
-    expect(q1.cypher).toContain('ORDER BY e.last_seen_at DESC')
-    expect(q1.params).toEqual({ id: 'inc-1', tenantId: 'tenant-1' })
+    expect(q1.cypher).toMatch(/ORDER BY e\.last_seen_at DESC\s+SKIP toInteger\(\$offset\) LIMIT toInteger\(\$limit\)\s+OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/)
+    expect(q1.cypher).toContain('OPTIONAL MATCH (src:InboundWebhook {id: e.source_id, tenant_id: $tenantId})')
+    expect(q1.params).toEqual({ id: 'inc-1', tenantId: 'tenant-1', limit: 100, offset: 0 })
 
     onCypher([[/SUPPRESSED_BY\]->\(c:Change \{id: \$id, tenant_id: \$tenantId\}\)/, [eventRow({ status: 'suppressed', correlation: 'suppressed' })]]])
-    const sup = await eventResolvers.Change.suppressedEvents({ id: 'chg-1' }, null, operator)
+    const sup = await eventResolvers.Change.suppressedEvents({ id: 'chg-1' }, { limit: 9000, offset: -3 }, operator)
     expect(sup).toEqual([expect.objectContaining({ id: 'ev-1', status: 'suppressed' })])
-    expect(callMatching(/SUPPRESSED_BY/)!.params).toEqual({ id: 'chg-1', tenantId: 'tenant-1' })
+    expect(callMatching(/SUPPRESSED_BY/)!.params).toEqual({ id: 'chg-1', tenantId: 'tenant-1', limit: 500, offset: 0 })
+  })
+
+  it('P-5 — correlatedEventCount / suppressedEventCount → COUNT { } scoped per tenant sul nodo padre; padre inesistente → NOT_FOUND (mai 0 inventato)', async () => {
+    onCypher([[/MATCH \(i:Incident \{id: \$id, tenant_id: \$tenantId\}\)\s+RETURN COUNT \{ \(:Event \{tenant_id: \$tenantId\}\)-\[:CORRELATED_INTO\]->\(i\) \} AS n/, { n: 1234 }]])
+    await expect(eventResolvers.Incident.correlatedEventCount({ id: 'inc-1' }, null, viewer)).resolves.toBe(1234)
+    expect(callMatching(/CORRELATED_INTO/)!.params).toEqual({ id: 'inc-1', tenantId: 'tenant-1' })
+    onCypher([[/MATCH \(c:Change \{id: \$id, tenant_id: \$tenantId\}\)\s+RETURN COUNT \{ \(:Event \{tenant_id: \$tenantId\}\)-\[:SUPPRESSED_BY\]->\(c\) \} AS n/, { n: 0 }]])
+    await expect(eventResolvers.Change.suppressedEventCount({ id: 'chg-1' }, null, viewer)).resolves.toBe(0)
+    onCypher([[/COUNT \{/, null]])
+    await expectCode(eventResolvers.Incident.correlatedEventCount({ id: 'inc-x' }, null, viewer), 'NOT_FOUND', /Incident inc-x/)
+    await expectCode(eventResolvers.Change.suppressedEventCount({ id: 'chg-x' }, null, viewer), 'NOT_FOUND', /Change chg-x/)
   })
 })
 
 // ── events (query) / stats / alias ───────────────────────────────────────────
 
+/** La riga della console con le tre giunzioni di P-1 (incident più recente, sorgente ridotta a MonitoringSourceRef, utente). */
+const joinedRow = (over: Record<string, unknown> = {}) => ({
+  ...eventRow({ correlation: 'attached', acknowledged_by: 'u-1', ...over }, { ciId: 'ci-1', ciName: 'db-01', ciStatus: 'active', ciHealth: 'down', ciLabels: ['Server'] }),
+  incident: { id: 'inc-1', number: 'INC00000001', title: 'T', status: 'new', tenant_id: 'tenant-1', created_at: 'T0' },
+  source: { id: 'hook-1', name: 'Zabbix', connector_kind: 'zabbix', enabled: true },
+  acknowledgedBy: { id: 'u-1', name: 'Ada', email: 'a@x.io', role: 'operator', tenant_id: 'tenant-1' },
+})
+const PAGE_RE = /RETURN total, items/
+
 describe('events', () => {
-  it('filtri → WHERE scoped per tenant, ordinamento last_seen_at DESC, paginazione, total; CI risolto inline con type dalle label', async () => {
-    onCypher([
-      [/RETURN count\(e\) AS total/, { total: 7 }],
-      [/ORDER BY e\.last_seen_at DESC/, [eventRow({}, { ciId: 'ci-1', ciName: 'db-01', ciStatus: 'active', ciHealth: 'down', ciLabels: ['Server'] }), eventRow({ id: 'ev-2' })]],
-    ])
-    const out = await eventResolvers.Query.events(null, { filter: { status: ['firing'], severity: ['critical', 'warning'], orphan: false, search: ' DB ', since: '2026-09-01T00:00:00Z', sourceId: 'hook-1', ciId: 'ci-1', incidentId: 'inc-1', suppressedByChangeId: 'chg-1' }, limit: 10, offset: 20 }, operator)
+  it('filtri → WHERE scoped per tenant, ordinamento last_seen_at DESC, paginazione e total in UNA query (P-4); CI, incident, sorgente e utente nella riga (P-1); con search la sorgente è l\'indice full-text', async () => {
+    onCypher([[PAGE_RE, { total: 7, items: [joinedRow(), eventRow({ id: 'ev-2' })] }]])
+    const out = await eventResolvers.Query.events(null, { filter: { status: ['firing'], severity: ['critical', 'warning'], orphan: false, search: ' DB-01 ', since: '2026-09-01T00:00:00Z', sourceId: 'hook-1', ciId: 'ci-1', incidentId: 'inc-1', suppressedByChangeId: 'chg-1' }, limit: 10, offset: 20 }, operator)
     expect(out.total).toBe(7)
     expect(out.items).toHaveLength(2)
-    expect(out.items[0]).toMatchObject({ id: 'ev-1', status: 'firing', count: 3, correlation: 'none', ci: { id: 'ci-1', name: 'db-01', type: 'server', status: 'active', health: 'down' } })
+    expect(out.items[0]).toMatchObject({
+      id: 'ev-1', status: 'firing', count: 3, correlation: 'attached', ci: { id: 'ci-1', name: 'db-01', type: 'server', status: 'active', health: 'down' },
+      incident: { id: 'inc-1', number: 'INC00000001' }, source: { id: 'hook-1', name: 'Zabbix', connectorKind: 'zabbix', enabled: true }, acknowledgedBy: { id: 'u-1', name: 'Ada' },
+    })
     expect(out.items[1]!.ci).toBeNull()
-    const list = callMatching(/ORDER BY e\.last_seen_at DESC/)!
+    expect(calls()).toHaveLength(1)   // era 1 + 1 (count) + 50×3 (field resolver) per pagina
+    const list = callMatching(PAGE_RE)!
+    expect(list.cypher).toContain("CALL db.index.fulltext.queryNodes('event_search', $search) YIELD node AS e")
+    expect(list.cypher).not.toMatch(/CONTAINS/)
     expect(list.cypher).toContain('e.tenant_id = $tenantId')
     expect(list.cypher).toContain('e.status IN $status')
     expect(list.cypher).toContain('e.severity IN $severity')
@@ -487,27 +516,66 @@ describe('events', () => {
     expect(list.cypher).toContain('EXISTS { (e)-[:CORRELATED_INTO]->(:Incident {id: $incidentId, tenant_id: $tenantId}) }')
     expect(list.cypher).toContain('EXISTS { (e)-[:SUPPRESSED_BY]->(:Change {id: $suppressedByChangeId, tenant_id: $tenantId}) }')
     expect(list.cypher).toContain('e.last_seen_at >= $since')
-    expect(list.cypher).toContain('toLower(e.title) CONTAINS $search')
-    expect(list.params).toMatchObject({ tenantId: 'tenant-1', limit: 10, offset: 20, search: 'db', status: ['firing'], incidentId: 'inc-1', suppressedByChangeId: 'chg-1' })
+    // totale in un CALL { } senza importazioni; la pagina è tagliata PRIMA delle giunzioni e raccolta con collect
+    expect(list.cypher).toMatch(/CALL \{\s+CALL db\.index\.fulltext[\s\S]+RETURN count\(e\) AS total\s+\}/)
+    expect(list.cypher).toMatch(/ORDER BY e\.last_seen_at DESC\s+SKIP toInteger\(\$offset\) LIMIT toInteger\(\$limit\)\s+OPTIONAL MATCH \(e\)-\[:RAISED_ON\]->\(ci:ConfigurationItem \{tenant_id: \$tenantId\}\)/)
+    expect(list.cypher).toContain('[(e)-[:CORRELATED_INTO]->(inc:Incident {tenant_id: $tenantId}) | inc]')
+    expect(list.cypher).toContain('OPTIONAL MATCH (src:InboundWebhook {id: e.source_id, tenant_id: $tenantId})')
+    expect(list.cypher).toContain('OPTIONAL MATCH (ack:User {id: e.acknowledged_by, tenant_id: $tenantId})')
+    // A-2: della sorgente passano solo i campi di MonitoringSourceRef
+    expect(list.cypher).toContain('{id: src.id, name: src.name, connector_kind: src.connector_kind, enabled: src.enabled}')
+    expect(list.cypher).toMatch(/RETURN collect\(\{props: props, ciId: ciId, [^}]*incident: incident, source: source, acknowledgedBy: acknowledgedBy\}\) AS items/)
+    expect(list.params).toMatchObject({ tenantId: 'tenant-1', limit: 10, offset: 20, search: '*db* AND *01*', status: ['firing'], incidentId: 'inc-1', suppressedByChangeId: 'chg-1' })
   })
 
-  it('status/severity fuori enum o since non ISO → BAD_USER_INPUT senza query; limit oltre 500 viene ridotto', async () => {
+  it('senza search → MATCH (e:Event) sull\'indice, nessun full-text; search senza lettere né cifre → pagina vuota senza sessione (nessun token può combaciare)', async () => {
+    onCypher([[PAGE_RE, { total: 0, items: [] }]])
+    await eventResolvers.Query.events(null, { filter: { status: ['firing'] } }, operator)
+    const list = callMatching(PAGE_RE)!
+    expect(list.cypher).not.toMatch(/fulltext/)
+    expect(list.cypher).toMatch(/CALL \{\s+MATCH \(e:Event\)\s+WHERE e\.tenant_id = \$tenantId AND e\.status IN \$status\s+RETURN count\(e\) AS total/)
+    expect(list.params).not.toHaveProperty('search')
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    await expect(eventResolvers.Query.events(null, { filter: { search: ' --- ' } }, operator)).resolves.toEqual({ items: [], total: 0 })
+    expect(getSession).not.toHaveBeenCalled()
+  })
+
+  it('P-4 — eventSearchLucene: run di lettere/cifre → *run* in AND, minuscolo, caratteri speciali Lucene mai passati, unicode conservato, niente run → null', async () => {
+    const { eventSearchLucene } = await import('../events.js')
+    expect(eventSearchLucene('api-03.example.local')).toBe('*api* AND *03* AND *example* AND *local*')
+    expect(eventSearchLucene('  DB ')).toBe('*db*')
+    expect(eventSearchLucene('(a+b) OR title:x* AND "q" ~ \\ / ^ ! { } [ ] ?')).toBe('*a* AND *b* AND *or* AND *title* AND *x* AND *and* AND *q*')
+    expect(eventSearchLucene('Città Ñandú')).toBe('*città* AND *ñandú*')
+    expect(eventSearchLucene('--- *** ')).toBeNull()
+    expect(eventSearchLucene('')).toBeNull()
+  })
+
+  it('status/severity fuori enum o since non ISO → BAD_USER_INPUT senza query; limit oltre 500 viene ridotto; pagina senza riga → errore esplicito', async () => {
     await expectCode(eventResolvers.Query.events(null, { filter: { status: ['open'] } }, operator), 'BAD_USER_INPUT', /Invalid status filter "open"/)
     await expectCode(eventResolvers.Query.events(null, { filter: { severity: ['high'] } }, operator), 'BAD_USER_INPUT', /Invalid severity filter/)
     await expectCode(eventResolvers.Query.events(null, { filter: { since: 'ieri' } }, operator), 'BAD_USER_INPUT', /since must be an ISO date/)
     expect(getSession).not.toHaveBeenCalled()
-    onCypher([[/RETURN count\(e\) AS total/, { total: 0 }], [/ORDER BY e\.last_seen_at DESC/, []]])
+    onCypher([[PAGE_RE, { total: 0, items: [] }]])
     await eventResolvers.Query.events(null, { limit: 5000 }, operator)
-    expect(callMatching(/ORDER BY/)!.params['limit']).toBe(500)
+    expect(callMatching(PAGE_RE)!.params['limit']).toBe(500)
+    onCypher([[PAGE_RE, null]])
+    await expect(eventResolvers.Query.events(null, {}, operator)).rejects.toThrow(/page query returned no row/)
   })
 
-  it('eventStats → una query scoped per tenant con i sette contatori + le sorgenti in tempesta (eventStorm.listStormSources)', async () => {
-    onCypher([[/count\(CASE WHEN e\.status = 'firing' THEN 1 END\) AS firing/, { firing: 4, critical: 1, warning: 2, orphan: 1, suppressed: 0, flapping: 0, resolved24h: 9 }]])
+  it('P-3 — eventStats → una query per stato sull\'indice (tenant_id, status), orfani solo fra i firing con NOT EXISTS, risolti per resolved_at nelle 24 h; nessuna scansione né OPTIONAL MATCH; + le sorgenti in tempesta', async () => {
+    onCypher([[/count\(e\) AS firing/, { firing: 4, critical: 1, warning: 2, orphan: 1, suppressed: 0, flapping: 0, resolved24h: 9 }]])
     const out = await eventResolvers.Query.eventStats(null, null, operator)
     expect(out).toEqual({ firing: 4, critical: 1, warning: 2, orphan: 1, suppressed: 0, flapping: 0, resolved24h: 9, stormSources: [] })
+    expect(calls()).toHaveLength(1)
     const q = callMatching(/AS firing/)!
-    expect(q.cypher).toContain('MATCH (e:Event {tenant_id: $tenantId})')
-    expect(q.cypher).toContain("e.status = 'resolved' AND e.resolved_at >= $since24h")
+    expect(q.cypher).not.toMatch(/OPTIONAL MATCH/)
+    expect(q.cypher).not.toMatch(/MATCH \(e:Event \{tenant_id: \$tenantId\}\)/)   // mai tutti gli eventi
+    expect(q.cypher).toContain("MATCH (e:Event {tenant_id: $tenantId, status: 'firing'})")
+    expect(q.cypher).toContain('count(CASE WHEN NOT EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem {tenant_id: $tenantId}) } THEN 1 END) AS orphan')
+    expect(q.cypher).toContain("MATCH (e:Event {tenant_id: $tenantId, status: 'suppressed'})")
+    expect(q.cypher).toContain("MATCH (e:Event {tenant_id: $tenantId, status: 'flapping'})")
+    expect(q.cypher).toMatch(/MATCH \(e:Event \{tenant_id: \$tenantId, status: 'resolved'\}\)\s+WHERE e\.resolved_at >= \$since24h/)
+    expect(Number.isNaN(Date.parse(q.params['since24h'] as string))).toBe(false)
     expect(listStormSources).toHaveBeenCalledWith('tenant-1')
 
     const storm = { sourceId: 'hook-1', sourceName: 'Zabbix prod', ratePerMinute: 120, since: 'T-5', incidentId: 'inc-storm', incidentNumber: 'INC00000042' }
@@ -567,15 +635,53 @@ describe('events', () => {
   })
 
   it('X-2 — events: offset negativo → 0, limit 0 → 1, since parsabile ma non ISO → normalizzato a ISO UTC (I-5), filtro orphan scoped per tenant (T-1)', async () => {
-    onCypher([[/RETURN count\(e\) AS total/, { total: 0 }], [/ORDER BY e\.last_seen_at DESC/, []]])
+    onCypher([[PAGE_RE, { total: 0, items: [] }]])
     await eventResolvers.Query.events(null, { filter: { orphan: true, since: 'Sep 9 2026 10:00 UTC' }, limit: 0, offset: -5 }, operator)
-    const list = callMatching(/ORDER BY/)!
+    const list = callMatching(PAGE_RE)!
     expect(list.params).toMatchObject({ limit: 1, offset: 0, since: '2026-09-09T10:00:00.000Z' })
     expect(list.cypher).toContain('NOT EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem {tenant_id: $tenantId}) }')
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
-    onCypher([[/RETURN count\(e\) AS total/, { total: 0 }], [/ORDER BY e\.last_seen_at DESC/, []]])
+    onCypher([[PAGE_RE, { total: 0, items: [] }]])
     await eventResolvers.Query.events(null, { filter: { orphan: false } }, operator)
-    expect(callMatching(/ORDER BY/)!.cypher).toContain('EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem {tenant_id: $tenantId}) }')
+    expect(callMatching(PAGE_RE)!.cypher).toContain('EXISTS { (e)-[:RAISED_ON]->(:ConfigurationItem {tenant_id: $tenantId}) }')
+  })
+
+  it('P-1 — event(id) e le mutation restituiscono la riga con le giunzioni: mapEvent espone incident/source/acknowledgedBy (anche null) solo se la riga li porta', async () => {
+    const { mapEvent } = await import('../events.js')
+    const full = mapEvent(joinedRow().props, joinedRow())
+    expect(full).toMatchObject({ incident: { id: 'inc-1', number: 'INC00000001', title: 'T' }, source: { id: 'hook-1', name: 'Zabbix', connectorKind: 'zabbix', enabled: true }, acknowledgedBy: { id: 'u-1', name: 'Ada', email: 'a@x.io' } })
+    const nulls = mapEvent(eventRow().props, { ...eventRow(), incident: null, source: null, acknowledgedBy: null })
+    expect(nulls).toMatchObject({ incident: null, source: null, acknowledgedBy: null })
+    const bare = mapEvent(eventRow().props, eventRow())
+    expect('incident' in bare).toBe(false); expect('source' in bare).toBe(false); expect('acknowledgedBy' in bare).toBe(false)
+
+    onCypher([[/MATCH \(e:Event \{id: \$id, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, joinedRow()]])
+    const out = await eventResolvers.Query.event(null, { id: 'ev-1' }, viewer)
+    expect(out).toMatchObject({ id: 'ev-1', incident: { id: 'inc-1' }, source: { id: 'hook-1' }, acknowledgedBy: { id: 'u-1' } })
+    const q = callMatching(/RAISED_ON/)!
+    expect(q.cypher).toMatch(/RETURN props, ciId, ciName, ciStatus, ciHealth, ciLabels, incident, source, acknowledgedBy\s*$/)
+    // i field resolver non fanno più alcuna query su questo parent
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    expect(await eventResolvers.Event.incident(out!, null, viewer)).toMatchObject({ id: 'inc-1' })
+    expect(await eventResolvers.Event.source(out!, null, viewer)).toEqual({ id: 'hook-1', name: 'Zabbix', connectorKind: 'zabbix', enabled: true })
+    expect(await eventResolvers.Event.acknowledgedBy(out!, null, viewer)).toMatchObject({ id: 'u-1' })
+    expect(getSession).not.toHaveBeenCalled()
+  })
+
+  it('P-1 — cortocircuiti dei field resolver: valore già nel parent (anche null) → nessuna query; incident con correlation delayed → null senza query; none/skipped_*/suppressed → query (CORRELATED_INTO resta per la storia)', async () => {
+    const { CORRELATIONS_WITHOUT_INCIDENT } = await import('../events.js')
+    expect(CORRELATIONS_WITHOUT_INCIDENT).toEqual(['delayed'])
+    const base = { id: 'ev-1', acknowledgedById: 'u-1', sourceId: 'hook-1', suppressedByChangeId: null }
+    expect(await eventResolvers.Event.incident({ ...base, incident: null }, null, viewer)).toBeNull()
+    expect(await eventResolvers.Event.source({ ...base, source: null }, null, viewer)).toBeNull()
+    expect(await eventResolvers.Event.acknowledgedBy({ ...base, acknowledgedBy: null }, null, viewer)).toBeNull()
+    expect(await eventResolvers.Event.incident({ ...base, correlation: 'delayed' }, null, viewer)).toBeNull()
+    expect(getSession).not.toHaveBeenCalled()
+    for (const correlation of ['none', 'skipped_orphan', 'skipped_severity', 'pending', 'suppressed', 'flapping', 'storm_no_ci', 'attached']) {
+      vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+      onCypher([[/CORRELATED_INTO\]->\(i:Incident \{tenant_id: \$tenantId\}\)/, { props: { id: 'inc-old', number: 'INC00000009', title: 'storico', tenant_id: 'tenant-1' } }]])
+      expect(await eventResolvers.Event.incident({ ...base, correlation }, null, viewer), correlation).toMatchObject({ id: 'inc-old' })
+    }
   })
 
   it('X-2 — campi di Event: source (MonitoringSourceRef, scoped), incident (CORRELATED_INTO scoped, null se assente), acknowledgedBy (User scoped); null senza id senza query', async () => {
@@ -869,55 +975,56 @@ describe('ciHealthOverview', () => {
     healthSince: '2026-09-09T10:00:00Z', lastEventAt: '2026-09-09T10:05:00Z', firingEvents: 2, dependents: 7, ownerTeam: 'DBA', ...over,
   })
 
-  it('contatori su tutto il tenant + righe ordinate per gravità, dipendenti DESC, nome; type dalla label; total', async () => {
-    onCypher([
-      [/AS unmonitored/, COUNTS],
-      [/ORDER BY CASE ci\.health WHEN 'down' THEN 0 WHEN 'degraded' THEN 1 ELSE 2 END, dependents DESC, ci\.name/, [row(), row({ id: 'ci-2', name: 'app', label: 'Application', health: 'operational', healthSource: 'manual', dependents: 0, ownerTeam: null, healthSince: null, lastEventAt: null, firingEvents: 0 })]],
-      [/RETURN count\(ci\) AS total/, { total: 8 }],
-    ])
+  const OVERVIEW_RE = /RETURN down, degraded, operational, unmonitored, total, items/
+
+  it('P-2 — UNA query: contatori su tutto il tenant + total + righe ordinate per gravità, dipendenti DESC, nome; type dalla label; nessun OPTIONAL MATCH moltiplicativo', async () => {
+    onCypher([[OVERVIEW_RE, { ...COUNTS, total: 8, items: [row(), row({ id: 'ci-2', name: 'app', label: 'Application', health: 'operational', healthSource: 'manual', dependents: 0, ownerTeam: null, healthSince: null, lastEventAt: null, firingEvents: 0 })] }]])
     const out = await eventResolvers.Query.ciHealthOverview(null, {}, viewer)
     expect(out).toMatchObject({ down: 2, degraded: 1, operational: 5, unmonitored: 12, total: 8 })
     expect(out.items).toEqual([
       { id: 'ci-1', name: 'db-01', type: 'server', environment: 'production', health: 'down', healthSource: 'monitoring', healthSince: '2026-09-09T10:00:00Z', lastEventAt: '2026-09-09T10:05:00Z', firingEvents: 2, dependents: 7, ownerTeam: 'DBA' },
       { id: 'ci-2', name: 'app', type: 'application', environment: 'production', health: 'operational', healthSource: 'manual', healthSince: null, lastEventAt: null, firingEvents: 0, dependents: 0, ownerTeam: null },
     ])
-    const counts = callMatching(/AS unmonitored/)!
-    expect(counts.cypher).toContain('MATCH (ci:ConfigurationItem {tenant_id: $tenantId})')
-    expect(counts.cypher).toContain('count(CASE WHEN ci.health IS NULL         THEN 1 END) AS unmonitored')
-    expect(counts.params).toEqual({ tenantId: 'tenant-1' })   // indipendenti dal filtro
-    const list = callMatching(/ORDER BY CASE ci\.health/)!
-    expect(list.cypher).toContain('WHERE ci.health IS NOT NULL')
-    expect(list.cypher).toContain("OPTIONAL MATCH (e:Event {tenant_id: $tenantId, status: 'firing'})-[:RAISED_ON]->(ci)")
-    expect(list.cypher).toContain('OPTIONAL MATCH (dep:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci)')
-    expect(list.cypher).toContain('OPTIONAL MATCH (ci)-[:OWNED_BY]->(team:Team {tenant_id: $tenantId})')
-    expect(list.cypher).toContain("head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label")
-    expect(list.params).toMatchObject({ tenantId: 'tenant-1', limit: 100, offset: 0 })
+    expect(calls()).toHaveLength(1)   // erano tre (contatori, pagina, total)
+    const q = callMatching(OVERVIEW_RE)!
+    expect(q.cypher).not.toMatch(/OPTIONAL MATCH/)
+    expect(q.cypher).not.toMatch(/DISTINCT/)
+    // contatori del tenant, indipendenti dal filtro (nessun WHERE nel primo CALL)
+    expect(q.cypher).toMatch(/CALL \{\s+MATCH \(ci:ConfigurationItem \{tenant_id: \$tenantId\}\)\s+RETURN\s+count\(CASE WHEN ci\.health = 'down'/)
+    expect(q.cypher).toContain('count(CASE WHEN ci.health IS NULL         THEN 1 END) AS unmonitored')
+    // total e pagina con lo stesso WHERE, salute prima di ogni conteggio
+    expect(q.cypher).toMatch(/MATCH \(ci:ConfigurationItem \{tenant_id: \$tenantId\}\)\s+WHERE ci\.health IS NOT NULL\s+RETURN count\(ci\) AS total/)
+    expect(q.cypher).toMatch(/WHERE ci\.health IS NOT NULL\s+WITH ci, COUNT \{ \(:ConfigurationItem \{tenant_id: \$tenantId\}\)-\[:DEPENDS_ON\]->\(ci\) \} AS dependents\s+ORDER BY CASE ci\.health WHEN 'down' THEN 0 WHEN 'degraded' THEN 1 ELSE 2 END, dependents DESC, ci\.name\s+SKIP toInteger\(\$offset\) LIMIT toInteger\(\$limit\)/)
+    // firing e team solo sulle righe della pagina (dopo SKIP/LIMIT), non moltiplicativi
+    expect(q.cypher).toMatch(/LIMIT toInteger\(\$limit\)\s+RETURN collect\(\{[\s\S]*firingEvents: COUNT \{ \(:Event \{tenant_id: \$tenantId, status: 'firing'\}\)-\[:RAISED_ON\]->\(ci\) \}/)
+    expect(q.cypher).toContain('ownerTeam: head([(ci)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) | t.name])')
+    expect(q.cypher).toContain("label: head([l IN labels(ci) WHERE l <> 'ConfigurationItem'])")
+    expect(q.params).toEqual({ tenantId: 'tenant-1', limit: 100, offset: 0 })
   })
 
   it('filtri: salute, tipo (→ label), ambiente, team (OWNED_BY scoped), ricerca minuscola; limit clampato a 500', async () => {
-    onCypher([[/AS unmonitored/, COUNTS], [/ORDER BY CASE ci\.health/, []], [/RETURN count\(ci\) AS total/, { total: 0 }]])
+    onCypher([[OVERVIEW_RE, { ...COUNTS, total: 0, items: [] }]])
     const out = await eventResolvers.Query.ciHealthOverview(null, { filter: { health: ['down', 'degraded'], type: 'database_instance', environment: 'staging', team: 'team-9', search: '  DB ' }, limit: 9000, offset: 50 }, operator)
     expect(out.items).toEqual([]); expect(out.total).toBe(0)
-    const list = callMatching(/ORDER BY CASE ci\.health/)!
-    expect(list.cypher).toContain('ci.health IN $health')
-    expect(list.cypher).toContain('$typeLabel IN labels(ci)')
-    expect(list.cypher).toContain('ci.environment = $environment')
-    expect(list.cypher).toContain('EXISTS { (ci)-[:OWNED_BY]->(:Team {id: $team, tenant_id: $tenantId}) }')
-    expect(list.cypher).toContain('toLower(ci.name) CONTAINS $search')
-    expect(list.params).toMatchObject({ health: ['down', 'degraded'], typeLabel: 'DatabaseInstance', environment: 'staging', team: 'team-9', search: 'db', limit: 500, offset: 50 })
-    // il conteggio usa lo stesso WHERE dei risultati
-    expect(callMatching(/RETURN count\(ci\) AS total/)!.cypher).toContain('ci.health IN $health')
+    const q = callMatching(OVERVIEW_RE)!
+    const where = 'WHERE ci.health IS NOT NULL AND ci.health IN $health AND $typeLabel IN labels(ci) AND ci.environment = $environment AND EXISTS { (ci)-[:OWNED_BY]->(:Team {id: $team, tenant_id: $tenantId}) } AND toLower(ci.name) CONTAINS $search'
+    // lo stesso WHERE per total e pagina, mai nei contatori del tenant
+    expect(q.cypher.split(where)).toHaveLength(3)
+    expect(q.cypher.indexOf(where)).toBeGreaterThan(q.cypher.indexOf('AS unmonitored'))
+    expect(q.params).toMatchObject({ health: ['down', 'degraded'], typeLabel: 'DatabaseInstance', environment: 'staging', team: 'team-9', search: 'db', limit: 500, offset: 50 })
     // tipo dinamico (non in TYPE_TO_LABEL) → label PascalCase per convenzione
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
-    onCypher([[/AS unmonitored/, COUNTS], [/ORDER BY CASE ci\.health/, []], [/RETURN count\(ci\) AS total/, { total: 0 }]])
+    onCypher([[OVERVIEW_RE, { ...COUNTS, total: 0, items: [] }]])
     await eventResolvers.Query.ciHealthOverview(null, { filter: { type: 'erp_system' } }, operator)
-    expect(callMatching(/ORDER BY CASE ci\.health/)!.params['typeLabel']).toBe('ErpSystem')
+    expect(callMatching(OVERVIEW_RE)!.params['typeLabel']).toBe('ErpSystem')
   })
 
-  it('salute fuori vocabolario → BAD_USER_INPUT senza query; riga senza label di tipo → errore esplicito', async () => {
+  it('salute fuori vocabolario → BAD_USER_INPUT senza query; riga senza label di tipo → errore esplicito; query senza riga → errore esplicito', async () => {
     await expectCode(eventResolvers.Query.ciHealthOverview(null, { filter: { health: ['broken'] } }, operator), 'BAD_USER_INPUT', /Invalid health filter "broken": expected one of operational, degraded, down/)
     expect(getSession).not.toHaveBeenCalled()
-    onCypher([[/AS unmonitored/, COUNTS], [/ORDER BY CASE ci\.health/, [row({ label: null })]], [/RETURN count\(ci\) AS total/, { total: 1 }]])
+    onCypher([[OVERVIEW_RE, { ...COUNTS, total: 1, items: [row({ label: null })] }]])
     await expect(eventResolvers.Query.ciHealthOverview(null, {}, operator)).rejects.toThrow(/CI ci-1 has no type label/)
+    onCypher([[OVERVIEW_RE, null]])
+    await expect(eventResolvers.Query.ciHealthOverview(null, {}, operator)).rejects.toThrow(/overview query returned no row/)
   })
 })

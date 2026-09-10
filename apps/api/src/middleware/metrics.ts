@@ -276,11 +276,30 @@ export const eventStormsActive        = createGauge('event_storms_active',      
  */
 export const webhookRateLimitedTotal  = createCounter('webhook_rate_limited_total', 'Inbound webhook requests rejected with 429 by connector kind', ['connector'])
 
+// ── Event Management, revisione (§4 Osservabilità) ─────────────────────────
+// `outcome` è l'esito finale della pipeline (CORRELATION_OUTCOMES +
+// auto_resolved/auto_resolve_skipped + `error` quando la pipeline lancia):
+// insieme bounded. I cinque contatori sopra restano per i pannelli esistenti;
+// questo dice TUTTI gli esiti, anche attached/skipped_*/delayed/none/storm.
+export const eventsCorrelatedTotal    = createCounter('events_correlated_total',    'Event pipeline runs by final outcome (error = the pipeline threw)', ['outcome'])
+export const eventPipelineDurationSeconds = createHistogram('event_pipeline_duration_seconds', 'Event correlation pipeline duration in seconds by mode (ingest | reevaluate | resume)', ['mode'], [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30])
+/** Passate del job periodico `events-maintenance` (jobs/eventCorrelateWorker.ts): pass = closed_windows | pending | flapping | storms | gauges; result = ok | failed. */
+export const eventPassTotal           = createCounter('event_pass_total',           'Periodic event maintenance passes by pass and result', ['pass', 'result'])
+export const eventPassDurationSeconds = createHistogram('event_pass_duration_seconds', 'Periodic event maintenance pass duration in seconds', ['pass'], [0.1, 0.5, 1, 5, 10, 30, 60, 120, 300])
+/** Eventi `delayed` con `correlation_due_at` scaduta da più di OVERDUE_DELAYED_GRACE_MINUTES: il job `correlate` non è arrivato (services/events/gauges.ts). */
+export const eventsOverdueDelayed     = createGauge('events_overdue_delayed',       'Delayed monitoring events whose correlation due time passed more than 5 minutes ago', [])
+/** Eventi firing con correlazione none/pending da più di UNCORRELATED_AFTER_MINUTES: pipeline fallita e mai ripresa. */
+export const eventsFiringUncorrelated = createGauge('events_firing_uncorrelated',   'Firing monitoring events without a correlation outcome for more than 15 minutes', [])
+/** Ritardo del job `correlate` rispetto alla scadenza del ritardo (processedAt − dueAt): coda in affanno. */
+export const eventCorrelateJobLagSeconds = createHistogram('event_correlate_job_lag_seconds', 'Delay between a correlate job due time and its processing, in seconds', [], [0.5, 1, 5, 10, 30, 60, 300, 900])
+
 /** Tutte le metriche dell'Event Management, nell'ordine di esposizione. */
 export const EVENT_MANAGEMENT_METRICS = [
   eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsSuppressedTotal, eventsFlappingTotal,
   incidentsAutoOpenedTotal, incidentsAutoResolvedTotal, incidentsReopenedTotal, eventsPurgedTotal,
   eventsStaleTotal, eventsIngestFailedTotal, eventStormsActive, webhookRateLimitedTotal,
+  eventsCorrelatedTotal, eventPipelineDurationSeconds, eventPassTotal, eventPassDurationSeconds,
+  eventsOverdueDelayed, eventsFiringUncorrelated, eventCorrelateJobLagSeconds,
 ] as const
 
 // ── Route label (A-15) ────────────────────────────────────────────────────────
