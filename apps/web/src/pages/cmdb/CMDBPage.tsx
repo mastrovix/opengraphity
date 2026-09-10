@@ -11,7 +11,9 @@ import { EnvBadge } from '@/components/Badges'
 import { EmptyState } from '@/components/EmptyState'
 import { QueryError } from '@/components/QueryError'
 import { GET_ALL_CIS } from '@/graphql/queries'
-import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
+import { FilterBuilder, type FilterGroup, type FilterRule, type FieldConfig } from '@/components/FilterBuilder'
+import { CIHealthBadge } from '@/pages/events/eventShared'
+import { CI_HEALTHS, type CIHealth } from '@/types/events'
 import { Pagination } from '@/components/ui/Pagination'
 import { formatDate } from '@/lib/datetime'
 import { toEnumOptions, useCIBaseEnums } from '@/lib/ciEnums'
@@ -24,6 +26,21 @@ interface CI {
   status:      string
   environment: string
   createdAt:   string
+  /** Salute dal monitoraggio (Event Management): null = mai toccato da un allarme. */
+  health:      CIHealth | null
+}
+
+/**
+ * Filtro sulla salute letto dall'URL (`?health=none` dalla pagina Salute CI,
+ * riquadro "Senza monitoraggio"; `?health=down|degraded|operational` dai
+ * link per stato). Id fisso: la regola è ricostruibile e confrontabile.
+ */
+export function healthRuleFromParam(value: string | null): FilterRule | null {
+  if (!value) return null
+  if (value === 'none') return { id: 'url-health', field: 'health', operator: 'is_empty', value: null, logic: 'AND' }
+  if ((CI_HEALTHS as readonly string[]).includes(value)) return { id: 'url-health', field: 'health', operator: 'equals', value, logic: 'AND' }
+  // Valore scritto a mano nell'URL: si ignora (non è un errore dell'app), come per gli altri parametri.
+  return null
 }
 
 
@@ -61,6 +78,13 @@ export function CMDBPage() {
       render:   (v) => <EnvBadge environment={String(v)} />,
     },
     {
+      key:      'health',
+      label:    t('pages.cmdb.health'),
+      width:    '110px',
+      sortable: false,
+      render:   (v) => (v ? <CIHealthBadge health={v as CIHealth} compact /> : <span style={{ color: 'var(--color-text-disabled)' }}>—</span>),
+    },
+    {
       key:      'createdAt',
       label:    t('pages.cmdb.createdAt'),
       width:    '120px',
@@ -79,17 +103,19 @@ export function CMDBPage() {
     { key: 'status',      label: t('pages.cmdb.status'),      type: 'enum', options: toEnumOptions(baseEnums.statuses) },
     { key: 'environment', label: t('pages.cmdb.environment'), type: 'enum', options: toEnumOptions(baseEnums.environments) },
     { key: 'createdAt',   label: t('pages.cmdb.createdAt'),   type: 'date' },
+    { key: 'health',      label: t('pages.cmdb.health'),      type: 'enum', options: CI_HEALTHS.map((h) => ({ value: h, label: t(`events.health.${h}`) })) },
   ]
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const typeFromUrl = searchParams.get('type')
+  const healthRule = healthRuleFromParam(searchParams.get('health'))
 
   const pageTitle = typeFromUrl
     ? typeFromUrl.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
     : t('sidebar.cmdb')
 
   const [page, setPage] = useState(0)
-  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(healthRule ? { rules: [healthRule] } : null)
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   useEffect(() => {
@@ -146,6 +172,7 @@ export function CMDBPage() {
 
       <FilterBuilder
         fields={FILTER_FIELDS}
+        initialRules={healthRule ? [healthRule] : undefined}
         onApply={(group) => { setFilterGroup(group); setPage(0) }}
       />
 

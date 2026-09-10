@@ -10,7 +10,9 @@ export const ALLOWED_BASE_FIELDS = new Set([
   'chain', 'createdAt', 'updatedAt', 'ownerGroup',
 ])
 
-export const ALL_CIS_ALLOWED_FIELDS = new Set(['name', 'status', 'environment', 'createdAt'])
+// `health` (salute dal monitoraggio, Event Management): `is_empty` = CI mai
+// toccato da un allarme, il filtro "senza monitoraggio" della pagina Salute CI.
+export const ALL_CIS_ALLOWED_FIELDS = new Set(['name', 'status', 'environment', 'createdAt', 'health'])
 
 // ── Sort whitelist ────────────────────────────────────────────────────────────
 

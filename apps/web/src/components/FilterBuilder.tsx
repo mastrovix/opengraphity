@@ -267,12 +267,18 @@ function LogicConnector({
 interface FilterBuilderProps {
   fields:  FieldConfig[]
   onApply: (group: FilterGroup | null) => void
+  /**
+   * Regole già attive all'apertura (es. lette dall'URL dalla pagina): il
+   * pannello parte aperto e le mostra; NON chiama onApply da solo — è la
+   * pagina che le ha già applicate alla query.
+   */
+  initialRules?: FilterRule[]
 }
 
-export function FilterBuilder({ fields, onApply }: FilterBuilderProps) {
+export function FilterBuilder({ fields, onApply, initialRules }: FilterBuilderProps) {
   const { t } = useTranslation()
-  const [open,  setOpen]  = useState(false)
-  const [rules, setRules] = useState<FilterRule[]>([])
+  const [open,  setOpen]  = useState((initialRules?.length ?? 0) > 0)
+  const [rules, setRules] = useState<FilterRule[]>(initialRules ?? [])
 
   const updateRule = (id: string, partial: Partial<FilterRule>) => {
     setRules((rs) => rs.map((r) => {

@@ -5,7 +5,7 @@ export const GET_ALL_CIS = gql`
     allCIs(limit: $limit, offset: $offset, type: $type, environment: $environment, status: $status, search: $search, ciTypes: $ciTypes, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       total
       items {
-        id name type status environment description createdAt
+        id name type status environment description createdAt health
         ownerGroup { id name }
         supportGroup { id name }
       }

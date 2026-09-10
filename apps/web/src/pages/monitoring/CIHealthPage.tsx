@@ -497,8 +497,8 @@ export function CIHealthPage() {
                 context={tileContext(key)}
                 hint={clickable ? t('monitoring.health.tiles.toggleHint') : t('monitoring.health.tiles.unmonitoredHint')}
                 extra={clickable ? undefined : (
-                  // La CMDB non ha (ancora) un filtro "senza salute" nell'URL: il link porta all'elenco completo.
-                  <Link to="/cmdb" style={{ display: 'inline-block', marginTop: 6, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)' }}>
+                  // `?health=none` → la CMDB apre il filtro avanzato "Salute è vuoto" (CI mai toccati da un allarme).
+                  <Link to="/cmdb?health=none" style={{ display: 'inline-block', marginTop: 6, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)' }}>
                     {t('monitoring.health.tiles.unmonitoredLink')}
                   </Link>
                 )}

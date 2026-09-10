@@ -172,6 +172,7 @@
       "notFound": "Service request non trovata."
     },
     "cmdb": {
+      "health": "Salute",
       "count": "{{count}} CI",
       "new": "+ Nuovo {{type}}",
       "newFeminine": "+ Nuova {{type}}",
@@ -2338,7 +2339,7 @@
         "unmonitored": "Senza monitoraggio",
         "unmonitoredHint": "CI a cui nessuna sorgente ha ancora inviato allarmi",
         "unmonitoredContext": "mai visti da una sorgente",
-        "unmonitoredLink": "Vedi tutti i CI nella CMDB",
+        "unmonitoredLink": "Vedi i CI senza monitoraggio nella CMDB",
         "toggleHint": "Filtra la tabella su questo stato; un secondo clic toglie il filtro",
         "dependentsContext_one": "con {{count}} CI dipendente",
         "dependentsContext_other": "con {{count}} CI dipendenti",

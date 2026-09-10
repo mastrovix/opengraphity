@@ -81,7 +81,7 @@ describe('CIHealthPage', () => {
     const unmonitored = screen.getByTitle('CIs no source has sent alarms for yet')
     expect(unmonitored).toHaveTextContent('12')
     expect(unmonitored).toHaveTextContent('Not monitored')
-    expect(within(unmonitored).getByRole('link', { name: 'View all CIs in the CMDB' })).toHaveAttribute('href', '/cmdb')
+    expect(within(unmonitored).getByRole('link', { name: 'View unmonitored CIs in the CMDB' })).toHaveAttribute('href', '/cmdb?health=none')
     // giù + degradati > 0 → nessun pannello "tutto bene"
     expect(screen.queryByText('All monitored CIs are operational')).not.toBeInTheDocument()
 
@@ -154,10 +154,11 @@ describe('CIHealthPage', () => {
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ environment: 'staging' }))
     await user.selectOptions(screen.getByRole('combobox', { name: 'Team' }), 't1')
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ environment: 'staging', team: 't1' }))
-    expect(location()).toBe('/monitoring/health?env=staging&team=t1')
+    // La query parte già in fase di render (variabili viste dal mock prima del commit): la posizione va attesa, non letta al volo.
+    await waitFor(() => expect(location()).toBe('/monitoring/health?env=staging&team=t1'))
     await user.type(screen.getByRole('textbox', { name: 'Search a CI by name' }), 'db')
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ environment: 'staging', team: 't1', search: 'db' }))
-    expect(location()).toBe('/monitoring/health?env=staging&team=t1&q=db')
+    await waitFor(() => expect(location()).toBe('/monitoring/health?env=staging&team=t1&q=db'))
   })
 
   it('D·1.7 — l\'URL è la sorgente dei filtri e della pagina: ?health=degraded&type=server&env=staging&team=t1&q=db&page=2 → variabili e controlli allineati', async () => {
