@@ -163,6 +163,8 @@ export async function ingestEvent(input: IngestInput): Promise<IngestResult> {
       title: ev.title, description: ev.description ?? null,
       resource: ev.resource, resourceKind: ev.resourceKind, labels,
       startsAt: ev.startsAt ?? null, endsAt: ev.endsAt ?? null, sourceId, now, receivedAt: now, firstSeenAt,
+      // Cronologia (history.ts): l'id della voce che il MERGE scrive nello stesso statement quando il payload apre/chiude un ciclo o cambia severità.
+      historyId: uuidv4(),
     })
   } finally {
     await session.close()

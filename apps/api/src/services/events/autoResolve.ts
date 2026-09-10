@@ -34,6 +34,7 @@ import { incidentsAutoResolvedTotal } from '../../middleware/metrics.js'
 import { engine, incidents } from './deps.js'
 import { MONITORING_ACTOR, mapEventPayload, monitoringContext, toNumber, toStr } from './shared.js'
 import { setCorrelation } from './repo.js'
+import { appendEventHistory } from './history.js'
 import { recomputeCIHealth } from './ciHealth.js'
 import { incidentStepInfo, loadDefinitionTransitions, runMonitoringTransition, type DefinitionTransition } from './incidentWorkflow.js'
 import { GROUP_LOCK_OPTS, groupIdOf, groupLockKey, type EventCorrelatedPayload } from './grouping.js'
@@ -200,6 +201,7 @@ async function resolveAgainstIncident(session: Session, tenantId: string, ev: Ev
     : findAutoResolvePath(await loadDefinitionTransitions(session, linked.instanceId, tenantId), linked.step, info.resolvedStep)
 
   let outcome: ResolveOutcome
+  let historyNote: string | null
   if (path) {
     // Ogni passo intermedio è una transizione vera (storia del workflow,
     // evento incident.<step>, senza commento: un solo commento riassuntivo
@@ -220,6 +222,7 @@ async function resolveAgainstIncident(session: Session, tenantId: string, ev: Ev
     await incidentService.addIncidentComment(linked.incidentId, ctx, `Risolto automaticamente: tutti gli allarmi di monitoraggio correlati sono rientrati (ultimo: ${title})${via}`)
     incidentsAutoResolvedTotal.inc({})
     outcome = 'auto_resolved'
+    historyNote = path.length ? `passando per ${path.map((h) => h.toLabel ?? h.toStep).join(', ')}` : null
   } else {
     // Nessun cammino percorribile (archi solo con condizioni di dominio, o
     // più lungo di AUTO_RESOLVE_MAX_HOPS): si lascia traccia senza forzare.
@@ -227,7 +230,10 @@ async function resolveAgainstIncident(session: Session, tenantId: string, ev: Ev
     await incidentService.addIncidentComment(linked.incidentId, ctx,
       `Tutti gli allarmi di monitoraggio correlati sono rientrati (ultimo: ${title}); l'incident è in "${linked.step}" e non può essere risolto automaticamente da questo passo`)
     outcome = 'auto_resolve_skipped'
+    historyNote = `l'incident è in "${linked.step}" e non può essere risolto automaticamente da questo passo`
   }
+  // Cronologia dell'allarme (history.ts): l'esito con l'incident e il cammino percorso (o il motivo), nella stessa sessione; un errore fa fallire il passo (il job ritenta).
+  await appendEventHistory(session, tenantId, eventId, { kind: outcome, incidentId: linked.incidentId, note: historyNote }, now)
   const payload: EventCorrelatedPayload = { ...mapEventPayload(ev.props, ev.ciId), incident_id: linked.incidentId, outcome }
   await publishEvent('event.correlated', tenantId, actorId, payload, now)
   void audit(monitoringContext(tenantId), `event.${outcome}`, 'Event', eventId, { incidentId: linked.incidentId, incidentStep: linked.step, path: path?.map((h) => h.toStep) ?? null, suppressed: toNumber(linked.suppressed) })

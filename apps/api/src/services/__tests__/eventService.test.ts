@@ -37,7 +37,9 @@ const {
   normalizePayload, fingerprintOf, nextEventState, deriveCIHealth, recomputeCIHealth, ingestEvent, matchCI, getEventPolicy, setEventPolicy, MAX_EVENTS_PER_REQUEST, stripPort, getPath, listPayloadKeys, PAYLOAD_KEYS_MAX, PAYLOAD_MAX_DEPTH, quoteValue, parseValueMapping, sourceConfigOf, normalizeWithConfig, countTransitionsSince, payloadStatusOf, transitionsOf, MAX_TRANSITIONS, QUIET_OUTCOMES,
   EVENT_TRANSITIONS, prevClassOf, transitionRuleFor, PREV_CLASS_CYPHER, SEVERITY_MAX_CYPHER, TRANSITION_ACTION_CYPHER, transitionCaseCypher, residueClearCypher, transitionSetCypher, ingestMergeCypher, INGEST_WRITE_OUTCOMES,
   ciMatchCypher, ciMatchParams, shortHostnameKeys, CI_MATCH_GUARD, MATCH_CANDIDATES_MAX, CI_HEALTH_RULES, ciHealthCaseCypher,
+  INGEST_HISTORY_KIND_CYPHER, LAST_PAYLOAD_STATUS_CYPHER,
 } = svc
+const { historyWriteCypher } = await import('../events/history.js')
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { publishEvent } = await import('../../lib/publishEvent.js')
 const { runEventPipeline } = await import('../eventCorrelation.js')
@@ -838,6 +840,30 @@ describe('EVENT_TRANSITIONS — tabella condivisa fra funzione pura e CASE Cyphe
     expect(INGEST_WRITE_OUTCOMES).toEqual(['created', 'applied', 'duplicate', 'stale'])
   })
 
+  it('cronologia dell\'allarme nello STESSO statement (history.ts): kind dal CASE sui valori PRE-scrittura (first_seen / cycle_firing / cycle_resolved / severity_changed / null), at = $firstSeenAt per la first_seen, nota = severità precedente, severità del payload; niente per ripetizioni, duplicate e stale', () => {
+    const q = ingestMergeCypher()
+    // il CASE legge e.status / e.last_payload_status / e.severity prima del SET (sta prima del FOREACH applied) e la severità precedente viaggia per la nota
+    expect(q).toContain(`WITH e, outcome, ${INGEST_HISTORY_KIND_CYPHER} AS historyKind, e.severity AS previousSeverity`)
+    expect(q.indexOf('AS historyKind')).toBeLessThan(q.indexOf("FOREACH (_ IN CASE WHEN outcome = 'applied' THEN [1] ELSE [] END |"))
+    expect(INGEST_HISTORY_KIND_CYPHER).toContain("WHEN outcome = 'created' THEN 'first_seen'")
+    // stessa regola dei passaggi (transitions): stato del payload diverso dall'ultimo applicato
+    expect(INGEST_HISTORY_KIND_CYPHER).toContain(`WHEN outcome = 'applied' AND $status <> ${LAST_PAYLOAD_STATUS_CYPHER} THEN CASE WHEN $status = 'firing' THEN 'cycle_firing' ELSE 'cycle_resolved' END`)
+    expect(LAST_PAYLOAD_STATUS_CYPHER).toBe("coalesce(e.last_payload_status, CASE WHEN e.status = 'resolved' THEN 'resolved' ELSE 'firing' END)")
+    expect(transitionSetCypher()).toContain(`e.transitions = CASE WHEN $status <> ${LAST_PAYLOAD_STATUS_CYPHER} THEN (coalesce(e.transitions, []) + $now)[-${MAX_TRANSITIONS}..]`)
+    expect(INGEST_HISTORY_KIND_CYPHER).toContain("WHEN outcome = 'applied' AND $status = 'firing' AND $severity <> e.severity THEN 'severity_changed'")
+    expect(INGEST_HISTORY_KIND_CYPHER).toMatch(/ELSE null END$/)   // duplicate/stale/ripetizione: nessuna voce
+    // il frammento condiviso, con i campi calcolati: CREATE dentro il FOREACH su historyKind, poi il cap
+    const fragment = historyWriteCypher({
+      when: 'historyKind IS NOT NULL', imports: ['historyKind'],
+      fields: { id: '$historyId', kind: 'historyKind', at: "CASE WHEN historyKind = 'first_seen' THEN $firstSeenAt ELSE $now END", outcome: 'null', actorId: "'monitoring'", incidentId: 'null', changeId: 'null', ciId: 'null', note: "CASE WHEN historyKind = 'severity_changed' THEN previousSeverity ELSE null END", severity: '$severity' },
+    })
+    expect(q).toContain(fragment)
+    expect(q).toContain('FOREACH (_ IN CASE WHEN historyKind IS NOT NULL THEN [1] ELSE [] END |')
+    expect(q).toContain('CREATE (e)-[:HAS_HISTORY]->(:EventHistoryEntry {id: $historyId, tenant_id: $tenantId, event_id: e.id')
+    expect(q).toMatch(/WHERE old\.kind <> 'first_seen'\s+WITH old ORDER BY old\.at DESC, old\.id DESC\s+SKIP 199\s+DETACH DELETE old\s+\}\s+WITH e, outcome\s+OPTIONAL MATCH \(w:InboundWebhook/)
+    expect(q.match(/HAS_HISTORY/g)).toHaveLength(2)   // la CREATE e il cap, una volta sola
+  })
+
   it('ciMatchCypher (A2/M2): alias external_id SOLO con $resourceExternalId (mai l\'id dell\'allarme), alias per kind, name_key indicizzato con collect (ambiguità esplicita), nome corto/FQDN solo con $matchShortHostname e senza nome esatto; precedenza alias_external_id → alias → name → name_short → none; candidati al massimo 5', () => {
     const q = ciMatchCypher()
     expect(q).toContain("OPTIONAL MATCH (:CIAlias {tenant_id: $tenantId, kind: 'external_id', value: $resourceExternalId})-[:ALIAS_OF]->(byExt:ConfigurationItem {tenant_id: $tenantId})")
@@ -1032,6 +1058,9 @@ describe('ingestEvent', () => {
       severityRank: { info: 0, warning: 1, critical: 2 }, labels: '{"job":"node"}', now: 'NOW', receivedAt: 'NOW', externalId: null, id: expect.any(String),
     })
     expect(merge.params).toMatchObject({ kind: 'hostname', kindValue: 'db-01', nameKey: 'db-01', matchShortHostname: false, shortNameKey: null, fqdnPrefix: null })
+    // cronologia: l'id della voce (first_seen / cycle / severità) che il MERGE scrive nello stesso statement, diverso a ogni ingest
+    expect(merge.params['historyId']).toEqual(expect.any(String))
+    expect(merge.params['historyId']).not.toBe(merge.params['id'])
     expect(getSession).toHaveBeenCalledTimes(1)
     expect(runEventPipeline).toHaveBeenCalledWith({
       tenantId: 't1', eventId: 'ev-1', actorId: 'monitoring', now: 'NOW', mode: 'ingest', created: true, jobId: 'job-9',

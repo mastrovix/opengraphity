@@ -377,6 +377,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...workflowResolvers.ServiceRequest,
     },
     Event:              eventResolvers.Event,
+    EventHistoryEntry:  eventResolvers.EventHistoryEntry,   // cronologia dell'allarme (Event Management)
     ReportConversation: reportResolvers.ReportConversation,
     DashboardConfig:    { ...dashboardResolvers.DashboardConfig },
     DashboardWidget:    { ...dashboardResolvers.DashboardWidget },

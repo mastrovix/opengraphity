@@ -21,6 +21,7 @@ import { MONITORING_ACTOR, mapEventPayload, monitoringContext, toStr, type Props
 import { getEventPolicy } from './policy.js'
 import { loadEventRecord } from './repo.js'
 import { transitionsOf } from './transitions.js'
+import { historyParams, historyWriteCypher } from './history.js'
 import { isStable, type EventStablePayload } from './flapping.js'
 import { runEventPipeline } from './pipeline.js'
 import type { EventRecord } from './types.js'
@@ -171,11 +172,16 @@ async function stabilizeEvent(tenantId: string, ev: EventRecord, policy: EventPo
   const flappingSince = typeof ev.props['flapping_since'] === 'string' ? ev.props['flapping_since'] : null
   const session = getSession(undefined, 'WRITE')
   try {
+    // Voce `stable` nello stesso statement (history.ts): quiete di flap_stable_minutes senza passaggi.
     const row = await runQueryOne<{ id: string }>(session, `
       MATCH (e:Event {id: $eventId, tenant_id: $tenantId})
       SET e.status = $status, e.flapping_since = null, e.correlation = $correlation, e.correlation_at = $now, e.correlation_due_at = $dueAt, e.updated_at = $now
+      ${historyWriteCypher()}
       RETURN e.id AS id
-    `, { eventId, tenantId, status: last, now, correlation: last === 'firing' ? 'pending' : 'none', dueAt: last === 'firing' ? now : null })
+    `, {
+      eventId, tenantId, status: last, now, correlation: last === 'firing' ? 'pending' : 'none', dueAt: last === 'firing' ? now : null,
+      ...historyParams({ kind: 'stable', note: `nessun passaggio in ${policy.flap_stable_minutes} min` }, now),
+    })
     if (!row) throw new Error(`Event ${eventId} vanished while stabilising (tenant ${tenantId})`)
   } finally { await session.close() }
 

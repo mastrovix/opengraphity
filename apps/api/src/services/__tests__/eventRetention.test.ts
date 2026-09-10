@@ -126,7 +126,9 @@ describe('purgeTenantResolvedEvents', () => {
     expect(call).toContain('OPTIONAL MATCH (e)-[:SUPPRESSED_BY]->(c:Change {tenant_id: $tenantId})')
     expect(call).toContain('SET c.suppressed_events_purged = coalesce(c.suppressed_events_purged, 0) + 1')
     // fra un OPTIONAL MATCH e l'altro (e prima della cancellazione) si torna a una riga per evento
-    expect(call.match(/WITH DISTINCT e/g)).toHaveLength(2)
+    expect(call.match(/WITH DISTINCT e/g)).toHaveLength(3)
+    // cronologia dell'allarme: le voci HAS_HISTORY vengono cancellate nello stesso batch, PRIMA dell'evento (un DETACH DELETE dell'evento le lascerebbe orfane)
+    expect(call).toMatch(/OPTIONAL MATCH \(e\)-\[:HAS_HISTORY\]->\(h:EventHistoryEntry \{tenant_id: \$tenantId\}\)\s+DETACH DELETE h\s+WITH DISTINCT e\s+DETACH DELETE e/)
     expect(call.trim().endsWith('DETACH DELETE e')).toBe(true)
   })
 })

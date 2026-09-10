@@ -154,6 +154,8 @@ const CONSTRAINTS: SchemaStatement[] = [
   { label: 'Event(tenant_id, fingerprint)', cypher: 'CREATE CONSTRAINT event_tenant_fingerprint_unique IF NOT EXISTS FOR (n:Event) REQUIRE (n.tenant_id, n.fingerprint) IS UNIQUE' },
   { label: 'CIAlias.id', cypher: 'CREATE CONSTRAINT ci_alias_id_unique IF NOT EXISTS FOR (n:CIAlias) REQUIRE n.id IS UNIQUE' },
   { label: 'CIAlias(tenant_id, kind, value)', cypher: 'CREATE CONSTRAINT ci_alias_tenant_kind_value_unique IF NOT EXISTS FOR (n:CIAlias) REQUIRE (n.tenant_id, n.kind, n.value) IS UNIQUE' },
+  // Cronologia dell'allarme (apps/api/src/services/events/history.ts): una voce per cambiamento di stato/esito dell'Event.
+  { label: 'EventHistoryEntry.id', cypher: 'CREATE CONSTRAINT event_history_entry_id_unique IF NOT EXISTS FOR (n:EventHistoryEntry) REQUIRE n.id IS UNIQUE' },
 ]
 
 const INDEXES: SchemaStatement[] = [
@@ -323,6 +325,9 @@ const INDEXES: SchemaStatement[] = [
   // (apps/api/src/lib/ciNameKey.ts) e backfillato dalla migrazione
   // 20260909_1050_event_management_indexes.
   { label: 'ConfigurationItem(tenant_id, name_key)', cypher: 'CREATE INDEX ci_tenant_name_key IF NOT EXISTS FOR (n:ConfigurationItem) ON (n.tenant_id, n.name_key)' },
+  // Cronologia dell'allarme: Event.history legge le voci di un evento dalla più
+  // recente (resolvers/events.ts) e il cap per evento le ordina per `at`.
+  { label: 'EventHistoryEntry(tenant_id, event_id, at)', cypher: 'CREATE INDEX event_history_tenant_event IF NOT EXISTS FOR (n:EventHistoryEntry) ON (n.tenant_id, n.event_id, n.at)' },
   // NOTE — vector indexes are NOT listed here on purpose: their name and
   // dimension depend on the configured embedding provider
   // (`incident_embedding_<dims>` / `kb_embedding_<dims>`, see

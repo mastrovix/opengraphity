@@ -10,6 +10,11 @@
  * pipeline di correlazione (services/eventCorrelation.ts).
  * Ondata 4: `Event.flappingSince`/`transitions24h`, `EventStats.stormSources`
  * (services/eventStorm.ts), nuove chiavi della policy.
+ * Cronologia dell'allarme (services/events/history.ts): `Event.history` /
+ * `historyCount` e i campi di `EventHistoryEntry`; le mutation scrivono la
+ * loro voce (acknowledged, resolved_manually, linked_ci, reevaluated) nello
+ * stesso statement dello stato, `incident_opened_manually` passa
+ * dall'apertura condivisa.
  *
  * Ogni query è scopata per tenant; ogni mutation scrive l'audit. Le mutation
  * amministrative (alias, policy, prova di una sorgente, anteprima) e le query
@@ -43,13 +48,15 @@ import { validateStringLength } from '../../lib/validation.js'
 import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
 import { withRedisLock } from '../../lib/redisLock.js'
 import { applyEventPolicyInput, toEventPolicyGQL, type EventPolicyInputGQL } from '../../lib/eventPolicy.js'
-import { CI_ALIAS_KINDS, CI_HEALTHS, EVENT_SEVERITIES, EVENT_STATUSES, type CIAliasKind, type CIHealth } from '../../lib/eventVocabularies.js'
+import { CI_ALIAS_KINDS, CI_HEALTHS, EVENT_HISTORY_KINDS, EVENT_SEVERITIES, EVENT_STATUSES, type CIAliasKind, type CIHealth } from '../../lib/eventVocabularies.js'
+import { MONITORING_ACTOR } from '../../services/events/shared.js'
 import {
   getEventPolicy, setEventPolicy, mapEventPayload, recomputeCIHealth,
   assertConnectorKind, listPayloadKeys, sourceConfigOf, normalizeWithConfig, countTransitionsSince, transitionsOf,
   type NormalizedEvent,
 } from '../../services/eventService.js'
 import { GROUP_LOCK_OPTS, groupIdOf, groupLockKey, openIncidentFromEvent, runEventPipeline } from '../../services/eventCorrelation.js'
+import { EVENT_HISTORY_MAX, appendEventHistory, historyParams, historyWriteCypher } from '../../services/events/history.js'
 import { listStormSources } from '../../services/eventStorm.js'
 import { enqueueEvents } from '../../jobs/eventIngestWorker.js'
 import { sampleInboundPayload as samplePayloadOf } from '../../lib/eventSamples.js'
@@ -788,10 +795,11 @@ async function acknowledgeEvent(_: unknown, args: { id: string }, ctx: GraphQLCo
       WHERE e.status <> 'resolved' AND (e.acknowledged_by IS NULL OR e.acknowledged_by = $userId)
       WITH e, e.acknowledged_by AS previous
       SET e.acknowledged_by = $userId, e.acknowledged_at = $now, e.updated_at = $now
+      ${historyWriteCypher()}
       WITH e, previous
       ${eventRowColumns(['previous'])}
       ${EVENT_ROW_RETURN}, previous
-    `, { id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, now })
+    `, { id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, now, ...historyParams({ kind: 'acknowledged', actorId: ctx.userId }, now) })
   } finally {
     await session.close()
   }
@@ -825,10 +833,14 @@ async function resolveEvent(_: unknown, args: { id: string; note?: string | null
       WHERE e.status IN $resolvable
       SET e.status = 'resolved', e.resolved_at = $now, e.resolved_by = $userId,
           e.resolution_note = $note, e.suppressed_by_change_id = null, e.flapping_since = null, e.updated_at = $now
+      ${historyWriteCypher()}
       WITH e
       ${eventRowColumns()}
       ${EVENT_ROW_RETURN}
-    `, { id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, note: args.note ?? null, now, resolvable: RESOLVABLE_STATUSES })
+    `, {
+      id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, note: args.note ?? null, now, resolvable: RESOLVABLE_STATUSES,
+      ...historyParams({ kind: 'resolved_manually', actorId: ctx.userId, note: args.note ?? null }, now),
+    })
   } finally {
     await session.close()
   }
@@ -895,10 +907,15 @@ async function linkEventToCI(_: unknown, args: { eventId: string; ciId: string; 
       DELETE old
       MERGE (e)-[:RAISED_ON]->(target)
       SET e.updated_at = $now, e.match_reason = 'manual'
+      ${historyWriteCypher()}
       WITH e
       ${eventRowColumns()}
       ${EVENT_ROW_RETURN}
-    `, { id: args.eventId, ciId: args.ciId, tenantId: ctx.tenantId, now })
+    `, {
+      id: args.eventId, ciId: args.ciId, tenantId: ctx.tenantId, now,
+      // Cronologia: `linked_ci` con il CI scelto; note = 'alias' se l'operatore ha chiesto anche l'alias (creato subito dopo, stessa sessione).
+      ...historyParams({ kind: 'linked_ci', actorId: ctx.userId, ciId: args.ciId, note: wantsAlias ? 'alias' : null }, now),
+    })
     if (!row) throw new NotFoundError('ConfigurationItem', args.ciId)
 
     if (wantsAlias && aliasVal !== null) {
@@ -967,6 +984,9 @@ async function reevaluateEvent(_: unknown, args: { id: string }, ctx: GraphQLCon
       throw new ValidationError(`Event ${args.id} is ${status} with correlation "${correlation}": not re-evaluable`)
     }
   }
+  // Cronologia: la richiesta di rivalutazione con l'utente, PRIMA della pipeline (che scrive i suoi esiti); se non si scrive, la pipeline non parte.
+  const write = getSession(undefined, 'WRITE')
+  try { await appendEventHistory(write, ctx.tenantId, args.id, { kind: 'reevaluated', actorId: ctx.userId }) } finally { await write.close() }
   const pipeline = await runEventPipeline({ tenantId: ctx.tenantId, eventId: args.id, actorId: ctx.userId, mode: 'reevaluate' })
   void audit(ctx, 'event.reevaluated', 'Event', args.id, { previousStatus: status, previousCorrelation: correlation, outcome: pipeline.outcome, incidentId: pipeline.incidentId })
   const row = await loadEvent(args.id, ctx.tenantId)
@@ -1164,6 +1184,147 @@ async function eventSuppressedBy(parent: EventParent, _: unknown, ctx: GraphQLCo
   return loadChange(null, { id: parent.suppressedByChangeId }, ctx)
 }
 
+// ── Cronologia dell'allarme (Event.history, services/events/history.ts) ──────
+
+/** Una voce come esce dal resolver: gli id restano per i field resolver (actor, incident, change, ci). */
+export interface EventHistoryEntryOut {
+  id: string; at: string; kind: string; outcome: string | null; actorId: string
+  incidentId: string | null; changeId: string | null; ciId: string | null; severity: string | null; note: string | null
+}
+
+/** Nodo EventHistoryEntry → voce. `kind` fuori vocabolario o `actor_id` assente = nodo non scritto da history.ts: errore, non un valore inventato. */
+export function mapHistoryEntry(props: Props): EventHistoryEntryOut {
+  const id = toStr(props['id'])
+  const kind = props['kind']
+  if (typeof kind !== 'string' || !(EVENT_HISTORY_KINDS as readonly string[]).includes(kind)) {
+    throw new Error(`EventHistoryEntry ${id} has an unknown kind ${JSON.stringify(kind)} (expected one of: ${EVENT_HISTORY_KINDS.join(', ')})`)
+  }
+  const actorId = props['actor_id']
+  if (typeof actorId !== 'string' || !actorId) throw new Error(`EventHistoryEntry ${id} has no actor_id: it was not written by services/events/history.ts`)
+  return {
+    id, kind, actorId,
+    at:         toStr(props['at']),
+    outcome:    toStrOrNull(props['outcome']),
+    incidentId: toStrOrNull(props['incident_id']),
+    changeId:   toStrOrNull(props['change_id']),
+    ciId:       toStrOrNull(props['ci_id']),
+    severity:   toStrOrNull(props['severity']),
+    note:       toStrOrNull(props['note']),
+  }
+}
+
+/**
+ * `first_seen` sintetizzata per gli allarmi precedenti alla cronologia (nessuna
+ * voce salvata di quel tipo): il punto di partenza da `first_seen_at`, con id
+ * deterministico e senza severità (quella di allora non è nota: non si inventa).
+ */
+export function syntheticFirstSeen(eventId: string, firstSeenAt: string): EventHistoryEntryOut {
+  if (!firstSeenAt) throw new Error(`Event ${eventId} has no first_seen_at: cannot synthesize its first_seen history entry`)
+  return { id: `${eventId}:first_seen`, at: firstSeenAt, kind: 'first_seen', outcome: null, actorId: MONITORING_ACTOR, incidentId: null, changeId: null, ciId: null, severity: null, note: null }
+}
+
+/** Inserisce la voce sintetica nell'ordine della lista (at DESC); a parità di istante va per ultima: è l'origine. */
+export function withSyntheticFirstSeen(items: EventHistoryEntryOut[], entry: EventHistoryEntryOut): EventHistoryEntryOut[] {
+  const i = items.findIndex((h) => h.at < entry.at)
+  return i < 0 ? [...items, entry] : [...items.slice(0, i), entry, ...items.slice(i)]
+}
+
+/** Totale delle voci salvate e quante sono `first_seen` (0 = va sintetizzata), con `e` in scope dopo. */
+const HISTORY_COUNT_CYPHER = `
+  MATCH (e:Event {id: $id, tenant_id: $tenantId})
+  CALL {
+    WITH e
+    MATCH (h:EventHistoryEntry {tenant_id: $tenantId, event_id: e.id})
+    RETURN count(h) AS total, count(CASE WHEN h.kind = 'first_seen' THEN 1 END) AS firstSeen
+  }`
+
+/**
+ * Ordine della cronologia: dalla più recente; a parità di istante (l'ingest e
+ * la pipeline scrivono con lo stesso `now`) la voce dell'ingest — first_seen,
+ * cycle_*, severity_changed: la causa — è la più vecchia e l'esito della
+ * pipeline (correlated, auto_resolved, …) il più recente; poi l'id.
+ */
+export const HISTORY_ORDER_CYPHER = "h.at DESC, CASE WHEN h.kind IN ['first_seen', 'cycle_firing', 'cycle_resolved', 'severity_changed'] THEN 1 ELSE 0 END, h.id DESC"
+
+/** Ultime `limit` voci (1..EVENT_HISTORY_MAX, default 100) dalla più recente, sull'indice (tenant_id, event_id, at); la first_seen è sempre presente. */
+async function eventHistory(parent: { id: string }, args: { limit?: number | null } | null | undefined, ctx: GraphQLContext) {
+  const limit = Math.min(Math.max(args?.limit ?? 100, 1), EVENT_HISTORY_MAX)
+  const session = getSession()
+  try {
+    const row = await runQueryOne<{ firstSeenAt: unknown; firstSeen: unknown; items: Props[] }>(session, `
+      ${HISTORY_COUNT_CYPHER}
+      CALL {
+        WITH e
+        MATCH (h:EventHistoryEntry {tenant_id: $tenantId, event_id: e.id})
+        WITH h ORDER BY ${HISTORY_ORDER_CYPHER} LIMIT toInteger($limit)
+        RETURN collect(properties(h)) AS items
+      }
+      RETURN e.first_seen_at AS firstSeenAt, total, firstSeen, items
+    `, { id: parent.id, tenantId: ctx.tenantId, limit })
+    if (!row) throw new NotFoundError('Event', parent.id)
+    const items = row.items.map(mapHistoryEntry)
+    if (toNumber(row.firstSeen) > 0) return items
+    return withSyntheticFirstSeen(items, syntheticFirstSeen(parent.id, toStr(row.firstSeenAt)))
+  } finally { await session.close() }
+}
+
+/** Numero totale di voci, la first_seen sintetizzata inclusa. */
+async function eventHistoryCount(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  const session = getSession()
+  try {
+    const row = await runQueryOne<{ total: unknown; firstSeen: unknown }>(session, `
+      ${HISTORY_COUNT_CYPHER}
+      RETURN total, firstSeen
+    `, { id: parent.id, tenantId: ctx.tenantId })
+    if (!row) throw new NotFoundError('Event', parent.id)
+    return toNumber(row.total) + (toNumber(row.firstSeen) > 0 ? 0 : 1)
+  } finally { await session.close() }
+}
+
+/** `actor`: null per il monitoraggio; altrimenti l'utente del tenant (null se non esiste più). */
+async function historyActor(parent: EventHistoryEntryOut, _: unknown, ctx: GraphQLContext) {
+  if (parent.actorId === MONITORING_ACTOR) return null
+  const session = getSession()
+  try {
+    const row = await runQueryOne<{ props: Props }>(session, `
+      MATCH (u:User {id: $id, tenant_id: $tenantId})
+      RETURN properties(u) AS props
+    `, { id: parent.actorId, tenantId: ctx.tenantId })
+    return row ? mapUser(row.props) : null
+  } finally { await session.close() }
+}
+
+async function historyIncident(parent: EventHistoryEntryOut, _: unknown, ctx: GraphQLContext) {
+  if (!parent.incidentId) return null
+  const session = getSession()
+  try {
+    const row = await runQueryOne<{ props: Props }>(session, `
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      RETURN properties(i) AS props
+    `, { id: parent.incidentId, tenantId: ctx.tenantId })
+    return row ? mapIncident(row.props) : null
+  } finally { await session.close() }
+}
+
+/** `change`: la query `change` del tenant (null se eliminata), come Event.suppressedBy. */
+async function historyChange(parent: EventHistoryEntryOut, _: unknown, ctx: GraphQLContext) {
+  if (!parent.changeId) return null
+  return loadChange(null, { id: parent.changeId }, ctx)
+}
+
+async function historyCI(parent: EventHistoryEntryOut, _: unknown, ctx: GraphQLContext) {
+  if (!parent.ciId) return null
+  const session = getSession()
+  try {
+    const row = await runQueryOne<CIRefRow>(session, `
+      MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId})
+      RETURN ci.id AS ciId, ci.name AS ciName, ci.status AS ciStatus, ci.health AS ciHealth,
+             [l IN labels(ci) WHERE l <> 'ConfigurationItem'] AS ciLabels
+    `, { id: parent.ciId, tenantId: ctx.tenantId })
+    return row ? mapCIRef(row) : null
+  } finally { await session.close() }
+}
+
 // ── Campi di Incident / Change ───────────────────────────────────────────────
 
 /** Pagina delle liste di allarmi di Incident/Change (P-5): default 100, cap 500. */
@@ -1268,7 +1429,8 @@ export const eventResolvers = {
     acknowledgeEvent, resolveEvent, linkEventToCI, createIncidentFromEvent, reevaluateEvent, createCIAlias, deleteCIAlias, updateEventPolicy,
     previewInboundEvents, sendSampleEvent, setCIHealthOverride,
   },
-  Event:    { acknowledgedBy: eventAcknowledgedBy, source: eventSource, incident: eventIncident, suppressedBy: eventSuppressedBy },
+  Event:    { acknowledgedBy: eventAcknowledgedBy, source: eventSource, incident: eventIncident, suppressedBy: eventSuppressedBy, history: eventHistory, historyCount: eventHistoryCount },
+  EventHistoryEntry: { actor: historyActor, incident: historyIncident, change: historyChange, ci: historyCI },
   Incident: { correlatedEvents: incidentCorrelatedEvents, correlatedEventCount: incidentCorrelatedEventCount, correlatedEventsPurged: incidentCorrelatedEventsPurged },
   Change:   { suppressedEvents: changeSuppressedEvents, suppressedEventCount: changeSuppressedEventCount, suppressedEventsPurged: changeSuppressedEventsPurged },
 }

@@ -1997,6 +1997,46 @@
         "pending": "in rivalutazione"
       }
     },
+    "history": {
+      "title": "Cronologia",
+      "empty": "Nessuna voce.",
+      "truncated": "Mostrate le ultime {{shown}} voci di {{total}}.",
+      "outcomeMissing": "esito non registrato",
+      "outcomeUnknown": "esito sconosciuto: {{value}}",
+      "actor": {
+        "monitoring": "monitoraggio"
+      },
+      "missing": {
+        "incident": "incident non registrato",
+        "change": "change non registrata",
+        "ci": "CI non registrato",
+        "severity": "severità non registrata"
+      },
+      "note": {
+        "alias": "Alias creato: la sorgente riconoscerà il CI da sola."
+      },
+      "kind": {
+        "first_seen": "Primo avvistamento dal monitoraggio con severità <severity/>.",
+        "cycle_firing": "Di nuovo attivo (nuovo ciclo) con severità <severity/>.",
+        "cycle_resolved": "Rientrato dalla sorgente; ultima severità <severity/>.",
+        "severity_changed": "Severità cambiata da {{previous}} a <severity/>.",
+        "correlated": "Correlazione: {{outcome}} — incident <incident>{{number}}</incident>.",
+        "correlatedNoIncident": "Correlazione: {{outcome}}.",
+        "suppressed": "Silenziato dalla change <change>{{code}}</change> in finestra di rilascio.",
+        "unsuppressed": "Silenzio della change <change>{{code}}</change> revocato.",
+        "flapping": "Segnato come instabile: nessun incident aperto o chiuso finché non resta stabile.",
+        "stable": "Di nuovo stabile: riprende la correlazione normale.",
+        "storm": "Raggruppato nell'incident di tempesta <incident>{{number}}</incident>.",
+        "auto_resolved": "Incident <incident>{{number}}</incident> risolto automaticamente: la sorgente ha chiuso l'allarme.",
+        "auto_resolve_skipped": "Incident <incident>{{number}}</incident> non risolto automaticamente.",
+        "acknowledged": "Preso in carico da {{name}}.",
+        "resolved_manually": "Risolto a mano da {{name}}.",
+        "linked_ci": "Collegato al CI <ci>{{ci}}</ci> da {{name}}.",
+        "incident_opened_manually": "Incident <incident>{{number}}</incident> aperto da {{name}}.",
+        "reevaluated": "Rivalutazione richiesta da {{name}}.",
+        "unknown": "Voce sconosciuta: {{kind}}."
+      }
+    },
     "storm": {
       "banner": {
         "title_one": "Tempesta in corso",

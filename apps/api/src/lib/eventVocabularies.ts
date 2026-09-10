@@ -81,6 +81,26 @@ export type OpenIncidentFrom = (typeof OPEN_INCIDENT_FROM)[number]
 export const EVENT_GROUP_BY = ['ci', 'fingerprint'] as const
 export type EventGroupBy = (typeof EVENT_GROUP_BY)[number]
 
+/**
+ * Tipi di voce della cronologia dell'allarme (`EventHistoryEntry.kind`,
+ * scritte da services/events/history.ts e dai punti di scrittura dello stato):
+ * `first_seen` (creazione dell'Event), `cycle_firing`/`cycle_resolved`
+ * (passaggi resolved → firing / → resolved dal payload), `severity_changed`
+ * (severità del payload cambiata nello stesso ciclo), `correlated` (esito di
+ * correlazione cambiato, con `outcome`), `suppressed`/`unsuppressed` (finestra
+ * di change), `flapping`/`stable` (sfarfallio), `storm` (aggancio nuovo
+ * all'incident di tempesta), `auto_resolved`/`auto_resolve_skipped` (chiusura
+ * automatica), e le azioni manuali `acknowledged`, `resolved_manually`,
+ * `linked_ci`, `incident_opened_manually`, `reevaluated` (actor_id = utente).
+ * Le ripetizioni di un payload con lo stesso stato non scrivono nulla.
+ */
+export const EVENT_HISTORY_KINDS = [
+  'first_seen', 'cycle_firing', 'cycle_resolved', 'severity_changed', 'correlated', 'suppressed', 'unsuppressed',
+  'flapping', 'stable', 'storm', 'auto_resolved', 'auto_resolve_skipped',
+  'acknowledged', 'resolved_manually', 'linked_ci', 'incident_opened_manually', 'reevaluated',
+] as const
+export type EventHistoryKind = (typeof EVENT_HISTORY_KINDS)[number]
+
 /** Nome enum SDL → lista TS: è la tabella che schema-events.ts usa per generare gli enum e che il test confronta con lo schema. */
 export const EVENT_SDL_ENUMS: Readonly<Record<string, readonly string[]>> = {
   EventStatus:      EVENT_STATUSES,
@@ -96,6 +116,7 @@ export const EVENT_SDL_ENUMS: Readonly<Record<string, readonly string[]>> = {
   EventMatchReason: MATCH_REASONS,
   OpenIncidentFrom: OPEN_INCIDENT_FROM,
   EventGroupBy:     EVENT_GROUP_BY,
+  EventHistoryKind: EVENT_HISTORY_KINDS,
 }
 
 /** `enum Nome { a b c }` per l'SDL. */

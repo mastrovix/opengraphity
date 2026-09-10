@@ -16,6 +16,7 @@ import { logger } from '../../lib/logger.js'
 import { anyDeployWindowContains } from '../../lib/deployWindows.js'
 import { eventsSuppressedTotal } from '../../middleware/metrics.js'
 import { mapEventPayload, monitoringContext, toStr } from './shared.js'
+import { historyParams, historyWriteCypher } from './history.js'
 import type { EventRecord, PipelineMode } from './types.js'
 
 const log = logger.child({ module: 'event-correlation' })
@@ -107,8 +108,9 @@ export async function applySuppression(session: Session, tenantId: string, ev: E
     MERGE (e)-[r:SUPPRESSED_BY]->(c)
     ON CREATE SET r.created_at = $now
     SET r.last_seen_at = $now
+    ${historyWriteCypher()}
     RETURN e.id AS id
-  `, { eventId, tenantId, changeId: change.changeId, now })
+  `, { eventId, tenantId, changeId: change.changeId, now, ...historyParams({ kind: 'suppressed', changeId: change.changeId }, now) })
   if (!row) throw new Error(`Event ${eventId} or Change ${change.changeId} vanished while suppressing (tenant ${tenantId})`)
 
   eventsSuppressedTotal.inc({})
@@ -122,11 +124,14 @@ export async function applySuppression(session: Session, tenantId: string, ev: E
  * Fine soppressione: torna firing, via il puntatore alla change; SUPPRESSED_BY
  * resta per la storia. `correlation = 'pending'` + `correlation_due_at = now`:
  * se la correlazione che segue fallisce, la passata periodica lo riprende.
+ * La voce `unsuppressed` porta la change che silenziava (letta prima di azzerare il puntatore).
  */
 export async function liftSuppression(session: Session, tenantId: string, eventId: string, now: string): Promise<void> {
   await runQuery(session, `
     MATCH (e:Event {id: $eventId, tenant_id: $tenantId})
+    WITH e, e.suppressed_by_change_id AS changeId
     SET e.status = 'firing', e.suppressed_by_change_id = null,
         e.correlation = 'pending', e.correlation_at = $now, e.correlation_due_at = $now, e.updated_at = $now
-  `, { eventId, tenantId, now })
+    ${historyWriteCypher({ fields: { changeId: 'changeId' } })}
+  `, { eventId, tenantId, now, ...historyParams({ kind: 'unsuppressed' }, now) })
 }

@@ -83,6 +83,8 @@ const corr = await import('../eventCorrelation.js')
 const { runEventPipeline, findSuppressingChange, reevaluateSuppressedEvents, reevaluateClosedWindows, reevaluateFlappingEvents, reevaluatePendingEvents, openIncidentFromEvent, meetsOpenThreshold, changeIsInWindow, findAutoResolvePath, isFlapping, isStable, groupLockKey, CHANGE_IMPLEMENTATION_STEP, CHANGE_WINDOW_STEPS, MONITORING_ACTOR, AUTO_RESOLVE_MAX_HOPS, CORRELATION_OUTCOMES, PENDING_CORRELATIONS, GROUP_LOCK_TTL_SECONDS, GROUP_LOCK_WAIT_MS, GROUP_LOCK_POLL_MS } = corr
 // Revisione 1.18: helper della chiusura automatica (non passano dalla facciata).
 const { suppressedSummary, STILL_FIRING_STATUSES } = await import('../events/autoResolve.js')
+// Cronologia dell'allarme: il frammento condiviso, per verificare che gli statement della pipeline lo contengano.
+const { historyWriteCypher } = await import('../events/history.js')
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { workflowEngine, INCIDENT_WORKFLOW_BASE } = await import('@opengraphity/workflow')
 const { publishEvent } = await import('../../lib/publishEvent.js')
@@ -150,6 +152,8 @@ const Q = {
   incStep:     /MATCH \(i:Incident \{id: \$incidentId, tenant_id: \$tenantId\}\)-\[:HAS_WORKFLOW\]->\(wi:WorkflowInstance \{tenant_id: \$tenantId\}\)\s+RETURN i\.id AS incidentId, wi\.id AS instanceId, wi\.current_step AS step/,
   // revisione 1.16: incident chiuso a cui l'allarme era correlato (dopo l'apertura di uno nuovo)
   closedPrev:  /WHERE wi\.current_step IN \$terminalSteps AND wi\.current_step <> \$resolvedStep AND i\.id <> \$openedId/,
+  // cronologia dell'allarme: la voce scritta da sola (appendEventHistory: chiusura automatica); le altre stanno dentro gli statement qui sopra
+  history:     /MATCH \(e:Event \{id: \$eventId, tenant_id: \$tenantId\}\)\s+FOREACH \(_ IN CASE WHEN true THEN \[1\] ELSE \[\] END \|/,
 }
 
 /** Archi della definizione come li restituisce loadDefinitionTransitions (dal seed reale del workflow incident). */
@@ -185,6 +189,7 @@ function baseRules(ev: Record<string, unknown> = {}, ciId: string | null = 'ci-1
     [Q.stabilize, { id: 'ev-1' }],
     [Q.incStep, { incidentId: 'inc-storm', instanceId: 'wi-s', step: 'in_progress' }],
     [Q.closedPrev, null],
+    [Q.history, { id: 'ev-1' }],
   ]
 }
 
@@ -1400,5 +1405,176 @@ describe('incident di tempesta chiuso o risolto', () => {
 
     onCypher([...baseRules(), [Q.incStep, null]])
     await expect(runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, created: true })).rejects.toThrow(/Storm incident inc-storm of source hook-1 not found/)
+  })
+})
+
+// ── Cronologia dell'allarme (services/events/history.ts) ─────────────────────
+
+describe('cronologia dell\'allarme', () => {
+  /** Le voci scritte in questa esecuzione, nell'ordine: parametri $history* di ogni statement che contiene la CREATE, con la condizione del FOREACH. */
+  const historyWrites = () => calls().filter((c) => /CREATE \(e\)-\[:HAS_HISTORY\]/.test(c.cypher)).map((c) => ({
+    kind: c.params['historyKind'], outcome: c.params['historyOutcome'], incidentId: c.params['historyIncidentId'], changeId: c.params['historyChangeId'],
+    actorId: c.params['historyActorId'], note: c.params['historyNote'], at: c.params['historyAt'],
+    when: (c.cypher.match(/FOREACH \(_ IN CASE WHEN (.+?) THEN \[1\] ELSE \[\] END \|/) ?? [])[1],
+  }))
+  const ON_CHANGE = 'previous IS NULL OR previous <> $correlation'
+  const FLAPPY = [minutesAgo(9), minutesAgo(6), minutesAgo(3), minutesAgo(1)]
+
+  it('soppressione: la voce `suppressed` con la change sta nello STESSO statement del SET/MERGE SUPPRESSED_BY; la ripetizione nella stessa finestra non scrive nulla', async () => {
+    onCypher([...baseRules(), [Q.suppressing, [{ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [null] }]]])
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    const sup = callMatching(Q.suppress)!
+    expect(sup.cypher).toMatch(/SET r\.last_seen_at = \$now\s+FOREACH \(_ IN CASE WHEN true THEN \[1\] ELSE \[\] END \|\s+CREATE \(e\)-\[:HAS_HISTORY\]->\(:EventHistoryEntry \{id: \$historyId, tenant_id: \$tenantId, event_id: e\.id/)
+    expect(sup.cypher).toMatch(/DETACH DELETE old\s+\}\s+RETURN e\.id AS id/)
+    expect(historyWrites()).toEqual([{ kind: 'suppressed', outcome: null, incidentId: null, changeId: 'chg-1', actorId: 'monitoring', note: null, at: NOW, when: 'true' }])
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(trackSourceStorm).mockResolvedValue(NO_STORM)
+    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' }), [Q.suppressing, [{ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [null] }]]])
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(callMatching(Q.touchSupp)).toBeDefined()
+    expect(historyWrites()).toEqual([])
+  })
+
+  it('fine soppressione: `unsuppressed` con la change letta PRIMA di azzerare il puntatore (variabile Cypher, non parametro), poi `correlated` (opened) dalla correlazione che segue', async () => {
+    onCypher(baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' }))
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, mode: 'reevaluate' })).outcome).toBe('opened')
+    const lift = callMatching(Q.lift)!
+    expect(lift.cypher).toMatch(/MATCH \(e:Event \{id: \$eventId, tenant_id: \$tenantId\}\)\s+WITH e, e\.suppressed_by_change_id AS changeId\s+SET e\.status = 'firing'/)
+    expect(lift.cypher).toContain('change_id: changeId, ci_id: $historyCiId')
+    expect(historyWrites().map((h) => [h.kind, h.outcome, h.incidentId, h.when])).toEqual([['unsuppressed', null, null, 'true'], ['correlated', 'opened', 'inc-new', 'true']])
+  })
+
+  it('correlazione: `correlated` con outcome e incident — opened/attached/reopened sempre (relazione nuova), skipped_*/delayed solo se l\'esito cambia (condizione nel FOREACH)', async () => {
+    onCypher(baseRules())
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(historyWrites()).toEqual([{ kind: 'correlated', outcome: 'opened', incidentId: 'inc-new', changeId: null, actorId: 'monitoring', note: null, at: NOW, when: 'true' }])
+    const sc = callMatching(Q.setCorr)!
+    expect(sc.cypher).toMatch(/MATCH \(e:Event \{id: \$eventId, tenant_id: \$tenantId\}\)\s+WITH e, e\.correlation AS previous\s+SET e\.correlation = \$correlation/)
+    expect(sc.cypher).toMatch(/CALL \{\s+WITH e, previous\s+UNWIND CASE WHEN true THEN/)
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(trackSourceStorm).mockResolvedValue(NO_STORM)
+    onCypher([...baseRules(), [Q.group, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'in_progress' }]])
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(historyWrites()).toEqual([expect.objectContaining({ kind: 'correlated', outcome: 'attached', incidentId: 'inc-1', when: 'true' })])
+
+    vi.clearAllMocks(); lockStore.clear(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(trackSourceStorm).mockResolvedValue(NO_STORM)
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'in_progress', label: 'Riapri' }] as never)
+    onCypher([...baseRules({ correlation: 'none' }), [Q.group, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'resolved' }], [Q.attach, { created: false }]])
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('reopened')
+    expect(historyWrites()).toEqual([expect.objectContaining({ kind: 'correlated', outcome: 'reopened', incidentId: 'inc-1', when: ON_CHANGE })])
+
+    vi.clearAllMocks(); lockStore.clear(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(trackSourceStorm).mockResolvedValue(NO_STORM)
+    onCypher(baseRules({ severity: 'warning' }))
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('skipped_severity')
+    expect(historyWrites()).toEqual([expect.objectContaining({ kind: 'correlated', outcome: 'skipped_severity', incidentId: null, when: ON_CHANGE })])
+
+    vi.clearAllMocks(); lockStore.clear(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(trackSourceStorm).mockResolvedValue(NO_STORM)
+    vi.mocked(getEventPolicy).mockResolvedValue(policy({ open_delay_seconds: 30 }))
+    onCypher(baseRules())
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('delayed')
+    expect(historyWrites()).toEqual([expect.objectContaining({ kind: 'correlated', outcome: 'delayed', when: ON_CHANGE })])
+  })
+
+  it('dieta di rumore: la ripetizione già agganciata allo stesso incident non scrive nessuna voce; relazione esistente con esito diverso (pending) → voce condizionata al cambio', async () => {
+    onCypher([...baseRules({ correlation: 'attached' }), [Q.group, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'in_progress' }], [Q.attach, { created: false }]])
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(historyWrites()).toEqual([])
+
+    vi.clearAllMocks(); lockStore.clear(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(trackSourceStorm).mockResolvedValue(NO_STORM)
+    onCypher([...baseRules({ correlation: 'pending' }), [Q.group, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'in_progress' }], [Q.attach, { created: false }]])
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(historyWrites()).toEqual([expect.objectContaining({ kind: 'correlated', outcome: 'attached', incidentId: 'inc-1', when: ON_CHANGE })])
+  })
+
+  it('risolto durante l\'attesa (resume): `correlated` none condizionato al cambio (da delayed)', async () => {
+    onCypher(baseRules({ status: 'resolved', correlation: 'delayed', correlation_due_at: NOW }))
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, mode: 'resume' })
+    expect(historyWrites()).toEqual([expect.objectContaining({ kind: 'correlated', outcome: 'none', when: ON_CHANGE })])
+  })
+
+  it('tempesta: `storm` con l\'incident (senza outcome) solo all\'aggancio nuovo; ripetizione già agganciata → niente; esito che cambia senza relazione nuova → `correlated` storm; storm_no_ci → `correlated` condizionato', async () => {
+    vi.mocked(trackSourceStorm).mockResolvedValue(STORM)
+    onCypher(baseRules({ severity: 'info' }))
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, created: true })
+    expect(historyWrites()).toEqual([{ kind: 'storm', outcome: null, incidentId: 'inc-storm', changeId: null, actorId: 'monitoring', note: null, at: NOW, when: 'true' }])
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(trackSourceStorm).mockResolvedValue(STORM)
+    onCypher([...baseRules({ correlation: 'storm' }), [Q.attach, { created: false }]])
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, created: false })
+    expect(historyWrites()).toEqual([])
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(trackSourceStorm).mockResolvedValue(STORM)
+    onCypher([...baseRules({ correlation: 'none' }), [Q.attach, { created: false }]])
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, created: false })
+    expect(historyWrites()).toEqual([expect.objectContaining({ kind: 'correlated', outcome: 'storm', incidentId: 'inc-storm', when: ON_CHANGE })])
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(trackSourceStorm).mockResolvedValue({ ...STORM, incidentId: null })
+    onCypher(baseRules({}, null))
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, created: true })
+    expect(historyWrites()).toEqual([expect.objectContaining({ kind: 'correlated', outcome: 'storm_no_ci', incidentId: null, when: ON_CHANGE })])
+  })
+
+  it('sfarfallio: `flapping` con la nota "N passaggi in M min" nello statement del SET; stabilizzazione: `stable` ("nessun passaggio in M min") nello statement che riporta lo stato, poi la correlazione', async () => {
+    onCypher(baseRules({ transitions: FLAPPY }))
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(callMatching(Q.flap)!.cypher).toMatch(/e\.updated_at = \$now\s+FOREACH \(_ IN CASE WHEN true THEN \[1\] ELSE \[\] END \|\s+CREATE \(e\)-\[:HAS_HISTORY\]/)
+    expect(historyWrites()).toEqual([expect.objectContaining({ kind: 'flapping', note: '4 passaggi in 10 min', actorId: 'monitoring', at: NOW, when: 'true' })])
+
+    vi.clearAllMocks(); lockStore.clear(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(getStormState).mockResolvedValue(NO_STORM)
+    let loads = 0
+    onCypher([
+      [Q.allFlap, [{ tenantId: 't1', id: 'ev-1' }]],
+      ...baseRules().slice(1),
+      [Q.load, () => (loads++ === 0
+        ? { props: props({ status: 'flapping', flapping_since: minutesAgo(30), correlation: 'flapping', transitions: [minutesAgo(40), minutesAgo(16)], last_payload_status: 'firing' }), ciId: 'ci-1' }
+        : { props: props({ status: 'firing', transitions: [minutesAgo(40), minutesAgo(16)] }), ciId: 'ci-1' })],
+    ])
+    await reevaluateFlappingEvents(NOW)
+    expect(callMatching(Q.stabilize)!.cypher).toMatch(/e\.updated_at = \$now\s+FOREACH \(_ IN CASE WHEN true THEN \[1\] ELSE \[\] END \|\s+CREATE \(e\)-\[:HAS_HISTORY\]/)
+    expect(historyWrites().map((h) => [h.kind, h.note, h.outcome])).toEqual([['stable', 'nessun passaggio in 15 min', null], ['correlated', null, 'opened']])
+  })
+
+  it('chiusura automatica: `auto_resolved` con l\'incident e il cammino percorso come nota (statement a sé, nella sessione della pipeline, PRIMA di event.correlated); `auto_resolve_skipped` con il motivo', async () => {
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'resolved', inputField: 'rootCause' }] as never)
+    onCypher([...baseRules({ status: 'resolved', correlation: 'attached' }), [Q.linked, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'in_progress', stillFiring: 0 }]])
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    const h = callMatching(Q.history)!
+    expect(h.cypher).toContain(historyWriteCypher())
+    expect(h.params).toMatchObject({ eventId: 'ev-1', tenantId: 't1', historyKind: 'auto_resolved', historyIncidentId: 'inc-1', historyNote: null, historyOutcome: null, historyActorId: 'monitoring', historyAt: NOW })
+    expect(vi.mocked(publishEvent).mock.invocationCallOrder[0]!).toBeGreaterThan(vi.mocked(runQueryOne).mock.invocationCallOrder.at(-1)!)
+
+    // cammino di passi intermedi → nota "passando per …" (etichette dei passi)
+    vi.clearAllMocks(); lockStore.clear(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(trackSourceStorm).mockResolvedValue(NO_STORM)
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'assigned' }] as never)
+    onCypher([...baseRules({ status: 'resolved' }), [Q.linked, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'new', stillFiring: 0 }], [Q.defTr, [tr('new', 'assigned', { toLabel: 'Assegnato' }), tr('assigned', 'in_progress', { toLabel: 'In lavorazione' }), tr('in_progress', 'resolved', { condition: 'rootCause != null' })]]])
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('auto_resolved')
+    expect(callMatching(Q.history)!.params).toMatchObject({ historyKind: 'auto_resolved', historyIncidentId: 'inc-1', historyNote: 'passando per Assegnato, In lavorazione' })
+
+    // nessun cammino → auto_resolve_skipped con il motivo
+    vi.clearAllMocks(); lockStore.clear(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(trackSourceStorm).mockResolvedValue(NO_STORM)
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'assigned' }] as never)
+    onCypher([...baseRules({ status: 'resolved' }), [Q.linked, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'new', stillFiring: 0 }], [Q.defTr, [tr('new', 'assigned', { condition: 'assignee != null' })]]])
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('auto_resolve_skipped')
+    expect(callMatching(Q.history)!.params).toMatchObject({ historyKind: 'auto_resolve_skipped', historyIncidentId: 'inc-1', historyNote: 'l\'incident è in "new" e non può essere risolto automaticamente da questo passo' })
+
+    // un altro allarme ancora acceso → none: nessuna voce
+    vi.clearAllMocks(); lockStore.clear(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(trackSourceStorm).mockResolvedValue(NO_STORM)
+    onCypher([...baseRules({ status: 'resolved' }), [Q.linked, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'in_progress', stillFiring: 1 }]])
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('none')
+    expect(callMatching(Q.history)).toBeUndefined()
+  })
+
+  it('chiusura automatica: la voce non scritta (evento sparito) → errore propagato, nessun event.correlated (fail-loud, mai fire-and-forget)', async () => {
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'resolved' }] as never)
+    onCypher([...baseRules({ status: 'resolved' }), [Q.linked, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'in_progress', stillFiring: 0 }], [Q.history, null]])
+    await expect(runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).rejects.toThrow(/Event ev-1 not found while appending history entry auto_resolved/)
+    expect(publishEvent).not.toHaveBeenCalled()
+  })
+
+  it('apertura manuale (createIncidentFromEvent → openIncidentFromEvent manual): `incident_opened_manually` con l\'utente e l\'incident, senza outcome, sempre scritta', async () => {
+    onCypher(baseRules())
+    await openIncidentFromEvent({ tenantId: 't1', props: props(), ciId: 'ci-1', actorId: 'u-7', manual: true, now: NOW })
+    expect(historyWrites()).toEqual([{ kind: 'incident_opened_manually', outcome: null, incidentId: 'inc-new', changeId: null, actorId: 'u-7', note: null, at: NOW, when: 'true' }])
+    expect(callMatching(Q.setCorr)!.params).toMatchObject({ correlation: 'opened', dueAt: null })
   })
 })

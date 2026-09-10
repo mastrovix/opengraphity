@@ -50,7 +50,7 @@ function findCycle(): string[] | null {
 
 describe('services/events — grafo dei moduli', () => {
   it('perimetro atteso', () => {
-    for (const m of ['shared.ts', 'types.ts', 'normalize.ts', 'transitions.ts', 'policy.ts', 'ciHealth.ts', 'repo.ts', 'deps.ts', 'incidentWorkflow.ts', 'suppression.ts', 'flapping.ts', 'autoResolve.ts', 'grouping.ts', 'storm.ts', 'sourceCache.ts', 'pipeline.ts', 'passes.ts', 'gauges.ts', 'ingest.ts']) {
+    for (const m of ['shared.ts', 'types.ts', 'normalize.ts', 'transitions.ts', 'policy.ts', 'ciHealth.ts', 'repo.ts', 'deps.ts', 'incidentWorkflow.ts', 'suppression.ts', 'flapping.ts', 'autoResolve.ts', 'grouping.ts', 'storm.ts', 'sourceCache.ts', 'pipeline.ts', 'passes.ts', 'gauges.ts', 'ingest.ts', 'history.ts']) {
       expect(modules, m).toContain(m)
     }
   })

@@ -21,6 +21,14 @@ const EVENT: Record<string, unknown> = {
   incident: INCIDENT,
   suppressedBy: null, correlation: 'opened', correlationAt: '2026-09-09T08:00:05Z',
   flappingSince: null, transitions24h: 0,
+  // cronologia: la voce di correlazione (con l'incident) e il primo avvistamento, dalla più recente
+  history: [
+    { __typename: 'EventHistoryEntry', id: 'h2', at: '2026-09-09T08:00:05Z', kind: 'correlated', outcome: 'opened', actorId: 'monitoring', actor: null,
+      incident: { __typename: 'Incident', id: 'inc1', number: 'INC-0042', title: 'CPU saturation' }, change: null, ci: null, severity: null, note: null },
+    { __typename: 'EventHistoryEntry', id: 'h1', at: '2026-09-09T08:00:00Z', kind: 'first_seen', outcome: null, actorId: 'monitoring', actor: null,
+      incident: null, change: null, ci: null, severity: 'critical', note: null },
+  ],
+  historyCount: 2,
 }
 
 const eventMock = (over: Record<string, unknown> = {}): GqlMock => ({
@@ -82,6 +90,13 @@ describe('EventDetailPage', () => {
     // l'incident è linkato una volta sola (Contesto); la frase di correlazione lo cita
     expect(screen.getAllByRole('link', { name: 'INC-0042 · CPU saturation' })).toHaveLength(1)
     expect(screen.getByRole('link', { name: 'INC-0042 · CPU saturation' })).toHaveAttribute('href', '/incidents/inc1')
+    // cronologia: conteggio nel titolo, voci dalla più recente, link all'incident nella voce di correlazione
+    expect(screen.getByRole('button', { name: /History/ })).toHaveTextContent('2')
+    const history = screen.getAllByTestId('history-entry')
+    expect(history).toHaveLength(2)
+    expect(history[0]).toHaveTextContent('Correlation: incident opened — incident INC-0042.')
+    expect(within(history[0]!).getByRole('link', { name: 'INC-0042' })).toHaveAttribute('href', '/incidents/inc1')
+    expect(history[1]).toHaveTextContent('First seen by monitoring with severity Critical.')
     // severità massima = attuale: il campo non compare; ID esterno della risorsa assente: idem
     expect(screen.queryByText('Peak severity of the cycle')).not.toBeInTheDocument()
     expect(screen.queryByText('Resource external ID')).not.toBeInTheDocument()

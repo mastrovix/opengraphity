@@ -129,7 +129,8 @@ export async function openIncidentFromEvent(args: OpenIncidentArgs) {
   const session = args.session ?? own!
   try {
     await attachEventToIncident(session, tenantId, eventId, incident.id, manual, now)
-    await setCorrelation(session, tenantId, eventId, 'opened', now)
+    // Cronologia: `incident_opened_manually` con l'utente dalla mutation, `correlated` (opened) dalla correlazione automatica; un incident nuovo è sempre una voce.
+    await setCorrelation(session, tenantId, eventId, 'opened', now, null, { kind: manual ? 'incident_opened_manually' : 'correlated', incidentId: incident.id, actorId, always: true })
   } finally { if (own) await own.close() }
   if (!manual) incidentsAutoOpenedTotal.inc({})
   return incident
@@ -269,7 +270,9 @@ export async function correlateFiringEvent(session: Session, tenantId: string, e
     log.debug({ ...logCtx, tenantId, eventId, incidentId }, 'Repeated event already correlated: nothing to publish')
     return done(outcome, incidentId)
   }
-  if (outcome !== 'opened') await setCorrelation(session, tenantId, eventId, outcome, now)   // opened: già scritto da openIncidentFromEvent
+  // opened: già scritto da openIncidentFromEvent. La voce `correlated` porta l'incident; con un CORRELATED_INTO
+  // appena creato si scrive anche se l'esito è lo stesso di prima (aggancio a un incident diverso).
+  if (outcome !== 'opened') await setCorrelation(session, tenantId, eventId, outcome, now, null, { incidentId, always: grouped.created })
 
   const payload: EventCorrelatedPayload = { ...mapEventPayload({ ...ev.props, status: 'firing' }, ev.ciId), incident_id: incidentId, outcome }
   await publishEvent('event.correlated', tenantId, actorId, payload, now)
@@ -323,7 +326,8 @@ export async function correlateIntoStorm(session: Session, tenantId: string, ev:
   }
 
   const created = await attachEventToIncident(session, tenantId, eventId, incidentId, false, now)
-  if (created || ev.props['correlation'] !== 'storm') await setCorrelation(session, tenantId, eventId, 'storm', now)
+  // Cronologia: `storm` (con l'incident) solo all'aggancio nuovo; altrimenti `correlated` (storm) se l'esito cambia.
+  if (created || ev.props['correlation'] !== 'storm') await setCorrelation(session, tenantId, eventId, 'storm', now, null, created ? { kind: 'storm', incidentId } : { incidentId })
   log.debug({ ...logCtx, tenantId, eventId, incidentId, sourceName }, 'Event attached to storm incident')
   return { outcome: 'storm', status: 'firing', suppressedByChangeId: null, incidentId }
 }

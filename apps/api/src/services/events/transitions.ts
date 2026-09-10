@@ -16,8 +16,9 @@
 import type { EventInputStatus, EventSeverity } from '../../lib/eventVocabularies.js'
 import type { NormalizedEvent } from './normalize.js'
 import type { Props } from './shared.js'
-import { SEVERITY_RANK } from './shared.js'
+import { MONITORING_ACTOR, SEVERITY_RANK } from './shared.js'
 import { ciNameKey } from '../../lib/ciNameKey.js'
+import { historyWriteCypher } from './history.js'
 
 // ── Stato dell'evento (puro) ─────────────────────────────────────────────────
 
@@ -202,6 +203,28 @@ export function residueClearCypher(field: string, when: readonly ResidueClear[])
 }
 
 /**
+ * Stato dell'ULTIMO payload applicato, in Cypher (equivalente di
+ * payloadStatusOf): `last_payload_status`, o dedotto dallo status per gli
+ * eventi scritti prima dell'ondata 4. Legge `e` PRIMA della scrittura.
+ */
+export const LAST_PAYLOAD_STATUS_CYPHER = "coalesce(e.last_payload_status, CASE WHEN e.status = 'resolved' THEN 'resolved' ELSE 'firing' END)"
+
+/**
+ * Voce di cronologia prodotta dall'ingest (services/events/history.ts), come
+ * CASE Cypher sui valori PRE-scrittura di `e` e sull'esito `outcome`:
+ * `first_seen` (evento creato, anche già resolved — B5), `cycle_firing` /
+ * `cycle_resolved` (il payload cambia stato rispetto all'ultimo applicato:
+ * stessa regola di `transitions`), `severity_changed` (stesso ciclo, payload
+ * firing con severità diversa), altrimenti null = nessuna voce (ripetizione,
+ * `duplicate`, `stale`).
+ */
+export const INGEST_HISTORY_KIND_CYPHER = `CASE
+        WHEN outcome = 'created' THEN 'first_seen'
+        WHEN outcome = 'applied' AND $status <> ${LAST_PAYLOAD_STATUS_CYPHER} THEN CASE WHEN $status = 'firing' THEN 'cycle_firing' ELSE 'cycle_resolved' END
+        WHEN outcome = 'applied' AND $status = 'firing' AND $severity <> e.severity THEN 'severity_changed'
+        ELSE null END`
+
+/**
  * Assegnazioni `ON MATCH` (dentro il FOREACH condizionale di ingestMergeCypher).
  * Ordine deliberato: ogni espressione legge `e.status`, `e.count`,
  * `e.last_payload_status`… PRIMA della scrittura, quindi `status` e
@@ -226,7 +249,7 @@ export function transitionSetCypher(): string {
     // visibile né far tacere l'avviso di correlazione del nuovo ciclo.
     `e.correlation = ${transitionCaseCypher((r) => (r.clear === 'new_cycle' ? "'none'" : 'e.correlation'))}`,
     `e.correlation_at = ${residueClearCypher('correlation_at', ['new_cycle'])}`,
-    `e.transitions = CASE WHEN $status <> coalesce(e.last_payload_status, CASE WHEN e.status = 'resolved' THEN 'resolved' ELSE 'firing' END) THEN (coalesce(e.transitions, []) + $now)[-${MAX_TRANSITIONS}..] ELSE coalesce(e.transitions, []) END`,
+    `e.transitions = CASE WHEN $status <> ${LAST_PAYLOAD_STATUS_CYPHER} THEN (coalesce(e.transitions, []) + $now)[-${MAX_TRANSITIONS}..] ELSE coalesce(e.transitions, []) END`,
     `e.last_payload_status = $status`,
     `e.status = ${transitionCaseCypher((r) => a.status[r.status])}`,
     'e.last_seen_at = $now',
@@ -391,6 +414,12 @@ export const CI_MATCH_GUARD = "linked IS NULL AND outcome <> 'stale'"
  * sorgente fosse collegata), calcolato da ingest.ts. `$resourceExternalId`
  * (M2) è l'id della risorsa presso la sorgente; `max_severity` (M9) parte
  * dalla severità del payload.
+ *
+ * Cronologia (history.ts): nello stesso statement, la voce scelta da
+ * INGEST_HISTORY_KIND_CYPHER (`first_seen` con `at` = first_seen_at,
+ * `cycle_firing`/`cycle_resolved`, `severity_changed` con la severità
+ * precedente come nota; nessuna per ripetizioni/duplicate/stale), con
+ * `$historyId` nuovo a ogni ingest e la severità del payload.
  */
 export function ingestMergeCypher(): string {
   return `
@@ -410,9 +439,20 @@ export function ingestMergeCypher(): string {
         WHEN e.last_received_at IS NULL OR datetime(e.last_received_at) < datetime($receivedAt) THEN 'applied'
         WHEN e.last_received_at = $receivedAt THEN 'duplicate'
         ELSE 'stale' END AS outcome
+      WITH e, outcome, ${INGEST_HISTORY_KIND_CYPHER} AS historyKind, e.severity AS previousSeverity
       FOREACH (_ IN CASE WHEN outcome = 'applied' THEN [1] ELSE [] END |
         SET ${transitionSetCypher()}
       )
+      ${historyWriteCypher({
+        when: 'historyKind IS NOT NULL', imports: ['historyKind'],
+        fields: {
+          id: '$historyId', kind: 'historyKind',
+          at: "CASE WHEN historyKind = 'first_seen' THEN $firstSeenAt ELSE $now END",
+          outcome: 'null', actorId: `'${MONITORING_ACTOR}'`, incidentId: 'null', changeId: 'null', ciId: 'null',
+          note: "CASE WHEN historyKind = 'severity_changed' THEN previousSeverity ELSE null END",
+          severity: '$severity',
+        },
+      })}
       WITH e, outcome
       OPTIONAL MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})
       FOREACH (_ IN CASE WHEN outcome = 'created' AND w IS NOT NULL THEN [1] ELSE [] END | MERGE (e)-[:FROM_SOURCE]->(w))

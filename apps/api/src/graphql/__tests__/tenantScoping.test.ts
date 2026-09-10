@@ -31,7 +31,7 @@ const DOMAIN_LABELS = [
   'Attachment', 'EntityComment', 'AuditEntry', 'ApprovalRequest', 'InternalMessage', 'Notification',
   'CIGroup', 'ConfigurationItem', 'EnumTypeDefinition', 'CITypeDefinition',
   'FieldVisibilityRule', 'FieldRequirementRule', 'ITILCIRelationRule', 'ServiceCatalogItem', 'AssessmentQuestion',
-  'Event', 'CIAlias',
+  'Event', 'CIAlias', 'EventHistoryEntry',
 ]
 
 // Tutta l'API (Ondata 1 della revisione a tappeto). Fuori: script operativi

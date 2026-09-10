@@ -1997,6 +1997,46 @@
         "pending": "re-evaluating"
       }
     },
+    "history": {
+      "title": "History",
+      "empty": "No entries.",
+      "truncated": "Showing the latest {{shown}} of {{total}} entries.",
+      "outcomeMissing": "outcome not recorded",
+      "outcomeUnknown": "unknown outcome: {{value}}",
+      "actor": {
+        "monitoring": "monitoring"
+      },
+      "missing": {
+        "incident": "incident not recorded",
+        "change": "change not recorded",
+        "ci": "CI not recorded",
+        "severity": "severity not recorded"
+      },
+      "note": {
+        "alias": "Alias created: the source will recognise the CI on its own."
+      },
+      "kind": {
+        "first_seen": "First seen by monitoring with severity <severity/>.",
+        "cycle_firing": "Firing again (new cycle) with severity <severity/>.",
+        "cycle_resolved": "Cleared by the source; last severity <severity/>.",
+        "severity_changed": "Severity changed from {{previous}} to <severity/>.",
+        "correlated": "Correlation: {{outcome}} — incident <incident>{{number}}</incident>.",
+        "correlatedNoIncident": "Correlation: {{outcome}}.",
+        "suppressed": "Suppressed by change <change>{{code}}</change> in its release window.",
+        "unsuppressed": "Suppression by change <change>{{code}}</change> lifted.",
+        "flapping": "Marked as flapping: no incident opened or closed until it stays stable.",
+        "stable": "Stable again: normal correlation resumes.",
+        "storm": "Grouped into the storm incident <incident>{{number}}</incident>.",
+        "auto_resolved": "Incident <incident>{{number}}</incident> resolved automatically: the source cleared the alarm.",
+        "auto_resolve_skipped": "Incident <incident>{{number}}</incident> not resolved automatically.",
+        "acknowledged": "Acknowledged by {{name}}.",
+        "resolved_manually": "Resolved manually by {{name}}.",
+        "linked_ci": "Linked to CI <ci>{{ci}}</ci> by {{name}}.",
+        "incident_opened_manually": "Incident <incident>{{number}}</incident> opened by {{name}}.",
+        "reevaluated": "Re-evaluation requested by {{name}}.",
+        "unknown": "Unknown entry: {{kind}}."
+      }
+    },
     "storm": {
       "banner": {
         "title_one": "Storm in progress",

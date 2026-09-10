@@ -9,6 +9,7 @@
  *   - autoResolve.ts     — chiusura automatica (7)
  *   - passes.ts          — fine finestra e passate periodiche (sopra la pipeline)
  *   - gauges.ts          — gauge di salute per il job periodico
+ *   - history.ts         — cronologia dell'allarme (voci HAS_HISTORY, cap per evento)
  *   - incidentWorkflow.ts, repo.ts, deps.ts, shared.ts, types.ts
  * Questo file ri-esporta tutto con gli stessi nomi: i chiamanti (resolver,
  * worker, mutation della change) e i loro test non cambiano.
@@ -38,3 +39,4 @@ export {
   reevaluateSuppressedEvents, reevaluateClosedWindows, reevaluatePendingEvents, reevaluateFlappingEvents,
 } from './events/passes.js'
 export { refreshEventGauges, OVERDUE_DELAYED_GRACE_MINUTES, UNCORRELATED_AFTER_MINUTES, type EventGauges } from './events/gauges.js'
+export { EVENT_HISTORY_MAX, appendEventHistory, type EventHistoryEntry } from './events/history.js'

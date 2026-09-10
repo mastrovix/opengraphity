@@ -1,5 +1,5 @@
 import { gql } from '@apollo/client'
-import { EVENT_FIELDS, EVENT_ROW_FIELDS } from '../fragments'
+import { EVENT_FIELDS, EVENT_HISTORY_FIELDS, EVENT_ROW_FIELDS } from '../fragments'
 
 // ── Event Management (console allarmi) ──────────────────────────────────────
 // Contratto: apps/api/src/graphql/schema-events.ts (eventsSDL). Le liste
@@ -18,11 +18,17 @@ export const GET_EVENTS = gql`
   ${EVENT_ROW_FIELDS}
 `
 
+/** Dettaglio: evento completo + cronologia (ultime 100 voci e totale). Solo qui: le liste non la chiedono. */
 export const GET_EVENT = gql`
   query GetEvent($id: ID!) {
-    event(id: $id) { ...EventFields }
+    event(id: $id) {
+      ...EventFields
+      history(limit: 100) { ...EventHistoryFields }
+      historyCount
+    }
   }
   ${EVENT_FIELDS}
+  ${EVENT_HISTORY_FIELDS}
 `
 
 /** Contatori + sorgenti in tempesta (ondata 4): banner in console e badge nelle Sorgenti. */

@@ -57,6 +57,30 @@ export function eventsSDL(): string {
   ${sdlEnum('OpenIncidentFrom')}
   """Identità del gruppo di correlazione: il CI o l'impronta dell'allarme."""
   ${sdlEnum('EventGroupBy')}
+  """Cronologia dell'allarme: una voce per ogni cambiamento di stato o esito; le ripetizioni non compaiono (vedi count/lastSeenAt)."""
+  ${sdlEnum('EventHistoryKind')}
+
+  """Una voce della cronologia dell'allarme (Event.history)."""
+  type EventHistoryEntry {
+    id:       ID!
+    at:       String!
+    kind:     EventHistoryKind!
+    """Esito di correlazione, solo per kind = correlated (valori di EventCorrelation)."""
+    outcome:  EventCorrelation
+    """'monitoring' per le azioni automatiche, altrimenti l'id dell'utente."""
+    actorId:  String!
+    """Utente dell'azione; null per il monitoraggio o un utente non più esistente."""
+    actor:    User
+    """Incident della voce (correlated, storm, auto_resolved, auto_resolve_skipped, incident_opened_manually); null se assente o eliminato."""
+    incident: Incident
+    """Change della voce (suppressed, unsuppressed); null se assente o eliminata."""
+    change:   Change
+    """CI della voce (linked_ci); null se assente o eliminato."""
+    ci:       ConfigurationItemRef
+    """Severità del payload (first_seen, cycle_firing, cycle_resolved, severity_changed; per severity_changed la precedente è in note)."""
+    severity: EventSeverity
+    note:     String
+  }
 
   """
   Riferimento leggero a una sorgente di monitoraggio: quanto serve alla console
@@ -113,6 +137,10 @@ export function eventsSDL(): string {
     flappingSince:  String
     """Numero di passaggi firing↔resolved nelle ultime 24 ore."""
     transitions24h: Int!
+    """Ultime limit voci (max 200), dalla più recente. La voce first_seen è sempre presente (sintetizzata da firstSeenAt per gli allarmi precedenti alla cronologia: id "<eventId>:first_seen", senza severità)."""
+    history(limit: Int = 100): [EventHistoryEntry!]!
+    """Numero totale di voci (la first_seen sintetizzata inclusa), indipendente da limit."""
+    historyCount:   Int!
   }
 
   extend type Incident {

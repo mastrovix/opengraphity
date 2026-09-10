@@ -67,6 +67,10 @@ describe('campi a vocabolario chiuso sono enum (C-1)', () => {
     ['CIHealthRow', 'health', 'CIHealth'],
     ['CIHealthRow', 'healthSource', 'HealthSource'],
     ['CIHealthFilter', 'health', 'CIHealth'],
+    // cronologia dell'allarme
+    ['EventHistoryEntry', 'kind', 'EventHistoryKind'],
+    ['EventHistoryEntry', 'outcome', 'EventCorrelation'],
+    ['EventHistoryEntry', 'severity', 'EventSeverity'],
   ])('%s.%s: %s', (type, field, expected) => {
     expect(enumName(type, field)).toBe(expected)
   })
@@ -100,6 +104,18 @@ describe('contratto (A-2, C-2, C-4)', () => {
     expect(fieldType('EventPolicy', 'version').toString()).toBe('Int!')
     expect(fieldType('EventPolicy', 'updatedAt').toString()).toBe('String')
     expect(fieldType('EventPolicyInput', 'expectedVersion').toString()).toBe('Int')
+  })
+
+  it('cronologia dell\'allarme: Event.history(limit: Int = 100): [EventHistoryEntry!]!, Event.historyCount: Int!, voce con id/at/kind/actorId non-null e actor/incident/change/ci come riferimenti', () => {
+    const history = (schema.getType('Event') as GraphQLObjectType).getFields()['history']!
+    expect(history.type.toString()).toBe('[EventHistoryEntry!]!')
+    expect(history.args.map((a) => [a.name, a.type.toString(), a.defaultValue])).toEqual([['limit', 'Int', 100]])
+    expect(fieldType('Event', 'historyCount').toString()).toBe('Int!')
+    const entry = schema.getType('EventHistoryEntry') as GraphQLObjectType
+    expect(Object.fromEntries(Object.entries(entry.getFields()).map(([k, f]) => [k, f.type.toString()]))).toEqual({
+      id: 'ID!', at: 'String!', kind: 'EventHistoryKind!', outcome: 'EventCorrelation', actorId: 'String!',
+      actor: 'User', incident: 'Incident', change: 'Change', ci: 'ConfigurationItemRef', severity: 'EventSeverity', note: 'String',
+    })
   })
 
   it('le descrizioni SDL non replicano i ruoli (C-6): la policy è in lib/authorization.ts', () => {

@@ -15,6 +15,9 @@
  * ambiguo), severità massima del ciclo (`maxSeverity`, se diversa da quella
  * attuale) e ID esterno della risorsa (`resourceExternalId`); l'incident è
  * linkato una volta sola (Contesto), la frase di correlazione lo cita.
+ * Cronologia: la sezione "Cronologia" (EventHistorySection) elenca le voci di
+ * `history` dalla più recente; le azioni della pagina rileggono l'evento
+ * (`refetch`) così la voce appena scritta compare subito.
  */
 import { useId } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -42,7 +45,8 @@ import { EventStatusBadge, EventSeverityBadge, EventNoCIBadge, CIHealthBadge, pa
 import { correlationSentence } from './eventCorrelation'
 import { EventActions } from './EventActions'
 import { CIAliasesSection } from './CIAliasesSection'
-import type { MonitoringEvent, EventPolicy } from '@/types/events'
+import { EventHistorySection } from './EventHistorySection'
+import type { MonitoringEventDetail, EventPolicy } from '@/types/events'
 
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
 
@@ -55,7 +59,7 @@ export function EventDetailPage() {
   const canAct = role === 'admin' || role === 'operator'
   const matchHelpId = useId()
 
-  const { data, loading, error, refetch } = useQuery<{ event: MonitoringEvent | null }>(GET_EVENT, {
+  const { data, loading, error, refetch } = useQuery<{ event: MonitoringEventDetail | null }>(GET_EVENT, {
     variables: { id }, fetchPolicy: 'cache-and-network',
   })
   // Policy: dà i numeri alle frasi "in attesa" e "sotto soglia"; senza, la frase resta generica.
@@ -142,6 +146,8 @@ export function EventDetailPage() {
                 : t('events.detail.notAcknowledged')}
             />
           </SectionCard>
+
+          <EventHistorySection entries={ev.history} total={ev.historyCount} />
 
           <SectionCard title={t('events.detail.labels')} count={labels.entries.length} defaultOpen>
             {labels.error && <p role="alert" style={{ color: colors.danger, fontSize: 'var(--font-size-body)', margin: 0 }}>{t('events.detail.labelsInvalid', { error: labels.error })}</p>}

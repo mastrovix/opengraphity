@@ -21,6 +21,7 @@ import { eventsFlappingTotal } from '../../middleware/metrics.js'
 import { incidents } from './deps.js'
 import { MONITORING_ACTOR, mapEventPayload, monitoringContext, toStr } from './shared.js'
 import { countTransitionsSince, transitionsOf } from './transitions.js'
+import { historyParams, historyWriteCypher } from './history.js'
 import { recomputeCIHealth } from './ciHealth.js'
 import { findLinkedOpenIncident, incidentStepInfo } from './incidentWorkflow.js'
 import type { EventRecord, PipelineResult } from './types.js'
@@ -62,8 +63,9 @@ export async function enterFlapping(session: Session, tenantId: string, ev: Even
     MATCH (e:Event {id: $eventId, tenant_id: $tenantId})
     SET e.status = 'flapping', e.flapping_since = $now, e.suppressed_by_change_id = null,
         e.correlation = 'flapping', e.correlation_at = $now, e.correlation_due_at = null, e.updated_at = $now
+    ${historyWriteCypher()}
     RETURN e.id AS id
-  `, { eventId, tenantId, now })
+  `, { eventId, tenantId, now, ...historyParams({ kind: 'flapping', note: `${transitions} passaggi in ${policy.flap_window_minutes} min` }, now) })
   if (!row) throw new Error(`Event ${eventId} vanished while entering flapping (tenant ${tenantId})`)
   const incidentId = await findLinkedOpenIncident(session, tenantId, eventId, await incidentStepInfo(session, tenantId))
 

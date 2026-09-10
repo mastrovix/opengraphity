@@ -49,3 +49,19 @@ export const EVENT_FIELDS = gql`
   }
   ${EVENT_ROW_FIELDS}
 `
+
+/**
+ * Voce della cronologia dell'allarme (`Event.history`): selezionata solo dal
+ * dettaglio (GET_EVENT), non dalle liste né dalle mutation. Tipo:
+ * `EventHistoryEntry` in types/events.ts.
+ */
+export const EVENT_HISTORY_FIELDS = gql`
+  fragment EventHistoryFields on EventHistoryEntry {
+    id at kind outcome actorId
+    actor { id name }
+    incident { id number title }
+    change { id code title }
+    ci { id name type }
+    severity note
+  }
+`

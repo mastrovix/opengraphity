@@ -664,6 +664,62 @@ esplicito (`Z` o `±hh:mm`): `lib/deployWindows.ts` rifiuta con
 che altrimenti verrebbe letto nel fuso del server API e non in quello del
 tenant. Il web salva sempre in UTC con `Z`.
 
+Le **voci di cronologia** dell'evento (`HAS_HISTORY` → `EventHistoryEntry`,
+vedi sotto) vengono cancellate nello stesso batch dell'evento: il `DETACH
+DELETE` dell'evento da solo le lascerebbe orfane.
+
+### Cronologia dell'allarme
+
+Ogni `Event` porta una cronologia (`(:Event)-[:HAS_HISTORY]->(:EventHistoryEntry)`,
+`apps/api/src/services/events/history.ts`; in GraphQL `Event.history(limit)`
+e `Event.historyCount`, tipo `EventHistoryEntry`, enum `EventHistoryKind`
+generato da `lib/eventVocabularies.ts`): **una voce per ogni cambiamento di
+stato o esito**, mai per le ripetizioni di un payload con lo stesso stato
+(`count`/`last_seen_at` bastano) e mai per i cambi di salute del CI (sono del
+CI). Nodo in snake_case: `id`, `tenant_id`, `event_id`, `at`, `kind`,
+`outcome` (solo `correlated`), `actor_id` (`monitoring` o l'id dell'utente),
+`incident_id`, `change_id`, `ci_id`, `note`, `severity`. Vincolo di unicità
+su `id` e indice `event_history_tenant_event` su `(tenant_id, event_id, at)`
+in `packages/neo4j/src/init.ts` (`migrate --init-schema`): nessuna migrazione
+versionata, la cronologia parte dal deploy.
+
+| `kind` | Quando | Campi |
+|---|---|---|
+| `first_seen` | creazione dell'Event (anche già `resolved`, B5: `at` = `first_seen_at`) | `severity` |
+| `cycle_firing` / `cycle_resolved` | il payload cambia stato rispetto all'ultimo applicato (stessa regola di `Event.transitions`) | `severity` |
+| `severity_changed` | stesso ciclo, payload `firing` con severità diversa | `severity`, `note` = severità precedente |
+| `correlated` | l'esito di correlazione **cambia** (`setCorrelation`), o la relazione con l'incident è nuova; una ripetizione già agganciata non scrive nulla | `outcome`, `incident_id` se c'è |
+| `suppressed` / `unsuppressed` | inizio/fine del silenzio in finestra di change | `change_id` |
+| `flapping` / `stable` | inizio/fine dello sfarfallio | `note` = "N passaggi in M min" / "nessun passaggio in M min" |
+| `storm` | aggancio **nuovo** all'incident di tempesta | `incident_id` |
+| `auto_resolved` / `auto_resolve_skipped` | chiusura automatica dell'incident (o motivo per cui non è possibile) | `incident_id`, `note` = cammino percorso / motivo |
+| `acknowledged`, `resolved_manually`, `linked_ci`, `incident_opened_manually`, `reevaluated` | mutation dell'operatore | `actor_id` = utente; `note` (risoluzione), `ci_id` (+ `note` = `alias`), `incident_id` |
+
+**Scrittura nello stesso statement dello stato, mai fire-and-forget.**
+`historyWriteCypher` è un frammento accodato al MERGE dell'ingest
+(`ingestMergeCypher`: il `kind` è un CASE sui valori pre-scrittura,
+`INGEST_HISTORY_KIND_CYPHER`), a `setCorrelation`, ai SET di soppressione,
+sfarfallio, stabilizzazione e delle mutation: se la voce non si scrive,
+fallisce l'operazione (il job ritenta). Solo la chiusura automatica e la
+richiesta di rivalutazione usano `appendEventHistory` (statement a sé nella
+stessa sessione, con lo stesso comportamento in caso di errore).
+
+**Cap per evento**: al massimo `EVENT_HISTORY_MAX = 200` voci. Lo stesso
+frammento che scrive la voce cancella le più vecchie oltre il limite (unit
+subquery `CALL { … }` ordinata per `at`), **mai la `first_seen`**.
+
+**Allarmi precedenti al deploy**: nessun backfill. Il resolver **sintetizza**
+la voce `first_seen` da `first_seen_at` quando nessuna voce salvata di quel
+tipo esiste (id `<eventId>:first_seen`, attore `monitoring`, senza severità:
+quella di allora non è nota), inserita nell'ordine della lista e sempre
+presente anche oltre `limit`; `historyCount` la conta. Lettura: `history`
+restituisce le ultime `limit` voci (default 100, massimo 200) dalla più
+recente, in una query sull'indice (a parità di istante — ingest e pipeline
+scrivono con lo stesso `now` — la voce dell'ingest è la più vecchia e l'esito
+della pipeline il più recente); `actor`, `incident`, `change`, `ci` sono
+field resolver (null se l'entità non esiste più; la change segue la query
+`change`, quindi null se eliminata). Stessi ruoli di `event(id)`.
+
 ### Metriche e pannelli
 
 `GET /metrics` (`middleware/metrics.ts`, riga *Event Management* del

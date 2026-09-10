@@ -78,6 +78,8 @@ export async function closedSteps(tenantId: string): Promise<{ incident: string[
  * `cutoff` che non sono collegati a un incident/change ancora aperti, lasciando
  * sul padre chiuso il conteggio degli eventi eliminati; restituisce quanti ne
  * ha cancellati. `closed` = passi chiusi di incident e change (closedSteps).
+ * Le voci di cronologia (HAS_HISTORY → EventHistoryEntry) vengono cancellate
+ * nello stesso batch: il DETACH DELETE dell'evento da solo le lascerebbe orfane.
  */
 export async function purgeTenantResolvedEvents(tenantId: string, cutoff: string, closed: { incident: string[]; change: string[] }): Promise<number> {
   const session = getSession(undefined, 'WRITE')
@@ -103,6 +105,9 @@ export async function purgeTenantResolvedEvents(tenantId: string, cutoff: string
         WITH DISTINCT e
         OPTIONAL MATCH (e)-[:SUPPRESSED_BY]->(c:Change {tenant_id: $tenantId})
         SET c.suppressed_events_purged = coalesce(c.suppressed_events_purged, 0) + 1
+        WITH DISTINCT e
+        OPTIONAL MATCH (e)-[:HAS_HISTORY]->(h:EventHistoryEntry {tenant_id: $tenantId})
+        DETACH DELETE h
         WITH DISTINCT e
         DETACH DELETE e
       } IN TRANSACTIONS OF ${PURGE_BATCH_SIZE} ROWS

@@ -131,6 +131,61 @@ export interface MonitoringEvent extends EventRow {
   acknowledgedBy: { id: string; name: string } | null
 }
 
+/**
+ * Voci della cronologia dell'allarme (`Event.history`): una per ogni
+ * cambiamento di stato o esito, mai per le ripetizioni (bastano count e
+ * lastSeenAt). Cicli: first_seen (sempre presente, sintetizzata da
+ * firstSeenAt per gli allarmi precedenti alla cronologia), cycle_firing,
+ * cycle_resolved, severity_changed (note = severità precedente). Automatiche:
+ * correlated (outcome), suppressed/unsuppressed (change), flapping/stable
+ * (note = "N passaggi in M min"), storm (incident), auto_resolved /
+ * auto_resolve_skipped (incident, note = motivo). Manuali (actorId = utente):
+ * acknowledged, resolved_manually (note), linked_ci (ci, note = 'alias'),
+ * incident_opened_manually (incident), reevaluated.
+ */
+export type EventHistoryKind =
+  | 'first_seen' | 'cycle_firing' | 'cycle_resolved' | 'severity_changed'
+  | 'correlated' | 'suppressed' | 'unsuppressed' | 'flapping' | 'stable' | 'storm'
+  | 'auto_resolved' | 'auto_resolve_skipped'
+  | 'acknowledged' | 'resolved_manually' | 'linked_ci' | 'incident_opened_manually' | 'reevaluated'
+
+export const EVENT_HISTORY_KINDS: readonly EventHistoryKind[] = [
+  'first_seen', 'cycle_firing', 'cycle_resolved', 'severity_changed',
+  'correlated', 'suppressed', 'unsuppressed', 'flapping', 'stable', 'storm',
+  'auto_resolved', 'auto_resolve_skipped',
+  'acknowledged', 'resolved_manually', 'linked_ci', 'incident_opened_manually', 'reevaluated',
+]
+
+/** Una voce della cronologia (fragment `EventHistoryFields`). */
+export interface EventHistoryEntry {
+  id:       string
+  at:       string
+  kind:     EventHistoryKind
+  /** Esito di correlazione, solo per kind = correlated. */
+  outcome:  EventCorrelation | null
+  /** 'monitoring' per le azioni automatiche, altrimenti l'id dell'utente. */
+  actorId:  string
+  /** Null per il monitoraggio o se l'utente non esiste più (resta actorId). */
+  actor:    { id: string; name: string } | null
+  incident: { id: string; number: string; title: string } | null
+  change:   ChangeRef | null
+  ci:       Pick<ConfigurationItemRef, 'id' | 'name' | 'type'> | null
+  severity: EventSeverity | null
+  note:     string | null
+}
+
+/**
+ * Evento del DETTAGLIO (query `GET_EVENT`): l'evento completo più la
+ * cronologia. Solo il dettaglio la seleziona: le mutation restituiscono
+ * `EventFields` e la pagina rilegge (`refetch`) per aggiornarla.
+ */
+export interface MonitoringEventDetail extends MonitoringEvent {
+  /** Ultime 100 voci, dalla più recente. */
+  history:      EventHistoryEntry[]
+  /** Voci totali: se supera history.length la sezione dice "mostrate le ultime N di M". */
+  historyCount: number
+}
+
 /** Contatori della console (un riquadro cliccabile per chiave). */
 export interface EventStatCounts {
   firing:      number
