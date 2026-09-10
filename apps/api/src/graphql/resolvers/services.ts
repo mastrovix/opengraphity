@@ -1,6 +1,12 @@
 /**
  * Servizi monitorati — resolver di `schema-services.ts` (ondata 1: lettura,
- * creazione automatica, rivalutazione, stato, eliminazione).
+ * creazione automatica, rivalutazione, stato, eliminazione; ondata 2:
+ * configurazione da interfaccia — regole, impostazioni dei componenti, diff
+ * con il grafo, esclusioni, anteprima).
+ *
+ * Le scritture dell'ondata 2 stanno tutte in
+ * `services/serviceImpact/config.ts` (validazione, transazione, cronologia,
+ * rivalutazione): qui restano ruolo, audit e la rilettura della mappa.
  *
  * Ogni query è scopata per tenant; ogni mutation scrive l'audit. Le
  * mutation e `serviceMapCandidates` sono admin-only in lib/authorization.ts
@@ -23,13 +29,24 @@ import { mapTeam } from '../../lib/mappers.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import { getQueue } from '../../lib/bullmq.js'
 import {
+  NODE_WEIGHT_MIN,
   SERVICE_HEALTHS, SERVICE_HEALTH_SEVERITY_ORDER, SERVICE_HEALTH_TRIGGERS, SERVICE_HISTORY_MAX, SERVICE_MAP_DEFAULT_DEPTH, SERVICE_MAP_STATUSES,
   SERVICE_RELATIONSHIP_TYPES, parseServiceImpactRules,
   type ServiceHealth, type ServiceHealthTrigger, type ServiceImpactRules, type ServiceMapStatus,
 } from '../../lib/serviceVocabularies.js'
-import { createServiceMap as createServiceMapService, evaluateServiceMap, loadServiceMapState } from '../../services/serviceImpact/engine.js'
+import { createServiceMap as createServiceMapService, evaluateServiceMap, loadServiceMapState, type LoadedNode } from '../../services/serviceImpact/engine.js'
 import { nodeContributes } from '../../services/serviceImpact/rules.js'
 import type { CauseCIRef, StoredCause } from '../../services/serviceImpact/history.js'
+import {
+  applyServiceMapProposal as applyServiceMapProposalService,
+  loadServiceMapExclusions,
+  previewServiceImpact,
+  removeServiceMapExclusion as removeServiceMapExclusionService,
+  serviceMapProposal as serviceMapProposalService,
+  updateServiceImpactRules as updateServiceImpactRulesService,
+  updateServiceMapNodes as updateServiceMapNodesService,
+  type ConfigWriteResult, type ServiceImpactRulesInput, type ServiceMapNodeInput,
+} from '../../services/serviceImpact/config.js'
 import { SERVICE_IMPACT_QUEUE, serviceMapJobId } from '../../jobs/serviceImpactWorker.js'
 
 type Props = Record<string, unknown>
@@ -65,6 +82,54 @@ export function parseStoredCauses(raw: unknown, what: string): ReturnType<typeof
   catch (e) { throw new Error(`${what} is corrupt JSON: ${e instanceof Error ? e.message : String(e)}`) }
   if (!Array.isArray(parsed)) throw new Error(`${what} is not a JSON array`)
   return (parsed as StoredCause[]).map(mapStoredCause)
+}
+
+/** `ConfigurationItemRef` da un CI letto dal grafo (esclusioni, nodi della proposta). */
+function mapCIRef(r: { id: string; name: string | null; labels: readonly string[]; status: string | null; health: string | null }) {
+  return { id: r.id, name: r.name ?? '', type: ciTypeFromLabels([...r.labels]), status: r.status, health: r.health }
+}
+
+/** Un componente incluso → `ServiceMapNode`: stessa forma per la lista del dettaglio e per il diff. */
+function mapLoadedNode(n: LoadedNode, rules: ServiceImpactRules) {
+  return {
+    ci:            { id: n.ciId, name: n.name, type: ciTypeFromLabels(n.labels), status: n.status, health: n.health },
+    level:         n.level,
+    role:          n.role,
+    propagate:     n.propagate,
+    weight:        n.weight,
+    critical:      n.critical,
+    via:           n.via,
+    addedBy:       n.addedBy,
+    health:        n.health,
+    inMaintenance: n.inMaintenance,
+    contributes:   nodeContributes(n, rules),
+  }
+}
+
+/** `added_by` di un componente della mappa il cui CI non esiste più: non è né `auto` né `manual`. */
+export const SERVICE_NODE_GONE_ADDED_BY = 'gone'
+
+/**
+ * Componente sparito dalla CMDB: la `INCLUDES` se n'è andata col
+ * `DETACH DELETE`, della mappa resta solo l'id in `node_ids`. Livello, ruolo e
+ * impostazioni non esistono più: qui valgono i sentinella dichiarati (livello
+ * 0 = fuori dalla mappa, `addedBy` «gone», non pesa) perché l'amministratore
+ * possa toglierlo dal diff, mai spacciato per un componente vivo.
+ */
+function mapGoneNode(ciId: string) {
+  return {
+    ci:            { id: ciId, name: ciId, type: 'unknown', status: null, health: null },
+    level:         0,
+    role:          'component' as const,
+    propagate:     'never' as const,
+    weight:        NODE_WEIGHT_MIN,
+    critical:      false,
+    via:           null,
+    addedBy:       SERVICE_NODE_GONE_ADDED_BY,
+    health:        null,
+    inMaintenance: false,
+    contributes:   false,
+  }
 }
 
 export function toRulesGQL(r: ServiceImpactRules) {
@@ -253,6 +318,54 @@ async function serviceMapCandidates(_: unknown, args: { search?: string | null; 
   } finally { await session.close() }
 }
 
+/**
+ * Diff fra la mappa e il grafo di adesso: la ricostruzione usa `maxDepth` e
+ * `relationshipTypes` della mappa, i CI con `EXCLUDES` non vengono riproposti.
+ * Nessuna scrittura.
+ */
+async function serviceMapProposal(_: unknown, args: { id: string }, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin')
+  const d = await serviceMapProposalService(ctx.tenantId, args.id)
+  return {
+    mapId:             d.mapId,
+    version:           d.version,
+    maxDepth:          d.maxDepth,
+    relationshipTypes: d.relationshipTypes,
+    added:             d.added.map((n) => ({
+      ci:        mapCIRef({ id: n.ciId, name: n.name, labels: n.labels, status: n.status, health: n.health }),
+      level:     n.level,
+      role:      n.role,
+      propagate: n.propagate,
+      weight:    n.weight,
+      critical:  n.critical,
+      via:       n.via,
+    })),
+    removed:           d.removed.map((r) => (r.node ? mapLoadedNode(r.node, d.rules) : mapGoneNode(r.ciId))),
+    moved:             d.moved.map((m) => ({
+      ci:            { id: m.node.ciId, name: m.node.name, type: ciTypeFromLabels(m.node.labels), status: m.node.status, health: m.node.health },
+      level:         m.node.level,
+      proposedLevel: m.proposedLevel,
+      via:           m.node.via,
+      proposedVia:   m.proposedVia,
+    })),
+    excluded:          d.excluded.map(mapCIRef),
+    totalProposed:     d.totalProposed,
+  }
+}
+
+/** «Con queste impostazioni adesso»: calcolo puro sullo stato reale, nessuna scrittura. */
+async function serviceImpactPreview(_: unknown, args: { id: string; rules?: ServiceImpactRulesInput | null; nodes?: ServiceMapNodeInput[] | null }, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin')
+  const p = await previewServiceImpact({ tenantId: ctx.tenantId, mapId: args.id, rules: args.rules ?? null, nodes: args.nodes ?? null })
+  return {
+    health:            p.health,
+    impactScore:       p.impactScore,
+    causes:            p.causes.map(mapStoredCause),
+    contributingCount: p.contributingCount,
+    nodeCount:         p.nodeCount,
+  }
+}
+
 // ── Field resolver di ServiceMap ─────────────────────────────────────────────
 
 /** I componenti con la salute del CI e `contributes` dalle regole della mappa (stessa lettura del motore). */
@@ -263,19 +376,15 @@ async function serviceMapNodes(parent: { id: string }, _: unknown, ctx: GraphQLC
     return state.nodes
       .slice()
       .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
-      .map((n) => ({
-        ci:            { id: n.ciId, name: n.name, type: ciTypeFromLabels(n.labels), status: n.status, health: n.health },
-        level:         n.level,
-        role:          n.role,
-        propagate:     n.propagate,
-        weight:        n.weight,
-        critical:      n.critical,
-        via:           n.via,
-        addedBy:       n.addedBy,
-        health:        n.health,
-        inMaintenance: n.inMaintenance,
-        contributes:   nodeContributes(n, state.rules),
-      }))
+      .map((n) => mapLoadedNode(n, state.rules))
+  } finally { await session.close() }
+}
+
+/** I CI esclusi a mano (EXCLUDES): la UI li mostra nel dettaglio senza chiedere il diff. */
+async function serviceMapExcluded(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  const session = getSession()
+  try {
+    return (await loadServiceMapExclusions(session, ctx.tenantId, parent.id)).map(mapCIRef)
   } finally { await session.close() }
 }
 
@@ -323,14 +432,15 @@ async function serviceMapHistoryCount(parent: { id: string }, _: unknown, ctx: G
 
 // ── Mutation ─────────────────────────────────────────────────────────────────
 
-async function createServiceMap(_: unknown, args: { serviceId: string; maxDepth?: number | null; relationshipTypes?: string[] | null }, ctx: GraphQLContext) {
+async function createServiceMap(_: unknown, args: { serviceId: string; maxDepth?: number | null; relationshipTypes?: string[] | null; status?: string | null }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
   const maxDepth = args.maxDepth ?? SERVICE_MAP_DEFAULT_DEPTH
   const relationshipTypes = args.relationshipTypes ?? [...SERVICE_RELATIONSHIP_TYPES]
-  const { mapId, proposal, evaluation } = await createServiceMapService({ tenantId: ctx.tenantId, serviceId: args.serviceId, maxDepth, relationshipTypes, actorId: ctx.userId })
+  const status = args.status == null ? 'active' : assertEnumInput(args.status, SERVICE_MAP_STATUSES, 'status')
+  const { mapId, proposal, evaluation } = await createServiceMapService({ tenantId: ctx.tenantId, serviceId: args.serviceId, maxDepth, relationshipTypes, status, actorId: ctx.userId })
   void audit(ctx, 'service_map.created', 'ServiceMap', mapId, {
     serviceId: args.serviceId, serviceName: proposal.serviceName, maxDepth: proposal.maxDepth, relationshipTypes: proposal.relationshipTypes,
-    nodes: proposal.nodes.length, health: evaluation.health, impactScore: evaluation.impactScore,
+    status, nodes: proposal.nodes.length, health: evaluation.health, impactScore: evaluation.impactScore,
   })
   return requireServiceMap(mapId, ctx.tenantId)
 }
@@ -383,6 +493,56 @@ function assertEnumInput<T extends string>(value: unknown, allowed: readonly T[]
   return value as T
 }
 
+// ── Configurazione da interfaccia (ondata 2) ─────────────────────────────────
+
+/**
+ * Campi comuni dell'audit di una scrittura di configurazione: versione nuova,
+ * nota della cronologia ed esito della rivalutazione (null = mappa in pausa,
+ * non valutata).
+ */
+function configAudit(r: ConfigWriteResult, extra: Record<string, unknown>): Record<string, unknown> {
+  return {
+    version:     r.version,
+    status:      r.status,
+    note:        r.note,
+    reevaluated: r.evaluation !== null,
+    health:      r.evaluation?.health ?? null,
+    impactScore: r.evaluation?.impactScore ?? null,
+    ...extra,
+  }
+}
+
+async function updateServiceImpactRules(_: unknown, args: { id: string; expectedVersion: number; rules: ServiceImpactRulesInput }, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin')
+  const r = await updateServiceImpactRulesService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, rules: args.rules, actorId: ctx.userId })
+  void audit(ctx, 'service_map.rules_changed', 'ServiceMap', args.id, configAudit(r, { rules: args.rules }))
+  return requireServiceMap(args.id, ctx.tenantId)
+}
+
+async function updateServiceMapNodes(_: unknown, args: { id: string; expectedVersion: number; nodes: ServiceMapNodeInput[] }, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin')
+  const r = await updateServiceMapNodesService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, nodes: args.nodes, actorId: ctx.userId })
+  void audit(ctx, 'service_map.nodes_changed', 'ServiceMap', args.id, configAudit(r, { nodes: args.nodes.map((n) => n.ciId) }))
+  return requireServiceMap(args.id, ctx.tenantId)
+}
+
+async function applyServiceMapProposal(_: unknown, args: { id: string; expectedVersion: number; add: string[]; exclude: string[]; remove: string[] }, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin')
+  const r = await applyServiceMapProposalService({
+    tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion,
+    add: args.add, exclude: args.exclude, remove: args.remove, actorId: ctx.userId,
+  })
+  void audit(ctx, 'service_map.proposal_applied', 'ServiceMap', args.id, configAudit(r, { add: args.add, exclude: args.exclude, remove: args.remove }))
+  return requireServiceMap(args.id, ctx.tenantId)
+}
+
+async function removeServiceMapExclusion(_: unknown, args: { id: string; expectedVersion: number; ciId: string }, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin')
+  const r = await removeServiceMapExclusionService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, ciId: args.ciId, actorId: ctx.userId })
+  void audit(ctx, 'service_map.exclusion_removed', 'ServiceMap', args.id, configAudit(r, { ciId: args.ciId }))
+  return requireServiceMap(args.id, ctx.tenantId)
+}
+
 /** Elimina mappa e cronologia (il servizio e i CI restano); un job di valutazione in attesa viene tolto dalla coda (se già in esecuzione fallirà con NOT_FOUND, visibile nel log). */
 async function deleteServiceMap(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
@@ -410,7 +570,10 @@ async function deleteServiceMap(_: unknown, args: { id: string }, ctx: GraphQLCo
 }
 
 export const serviceResolvers = {
-  Query: { serviceMaps, serviceMap, servicesImpactedByCI, serviceMapCandidates },
-  Mutation: { createServiceMap, reevaluateServiceMap, setServiceMapStatus, deleteServiceMap },
-  ServiceMap: { nodes: serviceMapNodes, edges: serviceMapEdges, history: serviceMapHistory, historyCount: serviceMapHistoryCount },
+  Query: { serviceMaps, serviceMap, servicesImpactedByCI, serviceMapCandidates, serviceMapProposal, serviceImpactPreview },
+  Mutation: {
+    createServiceMap, reevaluateServiceMap, setServiceMapStatus, deleteServiceMap,
+    updateServiceImpactRules, updateServiceMapNodes, applyServiceMapProposal, removeServiceMapExclusion,
+  },
+  ServiceMap: { nodes: serviceMapNodes, edges: serviceMapEdges, history: serviceMapHistory, historyCount: serviceMapHistoryCount, excluded: serviceMapExcluded },
 }

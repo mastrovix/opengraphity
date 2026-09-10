@@ -1,10 +1,13 @@
 /**
- * Servizi monitorati (ondata 1): una BusinessApplication con una mappa dei
- * componenti che la reggono (`ServiceMap`), la salute calcolata dalle regole
- * d'impatto e la spiegazione di come ci si è arrivati.
+ * Servizi monitorati: una BusinessApplication con una mappa dei componenti
+ * che la reggono (`ServiceMap`), la salute calcolata dalle regole d'impatto e
+ * la spiegazione di come ci si è arrivati.
  * Contratto: apps/api/src/graphql/schema-services.ts. `ServiceMapRow` è la
  * forma leggera delle liste (fragment `ServiceMapRowFields`), `ServiceMapDetail`
  * quella del dettaglio (nodi, archi, regole, cronologia).
+ * Ondata 2 (configurazione da interfaccia): gli input delle scritture
+ * (`ServiceImpactRulesInput`, `ServiceMapNodeInput`), il diff della mappa
+ * (`ServiceMapProposal`) e l'anteprima senza scrittura (`ServiceImpactPreview`).
  */
 import type { CIHealth } from './events'
 
@@ -23,6 +26,24 @@ export const NODE_PROPAGATIONS: readonly NodePropagation[] = ['always', 'never',
 /** Ruolo del nodo, proposto dal tipo del CI (livello 1 → entry). */
 export type ServiceNodeRole = 'entry' | 'component' | 'infrastructure' | 'certificate'
 export const SERVICE_NODE_ROLES: readonly ServiceNodeRole[] = ['entry', 'component', 'infrastructure', 'certificate']
+
+/** Come trattare i componenti senza salute nota (enum `UnknownNodesMode`). */
+export type UnknownNodesMode = 'ignore' | 'operational'
+export const UNKNOWN_NODES_MODES: readonly UnknownNodesMode[] = ['ignore', 'operational']
+
+/** Da quale salute aprire un incident per servizio (enum `ServiceOpenIncidentFrom`); gli incident arrivano in ondata 3. */
+export type ServiceOpenIncidentFrom = 'never' | 'degraded' | 'down'
+export const SERVICE_OPEN_INCIDENT_FROMS: readonly ServiceOpenIncidentFrom[] = ['never', 'degraded', 'down']
+
+/** Scala del peso di un componente (1..10), come `NODE_WEIGHT_MAX` dell'API. */
+export const NODE_WEIGHT_MIN = 1
+export const NODE_WEIGHT_MAX = 10
+/** Le soglie sono quote percentuali. */
+export const SHARE_PCT_MIN = 0
+export const SHARE_PCT_MAX = 100
+/** Tetto di guardia del «minimo di componenti»: l'API rifiuta comunque i valori oltre i nodi della mappa. */
+export const MIN_NODES_MIN = 1
+export const MIN_NODES_MAX = 1000
 
 /** Cosa ha causato la voce di cronologia. */
 export type ServiceHealthTrigger = 'created' | 'ci_health' | 'rules_changed' | 'map_changed' | 'maintenance' | 'manual' | 'periodic'
@@ -47,6 +68,13 @@ export interface ServiceRef {
 export interface ImpactPathRef {
   id:   string
   name: string
+}
+
+/** Riferimento a un CI con il tipo (`ConfigurationItemRef`): nodi, proposta, esclusioni. */
+export interface CIRef {
+  id:   string
+  name: string
+  type: string
 }
 
 /**
@@ -143,7 +171,7 @@ export interface ServiceHealthEntry {
   note:           string | null
 }
 
-/** Regole per servizio (JSON versionato sulla mappa), in sola lettura in ondata 1. */
+/** Regole per servizio (JSON versionato sulla mappa); `unknownNodes`/`openIncidentFrom` restano stringhe: un valore fuori vocabolario si dice, non si corregge. */
 export interface ServiceImpactRules {
   version:          number
   downSharePct:     number
@@ -164,7 +192,77 @@ export interface ServiceMapDetail extends ServiceMapRow {
   rules:             ServiceImpactRules
   nodes:             ServiceMapNode[]
   edges:             ServiceMapEdge[]
+  /** CI esclusi a mano: non tornano nelle proposte finché non sono riammessi. */
+  excluded:          CIRef[]
   /** Ultime 50 voci, dalla più recente. */
   history:           ServiceHealthEntry[]
   historyCount:      number
+}
+
+// ── Ondata 2: scritture, diff e anteprima ───────────────────────────────────
+
+/** Specchio di `ServiceImpactRulesInput`: le regole intere, sempre tutte insieme. */
+export interface ServiceImpactRulesInput {
+  downSharePct:     number
+  degradedSharePct: number
+  minNodes:         number
+  unknownNodes:     string
+  openIncidentFrom: string
+}
+
+/** Specchio di `ServiceMapNodeInput`: solo ciò che l'amministratore può cambiare su un componente. */
+export interface ServiceMapNodeInput {
+  ciId:      string
+  propagate: NodePropagation
+  weight:    number
+  critical:  boolean
+}
+
+/** Un componente che il grafo propone di aggiungere, con le impostazioni proposte. */
+export interface ServiceMapProposalNode {
+  ci:        CIRef
+  level:     number
+  role:      ServiceNodeRole
+  propagate: NodePropagation
+  weight:    number
+  critical:  boolean
+  via:       string | null
+}
+
+/** Un componente già incluso che il grafo mette a un livello (o dietro un «via») diverso. */
+export interface ServiceMapMovedNode {
+  ci:            CIRef
+  level:         number
+  proposedLevel: number
+  via:           string | null
+  proposedVia:   string | null
+}
+
+/** Un componente incluso che il grafo non raggiunge più (selezione ridotta di `ServiceMapNode`). */
+export interface ServiceMapRemovedNode {
+  ci:    CIRef
+  level: number
+  role:  ServiceNodeRole
+}
+
+/** Diff fra la mappa attuale e quella che si costruirebbe adesso dal grafo (nessuna scrittura). */
+export interface ServiceMapProposal {
+  mapId:             string
+  version:           number
+  maxDepth:          number
+  relationshipTypes: string[]
+  added:             ServiceMapProposalNode[]
+  removed:           ServiceMapRemovedNode[]
+  moved:             ServiceMapMovedNode[]
+  excluded:          CIRef[]
+  totalProposed:     number
+}
+
+/** Risultato di `serviceImpactPreview`: come risulterebbe il servizio adesso con le impostazioni in corso di modifica. */
+export interface ServiceImpactPreview {
+  health:            ServiceHealth
+  impactScore:       number
+  causes:            ImpactCause[]
+  contributingCount: number
+  nodeCount:         number
 }

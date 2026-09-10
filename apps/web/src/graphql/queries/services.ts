@@ -36,6 +36,38 @@ export const GET_SERVICES_IMPACTED_BY_CI = gql`
   ${SERVICE_MAP_ROW_FIELDS}
 `
 
+/**
+ * Diff fra la mappa attuale e quella che si costruirebbe adesso dal grafo
+ * (dialogo «Aggiorna mappa», solo admin): nessuna scrittura, si applica con
+ * `applyServiceMapProposal`. `removed` è un `ServiceMapNode`: qui bastano
+ * nome, livello e ruolo per dire cosa sparirebbe.
+ */
+export const GET_SERVICE_MAP_PROPOSAL = gql`
+  query GetServiceMapProposal($id: ID!) {
+    serviceMapProposal(id: $id) {
+      mapId version maxDepth relationshipTypes totalProposed
+      added    { ci { id name type } level role propagate weight critical via }
+      removed  { ci { id name type } level role }
+      moved    { ci { id name type } level proposedLevel via proposedVia }
+      excluded { id name type }
+    }
+  }
+`
+
+/**
+ * Anteprima dal vivo: come risulterebbe il servizio adesso con le regole e/o i
+ * componenti in corso di modifica. Calcolo puro sugli allarmi attuali, nessuna
+ * scrittura: la pagina la richiama con debounce mentre l'admin digita.
+ */
+export const GET_SERVICE_IMPACT_PREVIEW = gql`
+  query GetServiceImpactPreview($id: ID!, $rules: ServiceImpactRulesInput, $nodes: [ServiceMapNodeInput!]) {
+    serviceImpactPreview(id: $id, rules: $rules, nodes: $nodes) {
+      health impactScore contributingCount nodeCount
+      causes { ci { id name type } health weight critical path { id name } }
+    }
+  }
+`
+
 /** BusinessApplication ancora senza mappa (dialogo «Crea una mappa», solo admin). */
 export const GET_SERVICE_MAP_CANDIDATES = gql`
   query GetServiceMapCandidates($search: String, $limit: Int) {

@@ -48,8 +48,12 @@ export interface ServiceHistoryWriteOptions {
   imports?: readonly string[]
   /** Prefisso dei parametri `$<prefisso>Id`, `$<prefisso>At`, … (default `h`). */
   prefix?:  string
-  /** Campi come espressioni Cypher al posto dei parametri (es. `previous_health` dalla riga). */
-  fields?:  { previousHealth?: string }
+  /**
+   * Campi come espressioni Cypher al posto dei parametri: `previous_health`
+   * dalla riga (valutazione), oppure salute/punteggio/cause dalla mappa
+   * (`SERVICE_HISTORY_STATE_FROM_MAP`) quando il chiamante non li conosce.
+   */
+  fields?:  { health?: string; previousHealth?: string; impactScore?: string; cause?: string }
   /** Applica il cap dopo la voce (default true; false quando un altro frammento nello stesso statement lo fa). */
   cap?:     boolean
   /** Condizione del cap (default = `when`): utile quando lo statement scrive più voci e il cap deve girare se ALMENO una è stata scritta. */
@@ -72,11 +76,14 @@ export function serviceHistoryWriteCypher(opts: ServiceHistoryWriteOptions = {})
   const when = opts.when ?? 'true'
   const capWhen = opts.capWhen ?? when
   const imports = ['m', ...(opts.imports ?? [])].join(', ')
+  const health         = opts.fields?.health ?? `$${p}Health`
   const previousHealth = opts.fields?.previousHealth ?? `$${p}PreviousHealth`
+  const impactScore    = opts.fields?.impactScore ?? `$${p}ImpactScore`
+  const cause          = opts.fields?.cause ?? `$${p}Cause`
   const lines = [
     `FOREACH (_ IN CASE WHEN ${when} THEN [1] ELSE [] END |`,
-    `  CREATE (m)-[:HAS_HEALTH_HISTORY]->(:ServiceHealthEntry {id: $${p}Id, tenant_id: $tenantId, map_id: m.id, at: $${p}At, health: $${p}Health, previous_health: ${previousHealth},`,
-    `    impact_score: toInteger($${p}ImpactScore), cause: $${p}Cause, trigger: $${p}Trigger, note: $${p}Note})`,
+    `  CREATE (m)-[:HAS_HEALTH_HISTORY]->(:ServiceHealthEntry {id: $${p}Id, tenant_id: $tenantId, map_id: m.id, at: $${p}At, health: ${health}, previous_health: ${previousHealth},`,
+    `    impact_score: toInteger(${impactScore}), cause: ${cause}, trigger: $${p}Trigger, note: $${p}Note})`,
     `)`,
     `WITH *`,
   ]
@@ -94,6 +101,31 @@ export function serviceHistoryWriteCypher(opts: ServiceHistoryWriteOptions = {})
     )
   }
   return lines.join('\n      ')
+}
+
+/**
+ * Campi di stato letti dalla mappa NEL Cypher, per le voci di
+ * configurazione (`rules_changed`, `map_changed` dell'ondata 2): la voce
+ * fotografa la salute com'è al momento della modifica — che il chiamante non
+ * conosce senza una lettura in più — e non è una transizione di salute
+ * (`previous_health` null). La rivalutazione che segue scrive la sua voce solo
+ * se la salute cambia davvero.
+ */
+export const SERVICE_HISTORY_STATE_FROM_MAP: Required<Pick<NonNullable<ServiceHistoryWriteOptions['fields']>, 'health' | 'previousHealth' | 'impactScore' | 'cause'>> = {
+  health:         'm.health',
+  previousHealth: 'null',
+  impactScore:    'm.impact_score',
+  cause:          'm.explanation',
+}
+
+/** Parametri di una voce di configurazione: solo id, istante, trigger e nota (il resto viene dal Cypher, `SERVICE_HISTORY_STATE_FROM_MAP`). */
+export function serviceConfigHistoryParams(trigger: ServiceHealthTrigger, note: string, now: string, prefix: string = SERVICE_HISTORY_DEFAULT_PREFIX): Record<string, unknown> {
+  return {
+    [`${prefix}Id`]:      uuidv4(),
+    [`${prefix}At`]:      now,
+    [`${prefix}Trigger`]: trigger,
+    [`${prefix}Note`]:    note,
+  }
 }
 
 /** Parametri `$<prefisso>*` di una voce (id nuovo a ogni chiamata; `cause` serializzato in JSON). */

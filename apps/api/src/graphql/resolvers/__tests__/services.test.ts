@@ -25,8 +25,18 @@ vi.mock('../../../services/serviceImpact/engine.js', async (importOriginal) => (
   createServiceMap: vi.fn(),
   evaluateServiceMap: vi.fn(),
 }))
+vi.mock('../../../services/serviceImpact/config.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../services/serviceImpact/config.js')>()),
+  serviceMapProposal: vi.fn(),
+  previewServiceImpact: vi.fn(),
+  updateServiceImpactRules: vi.fn(),
+  updateServiceMapNodes: vi.fn(),
+  applyServiceMapProposal: vi.fn(),
+  removeServiceMapExclusion: vi.fn(),
+}))
 
-const { serviceResolvers, mapServiceMap, parseStoredCauses, SERVICE_MAP_ORDER } = await import('../services.js')
+const { serviceResolvers, mapServiceMap, parseStoredCauses, SERVICE_MAP_ORDER, SERVICE_NODE_GONE_ADDED_BY } = await import('../services.js')
+const config = await import('../../../services/serviceImpact/config.js')
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { audit } = await import('../../../lib/audit.js')
 const { createServiceMap, evaluateServiceMap } = await import('../../../services/serviceImpact/engine.js')
@@ -218,6 +228,61 @@ describe('ServiceMap field resolver', () => {
   })
 })
 
+// ── Ondata 2: diff, anteprima, esclusioni ────────────────────────────────────
+
+describe('serviceMapProposal / serviceImpactPreview / ServiceMap.excluded', () => {
+  const loaded = (over: Record<string, unknown> = {}) => ({
+    ciId: 'old-99', name: 'OLD-99', labels: ['Server'], level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false,
+    via: 'app-3', addedBy: 'auto', health: null, healthSource: null, status: 'active', inMaintenance: false, ...over,
+  })
+
+  it('serviceMapProposal: admin; aggiunti, spariti (CI cancellato con i sentinella dichiarati), spostati, esclusi; operator → FORBIDDEN', async () => {
+    vi.mocked(config.serviceMapProposal).mockResolvedValueOnce({
+      mapId: 'map-1', version: 2, status: 'active', updatedAt: 'T0', maxDepth: 4, relationshipTypes: ['DEPENDS_ON'],
+      added: [{ ciId: 'srv-9', name: 'SRV-09', labels: ['Server'], status: 'active', health: null, level: 2, via: 'app-3', role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false }],
+      removed: [{ ciId: 'old-99', node: loaded() }, { ciId: 'gone-1', node: null }],
+      moved: [{ node: loaded({ ciId: 'db-01', name: 'DB-01', labels: ['Database'], health: 'down' }), proposedLevel: 3, proposedVia: 'srv-9' }],
+      excluded: [{ id: 'cert-x', name: 'CERT-X', labels: ['Certificate'], status: 'active', health: null }],
+      totalProposed: 3, proposed: [], currentIds: [], missing: ['gone-1'],
+      rules: { version: 1, down_share_pct: 50, degraded_share_pct: 1, min_nodes: 1, unknown_nodes: 'operational', open_incident_from: 'down' },
+      nodeCount: 3,
+    })
+    const out = await serviceResolvers.Query.serviceMapProposal(null, { id: 'map-1' }, admin)
+    expect(config.serviceMapProposal).toHaveBeenCalledWith('tenant-1', 'map-1')
+    expect(out).toMatchObject({ mapId: 'map-1', version: 2, maxDepth: 4, relationshipTypes: ['DEPENDS_ON'], totalProposed: 3 })
+    expect(out.added).toEqual([{ ci: { id: 'srv-9', name: 'SRV-09', type: 'server', status: 'active', health: null }, level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false, via: 'app-3' }])
+    expect(out.moved).toEqual([{ ci: { id: 'db-01', name: 'DB-01', type: 'database', status: 'active', health: 'down' }, level: 2, proposedLevel: 3, via: 'app-3', proposedVia: 'srv-9' }])
+    expect(out.excluded).toEqual([{ id: 'cert-x', name: 'CERT-X', type: 'certificate', status: 'active', health: null }])
+    expect(out.removed[0]).toMatchObject({ ci: { id: 'old-99', type: 'server' }, level: 2, addedBy: 'auto', contributes: true })
+    // CI sparito: della mappa resta solo l'id, i campi mancanti sono sentinella dichiarati
+    expect(out.removed[1]).toEqual({ ci: { id: 'gone-1', name: 'gone-1', type: 'unknown', status: null, health: null }, level: 0, role: 'component', propagate: 'never', weight: 1, critical: false, via: null, addedBy: SERVICE_NODE_GONE_ADDED_BY, health: null, inMaintenance: false, contributes: false })
+    await expectCode(serviceResolvers.Query.serviceMapProposal(null, { id: 'map-1' }, operator), 'FORBIDDEN')
+  })
+
+  it('serviceImpactPreview: admin; regole e nodi passati al servizio, cause mappate; viewer → FORBIDDEN senza chiamare il servizio', async () => {
+    vi.mocked(config.previewServiceImpact).mockResolvedValueOnce({ health: 'down', impactScore: 62, causes: [cause as never], contributingCount: 2, nodeCount: 3 })
+    const rules = { downSharePct: 40, degradedSharePct: 5, minNodes: 1, unknownNodes: 'ignore' as const, openIncidentFrom: 'down' as const }
+    const nodes = [{ ciId: 'db-01', propagate: 'never' as const, weight: 5, critical: false }]
+    const out = await serviceResolvers.Query.serviceImpactPreview(null, { id: 'map-1', rules, nodes }, admin)
+    expect(config.previewServiceImpact).toHaveBeenCalledWith({ tenantId: 'tenant-1', mapId: 'map-1', rules, nodes })
+    expect(out).toMatchObject({ health: 'down', impactScore: 62, contributingCount: 2, nodeCount: 3 })
+    expect(out.causes).toEqual([{ ci: { id: 'db-01', name: 'DB-01', type: 'database', status: null, health: 'down' }, health: 'down', weight: 5, critical: false, path: [expect.objectContaining({ id: 'db-01' }), expect.objectContaining({ id: 'app-3' })] }])
+    // argomenti assenti → null espliciti (il servizio usa le regole della mappa)
+    vi.mocked(config.previewServiceImpact).mockResolvedValueOnce({ health: 'operational', impactScore: 0, causes: [], contributingCount: 0, nodeCount: 0 })
+    await serviceResolvers.Query.serviceImpactPreview(null, { id: 'map-1' }, admin)
+    expect(config.previewServiceImpact).toHaveBeenLastCalledWith({ tenantId: 'tenant-1', mapId: 'map-1', rules: null, nodes: null })
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    await expectCode(serviceResolvers.Query.serviceImpactPreview(null, { id: 'map-1' }, viewer), 'FORBIDDEN')
+    expect(config.previewServiceImpact).not.toHaveBeenCalled()
+  })
+
+  it('ServiceMap.excluded: EXCLUDES del tenant come ConfigurationItemRef', async () => {
+    onCypher([[/\[:EXCLUDES\]->\(ci \{tenant_id: \$tenantId\}\)/, [{ id: 'cert-x', name: 'CERT-X', labels: ['Certificate'], status: 'active', health: null }]]])
+    expect(await serviceResolvers.ServiceMap.excluded({ id: 'map-1' }, null, viewer)).toEqual([{ id: 'cert-x', name: 'CERT-X', type: 'certificate', status: 'active', health: null }])
+    expect(callMatching(/EXCLUDES/)!.params).toEqual({ mapId: 'map-1', tenantId: 'tenant-1' })
+  })
+})
+
 // ── Mutation ─────────────────────────────────────────────────────────────────
 
 describe('createServiceMap', () => {
@@ -226,8 +291,18 @@ describe('createServiceMap', () => {
     onCypher([[MAP_RE, mapRow()]])
     const out = await serviceResolvers.Mutation.createServiceMap(null, { serviceId: 'ba-1' }, admin)
     expect(out).toMatchObject({ id: 'map-1', health: 'degraded' })
-    expect(createServiceMap).toHaveBeenCalledWith({ tenantId: 'tenant-1', serviceId: 'ba-1', maxDepth: 4, relationshipTypes: [...SERVICE_RELATIONSHIP_TYPES], actorId: 'adm-1' })
-    expect(audit).toHaveBeenCalledWith(admin, 'service_map.created', 'ServiceMap', 'map-1', expect.objectContaining({ serviceId: 'ba-1', serviceName: 'Enterprise Billing', nodes: 2, health: 'degraded', impactScore: 41 }))
+    expect(createServiceMap).toHaveBeenCalledWith({ tenantId: 'tenant-1', serviceId: 'ba-1', maxDepth: 4, relationshipTypes: [...SERVICE_RELATIONSHIP_TYPES], status: 'active', actorId: 'adm-1' })
+    expect(audit).toHaveBeenCalledWith(admin, 'service_map.created', 'ServiceMap', 'map-1', expect.objectContaining({ serviceId: 'ba-1', serviceName: 'Enterprise Billing', status: 'active', nodes: 2, health: 'degraded', impactScore: 41 }))
+  })
+
+  it('status: bozza esplicita passata al motore; fuori enum → BAD_USER_INPUT senza chiamare il motore', async () => {
+    vi.mocked(createServiceMap).mockResolvedValueOnce({ mapId: 'map-1', proposal: { serviceName: 'CRM', maxDepth: 4, relationshipTypes: [...SERVICE_RELATIONSHIP_TYPES], nodes: [] }, evaluation: { health: 'unknown', impactScore: 0 } } as never)
+    onCypher([[MAP_RE, mapRow({ status: 'draft' })]])
+    await serviceResolvers.Mutation.createServiceMap(null, { serviceId: 'ba-1', status: 'draft' }, admin)
+    expect(createServiceMap).toHaveBeenCalledWith(expect.objectContaining({ status: 'draft' }))
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    await expectCode(serviceResolvers.Mutation.createServiceMap(null, { serviceId: 'ba-1', status: 'archived' }, admin), 'BAD_USER_INPUT', /status must be one of: draft, active, paused/)
+    expect(createServiceMap).not.toHaveBeenCalled()
   })
 
   it('argomenti espliciti passati al motore; errori del motore propagano (NOT_FOUND / BAD_USER_INPUT); operator → FORBIDDEN senza chiamare il motore', async () => {
@@ -282,6 +357,57 @@ describe('reevaluateServiceMap / setServiceMapStatus / deleteServiceMap', () => 
     await expectCode(serviceResolvers.Mutation.setServiceMapStatus(null, { id: 'map-1', expectedVersion: 1, status: 'archived' }, admin), 'BAD_USER_INPUT', /status must be one of: draft, active, paused/)
     await expectCode(serviceResolvers.Mutation.setServiceMapStatus(null, { id: 'map-1', expectedVersion: 0, status: 'paused' }, admin), 'BAD_USER_INPUT', /expectedVersion/)
     await expectCode(serviceResolvers.Mutation.setServiceMapStatus(null, { id: 'map-1', expectedVersion: 1, status: 'paused' }, operator), 'FORBIDDEN')
+  })
+
+  it('configurazione (ondata 2): ogni mutation chiama il servizio con l\'utente, scrive l\'audit con versione, nota ed esito della rivalutazione, e rilegge la mappa; operator → FORBIDDEN senza toccare il servizio', async () => {
+    const written = { mapId: 'map-1', version: 3, status: 'active' as const, note: 'nota', evaluation: { mapId: 'map-1', health: 'down' as const, previousHealth: 'degraded' as const, impactScore: 100, changed: true, stale: false, causes: [] } }
+    const expectedAudit = { version: 3, status: 'active', note: 'nota', reevaluated: true, health: 'down', impactScore: 100 }
+    const rules = { downSharePct: 70, degradedSharePct: 10, minNodes: 1, unknownNodes: 'ignore' as const, openIncidentFrom: 'never' as const }
+    const nodes = [{ ciId: 'db-01', propagate: 'never' as const, weight: 5, critical: true }]
+
+    onCypher([[MAP_RE, mapRow({ version: 3 })]])
+    vi.mocked(config.updateServiceImpactRules).mockResolvedValue(written)
+    vi.mocked(config.updateServiceMapNodes).mockResolvedValue(written)
+    vi.mocked(config.applyServiceMapProposal).mockResolvedValue(written)
+    vi.mocked(config.removeServiceMapExclusion).mockResolvedValue(written)
+
+    expect(await serviceResolvers.Mutation.updateServiceImpactRules(null, { id: 'map-1', expectedVersion: 2, rules }, admin)).toMatchObject({ id: 'map-1', version: 3 })
+    expect(config.updateServiceImpactRules).toHaveBeenCalledWith({ tenantId: 'tenant-1', mapId: 'map-1', expectedVersion: 2, rules, actorId: 'adm-1' })
+    expect(audit).toHaveBeenCalledWith(admin, 'service_map.rules_changed', 'ServiceMap', 'map-1', { ...expectedAudit, rules })
+
+    await serviceResolvers.Mutation.updateServiceMapNodes(null, { id: 'map-1', expectedVersion: 2, nodes }, admin)
+    expect(config.updateServiceMapNodes).toHaveBeenCalledWith({ tenantId: 'tenant-1', mapId: 'map-1', expectedVersion: 2, nodes, actorId: 'adm-1' })
+    expect(audit).toHaveBeenCalledWith(admin, 'service_map.nodes_changed', 'ServiceMap', 'map-1', { ...expectedAudit, nodes: ['db-01'] })
+
+    await serviceResolvers.Mutation.applyServiceMapProposal(null, { id: 'map-1', expectedVersion: 2, add: ['srv-9'], exclude: ['cert-x'], remove: [] }, admin)
+    expect(config.applyServiceMapProposal).toHaveBeenCalledWith({ tenantId: 'tenant-1', mapId: 'map-1', expectedVersion: 2, add: ['srv-9'], exclude: ['cert-x'], remove: [], actorId: 'adm-1' })
+    expect(audit).toHaveBeenCalledWith(admin, 'service_map.proposal_applied', 'ServiceMap', 'map-1', { ...expectedAudit, add: ['srv-9'], exclude: ['cert-x'], remove: [] })
+
+    await serviceResolvers.Mutation.removeServiceMapExclusion(null, { id: 'map-1', expectedVersion: 2, ciId: 'cert-x' }, admin)
+    expect(config.removeServiceMapExclusion).toHaveBeenCalledWith({ tenantId: 'tenant-1', mapId: 'map-1', expectedVersion: 2, ciId: 'cert-x', actorId: 'adm-1' })
+    expect(audit).toHaveBeenCalledWith(admin, 'service_map.exclusion_removed', 'ServiceMap', 'map-1', { ...expectedAudit, ciId: 'cert-x' })
+
+    // mappa in pausa: l'audit dice che non è stata rivalutata
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([[MAP_RE, mapRow({ version: 3, status: 'paused' })]])
+    vi.mocked(config.updateServiceImpactRules).mockResolvedValueOnce({ ...written, status: 'paused', evaluation: null })
+    await serviceResolvers.Mutation.updateServiceImpactRules(null, { id: 'map-1', expectedVersion: 2, rules }, admin)
+    expect(audit).toHaveBeenCalledWith(admin, 'service_map.rules_changed', 'ServiceMap', 'map-1', expect.objectContaining({ status: 'paused', reevaluated: false, health: null, impactScore: null }))
+
+    // conflitto di versione: l'errore del servizio propaga così com'è
+    const { ValidationError: VErr } = await import('../../../lib/errors.js')
+    vi.mocked(config.updateServiceMapNodes).mockRejectedValueOnce(new VErr('ServiceMap map-1 was modified by someone else (expected version 2, current is 5, updated at T9): reload and retry'))
+    await expectCode(serviceResolvers.Mutation.updateServiceMapNodes(null, { id: 'map-1', expectedVersion: 2, nodes }, admin), 'BAD_USER_INPUT', /modified by someone else \(expected version 2, current is 5/)
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    await expectCode(serviceResolvers.Mutation.updateServiceImpactRules(null, { id: 'map-1', expectedVersion: 2, rules }, operator), 'FORBIDDEN')
+    await expectCode(serviceResolvers.Mutation.updateServiceMapNodes(null, { id: 'map-1', expectedVersion: 2, nodes }, operator), 'FORBIDDEN')
+    await expectCode(serviceResolvers.Mutation.applyServiceMapProposal(null, { id: 'map-1', expectedVersion: 2, add: [], exclude: [], remove: ['x'] }, viewer), 'FORBIDDEN')
+    await expectCode(serviceResolvers.Mutation.removeServiceMapExclusion(null, { id: 'map-1', expectedVersion: 2, ciId: 'x' }, viewer), 'FORBIDDEN')
+    expect(config.updateServiceImpactRules).not.toHaveBeenCalled()
+    expect(config.updateServiceMapNodes).not.toHaveBeenCalled()
+    expect(config.applyServiceMapProposal).not.toHaveBeenCalled()
+    expect(config.removeServiceMapExclusion).not.toHaveBeenCalled()
   })
 
   it('deleteServiceMap: DETACH DELETE di mappa e cronologia in uno statement, job in attesa rimosso, audit; inesistente → NOT_FOUND; rimozione del job fallita → solo warning', async () => {

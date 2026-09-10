@@ -190,7 +190,7 @@ describe('ServicesPage', () => {
     expect(submit).toBeDisabled()
     await user.click(within(dialog).getByRole('checkbox', { name: 'DEPENDS_ON' }))
     await user.click(submit)
-    await waitFor(() => expect(seen).toEqual([{ serviceId: 'ba-9', maxDepth: 6, relationshipTypes: ['DEPENDS_ON'] }]))
+    await waitFor(() => expect(seen).toEqual([{ serviceId: 'ba-9', maxDepth: 6, relationshipTypes: ['DEPENDS_ON'], status: 'active' }]))
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Map of "CRM" created'))
     await waitFor(() => expect(location()).toBe('/monitoring/services/map-9'))
   })

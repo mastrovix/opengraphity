@@ -7,8 +7,14 @@
  * (services/serviceImpact/engine.ts) con punteggio 0–100 e spiegazione (le
  * cause con il percorso dal nodo malato al livello 1), la cronologia.
  *
+ * Ondata 2: tutto configurabile da interfaccia — regole e impostazioni dei
+ * componenti modificabili con controllo di concorrenza (`expectedVersion`),
+ * diff con il grafo di adesso (`serviceMapProposal`) da applicare a scelta,
+ * esclusioni permanenti e anteprima del calcolo senza scrivere
+ * (`serviceImpactPreview`).
+ *
  * Progetto: scratchpad service-impact-opengrafo.html (10 set 2026). Contratto
- * ondata 1 condiviso con il web: i nomi qui sotto non si cambiano. Gli enum
+ * condiviso con il web: i nomi qui sotto non si cambiano. Gli enum
  * sono generati da lib/serviceVocabularies.ts (fonte unica con il motore;
  * graphql/__tests__/schemaServices.test.ts confronta enum ↔ liste). I ruoli
  * NON sono scritti nei commenti: la verità è lib/authorization.ts, pinnata
@@ -22,7 +28,7 @@ export function servicesSDL(): string {
 
   """Salute del servizio: gli stessi termini del CI più maintenance (un componente critico in finestra di change) e unknown (nessun componente con salute)."""
   ${sdlEnum('ServiceHealth')}
-  """Stato della mappa: active (valutata dal monitoraggio), paused (nessuna valutazione automatica), draft (ondata 2)."""
+  """Stato della mappa: active (valutata dal monitoraggio), paused (nessuna valutazione automatica), draft (bozza)."""
   ${sdlEnum('ServiceMapStatus')}
   """Quanto pesa un nodo: always (pesa sempre), never (informativo: si vede sulla mappa, non pesa), weighted (col suo peso). In ondata 1 always e weighted contano allo stesso modo."""
   ${sdlEnum('NodePropagation')}
@@ -30,8 +36,12 @@ export function servicesSDL(): string {
   ${sdlEnum('ServiceNodeRole')}
   """Cosa ha innescato una voce di cronologia del servizio."""
   ${sdlEnum('ServiceHealthTrigger')}
+  """Come contano i componenti senza salute (mai toccati da un allarme): ignorati o come operativi. Mai «giù»."""
+  ${sdlEnum('UnknownNodesMode')}
+  """Soglia di salute da cui il servizio apre un incident (gli incident per servizio arrivano in ondata 3)."""
+  ${sdlEnum('ServiceOpenIncidentFrom')}
 
-  """Regole d'impatto del servizio (ServiceMap.rules, JSON versionato; modificabili da UI in ondata 2)."""
+  """Regole d'impatto del servizio (ServiceMap.rules, JSON versionato; modificabili da UI)."""
   type ServiceImpactRules {
     version:          Int!
     """Quota ponderata (%) di componenti giù da cui il servizio è giù."""
@@ -41,9 +51,27 @@ export function servicesSDL(): string {
     """Numero minimo di componenti non operativi che contano perché il servizio sia degradato."""
     minNodes:         Int!
     """Componenti senza salute: ignore (ignorati) o operational (contano come operativi). Mai «giù»."""
-    unknownNodes:     String!
-    """Soglia da cui il servizio apre un incident (never | down | degraded; ondata 3)."""
-    openIncidentFrom: String!
+    unknownNodes:     UnknownNodesMode!
+    """Soglia da cui il servizio apre un incident (ondata 3)."""
+    openIncidentFrom: ServiceOpenIncidentFrom!
+  }
+
+  """Regole d'impatto da salvare: degradedSharePct ≤ downSharePct e minNodes ≤ numero di componenti della mappa, altrimenti BAD_USER_INPUT."""
+  input ServiceImpactRulesInput {
+    downSharePct:     Int!
+    degradedSharePct: Int!
+    minNodes:         Int!
+    unknownNodes:     UnknownNodesMode!
+    openIncidentFrom: ServiceOpenIncidentFrom!
+  }
+
+  """Impostazioni di un componente: ciò che l'amministratore può cambiare (ruolo, livello e via restano della mappa)."""
+  input ServiceMapNodeInput {
+    ciId:      ID!
+    propagate: NodePropagation!
+    """1..10."""
+    weight:    Int!
+    critical:  Boolean!
   }
 
   """Un componente che ha pesato sulla salute, con il percorso dal componente malato al livello 1 (via)."""
@@ -132,6 +160,56 @@ export function servicesSDL(): string {
     """Ultime limit voci (max 500), dalla più recente."""
     history(limit: Int = 100): [ServiceHealthEntry!]!
     historyCount:      Int!
+    """I CI che l'amministratore ha escluso: non vengono più riproposti dal diff (serviceMapProposal)."""
+    excluded:          [ConfigurationItemRef!]!
+  }
+
+  """Un componente della proposta, con le impostazioni che avrebbe se venisse incluso."""
+  type ServiceMapProposalNode {
+    ci:        ConfigurationItemRef!
+    level:     Int!
+    role:      ServiceNodeRole!
+    propagate: NodePropagation!
+    weight:    Int!
+    critical:  Boolean!
+    via:       ID
+  }
+
+  """Un componente che nel grafo di adesso sta a un livello (o dietro un via) diverso da quello della mappa."""
+  type ServiceMapMovedNode {
+    ci:            ConfigurationItemRef!
+    level:         Int!
+    proposedLevel: Int!
+    via:           ID
+    proposedVia:   ID
+  }
+
+  """Diff fra la mappa attuale e quella che si costruirebbe adesso dal grafo (nessuna scrittura)."""
+  type ServiceMapProposal {
+    mapId:             ID!
+    version:           Int!
+    maxDepth:          Int!
+    relationshipTypes: [String!]!
+    """Nel grafo, non nella mappa, non esclusi."""
+    added:             [ServiceMapProposalNode!]!
+    """Nella mappa e non più raggiungibili; un CI cancellato dalla CMDB compare con livello 0, ruolo component e addedBy «gone» (della mappa resta solo il suo id)."""
+    removed:           [ServiceMapNode!]!
+    """Livello o via cambiati."""
+    moved:             [ServiceMapMovedNode!]!
+    """Esclusioni attive: non vengono riproposte."""
+    excluded:          [ConfigurationItemRef!]!
+    """Nodi della proposta senza gli esclusi (per il tetto di 500)."""
+    totalProposed:     Int!
+  }
+
+  """Esito del calcolo con impostazioni ipotetiche sugli allarmi di adesso: nessuna scrittura."""
+  type ServiceImpactPreview {
+    health:            ServiceHealth!
+    impactScore:       Int!
+    causes:            [ImpactCause!]!
+    """Componenti che pesano nel calcolo con queste impostazioni."""
+    contributingCount: Int!
+    nodeCount:         Int!
   }
 
   """Contatori sul tenant (indipendenti dal filtro)."""
@@ -166,15 +244,27 @@ export function servicesSDL(): string {
     servicesImpactedByCI(ciId: ID!): [ServiceMap!]!
     """BusinessApplication del tenant senza mappa (candidate alla creazione), per nome. limit ≤ 100 (default 20)."""
     serviceMapCandidates(search: String, limit: Int = 20): [ServiceRef!]!
+    """Diff fra la mappa e il grafo di adesso (stessi maxDepth e relationshipTypes della mappa): cosa aggiungere, togliere, spostare. Non scrive nulla."""
+    serviceMapProposal(id: ID!): ServiceMapProposal!
+    """«Con queste impostazioni adesso»: la salute che il servizio avrebbe con le regole e/o i componenti passati (il resto resta com'è). Nessuna scrittura; un ciId non nella mappa è un errore."""
+    serviceImpactPreview(id: ID!, rules: ServiceImpactRulesInput, nodes: [ServiceMapNodeInput!]): ServiceImpactPreview!
   }
 
   extend type Mutation {
-    """Costruzione automatica dalla BusinessApplication (REALIZES → relazioni tecniche in uscita fino a maxDepth, default 4, max 8; relationshipTypes fra DEPENDS_ON, HOSTED_ON, INSTALLED_ON, USES_CERTIFICATE, default tutte), status active, valutazione immediata. Una sola mappa per servizio; oltre 500 componenti → BAD_USER_INPUT."""
-    createServiceMap(serviceId: ID!, maxDepth: Int, relationshipTypes: [String!]): ServiceMap!
+    """Costruzione automatica dalla BusinessApplication (REALIZES → relazioni tecniche in uscita fino a maxDepth, default 4, max 8; relationshipTypes fra DEPENDS_ON, HOSTED_ON, INSTALLED_ON, USES_CERTIFICATE, default tutte), status active (o draft per una bozza), valutazione immediata. Una sola mappa per servizio; oltre 500 componenti → BAD_USER_INPUT."""
+    createServiceMap(serviceId: ID!, maxDepth: Int, relationshipTypes: [String!], status: ServiceMapStatus): ServiceMap!
     """Rivaluta ora (trigger manual)."""
     reevaluateServiceMap(id: ID!): ServiceMap!
     """Cambia lo stato con controllo di concorrenza (expectedVersion = version letta); riattivare una mappa in pausa la rivaluta subito."""
     setServiceMapStatus(id: ID!, expectedVersion: Int!, status: ServiceMapStatus!): ServiceMap!
+    """Salva le regole d'impatto (voce di cronologia rules_changed con i campi cambiati) e rivaluta subito, tranne le mappe in pausa."""
+    updateServiceImpactRules(id: ID!, expectedVersion: Int!, rules: ServiceImpactRulesInput!): ServiceMap!
+    """Cambia propagate, weight e critical dei soli componenti passati (elenco vuoto o ciId non nella mappa → BAD_USER_INPUT) e rivaluta subito, tranne le mappe in pausa."""
+    updateServiceMapNodes(id: ID!, expectedVersion: Int!, nodes: [ServiceMapNodeInput!]!): ServiceMap!
+    """Applica le scelte fatte sul diff: add = CI della proposta da includere, exclude = CI da non riproporre mai più (e da togliere, se inclusi), remove = CI inclusi (o spariti dalla CMDB) da togliere. Tutto in una transazione; poi rivaluta, tranne le mappe in pausa."""
+    applyServiceMapProposal(id: ID!, expectedVersion: Int!, add: [ID!]!, exclude: [ID!]!, remove: [ID!]!): ServiceMap!
+    """Riammette un CI escluso: tornerà nella prossima proposta."""
+    removeServiceMapExclusion(id: ID!, expectedVersion: Int!, ciId: ID!): ServiceMap!
     """Elimina la mappa e la sua cronologia; il servizio (BusinessApplication) e i CI restano."""
     deleteServiceMap(id: ID!): Boolean!
   }

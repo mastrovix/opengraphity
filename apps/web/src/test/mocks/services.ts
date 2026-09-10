@@ -59,6 +59,36 @@ export function mapDetail(over: Record<string, unknown> = {}): Record<string, un
   return {
     ...mapRow(), version: 3, updatedAt: '2026-09-10T07:00:00Z', maxDepth: 4,
     relationshipTypes: ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE'], builtFrom: 'auto',
-    rules: RULES, nodes: NODES, edges: EDGES, history: HISTORY, historyCount: 2, ...over,
+    rules: RULES, nodes: NODES, edges: EDGES, excluded: [], history: HISTORY, historyCount: 2, ...over,
   }
+}
+
+// ── Ondata 2: proposta (diff col grafo) e anteprima ─────────────────────────
+
+/** Un componente nuovo proposto dal grafo (ServiceMapProposalNode). */
+export const proposalNode = (id: string, name: string, over: Record<string, unknown> = {}) => ({
+  __typename: 'ServiceMapProposalNode', ci: ciRef(id, name, 'server'), level: 2, role: 'infrastructure',
+  propagate: 'weighted', weight: 5, critical: false, via: 'api-03', ...over,
+})
+
+/**
+ * Diff di default: due nuovi (lb-09, queue-01), uno sparito (cache-02), uno
+ * spostato (db-01 dal livello 2 al 3) e un'esclusione attiva (old-vm).
+ */
+export function proposal(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    __typename: 'ServiceMapProposal', mapId: 'map-1', version: 3, maxDepth: 4,
+    relationshipTypes: ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE'],
+    added: [proposalNode('lb-09', 'lb-09'), proposalNode('queue-01', 'queue-01', { level: 3, role: 'component' })],
+    removed: [{ __typename: 'ServiceMapNode', ci: ciRef('cache-02', 'cache-02', 'microservice'), level: 2, role: 'component' }],
+    moved: [{ __typename: 'ServiceMapMovedNode', ci: ciRef('db-01', 'db-01', 'database'), level: 2, proposedLevel: 3, via: 'api-03', proposedVia: 'lb-09' }],
+    excluded: [ciRef('old-vm', 'old-vm', 'server')],
+    totalProposed: 5,
+    ...over,
+  }
+}
+
+/** Risultato di serviceImpactPreview. */
+export function preview(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return { __typename: 'ServiceImpactPreview', health: 'degraded', impactScore: 41, contributingCount: 3, nodeCount: 4, causes: CAUSES, ...over }
 }

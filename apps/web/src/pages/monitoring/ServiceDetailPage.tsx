@@ -4,20 +4,24 @@
  * CMDB), frase di spiegazione in parole, mappa a livelli con il percorso
  * d'impatto evidenziato (ServiceMapCanvas) e pannello del componente
  * selezionato, «Perché» (le cause con peso, critico e percorso), tabella
- * dei componenti (sola lettura in ondata 1), cronologia (timeline), scheda
- * del servizio e «Come si calcola» (regole, sola lettura).
+ * dei componenti (ServiceComponentsTable), cronologia (timeline), scheda
+ * del servizio e «Come si calcola» (ServiceRulesCard).
  *
- * Azioni admin: «Rivaluta ora», «Metti in pausa»/«Riattiva» (con
- * `expectedVersion` = la versione letta), «Elimina» (con conferma). Le
- * mutation restituiscono la mappa completa: la cache aggiorna la pagina.
+ * Azioni admin: «Rivaluta ora», «Aggiorna mappa» (dialogo del diff col
+ * grafo), «Metti in pausa»/«Riattiva» (con `expectedVersion` = la versione
+ * letta), «Elimina» (con conferma). Le mutation restituiscono la mappa
+ * completa: la cache aggiorna la pagina.
  * Polling 15 s in pausa a scheda nascosta: la salute cambia da sola.
+ *
+ * Ondata 2: regole e componenti si modificano qui dentro (solo admin); per
+ * gli altri ruoli i riquadri restano quelli di sola lettura, senza controlli.
  */
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Boxes, RotateCcw, Pause, Play, Trash2, AlertTriangle, Star, Loader2, X, ArrowRight } from 'lucide-react'
+import { ArrowLeft, Boxes, RotateCcw, Pause, Play, Trash2, AlertTriangle, Star, Loader2, X, ArrowRight, GitCompareArrows } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageLoader } from '@/components/PageLoader'
 import { QueryError } from '@/components/QueryError'
@@ -40,6 +44,9 @@ import { colors, palette } from '@/lib/tokens'
 import { AMBER_BANNER, TINT_NEUTRAL, TINT_WARNING } from '@/lib/eventPalette'
 import { ServiceMapCanvas } from './ServiceMapCanvas'
 import { ServiceHistorySection } from './ServiceHistorySection'
+import { ServiceComponentsTable } from './ServiceComponentsTable'
+import { ServiceRulesCard } from './ServiceRulesCard'
+import { UpdateServiceMapDialog } from './UpdateServiceMapDialog'
 import {
   ServiceHealthBadge, ServiceStatusPill, NodeHealthBadge, ImpactScore,
   causeSequenceLabel, explanationSentence, propagationLabel, roleLabel, serviceStatusLabel, serviceHealthLabel,
@@ -48,8 +55,6 @@ import type { ServiceMapDetail, ServiceMapNode, ImpactCause } from '@/types/serv
 
 const POLL_MS = 15_000
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
-const TH: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', color: colors.slateLight, fontWeight: 500, fontSize: 'var(--font-size-label)', textTransform: 'uppercase', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
-const TD: React.CSSProperties = { padding: '6px 8px', color: colors.slateDark, borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-body)', verticalAlign: 'middle' }
 
 export function ServiceDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -59,6 +64,7 @@ export function ServiceDetailPage() {
   const confirm = useConfirm()
   const { ciTypes } = useMetamodel()
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [updateOpen, setUpdateOpen] = useState(false)
 
   const { data, previousData, loading, error, refetch } = useQuery<{ serviceMap: ServiceMapDetail | null }>(GET_SERVICE_MAP, {
     variables: { id }, fetchPolicy: 'cache-and-network', ...pausedWhenHidden(POLL_MS),
@@ -149,6 +155,9 @@ export function ServiceDetailPage() {
             <Button variant="secondary" size="sm" disabled={busy} icon={reevaluating ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RotateCcw size={14} aria-hidden="true" />} onClick={() => void onReevaluate()}>
               {t('monitoring.services.detail.actions.reevaluate')}
             </Button>
+            <Button variant="secondary" size="sm" disabled={busy} icon={<GitCompareArrows size={14} aria-hidden="true" />} onClick={() => setUpdateOpen(true)}>
+              {t('monitoring.services.detail.actions.updateMap')}
+            </Button>
             <Button variant="secondary" size="sm" disabled={busy} icon={map.status === 'paused' ? <Play size={14} aria-hidden="true" /> : <Pause size={14} aria-hidden="true" />} onClick={() => void onToggleStatus()}>
               {map.status === 'paused' ? t('monitoring.services.detail.actions.resume') : t('monitoring.services.detail.actions.pause')}
             </Button>
@@ -176,40 +185,7 @@ export function ServiceDetailPage() {
           </SectionCard>
 
           <SectionCard title={t('monitoring.services.detail.components')} count={map.nodeCount} defaultOpen>
-            {map.nodes.length === 0
-              ? <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: colors.slateLight }}>{t('monitoring.services.detail.componentsEmpty')}</p>
-              : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table aria-label={t('monitoring.services.detail.components')} style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr>
-                        {(['name', 'type', 'level', 'role', 'propagate', 'weight', 'critical', 'health'] as const).map((k) => (
-                          <th key={k} scope="col" style={TH}>{t(`monitoring.services.columns.${k}`)}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[...map.nodes].sort((a, b) => a.level - b.level || a.ci.name.localeCompare(b.ci.name)).map((n) => (
-                        <tr key={n.ci.id} data-testid="component-row" data-ci-id={n.ci.id}>
-                          <td style={TD}><Link to={ciPath(n.ci)} style={linkStyle}>{n.ci.name}</Link></td>
-                          <td style={TD}>{ciTypeLabel(n.ci.type)}</td>
-                          <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}>{n.level}</td>
-                          <td style={TD}>{roleLabel(t, n.role)}</td>
-                          <td style={TD}>{propagationLabel(t, n.propagate)}</td>
-                          <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}>{n.weight}</td>
-                          <td style={TD}>{n.critical ? <Pill bg={TINT_WARNING.bg} color={TINT_WARNING.color} style={{ fontSize: 'var(--font-size-label)' }}>{t('monitoring.services.why.critical')}</Pill> : <span style={{ color: colors.slateLight }}>{t('common.no')}</span>}</td>
-                          <td style={TD}>
-                            <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                              <NodeHealthBadge health={n.health} />
-                              {n.inMaintenance && <Pill bg={palette.purple.bg} color={palette.purple.text} style={{ fontSize: 'var(--font-size-label)' }}>{t('monitoring.services.health.maintenance')}</Pill>}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+            <ServiceComponentsTable map={map} canEdit={isAdmin} ciTypeLabel={ciTypeLabel} onReload={() => void refetch()} />
           </SectionCard>
 
           <ServiceHistorySection entries={map.history} total={map.historyCount} />
@@ -227,22 +203,16 @@ export function ServiceDetailPage() {
             <DetailField label={t('monitoring.services.detail.fields.maxDepth')} value={String(map.maxDepth)} />
             <DetailField label={t('monitoring.services.detail.fields.relationshipTypes')} value={map.relationshipTypes.length > 0 ? map.relationshipTypes.join(', ') : null} />
             <DetailField label={t('monitoring.services.detail.fields.builtFrom')} value={builtFromLabel(map.builtFrom, t)} />
+            <DetailField label={t('monitoring.services.detail.fields.excluded')} value={t('monitoring.services.detail.fields.excludedCount', { count: map.excluded.length })} />
             <DetailField label={t('monitoring.services.detail.fields.updatedAt')} value={map.updatedAt ? `${formatDateTime(map.updatedAt)} · ${timeAgo(map.updatedAt)}` : null} />
             <DetailField label={t('monitoring.services.detail.fields.evaluatedAt')} value={map.evaluatedAt ? `${formatDateTime(map.evaluatedAt)} · ${timeAgo(map.evaluatedAt)}` : null} />
           </SectionCard>
 
-          <SectionCard title={t('monitoring.services.detail.rules')} defaultOpen>
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 'var(--font-size-body)', color: colors.slateDark, lineHeight: 1.7 }}>
-              <li>{t('monitoring.services.detail.rulesFields.downSharePct', { pct: map.rules.downSharePct })}</li>
-              <li>{t('monitoring.services.detail.rulesFields.degradedSharePct', { pct: map.rules.degradedSharePct })}</li>
-              <li>{t('monitoring.services.detail.rulesFields.minNodes', { count: map.rules.minNodes })}</li>
-              <li>{t('monitoring.services.detail.rulesFields.unknownNodes', { value: unknownNodesLabel(map.rules.unknownNodes, t) })}</li>
-              <li>{t('monitoring.services.detail.rulesFields.openIncidentFrom', { value: map.rules.openIncidentFrom })}</li>
-            </ul>
-            <p style={{ margin: '8px 0 0', fontSize: 'var(--font-size-table)', color: colors.slateLight }}>{t('monitoring.services.detail.rulesReadOnly', { version: map.rules.version })}</p>
-          </SectionCard>
+          <ServiceRulesCard map={map} canEdit={isAdmin} onReload={() => void refetch()} />
         </div>
       </div>
+
+      {isAdmin && <UpdateServiceMapDialog map={map} open={updateOpen} onClose={() => setUpdateOpen(false)} />}
     </PageContainer>
   )
 }
@@ -253,12 +223,6 @@ type TFn = ReturnType<typeof useTranslation>['t']
 function builtFromLabel(value: string, t: TFn): string {
   if (value === 'auto')   return t('monitoring.services.detail.fields.builtFromAuto')
   if (value === 'manual') return t('monitoring.services.detail.fields.builtFromManual')
-  return t('monitoring.services.health.outOfVocabulary', { value })
-}
-
-function unknownNodesLabel(value: string, t: TFn): string {
-  if (value === 'ignore')      return t('monitoring.services.detail.rulesFields.unknownNodesIgnore')
-  if (value === 'operational') return t('monitoring.services.detail.rulesFields.unknownNodesOperational')
   return t('monitoring.services.health.outOfVocabulary', { value })
 }
 

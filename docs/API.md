@@ -136,9 +136,11 @@ The Apollo Sandbox is available at `http://localhost:4000/graphql` in developmen
 | Query | Description |
 |-------|-------------|
 | `serviceMaps(filter, limit, offset)` | Service maps of the tenant, by severity (down, degraded, maintenance, unknown, operational), then impact score, then name; `counts` are tenant-wide |
-| `serviceMap(id)` | Single map with `nodes`, `edges`, `explanation` (causes with the `via` path), `rules`, `history(limit)` |
+| `serviceMap(id)` | Single map with `nodes`, `edges`, `explanation` (causes with the `via` path), `rules`, `history(limit)`, `excluded` |
 | `servicesImpactedByCI(ciId)` | Maps that include the CI |
 | `serviceMapCandidates(search, limit)` | BusinessApplications without a map (admin) |
+| `serviceMapProposal(id)` | Diff between the map and the graph as it is now — `added` / `removed` / `moved` / `excluded` / `totalProposed`; rebuilt with the map's own `maxDepth` and `relationshipTypes`, writes nothing (admin) |
+| `serviceImpactPreview(id, rules, nodes)` | Health and impact score the service would have with these settings, on the current alarms; writes nothing, a `ciId` outside the map is an error (admin) |
 
 ### Reporting and Logs
 
@@ -200,10 +202,21 @@ The Apollo Sandbox is available at `http://localhost:4000/graphql` in developmen
 
 | Mutation | Description |
 |----------|-------------|
-| `createServiceMap(serviceId, maxDepth, relationshipTypes)` | Build the map automatically from the BusinessApplication (REALIZES, then outgoing technical relationships up to `maxDepth`, default 4, max 8, cap 500 nodes) and evaluate it |
+| `createServiceMap(serviceId, maxDepth, relationshipTypes, status)` | Build the map automatically from the BusinessApplication (REALIZES, then outgoing technical relationships up to `maxDepth`, default 4, max 8, cap 500 nodes) and evaluate it; `status` defaults to `active` (`draft` for a draft) |
 | `reevaluateServiceMap(id)` | Evaluate now (trigger `manual`) |
-| `setServiceMapStatus(id, expectedVersion, status)` | `active` / `paused` with optimistic concurrency |
+| `setServiceMapStatus(id, expectedVersion, status)` | `active` / `paused` / `draft` with optimistic concurrency |
+| `updateServiceImpactRules(id, expectedVersion, rules)` | Save the impact rules (`degradedSharePct` ≤ `downSharePct`, `minNodes` ≤ number of components); history entry `rules_changed` with the changed fields, then immediate re-evaluation |
+| `updateServiceMapNodes(id, expectedVersion, nodes)` | Change `propagate`, `weight` (1..10) and `critical` of the listed components only; empty list or unknown `ciId` → `BAD_USER_INPUT` |
+| `applyServiceMapProposal(id, expectedVersion, add, exclude, remove)` | Apply the choices made on the diff in one transaction: `add` includes proposed CIs (`added_by: manual`), `exclude` never proposes them again (and removes them if included), `remove` drops included or vanished CIs; recomputes `node_ids` and `stale` |
+| `removeServiceMapExclusion(id, expectedVersion, ciId)` | Let an excluded CI come back in the next proposal |
 | `deleteServiceMap(id)` | Delete the map and its history (service and CIs untouched) |
+
+All the configuration mutations take `expectedVersion` (the `version` read by
+the client): a mismatch is a `BAD_USER_INPUT` naming the current version and
+nothing is written. Each successful write bumps `version`, records
+`updatedAt`/`updatedBy`, writes one history entry with a readable note and
+re-evaluates the map immediately — except for `paused` maps, which are never
+evaluated automatically.
 
 ### Discovery
 

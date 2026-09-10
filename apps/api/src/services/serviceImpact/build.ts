@@ -34,6 +34,9 @@ export interface ProposedNode {
   ciId:      string
   name:      string
   labels:    string[]
+  /** Ciclo di vita e salute del CI: servono al diff dell'ondata 2 per mostrare i nuovi componenti come sono adesso. */
+  status:    string | null
+  health:    string | null
   level:     number
   via:       string | null
   role:      ServiceNodeRole
@@ -85,8 +88,8 @@ export function proposeNodeSettings(labels: readonly string[], level: number): P
   return { role, propagate: 'weighted', weight: NODE_WEIGHT_DEFAULT, critical: false }
 }
 
-interface EntryRow { serviceName: string; apps: { ciId: string; name: string; labels: string[] }[] }
-interface ExpandedRow { ciId: string; name: string; level: number; via: string; labels: string[] }
+interface EntryRow { serviceName: string; apps: { ciId: string; name: string; labels: string[]; status: string | null; health: string | null }[] }
+interface ExpandedRow { ciId: string; name: string; level: number; via: string; labels: string[]; status: string | null; health: string | null }
 
 /** Livello 1: le applicazioni realizzate dal servizio (solo CI del metamodello, stesso tenant). */
 export const ENTRY_NODES_CYPHER = `
@@ -94,7 +97,8 @@ export const ENTRY_NODES_CYPHER = `
   OPTIONAL MATCH (ba)-[:REALIZES]->(app {tenant_id: $tenantId})
   WHERE ANY(l IN labels(app) WHERE l IN $ciLabels)
   RETURN ba.name AS serviceName,
-         [a IN collect(app) | {ciId: a.id, name: a.name, labels: [l IN labels(a) WHERE l <> 'ConfigurationItem']}] AS apps`
+         [a IN collect(app) | {ciId: a.id, name: a.name, labels: [l IN labels(a) WHERE l <> 'ConfigurationItem'],
+                               status: a.status, health: a.health}] AS apps`
 
 /**
  * Livelli 2..maxDepth: espansione BFS dalle applicazioni con unicità globale
@@ -119,7 +123,8 @@ export const EXPAND_NODES_CYPHER = `
   WHERE ALL(n IN nodes(path) WHERE n.tenant_id = $tenantId)
   WITH last(nodes(path)) AS node, length(path) + 1 AS level, nodes(path)[-2] AS pred
   RETURN node.id AS ciId, node.name AS name, level, pred.id AS via,
-         [l IN labels(node) WHERE l <> 'ConfigurationItem'] AS labels
+         [l IN labels(node) WHERE l <> 'ConfigurationItem'] AS labels,
+         node.status AS status, node.health AS health
   ORDER BY level, name`
 
 /**
@@ -138,7 +143,7 @@ export async function buildServiceMap(session: Queryable, tenantId: string, serv
     return { serviceName: entry.serviceName, maxDepth: depth, relationshipTypes: types, nodes: [] }
   }
 
-  const nodes: ProposedNode[] = apps.map((a) => ({ ciId: a.ciId, name: a.name ?? '', labels: a.labels, level: 1, via: null, ...proposeNodeSettings(a.labels, 1) }))
+  const nodes: ProposedNode[] = apps.map((a) => ({ ciId: a.ciId, name: a.name ?? '', labels: a.labels, status: a.status ?? null, health: a.health ?? null, level: 1, via: null, ...proposeNodeSettings(a.labels, 1) }))
   if (depth > 1) {
     const expanded = await runQuery<ExpandedRow>(session, EXPAND_NODES_CYPHER, {
       tenantId, appIds: apps.map((a) => a.ciId),
@@ -153,7 +158,7 @@ export async function buildServiceMap(session: Queryable, tenantId: string, serv
     for (const r of expanded) {
       if (seen.has(r.ciId)) continue
       seen.add(r.ciId)
-      nodes.push({ ciId: r.ciId, name: r.name ?? '', labels: r.labels, level: r.level, via: r.via, ...proposeNodeSettings(r.labels, r.level) })
+      nodes.push({ ciId: r.ciId, name: r.name ?? '', labels: r.labels, status: r.status ?? null, health: r.health ?? null, level: r.level, via: r.via, ...proposeNodeSettings(r.labels, r.level) })
     }
   }
   if (nodes.length > SERVICE_MAP_MAX_NODES) {

@@ -46,9 +46,11 @@ export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
   // leggeri, ruoli predefiniti) e `Event.source` è un MonitoringSourceRef.
   'monitoringSources', 'payloadKeys', 'sampleInboundPayload',
   // Servizi monitorati: le BusinessApplication candidate alla creazione di una
-  // mappa sono uno strumento della mutation admin createServiceMap; le letture
-  // (serviceMaps, serviceMap, servicesImpactedByCI) restano a ruoli predefiniti.
-  'serviceMapCandidates',
+  // mappa sono uno strumento della mutation admin createServiceMap; il diff con
+  // il grafo e l'anteprima del calcolo sono gli strumenti della configurazione
+  // (ondata 2). Le letture (serviceMaps, serviceMap, servicesImpactedByCI)
+  // restano a ruoli predefiniti.
+  'serviceMapCandidates', 'serviceMapProposal', 'serviceImpactPreview',
 ])
 
 export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
@@ -96,6 +98,7 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   // Servizi monitorati (configurazione del tenant: mappe dei servizi). Tabella
   // completa pinnata in lib/__tests__/authorization.test.ts.
   'createServiceMap', 'reevaluateServiceMap', 'setServiceMapStatus', 'deleteServiceMap',
+  'updateServiceImpactRules', 'updateServiceMapNodes', 'applyServiceMapProposal', 'removeServiceMapExclusion',
 ])
 
 /**

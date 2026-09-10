@@ -120,7 +120,7 @@ describe('Event Management: ogni campo root di eventsSDL() ha i ruoli attesi', (
 })
 
 /**
- * Servizi monitorati (ondata 1): tabella campo → ruoli attesi per OGNI Query e
+ * Servizi monitorati (ondate 1 e 2): tabella campo → ruoli attesi per OGNI Query e
  * Mutation di servicesSDL(). Letture per lo staff (come event(id)), scritture
  * e strumento di creazione solo admin.
  */
@@ -130,11 +130,14 @@ describe('Servizi monitorati: ogni campo root di servicesSDL() ha i ruoli attesi
 
   const EXPECTED_QUERIES: Record<string, readonly string[]> = {
     serviceMaps: STAFF, serviceMap: STAFF, servicesImpactedByCI: STAFF,
-    // strumento della creazione (BusinessApplication senza mappa)
-    serviceMapCandidates: ADMIN,
+    // strumento della creazione (BusinessApplication senza mappa) e strumenti
+    // della configurazione (ondata 2): diff con il grafo e anteprima del calcolo
+    serviceMapCandidates: ADMIN, serviceMapProposal: ADMIN, serviceImpactPreview: ADMIN,
   }
   const EXPECTED_MUTATIONS: Record<string, readonly string[]> = {
     createServiceMap: ADMIN, reevaluateServiceMap: ADMIN, setServiceMapStatus: ADMIN, deleteServiceMap: ADMIN,
+    // configurazione da interfaccia (ondata 2)
+    updateServiceImpactRules: ADMIN, updateServiceMapNodes: ADMIN, applyServiceMapProposal: ADMIN, removeServiceMapExclusion: ADMIN,
   }
 
   const rootFieldsOf = (kind: 'Query' | 'Mutation') =>
@@ -160,7 +163,10 @@ describe('Servizi monitorati: ogni campo root di servicesSDL() ha i ruoli attesi
       expect(() => authorize('Mutation', f, 'operator')).toThrow(new RegExp(f))
       expect(() => authorize('Mutation', f, 'viewer')).toThrow(new RegExp(f))
     }
-    expect(() => authorize('Query', 'serviceMapCandidates', 'operator')).toThrow(/serviceMapCandidates/)
+    for (const f of ['serviceMapCandidates', 'serviceMapProposal', 'serviceImpactPreview']) {
+      expect(() => authorize('Query', f, 'operator')).toThrow(new RegExp(f))
+      expect(() => authorize('Query', f, 'viewer')).toThrow(new RegExp(f))
+    }
     expect(() => authorize('Query', 'serviceMaps', 'viewer')).not.toThrow()
     expect(() => authorize('Query', 'servicesImpactedByCI', 'viewer')).not.toThrow()
     expect(() => authorize('Query', 'serviceMaps', 'end_user')).toThrow()

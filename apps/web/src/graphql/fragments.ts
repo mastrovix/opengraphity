@@ -92,6 +92,7 @@ export const SERVICE_MAP_DETAIL_FIELDS = gql`
     rules { version downSharePct degradedSharePct minNodes unknownNodes openIncidentFrom }
     nodes { ci { id name type } level role propagate weight critical via addedBy health inMaintenance contributes }
     edges { source target relType }
+    excluded { id name type }
     history(limit: 50) {
       id at health previousHealth impactScore trigger note
       causes { ci { id name type } health weight critical path { id name } }

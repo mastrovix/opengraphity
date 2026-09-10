@@ -44,6 +44,8 @@ describe('enum SDL ↔ liste TS (lib/serviceVocabularies.ts)', () => {
     expect(SERVICE_SDL_ENUMS['NodePropagation']).toEqual(['always', 'never', 'weighted'])
     expect(SERVICE_SDL_ENUMS['ServiceNodeRole']).toEqual(['entry', 'component', 'infrastructure', 'certificate'])
     expect(SERVICE_SDL_ENUMS['ServiceHealthTrigger']).toEqual(['created', 'ci_health', 'rules_changed', 'map_changed', 'maintenance', 'manual', 'periodic'])
+    expect(SERVICE_SDL_ENUMS['UnknownNodesMode']).toEqual(['ignore', 'operational'])
+    expect(SERVICE_SDL_ENUMS['ServiceOpenIncidentFrom']).toEqual(['never', 'down', 'degraded'])
     expect([...SERVICE_HEALTH_SEVERITY_ORDER].sort()).toEqual([...SERVICE_HEALTHS].sort())
   })
 })
@@ -59,6 +61,7 @@ describe('tipi del contratto', () => {
       nodes: '[ServiceMapNode!]!', nodeCount: 'Int!',
       edges: '[ServiceMapEdge!]!',
       history: '[ServiceHealthEntry!]!', historyCount: 'Int!',
+      excluded: '[ConfigurationItemRef!]!',
     })
     const history = (schema.getType('ServiceMap') as GraphQLObjectType).getFields()['history']!
     expect(history.args.map((a) => [a.name, a.type.toString(), a.defaultValue])).toEqual([['limit', 'Int', 100]])
@@ -69,7 +72,7 @@ describe('tipi del contratto', () => {
     expect(fieldsOf('ImpactCause')).toEqual({ ci: 'ConfigurationItemRef!', health: 'CIHealth!', weight: 'Int!', critical: 'Boolean!', path: '[ConfigurationItemRef!]!' })
     expect(fieldsOf('ServiceMapEdge')).toEqual({ source: 'ID!', target: 'ID!', relType: 'String!' })
     expect(fieldsOf('ServiceHealthEntry')).toEqual({ id: 'ID!', at: 'String!', health: 'ServiceHealth!', previousHealth: 'ServiceHealth', impactScore: 'Int!', trigger: 'ServiceHealthTrigger!', causes: '[ImpactCause!]!', note: 'String' })
-    expect(fieldsOf('ServiceImpactRules')).toEqual({ version: 'Int!', downSharePct: 'Int!', degradedSharePct: 'Int!', minNodes: 'Int!', unknownNodes: 'String!', openIncidentFrom: 'String!' })
+    expect(fieldsOf('ServiceImpactRules')).toEqual({ version: 'Int!', downSharePct: 'Int!', degradedSharePct: 'Int!', minNodes: 'Int!', unknownNodes: 'UnknownNodesMode!', openIncidentFrom: 'ServiceOpenIncidentFrom!' })
     expect(fieldsOf('ServiceRef')).toEqual({ id: 'ID!', name: 'String!', criticality: 'String', ownerGroup: 'Team' })
     expect(fieldsOf('ServiceMapCounts')).toEqual({ total: 'Int!', operational: 'Int!', degraded: 'Int!', down: 'Int!', maintenance: 'Int!', unknown: 'Int!' })
     expect(fieldsOf('ServiceMapPage')).toEqual({ items: '[ServiceMap!]!', total: 'Int!', counts: 'ServiceMapCounts!' })
@@ -88,10 +91,29 @@ describe('tipi del contratto', () => {
     expect(sig(q['serviceMap']!)).toEqual({ args: [['id', 'ID!', null]], type: 'ServiceMap' })
     expect(sig(q['servicesImpactedByCI']!)).toEqual({ args: [['ciId', 'ID!', null]], type: '[ServiceMap!]!' })
     expect(sig(q['serviceMapCandidates']!)).toEqual({ args: [['search', 'String', null], ['limit', 'Int', 20]], type: '[ServiceRef!]!' })
-    expect(sig(m['createServiceMap']!)).toEqual({ args: [['serviceId', 'ID!', null], ['maxDepth', 'Int', null], ['relationshipTypes', '[String!]', null]], type: 'ServiceMap!' })
+    expect(sig(q['serviceMapProposal']!)).toEqual({ args: [['id', 'ID!', null]], type: 'ServiceMapProposal!' })
+    expect(sig(q['serviceImpactPreview']!)).toEqual({ args: [['id', 'ID!', null], ['rules', 'ServiceImpactRulesInput', null], ['nodes', '[ServiceMapNodeInput!]', null]], type: 'ServiceImpactPreview!' })
+    expect(sig(m['createServiceMap']!)).toEqual({ args: [['serviceId', 'ID!', null], ['maxDepth', 'Int', null], ['relationshipTypes', '[String!]', null], ['status', 'ServiceMapStatus', null]], type: 'ServiceMap!' })
     expect(sig(m['reevaluateServiceMap']!)).toEqual({ args: [['id', 'ID!', null]], type: 'ServiceMap!' })
     expect(sig(m['setServiceMapStatus']!)).toEqual({ args: [['id', 'ID!', null], ['expectedVersion', 'Int!', null], ['status', 'ServiceMapStatus!', null]], type: 'ServiceMap!' })
+    expect(sig(m['updateServiceImpactRules']!)).toEqual({ args: [['id', 'ID!', null], ['expectedVersion', 'Int!', null], ['rules', 'ServiceImpactRulesInput!', null]], type: 'ServiceMap!' })
+    expect(sig(m['updateServiceMapNodes']!)).toEqual({ args: [['id', 'ID!', null], ['expectedVersion', 'Int!', null], ['nodes', '[ServiceMapNodeInput!]!', null]], type: 'ServiceMap!' })
+    expect(sig(m['applyServiceMapProposal']!)).toEqual({ args: [['id', 'ID!', null], ['expectedVersion', 'Int!', null], ['add', '[ID!]!', null], ['exclude', '[ID!]!', null], ['remove', '[ID!]!', null]], type: 'ServiceMap!' })
+    expect(sig(m['removeServiceMapExclusion']!)).toEqual({ args: [['id', 'ID!', null], ['expectedVersion', 'Int!', null], ['ciId', 'ID!', null]], type: 'ServiceMap!' })
     expect(sig(m['deleteServiceMap']!)).toEqual({ args: [['id', 'ID!', null]], type: 'Boolean!' })
+  })
+
+  it('tipi e input dell\'ondata 2 (configurazione da interfaccia)', () => {
+    expect(fieldsOf('ServiceImpactRulesInput')).toEqual({ downSharePct: 'Int!', degradedSharePct: 'Int!', minNodes: 'Int!', unknownNodes: 'UnknownNodesMode!', openIncidentFrom: 'ServiceOpenIncidentFrom!' })
+    expect(fieldsOf('ServiceMapNodeInput')).toEqual({ ciId: 'ID!', propagate: 'NodePropagation!', weight: 'Int!', critical: 'Boolean!' })
+    expect(fieldsOf('ServiceMapProposalNode')).toEqual({ ci: 'ConfigurationItemRef!', level: 'Int!', role: 'ServiceNodeRole!', propagate: 'NodePropagation!', weight: 'Int!', critical: 'Boolean!', via: 'ID' })
+    expect(fieldsOf('ServiceMapMovedNode')).toEqual({ ci: 'ConfigurationItemRef!', level: 'Int!', proposedLevel: 'Int!', via: 'ID', proposedVia: 'ID' })
+    expect(fieldsOf('ServiceMapProposal')).toEqual({
+      mapId: 'ID!', version: 'Int!', maxDepth: 'Int!', relationshipTypes: '[String!]!',
+      added: '[ServiceMapProposalNode!]!', removed: '[ServiceMapNode!]!', moved: '[ServiceMapMovedNode!]!',
+      excluded: '[ConfigurationItemRef!]!', totalProposed: 'Int!',
+    })
+    expect(fieldsOf('ServiceImpactPreview')).toEqual({ health: 'ServiceHealth!', impactScore: 'Int!', causes: '[ImpactCause!]!', contributingCount: 'Int!', nodeCount: 'Int!' })
   })
 
   it('le descrizioni SDL non replicano i ruoli: la policy è in lib/authorization.ts', () => {

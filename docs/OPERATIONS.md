@@ -842,7 +842,7 @@ manuale: togliere l'override dal dettaglio CI) o `ci.status = maintenance`
 
 ### Servizi monitorati (mappa del servizio e albero d'impatto)
 
-Progetto: artifact "Servizi monitorati" (10 set 2026), ondata 1. Un
+Progetto: artifact "Servizi monitorati" (10 set 2026), ondate 1 e 2. Un
 **servizio monitorato** è una `BusinessApplication` con una `ServiceMap`
 (`(:BusinessApplication)-[:HAS_SERVICE_MAP]->(:ServiceMap)`, una per
 servizio): i componenti che la reggono sono `INCLUDES {level, role, propagate,
@@ -851,11 +851,12 @@ applicazioni raggiunte con `REALIZES`, 2.. = i fornitori seguendo IN USCITA
 `DEPENDS_ON`/`HOSTED_ON`/`INSTALLED_ON`/`USES_CERTIFICATE` fino a `max_depth`,
 default 4, massimo 8, tetto 500 nodi: oltre è un `BAD_USER_INPUT` con il
 conteggio, mai un taglio silenzioso); la mappa è **congelata** (la discovery
-non la cambia: ondata 2 porterà il diff) e conserva `node_ids` per accorgersi
+non la cambia da sola: il diff con il grafo si applica a mano, vedi
+*Configurazione* più sotto) e conserva `node_ids` per accorgersi
 di un CI cancellato. Codice: `apps/api/src/services/serviceImpact/`
 (`rules.ts` funzione pura, `build.ts` costruzione con
 `apoc.path.expandConfig` BFS/`NODE_GLOBAL`, `engine.ts` valutazione,
-`history.ts` cronologia), `jobs/serviceImpactWorker.ts`,
+`history.ts` cronologia, `config.ts` configurazione da interfaccia), `jobs/serviceImpactWorker.ts`,
 `consumers/serviceImpactConsumer.ts`, resolver `graphql/resolvers/services.ts`,
 vocabolari `lib/serviceVocabularies.ts`.
 
@@ -900,11 +901,13 @@ riprende finché resta stale.
 **GraphQL** (`schema-services.ts`; ruoli in `lib/authorization.ts`, tabella in
 `authorization.test.ts`): letture `serviceMaps` (contatori + pagina per
 gravità), `serviceMap`, `servicesImpactedByCI` per lo staff;
-`serviceMapCandidates` e le mutation `createServiceMap` (costruzione
-automatica + valutazione immediata, status `active`),
-`reevaluateServiceMap`, `setServiceMapStatus` (con `expectedVersion`:
-riattivare una mappa in pausa la rivaluta subito), `deleteServiceMap` (mappa e
-cronologia; il servizio e i CI restano) solo admin.
+`serviceMapCandidates`, `serviceMapProposal`, `serviceImpactPreview` e le
+mutation `createServiceMap` (costruzione automatica + valutazione immediata,
+status `active` o `draft`), `reevaluateServiceMap`, `setServiceMapStatus` (con
+`expectedVersion`: riattivare una mappa in pausa la rivaluta subito),
+`updateServiceImpactRules`, `updateServiceMapNodes`,
+`applyServiceMapProposal`, `removeServiceMapExclusion`, `deleteServiceMap`
+(mappa e cronologia; il servizio e i CI restano) solo admin.
 
 **Metriche**: `service_evaluations_total{result}` (`changed | unchanged |
 error`), `service_evaluation_duration_seconds`, `services_health{health}`
@@ -924,7 +927,67 @@ dopo un allarme* = mappa in `paused` (il consumer la salta), CI non incluso
 nella mappa (`servicesImpactedByCI`), oppure job fallito (log `Service impact
 job failed`, `service_evaluations_total{result="error"}`) — `reevaluateServiceMap`
 dal dettaglio la rivaluta subito, la passata periodica entro 10 minuti;
-*`stale`* = un componente è stato cancellato dalla CMDB: ricreare la mappa
-(`deleteServiceMap` + `createServiceMap`; l'aggiornamento con diff arriva in
-ondata 2); *`has no node_ids`/`has no rules`* = eseguire la migrazione
+*`stale`* = un componente è stato cancellato dalla CMDB: aprire «Aggiorna
+mappa» e togliere gli id spariti (`serviceMapProposal` +
+`applyServiceMapProposal`), oppure ricreare la mappa (`deleteServiceMap` +
+`createServiceMap`); *`has no node_ids`/`has no rules`* = eseguire la migrazione
 `20260910_1080_service_maps_bootstrap`.
+
+#### Configurazione (ondata 2: tutto da interfaccia)
+
+Codice: `apps/api/src/services/serviceImpact/config.ts` (validazione,
+transazione, cronologia, rivalutazione); i resolver mettono solo ruolo, audit
+e rilettura della mappa.
+
+**Cosa può cambiare l'amministratore** (nessuna di queste cose richiede un
+deploy): le **regole** della mappa (`updateServiceImpactRules` — soglia giù,
+soglia degradato, minimo di componenti, come contano i componenti senza salute,
+da che salute aprire un incident); le **impostazioni dei componenti**
+(`updateServiceMapNodes` — solo `propagate`, `weight` 1..10 e `critical`:
+livello, ruolo e `via` restano della mappa, li decide la costruzione); la
+**composizione** (`applyServiceMapProposal`: aggiunge i CI nuovi con le
+impostazioni proposte e `added_by = 'manual'`, esclude, toglie) e le
+**esclusioni** (`removeServiceMapExclusion`). `serviceImpactPreview` calcola
+«con queste impostazioni adesso» senza scrivere nulla.
+
+**Limiti di coerenza** (`BAD_USER_INPUT`, mai un valore corretto in silenzio):
+`degraded_share_pct ≤ down_share_pct` (altrimenti «degradato» non si raggiunge
+mai prima di «giù»); `min_nodes ≤` numero di componenti della mappa (almeno 1);
+peso intero 1..10; regole identiche a quelle salvate o elenco di componenti
+vuoto → errore (una scrittura a vuoto alzerebbe la versione e lascerebbe una
+voce di cronologia senza contenuto); un `ciId` che non è nella mappa (o un id
+che non appartiene alla proposta) → errore con l'id.
+
+**Versione e conflitti**: `ServiceMap.version` parte da 1 e cresce di 1 a ogni
+scrittura riuscita (stato compreso). Ogni mutation di configurazione vuole
+`expectedVersion` = la `version` letta dal client; se non combacia →
+`BAD_USER_INPUT` «was modified by someone else (expected version N, current is
+M…)» e **niente** viene scritto (la guardia è nel Cypher,
+`WHERE version = toInteger($expectedVersion)`, dentro la stessa transazione
+della lettura di controllo). La UI in quel caso invita a ricaricare. Ogni
+scrittura riuscita aggiorna `updated_at`/`updated_by`, scrive **una** voce di
+cronologia con nota leggibile (`rules_changed` per il calcolo — «Regole
+aggiornate: soglia giù 50 → 70» —, `map_changed` per la composizione —
+«Mappa aggiornata: +2, −1, esclusi 3») nello stesso statement, un audit
+(`service_map.rules_changed`, `.nodes_changed`, `.proposal_applied`,
+`.exclusion_removed`) e **rivaluta subito** la mappa con lo stesso trigger.
+Le mappe `paused` non vengono rivalutate: la salute mostrata resta l'ultima
+nota (`reevaluated: false` nell'audit).
+
+**Diff con il grafo** (`serviceMapProposal`): ricostruisce la proposta con
+`buildServiceMap` usando `max_depth` e `relationship_types` **della mappa** e
+la confronta con le `INCLUDES` di adesso — `added` (nel grafo, non nella mappa,
+non esclusi), `removed` (nella mappa e non più raggiungibili; un CI cancellato
+dalla CMDB compare con livello 0, ruolo `component` e `addedBy = 'gone'`
+perché della mappa resta solo l'id in `node_ids`), `moved` (livello o `via`
+cambiati), `excluded`, `totalProposed` (per il tetto di 500). Applicando il
+diff, `node_ids` viene ricalcolato dalle `INCLUDES` rimaste **più** gli id
+spariti che non sono stati tolti: togliere gli ultimi id spariti spegne
+`stale` senza dover ricreare la mappa.
+
+**Esclusioni**: `(:ServiceMap)-[:EXCLUDES {reason: 'escluso a mano',
+excluded_by, at}]->(ci)`. Un CI escluso non viene più riproposto dal diff
+(e, se era incluso, viene tolto dalla mappa nello stesso apply);
+`ServiceMap.excluded` li elenca nel dettaglio e `removeServiceMapExclusion` lo
+riammette (tornerà nella prossima proposta). Le esclusioni non hanno effetto
+sulla salute finché la proposta non viene applicata.

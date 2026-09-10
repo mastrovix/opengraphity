@@ -1703,7 +1703,9 @@
       "reevaluated": "Servizio rivalutato: {{health}}",
       "statusChanged": "Mappa {{status}}",
       "deleted": "Mappa eliminata",
-      "actionFailed": "Operazione non riuscita: {{error}}"
+      "actionFailed": "Operazione non riuscita: {{error}}",
+      "mapUpdated": "Mappa aggiornata: +{{added}} −{{removed}}, {{excluded}} esclusi",
+      "exclusionRemoved": "{{name}} riammesso: torna nella prossima proposta"
     }
   },
   "components": {
@@ -2601,14 +2603,14 @@
         "node": "Componente",
         "closeNode": "Chiudi il pannello del componente",
         "rules": "Come si calcola",
-        "rulesReadOnly": "Regole versione {{version}}: modificabili da interfaccia nell'ondata 2.",
         "evaluated": "Valutata {{ago}}",
         "neverEvaluated": "Mai valutata",
         "actions": {
           "reevaluate": "Rivaluta ora",
           "pause": "Metti in pausa",
           "resume": "Riattiva",
-          "delete": "Elimina"
+          "delete": "Elimina",
+          "updateMap": "Aggiorna mappa"
         },
         "fields": {
           "service": "Applicazione di business",
@@ -2622,7 +2624,10 @@
           "builtFromAuto": "Automaticamente dal grafo",
           "builtFromManual": "A mano",
           "updatedAt": "Ultima modifica",
-          "evaluatedAt": "Ultima valutazione"
+          "evaluatedAt": "Ultima valutazione",
+          "excluded": "Componenti esclusi",
+          "excludedCount_one": "{{count}} componente",
+          "excludedCount_other": "{{count}} componenti"
         },
         "rulesFields": {
           "downSharePct": "Giù se un componente critico è giù o la quota ponderata dei componenti giù è ≥ {{pct}}%",
@@ -2630,9 +2635,16 @@
           "minNodes_one": "…e almeno {{count}} componente non è operativo",
           "minNodes_other": "…e almeno {{count}} componenti non sono operativi",
           "unknownNodes": "Componenti senza salute: {{value}}",
-          "unknownNodesIgnore": "ignorati",
-          "unknownNodesOperational": "contano come operativi",
-          "openIncidentFrom": "Incident per servizio da: {{value}} (ondata 3)"
+          "openIncidentFrom": "Incident per servizio da: {{value}} (ondata 3)",
+          "unknownNodesValues": {
+            "ignore": "ignorati",
+            "operational": "contano come operativi"
+          },
+          "openIncidentFromValues": {
+            "never": "mai",
+            "degraded": "degradato",
+            "down": "giù"
+          }
         },
         "nodeFields": {
           "name": "Componente",
@@ -2650,7 +2662,8 @@
           "addedByManual": "A mano",
           "alarms": "Vedi gli allarmi attivi",
           "openCI": "Apri il CI"
-        }
+        },
+        "rulesVersion": "Regole versione {{version}}"
       },
       "delete": {
         "title": "Eliminare la mappa di \"{{name}}\"?",
@@ -2687,11 +2700,99 @@
         "relationshipsHint": "In uscita, verso chi fornisce: A -DEPENDS_ON-> B significa che A soffre se B è giù.",
         "relationshipsRequired": "Scegli almeno una relazione.",
         "submit": "Crea",
-        "noResult": "createServiceMap non ha restituito la mappa"
+        "noResult": "createServiceMap non ha restituito la mappa",
+        "draft": "Crea come bozza",
+        "draftHint": "Una mappa in bozza non viene valutata: controllala e poi attivala dal dettaglio."
       },
       "ciSection": {
         "title": "Servizi che dipendono da questo CI",
         "hint": "Servizi la cui mappa include questo CI: la sua salute pesa sulla loro."
+      },
+      "rulesEdit": {
+        "downSharePct": "Soglia «giù» (%)",
+        "degradedSharePct": "Soglia «degradato» (%)",
+        "minNodes": "Minimo di componenti",
+        "unknownNodes": "Componenti senza salute",
+        "openIncidentFrom": "Apri un incident per servizio da",
+        "help": {
+          "downSharePct": "Il servizio è giù quando un componente critico è giù, oppure quando la quota ponderata dei componenti giù arriva a questa percentuale.",
+          "degradedSharePct": "Il servizio è degradato quando il punteggio d'impatto arriva a questa percentuale. Non può stare sopra la soglia «giù».",
+          "minNodes": "Quanti componenti devono essere non operativi perché le soglie si applichino: evita che un solo componente rumoroso muova la salute di una mappa grande.",
+          "unknownNodes": "Un componente mai toccato da un allarme: ignoralo, oppure contalo come operativo.",
+          "openIncidentFrom": "Da quale salute si apre un incident per servizio."
+        },
+        "unknownNodesOptions": {
+          "ignore": "Ignorati",
+          "operational": "Contano come operativi"
+        },
+        "openIncidentFromOptions": {
+          "never": "Mai",
+          "degraded": "Degradato",
+          "down": "Giù"
+        },
+        "wave3Note": "Gli incident per servizio arrivano nell'ondata 3: la scelta si salva adesso e avrà effetto allora.",
+        "unsaved": "Modifiche non salvate",
+        "noChanges": "Niente da salvare",
+        "blocked": "Campi da correggere",
+        "validation": {
+          "integer": "Numero intero fra {{min}} e {{max}}.",
+          "range": "Fra {{min}} e {{max}}.",
+          "degradedOverDown": "La soglia «degradato» non può stare sopra quella «giù»: «degradato» non si raggiungerebbe mai.",
+          "aboveComponents": "Al massimo {{max}}: tanti sono i componenti della mappa, un minimo più alto impedirebbe al servizio di degradarsi."
+        },
+        "saveFailed": "Regole non salvate: {{error}}. Se qualcun altro ha modificato la mappa, ricarica e riprova.",
+        "reload": "Ricarica"
+      },
+      "componentsEdit": {
+        "changed_one": "{{count}} componente modificato",
+        "changed_other": "{{count}} componenti modificati",
+        "noChanges": "Niente da salvare",
+        "blocked": "Peso fuori scala: numero intero fra {{min}} e {{max}}.",
+        "propagateLabel": "Come pesa {{name}}",
+        "weightLabel": "Peso di {{name}}",
+        "criticalLabel": "{{name}} è critico",
+        "weightDisabled": "Un componente che non pesa mai non ha peso.",
+        "saveFailed": "Componenti non salvati: {{error}}. Se qualcun altro ha modificato la mappa, ricarica e riprova."
+      },
+      "preview": {
+        "label": "Con queste impostazioni adesso:",
+        "score": "punteggio {{score}}",
+        "contributing_one": "{{count}} componente su {{total}} pesa",
+        "contributing_other": "{{count}} componenti su {{total}} pesano",
+        "loading": "Calcolo dell'anteprima…",
+        "error": "Anteprima non disponibile: {{error}}"
+      },
+      "update": {
+        "title": "Aggiorna la mappa di «{{name}}»",
+        "intro": "Confronto fra la mappa e il grafo di adesso. Niente entra o esce senza una spunta.",
+        "loadFailed": "Proposta non disponibile: {{error}}",
+        "actionFailed": "Operazione non riuscita: {{error}}. Se qualcun altro ha modificato la mappa, chiudi e riapri questo dialogo.",
+        "aligned": "La mappa è allineata al grafo: niente da aggiungere, togliere o spostare.",
+        "addedTitle_one": "{{count}} componente nuovo",
+        "addedTitle_other": "{{count}} componenti nuovi",
+        "addedHint": "Nel grafo, non nella mappa. Includilo, oppure escludilo perché non venga più proposto.",
+        "removedTitle_one": "{{count}} componente sparito",
+        "removedTitle_other": "{{count}} componenti spariti",
+        "removedHint": "Nella mappa, non più raggiungibile nel grafo (o il CI non esiste più).",
+        "movedTitle_one": "{{count}} componente spostato",
+        "movedTitle_other": "{{count}} componenti spostati",
+        "movedHint": "Livello o percorso cambiati: l'aggiornamento li ricalcola da sé, senza spunta.",
+        "movedRow": "livello {{from}} → {{to}}",
+        "nodeMeta": "livello {{level}} · {{role}} · {{propagate}} · peso {{weight}}",
+        "include": "Includi",
+        "includeLabel": "Includi {{name}}",
+        "exclude": "Escludi",
+        "excludeLabel": "Non proporre più {{name}}",
+        "remove": "Togli",
+        "removeLabel": "Togli {{name}} dalla mappa",
+        "summary": "+{{add}} −{{remove}} esclusi {{exclude}}",
+        "apply": "Applica",
+        "exclusionsTitle_one": "{{count}} componente escluso",
+        "exclusionsTitle_other": "{{count}} componenti esclusi",
+        "exclusionsHint": "Esclusi a mano: non tornano più nelle proposte.",
+        "exclusionsEmpty": "Nessuna esclusione.",
+        "readmit": "Riammetti",
+        "readmitLabel": "Riammetti {{name}}"
       }
     }
   }

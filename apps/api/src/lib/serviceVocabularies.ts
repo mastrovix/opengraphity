@@ -48,6 +48,9 @@ export type UnknownNodesMode = (typeof UNKNOWN_NODES_MODES)[number]
 export const SERVICE_OPEN_INCIDENT_FROM = ['never', 'down', 'degraded'] as const
 export type ServiceOpenIncidentFrom = (typeof SERVICE_OPEN_INCIDENT_FROM)[number]
 
+/** Motivo di una `EXCLUDES` creata dall'amministratore dal diff della mappa (ondata 2). */
+export const SERVICE_EXCLUSION_REASON_MANUAL = 'escluso a mano'
+
 /** Limiti espliciti della mappa: superarli è un errore di validazione, mai un taglio silenzioso. */
 export const SERVICE_MAP_DEFAULT_DEPTH = 4
 export const SERVICE_MAP_MAX_DEPTH = 8
@@ -189,11 +192,13 @@ export function completeServiceImpactRules(parsed: Record<string, unknown>): Rec
 
 /** Nome enum SDL → lista TS: la tabella che schema-services.ts usa per generare gli enum e che il test confronta con lo schema. */
 export const SERVICE_SDL_ENUMS: Readonly<Record<string, readonly string[]>> = {
-  ServiceHealth:        SERVICE_HEALTHS,
-  ServiceMapStatus:     SERVICE_MAP_STATUSES,
-  NodePropagation:      NODE_PROPAGATIONS,
-  ServiceNodeRole:      SERVICE_NODE_ROLES,
-  ServiceHealthTrigger: SERVICE_HEALTH_TRIGGERS,
+  ServiceHealth:            SERVICE_HEALTHS,
+  ServiceMapStatus:         SERVICE_MAP_STATUSES,
+  NodePropagation:          NODE_PROPAGATIONS,
+  ServiceNodeRole:          SERVICE_NODE_ROLES,
+  ServiceHealthTrigger:     SERVICE_HEALTH_TRIGGERS,
+  UnknownNodesMode:         UNKNOWN_NODES_MODES,
+  ServiceOpenIncidentFrom:  SERVICE_OPEN_INCIDENT_FROM,
 }
 
 /** `enum Nome { a b c }` per l'SDL. */

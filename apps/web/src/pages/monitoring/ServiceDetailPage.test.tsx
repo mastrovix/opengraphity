@@ -10,11 +10,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { ServiceDetailPage } from './ServiceDetailPage'
-import { GET_SERVICE_MAP } from '@/graphql/queries'
+import { GET_SERVICE_MAP, GET_SERVICE_IMPACT_PREVIEW, GET_SERVICE_MAP_PROPOSAL } from '@/graphql/queries'
 import { REEVALUATE_SERVICE_MAP, SET_SERVICE_MAP_STATUS, DELETE_SERVICE_MAP } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
-import { mapDetail } from '@/test/mocks/services'
+import { mapDetail, preview, proposal } from '@/test/mocks/services'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }))
 beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
@@ -25,10 +25,23 @@ const detailMock = (over: Record<string, unknown> = {}): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
+/** Le anteprime dell'ondata 2 partono da sole per gli admin (regole e componenti). */
+const previewMock: GqlMock = {
+  request: { query: GET_SERVICE_IMPACT_PREVIEW, variables: () => true },
+  result: { data: { serviceImpactPreview: preview() } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+}
+
+const proposalMock = (over: Record<string, unknown> = {}): GqlMock => ({
+  request: { query: GET_SERVICE_MAP_PROPOSAL, variables: { id: 'map-1' } },
+  result: { data: { serviceMapProposal: proposal(over) } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+})
+
 function renderPage(role: string, opts: { detail?: GqlMock; extra?: GqlMock[] } = {}) {
   return renderWithProviders(<ServiceDetailPage />, {
     route: '/monitoring/services/map-1', path: '/monitoring/services/:id',
-    mocks: [meMock(role, { maxUsageCount: Number.POSITIVE_INFINITY }), opts.detail ?? detailMock(), ...(opts.extra ?? [])],
+    mocks: [meMock(role, { maxUsageCount: Number.POSITIVE_INFINITY }), opts.detail ?? detailMock(), previewMock, ...(opts.extra ?? [])],
   })
 }
 
@@ -192,11 +205,34 @@ describe('ServiceDetailPage', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Action failed: engine busy'))
   })
 
-  it('viewer: nessuna azione admin', async () => {
+  it('viewer: nessuna azione admin, nessun controllo di configurazione, nessuna anteprima', async () => {
     renderPage('viewer')
     await screen.findByRole('heading', { level: 1 })
     await new Promise((r) => setTimeout(r, 10))
-    for (const name of ['Re-evaluate now', 'Pause', 'Delete']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    for (const name of ['Re-evaluate now', 'Update map', 'Pause', 'Delete']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('service-rules-form')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('components-dirty')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('rules-preview')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('components-preview')).not.toBeInTheDocument()
+    // Le regole restano la lettura in parole, con la versione
+    expect(screen.getByText('Rules version 1')).toBeInTheDocument()
+    expect(screen.getByText('Components without health: ignored')).toBeInTheDocument()
+  })
+
+  it('admin: «Aggiorna mappa» apre il dialogo del diff col grafo; il riepilogo parte da zero', async () => {
+    const { user } = renderPage('admin', { extra: [proposalMock()] })
+    await screen.findByRole('heading', { level: 1 })
+    await user.click(screen.getByRole('button', { name: 'Update map' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Update the map of "Enterprise Billing"' })
+    expect(within(dialog).getByTestId('proposal-summary')).toHaveTextContent('+0 −0 excluded 0')
+    expect(await within(dialog).findAllByTestId('proposal-added')).toHaveLength(2)
+  })
+
+  it('admin: la scheda del servizio dice quanti componenti sono esclusi', async () => {
+    renderPage('admin', { detail: detailMock({ excluded: [{ __typename: 'ConfigurationItemRef', id: 'old-vm', name: 'old-vm', type: 'server' }] }) })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByText('Excluded components')).toBeInTheDocument()
+    expect(screen.getByText('1 component')).toBeInTheDocument()
   })
 
   it('stale: avviso «un componente non esiste più nella CMDB»; mappa vuota: nota esplicita e solo il servizio', async () => {

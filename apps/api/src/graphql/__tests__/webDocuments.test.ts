@@ -44,6 +44,8 @@ const FILES = [
   'mutations/catalog.ts',
   // Event Management (ondata 1)
   'queries/events.ts', 'mutations/events.ts',
+  // Servizi monitorati (mappa del servizio e albero d'impatto)
+  'queries/services.ts', 'mutations/services.ts',
 ]
 
 // Documenti admin esclusi ESPLICITAMENTE, con motivo. Ogni nuova esclusione

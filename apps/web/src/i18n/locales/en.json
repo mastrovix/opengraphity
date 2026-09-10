@@ -1703,7 +1703,9 @@
       "reevaluated": "Service re-evaluated: {{health}}",
       "statusChanged": "Map {{status}}",
       "deleted": "Map deleted",
-      "actionFailed": "Action failed: {{error}}"
+      "actionFailed": "Action failed: {{error}}",
+      "mapUpdated": "Map updated: +{{added}} −{{removed}}, {{excluded}} excluded",
+      "exclusionRemoved": "{{name}} re-admitted: it comes back in the next proposal"
     }
   },
   "components": {
@@ -2601,14 +2603,14 @@
         "node": "Component",
         "closeNode": "Close the component panel",
         "rules": "How it is computed",
-        "rulesReadOnly": "Rules version {{version}}: editable from the UI in wave 2.",
         "evaluated": "Evaluated {{ago}}",
         "neverEvaluated": "Never evaluated",
         "actions": {
           "reevaluate": "Re-evaluate now",
           "pause": "Pause",
           "resume": "Resume",
-          "delete": "Delete"
+          "delete": "Delete",
+          "updateMap": "Update map"
         },
         "fields": {
           "service": "Business application",
@@ -2622,7 +2624,10 @@
           "builtFromAuto": "Automatically from the graph",
           "builtFromManual": "Manually",
           "updatedAt": "Last change",
-          "evaluatedAt": "Last evaluation"
+          "evaluatedAt": "Last evaluation",
+          "excluded": "Excluded components",
+          "excludedCount_one": "{{count}} component",
+          "excludedCount_other": "{{count}} components"
         },
         "rulesFields": {
           "downSharePct": "Down if a critical component is down or the weighted share of components down is ≥ {{pct}}%",
@@ -2630,9 +2635,16 @@
           "minNodes_one": "…and at least {{count}} component is not operational",
           "minNodes_other": "…and at least {{count}} components are not operational",
           "unknownNodes": "Components without health: {{value}}",
-          "unknownNodesIgnore": "ignored",
-          "unknownNodesOperational": "count as operational",
-          "openIncidentFrom": "Service incident from: {{value}} (wave 3)"
+          "openIncidentFrom": "Service incident from: {{value}} (wave 3)",
+          "unknownNodesValues": {
+            "ignore": "ignored",
+            "operational": "count as operational"
+          },
+          "openIncidentFromValues": {
+            "never": "never",
+            "degraded": "degraded",
+            "down": "down"
+          }
         },
         "nodeFields": {
           "name": "Component",
@@ -2650,7 +2662,8 @@
           "addedByManual": "Manually",
           "alarms": "View active alarms",
           "openCI": "Open the CI"
-        }
+        },
+        "rulesVersion": "Rules version {{version}}"
       },
       "delete": {
         "title": "Delete the map of \"{{name}}\"?",
@@ -2687,11 +2700,99 @@
         "relationshipsHint": "Outgoing, towards suppliers: A -DEPENDS_ON-> B means A suffers when B is down.",
         "relationshipsRequired": "Choose at least one relationship.",
         "submit": "Create",
-        "noResult": "createServiceMap did not return the map"
+        "noResult": "createServiceMap did not return the map",
+        "draft": "Create as a draft",
+        "draftHint": "A draft map is not evaluated: check it, then activate it from the detail page."
       },
       "ciSection": {
         "title": "Services depending on this CI",
         "hint": "Services whose map includes this CI: its health weighs on theirs."
+      },
+      "rulesEdit": {
+        "downSharePct": "Down threshold (%)",
+        "degradedSharePct": "Degraded threshold (%)",
+        "minNodes": "Minimum components",
+        "unknownNodes": "Components without health",
+        "openIncidentFrom": "Open a service incident from",
+        "help": {
+          "downSharePct": "The service is down when a critical component is down, or when the weighted share of components down reaches this percentage.",
+          "degradedSharePct": "The service is degraded when the impact score reaches this percentage. It cannot be above the down threshold.",
+          "minNodes": "How many components must be non-operational before the thresholds apply: it keeps one noisy component from moving the health of a large map.",
+          "unknownNodes": "A component never touched by an alarm: ignore it, or count it as operational.",
+          "openIncidentFrom": "From which health a service incident is opened."
+        },
+        "unknownNodesOptions": {
+          "ignore": "Ignored",
+          "operational": "Count as operational"
+        },
+        "openIncidentFromOptions": {
+          "never": "Never",
+          "degraded": "Degraded",
+          "down": "Down"
+        },
+        "wave3Note": "Service incidents arrive in wave 3: the choice is saved now and takes effect then.",
+        "unsaved": "Unsaved changes",
+        "noChanges": "Nothing to save",
+        "blocked": "Fields to fix",
+        "validation": {
+          "integer": "Whole number between {{min}} and {{max}}.",
+          "range": "Between {{min}} and {{max}}.",
+          "degradedOverDown": "The degraded threshold cannot be above the down threshold: degraded would never be reached.",
+          "aboveComponents": "At most {{max}}: the map has that many components, and a higher minimum would keep the service from ever being degraded."
+        },
+        "saveFailed": "Rules not saved: {{error}}. If someone else changed the map, reload and try again.",
+        "reload": "Reload"
+      },
+      "componentsEdit": {
+        "changed_one": "{{count}} component changed",
+        "changed_other": "{{count}} components changed",
+        "noChanges": "Nothing to save",
+        "blocked": "Weight out of scale: whole number between {{min}} and {{max}}.",
+        "propagateLabel": "How {{name}} counts",
+        "weightLabel": "Weight of {{name}}",
+        "criticalLabel": "{{name}} is critical",
+        "weightDisabled": "A component that never counts has no weight.",
+        "saveFailed": "Components not saved: {{error}}. If someone else changed the map, reload and try again."
+      },
+      "preview": {
+        "label": "With these settings right now:",
+        "score": "score {{score}}",
+        "contributing_one": "{{count}} of {{total}} components weighs",
+        "contributing_other": "{{count}} of {{total}} components weigh",
+        "loading": "Computing the preview…",
+        "error": "Preview unavailable: {{error}}"
+      },
+      "update": {
+        "title": "Update the map of \"{{name}}\"",
+        "intro": "Comparison between the map and the graph right now. Nothing enters or leaves without a tick.",
+        "loadFailed": "Proposal unavailable: {{error}}",
+        "actionFailed": "Operation failed: {{error}}. If someone else changed the map, close and reopen this dialog.",
+        "aligned": "The map is aligned with the graph: nothing to add, remove or move.",
+        "addedTitle_one": "{{count}} new component",
+        "addedTitle_other": "{{count}} new components",
+        "addedHint": "In the graph, not in the map. Include it, or exclude it so it is never proposed again.",
+        "removedTitle_one": "{{count}} component gone",
+        "removedTitle_other": "{{count}} components gone",
+        "removedHint": "In the map, no longer reachable in the graph (or the CI no longer exists).",
+        "movedTitle_one": "{{count}} component moved",
+        "movedTitle_other": "{{count}} components moved",
+        "movedHint": "Level or path changed: the update recomputes them on its own, no tick needed.",
+        "movedRow": "level {{from}} → {{to}}",
+        "nodeMeta": "level {{level}} · {{role}} · {{propagate}} · weight {{weight}}",
+        "include": "Include",
+        "includeLabel": "Include {{name}}",
+        "exclude": "Exclude",
+        "excludeLabel": "Never propose {{name}} again",
+        "remove": "Remove",
+        "removeLabel": "Remove {{name}} from the map",
+        "summary": "+{{add}} −{{remove}} excluded {{exclude}}",
+        "apply": "Apply",
+        "exclusionsTitle_one": "{{count}} excluded component",
+        "exclusionsTitle_other": "{{count}} excluded components",
+        "exclusionsHint": "Excluded by hand: they never come back in the proposals.",
+        "exclusionsEmpty": "No exclusion.",
+        "readmit": "Re-admit",
+        "readmitLabel": "Re-admit {{name}}"
       }
     }
   }

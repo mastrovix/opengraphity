@@ -1,10 +1,9 @@
 /**
- * Dialogo minimale «Crea una mappa» (ondata 1, solo admin): scelta della
- * BusinessApplication fra quelle senza mappa (`serviceMapCandidates`, con
- * ricerca), profondità massima (1–8) e relazioni da seguire → `createServiceMap`
- * (costruzione automatica dal grafo, valutazione immediata) e apertura del
- * dettaglio. La procedura guidata in tre passi con l'anteprima arriva in
- * ondata 2.
+ * Dialogo «Crea una mappa» (solo admin): scelta della BusinessApplication
+ * fra quelle senza mappa (`serviceMapCandidates`, con ricerca), profondità
+ * massima (1–8), relazioni da seguire e la spunta «crea come bozza» (ondata
+ * 2: `status: draft` — la mappa non viene valutata finché non si attiva) →
+ * `createServiceMap` e apertura del dettaglio.
  *
  * Errori visibili: la lista dei candidati che fallisce è un testo in chiaro
  * (non un select vuoto), il fallimento della mutation è un toast con il
@@ -51,6 +50,7 @@ export function CreateServiceMapDialog({ open, onClose, onCreated }: Props) {
   const [serviceId, setServiceId] = useState('')
   const [depth, setDepth] = useState(SERVICE_MAP_DEFAULT_DEPTH)
   const [rels, setRels] = useState<Set<ServiceRelationshipType>>(() => new Set(SERVICE_RELATIONSHIP_TYPES))
+  const [asDraft, setAsDraft] = useState(false)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(search.trim()), SEARCH_DEBOUNCE)
@@ -77,7 +77,7 @@ export function CreateServiceMapDialog({ open, onClose, onCreated }: Props) {
     e.preventDefault()
     if (!canSubmit) return
     try {
-      const res = await create({ variables: { serviceId, maxDepth: depth, relationshipTypes: [...rels] } })
+      const res = await create({ variables: { serviceId, maxDepth: depth, relationshipTypes: [...rels], status: asDraft ? 'draft' : 'active' } })
       const map = res.data?.createServiceMap
       if (!map) throw new Error(t('monitoring.services.create.noResult'))
       toast.success(t('toast.services.created', { name: map.name }))
@@ -142,6 +142,13 @@ export function CreateServiceMapDialog({ open, onClose, onCreated }: Props) {
           <p style={hint}>{t('monitoring.services.create.relationshipsHint')}</p>
           {rels.size === 0 && <p role="alert" style={{ ...hint, color: colors.danger }}>{t('monitoring.services.create.relationshipsRequired')}</p>}
         </fieldset>
+        <div>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', color: colors.slateDark, cursor: 'pointer' }}>
+            <input type="checkbox" checked={asDraft} onChange={(e) => setAsDraft(e.target.checked)} />
+            {t('monitoring.services.create.draft')}
+          </label>
+          <p style={hint}>{t('monitoring.services.create.draftHint')}</p>
+        </div>
       </div>
     </Modal>
   )

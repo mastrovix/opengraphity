@@ -76,12 +76,12 @@ beforeEach(() => {
 // ── build.ts ─────────────────────────────────────────────────────────────────
 
 describe('buildServiceMap', () => {
-  const entry = { serviceName: 'Enterprise Billing', apps: [{ ciId: 'app-3', name: 'APP-003', labels: ['Application'] }] }
+  const entry = { serviceName: 'Enterprise Billing', apps: [{ ciId: 'app-3', name: 'APP-003', labels: ['Application'], status: 'active', health: 'operational' }] }
   const expanded = [
-    { ciId: 'db-1', name: 'DB-01', level: 2, via: 'app-3', labels: ['Database'] },
-    { ciId: 'srv-1', name: 'SRV-01', level: 2, via: 'app-3', labels: ['Server'] },
-    { ciId: 'cert-1', name: 'CERT-01', level: 2, via: 'app-3', labels: ['Certificate'] },
-    { ciId: 'stor-1', name: 'STOR-01', level: 3, via: 'srv-1', labels: ['Storage'] },
+    { ciId: 'db-1', name: 'DB-01', level: 2, via: 'app-3', labels: ['Database'], status: 'active', health: 'down' },
+    { ciId: 'srv-1', name: 'SRV-01', level: 2, via: 'app-3', labels: ['Server'], status: 'active', health: null },
+    { ciId: 'cert-1', name: 'CERT-01', level: 2, via: 'app-3', labels: ['Certificate'], status: null, health: null },
+    { ciId: 'stor-1', name: 'STOR-01', level: 3, via: 'srv-1', labels: ['Storage'], status: 'active', health: null },
   ]
 
   it('due query pinnate: livello 1 da REALIZES (solo label del metamodello, stesso tenant), poi apoc.path.expandConfig BFS/NODE_GLOBAL in uscita fino a maxDepth−1 con limit = tetto + 1; proposta con ruolo/peso/critico per livello e tipo', async () => {
@@ -90,16 +90,18 @@ describe('buildServiceMap', () => {
     expect(p.serviceName).toBe('Enterprise Billing')
     expect(p.maxDepth).toBe(4)
     expect(p.relationshipTypes).toEqual(['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE'])
+    // status e health del CI viaggiano con la proposta: servono al diff dell'ondata 2
     expect(p.nodes).toEqual([
-      { ciId: 'app-3', name: 'APP-003', labels: ['Application'], level: 1, via: null, role: 'entry', propagate: 'weighted', weight: 8, critical: true },
-      { ciId: 'db-1', name: 'DB-01', labels: ['Database'], level: 2, via: 'app-3', role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false },
-      { ciId: 'srv-1', name: 'SRV-01', labels: ['Server'], level: 2, via: 'app-3', role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false },
-      { ciId: 'cert-1', name: 'CERT-01', labels: ['Certificate'], level: 2, via: 'app-3', role: 'certificate', propagate: 'never', weight: 3, critical: false },
-      { ciId: 'stor-1', name: 'STOR-01', labels: ['Storage'], level: 3, via: 'srv-1', role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false },
+      { ciId: 'app-3', name: 'APP-003', labels: ['Application'], status: 'active', health: 'operational', level: 1, via: null, role: 'entry', propagate: 'weighted', weight: 8, critical: true },
+      { ciId: 'db-1', name: 'DB-01', labels: ['Database'], status: 'active', health: 'down', level: 2, via: 'app-3', role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false },
+      { ciId: 'srv-1', name: 'SRV-01', labels: ['Server'], status: 'active', health: null, level: 2, via: 'app-3', role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false },
+      { ciId: 'cert-1', name: 'CERT-01', labels: ['Certificate'], status: null, health: null, level: 2, via: 'app-3', role: 'certificate', propagate: 'never', weight: 3, critical: false },
+      { ciId: 'stor-1', name: 'STOR-01', labels: ['Storage'], status: 'active', health: null, level: 3, via: 'srv-1', role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false },
     ])
     const e = callMatching(/REALIZES/)!
     expect(e.cypher).toBe(ENTRY_NODES_CYPHER)
     expect(e.cypher).toContain("WHERE ANY(l IN labels(app) WHERE l IN $ciLabels)")
+    expect(e.cypher).toContain('status: a.status, health: a.health')
     expect(e.params).toEqual({ serviceId: 'ba-1', tenantId: 't1', ciLabels: ALL_CI_LABELS })
     const x = callMatching(/apoc\.path\.expandConfig/)!
     expect(x.cypher).toBe(EXPAND_NODES_CYPHER)
@@ -109,6 +111,7 @@ describe('buildServiceMap', () => {
     expect(x.cypher).toContain('maxLevel:           toInteger($maxLevel)')
     expect(x.cypher).toContain('WHERE ALL(n IN nodes(path) WHERE n.tenant_id = $tenantId)')
     expect(x.cypher).toContain('WITH last(nodes(path)) AS node, length(path) + 1 AS level, nodes(path)[-2] AS pred')
+    expect(x.cypher).toContain('node.status AS status, node.health AS health')
     expect(x.params).toEqual({
       tenantId: 't1', appIds: ['app-3'], relFilter: 'DEPENDS_ON>|HOSTED_ON>|INSTALLED_ON>|USES_CERTIFICATE>', labelFilter: CI_LABEL_FILTER,
       maxLevel: 3, limit: SERVICE_MAP_MAX_NODES + 1,

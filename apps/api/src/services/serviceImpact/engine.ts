@@ -38,7 +38,7 @@ import {
 } from '../../lib/serviceVocabularies.js'
 import { MONITORING_ACTOR, monitoringContext, toNumber, toStr, type Props } from '../events/shared.js'
 import { CHANGE_WINDOW_STEPS, changeIsInWindow } from '../events/suppression.js'
-import { evaluateImpact, type ImpactNodeInput } from './rules.js'
+import { evaluateImpact, type ImpactCause, type ImpactNodeInput } from './rules.js'
 import { serviceHistoryParams, serviceHistoryWriteCypher, type StoredCause } from './history.js'
 import { buildServiceMap, createServiceMapNode, type ServiceMapProposal } from './build.js'
 
@@ -156,6 +156,16 @@ function causeRef(id: string, byId: ReadonlyMap<string, LoadedNode>): StoredCaus
   return { id, name: n.name, type: ciTypeFromLabels(n.labels), health: n.health }
 }
 
+/**
+ * Cause con i riferimenti ai CI risolti dai nodi caricati (istantanea):
+ * la usano la valutazione (che le persiste) e l'anteprima dell'ondata 2 (che
+ * non scrive nulla), così la spiegazione ha la stessa forma in entrambe.
+ */
+export function storedCausesOf(causes: readonly ImpactCause[], nodes: readonly LoadedNode[]): StoredCause[] {
+  const byId = new Map(nodes.map((n) => [n.ciId, n]))
+  return causes.map((c) => ({ ...c, ci: causeRef(c.ciId, byId), path: c.path.map((id) => causeRef(id, byId)) }))
+}
+
 // ── Valutazione ──────────────────────────────────────────────────────────────
 
 export interface EvaluateInput {
@@ -213,8 +223,7 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
     try {
       state = await loadServiceMapState(session, tenantId, mapId, now)
       result = evaluateImpact(state.nodes, state.rules)
-      const byId = new Map(state.nodes.map((n) => [n.ciId, n]))
-      causes = result.causes.map((c) => ({ ...c, ci: causeRef(c.ciId, byId), path: c.path.map((id) => causeRef(id, byId)) }))
+      causes = storedCausesOf(result.causes, state.nodes)
       const stale = state.missing.length > 0
       const staleNote = stale ? `Componenti non più presenti nella CMDB: ${state.missing.join(', ')}` : null
       const explanation = JSON.stringify(causes)
