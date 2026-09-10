@@ -11,6 +11,9 @@
  * nascosta) + Aggiorna; al cambio di filtro o pagina la tabella tiene le
  * righe precedenti con «Aggiornamento…».
  *
+ * In fondo, in sola lettura, le capacità di business con la salute peggiore
+ * fra i servizi che le abilitano (BusinessCapabilitiesSection, ondata 3).
+ *
  * L'URL è la sorgente dei filtri e della pagina (`?health=down&status=active
  * &q=billing&page=2`, scritti con `replace`): un F5 o un link condiviso non li
  * perdono. Stato vuoto (nessuna mappa nel tenant): «Crea una mappa» (admin)
@@ -38,6 +41,7 @@ import { pausedWhenHidden } from '@/lib/polling'
 import { GET_SERVICE_MAPS } from '@/graphql/queries'
 import { colors, palette } from '@/lib/tokens'
 import { CreateServiceMapDialog } from './CreateServiceMapDialog'
+import { BusinessCapabilitiesSection } from './BusinessCapabilitiesSection'
 import { SERVICE_HEALTH_FAMILY, ServiceHealthBadge, ServiceStatusPill, ImpactScore, causeLabel, isServiceHealth, serviceHealthFamily } from './servicesShared'
 import { SERVICE_MAP_STATUSES, type ServiceHealth, type ServiceMapStatus, type ServiceMapPage, type ServiceMapRow, type ServiceMapFilterVars } from '@/types/services'
 
@@ -376,6 +380,11 @@ export function ServicesPage() {
       </div>
 
       {tableBody}
+
+      {/* Capacità di business in sola lettura (ondata 3): sotto la tabella, non è un filtro della lista. */}
+      <div style={{ marginTop: 24 }}>
+        <BusinessCapabilitiesSection />
+      </div>
 
       {isAdmin && <CreateServiceMapDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => void refetch()} />}
     </PageContainer>

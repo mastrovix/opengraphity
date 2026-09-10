@@ -349,6 +349,8 @@ export interface CIHealthRow {
   firingEvents: number
   /** CI che dipendono direttamente da questo (DEPENDS_ON entranti): l'impatto. */
   dependents:   number
+  /** Quante mappe di servizio attive includono questo CI (ondata 3 dei Servizi monitorati). */
+  servicesCount: number
   ownerTeam:    string | null
 }
 

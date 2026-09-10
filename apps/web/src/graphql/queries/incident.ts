@@ -1,5 +1,5 @@
 import { gql } from '@apollo/client'
-import { EVENT_ROW_FIELDS } from '../fragments'
+import { EVENT_ROW_FIELDS, IMPACTED_SERVICE_FIELDS } from '../fragments'
 
 export const GET_INCIDENTS = gql`
   query GetIncidents($status: String, $severity: String, $limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
@@ -57,9 +57,11 @@ export const GET_INCIDENT = gql`
       slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt }
       correlatedEvents { ...EventRowFields }
       correlatedEventsPurged
+      impactedServices { ...ImpactedServiceFields }
     }
   }
   ${EVENT_ROW_FIELDS}
+  ${IMPACTED_SERVICE_FIELDS}
 `
 
 export const GET_SERVICE_REQUESTS = gql`

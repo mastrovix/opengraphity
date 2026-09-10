@@ -21,6 +21,9 @@
  * la pagina corrente (polling: CI tornati operativi con il filtro "giù") la
  * pagina viene riallineata all'ultima disponibile (D·1.15).
  *
+ * Colonna "Servizi" (ondata 3 dei Servizi monitorati): quanti servizi
+ * monitorati dipendono dal CI (`servicesCount`), con link alla pagina Servizi.
+ *
  * "Vedi sulla mappa" (D·1.3) porta alla topologia CON un CI di partenza
  * (`/topology?health=1&ciId=…`): dalla riga il CI della riga, dal pulsante
  * generale la prima riga (le righe sono ordinate per gravità: il primo CI
@@ -204,6 +207,36 @@ function ImpactChip({ dependents, describedBy }: { dependents: number; described
   )
 }
 
+/**
+ * Quanti servizi monitorati dipendono dal CI (`servicesCount`, ondata 3 dei
+ * Servizi monitorati): con almeno uno è un link alla pagina Servizi, a zero
+ * resta un numero spento. Il motivo è nel tooltip E in una descrizione per le
+ * tecnologie assistive, come le altre celle della tabella.
+ */
+function ServicesCell({ count, name, describedBy }: { count: number; name: string; describedBy: string }) {
+  const { t } = useTranslation()
+  const hint = count > 0 ? t('monitoring.health.servicesHint', { count, name }) : t('monitoring.health.servicesNone')
+  return (
+    <>
+      {count > 0
+        ? (
+          <Link
+            to="/monitoring/services"
+            onClick={(e) => e.stopPropagation()}
+            aria-label={hint}
+            title={hint}
+            aria-describedby={describedBy}
+            style={{ color: 'var(--color-brand)', textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+          >
+            {t('monitoring.health.services', { count })}
+          </Link>
+        )
+        : <span title={hint} aria-describedby={describedBy} style={{ color: 'var(--color-slate-light)' }}>{t('monitoring.health.services', { count })}</span>}
+      <span id={describedBy} style={SR_ONLY}>{hint}</span>
+    </>
+  )
+}
+
 function SourceCell({ source, describedBy }: { source: CIHealthRow['healthSource']; describedBy: string }) {
   const { t } = useTranslation()
   if (!source) return <span style={{ color: 'var(--color-slate-light)' }}>—</span>
@@ -246,7 +279,7 @@ function HealthRowView({ row }: { row: CIHealthRow }) {
   const accent = CI_HEALTH_ACCENT[row.health]
   const since = row.healthSince ? formatDuration(Date.now() - new Date(row.healthSince).getTime()) : null
   const to = ciPath(row)
-  const ids = { since: `ci-health-${row.id}-since`, impact: `ci-health-${row.id}-impact`, source: `ci-health-${row.id}-source` }
+  const ids = { since: `ci-health-${row.id}-since`, impact: `ci-health-${row.id}-impact`, services: `ci-health-${row.id}-services`, source: `ci-health-${row.id}-source` }
 
   return (
     <tr
@@ -282,6 +315,7 @@ function HealthRowView({ row }: { row: CIHealthRow }) {
           : <span style={{ color: 'var(--color-slate-light)' }}>0</span>}
       </td>
       <td style={TD}><ImpactChip dependents={row.dependents} describedBy={ids.impact} /></td>
+      <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}><ServicesCell count={row.servicesCount} name={row.name} describedBy={ids.services} /></td>
       <td style={TD}>{row.ownerTeam ?? <span style={{ color: 'var(--color-slate-light)' }}>—</span>}</td>
       <td style={TD}>
         {row.lastEventAt
@@ -403,6 +437,7 @@ export function CIHealthPage() {
     { key: 'health',    label: t('monitoring.health.columns.health'),    width: '150px' },
     { key: 'alarms',    label: t('monitoring.health.columns.alarms'),    width: '110px' },
     { key: 'impact',    label: t('monitoring.health.columns.impact'),    width: '130px' },
+    { key: 'services',  label: t('monitoring.health.columns.services'),  width: '120px' },
     { key: 'team',      label: t('monitoring.health.columns.team'),      width: '150px' },
     { key: 'lastEvent', label: t('monitoring.health.columns.lastEvent'), width: '130px' },
     { key: 'source',    label: t('monitoring.health.columns.source'),    width: '130px' },
@@ -441,7 +476,7 @@ export function CIHealthPage() {
         </div>
         {/* Sotto ~900px la tabella scorre nel proprio contenitore, mai la pagina. */}
         <div className="card-border" style={{ overflowX: 'auto' }}>
-          <table aria-label={t('monitoring.health.title')} style={{ width: '100%', minWidth: 880, borderCollapse: 'collapse' }}>
+          <table aria-label={t('monitoring.health.title')} style={{ width: '100%', minWidth: 1000, borderCollapse: 'collapse' }}>
             <thead>
               <tr>
                 {headers.map((h) => <th key={h.key} scope="col" style={{ ...TH, width: h.width }}>{h.label}</th>)}

@@ -4,6 +4,7 @@ import { EventsPage } from './EventsPage'
 import { GET_EVENTS, GET_EVENT_STATS, GET_ENTITY_FILTER_FIELDS, GET_MONITORING_SOURCE_REFS, GET_EVENT_POLICY } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
+import { serviceMapsMock, mapRow } from '@/test/mocks/services'
 import { formatDateTime } from '@/lib/datetime'
 import type { EventRow, EventStats, StormSource } from '@/types/events'
 
@@ -91,8 +92,8 @@ const sourcesMock = (names: string[] = ['Prometheus', 'Zabbix']): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
-function renderPage(role: string, seen?: Vars[], opts: { route?: string; sources?: string[]; events?: EventRow[]; storms?: StormSource[]; eventsMocks?: GqlMock[] } = {}) {
-  return renderWithProviders(<EventsPage />, { route: opts.route ?? '/events', mocks: [meMock(role), statsMock(opts.storms), ...(opts.eventsMocks ?? [eventsMock(opts.events ?? EVENTS, seen)]), fieldsMock(), sourcesMock(opts.sources), policyMock()] })
+function renderPage(role: string, seen?: Vars[], opts: { route?: string; sources?: string[]; events?: EventRow[]; storms?: StormSource[]; eventsMocks?: GqlMock[]; downServices?: Record<string, unknown>[] } = {}) {
+  return renderWithProviders(<EventsPage />, { route: opts.route ?? '/events', mocks: [meMock(role), statsMock(opts.storms), ...(opts.eventsMocks ?? [eventsMock(opts.events ?? EVENTS, seen)]), fieldsMock(), sourcesMock(opts.sources), policyMock(), serviceMapsMock(opts.downServices)] })
 }
 
 const bodyRows = () => within(screen.getAllByRole('rowgroup')[1]!).getAllByRole('row')
@@ -288,6 +289,19 @@ describe('EventsPage — sfarfallio e tempeste (ondata 4)', () => {
     await waitFor(() => expect(within(banner).getByRole('link', { name: /Sources/ })).toHaveAttribute('href', '/monitoring/sources'))
   })
 
+  it('banner dei servizi critici: compare in console quando un servizio critico è giù, non quando nessuno lo è', async () => {
+    renderPage('operator', undefined, { downServices: [mapRow({ health: 'down', impactScore: 100 })] })
+    const banner = await screen.findByTestId('critical-services-banner')
+    expect(banner).toHaveTextContent('A critical service is down')
+    expect(within(banner).getByRole('link', { name: 'Enterprise Billing' })).toHaveAttribute('href', '/monitoring/services/map-1')
+  })
+
+  it('nessun servizio critico giù: in console non compare nessun banner dei servizi', async () => {
+    renderPage('operator')
+    await screen.findByText('CPU high on web-01')
+    expect(screen.queryByTestId('critical-services-banner')).not.toBeInTheDocument()
+  })
+
   it('banner di tempesta (operator): il link alle Sorgenti (pagina admin) non c\'è', async () => {
     renderPage('operator', undefined, { storms: STORMS })
     const banner = await screen.findByTestId('storm-banner')
@@ -404,7 +418,7 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
 
   it('errore della query delle sorgenti → messaggio accanto al filtro', async () => {
     const failing: GqlMock = { request: { query: GET_MONITORING_SOURCE_REFS }, error: new Error('sources down'), maxUsageCount: Number.POSITIVE_INFINITY }
-    renderWithProviders(<EventsPage />, { route: '/events', mocks: [meMock('viewer'), statsMock(), eventsMock(), fieldsMock(), failing, policyMock()] })
+    renderWithProviders(<EventsPage />, { route: '/events', mocks: [meMock('viewer'), statsMock(), eventsMock(), fieldsMock(), failing, policyMock(), serviceMapsMock()] })
     await screen.findByText('CPU high on web-01')
     expect(await screen.findByRole('alert')).toHaveTextContent('Sources not loaded: sources down')
   })

@@ -129,7 +129,7 @@ export const GET_CI_HEALTH_OVERVIEW = gql`
       down degraded operational unmonitored downDependents degradedDependents total
       items {
         id name type environment health healthSource healthSince lastEventAt
-        firingEvents dependents ownerTeam
+        firingEvents dependents servicesCount ownerTeam
       }
     }
   }

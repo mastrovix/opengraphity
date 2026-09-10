@@ -19,6 +19,7 @@ import { eventManagementIndexes } from './20260909_1050_event_management_indexes
 import { eventManagementPolicyVersion } from './20260909_1060_event_management_policy_version.js'
 import { eventManagementTenants } from './20260910_1070_event_management_tenants.js'
 import { serviceMapsBootstrap } from './20260910_1080_service_maps_bootstrap.js'
+import { serviceNotificationRules } from './20260910_1090_service_notification_rules.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -32,4 +33,5 @@ export const MIGRATIONS: readonly Migration[] = [
   eventManagementPolicyVersion,
   eventManagementTenants,
   serviceMapsBootstrap,
+  serviceNotificationRules,
 ]

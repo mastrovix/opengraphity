@@ -131,6 +131,11 @@
         "openedByMonitoring": "Incident opened automatically by monitoring on {{when}}.",
         "purged_one": "{{count}} alarm removed by event retention (still mentioned in the timeline).",
         "purged_other": "{{count}} alarms removed by event retention (still mentioned in the timeline)."
+      },
+      "impactedServices": {
+        "title": "Impacted services",
+        "hint": "Services whose health opened or joined this incident.",
+        "openService": "Open service {{name}}"
       }
     },
     "changes": {
@@ -846,7 +851,8 @@
         "chartDonut": "Donut",
         "table": "Table",
         "gauge": "Gauge",
-        "activeAlarms": "Active alarms"
+        "activeAlarms": "Active alarms",
+        "serviceHealth": "Service health"
       },
       "widgetTypeDesc": {
         "counter": "Total number",
@@ -856,7 +862,8 @@
         "chartDonut": "Proportions",
         "table": "List of values",
         "gauge": "% of 100",
-        "activeAlarms": "Firing, critical, warning and no-CI alarms from the monitoring"
+        "activeAlarms": "Firing, critical, warning and no-CI alarms from the monitoring",
+        "serviceHealth": "Down, degraded, in-maintenance and operational services"
       },
       "entityLabel": "Entity",
       "entity": {
@@ -933,7 +940,10 @@
       "categories": "Categories:",
       "previewHint": "The preview updates automatically while you configure the widget (600ms debounce).",
       "activeAlarmsHint": "This widget shows the live counters of the alarm console: no entity or metric to configure.",
-      "activeAlarmsStaffOnly": "The alarm console is reserved to staff (administrators, operators and viewers)."
+      "activeAlarmsStaffOnly": "The alarm console is reserved to staff (administrators, operators and viewers).",
+      "serviceHealthStaffOnly": "The Services page is reserved to staff (administrators, operators and viewers).",
+      "unknownDataFreeWidget": "Unknown data-free widget type: {{type}}",
+      "serviceHealthHint": "This widget shows the monitored-service counters: no entity or metric to configure."
     }
   },
   "filter": {
@@ -2364,7 +2374,8 @@
     },
     "widget": {
       "openConsole": "Open the event console",
-      "loadError": "Cannot load the counters: {{error}}"
+      "loadError": "Cannot load the counters: {{error}}",
+      "openServices": "Open the Services page"
     },
     "snippets": {
       "alertmanager": {
@@ -2443,7 +2454,8 @@
         "team": "Team",
         "lastEvent": "Last event",
         "source": "Source",
-        "map": "Map"
+        "map": "Map",
+        "services": "Services"
       },
       "since": "for {{duration}}",
       "sinceHint": "Current health in force since {{date}}",
@@ -2469,7 +2481,12 @@
         "cta": "Add source",
         "askAdmin": "Ask an administrator to connect a monitoring tool."
       },
-      "noMatch": "No CI matches the filters"
+      "noMatch": "No CI matches the filters",
+      "services_one": "{{count}} service",
+      "services_other": "{{count}} services",
+      "servicesHint_one": "{{count}} monitored service depends on {{name}}",
+      "servicesHint_other": "{{count}} monitored services depend on {{name}}",
+      "servicesNone": "No monitored service depends on this CI"
     },
     "services": {
       "title": "Services",
@@ -2635,7 +2652,7 @@
           "minNodes_one": "…and at least {{count}} component is not operational",
           "minNodes_other": "…and at least {{count}} components are not operational",
           "unknownNodes": "Components without health: {{value}}",
-          "openIncidentFrom": "Service incident from: {{value}} (wave 3)",
+          "openIncidentFrom": "Service incident from: {{value}}",
           "unknownNodesValues": {
             "ignore": "ignored",
             "operational": "count as operational"
@@ -2730,7 +2747,6 @@
           "degraded": "Degraded",
           "down": "Down"
         },
-        "wave3Note": "Service incidents arrive in wave 3: the choice is saved now and takes effect then.",
         "unsaved": "Unsaved changes",
         "noChanges": "Nothing to save",
         "blocked": "Fields to fix",
@@ -2741,7 +2757,8 @@
           "aboveComponents": "At most {{max}}: the map has that many components, and a higher minimum would keep the service from ever being degraded."
         },
         "saveFailed": "Rules not saved: {{error}}. If someone else changed the map, reload and try again.",
-        "reload": "Reload"
+        "reload": "Reload",
+        "openIncidentNote": "An incident opens by itself when health reaches the threshold, and closes when the service falls back below it."
       },
       "componentsEdit": {
         "changed_one": "{{count}} component changed",
@@ -2793,6 +2810,32 @@
         "exclusionsEmpty": "No exclusion.",
         "readmit": "Re-admit",
         "readmitLabel": "Re-admit {{name}}"
+      },
+      "openIncident": {
+        "title": "Open incident",
+        "none": "No open incident for this service.",
+        "disabled": "Incidents are turned off for this service.",
+        "step": "Step: {{step}}",
+        "noStep": "Step not available",
+        "open": "Open incident {{number}}"
+      },
+      "criticalBanner": {
+        "title_one": "A critical service is down",
+        "title_other": "{{count}} critical services are down",
+        "line": "<service>{{name}}</service> is down ({{criticality}}).",
+        "viewAll": "Down services"
+      },
+      "capabilities": {
+        "title": "Business capabilities",
+        "hint": "The worst health among the services that enable the capability. Read-only: capabilities are configured in the CMDB.",
+        "empty": "No business capability linked to a service.",
+        "error": "Cannot load business capabilities: {{error}}",
+        "services": "Services",
+        "noServices": "No linked service",
+        "down_one": "{{count}} down",
+        "down_other": "{{count}} down",
+        "degraded_one": "{{count}} degraded",
+        "degraded_other": "{{count}} degraded"
       }
     }
   }

@@ -193,7 +193,7 @@ export function ServiceRulesCard({ map, canEdit, onReload }: Props) {
         {numberField('minNodes')}
         {selectField('unknownNodes', UNKNOWN_NODES_MODES)}
         {selectField('openIncidentFrom', SERVICE_OPEN_INCIDENT_FROMS)}
-        <p style={{ ...hint, marginTop: 0 }}>{t('monitoring.services.rulesEdit.wave3Note')}</p>
+        <p style={{ ...hint, marginTop: 0 }}>{t('monitoring.services.rulesEdit.openIncidentNote')}</p>
 
         {saveError && (
           <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 12px', borderRadius: 8, background: palette.danger.bg, border: `1px solid ${palette.danger.border}`, color: palette.danger.text, fontSize: 'var(--font-size-body)' }}>

@@ -93,8 +93,29 @@ function extractEntityType(eventType: string, payload: unknown): string {
   return eventType.split('.')[0] ?? 'unknown'
 }
 
+/**
+ * Corpo del messaggio per gli eventi il cui payload non ha né `title` né
+ * `entity_type`/`entity_id` da cui la regola generica sotto possa ricavare
+ * qualcosa (i Servizi monitorati: il "titolo" del servizio è `name` e lo stato
+ * è la salute). Senza una voce qui la notifica arriverebbe con il corpo vuoto:
+ * un fallback silenzioso. Un campo mancante è un errore del produttore
+ * dell'evento e viene segnalato, non nascosto.
+ */
+const MESSAGE_BY_EVENT: Record<string, (p: Record<string, unknown>) => string> = {
+  'service.health_changed':  (p) => `${required(p, 'name', 'service.health_changed')} — ${required(p, 'new_health', 'service.health_changed')}`,
+  'service.incident_opened': (p) => `${required(p, 'name', 'service.incident_opened')} — ${required(p, 'health', 'service.incident_opened')} (${required(p, 'incident_number', 'service.incident_opened')})`,
+}
+
+function required(p: Record<string, unknown>, field: string, eventType: string): string {
+  const v = p[field]
+  if (typeof v !== 'string' || !v) throw new Error(`${eventType} payload has no "${field}": the notification would have an empty body`)
+  return v
+}
+
 function extractMessage(eventType: string, payload: unknown): string {
   const p = payload as Record<string, unknown>
+  const explicit = MESSAGE_BY_EVENT[eventType]
+  if (explicit) return explicit(p)
 
   const title      = typeof p['title']      === 'string' && p['title']      ? p['title']      as string : null
   const severity   = typeof p['severity']   === 'string' && p['severity']   ? p['severity']   as string : null

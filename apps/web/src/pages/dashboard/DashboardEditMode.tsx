@@ -14,7 +14,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Hash, BarChart2, TrendingUp, PieChart, Table, Gauge, Plus, Pencil, Trash2, Radar } from 'lucide-react'
+import { Hash, BarChart2, TrendingUp, PieChart, Table, Gauge, Plus, Pencil, Trash2, Radar, Boxes } from 'lucide-react'
 import { ReportChartRenderer } from '@/components/ReportChartRenderer'
 import type { CustomWidgetData } from './CustomWidgetCard'
 const CustomWidgetCard = lazy(() => import('./CustomWidgetCard').then(m => ({ default: m.CustomWidgetCard })))
@@ -69,7 +69,7 @@ export interface DashboardEditModeProps {
 const TYPE_ICONS: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
   counter: Hash, chart_bar: BarChart2, chart_line: TrendingUp,
   chart_pie: PieChart, chart_donut: PieChart, table: Table,
-  gauge: Gauge, active_alarms: Radar,
+  gauge: Gauge, active_alarms: Radar, service_health: Boxes,
 }
 
 // ── SortableItem (report widget) ──────────────────────────────────────────────

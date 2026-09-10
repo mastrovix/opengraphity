@@ -6,6 +6,8 @@
  * automatica (chip silenziato/in attesa/collega un CI) e l'azione "Rivaluta ora".
  * Ondata 4: chip "Instabile"/"Tempesta" nella stessa colonna e banner ambra
  * in testa quando una sorgente è in tempesta (`eventStats.stormSources`).
+ * Servizi monitorati (ondata 3): secondo banner ambra quando almeno un
+ * servizio critico è giù (CriticalServicesBanner).
  *
  * Ondata 5 — l'URL è la sorgente di verità dei filtri (`useSearchParams`,
  * `replace: true`): `?stat=` (contatore), `?status=firing,flapping`,
@@ -52,6 +54,7 @@ import { EventStatusBadge, EventSeverityBadge, EventNoCIBadge, resourceKindLabel
 import { EventIncidentCell } from './eventCorrelation'
 import { EventActions } from './EventActions'
 import { StormBanner } from './StormBanner'
+import { CriticalServicesBanner } from '@/pages/monitoring/CriticalServicesBanner'
 import {
   EVENT_STATUSES, EVENT_SEVERITIES, EVENT_ROW_SCALAR_FIELDS,
   type EventRow, type EventStats, type EventStatCounts, type EventStatus, type EventSeverity, type EventFilterVars, type MonitoringSourceRef, type EventPolicy,
@@ -383,6 +386,9 @@ export function EventsPage() {
 
       {/* Tempesta in corso: una riga per sorgente, link all'incident di tempesta, ai suoi allarmi e alle Sorgenti. */}
       {stats && <StormBanner sources={stats.stormSources} showSourcesLink={isAdmin} />}
+
+      {/* Un servizio critico è giù adesso (Servizi monitorati, ondata 3): niente banner se non ce n'è nessuno. */}
+      <CriticalServicesBanner />
 
       {/* Contatori */}
       {statsError && !stats && <QueryError message={statsError.message} onRetry={() => void refetchStats()} />}

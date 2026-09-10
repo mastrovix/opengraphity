@@ -513,7 +513,7 @@ interface CIHealthFilter {
 interface CIHealthOverviewRow {
   id: string; name: string; label: string | null; environment: string | null
   health: string; healthSource: string | null; healthSince: unknown; lastEventAt: unknown
-  firingEvents: unknown; dependents: unknown; ownerTeam: string | null
+  firingEvents: unknown; dependents: unknown; servicesCount: unknown; ownerTeam: string | null
 }
 
 /** Ordine di gravità delle righe: prima ciò che è giù, poi degradato, poi operativo. */
@@ -537,6 +537,7 @@ function mapCIHealthRow(r: CIHealthOverviewRow) {
     lastEventAt:  toStrOrNull(r.lastEventAt),
     firingEvents: toNumber(r.firingEvents),
     dependents:   toNumber(r.dependents),
+    servicesCount: toNumber(r.servicesCount),
     ownerTeam:    r.ownerTeam ?? null,
   }
 }
@@ -559,9 +560,14 @@ function mapCIHealthRow(r: CIHealthOverviewRow) {
  * filtrato, pagina. Niente OPTIONAL MATCH in sequenza (prima erano tre:
  * firing × dipendenti × team righe intermedie per CI, poi count DISTINCT):
  * `dependents` è un COUNT { } (grado della relazione, serve all'ORDER BY
- * quindi si calcola per ogni CI filtrato), `firingEvents` e `ownerTeam` si
- * calcolano solo sulle righe della pagina, dopo SKIP/LIMIT. La pagina è un
- * collect così la riga c'è anche quando è vuota.
+ * quindi si calcola per ogni CI filtrato), `firingEvents`, `servicesCount` e
+ * `ownerTeam` si calcolano solo sulle righe della pagina, dopo SKIP/LIMIT. La
+ * pagina è un collect così la riga c'è anche quando è vuota.
+ *
+ * `servicesCount` (ondata 3 dei Servizi monitorati) = quante mappe `active`
+ * includono il CI: un altro COUNT { } nello stesso collect — nessuna query in
+ * più e nessuna riga moltiplicata (un OPTIONAL MATCH sulle INCLUDES avrebbe
+ * duplicato il CI per ogni mappa).
  */
 async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | null; limit?: number | null; offset?: number | null }, ctx: GraphQLContext) {
   const f = args.filter ?? {}
@@ -611,6 +617,7 @@ async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | nu
           healthSince: ci.health_since, lastEventAt: ci.last_event_at,
           firingEvents: COUNT { (:Event {tenant_id: $tenantId, status: 'firing'})-[:RAISED_ON]->(ci) },
           dependents: dependents,
+          servicesCount: COUNT { (:ServiceMap {tenant_id: $tenantId, status: 'active'})-[:INCLUDES]->(ci) },
           ownerTeam: head([(ci)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) | t.name])
         }) AS items
       }

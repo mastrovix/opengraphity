@@ -25,7 +25,7 @@ import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
 import { requireRole } from '../../lib/requireRole.js'
 import { logger } from '../../lib/logger.js'
-import { mapTeam } from '../../lib/mappers.js'
+import { mapIncident, mapTeam } from '../../lib/mappers.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import { getQueue } from '../../lib/bullmq.js'
 import {
@@ -47,6 +47,7 @@ import {
   updateServiceMapNodes as updateServiceMapNodesService,
   type ConfigWriteResult, type ServiceImpactRulesInput, type ServiceMapNodeInput,
 } from '../../services/serviceImpact/config.js'
+import { incidentStepInfo } from '../../services/events/incidentWorkflow.js'
 import { SERVICE_IMPACT_QUEUE, serviceMapJobId } from '../../jobs/serviceImpactWorker.js'
 
 type Props = Record<string, unknown>
@@ -366,6 +367,74 @@ async function serviceImpactPreview(_: unknown, args: { id: string; rules?: Serv
   }
 }
 
+// ── Capacità di business (sola lettura) ──────────────────────────────────────
+
+interface CapabilityRow {
+  id: string
+  name: string | null
+  services: { id: string; name: string | null; criticality: string | null; health: string | null; owner: Props | null }[]
+}
+
+/** Posizione nella scala di gravità (down = 0 … operational = ultimo): più basso = peggio. */
+function severityRank(health: ServiceHealth): number {
+  return SERVICE_HEALTH_SEVERITY_ORDER.indexOf(health)
+}
+
+/**
+ * Salute della capacità: la PEGGIORE fra i servizi collegati con una salute
+ * nota. `unknown` non è una gravità ma un'assenza di dato: se nessun servizio
+ * ha una salute nota (o non ce ne sono) la capacità è `unknown`, altrimenti i
+ * servizi sconosciuti non peggiorano né migliorano il verdetto.
+ */
+export function worstServiceHealth(healths: readonly ServiceHealth[]): ServiceHealth {
+  const known = healths.filter((h) => h !== 'unknown')
+  if (known.length === 0) return 'unknown'
+  return known.reduce((worst, h) => (severityRank(h) < severityRank(worst) ? h : worst))
+}
+
+/**
+ * Le capacità di business del tenant con la salute dei servizi che le
+ * abilitano: `(:BusinessCapability)-[:ENABLED_BY]->(:BusinessApplication)-[:HAS_SERVICE_MAP]->(:ServiceMap)`
+ * (direzione e relazione di scripts/seed-business-capabilities.ts). UNA query,
+ * nessuna scrittura, nessun nodo nuovo: le capacità senza servizi (tipicamente
+ * quelle di primo livello, che ne hanno solo attraverso i figli) restano
+ * nell'elenco con salute `unknown` e zero servizi. L'ordine (gravità, poi
+ * nome) si calcola qui: l'elenco è piccolo e la salute peggiore non è una
+ * proprietà del grafo.
+ */
+async function businessCapabilitiesHealth(_: unknown, __: unknown, ctx: GraphQLContext) {
+  const session = getSession()
+  try {
+    const rows = await runQuery<CapabilityRow>(session, `
+      MATCH (c:BusinessCapability {tenant_id: $tenantId})
+      OPTIONAL MATCH (c)-[:ENABLED_BY]->(ba:BusinessApplication {tenant_id: $tenantId})-[:HAS_SERVICE_MAP]->(m:ServiceMap {tenant_id: $tenantId})
+      WITH c, collect(CASE WHEN m IS NULL THEN null ELSE {
+             id: ba.id, name: ba.name, criticality: ba.criticality, health: m.health,
+             owner: head([(ba)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) | properties(t)])
+           } END) AS services
+      RETURN c.id AS id, c.name AS name, [s IN services WHERE s IS NOT NULL] AS services
+      ORDER BY name
+    `, { tenantId: ctx.tenantId })
+
+    return rows
+      .map((r) => {
+        const healths = r.services.map((s) => assertEnum<ServiceHealth>(s.health, SERVICE_HEALTHS, `BusinessCapability ${r.id} service ${s.id} health`))
+        return {
+          id:               r.id,
+          name:             r.name ?? '',
+          health:           worstServiceHealth(healths),
+          services:         r.services
+            .map((s, i) => ({ ref: { id: s.id, name: s.name ?? '', criticality: s.criticality ?? null, ownerGroup: s.owner ? mapTeam(s.owner) : null }, health: healths[i]! }))
+            .sort((a, b) => severityRank(a.health) - severityRank(b.health) || a.ref.name.localeCompare(b.ref.name))
+            .map((s) => s.ref),
+          downServices:     healths.filter((h) => h === 'down').length,
+          degradedServices: healths.filter((h) => h === 'degraded').length,
+        }
+      })
+      .sort((a, b) => severityRank(a.health) - severityRank(b.health) || a.name.localeCompare(b.name))
+  } finally { await session.close() }
+}
+
 // ── Field resolver di ServiceMap ─────────────────────────────────────────────
 
 /** I componenti con la salute del CI e `contributes` dalle regole della mappa (stessa lettura del motore). */
@@ -416,6 +485,43 @@ async function serviceMapHistory(parent: { id: string }, args: { limit?: number 
       RETURN properties(h) AS props
     `, { id: parent.id, tenantId: ctx.tenantId, limit })
     return rows.map((r) => mapHistoryEntry(r.props))
+  } finally { await session.close() }
+}
+
+/**
+ * L'incident non chiuso aperto dal monitoraggio per il servizio
+ * (`(:Incident)-[:IMPACTS_SERVICE]->(:ServiceMap)`). "Non chiuso" ha lo stesso
+ * significato del monitoraggio: un incident in `resolved` non è chiuso (il
+ * servizio che ricade lo riapre), solo un altro passo terminale lo è. I passi
+ * terminali vengono dalla definizione del workflow del tenant
+ * (`incidentStepInfo`), mai da una lista scritta a mano.
+ */
+async function serviceMapOpenIncident(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  const session = getSession()
+  try {
+    const info = await incidentStepInfo(session, ctx.tenantId)
+    const row = await runQueryOne<{ props: Props }>(session, `
+      MATCH (i:Incident {tenant_id: $tenantId})-[:IMPACTS_SERVICE]->(m:ServiceMap {id: $id, tenant_id: $tenantId})
+      MATCH (i)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
+      WHERE NOT wi.current_step IN $terminalSteps OR wi.current_step = $resolvedStep
+      RETURN properties(i) AS props, i.created_at AS createdAt
+      ORDER BY createdAt DESC LIMIT 1
+    `, { id: parent.id, tenantId: ctx.tenantId, terminalSteps: info.terminalSteps, resolvedStep: info.resolvedStep })
+    return row ? mapIncident(row.props) : null
+  } finally { await session.close() }
+}
+
+/** I servizi la cui salute ha aperto l'incident, per gravità (campo di Incident: il web lo seleziona nel dettaglio). */
+async function incidentImpactedServices(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  const session = getSession()
+  try {
+    const rows = await runQuery<ServiceMapRow>(session, `
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:IMPACTS_SERVICE]->(m:ServiceMap {tenant_id: $tenantId})
+      WITH m ORDER BY ${SERVICE_MAP_ORDER}
+      ${serviceMapRowColumns()}
+      ${SERVICE_MAP_ROW_RETURN}
+    `, { id: parent.id, tenantId: ctx.tenantId })
+    return rows.map(mapServiceMap)
   } finally { await session.close() }
 }
 
@@ -570,10 +676,14 @@ async function deleteServiceMap(_: unknown, args: { id: string }, ctx: GraphQLCo
 }
 
 export const serviceResolvers = {
-  Query: { serviceMaps, serviceMap, servicesImpactedByCI, serviceMapCandidates, serviceMapProposal, serviceImpactPreview },
+  Query: { serviceMaps, serviceMap, servicesImpactedByCI, serviceMapCandidates, serviceMapProposal, serviceImpactPreview, businessCapabilitiesHealth },
   Mutation: {
     createServiceMap, reevaluateServiceMap, setServiceMapStatus, deleteServiceMap,
     updateServiceImpactRules, updateServiceMapNodes, applyServiceMapProposal, removeServiceMapExclusion,
   },
-  ServiceMap: { nodes: serviceMapNodes, edges: serviceMapEdges, history: serviceMapHistory, historyCount: serviceMapHistoryCount, excluded: serviceMapExcluded },
+  ServiceMap: {
+    nodes: serviceMapNodes, edges: serviceMapEdges, history: serviceMapHistory, historyCount: serviceMapHistoryCount,
+    excluded: serviceMapExcluded, openIncident: serviceMapOpenIncident,
+  },
+  Incident: { impactedServices: incidentImpactedServices },
 }

@@ -57,7 +57,7 @@ describe('ServiceRulesCard', () => {
     expect(screen.queryByTestId('service-rules-form')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
     expect(screen.getByText('Components without health: ignored')).toBeInTheDocument()
-    expect(screen.getByText('Service incident from: down (wave 3)')).toBeInTheDocument()
+    expect(screen.getByText('Service incident from: down')).toBeInTheDocument()
   })
 
   it('admin: campi con aiuto, «Niente da salvare» finché non si tocca nulla', async () => {

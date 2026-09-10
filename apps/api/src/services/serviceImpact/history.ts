@@ -39,6 +39,18 @@ export interface ServiceHistoryEntry {
   note?:          string | null
 }
 
+/** Insieme delle cause per id, senza duplicati (l'insieme, non l'ordine: il confronto fra valutazioni è fra insiemi). */
+export function causeIdsOf(causes: readonly StoredCause[]): string[] {
+  return [...new Set(causes.map((c) => c.ciId))]
+}
+
+/** Due insiemi di id uguali a meno dell'ordine. */
+export function sameCauseIds(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false
+  const set = new Set(a)
+  return b.every((id) => set.has(id))
+}
+
 export const SERVICE_HISTORY_DEFAULT_PREFIX = 'h'
 
 export interface ServiceHistoryWriteOptions {

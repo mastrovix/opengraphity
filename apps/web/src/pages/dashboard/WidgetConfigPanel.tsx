@@ -2,7 +2,7 @@ import { lazy, Suspense, useId } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
-import { useWidgetConfig, DATA_FREE_WIDGET_TYPES } from './useWidgetConfig'
+import { useWidgetConfig, DATA_FREE_WIDGET_TYPES, DATA_FREE_HINT_KEY } from './useWidgetConfig'
 import { WidgetTypeSelector } from './WidgetTypeSelector'
 import { WidgetFilterConfig } from './WidgetFilterConfig'
 const WidgetPreview = lazy(() => import('./WidgetPreview').then(m => ({ default: m.WidgetPreview })))
@@ -89,9 +89,9 @@ export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Pro
 
             <WidgetTypeSelector widgetType={c.widgetType} color={c.color} onSelect={c.setWidgetType} />
 
-            {DATA_FREE_WIDGET_TYPES.includes(c.widgetType) && (
+            {DATA_FREE_HINT_KEY[c.widgetType] && (
               <p style={{ margin: 0, padding: '10px 12px', borderRadius: 8, background: 'var(--color-brand-light)', color: palette.info.text, fontSize: 'var(--font-size-body)', lineHeight: 1.5 }}>
-                {t('pages.dashboard.activeAlarmsHint')}
+                {t(DATA_FREE_HINT_KEY[c.widgetType]!)}
               </p>
             )}
             <WidgetFilterConfig

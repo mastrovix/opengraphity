@@ -15,6 +15,8 @@
  *
  * Ondata 2: regole e componenti si modificano qui dentro (solo admin); per
  * gli altri ruoli i riquadri restano quelli di sola lettura, senza controlli.
+ * Ondata 3: il riquadro «Incident aperto» (ServiceOpenIncidentCard) con
+ * l'incident non chiuso che il monitoraggio ha aperto per il servizio.
  */
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -46,6 +48,7 @@ import { ServiceMapCanvas } from './ServiceMapCanvas'
 import { ServiceHistorySection } from './ServiceHistorySection'
 import { ServiceComponentsTable } from './ServiceComponentsTable'
 import { ServiceRulesCard } from './ServiceRulesCard'
+import { ServiceOpenIncidentCard } from './ServiceOpenIncidentCard'
 import { UpdateServiceMapDialog } from './UpdateServiceMapDialog'
 import {
   ServiceHealthBadge, ServiceStatusPill, NodeHealthBadge, ImpactScore,
@@ -193,6 +196,9 @@ export function ServiceDetailPage() {
 
         <div>
           {selected && <NodePanel node={selected} typeLabel={ciTypeLabel(selected.ci.type)} onClose={() => setSelectedId(null)} />}
+
+          {/* Incident aperto dal monitoraggio per questo servizio (ondata 3). */}
+          <ServiceOpenIncidentCard incident={map.openIncident} openIncidentFrom={map.rules.openIncidentFrom} />
 
           <SectionCard title={t('monitoring.services.detail.service')} defaultOpen>
             <DetailField label={t('monitoring.services.detail.fields.service')} value={map.service.name} />

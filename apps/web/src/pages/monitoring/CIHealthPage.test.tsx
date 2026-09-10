@@ -10,14 +10,14 @@ function row(over: Partial<CIHealthRow> & { id: string; name: string }): CIHealt
   return {
     type: 'server', environment: 'production', health: 'down', healthSource: 'monitoring',
     healthSince: new Date(Date.now() - 42 * 60_000).toISOString(), lastEventAt: new Date(Date.now() - 5 * 60_000).toISOString(),
-    firingEvents: 2, dependents: 7, ownerTeam: 'DBA', ...over,
+    firingEvents: 2, dependents: 7, servicesCount: 2, ownerTeam: 'DBA', ...over,
   }
 }
 
 const ROWS: CIHealthRow[] = [
   row({ id: 'ci-1', name: 'db-01' }),
-  row({ id: 'ci-2', name: 'cache-02', health: 'degraded', firingEvents: 1, dependents: 3, ownerTeam: null }),
-  row({ id: 'ci-3', name: 'app-03', type: 'application', health: 'operational', healthSource: 'manual', firingEvents: 0, dependents: 0, healthSince: null, lastEventAt: null }),
+  row({ id: 'ci-2', name: 'cache-02', health: 'degraded', firingEvents: 1, dependents: 3, servicesCount: 1, ownerTeam: null }),
+  row({ id: 'ci-3', name: 'app-03', type: 'application', health: 'operational', healthSource: 'manual', firingEvents: 0, dependents: 0, servicesCount: 0, healthSince: null, lastEventAt: null }),
 ]
 
 // downDependents (9) ≠ somma dei dipendenti delle righe giù in pagina (7): il riquadro deve mostrare l'aggregato del server.
@@ -93,6 +93,8 @@ describe('CIHealthPage', () => {
     expect(within(rows[0]!).getByText('for 42 min')).toBeInTheDocument()
     expect(within(rows[0]!).getByRole('link', { name: 'View the 2 active alarms of db-01' })).toHaveAttribute('href', '/events?ciId=ci-1')
     expect(within(rows[0]!).getByText('7 dependents')).toHaveAttribute('title', 'At least 5 CIs depend on this one: a failure here spreads')
+    // Colonna «Servizi» (ondata 3): il numero è un link alla pagina Servizi, con il motivo nel nome accessibile
+    expect(within(rows[0]!).getByRole('link', { name: '2 monitored services depend on db-01' })).toHaveAttribute('href', '/monitoring/services')
     expect(within(rows[0]!).getByText('DBA')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('5 min ago')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('Monitoring')).toBeInTheDocument()
@@ -100,6 +102,8 @@ describe('CIHealthPage', () => {
 
     expect(within(rows[1]!).getByText('Degraded')).toBeInTheDocument()
     expect(within(rows[1]!).getByText('3 dependents')).toBeInTheDocument()
+    // plurale: un solo servizio
+    expect(within(rows[1]!).getByRole('link', { name: '1 monitored service depends on cache-02' })).toHaveTextContent('1 service')
     // plurale: un solo allarme
     expect(within(rows[1]!).getByRole('link', { name: 'View the active alarm of cache-02' })).toHaveAttribute('href', '/events?ciId=ci-2')
 
@@ -107,6 +111,9 @@ describe('CIHealthPage', () => {
     expect(within(rows[2]!).getByText('0')).toBeInTheDocument()               // nessun allarme → non è un link
     expect(within(rows[2]!).queryByRole('link', { name: /active alarms/ })).not.toBeInTheDocument()
     expect(within(rows[2]!).getByText('Never')).toBeInTheDocument()
+    // nessun servizio dipende dal CI → numero spento, non un link
+    expect(within(rows[2]!).getByText('0 services')).toHaveAttribute('title', 'No monitored service depends on this CI')
+    expect(within(rows[2]!).queryByRole('link', { name: /monitored service/ })).not.toBeInTheDocument()
     expect(within(rows[2]!).getByText('Manual')).toHaveAttribute('title', expect.stringMatching(/forced by an operator/))
 
     // intestazioni con scope, pulsanti della testata

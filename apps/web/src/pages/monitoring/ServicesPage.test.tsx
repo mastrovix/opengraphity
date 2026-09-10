@@ -8,11 +8,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { ServicesPage } from './ServicesPage'
-import { GET_SERVICE_MAPS, GET_SERVICE_MAP_CANDIDATES } from '@/graphql/queries'
+import { GET_SERVICE_MAPS, GET_SERVICE_MAP_CANDIDATES, GET_BUSINESS_CAPABILITIES_HEALTH } from '@/graphql/queries'
 import { CREATE_SERVICE_MAP } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
-import { mapRow, mapDetail, SERVICE, ciRef, pathRef } from '@/test/mocks/services'
+import { mapRow, mapDetail, capability, SERVICE, ciRef, pathRef } from '@/test/mocks/services'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }))
 beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
@@ -37,10 +37,17 @@ function pageMock(over: { items?: Record<string, unknown>[]; total?: number; cou
 }
 const EMPTY = { items: [], total: 0, counts: { ...COUNTS, total: 0, operational: 0, degraded: 0, down: 0, unknown: 0 } }
 
+/** Capacità di business: la sezione in fondo alla pagina interroga sempre. */
+const capabilitiesMock = (items: Record<string, unknown>[] = [capability()]): GqlMock => ({
+  request: { query: GET_BUSINESS_CAPABILITIES_HEALTH },
+  result: { data: { businessCapabilitiesHealth: items } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+})
+
 function renderPage(role: string, opts: { page?: GqlMock; seen?: Vars[]; route?: string; extra?: GqlMock[] } = {}) {
   return renderWithProviders(<ServicesPage />, {
     route: opts.route ?? '/monitoring/services',
-    mocks: [meMock(role, { maxUsageCount: Number.POSITIVE_INFINITY }), opts.page ?? pageMock({}, opts.seen), ...(opts.extra ?? [])],
+    mocks: [meMock(role, { maxUsageCount: Number.POSITIVE_INFINITY }), opts.page ?? pageMock({}, opts.seen), capabilitiesMock(), ...(opts.extra ?? [])],
   })
 }
 
@@ -142,7 +149,8 @@ describe('ServicesPage', () => {
     renderPage('operator', { page: failing })
     expect(await screen.findByText('services down')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Retry/ })).toBeInTheDocument()
-    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    // La tabella dei servizi non c'è (quella delle capacità è un'altra sezione, con la sua query)
+    expect(screen.queryByRole('table', { name: 'Services' })).not.toBeInTheDocument()
     expect(screen.queryByText('No monitored service yet')).not.toBeInTheDocument()
   })
 
@@ -201,6 +209,15 @@ describe('ServicesPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Create a map' }))
     const dialog = await screen.findByRole('dialog', { name: 'Create a map' })
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Candidates unavailable: candidates down')
+  })
+
+  it('in fondo alla pagina le capacità di business in sola lettura (ondata 3)', async () => {
+    renderPage('operator')
+    expect(await screen.findByRole('table', { name: 'Business capabilities' })).toBeInTheDocument()
+    const row = screen.getByTestId('capability-row')
+    expect(within(row).getByText('Fatturazione')).toBeInTheDocument()
+    expect(within(row).getByText('1 degraded')).toBeInTheDocument()
+    expect(within(row).getByRole('link', { name: 'Enterprise Billing' })).toHaveAttribute('href', '/monitoring/services?q=Enterprise%20Billing')
   })
 
   it('clic sulla riga → dettaglio; il link al servizio non apre due volte', async () => {

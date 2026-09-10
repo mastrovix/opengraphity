@@ -131,6 +131,11 @@
         "openedByMonitoring": "Incident aperto automaticamente dal monitoraggio il {{when}}.",
         "purged_one": "{{count}} allarme eliminato dalla conservazione degli eventi (resta citato nella cronologia).",
         "purged_other": "{{count}} allarmi eliminati dalla conservazione degli eventi (restano citati nella cronologia)."
+      },
+      "impactedServices": {
+        "title": "Servizi impattati",
+        "hint": "Servizi la cui salute ha aperto o agganciato questo incident.",
+        "openService": "Apri il servizio {{name}}"
       }
     },
     "changes": {
@@ -846,7 +851,8 @@
         "chartDonut": "Donut",
         "table": "Tabella",
         "gauge": "Gauge",
-        "activeAlarms": "Allarmi attivi"
+        "activeAlarms": "Allarmi attivi",
+        "serviceHealth": "Salute dei servizi"
       },
       "widgetTypeDesc": {
         "counter": "Numero totale",
@@ -856,7 +862,8 @@
         "chartDonut": "Proporzioni",
         "table": "Lista valori",
         "gauge": "% su 100",
-        "activeAlarms": "Allarmi attivi, critici, avvisi e senza CI dal monitoraggio"
+        "activeAlarms": "Allarmi attivi, critici, avvisi e senza CI dal monitoraggio",
+        "serviceHealth": "Servizi giù, degradati, in manutenzione e operativi"
       },
       "entityLabel": "Entità",
       "entity": {
@@ -933,7 +940,10 @@
       "categories": "Categorie:",
       "previewHint": "La preview si aggiorna automaticamente mentre configuri il widget (con debounce 600ms).",
       "activeAlarmsHint": "Questo widget mostra i contatori in tempo reale della console allarmi: nessuna entità o metrica da configurare.",
-      "activeAlarmsStaffOnly": "La console allarmi è riservata allo staff (amministratori, operatori e visualizzatori)."
+      "activeAlarmsStaffOnly": "La console allarmi è riservata allo staff (amministratori, operatori e visualizzatori).",
+      "serviceHealthStaffOnly": "La pagina Servizi è riservata allo staff (amministratori, operatori e visualizzatori).",
+      "unknownDataFreeWidget": "Tipo di widget senza dati sconosciuto: {{type}}",
+      "serviceHealthHint": "Questo widget mostra i contatori dei servizi monitorati: nessuna entità o metrica da configurare."
     }
   },
   "filter": {
@@ -2364,7 +2374,8 @@
     },
     "widget": {
       "openConsole": "Apri la console eventi",
-      "loadError": "Impossibile caricare i contatori: {{error}}"
+      "loadError": "Impossibile caricare i contatori: {{error}}",
+      "openServices": "Apri la pagina Servizi"
     },
     "snippets": {
       "alertmanager": {
@@ -2443,7 +2454,8 @@
         "team": "Squadra",
         "lastEvent": "Ultimo evento",
         "source": "Origine",
-        "map": "Mappa"
+        "map": "Mappa",
+        "services": "Servizi"
       },
       "since": "da {{duration}}",
       "sinceHint": "Salute attuale in vigore dal {{date}}",
@@ -2469,7 +2481,12 @@
         "cta": "Aggiungi sorgente",
         "askAdmin": "Chiedi a un amministratore di collegare uno strumento di monitoraggio."
       },
-      "noMatch": "Nessun CI corrisponde ai filtri"
+      "noMatch": "Nessun CI corrisponde ai filtri",
+      "services_one": "{{count}} servizio",
+      "services_other": "{{count}} servizi",
+      "servicesHint_one": "{{count}} servizio monitorato dipende da {{name}}",
+      "servicesHint_other": "{{count}} servizi monitorati dipendono da {{name}}",
+      "servicesNone": "Nessun servizio monitorato dipende da questo CI"
     },
     "services": {
       "title": "Servizi",
@@ -2635,7 +2652,7 @@
           "minNodes_one": "…e almeno {{count}} componente non è operativo",
           "minNodes_other": "…e almeno {{count}} componenti non sono operativi",
           "unknownNodes": "Componenti senza salute: {{value}}",
-          "openIncidentFrom": "Incident per servizio da: {{value}} (ondata 3)",
+          "openIncidentFrom": "Incident per servizio da: {{value}}",
           "unknownNodesValues": {
             "ignore": "ignorati",
             "operational": "contano come operativi"
@@ -2730,7 +2747,6 @@
           "degraded": "Degradato",
           "down": "Giù"
         },
-        "wave3Note": "Gli incident per servizio arrivano nell'ondata 3: la scelta si salva adesso e avrà effetto allora.",
         "unsaved": "Modifiche non salvate",
         "noChanges": "Niente da salvare",
         "blocked": "Campi da correggere",
@@ -2741,7 +2757,8 @@
           "aboveComponents": "Al massimo {{max}}: tanti sono i componenti della mappa, un minimo più alto impedirebbe al servizio di degradarsi."
         },
         "saveFailed": "Regole non salvate: {{error}}. Se qualcun altro ha modificato la mappa, ricarica e riprova.",
-        "reload": "Ricarica"
+        "reload": "Ricarica",
+        "openIncidentNote": "Un incident si apre da solo quando la salute raggiunge la soglia e si chiude quando il servizio torna sotto."
       },
       "componentsEdit": {
         "changed_one": "{{count}} componente modificato",
@@ -2793,6 +2810,32 @@
         "exclusionsEmpty": "Nessuna esclusione.",
         "readmit": "Riammetti",
         "readmitLabel": "Riammetti {{name}}"
+      },
+      "openIncident": {
+        "title": "Incident aperto",
+        "none": "Nessun incident aperto per questo servizio.",
+        "disabled": "Gli incident per questo servizio sono disattivati.",
+        "step": "Passo: {{step}}",
+        "noStep": "Passo non disponibile",
+        "open": "Apri l'incident {{number}}"
+      },
+      "criticalBanner": {
+        "title_one": "Un servizio critico è giù",
+        "title_other": "{{count}} servizi critici sono giù",
+        "line": "<service>{{name}}</service> è giù ({{criticality}}).",
+        "viewAll": "Servizi giù"
+      },
+      "capabilities": {
+        "title": "Capacità di business",
+        "hint": "La salute peggiore fra i servizi che abilitano la capacità. Sola lettura: le capacità si configurano nella CMDB.",
+        "empty": "Nessuna capacità di business collegata a un servizio.",
+        "error": "Impossibile caricare le capacità di business: {{error}}",
+        "services": "Servizi",
+        "noServices": "Nessun servizio collegato",
+        "down_one": "{{count}} giù",
+        "down_other": "{{count}} giù",
+        "degraded_one": "{{count}} degradato",
+        "degraded_other": "{{count}} degradati"
       }
     }
   }

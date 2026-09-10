@@ -31,7 +31,7 @@ export const SERVICE_NODE_ROLES: readonly ServiceNodeRole[] = ['entry', 'compone
 export type UnknownNodesMode = 'ignore' | 'operational'
 export const UNKNOWN_NODES_MODES: readonly UnknownNodesMode[] = ['ignore', 'operational']
 
-/** Da quale salute aprire un incident per servizio (enum `ServiceOpenIncidentFrom`); gli incident arrivano in ondata 3. */
+/** Da quale salute aprire un incident per servizio (enum `ServiceOpenIncidentFrom`). */
 export type ServiceOpenIncidentFrom = 'never' | 'degraded' | 'down'
 export const SERVICE_OPEN_INCIDENT_FROMS: readonly ServiceOpenIncidentFrom[] = ['never', 'degraded', 'down']
 
@@ -181,6 +181,20 @@ export interface ServiceImpactRules {
   openIncidentFrom: string
 }
 
+/**
+ * L'incident non chiuso collegato al servizio (`ServiceMap.openIncident`,
+ * ondata 3): aperto dal monitoraggio quando la salute supera la soglia
+ * `rules.openIncidentFrom`. `workflowInstance` è nullo per gli incident senza
+ * istanza di workflow (ticket vecchi): il passo si dice mancante, non si finge.
+ */
+export interface ServiceOpenIncident {
+  id:               string
+  number:           string
+  title:            string
+  status:           string
+  workflowInstance: { id: string; currentStep: string; status: string } | null
+}
+
 /** Mappa completa (query `serviceMap`): riga + configurazione, nodi, archi, regole, cronologia. */
 export interface ServiceMapDetail extends ServiceMapRow {
   /** Contatore di modifica: si rimanda come `expectedVersion` nelle mutation. */
@@ -197,6 +211,36 @@ export interface ServiceMapDetail extends ServiceMapRow {
   /** Ultime 50 voci, dalla più recente. */
   history:           ServiceHealthEntry[]
   historyCount:      number
+  /** Incident non chiuso del servizio; null se non ce n'è uno (o se le regole non ne aprono). */
+  openIncident:      ServiceOpenIncident | null
+}
+
+// ── Ondata 3: il servizio dentro gli altri oggetti ──────────────────────────
+
+/**
+ * Servizio impattato citato in un incident (`Incident.impactedServices`):
+ * selezione leggera (fragment `ImpactedServiceFields`), quanto basta alla
+ * sezione «Servizi impattati» — nome, salute, punteggio, link.
+ */
+export interface ImpactedServiceRef {
+  id:          string
+  name:        string
+  health:      ServiceHealth
+  impactScore: number
+}
+
+/**
+ * Una capacità di business in sola lettura (query `businessCapabilitiesHealth`):
+ * la salute è la peggiore fra i servizi collegati, `unknown` se nessuno di
+ * loro ha una salute nota.
+ */
+export interface BusinessCapabilityHealth {
+  id:               string
+  name:             string
+  health:           ServiceHealth
+  services:         ServiceRef[]
+  downServices:     number
+  degradedServices: number
 }
 
 // ── Ondata 2: scritture, diff e anteprima ───────────────────────────────────

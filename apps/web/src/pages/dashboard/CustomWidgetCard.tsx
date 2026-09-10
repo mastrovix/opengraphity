@@ -1,10 +1,11 @@
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { Hash, BarChart2, PieChart, TrendingUp, Table, Gauge, Activity, X, Radar } from 'lucide-react'
+import { Hash, BarChart2, PieChart, TrendingUp, Table, Gauge, Activity, X, Radar, Boxes } from 'lucide-react'
 import { GET_WIDGET_DATA } from '@/graphql/queries'
 import { lookupOrError, colors } from '@/lib/tokens'
 import { WidgetBody, type WidgetSeriesData } from '@/components/WidgetBody'
-import { ActiveAlarmsWidget, ACTIVE_ALARMS_WIDGET_TYPE } from './ActiveAlarmsWidget'
+import { DataFreeWidgetBody } from './DataFreeWidgetBody'
+import { DATA_FREE_WIDGET_TYPES } from './useWidgetConfig'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -50,7 +51,7 @@ const TIME_LABEL_KEY: Record<string, string> = {
 const TYPE_ICON: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
   counter: Hash, chart_bar: BarChart2, chart_line: TrendingUp, chart_pie: PieChart,
   chart_donut: PieChart, table: Table, gauge: Gauge, heatmap: Activity,
-  active_alarms: Radar,
+  active_alarms: Radar, service_health: Boxes,
 }
 
 function TypeIcon({ type, color }: { type: string; color: string }) {
@@ -62,12 +63,13 @@ function TypeIcon({ type, color }: { type: string; color: string }) {
 
 export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) {
   const { t } = useTranslation()
-  // "Allarmi attivi" legge eventStats (ActiveAlarmsWidget), non widgetData.
-  const isActiveAlarms = widget.widgetType === ACTIVE_ALARMS_WIDGET_TYPE
+  // I widget a sorgente fissa ("Allarmi attivi", "Salute dei servizi") leggono
+  // la loro query, non widgetData: la query del widget si salta del tutto.
+  const dataFree = DATA_FREE_WIDGET_TYPES.includes(widget.widgetType)
   const { data, loading, error } = useQuery<{ widgetData: WidgetSeriesData }>(GET_WIDGET_DATA, {
     variables: { widgetId: widget.id },
     fetchPolicy: 'cache-and-network',
-    skip: isActiveAlarms,
+    skip: dataFree,
   })
 
   const colSpan = lookupOrError(SIZE_COLSPAN, widget.size, 'SIZE_COLSPAN', 6)
@@ -131,8 +133,8 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
   // ── Body ─────────────────────────────────────────────────────────────────────
 
   let body: React.ReactNode
-  if (isActiveAlarms) {
-    body = <ActiveAlarmsWidget color={widget.color} />
+  if (dataFree) {
+    body = <DataFreeWidgetBody widgetType={widget.widgetType} color={widget.color} />
   } else if (loading && !wData) {
     body = (
       <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

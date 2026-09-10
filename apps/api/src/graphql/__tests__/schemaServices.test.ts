@@ -62,6 +62,7 @@ describe('tipi del contratto', () => {
       edges: '[ServiceMapEdge!]!',
       history: '[ServiceHealthEntry!]!', historyCount: 'Int!',
       excluded: '[ConfigurationItemRef!]!',
+      openIncident: 'Incident',
     })
     const history = (schema.getType('ServiceMap') as GraphQLObjectType).getFields()['history']!
     expect(history.args.map((a) => [a.name, a.type.toString(), a.defaultValue])).toEqual([['limit', 'Int', 100]])
@@ -93,6 +94,7 @@ describe('tipi del contratto', () => {
     expect(sig(q['serviceMapCandidates']!)).toEqual({ args: [['search', 'String', null], ['limit', 'Int', 20]], type: '[ServiceRef!]!' })
     expect(sig(q['serviceMapProposal']!)).toEqual({ args: [['id', 'ID!', null]], type: 'ServiceMapProposal!' })
     expect(sig(q['serviceImpactPreview']!)).toEqual({ args: [['id', 'ID!', null], ['rules', 'ServiceImpactRulesInput', null], ['nodes', '[ServiceMapNodeInput!]', null]], type: 'ServiceImpactPreview!' })
+    expect(sig(q['businessCapabilitiesHealth']!)).toEqual({ args: [], type: '[BusinessCapabilityHealth!]!' })
     expect(sig(m['createServiceMap']!)).toEqual({ args: [['serviceId', 'ID!', null], ['maxDepth', 'Int', null], ['relationshipTypes', '[String!]', null], ['status', 'ServiceMapStatus', null]], type: 'ServiceMap!' })
     expect(sig(m['reevaluateServiceMap']!)).toEqual({ args: [['id', 'ID!', null]], type: 'ServiceMap!' })
     expect(sig(m['setServiceMapStatus']!)).toEqual({ args: [['id', 'ID!', null], ['expectedVersion', 'Int!', null], ['status', 'ServiceMapStatus!', null]], type: 'ServiceMap!' })
@@ -114,6 +116,17 @@ describe('tipi del contratto', () => {
       excluded: '[ConfigurationItemRef!]!', totalProposed: 'Int!',
     })
     expect(fieldsOf('ServiceImpactPreview')).toEqual({ health: 'ServiceHealth!', impactScore: 'Int!', causes: '[ImpactCause!]!', contributingCount: 'Int!', nodeCount: 'Int!' })
+  })
+
+  it('ondata 3: incident del servizio e capacità di business', () => {
+    // ServiceMap.openIncident e Incident.impactedServices riusano i tipi esistenti
+    // (Incident dello SDL base, ServiceMap di questo modulo): nessun tipo parallelo.
+    expect((unwrap(fieldType('ServiceMap', 'openIncident')) as GraphQLObjectType).name).toBe('Incident')
+    expect(fieldType('Incident', 'impactedServices').toString()).toBe('[ServiceMap!]!')
+    expect(fieldsOf('BusinessCapabilityHealth')).toEqual({
+      id: 'ID!', name: 'String!', health: 'ServiceHealth!', services: '[ServiceRef!]!', downServices: 'Int!', degradedServices: 'Int!',
+    })
+    expect((unwrap(fieldType('BusinessCapabilityHealth', 'services')) as GraphQLObjectType).name).toBe('ServiceRef')
   })
 
   it('le descrizioni SDL non replicano i ruoli: la policy è in lib/authorization.ts', () => {

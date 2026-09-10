@@ -5,6 +5,8 @@
  * non pesa, salute sconosciuta) → degradato, punteggio 41. I risultati
  * includono `__typename` perché la cache Apollo 4 lo aggiunge a ogni query.
  */
+import { GET_SERVICE_MAPS } from '@/graphql/queries'
+import type { GqlMock } from '@/test/utils'
 
 export const SERVICE = { __typename: 'ServiceRef', id: 'ba-1', name: 'Enterprise Billing', criticality: 'business_critical', ownerGroup: { __typename: 'Team', id: 't1', name: 'Billing Ops' } }
 
@@ -59,7 +61,39 @@ export function mapDetail(over: Record<string, unknown> = {}): Record<string, un
   return {
     ...mapRow(), version: 3, updatedAt: '2026-09-10T07:00:00Z', maxDepth: 4,
     relationshipTypes: ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE'], builtFrom: 'auto',
-    rules: RULES, nodes: NODES, edges: EDGES, excluded: [], history: HISTORY, historyCount: 2, ...over,
+    rules: RULES, nodes: NODES, edges: EDGES, excluded: [], history: HISTORY, historyCount: 2,
+    openIncident: null, ...over,
+  }
+}
+
+export const COUNTS = { __typename: 'ServiceMapCounts', total: 5, operational: 2, degraded: 1, down: 1, maintenance: 0, unknown: 1 }
+
+/**
+ * `serviceMaps` come lo chiede il banner dei servizi critici (console allarmi):
+ * per default nessuna riga, cioè nessun servizio giù e nessun banner.
+ */
+export function serviceMapsMock(items: Record<string, unknown>[] = []): GqlMock {
+  return {
+    request: { query: GET_SERVICE_MAPS, variables: () => true },
+    result: { data: { serviceMaps: { __typename: 'ServiceMapPage', total: items.length, counts: COUNTS, items } } },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  }
+}
+
+/** Incident aperto dal monitoraggio per il servizio (`ServiceMap.openIncident`, ondata 3). */
+export function openIncident(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    __typename: 'Incident', id: 'inc-1', number: 'INC-0042', title: 'Servizio Enterprise Billing: degradato', status: 'in_progress',
+    workflowInstance: { __typename: 'WorkflowInstance', id: 'wi-1', currentStep: 'in_progress', status: 'active' },
+    ...over,
+  }
+}
+
+/** Una capacità di business (query `businessCapabilitiesHealth`, ondata 3). */
+export function capability(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    __typename: 'BusinessCapabilityHealth', id: 'cap-1', name: 'Fatturazione', health: 'degraded',
+    downServices: 0, degradedServices: 1, services: [SERVICE], ...over,
   }
 }
 

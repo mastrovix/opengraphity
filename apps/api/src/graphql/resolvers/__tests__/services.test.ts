@@ -25,6 +25,9 @@ vi.mock('../../../services/serviceImpact/engine.js', async (importOriginal) => (
   createServiceMap: vi.fn(),
   evaluateServiceMap: vi.fn(),
 }))
+vi.mock('../../../services/events/incidentWorkflow.js', () => ({
+  incidentStepInfo: vi.fn(async () => ({ resolvedStep: 'resolved', terminalSteps: ['resolved', 'closed'] })),
+}))
 vi.mock('../../../services/serviceImpact/config.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../services/serviceImpact/config.js')>()),
   serviceMapProposal: vi.fn(),
@@ -225,6 +228,71 @@ describe('ServiceMap field resolver', () => {
     // voce con trigger fuori vocabolario → errore
     onCypher([[/LIMIT toInteger\(\$limit\)/, [{ props: { ...entry, trigger: 'oops' } }]]])
     await expect(serviceResolvers.ServiceMap.history({ id: 'map-1' }, null, viewer)).rejects.toThrow(/ServiceHealthEntry h1 trigger is "oops"/)
+  })
+})
+
+// ── Ondata 3: incident del servizio e capacità di business ───────────────────
+
+describe('ServiceMap.openIncident / Incident.impactedServices / businessCapabilitiesHealth', () => {
+  const OPEN_RE = /MATCH \(i:Incident \{tenant_id: \$tenantId\}\)-\[:IMPACTS_SERVICE\]->\(m:ServiceMap \{id: \$id, tenant_id: \$tenantId\}\)/
+  const IMPACTED_RE = /MATCH \(i:Incident \{id: \$id, tenant_id: \$tenantId\}\)-\[:IMPACTS_SERVICE\]->\(m:ServiceMap \{tenant_id: \$tenantId\}\)/
+  const CAPS_RE = /MATCH \(c:BusinessCapability \{tenant_id: \$tenantId\}\)/
+
+  it('openIncident: l\'incident non chiuso collegato (resolved incluso: si riapre, non si affianca); null se non c\'è', async () => {
+    const props = { id: 'inc-1', tenant_id: 'tenant-1', number: 'INC00000042', title: 'Servizio Enterprise Billing: non disponibile', severity: 'critical', status: 'in_progress', created_at: 'T1', updated_at: 'T2' }
+    onCypher([[OPEN_RE, { props }]])
+    const out = await serviceResolvers.ServiceMap.openIncident({ id: 'map-1' }, null, viewer)
+    expect(out).toMatchObject({ id: 'inc-1', number: 'INC00000042', severity: 'critical', priority: 'critical', status: 'in_progress' })
+    const q = callMatching(OPEN_RE)!
+    expect(q.cypher).toContain('WHERE NOT wi.current_step IN $terminalSteps OR wi.current_step = $resolvedStep')
+    expect(q.cypher).toContain('ORDER BY createdAt DESC LIMIT 1')
+    expect(q.params).toEqual({ id: 'map-1', tenantId: 'tenant-1', terminalSteps: ['resolved', 'closed'], resolvedStep: 'resolved' })
+    onCypher([[OPEN_RE, null]])
+    expect(await serviceResolvers.ServiceMap.openIncident({ id: 'map-1' }, null, viewer)).toBeNull()
+  })
+
+  it('Incident.impactedServices: le mappe collegate all\'incident, per gravità, con la stessa riga della lista', async () => {
+    onCypher([[IMPACTED_RE, [mapRow()]]])
+    const out = await serviceResolvers.Incident.impactedServices({ id: 'inc-1' }, null, viewer)
+    expect(out).toEqual([expect.objectContaining({ id: 'map-1', health: 'degraded', impactScore: 41 })])
+    const q = callMatching(IMPACTED_RE)!
+    expect(q.cypher).toContain(`WITH m ORDER BY ${SERVICE_MAP_ORDER}`)
+    expect(q.params).toEqual({ id: 'inc-1', tenantId: 'tenant-1' })
+  })
+
+  it('businessCapabilitiesHealth: UNA query su ENABLED_BY → HAS_SERVICE_MAP; salute peggiore fra i servizi noti, conteggi giù/degradati, ordine per gravità', async () => {
+    onCypher([[CAPS_RE, [
+      { id: 'cap-1', name: 'Customer Relationship', services: [
+        { id: 'ba-1', name: 'CRM', criticality: 'business_critical', health: 'degraded', owner: { id: 'team-1', tenant_id: 'tenant-1', name: 'CRM Team', created_at: 'T' } },
+        { id: 'ba-2', name: 'Portale', criticality: null, health: 'down', owner: null },
+      ] },
+      { id: 'cap-2', name: 'Billing & Invoicing', services: [{ id: 'ba-3', name: 'Billing', criticality: 'mission_critical', health: 'operational', owner: null }] },
+      { id: 'cap-3', name: 'Workforce', services: [] },
+      { id: 'cap-4', name: 'Reporting', services: [{ id: 'ba-4', name: 'BI', criticality: null, health: 'unknown', owner: null }] },
+    ]]])
+    const out = await serviceResolvers.Query.businessCapabilitiesHealth(null, {}, viewer)
+    expect(out.map((c) => [c.id, c.health, c.downServices, c.degradedServices])).toEqual([
+      // ordine di gravità della pagina Servizi (down, degraded, maintenance, unknown, operational), poi nome
+      ['cap-1', 'down', 1, 1],          // la peggiore fra i servizi collegati
+      ['cap-4', 'unknown', 0, 0],       // nessuna salute nota → unknown
+      ['cap-3', 'unknown', 0, 0],       // nessun servizio collegato → unknown
+      ['cap-2', 'operational', 0, 0],
+    ])
+    // i servizi della capacità sono ServiceRef (id della BusinessApplication) ordinati per gravità
+    expect(out[0]!.services).toEqual([
+      { id: 'ba-2', name: 'Portale', criticality: null, ownerGroup: null },
+      { id: 'ba-1', name: 'CRM', criticality: 'business_critical', ownerGroup: expect.objectContaining({ id: 'team-1', name: 'CRM Team' }) },
+    ])
+    const q = callMatching(CAPS_RE)!
+    expect(q.cypher).toContain('OPTIONAL MATCH (c)-[:ENABLED_BY]->(ba:BusinessApplication {tenant_id: $tenantId})-[:HAS_SERVICE_MAP]->(m:ServiceMap {tenant_id: $tenantId})')
+    expect(q.cypher).toContain('RETURN c.id AS id, c.name AS name, [s IN services WHERE s IS NOT NULL] AS services')
+    expect(q.params).toEqual({ tenantId: 'tenant-1' })
+    expect(calls()).toHaveLength(1)
+  })
+
+  it('businessCapabilitiesHealth: una salute fuori vocabolario è un errore, mai una capacità "sana" per sbaglio', async () => {
+    onCypher([[CAPS_RE, [{ id: 'cap-1', name: 'X', services: [{ id: 'ba-1', name: 'CRM', criticality: null, health: 'boh', owner: null }] }]]])
+    await expect(serviceResolvers.Query.businessCapabilitiesHealth(null, {}, viewer)).rejects.toThrow(/BusinessCapability cap-1 service ba-1 health is "boh"/)
   })
 })
 

@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { PreviewData } from './useWidgetConfig'
 import { TIME_RANGES, DATA_FREE_WIDGET_TYPES, widgetTint } from './useWidgetConfig'
-import { ActiveAlarmsWidget } from './ActiveAlarmsWidget'
+import { DataFreeWidgetBody } from './DataFreeWidgetBody'
 import { colors, palette } from '@/lib/tokens'
 
 // Stesso corpo della card reale (anteprima ≡ widget); lazy per non portare
@@ -50,7 +50,7 @@ export function WidgetPreview({ widgetType, color, title, previewData, previewLo
 
         {/* Card body */}
         {dataFree ? (
-          <ActiveAlarmsWidget color={color} large />
+          <DataFreeWidgetBody widgetType={widgetType} color={color} large />
         ) : previewLoading ? (
           <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ width: 28, height: 28, border: `3px solid ${color}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />

@@ -130,6 +130,8 @@ describe('Servizi monitorati: ogni campo root di servicesSDL() ha i ruoli attesi
 
   const EXPECTED_QUERIES: Record<string, readonly string[]> = {
     serviceMaps: STAFF, serviceMap: STAFF, servicesImpactedByCI: STAFF,
+    // ondata 3: le capacità di business sono una lettura come la pagina Servizi
+    businessCapabilitiesHealth: STAFF,
     // strumento della creazione (BusinessApplication senza mappa) e strumenti
     // della configurazione (ondata 2): diff con il grafo e anteprima del calcolo
     serviceMapCandidates: ADMIN, serviceMapProposal: ADMIN, serviceImpactPreview: ADMIN,
@@ -168,6 +170,8 @@ describe('Servizi monitorati: ogni campo root di servicesSDL() ha i ruoli attesi
       expect(() => authorize('Query', f, 'viewer')).toThrow(new RegExp(f))
     }
     expect(() => authorize('Query', 'serviceMaps', 'viewer')).not.toThrow()
+    expect(() => authorize('Query', 'businessCapabilitiesHealth', 'viewer')).not.toThrow()
+    expect(() => authorize('Query', 'businessCapabilitiesHealth', 'end_user')).toThrow()
     expect(() => authorize('Query', 'servicesImpactedByCI', 'viewer')).not.toThrow()
     expect(() => authorize('Query', 'serviceMaps', 'end_user')).toThrow()
   })

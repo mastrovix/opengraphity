@@ -168,6 +168,25 @@ export interface ServiceHealthChangedPayload {
   impact_score: number
 }
 
+/**
+ * `service.incident_opened` — pubblicato quando il monitoraggio apre l'incident
+ * di un servizio (apps/api services/serviceImpact/incident.ts) perché la salute
+ * ha raggiunto la soglia `open_incident_from` della mappa. Come per
+ * `service.health_changed`, `id` e `map_id` sono lo stesso valore: l'entità di
+ * questo evento è il SERVIZIO (l'incident è un suo dato), così le due notifiche
+ * del servizio puntano alla stessa pagina.
+ */
+export interface ServiceIncidentOpenedPayload {
+  id: string
+  map_id: string
+  service_id: string
+  name: string
+  incident_id: string
+  incident_number: string
+  health: ServiceHealth
+  impact_score: number
+}
+
 // --- Event Management (allarmi dal monitoraggio) ---
 
 export type MonitoringEventStatus   = 'firing' | 'resolved' | 'suppressed' | 'flapping'

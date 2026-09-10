@@ -13,6 +13,10 @@
  * esclusioni permanenti e anteprima del calcolo senza scrivere
  * (`serviceImpactPreview`).
  *
+ * Ondata 3: il servizio esce dalla sua pagina — l'incident aperto dal
+ * monitoraggio (`ServiceMap.openIncident`, `Incident.impactedServices`) e le
+ * capacità di business in sola lettura (`businessCapabilitiesHealth`).
+ *
  * Progetto: scratchpad service-impact-opengrafo.html (10 set 2026). Contratto
  * condiviso con il web: i nomi qui sotto non si cambiano. Gli enum
  * sono generati da lib/serviceVocabularies.ts (fonte unica con il motore;
@@ -162,6 +166,27 @@ export function servicesSDL(): string {
     historyCount:      Int!
     """I CI che l'amministratore ha escluso: non vengono più riproposti dal diff (serviceMapProposal)."""
     excluded:          [ConfigurationItemRef!]!
+    """L'incident non chiuso aperto dal monitoraggio per questo servizio (IMPACTS_SERVICE); null se non ce n'è. Con rules.openIncidentFrom = never non ne nascono di nuovi."""
+    openIncident:      Incident
+  }
+
+  extend type Incident {
+    """I servizi la cui salute ha aperto questo incident (IMPACTS_SERVICE), per gravità. Vuoto per gli incident che non vengono dai servizi monitorati."""
+    impactedServices:  [ServiceMap!]!
+  }
+
+  # ── Capacità di business (sola lettura) ─────────────────────────────────────
+
+  """Una BusinessCapability con la salute dei servizi che la abilitano (ENABLED_BY → BusinessApplication con mappa)."""
+  type BusinessCapabilityHealth {
+    id:               ID!
+    name:             String!
+    """La peggiore fra i servizi collegati con una salute nota; unknown se nessuno ne ha una (o se non ci sono servizi collegati)."""
+    health:           ServiceHealth!
+    """I servizi che abilitano la capacità, per gravità poi per nome."""
+    services:         [ServiceRef!]!
+    downServices:     Int!
+    degradedServices: Int!
   }
 
   """Un componente della proposta, con le impostazioni che avrebbe se venisse incluso."""
@@ -248,6 +273,8 @@ export function servicesSDL(): string {
     serviceMapProposal(id: ID!): ServiceMapProposal!
     """«Con queste impostazioni adesso»: la salute che il servizio avrebbe con le regole e/o i componenti passati (il resto resta com'è). Nessuna scrittura; un ciId non nella mappa è un errore."""
     serviceImpactPreview(id: ID!, rules: ServiceImpactRulesInput, nodes: [ServiceMapNodeInput!]): ServiceImpactPreview!
+    """Le capacità di business del tenant con la salute dei servizi che le abilitano, per gravità poi per nome. Sola lettura: nessun nodo nuovo, nessuna modifica."""
+    businessCapabilitiesHealth: [BusinessCapabilityHealth!]!
   }
 
   extend type Mutation {

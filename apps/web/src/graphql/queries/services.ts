@@ -68,6 +68,32 @@ export const GET_SERVICE_IMPACT_PREVIEW = gql`
   }
 `
 
+/**
+ * Solo i contatori del tenant (widget «Salute dei servizi»): nessun elemento
+ * selezionato, `limit: 1` perché `counts` è comunque un aggregato su tutto il
+ * tenant, indipendente da filtro e paginazione.
+ */
+export const GET_SERVICE_HEALTH_COUNTS = gql`
+  query GetServiceHealthCounts {
+    serviceMaps(limit: 1) {
+      counts { total operational degraded down maintenance unknown }
+    }
+  }
+`
+
+/**
+ * Capacità di business con la salute peggiore fra i servizi collegati (ondata
+ * 3, sola lettura): una query sola, nessun controllo di modifica in pagina.
+ */
+export const GET_BUSINESS_CAPABILITIES_HEALTH = gql`
+  query GetBusinessCapabilitiesHealth {
+    businessCapabilitiesHealth {
+      id name health downServices degradedServices
+      services { id name criticality ownerGroup { id name } }
+    }
+  }
+`
+
 /** BusinessApplication ancora senza mappa (dialogo «Crea una mappa», solo admin). */
 export const GET_SERVICE_MAP_CANDIDATES = gql`
   query GetServiceMapCandidates($search: String, $limit: Int) {

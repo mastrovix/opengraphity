@@ -357,6 +357,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...incidentResolvers.Incident,
       ...workflowResolvers.Incident,
       ...eventResolvers.Incident,   // correlatedEvents (Event Management)
+      ...serviceResolvers.Incident, // impactedServices (Servizi monitorati)
       linkedIncidents: incidentRelatedIncidents,
       linkedProblems:  incidentRelatedProblems,
       linkedChanges:   incidentRelatedChanges,

@@ -17,6 +17,7 @@ vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
   return { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => child } }
 })
+vi.mock('../serviceImpact/incident.js', () => ({ reconcileServiceIncident: vi.fn().mockResolvedValue({ outcome: 'none', incidentId: null, incidentNumber: null }) }))
 vi.mock('../../middleware/metrics.js', () => ({
   serviceEvaluationsTotal: { inc: vi.fn() }, serviceEvaluationDurationSeconds: { observe: vi.fn() }, servicesHealth: { set: vi.fn() },
   eventsSuppressedTotal: { inc: vi.fn() },
@@ -27,6 +28,7 @@ const { publishEvent } = await import('../../lib/publishEvent.js')
 const { audit } = await import('../../lib/audit.js')
 const { logger } = await import('../../lib/logger.js')
 const metrics = await import('../../middleware/metrics.js')
+const { reconcileServiceIncident } = await import('../serviceImpact/incident.js')
 const { buildServiceMap, proposeNodeSettings, relationshipFilterOf, CI_LABEL_FILTER, ENTRY_NODES_CYPHER, EXPAND_NODES_CYPHER, CREATE_SERVICE_MAP_CYPHER, assertRelationshipTypes, assertMaxDepth } = await import('../serviceImpact/build.js')
 const { serviceHistoryWriteCypher, serviceHistoryParams } = await import('../serviceImpact/history.js')
 const { evaluateServiceMap, createServiceMap, findMapsIncludingCI, evaluateStaleOrOldMaps, refreshServiceGauges, loadServiceMapState, LOAD_SERVICE_MAP_CYPHER, evaluationWriteCypher, SERVICE_STALE_EVALUATION_MINUTES } = await import('../serviceImpact/engine.js')
@@ -66,7 +68,7 @@ function stateRow(over: { props?: Record<string, unknown>; nodes?: Record<string
     ],
   }
 }
-const writeRow = (over: Record<string, unknown> = {}) => ({ id: 'map-1', previous: null, changed: true, wasStale: false, serviceId: 'ba-1', name: 'Enterprise Billing', ...over })
+const writeRow = (over: Record<string, unknown> = {}) => ({ id: 'map-1', previous: null, previousExplanation: '[]', changed: true, wasStale: false, serviceId: 'ba-1', name: 'Enterprise Billing', criticality: 'mission_critical', ...over })
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -231,12 +233,15 @@ describe('evaluateServiceMap', () => {
     expect(w.cypher).toBe(evaluationWriteCypher())
     expect(w.cypher).toContain('MATCH (m:ServiceMap {id: $mapId, tenant_id: $tenantId})')
     expect(w.cypher).toContain('(previous IS NULL OR previous <> $health) AS changed, ($stale AND NOT wasStale) AS becameStale')
+    // la spiegazione PRECEDENTE (letta prima del SET) e la criticità del servizio viaggiano con la riga: le usa l'incident del servizio
+    expect(w.cypher).toContain('WITH m, m.health AS previous, m.explanation AS previousExplanation, coalesce(m.stale, false) AS wasStale')
+    expect(w.cypher).toContain('head([(ba:BusinessApplication {tenant_id: $tenantId})-[:HAS_SERVICE_MAP]->(m) | ba.criticality]) AS criticality')
     expect(w.cypher).toContain('m.health_since = CASE WHEN changed THEN $now ELSE m.health_since END')
     expect(w.cypher).toContain('FOREACH (_ IN CASE WHEN changed THEN [1] ELSE [] END |')
     expect(w.cypher).toContain('FOREACH (_ IN CASE WHEN becameStale THEN [1] ELSE [] END |')
     expect(w.cypher.match(/CALL \{/g)).toHaveLength(1)   // il cap gira una volta sola
     expect(w.cypher).toContain('UNWIND CASE WHEN changed OR becameStale THEN [1] ELSE [] END AS _')
-    expect(w.cypher).toMatch(/RETURN m\.id AS id, previous, changed, wasStale, m\.service_id AS serviceId, m\.name AS name$/)
+    expect(w.cypher).toContain('RETURN m.id AS id, previous, previousExplanation, changed, wasStale, m.service_id AS serviceId, m.name AS name')
     expect(w.params).toMatchObject({ mapId: 'map-1', tenantId: 't1', now: NOW, stale: false, health: 'degraded', impactScore: 41, hTrigger: 'ci_health', hHealth: 'degraded', hImpactScore: 41, hAt: NOW, stTrigger: 'map_changed', stNote: null })
     expect(JSON.parse(w.params['explanation'] as string)).toEqual(JSON.parse(w.params['hCause'] as string))
     expect(JSON.parse(w.params['explanation'] as string)[0]).toMatchObject({ ciId: 'db-01', health: 'down', weight: 5, critical: false, ci: { id: 'db-01', type: 'database', health: 'down' }, path: [{ id: 'db-01' }, { id: 'api-03', type: 'application', health: 'operational' }] })
@@ -255,6 +260,51 @@ describe('evaluateServiceMap', () => {
     expect(audit).not.toHaveBeenCalled()
     expect(callMatching(WRITE_RE)!.params).toMatchObject({ impactScore: 41, health: 'degraded' })
     expect(metrics.serviceEvaluationsTotal.inc).toHaveBeenCalledWith({ result: 'unchanged' })
+  })
+
+  // ── Ondata 3: innesco dell'incident del servizio ───────────────────────────
+
+  it('salute cambiata → riconciliazione dell\'incident del servizio con stato, regole, criticità e cause della valutazione', async () => {
+    onCypher([[LOAD_RE, stateRow()], [WRITE_RE, writeRow()]])
+    const r = await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW, jobId: 'j1' })
+    expect(reconcileServiceIncident).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(reconcileServiceIncident).mock.calls[0]![0]).toMatchObject({
+      tenantId: 't1', mapId: 'map-1', serviceId: 'ba-1', serviceName: 'Enterprise Billing',
+      criticality: 'mission_critical', status: 'active', health: 'degraded', impactScore: 41,
+      actorId: 'monitoring', now: NOW, jobId: 'j1',
+    })
+    expect(vi.mocked(reconcileServiceIncident).mock.calls[0]![0].causes.map((c) => c.ciId)).toEqual(['db-01', 'cache-02'])
+    expect(vi.mocked(reconcileServiceIncident).mock.calls[0]![0].rules).toMatchObject({ open_incident_from: 'down' })
+    expect(r.incident).toEqual({ outcome: 'none', incidentId: null, incidentNumber: null })
+  })
+
+  it('salute invariata e stesse cause (anche in ordine diverso) → nessuna riconciliazione; stesse salute ma cause diverse → riconciliazione', async () => {
+    const same = JSON.stringify([{ ciId: 'cache-02' }, { ciId: 'db-01' }])
+    onCypher([[LOAD_RE, stateRow({ props: { health: 'degraded' } })], [WRITE_RE, writeRow({ previous: 'degraded', changed: false, previousExplanation: same })]])
+    const r = await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'periodic', now: NOW })
+    expect(reconcileServiceIncident).not.toHaveBeenCalled()
+    expect(r.incident).toBeNull()
+
+    const other = JSON.stringify([{ ciId: 'db-01' }, { ciId: 'srv-9' }])
+    onCypher([[LOAD_RE, stateRow({ props: { health: 'degraded' } })], [WRITE_RE, writeRow({ previous: 'degraded', changed: false, previousExplanation: other })]])
+    await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'periodic', now: NOW })
+    expect(reconcileServiceIncident).toHaveBeenCalledTimes(1)
+  })
+
+  it('spiegazione precedente assente o corrotta → errore (non è un insieme vuoto di comodo) e metrica error', async () => {
+    onCypher([[LOAD_RE, stateRow()], [WRITE_RE, writeRow({ previousExplanation: undefined })]])
+    await expect(evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).rejects.toThrow(/explanation is not a JSON string/)
+    onCypher([[LOAD_RE, stateRow()], [WRITE_RE, writeRow({ previousExplanation: '{nope' })]])
+    await expect(evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).rejects.toThrow(/explanation is corrupt JSON/)
+    expect(metrics.serviceEvaluationsTotal.inc).toHaveBeenCalledWith({ result: 'error' })
+    expect(metrics.serviceEvaluationsTotal.inc).toHaveBeenCalledTimes(2)
+  })
+
+  it('riconciliazione fallita → l\'errore propaga (il job ritenta) e la valutazione conta solo come error', async () => {
+    vi.mocked(reconcileServiceIncident).mockRejectedValueOnce(new Error('lock busy'))
+    onCypher([[LOAD_RE, stateRow()], [WRITE_RE, writeRow()]])
+    await expect(evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).rejects.toThrow('lock busy')
+    expect(vi.mocked(metrics.serviceEvaluationsTotal.inc).mock.calls).toEqual([[{ result: 'error' }]])
   })
 
   it('nodo incluso sparito (node_ids ⊄ INCLUDES) → stale = true, voce map_changed con gli id mancanti, warning; la valutazione prosegue sui nodi rimasti', async () => {

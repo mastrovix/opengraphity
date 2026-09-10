@@ -36,7 +36,9 @@ import { Pill } from '@/components/ui/Pill'
 import { formatDate, timeAgo } from './IncidentCard'
 import { SimilarIncidentsPanel } from '@/components/SimilarIncidentsPanel'
 import { MonitoringAlarmsSection } from '@/pages/events/CorrelatedEventsSection'
+import { ImpactedServicesSection } from './ImpactedServicesSection'
 import type { EventRow } from '@/types/events'
+import type { ImpactedServiceRef } from '@/types/services'
 import { colors } from '@/lib/tokens'
 
 const RESOLUTION_DRAFT = gql`
@@ -120,6 +122,8 @@ interface Incident {
   /** Allarmi di monitoraggio correlati (Event Management, ondata 3). */
   correlatedEvents:     EventRow[]
   correlatedEventsPurged: number
+  /** Servizi monitorati collegati all'incident (Servizi monitorati, ondata 3). */
+  impactedServices:     ImpactedServiceRef[]
 }
 
 interface Comment {
@@ -676,6 +680,9 @@ export function IncidentDetailPage() {
 
           {/* Allarmi di monitoraggio correlati (aperti/agganciati dalla policy eventi) */}
           <MonitoringAlarmsSection events={incident.correlatedEvents} purged={incident.correlatedEventsPurged} incidentId={incident.id} />
+
+          {/* Servizi monitorati collegati (visibile solo se ce n'è almeno uno) */}
+          <ImpactedServicesSection services={incident.impactedServices} />
 
           {/* Applicazioni impattate (dal grafo delle dipendenze) */}
           <SectionCard title="Applicazioni impattate" count={incident.impactedApplications.length} collapsible>

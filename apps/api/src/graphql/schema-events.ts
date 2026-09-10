@@ -340,6 +340,8 @@ export function eventsSDL(): string {
     firingEvents: Int!
     """CI che dipendono direttamente da questo (DEPENDS_ON entranti): l'impatto."""
     dependents:   Int!
+    """Servizi monitorati che dipendono dal CI: quante mappe attive lo includono (0 se nessuna)."""
+    servicesCount: Int!
     ownerTeam:    String
   }
 

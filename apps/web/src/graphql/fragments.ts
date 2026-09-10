@@ -98,6 +98,20 @@ export const SERVICE_MAP_DETAIL_FIELDS = gql`
       causes { ci { id name type } health weight critical path { id name } }
     }
     historyCount
+    openIncident { id number title status workflowInstance { id currentStep status } }
   }
   ${SERVICE_MAP_ROW_FIELDS}
+`
+
+/**
+ * Il servizio visto da un incident (`Incident.impactedServices`, ondata 3):
+ * la selezione più leggera possibile — nome, salute, punteggio, id per il
+ * link. Non riusa `ServiceMapRowFields` perché la sezione non mostra cause,
+ * owner né componenti, e il dettaglio incident non deve pagarli.
+ * Tipo: `ImpactedServiceRef` in types/services.ts.
+ */
+export const IMPACTED_SERVICE_FIELDS = gql`
+  fragment ImpactedServiceFields on ServiceMap {
+    id name health impactScore
+  }
 `

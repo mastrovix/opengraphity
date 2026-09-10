@@ -24,10 +24,18 @@ export const WIDGET_TYPES = [
   // Event Management: contatori di eventStats, nessuna entità/metrica da configurare
   // (entityType/metric vengono salvati con i valori correnti del form ma il widget non li usa).
   { value: 'active_alarms', labelKey: 'pages.dashboard.widgetType.activeAlarms', icon: 'Radar',  descKey: 'pages.dashboard.widgetTypeDesc.activeAlarms' },
+  // Servizi monitorati: contatori di serviceMaps.counts, stessa regola di active_alarms.
+  { value: 'service_health', labelKey: 'pages.dashboard.widgetType.serviceHealth', icon: 'Boxes', descKey: 'pages.dashboard.widgetTypeDesc.serviceHealth' },
 ] as const
 
 /** Tipi di widget che NON leggono `widgetData` (la sorgente dei dati è fissa): niente anteprima né configurazione dati. */
-export const DATA_FREE_WIDGET_TYPES: readonly string[] = ['active_alarms']
+export const DATA_FREE_WIDGET_TYPES: readonly string[] = ['active_alarms', 'service_health']
+
+/** Aiuto mostrato nel pannello di configurazione: dice da dove arrivano i dati del tipo scelto. */
+export const DATA_FREE_HINT_KEY: Record<string, string> = {
+  active_alarms:  'pages.dashboard.activeAlarmsHint',
+  service_health: 'pages.dashboard.serviceHealthHint',
+}
 
 export const ENTITY_TYPES = [
   { value: 'incident',             labelKey: 'pages.dashboard.entity.incident' },

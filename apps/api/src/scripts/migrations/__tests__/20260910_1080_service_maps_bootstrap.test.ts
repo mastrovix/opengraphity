@@ -23,9 +23,9 @@ function fakeSession(maps: Array<{ id: string; rules: unknown }>, completedField
 }
 
 describe('20260910_1080_service_maps_bootstrap', () => {
-  it('è l\'ultima registrata, dopo la 1070, con id nel formato YYYYMMDD_HHMM_name e senza autocommit', () => {
+  it('è registrata fra la 1070 e la 1090, con id nel formato YYYYMMDD_HHMM_name e senza autocommit', () => {
     const ids = MIGRATIONS.map((m) => m.id)
-    expect(ids.at(-1)).toBe('20260910_1080_service_maps_bootstrap')
+    expect(ids.indexOf('20260910_1080_service_maps_bootstrap')).toBeLessThan(ids.indexOf('20260910_1090_service_notification_rules'))
     expect(ids.indexOf('20260910_1080_service_maps_bootstrap')).toBeGreaterThan(ids.indexOf('20260910_1070_event_management_tenants'))
     expect(serviceMapsBootstrap.id).toMatch(/^\d{8}_\d{4}_[a-z0-9_]+$/)
     expect(serviceMapsBootstrap.autocommit).toBeUndefined()

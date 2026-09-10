@@ -57,6 +57,12 @@ export const DEFAULT_NOTIFICATION_RULES: readonly RuleDef[] = [
   { event_type: 'event.stable',                 severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.event.stable.title'          },
   { event_type: 'event.storm_started',          severity: 'error',   channels: ['in_app', 'slack'], target: 'all',      title_key: 'notification.event.storm_started.title'   },
   { event_type: 'event.storm_ended',            severity: 'success', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.storm_ended.title'     },
+  // Servizi monitorati, ondata 3: la salute del servizio è un avviso in app
+  // (cambia anche in meglio); l'incident aperto dal monitoraggio va anche su
+  // Slack come la tempesta di allarmi — è il segnale che un servizio di
+  // business è giù.
+  { event_type: 'service.health_changed',       severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.service.health_changed.title' },
+  { event_type: 'service.incident_opened',      severity: 'error',   channels: ['in_app', 'slack'], target: 'all',      title_key: 'notification.service.incident_opened.title' },
 ]
 
 export interface SeedNotificationRulesResult { created: number; skipped: number }

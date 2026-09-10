@@ -14,7 +14,7 @@ import { GET_SERVICE_MAP, GET_SERVICE_IMPACT_PREVIEW, GET_SERVICE_MAP_PROPOSAL }
 import { REEVALUATE_SERVICE_MAP, SET_SERVICE_MAP_STATUS, DELETE_SERVICE_MAP } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
-import { mapDetail, preview, proposal } from '@/test/mocks/services'
+import { mapDetail, preview, proposal, openIncident } from '@/test/mocks/services'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }))
 beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
@@ -155,6 +155,21 @@ describe('ServiceDetailPage', () => {
     expect(history[0]).toHaveTextContent('Health changed from Operational to Degraded after a component health change (score 41).')
     expect(history[0]).toHaveTextContent('db-01 down via api-03, cache-02 degraded via api-03')
     expect(history[1]).toHaveTextContent('Map created: initial health Operational (score 0).')
+  })
+
+  it('riquadro «Incident aperto» (ondata 3): con un incident il link al ticket, senza incident la nota giusta secondo le regole', async () => {
+    renderPage('viewer', { detail: detailMock({ openIncident: openIncident() }) })
+    await screen.findByRole('heading', { level: 1 })
+    const card = screen.getByTestId('service-open-incident')
+    expect(within(card).getByRole('link', { name: 'INC-0042' })).toHaveAttribute('href', '/incidents/inc-1')
+    expect(card).toHaveTextContent('Step: in progress')
+  })
+
+  it('senza incident e con «openIncidentFrom: never» il riquadro dice che gli incident sono disattivati', async () => {
+    renderPage('viewer', { detail: detailMock({ rules: { ...mapDetail().rules as Record<string, unknown>, openIncidentFrom: 'never' } }) })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByText('Incidents are turned off for this service.')).toBeInTheDocument()
+    expect(screen.queryByTestId('service-open-incident')).not.toBeInTheDocument()
   })
 
   it('admin: «Rivaluta ora» chiama la mutation; «Metti in pausa» manda expectedVersion = versione letta e il pulsante diventa «Riattiva»', async () => {
