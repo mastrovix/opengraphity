@@ -27,16 +27,8 @@ const isAppSource = (file: string) => !/\.test\.tsx?$/.test(file) && !/\.d\.ts$/
 /** t('chiave', { count … }) — chiave letterale, con `count` come prima opzione. */
 const RE_T_COUNT = /(?:^|[^A-Za-z0-9_$.])t\(\s*(['"])([^'"`\n]+?)\1\s*,\s*\{\s*count\b/g
 
-/** Chiavi già usate con { count } fuori dall'ambito dell'ondata 5 (altri namespace), senza plurali: da correggere nelle rispettive pagine. */
-const KNOWN_MISSING = new Set([
-  'bulk.assignTeamTitle', 'bulk.resolveTitle',
-  'itilDesigner.customFields', 'itilDesigner.systemFields',
-  'pages.anomalies.acceptedRisks', 'pages.anomalies.count', 'pages.anomalies.falsePositives', 'pages.anomalies.minChars',
-  'pages.changes.count', 'pages.ci.criteriaNTypes', 'pages.ci.criteriaPreview', 'pages.ci.graphAllNodes',
-  'pages.cmdb.count', 'pages.import.confirmErrors', 'pages.import.dryRunErrors', 'pages.incidents.count',
-  'pages.logs.count', 'pages.problems.count', 'pages.requests.count', 'pages.teams.count', 'pages.users.count',
-  'topbar.notificationsUnread', 'watchers.listLabel',
-])
+/** Chiavi usate con { count } ancora senza plurali: vuota dal 10 set 2026 — deve restare vuota. */
+const KNOWN_MISSING = new Set<string>([])
 
 describe('i18n — plurali delle chiavi usate con { count }', () => {
   const I = flatten(it_ as Record<string, unknown>)

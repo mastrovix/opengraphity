@@ -54,7 +54,7 @@ describe('UsersPage', () => {
     await screen.findByText('Mario Rossi')
     await applyRoleFilter(user, 'operator')
     await waitFor(() => expect(names()).toEqual(['Anna Bianchi']))
-    expect(screen.getByText('1 users')).toBeInTheDocument()
+    expect(screen.getByText('1 user')).toBeInTheDocument()
     // il filtro finisce nella URL (persistInQuery) e la pagina torna alla prima
     expect(screen.getByTestId('location').textContent).toMatch(/^\/users\?filters=/)
   })
