@@ -106,6 +106,12 @@ describe('initSchema — clean database', () => {
       // Cronologia dell'allarme (services/events/history.ts): unicità della voce e lettura per evento ordinata per istante
       'CREATE CONSTRAINT event_history_entry_id_unique IF NOT EXISTS FOR (n:EventHistoryEntry) REQUIRE n.id IS UNIQUE',
       'CREATE INDEX event_history_tenant_event IF NOT EXISTS FOR (n:EventHistoryEntry) ON (n.tenant_id, n.event_id, n.at)',
+      // Servizi monitorati (apps/api/src/services/serviceImpact/): mappa unica per id, cronologia unica per id, lookup per servizio/stato, cronologia per mappa ordinata per istante
+      'CREATE CONSTRAINT service_map_id_unique IF NOT EXISTS FOR (n:ServiceMap) REQUIRE n.id IS UNIQUE',
+      'CREATE CONSTRAINT service_health_entry_id_unique IF NOT EXISTS FOR (n:ServiceHealthEntry) REQUIRE n.id IS UNIQUE',
+      'CREATE INDEX service_map_tenant_service IF NOT EXISTS FOR (n:ServiceMap) ON (n.tenant_id, n.service_id)',
+      'CREATE INDEX service_map_tenant_status IF NOT EXISTS FOR (n:ServiceMap) ON (n.tenant_id, n.status)',
+      'CREATE INDEX service_health_tenant_map IF NOT EXISTS FOR (n:ServiceHealthEntry) ON (n.tenant_id, n.map_id, n.at)',
       'CREATE INDEX incident_tenant_id IF NOT EXISTS FOR (n:Incident) ON (n.tenant_id)',
       'CREATE INDEX event_tenant_status_last_seen IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.status, n.last_seen_at)',
       // Event Management (revisione, ondata 1): tempeste per sorgente, rivalutazioni per correlazione, CI per nome

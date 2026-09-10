@@ -51,13 +51,13 @@ beforeEach(async () => {
 })
 
 describe('publish — fan-out to every consumer queue', () => {
-  it('opens one Queue per consumer (notification-service, sla-engine, escalation-consumer) on the shared Redis options', async () => {
+  it('opens one Queue per consumer (notification-service, sla-engine, escalation-consumer, service-impact-consumer) on the shared Redis options', async () => {
     await publish(event())
-    expect(fake.instances.map(q => q.name)).toEqual(['notification-service', 'sla-engine', 'escalation-consumer'])
+    expect(fake.instances.map(q => q.name)).toEqual(['notification-service', 'sla-engine', 'escalation-consumer', 'service-impact-consumer'])
     for (const q of fake.instances) {
       expect(q.opts).toEqual({ connection: { host: 'redis.test', port: 6390 } })
     }
-    expect(openQueueCount()).toBe(3)
+    expect(openQueueCount()).toBe(4)
   })
 
   it('adds the SAME event to each queue, job name = event type, retry policy attached, no explicit jobId (dedup is consumer-side by event.id)', async () => {
@@ -77,9 +77,9 @@ describe('publish — fan-out to every consumer queue', () => {
   it('reuses the queues across publishes (no reconnect per event)', async () => {
     await publish(event())
     await publish(event('incident.resolved'))
-    expect(fake.instances).toHaveLength(3)
+    expect(fake.instances).toHaveLength(4)
     expect(byName('sla-engine')[0]!.add).toHaveBeenCalledTimes(2)
-    expect(openQueueCount()).toBe(3)
+    expect(openQueueCount()).toBe(4)
   })
 
   it('one queue failing → publish REJECTS with that error (no silent partial success); the other queues were still attempted (Promise.all)', async () => {
@@ -87,6 +87,7 @@ describe('publish — fan-out to every consumer queue', () => {
     await expect(publish(event())).rejects.toThrow('redis write failed on sla-engine')
     expect(byName('notification-service')[0]!.add).toHaveBeenCalledTimes(1)
     expect(byName('escalation-consumer')[0]!.add).toHaveBeenCalledTimes(1)
+    expect(byName('service-impact-consumer')[0]!.add).toHaveBeenCalledTimes(1)
     expect(vi.mocked(console.log).mock.calls.some(c => String(c[0]).includes('Published:'))).toBe(false)
   })
 
@@ -98,11 +99,11 @@ describe('publish — fan-out to every consumer queue', () => {
     expect(openQueueCount()).toBe(0)
 
     await publish(event())
-    expect(fake.instances).toHaveLength(6)
-    const second = fake.instances.slice(3)
+    expect(fake.instances).toHaveLength(8)
+    const second = fake.instances.slice(4)
     expect(second.every(q => !first.includes(q))).toBe(true)
     for (const q of first) expect(q.add).toHaveBeenCalledTimes(1)   // not reused
     for (const q of second) expect(q.add).toHaveBeenCalledTimes(1)
-    expect(openQueueCount()).toBe(3)
+    expect(openQueueCount()).toBe(4)
   })
 })

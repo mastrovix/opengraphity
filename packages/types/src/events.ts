@@ -148,6 +148,26 @@ export interface CIHealthChangedPayload {
   new_health: CIHealth
 }
 
+// --- Servizi monitorati (mappa del servizio + albero d'impatto) ---
+
+export type ServiceHealth = 'operational' | 'degraded' | 'down' | 'maintenance' | 'unknown'
+
+/**
+ * `service.health_changed` — pubblicato dal motore dei servizi monitorati
+ * (apps/api services/serviceImpact/engine.ts) quando la salute calcolata di
+ * una ServiceMap cambia. `id` e `map_id` sono lo stesso valore (`id` è la
+ * chiave che il dispatcher delle notifiche legge come entity_id).
+ */
+export interface ServiceHealthChangedPayload {
+  id: string
+  map_id: string
+  service_id: string
+  name: string
+  previous_health: ServiceHealth | null
+  new_health: ServiceHealth
+  impact_score: number
+}
+
 // --- Event Management (allarmi dal monitoraggio) ---
 
 export type MonitoringEventStatus   = 'firing' | 'resolved' | 'suppressed' | 'flapping'

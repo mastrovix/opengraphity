@@ -27,6 +27,7 @@ import { dashboardResolvers } from './dashboard.js'
 import { buildDynamicCIResolvers } from './dynamic-ci.js'
 import { anomalyResolvers } from './anomaly.js'
 import { eventResolvers } from './events.js'
+import { serviceResolvers } from './services.js'
 import { topologyResolvers } from './topology.js'
 import { notificationRuleResolvers } from './notificationRules.js'
 import { queueStatsResolvers } from './queueStats.js'
@@ -283,6 +284,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...dashboardResolvers.Query,
       ...anomalyResolvers.Query,
       ...eventResolvers.Query,
+      ...serviceResolvers.Query,
       ...topologyResolvers.Query,
       ...notificationRuleResolvers.Query,
       ...queueStatsResolvers.Query,
@@ -329,6 +331,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...dashboardResolvers.Mutation,
       ...anomalyResolvers.Mutation,
       ...eventResolvers.Mutation,
+      ...serviceResolvers.Mutation,
       ...similarityResolvers.Mutation,
       ...notificationRuleResolvers.Mutation,
       ...syncResolvers.Mutation,
@@ -378,6 +381,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     },
     Event:              eventResolvers.Event,
     EventHistoryEntry:  eventResolvers.EventHistoryEntry,   // cronologia dell'allarme (Event Management)
+    ServiceMap:         serviceResolvers.ServiceMap,        // servizi monitorati: nodes/edges/history sono field resolver
     ReportConversation: reportResolvers.ReportConversation,
     DashboardConfig:    { ...dashboardResolvers.DashboardConfig },
     DashboardWidget:    { ...dashboardResolvers.DashboardWidget },

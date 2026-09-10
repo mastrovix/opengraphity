@@ -27,6 +27,7 @@ import { formatDate } from '@/lib/datetime'
 import { keyActivate } from '@/lib/a11y'
 import { GroupCriteriaBuilder } from './GroupCriteriaBuilder'
 import { CIHealthSection } from './CIHealthSection'
+import { CIServicesSection } from './CIServicesSection'
 import { GET_BLAST_RADIUS, GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
 import { ADD_CI_RELATIONSHIP, REMOVE_CI_RELATIONSHIP, UPDATE_CI, ASSIGN_CI_OWNER, ASSIGN_CI_SUPPORT_GROUP } from '@/graphql/mutations'
 import { X, Plus, Pencil } from 'lucide-react'
@@ -616,6 +617,8 @@ export function CIDetailPage() {
 
           {/* Salute dal monitoraggio (Event Management): aperta se la salute è nota */}
           {!isGroup && <CIHealthSection ciId={ci.id} ciName={ci.name} />}
+          {/* Servizi monitorati la cui mappa include questo CI: compare solo se ce n'è almeno uno */}
+          {!isGroup && <CIServicesSection ciId={ci.id} />}
 
           {ci.type === 'dynamic_ci_group' && String(ci['membershipType'] ?? '') === 'dynamic' && (
             <GroupCriteriaBuilder

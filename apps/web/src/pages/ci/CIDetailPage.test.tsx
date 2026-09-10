@@ -4,7 +4,7 @@ import { gql } from '@apollo/client'
 import i18n from '@/i18n/i18n'
 import { CIDetailPage } from './CIDetailPage'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
-import { GET_CI_TYPES, GET_BLAST_RADIUS, GET_CI_INCIDENTS, GET_CI_CHANGES, GET_WORKFLOW_DEFINITION, GET_CI_HEALTH, GET_CI_ALIASES, GET_EVENTS } from '@/graphql/queries'
+import { GET_CI_TYPES, GET_BLAST_RADIUS, GET_CI_INCIDENTS, GET_CI_CHANGES, GET_WORKFLOW_DEFINITION, GET_CI_HEALTH, GET_CI_ALIASES, GET_EVENTS, GET_SERVICES_IMPACTED_BY_CI } from '@/graphql/queries'
 import { SET_CI_HEALTH_OVERRIDE } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { teamsMock, meMock } from '@/test/mocks/gql'
@@ -85,6 +85,8 @@ const mocks = (health: string | null = null, role = 'operator') => [
   healthMock(health),
   any(GET_CI_ALIASES, { ciAliases: [{ __typename: 'CIAlias', id: 'al-1', kind: 'hostname', value: 'web-01.acme.local', source: 'manual', createdAt: '2026-09-01T00:00:00Z', ci: { __typename: 'ConfigurationItemRef', id: 'srv-1', name: 'web-01', type: 'server', status: 'active', health } }] }),
   any(GET_EVENTS, { events: { __typename: 'EventPage', total: 0, items: [] } }),
+  // Servizi monitorati che includono il CI: nessuno → la sezione non compare.
+  any(GET_SERVICES_IMPACTED_BY_CI, { servicesImpactedByCI: [] }),
 ]
 
 function renderPage(opts: { mocks?: GqlMock[]; route?: string; showWarnings?: boolean } = {}) {

@@ -299,13 +299,23 @@ export const eventsFiringUncorrelated = createGauge('events_firing_uncorrelated'
 /** Ritardo del job `correlate` rispetto alla scadenza del ritardo (processedAt − dueAt): coda in affanno. */
 export const eventCorrelateJobLagSeconds = createHistogram('event_correlate_job_lag_seconds', 'Delay between a correlate job due time and its processing, in seconds', [], [0.5, 1, 5, 10, 30, 60, 300, 900])
 
-/** Tutte le metriche dell'Event Management, nell'ordine di esposizione. */
+// ── Servizi monitorati (mappa del servizio + albero d'impatto, ondata 1) ────
+// Incrementate dal motore (services/serviceImpact/engine.ts): una valutazione
+// per (mappa, innesco); `result` = changed | unchanged | error (bounded).
+/** Valutazioni delle mappe per esito: `changed` (salute cambiata: voce di cronologia + service.health_changed), `unchanged`, `error` (il job ritenta). */
+export const serviceEvaluationsTotal        = createCounter('service_evaluations_total', 'Service map evaluations by result (changed | unchanged | error)', ['result'])
+export const serviceEvaluationDurationSeconds = createHistogram('service_evaluation_duration_seconds', 'Service map evaluation duration in seconds (read + rules + write)', [], [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10])
+/** Mappe per salute su tutti i tenant, riallineato dalla passata periodica (jobs/serviceImpactWorker.ts). */
+export const servicesHealth                 = createGauge('services_health', 'Service maps by current health (all tenants)', ['health'])
+
+/** Tutte le metriche dell'Event Management (e dei servizi monitorati), nell'ordine di esposizione. */
 export const EVENT_MANAGEMENT_METRICS = [
   eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsAmbiguousTotal, eventsSuppressedTotal, eventsFlappingTotal,
   incidentsAutoOpenedTotal, incidentsAutoResolvedTotal, incidentsReopenedTotal, eventsPurgedTotal,
   eventsStaleTotal, eventsIngestFailedTotal, eventsRejectedTotal, eventsResolvedUnknownTotal, eventStormsActive, webhookRateLimitedTotal,
   eventsCorrelatedTotal, eventPipelineDurationSeconds, eventPassTotal, eventPassDurationSeconds,
   eventsOverdueDelayed, eventsFiringUncorrelated, eventCorrelateJobLagSeconds,
+  serviceEvaluationsTotal, serviceEvaluationDurationSeconds, servicesHealth,
 ] as const
 
 // ── Route label (A-15) ────────────────────────────────────────────────────────

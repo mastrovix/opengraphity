@@ -45,6 +45,10 @@ export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
   // del wizard admin. La console usa `monitoringSourceRefs` (riferimenti
   // leggeri, ruoli predefiniti) e `Event.source` è un MonitoringSourceRef.
   'monitoringSources', 'payloadKeys', 'sampleInboundPayload',
+  // Servizi monitorati: le BusinessApplication candidate alla creazione di una
+  // mappa sono uno strumento della mutation admin createServiceMap; le letture
+  // (serviceMaps, serviceMap, servicesImpactedByCI) restano a ruoli predefiniti.
+  'serviceMapCandidates',
 ])
 
 export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
@@ -89,6 +93,9 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   // console e pagina Salute CI sono per lo staff. Tabella completa pinnata in
   // lib/__tests__/authorization.test.ts.
   'createCIAlias', 'deleteCIAlias', 'updateEventPolicy', 'sendSampleEvent', 'previewInboundEvents',
+  // Servizi monitorati (configurazione del tenant: mappe dei servizi). Tabella
+  // completa pinnata in lib/__tests__/authorization.test.ts.
+  'createServiceMap', 'reevaluateServiceMap', 'setServiceMapStatus', 'deleteServiceMap',
 ])
 
 /**

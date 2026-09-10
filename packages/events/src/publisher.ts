@@ -3,8 +3,12 @@ import type { DomainEvent } from '@opengraphity/types'
 import { registerQueue } from './connection.js'
 import { getRedisConnection } from './redis.js'
 
-/** One queue per consumer — fan-out by publishing to all */
-const CONSUMER_QUEUES = ['notification-service', 'sla-engine', 'escalation-consumer'] as const
+/**
+ * One queue per consumer — fan-out by publishing to all.
+ * `service-impact-consumer`: apps/api consumers/serviceImpactConsumer.ts
+ * (Servizi monitorati: `ci.health_changed` → valutazione delle mappe).
+ */
+export const CONSUMER_QUEUES = ['notification-service', 'sla-engine', 'escalation-consumer', 'service-impact-consumer'] as const
 
 const JOB_OPTIONS = {
   attempts:         4,   // 1 initial + 3 retries (5s / 30s / 5min via backoffStrategy)

@@ -1,0 +1,94 @@
+/**
+ * Layout a livelli (funzione pura): un nodo per componente sulla riga del
+ * suo livello, il servizio in cima, archi vivi + il tratto servizio → livello
+ * 1, percorso d'impatto marcato con la severità peggiore, segmenti del
+ * percorso senza arco vivo disegnati ma marcati non vivi.
+ */
+import { describe, it, expect } from 'vitest'
+import { layoutServiceMap, causeSequence, NODE_H, GAP_Y, PAD, ROOT_REL } from './serviceMapLayout'
+import type { ImpactCause, ServiceMapEdge, ServiceMapNode } from '@/types/services'
+
+const n = (id: string, level: number, via: string | null, over: Partial<ServiceMapNode> = {}): ServiceMapNode => ({
+  ci: { id, name: id, type: 'server' }, level, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false,
+  via, addedBy: 'auto', health: 'operational', inMaintenance: false, contributes: true, ...over,
+})
+const e = (source: string, target: string, relType = 'DEPENDS_ON'): ServiceMapEdge => ({ source, target, relType })
+const cause = (id: string, health: 'down' | 'degraded', path: string[]): ImpactCause =>
+  ({ ci: { id, name: id, type: 'server' }, health, weight: 5, critical: false, path: path.map((p) => ({ id: p, name: p })) })
+
+const NODES = [n('api-03', 1, null), n('db-01', 2, 'api-03', { health: 'down' }), n('cache-02', 2, 'api-03', { health: 'degraded' }), n('cert', 2, 'api-03', { health: null }), n('san-01', 3, 'db-01')]
+const EDGES = [e('api-03', 'db-01'), e('api-03', 'cache-02'), e('api-03', 'cert', 'USES_CERTIFICATE'), e('db-01', 'san-01', 'HOSTED_ON')]
+
+describe('layoutServiceMap', () => {
+  it('un nodo per componente sulla riga del suo livello, il servizio in cima; righe compattate ma con il livello vero', () => {
+    const l = layoutServiceMap('svc', NODES, EDGES, [])
+    expect(l.levels).toEqual([0, 1, 2, 3])
+    expect(l.nodes).toHaveLength(NODES.length + 1)
+    const root = l.nodes.find((p) => p.node === null)!
+    expect(root.id).toBe('svc'); expect(root.level).toBe(0); expect(root.y).toBe(PAD)
+    const byLevel = (lvl: number) => l.nodes.filter((p) => p.level === lvl)
+    expect(byLevel(1).map((p) => p.id)).toEqual(['api-03'])
+    expect(byLevel(2).map((p) => p.id).sort()).toEqual(['cache-02', 'cert', 'db-01'])
+    expect(byLevel(3).map((p) => p.id)).toEqual(['san-01'])
+    // stessa y per riga, y crescente con il livello
+    for (const p of byLevel(2)) expect(p.y).toBe(PAD + 2 * (NODE_H + GAP_Y))
+    expect(byLevel(3)[0]!.y).toBe(PAD + 3 * (NODE_H + GAP_Y))
+    // nella riga le x sono distinte
+    expect(new Set(byLevel(2).map((p) => p.x)).size).toBe(3)
+
+    // livello 4 vuoto e livello 5 popolato → la riga 5 è la quarta riga (compattata), etichettata 5
+    const gap = layoutServiceMap('svc', [n('a', 1, null), n('b', 5, 'a')], [], [])
+    expect(gap.levels).toEqual([0, 1, 5])
+    expect(gap.nodes.find((p) => p.id === 'b')!.y).toBe(PAD + 2 * (NODE_H + GAP_Y))
+  })
+
+  it('archi: il servizio è collegato al livello 1 (REALIZES), gli archi vivi sono tutti presenti, un arco verso un nodo non incluso è scartato', () => {
+    const l = layoutServiceMap('svc', NODES, [...EDGES, e('api-03', 'ghost')], [])
+    expect(l.edges.map((x) => `${x.source}→${x.target}`).sort()).toEqual(['api-03→cache-02', 'api-03→cert', 'api-03→db-01', 'db-01→san-01', 'svc→api-03'].sort())
+    const rootEdge = l.edges.find((x) => x.source === 'svc')!
+    expect(rootEdge.relType).toBe(ROOT_REL)
+    expect(l.edges.every((x) => x.live)).toBe(true)
+    expect(l.edges.every((x) => x.highlight === null)).toBe(true)
+  })
+
+  it('percorso d\'impatto: nodi e segmenti delle cause marcati con la severità peggiore (giù > degradato), fino al servizio', () => {
+    const causes = [cause('db-01', 'down', ['api-03']), cause('cache-02', 'degraded', ['cache-02', 'api-03'])]
+    const l = layoutServiceMap('svc', NODES, EDGES, causes)
+    const p = (id: string) => l.nodes.find((x) => x.id === id)!
+    expect(p('db-01').onPath).toBe('down');        expect(p('db-01').isCause).toBe(true)
+    expect(p('cache-02').onPath).toBe('degraded'); expect(p('cache-02').isCause).toBe(true)
+    expect(p('api-03').onPath).toBe('down')        // attraversato da entrambi: vince giù
+    expect(p('svc').onPath).toBe('down')
+    expect(p('cert').onPath).toBeNull();           expect(p('cert').isCause).toBe(false)
+    expect(p('san-01').onPath).toBeNull()
+    const edge = (s: string, t: string) => l.edges.find((x) => x.source === s && x.target === t)!
+    expect(edge('svc', 'api-03').highlight).toBe('down')
+    expect(edge('api-03', 'db-01').highlight).toBe('down')
+    expect(edge('api-03', 'cache-02').highlight).toBe('degraded')
+    expect(edge('api-03', 'cert').highlight).toBeNull()
+    expect(edge('db-01', 'san-01').highlight).toBeNull()
+  })
+
+  it('un segmento del percorso senza arco vivo viene disegnato lo stesso, marcato non vivo (la mappa non è più allineata alla CMDB)', () => {
+    const l = layoutServiceMap('svc', NODES, EDGES.filter((x) => x.target !== 'db-01'), [cause('db-01', 'down', ['api-03'])])
+    const synthetic = l.edges.find((x) => x.source === 'api-03' && x.target === 'db-01')!
+    expect(synthetic).toBeDefined()
+    expect(synthetic.live).toBe(false)
+    expect(synthetic.highlight).toBe('down')
+    // non viene duplicato quando l'arco vivo c'è
+    const ok = layoutServiceMap('svc', NODES, EDGES, [cause('db-01', 'down', ['api-03'])])
+    expect(ok.edges.filter((x) => x.source === 'api-03' && x.target === 'db-01')).toHaveLength(1)
+  })
+
+  it('causeSequence: il nodo malato una volta sola, che il server lo metta o no in path', () => {
+    expect(causeSequence(cause('db-01', 'down', ['api-03']))).toEqual(['db-01', 'api-03'])
+    expect(causeSequence(cause('cache-02', 'degraded', ['cache-02', 'api-03']))).toEqual(['cache-02', 'api-03'])
+  })
+
+  it('mappa vuota: solo il servizio, nessun arco', () => {
+    const l = layoutServiceMap('svc', [], [], [])
+    expect(l.levels).toEqual([0])
+    expect(l.nodes).toHaveLength(1)
+    expect(l.edges).toEqual([])
+  })
+})

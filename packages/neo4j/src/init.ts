@@ -156,6 +156,9 @@ const CONSTRAINTS: SchemaStatement[] = [
   { label: 'CIAlias(tenant_id, kind, value)', cypher: 'CREATE CONSTRAINT ci_alias_tenant_kind_value_unique IF NOT EXISTS FOR (n:CIAlias) REQUIRE (n.tenant_id, n.kind, n.value) IS UNIQUE' },
   // Cronologia dell'allarme (apps/api/src/services/events/history.ts): una voce per cambiamento di stato/esito dell'Event.
   { label: 'EventHistoryEntry.id', cypher: 'CREATE CONSTRAINT event_history_entry_id_unique IF NOT EXISTS FOR (n:EventHistoryEntry) REQUIRE n.id IS UNIQUE' },
+  // Servizi monitorati (apps/api/src/services/serviceImpact/): mappa del servizio e cronologia della sua salute.
+  { label: 'ServiceMap.id', cypher: 'CREATE CONSTRAINT service_map_id_unique IF NOT EXISTS FOR (n:ServiceMap) REQUIRE n.id IS UNIQUE' },
+  { label: 'ServiceHealthEntry.id', cypher: 'CREATE CONSTRAINT service_health_entry_id_unique IF NOT EXISTS FOR (n:ServiceHealthEntry) REQUIRE n.id IS UNIQUE' },
 ]
 
 const INDEXES: SchemaStatement[] = [
@@ -328,6 +331,13 @@ const INDEXES: SchemaStatement[] = [
   // Cronologia dell'allarme: Event.history legge le voci di un evento dalla più
   // recente (resolvers/events.ts) e il cap per evento le ordina per `at`.
   { label: 'EventHistoryEntry(tenant_id, event_id, at)', cypher: 'CREATE INDEX event_history_tenant_event IF NOT EXISTS FOR (n:EventHistoryEntry) ON (n.tenant_id, n.event_id, n.at)' },
+  // Servizi monitorati: una mappa per servizio (lookup per service_id), la
+  // lista per stato/salute (pagina Servizi e passata periodica), la
+  // cronologia della mappa dalla più recente (resolvers/services.ts) e il cap
+  // per mappa ordinato per `at` (services/serviceImpact/history.ts).
+  { label: 'ServiceMap(tenant_id, service_id)', cypher: 'CREATE INDEX service_map_tenant_service IF NOT EXISTS FOR (n:ServiceMap) ON (n.tenant_id, n.service_id)' },
+  { label: 'ServiceMap(tenant_id, status)', cypher: 'CREATE INDEX service_map_tenant_status IF NOT EXISTS FOR (n:ServiceMap) ON (n.tenant_id, n.status)' },
+  { label: 'ServiceHealthEntry(tenant_id, map_id, at)', cypher: 'CREATE INDEX service_health_tenant_map IF NOT EXISTS FOR (n:ServiceHealthEntry) ON (n.tenant_id, n.map_id, n.at)' },
   // NOTE — vector indexes are NOT listed here on purpose: their name and
   // dimension depend on the configured embedding provider
   // (`incident_embedding_<dims>` / `kb_embedding_<dims>`, see

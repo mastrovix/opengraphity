@@ -109,7 +109,8 @@
     "eventPolicy": "Policy eventi",
     "monitoringSources": "Sorgenti",
     "ciHealth": "Salute CI",
-    "platformMonitoring": "Platform monitoring"
+    "platformMonitoring": "Platform monitoring",
+    "services": "Servizi"
   },
   "pages": {
     "incidents": {
@@ -1696,6 +1697,13 @@
       "healthOverridden": "Salute forzata a {{health}}",
       "overrideRemoved": "Forzatura rimossa: salute ricalcolata dal monitoraggio",
       "copied": "Copiato!"
+    },
+    "services": {
+      "created": "Mappa di \"{{name}}\" creata",
+      "reevaluated": "Servizio rivalutato: {{health}}",
+      "statusChanged": "Mappa {{status}}",
+      "deleted": "Mappa eliminata",
+      "actionFailed": "Operazione non riuscita: {{error}}"
     }
   },
   "components": {
@@ -2460,6 +2468,231 @@
         "askAdmin": "Chiedi a un amministratore di collegare uno strumento di monitoraggio."
       },
       "noMatch": "Nessun CI corrisponde ai filtri"
+    },
+    "services": {
+      "title": "Servizi",
+      "subtitle": "La salute dei servizi di business, calcolata dai componenti che li reggono, dal più grave.",
+      "refresh": "Aggiorna",
+      "updatedAt": "Aggiornato alle {{time}}",
+      "openService": "Apri il servizio {{name}}",
+      "count_one": "{{count}} servizio monitorato",
+      "count_other": "{{count}} servizi monitorati",
+      "page": "pagina {{page}} di {{total}}",
+      "noMatch": "Nessun servizio corrisponde ai filtri",
+      "since": "da {{duration}}",
+      "sinceHint": "Salute attuale in vigore dal {{date}}",
+      "components_one": "{{count}} componente",
+      "components_other": "{{count}} componenti",
+      "stale": "Un componente della mappa non esiste più nella CMDB: la mappa va aggiornata.",
+      "staleShort": "Componente mancante nella CMDB",
+      "impactScoreLabel": "Punteggio d'impatto {{score}} su 100",
+      "tiles": {
+        "down": "Giù",
+        "degraded": "Degradati",
+        "maintenance": "In manutenzione",
+        "operational": "Operativi",
+        "unknown": "Sconosciuti",
+        "toggleHint": "Filtra la tabella su questa salute; un secondo clic toglie il filtro",
+        "unknownHint": "Servizi senza alcun componente con salute nota: non filtrabile, è una nota",
+        "unknownContext": "senza dati di salute",
+        "noneContext": "nessuno al momento",
+        "shareContext_one": "su {{count}} servizio monitorato",
+        "shareContext_other": "su {{count}} servizi monitorati"
+      },
+      "filters": {
+        "status": "Stato della mappa",
+        "allStatuses": "Tutti gli stati",
+        "search": "Cerca un servizio per nome",
+        "searchPlaceholder": "Cerca…"
+      },
+      "columns": {
+        "service": "Servizio",
+        "health": "Salute",
+        "impact": "Punteggio d'impatto",
+        "cause": "Causa principale",
+        "components": "Componenti",
+        "owner": "Owner",
+        "name": "Nome",
+        "type": "Tipo",
+        "level": "Livello",
+        "role": "Ruolo",
+        "propagate": "Pesa",
+        "weight": "Peso",
+        "critical": "Critico"
+      },
+      "empty": {
+        "title": "Nessun servizio monitorato",
+        "description": "Crea la mappa di un'applicazione di business: i suoi componenti e la loro salute calcolano quella del servizio.",
+        "cta": "Crea una mappa",
+        "askAdmin": "Chiedi a un amministratore di creare una mappa."
+      },
+      "health": {
+        "operational": "Operativo",
+        "degraded": "Degradato",
+        "down": "Giù",
+        "maintenance": "In manutenzione",
+        "unknown": "Sconosciuta",
+        "outOfVocabulary": "Sconosciuto ({{value}})"
+      },
+      "status": {
+        "draft": "Bozza",
+        "active": "Attiva",
+        "paused": "In pausa"
+      },
+      "role": {
+        "entry": "Ingresso",
+        "component": "Componente",
+        "infrastructure": "Infrastruttura",
+        "certificate": "Certificato"
+      },
+      "propagation": {
+        "always": "Sempre",
+        "never": "Mai",
+        "weighted": "Ponderato"
+      },
+      "explain": {
+        "word": {
+          "down": "giù",
+          "degraded": "degradato",
+          "operational": "operativo"
+        },
+        "cause": "{{name}} {{health}}",
+        "causeVia": "{{name}} {{health}} via {{via}}",
+        "is": "{{name}} è {{health}}",
+        "isVia": "{{name}} è {{health}} (via {{via}})",
+        "criticalSuffix": "{{text}} — componente critico",
+        "sentence": "{{health}}: {{causes}}",
+        "operational": "Operativo: tutti i componenti che pesano sono operativi.",
+        "unknown": "Sconosciuta: nessun componente ha una salute nota.",
+        "maintenance": "In manutenzione: un componente critico è in finestra di change.",
+        "noCauses": "{{health}}: nessuna causa registrata."
+      },
+      "map": {
+        "levelService": "Servizio",
+        "levelEntry": "Livello 1 · applicazioni",
+        "level": "Livello {{level}}",
+        "empty": "La mappa non ha componenti: il servizio non realizza alcuna applicazione (REALIZES) o la costruzione non ha trovato relazioni.",
+        "nodeLabel": "{{name}} · {{type}} · {{health}}",
+        "legend": {
+          "title": "Legenda",
+          "critical": "Componente critico",
+          "pathDown": "Percorso d'impatto (giù)",
+          "pathDegraded": "Percorso d'impatto (degradato)",
+          "edge": "Relazione viva",
+          "edgeMissing": "Tratto del percorso senza relazione viva"
+        }
+      },
+      "why": {
+        "weight": "peso {{weight}}",
+        "critical": "critico",
+        "path": "Percorso",
+        "select": "Evidenzia {{name}} sulla mappa"
+      },
+      "detail": {
+        "back": "Torna ai servizi",
+        "notFound": "Servizio non trovato",
+        "noResult": "{{operation}} non ha restituito la mappa",
+        "map": "Mappa del servizio",
+        "why": "Perché",
+        "whyEmpty": "Nessun componente ha pesato sull'ultima valutazione.",
+        "components": "Componenti",
+        "componentsEmpty": "La mappa non ha componenti.",
+        "service": "Servizio",
+        "node": "Componente",
+        "closeNode": "Chiudi il pannello del componente",
+        "rules": "Come si calcola",
+        "rulesReadOnly": "Regole versione {{version}}: modificabili da interfaccia nell'ondata 2.",
+        "evaluated": "Valutata {{ago}}",
+        "neverEvaluated": "Mai valutata",
+        "actions": {
+          "reevaluate": "Rivaluta ora",
+          "pause": "Metti in pausa",
+          "resume": "Riattiva",
+          "delete": "Elimina"
+        },
+        "fields": {
+          "service": "Applicazione di business",
+          "criticality": "Criticità",
+          "owner": "Owner",
+          "status": "Stato della mappa",
+          "version": "Versione",
+          "maxDepth": "Profondità massima",
+          "relationshipTypes": "Relazioni seguite",
+          "builtFrom": "Costruita",
+          "builtFromAuto": "Automaticamente dal grafo",
+          "builtFromManual": "A mano",
+          "updatedAt": "Ultima modifica",
+          "evaluatedAt": "Ultima valutazione"
+        },
+        "rulesFields": {
+          "downSharePct": "Giù se un componente critico è giù o la quota ponderata dei componenti giù è ≥ {{pct}}%",
+          "degradedSharePct": "Degradato se il punteggio d'impatto è ≥ {{pct}}",
+          "minNodes_one": "…e almeno {{count}} componente non è operativo",
+          "minNodes_other": "…e almeno {{count}} componenti non sono operativi",
+          "unknownNodes": "Componenti senza salute: {{value}}",
+          "unknownNodesIgnore": "ignorati",
+          "unknownNodesOperational": "contano come operativi",
+          "openIncidentFrom": "Incident per servizio da: {{value}} (ondata 3)"
+        },
+        "nodeFields": {
+          "name": "Componente",
+          "type": "Tipo",
+          "level": "Livello",
+          "role": "Ruolo",
+          "propagate": "Pesa",
+          "weight": "Peso",
+          "critical": "Critico",
+          "health": "Salute",
+          "inMaintenance": "In manutenzione (finestra di change o ciclo di vita)",
+          "contributes": "Conta nel calcolo",
+          "addedBy": "Aggiunto",
+          "addedByAuto": "Automaticamente",
+          "addedByManual": "A mano",
+          "alarms": "Vedi gli allarmi attivi",
+          "openCI": "Apri il CI"
+        }
+      },
+      "delete": {
+        "title": "Eliminare la mappa di \"{{name}}\"?",
+        "body": "Il servizio resta nel catalogo; la mappa, le regole e la cronologia della salute vengono eliminate."
+      },
+      "history": {
+        "title": "Cronologia",
+        "empty": "Nessuna voce ancora.",
+        "truncated": "Mostrate le ultime {{shown}} voci di {{total}}.",
+        "noPrevious": "nessuna salute precedente",
+        "causesMore_one": "{{causes}}, +{{count}} altra",
+        "causesMore_other": "{{causes}}, +{{count}} altre",
+        "trigger": {
+          "created": "Mappa creata: salute iniziale <health/> (punteggio {{score}}).",
+          "ci_health": "Salute passata da <previous/> a <health/> per un cambio di salute di un componente (punteggio {{score}}).",
+          "rules_changed": "Regole modificate: salute <health/>, era <previous/> (punteggio {{score}}).",
+          "map_changed": "Mappa cambiata: salute <health/>, era <previous/> (punteggio {{score}}).",
+          "maintenance": "Finestra di change: salute <health/>, era <previous/> (punteggio {{score}}).",
+          "manual": "Rivalutazione manuale: salute <health/>, era <previous/> (punteggio {{score}}).",
+          "periodic": "Passata periodica: salute <health/>, era <previous/> (punteggio {{score}}).",
+          "unknown": "Voce sconosciuta: {{trigger}}."
+        }
+      },
+      "create": {
+        "title": "Crea una mappa",
+        "service": "Applicazione di business",
+        "servicePlaceholder": "— scegli un servizio —",
+        "search": "Cerca un'applicazione",
+        "candidatesEmpty": "Nessuna applicazione di business senza mappa.",
+        "candidatesError": "Candidati non disponibili: {{error}}",
+        "depth": "Profondità massima",
+        "depthHint": "Quanti passi seguire dalle applicazioni lungo le relazioni scelte (1–{{max}}).",
+        "relationships": "Relazioni da seguire",
+        "relationshipsHint": "In uscita, verso chi fornisce: A -DEPENDS_ON-> B significa che A soffre se B è giù.",
+        "relationshipsRequired": "Scegli almeno una relazione.",
+        "submit": "Crea",
+        "noResult": "createServiceMap non ha restituito la mappa"
+      },
+      "ciSection": {
+        "title": "Servizi che dipendono da questo CI",
+        "hint": "Servizi la cui mappa include questo CI: la sua salute pesa sulla loro."
+      }
     }
   }
 }

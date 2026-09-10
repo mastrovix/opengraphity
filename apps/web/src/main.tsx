@@ -39,6 +39,8 @@ import { EventDetailPage } from '@/pages/events/EventDetailPage'
 import { EventPolicyPage } from '@/pages/settings/EventPolicyPage'
 import { MonitoringSourcesPage } from '@/pages/monitoring/MonitoringSourcesPage'
 import { CIHealthPage } from '@/pages/monitoring/CIHealthPage'
+import { ServicesPage } from '@/pages/monitoring/ServicesPage'
+import { ServiceDetailPage } from '@/pages/monitoring/ServiceDetailPage'
 import { NewSourceWizard } from '@/pages/monitoring/NewSourceWizard'
 import { EditSourcePage } from '@/pages/monitoring/EditSourcePage'
 const TopologyPage = lazy(() => import('@/pages/topology/TopologyPage').then(m => ({ default: m.TopologyPage })))
@@ -176,6 +178,9 @@ const router = createBrowserRouter([
       { path: 'events/:id',                    element: staff(<Keyed Page={EventDetailPage} />),   errorElement: <RouteError /> },
       // Salute dei CI (lista per gravità e impatto): staff; il CTA "Aggiungi sorgente" è solo admin.
       { path: 'monitoring/health',             element: staff(<CIHealthPage />),                   errorElement: <RouteError /> },
+      // Servizi monitorati (mappa del servizio + albero d'impatto): staff; le azioni (crea, rivaluta, pausa, elimina) sono solo admin nella pagina.
+      { path: 'monitoring/services',           element: staff(<ServicesPage />),                   errorElement: <RouteError /> },
+      { path: 'monitoring/services/:id',       element: staff(<Keyed Page={ServiceDetailPage} />), errorElement: <RouteError /> },
       // Sorgenti di monitoraggio (webhook in ingresso con entityType = event): solo admin.
       { path: 'monitoring/sources',            element: admin(<MonitoringSourcesPage />),          errorElement: <RouteError /> },
       { path: 'monitoring/sources/new',        element: admin(<NewSourceWizard />),                errorElement: <RouteError /> },

@@ -207,6 +207,7 @@ Migrazioni presenti:
 | `20260908_1000_workflow_step_metadata` | `is_initial/is_terminal/is_open/category/step_order` sugli `WorkflowStep` (ex `migrate-workflow-metadata`) |
 | `20260908_1010_ci_configuration_item_label` | aggiunge `:ConfigurationItem` ai nodi con una label registrata in `CITypeDefinition.neo4j_label` (B-08; batch da 5000, autocommit) |
 | `20260909_1000` … `20260909_1040` | Event Management: vedi §7 (policy per tenant, regole di notifica, `Event.correlation`, chiavi dell'ondata 4) |
+| `20260910_1080_service_maps_bootstrap` | Servizi monitorati: vedi §7 (*Servizi monitorati*) — completa `rules`, `node_ids` e i campi dell'ondata 1 sulle `ServiceMap` esistenti; no-op senza mappe |
 
 Wrapper per singola migrazione: `migrate:workflow-metadata -- [--force]`,
 `migrate-ci-labels.ts [--force]` (`--force` riapplica una migrazione già
@@ -476,6 +477,7 @@ subito.
 | `20260909_1030_event_management_correlation_rules` | regole `event.suppressed/correlated`; `Event.correlation = 'none'` dove assente |
 | `20260909_1040_event_management_policy_v2` | ondata 4: aggiunge alla policy di ogni tenant le chiavi mancanti (`flap_stable_minutes`, `storm_threshold_per_minute`, `storm_cooldown_minutes`) senza toccare i valori esistenti; `Event.transitions = []` dove assente; regole `event.flapping/stable/storm_started/storm_ended`. Una policy con JSON corrotto **ferma** la migrazione con il tenant nel messaggio |
 | `20260910_1070_event_management_tenants` | revisione A-M8/A-2: crea i nodi `:Tenant` mancanti unendo i `tenant_id` di `User`, `InboundWebhook`, `ApiKey` e `ConfigurationItem` (la 1010 guardava solo gli utenti: un tenant "solo integrazione" restava senza policy e ogni ingest falliva), con i campi predefiniti della 1010; aggiunge `match_short_hostname` (false) e ogni altra chiave mancante alla policy di ogni tenant, crea la policy intera (versionata) dove manca. Stesse regole della 1040 sul JSON corrotto |
+| `20260910_1080_service_maps_bootstrap` | Servizi monitorati (ondata 1): sulle `ServiceMap` esistenti completa `rules` con le chiavi mancanti (o la crea intera dai default), ricostruisce `node_ids` dalle `INCLUDES` e scrive i campi obbligatori dell'ondata 1 dove mancano (`stale`, `version`, `built_from`, `status`, `health`, `impact_score`, `explanation`, `relationship_types`, `max_depth`); JSON corrotto ferma la migrazione con la mappa nel messaggio. Senza mappe non fa nulla. Vincoli e indici (`ServiceMap`, `ServiceHealthEntry`) sono in `init.ts` (`migrate --init-schema`) |
 
 Senza la 1070 un tenant senza nodo `:Tenant` non può nemmeno creare un webhook
 di Event Management: `createInboundWebhook` con `entityType = event` verifica
@@ -837,3 +839,92 @@ re-evaluation failed`; `reevaluateEvent` dal dettaglio lo sblocca subito.
 **Salute del CI che non cambia**: `health_source = manual` (forzatura
 manuale: togliere l'override dal dettaglio CI) o `ci.status = maintenance`
 (ciclo di vita: il monitoraggio non tocca un CI in manutenzione).
+
+### Servizi monitorati (mappa del servizio e albero d'impatto)
+
+Progetto: artifact "Servizi monitorati" (10 set 2026), ondata 1. Un
+**servizio monitorato** è una `BusinessApplication` con una `ServiceMap`
+(`(:BusinessApplication)-[:HAS_SERVICE_MAP]->(:ServiceMap)`, una per
+servizio): i componenti che la reggono sono `INCLUDES {level, role, propagate,
+weight, critical, via, added_by, added_at}` verso i CI (livello 1 = le
+applicazioni raggiunte con `REALIZES`, 2.. = i fornitori seguendo IN USCITA
+`DEPENDS_ON`/`HOSTED_ON`/`INSTALLED_ON`/`USES_CERTIFICATE` fino a `max_depth`,
+default 4, massimo 8, tetto 500 nodi: oltre è un `BAD_USER_INPUT` con il
+conteggio, mai un taglio silenzioso); la mappa è **congelata** (la discovery
+non la cambia: ondata 2 porterà il diff) e conserva `node_ids` per accorgersi
+di un CI cancellato. Codice: `apps/api/src/services/serviceImpact/`
+(`rules.ts` funzione pura, `build.ts` costruzione con
+`apoc.path.expandConfig` BFS/`NODE_GLOBAL`, `engine.ts` valutazione,
+`history.ts` cronologia), `jobs/serviceImpactWorker.ts`,
+`consumers/serviceImpactConsumer.ts`, resolver `graphql/resolvers/services.ts`,
+vocabolari `lib/serviceVocabularies.ts`.
+
+**Salute e punteggio** (`ServiceMap.health`, `impact_score` 0–100,
+`explanation` JSON con le cause e il percorso `via` fino al livello 1), dalle
+regole per mappa (`rules` JSON, default `down_share_pct 50`,
+`degraded_share_pct 1`, `min_nodes 1`, `unknown_nodes operational`,
+`open_incident_from down`): contano i nodi con `propagate ≠ never`, non in
+finestra di change; i nodi senza salute contano come operativi nel denominatore (`unknown_nodes = operational`, default: una copertura parziale non gonfia l'impatto) o sono esclusi (`ignore`); nessun nodo con salute nota → `unknown`;
+`impact_score = round(100 · (Σ peso giù + 0,5 · Σ peso degradati) / Σ peso)`;
+`maintenance` se un nodo critico è in manutenzione: change in finestra (stessa regola della
+soppressione degli allarmi, `deployment` sempre / `scheduled` dentro una
+finestra del piano, hops 0) oppure ciclo di vita `status = maintenance` del CI (la
+salute di quel CI non viene aggiornata dagli allarmi), `down` se un critico che conta è giù o la quota
+ponderata dei giù ≥ `down_share_pct`, `degraded` se il punteggio ≥
+`degraded_share_pct` e i non operativi ≥ `min_nodes`, `unknown` se nessun
+nodo conta, altrimenti `operational`. `always` e `weighted` pesano allo stesso
+modo in ondata 1. Pesi proposti: 8 al livello 1 (critico), 3 ai certificati
+(`propagate never`), 5 al resto.
+
+| Coda / consumer | Job | Cosa fa |
+|---|---|---|
+| `service-impact-consumer` (BaseConsumer, fan-out di `packages/events`) | `ci.health_changed` | trova le mappe del tenant che includono il CI (`status ≠ paused`) e accoda un job per mappa |
+| `services-impact` (concurrency 2, lock 10 min) | `evaluate` | job id **fisso** `svc-<tenant>-<mapId>` con ritardo 2 s: BullMQ scarta i doppioni finché il job esiste, quindi 40 CI dello stesso servizio in raffica = **una** valutazione; 5 tentativi con backoff 5 s; rimosso a completamento **e** a fallimento definitivo (un id che restasse bloccherebbe le valutazioni successive: il fallimento resta nel log e in `service_evaluations_total{result="error"}`) |
+| | `services-periodic` | ogni 5 minuti: mappe attive con `evaluated_at` più vecchio di 10 minuti (o mai valutate) o `stale`, paginate (`runPagedPass`), rivalutate con trigger `periodic`; riallinea il gauge `services_health{health}` |
+
+**Una valutazione** = una query (mappa + `INCLUDES` con `ci.health` + change
+in finestra per ogni CI) + le regole + **uno statement** di scrittura: la
+decisione «salute cambiata» è nel Cypher (`previous IS NULL OR previous <>
+$health`), così due valutazioni concorrenti non scrivono due voci; a salute
+cambiata `health_since`, voce `ServiceHealthEntry` (`HAS_HEALTH_HISTORY`,
+trigger `created | ci_health | manual | periodic | …`, cap **500** voci mai la
+`created`), evento di dominio `service.health_changed` (`{map_id, service_id,
+name, previous_health, new_health, impact_score}`, nessuna regola di notifica
+in ondata 1) e audit; a salute invariata solo `evaluated_at` (punteggio e
+spiegazione vengono comunque aggiornati). Un CI incluso che **non esiste più**
+(`DETACH DELETE` porta via la `INCLUDES`) marca la mappa `stale`, scrive una
+voce `map_changed` con gli id mancanti (una volta) e viene loggato con
+`warn`; la valutazione prosegue sui nodi rimasti e la passata periodica la
+riprende finché resta stale.
+
+**GraphQL** (`schema-services.ts`; ruoli in `lib/authorization.ts`, tabella in
+`authorization.test.ts`): letture `serviceMaps` (contatori + pagina per
+gravità), `serviceMap`, `servicesImpactedByCI` per lo staff;
+`serviceMapCandidates` e le mutation `createServiceMap` (costruzione
+automatica + valutazione immediata, status `active`),
+`reevaluateServiceMap`, `setServiceMapStatus` (con `expectedVersion`:
+riattivare una mappa in pausa la rivaluta subito), `deleteServiceMap` (mappa e
+cronologia; il servizio e i CI restano) solo admin.
+
+**Metriche**: `service_evaluations_total{result}` (`changed | unchanged |
+error`), `service_evaluation_duration_seconds`, `services_health{health}`
+(mappe per salute su tutti i tenant, dalla passata periodica). Allarmi
+consigliati: `rate(service_evaluations_total{result="error"}[15m]) > 0`;
+`bullmq_queue_depth{queue="services-impact",status="failed"} > 0`.
+
+**Seed demo**: `seed:service-maps -- --tenant=<slug>` (`dist/scripts/seed-service-maps.js`
+nel container, con `NODE_ENV` diverso da `production` come ogni seed;
+opzioni `--max-depth`, `--relationships`) crea una mappa per ogni
+`BusinessApplication` senza mappa; idempotente.
+
+**Risoluzione dei problemi**: *servizio `unknown`* = nessun componente con
+salute (mai toccato da un allarme) o mappa vuota (`BusinessApplication` senza
+`REALIZES`: warning `has no REALIZES` alla creazione); *salute che non cambia
+dopo un allarme* = mappa in `paused` (il consumer la salta), CI non incluso
+nella mappa (`servicesImpactedByCI`), oppure job fallito (log `Service impact
+job failed`, `service_evaluations_total{result="error"}`) — `reevaluateServiceMap`
+dal dettaglio la rivaluta subito, la passata periodica entro 10 minuti;
+*`stale`* = un componente è stato cancellato dalla CMDB: ricreare la mappa
+(`deleteServiceMap` + `createServiceMap`; l'aggiornamento con diff arriva in
+ondata 2); *`has no node_ids`/`has no rules`* = eseguire la migrazione
+`20260910_1080_service_maps_bootstrap`.

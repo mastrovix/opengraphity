@@ -44,6 +44,7 @@ import {
   Gauge,
   Radar,
   HeartPulse,
+  Boxes,
 } from 'lucide-react'
 import { useMe } from '@/hooks/useMe'
 import { isStaff } from '@/lib/roles'
@@ -73,13 +74,14 @@ const ANALYSIS_ITEM_DEFS = [
   { to: '/analysis/what-if', labelKey: 'sidebar.whatIf',      icon: FlaskConical },
 ]
 
-// Monitoraggio (Event Management): console allarmi e pagina Salute CI (staff:
-// stesso predicato `isStaff` delle rotte `staff(...)` in main.tsx, il gruppo
-// intero è nascosto agli end user), sorgenti e policy (admin: le voci sono
-// filtrate per ruolo nel render). La mappa con la salute evidenziata resta
-// raggiungibile da "Vedi sulla mappa".
+// Monitoraggio (Event Management): console allarmi, Servizi monitorati e
+// pagina Salute CI (staff: stesso predicato `isStaff` delle rotte `staff(...)`
+// in main.tsx, il gruppo intero è nascosto agli end user), sorgenti e policy
+// (admin: le voci sono filtrate per ruolo nel render). La mappa con la salute
+// evidenziata resta raggiungibile da "Vedi sulla mappa".
 const MONITORING_ITEM_DEFS = [
   { to: '/events',                labelKey: 'sidebar.events',            icon: Radar,      adminOnly: false },
+  { to: '/monitoring/services',   labelKey: 'sidebar.services',          icon: Boxes,      adminOnly: false },
   { to: '/monitoring/health',     labelKey: 'sidebar.ciHealth',          icon: HeartPulse, adminOnly: false },
   { to: '/monitoring/sources',    labelKey: 'sidebar.monitoringSources', icon: Plug,       adminOnly: true  },
   { to: '/settings/event-policy', labelKey: 'sidebar.eventPolicy',       icon: Settings2,  adminOnly: true  },

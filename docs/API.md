@@ -131,6 +131,15 @@ The Apollo Sandbox is available at `http://localhost:4000/graphql` in developmen
 | `syncStats` | Aggregate sync statistics |
 | `availableConnectors` | Registered connector types |
 
+### Monitored services (service maps)
+
+| Query | Description |
+|-------|-------------|
+| `serviceMaps(filter, limit, offset)` | Service maps of the tenant, by severity (down, degraded, maintenance, unknown, operational), then impact score, then name; `counts` are tenant-wide |
+| `serviceMap(id)` | Single map with `nodes`, `edges`, `explanation` (causes with the `via` path), `rules`, `history(limit)` |
+| `servicesImpactedByCI(ciId)` | Maps that include the CI |
+| `serviceMapCandidates(search, limit)` | BusinessApplications without a map (admin) |
+
 ### Reporting and Logs
 
 | Query | Description |
@@ -186,6 +195,15 @@ The Apollo Sandbox is available at `http://localhost:4000/graphql` in developmen
 | `assignCIOwner(ciId, teamId)` | Set owning team |
 | `assignCISupportGroup(ciId, teamId)` | Set support team |
 | `createCI(input)` | Create configuration item (dynamic, per type) |
+
+### Monitored services (admin)
+
+| Mutation | Description |
+|----------|-------------|
+| `createServiceMap(serviceId, maxDepth, relationshipTypes)` | Build the map automatically from the BusinessApplication (REALIZES, then outgoing technical relationships up to `maxDepth`, default 4, max 8, cap 500 nodes) and evaluate it |
+| `reevaluateServiceMap(id)` | Evaluate now (trigger `manual`) |
+| `setServiceMapStatus(id, expectedVersion, status)` | `active` / `paused` with optimistic concurrency |
+| `deleteServiceMap(id)` | Delete the map and its history (service and CIs untouched) |
 
 ### Discovery
 

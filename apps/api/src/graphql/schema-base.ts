@@ -28,6 +28,7 @@ import { collaborationSchema } from './schema-collaboration.js'
 import { whatifSDL } from './schema-whatif.js'
 import { similaritySDL } from './schema-similarity.js'
 import { eventsSDL } from './schema-events.js'
+import { servicesSDL } from './schema-services.js'
 
 export function buildBaseSDL(): string {
   return `#graphql
@@ -446,6 +447,7 @@ export function buildBaseSDL(): string {
   ${dashboardSDL()}
   ${anomalySDL()}
   ${eventsSDL()}
+  ${servicesSDL()}
   ${topologySDL()}
   ${discoverySDL()}
   ${adminSDL()}

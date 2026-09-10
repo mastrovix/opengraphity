@@ -13,6 +13,7 @@ import './workflow/conditions.js'
 import { createNotificationDispatcher } from '@opengraphity/notifications'
 import { createSLAEngine, closeScheduler } from '@opengraphity/sla'
 import { EscalationConsumer } from './consumers/escalationConsumer.js'
+import { ServiceImpactConsumer } from './consumers/serviceImpactConsumer.js'
 import { closeConnection } from '@opengraphity/events'
 import { closeDriver, registerSessionTracker } from '@opengraphity/neo4j'
 import { neo4jQueryDurationSeconds, recordSlowQuery, startBullMQMetricsCollector } from './middleware/metrics.js'
@@ -29,6 +30,7 @@ import { startWorkflowJobWorker, startNotificationJobWorker } from './jobs/workf
 import { startWebhookDeliveryWorker } from './jobs/webhookDeliveryWorker.js'
 import { startEventIngestWorker } from './jobs/eventIngestWorker.js'
 import { startEventCorrelateWorker, startEventMaintenanceWorker } from './jobs/eventCorrelateWorker.js'
+import { startServiceImpactWorker } from './jobs/serviceImpactWorker.js'
 import { startEmbeddingWorker } from './jobs/embeddingWorker.js'
 import { startEmailDigestWorker } from './jobs/emailDigestWorker.js'
 import { registerAllConnectors } from './discovery/registerConnectors.js'
@@ -49,6 +51,11 @@ async function main() {
   const escalationConsumer = new EscalationConsumer()
   await escalationConsumer.start()
 
+  // Servizi monitorati: ci.health_changed → valutazione delle mappe che
+  // includono il CI (coda services-impact, dedup per mappa) + passata periodica.
+  const serviceImpactConsumer = new ServiceImpactConsumer()
+  await serviceImpactConsumer.start()
+
   // Start report scheduler (BullMQ, every 60s)
   const reportScheduler = await startReportScheduler()
 
@@ -67,6 +74,7 @@ async function main() {
   const eventIngestWorker = startEventIngestWorker()
   const eventCorrelateWorker = await startEventCorrelateWorker()
   const eventMaintenanceWorker = await startEventMaintenanceWorker()
+  const serviceImpactWorker = await startServiceImpactWorker()
   // Embedding worker (semantic similarity). CPU-bound: when a dedicated worker
   // container runs it (EMBEDDING_WORKER_EXTERNAL=true) the API skips it so the
   // ONNX inference does not block the request event loop.
@@ -94,11 +102,11 @@ async function main() {
   // the SLAStatus MERGE keep that safe, but draining cleanly avoids the churn).
   const bullWorkers: Worker[] = [
     anomalyWorker, workflowWorker, syncWorker, maintenanceWorker,
-    notificationWorker, webhookDeliveryWorker, eventIngestWorker, eventCorrelateWorker, eventMaintenanceWorker,
+    notificationWorker, webhookDeliveryWorker, eventIngestWorker, eventCorrelateWorker, eventMaintenanceWorker, serviceImpactWorker,
     emailDigestWorker, reportScheduler,
     ...(embeddingWorker ? [embeddingWorker] : []),
   ]
-  const baseConsumers = [notificationDispatcher, slaEngine, escalationConsumer]
+  const baseConsumers = [notificationDispatcher, slaEngine, escalationConsumer, serviceImpactConsumer]
 
   // ── Graceful shutdown ──────────────────────────────────────────────────────
 

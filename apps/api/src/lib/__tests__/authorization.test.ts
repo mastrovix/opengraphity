@@ -9,6 +9,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { buildSchema, parse, type GraphQLObjectType, type ObjectTypeExtensionNode } from 'graphql'
 import { buildBaseSDL } from '../../graphql/schema-base.js'
 import { eventsSDL } from '../../graphql/schema-events.js'
+import { servicesSDL } from '../../graphql/schema-services.js'
 import {
   allowedRoles, authorize, applyAuthorizationPolicy,
   ADMIN_ONLY_QUERIES, ADMIN_ONLY_MUTATIONS, VIEWER_ALLOWED_MUTATIONS,
@@ -115,6 +116,54 @@ describe('Event Management: ogni campo root di eventsSDL() ha i ruoli attesi', (
     }
     expect(() => authorize('Query', 'monitoringSourceRefs', 'viewer')).not.toThrow()
     expect(() => authorize('Query', 'events', 'end_user')).toThrow()
+  })
+})
+
+/**
+ * Servizi monitorati (ondata 1): tabella campo → ruoli attesi per OGNI Query e
+ * Mutation di servicesSDL(). Letture per lo staff (come event(id)), scritture
+ * e strumento di creazione solo admin.
+ */
+describe('Servizi monitorati: ogni campo root di servicesSDL() ha i ruoli attesi', () => {
+  const STAFF: readonly string[] = ['admin', 'operator', 'viewer']
+  const ADMIN: readonly string[] = ['admin']
+
+  const EXPECTED_QUERIES: Record<string, readonly string[]> = {
+    serviceMaps: STAFF, serviceMap: STAFF, servicesImpactedByCI: STAFF,
+    // strumento della creazione (BusinessApplication senza mappa)
+    serviceMapCandidates: ADMIN,
+  }
+  const EXPECTED_MUTATIONS: Record<string, readonly string[]> = {
+    createServiceMap: ADMIN, reevaluateServiceMap: ADMIN, setServiceMapStatus: ADMIN, deleteServiceMap: ADMIN,
+  }
+
+  const rootFieldsOf = (kind: 'Query' | 'Mutation') =>
+    parse(servicesSDL()).definitions
+      .filter((d): d is ObjectTypeExtensionNode => d.kind === 'ObjectTypeExtension' && d.name.value === kind)
+      .flatMap((d) => (d.fields ?? []).map((f) => f.name.value))
+      .sort()
+
+  it('la tabella copre esattamente i campi di servicesSDL()', () => {
+    expect(rootFieldsOf('Query')).toEqual(Object.keys(EXPECTED_QUERIES).sort())
+    expect(rootFieldsOf('Mutation')).toEqual(Object.keys(EXPECTED_MUTATIONS).sort())
+  })
+
+  it.each(Object.entries(EXPECTED_QUERIES))('Query.%s → %j', (field, roles) => {
+    expect(allowedRoles('Query', field)).toEqual(roles)
+  })
+  it.each(Object.entries(EXPECTED_MUTATIONS))('Mutation.%s → %j', (field, roles) => {
+    expect(allowedRoles('Mutation', field)).toEqual(roles)
+  })
+
+  it('operator e viewer non scrivono né vedono le candidate; viewer legge la pagina Servizi; end_user niente', () => {
+    for (const f of Object.keys(EXPECTED_MUTATIONS)) {
+      expect(() => authorize('Mutation', f, 'operator')).toThrow(new RegExp(f))
+      expect(() => authorize('Mutation', f, 'viewer')).toThrow(new RegExp(f))
+    }
+    expect(() => authorize('Query', 'serviceMapCandidates', 'operator')).toThrow(/serviceMapCandidates/)
+    expect(() => authorize('Query', 'serviceMaps', 'viewer')).not.toThrow()
+    expect(() => authorize('Query', 'servicesImpactedByCI', 'viewer')).not.toThrow()
+    expect(() => authorize('Query', 'serviceMaps', 'end_user')).toThrow()
   })
 })
 

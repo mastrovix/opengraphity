@@ -32,10 +32,10 @@ function fakeSession(tenants: Array<{ id: string; policy: unknown }>, merged = {
 }
 
 describe('20260910_1070_event_management_tenants', () => {
-  it('è l\'ultima registrata, dopo la 1060, con id nel formato YYYYMMDD_HHMM_name', () => {
+  it('è registrata dopo la 1060 (e prima della 1080 dei servizi monitorati), con id nel formato YYYYMMDD_HHMM_name', () => {
     const ids = MIGRATIONS.map((m) => m.id)
-    expect(ids.at(-1)).toBe('20260910_1070_event_management_tenants')
     expect(ids.indexOf('20260910_1070_event_management_tenants')).toBeGreaterThan(ids.indexOf('20260909_1060_event_management_policy_version'))
+    expect(ids.indexOf('20260910_1070_event_management_tenants')).toBeLessThan(ids.indexOf('20260910_1080_service_maps_bootstrap'))
     expect(eventManagementTenants.id).toMatch(/^\d{8}_\d{4}_[a-z0-9_]+$/)
     expect(eventManagementTenants.autocommit).toBeUndefined()
   })

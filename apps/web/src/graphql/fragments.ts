@@ -65,3 +65,38 @@ export const EVENT_HISTORY_FIELDS = gql`
     severity note
   }
 `
+
+/**
+ * Servizi monitorati (mappa del servizio + albero d'impatto), in due selezioni:
+ * - `SERVICE_MAP_ROW_FIELDS` (riga): lista Servizi, «servizi che dipendono da
+ *   questo CI». Senza nodi, archi e cronologia: la lista fa polling.
+ * - `SERVICE_MAP_DETAIL_FIELDS` (completa): dettaglio e risultati delle mutation,
+ *   così «Rivaluta ora» e «Metti in pausa» aggiornano la pagina dalla cache.
+ * Vivono qui (non in queries/services.ts) perché le mutation li interpolano e
+ * webDocuments.test.ts risolve le interpolazioni solo dal file stesso o da
+ * fragments.ts. Tipi: `ServiceMapRow` / `ServiceMapDetail` in types/services.ts.
+ * Contratto: apps/api/src/graphql/schema-services.ts.
+ */
+export const SERVICE_MAP_ROW_FIELDS = gql`
+  fragment ServiceMapRowFields on ServiceMap {
+    id name status health healthSince impactScore stale nodeCount evaluatedAt
+    service { id name criticality ownerGroup { id name } }
+    explanation { ci { id name type } health weight critical path { id name } }
+  }
+`
+
+export const SERVICE_MAP_DETAIL_FIELDS = gql`
+  fragment ServiceMapDetailFields on ServiceMap {
+    ...ServiceMapRowFields
+    version updatedAt maxDepth relationshipTypes builtFrom
+    rules { version downSharePct degradedSharePct minNodes unknownNodes openIncidentFrom }
+    nodes { ci { id name type } level role propagate weight critical via addedBy health inMaintenance contributes }
+    edges { source target relType }
+    history(limit: 50) {
+      id at health previousHealth impactScore trigger note
+      causes { ci { id name type } health weight critical path { id name } }
+    }
+    historyCount
+  }
+  ${SERVICE_MAP_ROW_FIELDS}
+`

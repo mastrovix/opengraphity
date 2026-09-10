@@ -109,7 +109,8 @@
     "eventPolicy": "Event policy",
     "monitoringSources": "Sources",
     "ciHealth": "CI health",
-    "platformMonitoring": "Platform monitoring"
+    "platformMonitoring": "Platform monitoring",
+    "services": "Services"
   },
   "pages": {
     "incidents": {
@@ -1696,6 +1697,13 @@
       "healthOverridden": "Health forced to {{health}}",
       "overrideRemoved": "Override removed: health recomputed from the monitoring",
       "copied": "Copied!"
+    },
+    "services": {
+      "created": "Map of \"{{name}}\" created",
+      "reevaluated": "Service re-evaluated: {{health}}",
+      "statusChanged": "Map {{status}}",
+      "deleted": "Map deleted",
+      "actionFailed": "Action failed: {{error}}"
     }
   },
   "components": {
@@ -2460,6 +2468,231 @@
         "askAdmin": "Ask an administrator to connect a monitoring tool."
       },
       "noMatch": "No CI matches the filters"
+    },
+    "services": {
+      "title": "Services",
+      "subtitle": "The health of business services, computed from the components that support them, worst first.",
+      "refresh": "Refresh",
+      "updatedAt": "Updated at {{time}}",
+      "openService": "Open the service {{name}}",
+      "count_one": "{{count}} monitored service",
+      "count_other": "{{count}} monitored services",
+      "page": "page {{page}} of {{total}}",
+      "noMatch": "No service matches the filters",
+      "since": "for {{duration}}",
+      "sinceHint": "Current health in force since {{date}}",
+      "components_one": "{{count}} component",
+      "components_other": "{{count}} components",
+      "stale": "A component of the map no longer exists in the CMDB: the map needs updating.",
+      "staleShort": "Component missing from the CMDB",
+      "impactScoreLabel": "Impact score {{score}} out of 100",
+      "tiles": {
+        "down": "Down",
+        "degraded": "Degraded",
+        "maintenance": "In maintenance",
+        "operational": "Operational",
+        "unknown": "Unknown",
+        "toggleHint": "Filter the table on this health; a second click removes the filter",
+        "unknownHint": "Services with no component of known health: not filterable, just a note",
+        "unknownContext": "no health data",
+        "noneContext": "none right now",
+        "shareContext_one": "of {{count}} monitored service",
+        "shareContext_other": "of {{count}} monitored services"
+      },
+      "filters": {
+        "status": "Map status",
+        "allStatuses": "All statuses",
+        "search": "Search a service by name",
+        "searchPlaceholder": "Search…"
+      },
+      "columns": {
+        "service": "Service",
+        "health": "Health",
+        "impact": "Impact score",
+        "cause": "Main cause",
+        "components": "Components",
+        "owner": "Owner",
+        "name": "Name",
+        "type": "Type",
+        "level": "Level",
+        "role": "Role",
+        "propagate": "Counts",
+        "weight": "Weight",
+        "critical": "Critical"
+      },
+      "empty": {
+        "title": "No monitored service yet",
+        "description": "Create the map of a business application: its components and their health compute the service health.",
+        "cta": "Create a map",
+        "askAdmin": "Ask an administrator to create a map."
+      },
+      "health": {
+        "operational": "Operational",
+        "degraded": "Degraded",
+        "down": "Down",
+        "maintenance": "In maintenance",
+        "unknown": "Unknown",
+        "outOfVocabulary": "Unknown ({{value}})"
+      },
+      "status": {
+        "draft": "Draft",
+        "active": "Active",
+        "paused": "Paused"
+      },
+      "role": {
+        "entry": "Entry",
+        "component": "Component",
+        "infrastructure": "Infrastructure",
+        "certificate": "Certificate"
+      },
+      "propagation": {
+        "always": "Always",
+        "never": "Never",
+        "weighted": "Weighted"
+      },
+      "explain": {
+        "word": {
+          "down": "down",
+          "degraded": "degraded",
+          "operational": "operational"
+        },
+        "cause": "{{name}} {{health}}",
+        "causeVia": "{{name}} {{health}} via {{via}}",
+        "is": "{{name}} is {{health}}",
+        "isVia": "{{name}} is {{health}} (via {{via}})",
+        "criticalSuffix": "{{text}} — critical component",
+        "sentence": "{{health}}: {{causes}}",
+        "operational": "Operational: every component that counts is operational.",
+        "unknown": "Unknown: no component has a known health.",
+        "maintenance": "In maintenance: a critical component is in a change window.",
+        "noCauses": "{{health}}: no cause recorded."
+      },
+      "map": {
+        "levelService": "Service",
+        "levelEntry": "Level 1 · applications",
+        "level": "Level {{level}}",
+        "empty": "The map has no components: the service realizes no application (REALIZES) or the build found no relationship.",
+        "nodeLabel": "{{name}} · {{type}} · {{health}}",
+        "legend": {
+          "title": "Legend",
+          "critical": "Critical component",
+          "pathDown": "Impact path (down)",
+          "pathDegraded": "Impact path (degraded)",
+          "edge": "Live relationship",
+          "edgeMissing": "Path segment without a live relationship"
+        }
+      },
+      "why": {
+        "weight": "weight {{weight}}",
+        "critical": "critical",
+        "path": "Path",
+        "select": "Highlight {{name}} on the map"
+      },
+      "detail": {
+        "back": "Back to services",
+        "notFound": "Service not found",
+        "noResult": "{{operation}} did not return the map",
+        "map": "Service map",
+        "why": "Why",
+        "whyEmpty": "No component weighed on the last evaluation.",
+        "components": "Components",
+        "componentsEmpty": "The map has no components.",
+        "service": "Service",
+        "node": "Component",
+        "closeNode": "Close the component panel",
+        "rules": "How it is computed",
+        "rulesReadOnly": "Rules version {{version}}: editable from the UI in wave 2.",
+        "evaluated": "Evaluated {{ago}}",
+        "neverEvaluated": "Never evaluated",
+        "actions": {
+          "reevaluate": "Re-evaluate now",
+          "pause": "Pause",
+          "resume": "Resume",
+          "delete": "Delete"
+        },
+        "fields": {
+          "service": "Business application",
+          "criticality": "Criticality",
+          "owner": "Owner",
+          "status": "Map status",
+          "version": "Version",
+          "maxDepth": "Maximum depth",
+          "relationshipTypes": "Relationships followed",
+          "builtFrom": "Built",
+          "builtFromAuto": "Automatically from the graph",
+          "builtFromManual": "Manually",
+          "updatedAt": "Last change",
+          "evaluatedAt": "Last evaluation"
+        },
+        "rulesFields": {
+          "downSharePct": "Down if a critical component is down or the weighted share of components down is ≥ {{pct}}%",
+          "degradedSharePct": "Degraded if the impact score is ≥ {{pct}}",
+          "minNodes_one": "…and at least {{count}} component is not operational",
+          "minNodes_other": "…and at least {{count}} components are not operational",
+          "unknownNodes": "Components without health: {{value}}",
+          "unknownNodesIgnore": "ignored",
+          "unknownNodesOperational": "count as operational",
+          "openIncidentFrom": "Service incident from: {{value}} (wave 3)"
+        },
+        "nodeFields": {
+          "name": "Component",
+          "type": "Type",
+          "level": "Level",
+          "role": "Role",
+          "propagate": "Counts",
+          "weight": "Weight",
+          "critical": "Critical",
+          "health": "Health",
+          "inMaintenance": "In maintenance (change window or lifecycle)",
+          "contributes": "Counts in the computation",
+          "addedBy": "Added",
+          "addedByAuto": "Automatically",
+          "addedByManual": "Manually",
+          "alarms": "View active alarms",
+          "openCI": "Open the CI"
+        }
+      },
+      "delete": {
+        "title": "Delete the map of \"{{name}}\"?",
+        "body": "The service stays in the catalogue; the map, its rules and the health history are deleted."
+      },
+      "history": {
+        "title": "History",
+        "empty": "No entries yet.",
+        "truncated": "Showing the latest {{shown}} of {{total}} entries.",
+        "noPrevious": "no previous health",
+        "causesMore_one": "{{causes}}, +{{count}} more",
+        "causesMore_other": "{{causes}}, +{{count}} more",
+        "trigger": {
+          "created": "Map created: initial health <health/> (score {{score}}).",
+          "ci_health": "Health changed from <previous/> to <health/> after a component health change (score {{score}}).",
+          "rules_changed": "Rules changed: health <health/>, was <previous/> (score {{score}}).",
+          "map_changed": "Map changed: health <health/>, was <previous/> (score {{score}}).",
+          "maintenance": "Change window: health <health/>, was <previous/> (score {{score}}).",
+          "manual": "Manual re-evaluation: health <health/>, was <previous/> (score {{score}}).",
+          "periodic": "Periodic pass: health <health/>, was <previous/> (score {{score}}).",
+          "unknown": "Unknown entry: {{trigger}}."
+        }
+      },
+      "create": {
+        "title": "Create a map",
+        "service": "Business application",
+        "servicePlaceholder": "— choose a service —",
+        "search": "Search an application",
+        "candidatesEmpty": "No business application without a map.",
+        "candidatesError": "Candidates unavailable: {{error}}",
+        "depth": "Maximum depth",
+        "depthHint": "How many hops to follow from the applications along the chosen relationships (1–{{max}}).",
+        "relationships": "Relationships to follow",
+        "relationshipsHint": "Outgoing, towards suppliers: A -DEPENDS_ON-> B means A suffers when B is down.",
+        "relationshipsRequired": "Choose at least one relationship.",
+        "submit": "Create",
+        "noResult": "createServiceMap did not return the map"
+      },
+      "ciSection": {
+        "title": "Services depending on this CI",
+        "hint": "Services whose map includes this CI: its health weighs on theirs."
+      }
     }
   }
 }

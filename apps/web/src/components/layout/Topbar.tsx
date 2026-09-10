@@ -51,6 +51,7 @@ function Breadcrumb() {
     events:             t('sidebar.events'),
     monitoring:         t('sidebar.monitoring'),
     health:             t('sidebar.ciHealth'),
+    services:           t('sidebar.services'),
     sources:            t('sidebar.monitoringSources'),
     'event-policy':     t('sidebar.eventPolicy'),
   }
