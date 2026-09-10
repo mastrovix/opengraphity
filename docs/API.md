@@ -133,14 +133,24 @@ The Apollo Sandbox is available at `http://localhost:4000/graphql` in developmen
 
 ### Monitored services (service maps)
 
-| Query | Description |
-|-------|-------------|
-| `serviceMaps(filter, limit, offset)` | Service maps of the tenant, by severity (down, degraded, maintenance, unknown, operational), then impact score, then name; `counts` are tenant-wide |
-| `serviceMap(id)` | Single map with `nodes`, `edges`, `explanation` (causes with the `via` path), `rules`, `history(limit)`, `excluded` |
-| `servicesImpactedByCI(ciId)` | Maps that include the CI |
-| `serviceMapCandidates(search, limit)` | BusinessApplications without a map (admin) |
-| `serviceMapProposal(id)` | Diff between the map and the graph as it is now — `added` / `removed` / `moved` / `excluded` / `totalProposed`; rebuilt with the map's own `maxDepth` and `relationshipTypes`, writes nothing (admin) |
-| `serviceImpactPreview(id, rules, nodes)` | Health and impact score the service would have with these settings, on the current alarms; writes nothing, a `ciId` outside the map is an error (admin) |
+Roles are enforced centrally by `lib/authorization.ts` (table pinned in
+`lib/__tests__/authorization.test.ts`): reads for the staff
+(`admin`, `operator`, `viewer`), the configuration tools and every mutation for
+`admin` only. `end_user` (self-service portal) sees none of them.
+
+| Query | Roles | Description |
+|-------|-------|-------------|
+| `serviceMaps(filter, limit, offset)` | staff | Service maps of the tenant, by severity (down, degraded, maintenance, unknown, operational), then impact score, then name; `counts` are tenant-wide. `limit` ≤ 500 (default 50) |
+| `serviceMap(id)` | staff | Single map with `nodes`, `edges`, `explanation` (causes with the `via` path), `rules`, `history(limit)`, `historyCount`, `excluded`, `openIncident` (the service incident currently open, wave 3); `null` when the map is not in the tenant |
+| `servicesImpactedByCI(ciId)` | staff | Maps that include the CI, by severity |
+| `businessCapabilitiesHealth` | staff | Business capabilities with the health of the services that enable them (`ENABLED_BY` → BusinessApplication with a map): worst health of the linked services, `downServices` / `degradedServices`. Read-only |
+| `serviceMapCandidates(search, limit)` | admin | BusinessApplications without a map (candidates for `createServiceMap`); `limit` ≤ 100 (default 20) |
+| `serviceMapProposal(id)` | admin | Diff between the map and the graph as it is now — `added` / `removed` / `moved` / `excluded` / `totalProposed`; rebuilt with the map's own `maxDepth` and `relationshipTypes`, writes nothing |
+| `serviceImpactPreview(id, rules, nodes)` | admin | Health and impact score the service would have with these settings, on the current alarms; writes nothing, a `ciId` outside the map is an error |
+
+`Incident.impactedServices` (wave 3) lists the services whose health opened that
+incident (`IMPACTS_SERVICE`); it is empty for incidents that do not come from a
+service map.
 
 ### Reporting and Logs
 
@@ -198,13 +208,15 @@ The Apollo Sandbox is available at `http://localhost:4000/graphql` in developmen
 | `assignCISupportGroup(ciId, teamId)` | Set support team |
 | `createCI(input)` | Create configuration item (dynamic, per type) |
 
-### Monitored services (admin)
+### Monitored services
+
+Every mutation below is `admin` only (`lib/authorization.ts`).
 
 | Mutation | Description |
 |----------|-------------|
-| `createServiceMap(serviceId, maxDepth, relationshipTypes, status)` | Build the map automatically from the BusinessApplication (REALIZES, then outgoing technical relationships up to `maxDepth`, default 4, max 8, cap 500 nodes) and evaluate it; `status` defaults to `active` (`draft` for a draft) |
+| `createServiceMap(serviceId, maxDepth, relationshipTypes, status)` | Build the map automatically from the BusinessApplication (REALIZES, then outgoing technical relationships up to `maxDepth`, default 4, max 8, cap 500 nodes) and evaluate it; `status` defaults to `active` (`draft` for a draft). Refused with `BAD_USER_INPUT` when the tenant is at its plan limit (`max_service_maps`: starter 5, pro 50, enterprise 200) or when the service already has a map |
 | `reevaluateServiceMap(id)` | Evaluate now (trigger `manual`) |
-| `setServiceMapStatus(id, expectedVersion, status)` | `active` / `paused` / `draft` with optimistic concurrency |
+| `setServiceMapStatus(id, expectedVersion, status)` | `active` / `paused` / `draft` with optimistic concurrency; resuming a paused map re-evaluates it at once |
 | `updateServiceImpactRules(id, expectedVersion, rules)` | Save the impact rules (`degradedSharePct` ≤ `downSharePct`, `minNodes` ≤ number of components); history entry `rules_changed` with the changed fields, then immediate re-evaluation |
 | `updateServiceMapNodes(id, expectedVersion, nodes)` | Change `propagate`, `weight` (1..10) and `critical` of the listed components only; empty list or unknown `ciId` → `BAD_USER_INPUT` |
 | `applyServiceMapProposal(id, expectedVersion, add, exclude, remove)` | Apply the choices made on the diff in one transaction: `add` includes proposed CIs (`added_by: manual`), `exclude` never proposes them again (and removes them if included), `remove` drops included or vanished CIs; recomputes `node_ids` and `stale` |
@@ -217,6 +229,13 @@ nothing is written. Each successful write bumps `version`, records
 `updatedAt`/`updatedBy`, writes one history entry with a readable note and
 re-evaluates the map immediately — except for `paused` maps, which are never
 evaluated automatically.
+
+Deleting the `BusinessApplication` itself (through the CI delete mutation of
+its type) also deletes its map and history; the service incident already open
+is kept (it is the ticket's history). See `docs/OPERATIONS.md`
+§*Servizi monitorati* for the engine's behaviour, the plan limits, the metrics
+and the retention of `ServiceHealthEntry` (cap 500 per map, no time-based
+retention).
 
 ### Discovery
 

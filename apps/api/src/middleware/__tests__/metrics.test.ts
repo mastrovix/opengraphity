@@ -103,3 +103,42 @@ describe('metricsAccessAllowed (A-15)', () => {
     expect(m.metricsAccessAllowed(req('203.0.113.7', 'Bearer wrong'), 's3cret')).toBe(false)
   })
 })
+
+// ── Servizi monitorati, ondata 4 ─────────────────────────────────────────────
+
+describe('metriche dei servizi monitorati (ondata 4)', () => {
+  it('le quattro metriche nuove esistono, sono esposte dal registro custom e hanno il tipo dichiarato', () => {
+    const exposed = m.EVENT_MANAGEMENT_METRICS.map((x) => x.collect()).join('\n')
+    for (const [name, type] of [
+      ['service_incidents_opened_total', 'counter'],
+      ['service_incidents_resolved_total', 'counter'],
+      ['service_evaluation_lag_seconds', 'histogram'],
+      ['service_maps_stale', 'gauge'],
+    ] as const) {
+      expect(exposed).toContain(`# TYPE ${name} ${type}`)
+    }
+    // accanto a quelle delle ondate 1-3
+    expect(exposed).toContain('# TYPE service_evaluations_total counter')
+    expect(exposed).toContain('# TYPE services_health gauge')
+  })
+
+  it('nessuna etichetta dichiarata: contatori e gauge escono senza label, l\'istogramma con i soli bucket', () => {
+    m.serviceIncidentsOpenedTotal.inc({})
+    m.serviceIncidentsOpenedTotal.inc({})
+    m.serviceIncidentsResolvedTotal.inc({})
+    m.serviceMapsStale.set({}, 3)
+    m.serviceEvaluationLagSeconds.observe({}, 7)
+
+    expect(m.serviceIncidentsOpenedTotal.snapshot()).toEqual([{ labels: {}, value: 2 }])
+    expect(m.serviceIncidentsResolvedTotal.snapshot()).toEqual([{ labels: {}, value: 1 }])
+    expect(m.serviceMapsStale.snapshot()).toEqual([{ labels: {}, value: 3 }])
+    expect(m.serviceIncidentsOpenedTotal.collect()).toContain('\nservice_incidents_opened_total 2 ')
+    expect(m.serviceMapsStale.collect()).toContain('\nservice_maps_stale 3 ')
+
+    const lag = m.serviceEvaluationLagSeconds.snapshot()[0]!
+    expect(lag).toMatchObject({ labels: {}, count: 1, sum: 7, max: 7 })
+    // stessi bucket di event_correlate_job_lag_seconds (code a confronto)
+    expect(m.serviceEvaluationLagSeconds.buckets).toEqual(m.eventCorrelateJobLagSeconds.buckets)
+    expect(m.serviceEvaluationLagSeconds.collect()).toContain('service_evaluation_lag_seconds_bucket{le="10"} 1')
+  })
+})

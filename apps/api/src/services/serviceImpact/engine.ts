@@ -33,9 +33,9 @@ import { publishEvent } from '../../lib/publishEvent.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
-import { NotFoundError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { runPagedPass, type PagedPassResult } from '../../lib/pagedPass.js'
-import { serviceEvaluationDurationSeconds, serviceEvaluationsTotal, servicesHealth } from '../../middleware/metrics.js'
+import { serviceEvaluationDurationSeconds, serviceEvaluationsTotal, serviceMapsStale, servicesHealth } from '../../middleware/metrics.js'
 import type { CIHealth } from '../../lib/eventVocabularies.js'
 import {
   NODE_PROPAGATIONS, SERVICE_HEALTHS, SERVICE_MAP_STATUSES, SERVICE_NODE_ROLES, parseServiceImpactRules,
@@ -329,10 +329,42 @@ export interface CreateServiceMapInput {
 
 export interface CreateServiceMapResult { mapId: string; proposal: ServiceMapProposal; evaluation: EvaluateResult }
 
+/** Piano del tenant, limite di mappe del piano e mappe già esistenti: UNA lettura. */
+export const SERVICE_MAP_PLAN_LIMIT_CYPHER = `
+  MATCH (t:Tenant {id: $tenantId})
+  OPTIONAL MATCH (m:ServiceMap {tenant_id: $tenantId})
+  RETURN t.plan AS plan, t.max_service_maps AS maxServiceMaps, count(m) AS maps`
+
+interface PlanLimitRow { plan: string | null; maxServiceMaps: unknown; maps: unknown }
+
 /**
- * Costruzione automatica + scrittura (una transazione) + valutazione
- * immediata (trigger `created`: prima voce di cronologia). Una sola mappa per
- * servizio: se esiste già → ValidationError (dalla scrittura, anche in gara).
+ * Limite di piano sulle mappe di servizio (`TenantSettings.max_service_maps`:
+ * starter 5, pro 50, enterprise 200 — lib/tenantPlans.ts). Si controlla PRIMA
+ * della costruzione automatica: inutile espandere il grafo per poi rifiutare.
+ *
+ * Nessun default di comodo: un tenant senza nodo :Tenant o senza
+ * `max_service_maps` è un errore che nomina la migrazione da eseguire, non un
+ * limite inventato a runtime. Due creazioni simultanee sull'ultimo posto
+ * possono superare il limite di una (Neo4j non blocca un conteggio): la
+ * creazione successiva viene comunque rifiutata.
+ */
+export async function assertServiceMapPlanLimit(session: Queryable, tenantId: string): Promise<void> {
+  const row = await runQueryOne<PlanLimitRow>(session, SERVICE_MAP_PLAN_LIMIT_CYPHER, { tenantId })
+  if (!row) throw new Error(`Tenant ${tenantId} has no :Tenant node — run the 20260910_1070_event_management_tenants migration`)
+  if (typeof row.plan !== 'string' || row.plan === '') throw new Error(`Tenant ${tenantId} has no plan (got ${JSON.stringify(row.plan)}): fix the tenant before creating service maps`)
+  if (row.maxServiceMaps == null) throw new Error(`Tenant ${tenantId} has no max_service_maps — run the 20260910_1100_service_map_plan_limit migration`)
+  const max = toNumber(row.maxServiceMaps)
+  const maps = toNumber(row.maps)
+  if (maps >= max) {
+    throw new ValidationError(`piano ${row.plan}: massimo ${max} mappe di servizio, ne esistono già ${maps}`)
+  }
+}
+
+/**
+ * Limite di piano + costruzione automatica + scrittura (una transazione) +
+ * valutazione immediata (trigger `created`: prima voce di cronologia). Una sola
+ * mappa per servizio: se esiste già → ValidationError (dalla scrittura, anche
+ * in gara).
  */
 export async function createServiceMap(input: CreateServiceMapInput): Promise<CreateServiceMapResult> {
   const now = input.now ?? new Date().toISOString()
@@ -341,6 +373,7 @@ export async function createServiceMap(input: CreateServiceMapInput): Promise<Cr
   const session = getSession(undefined, 'WRITE')
   let proposal: ServiceMapProposal
   try {
+    await assertServiceMapPlanLimit(session, input.tenantId)
     proposal = await buildServiceMap(session, input.tenantId, input.serviceId, input.maxDepth, input.relationshipTypes)
     await session.executeWrite((tx) => createServiceMapNode(tx, { tenantId: input.tenantId, serviceId: input.serviceId, mapId, status, proposal, actorId: input.actorId, now }))
   } finally {
@@ -404,22 +437,39 @@ export async function evaluateStaleOrOldMaps(now: string = new Date().toISOStrin
   return result
 }
 
-/** Gauge `services_health{health}`: conteggio delle mappe per salute su tutti i tenant (metrica di processo), tutte le etichette sempre presenti. */
-export async function refreshServiceGauges(): Promise<Record<ServiceHealth, number>> {
+/** Istantanea dei gauge dei servizi: mappe per salute e mappe da rivedere. */
+export interface ServiceGaugesSnapshot {
+  health: Record<ServiceHealth, number>
+  /** Mappe con `stale = true`: un componente incluso non esiste più nella CMDB. */
+  stale:  number
+}
+
+/**
+ * Gauge `services_health{health}` (mappe per salute, tutte le etichette sempre
+ * presenti) e `service_maps_stale` (mappe da rivedere), su tutti i tenant:
+ * metriche di processo, riallineate dalla stessa passata periodica in UNA
+ * lettura (jobs/serviceImpactWorker.ts, job `services-periodic`).
+ */
+export async function refreshServiceGauges(): Promise<ServiceGaugesSnapshot> {
   const session = getSession()
   try {
     // tenant-ok: metrica di processo su tutti i tenant (solo conteggi, nessuna scrittura)
-    const rows = await runQuery<{ health: string | null; n: unknown }>(session, `
+    const rows = await runQuery<{ health: string | null; n: unknown; stale: unknown }>(session, `
       MATCH (m:ServiceMap)
-      RETURN m.health AS health, count(m) AS n
+      RETURN m.health AS health, count(m) AS n, sum(CASE WHEN m.stale = true THEN 1 ELSE 0 END) AS stale
     `)
     const out = Object.fromEntries(SERVICE_HEALTHS.map((h) => [h, 0])) as Record<ServiceHealth, number>
+    let stale = 0
     for (const r of rows) {
+      // Le mappe stale si contano anche nella riga `health = null` (mappa mai
+      // valutata): il conteggio è per riga, non per salute nota.
+      stale += toNumber(r.stale)
       if (r.health == null) continue
       const h = assertEnum<ServiceHealth>(r.health, SERVICE_HEALTHS, 'ServiceMap health')
       out[h] = toNumber(r.n)
     }
     for (const h of SERVICE_HEALTHS) servicesHealth.set({ health: h }, out[h])
-    return out
+    serviceMapsStale.set({}, stale)
+    return { health: out, stale }
   } finally { await session.close() }
 }

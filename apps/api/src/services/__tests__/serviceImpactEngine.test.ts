@@ -20,6 +20,7 @@ vi.mock('../../lib/logger.js', () => {
 vi.mock('../serviceImpact/incident.js', () => ({ reconcileServiceIncident: vi.fn().mockResolvedValue({ outcome: 'none', incidentId: null, incidentNumber: null }) }))
 vi.mock('../../middleware/metrics.js', () => ({
   serviceEvaluationsTotal: { inc: vi.fn() }, serviceEvaluationDurationSeconds: { observe: vi.fn() }, servicesHealth: { set: vi.fn() },
+  serviceMapsStale: { set: vi.fn() },
   eventsSuppressedTotal: { inc: vi.fn() },
 }))
 
@@ -31,7 +32,8 @@ const metrics = await import('../../middleware/metrics.js')
 const { reconcileServiceIncident } = await import('../serviceImpact/incident.js')
 const { buildServiceMap, proposeNodeSettings, relationshipFilterOf, CI_LABEL_FILTER, ENTRY_NODES_CYPHER, EXPAND_NODES_CYPHER, CREATE_SERVICE_MAP_CYPHER, assertRelationshipTypes, assertMaxDepth } = await import('../serviceImpact/build.js')
 const { serviceHistoryWriteCypher, serviceHistoryParams } = await import('../serviceImpact/history.js')
-const { evaluateServiceMap, createServiceMap, findMapsIncludingCI, evaluateStaleOrOldMaps, refreshServiceGauges, loadServiceMapState, LOAD_SERVICE_MAP_CYPHER, evaluationWriteCypher, SERVICE_STALE_EVALUATION_MINUTES } = await import('../serviceImpact/engine.js')
+const { evaluateServiceMap, createServiceMap, findMapsIncludingCI, evaluateStaleOrOldMaps, refreshServiceGauges, loadServiceMapState, assertServiceMapPlanLimit, LOAD_SERVICE_MAP_CYPHER, SERVICE_MAP_PLAN_LIMIT_CYPHER, evaluationWriteCypher, SERVICE_STALE_EVALUATION_MINUTES } = await import('../serviceImpact/engine.js')
+const { PLAN_SETTINGS } = await import('../../lib/tenantPlans.js')
 const { SERVICE_HISTORY_MAX, SERVICE_MAP_MAX_NODES, DEFAULT_SERVICE_IMPACT_RULES_JSON, SERVICE_RELATIONSHIP_TYPES } = await import('../../lib/serviceVocabularies.js')
 const { CHANGE_WINDOW_STEPS } = await import('../events/suppression.js')
 const { ALL_CI_LABELS } = await import('../../lib/ciLabels.js')
@@ -54,6 +56,9 @@ const callMatching = (re: RegExp) => calls().find((c) => re.test(c.cypher))
 
 const LOAD_RE = /MATCH \(m:ServiceMap \{id: \$mapId, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH \(m\)-\[inc:INCLUDES\]->/
 const WRITE_RE = /SET m\.health = \$health, m\.impact_score = toInteger\(\$impactScore\)/
+const PLAN_RE = /MATCH \(t:Tenant \{id: \$tenantId\}\)/
+/** Tenant sotto il limite di piano: la creazione può procedere. */
+const planRow = (over: Record<string, unknown> = {}) => ({ plan: 'pro', maxServiceMaps: 50, maps: 3, ...over })
 
 /** Riga di lettura della mappa: l'esempio Billing (api-03 L1 critico, db-01, cache-02, cert never). */
 function stateRow(over: { props?: Record<string, unknown>; nodes?: Record<string, unknown>[] } = {}) {
@@ -383,6 +388,7 @@ describe('createServiceMap', () => {
   it('proposta → scrittura in transazione (ServiceMap + INCLUDES, node_ids, regole di default, status active) → valutazione created', async () => {
     const entry = { serviceName: 'Enterprise Billing', apps: [{ ciId: 'app-3', name: 'APP-003', labels: ['Application'] }] }
     onCypher([
+      [PLAN_RE, planRow()],
       [/REALIZES/, entry],
       [/apoc\.path\.expandConfig/, [{ ciId: 'db-1', name: 'DB-01', level: 2, via: 'app-3', labels: ['Database'] }]],
       [/CREATE \(ba\)-\[:HAS_SERVICE_MAP\]->\(m:ServiceMap/, { id: 'new', linked: 2 }],
@@ -418,12 +424,81 @@ describe('createServiceMap', () => {
 
   it('mappa già esistente (o servizio sparito) → BAD_USER_INPUT senza valutazione; CI sparito fra proposta e scrittura → errore', async () => {
     const entry = { serviceName: 'X', apps: [{ ciId: 'app-3', name: 'APP-003', labels: ['Application'] }] }
-    onCypher([[/REALIZES/, entry], [/apoc/, []], [/HAS_SERVICE_MAP\]->\(m:ServiceMap/, null]])
+    onCypher([[PLAN_RE, planRow()], [/REALIZES/, entry], [/apoc/, []], [/HAS_SERVICE_MAP\]->\(m:ServiceMap/, null]])
     await expect(createServiceMap({ tenantId: 't1', serviceId: 'ba-1', maxDepth: 2, relationshipTypes: ['DEPENDS_ON'], actorId: 'u-1' })).rejects.toThrow(/already has a service map \(one map per service\) or does not exist/)
     expect(callMatching(LOAD_RE)).toBeUndefined()
-    onCypher([[/REALIZES/, entry], [/apoc/, []], [/HAS_SERVICE_MAP\]->\(m:ServiceMap/, { id: 'x', linked: 0 }]])
+    onCypher([[PLAN_RE, planRow()], [/REALIZES/, entry], [/apoc/, []], [/HAS_SERVICE_MAP\]->\(m:ServiceMap/, { id: 'x', linked: 0 }]])
     await expect(createServiceMap({ tenantId: 't1', serviceId: 'ba-1', maxDepth: 2, relationshipTypes: ['DEPENDS_ON'], actorId: 'u-1' })).rejects.toThrow(/0 of 1 proposed nodes could be linked/)
     await expect(createServiceMap({ tenantId: 't1', serviceId: 'ba-1', maxDepth: 2, relationshipTypes: ['DEPENDS_ON'], actorId: 'u-1', status: 'archived' as never })).rejects.toThrow(/ServiceMap status is "archived"/)
+  })
+})
+
+// ── Ondata 4 §3: limite di piano ─────────────────────────────────────────────
+
+describe('limite di piano sulle mappe (max_service_maps)', () => {
+  const create = () => createServiceMap({ tenantId: 't1', serviceId: 'ba-1', maxDepth: 2, relationshipTypes: ['DEPENDS_ON'], actorId: 'u-1', now: NOW })
+
+  it('i valori del piano: starter 5, pro 50, enterprise 200', () => {
+    expect(PLAN_SETTINGS.starter.max_service_maps).toBe(5)
+    expect(PLAN_SETTINGS.pro.max_service_maps).toBe(50)
+    expect(PLAN_SETTINGS.enterprise.max_service_maps).toBe(200)
+  })
+
+  it('UNA lettura (piano, limite, mappe esistenti) scopata per tenant, prima della costruzione', async () => {
+    onCypher([
+      [PLAN_RE, planRow()],
+      [/REALIZES/, { serviceName: 'X', apps: [] }],
+      [/apoc/, []],
+      [/HAS_SERVICE_MAP\]->\(m:ServiceMap/, { id: 'new', linked: 0 }],
+      [LOAD_RE, stateRow({ props: { health: null } })],
+      [WRITE_RE, writeRow()],
+    ])
+    await create()
+    const q = callMatching(PLAN_RE)!
+    expect(q.cypher).toBe(SERVICE_MAP_PLAN_LIMIT_CYPHER)
+    expect(q.cypher).toContain('OPTIONAL MATCH (m:ServiceMap {tenant_id: $tenantId})')
+    expect(q.cypher).toContain('RETURN t.plan AS plan, t.max_service_maps AS maxServiceMaps, count(m) AS maps')
+    expect(q.params).toEqual({ tenantId: 't1' })
+    // il limite si controlla PRIMA di espandere il grafo
+    expect(calls().findIndex((c) => PLAN_RE.test(c.cypher))).toBeLessThan(calls().findIndex((c) => /REALIZES/.test(c.cypher)))
+  })
+
+  it('limite raggiunto → BAD_USER_INPUT con piano, limite e mappe esistenti; nessuna costruzione', async () => {
+    onCypher([[PLAN_RE, planRow({ plan: 'starter', maxServiceMaps: 5, maps: 5 })]])
+    await expect(create()).rejects.toMatchObject({
+      message: 'piano starter: massimo 5 mappe di servizio, ne esistono già 5',
+      extensions: { code: 'BAD_USER_INPUT' },
+    })
+    expect(callMatching(/REALIZES/)).toBeUndefined()
+    // anche oltre il limite (creazioni simultanee sull'ultimo posto)
+    onCypher([[PLAN_RE, planRow({ plan: 'pro', maxServiceMaps: 50, maps: 51 })]])
+    await expect(create()).rejects.toThrow('piano pro: massimo 50 mappe di servizio, ne esistono già 51')
+  })
+
+  it('sotto il limite (ultima mappa disponibile) → la creazione procede', async () => {
+    onCypher([
+      [PLAN_RE, planRow({ plan: 'starter', maxServiceMaps: 5, maps: 4 })],
+      [/REALIZES/, { serviceName: 'Enterprise Billing', apps: [{ ciId: 'app-3', name: 'APP-003', labels: ['Application'] }] }],
+      [/apoc/, []],
+      [/HAS_SERVICE_MAP\]->\(m:ServiceMap/, { id: 'new', linked: 1 }],
+      [LOAD_RE, stateRow({ props: { health: null } })],
+      [WRITE_RE, writeRow()],
+    ])
+    await expect(create()).resolves.toMatchObject({ evaluation: { changed: true } })
+  })
+
+  it('niente default di comodo: tenant senza nodo, senza piano o senza max_service_maps → errore che nomina la migrazione', async () => {
+    onCypher([[PLAN_RE, null]])
+    await expect(create()).rejects.toThrow(/Tenant t1 has no :Tenant node — run the 20260910_1070_event_management_tenants migration/)
+    onCypher([[PLAN_RE, planRow({ plan: null })]])
+    await expect(create()).rejects.toThrow(/Tenant t1 has no plan \(got null\)/)
+    onCypher([[PLAN_RE, planRow({ maxServiceMaps: null })]])
+    await expect(create()).rejects.toThrow(/Tenant t1 has no max_service_maps — run the 20260910_1100_service_map_plan_limit migration/)
+  })
+
+  it('assertServiceMapPlanLimit è usabile su una sessione qualunque (nessuna scrittura)', async () => {
+    onCypher([[PLAN_RE, planRow({ maps: 0 })]])
+    await expect(assertServiceMapPlanLimit(session as never, 't1')).resolves.toBeUndefined()
   })
 })
 
@@ -455,9 +530,19 @@ describe('findMapsIncludingCI / evaluateStaleOrOldMaps / refreshServiceGauges', 
     await expect(evaluateStaleOrOldMaps('ieri')).rejects.toThrow(/not an ISO date/)
   })
 
-  it('refreshServiceGauges: services_health{health} per ogni salute (0 dove assente), su tutti i tenant', async () => {
-    onCypher([[/MATCH \(m:ServiceMap\)\s+RETURN m\.health AS health, count\(m\) AS n/, [{ health: 'down', n: 2 }, { health: 'operational', n: 5 }, { health: null, n: 1 }]]])
-    await expect(refreshServiceGauges()).resolves.toEqual({ operational: 5, degraded: 0, down: 2, maintenance: 0, unknown: 0 })
+  it('refreshServiceGauges: services_health{health} per ogni salute (0 dove assente) e service_maps_stale, su tutti i tenant, in UNA lettura', async () => {
+    const GAUGES_RE = /MATCH \(m:ServiceMap\)\s+RETURN m\.health AS health, count\(m\) AS n, sum\(CASE WHEN m\.stale = true THEN 1 ELSE 0 END\) AS stale/
+    onCypher([[GAUGES_RE, [{ health: 'down', n: 2, stale: 1 }, { health: 'operational', n: 5, stale: 0 }, { health: null, n: 1, stale: 1 }]]])
+    await expect(refreshServiceGauges()).resolves.toEqual({ health: { operational: 5, degraded: 0, down: 2, maintenance: 0, unknown: 0 }, stale: 2 })
     expect(vi.mocked(metrics.servicesHealth.set).mock.calls).toEqual([[{ health: 'operational' }, 5], [{ health: 'degraded' }, 0], [{ health: 'down' }, 2], [{ health: 'maintenance' }, 0], [{ health: 'unknown' }, 0]])
+    // le mappe stale si contano anche sulla riga health = null (mappa mai valutata)
+    expect(vi.mocked(metrics.serviceMapsStale.set).mock.calls).toEqual([[{}, 2]])
+    expect(runQuery).toHaveBeenCalledTimes(1)
+  })
+
+  it('refreshServiceGauges: nessuna mappa → tutti i gauge a zero (mai un valore vecchio lasciato lì)', async () => {
+    onCypher([[/MATCH \(m:ServiceMap\)/, []]])
+    await expect(refreshServiceGauges()).resolves.toEqual({ health: { operational: 0, degraded: 0, down: 0, maintenance: 0, unknown: 0 }, stale: 0 })
+    expect(vi.mocked(metrics.serviceMapsStale.set).mock.calls).toEqual([[{}, 0]])
   })
 })

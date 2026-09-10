@@ -35,8 +35,17 @@
  *  - Nessun fallback silenzioso: soglia fuori vocabolario, salute senza urgenza,
  *    cause vuote sopra soglia, transizione rifiutata → errore (il job ritenta e
  *    resta visibile), mai un incident aperto «a metà».
+ *
+ * Ondata 4 (additiva, nessun cambio di comportamento): un allarme critico su un
+ * CI incluso in una mappa apre DUE incident — quello del CI (Event Management)
+ * e quello del servizio — e continua a farlo: non si sopprime nulla. All'
+ * apertura, però, la descrizione dell'incident di servizio elenca gli incident
+ * tecnici già aperti sui CI delle cause (`findTechnicalIncidents`, una query
+ * sola), così chi legge il ticket del servizio vede subito su cosa si sta già
+ * lavorando. Contatori `service_incidents_opened_total` (la riapertura conta
+ * come apertura) e `service_incidents_resolved_total` (solo la chiusura vera).
  */
-import { getSession, runQueryOne } from '@opengraphity/neo4j'
+import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { Session } from 'neo4j-driver'
 import type { ServiceIncidentOpenedPayload } from '@opengraphity/types'
 import { publishEvent } from '../../lib/publishEvent.js'
@@ -44,6 +53,7 @@ import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import { withRedisLock, type RedisLockOptions } from '../../lib/redisLock.js'
 import { derivePriority, type ImpactUrgency } from '../../lib/priority.js'
+import { serviceIncidentsOpenedTotal, serviceIncidentsResolvedTotal } from '../../middleware/metrics.js'
 import { SERVICE_MAX_CAUSES, type ServiceHealth, type ServiceImpactRules, type ServiceMapStatus, type ServiceOpenIncidentFrom } from '../../lib/serviceVocabularies.js'
 import { MONITORING_ACTOR, monitoringContext, toStr } from '../events/shared.js'
 import { GROUP_LOCK_OPTS } from '../events/grouping.js'
@@ -126,12 +136,25 @@ export function causeLine(c: StoredCause): string {
   return `- ${c.ci.name} (${SERVICE_HEALTH_LABEL_IT[c.health]})${c.critical ? ', critico' : ''}${path ? ` — percorso: ${path}` : ''}`
 }
 
-export function serviceIncidentDescription(serviceName: string, health: ServiceHealth, impactScore: number, causes: readonly StoredCause[]): string {
+/** Riga introduttiva dell'elenco degli incident tecnici già aperti sui componenti (ondata 4). */
+export const TECHNICAL_INCIDENTS_HEADING = 'Incident tecnici già aperti sui componenti:'
+
+/**
+ * Descrizione dell'incident del servizio. `technical` (ondata 4) sono gli
+ * incident tecnici già aperti sui CI delle cause: se ce ne sono, la
+ * descrizione li elenca dopo i componenti; se non ce ne sono, nessuna riga in
+ * più (mai un «nessuno» da leggere).
+ */
+export function serviceIncidentDescription(
+  serviceName: string, health: ServiceHealth, impactScore: number, causes: readonly StoredCause[],
+  technical: readonly TechnicalIncidentRef[] = [],
+): string {
   return [
     `Il servizio "${serviceName}" è ${SERVICE_HEALTH_LABEL_IT[health]} secondo la mappa dei componenti.`,
     `Punteggio d'impatto: ${impactScore}/100.`,
     `Componenti che pesano (${causes.length}):`,
     ...causes.map(causeLine),
+    ...(technical.length ? [TECHNICAL_INCIDENTS_HEADING, ...technical.map((t) => `- ${t.number} ${t.title}`)] : []),
   ].join('\n')
 }
 
@@ -190,6 +213,39 @@ export const LINK_SERVICE_INCIDENT_CYPHER = `
   SET r.cause_ids = $causeIds,
       r.maintenance_noted_at = CASE WHEN $maintenanceNoted THEN coalesce(r.maintenance_noted_at, $now) ELSE null END
   RETURN r.at AS at`
+
+// ── Incident tecnici già aperti sui componenti (ondata 4) ────────────────────
+
+/** Un incident tecnico citato nella descrizione dell'incident del servizio. */
+export interface TechnicalIncidentRef { number: string; title: string }
+
+/** Al più tanti incident tecnici nella descrizione: un elenco più lungo non si legge. */
+export const SERVICE_MAX_TECHNICAL_INCIDENTS = 10
+
+/**
+ * Gli incident tecnici NON terminali che hanno fra i CI impattati uno dei
+ * componenti delle cause: quelli dell'Event Management (un allarme critico su
+ * un CI incluso apre sia l'incident del CI sia quello del servizio: non si
+ * sopprime nulla, si mostra il collegamento) e quelli aperti a mano.
+ * Gli incident DI SERVIZIO sono esclusi (`IMPACTS_SERVICE`): non sono incident
+ * sul componente e citarli confonderebbe. Una sola query, al momento
+ * dell'apertura, scopata per tenant.
+ */
+export const FIND_TECHNICAL_INCIDENTS_CYPHER = `
+  MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(ci {tenant_id: $tenantId})
+  WHERE ci.id IN $ciIds AND NOT EXISTS { (i)-[:IMPACTS_SERVICE]->(:ServiceMap {tenant_id: $tenantId}) }
+  MATCH (i)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
+  WHERE NOT wi.current_step IN $terminalSteps
+  RETURN DISTINCT i.number AS number, i.title AS title, i.created_at AS createdAt
+  ORDER BY createdAt DESC LIMIT toInteger($limit)`
+
+export async function findTechnicalIncidents(session: Session, tenantId: string, ciIds: readonly string[], info: IncidentStepInfo): Promise<TechnicalIncidentRef[]> {
+  if (ciIds.length === 0) return []
+  const rows = await runQuery<{ number: string | null; title: string | null }>(session, FIND_TECHNICAL_INCIDENTS_CYPHER, {
+    tenantId, ciIds: [...ciIds], terminalSteps: info.terminalSteps, limit: SERVICE_MAX_TECHNICAL_INCIDENTS,
+  })
+  return rows.map((r) => ({ number: r.number == null ? '' : toStr(r.number), title: r.title == null ? '' : toStr(r.title) }))
+}
 
 async function linkServiceIncident(session: Session, tenantId: string, mapId: string, incidentId: string, causeIds: readonly string[], maintenanceNoted: boolean, now: string): Promise<void> {
   const row = await runQueryOne<{ at: string }>(session, LINK_SERVICE_INCIDENT_CYPHER, {
@@ -283,7 +339,7 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
         log.debug(logCtx, 'Service map is not active: no incident opened (its health is still evaluated)')
         return done('inactive')
       }
-      return openServiceIncident(session, input, causeIds)
+      return openServiceIncident(session, input, causeIds, info)
     }
     if (open.step === info.resolvedStep) {
       if (status !== 'active') {
@@ -295,6 +351,8 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
       await (await incidents()).addIncidentComment(open.incidentId, monitoringCtx(tenantId),
         `Riaperto dal monitoraggio: ${serviceIncidentDescription(input.serviceName, health, input.impactScore, input.causes)}`)
       await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIds, false, input.now)
+      // Una riapertura conta come apertura (metrics.ts): il servizio è di nuovo fuori servizio.
+      serviceIncidentsOpenedTotal.inc({})
       log.info({ ...logCtx, incidentId: open.incidentId }, 'Service incident reopened')
       return done('reopened')
     }
@@ -325,8 +383,13 @@ function monitoringCtx(tenantId: string) {
   return { tenantId, userId: MONITORING_ACTOR }
 }
 
-/** Apertura: incident del monitoraggio con i CI delle cause come impattati, relazione, evento di dominio, audit. */
-async function openServiceIncident(session: Session, input: ServiceIncidentInput, causeIds: readonly string[]): Promise<ServiceIncidentResult> {
+/**
+ * Apertura: incident del monitoraggio con i CI delle cause come impattati,
+ * relazione, evento di dominio, audit. La descrizione cita gli incident
+ * tecnici già aperti sui componenti (ondata 4): nessuna soppressione, solo il
+ * collegamento visibile — una query in più, qui e solo qui.
+ */
+async function openServiceIncident(session: Session, input: ServiceIncidentInput, causeIds: readonly string[], info: IncidentStepInfo): Promise<ServiceIncidentResult> {
   const { tenantId, mapId, health, impactScore } = input
   if (causeIds.length === 0) {
     throw new Error(`ServiceMap ${mapId} is "${health}" with no causes: an incident must have at least one impacted CI (tenant ${tenantId})`)
@@ -334,9 +397,10 @@ async function openServiceIncident(session: Session, input: ServiceIncidentInput
   const impact  = serviceImpactOf(input.criticality, { tenantId, mapId })
   const urgency = serviceUrgencyOf(health)
   const severity = derivePriority(impact, urgency)
+  const technical = await findTechnicalIncidents(session, tenantId, causeIds, info)
   const incident = await (await incidents()).createIncident({
     title:         serviceIncidentTitle(input.serviceName, health),
-    description:   serviceIncidentDescription(input.serviceName, health, impactScore, input.causes),
+    description:   serviceIncidentDescription(input.serviceName, health, impactScore, input.causes, technical),
     severity,
     impact,
     urgency,
@@ -352,8 +416,9 @@ async function openServiceIncident(session: Session, input: ServiceIncidentInput
   await publishEvent('service.incident_opened', tenantId, input.actorId, payload, input.now)
   void audit(monitoringContext(tenantId), 'service.incident_opened', 'ServiceMap', mapId, {
     incidentId: incident.id, incidentNumber: incident.number, health, impactScore, impact, urgency, severity,
-    criticality: input.criticality, causes: [...causeIds],
+    criticality: input.criticality, causes: [...causeIds], technicalIncidents: technical.map((t) => t.number),
   })
+  serviceIncidentsOpenedTotal.inc({})
   log.info({ tenantId, mapId, jobId: input.jobId, incidentId: incident.id, incidentNumber: incident.number, health, impactScore, severity, causes: causeIds.length },
     'Service incident opened')
   return { outcome: 'opened', incidentId: incident.id, incidentNumber: incident.number }
@@ -396,6 +461,8 @@ async function resolveServiceIncident(session: Session, input: ServiceIncidentIn
   void audit(monitoringContext(tenantId), 'service.incident_resolved', 'ServiceMap', mapId, {
     incidentId: open.incidentId, incidentNumber: open.number, health, impactScore, path: path.map((h) => h.toStep),
   })
+  // Solo la chiusura vera: un `resolve_skipped` (nessun cammino verso resolved) è uscito sopra.
+  serviceIncidentsResolvedTotal.inc({})
   log.info({ tenantId, mapId, jobId: input.jobId, incidentId: open.incidentId, health, path: path.map((h) => h.toStep) }, 'Service incident auto-resolved')
   return { outcome: 'resolved', incidentId: open.incidentId, incidentNumber: open.number }
 }

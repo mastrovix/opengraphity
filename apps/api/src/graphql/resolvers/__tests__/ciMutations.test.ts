@@ -164,7 +164,7 @@ describe('buildDeleteMutation (B7 — Event Management)', () => {
     const [cypher, params] = session.run.mock.calls[0]!
     expect(cypher).toContain('MATCH (n:Server {id: $id, tenant_id: $tenantId})')
     expect(cypher).toContain('OPTIONAL MATCH (a:CIAlias {tenant_id: $tenantId})-[:ALIAS_OF]->(n)')
-    expect(cypher).toMatch(/DETACH DELETE a, n/)
+    expect(cypher).toMatch(/DETACH DELETE a, h, m, n/)
     // nessuna cancellazione degli Event: perdono la relazione, non il nodo
     expect(cypher).not.toMatch(/DELETE\s+e\b/)
     expect(params).toEqual({ id: 'ci-1', tenantId: 't1' })
@@ -172,5 +172,35 @@ describe('buildDeleteMutation (B7 — Event Management)', () => {
 
   it('rifiuta un label non sicuro al build time', () => {
     expect(() => buildDeleteMutation('Server) DETACH DELETE (x')).toThrow()
+  })
+
+  // ── Servizi monitorati, ondata 4 §4 ───────────────────────────────────────
+  it('cancellando una BusinessApplication vanno via anche la sua ServiceMap e la cronologia; l\'incident del servizio NO (è storia del ticket)', async () => {
+    const session = fakeSession()
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    const del = buildDeleteMutation('BusinessApplication')
+
+    await expect(del(undefined, { id: 'ba-1' }, ctx)).resolves.toBe(true)
+    // una sola scrittura: alias, mappa, cronologia e CI nello stesso statement
+    expect(session.executeWrite).toHaveBeenCalledTimes(1)
+    const [cypher, params] = session.run.mock.calls[0]!
+    expect(cypher).toContain('OPTIONAL MATCH (n)-[:HAS_SERVICE_MAP]->(m:ServiceMap {tenant_id: $tenantId})')
+    expect(cypher).toContain('OPTIONAL MATCH (m)-[:HAS_HEALTH_HISTORY]->(h:ServiceHealthEntry {tenant_id: $tenantId})')
+    expect(cypher).toMatch(/DETACH DELETE a, h, m, n/)
+    // le INCLUDES/EXCLUDES/IMPACTS_SERVICE cadono con il DETACH DELETE della mappa:
+    // nessun DELETE esplicito sull'Incident collegato
+    expect(cypher).not.toMatch(/DELETE[^\n]*\bi\b/)
+    expect(cypher).not.toContain('Incident')
+    expect(params).toEqual({ id: 'ba-1', tenantId: 't1' })
+  })
+
+  it('cancellando un CI qualunque la clausola della mappa non trova nulla: la mappa che lo includeva resta (diventerà stale)', async () => {
+    const session = fakeSession()
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    await buildDeleteMutation('Server')(undefined, { id: 'ci-1' }, ctx)
+    const [cypher] = session.run.mock.calls[0]!
+    // nessun MATCH sulle INCLUDES: la mappa non viene toccata, perde solo la relazione
+    expect(cypher).not.toContain('INCLUDES')
+    expect(cypher).toContain('OPTIONAL MATCH (n)-[:HAS_SERVICE_MAP]->(m:ServiceMap {tenant_id: $tenantId})')
   })
 })

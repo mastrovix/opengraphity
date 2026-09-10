@@ -224,11 +224,24 @@ export function buildDeleteMutation(
       //    vedi eventService.ts), quindi DETACH DELETE basta — l'evento torna
       //    "senza CI riconosciuto" e un nuovo aggancio (linkEventToCI /
       //    reevaluateEvent) riparte da zero.
+      // Servizi monitorati (ondata 4), nella stessa scrittura: se il CI è una
+      // BusinessApplication con una mappa, la ServiceMap e la sua cronologia
+      // (ServiceHealthEntry) vanno via con lei — un servizio che non esiste più
+      // non ha una salute da mostrare, e la mappa resterebbe orfana (nessuna
+      // HAS_SERVICE_MAP) senza modo di cancellarla dall'interfaccia. Le
+      // relazioni INCLUDES/EXCLUDES/IMPACTS_SERVICE cadono con il DETACH DELETE
+      // della mappa; l'incident del servizio eventualmente aperto NON si
+      // cancella (è storia del ticket): resta senza servizio collegato, e va
+      // bene. Un CI SEMPLICEMENTE INCLUSO in una mappa altrui non la tocca: la
+      // mappa perde la sua INCLUDES e diventa `stale` alla prima valutazione
+      // (services/serviceImpact/engine.ts).
       await session.executeWrite(tx =>
         tx.run(
           `MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId})
            OPTIONAL MATCH (a:CIAlias {tenant_id: $tenantId})-[:ALIAS_OF]->(n)
-           DETACH DELETE a, n`,
+           OPTIONAL MATCH (n)-[:HAS_SERVICE_MAP]->(m:ServiceMap {tenant_id: $tenantId})
+           OPTIONAL MATCH (m)-[:HAS_HEALTH_HISTORY]->(h:ServiceHealthEntry {tenant_id: $tenantId})
+           DETACH DELETE a, h, m, n`,
           { id: args.id, tenantId: ctx.tenantId },
         ),
       )

@@ -17,7 +17,8 @@
  *  - `services-periodic`  — repeat job ogni 5 minuti (rete di sicurezza): mappe
  *                           attive non valutate da più di 10 minuti o stale
  *                           (engine.ts#evaluateStaleOrOldMaps, paginata) e
- *                           riallineamento del gauge `services_health{health}`.
+ *                           riallineamento dei gauge `services_health{health}`
+ *                           e `service_maps_stale`.
  *
  * Concurrency 2; `lockDuration` di 10 minuti perché la passata paginata può
  * superare i 30 s predefiniti. Gli id dei job non contengono ':' (BullMQ li
@@ -26,6 +27,7 @@
 import type { Worker, Job } from 'bullmq'
 import { logger } from '../lib/logger.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
+import { serviceEvaluationLagSeconds } from '../middleware/metrics.js'
 import type { ServiceHealthTrigger } from '../lib/serviceVocabularies.js'
 import { evaluateServiceMap, evaluateStaleOrOldMaps, refreshServiceGauges } from '../services/serviceImpact/engine.js'
 
@@ -76,8 +78,16 @@ async function processServiceJob(job: Job<ServiceQueueData>): Promise<void> {
   switch (job.name) {
     case SERVICE_EVALUATE_JOB: {
       const { tenantId, mapId, trigger } = job.data as ServiceEvaluateJobData
+      // Ritardo rispetto all'istante in cui il job era atteso (accodamento +
+      // ritardo di dedup): stessa formula di event_correlate_job_lag_seconds
+      // (jobs/eventCorrelateWorker.ts), mai negativo — un job non parte prima
+      // del suo delay. Un `job.timestamp` assente (job costruito a mano) non
+      // produce un valore inventato: la misura si salta.
+      const dueAt = job.timestamp + SERVICE_EVALUATE_DELAY_MS
+      const lagSeconds = Math.max(0, (Date.now() - dueAt) / 1000)
+      if (Number.isFinite(lagSeconds)) serviceEvaluationLagSeconds.observe({}, lagSeconds)
       const result = await evaluateServiceMap({ tenantId, mapId, trigger, jobId: String(job.id) })
-      log.info({ jobId: job.id, tenantId, mapId, trigger, health: result.health, impactScore: result.impactScore, changed: result.changed, stale: result.stale }, 'Service map evaluated')
+      log.info({ jobId: job.id, tenantId, mapId, trigger, lagSeconds, health: result.health, impactScore: result.impactScore, changed: result.changed, stale: result.stale }, 'Service map evaluated')
       return
     }
     case SERVICE_PERIODIC_JOB: {

@@ -6,6 +6,10 @@
  * → evaluateServiceMap con il job id nei log, repeat job `services-periodic`
  * ogni 5 minuti (passata + gauge, ognuno anche se l'altro fallisce), worker
  * con concurrency 2 e lockDuration 10 min, job sconosciuto → errore.
+ *
+ * Ondata 4: istogramma `service_evaluation_lag_seconds` — secondi fra
+ * l'istante in cui il job era atteso (`job.timestamp` + ritardo di dedup) e
+ * l'inizio della valutazione, come `event_correlate_job_lag_seconds`.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Job } from 'bullmq'
@@ -25,6 +29,7 @@ vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
   return { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => child } }
 })
+vi.mock('../../middleware/metrics.js', () => ({ serviceEvaluationLagSeconds: { observe: vi.fn() } }))
 vi.mock('../../services/serviceImpact/engine.js', () => ({
   evaluateServiceMap: vi.fn().mockResolvedValue({ mapId: 'm1', health: 'degraded', previousHealth: 'operational', impactScore: 41, changed: true, stale: false, causes: [] }),
   evaluateStaleOrOldMaps: vi.fn().mockResolvedValue({ evaluated: 1, failed: 0, truncated: false }),
@@ -38,8 +43,10 @@ const {
 } = worker
 const { createWorker, getQueue } = await import('../../lib/bullmq.js')
 const { evaluateServiceMap, evaluateStaleOrOldMaps, refreshServiceGauges } = await import('../../services/serviceImpact/engine.js')
+const metrics = await import('../../middleware/metrics.js')
 
-const job = (name: string, data: Record<string, unknown> = {}) => ({ name, data, id: 'j1', attemptsMade: 0 } as unknown as Job)
+const job = (name: string, data: Record<string, unknown> = {}, timestamp = Date.now()) =>
+  ({ name, data, id: 'j1', attemptsMade: 0, timestamp } as unknown as Job)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -105,5 +112,39 @@ describe('worker services-impact', () => {
     await expect(proc(job(SERVICE_PERIODIC_JOB))).rejects.toThrow(/\[services-impact\] services-periodic: evaluate: 1\/2 service maps failed; gauges: neo4j down/)
     expect(refreshServiceGauges).toHaveBeenCalledTimes(2)
     await expect(proc(job('nope'))).rejects.toThrow(/\[services-impact\] unknown job "nope"/)
+  })
+})
+
+// ── Ondata 4 §1: ritardo del job ─────────────────────────────────────────────
+
+describe('service_evaluation_lag_seconds', () => {
+  it('misura i secondi fra l\'istante atteso (accodamento + ritardo di dedup) e l\'inizio della valutazione, una volta per job', async () => {
+    await startServiceImpactWorker()
+    const proc = processors.get(SERVICE_IMPACT_QUEUE)!
+    // accodato 32 s fa con 2 s di ritardo → atteso 30 s fa
+    await proc(job(SERVICE_EVALUATE_JOB, { tenantId: 't1', mapId: 'm1', trigger: 'ci_health' }, Date.now() - 32_000))
+    expect(metrics.serviceEvaluationLagSeconds.observe).toHaveBeenCalledTimes(1)
+    const [labels, lag] = vi.mocked(metrics.serviceEvaluationLagSeconds.observe).mock.calls[0]!
+    expect(labels).toEqual({})
+    expect(lag).toBeGreaterThanOrEqual(29.5)
+    expect(lag).toBeLessThan(31)
+  })
+
+  it('job partito puntuale → 0, mai un valore negativo; `services-periodic` non misura nulla', async () => {
+    await startServiceImpactWorker()
+    const proc = processors.get(SERVICE_IMPACT_QUEUE)!
+    await proc(job(SERVICE_EVALUATE_JOB, { tenantId: 't1', mapId: 'm1', trigger: 'ci_health' }, Date.now()))
+    expect(vi.mocked(metrics.serviceEvaluationLagSeconds.observe).mock.calls[0]![1]).toBe(0)
+    vi.mocked(metrics.serviceEvaluationLagSeconds.observe).mockClear()
+    await proc(job(SERVICE_PERIODIC_JOB))
+    expect(metrics.serviceEvaluationLagSeconds.observe).not.toHaveBeenCalled()
+  })
+
+  it('job senza timestamp (non accodato da BullMQ) → nessuna misura inventata', async () => {
+    await startServiceImpactWorker()
+    const proc = processors.get(SERVICE_IMPACT_QUEUE)!
+    await proc({ name: SERVICE_EVALUATE_JOB, data: { tenantId: 't1', mapId: 'm1', trigger: 'ci_health' }, id: 'j1' } as unknown as Job)
+    expect(metrics.serviceEvaluationLagSeconds.observe).not.toHaveBeenCalled()
+    expect(evaluateServiceMap).toHaveBeenCalledTimes(1)
   })
 })

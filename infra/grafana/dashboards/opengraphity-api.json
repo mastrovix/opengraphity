@@ -211,6 +211,104 @@
       "targets": [
         { "refId": "A", "expr": "max(event_storms_active) or vector(0)", "legendFormat": "tempeste" }
       ]
+    },
+    {
+      "id": 14,
+      "type": "row",
+      "title": "Servizi monitorati",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 39, "w": 24, "h": 1 },
+      "panels": []
+    },
+    {
+      "id": 15,
+      "type": "bargauge",
+      "title": "Mappe dei servizi per salute",
+      "description": "services_health{health} — mappe per salute su tutti i tenant, riallineato ogni 5 minuti dalla passata `services-periodic` (jobs/serviceImpactWorker.ts, services/serviceImpact/engine.ts#refreshServiceGauges)",
+      "gridPos": { "x": 0, "y": 40, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "giù" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } } ] },
+          { "matcher": { "id": "byName", "options": "degradati" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } } ] }
+        ]
+      },
+      "options": { "displayMode": "basic", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [
+        { "refId": "A", "expr": "sum(services_health{health=\"down\"}) or vector(0)", "legendFormat": "giù" },
+        { "refId": "B", "expr": "sum(services_health{health=\"degraded\"}) or vector(0)", "legendFormat": "degradati" },
+        { "refId": "C", "expr": "sum(services_health{health=\"maintenance\"}) or vector(0)", "legendFormat": "in manutenzione" },
+        { "refId": "D", "expr": "sum(services_health{health=\"unknown\"}) or vector(0)", "legendFormat": "sconosciuti" },
+        { "refId": "E", "expr": "sum(services_health{health=\"operational\"}) or vector(0)", "legendFormat": "operativi" }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Valutazioni delle mappe per esito",
+      "description": "rate(service_evaluations_total[5m]) — una valutazione per (mappa, innesco): changed = salute cambiata (voce di cronologia + service.health_changed), unchanged, error (il job ritenta e la passata periodica rivaluta comunque) — services/serviceImpact/engine.ts",
+      "gridPos": { "x": 8, "y": 40, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (result) (rate(service_evaluations_total[5m]))", "legendFormat": "{{result}}" }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Valutazione: durata e ritardo in coda (p95)",
+      "description": "p95 di service_evaluation_duration_seconds (lettura + regole + scrittura, services/serviceImpact/engine.ts#evaluateServiceMap) e di service_evaluation_lag_seconds (secondi fra l'istante in cui il job era atteso — accodamento + 2 s di dedup — e l'inizio della valutazione, jobs/serviceImpactWorker.ts): un ritardo che cresce dice «coda services-impact in affanno», non «valutazione lenta»",
+      "gridPos": { "x": 16, "y": 40, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum(rate(service_evaluation_duration_seconds_bucket[5m])) by (le))", "legendFormat": "durata p95" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum(rate(service_evaluation_lag_seconds_bucket[5m])) by (le))", "legendFormat": "ritardo in coda p95" }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Incident di servizio al minuto (aperti / risolti)",
+      "description": "rate(service_incidents_opened_total[5m]) e rate(service_incidents_resolved_total[5m]) — services/serviceImpact/incident.ts; una RIAPERTURA conta come apertura (il servizio è di nuovo fuori servizio), una chiusura automatica saltata (nessun cammino verso «risolto» dal passo corrente) non conta come risolta",
+      "gridPos": { "x": 0, "y": 48, "w": 18, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(service_incidents_opened_total[5m])) * 60", "legendFormat": "aperti" },
+        { "refId": "B", "expr": "sum(rate(service_incidents_resolved_total[5m])) * 60", "legendFormat": "risolti" }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "stat",
+      "title": "Mappe da rivedere",
+      "description": "service_maps_stale — mappe con stale = true: un componente incluso non esiste più nella CMDB (la INCLUDES è caduta con il CI). La valutazione prosegue sui nodi rimasti; si sistema da «Aggiorna mappa» togliendo gli id spariti (serviceMapProposal + applyServiceMapProposal), vedi docs/OPERATIONS.md §Servizi monitorati",
+      "gridPos": { "x": 18, "y": 48, "w": 6, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "max(service_maps_stale) or vector(0)", "legendFormat": "mappe stale" }
+      ]
     }
   ]
 }

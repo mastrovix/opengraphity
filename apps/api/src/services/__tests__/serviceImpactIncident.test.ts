@@ -6,6 +6,10 @@
  * di un doppione, chiusura automatica con il cammino verso `resolved`,
  * manutenzione (nessuna apertura, un solo commento), mappe non attive che non
  * aprono nulla e un solo incident sotto raffica (lock Redis vero, in memoria).
+ *
+ * Ondata 4: contatori service_incidents_opened_total (la riapertura conta come
+ * apertura) / service_incidents_resolved_total (solo la chiusura vera) e
+ * collegamento agli incident tecnici già aperti sui CI delle cause.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -29,6 +33,9 @@ const incidentService = vi.hoisted(() => ({
 const workflow = vi.hoisted(() => ({ getAvailableTransitions: vi.fn().mockResolvedValue([]) }))
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
+vi.mock('../../middleware/metrics.js', () => ({
+  serviceIncidentsOpenedTotal: { inc: vi.fn() }, serviceIncidentsResolvedTotal: { inc: vi.fn() },
+}))
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../lib/logger.js', () => {
@@ -50,7 +57,8 @@ vi.mock('../events/incidentWorkflow.js', () => ({
   findLinkedOpenIncident:  vi.fn(),
 }))
 
-const { getSession, runQueryOne } = await import('@opengraphity/neo4j')
+const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
+const metrics = await import('../../middleware/metrics.js')
 const { publishEvent } = await import('../../lib/publishEvent.js')
 const { audit } = await import('../../lib/audit.js')
 const { logger } = await import('../../lib/logger.js')
@@ -60,6 +68,7 @@ const {
   reconcileServiceIncident, serviceIncidentLockKey, meetsServiceOpenThreshold, serviceImpactOf, serviceUrgencyOf,
   serviceIncidentTitle, serviceIncidentDescription, SERVICE_INCIDENT_LOCK_OPTS, SERVICE_HEALTH_LABEL_IT,
   FIND_SERVICE_INCIDENT_CYPHER, LINK_SERVICE_INCIDENT_CYPHER,
+  FIND_TECHNICAL_INCIDENTS_CYPHER, SERVICE_MAX_TECHNICAL_INCIDENTS, TECHNICAL_INCIDENTS_HEADING,
 } = await import('../serviceImpact/incident.js')
 const { DEFAULT_SERVICE_IMPACT_RULES, SERVICE_HEALTHS } = await import('../../lib/serviceVocabularies.js')
 const { RedisLockTimeoutError } = await import('../../lib/redisLock.js')
@@ -73,6 +82,7 @@ const session = { close: vi.fn().mockResolvedValue(undefined) }
 
 const FIND_RE  = /MATCH \(i:Incident \{tenant_id: \$tenantId\}\)-\[r:IMPACTS_SERVICE\]->/
 const LINK_RE  = /MERGE \(i\)-\[r:IMPACTS_SERVICE\]->\(m\)/
+const TECH_RE  = /MATCH \(i:Incident \{tenant_id: \$tenantId\}\)-\[:AFFECTED_BY\]->/
 
 function cause(ciId: string, over: Partial<StoredCause> = {}): StoredCause {
   return {
@@ -83,13 +93,24 @@ function cause(ciId: string, over: Partial<StoredCause> = {}): StoredCause {
   }
 }
 
+/**
+ * Regole cypher → risposta. In coda c'è sempre «nessun incident tecnico»: la
+ * ricerca dell'ondata 4 gira a ogni apertura e i casi che non la riguardano non
+ * devono elencarla; chi la vuole passa la sua regola su TECH_RE (vince, è prima).
+ */
 function onCypher(rules: Array<[RegExp, unknown]>) {
-  vi.mocked(runQueryOne).mockImplementation((async (_s: unknown, cypher: string, params?: Record<string, unknown>) => {
-    for (const [re, value] of rules) if (re.test(cypher)) return typeof value === 'function' ? (value as (p?: Record<string, unknown>) => unknown)(params) : value
+  const all: Array<[RegExp, unknown]> = [...rules, [TECH_RE, []]]
+  const impl = async (_s: unknown, cypher: string, params?: Record<string, unknown>) => {
+    for (const [re, value] of all) if (re.test(cypher)) return typeof value === 'function' ? (value as (p?: Record<string, unknown>) => unknown)(params) : value
     throw new Error(`unexpected cypher in test:\n${cypher}`)
+  }
+  vi.mocked(runQueryOne).mockImplementation(impl as never)
+  vi.mocked(runQuery).mockImplementation((async (s: unknown, c: string, p?: Record<string, unknown>) => {
+    const r = await impl(s, c, p)
+    return r == null ? [] : Array.isArray(r) ? r : [r]
   }) as never)
 }
-const calls = () => vi.mocked(runQueryOne).mock.calls.map(([, cypher, params]) => ({ cypher: cypher as string, params: params as Record<string, unknown> }))
+const calls = () => [...vi.mocked(runQueryOne).mock.calls, ...vi.mocked(runQuery).mock.calls].map(([, cypher, params]) => ({ cypher: cypher as string, params: params as Record<string, unknown> }))
 const callMatching = (re: RegExp) => calls().find((c) => re.test(c.cypher))
 
 const openRow = (over: Record<string, unknown> = {}) => ({ incidentId: 'inc-1', instanceId: 'wi-1', step: 'new', number: 'INC00000042', causeIds: ['db-01'], maintenanceNotedAt: null, ...over })
@@ -406,5 +427,106 @@ describe('manutenzione', () => {
     const r = await reconcileServiceIncident(input({ health: 'operational', impactScore: 0, causes: [] }))
     expect(r.outcome).toBe('none')
     expect(callMatching(LINK_RE)!.params).toMatchObject({ maintenanceNoted: false })
+  })
+})
+
+// ── Ondata 4 §1: contatori ───────────────────────────────────────────────────
+
+describe('metriche degli incident di servizio', () => {
+  it('apertura → service_incidents_opened_total; riapertura → di nuovo opened (conta come apertura), MAI resolved', async () => {
+    onCypher([[FIND_RE, null], [LINK_RE, { at: NOW }]])
+    await reconcileServiceIncident(input())
+    expect(metrics.serviceIncidentsOpenedTotal.inc).toHaveBeenCalledTimes(1)
+    expect(metrics.serviceIncidentsOpenedTotal.inc).toHaveBeenCalledWith({})
+    expect(metrics.serviceIncidentsResolvedTotal.inc).not.toHaveBeenCalled()
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([[FIND_RE, openRow({ step: 'resolved' })], [LINK_RE, { at: NOW }]])
+    expect((await reconcileServiceIncident(input())).outcome).toBe('reopened')
+    expect(metrics.serviceIncidentsOpenedTotal.inc).toHaveBeenCalledTimes(1)
+    expect(metrics.serviceIncidentsResolvedTotal.inc).not.toHaveBeenCalled()
+  })
+
+  it('chiusura automatica → service_incidents_resolved_total; nessun cammino (resolve_skipped) → nessun contatore', async () => {
+    workflow.getAvailableTransitions.mockResolvedValue([{ toStep: 'resolved' }])
+    onCypher([[FIND_RE, openRow({ step: 'in_progress' })], [LINK_RE, { at: NOW }]])
+    expect((await reconcileServiceIncident(input({ health: 'operational', impactScore: 0, causes: [] }))).outcome).toBe('resolved')
+    expect(metrics.serviceIncidentsResolvedTotal.inc).toHaveBeenCalledTimes(1)
+    expect(metrics.serviceIncidentsResolvedTotal.inc).toHaveBeenCalledWith({})
+    expect(metrics.serviceIncidentsOpenedTotal.inc).not.toHaveBeenCalled()
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    workflow.getAvailableTransitions.mockResolvedValue([])
+    vi.mocked(loadDefinitionTransitions).mockResolvedValue([])
+    onCypher([[FIND_RE, openRow({ step: 'on_hold' })], [LINK_RE, { at: NOW }]])
+    expect((await reconcileServiceIncident(input({ health: 'operational', impactScore: 0, causes: [] }))).outcome).toBe('resolve_skipped')
+    expect(metrics.serviceIncidentsResolvedTotal.inc).not.toHaveBeenCalled()
+  })
+
+  it('commento «Causa aggiornata», manutenzione e mappe non attive non toccano i contatori', async () => {
+    onCypher([[FIND_RE, openRow({ causeIds: ['db-01'] })], [LINK_RE, { at: NOW }]])
+    await reconcileServiceIncident(input({ causes: [cause('srv-7')] }))
+    onCypher([[FIND_RE, openRow({ step: 'in_progress' })], [LINK_RE, { at: NOW }]])
+    await reconcileServiceIncident(input({ health: 'maintenance', impactScore: 0, causes: [] }))
+    onCypher([[FIND_RE, null]])
+    await reconcileServiceIncident(input({ status: 'paused' }))
+    expect(metrics.serviceIncidentsOpenedTotal.inc).not.toHaveBeenCalled()
+    expect(metrics.serviceIncidentsResolvedTotal.inc).not.toHaveBeenCalled()
+  })
+})
+
+// ── Ondata 4 §5: collegamento agli incident tecnici ──────────────────────────
+
+describe('incident tecnici già aperti sui componenti', () => {
+  const tech = [{ number: 'INC00000011', title: 'DB-01 non raggiungibile' }, { number: 'INC00000012', title: 'CACHE-02 in errore' }]
+
+  it('apertura: UNA query sui CI delle cause, scopata per tenant, senza gli incident di servizio e senza i passi terminali; la descrizione li elenca', async () => {
+    onCypher([[TECH_RE, tech], [FIND_RE, null], [LINK_RE, { at: NOW }]])
+    const r = await reconcileServiceIncident(input({ causes: [cause('db-01'), cause('cache-02', { health: 'degraded' })] }))
+    expect(r.outcome).toBe('opened')
+
+    const q = callMatching(TECH_RE)!
+    expect(q.cypher).toBe(FIND_TECHNICAL_INCIDENTS_CYPHER)
+    expect(q.cypher).toContain('MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(ci {tenant_id: $tenantId})')
+    expect(q.cypher).toContain('NOT EXISTS { (i)-[:IMPACTS_SERVICE]->(:ServiceMap {tenant_id: $tenantId}) }')
+    expect(q.cypher).toContain('WHERE NOT wi.current_step IN $terminalSteps')
+    expect(q.cypher).toContain('LIMIT toInteger($limit)')
+    expect(q.params).toEqual({ tenantId: 't1', ciIds: ['db-01', 'cache-02'], terminalSteps: ['resolved', 'closed'], limit: SERVICE_MAX_TECHNICAL_INCIDENTS })
+    expect(SERVICE_MAX_TECHNICAL_INCIDENTS).toBe(10)
+
+    const description = incidentService.createIncident.mock.calls[0]![0].description as string
+    expect(description).toContain(TECHNICAL_INCIDENTS_HEADING)
+    expect(description).toContain('- INC00000011 DB-01 non raggiungibile')
+    expect(description).toContain('- INC00000012 CACHE-02 in errore')
+    // additiva: l'incident del servizio si apre comunque, nulla viene soppresso
+    expect(incidentService.createIncident).toHaveBeenCalledTimes(1)
+    expect(audit).toHaveBeenCalledWith(expect.anything(), 'service.incident_opened', 'ServiceMap', 'map-1',
+      expect.objectContaining({ technicalIncidents: ['INC00000011', 'INC00000012'] }))
+  })
+
+  it('nessun incident tecnico → nessuna riga in più nella descrizione', async () => {
+    onCypher([[FIND_RE, null], [LINK_RE, { at: NOW }]])
+    await reconcileServiceIncident(input())
+    const description = incidentService.createIncident.mock.calls[0]![0].description as string
+    expect(description).not.toContain(TECHNICAL_INCIDENTS_HEADING)
+    expect(description.trimEnd().endsWith('- DB-01 (non disponibile) — percorso: DB-01 → API-03')).toBe(true)
+  })
+
+  it('la ricerca gira SOLO all\'apertura: riapertura, commento e chiusura non la eseguono', async () => {
+    onCypher([[TECH_RE, tech], [FIND_RE, openRow({ step: 'resolved' })], [LINK_RE, { at: NOW }]])
+    await reconcileServiceIncident(input())
+    expect(callMatching(TECH_RE)).toBeUndefined()
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([[TECH_RE, tech], [FIND_RE, openRow({ causeIds: ['db-01'] })], [LINK_RE, { at: NOW }]])
+    await reconcileServiceIncident(input({ causes: [cause('srv-7')] }))
+    expect(callMatching(TECH_RE)).toBeUndefined()
+  })
+
+  it('serviceIncidentDescription: l\'elenco è in coda ai componenti e senza incident non compare', () => {
+    const withTech = serviceIncidentDescription('Enterprise Billing', 'down', 62, [cause('db-01')], tech)
+    expect(withTech.split('\n').slice(-3)).toEqual([TECHNICAL_INCIDENTS_HEADING, '- INC00000011 DB-01 non raggiungibile', '- INC00000012 CACHE-02 in errore'])
+    expect(serviceIncidentDescription('Enterprise Billing', 'down', 62, [cause('db-01')])).not.toContain(TECHNICAL_INCIDENTS_HEADING)
+    expect(serviceIncidentDescription('Enterprise Billing', 'down', 62, [cause('db-01')], [])).not.toContain(TECHNICAL_INCIDENTS_HEADING)
   })
 })

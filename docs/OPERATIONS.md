@@ -208,6 +208,8 @@ Migrazioni presenti:
 | `20260908_1010_ci_configuration_item_label` | aggiunge `:ConfigurationItem` ai nodi con una label registrata in `CITypeDefinition.neo4j_label` (B-08; batch da 5000, autocommit) |
 | `20260909_1000` … `20260909_1040` | Event Management: vedi §7 (policy per tenant, regole di notifica, `Event.correlation`, chiavi dell'ondata 4) |
 | `20260910_1080_service_maps_bootstrap` | Servizi monitorati: vedi §7 (*Servizi monitorati*) — completa `rules`, `node_ids` e i campi dell'ondata 1 sulle `ServiceMap` esistenti; no-op senza mappe |
+| `20260910_1090_service_notification_rules` | Servizi monitorati: regole di notifica `service.health_changed` e `service.incident_opened` su ogni tenant |
+| `20260910_1100_service_map_plan_limit` | Servizi monitorati: `Tenant.max_service_maps` dal piano (starter 5, pro 50, enterprise 200) dove manca |
 
 Wrapper per singola migrazione: `migrate:workflow-metadata -- [--force]`,
 `migrate-ci-labels.ts [--force]` (`--force` riapplica una migrazione già
@@ -478,6 +480,9 @@ subito.
 | `20260909_1040_event_management_policy_v2` | ondata 4: aggiunge alla policy di ogni tenant le chiavi mancanti (`flap_stable_minutes`, `storm_threshold_per_minute`, `storm_cooldown_minutes`) senza toccare i valori esistenti; `Event.transitions = []` dove assente; regole `event.flapping/stable/storm_started/storm_ended`. Una policy con JSON corrotto **ferma** la migrazione con il tenant nel messaggio |
 | `20260910_1070_event_management_tenants` | revisione A-M8/A-2: crea i nodi `:Tenant` mancanti unendo i `tenant_id` di `User`, `InboundWebhook`, `ApiKey` e `ConfigurationItem` (la 1010 guardava solo gli utenti: un tenant "solo integrazione" restava senza policy e ogni ingest falliva), con i campi predefiniti della 1010; aggiunge `match_short_hostname` (false) e ogni altra chiave mancante alla policy di ogni tenant, crea la policy intera (versionata) dove manca. Stesse regole della 1040 sul JSON corrotto |
 | `20260910_1080_service_maps_bootstrap` | Servizi monitorati (ondata 1): sulle `ServiceMap` esistenti completa `rules` con le chiavi mancanti (o la crea intera dai default), ricostruisce `node_ids` dalle `INCLUDES` e scrive i campi obbligatori dell'ondata 1 dove mancano (`stale`, `version`, `built_from`, `status`, `health`, `impact_score`, `explanation`, `relationship_types`, `max_depth`); JSON corrotto ferma la migrazione con la mappa nel messaggio. Senza mappe non fa nulla. Vincoli e indici (`ServiceMap`, `ServiceHealthEntry`) sono in `init.ts` (`migrate --init-schema`) |
+
+| `20260910_1090_service_notification_rules` | Servizi monitorati (ondata 3): semina su ogni `:Tenant` le regole di notifica `service.health_changed` (warning, in_app) e `service.incident_opened` (error, in_app + slack) con lo stesso seed dell'onboarding — MERGE per (tenant_id, event_type), le regole già presenti non si toccano |
+| `20260910_1100_service_map_plan_limit` | Servizi monitorati (ondata 4): scrive `Tenant.max_service_maps` (starter 5, pro 50, enterprise 200 — `lib/tenantPlans.ts`) **solo** sui tenant che non ce l'hanno, dal loro `plan`; un limite già presente (anche cambiato a mano) non viene toccato. Un `plan` fuori vocabolario ferma la migrazione con il tenant nel messaggio. Senza questa migrazione `createServiceMap` fallisce con «run the 20260910_1100_service_map_plan_limit migration»: il limite non viene inventato a runtime |
 
 Senza la 1070 un tenant senza nodo `:Tenant` non può nemmeno creare un webhook
 di Event Management: `createInboundWebhook` con `entityType = event` verifica
@@ -842,7 +847,7 @@ manuale: togliere l'override dal dettaglio CI) o `ci.status = maintenance`
 
 ### Servizi monitorati (mappa del servizio e albero d'impatto)
 
-Progetto: artifact "Servizi monitorati" (10 set 2026), ondate 1 e 2. Un
+Progetto: artifact "Servizi monitorati" (10 set 2026), ondate 1–4. Un
 **servizio monitorato** è una `BusinessApplication` con una `ServiceMap`
 (`(:BusinessApplication)-[:HAS_SERVICE_MAP]->(:ServiceMap)`, una per
 servizio): i componenti che la reggono sono `INCLUDES {level, role, propagate,
@@ -909,11 +914,42 @@ status `active` o `draft`), `reevaluateServiceMap`, `setServiceMapStatus` (con
 `applyServiceMapProposal`, `removeServiceMapExclusion`, `deleteServiceMap`
 (mappa e cronologia; il servizio e i CI restano) solo admin.
 
-**Metriche**: `service_evaluations_total{result}` (`changed | unchanged |
-error`), `service_evaluation_duration_seconds`, `services_health{health}`
-(mappe per salute su tutti i tenant, dalla passata periodica). Allarmi
-consigliati: `rate(service_evaluations_total{result="error"}[15m]) > 0`;
-`bullmq_queue_depth{queue="services-impact",status="failed"} > 0`.
+**Cosa fa il motore quando…** (una riga per caso; il dettaglio è nelle
+sottosezioni che seguono):
+
+| Caso | Valutazione | Cronologia / evento | Incident del servizio |
+|---|---|---|---|
+| la **salute cambia** | scrive salute, punteggio, spiegazione, `health_since`, `evaluated_at` | voce `ServiceHealthEntry` con il trigger + evento `service.health_changed` + audit | riconciliato: apre, riapre, aggiorna o chiude secondo `open_incident_from` |
+| la salute **non cambia** ma cambiano le **cause** | scrive punteggio e spiegazione (un punteggio stantio sarebbe un dato falso) | nessuna voce, nessun evento | riconciliato: se un incident è aperto riceve **un** commento «Causa aggiornata» |
+| la salute **non cambia** e le cause **nemmeno** | solo `evaluated_at`, punteggio e spiegazione | nulla | non riconciliato: non prende nemmeno il lock |
+| il servizio va in **manutenzione** (change in finestra su un componente critico o `ci.status = maintenance`) | salute `maintenance` | voce + evento se la salute cambia | né apertura né chiusura; un incident aperto riceve **una** nota (`maintenance_noted_at`), rimossa all'uscita dalla manutenzione |
+| la mappa è in **pausa** (`paused`) | nessuna valutazione automatica: il consumer la salta, la passata periodica prende solo le `active` e le scritture di configurazione non la rivalutano — la salute mostrata resta l'ultima nota. `reevaluateServiceMap` la valuta comunque a mano; riattivarla la rivaluta subito | nulla, finché non viene valutata | nessuna apertura né riapertura; un incident già aperto può comunque essere **chiuso** |
+| la mappa è una **bozza** (`draft`) | valutata dal consumer e dalle scritture di configurazione come le attive, **non** dalla passata periodica (che filtra `status: 'active'`) | voce + evento come le attive | nessuna apertura né riapertura; chiusura sì |
+| `open_incident_from = never` | valutata normalmente | voce + evento come sempre | nessun incident nuovo; quello aperto prima del cambio di regola viene comunque **chiuso** al rientro |
+| un componente **non esiste più** nella CMDB | mappa `stale = true`, valutazione sui nodi rimasti | voce `map_changed` con gli id mancanti, **una** volta, + `warn` | nessun effetto diretto (cambiano le cause: vedi sopra) |
+
+**Metriche** (`middleware/metrics.ts`, esposte dal registro custom su
+`GET /metrics`):
+
+| Metrica | Tipo | Dove si incrementa |
+|---|---|---|
+| `service_evaluations_total{result}` | contatore (`changed \| unchanged \| error`) | `serviceImpact/engine.ts#evaluateServiceMap`, alla fine (una riconciliazione fallita conta solo come `error`) |
+| `service_evaluation_duration_seconds` | istogramma | idem, lettura + regole + scrittura + riconciliazione |
+| `service_evaluation_lag_seconds` | istogramma | `jobs/serviceImpactWorker.ts`: secondi fra l'istante in cui il job `evaluate` era atteso (accodamento + 2 s di dedup) e l'inizio della valutazione — cresce quando la coda `services-impact` è in affanno, non quando la valutazione è lenta |
+| `service_incidents_opened_total` | contatore | `serviceImpact/incident.ts`: apertura **e riapertura** (un servizio che ricade è di nuovo fuori servizio). Attenzione: `opened − resolved` è il saldo delle transizioni, non il numero di incident aperti |
+| `service_incidents_resolved_total` | contatore | `serviceImpact/incident.ts`: solo la chiusura automatica riuscita; un `resolve_skipped` (nessun cammino verso «risolto» dal passo corrente) **non** conta |
+| `services_health{health}` | gauge | passata periodica `services-periodic` (`engine.ts#refreshServiceGauges`), mappe per salute su tutti i tenant |
+| `service_maps_stale` | gauge | stessa passata e stessa lettura: mappe con `stale = true` |
+
+Cruscotto Grafana: riga «Servizi monitorati» in
+`infra/grafana/dashboards/opengraphity-api.json` (mappe per salute,
+valutazioni per esito, durata e ritardo p95, incident aperti/risolti, mappe da
+rivedere). Allarmi consigliati:
+`rate(service_evaluations_total{result="error"}[15m]) > 0`;
+`bullmq_queue_depth{queue="services-impact",status="failed"} > 0`;
+`histogram_quantile(0.95, rate(service_evaluation_lag_seconds_bucket[5m])) > 60`
+(coda in affanno); `service_maps_stale > 0` da più di un giorno (mappe da
+sistemare a mano).
 
 **Seed demo**: `seed:service-maps -- --tenant=<slug>` (`dist/scripts/seed-service-maps.js`
 nel container, con `NODE_ENV` diverso da `production` come ogni seed;
@@ -991,3 +1027,80 @@ excluded_by, at}]->(ci)`. Un CI escluso non viene più riproposto dal diff
 `ServiceMap.excluded` li elenca nel dettaglio e `removeServiceMapExclusion` lo
 riammette (tornerà nella prossima proposta). Le esclusioni non hanno effetto
 sulla salute finché la proposta non viene applicata.
+
+#### Incident del servizio (ondata 3) e incident tecnici (ondata 4)
+
+Codice: `apps/api/src/services/serviceImpact/incident.ts`. Dopo ogni
+valutazione **rilevante** (salute cambiata, oppure insieme delle cause
+cambiato) il motore chiama `reconcileServiceIncident`, tutto sotto il lock
+Redis `og:services:incident:<tenant>:<mapId>` (TTL 30 s, attesa 5 s: il worker
+ha concurrency 2 e la stessa mappa può essere valutata da un job e da una
+mutation nello stesso istante). **Un solo** incident non chiuso per mappa,
+collegato con `(:Incident)-[:IMPACTS_SERVICE {opened_by, at, cause_ids,
+maintenance_noted_at}]->(:ServiceMap)`; un incident in `resolved` non è chiuso:
+si **riapre**, non si affianca. Ogni scrittura passa da `incidentService` /
+`workflowEngine` con l'attore `monitoring` (mai Cypher diretto sull'incident).
+
+Priorità dell'incident = **impatto × urgenza**: impatto dalla criticità del
+servizio (`BusinessApplication.criticality`: `mission_critical` e
+`business_critical` → alto, gli altri → medio; criticità assente o ignota →
+medio **con un warning**), urgenza dalla salute (giù → alta, degradato →
+media). CI impattati = i CI delle cause (al più `SERVICE_MAX_CAUSES`). Alla
+chiusura il monitoraggio percorre i passi intermedi trovati nella definizione
+(`findAutoResolvePath`, la stessa degli allarmi rientrati) e chiude con causa
+«Servizio tornato operativo»; se da quel passo non c'è cammino verso «risolto»
+scrive **solo** un commento: mai una transizione forzata.
+
+**Due incident, nessuna soppressione** (ondata 4, decisione presa): un allarme
+critico su un CI incluso in una mappa apre l'incident del CI (Event Management)
+**e** quello del servizio, e continua a farlo — sono due ticket con due
+proprietari diversi. All'apertura dell'incident di servizio, però, la
+descrizione elenca gli **incident tecnici già aperti** sui CI delle cause
+(numero e titolo, al più 10, riga introduttiva «Incident tecnici già aperti sui
+componenti:»; se non ce ne sono, nessuna riga). È **una** query in più, solo
+all'apertura, scopata per tenant: sono gli incident non terminali che hanno fra
+i CI impattati un componente delle cause, esclusi gli incident di servizio
+(`IMPACTS_SERVICE`). I numeri finiscono anche nell'audit
+`service.incident_opened` (`technicalIncidents`).
+
+Dal dettaglio: `ServiceMap.openIncident` (l'incident aperto del servizio) e
+`Incident.impactedServices` (i servizi che hanno aperto quell'incident).
+
+#### Limiti di piano, pulizia e conservazione (ondata 4)
+
+**Limite di piano**: `TenantSettings.max_service_maps` (`packages/types`,
+appiattito su `:Tenant`) — **starter 5, pro 50, enterprise 200**
+(`lib/tenantPlans.ts`, unica sorgente per l'onboarding e per la migrazione).
+`createServiceMap` conta le mappe del tenant **prima** di espandere il grafo e
+rifiuta con `BAD_USER_INPUT` «piano starter: massimo 5 mappe di servizio, ne
+esistono già 5». Un tenant senza nodo `:Tenant` o senza `max_service_maps` è un
+**errore** che nomina la migrazione da eseguire (`20260910_1100_service_map_plan_limit`
+/ `20260910_1070_event_management_tenants`): il limite non viene mai inventato
+a runtime. Alzare il limite di un singolo tenant è un `SET t.max_service_maps`
+a mano (la migrazione non lo riscrive). Due creazioni simultanee sull'ultimo
+posto possono superare il limite di una (Neo4j non blocca un conteggio): la
+successiva viene comunque rifiutata.
+
+**Cancellazione di una `BusinessApplication`** (`graphql/resolvers/ciMutations.ts`,
+stessa scrittura che porta via i `CIAlias`): vanno via anche la sua
+`ServiceMap`, la cronologia (`ServiceHealthEntry`) e — con il `DETACH DELETE`
+della mappa — le relazioni `INCLUDES`, `EXCLUDES` e `IMPACTS_SERVICE`.
+L'incident del servizio eventualmente aperto **non** si cancella: è storia del
+ticket, resta senza servizio collegato e va bene. Un job `evaluate` già in coda
+per quella mappa fallisce con `NOT_FOUND` (5 tentativi, log `Service impact job
+failed`, `service_evaluations_total{result="error"}`) e poi sparisce
+(`removeOnFail`): rumore atteso, non un guasto — a differenza di
+`deleteServiceMap`, che il job in coda lo toglie subito.
+
+**Cancellazione di un CI incluso in una mappa**: la mappa **resta**. Perde la
+`INCLUDES` (cade con il CI) e alla prima valutazione diventa `stale`, con una
+voce `map_changed` che elenca gli id mancanti; la valutazione prosegue sui nodi
+rimasti. Si sistema da «Aggiorna mappa» (vedi *Risoluzione dei problemi*).
+
+**Conservazione della cronologia**: `ServiceHealthEntry` ha **solo** il cap di
+`SERVICE_HISTORY_MAX` = 500 voci per mappa, applicato dallo stesso statement
+che scrive la voce (la prima voce `created` non viene mai cancellata). **Non**
+c'è retention temporale e nessun job di purge: una mappa che cambia salute due
+volte al giorno conserva quasi un anno di storia, una che sfarfalla ne conserva
+molto meno. Se serve conservare di più, la voce va portata fuori (export /
+report), non allungando il cap.

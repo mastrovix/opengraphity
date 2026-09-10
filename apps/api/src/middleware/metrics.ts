@@ -308,6 +308,23 @@ export const serviceEvaluationDurationSeconds = createHistogram('service_evaluat
 /** Mappe per salute su tutti i tenant, riallineato dalla passata periodica (jobs/serviceImpactWorker.ts). */
 export const servicesHealth                 = createGauge('services_health', 'Service maps by current health (all tenants)', ['health'])
 
+// ── Servizi monitorati (ondata 4: osservabilità) ────────────────────────────
+/**
+ * Incident di servizio aperti dal monitoraggio (services/serviceImpact/incident.ts).
+ * La RIAPERTURA di un incident risolto conta come apertura: dal punto di vista
+ * dell'esercizio il servizio è di nuovo fuori servizio, ed è quello che il
+ * cruscotto deve mostrare; non c'è un secondo incident, quindi
+ * `service_incidents_opened_total − service_incidents_resolved_total` non è il
+ * numero di incident aperti ma il saldo delle transizioni.
+ */
+export const serviceIncidentsOpenedTotal   = createCounter('service_incidents_opened_total',   'Service incidents opened by the monitoring (a reopened incident counts as an opening)', [])
+/** Incident di servizio risolti automaticamente al rientro del servizio (mai una chiusura forzata: `resolve_skipped` non conta). */
+export const serviceIncidentsResolvedTotal = createCounter('service_incidents_resolved_total', 'Service incidents resolved automatically when the service came back (auto-resolve skipped does not count)', [])
+/** Ritardo del job `evaluate` rispetto all'istante in cui era atteso (accodamento + delay): coda `services-impact` in affanno. */
+export const serviceEvaluationLagSeconds   = createHistogram('service_evaluation_lag_seconds', 'Delay between a service map evaluation job due time and the start of the evaluation, in seconds', [], [0.5, 1, 5, 10, 30, 60, 300, 900])
+/** Mappe con `stale = true` (un componente non esiste più nella CMDB) su tutti i tenant, riallineato dalla passata periodica insieme a `services_health`. */
+export const serviceMapsStale              = createGauge('service_maps_stale', 'Service maps flagged stale (an included CI no longer exists in the CMDB, all tenants)', [])
+
 /** Tutte le metriche dell'Event Management (e dei servizi monitorati), nell'ordine di esposizione. */
 export const EVENT_MANAGEMENT_METRICS = [
   eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsAmbiguousTotal, eventsSuppressedTotal, eventsFlappingTotal,
@@ -316,6 +333,7 @@ export const EVENT_MANAGEMENT_METRICS = [
   eventsCorrelatedTotal, eventPipelineDurationSeconds, eventPassTotal, eventPassDurationSeconds,
   eventsOverdueDelayed, eventsFiringUncorrelated, eventCorrelateJobLagSeconds,
   serviceEvaluationsTotal, serviceEvaluationDurationSeconds, servicesHealth,
+  serviceIncidentsOpenedTotal, serviceIncidentsResolvedTotal, serviceEvaluationLagSeconds, serviceMapsStale,
 ] as const
 
 // ── Route label (A-15) ────────────────────────────────────────────────────────
