@@ -10,6 +10,11 @@
  * tetto dei 500 → nulla applicato, mappa `stale`, metrica `skipped_limit`;
  * mappa in pausa mai sincronizzata; `notifyCIGraphChanged` che trova le mappe
  * giuste, ne accoda una per mappa e non lancia mai se la coda è giù.
+ *
+ * Revisione 2: la notifica trova la mappa anche quando il CI è già stato
+ * cancellato (S1, via `node_ids`), e i segnali di manutenzione
+ * (`notifyCIMaintenanceChanged` / `notifyChangeWindowChanged`, D6.1) accodano
+ * una valutazione per mappa senza mai lanciare.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
@@ -30,16 +35,21 @@ vi.mock('../serviceImpact/engine.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../serviceImpact/engine.js')>()),
   evaluateServiceMap: vi.fn(),
 }))
-vi.mock('../../jobs/serviceImpactWorker.js', () => ({ enqueueServiceMapSync: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../../jobs/serviceImpactWorker.js', () => ({
+  enqueueServiceMapSync: vi.fn().mockResolvedValue(undefined),
+  enqueueServiceMapEvaluation: vi.fn().mockResolvedValue(undefined),
+}))
 
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { audit } = await import('../../lib/audit.js')
 const { evaluateServiceMap } = await import('../serviceImpact/engine.js')
 const { serviceMapSyncsTotal } = await import('../../middleware/metrics.js')
-const { enqueueServiceMapSync } = await import('../../jobs/serviceImpactWorker.js')
+const { enqueueServiceMapSync, enqueueServiceMapEvaluation } = await import('../../jobs/serviceImpactWorker.js')
 const {
-  MAPS_TOUCHED_BY_CIS_CYPHER, SERVICE_MAP_SYNC_EVERY_MS, SYNC_APPLY_CYPHER, SYNC_SKIP_LIMIT_CYPHER, SYNC_TOUCH_CYPHER,
-  notifyCIGraphChanged, serviceSyncNote, syncPlanOf, syncServiceMap, syncStaleOrOldMaps,
+  MAPS_TOUCHED_BY_CIS_CYPHER, MAPS_INCLUDING_CIS_CYPHER, CHANGE_AFFECTED_CIS_CYPHER,
+  SERVICE_MAP_SYNC_EVERY_MS, SYNC_APPLY_CYPHER, SYNC_SKIP_LIMIT_CYPHER, SYNC_TOUCH_CYPHER,
+  notifyCIGraphChanged, notifyCIMaintenanceChanged, notifyChangeWindowChanged,
+  serviceSyncNote, syncPlanOf, syncServiceMap, syncStaleOrOldMaps,
 } = await import('../serviceImpact/sync.js')
 const { DEFAULT_SERVICE_IMPACT_RULES_JSON, SERVICE_MAP_MAX_NODES } = await import('../../lib/serviceVocabularies.js')
 
@@ -67,9 +77,9 @@ async function expectCode(p: Promise<unknown>, code: string, pattern?: RegExp) {
 
 const LOAD_RE  = /MATCH \(m:ServiceMap \{id: \$mapId, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH \(m\)-\[inc:INCLUDES\]->/
 const EXCL_RE  = /\[:EXCLUDES\]->\(ci \{tenant_id: \$tenantId\}\)/
-const APPLY_RE = /SET m\.node_ids = includedIds, m\.stale = false/
+const APPLY_RE = /SET m\.node_ids = includedIds, m\.stale = false, m\.stale_reason = null/
 const TOUCH_RE = /SET m\.synced_at = \$now\s+RETURN/
-const SKIP_RE  = /SET m\.stale = true, m\.synced_at = \$now/
+const SKIP_RE  = /SET m\.stale = true, m\.stale_reason = 'over_limit', m\.synced_at = \$now/
 
 /** Mappa di adesso: api-03 (L1), db-01 (L2), old-99 (L2, non più raggiungibile); `gone-1` sparito dalla CMDB. */
 function stateRow(over: { props?: Record<string, unknown>; nodes?: Record<string, unknown>[] } = {}) {
@@ -107,7 +117,7 @@ function diffCypher(state = stateRow(), applyRow: unknown = { version: 3, status
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(getSession).mockReturnValue(session as never)
-  vi.mocked(evaluateServiceMap).mockResolvedValue({ mapId: 'map-1', health: 'down', previousHealth: 'operational', impactScore: 62, changed: true, stale: false, causes: [], incident: null })
+  vi.mocked(evaluateServiceMap).mockResolvedValue({ mapId: 'map-1', health: 'down', previousHealth: 'operational', impactScore: 62, changed: true, stale: false, healthIfActive: null, causes: [], incident: null })
 })
 
 // ── Applicazione del diff ────────────────────────────────────────────────────
@@ -134,7 +144,9 @@ describe('syncServiceMap: cosa applica', () => {
     expect(c.cypher).toContain('HAS_HEALTH_HISTORY')
     expect(c.params['hTrigger']).toBe('map_changed')
     expect(c.params['hNote']).toBe('Sincronizzazione automatica: +1, −2, ~1 spostati')
-    expect(c.cypher).toContain('SET m.version = version + 1, m.updated_at = $now, m.updated_by = $actorId')
+    expect(c.cypher).toContain('SET m.updated_at = $now, m.updated_by = $actorId')
+    // X1: la guardia prende il lock (SET) e POI confronta; la versione è già quella nuova
+    expect(c.cypher).toMatch(/MATCH \(m:ServiceMap \{id: \$mapId, tenant_id: \$tenantId\}\)\s+SET m\.version = m\.version \+ 1\s+WITH m, m\.version AS version\s+WHERE version = toInteger\(\$expectedVersion\) \+ 1/)
     expect(c.params['actorId']).toBe('monitoring')
 
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', userId: 'monitoring' }), 'service_map.synced', 'ServiceMap', 'map-1', expect.objectContaining({ trigger: 'periodic', added: 1, removed: 2, moved: 1 }))
@@ -311,6 +323,7 @@ describe('notifyCIGraphChanged', () => {
     expect(c.cypher).toBe(MAPS_TOUCHED_BY_CIS_CYPHER)
     expect(c.cypher).toContain("WHERE m.auto_sync = true AND m.status <> 'paused'")
     expect(c.cypher).toContain('m.service_id IN $ciIds')
+    expect(c.cypher).toContain('any(x IN m.node_ids WHERE x IN $ciIds)')
     expect(c.cypher).toContain('EXISTS { (m)-[:INCLUDES]->(ci {tenant_id: $tenantId}) WHERE ci.id IN $ciIds }')
     expect(c.params).toEqual({ tenantId: 't1', ciIds: ['srv-9', 'db-01'] })   // id ripetuti tolti
     // una sincronizzazione per mappa, non una per CI
@@ -340,5 +353,87 @@ describe('notifyCIGraphChanged', () => {
 
     vi.mocked(runQuery).mockRejectedValueOnce(new Error('neo4j down'))
     expect(await notifyCIGraphChanged('t1', ['db-01'], 'ci.deleted')).toBe(0)
+  })
+})
+
+// ── S1: cancellazione di un CI (id sparito dal grafo ma ancora in node_ids) ───
+
+describe('notifyCIGraphChanged: CI cancellato (revisione 2 · S1)', () => {
+  it('id assente dal grafo ma presente in node_ids → la mappa viene accodata lo stesso', async () => {
+    // la mutation cancella prima (DETACH DELETE porta via la INCLUDES) e notifica
+    // dopo: l'EXISTS non trova più nulla, `node_ids` sì.
+    const maps: { id: string }[] = []
+    onCypher([[/MATCH \(m:ServiceMap \{tenant_id: \$tenantId\}\)/, (p?: Record<string, unknown>) => {
+      const ids = p?.['ciIds'] as string[]
+      // il finto grafo risponde solo sulla condizione node_ids
+      return ids.includes('gone-1') ? [{ id: 'map-1' }] : maps
+    }]])
+    expect(await notifyCIGraphChanged('t1', ['gone-1'], 'ci.deleted')).toBe(1)
+    expect(enqueueServiceMapSync).toHaveBeenCalledWith('t1', 'map-1', 'periodic')
+  })
+
+  it('dopo una sincronizzazione riuscita `node_ids` è ricalcolato dalle INCLUDES rimaste (l\'id sparito non resta lì per sempre)', () => {
+    expect(SYNC_APPLY_CYPHER).toContain('[(m)-[:INCLUDES]->(ci {tenant_id: $tenantId}) | ci.id] AS includedIds')
+    expect(SYNC_APPLY_CYPHER).toContain('SET m.node_ids = includedIds, m.stale = false, m.stale_reason = null, m.synced_at = $now')
+  })
+})
+
+// ── D6.1: segnali di manutenzione ai servizi ─────────────────────────────────
+
+describe('notifyCIMaintenanceChanged / notifyChangeWindowChanged (revisione 2 · D6.1)', () => {
+  const MAPS_RE = /MATCH \(m:ServiceMap \{tenant_id: \$tenantId\}\)-\[:INCLUDES\]->/
+  const CHANGE_RE = /MATCH \(c:Change \{id: \$changeId, tenant_id: \$tenantId\}\)-\[:AFFECTS_CI\]->/
+
+  it('accoda UNA valutazione (trigger maintenance) per ogni mappa non in pausa che include i CI; id ripetuti tolti', async () => {
+    onCypher([[MAPS_RE, [{ id: 'map-1' }, { id: 'map-2' }]]])
+    expect(await notifyCIMaintenanceChanged('t1', ['app-3', 'db-01', 'app-3'], 'ci.status:entered_maintenance')).toBe(2)
+    const c = callMatching(MAPS_RE)!
+    expect(c.cypher).toBe(MAPS_INCLUDING_CIS_CYPHER)
+    expect(c.cypher).toContain("WHERE m.status <> 'paused' AND ci.id IN $ciIds")
+    // non c'entra `auto_sync`: la composizione non cambia, cambia la salute
+    expect(c.cypher).not.toContain('auto_sync')
+    expect(c.params).toEqual({ tenantId: 't1', ciIds: ['app-3', 'db-01'] })
+    expect(enqueueServiceMapEvaluation).toHaveBeenCalledTimes(2)
+    expect(enqueueServiceMapEvaluation).toHaveBeenNthCalledWith(1, 't1', 'map-1', 'maintenance')
+    expect(enqueueServiceMapEvaluation).toHaveBeenNthCalledWith(2, 't1', 'map-2', 'maintenance')
+  })
+
+  it('nessun id o nessuna mappa: non accoda nulla e non interroga il grafo a vuoto', async () => {
+    onCypher([[MAPS_RE, []]])
+    expect(await notifyCIMaintenanceChanged('t1', ['sconosciuto'], 'x')).toBe(0)
+    expect(enqueueServiceMapEvaluation).not.toHaveBeenCalled()
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    expect(await notifyCIMaintenanceChanged('t1', [], 'x')).toBe(0)
+    expect(runQuery).not.toHaveBeenCalled()
+  })
+
+  it('coda (o grafo) giù: NON lancia — la transizione della change è già scritta — e logga ad alta severità', async () => {
+    const { logger } = await import('../../lib/logger.js')
+    const log = logger.child({})
+    onCypher([[MAPS_RE, [{ id: 'map-1' }]]])
+    vi.mocked(enqueueServiceMapEvaluation).mockRejectedValueOnce(new Error('redis down'))
+    expect(await notifyCIMaintenanceChanged('t1', ['app-3'], 'x')).toBe(0)
+    expect(log.error).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1' }), expect.stringMatching(/could NOT be enqueued/))
+  })
+
+  it('notifyChangeWindowChanged: legge gli AFFECTS_CI della change e passa di lì; una lettura fallita non lancia', async () => {
+    onCypher([[CHANGE_RE, [{ id: 'app-3' }, { id: 'db-01' }]], [MAPS_RE, [{ id: 'map-1' }]]])
+    expect(await notifyChangeWindowChanged('t1', 'chg-1', 'change.window_entered')).toBe(1)
+    const c = callMatching(CHANGE_RE)!
+    expect(c.cypher).toBe(CHANGE_AFFECTED_CIS_CYPHER)
+    expect(c.params).toEqual({ tenantId: 't1', changeId: 'chg-1' })
+    expect(callMatching(MAPS_RE)!.params).toEqual({ tenantId: 't1', ciIds: ['app-3', 'db-01'] })
+    expect(enqueueServiceMapEvaluation).toHaveBeenCalledWith('t1', 'map-1', 'maintenance')
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    vi.mocked(runQuery).mockRejectedValueOnce(new Error('neo4j down'))
+    expect(await notifyChangeWindowChanged('t1', 'chg-1', 'change.deleted')).toBe(0)
+    expect(enqueueServiceMapEvaluation).not.toHaveBeenCalled()
+  })
+
+  it('change senza CI collegati: nessuna valutazione accodata', async () => {
+    onCypher([[CHANGE_RE, []]])
+    expect(await notifyChangeWindowChanged('t1', 'chg-1', 'change.window_left')).toBe(0)
+    expect(enqueueServiceMapEvaluation).not.toHaveBeenCalled()
   })
 })

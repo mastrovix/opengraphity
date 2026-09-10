@@ -78,10 +78,19 @@ export const SET_SERVICE_MAP_AUTO_SYNC = gql`
   ${SERVICE_MAP_DETAIL_FIELDS}
 `
 
-/** Sincronizzazione immediata col grafo («Sincronizza ora»): nessuna versione attesa, è un'azione esplicita. */
+/**
+ * Sincronizzazione immediata col grafo («Sincronizza ora»): nessuna versione
+ * attesa, è un'azione esplicita. L'esito arriva dal motore
+ * (`ServiceMapSyncResult`), non si deduce dal diff dei componenti: `skipped`
+ * dice che la sincronizzazione è stata RIFIUTATA (tetto dei componenti) e che
+ * non è stato scritto nulla, `reason` perché.
+ */
 export const SYNC_SERVICE_MAP = gql`
   mutation SyncServiceMap($id: ID!) {
-    syncServiceMap(id: $id) { ...ServiceMapDetailFields }
+    syncServiceMap(id: $id) {
+      added removed moved skipped reason
+      map { ...ServiceMapDetailFields }
+    }
   }
   ${SERVICE_MAP_DETAIL_FIELDS}
 `

@@ -48,6 +48,31 @@ export type UnknownNodesMode = (typeof UNKNOWN_NODES_MODES)[number]
 export const SERVICE_OPEN_INCIDENT_FROM = ['never', 'down', 'degraded'] as const
 export type ServiceOpenIncidentFrom = (typeof SERVICE_OPEN_INCIDENT_FROM)[number]
 
+/**
+ * Perché la mappa è «da rivedere» (`ServiceMap.stale_reason`, revisione 2):
+ * `missing_ci` = un componente incluso non esiste più nella CMDB (lo scrive il
+ * motore), `over_limit` = la proposta supera il tetto dei 500 componenti e la
+ * sincronizzazione non ha applicato nulla (lo scrive la sincronizzazione). Le
+ * due cose si risolvono in modi diversi, quindi la UI deve poterle distinguere.
+ */
+export const SERVICE_STALE_REASONS = ['missing_ci', 'over_limit'] as const
+export type ServiceStaleReason = (typeof SERVICE_STALE_REASONS)[number]
+
+/** I due motivi come costanti: nel Cypher si interpolano da qui, mai a mano. */
+export const SERVICE_STALE_MISSING_CI: ServiceStaleReason = 'missing_ci'
+export const SERVICE_STALE_OVER_LIMIT: ServiceStaleReason = 'over_limit'
+
+/**
+ * Perché un componente NON conta nel calcolo (`ServiceMapNode.excludedReason`,
+ * revisione 2 · R1). null quando conta. Le due manutenzioni sono distinte:
+ * `lifecycle_maintenance` = `ci.status = 'maintenance'` (il CI è fuori servizio
+ * per il suo ciclo di vita: gli allarmi non ne aggiornano la salute),
+ * `change_window` = una change è in finestra su quel CI (solo questa, e solo su
+ * un componente critico, può rendere il SERVIZIO `maintenance`).
+ */
+export const NODE_EXCLUDED_REASONS = ['never', 'lifecycle_maintenance', 'change_window', 'unknown_health'] as const
+export type NodeExcludedReason = (typeof NODE_EXCLUDED_REASONS)[number]
+
 /** Motivo di una `EXCLUDES` creata dall'amministratore dal diff della mappa (ondata 2). */
 export const SERVICE_EXCLUSION_REASON_MANUAL = 'escluso a mano'
 
@@ -199,6 +224,7 @@ export const SERVICE_SDL_ENUMS: Readonly<Record<string, readonly string[]>> = {
   ServiceHealthTrigger:     SERVICE_HEALTH_TRIGGERS,
   UnknownNodesMode:         UNKNOWN_NODES_MODES,
   ServiceOpenIncidentFrom:  SERVICE_OPEN_INCIDENT_FROM,
+  ServiceStaleReason:       SERVICE_STALE_REASONS,
 }
 
 /** `enum Nome { a b c }` per l'SDL. */

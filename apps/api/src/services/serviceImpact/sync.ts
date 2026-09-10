@@ -31,7 +31,7 @@ import { logger } from '../../lib/logger.js'
 import { ValidationError } from '../../lib/errors.js'
 import { runPagedPass, type PagedPassResult } from '../../lib/pagedPass.js'
 import { serviceMapSyncsTotal } from '../../middleware/metrics.js'
-import { SERVICE_MAP_MAX_NODES, SERVICE_MAP_STATUSES, type ServiceMapStatus } from '../../lib/serviceVocabularies.js'
+import { SERVICE_MAP_MAX_NODES, SERVICE_MAP_STATUSES, SERVICE_STALE_OVER_LIMIT, type ServiceMapStatus } from '../../lib/serviceVocabularies.js'
 import { MONITORING_ACTOR, monitoringContext, toNumber } from '../events/shared.js'
 import { ServiceMapTooLargeError } from './build.js'
 import { computeServiceMapDiff, type ServiceMapDiff } from './config.js'
@@ -88,12 +88,22 @@ export interface SyncServiceMapResult {
  * Le mappe VIVE (`auto_sync = true`, non in pausa) del tenant toccate da uno
  * di questi CI: quelle che ne includono almeno uno, più quelle il cui
  * SERVIZIO è uno di essi (una `REALIZES` nuova sulla BusinessApplication
- * cambia la mappa senza toccare nessun componente incluso).
+ * cambia la mappa senza toccare nessun componente incluso), più quelle che lo
+ * ricordano in `node_ids`.
+ *
+ * L'ultima condizione è il caso della **cancellazione** (revisione 2 · S1): il
+ * `DETACH DELETE` del CI porta via la `INCLUDES`, quindi quando
+ * `notifyCIGraphChanged` gira — dopo il commit, come deve — l'`EXISTS` è già
+ * falso e la mappa non verrebbe trovata. `node_ids` esiste proprio per
+ * ricordare gli id spariti: senza questo `any(...)` la mappa resta «da
+ * rivedere» fino alla passata di sicurezza dei 30 minuti.
  */
 export const MAPS_TOUCHED_BY_CIS_CYPHER = `
   MATCH (m:ServiceMap {tenant_id: $tenantId})
   WHERE m.auto_sync = true AND m.status <> 'paused'
-    AND (m.service_id IN $ciIds OR EXISTS { (m)-[:INCLUDES]->(ci {tenant_id: $tenantId}) WHERE ci.id IN $ciIds })
+    AND (m.service_id IN $ciIds
+         OR any(x IN m.node_ids WHERE x IN $ciIds)
+         OR EXISTS { (m)-[:INCLUDES]->(ci {tenant_id: $tenantId}) WHERE ci.id IN $ciIds })
   RETURN m.id AS id
   ORDER BY id`
 
@@ -132,6 +142,83 @@ export async function notifyCIGraphChanged(tenantId: string, ciIds: readonly str
   }
 }
 
+// ── Segnali di manutenzione (revisione 2 · D6.1) ─────────────────────────────
+
+/**
+ * Le mappe del tenant da rivalutare quando cambia la manutenzione di questi CI:
+ * quelle che li includono, tranne le mappe in pausa (che non si valutano da
+ * sole). Non c'entra `auto_sync`: la composizione non cambia, cambia la salute.
+ */
+export const MAPS_INCLUDING_CIS_CYPHER = `
+  MATCH (m:ServiceMap {tenant_id: $tenantId})-[:INCLUDES]->(ci {tenant_id: $tenantId})
+  WHERE m.status <> 'paused' AND ci.id IN $ciIds
+  RETURN DISTINCT m.id AS id
+  ORDER BY id`
+
+/**
+ * Avvisa il motore che la **manutenzione** di uno o più CI è cambiata: una
+ * change è entrata o uscita dalla finestra, oppure il ciclo di vita del CI è
+ * passato da o verso `maintenance`. Accoda UNA valutazione per mappa
+ * interessata (trigger `maintenance`).
+ *
+ * Stesse regole di `notifyCIGraphChanged`: si chiama **dopo il commit** e **non
+ * lancia mai** — la transizione della change (o l'aggiornamento del CI) è già
+ * scritta e non si annulla perché la coda non risponde; la passata periodica
+ * recupera entro 15 minuti. Restituisce il numero di mappe accodate (0 anche in
+ * caso di errore).
+ *
+ * Senza questo segnale la salute `maintenance` compariva e spariva solo alla
+ * passata periodica: durante il rilascio il servizio risultava `down` (con
+ * l'incident aperto) e dopo restava «in manutenzione» — quindi senza incident —
+ * anche a componente critico ancora giù.
+ */
+export async function notifyCIMaintenanceChanged(tenantId: string, ciIds: readonly string[], reason: string): Promise<number> {
+  const ids = [...new Set(ciIds.filter((id) => typeof id === 'string' && id !== ''))]
+  if (ids.length === 0) return 0
+  try {
+    const session = getSession()
+    let maps: { id: string }[]
+    try {
+      maps = await runQuery<{ id: string }>(session, MAPS_INCLUDING_CIS_CYPHER, { tenantId, ciIds: ids })
+    } finally { await session.close() }
+    if (maps.length === 0) return 0
+
+    const { enqueueServiceMapEvaluation } = await queue()
+    for (const m of maps) await enqueueServiceMapEvaluation(tenantId, m.id, 'maintenance')
+    log.info({ tenantId, reason, cis: ids.length, maps: maps.map((m) => m.id) }, 'CI maintenance changed: service map evaluations enqueued')
+    return maps.length
+  } catch (err) {
+    log.error({ err, tenantId, reason, cis: ids }, 'CI maintenance changed: service map evaluations could NOT be enqueued (the periodic pass will catch up)')
+    return 0
+  }
+}
+
+/** I CI che una change tocca (`AFFECTS_CI`), per i segnali di finestra. */
+export const CHANGE_AFFECTED_CIS_CYPHER = `
+  MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:AFFECTS_CI]->(ci {tenant_id: $tenantId})
+  RETURN DISTINCT ci.id AS id
+  ORDER BY id`
+
+/**
+ * `notifyCIMaintenanceChanged` sui CI di una change: la usano l'ingresso e
+ * l'uscita dai passi di finestra (change/autoTransitions.ts), `deleteChange` (la
+ * finestra sparisce con la change) e la fine del job `reevaluate-change-window`.
+ * Non lancia mai, per gli stessi motivi.
+ */
+export async function notifyChangeWindowChanged(tenantId: string, changeId: string, reason: string): Promise<number> {
+  let ciIds: string[]
+  try {
+    const session = getSession()
+    try {
+      ciIds = (await runQuery<{ id: string }>(session, CHANGE_AFFECTED_CIS_CYPHER, { tenantId, changeId })).map((r) => r.id)
+    } finally { await session.close() }
+  } catch (err) {
+    log.error({ err, tenantId, changeId, reason }, 'Change window changed: affected CIs could NOT be read (the periodic pass will catch up)')
+    return 0
+  }
+  return notifyCIMaintenanceChanged(tenantId, ciIds, reason)
+}
+
 // ── Note leggibili per la cronologia ─────────────────────────────────────────
 
 /** «Sincronizzazione automatica: +2, −1, ~3 spostati» / «Sincronizzazione richiesta da …». */
@@ -150,10 +237,20 @@ export function serviceSyncLimitNote(totalProposed: number | null, detail: strin
 
 // ── Scritture ────────────────────────────────────────────────────────────────
 
+/**
+ * Guardia ottimistica che prende il lock PRIMA di confrontare (revisione 2 · X1):
+ * il `SET` blocca il nodo, il `WHERE` legge il valore vero. Con il vecchio
+ * `MATCH … WITH m.version AS version WHERE version = $expected … SET` due
+ * scrittori potevano leggere la stessa versione e scrivere entrambi (Neo4j
+ * prende il lock solo al `SET` e non rivaluta il `WHERE`). Nessuna riga → il
+ * chiamante lancia e la transazione viene annullata, incremento compreso.
+ * La versione nuova è già `version`: nessun `SET m.version` più avanti.
+ */
 const VERSION_GUARD = `
   MATCH (m:ServiceMap {id: $mapId, tenant_id: $tenantId})
+  SET m.version = m.version + 1
   WITH m, m.version AS version
-  WHERE version = toInteger($expectedVersion)`
+  WHERE version = toInteger($expectedVersion) + 1`
 
 /**
  * Applica la sincronizzazione in UNO statement: aggiunge le INCLUDES nuove
@@ -189,8 +286,8 @@ export const SYNC_APPLY_CYPHER = `${VERSION_GUARD}
     RETURN count(inc) AS moved
   }
   WITH m, version, added, removed, moved, [(m)-[:INCLUDES]->(ci {tenant_id: $tenantId}) | ci.id] AS includedIds
-  SET m.node_ids = includedIds, m.stale = false, m.synced_at = $now
-  SET m.version = version + 1, m.updated_at = $now, m.updated_by = $actorId
+  SET m.node_ids = includedIds, m.stale = false, m.stale_reason = null, m.synced_at = $now
+  SET m.updated_at = $now, m.updated_by = $actorId
   ${serviceHistoryWriteCypher({ fields: SERVICE_HISTORY_STATE_FROM_MAP })}
   RETURN m.version AS version, m.status AS status, added, removed, moved`
 
@@ -212,7 +309,7 @@ export const SYNC_SKIP_LIMIT_CYPHER = `
   MATCH (m:ServiceMap {id: $mapId, tenant_id: $tenantId})
   WITH m, coalesce(m.stale, false) AS wasStale
   WITH m, wasStale, (NOT wasStale) AS becameStale
-  SET m.stale = true, m.synced_at = $now
+  SET m.stale = true, m.stale_reason = '${SERVICE_STALE_OVER_LIMIT}', m.synced_at = $now
   ${serviceHistoryWriteCypher({ when: 'becameStale', imports: ['wasStale', 'becameStale'], fields: SERVICE_HISTORY_STATE_FROM_MAP })}
   RETURN m.version AS version, m.status AS status, wasStale`
 

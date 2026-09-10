@@ -36,6 +36,46 @@ export async function evaluateAutoTransitions(
   await syncLinkedProblems(session, changeId, ctx)
   await syncLinkedIncidents(session, changeId, ctx)
   await syncSuppressedEvents(session, changeId, ctx)
+  await syncServiceMaintenance(session, changeId, ctx)
+}
+
+/**
+ * Ingresso e uscita dalla finestra di change viste dai Servizi monitorati
+ * (revisione 2 · D6.1). La salute del servizio dipende anche dalle change in
+ * finestra sui suoi componenti, ma nessuna transizione pubblicava qualcosa che i
+ * servizi ascoltassero: `maintenance` compariva e spariva solo alla passata
+ * periodica, fino a 15 minuti dopo — e dopo il rilascio, con il componente
+ * critico ancora giù, il servizio restava «in manutenzione», quindi senza
+ * incident.
+ *
+ * Il marcatore `Change.service_window` ricorda in quale dei due stati i servizi
+ * sono già stati avvisati: si accoda una valutazione solo quando lo stato
+ * CAMBIA (ingresso o uscita), non a ogni mutation sulla change. Il marcatore si
+ * scrive PRIMA dell'accodamento e nella stessa sessione: se la coda è giù la
+ * passata periodica recupera comunque, ma nessuna transizione viene annullata
+ * per questo (`notifyChangeWindowChanged` non lancia mai).
+ */
+async function syncServiceMaintenance(
+  session: Session,
+  changeId: string,
+  ctx: GraphQLContext,
+): Promise<void> {
+  const row = await runQueryOne<{ step: string; notified: unknown }>(session, `
+    MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
+    RETURN wi.current_step AS step, c.service_window AS notified
+  `, { changeId, tenantId: ctx.tenantId })
+  if (!row) return
+  const { CHANGE_WINDOW_STEPS } = await import('../../../services/eventCorrelation.js')
+  const inWindow = CHANGE_WINDOW_STEPS.includes(row.step)
+  if (inWindow === (row.notified === true)) return
+  await runQueryOne(session, `
+    MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
+    SET c.service_window = $inWindow
+    RETURN c.id AS id
+  `, { changeId, tenantId: ctx.tenantId, inWindow })
+  const { notifyChangeWindowChanged } = await import('../../../services/serviceImpact/sync.js')
+  const maps = await notifyChangeWindowChanged(ctx.tenantId, changeId, inWindow ? 'change.window_entered' : 'change.window_left')
+  logger.info({ changeId, step: row.step, inWindow, maps }, '[change] finestra di change: valutazione dei servizi accodata')
 }
 
 /**

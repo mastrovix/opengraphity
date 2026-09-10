@@ -10,7 +10,7 @@ import type { ImpactCause, ServiceMapEdge, ServiceMapNode } from '@/types/servic
 
 const n = (id: string, level: number, via: string | null, over: Partial<ServiceMapNode> = {}): ServiceMapNode => ({
   ci: { id, name: id, type: 'server' }, level, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false,
-  via, addedBy: 'auto', health: 'operational', inMaintenance: false, contributes: true, ...over,
+  via, addedBy: 'auto', health: 'operational', inMaintenance: false, contributes: true, excludedReason: null, ...over,
 })
 const e = (source: string, target: string, relType = 'DEPENDS_ON'): ServiceMapEdge => ({ source, target, relType })
 const cause = (id: string, health: 'down' | 'degraded', path: string[]): ImpactCause =>

@@ -46,6 +46,7 @@ describe('enum SDL ↔ liste TS (lib/serviceVocabularies.ts)', () => {
     expect(SERVICE_SDL_ENUMS['ServiceHealthTrigger']).toEqual(['created', 'ci_health', 'rules_changed', 'map_changed', 'maintenance', 'manual', 'periodic'])
     expect(SERVICE_SDL_ENUMS['UnknownNodesMode']).toEqual(['ignore', 'operational'])
     expect(SERVICE_SDL_ENUMS['ServiceOpenIncidentFrom']).toEqual(['never', 'down', 'degraded'])
+    expect(SERVICE_SDL_ENUMS['ServiceStaleReason']).toEqual(['missing_ci', 'over_limit'])
     expect([...SERVICE_HEALTH_SEVERITY_ORDER].sort()).toEqual([...SERVICE_HEALTHS].sort())
   })
 })
@@ -54,10 +55,10 @@ describe('tipi del contratto', () => {
   it('ServiceMap', () => {
     expect(fieldsOf('ServiceMap')).toEqual({
       id: 'ID!', service: 'ServiceRef!', name: 'String!', status: 'ServiceMapStatus!', version: 'Int!', updatedAt: 'String',
-      maxDepth: 'Int!', relationshipTypes: '[String!]!', builtFrom: 'String!', stale: 'Boolean!',
+      maxDepth: 'Int!', relationshipTypes: '[String!]!', builtFrom: 'String!', stale: 'Boolean!', staleReason: 'ServiceStaleReason',
       autoSync: 'Boolean!', syncedAt: 'String',
       rules: 'ServiceImpactRules!',
-      health: 'ServiceHealth!', healthSince: 'String', impactScore: 'Int!', evaluatedAt: 'String',
+      health: 'ServiceHealth!', healthIfActive: 'ServiceHealth', healthSince: 'String', impactScore: 'Int!', evaluatedAt: 'String',
       explanation: '[ImpactCause!]!',
       nodes: '[ServiceMapNode!]!', nodeCount: 'Int!',
       edges: '[ServiceMapEdge!]!',
@@ -70,7 +71,7 @@ describe('tipi del contratto', () => {
   })
 
   it('ServiceMapNode, ImpactCause, ServiceMapEdge, ServiceHealthEntry, ServiceImpactRules, ServiceRef, ServiceMapCounts, ServiceMapPage, ServiceMapFilter', () => {
-    expect(fieldsOf('ServiceMapNode')).toEqual({ ci: 'ConfigurationItemRef!', level: 'Int!', role: 'ServiceNodeRole!', propagate: 'NodePropagation!', weight: 'Int!', critical: 'Boolean!', via: 'ID', addedBy: 'String!', health: 'CIHealth', inMaintenance: 'Boolean!', contributes: 'Boolean!' })
+    expect(fieldsOf('ServiceMapNode')).toEqual({ ci: 'ConfigurationItemRef!', level: 'Int!', role: 'ServiceNodeRole!', propagate: 'NodePropagation!', weight: 'Int!', critical: 'Boolean!', via: 'ID', addedBy: 'String!', health: 'CIHealth', inMaintenance: 'Boolean!', contributes: 'Boolean!', excludedReason: 'String' })
     expect(fieldsOf('ImpactCause')).toEqual({ ci: 'ConfigurationItemRef!', health: 'CIHealth!', weight: 'Int!', critical: 'Boolean!', path: '[ConfigurationItemRef!]!' })
     expect(fieldsOf('ServiceMapEdge')).toEqual({ source: 'ID!', target: 'ID!', relType: 'String!' })
     expect(fieldsOf('ServiceHealthEntry')).toEqual({ id: 'ID!', at: 'String!', health: 'ServiceHealth!', previousHealth: 'ServiceHealth', impactScore: 'Int!', trigger: 'ServiceHealthTrigger!', causes: '[ImpactCause!]!', note: 'String' })
@@ -106,7 +107,8 @@ describe('tipi del contratto', () => {
     expect(sig(m['deleteServiceMap']!)).toEqual({ args: [['id', 'ID!', null]], type: 'Boolean!' })
     // ondata 5 (mappa viva): l'interruttore ha il controllo di concorrenza, «sincronizza ora» no (è un'azione idempotente)
     expect(sig(m['setServiceMapAutoSync']!)).toEqual({ args: [['id', 'ID!', null], ['expectedVersion', 'Int!', null], ['autoSync', 'Boolean!', null]], type: 'ServiceMap!' })
-    expect(sig(m['syncServiceMap']!)).toEqual({ args: [['id', 'ID!', null]], type: 'ServiceMap!' })
+    expect(sig(m['syncServiceMap']!)).toEqual({ args: [['id', 'ID!', null]], type: 'ServiceMapSyncResult!' })
+    expect(fieldsOf('ServiceMapSyncResult')).toEqual({ map: 'ServiceMap!', added: 'Int!', removed: 'Int!', moved: 'Int!', skipped: 'Boolean!', reason: 'String' })
   })
 
   it('tipi e input dell\'ondata 2 (configurazione da interfaccia)', () => {

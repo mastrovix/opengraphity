@@ -5,19 +5,23 @@
  * componente al clic; tabella componenti; cronologia; azioni admin
  * (rivaluta, pausa con expectedVersion, elimina con conferma); viewer senza
  * azioni; non trovato; errore; avviso «stale».
+ * Revisione 2: esito della sincronizzazione dal motore (C-3, compreso il
+ * rifiuto per il tetto), avviso «da rivedere» col motivo, i tre stati della
+ * mappa (C-4), esclusione di un componente incluso (C-1) e la salute «senza
+ * la finestra di change» (R1).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { ServiceDetailPage } from './ServiceDetailPage'
 import { GET_SERVICE_MAP, GET_SERVICE_IMPACT_PREVIEW, GET_SERVICE_MAP_PROPOSAL } from '@/graphql/queries'
-import { REEVALUATE_SERVICE_MAP, SET_SERVICE_MAP_STATUS, DELETE_SERVICE_MAP, SYNC_SERVICE_MAP } from '@/graphql/mutations'
+import { REEVALUATE_SERVICE_MAP, SET_SERVICE_MAP_STATUS, DELETE_SERVICE_MAP, SYNC_SERVICE_MAP, APPLY_SERVICE_MAP_PROPOSAL } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
-import { mapDetail, preview, proposal, openIncident, node, NODES } from '@/test/mocks/services'
+import { mapDetail, preview, proposal, openIncident, node, syncResult, NODES } from '@/test/mocks/services'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }))
-beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
+beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear(); vi.mocked(toast.warning).mockClear() })
 
 const detailMock = (over: Record<string, unknown> = {}): GqlMock => ({
   request: { query: GET_SERVICE_MAP, variables: { id: 'map-1' } },
@@ -268,30 +272,161 @@ describe('ServiceDetailPage', () => {
     expect(screen.getAllByText('Never').length).toBeGreaterThan(0)   // la scheda del servizio dice «mai», non «—»
   })
 
-  it('ondata 5, admin con mappa viva: «Sincronizza ora» col resoconto in toast e «Rivedi componenti» per il diff', async () => {
+  it('ondata 5, admin con mappa viva: «Sincronizza ora» col resoconto del motore e «Rivedi componenti» per il diff', async () => {
     const seen: unknown[] = []
     const sync: GqlMock = {
       request: { query: SYNC_SERVICE_MAP, variables: (v) => { seen.push(v); return true } },
-      // lb-09 entrato, cache-02 e cert-billing usciti
-      result: { data: { syncServiceMap: mapDetail({ version: 4, nodes: [NODES[0], NODES[1], node({ id: 'lb-09', name: 'lb-09' })] }) } },
+      // i conteggi li dà il motore, non il diff dei nodi in pagina
+      result: { data: { syncServiceMap: syncResult({ map: mapDetail({ version: 4, nodes: [NODES[0], NODES[1], node({ id: 'lb-09', name: 'lb-09' })] }), added: 1, removed: 2, moved: 3 }) } },
     }
     const { user } = renderPage('admin', { extra: [sync, proposalMock()] })
     await screen.findByRole('heading', { level: 1 })
     expect(screen.queryByRole('button', { name: 'Update map' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Sync now' }))
     await waitFor(() => expect(seen).toEqual([{ id: 'map-1' }]))
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Map synced: +1 −2'))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Map synced: +1 −2 ~3'))
     // il dialogo del diff resta raggiungibile: sola revisione ed esclusioni
     await user.click(screen.getByRole('button', { name: 'Review components' }))
     expect(await screen.findByRole('dialog', { name: 'Update the map of "Enterprise Billing"' })).toBeInTheDocument()
   })
 
   it('ondata 5, admin: sincronizzazione senza cambiamenti → «già allineata», mai un successo muto', async () => {
-    const sync: GqlMock = { request: { query: SYNC_SERVICE_MAP, variables: () => true }, result: { data: { syncServiceMap: mapDetail({ version: 3 }) } } }
+    const sync: GqlMock = { request: { query: SYNC_SERVICE_MAP, variables: () => true }, result: { data: { syncServiceMap: syncResult() } } }
     const { user } = renderPage('admin', { extra: [sync] })
     await screen.findByRole('heading', { level: 1 })
     await user.click(screen.getByRole('button', { name: 'Sync now' }))
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Map already aligned with the graph: nothing to add or remove'))
+  })
+
+  it('C-3: sincronizzazione RIFIUTATA dal motore → avviso col motivo, mai «già allineata»', async () => {
+    const sync: GqlMock = {
+      request: { query: SYNC_SERVICE_MAP, variables: () => true },
+      // il tetto: nessuna scrittura, gli stessi nodi di prima
+      result: { data: { syncServiceMap: syncResult({ skipped: true, reason: 'the proposal has 612 components, over the ceiling of 500' }) } },
+    }
+    const { user } = renderPage('admin', { extra: [sync] })
+    await screen.findByRole('heading', { level: 1 })
+    await user.click(screen.getByRole('button', { name: 'Sync now' }))
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Sync refused: the proposal has 612 components, over the ceiling of 500. Nothing was changed.'))
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('C-3: rifiuto senza motivo → lo si dice comunque, non lo si inventa', async () => {
+    const sync: GqlMock = {
+      request: { query: SYNC_SERVICE_MAP, variables: () => true },
+      result: { data: { syncServiceMap: syncResult({ skipped: true, reason: null }) } },
+    }
+    const { user } = renderPage('admin', { extra: [sync] })
+    await screen.findByRole('heading', { level: 1 })
+    await user.click(screen.getByRole('button', { name: 'Sync now' }))
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Sync refused: the engine gave no reason. Nothing was changed.'))
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('C-3: una sincronizzazione che ha solo spostato livelli non è «già allineata»', async () => {
+    const sync: GqlMock = {
+      request: { query: SYNC_SERVICE_MAP, variables: () => true },
+      result: { data: { syncServiceMap: syncResult({ map: mapDetail({ version: 4 }), moved: 2 }) } },
+    }
+    const { user } = renderPage('admin', { extra: [sync] })
+    await screen.findByRole('heading', { level: 1 })
+    await user.click(screen.getByRole('button', { name: 'Sync now' }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Map synced: +0 −0 ~2'))
+  })
+
+  it('C-3: l\'avviso «da rivedere» dice il motivo vero, e col tetto superato manda a «Rivedi componenti» invece che a sincronizzare', async () => {
+    renderPage('admin', { detail: detailMock({ stale: true, staleReason: 'over_limit' }), extra: [proposalMock()] })
+    await screen.findByRole('heading', { level: 1 })
+    const banner = screen.getByTestId('stale-banner')
+    expect(banner).toHaveAttribute('data-reason', 'over_limit')
+    expect(banner).toHaveTextContent('The map goes over the ceiling of 500 components: reduce the depth or exclude something.')
+    expect(within(banner).getByRole('button', { name: 'Review components' })).toBeInTheDocument()
+  })
+
+  it('C-3: motivo «componente sparito» → il testo della CMDB; motivo assente → il testo generico', async () => {
+    const { unmount } = renderPage('viewer', { detail: detailMock({ stale: true, staleReason: 'missing_ci' }) })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByTestId('stale-banner')).toHaveTextContent('A component of the map no longer exists in the CMDB: review the components.')
+    unmount()
+
+    renderPage('viewer', { detail: detailMock({ stale: true, staleReason: null }) })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByTestId('stale-banner')).toHaveTextContent('A component of the map no longer exists in the CMDB: the map needs updating.')
+  })
+
+  it('C-4: una bozza si attiva con un pulsante «Attiva» (non con il giro pausa/riattiva)', async () => {
+    const seen: unknown[] = []
+    const activate: GqlMock = {
+      request: { query: SET_SERVICE_MAP_STATUS, variables: (v) => { seen.push(v); return true } },
+      result: { data: { setServiceMapStatus: mapDetail({ status: 'active', version: 4 }) } },
+    }
+    const { user } = renderPage('admin', { detail: detailMock({ status: 'draft' }), extra: [activate] })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Activate' }))
+    await waitFor(() => expect(seen).toEqual([{ id: 'map-1', expectedVersion: 3, status: 'active' }]))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Map Active'))
+  })
+
+  it('C-4: una mappa in pausa si riattiva; una attiva si mette in pausa', async () => {
+    const seen: unknown[] = []
+    const resume: GqlMock = {
+      request: { query: SET_SERVICE_MAP_STATUS, variables: (v) => { seen.push(v); return true } },
+      result: { data: { setServiceMapStatus: mapDetail({ status: 'active', version: 4 }) } },
+    }
+    const { user, unmount } = renderPage('admin', { detail: detailMock({ status: 'paused' }), extra: [resume] })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.queryByRole('button', { name: 'Activate' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Resume' }))
+    await waitFor(() => expect(seen).toEqual([{ id: 'map-1', expectedVersion: 3, status: 'active' }]))
+    unmount()
+
+    renderPage('admin', { detail: detailMock({ status: 'active' }) })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument()
+  })
+
+  it('C-1: escludere un componente incluso dalla tabella lo fa sparire dalla pagina', async () => {
+    const seen: unknown[] = []
+    const withoutDb = (mapDetail().nodes as Record<string, unknown>[]).filter((n) => (n.ci as { id: string }).id !== 'db-01')
+    const exclude: GqlMock = {
+      request: { query: APPLY_SERVICE_MAP_PROPOSAL, variables: (v) => { seen.push(v); return true } },
+      result: { data: { applyServiceMapProposal: mapDetail({ version: 4, nodes: withoutDb, nodeCount: 3, edges: [], explanation: [] }) } },
+    }
+    const { user } = renderPage('admin', { extra: [exclude] })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getAllByTestId('component-row').map((r) => r.getAttribute('data-ci-id'))).toContain('db-01')
+    await user.click(screen.getByRole('button', { name: 'Exclude db-01 from the map' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Exclude db-01 from the map?' })
+    await user.click(within(dialog).getByRole('button', { name: 'Exclude' }))
+    await waitFor(() => expect(seen).toEqual([{ id: 'map-1', expectedVersion: 3, add: [], exclude: ['db-01'], remove: [] }]))
+    await waitFor(() => expect(screen.getAllByTestId('component-row').map((r) => r.getAttribute('data-ci-id'))).not.toContain('db-01'))
+  })
+
+  it('R1: con la salute «in manutenzione» la testata dice anche come starebbe senza la finestra di change', async () => {
+    renderPage('viewer', { detail: detailMock({ health: 'maintenance', healthIfActive: 'down' }) })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByTestId('health-if-active')).toHaveTextContent('in maintenance, would be: Down')
+  })
+
+  it('R1: il pannello del componente dice perché il nodo non ha contato', async () => {
+    const nodes = (mapDetail().nodes as Record<string, unknown>[]).map((n) =>
+      (n.ci as { id: string }).id === 'db-01' ? { ...n, contributes: false, excludedReason: 'lifecycle_maintenance' } : n)
+    const { user } = renderPage('viewer', { detail: detailMock({ nodes }) })
+    await screen.findByRole('heading', { level: 1 })
+    await user.click(nodeOf('db-01'))
+    expect(within(screen.getByTestId('node-panel')).getByText('No — in maintenance (lifecycle)')).toBeInTheDocument()
+  })
+
+  it('R1: fuori dalla manutenzione (o senza il dato) non si aggiunge nulla alla testata', async () => {
+    const { unmount } = renderPage('viewer', { detail: detailMock({ health: 'maintenance', healthIfActive: null }) })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.queryByTestId('health-if-active')).not.toBeInTheDocument()
+    unmount()
+
+    renderPage('viewer', { detail: detailMock({ health: 'degraded', healthIfActive: 'down' }) })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.queryByTestId('health-if-active')).not.toBeInTheDocument()
   })
 
   it('ondata 5, admin con mappa congelata: il pulsante torna «Aggiorna mappa» e non c\'è «Sincronizza ora»', async () => {

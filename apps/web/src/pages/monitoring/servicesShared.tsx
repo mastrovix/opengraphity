@@ -4,6 +4,9 @@
  * salute (riquadri, nodi della mappa, barre), barra del punteggio d'impatto,
  * etichette di ruolo/«pesa», e la frase di spiegazione in parole
  * («Degradato: db-01 è giù (via api-03), cache-02 è degradato»).
+ * Revisione 2: la nota «in manutenzione, sarebbe: giù» (`healthIfActive`), i
+ * due motivi per cui la mappa è da rivedere (`staleReason`) e il motivo per
+ * cui un componente non ha contato (`excludedReason`).
  *
  * Fail-loud: un valore fuori vocabolario (salute, stato, ruolo, pesa) NON
  * sparisce e non prende un colore «plausibile»: tinta rossa piena via
@@ -17,8 +20,9 @@ import { lookupOrError, palette } from '@/lib/tokens'
 import { TINT_CRITICAL, TINT_WARNING, TINT_INFO, TINT_SUCCESS, TINT_NEUTRAL, TINT_BROKEN, ACCENT, type Tint } from '@/lib/eventPalette'
 import { CI_HEALTHS, type CIHealth } from '@/types/events'
 import {
-  SERVICE_HEALTHS, SERVICE_MAP_STATUSES, NODE_PROPAGATIONS, SERVICE_NODE_ROLES,
-  type ServiceHealth, type ServiceMapStatus, type NodePropagation, type ServiceNodeRole, type ImpactCause, type ImpactPathRef, type ServiceMapRow,
+  SERVICE_HEALTHS, SERVICE_MAP_STATUSES, NODE_PROPAGATIONS, SERVICE_NODE_ROLES, NODE_EXCLUDED_REASONS,
+  type ServiceHealth, type ServiceMapStatus, type NodePropagation, type ServiceNodeRole, type NodeExcludedReason,
+  type ImpactCause, type ImpactPathRef, type ServiceMapRow,
 } from '@/types/services'
 
 const badgeFont = { fontSize: 'var(--font-size-label)' } as const
@@ -76,6 +80,40 @@ export function ServiceHealthBadge({ health }: { health: ServiceHealth }) {
   const { t } = useTranslation()
   const s = lookupOrError(SERVICE_HEALTH_TINT, health, 'SERVICE_HEALTH_TINT', TINT_BROKEN)
   return <Pill bg={s.bg} color={s.color} style={badgeFont}>{serviceHealthLabel(t, health)}</Pill>
+}
+
+/**
+ * «in manutenzione, sarebbe: giù» — la salute che il servizio avrebbe senza la
+ * finestra di change in corso (`healthIfActive`, valorizzata solo quando la
+ * salute è `maintenance`). Null quando non c'è niente da dire: la manutenzione
+ * non deve mai nascondere un servizio che è comunque giù.
+ */
+export function healthIfActiveNote(t: TFunction, map: Pick<ServiceMapRow, 'health' | 'healthIfActive'>): string | null {
+  if (map.health !== 'maintenance' || map.healthIfActive === null) return null
+  return t('monitoring.services.healthIfActive', { health: serviceHealthLabel(t, map.healthIfActive) })
+}
+
+// ── Mappa da rivedere ────────────────────────────────────────────────────────
+
+/**
+ * Il motivo per cui la mappa è marcata `stale`, in chiaro: un componente
+ * sparito dalla CMDB o il tetto dei componenti superato (in quel caso
+ * sincronizzare fallirebbe di nuovo, quindi il testo NON lo propone).
+ * Motivo assente → il testo generico; motivo fuori vocabolario → detto in
+ * chiaro, mai taciuto.
+ */
+export function staleMessage(t: TFunction, reason: string | null): string {
+  if (reason === null)         return t('monitoring.services.stale')
+  if (reason === 'missing_ci') return t('monitoring.services.staleMissingCi')
+  if (reason === 'over_limit') return t('monitoring.services.staleOverLimit')
+  return t('monitoring.services.staleUnknownReason', { value: reason })
+}
+
+/** Lo stesso motivo in due parole (icona della lista). */
+export function staleShortLabel(t: TFunction, reason: string | null): string {
+  if (reason === 'over_limit') return t('monitoring.services.staleShortOverLimit')
+  if (reason === null || reason === 'missing_ci') return t('monitoring.services.staleShort')
+  return t('monitoring.services.health.outOfVocabulary', { value: reason })
 }
 
 // ── Stato della mappa ────────────────────────────────────────────────────────
@@ -143,6 +181,19 @@ export function roleLabel(t: TFunction, role: string): string {
   return (SERVICE_NODE_ROLES as readonly string[]).includes(role)
     ? t(`monitoring.services.role.${role as ServiceNodeRole}`)
     : t('monitoring.services.health.outOfVocabulary', { value: role })
+}
+
+/**
+ * Perché un componente non ha contato nell'ultima valutazione: «in
+ * manutenzione (ciclo di vita)», «in finestra di change», «non pesa mai»,
+ * «salute sconosciuta». null = ha contato, non c'è niente da dire; valore
+ * fuori vocabolario → detto in chiaro.
+ */
+export function excludedReasonLabel(t: TFunction, reason: string | null): string | null {
+  if (reason === null) return null
+  return (NODE_EXCLUDED_REASONS as readonly string[]).includes(reason)
+    ? t(`monitoring.services.excludedReason.${reason as NodeExcludedReason}`)
+    : t('monitoring.services.health.outOfVocabulary', { value: reason })
 }
 
 /** «Pesa»: sempre / mai / ponderato (al posto di propagate, glossario del progetto). */

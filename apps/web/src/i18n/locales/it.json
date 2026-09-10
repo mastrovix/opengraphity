@@ -1716,8 +1716,11 @@
       "actionFailed": "Operazione non riuscita: {{error}}",
       "mapUpdated": "Mappa aggiornata: +{{added}} −{{removed}}, {{excluded}} esclusi",
       "exclusionRemoved": "{{name}} riammesso: torna nella prossima proposta",
-      "synced": "Mappa sincronizzata: +{{added}} −{{removed}}",
-      "syncAligned": "Mappa già allineata al grafo: niente da aggiungere né da togliere"
+      "synced": "Mappa sincronizzata: +{{added}} −{{removed}} ~{{moved}}",
+      "syncAligned": "Mappa già allineata al grafo: niente da aggiungere né da togliere",
+      "syncSkipped": "Sincronizzazione rifiutata: {{reason}}. Non è stato cambiato nulla.",
+      "syncSkippedNoReason": "il motore non ha dato un motivo",
+      "componentExcluded": "{{name}} escluso: è fuori dalla mappa e non verrà più riproposto"
     }
   },
   "components": {
@@ -2506,6 +2509,11 @@
       "components_other": "{{count}} componenti",
       "stale": "Un componente della mappa non esiste più nella CMDB: la mappa va aggiornata.",
       "staleShort": "Componente mancante nella CMDB",
+      "staleMissingCi": "Un componente della mappa non esiste più nella CMDB: rivedi i componenti.",
+      "staleOverLimit": "La mappa supera il tetto di 500 componenti: riduci la profondità o escludi qualcosa. Finché è così la sincronizzazione non scrive nulla.",
+      "staleUnknownReason": "La mappa è da rivedere per un motivo sconosciuto ({{value}}).",
+      "staleShortOverLimit": "Oltre il tetto dei componenti",
+      "healthIfActive": "in manutenzione, sarebbe: {{health}}",
       "impactScoreLabel": "Punteggio d'impatto {{score}} su 100",
       "tiles": {
         "down": "Giù",
@@ -2539,7 +2547,8 @@
         "role": "Ruolo",
         "propagate": "Pesa",
         "weight": "Peso",
-        "critical": "Critico"
+        "critical": "Critico",
+        "actions": "Azioni"
       },
       "empty": {
         "title": "Nessun servizio monitorato",
@@ -2570,6 +2579,13 @@
         "always": "Sempre",
         "never": "Mai",
         "weighted": "Ponderato"
+      },
+      "excludedReason": {
+        "never": "non pesa mai (impostazione)",
+        "lifecycle_maintenance": "in manutenzione (ciclo di vita)",
+        "change_window": "in finestra di change",
+        "unknown_health": "salute sconosciuta (ignorata)",
+        "unstated": "motivo non dichiarato"
       },
       "syncMode": {
         "live": "viva",
@@ -2639,6 +2655,7 @@
         "neverEvaluated": "Mai valutata",
         "actions": {
           "reevaluate": "Rivaluta ora",
+          "activate": "Attiva",
           "pause": "Metti in pausa",
           "resume": "Riattiva",
           "delete": "Elimina",
@@ -2788,7 +2805,15 @@
         "weightLabel": "Peso di {{name}}",
         "criticalLabel": "{{name}} è critico",
         "weightDisabled": "Un componente che non pesa mai non ha peso.",
-        "saveFailed": "Componenti non salvati: {{error}}. Se un altro amministratore — o la sincronizzazione automatica — ha modificato la mappa, ricarica e riprova."
+        "saveFailed": "Componenti non salvati: {{error}}. Se un altro amministratore — o la sincronizzazione automatica — ha modificato la mappa, ricarica e riprova.",
+        "overwritten_one": "Il componente {{names}} è stato modificato altrove: la tua modifica è stata scartata.",
+        "overwritten_other": "{{count}} componenti sono stati modificati altrove ({{names}}): le tue modifiche sono state scartate.",
+        "exclude": "Escludi",
+        "excludeLabel": "Escludi {{name}} dalla mappa",
+        "excludeTitle": "Escludere {{name}} dalla mappa?",
+        "excludeBody": "Il componente esce dalla mappa e non verrà più riproposto: smette di pesare sulla salute del servizio. Puoi riammetterlo da «Rivedi componenti».",
+        "excludeConfirm": "Escludi",
+        "excludeFailed": "{{name}} non escluso: {{error}}. Se un altro amministratore — o la sincronizzazione automatica — ha cambiato la mappa, ricarica e riprova."
       },
       "preview": {
         "label": "Con queste impostazioni adesso:",
@@ -2829,7 +2854,15 @@
         "exclusionsHint": "Esclusi a mano: non tornano più nelle proposte.",
         "exclusionsEmpty": "Nessuna esclusione.",
         "readmit": "Riammetti",
-        "readmitLabel": "Riammetti {{name}}"
+        "readmitLabel": "Riammetti {{name}}",
+        "refreshed": "La mappa è cambiata nel frattempo: elenco aggiornato, ricontrolla le scelte.",
+        "includeAlways": "Includi e tieni sempre",
+        "includeAlwaysLabel": "Includi {{name}} e tienilo sempre",
+        "includeAlwaysHint": "Resta anche se sparisce dal grafo: la sincronizzazione automatica non toglie mai un componente aggiunto a mano.",
+        "excludeIncludedLabel": "Escludi {{name}} dalla mappa",
+        "autoTitle_one": "{{count}} componente incluso automaticamente",
+        "autoTitle_other": "{{count}} componenti inclusi automaticamente",
+        "autoHint": "Già nella mappa: ce li ha portati la sincronizzazione. Se ne escludi uno esce dalla mappa per sempre."
       },
       "openIncident": {
         "title": "Incident aperto",

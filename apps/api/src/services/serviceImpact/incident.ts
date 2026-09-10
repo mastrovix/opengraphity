@@ -28,6 +28,17 @@
  *  - Salute `maintenance` non apre e non chiude nulla; se un incident è aperto
  *    riceve UN commento (una volta sola: `maintenance_noted_at` sulla
  *    relazione), rimosso quando il servizio esce dalla manutenzione.
+ *  - **Si chiude solo con `health = 'operational'`** (revisione 2 · I1). Negli
+ *    altri casi in cui la soglia non è più raggiunta — degradato sotto soglia,
+ *    `unknown`, regola passata a `never` — l'incident RESTA aperto con UN
+ *    commento onesto (`kept_open_noted_at`, azzerato quando si torna sopra
+ *    soglia), e la causa di risoluzione si costruisce dalla salute vera: mai
+ *    «tornato operativo» su un servizio che operativo non è.
+ *  - **Apertura idempotente** (revisione 2 · I2): marcatore Redis
+ *    `og:services:incident:opened:<tenant>:<mapId>` scritto subito dopo
+ *    `createIncident`; se la relazione fallisce, al retry si ricollega
+ *    quell'incident invece di crearne un secondo. `cause_ids` si scrive PRIMA
+ *    del commento «Causa aggiornata», per lo stesso motivo.
  *  - Il commento «Causa aggiornata» si scrive solo quando l'insieme delle cause
  *    cambia DAVVERO rispetto a quello riportato l'ultima volta sull'incident
  *    (`cause_ids` sulla relazione, confronto per id e non per ordine): mai un
@@ -52,6 +63,7 @@ import { publishEvent } from '../../lib/publishEvent.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import { withRedisLock, type RedisLockOptions } from '../../lib/redisLock.js'
+import { getSharedRedis } from '../../lib/bullmq.js'
 import { derivePriority, type ImpactUrgency } from '../../lib/priority.js'
 import { serviceIncidentsOpenedTotal, serviceIncidentsResolvedTotal } from '../../middleware/metrics.js'
 import { SERVICE_MAX_CAUSES, type ServiceHealth, type ServiceImpactRules, type ServiceMapStatus, type ServiceOpenIncidentFrom } from '../../lib/serviceVocabularies.js'
@@ -160,14 +172,15 @@ export function serviceIncidentDescription(
 
 // ── Lettura dell'incident del servizio ───────────────────────────────────────
 
-/** L'incident del servizio con quanto serve a decidere: passo, cause riportate l'ultima volta, nota di manutenzione già scritta. */
+/** L'incident del servizio con quanto serve a decidere: passo, cause riportate l'ultima volta, note già scritte (manutenzione, «resta aperto»). */
 export interface ServiceIncidentRow extends OpenIncidentRow {
   number:             string
   causeIds:           string[]
   maintenanceNotedAt: string | null
+  keptOpenNotedAt:    string | null
 }
 
-interface RawServiceIncidentRow { incidentId: string; instanceId: string; step: string; number: string | null; causeIds: unknown; maintenanceNotedAt: unknown }
+interface RawServiceIncidentRow { incidentId: string; instanceId: string; step: string; number: string | null; causeIds: unknown; maintenanceNotedAt: unknown; keptOpenNotedAt: unknown }
 
 /**
  * L'incident non chiuso collegato alla mappa. Come per gli allarmi, un incident
@@ -180,7 +193,8 @@ export const FIND_SERVICE_INCIDENT_CYPHER = `
   MATCH (i)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
   WHERE NOT wi.current_step IN $terminalSteps OR wi.current_step = $resolvedStep
   RETURN i.id AS incidentId, wi.id AS instanceId, wi.current_step AS step, i.number AS number,
-         r.cause_ids AS causeIds, r.maintenance_noted_at AS maintenanceNotedAt, i.created_at AS createdAt
+         r.cause_ids AS causeIds, r.maintenance_noted_at AS maintenanceNotedAt, r.kept_open_noted_at AS keptOpenNotedAt,
+         i.created_at AS createdAt
   ORDER BY createdAt DESC LIMIT 1`
 
 export async function findServiceIncident(session: Session, tenantId: string, mapId: string, info: IncidentStepInfo): Promise<ServiceIncidentRow | null> {
@@ -195,6 +209,7 @@ export async function findServiceIncident(session: Session, tenantId: string, ma
     number:             row.number ?? '',
     causeIds:           Array.isArray(row.causeIds) ? row.causeIds.map(toStr) : [],
     maintenanceNotedAt: row.maintenanceNotedAt == null ? null : toStr(row.maintenanceNotedAt),
+    keptOpenNotedAt:    row.keptOpenNotedAt == null ? null : toStr(row.keptOpenNotedAt),
   }
 }
 
@@ -202,8 +217,10 @@ export async function findServiceIncident(session: Session, tenantId: string, ma
  * Crea (all'apertura) o aggiorna la relazione `(:Incident)-[:IMPACTS_SERVICE]->(:ServiceMap)`:
  * `opened_by` e `at` sono scritti una volta sola (ON CREATE), `cause_ids` è
  * l'insieme delle cause riportate l'ultima volta sull'incident (serve a non
- * ripetere il commento) e `maintenance_noted_at` ricorda che la nota di
- * manutenzione è già stata scritta (assegnare null cancella la proprietà).
+ * ripetere il commento), `maintenance_noted_at` ricorda che la nota di
+ * manutenzione è già stata scritta e `kept_open_noted_at` che è già stato detto
+ * perché l'incident resta aperto sotto soglia (assegnare null cancella la
+ * proprietà: la nota potrà essere riscritta al prossimo giro).
  */
 export const LINK_SERVICE_INCIDENT_CYPHER = `
   MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
@@ -211,7 +228,8 @@ export const LINK_SERVICE_INCIDENT_CYPHER = `
   MERGE (i)-[r:IMPACTS_SERVICE]->(m)
   ON CREATE SET r.opened_by = $openedBy, r.at = $now
   SET r.cause_ids = $causeIds,
-      r.maintenance_noted_at = CASE WHEN $maintenanceNoted THEN coalesce(r.maintenance_noted_at, $now) ELSE null END
+      r.maintenance_noted_at = CASE WHEN $maintenanceNoted THEN coalesce(r.maintenance_noted_at, $now) ELSE null END,
+      r.kept_open_noted_at = CASE WHEN $keptOpenNoted THEN coalesce(r.kept_open_noted_at, $now) ELSE null END
   RETURN r.at AS at`
 
 // ── Incident tecnici già aperti sui componenti (ondata 4) ────────────────────
@@ -239,6 +257,11 @@ export const FIND_TECHNICAL_INCIDENTS_CYPHER = `
   RETURN DISTINCT i.number AS number, i.title AS title, i.created_at AS createdAt
   ORDER BY createdAt DESC LIMIT toInteger($limit)`
 
+/** Un incident del tenant per id: serve solo al recupero d'idempotenza (il marcatore può puntare a un incident cancellato). */
+export const FIND_INCIDENT_BY_ID_CYPHER = `
+  MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
+  RETURN i.number AS number`
+
 export async function findTechnicalIncidents(session: Session, tenantId: string, ciIds: readonly string[], info: IncidentStepInfo): Promise<TechnicalIncidentRef[]> {
   if (ciIds.length === 0) return []
   const rows = await runQuery<{ number: string | null; title: string | null }>(session, FIND_TECHNICAL_INCIDENTS_CYPHER, {
@@ -247,12 +270,20 @@ export async function findTechnicalIncidents(session: Session, tenantId: string,
   return rows.map((r) => ({ number: r.number == null ? '' : toStr(r.number), title: r.title == null ? '' : toStr(r.title) }))
 }
 
-async function linkServiceIncident(session: Session, tenantId: string, mapId: string, incidentId: string, causeIds: readonly string[], maintenanceNoted: boolean, now: string): Promise<void> {
+/** I due marcatori di «nota già scritta» sulla relazione: si passano sempre entrambi (null = cancella). */
+interface LinkNotes { maintenanceNoted: boolean; keptOpenNoted: boolean }
+
+async function linkServiceIncident(session: Session, tenantId: string, mapId: string, incidentId: string, causeIds: readonly string[], notes: LinkNotes, now: string): Promise<void> {
   const row = await runQueryOne<{ at: string }>(session, LINK_SERVICE_INCIDENT_CYPHER, {
-    tenantId, mapId, incidentId, causeIds: [...causeIds], maintenanceNoted, now, openedBy: MONITORING_ACTOR,
+    tenantId, mapId, incidentId, causeIds: [...causeIds],
+    maintenanceNoted: notes.maintenanceNoted, keptOpenNoted: notes.keptOpenNoted,
+    now, openedBy: MONITORING_ACTOR,
   })
   if (!row) throw new Error(`Incident ${incidentId} or ServiceMap ${mapId} vanished while linking them (tenant ${tenantId})`)
 }
+
+/** Nessuna nota da conservare: il caso normale (l'incident è sopra soglia o appena aperto). */
+const NO_NOTES: LinkNotes = { maintenanceNoted: false, keptOpenNoted: false }
 
 // ── Riconciliazione ──────────────────────────────────────────────────────────
 
@@ -281,10 +312,13 @@ export interface ServiceIncidentInput {
  *  - `opened` / `reopened` / `updated` / `resolved`: l'incident è stato toccato;
  *  - `resolve_skipped`: nessun cammino verso `resolved` dal passo corrente (commento, nessuna forzatura);
  *  - `maintenance`: nota di manutenzione scritta (una volta sola);
+ *  - `kept_open`: il servizio non è tornato operativo ma non raggiunge più la
+ *    soglia (degradato sotto soglia, `unknown`, regola passata a `never`):
+ *    l'incident resta aperto con UN commento onesto (una volta sola);
  *  - `disabled`: soglia `never`; `inactive`: mappa non `active` (bozza o in pausa);
  *  - `none`: niente da fare.
  */
-export type ServiceIncidentOutcome = 'none' | 'opened' | 'reopened' | 'updated' | 'resolved' | 'resolve_skipped' | 'maintenance' | 'disabled' | 'inactive'
+export type ServiceIncidentOutcome = 'none' | 'opened' | 'reopened' | 'updated' | 'resolved' | 'resolve_skipped' | 'maintenance' | 'kept_open' | 'disabled' | 'inactive'
 
 export interface ServiceIncidentResult {
   outcome:        ServiceIncidentOutcome
@@ -328,7 +362,7 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
     if (open.maintenanceNotedAt) return done('none')
     await (await incidents()).addIncidentComment(open.incidentId, monitoringCtx(tenantId),
       `Servizio in manutenzione: la valutazione resta sospesa (una change in finestra riguarda un componente critico di "${input.serviceName}")`)
-    await linkServiceIncident(session, tenantId, mapId, open.incidentId, open.causeIds, true, input.now)
+    await linkServiceIncident(session, tenantId, mapId, open.incidentId, open.causeIds, { maintenanceNoted: true, keptOpenNoted: open.keptOpenNotedAt !== null }, input.now)
     log.info({ ...logCtx, incidentId: open.incidentId }, 'Service in maintenance: open incident annotated once')
     return done('maintenance')
   }
@@ -350,7 +384,7 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
         `Il servizio "${input.serviceName}" è di nuovo ${SERVICE_HEALTH_LABEL_IT[health]} (punteggio ${input.impactScore}/100)`)
       await (await incidents()).addIncidentComment(open.incidentId, monitoringCtx(tenantId),
         `Riaperto dal monitoraggio: ${serviceIncidentDescription(input.serviceName, health, input.impactScore, input.causes)}`)
-      await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIds, false, input.now)
+      await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIds, NO_NOTES, input.now)
       // Una riapertura conta come apertura (metrics.ts): il servizio è di nuovo fuori servizio.
       serviceIncidentsOpenedTotal.inc({})
       log.info({ ...logCtx, incidentId: open.incidentId }, 'Service incident reopened')
@@ -358,25 +392,64 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
     }
     // Incident già aperto: un commento SOLO se l'insieme delle cause è cambiato.
     if (sameCauseIds(open.causeIds, causeIds)) {
-      if (open.maintenanceNotedAt) await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIds, false, input.now)
+      // Il servizio è di nuovo sopra soglia: le note («in manutenzione»,
+      // «resta aperto») vanno azzerate, così potranno essere riscritte.
+      if (open.maintenanceNotedAt || open.keptOpenNotedAt) await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIds, NO_NOTES, input.now)
       return done('none')
     }
+    // `cause_ids` PRIMA del commento (revisione 2 · I2): se il commento fallisce
+    // e il job ritenta, il confronto è già allineato e non nasce un doppione.
+    await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIds, NO_NOTES, input.now)
     await (await incidents()).addIncidentComment(open.incidentId, monitoringCtx(tenantId),
       `Causa aggiornata: il servizio è ${SERVICE_HEALTH_LABEL_IT[health]} (punteggio ${input.impactScore}/100). Componenti che pesano (${input.causes.length}):\n${input.causes.map(causeLine).join('\n')}`)
-    await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIds, false, input.now)
     log.info({ ...logCtx, incidentId: open.incidentId, causes: causeIds }, 'Service incident causes changed: one comment written')
     return done('updated')
   }
 
-  // Sotto soglia (o soglia `never`): chiusura automatica dell'incident, se ce
-  // n'è uno ancora aperto. Un incident già in `resolved` non si tocca; con
-  // soglia `never` non se ne apre nessuno, ma quello aperto prima del cambio di
-  // regola viene comunque chiuso quando il servizio torna a posto.
-  if (open && open.step !== info.resolvedStep) return resolveServiceIncident(session, input, open, info)
-  // Il servizio non è più in manutenzione: la nota va rimessa in condizione di
-  // essere riscritta alla prossima finestra (assegnare null cancella).
-  if (open?.maintenanceNotedAt) await linkServiceIncident(session, tenantId, mapId, open.incidentId, open.causeIds, false, input.now)
+  // Sotto soglia (o soglia `never`). L'incident si chiude SOLO se il servizio è
+  // davvero tornato operativo (revisione 2 · I1): prima bastava «non raggiunge
+  // più la soglia», e un servizio ancora degradato — o di stato sconosciuto, o
+  // con la regola appena passata a `never` — veniva chiuso dal monitoraggio con
+  // la causa «Servizio tornato operativo», falsa.
+  if (open && open.step !== info.resolvedStep) {
+    if (health === 'operational') return resolveServiceIncident(session, input, open, info)
+    return keepServiceIncidentOpen(session, input, open, rules.open_incident_from)
+  }
+  // Nessun incident da chiudere: le note vanno rimesse in condizione di essere
+  // riscritte alla prossima volta (assegnare null cancella).
+  if (open && (open.maintenanceNotedAt || open.keptOpenNotedAt)) {
+    await linkServiceIncident(session, tenantId, mapId, open.incidentId, open.causeIds, NO_NOTES, input.now)
+  }
   return done(rules.open_incident_from === 'never' ? 'disabled' : 'none')
+}
+
+/**
+ * Perché l'incident resta aperto pur non raggiungendo più la soglia. Testi
+ * espliciti per i tre casi, nessuna frase inventata a runtime.
+ */
+export function keptOpenReason(health: ServiceHealth, openFrom: ServiceOpenIncidentFrom, serviceName: string): string {
+  if (openFrom === 'never') {
+    return `La regola del servizio "${serviceName}" è passata a "mai aprire incident": questo incident resta aperto, va chiuso a mano.`
+  }
+  if (health === 'unknown') {
+    return `Il servizio "${serviceName}" è di stato sconosciuto (nessun componente con una salute nota): l'incident resta aperto.`
+  }
+  return `Il servizio "${serviceName}" è ${SERVICE_HEALTH_LABEL_IT[health]}, sotto la soglia di apertura ("${openFrom}"): l'incident resta aperto.`
+}
+
+/**
+ * Sotto soglia ma non operativo: l'incident RESTA aperto con UN commento
+ * onesto, scritto una volta sola (`kept_open_noted_at` sulla relazione,
+ * azzerato quando il servizio torna sopra soglia o si chiude davvero).
+ */
+async function keepServiceIncidentOpen(session: Session, input: ServiceIncidentInput, open: ServiceIncidentRow, openFrom: ServiceOpenIncidentFrom): Promise<ServiceIncidentResult> {
+  const { tenantId, mapId, health } = input
+  const result: ServiceIncidentResult = { outcome: 'kept_open', incidentId: open.incidentId, incidentNumber: open.number }
+  if (open.keptOpenNotedAt) return { ...result, outcome: 'none' }
+  await linkServiceIncident(session, tenantId, mapId, open.incidentId, open.causeIds, { maintenanceNoted: false, keptOpenNoted: true }, input.now)
+  await (await incidents()).addIncidentComment(open.incidentId, monitoringCtx(tenantId), keptOpenReason(health, openFrom, input.serviceName))
+  log.info({ tenantId, mapId, jobId: input.jobId, incidentId: open.incidentId, health, openIncidentFrom: openFrom }, 'Service is below the opening threshold but not operational: its incident is kept open (noted once)')
+  return result
 }
 
 function monitoringCtx(tenantId: string) {
@@ -384,30 +457,75 @@ function monitoringCtx(tenantId: string) {
 }
 
 /**
+ * Marcatore di idempotenza dell'apertura (revisione 2 · I2): `createIncident`
+ * committa nella sua sessione, la `IMPACTS_SERVICE` è uno statement dopo — se
+ * quello fallisce il job ritenta, `findServiceIncident` non trova nulla e
+ * nascerebbe un SECONDO incident «Servizio X: non disponibile». Il marcatore
+ * ricorda l'id per un'ora: al retry si ricollega quello già creato.
+ */
+export function serviceIncidentOpenedKey(tenantId: string, mapId: string): string {
+  return `og:services:incident:opened:${tenantId}:${mapId}`
+}
+
+/** Vita del marcatore: abbondante per coprire i 5 tentativi con backoff, corta abbastanza da non impedire un'apertura vera più tardi. */
+export const SERVICE_INCIDENT_OPENED_TTL_SECONDS = 3600
+
+/**
  * Apertura: incident del monitoraggio con i CI delle cause come impattati,
  * relazione, evento di dominio, audit. La descrizione cita gli incident
  * tecnici già aperti sui componenti (ondata 4): nessuna soppressione, solo il
  * collegamento visibile — una query in più, qui e solo qui.
+ *
+ * Prima di creare si guarda il marcatore Redis: se un'apertura precedente è
+ * arrivata a `createIncident` ma non alla relazione, si ricollega quell'incident
+ * invece di crearne un altro (nessun doppione, un solo evento, una sola
+ * notifica).
  */
 async function openServiceIncident(session: Session, input: ServiceIncidentInput, causeIds: readonly string[], info: IncidentStepInfo): Promise<ServiceIncidentResult> {
   const { tenantId, mapId, health, impactScore } = input
   if (causeIds.length === 0) {
     throw new Error(`ServiceMap ${mapId} is "${health}" with no causes: an incident must have at least one impacted CI (tenant ${tenantId})`)
   }
-  const impact  = serviceImpactOf(input.criticality, { tenantId, mapId })
-  const urgency = serviceUrgencyOf(health)
-  const severity = derivePriority(impact, urgency)
-  const technical = await findTechnicalIncidents(session, tenantId, causeIds, info)
-  const incident = await (await incidents()).createIncident({
-    title:         serviceIncidentTitle(input.serviceName, health),
-    description:   serviceIncidentDescription(input.serviceName, health, impactScore, input.causes, technical),
-    severity,
-    impact,
-    urgency,
-    affectedCIIds: causeIds.slice(0, SERVICE_MAX_CAUSES),
-  }, monitoringCtx(tenantId))
+  const redis = getSharedRedis()
+  const key = serviceIncidentOpenedKey(tenantId, mapId)
+  const orphan = await redis.get(key)
+  let incident: { id: string; number: string } | null = null
+  let technical: TechnicalIncidentRef[] = []
+  let severity: string | null = null
+  let impact: ImpactUrgency | null = null
+  let urgency: ImpactUrgency | null = null
+  if (orphan) {
+    // L'incident esiste già (creato al giro precedente) ma non è collegato:
+    // `findServiceIncident` cerca solo via IMPACTS_SERVICE e non l'ha visto.
+    const row = await runQueryOne<{ number: string | null }>(session, FIND_INCIDENT_BY_ID_CYPHER, { tenantId, incidentId: orphan })
+    if (row) {
+      incident = { id: orphan, number: row.number == null ? '' : toStr(row.number) }
+      log.warn({ tenantId, mapId, jobId: input.jobId, incidentId: orphan }, 'Service incident was already created by a previous attempt: relinked instead of opening a second one')
+    } else {
+      log.warn({ tenantId, mapId, incidentId: orphan }, 'Service incident idempotency marker points to an incident that no longer exists: opening a new one')
+      await redis.del(key)
+    }
+  }
 
-  await linkServiceIncident(session, tenantId, mapId, incident.id, causeIds, false, input.now)
+  if (!incident) {
+    impact  = serviceImpactOf(input.criticality, { tenantId, mapId })
+    urgency = serviceUrgencyOf(health)
+    severity = derivePriority(impact, urgency)
+    technical = await findTechnicalIncidents(session, tenantId, causeIds, info)
+    incident = await (await incidents()).createIncident({
+      title:         serviceIncidentTitle(input.serviceName, health),
+      description:   serviceIncidentDescription(input.serviceName, health, impactScore, input.causes, technical),
+      severity,
+      impact,
+      urgency,
+      affectedCIIds: causeIds.slice(0, SERVICE_MAX_CAUSES),
+    }, monitoringCtx(tenantId))
+    // SUBITO dopo la creazione, prima di qualunque altra scrittura che possa
+    // fallire. `NX`: se un altro attore l'ha già scritto non lo si sovrascrive.
+    await redis.set(key, incident.id, 'EX', SERVICE_INCIDENT_OPENED_TTL_SECONDS, 'NX')
+  }
+
+  await linkServiceIncident(session, tenantId, mapId, incident.id, causeIds, NO_NOTES, input.now)
 
   const payload: ServiceIncidentOpenedPayload = {
     id: mapId, map_id: mapId, service_id: input.serviceId, name: input.serviceName,
@@ -424,12 +542,18 @@ async function openServiceIncident(session: Session, input: ServiceIncidentInput
   return { outcome: 'opened', incidentId: incident.id, incidentNumber: incident.number }
 }
 
+/** Causa della risoluzione, costruita dalla salute VERA (mai «tornato operativo» se non lo è: I1). */
+export function serviceResolveCause(health: ServiceHealth): string {
+  return `Servizio tornato ${SERVICE_HEALTH_LABEL_IT[health]}`
+}
+
 /**
  * Chiusura automatica: dal passo corrente si va a `resolved` direttamente
  * oppure percorrendo i passi intermedi trovati nella definizione
  * (`findAutoResolvePath`, la stessa degli allarmi rientrati); un solo commento
  * riassuntivo alla fine. Nessun cammino percorribile → commento e basta: mai
- * una transizione forzata.
+ * una transizione forzata. Ci si arriva solo con `health = operational`
+ * (revisione 2 · I1): gli altri casi tengono l'incident aperto.
  */
 async function resolveServiceIncident(session: Session, input: ServiceIncidentInput, open: ServiceIncidentRow, info: IncidentStepInfo): Promise<ServiceIncidentResult> {
   const { tenantId, mapId, health, impactScore } = input
@@ -444,7 +568,7 @@ async function resolveServiceIncident(session: Session, input: ServiceIncidentIn
   if (!path) {
     await incidentService.addIncidentComment(open.incidentId, ctx,
       `${back}; l'incident è in "${open.step}" e non può essere risolto automaticamente da questo passo`)
-    await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIdsOf(input.causes), false, input.now)
+    await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIdsOf(input.causes), NO_NOTES, input.now)
     log.info({ tenantId, mapId, jobId: input.jobId, incidentId: open.incidentId, step: open.step }, 'Service is back but its incident cannot be auto-resolved from this step')
     return { outcome: 'resolve_skipped', incidentId: open.incidentId, incidentNumber: open.number }
   }
@@ -453,11 +577,19 @@ async function resolveServiceIncident(session: Session, input: ServiceIncidentIn
     await runMonitoringTransition(session, tenantId, open.incidentId, open.instanceId, hop.toStep, hop.trigger,
       `Chiusura automatica dal monitoraggio: passaggio a ${hop.toLabel ?? hop.toStep}`, 'service auto-resolve', false)
   }
-  // La transizione "Risolvi" richiede la causa (rootCause = notes).
-  await incidentService.resolveIncident(open.incidentId, ctx, 'Servizio tornato operativo')
+  // La transizione "Risolvi" richiede la causa (rootCause = notes), costruita
+  // dalla salute vera.
+  await incidentService.resolveIncident(open.incidentId, ctx, serviceResolveCause(health))
   const via = path.length ? ` — passando per ${path.map((h) => h.toLabel ?? h.toStep).join(', ')}` : ''
   await incidentService.addIncidentComment(open.incidentId, ctx, `Risolto automaticamente: ${back}${via}`)
-  await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIdsOf(input.causes), false, input.now)
+  await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIdsOf(input.causes), NO_NOTES, input.now)
+  // L'incident del servizio è chiuso: il marcatore d'idempotenza non serve più
+  // (una ricaduta deve poter aprire, o riaprire, senza inciampare in un id vecchio).
+  try {
+    await getSharedRedis().del(serviceIncidentOpenedKey(tenantId, mapId))
+  } catch (err) {
+    log.warn({ err, tenantId, mapId }, 'Service incident idempotency marker could not be cleared (it expires on its own)')
+  }
   void audit(monitoringContext(tenantId), 'service.incident_resolved', 'ServiceMap', mapId, {
     incidentId: open.incidentId, incidentNumber: open.number, health, impactScore, path: path.map((h) => h.toStep),
   })

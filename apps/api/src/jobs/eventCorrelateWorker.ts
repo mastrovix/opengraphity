@@ -93,7 +93,15 @@ async function processCorrelateJob(job: Job<CorrelateQueueData>): Promise<void> 
     case CHANGE_WINDOW_JOB: {
       const { tenantId, changeId } = job.data as ChangeWindowJobData
       const n = await reevaluateSuppressedEvents(tenantId, changeId)
-      log.info({ jobId: job.id, tenantId, changeId, reevaluated: n }, 'Change window closed: suppressed events re-evaluated')
+      // Servizi monitorati (revisione 2 · D6.1): la rivalutazione degli allarmi
+      // pubblica `ci.health_changed` SOLO se la salute del CI cambia davvero —
+      // un componente già giù prima della finestra e ancora giù dopo non ne
+      // produce nessuno, e il servizio resterebbe «in manutenzione» (quindi
+      // senza incident) fino alla passata periodica. Qui il segnale è esplicito
+      // e non lancia mai: il job non deve fallire per questo.
+      const { notifyChangeWindowChanged } = await import('../services/serviceImpact/sync.js')
+      const maps = await notifyChangeWindowChanged(tenantId, changeId, 'change.window_reevaluated')
+      log.info({ jobId: job.id, tenantId, changeId, reevaluated: n, serviceMaps: maps }, 'Change window closed: suppressed events re-evaluated')
       return
     }
     default:

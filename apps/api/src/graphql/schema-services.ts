@@ -44,6 +44,8 @@ export function servicesSDL(): string {
   ${sdlEnum('UnknownNodesMode')}
   """Soglia di salute da cui il servizio apre un incident (gli incident per servizio arrivano in ondata 3)."""
   ${sdlEnum('ServiceOpenIncidentFrom')}
+  """Perché la mappa è da rivedere: un componente non esiste più (missing_ci) o la proposta supera il tetto (over_limit)."""
+  ${sdlEnum('ServiceStaleReason')}
 
   """Regole d'impatto del servizio (ServiceMap.rules, JSON versionato; modificabili da UI)."""
   type ServiceImpactRules {
@@ -102,10 +104,12 @@ export function servicesSDL(): string {
     addedBy:       String!
     """Salute del CI dal monitoraggio; null finché nessun allarme lo ha riguardato."""
     health:        CIHealth
-    """Change in finestra sul CI: il componente non pesa (e se è critico il servizio è in manutenzione)."""
+    """Change in finestra sul CI: il componente non pesa (e se è critico il servizio è in manutenzione). Il ciclo di vita ci.status = maintenance è un'altra cosa: si legge da ci.status e da excludedReason."""
     inMaintenance: Boolean!
-    """True se il componente conta nel calcolo (pesa, non in finestra, con salute nota o regola unknownNodes = operational)."""
+    """True se il componente conta nel calcolo (pesa, non in finestra, non in manutenzione di ciclo di vita, con salute nota o regola unknownNodes = operational)."""
     contributes:   Boolean!
+    """Perché non conta: never (propagate never), change_window (change in finestra), lifecycle_maintenance (ci.status = maintenance), unknown_health (senza salute con unknownNodes = ignore). null se conta."""
+    excludedReason: String
   }
 
   """Un arco vivo fra due componenti inclusi (tutti i tipi di relazione fra CI, come la topologia)."""
@@ -147,14 +151,18 @@ export function servicesSDL(): string {
     maxDepth:          Int!
     relationshipTypes: [String!]!
     builtFrom:         String!
-    """True se un componente incluso non esiste più nella CMDB (voce map_changed in cronologia)."""
+    """True se la mappa è da rivedere: un componente incluso non esiste più nella CMDB, oppure la sincronizzazione è stata rifiutata dal tetto dei 500 (voce map_changed in cronologia)."""
     stale:             Boolean!
+    """Perché la mappa è da rivedere: si azzera insieme a stale, null quando la mappa è a posto (o è stata marcata prima della migrazione 20260910_1120)."""
+    staleReason:       ServiceStaleReason
     """Mappa viva: i componenti si aggiornano da soli quando cambia la CMDB (default). False = mappa congelata, il diff si applica a mano. Le esclusioni e i componenti aggiunti a mano restano in entrambi i casi."""
     autoSync:          Boolean!
     """Ultima sincronizzazione con la CMDB; null se non è mai stata sincronizzata."""
     syncedAt:          String
     rules:             ServiceImpactRules!
     health:            ServiceHealth!
+    """Salute che il servizio avrebbe senza la finestra di change in corso: valorizzata solo quando health = maintenance."""
+    healthIfActive:    ServiceHealth
     healthSince:       String
     """0–100: quota ponderata dei componenti giù (1) e degradati (0,5) fra quelli che contano."""
     impactScore:       Int!
@@ -231,6 +239,18 @@ export function servicesSDL(): string {
     totalProposed:     Int!
   }
 
+  """Esito di «Sincronizza ora»: la mappa aggiornata e cosa è stato applicato."""
+  type ServiceMapSyncResult {
+    map:     ServiceMap!
+    added:   Int!
+    removed: Int!
+    moved:   Int!
+    """True se la sincronizzazione è stata rifiutata (tetto dei 500): nulla è stato applicato."""
+    skipped: Boolean!
+    """Motivo leggibile quando skipped = true, altrimenti null."""
+    reason:  String
+  }
+
   """Esito del calcolo con impostazioni ipotetiche sugli allarmi di adesso: nessuna scrittura."""
   type ServiceImpactPreview {
     health:            ServiceHealth!
@@ -286,7 +306,7 @@ export function servicesSDL(): string {
     createServiceMap(serviceId: ID!, maxDepth: Int, relationshipTypes: [String!], status: ServiceMapStatus, autoSync: Boolean): ServiceMap!
     """Rivaluta ora (trigger manual)."""
     reevaluateServiceMap(id: ID!): ServiceMap!
-    """Cambia lo stato con controllo di concorrenza (expectedVersion = version letta); riattivare una mappa in pausa la rivaluta subito."""
+    """Cambia lo stato con controllo di concorrenza (expectedVersion = version letta); rimettere in servizio una mappa (da paused o da draft) la rivaluta subito."""
     setServiceMapStatus(id: ID!, expectedVersion: Int!, status: ServiceMapStatus!): ServiceMap!
     """Salva le regole d'impatto (voce di cronologia rules_changed con i campi cambiati) e rivaluta subito, tranne le mappe in pausa."""
     updateServiceImpactRules(id: ID!, expectedVersion: Int!, rules: ServiceImpactRulesInput!): ServiceMap!
@@ -298,8 +318,8 @@ export function servicesSDL(): string {
     removeServiceMapExclusion(id: ID!, expectedVersion: Int!, ciId: ID!): ServiceMap!
     """Accende o spegne l'aggiornamento automatico dei componenti (mappa viva o congelata), con controllo di concorrenza; voce di cronologia map_changed. Non rivaluta la mappa: cambia solo il modo in cui i componenti seguono la CMDB."""
     setServiceMapAutoSync(id: ID!, expectedVersion: Int!, autoSync: Boolean!): ServiceMap!
-    """Sincronizza subito i componenti con la CMDB (aggiunge i nuovi, toglie quelli automatici spariti, aggiorna livello e via); i componenti aggiunti a mano e le esclusioni restano. Funziona anche sulle mappe congelate (è un'azione esplicita), non su quelle in pausa. Oltre 500 componenti non applica nulla e marca la mappa da rivedere."""
-    syncServiceMap(id: ID!): ServiceMap!
+    """Sincronizza subito i componenti con la CMDB (aggiunge i nuovi, toglie quelli automatici spariti, aggiorna livello e via); i componenti aggiunti a mano e le esclusioni restano. Funziona anche sulle mappe congelate (è un'azione esplicita), non su quelle in pausa. Oltre 500 componenti non applica nulla, marca la mappa da rivedere e torna skipped = true con il motivo."""
+    syncServiceMap(id: ID!): ServiceMapSyncResult!
     """Elimina la mappa e la sua cronologia; il servizio (BusinessApplication) e i CI restano."""
     deleteServiceMap(id: ID!): Boolean!
   }

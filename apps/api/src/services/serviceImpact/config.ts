@@ -32,7 +32,7 @@ import { ValidationError } from '../../lib/errors.js'
 import { logger } from '../../lib/logger.js'
 import {
   NODE_PROPAGATIONS, NODE_WEIGHT_MAX, NODE_WEIGHT_MIN, SERVICE_EXCLUSION_REASON_MANUAL, SERVICE_MAP_MAX_NODES,
-  SERVICE_MAP_STATUSES, assertServiceImpactRules,
+  SERVICE_MAP_STATUSES, SERVICE_STALE_MISSING_CI, assertServiceImpactRules,
   type NodePropagation, type ServiceHealth, type ServiceImpactRules, type ServiceMapStatus,
   type ServiceOpenIncidentFrom, type UnknownNodesMode,
 } from '../../lib/serviceVocabularies.js'
@@ -367,19 +367,31 @@ export interface ConfigWriteResult {
   evaluation: EvaluateResult | null
 }
 
-/** Frammento comune: guardia di versione, poi la scrittura del chiamante. */
+/**
+ * Frammento comune: guardia di versione, poi la scrittura del chiamante.
+ *
+ * Il `SET` viene PRIMA del confronto (revisione 2 · X1): in Neo4j il lock di
+ * scrittura sul nodo si prende al `SET`, e un `WHERE` valutato prima legge una
+ * versione che un altro scrittore può cambiare nel frattempo (due scritture
+ * entrambe «riuscite», `node_ids` incoerente con le INCLUDES). Qui il `SET`
+ * prende il lock e il `WHERE` successivo legge il valore vero; nessuna riga →
+ * `requireWriteRow` lancia e la transazione — incremento compreso — viene
+ * annullata. Dopo la guardia `version` è già la versione NUOVA.
+ */
 const VERSION_GUARD = `
   MATCH (m:ServiceMap {id: $mapId, tenant_id: $tenantId})
+  SET m.version = m.version + 1
   WITH m, m.version AS version
-  WHERE version = toInteger($expectedVersion)`
+  WHERE version = toInteger($expectedVersion) + 1`
 
 /**
- * Coda comune: versione, istante, autore e la voce di cronologia con la nota.
- * Il trigger (`rules_changed` / `map_changed`) viaggia come parametro
- * `$hTrigger`: la forma dello statement è la stessa per tutte le scritture.
+ * Coda comune: istante, autore e la voce di cronologia con la nota (la versione
+ * l'ha già alzata la guardia). Il trigger (`rules_changed` / `map_changed`)
+ * viaggia come parametro `$hTrigger`: la forma dello statement è la stessa per
+ * tutte le scritture.
  */
 const CONFIG_WRITE_TAIL = `
-  SET m.version = version + 1, m.updated_at = $now, m.updated_by = $actorId
+  SET m.updated_at = $now, m.updated_by = $actorId
   ${serviceHistoryWriteCypher({ fields: SERVICE_HISTORY_STATE_FROM_MAP })}`
 
 export const UPDATE_RULES_CYPHER = `${VERSION_GUARD}
@@ -430,7 +442,8 @@ export const APPLY_PROPOSAL_CYPHER = `${VERSION_GUARD}
     RETURN size(incs) AS removed
   }
   WITH m, version, added, excluded, removed, [(m)-[:INCLUDES]->(ci {tenant_id: $tenantId}) | ci.id] AS includedIds
-  SET m.node_ids = includedIds + $keepMissing, m.stale = size($keepMissing) > 0
+  SET m.node_ids = includedIds + $keepMissing, m.stale = size($keepMissing) > 0,
+      m.stale_reason = CASE WHEN size($keepMissing) > 0 THEN '${SERVICE_STALE_MISSING_CI}' ELSE null END
   ${CONFIG_WRITE_TAIL}
   RETURN m.version AS version, m.status AS status, added, excluded, removed, size(includedIds) AS included`
 

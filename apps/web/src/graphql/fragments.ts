@@ -79,7 +79,7 @@ export const EVENT_HISTORY_FIELDS = gql`
  */
 export const SERVICE_MAP_ROW_FIELDS = gql`
   fragment ServiceMapRowFields on ServiceMap {
-    id name status health healthSince impactScore stale nodeCount evaluatedAt
+    id name status health healthIfActive healthSince impactScore stale staleReason nodeCount evaluatedAt
     service { id name criticality ownerGroup { id name } }
     explanation { ci { id name type } health weight critical path { id name } }
   }
@@ -90,7 +90,7 @@ export const SERVICE_MAP_DETAIL_FIELDS = gql`
     ...ServiceMapRowFields
     version updatedAt maxDepth relationshipTypes builtFrom autoSync syncedAt
     rules { version downSharePct degradedSharePct minNodes unknownNodes openIncidentFrom }
-    nodes { ci { id name type } level role propagate weight critical via addedBy health inMaintenance contributes }
+    nodes { ci { id name type } level role propagate weight critical via addedBy health inMaintenance contributes excludedReason }
     edges { source target relType }
     excluded { id name type }
     history(limit: 50) {

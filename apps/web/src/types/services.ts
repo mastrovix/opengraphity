@@ -19,6 +19,14 @@ export const SERVICE_HEALTHS: readonly ServiceHealth[] = ['down', 'degraded', 'm
 export type ServiceMapStatus = 'draft' | 'active' | 'paused'
 export const SERVICE_MAP_STATUSES: readonly ServiceMapStatus[] = ['draft', 'active', 'paused']
 
+/**
+ * Perché la mappa è da rivedere (enum `ServiceStaleReason`): un componente non
+ * esiste più nella CMDB (`missing_ci`) oppure la proposta supera il tetto dei
+ * componenti (`over_limit`, la sincronizzazione non ha scritto nulla).
+ */
+export type ServiceStaleReason = 'missing_ci' | 'over_limit'
+export const SERVICE_STALE_REASONS: readonly ServiceStaleReason[] = ['missing_ci', 'over_limit']
+
 /** «Pesa» del nodo: sempre, mai (informativo), ponderato (col suo peso). In ondata 1 always e weighted contano uguale. */
 export type NodePropagation = 'always' | 'never' | 'weighted'
 export const NODE_PROPAGATIONS: readonly NodePropagation[] = ['always', 'never', 'weighted']
@@ -98,10 +106,17 @@ export interface ServiceMapRow {
   health:      ServiceHealth
   /** Da quando la salute attuale è in vigore. */
   healthSince: string | null
+  /**
+   * Salute che il servizio avrebbe senza la finestra di change in corso:
+   * valorizzata solo quando `health = maintenance`, altrove null.
+   */
+  healthIfActive: ServiceHealth | null
   /** 0..100: quota ponderata dei componenti non operativi. */
   impactScore: number
-  /** Un componente incluso non esiste più nella CMDB. */
+  /** La mappa è da rivedere (il motivo sta in `staleReason`). */
   stale:       boolean
+  /** Perché la mappa è da rivedere; null quando `stale` è falso (o il motivo non è stato registrato). */
+  staleReason: ServiceStaleReason | null
   nodeCount:   number
   evaluatedAt: string | null
   service:     ServiceRef
@@ -147,11 +162,21 @@ export interface ServiceMapNode {
   addedBy:       string
   /** Salute del CI dal monitoraggio; null = mai toccato da un allarme. */
   health:        CIHealth | null
-  /** In finestra di change: non pesa. */
+  /** In finestra di change: non pesa. La manutenzione di ciclo di vita è un'altra cosa e si legge da `excludedReason`. */
   inMaintenance: boolean
   /** Ha contato nell'ultima valutazione (pesa, non in manutenzione, salute nota o regola «operativi»). */
   contributes:   boolean
+  /**
+   * Perché il componente non conta: `never`, `change_window`,
+   * `lifecycle_maintenance`, `unknown_health`; null quando conta. Resta una
+   * stringa: un valore fuori vocabolario si dice, non si corregge.
+   */
+  excludedReason: string | null
 }
+
+/** I motivi noti per cui un componente non conta (`ServiceMapNode.excludedReason`). */
+export const NODE_EXCLUDED_REASONS = ['never', 'lifecycle_maintenance', 'change_window', 'unknown_health'] as const
+export type NodeExcludedReason = (typeof NODE_EXCLUDED_REASONS)[number]
 
 /** Arco vivo fra due nodi inclusi (id dei CI). */
 export interface ServiceMapEdge {
@@ -307,6 +332,21 @@ export interface ServiceMapProposal {
   moved:             ServiceMapMovedNode[]
   excluded:          CIRef[]
   totalProposed:     number
+}
+
+/**
+ * Esito di `syncServiceMap` (`ServiceMapSyncResult`): la mappa dopo la
+ * sincronizzazione e i conteggi del motore. `skipped` = la sincronizzazione è
+ * stata rifiutata (tetto dei componenti) e NON è stato applicato nulla: il
+ * `reason` va detto, mai annunciato come «già allineata».
+ */
+export interface ServiceMapSyncResult {
+  map:     ServiceMapDetail
+  added:   number
+  removed: number
+  moved:   number
+  skipped: boolean
+  reason:  string | null
 }
 
 /** Risultato di `serviceImpactPreview`: come risulterebbe il servizio adesso con le impostazioni in corso di modifica. */

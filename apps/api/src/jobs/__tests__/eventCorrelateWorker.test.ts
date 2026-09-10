@@ -42,6 +42,10 @@ vi.mock('../../services/eventCorrelation.js', () => ({
   refreshEventGauges: vi.fn().mockResolvedValue({ overdueDelayed: 0, firingUncorrelated: 0 }),
 }))
 vi.mock('../../services/eventStorm.js', () => ({ endCooledStorms: vi.fn() }))
+// Servizi monitorati (revisione 2 · D6.1): a fine finestra la rivalutazione
+// degli allarmi pubblica `ci.health_changed` solo se la salute cambia, quindi
+// il segnale ai servizi dev'essere esplicito.
+vi.mock('../../services/serviceImpact/sync.js', () => ({ notifyChangeWindowChanged: vi.fn().mockResolvedValue(2) }))
 vi.mock('../../middleware/metrics.js', () => ({
   eventCorrelateJobLagSeconds: { observe: vi.fn() }, eventPassTotal: { inc: vi.fn() }, eventPassDurationSeconds: { observe: vi.fn() },
 }))
@@ -53,6 +57,7 @@ const {
   EVENT_CORRELATE_QUEUE, EVENT_MAINTENANCE_QUEUE, CHANGE_WINDOW_JOB, EVENT_MAINTENANCE_JOB, EVENT_MAINTENANCE_EVERY_MS, EVENT_MAINTENANCE_LOCK_MS, LEGACY_REEVALUATE_WINDOWS_JOB,
 } = worker
 const { createWorker, getQueue } = await import('../../lib/bullmq.js')
+const { notifyChangeWindowChanged } = await import('../../services/serviceImpact/sync.js')
 const { runEventPipeline, reevaluateSuppressedEvents, reevaluateClosedWindows, reevaluatePendingEvents, reevaluateFlappingEvents, refreshEventGauges } = await import('../../services/eventCorrelation.js')
 const { endCooledStorms } = await import('../../services/eventStorm.js')
 const metrics = await import('../../middleware/metrics.js')
@@ -139,6 +144,11 @@ describe('worker events-correlate', () => {
     const proc = processors.get(EVENT_CORRELATE_QUEUE)!
     await proc(job(CHANGE_WINDOW_JOB, { tenantId: 't1', changeId: 'chg-1', stepEpoch: 1 }))
     expect(reevaluateSuppressedEvents).toHaveBeenCalledWith('t1', 'chg-1')
+    // …e le mappe dei servizi che includono i CI della change vengono rivalutate
+    expect(notifyChangeWindowChanged).toHaveBeenCalledWith('t1', 'chg-1', 'change.window_reevaluated')
+    // il segnale non lancia mai: un suo fallimento non farebbe fallire il job
+    vi.mocked(notifyChangeWindowChanged).mockResolvedValueOnce(0)
+    await proc(job(CHANGE_WINDOW_JOB, { tenantId: 't1', changeId: 'chg-1', stepEpoch: 1 }))
     vi.mocked(reevaluateSuppressedEvents).mockRejectedValueOnce(new Error('1/3 events suppressed by change chg-1 failed'))
     await expect(proc(job(CHANGE_WINDOW_JOB, { tenantId: 't1', changeId: 'chg-1', stepEpoch: 1 }))).rejects.toThrow(/1\/3 events/)
     await expect(proc(job('nope'))).rejects.toThrow(/\[events-correlate\] unknown job "nope"/)

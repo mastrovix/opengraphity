@@ -1716,8 +1716,11 @@
       "actionFailed": "Action failed: {{error}}",
       "mapUpdated": "Map updated: +{{added}} −{{removed}}, {{excluded}} excluded",
       "exclusionRemoved": "{{name}} re-admitted: it comes back in the next proposal",
-      "synced": "Map synced: +{{added}} −{{removed}}",
-      "syncAligned": "Map already aligned with the graph: nothing to add or remove"
+      "synced": "Map synced: +{{added}} −{{removed}} ~{{moved}}",
+      "syncAligned": "Map already aligned with the graph: nothing to add or remove",
+      "syncSkipped": "Sync refused: {{reason}}. Nothing was changed.",
+      "syncSkippedNoReason": "the engine gave no reason",
+      "componentExcluded": "{{name}} excluded: it is out of the map and will not be proposed again"
     }
   },
   "components": {
@@ -2506,6 +2509,11 @@
       "components_other": "{{count}} components",
       "stale": "A component of the map no longer exists in the CMDB: the map needs updating.",
       "staleShort": "Component missing from the CMDB",
+      "staleMissingCi": "A component of the map no longer exists in the CMDB: review the components.",
+      "staleOverLimit": "The map goes over the ceiling of 500 components: reduce the depth or exclude something. Until then the sync writes nothing.",
+      "staleUnknownReason": "The map needs a review for an unknown reason ({{value}}).",
+      "staleShortOverLimit": "Over the component ceiling",
+      "healthIfActive": "in maintenance, would be: {{health}}",
       "impactScoreLabel": "Impact score {{score}} out of 100",
       "tiles": {
         "down": "Down",
@@ -2539,7 +2547,8 @@
         "role": "Role",
         "propagate": "Counts",
         "weight": "Weight",
-        "critical": "Critical"
+        "critical": "Critical",
+        "actions": "Actions"
       },
       "empty": {
         "title": "No monitored service yet",
@@ -2570,6 +2579,13 @@
         "always": "Always",
         "never": "Never",
         "weighted": "Weighted"
+      },
+      "excludedReason": {
+        "never": "never counts (setting)",
+        "lifecycle_maintenance": "in maintenance (lifecycle)",
+        "change_window": "in a change window",
+        "unknown_health": "unknown health (ignored)",
+        "unstated": "reason not stated"
       },
       "syncMode": {
         "live": "live",
@@ -2639,6 +2655,7 @@
         "neverEvaluated": "Never evaluated",
         "actions": {
           "reevaluate": "Re-evaluate now",
+          "activate": "Activate",
           "pause": "Pause",
           "resume": "Resume",
           "delete": "Delete",
@@ -2788,7 +2805,15 @@
         "weightLabel": "Weight of {{name}}",
         "criticalLabel": "{{name}} is critical",
         "weightDisabled": "A component that never counts has no weight.",
-        "saveFailed": "Components not saved: {{error}}. If another admin — or the automatic sync — changed the map, reload and try again."
+        "saveFailed": "Components not saved: {{error}}. If another admin — or the automatic sync — changed the map, reload and try again.",
+        "overwritten_one": "Component {{names}} was changed elsewhere: your change was discarded.",
+        "overwritten_other": "{{count}} components were changed elsewhere ({{names}}): your changes were discarded.",
+        "exclude": "Exclude",
+        "excludeLabel": "Exclude {{name}} from the map",
+        "excludeTitle": "Exclude {{name}} from the map?",
+        "excludeBody": "The component leaves the map and will never be proposed again: it stops weighing on the service health. You can re-admit it from \"Review components\".",
+        "excludeConfirm": "Exclude",
+        "excludeFailed": "{{name}} not excluded: {{error}}. If another admin — or the automatic sync — changed the map, reload and try again."
       },
       "preview": {
         "label": "With these settings right now:",
@@ -2829,7 +2854,15 @@
         "exclusionsHint": "Excluded by hand: they never come back in the proposals.",
         "exclusionsEmpty": "No exclusion.",
         "readmit": "Re-admit",
-        "readmitLabel": "Re-admit {{name}}"
+        "readmitLabel": "Re-admit {{name}}",
+        "refreshed": "The map changed in the meantime: the list has been refreshed, check your ticks again.",
+        "includeAlways": "Include and keep for good",
+        "includeAlwaysLabel": "Include {{name}} and keep it for good",
+        "includeAlwaysHint": "It stays in the map even if it disappears from the graph: the automatic sync never removes a component added by hand.",
+        "excludeIncludedLabel": "Exclude {{name}} from the map",
+        "autoTitle_one": "{{count}} component included automatically",
+        "autoTitle_other": "{{count}} components included automatically",
+        "autoHint": "Already in the map: the sync brought them in. Exclude one and it leaves the map for good."
       },
       "openIncident": {
         "title": "Open incident",

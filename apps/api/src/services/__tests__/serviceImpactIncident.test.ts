@@ -10,6 +10,10 @@
  * Ondata 4: contatori service_incidents_opened_total (la riapertura conta come
  * apertura) / service_incidents_resolved_total (solo la chiusura vera) e
  * collegamento agli incident tecnici già aperti sui CI delle cause.
+ *
+ * Revisione 2: l'incident si chiude SOLO con il servizio operativo (I1 — negli
+ * altri casi resta aperto con un commento onesto, una volta sola) e l'apertura
+ * è idempotente (I2 — marcatore Redis, `cause_ids` prima del commento).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -20,6 +24,8 @@ const fakeRedis = vi.hoisted(() => ({
     redisStore.set(key, value)
     return 'OK'
   }),
+  get: vi.fn(async (key: string) => redisStore.get(key) ?? null),
+  del: vi.fn(async (key: string) => (redisStore.delete(key) ? 1 : 0)),
   eval: vi.fn(async (_lua: string, _n: number, key: string, owner: string) => {
     if (redisStore.get(key) === owner) { redisStore.delete(key); return 1 }
     return 0
@@ -69,6 +75,7 @@ const {
   serviceIncidentTitle, serviceIncidentDescription, SERVICE_INCIDENT_LOCK_OPTS, SERVICE_HEALTH_LABEL_IT,
   FIND_SERVICE_INCIDENT_CYPHER, LINK_SERVICE_INCIDENT_CYPHER,
   FIND_TECHNICAL_INCIDENTS_CYPHER, SERVICE_MAX_TECHNICAL_INCIDENTS, TECHNICAL_INCIDENTS_HEADING,
+  keptOpenReason, serviceResolveCause, serviceIncidentOpenedKey, SERVICE_INCIDENT_OPENED_TTL_SECONDS,
 } = await import('../serviceImpact/incident.js')
 const { DEFAULT_SERVICE_IMPACT_RULES, SERVICE_HEALTHS } = await import('../../lib/serviceVocabularies.js')
 const { RedisLockTimeoutError } = await import('../../lib/redisLock.js')
@@ -83,6 +90,8 @@ const session = { close: vi.fn().mockResolvedValue(undefined) }
 const FIND_RE  = /MATCH \(i:Incident \{tenant_id: \$tenantId\}\)-\[r:IMPACTS_SERVICE\]->/
 const LINK_RE  = /MERGE \(i\)-\[r:IMPACTS_SERVICE\]->\(m\)/
 const TECH_RE  = /MATCH \(i:Incident \{tenant_id: \$tenantId\}\)-\[:AFFECTED_BY\]->/
+/** Recupero d'idempotenza (I2): l'incident per id. Distinta dalla LINK, che comincia con lo stesso MATCH. */
+const BY_ID_RE = /RETURN i\.number AS number/
 
 function cause(ciId: string, over: Partial<StoredCause> = {}): StoredCause {
   return {
@@ -113,7 +122,7 @@ function onCypher(rules: Array<[RegExp, unknown]>) {
 const calls = () => [...vi.mocked(runQueryOne).mock.calls, ...vi.mocked(runQuery).mock.calls].map(([, cypher, params]) => ({ cypher: cypher as string, params: params as Record<string, unknown> }))
 const callMatching = (re: RegExp) => calls().find((c) => re.test(c.cypher))
 
-const openRow = (over: Record<string, unknown> = {}) => ({ incidentId: 'inc-1', instanceId: 'wi-1', step: 'new', number: 'INC00000042', causeIds: ['db-01'], maintenanceNotedAt: null, ...over })
+const openRow = (over: Record<string, unknown> = {}) => ({ incidentId: 'inc-1', instanceId: 'wi-1', step: 'new', number: 'INC00000042', causeIds: ['db-01'], maintenanceNotedAt: null, keptOpenNotedAt: null, ...over })
 
 function input(over: Partial<Parameters<typeof reconcileServiceIncident>[0]> = {}) {
   return {
@@ -204,7 +213,7 @@ describe('apertura', () => {
     const link = callMatching(LINK_RE)!
     expect(link.cypher).toBe(LINK_SERVICE_INCIDENT_CYPHER)
     expect(link.cypher).toContain('ON CREATE SET r.opened_by = $openedBy, r.at = $now')
-    expect(link.params).toEqual({ tenantId: 't1', mapId: 'map-1', incidentId: 'inc-9', causeIds: ['db-01', 'cache-02'], maintenanceNoted: false, now: NOW, openedBy: 'monitoring' })
+    expect(link.params).toEqual({ tenantId: 't1', mapId: 'map-1', incidentId: 'inc-9', causeIds: ['db-01', 'cache-02'], maintenanceNoted: false, keptOpenNoted: false, now: NOW, openedBy: 'monitoring' })
 
     expect(publishEvent).toHaveBeenCalledWith('service.incident_opened', 't1', 'monitoring', {
       id: 'map-1', map_id: 'map-1', service_id: 'ba-1', name: 'Enterprise Billing',
@@ -280,7 +289,9 @@ describe('lock', () => {
     expect(incidentService.createIncident).toHaveBeenCalledTimes(1)
     expect([a.outcome, b.outcome].sort()).toEqual(['none', 'opened'])
     expect(fakeRedis.set).toHaveBeenCalledWith('og:services:incident:t1:map-1', expect.any(String), 'EX', 30, 'NX')
-    expect(redisStore.size).toBe(0)   // lock rilasciato in entrambi i casi
+    expect(redisStore.has('og:services:incident:t1:map-1')).toBe(false)   // lock rilasciato in entrambi i casi
+    // resta solo il marcatore d'idempotenza dell'apertura (I2)
+    expect([...redisStore.keys()]).toEqual(['og:services:incident:opened:t1:map-1'])
   })
 
   it('lock occupato oltre l\'attesa → errore ritentabile (il job riprova), nessuna scrittura', async () => {
@@ -427,6 +438,114 @@ describe('manutenzione', () => {
     const r = await reconcileServiceIncident(input({ health: 'operational', impactScore: 0, causes: [] }))
     expect(r.outcome).toBe('none')
     expect(callMatching(LINK_RE)!.params).toMatchObject({ maintenanceNoted: false })
+  })
+})
+
+// ── Revisione 2 · I1: l'incident si chiude solo se il servizio è operativo ───
+
+describe('sotto soglia ma non operativo: l\'incident resta aperto (I1)', () => {
+  const keptOpen = async (over: Partial<Parameters<typeof reconcileServiceIncident>[0]>) => {
+    onCypher([[FIND_RE, openRow({ step: 'in_progress' })], [LINK_RE, { at: NOW }]])
+    return reconcileServiceIncident(input(over))
+  }
+
+  it('open_incident_from = down e servizio passato a degradato → NON chiuso, un solo commento onesto', async () => {
+    const r = await keptOpen({ health: 'degraded', impactScore: 20, causes: [cause('db-01', { health: 'degraded' })] })
+    expect(r).toEqual({ outcome: 'kept_open', incidentId: 'inc-1', incidentNumber: 'INC00000042' })
+    expect(incidentService.resolveIncident).not.toHaveBeenCalled()
+    expect(runMonitoringTransition).not.toHaveBeenCalled()
+    expect(incidentService.addIncidentComment).toHaveBeenCalledTimes(1)
+    expect(incidentService.addIncidentComment.mock.calls[0]![2]).toBe('Il servizio "Enterprise Billing" è degradato, sotto la soglia di apertura ("down"): l\'incident resta aperto.')
+    // il marcatore si scrive PRIMA del commento (al retry nessun doppione)
+    expect(callMatching(LINK_RE)!.params).toMatchObject({ keptOpenNoted: true, maintenanceNoted: false })
+    expect(metrics.serviceIncidentsResolvedTotal.inc).not.toHaveBeenCalled()
+  })
+
+  it('salute `unknown` (composizione azzerata) → resta aperto con il commento giusto', async () => {
+    const r = await keptOpen({ health: 'unknown', impactScore: 0, causes: [] })
+    expect(r.outcome).toBe('kept_open')
+    expect(incidentService.addIncidentComment.mock.calls[0]![2]).toContain('di stato sconosciuto')
+    expect(incidentService.resolveIncident).not.toHaveBeenCalled()
+  })
+
+  it('regola passata a `never` con il servizio ancora giù → resta aperto, «chiudere a mano»', async () => {
+    const r = await keptOpen({ rules: { ...DEFAULT_SERVICE_IMPACT_RULES, open_incident_from: 'never' } })
+    expect(r.outcome).toBe('kept_open')
+    expect(incidentService.addIncidentComment.mock.calls[0]![2]).toContain('va chiuso a mano')
+    expect(incidentService.resolveIncident).not.toHaveBeenCalled()
+  })
+
+  it('il commento si scrive UNA volta sola: alla valutazione successiva nessun secondo commento', async () => {
+    onCypher([[FIND_RE, openRow({ step: 'in_progress', keptOpenNotedAt: NOW })], [LINK_RE, { at: NOW }]])
+    const r = await reconcileServiceIncident(input({ health: 'degraded', impactScore: 20, causes: [cause('db-01', { health: 'degraded' })] }))
+    expect(r.outcome).toBe('none')
+    expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
+  })
+
+  it('tornato sopra soglia con le stesse cause → il marcatore viene azzerato (il commento potrà essere riscritto)', async () => {
+    onCypher([[FIND_RE, openRow({ step: 'in_progress', keptOpenNotedAt: NOW })], [LINK_RE, { at: NOW }]])
+    const r = await reconcileServiceIncident(input())
+    expect(r.outcome).toBe('none')
+    expect(callMatching(LINK_RE)!.params).toMatchObject({ keptOpenNoted: false, maintenanceNoted: false })
+  })
+
+  it('la causa di risoluzione viene dalla salute vera: si chiude SOLO da operational', async () => {
+    workflow.getAvailableTransitions.mockResolvedValue([{ toStep: 'resolved' }])
+    onCypher([[FIND_RE, openRow({ step: 'in_progress' })], [LINK_RE, { at: NOW }]])
+    const r = await reconcileServiceIncident(input({ health: 'operational', impactScore: 0, causes: [] }))
+    expect(r.outcome).toBe('resolved')
+    expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', { tenantId: 't1', userId: 'monitoring' }, 'Servizio tornato operativo')
+    expect(serviceResolveCause('operational')).toBe('Servizio tornato operativo')
+    expect(serviceResolveCause('degraded')).toBe('Servizio tornato degradato')
+    // e il marcatore d'idempotenza dell'apertura viene ripulito
+    expect(fakeRedis.del).toHaveBeenCalledWith('og:services:incident:opened:t1:map-1')
+  })
+
+  it('keptOpenReason: i tre testi, senza frasi inventate', () => {
+    expect(keptOpenReason('degraded', 'down', 'X')).toContain('sotto la soglia di apertura ("down")')
+    expect(keptOpenReason('unknown', 'down', 'X')).toContain('stato sconosciuto')
+    expect(keptOpenReason('down', 'never', 'X')).toContain('"mai aprire incident"')
+  })
+})
+
+// ── Revisione 2 · I2: apertura idempotente ───────────────────────────────────
+
+describe('apertura idempotente (I2)', () => {
+  it('IMPACTS_SERVICE fallita al primo giro → al retry si RICOLLEGA lo stesso incident, nessun doppione, un solo evento', async () => {
+    // primo giro: il link fallisce dopo createIncident
+    onCypher([[FIND_RE, null], [LINK_RE, () => { throw new Error('neo4j transient') }]])
+    await expect(reconcileServiceIncident(input())).rejects.toThrow('neo4j transient')
+    expect(incidentService.createIncident).toHaveBeenCalledTimes(1)
+    expect(redisStore.get('og:services:incident:opened:t1:map-1')).toBe('inc-9')
+    expect(publishEvent).not.toHaveBeenCalled()
+
+    // retry: l'incident non è collegato, findServiceIncident non lo vede
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([[FIND_RE, null], [BY_ID_RE, { number: 'INC00000099' }], [LINK_RE, { at: NOW }]])
+    const r = await reconcileServiceIncident(input())
+    expect(r).toEqual({ outcome: 'opened', incidentId: 'inc-9', incidentNumber: 'INC00000099' })
+    expect(incidentService.createIncident).not.toHaveBeenCalled()   // nessun secondo incident
+    expect(publishEvent).toHaveBeenCalledTimes(1)                   // un solo evento
+    expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ incidentId: 'inc-9' }), expect.stringContaining('relinked instead of opening a second one'))
+    expect(serviceIncidentOpenedKey('t1', 'map-1')).toBe('og:services:incident:opened:t1:map-1')
+    expect(SERVICE_INCIDENT_OPENED_TTL_SECONDS).toBe(3600)
+  })
+
+  it('marcatore che punta a un incident sparito → si riparte e se ne apre uno nuovo (mai un id inventato)', async () => {
+    redisStore.set('og:services:incident:opened:t1:map-1', 'inc-vanished')
+    onCypher([[FIND_RE, null], [BY_ID_RE, null], [LINK_RE, { at: NOW }]])
+    const r = await reconcileServiceIncident(input())
+    expect(r.outcome).toBe('opened')
+    expect(r.incidentId).toBe('inc-9')
+    expect(incidentService.createIncident).toHaveBeenCalledTimes(1)
+  })
+
+  it('«Causa aggiornata»: cause_ids scritte PRIMA del commento (al retry il confronto è già allineato)', async () => {
+    const order: string[] = []
+    incidentService.addIncidentComment.mockImplementationOnce(async () => { order.push('comment') })
+    onCypher([[FIND_RE, openRow({ causeIds: ['db-01'] })], [LINK_RE, () => { order.push('link'); return { at: NOW } }]])
+    await reconcileServiceIncident(input({ causes: [cause('srv-7')] }))
+    expect(order).toEqual(['link', 'comment'])
   })
 })
 

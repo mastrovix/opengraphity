@@ -11,24 +11,34 @@
  * versione letta: se un altro amministratore ha salvato nel frattempo l'API
  * rifiuta e la riga `role="alert"` invita a ricaricare.
  *
- * Il polling del dettaglio (15 s) non butta via le modifiche: lo stato si
- * riallinea solo quando cambiano davvero le impostazioni salvate.
+ * Il polling del dettaglio (15 s) e la sincronizzazione automatica cambiano
+ * l'insieme dei componenti in continuazione: il riallineamento è PER RIGA
+ * (revisione 2, C-2) — le righe il cui valore salvato non è cambiato tengono
+ * la modifica in corso, spariscono solo le righe sparite, e una modifica
+ * sovrascritta da un valore salvato diverso è detta in una riga `role="alert"`,
+ * mai scartata in silenzio. L'errore di salvataggio lo toglie solo l'utente.
+ *
+ * Sempre per l'admin, ogni riga ha «Escludi dalla mappa» (C-1): senza di essa
+ * un componente entrato da solo con la mappa viva non era più escludibile da
+ * nessuna parte.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { Loader2, RotateCcw } from 'lucide-react'
+import { toast } from 'sonner'
+import { Ban, Loader2, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/Button'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
+import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
-import { UPDATE_SERVICE_MAP_NODES } from '@/graphql/mutations'
+import { APPLY_SERVICE_MAP_PROPOSAL, UPDATE_SERVICE_MAP_NODES } from '@/graphql/mutations'
 import { ciPath } from '@/lib/ciPath'
 import { colors, palette } from '@/lib/tokens'
 import { TINT_WARNING } from '@/lib/eventPalette'
 import { ServiceImpactPreviewLine } from './ServiceImpactPreviewLine'
-import { NodeHealthBadge, propagationLabel, roleLabel } from './servicesShared'
+import { NodeHealthBadge, excludedReasonLabel, propagationLabel, roleLabel } from './servicesShared'
 import {
   NODE_PROPAGATIONS, NODE_WEIGHT_MAX, NODE_WEIGHT_MIN,
   type NodePropagation, type ServiceMapDetail, type ServiceMapNode, type ServiceMapNodeInput,
@@ -46,6 +56,9 @@ const COLUMNS = ['name', 'type', 'level', 'role', 'propagate', 'weight', 'critic
 
 const draftOf = (n: ServiceMapNode): NodeDraft => ({ propagate: n.propagate, weight: n.weight, critical: n.critical })
 
+/** Due impostazioni sono «le stesse» se hanno gli stessi valori (le chiavi sono sempre nello stesso ordine). */
+const same = (a: NodeDraft | undefined, b: NodeDraft | undefined) => JSON.stringify(a) === JSON.stringify(b)
+
 const sortNodes = (nodes: readonly ServiceMapNode[]) => [...nodes].sort((a, b) => a.level - b.level || a.ci.name.localeCompare(b.ci.name))
 
 /** Un peso fuori scala (o non intero) blocca il salvataggio: l'API lo rifiuterebbe comunque. */
@@ -62,25 +75,59 @@ interface Props {
 
 export function ServiceComponentsTable({ map, canEdit, ciTypeLabel, onReload }: Props) {
   const { t } = useTranslation()
+  const confirm = useConfirm()
   const [update, { loading: saving }] = useMutation<{ updateServiceMapNodes: ServiceMapDetail }>(UPDATE_SERVICE_MAP_NODES)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const [excludeCI, { loading: excluding }] = useMutation<{ applyServiceMapProposal: ServiceMapDetail }>(APPLY_SERVICE_MAP_PROPOSAL)
+  /** Messaggio già composto: il salvataggio e l'esclusione falliscono per motivi diversi. */
+  const [actionError, setActionError] = useState<string | null>(null)
+  /** Id dei componenti la cui modifica in corso è stata sovrascritta da un valore salvato diverso. */
+  const [overwritten, setOverwritten] = useState<string[]>([])
 
   const nodes = useMemo(() => sortNodes(map.nodes), [map.nodes])
+  const nameOf = (ciId: string) => nodes.find((n) => n.ci.id === ciId)?.ci.name ?? ciId
 
-  // Chiave stabile delle impostazioni salvate: il polling non tocca le
-  // modifiche in corso, un salvataggio (di chiunque) le riallinea.
+  // Chiave stabile delle impostazioni salvate: cambia solo quando cambia un
+  // valore salvato (o l'insieme delle righe), non a ogni oggetto nuovo del polling.
   const baselineKey = JSON.stringify(Object.fromEntries(nodes.map((n) => [n.ci.id, draftOf(n)])))
-  const [drafts, setDrafts] = useState<Drafts>(() => JSON.parse(baselineKey) as Drafts)
-  useEffect(() => { setDrafts(JSON.parse(baselineKey) as Drafts); setSaveError(null) }, [baselineKey])
-
   const baseline = useMemo(() => JSON.parse(baselineKey) as Drafts, [baselineKey])
+  const [drafts, setDrafts] = useState<Drafts>(baseline)
+  const previousBaseline = useRef<Drafts>(baseline)
 
-  const setDraft = (ciId: string, patch: Partial<NodeDraft>) =>
+  /**
+   * Riallineamento PER RIGA: le righe il cui valore salvato non è cambiato
+   * tengono la modifica in corso; le righe sparite se ne vanno; una modifica
+   * sovrascritta da un valore salvato DIVERSO viene detta (non è «scartata in
+   * silenzio»). Il proprio salvataggio non conta come sovrascrittura: il
+   * valore che torna è quello appena mandato.
+   */
+  useEffect(() => {
+    const previous = previousBaseline.current
+    if (previous === baseline) return
+    previousBaseline.current = baseline
+    const lost: string[] = []
+    const next: Drafts = {}
+    for (const [ciId, saved] of Object.entries(baseline)) {
+      const before = previous[ciId]
+      const draft = drafts[ciId]
+      if (same(before, saved) && draft !== undefined) { next[ciId] = draft; continue }
+      if (draft !== undefined && before !== undefined && !same(draft, before) && !same(draft, saved)) lost.push(ciId)
+      next[ciId] = saved
+    }
+    setDrafts(next)
+    if (lost.length > 0) setOverwritten((o) => [...new Set([...o, ...lost])])
+  }, [baseline, drafts])
+
+  /** Ogni azione dell'utente sulle righe chiude gli avvisi precedenti: li toglie lui, mai il polling. */
+  const clearNotices = () => { setActionError(null); setOverwritten([]) }
+
+  const setDraft = (ciId: string, patch: Partial<NodeDraft>) => {
+    clearNotices()
     setDrafts((d) => {
       const current = d[ciId]
       if (!current) return d
       return { ...d, [ciId]: { ...current, ...patch } }
     })
+  }
 
   /** Solo i componenti davvero cambiati: sono anche i soli che si mandano all'API. */
   const changed: ServiceMapNodeInput[] = nodes
@@ -94,15 +141,40 @@ export function ServiceComponentsTable({ map, canEdit, ciTypeLabel, onReload }: 
     })
 
   const invalid = changed.some((c) => weightInvalid({ propagate: c.propagate, weight: c.weight, critical: c.critical }))
+  const busy = saving || excluding
 
   async function save() {
     if (changed.length === 0 || invalid) return
-    setSaveError(null)
+    clearNotices()
     try {
       const res = await update({ variables: { id: map.id, expectedVersion: map.version, nodes: changed } })
       if (!res.data?.updateServiceMapNodes) throw new Error(t('monitoring.services.detail.noResult', { operation: 'updateServiceMapNodes' }))
     } catch (e) {
-      setSaveError(errorMessage(e))
+      setActionError(t('monitoring.services.componentsEdit.saveFailed', { error: errorMessage(e) }))
+    }
+  }
+
+  /**
+   * «Escludi dalla mappa» (C-1): il componente esce dalla mappa e non verrà
+   * più riproposto dalla sincronizzazione. È l'unica strada per un componente
+   * che la mappa viva ha già accettato — nel dialogo del diff non compare né
+   * fra i nuovi né fra gli spariti.
+   */
+  async function onExclude(n: ServiceMapNode) {
+    const ok = await confirm({
+      title: t('monitoring.services.componentsEdit.excludeTitle', { name: n.ci.name }),
+      body: t('monitoring.services.componentsEdit.excludeBody'),
+      confirmLabel: t('monitoring.services.componentsEdit.excludeConfirm'),
+      danger: true,
+    })
+    if (!ok) return
+    clearNotices()
+    try {
+      const res = await excludeCI({ variables: { id: map.id, expectedVersion: map.version, add: [], exclude: [n.ci.id], remove: [] } })
+      if (!res.data?.applyServiceMapProposal) throw new Error(t('monitoring.services.detail.noResult', { operation: 'applyServiceMapProposal' }))
+      toast.success(t('toast.services.componentExcluded', { name: n.ci.name }))
+    } catch (e) {
+      setActionError(t('monitoring.services.componentsEdit.excludeFailed', { name: n.ci.name, error: errorMessage(e) }))
     }
   }
 
@@ -121,19 +193,27 @@ export function ServiceComponentsTable({ map, canEdit, ciTypeLabel, onReload }: 
                 ? t('monitoring.services.componentsEdit.changed', { count: changed.length })
                 : t('monitoring.services.componentsEdit.noChanges')}
           </span>
-          <Button variant="secondary" size="xs" disabled={saving || changed.length === 0} icon={<RotateCcw size={13} aria-hidden="true" />} onClick={() => setDrafts(baseline)}>
+          <Button variant="secondary" size="xs" disabled={busy || changed.length === 0} icon={<RotateCcw size={13} aria-hidden="true" />} onClick={() => { clearNotices(); setDrafts(baseline) }}>
             {t('common.reset')}
           </Button>
-          <Button size="xs" disabled={saving || invalid || changed.length === 0} icon={saving ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : undefined} onClick={() => void save()}>
+          <Button size="xs" disabled={busy || invalid || changed.length === 0} icon={saving ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : undefined} onClick={() => void save()}>
             {t('common.save')}
           </Button>
         </div>
       )}
 
-      {saveError && (
+      {actionError && (
         <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: palette.danger.bg, border: `1px solid ${palette.danger.border}`, color: palette.danger.text, fontSize: 'var(--font-size-body)' }}>
-          <span>{t('monitoring.services.componentsEdit.saveFailed', { error: saveError })}</span>
+          <span>{actionError}</span>
           <Button variant="secondary" size="xs" onClick={onReload}>{t('monitoring.services.rulesEdit.reload')}</Button>
+        </div>
+      )}
+
+      {/* Una modifica in corso sovrascritta da un altro amministratore (o dalla sincronizzazione) si dice: mai un silenzio. */}
+      {overwritten.length > 0 && (
+        <div role="alert" data-testid="components-overwritten" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: palette.warning.bg, border: `1px solid ${palette.warning.border}`, color: palette.warning.text, fontSize: 'var(--font-size-body)' }}>
+          <span>{t('monitoring.services.componentsEdit.overwritten', { count: overwritten.length, names: overwritten.map(nameOf).join(', ') })}</span>
+          <Button variant="secondary" size="xs" onClick={() => setOverwritten([])}>{t('common.close')}</Button>
         </div>
       )}
 
@@ -142,6 +222,7 @@ export function ServiceComponentsTable({ map, canEdit, ciTypeLabel, onReload }: 
           <thead>
             <tr>
               {COLUMNS.map((k) => <th key={k} scope="col" style={TH}>{t(`monitoring.services.columns.${k}`)}</th>)}
+              {canEdit && <th scope="col" style={TH}>{t('monitoring.services.columns.actions')}</th>}
             </tr>
           </thead>
           <tbody>
@@ -159,7 +240,7 @@ export function ServiceComponentsTable({ map, canEdit, ciTypeLabel, onReload }: 
                       ? (
                         <Select
                           aria-label={t('monitoring.services.componentsEdit.propagateLabel', { name: n.ci.name })}
-                          value={d.propagate} disabled={saving} style={{ minWidth: 120 }}
+                          value={d.propagate} disabled={busy} style={{ minWidth: 120 }}
                           onChange={(e) => setDraft(n.ci.id, { propagate: e.target.value })}
                         >
                           {/* Un valore salvato fuori vocabolario resta scelto: non lo si corregge di nascosto. */}
@@ -168,6 +249,12 @@ export function ServiceComponentsTable({ map, canEdit, ciTypeLabel, onReload }: 
                         </Select>
                       )
                       : propagationLabel(t, n.propagate)}
+                    {/* R1: perché il componente non ha contato nell'ultima valutazione (le due manutenzioni sono distinte). */}
+                    {n.excludedReason !== null && (
+                      <div data-testid="excluded-reason" data-reason={n.excludedReason} style={{ marginTop: 3, fontSize: 'var(--font-size-label)', color: colors.slateLight }}>
+                        {excludedReasonLabel(t, n.excludedReason)}
+                      </div>
+                    )}
                   </td>
                   <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}>
                     {canEdit
@@ -177,7 +264,7 @@ export function ServiceComponentsTable({ map, canEdit, ciTypeLabel, onReload }: 
                           aria-label={t('monitoring.services.componentsEdit.weightLabel', { name: n.ci.name })}
                           aria-invalid={badWeight ? true : undefined}
                           value={Number.isNaN(d.weight) ? '' : String(d.weight)}
-                          disabled={saving || d.propagate === 'never'}
+                          disabled={busy || d.propagate === 'never'}
                           title={d.propagate === 'never' ? t('monitoring.services.componentsEdit.weightDisabled') : undefined}
                           onChange={(e) => setDraft(n.ci.id, { weight: e.target.value.trim() === '' ? Number.NaN : Number(e.target.value) })}
                         />
@@ -188,7 +275,7 @@ export function ServiceComponentsTable({ map, canEdit, ciTypeLabel, onReload }: 
                     {canEdit
                       ? (
                         <input
-                          type="checkbox" checked={d.critical} disabled={saving}
+                          type="checkbox" checked={d.critical} disabled={busy}
                           aria-label={t('monitoring.services.componentsEdit.criticalLabel', { name: n.ci.name })}
                           onChange={(e) => setDraft(n.ci.id, { critical: e.target.checked })}
                         />
@@ -203,6 +290,18 @@ export function ServiceComponentsTable({ map, canEdit, ciTypeLabel, onReload }: 
                       {n.inMaintenance && <Pill bg={palette.purple.bg} color={palette.purple.text} style={{ fontSize: 'var(--font-size-label)' }}>{t('monitoring.services.health.maintenance')}</Pill>}
                     </span>
                   </td>
+                  {canEdit && (
+                    <td style={TD}>
+                      <Button
+                        variant="secondary" size="xs" disabled={busy}
+                        icon={<Ban size={13} aria-hidden="true" />}
+                        aria-label={t('monitoring.services.componentsEdit.excludeLabel', { name: n.ci.name })}
+                        onClick={() => void onExclude(n)}
+                      >
+                        {t('monitoring.services.componentsEdit.exclude')}
+                      </Button>
+                    </td>
+                  )}
                 </tr>
               )
             })}

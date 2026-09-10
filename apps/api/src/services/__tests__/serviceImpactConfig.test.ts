@@ -236,8 +236,8 @@ describe('updateServiceImpactRules', () => {
     const w = callMatching(RULES_RE)!
     expect(w.session).toBe(tx)
     expect(w.cypher).toBe(UPDATE_RULES_CYPHER)
-    expect(w.cypher).toMatch(/MATCH \(m:ServiceMap \{id: \$mapId, tenant_id: \$tenantId\}\)\s+WITH m, m\.version AS version\s+WHERE version = toInteger\(\$expectedVersion\)/)
-    expect(w.cypher).toContain('SET m.version = version + 1, m.updated_at = $now, m.updated_by = $actorId')
+    expect(w.cypher).toMatch(/MATCH \(m:ServiceMap \{id: \$mapId, tenant_id: \$tenantId\}\)\s+SET m\.version = m\.version \+ 1\s+WITH m, m\.version AS version\s+WHERE version = toInteger\(\$expectedVersion\) \+ 1/)
+    expect(w.cypher).toContain('SET m.updated_at = $now, m.updated_by = $actorId')
     expect(w.cypher).toContain('CREATE (m)-[:HAS_HEALTH_HISTORY]->(:ServiceHealthEntry {id: $hId, tenant_id: $tenantId, map_id: m.id, at: $hAt, health: m.health, previous_health: null,')
     expect(w.cypher).toContain('impact_score: toInteger(m.impact_score), cause: m.explanation, trigger: $hTrigger, note: $hNote})')
     expect(w.params).toMatchObject({
@@ -419,7 +419,7 @@ describe('setServiceMapAutoSync', () => {
     const w = callMatching(AUTOSYNC_RE)!
     expect(w.cypher).toBe(SET_AUTO_SYNC_CYPHER)
     expect(w.cypher).toContain('WHERE version = toInteger($expectedVersion)')
-    expect(w.cypher).toContain('SET m.version = version + 1, m.updated_at = $now, m.updated_by = $actorId')
+    expect(w.cypher).toContain('SET m.updated_at = $now, m.updated_by = $actorId')
     // nessun'altra proprietà della mappa viene toccata
     expect(w.cypher).not.toMatch(/SET m\.rules|SET m\.node_ids|SET m\.status/)
     expect(w.params).toMatchObject({ mapId: 'map-1', tenantId: 't1', expectedVersion: 2, autoSync: false, hTrigger: 'map_changed', hNote: r.note })

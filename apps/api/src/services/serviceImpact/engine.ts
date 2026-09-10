@@ -21,10 +21,19 @@
  * stato coerente — apertura, commento, riapertura, chiusura automatica.
  *
  * Un nodo incluso che non esiste più (`node_ids` della mappa ⊄ INCLUDES:
- * cancellare un CI porta via la relazione) marca la mappa `stale` e scrive una
- * voce `map_changed` con gli id mancanti, UNA volta (finché resta stale); la
- * valutazione prosegue sui nodi rimasti: fail-loud, mai un nodo ignorato in
- * silenzio.
+ * cancellare un CI porta via la relazione) marca la mappa `stale` con
+ * `stale_reason = 'missing_ci'` e scrive una voce `map_changed` con gli id
+ * mancanti, UNA volta (finché resta stale); la valutazione prosegue sui nodi
+ * rimasti: fail-loud, mai un nodo ignorato in silenzio. Uno `stale` scritto
+ * dalla sincronizzazione per il tetto dei 500 (`over_limit`) non viene spento da
+ * qui: lo spegne solo una sincronizzazione riuscita.
+ *
+ * Revisione 2: la scrittura ha una **guardia di versione** (E1) — se la
+ * composizione è cambiata fra la lettura e la scrittura si rilegge e si
+ * ricalcola una volta — e le due manutenzioni sono distinte (R1): il ciclo di
+ * vita `ci.status = 'maintenance'` toglie il nodo dal calcolo, solo una change
+ * in finestra su un componente critico rende il servizio `maintenance` (e
+ * `health_if_active` dice quale sarebbe la salute senza quella finestra).
  */
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
@@ -38,7 +47,8 @@ import { runPagedPass, type PagedPassResult } from '../../lib/pagedPass.js'
 import { serviceEvaluationDurationSeconds, serviceEvaluationsTotal, serviceMapsStale, servicesHealth } from '../../middleware/metrics.js'
 import type { CIHealth } from '../../lib/eventVocabularies.js'
 import {
-  NODE_PROPAGATIONS, SERVICE_HEALTHS, SERVICE_MAP_STATUSES, SERVICE_NODE_ROLES, parseServiceImpactRules,
+  NODE_PROPAGATIONS, SERVICE_HEALTHS, SERVICE_MAP_STATUSES, SERVICE_NODE_ROLES,
+  SERVICE_STALE_MISSING_CI, SERVICE_STALE_OVER_LIMIT, parseServiceImpactRules,
   type NodePropagation, type ServiceHealth, type ServiceHealthTrigger, type ServiceImpactRules, type ServiceMapStatus, type ServiceNodeRole,
 } from '../../lib/serviceVocabularies.js'
 import { MONITORING_ACTOR, monitoringContext, toNumber, toStr, type Props } from '../events/shared.js'
@@ -70,6 +80,13 @@ export interface ServiceMapState {
   nodes:  LoadedNode[]
   /** Id inclusi alla costruzione che non esistono più nel grafo. */
   missing: string[]
+  /**
+   * `ServiceMap.version` al momento della lettura: la scrittura della
+   * valutazione la usa come guardia (E1), così una sincronizzazione che
+   * cambia la composizione nel mezzo non si fa sovrascrivere da una salute
+   * calcolata sui nodi di prima.
+   */
+  version: number
 }
 
 interface ChangeRow { step: string | null; plans: unknown[] | null }
@@ -132,12 +149,14 @@ function mapNode(row: NodeRow, mapId: string, nowMs: number): LoadedNode {
     health,
     healthSource:  row.healthSource ?? null,
     status:        row.status ?? null,
-    // In manutenzione = change in finestra sul CI (stessa regola della soppressione)
-    // OPPURE ciclo di vita `status = 'maintenance'`: l'Event Management non tocca
-    // la salute di quel CI (ciHealth.ts), quindi i suoi allarmi non arriverebbero
-    // mai al servizio; contarlo come «sano» sarebbe un fallback silenzioso.
-    inMaintenance: row.status === CI_LIFECYCLE_MAINTENANCE
-      || changes.some((c) => typeof c.step === 'string' && changeIsInWindow(c.step, c.plans ?? [], nowMs)),
+    // Le due manutenzioni restano distinte fin da qui (revisione 2 · R1): la
+    // finestra di change può rendere il SERVIZIO `maintenance`, il ciclo di vita
+    // del CI no — toglie il nodo dal calcolo e basta (l'Event Management non ne
+    // aggiorna la salute, ciHealth.ts: contarlo come «sano» sarebbe un fallback
+    // silenzioso, contarlo come manutenzione del servizio spegnerebbe il servizio
+    // per sempre).
+    inChangeWindow:       changes.some((c) => typeof c.step === 'string' && changeIsInWindow(c.step, c.plans ?? [], nowMs)),
+    lifecycleMaintenance: row.status === CI_LIFECYCLE_MAINTENANCE,
   }
 }
 
@@ -152,7 +171,11 @@ export async function loadServiceMapState(session: Queryable, tenantId: string, 
   if (!Array.isArray(nodeIds)) throw new Error(`ServiceMap ${mapId} has no node_ids — run the 20260910_1080_service_maps_bootstrap migration`)
   const present = new Set(nodes.map((n) => n.ciId))
   const missing = (nodeIds as unknown[]).map(toStr).filter((id) => !present.has(id))
-  return { props: row.props, rules: parseServiceImpactRules(row.props['rules'], mapId), nodes, missing }
+  const version = toNumber(row.props['version'])
+  if (!Number.isInteger(version) || version < 1) {
+    throw new Error(`ServiceMap ${mapId} has no version (got ${JSON.stringify(row.props['version'])}) — run the 20260910_1080_service_maps_bootstrap migration`)
+  }
+  return { props: row.props, rules: parseServiceImpactRules(row.props['rules'], mapId), nodes, missing, version }
 }
 
 /** Riferimento a un CI per la spiegazione (istantanea): dai nodi caricati; un `via` non più nella mappa resta solo con l'id. */
@@ -192,6 +215,8 @@ export interface EvaluateResult {
   impactScore:    number
   changed:        boolean
   stale:          boolean
+  /** Salute senza le finestre di change in corso; valorizzata solo con `health = maintenance`. */
+  healthIfActive: ServiceHealth | null
   causes:         StoredCause[]
   /** Esito della riconciliazione dell'incident del servizio; null se la valutazione non era rilevante (salute e cause invariate). */
   incident:       ServiceIncidentResult | null
@@ -203,6 +228,18 @@ interface WriteRow { id: string; previous: string | null; previousExplanation: u
  * Scrittura della valutazione: stato + voce (se la salute cambia) + voce
  * `map_changed` (se la mappa diventa stale) + cap, in uno statement.
  *
+ * **Guardia di versione** (revisione 2 · E1): `WHERE m.version = toInteger($version)`,
+ * con `$version` letta da `loadServiceMapState`. Se nel frattempo qualcuno ha
+ * cambiato la composizione (sincronizzazione, applicazione del diff) la riga non
+ * torna e il chiamante ricarica e ricalcola: mai una salute scritta sui nodi di
+ * prima. La valutazione NON alza la versione (non è una modifica della
+ * configurazione).
+ *
+ * **`stale` e `stale_reason`**: la valutazione conosce solo i componenti spariti
+ * (`missing_ci`). Uno `stale` scritto dalla sincronizzazione perché la proposta
+ * supera il tetto (`over_limit`) resta finché la sincronizzazione non riesce:
+ * spegnerlo qui nasconderebbe una mappa che nessuno ha ancora sistemato.
+ *
  * La riga porta anche la spiegazione PRECEDENTE (letta prima del SET) e la
  * criticità del servizio: servono all'incident del servizio (incident.ts) —
  * la prima per sapere se l'insieme delle cause è cambiato, la seconda per
@@ -211,9 +248,16 @@ interface WriteRow { id: string; previous: string | null; previousExplanation: u
 export function evaluationWriteCypher(): string {
   return `
       MATCH (m:ServiceMap {id: $mapId, tenant_id: $tenantId})
-      WITH m, m.health AS previous, m.explanation AS previousExplanation, coalesce(m.stale, false) AS wasStale
-      WITH m, previous, previousExplanation, wasStale, (previous IS NULL OR previous <> $health) AS changed, ($stale AND NOT wasStale) AS becameStale
-      SET m.health = $health, m.impact_score = toInteger($impactScore), m.explanation = $explanation, m.evaluated_at = $now, m.stale = $stale,
+      WHERE m.version = toInteger($version)
+      WITH m, m.health AS previous, m.explanation AS previousExplanation, coalesce(m.stale, false) AS wasStale,
+           coalesce(m.stale_reason = '${SERVICE_STALE_OVER_LIMIT}', false) AS overLimit
+      WITH m, previous, previousExplanation, wasStale, overLimit,
+           ($stale OR overLimit) AS stale,
+           CASE WHEN overLimit THEN '${SERVICE_STALE_OVER_LIMIT}' WHEN $stale THEN '${SERVICE_STALE_MISSING_CI}' ELSE null END AS staleReason
+      WITH m, previous, previousExplanation, wasStale, stale, staleReason,
+           (previous IS NULL OR previous <> $health) AS changed, (stale AND NOT wasStale) AS becameStale
+      SET m.health = $health, m.impact_score = toInteger($impactScore), m.explanation = $explanation, m.evaluated_at = $now,
+          m.stale = stale, m.stale_reason = staleReason, m.health_if_active = $healthIfActive,
           m.health_since = CASE WHEN changed THEN $now ELSE m.health_since END
       ${serviceHistoryWriteCypher({ when: 'changed', prefix: 'h', fields: { previousHealth: 'previous' }, cap: false })}
       ${serviceHistoryWriteCypher({ when: 'becameStale', prefix: 'st', fields: { previousHealth: 'previous' }, imports: ['previous', 'wasStale', 'changed', 'becameStale'], capWhen: 'changed OR becameStale' })}
@@ -235,6 +279,9 @@ export function explanationCauseIds(raw: unknown, mapId: string): string[] {
   return causeIdsOf(parsed as StoredCause[])
 }
 
+/** Quante volte si rilegge e ricalcola quando la versione è cambiata sotto le mani (E1): una gara è normale, due di fila no. */
+export const EVALUATION_VERSION_RETRIES = 1
+
 /**
  * Valuta la mappa e persiste l'esito. Restituisce l'esito; un errore propaga
  * (il job ritenta, la passata periodica è la rete di sicurezza).
@@ -247,23 +294,36 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
   const logCtx = { tenantId, mapId, trigger, jobId: input.jobId }
   try {
     const session = getSession(undefined, 'WRITE')
-    let state: ServiceMapState
-    let row: WriteRow | null
-    let causes: StoredCause[]
-    let result: ReturnType<typeof evaluateImpact>
+    // `!`: il ciclo qui sotto gira sempre almeno una volta (o lancia), ma il
+    // compilatore non lo sa.
+    let state!: ServiceMapState
+    let row: WriteRow | null = null
+    let causes: StoredCause[] = []
+    let result!: ReturnType<typeof evaluateImpact>
     try {
-      state = await loadServiceMapState(session, tenantId, mapId, now)
-      result = evaluateImpact(state.nodes, state.rules)
-      causes = storedCausesOf(result.causes, state.nodes)
-      const stale = state.missing.length > 0
-      const staleNote = stale ? `Componenti non più presenti nella CMDB: ${state.missing.join(', ')}` : null
-      const explanation = JSON.stringify(causes)
-      row = await runQueryOne<WriteRow>(session, evaluationWriteCypher(), {
-        mapId, tenantId, now, stale,
-        health: result.health, impactScore: result.impactScore, explanation,
-        ...serviceHistoryParams({ trigger, health: result.health, previousHealth: null, impactScore: result.impactScore, causes }, now, 'h'),
-        ...serviceHistoryParams({ trigger: 'map_changed', health: result.health, previousHealth: null, impactScore: result.impactScore, causes, note: staleNote }, now, 'st'),
-      })
+      // Gara con una scrittura di configurazione (E1): la guardia di versione
+      // non fa scrivere nulla, si rilegge lo stato di adesso e si ricalcola.
+      // UNA volta: due versioni diverse di fila su una mappa sola non è una
+      // gara, è qualcosa che non torna e deve emergere.
+      for (let attempt = 0; ; attempt++) {
+        state = await loadServiceMapState(session, tenantId, mapId, now)
+        result = evaluateImpact(state.nodes, state.rules)
+        causes = storedCausesOf(result.causes, state.nodes)
+        const stale = state.missing.length > 0
+        const staleNote = stale ? `Componenti non più presenti nella CMDB: ${state.missing.join(', ')}` : null
+        const explanation = JSON.stringify(causes)
+        row = await runQueryOne<WriteRow>(session, evaluationWriteCypher(), {
+          mapId, tenantId, now, stale, version: state.version,
+          health: result.health, healthIfActive: result.healthIfActive, impactScore: result.impactScore, explanation,
+          ...serviceHistoryParams({ trigger, health: result.health, previousHealth: null, impactScore: result.impactScore, causes }, now, 'h'),
+          ...serviceHistoryParams({ trigger: 'map_changed', health: result.health, previousHealth: null, impactScore: result.impactScore, causes, note: staleNote }, now, 'st'),
+        })
+        if (row) break
+        if (attempt >= EVALUATION_VERSION_RETRIES) {
+          throw new Error(`ServiceMap ${mapId} changed while writing its evaluation (expected version ${state.version}, ${attempt + 1} attempts): nothing was written (tenant ${tenantId})`)
+        }
+        log.info({ ...logCtx, version: state.version }, 'Service map changed while evaluating: reloading and recomputing once')
+      }
     } finally {
       await session.close()
     }
@@ -305,7 +365,7 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
     // La metrica si incrementa alla FINE: una riconciliazione fallita conta
     // come `error` (il catch), non anche come `changed`.
     serviceEvaluationsTotal.inc({ result: changed ? 'changed' : 'unchanged' })
-    return { mapId, health: result.health, previousHealth: previous, impactScore: result.impactScore, changed, stale, causes, incident }
+    return { mapId, health: result.health, previousHealth: previous, impactScore: result.impactScore, changed, stale, healthIfActive: result.healthIfActive, causes, incident }
   } catch (err) {
     serviceEvaluationsTotal.inc({ result: 'error' })
     throw err

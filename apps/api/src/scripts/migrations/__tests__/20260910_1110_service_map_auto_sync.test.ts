@@ -26,10 +26,10 @@ function fakeSession(written: number, total: { n: number; live: number }) {
 beforeEach(() => { vi.spyOn(console, 'log').mockImplementation(() => {}) })
 
 describe('20260910_1110_service_map_auto_sync', () => {
-  it('è registrata per ultima, dopo la 1100, con id nel formato YYYYMMDD_HHMM_name e senza autocommit', () => {
+  it('è registrata dopo la 1100 (e prima della 1120), con id nel formato YYYYMMDD_HHMM_name e senza autocommit', () => {
     const ids = MIGRATIONS.map((m) => m.id)
     expect(ids.indexOf('20260910_1110_service_map_auto_sync')).toBeGreaterThan(ids.indexOf('20260910_1100_service_map_plan_limit'))
-    expect(ids.at(-1)).toBe('20260910_1110_service_map_auto_sync')
+    expect(ids.indexOf('20260910_1110_service_map_auto_sync')).toBeLessThan(ids.indexOf('20260910_1120_service_map_review2'))
     expect(serviceMapAutoSync.id).toMatch(/^\d{8}_\d{4}_[a-z0-9_]+$/)
     expect(serviceMapAutoSync.autocommit).toBeUndefined()
   })

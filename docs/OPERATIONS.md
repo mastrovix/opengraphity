@@ -211,6 +211,7 @@ Migrazioni presenti:
 | `20260910_1090_service_notification_rules` | Servizi monitorati: regole di notifica `service.health_changed` e `service.incident_opened` su ogni tenant |
 | `20260910_1100_service_map_plan_limit` | Servizi monitorati: `Tenant.max_service_maps` dal piano (starter 5, pro 50, enterprise 200) dove manca |
 | `20260910_1110_service_map_auto_sync` | Servizi monitorati: `ServiceMap.auto_sync = true` (mappa viva, il default dell'ondata 5) dove manca, `synced_at` lasciato a null |
+| `20260910_1120_service_map_review2` | Servizi monitorati (revisione 2): recupera `ServiceMap.stale_reason` sulle mappe già `stale` (`missing_ci` se un id di `node_ids` non ha più la sua `INCLUDES`, altrimenti `over_limit`) |
 
 Wrapper per singola migrazione: `migrate:workflow-metadata -- [--force]`,
 `migrate-ci-labels.ts [--force]` (`--force` riapplica una migrazione già
@@ -485,6 +486,7 @@ subito.
 | `20260910_1090_service_notification_rules` | Servizi monitorati (ondata 3): semina su ogni `:Tenant` le regole di notifica `service.health_changed` (warning, in_app) e `service.incident_opened` (error, in_app + slack) con lo stesso seed dell'onboarding — MERGE per (tenant_id, event_type), le regole già presenti non si toccano |
 | `20260910_1100_service_map_plan_limit` | Servizi monitorati (ondata 4): scrive `Tenant.max_service_maps` (starter 5, pro 50, enterprise 200 — `lib/tenantPlans.ts`) **solo** sui tenant che non ce l'hanno, dal loro `plan`; un limite già presente (anche cambiato a mano) non viene toccato. Un `plan` fuori vocabolario ferma la migrazione con il tenant nel messaggio. Senza questa migrazione `createServiceMap` fallisce con «run the 20260910_1100_service_map_plan_limit migration»: il limite non viene inventato a runtime |
 | `20260910_1110_service_map_auto_sync` | Servizi monitorati (ondata 5): scrive `ServiceMap.auto_sync = true` — la mappa viva è il nuovo default — **solo** sulle mappe che non ce l'hanno, lasciando `synced_at` a null (nessuno l'ha ancora sincronizzata: ci pensa la prima scrittura CMDB o la passata di sicurezza). Un interruttore già spento a mano non viene riacceso. Senza questa migrazione la lettura di una mappa fallisce con «has no auto_sync — run the 20260910_1110_service_map_auto_sync migration»: la modalità non viene inventata a runtime |
+| `20260910_1120_service_map_review2` | Servizi monitorati (revisione 2, ondata 1): sulle mappe già marcate `stale` **senza** motivo scrive `stale_reason` guardando il grafo — `missing_ci` se almeno un id di `node_ids` non ha più la sua `INCLUDES` (componente cancellato dalla CMDB), altrimenti `over_limit` (sincronizzazione rifiutata dal tetto dei 500). Non tocca `stale`, `health` né `version`. `health_if_active` **non** viene ricalcolata (servirebbe rifare il motore): la scrive la prima valutazione, entro 10 minuti; la migrazione si limita a contare le mappe `maintenance` che la aspettano. Idempotente |
 
 Senza la 1070 un tenant senza nodo `:Tenant` non può nemmeno creare un webhook
 di Event Management: `createInboundWebhook` con `entityType = event` verifica
@@ -873,29 +875,47 @@ vocabolari `lib/serviceVocabularies.ts`.
 regole per mappa (`rules` JSON, default `down_share_pct 50`,
 `degraded_share_pct 1`, `min_nodes 1`, `unknown_nodes operational`,
 `open_incident_from down`): contano i nodi con `propagate ≠ never`, non in
-finestra di change; i nodi senza salute contano come operativi nel denominatore (`unknown_nodes = operational`, default: una copertura parziale non gonfia l'impatto) o sono esclusi (`ignore`); nessun nodo con salute nota → `unknown`;
+finestra di change e non in manutenzione di ciclo di vita; i nodi senza salute contano come operativi nel denominatore (`unknown_nodes = operational`, default: una copertura parziale non gonfia l'impatto) o sono esclusi (`ignore`); nessun nodo con salute nota → `unknown`;
 `impact_score = round(100 · (Σ peso giù + 0,5 · Σ peso degradati) / Σ peso)`;
-`maintenance` se un nodo critico è in manutenzione: change in finestra (stessa regola della
-soppressione degli allarmi, `deployment` sempre / `scheduled` dentro una
-finestra del piano, hops 0) oppure ciclo di vita `status = maintenance` del CI (la
-salute di quel CI non viene aggiornata dagli allarmi), `down` se un critico che conta è giù o la quota
-ponderata dei giù ≥ `down_share_pct`, `degraded` se il punteggio ≥
+`down` se un critico che conta è giù o la quota ponderata dei giù ≥
+`down_share_pct`, poi `maintenance` se un nodo critico è in **finestra di
+change** (stessa regola della soppressione degli allarmi, `deployment` sempre /
+`scheduled` dentro una finestra del piano, hops 0), `degraded` se il punteggio ≥
 `degraded_share_pct` e i non operativi ≥ `min_nodes`, `unknown` se nessun
-nodo conta, altrimenti `operational`. `always` e `weighted` pesano allo stesso
+nodo conta, altrimenti `operational`.
+
+**Le due manutenzioni sono cose diverse** (revisione 2 · R1) e vanno tenute
+distinte quando si legge una mappa:
+
+| Condizione | Il nodo conta? | Il servizio va in `maintenance`? | Dove si vede |
+|---|---|---|---|
+| `ci.status = 'maintenance'` (ciclo di vita del CI) | **no** (come `propagate: never`: fuori dal denominatore, mai fra le cause) | **no** — è uno stato che nessuno «chiude» | `ServiceMapNode.ci.status`, `excludedReason = lifecycle_maintenance` |
+| change in finestra sul CI | **no** | **sì, se il nodo è critico** | `ServiceMapNode.inMaintenance`, `excludedReason = change_window` |
+
+**`down` vince su `maintenance`**: un critico che conta e sta giù è un guasto
+vero e va detto anche mentre un altro componente è in finestra. Quando la salute
+è `maintenance`, `ServiceMap.healthIfActive` porta la salute che il servizio
+avrebbe **senza** quella finestra («in manutenzione, sarebbe: giù»); è `null` in
+tutti gli altri casi. Fino alla revisione 2 un solo CI critico messo in
+manutenzione di ciclo di vita spegneva il servizio per sempre, nascondendo ogni
+guasto e impedendo qualunque incident. `always` e `weighted` pesano allo stesso
 modo in ondata 1. Pesi proposti: 8 al livello 1 (critico), 3 ai certificati
 (`propagate never`), 5 al resto.
 
 | Coda / consumer | Job | Cosa fa |
 |---|---|---|
 | `service-impact-consumer` (BaseConsumer, fan-out di `packages/events`) | `ci.health_changed` | trova le mappe del tenant che includono il CI (`status ≠ paused`) e accoda un job per mappa |
-| `services-impact` (concurrency 2, lock 10 min) | `evaluate` | job id **fisso** `svc-<tenant>-<mapId>` con ritardo 2 s: BullMQ scarta i doppioni finché il job esiste, quindi 40 CI dello stesso servizio in raffica = **una** valutazione; 5 tentativi con backoff 5 s; rimosso a completamento **e** a fallimento definitivo (un id che restasse bloccherebbe le valutazioni successive: il fallimento resta nel log e in `service_evaluations_total{result="error"}`) |
+| `services-impact` (concurrency 2, lock 10 min) | `evaluate` | dedup a **finestra** (revisione 2 · Q1): `deduplication: {id: svc-<tenant>-<mapId>, ttl: 2 s}` con `jobId` libero, e ritardo di 2 s — 40 CI dello stesso servizio in raffica = **una** valutazione, ma un cambio che arriva MENTRE il job gira ne accoda una nuova (con il vecchio `jobId` fisso quel cambio si perdeva fino alla passata periodica, ~15 min); 5 tentativi con backoff 5 s; rimosso a completamento **e** a fallimento definitivo (il fallimento resta nel log e in `service_evaluations_total{result="error"}`). Innescato da `ci.health_changed`, dalle mutation e dai **segnali di manutenzione** (`notifyCIMaintenanceChanged`, trigger `maintenance`) |
 | | `services-periodic` | ogni 5 minuti: mappe attive con `evaluated_at` più vecchio di 10 minuti (o mai valutate) o `stale`, paginate (`runPagedPass`), rivalutate con trigger `periodic`; riallinea il gauge `services_health{health}` |
-| | `sync` | sincronizzazione di UNA mappa viva con la CMDB (ondata 5): job id **fisso** `svcsync-<tenant>-<mapId>` (diverso da quello della valutazione), stesso ritardo di 2 s e stessi tentativi — un import che tocca 500 relazioni produce **una** sincronizzazione per mappa, non 500. Accodato da `notifyCIGraphChanged` e dalla mutation `syncServiceMap` |
+| | `sync` | sincronizzazione di UNA mappa viva con la CMDB (ondata 5): stessa dedup a finestra con id `svcsync-<tenant>-<mapId>` (diverso da quello della valutazione: le due code di lavoro non si deduplicano a vicenda), stesso ritardo di 2 s e stessi tentativi — un import che tocca 500 relazioni produce **una** sincronizzazione per mappa, non 500. Accodato da `notifyCIGraphChanged` (che trova le mappe anche quando il CI è appena stato **cancellato**, via `node_ids`) e dalla mutation `syncServiceMap` |
 | | `services-sync-periodic` | ogni **30 minuti**: rete di sicurezza della sincronizzazione — mappe con `auto_sync = true`, `status ≠ paused` e `synced_at` più vecchio di 30 minuti (o mai sincronizzate), paginate. Rada di proposito: l'immediatezza la dà `notifyCIGraphChanged`, questa passata recupera solo ciò che è stato scritto fuori dalle mutation (script, migrazioni, Cypher a mano, coda giù) |
 
 **Una valutazione** = una query (mappa + `INCLUDES` con `ci.health` + change
-in finestra per ogni CI) + le regole + **uno statement** di scrittura: la
-decisione «salute cambiata» è nel Cypher (`previous IS NULL OR previous <>
+in finestra per ogni CI) + le regole + **uno statement** di scrittura, con la
+**guardia di versione** `WHERE m.version = toInteger($version)` (revisione 2 ·
+E1: se una sincronizzazione ha cambiato la composizione nel frattempo, non si
+scrive nulla — si rilegge e si ricalcola UNA volta, alla seconda è un errore).
+La decisione «salute cambiata» è nel Cypher (`previous IS NULL OR previous <>
 $health`), così due valutazioni concorrenti non scrivono due voci; a salute
 cambiata `health_since`, voce `ServiceHealthEntry` (`HAS_HEALTH_HISTORY`,
 trigger `created | ci_health | manual | periodic | …`, cap **500** voci mai la
@@ -914,11 +934,14 @@ gravità), `serviceMap`, `servicesImpactedByCI` per lo staff;
 `serviceMapCandidates`, `serviceMapProposal`, `serviceImpactPreview` e le
 mutation `createServiceMap` (costruzione automatica + valutazione immediata,
 status `active` o `draft`), `reevaluateServiceMap`, `setServiceMapStatus` (con
-`expectedVersion`: riattivare una mappa in pausa la rivaluta subito),
+`expectedVersion`: rimettere in servizio una mappa — da `paused` o da `draft` —
+la rivaluta subito),
 `updateServiceImpactRules`, `updateServiceMapNodes`,
 `applyServiceMapProposal`, `removeServiceMapExclusion`,
 `setServiceMapAutoSync` (interruttore mappa viva/congelata, con
-`expectedVersion`), `syncServiceMap` (sincronizza ora), `deleteServiceMap`
+`expectedVersion`), `syncServiceMap` (sincronizza ora: restituisce
+`ServiceMapSyncResult` — mappa aggiornata, `added`/`removed`/`moved`,
+`skipped` + `reason` quando il tetto dei 500 ha rifiutato tutto), `deleteServiceMap`
 (mappa e cronologia; il servizio e i CI restano) solo admin.
 
 **Cosa fa il motore quando…** (una riga per caso; il dettaglio è nelle
@@ -929,15 +952,18 @@ sottosezioni che seguono):
 | la **salute cambia** | scrive salute, punteggio, spiegazione, `health_since`, `evaluated_at` | voce `ServiceHealthEntry` con il trigger + evento `service.health_changed` + audit | riconciliato: apre, riapre, aggiorna o chiude secondo `open_incident_from` |
 | la salute **non cambia** ma cambiano le **cause** | scrive punteggio e spiegazione (un punteggio stantio sarebbe un dato falso) | nessuna voce, nessun evento | riconciliato: se un incident è aperto riceve **un** commento «Causa aggiornata» |
 | la salute **non cambia** e le cause **nemmeno** | solo `evaluated_at`, punteggio e spiegazione | nulla | non riconciliato: non prende nemmeno il lock |
-| il servizio va in **manutenzione** (change in finestra su un componente critico o `ci.status = maintenance`) | salute `maintenance` | voce + evento se la salute cambia | né apertura né chiusura; un incident aperto riceve **una** nota (`maintenance_noted_at`), rimossa all'uscita dalla manutenzione |
-| la mappa è in **pausa** (`paused`) | nessuna valutazione automatica: il consumer la salta, la passata periodica prende solo le `active` e le scritture di configurazione non la rivalutano — la salute mostrata resta l'ultima nota. `reevaluateServiceMap` la valuta comunque a mano; riattivarla la rivaluta subito | nulla, finché non viene valutata | nessuna apertura né riapertura; un incident già aperto può comunque essere **chiuso** |
+| il servizio va in **manutenzione** (change in finestra su un componente **critico**) | salute `maintenance`, più `health_if_active` = la salute che avrebbe senza quella finestra | voce + evento se la salute cambia | né apertura né chiusura; un incident aperto riceve **una** nota (`maintenance_noted_at`), rimossa all'uscita dalla manutenzione |
+| un componente ha `ci.status = maintenance` (ciclo di vita) | il nodo **non conta** (fuori dal denominatore, mai fra le cause): la salute segue gli altri componenti, `maintenance` **no** | come sempre | come sempre: se il servizio è giù l'incident si apre |
+| una change **entra** o **esce** dai passi di finestra (`deployment`/`scheduled`), viene eliminata, oppure un CI entra/esce da `status = maintenance` | le mappe che includono quei CI si rivalutano entro pochi secondi (`notifyCIMaintenanceChanged`, trigger `maintenance`) | voce + evento se la salute cambia | riconciliato dalla rivalutazione |
+| il servizio non raggiunge più la soglia ma **non è operativo** (degradato sotto soglia, `unknown`, regola passata a `never`) | salute scritta normalmente | come sempre | l'incident **resta aperto** con UN commento onesto (`kept_open_noted_at`, azzerato quando si torna sopra soglia): mai chiuso con «tornato operativo» |
+| la mappa è in **pausa** (`paused`) | nessuna valutazione automatica: il consumer la salta, la passata periodica prende solo le `active` e le scritture di configurazione non la rivalutano — la salute mostrata resta l'ultima nota. `reevaluateServiceMap` la valuta comunque a mano; rimetterla in servizio (da `paused` o da `draft`) la rivaluta subito | nulla, finché non viene valutata | nessuna apertura né riapertura; un incident già aperto può comunque essere **chiuso** |
 | la mappa è una **bozza** (`draft`) | valutata dal consumer e dalle scritture di configurazione come le attive, **non** dalla passata periodica (che filtra `status: 'active'`) | voce + evento come le attive | nessuna apertura né riapertura; chiusura sì |
 | `open_incident_from = never` | valutata normalmente | voce + evento come sempre | nessun incident nuovo; quello aperto prima del cambio di regola viene comunque **chiuso** al rientro |
-| un componente **non esiste più** nella CMDB | mappa `stale = true`, valutazione sui nodi rimasti | voce `map_changed` con gli id mancanti, **una** volta, + `warn` | nessun effetto diretto (cambiano le cause: vedi sopra) |
+| un componente **non esiste più** nella CMDB | mappa `stale = true` con `stale_reason = 'missing_ci'`, valutazione sui nodi rimasti | voce `map_changed` con gli id mancanti, **una** volta, + `warn` | nessun effetto diretto (cambiano le cause: vedi sopra) |
 | la **CMDB cambia** (relazione fra CI creata o cancellata, CI cancellato) | le mappe **vive** che toccano quei CI si sincronizzano entro pochi secondi (`notifyCIGraphChanged` → job `sync`), poi si rivalutano se la composizione è cambiata | voce `map_changed` «Sincronizzazione automatica: +N, −M, ~K spostati» solo se qualcosa è cambiato | riconciliato dalla rivalutazione che segue |
 | la composizione **non cambia** dopo una sincronizzazione | solo `synced_at` | nulla: nessuna versione nuova, nessuna voce | non riconciliato (nessuna rivalutazione) |
 | la mappa è **congelata** (`auto_sync = false`) | la CMDB non la tocca: il diff resta da applicare a mano (`serviceMapProposal` + `applyServiceMapProposal`) | nulla finché non si applica | invariato |
-| la proposta supera i **500 componenti** | **niente** viene applicato, la mappa è marcata `stale` | voce `map_changed` con il motivo, **una** volta, + `warn` + `service_map_syncs_total{result="skipped_limit"}` | invariato |
+| la proposta supera i **500 componenti** | **niente** viene applicato, la mappa è marcata `stale` con `stale_reason = 'over_limit'` (che la valutazione non spegne: solo una sincronizzazione riuscita lo fa) | voce `map_changed` con il motivo, **una** volta, + `warn` + `service_map_syncs_total{result="skipped_limit"}` | invariato |
 
 **Metriche** (`middleware/metrics.ts`, esposte dal registro custom su
 `GET /metrics`):
@@ -975,10 +1001,24 @@ dopo un allarme* = mappa in `paused` (il consumer la salta), CI non incluso
 nella mappa (`servicesImpactedByCI`), oppure job fallito (log `Service impact
 job failed`, `service_evaluations_total{result="error"}`) — `reevaluateServiceMap`
 dal dettaglio la rivaluta subito, la passata periodica entro 10 minuti;
-*`stale`* = un componente è stato cancellato dalla CMDB: aprire «Aggiorna
-mappa» e togliere gli id spariti (`serviceMapProposal` +
-`applyServiceMapProposal`), oppure ricreare la mappa (`deleteServiceMap` +
-`createServiceMap`); *`has no node_ids`/`has no rules`* = eseguire la migrazione
+*`stale`* = la mappa è da rivedere, e `staleReason` dice perché:
+`missing_ci` (un componente è stato cancellato dalla CMDB: aprire «Aggiorna
+mappa» e togliere gli id spariti — `serviceMapProposal` +
+`applyServiceMapProposal` — oppure ricreare la mappa con `deleteServiceMap` +
+`createServiceMap`) oppure `over_limit` (la mappa supera il tetto dei 500
+componenti: ridurre `max_depth` o escludere dei componenti — sincronizzare non
+serve, viene rifiutata di nuovo). Una mappa marcata prima della migrazione
+`20260910_1120_service_map_review2` può avere `staleReason` a null: la
+migrazione lo recupera;
+*servizio «in manutenzione» che non torna a posto* = fino alla revisione 2
+bastava un CI critico con `ci.status = 'maintenance'`; ora solo una change in
+finestra lo fa, e `healthIfActive` dice quale sarebbe la salute vera. Se resta
+`maintenance` senza change, controllare `ServiceMapNode.inMaintenance` e
+`excludedReason` nel dettaglio;
+*incident di servizio che resta aperto con il commento «l'incident resta
+aperto»* = il servizio non è tornato **operativo**, è solo sceso sotto la soglia
+(o la regola è passata a `never`, o la salute è `unknown`): il monitoraggio non
+lo chiude più con una causa falsa, va chiuso a mano quando è giusto; *`has no node_ids`/`has no rules`* = eseguire la migrazione
 `20260910_1080_service_maps_bootstrap`; *`has no auto_sync`* = eseguire la
 `20260910_1110_service_map_auto_sync`; *un componente nuovo non compare nella
 mappa* = mappa congelata (interruttore «Aggiorna automaticamente i componenti»

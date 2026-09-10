@@ -42,7 +42,7 @@ import { GET_SERVICE_MAPS } from '@/graphql/queries'
 import { colors, palette } from '@/lib/tokens'
 import { CreateServiceMapDialog } from './CreateServiceMapDialog'
 import { BusinessCapabilitiesSection } from './BusinessCapabilitiesSection'
-import { SERVICE_HEALTH_FAMILY, ServiceHealthBadge, ServiceStatusPill, ImpactScore, causeLabel, isServiceHealth, serviceHealthFamily } from './servicesShared'
+import { SERVICE_HEALTH_FAMILY, ServiceHealthBadge, ServiceStatusPill, ImpactScore, causeLabel, healthIfActiveNote, isServiceHealth, serviceHealthFamily, staleShortLabel } from './servicesShared'
 import { SERVICE_MAP_STATUSES, type ServiceHealth, type ServiceMapStatus, type ServiceMapPage, type ServiceMapRow, type ServiceMapFilterVars } from '@/types/services'
 
 const PAGE_SIZE       = 50
@@ -159,6 +159,7 @@ function ServiceRowView({ row }: { row: ServiceMapRow }) {
   const to = servicePath(row.id)
   const sinceId = `service-${row.id}-since`
   const first = row.explanation[0]
+  const ifActive = healthIfActiveNote(t, row)
   const meta = [row.service.criticality ? enumLabel(row.service.criticality) : null].filter(Boolean).join(' · ')
 
   return (
@@ -170,7 +171,7 @@ function ServiceRowView({ row }: { row: ServiceMapRow }) {
           </Link>
           {row.status !== 'active' && <ServiceStatusPill status={row.status} />}
           {row.stale && (
-            <span role="img" aria-label={t('monitoring.services.staleShort')} title={t('monitoring.services.staleShort')} style={{ display: 'inline-flex', color: palette.warning.base }}>
+            <span role="img" data-testid="stale-icon" data-reason={row.staleReason ?? 'none'} aria-label={staleShortLabel(t, row.staleReason)} title={staleShortLabel(t, row.staleReason)} style={{ display: 'inline-flex', color: palette.warning.base }}>
               <AlertTriangle size={14} aria-hidden="true" />
             </span>
           )}
@@ -179,6 +180,10 @@ function ServiceRowView({ row }: { row: ServiceMapRow }) {
       </td>
       <td style={TD}>
         <ServiceHealthBadge health={row.health} />
+        {/* R1: «in manutenzione» da solo nasconderebbe che senza la finestra di change il servizio sarebbe giù. */}
+        {ifActive && (
+          <div data-testid="health-if-active" style={{ fontSize: 'var(--font-size-table)', color: palette.purple.text, marginTop: 3 }}>{ifActive}</div>
+        )}
         {since && (
           <div aria-describedby={sinceId} title={t('monitoring.services.sinceHint', { date: formatDateTime(row.healthSince) })} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 3 }}>
             {t('monitoring.services.since', { duration: since })}

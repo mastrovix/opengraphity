@@ -8,9 +8,10 @@
  * del servizio e «Come si calcola» (ServiceRulesCard).
  *
  * Azioni admin: «Rivaluta ora», «Aggiorna mappa» (dialogo del diff col
- * grafo), «Metti in pausa»/«Riattiva» (con `expectedVersion` = la versione
- * letta), «Elimina» (con conferma). Le mutation restituiscono la mappa
- * completa: la cache aggiorna la pagina.
+ * grafo), il pulsante di stato che segue lo stato vero («Attiva» per una
+ * bozza, «Metti in pausa» per una attiva, «Riattiva» per una in pausa, con
+ * `expectedVersion` = la versione letta), «Elimina» (con conferma). Le
+ * mutation restituiscono la mappa completa: la cache aggiorna la pagina.
  * Polling 15 s in pausa a scheda nascosta: la salute cambia da sola.
  *
  * Ondata 2: regole e componenti si modificano qui dentro (solo admin); per
@@ -22,6 +23,11 @@
  * per congelarla (ServiceAutoSyncToggle) e pulsante che cambia con la modalità
  * («Sincronizza ora» se viva, «Aggiorna mappa» se congelata; il dialogo del
  * diff resta raggiungibile come «Rivedi componenti»).
+ * Revisione 2: l'esito della sincronizzazione arriva dal motore
+ * (`ServiceMapSyncResult`: rifiutata col motivo, già allineata, «+N −M ~K»),
+ * l'avviso «da rivedere» dice il motivo vero (`staleReason`) e la testata
+ * mostra la salute che il servizio avrebbe senza la finestra di change
+ * (`healthIfActive`).
  */
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -47,7 +53,7 @@ import { formatDateTime, formatDuration, timeAgo } from '@/lib/datetime'
 import { pausedWhenHidden } from '@/lib/polling'
 import { ciPath } from '@/lib/ciPath'
 import { ciTypeLabelKey, enumLabel } from '@/lib/ciEnums'
-import { colors, palette } from '@/lib/tokens'
+import { colors, lookupOrError, palette } from '@/lib/tokens'
 import { AMBER_BANNER, TINT_NEUTRAL, TINT_WARNING } from '@/lib/eventPalette'
 import { ServiceMapCanvas } from './ServiceMapCanvas'
 import { ServiceHistorySection } from './ServiceHistorySection'
@@ -58,12 +64,26 @@ import { UpdateServiceMapDialog } from './UpdateServiceMapDialog'
 import { ServiceAutoSyncToggle } from './ServiceAutoSyncToggle'
 import {
   ServiceHealthBadge, ServiceStatusPill, ServiceSyncModePill, NodeHealthBadge, ImpactScore,
-  causeSequenceLabel, explanationSentence, propagationLabel, roleLabel, serviceStatusLabel, serviceHealthLabel,
+  causeSequenceLabel, excludedReasonLabel, explanationSentence, healthIfActiveNote, propagationLabel, roleLabel,
+  serviceStatusLabel, serviceHealthLabel, staleMessage,
 } from './servicesShared'
-import type { ServiceMapDetail, ServiceMapNode, ImpactCause } from '@/types/services'
+import type { ServiceMapDetail, ServiceMapNode, ImpactCause, ServiceMapStatus, ServiceMapSyncResult } from '@/types/services'
 
 const POLL_MS = 15_000
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
+
+/** Cosa fa il pulsante di stato: dove porta la mappa e con quale etichetta. */
+interface StatusAction { next: ServiceMapStatus; label: 'activate' | 'pause' | 'resume' }
+
+/**
+ * Una bozza si ATTIVA (non «si riattiva»): senza questa distinzione l'unico
+ * modo di attivarla era metterla in pausa e riattivarla (C-4).
+ */
+const STATUS_ACTION: Record<ServiceMapStatus, StatusAction> = {
+  draft:  { next: 'active', label: 'activate' },
+  active: { next: 'paused', label: 'pause' },
+  paused: { next: 'active', label: 'resume' },
+}
 
 export function ServiceDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -81,7 +101,7 @@ export function ServiceDetailPage() {
   const [reevaluate, { loading: reevaluating }] = useMutation<{ reevaluateServiceMap: ServiceMapDetail }>(REEVALUATE_SERVICE_MAP)
   const [setStatus, { loading: settingStatus }] = useMutation<{ setServiceMapStatus: ServiceMapDetail }>(SET_SERVICE_MAP_STATUS)
   const [deleteMap, { loading: deleting }] = useMutation<{ deleteServiceMap: boolean }>(DELETE_SERVICE_MAP)
-  const [syncMap, { loading: syncing }] = useMutation<{ syncServiceMap: ServiceMapDetail }>(SYNC_SERVICE_MAP)
+  const [syncMap, { loading: syncing }] = useMutation<{ syncServiceMap: ServiceMapSyncResult }>(SYNC_SERVICE_MAP)
 
   if (loading && !data && !previousData) return <PageLoader />
   if (error && !data) return <PageContainer><QueryError message={error.message} onRetry={() => void refetch()} /></PageContainer>
@@ -102,6 +122,8 @@ export function ServiceDetailPage() {
   const selected = selectedId ? (nodeById.get(selectedId) ?? null) : null
   const since = map.healthSince ? formatDuration(Date.now() - new Date(map.healthSince).getTime()) : null
   const busy = reevaluating || settingStatus || deleting || syncing
+  const ifActive = healthIfActiveNote(t, map)
+  const statusAction = lookupOrError(STATUS_ACTION as Record<string, StatusAction>, map.status, 'SERVICE_STATUS_ACTION', STATUS_ACTION.active)
 
   async function onReevaluate() {
     try {
@@ -113,29 +135,31 @@ export function ServiceDetailPage() {
   }
 
   /**
-   * «Sincronizza ora» (mappa viva): l'esito lo si legge confrontando i
-   * componenti prima e dopo — l'API restituisce la mappa, non il conteggio.
-   * Nessun cambiamento → «già allineata», detto invece di un successo muto.
+   * «Sincronizza ora» (mappa viva): l'esito arriva dal motore
+   * (`ServiceMapSyncResult`), non si deduce dal diff dei componenti.
+   * `skipped` = la sincronizzazione è stata RIFIUTATA (tetto dei componenti):
+   * avviso col motivo, mai un successo dove il motore non ha scritto nulla.
+   * Tutti i conteggi a zero → «già allineata»; altrimenti «+N −M ~K».
    */
   async function onSyncNow() {
     if (!map) return
-    const before = new Set(map.nodes.map((n) => n.ci.id))
     try {
       const res = await syncMap({ variables: { id } })
-      const next = res.data?.syncServiceMap
-      if (!next) throw new Error(t('monitoring.services.detail.noResult', { operation: 'syncServiceMap' }))
-      const after = new Set(next.nodes.map((n) => n.ci.id))
-      const added   = [...after].filter((ciId) => !before.has(ciId)).length
-      const removed = [...before].filter((ciId) => !after.has(ciId)).length
-      toast.success(added === 0 && removed === 0
+      const out = res.data?.syncServiceMap
+      if (!out) throw new Error(t('monitoring.services.detail.noResult', { operation: 'syncServiceMap' }))
+      if (out.skipped) {
+        toast.warning(t('toast.services.syncSkipped', { reason: out.reason ?? t('toast.services.syncSkippedNoReason') }))
+        return
+      }
+      toast.success(out.added === 0 && out.removed === 0 && out.moved === 0
         ? t('toast.services.syncAligned')
-        : t('toast.services.synced', { added, removed }))
+        : t('toast.services.synced', { added: out.added, removed: out.removed, moved: out.moved }))
     } catch (e) { toast.error(t('toast.services.actionFailed', { error: errorMessage(e) })) }
   }
 
-  async function onToggleStatus() {
+  /** Bozza → attiva, attiva → in pausa, in pausa → riattivata: un pulsante solo, con l'etichetta dello stato vero. */
+  async function onChangeStatus(status: ServiceMapStatus) {
     if (!map) return
-    const status = map.status === 'paused' ? 'active' : 'paused'
     try {
       const res = await setStatus({ variables: { id, expectedVersion: map.version, status } })
       const next = res.data?.setServiceMapStatus
@@ -170,16 +194,24 @@ export function ServiceDetailPage() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>
           <ImpactScore score={map.impactScore} health={map.health} width={120} />
+          {/* R1: la finestra di change non deve nascondere quanto starebbe male il servizio senza di essa. */}
+          {ifActive && <span data-testid="health-if-active" style={{ color: palette.purple.text, fontWeight: 500 }}>{ifActive}</span>}
           {since && <span title={t('monitoring.services.sinceHint', { date: formatDateTime(map.healthSince) })}>{t('monitoring.services.since', { duration: since })}</span>}
           <span>{map.evaluatedAt ? t('monitoring.services.detail.evaluated', { ago: timeAgo(map.evaluatedAt) }) : t('monitoring.services.detail.neverEvaluated')}</span>
           <span data-testid="synced-at" title={map.syncedAt ? t('monitoring.services.syncMode.syncedHint', { date: formatDateTime(map.syncedAt) }) : undefined}>
             {map.syncedAt ? t('monitoring.services.syncMode.synced', { ago: timeAgo(map.syncedAt) }) : t('monitoring.services.syncMode.neverSynced')}
           </span>
         </div>
+        {/* Da rivedere: il motivo lo dice il motore (`staleReason`); col tetto superato sincronizzare fallirebbe di nuovo, quindi si manda a «Rivedi componenti». */}
         {map.stale && (
-          <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, padding: '10px 14px', borderRadius: 8, background: AMBER_BANNER.bg, border: `1px solid ${AMBER_BANNER.border}`, color: AMBER_BANNER.text, fontSize: 'var(--font-size-body)' }}>
+          <div role="alert" data-testid="stale-banner" data-reason={map.staleReason ?? 'none'} style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, padding: '10px 14px', borderRadius: 8, background: AMBER_BANNER.bg, border: `1px solid ${AMBER_BANNER.border}`, color: AMBER_BANNER.text, fontSize: 'var(--font-size-body)' }}>
             <AlertTriangle size={16} aria-hidden="true" style={{ flexShrink: 0 }} />
-            {t('monitoring.services.stale')}
+            <span>{staleMessage(t, map.staleReason)}</span>
+            {isAdmin && map.staleReason === 'over_limit' && (
+              <Button variant="secondary" size="xs" disabled={busy} icon={<GitCompareArrows size={13} aria-hidden="true" />} onClick={() => setUpdateOpen(true)}>
+                {t('monitoring.services.detail.actions.reviewComponents')}
+              </Button>
+            )}
           </div>
         )}
         <p data-testid="explanation-sentence" style={{ margin: '12px 0 0', fontSize: 'var(--font-size-card-title)', color: colors.slateDark, lineHeight: 1.6 }}>
@@ -199,8 +231,9 @@ export function ServiceDetailPage() {
             <Button variant="secondary" size="sm" disabled={busy} icon={<GitCompareArrows size={14} aria-hidden="true" />} onClick={() => setUpdateOpen(true)}>
               {map.autoSync ? t('monitoring.services.detail.actions.reviewComponents') : t('monitoring.services.detail.actions.updateMap')}
             </Button>
-            <Button variant="secondary" size="sm" disabled={busy} icon={map.status === 'paused' ? <Play size={14} aria-hidden="true" /> : <Pause size={14} aria-hidden="true" />} onClick={() => void onToggleStatus()}>
-              {map.status === 'paused' ? t('monitoring.services.detail.actions.resume') : t('monitoring.services.detail.actions.pause')}
+            {/* Tre stati, tre etichette: una bozza si attiva, non «si riattiva» dopo essere stata messa in pausa. */}
+            <Button variant="secondary" size="sm" disabled={busy} icon={statusAction.next === 'active' ? <Play size={14} aria-hidden="true" /> : <Pause size={14} aria-hidden="true" />} onClick={() => void onChangeStatus(statusAction.next)}>
+              {t(`monitoring.services.detail.actions.${statusAction.label}`)}
             </Button>
             <Button variant="danger" size="sm" disabled={busy} icon={<Trash2 size={14} aria-hidden="true" />} onClick={() => void onDelete()}>
               {t('monitoring.services.detail.actions.delete')}
@@ -329,7 +362,11 @@ function NodePanel({ node, typeLabel, onClose }: { node: ServiceMapNode; typeLab
         <DetailField label={t('monitoring.services.detail.nodeFields.critical')} value={yesNo(node.critical)} />
         <DetailField label={t('monitoring.services.detail.nodeFields.health')} value={<NodeHealthBadge health={node.health} />} />
         <DetailField label={t('monitoring.services.detail.nodeFields.inMaintenance')} value={yesNo(node.inMaintenance)} />
-        <DetailField label={t('monitoring.services.detail.nodeFields.contributes')} value={yesNo(node.contributes)} />
+        {/* R1: se non conta, il motivo — le due manutenzioni (ciclo di vita e finestra di change) non sono la stessa cosa. */}
+        <DetailField
+          label={t('monitoring.services.detail.nodeFields.contributes')}
+          value={node.contributes ? yesNo(true) : `${yesNo(false)} — ${excludedReasonLabel(t, node.excludedReason) ?? t('monitoring.services.excludedReason.unstated')}`}
+        />
         <DetailField label={t('monitoring.services.detail.nodeFields.addedBy')} value={addedByLabel(node.addedBy, t)} />
         <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 'var(--font-size-body)' }}>
           <Link to={consoleLink} style={{ ...linkStyle, display: 'inline-flex', alignItems: 'center', gap: 4 }}>

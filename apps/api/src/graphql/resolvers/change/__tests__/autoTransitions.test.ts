@@ -42,9 +42,10 @@ vi.mock('../../ci-utils.js', () => ({
   mapCI:       vi.fn(),
 }))
 
-vi.mock('../../../../lib/logger.js', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}))
+vi.mock('../../../../lib/logger.js', () => {
+  const child = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+  return { logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => child } }
+})
 
 // Fine finestra (Event Management, ondata 3 + revisione): i moduli sono
 // importati dinamicamente da syncSuppressedEvents solo quando la change ha
@@ -57,6 +58,11 @@ vi.mock('../../../../services/eventCorrelation.js', () => ({
 vi.mock('../../../../jobs/eventCorrelateWorker.js', () => ({
   enqueueChangeWindowReevaluation: vi.fn().mockResolvedValue(undefined),
 }))
+// Servizi monitorati (revisione 2 · D6.1): ingresso e uscita dalla finestra
+// accodano la valutazione delle mappe che includono i CI della change.
+vi.mock('../../../../services/serviceImpact/sync.js', () => ({
+  notifyChangeWindowChanged: vi.fn().mockResolvedValue(1),
+}))
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
@@ -66,6 +72,7 @@ const { runQuery, runQueryOne } = await import('../../ci-utils.js')
 const { logger } = await import('../../../../lib/logger.js')
 const { reevaluateSuppressedEvents } = await import('../../../../services/eventCorrelation.js')
 const { enqueueChangeWindowReevaluation } = await import('../../../../jobs/eventCorrelateWorker.js')
+const { notifyChangeWindowChanged } = await import('../../../../services/serviceImpact/sync.js')
 
 // ── Test context ──────────────────────────────────────────────────────────────
 
@@ -277,6 +284,53 @@ describe('evaluateAutoTransitions', () => {
       mockWindow('review', 0)
       await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
       expect(enqueueChangeWindowReevaluation).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── Revisione 2 · D6.1: la finestra di change vista dai Servizi ────────────
+
+  describe('segnale ai Servizi monitorati all\'ingresso e all\'uscita dalla finestra', () => {
+    /** Nessuna transizione automatica; la lettura "step + marcatore" risponde come indicato. */
+    function mockWindowState(step: string, notified: boolean | undefined) {
+      vi.mocked(runQueryOne).mockImplementation(async (_s: unknown, query: string) => {
+        if (query.includes('suppressed_by_change_id')) return { step, enteredAt: null, suppressed: 0 } as never
+        if (query.includes('c.service_window AS notified')) return { step, notified } as never
+        if (query.includes('HAS_WORKFLOW')) return { instanceId: 'wi-1', step, tenantId: 'tenant-1', entityProps: { id: 'chg-1' } } as never
+        return { pending: 1 } as never
+      })
+      vi.mocked(runQuery).mockResolvedValue([] as never)
+    }
+    const setCalls = () => vi.mocked(runQueryOne).mock.calls.map((c) => [c[1] as string, c[2] as Record<string, unknown>] as const).filter(([q]) => q.includes('SET c.service_window'))
+
+    it.each([['deployment'], ['scheduled']])('ingresso in %s (marcatore assente) → valutazione accodata e marcatore a true', async (step) => {
+      mockWindowState(step, undefined)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      expect(notifyChangeWindowChanged).toHaveBeenCalledWith('tenant-1', 'chg-1', 'change.window_entered')
+      expect(setCalls()).toHaveLength(1)
+      expect(setCalls()[0]![1]).toEqual({ changeId: 'chg-1', tenantId: 'tenant-1', inWindow: true })
+    })
+
+    it('uscita dalla finestra (marcatore true, passo review) → valutazione accodata e marcatore a false', async () => {
+      mockWindowState('review', true)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      expect(notifyChangeWindowChanged).toHaveBeenCalledWith('tenant-1', 'chg-1', 'change.window_left')
+      expect(setCalls()[0]![1]).toEqual({ changeId: 'chg-1', tenantId: 'tenant-1', inWindow: false })
+    })
+
+    it('stato invariato (dentro la finestra e già segnalato, o fuori e mai segnalato) → nessuna valutazione, nessuna scrittura', async () => {
+      mockWindowState('deployment', true)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      mockWindowState('review', false)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      expect(notifyChangeWindowChanged).not.toHaveBeenCalled()
+      expect(setCalls()).toHaveLength(0)
+    })
+
+    it('coda dei servizi giù: notifyChangeWindowChanged non lancia mai, la transizione resta valida', async () => {
+      mockWindowState('deployment', false)
+      vi.mocked(notifyChangeWindowChanged).mockResolvedValueOnce(0)
+      await expect(evaluateAutoTransitions(mockSession, 'chg-1', ctx)).resolves.toBeUndefined()
+      expect(notifyChangeWindowChanged).toHaveBeenCalledTimes(1)
     })
   })
 })

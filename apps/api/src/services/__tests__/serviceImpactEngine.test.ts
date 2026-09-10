@@ -6,6 +6,9 @@
  * cambiata/invariata/stale, evento e audit solo se cambia, maintenance dalla
  * finestra di change, createServiceMap in transazione + valutazione
  * `created`, mappe che includono un CI, passata periodica paginata, gauge).
+ *
+ * Revisione 2: guardia di versione sulla scrittura (E1 — si rilegge e ricalcola
+ * una volta, alla seconda è un errore), `health_if_active` e `stale_reason`.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
@@ -32,7 +35,7 @@ const metrics = await import('../../middleware/metrics.js')
 const { reconcileServiceIncident } = await import('../serviceImpact/incident.js')
 const { buildServiceMap, proposeNodeSettings, relationshipFilterOf, CI_LABEL_FILTER, ENTRY_NODES_CYPHER, EXPAND_NODES_CYPHER, CREATE_SERVICE_MAP_CYPHER, assertRelationshipTypes, assertMaxDepth } = await import('../serviceImpact/build.js')
 const { serviceHistoryWriteCypher, serviceHistoryParams } = await import('../serviceImpact/history.js')
-const { evaluateServiceMap, createServiceMap, findMapsIncludingCI, evaluateStaleOrOldMaps, refreshServiceGauges, loadServiceMapState, assertServiceMapPlanLimit, LOAD_SERVICE_MAP_CYPHER, SERVICE_MAP_PLAN_LIMIT_CYPHER, evaluationWriteCypher, SERVICE_STALE_EVALUATION_MINUTES } = await import('../serviceImpact/engine.js')
+const { evaluateServiceMap, createServiceMap, findMapsIncludingCI, evaluateStaleOrOldMaps, refreshServiceGauges, loadServiceMapState, assertServiceMapPlanLimit, LOAD_SERVICE_MAP_CYPHER, SERVICE_MAP_PLAN_LIMIT_CYPHER, evaluationWriteCypher, SERVICE_STALE_EVALUATION_MINUTES, EVALUATION_VERSION_RETRIES } = await import('../serviceImpact/engine.js')
 const { PLAN_SETTINGS } = await import('../../lib/tenantPlans.js')
 const { SERVICE_HISTORY_MAX, SERVICE_MAP_MAX_NODES, DEFAULT_SERVICE_IMPACT_RULES_JSON, SERVICE_RELATIONSHIP_TYPES } = await import('../../lib/serviceVocabularies.js')
 const { CHANGE_WINDOW_STEPS } = await import('../events/suppression.js')
@@ -64,7 +67,7 @@ const planRow = (over: Record<string, unknown> = {}) => ({ plan: 'pro', maxServi
 function stateRow(over: { props?: Record<string, unknown>; nodes?: Record<string, unknown>[] } = {}) {
   const n = (o: Record<string, unknown>) => ({ name: o['ciId'], labels: ['Server'], level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false, via: 'api-03', addedBy: 'auto', health: 'operational', healthSource: 'monitoring', status: 'active', changes: [], ...o })
   return {
-    props: { id: 'map-1', tenant_id: 't1', service_id: 'ba-1', name: 'Enterprise Billing', status: 'active', rules: DEFAULT_SERVICE_IMPACT_RULES_JSON, health: null, stale: false, node_ids: ['api-03', 'db-01', 'cache-02', 'cert-1'], ...over.props },
+    props: { id: 'map-1', tenant_id: 't1', service_id: 'ba-1', name: 'Enterprise Billing', status: 'active', version: 4, rules: DEFAULT_SERVICE_IMPACT_RULES_JSON, health: null, stale: false, node_ids: ['api-03', 'db-01', 'cache-02', 'cert-1'], ...over.props },
     nodes: over.nodes ?? [
       n({ ciId: 'api-03', labels: ['Application'], level: 1, role: 'entry', weight: 8, critical: true, via: null }),
       n({ ciId: 'db-01', labels: ['Database'], health: 'down' }),
@@ -237,7 +240,14 @@ describe('evaluateServiceMap', () => {
     const w = callMatching(WRITE_RE)!
     expect(w.cypher).toBe(evaluationWriteCypher())
     expect(w.cypher).toContain('MATCH (m:ServiceMap {id: $mapId, tenant_id: $tenantId})')
-    expect(w.cypher).toContain('(previous IS NULL OR previous <> $health) AS changed, ($stale AND NOT wasStale) AS becameStale')
+    // E1: guardia di versione (la valutazione NON alza la versione, la confronta soltanto)
+    expect(w.cypher).toContain('WHERE m.version = toInteger($version)')
+    expect(w.cypher).not.toContain('SET m.version')
+    expect(w.cypher).toContain('(previous IS NULL OR previous <> $health) AS changed, (stale AND NOT wasStale) AS becameStale')
+    // stale/stale_reason: `over_limit` della sincronizzazione non viene spento dalla valutazione
+    expect(w.cypher).toContain("coalesce(m.stale_reason = 'over_limit', false) AS overLimit")   // mai un `stale` NULL sulla mappa
+    expect(w.cypher).toContain("CASE WHEN overLimit THEN 'over_limit' WHEN $stale THEN 'missing_ci' ELSE null END AS staleReason")
+    expect(w.cypher).toContain('m.stale = stale, m.stale_reason = staleReason, m.health_if_active = $healthIfActive')
     // la spiegazione PRECEDENTE (letta prima del SET) e la criticità del servizio viaggiano con la riga: le usa l'incident del servizio
     expect(w.cypher).toContain('WITH m, m.health AS previous, m.explanation AS previousExplanation, coalesce(m.stale, false) AS wasStale')
     expect(w.cypher).toContain('head([(ba:BusinessApplication {tenant_id: $tenantId})-[:HAS_SERVICE_MAP]->(m) | ba.criticality]) AS criticality')
@@ -247,7 +257,7 @@ describe('evaluateServiceMap', () => {
     expect(w.cypher.match(/CALL \{/g)).toHaveLength(1)   // il cap gira una volta sola
     expect(w.cypher).toContain('UNWIND CASE WHEN changed OR becameStale THEN [1] ELSE [] END AS _')
     expect(w.cypher).toContain('RETURN m.id AS id, previous, previousExplanation, changed, wasStale, m.service_id AS serviceId, m.name AS name')
-    expect(w.params).toMatchObject({ mapId: 'map-1', tenantId: 't1', now: NOW, stale: false, health: 'degraded', impactScore: 41, hTrigger: 'ci_health', hHealth: 'degraded', hImpactScore: 41, hAt: NOW, stTrigger: 'map_changed', stNote: null })
+    expect(w.params).toMatchObject({ mapId: 'map-1', tenantId: 't1', now: NOW, stale: false, version: 4, healthIfActive: null, health: 'degraded', impactScore: 41, hTrigger: 'ci_health', hHealth: 'degraded', hImpactScore: 41, hAt: NOW, stTrigger: 'map_changed', stNote: null })
     expect(JSON.parse(w.params['explanation'] as string)).toEqual(JSON.parse(w.params['hCause'] as string))
     expect(JSON.parse(w.params['explanation'] as string)[0]).toMatchObject({ ciId: 'db-01', health: 'down', weight: 5, critical: false, ci: { id: 'db-01', type: 'database', health: 'down' }, path: [{ id: 'db-01' }, { id: 'api-03', type: 'application', health: 'operational' }] })
 
@@ -328,9 +338,10 @@ describe('evaluateServiceMap', () => {
   })
 
   it('change in finestra sul nodo critico (deployment, o scheduled con finestra del piano che contiene l\'istante) → maintenance; scheduled fuori finestra → no', async () => {
+    // db-01 sano: la finestra sul critico è l'unica cosa che decide
     const withChange = (changes: unknown[]) => stateRow({ nodes: [
       { ciId: 'api-03', name: 'api-03', labels: ['Application'], level: 1, role: 'entry', propagate: 'weighted', weight: 8, critical: true, via: null, addedBy: 'auto', health: 'operational', healthSource: null, status: 'active', changes },
-      { ciId: 'db-01', name: 'db-01', labels: ['Database'], level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false, via: 'api-03', addedBy: 'auto', health: 'down', healthSource: null, status: 'active', changes: [] },
+      { ciId: 'db-01', name: 'db-01', labels: ['Database'], level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false, via: 'api-03', addedBy: 'auto', health: 'degraded', healthSource: null, status: 'active', changes: [] },
     ] })
     onCypher([[LOAD_RE, withChange([{ step: 'deployment', plans: [] }])], [WRITE_RE, writeRow()]])
     expect((await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).health).toBe('maintenance')
@@ -339,20 +350,37 @@ describe('evaluateServiceMap', () => {
     expect((await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).health).toBe('maintenance')
     const outOfWindow = JSON.stringify([{ releaseWindow: { start: '2026-09-11T09:00:00Z', end: '2026-09-11T11:00:00Z' } }])
     onCypher([[LOAD_RE, withChange([{ step: 'scheduled', plans: [outOfWindow] }])], [WRITE_RE, writeRow()]])
-    // fuori finestra api-03 pesa (8 su 13): db-01 giù = 38 % < 50 → degraded, non maintenance
+    // fuori finestra api-03 pesa (8 su 13): db-01 degradato = 19 % → degraded, non maintenance
     expect((await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).health).toBe('degraded')
   })
 
-  it('ciclo di vita `status = maintenance` sul nodo critico → maintenance anche senza change (la salute di quel CI non viene aggiornata dagli allarmi); su un nodo non critico → non pesa', async () => {
+  it('R1: ciclo di vita `status = maintenance` sul nodo critico → il nodo non conta e il servizio NON è in manutenzione (down se un altro componente è giù)', async () => {
     const withStatus = (l1Status: string, l2Status: string) => stateRow({ nodes: [
       { ciId: 'api-03', name: 'api-03', labels: ['Application'], level: 1, role: 'entry', propagate: 'weighted', weight: 8, critical: true, via: null, addedBy: 'auto', health: null, healthSource: null, status: l1Status, changes: [] },
       { ciId: 'db-01', name: 'db-01', labels: ['Database'], level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false, via: 'api-03', addedBy: 'auto', health: 'down', healthSource: null, status: l2Status, changes: [] },
     ] })
+    // api-03 fuori dal calcolo per il ciclo di vita: resta db-01 giù, 5/5 = 100 % → down (non «maintenance»)
     onCypher([[LOAD_RE, withStatus('maintenance', 'active')], [WRITE_RE, writeRow()]])
-    expect((await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).health).toBe('maintenance')
+    const r = await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })
+    expect(r.health).toBe('down')
+    expect(r.healthIfActive).toBeNull()
+    expect(callMatching(WRITE_RE)!.params['healthIfActive']).toBeNull()
     // db-01 in manutenzione non pesa: resta solo api-03 senza salute nota → unknown (non «operativo»)
     onCypher([[LOAD_RE, withStatus('active', 'maintenance')], [WRITE_RE, writeRow()]])
     expect((await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).health).toBe('unknown')
+  })
+
+  it('R1: change in finestra su un critico → maintenance con health_if_active scritta sulla mappa', async () => {
+    const nodes = [
+      { ciId: 'api-03', name: 'api-03', labels: ['Application'], level: 1, role: 'entry', propagate: 'weighted', weight: 8, critical: true, via: null, addedBy: 'auto', health: 'down', healthSource: null, status: 'active', changes: [{ step: 'deployment', plans: [] }] },
+      { ciId: 'db-01', name: 'db-01', labels: ['Database'], level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false, via: 'api-03', addedBy: 'auto', health: 'operational', healthSource: null, status: 'active', changes: [] },
+    ]
+    onCypher([[LOAD_RE, stateRow({ nodes })], [WRITE_RE, writeRow()]])
+    const r = await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'maintenance', now: NOW })
+    expect(r.health).toBe('maintenance')
+    // senza la finestra api-03 (critico) sarebbe giù: è la «sarebbe» che la UI mostra
+    expect(r.healthIfActive).toBe('down')
+    expect(callMatching(WRITE_RE)!.params['healthIfActive']).toBe('down')
   })
 
   it('attore esplicito (mutation) → actor_id dell\'evento e audit con l\'utente', async () => {
@@ -362,19 +390,50 @@ describe('evaluateServiceMap', () => {
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u-1' }), 'service.health_changed', 'ServiceMap', 'map-1', expect.objectContaining({ trigger: 'manual' }))
   })
 
-  it('mappa assente → NOT_FOUND; node_ids assente → errore con la migrazione; regole corrotte → errore; mappa sparita in scrittura → errore; sempre metrica error e sessione chiusa', async () => {
+  it('mappa assente → NOT_FOUND; node_ids assente → errore con la migrazione; version assente → errore con la migrazione; regole corrotte → errore; sempre metrica error e sessione chiusa', async () => {
     onCypher([[LOAD_RE, null]])
     await expect(evaluateServiceMap({ tenantId: 't1', mapId: 'map-x', trigger: 'ci_health', now: NOW })).rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
     onCypher([[LOAD_RE, stateRow({ props: { node_ids: undefined } })]])
     await expect(evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).rejects.toThrow(/has no node_ids — run the 20260910_1080_service_maps_bootstrap migration/)
+    onCypher([[LOAD_RE, stateRow({ props: { version: undefined } })]])
+    await expect(evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).rejects.toThrow(/has no version .* run the 20260910_1080_service_maps_bootstrap migration/)
     onCypher([[LOAD_RE, stateRow({ props: { rules: '{nope' } })]])
     await expect(evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).rejects.toThrow(/ServiceMap map-1 rules is corrupt JSON/)
-    onCypher([[LOAD_RE, stateRow()], [WRITE_RE, null]])
-    await expect(evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).rejects.toThrow(/vanished while writing its evaluation/)
     expect(vi.mocked(metrics.serviceEvaluationsTotal.inc).mock.calls.every((c) => c[0].result === 'error')).toBe(true)
     expect(metrics.serviceEvaluationsTotal.inc).toHaveBeenCalledTimes(4)
     expect(session.close).toHaveBeenCalledTimes(4)
     expect(publishEvent).not.toHaveBeenCalled()
+  })
+
+  // ── Revisione 2 · E1: guardia di versione ──────────────────────────────────
+
+  it('E1: composizione cambiata fra lettura e scrittura → si rilegge e si ricalcola UNA volta, con la versione nuova', async () => {
+    // primo giro: versione 4 (la scrittura non trova la riga); secondo: versione 5, scrive
+    let load = 0
+    onCypher([
+      [LOAD_RE, () => stateRow({ props: { version: load++ === 0 ? 4 : 5 } })],
+      [WRITE_RE, (p?: Record<string, unknown>) => (p?.['version'] === 5 ? writeRow() : null)],
+    ])
+    const r = await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })
+    expect(r.health).toBe('degraded')
+    expect(calls().filter((c) => LOAD_RE.test(c.cypher))).toHaveLength(2)
+    expect(calls().filter((c) => WRITE_RE.test(c.cypher)).map((c) => c.params['version'])).toEqual([4, 5])
+    expect(metrics.serviceEvaluationsTotal.inc).toHaveBeenCalledWith({ result: 'changed' })
+  })
+
+  it('E1: due mancate scritture di fila → errore (non è più una gara), nessun evento, metrica error', async () => {
+    onCypher([[LOAD_RE, stateRow()], [WRITE_RE, null]])
+    await expect(evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW }))
+      .rejects.toThrow(/changed while writing its evaluation \(expected version 4, 2 attempts\)/)
+    expect(EVALUATION_VERSION_RETRIES).toBe(1)
+    expect(publishEvent).not.toHaveBeenCalled()
+    expect(metrics.serviceEvaluationsTotal.inc).toHaveBeenCalledWith({ result: 'error' })
+  })
+
+  it('E1: mappa sparita fra lettura e scrittura → NOT_FOUND alla rilettura (mai una salute scritta a vuoto)', async () => {
+    let load = 0
+    onCypher([[LOAD_RE, () => (load++ === 0 ? stateRow() : null)], [WRITE_RE, null]])
+    await expect(evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
   })
 
   it('loadServiceMapState: nodo con ruolo/propagate/salute fuori vocabolario → errore (nodo non scritto dal motore)', async () => {

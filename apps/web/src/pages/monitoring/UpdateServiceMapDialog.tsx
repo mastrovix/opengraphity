@@ -9,11 +9,22 @@
  *   spariti → «Togli» (il CI non è più raggiungibile nel grafo);
  *   spostati → informativi: livello e «via» si ricalcolano da soli.
  *
+ * Revisione 2:
+ *   - «Inclusi automaticamente» (C-1): i componenti che la sincronizzazione ha
+ *     già accettato (`addedBy = 'auto'`), con la spunta «Escludi» — altrimenti
+ *     con la mappa viva non comparirebbero in nessun elenco;
+ *   - `expectedVersion` = la versione della PROPOSTA (C-5), che è la lettura
+ *     coerente con gli elenchi mostrati; se la mappa avanza mentre il dialogo è
+ *     aperto la proposta viene riletta e lo si dice, invece di lasciare che
+ *     «Applica» fallisca sulla validazione degli id;
+ *   - in modalità viva «Includi» diventa «Includi e tieni sempre»: la scelta
+ *     rende il nodo manuale, cioè non uscirà più da solo.
+ *
  * In fondo le esclusioni attive con «Riammetti»: il CI torna nella prossima
- * proposta. Ogni scrittura porta `expectedVersion` = la versione letta; il
- * rifiuto dell'API è una riga `role="alert"`, mai un silenzio.
+ * proposta. Ogni scrittura porta `expectedVersion`; il rifiuto dell'API è una
+ * riga `role="alert"`, mai un silenzio.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -51,6 +62,9 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
   const [exclude, setExclude] = useState<ReadonlySet<string>>(new Set())
   const [remove, setRemove] = useState<ReadonlySet<string>>(new Set())
   const [actionError, setActionError] = useState<string | null>(null)
+  /** La mappa è cambiata mentre il dialogo era aperto: la proposta è stata riletta. */
+  const [refreshed, setRefreshed] = useState(false)
+  const refetchedFor = useRef<number | null>(null)
 
   const { data, loading, error, refetch } = useQuery<{ serviceMapProposal: ServiceMapProposal }>(GET_SERVICE_MAP_PROPOSAL, {
     variables: { id: map.id }, skip: !open, fetchPolicy: 'network-only',
@@ -62,22 +76,47 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
   useEffect(() => {
     if (!open) return
     setAdd(new Set()); setExclude(new Set()); setRemove(new Set()); setActionError(null)
+    setRefreshed(false); refetchedFor.current = null
   }, [open])
 
   const proposal = data?.serviceMapProposal ?? null
+
+  /**
+   * Il polling del genitore fa avanzare `map.version` (sincronizzazione o un
+   * altro amministratore) mentre gli elenchi restano quelli letti all'apertura:
+   * si rilegge la proposta una volta per versione e si azzerano le spunte, che
+   * si riferivano a componenti che potrebbero non essere più lì.
+   */
+  useEffect(() => {
+    if (!open || loading || proposal === null) return
+    if (proposal.version === map.version || refetchedFor.current === map.version) return
+    refetchedFor.current = map.version
+    setAdd(new Set()); setExclude(new Set()); setRemove(new Set())
+    setRefreshed(true)
+    void refetch()
+  }, [open, loading, proposal, map.version, refetch])
+
   const busy = applying || readmitting
   const nothingChosen = add.size === 0 && exclude.size === 0 && remove.size === 0
   const aligned = proposal !== null && proposal.added.length === 0 && proposal.removed.length === 0 && proposal.moved.length === 0
+  /**
+   * Componenti che la sincronizzazione ha accettato da sola: qui li si può
+   * escludere (C-1). Quelli che il grafo non raggiunge più sono già
+   * nell'elenco «spariti», con la loro spunta: non si ripetono.
+   */
+  const goneIds = new Set(proposal?.removed.map((n) => n.ci.id) ?? [])
+  const autoIncluded = map.nodes.filter((n) => n.addedBy === 'auto' && !goneIds.has(n.ci.id))
 
   // «Includi» ed «escludi» si escludono a vicenda sullo stesso componente.
   const chooseAdd = (id: string) => { setAdd((s) => toggle(s, id)); setExclude((s) => { const n = new Set(s); n.delete(id); return n }) }
   const chooseExclude = (id: string) => { setExclude((s) => toggle(s, id)); setAdd((s) => { const n = new Set(s); n.delete(id); return n }) }
 
   async function onApply() {
-    if (nothingChosen) return
+    if (nothingChosen || proposal === null) return
     setActionError(null)
     try {
-      const res = await apply({ variables: { id: map.id, expectedVersion: map.version, add: [...add], exclude: [...exclude], remove: [...remove] } })
+      // `proposal.version`: la versione da cui gli elenchi sono stati letti.
+      const res = await apply({ variables: { id: map.id, expectedVersion: proposal.version, add: [...add], exclude: [...exclude], remove: [...remove] } })
       if (!res.data?.applyServiceMapProposal) throw new Error(t('monitoring.services.detail.noResult', { operation: 'applyServiceMapProposal' }))
       toast.success(t('toast.services.mapUpdated', { added: add.size, removed: remove.size, excluded: exclude.size }))
       onClose()
@@ -85,9 +124,10 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
   }
 
   async function onReadmit(ciId: string, name: string) {
+    if (proposal === null) return
     setActionError(null)
     try {
-      const res = await readmit({ variables: { id: map.id, expectedVersion: map.version, ciId } })
+      const res = await readmit({ variables: { id: map.id, expectedVersion: proposal.version, ciId } })
       if (!res.data?.removeServiceMapExclusion) throw new Error(t('monitoring.services.detail.noResult', { operation: 'removeServiceMapExclusion' }))
       toast.success(t('toast.services.exclusionRemoved', { name }))
       // Il CI torna proponibile: la proposta va riletta.
@@ -128,6 +168,13 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
           </div>
         )}
 
+        {/* La mappa è avanzata mentre il dialogo era aperto: lo si dice, invece di far fallire «Applica» sulla validazione degli id. */}
+        {refreshed && (
+          <p role="status" data-testid="proposal-refreshed" style={{ margin: 0, padding: '8px 12px', borderRadius: 8, background: palette.warning.bg, border: `1px solid ${palette.warning.border}`, color: palette.warning.text, fontSize: 'var(--font-size-body)' }}>
+            {t('monitoring.services.update.refreshed')}
+          </p>
+        )}
+
         {proposal && aligned && (
           <p role="status" style={{ margin: 0, padding: '10px 14px', borderRadius: 8, background: palette.success.bg, color: palette.success.text, fontSize: 'var(--font-size-body)' }}>
             {t('monitoring.services.update.aligned')}
@@ -145,9 +192,14 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
                   <span style={{ color: colors.slateLight, fontSize: 'var(--font-size-table)' }}>
                     {t('monitoring.services.update.nodeMeta', { level: n.level, role: roleLabel(t, n.role), propagate: propagationLabel(t, n.propagate), weight: n.weight })}
                   </span>
-                  <label style={checkLabel}>
-                    <input type="checkbox" checked={add.has(n.ci.id)} disabled={busy} aria-label={t('monitoring.services.update.includeLabel', { name: n.ci.name })} onChange={() => chooseAdd(n.ci.id)} />
-                    {t('monitoring.services.update.include')}
+                  {/* Mappa viva: includere a mano rende il nodo «manuale», cioè non uscirà più da solo — il dialogo lo dice. */}
+                  <label style={checkLabel} title={map.autoSync ? t('monitoring.services.update.includeAlwaysHint') : undefined}>
+                    <input
+                      type="checkbox" checked={add.has(n.ci.id)} disabled={busy}
+                      aria-label={t(map.autoSync ? 'monitoring.services.update.includeAlwaysLabel' : 'monitoring.services.update.includeLabel', { name: n.ci.name })}
+                      onChange={() => chooseAdd(n.ci.id)}
+                    />
+                    {t(map.autoSync ? 'monitoring.services.update.includeAlways' : 'monitoring.services.update.include')}
                   </label>
                   <label style={checkLabel}>
                     <input type="checkbox" checked={exclude.has(n.ci.id)} disabled={busy} aria-label={t('monitoring.services.update.excludeLabel', { name: n.ci.name })} onChange={() => chooseExclude(n.ci.id)} />
@@ -191,6 +243,28 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
                   <span style={{ color: colors.slate, fontSize: 'var(--font-size-table)' }}>
                     {t('monitoring.services.update.movedRow', { from: n.level, to: n.proposedLevel })}
                   </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* C-1: i componenti entrati da soli non sono né «nuovi» né «spariti»: senza questa sezione non c'era più modo di escluderli. */}
+        {proposal && autoIncluded.length > 0 && (
+          <section aria-label={t('monitoring.services.update.autoTitle', { count: autoIncluded.length })}>
+            <h3 style={sectionTitle}>{t('monitoring.services.update.autoTitle', { count: autoIncluded.length })}</h3>
+            <p style={hint}>{t('monitoring.services.update.autoHint')}</p>
+            <div style={{ marginTop: 8 }}>
+              {autoIncluded.map((n) => (
+                <div key={n.ci.id} style={row} data-testid="proposal-auto" data-ci-id={n.ci.id}>
+                  <span style={{ fontWeight: 600, marginRight: 'auto' }}>{n.ci.name}</span>
+                  <span style={{ color: colors.slateLight, fontSize: 'var(--font-size-table)' }}>
+                    {t('monitoring.services.update.nodeMeta', { level: n.level, role: roleLabel(t, n.role), propagate: propagationLabel(t, n.propagate), weight: n.weight })}
+                  </span>
+                  <label style={checkLabel}>
+                    <input type="checkbox" checked={exclude.has(n.ci.id)} disabled={busy} aria-label={t('monitoring.services.update.excludeIncludedLabel', { name: n.ci.name })} onChange={() => chooseExclude(n.ci.id)} />
+                    {t('monitoring.services.update.exclude')}
+                  </label>
                 </div>
               ))}
             </div>

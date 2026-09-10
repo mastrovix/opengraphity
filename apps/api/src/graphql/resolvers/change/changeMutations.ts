@@ -103,6 +103,15 @@ export async function deleteChange(_: unknown, args: { id: string }, ctx: GraphQ
   } catch (err) {
     logger.error({ err, changeId: args.id }, '[deleteChange] rivalutazione degli eventi silenziati non riuscita')
   }
+  // Servizi monitorati (revisione 2 · D6.1): la finestra di questa change
+  // sparisce con lei, quindi i componenti che «pesavano zero» tornano a pesare.
+  // Post-commit e senza mai lanciare: la passata periodica è la rete di
+  // sicurezza. Le AFFECTS_CI restano (la cancellazione è logica): si leggono
+  // ancora.
+  {
+    const { notifyChangeWindowChanged } = await import('../../../services/serviceImpact/sync.js')
+    await notifyChangeWindowChanged(ctx.tenantId, args.id, 'change.deleted')
+  }
   // I problem che dipendevano da questa change tornano in analisi.
   const problemIds = await withSession((session) => runQuery<{ id: string }>(session, `
     MATCH (p:Problem {tenant_id: $tenantId})-[:RESOLVED_BY]->(c:Change {id: $id, tenant_id: $tenantId})

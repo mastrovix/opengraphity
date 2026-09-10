@@ -4,16 +4,16 @@
  *  - `evaluate`           — valutazione di UNA mappa, accodata dal consumer di
  *                           `ci.health_changed` (consumers/serviceImpactConsumer.ts)
  *                           per ogni mappa che include il CI, e dalle mutation.
- *                           Job id fisso `svc-<tenant>-<mapId>` con ritardo di
- *                           2 s: BullMQ scarta un secondo `add` con lo stesso id
- *                           finché il job esiste, quindi una raffica di 40 CI
- *                           dello stesso servizio produce UNA valutazione (dedup
- *                           voluta). Per questo il job viene rimosso appena
- *                           completato o fallito in via definitiva: un id che
- *                           restasse in coda bloccherebbe le valutazioni
- *                           successive; il fallimento resta nel log, nella
- *                           metrica `service_evaluations_total{result="error"}`
- *                           e la passata periodica rivaluta comunque la mappa.
+ *                           Dedup a FINESTRA (revisione 2 · Q1/D2.1):
+ *                           `deduplication: {id: svc-<tenant>-<mapId>, ttl: 2 s}`
+ *                           con `jobId` libero — una raffica di 40 CI dello
+ *                           stesso servizio produce UNA valutazione (dedup
+ *                           voluta), ma un cambio che arriva MENTRE il job gira
+ *                           ne accoda uno nuovo. Con il vecchio `jobId` fisso
+ *                           BullMQ scartava l'`add` finché il job esisteva —
+ *                           anche in stato `active`, cioè dopo che la lettura del
+ *                           grafo era già avvenuta: quel cambio si perdeva fino
+ *                           alla passata periodica (~15 minuti).
  *  - `services-periodic`  — repeat job ogni 5 minuti (rete di sicurezza): mappe
  *                           attive non valutate da più di 10 minuti o stale
  *                           (engine.ts#evaluateStaleOrOldMaps, paginata) e
@@ -23,10 +23,12 @@
  *                           (ondata 5, services/serviceImpact/sync.ts):
  *                           accodata da `notifyCIGraphChanged` dopo ogni
  *                           scrittura che tocca le relazioni fra CI e dalla
- *                           mutation `syncServiceMap`. Job id fisso
- *                           `svcsync-<tenant>-<mapId>` con lo stesso ritardo di
- *                           2 s: un import che tocca 500 relazioni produce UNA
- *                           sincronizzazione per mappa, non 500.
+ *                           mutation `syncServiceMap`. Stessa dedup a finestra
+ *                           con id `svcsync-<tenant>-<mapId>` (diverso da quello
+ *                           della valutazione: le due code di lavoro non si
+ *                           deduplicano a vicenda): un import che tocca 500
+ *                           relazioni produce UNA sincronizzazione per mappa,
+ *                           non 500.
  *  - `services-sync-periodic` — repeat job ogni 30 minuti: rete di sicurezza
  *                           della sincronizzazione (mappe vive con `synced_at`
  *                           vecchio o mai sincronizzate), per le scritture
@@ -80,48 +82,84 @@ function assertJobId(id: string, what: string, tenantId: string, mapId: string):
   return id
 }
 
+/** Chiave di deduplica della valutazione (non più il `jobId`: vedi il commento di testa). */
 export function serviceMapJobId(tenantId: string, mapId: string): string {
   return assertJobId(`svc-${tenantId}-${mapId}`, 'serviceMapJobId', tenantId, mapId)
 }
 
-/** Id del job di sincronizzazione: diverso da quello della valutazione (le due code di lavoro non si deduplicano a vicenda). */
+/** Chiave di deduplica della sincronizzazione: diversa da quella della valutazione (le due code di lavoro non si deduplicano a vicenda). */
 export function serviceMapSyncJobId(tenantId: string, mapId: string): string {
   return assertJobId(`svcsync-${tenantId}-${mapId}`, 'serviceMapSyncJobId', tenantId, mapId)
 }
 
 /**
- * Accoda la valutazione della mappa (dedup per job id). Awaited dal chiamante
- * e senza try/catch: una coda non disponibile deve far fallire il consumer
- * (che ritenta), non perdere la valutazione in silenzio.
+ * Opzioni comuni dei due job di lavoro: dedup a finestra (`ttl` = il ritardo di
+ * debounce) e `jobId` libero. `removeOnComplete`/`removeOnFail` restano: la
+ * chiave di deduplica scade da sola dopo il `ttl`, il job non deve restare in
+ * coda; il fallimento resta nel log, nella metrica e la passata periodica
+ * ripassa comunque.
  */
-export async function enqueueServiceMapEvaluation(tenantId: string, mapId: string, trigger: ServiceHealthTrigger = 'ci_health'): Promise<void> {
-  await getQueue<ServiceQueueData>(SERVICE_IMPACT_QUEUE).add(SERVICE_EVALUATE_JOB, { tenantId, mapId, trigger }, {
-    jobId: serviceMapJobId(tenantId, mapId),
+function serviceJobOptions(deduplicationId: string) {
+  return {
+    deduplication: { id: deduplicationId, ttl: SERVICE_EVALUATE_DELAY_MS },
     delay: SERVICE_EVALUATE_DELAY_MS,
     attempts: SERVICE_EVALUATE_ATTEMPTS,
     backoff:  { type: 'exponential', delay: SERVICE_EVALUATE_BACKOFF_MS },
     removeOnComplete: true,
     removeOnFail:     true,
-  })
+  }
+}
+
+/**
+ * Accoda la valutazione della mappa (dedup a finestra di 2 s). Awaited dal
+ * chiamante e senza try/catch: una coda non disponibile deve far fallire il
+ * consumer (che ritenta), non perdere la valutazione in silenzio.
+ */
+export async function enqueueServiceMapEvaluation(tenantId: string, mapId: string, trigger: ServiceHealthTrigger = 'ci_health'): Promise<void> {
+  await getQueue<ServiceQueueData>(SERVICE_IMPACT_QUEUE).add(SERVICE_EVALUATE_JOB, { tenantId, mapId, trigger }, serviceJobOptions(serviceMapJobId(tenantId, mapId)))
   log.info({ tenantId, mapId, trigger }, 'Service map evaluation enqueued')
 }
 
 /**
- * Accoda la sincronizzazione della mappa con la CMDB (dedup per job id).
+ * Accoda la sincronizzazione della mappa con la CMDB (dedup a finestra di 2 s).
  * Chiamata da `notifyCIGraphChanged` (che la avvolge in un try/catch: una coda
  * giù non deve far fallire la scrittura CMDB già committata) e dalla mutation
  * `syncServiceMap`.
  */
 export async function enqueueServiceMapSync(tenantId: string, mapId: string, trigger: ServiceMapSyncTrigger, actorId?: string): Promise<void> {
-  await getQueue<ServiceQueueData>(SERVICE_IMPACT_QUEUE).add(SERVICE_SYNC_JOB, { tenantId, mapId, trigger, ...(actorId ? { actorId } : {}) }, {
-    jobId: serviceMapSyncJobId(tenantId, mapId),
-    delay: SERVICE_EVALUATE_DELAY_MS,
-    attempts: SERVICE_EVALUATE_ATTEMPTS,
-    backoff:  { type: 'exponential', delay: SERVICE_EVALUATE_BACKOFF_MS },
-    removeOnComplete: true,
-    removeOnFail:     true,
-  })
+  await getQueue<ServiceQueueData>(SERVICE_IMPACT_QUEUE).add(SERVICE_SYNC_JOB, { tenantId, mapId, trigger, ...(actorId ? { actorId } : {}) }, serviceJobOptions(serviceMapSyncJobId(tenantId, mapId)))
   log.info({ tenantId, mapId, trigger }, 'Service map synchronization enqueued')
+}
+
+/**
+ * Toglie dalla coda i job in attesa di UNA mappa e le sue chiavi di deduplica
+ * (`deleteServiceMap`): senza il `jobId` fisso non basta più `queue.remove(id)`,
+ * quindi si cercano i job per dati. I job già in esecuzione non si toccano:
+ * falliranno con NOT_FOUND, visibile nel log. Non lancia mai — la mappa è già
+ * cancellata — ma restituisce quanti ne ha tolti.
+ */
+export async function forgetServiceMapJobs(tenantId: string, mapId: string): Promise<number> {
+  const queue = getQueue<ServiceQueueData>(SERVICE_IMPACT_QUEUE)
+  let removed = 0
+  for (const id of [serviceMapJobId(tenantId, mapId), serviceMapSyncJobId(tenantId, mapId)]) {
+    try {
+      await queue.removeDeduplicationKey(id)
+    } catch (err) {
+      log.warn({ err, tenantId, mapId, deduplicationId: id }, 'Deduplication key could not be removed after map deletion')
+    }
+  }
+  try {
+    const pending = await queue.getJobs(['delayed', 'waiting', 'prioritized'])
+    for (const job of pending) {
+      const d = job.data as Partial<ServiceEvaluateJobData>
+      if (d.tenantId !== tenantId || d.mapId !== mapId) continue
+      await job.remove()
+      removed++
+    }
+  } catch (err) {
+    log.warn({ err, tenantId, mapId }, 'Pending jobs could not be removed after map deletion (they will fail with NOT_FOUND)')
+  }
+  return removed
 }
 
 async function processServiceJob(job: Job<ServiceQueueData>): Promise<void> {

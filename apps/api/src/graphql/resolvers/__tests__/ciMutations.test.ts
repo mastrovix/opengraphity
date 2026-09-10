@@ -12,11 +12,14 @@ vi.mock('../ci-utils.js', () => ({ withSession: vi.fn() }))
 vi.mock('../../../lib/cache.js', () => ({ cache: { invalidate: vi.fn() } }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/chainCalculator.js', () => ({ calculateChain: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../../services/serviceImpact/sync.js', () => ({ notifyCIGraphChanged: vi.fn().mockResolvedValue(0) }))
+vi.mock('../../../services/serviceImpact/sync.js', () => ({
+  notifyCIGraphChanged: vi.fn().mockResolvedValue(0),
+  notifyCIMaintenanceChanged: vi.fn().mockResolvedValue(0),
+}))
 
 const { buildCreateMutation, buildUpdateMutation, buildDeleteMutation, validateCIInput } = await import('../ciMutations.js')
 const { withSession } = await import('../ci-utils.js')
-const { notifyCIGraphChanged } = await import('../../../services/serviceImpact/sync.js')
+const { notifyCIGraphChanged, notifyCIMaintenanceChanged } = await import('../../../services/serviceImpact/sync.js')
 
 const IP_SCRIPT = 'if (!/^\\d+\\.\\d+\\.\\d+\\.\\d+$/.test(value)) throw new Error("IP non valido")'
 
@@ -135,6 +138,38 @@ describe('buildUpdateMutation', () => {
     expect(writeCall[0]).toContain('MATCH (n:Server {id: $id, tenant_id: $tenantId})')
     expect(writeCall[1].updates).toMatchObject({ rack: 'R2' })
     expect(writeCall[1].updates).not.toHaveProperty('ip_address')
+  })
+
+  // ── Revisione 2 · D6.1: `status` da/verso maintenance avvisa i Servizi ────
+  it.each([
+    ['active', 'maintenance', 'ci.status:entered_maintenance'],
+    ['maintenance', 'active',  'ci.status:left_maintenance'],
+  ])('status %s → %s: accoda la rivalutazione delle mappe che includono il CI (%s)', async (from, to, reason) => {
+    const session = fakeSession({ id: 'ci-1', name: 'srv', status: from, ip_address: '10.0.0.1' })
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    const update = buildUpdateMutation(ciType(), 'Server', mapCI)
+
+    await update(undefined, { id: 'ci-1', input: { status: to } }, ctx)
+
+    expect(notifyCIMaintenanceChanged).toHaveBeenCalledWith('t1', ['ci-1'], reason)
+    // dopo la scrittura (la CMDB è già cambiata), come notifyCIGraphChanged
+    expect(vi.mocked(notifyCIMaintenanceChanged).mock.invocationCallOrder[0]!)
+      .toBeGreaterThan(session.executeWrite.mock.invocationCallOrder.at(-1)!)
+  })
+
+  it('status invariato (o patch che non lo tocca) → nessun segnale ai Servizi; una coda giù non fa fallire l\'aggiornamento', async () => {
+    const session = fakeSession({ id: 'ci-1', name: 'srv', status: 'active', ip_address: '10.0.0.1' })
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    const update = buildUpdateMutation(ciType(), 'Server', mapCI)
+
+    await update(undefined, { id: 'ci-1', input: { rack: 'R2' } }, ctx)
+    await update(undefined, { id: 'ci-1', input: { status: 'active' } }, ctx)
+    await update(undefined, { id: 'ci-1', input: { status: 'decommissioned' } }, ctx)
+    expect(notifyCIMaintenanceChanged).not.toHaveBeenCalled()
+
+    vi.mocked(notifyCIMaintenanceChanged).mockResolvedValueOnce(0)
+    const toMaintenance = await update(undefined, { id: 'ci-1', input: { status: 'maintenance' } }, ctx)
+    expect(toMaintenance).toBeTruthy()
   })
 
   it('a patch clearing a required field is rejected before the write', async () => {

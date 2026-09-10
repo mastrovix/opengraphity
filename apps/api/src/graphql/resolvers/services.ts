@@ -24,18 +24,16 @@ import type { GraphQLContext } from '../../context.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
 import { requireRole } from '../../lib/requireRole.js'
-import { logger } from '../../lib/logger.js'
 import { mapIncident, mapTeam } from '../../lib/mappers.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
-import { getQueue } from '../../lib/bullmq.js'
 import {
   NODE_WEIGHT_MIN,
   SERVICE_HEALTHS, SERVICE_HEALTH_SEVERITY_ORDER, SERVICE_HEALTH_TRIGGERS, SERVICE_HISTORY_MAX, SERVICE_MAP_DEFAULT_DEPTH, SERVICE_MAP_STATUSES,
-  SERVICE_RELATIONSHIP_TYPES, parseServiceImpactRules,
-  type ServiceHealth, type ServiceHealthTrigger, type ServiceImpactRules, type ServiceMapStatus,
+  SERVICE_RELATIONSHIP_TYPES, SERVICE_STALE_REASONS, parseServiceImpactRules,
+  type ServiceHealth, type ServiceHealthTrigger, type ServiceImpactRules, type ServiceMapStatus, type ServiceStaleReason,
 } from '../../lib/serviceVocabularies.js'
 import { createServiceMap as createServiceMapService, evaluateServiceMap, loadServiceMapState, type LoadedNode } from '../../services/serviceImpact/engine.js'
-import { nodeContributes } from '../../services/serviceImpact/rules.js'
+import { nodeContributes, nodeExcludedReason } from '../../services/serviceImpact/rules.js'
 import type { CauseCIRef, StoredCause } from '../../services/serviceImpact/history.js'
 import {
   applyServiceMapProposal as applyServiceMapProposalService,
@@ -51,11 +49,9 @@ import {
 } from '../../services/serviceImpact/config.js'
 import { syncServiceMap as syncServiceMapService } from '../../services/serviceImpact/sync.js'
 import { incidentStepInfo } from '../../services/events/incidentWorkflow.js'
-import { SERVICE_IMPACT_QUEUE, serviceMapJobId, serviceMapSyncJobId } from '../../jobs/serviceImpactWorker.js'
+import { forgetServiceMapJobs } from '../../jobs/serviceImpactWorker.js'
 
 type Props = Record<string, unknown>
-
-const log = logger.child({ module: 'service-impact' })
 
 function toStr(v: unknown): string { return v == null ? '' : typeof v === 'string' ? v : String(v) }
 function toStrOrNull(v: unknown): string | null { return v == null ? null : toStr(v) }
@@ -93,20 +89,25 @@ function mapCIRef(r: { id: string; name: string | null; labels: readonly string[
   return { id: r.id, name: r.name ?? '', type: ciTypeFromLabels([...r.labels]), status: r.status, health: r.health }
 }
 
-/** Un componente incluso → `ServiceMapNode`: stessa forma per la lista del dettaglio e per il diff. */
+/**
+ * Un componente incluso → `ServiceMapNode`: stessa forma per la lista del
+ * dettaglio e per il diff. `inMaintenance` è la sola finestra di change (la
+ * manutenzione di ciclo di vita si legge da `ci.status` e da `excludedReason`).
+ */
 function mapLoadedNode(n: LoadedNode, rules: ServiceImpactRules) {
   return {
-    ci:            { id: n.ciId, name: n.name, type: ciTypeFromLabels(n.labels), status: n.status, health: n.health },
-    level:         n.level,
-    role:          n.role,
-    propagate:     n.propagate,
-    weight:        n.weight,
-    critical:      n.critical,
-    via:           n.via,
-    addedBy:       n.addedBy,
-    health:        n.health,
-    inMaintenance: n.inMaintenance,
-    contributes:   nodeContributes(n, rules),
+    ci:             { id: n.ciId, name: n.name, type: ciTypeFromLabels(n.labels), status: n.status, health: n.health },
+    level:          n.level,
+    role:           n.role,
+    propagate:      n.propagate,
+    weight:         n.weight,
+    critical:       n.critical,
+    via:            n.via,
+    addedBy:        n.addedBy,
+    health:         n.health,
+    inMaintenance:  n.inChangeWindow,
+    contributes:    nodeContributes(n, rules),
+    excludedReason: nodeExcludedReason(n, rules),
   }
 }
 
@@ -122,17 +123,18 @@ export const SERVICE_NODE_GONE_ADDED_BY = 'gone'
  */
 function mapGoneNode(ciId: string) {
   return {
-    ci:            { id: ciId, name: ciId, type: 'unknown', status: null, health: null },
-    level:         0,
-    role:          'component' as const,
-    propagate:     'never' as const,
-    weight:        NODE_WEIGHT_MIN,
-    critical:      false,
-    via:           null,
-    addedBy:       SERVICE_NODE_GONE_ADDED_BY,
-    health:        null,
-    inMaintenance: false,
-    contributes:   false,
+    ci:             { id: ciId, name: ciId, type: 'unknown', status: null, health: null },
+    level:          0,
+    role:           'component' as const,
+    propagate:      'never' as const,
+    weight:         NODE_WEIGHT_MIN,
+    critical:       false,
+    via:            null,
+    addedBy:        SERVICE_NODE_GONE_ADDED_BY,
+    health:         null,
+    inMaintenance:  false,
+    contributes:    false,
+    excludedReason: 'never' as const,
   }
 }
 
@@ -162,10 +164,17 @@ export function mapServiceMap(row: ServiceMapRow) {
     relationshipTypes: relationshipTypes.map(toStr),
     builtFrom:         toStr(p['built_from']),
     stale:             p['stale'] === true,
+    // Perché è da rivedere: lo scrive chi la marca (motore → missing_ci,
+    // sincronizzazione → over_limit) e si azzera insieme a `stale`. Una mappa
+    // marcata prima della migrazione 1120 non ha il motivo: null, mai inventato.
+    staleReason:       p['stale_reason'] == null ? null : assertEnum<ServiceStaleReason>(p['stale_reason'], SERVICE_STALE_REASONS, `ServiceMap ${id} stale_reason`),
     autoSync:          assertAutoSync(p['auto_sync'], id),
     syncedAt:          toStrOrNull(p['synced_at']),
     rules:             toRulesGQL(parseServiceImpactRules(p['rules'], id)),
     health:            assertEnum<ServiceHealth>(p['health'], SERVICE_HEALTHS, `ServiceMap ${id} health`),
+    // Salute senza la finestra di change in corso: la scrive il motore solo
+    // quando la salute è `maintenance` (R1), null in tutti gli altri casi.
+    healthIfActive:    p['health_if_active'] == null ? null : assertEnum<ServiceHealth>(p['health_if_active'], SERVICE_HEALTHS, `ServiceMap ${id} health_if_active`),
     healthSince:       toStrOrNull(p['health_since']),
     impactScore:       toNumber(p['impact_score']),
     evaluatedAt:       toStrOrNull(p['evaluated_at']),
@@ -565,12 +574,29 @@ async function reevaluateServiceMap(_: unknown, args: { id: string }, ctx: Graph
   return requireServiceMap(args.id, ctx.tenantId)
 }
 
+/** Versione cambiata sotto le mani dentro la transazione: fuori diventa il BAD_USER_INPUT con la versione attuale. */
+class ServiceMapVersionConflict extends Error {}
+
+/** Guardia «prendi il lock, poi confronta» (X1): dopo il SET, `version` è già quella nuova. */
+export const SET_STATUS_CYPHER = `
+      MATCH (m:ServiceMap {id: $id, tenant_id: $tenantId})
+      SET m.version = m.version + 1
+      WITH m, m.status AS previous, m.version AS version
+      WHERE version = toInteger($expectedVersion) + 1
+      SET m.status = $status, m.updated_at = $now, m.updated_by = $userId
+      RETURN previous, version`
+
 /**
  * Stato con controllo di concorrenza: `expectedVersion` = versione letta dal
  * client; diversa → BAD_USER_INPUT (la mappa è stata modificata da un altro
- * amministratore), senza scrivere. Riattivare una mappa in pausa la rivaluta
- * subito (trigger manual): la salute mostrata non deve essere quella di
- * quando è stata messa in pausa.
+ * amministratore), senza scrivere. Stessa guardia «prendi il lock, poi
+ * confronta» delle scritture di configurazione (revisione 2 · X1): perché
+ * l'incremento venga annullato quando il confronto fallisce, lo statement gira
+ * in una transazione esplicita e il conflitto la fa fallire.
+ *
+ * Rimettere in servizio una mappa la rivaluta subito (trigger manual): sia da
+ * `paused` sia da `draft` — la salute di una bozza appena attivata non deve
+ * restare quella di quando è stata scritta.
  */
 async function setServiceMapStatus(_: unknown, args: { id: string; expectedVersion: number; status: string }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
@@ -578,22 +604,21 @@ async function setServiceMapStatus(_: unknown, args: { id: string; expectedVersi
   if (!Number.isInteger(args.expectedVersion) || args.expectedVersion < 1) throw new ValidationError(`expectedVersion must be an integer >= 1. Got: ${JSON.stringify(args.expectedVersion)}`)
   const now = new Date().toISOString()
   const session = getSession(undefined, 'WRITE')
-  let row: { previous: string; version: unknown } | null
+  let row: { previous: string; version: unknown }
   try {
-    row = await runQueryOne<{ previous: string; version: unknown }>(session, `
-      MATCH (m:ServiceMap {id: $id, tenant_id: $tenantId})
-      WITH m, m.status AS previous, m.version AS version
-      WHERE version = toInteger($expectedVersion)
-      SET m.status = $status, m.version = version + 1, m.updated_at = $now, m.updated_by = $userId
-      RETURN previous, m.version AS version
-    `, { id: args.id, tenantId: ctx.tenantId, expectedVersion: args.expectedVersion, status, now, userId: ctx.userId })
-  } finally { await session.close() }
-  if (!row) {
+    row = await session.executeWrite(async (tx) => {
+      const r = await runQueryOne<{ previous: string; version: unknown }>(tx, SET_STATUS_CYPHER,
+        { id: args.id, tenantId: ctx.tenantId, expectedVersion: args.expectedVersion, status, now, userId: ctx.userId })
+      if (!r) throw new ServiceMapVersionConflict(`ServiceMap ${args.id} is not at version ${args.expectedVersion}`)
+      return r
+    })
+  } catch (err) {
+    if (!(err instanceof ServiceMapVersionConflict)) throw err
     const current = await requireServiceMap(args.id, ctx.tenantId)   // NotFound se non esiste
     throw new ValidationError(`ServiceMap ${args.id} was modified by someone else (expected version ${args.expectedVersion}, current is ${current.version}, updated at ${current.updatedAt ?? 'n/a'}): reload and retry`)
-  }
+  } finally { await session.close() }
   void audit(ctx, 'service_map.status_changed', 'ServiceMap', args.id, { previousStatus: row.previous, status, version: toNumber(row.version) })
-  if (row.previous === 'paused' && status === 'active') {
+  if (row.previous !== 'active' && status === 'active') {
     await evaluateServiceMap({ tenantId: ctx.tenantId, mapId: args.id, trigger: 'manual', actorId: ctx.userId })
   }
   return requireServiceMap(args.id, ctx.tenantId)
@@ -671,6 +696,12 @@ async function setServiceMapAutoSync(_: unknown, args: { id: string; expectedVer
  * scrittura successiva né la passata di sicurezza. Azione esplicita, quindi
  * funziona anche sulle mappe congelate (`auto_sync = false`); una mappa in
  * pausa viene rifiutata (services/serviceImpact/sync.ts).
+ *
+ * Restituisce `ServiceMapSyncResult` (revisione 2): i conteggi e il rifiuto per
+ * il tetto dei 500 il servizio li ha già, e finivano solo nell'audit — la UI
+ * era costretta a indovinare l'esito confrontando i componenti prima e dopo.
+ * `skipped` qui può essere solo il tetto: la mappa in pausa è un
+ * BAD_USER_INPUT, non un esito.
  */
 async function syncServiceMap(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
@@ -679,7 +710,14 @@ async function syncServiceMap(_: unknown, args: { id: string }, ctx: GraphQLCont
     trigger: 'manual', version: r.version, added: r.added, removed: r.removed, moved: r.moved,
     changed: r.changed, skipped: r.skipped, note: r.note,
   })
-  return requireServiceMap(args.id, ctx.tenantId)
+  return {
+    map:     await requireServiceMap(args.id, ctx.tenantId),
+    added:   r.added,
+    removed: r.removed,
+    moved:   r.moved,
+    skipped: r.skipped !== null,
+    reason:  r.reason,
+  }
 }
 
 /** Elimina mappa e cronologia (il servizio e i CI restano); un job di valutazione in attesa viene tolto dalla coda (se già in esecuzione fallirà con NOT_FOUND, visibile nel log). */
@@ -698,15 +736,10 @@ async function deleteServiceMap(_: unknown, args: { id: string }, ctx: GraphQLCo
     `, { id: args.id, tenantId: ctx.tenantId })
   } finally { await session.close() }
   if (!row) throw new NotFoundError('ServiceMap', args.id)
-  // Valutazione E sincronizzazione in attesa: due job id diversi sulla stessa coda.
-  for (const jobId of [serviceMapJobId(ctx.tenantId, args.id), serviceMapSyncJobId(ctx.tenantId, args.id)]) {
-    try {
-      await getQueue(SERVICE_IMPACT_QUEUE).remove(jobId)
-    } catch (err) {
-      log.warn({ err, tenantId: ctx.tenantId, mapId: args.id, jobId }, 'Pending job could not be removed after map deletion (it will fail with NOT_FOUND)')
-    }
-  }
-  void audit(ctx, 'service_map.deleted', 'ServiceMap', args.id, { name: row.name, serviceId: row.serviceId, historyEntries: toNumber(row.entries) })
+  // Valutazione E sincronizzazione in attesa: dalla revisione 2 i job hanno un
+  // id libero (la dedup è a finestra), quindi si cercano per dati.
+  const forgotten = await forgetServiceMapJobs(ctx.tenantId, args.id)
+  void audit(ctx, 'service_map.deleted', 'ServiceMap', args.id, { name: row.name, serviceId: row.serviceId, historyEntries: toNumber(row.entries), pendingJobsRemoved: forgotten })
   return true
 }
 

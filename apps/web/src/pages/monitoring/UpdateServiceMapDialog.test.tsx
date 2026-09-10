@@ -3,6 +3,9 @@
  * spunte che partono vuote, «includi» ed «escludi» che si escludono,
  * riepilogo «+N −M esclusi K», apply con `expectedVersion`, mappa già
  * allineata, errore della proposta e riammissione di un CI escluso.
+ * Revisione 2: `expectedVersion` dalla proposta e rilettura quando la mappa
+ * avanza (C-5), sezione «Inclusi automaticamente» (C-1) e «Includi e tieni
+ * sempre» in modalità viva.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
@@ -119,6 +122,61 @@ describe('UpdateServiceMapDialog', () => {
     renderDialog({ map: detail({ autoSync: true }) })
     expect(await screen.findByText('Live map: new components come in and gone ones go out on their own. Here you review them ahead of time and decide what to exclude for good.')).toBeInTheDocument()
     expect(screen.queryByText(/Nothing enters or leaves without a tick/)).not.toBeInTheDocument()
+  })
+
+  it('C-5: «Applica» usa la versione della PROPOSTA, non quella arrivata dal polling', async () => {
+    const seen: unknown[] = []
+    const apply: GqlMock = {
+      request: { query: APPLY_SERVICE_MAP_PROPOSAL, variables: (v) => { seen.push(v); return true } },
+      result: { data: { applyServiceMapProposal: mapDetail({ version: 8 }) } },
+    }
+    // la mappa è già alla 7, la proposta letta è la 7: nessuna rilettura
+    const { user } = renderDialog({ map: detail({ autoSync: false, version: 7 }), mocks: [proposalMock({ version: 7 }), apply] })
+    await screen.findByText('2 new components')
+    expect(screen.queryByTestId('proposal-refreshed')).not.toBeInTheDocument()
+    await user.click(screen.getByLabelText('Include lb-09'))
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(seen).toEqual([{ id: 'map-1', expectedVersion: 7, add: ['lb-09'], exclude: [], remove: [] }]))
+  })
+
+  it('C-5: la mappa avanza mentre il dialogo è aperto → proposta riletta, lo si dice e le spunte ripartono', async () => {
+    const { user, rerender } = renderDialog({ map: detail({ autoSync: false, version: 3 }), mocks: [proposalMock({ version: 3 })] })
+    await screen.findByText('2 new components')
+    await user.click(screen.getByLabelText('Include lb-09'))
+    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+1 −0 excluded 0')
+    expect(screen.queryByTestId('proposal-refreshed')).not.toBeInTheDocument()
+
+    // il polling del genitore porta la mappa alla versione 5: gli elenchi mostrati sono di un'altra lettura
+    rerender(<UpdateServiceMapDialog map={detail({ autoSync: false, version: 5 })} open onClose={() => {}} />)
+    expect(await screen.findByTestId('proposal-refreshed')).toHaveTextContent('The map changed in the meantime: the list has been refreshed, check your ticks again.')
+    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+0 −0 excluded 0')
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled()
+  })
+
+  it('C-1: «Inclusi automaticamente» elenca i nodi entrati da soli e li lascia escludere', async () => {
+    const seen: unknown[] = []
+    const apply: GqlMock = {
+      request: { query: APPLY_SERVICE_MAP_PROPOSAL, variables: (v) => { seen.push(v); return true } },
+      result: { data: { applyServiceMapProposal: mapDetail({ version: 4 }) } },
+    }
+    const { user } = renderDialog({ map: detail({ autoSync: true }), mocks: [proposalMock(), apply] })
+    expect(await screen.findByText('3 components included automatically')).toBeInTheDocument()
+    // cache-02 è già nell'elenco degli spariti: non si ripete qui
+    expect(screen.getAllByTestId('proposal-auto').map((r) => r.getAttribute('data-ci-id'))).toEqual(['api-03', 'db-01', 'cert-billing'])
+    await user.click(screen.getByLabelText('Exclude db-01 from the map'))
+    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+0 −0 excluded 1')
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(seen).toEqual([{ id: 'map-1', expectedVersion: 3, add: [], exclude: ['db-01'], remove: [] }]))
+  })
+
+  it('C-5: in modalità viva «Includi» dice che il componente resterà per sempre', async () => {
+    const { user } = renderDialog({ map: detail({ autoSync: true }) })
+    await screen.findByText('2 new components')
+    expect(screen.queryByLabelText('Include lb-09')).not.toBeInTheDocument()
+    const box = screen.getByLabelText('Include lb-09 and keep it for good')
+    expect(box.parentElement).toHaveAttribute('title', 'It stays in the map even if it disappears from the graph: the automatic sync never removes a component added by hand.')
+    await user.click(box)
+    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+1 −0 excluded 0')
   })
 
   it('proposta che fallisce → errore visibile, mai un dialogo muto', async () => {

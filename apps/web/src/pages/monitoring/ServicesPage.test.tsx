@@ -99,6 +99,28 @@ describe('ServicesPage', () => {
     expect(screen.queryByRole('button', { name: 'Create a map' })).not.toBeInTheDocument()
   })
 
+  it('R1: una riga in manutenzione dice come starebbe senza la finestra di change; le altre non aggiungono nulla', async () => {
+    const rows = [
+      mapRow({ id: 'map-9', name: 'Ordering', health: 'maintenance', healthIfActive: 'down', impactScore: 80 }),
+      mapRow({ id: 'map-3', name: 'Intranet', health: 'operational', healthIfActive: null, impactScore: 0, explanation: [] }),
+    ]
+    renderPage('operator', { page: pageMock({ items: rows, total: 2 }) })
+    expect(await screen.findByText('Ordering')).toBeInTheDocument()
+    const notes = screen.getAllByTestId('health-if-active')
+    expect(notes).toHaveLength(1)
+    expect(notes[0]).toHaveTextContent('in maintenance, would be: Down')
+  })
+
+  it('C-3: l\'icona «da rivedere» distingue il tetto superato dal componente sparito', async () => {
+    const rows = [
+      mapRow({ id: 'map-7', name: 'Huge', stale: true, staleReason: 'over_limit' }),
+      mapRow({ id: 'map-8', name: 'Old', stale: true, staleReason: 'missing_ci' }),
+    ]
+    renderPage('operator', { page: pageMock({ items: rows, total: 2 }) })
+    expect(await screen.findByRole('img', { name: 'Over the component ceiling' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Component missing from the CMDB' })).toBeInTheDocument()
+  })
+
   it('il riquadro «Giù» filtra (aria-pressed), scrive ?health=down nell\'URL e nelle variabili; un secondo clic toglie il filtro', async () => {
     const seen: Vars[] = []
     const { user } = renderPage('operator', { seen })

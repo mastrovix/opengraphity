@@ -8,7 +8,8 @@ import { audit } from '../../lib/audit.js'
 import { calculateChain } from '../../lib/chainCalculator.js'
 import { toSnakeCase } from '../../lib/mappers.js'
 import { ciNameKey } from '../../lib/ciNameKey.js'
-import { notifyCIGraphChanged } from '../../services/serviceImpact/sync.js'
+import { notifyCIGraphChanged, notifyCIMaintenanceChanged } from '../../services/serviceImpact/sync.js'
+import { CI_LIFECYCLE_MAINTENANCE } from '../../services/serviceImpact/engine.js'
 
 type Props = Record<string, unknown>
 
@@ -204,6 +205,17 @@ export function buildUpdateMutation(
       if (!result.records.length) throw new GraphQLError('CI non trovato', { extensions: { code: 'NOT_FOUND' } })
       cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
       cache.invalidate(`topology:${ctx.tenantId}`)
+      // Servizi monitorati (revisione 2 · D6.1): il ciclo di vita
+      // `maintenance` toglie il CI dal calcolo della salute del servizio (gli
+      // allarmi non ne aggiornano più la salute), quindi entrarci o uscirne
+      // cambia la salute di ogni mappa che lo include. Senza questo gancio il
+      // cambiamento si vedeva solo alla passata periodica, fino a 15 minuti
+      // dopo. Dopo la scrittura e senza mai lanciare.
+      const wasMaintenance = current['status'] === CI_LIFECYCLE_MAINTENANCE
+      const isMaintenance  = updates['status'] === undefined ? wasMaintenance : updates['status'] === CI_LIFECYCLE_MAINTENANCE
+      if (wasMaintenance !== isMaintenance) {
+        await notifyCIMaintenanceChanged(ctx.tenantId, [id], `ci.status:${wasMaintenance ? 'left' : 'entered'}_maintenance`)
+      }
       void audit(ctx, 'ci.updated', 'ConfigurationItem', id)
       return mapCI(result.records[0].get('p') as Props, ciType)
     }, true)

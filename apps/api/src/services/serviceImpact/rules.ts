@@ -5,15 +5,33 @@
  * change) e dalle regole del servizio calcola salute, punteggio d'impatto e
  * la spiegazione (le cause con il percorso dal nodo malato al livello 1).
  * Nessun import dal grafo: il motore (engine.ts) legge e scrive, qui si
- * decide. La tabella del contratto (ondata 1):
+ * decide.
  *
- *   contano      = nodi con propagate ≠ never, non in finestra di change e
- *                  (salute nota, oppure unknown_nodes = operational → operativo)
+ * **Le due manutenzioni sono cose diverse** (revisione 2 · R1). Prima erano un
+ * solo flag `inMaintenance` e bastava un CI critico con `status = 'maintenance'`
+ * per spegnere il servizio per sempre, nascondendo ogni guasto:
+ *   - `lifecycleMaintenance` (`ci.status = 'maintenance'`, ciclo di vita del CI):
+ *     il nodo **non conta** — come `propagate: never` — quindi non entra nel
+ *     denominatore e non produce cause, ma **non** rende il servizio
+ *     `maintenance`. È uno stato che nessuno «chiude», a differenza di una change.
+ *   - `inChangeWindow` (una change è in finestra su quel CI): il nodo non conta e,
+ *     se è critico, il SERVIZIO è `maintenance` — ma solo se non c'è di peggio.
+ * **`down` vince su `maintenance`**: un critico che conta e sta giù è un guasto
+ * vero, e va detto anche mentre un altro componente è in finestra di change.
+ * Quando la salute è `maintenance`, `healthIfActive` dice quale sarebbe senza le
+ * finestre di change (le stesse regole con `inChangeWindow` ignorato): è la
+ * «in manutenzione, sarebbe: giù» che la UI mostra.
+ *
+ * La tabella del contratto:
+ *
+ *   contano      = nodi con propagate ≠ never, non in finestra di change, non in
+ *                  manutenzione di ciclo di vita e (salute nota, oppure
+ *                  unknown_nodes = operational → operativo)
  *   peso_totale  = Σ weight(contano)
  *   peso_giù     = Σ weight(giù)·1.0 + Σ weight(degradati)·0.5
  *   impact_score = peso_totale = 0 ? 0 : round(100 · peso_giù / peso_totale)
- *   health       = maintenance  se un nodo critico è in finestra di change
- *                  down         se (un critico che conta è giù) o (100·Σweight(giù)/peso_totale ≥ down_share_pct)
+ *   health       = down         se (un critico che conta è giù) o (100·Σweight(giù)/peso_totale ≥ down_share_pct)
+ *                  maintenance  se un nodo critico è in finestra di change
  *                  degraded     se impact_score ≥ degraded_share_pct e (nodi non operativi che contano) ≥ min_nodes
  *                  unknown      se peso_totale = 0 o nessun nodo che conta ha una salute NOTA
  *                               (un servizio non monitorato non è «operativo»: non lo sappiamo)
@@ -30,7 +48,7 @@
  * per la UI: «pesa sempre»). Un nodo senza salute non è mai «giù».
  */
 import type { CIHealth } from '../../lib/eventVocabularies.js'
-import { SERVICE_MAX_CAUSES, type NodePropagation, type ServiceHealth, type ServiceImpactRules, type ServiceNodeRole } from '../../lib/serviceVocabularies.js'
+import { SERVICE_MAX_CAUSES, type NodeExcludedReason, type NodePropagation, type ServiceHealth, type ServiceImpactRules, type ServiceNodeRole } from '../../lib/serviceVocabularies.js'
 
 export interface ImpactNodeInput {
   ciId:          string
@@ -41,8 +59,10 @@ export interface ImpactNodeInput {
   critical:      boolean
   /** Salute del CI dal monitoraggio; null = mai toccato da un allarme. */
   health:        CIHealth | null
-  /** Change in finestra sul CI (hops 0): il nodo non pesa. */
-  inMaintenance: boolean
+  /** Change in finestra sul CI (hops 0): il nodo non pesa e, se è critico, il servizio è in manutenzione. */
+  inChangeWindow: boolean
+  /** Ciclo di vita del CI a `maintenance`: il nodo non pesa (gli allarmi non ne aggiornano la salute) ma il servizio NON va in manutenzione. */
+  lifecycleMaintenance: boolean
   /** Id del CI da cui si arriva (null al livello 1). */
   via:           string | null
 }
@@ -60,21 +80,43 @@ export interface ImpactResult {
   health:      ServiceHealth
   impactScore: number
   causes:      ImpactCause[]
+  /**
+   * La salute che il servizio avrebbe SENZA le finestre di change in corso
+   * (stessi nodi, `inChangeWindow` ignorato): valorizzata solo quando
+   * `health = 'maintenance'`, altrimenti null. È la «sarebbe: giù» della UI.
+   */
+  healthIfActive: ServiceHealth | null
 }
 
 /** Peso «giù» di una salute: giù 1, degradato 0.5, operativo 0. */
 const DOWN_FACTOR: Readonly<Record<CIHealth, number>> = { down: 1, degraded: 0.5, operational: 0 }
 
+/** Ciò che serve a decidere se un nodo conta: le due manutenzioni, la propagazione e la salute. */
+type NodeGate = Pick<ImpactNodeInput, 'propagate' | 'inChangeWindow' | 'lifecycleMaintenance' | 'health'>
+
 /** Salute con cui il nodo entra nel calcolo (null → operational solo con unknown_nodes = operational), o null se non conta. */
-export function effectiveHealth(node: Pick<ImpactNodeInput, 'propagate' | 'inMaintenance' | 'health'>, rules: Pick<ServiceImpactRules, 'unknown_nodes'>): CIHealth | null {
-  if (node.propagate === 'never' || node.inMaintenance) return null
+export function effectiveHealth(node: NodeGate, rules: Pick<ServiceImpactRules, 'unknown_nodes'>): CIHealth | null {
+  if (node.propagate === 'never' || node.inChangeWindow || node.lifecycleMaintenance) return null
   if (node.health !== null) return node.health
   return rules.unknown_nodes === 'operational' ? 'operational' : null
 }
 
 /** True se il nodo conta nel calcolo (per `ServiceMapNode.contributes`). */
-export function nodeContributes(node: Pick<ImpactNodeInput, 'propagate' | 'inMaintenance' | 'health'>, rules: Pick<ServiceImpactRules, 'unknown_nodes'>): boolean {
+export function nodeContributes(node: NodeGate, rules: Pick<ServiceImpactRules, 'unknown_nodes'>): boolean {
   return effectiveHealth(node, rules) !== null
+}
+
+/**
+ * Perché il nodo non conta, in un vocabolario chiuso (`ServiceMapNode.excludedReason`):
+ * null quando conta. L'ordine è quello di `effectiveHealth`, così il motivo
+ * mostrato è quello che ha davvero deciso.
+ */
+export function nodeExcludedReason(node: NodeGate, rules: Pick<ServiceImpactRules, 'unknown_nodes'>): NodeExcludedReason | null {
+  if (node.propagate === 'never') return 'never'
+  if (node.inChangeWindow) return 'change_window'
+  if (node.lifecycleMaintenance) return 'lifecycle_maintenance'
+  if (node.health === null && rules.unknown_nodes !== 'operational') return 'unknown_health'
+  return null
 }
 
 /**
@@ -102,7 +144,12 @@ function assertWeight(node: ImpactNodeInput): number {
   return node.weight
 }
 
-export function evaluateImpact(nodes: readonly ImpactNodeInput[], rules: ServiceImpactRules): ImpactResult {
+/**
+ * Il calcolo vero e proprio, senza `healthIfActive` (che è lo stesso calcolo
+ * rifatto una volta sola sui nodi con le finestre di change ignorate: nessuna
+ * ricorsione, nessuna doppia contabilità).
+ */
+function evaluateCore(nodes: readonly ImpactNodeInput[], rules: ServiceImpactRules): Omit<ImpactResult, 'healthIfActive'> {
   const byId = new Map<string, ImpactNodeInput>()
   for (const n of nodes) byId.set(n.ciId, n)
 
@@ -110,13 +157,15 @@ export function evaluateImpact(nodes: readonly ImpactNodeInput[], rules: Service
   let downScore = 0        // Σ weight · fattore (giù 1, degradato 0.5)
   let downWeight = 0       // Σ weight dei soli nodi giù (quota per down_share_pct)
   let criticalDown = false
-  let criticalInMaintenance = false
+  let criticalInChangeWindow = false
   let unhealthyCount = 0
   let knownCount = 0       // nodi che contano CON salute nota: 0 → il servizio è «sconosciuto», non operativo
   const causes: (ImpactCause & { level: number })[] = []
 
   for (const node of nodes) {
-    if (node.critical && node.inMaintenance) criticalInMaintenance = true
+    // SOLO la finestra di change può rendere il servizio in manutenzione: il
+    // ciclo di vita del CI toglie il nodo dal calcolo e basta (R1).
+    if (node.critical && node.inChangeWindow) criticalInChangeWindow = true
     const health = effectiveHealth(node, rules)
     if (health === null) continue
     const weight = assertWeight(node)
@@ -138,9 +187,11 @@ export function evaluateImpact(nodes: readonly ImpactNodeInput[], rules: Service
   const downShare = totalWeight === 0 ? 0 : (100 * downWeight) / totalWeight
 
   let health: ServiceHealth
-  if (criticalInMaintenance) health = 'maintenance'
+  // `down` PRIMA di `maintenance` (R1): un guasto vero su un critico che conta
+  // non va nascosto perché un altro componente è in finestra di change.
   // La quota giù vale solo se c'è almeno un nodo giù: con down_share_pct = 0 un servizio sano non è «giù».
-  else if (criticalDown || (downWeight > 0 && downShare >= rules.down_share_pct)) health = 'down'
+  if (criticalDown || (downWeight > 0 && downShare >= rules.down_share_pct)) health = 'down'
+  else if (criticalInChangeWindow) health = 'maintenance'
   else if (totalWeight > 0 && impactScore >= rules.degraded_share_pct && unhealthyCount >= rules.min_nodes) health = 'degraded'
   else if (totalWeight === 0 || knownCount === 0) health = 'unknown'
   else health = 'operational'
@@ -156,4 +207,15 @@ export function evaluateImpact(nodes: readonly ImpactNodeInput[], rules: Service
     impactScore,
     causes: causes.slice(0, SERVICE_MAX_CAUSES).map(({ level: _level, ...c }) => c),
   }
+}
+
+export function evaluateImpact(nodes: readonly ImpactNodeInput[], rules: ServiceImpactRules): ImpactResult {
+  const result = evaluateCore(nodes, rules)
+  if (result.health !== 'maintenance') return { ...result, healthIfActive: null }
+  // «Sarebbe»: le stesse regole sugli stessi nodi, con le sole finestre di
+  // change tolte di mezzo (il ciclo di vita resta: quei CI non hanno una salute
+  // aggiornata nemmeno adesso). Non può tornare `maintenance`: senza finestre
+  // nessun critico è in finestra.
+  const asIfActive = nodes.map((n) => (n.inChangeWindow ? { ...n, inChangeWindow: false } : n))
+  return { ...result, healthIfActive: evaluateCore(asIfActive, rules).health }
 }

@@ -13,7 +13,7 @@ import { QueryError } from '@/components/QueryError'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { colors, palette } from '@/lib/tokens'
 import { GET_SERVICES_IMPACTED_BY_CI } from '@/graphql/queries'
-import { ServiceHealthBadge, ImpactScore, causeLabel } from '@/pages/monitoring/servicesShared'
+import { ServiceHealthBadge, ImpactScore, causeLabel, healthIfActiveNote, staleShortLabel } from '@/pages/monitoring/servicesShared'
 import type { ServiceMapRow } from '@/types/services'
 
 export function CIServicesSection({ ciId }: { ciId: string }) {
@@ -38,8 +38,12 @@ export function CIServicesSection({ ciId }: { ciId: string }) {
                   <Link to={`/monitoring/services/${s.id}`} style={{ color: colors.brand, textDecoration: 'none', fontWeight: 600 }}>{s.name}</Link>
                   <ServiceHealthBadge health={s.health} />
                   <ImpactScore score={s.impactScore} health={s.health} width={60} />
+                  {/* R1: «in manutenzione» da solo non dice come starebbe il servizio senza la finestra di change. */}
+                  {healthIfActiveNote(t, s) && (
+                    <span data-testid="health-if-active" style={{ color: palette.purple.text, fontSize: 'var(--font-size-table)' }}>{healthIfActiveNote(t, s)}</span>
+                  )}
                   {s.stale && (
-                    <span role="img" aria-label={t('monitoring.services.staleShort')} title={t('monitoring.services.staleShort')} style={{ display: 'inline-flex', color: palette.warning.base }}>
+                    <span role="img" aria-label={staleShortLabel(t, s.staleReason)} title={staleShortLabel(t, s.staleReason)} style={{ display: 'inline-flex', color: palette.warning.base }}>
                       <AlertTriangle size={13} aria-hidden="true" />
                     </span>
                   )}
