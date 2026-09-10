@@ -81,6 +81,8 @@ vi.mock('../../middleware/metrics.js', () => ({
 
 const corr = await import('../eventCorrelation.js')
 const { runEventPipeline, findSuppressingChange, reevaluateSuppressedEvents, reevaluateClosedWindows, reevaluateFlappingEvents, reevaluatePendingEvents, openIncidentFromEvent, meetsOpenThreshold, changeIsInWindow, findAutoResolvePath, isFlapping, isStable, groupLockKey, CHANGE_IMPLEMENTATION_STEP, CHANGE_WINDOW_STEPS, MONITORING_ACTOR, AUTO_RESOLVE_MAX_HOPS, CORRELATION_OUTCOMES, PENDING_CORRELATIONS, GROUP_LOCK_TTL_SECONDS, GROUP_LOCK_WAIT_MS, GROUP_LOCK_POLL_MS } = corr
+// Revisione 1.18: helper della chiusura automatica (non passano dalla facciata).
+const { suppressedSummary, STILL_FIRING_STATUSES } = await import('../events/autoResolve.js')
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { workflowEngine, INCIDENT_WORKFLOW_BASE } = await import('@opengraphity/workflow')
 const { publishEvent } = await import('../../lib/publishEvent.js')
@@ -146,6 +148,8 @@ const Q = {
   // revisione
   allPending:  /MATCH \(e:Event \{status: 'firing'\}\)\s+WHERE e\.correlation IN \$correlations AND e\.correlation_due_at IS NOT NULL AND e\.correlation_due_at <= \$now/,
   incStep:     /MATCH \(i:Incident \{id: \$incidentId, tenant_id: \$tenantId\}\)-\[:HAS_WORKFLOW\]->\(wi:WorkflowInstance \{tenant_id: \$tenantId\}\)\s+RETURN i\.id AS incidentId, wi\.id AS instanceId, wi\.current_step AS step/,
+  // revisione 1.16: incident chiuso a cui l'allarme era correlato (dopo l'apertura di uno nuovo)
+  closedPrev:  /WHERE wi\.current_step IN \$terminalSteps AND wi\.current_step <> \$resolvedStep AND i\.id <> \$openedId/,
 }
 
 /** Archi della definizione come li restituisce loadDefinitionTransitions (dal seed reale del workflow incident). */
@@ -180,6 +184,7 @@ function baseRules(ev: Record<string, unknown> = {}, ciId: string | null = 'ci-1
     [Q.linkedOpen, null],
     [Q.stabilize, { id: 'ev-1' }],
     [Q.incStep, { incidentId: 'inc-storm', instanceId: 'wi-s', step: 'in_progress' }],
+    [Q.closedPrev, null],
   ]
 }
 
@@ -501,6 +506,33 @@ describe('raggruppamento per CI', () => {
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ userId: 'monitoring' }), 'event.opened', 'Event', 'ev-1', expect.objectContaining({ incidentId: 'inc-new' }))
   })
 
+  it('(1.16) allarme già correlato a un incident CHIUSO → nuovo incident e commento di tracciabilità sull\'incident chiuso con il numero del nuovo; nessun incident chiuso → nessun commento', async () => {
+    onCypher([...baseRules(), [Q.closedPrev, { incidentId: 'inc-old' }]])
+    const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(out).toMatchObject({ outcome: 'opened', incidentId: 'inc-new' })
+    const q = callMatching(Q.closedPrev)!
+    expect(q.cypher).toContain('MATCH (e:Event {id: $eventId, tenant_id: $tenantId})-[:CORRELATED_INTO]->(i:Incident {tenant_id: $tenantId})')
+    expect(q.cypher).toContain('MATCH (i)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})')
+    expect(q.params).toEqual({ eventId: 'ev-1', tenantId: 't1', terminalSteps: ['closed'], resolvedStep: 'resolved', openedId: 'inc-new' })
+    expect(incidentService.addIncidentComment).toHaveBeenCalledTimes(1)
+    expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-old', MON, 'Allarme tornato dopo la chiusura: DiskFull (db-01) — aperto INC00000009')
+    // la query gira solo quando si apre un incident nuovo, dopo l'apertura
+    const order = calls().map((c) => (Q.closedPrev.test(c.cypher) ? 'closedPrev' : Q.attach.test(c.cypher) ? 'attach' : null)).filter(Boolean)
+    expect(order).toEqual(['attach', 'closedPrev'])
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    vi.mocked(incidentService.createIncident).mockResolvedValue({ id: 'inc-new', number: 'INC00000009' } as never)
+    onCypher(baseRules())
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('opened')
+    expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
+
+    // aggancio a un incident aperto: nessuna ricerca dei chiusi
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([...baseRules(), [Q.group, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'in_progress' }]])
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(callMatching(Q.closedPrev)).toBeUndefined()
+  })
+
   it('workflow incident senza passo resolved → errore esplicito', async () => {
     vi.mocked(getWorkflowSteps).mockResolvedValue([{ name: 'new', isInitial: true, isTerminal: false, isOpen: true, category: null, stepOrder: 1 }])
     onCypher(baseRules())
@@ -540,8 +572,16 @@ describe('chiusura automatica', () => {
     expect(recomputeCIHealth).toHaveBeenCalledWith('t1', 'ci-1', 'am')
     expect(callMatching(Q.suppressing)).toBeUndefined()   // un evento risolto non si sopprime
     const l = callMatching(Q.linked)!
-    expect(l.cypher).toContain("WHERE other.status <> 'resolved'")
-    expect(l.params).toMatchObject({ eventId: 'ev-1', tenantId: 't1', terminalSteps: ['closed'] })
+    // 1.18: "ancora acceso" = firing o flapping; i suppressed (e i resolved) non tengono aperto l'incident
+    expect(l.cypher).toContain('WHERE other.status IN $firingStatuses')
+    expect(l.cypher).not.toContain("other.status <> 'resolved'")
+    expect(l.params).toMatchObject({ eventId: 'ev-1', tenantId: 't1', terminalSteps: ['closed'], firingStatuses: ['firing', 'flapping'] })
+    // 1.19: tutti gli incident non terminali collegati, dal più recente (nessun LIMIT 1)
+    expect(l.cypher).toContain('ORDER BY createdAt DESC')
+    expect(l.cypher).not.toMatch(/LIMIT 1/)
+    // conteggio dei silenziati con il codice della change che li silenzia
+    expect(l.cypher).toContain("OPTIONAL MATCH (s:Event {tenant_id: $tenantId, status: 'suppressed'})-[:CORRELATED_INTO]->(i)")
+    expect(l.cypher).toContain('collect(DISTINCT coalesce(c.code, c.id)) AS suppressingChanges')
     expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', MON, 'Allarme di monitoraggio rientrato: DiskFull')
     expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-1', MON, expect.stringMatching(/^Risolto automaticamente: .*DiskFull/))
     expect(publishEvent).toHaveBeenCalledWith('event.correlated', 't1', 'am', expect.objectContaining({ id: 'ev-1', incident_id: 'inc-1', outcome: 'auto_resolved' }), NOW)
@@ -554,6 +594,64 @@ describe('chiusura automatica', () => {
     expect(out).toMatchObject({ outcome: 'none', incidentId: 'inc-1' })
     expect(incidentService.resolveIncident).not.toHaveBeenCalled()
     expect(publishEvent).not.toHaveBeenCalled()
+  })
+
+  it('(1.18) allarmi silenziati da una change non tengono aperto l\'incident: si risolve e UN commento "N allarmi silenziati da CHG-…" precede quello di chiusura; una sola volta (il rientro successivo trova l\'incident risolto → none)', async () => {
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'resolved', inputField: 'rootCause' }] as never)
+    onCypher([...baseRules({ status: 'resolved' }), [Q.linked, linkedRow({ stillFiring: 0, suppressed: 2, suppressingChanges: ['CHG-0007', 'CHG-0009'] })]])
+    const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(out).toMatchObject({ outcome: 'auto_resolved', incidentId: 'inc-1' })
+    expect(incidentService.resolveIncident).toHaveBeenCalledTimes(1)
+    const comments = vi.mocked(incidentService.addIncidentComment).mock.calls.map((c) => c[2])
+    expect(comments).toHaveLength(2)
+    expect(comments[0]).toBe('2 allarmi di monitoraggio silenziati da CHG-0007, CHG-0009 restano in finestra di change: non tengono aperto l\'incident; a fine finestra vengono rivalutati e, se ancora accesi, lo riaprono')
+    expect(comments[1]).toMatch(/^Risolto automaticamente/)
+    expect(audit).toHaveBeenCalledWith(expect.anything(), 'event.auto_resolved', 'Event', 'ev-1', expect.objectContaining({ suppressed: 2 }))
+
+    // rientro successivo: l'incident è in resolved → none, nessun altro commento
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([...baseRules({ status: 'resolved' }), [Q.linked, linkedRow({ step: 'resolved', stillFiring: 0, suppressed: 2, suppressingChanges: ['CHG-0007'] })]])
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('none')
+    expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
+
+    // singolare, senza codice della change (change eliminata): frase al singolare senza "da …"
+    expect(suppressedSummary(1, [])).toBe('1 allarme di monitoraggio silenziato resta in finestra di change: non tengono aperto l\'incident; a fine finestra vengono rivalutati e, se ancora accesi, lo riaprono')
+    expect(suppressedSummary(0, ['CHG-1'])).toBeNull()
+    expect(STILL_FIRING_STATUSES).toEqual(['firing', 'flapping'])
+  })
+
+  it('(1.19) evento collegato a DUE incident aperti (tempesta + per CI) → valutati entrambi: uno con altri allarmi accesi resta (none), l\'altro viene risolto; esito auto_resolved con l\'incident risolto', async () => {
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'resolved', inputField: 'rootCause' }] as never)
+    onCypher([...baseRules({ status: 'resolved' }), [Q.linked, [
+      linkedRow({ incidentId: 'inc-storm', instanceId: 'wi-s', stillFiring: 5 }),   // il più recente: altri allarmi ancora accesi
+      linkedRow({ incidentId: 'inc-1', instanceId: 'wi-1', stillFiring: 0 }),
+    ]]])
+    const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(out).toEqual({ outcome: 'auto_resolved', status: 'resolved', suppressedByChangeId: null, incidentId: 'inc-1' })
+    expect(incidentService.resolveIncident).toHaveBeenCalledTimes(1)
+    expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', MON, expect.any(String))
+    expect(workflowEngine.getAvailableTransitions).toHaveBeenCalledTimes(1)
+    expect(workflowEngine.getAvailableTransitions).toHaveBeenCalledWith(session, 'wi-1', 't1')
+    expect(publishEvent).toHaveBeenCalledTimes(1)
+    expect(publishEvent).toHaveBeenCalledWith('event.correlated', 't1', 'monitoring', expect.objectContaining({ incident_id: 'inc-1', outcome: 'auto_resolved' }), NOW)
+
+    // entrambi risolvibili → entrambi risolti, ognuno con il suo event.correlated; l'esito riporta il più recente
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'resolved', inputField: 'rootCause' }] as never)
+    onCypher([...baseRules({ status: 'resolved' }), [Q.linked, [
+      linkedRow({ incidentId: 'inc-2', instanceId: 'wi-2', stillFiring: 0 }),
+      linkedRow({ incidentId: 'inc-1', instanceId: 'wi-1', stillFiring: 0 }),
+    ]]])
+    const both = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(both).toMatchObject({ outcome: 'auto_resolved', incidentId: 'inc-2' })
+    expect(vi.mocked(incidentService.resolveIncident).mock.calls.map((c) => c[0])).toEqual(['inc-2', 'inc-1'])
+    expect(vi.mocked(publishEvent).mock.calls.map((c) => (c[3] as { incident_id: string }).incident_id)).toEqual(['inc-2', 'inc-1'])
+
+    // nessuno risolvibile (entrambi con allarmi accesi) → none con il più recente
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([...baseRules({ status: 'resolved' }), [Q.linked, [linkedRow({ incidentId: 'inc-2', stillFiring: 1 }), linkedRow({ incidentId: 'inc-1', stillFiring: 3 })]]])
+    expect(await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).toMatchObject({ outcome: 'none', incidentId: 'inc-2' })
+    expect(incidentService.resolveIncident).not.toHaveBeenCalled()
   })
 
   it('auto_resolve = false → non risolve, anche con tutti gli allarmi rientrati', async () => {
@@ -1100,11 +1198,11 @@ describe('lock sul raggruppamento (Redis in memoria)', () => {
     expect(redis.set).toHaveBeenCalledWith(key, expect.any(String), 'EX', GROUP_LOCK_TTL_SECONDS, 'NX')
     expect(redis.eval).toHaveBeenCalledWith(expect.any(String), 1, key, redis.set.mock.calls[0]![1])
     expect(lockStore.size).toBe(0)
-    // la lettura "incident + allarmi ancora accesi" avviene DOPO aver preso il lock
+    // la lettura "incident + allarmi ancora accesi" (runQuery: tutti gli incident collegati, 1.19) avviene DOPO aver preso il lock
     const lockAt = redis.set.mock.invocationCallOrder[0]!
-    const linkedIdx = vi.mocked(runQueryOne).mock.calls.findIndex(([, cypher]) => Q.linked.test(cypher as string))
+    const linkedIdx = vi.mocked(runQuery).mock.calls.findIndex(([, cypher]) => Q.linked.test(cypher as string))
     expect(linkedIdx).toBeGreaterThanOrEqual(0)
-    expect(vi.mocked(runQueryOne).mock.invocationCallOrder[linkedIdx]!).toBeGreaterThan(lockAt)
+    expect(vi.mocked(runQuery).mock.invocationCallOrder[linkedIdx]!).toBeGreaterThan(lockAt)
   })
 
   it('due rientri paralleli dello stesso gruppo → si serializzano: il secondo rilegge l\'incident già resolved e non tenta nessuna transizione (un solo resolveIncident)', async () => {

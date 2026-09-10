@@ -51,6 +51,8 @@ export function eventsSDL(): string {
   ${sdlEnum('HealthSource')}
   """Esito dell'ultima valutazione di correlazione (Event.correlation)."""
   ${sdlEnum('EventCorrelation')}
+  """Esito dell'ultimo riconoscimento automatico del CI (Event.matchReason), in ordine di precedenza: alias_external_id, alias, name, name_short (policy matchShortHostname), ambiguous (più CI con lo stesso nome: non agganciato), none."""
+  ${sdlEnum('EventMatchReason')}
   """Soglia di severità oltre la quale la policy apre un incident (never = mai)."""
   ${sdlEnum('OpenIncidentFrom')}
   """Identità del gruppo di correlazione: il CI o l'impronta dell'allarme."""
@@ -72,9 +74,15 @@ export function eventsSDL(): string {
   type Event {
     id:             ID!
     fingerprint:    String!
+    """Identificativo dell'ALLARME presso la sorgente (fingerprint Alertmanager, event_id Zabbix, ciclo Datadog, PID Dynatrace)."""
     externalId:     String
+    """Identificativo della RISORSA (il CI) presso la sorgente: entity di Dynatrace, host_id di Zabbix, field resourceExternalId del generic. È quello confrontato con un alias external_id del CI."""
+    resourceExternalId: String
     status:         EventStatus!
+    """Severità dell'ULTIMO payload ricevuto: la salute del CI segue questa."""
     severity:       EventSeverity!
+    """Severità più alta vista nel ciclo corrente (riparte a ogni resolved → firing). Null solo sugli eventi scritti prima di questo campo."""
+    maxSeverity:    EventSeverity
     title:          String!
     description:    String
     """Stringa grezza con cui la sorgente identifica l'oggetto (host, ip, ...)."""
@@ -92,6 +100,8 @@ export function eventsSDL(): string {
     source:         MonitoringSourceRef
     """CI riconosciuto. Null = evento orfano."""
     ci:             ConfigurationItemRef
+    """Come è stato riconosciuto (o perché no) il CI all'ultimo ingest: ambiguous = più CI con lo stesso nome, l'evento resta orfano finché non viene collegato a mano. Null sugli eventi scritti prima del campo o collegati solo a mano."""
+    matchReason:    EventMatchReason
     """Incident a cui l'evento è correlato, se esiste."""
     incident:       Incident
     """Change la cui finestra ha silenziato l'evento (status = suppressed)."""
@@ -114,6 +124,8 @@ export function eventsSDL(): string {
     correlatedEvents(limit: Int = 100, offset: Int = 0): [Event!]!
     """Numero totale di allarmi correlati, indipendente dalla pagina."""
     correlatedEventCount: Int!
+    """Allarmi correlati eliminati dal job di conservazione (purge_events) dopo la chiusura dell'incident: la sezione allarmi può dire "N allarmi eliminati per conservazione" invece di svuotarsi. 0 se nessuno."""
+    correlatedEventsPurged: Int!
   }
 
   extend type Change {
@@ -121,6 +133,8 @@ export function eventsSDL(): string {
     suppressedEvents(limit: Int = 100, offset: Int = 0): [Event!]!
     """Numero totale di eventi silenziati da questa change, indipendente dalla pagina."""
     suppressedEventCount: Int!
+    """Eventi silenziati eliminati dal job di conservazione dopo la chiusura della change. 0 se nessuno."""
+    suppressedEventsPurged: Int!
   }
 
   """Riferimento leggero a un CI, senza dipendere dal tipo dinamico."""
@@ -187,6 +201,8 @@ export function eventsSDL(): string {
     stormCooldownMinutes: Int!
     """Giorni dopo la risoluzione oltre i quali gli eventi risolti vengono eliminati (0 = mai)."""
     retentionDays:        Int!
+    """Riconoscimento del CI per nome: se la risorsa è un FQDN (db-01.example.local) prova anche il nome corto (db-01), e viceversa. Spento per default."""
+    matchShortHostname:   Boolean!
     """Mappa severità → impatto/urgenza, JSON serializzato."""
     severityMap:          String!
   }
@@ -227,6 +243,7 @@ export function eventsSDL(): string {
     stormThresholdPerMinute: Int
     stormCooldownMinutes: Int
     retentionDays:        Int
+    matchShortHostname:   Boolean
     severityMap:          String
   }
 
@@ -240,6 +257,8 @@ export function eventsSDL(): string {
   """Anteprima della normalizzazione: cosa diventerebbe un payload, senza ingerirlo."""
   type NormalizedEventPreview {
     externalId:   String
+    """Identificativo della risorsa presso la sorgente (alias external_id del CI), se il connettore lo porta."""
+    resourceExternalId: String
     status:       EventInputStatus!
     severity:     EventSeverity!
     title:        String!
@@ -256,8 +275,9 @@ export function eventsSDL(): string {
     payload:       String!
     """Solo per il connettore generic: mappatura campo normalizzato → percorso puntato nel payload (es. labels.instance), JSON."""
     fieldMapping:  String
+    """JSON. Generic: valore predefinito di ogni campo normalizzato. Connettori preset: severity, resource + resourceKind (risorsa usata quando il payload non ne porta una), resourceFrom (Datadog: alert_scope)."""
     defaultValues: String
-    """Solo per generic: JSON { severity: { valoreSorgente: info|warning|critical }, status: { valoreSorgente: firing|resolved } }."""
+    """Per ogni connettore: JSON { severity: { valoreSorgente: info|warning|critical }, status: { valoreSorgente: firing|resolved } }; nei preset traduce i valori dello strumento prima della tabella incorporata."""
     valueMapping:  String
   }
 

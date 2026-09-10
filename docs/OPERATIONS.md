@@ -357,6 +357,88 @@ sorgente dalle cache in memoria (vedi *Cache in memoria*).
 Il webhook risponde **202** appena i job sono accodati: se Redis è giù risponde
 500 e lo strumento ritenta (nessun allarme accettato e perso).
 
+### Accettazione parziale, traduzione dei valori, risorsa predefinita
+
+(revisione, ondata 4 — A1/A3/M2–M5/M9/M10/B5/B6; codice in
+`services/events/normalize.ts`, contratto in `API.md` → *Inbound webhooks*)
+
+- **Per elemento, non per batch**: un allarme difettoso in un batch
+  Alertmanager/Grafana viene scartato da solo; gli altri vengono accodati. Il
+  202 porta `rejected: [{ index, error }]`, la sorgente mostra `last_error` =
+  *"N di M scartati: <primo motivo>"* con `error_count += N`, la metrica
+  `events_rejected_total{connector}` cresce. Solo se nessun elemento passa
+  → 400. Un difetto della busta (non è un oggetto, manca `alerts`, oltre 500)
+  resta un 400.
+- **`value_mapping` per ogni connettore** (*Sorgenti → Modifica → Regole*, o
+  nel passo "Nome e regole" della procedura guidata): traduce severità e stato
+  che lo strumento manda con parole sue (`page`, `P1`, `Average`, `Muted`) PRIMA
+  della tabella incorporata; un valore non tradotto e fuori vocabolario è uno
+  scarto con il motivo che cita `value_mapping.severity|status`.
+- **Risorsa predefinita** (`default_values.resource` + `resourceKind`, stessa
+  pagina): l'oggetto a cui attribuire un allarme senza host (Watchdog, alert su
+  metriche aggregate, monitor Datadog su log/APM). Senza, l'allarme è scartato
+  con *"… is missing or empty and default_values.resource is not set"*. Per
+  Datadog la spunta *usa alert_scope* (`default_values.resourceFrom =
+  alert_scope`) vale prima della risorsa predefinita. Le chiavi ammesse per i
+  preset sono solo `severity`, `resource`, `resourceKind`, `resourceFrom`: una
+  configurazione con altre chiavi è rifiutata in scrittura.
+- **Datadog**: l'identità dell'allarme è `$ALERT_CYCLE_KEY` (un ciclo
+  trigger→resolve), non `$ALERT_ID` (l'id del monitor, uguale per tutti gli
+  host di un monitor multi-alert): senza cycle key vale `alert_id@risorsa`. Il
+  payload personalizzato proposto dalla procedura guidata include
+  `alert_cycle_key` e `alert_scope`: le sorgenti create prima vanno aggiornate
+  nello strumento, altrimenti gli host dello stesso monitor restano separati per
+  risorsa ma senza la chiave di ciclo.
+- **Zabbix**: `{EVENT.DATE} {EVENT.TIME}` è ora locale del server Zabbix: viene
+  convertita in ISO con `Tenant.timezone` (letto nel lookup del webhook). Tenant
+  senza fuso o testo non parsabile → `starts_at` vuoto e il grezzo in
+  `labels.event_time` (log `Tenant has no timezone`): mai un istante inventato.
+  `{HOST.ID}` è l'id della risorsa (`resource_external_id`).
+- **Dynatrace**: `ImpactedEntities[0].type` HOST → hostname, altro → nome;
+  `entity` (HOST-…, SERVICE-…) è `resource_external_id`. `ImpactedEntity` senza
+  lista perde il prefisso di tipo solo se riconosciuto (*Host*, *Service*,
+  *Application*, *Process group*, …); *"3 impacted entities"* è uno scarto.
+- **Severità** (`Event.severity`) = ultimo payload (la salute del CI segue la
+  sorgente, anche in discesa); `Event.max_severity` conserva la più alta del
+  ciclo (`maxSeverity` in GraphQL; null sugli eventi scritti prima).
+- **Residui**: al `resolved` si azzerano `suppressed_by_change_id`,
+  `correlation_due_at`, `flapping_since`; al nuovo ciclo (resolved → firing)
+  `correlation` torna `none` con `correlation_at`/`correlation_due_at` a null e
+  la pipeline riscrive l'esito (un allarme tornato notifica di nuovo la sua
+  correlazione).
+- **`resolved` di un allarme mai visto** (tipico appena collegata una sorgente):
+  l'Event nasce già risolto con `first_seen_at` = `starts_at` della sorgente,
+  senza `event.resolved`/`event.orphan`; conta in
+  `events_resolved_unknown_total{connector}`.
+
+### Riconoscimento del CI
+
+(revisione, ondata 4 — A2/M2; `services/events/transitions.ts#ciMatchCypher`,
+dentro lo stesso statement del MERGE dell'ingest, tutto su indici)
+
+Ordine di precedenza, il primo che trova qualcosa vince; l'esito è scritto su
+`Event.match_reason` (`Event.matchReason` in GraphQL, enum `EventMatchReason`)
+a ogni ingest in cui il riconoscimento gira (evento senza CI, payload non
+stantio):
+
+| `match_reason` | Regola |
+|---|---|
+| `alias_external_id` | alias `external_id` del CI = **id della risorsa** presso la sorgente (`Event.resource_external_id`: `entity` di Dynatrace, `host_id` di Zabbix, `resourceExternalId` del generic). Mai l'id dell'allarme (`external_id`, fingerprint/event_id) |
+| `alias` | alias del tipo della risorsa (`hostname`/`ip`/`fqdn`, confronto in minuscolo; `external_id` come `resourceKind` confronta l'alias `external_id` con la risorsa stessa). Un alias è univoco per costruzione (vincolo `tenant + kind + value`) |
+| `name` | `ConfigurationItem.name_key` (nome minuscolo, indice `ci_tenant_name_key`) = risorsa minuscola, porta tolta |
+| `name_short` | solo con la policy `match_short_hostname = true` e solo se il nome esatto non ha trovato nulla: risorsa con un punto → `name_key` = prima etichetta (`db-01.example.local` → `db-01`); risorsa senza punto → `name_key` che inizia con `risorsa.` (`db-01` → `db-01.example.local`). Non si applica a `ip`/`external_id` né a un indirizzo IPv4/IPv6 con `resourceKind = hostname` |
+| `ambiguous` | il confronto per nome (esatto o corto) trova **più di un CI**: l'evento **non** viene agganciato (prima veniva scelto in silenzio il più vecchio) e resta orfano; `event.orphan` porta `match_reason` e `candidates` (id e nome, al massimo 5); log `warn` "more than one CI matches the resource name" con i candidati; metrica `events_ambiguous_total` (oltre a `events_orphan_total`), contata a ogni payload finché l'ambiguità persiste |
+| `none` | nessun CI: orfano |
+
+`match_reason` è null sugli eventi scritti prima del campo e resta invariato
+quando il CI è già agganciato (anche a mano con `linkEventToCI`): descrive
+l'ultimo riconoscimento automatico, non il collegamento manuale. Un evento
+orfano viene riconosciuto di nuovo a ogni ripetizione: creato il CI (o
+l'alias), la ripetizione successiva lo aggancia da sola. La policy arriva
+dalla cache in memoria (30 s): una modifica a `match_short_hostname` fatta
+direttamente nel grafo si vede dopo il TTL, quella da `updateEventPolicy`
+subito.
+
 ### Protezioni del webhook in ingresso
 
 - **Limite per sorgente** (`rate_limit_per_minute` sull'`InboundWebhook`,
@@ -392,6 +474,13 @@ Il webhook risponde **202** appena i job sono accodati: se Redis è giù rispond
 | `20260909_1020_event_management_notification_rules` | regole di notifica `event.received/resolved/orphan`, `ci.health_changed` su ogni tenant; `max_users/max_ci` interi |
 | `20260909_1030_event_management_correlation_rules` | regole `event.suppressed/correlated`; `Event.correlation = 'none'` dove assente |
 | `20260909_1040_event_management_policy_v2` | ondata 4: aggiunge alla policy di ogni tenant le chiavi mancanti (`flap_stable_minutes`, `storm_threshold_per_minute`, `storm_cooldown_minutes`) senza toccare i valori esistenti; `Event.transitions = []` dove assente; regole `event.flapping/stable/storm_started/storm_ended`. Una policy con JSON corrotto **ferma** la migrazione con il tenant nel messaggio |
+| `20260910_1070_event_management_tenants` | revisione A-M8/A-2: crea i nodi `:Tenant` mancanti unendo i `tenant_id` di `User`, `InboundWebhook`, `ApiKey` e `ConfigurationItem` (la 1010 guardava solo gli utenti: un tenant "solo integrazione" restava senza policy e ogni ingest falliva), con i campi predefiniti della 1010; aggiunge `match_short_hostname` (false) e ogni altra chiave mancante alla policy di ogni tenant, crea la policy intera (versionata) dove manca. Stesse regole della 1040 sul JSON corrotto |
+
+Senza la 1070 un tenant senza nodo `:Tenant` non può nemmeno creare un webhook
+di Event Management: `createInboundWebhook` con `entityType = event` verifica
+la policy del tenant **alla configurazione** e risponde
+`Cannot create an event webhook: tenant <id> has no usable event policy (…). Run the 20260910_1070_event_management_tenants migration`
+invece di lasciare che il webhook risponda 202 e il worker fallisca ogni job.
 
 Senza la 1040 ogni ingest fallisce con
 `Tenant <id> event_policy is invalid: … missing flap_stable_minutes, … run the 20260909_1040_event_management_policy_v2 migration`
@@ -459,7 +548,7 @@ errore, mai un default silenzioso.
 | `open_incident_from` | `critical` | severità minima (`info`/`warning`/`critical`) da cui un allarme apre un incident; `never` = mai automaticamente |
 | `group_by` | `ci` | raggruppamento: `ci` (un incident per CI) o `fingerprint` (uno per allarme) |
 | `open_delay_seconds` | `0` | attesa prima di aprire (job `correlate`); un allarme che rientra nell'attesa non apre nulla |
-| `auto_resolve` | `true` | risolve l'incident quando TUTTI gli allarmi correlati sono rientrati |
+| `auto_resolve` | `true` | risolve l'incident quando nessun allarme correlato è più **acceso** (`firing` o `flapping`): i `suppressed` (silenziati da una change in finestra) non lo tengono aperto — se ne restano, l'incident riceve un commento "N allarmi silenziati da CHG-…" insieme a quello di chiusura, una volta per risoluzione; a fine finestra vengono rivalutati e, se ancora accesi, lo riaprono. Vengono valutati **tutti** gli incident non chiusi collegati all'allarme (tempesta + per CI, manuale + automatico), non solo il più recente |
 | `suppress_upstream_hops` | `1` | salti `DEPENDS_ON` a monte entro cui una change in finestra silenzia gli allarmi |
 | `flap_threshold` | `4` | passaggi firing↔resolved in `flap_window_minutes` oltre i quali l'allarme è `flapping` (`0` = spento) |
 | `flap_window_minutes` | `10` | finestra dello sfarfallio |
@@ -467,6 +556,7 @@ errore, mai un default silenzioso.
 | `storm_threshold_per_minute` | `50` | allarmi **nuovi** al minuto dalla stessa sorgente oltre i quali la sorgente è in tempesta (`0` = spento) |
 | `storm_cooldown_minutes` | `5` | minuti consecutivi sotto soglia dopo i quali la tempesta finisce |
 | `retention_days` | `90` | giorni dopo `resolved_at` oltre i quali gli eventi risolti vengono eliminati (`0` = mai) |
+| `match_short_hostname` | `false` | riconoscimento del CI per nome: se la risorsa dell'allarme è un FQDN (`db-01.example.local`) prova anche il nome corto (`db-01`), e viceversa. Spento per default perché nomi corti uguali in ambienti diversi renderebbero il match ambiguo (regola di policy; il confronto vive nel riconoscimento del CI dell'ingest) |
 | `severity_map` | critical→high/high, warning→medium/medium, info→low/low | severità dell'allarme → impatto/urgenza dell'incident aperto |
 
 ### Sfarfallio (flapping)
@@ -539,7 +629,8 @@ gli operatori.
 Il job `purge_events` (coda `maintenance`, ogni giorno alle 03:30) elimina, per
 ogni tenant, gli `Event` in stato **`resolved`** con `resolved_at` più vecchio
 di `retention_days` della policy del tenant, con le loro relazioni
-(`RAISED_ON`, `FROM_SOURCE`, `CORRELATED_INTO`, `SUPPRESSED_BY`), in batch da
+(`RAISED_ON`, `FROM_SOURCE`, `CORRELATED_INTO`, `SUPPRESSED_BY`; ma vedi sotto
+per gli incident/change non chiusi), in batch da
 1000 (`CALL { … } IN TRANSACTIONS`, sessione auto-commit: `runQuery` usa
 `session.run`, pinnato dal test `eventRetentionAutocommit.test.ts`); il
 numero riportato è il `count(*)` della **stessa** query che cancella. Gli
@@ -549,8 +640,28 @@ qualunque sia la loro età. `retention_days = 0` = nessuna eliminazione. Log per
 `events_purged_total`. Un tenant senza policy fa fallire il job **dopo** aver
 purgato gli altri. Per lanciarla a mano: `purgeResolvedEvents()` in
 `apps/api/src/services/eventRetention.ts` (non c'è ancora una voce CLI; in un
-REPL `tsx` con `--env-file=.env`). Gli incident aperti dalla correlazione non
-sono toccati: perdono solo il riferimento all'allarme (`correlatedEvents`).
+REPL `tsx` con `--env-file=.env`).
+
+La conservazione **rispetta la storia** (revisione 2.2): un evento correlato
+(`CORRELATED_INTO`) a un incident **non chiuso** — passo non terminale, oppure
+`resolved`, che il monitoraggio riapre se l'allarme torna — o silenziato
+(`SUPPRESSED_BY`) da una change **non chiusa** non viene mai eliminato,
+qualunque sia la sua età. Quando incident/change sono chiusi e l'evento è oltre
+la retention, l'evento viene eliminato ma il padre conserva il conteggio
+(`Incident.correlated_events_purged`, `Change.suppressed_events_purged`, +1 per
+evento, scritto nello **stesso** batch della cancellazione), esposto in GraphQL
+come `Incident.correlatedEventsPurged` / `Change.suppressedEventsPurged` per
+mostrare "N allarmi eliminati per conservazione" al posto di una sezione vuota.
+I passi "chiusi" vengono letti dalla definizione del workflow del tenant a ogni
+passata (per l'incident: i terminali diversi da `resolved`); un workflow senza
+passo terminale fa fallire il purge di quel tenant.
+
+**Fusi orari delle finestre** (revisione 1.17): ogni data di
+`releaseWindow`/`validationWindow` del piano di rilascio deve avere l'offset
+esplicito (`Z` o `±hh:mm`): `lib/deployWindows.ts` rifiuta con
+`… must carry an explicit UTC offset` un piano scritto come `2026-09-09T22:00`,
+che altrimenti verrebbe letto nel fuso del server API e non in quello del
+tenant. Il web salva sempre in UTC con `Z`.
 
 ### Metriche e pannelli
 
@@ -562,12 +673,15 @@ cruscotto Grafana `infra/grafana/dashboards/opengraphity-api.json`):
 | `events_received_total{connector}` | counter | ogni ingest (nuovo o ripetuto), etichetta = connettore della sorgente |
 | `events_deduplicated_total` | counter | ingest che ha trovato l'impronta (ripetizione) |
 | `events_orphan_total` | counter | ingest senza CI riconosciuto |
+| `events_ambiguous_total` | counter | ingest lasciato orfano perché più CI hanno lo stesso nome (`match_reason = ambiguous`; conta anche in `events_orphan_total`) — un valore che cresce = nomi duplicati nella CMDB da disambiguare con alias o rinomina |
 | `events_suppressed_total` | counter | prima soppressione per finestra di change (non le ripetizioni) |
 | `events_flapping_total` | counter | ingresso in sfarfallio |
 | `incidents_auto_opened_total` | counter | incident aperti dalla correlazione e incident di tempesta (non `createIncidentFromEvent`) |
 | `incidents_auto_resolved_total` | counter | chiusure automatiche |
 | `incidents_reopened_total` | counter | riaperture per allarme tornato |
 | `events_purged_total` | counter | eventi eliminati dalla conservazione |
+| `events_rejected_total{connector}` | counter | elementi di un payload scartati dalla normalizzazione (accettazione parziale del batch, o intero payload rifiutato con 400); il motivo è in `last_error` della sorgente |
+| `events_resolved_unknown_total{connector}` | counter | payload `resolved` di allarmi mai visti: Event creato già risolto, nessun avviso |
 | `event_storms_active` | gauge | sorgenti in tempesta (riallineato a ogni inizio/fine e dal job periodico) |
 | `events_correlated_total{outcome}` | counter | ogni passata della pipeline con l'esito finale: `opened`, `attached`, `reopened`, `skipped_severity`, `skipped_orphan`, `delayed`, `none`, `suppressed`, `flapping`, `storm`, `storm_no_ci`, `auto_resolved`, `auto_resolve_skipped`, `error` (la pipeline ha lanciato: il job ritenta) |
 | `event_pipeline_duration_seconds{mode}` | histogram | durata della pipeline per evento (`ingest`, `reevaluate`, `resume`) |
@@ -611,20 +725,30 @@ coda) oltre a tenant, evento, incident, change e sorgente.
 
 ### Risoluzione dei problemi
 
-**Evento orfano** (`event.orphan`, contatore *Orfani*): nessun CI con quel
-nome né alias `hostname/ip/fqdn/external_id` con quel valore (confronto in
-minuscolo, porta tolta da `host:porta`). Dal dettaglio evento **Collega a un
-CI** con *crea alias*: da quel momento la sorgente viene riconosciuta da sola e
-l'evento viene rivalutato (salute, correlazione). Molti orfani dalla stessa
-sorgente → allineare il campo risorsa del connettore (es. `labels.host` invece
-di `instance`) o creare gli alias in blocco (`createCIAlias`).
+**Evento orfano** (`event.orphan`, contatore *Orfani*): guardare
+`Event.matchReason` (vedi *Riconoscimento del CI*). `none` = nessun CI con
+quel nome né alias `hostname/ip/fqdn` con quel valore né alias `external_id`
+uguale a `resourceExternalId` (confronto in minuscolo, porta tolta da
+`host:porta`); tipico FQDN dell'allarme contro nome corto in CMDB (o viceversa):
+accendere `match_short_hostname` nella policy, oppure creare l'alias.
+`ambiguous` = più CI con lo stesso nome (i candidati sono nel payload di
+`event.orphan` e nel log `more than one CI matches the resource name`):
+l'evento non viene agganciato finché non lo si collega a mano o non si
+disambiguano i CI (alias `hostname`/`external_id` sul CI giusto, rinomina);
+`events_ambiguous_total` cresce a ogni payload. Dal dettaglio evento
+**Collega a un CI** con *crea alias*: da quel momento la sorgente viene
+riconosciuta da sola e l'evento viene rivalutato (salute, correlazione). Molti
+orfani dalla stessa sorgente → allineare il campo risorsa del connettore (es.
+`labels.host` invece di `instance`) o creare gli alias in blocco
+(`createCIAlias`).
 
 **Sorgente con errori** (`last_error`, `error_count` sul webhook, log
 `webhook-inbound`): il payload è stato rifiutato con 400 e il motivo indica il
 campo (`alerts[0].labels.severity must be one of: …`, `event_value must be
 "1" (problem) or "0" (recovery)`, `resourceKind is missing: set
 default_values.resourceKind`). Sistemare `value_mapping`/`default_values` o la
-regola nello strumento; il primo batch accettato azzera `last_error`. 401 =
+regola nello strumento; `last_error` resta finché un nuovo payload scartato non
+lo sostituisce (un job riuscito azzera solo gli errori `ingest:` del worker). 401 =
 token sbagliato (solo header `Authorization: Bearer`), 404 = webhook
 disabilitato o id errato, 429 = più richieste/min del limite della sorgente
 (`rate_limit_per_minute`, 100 se mai impostato; header `Retry-After` — alzare

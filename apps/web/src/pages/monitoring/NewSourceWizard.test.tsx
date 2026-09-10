@@ -173,8 +173,25 @@ describe('NewSourceWizard — percorso generico', () => {
     expect(screen.getByText(/already understands: no field mapping is needed/)).toBeInTheDocument()
     expect(screen.queryByLabelText('Sample alarm (JSON)')).not.toBeInTheDocument()
     await user.type(screen.getByLabelText('Source name'), 'Prom')
+
+    // A1: regole del preset — traduzione di una severità libera e risorsa predefinita
+    expect(screen.getByText(/the severity label is free text/)).toBeInTheDocument()
+    const addInputs = screen.getAllByLabelText('Add another value')
+    await user.type(addInputs[0]!, 'page')
+    await user.click(screen.getAllByRole('button', { name: 'Add' })[0]!)
+    // valore senza destinazione → il pulsante è bloccato con il motivo
+    expect(screen.getByRole('button', { name: 'Create source' })).toBeDisabled()
+    expect(screen.getByText('Every value added to the translation needs a target (or remove it).')).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('"page" becomes'), 'critical')
+    await user.type(screen.getByLabelText('Resource to use when missing'), 'prometheus-prod')
+    await user.selectOptions(screen.getByLabelText('The resource is a…'), 'name')
+    expect(screen.queryByLabelText(/use alert_scope/)).not.toBeInTheDocument()   // solo Datadog
+
     await user.click(screen.getByRole('button', { name: 'Create source' }))
-    await waitFor(() => expect(creates).toEqual([{ name: 'Prom', entityType: 'event', connectorKind: 'alertmanager', rateLimitPerMinute: 100, fieldMapping: '{}' }]))
+    await waitFor(() => expect(creates).toEqual([{
+      name: 'Prom', entityType: 'event', connectorKind: 'alertmanager', rateLimitPerMinute: 100,
+      fieldMapping: '{}', defaultValues: JSON.stringify({ resource: 'prometheus-prod', resourceKind: 'name' }), valueMapping: JSON.stringify({ severity: { page: 'critical' } }),
+    }]))
     const yaml = await screen.findByText(/webhook_configs/)
     expect(yaml).toHaveTextContent('send_resolved: true')
     expect(yaml).toHaveTextContent('credentials: tok-AM')
@@ -196,7 +213,8 @@ describe('NewSourceWizard — percorso generico', () => {
     expect(screen.queryByLabelText('Sample alarm (JSON)')).not.toBeInTheDocument()
     await user.type(screen.getByLabelText('Source name'), 'DT prod')
     await user.click(screen.getByRole('button', { name: 'Create source' }))
-    await waitFor(() => expect(creates).toEqual([{ name: 'DT prod', entityType: 'event', connectorKind: 'dynatrace', rateLimitPerMinute: 100, fieldMapping: '{}' }]))
+    // nessuna regola aggiunta → JSON vuoti (l'API non ha default da applicare)
+    await waitFor(() => expect(creates).toEqual([{ name: 'DT prod', entityType: 'event', connectorKind: 'dynatrace', rateLimitPerMinute: 100, fieldMapping: '{}', defaultValues: '{}', valueMapping: '{}' }]))
     expect(await screen.findByText(/Problem notifications → Add notification/)).toBeInTheDocument()
     expect(screen.getByText(/also sends the closing notification \(State = RESOLVED\)/)).toBeInTheDocument()
     const snippet = screen.getByText(/# Custom payload \(paste as is/)
@@ -205,6 +223,27 @@ describe('NewSourceWizard — percorso generico', () => {
     expect(snippet).toHaveTextContent('"PID": "{PID}"')
     expect(snippet).toHaveTextContent('"ImpactedEntities": {ImpactedEntities}')
     expect(snippet).not.toHaveTextContent('"{ImpactedEntities}"')
+  })
+
+  it('A1 — Datadog: la spunta "usa alert_scope" scrive default_values.resourceFrom; il frammento include $ALERT_CYCLE_KEY e $ALERT_SCOPE', async () => {
+    const creates: CreateInput[] = []
+    const mock: GqlMock = {
+      request: { query: CREATE_MONITORING_SOURCE, variables: (v) => { creates.push((v as { input: CreateInput }).input); return true } },
+      result: { data: { createInboundWebhook: {
+        __typename: 'InboundWebhookWithToken', id: 'src-dd', name: 'DD', token: 'tok-DD', entityType: 'event',
+        connectorKind: 'datadog', fieldMapping: '{}', defaultValues: '{"resourceFrom":"alert_scope"}', valueMapping: '{}', enabled: true, createdAt: '2026-09-09T10:00:00Z',
+      } } },
+    }
+    const { user } = renderWithProviders(<NewSourceWizard />, { route: '/monitoring/sources/new', mocks: [mock] })
+    await user.click(screen.getByRole('button', { name: /Datadog/ }))
+    await user.click(screen.getByRole('button', { name: 'Next →' }))
+    await user.type(screen.getByLabelText('Source name'), 'DD')
+    await user.click(screen.getByLabelText(/use alert_scope/))
+    await user.click(screen.getByRole('button', { name: 'Create source' }))
+    await waitFor(() => expect(creates).toEqual([{ name: 'DD', entityType: 'event', connectorKind: 'datadog', rateLimitPerMinute: 100, fieldMapping: '{}', defaultValues: JSON.stringify({ resourceFrom: 'alert_scope' }), valueMapping: '{}' }]))
+    const snippet = await screen.findByText(/# Custom payload/)
+    expect(snippet).toHaveTextContent('"alert_cycle_key": "$ALERT_CYCLE_KEY"')
+    expect(snippet).toHaveTextContent('"alert_scope": "$ALERT_SCOPE"')
   })
 
   it('errore di creazione → toast con il messaggio del server, si resta al passo 2', async () => {

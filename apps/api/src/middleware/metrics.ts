@@ -256,6 +256,8 @@ export const bullmqQueueDepth = createGauge(
 export const eventsReceivedTotal      = createCounter('events_received_total',      'Monitoring events ingested (new or repeated) by connector kind', ['connector'])
 export const eventsDeduplicatedTotal  = createCounter('events_deduplicated_total',  'Monitoring events merged into an existing Event (same fingerprint)', [])
 export const eventsOrphanTotal        = createCounter('events_orphan_total',        'Monitoring events ingested without a recognised CI', [])
+/** Riconoscimento per nome con più CI candidati (A2): non agganciato, orfano con match_reason = ambiguous (conta anche in events_orphan_total). */
+export const eventsAmbiguousTotal     = createCounter('events_ambiguous_total',     'Monitoring events left orphan because more than one CI matched the resource name (match_reason = ambiguous)', [])
 export const eventsSuppressedTotal    = createCounter('events_suppressed_total',    'Monitoring events silenced by a change window', [])
 export const eventsFlappingTotal      = createCounter('events_flapping_total',      'Monitoring events that entered the flapping state', [])
 export const incidentsAutoOpenedTotal = createCounter('incidents_auto_opened_total', 'Incidents opened automatically by event correlation (storm incidents included)', [])
@@ -266,6 +268,10 @@ export const eventsPurgedTotal        = createCounter('events_purged_total',    
 export const eventsStaleTotal         = createCounter('events_stale_total',         'Monitoring event payloads discarded because older than the last applied one (same fingerprint) by connector kind', ['connector'])
 /** Job events-ingest fallito all'ultimo tentativo: l'allarme è perso e la sorgente porta last_error. */
 export const eventsIngestFailedTotal  = createCounter('events_ingest_failed_total', 'Monitoring event ingest jobs that failed after the last retry by connector kind', ['connector'])
+/** Elementi di un payload scartati dalla normalizzazione (A1: accettazione parziale del batch, il resto è stato accodato); la sorgente porta il riepilogo in last_error. */
+export const eventsRejectedTotal      = createCounter('events_rejected_total',      'Monitoring alerts rejected by normalisation (invalid element of an otherwise accepted payload, or the whole payload) by connector kind', ['connector'])
+/** `resolved` di un allarme mai visto (B5): l'Event nasce già risolto, senza avviso event.received/resolved/orphan. */
+export const eventsResolvedUnknownTotal = createCounter('events_resolved_unknown_total', 'Resolved payloads for alerts never seen before (Event created already resolved, no notification) by connector kind', ['connector'])
 export const eventStormsActive        = createGauge('event_storms_active',          'Monitoring sources currently in an alert storm', [])
 /**
  * Richieste al webhook in ingresso rifiutate con 429 (rest/webhooks-inbound.ts).
@@ -295,9 +301,9 @@ export const eventCorrelateJobLagSeconds = createHistogram('event_correlate_job_
 
 /** Tutte le metriche dell'Event Management, nell'ordine di esposizione. */
 export const EVENT_MANAGEMENT_METRICS = [
-  eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsSuppressedTotal, eventsFlappingTotal,
+  eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsAmbiguousTotal, eventsSuppressedTotal, eventsFlappingTotal,
   incidentsAutoOpenedTotal, incidentsAutoResolvedTotal, incidentsReopenedTotal, eventsPurgedTotal,
-  eventsStaleTotal, eventsIngestFailedTotal, eventStormsActive, webhookRateLimitedTotal,
+  eventsStaleTotal, eventsIngestFailedTotal, eventsRejectedTotal, eventsResolvedUnknownTotal, eventStormsActive, webhookRateLimitedTotal,
   eventsCorrelatedTotal, eventPipelineDurationSeconds, eventPassTotal, eventPassDurationSeconds,
   eventsOverdueDelayed, eventsFiringUncorrelated, eventCorrelateJobLagSeconds,
 ] as const

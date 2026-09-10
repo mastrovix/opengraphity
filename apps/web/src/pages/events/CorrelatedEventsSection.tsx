@@ -76,7 +76,8 @@ function openedByMonitoring(events: EventRow[]): EventRow | null {
   return opened.reduce((first, e) => (e.correlationAt! < first.correlationAt! ? e : first))
 }
 
-export function MonitoringAlarmsSection({ events }: { events: EventRow[] }) {
+/** `purged`: allarmi già eliminati dalla conservazione (Incident.correlatedEventsPurged): la timeline li cita ancora, la lista no. */
+export function MonitoringAlarmsSection({ events, purged = 0 }: { events: EventRow[]; purged?: number }) {
   const { t } = useTranslation()
   const opener = openedByMonitoring(events)
   return (
@@ -90,6 +91,11 @@ export function MonitoringAlarmsSection({ events }: { events: EventRow[] }) {
       {events.length === 0
         ? <p style={emptyStyle}>{t('pages.incidents.monitoringAlarms.empty')}</p>
         : <EventRows events={events} />}
+      {purged > 0 && (
+        <p style={{ margin: '8px 0 0', fontSize: 'var(--font-size-label)', color: colors.slateLight }}>
+          {t('pages.incidents.monitoringAlarms.purged', { count: purged })}
+        </p>
+      )}
     </SectionCard>
   )
 }

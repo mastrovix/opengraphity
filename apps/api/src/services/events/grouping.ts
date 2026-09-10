@@ -164,6 +164,29 @@ async function findOpenIncidentForGroup(session: Session, tenantId: string, even
   `, { eventId, tenantId, terminalSteps: info.terminalSteps, resolvedStep: info.resolvedStep })
 }
 
+/**
+ * Riapertura impossibile (revisione 1.16): l'allarme era già stato correlato
+ * a un incident ormai chiuso (passo terminale diverso da `resolved`: un
+ * incident risolto viene riaperto, non affiancato) e ha aperto un incident
+ * nuovo. Per la tracciabilità l'incident chiuso riceve un commento che
+ * rimanda al nuovo. Il più recente fra i chiusi, se più d'uno.
+ */
+async function noteReturnAfterClose(session: Session, tenantId: string, ev: EventRecord, info: IncidentStepInfo, opened: { id: string; number: string }): Promise<void> {
+  const eventId = toStr(ev.props['id'])
+  const closed = await runQueryOne<{ incidentId: string }>(session, `
+    MATCH (e:Event {id: $eventId, tenant_id: $tenantId})-[:CORRELATED_INTO]->(i:Incident {tenant_id: $tenantId})
+    MATCH (i)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
+    WHERE wi.current_step IN $terminalSteps AND wi.current_step <> $resolvedStep AND i.id <> $openedId
+    RETURN i.id AS incidentId, i.created_at AS createdAt
+    ORDER BY createdAt DESC LIMIT 1
+  `, { eventId, tenantId, terminalSteps: info.terminalSteps, resolvedStep: info.resolvedStep, openedId: opened.id })
+  if (!closed) return
+  const ref = opened.number || opened.id
+  await (await incidents()).addIncidentComment(closed.incidentId, { tenantId, userId: MONITORING_ACTOR },
+    `Allarme tornato dopo la chiusura: ${toStr(ev.props['title'])} (${toStr(ev.props['resource'])}) — aperto ${ref}`)
+  log.info({ tenantId, eventId, closedIncidentId: closed.incidentId, incidentId: opened.id }, 'Alarm returned after its incident was closed: new incident opened, closed one annotated')
+}
+
 export async function correlateFiringEvent(session: Session, tenantId: string, ev: EventRecord, policy: EventPolicy, actorId: string, now: string, mode: PipelineMode, logCtx: Record<string, unknown> = {}): Promise<PipelineResult> {
   const eventId = toStr(ev.props['id'])
   const done = (outcome: CorrelationOutcome, incidentId: string | null = null): PipelineResult =>
@@ -226,6 +249,7 @@ export async function correlateFiringEvent(session: Session, tenantId: string, e
       const open = await findOpen()
       if (open) return joinIncident(open)
       const incident = await openIncidentFromEvent({ tenantId, props: ev.props, ciId: ev.ciId, actorId: MONITORING_ACTOR, manual: false, now, policy, session })
+      await noteReturnAfterClose(session, tenantId, ev, info, incident)
       return { outcome: 'opened', incidentId: incident.id, created: true }
     },
     async () => {

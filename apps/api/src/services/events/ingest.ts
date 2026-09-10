@@ -6,40 +6,69 @@
  * UN solo statement Neo4j per evento prima della pipeline (M11):
  * `ingestMergeCypher` scrive l'Event (MERGE per impronta con la transizione
  * di stato in Cypher e la guardia d'ordine `last_received_at`), lo collega
- * alla sorgente, riconosce il CI (alias → nome) e scrive RAISED_ON. Il record
- * appena scritto viene passato alla pipeline, che non lo rilegge.
+ * alla sorgente, riconosce il CI (alias external_id → alias → nome → nome
+ * corto da policy; nome ambiguo = orfano con `match_reason`) e scrive
+ * RAISED_ON. Il record appena scritto viene passato alla pipeline, che non lo
+ * rilegge. La policy del tenant arriva dalla cache (policy.ts).
  */
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
+import type { MonitoringEventPayload } from '@opengraphity/types'
 import { ValidationError } from '../../lib/errors.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { logger } from '../../lib/logger.js'
-import { eventsDeduplicatedTotal, eventsOrphanTotal, eventsReceivedTotal, eventsStaleTotal } from '../../middleware/metrics.js'
+import { MATCH_REASONS, type CIMatchReason } from '../../lib/eventVocabularies.js'
+import { eventsAmbiguousTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsReceivedTotal, eventsResolvedUnknownTotal, eventsStaleTotal } from '../../middleware/metrics.js'
 import { fingerprintOf, quoteValue, type NormalizedEvent } from './normalize.js'
-import { INGEST_WRITE_OUTCOMES, ciMatchCypher, ciMatchParams, ingestMergeCypher, type IngestWriteOutcome } from './transitions.js'
+import { INGEST_WRITE_OUTCOMES, ciMatchCypher, ciMatchParams, ingestMergeCypher, type CIMatchCandidate, type CIMatchOptions, type IngestWriteOutcome } from './transitions.js'
 import { SEVERITY_RANK, mapEventPayload, type Props } from './shared.js'
+import { getEventPolicy } from './policy.js'
 import { runEventPipeline } from './pipeline.js'
 
 const log = logger.child({ module: 'event-service' })
 
-// ── Riconoscimento del CI (fuori dall'ingest: linkEventToCI, test) ───────────
+// ── Riconoscimento del CI (fuori dall'ingest: diagnosi, test) ────────────────
+
+/** Esito del riconoscimento del CI (vedi ciMatchCypher per la precedenza). */
+export interface CIMatchResult {
+  /** CI riconosciuto; null = orfano (`matchReason` dice perché: `ambiguous` o `none`). */
+  ciId: string | null
+  matchReason: CIMatchReason
+  /** CI candidati quando `ambiguous` (al massimo MATCH_CANDIDATES_MAX), altrimenti vuota. */
+  candidates: CIMatchCandidate[]
+}
 
 /**
- * CI riconosciuto per l'evento (vedi ciMatchCypher): una sola query; null =
- * orfano. L'ingest non la chiama: il riconoscimento gira dentro il MERGE.
+ * CI riconosciuto per l'evento (vedi ciMatchCypher): una sola query.
+ * L'ingest non la chiama: il riconoscimento gira dentro il MERGE.
  */
-export async function matchCI(tenantId: string, ev: Pick<NormalizedEvent, 'externalId' | 'resource' | 'resourceKind'>): Promise<string | null> {
+export async function matchCI(tenantId: string, ev: Pick<NormalizedEvent, 'resourceExternalId' | 'resource' | 'resourceKind'>, opts: CIMatchOptions): Promise<CIMatchResult> {
   const session = getSession()
   try {
-    const row = await runQueryOne<{ ciId: string | null }>(session, `
+    const row = await runQueryOne<{ ciId: string | null; matchReason: unknown; candidates: CIMatchCandidate[] }>(session, `
       ${ciMatchCypher()}
-      WITH byExt, byKind, byName ORDER BY byName.created_at LIMIT 1
-      RETURN coalesce(byExt.id, byKind.id, byName.id) AS ciId
-    `, ciMatchParams(tenantId, ev))
-    return row?.ciId ?? null
+      RETURN matched.id AS ciId, matchReason, candidates
+    `, ciMatchParams(tenantId, ev, opts))
+    if (!row) throw new Error(`CI match for ${quoteValue(ev.resource)} returned no row for tenant ${tenantId}`)
+    return { ciId: row.ciId ?? null, matchReason: assertMatchReason(row.matchReason), candidates: row.candidates ?? [] }
   } finally {
     await session.close()
   }
+}
+
+/** `match_reason` fuori vocabolario dal grafo = frammento Cypher e lista TS non allineati: errore, mai un valore inventato. */
+function assertMatchReason(value: unknown): CIMatchReason {
+  if (typeof value !== 'string' || !(MATCH_REASONS as readonly string[]).includes(value)) {
+    throw new Error(`CI match returned an unexpected match_reason ${JSON.stringify(value)} (expected one of: ${MATCH_REASONS.join(', ')})`)
+  }
+  return value as CIMatchReason
+}
+
+/** Payload di `event.orphan` (A2): il motivo e, se ambiguo, i CI candidati. */
+export interface EventOrphanPayload extends MonitoringEventPayload {
+  /** Null quando il riconoscimento non è girato per questo payload (retry `duplicate` di un evento già orfano, evento orfano scritto prima del campo). */
+  match_reason: CIMatchReason | null
+  candidates: CIMatchCandidate[]
 }
 
 // ── Ingest ───────────────────────────────────────────────────────────────────
@@ -62,6 +91,10 @@ export const QUIET_OUTCOMES: ReadonlySet<string> = new Set(['suppressed', 'flapp
 export interface IngestResult {
   props: Props
   ciId: string | null
+  /** Esito del riconoscimento eseguito da QUESTO ingest; null = non eseguito (CI già agganciato, payload stale). */
+  matchReason: CIMatchReason | null
+  /** CI candidati di un riconoscimento `ambiguous` (al massimo MATCH_CANDIDATES_MAX). */
+  candidates: CIMatchCandidate[]
   created: boolean
   /** Esito della scrittura (ingestMergeCypher): `stale` = payload scartato, nessuna pipeline. */
   outcome: IngestWriteOutcome
@@ -90,6 +123,19 @@ export interface IngestResult {
  * Zabbix) non notificano nulla. La regola legge le proprietà post-scrittura
  * con l'istante del payload, quindi vale anche per il retry `duplicate`
  * (stessa receivedAt). `event.orphan` segue la stessa regola.
+ *
+ * `resolved` di un allarme mai visto (B5): tipico all'attivazione di una
+ * sorgente (Alertmanager manda i resolved degli allarmi rientrati prima del
+ * collegamento). L'Event nasce già risolto con `first_seen_at` = `startsAt`
+ * della sorgente (se è un istante valido, altrimenti l'istante di ricezione),
+ * senza `event.resolved` né `event.orphan` — non ha mai "fiammato" qui —
+ * e conta in `events_resolved_unknown_total{connector}`.
+ *
+ * Riconoscimento del CI (A2): la policy del tenant (`match_short_hostname`,
+ * letta dalla cache) entra nei parametri del MERGE; un nome che combacia con
+ * più CI NON aggancia (`match_reason = ambiguous`, metrica
+ * events_ambiguous_total, log warn con i candidati) e `event.orphan` porta
+ * motivo e candidati, così l'amministratore sa quale CI collegare a mano.
  */
 export async function ingestEvent(input: IngestInput): Promise<IngestResult> {
   const { tenantId, sourceId, ev, jobId } = input
@@ -103,17 +149,20 @@ export async function ingestEvent(input: IngestInput): Promise<IngestResult> {
   const actorId = input.actorId ?? 'monitoring'
   const fingerprint = fingerprintOf(sourceId, ev)
   const labels = JSON.stringify(ev.labels)
+  const firstSeenAt = ev.status === 'resolved' ? firstSeenOfResolvedUnknown(ev.startsAt, now) : now
+  // Policy dalla cache (una lettura per tenant ogni 30 s, M11): tenant senza policy → errore, il job ritenta (mai un default silenzioso).
+  const policy = await getEventPolicy(tenantId)
 
   const session = getSession(undefined, 'WRITE')
-  let row: { props: Props; outcome: IngestWriteOutcome; ciId: string | null; connectorKind: string | null; sourceHasError: boolean | null } | null
+  let row: { props: Props; outcome: IngestWriteOutcome; ciId: string | null; matchReason: unknown; candidates: CIMatchCandidate[] | null; connectorKind: string | null; sourceHasError: boolean | null } | null
   try {
     row = await runQueryOne(session, ingestMergeCypher(), {
-      ...ciMatchParams(tenantId, ev),
-      id: uuidv4(), fingerprint,
+      ...ciMatchParams(tenantId, ev, { matchShortHostname: policy.match_short_hostname }),
+      id: uuidv4(), fingerprint, externalId: ev.externalId ?? null,
       status: ev.status, severity: ev.severity, severityRank: SEVERITY_RANK,
       title: ev.title, description: ev.description ?? null,
       resource: ev.resource, resourceKind: ev.resourceKind, labels,
-      startsAt: ev.startsAt ?? null, endsAt: ev.endsAt ?? null, sourceId, now, receivedAt: now,
+      startsAt: ev.startsAt ?? null, endsAt: ev.endsAt ?? null, sourceId, now, receivedAt: now, firstSeenAt,
     })
   } finally {
     await session.close()
@@ -123,6 +172,9 @@ export async function ingestEvent(input: IngestInput): Promise<IngestResult> {
   const { props, outcome } = row
   const created = outcome === 'created'
   const ciId = row.ciId
+  // null = riconoscimento non eseguito (CI già agganciato o payload stale); altrimenti deve stare nel vocabolario.
+  const matchReason = row.matchReason == null ? null : assertMatchReason(row.matchReason)
+  const candidates = row.candidates ?? []
   const sourceHasError = row.sourceHasError === true
   // connector_kind della sorgente (etichetta della metrica events_received_total;
   // assente = webhook precedente all'Event Management → generic, come sourceConfigOf).
@@ -132,7 +184,7 @@ export async function ingestEvent(input: IngestInput): Promise<IngestResult> {
   if (outcome === 'stale') {
     eventsStaleTotal.inc({ connector: connectorKind })
     log.info({ ...logCtx, receivedAt: now, lastReceivedAt: props['last_received_at'], payloadStatus: ev.status, status: props['status'] }, 'Stale event payload discarded (older than the last applied one)')
-    return { props, ciId, created: false, outcome, sourceHasError }
+    return { props, ciId, matchReason, candidates, created: false, outcome, sourceHasError }
   }
   if (outcome === 'duplicate') {
     log.info({ ...logCtx, receivedAt: now }, 'Event payload already applied (job retry): state untouched, pipeline re-run')
@@ -141,6 +193,20 @@ export async function ingestEvent(input: IngestInput): Promise<IngestResult> {
     if (!created) eventsDeduplicatedTotal.inc({})
   }
   if (!ciId) eventsOrphanTotal.inc({})
+  // A2: più CI con lo stesso nome → nessun aggancio. Contato e loggato a ogni
+  // payload (non solo al primo): l'ambiguità persiste finché qualcuno non
+  // collega l'evento a mano o non rinomina/aliasa i CI.
+  if (matchReason === 'ambiguous') {
+    eventsAmbiguousTotal.inc({})
+    log.warn({ ...logCtx, resource: ev.resource, resourceKind: ev.resourceKind, candidates }, 'Event left orphan: more than one CI matches the resource name (link it manually or add an alias)')
+  }
+  // B5: allarme mai visto che arriva già rientrato. Creato (con first_seen_at
+  // dalla sorgente) ma mai annunciato: nessun ciclo si è aperto qui.
+  const resolvedUnknown = created && ev.status === 'resolved'
+  if (resolvedUnknown) {
+    eventsResolvedUnknownTotal.inc({ connector: connectorKind })
+    log.info({ ...logCtx, startsAt: ev.startsAt ?? null, firstSeenAt }, 'Resolved payload for an alert never seen before: Event created already resolved, no notification')
+  }
 
   // Pipeline (services/events/pipeline.ts): soppressione in finestra di change
   // → salute del CI → correlazione in incident / chiusura automatica. La
@@ -158,14 +224,30 @@ export async function ingestEvent(input: IngestInput): Promise<IngestResult> {
   // avviso per una ripetizione: solo il payload che apre o chiude il ciclo.
   const resolved = props['status'] === 'resolved'
   const opensCycle = created || props['first_seen_at'] === now
-  const closesCycle = props['resolved_at'] === now
+  const closesCycle = props['resolved_at'] === now && !resolvedUnknown
   const notify = resolved ? closesCycle : opensCycle
   if (!QUIET_OUTCOMES.has(pipeline.outcome) && notify) {
     const payload = mapEventPayload(props, ciId)
     await publishEvent(resolved ? 'event.resolved' : 'event.received', tenantId, actorId, payload, now)
-    if (!ciId) await publishEvent('event.orphan', tenantId, actorId, payload, now)
+    if (!ciId) {
+      const orphan: EventOrphanPayload = { ...payload, match_reason: matchReason, candidates }
+      await publishEvent('event.orphan', tenantId, actorId, orphan, now)
+    }
   }
 
-  log.info({ ...logCtx, outcome, created, ciId, status: props['status'], count: props['count'], correlation: pipeline.outcome, notified: notify }, 'Event ingested')
-  return { props, ciId, created, outcome, sourceHasError }
+  log.info({ ...logCtx, outcome, created, ciId, matchReason, status: props['status'], count: props['count'], correlation: pipeline.outcome, notified: notify }, 'Event ingested')
+  return { props, ciId, matchReason, candidates, created, outcome, sourceHasError }
+}
+
+/**
+ * `first_seen_at` di un Event creato da un payload `resolved` (B5): l'istante
+ * di inizio dichiarato dalla sorgente se è una data valida (riportato in ISO),
+ * altrimenti l'istante di ricezione — documentato, non un istante inventato
+ * (una stringa non parsabile non può ordinare la console né nutrire gli SLA).
+ * Per un allarme già noto il MERGE non legge questo valore (solo ON CREATE).
+ */
+export function firstSeenOfResolvedUnknown(startsAt: string | undefined, receivedAt: string): string {
+  if (!startsAt) return receivedAt
+  const ms = Date.parse(startsAt)
+  return Number.isNaN(ms) ? receivedAt : new Date(ms).toISOString()
 }

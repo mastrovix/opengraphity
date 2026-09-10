@@ -1,12 +1,14 @@
 /**
  * Procedura guidata "Aggiungi sorgente" (admin), 4 passi:
  *   1. Strumento  — Alertmanager / Grafana / Zabbix / Datadog / Dynatrace / Altro strumento
- *   2. Nome e regole — nome; SOLO per generic il mappatore visuale con anteprima
+ *   2. Nome e regole — nome; per generic il mappatore visuale con anteprima,
+ *      per gli altri strumenti le regole facoltative (traduzione dei valori,
+ *      risorsa predefinita: PresetRules.tsx, A1)
  *   3. Collegamento — crea la sorgente e mostra UNA VOLTA URL, token e un
  *      frammento di configurazione pronto per lo strumento
  *   4. Prova — invia un evento di prova attraverso la pipeline reale
- * Nessun JSON è visibile: i tre JSON del connettore generic li compone
- * buildSourceConfig (sourceConfig.ts).
+ * Nessun JSON è visibile: i tre JSON li compongono buildSourceConfig /
+ * buildPresetConfig (sourceConfig.ts).
  */
 import { useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -23,7 +25,8 @@ import { CREATE_MONITORING_SOURCE, SEND_SAMPLE_EVENT } from '@/graphql/mutations
 import { colors } from '@/lib/tokens'
 import { CONNECTOR_KINDS, type ConnectorKind } from '@/types/events'
 import { GenericMapper } from './GenericMapper'
-import { DEFAULT_RATE_LIMIT_PER_MINUTE, EMPTY_MAPPING, RATE_LIMIT_MAX, RATE_LIMIT_MIN, buildSourceConfig, isMappingComplete, parseRateLimit, type GenericMapping } from './sourceConfig'
+import { PresetRulesEditor } from './PresetRules'
+import { DEFAULT_RATE_LIMIT_PER_MINUTE, EMPTY_MAPPING, EMPTY_PRESET_RULES, RATE_LIMIT_MAX, RATE_LIMIT_MIN, buildPresetConfig, buildSourceConfig, isMappingComplete, isPresetRulesComplete, parseRateLimit, type GenericMapping, type PresetRules } from './sourceConfig'
 import { configSnippet, sourceEndpointUrl, ZABBIX_FIELDS } from './configSnippets'
 import { TOOL_META, SecretBox, SnippetBox, hintStyle, sectionTitleStyle } from './monitoringShared'
 
@@ -42,6 +45,7 @@ export function NewSourceWizard() {
   const [rateLimitText, setRateLimitText] = useState(String(DEFAULT_RATE_LIMIT_PER_MINUTE))
   const rateLimit = parseRateLimit(rateLimitText)
   const [mapping, setMapping] = useState<GenericMapping>(EMPTY_MAPPING)
+  const [presetRules, setPresetRules] = useState<PresetRules>(EMPTY_PRESET_RULES)
   const [payload, setPayload] = useState('')
   const [created, setCreated] = useState<CreatedSource | null>(null)
   const [sampleCount, setSampleCount] = useState<number | null>(null)
@@ -59,11 +63,12 @@ export function NewSourceWizard() {
     : step === 'rules' && !name.trim() ? t('monitoring.wizard.nameRequired')
     : step === 'rules' && rateLimit === null ? t('monitoring.wizard.rateLimitInvalid', { min: RATE_LIMIT_MIN, max: RATE_LIMIT_MAX })
     : step === 'rules' && isGeneric && !isMappingComplete(mapping) ? t('monitoring.wizard.mappingIncomplete')
+    : step === 'rules' && !isGeneric && !isPresetRulesComplete(presetRules) ? t('monitoring.wizard.presetRulesIncomplete')
     : null
 
   async function handleCreate() {
     if (!kind || rateLimit === null) return
-    const config = isGeneric ? buildSourceConfig(mapping) : { fieldMapping: '{}' }
+    const config = kind === 'generic' ? buildSourceConfig(mapping) : buildPresetConfig(kind, presetRules)
     try {
       const res = await createSource({ variables: { input: { name: name.trim(), entityType: 'event', connectorKind: kind, rateLimitPerMinute: rateLimit, ...config } } })
       const src = res.data?.createInboundWebhook
@@ -112,7 +117,7 @@ export function NewSourceWizard() {
         {step === 'tool' && (
           <>
             <p style={{ ...hintStyle, fontSize: 'var(--font-size-body)', marginBottom: 12 }}>{t('monitoring.wizard.toolIntro')}</p>
-            <ToolPicker value={kind} onChange={(k) => { setKind(k); if (k !== 'generic') { setMapping(EMPTY_MAPPING); setPayload('') } }} />
+            <ToolPicker value={kind} onChange={(k) => { setKind(k); if (k !== 'generic') { setMapping(EMPTY_MAPPING); setPayload('') } else { setPresetRules(EMPTY_PRESET_RULES) } }} />
           </>
         )}
 
@@ -128,9 +133,14 @@ export function NewSourceWizard() {
               <Input id="source-rate-limit" type="number" inputMode="numeric" min={RATE_LIMIT_MIN} max={RATE_LIMIT_MAX} step={1} value={rateLimitText} onChange={(e) => setRateLimitText(e.target.value)} aria-invalid={rateLimit === null} required />
               <p style={{ ...hintStyle, marginTop: 4 }}>{t('monitoring.wizard.rateLimitHint', { min: RATE_LIMIT_MIN, max: RATE_LIMIT_MAX })}</p>
             </div>
-            {isGeneric
+            {kind === 'generic'
               ? <GenericMapper mapping={mapping} onChange={setMapping} payload={payload} onPayloadChange={setPayload} />
-              : <p style={{ ...hintStyle, fontSize: 'var(--font-size-body)', padding: '10px 12px', background: 'var(--color-brand-light)', borderRadius: 8, color: '#0369a1' }}>{t('monitoring.wizard.knownToolHint', { tool: toolName })}</p>}
+              : (
+                <>
+                  <p style={{ ...hintStyle, fontSize: 'var(--font-size-body)', padding: '10px 12px', background: 'var(--color-brand-light)', borderRadius: 8, color: '#0369a1' }}>{t('monitoring.wizard.knownToolHint', { tool: toolName })}</p>
+                  <PresetRulesEditor kind={kind} rules={presetRules} onChange={setPresetRules} />
+                </>
+              )}
           </div>
         )}
 

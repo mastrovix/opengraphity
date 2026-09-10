@@ -15,7 +15,7 @@
  */
 import {
   RESOURCE_KINDS, EVENT_INPUT_STATUSES, EVENT_SEVERITIES,
-  type ResourceKind, type EventSeverity, type EventInputStatus,
+  type ResourceKind, type EventSeverity, type EventInputStatus, type ConnectorKind,
 } from '@/types/events'
 
 /** Campi normalizzati esposti nel mappatore, nell'ordine in cui compaiono. */
@@ -220,6 +220,119 @@ export function suggestStatus(value: string): EventInputStatus | '' {
   if (['open', 'active', 'alerting', 'triggered', 'problem', 'ok', 'up', 'down', '1'].includes(v)) return v === 'ok' || v === 'up' ? 'resolved' : 'firing'
   if (['closed', 'recovered', 'cleared', 'normal', '0'].includes(v)) return 'resolved'
   return ''
+}
+
+// ── Regole dei connettori preset (A1: value_mapping e risorsa predefinita) ──
+// Speculare a validatePresetDefaults / mapPresetValue dell'API
+// (apps/api/src/services/events/normalize.ts): per Alertmanager, Grafana,
+// Zabbix, Datadog e Dynatrace l'amministratore non mappa i campi (la forma è
+// fissa) ma può tradurre i valori di severità/stato che lo strumento usa e
+// scegliere la risorsa da usare quando l'allarme non ne porta una (alert su
+// metriche aggregate, monitor su log/APM). Senza queste regole l'allarme è
+// scartato con il motivo in `lastError`: l'API non inventa nulla.
+
+/** Connettori con la forma del payload già nota (tutti tranne generic). */
+export type PresetConnectorKind = Exclude<ConnectorKind, 'generic'>
+
+/** Sorgenti alternative della risorsa per connettore (`default_values.resourceFrom`); solo Datadog ne ha una. */
+export const RESOURCE_FROM_OPTIONS: Readonly<Partial<Record<PresetConnectorKind, 'alert_scope'>>> = { datadog: 'alert_scope' }
+
+export interface PresetRules {
+  /** Valore di severità dello strumento → severità OpenGrafo ('' = non ancora scelto). */
+  severityValues: Record<string, EventSeverity | ''>
+  /** Valore di stato dello strumento → stato OpenGrafo ('' = non ancora scelto). */
+  statusValues:   Record<string, EventInputStatus | ''>
+  /** Risorsa usata quando l'allarme non ne porta una ('' = nessuna: l'allarme viene scartato). */
+  defaultResource:     string
+  defaultResourceKind: ResourceKind
+  /** Datadog: con hostname vuoto usa alert_scope come nome (default_values.resourceFrom = alert_scope). */
+  resourceFromAlertScope: boolean
+}
+
+export const EMPTY_PRESET_RULES: PresetRules = {
+  severityValues: {},
+  statusValues: {},
+  defaultResource: '',
+  defaultResourceKind: 'name',
+  resourceFromAlertScope: false,
+}
+
+/** Ogni valore aggiunto ha una traduzione (una riga senza destinazione sarebbe scartata dall'API in scrittura). */
+export function isPresetRulesComplete(r: PresetRules): boolean {
+  if (Object.values(r.severityValues).some((v) => v === '')) return false
+  if (Object.values(r.statusValues).some((v) => v === '')) return false
+  return true
+}
+
+/** Stato delle regole → i tre JSON che l'API si aspetta (field_mapping sempre vuoto: la forma è quella dello strumento). */
+export function buildPresetConfig(kind: PresetConnectorKind, r: PresetRules): SourceConfig {
+  const severity: Record<string, string> = {}
+  for (const [src, dst] of Object.entries(r.severityValues)) if (dst) severity[src] = dst
+  const status: Record<string, string> = {}
+  for (const [src, dst] of Object.entries(r.statusValues)) if (dst) status[src] = dst
+  const valueMapping: Record<string, Record<string, string>> = {}
+  if (Object.keys(severity).length) valueMapping['severity'] = severity
+  if (Object.keys(status).length)   valueMapping['status']   = status
+  const defaults: Record<string, string> = {}
+  if (r.defaultResource.trim()) {
+    defaults['resource'] = r.defaultResource.trim()
+    defaults['resourceKind'] = r.defaultResourceKind
+  }
+  if (r.resourceFromAlertScope && RESOURCE_FROM_OPTIONS[kind]) defaults['resourceFrom'] = RESOURCE_FROM_OPTIONS[kind]!
+  return {
+    fieldMapping:  '{}',
+    defaultValues: JSON.stringify(defaults),
+    valueMapping:  JSON.stringify(valueMapping),
+  }
+}
+
+/**
+ * JSON salvati di un connettore preset → regole (pagina di modifica). Un JSON
+ * malformato, un valore fuori vocabolario o una chiave che l'editor non sa
+ * rappresentare (es. default_values.severity scritto via API) → `error`:
+ * mai un salvataggio che perde regole in silenzio.
+ */
+export function parsePresetConfig(kind: PresetConnectorKind, raw: { defaultValues: string | null; valueMapping: string | null }): { rules: PresetRules; error: string | null } {
+  const dv = parseObject(raw.defaultValues, 'defaultValues')
+  const vm = parseObject(raw.valueMapping, 'valueMapping')
+  const error = dv.error ?? vm.error
+  if (error) return { rules: EMPTY_PRESET_RULES, error }
+
+  const rules: PresetRules = { ...EMPTY_PRESET_RULES, severityValues: {}, statusValues: {} }
+  for (const [k, v] of Object.entries(dv.value)) {
+    if (k === 'resource') {
+      if (typeof v !== 'string' || !v.trim()) return { rules: EMPTY_PRESET_RULES, error: 'defaultValues.resource: attesa una stringa non vuota' }
+      rules.defaultResource = v
+    } else if (k === 'resourceKind') {
+      if (typeof v !== 'string' || !(RESOURCE_KINDS as readonly string[]).includes(v)) return { rules: EMPTY_PRESET_RULES, error: `defaultValues.resourceKind: atteso uno tra ${RESOURCE_KINDS.join(', ')}` }
+      rules.defaultResourceKind = v as ResourceKind
+    } else if (k === 'resourceFrom') {
+      if (v !== RESOURCE_FROM_OPTIONS[kind]) return { rules: EMPTY_PRESET_RULES, error: `defaultValues.resourceFrom: non previsto per ${kind}` }
+      rules.resourceFromAlertScope = true
+    } else {
+      return { rules: EMPTY_PRESET_RULES, error: `defaultValues.${k}: non modificabile da questa pagina` }
+    }
+  }
+  const sevRaw = vm.value['severity']
+  if (sevRaw !== undefined) {
+    if (sevRaw === null || typeof sevRaw !== 'object') return { rules: EMPTY_PRESET_RULES, error: 'valueMapping.severity: atteso un oggetto' }
+    for (const [src, dst] of Object.entries(sevRaw as Record<string, unknown>)) {
+      if (typeof dst !== 'string' || !(EVENT_SEVERITIES as readonly string[]).includes(dst)) return { rules: EMPTY_PRESET_RULES, error: `valueMapping.severity.${src}: atteso uno tra ${EVENT_SEVERITIES.join(', ')}` }
+      rules.severityValues[src] = dst as EventSeverity
+    }
+  }
+  const stRaw = vm.value['status']
+  if (stRaw !== undefined) {
+    if (stRaw === null || typeof stRaw !== 'object') return { rules: EMPTY_PRESET_RULES, error: 'valueMapping.status: atteso un oggetto' }
+    for (const [src, dst] of Object.entries(stRaw as Record<string, unknown>)) {
+      if (typeof dst !== 'string' || !(EVENT_INPUT_STATUSES as readonly string[]).includes(dst)) return { rules: EMPTY_PRESET_RULES, error: `valueMapping.status.${src}: atteso uno tra ${EVENT_INPUT_STATUSES.join(', ')}` }
+      rules.statusValues[src] = dst as EventInputStatus
+    }
+  }
+  for (const k of Object.keys(vm.value)) {
+    if (k !== 'severity' && k !== 'status') return { rules: EMPTY_PRESET_RULES, error: `valueMapping.${k}: non supportato` }
+  }
+  return { rules, error: null }
 }
 
 // ── Rate limit per sorgente (M7) ─────────────────────────────────────────────

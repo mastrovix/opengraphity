@@ -19,6 +19,7 @@ const POLICY = {
   openIncidentFrom: 'critical', groupBy: 'ci', openDelaySeconds: 120, autoResolve: true,
   suppressUpstreamHops: 2, flapThreshold: 4, flapWindowMinutes: 15, flapStableMinutes: 10,
   stormThresholdPerMinute: 50, stormCooldownMinutes: 5, retentionDays: 30,
+  matchShortHostname: false,
   severityMap: JSON.stringify(MAP),
 }
 
@@ -155,6 +156,23 @@ describe('EventPolicyPage — sfarfallio, tempeste, conservazione (ondata 4)', (
     await user.click(save)
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Event policy saved'))
     expect(seen[0]).toMatchObject({ flapStableMinutes: 7, stormThresholdPerMinute: 0, stormCooldownMinutes: 2 })
+  })
+})
+
+describe('EventPolicyPage — riconoscimento del CI (revisione A-2)', () => {
+  it('interruttore "nome corto ↔ FQDN" nel riquadro "CI recognition": parte dalla policy (spento), ha l\'aiuto, e viene salvato', async () => {
+    const seen: Input[] = []
+    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [policyMock(), updateMock(seen)] })
+    const group = await screen.findByRole('group', { name: 'CI recognition' })
+    const toggle = within(group).getByRole('switch', { name: 'Match short hostname and FQDN as the same host' })
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    expect(within(group).getByText(/also try the short name \(db-01\), and vice versa/)).toBeInTheDocument()
+
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Event policy saved'))
+    expect(seen[0]).toMatchObject({ matchShortHostname: true, expectedVersion: 3 })
   })
 })
 

@@ -1,8 +1,55 @@
 import { describe, it, expect } from 'vitest'
 import {
-  EMPTY_MAPPING, buildSourceConfig, parseSourceConfig, distinctValuesAtPath, valueAtPath,
-  isMappingComplete, syncValueTable, suggestSeverity, suggestStatus, type GenericMapping,
+  EMPTY_MAPPING, EMPTY_PRESET_RULES, buildSourceConfig, buildPresetConfig, parseSourceConfig, parsePresetConfig, distinctValuesAtPath, valueAtPath,
+  isMappingComplete, isPresetRulesComplete, syncValueTable, suggestSeverity, suggestStatus, type GenericMapping, type PresetRules,
 } from './sourceConfig'
+
+describe('sourceConfig — regole dei connettori preset (A1)', () => {
+  const RULES: PresetRules = {
+    severityValues: { page: 'critical', none: 'info' },
+    statusValues: { muted: 'resolved' },
+    defaultResource: 'prometheus-prod',
+    defaultResourceKind: 'name',
+    resourceFromAlertScope: true,
+  }
+
+  it('buildPresetConfig: field_mapping sempre vuoto; value_mapping e default_values solo con ciò che è stato scelto; resourceFrom solo dove il connettore lo prevede', () => {
+    const dd = buildPresetConfig('datadog', RULES)
+    expect(dd.fieldMapping).toBe('{}')
+    expect(JSON.parse(dd.valueMapping)).toEqual({ severity: { page: 'critical', none: 'info' }, status: { muted: 'resolved' } })
+    expect(JSON.parse(dd.defaultValues)).toEqual({ resource: 'prometheus-prod', resourceKind: 'name', resourceFrom: 'alert_scope' })
+    // Alertmanager non ha resourceFrom: la spunta (residua) non viene scritta
+    expect(JSON.parse(buildPresetConfig('alertmanager', RULES).defaultValues)).toEqual({ resource: 'prometheus-prod', resourceKind: 'name' })
+    // niente regole → JSON vuoti; una risorsa vuota non scrive resourceKind
+    expect(buildPresetConfig('zabbix', EMPTY_PRESET_RULES)).toEqual({ fieldMapping: '{}', defaultValues: '{}', valueMapping: '{}' })
+    expect(JSON.parse(buildPresetConfig('zabbix', { ...RULES, defaultResource: '  ', severityValues: { x: '' } }).defaultValues)).toEqual({})
+    expect(JSON.parse(buildPresetConfig('zabbix', { ...RULES, severityValues: { x: '' }, statusValues: {} }).valueMapping)).toEqual({})
+  })
+
+  it('parsePresetConfig ∘ buildPresetConfig è l\'identità; JSON vuoti/null → regole vuote', () => {
+    const cfg = buildPresetConfig('datadog', RULES)
+    expect(parsePresetConfig('datadog', cfg)).toEqual({ rules: RULES, error: null })
+    expect(parsePresetConfig('grafana', { defaultValues: null, valueMapping: '' })).toEqual({ rules: EMPTY_PRESET_RULES, error: null })
+  })
+
+  it('parsePresetConfig: JSON malformato, valori fuori vocabolario, chiavi che l\'editor non rappresenta (default_values.severity, resourceFrom fuori connettore) → error', () => {
+    expect(parsePresetConfig('zabbix', { defaultValues: '{nope', valueMapping: null }).error).toMatch(/defaultValues/)
+    expect(parsePresetConfig('zabbix', { defaultValues: '{"resourceKind":"planet"}', valueMapping: null }).error).toMatch(/resourceKind/)
+    expect(parsePresetConfig('zabbix', { defaultValues: '{"resource":""}', valueMapping: null }).error).toMatch(/defaultValues\.resource/)
+    expect(parsePresetConfig('zabbix', { defaultValues: '{"severity":"warning"}', valueMapping: null }).error).toMatch(/defaultValues\.severity: non modificabile/)
+    expect(parsePresetConfig('alertmanager', { defaultValues: '{"resourceFrom":"alert_scope"}', valueMapping: null }).error).toMatch(/resourceFrom: non previsto per alertmanager/)
+    expect(parsePresetConfig('zabbix', { defaultValues: null, valueMapping: '{"severity":{"x":"fatal"}}' }).error).toMatch(/valueMapping\.severity\.x/)
+    expect(parsePresetConfig('zabbix', { defaultValues: null, valueMapping: '{"status":{"x":"open"}}' }).error).toMatch(/valueMapping\.status\.x/)
+    expect(parsePresetConfig('zabbix', { defaultValues: null, valueMapping: '{"title":{}}' }).error).toMatch(/valueMapping\.title: non supportato/)
+  })
+
+  it('isPresetRulesComplete: un valore senza destinazione blocca; nessuna regola è completo', () => {
+    expect(isPresetRulesComplete(EMPTY_PRESET_RULES)).toBe(true)
+    expect(isPresetRulesComplete(RULES)).toBe(true)
+    expect(isPresetRulesComplete({ ...RULES, severityValues: { page: '' } })).toBe(false)
+    expect(isPresetRulesComplete({ ...RULES, statusValues: { x: '' } })).toBe(false)
+  })
+})
 
 const SAMPLE = {
   id: 'EVT-1', state: 'open', msg: 'boom',

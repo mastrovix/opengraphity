@@ -29,14 +29,14 @@ vi.mock('../../lib/logger.js', () => {
 // modulo reale: la facciata eventCorrelation.js lo ri-esporta.
 vi.mock('../events/pipeline.js', () => ({ runEventPipeline: vi.fn() }))
 vi.mock('../../middleware/metrics.js', () => ({
-  eventsReceivedTotal: { inc: vi.fn() }, eventsDeduplicatedTotal: { inc: vi.fn() }, eventsOrphanTotal: { inc: vi.fn() }, eventsStaleTotal: { inc: vi.fn() },
+  eventsReceivedTotal: { inc: vi.fn() }, eventsDeduplicatedTotal: { inc: vi.fn() }, eventsOrphanTotal: { inc: vi.fn() }, eventsAmbiguousTotal: { inc: vi.fn() }, eventsStaleTotal: { inc: vi.fn() }, eventsResolvedUnknownTotal: { inc: vi.fn() },
 }))
 
 const svc = await import('../eventService.js')
 const {
   normalizePayload, fingerprintOf, nextEventState, deriveCIHealth, recomputeCIHealth, ingestEvent, matchCI, getEventPolicy, setEventPolicy, MAX_EVENTS_PER_REQUEST, stripPort, getPath, listPayloadKeys, PAYLOAD_KEYS_MAX, PAYLOAD_MAX_DEPTH, quoteValue, parseValueMapping, sourceConfigOf, normalizeWithConfig, countTransitionsSince, payloadStatusOf, transitionsOf, MAX_TRANSITIONS, QUIET_OUTCOMES,
   EVENT_TRANSITIONS, prevClassOf, transitionRuleFor, PREV_CLASS_CYPHER, SEVERITY_MAX_CYPHER, TRANSITION_ACTION_CYPHER, transitionCaseCypher, residueClearCypher, transitionSetCypher, ingestMergeCypher, INGEST_WRITE_OUTCOMES,
-  ciMatchCypher, ciMatchParams, CI_HEALTH_RULES, ciHealthCaseCypher,
+  ciMatchCypher, ciMatchParams, shortHostnameKeys, CI_MATCH_GUARD, MATCH_CANDIDATES_MAX, CI_HEALTH_RULES, ciHealthCaseCypher,
 } = svc
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { publishEvent } = await import('../../lib/publishEvent.js')
@@ -107,18 +107,67 @@ describe('normalizePayload — alertmanager', () => {
     expect(out[1]).not.toHaveProperty('description')
   })
 
-  it('stripPort: host:porta → host; ipv6 fra parentesi; senza porta invariato', () => {
+  it('M5 — stripPort: host:porta → host; IPv4:porta → IPv4; [ipv6]:porta → ipv6 senza parentesi; IPv6 nudo e senza porta invariati', () => {
     expect(stripPort('db-01:9100')).toBe('db-01')
-    expect(stripPort('[::1]:9100')).toBe('[::1]')
+    expect(stripPort('10.0.0.7:9100')).toBe('10.0.0.7')
+    expect(stripPort('[::1]:9100')).toBe('::1')
+    expect(stripPort('[2001:db8::1]:9100')).toBe('2001:db8::1')
+    expect(stripPort('[::1]')).toBe('::1')
+    expect(stripPort('::1')).toBe('::1')
+    expect(stripPort('2001:db8::1')).toBe('2001:db8::1')
     expect(stripPort('db-01')).toBe('db-01')
+    expect(stripPort('db-01:abc')).toBe('db-01:abc')
+  })
+
+  it('A1 — value_mapping vale anche per Alertmanager: severità libera (page, P1) e status tradotti; default_values.resource + resourceKind per gli alert senza instance', () => {
+    const payload = { alerts: [
+      { status: 'firing', labels: { alertname: 'Watchdog', severity: 'page' } },
+      { status: 'ok', labels: { alertname: 'X', severity: 'P1', instance: 'h:9100' } },
+    ] }
+    const vm = parseValueMapping({ severity: { Page: 'critical', p1: 'critical' }, status: { ok: 'resolved' } })
+    const out = normalizePayload('alertmanager', payload, {}, { resource: 'prometheus-prod', resourceKind: 'name' }, vm)
+    expect(out[0]).toMatchObject({ title: 'Watchdog', severity: 'critical', status: 'firing', resource: 'prometheus-prod', resourceKind: 'name' })
+    expect(out[1]).toMatchObject({ severity: 'critical', status: 'resolved', resource: 'h', resourceKind: 'hostname' })
+    // senza risorsa predefinita l'alert senza instance è scartato con il rimedio nel messaggio
+    expectValidation(() => normalizePayload('alertmanager', { alerts: [payload.alerts[0]] }, {}, {}, vm), /alerts\[0\]\.labels\.instance is missing or empty and default_values\.resource is not set \(set default_values\.resource \+ resourceKind/)
+    // resource senza resourceKind: configurazione rotta, non un tipo inventato
+    expectValidation(() => normalizePayload('alertmanager', { alerts: [payload.alerts[0]] }, {}, { resource: 'x' }, vm), /default_values\.resourceKind must be one of: hostname, ip, fqdn, external_id, name/)
+  })
+
+  it('A1 — normalizeBatch: accettazione parziale per elemento (i validi passano, gli scarti portano indice e motivo); un difetto della busta resta un errore di tutta la richiesta', () => {
+    const payload = { alerts: [
+      { status: 'firing', labels: { alertname: 'A', severity: 'info', instance: 'h1' } },
+      { status: 'firing', labels: { alertname: 'B', severity: 'page', instance: 'h2' } },
+      { status: 'firing', labels: { alertname: 'C', severity: 'info' } },
+      'not-an-object',
+    ] }
+    const batch = svc.normalizeBatch('alertmanager', payload, {}, {})
+    expect(batch.total).toBe(4)
+    expect(batch.events.map((e) => e.title)).toEqual(['A'])
+    expect(batch.rejected).toEqual([
+      { index: 1, error: expect.stringMatching(/alerts\[1\]\.labels\.severity value "page" is not mapped/) },
+      { index: 2, error: expect.stringMatching(/alerts\[2\]\.labels\.instance is missing/) },
+      { index: 3, error: 'alerts[3] is not an object' },
+    ])
+    expect(svc.rejectionSummary(batch)).toMatch(/^3 di 4 scartati: alerts\[1\]\.labels\.severity value "page"/)
+    expect(svc.rejectionSummary({ total: 1, rejected: [{ index: 0, error: 'boom' }] })).toBe('boom')
+    expect(svc.rejectionSummary({ total: 2, rejected: [] })).toBe('')
+    expect(svc.rejectionSummary({ total: 2, rejected: [{ index: 0, error: 'x'.repeat(600) }] })).toHaveLength(500)
+    // busta rotta → ValidationError, non una lista di scarti
+    expectValidation(() => svc.normalizeBatch('alertmanager', { alerts: 'x' }, {}, {}), /no `alerts` array/)
+    // connettori a un evento: indice 0
+    expect(svc.normalizeBatch('zabbix', { event_id: '1' }, {}, {})).toEqual({ total: 1, events: [], rejected: [{ index: 0, error: expect.stringMatching(/event_name \(or trigger_name\) is missing/) }] })
+    // normalizePayload è la variante tutto-o-niente
+    expectValidation(() => normalizePayload('alertmanager', payload, {}, {}), /alerts\[1\]\.labels\.severity value "page"/)
   })
 
   it.each([
-    ['severity fuori enum', { ...AM_PAYLOAD, alerts: [{ ...AM_PAYLOAD.alerts[0], labels: { ...AM_PAYLOAD.alerts[0]!.labels, severity: 'page' } }] }, /alerts\[0\]\.labels\.severity must be one of: info, warning, critical/],
-    ['severity mancante senza default', { ...AM_PAYLOAD, alerts: [{ ...AM_PAYLOAD.alerts[0], labels: { alertname: 'X', instance: 'h' } }] }, /labels\.severity/],
+    ['severity fuori enum', { ...AM_PAYLOAD, alerts: [{ ...AM_PAYLOAD.alerts[0], labels: { ...AM_PAYLOAD.alerts[0]!.labels, severity: 'page' } }] }, /alerts\[0\]\.labels\.severity value "page" is not mapped \(value_mapping\.severity\) and is not one of: info, warning, critical/],
+    ['severity mancante senza default', { ...AM_PAYLOAD, alerts: [{ ...AM_PAYLOAD.alerts[0], labels: { alertname: 'X', instance: 'h' } }] }, /alerts\[0\]\.labels\.severity is missing \(no default_values\.severity\)/],
     ['alertname mancante', { alerts: [{ status: 'firing', labels: { severity: 'info', instance: 'h' } }] }, /labels\.alertname is missing/],
     ['instance mancante', { alerts: [{ status: 'firing', labels: { alertname: 'X', severity: 'info' } }] }, /labels\.instance is missing/],
-    ['status sconosciuto', { alerts: [{ status: 'pending', labels: { alertname: 'X', severity: 'info', instance: 'h' } }] }, /alerts\[0\]\.status must be one of: firing, resolved/],
+    ['status sconosciuto', { alerts: [{ status: 'pending', labels: { alertname: 'X', severity: 'info', instance: 'h' } }] }, /alerts\[0\]\.status value "pending" is not mapped \(value_mapping\.status\) and is not one of: firing, resolved/],
+    ['status mancante', { alerts: [{ labels: { alertname: 'X', severity: 'info', instance: 'h' } }] }, /alerts\[0\]\.status is missing/],
     ['alerts non lista', { alerts: { status: 'firing' } }, /no `alerts` array/],
     ['payload lista', [AM_PAYLOAD], /must be a JSON object/],
     ['payload null', null, /must be a JSON object/],
@@ -163,7 +212,7 @@ describe('normalizePayload — grafana', () => {
 
   it.each([
     ['senza instance né host', { alerts: [{ status: 'firing', labels: { alertname: 'X', severity: 'info' } }] }, /alerts\[0\]\.labels\.instance \(or labels\.host\) is missing/],
-    ['severity fuori enum', { alerts: [{ status: 'firing', labels: { alertname: 'X', severity: 'page', instance: 'h' } }] }, /alerts\[0\]\.labels\.severity must be one of/],
+    ['severity fuori enum', { alerts: [{ status: 'firing', labels: { alertname: 'X', severity: 'page', instance: 'h' } }] }, /alerts\[0\]\.labels\.severity value "page" is not mapped/],
     ['senza alerts', { title: '[FIRING:1]' }, /Grafana payload has no `alerts` array/],
     ['payload lista', [], /Grafana payload must be a JSON object/],
   ])('%s → ValidationError con il percorso del campo', (_n, payload, pattern) => {
@@ -200,26 +249,98 @@ describe('normalizePayload — zabbix', () => {
     ['senza event_id', { ...ZBX, event_id: '' }, /event_id is missing or empty/],
     ['senza nome', { ...ZBX, event_name: undefined, trigger_name: undefined }, /event_name \(or trigger_name\) is missing/],
     ['severità sconosciuta', { ...ZBX, event_severity: 'Fatal' }, /event_severity must be one of: Not classified, Information, Warning, Average, High, Disaster\. Got: "Fatal"/],
-    ['event_value non 0/1', { ...ZBX, event_value: 'PROBLEM' }, /event_value must be "1" \(problem\) or "0" \(recovery\)\. Got: "PROBLEM"/],
-    ['senza host', { ...ZBX, host_name: undefined, host_ip: undefined }, /host_name \(or host_ip\) is missing/],
+    ['event_value non 0/1', { ...ZBX, event_value: 'PROBLEM' }, /event_value must be one of: "1" \(problem\), "0" \(recovery\)\. Got: "PROBLEM" \(or map it in value_mapping\.status\)/],
+    ['senza event_value', { ...ZBX, event_value: undefined }, /event_value is missing/],
+    ['senza host', { ...ZBX, host_name: undefined, host_ip: undefined }, /host_name \(or host_ip\) is missing or empty and default_values\.resource is not set/],
     ['payload lista', [ZBX], /Zabbix payload must be a JSON object/],
   ])('%s → ValidationError', (_n, payload, pattern) => {
     expectValidation(() => normalizePayload('zabbix', payload, {}, {}), pattern)
+  })
+
+  it('A1 — value_mapping vince sulla tabella incorporata (Average → critical, PROBLEM → firing) e aggiunge valori ignoti; valori numerici accettati', () => {
+    const vm = parseValueMapping({ severity: { average: 'critical', Fatal: 'critical' }, status: { PROBLEM: 'firing', ok: 'resolved' } })
+    expect(normalizePayload('zabbix', { ...ZBX, event_severity: 'Average' }, {}, {}, vm)[0]!.severity).toBe('critical')
+    expect(normalizePayload('zabbix', { ...ZBX, event_severity: 'Fatal', event_value: 'PROBLEM' }, {}, {}, vm)[0]).toMatchObject({ severity: 'critical', status: 'firing' })
+    expect(normalizePayload('zabbix', { ...ZBX, event_value: 'ok' }, {}, {}, vm)[0]!.status).toBe('resolved')
+    expect(normalizePayload('zabbix', { ...ZBX, event_value: 1, event_nseverity: 4 }, {}, {})[0]).toMatchObject({ status: 'firing', labels: expect.objectContaining({ event_nseverity: '4' }) })
+    // senza host: risorsa predefinita della sorgente
+    expect(normalizePayload('zabbix', { ...ZBX, host_name: '', host_ip: '' }, {}, { resource: 'zabbix-server', resourceKind: 'name' })[0]).toMatchObject({ resource: 'zabbix-server', resourceKind: 'name' })
+  })
+
+  it('M2 — host_id ({HOST.ID}) è l\'id della risorsa (resourceExternalId) e resta fra le etichette; event_id resta l\'id dell\'allarme', () => {
+    const out = normalizePayload('zabbix', { ...ZBX, host_id: '10084' }, {}, {})[0]!
+    expect(out).toMatchObject({ externalId: '184352', resourceExternalId: '10084', labels: expect.objectContaining({ host_id: '10084' }) })
+    expect(normalizePayload('zabbix', ZBX, {}, {})[0]).not.toHaveProperty('resourceExternalId')
+  })
+
+  it('M4 — event_date + event_time (ora locale di Zabbix) → startsAt ISO con il fuso del tenant; senza fuso, fuso non valido o testo non parsabile → startsAt assente e grezzo in labels.event_time', () => {
+    const withTime = { ...ZBX, event_date: '2026.09.09', event_time: '10:12:37' }
+    const rome = normalizePayload('zabbix', withTime, {}, {}, {}, { timezone: 'Europe/Rome' })[0]!
+    expect(rome.startsAt).toBe('2026-09-09T08:12:37.000Z')
+    expect(rome.labels).not.toHaveProperty('event_time')
+    expect(normalizePayload('zabbix', withTime, {}, {}, {}, { timezone: 'UTC' })[0]!.startsAt).toBe('2026-09-09T10:12:37.000Z')
+    expect(normalizePayload('zabbix', { ...withTime, event_date: '2026-01-09' }, {}, {}, {}, { timezone: 'America/New_York' })[0]!.startsAt).toBe('2026-01-09T15:12:37.000Z')
+    for (const opts of [{}, { timezone: null }, { timezone: 'Mars/Olympus' }]) {
+      const out = normalizePayload('zabbix', withTime, {}, {}, {}, opts)[0]!
+      expect(out).not.toHaveProperty('startsAt')
+      expect(out.labels['event_time']).toBe('2026.09.09 10:12:37')
+    }
+    const bad = normalizePayload('zabbix', { ...withTime, event_time: '{EVENT.TIME}' }, {}, {}, {}, { timezone: 'Europe/Rome' })[0]!
+    expect(bad).not.toHaveProperty('startsAt')
+    expect(bad.labels['event_time']).toBe('2026.09.09 {EVENT.TIME}')
+    // solo la data, senza ora: nessun istante, grezzo conservato
+    expect(normalizePayload('zabbix', { ...ZBX, event_date: '2026.09.09' }, {}, {}, {}, { timezone: 'Europe/Rome' })[0]!.labels['event_time']).toBe('2026.09.09')
+  })
+
+  it('M4 — zonedTimeToISO: ora legale/solare, separatori ammessi, data inesistente e testo estraneo → null', () => {
+    const { zonedTimeToISO } = svc
+    expect(zonedTimeToISO('2026.07.01 12:00:00', 'Europe/Rome')).toBe('2026-07-01T10:00:00.000Z')   // CEST
+    expect(zonedTimeToISO('2026.12.01 12:00:00', 'Europe/Rome')).toBe('2026-12-01T11:00:00.000Z')   // CET
+    expect(zonedTimeToISO('2026/12/01 12:00:00', 'Asia/Kolkata')).toBe('2026-12-01T06:30:00.000Z')
+    expect(zonedTimeToISO('2026-12-01T12:00:00', 'UTC')).toBe('2026-12-01T12:00:00.000Z')
+    expect(zonedTimeToISO('2026.02.30 12:00:00', 'UTC')).toBeNull()
+    expect(zonedTimeToISO('2026.12.01 25:00:00', 'UTC')).toBeNull()
+    expect(zonedTimeToISO('yesterday', 'UTC')).toBeNull()
+    expect(zonedTimeToISO('2026.12.01 12:00:00', undefined)).toBeNull()
+    expect(zonedTimeToISO('2026.12.01 12:00:00', 'Not/AZone')).toBeNull()
   })
 })
 
 describe('normalizePayload — datadog', () => {
   const DD = { alert_id: '7654321', alert_transition: 'Triggered', alert_type: 'error', title: '[Triggered] Memory high', body: 'Memory 94%', hostname: 'cache-01', tags: ['env:prod', 'service:cache', 'monitor'] }
 
-  it('Triggered + error → firing critical, hostname, description dal body, tag chiave:valore come etichette', () => {
+  it('Triggered + error → firing critical, hostname, description dal body, tag chiave:valore come etichette (+ alert_id); A3: senza alert_cycle_key l\'id dell\'allarme è alert_id@risorsa', () => {
     expect(normalizePayload('datadog', DD, {}, {})).toEqual([{
-      externalId: '7654321', status: 'firing', severity: 'critical', title: '[Triggered] Memory high', description: 'Memory 94%',
-      resource: 'cache-01', resourceKind: 'hostname', labels: { env: 'prod', service: 'cache', monitor: 'true' },
+      externalId: '7654321@cache-01', status: 'firing', severity: 'critical', title: '[Triggered] Memory high', description: 'Memory 94%',
+      resource: 'cache-01', resourceKind: 'hostname', labels: { env: 'prod', service: 'cache', monitor: 'true', alert_id: '7654321' },
     }])
   })
 
+  it('A3 — monitor multi-alert: due host con lo stesso alert_id sono due allarmi (impronte diverse); con alert_cycle_key l\'identità è il ciclo', () => {
+    const a = normalizePayload('datadog', { ...DD, hostname: 'cache-01' }, {}, {})[0]!
+    const b = normalizePayload('datadog', { ...DD, hostname: 'cache-02' }, {}, {})[0]!
+    expect(fingerprintOf('s', a)).not.toBe(fingerprintOf('s', b))
+    const cycle = normalizePayload('datadog', { ...DD, alert_cycle_key: '7654321:1788869557:host:cache-01', alert_scope: 'host:cache-01' }, {}, {})[0]!
+    expect(cycle).toMatchObject({ externalId: '7654321:1788869557:host:cache-01', labels: expect.objectContaining({ alert_id: '7654321', alert_scope: 'host:cache-01', alert_cycle_key: '7654321:1788869557:host:cache-01' }) })
+    // il Recovered dello stesso ciclo ha la stessa impronta
+    const recovered = normalizePayload('datadog', { ...DD, alert_cycle_key: '7654321:1788869557:host:cache-01', alert_transition: 'Recovered' }, {}, {})[0]!
+    expect(fingerprintOf('s', recovered)).toBe(fingerprintOf('s', cycle))
+  })
+
+  it('M4 — hostname vuoto (monitor su log/APM): alert_scope come nome SOLO con default_values.resourceFrom = alert_scope; poi default_values.resource; altrimenti scarto esplicito', () => {
+    const noHost = { ...DD, hostname: '', alert_scope: 'service:checkout, env:prod' }
+    expect(normalizePayload('datadog', noHost, {}, { resourceFrom: 'alert_scope' })[0]).toMatchObject({ resource: 'service:checkout, env:prod', resourceKind: 'name' })
+    expect(normalizePayload('datadog', noHost, {}, { resource: 'datadog', resourceKind: 'name' })[0]).toMatchObject({ resource: 'datadog', resourceKind: 'name' })
+    expectValidation(() => normalizePayload('datadog', noHost, {}, {}), /hostname is missing or empty and default_values\.resource is not set and default_values\.resourceFrom is not "alert_scope"/)
+    // resourceFrom abilitato ma alert_scope assente → resource predefinita o scarto
+    expectValidation(() => normalizePayload('datadog', { ...DD, hostname: '' }, {}, { resourceFrom: 'alert_scope' }), /hostname is missing or empty and default_values\.resource is not set \(set/)
+    // hostname presente vince sempre
+    expect(normalizePayload('datadog', { ...noHost, hostname: 'h' }, {}, { resourceFrom: 'alert_scope' })[0]).toMatchObject({ resource: 'h', resourceKind: 'hostname' })
+  })
+
   it.each([
-    ['Triggered', 'firing'], ['Re-Triggered', 'firing'], ['Warn', 'firing'], ['No Data', 'firing'], ['Recovered', 'resolved'], ['recovered', 'resolved'],
+    ['Triggered', 'firing'], ['Re-Triggered', 'firing'], ['Warn', 'firing'], ['Re-Warn', 'firing'], ['No Data', 'firing'], ['Re-No Data', 'firing'], ['Renotify', 'firing'], ['Re-Notify', 'firing'],
+    ['Recovered', 'resolved'], ['recovered', 'resolved'], ['Warn Recovered', 'resolved'],
   ])('alert_transition %s → %s', (transition, status) => {
     expect(normalizePayload('datadog', { ...DD, alert_transition: transition }, {}, {})[0]!.status).toBe(status)
   })
@@ -228,18 +349,24 @@ describe('normalizePayload — datadog', () => {
     expect(normalizePayload('datadog', { ...DD, alert_type: type }, {}, {})[0]!.severity).toBe(severity)
   })
 
+  it('A1 — alert_type / alert_transition fuori tabella → scarto, salvo value_mapping', () => {
+    expectValidation(() => normalizePayload('datadog', { ...DD, alert_type: 'critical' }, {}, {}), /alert_type must be one of: error, warning, info, success\. Got: "critical" \(or map it in value_mapping\.severity\)/)
+    const vm = parseValueMapping({ severity: { critical: 'critical' }, status: { Muted: 'resolved' } })
+    expect(normalizePayload('datadog', { ...DD, alert_type: 'critical', alert_transition: 'Muted' }, {}, {}, vm)[0]).toMatchObject({ severity: 'critical', status: 'resolved' })
+  })
+
   it('text al posto di body; tags come stringa separata da virgole o oggetto; date epoch → startsAt ISO', () => {
     const out = normalizePayload('datadog', { ...DD, body: undefined, text: 'plain', tags: 'env:prod, team:platform', date: 1788869557 }, {}, {})
-    expect(out[0]).toMatchObject({ description: 'plain', labels: { env: 'prod', team: 'platform' }, startsAt: '2026-09-08T12:12:37.000Z' })
-    expect(normalizePayload('datadog', { ...DD, tags: { env: 'prod' } }, {}, {})[0]!.labels).toEqual({ env: 'prod' })
+    expect(out[0]).toMatchObject({ description: 'plain', labels: { env: 'prod', team: 'platform', alert_id: '7654321' }, startsAt: '2026-09-08T12:12:37.000Z' })
+    expect(normalizePayload('datadog', { ...DD, tags: { env: 'prod' } }, {}, {})[0]!.labels).toEqual({ env: 'prod', alert_id: '7654321' })
   })
 
   it.each([
     ['senza alert_id', { ...DD, alert_id: undefined }, /alert_id is missing or empty/],
     ['senza title', { ...DD, title: '' }, /title is missing or empty/],
-    ['transizione sconosciuta', { ...DD, alert_transition: 'Muted' }, /alert_transition must be one of: Triggered, Re-Triggered, Warn, No Data, Recovered\. Got: "Muted"/],
+    ['transizione sconosciuta', { ...DD, alert_transition: 'Muted' }, /alert_transition must be one of: Triggered, Re-Triggered, Warn, Re-Warn, No Data, Re-No Data, Renotify, Recovered, Warn Recovered\. Got: "Muted" \(or map it in value_mapping\.status\)/],
     ['senza alert_transition', { ...DD, alert_transition: undefined }, /alert_transition is missing/],
-    ['senza hostname', { ...DD, hostname: undefined }, /hostname is missing or empty/],
+    ['senza hostname', { ...DD, hostname: undefined }, /hostname is missing or empty and default_values\.resource is not set/],
     ['tags numero', { ...DD, tags: 3 }, /tags must be a list/],
     ['payload stringa', 'x', /Datadog payload must be a JSON object/],
   ])('%s → ValidationError', (_n, payload, pattern) => {
@@ -257,13 +384,29 @@ describe('normalizePayload — dynatrace', () => {
     Tags: 'env:prod, team:web',
   }
 
-  it('OPEN + AVAILABILITY → firing critical, PID come externalId, risorsa = name del primo impattato (hostname), etichette con entity', () => {
+  it('OPEN + AVAILABILITY → firing critical, PID come externalId, risorsa = name del primo impattato (HOST → hostname), entity = resourceExternalId (M2) e fra le etichette', () => {
     expect(normalizePayload('dynatrace', DT, {}, {})).toEqual([{
-      externalId: '-7361280981581184312_1788869500000V2', status: 'firing', severity: 'critical', title: 'Host unavailable',
+      externalId: '-7361280981581184312_1788869500000V2', resourceExternalId: 'HOST-1A2B3C', status: 'firing', severity: 'critical', title: 'Host unavailable',
       description: 'No data from OneAgent for 5 minutes.',
       resource: 'web-02.example.local', resourceKind: 'hostname',
       labels: { ProblemImpact: 'INFRASTRUCTURE', ProblemURL: DT.ProblemURL, ProblemID: 'P-2409', Tags: 'env:prod, team:web', dynatrace_entity: 'HOST-1A2B3C' },
     }])
+  })
+
+  it('M3 — primo impattato SERVICE/APPLICATION (o senza type) → resourceKind name, entity SERVICE-… come resourceExternalId', () => {
+    const svcFirst = normalizePayload('dynatrace', { ...DT, ImpactedEntities: [{ type: 'SERVICE', name: 'checkout', entity: 'SERVICE-9F' }] }, {}, {})[0]!
+    expect(svcFirst).toMatchObject({ resource: 'checkout', resourceKind: 'name', resourceExternalId: 'SERVICE-9F', labels: expect.objectContaining({ dynatrace_entity: 'SERVICE-9F' }) })
+    expect(normalizePayload('dynatrace', { ...DT, ImpactedEntities: [{ type: 'host', name: 'h', entity: 'HOST-1' }] }, {}, {})[0]!.resourceKind).toBe('hostname')
+    const untyped = normalizePayload('dynatrace', { ...DT, ImpactedEntities: [{ name: 'thing' }] }, {}, {})[0]!
+    expect(untyped).toMatchObject({ resource: 'thing', resourceKind: 'name' })
+    expect(untyped).not.toHaveProperty('resourceExternalId')
+  })
+
+  it('A1 — value_mapping traduce State e ProblemSeverity prima della tabella incorporata; default_values.resource quando manca ogni entità', () => {
+    const vm = parseValueMapping({ status: { merged: 'resolved' }, severity: { fatal: 'critical', performance: 'critical' } })
+    expect(normalizePayload('dynatrace', { ...DT, State: 'MERGED', ProblemSeverity: 'FATAL' }, {}, {}, vm)[0]).toMatchObject({ status: 'resolved', severity: 'critical' })
+    expect(normalizePayload('dynatrace', { ...DT, ProblemSeverity: 'PERFORMANCE' }, {}, {}, vm)[0]!.severity).toBe('critical')
+    expect(normalizePayload('dynatrace', { ...DT, ImpactedEntities: [], ImpactedEntity: '' }, {}, { resource: 'dynatrace', resourceKind: 'name' })[0]).toMatchObject({ resource: 'dynatrace', resourceKind: 'name' })
   })
 
   it('RESOLVED → resolved (senza distinguere maiuscole)', () => {
@@ -277,12 +420,17 @@ describe('normalizePayload — dynatrace', () => {
     expect(normalizePayload('dynatrace', { ...DT, ProblemSeverity: dt }, {}, {})[0]!.severity).toBe(expected)
   })
 
-  it('senza ImpactedEntities (assente o vuoto) → risorsa = ImpactedEntity con resourceKind name, senza dynatrace_entity', () => {
+  it('M3 — senza ImpactedEntities (assente o vuoto) → risorsa = ImpactedEntity senza il prefisso di tipo riconosciuto (Host → hostname, Service → name), senza dynatrace_entity; prefisso ignoto → errore', () => {
     for (const entities of [undefined, []]) {
       const out = normalizePayload('dynatrace', { ...DT, ImpactedEntities: entities }, {}, {})
-      expect(out[0]).toMatchObject({ resource: 'Host web-02.example.local', resourceKind: 'name' })
+      expect(out[0]).toMatchObject({ resource: 'web-02.example.local', resourceKind: 'hostname' })
       expect(out[0]!.labels).not.toHaveProperty('dynatrace_entity')
+      expect(out[0]).not.toHaveProperty('resourceExternalId')
     }
+    expect(normalizePayload('dynatrace', { ...DT, ImpactedEntities: [], ImpactedEntity: 'Service checkout' }, {}, {})[0]).toMatchObject({ resource: 'checkout', resourceKind: 'name' })
+    expect(normalizePayload('dynatrace', { ...DT, ImpactedEntities: [], ImpactedEntity: 'Process group  nginx' }, {}, {})[0]).toMatchObject({ resource: 'nginx', resourceKind: 'name' })
+    expectValidation(() => normalizePayload('dynatrace', { ...DT, ImpactedEntities: [], ImpactedEntity: '3 impacted entities' }, {}, {}), /ImpactedEntity "3 impacted entities" does not start with a known entity type \(Host, Service, Application, Process group, Process, Custom device, Database, Synthetic monitor, Kubernetes cluster, Cloud application\): paste the \{ImpactedEntities\} placeholder/)
+    expectValidation(() => normalizePayload('dynatrace', { ...DT, ImpactedEntities: [], ImpactedEntity: 'Host ' }, {}, {}), /ImpactedEntity "Host" does not start with a known entity type/)
   })
 
   it('senza PID → ProblemID come externalId; senza ProblemDetailsText → nessuna description', () => {
@@ -294,11 +442,11 @@ describe('normalizePayload — dynatrace', () => {
   it.each([
     ['senza PID né ProblemID', { ...DT, PID: undefined, ProblemID: undefined }, /PID \(or ProblemID\) is missing or empty/],
     ['senza ProblemTitle', { ...DT, ProblemTitle: '' }, /ProblemTitle is missing or empty/],
-    ['State sconosciuto', { ...DT, State: 'MERGED' }, /State must be one of: OPEN, RESOLVED\. Got: "MERGED"/],
+    ['State sconosciuto', { ...DT, State: 'MERGED' }, /State must be one of: OPEN, RESOLVED\. Got: "MERGED" \(or map it in value_mapping\.status\)/],
     ['senza State', { ...DT, State: undefined }, /State is missing/],
-    ['severità sconosciuta', { ...DT, ProblemSeverity: 'FATAL' }, /ProblemSeverity must be one of: AVAILABILITY, ERROR, PERFORMANCE, RESOURCE_CONTENTION, CUSTOM_ALERT, MONITORING_UNAVAILABLE\. Got: "FATAL"/],
+    ['severità sconosciuta', { ...DT, ProblemSeverity: 'FATAL' }, /ProblemSeverity must be one of: AVAILABILITY, ERROR, PERFORMANCE, RESOURCE_CONTENTION, CUSTOM_ALERT, MONITORING_UNAVAILABLE\. Got: "FATAL" \(or map it in value_mapping\.severity\)/],
     ['senza severità', { ...DT, ProblemSeverity: undefined }, /ProblemSeverity is missing/],
-    ['senza risorsa', { ...DT, ImpactedEntities: [], ImpactedEntity: '' }, /ImpactedEntities is empty and ImpactedEntity is missing or empty/],
+    ['senza risorsa', { ...DT, ImpactedEntities: [], ImpactedEntity: '' }, /ImpactedEntities is empty and ImpactedEntity is missing or empty and default_values\.resource is not set/],
     ['ImpactedEntities stringa (segnaposto tra virgolette)', { ...DT, ImpactedEntities: '{ImpactedEntities}' }, /ImpactedEntities must be a list/],
     ['primo impattato senza name', { ...DT, ImpactedEntities: [{ type: 'HOST', entity: 'HOST-1' }] }, /ImpactedEntities\[0\]\.name is missing or empty/],
     ['payload stringa', 'x', /Dynatrace payload must be a JSON object/],
@@ -365,7 +513,7 @@ describe('getPath / listPayloadKeys', () => {
     expect(quoteValue(long)).toBe(`"${'y'.repeat(59)}…`)
     expect(quoteValue(long)).toHaveLength(61)
     // il messaggio di un connettore cita il valore troncato, non i 500 caratteri
-    expectValidation(() => normalizePayload('dynatrace', { PID: 'P-1', ProblemTitle: 'T', State: long, ProblemSeverity: 'ERROR', ImpactedEntity: 'h' }, {}, {}), /State must be one of: OPEN, RESOLVED\. Got: "y{59}…$/)
+    expectValidation(() => normalizePayload('dynatrace', { PID: 'P-1', ProblemTitle: 'T', State: long, ProblemSeverity: 'ERROR', ImpactedEntity: 'Host h' }, {}, {}), /State must be one of: OPEN, RESOLVED\. Got: "y{59}… \(or map it in value_mapping\.status\)$/)
   })
 })
 
@@ -404,12 +552,37 @@ describe('normalizePayload — generic (campo normalizzato → percorso puntato)
     ['severity assente senza default', { ...PAYLOAD, alert: { name: 'X' } }, MAPPING, DEFAULTS, /severity \(field_mapping\.severity = "alert\.level", no default_values\.severity\) is missing/],
     ['resourceKind mancante (né mappato né in default_values)', PAYLOAD, MAPPING, {}, /resourceKind is missing: set default_values\.resourceKind/],
     ['resourceKind fuori enum', PAYLOAD, MAPPING, { resourceKind: 'mac' }, /resourceKind must be one of: hostname, ip, fqdn, external_id, name/],
-    ['labels non oggetto', { ...PAYLOAD, tags: 'x' }, MAPPING, DEFAULTS, /labels must be an object/],
-    ['chiave di field_mapping sconosciuta', PAYLOAD, { ...MAPPING, summary: 'msg' }, DEFAULTS, /field_mapping\.summary is not a normalized field \(allowed: title, severity, status, resource, resourceKind, externalId, description, labels, startsAt, endsAt\)/],
+    ['labels numero', { ...PAYLOAD, tags: 3 }, MAPPING, DEFAULTS, /labels must be a list of "key:value" strings, a comma-separated string or an object/],
+    ['chiave di field_mapping sconosciuta', PAYLOAD, { ...MAPPING, summary: 'msg' }, DEFAULTS, /field_mapping\.summary is not a normalized field \(allowed: title, severity, status, resource, resourceKind, resourceExternalId, externalId, description, labels, startsAt, endsAt\)/],
     ['percorso vuoto', PAYLOAD, { ...MAPPING, title: ' ' }, DEFAULTS, /field_mapping\.title must be a non-empty dotted path/],
     ['payload lista', [PAYLOAD], MAPPING, DEFAULTS, /must be a JSON object/],
   ])('%s → ValidationError', (_n, payload, mapping, defaults, pattern) => {
     expectValidation(() => normalizePayload('generic', payload, mapping as never, defaults, parseValueMapping(VALUES)), pattern)
+  })
+
+  it('B6 — labels del generic: oggetto, lista ["k:v"] (senza ":" → true) o stringa CSV; M2 — resourceExternalId da field_mapping', () => {
+    const base = { title: 'T', severity: 'info', resource: 'r' }
+    expect(normalizePayload('generic', { ...base, labels: ['env:prod', 'monitor', ' team:ops '] }, {}, { resourceKind: 'name' })[0]!.labels).toEqual({ env: 'prod', monitor: 'true', team: 'ops' })
+    expect(normalizePayload('generic', { ...base, labels: 'env:prod, team:ops' }, {}, { resourceKind: 'name' })[0]!.labels).toEqual({ env: 'prod', team: 'ops' })
+    expect(normalizePayload('generic', { ...base, labels: { env: 'prod', n: 2 } }, {}, { resourceKind: 'name' })[0]!.labels).toEqual({ env: 'prod', n: '2' })
+    const out = normalizePayload('generic', { ...base, host: { id: 'HOST-42' } }, { resourceExternalId: 'host.id' }, { resourceKind: 'name' })[0]!
+    expect(out.resourceExternalId).toBe('HOST-42')
+    expect(out).not.toHaveProperty('externalId')
+  })
+
+  it('A1 — validatePresetDefaults (sourceConfigOf dei preset): chiavi ignote, resource senza resourceKind, resourceKind fuori enum, resourceFrom fuori opzioni → ValidationError; config valida accettata', () => {
+    const cfg = (kind: string, defaults: Record<string, unknown>) => sourceConfigOf({ connector_kind: kind, default_values: JSON.stringify(defaults) })
+    expect(cfg('alertmanager', { severity: 'warning', resource: 'prom', resourceKind: 'name' }).defaults).toEqual({ severity: 'warning', resource: 'prom', resourceKind: 'name' })
+    expect(cfg('datadog', { resourceFrom: 'alert_scope' }).defaults).toEqual({ resourceFrom: 'alert_scope' })
+    expectValidation(() => cfg('alertmanager', { title: 'x' }), /default_values\.title is not supported by the alertmanager connector \(allowed: severity, resource, resourceKind, resourceFrom\)/)
+    expectValidation(() => cfg('zabbix', { resource: 'x' }), /default_values\.resourceKind is required with default_values\.resource/)
+    expectValidation(() => cfg('zabbix', { resource: '' , resourceKind: 'name' }), /default_values\.resource must be a non-empty string/)
+    expectValidation(() => cfg('zabbix', { resourceKind: 'planet' }), /default_values\.resourceKind must be one of: hostname, ip, fqdn, external_id, name/)
+    expectValidation(() => cfg('zabbix', { severity: '' }), /default_values\.severity must be a non-empty string/)
+    expectValidation(() => cfg('zabbix', { resourceFrom: 'alert_scope' }), /default_values\.resourceFrom is not supported by the zabbix connector/)
+    expectValidation(() => cfg('datadog', { resourceFrom: 'tags' }), /default_values\.resourceFrom for datadog must be one of: alert_scope\. Got: "tags"/)
+    // il generic non passa da qui: i suoi default sono i campi normalizzati
+    expect(sourceConfigOf({ connector_kind: 'generic', default_values: JSON.stringify({ title: 'x', resourceKind: 'name' }) }).defaults).toEqual({ title: 'x', resourceKind: 'name' })
   })
 
   it('parseValueMapping: campo non supportato, tabella non oggetto, destinazione fuori vocabolario → ValidationError', () => {
@@ -474,43 +647,47 @@ describe('fingerprintOf', () => {
 
 describe('nextEventState', () => {
   const ev = { status: 'firing', severity: 'warning', title: 'T', resource: 'r', resourceKind: 'name', labels: {} } as const
-  const existing = { status: 'firing', severity: 'info', count: 3, first_seen_at: 'T0', resolved_at: null, transitions: ['T-1'], last_payload_status: 'firing' }
+  const existing = { status: 'firing', severity: 'info', max_severity: 'info', count: 3, first_seen_at: 'T0', resolved_at: null, transitions: ['T-1'], last_payload_status: 'firing', correlation: 'attached' }
 
-  it('firing su evento aperto → count+1, severità = la più alta, first_seen invariato, status invariato, nessun passaggio registrato, nessun residuo azzerato', () => {
-    expect(nextEventState(existing, ev, 'NOW')).toEqual({ status: 'firing', severity: 'warning', count: 4, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: null, transitions: ['T-1'], last_payload_status: 'firing', clear: 'none' })
-    expect(nextEventState({ ...existing, severity: 'critical' }, ev, 'NOW').severity).toBe('critical')
+  it('firing su evento aperto → count+1, severità = quella del payload, max_severity = la più alta, first_seen invariato, status invariato, nessun passaggio registrato, nessun residuo azzerato', () => {
+    expect(nextEventState(existing, ev, 'NOW')).toEqual({ status: 'firing', severity: 'warning', max_severity: 'warning', count: 4, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: null, transitions: ['T-1'], last_payload_status: 'firing', correlation: 'attached', clear: 'none' })
+    expect(nextEventState({ ...existing, severity: 'critical', max_severity: 'critical' }, ev, 'NOW')).toMatchObject({ severity: 'warning', max_severity: 'critical' })
     expect(nextEventState({ ...existing, status: 'suppressed' }, ev, 'NOW').status).toBe('suppressed')
   })
 
-  it('M9 — una severità più bassa in un firing successivo NON abbassa quella dell\'evento (max); un nuovo ciclo dopo resolved riparte da quella del payload', () => {
-    expect(nextEventState({ ...existing, severity: 'critical' }, { ...ev, severity: 'info' }, 'NOW')).toMatchObject({ severity: 'critical', count: 4 })
-    expect(nextEventState({ ...existing, status: 'flapping', severity: 'critical' }, { ...ev, severity: 'info' }, 'NOW')).toMatchObject({ severity: 'critical' })
-    expect(nextEventState({ ...existing, status: 'resolved', severity: 'critical', last_payload_status: 'resolved' }, { ...ev, severity: 'info' }, 'NOW')).toMatchObject({ severity: 'info', count: 1, status: 'firing' })
+  it('M9 — la severità è quella dell\'ULTIMO payload (può scendere: la salute del CI segue la sorgente); la storia resta in max_severity; un nuovo ciclo riparte da quella del payload; evento senza max_severity → parte dalla corrente', () => {
+    expect(nextEventState({ ...existing, severity: 'critical', max_severity: 'critical' }, { ...ev, severity: 'info' }, 'NOW')).toMatchObject({ severity: 'info', max_severity: 'critical', count: 4 })
+    expect(nextEventState({ ...existing, status: 'flapping', severity: 'critical', max_severity: 'critical' }, { ...ev, severity: 'info' }, 'NOW')).toMatchObject({ severity: 'info', max_severity: 'critical' })
+    expect(nextEventState({ ...existing, status: 'resolved', severity: 'critical', max_severity: 'critical', last_payload_status: 'resolved' }, { ...ev, severity: 'info' }, 'NOW')).toMatchObject({ severity: 'info', max_severity: 'info', count: 1, status: 'firing' })
+    // pre-M9: max_severity assente → la storia nota è la corrente
+    const legacy = { ...existing, severity: 'critical', max_severity: undefined }
+    expect(nextEventState(legacy, { ...ev, severity: 'info' }, 'NOW')).toMatchObject({ severity: 'info', max_severity: 'critical' })
+    expect(nextEventState({ ...legacy, status: 'resolved', last_payload_status: 'resolved' }, { ...ev, status: 'resolved' }, 'NOW')).toMatchObject({ severity: 'critical', max_severity: 'critical' })
   })
 
-  it('firing su evento risolto → nuovo ciclo: count 1, first_seen = ora, severità del payload, resolved_at null, passaggio appeso, residui del nuovo ciclo azzerati', () => {
-    expect(nextEventState({ ...existing, status: 'resolved', severity: 'critical', resolved_at: 'T1', last_payload_status: 'resolved' }, ev, 'NOW'))
-      .toEqual({ status: 'firing', severity: 'warning', count: 1, first_seen_at: 'NOW', last_seen_at: 'NOW', resolved_at: null, transitions: ['T-1', 'NOW'], last_payload_status: 'firing', clear: 'new_cycle' })
+  it('firing su evento risolto → nuovo ciclo: count 1, first_seen = ora, severità del payload, resolved_at null, passaggio appeso, residui del nuovo ciclo azzerati (M10: correlation → none)', () => {
+    expect(nextEventState({ ...existing, status: 'resolved', severity: 'critical', max_severity: 'critical', resolved_at: 'T1', last_payload_status: 'resolved', correlation: 'attached' }, ev, 'NOW'))
+      .toEqual({ status: 'firing', severity: 'warning', max_severity: 'warning', count: 1, first_seen_at: 'NOW', last_seen_at: 'NOW', resolved_at: null, transitions: ['T-1', 'NOW'], last_payload_status: 'firing', correlation: 'none', clear: 'new_cycle' })
   })
 
-  it('resolved su evento aperto → status resolved, resolved_at = ora, count e severità invariati, passaggio appeso, residui (soppressione/sfarfallio/ritardo) azzerati', () => {
+  it('resolved su evento aperto → status resolved, resolved_at = ora, count e severità invariati, passaggio appeso, residui (soppressione/sfarfallio/ritardo) azzerati, correlation invariata', () => {
     expect(nextEventState(existing, { ...ev, status: 'resolved' }, 'NOW'))
-      .toEqual({ status: 'resolved', severity: 'info', count: 3, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: 'NOW', transitions: ['T-1', 'NOW'], last_payload_status: 'resolved', clear: 'resolved' })
+      .toEqual({ status: 'resolved', severity: 'info', max_severity: 'info', count: 3, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: 'NOW', transitions: ['T-1', 'NOW'], last_payload_status: 'resolved', correlation: 'attached', clear: 'resolved' })
     expect(nextEventState({ ...existing, status: 'suppressed' }, { ...ev, status: 'resolved' }, 'NOW')).toMatchObject({ status: 'resolved', clear: 'resolved' })
   })
 
   it('resolved su evento già risolto → tutto invariato (anche resolved_at: resta il primo rientro), solo last_seen e ultimo payload', () => {
     const resolved = { ...existing, status: 'resolved', resolved_at: 'T1', last_payload_status: 'resolved' }
     expect(nextEventState(resolved, { ...ev, status: 'resolved' }, 'NOW'))
-      .toEqual({ status: 'resolved', severity: 'info', count: 3, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: 'T1', transitions: ['T-1'], last_payload_status: 'resolved', clear: 'none' })
+      .toEqual({ status: 'resolved', severity: 'info', max_severity: 'info', count: 3, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: 'T1', transitions: ['T-1'], last_payload_status: 'resolved', correlation: 'attached', clear: 'none' })
   })
 
   it('ondata 4 — evento flapping: lo stato NON cambia con firing né con resolved; si aggiornano lista, ultimo payload, last_seen, count/resolved_at', () => {
-    const flapping = { ...existing, status: 'flapping', severity: 'warning', transitions: ['T-2', 'T-1'], last_payload_status: 'firing' }
+    const flapping = { ...existing, status: 'flapping', severity: 'warning', max_severity: 'warning', transitions: ['T-2', 'T-1'], last_payload_status: 'firing', correlation: 'flapping' }
     expect(nextEventState(flapping, { ...ev, status: 'resolved' }, 'NOW'))
-      .toEqual({ status: 'flapping', severity: 'warning', count: 3, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: 'NOW', transitions: ['T-2', 'T-1', 'NOW'], last_payload_status: 'resolved', clear: 'none' })
+      .toEqual({ status: 'flapping', severity: 'warning', max_severity: 'warning', count: 3, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: 'NOW', transitions: ['T-2', 'T-1', 'NOW'], last_payload_status: 'resolved', correlation: 'flapping', clear: 'none' })
     expect(nextEventState({ ...flapping, last_payload_status: 'resolved', resolved_at: 'T1' }, { ...ev, severity: 'critical' }, 'NOW'))
-      .toEqual({ status: 'flapping', severity: 'critical', count: 4, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: null, transitions: ['T-2', 'T-1', 'NOW'], last_payload_status: 'firing', clear: 'none' })
+      .toEqual({ status: 'flapping', severity: 'critical', max_severity: 'critical', count: 4, first_seen_at: 'T0', last_seen_at: 'NOW', resolved_at: null, transitions: ['T-2', 'T-1', 'NOW'], last_payload_status: 'firing', correlation: 'flapping', clear: 'none' })
     // ripetizione dello stesso stato durante lo sfarfallio: nessun passaggio
     expect(nextEventState(flapping, ev, 'NOW').transitions).toEqual(['T-2', 'T-1'])
   })
@@ -559,16 +736,16 @@ describe('EVENT_TRANSITIONS — tabella condivisa fra funzione pura e CASE Cyphe
   // pura deve produrla dalle regole, il CASE Cypher deve avere un ramo per riga
   // con l'espressione dell'azione corrispondente.
   const TABLE: Array<[prev: string, payload: 'firing' | 'resolved', exp: Record<string, unknown>]> = [
-    ['resolved', 'firing',   { status: 'firing',   count: 1, severity: 'warning',  first_seen_at: 'NOW', resolved_at: null,  clear: 'new_cycle' }],
-    ['resolved', 'resolved', { status: 'resolved', count: 3, severity: 'critical', first_seen_at: 'T0',  resolved_at: 'T1',  clear: 'none' }],
-    ['firing',   'firing',   { status: 'firing',   count: 4, severity: 'critical', first_seen_at: 'T0',  resolved_at: 'T1',  clear: 'none' }],
-    ['firing',   'resolved', { status: 'resolved', count: 3, severity: 'critical', first_seen_at: 'T0',  resolved_at: 'NOW', clear: 'resolved' }],
-    ['flapping', 'firing',   { status: 'flapping', count: 4, severity: 'critical', first_seen_at: 'T0',  resolved_at: null,  clear: 'none' }],
-    ['flapping', 'resolved', { status: 'flapping', count: 3, severity: 'critical', first_seen_at: 'T0',  resolved_at: 'NOW', clear: 'none' }],
+    ['resolved', 'firing',   { status: 'firing',   count: 1, severity: 'warning',  max_severity: 'warning',  first_seen_at: 'NOW', resolved_at: null,  correlation: 'none',     clear: 'new_cycle' }],
+    ['resolved', 'resolved', { status: 'resolved', count: 3, severity: 'critical', max_severity: 'critical', first_seen_at: 'T0',  resolved_at: 'T1',  correlation: 'attached', clear: 'none' }],
+    ['firing',   'firing',   { status: 'firing',   count: 4, severity: 'warning',  max_severity: 'critical', first_seen_at: 'T0',  resolved_at: 'T1',  correlation: 'attached', clear: 'none' }],
+    ['firing',   'resolved', { status: 'resolved', count: 3, severity: 'critical', max_severity: 'critical', first_seen_at: 'T0',  resolved_at: 'NOW', correlation: 'attached', clear: 'resolved' }],
+    ['flapping', 'firing',   { status: 'flapping', count: 4, severity: 'warning',  max_severity: 'critical', first_seen_at: 'T0',  resolved_at: null,  correlation: 'attached', clear: 'none' }],
+    ['flapping', 'resolved', { status: 'flapping', count: 3, severity: 'critical', max_severity: 'critical', first_seen_at: 'T0',  resolved_at: 'NOW', correlation: 'attached', clear: 'none' }],
   ]
 
   it.each(TABLE)('funzione pura — %s × %s', (prev, payload, exp) => {
-    const existing = { status: prev, severity: 'critical', count: 3, first_seen_at: 'T0', resolved_at: 'T1', transitions: [], last_payload_status: prev === 'resolved' ? 'resolved' : 'firing' }
+    const existing = { status: prev, severity: 'critical', max_severity: 'critical', count: 3, first_seen_at: 'T0', resolved_at: 'T1', transitions: [], last_payload_status: prev === 'resolved' ? 'resolved' : 'firing', correlation: 'attached' }
     expect(nextEventState(existing, { ...ev, status: payload }, 'NOW')).toMatchObject(exp)
   })
 
@@ -580,19 +757,28 @@ describe('EVENT_TRANSITIONS — tabella condivisa fra funzione pura e CASE Cyphe
     expect(set).toContain(`e.status = ${transitionCaseCypher((r) => a.status[r.status])}`)
     expect(transitionCaseCypher((r) => a.status[r.status])).toContain(branch(exp['status'] === prev ? 'e.status' : `'${exp['status']}'`))
     expect(transitionCaseCypher((r) => a.count[r.count])).toContain(branch(exp['count'] === 1 ? '1' : exp['count'] === 4 ? 'coalesce(e.count, 0) + 1' : 'e.count'))
+    // M9: la severità corrente è quella del payload a ogni firing (mai "max"); la storia in max_severity
+    expect(rule.severity).toBe(exp['severity'] === 'warning' ? 'payload' : 'keep')
     expect(transitionCaseCypher((r) => a.severity[r.severity])).toContain(branch(rule.severity === 'payload' ? '$severity' : rule.severity === 'max' ? SEVERITY_MAX_CYPHER : 'e.severity'))
+    expect(transitionCaseCypher((r) => a.maxSeverity[r.maxSeverity])).toContain(branch(rule.maxSeverity === 'payload' ? '$severity' : rule.maxSeverity === 'max' ? svc.MAX_SEVERITY_MAX_CYPHER : 'coalesce(e.max_severity, e.severity)'))
     expect(transitionCaseCypher((r) => a.firstSeen[r.firstSeen])).toContain(branch(exp['first_seen_at'] === 'NOW' ? '$now' : 'coalesce(e.first_seen_at, $now)'))
     expect(transitionCaseCypher((r) => a.resolvedAt[r.resolvedAt])).toContain(branch(exp['resolved_at'] === 'NOW' ? '$now' : exp['resolved_at'] === null ? 'null' : 'e.resolved_at'))
-    // residui (M10): suppressed_by_change_id e correlation_due_at solo al passaggio a resolved; flapping_since anche al nuovo ciclo
+    // residui (M10): suppressed_by_change_id solo al passaggio a resolved; correlation_due_at e flapping_since anche al nuovo ciclo; correlation → none e correlation_at → null al nuovo ciclo
     const clearsResolved = exp['clear'] === 'resolved'
-    const clearsFlap = exp['clear'] === 'resolved' || exp['clear'] === 'new_cycle'
+    const newCycle = exp['clear'] === 'new_cycle'
+    const clearsFlap = clearsResolved || newCycle
     expect(residueClearCypher('suppressed_by_change_id', ['resolved'])).toContain(branch(clearsResolved ? 'null' : 'e.suppressed_by_change_id'))
-    expect(residueClearCypher('correlation_due_at', ['resolved'])).toContain(branch(clearsResolved ? 'null' : 'e.correlation_due_at'))
+    expect(residueClearCypher('correlation_due_at', ['resolved', 'new_cycle'])).toContain(branch(clearsFlap ? 'null' : 'e.correlation_due_at'))
     expect(residueClearCypher('flapping_since', ['resolved', 'new_cycle'])).toContain(branch(clearsFlap ? 'null' : 'e.flapping_since'))
+    expect(set).toContain(`e.correlation = ${transitionCaseCypher((r) => (r.clear === 'new_cycle' ? "'none'" : 'e.correlation'))}`)
+    expect(transitionCaseCypher((r) => (r.clear === 'new_cycle' ? "'none'" : 'e.correlation'))).toContain(branch(newCycle ? "'none'" : 'e.correlation'))
+    expect(set).toContain(`e.correlation_at = ${residueClearCypher('correlation_at', ['new_cycle'])}`)
+    expect(set).toContain(`e.correlation_due_at = ${residueClearCypher('correlation_due_at', ['resolved', 'new_cycle'])}`)
   })
 
-  it('SEVERITY_MAX_CYPHER confronta i rank ($severityRank) e tiene la corrente a parità; la classe open è "non resolved e non flapping"', () => {
+  it('SEVERITY_MAX_CYPHER confronta i rank ($severityRank) e tiene la corrente a parità; MAX_SEVERITY_MAX_CYPHER parte da max_severity (o dalla corrente se assente); la classe open è "non resolved e non flapping"', () => {
     expect(SEVERITY_MAX_CYPHER).toBe('CASE WHEN coalesce($severityRank[$severity], -1) > coalesce($severityRank[e.severity], -1) THEN $severity ELSE e.severity END')
+    expect(svc.MAX_SEVERITY_MAX_CYPHER).toBe('CASE WHEN coalesce($severityRank[$severity], -1) > coalesce($severityRank[coalesce(e.max_severity, e.severity)], -1) THEN $severity ELSE coalesce(e.max_severity, e.severity) END')
     expect(PREV_CLASS_CYPHER).toEqual({ resolved: "e.status = 'resolved'", flapping: "e.status = 'flapping'", open: "NOT e.status IN ['resolved', 'flapping']" })
     // nessun ELSE: uno status fuori vocabolario non deve produrre null in silenzio (lo blocca ingestEvent prima)
     expect(transitionCaseCypher(() => '1')).not.toMatch(/ELSE/)
@@ -603,10 +789,13 @@ describe('EVENT_TRANSITIONS — tabella condivisa fra funzione pura e CASE Cyphe
     const set = transitionSetCypher()
     const at = (frag: string) => { const i = set.indexOf(frag); expect(i, frag).toBeGreaterThanOrEqual(0); return i }
     const status = at('e.status = CASE')
-    for (const before of ['e.count = CASE', 'e.severity = CASE', 'e.first_seen_at = CASE', 'e.resolved_at = CASE', 'e.suppressed_by_change_id = CASE', 'e.correlation_due_at = CASE', 'e.flapping_since = CASE', 'e.transitions = CASE', 'e.last_payload_status = $status']) {
+    for (const before of ['e.count = CASE', 'e.max_severity = CASE', 'e.severity = CASE', 'e.first_seen_at = CASE', 'e.resolved_at = CASE', 'e.suppressed_by_change_id = CASE', 'e.correlation_due_at = CASE', 'e.flapping_since = CASE', 'e.correlation = CASE', 'e.correlation_at = CASE', 'e.transitions = CASE', 'e.last_payload_status = $status']) {
       expect(at(before), before).toBeLessThan(status)
     }
+    // M9: max_severity legge e.severity pre-scrittura (eventi senza max_severity) → assegnata PRIMA di severity
+    expect(at('e.max_severity = CASE')).toBeLessThan(at('e.severity = CASE'))
     expect(at('e.last_payload_status = $status')).toBeGreaterThan(at('e.transitions = CASE'))
+    expect(set).toContain('e.resource_external_id = coalesce($resourceExternalId, e.resource_external_id)')
     expect(set).toContain(`e.transitions = CASE WHEN $status <> coalesce(e.last_payload_status, CASE WHEN e.status = 'resolved' THEN 'resolved' ELSE 'firing' END) THEN (coalesce(e.transitions, []) + $now)[-${MAX_TRANSITIONS}..] ELSE coalesce(e.transitions, []) END`)
     expect(set).toContain('e.last_seen_at = $now')
     expect(set).toContain('e.last_received_at = $receivedAt')
@@ -617,7 +806,10 @@ describe('EVENT_TRANSITIONS — tabella condivisa fra funzione pura e CASE Cyphe
     const q = ingestMergeCypher()
     expect(q.match(/MERGE \(e:Event/g)).toHaveLength(1)
     expect(q).toContain('MERGE (e:Event {tenant_id: $tenantId, fingerprint: $fingerprint})')
-    expect(q).toContain('e.count = 1, e.first_seen_at = $now, e.last_seen_at = $now, e.last_received_at = $receivedAt')
+    expect(q).toContain('e.id = $id, e.external_id = $externalId, e.resource_external_id = $resourceExternalId')
+    expect(q).toContain('e.status = $status, e.severity = $severity, e.max_severity = $severity')
+    // B5: first_seen_at dal parametro (starts_at della sorgente per un resolved mai visto, altrimenti $now: lo decide ingest.ts)
+    expect(q).toContain('e.count = 1, e.first_seen_at = $firstSeenAt, e.last_seen_at = $now, e.last_received_at = $receivedAt')
     expect(q).toContain("e.resolved_at = CASE WHEN $status = 'resolved' THEN $now ELSE null END")
     expect(q).toContain("e.correlation = 'none', e.correlation_at = null, e.correlation_due_at = null, e.suppressed_by_change_id = null")
     expect(q).toContain('e.transitions = [], e.last_payload_status = $status, e.flapping_since = null')
@@ -632,15 +824,66 @@ describe('EVENT_TRANSITIONS — tabella condivisa fra funzione pura e CASE Cyphe
     expect(q).toContain("FOREACH (_ IN CASE WHEN outcome = 'created' AND w IS NOT NULL THEN [1] ELSE [] END | MERGE (e)-[:FROM_SOURCE]->(w))")
     // CI: quello già agganciato vince; altrimenti alias/nome (solo se non agganciato e non stale), poi RAISED_ON
     expect(q).toContain('OPTIONAL MATCH (e)-[:RAISED_ON]->(linked:ConfigurationItem {tenant_id: $tenantId})')
-    expect(q).toContain(ciMatchCypher("linked IS NULL AND outcome <> 'stale'"))
-    expect(q).toContain('WITH e, outcome, w, linked, byExt, byKind, byName ORDER BY byName.created_at LIMIT 1')
-    expect(q).toContain('coalesce(linked, byExt, byKind, byName) AS ci')
-    expect(q).toContain('FOREACH (_ IN CASE WHEN linked IS NULL AND ci IS NOT NULL THEN [1] ELSE [] END | MERGE (e)-[:RAISED_ON]->(ci))')
-    expect(q).toContain('RETURN properties(e) AS props, outcome, ci.id AS ciId, w.connector_kind AS connectorKind, w.last_error IS NOT NULL AS sourceHasError')
+    expect(CI_MATCH_GUARD).toBe("linked IS NULL AND outcome <> 'stale'")
+    expect(q).toContain(ciMatchCypher({ guard: CI_MATCH_GUARD, carry: ['e', 'outcome', 'w', 'linked'] }))
+    expect(q).not.toMatch(/LIMIT 1/)
+    expect(q).toContain('coalesce(linked, matched) AS ci')
+    // A2: match_reason scritto ogni volta che il riconoscimento gira; RAISED_ON solo con UN CI riconosciuto (mai su ambiguous)
+    expect(q).toContain(`FOREACH (_ IN CASE WHEN ${CI_MATCH_GUARD} THEN [1] ELSE [] END | SET e.match_reason = matchReason)`)
+    expect(q).toContain('FOREACH (_ IN CASE WHEN linked IS NULL AND matched IS NOT NULL THEN [1] ELSE [] END | MERGE (e)-[:RAISED_ON]->(matched))')
+    expect(q).toContain('RETURN properties(e) AS props, outcome, ci.id AS ciId,')
+    expect(q).toContain(`CASE WHEN ${CI_MATCH_GUARD} THEN matchReason ELSE null END AS matchReason`)
+    expect(q).toContain(`CASE WHEN ${CI_MATCH_GUARD} THEN candidates ELSE [] END AS candidates`)
+    expect(q).toContain('w.connector_kind AS connectorKind, w.last_error IS NOT NULL AS sourceHasError')
     expect(INGEST_WRITE_OUTCOMES).toEqual(['created', 'applied', 'duplicate', 'stale'])
-    // il frammento condiviso con matchCI: senza guardia niente WHERE
-    expect(ciMatchCypher()).not.toMatch(/WHERE/)
-    expect(ciMatchCypher('x IS NULL').match(/ WHERE x IS NULL/g)).toHaveLength(3)
+  })
+
+  it('ciMatchCypher (A2/M2): alias external_id SOLO con $resourceExternalId (mai l\'id dell\'allarme), alias per kind, name_key indicizzato con collect (ambiguità esplicita), nome corto/FQDN solo con $matchShortHostname e senza nome esatto; precedenza alias_external_id → alias → name → name_short → none; candidati al massimo 5', () => {
+    const q = ciMatchCypher()
+    expect(q).toContain("OPTIONAL MATCH (:CIAlias {tenant_id: $tenantId, kind: 'external_id', value: $resourceExternalId})-[:ALIAS_OF]->(byExt:ConfigurationItem {tenant_id: $tenantId})")
+    expect(q).not.toMatch(/\$externalId\b/)
+    expect(q).toContain('OPTIONAL MATCH (:CIAlias {tenant_id: $tenantId, kind: $kind, value: $kindValue})-[:ALIAS_OF]->(byKind:ConfigurationItem {tenant_id: $tenantId})')
+    expect(q).toContain('OPTIONAL MATCH (byName:ConfigurationItem {tenant_id: $tenantId, name_key: $nameKey})')
+    expect(q).not.toMatch(/toLower\(ci\.name\)/)
+    expect(q).not.toMatch(/LIMIT 1/)
+    expect(q).toContain('WITH byExt, byKind, byName ORDER BY byName.created_at')
+    expect(q).toContain('WITH byExt, byKind, collect(byName) AS byNames')
+    // nome corto ↔ FQDN: entrambi i seek sull'indice (name_key inline / STARTS WITH), spenti senza policy o con un nome esatto trovato
+    expect(q).toContain('OPTIONAL MATCH (byShort:ConfigurationItem {tenant_id: $tenantId, name_key: $shortNameKey}) WHERE $matchShortHostname AND size(byNames) = 0')
+    expect(q).toContain('OPTIONAL MATCH (byPrefix:ConfigurationItem {tenant_id: $tenantId}) WHERE $matchShortHostname AND size(byNames) = 0 AND byPrefix.name_key STARTS WITH $fqdnPrefix')
+    expect(q).toContain('collect(byShortOrPrefix) AS byShorts')
+    expect(q).toMatch(/WHEN byExt IS NOT NULL THEN 'alias_external_id'\s+WHEN byKind IS NOT NULL THEN 'alias'\s+WHEN size\(byNames\) = 1 THEN 'name'\s+WHEN size\(byNames\) > 1 THEN 'ambiguous'\s+WHEN size\(byShorts\) = 1 THEN 'name_short'\s+WHEN size\(byShorts\) > 1 THEN 'ambiguous'\s+ELSE 'none' END AS matchReason/)
+    expect(q).toContain("CASE matchReason WHEN 'alias_external_id' THEN byExt WHEN 'alias' THEN byKind WHEN 'name' THEN byNames[0] WHEN 'name_short' THEN byShorts[0] ELSE null END AS matched")
+    expect(MATCH_CANDIDATES_MAX).toBe(5)
+    expect(q).toContain("CASE WHEN matchReason = 'ambiguous' THEN [c IN (CASE WHEN size(byNames) > 1 THEN byNames ELSE byShorts END)[..5] | {id: c.id, name: c.name}] ELSE [] END AS candidates")
+    // senza guardia niente WHERE sui tre MATCH principali; con guardia, su tutti e cinque
+    expect(q.match(/\) WHERE /g)).toHaveLength(2)
+    const guarded = ciMatchCypher({ guard: 'x IS NULL', carry: ['a', 'b'] })
+    expect(guarded.match(/ WHERE x IS NULL/g)).toHaveLength(5)
+    expect(guarded.match(/ WHERE x IS NULL AND \$matchShortHostname AND size\(byNames\) = 0/g)).toHaveLength(2)
+    // le variabili del chiamante attraversano ogni WITH (collect non le perde)
+    expect(guarded.match(/WITH a, b, /g)).toHaveLength(6)
+    expect(guarded).not.toMatch(/WITH byExt/)
+  })
+
+  it('shortHostnameKeys: FQDN → prima etichetta; nome corto → prefisso "nome."; niente per ip/external_id, indirizzi IPv4/IPv6, etichetta vuota; ciMatchParams le espone solo con la policy accesa', () => {
+    expect(shortHostnameKeys('db-01.example.local', 'hostname')).toEqual({ shortNameKey: 'db-01', fqdnPrefix: null })
+    expect(shortHostnameKeys('db-01', 'hostname')).toEqual({ shortNameKey: null, fqdnPrefix: 'db-01.' })
+    expect(shortHostnameKeys('db-01', 'fqdn')).toEqual({ shortNameKey: null, fqdnPrefix: 'db-01.' })
+    expect(shortHostnameKeys('checkout.prod', 'name')).toEqual({ shortNameKey: 'checkout', fqdnPrefix: null })
+    expect(shortHostnameKeys('10.0.0.7', 'hostname')).toEqual({ shortNameKey: null, fqdnPrefix: null })
+    expect(shortHostnameKeys('2001:db8::10', 'hostname')).toEqual({ shortNameKey: null, fqdnPrefix: null })
+    expect(shortHostnameKeys('10.0.0.7', 'ip')).toEqual({ shortNameKey: null, fqdnPrefix: null })
+    expect(shortHostnameKeys('host-9', 'external_id')).toEqual({ shortNameKey: null, fqdnPrefix: null })
+    expect(shortHostnameKeys('.example', 'hostname')).toEqual({ shortNameKey: null, fqdnPrefix: null })
+    expect(shortHostnameKeys(null, 'hostname')).toEqual({ shortNameKey: null, fqdnPrefix: null })
+    const ev = { resource: 'DB-01.Example.local', resourceKind: 'hostname', resourceExternalId: 'HOST-1' } as const
+    expect(ciMatchParams('t1', ev, { matchShortHostname: false })).toEqual({ tenantId: 't1', resourceExternalId: 'HOST-1', kind: 'hostname', kindValue: 'db-01.example.local', nameKey: 'db-01.example.local', matchShortHostname: false, shortNameKey: null, fqdnPrefix: null })
+    expect(ciMatchParams('t1', ev, { matchShortHostname: true })).toMatchObject({ matchShortHostname: true, shortNameKey: 'db-01', fqdnPrefix: null })
+    expect(ciMatchParams('t1', { resource: 'db-01', resourceKind: 'hostname' }, { matchShortHostname: true })).toMatchObject({ resourceExternalId: null, shortNameKey: null, fqdnPrefix: 'db-01.' })
+    // kind name → alias per kind spento; kind external_id → valore NON minuscolo
+    expect(ciMatchParams('t1', { resource: 'Db-01', resourceKind: 'name' }, { matchShortHostname: false })).toMatchObject({ kind: null, kindValue: null, nameKey: 'db-01' })
+    expect(ciMatchParams('t1', { resource: 'HOST-9', resourceKind: 'external_id' }, { matchShortHostname: true })).toMatchObject({ kind: 'external_id', kindValue: 'HOST-9', nameKey: 'host-9', shortNameKey: null, fqdnPrefix: null })
   })
 })
 
@@ -734,33 +977,30 @@ describe('recomputeCIHealth', () => {
 // ── matchCI ──────────────────────────────────────────────────────────────────
 
 describe('matchCI', () => {
-  const MATCH_RE = /coalesce\(byExt\.id, byKind\.id, byName\.id\) AS ciId/
+  const MATCH_RE = /RETURN matched\.id AS ciId, matchReason, candidates/
 
-  it('UNA sola query: alias external_id → alias per kind (minuscolo) → CI per name_key (minuscolo, indicizzato), tutti scoped per tenant; orfano se nulla combacia', async () => {
-    onCypher([[MATCH_RE, { ciId: null }]])
-    await expect(matchCI('t1', { externalId: 'E1', resource: 'DB-01', resourceKind: 'hostname' })).resolves.toBeNull()
+  it('UNA sola query (il frammento ciMatchCypher senza guardia) con i parametri di ciMatchParams, scoped per tenant; orfano con il motivo e i candidati', async () => {
+    onCypher([[MATCH_RE, { ciId: null, matchReason: 'ambiguous', candidates: [{ id: 'ci-a', name: 'DB-01' }, { id: 'ci-b', name: 'db-01' }] }]])
+    await expect(matchCI('t1', { resourceExternalId: 'HOST-1', resource: 'DB-01', resourceKind: 'hostname' }, { matchShortHostname: false }))
+      .resolves.toEqual({ ciId: null, matchReason: 'ambiguous', candidates: [{ id: 'ci-a', name: 'DB-01' }, { id: 'ci-b', name: 'db-01' }] })
     const c = calls()
     expect(c).toHaveLength(1)
     const { cypher, params } = c[0]!
-    expect(params).toEqual({ tenantId: 't1', externalId: 'E1', kind: 'hostname', kindValue: 'db-01', nameKey: 'db-01' })
-    expect(cypher).toContain("OPTIONAL MATCH (:CIAlias {tenant_id: $tenantId, kind: 'external_id', value: $externalId})-[:ALIAS_OF]->(byExt:ConfigurationItem {tenant_id: $tenantId})")
-    expect(cypher).toContain('OPTIONAL MATCH (:CIAlias {tenant_id: $tenantId, kind: $kind, value: $kindValue})-[:ALIAS_OF]->(byKind:ConfigurationItem {tenant_id: $tenantId})')
-    expect(cypher).toContain('OPTIONAL MATCH (byName:ConfigurationItem {tenant_id: $tenantId, name_key: $nameKey})')
-    expect(cypher).not.toMatch(/toLower\(ci\.name\)/)
-    // a parità di nome vince il CI più vecchio
-    expect(cypher).toContain('ORDER BY byName.created_at LIMIT 1')
+    expect(params).toEqual(ciMatchParams('t1', { resourceExternalId: 'HOST-1', resource: 'DB-01', resourceKind: 'hostname' }, { matchShortHostname: false }))
+    expect(cypher).toContain(ciMatchCypher())
+    expect(cypher).not.toMatch(/WHERE linked/)
+    expect(session.close).toHaveBeenCalled()
   })
 
-  it('kind name → alias per kind disattivato (parametri null); kind external_id → valore NON minuscolo; senza externalId → alias external_id disattivato', async () => {
-    onCypher([[MATCH_RE, { ciId: 'ci-name' }]])
-    await expect(matchCI('t1', { resource: 'Db-01', resourceKind: 'name' })).resolves.toBe('ci-name')
-    expect(calls()[0]!.params).toEqual({ tenantId: 't1', externalId: null, kind: null, kindValue: null, nameKey: 'db-01' })
+  it('CI riconosciuto → ciId e motivo; motivo fuori vocabolario o nessuna riga → errore (mai un esito inventato)', async () => {
+    onCypher([[MATCH_RE, { ciId: 'ci-name', matchReason: 'name_short', candidates: [] }]])
+    await expect(matchCI('t1', { resource: 'db-01.example.local', resourceKind: 'hostname' }, { matchShortHostname: true })).resolves.toEqual({ ciId: 'ci-name', matchReason: 'name_short', candidates: [] })
+    expect(calls()[0]!.params).toMatchObject({ matchShortHostname: true, shortNameKey: 'db-01' })
 
-    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
-    onCypher([[MATCH_RE, { ciId: 'ci-ext' }]])
-    await expect(matchCI('t1', { resource: 'HOST-9', resourceKind: 'external_id' })).resolves.toBe('ci-ext')
-    expect(calls()[0]!.params).toMatchObject({ kind: 'external_id', kindValue: 'HOST-9', nameKey: 'host-9' })
-    expect(session.close).toHaveBeenCalled()
+    onCypher([[MATCH_RE, { ciId: 'ci-x', matchReason: 'boh', candidates: [] }]])
+    await expect(matchCI('t1', { resource: 'x', resourceKind: 'name' }, { matchShortHostname: false })).rejects.toThrow(/unexpected match_reason "boh"/)
+    onCypher([[MATCH_RE, null]])
+    await expect(matchCI('t1', { resource: 'x', resourceKind: 'name' }, { matchShortHostname: false })).rejects.toThrow(/returned no row for tenant t1/)
   })
 })
 
@@ -769,25 +1009,29 @@ describe('matchCI', () => {
 const EV = { status: 'firing', severity: 'warning', title: 'DiskFull', resource: 'db-01', resourceKind: 'hostname', labels: { job: 'node' } } as const
 const eventProps = (over: Record<string, unknown> = {}) => ({ id: 'ev-1', fingerprint: 'fp', title: 'DiskFull', severity: 'warning', status: 'firing', resource: 'db-01', count: 1, source_id: 'hook-1', last_received_at: 'NOW', first_seen_at: 'T0', resolved_at: null, ...over })
 const MERGE_RE = /MERGE \(e:Event \{tenant_id: \$tenantId, fingerprint: \$fingerprint\}\)/
-/** Riga restituita dal MERGE dell'ingest (il CI, riconosciuto o già agganciato, arriva da qui). */
+/** Riga restituita dal MERGE dell'ingest (il CI, riconosciuto o già agganciato, arriva da qui; matchReason null = riconoscimento non eseguito). */
 const mergeRow = (outcome: string, props: Record<string, unknown> = {}, over: Record<string, unknown> = {}) =>
-  ({ props: eventProps(props), outcome, ciId: null, connectorKind: null, sourceHasError: false, ...over })
+  ({ props: eventProps(props), outcome, ciId: null, matchReason: null, candidates: [], connectorKind: null, sourceHasError: false, ...over })
 const publishedTypes = () => vi.mocked(publishEvent).mock.calls.map((c) => c[0])
+const { cacheEventPolicy: primePolicy, invalidateEventPolicyCache: clearPolicy, DEFAULT_EVENT_POLICY: POLICY } = await import('../../lib/eventPolicy.js')
 
 describe('ingestEvent', () => {
-  it('M11 — evento nuovo senza CI → UN solo statement (MERGE + riconoscimento del CI), record passato alla pipeline in modalità ingest senza rilettura, event.received + event.orphan', async () => {
-    onCypher([[MERGE_RE, mergeRow('created', { first_seen_at: 'NOW' })]])
+  // La policy del tenant arriva dalla cache (M11): qui è già calda, così il MERGE resta l'unica query.
+  beforeEach(() => primePolicy('t1', POLICY))
+
+  it('M11 — evento nuovo senza CI → UN solo statement (MERGE + riconoscimento del CI), record passato alla pipeline in modalità ingest senza rilettura, event.received + event.orphan con il motivo', async () => {
+    onCypher([[MERGE_RE, mergeRow('created', { first_seen_at: 'NOW', match_reason: 'none' }, { matchReason: 'none' })]])
     const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW', jobId: 'job-9' })
-    expect(out).toMatchObject({ created: true, ciId: null, outcome: 'created', sourceHasError: false })
+    expect(out).toMatchObject({ created: true, ciId: null, matchReason: 'none', candidates: [], outcome: 'created', sourceHasError: false })
     expect(calls()).toHaveLength(1)
     const merge = callMatching(MERGE_RE)!
     expect(merge.cypher).toBe(ingestMergeCypher())
     expect(merge.params).toMatchObject({
-      ...ciMatchParams('t1', EV),
+      ...ciMatchParams('t1', EV, { matchShortHostname: false }),
       sourceId: 'hook-1', fingerprint: fingerprintOf('hook-1', EV), status: 'firing', severity: 'warning',
       severityRank: { info: 0, warning: 1, critical: 2 }, labels: '{"job":"node"}', now: 'NOW', receivedAt: 'NOW', externalId: null, id: expect.any(String),
     })
-    expect(merge.params).toMatchObject({ kind: 'hostname', kindValue: 'db-01', nameKey: 'db-01' })
+    expect(merge.params).toMatchObject({ kind: 'hostname', kindValue: 'db-01', nameKey: 'db-01', matchShortHostname: false, shortNameKey: null, fqdnPrefix: null })
     expect(getSession).toHaveBeenCalledTimes(1)
     expect(runEventPipeline).toHaveBeenCalledWith({
       tenantId: 't1', eventId: 'ev-1', actorId: 'monitoring', now: 'NOW', mode: 'ingest', created: true, jobId: 'job-9',
@@ -795,12 +1039,72 @@ describe('ingestEvent', () => {
     })
     expect(publishedTypes()).toEqual(['event.received', 'event.orphan'])
     expect(vi.mocked(publishEvent).mock.calls[0]![3]).toMatchObject({ id: 'ev-1', fingerprint: 'fp', ci_id: null, entity_type: 'event', entity_id: 'ev-1', count: 1 })
-    // metriche: ricevuto (connettore assente sul webhook → generic), orfano, non deduplicato
+    expect(vi.mocked(publishEvent).mock.calls[0]![3]).not.toHaveProperty('match_reason')
+    expect(vi.mocked(publishEvent).mock.calls[1]![3]).toMatchObject({ id: 'ev-1', ci_id: null, match_reason: 'none', candidates: [] })
+    // metriche: ricevuto (connettore assente sul webhook → generic), orfano, non deduplicato, non ambiguo
     expect(metrics.eventsReceivedTotal.inc).toHaveBeenCalledWith({ connector: 'generic' })
     expect(metrics.eventsOrphanTotal.inc).toHaveBeenCalledTimes(1)
+    expect(metrics.eventsAmbiguousTotal.inc).not.toHaveBeenCalled()
     expect(metrics.eventsDeduplicatedTotal.inc).not.toHaveBeenCalled()
     expect(metrics.eventsStaleTotal.inc).not.toHaveBeenCalled()
     expect(session.close).toHaveBeenCalled()
+  })
+
+  it('A2 — policy match_short_hostname: letta dalla cache (nessuna query in più) e passata al MERGE come $matchShortHostname con le chiavi del nome corto; cache fredda → MATCH (t:Tenant) prima del MERGE; tenant senza policy → errore prima di ogni scrittura', async () => {
+    primePolicy('t1', { ...POLICY, match_short_hostname: true })
+    onCypher([[MERGE_RE, mergeRow('created', { first_seen_at: 'NOW', match_reason: 'name_short' }, { ciId: 'ci-9', matchReason: 'name_short' })]])
+    const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: { ...EV, resource: 'db-01.example.local' }, receivedAt: 'NOW' })
+    expect(out).toMatchObject({ ciId: 'ci-9', matchReason: 'name_short' })
+    expect(calls()).toHaveLength(1)
+    expect(callMatching(MERGE_RE)!.params).toMatchObject({ matchShortHostname: true, nameKey: 'db-01.example.local', shortNameKey: 'db-01', fqdnPrefix: null })
+    expect(publishedTypes()).toEqual(['event.received'])
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult() as never)
+    clearPolicy('t1')
+    onCypher([[/MATCH \(t:Tenant \{id: \$tenantId\}\)/, { raw: JSON.stringify({ ...POLICY, match_short_hostname: true }) }], [MERGE_RE, mergeRow('created', { first_seen_at: 'NOW' }, { matchReason: 'none' })]])
+    await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW' })
+    expect(calls().map((c) => (MERGE_RE.test(c.cypher) ? 'merge' : 'policy'))).toEqual(['policy', 'merge'])
+    expect(callMatching(MERGE_RE)!.params).toMatchObject({ matchShortHostname: true, shortNameKey: null, fqdnPrefix: 'db-01.' })
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    clearPolicy('t1')
+    onCypher([[/MATCH \(t:Tenant \{id: \$tenantId\}\)/, { raw: null }]])
+    await expect(ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW' })).rejects.toThrow(/Tenant t1 has no event_policy/)
+    expect(callMatching(MERGE_RE)).toBeUndefined()
+    expect(runEventPipeline).not.toHaveBeenCalled()
+  })
+
+  it('A2 — nome ambiguo (più CI con lo stesso name_key): orfano con match_reason = ambiguous, metrica events_ambiguous_total (+ orfano), log warn con i candidati, event.orphan con motivo e candidati; il retry duplicate lo riconta (l\'ambiguità persiste)', async () => {
+    const candidates = [{ id: 'ci-a', name: 'DB-01' }, { id: 'ci-b', name: 'db-01' }]
+    onCypher([[MERGE_RE, mergeRow('created', { first_seen_at: 'NOW', match_reason: 'ambiguous' }, { matchReason: 'ambiguous', candidates })]])
+    const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW', jobId: 'job-9' })
+    expect(out).toMatchObject({ created: true, ciId: null, matchReason: 'ambiguous', candidates })
+    expect(out.props['match_reason']).toBe('ambiguous')
+    expect(metrics.eventsAmbiguousTotal.inc).toHaveBeenCalledTimes(1)
+    expect(metrics.eventsOrphanTotal.inc).toHaveBeenCalledTimes(1)
+    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ record: { props: expect.objectContaining({ match_reason: 'ambiguous' }), ciId: null } }))
+    expect(publishedTypes()).toEqual(['event.received', 'event.orphan'])
+    expect(vi.mocked(publishEvent).mock.calls[1]![3]).toMatchObject({ id: 'ev-1', ci_id: null, match_reason: 'ambiguous', candidates })
+    const { logger } = await import('../../lib/logger.js')
+    const warn = vi.mocked(logger.child({} as never).warn).mock.calls.find(([, msg]) => /more than one CI matches/.test(String(msg)))!
+    expect(warn[0]).toMatchObject({ fingerprint: fingerprintOf('hook-1', EV), jobId: 'job-9', resource: 'db-01', resourceKind: 'hostname', candidates })
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult() as never)
+    onCypher([[MERGE_RE, mergeRow('duplicate', { first_seen_at: 'NOW', match_reason: 'ambiguous' }, { matchReason: 'ambiguous', candidates })]])
+    await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW' })
+    expect(metrics.eventsAmbiguousTotal.inc).toHaveBeenCalledTimes(1)
+    expect(metrics.eventsReceivedTotal.inc).not.toHaveBeenCalled()
+  })
+
+  it('riconoscimento non eseguito (CI già agganciato: matchReason null dal MERGE) → nessuna metrica ambiguo, matchReason null nel risultato; match_reason fuori vocabolario dal MERGE → errore', async () => {
+    onCypher([[MERGE_RE, mergeRow('applied', { count: 2, match_reason: 'alias_external_id' }, { ciId: 'ci-1', matchReason: null })]])
+    const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW' })
+    expect(out).toMatchObject({ ciId: 'ci-1', matchReason: null, candidates: [] })
+    expect(metrics.eventsAmbiguousTotal.inc).not.toHaveBeenCalled()
+
+    onCypher([[MERGE_RE, mergeRow('created', { first_seen_at: 'NOW' }, { matchReason: 'guess' })]])
+    await expect(ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW' })).rejects.toThrow(/unexpected match_reason "guess"/)
+    expect(publishEvent).not.toHaveBeenCalled()
   })
 
   it('evento ripetuto (applied, first_seen_at vecchio): CI già agganciato dal MERGE, metriche ricevuto{connector} + deduplicato, pipeline con created=false, e NESSUN event.received (3.3: solo il payload che apre il ciclo notifica)', async () => {
@@ -877,7 +1181,7 @@ describe('ingestEvent', () => {
     expect(out).toMatchObject({ created: false, ciId: 'ci-9', outcome: 'applied' })
     expect(out.props).toMatchObject({ status: 'firing', count: 1, resolved_at: null })
     expect(calls()).toHaveLength(1)
-    expect(callMatching(MERGE_RE)!.cypher).toContain('MERGE (e)-[:RAISED_ON]->(ci)')
+    expect(callMatching(MERGE_RE)!.cypher).toContain('MERGE (e)-[:RAISED_ON]->(matched)')
     expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ record: { props: expect.objectContaining({ id: 'ev-1' }), ciId: 'ci-9' } }))
     expect(metrics.eventsOrphanTotal.inc).not.toHaveBeenCalled()
     expect(publishedTypes()).toEqual(['event.received'])
@@ -891,6 +1195,43 @@ describe('ingestEvent', () => {
     expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', eventId: 'ev-1', actorId: 'am', now: 'NOW', mode: 'ingest', created: false }))
     expect(publishedTypes()).toEqual(['event.resolved'])
     expect(vi.mocked(publishEvent).mock.calls[0]![2]).toBe('am')
+  })
+
+  it('B5 — resolved di un allarme mai visto: Event creato con first_seen_at = starts_at della sorgente (ISO), nessun event.resolved/orphan, metrica events_resolved_unknown_total{connector}; pipeline eseguita (salute del CI)', async () => {
+    vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult({ status: 'resolved' }) as never)
+    onCypher([[MERGE_RE, mergeRow('created', { status: 'resolved', count: 1, first_seen_at: '2026-09-09T10:00:00.000Z', resolved_at: 'NOW' }, { connectorKind: 'alertmanager' })]])
+    const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: { ...EV, status: 'resolved', startsAt: '2026-09-09T12:00:00+02:00' }, receivedAt: 'NOW' })
+    expect(out).toMatchObject({ created: true, outcome: 'created' })
+    expect(callMatching(MERGE_RE)!.params).toMatchObject({ status: 'resolved', firstSeenAt: '2026-09-09T10:00:00.000Z', now: 'NOW' })
+    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ mode: 'ingest', created: true }))
+    expect(publishEvent).not.toHaveBeenCalled()
+    expect(metrics.eventsResolvedUnknownTotal.inc).toHaveBeenCalledWith({ connector: 'alertmanager' })
+    expect(metrics.eventsReceivedTotal.inc).toHaveBeenCalledWith({ connector: 'alertmanager' })
+    expect(metrics.eventsOrphanTotal.inc).toHaveBeenCalledTimes(1)   // la metrica conta, l'avviso no
+    // starts_at assente o non parsabile → istante di ricezione; firing → sempre l'istante di ricezione
+    const { firstSeenOfResolvedUnknown } = await import('../events/ingest.js')
+    expect(firstSeenOfResolvedUnknown(undefined, 'NOW')).toBe('NOW')
+    expect(firstSeenOfResolvedUnknown('yesterday', 'NOW')).toBe('NOW')
+    expect(firstSeenOfResolvedUnknown('2026-09-09T10:00:00Z', 'NOW')).toBe('2026-09-09T10:00:00.000Z')
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult() as never)
+    onCypher([[MERGE_RE, mergeRow('created', { first_seen_at: 'NOW' })]])
+    await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: { ...EV, startsAt: '2026-09-09T10:00:00Z' }, receivedAt: 'NOW' })
+    expect(callMatching(MERGE_RE)!.params).toMatchObject({ firstSeenAt: 'NOW' })
+    expect(metrics.eventsResolvedUnknownTotal.inc).not.toHaveBeenCalled()
+    expect(publishedTypes()).toEqual(['event.received', 'event.orphan'])
+  })
+
+  it('M2 — resourceExternalId viaggia come parametro del MERGE ($resourceExternalId, null se assente): è quello confrontato con l\'alias external_id, l\'id dell\'allarme ($externalId) serve solo a Event.external_id', async () => {
+    onCypher([[MERGE_RE, mergeRow('created', { first_seen_at: 'NOW' }, { ciId: 'ci-ext', matchReason: 'alias_external_id' })]])
+    const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: { ...EV, externalId: 'alarm-77', resourceExternalId: 'HOST-1A2B' }, receivedAt: 'NOW' })
+    expect(out).toMatchObject({ ciId: 'ci-ext', matchReason: 'alias_external_id' })
+    expect(callMatching(MERGE_RE)!.params).toMatchObject({ resourceExternalId: 'HOST-1A2B', externalId: 'alarm-77' })
+    expect(ingestMergeCypher()).toContain("kind: 'external_id', value: $resourceExternalId")
+    expect(ingestMergeCypher()).not.toContain("value: $externalId")
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult() as never)
+    onCypher([[MERGE_RE, mergeRow('created', { first_seen_at: 'NOW' })]])
+    await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW' })
+    expect(callMatching(MERGE_RE)!.params).toMatchObject({ resourceExternalId: null })
   })
 
   it('pipeline → suppressed: nessun event.received (l\'avviso è event.suppressed della pipeline), status suppressed nel risultato', async () => {

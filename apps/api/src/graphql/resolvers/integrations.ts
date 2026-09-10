@@ -1,7 +1,25 @@
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { CONNECTOR_KINDS, parseConfigJSON, sourceConfigOf } from '../../services/eventService.js'
+import { getEventPolicy } from '../../services/events/policy.js'
+import { EVENT_POLICY_V4_MIGRATION } from '../../lib/eventPolicy.js'
 import { invalidateSourceCache } from '../../services/eventStorm.js'
 import { DEFAULT_WEBHOOK_RATE_LIMIT_PER_MINUTE, rateLimitOf, validateRateLimitPerMinute } from '../../lib/webhookRateLimit.js'
+
+/**
+ * Un webhook di Event Management ha senso solo se il tenant ha una policy
+ * eventi leggibile (revisione A-M8): un tenant senza nodo :Tenant (creato
+ * prima dell'onboarding, o "solo integrazione" senza utenti) avrebbe un
+ * webhook che risponde 202 e un worker che fallisce ogni job tre volte su
+ * "Tenant not found". L'errore deve emergere QUI, alla configurazione.
+ */
+export async function assertTenantEventPolicy(tenantId: string): Promise<void> {
+  try {
+    await getEventPolicy(tenantId)
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e)
+    throw new ValidationError(`Cannot create an event webhook: tenant ${tenantId} has no usable event policy (${reason}). Run the ${EVENT_POLICY_V4_MIGRATION} migration (it creates the missing :Tenant node with the default policy and completes existing policies), then retry`)
+  }
+}
 
 /** Prima riga di una query scopata per tenant: assente = risorsa inesistente o di un altro tenant. */
 function firstRow<T>(rows: T[], what: string): T {
@@ -33,16 +51,15 @@ export function validateConnectorKind(entityType: unknown, connectorKind: unknow
  * La configurazione di mappatura si valida in scrittura, non al primo
  * payload: fieldMapping / defaultValues / valueMapping devono essere JSON
  * oggetto e, per entityType = event, coerenti col connettore (chiavi di
- * field_mapping ammesse, vocabolario di value_mapping). `valueMapping` ha
- * senso solo per il connettore generic.
+ * field_mapping ammesse, vocabolario di value_mapping, default_values dei
+ * preset: severity, resource + resourceKind, resourceFrom — vedi
+ * validatePresetDefaults). `valueMapping` vale per OGNI connettore (A1): nei
+ * preset traduce severità/stato dello strumento prima della tabella incorporata.
  */
 export function validateInboundConfig(final: { entityType: unknown; connectorKind: string | null; fieldMapping: unknown; defaultValues: unknown; valueMapping: unknown }): void {
   parseConfigJSON<Record<string, unknown>>(final.fieldMapping, 'fieldMapping')
   parseConfigJSON<Record<string, unknown>>(final.defaultValues, 'defaultValues')
-  const valueMapping = parseConfigJSON<Record<string, unknown>>(final.valueMapping, 'valueMapping')
-  if (Object.keys(valueMapping).length > 0 && final.connectorKind !== 'generic') {
-    throw new ValidationError(`valueMapping is only supported by the generic connector (connectorKind ${JSON.stringify(final.connectorKind)})`)
-  }
+  parseConfigJSON<Record<string, unknown>>(final.valueMapping, 'valueMapping')
   if (final.entityType === 'event') {
     sourceConfigOf({ connector_kind: final.connectorKind, field_mapping: final.fieldMapping, default_values: final.defaultValues, value_mapping: final.valueMapping })
   }
@@ -125,6 +142,8 @@ async function createInboundWebhook(_: unknown, args: { input: Props }, ctx: Gra
   const rateLimitPerMinute = input['rateLimitPerMinute'] === undefined || input['rateLimitPerMinute'] === null
     ? DEFAULT_WEBHOOK_RATE_LIMIT_PER_MINUTE
     : validateRateLimitPerMinute(input['rateLimitPerMinute'], 'rateLimitPerMinute')
+  // Webhook di Event Management: la policy del tenant deve esistere già ora (A-M8), non scoprirlo nel worker.
+  if (input['entityType'] === 'event') await assertTenantEventPolicy(ctx.tenantId)
   const token = genToken()
   const id = uuidv4()
   const now = new Date().toISOString()

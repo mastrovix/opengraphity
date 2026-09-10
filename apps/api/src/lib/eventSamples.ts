@@ -79,9 +79,18 @@ const ZABBIX_SAMPLE = {
   host_id: '10084',
 }
 
-/** Webhook integration di Datadog con le variabili `$ALERT_*`, `$HOSTNAME`, `$TAGS`. */
+/**
+ * Webhook integration di Datadog con le variabili `$ALERT_*`, `$HOSTNAME`,
+ * `$TAGS`. `alert_id` è l'id del MONITOR (uguale per tutti gli host di un
+ * monitor multi-alert): l'identità dell'allarme è `alert_cycle_key` (unico per
+ * ciclo trigger→resolve) e, in sua assenza, alert_id + risorsa; `alert_scope`
+ * (i tag che hanno attivato l'allarme) può fare da risorsa quando `hostname`
+ * è vuoto (default_values.resourceFrom = alert_scope).
+ */
 const DATADOG_SAMPLE = {
   alert_id: '7654321',
+  alert_cycle_key: '7654321:1788869557:host:cache-01',
+  alert_scope: 'host:cache-01',
   alert_transition: 'Triggered',
   alert_type: 'error',
   alert_title: 'Memory usage is high on cache-01',

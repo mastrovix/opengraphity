@@ -53,9 +53,36 @@ describe('EditSourcePage — richieste al minuto', () => {
     await user.clear(field)
     await user.type(field, '250')
     await user.click(screen.getByRole('button', { name: 'Save' }))
-    await waitFor(() => expect(updates).toEqual([{ name: 'Prometheus prod', enabled: true, rateLimitPerMinute: 250 }]))
+    // preset senza regole: i JSON delle regole viaggiano vuoti (fieldMapping sempre '{}')
+    await waitFor(() => expect(updates).toEqual([{ name: 'Prometheus prod', enabled: true, rateLimitPerMinute: 250, fieldMapping: '{}', defaultValues: '{}', valueMapping: '{}' }]))
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Source updated'))
     expect(screen.getByTestId('location')).toHaveTextContent('/monitoring/sources')
+  })
+
+  it('A1 — regole di un preset già salvate (value_mapping, default_values.resource) vengono rilette, modificate e rinviate', async () => {
+    const saved = { ...SOURCE, valueMapping: JSON.stringify({ severity: { page: 'critical' }, status: { silenced: 'resolved' } }), defaultValues: JSON.stringify({ resource: 'prometheus-prod', resourceKind: 'name' }) }
+    const mock: GqlMock = { request: { query: GET_MONITORING_SOURCE_SETTINGS }, result: { data: { monitoringSources: [{ __typename: 'InboundWebhook', ...saved }] } }, maxUsageCount: Number.POSITIVE_INFINITY }
+    const updates: UpdateInput[] = []
+    const { user } = renderWithProviders(<EditSourcePage />, { route: '/monitoring/sources/s1', path: '/monitoring/sources/:id', mocks: [mock, updateMock(updates)] })
+    expect(await screen.findByLabelText('"page" becomes')).toHaveValue('critical')
+    expect(screen.getByLabelText('"silenced" becomes')).toHaveValue('resolved')
+    expect(screen.getByLabelText('Resource to use when missing')).toHaveValue('prometheus-prod')
+    expect(screen.getByLabelText('The resource is a…')).toHaveValue('name')
+    await user.selectOptions(screen.getByLabelText('"page" becomes'), 'warning')
+    await user.click(screen.getByRole('button', { name: 'Remove value silenced' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(updates).toEqual([{
+      name: 'Prometheus prod', enabled: true, rateLimitPerMinute: 100,
+      fieldMapping: '{}', defaultValues: JSON.stringify({ resource: 'prometheus-prod', resourceKind: 'name' }), valueMapping: JSON.stringify({ severity: { page: 'warning' } }),
+    }]))
+  })
+
+  it('A1 — configurazione salvata che l\'editor non sa rappresentare (default_values.severity via API) → errore in chiaro e Salva disabilitato: nessuna regola persa in silenzio', async () => {
+    const saved = { ...SOURCE, defaultValues: JSON.stringify({ severity: 'warning' }) }
+    const mock: GqlMock = { request: { query: GET_MONITORING_SOURCE_SETTINGS }, result: { data: { monitoringSources: [{ __typename: 'InboundWebhook', ...saved }] } }, maxUsageCount: Number.POSITIVE_INFINITY }
+    renderWithProviders(<EditSourcePage />, { route: '/monitoring/sources/s1', path: '/monitoring/sources/:id', mocks: [mock] })
+    expect(await screen.findByRole('alert')).toHaveTextContent(/cannot be edited from this page.*defaultValues\.severity/)
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 
   it.each(['0', '10001', ''])('valore "%s" fuori da 1..10000 → Salva disabilitato e motivo in chiaro, nessuna mutation', async (bad) => {

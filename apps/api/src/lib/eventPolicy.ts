@@ -11,7 +11,9 @@
  * 20260909_1040_event_management_policy_v2 aggiunge le chiavi dell'ondata 4 —
  * sfarfallio stabile e tempeste — alle policy già scritte; la
  * 20260909_1060_event_management_policy_version aggiunge `version` e
- * `updated_at`), un input che esce dai valori ammessi è una ValidationError.
+ * `updated_at`; la 20260910_1070_event_management_tenants aggiunge
+ * `match_short_hostname` e crea i :Tenant mancanti anche per i tenant senza
+ * utenti), un input che esce dai valori ammessi è una ValidationError.
  */
 import { ValidationError } from './errors.js'
 import { EVENT_GROUP_BY, EVENT_SEVERITIES, OPEN_INCIDENT_FROM, type EventGroupBy, type EventSeverity, type OpenIncidentFrom } from './eventVocabularies.js'
@@ -22,6 +24,9 @@ export const EVENT_POLICY_V2_MIGRATION = '20260909_1040_event_management_policy_
 /** Chiavi introdotte dalla revisione (C-4): versione esplicita e istante dell'ultima modifica (migrazione 1060). */
 export const EVENT_POLICY_V3_KEYS = ['version', 'updated_at'] as const
 export const EVENT_POLICY_V3_MIGRATION = '20260909_1060_event_management_policy_version'
+/** Chiave introdotta dalla revisione (A-2): riconoscimento del CI anche per nome corto/FQDN (migrazione 1070). */
+export const EVENT_POLICY_V4_KEYS = ['match_short_hostname'] as const
+export const EVENT_POLICY_V4_MIGRATION = '20260910_1070_event_management_tenants'
 
 /** Vocabolari: la definizione è in eventVocabularies.ts (fonte unica anche per gli enum SDL); ri-esportati per i chiamanti storici. */
 export { OPEN_INCIDENT_FROM, EVENT_SEVERITIES }
@@ -75,6 +80,14 @@ export interface EventPolicy {
   storm_cooldown_minutes: number
   /** Giorni dopo `resolved_at` oltre i quali un evento risolto viene eliminato dal job `purge_events` (0 = mai). */
   retention_days:         number
+  /**
+   * Riconoscimento del CI per nome: se la risorsa dell'allarme è un FQDN
+   * (`db-01.example.local`) prova anche il nome corto (`db-01`), e viceversa.
+   * Spento per default: con nomi corti uguali in ambienti diversi il match
+   * per prima etichetta sarebbe ambiguo. (Solo la regola: il confronto vive
+   * nel riconoscimento del CI, services/events/ingest.)
+   */
+  match_short_hostname:   boolean
   severity_map:           SeverityMap
 }
 
@@ -92,6 +105,7 @@ export const DEFAULT_EVENT_POLICY: EventPolicy = {
   storm_threshold_per_minute: 50,
   storm_cooldown_minutes: 5,
   retention_days:         90,
+  match_short_hostname:   false,
   severity_map: {
     critical: { impact: 'high',   urgency: 'high' },
     warning:  { impact: 'medium', urgency: 'medium' },
@@ -190,6 +204,7 @@ export function assertEventPolicy(value: unknown, what = 'event_policy'): EventP
     storm_threshold_per_minute: assertIntUpTo(value['storm_threshold_per_minute'], EVENT_POLICY_MAX.storm_threshold_per_minute, `${what}.storm_threshold_per_minute`),
     storm_cooldown_minutes: assertIntUpTo(value['storm_cooldown_minutes'], EVENT_POLICY_MAX.storm_cooldown_minutes, `${what}.storm_cooldown_minutes`),
     retention_days:         assertIntUpTo(value['retention_days'], EVENT_POLICY_MAX.retention_days, `${what}.retention_days`),
+    match_short_hostname:   assertBoolean(value['match_short_hostname'], `${what}.match_short_hostname`),
     severity_map:           assertSeverityMap(value['severity_map'], `${what}.severity_map`),
   }
   if (policy.flap_threshold > 0 && policy.flap_window_minutes === 0) {
@@ -219,16 +234,19 @@ export function parseEventPolicy(raw: unknown, tenantId: string): EventPolicy {
   }
   try { return assertEventPolicy(parsed, `Tenant ${tenantId} event_policy`) }
   catch (e) {
-    // Una policy valida ma di versione precedente (senza le chiavi dell'ondata 4
-    // o senza version/updated_at) non è un dato corrotto: è la migrazione che
-    // manca, e va detto — la più vecchia per prima, perché la 1040 completa
-    // anche le chiavi della 1060 (entrambe usano completeEventPolicy).
+    // Una policy valida ma di versione precedente (senza le chiavi dell'ondata 4,
+    // senza version/updated_at o senza match_short_hostname) non è un dato
+    // corrotto: è la migrazione che manca, e va detto — la più vecchia per
+    // prima, perché ognuna completa anche le chiavi delle successive (tutte
+    // usano completeEventPolicy).
     const hints: string[] = []
     if (isRecord(parsed)) {
       const missingV2 = EVENT_POLICY_V2_KEYS.filter((k) => parsed[k] === undefined)
       const missingV3 = EVENT_POLICY_V3_KEYS.filter((k) => parsed[k] === undefined)
+      const missingV4 = EVENT_POLICY_V4_KEYS.filter((k) => parsed[k] === undefined)
       if (missingV2.length) hints.push(` — missing ${missingV2.join(', ')}: run the ${EVENT_POLICY_V2_MIGRATION} migration`)
       else if (missingV3.length) hints.push(` — missing ${missingV3.join(', ')}: run the ${EVENT_POLICY_V3_MIGRATION} migration`)
+      else if (missingV4.length) hints.push(` — missing ${missingV4.join(', ')}: run the ${EVENT_POLICY_V4_MIGRATION} migration`)
     }
     throw new Error(`Tenant ${tenantId} event_policy is invalid: ${e instanceof Error ? e.message : String(e)}${hints.join('')}`)
   }
@@ -297,6 +315,7 @@ export interface EventPolicyGQL {
   stormThresholdPerMinute: number
   stormCooldownMinutes: number
   retentionDays:        number
+  matchShortHostname:   boolean
   severityMap:          string
 }
 
@@ -315,6 +334,7 @@ export function toEventPolicyGQL(p: EventPolicy): EventPolicyGQL {
     stormThresholdPerMinute: p.storm_threshold_per_minute,
     stormCooldownMinutes: p.storm_cooldown_minutes,
     retentionDays:        p.retention_days,
+    matchShortHostname:   p.match_short_hostname,
     severityMap:          JSON.stringify(p.severity_map),
   }
 }
@@ -334,6 +354,7 @@ export interface EventPolicyInputGQL {
   stormThresholdPerMinute?: number | null
   stormCooldownMinutes?: number | null
   retentionDays?:        number | null
+  matchShortHostname?:   boolean | null
   severityMap?:          string | null
 }
 
@@ -362,6 +383,7 @@ export function applyEventPolicyInput(current: EventPolicy, input: EventPolicyIn
     stormThresholdPerMinute: 'storm_threshold_per_minute',
     stormCooldownMinutes: 'storm_cooldown_minutes',
     retentionDays:        'retention_days',
+    matchShortHostname:   'match_short_hostname',
     severityMap:          'severity_map',
   }
   for (const [gql, key] of Object.entries(map) as [Exclude<keyof EventPolicyInputGQL, 'expectedVersion'>, keyof EventPolicy][]) {

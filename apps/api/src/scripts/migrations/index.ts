@@ -17,6 +17,7 @@ import { eventManagementCorrelationRules } from './20260909_1030_event_managemen
 import { eventManagementPolicyV2 } from './20260909_1040_event_management_policy_v2.js'
 import { eventManagementIndexes } from './20260909_1050_event_management_indexes.js'
 import { eventManagementPolicyVersion } from './20260909_1060_event_management_policy_version.js'
+import { eventManagementTenants } from './20260910_1070_event_management_tenants.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -28,4 +29,5 @@ export const MIGRATIONS: readonly Migration[] = [
   eventManagementPolicyV2,
   eventManagementIndexes,
   eventManagementPolicyVersion,
+  eventManagementTenants,
 ]

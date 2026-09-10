@@ -172,6 +172,8 @@ export interface EventPolicy {
   /** Minuti sotto soglia prima di chiudere la tempesta. */
   stormCooldownMinutes: number
   retentionDays:        number
+  /** Riconoscimento del CI per nome: FQDN ↔ nome corto (db-01.example.local ↔ db-01). */
+  matchShortHostname:   boolean
   /** Mappa severità → impatto/urgenza, JSON serializzato. */
   severityMap:          string
 }
@@ -233,6 +235,8 @@ export interface PayloadKey {
 /** Risultato di `previewInboundEvents`: cosa diventerebbe il payload, senza ingerirlo. */
 export interface NormalizedEventPreview {
   externalId:   string | null
+  /** Id della risorsa presso la sorgente (alias external_id del CI): entity di Dynatrace, host_id di Zabbix, field resourceExternalId del generic. Selezionato solo dove serve. */
+  resourceExternalId?: string | null
   status:       string
   severity:     string
   title:        string

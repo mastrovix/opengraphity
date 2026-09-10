@@ -122,7 +122,8 @@
       "monitoringAlarms": {
         "title": "Monitoring alarms",
         "empty": "No monitoring alarm is correlated to this incident.",
-        "openedByMonitoring": "Incident opened automatically by monitoring on {{when}}."
+        "openedByMonitoring": "Incident opened automatically by monitoring on {{when}}.",
+        "purged": "{{count}} alarms removed by event retention (still mentioned in the timeline)."
       }
     },
     "changes": {
@@ -1761,6 +1762,7 @@
       "flapThreshold": "Flap threshold (transitions)",
       "flapWindowMinutes": "Flap window (minutes)",
       "retentionDays": "Retention (days)",
+      "matchShortHostname": "Match short hostname and FQDN as the same host",
       "autoResolve": "Auto-resolve when the source resolves",
       "severityMap": "Severity map → impact / urgency",
       "map": {
@@ -1796,6 +1798,7 @@
         "flapThreshold": "Above this number of firing/resolved transitions within the window the alarm is marked “flapping” and opens no new incident.",
         "flapWindowMinutes": "Observation window in which flapping transitions are counted.",
         "retentionDays": "Resolved events older than this many days are deleted.",
+        "matchShortHostname": "If the alarm resource is an FQDN (db-01.example.local) also try the short name (db-01), and vice versa. Off: exact name or alias only. Beware of identical short names across environments.",
         "autoResolve": "When the source resolves every alarm of an incident opened by monitoring, the incident is resolved; a new alarm reopens it.",
         "severityMap": "Impact and urgency assigned to the automatically opened incident, from the alarm severity: the priority derives from them.",
         "flapStableMinutes": "How long the alarm must stay still (no new firing or resolved) before leaving the flapping state and returning to normal correlation.",
@@ -1806,6 +1809,7 @@
       "stormThresholdPerMinute": "Storm threshold (new alarms per minute)",
       "stormCooldownMinutes": "Minutes below threshold to end the storm",
       "groups": {
+        "recognition": "CI recognition",
         "incidents": "Incident opening and closing",
         "changeWindow": "Silence in a change window",
         "flapStorm": "Flapping and storms",
@@ -2008,6 +2012,7 @@
       "toolRequired": "Pick a tool to continue.",
       "nameRequired": "Enter a name to continue.",
       "mappingIncomplete": "Map the required fields (title, severity, resource) and make sure the preview shows an event.",
+      "presetRulesIncomplete": "Every value added to the translation needs a target (or remove it).",
       "createFailed": "The source was not created: {{error}}"
     },
     "mapper": {
@@ -2069,11 +2074,36 @@
         "status": "Status"
       }
     },
+    "preset": {
+      "valuesTitle": "Value translation",
+      "valuesIntro": "The tool sends severity and status in its own words: here you say what they mean for OpenGrafo. It applies before the connector's built-in table; a value that is neither translated nor in the vocabulary is rejected and shows up in the source's \"Last error\".",
+      "severityValues": "Tool severity",
+      "severityHint": "E.g. \"page\" → critical, \"none\" → info.",
+      "statusValues": "Tool status",
+      "statusHint": "E.g. \"Muted\" → resolved. Firing = active alarm, resolved = cleared.",
+      "resourceTitle": "Default resource",
+      "resourceIntro": "An alarm without a host (aggregate metrics, Watchdog, log/APM monitors) cannot be linked to a CI: without a default resource it is rejected. Say here which object it belongs to.",
+      "resourceLabel": "Resource to use when missing",
+      "resourcePlaceholder": "e.g. prometheus-prod",
+      "resourceHint": "Empty = alarms without a resource are rejected (with the reason in \"Last error\").",
+      "resourceKindLabel": "The resource is a…",
+      "resourceFromAlertScope": "When the hostname is missing use alert_scope (the tags that triggered the monitor) as the CI name",
+      "resourceFromAlertScopeHint": "Applies before the default resource. Requires $ALERT_SCOPE in the Datadog custom payload.",
+      "hints": {
+        "alertmanager": "Alertmanager: the severity label is free text (page, critical, warning, none…); OpenGrafo already knows info / warning / critical. Status is always firing or resolved.",
+        "grafana": "Grafana: the severity label is free text; OpenGrafo already knows info / warning / critical. Status is always firing or resolved.",
+        "zabbix": "Zabbix: already known Not classified / Information → info, Warning / Average → warning, High / Disaster → critical; event_value 1 → active, 0 → cleared. Translate here to change the scale (e.g. Average → critical).",
+        "datadog": "Datadog: already known error → critical, warning → warning, info / success → info; transitions Triggered / Re-Triggered / Warn / Re-Warn / No Data / Re-No Data / Renotify → active, Recovered / Warn Recovered → cleared.",
+        "dynatrace": "Dynatrace: already known AVAILABILITY / ERROR → critical, PERFORMANCE / RESOURCE_CONTENTION / CUSTOM_ALERT → warning, MONITORING_UNAVAILABLE → info; State OPEN → active, RESOLVED → cleared."
+      }
+    },
     "edit": {
       "title": "Edit source",
       "back": "Back to sources",
       "notFound": "Source not found",
       "tool": "Tool",
+      "presetRulesTitle": "Rules",
+      "presetConfigError": "The saved configuration cannot be edited from this page (saving disabled so it is not lost): {{error}}",
       "enabled": "Source active",
       "mappingTitle": "Field mapping",
       "tokenTitle": "Token",

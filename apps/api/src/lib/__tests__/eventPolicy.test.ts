@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import {
   DEFAULT_EVENT_POLICY, DEFAULT_EVENT_POLICY_JSON, EVENT_POLICY_V2_KEYS, EVENT_POLICY_V2_MIGRATION,
-  EVENT_POLICY_V3_KEYS, EVENT_POLICY_V3_MIGRATION, EVENT_POLICY_MAX,
+  EVENT_POLICY_V3_KEYS, EVENT_POLICY_V3_MIGRATION, EVENT_POLICY_V4_KEYS, EVENT_POLICY_V4_MIGRATION, EVENT_POLICY_MAX,
   assertEventPolicy, parseEventPolicy, completeEventPolicy, toEventPolicyGQL, applyEventPolicyInput,
   EVENT_POLICY_CACHE_TTL_MS, getCachedEventPolicy, cacheEventPolicy, invalidateEventPolicyCache,
 } from '../eventPolicy.js'
@@ -135,6 +135,33 @@ describe('massimi e coerenza (I-7)', () => {
     // via input GraphQL: stesso messaggio (la UI lo mostra)
     expect(() => applyEventPolicyInput(DEFAULT_EVENT_POLICY, { stormCooldownMinutes: 0 })).toThrow(/eventPolicy\.storm_cooldown_minutes must be > 0 when storm_threshold_per_minute is > 0/)
     expect(() => applyEventPolicyInput(DEFAULT_EVENT_POLICY, { suppressUpstreamHops: 11 })).toThrow(/eventPolicy\.suppress_upstream_hops must be at most 10\. Got: 11/)
+  })
+})
+
+// ── Revisione A-2 (3): riconoscimento per nome corto/FQDN ────────────────────
+
+describe('match_short_hostname (A-2)', () => {
+  it('DEFAULT è false; booleano obbligatorio; toEventPolicyGQL/applyEventPolicyInput lo espongono come matchShortHostname', () => {
+    expect(DEFAULT_EVENT_POLICY.match_short_hostname).toBe(false)
+    expect(EVENT_POLICY_V4_KEYS).toEqual(['match_short_hostname'])
+    expect(EVENT_POLICY_V4_MIGRATION).toBe('20260910_1070_event_management_tenants')
+    expect(() => assertEventPolicy({ ...DEFAULT_EVENT_POLICY, match_short_hostname: 'yes' })).toThrow(/match_short_hostname must be a boolean/)
+    expect(() => assertEventPolicy({ ...DEFAULT_EVENT_POLICY, match_short_hostname: 1 })).toThrow(/match_short_hostname must be a boolean/)
+    expect(toEventPolicyGQL(DEFAULT_EVENT_POLICY)).toMatchObject({ matchShortHostname: false })
+    expect(applyEventPolicyInput(DEFAULT_EVENT_POLICY, { matchShortHostname: true })).toMatchObject({ match_short_hostname: true, version: 2 })
+    expect(() => applyEventPolicyInput(DEFAULT_EVENT_POLICY, { matchShortHostname: null })).toThrow(/matchShortHostname cannot be null/)
+    // assente nell'input → invariata
+    expect(applyEventPolicyInput({ ...DEFAULT_EVENT_POLICY, match_short_hostname: true }, { retentionDays: 10 }).match_short_hostname).toBe(true)
+  })
+
+  it('policy senza match_short_hostname → errore che indica la migrazione 1070 (dopo la 1040 e la 1060 se mancano anche quelle); completeEventPolicy la aggiunge a false', () => {
+    const { match_short_hostname: _m, ...withoutV4 } = DEFAULT_EVENT_POLICY
+    expect(() => parseEventPolicy(JSON.stringify(withoutV4), 'acme')).toThrow(/match_short_hostname must be a boolean.* — missing match_short_hostname: run the 20260910_1070_event_management_tenants migration/)
+    const { version: _v, updated_at: _u, ...withoutV3 } = withoutV4
+    expect(() => parseEventPolicy(JSON.stringify(withoutV3), 'acme')).toThrow(/run the 20260909_1060_event_management_policy_version migration/)
+    expect(() => parseEventPolicy(JSON.stringify(withoutV3), 'acme')).not.toThrow(/1070/)
+    expect(completeEventPolicy({ ...withoutV4 })).toEqual({ ...withoutV4, match_short_hostname: false })
+    expect(completeEventPolicy({ ...DEFAULT_EVENT_POLICY, match_short_hostname: true })).toBeNull()
   })
 })
 

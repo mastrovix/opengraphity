@@ -10,13 +10,38 @@
  * Puro, senza fallback silenziosi: un JSON corrotto è un errore (prima
  * presentava una change "senza piano" mentre ne aveva uno rotto); una
  * finestra con date non parsabili o vuote non contiene nessun istante.
+ *
+ * Fusi orari (revisione 1.17): ogni data di una finestra deve avere l'offset
+ * esplicito (`Z` o `±hh:mm`). Il web salva in UTC con `Z`; un piano scritto
+ * via API/importazione come `2026-09-09T22:00` verrebbe interpretato da
+ * `Date.parse` nel fuso del server API — non in quello del tenant — e la
+ * finestra silenzierebbe gli allarmi nell'ora sbagliata. Qui il parser la
+ * rifiuta (ValidationError) invece di indovinare.
  */
+import { ValidationError } from './errors.js'
 
 export interface DeployWindow { start: string; end: string }
 export interface DeployStep   { title: string; validationWindow: DeployWindow; releaseWindow: DeployWindow }
 
 type RawWindow = { start?: unknown; end?: unknown }
 type RawStep   = { title?: unknown; validationWindow?: RawWindow; releaseWindow?: RawWindow }
+
+/** `Z` oppure `±hh:mm` / `±hhmm` in coda alla stringa. */
+const EXPLICIT_OFFSET_RE = /(?:Z|[+-]\d{2}:?\d{2})$/
+
+/**
+ * Data di una finestra: vuota (finestra non impostata) oppure ISO 8601
+ * parsabile CON offset esplicito; altrimenti ValidationError con il campo.
+ * Da usare anche da chi scrive il piano (saveDeployPlan), così un piano senza
+ * fuso non entra mai nel grafo.
+ */
+export function assertWindowDate(value: unknown, field: string): string {
+  const s = String(value ?? '')
+  if (s === '') return s
+  if (Number.isNaN(Date.parse(s))) throw new ValidationError(`${field} is not an ISO 8601 date: ${JSON.stringify(s)}`)
+  if (!EXPLICIT_OFFSET_RE.test(s)) throw new ValidationError(`${field} must carry an explicit UTC offset ("Z" or "±hh:mm"), got ${JSON.stringify(s)}: a local time would be read in the API server's timezone, not the tenant's`)
+  return s
+}
 
 export function parseDeploySteps(v: unknown): DeployStep[] {
   if (typeof v !== 'string' || v.length === 0) return []
@@ -29,15 +54,15 @@ export function parseDeploySteps(v: unknown): DeployStep[] {
   if (!Array.isArray(arr)) throw new Error(`Deploy steps payload is not an array (got ${typeof arr})`)
   return (arr as RawStep[])
     .filter((s): s is RawStep => typeof s === 'object' && s !== null)
-    .map((s) => ({
+    .map((s, i) => ({
       title: String(s.title ?? ''),
       validationWindow: {
-        start: String(s.validationWindow?.start ?? ''),
-        end:   String(s.validationWindow?.end   ?? ''),
+        start: assertWindowDate(s.validationWindow?.start, `steps[${i}].validationWindow.start`),
+        end:   assertWindowDate(s.validationWindow?.end,   `steps[${i}].validationWindow.end`),
       },
       releaseWindow: {
-        start: String(s.releaseWindow?.start ?? ''),
-        end:   String(s.releaseWindow?.end   ?? ''),
+        start: assertWindowDate(s.releaseWindow?.start, `steps[${i}].releaseWindow.start`),
+        end:   assertWindowDate(s.releaseWindow?.end,   `steps[${i}].releaseWindow.end`),
       },
     }))
 }

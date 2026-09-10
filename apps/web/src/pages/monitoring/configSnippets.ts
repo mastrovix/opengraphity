@@ -17,22 +17,38 @@ export function sourceEndpointUrl(sourceId: string): string {
   return `${origin}/api/webhooks/inbound/${sourceId}`
 }
 
-/** Parametri del media type Webhook di Zabbix: campo JSON atteso → macro standard. */
+/**
+ * Parametri del media type Webhook di Zabbix: campo JSON atteso → macro
+ * standard. `host_id` è l'id della risorsa (alias external_id del CI);
+ * `event_date`/`event_time` sono l'ora locale del server Zabbix, convertita
+ * dall'API con il fuso del tenant.
+ */
 export const ZABBIX_FIELDS: ReadonlyArray<readonly [field: string, macro: string]> = [
   ['event_id',            '{EVENT.ID}'],
   ['event_name',          '{EVENT.NAME}'],
   ['event_severity',      '{EVENT.SEVERITY}'],
   ['event_value',         '{EVENT.VALUE}'],
+  ['event_date',          '{EVENT.DATE}'],
+  ['event_time',          '{EVENT.TIME}'],
   ['host_name',           '{HOST.NAME}'],
   ['host_ip',             '{HOST.IP}'],
+  ['host_id',             '{HOST.ID}'],
   ['trigger_description', '{TRIGGER.DESCRIPTION}'],
   ['event_opdata',        '{EVENT.OPDATA}'],
   ['event_tags',          '{EVENT.TAGS}'],
 ]
 
-/** Variabili dell'integrazione Webhooks di Datadog: campo JSON atteso → variabile. */
+/**
+ * Variabili dell'integrazione Webhooks di Datadog: campo JSON atteso →
+ * variabile. `$ALERT_ID` è l'id del monitor (uguale per tutti gli host di un
+ * monitor multi-alert): l'identità dell'allarme è `$ALERT_CYCLE_KEY`;
+ * `$ALERT_SCOPE` (tag che hanno attivato l'allarme) può fare da risorsa quando
+ * `$HOSTNAME` è vuoto.
+ */
 export const DATADOG_FIELDS: ReadonlyArray<readonly [field: string, variable: string]> = [
   ['alert_id',         '$ALERT_ID'],
+  ['alert_cycle_key',  '$ALERT_CYCLE_KEY'],
+  ['alert_scope',      '$ALERT_SCOPE'],
   ['alert_transition', '$ALERT_TRANSITION'],
   ['alert_type',       '$ALERT_TYPE'],
   ['title',            '$EVENT_TITLE'],

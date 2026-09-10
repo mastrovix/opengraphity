@@ -3,6 +3,7 @@
  */
 import { GraphQLError } from 'graphql'
 import { ValidationError } from '../../../lib/errors.js'
+import { assertWindowDate } from '../../../lib/deployWindows.js'
 import { TASK_STATUS } from '../../../lib/taskStatus.js'
 import { withSession, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
@@ -20,8 +21,12 @@ import {
 type TimeWindowInput = { start: string; end: string }
 type DeployStepInput = { title: string; validationWindow: TimeWindowInput; releaseWindow: TimeWindowInput }
 
-function validateWindow(label: string, w: TimeWindowInput) {
+export function validateWindow(label: string, w: TimeWindowInput) {
   if (!w || !w.start || !w.end) throw new ValidationError(`${label}: start e end obbligatori`)
+  // Offset esplicito obbligatorio (B·1.17): una data senza Z/±hh:mm verrebbe
+  // letta nel fuso del server, non del tenant; la stessa regola vale in lettura.
+  assertWindowDate(w.start, `${label}.start`)
+  assertWindowDate(w.end, `${label}.end`)
   if (new Date(w.start).getTime() >= new Date(w.end).getTime()) {
     throw new ValidationError(`${label}: end deve essere dopo start`)
   }

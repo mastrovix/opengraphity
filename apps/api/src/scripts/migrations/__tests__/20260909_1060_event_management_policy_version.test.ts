@@ -26,9 +26,10 @@ function fakeSession(tenants: Array<{ id: string; policy: unknown }>) {
 }
 
 describe('20260909_1060_event_management_policy_version', () => {
-  it('è l\'ultima registrata, dopo la 1050, con id nel formato YYYYMMDD_HHMM_name', () => {
+  it('è registrata dopo la 1050, con id nel formato YYYYMMDD_HHMM_name', () => {
     const ids = MIGRATIONS.map((m) => m.id)
-    expect(ids.at(-1)).toBe('20260909_1060_event_management_policy_version')
+    // Non più l'ultima: la 1070 (tenant mancanti + match_short_hostname, revisione A-M8/A-2) la segue.
+    expect(ids).toContain('20260909_1060_event_management_policy_version')
     expect(ids.indexOf('20260909_1060_event_management_policy_version')).toBeGreaterThan(ids.indexOf('20260909_1050_event_management_indexes'))
     expect(eventManagementPolicyVersion.id).toMatch(/^\d{8}_\d{4}_[a-z0-9_]+$/)
   })

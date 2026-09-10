@@ -5,11 +5,13 @@
  * severità → impatto/urgenza (JSON nel contratto, tre righe di select qui).
  * Ondata 3: riquadro "Come funziona" in testa e una riga di aiuto sotto ogni
  * campo, così l'effetto di ogni scelta è detto in parole.
- * Ondata 4: campi raggruppati in quattro riquadri (apertura/chiusura, silenzio
- * in finestra di change, sfarfallio e tempeste, conservazione), tre campi
- * nuovi (stabilità dello sfarfallio, soglia e cooldown della tempesta) e
+ * Ondata 4: campi raggruppati in riquadri (apertura/chiusura, silenzio in
+ * finestra di change, sfarfallio e tempeste, conservazione), tre campi nuovi
+ * (stabilità dello sfarfallio, soglia e cooldown della tempesta) e
  * validazione in pagina: interi ≥ 0, alcuni ≥ 1; con errori il salvataggio
  * è bloccato e il campo dice perché.
+ * Revisione (A-2): riquadro "Riconoscimento del CI" con l'interruttore
+ * "nome corto ↔ FQDN" (matchShortHostname).
  */
 import { useEffect, useId, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -80,6 +82,7 @@ interface FormState {
   stormThresholdPerMinute: number
   stormCooldownMinutes: number
   retentionDays:        number
+  matchShortHostname:   boolean
   severityMap:          SeverityMap
 }
 
@@ -116,6 +119,7 @@ function toForm(p: EventPolicy): { form: FormState; mapError: string | null } {
       flapWindowMinutes: p.flapWindowMinutes, flapStableMinutes: p.flapStableMinutes,
       stormThresholdPerMinute: p.stormThresholdPerMinute, stormCooldownMinutes: p.stormCooldownMinutes,
       retentionDays: p.retentionDays,
+      matchShortHostname: p.matchShortHostname,
       severityMap: map,
     },
     mapError: error,
@@ -124,7 +128,7 @@ function toForm(p: EventPolicy): { form: FormState; mapError: string | null } {
 
 const HOW_IT_WORKS = ['threshold', 'grouping', 'autoResolve', 'changeWindow', 'flapping', 'storm'] as const
 
-type GroupName = 'incidents' | 'changeWindow' | 'flapStorm' | 'retention'
+type GroupName = 'recognition' | 'incidents' | 'changeWindow' | 'flapStorm' | 'retention'
 
 /**
  * Riquadro titolato: un <fieldset> per gruppo. A livello di modulo (non
@@ -185,6 +189,7 @@ export function EventPolicyPage() {
         flapWindowMinutes: form.flapWindowMinutes, flapStableMinutes: form.flapStableMinutes,
         stormThresholdPerMinute: form.stormThresholdPerMinute, stormCooldownMinutes: form.stormCooldownMinutes,
         retentionDays: form.retentionDays,
+        matchShortHostname: form.matchShortHostname,
         severityMap: JSON.stringify(form.severityMap),
       } } })
       toast.success(t('toast.events.policySaved'))
@@ -255,6 +260,19 @@ export function EventPolicyPage() {
       )}
 
       <div style={{ maxWidth: 760, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* 0. Riconoscimento del CI (A-2): nome corto ↔ FQDN */}
+        <Group name="recognition">
+          <div style={grid}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Toggle checked={form.matchShortHostname} onChange={(v) => set('matchShortHostname', v)} label={t('events.policy.matchShortHostname')} disabled={saving} />
+                <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateDark }}>{t('events.policy.matchShortHostname')}</span>
+              </div>
+              <Help field="matchShortHostname" />
+            </div>
+          </div>
+        </Group>
+
         {/* 1. Apertura e chiusura degli incident (+ mappa severità → impatto/urgenza) */}
         <Group name="incidents">
           <div style={grid}>

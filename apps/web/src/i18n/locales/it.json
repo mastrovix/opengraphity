@@ -122,7 +122,8 @@
       "monitoringAlarms": {
         "title": "Allarmi di monitoraggio",
         "empty": "Nessun allarme di monitoraggio correlato a questo incident.",
-        "openedByMonitoring": "Incident aperto automaticamente dal monitoraggio il {{when}}."
+        "openedByMonitoring": "Incident aperto automaticamente dal monitoraggio il {{when}}.",
+        "purged": "{{count}} allarmi eliminati dalla conservazione degli eventi (restano citati nella cronologia)."
       }
     },
     "changes": {
@@ -1761,6 +1762,7 @@
       "flapThreshold": "Soglia sfarfallio (transizioni)",
       "flapWindowMinutes": "Finestra sfarfallio (minuti)",
       "retentionDays": "Conservazione (giorni)",
+      "matchShortHostname": "Riconosci nome corto e FQDN come lo stesso host",
       "autoResolve": "Chiusura automatica quando la sorgente risolve",
       "severityMap": "Mappa severità → impatto / urgenza",
       "map": {
@@ -1796,6 +1798,7 @@
         "flapThreshold": "Oltre questo numero di transizioni attivo/risolto nella finestra l'allarme è marcato «sfarfallio» e non apre nuovi incident.",
         "flapWindowMinutes": "Finestra di osservazione in cui contare le transizioni dello sfarfallio.",
         "retentionDays": "Gli eventi risolti più vecchi di questi giorni vengono eliminati.",
+        "matchShortHostname": "Se la risorsa dell'allarme è un FQDN (db-01.example.local) prova anche il nome corto (db-01), e viceversa. Spento: solo il nome esatto o un alias. Attenzione ai nomi corti uguali in ambienti diversi.",
         "autoResolve": "Quando la sorgente risolve tutti gli allarmi di un incident aperto dal monitoraggio, l'incident viene risolto; un nuovo allarme lo riapre.",
         "severityMap": "Impatto e urgenza assegnati all'incident aperto automaticamente, in base alla severità dell'allarme: la priorità ne deriva.",
         "flapStableMinutes": "Quanto a lungo l'allarme deve restare fermo (né nuovi attivi né risolti) prima di uscire dallo sfarfallio e tornare alla correlazione normale.",
@@ -1806,6 +1809,7 @@
       "stormThresholdPerMinute": "Soglia di tempesta (allarmi nuovi al minuto)",
       "stormCooldownMinutes": "Minuti sotto soglia per chiudere la tempesta",
       "groups": {
+        "recognition": "Riconoscimento del CI",
         "incidents": "Apertura e chiusura degli incident",
         "changeWindow": "Silenzio in finestra di change",
         "flapStorm": "Sfarfallio e tempeste",
@@ -2008,6 +2012,7 @@
       "toolRequired": "Scegli uno strumento per continuare.",
       "nameRequired": "Inserisci un nome per continuare.",
       "mappingIncomplete": "Mappa i campi obbligatori (titolo, severità, risorsa) e verifica che l'anteprima mostri un evento.",
+      "presetRulesIncomplete": "Ogni valore aggiunto alla traduzione deve avere una destinazione (o va rimosso).",
       "createFailed": "La sorgente non è stata creata: {{error}}"
     },
     "mapper": {
@@ -2069,11 +2074,36 @@
         "status": "Stato"
       }
     },
+    "preset": {
+      "valuesTitle": "Traduzione dei valori",
+      "valuesIntro": "Lo strumento manda severità e stato con parole sue: qui dici cosa significano per OpenGrafo. Vale prima della tabella già nota del connettore; un valore non tradotto e non nel vocabolario viene scartato e compare in \"Ultimo errore\" della sorgente.",
+      "severityValues": "Severità dello strumento",
+      "severityHint": "Es. \"page\" → critical, \"none\" → info.",
+      "statusValues": "Stato dello strumento",
+      "statusHint": "Es. \"Muted\" → risolto. Firing = allarme attivo, resolved = rientrato.",
+      "resourceTitle": "Risorsa predefinita",
+      "resourceIntro": "Un allarme senza host (metriche aggregate, Watchdog, monitor su log/APM) non può essere collegato a un CI: senza risorsa predefinita viene scartato. Indica qui a quale oggetto attribuirlo.",
+      "resourceLabel": "Risorsa da usare quando manca",
+      "resourcePlaceholder": "es. prometheus-prod",
+      "resourceHint": "Vuoto = gli allarmi senza risorsa vengono scartati (con il motivo in \"Ultimo errore\").",
+      "resourceKindLabel": "La risorsa è un…",
+      "resourceFromAlertScope": "Se manca l'hostname usa alert_scope (i tag che hanno attivato il monitor) come nome del CI",
+      "resourceFromAlertScopeHint": "Vale prima della risorsa predefinita. Richiede $ALERT_SCOPE nel payload personalizzato di Datadog.",
+      "hints": {
+        "alertmanager": "Alertmanager: l'etichetta severity è testo libero (page, critical, warning, none…); OpenGrafo riconosce già info / warning / critical. Lo status è sempre firing o resolved.",
+        "grafana": "Grafana: l'etichetta severity è testo libero; OpenGrafo riconosce già info / warning / critical. Lo status è sempre firing o resolved.",
+        "zabbix": "Zabbix: già note Not classified / Information → info, Warning / Average → warning, High / Disaster → critical; event_value 1 → attivo, 0 → rientrato. Traduci qui per cambiare la scala (es. Average → critical).",
+        "datadog": "Datadog: già noti error → critical, warning → warning, info / success → info; transizioni Triggered / Re-Triggered / Warn / Re-Warn / No Data / Re-No Data / Renotify → attivo, Recovered / Warn Recovered → rientrato.",
+        "dynatrace": "Dynatrace: già note AVAILABILITY / ERROR → critical, PERFORMANCE / RESOURCE_CONTENTION / CUSTOM_ALERT → warning, MONITORING_UNAVAILABLE → info; State OPEN → attivo, RESOLVED → rientrato."
+      }
+    },
     "edit": {
       "title": "Modifica sorgente",
       "back": "Torna alle sorgenti",
       "notFound": "Sorgente non trovata",
       "tool": "Strumento",
+      "presetRulesTitle": "Regole",
+      "presetConfigError": "La configurazione salvata non è modificabile da questa pagina (salvataggio disabilitato per non perderla): {{error}}",
       "enabled": "Sorgente attiva",
       "mappingTitle": "Mappatura dei campi",
       "tokenTitle": "Token",

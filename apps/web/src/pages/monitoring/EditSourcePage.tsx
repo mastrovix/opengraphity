@@ -1,8 +1,10 @@
 /**
  * Modifica di una sorgente di monitoraggio (admin): nome, attiva/disattiva,
  * per il connettore generic il mappatore visuale con anteprima (le regole
- * salvate vengono rilette da parseSourceConfig, mai mostrate come JSON),
- * rigenerazione del token con conferma (nuovo token visibile UNA volta).
+ * salvate vengono rilette da parseSourceConfig, mai mostrate come JSON), per
+ * gli altri strumenti le regole facoltative (traduzione dei valori, risorsa
+ * predefinita: PresetRules.tsx, rilette da parsePresetConfig), rigenerazione
+ * del token con conferma (nuovo token visibile UNA volta).
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -27,7 +29,8 @@ import { UPDATE_MONITORING_SOURCE, REGENERATE_SOURCE_TOKEN } from '@/graphql/mut
 import { colors } from '@/lib/tokens'
 import type { MonitoringSource } from '@/types/events'
 import { GenericMapper } from './GenericMapper'
-import { EMPTY_MAPPING, RATE_LIMIT_MAX, RATE_LIMIT_MIN, buildSourceConfig, isMappingComplete, parseRateLimit, parseSourceConfig, type GenericMapping, type SourceRateLimit } from './sourceConfig'
+import { PresetRulesEditor } from './PresetRules'
+import { EMPTY_MAPPING, EMPTY_PRESET_RULES, RATE_LIMIT_MAX, RATE_LIMIT_MIN, buildPresetConfig, buildSourceConfig, isMappingComplete, isPresetRulesComplete, parsePresetConfig, parseRateLimit, parseSourceConfig, type GenericMapping, type PresetConnectorKind, type PresetRules, type SourceRateLimit } from './sourceConfig'
 import { sourceEndpointUrl } from './configSnippets'
 import { ToolBadge, SecretBox, hintStyle } from './monitoringShared'
 
@@ -46,6 +49,7 @@ export function EditSourcePage() {
   const [rateLimitText, setRateLimitText] = useState('')
   const rateLimit = parseRateLimit(rateLimitText)
   const [mapping, setMapping] = useState<GenericMapping>(EMPTY_MAPPING)
+  const [presetRules, setPresetRules] = useState<PresetRules>(EMPTY_PRESET_RULES)
   const [payload, setPayload] = useState('')
   const [configError, setConfigError] = useState<string | null>(null)
   const [dropped, setDropped] = useState<string[]>([])
@@ -63,6 +67,10 @@ export function EditSourcePage() {
       setMapping(parsed.mapping)
       setConfigError(parsed.error)
       setDropped(parsed.dropped)
+    } else if (source.connectorKind) {
+      const parsed = parsePresetConfig(source.connectorKind, source)
+      setPresetRules(parsed.rules)
+      setConfigError(parsed.error)
     }
     setInitialisedFor(source.id)
   }, [source, initialisedFor])
@@ -71,13 +79,19 @@ export function EditSourcePage() {
   const [regenToken] = useMutation<{ regenerateWebhookToken: { id: string; token: string } }>(REGENERATE_SOURCE_TOKEN)
 
   const isGeneric = source?.connectorKind === 'generic'
-  const canSave = name.trim() !== '' && rateLimit !== null && (!isGeneric || isMappingComplete(mapping))
+  // Connettore preset (forma nota): null per generic e per i webhook senza connectorKind (trattati come generic dall'API).
+  const presetKind: PresetConnectorKind | null = source?.connectorKind && source.connectorKind !== 'generic' ? source.connectorKind : null
+  // Una configurazione che l'editor non sa rappresentare (configError) non si salva: si perderebbero regole in silenzio.
+  const canSave = name.trim() !== '' && rateLimit !== null
+    && (!isGeneric || isMappingComplete(mapping))
+    && (!presetKind || (configError === null && isPresetRulesComplete(presetRules)))
   const endpoint = useMemo(() => (source ? sourceEndpointUrl(source.id) : ''), [source])
 
   async function handleSave() {
     if (!source || rateLimit === null) return
     const input: Record<string, unknown> = { name: name.trim(), enabled, rateLimitPerMinute: rateLimit }
     if (isGeneric) Object.assign(input, buildSourceConfig(mapping))
+    if (presetKind) Object.assign(input, buildPresetConfig(presetKind, presetRules))
     try {
       await updateSource({ variables: { id: source.id, input } })
       toast.success(t('toast.monitoring.sourceUpdated'))
@@ -155,6 +169,13 @@ export function EditSourcePage() {
           {configError && <p role="alert" style={{ ...hintStyle, color: colors.danger }}>{t('monitoring.mapper.keysError', { error: configError })}</p>}
           {dropped.length > 0 && <p style={{ ...hintStyle, color: '#b45309' }}>{t('monitoring.edit.droppedFields', { fields: dropped.join(', ') })}</p>}
           <GenericMapper mapping={mapping} onChange={setMapping} payload={payload} onPayloadChange={setPayload} />
+        </SectionCard>
+      )}
+
+      {presetKind && (
+        <SectionCard title={t('monitoring.edit.presetRulesTitle')} defaultOpen>
+          {configError && <p role="alert" style={{ ...hintStyle, color: colors.danger }}>{t('monitoring.edit.presetConfigError', { error: configError })}</p>}
+          <PresetRulesEditor kind={presetKind} rules={presetRules} onChange={setPresetRules} />
         </SectionCard>
       )}
     </PageContainer>

@@ -28,8 +28,12 @@ vi.mock('@opengraphity/events', async (importOriginal) => {
   }
 })
 
-const { integrationsResolvers } = await import('../integrations.js')
+// Revisione A-M8: la policy del tenant viene letta alla creazione di un webhook evento (assertTenantEventPolicy).
+vi.mock('../../../services/events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValue({ retention_days: 90 }), setEventPolicy: vi.fn() }))
+
+const { integrationsResolvers, assertTenantEventPolicy } = await import('../integrations.js')
 const { runQuery } = await import('@opengraphity/neo4j')
+const { getEventPolicy } = await import('../../../services/events/policy.js')
 
 const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
 const operator: GraphQLContext = { tenantId: 'tenant-1', userId: 'op-1',    userEmail: 'op@test.io',  role: 'operator' }
@@ -285,6 +289,31 @@ describe('inbound webhook di Event Management — connettori, value_mapping, val
     expect(out).toMatchObject({ connectorKind: 'generic', valueMapping: GENERIC.valueMapping })
   })
 
+  it('(A-M8) entityType event: la policy del tenant viene verificata PRIMA della scrittura; tenant senza :Tenant/policy → BAD_USER_INPUT che cita la migrazione 1070, nessuna scrittura; entityType incident → nessuna lettura della policy', async () => {
+    vi.mocked(getEventPolicy).mockResolvedValueOnce({ retention_days: 90 } as never)
+    vi.mocked(runQuery).mockResolvedValueOnce([{ props: { id: 'iw-9', name: 'Custom', entity_type: 'event', connector_kind: 'generic', field_mapping: '{}' } }] as never)
+    await integrationsResolvers.Mutation.createInboundWebhook(null, { input: { name: 'Custom', entityType: 'event', connectorKind: 'generic', fieldMapping: '{}' } }, admin)
+    expect(getEventPolicy).toHaveBeenCalledWith('tenant-1')
+    expect(vi.mocked(getEventPolicy).mock.invocationCallOrder[0]!).toBeLessThan(vi.mocked(runQuery).mock.invocationCallOrder[0]!)
+
+    vi.clearAllMocks()
+    vi.mocked(getEventPolicy).mockRejectedValueOnce(new Error('Tenant tenant-1 not found'))
+    await expectCode(
+      integrationsResolvers.Mutation.createInboundWebhook(null, { input: { name: 'Custom', entityType: 'event', connectorKind: 'generic', fieldMapping: '{}' } }, admin),
+      'BAD_USER_INPUT', /Cannot create an event webhook: tenant tenant-1 has no usable event policy \(Tenant tenant-1 not found\)\. Run the 20260910_1070_event_management_tenants migration/,
+    )
+    expect(runQuery).not.toHaveBeenCalled()
+
+    vi.clearAllMocks()
+    vi.mocked(runQuery).mockResolvedValueOnce([{ props: { id: 'iw-1', name: 'Zabbix', entity_type: 'incident', field_mapping: '{}' } }] as never)
+    await integrationsResolvers.Mutation.createInboundWebhook(null, { input: { name: 'Zabbix', entityType: 'incident', fieldMapping: '{}' } }, admin)
+    expect(getEventPolicy).not.toHaveBeenCalled()
+
+    // helper: una policy corrotta (non solo il tenant mancante) dà lo stesso errore con il motivo
+    vi.mocked(getEventPolicy).mockRejectedValueOnce(new Error('Tenant tenant-1 event_policy is corrupt JSON: Unexpected token'))
+    await expectCode(assertTenantEventPolicy('tenant-1'), 'BAD_USER_INPUT', /corrupt JSON.*1070/)
+  })
+
   it.each(['alertmanager', 'grafana', 'zabbix', 'datadog', 'dynatrace'] as const)('connectorKind %s è accettato', async (kind) => {
     vi.mocked(runQuery).mockResolvedValueOnce([{ props: { id: 'iw-3', name: kind, entity_type: 'event', connector_kind: kind, field_mapping: '{}' } }] as never)
     const out = await integrationsResolvers.Mutation.createInboundWebhook(null, { input: { name: kind, entityType: 'event', connectorKind: kind, fieldMapping: '{}' } }, admin)
@@ -296,7 +325,10 @@ describe('inbound webhook di Event Management — connettori, value_mapping, val
     ['fieldMapping non JSON', { entityType: 'event', connectorKind: 'generic', fieldMapping: '{nope' }, /Corrupt fieldMapping JSON/],
     ['fieldMapping con chiave non normalizzata', { entityType: 'event', connectorKind: 'generic', fieldMapping: JSON.stringify({ summary: 'title' }) }, /field_mapping\.summary is not a normalized field/],
     ['valueMapping fuori vocabolario', { entityType: 'event', connectorKind: 'generic', fieldMapping: '{}', valueMapping: JSON.stringify({ severity: { High: 'fatal' } }) }, /value_mapping\.severity\.High must be one of: info, warning, critical/],
-    ['valueMapping su un connettore preset', { entityType: 'event', connectorKind: 'zabbix', fieldMapping: '{}', valueMapping: JSON.stringify({ status: { '1': 'firing' } }) }, /valueMapping is only supported by the generic connector/],
+    ['valueMapping fuori vocabolario su un connettore preset', { entityType: 'event', connectorKind: 'zabbix', fieldMapping: '{}', valueMapping: JSON.stringify({ status: { '1': 'open' } }) }, /value_mapping\.status\.1 must be one of: firing, resolved/],
+    ['defaultValues con chiave ignota su un connettore preset', { entityType: 'event', connectorKind: 'zabbix', fieldMapping: '{}', defaultValues: JSON.stringify({ title: 'x' }) }, /default_values\.title is not supported by the zabbix connector/],
+    ['defaultValues.resource senza resourceKind', { entityType: 'event', connectorKind: 'grafana', fieldMapping: '{}', defaultValues: JSON.stringify({ resource: 'grafana' }) }, /default_values\.resourceKind is required with default_values\.resource/],
+    ['defaultValues.resourceFrom su un connettore che non lo prevede', { entityType: 'event', connectorKind: 'alertmanager', fieldMapping: '{}', defaultValues: JSON.stringify({ resourceFrom: 'alert_scope' }) }, /default_values\.resourceFrom is not supported by the alertmanager connector/],
     ['defaultValues lista', { entityType: 'incident', fieldMapping: '{}', defaultValues: '[]' }, /defaultValues must be a JSON object/],
   ])('createInboundWebhook con %s → BAD_USER_INPUT, nessuna scrittura', async (_n, input, pattern) => {
     await expectCode(integrationsResolvers.Mutation.createInboundWebhook(null, { input }, admin), 'BAD_USER_INPUT', pattern)
@@ -314,11 +346,21 @@ describe('inbound webhook di Event Management — connettori, value_mapping, val
     expect(cypher).toContain('w.value_mapping = $valueMapping')
     expect(params).toMatchObject({ id: 'iw-2', t: 'tenant-1', valueMapping: GENERIC.valueMapping, connectorKind: 'generic' })
 
-    // cambiare solo il connettore in zabbix con un value_mapping già salvato → rifiutato
+    // A1: cambiare il connettore in zabbix con un value_mapping già salvato è ammesso (value_mapping vale per ogni connettore),
+    // ma un default_values del generic non ammesso dal preset (title) è rifiutato sulla configurazione finale
     vi.mocked(runQuery).mockReset()
-    vi.mocked(runQuery).mockResolvedValueOnce([{ entityType: 'event', connectorKind: 'generic', fieldMapping: '{}', defaultValues: null, valueMapping: GENERIC.valueMapping }] as never)
-    await expectCode(integrationsResolvers.Mutation.updateInboundWebhook(null, { id: 'iw-2', input: { connectorKind: 'zabbix' } }, admin), 'BAD_USER_INPUT', /valueMapping is only supported by the generic connector/)
+    vi.mocked(runQuery).mockResolvedValueOnce([{ entityType: 'event', connectorKind: 'generic', fieldMapping: '{}', defaultValues: JSON.stringify({ title: 'x', resourceKind: 'hostname' }), valueMapping: GENERIC.valueMapping }] as never)
+    await expectCode(integrationsResolvers.Mutation.updateInboundWebhook(null, { id: 'iw-2', input: { connectorKind: 'zabbix' } }, admin), 'BAD_USER_INPUT', /default_values\.title is not supported by the zabbix connector/)
     expect(runQuery).toHaveBeenCalledTimes(1)   // solo la lettura dello stato attuale
+  })
+
+  it('A1 — createInboundWebhook con value_mapping e default_values.resource su un connettore preset (Alertmanager) è accettato e persistito', async () => {
+    const valueMapping = JSON.stringify({ severity: { page: 'critical' } })
+    const defaultValues = JSON.stringify({ resource: 'prometheus-prod', resourceKind: 'name' })
+    vi.mocked(runQuery).mockResolvedValueOnce([{ props: { id: 'iw-4', name: 'Prom', entity_type: 'event', connector_kind: 'alertmanager', field_mapping: '{}', default_values: defaultValues, value_mapping: valueMapping, enabled: true, receive_count: 0, error_count: 0 } }] as never)
+    const out = await integrationsResolvers.Mutation.createInboundWebhook(null, { input: { name: 'Prom', entityType: 'event', connectorKind: 'alertmanager', fieldMapping: '{}', defaultValues, valueMapping } }, admin)
+    expect(out).toMatchObject({ connectorKind: 'alertmanager', valueMapping, defaultValues })
+    expect(lastQuery().params).toMatchObject({ connectorKind: 'alertmanager', valueMapping, defaultValues })
   })
 
   it('inboundWebhooks espone lastError / lastErrorAt / errorCount / valueMapping (mapInbound)', async () => {

@@ -56,6 +56,7 @@ export const GET_INCIDENT = gql`
       }
       slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt }
       correlatedEvents { ...EventRowFields }
+      correlatedEventsPurged
     }
   }
   ${EVENT_ROW_FIELDS}

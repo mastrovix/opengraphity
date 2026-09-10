@@ -109,17 +109,17 @@ describe('processore', () => {
     expect(runQueryOne).not.toHaveBeenCalled()
   })
 
-  it('A4 — job riuscito su una sorgente con last_error → lo azzera (solo quello, scoped per tenant, solo se ancora presente)', async () => {
+  it('A4 — job riuscito su una sorgente con last_error → azzera SOLO gli errori scritti dal worker (prefisso `ingest: `), non gli scarti del webhook (batch parziale)', async () => {
     vi.mocked(ingestEvent).mockResolvedValue(ingestResult({ sourceHasError: true }) as never)
     startEventIngestWorker()
     await captured[0]!.processor(job())
     expect(runQueryOne).toHaveBeenCalledTimes(1)
     const [, cypher, params] = vi.mocked(runQueryOne).mock.calls[0]!
     expect(cypher).toContain('MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})')
-    expect(cypher).toContain('WHERE w.last_error IS NOT NULL')
+    expect(cypher).toContain('WHERE w.last_error STARTS WITH $prefix')
     expect(cypher).toContain('SET w.last_error = null')
     expect(cypher).not.toMatch(/error_count/)
-    expect(params).toEqual({ tenantId: 't1', sourceId: 'hook-1' })
+    expect(params).toEqual({ tenantId: 't1', sourceId: 'hook-1', prefix: 'ingest: ' })
     expect(session.close).toHaveBeenCalled()
   })
 

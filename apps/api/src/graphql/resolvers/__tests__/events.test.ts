@@ -446,6 +446,14 @@ describe('campi di correlazione', () => {
     expect(() => mapEvent(legacy.props, legacy)).toThrow(/20260909_1030_event_management_correlation_rules/)
   })
 
+  it('mapEvent: M9 maxSeverity e M2 resourceExternalId esposti; assenti (eventi pre-ondata 4) → null, mai un valore inventato', async () => {
+    const { mapEvent } = await import('../events.js')
+    const row = eventRow({ severity: 'warning', max_severity: 'critical', resource_external_id: 'HOST-1A2B' })
+    expect(mapEvent(row.props, row)).toMatchObject({ severity: 'warning', maxSeverity: 'critical', resourceExternalId: 'HOST-1A2B' })
+    const bare = eventRow()
+    expect(mapEvent(bare.props, bare)).toMatchObject({ maxSeverity: null, resourceExternalId: null })
+  })
+
   it('Event.suppressedBy → null senza change; con change carica la change del tenant', async () => {
     await expect(eventResolvers.Event.suppressedBy({ id: 'ev-1', acknowledgedById: null, sourceId: null, suppressedByChangeId: null }, null, operator)).resolves.toBeNull()
     expect(loadChange).not.toHaveBeenCalled()
@@ -825,10 +833,13 @@ describe('previewInboundEvents', () => {
   it('generic con la config di esempio → anteprima normalizzata, labels JSON; nessuna query, nessuna coda, nessun audit', async () => {
     const out = await eventResolvers.Mutation.previewInboundEvents(null, { input: generic }, admin)
     expect(out).toEqual([{
-      externalId: 'EVT-100234', status: 'firing', severity: 'warning', title: 'CheckoutErrorRate',
+      externalId: 'EVT-100234', resourceExternalId: null, status: 'firing', severity: 'warning', title: 'CheckoutErrorRate',
       description: 'Service checkout-api is returning HTTP 500 on 12% of requests',
       resource: 'api-03.example.local', resourceKind: 'hostname', labels: JSON.stringify({ env: 'prod', service: 'checkout-api' }),
     }])
+    // M2: il connettore che porta l'id della risorsa lo espone nell'anteprima
+    const dt = await eventResolvers.Mutation.previewInboundEvents(null, { input: { connectorKind: 'dynatrace', payload: JSON.stringify(SAMPLE_PAYLOADS.dynatrace) } }, admin)
+    expect(dt[0]).toMatchObject({ resourceExternalId: 'HOST-1A2B3C4D5E6F7A8B', resourceKind: 'hostname' })
     expect(getSession).not.toHaveBeenCalled()
     expect(enqueueEvents).not.toHaveBeenCalled()
     expect(audit).not.toHaveBeenCalled()
@@ -860,18 +871,19 @@ describe('previewInboundEvents', () => {
 })
 
 describe('sendSampleEvent', () => {
-  const source = (over: Record<string, unknown> = {}) => ({ props: { id: 'src-1', tenant_id: 'tenant-1', entity_type: 'event', connector_kind: 'datadog', field_mapping: '{}', default_values: null, value_mapping: null, ...over } })
+  const source = (over: Record<string, unknown> = {}, timezone: string | null = null) => ({ props: { id: 'src-1', tenant_id: 'tenant-1', entity_type: 'event', connector_kind: 'datadog', field_mapping: '{}', default_values: null, value_mapping: null, ...over }, timezone })
 
-  it('carica la sorgente del tenant, normalizza il campione del SUO connettore con la SUA config, accoda via enqueueEvents, aggiorna le statistiche, audit', async () => {
+  it('carica la sorgente del tenant (con il fuso del tenant nella stessa query), normalizza il campione del SUO connettore con la SUA config, accoda via enqueueEvents, aggiorna le statistiche, audit', async () => {
     vi.mocked(enqueueEvents).mockResolvedValueOnce(1)
-    onCypher([[/MATCH \(w:InboundWebhook \{id: \$id, tenant_id: \$tenantId\}\)\s+RETURN properties\(w\)/, source()], [/SET w\.receive_count/, null]])
+    onCypher([[/MATCH \(w:InboundWebhook \{id: \$id, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH \(t:Tenant \{id: \$tenantId\}\)\s+RETURN properties\(w\) AS props, t\.timezone AS timezone/, source()], [/SET w\.receive_count/, null]])
     await expect(eventResolvers.Mutation.sendSampleEvent(null, { sourceId: 'src-1' }, admin)).resolves.toBe(1)
     expect(enqueueEvents).toHaveBeenCalledTimes(1)
     const [tenantId, sourceId, events, receivedAt] = vi.mocked(enqueueEvents).mock.calls[0]!
     expect(tenantId).toBe('tenant-1'); expect(sourceId).toBe('src-1')
     expect(events).toHaveLength(1)
     // I-6: il campione è marcato (labels.sample = "true", conservato dall'ingest in Event.labels) e non tocca last_error
-    expect(events[0]).toMatchObject({ externalId: '7654321', status: 'firing', severity: 'critical', resource: 'cache-01', resourceKind: 'hostname', labels: expect.objectContaining({ env: 'prod', [SAMPLE_LABEL]: 'true' }) })
+    // A3: l'identità dell'allarme Datadog è alert_cycle_key (unico per ciclo), non l'id del monitor
+    expect(events[0]).toMatchObject({ externalId: '7654321:1788869557:host:cache-01', status: 'firing', severity: 'critical', resource: 'cache-01', resourceKind: 'hostname', labels: expect.objectContaining({ env: 'prod', alert_id: '7654321', [SAMPLE_LABEL]: 'true' }) })
     expect(SAMPLE_LABEL).toBe('sample')
     expect(Number.isNaN(Date.parse(receivedAt!))).toBe(false)
     const stats = callMatching(/SET w\.receive_count/)!
@@ -889,6 +901,20 @@ describe('sendSampleEvent', () => {
     onCypher([[/RETURN properties\(w\)/, source({ connector_kind: 'generic', field_mapping: JSON.stringify(GENERIC_SAMPLE_CONFIG.fieldMapping), default_values: JSON.stringify({ resourceKind: 'fqdn' }), value_mapping: JSON.stringify(GENERIC_SAMPLE_CONFIG.valueMapping) })], [/SET w\.receive_count/, null]])
     await eventResolvers.Mutation.sendSampleEvent(null, { sourceId: 'src-1' }, admin)
     expect(vi.mocked(enqueueEvents).mock.calls[0]![2][0]).toMatchObject({ title: 'CheckoutErrorRate', severity: 'warning', status: 'firing', resource: 'api-03.example.local', resourceKind: 'fqdn' })
+  })
+
+  it('sorgente zabbix: il fuso del tenant converte event_date/event_time del campione in startsAt ISO come fa il webhook; senza fuso startsAt resta vuoto e il grezzo va in labels.event_time', async () => {
+    vi.mocked(enqueueEvents).mockResolvedValue(1)
+    onCypher([[/RETURN properties\(w\)/, source({ connector_kind: 'zabbix' }, 'Europe/Rome')], [/SET w\.receive_count/, null]])
+    await eventResolvers.Mutation.sendSampleEvent(null, { sourceId: 'src-1' }, admin)
+    expect(vi.mocked(enqueueEvents).mock.calls[0]![2][0]).toMatchObject({ resource: 'app-01', resourceKind: 'hostname', resourceExternalId: expect.any(String), startsAt: '2026-09-09T08:12:37.000Z' })
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(enqueueEvents).mockResolvedValue(1)
+    onCypher([[/RETURN properties\(w\)/, source({ connector_kind: 'zabbix' }, '  ')], [/SET w\.receive_count/, null]])
+    await eventResolvers.Mutation.sendSampleEvent(null, { sourceId: 'src-1' }, admin)
+    const ev = vi.mocked(enqueueEvents).mock.calls[0]![2][0]!
+    expect(ev.startsAt).toBeUndefined()
+    expect(ev.labels).toMatchObject({ event_time: '2026.09.09 10:12:37' })
   })
 
   it('sorgente inesistente/altro tenant → NOT_FOUND; webhook non-event → BAD_USER_INPUT; config rotta → BAD_USER_INPUT; niente in coda; operator → FORBIDDEN', async () => {

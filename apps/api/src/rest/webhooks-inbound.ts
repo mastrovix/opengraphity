@@ -13,11 +13,11 @@ import { logger } from '../lib/logger.js'
 import { ServiceUnavailableError, ValidationError } from '../lib/errors.js'
 import { Semaphore } from '../lib/semaphore.js'
 import { consumeWebhookRate, rateLimitOf } from '../lib/webhookRateLimit.js'
-import { webhookRateLimitedTotal } from '../middleware/metrics.js'
+import { eventsRejectedTotal, webhookRateLimitedTotal } from '../middleware/metrics.js'
 import { restErrorHandler } from './errorHandler.js'
 import * as incidentService from '../services/incidentService.js'
 import * as problemService from '../services/problemService.js'
-import { sourceConfigOf, normalizeWithConfig } from '../services/eventService.js'
+import { sourceConfigOf, normalizeBatchWithConfig, rejectionSummary } from '../services/eventService.js'
 import { enqueueEvents } from '../jobs/eventIngestWorker.js'
 
 const log = logger.child({ module: 'webhook-inbound' })
@@ -72,17 +72,24 @@ router.post('/webhooks/inbound/:hookId', json({ limit: WEBHOOK_BODY_LIMIT }), as
   // motivo del rifiuto sul webhook (last_error / error_count) — senza tenant
   // verificato non si scrive nulla.
   let authenticatedTenantId: string | null = null
+  // Per la metrica degli scarti (events_rejected_total{connector}) quando l'intera richiesta è rifiutata.
+  let entityTypeOfRejected: string | null = null
+  let connectorOfRejected = 'generic'
+  let rejectedCounted = false
   try {
-    // 1. Load webhook config
-    const row = await runQueryOne<{ props: Record<string, unknown> }>(session, `
-      // tenant-ok: lookup pre-auth, il tenant è quello del webhook (verificato dal token)
+    // 1. Load webhook config (+ il fuso del tenant: serve alla normalizzazione
+    //    di Zabbix, che manda l'ora locale del server senza offset — M4).
+    const row = await runQueryOne<{ props: Record<string, unknown>; timezone: string | null }>(session, `
+      // tenant-ok: lookup pre-auth, il tenant è quello del webhook (verificato dal token); il Tenant è il suo
       MATCH (w:InboundWebhook {id: $hookId, enabled: true})
-      RETURN properties(w) AS props
+      OPTIONAL MATCH (t:Tenant {id: w.tenant_id})
+      RETURN properties(w) AS props, t.timezone AS timezone
     `, { hookId })
 
     if (!row) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Webhook not found or disabled' } }); return }
 
     const wh = row.props
+    const tenantTimezone = typeof row.timezone === 'string' && row.timezone.trim() ? row.timezone : null
     const tenantId  = wh['tenant_id']  as string
     const secret    = wh['secret']     as string
     const entityType = wh['entity_type'] as string
@@ -96,6 +103,9 @@ router.post('/webhooks/inbound/:hookId', json({ limit: WEBHOOK_BODY_LIMIT }), as
     }
 
     authenticatedTenantId = tenantId
+    entityTypeOfRejected = entityType
+    // connector_kind assente = webhook precedente all'Event Management → generic, come sourceConfigOf.
+    connectorOfRejected = typeof wh['connector_kind'] === 'string' ? wh['connector_kind'] : 'generic'
 
     // 3. Rate limit — only authenticated traffic counts. Redis giù → l'errore
     // propaga (500, il mittente ritenta): mai "limite disattivato".
@@ -135,14 +145,29 @@ router.post('/webhooks/inbound/:hookId', json({ limit: WEBHOOK_BODY_LIMIT }), as
     // connettore (field_mapping / default_values / value_mapping del webhook,
     // stessa pipeline di previewInboundEvents e sendSampleEvent) e accodato;
     // la mappatura piatta qui sotto vale solo per incident/problem.
+    //
+    // Accettazione parziale (A1): ogni elemento del batch è accettato o
+    // scartato da solo. I validi vengono accodati (202 con `accepted` e la
+    // lista `rejected[{index, error}]`); gli scarti restano visibili sulla
+    // sorgente (`last_error` con il riepilogo, `error_count` += scartati) e in
+    // `events_rejected_total{connector}`. Se NESSUN elemento passa → 400 come
+    // per un payload interamente malformato. Non è un fallback: nulla viene
+    // inventato, ciò che manca è contato e mostrato all'amministratore.
     if (entityType === 'event') {
       const config = sourceConfigOf(wh)
-      const events = normalizeWithConfig(config, payload)
-      if (events.length === 0) {
-        throw new ValidationError('Payload contains no alerts')
+      if (config.connectorKind === 'zabbix' && !tenantTimezone) {
+        log.warn({ hookId, tenantId }, 'Tenant has no timezone: Zabbix event_date/event_time cannot be converted (kept raw in labels.event_time)')
+      }
+      const batch = normalizeBatchWithConfig(config, payload, { timezone: tenantTimezone })
+      if (batch.events.length === 0) {
+        if (batch.rejected.length === 0) throw new ValidationError('Payload contains no alerts')
+        // Tutti scartati: la metrica conta ogni elemento (il catch non la incrementa di nuovo).
+        eventsRejectedTotal.inc({ connector: config.connectorKind }, batch.rejected.length)
+        rejectedCounted = true
+        throw new ValidationError(rejectionSummary(batch))
       }
       const receivedAt = new Date().toISOString()
-      const accepted = await enqueueEvents(tenantId, hookId, events, receivedAt)
+      const accepted = await enqueueEvents(tenantId, hookId, batch.events, receivedAt)
 
       // Solo statistiche di ricezione: il 202 dice "accodato", non "riuscito".
       // `last_error` lo azzera il worker al primo job andato a buon fine e lo
@@ -153,9 +178,14 @@ router.post('/webhooks/inbound/:hookId', json({ limit: WEBHOOK_BODY_LIMIT }), as
         SET w.receive_count = coalesce(w.receive_count, 0) + $n,
             w.last_received_at = $now
       `, { hookId, tenantId, n: accepted, now: receivedAt })
+      if (batch.rejected.length > 0) {
+        eventsRejectedTotal.inc({ connector: config.connectorKind }, batch.rejected.length)
+        log.warn({ hookId, connectorKind: config.connectorKind, accepted, rejected: batch.rejected.length, first: batch.rejected[0] }, 'Inbound events partially rejected')
+        await recordRejection(session, hookId, tenantId, rejectionSummary(batch), batch.rejected.length)
+      }
 
-      log.info({ hookId, connectorKind: config.connectorKind, accepted }, 'Inbound events accepted')
-      res.status(202).json({ id: hookId, entity_type: 'event', accepted })
+      log.info({ hookId, connectorKind: config.connectorKind, accepted, rejected: batch.rejected.length }, 'Inbound events accepted')
+      res.status(202).json({ id: hookId, entity_type: 'event', accepted, rejected: batch.rejected })
       return
     }
 
@@ -232,7 +262,10 @@ router.post('/webhooks/inbound/:hookId', json({ limit: WEBHOOK_BODY_LIMIT }), as
     // body; the full error stays in the server log.
     if (err instanceof ValidationError) {
       log.warn({ hookId, err: err.message }, 'Inbound webhook rejected')
-      if (authenticatedTenantId) await recordRejection(session, hookId, authenticatedTenantId, err.message)
+      if (authenticatedTenantId) {
+        await recordRejection(session, hookId, authenticatedTenantId, err.message)
+        if (entityTypeOfRejected === 'event' && !rejectedCounted) eventsRejectedTotal.inc({ connector: connectorOfRejected })
+      }
       res.status(400).json({ error: { code: 'BAD_REQUEST', message: err.message } })
       return
     }
@@ -259,19 +292,20 @@ router.post('/webhooks/inbound/:hookId', json({ limit: WEBHOOK_BODY_LIMIT }), as
 router.use(restErrorHandler)
 
 /**
- * Un payload rifiutato (400) lascia traccia sul webhook: `last_error`,
- * `last_error_at`, `error_count`. Così l'amministratore vede il motivo in
- * interfaccia senza leggere i log. Se la scrittura fallisce si logga a livello
- * error e il 400 (la risposta primaria) resta.
+ * Un payload rifiutato (400) — o gli elementi scartati di un batch accettato
+ * in parte (202, A1) — lascia traccia sul webhook: `last_error`,
+ * `last_error_at`, `error_count` (+ `count`, il numero di elementi scartati).
+ * Così l'amministratore vede il motivo in interfaccia senza leggere i log. Se
+ * la scrittura fallisce si logga a livello error e la risposta primaria resta.
  */
-async function recordRejection(session: ReturnType<typeof getSession>, hookId: string, tenantId: string, message: string): Promise<void> {
+async function recordRejection(session: ReturnType<typeof getSession>, hookId: string, tenantId: string, message: string, count = 1): Promise<void> {
   try {
     await runQuery(session, `
       MATCH (w:InboundWebhook {id: $hookId, tenant_id: $tenantId})
       SET w.last_error = $message,
           w.last_error_at = $now,
-          w.error_count = coalesce(w.error_count, 0) + 1
-    `, { hookId, tenantId, message: message.slice(0, 2000), now: new Date().toISOString() })
+          w.error_count = coalesce(w.error_count, 0) + toInteger($count)
+    `, { hookId, tenantId, message: message.slice(0, 2000), now: new Date().toISOString(), count })
   } catch (e) {
     log.error({ hookId, tenantId, err: e }, 'Could not record inbound webhook rejection')
   }

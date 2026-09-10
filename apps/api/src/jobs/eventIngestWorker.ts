@@ -23,10 +23,14 @@
  *
  * Errori visibili (A4): all'ultimo tentativo fallito il worker scrive
  * `last_error`/`last_error_at`/`error_count` sulla sorgente (InboundWebhook)
- * con il messaggio e l'impronta, così la pagina Sorgenti lo mostra; il primo
- * job riuscito dopo un errore lo azzera. Il webhook NON azzera più
- * `last_error` al 202: un batch accettato non dice nulla sull'esito.
+ * con il messaggio e l'impronta (prefisso `ingest:`), così la pagina Sorgenti
+ * lo mostra; il primo job riuscito dopo un errore azzera SOLO quel tipo di
+ * errore. Gli scarti del webhook (payload rifiutato, batch parziale: A1) non
+ * hanno il prefisso e restano finché un nuovo payload non li sostituisce: un
+ * job riuscito non dice nulla sulla validità dei payload successivi. Il
+ * webhook NON azzera più `last_error` al 202.
  */
+export const INGEST_ERROR_PREFIX = 'ingest: '
 import type { Worker, Job } from 'bullmq'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
@@ -62,16 +66,16 @@ async function processEvent(job: Job<EventIngestJobData>): Promise<void> {
   if (result.sourceHasError) await clearSourceError(tenantId, sourceId)
 }
 
-/** Un job riuscito azzera `last_error` della sorgente (solo se presente: la scrittura la decide ingestEvent, che ha già letto il webhook). */
+/** Un job riuscito azzera `last_error` della sorgente solo se lo aveva scritto il worker (prefisso `ingest:`); gli scarti del webhook restano. */
 async function clearSourceError(tenantId: string, sourceId: string): Promise<void> {
   const session = getSession(undefined, 'WRITE')
   try {
     await runQueryOne(session, `
       MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})
-      WHERE w.last_error IS NOT NULL
+      WHERE w.last_error STARTS WITH $prefix
       SET w.last_error = null
       RETURN w.id AS id
-    `, { tenantId, sourceId })
+    `, { tenantId, sourceId, prefix: INGEST_ERROR_PREFIX })
   } finally {
     await session.close()
     invalidateSourceCache(tenantId, sourceId)
@@ -85,7 +89,7 @@ async function clearSourceError(tenantId: string, sourceId: string): Promise<voi
  */
 export async function recordIngestFailure(data: EventIngestJobData, err: Error): Promise<void> {
   const fingerprint = fingerprintOf(data.sourceId, data.ev)
-  const message = `ingest: ${err.message} (impronta ${fingerprint}, ${data.ev.status} ${data.ev.title} su ${data.ev.resource})`.slice(0, 2000)
+  const message = `${INGEST_ERROR_PREFIX}${err.message} (impronta ${fingerprint}, ${data.ev.status} ${data.ev.title} su ${data.ev.resource})`.slice(0, 2000)
   const session = getSession(undefined, 'WRITE')
   try {
     const row = await runQueryOne<{ connectorKind: string | null }>(session, `

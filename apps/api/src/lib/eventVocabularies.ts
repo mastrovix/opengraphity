@@ -57,6 +57,20 @@ export type HealthSource = (typeof HEALTH_SOURCES)[number]
 export const CORRELATION_OUTCOMES = ['opened', 'attached', 'reopened', 'skipped_orphan', 'skipped_severity', 'delayed', 'pending', 'suppressed', 'flapping', 'storm', 'storm_no_ci', 'none'] as const
 export type CorrelationOutcome = (typeof CORRELATION_OUTCOMES)[number]
 
+/**
+ * Esito dell'ultimo riconoscimento automatico del CI (`Event.match_reason`,
+ * scritto dal MERGE dell'ingest: services/events/transitions.ts#ciMatchCypher),
+ * nell'ordine di precedenza: `alias_external_id` (alias external_id del CI =
+ * id della risorsa presso la sorgente), `alias` (alias del tipo della risorsa:
+ * hostname/ip/fqdn), `name` (name_key = risorsa), `name_short` (policy
+ * `match_short_hostname`: prima etichetta del FQDN, o FQDN che inizia con il
+ * nome corto), `ambiguous` (più CI con lo stesso nome: NON agganciato, orfano
+ * con i candidati), `none` (nessun CI: orfano). Null sugli eventi scritti
+ * prima del campo o mai riconosciuti automaticamente (agganciati a mano).
+ */
+export const MATCH_REASONS = ['alias_external_id', 'alias', 'name', 'name_short', 'ambiguous', 'none'] as const
+export type CIMatchReason = (typeof MATCH_REASONS)[number]
+
 /** Soglia di severità oltre la quale la policy apre un incident (`never` = mai). */
 export const OPEN_INCIDENT_FROM = ['info', 'warning', 'critical', 'never'] as const
 export type OpenIncidentFrom = (typeof OPEN_INCIDENT_FROM)[number]
@@ -77,6 +91,7 @@ export const EVENT_SDL_ENUMS: Readonly<Record<string, readonly string[]>> = {
   CIHealth:         CI_HEALTHS,
   HealthSource:     HEALTH_SOURCES,
   EventCorrelation: CORRELATION_OUTCOMES,
+  EventMatchReason: MATCH_REASONS,
   OpenIncidentFrom: OPEN_INCIDENT_FROM,
   EventGroupBy:     EVENT_GROUP_BY,
 }

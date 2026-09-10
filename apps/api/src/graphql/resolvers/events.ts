@@ -127,8 +127,11 @@ export function mapEvent(props: Props, ci: CIRefRow & EventJoins) {
     id:             toStr(props['id']),
     fingerprint:    toStr(props['fingerprint']),
     externalId:     toStrOrNull(props['external_id']),
+    resourceExternalId: toStrOrNull(props['resource_external_id']),
     status:         toStr(props['status']),
     severity:       toStr(props['severity']),
+    // M9: assente sugli eventi scritti prima del campo → null (nessun valore inventato).
+    maxSeverity:    toStrOrNull(props['max_severity']),
     title:          toStr(props['title']),
     description:    toStrOrNull(props['description']),
     resource:       toStr(props['resource']),
@@ -141,6 +144,8 @@ export function mapEvent(props: Props, ci: CIRefRow & EventJoins) {
     acknowledgedAt: toStrOrNull(props['acknowledged_at']),
     correlation,
     correlationAt:  toStrOrNull(props['correlation_at']),
+    // A2: assente sugli eventi scritti prima del campo o mai riconosciuti automaticamente → null.
+    matchReason:    toStrOrNull(props['match_reason']),
     flappingSince:  toStrOrNull(props['flapping_since']),
     transitions24h: countTransitionsSince(transitionsOf(props), Date.now() - 24 * 3600 * 1000),
     // suppressedBy resta un field resolver (loadChange); gli altri tre sono
@@ -610,6 +615,7 @@ interface PreviewInput { connectorKind: string; payload: string; fieldMapping?: 
 function toPreview(ev: NormalizedEvent) {
   return {
     externalId:   ev.externalId ?? null,
+    resourceExternalId: ev.resourceExternalId ?? null,
     status:       ev.status,
     severity:     ev.severity,
     title:        ev.title,
@@ -651,24 +657,30 @@ export const SAMPLE_LABEL = 'sample'
  * `last_error` NON viene azzerato: è la diagnosi dell'ultimo payload reale
  * rifiutato, e una prova riuscita non la smentisce. La sessione Neo4j viene
  * chiusa prima dell'I/O su Redis (P-6) e riaperta per le statistiche.
+ * Il fuso del tenant viaggia con la normalizzazione come nel webhook
+ * (rest/webhooks-inbound.ts): il campione Zabbix ha `event_date`/`event_time`
+ * in ora locale e senza fuso `startsAt` resterebbe vuoto.
  */
 async function sendSampleEvent(_: unknown, args: { sourceId: string }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
   let wh: Props
+  let timezone: string | null
   const read = getSession()
   try {
-    const row = await runQueryOne<{ props: Props }>(read, `
+    const row = await runQueryOne<{ props: Props; timezone: unknown }>(read, `
       MATCH (w:InboundWebhook {id: $id, tenant_id: $tenantId})
-      RETURN properties(w) AS props
+      OPTIONAL MATCH (t:Tenant {id: $tenantId})
+      RETURN properties(w) AS props, t.timezone AS timezone
     `, { id: args.sourceId, tenantId: ctx.tenantId })
     if (!row) throw new NotFoundError('InboundWebhook', args.sourceId)
     wh = row.props
+    timezone = typeof row.timezone === 'string' && row.timezone.trim() ? row.timezone : null
   } finally { await read.close() }
   if (wh['entity_type'] !== 'event') {
     throw new ValidationError(`Inbound webhook ${args.sourceId} is not a monitoring source (entityType ${JSON.stringify(wh['entity_type'])})`)
   }
   const config = sourceConfigOf(wh)
-  const events: NormalizedEvent[] = normalizeWithConfig(config, samplePayloadOf(config.connectorKind))
+  const events: NormalizedEvent[] = normalizeWithConfig(config, samplePayloadOf(config.connectorKind), { timezone })
     .map((ev) => ({ ...ev, labels: { ...ev.labels, [SAMPLE_LABEL]: 'true' } }))
   const receivedAt = new Date().toISOString()
   const accepted = await enqueueEvents(ctx.tenantId, args.sourceId, events, receivedAt)
@@ -1184,6 +1196,19 @@ async function incidentCorrelatedEventCount(parent: { id: string }, _: unknown, 
   } finally { await session.close() }
 }
 
+/** Allarmi correlati eliminati dalla conservazione dopo la chiusura (riepilogo scritto da purge_events; revisione 2.2). */
+async function incidentCorrelatedEventsPurged(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  const session = getSession()
+  try {
+    const row = await runQueryOne<{ n: unknown }>(session, `
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      RETURN coalesce(i.correlated_events_purged, 0) AS n
+    `, { id: parent.id, tenantId: ctx.tenantId })
+    if (!row) throw new NotFoundError('Incident', parent.id)
+    return toNumber(row.n)
+  } finally { await session.close() }
+}
+
 /** Eventi silenziati dalla finestra della change (SUPPRESSED_BY, anche storici), dal più recente, paginati (P-5). */
 async function changeSuppressedEvents(parent: { id: string }, args: PageArgs, ctx: GraphQLContext) {
   const session = getSession()
@@ -1211,6 +1236,19 @@ async function changeSuppressedEventCount(parent: { id: string }, _: unknown, ct
   } finally { await session.close() }
 }
 
+/** Eventi silenziati eliminati dalla conservazione dopo la chiusura della change (revisione 2.2). */
+async function changeSuppressedEventsPurged(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  const session = getSession()
+  try {
+    const row = await runQueryOne<{ n: unknown }>(session, `
+      MATCH (c:Change {id: $id, tenant_id: $tenantId})
+      RETURN coalesce(c.suppressed_events_purged, 0) AS n
+    `, { id: parent.id, tenantId: ctx.tenantId })
+    if (!row) throw new NotFoundError('Change', parent.id)
+    return toNumber(row.n)
+  } finally { await session.close() }
+}
+
 export const eventResolvers = {
   Query:    { events, event, eventStats, ciAliases, eventPolicy, sampleInboundPayload, payloadKeys, monitoringSources, monitoringSourceRefs, ciHealth, ciHealthOverview },
   Mutation: {
@@ -1218,6 +1256,6 @@ export const eventResolvers = {
     previewInboundEvents, sendSampleEvent, setCIHealthOverride,
   },
   Event:    { acknowledgedBy: eventAcknowledgedBy, source: eventSource, incident: eventIncident, suppressedBy: eventSuppressedBy },
-  Incident: { correlatedEvents: incidentCorrelatedEvents, correlatedEventCount: incidentCorrelatedEventCount },
-  Change:   { suppressedEvents: changeSuppressedEvents, suppressedEventCount: changeSuppressedEventCount },
+  Incident: { correlatedEvents: incidentCorrelatedEvents, correlatedEventCount: incidentCorrelatedEventCount, correlatedEventsPurged: incidentCorrelatedEventsPurged },
+  Change:   { suppressedEvents: changeSuppressedEvents, suppressedEventCount: changeSuppressedEventCount, suppressedEventsPurged: changeSuppressedEventsPurged },
 }
