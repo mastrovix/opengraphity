@@ -76,7 +76,12 @@ interface Props<T> {
 }
 
 const thStyle: React.CSSProperties = {
-  background:    'var(--color-slate-bg)',
+  // Tinta del turchese (20 %) invece del grigio freddo: l'intestazione della
+  // tabella appartiene alla stessa famiglia di quella delle sezioni (32 %), un
+  // gradino sotto. NON scendere sotto: l'8 % su bianco dà (235, 245, 251), a
+  // occhio identico al grigio di prima (241, 245, 249) — cambiava il token,
+  // non il colore.
+  background:    'var(--color-brand-a20)',
   borderBottom:  `2px solid ${colors.border}`,
   padding:       '8px 12px 6px',
   textAlign:     'left',
@@ -200,11 +205,17 @@ export function SortableFilterTable<T extends object>({
                       onClick={() => handleSort(col.key)}
                       title={sortHint}
                       style={{
+                        // `font` PRIMA delle dichiarazioni specifiche: è una
+                        // scorciatoia e azzera quel che viene prima di lei —
+                        // messa in fondo cancellava corpo e peso, e
+                        // l'intestazione ordinabile restava più smorta di
+                        // quella fissa.
+                        font:          'inherit',
                         display:       'flex',
                         alignItems:    'center',
                         gap:           4,
                         fontSize:      11,
-                        fontWeight:    500,
+                        fontWeight:    600,
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px',
                         color:         isActive ? colors.brand : colors.slateDark,
@@ -212,8 +223,6 @@ export function SortableFilterTable<T extends object>({
                         background:    'none',
                         border:        'none',
                         padding:       0,
-                        font:          'inherit',
-                        fontFamily:    'inherit',
                       }}
                     >
                       {col.label}
@@ -228,7 +237,7 @@ export function SortableFilterTable<T extends object>({
                         alignItems:    'center',
                         gap:           4,
                         fontSize:      11,
-                        fontWeight:    500,
+                        fontWeight:    600,
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px',
                         color:         colors.slateDark,

@@ -223,6 +223,23 @@ function StatTile({ label, value, accent, active, onClick }: { label: string; va
   )
 }
 
+/**
+ * Un gruppo di filtri: etichetta sopra, chip sotto. L'etichetta era una
+ * `legend` con `float: left` dentro un fieldset flex — fuori dal flusso, quindi
+ * saliva sopra i chip e i gruppi non si allineavano fra loro; e con un gap
+ * uguale a quello fra i chip le due famiglie sembravano una sola fila.
+ * Resta un `fieldset`/`legend` (il gruppo ha un nome per i lettori di schermo),
+ * ma impaginato a blocco: i chip vivono in una riga loro.
+ */
+function FilterChipGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
+      <legend style={{ padding: 0, marginBottom: 6, fontSize: 'var(--font-size-table)', color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</legend>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>{children}</div>
+    </fieldset>
+  )
+}
+
 function Chip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
@@ -465,25 +482,25 @@ export function EventsPage() {
         </div>
       )}
 
-      {/* Filtri rapidi */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16, marginBottom: 12 }}>
-        <fieldset style={{ display: 'flex', gap: 6, alignItems: 'center', border: 'none', padding: 0, margin: 0 }}>
-          <legend style={{ float: 'left', marginRight: 6, fontSize: 'var(--font-size-table)', color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('events.columns.status')}</legend>
+      {/* Filtri rapidi: un gruppo per famiglia, etichetta sopra i suoi chip. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '12px 32px', marginBottom: 12 }}>
+        <FilterChipGroup label={t('events.columns.status')}>
           {EVENT_STATUSES.map((s) => (
             <Chip key={s} label={t(`events.status.${s}`)} active={filter.status.includes(s)} onClick={() => updateFilter({ status: toggle(filter.status, s) })} />
           ))}
-        </fieldset>
-        <fieldset style={{ display: 'flex', gap: 6, alignItems: 'center', border: 'none', padding: 0, margin: 0 }}>
-          <legend style={{ float: 'left', marginRight: 6, fontSize: 'var(--font-size-table)', color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('events.columns.severity')}</legend>
+        </FilterChipGroup>
+        <FilterChipGroup label={t('events.columns.severity')}>
           {EVENT_SEVERITIES.map((s) => (
             <Chip key={s} label={t(`events.severity.${s}`)} active={filter.severity.includes(s)} onClick={() => updateFilter({ severity: toggle(filter.severity, s) })} />
           ))}
-        </fieldset>
-        <Chip label={t('events.filters.orphanOnly')} active={filter.orphan} onClick={() => updateFilter({ orphan: !filter.orphan })} />
-        {/* Chip di contesto (arrivo da CI/incident/change): il click li toglie e aggiorna l'URL. */}
-        {filter.ciId       && <Chip label={t('monitoring.console.ciFilter')}    active onClick={() => updateFilter({ ciId: null })} />}
-        {filter.incidentId && <Chip label={t('events.filters.incidentOnly')}   active onClick={() => updateFilter({ incidentId: null })} />}
-        {filter.changeId   && <Chip label={t('events.filters.changeOnly')}     active onClick={() => updateFilter({ changeId: null })} />}
+        </FilterChipGroup>
+        <FilterChipGroup label={t('events.filters.other')}>
+          <Chip label={t('events.filters.orphanOnly')} active={filter.orphan} onClick={() => updateFilter({ orphan: !filter.orphan })} />
+          {/* Chip di contesto (arrivo da CI/incident/change): il click li toglie e aggiorna l'URL. */}
+          {filter.ciId       && <Chip label={t('monitoring.console.ciFilter')}    active onClick={() => updateFilter({ ciId: null })} />}
+          {filter.incidentId && <Chip label={t('events.filters.incidentOnly')}   active onClick={() => updateFilter({ incidentId: null })} />}
+          {filter.changeId   && <Chip label={t('events.filters.changeOnly')}     active onClick={() => updateFilter({ changeId: null })} />}
+        </FilterChipGroup>
         <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 4, marginLeft: 'auto' }}>
           <Select
             aria-label={t('monitoring.console.sourceFilter')}

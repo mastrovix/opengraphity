@@ -122,7 +122,7 @@ export const alpha = {
   white08: v('--color-white-a08'), white40: v('--color-white-a40'), white92: v('--color-white-a92'),
   success08: v('--color-success-a08'), success10: v('--color-success-a10'), danger08: v('--color-danger-a08'),
   iconAccent12: v('--color-icon-accent-a12'),
-  brand08: v('--color-brand-a08'), brand13: v('--color-brand-a13'), brand20: v('--color-brand-a20'), brand53: v('--color-brand-a53'),
+  brand08: v('--color-brand-a08'), brand13: v('--color-brand-a13'), brand20: v('--color-brand-a20'), brand32: v('--color-brand-a32'), brand53: v('--color-brand-a53'),
 } as const
 
 /** Identità dei fornitori esterni (ToolBadge, canali di notifica): non seguono il tema. */

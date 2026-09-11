@@ -516,4 +516,16 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
     expect(screen.getByText(/^in (8\d|9\d) s$/)).toBeInTheDocument()
     expect(screen.getByText('Ambiguous')).toBeInTheDocument()
   })
+
+  it('i filtri rapidi sono gruppi con nome: etichetta sopra i chip, i chip sciolti hanno il loro gruppo', async () => {
+    renderPage('viewer')
+    await screen.findByRole('heading', { level: 1 })
+    const groups = screen.getAllByRole('group').filter((g) => g.tagName === 'FIELDSET')
+    expect(groups.map((g) => g.querySelector('legend')!.textContent)).toEqual(['Status', 'Severity', 'Other'])
+    // ogni chip sta dentro il suo gruppo, non sciolto nella riga
+    const inGroup = (name: string) => groups.find((g) => within(g).queryByRole('button', { name }) !== null)
+    expect(inGroup('Firing')!.querySelector('legend')!.textContent).toBe('Status')
+    expect(inGroup('Critical')!.querySelector('legend')!.textContent).toBe('Severity')
+    expect(inGroup('No CI only')!.querySelector('legend')!.textContent).toBe('Other')
+  })
 })

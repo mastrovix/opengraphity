@@ -1,7 +1,7 @@
 import { useId, useState, type ReactNode, type CSSProperties } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { CountBadge } from './CountBadge'
-import { colors } from '@/lib/tokens'
+import { alpha, colors } from '@/lib/tokens'
 
 interface SectionCardProps {
   title:         ReactNode
@@ -25,8 +25,12 @@ export function SectionCard({
   title,
   collapsible = true,
   defaultOpen = false,
-  activeColor = colors.brand,
-  activeTextColor = colors.white,
+  // Intestazione aperta: TINTA del turchese (32 %), non il turchese pieno. Il
+  // pieno con testo bianco pesava come una barra di navigazione e, con molti
+  // riquadri aperti, la pagina diventava una scala di fasce colorate; le tinte
+  // più chiare (13 %, 20 %) lasciavano la testata troppo timida.
+  activeColor = alpha.brand32,
+  activeTextColor = colors.brandHover,
   open: controlledOpen,
   onToggle,
   count,

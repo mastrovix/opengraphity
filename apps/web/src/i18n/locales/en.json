@@ -1904,7 +1904,8 @@
       "advancedMatch_one": "{{count}} of {{total}} on this page matches the advanced filter",
       "advancedMatch_other": "{{count}} of {{total}} on this page match the advanced filter",
       "advancedUrlInvalid": "The advanced filter in this link cannot be read: the table shows every row on the page. Rebuild it with \"Advanced filters\".",
-      "sortPageOnly": "Sorts the current page: the server does not sort alarms, the other pages stay as they are"
+      "sortPageOnly": "Sorts the current page: the server does not sort alarms, the other pages stay as they are",
+      "other": "Other"
     },
     "empty": {
       "title": "No alarms",

@@ -1904,7 +1904,8 @@
       "advancedMatch_one": "{{count}} di {{total}} in questa pagina corrisponde al filtro avanzato",
       "advancedMatch_other": "{{count}} di {{total}} in questa pagina corrispondono al filtro avanzato",
       "advancedUrlInvalid": "Il filtro avanzato di questo collegamento non è leggibile: la tabella mostra tutte le righe della pagina. Ricostruiscilo con «Filtri avanzati».",
-      "sortPageOnly": "Ordina la pagina corrente: il server non ordina gli allarmi, le altre pagine restano come sono"
+      "sortPageOnly": "Ordina la pagina corrente: il server non ordina gli allarmi, le altre pagine restano come sono",
+      "other": "Altro"
     },
     "empty": {
       "title": "Nessun allarme",
