@@ -148,11 +148,27 @@ export async function runPeriodicPasses(now: string = new Date().toISOString()):
  * Accoda la valutazione ritardata. Awaited dal chiamante: una coda non
  * disponibile deve far fallire l'ingest (che ritenta), non lasciare l'evento
  * `delayed` per sempre.
+ *
+ * Revisione 2 · B2-02: BullMQ IGNORA in silenzio un `add` con un id già
+ * presente, anche se quel job è `failed` (li conserva 7 giorni). La
+ * ripetizione dell'allarme entro la scadenza riusa lo stesso `dueAt`, quindi
+ * lo stesso id: senza questo controllo l'evento restava `delayed` con la
+ * scadenza passata e nessuno lo riapriva. Un job già fallito viene rimesso in
+ * coda con `retry()` (la rete di sicurezza resta la passata periodica, che dai
+ * `delayed` scaduti rientra in pipeline).
  */
 export async function enqueueCorrelation(tenantId: string, eventId: string, dueAt: string): Promise<void> {
   const delay = Math.max(Date.parse(dueAt) - Date.now(), 0)
-  await getQueue<CorrelateQueueData>(EVENT_CORRELATE_QUEUE).add('correlate', { tenantId, eventId, dueAt }, {
-    jobId: correlationJobId(tenantId, eventId, dueAt),
+  const jobId = correlationJobId(tenantId, eventId, dueAt)
+  const queue = getQueue<CorrelateQueueData>(EVENT_CORRELATE_QUEUE)
+  const existing = await queue.getJob(jobId)
+  if (existing && await existing.isFailed()) {
+    await existing.retry()
+    log.info({ tenantId, eventId, dueAt, jobId, attemptsMade: existing.attemptsMade }, 'Delayed correlation job had failed: retried instead of re-enqueued')
+    return
+  }
+  await queue.add('correlate', { tenantId, eventId, dueAt }, {
+    jobId,
     delay,
     attempts: 3,
     backoff:  { type: 'exponential', delay: 5_000 },

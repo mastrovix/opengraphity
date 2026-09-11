@@ -80,7 +80,7 @@ export function MonitoringSourcesPage({ sampleRefetchDelayMs = SAMPLE_REFETCH_DE
   const stormBySource = useMemo(() => new Map((statsData?.eventStats.stormSources ?? []).map((s) => [s.sourceId, s])), [statsData])
 
   const [updateSource] = useMutation(UPDATE_MONITORING_SOURCE)
-  const [deleteSource] = useMutation(DELETE_MONITORING_SOURCE)
+  const [deleteSource] = useMutation<{ deleteInboundWebhook: { deleted: boolean; resolvedEvents: number; affectedCIs: number } }>(DELETE_MONITORING_SOURCE)
   const [regenToken]   = useMutation<{ regenerateWebhookToken: { id: string; token: string } }>(REGENERATE_SOURCE_TOKEN)
   const [sendSample]   = useMutation<{ sendSampleEvent: number }>(SEND_SAMPLE_EVENT)
 
@@ -96,8 +96,13 @@ export function MonitoringSourcesPage({ sampleRefetchDelayMs = SAMPLE_REFETCH_DE
     const ok = await confirm({ title: t('monitoring.sources.deleteTitle', { name: s.name }), body: t('monitoring.sources.deleteBody'), danger: true, confirmLabel: t('common.delete') })
     if (!ok) return
     try {
-      await deleteSource({ variables: { id: s.id } })
-      toast.success(t('toast.monitoring.sourceDeleted'))
+      const res = await deleteSource({ variables: { id: s.id } })
+      const r = res.data?.deleteInboundWebhook
+      // D4.1: se la sorgente aveva allarmi accesi, l'API li chiude: dirlo, altrimenti
+      // l'operatore non sa perché la salute dei CI è appena cambiata.
+      toast.success(r && r.resolvedEvents > 0
+        ? t('toast.monitoring.sourceDeletedWithEvents', { count: r.resolvedEvents, cis: r.affectedCIs })
+        : t('toast.monitoring.sourceDeleted'))
       void refetch()
     } catch (e) { toast.error(t('toast.events.actionFailed', { error: errorMessage(e) })) }
   }

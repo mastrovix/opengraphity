@@ -356,7 +356,7 @@ sorgente dalle cache in memoria (vedi *Cache in memoria*).
 | `events-ingest` (concurrency 4) | `ingest` | uno per allarme normalizzato; job id `ev-<tenant>-<impronta>-<ms>` (una ri-consegna dello stesso batch non raddoppia i conteggi); 3 tentativi con backoff. Esegue `ingestEvent`: MERGE per impronta, aggancio al CI (alias → nome), pipeline di correlazione, eventi di dominio |
 | `events-correlate` (concurrency 2) | `correlate` | ritardato: con `open_delay_seconds > 0` l'apertura dell'incident aspetta la scadenza; se nel frattempo l'allarme è rientrato non apre nulla. Misura il proprio ritardo dalla scadenza (`event_correlate_job_lag_seconds`) |
 | | `reevaluate-change-window` | accodato dalle mutation della change quando esce dai passi di finestra con allarmi silenziati (e da `deleteChange`): rivaluta quegli eventi fuori dalla mutation |
-| `events-maintenance` (concurrency 1, lock 10 min) | `events-maintenance` | ripetuto ogni 5 minuti, cinque passate paginate e indipendenti: (1) `closed_windows` — eventi `suppressed` la cui finestra di change è chiusa → tornano firing e vengono correlati; (2) `pending` — eventi firing rimasti `pending`/`none` con scadenza passata → ripresi; (3) `flapping` — eventi senza passaggi da `flap_stable_minutes` → stabilizzati; (4) `storms` — sorgenti in tempesta raffreddate che non ricevono più nulla → tempesta chiusa; (5) `gauges` — riallinea `events_overdue_delayed` e `events_firing_uncorrelated`. Una passata fallita non ferma le altre; il job fallisce alla fine con tutti i motivi; ogni passata è contata e misurata (`event_pass_total{pass,result}`, `event_pass_duration_seconds{pass}`) |
+| `events-maintenance` (concurrency 1, lock 10 min) | `events-maintenance` | ripetuto ogni 5 minuti, cinque passate paginate e indipendenti: (1) `closed_windows` — eventi `suppressed` la cui finestra di change è chiusa → tornano firing e vengono correlati; (2) `pending` — eventi firing che nessuno sta più curando → ripresi: scadenza passata, **oppure** correlazione `pending`/`none` ferma da più di 15 minuti anche SENZA scadenza (revisione 2 · B2-01: è così che nasce e riparte ogni evento, e prima nessuna passata li vedeva), **oppure** ritardo di apertura scaduto da più di 5 minuti (B2-02); il predicato è lo stesso del gauge `events_firing_uncorrelated` (`services/events/stuck.ts`), così metrica e riparazione non possono divergere; (3) `flapping` — eventi senza passaggi da `flap_stable_minutes` → stabilizzati; (4) `storms` — sorgenti in tempesta raffreddate che non ricevono più nulla → tempesta chiusa; (5) `gauges` — riallinea `events_overdue_delayed` e `events_firing_uncorrelated`. Una passata fallita non ferma le altre; il job fallisce alla fine con tutti i motivi; ogni passata è contata e misurata (`event_pass_total{pass,result}`, `event_pass_duration_seconds{pass}`) |
 | `maintenance` | `purge_events` | ogni giorno alle 03:30: conservazione (vedi sotto) |
 
 Il webhook risponde **202** appena i job sono accodati: se Redis è giù risponde
@@ -612,7 +612,10 @@ gli operatori.
   coinvolti nella descrizione; gli eventi hanno `correlation = storm`.
 - **Cosa succede**: il contatore al minuto per (tenant, sorgente) vive su
   Redis (`og:events:storm:<tenant>:<sorgente>:<minuto>`, TTL 120 s) e conta
-  solo gli allarmi **nuovi** (le ripetizioni no). Alla soglia la sorgente entra
+  gli allarmi che **aprono un ciclo** — nuovi, oppure rientrati e tornati
+  accesi (revisione 2 · B2-03: contare i soli Event nuovi rendeva impossibile
+  la tempesta al SECONDO guasto identico, quando gli Event esistono già) — non
+  le ripetizioni né il retry dello stesso payload. Alla soglia la sorgente entra
   in tempesta; gli allarmi vengono ingeriti e deduplicati normalmente e la
   salute dei CI si aggiorna, ma la correlazione **non** apre né aggancia
   incident per CI: tutti si agganciano all'unico incident di tempesta della
@@ -756,7 +759,8 @@ cruscotto Grafana `infra/grafana/dashboards/opengraphity-api.json`):
 | `event_pass_total{pass,result}` | counter | passate del job `events-maintenance` (`closed_windows`, `pending`, `flapping`, `storms`, `gauges`) per esito (`ok`, `failed`) |
 | `event_pass_duration_seconds{pass}` | histogram | durata di ogni passata (una passata oltre i minuti = 2.1: troppi eventi in stato di attesa) |
 | `events_overdue_delayed` | gauge | eventi `delayed` con `correlation_due_at` scaduta da più di 5 minuti: il job `correlate` non è arrivato (coda ferma o job id già usato) — riallineato dal job periodico |
-| `events_firing_uncorrelated` | gauge | eventi firing con correlazione `none`/`pending` da più di 15 minuti: pipeline fallita a ogni tentativo e mai ripresa — riallineato dal job periodico |
+| `events_firing_uncorrelated` | gauge | eventi firing con correlazione `none`/`pending` da più di 15 minuti: pipeline fallita a ogni tentativo e mai ripresa — riallineato dal job periodico. Dalla revisione 2 la passata `pending` usa lo STESSO predicato e li riprende: se il gauge resta > 0 per due giri, è la passata a fallire (vedi `event_pass_total{pass="pending",result="failed"}`) |
+| `events_out_of_order_total{connector}` | counter | payload più vecchio dell'ultimo applicato alla stessa impronta ma con uno stato DIVERSO: **applicato** lo stesso e loggato a `warn` con i due istanti (revisione 2 · B2-06). Uno più vecchio con lo stesso stato è innocuo e conta come `duplicate`. Se cresce: orologi delle repliche API non sincronizzati (NTP) o riordino della coda |
 | `event_correlate_job_lag_seconds` | histogram | ritardo del job `correlate` rispetto alla scadenza del ritardo (processedAt − dueAt) |
 
 Pannelli: *Eventi/s per esito* (ricevuti, deduplicati, soppressi, sfarfallio),
@@ -847,7 +851,18 @@ re-evaluation failed`; `reevaluateEvent` dal dettaglio lo sblocca subito.
 
 **Salute del CI che non cambia**: `health_source = manual` (forzatura
 manuale: togliere l'override dal dettaglio CI) o `ci.status = maintenance`
-(ciclo di vita: il monitoraggio non tocca un CI in manutenzione).
+(ciclo di vita: il monitoraggio non tocca un CI in manutenzione). All'USCITA
+dalla manutenzione la salute viene ricalcolata dalla mutation stessa
+(revisione 2 · B2-14) e solo dopo i servizi vengono avvisati: prima restava
+quella di prima della finestra finché lo strumento non rimandava un payload.
+
+**Sorgente eliminata**: `deleteInboundWebhook` chiude i suoi allarmi ancora
+accesi nella stessa transazione (voce di cronologia `resolved_manually` con il
+motivo), poi ricalcola la salute dei CI toccati e li fa ripassare dalla
+pipeline, così gli incident si chiudono per la via normale (revisione 2 ·
+D4.1). La mutation risponde con `resolvedEvents`/`affectedCIs`. Se la
+riconciliazione fallisce dopo il commit l'errore è esplicito (la sorgente resta
+eliminata): rimediare con `reevaluateEvent` sugli allarmi elencati nel log.
 
 ### Servizi monitorati (mappa del servizio e albero d'impatto)
 
@@ -1209,11 +1224,23 @@ stessa scrittura che porta via i `CIAlias`): vanno via anche la sua
 `ServiceMap`, la cronologia (`ServiceHealthEntry`) e — con il `DETACH DELETE`
 della mappa — le relazioni `INCLUDES`, `EXCLUDES` e `IMPACTS_SERVICE`.
 L'incident del servizio eventualmente aperto **non** si cancella: è storia del
-ticket, resta senza servizio collegato e va bene. Un job `evaluate` già in coda
+ticket e resta senza servizio collegato — ma dalla revisione 2 (D4.3) riceve
+**un commento** PRIMA che la mappa sparisca («il servizio non è più
+monitorato: la mappa è stata eliminata»), perché senza mappa nessuno potrà più
+chiuderlo automaticamente e per l'operatore sarebbe un incident critico senza
+motivo. Lo stesso vale per `deleteServiceMap`. Un commento che fallisce viene
+loggato e non ferma la cancellazione. Un job `evaluate` già in coda
 per quella mappa fallisce con `NOT_FOUND` (5 tentativi, log `Service impact job
 failed`, `service_evaluations_total{result="error"}`) e poi sparisce
 (`removeOnFail`): rumore atteso, non un guasto — a differenza di
 `deleteServiceMap`, che il job in coda lo toglie subito.
+
+**Cancellazione di un CI con allarmi o incident** (revisione 2 · D4.3): gli
+Event `RAISED_ON` restano come orfani coerenti (il CI di un Event vive solo
+nella relazione), ma l'incident non terminale il cui **unico** CI impattato era
+quello cancellato riceve un commento («Il CI X è stato eliminato dalla CMDB»):
+resta aperto, e chi lo legge sa perché il rientro degli allarmi non lo chiuderà
+più (senza CI diventano `skipped_orphan`).
 
 **Cancellazione di un CI incluso in una mappa**: la mappa **resta**. Perde la
 `INCLUDES` (cade con il CI) e alla prima valutazione diventa `stale`, con una

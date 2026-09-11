@@ -166,6 +166,34 @@ export function stripPort(instance: string): string {
   return single ? single[1]! : instance
 }
 
+/** IPv4 in forma decimale puntata (la stessa regola usata da shortHostnameKeys). */
+const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/
+
+/**
+ * Il valore è un indirizzo IP letterale? IPv4 in decimale puntato, oppure una
+ * forma IPv6 (due o più `:`, solo cifre esadecimali, `:` e — negli indirizzi
+ * mappati IPv4 — punti). Un hostname non contiene mai `:` e un FQDN ha almeno
+ * un'etichetta non numerica, quindi nessuno dei due passa di qui.
+ */
+export function isIpLiteral(value: string): boolean {
+  if (IPV4_RE.test(value)) return true
+  return value.includes(':') && /^[0-9a-fA-F:.]+$/.test(value) && (value.match(/:/g) ?? []).length >= 2
+}
+
+/**
+ * Risorsa «host» di un connettore: porta via (M5) e tipo dedotto dal valore.
+ * Revisione 2 · B2-17: nei target Prometheus di Kubernetes, del cloud e dei
+ * node_exporter statici `instance` è quasi sempre `10.0.0.7:9100` o
+ * `[fd00::1]:9100`; trattarlo come `hostname` faceva cercare un alias
+ * `hostname = 10.0.0.7` (che la discovery non produce mai) invece dell'alias
+ * `ip` del CI, e ogni allarme di quelle sorgenti restava orfano. I nomi e gli
+ * FQDN restano `hostname`.
+ */
+export function hostResource(raw: string): { resource: string; resourceKind: ResourceKind } {
+  const resource = stripPort(raw)
+  return { resource, resourceKind: isIpLiteral(resource) ? 'ip' : 'hostname' }
+}
+
 export function assertConnectorKind(value: unknown, what = 'connector_kind'): ConnectorKind {
   return oneOf(value, CONNECTOR_KINDS, what)
 }
@@ -465,8 +493,9 @@ function normalizeAlertsArray(kind: 'alertmanager' | 'grafana', payload: unknown
     const host = kind === 'grafana' ? optionalString(labels['host'])?.trim() : undefined
     let resource: string
     let resourceKind: ResourceKind
-    if (instance) { resource = stripPort(instance); resourceKind = 'hostname' }
-    else if (host) { resource = host; resourceKind = 'hostname' }
+    // B2-17: `instance` (e `host` di Grafana) è un IP letterale quasi altrettanto spesso di un nome: il tipo lo decide il valore.
+    if (instance) ({ resource, resourceKind } = hostResource(instance))
+    else if (host) ({ resource, resourceKind } = hostResource(host))
     else ({ resource, resourceKind } = defaultResourceOf(defaults, `${at}.labels.instance${kind === 'grafana' ? ' (or labels.host)' : ''}`))
 
     const summary  = optionalString(annotations['summary'])
@@ -625,7 +654,7 @@ function normalizeDatadog(payload: unknown, defaults: Record<string, unknown>, v
     const cycleKey = optionalString(payload['alert_cycle_key'])?.trim()
     let resource: string
     let resourceKind: ResourceKind
-    if (hostname) { resource = stripPort(hostname); resourceKind = 'hostname' }
+    if (hostname) ({ resource, resourceKind } = hostResource(hostname))
     else if (defaults['resourceFrom'] === 'alert_scope' && scope) { resource = scope; resourceKind = 'name' }
     else ({ resource, resourceKind } = defaultResourceOf(defaults, 'hostname', scope ? ' and default_values.resourceFrom is not "alert_scope"' : ''))
     const body = optionalString(payload['body']) ?? optionalString(payload['text'])
@@ -804,8 +833,9 @@ function normalizeGeneric(payload: unknown, fieldMapping: Record<string, string>
     const resourceKind = oneOf(rawKind, RESOURCE_KINDS, 'resourceKind')
 
     const ev: NormalizedEvent = {
-      status, severity, title, resourceKind,
-      resource: resourceKind === 'hostname' ? stripPort(resource) : resource,
+      status, severity, title,
+      // B2-17: un `hostname` dichiarato che porta un IP letterale è un `ip` (l'alias da consultare è quello).
+      ...(resourceKind === 'hostname' ? hostResource(resource) : { resource, resourceKind }),
       labels:   parseLabels(read('labels'), 'labels'),
     }
     const externalId  = optionalString(read('externalId'));  if (externalId)  ev.externalId  = externalId

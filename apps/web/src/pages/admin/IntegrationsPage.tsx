@@ -46,7 +46,7 @@ interface ApiKeyRow       { id: string; name: string; keyPrefix: string; permiss
 
 const CREATE_INBOUND = gql`mutation CreateInboundWebhook($input: CreateInboundWebhookInput!) { createInboundWebhook(input: $input) { id token } }`
 const UPDATE_INBOUND = gql`mutation UpdateInboundWebhook($id: ID!, $input: UpdateInboundWebhookInput!) { updateInboundWebhook(id: $id, input: $input) { id } }`
-const DELETE_INBOUND = gql`mutation DeleteInboundWebhook($id: ID!) { deleteInboundWebhook(id: $id) }`
+const DELETE_INBOUND = gql`mutation DeleteInboundWebhook($id: ID!) { deleteInboundWebhook(id: $id) { deleted resolvedEvents affectedCIs } }`
 const REGEN_WEBHOOK_TOKEN = gql`mutation RegenerateWebhookToken($id: ID!) { regenerateWebhookToken(id: $id) { token } }`
 
 const CREATE_OUTBOUND = gql`mutation CreateOutboundWebhook($input: CreateOutboundWebhookInput!) { createOutboundWebhook(input: $input) { id } }`

@@ -14,7 +14,7 @@
  * l'id della RISORSA, un nome ambiguo non aggancia (`match_reason`).
  */
 import type { EventInputStatus, EventSeverity } from '../../lib/eventVocabularies.js'
-import type { NormalizedEvent } from './normalize.js'
+import { isIpLiteral, type NormalizedEvent } from './normalize.js'
 import type { Props } from './shared.js'
 import { MONITORING_ACTOR, SEVERITY_RANK } from './shared.js'
 import { ciNameKey } from '../../lib/ciNameKey.js'
@@ -210,6 +210,13 @@ export function residueClearCypher(field: string, when: readonly ResidueClear[])
 export const LAST_PAYLOAD_STATUS_CYPHER = "coalesce(e.last_payload_status, CASE WHEN e.status = 'resolved' THEN 'resolved' ELSE 'firing' END)"
 
 /**
+ * Gli esiti della scrittura che APPLICANO la transizione: il payload nel suo
+ * ordine (`applied`) e quello arrivato fuori ordine con uno stato diverso
+ * dall'ultimo applicato (`out_of_order`, revisione 2 · B2-06).
+ */
+export const APPLIED_OUTCOME_CYPHER = "outcome IN ['applied', 'out_of_order']"
+
+/**
  * Voce di cronologia prodotta dall'ingest (services/events/history.ts), come
  * CASE Cypher sui valori PRE-scrittura di `e` e sull'esito `outcome`:
  * `first_seen` (evento creato, anche già resolved — B5), `cycle_firing` /
@@ -220,8 +227,8 @@ export const LAST_PAYLOAD_STATUS_CYPHER = "coalesce(e.last_payload_status, CASE 
  */
 export const INGEST_HISTORY_KIND_CYPHER = `CASE
         WHEN outcome = 'created' THEN 'first_seen'
-        WHEN outcome = 'applied' AND $status <> ${LAST_PAYLOAD_STATUS_CYPHER} THEN CASE WHEN $status = 'firing' THEN 'cycle_firing' ELSE 'cycle_resolved' END
-        WHEN outcome = 'applied' AND $status = 'firing' AND $severity <> e.severity THEN 'severity_changed'
+        WHEN ${APPLIED_OUTCOME_CYPHER} AND $status <> ${LAST_PAYLOAD_STATUS_CYPHER} THEN CASE WHEN $status = 'firing' THEN 'cycle_firing' ELSE 'cycle_resolved' END
+        WHEN ${APPLIED_OUTCOME_CYPHER} AND $status = 'firing' AND $severity <> e.severity THEN 'severity_changed'
         ELSE null END`
 
 /**
@@ -253,7 +260,11 @@ export function transitionSetCypher(): string {
     `e.last_payload_status = $status`,
     `e.status = ${transitionCaseCypher((r) => a.status[r.status])}`,
     'e.last_seen_at = $now',
-    'e.last_received_at = $receivedAt',
+    // Revisione 2 · B2-06: la guardia d'ordine non torna MAI indietro. Un
+    // payload fuori ordine viene applicato (cambia stato), ma `last_received_at`
+    // resta l'istante più recente visto: altrimenti il retry del payload più
+    // nuovo, già applicato, tornerebbe `applied` e conterebbe due volte.
+    `e.last_received_at = CASE WHEN outcome = 'out_of_order' THEN e.last_received_at ELSE $receivedAt END`,
     'e.title = $title',
     'e.description = $description',
     'e.labels = $labels',
@@ -266,8 +277,8 @@ export function transitionSetCypher(): string {
 }
 
 /** Esito della scrittura dell'evento (vedi ingestMergeCypher). */
-export type IngestWriteOutcome = 'created' | 'applied' | 'duplicate' | 'stale'
-export const INGEST_WRITE_OUTCOMES: readonly IngestWriteOutcome[] = ['created', 'applied', 'duplicate', 'stale']
+export type IngestWriteOutcome = 'created' | 'applied' | 'duplicate' | 'out_of_order'
+export const INGEST_WRITE_OUTCOMES: readonly IngestWriteOutcome[] = ['created', 'applied', 'duplicate', 'out_of_order']
 
 // ── Riconoscimento del CI ────────────────────────────────────────────────────
 
@@ -352,12 +363,14 @@ const SHORT_HOSTNAME_KINDS: ReadonlySet<string> = new Set(['hostname', 'fqdn', '
  * risorsa: con un punto → `shortNameKey` = prima etichetta (e nessun prefisso);
  * senza → `fqdnPrefix` = `nameKey + '.'` (e nessun nome corto). Entrambe null
  * per ip/external_id, per un indirizzo IPv4/IPv6 (la "prima etichetta" di
- * `10.0.0.7` sarebbe `10`) e per una prima etichetta vuota (`.example`).
+ * `10.0.0.7` sarebbe `10`; `isIpLiteral` è lo stesso predicato che in
+ * normalize.ts decide il tipo della risorsa) e per una prima etichetta vuota
+ * (`.example`).
  */
 export function shortHostnameKeys(nameKey: string | null, resourceKind: string): { shortNameKey: string | null; fqdnPrefix: string | null } {
   const none = { shortNameKey: null, fqdnPrefix: null }
   if (!nameKey || !SHORT_HOSTNAME_KINDS.has(resourceKind)) return none
-  if (nameKey.includes(':') || /^\d{1,3}(\.\d{1,3}){3}$/.test(nameKey)) return none
+  if (nameKey.includes(':') || isIpLiteral(nameKey)) return none
   const dot = nameKey.indexOf('.')
   if (dot < 0) return { shortNameKey: null, fqdnPrefix: `${nameKey}.` }
   const first = nameKey.slice(0, dot)
@@ -380,8 +393,13 @@ export function ciMatchParams(tenantId: string, ev: Pick<NormalizedEvent, 'resou
   }
 }
 
-/** Quando il riconoscimento gira dentro l'ingest: evento senza CI agganciato e payload non stantio. */
-export const CI_MATCH_GUARD = "linked IS NULL AND outcome <> 'stale'"
+/**
+ * Quando il riconoscimento gira dentro l'ingest: evento senza CI agganciato.
+ * Revisione 2 · B2-06: prima escludeva anche l'esito `stale`, che non esiste
+ * più — un payload fuori ordine viene applicato, quindi il suo CI va cercato
+ * come per ogni altro.
+ */
+export const CI_MATCH_GUARD = 'linked IS NULL'
 
 /**
  * UN solo statement per la scrittura dell'evento (C1/M1 della revisione):
@@ -391,13 +409,23 @@ export const CI_MATCH_GUARD = "linked IS NULL AND outcome <> 'stale'"
  * non possono perdersi un incremento.
  *
  * Guardia d'ordine (`last_received_at`, istante di ricezione del payload):
- * - `created`   → nodo nuovo;
- * - `applied`   → payload più recente dell'ultimo applicato (o evento senza
- *                 last_received_at, scritto prima di questa ondata): transizione applicata;
- * - `duplicate` → stesso istante dell'ultimo applicato: è il retry dello
- *                 stesso job (jobId = tenant+impronta+receivedAt), già scritto → nessuna modifica;
- * - `stale`     → payload più vecchio dell'ultimo applicato (retry tardivo di
- *                 un firing dopo il resolved): NON si tocca nulla.
+ * - `created`      → nodo nuovo;
+ * - `applied`      → payload più recente dell'ultimo applicato (o evento senza
+ *                    last_received_at, scritto prima di questa ondata): transizione applicata;
+ * - `duplicate`    → stesso istante dell'ultimo applicato (retry dello stesso
+ *                    job: jobId = tenant+impronta+receivedAt), oppure payload
+ *                    più vecchio che porta lo STESSO stato dell'ultimo
+ *                    applicato: già scritto, nessuna modifica;
+ * - `out_of_order` → payload più vecchio dell'ultimo applicato ma con uno stato
+ *                    DIVERSO: viene applicato lo stesso (revisione 2 · B2-06).
+ *                    `receivedAt` è l'orologio della replica API che ha accettato
+ *                    il webhook: con due repliche e pochi secondi di scarto il
+ *                    `resolved` di Alertmanager — mandato UNA volta sola — poteva
+ *                    arrivare "vecchio" e veniva scartato in silenzio, lasciando
+ *                    l'allarme acceso per sempre. Ora si applica, si logga a
+ *                    `warn` con i due istanti e si conta in
+ *                    `events_out_of_order_total{connector}`; `last_received_at`
+ *                    NON torna indietro (vedi transitionSetCypher).
  *
  * CI (M11): quello già agganciato (anche a mano) vince (`linked`); altrimenti
  * il riconoscimento (`ciMatchCypher`, precedenza alias external_id → alias →
@@ -438,9 +466,10 @@ export function ingestMergeCypher(): string {
         WHEN e.id = $id THEN 'created'
         WHEN e.last_received_at IS NULL OR datetime(e.last_received_at) < datetime($receivedAt) THEN 'applied'
         WHEN e.last_received_at = $receivedAt THEN 'duplicate'
-        ELSE 'stale' END AS outcome
+        WHEN $status = ${LAST_PAYLOAD_STATUS_CYPHER} THEN 'duplicate'
+        ELSE 'out_of_order' END AS outcome
       WITH e, outcome, ${INGEST_HISTORY_KIND_CYPHER} AS historyKind, e.severity AS previousSeverity
-      FOREACH (_ IN CASE WHEN outcome = 'applied' THEN [1] ELSE [] END |
+      FOREACH (_ IN CASE WHEN ${APPLIED_OUTCOME_CYPHER} THEN [1] ELSE [] END |
         SET ${transitionSetCypher()}
       )
       ${historyWriteCypher({

@@ -9,6 +9,7 @@
  *   - autoResolve.ts     — chiusura automatica (7)
  *   - passes.ts          — fine finestra e passate periodiche (sopra la pipeline)
  *   - gauges.ts          — gauge di salute per il job periodico
+ *   - stuck.ts           — predicato unico degli allarmi «bloccati» (gauge + passata)
  *   - history.ts         — cronologia dell'allarme (voci HAS_HISTORY, cap per evento)
  *   - incidentWorkflow.ts, repo.ts, deps.ts, shared.ts, types.ts
  * Questo file ri-esporta tutto con gli stessi nomi: i chiamanti (resolver,
@@ -35,8 +36,11 @@ export {
 } from './events/autoResolve.js'
 export type { DefinitionTransition } from './events/incidentWorkflow.js'
 export {
-  PENDING_CORRELATIONS,
   reevaluateSuppressedEvents, reevaluateClosedWindows, reevaluatePendingEvents, reevaluateFlappingEvents,
 } from './events/passes.js'
-export { refreshEventGauges, OVERDUE_DELAYED_GRACE_MINUTES, UNCORRELATED_AFTER_MINUTES, type EventGauges } from './events/gauges.js'
+export {
+  PENDING_CORRELATIONS, OVERDUE_DELAYED_GRACE_MINUTES, UNCORRELATED_AFTER_MINUTES,
+  DUE_CORRELATION_WHERE, UNCORRELATED_WHERE, OVERDUE_DELAYED_WHERE, STUCK_FIRING_WHERE, stuckEventParams,
+} from './events/stuck.js'
+export { refreshEventGauges, type EventGauges } from './events/gauges.js'
 export { EVENT_HISTORY_MAX, appendEventHistory, type EventHistoryEntry } from './events/history.js'

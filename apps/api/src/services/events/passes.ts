@@ -8,8 +8,10 @@
  * uno stato "libero" prima di aver correlato: scrivono `correlation =
  * 'pending'` con `correlation_due_at = now` e correlano nella stessa unità;
  * se la correlazione fallisce l'evento resta firing/pending e la passata
- * periodica `reevaluatePendingEvents` lo riprende (firing con correlation
- * pending/none e scadenza passata).
+ * periodica `reevaluatePendingEvents` lo riprende. Il predicato di quella
+ * passata è quello condiviso con il gauge (services/events/stuck.ts): non
+ * solo la scadenza passata, ma anche il firing senza esito di correlazione da
+ * più della grazia — che è come nasce ogni evento (revisione 2 · B2-01).
  */
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { publishEvent } from '../../lib/publishEvent.js'
@@ -24,12 +26,10 @@ import { transitionsOf } from './transitions.js'
 import { historyParams, historyWriteCypher } from './history.js'
 import { isStable, type EventStablePayload } from './flapping.js'
 import { runEventPipeline } from './pipeline.js'
+import { STUCK_FIRING_WHERE, stuckEventParams } from './stuck.js'
 import type { EventRecord } from './types.js'
 
 const log = logger.child({ module: 'event-correlation' })
-
-/** Correlazioni riprese dalla passata periodica `reevaluatePendingEvents` (con `correlation_due_at` scaduta). */
-export const PENDING_CORRELATIONS: readonly string[] = ['pending', 'none']
 
 // ── Fine finestra ────────────────────────────────────────────────────────────
 
@@ -92,12 +92,20 @@ async function fetchEventPage(match: string, params: Props, cursor: string, limi
   } finally { await session.close() }
 }
 
-/** Passata paginata che ripassa ogni riga dalla pipeline in `reevaluate`. */
-async function reevaluatePass(name: string, match: string, params: Props, now: string, what: string): Promise<PagedPassResult> {
+/**
+ * Passata paginata che ripassa ogni riga dalla pipeline in `reevaluate`.
+ * `logEach` (facoltativo) scrive una riga per evento con l'esito: serve dove
+ * l'evento ripreso è di per sé una notizia (un allarme acceso che nessuno
+ * aveva più in carico), non dove la passata è ordinaria amministrazione.
+ */
+async function reevaluatePass(name: string, match: string, params: Props, now: string, what: string, logEach?: string): Promise<PagedPassResult> {
   const result = await runPagedPass<EventRef>({
     fetchPage: (cursor, limit) => fetchEventPage(match, params, cursor, limit),
     keyOf: (r) => r.id,
-    handle: async (r) => { await runEventPipeline({ tenantId: r.tenantId, eventId: r.id, now, mode: 'reevaluate' }) },
+    handle: async (r) => {
+      const out = await runEventPipeline({ tenantId: r.tenantId, eventId: r.id, now, mode: 'reevaluate' })
+      if (logEach) log.info({ tenantId: r.tenantId, eventId: r.id, outcome: out.outcome }, logEach)
+    },
     onError: (r, err) => log.error({ err, tenantId: r.tenantId, eventId: r.id }, `${what} re-evaluation failed`),
   })
   if (result.truncated) log.warn({ evaluated: result.evaluated }, `${name}: page cap reached, remaining events are re-evaluated on the next pass`)
@@ -116,17 +124,23 @@ export async function reevaluateClosedWindows(now: string = new Date().toISOStri
 }
 
 /**
- * Job periodico: gli eventi firing rimasti senza correlazione — `pending`
- * (fine soppressione / stabilizzazione la cui correlazione è fallita) o
- * `none` con una scadenza — con `correlation_due_at` passata rientrano nella
+ * Job periodico: gli eventi firing che nessuno sta più curando rientrano nella
  * pipeline. È la rete di sicurezza degli stati ritentabili: nessun allarme
  * attivo resta senza incident per ore in silenzio.
+ *
+ * Il predicato è quello condiviso con il gauge `events_firing_uncorrelated`
+ * (services/events/stuck.ts, revisione 2 · B2-01/B2-02): scadenza passata,
+ * OPPURE correlazione `pending`/`none` ferma da più della grazia anche SENZA
+ * scadenza (il caso di gran lunga più comune: un evento nasce e riparte a ogni
+ * ciclo con `correlation = 'none'` e `correlation_due_at = null`), OPPURE
+ * ritardo di apertura scaduto da più della sua grazia (in `reevaluate` il
+ * passo del ritardo non viene rieseguito, quindi non si ricade in attesa).
  */
 export async function reevaluatePendingEvents(now: string = new Date().toISOString()): Promise<PagedPassResult> {
   // tenant-ok: passata di manutenzione su tutti i tenant; ogni evento è poi rivalutato nel suo tenant.
   return reevaluatePass('reevaluatePendingEvents', `MATCH (e:Event {status: 'firing'})
-      WHERE e.correlation IN $correlations AND e.correlation_due_at IS NOT NULL AND e.correlation_due_at <= $now AND e.id > $cursor`,
-    { correlations: PENDING_CORRELATIONS, now }, now, 'pending')
+      WHERE e.id > $cursor AND (${STUCK_FIRING_WHERE})`,
+    { ...stuckEventParams(now) }, now, 'pending', 'Uncorrelated firing event picked up by the periodic pass')
 }
 
 /**

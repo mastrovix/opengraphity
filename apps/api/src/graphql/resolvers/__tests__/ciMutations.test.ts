@@ -16,10 +16,16 @@ vi.mock('../../../services/serviceImpact/sync.js', () => ({
   notifyCIGraphChanged: vi.fn().mockResolvedValue(0),
   notifyCIMaintenanceChanged: vi.fn().mockResolvedValue(0),
 }))
+// Revisione 2 · B2-14: uscire dalla manutenzione ricalcola la salute del CI (la
+// manutenzione la congela); D4.3: i commenti prima della cancellazione.
+vi.mock('../../../services/events/ciHealth.js', () => ({ recomputeCIHealth: vi.fn().mockResolvedValue('operational') }))
+vi.mock('../../../services/events/cascade.js', () => ({ noteIncidentsBeforeCIDeletion: vi.fn().mockResolvedValue(undefined) }))
 
 const { buildCreateMutation, buildUpdateMutation, buildDeleteMutation, validateCIInput } = await import('../ciMutations.js')
 const { withSession } = await import('../ci-utils.js')
 const { notifyCIGraphChanged, notifyCIMaintenanceChanged } = await import('../../../services/serviceImpact/sync.js')
+const { recomputeCIHealth } = await import('../../../services/events/ciHealth.js')
+const { noteIncidentsBeforeCIDeletion } = await import('../../../services/events/cascade.js')
 
 const IP_SCRIPT = 'if (!/^\\d+\\.\\d+\\.\\d+\\.\\d+$/.test(value)) throw new Error("IP non valido")'
 
@@ -144,16 +150,23 @@ describe('buildUpdateMutation', () => {
   it.each([
     ['active', 'maintenance', 'ci.status:entered_maintenance'],
     ['maintenance', 'active',  'ci.status:left_maintenance'],
-  ])('status %s → %s: accoda la rivalutazione delle mappe che includono il CI (%s)', async (from, to, reason) => {
+  ])('status %s → %s: ricalcola la salute del CI e POI accoda la rivalutazione delle mappe che includono il CI (%s)', async (from, to, reason) => {
     const session = fakeSession({ id: 'ci-1', name: 'srv', status: from, ip_address: '10.0.0.1' })
     vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
     const update = buildUpdateMutation(ciType(), 'Server', mapCI)
 
     await update(undefined, { id: 'ci-1', input: { status: to } }, ctx)
 
+    // B2-14: in manutenzione il monitoraggio non scrive `ci.health`; all'uscita
+    // la salute resterebbe quella di prima della finestra fino al payload
+    // successivo dello strumento. Prima il ricalcolo, poi il segnale ai servizi
+    // (che deve leggere la salute già aggiornata).
+    expect(recomputeCIHealth).toHaveBeenCalledWith('t1', 'ci-1', 'u1')
     expect(notifyCIMaintenanceChanged).toHaveBeenCalledWith('t1', ['ci-1'], reason)
+    expect(vi.mocked(recomputeCIHealth).mock.invocationCallOrder[0]!)
+      .toBeLessThan(vi.mocked(notifyCIMaintenanceChanged).mock.invocationCallOrder[0]!)
     // dopo la scrittura (la CMDB è già cambiata), come notifyCIGraphChanged
-    expect(vi.mocked(notifyCIMaintenanceChanged).mock.invocationCallOrder[0]!)
+    expect(vi.mocked(recomputeCIHealth).mock.invocationCallOrder[0]!)
       .toBeGreaterThan(session.executeWrite.mock.invocationCallOrder.at(-1)!)
   })
 
@@ -166,6 +179,7 @@ describe('buildUpdateMutation', () => {
     await update(undefined, { id: 'ci-1', input: { status: 'active' } }, ctx)
     await update(undefined, { id: 'ci-1', input: { status: 'decommissioned' } }, ctx)
     expect(notifyCIMaintenanceChanged).not.toHaveBeenCalled()
+    expect(recomputeCIHealth).not.toHaveBeenCalled()
 
     vi.mocked(notifyCIMaintenanceChanged).mockResolvedValueOnce(0)
     const toMaintenance = await update(undefined, { id: 'ci-1', input: { status: 'maintenance' } }, ctx)
@@ -205,6 +219,17 @@ describe('buildDeleteMutation (B7 — Event Management)', () => {
     // nessuna cancellazione degli Event: perdono la relazione, non il nodo
     expect(cypher).not.toMatch(/DELETE\s+e\b/)
     expect(params).toEqual({ id: 'ci-1', tenantId: 't1' })
+  })
+
+  // ── Revisione 2 · D4.3: i commenti PRIMA della cancellazione ─────────────
+  it('D4.3 — prima del DETACH DELETE annota gli incident che perdono il loro unico CI (e, per una BusinessApplication, quelli del servizio); la nota non può far fallire la cancellazione', async () => {
+    const session = fakeSession()
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    await expect(buildDeleteMutation('Server')(undefined, { id: 'ci-1' }, ctx)).resolves.toBe(true)
+    expect(noteIncidentsBeforeCIDeletion).toHaveBeenCalledWith('t1', 'ci-1', session)
+    // prima della scrittura: dopo non ci sarebbe più niente da leggere
+    expect(vi.mocked(noteIncidentsBeforeCIDeletion).mock.invocationCallOrder[0]!)
+      .toBeLessThan(session.executeWrite.mock.invocationCallOrder[0]!)
   })
 
   it('rifiuta un label non sicuro al build time', () => {

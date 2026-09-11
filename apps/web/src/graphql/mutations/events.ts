@@ -116,9 +116,14 @@ export const UPDATE_MONITORING_SOURCE = gql`
   ${MONITORING_SOURCE_RESULT}
 `
 
+/**
+ * Eliminare una sorgente chiude anche i suoi allarmi ancora accesi (revisione 2,
+ * D4.1): senza, restavano «attivi» per sempre con il CI giù. Il risultato dice
+ * quanti ne sono stati chiusi e su quanti CI, così la pagina lo può raccontare.
+ */
 export const DELETE_MONITORING_SOURCE = gql`
   mutation DeleteMonitoringSource($id: ID!) {
-    deleteInboundWebhook(id: $id)
+    deleteInboundWebhook(id: $id) { deleted resolvedEvents affectedCIs }
   }
 `
 

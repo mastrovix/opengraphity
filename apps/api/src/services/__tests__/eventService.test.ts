@@ -29,13 +29,13 @@ vi.mock('../../lib/logger.js', () => {
 // modulo reale: la facciata eventCorrelation.js lo ri-esporta.
 vi.mock('../events/pipeline.js', () => ({ runEventPipeline: vi.fn() }))
 vi.mock('../../middleware/metrics.js', () => ({
-  eventsReceivedTotal: { inc: vi.fn() }, eventsDeduplicatedTotal: { inc: vi.fn() }, eventsOrphanTotal: { inc: vi.fn() }, eventsAmbiguousTotal: { inc: vi.fn() }, eventsStaleTotal: { inc: vi.fn() }, eventsResolvedUnknownTotal: { inc: vi.fn() },
+  eventsReceivedTotal: { inc: vi.fn() }, eventsDeduplicatedTotal: { inc: vi.fn() }, eventsOrphanTotal: { inc: vi.fn() }, eventsAmbiguousTotal: { inc: vi.fn() }, eventsOutOfOrderTotal: { inc: vi.fn() }, eventsResolvedUnknownTotal: { inc: vi.fn() },
 }))
 
 const svc = await import('../eventService.js')
 const {
-  normalizePayload, fingerprintOf, nextEventState, deriveCIHealth, recomputeCIHealth, ingestEvent, matchCI, getEventPolicy, setEventPolicy, MAX_EVENTS_PER_REQUEST, stripPort, getPath, listPayloadKeys, PAYLOAD_KEYS_MAX, PAYLOAD_MAX_DEPTH, quoteValue, parseValueMapping, sourceConfigOf, normalizeWithConfig, countTransitionsSince, payloadStatusOf, transitionsOf, MAX_TRANSITIONS, QUIET_OUTCOMES,
-  EVENT_TRANSITIONS, prevClassOf, transitionRuleFor, PREV_CLASS_CYPHER, SEVERITY_MAX_CYPHER, TRANSITION_ACTION_CYPHER, transitionCaseCypher, residueClearCypher, transitionSetCypher, ingestMergeCypher, INGEST_WRITE_OUTCOMES,
+  normalizePayload, fingerprintOf, nextEventState, deriveCIHealth, recomputeCIHealth, ingestEvent, matchCI, getEventPolicy, setEventPolicy, MAX_EVENTS_PER_REQUEST, stripPort, isIpLiteral, hostResource, getPath, listPayloadKeys, PAYLOAD_KEYS_MAX, PAYLOAD_MAX_DEPTH, quoteValue, parseValueMapping, sourceConfigOf, normalizeWithConfig, countTransitionsSince, payloadStatusOf, transitionsOf, MAX_TRANSITIONS, QUIET_OUTCOMES,
+  EVENT_TRANSITIONS, prevClassOf, transitionRuleFor, PREV_CLASS_CYPHER, SEVERITY_MAX_CYPHER, TRANSITION_ACTION_CYPHER, transitionCaseCypher, residueClearCypher, transitionSetCypher, ingestMergeCypher, INGEST_WRITE_OUTCOMES, APPLIED_OUTCOME_CYPHER,
   ciMatchCypher, ciMatchParams, shortHostnameKeys, CI_MATCH_GUARD, MATCH_CANDIDATES_MAX, CI_HEALTH_RULES, ciHealthCaseCypher,
   INGEST_HISTORY_KIND_CYPHER, LAST_PAYLOAD_STATUS_CYPHER,
 } = svc
@@ -105,7 +105,8 @@ describe('normalizePayload — alertmanager', () => {
       startsAt: '2026-09-09T10:00:00Z',
     })
     expect(out[0]).not.toHaveProperty('endsAt')   // 0001-… = ancora aperto
-    expect(out[1]).toMatchObject({ externalId: 'def456', status: 'resolved', severity: 'warning', title: 'HighLoad', resource: '10.0.0.7', endsAt: '2026-09-09T09:30:00Z' })
+    // B2-17: `instance` numerico è un IP, non un hostname (l'alias da consultare sul CI è `ip`)
+    expect(out[1]).toMatchObject({ externalId: 'def456', status: 'resolved', severity: 'warning', title: 'HighLoad', resource: '10.0.0.7', resourceKind: 'ip', endsAt: '2026-09-09T09:30:00Z' })
     expect(out[1]).not.toHaveProperty('description')
   })
 
@@ -119,6 +120,34 @@ describe('normalizePayload — alertmanager', () => {
     expect(stripPort('2001:db8::1')).toBe('2001:db8::1')
     expect(stripPort('db-01')).toBe('db-01')
     expect(stripPort('db-01:abc')).toBe('db-01:abc')
+  })
+
+  // Revisione 2 · B2-17: nei target Prometheus di Kubernetes, del cloud e dei
+  // node_exporter statici `instance` è quasi sempre un IP con la porta. Trattarlo
+  // come `hostname` faceva cercare un alias `hostname = 10.0.0.7` (che la
+  // discovery non produce mai) invece dell'alias `ip` del CI: orfani sistematici.
+  it('B2-17 — isIpLiteral: `instance` IPv4/IPv6 (con o senza porta) → resourceKind `ip`; nomi e FQDN restano `hostname`', () => {
+    expect(isIpLiteral('10.0.0.7')).toBe(true)
+    expect(isIpLiteral('::1')).toBe(true)
+    expect(isIpLiteral('2001:db8::1')).toBe(true)
+    expect(isIpLiteral('::ffff:10.0.0.7')).toBe(true)
+    expect(isIpLiteral('db-01')).toBe(false)
+    expect(isIpLiteral('db-01.example.local')).toBe(false)
+    expect(isIpLiteral('10.0.0.7.example.local')).toBe(false)
+    expect(hostResource('10.0.0.7:9100')).toEqual({ resource: '10.0.0.7', resourceKind: 'ip' })
+    expect(hostResource('[::1]:9100')).toEqual({ resource: '::1', resourceKind: 'ip' })
+    expect(hostResource('db-01:9100')).toEqual({ resource: 'db-01', resourceKind: 'hostname' })
+
+    const alerts = (instance: string) => ({ alerts: [{ status: 'firing', labels: { alertname: 'X', severity: 'critical', instance } }] })
+    expect(normalizePayload('alertmanager', alerts('10.0.0.7:9100'), {}, {})[0]).toMatchObject({ resource: '10.0.0.7', resourceKind: 'ip' })
+    expect(normalizePayload('alertmanager', alerts('[::1]:9100'), {}, {})[0]).toMatchObject({ resource: '::1', resourceKind: 'ip' })
+    expect(normalizePayload('alertmanager', alerts('db-01.example.local:9100'), {}, {})[0]).toMatchObject({ resource: 'db-01.example.local', resourceKind: 'hostname' })
+    // il generic che DICHIARA hostname segue la stessa regola (il tipo lo decide il valore)
+    const generic = (resource: string) => normalizePayload('generic', { title: 'X', severity: 'critical', resource }, {}, { resourceKind: 'hostname' })[0]
+    expect(generic('10.0.0.7:9100')).toMatchObject({ resource: '10.0.0.7', resourceKind: 'ip' })
+    expect(generic('db-01')).toMatchObject({ resource: 'db-01', resourceKind: 'hostname' })
+    // l'alias consultato dal riconoscimento è quello del tipo: `ip`, non `hostname`
+    expect(ciMatchParams('t1', { resource: '10.0.0.7', resourceKind: 'ip' }, { matchShortHostname: true })).toMatchObject({ kind: 'ip', kindValue: '10.0.0.7', shortNameKey: null, fqdnPrefix: null })
   })
 
   it('A1 — value_mapping vale anche per Alertmanager: severità libera (page, P1) e status tradotti; default_values.resource + resourceKind per gli alert senza instance', () => {
@@ -800,11 +829,12 @@ describe('EVENT_TRANSITIONS — tabella condivisa fra funzione pura e CASE Cyphe
     expect(set).toContain('e.resource_external_id = coalesce($resourceExternalId, e.resource_external_id)')
     expect(set).toContain(`e.transitions = CASE WHEN $status <> coalesce(e.last_payload_status, CASE WHEN e.status = 'resolved' THEN 'resolved' ELSE 'firing' END) THEN (coalesce(e.transitions, []) + $now)[-${MAX_TRANSITIONS}..] ELSE coalesce(e.transitions, []) END`)
     expect(set).toContain('e.last_seen_at = $now')
-    expect(set).toContain('e.last_received_at = $receivedAt')
+    // B2-06: la guardia d'ordine non torna indietro su un payload fuori ordine
+    expect(set).toContain("e.last_received_at = CASE WHEN outcome = 'out_of_order' THEN e.last_received_at ELSE $receivedAt END")
     expect(set).toContain('e.starts_at = coalesce($startsAt, e.starts_at)')
   })
 
-  it('ingestMergeCypher: un solo MERGE su (tenant_id, fingerprint) con ON CREATE completo, guardia d\'ordine created/applied/duplicate/stale, SET solo se applied, FROM_SOURCE solo se created, riconoscimento e aggancio del CI nello stesso statement (M11)', () => {
+  it('ingestMergeCypher: un solo MERGE su (tenant_id, fingerprint) con ON CREATE completo, guardia d\'ordine created/applied/duplicate/out_of_order, SET se applied o fuori ordine, FROM_SOURCE solo se created, riconoscimento e aggancio del CI nello stesso statement (M11)', () => {
     const q = ingestMergeCypher()
     expect(q.match(/MERGE \(e:Event/g)).toHaveLength(1)
     expect(q).toContain('MERGE (e:Event {tenant_id: $tenantId, fingerprint: $fingerprint})')
@@ -819,14 +849,16 @@ describe('EVENT_TRANSITIONS — tabella condivisa fra funzione pura e CASE Cyphe
     expect(q).toContain("WHEN e.id = $id THEN 'created'")
     expect(q).toContain("WHEN e.last_received_at IS NULL OR datetime(e.last_received_at) < datetime($receivedAt) THEN 'applied'")
     expect(q).toContain("WHEN e.last_received_at = $receivedAt THEN 'duplicate'")
-    expect(q).toContain("ELSE 'stale' END AS outcome")
-    expect(q).toContain("FOREACH (_ IN CASE WHEN outcome = 'applied' THEN [1] ELSE [] END |")
+    // B2-06: un payload vecchio con lo STESSO stato dell'ultimo applicato è innocuo (duplicate); con uno stato diverso viene APPLICATO (out_of_order)
+    expect(q).toContain(`WHEN $status = ${LAST_PAYLOAD_STATUS_CYPHER} THEN 'duplicate'`)
+    expect(q).toContain("ELSE 'out_of_order' END AS outcome")
+    expect(q).toContain(`FOREACH (_ IN CASE WHEN ${APPLIED_OUTCOME_CYPHER} THEN [1] ELSE [] END |`)
     expect(q).toContain(transitionSetCypher())
     expect(q).toContain('OPTIONAL MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})')
     expect(q).toContain("FOREACH (_ IN CASE WHEN outcome = 'created' AND w IS NOT NULL THEN [1] ELSE [] END | MERGE (e)-[:FROM_SOURCE]->(w))")
     // CI: quello già agganciato vince; altrimenti alias/nome (solo se non agganciato e non stale), poi RAISED_ON
     expect(q).toContain('OPTIONAL MATCH (e)-[:RAISED_ON]->(linked:ConfigurationItem {tenant_id: $tenantId})')
-    expect(CI_MATCH_GUARD).toBe("linked IS NULL AND outcome <> 'stale'")
+    expect(CI_MATCH_GUARD).toBe('linked IS NULL')
     expect(q).toContain(ciMatchCypher({ guard: CI_MATCH_GUARD, carry: ['e', 'outcome', 'w', 'linked'] }))
     expect(q).not.toMatch(/LIMIT 1/)
     expect(q).toContain('coalesce(linked, matched) AS ci')
@@ -837,21 +869,21 @@ describe('EVENT_TRANSITIONS — tabella condivisa fra funzione pura e CASE Cyphe
     expect(q).toContain(`CASE WHEN ${CI_MATCH_GUARD} THEN matchReason ELSE null END AS matchReason`)
     expect(q).toContain(`CASE WHEN ${CI_MATCH_GUARD} THEN candidates ELSE [] END AS candidates`)
     expect(q).toContain('w.connector_kind AS connectorKind, w.last_error IS NOT NULL AS sourceHasError')
-    expect(INGEST_WRITE_OUTCOMES).toEqual(['created', 'applied', 'duplicate', 'stale'])
+    expect(INGEST_WRITE_OUTCOMES).toEqual(['created', 'applied', 'duplicate', 'out_of_order'])
   })
 
-  it('cronologia dell\'allarme nello STESSO statement (history.ts): kind dal CASE sui valori PRE-scrittura (first_seen / cycle_firing / cycle_resolved / severity_changed / null), at = $firstSeenAt per la first_seen, nota = severità precedente, severità del payload; niente per ripetizioni, duplicate e stale', () => {
+  it('cronologia dell\'allarme nello STESSO statement (history.ts): kind dal CASE sui valori PRE-scrittura (first_seen / cycle_firing / cycle_resolved / severity_changed / null), at = $firstSeenAt per la first_seen, nota = severità precedente, severità del payload; niente per ripetizioni e duplicate', () => {
     const q = ingestMergeCypher()
     // il CASE legge e.status / e.last_payload_status / e.severity prima del SET (sta prima del FOREACH applied) e la severità precedente viaggia per la nota
     expect(q).toContain(`WITH e, outcome, ${INGEST_HISTORY_KIND_CYPHER} AS historyKind, e.severity AS previousSeverity`)
-    expect(q.indexOf('AS historyKind')).toBeLessThan(q.indexOf("FOREACH (_ IN CASE WHEN outcome = 'applied' THEN [1] ELSE [] END |"))
+    expect(q.indexOf('AS historyKind')).toBeLessThan(q.indexOf(`FOREACH (_ IN CASE WHEN ${APPLIED_OUTCOME_CYPHER} THEN [1] ELSE [] END |`))
     expect(INGEST_HISTORY_KIND_CYPHER).toContain("WHEN outcome = 'created' THEN 'first_seen'")
     // stessa regola dei passaggi (transitions): stato del payload diverso dall'ultimo applicato
-    expect(INGEST_HISTORY_KIND_CYPHER).toContain(`WHEN outcome = 'applied' AND $status <> ${LAST_PAYLOAD_STATUS_CYPHER} THEN CASE WHEN $status = 'firing' THEN 'cycle_firing' ELSE 'cycle_resolved' END`)
+    expect(INGEST_HISTORY_KIND_CYPHER).toContain(`WHEN ${APPLIED_OUTCOME_CYPHER} AND $status <> ${LAST_PAYLOAD_STATUS_CYPHER} THEN CASE WHEN $status = 'firing' THEN 'cycle_firing' ELSE 'cycle_resolved' END`)
     expect(LAST_PAYLOAD_STATUS_CYPHER).toBe("coalesce(e.last_payload_status, CASE WHEN e.status = 'resolved' THEN 'resolved' ELSE 'firing' END)")
     expect(transitionSetCypher()).toContain(`e.transitions = CASE WHEN $status <> ${LAST_PAYLOAD_STATUS_CYPHER} THEN (coalesce(e.transitions, []) + $now)[-${MAX_TRANSITIONS}..]`)
-    expect(INGEST_HISTORY_KIND_CYPHER).toContain("WHEN outcome = 'applied' AND $status = 'firing' AND $severity <> e.severity THEN 'severity_changed'")
-    expect(INGEST_HISTORY_KIND_CYPHER).toMatch(/ELSE null END$/)   // duplicate/stale/ripetizione: nessuna voce
+    expect(INGEST_HISTORY_KIND_CYPHER).toContain(`WHEN ${APPLIED_OUTCOME_CYPHER} AND $status = 'firing' AND $severity <> e.severity THEN 'severity_changed'`)
+    expect(INGEST_HISTORY_KIND_CYPHER).toMatch(/ELSE null END$/)   // duplicate/ripetizione: nessuna voce
     // il frammento condiviso, con i campi calcolati: CREATE dentro il FOREACH su historyKind, poi il cap
     const fragment = historyWriteCypher({
       when: 'historyKind IS NOT NULL', imports: ['historyKind'],
@@ -1063,7 +1095,7 @@ describe('ingestEvent', () => {
     expect(merge.params['historyId']).not.toBe(merge.params['id'])
     expect(getSession).toHaveBeenCalledTimes(1)
     expect(runEventPipeline).toHaveBeenCalledWith({
-      tenantId: 't1', eventId: 'ev-1', actorId: 'monitoring', now: 'NOW', mode: 'ingest', created: true, jobId: 'job-9',
+      tenantId: 't1', eventId: 'ev-1', actorId: 'monitoring', now: 'NOW', mode: 'ingest', opensCycle: true, jobId: 'job-9',
       record: { props: expect.objectContaining({ id: 'ev-1', status: 'firing' }), ciId: null },
     })
     expect(publishedTypes()).toEqual(['event.received', 'event.orphan'])
@@ -1075,7 +1107,7 @@ describe('ingestEvent', () => {
     expect(metrics.eventsOrphanTotal.inc).toHaveBeenCalledTimes(1)
     expect(metrics.eventsAmbiguousTotal.inc).not.toHaveBeenCalled()
     expect(metrics.eventsDeduplicatedTotal.inc).not.toHaveBeenCalled()
-    expect(metrics.eventsStaleTotal.inc).not.toHaveBeenCalled()
+    expect(metrics.eventsOutOfOrderTotal.inc).not.toHaveBeenCalled()
     expect(session.close).toHaveBeenCalled()
   })
 
@@ -1136,7 +1168,7 @@ describe('ingestEvent', () => {
     expect(publishEvent).not.toHaveBeenCalled()
   })
 
-  it('evento ripetuto (applied, first_seen_at vecchio): CI già agganciato dal MERGE, metriche ricevuto{connector} + deduplicato, pipeline con created=false, e NESSUN event.received (3.3: solo il payload che apre il ciclo notifica)', async () => {
+  it('evento ripetuto (applied, first_seen_at vecchio): CI già agganciato dal MERGE, metriche ricevuto{connector} + deduplicato, pipeline con opensCycle=false, e NESSUN event.received (3.3: solo il payload che apre il ciclo notifica)', async () => {
     onCypher([[MERGE_RE, mergeRow('applied', { severity: 'critical', count: 2 }, { ciId: 'ci-1', connectorKind: 'zabbix' })]])
     const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW' })
     expect(out).toMatchObject({ created: false, ciId: 'ci-1', outcome: 'applied' })
@@ -1145,7 +1177,7 @@ describe('ingestEvent', () => {
     expect(metrics.eventsReceivedTotal.inc).toHaveBeenCalledWith({ connector: 'zabbix' })
     expect(metrics.eventsDeduplicatedTotal.inc).toHaveBeenCalledTimes(1)
     expect(metrics.eventsOrphanTotal.inc).not.toHaveBeenCalled()
-    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', eventId: 'ev-1', mode: 'ingest', created: false, record: { props: expect.objectContaining({ count: 2 }), ciId: 'ci-1' } }))
+    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', eventId: 'ev-1', mode: 'ingest', opensCycle: false, record: { props: expect.objectContaining({ count: 2 }), ciId: 'ci-1' } }))
     expect(publishEvent).not.toHaveBeenCalled()
   })
 
@@ -1169,21 +1201,30 @@ describe('ingestEvent', () => {
     expect(metrics.eventsOrphanTotal.inc).toHaveBeenCalledTimes(1)   // la metrica conta comunque
   })
 
-  it('C1 — payload stantio (stale): nessuna pipeline, nessun evento di dominio, metrica events_stale_total{connector}, log info con impronta, job id e i due istanti', async () => {
-    onCypher([[MERGE_RE, mergeRow('stale', { status: 'resolved', last_received_at: 'T-LATER' }, { connectorKind: 'alertmanager' })]])
-    const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'T-OLD', jobId: 'job-9' })
-    expect(out).toMatchObject({ created: false, ciId: null, outcome: 'stale' })
-    expect(out.props['status']).toBe('resolved')
-    expect(calls()).toHaveLength(1)
-    expect(runEventPipeline).not.toHaveBeenCalled()
-    expect(publishEvent).not.toHaveBeenCalled()
-    expect(metrics.eventsStaleTotal.inc).toHaveBeenCalledWith({ connector: 'alertmanager' })
-    expect(metrics.eventsReceivedTotal.inc).not.toHaveBeenCalled()
-    expect(metrics.eventsDeduplicatedTotal.inc).not.toHaveBeenCalled()
-    expect(metrics.eventsOrphanTotal.inc).not.toHaveBeenCalled()
+  it('B2-06 — payload fuori ordine (receivedAt indietro) con stato DIVERSO: applicato, warn con i due istanti, metrica events_out_of_order_total{connector}, pipeline eseguita', async () => {
+    onCypher([[MERGE_RE, mergeRow('out_of_order', { status: 'resolved', resolved_at: 'NOW', last_received_at: 'T-LATER' }, { ciId: 'ci-1', connectorKind: 'alertmanager' })]])
+    vi.mocked(runEventPipeline).mockResolvedValue(pipelineResult({ status: 'resolved' }) as never)
+    const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: { ...EV, status: 'resolved' }, receivedAt: 'NOW', jobId: 'job-9' })
+    expect(out).toMatchObject({ created: false, ciId: 'ci-1', outcome: 'out_of_order' })
+    expect(metrics.eventsOutOfOrderTotal.inc).toHaveBeenCalledWith({ connector: 'alertmanager' })
+    // applicato come un payload qualunque: metriche di ricezione, pipeline, evento di dominio della chiusura del ciclo
+    expect(metrics.eventsReceivedTotal.inc).toHaveBeenCalledWith({ connector: 'alertmanager' })
+    expect(metrics.eventsDeduplicatedTotal.inc).toHaveBeenCalledTimes(1)
+    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ mode: 'ingest', opensCycle: false }))
+    expect(publishedTypes()).toEqual(['event.resolved'])
     const { logger } = await import('../../lib/logger.js')
-    const info = vi.mocked(logger.child({} as never).info).mock.calls.find(([, msg]) => /Stale event payload discarded/.test(String(msg)))!
-    expect(info[0]).toMatchObject({ fingerprint: fingerprintOf('hook-1', EV), jobId: 'job-9', receivedAt: 'T-OLD', lastReceivedAt: 'T-LATER', payloadStatus: 'firing', status: 'resolved' })
+    const warn = vi.mocked(logger.child({} as never).warn).mock.calls.find(([, msg]) => /Out-of-order event payload applied/.test(String(msg)))!
+    expect(warn[0]).toMatchObject({ fingerprint: fingerprintOf('hook-1', EV), jobId: 'job-9', receivedAt: 'NOW', lastReceivedAt: 'T-LATER', payloadStatus: 'resolved', status: 'resolved' })
+  })
+
+  it('B2-06 — payload fuori ordine con lo STESSO stato dell\'ultimo applicato: duplicate (innocuo), nessun warn, nessuna metrica fuori ordine, stato non toccato ma pipeline rieseguita', async () => {
+    onCypher([[MERGE_RE, mergeRow('duplicate', { status: 'firing', count: 3, last_received_at: 'T-LATER' }, { ciId: 'ci-1', connectorKind: 'alertmanager' })]])
+    const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'T-OLD' })
+    expect(out).toMatchObject({ created: false, outcome: 'duplicate' })
+    expect(metrics.eventsOutOfOrderTotal.inc).not.toHaveBeenCalled()
+    expect(metrics.eventsReceivedTotal.inc).not.toHaveBeenCalled()
+    expect(runEventPipeline).toHaveBeenCalledTimes(1)
+    expect(publishEvent).not.toHaveBeenCalled()   // nessun ciclo aperto o chiuso da questo payload
   })
 
   it('M6 — retry dello stesso job (duplicate): nessuna metrica ricevuto/deduplicato, ma pipeline rieseguita; l\'evento di dominio del ciclo aperto viene ripubblicato (at-least-once: first_seen_at = receivedAt del retry)', async () => {
@@ -1192,8 +1233,10 @@ describe('ingestEvent', () => {
     expect(out).toMatchObject({ created: false, ciId: 'ci-1', outcome: 'duplicate' })
     expect(metrics.eventsReceivedTotal.inc).not.toHaveBeenCalled()
     expect(metrics.eventsDeduplicatedTotal.inc).not.toHaveBeenCalled()
-    expect(metrics.eventsStaleTotal.inc).not.toHaveBeenCalled()
-    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ mode: 'ingest', created: false }))
+    expect(metrics.eventsOutOfOrderTotal.inc).not.toHaveBeenCalled()
+    // B2-03: il retry ripete un ciclo già contato (stessa receivedAt) → non alimenta il contatore di tempesta,
+    // ma l'evento di dominio del ciclo aperto viene ripubblicato (at-least-once).
+    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ mode: 'ingest', opensCycle: false }))
     expect(publishedTypes()).toEqual(['event.received'])
   })
 
@@ -1204,14 +1247,14 @@ describe('ingestEvent', () => {
     expect(publishEvent).not.toHaveBeenCalled()
   })
 
-  it('resolved → firing: nuovo ciclo scritto dal MERGE (count 1), CI riconosciuto per nome e agganciato nello stesso statement, poi pipeline con il CI nel record', async () => {
+  it('B2-03 — resolved → firing: nuovo ciclo scritto dal MERGE (count 1), CI riconosciuto e agganciato nello stesso statement, pipeline con il CI nel record e opensCycle=true (l\'allarme che torna conta per la tempesta come uno nuovo)', async () => {
     onCypher([[MERGE_RE, mergeRow('applied', { status: 'firing', count: 1, resolved_at: null, first_seen_at: 'NOW', flapping_since: null }, { ciId: 'ci-9' })]])
     const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: 'NOW' })
     expect(out).toMatchObject({ created: false, ciId: 'ci-9', outcome: 'applied' })
     expect(out.props).toMatchObject({ status: 'firing', count: 1, resolved_at: null })
     expect(calls()).toHaveLength(1)
     expect(callMatching(MERGE_RE)!.cypher).toContain('MERGE (e)-[:RAISED_ON]->(matched)')
-    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ record: { props: expect.objectContaining({ id: 'ev-1' }), ciId: 'ci-9' } }))
+    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ opensCycle: true, record: { props: expect.objectContaining({ id: 'ev-1' }), ciId: 'ci-9' } }))
     expect(metrics.eventsOrphanTotal.inc).not.toHaveBeenCalled()
     expect(publishedTypes()).toEqual(['event.received'])
   })
@@ -1221,7 +1264,7 @@ describe('ingestEvent', () => {
     onCypher([[MERGE_RE, mergeRow('applied', { status: 'resolved', count: 2, resolved_at: 'NOW' }, { ciId: 'ci-1' })]])
     await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: { ...EV, status: 'resolved' }, receivedAt: 'NOW', actorId: 'am' })
     expect(callMatching(MERGE_RE)!.params).toMatchObject({ status: 'resolved', receivedAt: 'NOW' })
-    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', eventId: 'ev-1', actorId: 'am', now: 'NOW', mode: 'ingest', created: false }))
+    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', eventId: 'ev-1', actorId: 'am', now: 'NOW', mode: 'ingest', opensCycle: false }))
     expect(publishedTypes()).toEqual(['event.resolved'])
     expect(vi.mocked(publishEvent).mock.calls[0]![2]).toBe('am')
   })
@@ -1232,7 +1275,7 @@ describe('ingestEvent', () => {
     const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: { ...EV, status: 'resolved', startsAt: '2026-09-09T12:00:00+02:00' }, receivedAt: 'NOW' })
     expect(out).toMatchObject({ created: true, outcome: 'created' })
     expect(callMatching(MERGE_RE)!.params).toMatchObject({ status: 'resolved', firstSeenAt: '2026-09-09T10:00:00.000Z', now: 'NOW' })
-    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ mode: 'ingest', created: true }))
+    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ mode: 'ingest', opensCycle: true }))
     expect(publishEvent).not.toHaveBeenCalled()
     expect(metrics.eventsResolvedUnknownTotal.inc).toHaveBeenCalledWith({ connector: 'alertmanager' })
     expect(metrics.eventsReceivedTotal.inc).toHaveBeenCalledWith({ connector: 'alertmanager' })

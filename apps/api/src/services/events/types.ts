@@ -27,8 +27,14 @@ export interface PipelineInput {
   actorId?: string
   now?:     string
   mode?:    PipelineMode
-  /** Solo in `ingest`: true se l'Event è stato CREATO da questo ingest (alimenta il contatore di tempesta della sorgente). */
-  created?: boolean
+  /**
+   * Solo in `ingest`: true se questo payload APRE UN CICLO sull'allarme —
+   * Event creato, oppure allarme rientrato che torna acceso (`first_seen_at` =
+   * istante di questo payload). Alimenta il contatore di tempesta della
+   * sorgente. Non lo apre una ripetizione (`repeat_interval`: firing su firing)
+   * né il retry `duplicate` dello stesso payload (revisione 2 · B2-03).
+   */
+  opensCycle?: boolean
   /**
    * Evento già letto dal chiamante (l'ingest lo ha appena scritto e ha le
    * proprietà post-scrittura e il CI): evita la rilettura (M11). Assente →

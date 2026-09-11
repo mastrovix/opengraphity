@@ -18,7 +18,7 @@ import { ValidationError } from '../../lib/errors.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { logger } from '../../lib/logger.js'
 import { MATCH_REASONS, type CIMatchReason } from '../../lib/eventVocabularies.js'
-import { eventsAmbiguousTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsReceivedTotal, eventsResolvedUnknownTotal, eventsStaleTotal } from '../../middleware/metrics.js'
+import { eventsAmbiguousTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsOutOfOrderTotal, eventsReceivedTotal, eventsResolvedUnknownTotal } from '../../middleware/metrics.js'
 import { fingerprintOf, quoteValue, type NormalizedEvent } from './normalize.js'
 import { INGEST_WRITE_OUTCOMES, ciMatchCypher, ciMatchParams, ingestMergeCypher, type CIMatchCandidate, type CIMatchOptions, type IngestWriteOutcome } from './transitions.js'
 import { SEVERITY_RANK, mapEventPayload, type Props } from './shared.js'
@@ -91,12 +91,12 @@ export const QUIET_OUTCOMES: ReadonlySet<string> = new Set(['suppressed', 'flapp
 export interface IngestResult {
   props: Props
   ciId: string | null
-  /** Esito del riconoscimento eseguito da QUESTO ingest; null = non eseguito (CI già agganciato, payload stale). */
+  /** Esito del riconoscimento eseguito da QUESTO ingest; null = non eseguito (CI già agganciato). */
   matchReason: CIMatchReason | null
   /** CI candidati di un riconoscimento `ambiguous` (al massimo MATCH_CANDIDATES_MAX). */
   candidates: CIMatchCandidate[]
   created: boolean
-  /** Esito della scrittura (ingestMergeCypher): `stale` = payload scartato, nessuna pipeline. */
+  /** Esito della scrittura (ingestMergeCypher). */
   outcome: IngestWriteOutcome
   /** true se la sorgente (InboundWebhook) porta un `last_error`: il worker lo azzera dopo un job riuscito. */
   sourceHasError: boolean
@@ -109,8 +109,10 @@ export interface IngestResult {
  * incident), pubblica gli eventi di dominio. Restituisce le proprietà
  * dell'Event (stato finale), il CI agganciato e l'esito della scrittura.
  *
- * - `stale` (payload più vecchio dell'ultimo applicato): nessuna modifica,
- *   nessuna pipeline, nessun evento di dominio; metrica events_stale_total.
+ * - `out_of_order` (payload più vecchio dell'ultimo applicato ma con uno stato
+ *   diverso): applicato come gli altri, con un warn e la metrica
+ *   events_out_of_order_total{connector} (revisione 2 · B2-06); uno più vecchio
+ *   con lo STESSO stato è innocuo e torna `duplicate`.
  * - `duplicate` (retry dello stesso job, stessa receivedAt): nessuna modifica
  *   al nodo (count non raddoppia), ma la pipeline VIENE rieseguita — il retry
  *   esiste proprio perché un passo successivo alla scrittura può essere
@@ -174,7 +176,7 @@ export async function ingestEvent(input: IngestInput): Promise<IngestResult> {
   const { props, outcome } = row
   const created = outcome === 'created'
   const ciId = row.ciId
-  // null = riconoscimento non eseguito (CI già agganciato o payload stale); altrimenti deve stare nel vocabolario.
+  // null = riconoscimento non eseguito (CI già agganciato); altrimenti deve stare nel vocabolario.
   const matchReason = row.matchReason == null ? null : assertMatchReason(row.matchReason)
   const candidates = row.candidates ?? []
   const sourceHasError = row.sourceHasError === true
@@ -183,13 +185,15 @@ export async function ingestEvent(input: IngestInput): Promise<IngestResult> {
   const connectorKind = row.connectorKind ?? 'generic'
   const logCtx = { tenantId, sourceId, eventId: props['id'], fingerprint, jobId }
 
-  if (outcome === 'stale') {
-    eventsStaleTotal.inc({ connector: connectorKind })
-    log.info({ ...logCtx, receivedAt: now, lastReceivedAt: props['last_received_at'], payloadStatus: ev.status, status: props['status'] }, 'Stale event payload discarded (older than the last applied one)')
-    return { props, ciId, matchReason, candidates, created: false, outcome, sourceHasError }
+  if (outcome === 'out_of_order') {
+    // B2-06: applicato, non scartato — ma è un'anomalia da vedere (orologi
+    // delle repliche API divergenti, salto NTP, riordino della coda).
+    eventsOutOfOrderTotal.inc({ connector: connectorKind })
+    log.warn({ ...logCtx, receivedAt: now, lastReceivedAt: props['last_received_at'], payloadStatus: ev.status, status: props['status'] },
+      'Out-of-order event payload applied (older than the last applied one but with a different status)')
   }
   if (outcome === 'duplicate') {
-    log.info({ ...logCtx, receivedAt: now }, 'Event payload already applied (job retry): state untouched, pipeline re-run')
+    log.info({ ...logCtx, receivedAt: now }, 'Event payload already applied (job retry, or older payload with the same status): state untouched, pipeline re-run')
   } else {
     eventsReceivedTotal.inc({ connector: connectorKind })
     if (!created) eventsDeduplicatedTotal.inc({})
@@ -210,13 +214,23 @@ export async function ingestEvent(input: IngestInput): Promise<IngestResult> {
     log.info({ ...logCtx, startsAt: ev.startsAt ?? null, firstSeenAt }, 'Resolved payload for an alert never seen before: Event created already resolved, no notification')
   }
 
+  // «Apre un ciclo»: evento nuovo, oppure allarme rientrato che torna acceso
+  // (`resolved → firing`: il MERGE ha riscritto `first_seen_at` con l'istante
+  // di questo payload). Una ripetizione dello stesso allarme ancora acceso no.
+  const opensCycle = created || props['first_seen_at'] === now
   // Pipeline (services/events/pipeline.ts): soppressione in finestra di change
   // → salute del CI → correlazione in incident / chiusura automatica. La
   // soppressione blocca anche la salute, per questo il ricalcolo vive lì.
-  // `created` alimenta il contatore di tempesta della sorgente (un retry
-  // `duplicate` non è una creazione: non la conta due volte). Il record
-  // appena scritto viaggia con la chiamata: la pipeline non lo rilegge.
-  const pipeline = await runEventPipeline({ tenantId, eventId: String(props['id']), actorId, now, mode: 'ingest', created, record: { props, ciId }, jobId })
+  // `opensCycle` alimenta il contatore di tempesta della sorgente (revisione 2
+  // · B2-03: contare i soli Event creati rendeva impossibile la tempesta al
+  // secondo guasto identico); il retry `duplicate` ripete un payload già
+  // applicato — `first_seen_at` è quello del ciclo aperto allora — e non deve
+  // contare due volte. Il record appena scritto viaggia con la chiamata: la
+  // pipeline non lo rilegge.
+  const pipeline = await runEventPipeline({
+    tenantId, eventId: String(props['id']), actorId, now, mode: 'ingest',
+    opensCycle: opensCycle && outcome !== 'duplicate', record: { props, ciId }, jobId,
+  })
   props['status'] = pipeline.status
 
   // Nessun avviso "ricevuto"/"rientrato" quando l'avviso lo dà già la pipeline:
@@ -225,7 +239,6 @@ export async function ingestEvent(input: IngestInput): Promise<IngestResult> {
   // non uno per ciascuno delle centinaia di allarmi al minuto). E nessun
   // avviso per una ripetizione: solo il payload che apre o chiude il ciclo.
   const resolved = props['status'] === 'resolved'
-  const opensCycle = created || props['first_seen_at'] === now
   const closesCycle = props['resolved_at'] === now && !resolvedUnknown
   const notify = resolved ? closesCycle : opensCycle
   if (!QUIET_OUTCOMES.has(pipeline.outcome) && notify) {

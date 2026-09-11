@@ -21,13 +21,15 @@ type AnyProcessor = (job: Job) => Promise<unknown>
 const processors = new Map<string, AnyProcessor>()
 const queueAdd = vi.fn().mockResolvedValue(undefined)
 const removeRepeatable = vi.fn().mockResolvedValue(false)
+/** Job già in coda con quell'id (revisione 2 · B2-02): null = nessuno. */
+const queueGetJob = vi.fn().mockResolvedValue(null)
 
 vi.mock('../../lib/bullmq.js', () => ({
   createWorker: vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => {
     processors.set(name, processor)
     return { name, opts, on: vi.fn(), close: vi.fn() }
   }),
-  getQueue: vi.fn(() => ({ add: queueAdd, removeRepeatable })),
+  getQueue: vi.fn(() => ({ add: queueAdd, removeRepeatable, getJob: queueGetJob })),
 }))
 vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
@@ -69,6 +71,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   processors.clear()
   removeRepeatable.mockResolvedValue(false)
+  queueGetJob.mockResolvedValue(null)
   vi.mocked(reevaluateClosedWindows).mockResolvedValue({ evaluated: 2, failed: 0, truncated: false })
   vi.mocked(reevaluatePendingEvents).mockResolvedValue({ evaluated: 1, failed: 0, truncated: false })
   vi.mocked(reevaluateFlappingEvents).mockResolvedValue({ evaluated: 1, stabilized: 1, failed: 0, truncated: false })
@@ -85,6 +88,25 @@ describe('enqueueCorrelation', () => {
     expect(queueAdd).toHaveBeenCalledWith('correlate', { tenantId: 't1', eventId: 'ev-1', dueAt: '2026-09-09T10:00:30.000Z' }, expect.objectContaining({
       jobId: `corr-t1-ev-1-${Date.parse('2026-09-09T10:00:30.000Z')}`, delay: 30_000, attempts: 3, backoff: { type: 'exponential', delay: 5_000 },
     }))
+  })
+
+  // Revisione 2 · B2-02: BullMQ ignora un `add` con un id già presente, anche
+  // se quel job è `failed` (li tiene 7 giorni): la ripetizione dell'allarme
+  // riusa la stessa scadenza, quindi lo stesso id, e l'evento restava `delayed`
+  // per sempre. Un job fallito si rimette in coda con retry().
+  it('job già presente e FALLITO → retry() invece di un add ignorato in silenzio; già presente e non fallito → nessun retry, add come sempre (BullMQ deduplica)', async () => {
+    const failed = { isFailed: vi.fn().mockResolvedValue(true), retry: vi.fn().mockResolvedValue(undefined), attemptsMade: 3 }
+    queueGetJob.mockResolvedValueOnce(failed)
+    await enqueueCorrelation('t1', 'ev-1', '2026-09-09T10:00:30.000Z')
+    expect(queueGetJob).toHaveBeenCalledWith(`corr-t1-ev-1-${Date.parse('2026-09-09T10:00:30.000Z')}`)
+    expect(failed.retry).toHaveBeenCalledTimes(1)
+    expect(queueAdd).not.toHaveBeenCalled()
+
+    const running = { isFailed: vi.fn().mockResolvedValue(false), retry: vi.fn() }
+    queueGetJob.mockResolvedValueOnce(running)
+    await enqueueCorrelation('t1', 'ev-1', '2026-09-09T10:00:30.000Z')
+    expect(running.retry).not.toHaveBeenCalled()
+    expect(queueAdd).toHaveBeenCalledTimes(1)
   })
 
   it('scadenza già passata → ritardo 0 (mai negativo); scadenza non ISO → errore senza accodare', async () => {

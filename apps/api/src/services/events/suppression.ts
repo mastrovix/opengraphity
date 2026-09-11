@@ -15,7 +15,7 @@ import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import { anyDeployWindowContains } from '../../lib/deployWindows.js'
 import { eventsSuppressedTotal } from '../../middleware/metrics.js'
-import { mapEventPayload, monitoringContext, toStr } from './shared.js'
+import { mapEventPayload, monitoringContext, toNumber, toStr } from './shared.js'
 import { historyParams, historyWriteCypher } from './history.js'
 import type { EventRecord, PipelineMode } from './types.js'
 
@@ -125,13 +125,25 @@ export async function applySuppression(session: Session, tenantId: string, ev: E
  * resta per la storia. `correlation = 'pending'` + `correlation_due_at = now`:
  * se la correlazione che segue fallisce, la passata periodica lo riprende.
  * La voce `unsuppressed` porta la change che silenziava (letta prima di azzerare il puntatore).
+ *
+ * Revisione 2 · B2-04: la scrittura è GUARDATA da `status = 'suppressed'` e
+ * restituisce quante righe ha liberato. Tre attori possono rivalutare lo stesso
+ * evento nello stesso istante (job di fine finestra, passata periodica,
+ * `deleteChange`): senza guardia ciascuno scriveva la sua voce `unsuppressed`,
+ * poi il secondo — che aveva letto `correlation = 'pending'` — si agganciava
+ * all'incident appena aperto dal primo e ne riscriveva l'esito (`attached`
+ * sopra `opened`, secondo `event.correlated`). `0` = qualcun altro l'ha già
+ * liberato e lo sta correlando: chi arriva secondo si ferma.
  */
-export async function liftSuppression(session: Session, tenantId: string, eventId: string, now: string): Promise<void> {
-  await runQuery(session, `
+export async function liftSuppression(session: Session, tenantId: string, eventId: string, now: string): Promise<number> {
+  const row = await runQueryOne<{ lifted: unknown }>(session, `
     MATCH (e:Event {id: $eventId, tenant_id: $tenantId})
+    WHERE e.status = 'suppressed'
     WITH e, e.suppressed_by_change_id AS changeId
     SET e.status = 'firing', e.suppressed_by_change_id = null,
         e.correlation = 'pending', e.correlation_at = $now, e.correlation_due_at = $now, e.updated_at = $now
     ${historyWriteCypher({ fields: { changeId: 'changeId' } })}
+    RETURN count(e) AS lifted
   `, { eventId, tenantId, now, ...historyParams({ kind: 'unsuppressed' }, now) })
+  return toNumber(row?.lifted)
 }

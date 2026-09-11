@@ -30,10 +30,17 @@ vi.mock('@opengraphity/events', async (importOriginal) => {
 
 // Revisione A-M8: la policy del tenant viene letta alla creazione di un webhook evento (assertTenantEventPolicy).
 vi.mock('../../../services/events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValue({ retention_days: 90 }), setEventPolicy: vi.fn() }))
+// Revisione 2 · D4.1: eliminare una sorgente chiude i suoi allarmi accesi (services/events/cascade.ts).
+vi.mock('../../../services/events/cascade.js', () => ({
+  deleteSourceAndResolveEvents: vi.fn().mockResolvedValue({ deleted: true, resolvedEvents: 3, affectedCIs: 2 }),
+}))
+vi.mock('../../../services/events/sourceCache.js', () => ({ invalidateSourceCache: vi.fn() }))
 
 const { integrationsResolvers, assertTenantEventPolicy } = await import('../integrations.js')
 const { runQuery } = await import('@opengraphity/neo4j')
 const { getEventPolicy } = await import('../../../services/events/policy.js')
+const { deleteSourceAndResolveEvents } = await import('../../../services/events/cascade.js')
+const { invalidateSourceCache } = await import('../../../services/events/sourceCache.js')
 
 const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
 const operator: GraphQLContext = { tenantId: 'tenant-1', userId: 'op-1',    userEmail: 'op@test.io',  role: 'operator' }
@@ -367,5 +374,27 @@ describe('inbound webhook di Event Management — connettori, value_mapping, val
     vi.mocked(runQuery).mockResolvedValueOnce([{ props: { id: 'iw-9', name: 'Grafana', entity_type: 'event', connector_kind: 'grafana', field_mapping: '{}', last_error: 'alerts[0].labels.instance (or labels.host) is missing or empty', last_error_at: 'T9', error_count: 4, receive_count: 12 } }] as never)
     const [row] = await integrationsResolvers.Query.inboundWebhooks(null, {}, admin)
     expect(row).toMatchObject({ id: 'iw-9', connectorKind: 'grafana', valueMapping: null, lastError: expect.stringMatching(/labels\.instance/), lastErrorAt: 'T9', errorCount: 4, receiveCount: 12 })
+  })
+})
+
+describe('deleteInboundWebhook — D4.1: la sorgente se ne va e i suoi allarmi rientrano', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('delega alla politica delle cancellazioni e restituisce i conteggi (DeleteSourceResult), invalidando la cache della sorgente', async () => {
+    const out = await integrationsResolvers.Mutation.deleteInboundWebhook(null, { id: 'iw-1' }, admin)
+    expect(out).toEqual({ deleted: true, resolvedEvents: 3, affectedCIs: 2 })
+    expect(deleteSourceAndResolveEvents).toHaveBeenCalledWith('tenant-1', 'iw-1', 'admin-1')
+    // niente DETACH DELETE nudo nel resolver: la cancellazione e la risoluzione degli allarmi stanno nella stessa transazione del servizio
+    expect(runQuery).not.toHaveBeenCalled()
+    expect(invalidateSourceCache).toHaveBeenCalledWith('tenant-1', 'iw-1')
+  })
+
+  it('sorgente inesistente → deleted false (nessun errore); riconciliazione fallita → l\'errore propaga ma la cache è invalidata comunque', async () => {
+    vi.mocked(deleteSourceAndResolveEvents).mockResolvedValueOnce({ deleted: false, resolvedEvents: 0, affectedCIs: 0 })
+    await expect(integrationsResolvers.Mutation.deleteInboundWebhook(null, { id: 'iw-x' }, admin)).resolves.toEqual({ deleted: false, resolvedEvents: 0, affectedCIs: 0 })
+
+    vi.mocked(deleteSourceAndResolveEvents).mockRejectedValueOnce(new Error('1 re-evaluations failed'))
+    await expect(integrationsResolvers.Mutation.deleteInboundWebhook(null, { id: 'iw-1' }, admin)).rejects.toThrow(/re-evaluations failed/)
+    expect(invalidateSourceCache).toHaveBeenLastCalledWith('tenant-1', 'iw-1')
   })
 })

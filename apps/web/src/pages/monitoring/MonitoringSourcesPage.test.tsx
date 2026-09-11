@@ -151,7 +151,7 @@ describe('MonitoringSourcesPage', () => {
     const seen: unknown[] = []
     const deleteMock: GqlMock = {
       request: { query: DELETE_MONITORING_SOURCE, variables: (v) => { seen.push(v); return true } },
-      result: { data: { deleteInboundWebhook: true } },
+      result: { data: { deleteInboundWebhook: { __typename: 'DeleteSourceResult', deleted: true, resolvedEvents: 2, affectedCIs: 1 } } },
     }
     const { user } = renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), statsMock(), deleteMock] })
     await user.click(await screen.findByRole('button', { name: 'Delete Zabbix DC' }))
@@ -162,7 +162,8 @@ describe('MonitoringSourcesPage', () => {
     await user.click(screen.getByRole('button', { name: 'Delete Zabbix DC' }))
     const dialog = await screen.findByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }))
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Source deleted'))
+    // D4.1: la sorgente aveva allarmi accesi → il messaggio dice quanti ne sono stati chiusi e su quanti CI
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Source deleted: 2 active alarms were resolved on 1 CIs'))
     expect(seen).toEqual([{ id: 's2' }])
   })
 })

@@ -720,9 +720,21 @@ async function syncServiceMap(_: unknown, args: { id: string }, ctx: GraphQLCont
   }
 }
 
-/** Elimina mappa e cronologia (il servizio e i CI restano); un job di valutazione in attesa viene tolto dalla coda (se già in esecuzione fallirà con NOT_FOUND, visibile nel log). */
+/**
+ * Elimina mappa e cronologia (il servizio e i CI restano); un job di valutazione
+ * in attesa viene tolto dalla coda (se già in esecuzione fallirà con NOT_FOUND,
+ * visibile nel log).
+ *
+ * Revisione 2 · D4.3: un incident di servizio ancora aperto NON viene chiuso —
+ * è storia del ticket — ma riceve PRIMA della cancellazione un commento che
+ * dice perché nessuno lo chiuderà più: senza la mappa `resolveServiceIncident`
+ * non ha da dove ripartire (parte da lì), `IMPACTS_SERVICE` cade con il DETACH
+ * DELETE e per l'operatore resta un incident critico «senza motivo».
+ */
 async function deleteServiceMap(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
+  const { noteServiceMapDeletion } = await import('../../services/events/cascade.js')
+  await noteServiceMapDeletion(ctx.tenantId, args.id)
   const session = getSession(undefined, 'WRITE')
   let row: { name: string | null; serviceId: string | null; entries: unknown } | null
   try {

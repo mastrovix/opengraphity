@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import type { Session } from 'neo4j-driver'
 import { ValidationError } from '../../lib/errors.js'
 import { withSession } from './ci-utils.js'
 import { cache } from '../../lib/cache.js'
@@ -10,6 +11,7 @@ import { toSnakeCase } from '../../lib/mappers.js'
 import { ciNameKey } from '../../lib/ciNameKey.js'
 import { notifyCIGraphChanged, notifyCIMaintenanceChanged } from '../../services/serviceImpact/sync.js'
 import { CI_LIFECYCLE_MAINTENANCE } from '../../services/serviceImpact/engine.js'
+import { recomputeCIHealth } from '../../services/events/ciHealth.js'
 
 type Props = Record<string, unknown>
 
@@ -214,6 +216,16 @@ export function buildUpdateMutation(
       const wasMaintenance = current['status'] === CI_LIFECYCLE_MAINTENANCE
       const isMaintenance  = updates['status'] === undefined ? wasMaintenance : updates['status'] === CI_LIFECYCLE_MAINTENANCE
       if (wasMaintenance !== isMaintenance) {
+        // Revisione 2 · B2-14: PRIMA la salute, poi le mappe. In manutenzione
+        // il monitoraggio non scrive `ci.health` (services/events/ciHealth.ts):
+        // all'uscita il CI mostrava ancora la salute di prima della finestra
+        // finché lo strumento non rimandava un payload (fino a `repeat_interval`
+        // di distanza). Il ricalcolo la riporta a quella vera dagli allarmi
+        // ancora accesi e pubblica `ci.health_changed` se cambia; entrando in
+        // manutenzione è un no-op sul valore (regola `maintenance`), ma ripara
+        // `health_source` se manca. La notifica alle mappe viene dopo, così la
+        // valutazione del servizio legge la salute già aggiornata.
+        await recomputeCIHealth(ctx.tenantId, id, ctx.userId)
         await notifyCIMaintenanceChanged(ctx.tenantId, [id], `ci.status:${wasMaintenance ? 'left' : 'entered'}_maintenance`)
       }
       void audit(ctx, 'ci.updated', 'ConfigurationItem', id)
@@ -248,6 +260,13 @@ export function buildDeleteMutation(
       // bene. Un CI SEMPLICEMENTE INCLUSO in una mappa altrui non la tocca: la
       // mappa perde la sua INCLUDES e diventa `stale` alla prima valutazione
       // (services/serviceImpact/engine.ts).
+      // Revisione 2 · D4.3, PRIMA della cancellazione (dopo non c'è più niente
+      // da leggere): (a) l'incident che aveva SOLO questo CI riceve un commento
+      // — resta aperto, ma per l'operatore sarebbe un ticket senza motivo, e i
+      // suoi allarmi non hanno più un CI da cui essere richiusi; (b) se il CI è
+      // una BusinessApplication con una mappa, gli incident di servizio ancora
+      // aperti vengono annotati come in `deleteServiceMap`.
+      await noteIncidentsBeforeCIDeletion(ctx.tenantId, args.id, session)
       await session.executeWrite(tx =>
         tx.run(
           `MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId})
@@ -269,4 +288,16 @@ export function buildDeleteMutation(
       void audit(ctx, 'ci.deleted', 'ConfigurationItem', args.id)
       return true
     }, true)
+}
+
+/**
+ * Revisione 2 · D4.3: i commenti da scrivere PRIMA che il CI sparisca (dopo
+ * non c'è più niente da leggere). La regola sta con le altre cancellazioni a
+ * cascata, in services/events/cascade.ts; qui si passa solo la sessione della
+ * mutation. Import dinamico: il modulo trascina incidentService, inutile a chi
+ * crea o aggiorna un CI.
+ */
+async function noteIncidentsBeforeCIDeletion(tenantId: string, ciId: string, session: Session): Promise<void> {
+  const { noteIncidentsBeforeCIDeletion: note } = await import('../../services/events/cascade.js')
+  await note(tenantId, ciId, session)
 }

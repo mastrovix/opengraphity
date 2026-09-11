@@ -88,7 +88,7 @@ function baseRules(src: Record<string, unknown> | null = source()): Array<[RegEx
 }
 
 const track = (over: Partial<Parameters<typeof trackSourceStorm>[0]> = {}) =>
-  trackSourceStorm({ tenantId: 't1', sourceId: 'hook-1', created: true, policy: policy(), now: NOW, actorId: 'monitoring', ciId: 'ci-1', ...over })
+  trackSourceStorm({ tenantId: 't1', sourceId: 'hook-1', opensCycle: true, policy: policy(), now: NOW, actorId: 'monitoring', ciId: 'ci-1', ...over })
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -144,9 +144,9 @@ describe('contatore Redis', () => {
 })
 
 describe('trackSourceStorm', () => {
-  it('ripetizione (created=false) → nessun INCR, nessuna tempesta; sorgente cancellata → nessuna tempesta; soglia 0 → rilevamento spento', async () => {
+  it('ripetizione (opensCycle=false) → nessun INCR, nessuna tempesta; sorgente cancellata → nessuna tempesta; soglia 0 → rilevamento spento', async () => {
     onCypher(baseRules())
-    await expect(track({ created: false })).resolves.toEqual({ active: false, since: null, incidentId: null, sourceName: 'Zabbix prod' })
+    await expect(track({ opensCycle: false })).resolves.toEqual({ active: false, since: null, incidentId: null, sourceName: 'Zabbix prod' })
     expect(redis.incr).not.toHaveBeenCalled()
     invalidateSourceCache()   // sorgente diversa nello stesso test: via la voce in cache
     onCypher(baseRules(null))

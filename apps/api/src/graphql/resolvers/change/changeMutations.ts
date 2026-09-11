@@ -92,16 +92,21 @@ export async function deleteChange(_: unknown, args: { id: string }, ctx: GraphQ
     logger.error({ err, changeId: args.id }, '[deleteChange] cancellazione job OLA non riuscita')
   }
   // Gli eventi di monitoraggio silenziati dalla finestra di questa change
-  // (Event.suppressed_by_change_id) vanno rivalutati subito (T-2): la change
-  // non esiste più, `Event.suppressedBy` tornerebbe null lasciando l'evento
-  // `suppressed` senza dire da chi. Stesso pattern post-commit del cleanup OLA:
-  // un errore qui è registrato ad alta severità, non annulla l'eliminazione;
-  // la passata periodica reevaluateClosedWindows è la rete di sicurezza.
-  try {
-    const { reevaluateSuppressedEvents } = await import('../../../services/eventCorrelation.js')
-    await reevaluateSuppressedEvents(ctx.tenantId, args.id, ctx.userId)
-  } catch (err) {
-    logger.error({ err, changeId: args.id }, '[deleteChange] rivalutazione degli eventi silenziati non riuscita')
+  // (Event.suppressed_by_change_id) vanno rivalutati (T-2): la change non
+  // esiste più, `Event.suppressedBy` tornerebbe null lasciando l'evento
+  // `suppressed` senza dire da chi.
+  // Revisione 2 · B2-05: la rivalutazione ACCODA il job `reevaluate-change-window`
+  // (come le transizioni in autoTransitions.ts) invece di girare in linea: ogni
+  // evento costa una pipeline intera (lock di gruppo compreso) e una change con
+  // 300 allarmi silenziati teneva la mutation per minuti — il client andava in
+  // timeout e la ripeteva. L'accodamento NON è protetto da try/catch: è locale
+  // a Redis e se fallisce deve propagare come ogni altro errore (fail-loud, come
+  // documentato nel worker); l'esecuzione, lunga e ritentabile, sta nel job e la
+  // passata periodica reevaluateClosedWindows resta la rete di sicurezza.
+  // `stepEpoch` = istante dell'eliminazione: un job per eliminazione.
+  {
+    const { enqueueChangeWindowReevaluation } = await import('../../../jobs/eventCorrelateWorker.js')
+    await enqueueChangeWindowReevaluation(ctx.tenantId, args.id, Date.now())
   }
   // Servizi monitorati (revisione 2 · D6.1): la finestra di questa change
   // sparisce con lei, quindi i componenti che «pesavano zero» tornano a pesare.

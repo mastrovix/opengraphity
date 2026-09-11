@@ -192,10 +192,30 @@ async function updateInboundWebhook(_: unknown, args: { id: string; input: Props
   }, true)
 }
 
+/**
+ * Elimina la sorgente E chiude i suoi allarmi ancora accesi (revisione 2 ·
+ * D4.1). Prima era un `DETACH DELETE` nudo: gli Event restavano `firing` per
+ * sempre — nessun payload `resolved` sarebbe più arrivato, la sorgente non
+ * esiste — quindi i CI restavano `down` con `health_source = monitoring`, i
+ * loro incident aperti e i servizi degradati, finché qualcuno non risolveva a
+ * mano ogni allarme. Lo scenario è comune in adozione: sorgente configurata
+ * male, cancellata e ricreata.
+ *
+ * La cancellazione e la risoluzione degli allarmi stanno nella stessa
+ * transazione; dopo il commit la salute dei CI toccati viene ricalcolata e gli
+ * allarmi ripassano dalla pipeline, che chiude gli incident per la via normale
+ * (services/events/cascade.ts). Il risultato porta i conteggi: l'interfaccia
+ * può dire quanti allarmi ha chiuso.
+ */
 async function deleteInboundWebhook(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  await withSession(async (s) => { await runQuery(s, `MATCH (w:InboundWebhook {id: $id, tenant_id: $t}) DETACH DELETE w`, { id: args.id, t: ctx.tenantId }) }, true)
-  invalidateSourceCache(ctx.tenantId, args.id)
-  return true
+  const { deleteSourceAndResolveEvents } = await import('../../services/events/cascade.js')
+  try {
+    return await deleteSourceAndResolveEvents(ctx.tenantId, args.id, ctx.userId)
+  } finally {
+    // Anche se la riconciliazione post-commit fallisce, la sorgente non c'è più:
+    // la cache in memoria (10 s) dei servizi dell'Event Management va invalidata.
+    invalidateSourceCache(ctx.tenantId, args.id)
+  }
 }
 
 async function regenerateWebhookToken(_: unknown, args: { id: string }, ctx: GraphQLContext) {

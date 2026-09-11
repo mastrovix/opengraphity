@@ -80,7 +80,7 @@ vi.mock('../../middleware/metrics.js', () => ({
 }))
 
 const corr = await import('../eventCorrelation.js')
-const { runEventPipeline, findSuppressingChange, reevaluateSuppressedEvents, reevaluateClosedWindows, reevaluateFlappingEvents, reevaluatePendingEvents, openIncidentFromEvent, meetsOpenThreshold, changeIsInWindow, findAutoResolvePath, isFlapping, isStable, groupLockKey, CHANGE_IMPLEMENTATION_STEP, CHANGE_WINDOW_STEPS, MONITORING_ACTOR, AUTO_RESOLVE_MAX_HOPS, CORRELATION_OUTCOMES, PENDING_CORRELATIONS, GROUP_LOCK_TTL_SECONDS, GROUP_LOCK_WAIT_MS, GROUP_LOCK_POLL_MS } = corr
+const { runEventPipeline, findSuppressingChange, reevaluateSuppressedEvents, reevaluateClosedWindows, reevaluateFlappingEvents, reevaluatePendingEvents, openIncidentFromEvent, meetsOpenThreshold, changeIsInWindow, findAutoResolvePath, isFlapping, isStable, groupLockKey, CHANGE_IMPLEMENTATION_STEP, CHANGE_WINDOW_STEPS, MONITORING_ACTOR, AUTO_RESOLVE_MAX_HOPS, CORRELATION_OUTCOMES, PENDING_CORRELATIONS, STUCK_FIRING_WHERE, DUE_CORRELATION_WHERE, UNCORRELATED_WHERE, OVERDUE_DELAYED_WHERE, stuckEventParams, UNCORRELATED_AFTER_MINUTES, OVERDUE_DELAYED_GRACE_MINUTES, GROUP_LOCK_TTL_SECONDS, GROUP_LOCK_WAIT_MS, GROUP_LOCK_POLL_MS } = corr
 // Revisione 1.18: helper della chiusura automatica (non passano dalla facciata).
 const { suppressedSummary, STILL_FIRING_STATUSES } = await import('../events/autoResolve.js')
 // Cronologia dell'allarme: il frammento condiviso, per verificare che gli statement della pipeline lo contengano.
@@ -148,7 +148,7 @@ const Q = {
   allFlap:     /MATCH \(e:Event \{status: 'flapping'\}\)/,
   stabilize:   /SET e\.status = \$status, e\.flapping_since = null, e\.correlation = \$correlation/,
   // revisione
-  allPending:  /MATCH \(e:Event \{status: 'firing'\}\)\s+WHERE e\.correlation IN \$correlations AND e\.correlation_due_at IS NOT NULL AND e\.correlation_due_at <= \$now/,
+  allPending:  /MATCH \(e:Event \{status: 'firing'\}\)\s+WHERE e\.id > \$cursor AND \(/,
   incStep:     /MATCH \(i:Incident \{id: \$incidentId, tenant_id: \$tenantId\}\)-\[:HAS_WORKFLOW\]->\(wi:WorkflowInstance \{tenant_id: \$tenantId\}\)\s+RETURN i\.id AS incidentId, wi\.id AS instanceId, wi\.current_step AS step/,
   // revisione 1.16: incident chiuso a cui l'allarme era correlato (dopo l'apertura di uno nuovo)
   closedPrev:  /WHERE wi\.current_step IN \$terminalSteps AND wi\.current_step <> \$resolvedStep AND i\.id <> \$openedId/,
@@ -177,7 +177,7 @@ function baseRules(ev: Record<string, unknown> = {}, ciId: string | null = 'ci-1
     [Q.load, { props: props(ev), ciId }],
     [Q.suppressing, []],
     [Q.suppress, { id: 'ev-1' }],
-    [Q.lift, null],
+    [Q.lift, { lifted: 1 }],   // B2-04: la fine soppressione è guardata e dice quante righe ha liberato
     [Q.touchSupp, null],
     [Q.setCorr, null],
     [Q.ever, { n: 0 }],
@@ -954,10 +954,10 @@ describe('sfarfallio', () => {
 // ── Ondata 4: tempesta della sorgente ────────────────────────────────────────
 
 describe('tempesta della sorgente', () => {
-  it('all\'ingest la pipeline aggiorna il contatore della sorgente (created, policy, CI dell\'evento) e senza tempesta prosegue normalmente', async () => {
+  it('all\'ingest la pipeline aggiorna il contatore della sorgente (opensCycle, policy, CI dell\'evento) e senza tempesta prosegue normalmente', async () => {
     onCypher(baseRules())
-    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, created: true })).outcome).toBe('opened')
-    expect(trackSourceStorm).toHaveBeenCalledWith({ tenantId: 't1', sourceId: 'hook-1', created: true, policy: policy(), now: NOW, actorId: 'monitoring', ciId: 'ci-1' })
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, opensCycle: true })).outcome).toBe('opened')
+    expect(trackSourceStorm).toHaveBeenCalledWith({ tenantId: 't1', sourceId: 'hook-1', opensCycle: true, policy: policy(), now: NOW, actorId: 'monitoring', ciId: 'ci-1' })
     expect(getStormState).not.toHaveBeenCalled()
   })
 
@@ -1306,6 +1306,32 @@ describe('stati ritentabili (pending)', () => {
     expect(PENDING_CORRELATIONS).toEqual(['pending', 'none'])
   })
 
+  // Revisione 2 · B2-04: tre attori (job di fine finestra, passata periodica,
+  // deleteChange) possono rivalutare lo stesso evento soppresso nello stesso
+  // istante. La lift è guardata da `status = 'suppressed'` e dice quante righe
+  // ha liberato: chi arriva secondo trova 0 e si ferma.
+  it('fine soppressione concorrente: la lift è guardata (WHERE status = suppressed, RETURN count) e chi trova 0 esce con `none` — una sola voce `unsuppressed`, un solo event.correlated', async () => {
+    // primo attore: libera davvero (lifted = 1) e apre l'incident
+    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' })])
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, mode: 'reevaluate' })).outcome).toBe('opened')
+    const lift = callMatching(Q.lift)!
+    expect(lift.cypher).toMatch(/WHERE e\.status = 'suppressed'/)
+    expect(lift.cypher).toMatch(/RETURN count\(e\) AS lifted/)
+    expect(published()).toEqual(['event.correlated'])
+    expect(incidentService.createIncident).toHaveBeenCalledTimes(1)
+
+    // secondo attore, stesso evento: la guardia non trova più nulla (lifted = 0)
+    vi.clearAllMocks()
+    vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' }), [Q.lift, { lifted: 0 }]])
+    const second = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, mode: 'reevaluate' })
+    expect(second).toEqual({ outcome: 'none', status: 'firing', suppressedByChangeId: null, incidentId: null })
+    expect(callMatching(Q.setCorr)).toBeUndefined()       // nessun esito scritto sopra quello del primo
+    expect(callMatching(Q.attach)).toBeUndefined()        // nessun aggancio all'incident appena aperto
+    expect(publishEvent).not.toHaveBeenCalled()           // nessun secondo event.correlated
+    expect(incidentService.createIncident).not.toHaveBeenCalled()
+  })
+
   it('reevaluateSuppressedEvents: un evento fallito non ferma gli altri, il job fallisce alla fine con il conteggio', async () => {
     let loads = 0
     onCypher([
@@ -1321,15 +1347,47 @@ describe('stati ritentabili (pending)', () => {
     onCypher([...baseRules({ correlation: 'pending', correlation_due_at: minutesAgo(3) }), [Q.allPending, [{ tenantId: 't1', id: 'ev-1' }]]])
     await expect(reevaluatePendingEvents(NOW)).resolves.toEqual({ evaluated: 1, failed: 0, truncated: false })
     const q = callMatching(Q.allPending)!
-    expect(q.cypher).toContain('AND e.id > $cursor')
+    expect(q.cypher).toContain('WHERE e.id > $cursor AND (')
     expect(q.cypher).toContain('ORDER BY e.id LIMIT toInteger($limit)')
-    expect(q.params).toEqual({ correlations: ['pending', 'none'], now: NOW, cursor: '', limit: PAGE_SIZE })
+    expect(q.params).toEqual({ correlations: ['pending', 'none'], now: NOW, uncorrelatedCutoff: minutesAgo(UNCORRELATED_AFTER_MINUTES), delayedCutoff: minutesAgo(OVERDUE_DELAYED_GRACE_MINUTES), cursor: '', limit: PAGE_SIZE })
     expect(incidentService.createIncident).toHaveBeenCalledTimes(1)
     expect(callMatching(Q.setCorr)!.params).toMatchObject({ correlation: 'opened', dueAt: null })
     expect(enqueueCorrelation).not.toHaveBeenCalled()
 
     onCypher([...baseRules(), [Q.allPending, [{ tenantId: 't1', id: 'ev-1' }]], [Q.load, null]])
     await expect(reevaluatePendingEvents(NOW)).rejects.toThrow(/reevaluatePendingEvents: 1\/1 pending events failed/)
+  })
+
+  // Revisione 2 · B2-01/B2-02: il predicato è quello del gauge, non solo la scadenza.
+  // Un Event nasce (e riparte a ogni ciclo) firing/none con `correlation_due_at = null`:
+  // se la pipeline falliva tutti i tentativi nessuna passata lo riprendeva più.
+  it('reevaluatePendingEvents: predicato UNICO condiviso con il gauge — scadenza passata, oppure pending/none senza scadenza fermo da più della grazia, oppure delayed scaduto; appena creato o con scadenza futura NO', () => {
+    const where = STUCK_FIRING_WHERE
+    expect(where).toBe(`(${DUE_CORRELATION_WHERE}) OR (${UNCORRELATED_WHERE}) OR (${OVERDUE_DELAYED_WHERE})`)
+    // (a) scadenza passata (fine soppressione / stabilizzazione fallite)
+    expect(DUE_CORRELATION_WHERE).toBe('e.correlation IN $correlations AND e.correlation_due_at IS NOT NULL AND e.correlation_due_at <= $now')
+    // (b) firing senza esito e SENZA scadenza, fermo da più di UNCORRELATED_AFTER_MINUTES: il caso di B2-01
+    expect(UNCORRELATED_WHERE).toBe('e.correlation IN $correlations AND coalesce(e.correlation_at, e.first_seen_at) < $uncorrelatedCutoff')
+    // (c) ritardo di apertura perso (B2-02): in `reevaluate` il passo del ritardo non viene rieseguito
+    expect(OVERDUE_DELAYED_WHERE).toBe("e.correlation = 'delayed' AND e.correlation_due_at IS NOT NULL AND e.correlation_due_at < $delayedCutoff")
+    const p = stuckEventParams(NOW)
+    expect(p).toEqual({ correlations: ['pending', 'none'], now: NOW, uncorrelatedCutoff: minutesAgo(15), delayedCutoff: minutesAgo(5) })
+    // il taglio è quello: un evento fermo da 20 min rientra, uno di 2 min no (i due istanti stanno ai lati del cutoff)
+    expect(minutesAgo(20) < p.uncorrelatedCutoff).toBe(true)
+    expect(minutesAgo(2)  < p.uncorrelatedCutoff).toBe(false)
+    // una scadenza FUTURA non entra dal ramo (a): il confronto è `<= $now`
+    expect(new Date(Date.parse(NOW) + 60_000).toISOString() <= p.now).toBe(false)
+    expect(() => stuckEventParams('ieri')).toThrow(/not an ISO date/)
+  })
+
+  it('reevaluatePendingEvents: un firing/none SENZA scadenza e più vecchio della grazia rientra in pipeline e viene correlato, con una riga di log per evento (B2-01)', async () => {
+    onCypher([...baseRules({ correlation: 'none', correlation_at: null, correlation_due_at: null, first_seen_at: minutesAgo(20) }), [Q.allPending, [{ tenantId: 't1', id: 'ev-1' }]]])
+    await expect(reevaluatePendingEvents(NOW)).resolves.toEqual({ evaluated: 1, failed: 0, truncated: false })
+    expect(incidentService.createIncident).toHaveBeenCalledTimes(1)
+    expect(callMatching(Q.setCorr)!.params).toMatchObject({ correlation: 'opened' })
+    const { logger } = await import('../../lib/logger.js')
+    const info = vi.mocked(logger.child({} as never).info).mock.calls.find(([, msg]) => /Uncorrelated firing event picked up by the periodic pass/.test(String(msg)))!
+    expect(info[0]).toMatchObject({ tenantId: 't1', eventId: 'ev-1', outcome: 'opened' })
   })
 })
 
@@ -1439,7 +1497,7 @@ describe('cronologia dell\'allarme', () => {
     onCypher(baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' }))
     expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, mode: 'reevaluate' })).outcome).toBe('opened')
     const lift = callMatching(Q.lift)!
-    expect(lift.cypher).toMatch(/MATCH \(e:Event \{id: \$eventId, tenant_id: \$tenantId\}\)\s+WITH e, e\.suppressed_by_change_id AS changeId\s+SET e\.status = 'firing'/)
+    expect(lift.cypher).toMatch(/MATCH \(e:Event \{id: \$eventId, tenant_id: \$tenantId\}\)\s+WHERE e\.status = 'suppressed'\s+WITH e, e\.suppressed_by_change_id AS changeId\s+SET e\.status = 'firing'/)
     expect(lift.cypher).toContain('change_id: changeId, ci_id: $historyCiId')
     expect(historyWrites().map((h) => [h.kind, h.outcome, h.incidentId, h.when])).toEqual([['unsuppressed', null, null, 'true'], ['correlated', 'opened', 'inc-new', 'true']])
   })

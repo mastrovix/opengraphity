@@ -33,6 +33,7 @@
  * BullMQ ritenta e resta visibile).
  */
 import { getSession } from '@opengraphity/neo4j'
+import { logger } from '../../lib/logger.js'
 import { eventPipelineDurationSeconds, eventsCorrelatedTotal } from '../../middleware/metrics.js'
 import { MONITORING_ACTOR, toStr } from './shared.js'
 import { getEventPolicy } from './policy.js'
@@ -45,6 +46,8 @@ import { correlateFiringEvent, correlateIntoStorm } from './grouping.js'
 import { handleResolvedEvent } from './autoResolve.js'
 import { getStormState, trackSourceStorm } from './storm.js'
 import type { PipelineInput, PipelineResult } from './types.js'
+
+const log = logger.child({ module: 'event-correlation' })
 
 export async function runEventPipeline(input: PipelineInput): Promise<PipelineResult> {
   const mode = input.mode ?? 'ingest'
@@ -94,7 +97,7 @@ async function run(input: PipelineInput): Promise<PipelineResult> {
     // apre/chiude la tempesta), nelle rivalutazioni si legge soltanto.
     const sourceId = toStr(ev.props['source_id'])
     const storm = mode === 'ingest'
-      ? await trackSourceStorm({ tenantId, sourceId, created: input.created === true, policy, now, actorId, ciId: ev.ciId })
+      ? await trackSourceStorm({ tenantId, sourceId, opensCycle: input.opensCycle === true, policy, now, actorId, ciId: ev.ciId })
       : await getStormState(tenantId, sourceId)
 
     if (status === 'resolved') return await handleResolvedEvent(session, tenantId, ev, policy, actorId, now, mode, storm, logCtx)
@@ -114,7 +117,16 @@ async function run(input: PipelineInput): Promise<PipelineResult> {
       }
     }
     if (status === 'suppressed') {
-      await liftSuppression(session, tenantId, eventId, now)
+      // Revisione 2 · B2-04: la fine soppressione è guardata. Se un altro
+      // attore (job di fine finestra, passata periodica, deleteChange) ha già
+      // liberato questo evento, la sua pipeline lo sta correlando adesso:
+      // proseguire qui produrrebbe una seconda voce di cronologia, un secondo
+      // `event.correlated` e un esito `attached` sopra il suo `opened`.
+      const lifted = await liftSuppression(session, tenantId, eventId, now)
+      if (lifted === 0) {
+        log.debug({ ...logCtx, tenantId, eventId }, 'Event was already unsuppressed by a concurrent re-evaluation: nothing to do')
+        return { outcome: 'none', status: 'firing', suppressedByChangeId: null, incidentId: null }
+      }
       ev.props['status'] = 'firing'
       ev.props['suppressed_by_change_id'] = null
       ev.props['correlation'] = 'pending'

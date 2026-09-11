@@ -3,7 +3,8 @@
  *
  * Contatore al minuto per (tenant, sorgente) su Redis (`getSharedRedis`,
  * chiave `og:events:storm:<tenant>:<sorgente>:<minuto>`, INCR + TTL 120 s):
- * conta solo gli eventi NUOVI (non le ripetizioni). Quando in un minuto il
+ * conta gli allarmi che APRONO UN CICLO — nuovi o rientrati e tornati accesi —
+ * non le ripetizioni (revisione 2 · B2-03). Quando in un minuto il
  * contatore raggiunge `storm_threshold_per_minute` la sorgente entra in
  * tempesta: `InboundWebhook.storm_since`, `storm_incident_id`,
  * `storm_last_over_at` (ultimo minuto oltre soglia), `event.storm_started`
@@ -413,8 +414,17 @@ async function endStorm(tenantId: string, source: Props, actorId: string, now: s
 export interface TrackStormInput {
   tenantId: string
   sourceId: string
-  /** true se l'ingest ha CREATO l'Event (le ripetizioni non contano). */
-  created:  boolean
+  /**
+   * true se il payload APRE UN CICLO: Event creato, oppure allarme rientrato
+   * che torna acceso (`resolved → firing`, nuovo ciclo con `first_seen_at` =
+   * istante del payload). Revisione 2 · B2-03: contare i soli Event creati
+   * rendeva impossibile la tempesta al SECONDO guasto identico — dopo il primo
+   * gli Event esistono già (conservati 90 giorni) e nessuno incrementava più
+   * il contatore. NON aprono un ciclo: la ripetizione dello stesso allarme
+   * ancora acceso (`repeat_interval`) e il retry `duplicate` dello stesso
+   * payload (che ripete un ciclo già contato).
+   */
+  opensCycle: boolean
   policy:   EventPolicy
   now:      string
   actorId:  string
@@ -436,7 +446,7 @@ export async function trackSourceStorm(input: TrackStormInput): Promise<StormSta
   const threshold = policy.storm_threshold_per_minute
   let lastOverAt = typeof source['storm_last_over_at'] === 'string' ? source['storm_last_over_at'] : state.since
 
-  if (input.created && threshold > 0) {
+  if (input.opensCycle && threshold > 0) {
     const rate = await countNewEvent(tenantId, sourceId, now)
     if (rate >= threshold) {
       if (!state.active) {

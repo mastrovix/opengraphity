@@ -28,6 +28,8 @@ vi.mock('../../../services/serviceImpact/engine.js', async (importOriginal) => (
 vi.mock('../../../services/events/incidentWorkflow.js', () => ({
   incidentStepInfo: vi.fn(async () => ({ resolvedStep: 'resolved', terminalSteps: ['resolved', 'closed'] })),
 }))
+// Revisione 2 · D4.3: prima di eliminare la mappa gli incident di servizio ancora aperti ricevono un commento.
+vi.mock('../../../services/events/cascade.js', () => ({ noteServiceMapDeletion: vi.fn().mockResolvedValue(1) }))
 vi.mock('../../../services/serviceImpact/config.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../services/serviceImpact/config.js')>()),
   serviceMapProposal: vi.fn(),
@@ -49,6 +51,7 @@ const { createServiceMap, evaluateServiceMap } = await import('../../../services
 const { DEFAULT_SERVICE_IMPACT_RULES_JSON, SERVICE_RELATIONSHIP_TYPES } = await import('../../../lib/serviceVocabularies.js')
 const { CHANGE_WINDOW_STEPS } = await import('../../../services/events/suppression.js')
 const { forgetServiceMapJobs } = await import('../../../jobs/serviceImpactWorker.js')
+const { noteServiceMapDeletion } = await import('../../../services/events/cascade.js')
 
 const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'adm-1', userEmail: 'adm@test.io', role: 'admin' }
 const operator: GraphQLContext = { ...admin, userId: 'op-1', role: 'operator' }
@@ -563,6 +566,11 @@ describe('reevaluateServiceMap / setServiceMapStatus / deleteServiceMap', () => 
   it('deleteServiceMap: DETACH DELETE di mappa e cronologia in uno statement, job in attesa rimosso, audit; inesistente → NOT_FOUND; rimozione del job fallita → solo warning', async () => {
     onCypher([[/FOREACH \(x IN entries \| DETACH DELETE x\)\s+DETACH DELETE m/, { name: 'Enterprise Billing', serviceId: 'ba-1', entries: 3 }]])
     expect(await serviceResolvers.Mutation.deleteServiceMap(null, { id: 'map-1' }, admin)).toBe(true)
+    // D4.3: il commento sugli incident di servizio ancora aperti PRIMA della cancellazione
+    // (dopo, senza mappa, nessuno potrebbe più chiuderli né dire perché)
+    expect(noteServiceMapDeletion).toHaveBeenCalledWith('tenant-1', 'map-1')
+    expect(vi.mocked(noteServiceMapDeletion).mock.invocationCallOrder[0]!)
+      .toBeLessThan(session.executeWrite.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER)
     const q = callMatching(/DETACH DELETE m/)!
     expect(q.cypher).toMatch(/MATCH \(m:ServiceMap \{id: \$id, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH \(m\)-\[:HAS_HEALTH_HISTORY\]->\(h:ServiceHealthEntry \{tenant_id: \$tenantId\}\)/)
     expect(q.params).toEqual({ id: 'map-1', tenantId: 'tenant-1' })

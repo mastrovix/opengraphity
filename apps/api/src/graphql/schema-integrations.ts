@@ -40,6 +40,21 @@ export const integrationsSchema = `
     createdAt: String!
   }
 
+  """
+  Esito della cancellazione di una sorgente di monitoraggio (revisione 2 ·
+  D4.1): eliminare la sorgente CHIUDE i suoi allarmi ancora accesi — nessun
+  payload di rientro potrebbe più arrivare — e rimette a posto la salute dei CI
+  toccati, così gli incident si chiudono da soli.
+  """
+  type DeleteSourceResult {
+    """false = la sorgente non esisteva (id sbagliato o già eliminata)."""
+    deleted: Boolean!
+    """Allarmi ancora accesi che la cancellazione ha fatto rientrare."""
+    resolvedEvents: Int!
+    """CI la cui salute è stata ricalcolata dopo la cancellazione."""
+    affectedCIs: Int!
+  }
+
   input CreateInboundWebhookInput {
     name: String!
     entityType: String!
@@ -167,7 +182,7 @@ export const integrationsSchema = `
   extend type Mutation {
     createInboundWebhook(input: CreateInboundWebhookInput!): InboundWebhookWithToken!
     updateInboundWebhook(id: ID!, input: UpdateInboundWebhookInput!): InboundWebhook!
-    deleteInboundWebhook(id: ID!): Boolean!
+    deleteInboundWebhook(id: ID!): DeleteSourceResult!
     regenerateWebhookToken(id: ID!): InboundWebhookWithToken!
 
     createOutboundWebhook(input: CreateOutboundWebhookInput!): OutboundWebhook!

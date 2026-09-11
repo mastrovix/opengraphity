@@ -264,8 +264,14 @@ export const incidentsAutoOpenedTotal = createCounter('incidents_auto_opened_tot
 export const incidentsAutoResolvedTotal = createCounter('incidents_auto_resolved_total', 'Incidents resolved automatically when every correlated event cleared', [])
 export const incidentsReopenedTotal   = createCounter('incidents_reopened_total',   'Resolved incidents reopened by a returning monitoring event', [])
 export const eventsPurgedTotal        = createCounter('events_purged_total',        'Resolved monitoring events deleted by the purge_events retention job', [])
-/** Payload più vecchio dell'ultimo applicato alla stessa impronta (retry tardivo, riordino): scartato senza toccare l'Event. */
-export const eventsStaleTotal         = createCounter('events_stale_total',         'Monitoring event payloads discarded because older than the last applied one (same fingerprint) by connector kind', ['connector'])
+/**
+ * Payload più vecchio dell'ultimo applicato alla stessa impronta ma con uno
+ * stato DIVERSO: applicato lo stesso (revisione 2 · B2-06) e loggato a warn —
+ * lo scarto silenzioso lasciava acceso per sempre un allarme il cui `resolved`
+ * era arrivato "vecchio" (repliche API con orologi diversi, salto NTP).
+ * Un payload vecchio con lo STESSO stato resta `duplicate` e non conta qui.
+ */
+export const eventsOutOfOrderTotal    = createCounter('events_out_of_order_total',  'Monitoring event payloads applied out of order (older than the last applied one, different status) by connector kind', ['connector'])
 /** Job events-ingest fallito all'ultimo tentativo: l'allarme è perso e la sorgente porta last_error. */
 export const eventsIngestFailedTotal  = createCounter('events_ingest_failed_total', 'Monitoring event ingest jobs that failed after the last retry by connector kind', ['connector'])
 /** Elementi di un payload scartati dalla normalizzazione (A1: accettazione parziale del batch, il resto è stato accodato); la sorgente porta il riepilogo in last_error. */
@@ -340,7 +346,7 @@ export const serviceMapSyncsTotal          = createCounter('service_map_syncs_to
 export const EVENT_MANAGEMENT_METRICS = [
   eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsAmbiguousTotal, eventsSuppressedTotal, eventsFlappingTotal,
   incidentsAutoOpenedTotal, incidentsAutoResolvedTotal, incidentsReopenedTotal, eventsPurgedTotal,
-  eventsStaleTotal, eventsIngestFailedTotal, eventsRejectedTotal, eventsResolvedUnknownTotal, eventStormsActive, webhookRateLimitedTotal,
+  eventsOutOfOrderTotal, eventsIngestFailedTotal, eventsRejectedTotal, eventsResolvedUnknownTotal, eventStormsActive, webhookRateLimitedTotal,
   eventsCorrelatedTotal, eventPipelineDurationSeconds, eventPassTotal, eventPassDurationSeconds,
   eventsOverdueDelayed, eventsFiringUncorrelated, eventCorrelateJobLagSeconds,
   serviceEvaluationsTotal, serviceEvaluationDurationSeconds, servicesHealth,
