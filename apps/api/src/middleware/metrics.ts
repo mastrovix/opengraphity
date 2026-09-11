@@ -342,6 +342,34 @@ export const serviceMapsStale              = createGauge('service_maps_stale', '
  */
 export const serviceMapSyncsTotal          = createCounter('service_map_syncs_total', 'Service map synchronizations with the CMDB by result (changed | unchanged | skipped_limit | error)', ['result'])
 
+// ── Operatività (revisione 2, ondata 4: D2.2 / D7.2) ────────────────────────
+/**
+ * Ritardo fra la ricezione dell'allarme dal webhook (`receivedAt` del job) e
+ * l'inizio del suo ingest (jobs/eventIngestWorker.ts): l'unica metrica che
+ * dice «gli allarmi arrivano in ritardo» — coda `events-ingest` in affanno,
+ * worker fermo, Redis ripartito con job accumulati. Stessi bucket dei ritardi
+ * di correlazione e di valutazione (code a confronto).
+ */
+export const eventIngestLagSeconds = createHistogram('event_ingest_lag_seconds', 'Delay between the reception of a monitoring alert by the inbound webhook and the start of its ingest, in seconds', [], [0.5, 1, 5, 10, 30, 60, 300, 900])
+/**
+ * Eventi di dominio che hanno esaurito i tentativi di un consumer
+ * (packages/events `onEventFailed`, cablato da lib/domainEventFailures.ts):
+ * una notifica non inviata, uno SLA non avviato, una mappa non rivalutata.
+ * `queue` = coda del consumer (CONSUMER_QUEUES), `type` = tipo dell'evento:
+ * entrambi insiemi chiusi.
+ */
+export const eventsFailedTotal = createCounter('events_failed_total', 'Domain events lost after the last retry of a consumer, by consumer queue and event type', ['queue', 'type'])
+/**
+ * Lock Redis (lib/redisLock.ts): attese scadute e durata della sezione
+ * critica. `lock` = famiglia della chiave (`events:group`, `events:storm-open`,
+ * `services:incident`), mai la chiave intera (che porta tenant e id).
+ * Un timeout non è un guasto (il job ritenta), ma tanti timeout, o sezioni
+ * critiche vicine al TTL di 30 s, dicono che il lock scade sotto il lavoro
+ * (revisione 2 · D2.6) e la gara che evita torna possibile.
+ */
+export const redisLockTimeoutsTotal = createCounter('redis_lock_timeouts_total', 'Redis lock acquisitions abandoned after the wait timeout (the job retries), by lock family', ['lock'])
+export const redisLockHoldSeconds   = createHistogram('redis_lock_hold_seconds', 'Time a Redis lock was held (critical section duration) in seconds, by lock family', ['lock'], [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60])
+
 /** Tutte le metriche dell'Event Management (e dei servizi monitorati), nell'ordine di esposizione. */
 export const EVENT_MANAGEMENT_METRICS = [
   eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsAmbiguousTotal, eventsSuppressedTotal, eventsFlappingTotal,
@@ -352,6 +380,7 @@ export const EVENT_MANAGEMENT_METRICS = [
   serviceEvaluationsTotal, serviceEvaluationDurationSeconds, servicesHealth,
   serviceIncidentsOpenedTotal, serviceIncidentsResolvedTotal, serviceEvaluationLagSeconds, serviceMapsStale,
   serviceMapSyncsTotal,
+  eventIngestLagSeconds, eventsFailedTotal, redisLockTimeoutsTotal, redisLockHoldSeconds,
 ] as const
 
 // ── Route label (A-15) ────────────────────────────────────────────────────────
@@ -419,13 +448,11 @@ export function metricsAccessAllowed(req: Pick<Request, 'headers' | 'socket'>, t
   return isPrivateAddress(req.socket?.remoteAddress)
 }
 
-export function metricsHandler(req: Request, res: Response): void {
-  if (!metricsAccessAllowed(req)) {
-    res.status(config.metricsToken ? 401 : 403).type('text/plain').send('metrics: forbidden')
-    return
-  }
+export const METRICS_CONTENT_TYPE = 'text/plain; version=0.0.4; charset=utf-8'
 
-  const metrics = [
+/** L'esposizione Prometheus completa di questo processo (API e worker la servono allo stesso modo). */
+export function renderMetrics(): string {
+  return [
     httpRequestsTotal.collect(),
     httpRequestDurationSeconds.collect(),
     graphqlResolverDurationSeconds.collect(),
@@ -435,9 +462,15 @@ export function metricsHandler(req: Request, res: Response): void {
     backupLastSuccessTimestamp.collect(),
     ...EVENT_MANAGEMENT_METRICS.map((m) => m.collect()),
   ].join('\n\n')
+}
 
-  res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
-  res.send(metrics)
+export function metricsHandler(req: Request, res: Response): void {
+  if (!metricsAccessAllowed(req)) {
+    res.status(config.metricsToken ? 401 : 403).type('text/plain').send('metrics: forbidden')
+    return
+  }
+  res.setHeader('Content-Type', METRICS_CONTENT_TYPE)
+  res.send(renderMetrics())
 }
 
 // ── Apollo Server plugin ──────────────────────────────────────────────────────

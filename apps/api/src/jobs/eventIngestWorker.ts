@@ -35,7 +35,7 @@ import type { Worker, Job } from 'bullmq'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
-import { eventsIngestFailedTotal } from '../middleware/metrics.js'
+import { eventIngestLagSeconds, eventsIngestFailedTotal } from '../middleware/metrics.js'
 import { fingerprintOf, ingestEvent, type NormalizedEvent } from '../services/eventService.js'
 import { invalidateSourceCache } from '../services/events/sourceCache.js'
 
@@ -43,9 +43,25 @@ const log = logger.child({ module: 'event-ingest' })
 
 export const EVENT_INGEST_QUEUE = 'events-ingest'
 
-/** Tentativi per job e ritardo base del backoff esponenziale: 10 s → 20 → 40 → 80 (≈ 2,5 minuti in tutto). */
+/**
+ * Tentativi per job e attese fra un tentativo e il successivo (revisione 2 ·
+ * D1.2): 10 s → 20 s → 40 s → **10 minuti**. Con il backoff esponenziale di
+ * prima (10/20/40/80 s, ≈ 2,5 minuti in tutto) un riavvio di Neo4j di
+ * qualche minuto bruciava tutti i tentativi e l'allarme — già accettato con
+ * 202 — era perso; ora l'ultimo tentativo aspetta abbastanza da vedere Neo4j
+ * tornare. Il job fallito resta comunque rigiocabile dalla pagina Code
+ * (lib/queueRegistry.ts: `events-ingest` è `retryable`). Backoff `custom`:
+ * la funzione è registrata sul worker (`settings.backoffStrategy`).
+ */
 export const EVENT_INGEST_ATTEMPTS = 5
-export const EVENT_INGEST_BACKOFF_MS = 10_000
+export const EVENT_INGEST_BACKOFF_MS: readonly number[] = [10_000, 20_000, 40_000, 10 * 60 * 1000]
+
+/** Attesa prima del tentativo successivo, dato quanti ne sono stati fatti (1 = il primo è appena fallito). Oltre la tabella vale l'ultima. */
+export function eventIngestBackoffMs(attemptsMade: number): number {
+  if (!Number.isInteger(attemptsMade) || attemptsMade < 1) throw new Error(`eventIngestBackoffMs: attemptsMade must be a positive integer (got ${JSON.stringify(attemptsMade)})`)
+  const idx = Math.min(attemptsMade, EVENT_INGEST_BACKOFF_MS.length) - 1
+  return EVENT_INGEST_BACKOFF_MS[idx]!
+}
 
 export interface EventIngestJobData {
   tenantId:   string
@@ -62,6 +78,12 @@ export function eventJobId(tenantId: string, fingerprint: string, receivedAt: st
 
 async function processEvent(job: Job<EventIngestJobData>): Promise<void> {
   const { tenantId, sourceId, ev, receivedAt } = job.data
+  // Ritardo fra la ricezione dal webhook e l'inizio dell'ingest (revisione 2 ·
+  // D7.2): coda in affanno o worker fermo. Mai negativo; un receivedAt non
+  // parsabile non produce un valore inventato (eventJobId lo ha già rifiutato
+  // all'accodamento: qui non può succedere).
+  const lagSeconds = Math.max(0, (Date.now() - Date.parse(receivedAt)) / 1000)
+  if (Number.isFinite(lagSeconds)) eventIngestLagSeconds.observe({}, lagSeconds)
   const result = await ingestEvent({ tenantId, sourceId, ev, receivedAt, jobId: String(job.id) })
   if (result.sourceHasError) await clearSourceError(tenantId, sourceId)
 }
@@ -112,6 +134,7 @@ export function startEventIngestWorker(): Worker<EventIngestJobData> {
   getQueue<EventIngestJobData>(EVENT_INGEST_QUEUE)  // producer singleton (metriche)
   return createWorker<EventIngestJobData>(EVENT_INGEST_QUEUE, processEvent, {
     concurrency: 4,
+    settings: { backoffStrategy: (attemptsMade: number) => eventIngestBackoffMs(attemptsMade) },
     onFailed: (job, err) => {
       const d = job?.data as EventIngestJobData | undefined
       const attempts = job?.opts?.attempts ?? 1
@@ -141,7 +164,7 @@ export async function enqueueEvents(
     opts: {
       jobId: eventJobId(tenantId, fingerprintOf(sourceId, ev), receivedAt),
       attempts: EVENT_INGEST_ATTEMPTS,
-      backoff:  { type: 'exponential', delay: EVENT_INGEST_BACKOFF_MS },
+      backoff:  { type: 'custom' },
       removeOnComplete: { age: 3600, count: 10_000 },
       removeOnFail:     { age: 7 * 24 * 3600 },
     },

@@ -22,6 +22,7 @@
  */
 import path from 'node:path'
 import { requireEnv, envOrThrowInProd } from './env.js'
+import { WORKER_PROFILES, type WorkerProfile } from './workerProfiles.js'
 
 // ── Primitive readers ────────────────────────────────────────────────────────
 
@@ -79,6 +80,16 @@ const readers = {
   neo4jUri:      (): string => envOrThrowInProd('NEO4J_URI', 'neo4j://localhost:7687'),
   neo4jUser:     (): string => envOrThrowInProd('NEO4J_USER', 'neo4j'),
   neo4jPassword: (): string => envOrThrowInProd('NEO4J_PASSWORD', 'opengraphity_local'),
+  /** Connections per process (the driver reads it too; validated here so a bad value stops the boot). Default 50. */
+  neo4jMaxPoolSize: (): number => {
+    const n = intEnv('NEO4J_MAX_POOL_SIZE', 50)
+    if (n < 1) throw new Error(`Environment variable NEO4J_MAX_POOL_SIZE must be a positive integer (got "${n}")`)
+    return n
+  },
+
+  // Process profile (revisione 2 · D1.1): which work groups THIS process starts —
+  // the table is lib/workerProfiles.ts. `all` = the API runs everything (as before).
+  workerProfile: (): WorkerProfile => enumEnv('WORKER_PROFILE', WORKER_PROFILES, 'all'),
 
   // Keycloak
   /** Internal URL for server-to-server calls (JWKS fetch, admin API). */
@@ -199,17 +210,18 @@ export function resetConfigCache(): void {
  */
 export const CONFIG_PROFILES = {
   api: [
-    'nodeEnv', 'port', 'logLevel',
-    'neo4jUri', 'neo4jUser', 'neo4jPassword',
+    'nodeEnv', 'port', 'logLevel', 'workerProfile',
+    'neo4jUri', 'neo4jUser', 'neo4jPassword', 'neo4jMaxPoolSize',
     'keycloakUrl', 'keycloakPublicUrls', 'keycloakAdminUser',
     'allowLegacyJwt', 'corsOrigin', 'rateLimitMax', 'graphqlIntrospection', 'metricsToken', 'appUrl',
     'attachmentDir', 'backupDir', 'reportDir',
     'embeddingsProvider', 'transformersCache', 'embeddingWorkerExternal',
     'emailFrom', 'otelEnabled', 'otelEndpoint',
   ],
+  // The worker serves GET /metrics on `port` (Prometheus scrapes it like the API).
   worker: [
-    'nodeEnv', 'logLevel',
-    'neo4jUri', 'neo4jUser', 'neo4jPassword',
+    'nodeEnv', 'port', 'logLevel', 'workerProfile', 'metricsToken',
+    'neo4jUri', 'neo4jUser', 'neo4jPassword', 'neo4jMaxPoolSize',
     'embeddingsProvider', 'transformersCache',
   ],
 } as const satisfies Record<string, readonly ConfigKey[]>

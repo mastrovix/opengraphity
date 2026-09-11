@@ -295,7 +295,7 @@ backup (§10).
 git checkout <tag-o-sha-precedente>
 docker tag opengrafo-api:prev opengrafo-api:local
 docker tag infra-web:prev infra-web:latest && docker tag infra-portal:prev infra-portal:latest
-docker compose -f infra/docker-compose.yml up -d --no-build api worker web portal
+docker compose -f infra/docker-compose.yml up -d --no-build api worker events-worker web portal
 ```
 
 Senza immagini `:prev`, ricostruire dal commit precedente (`build` + `up -d`,

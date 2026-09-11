@@ -1,8 +1,9 @@
 # Operazioni — OpenGraphity
 
 Guida operativa: backup e restore, migrazioni dei dati, script, rotazione dei
-segreti, checklist per gli incidenti operativi, Event Management (§7). Il
-deploy è in `DEPLOY.md`; il catalogo degli script in `apps/api/src/scripts/README.md`.
+segreti, checklist per gli incidenti operativi, Event Management (§7),
+processi e profili (§8), procedure di ripristino (§9). Il deploy è in
+`DEPLOY.md`; il catalogo degli script in `apps/api/src/scripts/README.md`.
 
 Convenzione per i comandi: tutti gli script dell'API si lanciano da
 `apps/api` con `pnpm exec tsx --env-file=.env src/scripts/<file>.ts …` (in
@@ -264,7 +265,7 @@ notturno (realm compreso).
 | Segreto | Chi lo usa | Cosa succede ruotandolo |
 |---|---|---|
 | `JWT_SECRET` | solo i token HS256 di sviluppo (`ALLOW_LEGACY_JWT=true`, `gen-token`) | I token legacy emessi con il vecchio segreto diventano 401. In produzione `ALLOW_LEGACY_JWT` è off: la rotazione non ha effetti. Basta riavviare l'API. |
-| `REDIS_PASSWORD` | API e worker (BullMQ, cache, SSE) | Cambiarla su Redis **e** in tutti i container nello stesso deploy; fino al riavvio i worker loggano `worker error` e continuano a ritentare (nessun job perso: sono in Redis). Ordine: aggiornare `.env` → `docker compose up -d redis api worker`. |
+| `REDIS_PASSWORD` | API e worker (BullMQ, cache, SSE) | Cambiarla su Redis **e** in tutti i container nello stesso deploy; fino al riavvio i worker loggano `worker error` e continuano a ritentare (nessun job perso: sono in Redis). Ordine: aggiornare `.env` → `docker compose up -d redis api worker events-worker`. |
 | `KEYCLOAK_ADMIN_PASSWORD` | `onboard-tenant`, `add-user`, `createUser` GraphQL, export realm nel backup | Cambiarla in Keycloak (utente admin del realm `master`) e nell'env dell'API. Fino ad allora: creazione utenti 500 e **backup notturno fallito** (Keycloak auth fallita) — voluto. Le sessioni degli utenti finali non sono toccate. |
 | `DISCOVERY_ENCRYPTION_KEY` (64 hex = 32 byte) | credenziali dei connettori discovery cifrate at rest (`packages/discovery/src/encryption.ts`) | **Non ruotabile a caldo**: le credenziali salvate con la vecchia chiave non sono più decifrabili (sync in errore `Decryption failed: invalid key or corrupted data`). Procedura: annotare le credenziali di ogni `SyncSource` (dalle console dei provider, non sono esportabili in chiaro), cambiare chiave, reinserirle dall'UI. Non perderla: il backup contiene solo il cifrato. |
 | `NEO4J_PASSWORD` | tutto | `ALTER CURRENT USER SET PASSWORD` in Neo4j, poi env di API/worker e riavvio. Con la password vecchia l'API non parte (fail-fast del driver). |
@@ -287,12 +288,15 @@ dice quale dipendenza è giù.
 - API: le query GraphQL funzionano (la cache è solo un acceleratore); le
   mutazioni che pubblicano eventi di dominio (`publish` → `queue.add`)
   falliscono o restano in attesa fino al timeout della connessione; `/health` 503.
-- Worker BullMQ (SLA, notifiche, webhook, discovery, backup): loggano
-  `[bullmq] worker error … worker keeps running` e riprendono da soli quando
-  Redis torna; i job già accodati sono in Redis (persistiti se AOF/RDB attivi).
-  Un backup schedulato mancato **non** viene recuperato: lanciarlo a mano.
-- Da fare: `docker compose up -d redis`, poi controllare `/metrics`
-  (`bullmq_queue_depth`) e i log per code bloccate.
+- Worker BullMQ (SLA, notifiche, webhook, discovery, backup, allarmi,
+  servizi): loggano `[bullmq] worker error … worker keeps running` e
+  riprendono da soli quando Redis torna; i job già accodati sono in Redis, che
+  dal compose della revisione 2 scrive l'**AOF** (`--appendonly yes
+  --appendfsync everysec`): un crash perde al più un secondo di scritture, un
+  arresto pulito nulla. Un backup schedulato mancato **non** viene recuperato:
+  lanciarlo a mano.
+- Da fare: `docker compose up -d redis`, poi la procedura «Redis è ripartito»
+  in §9 (*Procedure di ripristino*).
 
 **Neo4j giù**
 - API e worker si fermano (fail-fast del driver all'avvio; a runtime ogni
@@ -354,7 +358,7 @@ sorgente dalle cache in memoria (vedi *Cache in memoria*).
 
 | Coda | Job | Cosa fa |
 |---|---|---|
-| `events-ingest` (concurrency 4) | `ingest` | uno per allarme normalizzato; job id `ev-<tenant>-<impronta>-<ms>` (una ri-consegna dello stesso batch non raddoppia i conteggi); 3 tentativi con backoff. Esegue `ingestEvent`: MERGE per impronta, aggancio al CI (alias → nome), pipeline di correlazione, eventi di dominio |
+| `events-ingest` (concurrency 4) | `ingest` | uno per allarme normalizzato; job id `ev-<tenant>-<impronta>-<ms>` (il **retry BullMQ** dello stesso job non raddoppia i conteggi — stessa `receivedAt`; una **ri-consegna del mittente** è una nuova richiesta con una `receivedAt` nuova e conta come ripetizione legittima dell'allarme); **5 tentativi** con attese 10 s → 20 s → 40 s → **10 minuti** (revisione 2 · D1.2: un riavvio di Neo4j di qualche minuto non brucia l'allarme; prima l'ultima attesa era 80 s). Un job fallito all'ultimo tentativo scrive `last_error` sulla sorgente e resta nella coda 7 giorni, **rigiocabile** da *Amministrazione → Code*. Esegue `ingestEvent`: MERGE per impronta, aggancio al CI (alias → nome), pipeline di correlazione, eventi di dominio. Misura `event_ingest_lag_seconds` (ricezione → inizio ingest) |
 | `events-correlate` (concurrency 2) | `correlate` | ritardato: con `open_delay_seconds > 0` l'apertura dell'incident aspetta la scadenza; se nel frattempo l'allarme è rientrato non apre nulla. Misura il proprio ritardo dalla scadenza (`event_correlate_job_lag_seconds`) |
 | | `reevaluate-change-window` | accodato dalle mutation della change quando esce dai passi di finestra con allarmi silenziati (e da `deleteChange`): rivaluta quegli eventi fuori dalla mutation |
 | `events-maintenance` (concurrency 1, lock 10 min) | `events-maintenance` | ripetuto ogni 5 minuti, cinque passate paginate e indipendenti: (1) `closed_windows` — eventi `suppressed` la cui finestra di change è chiusa → tornano firing e vengono correlati; (2) `pending` — eventi firing che nessuno sta più curando → ripresi: scadenza passata, **oppure** correlazione `pending`/`none` ferma da più di 15 minuti anche SENZA scadenza (revisione 2 · B2-01: è così che nasce e riparte ogni evento, e prima nessuna passata li vedeva), **oppure** ritardo di apertura scaduto da più di 5 minuti (B2-02); il predicato è lo stesso del gauge `events_firing_uncorrelated` (`services/events/stuck.ts`), così metrica e riparazione non possono divergere; (3) `flapping` — eventi senza passaggi da `flap_stable_minutes` → stabilizzati; (4) `storms` — sorgenti in tempesta raffreddate che non ricevono più nulla → tempesta chiusa; (5) `gauges` — riallinea `events_overdue_delayed` e `events_firing_uncorrelated`. Una passata fallita non ferma le altre; il job fallisce alla fine con tutti i motivi; ogni passata è contata e misurata (`event_pass_total{pass,result}`, `event_pass_duration_seconds{pass}`) |
@@ -828,20 +832,50 @@ cruscotto Grafana `infra/grafana/dashboards/opengraphity-api.json`):
 | `events_firing_uncorrelated` | gauge | eventi firing con correlazione `none`/`pending` da più di 15 minuti: pipeline fallita a ogni tentativo e mai ripresa — riallineato dal job periodico. Dalla revisione 2 la passata `pending` usa lo STESSO predicato e li riprende: se il gauge resta > 0 per due giri, è la passata a fallire (vedi `event_pass_total{pass="pending",result="failed"}`) |
 | `events_out_of_order_total{connector}` | counter | payload più vecchio dell'ultimo applicato alla stessa impronta ma con uno stato DIVERSO: **applicato** lo stesso e loggato a `warn` con i due istanti (revisione 2 · B2-06). Uno più vecchio con lo stesso stato è innocuo e conta come `duplicate`. Se cresce: orologi delle repliche API non sincronizzati (NTP) o riordino della coda |
 | `event_correlate_job_lag_seconds` | histogram | ritardo del job `correlate` rispetto alla scadenza del ritardo (processedAt − dueAt) |
+| `event_ingest_lag_seconds` | histogram | ritardo fra la ricezione dell'allarme dal webhook (`receivedAt` del job) e l'inizio del suo ingest (revisione 2 · D7.2): l'unica metrica che dice «gli allarmi arrivano in ritardo» — coda `events-ingest` in affanno, `events-worker` fermo, arretrato dopo un riavvio di Redis |
+| `events_ingest_failed_total{connector}` | counter | job `events-ingest` fallito all'ultimo tentativo: l'allarme non è stato ingerito, la sorgente porta `last_error` e il job è nella coda (rigiocabile da *Amministrazione → Code*) |
+| `events_failed_total{queue,type}` | counter | eventi di dominio che hanno esaurito i 4 tentativi di un consumer (`notification-service`, `sla-engine`, `escalation-consumer`, `service-impact-consumer`), per coda e tipo di evento: una notifica non inviata, uno SLA non avviato, una mappa non rivalutata. **Non** rigiocabili dalla console (vedi §9) |
+| `redis_lock_timeouts_total{lock}` | counter | attese di un lock Redis abbandonate dopo il timeout (il job ritenta con backoff), per famiglia: `events:group`, `events:storm-open`, `services:incident` |
+| `redis_lock_hold_seconds{lock}` | histogram | durata della sezione critica sotto il lock; oltre il TTL (30 s) il processo logga `Critical section outlived the lock TTL` — la gara che il lock evita torna possibile |
+| `bullmq_queue_depth{queue,status}` | gauge | profondità di **ogni** coda del registro (`lib/queueRegistry.ts`, revisione 2 · D2.2): anche `events-*`, `services-impact` e le quattro code dei consumer di dominio, che prima non erano campionate. Campionata dal solo processo API ogni 30 s |
 
-Pannelli: *Eventi/s per esito* (ricevuti, deduplicati, soppressi, sfarfallio),
-*Incident automatici al minuto* (aperti/risolti/riaperti), *Tempeste di allarmi
-attive*. Allarmi consigliati: `event_storms_active >= 1` per più di 10 minuti;
-`rate(events_orphan_total[15m]) / rate(events_received_total[15m]) > 0.2`
-(alias/nomi dei CI non allineati con il monitoraggio);
-`bullmq_queue_depth{queue="events-ingest",status="failed"} > 0`;
-`events_overdue_delayed > 0` o `events_firing_uncorrelated > 0` per più di 15
-minuti (allarmi attivi senza incident: guardare i job falliti e il log
-`re-evaluation failed`); `rate(events_correlated_total{outcome="error"}[15m]) > 0`;
-`histogram_quantile(0.95, rate(event_correlate_job_lag_seconds_bucket[15m])) > 60`
-(coda `events-correlate` in ritardo). I log della pipeline portano
-`fingerprint` (ritrova l'allarme sullo strumento) e `jobId` (ritrova il job in
-coda) oltre a tenant, evento, incident, change e sorgente.
+**Dove vivono le metriche** (revisione 2 · D1.1): con `WORKER_PROFILE=api`
+la pipeline gira nel processo `events-worker`, che serve lo stesso
+`GET /metrics` dell'API sulla porta 4000: i contatori della pipeline
+(`events_received_total`, `events_correlated_total`, …) e i gauge riallineati
+dalle passate (`event_storms_active`, `events_overdue_delayed`,
+`services_health`, …) sono **suoi**. Prometheus raschia tutti i processi
+(`infra/prometheus/prometheus.yml`: `api`, `events-worker`, `worker`, etichetta
+`service`) e regole e pannelli aggregano con `sum()`/`max()` — una query con
+il nome nudo della metrica vede più serie.
+
+Pannelli: riga *Event Management* — *Eventi/s per esito* (ricevuti,
+deduplicati, soppressi, sfarfallio), *Incident automatici al minuto*
+(aperti/risolti/riaperti), *Tempeste di allarmi attive*; riga *Salute
+dell'Event Management* (revisione 2 · D7.1) — *Orfani e ambigui al minuto*,
+*Quota di allarmi orfani*, *Allarmi persi* (ingest falliti + eventi di dominio
+persi), *Allarmi senza incident* (`events_overdue_delayed`,
+`events_firing_uncorrelated`), *Passate periodiche fallite ed errori di
+correlazione*, *Ritardi in coda p95* (ingest, correlate, valutazione servizi),
+*Sincronizzazioni delle mappe per esito*, *Lock Redis*, *Job falliti per coda*.
+
+**Allarmi**: sono regole vere in `infra/prometheus/alerts.yml` (`rule_files`
+di `prometheus.yml`; stato in `http://127.0.0.1:9090/alerts` e
+`/api/v1/rules`), non più prosa. Gruppo `opengraphity-event-management`:
+`EventStormActive` (≥ 1 per 10 min), `EventOrphanRatioHigh` (> 20% per 15
+min), `EventsOverdueDelayed` e `EventsFiringUncorrelated` (> 0 per 15 min:
+allarmi attivi senza incident — guardare `event_pass_total{pass="pending",result="failed"}`
+e il log `re-evaluation failed`), `EventCorrelationErrors`,
+`EventIngestFailed` (critico), `EventIngestLagHigh` e `EventCorrelateLagHigh`
+(p95 > 60 s), `EventMaintenancePassFailing`; gruppo `opengraphity-services`:
+`ServiceEvaluationErrors`, `ServiceEvaluationLagHigh`, `ServiceMapsStale` (> 0
+per un giorno); gruppo `opengraphity-platform`: `DomainEventsLost` (critico),
+`BullMQFailedJobs` (per coda, 15 min), `RedisLockTimeouts`, `BackupStale`,
+`BackupFailed`, `ProcessDown`. Ogni regola porta `runbook` con la sezione da
+leggere. Un Alertmanager non fa parte dello stack: aggiungere `alerting:` a
+`prometheus.yml` quando c'è (le regole non cambiano). I log della pipeline
+portano `fingerprint` (ritrova l'allarme sullo strumento) e `jobId` (ritrova
+il job in coda) oltre a tenant, evento, incident, change e sorgente.
 
 ### Provare una sorgente
 
@@ -1320,3 +1354,188 @@ c'è retention temporale e nessun job di purge: una mappa che cambia salute due
 volte al giorno conserva quasi un anno di storia, una che sfarfalla ne conserva
 molto meno. Se serve conservare di più, la voce va portata fuori (export /
 report), non allungando il cap.
+
+---
+
+## 8. Processi e profili (`WORKER_PROFILE`)
+
+Revisione 2 · D1.1. Fino a qui tutti i worker BullMQ e i consumer di dominio
+giravano **nel processo HTTP**: ~70 slot di job sopra un pool Neo4j da 50
+condiviso con i resolver GraphQL — in una tempesta di allarmi (60+/min) o in
+una passata di manutenzione da 20 pagine × 200 eventi, latenza delle richieste
+in salita e `Connection acquisition timed out` sia sui job sia sugli utenti,
+senza modo di scalare l'ingest separatamente dall'API. Ora ogni processo
+dichiara un **profilo** e c'è **una sola tabella** «profilo → cosa parte»
+(`apps/api/src/lib/workerProfiles.ts`, pinnata da `workerProfiles.test.ts`),
+letta da `index.ts` (API) e `worker.ts` (worker):
+
+| `WORKER_PROFILE` | processo API (`dist/index.js`) | processo worker (`dist/worker.js`) |
+|---|---|---|
+| `all` (default fuori dal compose) | ITSM **+ allarmi/servizi** — il comportamento precedente | embedding (servizio compose `worker`) |
+| `api` | solo ITSM: workflow, notifiche, SLA, webhook in uscita, report, discovery, backup, email digest | *non ammesso* |
+| `events` | *non ammesso* | **allarmi/servizi**: `events-ingest`, `events-correlate`, `events-maintenance`, `services-impact` e il consumer `service-impact-consumer` (servizio compose `events-worker`) |
+
+Un profilo non ammesso per il processo ferma l'avvio con l'elenco dei validi
+(`WORKER_PROFILE=api is not valid for the worker process (allowed: all, events)`):
+nessun default. L'embedding nel processo API resta governato da
+`EMBEDDING_WORKER_EXTERNAL` come prima; nel worker gira solo con `all`: il
+servizio `events-worker` **non** calcola embedding (due container che caricano
+il modello sono memoria buttata), serve il servizio `worker`.
+
+Cosa cambia con il profilo `events` nel container dedicato:
+
+- il **webhook** continua ad accodare dall'API (risponde 202 come prima); a
+  correlare è `infra-events-worker-1` — `docker compose logs events-worker`
+  mostra `Event ingested`, `Delayed correlation evaluated`, `Service map
+  evaluated`. Le mutation di allarmi e servizi (`reevaluateEvent`,
+  `reevaluateServiceMap`, configurazione delle mappe) restano nell'API e
+  accodano su Redis: il processo che le esegue è il worker;
+- la **liveness** del container è il probe Redis del Dockerfile con
+  `HEALTHCHECK_QUEUE=events-ingest` (un worker di quella coda connesso). Vale
+  per coda, non per container: con due repliche di `events-worker` una ferma
+  resta «healthy» finché l'altra è viva;
+- le **metriche** della pipeline vivono nel worker: serve `GET /metrics` sulla
+  porta 4000 (`PORT`, `METRICS_TOKEN` come l'API) e Prometheus lo raschia come
+  target `events-worker:4000` (vedi §7 *Dove vivono le metriche*);
+- il **pool Neo4j** è per processo: `NEO4J_MAX_POOL_SIZE` (default 50; il
+  compose dà 50 all'API e 40 a `events-worker` = 12 slot × fino a 3 sessioni
+  per evento). Un valore non intero positivo ferma l'avvio. I consumer di
+  dominio girano a **3** job in parallelo ciascuno (erano 10: in quattro
+  prendevano 40 slot);
+- lo **spegnimento** (`lib/shutdown.ts`, D1.2): l'HTTP viene atteso davvero
+  (connessioni inattive subito, keep-alive/SSE dopo 5 s), poi worker e
+  consumer entro 30 s; se non si fermano, code, Redis e driver **non** vengono
+  chiusi sotto i job in volo e il processo esce con codice **2** (log `Workers
+  did not stop within the timeout`): il container viene ricreato e i job
+  interrotti ripartono come stalled, idempotenti per costruzione. Codice 1 =
+  una risorsa non si è chiusa. Prima si usciva sempre con 0 chiudendo tutto
+  sotto i job: rilasci dei lock falliti e scritture Neo4j spezzate nei log.
+
+**Deploy** (ricetta completa in `DEPLOY.md` §8; qui l'elenco dei servizi da
+ricreare quando cambia l'immagine dell'API — il web va **costruito in locale**
+con le `VITE_*` nell'ambiente perché la sua immagine copia `dist/`):
+
+```bash
+set -a; . infra/.env; set +a
+pnpm install --frozen-lockfile && pnpm --filter "./packages/*" build && pnpm --filter @opengraphity/web build
+docker compose -f infra/docker-compose.yml build api web
+docker exec infra-api-1 node --no-node-snapshot /app/dist/scripts/migrate.js --init-schema   # schema + migrazioni, PRIMA dell'immagine nuova (con l'API vecchia ancora su)
+docker compose -f infra/docker-compose.yml up -d api worker events-worker web
+docker compose -f infra/docker-compose.yml ps        # api, worker, events-worker tutti healthy
+```
+
+Se `migrate --init-schema` deve girare con l'immagine **nuova** (indici o
+migrazioni introdotti da questa versione): `up -d api` prima, poi il comando,
+poi `up -d worker events-worker web`. Gli indici di questa ondata
+(`event_status_id`, `event_status_correlation` in `packages/neo4j/src/init.ts`)
+sono `IF NOT EXISTS`: il comando è idempotente.
+
+---
+
+## 9. Procedure di ripristino
+
+Cosa fare **dopo** che una dipendenza è tornata. Il principio: gli allarmi e
+i servizi si ripristinano da soli dove il codice lo prevede (passate
+periodiche, rete di sicurezza delle mappe), ma tre cose non si recuperano da
+sole e vanno controllate a mano — i job ripetuti, i job falliti
+definitivamente e gli allarmi accettati con 202 e mai ingeriti.
+
+### Redis è ripartito
+
+Redis persiste l'AOF ogni secondo (`--appendonly yes --appendfsync everysec`
+nel compose, revisione 2 · D7.4): un arresto pulito (`docker restart`,
+`compose up -d`) non perde nulla, un crash (OOM, `kill -9`) perde al più un
+secondo di scritture. Fino alla revisione 2 c'era solo lo snapshot RDB
+(ogni 60 s/10k chiavi … 15 min/1 chiave): un crash perdeva fino a 15 minuti di
+code — allarmi accodati e non ancora ingeriti, correlazioni ritardate,
+valutazioni in attesa, marcatori di idempotenza.
+
+1. **Riavviare l'API e l'events-worker** (`docker compose restart api
+   events-worker`) se c'è il dubbio che i job **ripetuti** siano spariti
+   (crash di Redis prima della revisione 2, o volume perso): `events-maintenance`
+   ogni 5 min, `services-periodic` ogni 5, `services-sync-periodic` ogni 30,
+   `purge_events` alle 03:30, backup a mezzanotte, digest email, report,
+   anomaly scanner sono registrati **all'avvio** del processo che li possiede
+   (BullMQ deduplica per nome e intervallo: un riavvio in più non ne crea due).
+   Con l'AOF e un arresto pulito il riavvio non serve; con un crash è la
+   scelta prudente e costa un minuto.
+2. **Guardare i due gauge** dopo il primo giro della passata (≤ 5 min):
+   `events_overdue_delayed` (correlazioni ritardate il cui job `correlate` è
+   sparito: la passata `pending` le riprende da sola dopo 5 minuti dalla
+   scadenza) ed `events_firing_uncorrelated` (allarmi accesi senza esito da 15
+   min). Devono tornare a 0 entro due giri; se restano su, la passata sta
+   fallendo: `event_pass_total{pass="pending",result="failed"}` e il log
+   `re-evaluation failed`. `reevaluateEvent` dal dettaglio dell'allarme la
+   anticipa per un evento.
+3. **Guardare `bullmq_queue_depth`** (pannello *Code BullMQ* e *Job falliti per
+   coda*, oppure *Amministrazione → Code*): `waiting` che scende, `failed` a 0.
+   Le mappe dei servizi si rivalutano da sole (`services-periodic` prende
+   quelle con `evaluated_at` più vecchio di 10 minuti; `services-sync-periodic`
+   quelle con `synced_at` più vecchio di 30). Il ritardo accumulato si legge
+   in `event_ingest_lag_seconds` (p95 nel pannello *Ritardi in coda*).
+4. I **marcatori di idempotenza** (`evt:processed:*`, 24 h) persi dopo un crash
+   possono far ripetere una notifica in-app già consegnata per un evento
+   ancora in coda: innocuo, atteso.
+
+### Neo4j è ripartito
+
+- L'API e i worker **si riavviano da soli** (fail-fast del driver all'avvio,
+  `restart: unless-stopped`); a runtime i job falliti ritentano con backoff.
+- `events-ingest` aspetta fino a **10 minuti** all'ultimo tentativo: un
+  riavvio di qualche minuto non perde allarmi. Oltre, i job finiscono in
+  `failed` (7 giorni), la sorgente mostra `last_error = ingest: …`,
+  `events_ingest_failed_total` cresce e scatta `EventIngestFailed`: **rigiocarli**
+  (sotto). `recordIngestFailure` scrive `last_error` su Neo4j: se Neo4j era giù
+  anche in quel momento resta la sola riga di log e il job fallito.
+- Dopo un restore (§2) o un `--force-recreate` del container: `migrate
+  --init-schema` è idempotente e sicuro.
+
+### Job falliti: cosa si rigioca e cosa no
+
+*Amministrazione → Code* elenca **tutte** le code del registro
+(`lib/queueRegistry.ts`) raggruppate per sottosistema — allarmi, servizi,
+ITSM, piattaforma — con i job falliti e il pulsante di rigioco dove la coda è
+`retryable` (`retryQueueJob`, solo admin). Rigiocabili: `events-ingest`
+(l'allarme viene ingerito ora; il MERGE per impronta rende innocuo un
+doppione), `events-correlate`, `events-maintenance`, `services-impact`,
+`workflow-jobs`, `notification-jobs`, `sla-jobs`, `email-digest`,
+`webhook-delivery`, `report-scheduler`, `anomaly-scanner`, `discovery-sync`,
+`embeddings`, `maintenance`.
+
+**Non** rigiocabili dalla console le quattro code dei **consumer di dominio**
+(`notification-service`, `sla-engine`, `escalation-consumer`,
+`service-impact-consumer`): un evento esaurito ha già avuto 4 tentativi con i
+canali riusciti a metà (l'in-app è già partito, D2.3) e rimetterlo in coda
+ripeterebbe gli effetti collaterali riusciti. Il guasto è visibile in
+`events_failed_total{queue,type}` (allarme `DomainEventsLost`, pannello
+*Allarmi persi*) e nel log `EXHAUSTED — event lost`; il rimedio dipende dal
+tipo: per `ci.health_changed` basta `reevaluateServiceMap` sulle mappe del CI
+(o aspettare `services-periodic`), per `incident.created`/`sla.*` rifare
+l'azione o intervenire sul ticket, per una notifica riscriverla.
+
+### Allarmi accettati con 202 e mai ingeriti
+
+Il webhook risponde 202 **appena i job sono in coda**: da quel momento
+l'allarme vive solo in Redis finché `events-ingest` non lo scrive su Neo4j.
+Con l'AOF questa finestra sopravvive a un riavvio; un crash di Redis con
+perdita del volume, o un job che esaurisce i 5 tentativi **e** viene eliminato
+dalla coda (7 giorni), lo perde davvero — e **non è rigiocabile**: la
+piattaforma non conserva una copia del payload accettato (l'`EventInbox`
+proposto dalla revisione è un progetto a sé, non fatto). Cosa chiedere al
+mittente:
+
+- **Alertmanager / Grafana**: gli allarmi ancora accesi vengono **rimandati da
+  soli** al prossimo `repeat_interval` (Alertmanager, default 4 h; abbassarlo
+  temporaneamente a pochi minuti forza il rinvio) — un `firing` perso torna,
+  un `resolved` perso no: l'allarme resta acceso finché non arriva il
+  prossimo ciclo o non viene risolto a mano (`resolveEvent`);
+- **Zabbix**: *Reports → Action log* mostra le azioni fallite/riuscite; un
+  problema ancora attivo si rimanda con «Re-execute» sull'azione o con un
+  update del problema;
+- **Datadog / Dynatrace**: i monitor ancora in allarme rinotificano secondo la
+  loro `renotify_interval`/frequenza; per i chiusi non c'è rinvio: risolverli a
+  mano in console.
+
+Regola pratica: dopo un incidente di Redis, confrontare lo strumento (allarmi
+accesi) con la console eventi del tenant (filtro `status = firing`) e chiudere
+a mano ciò che lo strumento non ha più.

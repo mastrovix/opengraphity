@@ -24,6 +24,7 @@ import { serviceMapPlanLimit } from './20260910_1100_service_map_plan_limit.js'
 import { serviceMapAutoSync } from './20260910_1110_service_map_auto_sync.js'
 import { serviceMapReview2 } from './20260910_1120_service_map_review2.js'
 import { sharedDomainRules } from './20260911_1130_shared_domain_rules.js'
+import { notificationChannelsRoutable } from './20260911_1150_notification_channels_routable.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -42,4 +43,5 @@ export const MIGRATIONS: readonly Migration[] = [
   serviceMapAutoSync,
   serviceMapReview2,
   sharedDomainRules,
+  notificationChannelsRoutable,
 ]

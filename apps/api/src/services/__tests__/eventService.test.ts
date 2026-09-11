@@ -966,9 +966,9 @@ describe('deriveCIHealth', () => {
 
 describe('recomputeCIHealth', () => {
   const HEALTH_RE = /ci\.health AS previous, ci\.health_source AS healthSource/
-  const row = (over: Record<string, unknown> = {}) => ({ rule: 'monitoring', previous: 'operational', health: 'down', changed: true, ...over })
+  const row = (over: Record<string, unknown> = {}) => ({ rule: 'monitoring', previous: 'operational', health: 'down', changed: true, name: 'db-01', ...over })
 
-  it('M11 — UNA sola query: severità dei firing + flapping (scoped per tenant) → salute derivata in Cypher, scrittura solo con regola monitoring, health_since solo se cambia, mai ci.status; ci.health_changed con previous/new', async () => {
+  it('M11 — UNA sola query: severità dei firing + flapping (scoped per tenant) → salute derivata in Cypher, scrittura solo con regola monitoring, health_since solo se cambia, mai ci.status; ci.health_changed con previous/new e il nome del CI', async () => {
     onCypher([[HEALTH_RE, row()]])
     await expect(recomputeCIHealth('t1', 'ci-1', 'op')).resolves.toBe('down')
     expect(calls()).toHaveLength(1)
@@ -984,7 +984,8 @@ describe('recomputeCIHealth', () => {
     expect(cypher).toContain('ci.health_since = CASE WHEN changed THEN $now ELSE ci.health_since END')
     expect(cypher).not.toMatch(/ci\.status\s*=/)   // il ciclo di vita non si tocca
     expect(getSession).toHaveBeenCalledWith(undefined, 'WRITE')
-    expect(publishEvent).toHaveBeenCalledWith('ci.health_changed', 't1', 'op', { id: 'ci-1', ci_id: 'ci-1', previous_health: 'operational', new_health: 'down' }, expect.any(String))
+    expect(cypher).toContain('ci.name AS name')
+    expect(publishEvent).toHaveBeenCalledWith('ci.health_changed', 't1', 'op', { id: 'ci-1', ci_id: 'ci-1', name: 'db-01', previous_health: 'operational', new_health: 'down' }, expect.any(String))
   })
 
   it('il CASE Cypher e deriveCIHealth nascono dalla stessa tabella: critical → down, warning o flapping → degraded, altrimenti operational', () => {

@@ -213,11 +213,151 @@
       ]
     },
     {
+      "id": 20,
+      "type": "row",
+      "title": "Salute dell'Event Management",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 39, "w": 24, "h": 1 },
+      "panels": []
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Orfani e ambigui al minuto",
+      "description": "events_orphan_total (allarme senza CI riconosciuto) ed events_ambiguous_total (più CI con lo stesso nome: l'allarme resta orfano) — revisione 2 · D7.1. Se crescono: alias/nomi dei CI non allineati con il monitoraggio (docs/OPERATIONS.md §7 «Evento orfano»)",
+      "gridPos": { "x": 0, "y": 40, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(events_orphan_total[5m])) * 60", "legendFormat": "orfani/min" },
+        { "refId": "B", "expr": "sum(rate(events_ambiguous_total[5m])) * 60", "legendFormat": "ambigui/min" }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "stat",
+      "title": "Quota di allarmi orfani (15 m)",
+      "description": "rate(events_orphan_total[15m]) / rate(events_received_total[15m]) — sopra il 20% scatta EventOrphanRatioHigh (infra/prometheus/alerts.yml)",
+      "gridPos": { "x": 8, "y": 40, "w": 4, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "noValue": "0",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 0.2 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "(sum(rate(events_orphan_total[15m])) / sum(rate(events_received_total[15m]))) or vector(0)", "legendFormat": "orfani" }
+      ]
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Allarmi persi (ultima ora)",
+      "description": "events_ingest_failed_total{connector}: job events-ingest falliti all'ultimo tentativo (la sorgente porta last_error; rigioco da Amministrazione → Code). events_failed_total{queue,type}: eventi di dominio esauriti nei consumer (notifica non inviata, SLA non avviato, mappa non rivalutata) — NON rigiocabili dalla console",
+      "gridPos": { "x": 12, "y": 40, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (connector) (increase(events_ingest_failed_total[1h]))", "legendFormat": "ingest falliti · {{connector}}" },
+        { "refId": "B", "expr": "sum by (queue) (increase(events_failed_total[1h]))", "legendFormat": "eventi persi · {{queue}}" }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "Allarmi senza incident",
+      "description": "events_overdue_delayed (ritardo di apertura scaduto senza job correlate) ed events_firing_uncorrelated (firing senza esito da più di 15 min). Entrambi vengono ripresi dalla passata `pending` di events-maintenance: se restano > 0 per due giri la passata sta fallendo (pannello accanto)",
+      "gridPos": { "x": 0, "y": 48, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "max(events_overdue_delayed)", "legendFormat": "delayed scaduti" },
+        { "refId": "B", "expr": "max(events_firing_uncorrelated)", "legendFormat": "firing senza esito" }
+      ]
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "Passate periodiche fallite ed errori di correlazione (ultima ora)",
+      "description": "event_pass_total{pass,result=\"failed\"} (closed_windows | pending | flapping | storms | gauges) ed events_correlated_total{outcome=\"error\"} (la pipeline ha lanciato: il job ritenta)",
+      "gridPos": { "x": 8, "y": 48, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (pass) (increase(event_pass_total{result=\"failed\"}[1h]))", "legendFormat": "passata fallita · {{pass}}" },
+        { "refId": "B", "expr": "sum(increase(events_correlated_total{outcome=\"error\"}[1h]))", "legendFormat": "errori pipeline" }
+      ]
+    },
+    {
+      "id": 26,
+      "type": "timeseries",
+      "title": "Ritardi in coda (p95)",
+      "description": "event_ingest_lag_seconds (ricezione dal webhook → inizio ingest: coda events-ingest in affanno o worker fermo), event_correlate_job_lag_seconds (scadenza del ritardo → job correlate), service_evaluation_lag_seconds (accodamento → valutazione della mappa)",
+      "gridPos": { "x": 16, "y": 48, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(event_ingest_lag_seconds_bucket[5m])))", "legendFormat": "ingest" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(event_correlate_job_lag_seconds_bucket[5m])))", "legendFormat": "correlate" },
+        { "refId": "C", "expr": "histogram_quantile(0.95, sum by (le) (rate(service_evaluation_lag_seconds_bucket[5m])))", "legendFormat": "valutazione servizi" }
+      ]
+    },
+    {
+      "id": 27,
+      "type": "timeseries",
+      "title": "Sincronizzazioni delle mappe per esito (al minuto)",
+      "description": "service_map_syncs_total{result}: changed (composizione cambiata), unchanged (solo synced_at), skipped_limit (proposta oltre i 500 nodi: nulla applicato, mappa stale), error (il job ritenta) — services/serviceImpact/sync.ts",
+      "gridPos": { "x": 0, "y": 56, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (result) (rate(service_map_syncs_total[5m])) * 60", "legendFormat": "{{result}}" }
+      ]
+    },
+    {
+      "id": 28,
+      "type": "timeseries",
+      "title": "Lock Redis: attese scadute (15 m) e sezione critica p95",
+      "description": "redis_lock_timeouts_total{lock} (il job ritenta con backoff) e redis_lock_hold_seconds{lock}: famiglie events:group, events:storm-open, services:incident. Una sezione critica vicina ai 30 s del TTL dice che il lock scade sotto il lavoro (D2.6)",
+      "gridPos": { "x": 8, "y": 56, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (lock) (increase(redis_lock_timeouts_total[15m]))", "legendFormat": "timeout · {{lock}}" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le, lock) (rate(redis_lock_hold_seconds_bucket[5m])))", "legendFormat": "p95 hold · {{lock}}" }
+      ]
+    },
+    {
+      "id": 29,
+      "type": "timeseries",
+      "title": "Job falliti per coda",
+      "description": "bullmq_queue_depth{status=\"failed\"} per ogni coda del registro (lib/queueRegistry.ts): comprese events-*, services-impact e le quattro code dei consumer di dominio. Rigioco da Amministrazione → Code dove la coda è rigiocabile",
+      "gridPos": { "x": 16, "y": 56, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "expr": "max by (queue) (bullmq_queue_depth{status=\"failed\"}) > 0", "legendFormat": "{{queue}}" }
+      ]
+    },
+    {
       "id": 14,
       "type": "row",
       "title": "Servizi monitorati",
       "collapsed": false,
-      "gridPos": { "x": 0, "y": 39, "w": 24, "h": 1 },
+      "gridPos": { "x": 0, "y": 64, "w": 24, "h": 1 },
       "panels": []
     },
     {
@@ -225,7 +365,7 @@
       "type": "bargauge",
       "title": "Mappe dei servizi per salute",
       "description": "services_health{health} — mappe per salute su tutti i tenant, riallineato ogni 5 minuti dalla passata `services-periodic` (jobs/serviceImpactWorker.ts, services/serviceImpact/engine.ts#refreshServiceGauges)",
-      "gridPos": { "x": 0, "y": 40, "w": 8, "h": 8 },
+      "gridPos": { "x": 0, "y": 65, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -253,7 +393,7 @@
       "type": "timeseries",
       "title": "Valutazioni delle mappe per esito",
       "description": "rate(service_evaluations_total[5m]) — una valutazione per (mappa, innesco): changed = salute cambiata (voce di cronologia + service.health_changed), unchanged, error (il job ritenta e la passata periodica rivaluta comunque) — services/serviceImpact/engine.ts",
-      "gridPos": { "x": 8, "y": 40, "w": 8, "h": 8 },
+      "gridPos": { "x": 8, "y": 65, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
@@ -266,7 +406,7 @@
       "type": "timeseries",
       "title": "Valutazione: durata e ritardo in coda (p95)",
       "description": "p95 di service_evaluation_duration_seconds (lettura + regole + scrittura, services/serviceImpact/engine.ts#evaluateServiceMap) e di service_evaluation_lag_seconds (secondi fra l'istante in cui il job era atteso — accodamento + 2 s di dedup — e l'inizio della valutazione, jobs/serviceImpactWorker.ts): un ritardo che cresce dice «coda services-impact in affanno», non «valutazione lenta»",
-      "gridPos": { "x": 16, "y": 40, "w": 8, "h": 8 },
+      "gridPos": { "x": 16, "y": 65, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
@@ -280,7 +420,7 @@
       "type": "timeseries",
       "title": "Incident di servizio al minuto (aperti / risolti)",
       "description": "rate(service_incidents_opened_total[5m]) e rate(service_incidents_resolved_total[5m]) — services/serviceImpact/incident.ts; una RIAPERTURA conta come apertura (il servizio è di nuovo fuori servizio), una chiusura automatica saltata (nessun cammino verso «risolto» dal passo corrente) non conta come risolta",
-      "gridPos": { "x": 0, "y": 48, "w": 18, "h": 8 },
+      "gridPos": { "x": 0, "y": 73, "w": 18, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60 } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
@@ -294,7 +434,7 @@
       "type": "stat",
       "title": "Mappe da rivedere",
       "description": "service_maps_stale — mappe con stale = true: un componente incluso non esiste più nella CMDB (la INCLUDES è caduta con il CI). La valutazione prosegue sui nodi rimasti; si sistema da «Aggiorna mappa» togliendo gli id spariti (serviceMapProposal + applyServiceMapProposal), vedi docs/OPERATIONS.md §Servizi monitorati",
-      "gridPos": { "x": 18, "y": 48, "w": 6, "h": 8 },
+      "gridPos": { "x": 18, "y": 73, "w": 6, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {

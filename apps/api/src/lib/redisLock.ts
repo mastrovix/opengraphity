@@ -20,8 +20,21 @@
 import { randomUUID } from 'node:crypto'
 import { getSharedRedis } from './bullmq.js'
 import { logger } from './logger.js'
+import { redisLockHoldSeconds, redisLockTimeoutsTotal } from '../middleware/metrics.js'
 
 const log = logger.child({ module: 'redis-lock' })
+
+/**
+ * Etichetta `lock` delle metriche: la famiglia della chiave, mai la chiave
+ * intera. `og:events:group:<tenant>:ci:<id>` → `events:group`,
+ * `og:services:incident:<tenant>:<map>` → `services:incident` (insieme
+ * chiuso: le famiglie sono quelle dichiarate dai servizi). Una chiave senza
+ * il prefisso `og:` (test, usi futuri) resta com'è.
+ */
+export function lockFamily(key: string): string {
+  const parts = key.split(':')
+  return parts.length >= 3 && parts[0] === 'og' ? `${parts[1]}:${parts[2]}` : key
+}
 
 export interface RedisLockOptions {
   /** Scadenza automatica del lock: deve superare la durata massima della sezione critica. */
@@ -65,18 +78,28 @@ export async function withRedisLock<T>(
   timeoutDetail = '',
 ): Promise<T> {
   const owner = randomUUID()
+  const family = lockFamily(key)
   const deadline = Date.now() + opts.waitMs
   while (!(await tryAcquire(key, owner, opts.ttlSeconds))) {
     if (shortcut) {
       const out = await shortcut()
       if (out !== null) return out
     }
-    if (Date.now() >= deadline) throw new RedisLockTimeoutError(key, opts.waitMs, timeoutDetail)
+    if (Date.now() >= deadline) {
+      redisLockTimeoutsTotal.inc({ lock: family })
+      throw new RedisLockTimeoutError(key, opts.waitMs, timeoutDetail)
+    }
     await sleep(opts.pollMs)
   }
+  const heldSince = performance.now()
   try {
     return await run()
   } finally {
+    const heldSeconds = (performance.now() - heldSince) / 1000
+    redisLockHoldSeconds.observe({ lock: family }, heldSeconds)
+    if (heldSeconds >= opts.ttlSeconds) {
+      log.warn({ key, heldSeconds, ttlSeconds: opts.ttlSeconds }, 'Critical section outlived the lock TTL: another job may have entered meanwhile')
+    }
     try {
       await getSharedRedis().eval(RELEASE_LOCK_LUA, 1, key, owner)
     } catch (err) {

@@ -737,19 +737,21 @@ async function setCIHealthOverride(_: unknown, args: { ciId: string; health?: st
     const health = args.health as CIHealth
     const session = getSession(undefined, 'WRITE')
     let previous: string | null
+    let ciName: string
     try {
-      const row = await runQueryOne<{ previous: string | null }>(session, `
+      const row = await runQueryOne<{ previous: string | null; name: string | null }>(session, `
         MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
         WITH ci, ci.health AS previous
         SET ci.health = $health, ci.health_source = 'manual', ci.updated_at = $now,
             ci.health_since = CASE WHEN previous IS NULL OR previous <> $health THEN $now ELSE ci.health_since END
-        RETURN previous
+        RETURN previous, ci.name AS name
       `, { ciId: args.ciId, tenantId: ctx.tenantId, health, now })
       if (!row) throw new NotFoundError('ConfigurationItem', args.ciId)
       previous = row.previous ?? null
+      ciName = String(row.name ?? args.ciId)
     } finally { await session.close() }
     if (previous !== health) {
-      const payload: CIHealthChangedPayload = { id: args.ciId, ci_id: args.ciId, previous_health: (previous as CIHealth | null) ?? null, new_health: health }
+      const payload: CIHealthChangedPayload = { id: args.ciId, ci_id: args.ciId, name: ciName, previous_health: (previous as CIHealth | null) ?? null, new_health: health }
       await publishEvent('ci.health_changed', ctx.tenantId, ctx.userId, payload, now)
     }
     void audit(ctx, 'ci.health_override_set', 'ConfigurationItem', args.ciId, { health, previous })

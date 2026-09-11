@@ -33,9 +33,9 @@ function fakeSession(tenants: Row[], maps: Row[]) {
 beforeEach(() => { vi.spyOn(console, 'log').mockImplementation(() => {}) })
 
 describe('20260911_1130_shared_domain_rules', () => {
-  it('è registrata per ultima, con id nel formato YYYYMMDD_HHMM_name e senza autocommit', () => {
+  it('è registrata dopo la 1120, con id nel formato YYYYMMDD_HHMM_name e senza autocommit', () => {
     const ids = MIGRATIONS.map((m) => m.id)
-    expect(ids.at(-1)).toBe('20260911_1130_shared_domain_rules')
+    expect(ids.indexOf('20260911_1130_shared_domain_rules')).toBeGreaterThan(ids.indexOf('20260910_1120_service_map_review2'))
     expect(sharedDomainRules.id).toMatch(/^\d{8}_\d{4}_[a-z0-9_]+$/)
     expect(sharedDomainRules.autocommit).toBeUndefined()
   })

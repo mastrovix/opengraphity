@@ -12,8 +12,10 @@ vi.mock('../logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
   return { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => child } }
 })
+const metrics = { redisLockTimeoutsTotal: { inc: vi.fn() }, redisLockHoldSeconds: { observe: vi.fn() } }
+vi.mock('../../middleware/metrics.js', () => metrics)
 
-const { withRedisLock, RedisLockTimeoutError, RELEASE_LOCK_LUA } = await import('../redisLock.js')
+const { withRedisLock, lockFamily, RedisLockTimeoutError, RELEASE_LOCK_LUA } = await import('../redisLock.js')
 const { logger } = await import('../logger.js')
 
 const OPTS = { ttlSeconds: 30, waitMs: 1_000, pollMs: 100 }
@@ -24,6 +26,44 @@ beforeEach(() => {
   redis.eval.mockResolvedValue(1)
 })
 afterEach(() => { vi.useRealTimers() })
+
+describe('lockFamily (etichetta `lock` delle metriche)', () => {
+  it('è la famiglia della chiave, mai tenant e id; una chiave senza prefisso og: resta com\'è', () => {
+    expect(lockFamily('og:events:group:t1:ci:4d0c9e')).toBe('events:group')
+    expect(lockFamily('og:events:storm-open:t1:src-9')).toBe('events:storm-open')
+    expect(lockFamily('og:services:incident:t1:map-2')).toBe('services:incident')
+    expect(lockFamily('k')).toBe('k')
+    expect(lockFamily('a:b:c')).toBe('a:b:c')
+  })
+})
+
+describe('metriche dei lock (revisione 2 · D7.2)', () => {
+  it('la durata della sezione critica viene osservata in redis_lock_hold_seconds{lock}, anche se run fallisce', async () => {
+    await withRedisLock('og:events:group:t1:ci:x', OPTS, async () => 1)
+    expect(metrics.redisLockHoldSeconds.observe).toHaveBeenCalledWith({ lock: 'events:group' }, expect.any(Number))
+    await expect(withRedisLock('og:services:incident:t1:m', OPTS, async () => { throw new Error('boom') })).rejects.toThrow('boom')
+    expect(metrics.redisLockHoldSeconds.observe).toHaveBeenCalledWith({ lock: 'services:incident' }, expect.any(Number))
+    expect(metrics.redisLockTimeoutsTotal.inc).not.toHaveBeenCalled()
+  })
+
+  it('attesa scaduta → redis_lock_timeouts_total{lock} +1 e nessuna durata osservata (mai entrati)', async () => {
+    vi.useFakeTimers()
+    redis.set.mockResolvedValue(null)
+    const pending = withRedisLock('og:events:storm-open:t1:s', OPTS, async () => 1).catch((e: unknown) => e)
+    await vi.advanceTimersByTimeAsync(OPTS.waitMs + OPTS.pollMs)
+    expect(await pending).toBeInstanceOf(RedisLockTimeoutError)
+    expect(metrics.redisLockTimeoutsTotal.inc).toHaveBeenCalledWith({ lock: 'events:storm-open' })
+    expect(metrics.redisLockHoldSeconds.observe).not.toHaveBeenCalled()
+  })
+
+  it('sezione critica oltre il TTL → warn esplicito (la gara che il lock evita torna possibile)', async () => {
+    const spy = vi.spyOn(performance, 'now')
+    spy.mockReturnValueOnce(0).mockReturnValueOnce(31_000)
+    await withRedisLock('og:events:group:t1:ci:y', OPTS, async () => 'slow')
+    spy.mockRestore()
+    expect(logger.child({}).warn).toHaveBeenCalledWith(expect.objectContaining({ key: 'og:events:group:t1:ci:y', ttlSeconds: 30 }), expect.stringMatching(/outlived the lock TTL/))
+  })
+})
 
 describe('withRedisLock', () => {
   it('prende il lock con SET NX EX e un token, esegue run, rilascia con il proprio token', async () => {

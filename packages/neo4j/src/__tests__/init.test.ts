@@ -122,6 +122,9 @@ describe('initSchema — clean database', () => {
       'CREATE INDEX event_tenant_last_seen IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.last_seen_at)',
       'CREATE INDEX event_tenant_resolved IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.resolved_at)',
       'CREATE FULLTEXT INDEX event_search IF NOT EXISTS FOR (n:Event) ON EACH [n.title, n.resource]',
+      // Event Management (revisione 2 · D4.2): passate periodiche e gauge su tutti i tenant, per stato con cursore su id / per stato e correlazione
+      'CREATE INDEX event_status_id IF NOT EXISTS FOR (n:Event) ON (n.status, n.id)',
+      'CREATE INDEX event_status_correlation IF NOT EXISTS FOR (n:Event) ON (n.status, n.correlation)',
       'CREATE INDEX notification_rule_tenant_event IF NOT EXISTS FOR (n:NotificationRule) ON (n.tenant_id, n.event_type)',
     ]) {
       expect(writes).toContain(expected)

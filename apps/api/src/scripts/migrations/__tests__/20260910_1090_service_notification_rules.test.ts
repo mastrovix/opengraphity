@@ -38,13 +38,13 @@ describe('20260910_1090_service_notification_rules', () => {
     expect(serviceNotificationRules.autocommit).toBeUndefined()
   })
 
-  it('le due regole del servizio sono nel seed predefinito: warning/in_app la salute, error/in_app+slack l\'incident (come event.storm_started)', () => {
+  it('le due regole del servizio sono nel seed predefinito: warning/in_app la salute, error/in_app l\'incident (come event.storm_started; slack tolto nella revisione 2 D3.1: nessun formatter)', () => {
     const byType = Object.fromEntries(DEFAULT_NOTIFICATION_RULES.map((r) => [r.event_type, r]))
     expect(byType['service.health_changed']).toEqual({
       event_type: 'service.health_changed', severity: 'warning', channels: ['in_app'], target: 'all', title_key: 'notification.service.health_changed.title',
     })
     expect(byType['service.incident_opened']).toEqual({
-      event_type: 'service.incident_opened', severity: 'error', channels: ['in_app', 'slack'], target: 'all', title_key: 'notification.service.incident_opened.title',
+      event_type: 'service.incident_opened', severity: 'error', channels: ['in_app'], target: 'all', title_key: 'notification.service.incident_opened.title',
     })
     expect(byType['service.incident_opened']!.channels).toEqual(byType['event.storm_started']!.channels)
   })

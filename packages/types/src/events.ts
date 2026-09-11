@@ -139,11 +139,13 @@ export interface RequestCompletedPayload {
  * la salute derivata dal monitoraggio (`ci.health`) cambia. Non riguarda mai
  * `ci.status` (ciclo di vita). `id` e `ci_id` sono lo stesso valore: `id` è la
  * chiave che il dispatcher delle notifiche legge come entity_id, `ci_id` il
- * nome esplicito del contratto Event Management.
+ * nome esplicito del contratto Event Management. `name` è il nome del CI: la
+ * notifica dice «db-01 — down», non «ci 4d0c9e…» (revisione 2, D3.2).
  */
 export interface CIHealthChangedPayload {
   id: string
   ci_id: string
+  name: string
   previous_health: CIHealth | null
   new_health: CIHealth
 }

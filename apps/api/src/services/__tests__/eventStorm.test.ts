@@ -30,7 +30,7 @@ vi.mock('../../lib/logger.js', () => {
 })
 vi.mock('../incidentService.js', () => ({ createIncident: vi.fn(), addIncidentComment: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn() }))
-vi.mock('../../middleware/metrics.js', () => ({ eventStormsActive: { set: vi.fn() }, incidentsAutoOpenedTotal: { inc: vi.fn() } }))
+vi.mock('../../middleware/metrics.js', () => ({ eventStormsActive: { set: vi.fn() }, incidentsAutoOpenedTotal: { inc: vi.fn() }, redisLockTimeoutsTotal: { inc: vi.fn() }, redisLockHoldSeconds: { observe: vi.fn() } }))
 
 const storm = await import('../eventStorm.js')
 const { trackSourceStorm, getStormState, endCooledStorms, listStormSources, countNewEvent, currentRate, replaceClosedStormIncident, stormCounterKey, stormLockKey, stormCooledDown, stormStateOf, minuteStartOf, invalidateSourceCache, loadSource, STORM_COUNTER_TTL_SECONDS, STORM_LOCK_TTL_SECONDS, STORM_LOCK_WAIT_MS, STORM_LOCK_POLL_MS, SOURCE_CACHE_TTL_MS } = storm

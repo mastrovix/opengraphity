@@ -6,61 +6,18 @@ import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { Plus, Bell } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
-import { GET_NOTIFICATION_RULES } from '@/graphql/queries'
+import { GET_NOTIFICATION_RULES, GET_NOTIFICATION_ROUTING } from '@/graphql/queries'
 import { UPDATE_NOTIFICATION_RULE, CREATE_NOTIFICATION_RULE, DELETE_NOTIFICATION_RULE } from '@/graphql/mutations'
 import { fontSize, fontWeight, colors } from '@/lib/tokens'
-import { RuleRow } from './NotificationRuleList'
-import type { NotificationRule, UpdateInput } from './NotificationRuleList'
+import { RuleRow, routableFor, RULE_CATEGORIES, STANDARD_EVENTS } from './NotificationRuleList'
+import type { NotificationRule, NotificationRouting, UpdateInput } from './NotificationRuleList'
 import { NewRuleDialog } from './NotificationRuleForm'
 import type { CreateInput } from './NotificationRuleForm'
+import { QueryError } from '@/components/QueryError'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const STANDARD_EVENTS = [
-  'incident.created', 'incident.assigned', 'incident.in_progress',
-  'incident.on_hold', 'incident.escalated', 'incident.resolved', 'incident.closed',
-  'incident.escalation',
-  'change.approved', 'change.completed', 'change.failed', 'change.rejected', 'change.task_assigned',
-  'problem.created', 'problem.under_investigation', 'problem.deferred', 'problem.resolved', 'problem.closed',
-  'sla.warning', 'sla.breached',
-  'digest.daily',
-]
-
-const CATEGORIES: { key: string; events: string[] }[] = [
-  {
-    key: 'Incident',
-    events: [
-      'incident.created', 'incident.assigned', 'incident.in_progress',
-      'incident.on_hold', 'incident.escalated', 'incident.resolved', 'incident.closed',
-    ],
-  },
-  {
-    key: 'Change',
-    events: [
-      'change.approved', 'change.completed', 'change.failed',
-      'change.rejected', 'change.task_assigned',
-    ],
-  },
-  {
-    key: 'Problem',
-    events: [
-      'problem.created', 'problem.under_investigation', 'problem.deferred',
-      'problem.resolved', 'problem.closed',
-    ],
-  },
-  {
-    key: 'SLA',
-    events: ['sla.warning', 'sla.breached'],
-  },
-  {
-    key: 'Escalation',
-    events: ['incident.escalation'],
-  },
-  {
-    key: 'Digest',
-    events: ['digest.daily'],
-  },
-]
+// Le sezioni (RULE_CATEGORIES) e i canali consegnabili (routableFor) vivono in
+// NotificationRuleList.tsx, condivisi con il dialogo della nuova regola.
 
 const TH: React.CSSProperties = {
   padding: '8px 12px', textAlign: 'left', fontSize: 'var(--font-size-table)',
@@ -79,6 +36,11 @@ export default function NotificationRulesPage() {
     GET_NOTIFICATION_RULES,
     { fetchPolicy: 'cache-and-network' },
   )
+  // Canali consegnabili per tipo di evento: senza questa tabella la pagina non
+  // può offrire i canali in modo onesto, quindi un errore qui è un errore
+  // della pagina, non un elenco di canali «a prescindere».
+  const routingQuery = useQuery<{ notificationRouting: NotificationRouting }>(GET_NOTIFICATION_ROUTING)
+  const routing = routingQuery.data?.notificationRouting
 
   // Errors → toast with the server message; success → refetch() of the
   // active query (E-08).
@@ -152,28 +114,30 @@ export default function NotificationRulesPage() {
         </button>
       </div>
 
-      {loading && !data ? (
+      {routingQuery.error ? (
+        <QueryError message={routingQuery.error.message} onRetry={() => void routingQuery.refetch()} />
+      ) : (loading && !data) || !routing ? (
         <div style={{ color: 'var(--color-slate-light)', fontSize: fontSize.body }}>{t('common.loading', 'Caricamento…')}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
-          {CATEGORIES.map(({ key, events }) => {
+          {RULE_CATEGORIES.map(({ key, events }) => {
             const rules = events.map((e) => byEvent[e]).filter(Boolean) as NotificationRule[]
             if (!rules.length) return null
             return (
-              <section key={key}>
-                <h2 style={{
+              <section key={key} aria-labelledby={`notification-rules-${key}`}>
+                <h2 id={`notification-rules-${key}`} style={{
                   fontSize: fontSize.sectionTitle, fontWeight: fontWeight.semibold,
                   color: 'var(--color-slate-dark)', margin: '0 0 10px', paddingBottom: 8,
                   borderBottom: `2px solid ${colors.border}`,
                 }}>
-                  {t(`notificationRules.category.${key.toLowerCase()}`, key)}
+                  {t(`notificationRules.category.${key}`)}
                 </h2>
                 <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden', background: colors.white }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>{tableHeader}</thead>
                     <tbody>
                       {rules.map((rule) => (
-                        <RuleRow key={rule.id} rule={rule} onUpdate={handleUpdate} onDelete={handleDelete} />
+                        <RuleRow key={rule.id} rule={rule} routable={routableFor(routing, rule.eventType)} onUpdate={handleUpdate} onDelete={handleDelete} />
                       ))}
                     </tbody>
                   </table>
@@ -184,20 +148,20 @@ export default function NotificationRulesPage() {
 
           {/* Custom rules */}
           {customRules.length > 0 && (
-            <section>
-              <h2 style={{
+            <section aria-labelledby="notification-rules-custom">
+              <h2 id="notification-rules-custom" style={{
                 fontSize: fontSize.sectionTitle, fontWeight: fontWeight.semibold,
                 color: 'var(--color-slate-dark)', margin: '0 0 10px', paddingBottom: 8,
                 borderBottom: `2px solid ${colors.border}`,
               }}>
-                {t('notificationRules.category.custom', 'Custom')}
+                {t('notificationRules.category.custom')}
               </h2>
               <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden', background: colors.white }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>{tableHeader}</thead>
                   <tbody>
                     {customRules.map((rule) => (
-                      <RuleRow key={rule.id} rule={rule} onUpdate={handleUpdate} onDelete={handleDelete} />
+                      <RuleRow key={rule.id} rule={rule} routable={routableFor(routing, rule.eventType)} onUpdate={handleUpdate} onDelete={handleDelete} />
                     ))}
                   </tbody>
                 </table>
@@ -207,8 +171,9 @@ export default function NotificationRulesPage() {
         </div>
       )}
 
-      {showDialog && (
+      {showDialog && routing && (
         <NewRuleDialog
+          routing={routing}
           onSave={handleCreate}
           onClose={() => setShowDialog(false)}
           saving={creating}

@@ -37,7 +37,7 @@ export function ciHealthCaseCypher(severities: string, flapping: string): string
   return `CASE ${whens.join(' ')} ELSE 'operational' END`
 }
 
-interface HealthRow { rule: 'manual' | 'maintenance' | 'monitoring'; previous: string | null; health: string | null; changed: boolean }
+interface HealthRow { rule: 'manual' | 'maintenance' | 'monitoring'; previous: string | null; health: string | null; changed: boolean; name: string | null }
 
 /**
  * Ricalcola `health` del CI dagli eventi firing in una sola query. Non tocca
@@ -72,12 +72,12 @@ export async function recomputeCIHealth(tenantId: string, ciId: string, actorId:
       FOREACH (_ IN CASE WHEN rule = 'maintenance' AND previous IS NOT NULL AND healthSource IS NULL THEN [1] ELSE [] END |
         SET ci.health_source = 'monitoring', ci.updated_at = $now
       )
-      RETURN rule, previous, CASE WHEN rule = 'monitoring' THEN derived ELSE previous END AS health, changed
+      RETURN rule, previous, CASE WHEN rule = 'monitoring' THEN derived ELSE previous END AS health, changed, ci.name AS name
     `, { tenantId, ciId, now })
     if (!row) return null
     if (row.changed) {
       const payload: CIHealthChangedPayload = {
-        id: ciId, ci_id: ciId,
+        id: ciId, ci_id: ciId, name: String(row.name ?? ciId),
         previous_health: (row.previous as CIHealth | null) ?? null,
         new_health: row.health as CIHealth,
       }

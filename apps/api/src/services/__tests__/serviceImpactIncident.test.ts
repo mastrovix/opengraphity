@@ -41,6 +41,7 @@ const workflow = vi.hoisted(() => ({ getAvailableTransitions: vi.fn().mockResolv
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
 vi.mock('../../middleware/metrics.js', () => ({
   serviceIncidentsOpenedTotal: { inc: vi.fn() }, serviceIncidentsResolvedTotal: { inc: vi.fn() },
+  redisLockTimeoutsTotal: { inc: vi.fn() }, redisLockHoldSeconds: { observe: vi.fn() },
 }))
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))

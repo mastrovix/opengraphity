@@ -31,18 +31,18 @@ vi.mock('../../lib/logger.js', () => {
   return { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => child } }
 })
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
-vi.mock('../../middleware/metrics.js', () => ({ eventsIngestFailedTotal: { inc: vi.fn() } }))
+vi.mock('../../middleware/metrics.js', () => ({ eventsIngestFailedTotal: { inc: vi.fn() }, eventIngestLagSeconds: { observe: vi.fn() } }))
 vi.mock('../../services/eventService.js', () => ({
   ingestEvent: vi.fn(),
   fingerprintOf: (sourceId: string, ev: { title: string }) => `fp-${sourceId}-${ev.title}`,
 }))
 
 const worker = await import('../eventIngestWorker.js')
-const { eventJobId, enqueueEvents, startEventIngestWorker, recordIngestFailure, EVENT_INGEST_QUEUE, EVENT_INGEST_ATTEMPTS, EVENT_INGEST_BACKOFF_MS } = worker
+const { eventJobId, enqueueEvents, startEventIngestWorker, recordIngestFailure, eventIngestBackoffMs, EVENT_INGEST_QUEUE, EVENT_INGEST_ATTEMPTS, EVENT_INGEST_BACKOFF_MS } = worker
 const { createWorker, getQueue } = await import('../../lib/bullmq.js')
 const { getSession, runQueryOne } = await import('@opengraphity/neo4j')
 const { ingestEvent } = await import('../../services/eventService.js')
-const { eventsIngestFailedTotal } = await import('../../middleware/metrics.js')
+const { eventsIngestFailedTotal, eventIngestLagSeconds } = await import('../../middleware/metrics.js')
 const { logger } = await import('../../lib/logger.js')
 
 const session = { close: vi.fn().mockResolvedValue(undefined) }
@@ -67,9 +67,9 @@ describe('eventJobId / enqueueEvents', () => {
     expect(() => eventJobId('t1', 'abc', 'adesso')).toThrow(/receivedAt is not an ISO date: adesso/)
   })
 
-  it('accoda in blocco con 5 tentativi e backoff esponenziale da 10 s (≈ 2,5 min), removeOnComplete/removeOnFail; stessa receivedAt per tutti i job della richiesta', async () => {
+  it('accoda in blocco con 5 tentativi e backoff custom (10 s, 20 s, 40 s, poi 10 minuti: D1.2), removeOnComplete/removeOnFail; stessa receivedAt per tutti i job della richiesta', async () => {
     expect(EVENT_INGEST_ATTEMPTS).toBe(5)
-    expect(EVENT_INGEST_BACKOFF_MS).toBe(10_000)
+    expect(EVENT_INGEST_BACKOFF_MS).toEqual([10_000, 20_000, 40_000, 600_000])
     const n = await enqueueEvents('t1', 'hook-1', [EV, { ...EV, title: 'HighLoad' }], DATA.receivedAt)
     expect(n).toBe(2)
     expect(getQueue).toHaveBeenCalledWith(EVENT_INGEST_QUEUE)
@@ -80,11 +80,21 @@ describe('eventJobId / enqueueEvents', () => {
       data: DATA,
       opts: {
         jobId: `ev-t1-fp-hook-1-DiskFull-${Date.parse(DATA.receivedAt)}`,
-        attempts: 5, backoff: { type: 'exponential', delay: 10_000 },
+        attempts: 5, backoff: { type: 'custom' },
         removeOnComplete: { age: 3600, count: 10_000 }, removeOnFail: { age: 7 * 24 * 3600 },
       },
     })
     expect(jobs[1]!.opts['jobId']).toBe(`ev-t1-fp-hook-1-HighLoad-${Date.parse(DATA.receivedAt)}`)
+  })
+
+  it('eventIngestBackoffMs: l\'ultimo tentativo aspetta 10 minuti (un riavvio di Neo4j di qualche minuto non brucia l\'allarme); oltre la tabella vale l\'ultima; valori non validi → errore', () => {
+    expect([1, 2, 3, 4].map(eventIngestBackoffMs)).toEqual([10_000, 20_000, 40_000, 600_000])
+    expect(eventIngestBackoffMs(9)).toBe(600_000)
+    // 5 tentativi = 4 attese: la somma supera i 10 minuti
+    expect(EVENT_INGEST_BACKOFF_MS.reduce((a, b) => a + b, 0)).toBeGreaterThan(10 * 60 * 1000)
+    expect(EVENT_INGEST_BACKOFF_MS).toHaveLength(EVENT_INGEST_ATTEMPTS - 1)
+    expect(() => eventIngestBackoffMs(0)).toThrow(/attemptsMade must be a positive integer/)
+    expect(() => eventIngestBackoffMs(1.5)).toThrow(/attemptsMade must be a positive integer/)
   })
 
   it('lista vuota → 0 senza toccare la coda; coda che fallisce → l\'errore propaga (il webhook risponde 500)', async () => {
@@ -96,17 +106,29 @@ describe('eventJobId / enqueueEvents', () => {
 })
 
 describe('processore', () => {
-  it('startEventIngestWorker: worker sulla coda con concurrency 4 e onFailed', () => {
+  it('startEventIngestWorker: worker sulla coda con concurrency 4, onFailed e la strategia di backoff custom registrata sul worker', () => {
     const w = startEventIngestWorker()
     expect(w.name).toBe(EVENT_INGEST_QUEUE)
-    expect(createWorker).toHaveBeenCalledWith(EVENT_INGEST_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 4, onFailed: expect.any(Function) }))
+    expect(createWorker).toHaveBeenCalledWith(EVENT_INGEST_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 4, onFailed: expect.any(Function), settings: { backoffStrategy: expect.any(Function) } }))
+    const strategy = (captured[0]!.opts as { settings: { backoffStrategy: (n: number) => number } }).settings.backoffStrategy
+    expect(strategy(4)).toBe(600_000)
   })
 
-  it('`ingest` → ingestEvent con tenant, sorgente, evento e receivedAt del job; senza last_error sulla sorgente nessuna scrittura', async () => {
+  it('`ingest` → ingestEvent con tenant, sorgente, evento e receivedAt del job; misura event_ingest_lag_seconds (ricezione → ingest, mai negativo); senza last_error sulla sorgente nessuna scrittura', async () => {
     startEventIngestWorker()
     await captured[0]!.processor(job())
     expect(ingestEvent).toHaveBeenCalledWith({ tenantId: 't1', sourceId: 'hook-1', ev: EV, receivedAt: DATA.receivedAt, jobId: 'j1' })
     expect(runQueryOne).not.toHaveBeenCalled()
+    expect(eventIngestLagSeconds.observe).toHaveBeenCalledTimes(1)
+    const [labels, lag] = vi.mocked(eventIngestLagSeconds.observe).mock.calls[0]!
+    expect(labels).toEqual({})
+    expect(lag).toBeCloseTo((Date.now() - Date.parse(DATA.receivedAt)) / 1000, -1)
+    expect(lag).toBeGreaterThan(0)
+
+    // receivedAt nel futuro (orologi diversi) → 0, mai negativo
+    vi.mocked(eventIngestLagSeconds.observe).mockClear()
+    await captured[0]!.processor(job({ data: { ...DATA, receivedAt: new Date(Date.now() + 60_000).toISOString() } } as never))
+    expect(eventIngestLagSeconds.observe).toHaveBeenCalledWith({}, 0)
   })
 
   it('A4 — job riuscito su una sorgente con last_error → azzera SOLO gli errori scritti dal worker (prefisso `ingest: `), non gli scarti del webhook (batch parziale)', async () => {

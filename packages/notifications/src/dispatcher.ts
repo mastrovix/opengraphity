@@ -11,6 +11,7 @@ import {
 import type { IncidentData, ChangeTaskPayload } from './formatters.js'
 import { APP_URL } from './appUrl.js'
 import { escapeHtml } from './escapeHtml.js'
+import { assertRoutableChannels, notificationEntityPath, unroutableChannels } from './routing.js'
 
 // ── Rule model ────────────────────────────────────────────────────────────────
 
@@ -96,19 +97,39 @@ function extractEntityType(eventType: string, payload: unknown): string {
 /**
  * Corpo del messaggio per gli eventi il cui payload non ha né `title` né
  * `entity_type`/`entity_id` da cui la regola generica sotto possa ricavare
- * qualcosa (i Servizi monitorati: il "titolo" del servizio è `name` e lo stato
- * è la salute). Senza una voce qui la notifica arriverebbe con il corpo vuoto:
- * un fallback silenzioso. Un campo mancante è un errore del produttore
- * dell'evento e viene segnalato, non nascosto.
+ * qualcosa di leggibile: i Servizi monitorati (il "titolo" del servizio è
+ * `name` e lo stato è la salute), la salute del CI (senza questa voce il corpo
+ * sarebbe «ci 4d0c9e…»), gli allarmi (`title — resource`) e le tempeste
+ * (sorgente e ritmo). Senza una voce qui la notifica arriverebbe con il corpo
+ * vuoto o con un uuid: un fallback silenzioso. Un campo mancante è un errore
+ * del produttore dell'evento e viene segnalato, non nascosto.
  */
+const monitoringEvent = (type: string) => (p: Record<string, unknown>) => `${required(p, 'title', type)} — ${required(p, 'resource', type)}`
+
 const MESSAGE_BY_EVENT: Record<string, (p: Record<string, unknown>) => string> = {
   'service.health_changed':  (p) => `${required(p, 'name', 'service.health_changed')} — ${required(p, 'new_health', 'service.health_changed')}`,
   'service.incident_opened': (p) => `${required(p, 'name', 'service.incident_opened')} — ${required(p, 'health', 'service.incident_opened')} (${required(p, 'incident_number', 'service.incident_opened')})`,
+  'ci.health_changed':       (p) => `${required(p, 'name', 'ci.health_changed')} — ${required(p, 'new_health', 'ci.health_changed')}`,
+  'event.received':          monitoringEvent('event.received'),
+  'event.resolved':          monitoringEvent('event.resolved'),
+  'event.orphan':            monitoringEvent('event.orphan'),
+  'event.suppressed':        monitoringEvent('event.suppressed'),
+  'event.correlated':        monitoringEvent('event.correlated'),
+  'event.flapping':          monitoringEvent('event.flapping'),
+  'event.stable':            monitoringEvent('event.stable'),
+  'event.storm_started':     (p) => `${required(p, 'source_name', 'event.storm_started')} — ${requiredNumber(p, 'rate_per_minute', 'event.storm_started')}/min`,
+  'event.storm_ended':       (p) => `${required(p, 'source_name', 'event.storm_ended')} — ${requiredNumber(p, 'events', 'event.storm_ended')} allarmi in ${requiredNumber(p, 'duration_minutes', 'event.storm_ended')} min`,
 }
 
 function required(p: Record<string, unknown>, field: string, eventType: string): string {
   const v = p[field]
   if (typeof v !== 'string' || !v) throw new Error(`${eventType} payload has no "${field}": the notification would have an empty body`)
+  return v
+}
+
+function requiredNumber(p: Record<string, unknown>, field: string, eventType: string): number {
+  const v = p[field]
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${eventType} payload has no numeric "${field}": the notification would have an empty body`)
   return v
 }
 
@@ -141,11 +162,14 @@ function extractMessage(eventType: string, payload: unknown): string {
  * HTML body of a notification email. Title/message derive from user input
  * (ticket titles, step names): every interpolation is escaped so a crafted
  * title cannot inject markup or links into the admins' mailbox (D-11).
- * Exported for tests.
+ * The link comes from the shared `entity_type → path` table (the same one the
+ * in-app panel uses): no link at all beats a link to a route that does not
+ * exist (D3.2). Exported for tests.
  */
 export function renderNotificationEmail(notification: InAppNotification): string {
-  const link = notification.entity_id
-    ? `<a href="${escapeHtml(`${APP_URL}/${notification.entity_type ?? 'incidents'}s/${notification.entity_id}`)}" style="color:#0EA5E9;">Vedi dettagli</a>`
+  const path = notificationEntityPath(notification.entity_type, notification.entity_id)
+  const link = path
+    ? `<a href="${escapeHtml(`${APP_URL}${path}`)}" style="color:#0EA5E9;">Vedi dettagli</a>`
     : ''
   return `<div style="font-family:Arial,sans-serif;padding:16px;">
           <h2 style="color:#0F172A;margin:0 0 8px;">${escapeHtml(notification.title)}</h2>
@@ -171,6 +195,15 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     const rule = await getRule(event.tenant_id, event.type)
     if (!rule) return
 
+    // Channels the dispatcher cannot route for this event type (e.g. `slack`
+    // on `event.storm_started`, which has no Slack formatter). The routable
+    // ones are delivered first, then the job fails naming the others — the
+    // same contract as workflow.step.entered: a configured channel never
+    // disappears in silence (D3.1). The rules UI and the resolver refuse such
+    // rules; this is the last line for rules written by other means.
+    const unroutable = unroutableChannels(event.type, rule.channels)
+    const channels   = rule.channels.filter((c) => !unroutable.includes(c))
+
     const notification: InAppNotification = {
       id:          randomUUID(),
       type:        event.type,
@@ -183,17 +216,19 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       read:        false,
     }
 
-    if (rule.channels.includes('in_app')) {
+    if (channels.includes('in_app')) {
       sseManager.sendToTenant(event.tenant_id, notification)
     }
 
-    if (rule.channels.some((c) => c === 'slack' || c === 'teams')) {
-      await this.dispatchToChannels(event, rule.channels)
+    if (channels.some((c) => c === 'slack' || c === 'teams')) {
+      await this.dispatchToChannels(event, channels)
     }
 
-    if (rule.channels.includes('email')) {
+    if (channels.includes('email')) {
       await this.dispatchEmail(event, notification)
     }
+
+    if (unroutable.length > 0) assertRoutableChannels(event.type, rule.channels)
   }
 
   private async processWorkflowStep(event: DomainEvent<unknown>): Promise<void> {
@@ -225,8 +260,9 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       await this.dispatchEmail(event, notification)
     }
     // Slack/Teams for workflow steps are not implemented: refuse loudly instead
-    // of silently dropping a channel the admin configured.
-    const unsupported = nr.channels.filter(c => !['in_app', 'email'].includes(c))
+    // of silently dropping a channel the admin configured (same table as the
+    // rule-driven events: routing.ts).
+    const unsupported = unroutableChannels('workflow.step.entered', nr.channels)
     if (unsupported.length > 0) {
       throw new Error(`workflow.step.entered notify_rule requests unsupported channels [${unsupported.join(', ')}] — only in_app and email are implemented`)
     }
@@ -309,7 +345,13 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       'incident.assigned':  'assigned',
     }
     const notifType = INCIDENT_EVENT_MAP[event.type]
-    if (!notifType) return
+    // Unreachable from process() (unroutable channels are filtered out
+    // beforehand): kept as a loud guard so a new caller cannot reintroduce the
+    // silent drop of a Slack/Teams channel for an event without a formatter.
+    if (!notifType) {
+      assertRoutableChannels(event.type, channels)
+      throw new Error(`dispatchToChannels: no Slack/Teams formatter for ${event.type} — routing.ts and this map disagree`)
+    }
 
     const p = event.payload as Record<string, unknown>
     if (!p['id'] || !p['title']) throw new Error(`incident notification event missing id/title: ${event.type}`)

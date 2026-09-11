@@ -25,8 +25,26 @@ export function adminSDL(): string {
     paused:    Int!
   }
 
+  """
+  Una coda BullMQ del registro unico (lib/queueRegistry.ts): tutte le code
+  della piattaforma, comprese quelle dell'Event Management, dei Servizi
+  monitorati e dei consumer di dominio.
+  """
   type QueueStat {
     name:   String!
+    """
+    Sottosistema, per raggruppare senza conoscere i nomi delle code:
+    events (allarmi) | services (servizi monitorati) | itsm (ticket, workflow,
+    SLA, notifiche) | platform (integrazioni, report, discovery, embedding, manutenzione).
+    """
+    group: String!
+    """
+    true se un job fallito si può rimettere in coda con retryQueueJob. false
+    per le code dei consumer di dominio (notification-service, sla-engine,
+    escalation-consumer, service-impact-consumer): un evento di dominio
+    esaurito non si rigioca dalla console, si ripubblica dall'azione di origine.
+    """
+    retryable: Boolean!
     counts: QueueJobCounts!
   }
 

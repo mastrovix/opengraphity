@@ -9,6 +9,16 @@ const PROCESSED_TTL_SECONDS = 24 * 60 * 60
 /** Retry delays in ms: 5s, 30s, 5min — mirrors original RabbitMQ retry logic */
 const RETRY_DELAYS = [5_000, 30_000, 300_000] as const
 
+/**
+ * Jobs a domain-event consumer processes in parallel. Four consumers share
+ * the API process (or the events worker) with the HTTP resolvers and every
+ * other BullMQ worker on ONE Neo4j pool: at 10 each they were 40 of the ~70
+ * concurrent slots contending for it (revisione 2 · D1.1). None of them
+ * needs more than a few jobs in flight — a consumer mostly enqueues work or
+ * sends one notification.
+ */
+export const CONSUMER_CONCURRENCY = 3
+
 function backoffStrategy(attemptsMade: number): number {
   const idx = Math.min(attemptsMade - 1, RETRY_DELAYS.length - 1)
   return RETRY_DELAYS[idx] ?? 300_000
@@ -93,7 +103,7 @@ export abstract class BaseConsumer<T> {
       },
       {
         connection: getRedisConnection(),
-        concurrency: 10,
+        concurrency: CONSUMER_CONCURRENCY,
         settings: { backoffStrategy },
       },
     )
@@ -118,7 +128,7 @@ export abstract class BaseConsumer<T> {
       }
     })
 
-    console.log(`[consumer:${this.queueName}] Started — concurrency: 10`)
+    console.log(`[consumer:${this.queueName}] Started — concurrency: ${CONSUMER_CONCURRENCY}`)
   }
 
   async stop(): Promise<void> {

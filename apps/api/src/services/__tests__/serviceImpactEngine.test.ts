@@ -30,6 +30,7 @@ vi.mock('../../middleware/metrics.js', () => ({
   serviceEvaluationsTotal: { inc: vi.fn() }, serviceEvaluationDurationSeconds: { observe: vi.fn() }, servicesHealth: { set: vi.fn() },
   serviceMapsStale: { set: vi.fn() },
   eventsSuppressedTotal: { inc: vi.fn() },
+  redisLockTimeoutsTotal: { inc: vi.fn() }, redisLockHoldSeconds: { observe: vi.fn() },
 }))
 
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')

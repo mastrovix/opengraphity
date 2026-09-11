@@ -77,6 +77,8 @@ export function buildBaseSDL(): string {
 
     # Notification Rules
     notificationRules: [NotificationRule!]!
+    "Canali instradabili per tipo di evento: sorgente unica per l'interfaccia delle regole (D3.1)."
+    notificationRouting: NotificationRouting!
 
     # Reports (AI conversations)
     reportConversations: [ReportConversation!]!

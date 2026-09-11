@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto'
 import type { Queue } from 'bullmq'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
-import { invalidateRuleCache } from '@opengraphity/notifications'
+import { invalidateRuleCache, DEFAULT_ROUTABLE_CHANNELS, ROUTABLE_CHANNELS_BY_EVENT, routableChannels, unroutableChannels } from '@opengraphity/notifications'
 import { validateEnum } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
 import { getQueue } from '../../lib/bullmq.js'
@@ -48,6 +48,34 @@ async function syncDigestJob(ruleId: string, digestTime: string | null | undefin
   })
 }
 
+/**
+ * Una regola può chiedere solo canali che il dispatcher sa instradare per il
+ * suo tipo di evento (ROUTABLE_CHANNELS_BY_EVENT, sorgente unica in
+ * @opengraphity/notifications). Rifiutare qui, in scrittura, è la prima linea:
+ * la seconda è l'errore esplicito del dispatcher (D3.1). Canali vuoti → la
+ * regola non notificherebbe nulla: anche questo è un errore, non un default.
+ */
+function assertChannelsRoutable(eventType: string, channels: readonly string[]): void {
+  if (channels.length === 0) {
+    throw new GraphQLError(`A notification rule needs at least one channel (routable for ${eventType}: ${routableChannels(eventType).join(', ')})`, { extensions: { code: 'BAD_USER_INPUT' } })
+  }
+  const bad = unroutableChannels(eventType, channels)
+  if (bad.length > 0) {
+    throw new GraphQLError(
+      `Channels [${bad.join(', ')}] cannot be routed for ${eventType} — the dispatcher has no formatter for them. Routable: ${routableChannels(eventType).join(', ')}`,
+      { extensions: { code: 'BAD_USER_INPUT', eventType, unroutableChannels: bad, routableChannels: [...routableChannels(eventType)] } },
+    )
+  }
+}
+
+/** La tabella dei canali instradabili, così com'è nel pacchetto: l'interfaccia non conosce nomi di eventi o canali. */
+function notificationRouting() {
+  return {
+    defaultChannels: [...DEFAULT_ROUTABLE_CHANNELS],
+    byEventType:     Object.entries(ROUTABLE_CHANNELS_BY_EVENT).map(([eventType, channels]) => ({ eventType, channels: [...channels] })),
+  }
+}
+
 async function notificationRules(_: unknown, __: unknown, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const result = await session.executeRead((tx) =>
@@ -86,6 +114,15 @@ async function updateNotificationRule(
   }
   return withSession(async (session) => {
     const now = new Date().toISOString()
+    if (input.channels != null) {
+      // The event type is on the node, not in the input: read it first so the
+      // channel check names the real type (a rule id is opaque to the client).
+      const current = await session.executeRead((tx) =>
+        tx.run(`MATCH (r:NotificationRule {id: $id, tenant_id: $tenantId}) RETURN r.event_type AS eventType`, { id, tenantId: ctx.tenantId }),
+      )
+      if (!current.records.length) throw new GraphQLError('NotificationRule non trovata', { extensions: { code: 'NOT_FOUND' } })
+      assertChannelsRoutable(current.records[0].get('eventType') as string, input.channels)
+    }
     const result = await session.executeWrite((tx) =>
       tx.run(
         `MATCH (r:NotificationRule {id: $id, tenant_id: $tenantId})
@@ -153,6 +190,7 @@ async function createNotificationRule(
   },
   ctx: GraphQLContext,
 ) {
+  assertChannelsRoutable(input.eventType, input.channels)
   return withSession(async (session) => {
     const now = new Date().toISOString()
     const id  = randomUUID()
@@ -240,6 +278,6 @@ async function deleteNotificationRule(
 }
 
 export const notificationRuleResolvers = {
-  Query:    { notificationRules },
+  Query:    { notificationRules, notificationRouting },
   Mutation: { createNotificationRule, updateNotificationRule, deleteNotificationRule },
 }

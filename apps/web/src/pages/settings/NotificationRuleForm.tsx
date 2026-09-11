@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { colors, fontWeight, lookupOrError, alpha, palette } from '@/lib/tokens'
-import { SEVERITY_COLOR } from './NotificationRuleList'
+import { SEVERITY_COLOR, CHANNEL_LABEL_KEY, STANDARD_EVENTS, routableFor, type NotificationRouting } from './NotificationRuleList'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -24,23 +24,6 @@ export interface CreateInput {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const STANDARD_EVENTS = [
-  'incident.created', 'incident.assigned', 'incident.in_progress',
-  'incident.on_hold', 'incident.escalated', 'incident.resolved', 'incident.closed',
-  'incident.escalation',
-  'change.approved', 'change.completed', 'change.failed', 'change.rejected', 'change.task_assigned',
-  'problem.created', 'problem.under_investigation', 'problem.deferred', 'problem.resolved', 'problem.closed',
-  'sla.warning', 'sla.breached',
-  'digest.daily',
-]
-
-const CHANNELS_OPTIONS: { value: string; labelKey: string }[] = [
-  { value: 'in_app', labelKey: 'notificationRules.channels.inApp' },
-  { value: 'slack',  labelKey: 'notificationRules.channels.slack' },
-  { value: 'teams',  labelKey: 'notificationRules.channels.teams' },
-  { value: 'email',  labelKey: 'notificationRules.channels.email' },
-]
-
 const SEVERITY_OPTIONS = ['info', 'success', 'warning', 'error'] as const
 
 const TARGET_OPTIONS: { value: string; labelKey: string }[] = [
@@ -56,10 +39,13 @@ const CUSTOM_SENTINEL = '__custom__'
 // ── NewRuleDialog ─────────────────────────────────────────────────────────────
 
 export function NewRuleDialog({
+  routing,
   onSave,
   onClose,
   saving,
 }: {
+  /** Canali consegnabili per tipo di evento (dal server): il dialogo offre solo quelli. */
+  routing: NotificationRouting
   onSave:  (input: CreateInput) => void
   onClose: () => void
   saving:  boolean
@@ -87,7 +73,11 @@ export function NewRuleDialog({
   const isEscalation      = eventType === 'incident.escalation'
   const isSlaWarning      = eventType === 'sla.warning'
   const isDigest          = eventType === 'digest.daily'
-  const canSave           = !!eventType && !!titleKey.trim() && channels.length > 0
+  // Canali offerti per il tipo scelto (i predefiniti finché non c'è un tipo);
+  // un canale spuntato che il nuovo tipo non ammette non viene inviato.
+  const routable          = routableFor(routing, eventType)
+  const chosenChannels    = channels.filter((c) => routable.includes(c))
+  const canSave           = !!eventType && !!titleKey.trim() && chosenChannels.length > 0
 
   const toggleCh = (ch: string) =>
     setChannels((prev) => prev.includes(ch) ? prev.filter((c) => c !== ch) : [...prev, ch])
@@ -183,11 +173,11 @@ export function NewRuleDialog({
           </select>
         </label>
 
-        {/* Channels */}
+        {/* Channels: only the ones the dispatcher can route for the chosen event type */}
         <div style={labelStyle}>
           <span style={labelTextStyle}>{t('notificationRules.header.channels')}</span>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            {CHANNELS_OPTIONS.map(({ value, labelKey }) => (
+            {routable.map((value) => (
               <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
                 <input
                   type="checkbox"
@@ -195,10 +185,11 @@ export function NewRuleDialog({
                   onChange={() => toggleCh(value)}
                   style={{ accentColor: colors.brand, width: 14, height: 14 }}
                 />
-                {t(labelKey)}
+                {CHANNEL_LABEL_KEY[value] ? t(CHANNEL_LABEL_KEY[value]) : value}
               </label>
             ))}
           </div>
+          <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('notificationRules.routableHint')}</span>
         </div>
 
         {/* Target */}
@@ -264,7 +255,7 @@ export function NewRuleDialog({
           </button>
           <button type="button"
             onClick={() => onSave({
-              eventType, titleKey: titleKey.trim(), severityOverride: severity, channels, target, enabled: true,
+              eventType, titleKey: titleKey.trim(), severityOverride: severity, channels: chosenChannels, target, enabled: true,
               escalationDelayMinutes: isEscalation && escalationDelay ? Number(escalationDelay) : undefined,
               escalationTarget:  isEscalation ? escalationTarget || undefined : undefined,
               escalationMessage: isEscalation ? escalationMessage || undefined : undefined,

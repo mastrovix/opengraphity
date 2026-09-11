@@ -42,7 +42,7 @@ export const DEFAULT_NOTIFICATION_RULES: readonly RuleDef[] = [
   { event_type: 'ola.breached',                 severity: 'error',   channels: ['in_app'],          target: 'all',      title_key: 'notification.ola.breached.title'          },
   // Discovery / Sync
   { event_type: 'sync.completed',               severity: 'success', channels: ['in_app'],          target: 'all',      title_key: 'notification.sync.completed.title'        },
-  { event_type: 'sync.failed',                  severity: 'error',   channels: ['in_app', 'slack'], target: 'all',      title_key: 'notification.sync.failed.title'           },
+  { event_type: 'sync.failed',                  severity: 'error',   channels: ['in_app'],          target: 'all',      title_key: 'notification.sync.failed.title'           },
   { event_type: 'conflict.created',             severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.sync.conflict.title'         },
   // Event Management (allarmi dal monitoraggio → salute del CI)
   { event_type: 'event.received',               severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.received.title',       enabled: false },
@@ -55,15 +55,21 @@ export const DEFAULT_NOTIFICATION_RULES: readonly RuleDef[] = [
   // Event Management, ondata 4 (sfarfallio e tempeste di allarmi)
   { event_type: 'event.flapping',               severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.flapping.title'        },
   { event_type: 'event.stable',                 severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.event.stable.title'          },
-  { event_type: 'event.storm_started',          severity: 'error',   channels: ['in_app', 'slack'], target: 'all',      title_key: 'notification.event.storm_started.title'   },
+  { event_type: 'event.storm_started',          severity: 'error',   channels: ['in_app'],          target: 'all',      title_key: 'notification.event.storm_started.title'   },
   { event_type: 'event.storm_ended',            severity: 'success', channels: ['in_app'],          target: 'all',      title_key: 'notification.event.storm_ended.title'     },
   // Servizi monitorati, ondata 3: la salute del servizio è un avviso in app
-  // (cambia anche in meglio); l'incident aperto dal monitoraggio va anche su
-  // Slack come la tempesta di allarmi — è il segnale che un servizio di
-  // business è giù.
+  // (cambia anche in meglio); l'incident aperto dal monitoraggio è il segnale
+  // che un servizio di business è giù.
   { event_type: 'service.health_changed',       severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.service.health_changed.title' },
-  { event_type: 'service.incident_opened',      severity: 'error',   channels: ['in_app', 'slack'], target: 'all',      title_key: 'notification.service.incident_opened.title' },
+  { event_type: 'service.incident_opened',      severity: 'error',   channels: ['in_app'],          target: 'all',      title_key: 'notification.service.incident_opened.title' },
 ]
+
+// Ogni canale seminato dev'essere instradabile dal dispatcher per quel tipo
+// (ROUTABLE_CHANNELS_BY_EVENT in @opengraphity/notifications): `slack` su
+// event.storm_started, service.incident_opened e sync.failed era inerte —
+// nessun formatter, nessuna consegna, nessun errore (revisione 2, D3.1). Il
+// test lib/__tests__/seedNotificationRules.test.ts lo pinna; la migrazione
+// 20260911_1150 ripulisce le regole già scritte sui tenant esistenti.
 
 export interface SeedNotificationRulesResult { created: number; skipped: number }
 

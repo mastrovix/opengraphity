@@ -7,7 +7,7 @@ import { PageTitle } from '@/components/PageTitle'
 import { toast } from 'sonner'
 import { GET_QUEUE_STATS, GET_QUEUE_JOBS } from '@/graphql/queries'
 import { RETRY_QUEUE_JOB } from '@/graphql/mutations'
-import { alpha, colors, layoutPalette, palette } from '@/lib/tokens'
+import { alpha, colors, fontSize, fontWeight, layoutPalette, palette } from '@/lib/tokens'
 
 interface QueueJobCounts {
   waiting: number
@@ -18,8 +18,16 @@ interface QueueJobCounts {
   paused: number
 }
 
+/**
+ * Una voce di `queueStats`. `group` e `retryable` vengono dal registro unico
+ * delle code dell'API (lib/queueRegistry.ts): qui non c'è nessun nome di coda
+ * scritto a mano — il raggruppamento e il pulsante di rigioco seguono ciò
+ * che il server dichiara (revisione 2, D2.2).
+ */
 interface QueueStat {
   name: string
+  group: string
+  retryable: boolean
   counts: QueueJobCounts
 }
 
@@ -39,24 +47,43 @@ interface QueueJob {
   returnValue: string | null
 }
 
-const COUNTER_STYLE: Record<string, { label: string; color: string; bg: string }> = {
-  active:    { label: 'active',    color: colors.brand, bg: alpha.brand08 },
-  waiting:   { label: 'waiting',   color: 'var(--color-warning)', bg: palette.warning.bg },
-  delayed:   { label: 'delayed',   color: palette.purple.light, bg: palette.purple.bg },
-  failed:    { label: 'failed',    color: 'var(--color-danger)', bg: alpha.danger08  },
-  completed: { label: 'completed', color: palette.success.base, bg: alpha.success10  },
-  paused:    { label: 'paused',    color: 'var(--color-slate-light)', bg: colors.slateBg},
+const COUNTER_STYLE: Record<string, { color: string; bg: string }> = {
+  active:    { color: colors.brand, bg: alpha.brand08 },
+  waiting:   { color: 'var(--color-warning)', bg: palette.warning.bg },
+  delayed:   { color: palette.purple.light, bg: palette.purple.bg },
+  failed:    { color: 'var(--color-danger)', bg: alpha.danger08  },
+  completed: { color: palette.success.base, bg: alpha.success10  },
+  paused:    { color: 'var(--color-slate-light)', bg: colors.slateBg},
 }
 
 const COUNTER_ORDER = ['active', 'waiting', 'delayed', 'failed', 'completed', 'paused'] as const
 const JOB_STATUSES  = ['failed', 'waiting', 'active', 'completed', 'delayed'] as const
+
+/** Ordine di presentazione dei sottosistemi; un gruppo nuovo dichiarato dal server finisce in coda, col suo nome. */
+const GROUP_ORDER = ['events', 'services', 'itsm', 'platform'] as const
 
 function formatTs(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleString()
 }
 
-function JobDetail({ job, onRetry, retrying }: { job: QueueJob; onRetry: () => void; retrying: boolean }) {
+/** Raggruppa le code per `group`, nell'ordine di GROUP_ORDER e poi per nome per i gruppi sconosciuti. */
+export function groupQueues(queues: readonly QueueStat[]): Array<{ group: string; queues: QueueStat[] }> {
+  const byGroup = new Map<string, QueueStat[]>()
+  for (const q of queues) {
+    const list = byGroup.get(q.group) ?? []
+    list.push(q)
+    byGroup.set(q.group, list)
+  }
+  const known   = GROUP_ORDER.filter((g) => byGroup.has(g))
+  const unknown = [...byGroup.keys()].filter((g) => !(GROUP_ORDER as readonly string[]).includes(g)).sort()
+  return [...known, ...unknown].map((group) => ({ group, queues: byGroup.get(group)! }))
+}
+
+const LABEL_STYLE: React.CSSProperties = { fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }
+
+function JobDetail({ job, retryable, onRetry, retrying }: { job: QueueJob; retryable: boolean; onRetry: () => void; retrying: boolean }) {
+  const { t } = useTranslation()
   const [showPayload, setShowPayload] = useState(false)
   const [showStack,   setShowStack]   = useState(false)
 
@@ -67,30 +94,30 @@ function JobDetail({ job, onRetry, retrying }: { job: QueueJob; onRetry: () => v
     <div style={{ padding: '12px 16px', background: 'var(--color-slate-bg)', borderTop: '1px solid var(--border)', fontSize: 'var(--font-size-body)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Job ID</div>
+          <div style={LABEL_STYLE}>{t('pages.queueStats.jobId')}</div>
           <code style={{ fontSize: 'var(--font-size-body)', color: colors.slateDark, wordBreak: 'break-all' }}>{job.id}</code>
         </div>
         <div>
-          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Name</div>
+          <div style={LABEL_STYLE}>{t('pages.queueStats.name')}</div>
           <span style={{ color: colors.slateDark }}>{job.name}</span>
         </div>
         <div>
-          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Attempts</div>
+          <div style={LABEL_STYLE}>{t('pages.queueStats.attempts')}</div>
           <span style={{ color: colors.slateDark }}>{job.attemptsMade} / {job.maxAttempts}</span>
         </div>
         <div>
-          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Created</div>
+          <div style={LABEL_STYLE}>{t('pages.queueStats.created')}</div>
           <span style={{ color: colors.slateDark }}>{formatTs(job.timestamp)}</span>
         </div>
         {job.processedOn && (
           <div>
-            <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Processed</div>
+            <div style={LABEL_STYLE}>{t('pages.queueStats.processed')}</div>
             <span style={{ color: colors.slateDark }}>{formatTs(job.processedOn)}</span>
           </div>
         )}
         {job.finishedOn && (
           <div>
-            <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Finished</div>
+            <div style={LABEL_STYLE}>{t('pages.queueStats.finished')}</div>
             <span style={{ color: colors.slateDark }}>{formatTs(job.finishedOn)}</span>
           </div>
         )}
@@ -100,7 +127,7 @@ function JobDetail({ job, onRetry, retrying }: { job: QueueJob; onRetry: () => v
         <div style={{ marginBottom: 12, padding: '8px 12px', background: alpha.danger08, borderRadius: 6, border: `1px solid ${palette.danger.border}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
             <AlertCircle size={13} color={palette.danger.base} />
-            <span style={{ fontSize: 'var(--font-size-table)', fontWeight: 700, color: 'var(--color-danger)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Error</span>
+            <span style={{ fontSize: 'var(--font-size-table)', fontWeight: 700, color: 'var(--color-danger)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('pages.queueStats.error')}</span>
           </div>
           <code style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', wordBreak: 'break-all' }}>{job.failedReason}</code>
         </div>
@@ -111,28 +138,33 @@ function JobDetail({ job, onRetry, retrying }: { job: QueueJob; onRetry: () => v
           onClick={() => setShowPayload((p) => !p)}
           style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: palette.neutral.textStrong }}
         >
-          {showPayload ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Payload
+          {showPayload ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {t('pages.queueStats.payload')}
         </button>
         {job.stacktrace.length > 0 && (
           <button type="button"
             onClick={() => setShowStack((p) => !p)}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: palette.neutral.textStrong }}
           >
-            {showStack ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Stack trace ({job.stacktrace.length})
+            {showStack ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {t('pages.queueStats.stackTrace', { count: job.stacktrace.length })}
           </button>
         )}
-        {job.status === 'failed' && (
+        {job.status === 'failed' && retryable && (
           <button type="button"
             onClick={onRetry}
             disabled={retrying}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: 'none', background: 'var(--color-brand)', color: colors.white, cursor: retrying ? 'not-allowed' : 'pointer', opacity: retrying ? 0.6 : 1, fontWeight: 500 }}
           >
-            <RotateCcw size={12} /> {retrying ? 'Retrying…' : 'Retry'}
+            <RotateCcw size={12} /> {retrying ? t('pages.queueStats.retrying') : t('pages.queueStats.retry')}
           </button>
+        )}
+        {job.status === 'failed' && !retryable && (
+          <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', padding: '3px 8px', background: colors.slateBg, borderRadius: 4 }}>
+            {t('pages.queueStats.notRetryable')}
+          </span>
         )}
         {job.returnValue && (
           <span style={{ fontSize: 'var(--font-size-table)', color: palette.success.base, padding: '3px 8px', background: alpha.success08, borderRadius: 4 }}>
-            Return: {job.returnValue.length > 60 ? job.returnValue.slice(0, 60) + '…' : job.returnValue}
+            {t('pages.queueStats.returnValue', { value: job.returnValue.length > 60 ? job.returnValue.slice(0, 60) + '…' : job.returnValue })}
           </span>
         )}
       </div>
@@ -195,19 +227,24 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
         type="button"
         aria-expanded={expanded}
         onClick={handleExpand}
-        style={{ width: '100%', textAlign: 'left', border: 'none', font: 'inherit', padding: '16px 20px', background: 'white', display: 'flex', alignItems: 'center', gap: 20, cursor: 'pointer' }}
+        style={{ width: '100%', textAlign: 'left', border: 'none', font: 'inherit', padding: '16px 20px', background: colors.white, display: 'flex', alignItems: 'center', gap: 20, cursor: 'pointer' }}
       >
         <div style={{ color: 'var(--color-slate-light)', flexShrink: 0 }}>
           {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </div>
-        <div style={{ minWidth: 180 }}>
+        <div style={{ minWidth: 180, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'monospace' }}>
             {queue.name}
           </span>
+          {!queue.retryable && (
+            <span title={t('pages.queueStats.notRetryable')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', padding: '1px 6px', background: colors.slateBg, borderRadius: 4, whiteSpace: 'nowrap' }}>
+              {t('pages.queueStats.notRetryable')}
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, flex: 1 }}>
           {COUNTER_ORDER.map((key) => {
-            const s   = COUNTER_STYLE[key]
+            const s   = COUNTER_STYLE[key]!
             const val = queue.counts[key]
             return (
               <span
@@ -220,7 +257,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
                 }}
               >
                 <span style={{ fontWeight: 700 }}>{val}</span>
-                <span>{t(`pages.queueStats.${key}`, s.label)}</span>
+                <span>{t(`pages.queueStats.${key}`)}</span>
               </span>
             )
           })}
@@ -232,10 +269,11 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
         <div style={{ borderTop: '1px solid var(--border)' }}>
           {/* Status filter tabs */}
           <div style={{ display: 'flex', gap: 4, padding: '10px 16px', background: 'var(--color-slate-bg)', alignItems: 'center' }}>
-            <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginRight: 4 }}>Show:</span>
+            <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginRight: 4 }}>{t('pages.queueStats.show')}</span>
             {JOB_STATUSES.map((s) => (
               <button type="button"
                 key={s}
+                aria-pressed={jobStatus === s}
                 onClick={(e) => { e.stopPropagation(); handleStatusChange(s) }}
                 style={{
                   padding: '3px 10px', borderRadius: 5, border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
@@ -244,24 +282,24 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
                   color: jobStatus === s ? colors.white : palette.neutral.textStrong,
                 }}
               >
-                {s}
+                {t(`pages.queueStats.${s}`)}
               </button>
             ))}
             <button type="button"
               onClick={(e) => { e.stopPropagation(); void loadJobs({ variables: { queueName: queue.name, status: jobStatus, limit: 50 } }) }}
               style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: palette.neutral.textStrong }}
             >
-              <RefreshCw size={11} /> Refresh
+              <RefreshCw size={11} /> {t('pages.queueStats.refresh')}
             </button>
           </div>
 
           {jobsLoading && (
-            <div style={{ padding: '20px 16px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>Loading jobs…</div>
+            <div style={{ padding: '20px 16px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>{t('pages.queueStats.loadingJobs')}</div>
           )}
 
           {!jobsLoading && jobs.length === 0 && (
             <div style={{ padding: '24px 16px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>
-              No {jobStatus} jobs in this queue
+              {t('pages.queueStats.noJobs', { status: t(`pages.queueStats.${jobStatus}`) })}
             </div>
           )}
 
@@ -272,7 +310,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
                 type="button"
                 aria-expanded={expandedJob === job.id}
                 onClick={(e) => { e.stopPropagation(); setExpandedJob(expandedJob === job.id ? null : job.id) }}
-                style={{ width: '100%', border: 'none', font: 'inherit', color: 'inherit', textAlign: 'left', padding: '10px 20px 10px 52px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', background: expandedJob === job.id ? colors.slateBg : 'white' }}
+                style={{ width: '100%', border: 'none', font: 'inherit', color: 'inherit', textAlign: 'left', padding: '10px 20px 10px 52px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', background: expandedJob === job.id ? colors.slateBg : colors.white }}
               >
                 <div style={{ color: 'var(--color-slate-light)', flexShrink: 0 }}>
                   {expandedJob === job.id ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
@@ -293,6 +331,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
               {expandedJob === job.id && (
                 <JobDetail
                   job={job}
+                  retryable={queue.retryable}
                   retrying={retryingId === job.id}
                   onRetry={() => {
                     setRetryingId(job.id)
@@ -320,6 +359,7 @@ export function QueueStatsPage() {
   }, [refetch])
 
   const queues: QueueStat[] = (data as { queueStats?: QueueStat[] } | undefined)?.queueStats ?? []
+  const groups = groupQueues(queues)
 
   return (
     <PageContainer>
@@ -329,7 +369,7 @@ export function QueueStatsPage() {
             {t('pages.queueStats.title')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${queues.length} code`}
+            {loading ? '—' : t('pages.queueStats.count', { count: queues.length })}
           </p>
         </div>
         <button type="button"
@@ -338,7 +378,7 @@ export function QueueStatsPage() {
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '7px 14px', borderRadius: 8, border: '1px solid var(--color-border)',
-            background: 'white', color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)',
+            background: colors.white, color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)',
             cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1,
           }}
         >
@@ -353,9 +393,25 @@ export function QueueStatsPage() {
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {queues.map((q) => (
-          <QueueRow key={q.name} queue={q} onQueueRefetch={() => void refetch()} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        {groups.map(({ group, queues: list }) => (
+          <section key={group} aria-labelledby={`queue-group-${group}`}>
+            <h2 id={`queue-group-${group}`} style={{
+              fontSize: fontSize.sectionTitle, fontWeight: fontWeight.semibold,
+              color: 'var(--color-slate-dark)', margin: '0 0 10px', paddingBottom: 8,
+              borderBottom: `2px solid ${colors.border}`, display: 'flex', alignItems: 'baseline', gap: 8,
+            }}>
+              {t(`pages.queueStats.group.${group}`, { defaultValue: group })}
+              <span style={{ fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium, color: 'var(--color-slate-light)' }}>
+                {t('pages.queueStats.count', { count: list.length })}
+              </span>
+            </h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {list.map((q) => (
+                <QueueRow key={q.name} queue={q} onQueueRefetch={() => void refetch()} />
+              ))}
+            </div>
+          </section>
         ))}
         {!loading && queues.length === 0 && !error && (
           <div style={{ textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-card-title)', padding: 40 }}>
@@ -365,6 +421,9 @@ export function QueueStatsPage() {
       </div>
 
       <p style={{ marginTop: 20, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
+        {t('pages.queueStats.consumerNote')}
+      </p>
+      <p style={{ marginTop: 4, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
         {t('pages.queueStats.autoRefresh')}
       </p>
     </PageContainer>

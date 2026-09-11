@@ -323,6 +323,17 @@ const INDEXES: SchemaStatement[] = [
   { label: 'Event(tenant_id, last_seen_at)', cypher: 'CREATE INDEX event_tenant_last_seen IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.last_seen_at)' },
   { label: 'Event(tenant_id, resolved_at)', cypher: 'CREATE INDEX event_tenant_resolved IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.resolved_at)' },
   { label: 'event_search (fulltext)', cypher: 'CREATE FULLTEXT INDEX event_search IF NOT EXISTS FOR (n:Event) ON EACH [n.title, n.resource]' },
+  // Event Management (revisione 2 · D4.2): le passate periodiche di
+  // events-maintenance (services/events/passes.ts) e i gauge di salute
+  // (gauges.ts) leggono per `status` su TUTTI i tenant con un cursore su `id`
+  // (`MATCH (e:Event {status: $s}) WHERE e.id > $cursor … ORDER BY e.id`).
+  // Senza un indice che parta da `status` il planner usava l'indice di
+  // unicità su `id` (scansione ordinata di ogni Event, filtro sullo stato):
+  // cinque scansioni complete ogni 5 minuti. (status, id) serve filtro E
+  // cursore ordinato; (status, correlation) serve i gauge e la passata
+  // `pending` (`correlation IN […]` / `= 'delayed'` sotto `status = 'firing'`).
+  { label: 'Event(status, id)', cypher: 'CREATE INDEX event_status_id IF NOT EXISTS FOR (n:Event) ON (n.status, n.id)' },
+  { label: 'Event(status, correlation)', cypher: 'CREATE INDEX event_status_correlation IF NOT EXISTS FOR (n:Event) ON (n.status, n.correlation)' },
   // Riconoscimento del CI per nome negli allarmi (eventService.ts#matchCI):
   // `name_key` = toLower(name), scritto da chi crea/rinomina il CI
   // (apps/api/src/lib/ciNameKey.ts) e backfillato dalla migrazione

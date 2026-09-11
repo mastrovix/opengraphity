@@ -104,6 +104,34 @@ describe('metricsAccessAllowed (A-15)', () => {
   })
 })
 
+// ── Operatività, revisione 2 ondata 4 (D2.2 / D7.2) ─────────────────────────
+
+describe('metriche di operatività (revisione 2)', () => {
+  it('event_ingest_lag_seconds, events_failed_total{queue,type}, redis_lock_timeouts_total{lock}, redis_lock_hold_seconds{lock} esistono, sono esposte da renderMetrics e hanno il tipo dichiarato', () => {
+    m.eventIngestLagSeconds.observe({}, 3)
+    m.eventsFailedTotal.inc({ queue: 'sla-engine', type: 'incident.created' })
+    m.redisLockTimeoutsTotal.inc({ lock: 'events:group' })
+    m.redisLockHoldSeconds.observe({ lock: 'events:group' }, 0.2)
+    const exposed = m.renderMetrics()
+    for (const [name, type] of [
+      ['event_ingest_lag_seconds', 'histogram'],
+      ['events_failed_total', 'counter'],
+      ['redis_lock_timeouts_total', 'counter'],
+      ['redis_lock_hold_seconds', 'histogram'],
+    ] as const) {
+      expect(exposed).toContain(`# TYPE ${name} ${type}`)
+    }
+    expect(exposed).toContain('events_failed_total{queue="sla-engine",type="incident.created"} 1')
+    expect(exposed).toContain('redis_lock_timeouts_total{lock="events:group"} 1')
+    expect(exposed).toContain('event_ingest_lag_seconds_bucket{le="5"} 1')
+    // stessi bucket dei ritardi di correlazione e di valutazione (code a confronto)
+    expect(m.eventIngestLagSeconds.buckets).toEqual(m.eventCorrelateJobLagSeconds.buckets)
+    // renderMetrics è la stessa esposizione dell'API (bullmq_queue_depth compreso): il worker la serve così
+    expect(exposed).toContain('# TYPE bullmq_queue_depth gauge')
+    expect(m.METRICS_CONTENT_TYPE).toBe('text/plain; version=0.0.4; charset=utf-8')
+  })
+})
+
 // ── Servizi monitorati, ondata 4 ─────────────────────────────────────────────
 
 describe('metriche dei servizi monitorati (ondata 4)', () => {

@@ -82,3 +82,63 @@ describe('notifiche dei Servizi monitorati', () => {
     expect(sent).not.toHaveBeenCalled()
   })
 })
+
+describe('notifiche dell\'Event Management (revisione 2, D3.2: mai un uuid come corpo)', () => {
+  const alarm = { id: 'ev-1', fingerprint: 'fp', title: 'CPU > 95%', severity: 'critical', status: 'firing', resource: 'web-02', count: 3, ci_id: 'ci-1', source_id: 'src-1', entity_type: 'event', entity_id: 'ev-1' }
+
+  it('ci.health_changed → corpo "<nome CI> — <nuova salute>", entità ci (link /cis/:id)', async () => {
+    ruleRow = { id: 'r1', enabled: true, severity_override: 'warning', title_key: 'notification.ci.health_changed.title', channels: ['in_app'], target: 'all' }
+    await new NotificationDispatcher().process(event('ci.health_changed', { id: 'ci-1', ci_id: 'ci-1', name: 'db-01', previous_health: 'operational', new_health: 'down' }))
+    expect(sent.mock.calls[0]![1]).toMatchObject({ message: 'db-01 — down', entity_id: 'ci-1', entity_type: 'ci' })
+  })
+
+  it('ci.health_changed senza name → errore esplicito (il produttore deve valorizzarlo)', async () => {
+    ruleRow = { id: 'r1', enabled: true, severity_override: 'warning', title_key: 'k', channels: ['in_app'], target: 'all' }
+    await expect(new NotificationDispatcher().process(event('ci.health_changed', { id: 'ci-1', ci_id: 'ci-1', previous_health: null, new_health: 'down' })))
+      .rejects.toThrow(/ci\.health_changed payload has no "name"/)
+    expect(sent).not.toHaveBeenCalled()
+  })
+
+  it('event.received/resolved/orphan/suppressed/correlated/flapping/stable → "<titolo> — <risorsa>", entità event', async () => {
+    for (const type of ['event.received', 'event.resolved', 'event.orphan', 'event.suppressed', 'event.correlated', 'event.flapping', 'event.stable']) {
+      sent.mockClear()
+      ruleRow = { id: 'r', enabled: true, severity_override: 'info', title_key: `notification.${type}.title`, channels: ['in_app'], target: 'all' }
+      await new NotificationDispatcher().process(event(type, { ...alarm, incident_id: null, outcome: 'opened' }))
+      expect(sent.mock.calls[0]![1], type).toMatchObject({ message: 'CPU > 95% — web-02', entity_id: 'ev-1', entity_type: 'event' })
+    }
+  })
+
+  it('event.storm_started → "<sorgente> — <ritmo>/min" sull\'incident di tempesta; event.storm_ended → allarmi e durata sulla sorgente', async () => {
+    ruleRow = { id: 'r', enabled: true, severity_override: 'error', title_key: 'k', channels: ['in_app'], target: 'all' }
+    await new NotificationDispatcher().process(event('event.storm_started', {
+      id: 'inc-7', source_id: 'src-1', source_name: 'Zabbix prod', rate_per_minute: 84, incident_id: 'inc-7', since: 'T', entity_type: 'incident', entity_id: 'inc-7',
+    }))
+    expect(sent.mock.calls[0]![1]).toMatchObject({ message: 'Zabbix prod — 84/min', entity_id: 'inc-7', entity_type: 'incident' })
+
+    sent.mockClear()
+    await new NotificationDispatcher().process(event('event.storm_ended', {
+      id: 'src-1', source_id: 'src-1', source_name: 'Zabbix prod', rate_per_minute: 0, incident_id: null, since: 'T', events: 412, duration_minutes: 9, entity_type: 'inbound_webhook', entity_id: 'src-1',
+    }))
+    expect(sent.mock.calls[0]![1]).toMatchObject({ message: 'Zabbix prod — 412 allarmi in 9 min', entity_id: 'src-1', entity_type: 'inbound_webhook' })
+  })
+
+  it('tempesta senza rate_per_minute numerico → errore esplicito', async () => {
+    ruleRow = { id: 'r', enabled: true, severity_override: 'error', title_key: 'k', channels: ['in_app'], target: 'all' }
+    await expect(new NotificationDispatcher().process(event('event.storm_started', { id: 'src-1', source_name: 'Zabbix', rate_per_minute: '84' })))
+      .rejects.toThrow(/event\.storm_started payload has no numeric "rate_per_minute"/)
+  })
+})
+
+describe('email: il link viene dalla tabella entity_type → percorso condivisa (D3.2)', () => {
+  it('service → /monitoring/services/:id; inbound_webhook → /monitoring/sources/:id; tipo senza pagina → nessun link', async () => {
+    const { renderNotificationEmail } = await import('../dispatcher.js')
+    const base = { id: 'n', type: 't', title: 'k', message: 'm', severity: 'info' as const, timestamp: 'T', read: false }
+    expect(renderNotificationEmail({ ...base, entity_type: 'service', entity_id: 'map-1' })).toContain('/monitoring/services/map-1"')
+    expect(renderNotificationEmail({ ...base, entity_type: 'inbound_webhook', entity_id: 'src-1' })).toContain('/monitoring/sources/src-1"')
+    expect(renderNotificationEmail({ ...base, entity_type: 'event', entity_id: 'ev-1' })).toContain('/events/ev-1"')
+    expect(renderNotificationEmail({ ...base, entity_type: 'ci', entity_id: 'ci-1' })).toContain('/cis/ci-1"')
+    expect(renderNotificationEmail({ ...base, entity_type: 'sync', entity_id: 'run-1' })).not.toContain('<a ')
+    // mai più `/${entity_type}s/${id}`: /services/map-1 era una rotta inesistente
+    expect(renderNotificationEmail({ ...base, entity_type: 'service', entity_id: 'map-1' })).not.toMatch(/href="[a-z]+:\/\/[^/"]+\/services\/map-1"/)
+  })
+})

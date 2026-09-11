@@ -45,7 +45,13 @@ services:
     image: redis:7.4.8-alpine@sha256:7aec734b2bb298a1d769fd8729f13b8514a41bf90fcdd1f38ec52267fbaa8ee6
     # Password-protected: every client (api, worker) reads the same
     # REDIS_URL + REDIS_PASSWORD through packages/events getRedisConnection().
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD mancante in infra/.env}"]
+    # AOF with fsync every second (revisione 2 · D7.4): BullMQ lives here —
+    # alerts accepted with 202 and not yet ingested, delayed correlations,
+    # repeat jobs, idempotency markers. With RDB snapshots only, a crash (not a
+    # clean stop: SIGTERM saves) lost up to 15 minutes of that state and an
+    # alert accepted from the sender was gone for good. Cost: ~1 s of writes
+    # at most on a crash. docs/OPERATIONS.md «Procedure di ripristino».
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD mancante in infra/.env}", "--appendonly", "yes", "--appendfsync", "everysec"]
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
@@ -119,6 +125,9 @@ services:
           --storage.tsdb.retention.time=15d
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Alerting rules (revisione 2 · D7.1): evaluated by Prometheus itself
+      # (GET /api/v1/rules, /alerts); an Alertmanager is not part of the stack.
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     networks:
       - opengrafo-network
@@ -282,6 +291,13 @@ services:
       # Embedding inference runs in the dedicated `worker` service (below), so
       # the API event loop stays free for requests.
       EMBEDDING_WORKER_EXTERNAL: "true"
+      # Process profile (revisione 2 · D1.1, apps/api/src/lib/workerProfiles.ts):
+      # `api` = this process serves HTTP and the ITSM workers only; the Event
+      # Management / Servizi monitorati workers run in `events-worker` (below).
+      # `all` (the default outside compose) would run everything in here.
+      WORKER_PROFILE: api
+      # Neo4j connections of this process (default 50): HTTP resolvers + ITSM workers.
+      NEO4J_MAX_POOL_SIZE: "50"
       # Apollo introspection/Sandbox: off by default with NODE_ENV=production.
       # Set GRAPHQL_INTROSPECTION=true in infra/.env to use the Sandbox locally.
       GRAPHQL_INTROSPECTION: ${GRAPHQL_INTROSPECTION:-false}
@@ -367,7 +383,8 @@ services:
     restart: unless-stopped
 
   # Dedicated worker process: runs the CPU-bound embedding worker off the API
-  # event loop. Same image as api, different entrypoint.
+  # event loop. Same image as api, different entrypoint (WORKER_PROFILE=all →
+  # embedding only in the worker process; apps/api/src/lib/workerProfiles.ts).
   worker:
     image: opengrafo-api:local
     command: ["node", "--no-node-snapshot", "dist/worker.js"]  # isolated-vm su Node >= 20
@@ -382,6 +399,9 @@ services:
       EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-local}
       TRANSFORMERS_CACHE: /data/models
       VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+      # GET /metrics of this process (scraped by prometheus as `worker:4000`)
+      PORT: "4000"
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
     volumes:
       - api_data:/data
     depends_on:
@@ -392,7 +412,7 @@ services:
     networks:
       - opengrafo-network
     healthcheck:
-      # No HTTP in this process: the probe (baked into the image, see
+      # No HTTP API in this process: the probe (baked into the image, see
       # apps/api/Dockerfile) asks Redis whether an `embeddings` BullMQ worker
       # is connected. Caveat: it counts every worker of that queue on the
       # Redis server, i.e. it is per-queue, not per-container.
@@ -401,6 +421,54 @@ services:
       timeout: 10s
       retries: 3
       start_period: 90s
+    restart: unless-stopped
+
+  # Event Management + Servizi monitorati worker (revisione 2 · D1.1): the
+  # alert ingest, correlation and maintenance queues, the service-map
+  # evaluation queue and the `service-impact-consumer` — ~12 job slots that
+  # used to run inside the API process on its Neo4j pool. Same image,
+  # WORKER_PROFILE=events; the API runs with WORKER_PROFILE=api and starts none
+  # of them. Scale this service, not the API, when alert storms grow.
+  events-worker:
+    image: opengrafo-api:local
+    command: ["node", "--no-node-snapshot", "dist/worker.js"]
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WORKER_PROFILE: events
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD:?NEO4J_PASSWORD mancante in infra/.env}"
+      # 12 slots × up to 3 sessions per event (pipeline + CI health + grouping)
+      NEO4J_MAX_POOL_SIZE: "40"
+      REDIS_URL: redis://redis:6379
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?REDIS_PASSWORD mancante in infra/.env}"
+      # The validation of the worker profile reads them; no embedding runs here.
+      EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-local}
+      TRANSFORMERS_CACHE: /data/models
+      # Correlation may call the AI triage of new incidents (optional, like in the API)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # GET /metrics of this process: the pipeline metrics live where the
+      # pipeline runs (scraped by prometheus as `events-worker:4000`)
+      PORT: "4000"
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      # Liveness probe: an `events-ingest` worker connected to Redis (see `worker`)
+      HEALTHCHECK_QUEUE: events-ingest
+    volumes:
+      - api_data:/data
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - opengrafo-network
+    healthcheck:
+      test: ["CMD", "node", "worker-healthcheck.mjs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     restart: unless-stopped
 
   web:

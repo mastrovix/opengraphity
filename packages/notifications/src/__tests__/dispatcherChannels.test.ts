@@ -213,13 +213,22 @@ describe('NotificationDispatcher — Slack routing per tenant', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('event type with no Slack/Teams mapping (e.g. problem.created) → no dispatch, no error (pinned; NB: no log line either)', async () => {
+  it('event type with no Slack/Teams formatter (e.g. problem.created) with a slack rule → in_app still delivered, then an explicit error names the channel (D3.1: never a silent drop)', async () => {
     ruleRows = [rule(['slack', 'in_app'])]
     channelRows = [slackChannel('s', ['assigned'])]
-    await expect(new NotificationDispatcher().process(event('problem.created', { id: 'prb-1', title: 'x' }))).resolves.toBeUndefined()
+    await expect(new NotificationDispatcher().process(event('problem.created', { id: 'prb-1', title: 'x' })))
+      .rejects.toThrow('problem.created notification rule requests channels [slack] that the dispatcher cannot route for this event type — routable: [in_app, email]')
     expect(sendToTenant).toHaveBeenCalledTimes(1)   // in_app still goes out
     expect(fetchMock).not.toHaveBeenCalled()
     expect(runQueries.some(q => q.cypher.includes('NotificationChannel'))).toBe(false)
+  })
+
+  it('change.approved with slack AND teams → slack delivered (formatter exists), then an error for teams (no Teams formatter for changes)', async () => {
+    ruleRows = [rule(['slack', 'teams'])]
+    channelRows = [slackChannel('s-chg', ['change_approved']), teamsChannel('t-chg', ['change_approved'])]
+    await expect(new NotificationDispatcher().process(event('change.approved', { id: 'chg-1', title: 'Upgrade', type: 'normal', status: 'approved' })))
+      .rejects.toThrow('change.approved notification rule requests channels [teams]')
+    expect(fetchMock.mock.calls.map(c => c[0])).toEqual(['https://hooks.slack.example/s-chg'])
   })
 
   it('change.approved → slack channels subscribed to change_approved (Change enrichment query on the tenant)', async () => {

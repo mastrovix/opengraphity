@@ -1,0 +1,181 @@
+# Alerting rules of the OpenGraphity stack (revisione 2 · D7.1).
+#
+# Until this file existed the «allarmi consigliati» of docs/OPERATIONS.md were
+# prose: eight correct PromQL expressions that no system evaluated. Here they
+# are rules Prometheus evaluates every `evaluation_interval` (prometheus.yml
+# `rule_files`); the state is visible at GET /api/v1/rules and /alerts, and in
+# Grafana (Alerting → Alert rules shows the Prometheus datasource rules). An
+# Alertmanager is not part of the stack: add `alerting:` to prometheus.yml when
+# one is (the rules do not change).
+#
+# Aggregation: the API and the worker processes are separate targets
+# (prometheus.yml), and every process-level gauge is set by the process that
+# runs the pass — hence sum()/max() everywhere, never a bare metric name.
+# Metric names and meanings: docs/OPERATIONS.md §7 «Metriche e pannelli» and
+# apps/api/src/middleware/metrics.ts. Every rule is documented on the `runbook`
+# annotation with the OPERATIONS section to read.
+
+groups:
+  - name: opengraphity-event-management
+    rules:
+      - alert: EventStormActive
+        expr: max(event_storms_active) >= 1
+        for: 10m
+        labels: { severity: warning, subsystem: events }
+        annotations:
+          summary: "Alert storm active for more than 10 minutes"
+          description: "{{ $value }} monitoring source(s) in storm: one storm incident per source, no per-CI incidents."
+          runbook: "docs/OPERATIONS.md §7 «Tempeste di allarmi»"
+
+      - alert: EventOrphanRatioHigh
+        expr: |
+          sum(rate(events_orphan_total[15m])) / sum(rate(events_received_total[15m])) > 0.2
+            and sum(rate(events_received_total[15m])) > 0
+        for: 15m
+        labels: { severity: warning, subsystem: events }
+        annotations:
+          summary: "More than 20% of the alerts have no recognised CI"
+          description: "CI names/aliases are not aligned with the monitoring tool (orphan ratio {{ $value | humanizePercentage }})."
+          runbook: "docs/OPERATIONS.md §7 «Risoluzione dei problemi → Evento orfano»"
+
+      - alert: EventsOverdueDelayed
+        expr: max(events_overdue_delayed) > 0
+        for: 15m
+        labels: { severity: warning, subsystem: events }
+        annotations:
+          summary: "Delayed correlations whose due time passed without a correlate job"
+          description: "{{ $value }} firing event(s) stuck in `delayed`: the events-correlate queue is stopped or the job id was already used. The periodic pass picks them up; if the gauge stays up the pass is failing."
+          runbook: "docs/OPERATIONS.md §7 «Procedure di ripristino»"
+
+      - alert: EventsFiringUncorrelated
+        expr: max(events_firing_uncorrelated) > 0
+        for: 15m
+        labels: { severity: warning, subsystem: events }
+        annotations:
+          summary: "Firing alerts without a correlation outcome for more than 15 minutes"
+          description: "{{ $value }} firing event(s) with no incident: the pipeline failed every attempt. Look at event_pass_total{pass=\"pending\",result=\"failed\"} and the `re-evaluation failed` logs."
+          runbook: "docs/OPERATIONS.md §7 «Metriche e pannelli»"
+
+      - alert: EventCorrelationErrors
+        expr: sum(rate(events_correlated_total{outcome="error"}[15m])) > 0
+        for: 5m
+        labels: { severity: warning, subsystem: events }
+        annotations:
+          summary: "The event pipeline is throwing"
+          description: "{{ $value | humanize }} pipeline error(s)/s over 15 minutes (the jobs retry; alerts pile up in the queue)."
+          runbook: "docs/OPERATIONS.md §7 «Risoluzione dei problemi»"
+
+      - alert: EventIngestFailed
+        expr: sum(increase(events_ingest_failed_total[1h])) > 0
+        labels: { severity: critical, subsystem: events }
+        annotations:
+          summary: "Monitoring alerts lost after the last ingest retry"
+          description: "{{ $value }} ingest job(s) failed all 5 attempts in the last hour: the source shows last_error and the job is in the failed set of `events-ingest` (retry it from Amministrazione → Code)."
+          runbook: "docs/OPERATIONS.md §7 «Procedure di ripristino → Job falliti»"
+
+      - alert: EventIngestLagHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(event_ingest_lag_seconds_bucket[10m]))) > 60
+        for: 10m
+        labels: { severity: warning, subsystem: events }
+        annotations:
+          summary: "Alerts are ingested more than 60 s after reception (p95)"
+          description: "The events-ingest queue is behind (p95 lag {{ $value | humanizeDuration }}): worker stopped, Neo4j slow, or a backlog after a Redis restart."
+          runbook: "docs/OPERATIONS.md §7 «Procedure di ripristino → Redis è ripartito»"
+
+      - alert: EventCorrelateLagHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(event_correlate_job_lag_seconds_bucket[15m]))) > 60
+        for: 10m
+        labels: { severity: warning, subsystem: events }
+        annotations:
+          summary: "Delayed correlations run more than 60 s late (p95)"
+          description: "The events-correlate queue is behind: incidents open late (p95 lag {{ $value | humanizeDuration }})."
+          runbook: "docs/OPERATIONS.md §7 «Code BullMQ»"
+
+      - alert: EventMaintenancePassFailing
+        expr: sum(increase(event_pass_total{result="failed"}[30m])) > 0
+        labels: { severity: warning, subsystem: events }
+        annotations:
+          summary: "A periodic event maintenance pass failed"
+          description: "{{ $value }} failed pass(es) in 30 minutes (closed_windows | pending | flapping | storms | gauges): the safety net of the alert states is not running."
+          runbook: "docs/OPERATIONS.md §7 «Code BullMQ → events-maintenance»"
+
+  - name: opengraphity-services
+    rules:
+      - alert: ServiceEvaluationErrors
+        expr: sum(rate(service_evaluations_total{result="error"}[15m])) > 0
+        for: 5m
+        labels: { severity: warning, subsystem: services }
+        annotations:
+          summary: "Service map evaluations are failing"
+          description: "{{ $value | humanize }} evaluation error(s)/s: service health and service incidents are stale."
+          runbook: "docs/OPERATIONS.md «Servizi monitorati → Risoluzione dei problemi»"
+
+      - alert: ServiceEvaluationLagHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(service_evaluation_lag_seconds_bucket[5m]))) > 60
+        for: 10m
+        labels: { severity: warning, subsystem: services }
+        annotations:
+          summary: "Service map evaluations start more than 60 s late (p95)"
+          description: "The services-impact queue is behind (p95 lag {{ $value | humanizeDuration }})."
+          runbook: "docs/OPERATIONS.md «Servizi monitorati → Metriche»"
+
+      - alert: ServiceMapsStale
+        expr: max(service_maps_stale) > 0
+        for: 24h
+        labels: { severity: info, subsystem: services }
+        annotations:
+          summary: "Service maps flagged stale for more than a day"
+          description: "{{ $value }} map(s) with a missing CI or over the 500-node cap: fix them from «Aggiorna mappa»."
+          runbook: "docs/OPERATIONS.md «Servizi monitorati → Risoluzione dei problemi → stale»"
+
+  - name: opengraphity-platform
+    rules:
+      - alert: DomainEventsLost
+        expr: sum(increase(events_failed_total[1h])) > 0
+        labels: { severity: critical, subsystem: platform }
+        annotations:
+          summary: "Domain events lost after the last consumer retry"
+          description: "{{ $value }} event(s) exhausted their 4 attempts in the last hour (events_failed_total{queue,type}): a notification not sent, an SLA not started or a service map not re-evaluated. Not replayable from the console."
+          runbook: "docs/OPERATIONS.md §7 «Procedure di ripristino → Job falliti»"
+
+      - alert: BullMQFailedJobs
+        expr: max by (queue) (bullmq_queue_depth{status="failed"}) > 0
+        for: 15m
+        labels: { severity: warning, subsystem: platform }
+        annotations:
+          summary: "Failed jobs in queue {{ $labels.queue }}"
+          description: "{{ $value }} job(s) in the failed set of `{{ $labels.queue }}` for more than 15 minutes: inspect and retry them from Amministrazione → Code (consumer queues are not retryable)."
+          runbook: "docs/OPERATIONS.md §7 «Procedure di ripristino → Job falliti»"
+
+      - alert: RedisLockTimeouts
+        expr: sum by (lock) (increase(redis_lock_timeouts_total[15m])) > 10
+        labels: { severity: warning, subsystem: platform }
+        annotations:
+          summary: "Redis lock {{ $labels.lock }} times out repeatedly"
+          description: "{{ $value }} lock waits abandoned in 15 minutes: critical sections (incident open/attach) are too slow or Neo4j is contended; jobs retry with backoff."
+          runbook: "docs/OPERATIONS.md §7 «Metriche e pannelli»"
+
+      - alert: BackupStale
+        expr: time() - max(opengrafo_backup_last_success_timestamp_seconds) > 25 * 3600
+        labels: { severity: critical, subsystem: platform }
+        annotations:
+          summary: "No verified backup in the last 25 hours"
+          description: "Last verified backup {{ $value | humanizeDuration }} ago: check the maintenance worker logs and run backup-neo4j + verify-backup by hand."
+          runbook: "docs/OPERATIONS.md §1 / §6 «Backup notturno fallito»"
+
+      - alert: BackupFailed
+        expr: sum(increase(opengrafo_backup_runs_total{result!="ok"}[24h])) > 0
+        labels: { severity: warning, subsystem: platform }
+        annotations:
+          summary: "A backup run failed or did not verify"
+          description: "{{ $value }} backup run(s) with result backup_failed/verify_failed in 24 hours."
+          runbook: "docs/OPERATIONS.md §6 «Backup notturno fallito»"
+
+      - alert: ProcessDown
+        expr: up{job="opengraphity-api"} == 0
+        for: 2m
+        labels: { severity: critical, subsystem: platform }
+        annotations:
+          summary: "{{ $labels.service }} is not answering GET /metrics"
+          description: "Target {{ $labels.instance }} ({{ $labels.service }}) has been down for 2 minutes: the container is restarting or crashed (docker compose ps / logs)."
+          runbook: "docs/OPERATIONS.md §6 «Checklist incidenti operativi»"

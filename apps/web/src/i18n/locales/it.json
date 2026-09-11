@@ -347,7 +347,40 @@
     },
     "queueStats": {
       "title": "Coda Jobs",
-      "autoRefresh": "Si aggiorna automaticamente ogni 10 secondi."
+      "autoRefresh": "Si aggiorna automaticamente ogni 10 secondi.",
+      "count_one": "{{count}} coda",
+      "count_other": "{{count}} code",
+      "group": {
+        "events": "Allarmi",
+        "services": "Servizi",
+        "itsm": "ITSM",
+        "platform": "Piattaforma"
+      },
+      "consumerNote": "Le code dei consumer di dominio (notifiche, SLA, escalation, impatto sui servizi) non si rigiocano dall'interfaccia: un evento esaurito va riprodotto dal suo produttore.",
+      "notRetryable": "Non rigiocabile dall'interfaccia",
+      "active": "attivi",
+      "waiting": "in attesa",
+      "delayed": "ritardati",
+      "failed": "falliti",
+      "completed": "completati",
+      "paused": "in pausa",
+      "show": "Mostra:",
+      "refresh": "Aggiorna",
+      "loadingJobs": "Caricamento job…",
+      "noJobs": "Nessun job «{{status}}» in questa coda",
+      "jobId": "ID job",
+      "name": "Nome",
+      "attempts": "Tentativi",
+      "created": "Creato",
+      "processed": "Elaborato",
+      "finished": "Terminato",
+      "error": "Errore",
+      "payload": "Payload",
+      "stackTrace_one": "Stack trace ({{count}} riga)",
+      "stackTrace_other": "Stack trace ({{count}} righe)",
+      "returnValue": "Esito: {{value}}",
+      "retry": "Rigioca",
+      "retrying": "Rigioco…"
     },
     "profile": {
       "title": "Profilo",
@@ -1008,11 +1041,40 @@
     "save": "Salva",
     "cancel": "Annulla",
     "category": {
-      "custom": "Custom"
+      "incident": "Incident",
+      "change": "Change",
+      "problem": "Problem",
+      "request": "Richieste",
+      "sla": "SLA",
+      "escalation": "Escalation",
+      "digest": "Digest",
+      "events": "Allarmi e salute dei CI",
+      "services": "Servizi monitorati",
+      "discovery": "Discovery",
+      "custom": "Personalizzate"
     },
     "customRule": "Regola personalizzata",
     "systemRule": "Regola di sistema",
+    "channels": {
+      "inApp": "In app",
+      "slack": "Slack",
+      "teams": "Teams",
+      "email": "Email"
+    },
+    "channelNotRoutable": "Canale non consegnabile per questo evento: il dispatcher non ha un formato per {{channel}}. Deselezionalo.",
+    "routableHint": "Solo i canali che il sistema sa consegnare per questo tipo di evento.",
+    "target": {
+      "all": "Tutti",
+      "assignee": "Assegnatario",
+      "teamOwner": "Responsabile del team",
+      "adminOnly": "Solo amministratori",
+      "managerOnly": "Solo manager"
+    },
     "severity": {
+      "info": "Info",
+      "success": "Successo",
+      "warning": "Avviso",
+      "error": "Errore",
       "critical": "Critica",
       "high": "Alta",
       "medium": "Media",

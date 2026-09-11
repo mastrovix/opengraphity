@@ -355,6 +355,9 @@ importers:
       '@microsoft/fetch-event-source':
         specifier: ^2.0.1
         version: 2.0.1
+      '@opengraphity/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@opengraphity/web-core':
         specifier: workspace:*
         version: link:../../packages/web-core

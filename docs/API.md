@@ -163,7 +163,17 @@ service map.
 | `logs(level, module, search, limit, offset)` | Application logs |
 | `enumTypes(scope)` | Dictionary/enum definitions |
 | `auditLog(page, pageSize, action, entityType, fromDate, toDate)` | Audit log |
-| `queueStats` | BullMQ queue depths |
+| `queueStats` | BullMQ queue depths. Every `QueueStat` carries `group` (`events` / `services` / `itsm` / `platform`: the subsystem, from the API's single queue registry) and `retryable` (whether `retryQueueJob` accepts jobs of that queue — the four domain-consumer queues are not retryable from the UI: an exhausted event must be re-emitted by its producer). The Queues page groups by `group` and shows the retry button only where `retryable` is true; no queue name is hard-coded in the web |
+| `queueJobs(queueName, status, limit)` | Jobs of one registered queue (`Unknown queue` for a name outside the registry) |
+
+### Notifications
+
+| Query | Roles | Description |
+|-------|-------|-------------|
+| `notificationRules` | admin | Notification rules of the tenant (one per `eventType`) |
+| `notificationRouting` | staff | Channels the dispatcher can actually deliver, per event type (review 2, D3.1): `defaultChannels` (`in_app`, `email` — valid for any event type) and `byEventType` (the event types with a dedicated Slack/Teams formatter and their full channel list: `incident.created/assigned/escalated/resolved` and `sla.breached` → `in_app, email, slack, teams`; `change.approved` and `change.task_assigned` → `in_app, email, slack`). Single source: `ROUTABLE_CHANNELS_BY_EVENT` in `@opengraphity/notifications`. The rules UI offers only these channels for the chosen type; `createNotificationRule` / `updateNotificationRule` refuse any other channel with `BAD_USER_INPUT` (and an empty channel list); a rule written by other means that still carries an unroutable channel makes the notification job fail with an explicit error after the routable channels were delivered — never a silent drop. Migration `20260911_1150_notification_channels_routable` strips such channels from existing rules |
+
+Notification links: the in-app panel and the "Vedi dettagli" link of the notification email resolve `entity_type → path` through the same table (`NOTIFICATION_ENTITY_PATHS` in `@opengraphity/types`): `incident → /incidents/:id`, `change → /changes/:id`, `problem → /problems/:id`, `request` and `service_request → /requests/:id`, `ci → /cis/:id`, `event → /events/:id`, `service → /monitoring/services/:id`, `inbound_webhook → /monitoring/sources/:id`. An event type without a page (`sync.*`, `portal.*`) yields no link. `ci.health_changed` carries the CI `name` in its payload, so the notification body reads `db-01 — down`, not a uuid; `event.*` bodies are `<title> — <resource>`, storms `<source> — <rate>/min`.
 
 ---
 

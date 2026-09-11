@@ -3,20 +3,21 @@ import { lookupOrError, alpha, colors, palette } from '@/lib/tokens'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, GitPullRequest, Shield, Clock, Bell, CheckCheck } from 'lucide-react'
+import { notificationEntityPath } from '@opengraphity/types'
 import { useNotificationContext } from '@/contexts/NotificationContext'
 import type { InAppNotification } from '@/hooks/useNotifications'
 import { timeAgo } from '@/lib/datetime'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Dove porta la notifica: la tabella `entity_type → percorso` è quella
+ * condivisa con il link delle email (`@opengraphity/types`), così incident,
+ * change, problem, richieste, CI, allarmi, servizi e sorgenti aprono la loro
+ * pagina; un tipo senza pagina (sync, portal) resta non cliccabile.
+ */
 function entityPath(notif: InAppNotification): string | null {
-  if (!notif.entity_id || !notif.entity_type) return null
-  switch (notif.entity_type) {
-    case 'incident': return `/incidents/${notif.entity_id}`
-    case 'change':   return `/changes/${notif.entity_id}`
-    case 'problem':  return `/problems/${notif.entity_id}`
-    default:         return null
-  }
+  return notificationEntityPath(notif.entity_type, notif.entity_id)
 }
 
 // ── Severity icon ─────────────────────────────────────────────────────────────

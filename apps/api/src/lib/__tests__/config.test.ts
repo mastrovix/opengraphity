@@ -11,6 +11,7 @@ const TOUCHED = [
   'KEYCLOAK_ADMIN_PASSWORD', 'ATTACHMENT_DIR', 'BACKUP_DIR', 'REPORT_DIR', 'EMBEDDINGS_PROVIDER',
   'EMBEDDING_WORKER_EXTERNAL', 'RATE_LIMIT_MAX', 'GRAPHQL_INTROSPECTION', 'OTEL_ENABLED', 'OTEL_ENDPOINT',
   'APP_URL', 'NEO4J_URI', 'NEO4J_USER', 'NEO4J_PASSWORD', 'TRANSFORMERS_CACHE', 'EMAIL_FROM',
+  'WORKER_PROFILE', 'NEO4J_MAX_POOL_SIZE', 'METRICS_TOKEN',
 ]
 
 function setEnv(vars: Record<string, string | undefined>): void {
@@ -35,6 +36,21 @@ describe('config — development defaults', () => {
     expect(config.graphqlIntrospection).toBe(false)
     expect(config.rateLimitMax).toBe(1000)
     expect(config.attachmentDir.endsWith('data/attachments')).toBe(true)
+    // revisione 2 · D1.1: `all` = comportamento precedente (l'API fa tutto); pool Neo4j 50 come prima
+    expect(config.workerProfile).toBe('all')
+    expect(config.neo4jMaxPoolSize).toBe(50)
+  })
+
+  it('WORKER_PROFILE accetta solo all | api | events; NEO4J_MAX_POOL_SIZE solo interi positivi', () => {
+    setEnv({ NODE_ENV: 'development', WORKER_PROFILE: 'events', NEO4J_MAX_POOL_SIZE: '40' })
+    expect(config.workerProfile).toBe('events')
+    expect(config.neo4jMaxPoolSize).toBe(40)
+    setEnv({ NODE_ENV: 'development', WORKER_PROFILE: 'ingest' })
+    expect(() => config.workerProfile).toThrow(/WORKER_PROFILE must be one of all, api, events/)
+    setEnv({ NODE_ENV: 'development', NEO4J_MAX_POOL_SIZE: '0' })
+    expect(() => config.neo4jMaxPoolSize).toThrow(/NEO4J_MAX_POOL_SIZE must be a positive integer/)
+    setEnv({ NODE_ENV: 'development', NEO4J_MAX_POOL_SIZE: 'many' })
+    expect(() => config.neo4jMaxPoolSize).toThrow(/NEO4J_MAX_POOL_SIZE must be an integer/)
   })
 
   it('memoizes: a later env change is not seen until resetConfigCache()', () => {
@@ -111,7 +127,14 @@ describe('config — production has no silent defaults', () => {
     expect(config.attachmentDir).toBe('/data/attachments')
   })
 
-  it('the worker profile is a subset of the api profile', () => {
+  it('the worker profile is a subset of the api profile, and both validate the process profile and the Neo4j pool size at boot', () => {
     for (const k of CONFIG_PROFILES.worker) expect(CONFIG_PROFILES.api).toContain(k)
+    for (const k of ['workerProfile', 'neo4jMaxPoolSize'] as const) {
+      expect(CONFIG_PROFILES.api).toContain(k)
+      expect(CONFIG_PROFILES.worker).toContain(k)
+    }
+    // the worker serves GET /metrics: port and token are part of its profile
+    expect(CONFIG_PROFILES.worker).toContain('port')
+    expect(CONFIG_PROFILES.worker).toContain('metricsToken')
   })
 })

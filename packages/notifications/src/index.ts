@@ -5,6 +5,7 @@ export * from './email.js'
 export * from './webhook.js'
 export * from './dispatcher.js'
 export * from './escapeHtml.js'
+export * from './routing.js'
 export { loadChannels, dispatchIncidentNotification, dispatchChangeNotification, dispatchChangeTaskNotification } from './consumer.js'
 
 export interface NotificationChannelData {

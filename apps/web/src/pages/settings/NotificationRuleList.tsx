@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Lock, Unlock } from 'lucide-react'
+import { Trash2, Lock, Unlock, AlertTriangle } from 'lucide-react'
 import { colors, fontSize, fontWeight, palette } from '@/lib/tokens'
 import { Toggle as SharedToggle } from '@/components/ui/Toggle'
 
@@ -13,12 +13,88 @@ export const SEVERITY_COLOR: Record<string, string> = {
   error:   'var(--color-danger)',
 }
 
-const CHANNELS_OPTIONS: { value: string; labelKey: string }[] = [
-  { value: 'in_app', labelKey: 'notificationRules.channels.inApp' },
-  { value: 'slack',  labelKey: 'notificationRules.channels.slack' },
-  { value: 'teams',  labelKey: 'notificationRules.channels.teams' },
-  { value: 'email',  labelKey: 'notificationRules.channels.email' },
+/** Etichette dei canali; QUALI canali offrire per un evento lo dice il server (`notificationRouting`). */
+export const CHANNEL_LABEL_KEY: Record<string, string> = {
+  in_app: 'notificationRules.channels.inApp',
+  slack:  'notificationRules.channels.slack',
+  teams:  'notificationRules.channels.teams',
+  email:  'notificationRules.channels.email',
+}
+
+/**
+ * Tabella `notificationRouting` così come arriva dall'API: i canali che il
+ * dispatcher sa consegnare per un tipo di evento (D3.1). `routableFor` è la
+ * sola funzione che lista e dialogo usano: nessun nome di evento o di canale
+ * è scritto nel web.
+ */
+export interface NotificationRouting {
+  defaultChannels: string[]
+  byEventType: Array<{ eventType: string; channels: string[] }>
+}
+
+export function routableFor(routing: NotificationRouting, eventType: string): string[] {
+  return routing.byEventType.find((e) => e.eventType === eventType)?.channels ?? routing.defaultChannels
+}
+
+/**
+ * Sezioni della pagina. Le regole seminate per gli allarmi (`event.*`,
+ * `ci.*`), i servizi monitorati (`service.*`) e la discovery (`sync.*`,
+ * `conflict.*`) hanno la loro sezione: prima finivano tutte sotto
+ * «Personalizzate». Ogni regola con un tipo non elencato qui resta custom.
+ */
+export const RULE_CATEGORIES: { key: string; events: string[] }[] = [
+  {
+    key: 'incident',
+    events: [
+      'incident.created', 'incident.assigned', 'incident.in_progress',
+      'incident.on_hold', 'incident.escalated', 'incident.resolved', 'incident.closed',
+    ],
+  },
+  {
+    key: 'change',
+    events: [
+      'change.approved', 'change.completed', 'change.failed',
+      'change.rejected', 'change.task_assigned',
+    ],
+  },
+  {
+    key: 'problem',
+    events: [
+      'problem.created', 'problem.under_investigation', 'problem.deferred',
+      'problem.resolved', 'problem.closed',
+    ],
+  },
+  {
+    key: 'sla',
+    events: ['sla.warning', 'sla.breached', 'ola.breached'],
+  },
+  {
+    key: 'escalation',
+    events: ['incident.escalation'],
+  },
+  {
+    key: 'events',
+    events: [
+      'event.received', 'event.resolved', 'event.orphan', 'event.suppressed', 'event.correlated',
+      'event.flapping', 'event.stable', 'event.storm_started', 'event.storm_ended',
+      'ci.health_changed',
+    ],
+  },
+  {
+    key: 'services',
+    events: ['service.health_changed', 'service.incident_opened'],
+  },
+  {
+    key: 'discovery',
+    events: ['sync.completed', 'sync.failed', 'conflict.created'],
+  },
+  {
+    key: 'digest',
+    events: ['digest.daily'],
+  },
 ]
+
+export const STANDARD_EVENTS = RULE_CATEGORIES.flatMap((c) => c.events)
 
 const SEVERITY_OPTIONS = ['info', 'success', 'warning', 'error'] as const
 
@@ -73,15 +149,25 @@ export function Toggle({ value, onChange, label }: { value: boolean; onChange: (
 
 export function RuleRow({
   rule,
+  routable,
   onUpdate,
   onDelete,
 }: {
   rule:     NotificationRule
+  /** Canali consegnabili per `rule.eventType` (dal server). */
+  routable: readonly string[]
   onUpdate: (id: string, input: UpdateInput) => void
   onDelete: (id: string) => void
 }) {
   const { t } = useTranslation()
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // I canali offerti sono quelli instradabili; un canale già salvato ma non
+  // instradabile (regola scritta prima della migrazione 1150 o per altre vie)
+  // resta visibile con un avviso, così l'amministratore lo può togliere: non
+  // sparisce dalla vista mentre continua a far fallire il job di notifica.
+  const stale    = rule.channels.filter((c) => !routable.includes(c))
+  const options  = [...routable, ...stale]
 
   const debounce = useCallback((input: UpdateInput) => {
     if (timerRef.current) clearTimeout(timerRef.current)
@@ -129,20 +215,29 @@ export function RuleRow({
         </select>
       </td>
 
-      {/* Channels */}
+      {/* Channels: only the ones the dispatcher can route for this event type */}
       <td style={{ padding: '10px 12px' }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          {CHANNELS_OPTIONS.map(({ value, labelKey }) => (
-            <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-              <input
-                type="checkbox"
-                checked={rule.channels.includes(value)}
-                onChange={() => toggleChannel(value)}
-                style={{ accentColor: colors.brand, width: 13, height: 13 }}
-              />
-              {t(labelKey)}
-            </label>
-          ))}
+          {options.map((value) => {
+            const isStale = stale.includes(value)
+            const label   = CHANNEL_LABEL_KEY[value] ? t(CHANNEL_LABEL_KEY[value]) : value
+            return (
+              <label
+                key={value}
+                title={isStale ? t('notificationRules.channelNotRoutable', { channel: label }) : undefined}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: isStale ? 'var(--color-danger)' : 'var(--color-slate)' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={rule.channels.includes(value)}
+                  onChange={() => toggleChannel(value)}
+                  style={{ accentColor: colors.brand, width: 13, height: 13 }}
+                />
+                {label}
+                {isStale && <AlertTriangle size={12} aria-label={t('notificationRules.channelNotRoutable', { channel: label })} />}
+              </label>
+            )
+          })}
         </div>
       </td>
 

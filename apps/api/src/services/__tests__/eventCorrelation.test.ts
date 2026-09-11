@@ -77,6 +77,7 @@ vi.mock('../../middleware/metrics.js', () => ({
   eventsFlappingTotal: { inc: vi.fn() }, eventsSuppressedTotal: { inc: vi.fn() },
   incidentsAutoOpenedTotal: { inc: vi.fn() }, incidentsAutoResolvedTotal: { inc: vi.fn() }, incidentsReopenedTotal: { inc: vi.fn() },
   eventsCorrelatedTotal: { inc: vi.fn() }, eventPipelineDurationSeconds: { observe: vi.fn() },
+  redisLockTimeoutsTotal: { inc: vi.fn() }, redisLockHoldSeconds: { observe: vi.fn() },
 }))
 
 const corr = await import('../eventCorrelation.js')

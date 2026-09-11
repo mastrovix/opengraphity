@@ -968,7 +968,7 @@ describe('setCIHealthOverride', () => {
   const healthRow = (over: Record<string, unknown> = {}) => ({ ciId: 'ci-1', health: 'down', healthSource: 'manual', lastEventAt: null, firingEvents: 0, ...over })
 
   it('health = down → SET health + health_source manual scoped per tenant, ci.health_changed con previous/new, audit, restituisce ciHealth', async () => {
-    onCypher([[/SET ci\.health = \$health, ci\.health_source = 'manual'/, { previous: 'operational' }], [/firingEvents/, healthRow()]])
+    onCypher([[/SET ci\.health = \$health, ci\.health_source = 'manual'/, { previous: 'operational', name: 'db-01' }], [/firingEvents/, healthRow()]])
     const out = await eventResolvers.Mutation.setCIHealthOverride(null, { ciId: 'ci-1', health: 'down' }, operator)
     expect(out).toEqual({ ciId: 'ci-1', health: 'down', healthSource: 'manual', lastEventAt: null, firingEvents: 0 })
     const set = callMatching(/health_source = 'manual'/)!
@@ -977,7 +977,8 @@ describe('setCIHealthOverride', () => {
     // health_since si sposta solo se la salute cambia (CASE sul valore precedente), mai incondizionatamente
     expect(set.cypher).toContain("ci.health_since = CASE WHEN previous IS NULL OR previous <> $health THEN $now ELSE ci.health_since END")
     expect(set.params).toMatchObject({ ciId: 'ci-1', tenantId: 'tenant-1', health: 'down' })
-    expect(publishEvent).toHaveBeenCalledWith('ci.health_changed', 'tenant-1', 'op-1', { id: 'ci-1', ci_id: 'ci-1', previous_health: 'operational', new_health: 'down' }, expect.any(String))
+    expect(set.cypher).toContain('RETURN previous, ci.name AS name')
+    expect(publishEvent).toHaveBeenCalledWith('ci.health_changed', 'tenant-1', 'op-1', { id: 'ci-1', ci_id: 'ci-1', name: 'db-01', previous_health: 'operational', new_health: 'down' }, expect.any(String))
     expect(recomputeCIHealth).not.toHaveBeenCalled()
     expect(audit).toHaveBeenCalledWith(operator, 'ci.health_override_set', 'ConfigurationItem', 'ci-1', { health: 'down', previous: 'operational' })
   })
