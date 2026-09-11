@@ -200,7 +200,7 @@ services:
       - opengrafo-network
 
   loki:
-    image: grafana/loki:2.9.0@sha256:b025a0220f390baaab01578aea2fe0ba677584d9f248c3fe5af15f84dd1de60d
+    image: grafana/loki:3.7.7@sha256:d70e4659623f3e109af669cae76fe2a5dd5be54e2298fe8aed380d982fbc2500
     container_name: opengrafo-loki
     ports:
       - "127.0.0.1:3100:3100"
