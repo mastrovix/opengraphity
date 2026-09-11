@@ -6,7 +6,7 @@
  * fuori vocabolario che resta scelto.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { ServiceRulesCard, validateRulesForm } from './ServiceRulesCard'
 import { GET_SERVICE_IMPACT_PREVIEW } from '@/graphql/queries'
 import { UPDATE_SERVICE_IMPACT_RULES } from '@/graphql/mutations'
@@ -22,11 +22,18 @@ const previewMock: GqlMock = {
   maxUsageCount: Number.POSITIVE_INFINITY,
 }
 
+/** Il riquadro è chiuso di default nella pagina: qui si apre subito, è il soggetto del test. */
+function openRules() {
+  fireEvent.click(screen.getByRole('button', { name: 'How it is computed' }))
+}
+
 function renderCard(canEdit: boolean, opts: { map?: ServiceMapDetail; extra?: GqlMock[]; onReload?: () => void } = {}) {
-  return renderWithProviders(
+  const r = renderWithProviders(
     <ServiceRulesCard map={opts.map ?? detail()} canEdit={canEdit} onReload={opts.onReload ?? (() => {})} />,
     { mocks: [previewMock, ...(opts.extra ?? [])] },
   )
+  openRules()
+  return r
 }
 
 const status = () => screen.getByTestId('rules-dirty')
@@ -151,6 +158,7 @@ describe('ServiceRulesCard', () => {
   it('anteprima: query fallita → riga visibile, mai un\'anteprima vecchia spacciata per nuova', async () => {
     const failing: GqlMock = { request: { query: GET_SERVICE_IMPACT_PREVIEW, variables: () => true }, error: new Error('engine busy') }
     const { user } = renderWithProviders(<ServiceRulesCard map={detail()} canEdit onReload={() => {}} />, { mocks: [failing] })
+    openRules()
     const down = await screen.findByLabelText('Down threshold (%)')
     await user.clear(down)
     await user.type(down, '70')

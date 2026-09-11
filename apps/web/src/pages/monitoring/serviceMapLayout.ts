@@ -38,8 +38,16 @@ export const NODE_H  = 66
 export const GAP_X   = 22
 export const GAP_Y   = 70
 export const PAD     = 16
-/** Colonna a sinistra con l'etichetta della riga («Livello 2»). */
-export const LABEL_W = 88
+/**
+ * Colonna delle etichette di riga («Livello 2»), FUORI dall'area che scorre:
+ * la disegna il componente accanto alla mappa, non fa parte delle coordinate
+ * calcolate qui. Larga quanto basta per «Livello N» in maiuscolo.
+ *
+ * Prima era un velo `position: sticky` sopra la mappa: restava visibile ma le
+ * carte ci passavano SOTTO appena si scorreva verso destra, e la prima di ogni
+ * riga spariva a metà. Una colonna vera non può sovrapporsi a niente.
+ */
+export const LABEL_W = 96
 /** Chip «+N componenti fuori dal percorso» in coda alla riga (modalità percorso). */
 export const CHIP_W  = 190
 export const CHIP_H  = 30
@@ -109,10 +117,46 @@ export interface LayoutOptions {
   expanded?: ReadonlySet<number>
   /** Nodi da tenere visibili comunque (il selezionato, il nodo appena cercato). */
   keep?:     ReadonlySet<string>
+  /**
+   * «Isola»: mostra SOLO la catena di questo componente — lui, i componenti da
+   * cui si arriva risalendo `via` fino al servizio, e tutti quelli che
+   * dipendono da lui a valle. Gli altri non compaiono affatto (nessun chip: qui
+   * il nascondere è la richiesta, non un rimedio alla scala). Un id che non è
+   * sulla mappa è ignorato: la mappa resta intera.
+   */
+  isolate?:  string | null
 }
 
 const NO_NUMBERS = new Set<number>()
 const NO_IDS     = new Set<string>()
+
+/**
+ * La catena di un componente: lui stesso, i suoi antenati (risalendo `via`) e
+ * i suoi discendenti (chiusura transitiva di chi ha lui come `via`). Il
+ * servizio non entra nell'insieme perché è la radice, disegnata sempre.
+ *
+ * `via` è un albero, ma i dati arrivano dal grafo: le due visite si fermano su
+ * un id già visto, così un `via` che gira in tondo non blocca la pagina.
+ */
+export function chainOf(id: string, nodes: readonly ServiceMapNode[]): Set<string> {
+  const byId = new Map(nodes.map((n) => [n.ci.id, n]))
+  const out = new Set<string>()
+  if (!byId.has(id)) return out
+
+  for (let cur: string | null = id; cur !== null && byId.has(cur) && !out.has(cur); cur = byId.get(cur)!.via) out.add(cur)
+
+  const children = new Map<string, string[]>()
+  for (const n of nodes) if (n.via !== null) children.set(n.via, [...(children.get(n.via) ?? []), n.ci.id])
+  const queue = [id]
+  while (queue.length > 0) {
+    for (const child of children.get(queue.shift()!) ?? []) {
+      if (out.has(child)) continue
+      out.add(child)
+      queue.push(child)
+    }
+  }
+  return out
+}
 
 /** Relazione sintetica fra il servizio e le applicazioni di livello 1. */
 export const ROOT_REL = 'REALIZES'
@@ -171,13 +215,19 @@ export function layoutServiceMap(
   }
 
   // ── righe ────────────────────────────────────────────────────────────────
+  // «Isola»: fuori dalla catena non esiste nulla, nemmeno la riga vuota.
+  // Un id che non è sulla mappa dà una catena vuota: la mappa resta intera (non si svuota la pagina per un id stantio).
+  const isolated = options.isolate == null ? null : chainOf(options.isolate, nodes)
+  const chain   = isolated !== null && isolated.size > 0 ? isolated : null
+  const visible = chain === null ? nodes : nodes.filter((n) => chain.has(n.ci.id))
+
   const levelSet = new Set<number>([0])
-  for (const n of nodes) levelSet.add(n.level)
+  for (const n of visible) levelSet.add(n.level)
   const levels = [...levelSet].sort((a, b) => a - b)
   const rowIndex = new Map(levels.map((l, i) => [l, i]))
 
   const rows: ServiceMapNode[][] = levels.map(() => [])
-  for (const n of nodes) rows[rowIndex.get(n.level)!]!.push(n)
+  for (const n of visible) rows[rowIndex.get(n.level)!]!.push(n)
 
   const orderIndex = new Map<string, number>([[rootId, 0]])
   for (const row of rows) {
@@ -190,7 +240,8 @@ export function layoutServiceMap(
   }
 
   // ── modalità «solo percorso d'impatto» ───────────────────────────────────
-  const focus    = options.focus === true
+  // Isolando, la catena è già corta: la modalità percorso non si applica.
+  const focus    = options.focus === true && chain === null
   const expanded = options.expanded ?? NO_NUMBERS
   const keepIds  = options.keep ?? NO_IDS
   const shown:  ServiceMapNode[][] = []
@@ -218,11 +269,11 @@ export function layoutServiceMap(
     return Math.max(NODE_W, nodesW + chipW)
   }
   const maxRow = Math.max(rowWidth(1, false), ...shown.map((r, i) => rowWidth(r.length, hidden[i]!.length > 0)))
-  const width  = PAD * 2 + LABEL_W + maxRow
+  const width  = PAD * 2 + maxRow
   const height = PAD * 2 + levels.length * NODE_H + (levels.length - 1) * GAP_Y
 
   /** x del posto `index` di una riga: righe allineate a sinistra, il servizio è sempre in alto a sinistra (C-9). */
-  const slotX = (index: number) => PAD + LABEL_W + index * (NODE_W + GAP_X)
+  const slotX = (index: number) => PAD + index * (NODE_W + GAP_X)
   const rowY  = (level: number) => PAD + rowIndex.get(level)! * (NODE_H + GAP_Y)
 
   const placed: PlacedNode[] = []

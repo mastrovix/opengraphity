@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   layoutServiceMap, causeSequence,
-  NODE_H, NODE_W, GAP_X, GAP_Y, PAD, LABEL_W, CHIP_W, FOCUS_ROW_MAX, ROOT_REL,
+  NODE_H, NODE_W, GAP_X, GAP_Y, PAD, CHIP_W, FOCUS_ROW_MAX, ROOT_REL,
 } from './serviceMapLayout'
 import type { ImpactCause, ServiceMapEdge, ServiceMapNode } from '@/types/services'
 
@@ -129,10 +129,36 @@ describe('layoutServiceMap alla scala', () => {
   it('righe allineate a sinistra: con 8 e con 120 nodi su un livello il servizio resta in alto a sinistra', () => {
     for (const count of [8, 120]) {
       const l = layoutServiceMap('svc', [n('api-03', 1, null), ...wide(count)], [], [])
-      expect(rootX(l)).toBe(PAD + LABEL_W)                     // primo posto della riga, non il centro della riga più larga
-      expect(l.nodes.find((p) => p.id === 'api-03')!.x).toBe(PAD + LABEL_W)
-      expect(l.width).toBe(PAD * 2 + LABEL_W + count * NODE_W + (count - 1) * GAP_X)
+      expect(rootX(l)).toBe(PAD)                               // primo posto della riga, non il centro della riga più larga
+      expect(l.nodes.find((p) => p.id === 'api-03')!.x).toBe(PAD)
+      // la colonna delle etichette sta FUORI dall'area che scorre: non entra nelle coordinate
+      expect(l.width).toBe(PAD * 2 + count * NODE_W + (count - 1) * GAP_X)
     }
+  })
+
+  it('«Isola»: resta solo la catena del componente — lui, i suoi antenati e i suoi discendenti', () => {
+    const nodes = [n('api-03', 1, null), n('db-01', 2, 'api-03'), n('cache-02', 2, 'api-03'), n('san-01', 3, 'db-01'), n('disk-9', 4, 'san-01'), n('altro', 1, null)]
+    const l = layoutServiceMap('svc', nodes, EDGES, [], { isolate: 'db-01' })
+    const ids = l.nodes.filter((p) => p.node !== null).map((p) => p.id).sort()
+    expect(ids).toEqual(['api-03', 'db-01', 'disk-9', 'san-01'])   // antenato, lui, discendenti; niente fratelli né altri rami
+    expect(l.nodes.find((p) => p.node === null)).toBeDefined()     // il servizio resta: è la radice
+    expect(l.collapsed).toEqual([])                                 // isolando non ci sono chip: il nascondere è la richiesta
+    // gli archi verso i nodi fuori catena spariscono con loro
+    expect(l.edges.every((x) => [...ids, 'svc'].includes(x.source) && [...ids, 'svc'].includes(x.target))).toBe(true)
+  })
+
+  it('«Isola»: le righe rimaste sono compattate, un id sconosciuto non nasconde nulla, un `via` circolare non blocca', () => {
+    const nodes = [n('api-03', 1, null), n('db-01', 2, 'api-03'), n('san-01', 3, 'db-01')]
+    // livello 2 fuori catena → la riga sparisce e le altre si compattano
+    const only = layoutServiceMap('svc', [...nodes, n('solo', 2, null)], [], [], { isolate: 'solo' })
+    expect(only.levels).toEqual([0, 2])
+    expect(only.nodes.filter((p) => p.node !== null).map((p) => p.id)).toEqual(['solo'])
+
+    const unknown = layoutServiceMap('svc', nodes, [], [], { isolate: 'non-esiste' })
+    expect(unknown.nodes).toHaveLength(nodes.length + 1)
+
+    const loop = [n('a', 1, 'b'), n('b', 2, 'a')]
+    expect(layoutServiceMap('svc', loop, [], [], { isolate: 'a' }).nodes.filter((p) => p.node !== null).map((p) => p.id).sort()).toEqual(['a', 'b'])
   })
 
   it('modalità percorso: restano le cause, i loro antenati e i fratelli diretti; il resto in un chip per livello', () => {
@@ -149,7 +175,7 @@ describe('layoutServiceMap alla scala', () => {
     const chip = focused.collapsed.find((c) => c.level === 2)!
     expect(chip.count).toBe(120 - row2.length)
     expect(chip.ids).not.toContain('db-01')
-    expect(chip.x).toBe(PAD + LABEL_W + row2.length * (NODE_W + GAP_X))
+    expect(chip.x).toBe(PAD + row2.length * (NODE_W + GAP_X))
     expect(focused.width).toBeGreaterThanOrEqual(chip.x + CHIP_W)
     expect(focused.width).toBeLessThan(full.width)                   // è il punto: la riga si legge
     // il livello 1 (antenato) resta per intero

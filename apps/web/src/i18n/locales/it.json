@@ -2724,7 +2724,6 @@
       },
       "map": {
         "levelService": "Servizio",
-        "levelEntry": "Livello 1 · applicazioni",
         "level": "Livello {{level}}",
         "empty": "La mappa non ha componenti: il servizio non realizza alcuna applicazione (REALIZES) o la costruzione non ha trovato relazioni.",
         "nodeLabel": "{{name}} · {{type}} · {{health}}",
@@ -2749,7 +2748,13 @@
           "pathDegraded": "Percorso d'impatto (degradato)",
           "edge": "Relazione viva",
           "edgeMissing": "Tratto del percorso senza relazione viva"
-        }
+        },
+        "isolate": "Isola",
+        "isolateOff": "Mostra tutta la mappa",
+        "isolateHint": "Mostra solo la catena di questo componente: il servizio, i componenti da cui si arriva e quelli che dipendono da lui",
+        "isolated": "Catena di {{name}}",
+        "isolatedHidden_one": "{{count}} componente fuori dalla catena",
+        "isolatedHidden_other": "{{count}} componenti fuori dalla catena"
       },
       "why": {
         "weight": "peso {{weight}}",
@@ -2768,7 +2773,6 @@
         "componentsEmpty": "La mappa non ha componenti.",
         "service": "Servizio",
         "node": "Componente",
-        "closeNode": "Chiudi il pannello del componente",
         "rules": "Come si calcola",
         "evaluated": "Valutata {{ago}}",
         "neverEvaluated": "Mai valutata",

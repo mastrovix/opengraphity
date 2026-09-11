@@ -2724,7 +2724,6 @@
       },
       "map": {
         "levelService": "Service",
-        "levelEntry": "Level 1 · applications",
         "level": "Level {{level}}",
         "empty": "The map has no components: the service realizes no application (REALIZES) or the build found no relationship.",
         "nodeLabel": "{{name}} · {{type}} · {{health}}",
@@ -2749,7 +2748,13 @@
           "pathDegraded": "Impact path (degraded)",
           "edge": "Live relationship",
           "edgeMissing": "Path segment without a live relationship"
-        }
+        },
+        "isolate": "Isolate",
+        "isolateOff": "Show the whole map",
+        "isolateHint": "Show only the chain of this component: the service, the components it is reached from and those that depend on it",
+        "isolated": "Chain of {{name}}",
+        "isolatedHidden_one": "{{count}} component outside the chain",
+        "isolatedHidden_other": "{{count}} components outside the chain"
       },
       "why": {
         "weight": "weight {{weight}}",
@@ -2768,7 +2773,6 @@
         "componentsEmpty": "The map has no components.",
         "service": "Service",
         "node": "Component",
-        "closeNode": "Close the component panel",
         "rules": "How it is computed",
         "evaluated": "Evaluated {{ago}}",
         "neverEvaluated": "Never evaluated",

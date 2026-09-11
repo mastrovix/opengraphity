@@ -48,13 +48,14 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Boxes, RotateCcw, Pause, Play, Trash2, AlertTriangle, Info, Star, Loader2, X, ArrowRight, GitCompareArrows, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Boxes, RotateCcw, Pause, Play, Trash2, AlertTriangle, Focus, Info, Star, Loader2, ArrowRight, GitCompareArrows, RefreshCw } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageLoader } from '@/components/PageLoader'
 import { QueryError } from '@/components/QueryError'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/Button'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { Modal } from '@/components/Modal'
 import { DetailField } from '@/components/ui/DetailField'
 import { Pill } from '@/components/ui/Pill'
 import { useMe } from '@/hooks/useMe'
@@ -123,6 +124,8 @@ export function ServiceDetailPage() {
   const confirm = useConfirm()
   const { ciTypes } = useMetamodel()
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  /** «Isola»: la mappa mostra solo la catena di questo componente. Vive qui perché il pulsante sta nel pannello del componente. */
+  const [isolatedId, setIsolatedId] = useState<string | null>(null)
   const [updateOpen, setUpdateOpen] = useState(false)
 
   /**
@@ -319,60 +322,67 @@ export function ServiceDetailPage() {
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: 24, alignItems: 'start' }}>
-        <div>
-          <SectionCard title={t('monitoring.services.detail.map')} count={map.nodeCount} defaultOpen>
-            <ServiceMapCanvas map={map} selectedId={selectedId} onSelect={setSelectedId} />
-          </SectionCard>
+      {/*
+        Una sola colonna, a tutta larghezza: la mappa a livelli e la tabella dei
+        componenti sono larghe per natura e in due colonne finivano in un terzo
+        di schermo. L'ordine segue l'urgenza — cosa è rotto, perché, dove — e
+        solo i primi tre riquadri si aprono da soli: il resto è configurazione e
+        storia, che si guardano quando servono.
+      */}
+      <div>
+        {/* Incident aperto dal monitoraggio per questo servizio (ondata 3): la prima cosa da sapere. */}
+        <ServiceOpenIncidentCard incident={map.openIncident} openIncidentFrom={map.rules.openIncidentFrom} />
 
-          <SectionCard title={t('monitoring.services.detail.why')} count={map.explanation.length} defaultOpen>
-            {map.explanation.length === 0
-              ? <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: colors.slateLight }}>{t('monitoring.services.detail.whyEmpty')}</p>
-              : (
-                <ol data-testid="why-list" style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {map.explanation.map((c) => <CauseRow key={c.ci.id} cause={c} serviceName={map.service.name} typeLabel={ciTypeLabel(c.ci.type)} onSelect={setSelectedId} />)}
-                </ol>
-              )}
-          </SectionCard>
+        <SectionCard title={t('monitoring.services.detail.why')} count={map.explanation.length} defaultOpen>
+          {map.explanation.length === 0
+            ? <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: colors.slateLight }}>{t('monitoring.services.detail.whyEmpty')}</p>
+            : (
+              <ol data-testid="why-list" style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {map.explanation.map((c) => <CauseRow key={c.ci.id} cause={c} serviceName={map.service.name} typeLabel={ciTypeLabel(c.ci.type)} onSelect={setSelectedId} />)}
+              </ol>
+            )}
+        </SectionCard>
 
-          <SectionCard title={t('monitoring.services.detail.components')} count={map.nodeCount} defaultOpen>
-            <ServiceComponentsTable map={map} canEdit={isAdmin} ciTypeLabel={ciTypeLabel} onReload={() => void refetch()} />
-          </SectionCard>
+        <SectionCard title={t('monitoring.services.detail.map')} count={map.nodeCount} defaultOpen>
+          <ServiceMapCanvas map={map} selectedId={selectedId} onSelect={setSelectedId} isolatedId={isolatedId} onIsolate={setIsolatedId} />
+        </SectionCard>
 
-          <ServiceHistorySection mapId={map.id} entries={map.history} total={map.historyCount} />
-        </div>
+        <SectionCard title={t('monitoring.services.detail.components')} count={map.nodeCount}>
+          <ServiceComponentsTable map={map} canEdit={isAdmin} ciTypeLabel={ciTypeLabel} onReload={() => void refetch()} />
+        </SectionCard>
 
-        <div>
-          {selected && (
-            <NodePanel
-              node={selected}
-              typeLabel={ciTypeLabel(selected.ci.type)}
-              /* C-12: «da dove si arriva» — il predecessore, che la sincronizzazione aggiorna; cliccarlo lo seleziona sulla mappa. */
-              via={selected.via === null ? null : (nodeById.get(selected.via)?.ci ?? null)}
-              viaMissing={selected.via !== null && !nodeById.has(selected.via)}
-              onSelect={setSelectedId}
-              onClose={() => setSelectedId(null)}
-            />
-          )}
+        {/* C-12: la scheda tiene la sola CONFIGURAZIONE; stato, valutazione, sincronizzazione e versione stanno una volta sola, in testata. */}
+        <SectionCard title={t('monitoring.services.detail.service')}>
+          <DetailField label={t('monitoring.services.detail.fields.service')} value={map.service.name} />
+          <DetailField label={t('monitoring.services.detail.fields.criticality')} value={map.service.criticality ? enumLabel(map.service.criticality) : null} />
+          <DetailField label={t('monitoring.services.detail.fields.owner')} value={map.service.ownerGroup?.name ?? null} />
+          <DetailField label={t('monitoring.services.detail.fields.maxDepth')} value={String(map.maxDepth)} />
+          <DetailField label={t('monitoring.services.detail.fields.relationshipTypes')} value={map.relationshipTypes.length > 0 ? map.relationshipTypes.join(', ') : null} />
+          <DetailField label={t('monitoring.services.detail.fields.builtFrom')} value={builtFromLabel(map.builtFrom, t)} />
+          <DetailField label={t('monitoring.services.detail.fields.excluded')} value={t('monitoring.services.detail.fields.excludedCount', { count: map.excluded.length })} />
+          <DetailField label={t('monitoring.services.detail.fields.updatedAt')} value={map.updatedAt ? `${formatDateTime(map.updatedAt)} · ${timeAgo(map.updatedAt)}` : null} />
+          {isAdmin && <ServiceAutoSyncToggle map={map} onReload={() => void refetch()} />}
+        </SectionCard>
 
-          {/* Incident aperto dal monitoraggio per questo servizio (ondata 3). */}
-          <ServiceOpenIncidentCard incident={map.openIncident} openIncidentFrom={map.rules.openIncidentFrom} />
+        <ServiceRulesCard map={map} canEdit={isAdmin} onReload={() => void refetch()} />
 
-          {/* C-12: la scheda tiene la sola CONFIGURAZIONE; stato, valutazione, sincronizzazione e versione stanno una volta sola, in testata. */}
-          <SectionCard title={t('monitoring.services.detail.service')} defaultOpen>
-            <DetailField label={t('monitoring.services.detail.fields.service')} value={map.service.name} />
-            <DetailField label={t('monitoring.services.detail.fields.criticality')} value={map.service.criticality ? enumLabel(map.service.criticality) : null} />
-            <DetailField label={t('monitoring.services.detail.fields.owner')} value={map.service.ownerGroup?.name ?? null} />
-            <DetailField label={t('monitoring.services.detail.fields.maxDepth')} value={String(map.maxDepth)} />
-            <DetailField label={t('monitoring.services.detail.fields.relationshipTypes')} value={map.relationshipTypes.length > 0 ? map.relationshipTypes.join(', ') : null} />
-            <DetailField label={t('monitoring.services.detail.fields.builtFrom')} value={builtFromLabel(map.builtFrom, t)} />
-            <DetailField label={t('monitoring.services.detail.fields.excluded')} value={t('monitoring.services.detail.fields.excludedCount', { count: map.excluded.length })} />
-            <DetailField label={t('monitoring.services.detail.fields.updatedAt')} value={map.updatedAt ? `${formatDateTime(map.updatedAt)} · ${timeAgo(map.updatedAt)}` : null} />
-            {isAdmin && <ServiceAutoSyncToggle map={map} onReload={() => void refetch()} />}
-          </SectionCard>
+        <ServiceHistorySection mapId={map.id} entries={map.history} total={map.historyCount} />
 
-          <ServiceRulesCard map={map} canEdit={isAdmin} onReload={() => void refetch()} />
-        </div>
+        {/* Il componente scelto: finestra modale sopra la pagina, non una scheda di fianco. */}
+        {selected && (
+          <NodePanel
+            node={selected}
+            typeLabel={ciTypeLabel(selected.ci.type)}
+            isolated={isolatedId === selected.ci.id}
+            /* Isolando si chiude la finestra: la catena va guardata sulla mappa, che la finestra copre. */
+            onIsolate={() => { setIsolatedId((cur) => (cur === selected.ci.id ? null : selected.ci.id)); setSelectedId(null) }}
+            /* C-12: «da dove si arriva» — il predecessore, che la sincronizzazione aggiorna; cliccarlo lo seleziona sulla mappa. */
+            via={selected.via === null ? null : (nodeById.get(selected.via)?.ci ?? null)}
+            viaMissing={selected.via !== null && !nodeById.has(selected.via)}
+            onSelect={setSelectedId}
+            onClose={() => setSelectedId(null)}
+          />
+        )}
       </div>
 
       {isAdmin && <UpdateServiceMapDialog map={map} open={updateOpen} onClose={() => setUpdateOpen(false)} />}
@@ -423,25 +433,26 @@ interface NodePanelProps {
   via:        { id: string; name: string } | null
   /** `via` valorizzato ma non incluso nella mappa: si dice, non si tace. */
   viaMissing: boolean
+  /** La mappa sta già mostrando solo la catena di QUESTO componente. */
+  isolated:   boolean
+  onIsolate:  () => void
   onSelect:   (id: string) => void
   onClose:    () => void
 }
 
 /** Pannello laterale del componente selezionato sulla mappa. */
-function NodePanel({ node, typeLabel, via, viaMissing, onSelect, onClose }: NodePanelProps) {
+/**
+ * Il componente scelto si apre in una finestra modale, non in una scheda della
+ * colonna: la mappa è larga e il dettaglio va letto senza cercarlo di fianco.
+ * La finestra porta con sé quel che serve (Esc, trappola del fuoco, ritorno del
+ * fuoco al nodo da cui si è partiti).
+ */
+function NodePanel({ node, typeLabel, via, viaMissing, isolated, onIsolate, onSelect, onClose }: NodePanelProps) {
   const { t } = useTranslation()
   const yesNo = (v: boolean) => (v ? t('common.yes') : t('common.no'))
   const consoleLink = `/events?ciId=${encodeURIComponent(node.ci.id)}`
   return (
-    <SectionCard
-      title={t('monitoring.services.detail.node')}
-      defaultOpen
-      headerRight={
-        <button type="button" onClick={onClose} aria-label={t('monitoring.services.detail.closeNode')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.white, padding: 4, display: 'inline-flex' }}>
-          <X size={16} aria-hidden="true" />
-        </button>
-      }
-    >
+    <Modal open onClose={onClose} title={t('monitoring.services.detail.node')} width={620}>
       <div data-testid="node-panel" data-ci-id={node.ci.id} style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
         <div style={{ gridColumn: '1 / -1' }}>
           <DetailField label={t('monitoring.services.detail.nodeFields.name')} value={<Link to={ciPath(node.ci)} style={linkStyle}>{node.ci.name}</Link>} />
@@ -472,6 +483,19 @@ function NodePanel({ node, typeLabel, via, viaMissing, onSelect, onClose }: Node
           value={node.contributes ? yesNo(true) : `${yesNo(false)} — ${excludedReasonLabel(t, node.excludedReason) ?? t('monitoring.services.excludedReason.unstated')}`}
         />
         <DetailField label={t('monitoring.services.detail.nodeFields.addedBy')} value={addedByLabel(node.addedBy, t)} />
+        {/* «Isola»: la mappa mostra solo la catena di questo componente (lui, da dove si arriva, chi dipende da lui). */}
+        <div style={{ gridColumn: '1 / -1' }}>
+          <Button
+            variant="secondary"
+            size="sm"
+            aria-pressed={isolated}
+            icon={<Focus size={14} aria-hidden="true" />}
+            title={t('monitoring.services.map.isolateHint')}
+            onClick={onIsolate}
+          >
+            {isolated ? t('monitoring.services.map.isolateOff') : t('monitoring.services.map.isolate')}
+          </Button>
+        </div>
         <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 'var(--font-size-body)' }}>
           <Link to={consoleLink} style={{ ...linkStyle, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             {t('monitoring.services.detail.nodeFields.alarms')} <ArrowRight size={11} aria-hidden="true" />
@@ -481,7 +505,7 @@ function NodePanel({ node, typeLabel, via, viaMissing, onSelect, onClose }: Node
           </Link>
         </div>
       </div>
-    </SectionCard>
+    </Modal>
   )
 }
 

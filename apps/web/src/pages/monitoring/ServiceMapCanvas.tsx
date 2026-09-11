@@ -21,8 +21,9 @@
  * - righe allineate a sinistra (il servizio è sempre in alto a sinistra);
  * - il contenitore scorre sul nodo selezionato (`scrollIntoView`), e
  *   all'apertura sulla prima causa (o sul servizio se non ce ne sono);
- * - le etichette dei livelli stanno in una colonna FISSA (`position: sticky;
- *   left: 0`): prima sparivano al primo scorrimento orizzontale;
+ * - le etichette dei livelli stanno in una COLONNA A PARTE, fuori dall'area che
+ *   scorre: prima sparivano al primo scorrimento orizzontale, poi (come velo
+ *   `position: sticky`) restavano visibili ma le carte ci passavano sotto;
  * - sopra FOCUS_THRESHOLD nodi si apre in modalità «solo percorso d'impatto»
  *   (il resto di ogni riga in un chip «+N», espandibile);
  * - ricerca del nodo per nome e zoom «Adatta» (0,5–1) con `transform: scale()`.
@@ -54,10 +55,17 @@ import {
 import { SERVICE_HEALTH_FAMILY, causeSequenceLabel, ciHealthLabel, nodeHealthFamily, serviceHealthFamily, serviceHealthLabel } from './servicesShared'
 import type { ServiceMapDetail } from '@/types/services'
 
+/** Tipo CI della radice della mappa: dà alla carta del servizio la sua icona, come per ogni altro nodo. */
+const SERVICE_CI_TYPE = 'business_application'
+
 interface Props {
   map:        ServiceMapDetail
   selectedId: string | null
   onSelect:   (id: string | null) => void
+  /** «Isola»: la mappa mostra solo la catena di questo componente (null = mappa intera). */
+  isolatedId?: string | null
+  /** Per togliere l'isolamento dalla mappa stessa, senza tornare al pannello del componente. */
+  onIsolate?:  (id: string | null) => void
 }
 
 const PATH_COLOR: Record<PathSeverity, string> = {
@@ -77,12 +85,24 @@ const SR_ONLY: React.CSSProperties = {
   position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
 }
 
-export function ServiceMapCanvas({ map, selectedId, onSelect }: Props) {
+export function ServiceMapCanvas({ map, selectedId, onSelect, isolatedId = null, onIsolate }: Props) {
   const { t } = useTranslation()
   const { getCIType } = useMetamodel()
   const markerBase = useId()
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const labelsRef = useRef<HTMLDivElement | null>(null)
   const nodeRefs  = useRef(new Map<string, HTMLElement>())
+
+  /**
+   * Le etichette seguono lo scorrimento VERTICALE della mappa (quello
+   * orizzontale non le riguarda: stanno in una colonna a parte). Si scrive
+   * direttamente sul nodo invece di passare da uno stato React: lo scorrimento
+   * emette decine di eventi al secondo e non deve ridisegnare 500 carte.
+   */
+  const syncLabels = useCallback(() => {
+    const el = labelsRef.current
+    if (el) el.style.transform = `translateY(${-(scrollRef.current?.scrollTop ?? 0)}px)`
+  }, [])
 
   /**
    * Modalità percorso di default solo se c'è un percorso da isolare: con tanti
@@ -98,18 +118,20 @@ export function ServiceMapCanvas({ map, selectedId, onSelect }: Props) {
   // sparire sotto le mani di chi l'ha appena scelto dalla ricerca o da «Perché».
   const keep = useMemo(() => new Set(selectedId === null ? [] : [selectedId]), [selectedId])
   const layout = useMemo(
-    () => layoutServiceMap(map.service.id, map.nodes, map.edges, map.explanation, { focus, expanded, keep }),
-    [map.service.id, map.nodes, map.edges, map.explanation, focus, expanded, keep],
+    () => layoutServiceMap(map.service.id, map.nodes, map.edges, map.explanation, { focus, expanded, keep, isolate: isolatedId }),
+    [map.service.id, map.nodes, map.edges, map.explanation, focus, expanded, keep, isolatedId],
   )
+
+  /** Isolando, quanti componenti restano fuori: va detto, altrimenti la mappa sembra più piccola di quello che è. */
+  const isolated = isolatedId === null ? null : map.nodes.find((n) => n.ci.id === isolatedId) ?? null
+  const hiddenByIsolate = isolated === null ? 0 : map.nodes.length - layout.nodes.filter((p) => p.node !== null).length
 
   const typeLabel = (type: string) => {
     const key = ciTypeLabelKey(type)
     return key ? t(key) : (getCIType(type)?.label ?? enumLabel(type))
   }
-  const levelLabel = (level: number) =>
-    level === 0 ? t('monitoring.services.map.levelService')
-    : level === 1 ? t('monitoring.services.map.levelEntry')
-    : t('monitoring.services.map.level', { level })
+  /** L'etichetta della riga è il livello e basta, servizio compreso: «Livello 0», «Livello 1», … */
+  const levelLabel = (level: number) => t('monitoring.services.map.level', { level })
   const marker = (sev: PathSeverity | null) => `url(#${markerBase}-${sev ?? 'edge'})`
 
   // ── scorrimento sul nodo che conta ─────────────────────────────────────────
@@ -231,6 +253,26 @@ export function ServiceMapCanvas({ map, selectedId, onSelect }: Props) {
         <p role="status" style={{ margin: '0 0 12px', fontSize: 'var(--font-size-body)', color: palette.warning.text }}>{t('monitoring.services.map.empty')}</p>
       )}
 
+      {isolated && (
+        <div
+          role="status"
+          data-testid="map-isolated-banner"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10,
+            padding: '6px 10px', borderRadius: 8, border: `1px solid ${palette.purple.border}`,
+            background: palette.purple.tint, color: palette.purple.text, fontSize: 'var(--font-size-body)',
+          }}
+        >
+          <span>{t('monitoring.services.map.isolated', { name: isolated.ci.name })}</span>
+          <span>{t('monitoring.services.map.isolatedHidden', { count: hiddenByIsolate })}</span>
+          {onIsolate && (
+            <Button variant="secondary" size="xs" icon={<X size={13} aria-hidden="true" />} onClick={() => onIsolate(null)}>
+              {t('monitoring.services.map.isolateOff')}
+            </Button>
+          )}
+        </div>
+      )}
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
         <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
           <Search size={13} aria-hidden="true" style={{ position: 'absolute', left: 8, color: colors.slateLight }} />
@@ -243,7 +285,7 @@ export function ServiceMapCanvas({ map, selectedId, onSelect }: Props) {
             style={{ paddingLeft: 26, width: 200 }}
           />
         </span>
-        {map.nodes.length > FOCUS_THRESHOLD && map.explanation.length > 0 && (
+        {isolated === null && map.nodes.length > FOCUS_THRESHOLD && map.explanation.length > 0 && (
           <Button variant="secondary" size="xs" aria-pressed={focus} onClick={toggleFocus}>
             {focus ? t('monitoring.services.map.showAll') : t('monitoring.services.map.showPathOnly')}
           </Button>
@@ -277,13 +319,43 @@ export function ServiceMapCanvas({ map, selectedId, onSelect }: Props) {
 
       <p data-testid="map-summary" style={SR_ONLY}>{summary}</p>
 
-      {/* La mappa scorre nel proprio contenitore, mai la pagina. */}
+      {/*
+        Due colonne affiancate: a sinistra le etichette dei livelli, che NON
+        scorrono in orizzontale, a destra la mappa, che scorre nel proprio
+        contenitore (mai la pagina). Le etichette erano un velo sopra la mappa:
+        restavano visibili ma le carte ci passavano sotto appena si scorreva a
+        destra. Una colonna vera non si sovrappone a niente; in verticale segue
+        lo scorrimento della mappa.
+      */}
       <div
-        ref={scrollRef}
         role="group"
         aria-label={t('monitoring.services.map.groupLabel', { name: map.service.name })}
-        style={{ overflow: 'auto', maxHeight: 640, border: `1px solid ${colors.border}`, borderRadius: 10, background: palette.neutral.surface1 }}
+        style={{ display: 'flex', alignItems: 'stretch', maxHeight: 640, border: `1px solid ${colors.border}`, borderRadius: 10, background: palette.neutral.surface1, overflow: 'hidden' }}
       >
+        <div aria-hidden="true" style={{ position: 'relative', flexShrink: 0, width: LABEL_W * scale, overflow: 'hidden', borderRight: `1px solid ${colors.border}` }}>
+          <div ref={labelsRef} style={{ position: 'absolute', inset: 0 }}>
+            {layout.levels.map((level, i) => (
+              <div
+                key={level}
+                data-testid="map-level-label"
+                style={{
+                  // Riquadro alto quanto la carta e centrato: l'etichetta può
+                  // andare a capo (due righe) senza scendere sotto la riga.
+                  position: 'absolute', left: PAD * scale, top: (PAD + i * (NODE_H + GAP_Y)) * scale,
+                  width: (LABEL_W - PAD - 12) * scale, height: NODE_H * scale,
+                  display: 'flex', alignItems: 'center',
+                  fontSize: 'var(--font-size-label)', fontWeight: 600, letterSpacing: '0.05em',
+                  textTransform: 'uppercase', color: colors.slateLight, lineHeight: 1.2,
+                  overflowWrap: 'anywhere',
+                }}
+              >
+                {levelLabel(level)}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div ref={scrollRef} onScroll={syncLabels} style={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
         <div
           data-testid="service-map"
           data-focus={focus ? 'true' : 'false'}
@@ -324,7 +396,7 @@ export function ServiceMapCanvas({ map, selectedId, onSelect }: Props) {
             </svg>
 
             {layout.nodes.map((p) => p.node === null
-              ? <RootCard key={p.id} placed={p} map={map} label={t('monitoring.services.map.levelService')} register={register(p.id)} />
+              ? <RootCard key={p.id} placed={p} map={map} label={t('monitoring.services.map.levelService')} icon={getCIType(SERVICE_CI_TYPE)} register={register(p.id)} />
               : (
                 <NodeCard
                   key={p.id}
@@ -367,22 +439,7 @@ export function ServiceMapCanvas({ map, selectedId, onSelect }: Props) {
             ))}
           </div>
 
-          {/* Colonna delle etichette: ferma a sinistra mentre la mappa scorre (altezza 0, non occupa spazio). */}
-          <div aria-hidden="true" style={{ position: 'sticky', left: 0, top: 0, width: LABEL_W * scale, height: 0, zIndex: 2 }}>
-            {layout.levels.map((level, i) => (
-              <div
-                key={level}
-                data-testid="map-level-label"
-                style={{
-                  position: 'absolute', left: PAD * scale, top: (PAD + i * (NODE_H + GAP_Y) + NODE_H / 2 - 8) * scale,
-                  width: (LABEL_W - 8) * scale, fontSize: 'var(--font-size-label)', fontWeight: 600, letterSpacing: '0.05em',
-                  textTransform: 'uppercase', color: colors.slateLight, lineHeight: 1.2, background: palette.neutral.surface1,
-                }}
-              >
-                {levelLabel(level)}
-              </div>
-            ))}
-          </div>
+        </div>
         </div>
       </div>
       <Legend />
@@ -390,7 +447,59 @@ export function ServiceMapCanvas({ map, selectedId, onSelect }: Props) {
   )
 }
 
-function RootCard({ placed: p, map, label, register }: { placed: PlacedNode; map: ServiceMapDetail; label: string; register: (el: HTMLElement | null) => void }) {
+/**
+ * Impaginato di TUTTE le carte della mappa, servizio compreso: riquadro di
+ * dimensione fissa (il layout calcola le posizioni su NODE_W × NODE_H) con due
+ * righe centrate. `flexShrink: 0` e l'interlinea esplicita nelle righe sono
+ * obbligatori: senza, il flex comprime le righe sotto la loro altezza naturale
+ * e il testo si sovrappone.
+ */
+const CARD_STYLE = {
+  position: 'absolute', width: NODE_W, height: NODE_H, boxSizing: 'border-box',
+  padding: '8px 10px', borderRadius: 10,
+  display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3, overflow: 'hidden',
+} as const satisfies React.CSSProperties
+
+/** Testo che si accorcia con i puntini invece di allargare la carta. */
+const ELLIPSIS = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const
+
+/**
+ * Le due righe di una carta: icona + nome (+ eventuali segni), poi tipo e
+ * salute. Una sola definizione, così il servizio e i componenti non possono
+ * divergere.
+ */
+function CardRows({ name, icon, typeLabel, healthText, healthColor, marks }: {
+  name: string
+  icon: { icon: string; color: string } | undefined
+  typeLabel: string
+  healthText: string
+  healthColor: string
+  marks?: React.ReactNode
+}) {
+  return (
+    <>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flexShrink: 0, lineHeight: 1.25 }}>
+        {icon && <CIIcon icon={icon.icon} size={14} color={icon.color} style={{ flexShrink: 0 }} />}
+        <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: colors.slateDark, flex: 1, minWidth: 0, ...ELLIPSIS }}>{name}</span>
+        {marks}
+      </span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flexShrink: 0, lineHeight: 1.25, fontSize: 'var(--font-size-label)' }}>
+        <span style={{ color: colors.slate, flex: 1, minWidth: 0, ...ELLIPSIS }}>{typeLabel}</span>
+        <span style={{ fontWeight: 600, color: healthColor, whiteSpace: 'nowrap' }}>{healthText}</span>
+      </span>
+    </>
+  )
+}
+
+/**
+ * La carta del servizio ha lo STESSO impaginato delle altre (`CARD_STYLE`,
+ * `CardRows`): icona e nome sulla prima riga, tipo e salute sulla seconda.
+ * Prima erano tre righe impilate (occhiello «SERVIZIO», nome, salute): un
+ * impaginato diverso dal resto della mappa e, per giunta, troppo alto per
+ * NODE_H — il flex comprimeva le righe e nome e salute si sovrapponevano.
+ * Resta un `div` e non un `<button>`: il servizio non si seleziona, è la radice.
+ */
+function RootCard({ placed: p, map, label, icon, register }: { placed: PlacedNode; map: ServiceMapDetail; label: string; icon: { icon: string; color: string } | undefined; register: (el: HTMLElement | null) => void }) {
   const { t } = useTranslation()
   const fam = serviceHealthFamily(map.health)
   const border = p.onPath ? PATH_COLOR[p.onPath] : fam.border
@@ -402,11 +511,9 @@ function RootCard({ placed: p, map, label, register }: { placed: PlacedNode; map
       data-health={map.health}
       data-on-path={p.onPath ?? undefined}
       aria-label={t('monitoring.services.map.nodeLabel', { name: map.service.name, type: label, health: serviceHealthLabel(t, map.health) })}
-      style={{ position: 'absolute', left: p.x, top: p.y, width: NODE_W, height: NODE_H, boxSizing: 'border-box', padding: '8px 10px', borderRadius: 10, background: fam.bg, border: `${p.onPath ? 3 : 2}px solid ${border}`, boxShadow: `0 2px 8px ${alpha.black08}`, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3, overflow: 'hidden' }}
+      style={{ ...CARD_STYLE, left: p.x, top: p.y, background: fam.bg, border: `${p.onPath ? 3 : 2}px solid ${border}`, boxShadow: `0 2px 8px ${alpha.black08}` }}
     >
-      <span style={{ fontSize: 'var(--font-size-caption)', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: fam.text }}>{label}</span>
-      <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{map.service.name}</span>
-      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: fam.text }}>{serviceHealthLabel(t, map.health)}</span>
+      <CardRows name={map.service.name} icon={icon} typeLabel={label} healthText={serviceHealthLabel(t, map.health)} healthColor={fam.text} />
     </div>
   )
 }
@@ -430,6 +537,10 @@ function NodeCard({ placed: p, selected, typeLabel, icon, tabIndex, describedBy,
   const fam = nodeHealthFamily(node.health, node.inMaintenance)
   const border = p.onPath ? PATH_COLOR[p.onPath] : fam.border
   const healthText = node.inMaintenance ? t('monitoring.services.health.maintenance') : ciHealthLabel(t, node.health)
+  // Il componente scelto si vede subito: bordo nel turchese dell'applicazione
+  // (lo stesso delle intestazioni di sezione), che vince sul colore della salute
+  // e su quello del percorso — la selezione è dove sta guardando l'operatore.
+  const selectedBorder = selected ? colors.brand : border
   return (
     <button
       ref={register}
@@ -448,25 +559,25 @@ function NodeCard({ placed: p, selected, typeLabel, icon, tabIndex, describedBy,
       onFocus={onFocus}
       onKeyDown={onKeyDown}
       style={{
-        position: 'absolute', left: p.x, top: p.y, width: NODE_W, height: NODE_H, boxSizing: 'border-box',
-        textAlign: 'left', font: 'inherit', padding: '8px 10px', borderRadius: 10, cursor: 'pointer',
-        background: fam.bg,
-        border: `${p.onPath ? 3 : 2}px solid ${border}`,
+        ...CARD_STYLE, left: p.x, top: p.y,
+        textAlign: 'left', font: 'inherit', cursor: 'pointer',
+        background: selected ? colors.brandLight : fam.bg,
+        border: `${selected || p.onPath ? 3 : 2}px solid ${selectedBorder}`,
         boxShadow: selected ? `0 0 0 3px ${alpha.brand20}` : (p.isCause ? `0 0 0 3px ${fam.tint}` : `0 2px 8px ${alpha.black08}`),
-        display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3, overflow: 'hidden',
         transition: 'box-shadow 150ms, border-color 150ms',
       }}
     >
-      <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-        {icon && <CIIcon icon={icon.icon} size={14} color={icon.color} style={{ flexShrink: 0 }} />}
-        <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{node.ci.name}</span>
-        {node.critical && <Star size={12} aria-hidden="true" color={palette.orange.base} fill={palette.orange.base} style={{ flexShrink: 0 }} />}
-        {node.inMaintenance && <Wrench size={12} aria-hidden="true" color={palette.purple.base} style={{ flexShrink: 0 }} />}
-      </span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-label)', minWidth: 0 }}>
-        <span style={{ color: colors.slate, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{typeLabel}</span>
-        <span style={{ fontWeight: 600, color: fam.text, whiteSpace: 'nowrap' }}>{healthText}</span>
-      </span>
+      <CardRows
+        name={node.ci.name}
+        icon={icon}
+        typeLabel={typeLabel}
+        healthText={healthText}
+        healthColor={fam.text}
+        marks={<>
+          {node.critical && <Star size={12} aria-hidden="true" color={palette.orange.base} fill={palette.orange.base} style={{ flexShrink: 0 }} />}
+          {node.inMaintenance && <Wrench size={12} aria-hidden="true" color={palette.purple.base} style={{ flexShrink: 0 }} />}
+        </>}
+      />
     </button>
   )
 }

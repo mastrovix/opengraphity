@@ -104,7 +104,7 @@ export function ServiceHistorySection({ mapId, entries, total }: Props) {
   // mai spacciate per «tutte» (il conteggio sotto dice sempre quante se ne vedono).
   const shown = (showAll ? data?.serviceMap?.history : null) ?? entries
   return (
-    <SectionCard title={t('monitoring.services.history.title')} count={total} defaultOpen>
+    <SectionCard title={t('monitoring.services.history.title')} count={total}>
       {shown.length === 0
         ? <p style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, margin: 0 }}>{t('monitoring.services.history.empty')}</p>
         : (

@@ -212,14 +212,14 @@ export function ServiceRulesCard({ map, canEdit, onReload }: Props) {
 
   if (!canEdit) {
     return (
-      <SectionCard title={t('monitoring.services.detail.rules')} defaultOpen>
+      <SectionCard title={t('monitoring.services.detail.rules')}>
         <ReadOnlyRules rules={map.rules} />
       </SectionCard>
     )
   }
 
   return (
-    <SectionCard title={t('monitoring.services.detail.rules')} defaultOpen>
+    <SectionCard title={t('monitoring.services.detail.rules')}>
       <div data-testid="service-rules-form" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {numberField('downSharePct')}
         {numberField('degradedSharePct')}

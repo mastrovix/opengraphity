@@ -12,9 +12,9 @@
  *   descrizione del percorso, legenda come lista, riassunto testuale.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { screen, within } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import { ServiceMapCanvas } from './ServiceMapCanvas'
-import { FOCUS_THRESHOLD } from './serviceMapLayout'
+import { FOCUS_THRESHOLD, LABEL_W, NODE_H, NODE_W, PAD } from './serviceMapLayout'
 import { renderWithProviders } from '@/test/utils'
 import { mapDetail, node, NODES, CAUSES } from '@/test/mocks/services'
 import type { ServiceMapDetail } from '@/types/services'
@@ -58,11 +58,53 @@ describe('ServiceMapCanvas', () => {
     expect((scrollIntoView.mock.instances[0] as HTMLElement).getAttribute('data-testid')).toBe('service-map-root')
   })
 
-  it('C-9: le etichette dei livelli stanno in una colonna ferma a sinistra, fuori dallo strato che scorre', () => {
+  it('C-9: le etichette dei livelli stanno in una colonna a parte, fuori dall\'area che scorre', () => {
     renderMap()
     const labels = screen.getAllByTestId('map-level-label')
-    expect(labels.map((l) => l.textContent)).toEqual(['Service', 'Level 1 · applications', 'Level 2'])
-    expect(labels[0]!.parentElement).toHaveStyle({ position: 'sticky', left: '0px' })
+    expect(labels.map((l) => l.textContent)).toEqual(['Level 0', 'Level 1', 'Level 2'])
+
+    // La colonna NON è dentro l'elemento che scorre: se lo fosse, scorrendo a
+    // destra le carte le passerebbero sotto (era il difetto del velo `sticky`).
+    const scroller = screen.getByTestId('service-map').parentElement!
+    expect(scroller.contains(labels[0]!)).toBe(false)
+    const gutter = labels[0]!.parentElement!.parentElement!
+    expect(gutter.parentElement).toBe(scroller.parentElement)          // sorelle: colonna + area che scorre
+    expect(gutter).toHaveStyle({ width: `${LABEL_W}px`, overflow: 'hidden' })
+    expect(labels[0]).toHaveStyle({ left: `${PAD}px`, width: `${LABEL_W - PAD - 12}px`, height: `${NODE_H}px` })
+  })
+
+  it('C-9: scorrendo in verticale le etichette seguono le righe; in orizzontale restano ferme', () => {
+    renderMap()
+    const scroller = screen.getByTestId('service-map').parentElement as HTMLElement
+    const labelsLayer = screen.getAllByTestId('map-level-label')[0]!.parentElement as HTMLElement
+
+    scroller.scrollTop = 120
+    fireEvent.scroll(scroller)
+    expect(labelsLayer.style.transform).toBe('translateY(-120px)')
+
+    // lo scorrimento orizzontale non sposta la colonna: è fuori dall'area che scorre
+    scroller.scrollLeft = 400
+    fireEvent.scroll(scroller)
+    expect(labelsLayer.style.transform).toBe('translateY(-120px)')
+  })
+
+  it('la carta del servizio ha lo stesso impaginato delle altre: nome sopra, tipo e salute sotto', () => {
+    renderMap()
+    const root = screen.getByTestId('service-map-root')
+    const other = screen.getAllByTestId('service-map-node')[0]!
+
+    // stessa struttura: due righe, non tre impilate
+    expect(root.children).toHaveLength(2)
+    expect(other.children).toHaveLength(2)
+    // stessa dimensione e stessa spaziatura interna
+    expect(root).toHaveStyle({ width: `${NODE_W}px`, height: `${NODE_H}px`, padding: '8px 10px', gap: '3px' })
+    expect(other).toHaveStyle({ width: `${NODE_W}px`, height: `${NODE_H}px`, padding: '8px 10px', gap: '3px' })
+    // righe che non si comprimono: senza questo il testo si sovrappone
+    for (const line of [...root.children, ...other.children]) expect(line).toHaveStyle({ flexShrink: '0', lineHeight: '1.25' })
+    // prima riga il nome, seconda riga tipo e salute
+    expect(root.children[0]).toHaveTextContent('Enterprise Billing')
+    expect(root.children[1]).toHaveTextContent('Service')
+    expect(root.children[1]).toHaveTextContent('Degraded')
   })
 
   it('C-9: zoom «Adatta» e ritorno alla dimensione reale', async () => {
@@ -113,6 +155,36 @@ describe('ServiceMapCanvas', () => {
     await user.click(screen.getByRole('button', { name: 'Show every component' }))
     expect(screen.getByTestId('service-map')).toHaveAttribute('data-focus', 'false')
     expect(screen.getAllByTestId('service-map-node')).toHaveLength(count + 2)
+  })
+
+  it('il componente scelto è evidenziato col turchese dell\'applicazione, lo stesso delle sezioni', () => {
+    renderWithProviders(<ServiceMapCanvas map={detail()} selectedId="db-01" onSelect={() => {}} />)
+    const picked = nodeOf('db-01')
+    const other  = nodeOf('cert-billing')
+
+    // il turchese vince sul colore della salute e su quello del percorso d'impatto
+    expect(picked.style.border).toContain('var(--color-brand)')
+    expect(picked.style.background).toBe('var(--color-brand-light)')
+    expect(picked).toHaveAttribute('aria-pressed', 'true')
+
+    expect(other.style.border).not.toContain('var(--color-brand)')
+    expect(other).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('«Isola»: la mappa mostra solo la catena, lo dice in un avviso e si torna indietro da lì', async () => {
+    const onIsolate = vi.fn()
+    const { user } = renderWithProviders(
+      <ServiceMapCanvas map={detail()} selectedId={null} onSelect={() => {}} isolatedId="db-01" onIsolate={onIsolate} />,
+    )
+    const shown = screen.getAllByTestId('service-map-node').map((el) => el.getAttribute('data-ci-id'))
+    expect(shown).toContain('db-01')
+    expect(shown).not.toContain('cert-billing')                    // fuori dalla catena
+
+    const banner = screen.getByTestId('map-isolated-banner')
+    expect(banner).toHaveTextContent('Chain of db-01')
+    expect(banner).toHaveTextContent('outside the chain')
+    await user.click(within(banner).getByRole('button', { name: 'Show the whole map' }))
+    expect(onIsolate).toHaveBeenCalledWith(null)
   })
 
   it('C-10: gruppo con nome, riassunto testuale, legenda come lista', () => {

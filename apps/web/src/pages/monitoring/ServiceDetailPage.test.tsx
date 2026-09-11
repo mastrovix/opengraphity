@@ -11,7 +11,7 @@
  * la finestra di change» (R1).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, within, waitFor } from '@testing-library/react'
+import { fireEvent, screen, within, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { ServiceDetailPage } from './ServiceDetailPage'
 import { GET_SERVICE_MAP, GET_SERVICE_IMPACT_PREVIEW, GET_SERVICE_MAP_PROPOSAL, GET_SERVICE_MAP_STATUS, GET_SERVICE_MAP_HISTORY } from '@/graphql/queries'
@@ -65,6 +65,22 @@ const nodeOf = (ciId: string) => nodes().find((n) => n.getAttribute('data-ci-id'
 const edges = () => Array.from(document.querySelectorAll('[data-testid="service-map-edge"]'))
 const edgeOf = (source: string, target: string) => edges().find((e) => e.getAttribute('data-source') === source && e.getAttribute('data-target') === target)!
 const location = () => screen.getByTestId('location').textContent
+
+/**
+ * Nella pagina solo incident, «Perché» e la mappa si aprono da soli: gli altri
+ * riquadri sono chiusi e si aprono cliccando l'intestazione.
+ */
+/** L'intestazione porta anche il contatore («Components 4»); «Service» dev'essere esatto, altrimenti prende «Service map». */
+const BOX_NAME = {
+  Components: /^Components\b/,
+  History: /^History\b/,
+  'How it is computed': /^How it is computed$/,
+  Service: /^Service$/,
+} as const
+
+function openBox(name: keyof typeof BOX_NAME) {
+  fireEvent.click(screen.getByRole('button', { name: BOX_NAME[name] }))
+}
 
 describe('ServiceDetailPage', () => {
   it('testata: nome, badge salute e stato, punteggio, «da», frase di spiegazione in parole', async () => {
@@ -149,13 +165,41 @@ describe('ServiceDetailPage', () => {
     // dal «Perché»
     await user.click(screen.getByRole('button', { name: 'Highlight db-01 on the map' }))
     expect(screen.getByTestId('node-panel')).toHaveAttribute('data-ci-id', 'db-01')
-    await user.click(screen.getByRole('button', { name: 'Close the component panel' }))
+    await user.click(screen.getByRole('button', { name: 'Close' }))
     expect(screen.queryByTestId('node-panel')).not.toBeInTheDocument()
+  })
+
+  it('«Isola» dal pannello del componente: la mappa mostra solo la catena e si torna indietro dal pulsante o dall\'avviso', async () => {
+    const { user } = renderPage('viewer')
+    await screen.findByRole('heading', { level: 1 })
+    await user.click(nodeOf('db-01'))
+    const panel = screen.getByTestId('node-panel')
+
+    await user.click(within(panel).getByRole('button', { name: 'Isolate' }))
+    const shown = () => screen.getAllByTestId('service-map-node').map((el) => el.getAttribute('data-ci-id'))
+    expect(shown()).toContain('db-01')
+    expect(shown()).not.toContain('cert-billing')                        // fuori dalla catena
+    // la finestra si chiude: la catena si guarda sulla mappa, che la finestra copre
+    expect(screen.queryByTestId('node-panel')).not.toBeInTheDocument()
+    const banner = screen.getByTestId('map-isolated-banner')
+    expect(banner).toHaveTextContent('Chain of db-01')
+
+    // si torna alla mappa intera dall'avviso
+    await user.click(within(banner).getByRole('button', { name: 'Show the whole map' }))
+    expect(screen.queryByTestId('map-isolated-banner')).not.toBeInTheDocument()
+    expect(shown()).toContain('cert-billing')
+
+    // riaprendo lo stesso componente mentre la catena è isolata, il pulsante propone di tornare indietro
+    await user.click(nodeOf('db-01'))
+    await user.click(within(screen.getByTestId('node-panel')).getByRole('button', { name: 'Isolate' }))
+    await user.click(nodeOf('db-01'))
+    expect(within(screen.getByTestId('node-panel')).getByRole('button', { name: 'Show the whole map' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('tabella componenti (sola lettura) e cronologia dalla più recente con badge di salute', async () => {
     renderPage('viewer')
     await screen.findByRole('heading', { level: 1 })
+    openBox('Components'); openBox('History')
     const rows = screen.getAllByTestId('component-row')
     expect(rows.map((r) => r.getAttribute('data-ci-id'))).toEqual(['api-03', 'cache-02', 'cert-billing', 'db-01'])  // per livello, poi nome
     expect(within(rows[0]!).getByRole('link', { name: 'api-03' })).toHaveAttribute('href', '/ci/application/api-03')
@@ -239,6 +283,7 @@ describe('ServiceDetailPage', () => {
   it('viewer: nessuna azione admin, nessun controllo di configurazione, nessuna anteprima', async () => {
     renderPage('viewer')
     await screen.findByRole('heading', { level: 1 })
+    openBox('How it is computed')
     await new Promise((r) => setTimeout(r, 10))
     for (const name of ['Re-evaluate now', 'Update map', 'Review components', 'Sync now', 'Pause', 'Delete']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
     // l'interruttore della mappa viva è un controllo da amministratore: il viewer vede solo il badge
@@ -407,6 +452,7 @@ describe('ServiceDetailPage', () => {
     }
     const { user } = renderPage('admin', { extra: [exclude] })
     await screen.findByRole('heading', { level: 1 })
+    openBox('Components')
     expect(screen.getAllByTestId('component-row').map((r) => r.getAttribute('data-ci-id'))).toContain('db-01')
     await user.click(screen.getByRole('button', { name: 'Exclude db-01 from the map' }))
     const dialog = await screen.findByRole('dialog', { name: 'Exclude db-01 from the map?' })
@@ -481,6 +527,7 @@ describe('ServiceDetailPage', () => {
   it('ondata 5, admin: l\'interruttore per congelare la mappa è nel riquadro del servizio', async () => {
     renderPage('admin')
     await screen.findByRole('heading', { level: 1 })
+    openBox('Service')
     expect(screen.getByTestId('service-auto-sync')).toBeInTheDocument()
     expect(screen.getByRole('switch', { name: 'Update components automatically' })).toHaveAttribute('aria-checked', 'true')
   })
@@ -488,6 +535,7 @@ describe('ServiceDetailPage', () => {
   it('admin: la scheda del servizio dice quanti componenti sono esclusi', async () => {
     renderPage('admin', { detail: detailMock({ excluded: [{ __typename: 'ConfigurationItemRef', id: 'old-vm', name: 'old-vm', type: 'server' }] }) })
     await screen.findByRole('heading', { level: 1 })
+    openBox('Service')
     expect(screen.getByText('Excluded components')).toBeInTheDocument()
     expect(screen.getByText('1 component')).toBeInTheDocument()
   })
@@ -508,6 +556,7 @@ describe('ServiceDetailPage', () => {
     const weirdEntry = { ...(mapDetail().history as Record<string, unknown>[])[1]!, id: 'h9', trigger: 'cosmic' }
     renderPage('viewer', { detail: detailMock({ health: 'strange', nodes: [weirdNode], edges: [], explanation: [], history: [weirdEntry], historyCount: 1 }) })
     await screen.findByRole('heading', { level: 1 })
+    openBox('Components'); openBox('History')
     expect(screen.getAllByText('Unknown (strange)').length).toBeGreaterThan(0)
     const row = screen.getAllByTestId('component-row')[0]!
     expect(within(row).getByText('Unknown (exotic)')).toBeInTheDocument()
@@ -558,6 +607,7 @@ describe('ServiceDetailPage', () => {
     }
     const { user } = renderPage('viewer', { detail: detailMock({ historyCount: 5 }), extra: [all] })
     await screen.findByRole('heading', { level: 1 })
+    openBox('History')
     expect(screen.getAllByTestId('service-history-entry')).toHaveLength(2)
     expect(screen.getByText('Showing the latest 2 of 5 entries.')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Show all' }))
@@ -578,6 +628,7 @@ describe('ServiceDetailPage', () => {
   it('C-12: i metadati stanno una volta sola in testata (versione compresa), la scheda tiene la configurazione', async () => {
     renderPage('viewer')
     await screen.findByRole('heading', { level: 1 })
+    openBox('Service')
     expect(screen.getByTestId('map-version')).toHaveTextContent('Version 3')
     expect(screen.getByTestId('evaluated-at')).toHaveTextContent('Evaluated 2 min ago')
     expect(screen.queryByText('Last evaluation')).not.toBeInTheDocument()
