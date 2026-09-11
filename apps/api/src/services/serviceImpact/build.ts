@@ -24,7 +24,7 @@ import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { logger } from '../../lib/logger.js'
 import {
   DEFAULT_SERVICE_IMPACT_RULES_JSON, NODE_WEIGHT_CERTIFICATE, NODE_WEIGHT_DEFAULT, NODE_WEIGHT_ENTRY,
-  SERVICE_MAP_MAX_DEPTH, SERVICE_MAP_MAX_NODES, SERVICE_RELATIONSHIP_TYPES, roleOfLabels,
+  SERVICE_MAP_MAX_DEPTH, SERVICE_MAP_MAX_NODES, SERVICE_RELATIONSHIP_TYPES, isRetiredLifecycle, roleOfLabels,
   type NodePropagation, type ServiceMapStatus, type ServiceNodeRole, type ServiceRelationshipType,
 } from '../../lib/serviceVocabularies.js'
 
@@ -90,12 +90,18 @@ export function relationshipFilterOf(types: readonly ServiceRelationshipType[]):
 /** Filtro APOC delle label (allowlist): `+Application|+Server|…`. */
 export const CI_LABEL_FILTER = CI_LABELS.map((l) => `+${l}`).join('|')
 
-/** Ruolo, propagazione, peso e criticità proposti per un nodo (contratto ondata 1). */
-export function proposeNodeSettings(labels: readonly string[], level: number): Pick<ProposedNode, 'role' | 'propagate' | 'weight' | 'critical'> {
+/**
+ * Ruolo, propagazione, peso e criticità proposti per un nodo (contratto ondata
+ * 1). Revisione 2 · D6.3: un CI dismesso o fuori servizio (`ci.status`) è
+ * proposto con `propagate: never` — si vede sulla mappa ma non conta, perché
+ * il monitoraggio non ne aggiorna più la salute.
+ */
+export function proposeNodeSettings(labels: readonly string[], level: number, status: string | null = null): Pick<ProposedNode, 'role' | 'propagate' | 'weight' | 'critical'> {
   const role = roleOfLabels(labels, level)
-  if (role === 'entry') return { role, propagate: 'weighted', weight: NODE_WEIGHT_ENTRY, critical: true }
+  const retired = isRetiredLifecycle(status)
+  if (role === 'entry') return { role, propagate: retired ? 'never' : 'weighted', weight: NODE_WEIGHT_ENTRY, critical: !retired }
   if (role === 'certificate') return { role, propagate: 'never', weight: NODE_WEIGHT_CERTIFICATE, critical: false }
-  return { role, propagate: 'weighted', weight: NODE_WEIGHT_DEFAULT, critical: false }
+  return { role, propagate: retired ? 'never' : 'weighted', weight: NODE_WEIGHT_DEFAULT, critical: false }
 }
 
 interface EntryRow { serviceName: string; apps: { ciId: string; name: string; labels: string[]; status: string | null; health: string | null }[] }
@@ -153,7 +159,7 @@ export async function buildServiceMap(session: Queryable, tenantId: string, serv
     return { serviceName: entry.serviceName, maxDepth: depth, relationshipTypes: types, nodes: [] }
   }
 
-  const nodes: ProposedNode[] = apps.map((a) => ({ ciId: a.ciId, name: a.name ?? '', labels: a.labels, status: a.status ?? null, health: a.health ?? null, level: 1, via: null, ...proposeNodeSettings(a.labels, 1) }))
+  const nodes: ProposedNode[] = apps.map((a) => ({ ciId: a.ciId, name: a.name ?? '', labels: a.labels, status: a.status ?? null, health: a.health ?? null, level: 1, via: null, ...proposeNodeSettings(a.labels, 1, a.status ?? null) }))
   if (depth > 1) {
     const expanded = await runQuery<ExpandedRow>(session, EXPAND_NODES_CYPHER, {
       tenantId, appIds: apps.map((a) => a.ciId),
@@ -168,7 +174,7 @@ export async function buildServiceMap(session: Queryable, tenantId: string, serv
     for (const r of expanded) {
       if (seen.has(r.ciId)) continue
       seen.add(r.ciId)
-      nodes.push({ ciId: r.ciId, name: r.name ?? '', labels: r.labels, status: r.status ?? null, health: r.health ?? null, level: r.level, via: r.via, ...proposeNodeSettings(r.labels, r.level) })
+      nodes.push({ ciId: r.ciId, name: r.name ?? '', labels: r.labels, status: r.status ?? null, health: r.health ?? null, level: r.level, via: r.via, ...proposeNodeSettings(r.labels, r.level, r.status ?? null) })
     }
   }
   if (nodes.length > SERVICE_MAP_MAX_NODES) {

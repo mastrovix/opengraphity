@@ -44,6 +44,7 @@ const policyMock = (): GqlMock => ({
     __typename: 'EventPolicy', version: 1, updatedAt: null, openIncidentFrom: 'critical', groupBy: 'ci', openDelaySeconds: 120, autoResolve: true,
     suppressUpstreamHops: 1, flapThreshold: 5, flapWindowMinutes: 10, flapStableMinutes: 15,
     stormThresholdPerMinute: 50, stormCooldownMinutes: 5, retentionDays: 30, severityMap: '{}',
+    ignoreLifecycleStatuses: ['decommissioned'],
   } } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
@@ -238,6 +239,21 @@ describe('EventsPage — correlazione automatica (ondata 3)', () => {
 
     expect(within(rows[1]!).queryByRole('button', { name: 'Open incident' })).not.toBeInTheDocument()
     expect(within(rows[4]!).getByRole('button', { name: 'Open incident' })).toBeInTheDocument()
+  })
+
+  it('D6.3: chip grigio «Ciclo di vita · <stato>» per l\'allarme su un CI dismesso, con il motivo per esteso', async () => {
+    const events = [
+      eventFixture({ id: 'l1', title: 'Alarm on a retired CI', correlation: 'skipped_lifecycle', correlationAt: '2026-09-09T08:00:00Z', ci: { id: 'ci9', name: 'old-vm', type: 'server', status: 'decommissioned', health: null } }),
+      // stesso esito ma senza stato registrato sul CI: l'etichetta non inventa il valore
+      eventFixture({ id: 'l2', title: 'Alarm without status', correlation: 'skipped_lifecycle', correlationAt: '2026-09-09T08:00:00Z', ci: { id: 'ci8', name: 'ghost', type: 'server', status: null, health: null } }),
+    ]
+    renderPage('operator', undefined, { events })
+    expect(await screen.findByText('Alarm on a retired CI')).toBeInTheDocument()
+    const rows = bodyRows()
+    const chip = within(rows[0]!).getByText('Lifecycle · Decommissioned')
+    expect(chip).toHaveAttribute('title', expect.stringContaining('CI old-vm is in status “Decommissioned”'))
+    expect(within(rows[0]!).getByText(/no incident opened and CI health unchanged/)).toBeInTheDocument()
+    expect(within(rows[1]!).getByText('Lifecycle ignored')).toBeInTheDocument()
   })
 
   it('viewer: i chip restano, "Rivaluta ora" no', async () => {

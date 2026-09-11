@@ -231,6 +231,8 @@ export function eventsSDL(): string {
     retentionDays:        Int!
     """Riconoscimento del CI per nome: se la risorsa è un FQDN (db-01.example.local) prova anche il nome corto (db-01), e viceversa. Spento per default."""
     matchShortHostname:   Boolean!
+    """Stati del ciclo di vita del CI (ci.status) per cui un allarme non apre incident e non cambia la salute: esito skipped_lifecycle, l'allarme resta in console con il suo motivo. Default: decommissioned."""
+    ignoreLifecycleStatuses: [String!]!
     """Mappa severità → impatto/urgenza, JSON serializzato."""
     severityMap:          String!
   }
@@ -272,6 +274,8 @@ export function eventsSDL(): string {
     stormCooldownMinutes: Int
     retentionDays:        Int
     matchShortHostname:   Boolean
+    """Lista completa (non un delta): sostituisce quella attuale; [] = nessuno stato ignorato. Valori ammessi: gli stati del vocabolario ci_status."""
+    ignoreLifecycleStatuses: [String!]
     severityMap:          String
   }
 

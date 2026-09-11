@@ -83,6 +83,8 @@ const corr = await import('../eventCorrelation.js')
 const { runEventPipeline, findSuppressingChange, reevaluateSuppressedEvents, reevaluateClosedWindows, reevaluateFlappingEvents, reevaluatePendingEvents, openIncidentFromEvent, meetsOpenThreshold, changeIsInWindow, findAutoResolvePath, isFlapping, isStable, groupLockKey, CHANGE_IMPLEMENTATION_STEP, CHANGE_WINDOW_STEPS, MONITORING_ACTOR, AUTO_RESOLVE_MAX_HOPS, CORRELATION_OUTCOMES, PENDING_CORRELATIONS, STUCK_FIRING_WHERE, DUE_CORRELATION_WHERE, UNCORRELATED_WHERE, OVERDUE_DELAYED_WHERE, stuckEventParams, UNCORRELATED_AFTER_MINUTES, OVERDUE_DELAYED_GRACE_MINUTES, GROUP_LOCK_TTL_SECONDS, GROUP_LOCK_WAIT_MS, GROUP_LOCK_POLL_MS } = corr
 // Revisione 1.18: helper della chiusura automatica (non passano dalla facciata).
 const { suppressedSummary, STILL_FIRING_STATUSES } = await import('../events/autoResolve.js')
+// Revisione 2 · D6.2: la definizione condivisa di «CI in finestra di change».
+const { changeWindowsForCIs, pickChangeWindow } = await import('../events/suppression.js')
 // Cronologia dell'allarme: il frammento condiviso, per verificare che gli statement della pipeline lo contengano.
 const { historyWriteCypher } = await import('../events/history.js')
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
@@ -171,6 +173,20 @@ const props = (over: Record<string, unknown> = {}) => ({
 })
 const policy = (over: Partial<typeof DEFAULT_EVENT_POLICY> = {}) => ({ ...structuredClone(DEFAULT_EVENT_POLICY), ...over })
 
+/**
+ * Revisione 2 · D6.2: la ricerca della finestra è la query BATCH condivisa con
+ * i servizi (`changeWindowsForCIs`): una riga per CI con le change candidate
+ * già ordinate. `via` dice che la change è su un CI a monte (B2-13).
+ */
+type Candidate = { changeId: string; code: string; step: string; plans?: unknown[]; via?: string }
+const windows = (...candidates: Candidate[]) => [{
+  ciId: 'ci-1',
+  changes: candidates.map((c) => ({
+    changeId: c.changeId, code: c.code, step: c.step, plans: c.plans ?? [],
+    viaCiId: c.via ?? 'ci-1', viaCiName: c.via ?? 'ci-1', upstream: c.via !== undefined,
+  })),
+}]
+
 /** Regole base: evento con CI, nessuna change in finestra, nessun incident aperto, scritture ok. */
 function baseRules(ev: Record<string, unknown> = {}, ciId: string | null = 'ci-1'): Array<[RegExp, unknown]> {
   return [
@@ -241,17 +257,23 @@ describe('helper puri', () => {
 
 describe('soppressione in finestra di change', () => {
   it('change in deployment sul CI diretto → suppressed, SUPPRESSED_BY, event.suppressed con change_id; NESSUNA salute, NESSUN incident', async () => {
-    onCypher([...baseRules(), [Q.suppressing, [{ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [null] }]]])
+    onCypher([...baseRules(), [Q.suppressing, windows({ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [null] })]])
     const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
     expect(out).toEqual({ outcome: 'suppressed', status: 'suppressed', suppressedByChangeId: 'chg-1', incidentId: null })
 
+    // Revisione 2 · D6.2: la ricerca è la query BATCH condivisa con i servizi
+    // (un CI solo, qui) e il frammento porta i piani del CI toccato (B2-12) e
+    // le relazioni tecniche a monte (B2-13).
     const find = callMatching(Q.suppressing)!
-    expect(find.cypher).toContain('MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})')
-    expect(find.cypher).toContain('[:DEPENDS_ON*1..1]->(up:ConfigurationItem {tenant_id: $tenantId})')   // hops = 1 (policy predefinita)
+    expect(find.cypher).toContain('UNWIND $ciIds AS cid')
+    expect(find.cypher).toContain('MATCH (ci:ConfigurationItem {id: cid, tenant_id: $tenantId})')
+    expect(find.cypher).toContain('[rel:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE*1..1]->(up:ConfigurationItem {tenant_id: $tenantId})')   // hops = 1 (policy predefinita)
     expect(find.cypher).toContain('MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS_CI]->(target)')
     expect(find.cypher).toContain('coalesce(c.deleted, false) = false')
     expect(find.cypher).toContain('wi.current_step IN $windowSteps')
-    expect(find.params).toMatchObject({ ciId: 'ci-1', tenantId: 't1', windowSteps: ['deployment', 'scheduled'], implementationStep: 'deployment' })
+    // B2-12: i piani di rilascio sono quelli del CI toccato, non di tutta la change
+    expect(find.cypher).toContain('[(c)-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask {tenant_id: $tenantId}) WHERE dp.ci_id = target.id | dp.steps]')
+    expect(find.params).toMatchObject({ ciIds: ['ci-1'], tenantId: 't1', windowSteps: ['deployment', 'scheduled'], implementationStep: 'deployment' })
 
     const sup = callMatching(Q.suppress)!
     expect(sup.cypher).toContain("SET e.status = 'suppressed', e.suppressed_by_change_id = $changeId")
@@ -270,9 +292,9 @@ describe('soppressione in finestra di change', () => {
   it('change a un salto a monte con hops = 1 → suppressed (la query percorre DEPENDS_ON fino a hops); con hops = 0 solo il CI diretto (nessun DEPENDS_ON) → non soppresso', async () => {
     // hops = 2: il pattern di lunghezza variabile arriva a 2
     vi.mocked(getEventPolicy).mockResolvedValue(policy({ suppress_upstream_hops: 2 }))
-    onCypher([...baseRules(), [Q.suppressing, [{ changeId: 'chg-up', code: 'CHG2', step: 'deployment', plans: [] }]]])
+    onCypher([...baseRules(), [Q.suppressing, windows({ changeId: 'chg-up', code: 'CHG2', step: 'deployment', plans: [] })]])
     expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('suppressed')
-    expect(callMatching(Q.suppressing)!.cypher).toContain('[:DEPENDS_ON*1..2]')
+    expect(callMatching(Q.suppressing)!.cypher).toContain('*1..2]->(up:ConfigurationItem {tenant_id: $tenantId})')
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     vi.mocked(getEventPolicy).mockResolvedValue(policy({ suppress_upstream_hops: 0 }))
@@ -281,19 +303,19 @@ describe('soppressione in finestra di change', () => {
     expect(out.outcome).toBe('opened')
     const find = callMatching(Q.suppressing)!
     expect(find.cypher).not.toContain('DEPENDS_ON')
-    expect(find.cypher).toContain('WITH ci, [] AS ups')
+    expect(find.cypher).toContain('UNWIND [{node: ci, dist: 0}] AS t')
     expect(recomputeCIHealth).toHaveBeenCalledWith('t1', 'ci-1', 'monitoring')
   })
 
   it('change approvata (scheduled) con releaseWindow che contiene l\'istante → suppressed; finestra passata → non soppresso, salute e correlazione procedono', async () => {
     const inWindow = JSON.stringify([{ title: 'r', validationWindow: { start: '', end: '' }, releaseWindow: { start: '2026-09-09T09:00:00Z', end: '2026-09-09T12:00:00Z' } }])
-    onCypher([...baseRules(), [Q.suppressing, [{ changeId: 'chg-s', code: 'CHG3', step: 'scheduled', plans: [inWindow] }]]])
+    onCypher([...baseRules(), [Q.suppressing, windows({ changeId: 'chg-s', code: 'CHG3', step: 'scheduled', plans: [inWindow] })]])
     expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('suppressed')
     expect(callMatching(Q.suppress)!.params['changeId']).toBe('chg-s')
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     const past = JSON.stringify([{ title: 'r', validationWindow: { start: '2026-09-08T09:00:00Z', end: '2026-09-08T10:00:00Z' }, releaseWindow: { start: '2026-09-08T10:00:00Z', end: '2026-09-08T12:00:00Z' } }])
-    onCypher([...baseRules(), [Q.suppressing, [{ changeId: 'chg-s', code: 'CHG3', step: 'scheduled', plans: [past] }]]])
+    onCypher([...baseRules(), [Q.suppressing, windows({ changeId: 'chg-s', code: 'CHG3', step: 'scheduled', plans: [past] })]])
     const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
     expect(out.outcome).toBe('opened')
     expect(callMatching(Q.suppress)).toBeUndefined()
@@ -302,7 +324,7 @@ describe('soppressione in finestra di change', () => {
   })
 
   it('ripetizione dello stesso allarme nella stessa finestra → resta suppressed senza un nuovo event.suppressed: all\'ingest avanza solo SUPPRESSED_BY.last_seen_at (correlation_at intatto), in rivalutazione nessuna scrittura; change diversa → nuovo avviso', async () => {
-    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' }), [Q.suppressing, [{ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [] }]]])
+    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' }), [Q.suppressing, windows({ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [] })]])
     await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
     expect(callMatching(Q.suppress)).toBeUndefined()
     expect(callMatching(Q.touchSupp)!.params).toEqual({ eventId: 'ev-1', tenantId: 't1', changeId: 'chg-1', now: NOW })
@@ -310,14 +332,14 @@ describe('soppressione in finestra di change', () => {
 
     // passata periodica / rivalutazione: niente da scrivere (2.x: nessun churn su correlation_at / last_seen_at)
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
-    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' }), [Q.suppressing, [{ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [] }]]])
+    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' }), [Q.suppressing, windows({ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [] })]])
     expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, mode: 'reevaluate' })).outcome).toBe('suppressed')
     expect(callMatching(Q.suppress)).toBeUndefined()
     expect(callMatching(Q.touchSupp)).toBeUndefined()
     expect(metrics.eventsSuppressedTotal.inc).not.toHaveBeenCalled()
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
-    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' }), [Q.suppressing, [{ changeId: 'chg-2', code: 'CHG2', step: 'deployment', plans: [] }]]])
+    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' }), [Q.suppressing, windows({ changeId: 'chg-2', code: 'CHG2', step: 'deployment', plans: [] })]])
     await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
     expect(published()).toEqual(['event.suppressed'])
   })
@@ -328,6 +350,108 @@ describe('soppressione in finestra di change', () => {
     await expect(findSuppressingChange('t1', 'ci-1', 1, 'ieri')).rejects.toThrow(/not an ISO date/)
     onCypher([[Q.suppressing, []]])
     await expect(findSuppressingChange('t1', 'ci-1', 1, NOW)).resolves.toBeNull()
+  })
+
+  // ── Revisione 2 · ondata 3: regole di dominio condivise ────────────────────
+
+  it('B2-11: un allarme silenziato che oscilla resta suppressed — la change si cerca PRIMA del rilevamento, niente flapping né salute', async () => {
+    // 6 passaggi negli ultimi 10 minuti: ben oltre la soglia (4 in 10).
+    const oscillante = [minutesAgo(9), minutesAgo(8), minutesAgo(6), minutesAgo(4), minutesAgo(2), minutesAgo(1)]
+    expect(isFlapping(oscillante, policy(), NOW)).toBe(true)
+    onCypher([...baseRules({ transitions: oscillante }), [Q.suppressing, windows({ changeId: 'chg-1', code: 'CHG1', step: 'deployment' })]])
+    const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(out).toEqual({ outcome: 'suppressed', status: 'suppressed', suppressedByChangeId: 'chg-1', incidentId: null })
+    expect(callMatching(Q.flap)).toBeUndefined()
+    expect(recomputeCIHealth).not.toHaveBeenCalled()
+    expect(published()).toEqual(['event.suppressed'])
+    expect(metrics.eventsFlappingTotal.inc).not.toHaveBeenCalled()
+    // I passaggi restano registrati (servono alla fine della finestra), ma non producono flapping
+    expect(callMatching(Q.load)!.params).toMatchObject({ eventId: 'ev-1' })
+  })
+
+  it('B2-11: un allarme GIÀ flapping che entra in finestra di change viene silenziato (la soppressione vince), senza toccare la salute', async () => {
+    onCypher([...baseRules({ status: 'flapping', flapping_since: minutesAgo(5), correlation: 'flapping', transitions: [minutesAgo(3)] }),
+      [Q.suppressing, windows({ changeId: 'chg-1', code: 'CHG1', step: 'deployment' })]])
+    const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, mode: 'reevaluate' })
+    expect(out).toEqual({ outcome: 'suppressed', status: 'suppressed', suppressedByChangeId: 'chg-1', incidentId: null })
+    expect(recomputeCIHealth).not.toHaveBeenCalled()
+  })
+
+  it('B2-11: un rientro normale non paga la ricerca della change; un rientro che OSCILLA in finestra la cerca — e non sfarfalla, ma nemmeno viene silenziato (il rientro deve poter chiudere il suo incident)', async () => {
+    onCypher(baseRules({ status: 'resolved' }))
+    await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(callMatching(Q.suppressing)).toBeUndefined()
+
+    // Il payload `resolved` dell'oscillazione: senza la guardia entrerebbe in
+    // flapping proprio dentro la finestra (è la metà «spenta» dell'altalena).
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    vi.mocked(trackSourceStorm).mockResolvedValue(NO_STORM)
+    const oscillante = [minutesAgo(9), minutesAgo(8), minutesAgo(6), minutesAgo(4), minutesAgo(2), minutesAgo(1)]
+    onCypher([...baseRules({ status: 'resolved', transitions: oscillante }), [Q.suppressing, windows({ changeId: 'chg-1', code: 'CHG1', step: 'deployment' })]])
+    const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(callMatching(Q.suppressing)).toBeDefined()
+    expect(callMatching(Q.flap)).toBeUndefined()
+    expect(callMatching(Q.suppress)).toBeUndefined()
+    expect(out.status).toBe('resolved')
+  })
+
+  it('B2-12/B2-13: la query batch condivisa — piani del CI toccato, relazioni tecniche a monte, la prima candidata in finestra vince', async () => {
+    // pickChangeWindow: le righe arrivano ordinate (diretta prima), si prende la prima davvero in finestra
+    const past = JSON.stringify([{ releaseWindow: { start: '2026-09-08T09:00:00Z', end: '2026-09-08T11:00:00Z' } }])
+    const now = JSON.stringify([{ releaseWindow: { start: '2026-09-09T09:00:00Z', end: '2026-09-09T11:00:00Z' } }])
+    const row = (over: Record<string, unknown>) => ({ changeId: 'c', code: 'CHG', step: 'scheduled', plans: [], viaCiId: 'ci-1', viaCiName: 'ci-1', upstream: false, ...over })
+    expect(pickChangeWindow([row({ plans: [past] })], Date.parse(NOW))).toBeNull()
+    expect(pickChangeWindow([row({ changeId: 'c1', plans: [past] }), row({ changeId: 'c2', plans: [now] })], Date.parse(NOW))?.changeId).toBe('c2')
+    // B2-13: la copertura può venire da un CI a monte, e si vede
+    const upstream = pickChangeWindow([row({ changeId: 'c3', step: 'deployment', viaCiId: 'srv-1', viaCiName: 'SRV-01', upstream: true })], Date.parse(NOW))
+    expect(upstream).toEqual({ changeId: 'c3', code: 'CHG', step: 'deployment', viaCiId: 'srv-1', viaCiName: 'SRV-01', upstream: true })
+
+    // B2-12: i piani sono filtrati per CI toccato; B2-13: le relazioni sono quelle dei servizi
+    onCypher([[Q.suppressing, [
+      { ciId: 'vm-1', changes: [{ changeId: 'chg-srv', code: 'CHG-9', step: 'deployment', plans: [], viaCiId: 'srv-1', viaCiName: 'SRV-01', upstream: true }] },
+      { ciId: 'vm-2', changes: [] },
+    ]]])
+    const map = await changeWindowsForCIs(session as never, 't1', ['vm-1', 'vm-2'], 2, NOW)
+    expect([...map.keys()]).toEqual(['vm-1'])
+    expect(map.get('vm-1')).toMatchObject({ changeId: 'chg-srv', viaCiId: 'srv-1', upstream: true })
+    const q = callMatching(Q.suppressing)!
+    expect(q.cypher).toContain('WHERE dp.ci_id = target.id')
+    expect(q.cypher).toContain('[rel:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE*1..2]')
+    expect(q.cypher).toContain('ORDER BY dist, CASE WHEN wi.current_step = $implementationStep THEN 0 ELSE 1 END, c.created_at')
+    expect(q.params).toMatchObject({ ciIds: ['vm-1', 'vm-2'], tenantId: 't1' })
+    // nessun CI → nessuna query
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    expect((await changeWindowsForCIs(session as never, 't1', [], 1, NOW)).size).toBe(0)
+    expect(runQuery).not.toHaveBeenCalled()
+  })
+
+  it('D6.3: allarme su un CI con ciclo di vita ignorato dalla policy → skipped_lifecycle, nessuna salute, nessun incident, nessuna tempesta', async () => {
+    onCypher([...baseRules(), [Q.load, { props: props(), ciId: 'ci-1', ciStatus: 'decommissioned' }]])
+    const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(out).toEqual({ outcome: 'skipped_lifecycle', status: 'firing', suppressedByChangeId: null, incidentId: null })
+    const set = callMatching(Q.setCorr)!
+    expect(set.params).toMatchObject({ eventId: 'ev-1', tenantId: 't1', correlation: 'skipped_lifecycle', now: NOW, dueAt: null })
+    expect(recomputeCIHealth).not.toHaveBeenCalled()
+    expect(callMatching(Q.suppressing)).toBeUndefined()
+    expect(callMatching(Q.group)).toBeUndefined()
+    expect(incidentService.createIncident).not.toHaveBeenCalled()
+    expect(trackSourceStorm).not.toHaveBeenCalled()
+    expect(metrics.eventsCorrelatedTotal.inc).toHaveBeenCalledWith({ outcome: 'skipped_lifecycle' })
+  })
+
+  it('D6.3: un ciclo di vita fuori dalla lista della policy non cambia nulla; policy con lista vuota → nessuno stato ignorato', async () => {
+    onCypher([...baseRules(), [Q.load, { props: props(), ciId: 'ci-1', ciStatus: 'active' }]])
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('opened')
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    vi.mocked(trackSourceStorm).mockResolvedValue(NO_STORM)
+    vi.mocked(getEventPolicy).mockResolvedValue(policy({ ignore_lifecycle_statuses: [] }))
+    onCypher([...baseRules(), [Q.load, { props: props(), ciId: 'ci-1', ciStatus: 'decommissioned' }]])
+    expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).outcome).toBe('opened')
+  })
+
+  it('D6.3: l\'esito skipped_lifecycle è nel vocabolario condiviso (console e web lo mostrano)', () => {
+    expect(CORRELATION_OUTCOMES).toContain('skipped_lifecycle')
   })
 })
 
@@ -829,7 +953,10 @@ describe('sfarfallio', () => {
     expect(set.cypher).toContain("e.correlation = 'flapping', e.correlation_at = $now, e.correlation_due_at = null")
     expect(set.params).toMatchObject({ eventId: 'ev-1', tenantId: 't1', now: NOW })
     expect(recomputeCIHealth).toHaveBeenCalledWith('t1', 'ci-1', 'monitoring')
-    expect(callMatching(Q.suppressing)).toBeUndefined()
+    // B2-11: la change si cerca PRIMA del rilevamento (qui non ce n'è nessuna,
+    // quindi lo sfarfallio procede); nessuna soppressione scritta.
+    expect(callMatching(Q.suppressing)).toBeDefined()
+    expect(callMatching(Q.suppress)).toBeUndefined()
     expect(callMatching(Q.group)).toBeUndefined()
     expect(incidentService.createIncident).not.toHaveBeenCalled()
     expect(incidentService.addIncidentComment).not.toHaveBeenCalled()   // nessun incident correlato
@@ -1005,7 +1132,7 @@ describe('tempesta della sorgente', () => {
 
   it('la soppressione in finestra di change vince sulla tempesta', async () => {
     vi.mocked(trackSourceStorm).mockResolvedValue(STORM)
-    onCypher([...baseRules(), [Q.suppressing, [{ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [] }]]])
+    onCypher([...baseRules(), [Q.suppressing, windows({ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [] })]])
     expect((await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW, created: true })).outcome).toBe('suppressed')
     expect(callMatching(Q.attach)).toBeUndefined()
   })
@@ -1041,9 +1168,9 @@ describe('metriche della pipeline', () => {
     await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
     expect(metrics.incidentsAutoResolvedTotal.inc).toHaveBeenCalledTimes(1)
 
-    onCypher([...baseRules(), [Q.suppressing, [{ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [] }]]])
+    onCypher([...baseRules(), [Q.suppressing, windows({ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [] })]])
     await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
-    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1' }), [Q.suppressing, [{ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [] }]]])
+    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1' }), [Q.suppressing, windows({ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [] })]])
     await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
     expect(metrics.eventsSuppressedTotal.inc).toHaveBeenCalledTimes(1)
     // l'apertura manuale (createIncidentFromEvent) non è un incident automatico
@@ -1074,7 +1201,7 @@ describe('fine finestra', () => {
   })
 
   it('reevaluateSuppressedEvents: un\'altra change ancora in finestra → resta soppresso (dalla nuova change); nessun evento → 0', async () => {
-    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' }), [Q.byChange, [{ id: 'ev-1' }]], [Q.suppressing, [{ changeId: 'chg-2', code: 'CHG2', step: 'deployment', plans: [] }]]])
+    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' }), [Q.byChange, [{ id: 'ev-1' }]], [Q.suppressing, windows({ changeId: 'chg-2', code: 'CHG2', step: 'deployment', plans: [] })]])
     await reevaluateSuppressedEvents('t1', 'chg-1')
     expect(callMatching(Q.suppress)!.params['changeId']).toBe('chg-2')
     expect(callMatching(Q.lift)).toBeUndefined()
@@ -1479,7 +1606,7 @@ describe('cronologia dell\'allarme', () => {
   const FLAPPY = [minutesAgo(9), minutesAgo(6), minutesAgo(3), minutesAgo(1)]
 
   it('soppressione: la voce `suppressed` con la change sta nello STESSO statement del SET/MERGE SUPPRESSED_BY; la ripetizione nella stessa finestra non scrive nulla', async () => {
-    onCypher([...baseRules(), [Q.suppressing, [{ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [null] }]]])
+    onCypher([...baseRules(), [Q.suppressing, windows({ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [null] })]])
     await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
     const sup = callMatching(Q.suppress)!
     expect(sup.cypher).toMatch(/SET r\.last_seen_at = \$now\s+FOREACH \(_ IN CASE WHEN true THEN \[1\] ELSE \[\] END \|\s+CREATE \(e\)-\[:HAS_HISTORY\]->\(:EventHistoryEntry \{id: \$historyId, tenant_id: \$tenantId, event_id: e\.id/)
@@ -1487,7 +1614,7 @@ describe('cronologia dell\'allarme', () => {
     expect(historyWrites()).toEqual([{ kind: 'suppressed', outcome: null, incidentId: null, changeId: 'chg-1', actorId: 'monitoring', note: null, at: NOW, when: 'true' }])
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never); vi.mocked(trackSourceStorm).mockResolvedValue(NO_STORM)
-    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' }), [Q.suppressing, [{ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [null] }]]])
+    onCypher([...baseRules({ status: 'suppressed', suppressed_by_change_id: 'chg-1', correlation: 'suppressed' }), [Q.suppressing, windows({ changeId: 'chg-1', code: 'CHG1', step: 'deployment', plans: [null] })]])
     await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
     expect(callMatching(Q.touchSupp)).toBeDefined()
     expect(historyWrites()).toEqual([])

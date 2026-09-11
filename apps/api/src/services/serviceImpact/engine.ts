@@ -4,10 +4,13 @@
  * consumers/serviceImpactConsumer.ts; rete di sicurezza: passata periodica).
  *
  * `evaluateServiceMap`: UNA query legge la mappa, le INCLUDES con la salute
- * del CI e, per ogni CI, le change collegate in un passo di finestra
- * (stessa regola di services/events/suppression.ts#findSuppressingChange con
- * hops 0, applicata qui a tutti i nodi in una volta invece di una query per
- * CI); applica le regole (rules.ts); scrive in UNO statement: SET su
+ * del CI e, per ogni CI, le change collegate in un passo di finestra e le
+ * sorgenti in tempesta dei suoi allarmi accesi. Le finestre di change sono la
+ * STESSA definizione degli allarmi (revisione 2 · D6.2): il frammento
+ * `changeWindowSubqueryCypher` di services/events/suppression.ts, innestato
+ * qui per tutti i nodi in una volta e con i salti a monte della policy
+ * (`suppress_upstream_hops`) invece dei soli CI diretti. Poi applica le regole
+ * (rules.ts); scrive in UNO statement: SET su
  * ServiceMap + voce di cronologia + cap (history.ts). La decisione «salute
  * cambiata» è presa NEL Cypher (`previous IS NULL OR previous <> $health`),
  * così due valutazioni concorrenti della stessa mappa non scrivono due voci
@@ -27,6 +30,14 @@
  * rimasti: fail-loud, mai un nodo ignorato in silenzio. Uno `stale` scritto
  * dalla sincronizzazione per il tetto dei 500 (`over_limit`) non viene spento da
  * qui: lo spegne solo una sincronizzazione riuscita.
+ *
+ * Revisione 2 (ondata 3): con `rules.during_storm = 'hold'` (default) e una
+ * sorgente degli allarmi dei componenti in tempesta la valutazione è
+ * SOSPESA — salute, punteggio e spiegazione restano quelli di prima, nessun
+ * incident di servizio viene aperto o chiuso, si scrivono solo `evaluated_at`
+ * e la nota (`health_note`, D6.4). La fine della tempesta
+ * (`event.storm_ended`) fa rivalutare le mappe coinvolte
+ * (consumers/serviceImpactConsumer.ts).
  *
  * Revisione 2: la scrittura ha una **guardia di versione** (E1) — se la
  * composizione è cambiata fra la lettura e la scrittura si rilegge e si
@@ -48,12 +59,13 @@ import { serviceEvaluationDurationSeconds, serviceEvaluationsTotal, serviceMapsS
 import type { CIHealth } from '../../lib/eventVocabularies.js'
 import {
   NODE_PROPAGATIONS, SERVICE_HEALTHS, SERVICE_MAP_STATUSES, SERVICE_NODE_ROLES,
-  SERVICE_STALE_MISSING_CI, SERVICE_STALE_OVER_LIMIT, parseServiceImpactRules,
+  SERVICE_STALE_MISSING_CI, SERVICE_STALE_OVER_LIMIT, isRetiredLifecycle, parseServiceImpactRules,
   type NodePropagation, type ServiceHealth, type ServiceHealthTrigger, type ServiceImpactRules, type ServiceMapStatus, type ServiceNodeRole,
 } from '../../lib/serviceVocabularies.js'
 import { MONITORING_ACTOR, monitoringContext, toNumber, toStr, type Props } from '../events/shared.js'
-import { CHANGE_WINDOW_STEPS, changeIsInWindow } from '../events/suppression.js'
-import { evaluateImpact, type ImpactCause, type ImpactNodeInput } from './rules.js'
+import { getEventPolicy } from '../events/policy.js'
+import { CHANGE_WINDOW_PARAMS, changeWindowSubqueryCypher, pickChangeWindow, type ChangeWindow, type ChangeWindowRow } from '../events/suppression.js'
+import { evaluateImpact, serviceHealthNote, type ImpactCause, type ImpactNodeInput, type UpstreamWindowRef } from './rules.js'
 import { causeIdsOf, sameCauseIds, serviceHistoryParams, serviceHistoryWriteCypher, type StoredCause } from './history.js'
 import { buildServiceMap, createServiceMapNode, type ServiceMapProposal } from './build.js'
 import { reconcileServiceIncident, type ServiceIncidentResult } from './incident.js'
@@ -72,6 +84,10 @@ export interface LoadedNode extends ImpactNodeInput {
   healthSource: string | null
   status:       string | null
   addedBy:      string
+  /** La change che copre il CI (diretta o a monte); null se non è in finestra. */
+  changeWindow: ChangeWindow | null
+  /** Sorgenti in tempesta fra quelle degli allarmi accesi su questo CI (nomi, senza doppioni). */
+  stormSources: string[]
 }
 
 export interface ServiceMapState {
@@ -89,37 +105,43 @@ export interface ServiceMapState {
   version: number
 }
 
-interface ChangeRow { step: string | null; plans: unknown[] | null }
 interface NodeRow {
   ciId: string; name: string | null; labels: string[]; level: unknown; role: string; propagate: string; weight: unknown; critical: unknown; via: string | null; addedBy: string | null
-  health: string | null; healthSource: string | null; status: string | null; changes: ChangeRow[]
+  health: string | null; healthSource: string | null; status: string | null
+  changes: ChangeWindowRow[] | null
+  stormSources: (string | null)[] | null
 }
 interface StateRow { props: Props; nodes: NodeRow[] }
 
 /**
- * La mappa, i nodi inclusi con la salute del CI e, per ciascuno, le change
- * (non eliminate) collegate con AFFECTS_CI il cui workflow è in un passo di
- * finestra, con i piani di rilascio: la finestra vera (deployment sempre,
- * scheduled solo dentro una finestra del piano) si decide in TypeScript con
- * `changeIsInWindow`, la stessa della soppressione degli allarmi.
+ * La mappa, i nodi inclusi con la salute del CI e, per ciascuno:
+ *  - le change che lo coprono (diretta o a monte entro `hops` salti), con i
+ *    piani di rilascio **del CI toccato** — il frammento condiviso con la
+ *    soppressione degli allarmi (services/events/suppression.ts, revisione 2 ·
+ *    D6.2): la finestra vera (deployment sempre, scheduled solo dentro una
+ *    finestra del piano) si decide in TypeScript con `pickChangeWindow`;
+ *  - le sorgenti in tempesta dei suoi allarmi accesi (revisione 2 · D6.4),
+ *    lette qui e non con un giro in più.
+ * `hops` è interpolato nel pattern (intero validato dalla policy): la query è
+ * una funzione, non una costante.
  */
-export const LOAD_SERVICE_MAP_CYPHER = `
+export function loadServiceMapCypher(hops: number): string {
+  return `
   MATCH (m:ServiceMap {id: $mapId, tenant_id: $tenantId})
   OPTIONAL MATCH (m)-[inc:INCLUDES]->(ci {tenant_id: $tenantId})
-  WITH m, inc, ci,
+  ${changeWindowSubqueryCypher(hops)}
+  WITH m, inc, ci, changes,
        CASE WHEN ci IS NULL THEN [] ELSE
-         [(c:Change {tenant_id: $tenantId})-[:AFFECTS_CI]->(ci)
-            WHERE coalesce(c.deleted, false) = false
-              AND EXISTS { (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId}) WHERE wi.current_step IN $windowSteps }
-          | {step:  head([(c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId}) | wi.current_step]),
-             plans: [(c)-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask {tenant_id: $tenantId}) | dp.steps]}]
-       END AS changes
+         [(e:Event {tenant_id: $tenantId, status: 'firing'})-[:RAISED_ON]->(ci)
+          | head([(e)-[:FROM_SOURCE]->(w:InboundWebhook {tenant_id: $tenantId}) WHERE w.storm_since IS NOT NULL | coalesce(w.name, w.id)])]
+       END AS stormSources
   WITH m, collect(CASE WHEN ci IS NULL THEN null ELSE {
          ciId: ci.id, name: ci.name, labels: [l IN labels(ci) WHERE l <> 'ConfigurationItem'],
          level: inc.level, role: inc.role, propagate: inc.propagate, weight: inc.weight, critical: inc.critical, via: inc.via, addedBy: inc.added_by,
-         health: ci.health, healthSource: ci.health_source, status: ci.status, changes: changes
+         health: ci.health, healthSource: ci.health_source, status: ci.status, changes: changes, stormSources: stormSources
        } END) AS nodes
   RETURN properties(m) AS props, [n IN nodes WHERE n IS NOT NULL] AS nodes`
+}
 
 /** Ciclo di vita del CI per cui l'Event Management non aggiorna la salute (services/events/ciHealth.ts). */
 export const CI_LIFECYCLE_MAINTENANCE = 'maintenance'
@@ -134,7 +156,10 @@ function assertEnum<T extends string>(value: unknown, allowed: readonly T[], wha
 function mapNode(row: NodeRow, mapId: string, nowMs: number): LoadedNode {
   const where = `ServiceMap ${mapId} node ${row.ciId}`
   const health = row.health == null ? null : assertEnum<CIHealth>(row.health, ['operational', 'degraded', 'down'], `${where} health`)
-  const changes = row.changes ?? []
+  // Stessa scelta della soppressione degli allarmi: la prima change davvero in
+  // finestra fra le candidate (prima la diretta, poi quelle a monte).
+  const changeWindow = pickChangeWindow(row.changes, nowMs)
+  const stormSources = [...new Set((row.stormSources ?? []).filter((x): x is string => typeof x === 'string' && x !== ''))]
   return {
     ciId:          row.ciId,
     name:          row.name ?? '',
@@ -155,16 +180,32 @@ function mapNode(row: NodeRow, mapId: string, nowMs: number): LoadedNode {
     // aggiorna la salute, ciHealth.ts: contarlo come «sano» sarebbe un fallback
     // silenzioso, contarlo come manutenzione del servizio spegnerebbe il servizio
     // per sempre).
-    inChangeWindow:       changes.some((c) => typeof c.step === 'string' && changeIsInWindow(c.step, c.plans ?? [], nowMs)),
+    inChangeWindow:       changeWindow !== null,
+    changeWindowUpstream: changeWindow?.upstream === true,
     lifecycleMaintenance: row.status === CI_LIFECYCLE_MAINTENANCE,
+    // Dismesso o fuori servizio (revisione 2 · D6.3): fuori dal calcolo come
+    // `propagate: never`, e senza portare il servizio in manutenzione.
+    lifecycleRetired:     isRetiredLifecycle(row.status),
+    changeWindow,
+    stormSources,
   }
 }
 
-/** Legge lo stato della mappa nella sessione del chiamante. Mappa assente → NotFoundError. */
+/**
+ * Legge lo stato della mappa nella sessione del chiamante. Mappa assente →
+ * NotFoundError.
+ *
+ * I salti a monte delle finestre di change vengono dalla policy degli allarmi
+ * (`suppress_upstream_hops`, revisione 2 · D6.2: una definizione sola per i
+ * due sottosistemi). La policy si legge dalla cache in memoria
+ * (lib/eventPolicy.ts, TTL 30 s): non è un giro in più per valutazione, e la
+ * mappa resta UNA query.
+ */
 export async function loadServiceMapState(session: Queryable, tenantId: string, mapId: string, now: string): Promise<ServiceMapState> {
   const nowMs = Date.parse(now)
   if (Number.isNaN(nowMs)) throw new Error(`loadServiceMapState: "${now}" is not an ISO date`)
-  const row = await runQueryOne<StateRow>(session, LOAD_SERVICE_MAP_CYPHER, { mapId, tenantId, windowSteps: CHANGE_WINDOW_STEPS })
+  const hops = (await getEventPolicy(tenantId)).suppress_upstream_hops
+  const row = await runQueryOne<StateRow>(session, loadServiceMapCypher(hops), { mapId, tenantId, ...CHANGE_WINDOW_PARAMS })
   if (!row) throw new NotFoundError('ServiceMap', mapId)
   const nodes = row.nodes.map((n) => mapNode(n, mapId, nowMs))
   const nodeIds = row.props['node_ids']
@@ -218,8 +259,16 @@ export interface EvaluateResult {
   /** Salute senza le finestre di change in corso; valorizzata solo con `health = maintenance`. */
   healthIfActive: ServiceHealth | null
   causes:         StoredCause[]
-  /** Esito della riconciliazione dell'incident del servizio; null se la valutazione non era rilevante (salute e cause invariate). */
+  /** Esito della riconciliazione dell'incident del servizio; null se la valutazione non era rilevante (salute e cause invariate) o se è stata sospesa. */
   incident:       ServiceIncidentResult | null
+  /**
+   * Valutazione SOSPESA (revisione 2 · D6.4): una sorgente degli allarmi dei
+   * componenti è in tempesta e la mappa ha `during_storm = 'hold'`. Salute,
+   * punteggio e spiegazione restano quelli di prima; `healthNote` dice perché.
+   */
+  held:           boolean
+  /** Perché la salute è questa, quando le cause non bastano (tempesta, change a monte); null se non c'è nulla da spiegare. */
+  healthNote:     string | null
 }
 
 interface WriteRow { id: string; previous: string | null; previousExplanation: unknown; changed: boolean; wasStale: boolean; serviceId: string; name: string; criticality: string | null }
@@ -257,12 +306,29 @@ export function evaluationWriteCypher(): string {
       WITH m, previous, previousExplanation, wasStale, stale, staleReason,
            (previous IS NULL OR previous <> $health) AS changed, (stale AND NOT wasStale) AS becameStale
       SET m.health = $health, m.impact_score = toInteger($impactScore), m.explanation = $explanation, m.evaluated_at = $now,
-          m.stale = stale, m.stale_reason = staleReason, m.health_if_active = $healthIfActive,
+          m.stale = stale, m.stale_reason = staleReason, m.health_if_active = $healthIfActive, m.health_note = $healthNote,
           m.health_since = CASE WHEN changed THEN $now ELSE m.health_since END
       ${serviceHistoryWriteCypher({ when: 'changed', prefix: 'h', fields: { previousHealth: 'previous' }, cap: false })}
       ${serviceHistoryWriteCypher({ when: 'becameStale', prefix: 'st', fields: { previousHealth: 'previous' }, imports: ['previous', 'wasStale', 'changed', 'becameStale'], capWhen: 'changed OR becameStale' })}
       RETURN m.id AS id, previous, previousExplanation, changed, wasStale, m.service_id AS serviceId, m.name AS name,
              head([(ba:BusinessApplication {tenant_id: $tenantId})-[:HAS_SERVICE_MAP]->(m) | ba.criticality]) AS criticality`
+}
+
+/**
+ * Valutazione SOSPESA dalla tempesta (revisione 2 · D6.4,
+ * `rules.during_storm = 'hold'`): si scrivono SOLO l'istante della
+ * valutazione e la nota. Salute, punteggio, spiegazione, `health_since` e
+ * `stale` restano quelli di prima — nessuna voce di cronologia, nessun
+ * `service.health_changed`, nessun incident aperto o chiuso: 60 allarmi da
+ * una sorgente impazzita non sono 60 guasti veri. Stessa guardia di versione
+ * della scrittura normale.
+ */
+export function evaluationHoldWriteCypher(): string {
+  return `
+      MATCH (m:ServiceMap {id: $mapId, tenant_id: $tenantId})
+      WHERE m.version = toInteger($version)
+      SET m.evaluated_at = $now, m.health_note = $healthNote
+      RETURN m.id AS id, m.health AS health, m.impact_score AS impactScore`
 }
 
 /**
@@ -282,6 +348,41 @@ export function explanationCauseIds(raw: unknown, mapId: string): string[] {
 /** Quante volte si rilegge e ricalcola quando la versione è cambiata sotto le mani (E1): una gara è normale, due di fila no. */
 export const EVALUATION_VERSION_RETRIES = 1
 
+/** Etichetta della metrica `service_evaluations_total` per una valutazione sospesa dalla tempesta (D6.4). */
+export const SERVICE_EVALUATION_HELD = 'hold'
+
+/** Le sorgenti in tempesta degli allarmi accesi sui componenti (senza doppioni, in ordine): la causa di una sospensione. */
+export function stormingSourcesOf(nodes: readonly LoadedNode[]): string[] {
+  return [...new Set(nodes.flatMap((n) => n.stormSources))].sort()
+}
+
+/** I componenti coperti da una change su un CI a MONTE, per la nota della mappa (D6.2). */
+export function upstreamWindowsOf(nodes: readonly LoadedNode[]): UpstreamWindowRef[] {
+  return nodes
+    .filter((n) => n.changeWindow?.upstream === true)
+    .map((n) => ({ name: n.name || n.ciId, changeCode: n.changeWindow!.code, viaName: n.changeWindow!.viaCiName }))
+}
+
+interface HeldEvaluation { health: ServiceHealth; impactScore: number; stormSources: string[] }
+interface HoldInput { tenantId: string; mapId: string; now: string; version: number; healthNote: string | null; stormSources: string[]; logCtx: Record<string, unknown> }
+
+/**
+ * Scrive la sospensione (nota + `evaluated_at`) e restituisce la salute
+ * INVARIATA della mappa; `null` se la guardia di versione non ha scritto (il
+ * chiamante rilegge e riprova, come per la scrittura normale).
+ */
+async function holdEvaluation(session: Queryable, input: HoldInput): Promise<HeldEvaluation | null> {
+  const row = await runQueryOne<{ id: string; health: string | null; impactScore: unknown }>(session, evaluationHoldWriteCypher(), {
+    mapId: input.mapId, tenantId: input.tenantId, now: input.now, version: input.version, healthNote: input.healthNote,
+  })
+  if (!row) return null
+  return {
+    health: assertEnum<ServiceHealth>(row.health, SERVICE_HEALTHS, `ServiceMap ${input.mapId} health`),
+    impactScore: toNumber(row.impactScore),
+    stormSources: input.stormSources,
+  }
+}
+
 /**
  * Valuta la mappa e persiste l'esito. Restituisce l'esito; un errore propaga
  * (il job ritenta, la passata periodica è la rete di sicurezza).
@@ -300,6 +401,8 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
     let row: WriteRow | null = null
     let causes: StoredCause[] = []
     let result!: ReturnType<typeof evaluateImpact>
+    let healthNote: string | null = null
+    let held: HeldEvaluation | null = null
     try {
       // Gara con una scrittura di configurazione (E1): la guardia di versione
       // non fa scrivere nulla, si rilegge lo stato di adesso e si ricalcola.
@@ -309,11 +412,25 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
         state = await loadServiceMapState(session, tenantId, mapId, now)
         result = evaluateImpact(state.nodes, state.rules)
         causes = storedCausesOf(result.causes, state.nodes)
+        const stormSources = stormingSourcesOf(state.nodes)
+        // D6.4: sorgente in tempesta e regola `hold` → la valutazione è
+        // sospesa. Si scrive solo la nota (e `evaluated_at`, così la passata
+        // periodica non ci ritorna sopra ogni minuto).
+        healthNote = serviceHealthNote({ held: state.rules.during_storm === 'hold' && stormSources.length > 0, stormSources, upstreamWindows: upstreamWindowsOf(state.nodes) })
+        if (state.rules.during_storm === 'hold' && stormSources.length > 0) {
+          held = await holdEvaluation(session, { tenantId, mapId, now, version: state.version, healthNote, stormSources, logCtx })
+          if (held) break
+          if (attempt >= EVALUATION_VERSION_RETRIES) {
+            throw new Error(`ServiceMap ${mapId} changed while suspending its evaluation (expected version ${state.version}, ${attempt + 1} attempts): nothing was written (tenant ${tenantId})`)
+          }
+          log.info({ ...logCtx, version: state.version }, 'Service map changed while evaluating: reloading and recomputing once')
+          continue
+        }
         const stale = state.missing.length > 0
         const staleNote = stale ? `Componenti non più presenti nella CMDB: ${state.missing.join(', ')}` : null
         const explanation = JSON.stringify(causes)
         row = await runQueryOne<WriteRow>(session, evaluationWriteCypher(), {
-          mapId, tenantId, now, stale, version: state.version,
+          mapId, tenantId, now, stale, version: state.version, healthNote,
           health: result.health, healthIfActive: result.healthIfActive, impactScore: result.impactScore, explanation,
           ...serviceHistoryParams({ trigger, health: result.health, previousHealth: null, impactScore: result.impactScore, causes }, now, 'h'),
           ...serviceHistoryParams({ trigger: 'map_changed', health: result.health, previousHealth: null, impactScore: result.impactScore, causes, note: staleNote }, now, 'st'),
@@ -326,6 +443,18 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
       }
     } finally {
       await session.close()
+    }
+    // Valutazione sospesa: la salute resta quella scritta, nessun evento di
+    // dominio, nessun incident. La rivalutazione arriva alla fine della
+    // tempesta (consumers/serviceImpactConsumer.ts) o dalla passata periodica.
+    if (held) {
+      serviceEvaluationsTotal.inc({ result: SERVICE_EVALUATION_HELD })
+      log.warn({ ...logCtx, stormSources: held.stormSources, health: held.health }, 'Service map evaluation suspended: an alert source of its components is storming')
+      return {
+        mapId, health: held.health, previousHealth: held.health, impactScore: held.impactScore,
+        changed: false, stale: state.missing.length > 0, healthIfActive: null, causes: [], incident: null,
+        held: true, healthNote,
+      }
     }
     if (!row) throw new Error(`ServiceMap ${mapId} vanished while writing its evaluation (tenant ${tenantId})`)
 
@@ -365,7 +494,7 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
     // La metrica si incrementa alla FINE: una riconciliazione fallita conta
     // come `error` (il catch), non anche come `changed`.
     serviceEvaluationsTotal.inc({ result: changed ? 'changed' : 'unchanged' })
-    return { mapId, health: result.health, previousHealth: previous, impactScore: result.impactScore, changed, stale, healthIfActive: result.healthIfActive, causes, incident }
+    return { mapId, health: result.health, previousHealth: previous, impactScore: result.impactScore, changed, stale, healthIfActive: result.healthIfActive, causes, incident, held: false, healthNote }
   } catch (err) {
     serviceEvaluationsTotal.inc({ result: 'error' })
     throw err

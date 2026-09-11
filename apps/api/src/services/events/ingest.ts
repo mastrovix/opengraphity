@@ -156,7 +156,7 @@ export async function ingestEvent(input: IngestInput): Promise<IngestResult> {
   const policy = await getEventPolicy(tenantId)
 
   const session = getSession(undefined, 'WRITE')
-  let row: { props: Props; outcome: IngestWriteOutcome; ciId: string | null; matchReason: unknown; candidates: CIMatchCandidate[] | null; connectorKind: string | null; sourceHasError: boolean | null } | null
+  let row: { props: Props; outcome: IngestWriteOutcome; ciId: string | null; ciStatus: string | null; matchReason: unknown; candidates: CIMatchCandidate[] | null; connectorKind: string | null; sourceHasError: boolean | null } | null
   try {
     row = await runQueryOne(session, ingestMergeCypher(), {
       ...ciMatchParams(tenantId, ev, { matchShortHostname: policy.match_short_hostname }),
@@ -229,7 +229,7 @@ export async function ingestEvent(input: IngestInput): Promise<IngestResult> {
   // pipeline non lo rilegge.
   const pipeline = await runEventPipeline({
     tenantId, eventId: String(props['id']), actorId, now, mode: 'ingest',
-    opensCycle: opensCycle && outcome !== 'duplicate', record: { props, ciId }, jobId,
+    opensCycle: opensCycle && outcome !== 'duplicate', record: { props, ciId, ciStatus: row.ciStatus ?? null }, jobId,
   })
   props['status'] = pipeline.status
 

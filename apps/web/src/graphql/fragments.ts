@@ -88,8 +88,8 @@ export const SERVICE_MAP_ROW_FIELDS = gql`
 export const SERVICE_MAP_DETAIL_FIELDS = gql`
   fragment ServiceMapDetailFields on ServiceMap {
     ...ServiceMapRowFields
-    version updatedAt maxDepth relationshipTypes builtFrom autoSync syncedAt
-    rules { version downSharePct degradedSharePct minNodes unknownNodes openIncidentFrom }
+    version updatedAt maxDepth relationshipTypes builtFrom autoSync syncedAt healthNote
+    rules { version downSharePct degradedSharePct minNodes unknownNodes openIncidentFrom duringStorm }
     nodes { ci { id name type } level role propagate weight critical via addedBy health inMaintenance contributes excludedReason }
     edges { source target relType }
     excluded { id name type }

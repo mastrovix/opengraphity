@@ -5,13 +5,15 @@
  *
  * Da qui li leggono lo schema GraphQL (schema-services.ts genera gli `enum`
  * SDL da queste liste), il motore (services/serviceImpact/*), il consumer, il
- * seed e la migrazione. Il modulo è puro (nessun import): lo schema lo carica
+ * seed e la migrazione. Il modulo è puro (importa solo l'altro vocabolario,
+ * lib/eventVocabularies.ts, per il ciclo di vita del CI): lo schema lo carica
  * anche nei test che non toccano Neo4j/Redis. Il test
  * graphql/__tests__/schemaServices.test.ts verifica che ogni enum SDL
  * coincida con la lista qui definita.
  *
  * Progetto: scratchpad service-impact-opengrafo.html (10 set 2026), ondata 1.
  */
+import { CI_LIFECYCLE_DECOMMISSIONED, CI_LIFECYCLE_INACTIVE, type CILifecycleStatus } from './eventVocabularies.js'
 
 /** Salute del servizio (`ServiceMap.health`): gli stessi termini del CI più maintenance e unknown. */
 export const SERVICE_HEALTHS = ['operational', 'degraded', 'down', 'maintenance', 'unknown'] as const
@@ -44,6 +46,33 @@ export type ServiceRelationshipType = (typeof SERVICE_RELATIONSHIP_TYPES)[number
 export const UNKNOWN_NODES_MODES = ['ignore', 'operational'] as const
 export type UnknownNodesMode = (typeof UNKNOWN_NODES_MODES)[number]
 
+/**
+ * Cosa fa la mappa mentre una sorgente dei suoi allarmi è in tempesta
+ * (`ServiceImpactRules.during_storm`, revisione 2 · D6.4): `hold` (default) =
+ * la valutazione è sospesa — la salute resta quella di prima, nessun incident
+ * di servizio aperto né chiuso, la nota (`ServiceMap.health_note`) dice quale
+ * sorgente è in tempesta; `evaluate` = si valuta comunque (comportamento
+ * precedente). Una tempesta è quasi sempre un guasto della raccolta, non 60
+ * guasti veri: gli allarmi la contengono in UN incident, i servizi la
+ * contenevano in un incident per mappa.
+ */
+export const DURING_STORM_MODES = ['evaluate', 'hold'] as const
+export type DuringStormMode = (typeof DURING_STORM_MODES)[number]
+
+/**
+ * Ciclo di vita del CI per cui un componente NON conta nella mappa (revisione
+ * 2 · D6.3): dismesso o fuori servizio. Il monitoraggio non ne aggiorna la
+ * salute e nessuno lo «chiude», quindi non rende il servizio `maintenance`:
+ * esce dal calcolo con `excludedReason = lifecycle_decommissioned`. È la
+ * stessa famiglia di stati che la policy degli allarmi ignora di default.
+ */
+export const CI_LIFECYCLE_RETIRED: readonly CILifecycleStatus[] = [CI_LIFECYCLE_INACTIVE, CI_LIFECYCLE_DECOMMISSIONED]
+
+/** True se il ciclo di vita del CI lo mette fuori dal calcolo della mappa. */
+export function isRetiredLifecycle(status: string | null | undefined): boolean {
+  return status != null && (CI_LIFECYCLE_RETIRED as readonly string[]).includes(status)
+}
+
 /** Soglia di salute da cui il servizio apre un incident (ondata 3; in ondata 1 solo conservata). */
 export const SERVICE_OPEN_INCIDENT_FROM = ['never', 'down', 'degraded'] as const
 export type ServiceOpenIncidentFrom = (typeof SERVICE_OPEN_INCIDENT_FROM)[number]
@@ -69,8 +98,12 @@ export const SERVICE_STALE_OVER_LIMIT: ServiceStaleReason = 'over_limit'
  * per il suo ciclo di vita: gli allarmi non ne aggiornano la salute),
  * `change_window` = una change è in finestra su quel CI (solo questa, e solo su
  * un componente critico, può rendere il SERVIZIO `maintenance`).
+ * Revisione 2 · D6.2 e D6.3: `upstream_change_window` = la change è su un CI a
+ * MONTE (la stessa regola che silenzia gli allarmi, `suppress_upstream_hops`
+ * salti lungo le relazioni tecniche) e `lifecycle_decommissioned` = il CI è
+ * dismesso o fuori servizio (CI_LIFECYCLE_RETIRED).
  */
-export const NODE_EXCLUDED_REASONS = ['never', 'lifecycle_maintenance', 'change_window', 'unknown_health'] as const
+export const NODE_EXCLUDED_REASONS = ['never', 'lifecycle_decommissioned', 'lifecycle_maintenance', 'change_window', 'upstream_change_window', 'unknown_health'] as const
 export type NodeExcludedReason = (typeof NODE_EXCLUDED_REASONS)[number]
 
 /** Motivo di una `EXCLUDES` creata dall'amministratore dal diff della mappa (ondata 2). */
@@ -139,6 +172,8 @@ export interface ServiceImpactRules {
   min_nodes:          number
   unknown_nodes:      UnknownNodesMode
   open_incident_from: ServiceOpenIncidentFrom
+  /** Cosa fare mentre una sorgente degli allarmi dei componenti è in tempesta: sospendere la valutazione (default) o valutare comunque. */
+  during_storm:       DuringStormMode
 }
 
 export const DEFAULT_SERVICE_IMPACT_RULES: ServiceImpactRules = {
@@ -148,6 +183,7 @@ export const DEFAULT_SERVICE_IMPACT_RULES: ServiceImpactRules = {
   min_nodes:          1,
   unknown_nodes:      'operational',
   open_incident_from: 'down',
+  during_storm:       'hold',
 }
 export const DEFAULT_SERVICE_IMPACT_RULES_JSON = JSON.stringify(DEFAULT_SERVICE_IMPACT_RULES)
 
@@ -178,6 +214,10 @@ export function assertServiceImpactRules(value: unknown, what = 'rules'): Servic
   if (typeof openFrom !== 'string' || !(SERVICE_OPEN_INCIDENT_FROM as readonly string[]).includes(openFrom)) {
     throw new Error(`${what}.open_incident_from must be one of: ${SERVICE_OPEN_INCIDENT_FROM.join(', ')}. Got: ${JSON.stringify(openFrom)}`)
   }
+  const duringStorm = value['during_storm']
+  if (typeof duringStorm !== 'string' || !(DURING_STORM_MODES as readonly string[]).includes(duringStorm)) {
+    throw new Error(`${what}.during_storm must be one of: ${DURING_STORM_MODES.join(', ')}. Got: ${JSON.stringify(duringStorm)}`)
+  }
   const known = new Set(Object.keys(DEFAULT_SERVICE_IMPACT_RULES))
   const unknown = Object.keys(value).filter((k) => !known.has(k))
   if (unknown.length) throw new Error(`${what} has unknown keys: ${unknown.join(', ')}`)
@@ -188,6 +228,7 @@ export function assertServiceImpactRules(value: unknown, what = 'rules'): Servic
     min_nodes:          minNodes,
     unknown_nodes:      unknownNodes as UnknownNodesMode,
     open_incident_from: openFrom as ServiceOpenIncidentFrom,
+    during_storm:       duringStorm as DuringStormMode,
   }
 }
 
@@ -225,6 +266,7 @@ export const SERVICE_SDL_ENUMS: Readonly<Record<string, readonly string[]>> = {
   UnknownNodesMode:         UNKNOWN_NODES_MODES,
   ServiceOpenIncidentFrom:  SERVICE_OPEN_INCIDENT_FROM,
   ServiceStaleReason:       SERVICE_STALE_REASONS,
+  DuringStormMode:          DURING_STORM_MODES,
 }
 
 /** `enum Nome { a b c }` per l'SDL. */

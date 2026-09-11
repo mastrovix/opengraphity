@@ -14,8 +14,14 @@
  *     il nodo **non conta** — come `propagate: never` — quindi non entra nel
  *     denominatore e non produce cause, ma **non** rende il servizio
  *     `maintenance`. È uno stato che nessuno «chiude», a differenza di una change.
- *   - `inChangeWindow` (una change è in finestra su quel CI): il nodo non conta e,
- *     se è critico, il SERVIZIO è `maintenance` — ma solo se non c'è di peggio.
+ *   - `inChangeWindow` (una change è in finestra su quel CI, **o su un CI a monte**
+ *     entro `suppress_upstream_hops` salti — revisione 2 · D6.2, la stessa regola
+ *     che silenzia gli allarmi): il nodo non conta e, se è critico, il SERVIZIO è
+ *     `maintenance` — ma solo se non c'è di peggio. Quando la copertura viene da
+ *     monte il motivo è `upstream_change_window` e la mappa lo spiega.
+ *   - `lifecycleRetired` (`ci.status` dismesso o fuori servizio, revisione 2 ·
+ *     D6.3): il nodo **non conta** e non rende il servizio `maintenance` nemmeno
+ *     se è critico e in finestra — un CI dismesso non torna.
  * **`down` vince su `maintenance`**: un critico che conta e sta giù è un guasto
  * vero, e va detto anche mentre un altro componente è in finestra di change.
  * Quando la salute è `maintenance`, `healthIfActive` dice quale sarebbe senza le
@@ -59,10 +65,14 @@ export interface ImpactNodeInput {
   critical:      boolean
   /** Salute del CI dal monitoraggio; null = mai toccato da un allarme. */
   health:        CIHealth | null
-  /** Change in finestra sul CI (hops 0): il nodo non pesa e, se è critico, il servizio è in manutenzione. */
+  /** Change in finestra sul CI o su un CI a monte: il nodo non pesa e, se è critico, il servizio è in manutenzione. */
   inChangeWindow: boolean
+  /** La change in finestra è su un CI a MONTE, non su questo (solo per il motivo mostrato). */
+  changeWindowUpstream: boolean
   /** Ciclo di vita del CI a `maintenance`: il nodo non pesa (gli allarmi non ne aggiornano la salute) ma il servizio NON va in manutenzione. */
   lifecycleMaintenance: boolean
+  /** Ciclo di vita del CI dismesso o fuori servizio (CI_LIFECYCLE_RETIRED): il nodo non pesa e non porta il servizio in manutenzione. */
+  lifecycleRetired: boolean
   /** Id del CI da cui si arriva (null al livello 1). */
   via:           string | null
 }
@@ -92,11 +102,11 @@ export interface ImpactResult {
 const DOWN_FACTOR: Readonly<Record<CIHealth, number>> = { down: 1, degraded: 0.5, operational: 0 }
 
 /** Ciò che serve a decidere se un nodo conta: le due manutenzioni, la propagazione e la salute. */
-type NodeGate = Pick<ImpactNodeInput, 'propagate' | 'inChangeWindow' | 'lifecycleMaintenance' | 'health'>
+type NodeGate = Pick<ImpactNodeInput, 'propagate' | 'inChangeWindow' | 'changeWindowUpstream' | 'lifecycleMaintenance' | 'lifecycleRetired' | 'health'>
 
 /** Salute con cui il nodo entra nel calcolo (null → operational solo con unknown_nodes = operational), o null se non conta. */
 export function effectiveHealth(node: NodeGate, rules: Pick<ServiceImpactRules, 'unknown_nodes'>): CIHealth | null {
-  if (node.propagate === 'never' || node.inChangeWindow || node.lifecycleMaintenance) return null
+  if (node.propagate === 'never' || node.lifecycleRetired || node.inChangeWindow || node.lifecycleMaintenance) return null
   if (node.health !== null) return node.health
   return rules.unknown_nodes === 'operational' ? 'operational' : null
 }
@@ -113,7 +123,10 @@ export function nodeContributes(node: NodeGate, rules: Pick<ServiceImpactRules, 
  */
 export function nodeExcludedReason(node: NodeGate, rules: Pick<ServiceImpactRules, 'unknown_nodes'>): NodeExcludedReason | null {
   if (node.propagate === 'never') return 'never'
-  if (node.inChangeWindow) return 'change_window'
+  // Il ciclo di vita viene PRIMA della finestra di change: un CI dismesso resta
+  // dismesso anche mentre una change lo tocca, e il motivo mostrato dev'essere quello.
+  if (node.lifecycleRetired) return 'lifecycle_decommissioned'
+  if (node.inChangeWindow) return node.changeWindowUpstream ? 'upstream_change_window' : 'change_window'
   if (node.lifecycleMaintenance) return 'lifecycle_maintenance'
   if (node.health === null && rules.unknown_nodes !== 'operational') return 'unknown_health'
   return null
@@ -165,7 +178,9 @@ function evaluateCore(nodes: readonly ImpactNodeInput[], rules: ServiceImpactRul
   for (const node of nodes) {
     // SOLO la finestra di change può rendere il servizio in manutenzione: il
     // ciclo di vita del CI toglie il nodo dal calcolo e basta (R1).
-    if (node.critical && node.inChangeWindow) criticalInChangeWindow = true
+    // Un componente dismesso non mette il servizio in manutenzione: nessuno
+    // «chiude» quella finestra perché il CI non torna (revisione 2 · D6.3).
+    if (node.critical && node.inChangeWindow && !node.lifecycleRetired) criticalInChangeWindow = true
     const health = effectiveHealth(node, rules)
     if (health === null) continue
     const weight = assertWeight(node)
@@ -216,6 +231,46 @@ export function evaluateImpact(nodes: readonly ImpactNodeInput[], rules: Service
   // change tolte di mezzo (il ciclo di vita resta: quei CI non hanno una salute
   // aggiornata nemmeno adesso). Non può tornare `maintenance`: senza finestre
   // nessun critico è in finestra.
-  const asIfActive = nodes.map((n) => (n.inChangeWindow ? { ...n, inChangeWindow: false } : n))
+  const asIfActive = nodes.map((n) => (n.inChangeWindow ? { ...n, inChangeWindow: false, changeWindowUpstream: false } : n))
   return { ...result, healthIfActive: evaluateCore(asIfActive, rules).health }
+}
+
+// ── Nota della valutazione (revisione 2 · D6.2 e D6.4) ───────────────────────
+
+/** Un componente coperto da una change su un CI a MONTE: quel che l'operatore deve leggere. */
+export interface UpstreamWindowRef { name: string; changeCode: string; viaName: string }
+
+export interface HealthNoteInput {
+  /** Valutazione sospesa perché una sorgente degli allarmi è in tempesta (`during_storm = hold`). */
+  held:            boolean
+  /** Nomi delle sorgenti in tempesta fra quelle degli allarmi accesi sui componenti. */
+  stormSources:    readonly string[]
+  /** Componenti in finestra di change a monte. */
+  upstreamWindows: readonly UpstreamWindowRef[]
+}
+
+/** Quanti elementi si citano per esteso in una nota prima di «e altri N». */
+export const HEALTH_NOTE_MAX_ITEMS = 3
+
+function withRest(items: readonly string[]): string {
+  const shown = items.slice(0, HEALTH_NOTE_MAX_ITEMS)
+  const rest = items.length - shown.length
+  return `${shown.join(', ')}${rest > 0 ? `, e altri ${rest}` : ''}`
+}
+
+/**
+ * Perché la salute è questa, quando l'elenco delle cause non basta
+ * (`ServiceMap.health_note`): la tempesta che ha sospeso la valutazione e/o i
+ * componenti coperti da una change su un CI a monte. Funzione pura, testi
+ * espliciti: `null` quando non c'è niente da spiegare (e la nota va cancellata).
+ */
+export function serviceHealthNote(input: HealthNoteInput): string | null {
+  const parts: string[] = []
+  if (input.held && input.stormSources.length > 0) {
+    parts.push(`${input.stormSources.length === 1 ? 'Sorgente in tempesta' : 'Sorgenti in tempesta'}: ${withRest([...input.stormSources])}. Valutazione sospesa: la salute resta quella dell'ultima valutazione.`)
+  }
+  if (input.upstreamWindows.length > 0) {
+    parts.push(`${input.upstreamWindows.length === 1 ? 'Componente in finestra di change a monte' : 'Componenti in finestra di change a monte'}: ${withRest(input.upstreamWindows.map((u) => `${u.name} (${u.changeCode} su ${u.viaName})`))}.`)
+  }
+  return parts.length ? parts.join(' ') : null
 }

@@ -15,8 +15,11 @@
  * sovrascrittura silenziosa.
  *
  * Un valore fuori vocabolario salvato sulla mappa (`unknownNodes`,
- * `openIncidentFrom`) resta scelto nel select come «Sconosciuto (<valore>)»:
- * non viene corretto di nascosto.
+ * `openIncidentFrom`, `duringStorm`) resta scelto nel select come
+ * «Sconosciuto (<valore>)»: non viene corretto di nascosto.
+ *
+ * Revisione 2 (D6.4): il selettore «Durante una tempesta della sorgente»
+ * (`duringStorm`) — sospendi la valutazione (default) o valuta comunque.
  */
 import { useEffect, useId, useMemo, useState } from 'react'
 import { useMutation } from '@apollo/client/react'
@@ -32,9 +35,12 @@ import { colors, palette } from '@/lib/tokens'
 import { ServiceImpactPreviewLine } from './ServiceImpactPreviewLine'
 import {
   MIN_NODES_MAX, MIN_NODES_MIN, SHARE_PCT_MAX, SHARE_PCT_MIN,
-  SERVICE_OPEN_INCIDENT_FROMS, UNKNOWN_NODES_MODES,
+  SERVICE_OPEN_INCIDENT_FROMS, UNKNOWN_NODES_MODES, DURING_STORM_MODES,
   type ServiceImpactRules, type ServiceImpactRulesInput, type ServiceMapDetail,
 } from '@/types/services'
+
+/** I campi a scelta singola delle regole: stesso trattamento (opzioni, aiuto, valore fuori vocabolario). */
+type ChoiceField = 'unknownNodes' | 'openIncidentFrom' | 'duringStorm'
 
 type NumField = 'downSharePct' | 'degradedSharePct' | 'minNodes'
 
@@ -79,6 +85,7 @@ function toForm(rules: ServiceImpactRules): ServiceImpactRulesInput {
     minNodes:         rules.minNodes,
     unknownNodes:     rules.unknownNodes,
     openIncidentFrom: rules.openIncidentFrom,
+    duringStorm:      rules.duringStorm,
   }
 }
 
@@ -87,7 +94,7 @@ function optionsWith(vocabulary: readonly string[], current: string): string[] {
   return vocabulary.includes(current) ? [...vocabulary] : [...vocabulary, current]
 }
 
-function optionLabel(t: TFunction, group: 'unknownNodes' | 'openIncidentFrom', value: string, vocabulary: readonly string[]): string {
+function optionLabel(t: TFunction, group: ChoiceField, value: string, vocabulary: readonly string[]): string {
   return vocabulary.includes(value)
     ? t(`monitoring.services.rulesEdit.${group}Options.${value}`)
     : t('monitoring.services.health.outOfVocabulary', { value })
@@ -167,7 +174,7 @@ export function ServiceRulesCard({ map, canEdit, onReload }: Props) {
     )
   }
 
-  const selectField = (key: 'unknownNodes' | 'openIncidentFrom', vocabulary: readonly string[]) => (
+  const selectField = (key: ChoiceField, vocabulary: readonly string[]) => (
     <div>
       <FieldLabel htmlFor={fid(key)}>{t(`monitoring.services.rulesEdit.${key}`)}</FieldLabel>
       <Select id={fid(key)} value={form[key]} onChange={(e) => set(key, e.target.value)} disabled={saving} aria-describedby={helpId(key)}>
@@ -194,6 +201,8 @@ export function ServiceRulesCard({ map, canEdit, onReload }: Props) {
         {selectField('unknownNodes', UNKNOWN_NODES_MODES)}
         {selectField('openIncidentFrom', SERVICE_OPEN_INCIDENT_FROMS)}
         <p style={{ ...hint, marginTop: 0 }}>{t('monitoring.services.rulesEdit.openIncidentNote')}</p>
+        {/* D6.4: una tempesta è di norma un guasto della raccolta, non N guasti reali: di default la valutazione si sospende. */}
+        {selectField('duringStorm', DURING_STORM_MODES)}
 
         {saveError && (
           <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 12px', borderRadius: 8, background: palette.danger.bg, border: `1px solid ${palette.danger.border}`, color: palette.danger.text, fontSize: 'var(--font-size-body)' }}>
@@ -234,6 +243,7 @@ function ReadOnlyRules({ rules }: { rules: ServiceImpactRules }) {
         <li>{t('monitoring.services.detail.rulesFields.minNodes', { count: rules.minNodes })}</li>
         <li>{t('monitoring.services.detail.rulesFields.unknownNodes', { value: readOnlyLabel(t, 'unknownNodes', rules.unknownNodes, UNKNOWN_NODES_MODES) })}</li>
         <li>{t('monitoring.services.detail.rulesFields.openIncidentFrom', { value: readOnlyLabel(t, 'openIncidentFrom', rules.openIncidentFrom, SERVICE_OPEN_INCIDENT_FROMS) })}</li>
+        <li>{t('monitoring.services.detail.rulesFields.duringStorm', { value: readOnlyLabel(t, 'duringStorm', rules.duringStorm, DURING_STORM_MODES) })}</li>
       </ul>
       <p style={{ margin: '8px 0 0', fontSize: 'var(--font-size-table)', color: colors.slateLight }}>
         {t('monitoring.services.detail.rulesVersion', { version: rules.version })}
@@ -247,7 +257,7 @@ function ReadOnlyRules({ rules }: { rules: ServiceImpactRules }) {
  * ignorati»): minuscola, diversa da quella del select. Fuori vocabolario →
  * «Sconosciuto (<valore>)», mai il valore taciuto.
  */
-function readOnlyLabel(t: TFunction, group: 'unknownNodes' | 'openIncidentFrom', value: string, vocabulary: readonly string[]): string {
+function readOnlyLabel(t: TFunction, group: ChoiceField, value: string, vocabulary: readonly string[]): string {
   return vocabulary.includes(value)
     ? t(`monitoring.services.detail.rulesFields.${group}Values.${value}`)
     : t('monitoring.services.health.outOfVocabulary', { value })

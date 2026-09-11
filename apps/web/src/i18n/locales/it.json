@@ -1910,6 +1910,13 @@
       "flapWindowMinutes": "Finestra sfarfallio (minuti)",
       "retentionDays": "Conservazione (giorni)",
       "matchShortHostname": "Riconosci nome corto e FQDN come lo stesso host",
+      "ignoreLifecycleStatuses": "Stati del ciclo di vita da ignorare",
+      "lifecycleUnknown": "Sconosciuto: {{value}}",
+      "lifecycleVocabularyUnavailable": "Stati del ciclo di vita non disponibili dal metamodello ({{error}}): restano spuntabili solo quelli già salvati nella policy.",
+      "lifecycleEmptyVocabulary": "Il metamodello non espone nessuno stato del ciclo di vita: non c'è niente da ignorare.",
+      "lifecycleSelectedNone": "Nessuno stato ignorato: gli allarmi vengono valutati su qualunque CI.",
+      "lifecycleSelected_one": "{{count}} stato ignorato.",
+      "lifecycleSelected_other": "{{count}} stati ignorati.",
       "autoResolve": "Chiusura automatica quando la sorgente risolve",
       "severityMap": "Mappa severità → impatto / urgenza",
       "map": {
@@ -1932,6 +1939,8 @@
         "autoResolve": "quando la sorgente risolve tutti gli allarmi, l'incident aperto dal monitoraggio viene risolto; se l'allarme torna, viene riaperto.",
         "changeWindowTitle": "Silenzio in finestra di change",
         "changeWindow": "gli allarmi sui CI di una change in finestra di rilascio sono silenziati: niente incident né cambio di salute; a fine finestra vengono rivalutati.",
+        "lifecycleTitle": "Ciclo di vita",
+        "lifecycle": "gli allarmi sui CI negli stati del ciclo di vita scelti (di norma «decommissioned») non aprono incident e non cambiano la salute: l'allarme resta in console con il suo motivo.",
         "flappingTitle": "Sfarfallio",
         "flapping": "un allarme che va e viene troppe volte nella finestra è messo «in sfarfallio»: nessun incident aperto né chiuso, salute del CI degradata, finché non resta stabile per i minuti indicati.",
         "stormTitle": "Tempesta",
@@ -1950,7 +1959,8 @@
         "severityMap": "Impatto e urgenza assegnati all'incident aperto automaticamente, in base alla severità dell'allarme: la priorità ne deriva.",
         "flapStableMinutes": "Quanto a lungo l'allarme deve restare fermo (né nuovi attivi né risolti) prima di uscire dallo sfarfallio e tornare alla correlazione normale.",
         "stormThresholdPerMinute": "Se una sorgente supera questo numero di allarmi nuovi al minuto, scatta la tempesta: i suoi allarmi sono raggruppati in un unico incident invece di aprirne uno per CI. 0 = rilevamento tempeste disattivato.",
-        "stormCooldownMinutes": "La tempesta si chiude quando il tasso resta sotto la soglia per questi minuti; gli allarmi successivi tornano alla correlazione normale."
+        "stormCooldownMinutes": "La tempesta si chiude quando il tasso resta sotto la soglia per questi minuti; gli allarmi successivi tornano alla correlazione normale.",
+        "ignoreLifecycleStatuses": "Gli allarmi sui CI in questi stati non aprono incident e non cambiano la salute del CI: restano in console con il motivo «ciclo di vita ignorato». Di norma basta «decommissioned»: un CI dismesso che il monitoraggio non ha ancora spento non deve svegliare nessuno."
       },
       "flapStableMinutes": "Minuti di stabilità prima di riprendere",
       "stormThresholdPerMinute": "Soglia di tempesta (allarmi nuovi al minuto)",
@@ -1959,6 +1969,7 @@
         "recognition": "Riconoscimento del CI",
         "incidents": "Apertura e chiusura degli incident",
         "changeWindow": "Silenzio in finestra di change",
+        "lifecycle": "Ciclo di vita del CI",
         "flapStorm": "Sfarfallio e tempeste",
         "retention": "Conservazione"
       },
@@ -2002,6 +2013,8 @@
         "stormUnknown": "Tempesta",
         "stormHint": "Raggruppato nell'incident di tempesta della sorgente {{source}}",
         "storm_no_ci": "Tempesta, nessun CI",
+        "skipped_lifecycle": "Ciclo di vita · {{status}}",
+        "skipped_lifecycleNoStatus": "Ciclo di vita ignorato",
         "pending": "In rivalutazione"
       },
       "auto": {
@@ -2029,6 +2042,9 @@
         "storm": "Tempesta dalla sorgente {{source}}: raggruppato nell'incident di tempesta {{number}} il {{when}} invece di aprire un incident per questo CI.",
         "stormNoIncident": "Tempesta dalla sorgente {{source}}: valutato il {{when}} durante la tempesta, nessun incident aperto per questo CI.",
         "storm_no_ci": "Tempesta dalla sorgente {{source}} e nessun CI riconosciuto: nessun incident aperto; collega un CI dopo la tempesta se serve.",
+        "skipped_lifecycle": "Il CI {{name}} è nello stato «{{status}}», fra quelli che la policy ignora: nessun incident aperto e salute del CI invariata. Per far ripartire la valutazione cambia lo stato del CI, oppure togli lo stato dagli «Stati del ciclo di vita da ignorare» nella Policy eventi.",
+        "skipped_lifecycleNoStatus": "Il CI {{name}} è in uno stato del ciclo di vita che la policy ignora, ma lo stato non è registrato sul CI: nessun incident aperto e salute invariata.",
+        "skipped_lifecycleNoCI": "Il CI dell'allarme è in uno stato del ciclo di vita che la policy ignora: nessun incident aperto e nessun cambio di salute.",
         "pending": "In attesa di rivalutazione: la correlazione riprende al prossimo passaggio automatico, entro cinque minuti."
       },
       "short": {
@@ -2044,6 +2060,7 @@
         "flapping": "allarme instabile",
         "storm": "raggruppato nella tempesta",
         "storm_no_ci": "tempesta, nessun CI",
+        "skipped_lifecycle": "ciclo di vita ignorato",
         "pending": "in rivalutazione"
       }
     },
@@ -2585,7 +2602,9 @@
       "excludedReason": {
         "never": "non pesa mai (impostazione)",
         "lifecycle_maintenance": "in manutenzione (ciclo di vita)",
+        "lifecycle_decommissioned": "CI dismesso (fuori dal calcolo)",
         "change_window": "in finestra di change",
+        "upstream_change_window": "in finestra di change su un CI a monte",
         "unknown_health": "salute sconosciuta (ignorata)",
         "unstated": "motivo non dichiarato"
       },
@@ -2691,6 +2710,7 @@
           "minNodes_other": "…e almeno {{count}} componenti non sono operativi",
           "unknownNodes": "Componenti senza salute: {{value}}",
           "openIncidentFrom": "Incident per servizio da: {{value}}",
+          "duringStorm": "Durante una tempesta della sorgente: {{value}}",
           "unknownNodesValues": {
             "ignore": "ignorati",
             "operational": "contano come operativi"
@@ -2699,6 +2719,10 @@
             "never": "mai",
             "degraded": "degradato",
             "down": "giù"
+          },
+          "duringStormValues": {
+            "hold": "valutazione sospesa",
+            "evaluate": "valuta comunque"
           }
         },
         "nodeFields": {
@@ -2769,12 +2793,14 @@
         "minNodes": "Minimo di componenti",
         "unknownNodes": "Componenti senza salute",
         "openIncidentFrom": "Apri un incident per servizio da",
+        "duringStorm": "Durante una tempesta della sorgente",
         "help": {
           "downSharePct": "Il servizio è giù quando un componente critico è giù, oppure quando la quota ponderata dei componenti giù arriva a questa percentuale.",
           "degradedSharePct": "Il servizio è degradato quando il punteggio d'impatto arriva a questa percentuale. Non può stare sopra la soglia «giù».",
           "minNodes": "Quanti componenti devono essere non operativi perché le soglie si applichino: evita che un solo componente rumoroso muova la salute di una mappa grande.",
           "unknownNodes": "Un componente mai toccato da un allarme: ignoralo, oppure contalo come operativo.",
-          "openIncidentFrom": "Da quale salute si apre un incident per servizio."
+          "openIncidentFrom": "Da quale salute si apre un incident per servizio.",
+          "duringStorm": "Una tempesta di allarmi è quasi sempre un guasto del monitoraggio o della rete di raccolta, non tanti guasti veri: per questo il default è sospendere. Con «Sospendi la valutazione» la salute resta quella di prima, nessun incident di servizio viene aperto o chiuso e il servizio dice quale sorgente è in tempesta; a tempesta finita il servizio viene rivalutato. Con «Valuta comunque» il servizio segue gli allarmi anche durante la tempesta."
         },
         "unknownNodesOptions": {
           "ignore": "Ignorati",
@@ -2784,6 +2810,10 @@
           "never": "Mai",
           "degraded": "Degradato",
           "down": "Giù"
+        },
+        "duringStormOptions": {
+          "hold": "Sospendi la valutazione",
+          "evaluate": "Valuta comunque"
         },
         "unsaved": "Modifiche non salvate",
         "noChanges": "Niente da salvare",

@@ -45,7 +45,7 @@ export const HISTORY = [
   { __typename: 'ServiceHealthEntry', id: 'h1', at: '2026-09-10T08:00:00Z', health: 'operational', previousHealth: null, impactScore: 0, trigger: 'created', causes: [], note: null },
 ]
 
-export const RULES = { __typename: 'ServiceImpactRules', version: 1, downSharePct: 50, degradedSharePct: 1, minNodes: 1, unknownNodes: 'ignore', openIncidentFrom: 'down' }
+export const RULES = { __typename: 'ServiceImpactRules', version: 1, downSharePct: 50, degradedSharePct: 1, minNodes: 1, unknownNodes: 'ignore', openIncidentFrom: 'down', duringStorm: 'hold' }
 
 /** Riga della lista (fragment ServiceMapRowFields). */
 export function mapRow(over: Record<string, unknown> = {}): Record<string, unknown> {
@@ -63,7 +63,8 @@ export function mapDetail(over: Record<string, unknown> = {}): Record<string, un
     ...mapRow(), version: 3, updatedAt: '2026-09-10T07:00:00Z', maxDepth: 4,
     relationshipTypes: ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE'], builtFrom: 'auto',
     rules: RULES, nodes: NODES, edges: EDGES, excluded: [], history: HISTORY, historyCount: 2,
-    openIncident: null, autoSync: true, syncedAt: new Date(Date.now() - 5 * 60_000).toISOString(), ...over,
+    openIncident: null, autoSync: true, syncedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    healthNote: null, ...over,
   }
 }
 

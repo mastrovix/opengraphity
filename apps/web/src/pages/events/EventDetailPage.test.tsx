@@ -52,6 +52,7 @@ const policyMock = (): GqlMock => ({
     __typename: 'EventPolicy', version: 1, updatedAt: null, openIncidentFrom: 'critical', groupBy: 'ci', openDelaySeconds: 120, autoResolve: true,
     suppressUpstreamHops: 1, flapThreshold: 5, flapWindowMinutes: 10, flapStableMinutes: 15,
     stormThresholdPerMinute: 50, stormCooldownMinutes: 5, retentionDays: 30, severityMap: '{}',
+    ignoreLifecycleStatuses: ['decommissioned'],
   } } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
@@ -238,5 +239,27 @@ describe('EventDetailPage — sfarfallio e tempeste (ondata 4)', () => {
     renderPage('operator', { correlation: 'storm_no_ci', incident: null, ci: null })
     await screen.findByRole('heading', { level: 1 })
     expect(sentence()).toHaveTextContent('Storm from source Prometheus and no CI recognised: no incident opened; link a CI after the storm if needed.')
+  })
+})
+
+describe('EventDetailPage — ciclo di vita ignorato (revisione 2, D6.3)', () => {
+  const RETIRED = { ...CI, id: 'ci9', name: 'old-vm', status: 'decommissioned', health: null }
+
+  it('skipped_lifecycle: la frase dice il CI, lo stato e come far ripartire la valutazione', async () => {
+    renderPage('operator', { correlation: 'skipped_lifecycle', incident: null, ci: RETIRED })
+    await screen.findByRole('heading', { level: 1 })
+    expect(sentence()).toHaveTextContent('CI old-vm is in status “Decommissioned”, one of those the policy ignores: no incident opened and CI health unchanged.')
+    expect(sentence()).toHaveTextContent('remove the status from “Lifecycle statuses to ignore” in the event policy')
+  })
+
+  it('skipped_lifecycle senza stato sul CI (o senza CI): lo si dice, non si inventa un valore', async () => {
+    const { unmount } = renderPage('operator', { correlation: 'skipped_lifecycle', incident: null, ci: { ...RETIRED, status: null } })
+    await screen.findByRole('heading', { level: 1 })
+    expect(sentence()).toHaveTextContent('CI old-vm is in a lifecycle status the policy ignores, but the status is not recorded on the CI')
+    unmount()
+
+    renderPage('operator', { correlation: 'skipped_lifecycle', incident: null, ci: null, acknowledgedAt: null, acknowledgedBy: null })
+    await screen.findByRole('heading', { level: 1 })
+    expect(sentence()).toHaveTextContent('The alarm\'s CI is in a lifecycle status the policy ignores: no incident opened and no health change.')
   })
 })

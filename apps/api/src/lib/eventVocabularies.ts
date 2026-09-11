@@ -44,6 +44,20 @@ export type ConnectorKind = (typeof CONNECTOR_KINDS)[number]
 export const CI_HEALTHS = ['operational', 'degraded', 'down'] as const
 export type CIHealth = (typeof CI_HEALTHS)[number]
 
+/**
+ * Ciclo di vita del CI (`ci.status`): il vocabolario `ci_status` del
+ * metamodello (lib/seedEnumTypes.ts lo semina da qui). Niente a che vedere con
+ * la salute: il monitoraggio non lo scrive mai, lo legge soltanto — la policy
+ * `ignore_lifecycle_statuses` (revisione 2 · D6.3) sceglie fra questi valori
+ * quelli per cui un allarme non apre incident e non cambia la salute.
+ */
+export const CI_LIFECYCLE_STATUSES = ['active', 'inactive', 'maintenance', 'decommissioned'] as const
+export type CILifecycleStatus = (typeof CI_LIFECYCLE_STATUSES)[number]
+
+/** Ciclo di vita del CI «fuori servizio»: il default di `ignore_lifecycle_statuses` e i componenti che non contano in una mappa di servizio (D6.3). */
+export const CI_LIFECYCLE_DECOMMISSIONED: CILifecycleStatus = 'decommissioned'
+export const CI_LIFECYCLE_INACTIVE: CILifecycleStatus = 'inactive'
+
 /** Origine della salute: calcolata dagli allarmi o forzata a mano (`ci.health_source`). */
 export const HEALTH_SOURCES = ['monitoring', 'manual'] as const
 export type HealthSource = (typeof HEALTH_SOURCES)[number]
@@ -53,8 +67,12 @@ export type HealthSource = (typeof HEALTH_SOURCES)[number]
  * dalla pipeline di services/eventCorrelation.ts. `auto_resolved` e
  * `auto_resolve_skipped` sono esiti della PIPELINE (PipelineOutcome) ma non
  * vengono mai scritti su `correlation`: per questo non stanno qui.
+ * `skipped_lifecycle` (revisione 2 · D6.3): il CI dell'allarme ha un ciclo di
+ * vita fra quelli ignorati dalla policy (`ignore_lifecycle_statuses`, di
+ * norma `decommissioned`) — nessun incident, nessun ricalcolo della salute,
+ * l'allarme resta in console con il suo motivo.
  */
-export const CORRELATION_OUTCOMES = ['opened', 'attached', 'reopened', 'skipped_orphan', 'skipped_severity', 'delayed', 'pending', 'suppressed', 'flapping', 'storm', 'storm_no_ci', 'none'] as const
+export const CORRELATION_OUTCOMES = ['opened', 'attached', 'reopened', 'skipped_orphan', 'skipped_severity', 'skipped_lifecycle', 'delayed', 'pending', 'suppressed', 'flapping', 'storm', 'storm_no_ci', 'none'] as const
 export type CorrelationOutcome = (typeof CORRELATION_OUTCOMES)[number]
 
 /**

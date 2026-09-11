@@ -19,6 +19,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 
+// Revisione 2 · D6.2: la lettura della mappa prende `suppress_upstream_hops`
+// dalla policy degli allarmi (cache in memoria): qui la policy è mockata, così
+// la mappa resta UNA sola query nel test.
+vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValue({ suppress_upstream_hops: 1 }) }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
 vi.mock('../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
@@ -164,7 +168,7 @@ describe('syncServiceMap: cosa applica', () => {
     expect(c.params['removeIds']).toEqual(['gone-1'])   // solo l'id sparito dalla CMDB
     expect(r.removed).toBe(1)
     // il piano è lo stesso che il resolver mostrerebbe: nessun nodo manual fra le rimozioni
-    expect(syncPlanOf({ nodeCount: 3, missing: [], added: [], moved: [], removed: [{ ciId: 'x', node: { addedBy: 'manual' } as never }] } as never).removeIds).toEqual([])
+    expect(syncPlanOf({ nodeCount: 3, missing: [], added: [], moved: [], removed: [{ ciId: 'x', node: { addedBy: 'manual' } as never, reason: 'unreachable' }] } as never).removeIds).toEqual([])
   })
 
   it('non tocca mai propagate, weight e critical dei componenti esistenti (decisioni dell\'amministratore)', () => {
@@ -274,6 +278,25 @@ describe('syncServiceMap: pausa e modalità', () => {
   it('la nota distingue la sincronizzazione automatica da quella richiesta a mano', () => {
     expect(serviceSyncNote('periodic', { added: 2, removed: 1, moved: 0 }, 'monitoring')).toBe('Sincronizzazione automatica: +2, −1, ~0 spostati')
     expect(serviceSyncNote('manual', { added: 0, removed: 0, moved: 3 }, 'adm-1')).toBe('Sincronizzazione richiesta da adm-1: +0, −0, ~3 spostati')
+  })
+
+  it('D6.3: i componenti dismessi NON vengono tolti dalla sincronizzazione automatica (li toglie una persona dal diff): contati e detti nella nota', () => {
+    const plan = syncPlanOf({
+      nodeCount: 3, missing: [], added: [], moved: [],
+      removed: [
+        { ciId: 'old-99', node: { addedBy: 'auto' } as never, reason: 'unreachable' },
+        { ciId: 'dis-1', node: { addedBy: 'auto' } as never, reason: 'lifecycle' },
+        { ciId: 'dis-2', node: { addedBy: 'auto' } as never, reason: 'lifecycle' },
+      ],
+    } as never)
+    expect(plan.removeIds).toEqual(['old-99'])
+    expect(plan.retired).toBe(2)
+    // la coda della nota arriva solo con una sincronizzazione che cambia qualcosa (niente voce ogni mezz'ora)
+    expect(serviceSyncNote('periodic', { added: 0, removed: 1, moved: 0, retired: 2 }, 'monitoring'))
+      .toBe('Sincronizzazione automatica: +0, −1, ~0 spostati; 2 componenti dismessi esclusi dal calcolo')
+    expect(serviceSyncNote('periodic', { added: 0, removed: 1, moved: 0, retired: 1 }, 'monitoring'))
+      .toContain('; 1 componente dismesso escluso dal calcolo')
+    expect(serviceSyncNote('periodic', { added: 0, removed: 1, moved: 0, retired: 0 }, 'monitoring')).not.toContain('dismess')
   })
 })
 

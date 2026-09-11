@@ -8,15 +8,21 @@
  * in manutenzione, solo la finestra di change (`inChangeWindow`) su un critico
  * lo fa, e `down` vince su `maintenance`. `healthIfActive` e
  * `nodeExcludedReason` completano il quadro.
+ *
+ * Revisione 2 ondata 3: la finestra di change può venire da un CI a MONTE
+ * (D6.2: `changeWindowUpstream`, motivo `upstream_change_window`), un CI
+ * dismesso non conta e non porta il servizio in manutenzione (D6.3:
+ * `lifecycleRetired`), e `serviceHealthNote` spiega tempesta e change a monte
+ * (D6.2/D6.4).
  */
 import { describe, it, expect } from 'vitest'
-import { evaluateImpact, impactPath, nodeContributes, nodeExcludedReason, type ImpactNodeInput } from '../serviceImpact/rules.js'
+import { evaluateImpact, impactPath, nodeContributes, nodeExcludedReason, serviceHealthNote, HEALTH_NOTE_MAX_ITEMS, type ImpactNodeInput } from '../serviceImpact/rules.js'
 import { DEFAULT_SERVICE_IMPACT_RULES, NODE_EXCLUDED_REASONS, SERVICE_MAX_CAUSES, type ServiceImpactRules } from '../../lib/serviceVocabularies.js'
 
 const RULES: ServiceImpactRules = { ...DEFAULT_SERVICE_IMPACT_RULES }
 
 function node(over: Partial<ImpactNodeInput> & { ciId: string }): ImpactNodeInput {
-  return { level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false, health: 'operational', inChangeWindow: false, lifecycleMaintenance: false, via: 'api-03', ...over }
+  return { level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false, health: 'operational', inChangeWindow: false, changeWindowUpstream: false, lifecycleMaintenance: false, lifecycleRetired: false, via: 'api-03', ...over }
 }
 
 /** Esempio del progetto: Enterprise Billing. */
@@ -237,8 +243,73 @@ describe('impactPath e nodeContributes', () => {
     expect(nodeExcludedReason(node({ ciId: 'a', health: null }), { ...RULES, unknown_nodes: 'ignore' })).toBe('unknown_health')
     expect(nodeExcludedReason(node({ ciId: 'a', health: null }), { ...RULES, unknown_nodes: 'operational' })).toBeNull()
     // ogni motivo prodotto è nel vocabolario
-    for (const n of [node({ ciId: 'a', propagate: 'never' }), node({ ciId: 'a', inChangeWindow: true }), node({ ciId: 'a', lifecycleMaintenance: true })]) {
+    for (const n of [node({ ciId: 'a', propagate: 'never' }), node({ ciId: 'a', inChangeWindow: true }), node({ ciId: 'a', lifecycleMaintenance: true }), node({ ciId: 'a', lifecycleRetired: true })]) {
       expect(NODE_EXCLUDED_REASONS).toContain(nodeExcludedReason(n, RULES))
     }
+  })
+})
+
+// ── Revisione 2 · ondata 3 ───────────────────────────────────────────────────
+
+describe('D6.2: finestra di change a monte', () => {
+  it('un nodo coperto da una change a MONTE non conta e il motivo è upstream_change_window', () => {
+    const n = node({ ciId: 'db-01', inChangeWindow: true, changeWindowUpstream: true })
+    expect(nodeContributes(n, RULES)).toBe(false)
+    expect(nodeExcludedReason(n, RULES)).toBe('upstream_change_window')
+    expect(nodeExcludedReason(node({ ciId: 'db-01', inChangeWindow: true }), RULES)).toBe('change_window')
+  })
+
+  it('un critico coperto da una change a monte rende il servizio maintenance, con healthIfActive', () => {
+    const r = evaluateImpact(billing({ db: 'degraded' }, { api: { inChangeWindow: true, changeWindowUpstream: true } }), RULES)
+    expect(r.health).toBe('maintenance')
+    // senza la finestra api-03 torna a pesare: db-01 degradato su 16 → 16 % → degraded
+    expect(r.healthIfActive).toBe('degraded')
+  })
+})
+
+describe('D6.3: componenti dismessi', () => {
+  it('un nodo dismesso non conta, il motivo è lifecycle_decommissioned e vince sulla finestra di change', () => {
+    const n = node({ ciId: 'old-01', lifecycleRetired: true })
+    expect(nodeContributes(n, RULES)).toBe(false)
+    expect(nodeExcludedReason(n, RULES)).toBe('lifecycle_decommissioned')
+    expect(nodeExcludedReason(node({ ciId: 'old-01', lifecycleRetired: true, inChangeWindow: true }), RULES)).toBe('lifecycle_decommissioned')
+    expect(nodeExcludedReason(node({ ciId: 'old-01', lifecycleRetired: true, propagate: 'never' }), RULES)).toBe('never')
+  })
+
+  it('un critico dismesso NON mette il servizio in manutenzione nemmeno in finestra di change (nessuno chiude quella finestra)', () => {
+    const r = evaluateImpact(billing({ db: 'down' }, { api: { lifecycleRetired: true, inChangeWindow: true } }), RULES)
+    expect(r.health).toBe('down')       // resta solo db-01, giù: 5/5 = 100 %
+    expect(r.healthIfActive).toBeNull()
+  })
+
+  it('un componente dismesso e giù non pesa: il servizio resta operativo', () => {
+    const r = evaluateImpact(billing({ db: 'down' }, { db: { lifecycleRetired: true } }), RULES)
+    expect(r.health).toBe('operational')
+    expect(r.impactScore).toBe(0)
+    expect(r.causes).toEqual([])
+  })
+})
+
+describe('serviceHealthNote (D6.2 + D6.4)', () => {
+  it('niente da spiegare → null', () => {
+    expect(serviceHealthNote({ held: false, stormSources: [], upstreamWindows: [] })).toBeNull()
+    // sorgente in tempesta ma regola `evaluate`: la valutazione non è sospesa, niente nota
+    expect(serviceHealthNote({ held: false, stormSources: ['Zabbix prod'], upstreamWindows: [] })).toBeNull()
+  })
+
+  it('tempesta: nomina la sorgente e dice che la valutazione è sospesa', () => {
+    expect(serviceHealthNote({ held: true, stormSources: ['Zabbix prod'], upstreamWindows: [] }))
+      .toBe('Sorgente in tempesta: Zabbix prod. Valutazione sospesa: la salute resta quella dell\'ultima valutazione.')
+    const many = serviceHealthNote({ held: true, stormSources: ['a', 'b', 'c', 'd', 'e'], upstreamWindows: [] })!
+    expect(many).toContain('Sorgenti in tempesta: a, b, c, e altri 2')
+    expect(HEALTH_NOTE_MAX_ITEMS).toBe(3)
+  })
+
+  it('change a monte: l\'operatore legge «CHG-… su <CI a monte>»', () => {
+    expect(serviceHealthNote({ held: false, stormSources: [], upstreamWindows: [{ name: 'VM-01', changeCode: 'CHG-0042', viaName: 'SRV-01' }] }))
+      .toBe('Componente in finestra di change a monte: VM-01 (CHG-0042 su SRV-01).')
+    const both = serviceHealthNote({ held: true, stormSources: ['Zabbix'], upstreamWindows: [{ name: 'VM-01', changeCode: 'CHG-1', viaName: 'SRV-01' }, { name: 'VM-02', changeCode: 'CHG-1', viaName: 'SRV-01' }] })!
+    expect(both).toContain('Sorgente in tempesta: Zabbix')
+    expect(both).toContain('Componenti in finestra di change a monte: VM-01 (CHG-1 su SRV-01), VM-02 (CHG-1 su SRV-01).')
   })
 })

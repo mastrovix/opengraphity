@@ -1096,7 +1096,7 @@ describe('ingestEvent', () => {
     expect(getSession).toHaveBeenCalledTimes(1)
     expect(runEventPipeline).toHaveBeenCalledWith({
       tenantId: 't1', eventId: 'ev-1', actorId: 'monitoring', now: 'NOW', mode: 'ingest', opensCycle: true, jobId: 'job-9',
-      record: { props: expect.objectContaining({ id: 'ev-1', status: 'firing' }), ciId: null },
+      record: { props: expect.objectContaining({ id: 'ev-1', status: 'firing' }), ciId: null, ciStatus: null },
     })
     expect(publishedTypes()).toEqual(['event.received', 'event.orphan'])
     expect(vi.mocked(publishEvent).mock.calls[0]![3]).toMatchObject({ id: 'ev-1', fingerprint: 'fp', ci_id: null, entity_type: 'event', entity_id: 'ev-1', count: 1 })
@@ -1143,7 +1143,7 @@ describe('ingestEvent', () => {
     expect(out.props['match_reason']).toBe('ambiguous')
     expect(metrics.eventsAmbiguousTotal.inc).toHaveBeenCalledTimes(1)
     expect(metrics.eventsOrphanTotal.inc).toHaveBeenCalledTimes(1)
-    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ record: { props: expect.objectContaining({ match_reason: 'ambiguous' }), ciId: null } }))
+    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ record: { props: expect.objectContaining({ match_reason: 'ambiguous' }), ciId: null, ciStatus: null } }))
     expect(publishedTypes()).toEqual(['event.received', 'event.orphan'])
     expect(vi.mocked(publishEvent).mock.calls[1]![3]).toMatchObject({ id: 'ev-1', ci_id: null, match_reason: 'ambiguous', candidates })
     const { logger } = await import('../../lib/logger.js')
@@ -1177,7 +1177,7 @@ describe('ingestEvent', () => {
     expect(metrics.eventsReceivedTotal.inc).toHaveBeenCalledWith({ connector: 'zabbix' })
     expect(metrics.eventsDeduplicatedTotal.inc).toHaveBeenCalledTimes(1)
     expect(metrics.eventsOrphanTotal.inc).not.toHaveBeenCalled()
-    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', eventId: 'ev-1', mode: 'ingest', opensCycle: false, record: { props: expect.objectContaining({ count: 2 }), ciId: 'ci-1' } }))
+    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', eventId: 'ev-1', mode: 'ingest', opensCycle: false, record: { props: expect.objectContaining({ count: 2 }), ciId: 'ci-1', ciStatus: null } }))
     expect(publishEvent).not.toHaveBeenCalled()
   })
 
@@ -1254,7 +1254,7 @@ describe('ingestEvent', () => {
     expect(out.props).toMatchObject({ status: 'firing', count: 1, resolved_at: null })
     expect(calls()).toHaveLength(1)
     expect(callMatching(MERGE_RE)!.cypher).toContain('MERGE (e)-[:RAISED_ON]->(matched)')
-    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ opensCycle: true, record: { props: expect.objectContaining({ id: 'ev-1' }), ciId: 'ci-9' } }))
+    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ opensCycle: true, record: { props: expect.objectContaining({ id: 'ev-1' }), ciId: 'ci-9', ciStatus: null } }))
     expect(metrics.eventsOrphanTotal.inc).not.toHaveBeenCalled()
     expect(publishedTypes()).toEqual(['event.received'])
   })

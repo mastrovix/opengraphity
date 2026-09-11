@@ -1910,6 +1910,13 @@
       "flapWindowMinutes": "Flap window (minutes)",
       "retentionDays": "Retention (days)",
       "matchShortHostname": "Match short hostname and FQDN as the same host",
+      "ignoreLifecycleStatuses": "Lifecycle statuses to ignore",
+      "lifecycleUnknown": "Unknown: {{value}}",
+      "lifecycleVocabularyUnavailable": "Lifecycle statuses unavailable from the metamodel ({{error}}): only the ones already saved in the policy can be ticked.",
+      "lifecycleEmptyVocabulary": "The metamodel exposes no lifecycle status: there is nothing to ignore.",
+      "lifecycleSelectedNone": "No status ignored: alarms are evaluated on every CI.",
+      "lifecycleSelected_one": "{{count}} status ignored.",
+      "lifecycleSelected_other": "{{count}} statuses ignored.",
       "autoResolve": "Auto-resolve when the source resolves",
       "severityMap": "Severity map → impact / urgency",
       "map": {
@@ -1932,6 +1939,8 @@
         "autoResolve": "when the source resolves every alarm, the incident opened by monitoring is resolved; if the alarm comes back, it is reopened.",
         "changeWindowTitle": "Silence in a change window",
         "changeWindow": "alarms on the CIs of a change in its release window are suppressed: no incident, no health change; at the end of the window they are re-evaluated.",
+        "lifecycleTitle": "Lifecycle",
+        "lifecycle": "alarms on CIs in the chosen lifecycle statuses (usually “decommissioned”) open no incident and do not change the health: the alarm stays in the console with its reason.",
         "flappingTitle": "Flapping",
         "flapping": "an alarm that comes and goes too many times within the window is marked “flapping”: no incident opened or closed, CI health degraded, until it stays stable for the given minutes.",
         "stormTitle": "Storm",
@@ -1950,7 +1959,8 @@
         "severityMap": "Impact and urgency assigned to the automatically opened incident, from the alarm severity: the priority derives from them.",
         "flapStableMinutes": "How long the alarm must stay still (no new firing or resolved) before leaving the flapping state and returning to normal correlation.",
         "stormThresholdPerMinute": "When a source exceeds this number of new alarms per minute, a storm starts: its alarms are grouped into a single incident instead of opening one per CI. 0 = storm detection off.",
-        "stormCooldownMinutes": "The storm ends once the rate stays below the threshold for this many minutes; later alarms return to normal correlation."
+        "stormCooldownMinutes": "The storm ends once the rate stays below the threshold for this many minutes; later alarms return to normal correlation.",
+        "ignoreLifecycleStatuses": "Alarms on CIs in these statuses open no incident and do not change the CI health: they stay in the console with the reason “lifecycle ignored”. “decommissioned” is usually enough: a retired CI the monitoring has not switched off yet must wake nobody."
       },
       "flapStableMinutes": "Stable minutes before resuming",
       "stormThresholdPerMinute": "Storm threshold (new alarms per minute)",
@@ -1959,6 +1969,7 @@
         "recognition": "CI recognition",
         "incidents": "Incident opening and closing",
         "changeWindow": "Silence in a change window",
+        "lifecycle": "CI lifecycle",
         "flapStorm": "Flapping and storms",
         "retention": "Retention"
       },
@@ -2002,6 +2013,8 @@
         "stormUnknown": "Storm",
         "stormHint": "Grouped into the storm incident of source {{source}}",
         "storm_no_ci": "Storm, no CI",
+        "skipped_lifecycle": "Lifecycle · {{status}}",
+        "skipped_lifecycleNoStatus": "Lifecycle ignored",
         "pending": "Re-evaluating"
       },
       "auto": {
@@ -2029,6 +2042,9 @@
         "storm": "Storm from source {{source}}: grouped into the storm incident {{number}} on {{when}} instead of opening an incident for this CI.",
         "stormNoIncident": "Storm from source {{source}}: evaluated on {{when}} during the storm, no incident opened for this CI.",
         "storm_no_ci": "Storm from source {{source}} and no CI recognised: no incident opened; link a CI after the storm if needed.",
+        "skipped_lifecycle": "CI {{name}} is in status “{{status}}”, one of those the policy ignores: no incident opened and CI health unchanged. To resume the evaluation change the CI status, or remove the status from “Lifecycle statuses to ignore” in the event policy.",
+        "skipped_lifecycleNoStatus": "CI {{name}} is in a lifecycle status the policy ignores, but the status is not recorded on the CI: no incident opened and health unchanged.",
+        "skipped_lifecycleNoCI": "The alarm's CI is in a lifecycle status the policy ignores: no incident opened and no health change.",
         "pending": "Waiting for re-evaluation: correlation resumes on the next automatic pass, within five minutes."
       },
       "short": {
@@ -2044,6 +2060,7 @@
         "flapping": "flapping alarm",
         "storm": "grouped into the storm",
         "storm_no_ci": "storm, no CI",
+        "skipped_lifecycle": "lifecycle ignored",
         "pending": "re-evaluating"
       }
     },
@@ -2585,7 +2602,9 @@
       "excludedReason": {
         "never": "never counts (setting)",
         "lifecycle_maintenance": "in maintenance (lifecycle)",
+        "lifecycle_decommissioned": "CI decommissioned (out of the calculation)",
         "change_window": "in a change window",
+        "upstream_change_window": "in a change window on an upstream CI",
         "unknown_health": "unknown health (ignored)",
         "unstated": "reason not stated"
       },
@@ -2691,6 +2710,7 @@
           "minNodes_other": "…and at least {{count}} components are not operational",
           "unknownNodes": "Components without health: {{value}}",
           "openIncidentFrom": "Service incident from: {{value}}",
+          "duringStorm": "During a source storm: {{value}}",
           "unknownNodesValues": {
             "ignore": "ignored",
             "operational": "count as operational"
@@ -2699,6 +2719,10 @@
             "never": "never",
             "degraded": "degraded",
             "down": "down"
+          },
+          "duringStormValues": {
+            "hold": "evaluation held",
+            "evaluate": "evaluate anyway"
           }
         },
         "nodeFields": {
@@ -2769,12 +2793,14 @@
         "minNodes": "Minimum components",
         "unknownNodes": "Components without health",
         "openIncidentFrom": "Open a service incident from",
+        "duringStorm": "During a source storm",
         "help": {
           "downSharePct": "The service is down when a critical component is down, or when the weighted share of components down reaches this percentage.",
           "degradedSharePct": "The service is degraded when the impact score reaches this percentage. It cannot be above the down threshold.",
           "minNodes": "How many components must be non-operational before the thresholds apply: it keeps one noisy component from moving the health of a large map.",
           "unknownNodes": "A component never touched by an alarm: ignore it, or count it as operational.",
-          "openIncidentFrom": "From which health a service incident is opened."
+          "openIncidentFrom": "From which health a service incident is opened.",
+          "duringStorm": "An alarm storm is almost always a monitoring or collection failure, not many real failures: that is why the default is to hold. With “Hold the evaluation” the health stays as it was, no service incident is opened or closed and the service says which source is in a storm; once the storm ends the service is re-evaluated. With “Evaluate anyway” the service follows the alarms during the storm too."
         },
         "unknownNodesOptions": {
           "ignore": "Ignored",
@@ -2784,6 +2810,10 @@
           "never": "Never",
           "degraded": "Degraded",
           "down": "Down"
+        },
+        "duringStormOptions": {
+          "hold": "Hold the evaluation",
+          "evaluate": "Evaluate anyway"
         },
         "unsaved": "Unsaved changes",
         "noChanges": "Nothing to save",

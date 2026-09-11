@@ -16,7 +16,10 @@
  * utenti), un input che esce dai valori ammessi è una ValidationError.
  */
 import { ValidationError } from './errors.js'
-import { EVENT_GROUP_BY, EVENT_SEVERITIES, OPEN_INCIDENT_FROM, type EventGroupBy, type EventSeverity, type OpenIncidentFrom } from './eventVocabularies.js'
+import {
+  CI_LIFECYCLE_DECOMMISSIONED, CI_LIFECYCLE_STATUSES, EVENT_GROUP_BY, EVENT_SEVERITIES, OPEN_INCIDENT_FROM,
+  type CILifecycleStatus, type EventGroupBy, type EventSeverity, type OpenIncidentFrom,
+} from './eventVocabularies.js'
 
 /** Chiavi introdotte dall'ondata 4: se mancano, la policy è di una versione precedente (migrazione 1040 non eseguita). */
 export const EVENT_POLICY_V2_KEYS = ['flap_stable_minutes', 'storm_threshold_per_minute', 'storm_cooldown_minutes'] as const
@@ -27,6 +30,9 @@ export const EVENT_POLICY_V3_MIGRATION = '20260909_1060_event_management_policy_
 /** Chiave introdotta dalla revisione (A-2): riconoscimento del CI anche per nome corto/FQDN (migrazione 1070). */
 export const EVENT_POLICY_V4_KEYS = ['match_short_hostname'] as const
 export const EVENT_POLICY_V4_MIGRATION = '20260910_1070_event_management_tenants'
+/** Chiave introdotta dalla revisione 2 · D6.3: cicli di vita del CI ignorati dagli allarmi (migrazione 1130). */
+export const EVENT_POLICY_V5_KEYS = ['ignore_lifecycle_statuses'] as const
+export const EVENT_POLICY_V5_MIGRATION = '20260911_1130_shared_domain_rules'
 
 /** Vocabolari: la definizione è in eventVocabularies.ts (fonte unica anche per gli enum SDL); ri-esportati per i chiamanti storici. */
 export { OPEN_INCIDENT_FROM, EVENT_SEVERITIES }
@@ -88,6 +94,16 @@ export interface EventPolicy {
    * nel riconoscimento del CI, services/events/ingest.)
    */
   match_short_hostname:   boolean
+  /**
+   * Cicli di vita del CI (`ci.status`) per cui un allarme non apre incident e
+   * non cambia la salute: esito `skipped_lifecycle`, l'allarme resta in
+   * console con il suo motivo (revisione 2 · D6.3). Default
+   * `['decommissioned']`; lista vuota = nessuno stato ignorato. I valori
+   * stanno nel vocabolario del ciclo di vita (CI_LIFECYCLE_STATUSES): la
+   * stessa definizione che usano i Servizi monitorati per escludere dal
+   * calcolo i componenti dismessi.
+   */
+  ignore_lifecycle_statuses: CILifecycleStatus[]
   severity_map:           SeverityMap
 }
 
@@ -106,6 +122,7 @@ export const DEFAULT_EVENT_POLICY: EventPolicy = {
   storm_cooldown_minutes: 5,
   retention_days:         90,
   match_short_hostname:   false,
+  ignore_lifecycle_statuses: [CI_LIFECYCLE_DECOMMISSIONED],
   severity_map: {
     critical: { impact: 'high',   urgency: 'high' },
     warning:  { impact: 'medium', urgency: 'medium' },
@@ -164,6 +181,24 @@ function assertBoolean(value: unknown, field: string): boolean {
   return value
 }
 
+/**
+ * Valida `ignore_lifecycle_statuses`: lista (anche vuota) di stati del
+ * vocabolario del ciclo di vita, senza doppioni. Mai un valore inventato: uno
+ * stato fuori vocabolario non silenzierebbe nulla e nessuno se ne accorgerebbe.
+ */
+export function assertLifecycleStatuses(value: unknown, field = 'ignore_lifecycle_statuses'): CILifecycleStatus[] {
+  if (!Array.isArray(value)) throw new ValidationError(`${field} must be a list of CI lifecycle statuses (${CI_LIFECYCLE_STATUSES.join(', ')}). Got: ${JSON.stringify(value)}`)
+  const out: CILifecycleStatus[] = []
+  for (const v of value) {
+    if (typeof v !== 'string' || !(CI_LIFECYCLE_STATUSES as readonly string[]).includes(v)) {
+      throw new ValidationError(`${field}: ${JSON.stringify(v)} is not one of ${CI_LIFECYCLE_STATUSES.join(', ')}`)
+    }
+    if (out.includes(v as CILifecycleStatus)) throw new ValidationError(`${field}: ${v} appears twice`)
+    out.push(v as CILifecycleStatus)
+  }
+  return out
+}
+
 /** Valida una severity_map già decodificata: esattamente le tre severità, ognuna con impact/urgency ammessi. */
 export function assertSeverityMap(value: unknown, field = 'severity_map'): SeverityMap {
   if (!isRecord(value)) throw new ValidationError(`${field} must be a JSON object keyed by ${EVENT_SEVERITIES.join(', ')}`)
@@ -205,6 +240,7 @@ export function assertEventPolicy(value: unknown, what = 'event_policy'): EventP
     storm_cooldown_minutes: assertIntUpTo(value['storm_cooldown_minutes'], EVENT_POLICY_MAX.storm_cooldown_minutes, `${what}.storm_cooldown_minutes`),
     retention_days:         assertIntUpTo(value['retention_days'], EVENT_POLICY_MAX.retention_days, `${what}.retention_days`),
     match_short_hostname:   assertBoolean(value['match_short_hostname'], `${what}.match_short_hostname`),
+    ignore_lifecycle_statuses: assertLifecycleStatuses(value['ignore_lifecycle_statuses'], `${what}.ignore_lifecycle_statuses`),
     severity_map:           assertSeverityMap(value['severity_map'], `${what}.severity_map`),
   }
   if (policy.flap_threshold > 0 && policy.flap_window_minutes === 0) {
@@ -244,9 +280,11 @@ export function parseEventPolicy(raw: unknown, tenantId: string): EventPolicy {
       const missingV2 = EVENT_POLICY_V2_KEYS.filter((k) => parsed[k] === undefined)
       const missingV3 = EVENT_POLICY_V3_KEYS.filter((k) => parsed[k] === undefined)
       const missingV4 = EVENT_POLICY_V4_KEYS.filter((k) => parsed[k] === undefined)
+      const missingV5 = EVENT_POLICY_V5_KEYS.filter((k) => parsed[k] === undefined)
       if (missingV2.length) hints.push(` — missing ${missingV2.join(', ')}: run the ${EVENT_POLICY_V2_MIGRATION} migration`)
       else if (missingV3.length) hints.push(` — missing ${missingV3.join(', ')}: run the ${EVENT_POLICY_V3_MIGRATION} migration`)
       else if (missingV4.length) hints.push(` — missing ${missingV4.join(', ')}: run the ${EVENT_POLICY_V4_MIGRATION} migration`)
+      else if (missingV5.length) hints.push(` — missing ${missingV5.join(', ')}: run the ${EVENT_POLICY_V5_MIGRATION} migration`)
     }
     throw new Error(`Tenant ${tenantId} event_policy is invalid: ${e instanceof Error ? e.message : String(e)}${hints.join('')}`)
   }
@@ -316,6 +354,7 @@ export interface EventPolicyGQL {
   stormCooldownMinutes: number
   retentionDays:        number
   matchShortHostname:   boolean
+  ignoreLifecycleStatuses: string[]
   severityMap:          string
 }
 
@@ -335,6 +374,7 @@ export function toEventPolicyGQL(p: EventPolicy): EventPolicyGQL {
     stormCooldownMinutes: p.storm_cooldown_minutes,
     retentionDays:        p.retention_days,
     matchShortHostname:   p.match_short_hostname,
+    ignoreLifecycleStatuses: [...p.ignore_lifecycle_statuses],
     severityMap:          JSON.stringify(p.severity_map),
   }
 }
@@ -355,6 +395,8 @@ export interface EventPolicyInputGQL {
   stormCooldownMinutes?: number | null
   retentionDays?:        number | null
   matchShortHostname?:   boolean | null
+  /** Lista completa (non un delta): quella passata sostituisce la precedente; `[]` = nessuno stato ignorato. */
+  ignoreLifecycleStatuses?: string[] | null
   severityMap?:          string | null
 }
 
@@ -384,13 +426,16 @@ export function applyEventPolicyInput(current: EventPolicy, input: EventPolicyIn
     stormCooldownMinutes: 'storm_cooldown_minutes',
     retentionDays:        'retention_days',
     matchShortHostname:   'match_short_hostname',
+    ignoreLifecycleStatuses: 'ignore_lifecycle_statuses',
     severityMap:          'severity_map',
   }
   for (const [gql, key] of Object.entries(map) as [Exclude<keyof EventPolicyInputGQL, 'expectedVersion'>, keyof EventPolicy][]) {
     const v = input[gql]
     if (v === undefined) continue
     if (v === null) throw new ValidationError(`${gql} cannot be null`)
-    if (gql === 'severityMap') {
+    if (gql === 'ignoreLifecycleStatuses') {
+      next[key] = assertLifecycleStatuses(v, 'ignoreLifecycleStatuses')
+    } else if (gql === 'severityMap') {
       let parsed: unknown
       try { parsed = JSON.parse(v as string) }
       catch (e) { throw new ValidationError(`severityMap is not valid JSON: ${e instanceof Error ? e.message : String(e)}`) }

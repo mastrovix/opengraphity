@@ -309,7 +309,7 @@ export const eventCorrelateJobLagSeconds = createHistogram('event_correlate_job_
 // Incrementate dal motore (services/serviceImpact/engine.ts): una valutazione
 // per (mappa, innesco); `result` = changed | unchanged | error (bounded).
 /** Valutazioni delle mappe per esito: `changed` (salute cambiata: voce di cronologia + service.health_changed), `unchanged`, `error` (il job ritenta). */
-export const serviceEvaluationsTotal        = createCounter('service_evaluations_total', 'Service map evaluations by result (changed | unchanged | error)', ['result'])
+export const serviceEvaluationsTotal        = createCounter('service_evaluations_total', 'Service map evaluations by result (changed | unchanged | hold = suspended by a storming source | error)', ['result'])
 export const serviceEvaluationDurationSeconds = createHistogram('service_evaluation_duration_seconds', 'Service map evaluation duration in seconds (read + rules + write)', [], [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10])
 /** Mappe per salute su tutti i tenant, riallineato dalla passata periodica (jobs/serviceImpactWorker.ts). */
 export const servicesHealth                 = createGauge('services_health', 'Service maps by current health (all tenants)', ['health'])

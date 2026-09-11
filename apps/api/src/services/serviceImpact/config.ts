@@ -32,8 +32,8 @@ import { ValidationError } from '../../lib/errors.js'
 import { logger } from '../../lib/logger.js'
 import {
   NODE_PROPAGATIONS, NODE_WEIGHT_MAX, NODE_WEIGHT_MIN, SERVICE_EXCLUSION_REASON_MANUAL, SERVICE_MAP_MAX_NODES,
-  SERVICE_MAP_STATUSES, SERVICE_STALE_MISSING_CI, assertServiceImpactRules,
-  type NodePropagation, type ServiceHealth, type ServiceImpactRules, type ServiceMapStatus,
+  SERVICE_MAP_STATUSES, SERVICE_STALE_MISSING_CI, assertServiceImpactRules, isRetiredLifecycle,
+  type DuringStormMode, type NodePropagation, type ServiceHealth, type ServiceImpactRules, type ServiceMapStatus,
   type ServiceOpenIncidentFrom, type UnknownNodesMode,
 } from '../../lib/serviceVocabularies.js'
 import { toNumber, toStr, type Props } from '../events/shared.js'
@@ -55,6 +55,8 @@ export interface ServiceImpactRulesInput {
   minNodes:         number
   unknownNodes:     UnknownNodesMode
   openIncidentFrom: ServiceOpenIncidentFrom
+  /** Cosa fare mentre una sorgente degli allarmi dei componenti è in tempesta (revisione 2 · D6.4). */
+  duringStorm:      DuringStormMode
 }
 
 /** `input ServiceMapNodeInput` dello SDL: ciò che l'amministratore può cambiare su un componente (ruolo, livello e via restano della mappa). */
@@ -110,6 +112,7 @@ export function assertServiceImpactRulesInput(input: ServiceImpactRulesInput, no
       min_nodes:          input.minNodes,
       unknown_nodes:      input.unknownNodes,
       open_incident_from: input.openIncidentFrom,
+      during_storm:       input.duringStorm,
     }, 'rules')
   } catch (err) {
     throw new ValidationError(err instanceof Error ? err.message : String(err))
@@ -164,13 +167,16 @@ const RULE_LABELS: Readonly<Record<Exclude<keyof ServiceImpactRules, 'version'>,
   min_nodes:          'minimo componenti',
   unknown_nodes:      'componenti senza salute',
   open_incident_from: 'apri incident da',
+  during_storm:       'durante una tempesta',
 }
 const UNKNOWN_NODES_LABELS: Readonly<Record<UnknownNodesMode, string>> = { ignore: 'ignorati', operational: 'operativi' }
 const OPEN_INCIDENT_LABELS: Readonly<Record<ServiceOpenIncidentFrom, string>> = { never: 'mai', down: 'giù', degraded: 'degradato' }
+const DURING_STORM_LABELS: Readonly<Record<DuringStormMode, string>> = { hold: 'sospendi la valutazione', evaluate: 'valuta comunque' }
 
 function ruleValueLabel(field: Exclude<keyof ServiceImpactRules, 'version'>, rules: ServiceImpactRules): string {
   if (field === 'unknown_nodes') return UNKNOWN_NODES_LABELS[rules.unknown_nodes]
   if (field === 'open_incident_from') return OPEN_INCIDENT_LABELS[rules.open_incident_from]
+  if (field === 'during_storm') return DURING_STORM_LABELS[rules.during_storm]
   return String(rules[field])
 }
 
@@ -214,8 +220,18 @@ export async function loadServiceMapExclusions(session: Queryable, tenantId: str
 // ── Diff fra la mappa e il grafo di adesso ───────────────────────────────────
 
 export interface MovedNode { node: LoadedNode; proposedLevel: number; proposedVia: string | null }
+
+/**
+ * Perché un componente è proposto in rimozione: `unreachable` (non più
+ * raggiungibile dal servizio, oppure il CI non esiste più nella CMDB) o
+ * `lifecycle` (il CI è dismesso o fuori servizio — revisione 2 · D6.3: non
+ * conta più nel calcolo e va tolto, ma lo decide una persona: la
+ * sincronizzazione automatica non lo toglie, lo dice soltanto).
+ */
+export type RemovedReason = 'unreachable' | 'lifecycle'
+
 /** Un componente da togliere: `node` è null quando il CI non esiste più (della mappa resta solo l'id in `node_ids`). */
-export interface RemovedNode { ciId: string; node: LoadedNode | null }
+export interface RemovedNode { ciId: string; node: LoadedNode | null; reason: RemovedReason }
 
 export interface ServiceMapDiff {
   mapId:             string
@@ -260,11 +276,14 @@ export async function computeServiceMapDiff(session: Queryable, tenantId: string
   const reachable = new Map(proposal.nodes.map((n) => [n.ciId, n]))
   // Un CI escluso non viene mai riproposto; resta però nel confronto di
   // raggiungibilità (un nodo incluso ed escluso non è «sparito dal grafo»).
-  const proposable = proposal.nodes.filter((n) => !excludedIds.has(n.ciId))
+  // Revisione 2 · D6.3: un CI dismesso non si propone come componente nuovo —
+  // non conterebbe comunque.
+  const proposable = proposal.nodes.filter((n) => !excludedIds.has(n.ciId) && !isRetiredLifecycle(n.status))
 
   const added = proposable.filter((n) => !current.has(n.ciId))
   const moved: MovedNode[] = []
   for (const node of state.nodes) {
+    if (node.lifecycleRetired) continue   // si propone di toglierlo: spostarlo non ha senso
     const p = reachable.get(node.ciId)
     if (!p) continue
     if (p.level !== node.level || (p.via ?? null) !== (node.via ?? null)) {
@@ -272,8 +291,11 @@ export async function computeServiceMapDiff(session: Queryable, tenantId: string
     }
   }
   const removed: RemovedNode[] = [
-    ...state.nodes.filter((n) => !reachable.has(n.ciId)).map((node) => ({ ciId: node.ciId, node })),
-    ...state.missing.map((ciId) => ({ ciId, node: null })),
+    ...state.nodes.filter((n) => !reachable.has(n.ciId) && !n.lifecycleRetired).map((node) => ({ ciId: node.ciId, node, reason: 'unreachable' as const })),
+    // Componenti dismessi: segnalati come da togliere (non contano più nel
+    // calcolo), ma li toglie una persona applicando il diff.
+    ...state.nodes.filter((n) => n.lifecycleRetired).map((node) => ({ ciId: node.ciId, node, reason: 'lifecycle' as const })),
+    ...state.missing.map((ciId) => ({ ciId, node: null, reason: 'unreachable' as const })),
   ]
 
   return {

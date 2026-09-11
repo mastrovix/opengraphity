@@ -65,6 +65,8 @@ export interface SyncServiceMapResult {
   added:     number
   removed:   number
   moved:     number
+  /** Componenti dismessi trovati nella mappa: non contano nel calcolo e il diff li propone in rimozione (revisione 2 · D6.3). */
+  retired:   number
   /** True se la composizione è cambiata (versione + 1, cronologia, rivalutazione). */
   changed:   boolean
   /**
@@ -221,12 +223,22 @@ export async function notifyChangeWindowChanged(tenantId: string, changeId: stri
 
 // ── Note leggibili per la cronologia ─────────────────────────────────────────
 
-/** «Sincronizzazione automatica: +2, −1, ~3 spostati» / «Sincronizzazione richiesta da …». */
-export function serviceSyncNote(trigger: ServiceMapSyncTrigger, counts: { added: number; removed: number; moved: number }, actorId: string): string {
+/**
+ * «Sincronizzazione automatica: +2, −1, ~3 spostati» / «Sincronizzazione
+ * richiesta da …», con la coda «N componenti dismessi esclusi dal calcolo»
+ * quando la sincronizzazione ne trova (revisione 2 · D6.3). La coda si scrive
+ * solo insieme a una sincronizzazione che cambia davvero qualcosa: una mappa
+ * con un componente dismesso non deve produrre una voce di cronologia ogni
+ * mezz'ora (stesso criterio della voce «oltre il tetto»).
+ */
+export function serviceSyncNote(trigger: ServiceMapSyncTrigger, counts: { added: number; removed: number; moved: number; retired?: number }, actorId: string): string {
   const what = `+${counts.added}, −${counts.removed}, ~${counts.moved} spostati`
-  return trigger === 'manual'
+  const retired = counts.retired && counts.retired > 0
+    ? `; ${counts.retired} ${counts.retired === 1 ? 'componente dismesso escluso' : 'componenti dismessi esclusi'} dal calcolo`
+    : ''
+  return (trigger === 'manual'
     ? `Sincronizzazione richiesta da ${actorId}: ${what}`
-    : `Sincronizzazione automatica: ${what}`
+    : `Sincronizzazione automatica: ${what}`) + retired
 }
 
 /** Motivo dello stop oltre il tetto: dice il numero e cosa fare (mai una mappa tagliata a metà). */
@@ -323,17 +335,26 @@ function assertStatus(value: unknown, mapId: string): ServiceMapStatus {
 }
 
 /** Cosa la sincronizzazione applicherebbe, dal diff: aggiunte, rimozioni (solo `auto` e id spariti) e spostamenti. */
-export function syncPlanOf(diff: ServiceMapDiff): { add: ServiceMapDiff['added']; removeIds: string[]; move: { ciId: string; level: number; via: string | null }[] } {
+export function syncPlanOf(diff: ServiceMapDiff): { add: ServiceMapDiff['added']; removeIds: string[]; move: { ciId: string; level: number; via: string | null }[]; retired: number } {
+  // Componenti dismessi (revisione 2 · D6.3): il diff li propone in rimozione,
+  // ma la sincronizzazione automatica NON li toglie — togliere una INCLUDES
+  // butta via peso, criticità ed esclusioni decise da una persona solo perché
+  // qualcuno ha marcato il CI dismesso nella CMDB. Non contano già più nel
+  // calcolo (`excludedReason = lifecycle_decommissioned`): qui si contano
+  // soltanto, per dirlo nella nota.
+  const retired = diff.removed.filter((r) => r.reason === 'lifecycle')
+  const removable = diff.removed.filter((r) => r.reason !== 'lifecycle')
   return {
     add: diff.added,
     // Solo i componenti messi dalla costruzione automatica: quelli aggiunti a
     // mano restano finché una persona non li toglie. Gli id spariti dalla CMDB
     // non hanno più una INCLUDES (né un `added_by`): vanno via da `node_ids`.
     removeIds: [
-      ...diff.removed.filter((r) => r.node !== null && r.node.addedBy === 'auto').map((r) => r.ciId),
-      ...diff.removed.filter((r) => r.node === null).map((r) => r.ciId),
+      ...removable.filter((r) => r.node !== null && r.node.addedBy === 'auto').map((r) => r.ciId),
+      ...removable.filter((r) => r.node === null).map((r) => r.ciId),
     ],
     move: diff.moved.map((m) => ({ ciId: m.node.ciId, level: m.proposedLevel, via: m.proposedVia })),
+    retired: retired.length,
   }
 }
 
@@ -372,7 +393,7 @@ export async function syncServiceMap(
       if (diff.status === 'paused') {
         return {
           mapId, version: diff.version, status: diff.status,
-          added: 0, removed: 0, moved: 0, changed: false, skipped: 'paused' as const,
+          added: 0, removed: 0, moved: 0, retired: 0, changed: false, skipped: 'paused' as const,
           reason: `ServiceMap ${mapId} is paused`, syncedAt: now, note: null, evaluation: null,
         }
       }
@@ -396,12 +417,12 @@ export async function syncServiceMap(
         if (!row) throw new Error(`ServiceMap ${mapId} vanished while synchronizing (tenant ${tenantId})`)
         return {
           mapId, version: toNumber(row.version), status: assertStatus(row.status, mapId),
-          added: 0, removed: 0, moved: 0, changed: false, skipped: null, reason: null, syncedAt: now, note: null, evaluation: null,
+          added: 0, removed: 0, moved: 0, retired: plan.retired, changed: false, skipped: null, reason: null, syncedAt: now, note: null, evaluation: null,
         }
       }
 
       const counts = { added: plan.add.length, removed: plan.removeIds.length, moved: plan.move.length }
-      const note = serviceSyncNote(trigger, counts, actorId)
+      const note = serviceSyncNote(trigger, { ...counts, retired: plan.retired }, actorId)
       const row = await runQueryOne<SyncRow & { added: unknown; removed: unknown; moved: unknown }>(tx, SYNC_APPLY_CYPHER, {
         mapId, tenantId, expectedVersion: diff.version, now, actorId,
         addNodes: plan.add.map((n) => ({ ciId: n.ciId, level: n.level, role: n.role, propagate: n.propagate, weight: n.weight, critical: n.critical, via: n.via })),
@@ -415,7 +436,7 @@ export async function syncServiceMap(
       }
       return {
         mapId, version: toNumber(row.version), status: assertStatus(row.status, mapId),
-        ...counts, changed: true, skipped: null, reason: null, syncedAt: now, note, evaluation: null,
+        ...counts, retired: plan.retired, changed: true, skipped: null, reason: null, syncedAt: now, note, evaluation: null,
       }
     })
   } catch (err) {
@@ -440,13 +461,16 @@ export async function syncServiceMap(
     serviceMapSyncsTotal.inc({ result: 'skipped_limit' })
     return result
   }
+  if (result.retired > 0) {
+    log.info({ tenantId, mapId, trigger, retired: result.retired }, 'Service map has decommissioned components: they do not count in the calculation and the proposal marks them for removal')
+  }
   if (!result.changed) {
     log.debug({ tenantId, mapId, trigger }, 'Service map already in sync with the CMDB')
     serviceMapSyncsTotal.inc({ result: 'unchanged' })
     return result
   }
 
-  log.info({ tenantId, mapId, trigger, version: result.version, added: result.added, removed: result.removed, moved: result.moved }, 'Service map synchronized with the CMDB')
+  log.info({ tenantId, mapId, trigger, version: result.version, added: result.added, removed: result.removed, moved: result.moved, retired: result.retired }, 'Service map synchronized with the CMDB')
   void audit(actorId === MONITORING_ACTOR ? monitoringContext(tenantId) : { tenantId, userId: actorId, userEmail: actorId, role: 'admin' }, 'service_map.synced', 'ServiceMap', mapId, {
     trigger, version: result.version, added: result.added, removed: result.removed, moved: result.moved, note: result.note,
   })
@@ -473,7 +497,7 @@ async function skipOverLimit(tx: Queryable, input: SkipInput): Promise<SyncServi
   if (!row) throw new Error(`ServiceMap ${input.mapId} vanished while synchronizing (tenant ${input.tenantId})`)
   return {
     mapId: input.mapId, version: toNumber(row.version), status: assertStatus(row.status, input.mapId),
-    added: 0, removed: 0, moved: 0, changed: false, skipped: 'limit', reason: input.note, syncedAt: input.now,
+    added: 0, removed: 0, moved: 0, retired: 0, changed: false, skipped: 'limit', reason: input.note, syncedAt: input.now,
     note: row.wasStale === true ? null : input.note, evaluation: null,
   }
 }

@@ -47,6 +47,8 @@ describe('enum SDL ↔ liste TS (lib/serviceVocabularies.ts)', () => {
     expect(SERVICE_SDL_ENUMS['UnknownNodesMode']).toEqual(['ignore', 'operational'])
     expect(SERVICE_SDL_ENUMS['ServiceOpenIncidentFrom']).toEqual(['never', 'down', 'degraded'])
     expect(SERVICE_SDL_ENUMS['ServiceStaleReason']).toEqual(['missing_ci', 'over_limit'])
+    // Revisione 2 · D6.4: comportamento della mappa durante una tempesta della sorgente
+    expect(SERVICE_SDL_ENUMS['DuringStormMode']).toEqual(['evaluate', 'hold'])
     expect([...SERVICE_HEALTH_SEVERITY_ORDER].sort()).toEqual([...SERVICE_HEALTHS].sort())
   })
 })
@@ -58,7 +60,7 @@ describe('tipi del contratto', () => {
       maxDepth: 'Int!', relationshipTypes: '[String!]!', builtFrom: 'String!', stale: 'Boolean!', staleReason: 'ServiceStaleReason',
       autoSync: 'Boolean!', syncedAt: 'String',
       rules: 'ServiceImpactRules!',
-      health: 'ServiceHealth!', healthIfActive: 'ServiceHealth', healthSince: 'String', impactScore: 'Int!', evaluatedAt: 'String',
+      health: 'ServiceHealth!', healthIfActive: 'ServiceHealth', healthNote: 'String', healthSince: 'String', impactScore: 'Int!', evaluatedAt: 'String',
       explanation: '[ImpactCause!]!',
       nodes: '[ServiceMapNode!]!', nodeCount: 'Int!',
       edges: '[ServiceMapEdge!]!',
@@ -75,7 +77,7 @@ describe('tipi del contratto', () => {
     expect(fieldsOf('ImpactCause')).toEqual({ ci: 'ConfigurationItemRef!', health: 'CIHealth!', weight: 'Int!', critical: 'Boolean!', path: '[ConfigurationItemRef!]!' })
     expect(fieldsOf('ServiceMapEdge')).toEqual({ source: 'ID!', target: 'ID!', relType: 'String!' })
     expect(fieldsOf('ServiceHealthEntry')).toEqual({ id: 'ID!', at: 'String!', health: 'ServiceHealth!', previousHealth: 'ServiceHealth', impactScore: 'Int!', trigger: 'ServiceHealthTrigger!', causes: '[ImpactCause!]!', note: 'String' })
-    expect(fieldsOf('ServiceImpactRules')).toEqual({ version: 'Int!', downSharePct: 'Int!', degradedSharePct: 'Int!', minNodes: 'Int!', unknownNodes: 'UnknownNodesMode!', openIncidentFrom: 'ServiceOpenIncidentFrom!' })
+    expect(fieldsOf('ServiceImpactRules')).toEqual({ version: 'Int!', downSharePct: 'Int!', degradedSharePct: 'Int!', minNodes: 'Int!', unknownNodes: 'UnknownNodesMode!', openIncidentFrom: 'ServiceOpenIncidentFrom!', duringStorm: 'DuringStormMode!' })
     expect(fieldsOf('ServiceRef')).toEqual({ id: 'ID!', name: 'String!', criticality: 'String', ownerGroup: 'Team' })
     expect(fieldsOf('ServiceMapCounts')).toEqual({ total: 'Int!', operational: 'Int!', degraded: 'Int!', down: 'Int!', maintenance: 'Int!', unknown: 'Int!' })
     expect(fieldsOf('ServiceMapPage')).toEqual({ items: '[ServiceMap!]!', total: 'Int!', counts: 'ServiceMapCounts!' })
@@ -112,7 +114,7 @@ describe('tipi del contratto', () => {
   })
 
   it('tipi e input dell\'ondata 2 (configurazione da interfaccia)', () => {
-    expect(fieldsOf('ServiceImpactRulesInput')).toEqual({ downSharePct: 'Int!', degradedSharePct: 'Int!', minNodes: 'Int!', unknownNodes: 'UnknownNodesMode!', openIncidentFrom: 'ServiceOpenIncidentFrom!' })
+    expect(fieldsOf('ServiceImpactRulesInput')).toEqual({ downSharePct: 'Int!', degradedSharePct: 'Int!', minNodes: 'Int!', unknownNodes: 'UnknownNodesMode!', openIncidentFrom: 'ServiceOpenIncidentFrom!', duringStorm: 'DuringStormMode!' })
     expect(fieldsOf('ServiceMapNodeInput')).toEqual({ ciId: 'ID!', propagate: 'NodePropagation!', weight: 'Int!', critical: 'Boolean!' })
     expect(fieldsOf('ServiceMapProposalNode')).toEqual({ ci: 'ConfigurationItemRef!', level: 'Int!', role: 'ServiceNodeRole!', propagate: 'NodePropagation!', weight: 'Int!', critical: 'Boolean!', via: 'ID' })
     expect(fieldsOf('ServiceMapMovedNode')).toEqual({ ci: 'ConfigurationItemRef!', level: 'Int!', proposedLevel: 'Int!', via: 'ID', proposedVia: 'ID' })

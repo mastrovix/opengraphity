@@ -7,8 +7,16 @@
  * job periodico, job ritardato — passes.ts e jobs/eventCorrelateWorker.ts).
  * Ordine fisso:
  *
+ *   0-. ciclo di vita — il CI dell'allarme ha uno stato fra quelli ignorati
+ *                       dalla policy (`ignore_lifecycle_statuses`, di norma
+ *                       `decommissioned`): esito `skipped_lifecycle` e stop —
+ *                       niente salute, niente incident, niente tempesta
+ *                       (revisione 2 · D6.3).
  *   0. sfarfallio     — flapping.ts: un evento `flapping` non viene correlato;
- *                       all'ingest il rilevamento (Event.transitions).
+ *                       all'ingest il rilevamento (Event.transitions). La
+ *                       change in finestra si cerca PRIMA del rilevamento
+ *                       (revisione 2 · B2-11): un allarme silenziato che
+ *                       oscilla durante un rilascio resta silenziato.
  *   0b. tempesta      — storm.ts: all'ingest si aggiorna il contatore della
  *                       sorgente (e si apre/chiude la tempesta), nelle
  *                       rivalutazioni si legge soltanto.
@@ -37,7 +45,7 @@ import { logger } from '../../lib/logger.js'
 import { eventPipelineDurationSeconds, eventsCorrelatedTotal } from '../../middleware/metrics.js'
 import { MONITORING_ACTOR, toStr } from './shared.js'
 import { getEventPolicy } from './policy.js'
-import { loadEventRecord } from './repo.js'
+import { loadEventRecord, setCorrelation } from './repo.js'
 import { recomputeCIHealth } from './ciHealth.js'
 import { transitionsOf } from './transitions.js'
 import { enterFlapping, isFlapping } from './flapping.js'
@@ -45,7 +53,7 @@ import { applySuppression, findSuppressingChange, liftSuppression } from './supp
 import { correlateFiringEvent, correlateIntoStorm } from './grouping.js'
 import { handleResolvedEvent } from './autoResolve.js'
 import { getStormState, trackSourceStorm } from './storm.js'
-import type { PipelineInput, PipelineResult } from './types.js'
+import type { EventRecord, PipelineInput, PipelineResult } from './types.js'
 
 const log = logger.child({ module: 'event-correlation' })
 
@@ -75,8 +83,8 @@ async function run(input: PipelineInput): Promise<PipelineResult> {
   const session = getSession(undefined, 'WRITE')
   try {
     // Copia del record dell'ingest: i passi mutano `ev.props` (fine soppressione).
-    const ev = input.record
-      ? { props: { ...input.record.props }, ciId: input.record.ciId }
+    const ev: EventRecord = input.record
+      ? { props: { ...input.record.props }, ciId: input.record.ciId, ciStatus: input.record.ciStatus ?? null }
       : await loadEventRecord(session, tenantId, eventId)
     const status = toStr(ev.props['status'])
     const policy = await getEventPolicy(tenantId)
@@ -84,13 +92,42 @@ async function run(input: PipelineInput): Promise<PipelineResult> {
     const logCtx: Record<string, unknown> = { fingerprint: toStr(ev.props['fingerprint']), mode }
     if (input.jobId !== undefined) logCtx['jobId'] = input.jobId
 
+    // 0-. ciclo di vita ignorato (revisione 2 · D6.3): il CI è dismesso (o
+    // fuori servizio) e la policy lo dice. L'allarme resta in console con il
+    // suo motivo: nessuna salute, nessun incident, nessun contatore di
+    // tempesta. Vale per ogni stato del payload — un CI fuori servizio non
+    // produce lavoro, in nessuna direzione; un incident aperto PRIMA che il CI
+    // fosse dismesso resta aperto e lo chiude una persona (docs/OPERATIONS.md).
+    if (ev.ciId && ev.ciStatus != null && (policy.ignore_lifecycle_statuses as readonly string[]).includes(ev.ciStatus)) {
+      await setCorrelation(session, tenantId, eventId, 'skipped_lifecycle', now)
+      log.info({ ...logCtx, tenantId, eventId, ciId: ev.ciId, ciStatus: ev.ciStatus }, 'Event ignored: its CI lifecycle status is in the policy ignore list')
+      return { outcome: 'skipped_lifecycle', status, suppressedByChangeId: toStr(ev.props['suppressed_by_change_id']) || null, incidentId: null }
+    }
+    // 0. soppressione PRIMA del rilevamento dello sfarfallio (revisione 2 ·
+    // B2-11): prima il passo 0 vinceva e un allarme silenziato che oscillava
+    // durante un rilascio entrava in `flapping`, perdeva la soppressione e
+    // portava il CI a `degraded` — proprio nella finestra in cui la policy
+    // promette "niente salute, niente incident". La change si cerca qui (una
+    // query sola, la stessa di prima) e si APPLICA al passo 1, così un
+    // allarme silenziato continua a contare per la tempesta della sorgente.
+    // I passaggi continuano ad accumularsi su `transitions` (servono quando la
+    // finestra finisce), ma non producono `flapping` finché c'è la change.
+    //
+    // Un payload `resolved` non viene mai silenziato (il rientro deve poter
+    // chiudere il suo incident): la change si cerca SOLO se quel payload
+    // farebbe scattare lo sfarfallio — è l'oscillazione dentro la finestra, il
+    // caso di B2-11 — così il rientro normale non paga una query in più.
+    const flaps = mode === 'ingest' && isFlapping(transitionsOf(ev.props), policy, now)
+    const change = ev.ciId && mode !== 'resume' && (status !== 'resolved' || flaps)
+      ? await findSuppressingChange(tenantId, ev.ciId, policy.suppress_upstream_hops, now)
+      : null
     // 0. sfarfallio in corso: nessuna correlazione, la salute (degraded) resta aggiornata
-    if (status === 'flapping') {
+    if (!change && status === 'flapping') {
       if (ev.ciId) await recomputeCIHealth(tenantId, ev.ciId, actorId)
       return { outcome: 'flapping', status, suppressedByChangeId: null, incidentId: null }
     }
     // 0. rilevamento: solo all'ingest, dove i passaggi vengono registrati
-    if (mode === 'ingest' && isFlapping(transitionsOf(ev.props), policy, now)) {
+    if (!change && flaps) {
       return await enterFlapping(session, tenantId, ev, policy, actorId, now, logCtx)
     }
     // 0b. tempesta della sorgente: all'ingest si aggiorna il contatore (e si
@@ -108,13 +145,11 @@ async function run(input: PipelineInput): Promise<PipelineResult> {
       return await correlateFiringEvent(session, tenantId, ev, policy, actorId, now, mode, logCtx)
     }
 
-    // 1. soppressione: blocca salute e correlazione
-    if (ev.ciId) {
-      const change = await findSuppressingChange(tenantId, ev.ciId, policy.suppress_upstream_hops, now)
-      if (change) {
-        await applySuppression(session, tenantId, ev, change, actorId, now, mode, logCtx)
-        return { outcome: 'suppressed', status: 'suppressed', suppressedByChangeId: change.changeId, incidentId: null }
-      }
+    // 1. soppressione: blocca salute e correlazione (la change è già stata
+    // cercata al passo 0, prima del rilevamento dello sfarfallio).
+    if (change) {
+      await applySuppression(session, tenantId, ev, change, actorId, now, mode, logCtx)
+      return { outcome: 'suppressed', status: 'suppressed', suppressedByChangeId: change.changeId, incidentId: null }
     }
     if (status === 'suppressed') {
       // Revisione 2 · B2-04: la fine soppressione è guardata. Se un altro

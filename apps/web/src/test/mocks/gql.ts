@@ -2,7 +2,7 @@
  * Mock GraphQL riusabili (MockedProvider). I risultati includono `__typename`
  * perché la cache Apollo 4 aggiunge sempre il campo alla query.
  */
-import { GET_ME, GET_ANOMALY_STATS, GET_TEAMS, GET_USERS, GET_WORKFLOW_LIST, GET_ITIL_TYPES } from '@/graphql/queries'
+import { GET_ME, GET_ANOMALY_STATS, GET_TEAMS, GET_USERS, GET_WORKFLOW_LIST, GET_ITIL_TYPES, GET_BASE_CI_TYPE } from '@/graphql/queries'
 import type { GqlMock } from '@/test/utils'
 
 export interface MeFixture {
@@ -63,6 +63,35 @@ export function workflowListMock(): GqlMock {
     result: { data: { workflowDefinitions: [] } },
     maxUsageCount: Number.POSITIVE_INFINITY,
   }
+}
+
+/**
+ * Tipo CI base del metamodello (`useCIBaseEnums`): gli enum `status` (ciclo di
+ * vita) ed `environment`. Serve a ogni pagina che legge il vocabolario del
+ * ciclo di vita — fra cui la Policy eventi (stati da ignorare, D6.3).
+ */
+export function baseCITypeMock(
+  statuses: string[] = ['active', 'inactive', 'maintenance', 'decommissioned'],
+  environments: string[] = ['production', 'staging', 'development'],
+): GqlMock {
+  const field = (id: string, name: string, enumValues: string[], order: number) => ({
+    __typename: 'CIField', id, name, label: name, fieldType: 'enum', required: false, enumValues, order,
+    isSystem: true, validationScript: null, visibilityScript: null, defaultScript: null,
+  })
+  return {
+    request: { query: GET_BASE_CI_TYPE },
+    result: { data: { baseCIType: {
+      __typename: 'CIType', id: 'base', name: '__base__', label: 'Base', icon: 'box', color: '#000', active: true, validationScript: null,
+      fields: [field('f1', 'status', statuses, 1), field('f2', 'environment', environments, 2)],
+      relations: [], systemRelations: [],
+    } } },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  }
+}
+
+/** Il metamodello non risponde: l'hook restituisce liste vuote e un errore che le pagine devono mostrare. */
+export function baseCITypeErrorMock(message = 'metamodel down'): GqlMock {
+  return { request: { query: GET_BASE_CI_TYPE }, error: new Error(message), maxUsageCount: Number.POSITIVE_INFINITY }
 }
 
 /** Metamodello ITIL minimo: incident con severity (enum), title (string), created_at (date). */

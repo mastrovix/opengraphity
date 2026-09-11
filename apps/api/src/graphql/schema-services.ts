@@ -46,6 +46,8 @@ export function servicesSDL(): string {
   ${sdlEnum('ServiceOpenIncidentFrom')}
   """Perché la mappa è da rivedere: un componente non esiste più (missing_ci) o la proposta supera il tetto (over_limit)."""
   ${sdlEnum('ServiceStaleReason')}
+  """Cosa fa la mappa mentre una sorgente degli allarmi dei suoi componenti è in tempesta: hold (sospendi la valutazione, default) o evaluate (valuta comunque)."""
+  ${sdlEnum('DuringStormMode')}
 
   """Regole d'impatto del servizio (ServiceMap.rules, JSON versionato; modificabili da UI)."""
   type ServiceImpactRules {
@@ -60,6 +62,8 @@ export function servicesSDL(): string {
     unknownNodes:     UnknownNodesMode!
     """Soglia da cui il servizio apre un incident (ondata 3)."""
     openIncidentFrom: ServiceOpenIncidentFrom!
+    """Durante una tempesta della sorgente: hold (default) sospende la valutazione — salute e incident restano come sono — evaluate la fa comunque."""
+    duringStorm:      DuringStormMode!
   }
 
   """Regole d'impatto da salvare: degradedSharePct ≤ downSharePct e minNodes ≤ numero di componenti della mappa, altrimenti BAD_USER_INPUT."""
@@ -69,6 +73,7 @@ export function servicesSDL(): string {
     minNodes:         Int!
     unknownNodes:     UnknownNodesMode!
     openIncidentFrom: ServiceOpenIncidentFrom!
+    duringStorm:      DuringStormMode!
   }
 
   """Impostazioni di un componente: ciò che l'amministratore può cambiare (ruolo, livello e via restano della mappa)."""
@@ -104,11 +109,11 @@ export function servicesSDL(): string {
     addedBy:       String!
     """Salute del CI dal monitoraggio; null finché nessun allarme lo ha riguardato."""
     health:        CIHealth
-    """Change in finestra sul CI: il componente non pesa (e se è critico il servizio è in manutenzione). Il ciclo di vita ci.status = maintenance è un'altra cosa: si legge da ci.status e da excludedReason."""
+    """Change in finestra sul CI o su un CI a monte (suppressUpstreamHops della policy allarmi): il componente non pesa (e se è critico il servizio è in manutenzione). Il ciclo di vita ci.status = maintenance è un'altra cosa: si legge da ci.status e da excludedReason."""
     inMaintenance: Boolean!
     """True se il componente conta nel calcolo (pesa, non in finestra, non in manutenzione di ciclo di vita, con salute nota o regola unknownNodes = operational)."""
     contributes:   Boolean!
-    """Perché non conta: never (propagate never), change_window (change in finestra), lifecycle_maintenance (ci.status = maintenance), unknown_health (senza salute con unknownNodes = ignore). null se conta."""
+    """Perché non conta: never (propagate never), lifecycle_decommissioned (CI dismesso o fuori servizio), change_window (change in finestra sul CI), upstream_change_window (change in finestra su un CI a monte), lifecycle_maintenance (ci.status = maintenance), unknown_health (senza salute con unknownNodes = ignore). null se conta."""
     excludedReason: String
   }
 
@@ -163,6 +168,8 @@ export function servicesSDL(): string {
     health:            ServiceHealth!
     """Salute che il servizio avrebbe senza la finestra di change in corso: valorizzata solo quando health = maintenance."""
     healthIfActive:    ServiceHealth
+    """Perché la salute è questa, quando non basta l'elenco delle cause (es. sorgente in tempesta con duringStorm = hold, o componenti in finestra di change a monte). null quando non c'è nulla da spiegare."""
+    healthNote:        String
     healthSince:       String
     """0–100: quota ponderata dei componenti giù (1) e degradati (0,5) fra quelli che contano."""
     impactScore:       Int!

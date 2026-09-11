@@ -17,6 +17,12 @@
  * "Ripristina", Salva attivo solo con modifiche; dopo il salvataggio la
  * risposta finisce nella cache di GET_EVENT_POLICY, così console e dettaglio
  * evento (cache-first) leggono subito la policy nuova (D·1.5).
+ * Revisione 2 (D6.3): riquadro «Ciclo di vita del CI» con la scelta multipla
+ * «Stati del ciclo di vita da ignorare» (`ignoreLifecycleStatuses`). Il
+ * vocabolario è quello del metamodello (`useCIBaseEnums`), non una lista
+ * scritta qui: se il metamodello non lo fornisce lo si dice (fail-loud) e uno
+ * stato salvato che il metamodello non conosce resta spuntabile, marcato
+ * «Sconosciuto: <valore>».
  */
 import { useEffect, useId, useMemo, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -32,6 +38,7 @@ import { Button } from '@/components/Button'
 import { Input, Select, FieldLabel } from '@/components/ui/FormControls'
 import { Toggle } from '@/components/ui/Toggle'
 import { errorMessage } from '@/hooks/useMutationWithToast'
+import { enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
 import { GET_EVENT_POLICY } from '@/graphql/queries'
 import { UPDATE_EVENT_POLICY } from '@/graphql/mutations'
 import { colors, palette } from '@/lib/tokens'
@@ -89,6 +96,8 @@ interface FormState {
   stormCooldownMinutes: number
   retentionDays:        number
   matchShortHostname:   boolean
+  /** Stati del ciclo di vita ignorati dagli allarmi (D6.3): sempre nell'ordine del vocabolario, così il confronto con i valori letti è stabile. */
+  ignoreLifecycleStatuses: string[]
   severityMap:          SeverityMap
 }
 
@@ -126,15 +135,16 @@ function toForm(p: EventPolicy): { form: FormState; mapError: string | null } {
       stormThresholdPerMinute: p.stormThresholdPerMinute, stormCooldownMinutes: p.stormCooldownMinutes,
       retentionDays: p.retentionDays,
       matchShortHostname: p.matchShortHostname,
+      ignoreLifecycleStatuses: [...p.ignoreLifecycleStatuses],
       severityMap: map,
     },
     mapError: error,
   }
 }
 
-const HOW_IT_WORKS = ['threshold', 'grouping', 'autoResolve', 'changeWindow', 'flapping', 'storm'] as const
+const HOW_IT_WORKS = ['threshold', 'grouping', 'autoResolve', 'changeWindow', 'lifecycle', 'flapping', 'storm'] as const
 
-type GroupName = 'recognition' | 'incidents' | 'changeWindow' | 'flapStorm' | 'retention'
+type GroupName = 'recognition' | 'incidents' | 'changeWindow' | 'lifecycle' | 'flapStorm' | 'retention'
 
 /**
  * Riquadro titolato: un <fieldset> per gruppo. A livello di modulo (non
@@ -157,6 +167,8 @@ export function EventPolicyPage() {
   const fid = (name: string) => `${uid}-${name}`
 
   const { data, loading, error, refetch } = useQuery<{ eventPolicy: EventPolicy }>(GET_EVENT_POLICY, { fetchPolicy: 'cache-and-network' })
+  // Il vocabolario del ciclo di vita è quello del metamodello: se manca lo si dice (baseEnums.error), non si inventa una lista.
+  const baseEnums = useCIBaseEnums()
   // EventPolicy non ha un id: senza `update` il risultato della mutation non
   // toccherebbe ROOT_QUERY.eventPolicy e le pagine cache-first resterebbero
   // sulla policy vecchia fino al ricaricamento (D·1.5).
@@ -214,6 +226,7 @@ export function EventPolicyPage() {
         stormThresholdPerMinute: form.stormThresholdPerMinute, stormCooldownMinutes: form.stormCooldownMinutes,
         retentionDays: form.retentionDays,
         matchShortHostname: form.matchShortHostname,
+        ignoreLifecycleStatuses: form.ignoreLifecycleStatuses,
         severityMap: JSON.stringify(form.severityMap),
       } } })
       toast.success(t('toast.events.policySaved'))
@@ -264,6 +277,21 @@ export function EventPolicyPage() {
       <label id={`policy-${key}-label`} htmlFor={`policy-${key}`} style={{ fontSize: 'var(--font-size-body)', color: disabled ? colors.slateLight : colors.slateDark, cursor: disabled ? 'default' : 'pointer' }}>{t(`events.policy.${key}`)}</label>
     </div>
   )
+
+  /**
+   * Opzioni della scelta multipla: il vocabolario del metamodello più gli
+   * stati già salvati che il metamodello NON conosce — restano spuntati e
+   * marcati «Sconosciuto: …», così nessun valore sparisce di nascosto.
+   */
+  const lifecycleOptions = [
+    ...baseEnums.statuses,
+    ...form.ignoreLifecycleStatuses.filter((s) => !baseEnums.statuses.includes(s)),
+  ]
+  const lifecycleLabel = (value: string) =>
+    baseEnums.statuses.includes(value) ? enumLabel(value) : t('events.policy.lifecycleUnknown', { value })
+  /** Spunta/despunta uno stato ricostruendo la lista nell'ordine delle opzioni: il confronto con i valori letti resta stabile. */
+  const toggleLifecycle = (value: string, on: boolean) =>
+    set('ignoreLifecycleStatuses', lifecycleOptions.filter((s) => (s === value ? on : form.ignoreLifecycleStatuses.includes(s))))
 
   const grid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } as const
 
@@ -371,6 +399,45 @@ export function EventPolicyPage() {
           <div style={grid}>
             {numberField('suppressUpstreamHops')}
           </div>
+        </Group>
+
+        {/* 2 bis. Ciclo di vita del CI (D6.3): gli allarmi sui CI in questi stati non aprono incident e non cambiano la salute. */}
+        <Group name="lifecycle">
+          <FieldLabel><span id={fid('lifecycle-label')}>{t('events.policy.ignoreLifecycleStatuses')}</span></FieldLabel>
+          <div
+            role="group"
+            aria-labelledby={fid('lifecycle-label')}
+            aria-describedby={helpId('ignoreLifecycleStatuses')}
+            style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', marginTop: 4 }}
+          >
+            {lifecycleOptions.map((value) => (
+              <label key={value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: colors.slateDark, cursor: saving ? 'default' : 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={form.ignoreLifecycleStatuses.includes(value)}
+                  disabled={saving}
+                  onChange={(e) => toggleLifecycle(value, e.target.checked)}
+                />
+                {lifecycleLabel(value)}
+              </label>
+            ))}
+          </div>
+          {/* Vocabolario assente: lo si dice, non si mostra un riquadro vuoto senza spiegazione. */}
+          {baseEnums.error && (
+            <p role="alert" style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: colors.danger, fontWeight: 500 }}>
+              {t('events.policy.lifecycleVocabularyUnavailable', { error: baseEnums.error })}
+            </p>
+          )}
+          {!baseEnums.loading && !baseEnums.error && lifecycleOptions.length === 0 && (
+            <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: colors.slateLight }}>{t('events.policy.lifecycleEmptyVocabulary')}</p>
+          )}
+          {/* Quanti stati sono spuntati: con nessuno si dice cosa comporta, non si lascia il vuoto. */}
+          <p data-testid="lifecycle-selected" style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: colors.slateLight }}>
+            {form.ignoreLifecycleStatuses.length === 0
+              ? t('events.policy.lifecycleSelectedNone')
+              : t('events.policy.lifecycleSelected', { count: form.ignoreLifecycleStatuses.length })}
+          </p>
+          <Help field="ignoreLifecycleStatuses" />
         </Group>
 
         {/* 3. Sfarfallio e tempeste */}

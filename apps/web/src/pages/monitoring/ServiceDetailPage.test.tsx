@@ -418,6 +418,35 @@ describe('ServiceDetailPage', () => {
     expect(within(screen.getByTestId('node-panel')).getByText('No — in maintenance (lifecycle)')).toBeInTheDocument()
   })
 
+  it('R2 (D6.4): la nota della valutazione compare sotto la salute quando c\'è, e non c\'è quando è nulla', async () => {
+    const note = 'Source Prometheus in storm since 08:12: evaluation held, health left as it was.'
+    const { unmount } = renderPage('viewer', { detail: detailMock({ healthNote: note }) })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByTestId('health-note')).toHaveTextContent(note)
+    unmount()
+
+    renderPage('viewer')
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.queryByTestId('health-note')).not.toBeInTheDocument()
+  })
+
+  it('R2 (D6.2/D6.3): i due motivi nuovi per nodo nel pannello del componente', async () => {
+    const nodes = (mapDetail().nodes as Record<string, unknown>[]).map((n) => {
+      const id = (n.ci as { id: string }).id
+      if (id === 'db-01')   return { ...n, contributes: false, excludedReason: 'lifecycle_decommissioned' }
+      if (id === 'cache-02') return { ...n, contributes: false, inMaintenance: true, excludedReason: 'upstream_change_window' }
+      return n
+    })
+    const { user } = renderPage('viewer', { detail: detailMock({ nodes, healthNote: 'CHG-0007 on api-03 covers cache-02.' }) })
+    await screen.findByRole('heading', { level: 1 })
+    await user.click(nodeOf('db-01'))
+    expect(within(screen.getByTestId('node-panel')).getByText('No — CI decommissioned (out of the calculation)')).toBeInTheDocument()
+    await user.click(nodeOf('cache-02'))
+    expect(within(screen.getByTestId('node-panel')).getByText('No — in a change window on an upstream CI')).toBeInTheDocument()
+    // la mappa dice anche quale change copre il componente a monte
+    expect(screen.getByTestId('health-note')).toHaveTextContent('CHG-0007 on api-03 covers cache-02.')
+  })
+
   it('R1: fuori dalla manutenzione (o senza il dato) non si aggiunge nulla alla testata', async () => {
     const { unmount } = renderPage('viewer', { detail: detailMock({ health: 'maintenance', healthIfActive: null }) })
     await screen.findByRole('heading', { level: 1 })

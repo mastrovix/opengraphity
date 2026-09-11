@@ -5,8 +5,13 @@
 import type { CorrelationOutcome } from '../../lib/eventVocabularies.js'
 import type { Props } from './shared.js'
 
-/** Evento caricato dal grafo con il CI agganciato (RAISED_ON), se c'è. */
-export interface EventRecord { props: Props; ciId: string | null }
+/**
+ * Evento caricato dal grafo con il CI agganciato (RAISED_ON), se c'è, e il
+ * suo ciclo di vita (`ci.status`: revisione 2 · D6.3, la policy può ignorare
+ * gli allarmi dei CI dismessi). `ciStatus` viaggia con il record — non è una
+ * lettura in più — ed è null quando l'evento è orfano o il CI non ha stato.
+ */
+export interface EventRecord { props: Props; ciId: string | null; ciStatus?: string | null }
 
 /** Esiti di `event.correlated` (oltre a quelli scritti sull'evento). */
 export type PipelineOutcome = CorrelationOutcome | 'auto_resolved' | 'auto_resolve_skipped'

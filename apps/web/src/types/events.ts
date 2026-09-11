@@ -27,17 +27,22 @@ export const CI_ALIAS_KINDS:    readonly CIAliasKind[]   = ['hostname', 'ip', 'f
  * - storm: la sorgente manda troppi allarmi nuovi al minuto: l'evento è
  *   raggruppato nell'unico incident di tempesta della sorgente;
  * - storm_no_ci: come storm, ma senza CI riconosciuto.
+ * Revisione 2 (D6.3):
+ * - skipped_lifecycle: il CI dell'allarme è in uno degli stati del ciclo di
+ *   vita che la policy ignora (`ignoreLifecycleStatuses`, di norma «dismesso»):
+ *   nessun incident, nessun ricalcolo della salute; l'allarme resta in console
+ *   col suo motivo.
  */
 export type EventCorrelation =
   | 'opened' | 'attached' | 'reopened'
   | 'skipped_orphan' | 'skipped_severity' | 'delayed' | 'suppressed'
   | 'auto_resolved' | 'none'
   | 'flapping' | 'storm' | 'storm_no_ci'
-  | 'pending'
+  | 'pending' | 'skipped_lifecycle'
 
 export const EVENT_CORRELATIONS: readonly EventCorrelation[] = [
   'opened', 'attached', 'reopened', 'skipped_orphan', 'skipped_severity', 'delayed', 'suppressed', 'auto_resolved', 'none',
-  'flapping', 'storm', 'storm_no_ci', 'pending',
+  'flapping', 'storm', 'storm_no_ci', 'pending', 'skipped_lifecycle',
 ]
 
 /** Stati in cui "Rivaluta ora" ha senso: la policy può decidere diversamente. */
@@ -246,6 +251,14 @@ export interface EventPolicy {
   retentionDays:        number
   /** Riconoscimento del CI per nome: FQDN ↔ nome corto (db-01.example.local ↔ db-01). */
   matchShortHostname:   boolean
+  /**
+   * Stati del ciclo di vita del CI (`ci.status`) che il monitoraggio ignora
+   * (revisione 2, D6.3): un allarme su un CI in uno di questi stati ha esito
+   * `skipped_lifecycle` — nessun incident, salute invariata. Vuoto = nessuno
+   * stato ignorato. I valori sono quelli del metamodello (`baseCIType`), non
+   * un vocabolario chiuso del web.
+   */
+  ignoreLifecycleStatuses: string[]
   /** Mappa severità → impatto/urgenza, JSON serializzato. */
   severityMap:          string
 }

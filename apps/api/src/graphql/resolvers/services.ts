@@ -139,7 +139,7 @@ function mapGoneNode(ciId: string) {
 }
 
 export function toRulesGQL(r: ServiceImpactRules) {
-  return { version: r.version, downSharePct: r.down_share_pct, degradedSharePct: r.degraded_share_pct, minNodes: r.min_nodes, unknownNodes: r.unknown_nodes, openIncidentFrom: r.open_incident_from }
+  return { version: r.version, downSharePct: r.down_share_pct, degradedSharePct: r.degraded_share_pct, minNodes: r.min_nodes, unknownNodes: r.unknown_nodes, openIncidentFrom: r.open_incident_from, duringStorm: r.during_storm }
 }
 
 export interface ServiceMapRow {
@@ -175,6 +175,10 @@ export function mapServiceMap(row: ServiceMapRow) {
     // Salute senza la finestra di change in corso: la scrive il motore solo
     // quando la salute è `maintenance` (R1), null in tutti gli altri casi.
     healthIfActive:    p['health_if_active'] == null ? null : assertEnum<ServiceHealth>(p['health_if_active'], SERVICE_HEALTHS, `ServiceMap ${id} health_if_active`),
+    // Perché la salute è questa quando le cause non bastano (tempesta che ha
+    // sospeso la valutazione, change in finestra a monte): la scrive il motore,
+    // null quando non c'è nulla da spiegare (revisione 2 · D6.2/D6.4).
+    healthNote:        toStrOrNull(p['health_note']),
     healthSince:       toStrOrNull(p['health_since']),
     impactScore:       toNumber(p['impact_score']),
     evaluatedAt:       toStrOrNull(p['evaluated_at']),

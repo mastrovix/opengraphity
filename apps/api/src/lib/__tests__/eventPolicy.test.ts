@@ -9,7 +9,8 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import {
   DEFAULT_EVENT_POLICY, DEFAULT_EVENT_POLICY_JSON, EVENT_POLICY_V2_KEYS, EVENT_POLICY_V2_MIGRATION,
-  EVENT_POLICY_V3_KEYS, EVENT_POLICY_V3_MIGRATION, EVENT_POLICY_V4_KEYS, EVENT_POLICY_V4_MIGRATION, EVENT_POLICY_MAX,
+  EVENT_POLICY_V3_KEYS, EVENT_POLICY_V3_MIGRATION, EVENT_POLICY_V4_KEYS, EVENT_POLICY_V4_MIGRATION,
+  EVENT_POLICY_V5_KEYS, EVENT_POLICY_V5_MIGRATION, EVENT_POLICY_MAX, assertLifecycleStatuses,
   assertEventPolicy, parseEventPolicy, completeEventPolicy, toEventPolicyGQL, applyEventPolicyInput,
   EVENT_POLICY_CACHE_TTL_MS, getCachedEventPolicy, cacheEventPolicy, invalidateEventPolicyCache,
 } from '../eventPolicy.js'
@@ -135,6 +136,42 @@ describe('massimi e coerenza (I-7)', () => {
     // via input GraphQL: stesso messaggio (la UI lo mostra)
     expect(() => applyEventPolicyInput(DEFAULT_EVENT_POLICY, { stormCooldownMinutes: 0 })).toThrow(/eventPolicy\.storm_cooldown_minutes must be > 0 when storm_threshold_per_minute is > 0/)
     expect(() => applyEventPolicyInput(DEFAULT_EVENT_POLICY, { suppressUpstreamHops: 11 })).toThrow(/eventPolicy\.suppress_upstream_hops must be at most 10\. Got: 11/)
+  })
+})
+
+// ── Revisione 2 · D6.3: ciclo di vita ignorato dagli allarmi ─────────────────
+
+describe('ignore_lifecycle_statuses (D6.3)', () => {
+  it('default `[decommissioned]`; lista chiusa sul vocabolario del ciclo di vita, vuota ammessa, senza doppioni', () => {
+    expect(DEFAULT_EVENT_POLICY.ignore_lifecycle_statuses).toEqual(['decommissioned'])
+    expect(EVENT_POLICY_V5_KEYS).toEqual(['ignore_lifecycle_statuses'])
+    expect(EVENT_POLICY_V5_MIGRATION).toBe('20260911_1130_shared_domain_rules')
+    expect(assertLifecycleStatuses([])).toEqual([])
+    expect(assertLifecycleStatuses(['inactive', 'decommissioned'])).toEqual(['inactive', 'decommissioned'])
+    expect(() => assertLifecycleStatuses('decommissioned')).toThrow(/must be a list of CI lifecycle statuses \(active, inactive, maintenance, decommissioned\)/)
+    expect(() => assertLifecycleStatuses(['dismesso'])).toThrow(/"dismesso" is not one of active, inactive, maintenance, decommissioned/)
+    expect(() => assertLifecycleStatuses(['inactive', 'inactive'])).toThrow(/inactive appears twice/)
+    expect(() => assertEventPolicy({ ...DEFAULT_EVENT_POLICY, ignore_lifecycle_statuses: ['nope'] })).toThrow(/event_policy\.ignore_lifecycle_statuses/)
+  })
+
+  it('GraphQL: ignoreLifecycleStatuses in lettura e in scrittura (lista completa, mai null); un valore fuori vocabolario è rifiutato', () => {
+    expect(toEventPolicyGQL(DEFAULT_EVENT_POLICY)).toMatchObject({ ignoreLifecycleStatuses: ['decommissioned'] })
+    expect(applyEventPolicyInput(DEFAULT_EVENT_POLICY, { ignoreLifecycleStatuses: [] })).toMatchObject({ ignore_lifecycle_statuses: [], version: 2 })
+    expect(applyEventPolicyInput(DEFAULT_EVENT_POLICY, { ignoreLifecycleStatuses: ['inactive', 'decommissioned'] }).ignore_lifecycle_statuses).toEqual(['inactive', 'decommissioned'])
+    expect(() => applyEventPolicyInput(DEFAULT_EVENT_POLICY, { ignoreLifecycleStatuses: null })).toThrow(/ignoreLifecycleStatuses cannot be null/)
+    expect(() => applyEventPolicyInput(DEFAULT_EVENT_POLICY, { ignoreLifecycleStatuses: ['spento'] })).toThrow(/ignoreLifecycleStatuses: "spento" is not one of/)
+    // assente nell'input → invariata
+    expect(applyEventPolicyInput({ ...DEFAULT_EVENT_POLICY, ignore_lifecycle_statuses: [] }, { retentionDays: 10 }).ignore_lifecycle_statuses).toEqual([])
+  })
+
+  it('policy senza la chiave → errore che indica la migrazione 1130; completeEventPolicy la aggiunge col default', () => {
+    const { ignore_lifecycle_statuses: _i, ...withoutV5 } = DEFAULT_EVENT_POLICY
+    expect(() => parseEventPolicy(JSON.stringify(withoutV5), 'acme')).toThrow(/ — missing ignore_lifecycle_statuses: run the 20260911_1130_shared_domain_rules migration/)
+    expect(completeEventPolicy({ ...withoutV5 })).toEqual({ ...withoutV5, ignore_lifecycle_statuses: ['decommissioned'] })
+    // la copia è profonda: modificarla non tocca il default
+    const completed = completeEventPolicy({ ...withoutV5 })!
+    ;(completed['ignore_lifecycle_statuses'] as string[]).push('inactive')
+    expect(DEFAULT_EVENT_POLICY.ignore_lifecycle_statuses).toEqual(['decommissioned'])
   })
 })
 

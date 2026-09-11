@@ -28,10 +28,11 @@ function fakeSession(written: { n: number; missing: number }, total: { n: number
 beforeEach(() => { vi.spyOn(console, 'log').mockImplementation(() => {}) })
 
 describe('20260910_1120_service_map_review2', () => {
-  it('è registrata per ultima, dopo la 1110, con id nel formato YYYYMMDD_HHMM_name e senza autocommit', () => {
+  it('è registrata dopo la 1110 e prima della 1130, con id nel formato YYYYMMDD_HHMM_name e senza autocommit', () => {
     const ids = MIGRATIONS.map((m) => m.id)
     expect(ids.indexOf('20260910_1120_service_map_review2')).toBeGreaterThan(ids.indexOf('20260910_1110_service_map_auto_sync'))
-    expect(ids.at(-1)).toBe('20260910_1120_service_map_review2')
+    // L'ondata 3 della revisione 2 ha aggiunto la 1130 in coda: l'ordine resta quello di scrittura.
+    expect(ids.indexOf('20260911_1130_shared_domain_rules')).toBe(ids.indexOf('20260910_1120_service_map_review2') + 1)
     expect(serviceMapReview2.id).toMatch(/^\d{8}_\d{4}_[a-z0-9_]+$/)
     expect(serviceMapReview2.autocommit).toBeUndefined()
   })

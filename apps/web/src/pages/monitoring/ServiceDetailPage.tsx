@@ -28,13 +28,16 @@
  * l'avviso «da rivedere» dice il motivo vero (`staleReason`) e la testata
  * mostra la salute che il servizio avrebbe senza la finestra di change
  * (`healthIfActive`).
+ * Revisione 2, ondata 3 (D6.2/D6.4): sotto la salute compare la nota della
+ * valutazione (`healthNote`) quando c'è — sorgente in tempesta con
+ * valutazione sospesa, oppure componente coperto da una change a monte.
  */
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Boxes, RotateCcw, Pause, Play, Trash2, AlertTriangle, Star, Loader2, X, ArrowRight, GitCompareArrows, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Boxes, RotateCcw, Pause, Play, Trash2, AlertTriangle, Info, Star, Loader2, X, ArrowRight, GitCompareArrows, RefreshCw } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageLoader } from '@/components/PageLoader'
 import { QueryError } from '@/components/QueryError'
@@ -202,6 +205,13 @@ export function ServiceDetailPage() {
             {map.syncedAt ? t('monitoring.services.syncMode.synced', { ago: timeAgo(map.syncedAt) }) : t('monitoring.services.syncMode.neverSynced')}
           </span>
         </div>
+        {/* R2 (D6.2/D6.4): perché la salute è questa quando le cause non bastano — sorgente in tempesta o change su un CI a monte. */}
+        {map.healthNote && (
+          <p data-testid="health-note" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 0 0', padding: '8px 12px', borderRadius: 8, background: palette.neutral.surface1, border: `1px solid ${colors.border}`, fontSize: 'var(--font-size-body)', color: colors.slateDark }}>
+            <Info size={14} aria-hidden="true" style={{ flexShrink: 0, color: colors.slateLight }} />
+            <span>{map.healthNote}</span>
+          </p>
+        )}
         {/* Da rivedere: il motivo lo dice il motore (`staleReason`); col tetto superato sincronizzare fallirebbe di nuovo, quindi si manda a «Rivedi componenti». */}
         {map.stale && (
           <div role="alert" data-testid="stale-banner" data-reason={map.staleReason ?? 'none'} style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, padding: '10px 14px', borderRadius: 8, background: AMBER_BANNER.bg, border: `1px solid ${AMBER_BANNER.border}`, color: AMBER_BANNER.text, fontSize: 'var(--font-size-body)' }}>

@@ -15,7 +15,7 @@ export async function loadEventRecord(session: Session, tenantId: string, eventI
   const row = await runQueryOne<EventRecord>(session, `
     MATCH (e:Event {id: $eventId, tenant_id: $tenantId})
     OPTIONAL MATCH (e)-[:RAISED_ON]->(ci:ConfigurationItem {tenant_id: $tenantId})
-    RETURN properties(e) AS props, ci.id AS ciId
+    RETURN properties(e) AS props, ci.id AS ciId, ci.status AS ciStatus
   `, { eventId, tenantId })
   if (!row) throw new NotFoundError('Event', eventId)
   return row

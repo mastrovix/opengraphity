@@ -12,6 +12,12 @@
  * Ondata 4: gli esiti `flapping` (chip viola "Instabile · N passaggi/24h"),
  * `storm` (chip ambra "Tempesta · INC-…" con link) e `storm_no_ci`.
  *
+ * Revisione 2 (D6.3): l'esito `skipped_lifecycle` — il CI dell'allarme è in
+ * uno degli stati del ciclo di vita che la policy ignora: chip grigio
+ * "Ciclo di vita · <stato>" e frase che dice quale CI, quale stato e come
+ * far ripartire la valutazione. Lo stato del CI è una stringa del
+ * metamodello: si mostra con `enumLabel`, come ovunque nell'app.
+ *
  * Un esito fuori vocabolario non viene "abbellito": la cella mostra il link o
  * il trattino e la frase dice che l'esito è sconosciuto (fail-loud).
  *
@@ -27,6 +33,7 @@ import type { TFunction } from 'i18next'
 import { Zap, RotateCcw, Link2, CheckCircle2 } from 'lucide-react'
 import { Pill } from '@/components/ui/Pill'
 import { formatDateTime } from '@/lib/datetime'
+import { enumLabel } from '@/lib/ciEnums'
 import { colors } from '@/lib/tokens'
 import { srOnlyStyle } from '@/lib/a11y'
 import { TINT_INFO, TINT_WARNING, TINT_NEUTRAL, TINT_FLAPPING, type Tint } from '@/lib/eventPalette'
@@ -35,7 +42,17 @@ import { REEVALUABLE_CORRELATIONS, type MonitoringEvent, type EventPolicy, type 
 /** Sottoinsieme della policy che serve alla correlazione (il resto non è necessario ai chiamanti). */
 export type CorrelationPolicy = Pick<EventPolicy, 'openIncidentFrom' | 'openDelaySeconds' | 'flapStableMinutes'>
 
-type CorrelationEvent = Pick<MonitoringEvent, 'status' | 'severity' | 'incident' | 'suppressedBy' | 'correlation' | 'correlationAt' | 'flappingSince' | 'transitions24h' | 'source'>
+type CorrelationEvent = Pick<MonitoringEvent, 'status' | 'severity' | 'incident' | 'suppressedBy' | 'correlation' | 'correlationAt' | 'flappingSince' | 'transitions24h' | 'source' | 'ci'>
+
+/**
+ * Il ciclo di vita del CI dell'allarme (`ci.status`) come lo legge
+ * `skipped_lifecycle`: etichetta del metamodello, oppure null se il CI manca
+ * o non ha stato — in quel caso la frase lo dice invece di inventarlo.
+ */
+function lifecycleStatusLabel(ev: Pick<CorrelationEvent, 'ci'>): string | null {
+  const status = ev.ci?.status
+  return status ? enumLabel(status) : null
+}
 
 /** "Rivaluta ora" ha senso solo quando la policy può ancora cambiare idea. */
 export function canReevaluate(ev: Pick<MonitoringEvent, 'correlation'>): boolean {
@@ -130,6 +147,12 @@ export function EventIncidentCell({ event, policy, stopRowClick = false }: CellP
     }
     case 'storm_no_ci':
       return <HintedChip tint={STORM_CHIP} label={t('events.correlation.chip.storm_no_ci')} hint={t('events.correlation.text.storm_no_ci', { source: event.source?.name ?? '—' })} />
+    case 'skipped_lifecycle': {
+      // Grigio come la soppressione: l'allarme resta in console, ma non muove nulla.
+      const status = lifecycleStatusLabel(event)
+      const label = status ? t('events.correlation.chip.skipped_lifecycle', { status }) : t('events.correlation.chip.skipped_lifecycleNoStatus')
+      return <HintedChip tint={TINT_NEUTRAL} label={label} hint={lifecycleSentence(t, event)} />
+    }
   }
 
   if (event.incident) {
@@ -170,6 +193,18 @@ export function EventIncidentCell({ event, policy, stopRowClick = false }: CellP
     default:
       return <span style={{ color: colors.slateLight }}>—</span>
   }
+}
+
+/**
+ * `skipped_lifecycle` in parole: quale CI, in quale stato del ciclo di vita e
+ * cosa fare per far ripartire la valutazione. Senza CI o senza stato la frase
+ * lo dice (nessun valore inventato).
+ */
+function lifecycleSentence(t: TFunction, ev: Pick<CorrelationEvent, 'ci'>): string {
+  const status = lifecycleStatusLabel(ev)
+  if (!ev.ci)  return t('events.correlation.text.skipped_lifecycleNoCI')
+  if (!status) return t('events.correlation.text.skipped_lifecycleNoStatus', { name: ev.ci.name })
+  return t('events.correlation.text.skipped_lifecycle', { name: ev.ci.name, status })
 }
 
 /**
@@ -214,6 +249,7 @@ export function correlationSentence(t: TFunction, ev: CorrelationEvent, policy: 
         : t('events.correlation.text.stormNoIncident', { source, when })
     }
     case 'storm_no_ci': return t('events.correlation.text.storm_no_ci', { source: ev.source?.name ?? '—' })
+    case 'skipped_lifecycle': return lifecycleSentence(t, ev)
     default:     return t('events.correlation.text.unknown', { value: String(ev.correlation) })
   }
 }

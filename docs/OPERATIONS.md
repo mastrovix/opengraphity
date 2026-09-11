@@ -211,6 +211,7 @@ Migrazioni presenti:
 | `20260910_1090_service_notification_rules` | Servizi monitorati: regole di notifica `service.health_changed` e `service.incident_opened` su ogni tenant |
 | `20260910_1100_service_map_plan_limit` | Servizi monitorati: `Tenant.max_service_maps` dal piano (starter 5, pro 50, enterprise 200) dove manca |
 | `20260910_1110_service_map_auto_sync` | Servizi monitorati: `ServiceMap.auto_sync = true` (mappa viva, il default dell'ondata 5) dove manca, `synced_at` lasciato a null |
+| `20260911_1130_shared_domain_rules` | Revisione 2 (ondata 3): aggiunge `ignore_lifecycle_statuses` (default `["decommissioned"]`) alla `event_policy` di ogni tenant e `during_storm` (default `hold`) alle `rules` di ogni `ServiceMap`, **solo** dove mancano (insieme a ogni altra chiave assente, come la 1040 e la 1080); una policy o delle regole con JSON corrotto **fermano** la migrazione con il tenant (o la mappa) nel messaggio. Non tocca `ServiceMap.version`. Senza questa migrazione la lettura della policy fallisce con «missing ignore_lifecycle_statuses: run the 20260911_1130_shared_domain_rules migration» e quella delle regole con «during_storm must be one of…»: nessun default inventato a runtime |
 | `20260910_1120_service_map_review2` | Servizi monitorati (revisione 2): recupera `ServiceMap.stale_reason` sulle mappe già `stale` (`missing_ci` se un id di `node_ids` non ha più la sua `INCLUDES`, altrimenti `over_limit`) |
 
 Wrapper per singola migrazione: `migrate:workflow-metadata -- [--force]`,
@@ -561,15 +562,80 @@ errore, mai un default silenzioso.
 | `group_by` | `ci` | raggruppamento: `ci` (un incident per CI) o `fingerprint` (uno per allarme) |
 | `open_delay_seconds` | `0` | attesa prima di aprire (job `correlate`); un allarme che rientra nell'attesa non apre nulla |
 | `auto_resolve` | `true` | risolve l'incident quando nessun allarme correlato è più **acceso** (`firing` o `flapping`): i `suppressed` (silenziati da una change in finestra) non lo tengono aperto — se ne restano, l'incident riceve un commento "N allarmi silenziati da CHG-…" insieme a quello di chiusura, una volta per risoluzione; a fine finestra vengono rivalutati e, se ancora accesi, lo riaprono. Vengono valutati **tutti** gli incident non chiusi collegati all'allarme (tempesta + per CI, manuale + automatico), non solo il più recente |
-| `suppress_upstream_hops` | `1` | salti `DEPENDS_ON` a monte entro cui una change in finestra silenzia gli allarmi |
+| `suppress_upstream_hops` | `1` | salti a monte entro cui una change in finestra silenzia gli allarmi, lungo le relazioni tecniche `DEPENDS_ON`/`HOSTED_ON`/`INSTALLED_ON`/`USES_CERTIFICATE` (le stesse che percorrono i Servizi monitorati: vedi *Una sola definizione*) |
 | `flap_threshold` | `4` | passaggi firing↔resolved in `flap_window_minutes` oltre i quali l'allarme è `flapping` (`0` = spento) |
 | `flap_window_minutes` | `10` | finestra dello sfarfallio |
 | `flap_stable_minutes` | `15` | minuti senza passaggi dopo i quali un allarme `flapping` torna allo stato dell'ultimo payload |
 | `storm_threshold_per_minute` | `50` | allarmi **nuovi** al minuto dalla stessa sorgente oltre i quali la sorgente è in tempesta (`0` = spento) |
 | `storm_cooldown_minutes` | `5` | minuti consecutivi sotto soglia dopo i quali la tempesta finisce |
 | `retention_days` | `90` | giorni dopo `resolved_at` oltre i quali gli eventi risolti vengono eliminati (`0` = mai) |
+| `ignore_lifecycle_statuses` | `["decommissioned"]` | stati del ciclo di vita del CI (`ci.status`) per cui un allarme non apre incident e non cambia la salute: esito `skipped_lifecycle` (vedi *Una sola definizione*). Lista vuota = nessuno stato ignorato |
 | `match_short_hostname` | `false` | riconoscimento del CI per nome: se la risorsa dell'allarme è un FQDN (`db-01.example.local`) prova anche il nome corto (`db-01`), e viceversa. Spento per default perché nomi corti uguali in ambienti diversi renderebbero il match ambiguo (regola di policy; il confronto vive nel riconoscimento del CI dell'ingest) |
 | `severity_map` | critical→high/high, warning→medium/medium, info→low/low | severità dell'allarme → impatto/urgenza dell'incident aperto |
+
+### Una sola definizione (finestra di change, ciclo di vita, tempesta)
+
+Allarmi e Servizi monitorati guardano le stesse tre cose. Dalla revisione 2
+(ondata 3) la definizione è **una sola**, condivisa dal codice dei due
+sottosistemi: prima ciascuno aveva la sua e durante un rilascio i due
+raccontavano storie diverse.
+
+**1. CI in finestra di change** — `services/events/suppression.ts`
+(`changeWindowSubqueryCypher` + `pickChangeWindow`, usati dalla pipeline degli
+allarmi per un CI e innestati dai servizi nella query che carica la mappa: una
+query sola per valutazione). Un CI è «in finestra» quando una change non
+eliminata lo tocca (`AFFECTS_CI`) ed è in `deployment`, oppure in `scheduled`
+con una finestra del piano di rilascio che contiene l'istante. Tre regole
+uguali per entrambi:
+
+- **a monte**: la copertura arriva anche dai CI da cui il CI dipende, fino a
+  `suppress_upstream_hops` salti (policy del tenant, massimo 10), lungo
+  `DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE`. Il caso tipico — change
+  sul server, allarmi sulle VM `HOSTED_ON` — prima non veniva silenziato.
+- **piani per CI**: la finestra del piano vale per il CI di quel piano
+  (`DeployPlanTask.ci_id`). Una change con due CI e due finestre sfalsate non
+  silenzia più il CI sbagliato.
+- **effetto sui servizi**: un componente coperto da una change (anche a monte)
+  non pesa nel calcolo; se è **critico** il servizio è `maintenance` e
+  `healthIfActive` dice quale sarebbe la salute senza quella finestra. Quando la
+  copertura viene da monte, il componente porta `excludedReason =
+  upstream_change_window` e la mappa lo spiega in `healthNote` («Componente in
+  finestra di change a monte: VM-01 (CHG-0042 su SRV-01)»).
+
+**2. Ciclo di vita del CI** — `ci.status` (`active`, `inactive`, `maintenance`,
+`decommissioned`), che il monitoraggio non scrive mai.
+
+- **allarmi**: un allarme il cui CI ha uno stato in
+  `ignore_lifecycle_statuses` (default `decommissioned`) esce dalla pipeline con
+  esito `skipped_lifecycle` — nessun incident, nessun ricalcolo della salute,
+  nessun contatore di tempesta — e resta visibile in console con il suo motivo.
+  Nota operativa: un incident aperto **prima** che il CI fosse dismesso resta
+  aperto (nessun allarme lo chiuderà più) e va chiuso a mano.
+- **servizi**: un componente `decommissioned` o `inactive` non conta
+  (`excludedReason = lifecycle_decommissioned`) e non porta il servizio in
+  manutenzione — nessuno «chiude» quello stato. La costruzione automatica lo
+  propone con `propagate: never`, il diff (`serviceMapProposal`) lo elenca fra i
+  componenti **da togliere**, ma la sincronizzazione automatica **non** lo
+  toglie: si limita a contarlo nella nota («N componenti dismessi esclusi dal
+  calcolo»), perché togliere una `INCLUDES` butterebbe via peso e criticità
+  decisi da una persona. Lo toglie chi applica il diff.
+  `ci.status = maintenance` resta un'altra cosa: il componente non conta ma il
+  servizio non va in manutenzione (`lifecycle_maintenance`).
+
+**3. Tempesta della sorgente** — `InboundWebhook.storm_since`.
+
+- **allarmi**: un solo incident di tempesta per sorgente (vedi *Tempeste di
+  allarmi*).
+- **servizi**: con la regola della mappa `during_storm = hold` (default), se i
+  componenti hanno allarmi accesi da una sorgente in tempesta la valutazione è
+  **sospesa** — salute, punteggio e spiegazione restano quelli di prima, nessun
+  incident di servizio aperto o chiuso — e `healthNote` dice quale sorgente
+  («Sorgente in tempesta: Zabbix prod. Valutazione sospesa…»); la metrica conta
+  `service_evaluations_total{result="hold"}`. Alla fine della tempesta
+  (`event.storm_ended`) le mappe che includono CI con allarmi di quella sorgente
+  vengono rivalutate subito (consumer, trigger `maintenance`). Con
+  `during_storm = evaluate` il comportamento resta quello di prima: 60 allarmi
+  da una sorgente impazzita possono aprire un incident per mappa.
 
 ### Sfarfallio (flapping)
 
@@ -985,7 +1051,7 @@ sottosezioni che seguono):
 
 | Metrica | Tipo | Dove si incrementa |
 |---|---|---|
-| `service_evaluations_total{result}` | contatore (`changed \| unchanged \| error`) | `serviceImpact/engine.ts#evaluateServiceMap`, alla fine (una riconciliazione fallita conta solo come `error`) |
+| `service_evaluations_total{result}` | contatore (`changed \| unchanged \| hold \| error`) | `serviceImpact/engine.ts#evaluateServiceMap`, alla fine (una riconciliazione fallita conta solo come `error`; `hold` = valutazione sospesa da una sorgente in tempesta, revisione 2 · D6.4) |
 | `service_evaluation_duration_seconds` | istogramma | idem, lettura + regole + scrittura + riconciliazione |
 | `service_evaluation_lag_seconds` | istogramma | `jobs/serviceImpactWorker.ts`: secondi fra l'istante in cui il job `evaluate` era atteso (accodamento + 2 s di dedup) e l'inizio della valutazione — cresce quando la coda `services-impact` è in affanno, non quando la valutazione è lenta |
 | `service_incidents_opened_total` | contatore | `serviceImpact/incident.ts`: apertura **e riapertura** (un servizio che ricade è di nuovo fuori servizio). Attenzione: `opened − resolved` è il saldo delle transizioni, non il numero di incident aperti |

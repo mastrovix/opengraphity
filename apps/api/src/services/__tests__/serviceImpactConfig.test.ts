@@ -12,6 +12,11 @@ import { GraphQLError } from 'graphql'
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
+// Revisione 2 · D6.2: la lettura della mappa prende `suppress_upstream_hops`
+// dalla policy degli allarmi (cache in memoria): qui la policy è mockata, così
+// la mappa resta UNA sola query nel test.
+vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValue({ suppress_upstream_hops: 1 }) }))
+
 vi.mock('../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
@@ -102,16 +107,18 @@ beforeEach(() => {
 // ── Validazione ──────────────────────────────────────────────────────────────
 
 describe('validazione degli input', () => {
-  const ok = { downSharePct: 50, degradedSharePct: 10, minNodes: 2, unknownNodes: 'operational', openIncidentFrom: 'down' } as const
+  const ok = { downSharePct: 50, degradedSharePct: 10, minNodes: 2, unknownNodes: 'operational', openIncidentFrom: 'down', duringStorm: 'hold' } as const
 
   it('regole: vocabolari e scale di assertServiceImpactRules, ma come BAD_USER_INPUT (input dell\'utente, non dato corrotto)', () => {
-    expect(assertServiceImpactRulesInput(ok, 3)).toEqual({ version: 1, down_share_pct: 50, degraded_share_pct: 10, min_nodes: 2, unknown_nodes: 'operational', open_incident_from: 'down' })
+    expect(assertServiceImpactRulesInput(ok, 3)).toEqual({ version: 1, down_share_pct: 50, degraded_share_pct: 10, min_nodes: 2, unknown_nodes: 'operational', open_incident_from: 'down', during_storm: 'hold' })
     for (const [bad, pattern] of [
       [{ ...ok, downSharePct: 101 }, /down_share_pct must be an integer between 0 and 100/],
       [{ ...ok, degradedSharePct: -1 }, /degraded_share_pct must be an integer between 0 and 100/],
       [{ ...ok, minNodes: 0 }, /min_nodes must be an integer >= 1/],
       [{ ...ok, unknownNodes: 'maybe' }, /unknown_nodes must be one of: ignore, operational/],
       [{ ...ok, openIncidentFrom: 'always' }, /open_incident_from must be one of: never, down, degraded/],
+      // Revisione 2 · D6.4: il comportamento durante una tempesta è un vocabolario chiuso come gli altri
+      [{ ...ok, duringStorm: 'ignore' }, /during_storm must be one of: evaluate, hold/],
     ] as const) {
       const err = (() => { try { assertServiceImpactRulesInput(bad as never, 3); return null } catch (e) { return e } })()
       expect(err).toBeInstanceOf(GraphQLError)
@@ -161,7 +168,7 @@ describe('serviceMapProposal (diff con il grafo di adesso)', () => {
     expect(d).toMatchObject({ mapId: 'map-1', version: 2, status: 'active', maxDepth: 4, relationshipTypes: ['DEPENDS_ON', 'HOSTED_ON'], totalProposed: 3 })
     expect(d.added.map((n) => [n.ciId, n.level, n.via, n.role, n.weight])).toEqual([['srv-9', 2, 'api-03', 'infrastructure', 5]])
     expect(d.moved.map((m) => [m.node.ciId, m.node.level, m.proposedLevel, m.node.via, m.proposedVia])).toEqual([['db-01', 2, 3, 'api-03', 'srv-9']])
-    expect(d.removed.map((r) => [r.ciId, r.node?.ciId ?? null])).toEqual([['old-99', 'old-99'], ['gone-1', null]])
+    expect(d.removed.map((r) => [r.ciId, r.node?.ciId ?? null, r.reason])).toEqual([['old-99', 'old-99', 'unreachable'], ['gone-1', null, 'unreachable']])
     expect(d.excluded).toEqual(EXCLUSION_ROWS)
     // la profondità e le relazioni della ricostruzione sono quelle salvate sulla mappa
     expect(callMatching(/apoc\.path\.expandConfig/)!.params).toMatchObject({ tenantId: 't1', maxLevel: 3, relFilter: 'DEPENDS_ON>|HOSTED_ON>' })
@@ -171,6 +178,29 @@ describe('serviceMapProposal (diff con il grafo di adesso)', () => {
     expect(x.params).toEqual({ mapId: 'map-1', tenantId: 't1' })
     expect(getSession).toHaveBeenCalledWith()   // sola lettura
     expect(session.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('D6.3: un componente dismesso è proposto in rimozione con motivo `lifecycle`, non fra gli spostati; un CI dismesso nel grafo non viene proposto come nuovo', async () => {
+    const nodes = [
+      { ciId: 'api-03', name: 'API-03', labels: ['Application'], level: 1, role: 'entry', propagate: 'weighted', weight: 8, critical: true, via: null, addedBy: 'auto', health: 'operational', healthSource: null, status: 'active', changes: [] },
+      // db-01 è dismesso E spostato nel grafo di adesso: vince la rimozione
+      { ciId: 'db-01', name: 'DB-01', labels: ['Database'], level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false, via: 'api-03', addedBy: 'auto', health: 'down', healthSource: null, status: 'decommissioned', changes: [] },
+    ]
+    onCypher([
+      [LOAD_RE, stateRow({ props: { node_ids: ['api-03', 'db-01'], stale: false }, nodes })],
+      [/REALIZES/, ENTRY_ROW],
+      // srv-9 è dismesso nel grafo: non va proposto come componente nuovo
+      [/apoc/, [
+        { ciId: 'srv-9', name: 'SRV-09', level: 2, via: 'api-03', labels: ['Server'], status: 'decommissioned', health: null },
+        { ...EXPANDED_ROWS[2]!, status: 'decommissioned' },
+      ]],
+      [EXCL_RE, []],
+    ])
+    const d = await serviceMapProposal('t1', 'map-1', NOW)
+    expect(d.added).toEqual([])
+    expect(d.moved).toEqual([])
+    expect(d.removed.map((r) => [r.ciId, r.reason])).toEqual([['db-01', 'lifecycle']])
+    expect(d.totalProposed).toBe(1)   // il dismesso non entra nel tetto
   })
 
   it('mappa allineata: nessun aggiunto/sparito/spostato; mappa inesistente → NOT_FOUND', async () => {
@@ -203,7 +233,7 @@ describe('previewServiceImpact', () => {
 
   it('regole sostituite (soglia giù abbassata) e nodi sostituiti (peso e «non pesa») cambiano l\'esito, senza toccare il grafo', async () => {
     onCypher([[LOAD_RE, stateRow()]])
-    const down = await previewServiceImpact({ tenantId: 't1', mapId: 'map-1', now: NOW, rules: { downSharePct: 20, degradedSharePct: 1, minNodes: 1, unknownNodes: 'operational', openIncidentFrom: 'down' } })
+    const down = await previewServiceImpact({ tenantId: 't1', mapId: 'map-1', now: NOW, rules: { downSharePct: 20, degradedSharePct: 1, minNodes: 1, unknownNodes: 'operational', openIncidentFrom: 'down', duringStorm: 'hold' } })
     expect(down.health).toBe('down')
     onCypher([[LOAD_RE, stateRow()]])
     const off = await previewServiceImpact({ tenantId: 't1', mapId: 'map-1', now: NOW, nodes: [{ ciId: 'db-01', propagate: 'never', weight: 5, critical: false }] })
@@ -215,19 +245,19 @@ describe('previewServiceImpact', () => {
     onCypher([[LOAD_RE, stateRow()]])
     await expectCode(previewServiceImpact({ tenantId: 't1', mapId: 'map-1', now: NOW, nodes: [{ ciId: 'nope', propagate: 'always', weight: 5, critical: false }] }), 'BAD_USER_INPUT', /nodes: nope is not a component of ServiceMap map-1/)
     onCypher([[LOAD_RE, stateRow()]])
-    await expectCode(previewServiceImpact({ tenantId: 't1', mapId: 'map-1', now: NOW, rules: { downSharePct: 10, degradedSharePct: 90, minNodes: 1, unknownNodes: 'ignore', openIncidentFrom: 'never' } }), 'BAD_USER_INPUT', /degraded_share_pct \(90\) must be <=/)
+    await expectCode(previewServiceImpact({ tenantId: 't1', mapId: 'map-1', now: NOW, rules: { downSharePct: 10, degradedSharePct: 90, minNodes: 1, unknownNodes: 'ignore', openIncidentFrom: 'never', duringStorm: 'evaluate' } }), 'BAD_USER_INPUT', /degraded_share_pct \(90\) must be <=/)
   })
 })
 
 // ── Regole ───────────────────────────────────────────────────────────────────
 
 describe('updateServiceImpactRules', () => {
-  const rules = { downSharePct: 70, degradedSharePct: 10, minNodes: 2, unknownNodes: 'ignore', openIncidentFrom: 'never' } as const
+  const rules = { downSharePct: 70, degradedSharePct: 10, minNodes: 2, unknownNodes: 'ignore', openIncidentFrom: 'never', duringStorm: 'evaluate' } as const
 
   it('una transazione: guardia di versione nel Cypher, regole in JSON, version + 1, voce rules_changed con la nota e la salute presa dalla mappa; poi rivalutazione con lo stesso trigger', async () => {
     onCypher([[LOAD_RE, stateRow()], [RULES_RE, { version: 3, status: 'active' }]])
     const r = await updateServiceImpactRules({ tenantId: 't1', mapId: 'map-1', expectedVersion: 2, rules, actorId: 'u-1', now: NOW })
-    expect(r).toMatchObject({ mapId: 'map-1', version: 3, status: 'active', note: 'Regole aggiornate: soglia giù 50 → 70, soglia degradato 1 → 10, minimo componenti 1 → 2, componenti senza salute operativi → ignorati, apri incident da giù → mai' })
+    expect(r).toMatchObject({ mapId: 'map-1', version: 3, status: 'active', note: 'Regole aggiornate: soglia giù 50 → 70, soglia degradato 1 → 10, minimo componenti 1 → 2, componenti senza salute operativi → ignorati, apri incident da giù → mai, durante una tempesta sospendi la valutazione → valuta comunque' })
     expect(r.evaluation).toMatchObject({ health: 'degraded' })
 
     expect(getSession).toHaveBeenCalledWith(undefined, 'WRITE')
@@ -242,7 +272,7 @@ describe('updateServiceImpactRules', () => {
     expect(w.cypher).toContain('impact_score: toInteger(m.impact_score), cause: m.explanation, trigger: $hTrigger, note: $hNote})')
     expect(w.params).toMatchObject({
       mapId: 'map-1', tenantId: 't1', expectedVersion: 2, now: NOW, actorId: 'u-1',
-      rules: JSON.stringify({ version: 1, down_share_pct: 70, degraded_share_pct: 10, min_nodes: 2, unknown_nodes: 'ignore', open_incident_from: 'never' }),
+      rules: JSON.stringify({ version: 1, down_share_pct: 70, degraded_share_pct: 10, min_nodes: 2, unknown_nodes: 'ignore', open_incident_from: 'never', during_storm: 'evaluate' }),
       hTrigger: 'rules_changed', hAt: NOW, hNote: r.note,
     })
     expect(evaluateServiceMap).toHaveBeenCalledWith({ tenantId: 't1', mapId: 'map-1', trigger: 'rules_changed', actorId: 'u-1' })
@@ -267,7 +297,7 @@ describe('updateServiceImpactRules', () => {
     await expectCode(updateServiceImpactRules({ tenantId: 't1', mapId: 'map-x', expectedVersion: 2, rules, actorId: 'u-1', now: NOW }), 'NOT_FOUND')
 
     onCypher([[LOAD_RE, stateRow()]])
-    await expectCode(updateServiceImpactRules({ tenantId: 't1', mapId: 'map-1', expectedVersion: 2, rules: { downSharePct: 50, degradedSharePct: 1, minNodes: 1, unknownNodes: 'operational', openIncidentFrom: 'down' }, actorId: 'u-1', now: NOW }), 'BAD_USER_INPUT', /identical to the current ones/)
+    await expectCode(updateServiceImpactRules({ tenantId: 't1', mapId: 'map-1', expectedVersion: 2, rules: { downSharePct: 50, degradedSharePct: 1, minNodes: 1, unknownNodes: 'operational', openIncidentFrom: 'down', duringStorm: 'hold' }, actorId: 'u-1', now: NOW }), 'BAD_USER_INPUT', /identical to the current ones/)
     expect(callMatching(RULES_RE)).toBeUndefined()
   })
 

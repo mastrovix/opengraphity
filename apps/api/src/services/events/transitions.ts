@@ -492,7 +492,7 @@ export function ingestMergeCypher(): string {
       WITH e, outcome, w, linked, matched, matchReason, candidates, coalesce(linked, matched) AS ci
       FOREACH (_ IN CASE WHEN ${CI_MATCH_GUARD} THEN [1] ELSE [] END | SET e.match_reason = matchReason)
       FOREACH (_ IN CASE WHEN linked IS NULL AND matched IS NOT NULL THEN [1] ELSE [] END | MERGE (e)-[:RAISED_ON]->(matched))
-      RETURN properties(e) AS props, outcome, ci.id AS ciId,
+      RETURN properties(e) AS props, outcome, ci.id AS ciId, ci.status AS ciStatus,
              CASE WHEN ${CI_MATCH_GUARD} THEN matchReason ELSE null END AS matchReason,
              CASE WHEN ${CI_MATCH_GUARD} THEN candidates ELSE [] END AS candidates,
              w.connector_kind AS connectorKind, w.last_error IS NOT NULL AS sourceHasError

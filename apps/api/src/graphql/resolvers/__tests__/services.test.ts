@@ -14,6 +14,11 @@ import type { GraphQLContext } from '../../../context.js'
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+// Revisione 2 · D6.2: la lettura della mappa prende `suppress_upstream_hops`
+// dalla policy degli allarmi (cache in memoria): qui la policy è mockata, così
+// la mappa resta UNA sola query nel test.
+vi.mock('../../../services/events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValue({ suppress_upstream_hops: 1 }) }))
+
 vi.mock('../../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
   return { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => child } }
@@ -49,7 +54,7 @@ const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j'
 const { audit } = await import('../../../lib/audit.js')
 const { createServiceMap, evaluateServiceMap } = await import('../../../services/serviceImpact/engine.js')
 const { DEFAULT_SERVICE_IMPACT_RULES_JSON, SERVICE_RELATIONSHIP_TYPES } = await import('../../../lib/serviceVocabularies.js')
-const { CHANGE_WINDOW_STEPS } = await import('../../../services/events/suppression.js')
+const { CHANGE_IMPLEMENTATION_STEP, CHANGE_WINDOW_STEPS } = await import('../../../services/events/suppression.js')
 const { forgetServiceMapJobs } = await import('../../../jobs/serviceImpactWorker.js')
 const { noteServiceMapDeletion } = await import('../../../services/events/cascade.js')
 
@@ -211,7 +216,7 @@ describe('ServiceMap field resolver', () => {
     props: { id: 'map-1', version: 1, rules: DEFAULT_SERVICE_IMPACT_RULES_JSON, node_ids: ['app-3', 'db-01', 'cert-1'] },
     nodes: [
       { ciId: 'db-01', name: 'DB-01', labels: ['Database'], level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false, via: 'app-3', addedBy: 'auto', health: 'down', healthSource: 'monitoring', status: 'active', changes: [] },
-      { ciId: 'app-3', name: 'APP-003', labels: ['Application'], level: 1, role: 'entry', propagate: 'weighted', weight: 8, critical: true, via: null, addedBy: 'auto', health: 'operational', healthSource: 'monitoring', status: 'active', changes: [{ step: 'deployment', plans: [] }] },
+      { ciId: 'app-3', name: 'APP-003', labels: ['Application'], level: 1, role: 'entry', propagate: 'weighted', weight: 8, critical: true, via: null, addedBy: 'auto', health: 'operational', healthSource: 'monitoring', status: 'active', changes: [{ changeId: 'chg-1', code: 'CHG-1', step: 'deployment', plans: [], viaCiId: 'app-3', viaCiName: 'APP-003', upstream: false }] },
       { ciId: 'cert-1', name: 'CERT-01', labels: ['Certificate'], level: 2, role: 'certificate', propagate: 'never', weight: 3, critical: false, via: 'app-3', addedBy: 'auto', health: null, healthSource: null, status: 'active', changes: [] },
     ],
   }
@@ -225,7 +230,7 @@ describe('ServiceMap field resolver', () => {
       { ci: { id: 'cert-1', name: 'CERT-01', type: 'certificate', status: 'active', health: null }, level: 2, role: 'certificate', propagate: 'never', weight: 3, critical: false, via: 'app-3', addedBy: 'auto', health: null, inMaintenance: false, contributes: false, excludedReason: 'never' },
       { ci: { id: 'db-01', name: 'DB-01', type: 'database', status: 'active', health: 'down' }, level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false, via: 'app-3', addedBy: 'auto', health: 'down', inMaintenance: false, contributes: true, excludedReason: null },
     ])
-    expect(callMatching(/inc:INCLUDES/)!.params).toEqual({ mapId: 'map-1', tenantId: 'tenant-1', windowSteps: CHANGE_WINDOW_STEPS })
+    expect(callMatching(/inc:INCLUDES/)!.params).toEqual({ mapId: 'map-1', tenantId: 'tenant-1', windowSteps: CHANGE_WINDOW_STEPS, implementationStep: CHANGE_IMPLEMENTATION_STEP })
     onCypher([[/inc:INCLUDES/, null]])
     await expectCode(serviceResolvers.ServiceMap.nodes({ id: 'map-x' }, null, viewer), 'NOT_FOUND')
   })

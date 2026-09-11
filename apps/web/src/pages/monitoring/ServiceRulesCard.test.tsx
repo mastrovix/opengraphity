@@ -32,7 +32,7 @@ function renderCard(canEdit: boolean, opts: { map?: ServiceMapDetail; extra?: Gq
 const status = () => screen.getByTestId('rules-dirty')
 
 describe('validateRulesForm', () => {
-  const base = { downSharePct: 50, degradedSharePct: 20, minNodes: 1, unknownNodes: 'ignore', openIncidentFrom: 'down' }
+  const base = { downSharePct: 50, degradedSharePct: 20, minNodes: 1, unknownNodes: 'ignore', openIncidentFrom: 'down', duringStorm: 'hold' }
 
   it('accetta i valori validi e rifiuta interi mancanti, scala e incoerenza fra le soglie', () => {
     expect(validateRulesForm(base)).toEqual({})
@@ -99,7 +99,7 @@ describe('ServiceRulesCard', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(seen).toEqual([{
       id: 'map-1', expectedVersion: 3,
-      rules: { downSharePct: 70, degradedSharePct: 1, minNodes: 1, unknownNodes: 'operational', openIncidentFrom: 'down' },
+      rules: { downSharePct: 70, degradedSharePct: 1, minNodes: 1, unknownNodes: 'operational', openIncidentFrom: 'down', duringStorm: 'hold' },
     }]))
   })
 
@@ -154,6 +154,37 @@ describe('ServiceRulesCard', () => {
     await user.type(minNodes, '9')
     expect(await screen.findByText('At most 4: the map has that many components, and a higher minimum would keep the service from ever being degraded.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  it('D6.4: selettore «Durante una tempesta della sorgente» — sospendi di default, l\'aiuto spiega perché, il valore scelto si salva', async () => {
+    const seen: unknown[] = []
+    const save: GqlMock = {
+      request: { query: UPDATE_SERVICE_IMPACT_RULES, variables: (v) => { seen.push(v); return true } },
+      result: { data: { updateServiceImpactRules: mapDetail({ version: 4, rules: { ...RULES, version: 2, duringStorm: 'evaluate' } }) } },
+    }
+    const { user } = renderCard(true, { extra: [save] })
+    const select = await screen.findByLabelText('During a source storm')
+    expect(select).toHaveValue('hold')
+    expect(within(select).getByRole('option', { name: 'Hold the evaluation' })).toBeInTheDocument()
+    expect(within(select).getByRole('option', { name: 'Evaluate anyway' })).toBeInTheDocument()
+    expect(select).toHaveAccessibleDescription(/almost always a monitoring or collection failure.*that is why the default is to hold/)
+
+    await user.selectOptions(select, 'evaluate')
+    expect(status()).toHaveTextContent('Unsaved changes')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(seen).toEqual([{
+      id: 'map-1', expectedVersion: 3,
+      rules: { downSharePct: 50, degradedSharePct: 1, minNodes: 1, unknownNodes: 'ignore', openIncidentFrom: 'down', duringStorm: 'evaluate' },
+    }]))
+  })
+
+  it('D6.4: senza permessi la regola della tempesta è nella lista in parole, e un valore fuori vocabolario è detto in chiaro', async () => {
+    const { unmount } = renderCard(false)
+    expect(await screen.findByText('During a source storm: evaluation held')).toBeInTheDocument()
+    unmount()
+
+    renderCard(false, { map: detail({ rules: { ...RULES, duringStorm: 'panic' } }) })
+    expect(await screen.findByText('During a source storm: Unknown (panic)')).toBeInTheDocument()
   })
 
   it('un valore salvato fuori vocabolario resta scelto e detto in chiaro, non corretto di nascosto', async () => {

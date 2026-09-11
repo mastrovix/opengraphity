@@ -12,7 +12,7 @@ import { preview } from '@/test/mocks/services'
 import type { ServiceImpactRulesInput } from '@/types/services'
 
 const rules = (downSharePct: number): ServiceImpactRulesInput =>
-  ({ downSharePct, degradedSharePct: 1, minNodes: 1, unknownNodes: 'ignore', openIncidentFrom: 'down' })
+  ({ downSharePct, degradedSharePct: 1, minNodes: 1, unknownNodes: 'ignore', openIncidentFrom: 'down', duringStorm: 'hold' })
 
 describe('ServiceImpactPreviewLine', () => {
   it('la frase dice salute, punteggio e quanti componenti pesano', async () => {

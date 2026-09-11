@@ -258,6 +258,18 @@ describe('ServiceComponentsTable', () => {
     expect(within(rowOf('api-03')).queryByTestId('excluded-reason')).not.toBeInTheDocument()
   })
 
+  it('R2 (D6.2/D6.3): i due motivi nuovi — CI dismesso e finestra di change a monte — nella colonna «pesa»', () => {
+    const nodes = (mapDetail().nodes as Record<string, unknown>[]).map((n) => {
+      const id = (n.ci as { id: string }).id
+      if (id === 'db-01')    return { ...n, contributes: false, excludedReason: 'lifecycle_decommissioned' }
+      if (id === 'cache-02') return { ...n, contributes: false, inMaintenance: true, excludedReason: 'upstream_change_window' }
+      return n
+    })
+    renderTable(false, { map: detail({ nodes }) })
+    expect(within(rowOf('db-01')).getByTestId('excluded-reason')).toHaveTextContent('CI decommissioned (out of the calculation)')
+    expect(within(rowOf('cache-02')).getByTestId('excluded-reason')).toHaveTextContent('in a change window on an upstream CI')
+  })
+
   it('R1: un motivo fuori vocabolario è detto in chiaro, mai una riga vuota', () => {
     const nodes = (mapDetail().nodes as Record<string, unknown>[]).map((n) =>
       (n.ci as { id: string }).id === 'db-01' ? { ...n, contributes: false, excludedReason: 'cosmic' } : n)

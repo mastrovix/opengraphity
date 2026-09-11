@@ -43,6 +43,16 @@ export const UNKNOWN_NODES_MODES: readonly UnknownNodesMode[] = ['ignore', 'oper
 export type ServiceOpenIncidentFrom = 'never' | 'degraded' | 'down'
 export const SERVICE_OPEN_INCIDENT_FROMS: readonly ServiceOpenIncidentFrom[] = ['never', 'degraded', 'down']
 
+/**
+ * Che fare quando una sorgente dei nodi della mappa è in tempesta (enum
+ * `DuringStormMode`, revisione 2 / D6.4): `hold` sospende la valutazione (la
+ * salute resta quella di prima e la mappa lo dice in `healthNote`), `evaluate`
+ * valuta comunque. Il default lato API è `hold`: una tempesta è di norma un
+ * guasto della raccolta, non N guasti reali.
+ */
+export type DuringStormMode = 'evaluate' | 'hold'
+export const DURING_STORM_MODES: readonly DuringStormMode[] = ['hold', 'evaluate']
+
 /** Scala del peso di un componente (1..10), come `NODE_WEIGHT_MAX` dell'API. */
 export const NODE_WEIGHT_MIN = 1
 export const NODE_WEIGHT_MAX = 10
@@ -168,14 +178,20 @@ export interface ServiceMapNode {
   contributes:   boolean
   /**
    * Perché il componente non conta: `never`, `change_window`,
-   * `lifecycle_maintenance`, `unknown_health`; null quando conta. Resta una
-   * stringa: un valore fuori vocabolario si dice, non si corregge.
+   * `lifecycle_maintenance`, `unknown_health` e, dalla revisione 2,
+   * `lifecycle_decommissioned` (CI dismesso: fuori dal calcolo) e
+   * `upstream_change_window` (coperto dalla finestra di una change su un CI a
+   * monte); null quando conta. Resta una stringa: un valore fuori vocabolario
+   * si dice, non si corregge.
    */
   excludedReason: string | null
 }
 
 /** I motivi noti per cui un componente non conta (`ServiceMapNode.excludedReason`). */
-export const NODE_EXCLUDED_REASONS = ['never', 'lifecycle_maintenance', 'change_window', 'unknown_health'] as const
+export const NODE_EXCLUDED_REASONS = [
+  'never', 'lifecycle_maintenance', 'change_window', 'unknown_health',
+  'lifecycle_decommissioned', 'upstream_change_window',
+] as const
 export type NodeExcludedReason = (typeof NODE_EXCLUDED_REASONS)[number]
 
 /** Arco vivo fra due nodi inclusi (id dei CI). */
@@ -196,7 +212,7 @@ export interface ServiceHealthEntry {
   note:           string | null
 }
 
-/** Regole per servizio (JSON versionato sulla mappa); `unknownNodes`/`openIncidentFrom` restano stringhe: un valore fuori vocabolario si dice, non si corregge. */
+/** Regole per servizio (JSON versionato sulla mappa); `unknownNodes`/`openIncidentFrom`/`duringStorm` restano stringhe: un valore fuori vocabolario si dice, non si corregge. */
 export interface ServiceImpactRules {
   version:          number
   downSharePct:     number
@@ -204,6 +220,8 @@ export interface ServiceImpactRules {
   minNodes:         number
   unknownNodes:     string
   openIncidentFrom: string
+  /** Durante una tempesta della sorgente: `hold` (sospendi) o `evaluate` (valuta comunque). */
+  duringStorm:      string
 }
 
 /**
@@ -245,6 +263,13 @@ export interface ServiceMapDetail extends ServiceMapRow {
   autoSync:          boolean
   /** Ultima sincronizzazione con il grafo; null = mai sincronizzata. */
   syncedAt:          string | null
+  /**
+   * Revisione 2: perché la salute è questa quando l'elenco delle cause non
+   * basta — sorgente in tempesta con `duringStorm = hold` (valutazione
+   * sospesa) oppure componente coperto da una change a monte («CHG-… su
+   * <CI a monte>»). Null quando non c'è niente da aggiungere.
+   */
+  healthNote:        string | null
 }
 
 // ── Ondata 3: il servizio dentro gli altri oggetti ──────────────────────────
@@ -284,6 +309,7 @@ export interface ServiceImpactRulesInput {
   minNodes:         number
   unknownNodes:     string
   openIncidentFrom: string
+  duringStorm:      string
 }
 
 /** Specchio di `ServiceMapNodeInput`: solo ciò che l'amministratore può cambiare su un componente. */

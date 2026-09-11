@@ -15,6 +15,11 @@ import { GraphQLError } from 'graphql'
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
+// Revisione 2 · D6.2: la lettura della mappa prende `suppress_upstream_hops`
+// dalla policy degli allarmi (cache in memoria): qui la policy è mockata, così
+// la mappa resta UNA sola query nel test.
+vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValue({ suppress_upstream_hops: 1 }) }))
+
 vi.mock('../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
@@ -35,10 +40,10 @@ const metrics = await import('../../middleware/metrics.js')
 const { reconcileServiceIncident } = await import('../serviceImpact/incident.js')
 const { buildServiceMap, proposeNodeSettings, relationshipFilterOf, CI_LABEL_FILTER, ENTRY_NODES_CYPHER, EXPAND_NODES_CYPHER, CREATE_SERVICE_MAP_CYPHER, assertRelationshipTypes, assertMaxDepth } = await import('../serviceImpact/build.js')
 const { serviceHistoryWriteCypher, serviceHistoryParams } = await import('../serviceImpact/history.js')
-const { evaluateServiceMap, createServiceMap, findMapsIncludingCI, evaluateStaleOrOldMaps, refreshServiceGauges, loadServiceMapState, assertServiceMapPlanLimit, LOAD_SERVICE_MAP_CYPHER, SERVICE_MAP_PLAN_LIMIT_CYPHER, evaluationWriteCypher, SERVICE_STALE_EVALUATION_MINUTES, EVALUATION_VERSION_RETRIES } = await import('../serviceImpact/engine.js')
+const { evaluateServiceMap, createServiceMap, findMapsIncludingCI, evaluateStaleOrOldMaps, refreshServiceGauges, loadServiceMapState, assertServiceMapPlanLimit, loadServiceMapCypher, SERVICE_MAP_PLAN_LIMIT_CYPHER, evaluationWriteCypher, evaluationHoldWriteCypher, stormingSourcesOf, upstreamWindowsOf, SERVICE_EVALUATION_HELD, SERVICE_STALE_EVALUATION_MINUTES, EVALUATION_VERSION_RETRIES } = await import('../serviceImpact/engine.js')
 const { PLAN_SETTINGS } = await import('../../lib/tenantPlans.js')
 const { SERVICE_HISTORY_MAX, SERVICE_MAP_MAX_NODES, DEFAULT_SERVICE_IMPACT_RULES_JSON, SERVICE_RELATIONSHIP_TYPES } = await import('../../lib/serviceVocabularies.js')
-const { CHANGE_WINDOW_STEPS } = await import('../events/suppression.js')
+const { CHANGE_IMPLEMENTATION_STEP, CHANGE_WINDOW_STEPS } = await import('../events/suppression.js')
 const { ALL_CI_LABELS } = await import('../../lib/ciLabels.js')
 
 const NOW = '2026-09-10T10:00:00.000Z'
@@ -59,6 +64,8 @@ const callMatching = (re: RegExp) => calls().find((c) => re.test(c.cypher))
 
 const LOAD_RE = /MATCH \(m:ServiceMap \{id: \$mapId, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH \(m\)-\[inc:INCLUDES\]->/
 const WRITE_RE = /SET m\.health = \$health, m\.impact_score = toInteger\(\$impactScore\)/
+/** Scrittura della valutazione SOSPESA dalla tempesta (D6.4): solo istante e nota. */
+const HOLD_RE = /SET m\.evaluated_at = \$now, m\.health_note = \$healthNote/
 const PLAN_RE = /MATCH \(t:Tenant \{id: \$tenantId\}\)/
 /** Tenant sotto il limite di piano: la creazione può procedere. */
 const planRow = (over: Record<string, unknown> = {}) => ({ plan: 'pro', maxServiceMaps: 50, maps: 3, ...over })
@@ -181,6 +188,11 @@ describe('buildServiceMap', () => {
     expect(proposeNodeSettings(['Microservice'], 3)).toEqual({ role: 'component', propagate: 'weighted', weight: 5, critical: false })
     expect(proposeNodeSettings(['VirtualMachine'], 2).role).toBe('infrastructure')
     expect(() => proposeNodeSettings(['ErpSystem'], 2)).toThrow(/No service node role for CI labels \["ErpSystem"\]/)
+    // Revisione 2 · D6.3: un CI dismesso (o fuori servizio) è proposto come informativo — si vede ma non conta
+    expect(proposeNodeSettings(['Server'], 2, 'decommissioned')).toEqual({ role: 'infrastructure', propagate: 'never', weight: 5, critical: false })
+    expect(proposeNodeSettings(['Server'], 2, 'inactive').propagate).toBe('never')
+    expect(proposeNodeSettings(['Server'], 1, 'decommissioned')).toEqual({ role: 'entry', propagate: 'never', weight: 8, critical: false })
+    expect(proposeNodeSettings(['Server'], 2, 'maintenance').propagate).toBe('weighted')
   })
 })
 
@@ -230,12 +242,19 @@ describe('evaluateServiceMap', () => {
     expect(getSession).toHaveBeenCalledWith(undefined, 'WRITE')
     expect(session.close).toHaveBeenCalledTimes(1)
 
+    // Revisione 2 · D6.2: la lettura innesta il frammento CONDIVISO con la
+    // soppressione degli allarmi (stessa definizione di «CI in finestra»), con
+    // i salti a monte della policy e i piani del CI toccato (B2-12); le
+    // sorgenti in tempesta (D6.4) arrivano nella stessa query.
     const load = callMatching(LOAD_RE)!
-    expect(load.cypher).toBe(LOAD_SERVICE_MAP_CYPHER)
-    expect(load.cypher).toContain("[(c:Change {tenant_id: $tenantId})-[:AFFECTS_CI]->(ci)")
-    expect(load.cypher).toContain('EXISTS { (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId}) WHERE wi.current_step IN $windowSteps }')
-    expect(load.cypher).toContain("plans: [(c)-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask {tenant_id: $tenantId}) | dp.steps]")
-    expect(load.params).toEqual({ mapId: 'map-1', tenantId: 't1', windowSteps: CHANGE_WINDOW_STEPS })
+    expect(load.cypher).toBe(loadServiceMapCypher(1))
+    expect(load.cypher).toContain('MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS_CI]->(target)')
+    expect(load.cypher).toContain('WHERE wi.current_step IN $windowSteps')
+    expect(load.cypher).toContain('plans: [(c)-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask {tenant_id: $tenantId}) WHERE dp.ci_id = target.id | dp.steps]')
+    expect(load.cypher).toContain('[rel:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE*1..1]->(up:ConfigurationItem {tenant_id: $tenantId})')
+    expect(load.cypher).toContain("[(e:Event {tenant_id: $tenantId, status: 'firing'})-[:RAISED_ON]->(ci)")
+    expect(load.cypher).toContain('WHERE w.storm_since IS NOT NULL | coalesce(w.name, w.id)]')
+    expect(load.params).toEqual({ mapId: 'map-1', tenantId: 't1', windowSteps: CHANGE_WINDOW_STEPS, implementationStep: CHANGE_IMPLEMENTATION_STEP })
 
     const w = callMatching(WRITE_RE)!
     expect(w.cypher).toBe(evaluationWriteCypher())
@@ -381,6 +400,89 @@ describe('evaluateServiceMap', () => {
     // senza la finestra api-03 (critico) sarebbe giù: è la «sarebbe» che la UI mostra
     expect(r.healthIfActive).toBe('down')
     expect(callMatching(WRITE_RE)!.params['healthIfActive']).toBe('down')
+  })
+
+  // ── Revisione 2 · ondata 3: regole di dominio condivise ───────────────────
+
+  it('D6.2: un componente critico coperto da una change a MONTE → servizio maintenance, healthIfActive, nota che nomina la change e il CI a monte', async () => {
+    const window = (over: Record<string, unknown> = {}) => [{ changeId: 'chg-9', code: 'CHG-0042', step: 'deployment', plans: [], viaCiId: 'srv-1', viaCiName: 'SRV-01', upstream: true, ...over }]
+    const nodes = [
+      { ciId: 'api-03', name: 'API-03', labels: ['Application'], level: 1, role: 'entry', propagate: 'weighted', weight: 8, critical: true, via: null, addedBy: 'auto', health: 'operational', healthSource: null, status: 'active', changes: window(), stormSources: [] },
+      { ciId: 'db-01', name: 'DB-01', labels: ['Database'], level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false, via: 'api-03', addedBy: 'auto', health: 'degraded', healthSource: null, status: 'active', changes: [], stormSources: [] },
+    ]
+    onCypher([[LOAD_RE, stateRow({ nodes })], [WRITE_RE, writeRow()]])
+    const r = await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'maintenance', now: NOW })
+    expect(r.health).toBe('maintenance')
+    expect(r.healthIfActive).toBe('degraded')
+    expect(r.healthNote).toBe('Componente in finestra di change a monte: API-03 (CHG-0042 su SRV-01).')
+    expect(callMatching(WRITE_RE)!.params['healthNote']).toBe(r.healthNote)
+    expect(callMatching(WRITE_RE)!.cypher).toContain('m.health_if_active = $healthIfActive, m.health_note = $healthNote')
+    // la nota si cancella quando non c'è più nulla da spiegare
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([[LOAD_RE, stateRow({ nodes: [{ ...nodes[1]!, changes: [] }] })], [WRITE_RE, writeRow()]])
+    const back = await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'maintenance', now: NOW })
+    expect(back.healthNote).toBeNull()
+    expect(callMatching(WRITE_RE)!.params['healthNote']).toBeNull()
+  })
+
+  it('D6.3: un componente dismesso non conta (nemmeno se giù) e non porta il servizio in manutenzione', async () => {
+    const nodes = [
+      { ciId: 'api-03', name: 'API-03', labels: ['Application'], level: 1, role: 'entry', propagate: 'weighted', weight: 8, critical: true, via: null, addedBy: 'auto', health: 'operational', healthSource: null, status: 'active', changes: [], stormSources: [] },
+      { ciId: 'old-01', name: 'OLD-01', labels: ['Server'], level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: true, via: 'api-03', addedBy: 'auto', health: 'down', healthSource: null, status: 'decommissioned', changes: [{ changeId: 'c', code: 'CHG-1', step: 'deployment', plans: [], viaCiId: 'old-01', viaCiName: 'OLD-01', upstream: false }], stormSources: [] },
+    ]
+    onCypher([[LOAD_RE, stateRow({ nodes })], [WRITE_RE, writeRow()]])
+    const r = await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })
+    expect(r.health).toBe('operational')
+    expect(r.impactScore).toBe(0)
+    expect(r.causes).toEqual([])
+    // anche `inactive` è fuori dal calcolo
+    onCypher([[LOAD_RE, stateRow({ nodes: [nodes[0]!, { ...nodes[1]!, status: 'inactive' }] })], [WRITE_RE, writeRow()]])
+    expect((await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).health).toBe('operational')
+  })
+
+  it('D6.4: sorgente in tempesta con during_storm = hold → valutazione SOSPESA: salute invariata, nota scritta, nessun evento, nessun incident, metrica hold', async () => {
+    const nodes = [
+      { ciId: 'api-03', name: 'API-03', labels: ['Application'], level: 1, role: 'entry', propagate: 'weighted', weight: 8, critical: true, via: null, addedBy: 'auto', health: 'down', healthSource: null, status: 'active', changes: [], stormSources: ['Zabbix prod', null, 'Zabbix prod'] },
+    ]
+    onCypher([[LOAD_RE, stateRow({ props: { health: 'operational', impact_score: 0 }, nodes })], [HOLD_RE, { id: 'map-1', health: 'operational', impactScore: 0 }]])
+    const r = await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })
+    expect(r).toMatchObject({ health: 'operational', changed: false, held: true, incident: null })
+    expect(r.healthNote).toBe('Sorgente in tempesta: Zabbix prod. Valutazione sospesa: la salute resta quella dell\'ultima valutazione.')
+    const w = callMatching(HOLD_RE)!
+    expect(w.cypher).toBe(evaluationHoldWriteCypher())
+    expect(w.cypher).toContain('WHERE m.version = toInteger($version)')
+    expect(w.cypher).not.toContain('m.health =')
+    expect(w.cypher).not.toContain('HAS_HEALTH_HISTORY')
+    expect(w.params).toMatchObject({ mapId: 'map-1', tenantId: 't1', now: NOW, version: 4, healthNote: r.healthNote })
+    expect(publishEvent).not.toHaveBeenCalled()
+    expect(reconcileServiceIncident).not.toHaveBeenCalled()
+    expect(metrics.serviceEvaluationsTotal.inc).toHaveBeenCalledWith({ result: SERVICE_EVALUATION_HELD })
+    expect(SERVICE_EVALUATION_HELD).toBe('hold')
+  })
+
+  it('D6.4: con during_storm = evaluate la tempesta non ferma nulla (comportamento di prima); senza tempesta nemmeno con hold', async () => {
+    const nodes = [
+      { ciId: 'api-03', name: 'API-03', labels: ['Application'], level: 1, role: 'entry', propagate: 'weighted', weight: 8, critical: true, via: null, addedBy: 'auto', health: 'down', healthSource: null, status: 'active', changes: [], stormSources: ['Zabbix prod'] },
+    ]
+    const evaluateRules = JSON.stringify({ ...JSON.parse(DEFAULT_SERVICE_IMPACT_RULES_JSON), during_storm: 'evaluate' })
+    onCypher([[LOAD_RE, stateRow({ props: { rules: evaluateRules }, nodes })], [WRITE_RE, writeRow()], [HOLD_RE, { id: 'map-1', health: 'operational', impactScore: 0 }]])
+    const r = await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })
+    expect(r).toMatchObject({ health: 'down', held: false })
+    expect(callMatching(HOLD_RE)).toBeUndefined()
+    expect(r.healthNote).toBeNull()
+
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([[LOAD_RE, stateRow({ nodes: [{ ...nodes[0]!, stormSources: [] }] })], [WRITE_RE, writeRow()]])
+    expect((await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).held).toBe(false)
+  })
+
+  it('D6.2/D6.4: gli helper delle note leggono i nodi caricati (sorgenti senza doppioni, componenti a monte con la loro change)', () => {
+    const n = (over: Record<string, unknown>) => ({ ciId: 'x', name: 'X', stormSources: [], changeWindow: null, ...over }) as never
+    expect(stormingSourcesOf([n({ stormSources: ['b', 'a'] }), n({ stormSources: ['a'] })])).toEqual(['a', 'b'])
+    expect(upstreamWindowsOf([
+      n({ ciId: 'vm-1', name: 'VM-01', changeWindow: { changeId: 'c1', code: 'CHG-1', step: 'deployment', viaCiId: 'srv-1', viaCiName: 'SRV-01', upstream: true } }),
+      n({ ciId: 'db-1', name: 'DB-01', changeWindow: { changeId: 'c2', code: 'CHG-2', step: 'deployment', viaCiId: 'db-1', viaCiName: 'DB-01', upstream: false } }),
+    ])).toEqual([{ name: 'VM-01', changeCode: 'CHG-1', viaName: 'SRV-01' }])
   })
 
   it('attore esplicito (mutation) → actor_id dell\'evento e audit con l\'utente', async () => {
