@@ -39,6 +39,7 @@ vi.mock('../../lib/logger.js', () => ({
 
 const { suggestTriage } = await import('../triageService.js')
 const { runQuery } = await import('@opengraphity/neo4j')
+import { config } from '../../lib/config.js'
 
 // ── Fixture ───────────────────────────────────────────────────────────────────
 
@@ -120,7 +121,7 @@ describe('suggestTriage — chiamata al modello', () => {
     expect(h.embed).toHaveBeenCalledWith(['VPN lenta\nda stamattina'])
     expect(h.create).toHaveBeenCalledTimes(1)
     const params = h.create.mock.calls[0]![0]
-    expect(params).toMatchObject({ model: 'claude-opus-4-8', max_tokens: 2000, thinking: { type: 'adaptive' } })
+    expect(params).toMatchObject({ model: config.anthropicModel, max_tokens: 2000, thinking: { type: 'adaptive' } })
     const schema = (params['output_config'] as { format: { type: string; schema: Record<string, { enum?: string[] }> } }).format
     expect(schema.type).toBe('json_schema')
     expect(schema.schema['properties']).toMatchObject({

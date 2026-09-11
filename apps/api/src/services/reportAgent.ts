@@ -11,21 +11,24 @@
  */
 import Anthropic from '@anthropic-ai/sdk'
 import { getSession } from '@opengraphity/neo4j'
+import { config } from '../lib/config.js'
 import { logger } from '../lib/logger.js'
 import { assertSafeReadOnlyCypher, UnsafeCypherError } from '../lib/cypherGuard.js'
 
 // ── Model ─────────────────────────────────────────────────────────────────
 
 /**
- * Default model for the report agent — the same constant the other AI
- * services (assistant, triage, post-incident) already use. Override with the
- * `REPORT_AI_MODEL` environment variable (no other place picks the model).
+ * Modello dell'agente dei report: quello di tutti i servizi AI
+ * (`config.anthropicModel`, variabile `ANTHROPIC_MODEL`), con `REPORT_AI_MODEL`
+ * come scavalco del solo agente. Nessun id di modello scritto qui: il
+ * commento di prima diceva «la stessa costante degli altri» e non era vero,
+ * gli altri lo avevano copiato a mano.
  */
-export const DEFAULT_REPORT_AI_MODEL = 'claude-opus-4-8'
+export const DEFAULT_REPORT_AI_MODEL = config.anthropicModel
 
 export function resolveReportAIModel(): string {
   const fromEnv = process.env['REPORT_AI_MODEL']?.trim()
-  return fromEnv || DEFAULT_REPORT_AI_MODEL
+  return fromEnv || config.anthropicModel
 }
 
 /** Per-turn output cap (the cumulative cap is REPORT_AI_LIMITS.maxOutputTokens). */

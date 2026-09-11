@@ -290,7 +290,7 @@ export async function streamAssistantChat(
 
   try {
     const runner = client.beta.messages.toolRunner({
-      model: 'claude-opus-4-8',
+      model: config.anthropicModel,
       max_tokens: 4000,
       thinking: { type: 'adaptive' },
       system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],

@@ -156,6 +156,17 @@ const readers = {
 
   // Optional integrations (features stay off when unset)
   anthropicApiKey:    (): string | undefined => optionalEnv('ANTHROPIC_API_KEY'),
+  /**
+   * Modello Claude di TUTTI i servizi AI (triage, assistente, post-incident,
+   * agente dei report): UN solo posto da cambiare per aggiornarlo. Prima l'id
+   * era scritto dentro cinque punti diversi e uno di loro dichiarava, falso,
+   * di usare «la stessa costante degli altri».
+   *
+   * L'agente dei report accetta ancora `REPORT_AI_MODEL` per usarne uno
+   * diverso solo lì (interroga il grafo con gli strumenti: può convenire un
+   * modello distinto).
+   */
+  anthropicModel:     (): string => optionalEnv('ANTHROPIC_MODEL') ?? 'claude-opus-5',
   slackBotToken:      (): string | undefined => optionalEnv('SLACK_BOT_TOKEN'),
   slackSigningSecret: (): string | undefined => optionalEnv('SLACK_SIGNING_SECRET'),
 } as const

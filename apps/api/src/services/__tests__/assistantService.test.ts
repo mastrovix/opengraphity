@@ -43,6 +43,7 @@ vi.mock('../../lib/logger.js', () => ({
 
 const { streamAssistantChat } = await import('../assistantService.js')
 const { runQuery, getSession } = await import('@opengraphity/neo4j')
+import { config } from '../../lib/config.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -106,7 +107,7 @@ describe('streamAssistantChat — configurazione', () => {
     await streamAssistantChat(TENANT, messages, emitter())
     expect(h.constructed).toHaveLength(1)
     const params = h.toolRunner.mock.calls[0]![0]
-    expect(params).toMatchObject({ model: 'claude-opus-4-8', stream: true, max_iterations: 8, messages })
+    expect(params).toMatchObject({ model: config.anthropicModel, stream: true, max_iterations: 8, messages })
     expect(params.tools.map(t => t.name)).toEqual([
       'cerca_incident', 'dettaglio_incident', 'lista_incident', 'cerca_ci', 'analisi_impatto', 'change_aperti', 'cerca_kb',
     ])

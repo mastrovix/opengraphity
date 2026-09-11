@@ -37,6 +37,7 @@ vi.mock('../../lib/logger.js', () => ({
 
 const { draftResolutionNotes, draftKbContent, problemCandidates } = await import('../postIncidentService.js')
 const { runQuery } = await import('@opengraphity/neo4j')
+import { config } from '../../lib/config.js'
 
 // ── Fixture ───────────────────────────────────────────────────────────────────
 
@@ -105,7 +106,7 @@ describe('draftResolutionNotes', () => {
   it('passa al modello solo l\'evidenza reale (commenti con testo, step con nome, CI) e ritorna il testo trimmato', async () => {
     h.create.mockResolvedValue(modelReply('  Causa: timeout DB. Intervento: riavvio.  '))
     await expect(draftResolutionNotes(TENANT, 'inc-1')).resolves.toBe('Causa: timeout DB. Intervento: riavvio.')
-    expect(h.create.mock.calls[0]![0]).toMatchObject({ model: 'claude-opus-4-8', max_tokens: 1500, output_config: { effort: 'low' } })
+    expect(h.create.mock.calls[0]![0]).toMatchObject({ model: config.anthropicModel, max_tokens: 1500, output_config: { effort: 'low' } })
     expect(userContent()).toEqual({
       titolo: 'DB down', descrizione: 'timeout', severity: 'critical', categoria: 'database', ci_coinvolti: ['db-01'],
       commenti: [{ text: 'Riavviato il servizio', created_at: '2026-01-01T10:00:00Z' }],

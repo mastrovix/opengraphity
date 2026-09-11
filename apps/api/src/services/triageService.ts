@@ -178,7 +178,7 @@ export async function suggestTriage(input: TriageInput): Promise<TriageSuggestio
   const client = getClient()
   const t0 = Date.now()
   const response = await client.messages.create({
-    model: 'claude-opus-4-8',
+    model: config.anthropicModel,
     max_tokens: 2000,
     thinking: { type: 'adaptive' },
     output_config: {

@@ -132,6 +132,11 @@ Con default sicuri, da cambiare consapevolmente:
   (la rete Docker lo è), quindi Prometheus funziona anche senza token.
 - `CORS_ORIGIN`, `APP_URL`, `RESEND_API_KEY`, `ANTHROPIC_API_KEY`, ecc.: vedi
   i commenti in `.env.example`.
+- `ANTHROPIC_MODEL`: il modello Claude di TUTTI i servizi AI (triage,
+  assistente, post-incident, agente dei report). Default `claude-opus-5`, un
+  solo posto da cambiare — `REPORT_AI_MODEL` scavalca il solo agente dei
+  report. Un id di modello scritto altrove nel codice fa fallire
+  `aiModel.test.ts`.
 
 Le variabili "solo compose" (`GRAFANA_ADMIN_PASSWORD`, `TAILSCALE_HOST`,
 `KEYCLOAK_PUBLIC_ORIGIN`, `TAILSCALE_TENANT_HOST`) sono nell'allowlist

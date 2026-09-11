@@ -77,7 +77,7 @@ export async function draftResolutionNotes(tenantId: string, incidentId: string)
   const t0 = Date.now()
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-8',
+    model: config.anthropicModel,
     max_tokens: 1500,
     thinking: { type: 'adaptive' },
     output_config: { effort: 'low' },
@@ -181,7 +181,7 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
   } as const
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-8',
+    model: config.anthropicModel,
     max_tokens: 2000,
     thinking: { type: 'adaptive' },
     output_config: { effort: 'low', format: { type: 'json_schema', schema } },
@@ -242,7 +242,7 @@ export async function draftKbContent(tenantId: string, incidentId: string): Prom
   } as const
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-8',
+    model: config.anthropicModel,
     max_tokens: 3000,
     thinking: { type: 'adaptive' },
     output_config: { effort: 'low', format: { type: 'json_schema', schema } },
