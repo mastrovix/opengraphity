@@ -16,6 +16,12 @@
  * (1-based). Un filtro è condivisibile, sopravvive a F5 e a "indietro"; il
  * chip "Solo questo CI" che toglie `ciId` aggiorna l'URL. Il riquadro
  * "Risolti 24h" ricalcola `since` a ogni polling (finestra scorrevole).
+ * Revisione 2 (C-15, residuo D·1.7): nell'URL ci sono anche il gruppo del
+ * costruttore di filtri (`?f=`, base64url del JSON) e l'ordinamento
+ * (`?sort=<campo>&dir=asc|desc`) — prima erano stato del componente e un
+ * collegamento condiviso li perdeva. Un `?f=` illeggibile non viene ignorato
+ * in silenzio: è una riga `role="alert"` (mostrerebbe più righe di quante il
+ * collegamento prometteva).
  *
  * Aggiornamento: polling ogni 15 s (in pausa a scheda nascosta) + pulsante
  * Aggiorna (l'SSE arriva con un'ondata successiva). Al cambio di filtro o
@@ -26,15 +32,18 @@
  * solo i campi che la riga leggera (EventRowFields) porta con sé. Quando è
  * attivo il conteggio globale non viene mostrato e sotto la tabella si legge
  * "N di M in questa pagina corrispondono al filtro avanzato".
+ * Per lo stesso motivo l'ordinamento riguarda la SOLA pagina caricata
+ * (`events(filter)` non accetta `sortField`): le intestazioni ordinabili lo
+ * dicono nel `title` (D·2.8) invece di far credere a un ordine globale.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Radar, RefreshCw, Plug, Loader2 } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { ListPageHeader } from '@/components/ListPageHeader'
-import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
+import { SortableFilterTable, sortRowsBy, type ColumnDef } from '@/components/SortableFilterTable'
 import { EmptyState } from '@/components/EmptyState'
 import { QueryError } from '@/components/QueryError'
 import { Pagination } from '@/components/ui/Pagination'
@@ -45,6 +54,7 @@ import { useEntityFields } from '@/hooks/useEntityFields'
 import { useMe } from '@/hooks/useMe'
 import { GET_EVENTS, GET_EVENT_STATS, GET_MONITORING_SOURCE_REFS, GET_EVENT_POLICY } from '@/graphql/queries'
 import { applyFilterGroup } from '@/lib/filterGroup'
+import { FILTER_GROUP_PARAM, decodeFilterGroup, encodeFilterGroup } from '@/lib/filterGroupUrl'
 import { formatDateTime, timeAgo } from '@/lib/datetime'
 import { ciPath } from '@/lib/ciPath'
 import { colors } from '@/lib/tokens'
@@ -147,7 +157,26 @@ function readFilter(params: URLSearchParams, now: number): { filter: ConsoleFilt
   }
 }
 
-/** Scrive il filtro esplicito nei parametri (senza `stat`, senza `page`). */
+// ── Ordinamento nell'URL ─────────────────────────────────────────────────────
+
+const SORT_PARAM = 'sort'
+const SORT_DIR_PARAM = 'dir'
+
+/** Le colonne su cui la tabella ordina: un `?sort=` fuori da qui è un URL scritto a mano e viene ignorato, come `?stat`/`?status`. */
+const SORTABLE_KEYS: readonly (keyof EventRow)[] = ['status', 'severity', 'title', 'count', 'lastSeenAt']
+
+interface SortState { field: keyof EventRow | null; dir: 'asc' | 'desc' }
+
+function readSort(params: URLSearchParams): SortState {
+  const field = params.get(SORT_PARAM)
+  const valid = field !== null && (SORTABLE_KEYS as readonly string[]).includes(field)
+  return {
+    field: valid ? (field as keyof EventRow) : null,
+    dir: params.get(SORT_DIR_PARAM) === 'desc' ? 'desc' : 'asc',
+  }
+}
+
+/** Scrive il filtro esplicito nei parametri (senza `stat`, senza `page`). Il gruppo avanzato e l'ordinamento restano: sono un'altra dimensione. */
 function writeFilter(params: URLSearchParams, f: ConsoleFilter): void {
   const setOrDelete = (name: string, value: string | null) => { if (value) params.set(name, value); else params.delete(name) }
   params.delete('stat')
@@ -269,7 +298,38 @@ export function EventsPage() {
     return () => clearInterval(id)
   }, [sliding])
 
-  const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
+  // Gruppo del costruttore di filtri: sta nell'URL (`?f=`), non nello stato.
+  // `invalid` = parametro presente ma illeggibile: si dice, non si ignora.
+  const decodedGroup = useMemo(() => decodeFilterGroup(searchParams.get(FILTER_GROUP_PARAM)), [searchParams])
+  const groupInvalid = decodedGroup === 'invalid'
+  const filterGroup: FilterGroup | null = groupInvalid ? null : decodedGroup
+
+  // Il pannello parte dalle regole dell'URL. `writtenGroup` ricorda l'ultimo
+  // valore scritto da qui: se `?f=` cambia da fuori ("indietro", un link
+  // incollato) il pannello viene rimontato sulle regole nuove invece di
+  // mostrarne altre (stesso accorgimento della casella di ricerca).
+  const rawGroup = searchParams.get(FILTER_GROUP_PARAM)
+  const writtenGroup = useRef(rawGroup)
+  const [builderKey, setBuilderKey] = useState(0)
+  useEffect(() => {
+    if (rawGroup === writtenGroup.current) return
+    writtenGroup.current = rawGroup
+    setBuilderKey((k) => k + 1)
+  }, [rawGroup])
+
+  const applyGroup = useCallback((group: FilterGroup | null) => {
+    const encoded = encodeFilterGroup(group)
+    writtenGroup.current = encoded
+    writeParams((p) => {
+      if (encoded) p.set(FILTER_GROUP_PARAM, encoded); else p.delete(FILTER_GROUP_PARAM)
+      p.delete('page')
+    })
+  }, [writeParams])
+
+  const sort = useMemo(() => readSort(searchParams), [searchParams])
+  const onSort = useCallback((field: string, direction: 'asc' | 'desc') => {
+    writeParams((p) => { p.set(SORT_PARAM, field); p.set(SORT_DIR_PARAM, direction) })
+  }, [writeParams])
 
   // Solo i campi che la riga leggera porta con sé: una regola su `description`
   // o `labels` non potrebbe essere valutata sulla pagina caricata.
@@ -310,7 +370,12 @@ export function EventsPage() {
   const onChanged = () => { if (sliding) setClock(Date.now()); void refetch(); void refetchStats() }
 
   const rows = useMemo(() => data?.events.items ?? [], [data])
-  const items = useMemo(() => applyFilterGroup(rows, filterGroup), [rows, filterGroup])
+  // Filtro avanzato e ordinamento sono ENTRAMBI della sola pagina caricata:
+  // prima si scartano le righe, poi si ordina quel che resta.
+  const items = useMemo(() => {
+    const matching = applyFilterGroup(rows, filterGroup)
+    return sort.field === null ? matching : sortRowsBy(matching, String(sort.field), sort.dir)
+  }, [rows, filterGroup, sort])
   const total = data?.events.total ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
   const stats = statsData?.eventStats
@@ -445,7 +510,14 @@ export function EventsPage() {
         <Button variant="secondary" size="xs" icon={<RefreshCw size={13} aria-hidden="true" />} onClick={onChanged}>{t('monitoring.console.refresh')}</Button>
       </div>
 
-      <FilterBuilder fields={filterFields} onApply={(group) => { setFilterGroup(group) }} />
+      <FilterBuilder key={builderKey} fields={filterFields} initialRules={filterGroup?.rules} onApply={applyGroup} />
+
+      {/* `?f=` presente ma illeggibile: la tabella mostra PIÙ righe di quante il collegamento prometteva, e lo dice. */}
+      {groupInvalid && (
+        <p role="alert" style={{ margin: '-8px 0 16px', fontSize: 'var(--font-size-table)', color: colors.danger }}>
+          {t('events.filters.advancedUrlInvalid')}
+        </p>
+      )}
 
       {error && !data ? (
         <QueryError message={error.message} onRetry={() => void refetch()} />
@@ -459,6 +531,10 @@ export function EventsPage() {
             emptyComponent={<EmptyState icon={<Radar size={32} />} title={t('events.empty.title')} description={t('events.empty.description')} />}
             onRowClick={(row) => navigate(`/events/${row.id}`)}
             focusableRows={false}
+            onSort={onSort}
+            sortField={sort.field === null ? null : String(sort.field)}
+            sortDir={sort.dir}
+            sortHint={t('events.filters.sortPageOnly')}
           />
           {advanced && (
             <p role="status" style={{ margin: '8px 0 0', fontSize: 'var(--font-size-table)', color: colors.slate }}>

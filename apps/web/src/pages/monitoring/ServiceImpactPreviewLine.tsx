@@ -11,7 +11,7 @@
  * Niente fallback silenziosi: la query che fallisce è una riga `role="alert"`
  * con il messaggio del server, mai un'anteprima vecchia spacciata per nuova.
  */
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { useDebounced } from '@/hooks/useDebounced'
@@ -34,6 +34,13 @@ interface Props {
   rules?: ServiceImpactRulesInput | null
   /** Solo i componenti cambiati (null = quelli salvati). */
   nodes?: ServiceMapNodeInput[] | null
+  /**
+   * Istante dell'ultima valutazione della mappa: quando cambia, «adesso» non è
+   * più lo stesso adesso e l'anteprima si rilegge (revisione 2 · C-8). Prima
+   * restava ferma all'istante del montaggio e dopo dieci minuti poteva
+   * contraddire la testata senza spiegazione.
+   */
+  evaluatedAt?: string | null
   /** Nome del riquadro che la ospita, per distinguerla nei test. */
   testId: string
 }
@@ -44,7 +51,7 @@ const box: React.CSSProperties = {
   border: `1px solid ${colors.border}`, fontSize: 'var(--font-size-body)', color: colors.slateDark,
 }
 
-export function ServiceImpactPreviewLine({ mapId, rules = null, nodes = null, testId }: Props) {
+export function ServiceImpactPreviewLine({ mapId, rules = null, nodes = null, evaluatedAt = null, testId }: Props) {
   const { t } = useTranslation()
 
   // La chiave serializzata è il valore su cui si aspetta: un oggetto nuovo a
@@ -53,10 +60,19 @@ export function ServiceImpactPreviewLine({ mapId, rules = null, nodes = null, te
   const debouncedKey = useDebounced(key, PREVIEW_DEBOUNCE_MS)
   const variables = useMemo(() => JSON.parse(debouncedKey) as PreviewVars, [debouncedKey])
 
-  const { data, previousData, loading, error } = useQuery<{ serviceImpactPreview: ServiceImpactPreview }>(
+  const { data, previousData, loading, error, refetch } = useQuery<{ serviceImpactPreview: ServiceImpactPreview }>(
     GET_SERVICE_IMPACT_PREVIEW,
     { variables, fetchPolicy: 'network-only' },
   )
+
+  // Rivalutazione della mappa → «adesso» è cambiato: si rilegge (mai al primo
+  // giro, che la query l'ha appena fatta).
+  const lastEvaluatedAt = useRef<string | null>(evaluatedAt)
+  useEffect(() => {
+    if (lastEvaluatedAt.current === evaluatedAt) return
+    lastEvaluatedAt.current = evaluatedAt
+    void refetch()
+  }, [evaluatedAt, refetch])
 
   if (error) {
     return (

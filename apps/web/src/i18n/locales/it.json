@@ -136,6 +136,24 @@
         "title": "Servizi impattati",
         "hint": "Servizi la cui salute ha aperto o agganciato questo incident.",
         "openService": "Apri il servizio {{name}}"
+      },
+      "impactedApplications": {
+        "title": "Applicazioni impattate",
+        "empty": "Nessuna applicazione dipende dai CI colpiti da questo incident.",
+        "directly": "Colpita direttamente",
+        "via_one": "Dipende da {{via}} · {{count}} salto",
+        "via_other": "Dipende da {{via}} · {{count}} salti",
+        "pathButton": "Percorso",
+        "pathButtonHint": "Mostra il percorso dal CI colpito all'applicazione",
+        "pathTitle": "Percorso d'impatto → {{name}}",
+        "pathTitleNoApp": "Percorso d'impatto",
+        "pathIntro_one": "L'impatto si propaga dal CI colpito fino all'applicazione seguendo le dipendenze della CMDB ({{count}} salto).",
+        "pathIntro_other": "L'impatto si propaga dal CI colpito fino all'applicazione seguendo le dipendenze della CMDB ({{count}} salti).",
+        "pathIntroDirect": "L'impatto si propaga dal CI colpito fino all'applicazione seguendo le dipendenze della CMDB (colpita direttamente).",
+        "pathNodeApplication": "Applicazione",
+        "pathNodeRoot": "CI colpito",
+        "pathNodeFallback": "CI",
+        "pathFooter": "Le frecce indicano la propagazione dell'impatto; le dipendenze reali vanno in senso opposto (l'applicazione dipende dal CI a monte)."
       }
     },
     "changes": {
@@ -1884,7 +1902,9 @@
       "sourcesError": "Sorgenti non caricate: {{error}}",
       "advancedActive": "Filtro avanzato attivo: si applica alla pagina caricata, conteggio e pagine sono quelli del server",
       "advancedMatch_one": "{{count}} di {{total}} in questa pagina corrisponde al filtro avanzato",
-      "advancedMatch_other": "{{count}} di {{total}} in questa pagina corrispondono al filtro avanzato"
+      "advancedMatch_other": "{{count}} di {{total}} in questa pagina corrispondono al filtro avanzato",
+      "advancedUrlInvalid": "Il filtro avanzato di questo collegamento non è leggibile: la tabella mostra tutte le righe della pagina. Ricostruiscilo con «Filtri avanzati».",
+      "sortPageOnly": "Ordina la pagina corrente: il server non ordina gli allarmi, le altre pagine restano come sono"
     },
     "empty": {
       "title": "Nessun allarme",
@@ -2436,7 +2456,7 @@
       "source": "Origine",
       "sourceMonitoring": "Monitoraggio",
       "sourceManual": "Forzatura manuale",
-      "lastEvent": "Ultimo evento",
+      "lastEvent": "Ultimo allarme",
       "activeEvents": "Allarmi attivi",
       "viewEvents": "Vedi nella console",
       "override": "Forza salute",
@@ -2445,8 +2465,8 @@
       "removeOverride": "Rimuovi forzatura",
       "aliases": "Alias",
       "aliasesHint": "I nomi con cui gli strumenti di monitoraggio chiamano questo CI (hostname, IP, FQDN, ID esterno). Un allarme la cui risorsa corrisponde a un alias viene agganciato a questo CI da solo.",
-      "recentEvents": "Ultimi eventi",
-      "noEvents": "Nessun evento per questo CI."
+      "recentEvents": "Ultimi allarmi",
+      "noEvents": "Nessun allarme per questo CI."
     },
     "console": {
       "sourceFilter": "Sorgente",
@@ -2459,9 +2479,12 @@
       "updating": "Aggiornamento…"
     },
     "widget": {
-      "openConsole": "Apri la console eventi",
+      "openConsole": "Apri la console allarmi",
       "loadError": "Impossibile caricare i contatori: {{error}}",
       "openServices": "Apri la pagina Servizi"
+    },
+    "criticalBanner": {
+      "loadError": "Impossibile sapere se un servizio critico è giù: {{error}}"
     },
     "snippets": {
       "alertmanager": {
@@ -2538,7 +2561,7 @@
         "alarms": "Allarmi attivi",
         "impact": "Impatto",
         "team": "Squadra",
-        "lastEvent": "Ultimo evento",
+        "lastEvent": "Ultimo allarme",
         "source": "Origine",
         "map": "Mappa",
         "services": "Servizi"
@@ -2603,7 +2626,6 @@
         "operational": "Operativi",
         "unknown": "Sconosciuti",
         "toggleHint": "Filtra la tabella su questa salute; un secondo clic toglie il filtro",
-        "unknownHint": "Servizi senza alcun componente con salute nota: non filtrabile, è una nota",
         "unknownContext": "senza dati di salute",
         "noneContext": "nessuno al momento",
         "shareContext_one": "su {{count}} servizio monitorato",
@@ -2706,6 +2728,20 @@
         "level": "Livello {{level}}",
         "empty": "La mappa non ha componenti: il servizio non realizza alcuna applicazione (REALIZES) o la costruzione non ha trovato relazioni.",
         "nodeLabel": "{{name}} · {{type}} · {{health}}",
+        "groupLabel": "Mappa del servizio {{name}}: usa le frecce per spostarti fra i componenti",
+        "summary_one": "{{count}} componente giù su {{total}}.",
+        "summary_other": "{{count}} componenti giù su {{total}}.",
+        "summaryPath": "Percorso d'impatto: {{paths}}.",
+        "onPath": "Sul percorso d'impatto ({{severity}}): {{path}}",
+        "searchLabel": "Cerca un componente sulla mappa",
+        "searchPlaceholder": "Cerca un componente",
+        "searchEmpty": "Nessun componente con «{{query}}» nel nome.",
+        "showPathOnly": "Solo percorso d'impatto",
+        "showAll": "Mostra tutti i componenti",
+        "collapsed_one": "+{{count}} componente fuori dal percorso",
+        "collapsed_other": "+{{count}} componenti fuori dal percorso",
+        "fit": "Adatta",
+        "actualSize": "Dimensione reale",
         "legend": {
           "title": "Legenda",
           "critical": "Componente critico",
@@ -2736,6 +2772,8 @@
         "rules": "Come si calcola",
         "evaluated": "Valutata {{ago}}",
         "neverEvaluated": "Mai valutata",
+        "versionShort": "Versione {{version}}",
+        "updatedHint": "Ultima modifica della configurazione: {{date}}",
         "actions": {
           "reevaluate": "Rivaluta ora",
           "activate": "Attiva",
@@ -2744,23 +2782,19 @@
           "delete": "Elimina",
           "updateMap": "Aggiorna mappa",
           "syncNow": "Sincronizza ora",
+          "syncPaused": "Riattiva la mappa per sincronizzarla: da ferma il motore rifiuta la sincronizzazione.",
           "reviewComponents": "Rivedi componenti"
         },
         "fields": {
           "service": "Applicazione di business",
           "criticality": "Criticità",
           "owner": "Owner",
-          "status": "Stato della mappa",
-          "version": "Versione",
           "maxDepth": "Profondità massima",
           "relationshipTypes": "Relazioni seguite",
           "builtFrom": "Costruita",
           "builtFromAuto": "Automaticamente dal grafo",
           "builtFromManual": "A mano",
           "updatedAt": "Ultima modifica",
-          "evaluatedAt": "Ultima valutazione",
-          "syncedAt": "Ultima sincronizzazione",
-          "syncedNever": "Mai",
           "excluded": "Componenti esclusi",
           "excludedCount_one": "{{count}} componente",
           "excludedCount_other": "{{count}} componenti"
@@ -2791,6 +2825,9 @@
           "name": "Componente",
           "type": "Tipo",
           "level": "Livello",
+          "via": "Da dove si arriva",
+          "viaService": "Direttamente dal servizio",
+          "viaMissing": "Il predecessore non è più fra i componenti della mappa",
           "role": "Ruolo",
           "propagate": "Pesa",
           "weight": "Peso",
@@ -2814,6 +2851,8 @@
         "title": "Cronologia",
         "empty": "Nessuna voce ancora.",
         "truncated": "Mostrate le ultime {{shown}} voci di {{total}}.",
+        "showAll": "Mostra tutte",
+        "loadFailed": "Impossibile caricare la cronologia completa: {{error}}",
         "noPrevious": "nessuna salute precedente",
         "causesMore_one": "{{causes}}, +{{count}} altra",
         "causesMore_other": "{{causes}}, +{{count}} altre",
@@ -2880,6 +2919,10 @@
         "unsaved": "Modifiche non salvate",
         "noChanges": "Niente da salvare",
         "blocked": "Campi da correggere",
+        "savedMinNodesStale_one": "Il minimo di componenti salvato ({{saved}}) supera il componente della mappa ({{count}}): il servizio non può degradarsi finché non lo abbassi. Nessuno ha toccato le regole: è la mappa a essere diventata più piccola.",
+        "savedMinNodesStale_other": "Il minimo di componenti salvato ({{saved}}) supera i componenti della mappa ({{count}}): il servizio non può degradarsi finché non lo abbassi. Nessuno ha toccato le regole: è la mappa a essere diventata più piccola.",
+        "savedMinNodesFix_one": "Porta il minimo a {{count}}",
+        "savedMinNodesFix_other": "Porta il minimo a {{count}}",
         "validation": {
           "integer": "Numero intero fra {{min}} e {{max}}.",
           "range": "Fra {{min}} e {{max}}.",
@@ -2964,6 +3007,7 @@
         "disabled": "Gli incident per questo servizio sono disattivati.",
         "step": "Passo: {{step}}",
         "noStep": "Passo non disponibile",
+        "stepsUnavailable": "Etichette del workflow non caricate ({{error}}): stato e passo sono quelli grezzi.",
         "open": "Apri l'incident {{number}}"
       },
       "criticalBanner": {

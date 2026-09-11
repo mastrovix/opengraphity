@@ -289,6 +289,10 @@ export function servicesSDL(): string {
     status: ServiceMapStatus
     """Ricerca sul nome del servizio, senza distinzione di maiuscole."""
     search: String
+    """Criticità dell'applicazione radice (vocabolario del metamodello: mission_critical, business_critical, business_operational, office_productivity). Il banner dei servizi critici filtra qui, invece di leggere una pagina e scartare a valle."""
+    criticality: [String!]
+    """Solo i servizi la cui mappa include questo CI."""
+    ciId: ID
   }
 
   extend type Query {

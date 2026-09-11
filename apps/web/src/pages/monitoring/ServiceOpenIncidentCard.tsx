@@ -11,20 +11,24 @@
  * - altrimenti → «nessun incident aperto».
  * Un incident senza istanza di workflow (ticket vecchi) dichiara «passo non
  * disponibile» invece di fingere un passo.
+ *
+ * Revisione 2 · C-12: stato e passo prendono l'etichetta del workflow del
+ * tenant (`useWorkflowSteps('incident')`), non un `humanize()` che in una
+ * pagina italiana scriveva «in progress». Se la definizione non si carica o
+ * il valore non è un passo del workflow, il valore grezzo si vede lo stesso,
+ * con il motivo accanto: mai un'etichetta inventata, mai un silenzio.
  */
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowRight, AlertCircle } from 'lucide-react'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { Pill } from '@/components/ui/Pill'
-import { colors } from '@/lib/tokens'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { colors, palette } from '@/lib/tokens'
 import { TINT_NEUTRAL } from '@/lib/eventPalette'
 import type { ServiceOpenIncident } from '@/types/services'
 
 const emptyStyle = { margin: 0, fontSize: 'var(--font-size-body)', color: colors.slateLight } as const
-
-/** «in progress» invece di «in_progress»: gli stati e i passi si mostrano così in tutta l'app (StatusBadge). */
-const humanize = (value: string) => value.replace(/_/g, ' ')
 
 interface Props {
   incident: ServiceOpenIncident | null
@@ -34,6 +38,11 @@ interface Props {
 
 export function ServiceOpenIncidentCard({ incident, openIncidentFrom }: Props) {
   const { t } = useTranslation()
+  const { byName, labelFor, error: stepsError } = useWorkflowSteps('incident')
+
+  /** L'etichetta dell'app per un passo del workflow; fuori definizione → detta in chiaro. */
+  const stepLabel = (value: string) =>
+    byName.has(value) ? labelFor(value) : t('monitoring.services.health.outOfVocabulary', { value })
 
   let body
   if (incident) {
@@ -49,12 +58,18 @@ export function ServiceOpenIncidentCard({ incident, openIncidentFrom }: Props) {
           >
             {incident.number}<ArrowRight size={11} aria-hidden="true" />
           </Link>
-          <Pill bg={TINT_NEUTRAL.bg} color={TINT_NEUTRAL.color} style={{ fontSize: 'var(--font-size-label)' }}>{humanize(incident.status)}</Pill>
+          <Pill bg={TINT_NEUTRAL.bg} color={TINT_NEUTRAL.color} style={{ fontSize: 'var(--font-size-label)' }}>{stepLabel(incident.status)}</Pill>
         </div>
         <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateDark }}>{incident.title}</div>
         <div style={{ fontSize: 'var(--font-size-table)', color: colors.slate }}>
-          {step ? t('monitoring.services.openIncident.step', { step: humanize(step) }) : t('monitoring.services.openIncident.noStep')}
+          {step ? t('monitoring.services.openIncident.step', { step: stepLabel(step) }) : t('monitoring.services.openIncident.noStep')}
         </div>
+        {/* La definizione del workflow non si è caricata: le etichette sono quelle grezze e si dice perché. */}
+        {stepsError && (
+          <div role="alert" data-testid="open-incident-steps-error" style={{ fontSize: 'var(--font-size-table)', color: palette.warning.text }}>
+            {t('monitoring.services.openIncident.stepsUnavailable', { error: stepsError.message })}
+          </div>
+        )}
       </div>
     )
   } else if (openIncidentFrom === 'never') {

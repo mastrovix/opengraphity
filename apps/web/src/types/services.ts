@@ -155,6 +155,15 @@ export interface ServiceMapFilterVars {
   health?: ServiceHealth[]
   status?: ServiceMapStatus
   search?: string
+  /**
+   * Criticità dell'applicazione radice (revisione 2, C-7): il filtro è del
+   * server, così il banner dei servizi critici non deve leggere venti righe e
+   * scartarle a valle — con venti servizi non critici giù i critici non
+   * entrerebbero nella pagina letta e il banner tacerebbe.
+   */
+  criticality?: string[]
+  /** Solo i servizi la cui mappa include questo CI (revisione 2, C-14). */
+  ciId?: string
 }
 
 /** Un componente della mappa con le impostazioni della relazione INCLUDES e la salute attuale del CI. */

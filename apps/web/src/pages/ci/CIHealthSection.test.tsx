@@ -65,7 +65,7 @@ describe('CIHealthSection', () => {
     await user.click(card())
     expect(await screen.findByText('No alarm has concerned this CI yet: health is unknown.')).toBeInTheDocument()
     expect(await screen.findByText('web-01.acme.local')).toBeInTheDocument()
-    expect(await screen.findByText('No events for this CI.')).toBeInTheDocument()
+    expect(await screen.findByText('No alarms for this CI.')).toBeInTheDocument()
   })
 
   it('CI giù: aperta con badge, allarmi attivi con link interno alla console, ultimi allarmi', async () => {
@@ -127,7 +127,7 @@ describe('CIHealthSection', () => {
     await waitFor(() => expect(card()).toHaveAttribute('aria-expanded', 'true'))
     expect(await screen.findByText('events down')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Retry/ })).toBeInTheDocument()
-    expect(screen.queryByText('No events for this CI.')).not.toBeInTheDocument()
+    expect(screen.queryByText('No alarms for this CI.')).not.toBeInTheDocument()
   })
 
   it('errore della mutation → toast di errore', async () => {

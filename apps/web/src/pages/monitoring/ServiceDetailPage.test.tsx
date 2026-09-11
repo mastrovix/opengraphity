@@ -14,11 +14,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { ServiceDetailPage } from './ServiceDetailPage'
-import { GET_SERVICE_MAP, GET_SERVICE_IMPACT_PREVIEW, GET_SERVICE_MAP_PROPOSAL } from '@/graphql/queries'
+import { GET_SERVICE_MAP, GET_SERVICE_IMPACT_PREVIEW, GET_SERVICE_MAP_PROPOSAL, GET_SERVICE_MAP_STATUS, GET_SERVICE_MAP_HISTORY } from '@/graphql/queries'
 import { REEVALUATE_SERVICE_MAP, SET_SERVICE_MAP_STATUS, DELETE_SERVICE_MAP, SYNC_SERVICE_MAP, APPLY_SERVICE_MAP_PROPOSAL } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
-import { meMock } from '@/test/mocks/gql'
-import { mapDetail, preview, proposal, openIncident, node, syncResult, NODES } from '@/test/mocks/services'
+import { meMock, workflowDefinitionMock } from '@/test/mocks/gql'
+import { mapDetail, mapProbe, preview, proposal, openIncident, node, syncResult, NODES } from '@/test/mocks/services'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }))
 beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear(); vi.mocked(toast.warning).mockClear() })
@@ -42,10 +42,21 @@ const proposalMock = (over: Record<string, unknown> = {}): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
-function renderPage(role: string, opts: { detail?: GqlMock; extra?: GqlMock[] } = {}) {
+/**
+ * La sonda del polling (C-8): per default dice gli stessi tre marcatori del
+ * dettaglio, cioè «non c'è niente di nuovo». `over` serve ai test che la
+ * portano avanti (versione o valutazione) per far rileggere il documento.
+ */
+const probeMock = (over: Record<string, unknown> = {}): GqlMock => ({
+  request: { query: GET_SERVICE_MAP_STATUS, variables: { id: 'map-1' } },
+  result: { data: { serviceMap: mapProbe(over) } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+})
+
+function renderPage(role: string, opts: { detail?: GqlMock; probe?: GqlMock; extra?: GqlMock[] } = {}) {
   return renderWithProviders(<ServiceDetailPage />, {
     route: '/monitoring/services/map-1', path: '/monitoring/services/:id',
-    mocks: [meMock(role, { maxUsageCount: Number.POSITIVE_INFINITY }), opts.detail ?? detailMock(), previewMock, ...(opts.extra ?? [])],
+    mocks: [meMock(role, { maxUsageCount: Number.POSITIVE_INFINITY }), opts.detail ?? detailMock(), opts.probe ?? probeMock(), previewMock, ...(opts.extra ?? [])],
   })
 }
 
@@ -162,11 +173,12 @@ describe('ServiceDetailPage', () => {
   })
 
   it('riquadro «Incident aperto» (ondata 3): con un incident il link al ticket, senza incident la nota giusta secondo le regole', async () => {
-    renderPage('viewer', { detail: detailMock({ openIncident: openIncident() }) })
+    renderPage('viewer', { detail: detailMock({ openIncident: openIncident() }), extra: [workflowDefinitionMock()] })
     await screen.findByRole('heading', { level: 1 })
     const card = screen.getByTestId('service-open-incident')
     expect(within(card).getByRole('link', { name: 'INC-0042' })).toHaveAttribute('href', '/incidents/inc-1')
-    expect(card).toHaveTextContent('Step: in progress')
+    // C-12: l'etichetta del passo è quella del workflow del tenant
+    await waitFor(() => expect(card).toHaveTextContent('Step: In lavorazione'))
   })
 
   it('senza incident e con «openIncidentFrom: never» il riquadro dice che gli incident sono disattivati', async () => {
@@ -267,9 +279,9 @@ describe('ServiceDetailPage', () => {
     const badge = screen.getByTestId('sync-mode-badge')
     expect(badge).toHaveAttribute('data-mode', 'frozen')
     expect(badge).toHaveTextContent('frozen')
+    // C-12: «ultima sincronizzazione» sta una volta sola, in testata: la scheda tiene la sola configurazione.
     expect(screen.getByTestId('synced-at')).toHaveTextContent('Never synced')
-    expect(screen.getByText('Last sync')).toBeInTheDocument()
-    expect(screen.getAllByText('Never').length).toBeGreaterThan(0)   // la scheda del servizio dice «mai», non «—»
+    expect(screen.queryByText('Last sync')).not.toBeInTheDocument()
   })
 
   it('ondata 5, admin con mappa viva: «Sincronizza ora» col resoconto del motore e «Rivedi componenti» per il diff', async () => {
@@ -502,6 +514,87 @@ describe('ServiceDetailPage', () => {
     expect(within(row).getByText('Unknown (maybe)')).toBeInTheDocument()
     expect(within(row).getByText('Unknown (weird)')).toBeInTheDocument()
     expect(screen.getByTestId('service-history-entry')).toHaveTextContent('Unknown entry: cosmic.')
+  })
+
+  it('C-8: con la sonda allineata il documento pesante si legge una volta sola', async () => {
+    let reads = 0
+    const detail: GqlMock = {
+      request: { query: GET_SERVICE_MAP, variables: () => { reads += 1; return true } },
+      result: { data: { serviceMap: mapDetail() } },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+    }
+    renderPage('viewer', { detail })
+    await screen.findByRole('heading', { level: 1 })
+    await waitFor(() => expect(screen.getAllByTestId('service-map-node')).toHaveLength(4))
+    expect(reads).toBe(1)
+  })
+
+  it('C-8: quando la sonda va avanti (valutazione nuova) il dettaglio si rilegge tutto', async () => {
+    const first: GqlMock = {
+      request: { query: GET_SERVICE_MAP, variables: { id: 'map-1' } },
+      result: { data: { serviceMap: mapDetail() } },
+      maxUsageCount: 1,
+    }
+    const afterSync: GqlMock = {
+      request: { query: GET_SERVICE_MAP, variables: { id: 'map-1' } },
+      result: { data: { serviceMap: mapDetail({ version: 9, nodes: [NODES[0]], nodeCount: 1, edges: [], explanation: [] }) } },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+    }
+    renderPage('viewer', { detail: first, probe: probeMock({ version: 9 }), extra: [afterSync] })
+    await screen.findByRole('heading', { level: 1 })
+    await waitFor(() => expect(screen.getAllByTestId('service-map-node')).toHaveLength(1))
+    expect(screen.getByTestId('map-version')).toHaveTextContent('Version 9')
+  })
+
+  it('C-8: la cronologia parte dalle ultime voci e «Mostra tutte» le chiede a parte', async () => {
+    const older = Array.from({ length: 3 }, (_, i) => ({
+      __typename: 'ServiceHealthEntry', id: `old-${i}`, at: '2026-09-09T08:00:00Z', health: 'operational',
+      previousHealth: 'degraded', impactScore: 0, trigger: 'periodic', causes: [], note: null,
+    }))
+    const all: GqlMock = {
+      request: { query: GET_SERVICE_MAP_HISTORY, variables: { id: 'map-1', limit: 500 } },
+      result: { data: { serviceMap: { __typename: 'ServiceMap', id: 'map-1', historyCount: 5, history: [...(mapDetail().history as Record<string, unknown>[]), ...older] } } },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+    }
+    const { user } = renderPage('viewer', { detail: detailMock({ historyCount: 5 }), extra: [all] })
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getAllByTestId('service-history-entry')).toHaveLength(2)
+    expect(screen.getByText('Showing the latest 2 of 5 entries.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Show all' }))
+    await waitFor(() => expect(screen.getAllByTestId('service-history-entry')).toHaveLength(5))
+    expect(screen.queryByRole('button', { name: 'Show all' })).not.toBeInTheDocument()
+  })
+
+  it('C-11: con la mappa in pausa «Sincronizza ora» è disabilitato e dice perché; «Rivaluta ora» resta (l\'API lo accetta)', async () => {
+    renderPage('admin', { detail: detailMock({ status: 'paused' }) })
+    await screen.findByRole('heading', { level: 1 })
+    const sync = screen.getByRole('button', { name: 'Sync now' })
+    expect(sync).toBeDisabled()
+    expect(sync).toHaveAttribute('title', 'Resume the map to synchronize it: while it is paused the engine refuses to synchronize.')
+    expect(screen.getByRole('button', { name: 'Re-evaluate now' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Review components' })).toBeEnabled()
+  })
+
+  it('C-12: i metadati stanno una volta sola in testata (versione compresa), la scheda tiene la configurazione', async () => {
+    renderPage('viewer')
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.getByTestId('map-version')).toHaveTextContent('Version 3')
+    expect(screen.getByTestId('evaluated-at')).toHaveTextContent('Evaluated 2 min ago')
+    expect(screen.queryByText('Last evaluation')).not.toBeInTheDocument()
+    expect(screen.queryByText('Map status')).not.toBeInTheDocument()
+    expect(screen.queryByText('Version')).not.toBeInTheDocument()       // la riga della scheda non c'è più
+    expect(screen.getByText('Maximum depth')).toBeInTheDocument()       // la configurazione sì
+  })
+
+  it('C-12: nel pannello del nodo «da dove si arriva» seleziona il predecessore', async () => {
+    const { user } = renderPage('viewer')
+    await screen.findByRole('heading', { level: 1 })
+    await user.click(nodeOf('db-01'))
+    const panel = screen.getByTestId('node-panel')
+    await user.click(within(panel).getByTestId('node-via'))
+    expect(screen.getByTestId('node-panel')).toHaveAttribute('data-ci-id', 'api-03')
+    // un nodo di livello 1 arriva dal servizio: si dice, non resta vuoto
+    expect(within(screen.getByTestId('node-panel')).getByTestId('node-via')).toHaveTextContent('Straight from the service')
   })
 
   it('servizio inesistente → «non trovato» con ritorno alla lista; errore della query → QueryError', async () => {

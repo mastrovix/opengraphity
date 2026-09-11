@@ -8,11 +8,18 @@
  * pagina Servizi filtrata sugli stessi servizi che il banner conta.
  *
  * Guarda solo le mappe `active`: una mappa in pausa non viene valutata e una
- * bozza non è ancora in servizio, la loro salute è vecchia. Il link porta a
- * `?health=down&status=active`: esattamente ciò che è stato contato.
+ * bozza non è ancora in servizio, la loro salute è vecchia.
  * Nessuna riga (nessun servizio critico giù, o query ancora in volo) → niente
  * banner. Un errore della query non diventa «va tutto bene»: è una riga
- * visibile con il messaggio del server.
+ * visibile con il messaggio del server (chiave propria, non quella del widget).
+ *
+ * Revisione 2 (C-7): la criticità è un filtro del SERVER
+ * (`ServiceMapFilter.criticality`). Prima si leggevano i primi 20 servizi giù
+ * e si scartava la criticità a valle: in una tempesta con venti servizi non
+ * critici giù, i critici non entravano nella pagina letta e il banner taceva.
+ * Il conteggio del titolo è il `total` del server, non la lunghezza
+ * dell'elenco: oltre il limite il banner elenca i primi e il titolo dice
+ * comunque quanti sono.
  */
 import { Link } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
@@ -24,17 +31,18 @@ import { pausedWhenHidden } from '@/lib/polling'
 import { AMBER_BANNER } from '@/lib/eventPalette'
 import { colors } from '@/lib/tokens'
 import { servicePath } from './ServicesPage'
-import type { ServiceMapPage, ServiceMapRow } from '@/types/services'
+import type { ServiceMapFilterVars, ServiceMapPage, ServiceMapRow } from '@/types/services'
 
 /** Criticità che rendono «critico» un servizio (enum `criticality` del metamodello). */
 export const CRITICAL_CRITICALITIES: readonly string[] = ['mission_critical', 'business_critical']
 
-/** Filtro e link del banner: solo mappe attive e giù. */
-const FILTER = { health: ['down'], status: 'active' } as const
+/** Filtro del banner: solo mappe attive, giù e critiche — tutto e tre lato server. */
+const FILTER: ServiceMapFilterVars = { health: ['down'], status: 'active', criticality: [...CRITICAL_CRITICALITIES] }
+/** Il link va alla lista dei servizi giù (l'etichetta dice «Servizi giù», non «critici»): un soprainsieme onesto. */
 export const CRITICAL_SERVICES_PATH = '/monitoring/services?health=down&status=active'
 
 const POLL_MS = 30_000
-/** Quanti servizi giù leggere: il banner ne elenca al massimo questi. */
+/** Quanti servizi critici giù elencare: il titolo conta comunque il totale del server. */
 const LIMIT = 20
 
 const linkStyle = { color: AMBER_BANNER.text, fontWeight: 600 } as const
@@ -50,23 +58,30 @@ export function CriticalServicesBanner() {
   if (error && !data) {
     return (
       <p role="alert" style={{ margin: '0 0 16px', fontSize: 'var(--font-size-table)', color: colors.danger }}>
-        {t('monitoring.widget.loadError', { error: error.message })}
+        {t('monitoring.criticalBanner.loadError', { error: error.message })}
       </p>
     )
   }
 
-  // La criticità è portata avanti con la riga: dentro la lista non è più nulla e non serve un ripiego.
-  const critical = (data?.serviceMaps.items ?? []).flatMap((s: ServiceMapRow) =>
-    s.service.criticality !== null && CRITICAL_CRITICALITIES.includes(s.service.criticality)
-      ? [{ id: s.id, name: s.name, criticality: s.service.criticality }]
-      : [])
+  // Il server ha già filtrato la criticità: qui non si rifiltra. Una riga senza
+  // criticità non può aver superato quel filtro: se arriva è una rottura del
+  // contratto e si dice in console, non si mostra una riga «è giù ()».
+  const critical = (data?.serviceMaps.items ?? []).flatMap((s: ServiceMapRow) => {
+    if (s.service.criticality === null) {
+      console.error(`CriticalServicesBanner: serviceMaps(criticality: ${CRITICAL_CRITICALITIES.join(', ')}) ha restituito «${s.name}» senza criticità`)
+      return []
+    }
+    return [{ id: s.id, name: s.name, criticality: s.service.criticality }]
+  })
   if (critical.length === 0) return null
+  // Sopra il limite l'elenco è parziale ma il conteggio no: «22 servizi critici sono giù» con 20 righe.
+  const total = data?.serviceMaps.total ?? critical.length
 
   return (
     <div role="status" data-testid="critical-services-banner" style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 14px', marginBottom: 16, background: AMBER_BANNER.bg, border: `1px solid ${AMBER_BANNER.border}`, borderRadius: 8, color: AMBER_BANNER.text, fontSize: 'var(--font-size-body)' }}>
       <XCircle size={18} aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, marginBottom: 2 }}>{t('monitoring.services.criticalBanner.title', { count: critical.length })}</div>
+        <div style={{ fontWeight: 600, marginBottom: 2 }}>{t('monitoring.services.criticalBanner.title', { count: total })}</div>
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2, lineHeight: 1.5 }}>
           {critical.map((s) => (
             <li key={s.id}>

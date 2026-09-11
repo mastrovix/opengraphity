@@ -467,6 +467,24 @@ async function monitoringSources(_: unknown, __: unknown, ctx: GraphQLContext) {
   } finally { await session.close() }
 }
 
+/**
+ * Una sola sorgente per id (revisione 2 · residuo D·5): la pagina di modifica
+ * ne apre una e fin qui doveva leggerle TUTTE, con la configurazione completa
+ * di ciascuna. Stessa politica di `monitoringSources` (admin-only) e stesso
+ * filtro `entity_type = 'event'`: un webhook di un'altra famiglia non è una
+ * sorgente di monitoraggio e qui non si vede. Null se non esiste nel tenant.
+ */
+async function monitoringSource(_: unknown, args: { id: string }, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin')
+  const session = getSession()
+  try {
+    const row = await runQueryOne<{ props: Props }>(session, `
+      MATCH (w:InboundWebhook {id: $id, tenant_id: $tenantId, entity_type: 'event'})
+      RETURN properties(w) AS props`, { id: args.id, tenantId: ctx.tenantId })
+    return row ? mapInbound(row.props) : null
+  } finally { await session.close() }
+}
+
 /** Le stesse sorgenti come riferimenti leggeri (filtro della console, banner "nessuna sorgente"): ruoli predefiniti. */
 async function monitoringSourceRefs(_: unknown, __: unknown, ctx: GraphQLContext) {
   const session = getSession()
@@ -1433,7 +1451,7 @@ async function changeSuppressedEventsPurged(parent: { id: string }, _: unknown, 
 }
 
 export const eventResolvers = {
-  Query:    { events, event, eventStats, ciAliases, eventPolicy, sampleInboundPayload, payloadKeys, monitoringSources, monitoringSourceRefs, ciHealth, ciHealthOverview },
+  Query:    { events, event, eventStats, ciAliases, eventPolicy, sampleInboundPayload, payloadKeys, monitoringSources, monitoringSource, monitoringSourceRefs, ciHealth, ciHealthOverview },
   Mutation: {
     acknowledgeEvent, resolveEvent, linkEventToCI, createIncidentFromEvent, reevaluateEvent, createCIAlias, deleteCIAlias, updateEventPolicy,
     previewInboundEvents, sendSampleEvent, setCIHealthOverride,

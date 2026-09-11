@@ -12,7 +12,12 @@
  * bozza, «Metti in pausa» per una attiva, «Riattiva» per una in pausa, con
  * `expectedVersion` = la versione letta), «Elimina» (con conferma). Le
  * mutation restituiscono la mappa completa: la cache aggiorna la pagina.
- * Polling 15 s in pausa a scheda nascosta: la salute cambia da sola.
+ *
+ * Freschezza (revisione 2 · C-8): in polling (15 s, in pausa a scheda
+ * nascosta) va una SONDA di tre marcatori — versione, ultima valutazione,
+ * ultima sincronizzazione — letta `no-cache`; il documento completo (nodi,
+ * archi, cronologia) si rilegge solo quando la sonda è più avanti. Prima mezzo
+ * megabyte di mappa ripartiva ogni quindici secondi per ogni scheda aperta.
  *
  * Ondata 2: regole e componenti si modificano qui dentro (solo admin); per
  * gli altri ruoli i riquadri restano quelli di sola lettura, senza controlli.
@@ -31,8 +36,14 @@
  * Revisione 2, ondata 3 (D6.2/D6.4): sotto la salute compare la nota della
  * valutazione (`healthNote`) quando c'è — sorgente in tempesta con
  * valutazione sospesa, oppure componente coperto da una change a monte.
+ * Revisione 2, ondata 5 (C-11/C-12): i metadati stanno UNA volta sola in
+ * testata (versione compresa) e la scheda tiene la sola configurazione;
+ * «Sincronizza ora» è disabilitato con la spiegazione quando la mappa è ferma
+ * (il motore la rifiuterebbe), mentre «Rivaluta ora» resta offerto perché
+ * l'API lo accetta anche da ferma; il pannello del nodo dice «da dove si
+ * arriva» (`via`) come link che seleziona il predecessore.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -50,7 +61,7 @@ import { useMe } from '@/hooks/useMe'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { useMetamodel } from '@/contexts/MetamodelContext'
-import { GET_SERVICE_MAP } from '@/graphql/queries'
+import { GET_SERVICE_MAP, GET_SERVICE_MAP_STATUS } from '@/graphql/queries'
 import { REEVALUATE_SERVICE_MAP, SET_SERVICE_MAP_STATUS, DELETE_SERVICE_MAP, SYNC_SERVICE_MAP } from '@/graphql/mutations'
 import { formatDateTime, formatDuration, timeAgo } from '@/lib/datetime'
 import { pausedWhenHidden } from '@/lib/polling'
@@ -75,6 +86,22 @@ import type { ServiceMapDetail, ServiceMapNode, ImpactCause, ServiceMapStatus, S
 const POLL_MS = 15_000
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
 
+/** I tre marcatori della sonda del polling (C-8). */
+interface ServiceMapProbe { id: string; version: number; evaluatedAt: string | null; syncedAt: string | null }
+
+/**
+ * La sonda è «più avanti» del documento che la pagina ha in mano? I tre
+ * marcatori crescono sempre (la versione si incrementa, gli istanti vanno
+ * avanti): il confronto è in UNA direzione sola, così una mutation appena
+ * salvata — che porta il documento avanti PRIMA della sonda — non fa ripartire
+ * una rilettura inutile.
+ */
+function probeIsAhead(probe: ServiceMapProbe, loaded: Pick<ServiceMapDetail, 'version' | 'evaluatedAt' | 'syncedAt'>): boolean {
+  return probe.version > loaded.version
+    || (probe.evaluatedAt ?? '') > (loaded.evaluatedAt ?? '')
+    || (probe.syncedAt ?? '') > (loaded.syncedAt ?? '')
+}
+
 /** Cosa fa il pulsante di stato: dove porta la mappa e con quale etichetta. */
 interface StatusAction { next: ServiceMapStatus; label: 'activate' | 'pause' | 'resume' }
 
@@ -98,9 +125,29 @@ export function ServiceDetailPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [updateOpen, setUpdateOpen] = useState(false)
 
-  const { data, previousData, loading, error, refetch } = useQuery<{ serviceMap: ServiceMapDetail | null }>(GET_SERVICE_MAP, {
-    variables: { id }, fetchPolicy: 'cache-and-network', ...pausedWhenHidden(POLL_MS),
+  /**
+   * C-8: in polling va SOLO la sonda (tre marcatori, `no-cache`), non l'intero
+   * dettaglio. Prima nodi, archi e 50 voci di cronologia con le cause
+   * ripartivano ogni quindici secondi per ogni scheda aperta.
+   */
+  const { data: probeData } = useQuery<{ serviceMap: ServiceMapProbe | null }>(GET_SERVICE_MAP_STATUS, {
+    variables: { id }, fetchPolicy: 'no-cache', ...pausedWhenHidden(POLL_MS),
   })
+  const { data, previousData, loading, error, refetch } = useQuery<{ serviceMap: ServiceMapDetail | null }>(GET_SERVICE_MAP, {
+    variables: { id }, fetchPolicy: 'cache-first',
+  })
+  /**
+   * Rilettura del documento pesante SOLO quando la sonda è più avanti: una
+   * valutazione nuova (cause e salute dei componenti diverse), una
+   * sincronizzazione (nodi e archi diversi) o una configurazione salvata da un
+   * altro amministratore. Le mutation di questa pagina restituiscono già il
+   * documento completo: non fanno scattare nulla.
+   */
+  const loaded = (data ?? previousData)?.serviceMap ?? null
+  const probe  = probeData?.serviceMap ?? null
+  const behind = probe !== null && loaded !== null && probeIsAhead(probe, loaded)
+  useEffect(() => { if (behind) void refetch() }, [behind, refetch])
+
   const [reevaluate, { loading: reevaluating }] = useMutation<{ reevaluateServiceMap: ServiceMapDetail }>(REEVALUATE_SERVICE_MAP)
   const [setStatus, { loading: settingStatus }] = useMutation<{ setServiceMapStatus: ServiceMapDetail }>(SET_SERVICE_MAP_STATUS)
   const [deleteMap, { loading: deleting }] = useMutation<{ deleteServiceMap: boolean }>(DELETE_SERVICE_MAP)
@@ -108,7 +155,7 @@ export function ServiceDetailPage() {
 
   if (loading && !data && !previousData) return <PageLoader />
   if (error && !data) return <PageContainer><QueryError message={error.message} onRetry={() => void refetch()} /></PageContainer>
-  const map = (data ?? previousData)?.serviceMap
+  const map = loaded
   if (!map) {
     return (
       <PageContainer>
@@ -125,6 +172,13 @@ export function ServiceDetailPage() {
   const selected = selectedId ? (nodeById.get(selectedId) ?? null) : null
   const since = map.healthSince ? formatDuration(Date.now() - new Date(map.healthSince).getTime()) : null
   const busy = reevaluating || settingStatus || deleting || syncing
+  /**
+   * Mappa ferma: il motore rifiuta la sincronizzazione manuale (`sync.ts`:
+   * «is paused: reactivate it before synchronizing»). «Rivaluta ora» invece
+   * l'API la accetta anche da ferma (`evaluateServiceMap` non guarda lo stato):
+   * resta offerto.
+   */
+  const paused = map.status === 'paused'
   const ifActive = healthIfActiveNote(t, map)
   const statusAction = lookupOrError(STATUS_ACTION as Record<string, StatusAction>, map.status, 'SERVICE_STATUS_ACTION', STATUS_ACTION.active)
 
@@ -200,9 +254,15 @@ export function ServiceDetailPage() {
           {/* R1: la finestra di change non deve nascondere quanto starebbe male il servizio senza di essa. */}
           {ifActive && <span data-testid="health-if-active" style={{ color: palette.purple.text, fontWeight: 500 }}>{ifActive}</span>}
           {since && <span title={t('monitoring.services.sinceHint', { date: formatDateTime(map.healthSince) })}>{t('monitoring.services.since', { duration: since })}</span>}
-          <span>{map.evaluatedAt ? t('monitoring.services.detail.evaluated', { ago: timeAgo(map.evaluatedAt) }) : t('monitoring.services.detail.neverEvaluated')}</span>
+          <span data-testid="evaluated-at" title={map.evaluatedAt ? formatDateTime(map.evaluatedAt) : undefined}>
+            {map.evaluatedAt ? t('monitoring.services.detail.evaluated', { ago: timeAgo(map.evaluatedAt) }) : t('monitoring.services.detail.neverEvaluated')}
+          </span>
           <span data-testid="synced-at" title={map.syncedAt ? t('monitoring.services.syncMode.syncedHint', { date: formatDateTime(map.syncedAt) }) : undefined}>
             {map.syncedAt ? t('monitoring.services.syncMode.synced', { ago: timeAgo(map.syncedAt) }) : t('monitoring.services.syncMode.neverSynced')}
+          </span>
+          {/* C-12: la versione sta qui, dove si leggono gli altri metadati; la scheda tiene solo la configurazione. */}
+          <span data-testid="map-version" title={map.updatedAt ? t('monitoring.services.detail.updatedHint', { date: formatDateTime(map.updatedAt) }) : undefined}>
+            {t('monitoring.services.detail.versionShort', { version: map.version })}
           </span>
         </div>
         {/* R2 (D6.2/D6.4): perché la salute è questa quando le cause non bastano — sorgente in tempesta o change su un CI a monte. */}
@@ -233,8 +293,15 @@ export function ServiceDetailPage() {
               {t('monitoring.services.detail.actions.reevaluate')}
             </Button>
             {/* Mappa viva: si sincronizza a richiesta e il diff serve solo a rivedere ed escludere; congelata: il diff è l'unico modo di far entrare i componenti nuovi. */}
+            {/* C-11: su una mappa in pausa il motore rifiuta la sincronizzazione manuale: il pulsante è disabilitato e dice perché, invece di fallire ogni volta. */}
             {map.autoSync && (
-              <Button variant="secondary" size="sm" disabled={busy} icon={syncing ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />} onClick={() => void onSyncNow()}>
+              <Button
+                variant="secondary" size="sm"
+                disabled={busy || paused}
+                title={paused ? t('monitoring.services.detail.actions.syncPaused') : undefined}
+                icon={syncing ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />}
+                onClick={() => void onSyncNow()}
+              >
                 {t('monitoring.services.detail.actions.syncNow')}
               </Button>
             )}
@@ -272,31 +339,35 @@ export function ServiceDetailPage() {
             <ServiceComponentsTable map={map} canEdit={isAdmin} ciTypeLabel={ciTypeLabel} onReload={() => void refetch()} />
           </SectionCard>
 
-          <ServiceHistorySection entries={map.history} total={map.historyCount} />
+          <ServiceHistorySection mapId={map.id} entries={map.history} total={map.historyCount} />
         </div>
 
         <div>
-          {selected && <NodePanel node={selected} typeLabel={ciTypeLabel(selected.ci.type)} onClose={() => setSelectedId(null)} />}
+          {selected && (
+            <NodePanel
+              node={selected}
+              typeLabel={ciTypeLabel(selected.ci.type)}
+              /* C-12: «da dove si arriva» — il predecessore, che la sincronizzazione aggiorna; cliccarlo lo seleziona sulla mappa. */
+              via={selected.via === null ? null : (nodeById.get(selected.via)?.ci ?? null)}
+              viaMissing={selected.via !== null && !nodeById.has(selected.via)}
+              onSelect={setSelectedId}
+              onClose={() => setSelectedId(null)}
+            />
+          )}
 
           {/* Incident aperto dal monitoraggio per questo servizio (ondata 3). */}
           <ServiceOpenIncidentCard incident={map.openIncident} openIncidentFrom={map.rules.openIncidentFrom} />
 
+          {/* C-12: la scheda tiene la sola CONFIGURAZIONE; stato, valutazione, sincronizzazione e versione stanno una volta sola, in testata. */}
           <SectionCard title={t('monitoring.services.detail.service')} defaultOpen>
             <DetailField label={t('monitoring.services.detail.fields.service')} value={map.service.name} />
             <DetailField label={t('monitoring.services.detail.fields.criticality')} value={map.service.criticality ? enumLabel(map.service.criticality) : null} />
             <DetailField label={t('monitoring.services.detail.fields.owner')} value={map.service.ownerGroup?.name ?? null} />
-            <DetailField label={t('monitoring.services.detail.fields.status')} value={<ServiceStatusPill status={map.status} />} />
-            <DetailField label={t('monitoring.services.detail.fields.version')} value={String(map.version)} />
             <DetailField label={t('monitoring.services.detail.fields.maxDepth')} value={String(map.maxDepth)} />
             <DetailField label={t('monitoring.services.detail.fields.relationshipTypes')} value={map.relationshipTypes.length > 0 ? map.relationshipTypes.join(', ') : null} />
             <DetailField label={t('monitoring.services.detail.fields.builtFrom')} value={builtFromLabel(map.builtFrom, t)} />
             <DetailField label={t('monitoring.services.detail.fields.excluded')} value={t('monitoring.services.detail.fields.excludedCount', { count: map.excluded.length })} />
             <DetailField label={t('monitoring.services.detail.fields.updatedAt')} value={map.updatedAt ? `${formatDateTime(map.updatedAt)} · ${timeAgo(map.updatedAt)}` : null} />
-            <DetailField label={t('monitoring.services.detail.fields.evaluatedAt')} value={map.evaluatedAt ? `${formatDateTime(map.evaluatedAt)} · ${timeAgo(map.evaluatedAt)}` : null} />
-            <DetailField
-              label={t('monitoring.services.detail.fields.syncedAt')}
-              value={map.syncedAt ? `${formatDateTime(map.syncedAt)} · ${timeAgo(map.syncedAt)}` : t('monitoring.services.detail.fields.syncedNever')}
-            />
             {isAdmin && <ServiceAutoSyncToggle map={map} onReload={() => void refetch()} />}
           </SectionCard>
 
@@ -345,8 +416,19 @@ function CauseRow({ cause, serviceName, typeLabel, onSelect }: { cause: ImpactCa
   )
 }
 
+interface NodePanelProps {
+  node:       ServiceMapNode
+  typeLabel:  string
+  /** Il predecessore (`via`) quando è un componente della mappa. */
+  via:        { id: string; name: string } | null
+  /** `via` valorizzato ma non incluso nella mappa: si dice, non si tace. */
+  viaMissing: boolean
+  onSelect:   (id: string) => void
+  onClose:    () => void
+}
+
 /** Pannello laterale del componente selezionato sulla mappa. */
-function NodePanel({ node, typeLabel, onClose }: { node: ServiceMapNode; typeLabel: string; onClose: () => void }) {
+function NodePanel({ node, typeLabel, via, viaMissing, onSelect, onClose }: NodePanelProps) {
   const { t } = useTranslation()
   const yesNo = (v: boolean) => (v ? t('common.yes') : t('common.no'))
   const consoleLink = `/events?ciId=${encodeURIComponent(node.ci.id)}`
@@ -366,6 +448,18 @@ function NodePanel({ node, typeLabel, onClose }: { node: ServiceMapNode; typeLab
         </div>
         <DetailField label={t('monitoring.services.detail.nodeFields.type')} value={typeLabel} />
         <DetailField label={t('monitoring.services.detail.nodeFields.level')} value={String(node.level)} />
+        <DetailField
+          label={t('monitoring.services.detail.nodeFields.via')}
+          value={via
+            ? (
+              <button type="button" data-testid="node-via" onClick={() => onSelect(via.id)} title={t('monitoring.services.why.select', { name: via.name })} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontWeight: 500, color: colors.brand, cursor: 'pointer' }}>
+                {via.name}
+              </button>
+            )
+            : viaMissing
+              ? <span data-testid="node-via" style={{ color: palette.warning.text }}>{t('monitoring.services.detail.nodeFields.viaMissing')}</span>
+              : <span data-testid="node-via">{t('monitoring.services.detail.nodeFields.viaService')}</span>}
+        />
         <DetailField label={t('monitoring.services.detail.nodeFields.role')} value={roleLabel(t, node.role)} />
         <DetailField label={t('monitoring.services.detail.nodeFields.propagate')} value={propagationLabel(t, node.propagate)} />
         <DetailField label={t('monitoring.services.detail.nodeFields.weight')} value={String(node.weight)} />

@@ -173,7 +173,19 @@ describe('serviceMaps', () => {
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     await expectCode(serviceResolvers.Query.serviceMaps(null, { filter: { health: ['broken'] } }, viewer), 'BAD_USER_INPUT', /Invalid health filter "broken"/)
     await expectCode(serviceResolvers.Query.serviceMaps(null, { filter: { status: 'archived' } }, viewer), 'BAD_USER_INPUT', /Invalid status filter/)
+    await expectCode(serviceResolvers.Query.serviceMaps(null, { filter: { criticality: ['molto_critico'] } }, viewer), 'BAD_USER_INPUT', /Invalid criticality filter "molto_critico"/)
     expect(runQueryOne).not.toHaveBeenCalled()
+  })
+
+  // Revisione 2 · C-7 e C-14: due filtri che prima il web simulava a valle (leggendo una
+  // pagina e scartando), con il risultato che il banner dei servizi critici poteva tacere.
+  it('filtra per criticità dell\'applicazione radice e per CI incluso, nella stessa query', async () => {
+    onCypher([[/countTotal/, { countTotal: 3, operational: 0, degraded: 0, down: 3, maintenance: 0, unknown: 0, total: 1, items: [mapRow()] }]])
+    await serviceResolvers.Query.serviceMaps(null, { filter: { health: ['down'], criticality: ['mission_critical', 'business_critical'], ciId: 'ci-7' } }, viewer)
+    const q = callMatching(/countTotal/)!
+    expect(q.cypher).toContain('EXISTS { MATCH (ba:BusinessApplication {tenant_id: $tenantId})-[:HAS_SERVICE_MAP]->(m) WHERE ba.criticality IN $criticality }')
+    expect(q.cypher).toContain('EXISTS { MATCH (m)-[:INCLUDES]->(ci {id: $ciId, tenant_id: $tenantId}) }')
+    expect(q.params).toEqual({ tenantId: 'tenant-1', limit: 50, offset: 0, health: ['down'], criticality: ['mission_critical', 'business_critical'], ciId: 'ci-7' })
   })
 })
 

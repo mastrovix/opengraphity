@@ -388,6 +388,8 @@ export function eventsSDL(): string {
     payloadKeys(payload: String!): [PayloadKey!]!
     """Le sorgenti di monitoraggio con la configurazione completa: webhook in ingresso con entityType = event (pagina Sorgenti)."""
     monitoringSources: [InboundWebhook!]!
+    """Una sola sorgente con la configurazione completa (pagina di modifica): null se non esiste nel tenant. Prima si leggevano tutte per aprirne una."""
+    monitoringSource(id: ID!): InboundWebhook
     """Le sorgenti di monitoraggio come riferimenti leggeri (id, nome, connettore, attiva): per il filtro della console e il banner "nessuna sorgente"."""
     monitoringSourceRefs: [MonitoringSourceRef!]!
     ciHealth(ciId: ID!): CIHealthInfo!

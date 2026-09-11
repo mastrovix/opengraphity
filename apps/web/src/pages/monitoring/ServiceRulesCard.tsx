@@ -129,8 +129,22 @@ export function ServiceRulesCard({ map, canEdit, onReload }: Props) {
   // limite che applica anche l'API, detto qui prima di provare a salvare.
   const maxMinNodes = Math.max(1, map.nodeCount)
   const errors  = validateRulesForm(form, maxMinNodes)
-  const invalid = Object.keys(errors).length > 0
   const dirty   = JSON.stringify(form) !== baselineKey
+
+  /**
+   * C-6: «regola salvata non più applicabile» ≠ «campo modificato non valido».
+   * Con `minNodes = 5` salvato e una sincronizzazione che porta la mappa a 3
+   * componenti, l'admin non ha toccato niente: la scheda diceva «Campi da
+   * correggere» e nascondeva l'anteprima come se avesse sbagliato lui. Qui il
+   * caso ha una riga sua, ambra, che spiega la conseguenza (il servizio non
+   * può degradarsi) e un pulsante che precompila il numero di componenti.
+   * Resta bloccante — l'API rifiuterebbe il salvataggio — ma non è un errore
+   * di compilazione.
+   */
+  const savedMinNodesStale = errors.minNodes?.key === 'aboveComponents' && form.minNodes === baseline.minNodes
+  const fieldErrors: RuleErrors = savedMinNodesStale ? { ...errors, minNodes: undefined } : errors
+  const blocked = Object.values(fieldErrors).some((e) => e !== undefined)
+  const invalid = blocked || savedMinNodesStale
 
   const set = <K extends keyof ServiceImpactRulesInput>(key: K, value: ServiceImpactRulesInput[K]) => setForm((f) => ({ ...f, [key]: value }))
   // Campo vuoto → NaN (non 0): la validazione lo segnala invece di salvare uno zero mai scritto.
@@ -151,8 +165,12 @@ export function ServiceRulesCard({ map, canEdit, onReload }: Props) {
   const helpId  = (key: keyof ServiceImpactRulesInput) => `${fid(key)}-help`
   const errorId = (key: NumField) => `${fid(key)}-error`
 
+  /** Id della riga ambra: il campo `minNodes` la indica come propria descrizione. */
+  const staleRowId = fid('minNodes-stale')
+
   const numberField = (key: NumField) => {
-    const err = errors[key]
+    const err = fieldErrors[key]
+    const stale = key === 'minNodes' && savedMinNodesStale
     const max = key === 'minNodes' ? maxMinNodes : RANGE[key].max
     return (
       <div>
@@ -161,13 +179,21 @@ export function ServiceRulesCard({ map, canEdit, onReload }: Props) {
           id={fid(key)} type="number" step={1} min={RANGE[key].min} max={max}
           value={Number.isNaN(form[key]) ? '' : String(form[key])}
           onChange={setNum(key)} disabled={saving}
-          aria-invalid={err ? true : undefined}
-          aria-describedby={[err ? errorId(key) : null, helpId(key)].filter(Boolean).join(' ')}
+          aria-invalid={err || stale ? true : undefined}
+          aria-describedby={[err ? errorId(key) : null, stale ? staleRowId : null, helpId(key)].filter(Boolean).join(' ')}
         />
         {err && (
           <p id={errorId(key)} role="alert" style={{ ...hint, color: colors.danger, fontWeight: 500 }}>
             {t(`monitoring.services.rulesEdit.validation.${err.key}`, { min: err.min, max: err.max })}
           </p>
+        )}
+        {stale && (
+          <div id={staleRowId} role="status" data-testid="rules-saved-stale" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 6, padding: '8px 12px', borderRadius: 8, background: palette.warning.bg, border: `1px solid ${palette.warning.border}`, color: palette.warning.text, fontSize: 'var(--font-size-body)' }}>
+            <span>{t('monitoring.services.rulesEdit.savedMinNodesStale', { saved: map.rules.minNodes, count: map.nodeCount })}</span>
+            <Button variant="secondary" size="xs" disabled={saving} onClick={() => set('minNodes', maxMinNodes)}>
+              {t('monitoring.services.rulesEdit.savedMinNodesFix', { count: maxMinNodes })}
+            </Button>
+          </div>
         )}
         <p id={helpId(key)} style={hint}>{t(`monitoring.services.rulesEdit.help.${key}`)}</p>
       </div>
@@ -212,8 +238,8 @@ export function ServiceRulesCard({ map, canEdit, onReload }: Props) {
         )}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span role="status" data-testid="rules-dirty" style={{ fontSize: 'var(--font-size-body)', color: invalid ? colors.danger : dirty ? palette.warning.text : colors.slateLight }}>
-            {invalid ? t('monitoring.services.rulesEdit.blocked') : dirty ? t('monitoring.services.rulesEdit.unsaved') : t('monitoring.services.rulesEdit.noChanges')}
+          <span role="status" data-testid="rules-dirty" style={{ fontSize: 'var(--font-size-body)', color: blocked ? colors.danger : dirty ? palette.warning.text : colors.slateLight }}>
+            {blocked ? t('monitoring.services.rulesEdit.blocked') : dirty ? t('monitoring.services.rulesEdit.unsaved') : t('monitoring.services.rulesEdit.noChanges')}
           </span>
           <Button variant="secondary" size="xs" disabled={saving || !dirty} icon={<RotateCcw size={13} aria-hidden="true" />} onClick={() => setForm(baseline)}>
             {t('common.reset')}
@@ -223,8 +249,12 @@ export function ServiceRulesCard({ map, canEdit, onReload }: Props) {
           </Button>
         </div>
 
-        {/* Anteprima con le regole in corso di modifica: nessuna scrittura. */}
-        {!invalid && <ServiceImpactPreviewLine mapId={map.id} rules={form} testId="rules-preview" />}
+        {/* Anteprima con le regole in corso di modifica: nessuna scrittura, e
+            parte solo quando c'è qualcosa di modificato (C-8: prima una query
+            `network-only` partiva a ogni apertura della pagina per ogni admin).
+            Si rilegge quando la mappa viene rivalutata (`evaluatedAt`), così non
+            resta ferma all'istante del montaggio contraddicendo la testata. */}
+        {dirty && !invalid && <ServiceImpactPreviewLine mapId={map.id} rules={form} evaluatedAt={map.evaluatedAt} testId="rules-preview" />}
 
         <p style={{ ...hint, marginTop: 0 }}>{t('monitoring.services.detail.rulesVersion', { version: map.rules.version })}</p>
       </div>

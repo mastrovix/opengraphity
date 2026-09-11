@@ -309,9 +309,11 @@ export function ServiceComponentsTable({ map, canEdit, ciTypeLabel, onReload }: 
         </table>
       </div>
 
-      {/* Anteprima con i componenti in corso di modifica: nessuna scrittura. */}
-      {canEdit && !invalid && (
-        <ServiceImpactPreviewLine mapId={map.id} nodes={changed.length > 0 ? changed : null} testId="components-preview" />
+      {/* Anteprima con i componenti in corso di modifica: nessuna scrittura, e
+          solo quando c'è davvero qualcosa di modificato (C-8). Si rilegge
+          quando la mappa viene rivalutata (`evaluatedAt`). */}
+      {canEdit && !invalid && changed.length > 0 && (
+        <ServiceImpactPreviewLine mapId={map.id} nodes={changed} evaluatedAt={map.evaluatedAt} testId="components-preview" />
       )}
     </div>
   )

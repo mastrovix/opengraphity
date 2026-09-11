@@ -200,7 +200,7 @@ describe('CIDetailPage — sezione Salute (monitoraggio)', () => {
     await user.click(healthCard())
     expect(await screen.findByText('No alarm has concerned this CI yet: health is unknown.')).toBeInTheDocument()
     expect(screen.getByText('web-01.acme.local')).toBeInTheDocument()
-    expect(screen.getByText('No events for this CI.')).toBeInTheDocument()
+    expect(screen.getByText('No alarms for this CI.')).toBeInTheDocument()
   })
 
   it('CI giù: scheda aperta con badge, allarmi attivi con link alla console filtrata, forzatura per operator', async () => {

@@ -27,7 +27,7 @@ import { requireRole } from '../../lib/requireRole.js'
 import { mapIncident, mapTeam } from '../../lib/mappers.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import {
-  NODE_WEIGHT_MIN,
+  NODE_WEIGHT_MIN, SERVICE_CRITICALITIES,
   SERVICE_HEALTHS, SERVICE_HEALTH_SEVERITY_ORDER, SERVICE_HEALTH_TRIGGERS, SERVICE_HISTORY_MAX, SERVICE_MAP_DEFAULT_DEPTH, SERVICE_MAP_STATUSES,
   SERVICE_RELATIONSHIP_TYPES, SERVICE_STALE_REASONS, parseServiceImpactRules,
   type ServiceHealth, type ServiceHealthTrigger, type ServiceImpactRules, type ServiceMapStatus, type ServiceStaleReason,
@@ -249,7 +249,7 @@ async function requireServiceMap(id: string, tenantId: string) {
 
 // ── Query ────────────────────────────────────────────────────────────────────
 
-interface ServiceMapFilter { health?: string[] | null; status?: string | null; search?: string | null }
+interface ServiceMapFilter { health?: string[] | null; status?: string | null; search?: string | null; criticality?: string[] | null; ciId?: string | null }
 
 async function serviceMaps(_: unknown, args: { filter?: ServiceMapFilter | null; limit?: number | null; offset?: number | null }, ctx: GraphQLContext) {
   const f = args.filter ?? {}
@@ -266,6 +266,17 @@ async function serviceMaps(_: unknown, args: { filter?: ServiceMapFilter | null;
     conditions.push('m.status = $status'); params['status'] = f.status
   }
   if (f.search?.trim()) { conditions.push('toLower(m.name) CONTAINS $search'); params['search'] = f.search.trim().toLowerCase() }
+  // Revisione 2 · C-7: la criticità è dell'applicazione radice, non della mappa.
+  if (f.criticality?.length) {
+    for (const c of f.criticality) if (!(SERVICE_CRITICALITIES as readonly string[]).includes(c)) throw new ValidationError(`Invalid criticality filter ${JSON.stringify(c)}: expected one of ${SERVICE_CRITICALITIES.join(', ')}`)
+    conditions.push('EXISTS { MATCH (ba:BusinessApplication {tenant_id: $tenantId})-[:HAS_SERVICE_MAP]->(m) WHERE ba.criticality IN $criticality }')
+    params['criticality'] = f.criticality
+  }
+  // Revisione 2 · C-14: «quali servizi dipendono da questo CI», dalla pagina Salute CI.
+  if (f.ciId) {
+    conditions.push('EXISTS { MATCH (m)-[:INCLUDES]->(ci {id: $ciId, tenant_id: $tenantId}) }')
+    params['ciId'] = f.ciId
+  }
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''
 
   const session = getSession()

@@ -826,6 +826,18 @@ describe('monitoringSources / ciHealth', () => {
     await expectCode(eventResolvers.Query.monitoringSources(null, null, operator), 'FORBIDDEN')
   })
 
+  // Revisione 2 · residuo D·5: la pagina di modifica apre UNA sorgente e fin qui
+  // doveva leggerle tutte, con la configurazione completa di ciascuna.
+  it('monitoringSource(id) → una sola sorgente, scopata per tenant ed entity_type; admin-only; assente → null', async () => {
+    onCypher([[/MATCH \(w:InboundWebhook \{id: \$id, tenant_id: \$tenantId, entity_type: 'event'\}\)/, { props: { id: 'src-1', name: 'Zabbix', entity_type: 'event', connector_kind: 'zabbix', error_count: 0 } }]])
+    const out = await eventResolvers.Query.monitoringSource(null, { id: 'src-1' }, admin)
+    expect(out).toEqual(expect.objectContaining({ id: 'src-1', connectorKind: 'zabbix' }))
+    expect(callMatching(/\$id, tenant_id/)!.params).toEqual({ id: 'src-1', tenantId: 'tenant-1' })
+    onCypher([[/\$id, tenant_id/, null]])
+    expect(await eventResolvers.Query.monitoringSource(null, { id: 'src-x' }, admin)).toBeNull()
+    await expectCode(eventResolvers.Query.monitoringSource(null, { id: 'src-1' }, operator), 'FORBIDDEN')
+  })
+
   it('A-1 — monitoringSourceRefs → le stesse sorgenti come riferimenti leggeri (id, name, connectorKind, enabled) a ruoli predefiniti: niente mappature, script o lastError', async () => {
     onCypher([[/MATCH \(w:InboundWebhook \{tenant_id: \$tenantId, entity_type: 'event'\}\)/, [{ props: { id: 'src-1', name: 'Zabbix', entity_type: 'event', connector_kind: 'zabbix', enabled: true, transform_script: 'secret', last_error: 'boom' } }, { props: { id: 'src-2', name: 'Legacy', entity_type: 'event' } }]]])
     const out = await eventResolvers.Query.monitoringSourceRefs(null, null, viewer)

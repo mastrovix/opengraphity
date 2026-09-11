@@ -85,6 +85,18 @@ export const SERVICE_MAP_ROW_FIELDS = gql`
   }
 `
 
+/**
+ * Una voce della cronologia del servizio: selezionata dal dettaglio (le ultime
+ * 10) e da `GET_SERVICE_MAP_HISTORY` («Mostra tutte»). Tipo:
+ * `ServiceHealthEntry` in types/services.ts.
+ */
+export const SERVICE_HISTORY_FIELDS = gql`
+  fragment ServiceHistoryFields on ServiceHealthEntry {
+    id at health previousHealth impactScore trigger note
+    causes { ci { id name type } health weight critical path { id name } }
+  }
+`
+
 export const SERVICE_MAP_DETAIL_FIELDS = gql`
   fragment ServiceMapDetailFields on ServiceMap {
     ...ServiceMapRowFields
@@ -93,14 +105,12 @@ export const SERVICE_MAP_DETAIL_FIELDS = gql`
     nodes { ci { id name type } level role propagate weight critical via addedBy health inMaintenance contributes excludedReason }
     edges { source target relType }
     excluded { id name type }
-    history(limit: 50) {
-      id at health previousHealth impactScore trigger note
-      causes { ci { id name type } health weight critical path { id name } }
-    }
+    history(limit: 10) { ...ServiceHistoryFields }
     historyCount
     openIncident { id number title status workflowInstance { id currentStep status } }
   }
   ${SERVICE_MAP_ROW_FIELDS}
+  ${SERVICE_HISTORY_FIELDS}
 `
 
 /**

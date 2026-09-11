@@ -12,6 +12,32 @@ export interface ColumnDef<T> {
   render?:  (value: unknown, row: T) => React.ReactNode
 }
 
+const getRawValue = (row: object, key: string): unknown => (row as Record<string, unknown>)[key]
+
+/** Valore su cui si ordina: per un oggetto con `name` (CI, sorgente, squadra) è il nome, non `[object Object]`. */
+function getSortValue(row: object, key: string): unknown {
+  const v = getRawValue(row, key)
+  if (v && typeof v === 'object' && !Array.isArray(v) && 'name' in v) return (v as { name: string }).name
+  return v
+}
+
+/**
+ * L'ordinamento lato client della tabella, esportato perché una pagina che
+ * tiene l'ordinamento nell'URL (modalità «controllata») deve ordinare le righe
+ * con la STESSA regola con cui le ordinerebbe la tabella: null in fondo,
+ * confronto testuale con i numeri in ordine numerico. Non muta `rows`.
+ */
+export function sortRowsBy<T extends object>(rows: T[], key: string, dir: 'asc' | 'desc'): T[] {
+  return [...rows].sort((a, b) => {
+    const av = getSortValue(a, key)
+    const bv = getSortValue(b, key)
+    if (av == null) return 1
+    if (bv == null) return -1
+    const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true })
+    return dir === 'asc' ? cmp : -cmp
+  })
+}
+
 interface Props<T> {
   columns:         ColumnDef<T>[]
   data:            T[]
@@ -23,6 +49,13 @@ interface Props<T> {
   onSort?:         (field: string, direction: 'asc' | 'desc') => void
   sortField?:      string | null
   sortDir?:        'asc' | 'desc'
+  /**
+   * Frase che dice DOVE vale l'ordinamento, nel `title` delle intestazioni
+   * ordinabili (D·2.8): una lista paginata il cui server non ordina riordina
+   * solo la pagina caricata, e una colonna «ordinata» che non lo è su tutto il
+   * risultato inganna. Omesso = nessuna precisazione (l'ordinamento è del server).
+   */
+  sortHint?:       string
   label?:          string  // aria-label per la tabella
   /** If provided, renders an expanded row below the row whose id matches expandedRowId */
   expandedRowId?:  string | null
@@ -62,6 +95,7 @@ export function SortableFilterTable<T extends object>({
   onSort,
   sortField: controlledSortField,
   sortDir: controlledSortDir,
+  sortHint,
   label,
   expandedRowId,
   renderExpandedRow,
@@ -97,27 +131,12 @@ export function SortableFilterTable<T extends object>({
     }
   }
 
-  const getRawVal = (row: T, key: keyof T): unknown =>
-    (row as Record<string, unknown>)[String(key)]
-
-  const getSortVal = (row: T, key: keyof T): unknown => {
-    const v = getRawVal(row, key)
-    if (v && typeof v === 'object' && !Array.isArray(v) && 'name' in v)
-      return (v as { name: string }).name
-    return v
-  }
+  const getRawVal = (row: T, key: keyof T): unknown => getRawValue(row, String(key))
 
   // Only sort client-side when in uncontrolled mode
   const sorted = isControlled || localSortKey == null
     ? data
-    : [...data].sort((a, b) => {
-        const av = getSortVal(a, localSortKey)
-        const bv = getSortVal(b, localSortKey)
-        if (av == null) return 1
-        if (bv == null) return -1
-        const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true })
-        return localSortDir === 'asc' ? cmp : -cmp
-      })
+    : sortRowsBy(data, String(localSortKey), localSortDir)
 
   const rowIds = selectable
     ? sorted.map((row, i) => String((row as Record<string, unknown>)['id'] ?? i))
@@ -179,6 +198,7 @@ export function SortableFilterTable<T extends object>({
                     <button
                       type="button"
                       onClick={() => handleSort(col.key)}
+                      title={sortHint}
                       style={{
                         display:       'flex',
                         alignItems:    'center',

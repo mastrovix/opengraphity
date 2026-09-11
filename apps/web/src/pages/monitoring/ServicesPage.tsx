@@ -2,9 +2,11 @@
  * Pagina «Servizi» (gruppo Monitoraggio, staff): la salute dei servizi di
  * business calcolata dai componenti che li reggono, dal più grave.
  *
- * Struttura come Salute CI: quattro riquadri-contatore cliccabili (Giù /
- * Degradati / In manutenzione / Operativi; «Sconosciuti» è solo informativo:
- * nessun componente con salute nota), filtri (stato della mappa, ricerca con
+ * Struttura come Salute CI: cinque riquadri-contatore cliccabili (Giù /
+ * Degradati / In manutenzione / Operativi / Sconosciuti — quest'ultimo
+ * «nessun componente con salute nota»: dalla revisione 2 filtra come gli
+ * altri, perché `unknown` è una salute del vocabolario e l'URL la accettava
+ * già), filtri (stato della mappa, ricerca con
  * debounce) e tabella per gravità: servizio (link), salute con «da N min»,
  * punteggio d'impatto (barra 0–100 + numero), causa principale («db-01 giù
  * via api-03»), componenti, owner. Polling ogni 15 s (in pausa a scheda
@@ -15,8 +17,11 @@
  * fra i servizi che le abilitano (BusinessCapabilitiesSection, ondata 3).
  *
  * L'URL è la sorgente dei filtri e della pagina (`?health=down&status=active
- * &q=billing&page=2`, scritti con `replace`): un F5 o un link condiviso non li
- * perdono. Stato vuoto (nessuna mappa nel tenant): «Crea una mappa» (admin)
+ * &q=billing&ciId=<id>&page=2`, scritti con `replace`): un F5 o un link
+ * condiviso non li perdono. `?ciId=` (revisione 2, C-14) tiene solo i servizi
+ * la cui mappa include quel CI — ci arriva la colonna «Servizi» di Salute CI —
+ * ed è rappresentato da un chip che lo toglie.
+ * Stato vuoto (nessuna mappa nel tenant): «Crea una mappa» (admin)
  * apre il dialogo minimale CreateServiceMapDialog.
  *
  * Contratto: `serviceMaps` in apps/api/src/graphql/schema-services.ts.
@@ -53,7 +58,17 @@ const isStatus = (v: string | null): v is ServiceMapStatus => v !== null && (SER
 
 export const servicePath = (id: string) => `/monitoring/services/${encodeURIComponent(id)}`
 
-/** Riquadri: i primi quattro filtrano, «sconosciuti» è una nota. */
+/** I servizi la cui mappa include questo CI (colonna «Servizi» di Salute CI, C-14). */
+export const servicesForCIPath = (ciId: string) => `/monitoring/services?ciId=${encodeURIComponent(ciId)}`
+
+/**
+ * Riquadri: tutti e cinque filtrano. «Sconosciuti» era una nota per analogia
+ * con Salute CI, dove il quarto riquadro conta CI che la query non elenca
+ * nemmeno; qui `unknown` è una salute del vocabolario (`SERVICE_HEALTHS`), la
+ * lista li mostra e l'URL accettava già `?health=unknown`: un riquadro non
+ * cliccabile lasciava un filtro che si poteva mettere da un link e non
+ * togliere dai riquadri (C-13).
+ */
 const TILE_ORDER: ServiceHealth[] = ['down', 'degraded', 'maintenance', 'operational', 'unknown']
 const TILE_ICON: Record<ServiceHealth, LucideIcon> = { down: XCircle, degraded: AlertTriangle, maintenance: Wrench, operational: CheckCircle2, unknown: HelpCircle }
 
@@ -66,21 +81,24 @@ interface ServicesFilter {
   health: ServiceHealth | null
   status: ServiceMapStatus | null
   search: string
+  /** Solo i servizi la cui mappa include questo CI; null = tutti. */
+  ciId:   string | null
 }
 
-const hasFilter = (f: ServicesFilter) => f.health !== null || f.status !== null || !!f.search.trim()
+const hasFilter = (f: ServicesFilter) => f.health !== null || f.status !== null || !!f.search.trim() || f.ciId !== null
 
 function toFilterVars(f: ServicesFilter): ServiceMapFilterVars | null {
   const vars: ServiceMapFilterVars = {}
   if (f.health)        vars.health = [f.health]
   if (f.status)        vars.status = f.status
   if (f.search.trim()) vars.search = f.search.trim()
+  if (f.ciId)          vars.ciId   = f.ciId
   return Object.keys(vars).length ? vars : null
 }
 
 // ── URL ──────────────────────────────────────────────────────────────────────
 
-const URL_KEYS = { health: 'health', status: 'status', search: 'q', page: 'page' } as const
+const URL_KEYS = { health: 'health', status: 'status', search: 'q', ciId: 'ciId', page: 'page' } as const
 
 /** Un valore di `health`/`status` fuori vocabolario nell'URL viene ignorato (URL scritto a mano): la pagina mostra tutto. */
 function filterFromParams(p: URLSearchParams): ServicesFilter {
@@ -90,6 +108,7 @@ function filterFromParams(p: URLSearchParams): ServicesFilter {
     health: isServiceHealth(health) ? health : null,
     status: isStatus(status) ? status : null,
     search: p.get(URL_KEYS.search) ?? '',
+    ciId:   p.get(URL_KEYS.ciId),
   }
 }
 
@@ -106,8 +125,7 @@ interface TileProps {
   context:  string
   hint:     string
   active:   boolean
-  /** Assente = riquadro informativo, non cliccabile. */
-  onClick?: () => void
+  onClick:  () => void
 }
 
 function HealthTile({ health, value, context, hint, active, onClick }: TileProps) {
@@ -133,12 +151,10 @@ function HealthTile({ health, value, context, hint, active, onClick }: TileProps
     background: active ? fam.tint : colors.white,
     border: active ? `2px solid ${fam.accent}` : '1px solid var(--border)',
     boxShadow: 'var(--shadow-card)',
-    cursor: onClick ? 'pointer' : 'default',
+    cursor: 'pointer',
     transition: 'background-color 150ms, border-color 150ms',
   }
-  return onClick
-    ? <button type="button" onClick={onClick} aria-pressed={active} title={hint} style={style}>{body}</button>
-    : <div title={hint} style={style}>{body}</div>
+  return <button type="button" onClick={onClick} aria-pressed={active} title={hint} style={style}>{body}</button>
 }
 
 // ── Tabella ──────────────────────────────────────────────────────────────────
@@ -353,24 +369,36 @@ export function ServicesPage() {
 
       {counts && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
-          {TILE_ORDER.map((h) => {
-            const clickable = h !== 'unknown'
-            return (
-              <HealthTile
-                key={h}
-                health={h}
-                value={counts[h]}
-                context={tileContext(h)}
-                hint={clickable ? t('monitoring.services.tiles.toggleHint') : t('monitoring.services.tiles.unknownHint')}
-                active={clickable && filter.health === h}
-                onClick={clickable ? () => toggleHealth(h) : undefined}
-              />
-            )
-          })}
+          {TILE_ORDER.map((h) => (
+            <HealthTile
+              key={h}
+              health={h}
+              value={counts[h]}
+              context={tileContext(h)}
+              hint={t('monitoring.services.tiles.toggleHint')}
+              active={filter.health === h}
+              onClick={() => toggleHealth(h)}
+            />
+          ))}
         </div>
       )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        {/* Arrivo dalla colonna «Servizi» di Salute CI: il chip dice che si guarda un solo CI e il clic lo toglie. */}
+        {filter.ciId && (
+          <button
+            type="button"
+            aria-pressed
+            data-testid="services-ci-filter"
+            onClick={() => setParams({ ciId: null })}
+            style={{
+              padding: '4px 10px', borderRadius: 999, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600,
+              border: '1px solid var(--color-brand)', background: 'var(--color-brand-light)', color: 'var(--color-brand)',
+            }}
+          >
+            {t('monitoring.console.ciFilter')}
+          </button>
+        )}
         <Select aria-label={t('monitoring.services.filters.status')} value={filter.status ?? ''} onChange={(e) => setParams({ status: e.target.value })} style={{ width: 180 }}>
           <option value="">{t('monitoring.services.filters.allStatuses')}</option>
           {SERVICE_MAP_STATUSES.map((s) => <option key={s} value={s}>{t(`monitoring.services.status.${s}`)}</option>)}

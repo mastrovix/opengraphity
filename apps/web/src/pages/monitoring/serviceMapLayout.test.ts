@@ -5,7 +5,10 @@
  * percorso senza arco vivo disegnati ma marcati non vivi.
  */
 import { describe, it, expect } from 'vitest'
-import { layoutServiceMap, causeSequence, NODE_H, GAP_Y, PAD, ROOT_REL } from './serviceMapLayout'
+import {
+  layoutServiceMap, causeSequence,
+  NODE_H, NODE_W, GAP_X, GAP_Y, PAD, LABEL_W, CHIP_W, FOCUS_ROW_MAX, ROOT_REL,
+} from './serviceMapLayout'
 import type { ImpactCause, ServiceMapEdge, ServiceMapNode } from '@/types/services'
 
 const n = (id: string, level: number, via: string | null, over: Partial<ServiceMapNode> = {}): ServiceMapNode => ({
@@ -90,5 +93,78 @@ describe('layoutServiceMap', () => {
     expect(l.levels).toEqual([0])
     expect(l.nodes).toHaveLength(1)
     expect(l.edges).toEqual([])
+    expect(l.collapsed).toEqual([])
+  })
+
+  it('una causa il cui percorso non arriva al livello 1: il servizio è comunque sul percorso, ma nessun arco viene inventato', () => {
+    // il capo del percorso è a livello 2: non c'è adiacenza col servizio da disegnare
+    const l = layoutServiceMap('svc', NODES, EDGES, [cause('san-01', 'down', ['db-01'])])
+    expect(l.nodes.find((p) => p.id === 'svc')!.onPath).toBe('down')
+    expect(l.edges.find((x) => x.source === 'svc')!.highlight).toBeNull()
+    expect(l.edges.filter((x) => x.source === 'svc')).toHaveLength(1)     // solo REALIZES verso api-03
+  })
+
+  it('due archi fra la stessa coppia con relType diversi: tutti e due disegnati, il percorso evidenzia entrambi', () => {
+    const l = layoutServiceMap('svc', NODES, [...EDGES, e('api-03', 'db-01', 'HOSTED_ON')], [cause('db-01', 'down', ['api-03'])])
+    const pair = l.edges.filter((x) => x.source === 'api-03' && x.target === 'db-01')
+    expect(pair.map((x) => x.relType).sort()).toEqual(['DEPENDS_ON', 'HOSTED_ON'])
+    expect(pair.every((x) => x.highlight === 'down')).toBe(true)
+    expect(new Set(pair.map((x) => x.key)).size).toBe(2)                  // chiavi distinte: React non si lamenta
+  })
+
+  it('un `via` che punta a un nodo non incluso non rompe l\'ordine: il nodo resta sulla sua riga', () => {
+    const l = layoutServiceMap('svc', [n('api-03', 1, null), n('orfano', 2, 'sparito'), n('db-01', 2, 'api-03')], [], [])
+    const row2 = l.nodes.filter((p) => p.level === 2).map((p) => p.id)
+    expect(row2).toHaveLength(2)
+    expect(row2).toContain('orfano')
+    expect(l.nodes.find((p) => p.id === 'orfano')!.x).toBeGreaterThan(l.nodes.find((p) => p.id === 'db-01')!.x)  // senza predecessore va in fondo
+  })
+})
+
+/** C-9: la mappa alla scala vera — il servizio dev'essere nel primo schermo. */
+describe('layoutServiceMap alla scala', () => {
+  const wide = (count: number) => Array.from({ length: count }, (_, i) => n(`srv-${String(i).padStart(3, '0')}`, 2, 'api-03'))
+  const rootX = (l: ReturnType<typeof layoutServiceMap>) => l.nodes.find((p) => p.node === null)!.x
+
+  it('righe allineate a sinistra: con 8 e con 120 nodi su un livello il servizio resta in alto a sinistra', () => {
+    for (const count of [8, 120]) {
+      const l = layoutServiceMap('svc', [n('api-03', 1, null), ...wide(count)], [], [])
+      expect(rootX(l)).toBe(PAD + LABEL_W)                     // primo posto della riga, non il centro della riga più larga
+      expect(l.nodes.find((p) => p.id === 'api-03')!.x).toBe(PAD + LABEL_W)
+      expect(l.width).toBe(PAD * 2 + LABEL_W + count * NODE_W + (count - 1) * GAP_X)
+    }
+  })
+
+  it('modalità percorso: restano le cause, i loro antenati e i fratelli diretti; il resto in un chip per livello', () => {
+    const nodes = [n('api-03', 1, null), n('db-01', 2, 'api-03', { health: 'down' }), ...wide(119)]
+    const causes = [cause('db-01', 'down', ['api-03'])]
+    const full = layoutServiceMap('svc', nodes, [], causes)
+    expect(full.nodes.filter((p) => p.level === 2)).toHaveLength(120)
+    expect(full.collapsed).toEqual([])
+
+    const focused = layoutServiceMap('svc', nodes, [], causes, { focus: true })
+    const row2 = focused.nodes.filter((p) => p.level === 2)
+    expect(row2.map((p) => p.id)).toContain('db-01')                 // la causa non sparisce mai
+    expect(row2.length).toBeLessThanOrEqual(FOCUS_ROW_MAX + 1)
+    const chip = focused.collapsed.find((c) => c.level === 2)!
+    expect(chip.count).toBe(120 - row2.length)
+    expect(chip.ids).not.toContain('db-01')
+    expect(chip.x).toBe(PAD + LABEL_W + row2.length * (NODE_W + GAP_X))
+    expect(focused.width).toBeGreaterThanOrEqual(chip.x + CHIP_W)
+    expect(focused.width).toBeLessThan(full.width)                   // è il punto: la riga si legge
+    // il livello 1 (antenato) resta per intero
+    expect(focused.nodes.filter((p) => p.level === 1).map((p) => p.id)).toEqual(['api-03'])
+  })
+
+  it('modalità percorso: un livello espanso torna intero, e il nodo da tenere (il selezionato) non finisce mai nel chip', () => {
+    const nodes = [n('api-03', 1, null), n('db-01', 2, 'api-03', { health: 'down' }), ...wide(119)]
+    const causes = [cause('db-01', 'down', ['api-03'])]
+    const expanded = layoutServiceMap('svc', nodes, [], causes, { focus: true, expanded: new Set([2]) })
+    expect(expanded.nodes.filter((p) => p.level === 2)).toHaveLength(120)
+    expect(expanded.collapsed).toEqual([])
+
+    const kept = layoutServiceMap('svc', nodes, [], causes, { focus: true, keep: new Set(['srv-118']) })
+    expect(kept.nodes.map((p) => p.id)).toContain('srv-118')
+    expect(kept.collapsed[0]!.ids).not.toContain('srv-118')
   })
 })

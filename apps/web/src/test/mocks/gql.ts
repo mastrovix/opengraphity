@@ -2,7 +2,7 @@
  * Mock GraphQL riusabili (MockedProvider). I risultati includono `__typename`
  * perché la cache Apollo 4 aggiunge sempre il campo alla query.
  */
-import { GET_ME, GET_ANOMALY_STATS, GET_TEAMS, GET_USERS, GET_WORKFLOW_LIST, GET_ITIL_TYPES, GET_BASE_CI_TYPE } from '@/graphql/queries'
+import { GET_ME, GET_ANOMALY_STATS, GET_TEAMS, GET_USERS, GET_WORKFLOW_LIST, GET_WORKFLOW_DEFINITION, GET_ITIL_TYPES, GET_BASE_CI_TYPE } from '@/graphql/queries'
 import type { GqlMock } from '@/test/utils'
 
 export interface MeFixture {
@@ -53,6 +53,39 @@ export function usersMock(users: UserRowFixture[], variables: Record<string, unk
   return {
     request: { query: GET_USERS, variables },
     result: { data: { users: users.map((u) => ({ __typename: 'User', teams: [], ...u })) } },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  }
+}
+
+/**
+ * Definizione di workflow di un tipo di entità (`useWorkflowSteps`): serve a
+ * ogni riquadro che mostra lo stato o il passo di un ticket con l'etichetta
+ * dell'app invece del nome grezzo del passo.
+ */
+export function workflowDefinitionMock(
+  entityType = 'incident',
+  steps: { name: string; label: string }[] = [
+    { name: 'new', label: 'New' },
+    { name: 'in_progress', label: 'In lavorazione' },
+    { name: 'resolved', label: 'Resolved' },
+  ],
+): GqlMock {
+  return {
+    request: { query: GET_WORKFLOW_DEFINITION, variables: { entityType } },
+    result: {
+      data: {
+        workflowDefinition: {
+          __typename: 'WorkflowDefinition', id: `wd-${entityType}`, name: entityType, entityType,
+          category: null, version: 1, active: true, changeSubtype: null,
+          steps: steps.map((s, i) => ({
+            __typename: 'WorkflowStep', id: `st-${i}`, name: s.name, label: s.label, type: 'state',
+            enterActions: [], exitActions: [], isInitial: i === 0, isTerminal: i === steps.length - 1,
+            isOpen: i < steps.length - 1, category: null, order: i,
+          })),
+          transitions: [],
+        },
+      },
+    },
     maxUsageCount: Number.POSITIVE_INFINITY,
   }
 }

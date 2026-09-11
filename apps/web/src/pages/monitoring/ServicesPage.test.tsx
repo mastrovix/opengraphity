@@ -67,11 +67,11 @@ describe('ServicesPage', () => {
     expect(tile('In maintenance')).toHaveTextContent(/^0In maintenance/)
     expect(tile('In maintenance')).toHaveTextContent('none right now')
     expect(tile('Operational')).toHaveTextContent(/^2Operational/)
-    // «sconosciuti»: informativo, non un bottone
-    expect(screen.queryByRole('button', { name: /\bUnknown\b/ })).not.toBeInTheDocument()
-    const unknown = screen.getByTitle(/Services with no component of known health/)
+    // C-13: «sconosciuti» filtra come gli altri (l'URL accettava già ?health=unknown)
+    const unknown = tile('Unknown')
     expect(unknown).toHaveTextContent('1')
     expect(unknown).toHaveTextContent('no health data')
+    expect(unknown).toHaveAttribute('aria-pressed', 'false')
 
     const rows = bodyRows()
     expect(rows).toHaveLength(3)
@@ -156,6 +156,42 @@ describe('ServicesPage', () => {
     const pressed = screen.getAllByRole('button', { name: /\bDegraded\b/ }).find((b) => b.getAttribute('aria-pressed') === 'true')
     expect(pressed).toBeDefined()
     expect(screen.getAllByText('page 2 of 2').length).toBeGreaterThan(0)
+  })
+
+  // C-13: prima `?health=unknown` era accettato dall'URL ma il riquadro non era
+  // cliccabile: il filtro arrivava da un link e non si poteva togliere.
+  it('il riquadro «Sconosciuti» filtra e si toglie; ?health=unknown nell\'URL lo mostra premuto', async () => {
+    const seen: Vars[] = []
+    const { user } = renderPage('operator', { seen })
+    await screen.findByRole('heading', { name: 'Services' })
+
+    await user.click(tile('Unknown'))
+    expect(tile('Unknown')).toHaveAttribute('aria-pressed', 'true')
+    expect(location()).toBe('/monitoring/services?health=unknown')
+    await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ health: ['unknown'] }))
+
+    await user.click(tile('Unknown'))
+    expect(location()).toBe('/monitoring/services')
+    await waitFor(() => expect(seen.at(-1)!.filter).toBeNull())
+
+    const seen2: Vars[] = []
+    renderPage('operator', { seen: seen2, route: '/monitoring/services?health=unknown', page: pageMock({}, seen2) })
+    await waitFor(() => expect(seen2.at(-1)!.filter).toEqual({ health: ['unknown'] }))
+  })
+
+  // C-14: si arriva qui dalla colonna «Servizi» di Salute CI.
+  it('?ciId= filtra sui servizi di quel CI e il chip lo toglie', async () => {
+    const seen: Vars[] = []
+    const { user } = renderPage('operator', { seen, route: '/monitoring/services?ciId=ci-1', page: pageMock({}, seen) })
+    await screen.findByRole('heading', { name: 'Services' })
+    await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ ciId: 'ci-1' }))
+
+    const chip = screen.getByTestId('services-ci-filter')
+    expect(chip).toHaveTextContent('Only this CI')
+    await user.click(chip)
+    expect(location()).toBe('/monitoring/services')
+    await waitFor(() => expect(seen.at(-1)!.filter).toBeNull())
+    expect(screen.queryByTestId('services-ci-filter')).not.toBeInTheDocument()
   })
 
   it('un valore di salute fuori vocabolario nell\'URL è ignorato (non inviato); in una riga è detto in chiaro «Unknown (weird)», mai una riga vuota', async () => {

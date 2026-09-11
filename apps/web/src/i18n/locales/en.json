@@ -136,6 +136,24 @@
         "title": "Impacted services",
         "hint": "Services whose health opened or joined this incident.",
         "openService": "Open service {{name}}"
+      },
+      "impactedApplications": {
+        "title": "Impacted applications",
+        "empty": "No application depends on the CIs hit by this incident.",
+        "directly": "Hit directly",
+        "via_one": "Depends on {{via}} · {{count}} hop",
+        "via_other": "Depends on {{via}} · {{count}} hops",
+        "pathButton": "Path",
+        "pathButtonHint": "Show the path from the hit CI to the application",
+        "pathTitle": "Impact path → {{name}}",
+        "pathTitleNoApp": "Impact path",
+        "pathIntro_one": "The impact spreads from the hit CI to the application along the CMDB dependencies ({{count}} hop).",
+        "pathIntro_other": "The impact spreads from the hit CI to the application along the CMDB dependencies ({{count}} hops).",
+        "pathIntroDirect": "The impact spreads from the hit CI to the application along the CMDB dependencies (hit directly).",
+        "pathNodeApplication": "Application",
+        "pathNodeRoot": "Hit CI",
+        "pathNodeFallback": "CI",
+        "pathFooter": "The arrows show how the impact spreads; the real dependencies run the other way (the application depends on the upstream CI)."
       }
     },
     "changes": {
@@ -1884,7 +1902,9 @@
       "sourcesError": "Sources not loaded: {{error}}",
       "advancedActive": "Advanced filter active: it applies to the loaded page, count and pages are the server's",
       "advancedMatch_one": "{{count}} of {{total}} on this page matches the advanced filter",
-      "advancedMatch_other": "{{count}} of {{total}} on this page match the advanced filter"
+      "advancedMatch_other": "{{count}} of {{total}} on this page match the advanced filter",
+      "advancedUrlInvalid": "The advanced filter in this link cannot be read: the table shows every row on the page. Rebuild it with \"Advanced filters\".",
+      "sortPageOnly": "Sorts the current page: the server does not sort alarms, the other pages stay as they are"
     },
     "empty": {
       "title": "No alarms",
@@ -2436,7 +2456,7 @@
       "source": "Source",
       "sourceMonitoring": "Monitoring",
       "sourceManual": "Manual override",
-      "lastEvent": "Last event",
+      "lastEvent": "Last alarm",
       "activeEvents": "Active alarms",
       "viewEvents": "View in the console",
       "override": "Force health",
@@ -2445,8 +2465,8 @@
       "removeOverride": "Remove override",
       "aliases": "Aliases",
       "aliasesHint": "The names the monitoring tools use for this CI (hostname, IP, FQDN, external ID). An alarm whose resource matches an alias is linked to this CI automatically.",
-      "recentEvents": "Latest events",
-      "noEvents": "No events for this CI."
+      "recentEvents": "Latest alarms",
+      "noEvents": "No alarms for this CI."
     },
     "console": {
       "sourceFilter": "Source",
@@ -2459,9 +2479,12 @@
       "updating": "Updating…"
     },
     "widget": {
-      "openConsole": "Open the event console",
+      "openConsole": "Open the alarm console",
       "loadError": "Cannot load the counters: {{error}}",
       "openServices": "Open the Services page"
+    },
+    "criticalBanner": {
+      "loadError": "Cannot tell whether a critical service is down: {{error}}"
     },
     "snippets": {
       "alertmanager": {
@@ -2538,7 +2561,7 @@
         "alarms": "Active alarms",
         "impact": "Impact",
         "team": "Team",
-        "lastEvent": "Last event",
+        "lastEvent": "Last alarm",
         "source": "Source",
         "map": "Map",
         "services": "Services"
@@ -2603,7 +2626,6 @@
         "operational": "Operational",
         "unknown": "Unknown",
         "toggleHint": "Filter the table on this health; a second click removes the filter",
-        "unknownHint": "Services with no component of known health: not filterable, just a note",
         "unknownContext": "no health data",
         "noneContext": "none right now",
         "shareContext_one": "of {{count}} monitored service",
@@ -2706,6 +2728,20 @@
         "level": "Level {{level}}",
         "empty": "The map has no components: the service realizes no application (REALIZES) or the build found no relationship.",
         "nodeLabel": "{{name}} · {{type}} · {{health}}",
+        "groupLabel": "Service map of {{name}}: use the arrow keys to move between components",
+        "summary_one": "{{count}} component down out of {{total}}.",
+        "summary_other": "{{count}} components down out of {{total}}.",
+        "summaryPath": "Impact path: {{paths}}.",
+        "onPath": "On the impact path ({{severity}}): {{path}}",
+        "searchLabel": "Search for a component on the map",
+        "searchPlaceholder": "Search a component",
+        "searchEmpty": "No component with \"{{query}}\" in its name.",
+        "showPathOnly": "Impact path only",
+        "showAll": "Show every component",
+        "collapsed_one": "+{{count}} component off the path",
+        "collapsed_other": "+{{count}} components off the path",
+        "fit": "Fit",
+        "actualSize": "Actual size",
         "legend": {
           "title": "Legend",
           "critical": "Critical component",
@@ -2736,6 +2772,8 @@
         "rules": "How it is computed",
         "evaluated": "Evaluated {{ago}}",
         "neverEvaluated": "Never evaluated",
+        "versionShort": "Version {{version}}",
+        "updatedHint": "Configuration last changed: {{date}}",
         "actions": {
           "reevaluate": "Re-evaluate now",
           "activate": "Activate",
@@ -2744,23 +2782,19 @@
           "delete": "Delete",
           "updateMap": "Update map",
           "syncNow": "Sync now",
+          "syncPaused": "Resume the map to synchronize it: while it is paused the engine refuses to synchronize.",
           "reviewComponents": "Review components"
         },
         "fields": {
           "service": "Business application",
           "criticality": "Criticality",
           "owner": "Owner",
-          "status": "Map status",
-          "version": "Version",
           "maxDepth": "Maximum depth",
           "relationshipTypes": "Relationships followed",
           "builtFrom": "Built",
           "builtFromAuto": "Automatically from the graph",
           "builtFromManual": "Manually",
           "updatedAt": "Last change",
-          "evaluatedAt": "Last evaluation",
-          "syncedAt": "Last sync",
-          "syncedNever": "Never",
           "excluded": "Excluded components",
           "excludedCount_one": "{{count}} component",
           "excludedCount_other": "{{count}} components"
@@ -2791,6 +2825,9 @@
           "name": "Component",
           "type": "Type",
           "level": "Level",
+          "via": "Reached from",
+          "viaService": "Straight from the service",
+          "viaMissing": "The predecessor is no longer among the components of the map",
           "role": "Role",
           "propagate": "Counts",
           "weight": "Weight",
@@ -2814,6 +2851,8 @@
         "title": "History",
         "empty": "No entries yet.",
         "truncated": "Showing the latest {{shown}} of {{total}} entries.",
+        "showAll": "Show all",
+        "loadFailed": "Could not load the full history: {{error}}",
         "noPrevious": "no previous health",
         "causesMore_one": "{{causes}}, +{{count}} more",
         "causesMore_other": "{{causes}}, +{{count}} more",
@@ -2880,6 +2919,10 @@
         "unsaved": "Unsaved changes",
         "noChanges": "Nothing to save",
         "blocked": "Fields to fix",
+        "savedMinNodesStale_one": "The saved minimum of components ({{saved}}) is above the {{count}} component of the map: the service cannot be degraded until you lower it. Nobody touched the rules: the map got smaller.",
+        "savedMinNodesStale_other": "The saved minimum of components ({{saved}}) is above the {{count}} components of the map: the service cannot be degraded until you lower it. Nobody touched the rules: the map got smaller.",
+        "savedMinNodesFix_one": "Set the minimum to {{count}}",
+        "savedMinNodesFix_other": "Set the minimum to {{count}}",
         "validation": {
           "integer": "Whole number between {{min}} and {{max}}.",
           "range": "Between {{min}} and {{max}}.",
@@ -2964,6 +3007,7 @@
         "disabled": "Incidents are turned off for this service.",
         "step": "Step: {{step}}",
         "noStep": "Step not available",
+        "stepsUnavailable": "Workflow labels not loaded ({{error}}): status and step are the raw values.",
         "open": "Open incident {{number}}"
       },
       "criticalBanner": {

@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { EditSourcePage } from './EditSourcePage'
-import { GET_MONITORING_SOURCE_SETTINGS } from '@/graphql/queries'
+import { GET_MONITORING_SOURCE } from '@/graphql/queries'
 import { UPDATE_MONITORING_SOURCE } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import type { MonitoringSource } from '@/types/events'
@@ -24,9 +24,10 @@ const SOURCE: MonitoringSource & SourceRateLimit = {
   enabled: true, rateLimitPerMinute: 100, lastReceivedAt: null, receiveCount: 0, lastError: null, lastErrorAt: null, errorCount: 0, createdAt: '2026-09-01T00:00:00Z',
 }
 
+// D·5: la pagina legge UNA sorgente per id, non più tutte.
 const settingsMock = (src: MonitoringSource & SourceRateLimit = SOURCE): GqlMock => ({
-  request: { query: GET_MONITORING_SOURCE_SETTINGS },
-  result: { data: { monitoringSources: [{ __typename: 'InboundWebhook', ...src }] } },
+  request: { query: GET_MONITORING_SOURCE, variables: { id: src.id } },
+  result: { data: { monitoringSource: { __typename: 'InboundWebhook', ...src } } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 

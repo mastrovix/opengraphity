@@ -44,7 +44,7 @@ export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
   // trasformazione, ultimo errore col contenuto del payload) e gli strumenti
   // del wizard admin. La console usa `monitoringSourceRefs` (riferimenti
   // leggeri, ruoli predefiniti) e `Event.source` è un MonitoringSourceRef.
-  'monitoringSources', 'payloadKeys', 'sampleInboundPayload',
+  'monitoringSources', 'monitoringSource', 'payloadKeys', 'sampleInboundPayload',
   // Servizi monitorati: le BusinessApplication candidate alla creazione di una
   // mappa sono uno strumento della mutation admin createServiceMap; il diff con
   // il grafo e l'anteprima del calcolo sono gli strumenti della configurazione

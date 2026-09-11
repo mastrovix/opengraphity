@@ -47,13 +47,23 @@ export const HISTORY = [
 
 export const RULES = { __typename: 'ServiceImpactRules', version: 1, downSharePct: 50, degradedSharePct: 1, minNodes: 1, unknownNodes: 'ignore', openIncidentFrom: 'down', duringStorm: 'hold' }
 
+/**
+ * Istanti fissati al caricamento del modulo (non a ogni chiamata): la sonda
+ * del polling (`mapProbe`, revisione 2 · C-8) deve poter dire «niente di
+ * nuovo» con gli stessi identici marcatori del dettaglio.
+ */
+const NOW = Date.now()
+export const HEALTH_SINCE = new Date(NOW - 42 * 60_000).toISOString()
+export const EVALUATED_AT = new Date(NOW - 2 * 60_000).toISOString()
+export const SYNCED_AT    = new Date(NOW - 5 * 60_000).toISOString()
+
 /** Riga della lista (fragment ServiceMapRowFields). */
 export function mapRow(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     __typename: 'ServiceMap', id: 'map-1', name: 'Enterprise Billing', status: 'active', health: 'degraded',
     healthIfActive: null,
-    healthSince: new Date(Date.now() - 42 * 60_000).toISOString(), impactScore: 41, stale: false, staleReason: null, nodeCount: 4,
-    evaluatedAt: new Date(Date.now() - 2 * 60_000).toISOString(), service: SERVICE, explanation: CAUSES, ...over,
+    healthSince: HEALTH_SINCE, impactScore: 41, stale: false, staleReason: null, nodeCount: 4,
+    evaluatedAt: EVALUATED_AT, service: SERVICE, explanation: CAUSES, ...over,
   }
 }
 
@@ -63,9 +73,19 @@ export function mapDetail(over: Record<string, unknown> = {}): Record<string, un
     ...mapRow(), version: 3, updatedAt: '2026-09-10T07:00:00Z', maxDepth: 4,
     relationshipTypes: ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE'], builtFrom: 'auto',
     rules: RULES, nodes: NODES, edges: EDGES, excluded: [], history: HISTORY, historyCount: 2,
-    openIncident: null, autoSync: true, syncedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    openIncident: null, autoSync: true, syncedAt: SYNCED_AT,
     healthNote: null, ...over,
   }
+}
+
+/**
+ * La sonda del polling del dettaglio (`GET_SERVICE_MAP_STATUS`, C-8): i tre
+ * marcatori del documento completo. Per default dice «niente di nuovo»;
+ * portarne uno avanti (`version`, `evaluatedAt`, `syncedAt`) fa rileggere il
+ * documento completo.
+ */
+export function mapProbe(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return { __typename: 'ServiceMap', id: 'map-1', version: 3, evaluatedAt: EVALUATED_AT, syncedAt: SYNCED_AT, ...over }
 }
 
 export const COUNTS = { __typename: 'ServiceMapCounts', total: 5, operational: 2, degraded: 1, down: 1, maintenance: 0, unknown: 1 }

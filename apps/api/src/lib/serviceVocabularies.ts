@@ -109,6 +109,28 @@ export type NodeExcludedReason = (typeof NODE_EXCLUDED_REASONS)[number]
 /** Motivo di una `EXCLUDES` creata dall'amministratore dal diff della mappa (ondata 2). */
 export const SERVICE_EXCLUSION_REASON_MANUAL = 'escluso a mano'
 
+/**
+ * Criticità dell'applicazione radice (`BusinessApplication.criticality`).
+ *
+ * Il vocabolario vive nel metamodello (`scripts/seed-metamodel.ts`, campo
+ * `criticality` del tipo `business_application`): qui c'è la copia che serve a
+ * VALIDARE il filtro della pagina Servizi, tenuta uguale da
+ * `serviceVocabularies.test.ts`. Il dato sul grafo può comunque essere assente
+ * o fuori vocabolario (CI importato da una discovery): chi lo legge lo tratta
+ * come tale (`serviceImpactOf`), chi lo filtra no — un filtro su un valore
+ * inesistente è un errore del chiamante, non un dato incompleto.
+ */
+export const SERVICE_CRITICALITIES = ['mission_critical', 'business_critical', 'business_operational', 'office_productivity'] as const
+export type ServiceCriticality = (typeof SERVICE_CRITICALITIES)[number]
+
+/**
+ * Le criticità che il banner «servizi critici giù» considera critiche
+ * (revisione 2 · C-7): prima il web leggeva 20 righe e filtrava a valle, così
+ * in una tempesta con 20 servizi non critici giù il banner taceva proprio
+ * quando serviva. Ora è il server a filtrare.
+ */
+export const SERVICE_CRITICAL_CRITICALITIES: readonly ServiceCriticality[] = ['mission_critical', 'business_critical']
+
 /** Limiti espliciti della mappa: superarli è un errore di validazione, mai un taglio silenzioso. */
 export const SERVICE_MAP_DEFAULT_DEPTH = 4
 export const SERVICE_MAP_MAX_DEPTH = 8

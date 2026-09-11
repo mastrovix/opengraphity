@@ -78,7 +78,8 @@ describe('Event Management: ogni campo root di eventsSDL() ha i ruoli attesi', (
     // riferimenti leggeri per il filtro della console
     monitoringSourceRefs: STAFF,
     // configurazione delle sorgenti e strumenti del wizard (A-1, A-3)
-    monitoringSources: ADMIN, payloadKeys: ADMIN, sampleInboundPayload: ADMIN,
+    // `monitoringSource(id)` (residuo D·5) ha la stessa politica della lista: è la stessa configurazione completa.
+    monitoringSources: ADMIN, monitoringSource: ADMIN, payloadKeys: ADMIN, sampleInboundPayload: ADMIN,
   }
   const EXPECTED_MUTATIONS: Record<string, readonly string[]> = {
     acknowledgeEvent: OPERATORS, resolveEvent: OPERATORS, linkEventToCI: OPERATORS,
@@ -110,7 +111,7 @@ describe('Event Management: ogni campo root di eventsSDL() ha i ruoli attesi', (
       expect(() => authorize('Mutation', f, 'viewer')).toThrow(new RegExp(f))
       expect(() => authorize('Mutation', f, 'end_user')).toThrow(new RegExp(f))
     }
-    for (const f of ['monitoringSources', 'payloadKeys', 'sampleInboundPayload']) {
+    for (const f of ['monitoringSources', 'monitoringSource', 'payloadKeys', 'sampleInboundPayload']) {
       expect(() => authorize('Query', f, 'viewer')).toThrow(new RegExp(f))
       expect(() => authorize('Query', f, 'operator')).toThrow(new RegExp(f))
     }

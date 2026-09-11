@@ -135,10 +135,15 @@ export function ServiceStatusPill({ status }: { status: ServiceMapStatus }) {
 // ── Modalità della mappa: viva o congelata (ondata 5) ────────────────────────
 
 /**
- * Badge accanto al nome della mappa: «viva» (si aggiorna da sola dal grafo) o
- * «congelata» (i componenti nuovi restano una proposta da accettare a mano).
+ * Badge accanto al nome della mappa: «Viva» (si aggiorna da sola dal grafo) o
+ * «Congelata» (i componenti nuovi restano una proposta da accettare a mano).
  * Il testo dice la modalità da solo, il colore è un di più; il `title` spiega
  * cosa comporta.
+ *
+ * Revisione 2 (C-13): l'iniziale maiuscola è resa qui e non nelle traduzioni
+ * perché `syncMode.live/frozen` sono una parola sola in entrambe le lingue e
+ * servono solo a questa pill; senza, era l'unico badge in minuscolo accanto a
+ * «Degradato» e «Attiva».
  */
 export function ServiceSyncModePill({ autoSync }: { autoSync: boolean }) {
   const { t } = useTranslation()
@@ -146,7 +151,7 @@ export function ServiceSyncModePill({ autoSync }: { autoSync: boolean }) {
   const mode = autoSync ? 'live' : 'frozen'
   return (
     <Pill bg={s.bg} color={s.color} style={badgeFont} title={t(`monitoring.services.syncMode.${mode}Hint`)}>
-      <span data-testid="sync-mode-badge" data-mode={mode}>{t(`monitoring.services.syncMode.${mode}`)}</span>
+      <span data-testid="sync-mode-badge" data-mode={mode} style={{ textTransform: 'capitalize' }}>{t(`monitoring.services.syncMode.${mode}`)}</span>
     </Pill>
   )
 }

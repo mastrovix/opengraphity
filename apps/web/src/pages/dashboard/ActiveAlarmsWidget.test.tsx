@@ -25,7 +25,7 @@ describe('ActiveAlarmsWidget', () => {
     expect(screen.getByRole('link', { name: 'Critical 2' })).toHaveAttribute('href', '/events?stat=critical')
     expect(screen.getByRole('link', { name: 'Warnings 3' })).toHaveAttribute('href', '/events?stat=warning')
     expect(screen.getByRole('link', { name: 'No CI 1' })).toHaveAttribute('href', '/events?stat=orphan')
-    expect(screen.getByRole('link', { name: 'Open the event console' })).toHaveAttribute('href', '/events')
+    expect(screen.getByRole('link', { name: 'Open the alarm console' })).toHaveAttribute('href', '/events')
   })
 
   it('errore della query → messaggio in chiaro, mai contatori finti', async () => {

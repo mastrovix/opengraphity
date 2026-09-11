@@ -22,7 +22,8 @@
  * pagina viene riallineata all'ultima disponibile (D·1.15).
  *
  * Colonna "Servizi" (ondata 3 dei Servizi monitorati): quanti servizi
- * monitorati dipendono dal CI (`servicesCount`), con link alla pagina Servizi.
+ * monitorati dipendono dal CI (`servicesCount`), con link alla pagina Servizi
+ * filtrata su quel CI (`?ciId=`).
  *
  * "Vedi sulla mappa" (D·1.3) porta alla topologia CON un CI di partenza
  * (`/topology?health=1&ciId=…`): dalla riga il CI della riga, dal pulsante
@@ -55,6 +56,7 @@ import { timeAgo, formatDateTime, formatDuration, currentLocale } from '@/lib/da
 import { pausedWhenHidden } from '@/lib/polling'
 import { GET_CI_HEALTH_OVERVIEW, GET_TEAMS } from '@/graphql/queries'
 import { CIHealthBadge, CI_HEALTH_ACCENT } from '@/pages/events/eventShared'
+import { servicesForCIPath } from './ServicesPage'
 import type { CIHealth, CIHealthOverview, CIHealthRow, CIHealthFilterVars } from '@/types/events'
 import { colors, palette } from '@/lib/tokens'
 
@@ -209,11 +211,13 @@ function ImpactChip({ dependents, describedBy }: { dependents: number; described
 
 /**
  * Quanti servizi monitorati dipendono dal CI (`servicesCount`, ondata 3 dei
- * Servizi monitorati): con almeno uno è un link alla pagina Servizi, a zero
- * resta un numero spento. Il motivo è nel tooltip E in una descrizione per le
+ * Servizi monitorati): con almeno uno è un link alla pagina Servizi filtrata
+ * su QUESTO CI (`?ciId=`, revisione 2 C-14: prima portava alla lista intera,
+ * cioè a tutt'altro insieme di quello che il numero contava), a zero resta un
+ * numero spento. Il motivo è nel tooltip E in una descrizione per le
  * tecnologie assistive, come le altre celle della tabella.
  */
-function ServicesCell({ count, name, describedBy }: { count: number; name: string; describedBy: string }) {
+function ServicesCell({ count, ciId, name, describedBy }: { count: number; ciId: string; name: string; describedBy: string }) {
   const { t } = useTranslation()
   const hint = count > 0 ? t('monitoring.health.servicesHint', { count, name }) : t('monitoring.health.servicesNone')
   return (
@@ -221,7 +225,7 @@ function ServicesCell({ count, name, describedBy }: { count: number; name: strin
       {count > 0
         ? (
           <Link
-            to="/monitoring/services"
+            to={servicesForCIPath(ciId)}
             onClick={(e) => e.stopPropagation()}
             aria-label={hint}
             title={hint}
@@ -315,7 +319,7 @@ function HealthRowView({ row }: { row: CIHealthRow }) {
           : <span style={{ color: 'var(--color-slate-light)' }}>0</span>}
       </td>
       <td style={TD}><ImpactChip dependents={row.dependents} describedBy={ids.impact} /></td>
-      <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}><ServicesCell count={row.servicesCount} name={row.name} describedBy={ids.services} /></td>
+      <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}><ServicesCell count={row.servicesCount} ciId={row.id} name={row.name} describedBy={ids.services} /></td>
       <td style={TD}>{row.ownerTeam ?? <span style={{ color: 'var(--color-slate-light)' }}>—</span>}</td>
       <td style={TD}>
         {row.lastEventAt

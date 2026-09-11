@@ -6,6 +6,7 @@ import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
 import { serviceMapsMock, mapRow } from '@/test/mocks/services'
 import { formatDateTime } from '@/lib/datetime'
+import { FILTER_GROUP_PARAM, decodeFilterGroup, encodeFilterGroup } from '@/lib/filterGroupUrl'
 import type { EventRow, EventStats, StormSource } from '@/types/events'
 
 const STATS: EventStats = { firing: 4, critical: 2, warning: 1, orphan: 1, suppressed: 0, flapping: 1, resolved24h: 7, stormSources: [] }
@@ -430,6 +431,58 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
     expect(await screen.findByText('1 of 3 on this page matches the advanced filter')).toBeInTheDocument()
     expect(screen.queryByText('3 alarms')).not.toBeInTheDocument()
     expect(screen.getByText(/Advanced filter active/)).toBeInTheDocument()
+    // C-15: il gruppo finisce nell'URL (`?f=`), così un collegamento condiviso lo porta con sé.
+    const f = new URLSearchParams(location().split('?')[1] ?? '').get(FILTER_GROUP_PARAM)
+    expect(f).not.toBeNull()
+    expect(decodeFilterGroup(f)).toMatchObject({ rules: [{ field: 'title', operator: 'contains', value: 'Disk' }] })
+  })
+
+  // C-15 / residuo D·1.7: il gruppo del costruttore di filtri viaggia nell'URL.
+  it('?f= applica il gruppo all\'apertura e lo mostra nel pannello già aperto', async () => {
+    const encoded = encodeFilterGroup({ rules: [{ id: 'r1', field: 'title', operator: 'contains', value: 'Disk', logic: 'AND' }] })
+    renderPage('viewer', undefined, { route: `/events?${FILTER_GROUP_PARAM}=${encoded}` })
+    expect(await screen.findByText('1 of 3 on this page matches the advanced filter')).toBeInTheDocument()
+    expect(screen.getByText(/Advanced filter active/)).toBeInTheDocument()
+    // il pannello parte aperto sulle regole dell'URL, non vuoto
+    expect(screen.getByDisplayValue('Disk')).toBeInTheDocument()
+  })
+
+  it('?f= illeggibile: lo dice invece di mostrare in silenzio tutte le righe', async () => {
+    renderPage('viewer', undefined, { route: `/events?${FILTER_GROUP_PARAM}=non-e-base64-valido!!` })
+    expect(await screen.findByText('CPU high on web-01')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(/advanced filter in this link cannot be read/i)
+    // nessun filtro applicato: tutte e tre le righe, e il conteggio globale torna visibile
+    expect(bodyRows()).toHaveLength(3)
+    expect(screen.getByText('3 alarms')).toBeInTheDocument()
+  })
+
+  // C-15 / residuo D·2.8: l'ordinamento sta nell'URL e riguarda la sola pagina caricata.
+  it('l\'ordinamento finisce in ?sort=/?dir= e l\'intestazione dice che vale per la pagina corrente', async () => {
+    const { user } = renderPage('viewer')
+    await screen.findByText('CPU high on web-01')
+    const titleHeader = screen.getByRole('columnheader', { name: /^Alarm/ }).querySelector('button')!
+    expect(titleHeader).toHaveAttribute('title', expect.stringContaining('current page'))
+
+    await user.click(titleHeader)
+    await waitFor(() => expect(location()).toContain('sort=title'))
+    expect(location()).toContain('dir=asc')
+    expect(within(bodyRows()[0]!).getByText('CPU high on web-01')).toBeInTheDocument()
+
+    await user.click(titleHeader)
+    await waitFor(() => expect(location()).toContain('dir=desc'))
+    expect(within(bodyRows()[0]!).getByText('Old alert')).toBeInTheDocument()
+  })
+
+  it('?sort= all\'apertura ordina la pagina caricata', async () => {
+    renderPage('viewer', undefined, { route: '/events?sort=title&dir=desc' })
+    await screen.findByText('CPU high on web-01')
+    expect(within(bodyRows()[0]!).getByText('Old alert')).toBeInTheDocument()
+  })
+
+  it('un ?sort= fuori dalle colonne ordinabili è ignorato: l\'ordine del server resta', async () => {
+    renderPage('viewer', undefined, { route: '/events?sort=inventato&dir=desc' })
+    await screen.findByText('CPU high on web-01')
+    expect(within(bodyRows()[0]!).getByText('CPU high on web-01')).toBeInTheDocument()
   })
 
   it('errore della query delle sorgenti → messaggio accanto al filtro', async () => {

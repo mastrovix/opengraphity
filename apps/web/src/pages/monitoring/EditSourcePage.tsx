@@ -26,7 +26,7 @@ import { Input, FieldLabel } from '@/components/ui/FormControls'
 import { Toggle } from '@/components/ui/Toggle'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
-import { GET_MONITORING_SOURCE_SETTINGS } from '@/graphql/queries'
+import { GET_MONITORING_SOURCE } from '@/graphql/queries'
 import { UPDATE_MONITORING_SOURCE, REGENERATE_SOURCE_TOKEN } from '@/graphql/mutations'
 import { colors, palette } from '@/lib/tokens'
 import type { MonitoringSource } from '@/types/events'
@@ -42,8 +42,11 @@ export function EditSourcePage() {
   const navigate = useNavigate()
   const confirm = useConfirm()
 
-  const { data, loading, error, refetch } = useQuery<{ monitoringSources: (MonitoringSource & SourceRateLimit)[] }>(GET_MONITORING_SOURCE_SETTINGS, { fetchPolicy: 'cache-and-network' })
-  const source = data?.monitoringSources.find((s) => s.id === id) ?? null
+  // D·5 (chiuso, revisione 2 ondata 5): si legge UNA sorgente per id. Prima si
+  // leggevano tutte con la configurazione completa — script di trasformazione e
+  // mappature comprese — per aprirne una sola.
+  const { data, loading, error, refetch } = useQuery<{ monitoringSource: (MonitoringSource & SourceRateLimit) | null }>(GET_MONITORING_SOURCE, { variables: { id: id ?? '' }, skip: !id, fetchPolicy: 'cache-and-network' })
+  const source = data?.monitoringSource ?? null
 
   const [name, setName] = useState('')
   const [enabled, setEnabled] = useState(true)

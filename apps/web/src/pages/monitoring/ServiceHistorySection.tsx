@@ -9,14 +9,23 @@
  * Fail-loud: un trigger fuori vocabolario NON sparisce: pallino rosso pieno,
  * frase «Voce sconosciuta: <trigger>» e console.error (lookupOrError). La
  * salute precedente assente (prima voce) è detta in chiaro nella frase.
+ *
+ * Revisione 2 · C-8: il dettaglio carica le ultime 10 voci (prima 50, con le
+ * cause, a ogni tick del polling). Le altre si leggono a richiesta con
+ * «Mostra tutte», un documento suo che non pesa su chi non lo chiede; se la
+ * lettura fallisce lo dice una riga con «Riprova», mai le 10 vecchie spacciate
+ * per tutte.
  */
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { useQuery } from '@apollo/client/react'
 import { Trans, useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Sparkles, HeartPulse, SlidersHorizontal, GitBranch, Wrench, RotateCcw, Clock, HelpCircle, type LucideIcon } from 'lucide-react'
+import { Sparkles, HeartPulse, SlidersHorizontal, GitBranch, Wrench, RotateCcw, Clock, HelpCircle, Loader2, type LucideIcon } from 'lucide-react'
+import { Button } from '@/components/Button'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { GET_SERVICE_MAP_HISTORY } from '@/graphql/queries'
 import { formatDateTime, timeAgo } from '@/lib/datetime'
-import { alpha, colors, lookupOrError } from '@/lib/tokens'
+import { alpha, colors, lookupOrError, palette } from '@/lib/tokens'
 import { TINT_BROKEN } from '@/lib/eventPalette'
 import { SERVICE_HEALTH_ACCENT, ServiceHealthBadge, causeLabel } from './servicesShared'
 import type { ServiceHealthEntry, ServiceHealthTrigger } from '@/types/services'
@@ -70,27 +79,62 @@ function EntrySentence({ entry: e }: { entry: ServiceHealthEntry }) {
   return <Trans i18nKey={key} values={{ score: e.impactScore }} components={components} />
 }
 
+/** Quante voci chiede «Mostra tutte» (il massimo che l'API restituisce). */
+export const HISTORY_ALL_LIMIT = 500
+
 interface Props {
+  mapId:   string
   entries: ServiceHealthEntry[]
   /** Numero totale di voci (`historyCount`): può superare le voci caricate. */
   total:   number
 }
 
-export function ServiceHistorySection({ entries, total }: Props) {
+interface HistoryData {
+  serviceMap: { id: string; historyCount: number; history: ServiceHealthEntry[] } | null
+}
+
+export function ServiceHistorySection({ mapId, entries, total }: Props) {
   const { t } = useTranslation()
+  const [showAll, setShowAll] = useState(false)
+  const { data, loading, error, refetch } = useQuery<HistoryData>(GET_SERVICE_MAP_HISTORY, {
+    variables: { id: mapId, limit: HISTORY_ALL_LIMIT }, skip: !showAll, fetchPolicy: 'cache-and-network',
+  })
+
+  // Finché la lettura completa non è arrivata restano le voci del dettaglio:
+  // mai spacciate per «tutte» (il conteggio sotto dice sempre quante se ne vedono).
+  const shown = (showAll ? data?.serviceMap?.history : null) ?? entries
   return (
     <SectionCard title={t('monitoring.services.history.title')} count={total} defaultOpen>
-      {entries.length === 0
+      {shown.length === 0
         ? <p style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, margin: 0 }}>{t('monitoring.services.history.empty')}</p>
         : (
           <ol aria-label={t('monitoring.services.history.title')} style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column' }}>
-            {entries.map((e, idx) => <HistoryRow key={e.id} entry={e} last={idx === entries.length - 1} />)}
+            {shown.map((e, idx) => <HistoryRow key={e.id} entry={e} last={idx === shown.length - 1} />)}
           </ol>
         )}
-      {total > entries.length && (
-        <p style={{ fontSize: 'var(--font-size-table)', color: colors.slate, margin: 0 }}>
-          {t('monitoring.services.history.truncated', { shown: entries.length, total })}
-        </p>
+
+      {error && (
+        <div role="alert" data-testid="history-error" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10, padding: '8px 12px', borderRadius: 8, background: palette.danger.bg, border: `1px solid ${palette.danger.border}`, color: palette.danger.text, fontSize: 'var(--font-size-body)' }}>
+          <span>{t('monitoring.services.history.loadFailed', { error: error.message })}</span>
+          <Button variant="secondary" size="xs" onClick={() => void refetch()}>{t('queryError.retry')}</Button>
+        </div>
+      )}
+
+      {total > shown.length && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
+          <span style={{ fontSize: 'var(--font-size-table)', color: colors.slate }}>
+            {t('monitoring.services.history.truncated', { shown: shown.length, total })}
+          </span>
+          {!showAll && (
+            <Button
+              variant="secondary" size="xs"
+              icon={loading ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : undefined}
+              onClick={() => setShowAll(true)}
+            >
+              {t('monitoring.services.history.showAll')}
+            </Button>
+          )}
+        </div>
       )}
     </SectionCard>
   )

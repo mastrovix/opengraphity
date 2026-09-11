@@ -684,11 +684,11 @@ export function IncidentDetailPage() {
           {/* Servizi monitorati collegati (visibile solo se ce n'è almeno uno) */}
           <ImpactedServicesSection services={incident.impactedServices} />
 
-          {/* Applicazioni impattate (dal grafo delle dipendenze) */}
-          <SectionCard title="Applicazioni impattate" count={incident.impactedApplications.length} collapsible>
+          {/* Applicazioni impattate (dal grafo delle dipendenze) — D·6.4: testi in i18n, non cablati in italiano */}
+          <SectionCard title={t('pages.incidents.impactedApplications.title')} count={incident.impactedApplications.length} collapsible>
             {incident.impactedApplications.length === 0 ? (
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>
-                Nessuna applicazione dipende dai CI colpiti da questo incident.
+                {t('pages.incidents.impactedApplications.empty')}
               </p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -699,7 +699,9 @@ export function IncidentDetailPage() {
                         {a.ci.name}
                       </Link>
                       <div style={{ fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', marginTop: 2 }}>
-                        {a.distance === 0 ? 'Colpita direttamente' : `Dipende da ${a.via ?? '—'} · ${a.distance} hop`}
+                        {a.distance === 0
+                          ? t('pages.incidents.impactedApplications.directly')
+                          : t('pages.incidents.impactedApplications.via', { via: a.via ?? '—', count: a.distance })}
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
@@ -708,10 +710,10 @@ export function IncidentDetailPage() {
                       <button
                         type="button"
                         onClick={() => setPathModal(a)}
-                        title="Mostra il percorso dal CI colpito all'applicazione"
+                        title={t('pages.incidents.impactedApplications.pathButtonHint')}
                         style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-1)', color: 'var(--accent)', fontSize: 'var(--font-size-caption)', fontWeight: 500, cursor: 'pointer' }}
                       >
-                        <Network size={13} /> Percorso
+                        <Network size={13} /> {t('pages.incidents.impactedApplications.pathButton')}
                       </button>
                     </div>
                   </div>
@@ -845,21 +847,28 @@ export function IncidentDetailPage() {
       <Modal
         open={!!pathModal}
         onClose={() => setPathModal(null)}
-        title={pathModal ? `Percorso d'impatto → ${pathModal.ci.name}` : 'Percorso d\'impatto'}
+        title={pathModal
+          ? t('pages.incidents.impactedApplications.pathTitle', { name: pathModal.ci.name })
+          : t('pages.incidents.impactedApplications.pathTitleNoApp')}
         width={640}
       >
         {pathModal && (
           <div>
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>
-              L'impatto si propaga dal CI colpito fino all'applicazione seguendo le dipendenze del CMDB
-              {pathModal.distance > 0 ? ` (${pathModal.distance} hop).` : ' (colpita direttamente).'}
+              {pathModal.distance > 0
+                ? t('pages.incidents.impactedApplications.pathIntro', { count: pathModal.distance })
+                : t('pages.incidents.impactedApplications.pathIntroDirect')}
             </p>
             <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, overflowX: 'auto', padding: '4px 0' }}>
               {pathModal.path.map((n, idx) => {
                 const isRoot = idx === 0
                 const isApp  = idx === pathModal.path.length - 1
                 const border = isApp ? 'var(--accent)' : isRoot ? 'var(--color-trigger-sla-breach)' : 'var(--border)'
-                const label  = isApp ? 'Applicazione' : isRoot ? 'CI colpito' : (n.type ?? 'CI')
+                const label  = isApp
+                  ? t('pages.incidents.impactedApplications.pathNodeApplication')
+                  : isRoot
+                    ? t('pages.incidents.impactedApplications.pathNodeRoot')
+                    : (n.type ?? t('pages.incidents.impactedApplications.pathNodeFallback'))
                 return (
                   <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Link
@@ -877,7 +886,7 @@ export function IncidentDetailPage() {
               })}
             </div>
             <p style={{ fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', margin: '14px 0 0 0' }}>
-              Le frecce indicano la propagazione dell'impatto; le dipendenze reali vanno in senso opposto (l'applicazione dipende dal CI a monte).
+              {t('pages.incidents.impactedApplications.pathFooter')}
             </p>
           </div>
         )}

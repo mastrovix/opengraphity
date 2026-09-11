@@ -93,8 +93,9 @@ describe('CIHealthPage', () => {
     expect(within(rows[0]!).getByText('for 42 min')).toBeInTheDocument()
     expect(within(rows[0]!).getByRole('link', { name: 'View the 2 active alarms of db-01' })).toHaveAttribute('href', '/events?ciId=ci-1')
     expect(within(rows[0]!).getByText('7 dependents')).toHaveAttribute('title', 'At least 5 CIs depend on this one: a failure here spreads')
-    // Colonna «Servizi» (ondata 3): il numero è un link alla pagina Servizi, con il motivo nel nome accessibile
-    expect(within(rows[0]!).getByRole('link', { name: '2 monitored services depend on db-01' })).toHaveAttribute('href', '/monitoring/services')
+    // Colonna «Servizi» (ondata 3): il numero è un link alla pagina Servizi filtrata su QUESTO CI
+    // (C-14: prima portava alla lista intera, cioè a un insieme diverso da quello che il numero contava).
+    expect(within(rows[0]!).getByRole('link', { name: '2 monitored services depend on db-01' })).toHaveAttribute('href', '/monitoring/services?ciId=ci-1')
     expect(within(rows[0]!).getByText('DBA')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('5 min ago')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('Monitoring')).toBeInTheDocument()

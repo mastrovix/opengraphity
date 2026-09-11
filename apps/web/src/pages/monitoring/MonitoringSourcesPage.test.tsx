@@ -78,7 +78,7 @@ describe('MonitoringSourcesPage', () => {
     await waitFor(() => expect(calls).toBe(2))
   })
 
-  it('badge "Tempesta" sulla sorgente in tempesta (da eventStats.stormSources), con tooltip', async () => {
+  it('badge "Tempesta" sulla sorgente in tempesta (da eventStats.stormSources), con tooltip E descrizione accessibile (D·3.1)', async () => {
     const storms: StormSource[] = [{ sourceId: 's2', sourceName: 'Zabbix DC', ratePerMinute: 64, since: '2026-09-09T08:00:00Z', incidentId: 'inc9', incidentNumber: 'INC-0099' }]
     renderWithProviders(<MonitoringSourcesPage />, { route: '/monitoring/sources', mocks: [sourcesMock(), statsMock(storms)] })
     await screen.findByRole('link', { name: 'Prometheus prod' })
@@ -86,6 +86,8 @@ describe('MonitoringSourcesPage', () => {
     const rows = bodyRows()
     expect(within(rows[1]!).getByText('Storm')).toBe(badge)
     expect(badge).toHaveAttribute('title', expect.stringMatching(/^In a storm: 64 alarms per minute since \d{2}:\d{2}, grouped into INC-0099$/))
+    // D·3.1: il motivo non è più solo nel `title` (che per chi non usa il mouse non esiste).
+    expect(badge).toHaveAccessibleDescription(/^In a storm: 64 alarms per minute since \d{2}:\d{2}, grouped into INC-0099$/)
     expect(within(rows[0]!).queryByText('Storm')).not.toBeInTheDocument()
   })
 

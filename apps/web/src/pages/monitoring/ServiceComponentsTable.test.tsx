@@ -135,10 +135,13 @@ describe('ServiceComponentsTable', () => {
       <ServiceComponentsTable map={detail()} canEdit ciTypeLabel={(t) => t} onReload={() => {}} />,
       { mocks: [spy] },
     )
-    expect(await screen.findByTestId('components-preview')).toHaveTextContent('score 88')
+    // C-8: senza modifiche l'anteprima non parte nemmeno (nessuna query al montaggio)
+    expect(screen.queryByTestId('components-preview')).not.toBeInTheDocument()
+    expect(seen).toHaveLength(0)
+
     await user.click(screen.getByLabelText('db-01 is critical'))
+    expect(await screen.findByTestId('components-preview')).toHaveTextContent('score 88')
     await waitFor(() => expect(seen.at(-1)?.nodes).toEqual([{ ciId: 'db-01', propagate: 'weighted', weight: 5, critical: true }]))
-    expect(seen[0]?.nodes).toBeNull()
   })
 
   it('C-2: il polling che aggiunge un componente non tocca le righe modificate', async () => {

@@ -133,17 +133,46 @@ describe('ServiceRulesCard', () => {
     expect(onReload).toHaveBeenCalledTimes(1)
   })
 
-  it('admin: anteprima dal vivo con le impostazioni in corso; l\'errore è una riga visibile', async () => {
-    renderCard(true)
+  it('C-8: l\'anteprima parte solo con qualcosa di modificato; l\'errore è una riga visibile', async () => {
+    const { user } = renderCard(true)
+    const down = await screen.findByLabelText('Down threshold (%)')
+    // senza modifiche nessuna anteprima: non si chiede un calcolo al server a ogni apertura della pagina
+    expect(screen.queryByTestId('rules-preview')).not.toBeInTheDocument()
+
+    await user.clear(down)
+    await user.type(down, '70')
     const line = await screen.findByTestId('rules-preview')
     expect(line).toHaveTextContent('With these settings right now:')
     expect(line).toHaveTextContent('Degraded')
     expect(line).toHaveTextContent('score 41')
     expect(line).toHaveTextContent('3 of 4 components weigh')
+  })
 
+  it('anteprima: query fallita → riga visibile, mai un\'anteprima vecchia spacciata per nuova', async () => {
     const failing: GqlMock = { request: { query: GET_SERVICE_IMPACT_PREVIEW, variables: () => true }, error: new Error('engine busy') }
-    renderWithProviders(<ServiceRulesCard map={detail()} canEdit onReload={() => {}} />, { mocks: [failing] })
+    const { user } = renderWithProviders(<ServiceRulesCard map={detail()} canEdit onReload={() => {}} />, { mocks: [failing] })
+    const down = await screen.findByLabelText('Down threshold (%)')
+    await user.clear(down)
+    await user.type(down, '70')
     expect(await screen.findByText('Preview unavailable: engine busy')).toBeInTheDocument()
+  })
+
+  it('C-6: una regola salvata diventata inapplicabile non è «un campo da correggere»: riga ambra e pulsante che la sistema', async () => {
+    // mappa scesa a 3 componenti con `minNodes = 5` salvato: nessuno ha toccato niente
+    const map = detail({ nodeCount: 3, rules: { ...RULES, minNodes: 5 } })
+    const { user } = renderCard(true, { map })
+    const row = await screen.findByTestId('rules-saved-stale')
+    expect(row).toHaveTextContent('The saved minimum of components (5) is above the 3 components of the map: the service cannot be degraded until you lower it.')
+    // non è colpa di chi guarda: lo stato non dice «Campi da correggere»
+    expect(status()).toHaveTextContent('Nothing to save')
+    expect(screen.getByLabelText('Minimum components')).toHaveAccessibleDescription(/saved minimum of components/)
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+
+    await user.click(within(row).getByRole('button', { name: 'Set the minimum to 3' }))
+    expect(screen.getByLabelText('Minimum components')).toHaveValue(3)
+    expect(screen.queryByTestId('rules-saved-stale')).not.toBeInTheDocument()
+    expect(status()).toHaveTextContent('Unsaved changes')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
   })
 
   it('admin: minimo di componenti oltre i componenti della mappa → detto in pagina, salvataggio bloccato', async () => {

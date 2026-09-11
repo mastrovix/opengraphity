@@ -81,7 +81,7 @@ describe('tipi del contratto', () => {
     expect(fieldsOf('ServiceRef')).toEqual({ id: 'ID!', name: 'String!', criticality: 'String', ownerGroup: 'Team' })
     expect(fieldsOf('ServiceMapCounts')).toEqual({ total: 'Int!', operational: 'Int!', degraded: 'Int!', down: 'Int!', maintenance: 'Int!', unknown: 'Int!' })
     expect(fieldsOf('ServiceMapPage')).toEqual({ items: '[ServiceMap!]!', total: 'Int!', counts: 'ServiceMapCounts!' })
-    expect(fieldsOf('ServiceMapFilter')).toEqual({ health: '[ServiceHealth!]', status: 'ServiceMapStatus', search: 'String' })
+    expect(fieldsOf('ServiceMapFilter')).toEqual({ health: '[ServiceHealth!]', status: 'ServiceMapStatus', search: 'String', criticality: '[String!]', ciId: 'ID' })
     // riusa i tipi dell'Event Management e dei team
     expect((unwrap(fieldType('ImpactCause', 'ci')) as GraphQLObjectType).name).toBe('ConfigurationItemRef')
     expect((unwrap(fieldType('ServiceMapNode', 'health')) as GraphQLEnumType).name).toBe('CIHealth')

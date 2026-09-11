@@ -394,7 +394,7 @@ export const DEFAULT_RATE_LIMIT_PER_MINUTE = 100
 export const RATE_LIMIT_MIN = 1
 export const RATE_LIMIT_MAX = 10_000
 
-/** Campo `rateLimitPerMinute` letto da GET_MONITORING_SOURCE_SETTINGS (non fa parte di MonitoringSource). */
+/** Campo `rateLimitPerMinute` letto da GET_MONITORING_SOURCE (non fa parte di MonitoringSource). */
 export interface SourceRateLimit {
   rateLimitPerMinute: number
 }

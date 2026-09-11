@@ -89,13 +89,15 @@ export const GET_MONITORING_SOURCE_REFS = gql`
 `
 
 /**
- * Stessa lista più le impostazioni modificabili solo dall'admin
- * (`rateLimitPerMinute`, M7): query separata così la console eventi e la
- * lista sorgenti non chiedono un campo che non mostrano.
+ * Una sola sorgente per la pagina di modifica, con le impostazioni che solo
+ * l'admin vede (`rateLimitPerMinute`, M7) — la lista e la console non le
+ * chiedono. Revisione 2 · residuo D·5:
+ * prima si leggevano TUTTE le sorgenti con la configurazione completa — script
+ * di trasformazione e mappature comprese — per aprirne una.
  */
-export const GET_MONITORING_SOURCE_SETTINGS = gql`
-  query GetMonitoringSourceSettings {
-    monitoringSources { ...MonitoringSourceFields rateLimitPerMinute }
+export const GET_MONITORING_SOURCE = gql`
+  query GetMonitoringSource($id: ID!) {
+    monitoringSource(id: $id) { ...MonitoringSourceFields rateLimitPerMinute }
   }
   ${MONITORING_SOURCE_FIELDS}
 `

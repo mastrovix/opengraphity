@@ -9,7 +9,7 @@
  * scheda nascosta) con il pulsante "Aggiorna"; dopo "Invia evento di prova"
  * un secondo refetch arriva qualche secondo dopo, quando il job ha elaborato.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -30,6 +30,7 @@ import { UPDATE_MONITORING_SOURCE, DELETE_MONITORING_SOURCE, REGENERATE_SOURCE_T
 import { timeAgo, formatDateTime, currentLocale } from '@/lib/datetime'
 import { colors, palette } from '@/lib/tokens'
 import { pausedWhenHidden } from '@/lib/polling'
+import { srOnlyStyle } from '@/lib/a11y'
 import { Pill } from '@/components/ui/Pill'
 import type { MonitoringSource, EventStats, StormSource } from '@/types/events'
 import { ToolBadge, EnabledPill, SecretBox } from './monitoringShared'
@@ -44,20 +45,29 @@ interface Props {
   sampleRefetchDelayMs?: number
 }
 
-/** Badge "Tempesta" con tooltip: tasso, da che ora, incident di tempesta. */
+/**
+ * Badge "Tempesta": tasso, da che ora e incident di tempesta nel `title`
+ * (mouse) E in un testo nascosto collegato con `aria-describedby` (tastiera,
+ * screen reader, touch) — D·3.1: era l'ultimo chip dell'ondata con il solo
+ * `title`, che per chi non usa il mouse non esiste.
+ */
 function StormBadge({ storm }: { storm: StormSource }) {
   const { t } = useTranslation()
+  const hintId = useId()
   const time = new Date(storm.since).toLocaleTimeString(currentLocale(), { hour: '2-digit', minute: '2-digit' })
   const tip = storm.incidentNumber
     ? t('monitoring.sources.stormBadgeHint', { rate: storm.ratePerMinute, time, number: storm.incidentNumber })
     : t('monitoring.sources.stormBadgeHintNoIncident', { rate: storm.ratePerMinute, time })
   return (
-    <Pill bg={palette.warning.tint} color={palette.warning.text} style={{ fontSize: 'var(--font-size-label)', gap: 4 }}>
-      <span title={tip} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        <CloudLightning size={11} aria-hidden="true" />
-        {t('monitoring.sources.stormBadge')}
-      </span>
-    </Pill>
+    <>
+      <Pill bg={palette.warning.tint} color={palette.warning.text} style={{ fontSize: 'var(--font-size-label)', gap: 4 }}>
+        <span title={tip} aria-describedby={hintId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <CloudLightning size={11} aria-hidden="true" />
+          {t('monitoring.sources.stormBadge')}
+        </span>
+      </Pill>
+      <span id={hintId} style={srOnlyStyle}>{tip}</span>
+    </>
   )
 }
 
