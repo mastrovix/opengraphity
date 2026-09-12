@@ -7,7 +7,7 @@ import type { WFStep } from './workflow-types'
 import { GET_WORKFLOW_DEFINITION_BY_ID } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { teamsMock, usersMock, workflowListMock, itilTypesMock } from '@/test/mocks/gql'
-import { NOTIFICATION_TARGETS, WORKFLOW_STEP_PURPOSES } from '@opengraphity/types'
+import { NOTIFICATION_TARGETS, WORKFLOW_STEP_PURPOSES, WORKFLOW_STEP_CATEGORIES } from '@opengraphity/types'
 import { TARGET_OPTIONS } from '@/pages/settings/NotificationRuleList'
 
 const DEF_ID = 'wf-incident'
@@ -353,5 +353,55 @@ describe('WorkflowStepPanel — lo scopo del passo (B4-3)', () => {
     await r.user.click(screen.getByRole('tab', { name: 'Metadati' }))
     expect((screen.getByDisplayValue(T('workflow.purposeNone')) as HTMLSelectElement).value).toBe('')
     expect(saveButton()).toBeDisabled()
+  })
+})
+
+/**
+ * Revisione delle otto ondate · B·N-3 — la **categoria** del passo.
+ *
+ * Era un `<Input list=…>` con una `datalist` di SUGGERIMENTI, mentre da questa
+ * categoria dipendono «risolto» (che valorizza `resolved_at` e `root_cause`),
+ * la chiusura automatica, l'escalation e le classi di stato delle liste. Un
+ * campo di testo in un'interfaccia italiana che invita a scrivere una parola
+ * inglese è la trappola perfetta: dal vivo `category = 'risolto'` veniva
+ * accettata, la transizione riusciva e il ticket restava senza data di
+ * risoluzione — risolto per l'utente, mai risolto per i dati.
+ */
+describe('WorkflowStepPanel — la categoria è un vocabolario chiuso (B·N-3)', () => {
+  const openMetadata = async (s: WFStep) => {
+    const r = renderPanel(s)
+    await r.user.click(screen.getByRole('tab', { name: 'Metadati' }))
+    return r
+  }
+
+  it('è una tendina con le otto categorie tradotte, non un campo di testo', async () => {
+    await openMetadata(step({ name: 'resolved', type: 'standard', isInitial: false }))
+    const select = screen.getByDisplayValue(T('workflow.categoryNone')) as HTMLSelectElement
+    expect(select.tagName).toBe('SELECT')
+    expect([...select.options].map((o) => o.value)).toEqual(['', ...WORKFLOW_STEP_CATEGORIES])
+    for (const c of WORKFLOW_STEP_CATEGORIES) {
+      const label = T(`workflow.categoryOption.${c}`)
+      expect(label).not.toContain('workflow.categoryOption')
+      expect([...select.options].map((o) => o.textContent)).toContain(label)
+    }
+    expect(screen.getByText(T('workflow.categoryHint'))).toBeInTheDocument()
+  })
+
+  it('la categoria salvata si vede, e cambiarla manda il valore del vocabolario', async () => {
+    const onSaved = vi.fn(); const onSaveLocally = vi.fn()
+    const s = step({ name: 'risolto', label: 'Risolto', type: 'standard', isInitial: false, category: 'active' })
+    const r = renderWithProviders(
+      <WorkflowStepPanel step={s} definitionId={DEF_ID} onClose={() => {}} onSaved={onSaved} onSaveLocally={onSaveLocally} />,
+      { mocks: baseMocks() },
+    )
+    await r.user.click(screen.getByRole('tab', { name: 'Metadati' }))
+    const select = screen.getByDisplayValue(T('workflow.categoryOption.active')) as HTMLSelectElement
+    expect(saveButton()).toBeDisabled()
+
+    await r.user.selectOptions(select, 'resolved')
+    expect(saveButton()).toBeEnabled()
+    await r.user.click(saveButton())
+
+    expect(onSaveLocally).toHaveBeenCalledWith(expect.objectContaining({ stepName: 'risolto', category: 'resolved' }))
   })
 })

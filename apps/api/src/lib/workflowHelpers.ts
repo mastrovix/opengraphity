@@ -15,6 +15,24 @@ import type { Session } from 'neo4j-driver'
 
 const stepsCache = new Map<string, Promise<StepRow[]>>()
 
+/**
+ * I passi del workflow del tenant, **in ordine** (revisione delle otto ondate ·
+ * B·N-4).
+ *
+ * L'ordine non è estetica: mezza dozzina di chiamanti scelgono un passo con
+ * `steps.find(s => s.category === '…')`, e la query non aveva `ORDER BY` —
+ * quindi la scelta era quella che Neo4j restituiva per prima. Dal vivo: aggiunto
+ * dal disegnatore un secondo passo terminale di categoria `closed` («Annullato»,
+ * «Respinto» — l'esempio stesso della documentazione), la chiusura automatica
+ * cadeva su quello, 5 letture su 5. Gli incident si auto-chiudevano come
+ * annullati.
+ *
+ * `step_order` crescente (assenti in fondo), poi il nome: è lo stesso ordine di
+ * `lib/workflowTargets.ts`, che i bersagli delle transizioni automatiche usano
+ * già. Con l'ordine, un `find` sceglie il passo che il cliente ha messo prima —
+ * cioè quello del prodotto, perché i passi aggiunti dopo hanno `step_order` più
+ * alto.
+ */
 export interface StepRow {
   name:       string
   /** Etichetta scelta dal cliente nel disegnatore; `null` se non l'ha messa. */
@@ -52,6 +70,7 @@ async function loadSteps(session: Session, tenantId: string, entityType: string)
              s.category    AS category,
              s.purpose     AS purpose,
              s.step_order  AS stepOrder
+      ORDER BY coalesce(s.step_order, 999), s.name
     `, { tenantId, entityType })
     return res.records.map((r) => ({
       name:       r.get('name')       as string,

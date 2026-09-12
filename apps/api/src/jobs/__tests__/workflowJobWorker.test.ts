@@ -151,6 +151,41 @@ describe('workflow-jobs: auto_close', () => {
     expect(transition).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ toStepName: 'cancelled' }), expect.anything())
   })
 
+  /**
+   * Revisione delle otto ondate · B·N-4. Era
+   * `steps.find(s => s.category === 'closed')` su una lista senza ordine:
+   * aggiunto dal disegnatore un secondo passo terminale di categoria `closed`
+   * («Annullato» — l'esempio stesso della docstring di `statusStepNames.ts`),
+   * la scelta cadeva su quello, 5 letture su 5. Gli incident si
+   * auto-chiudevano come annullati, in silenzio.
+   */
+  it('due passi di categoria «closed» → vince quello con lo step_order più basso, non quello che il DB dà per primo', async () => {
+    readRows = [[{ entityType: 'incident' }]]
+    getWorkflowSteps.mockResolvedValue([
+      // L'ordine in cui arrivano è quello «sbagliato»: il passo aggiunto dal
+      // cliente per primo. Deve vincere comunque `closed`, che ha ordine 7.
+      { name: 'annullato', isInitial: false, isTerminal: true, isOpen: false, category: 'closed', stepOrder: 20 },
+      ...STEPS,
+    ])
+
+    await workflowProcessor(job('auto_close', data))
+
+    expect(transition).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ toStepName: 'closed' }), expect.anything())
+  })
+
+  it('nessun passo «closed» e nessun terminale → il job FALLISCE invece di completarsi in silenzio', async () => {
+    readRows = [[{ entityType: 'incident' }]]
+    getWorkflowSteps.mockResolvedValue([
+      { name: 'aperto', isInitial: true, isTerminal: false, isOpen: true, category: 'active', stepOrder: 1 },
+    ])
+
+    // Prima era `logger.warn` + `return`: il job risultava COMPLETATO e quel
+    // ticket non si chiudeva mai, senza che nessuno lo vedesse.
+    const err = await workflowProcessor(job('auto_close', data)).then(() => null, (e: unknown) => e)
+    expect((err as Error).message).toMatch(/non ha nessun passo di categoria "closed" né nessun passo terminale/)
+    expect(transition).not.toHaveBeenCalled()
+  })
+
   it('problem → ValidationError propagata PRIMA della transizione, closeIncident mai chiamato', async () => {
     readRows = [[{ entityType: 'problem' }]]
 
@@ -332,7 +367,10 @@ describe('notification-jobs', () => {
     const s = sessions.at(-1)!
     expect(s.mode).toBe('WRITE')
     expect(s.reads[0]!.p).toEqual({ instanceId: 'wi-2', tenantId: 't1' })
-    expect(s.reads[0]!.q).toContain("TRANSITIONS_TO {trigger: 'automatic'}")
+    // Rinegoziato (revisione · B·M-4): l'arco che conclude un'attesa può essere
+    // marcato `automatic` O `timer` — il secondo era la scelta ovvia nella
+    // tendina e non veniva percorso da nessuno.
+    expect(s.reads[0]!.q).toContain("tr.trigger IN ['automatic', 'timer']")
     expect(transition).toHaveBeenCalledWith(
       expect.objectContaining({ mode: 'WRITE' }),
       { instanceId: 'wi-2', toStepName: 'closed', triggeredBy: 'timer', triggerType: 'automatic' },
@@ -353,7 +391,7 @@ describe('notification-jobs', () => {
   it('timer_wait: nessun arco automatico dal passo corrente → il job rigetta nominando il passo (niente attesa infinita muta)', async () => {
     readRows = [[{ currentStep: 'in_attesa', toStep: null }]]
     await expect(notificationProcessor(job('timer_wait', { instanceId: 'wi-2', toStep: 'closed', tenantId: 't1' })))
-      .rejects.toThrow(/dal passo "in_attesa" non esce nessuna transizione automatica/)
+      .rejects.toThrow(/dal passo "in_attesa" non esce nessuna transizione con innesco "automatic" o "timer"/)
     expect(transition).not.toHaveBeenCalled()
   })
 

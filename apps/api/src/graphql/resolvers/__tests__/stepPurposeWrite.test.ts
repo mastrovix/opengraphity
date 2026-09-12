@@ -45,8 +45,15 @@ vi.mock('../ci-utils.js', () => ({
   getSession: vi.fn(),
 }))
 vi.mock('../../../services/incidentService.js', () => ({ publishIncidentTransition: vi.fn() }))
+// Revisione delle otto ondate · B·N-1: togliere lo scopo a un passo di un
+// workflow delle change fa scattare la guardia che verifica che resti un posto
+// dove approvare, e quella legge i tipi di change pre-approvati del cliente.
+vi.mock('../../../lib/changePolicy.js', () => ({
+  preApprovedChangeTypes: vi.fn(async () => ['standard', 'normal', 'emergency']),
+  changeTypeVocabulary:   vi.fn(async () => ['standard', 'normal', 'emergency']),
+}))
 vi.mock('../../../lib/logger.js', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
   workflowLogger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
@@ -110,6 +117,9 @@ describe('saveWorkflowChanges — lo scopo si scrive, si toglie e non si inventa
   it('stringa vuota → lo scopo viene TOLTO (purpose null con purposeGiven true)', async () => {
     results = [
       { records: [makeRecord({ version: 1 })] }, { records: [] },
+      // La guardia dell'ondata di rimedio 2: resta un altro passo con lo scopo
+      // `approval`, quindi togliere questo è legittimo.
+      { records: [makeRecord({ approvalSteps: 1 })] },
       { records: [makeRecord({ wd: { properties: { id: 'def-1', entity_type: 'change', version: 2 } } })] }, { records: [] },
     ]
     await saveWorkflowChanges(null, { ...base, steps: [step({ purpose: '' })], expectedVersion: 1 }, ctx)

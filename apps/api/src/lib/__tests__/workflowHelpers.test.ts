@@ -77,3 +77,34 @@ describe('stepStatusClasses: nessun nome di passo, solo metadata', () => {
       .toEqual(['open'])
   })
 })
+
+/**
+ * Revisione delle otto ondate · B·N-4 — la query non aveva `ORDER BY`.
+ *
+ * Mezza dozzina di chiamanti scelgono un passo con
+ * `steps.find(s => s.category === '…')`: senza ordine, la scelta era quella che
+ * il database restituiva per prima. Dal vivo: aggiunto dal disegnatore un
+ * secondo passo terminale di categoria `closed` («Annullato», «Respinto» —
+ * l'esempio stesso della documentazione), la chiusura automatica cadeva su
+ * quello, 5 letture su 5, e gli incident si auto-chiudevano come annullati.
+ */
+describe('i passi arrivano in ordine, così un `find` è deterministico (B·N-4)', () => {
+  it('la query ordina per step_order e poi per nome', async () => {
+    const s = fakeSession([step('new')])
+    await getWorkflowSteps(s as never, 'c-one', 'incident')
+    expect(s.run.mock.calls[0]![0]).toContain('ORDER BY coalesce(s.step_order, 999), s.name')
+  })
+
+  it('fra due passi di categoria «closed» il primo è quello con lo step_order più basso', async () => {
+    // Il database li dà nell'ordine della query: qui si verifica che chi legge
+    // riceva la lista così com'è, e che il `find` prenda «closed» e non
+    // «annullato» — che è il passo aggiunto dal cliente, con ordine più alto.
+    const s = fakeSession([
+      step('closed',    { category: 'closed', isTerminal: true, step_order: 6, stepOrder: 6 }),
+      step('annullato', { category: 'closed', isTerminal: true, step_order: 9, stepOrder: 9 }),
+    ])
+    const steps = await getWorkflowSteps(s as never, 'c-one', 'incident')
+    expect(steps.map((x) => x.name)).toEqual(['closed', 'annullato'])
+    expect(steps.find((x) => x.category === 'closed')?.name).toBe('closed')
+  })
+})

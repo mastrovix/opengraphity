@@ -63,6 +63,14 @@ vi.mock('../../../lib/logger.js', () => ({
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/validateRequiredFields.js', () => ({ validateRequiredFields: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/workflowHelpers.js', () => ({ invalidateWorkflowCache: vi.fn() }))
+// I tipi di change pre-approvati: li legge la guardia che impedisce di lasciare
+// il workflow delle change senza un posto dove approvare (revisione · B·N-1).
+let preApprovedTypes: readonly string[] = ['standard']
+let changeTypes:      readonly string[] = ['standard', 'normal', 'emergency']
+vi.mock('../../../lib/changePolicy.js', () => ({
+  preApprovedChangeTypes: vi.fn(async () => preApprovedTypes),
+  changeTypeVocabulary:   vi.fn(async () => changeTypes),
+}))
 
 const { workflowResolvers } = await import('../workflow.js')
 const { invalidateWorkflowCache } = await import('../../../lib/workflowHelpers.js')
@@ -348,5 +356,194 @@ describe('marchio di personalizzazione (contratto con i seed)', () => {
     await M.saveWorkflowLayout(null, { definitionId: 'def-1', positions: [{ stepId: 's1', positionX: 1, positionY: 2 }] }, ctx)
     expect(writtenCypher()).not.toContain('customized_at')
     expect(invalidateWorkflowCache).not.toHaveBeenCalled()
+  })
+})
+
+// ── Revisione delle otto ondate · ondata di rimedio 2 ─────────────────────────
+
+/**
+ * B·N-3 — la **categoria** del passo era rimasta testo libero.
+ *
+ * L'ondata 4 ha dato allo *scopo* un vocabolario chiuso, una tendina e una
+ * validazione in scrittura; la categoria è restata un `<Input list=…>` con una
+ * `datalist` di suggerimenti — e nel frattempo l'ondata 8 le ha fatto decidere
+ * «risolto» (che valorizza `resolved_at` e `root_cause`), la chiusura
+ * automatica, l'escalation e le classi di stato. Dal vivo, nella revisione:
+ * `category = 'risolto'` accettata, transizione riuscita, `resolved_at` NULL.
+ */
+describe('la categoria del passo è un vocabolario chiuso (B·N-3)', () => {
+  const base = { definitionId: 'def-1', transitions: [], positions: [], expectedVersion: null }
+  const step = (over: Record<string, unknown> = {}) => ({
+    stepName: 'risolto', label: 'Risolto', enterActions: null, exitActions: null, ...over,
+  })
+
+  it('la parola italiana che l\'interfaccia invitava a scrivere ora è rifiutata, dicendo le ammesse', async () => {
+    await expect(M.saveWorkflowChanges(null, { ...base, steps: [step({ category: 'risolto' })] }, ctx))
+      .rejects.toThrow(/categoria "risolto" fuori vocabolario.*active, waiting, escalated, resolved, closed, draft, published, failed/s)
+    expect(calls).toHaveLength(0)   // rifiutata PRIMA di aprire la transazione
+  })
+
+  it('il rifiuto spiega che il nome per gli utenti è l\'etichetta, non la categoria', async () => {
+    await expect(M.saveWorkflowChanges(null, { ...base, steps: [step({ category: 'chiuso' })] }, ctx))
+      .rejects.toThrow(/etichetta del passo, non questo/)
+  })
+
+  it('una categoria del vocabolario passa e viene scritta', async () => {
+    results = [{ records: [makeRecord({ version: 3 })] }]
+    // Il mock minimo fa fallire la lettura finale che rimappa la definizione:
+    // conta il Cypher scritto, come negli altri test di questo file.
+    await M.saveWorkflowChanges(null, { ...base, steps: [step({ category: 'resolved' })] }, ctx).catch(() => null)
+    expect(paramsOf('SET s.label')?.['steps']).toEqual([expect.objectContaining({ category: 'resolved' })])
+  })
+
+  it('categoria assente o vuota = non mandata: resta quella salvata (era già così)', async () => {
+    results = [{ records: [makeRecord({ version: 3 })] }]
+    await M.saveWorkflowChanges(null, { ...base, steps: [step({ category: '' })] }, ctx).catch(() => null)
+    expect(paramsOf('SET s.label')?.['steps']).toEqual([expect.objectContaining({ category: null })])
+    expect(writtenCypher()).toContain('s.category      = coalesce(st.category,   s.category)')
+  })
+})
+
+/**
+ * B·M-4 — innesco e condizione delle transizioni.
+ *
+ * Il registro delle condizioni è chiuso (sono funzioni nel codice): un refuso
+ * si salvava senza un fiato e trasformava l'arco in un muro, perché il motore
+ * risponde «Condizione di transizione sconosciuta» a ogni tentativo.
+ */
+describe('innesco e condizione delle transizioni sono vocabolari chiusi (B·M-4)', () => {
+  const base = { definitionId: 'def-1', steps: null, positions: [], expectedVersion: null }
+  const tr = (over: Record<string, unknown> = {}) => ({
+    transitionId: 'tr-1', label: 'Avanti', trigger: 'manual', requiresInput: false,
+    inputField: null, condition: null, timerHours: null, ...over,
+  })
+
+  it('il refuso della revisione è rifiutato, e il messaggio dice perché è grave', async () => {
+    await expect(M.saveWorkflowChanges(null, { ...base, transitions: [tr({ condition: 'all_assessment_complete' })] }, ctx))
+      .rejects.toThrow(/condizione "all_assessment_complete" sconosciuta.*blocca l'arco/s)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('un innesco inventato è rifiutato (l\'arco non verrebbe percorso da nessuno)', async () => {
+    await expect(M.saveWorkflowChanges(null, { ...base, transitions: [tr({ trigger: 'quando_mi_pare' })] }, ctx))
+      .rejects.toThrow(/innesco "quando_mi_pare" fuori vocabolario.*manual, automatic, timer, sla_breach/s)
+  })
+
+  it('una condizione del registro passa; il vuoto la TOGLIE (è il modo di sbloccare un arco)', async () => {
+    results = [{ records: [makeRecord({ version: 3 })] }]
+    await M.saveWorkflowChanges(null, {
+      ...base,
+      transitions: [tr({ condition: 'all_assessments_complete' }), tr({ transitionId: 'tr-2', condition: '' })],
+    }, ctx).catch(() => null)
+    const written = paramsOf('SET t.label')?.['transitions'] as Array<Record<string, unknown>>
+    expect(written[0]!['condition']).toBe('all_assessments_complete')
+    expect(written[1]!['condition']).toBeNull()
+  })
+
+  it('addWorkflowTransition valida l\'innesco alla creazione dell\'arco', async () => {
+    await expect(M.addWorkflowTransition(null, {
+      definitionId: 'def-1', fromStepName: 'a', toStepName: 'b', trigger: 'timer_scaduto',
+    }, ctx)).rejects.toThrow(/innesco "timer_scaduto" fuori vocabolario/)
+  })
+})
+
+/**
+ * B·N-1 — il workflow delle change deve conservare un posto dove approvare.
+ *
+ * Il varco delle approvazioni è un `if` sullo scopo del passo, con il controllo
+ * dei requisiti e `requireRole('admin')` dentro il ramo: togliere lo scopo dalla
+ * tendina — due clic — li faceva cadere insieme al ramo. La difesa che conta è
+ * sul passo di ARRIVO (vedi `changeApprovalWindowGate.test.ts`); questa impedisce
+ * di **entrare** nello stato, che è sempre meglio che accorgersene dopo.
+ */
+describe('togliere l\'ultimo scopo «approval» da un workflow delle change (B·N-1)', () => {
+  const base = { definitionId: 'def-1', transitions: [], positions: [], expectedVersion: null }
+  const step = (over: Record<string, unknown> = {}) => ({
+    stepName: 'cab', label: 'CAB', enterActions: null, exitActions: null, purpose: '', ...over,
+  })
+
+  beforeEach(() => { preApprovedTypes = ['standard']; changeTypes = ['standard', 'normal', 'emergency'] })
+
+  it('rifiutato, nominando i tipi di change che resterebbero senza posto dove essere approvati', async () => {
+    results = [
+      { records: [makeRecord({ version: 3 })] },                 // lettura versione
+      { records: [] },                                            // UNWIND dei passi
+      { records: [makeRecord({ approvalSteps: 0 })] },             // la guardia: nessun passo `approval`
+    ]
+    await expect(M.saveWorkflowChanges(null, { ...base, steps: [step()] }, ctx))
+      .rejects.toThrow(/nessun passo avrebbe più lo scopo «Approvazione».*"normal", "emergency"/s)
+  })
+
+  it('se ne resta un altro con quello scopo, si può togliere', async () => {
+    results = [
+      { records: [makeRecord({ version: 3 })] },
+      { records: [] },
+      { records: [makeRecord({ approvalSteps: 1 })] },
+    ]
+    const err = await M.saveWorkflowChanges(null, { ...base, steps: [step()] }, ctx).then(() => null, (e: unknown) => e)
+    expect(String(err)).not.toMatch(/Approvazione/)
+    expect(writtenCypher()).toContain("WHERE wd.entity_type = 'change'")
+  })
+
+  it('se il cliente ha pre-approvato TUTTI i suoi tipi di change, non c\'è niente da approvare', async () => {
+    preApprovedTypes = ['standard', 'normal', 'emergency']
+    results = [
+      { records: [makeRecord({ version: 3 })] },
+      { records: [] },
+      { records: [makeRecord({ approvalSteps: 0 })] },
+    ]
+    const err = await M.saveWorkflowChanges(null, { ...base, steps: [step()] }, ctx).then(() => null, (e: unknown) => e)
+    expect(String(err)).not.toMatch(/Approvazione/)
+  })
+
+  it('su un workflow che non è delle change la guardia non si applica', async () => {
+    results = [
+      { records: [makeRecord({ version: 3 })] },
+      { records: [] },
+      { records: [] },                                            // la guardia non trova la definizione: non è `change`
+    ]
+    const err = await M.saveWorkflowChanges(null, { ...base, steps: [step()] }, ctx).then(() => null, (e: unknown) => e)
+    expect(String(err)).not.toMatch(/Approvazione/)
+  })
+
+  it('la guardia non parte se non si stava togliendo nessuno scopo', async () => {
+    results = [{ records: [makeRecord({ version: 3 })] }]
+    await M.saveWorkflowChanges(null, { ...base, steps: [step({ purpose: 'approval' })] }, ctx).catch(() => null)
+    expect(writtenCypher()).not.toContain("WHERE wd.entity_type = 'change'")
+  })
+})
+
+/**
+ * B·M-1 — il nome di un passo diventa lo `status` del ticket.
+ *
+ * Dall'interfaccia si poteva aggiungere solo un passo TECNICO (fork, join,
+ * timer, sub-workflow), e per le change nemmeno quello: il passo di processo —
+ * quello di cui tutte e otto le ondate parlano, «un CAB fra approvazione e
+ * programmazione» — si poteva aggiungere solo con la mutation a mano. Adesso
+ * il disegnatore lo offre, e il nome è lo slug dell'etichetta: quindi il nome
+ * va validato, perché finisce nei filtri e nei report.
+ */
+describe('il nome del passo ha una forma (B·M-1)', () => {
+  it('un nome con spazi o maiuscole è rifiutato, dicendo che l\'etichetta è libera', async () => {
+    await expect(M.addWorkflowStep(null, {
+      definitionId: 'def-1', name: 'CAB Settimanale', label: 'CAB settimanale', type: 'standard',
+    }, ctx)).rejects.toThrow(/non valido: minuscolo, cifre e trattini bassi.*il nome che vedono gli utenti è l'etichetta/s)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('un nome che inizia per cifra è rifiutato', async () => {
+    await expect(M.addWorkflowStep(null, {
+      definitionId: 'def-1', name: '2_livello', label: 'Secondo livello', type: 'standard',
+    }, ctx)).rejects.toThrow(/deve iniziare con una lettera/)
+  })
+
+  it('uno slug valido passa, e il passo nasce «in lavorazione» e senza scopo', async () => {
+    results = [{ records: [makeRecord({ entityType: 'change' })] }]
+    await M.addWorkflowStep(null, {
+      definitionId: 'def-1', name: 'cab_settimanale', label: 'CAB settimanale', type: 'standard',
+    }, ctx).catch(() => null)
+    const p = paramsOf('CREATE (s:WorkflowStep')!
+    expect(p).toMatchObject({ name: 'cab_settimanale', label: 'CAB settimanale', type: 'standard', category: 'active' })
+    expect(writtenCypher()).toMatch(/is_open:\s+true/)
   })
 })

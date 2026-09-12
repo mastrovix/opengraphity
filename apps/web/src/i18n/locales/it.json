@@ -1192,7 +1192,32 @@
       "investigation": "Analisi della causa radice",
       "change_requested": "In attesa di una change",
       "change_in_progress": "Change in corso"
-    }
+    },
+    "category": "Categoria",
+    "categoryHint": "La categoria dice come il ticket si vede DA FUORI mentre sta qui — liste, portale, contatori — e il prodotto la legge per decidere: «risolto» valorizza la data di risoluzione e la causa radice, «chiuso» è dove arriva la chiusura automatica, «escalato» dove arriva l'escalation. È un vocabolario chiuso: il nome che vedono gli utenti è l'etichetta del passo, non questo.",
+    "categoryNone": "— Nessuna categoria —",
+    "categoryOption": {
+      "active": "In lavorazione",
+      "waiting": "In attesa di terzi",
+      "escalated": "Escalato",
+      "resolved": "Risolto",
+      "closed": "Chiuso",
+      "draft": "Bozza",
+      "published": "Pubblicato",
+      "failed": "Finito male (annullato, rifiutato)"
+    },
+    "conditionLabel": "Condizione (opzionale)",
+    "conditionNone": "— Nessuna condizione —",
+    "conditionHint": "Il motore sa valutare solo le condizioni scritte nel codice: una condizione inventata blocca l'arco, perché viene rifiutata a ogni tentativo e il ticket non si muove più.",
+    "conditionOption": {
+      "has_linked_change": "C'è una change collegata",
+      "all_assessments_complete": "Tutti gli assessment completati",
+      "all_deployments_complete": "Tutti i rilasci e le verifiche completati",
+      "all_reviews_confirmed": "Tutte le revisioni confermate",
+      "rootCause != null": "La causa radice è compilata"
+    },
+    "triggerHint": "Chi percorre l'arco: «manuale» una persona dal ticket, «automatico» il motore quando la condizione è soddisfatta, «timer» la fine di un'attesa, «sfondamento SLA» l'escalation.",
+    "addStepStandardHint": "Nasce «in lavorazione» e senza scopo: apri il pannello del passo per assegnargli categoria e scopo, altrimenti le regole di dominio non lo riconoscono."
   },
   "itilDesigner": {
     "title": "ITIL Type Designer",

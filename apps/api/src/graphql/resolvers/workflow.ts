@@ -74,6 +74,18 @@ async function addWorkflowStep(
 ) {
   const ALLOWED_TYPES = new Set(['standard', 'parallel_fork', 'parallel_join', 'timer_wait', 'sub_workflow'])
   if (!ALLOWED_TYPES.has(type)) throw new ValidationError(`Invalid step type: ${type}`)
+  // Il nome del passo diventa lo `status` dell'entità (`engine.ts`), e da lì va
+  // nei filtri, nei report e nel vocabolario `status_*`: ha la stessa forma di
+  // ogni altro identificatore di dominio. Non era validato — dall'interfaccia
+  // arrivava già slugato, ma via API no, e un nome con spazi o maiuscole
+  // avrebbe prodotto uno stato che nessun filtro trova (revisione · B·M-1).
+  if (!/^[a-z][a-z0-9_]*$/.test(name)) {
+    throw new ValidationError(
+      `Nome di passo "${name}" non valido: minuscolo, cifre e trattini bassi, e deve iniziare con una lettera ` +
+      `(es. "cab_settimanale"). Questo nome diventa lo stato del ticket e finisce nei filtri e nei report; ` +
+      `il nome che vedono gli utenti è l'etichetta, che può essere qualunque cosa.`,
+    )
+  }
 
   return withSession(async (session) => {
     const stepId = randomUUID()

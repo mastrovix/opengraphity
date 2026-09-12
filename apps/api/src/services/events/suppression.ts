@@ -63,6 +63,9 @@ export interface ChangeWindowSteps {
 
 /** Lo scopo della finestra APERTA; gli altri di `CHANGE_WINDOW_PURPOSES` sono «programmata». */
 const IMPLEMENTATION_PURPOSE = 'implementation'
+
+/** Tenant per cui si è già detto che manca lo scopo della finestra programmata (un log per processo). */
+const plannedWarned = new Set<string>()
 const PLANNED_PURPOSES: readonly string[] = CHANGE_WINDOW_PURPOSES.filter((p) => p !== IMPLEMENTATION_PURPOSE)
 
 /**
@@ -99,19 +102,51 @@ export async function resolveChangeWindowSteps(tenantId: string, session?: Query
     const implementation = await getStepNamesByPurpose(own, tenantId, 'change', [IMPLEMENTATION_PURPOSE])
     const planned        = await getStepNamesByPurpose(own, tenantId, 'change', PLANNED_PURPOSES)
     const all = [...new Set([...implementation, ...planned])]
-    if (all.length === 0) {
+
+    // I DUE scopi, separatamente (revisione delle otto ondate · B·N-2). Il
+    // controllo era su `all.length === 0`, cioè sull'UNIONE: bastava che il
+    // cliente assegnasse `scheduled` a un passo e dimenticasse
+    // `implementation` sul passo di rilascio vero perché la configurazione
+    // «passasse» e si spegnessero in silenzio tre cose — la soppressione degli
+    // allarmi durante il rilascio, la manutenzione dei servizi
+    // (`c.service_window` restava null) e l'avanzamento del problem collegato.
+    // Verificato dal vivo: nessun errore, nessun contatore, nessun log.
+    if (implementation.length === 0 || planned.length === 0) {
       // Nessun passo di change nel tenant: niente da sopprimere, nessun errore.
       const steps = await getWorkflowSteps(own, tenantId, 'change')
       if (steps.length === 0) return { implementation, planned, all }
 
-      workflowPurposeMissingTotal.inc({ rule: 'change_window' })
-      throw new Error(
-        `Soppressione degli allarmi durante i rilasci: il workflow "change" del tenant ${tenantId} ha ` +
-        `${String(steps.length)} passi e nessuno dichiara lo scopo [${CHANGE_WINDOW_PURPOSES.join(', ')}]. ` +
-        `Senza, nessun allarme verrebbe silenziato durante un rilascio e nessun servizio entrerebbe in ` +
-        `manutenzione, in silenzio: assegna lo scopo ai passi nel disegnatore dei workflow. ` +
-        `L'allarme resta acceso alla sorgente e questo lavoro è rigiocabile dalla pagina Code.`,
-      )
+      if (implementation.length === 0) {
+        workflowPurposeMissingTotal.inc({ rule: 'change_window' })
+        throw new Error(
+          `Soppressione degli allarmi durante i rilasci: il workflow "change" del tenant ${tenantId} ha ` +
+          `${String(steps.length)} passi e nessuno dichiara lo scopo "${IMPLEMENTATION_PURPOSE}" ` +
+          `${planned.length > 0 ? `(lo scopo "${PLANNED_PURPOSES.join('/')}" c'è, su [${planned.join(', ')}]: è l'altra metà, e da sola non basta)` : `(nessuno dei due: [${CHANGE_WINDOW_PURPOSES.join(', ')}])`}. ` +
+          `È lo scopo della finestra APERTA, quella che silenzia gli allarmi mentre il rilascio è in corso: ` +
+          `senza, nessun allarme verrebbe silenziato durante un rilascio e nessun servizio entrerebbe in ` +
+          `manutenzione, in silenzio. Assegna lo scopo al passo di rilascio nel disegnatore dei workflow. ` +
+          `L'allarme resta acceso alla sorgente e questo lavoro è rigiocabile dalla pagina Code.`,
+        )
+      }
+
+      // `scheduled` mancante: si conta e si dice UNA volta per processo, non si
+      // ferma. Asimmetria deliberata, e questo è il motivo: la finestra aperta
+      // silenzia SEMPRE (un rilascio in corso è un rilascio in corso), mentre un
+      // workflow che non ha uno stato «in calendario» è una forma possibile del
+      // processo. Fermare tutta l'elaborazione degli allarmi di un cliente per
+      // questa metà sarebbe un fail-loud che blocca qualcosa di legittimo — che
+      // è l'errore opposto, e lo stiamo evitando di proposito. Il contatore
+      // (`rule = "change_window_planned"`) porta comunque la cosa in Prometheus.
+      workflowPurposeMissingTotal.inc({ rule: 'change_window_planned' })
+      if (!plannedWarned.has(tenantId)) {
+        plannedWarned.add(tenantId)
+        logger.warn(
+          { tenantId, implementation, missingPurposes: PLANNED_PURPOSES },
+          '[suppression] nessun passo del workflow "change" dichiara lo scopo della finestra PROGRAMMATA: ' +
+          'gli allarmi non verranno silenziati nella finestra pianificata, ma solo mentre il rilascio è in corso. ' +
+          'Il contatore workflow_step_purpose_missing_total{rule="change_window_planned"} continua a contare.',
+        )
+      }
     }
     return { implementation, planned, all }
   } finally {

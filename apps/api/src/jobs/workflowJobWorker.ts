@@ -75,6 +75,7 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
       const session = getSession(undefined, 'WRITE')
       try {
         const { getWorkflowSteps } = await import('../lib/workflowHelpers.js')
+        const { targetStepByCategory } = await import('../lib/workflowTargets.js')
         // The job is scheduled from an entity-specific step, so we resolve the
         // workflow's entity_type via the instance, then pick the step marked
         // as closure (category='closed' preferred, else first terminal).
@@ -96,17 +97,43 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
           await publishAutoClose(entityType, entityId, tenantId)  // throws ValidationError
         }
 
-        const steps = await getWorkflowSteps(session, tenantId, entityType)
-        const target =
-          steps.find((s) => s.category === 'closed') ??
-          steps.find((s) => s.isTerminal)
-        if (!target) {
-          logger.warn({ entityType, entityId }, '[workflow-jobs] auto_close: no terminal step found')
-          return
+        // Revisione delle otto ondate · B·N-4. Era
+        // `steps.find(category === 'closed') ?? steps.find(isTerminal)` su una
+        // lista SENZA ordine: aggiunto dal disegnatore un secondo passo
+        // terminale di categoria `closed` («Annullato», «Respinto» — l'esempio
+        // stesso della documentazione), la scelta cadeva su quello, 5 letture
+        // su 5, e gli incident si auto-chiudevano come annullati.
+        //
+        // Adesso l'ordine è nel nucleo (`step_order`, poi il nome) e la scelta
+        // passa da `targetStepByCategory`, che ordina e dice cosa manca. Un
+        // workflow senza passi di categoria `closed` ma con un terminale resta
+        // servito — da quel terminale — perché era il comportamento di prima e
+        // togliere la chiusura automatica a quei tenant non è un rimedio; ma
+        // ora lo si DICE, invece di scegliere in silenzio.
+        const steps  = await getWorkflowSteps(session, tenantId, entityType)
+        let target: string
+        try {
+          target = await targetStepByCategory(session, tenantId, entityType, ['closed'],
+            `Chiusura automatica di ${entityType} ${entityId}`)
+        } catch (err) {
+          const terminal = steps.find((s) => s.isTerminal)
+          if (!terminal) {
+            // Prima era un `warn` + `return`: il job risultava completato e
+            // quel ticket non si chiudeva mai, senza che nessuno lo vedesse.
+            throw new Error(
+              `[workflow-jobs] auto_close: il workflow "${entityType}" del tenant ${tenantId} non ha nessun passo ` +
+              `di categoria "closed" né nessun passo terminale: non esiste un posto dove chiudere ${entityId}. ` +
+              `(${err instanceof Error ? err.message : String(err)})`,
+            )
+          }
+          logger.warn({ entityType, entityId, tenantId, chosen: terminal.name },
+            '[workflow-jobs] auto_close: nessun passo di categoria "closed"; si usa il passo terminale — ' +
+            'assegna la categoria «chiuso» al passo di chiusura nel disegnatore')
+          target = terminal.name
         }
         const result = await workflowEngine.transition(
           session,
-          { instanceId, toStepName: target.name, triggeredBy: 'system', triggerType: 'automatic' },
+          { instanceId, toStepName: target, triggeredBy: 'system', triggerType: 'automatic' },
           { userId: 'system', entityData: {} },
         )
         if (!result.success) {
@@ -274,7 +301,12 @@ async function processNotificationJob(job: Job): Promise<void> {
         // l'istanza si trova adesso.
         const fresh = await session.executeRead((tx) => tx.run(`
           MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})-[:CURRENT_STEP]->(cur:WorkflowStep)
-          OPTIONAL MATCH (cur)-[:TRANSITIONS_TO {trigger: 'automatic'}]->(next:WorkflowStep)
+          // L'innesco "timer" e' quello che un amministratore sceglie per primo
+          // su un arco che esce da un'attesa, ed era inerte: nessun consumatore
+          // lo percorreva (revisione · B-M-4). Adesso conclude l'attesa come
+          // "automatic" — e' la stessa cosa, detta meglio.
+          OPTIONAL MATCH (cur)-[tr:TRANSITIONS_TO]->(next:WorkflowStep)
+            WHERE tr.trigger IN ['automatic', 'timer']
           WITH cur, next ORDER BY coalesce(next.step_order, 999), next.name
           RETURN cur.name AS currentStep, collect(next.name)[0] AS toStep
         `, { instanceId, tenantId }))
@@ -285,7 +317,7 @@ async function processNotificationJob(job: Job): Promise<void> {
         const toStep      = fresh.records[0]!.get('toStep') as string | null
         if (!toStep) {
           throw new Error(
-            `timer_wait: dal passo "${currentStep}" non esce nessuna transizione automatica, quindi l'attesa non può concludersi ` +
+            `timer_wait: dal passo "${currentStep}" non esce nessuna transizione con innesco "automatic" o "timer", quindi l'attesa non può concludersi ` +
             `(l'arco era previsto verso "${scheduledToStep ?? 'n/d'}" quando il timer è partito). Aggiungi l'arco nel disegnatore.`,
           )
         }

@@ -6,6 +6,9 @@ import type { ActionContext } from '@opengraphity/workflow'
 import {
   NOTIFICATION_TARGETS, isTargetApplicable, applicableNotificationTargets,
   WORKFLOW_STEP_PURPOSES, isWorkflowStepPurpose,
+  WORKFLOW_STEP_CATEGORIES, isWorkflowStepCategory,
+  WORKFLOW_TRANSITION_TRIGGERS, isWorkflowTransitionTrigger,
+  WORKFLOW_TRANSITION_CONDITIONS, isWorkflowTransitionCondition,
   UPDATE_FIELD_ALLOWED, updateFieldRejection,
 } from '@opengraphity/types'
 import { publish } from '@opengraphity/events'
@@ -252,6 +255,146 @@ export function normalizeStepPurpose(raw: string | null | undefined, label: stri
   return value
 }
 
+/**
+ * La CATEGORIA del passo in scrittura (revisione delle otto ondate · B·N-3).
+ *
+ * Convenzione, identica a quella dello scopo tranne per una cosa:
+ *  - `undefined`/`null`/`''` → non mandata: la categoria salvata resta com'è.
+ *    Questo era già il comportamento (`coalesce(st.category, s.category)`) e il
+ *    web mandava `null` per il campo vuoto: non lo cambio, perché toglierla
+ *    lascerebbe un passo senza classe di stato — invisibile nelle liste;
+ *  - qualunque altra stringa → deve stare nel vocabolario chiuso.
+ *
+ * Il difetto che chiude: la categoria era un campo di testo con una `datalist`
+ * di suggerimenti, e da lei dipendono «risolto» (che valorizza `resolved_at` e
+ * `root_cause`), la chiusura automatica, l'escalation e le classi di stato. Dal
+ * vivo, `category = 'risolto'` veniva accettata: la transizione riusciva e il
+ * ticket restava senza `resolved_at`, cioè risolto per l'utente e mai risolto
+ * per i dati. Nessuna migrazione serve: tutte le categorie esistenti — sui 40
+ * passi di c-one e nei seed — sono già nel vocabolario.
+ */
+export function normalizeStepCategory(raw: string | null | undefined, label: string): string | null {
+  if (raw == null || raw.trim() === '') return null   // non mandata: resta com'è
+  const value = raw.trim()
+  if (!isWorkflowStepCategory(value)) {
+    throw new GraphQLError(
+      `${label}: categoria "${value}" fuori vocabolario. Ammesse: ${WORKFLOW_STEP_CATEGORIES.join(', ')}. ` +
+      `La categoria dice come il ticket si vede da fuori, e il prodotto la legge per decidere: ` +
+      `«risolto» valorizza la data di risoluzione, «chiuso» è dove arriva la chiusura automatica. ` +
+      `Il nome che vedono gli utenti è l'etichetta del passo, non questo.`,
+      { extensions: { code: 'BAD_USER_INPUT', category: value, allowedCategories: [...WORKFLOW_STEP_CATEGORIES] } },
+    )
+  }
+  return value
+}
+
+/**
+ * L'INNESCO di una transizione in scrittura (revisione · B·M-4).
+ *
+ * Era libero lato API (`trigger: String`) con una tendina lato web: una stringa
+ * inventata entrava nel grafo e quell'arco non veniva percorso da nessuno, in
+ * silenzio. `undefined`/`null` = non mandato (resta com'è).
+ */
+export function assertTransitionTrigger(raw: string | null | undefined, label: string): string | null {
+  if (raw == null || raw.trim() === '') return null
+  const value = raw.trim()
+  if (!isWorkflowTransitionTrigger(value)) {
+    throw new GraphQLError(
+      `${label}: innesco "${value}" fuori vocabolario. Ammessi: ${WORKFLOW_TRANSITION_TRIGGERS.join(', ')}.`,
+      { extensions: { code: 'BAD_USER_INPUT', trigger: value, allowedTriggers: [...WORKFLOW_TRANSITION_TRIGGERS] } },
+    )
+  }
+  return value
+}
+
+/**
+ * La CONDIZIONE di una transizione in scrittura (revisione · B·M-4).
+ *
+ * Il registro è chiuso perché ogni condizione è una funzione scritta nel codice
+ * (`workflow/conditions.ts`). Era un campo di testo con un segnaposto: un
+ * refuso — `all_assessment_complete` invece di `all_assessments_complete` — si
+ * salvava senza un fiato e trasformava quell'arco in un **muro**, perché il
+ * motore risponde «Condizione di transizione sconosciuta» a ogni tentativo e il
+ * ticket non si muove più. È lo schema che l'ondata 2 ha chiuso per le azioni
+ * di passo (`assertStepActions`) e l'ondata 4 per lo scopo.
+ *
+ * `''` → `null`: togliere la condizione da un arco deve restare possibile, ed è
+ * il modo di sbloccare un arco su cui era stato scritto un refuso.
+ */
+export function assertTransitionCondition(raw: string | null | undefined, label: string): string | null {
+  if (raw == null || raw.trim() === '') return null
+  const value = raw.trim()
+  if (!isWorkflowTransitionCondition(value)) {
+    throw new GraphQLError(
+      `${label}: condizione "${value}" sconosciuta. Il motore sa valutare solo queste: ` +
+      `${WORKFLOW_TRANSITION_CONDITIONS.join(', ')} (oppure vuoto per nessuna condizione). ` +
+      `Una condizione non registrata blocca l'arco: il motore la rifiuta a ogni tentativo e il ticket non si muove più.`,
+      { extensions: { code: 'BAD_USER_INPUT', condition: value, allowedConditions: [...WORKFLOW_TRANSITION_CONDITIONS] } },
+    )
+  }
+  return value
+}
+
+/**
+ * Il workflow delle change deve conservare **un posto dove approvare**
+ * (revisione delle otto ondate · B·N-1).
+ *
+ * Il varco delle approvazioni è `if (currentPurpose === 'approval' && …)`:
+ * `requireRole('admin')` e il controllo dei requisiti stanno **dentro** quel
+ * ramo, quindi cadono insieme al ramo quando il cliente mette lo scopo del
+ * passo a «nessuno» dalla tendina — due clic. Dal vivo, nella revisione: un
+ * utente di ruolo `operator` ha portato una change dal passo di approvazione a
+ * quello programmato **senza approvazioni e senza errore**.
+ *
+ * Il varco è stato spostato anche sul passo di ARRIVO (vedi
+ * `executeChangeTransition`), che è la difesa che conta. Questa è la seconda:
+ * impedire di **entrare** nello stato in cui il varco non ha dove applicarsi,
+ * che è sempre meglio che accorgersene dopo. Stessa forma della guardia che
+ * rifiuta di eliminare un passo con istanze sopra.
+ *
+ * L'eccezione, e non è teorica: un cliente che ha messo **tutti** i suoi tipi
+ * di change fra i pre-approvati non ha niente da approvare, e per lui un passo
+ * di approvazione obbligatorio sarebbe una regola senza contenuto. Quindi la
+ * guardia guarda il dato del cliente (ondata 8 + rimedio 1: i tipi
+ * pre-approvati sono una lista sul tenant, validata contro il suo vocabolario).
+ */
+async function assertApprovalPurposeSurvives(
+  tx: { run: (q: string, p: Record<string, unknown>) => Promise<{ records: Array<{ get: (k: string) => unknown }> }> },
+  tenantId: string, definitionId: string,
+): Promise<void> {
+  const res = await tx.run(`
+    MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+    WHERE wd.entity_type = 'change'
+    // tenant-ok: i passi sono quelli della definizione già scopata sopra
+    OPTIONAL MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep {purpose: 'approval'})
+    RETURN count(s) AS approvalSteps
+  `, { definitionId, tenantId })
+  // Nessuna riga = non è un workflow delle change: niente da verificare.
+  if (!res.records.length) return
+  if (Number(res.records[0]!.get('approvalSteps')) > 0) return
+
+  // Import differito: questa guardia gira solo quando si sta togliendo uno
+  // scopo, e `lib/changePolicy.ts` si tira dietro le matrici di dominio — che
+  // non servono a nessun'altra mutation del disegnatore.
+  const { preApprovedChangeTypes, changeTypeVocabulary } = await import('../../lib/changePolicy.js')
+  const [preApproved, vocabulary] = await Promise.all([
+    preApprovedChangeTypes(tenantId),
+    changeTypeVocabulary(tenantId),
+  ])
+  const daApprovare = vocabulary.filter((t) => !preApproved.includes(t))
+  if (daApprovare.length === 0) return
+
+  throw new GraphQLError(
+    `Nel workflow delle change nessun passo avrebbe più lo scopo «Approvazione», ma ` +
+    `${daApprovare.length === 1 ? 'il tipo di change' : 'i tipi di change'} ` +
+    `${daApprovare.map((t) => `"${t}"`).join(', ')} non ${daApprovare.length === 1 ? 'è' : 'sono'} pre-approvat${daApprovare.length === 1 ? 'o' : 'i'}: ` +
+    `senza quel passo non esisterebbe un posto dove approvarli, e il varco delle approvazioni non avrebbe ` +
+    `dove applicarsi. Assegna lo scopo «Approvazione» al passo in cui si approva, oppure — se per questo ` +
+    `cliente le change non si approvano — aggiungi quei tipi ai pre-approvati (Impostazioni → Matrici di dominio).`,
+    { extensions: { code: 'CONFLICT', changeTypesRequiringApproval: daApprovare } },
+  )
+}
+
 // ── Marchio di personalizzazione (contratto con i seed, ondata 2) ─────────────
 
 /**
@@ -301,8 +444,8 @@ export async function updateWorkflowStep(
   const purposeValue = normalizeStepPurpose(purpose, `step "${stepName}"`)
   return withSession(async (session) => {
     const now = new Date().toISOString()
-    const result = await session.executeWrite((tx) =>
-      tx.run(`
+    const result = await session.executeWrite(async (tx) => {
+      const written = await tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: $stepName})
         SET s.label        = $label,
             s.updated_at   = $now,
@@ -316,8 +459,13 @@ export async function updateWorkflowStep(
         enterActions: enterActions ?? null, exitActions: exitActions ?? null,
         purposeGiven: purposeValue !== undefined, purpose: purposeValue ?? null,
         now, ...customizedParams(ctx),
-      }),
-    )
+      })
+      // Togliere lo scopo è legittimo; togliere l'ULTIMO passo di approvazione
+      // di un workflow delle change non lo è (vedi la guardia). Dentro la
+      // stessa transazione: se si ferma, la scrittura non resta a metà.
+      if (purposeValue === null) await assertApprovalPurposeSurvives(tx, ctx.tenantId, definitionId)
+      return written
+    })
     if (!result.records.length) throw new GraphQLError('WorkflowStep non trovato', { extensions: { code: 'NOT_FOUND' } })
     invalidateWorkflowCache(ctx.tenantId, result.records[0].get('entityType') as string)
     const s = result.records[0].get('s').properties as Record<string, unknown>
@@ -349,7 +497,11 @@ export async function updateWorkflowTransition(
   },
   ctx: GraphQLContext,
 ) {
-  const { label, trigger, requiresInput, inputField, condition, timerHours } = input
+  const { label, requiresInput, inputField, timerHours } = input
+  // Innesco e condizione validati PRIMA della scrittura: un innesco inventato
+  // rende l'arco inerte, una condizione non registrata lo rende un muro.
+  const trigger   = assertTransitionTrigger(input.trigger,    `transizione ${transitionId}`)
+  const condition = assertTransitionCondition(input.condition, `transizione ${transitionId}`)
   return withSession(async (session) => {
     await session.executeWrite((tx) =>
       tx.run(`
@@ -426,7 +578,8 @@ export async function addWorkflowTransition(
         RETURN tr, from.name AS fromStep, to.name AS toStep, wd.entity_type AS entityType
       `, {
         definitionId, tenantId: ctx.tenantId, fromStepName, toStepName, id,
-        trigger: trigger ?? 'manual', label: label ?? 'Nuova transizione',
+        trigger: assertTransitionTrigger(trigger, `nuova transizione ${fromStepName} → ${toStepName}`) ?? 'manual',
+        label: label ?? 'Nuova transizione',
         sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null,
         ...customizedParams(ctx),
       }),
@@ -877,8 +1030,15 @@ export async function saveWorkflowChanges(
     assertStepActions(st.enterActions, `enter_actions dello step "${st.stepName}"`)
     assertStepActions(st.exitActions,  `exit_actions dello step "${st.stepName}"`)
     const purposeValue = normalizeStepPurpose(st.purpose, `step "${st.stepName}"`)
-    return { ...st, purposeGiven: purposeValue !== undefined, purpose: purposeValue ?? null }
+    const category     = normalizeStepCategory(st.category, `step "${st.stepName}"`)
+    return { ...st, category, purposeGiven: purposeValue !== undefined, purpose: purposeValue ?? null }
   })
+  // Innesco e condizione di ogni arco, prima della transazione (revisione · B·M-4).
+  const transitionRows = transitions.map((tr) => ({
+    ...tr,
+    trigger:   assertTransitionTrigger(tr.trigger,    `transizione ${tr.transitionId}`),
+    condition: assertTransitionCondition(tr.condition, `transizione ${tr.transitionId}`),
+  }))
   return withSession(async (session) => {
     // Tutto in UNA transazione: controllo di versione, aggiornamenti e
     // incremento. Prima erano write separate senza confronto di versione →
@@ -910,7 +1070,7 @@ export async function saveWorkflowChanges(
               t.input_field    = tr.inputField,
               t.condition      = tr.condition,
               t.timer_hours    = tr.timerHours
-        `, { transitions, definitionId, tenantId: ctx.tenantId })
+        `, { transitions: transitionRows, definitionId, tenantId: ctx.tenantId })
       }
       // Update step properties (label, enterActions, exitActions, metadata)
       if (steps && steps.length > 0) {
@@ -956,6 +1116,12 @@ export async function saveWorkflowChanges(
               // con purposeGiven = true). Un coalesce lo renderebbe definitivo.
               s.purpose       = CASE WHEN st.purposeGiven THEN st.purpose ELSE s.purpose END
         `, { definitionId, tenantId: ctx.tenantId, steps: stepRows })
+
+        // Se una delle modifiche ha tolto lo scopo, il workflow delle change
+        // deve conservare un posto dove approvare (revisione · B·N-1).
+        if (stepRows.some((st) => st.purposeGiven && st.purpose === null)) {
+          await assertApprovalPurposeSurvives(tx, ctx.tenantId, definitionId)
+        }
 
         // If any step was marked isInitial=true, demote the others in the same
         // workflow so there's at most one initial step.

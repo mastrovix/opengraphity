@@ -294,7 +294,30 @@ describe('helper puri', () => {
       })),
     )
     const err = await resolveChangeWindowSteps('t1').then(() => null, (e: unknown) => e)
-    expect(String((err as Error).message)).toMatch(/ha 5 passi e nessuno dichiara lo scopo \[scheduled, implementation\]/)
+    expect(String((err as Error).message)).toMatch(/ha 5 passi e nessuno dichiara lo scopo "implementation"/)
+    expect(String((err as Error).message)).toMatch(/nessuno dei due: \[scheduled, implementation\]/)
+
+    // Revisione delle otto ondate · B·N-2: il controllo era sull'UNIONE dei due
+    // scopi, quindi bastava assegnare `scheduled` e dimenticare
+    // `implementation` sul passo di rilascio perché la configurazione passasse
+    // e si spegnessero in silenzio la soppressione, la manutenzione dei servizi
+    // e l'avanzamento del problem. Adesso i due si guardano separatamente.
+    vi.mocked(getStepNamesByPurpose).mockImplementation(async (_s, _t, _e, purposes) =>
+      (purposes as readonly string[]).includes('implementation') ? [] : ['in_calendario'])
+    const soloProgrammata = await resolveChangeWindowSteps('t1').then(() => null, (e: unknown) => e)
+    expect(String((soloProgrammata as Error).message)).toMatch(/nessuno dichiara lo scopo "implementation"/)
+    expect(String((soloProgrammata as Error).message)).toMatch(/l'altra metà, e da sola non basta/)
+
+    // L'asimmetria, deliberata: `scheduled` mancante NON ferma l'elaborazione
+    // degli allarmi — la finestra aperta continua a silenziare, e un workflow
+    // senza stato «in calendario» è una forma possibile del processo. Si conta
+    // e si dice, non si blocca.
+    vi.mocked(getStepNamesByPurpose).mockImplementation(async (_s, _t, _e, purposes) =>
+      (purposes as readonly string[]).includes('implementation') ? ['rilascio'] : [])
+    const soloAperta = await resolveChangeWindowSteps('t1')
+    expect(soloAperta.implementation).toEqual(['rilascio'])
+    expect(soloAperta.planned).toEqual([])
+    expect(soloAperta.all).toEqual(['rilascio'])
     expect(String((err as Error).message)).toMatch(/disegnatore dei workflow/)
     expect(String((err as Error).message)).toMatch(/rigiocabile dalla pagina Code/)
     expect(metrics.workflowPurposeMissingTotal.inc).toHaveBeenCalledWith({ rule: 'change_window' })
@@ -304,6 +327,7 @@ describe('helper puri', () => {
     // errore e nessun contatore, altrimenti un allarme per ogni allarme
     // insegnerebbe solo a ignorare gli allarmi.
     vi.mocked(metrics.workflowPurposeMissingTotal.inc).mockClear()
+    vi.mocked(getStepNamesByPurpose).mockResolvedValue([])
     vi.mocked(getWorkflowSteps).mockResolvedValue([])
     const senzaChange = await resolveChangeWindowSteps('t1')
     expect(senzaChange).toEqual({ implementation: [], planned: [], all: [] })

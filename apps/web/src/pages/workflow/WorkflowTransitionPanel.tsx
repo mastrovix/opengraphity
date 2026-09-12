@@ -6,6 +6,7 @@ import type { WFTransition, PendingTransitionChange } from './workflow-types'
 import { panelStyle, panelInputStyle, saveButtonStyle, PanelHeader, PanelField } from './workflow-panel-helpers'
 import { Input, Select } from '@/components/ui/FormControls'
 import { colors } from '@/lib/tokens'
+import { WORKFLOW_TRANSITION_TRIGGERS, WORKFLOW_TRANSITION_CONDITIONS } from '@opengraphity/types'
 
 const inputStyle = panelInputStyle
 
@@ -51,11 +52,13 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
 
       <PanelField label="Trigger">
         <Select value={trigger} onChange={(e) => setTrigger(e.target.value)} style={inputStyle}>
-          <option value="manual">manual</option>
-          <option value="automatic">automatic</option>
-          <option value="timer">timer</option>
-          <option value="sla_breach">sla_breach</option>
+          {WORKFLOW_TRANSITION_TRIGGERS.map((tr) => (
+            <option key={tr} value={tr}>{tr}</option>
+          ))}
         </Select>
+        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', lineHeight: 1.4 }}>
+          {t('workflow.triggerHint')}
+        </span>
       </PanelField>
 
       <PanelField label="Richiede Input">
@@ -79,13 +82,21 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
         </PanelField>
       )}
 
-      <PanelField label="Condizione (opzionale)">
-        <Input
-          value={condition}
-          onChange={(e) => setCondition(e.target.value)}
-          placeholder="es. has_linked_change"
-          style={inputStyle}
-        />
+      {/* Revisione · B·M-4. Era un campo di testo con un segnaposto su un
+          registro CHIUSO di cinque condizioni: un refuso
+          (`all_assessment_complete`) si salvava senza un fiato e trasformava
+          quell'arco in un muro — il motore lo rifiuta a ogni tentativo e il
+          ticket non si muove più. Stessa forma dello scopo e della categoria. */}
+      <PanelField label={t('workflow.conditionLabel')}>
+        <Select value={condition} onChange={(e) => setCondition(e.target.value)} style={inputStyle}>
+          <option value="">{t('workflow.conditionNone')}</option>
+          {WORKFLOW_TRANSITION_CONDITIONS.map((c) => (
+            <option key={c} value={c}>{t(`workflow.conditionOption.${c}`)}</option>
+          ))}
+        </Select>
+        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', lineHeight: 1.4 }}>
+          {t('workflow.conditionHint')}
+        </span>
       </PanelField>
 
       {trigger === 'timer' && (

@@ -1192,7 +1192,32 @@
       "investigation": "Root-cause analysis",
       "change_requested": "Waiting for a change",
       "change_in_progress": "Change under way"
-    }
+    },
+    "category": "Category",
+    "categoryHint": "The category says how the ticket looks FROM OUTSIDE while it sits here — lists, portal, counters — and the product reads it to decide: «resolved» fills in the resolution date and root cause, «closed» is where auto-closure lands, «escalated» where escalation lands. It is a closed vocabulary: the name users see is the step's label, not this.",
+    "categoryNone": "— No category —",
+    "categoryOption": {
+      "active": "In progress",
+      "waiting": "Waiting on others",
+      "escalated": "Escalated",
+      "resolved": "Resolved",
+      "closed": "Closed",
+      "draft": "Draft",
+      "published": "Published",
+      "failed": "Ended badly (cancelled, rejected)"
+    },
+    "conditionLabel": "Condition (optional)",
+    "conditionNone": "— No condition —",
+    "conditionHint": "The engine can only evaluate conditions written in the code: an invented condition blocks the arrow, because it is refused on every attempt and the ticket stops moving.",
+    "conditionOption": {
+      "has_linked_change": "A change is linked",
+      "all_assessments_complete": "All assessments complete",
+      "all_deployments_complete": "All deployments and validations complete",
+      "all_reviews_confirmed": "All reviews confirmed",
+      "rootCause != null": "Root cause is filled in"
+    },
+    "triggerHint": "Who follows the arrow: «manual» a person from the ticket, «automatic» the engine when the condition holds, «timer» the end of a wait, «SLA breach» escalation.",
+    "addStepStandardHint": "It is born «in progress» with no purpose: open the step panel to give it a category and a purpose, otherwise domain rules will not recognise it."
   },
   "itilDesigner": {
     "title": "ITIL Type Designer",

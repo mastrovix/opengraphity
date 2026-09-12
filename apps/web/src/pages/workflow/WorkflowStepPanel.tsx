@@ -24,7 +24,7 @@ import {
 } from './workflow-panel-helpers'
 import { Input, Select } from '@/components/ui/FormControls'
 import { TARGET_OPTIONS } from '@/pages/settings/NotificationRuleList'
-import { WORKFLOW_STEP_PURPOSES } from '@opengraphity/types'
+import { WORKFLOW_STEP_PURPOSES, WORKFLOW_STEP_CATEGORIES } from '@opengraphity/types'
 
 const ACCENT_COLOR = colors.brand
 
@@ -568,23 +568,25 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
               <span>L'entità è considerata "aperta" in questo step</span>
             </label>
           </PanelField>
-          <PanelField label="Categoria">
-            <Input
-              list="wf-step-categories"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              placeholder="es. active, waiting, resolved, closed, failed, draft"
-              style={inputStyle}
-            />
-            <datalist id="wf-step-categories">
-              <option value="active" />
-              <option value="waiting" />
-              <option value="escalated" />
-              <option value="resolved" />
-              <option value="closed" />
-              <option value="failed" />
-              <option value="draft" />
-            </datalist>
+          {/* Revisione delle otto ondate · B·N-3. Era un campo di testo con una
+              `datalist` di SUGGERIMENTI, mentre da questa categoria dipendono
+              «risolto» (che valorizza data di risoluzione e causa radice), la
+              chiusura automatica, l'escalation e le classi di stato. Un'interfaccia
+              in italiano che invita a scrivere una parola inglese è la trappola
+              perfetta: dal vivo, `category = 'risolto'` veniva accettata e il
+              ticket restava senza `resolved_at`. Adesso il vocabolario è chiuso e
+              arriva da @opengraphity/types, come per lo scopo: la stessa lista che
+              il server valida in scrittura. */}
+          <PanelField label={t('workflow.category')}>
+            <Select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
+              <option value="">{t('workflow.categoryNone')}</option>
+              {WORKFLOW_STEP_CATEGORIES.map((c) => (
+                <option key={c} value={c}>{t(`workflow.categoryOption.${c}`)}</option>
+              ))}
+            </Select>
+            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', lineHeight: 1.4 }}>
+              {t('workflow.categoryHint')}
+            </span>
           </PanelField>
           {/* Scopo del passo (ondata 4, B4-3). Il vocabolario è chiuso e arriva
               da @opengraphity/types: la stessa lista che il server valida in

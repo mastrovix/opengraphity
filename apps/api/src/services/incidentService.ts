@@ -13,6 +13,7 @@ import { enqueueEmbedding } from '../jobs/embeddingWorker.js'
 import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
+import { targetStepByCategory } from '../lib/workflowTargets.js'
 import { loadStepFacts } from '../lib/stepEvent.js'
 import { stepEnteredEventType, legacyStepEventType } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
@@ -535,12 +536,14 @@ export async function escalateIncident(
       RETURN wi.id AS instanceId
     `, { id, tenantId: ctx.tenantId })
     if (!instanceRow) throw new Error(`Incident ${id}: no workflow instance to escalate`)
-    const steps = await getWorkflowSteps(session, ctx.tenantId, 'incident')
-    const target = steps.find((s) => s.category === 'escalated')
-    if (!target) throw new Error(`Incident ${id}: workflow has no 'escalated' step`)
+    // Revisione · B·N-4: era un `find` su una lista senza ordine (due passi di
+    // categoria `escalated` e la scelta era quella che il database dava per
+    // prima). `targetStepByCategory` ordina per `step_order` e dice cosa manca.
+    const target = await targetStepByCategory(session, ctx.tenantId, 'incident', ['escalated'],
+      `Escalation dell'incident ${id}`)
     await workflowEngine.transition(
       session,
-      { instanceId: instanceRow.instanceId, toStepName: target.name,
+      { instanceId: instanceRow.instanceId, toStepName: target,
         triggeredBy: ctx.userId, triggerType: 'manual' },
       { userId: ctx.userId, entityData: {} },
     )

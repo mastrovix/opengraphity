@@ -55,7 +55,7 @@ vi.mock('../../../services/incidentService.js', () => ({
 }))
 
 vi.mock('../../../lib/logger.js', () => ({
-  logger:         { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger:         { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
   workflowLogger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 

@@ -18,11 +18,26 @@ const WORKFLOW_LABELS: Record<WorkflowKey, string> = {
   emergency: 'Emergency Change',
 }
 
+/**
+ * I tipi di passo che si possono aggiungere.
+ *
+ * Revisione delle otto ondate · B·M-1: qui c'erano solo i quattro tipi
+ * TECNICI, e per le change il bottone era nascosto del tutto. Quindi tutte e
+ * otto le ondate ragionavano sull'amministratore che «inserisce un passo CAB
+ * fra approvazione e programmazione» — e dall'interfaccia non si poteva: il
+ * solo modo era la mutation GraphQL a mano. Il difetto che le ondate hanno
+ * chiuso era raggiungibile solo via API, mentre quello che restava aperto
+ * (togliere lo scopo dalla tendina) con due clic.
+ *
+ * `standard` è il passo di processo, ed è il primo della lista perché è quello
+ * che serve normalmente.
+ */
 const SPECIAL_STEP_TYPES = [
-  { type: 'parallel_fork', label: '⑂ Fork',       name: 'parallel_fork' },
-  { type: 'parallel_join', label: '⑂ Join',       name: 'parallel_join' },
-  { type: 'timer_wait',    label: '⏱ Timer Wait', name: 'timer_wait'    },
-  { type: 'sub_workflow',  label: '⊞ Sub-Workflow', name: 'sub_workflow' },
+  { type: 'standard',      label: '▢ Passo',        name: 'step'          },
+  { type: 'parallel_fork', label: '⑂ Fork',         name: 'parallel_fork' },
+  { type: 'parallel_join', label: '⑂ Join',         name: 'parallel_join' },
+  { type: 'timer_wait',    label: '⏱ Timer Wait',   name: 'timer_wait'    },
+  { type: 'sub_workflow',  label: '⊞ Sub-Workflow', name: 'sub_workflow'  },
 ]
 
 interface WorkflowToolbarProps {
@@ -45,11 +60,15 @@ export function WorkflowToolbar({
   const { t } = useTranslation()
   const navigate            = useNavigate()
   const [showAddStep, setShowAddStep] = useState(false)
-  const [stepType,    setStepType]    = useState('parallel_fork')
+  const [stepType,    setStepType]    = useState('standard')
   const [stepLabel,   setStepLabel]   = useState('')
   const [timerMins,   setTimerMins]   = useState('')
   const accentColor  = colors.brand
   const canSave      = (hasChanges || pendingCount > 0) && !!def
+  // Lo slug dell'etichetta: per un passo di processo È il nome, e il nome
+  // diventa lo stato del ticket. Un'etichetta che non produce nessuno slug
+  // («!!!», «2») darebbe un nome che il server rifiuta: meglio non offrirlo.
+  const stepSlug = stepLabel.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '').replace(/^[^a-z]+/, '')
 
   const [addWorkflowStep, { loading: addingStep }] = useMutation(ADD_WORKFLOW_STEP, {
     onCompleted: () => { toast.success(t('toast.workflow.stepAdded')); setShowAddStep(false); setStepLabel(''); setTimerMins(''); onRefetch?.() },
@@ -100,7 +119,7 @@ export function WorkflowToolbar({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {def && def.entityType !== 'change' && (
+        {def && (
           <button
             type="button"
             onClick={() => setShowAddStep(true)}
@@ -154,11 +173,20 @@ export function WorkflowToolbar({
             <>
               <Button variant="secondary" onClick={() => setShowAddStep(false)} style={{ padding: '7px 14px', border: '1px solid var(--color-border)' }}>Annulla</Button>
               <Button
-                disabled={!stepLabel.trim() || addingStep}
+                disabled={!stepLabel.trim() || addingStep || (stepType === 'standard' && !stepSlug)}
                 onClick={() => {
-                  const name = stepLabel.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+                  const name = stepSlug
+                  // Il nome di un passo di processo diventa lo `status` del
+                  // ticket, e finisce nei filtri e nei report: è lo slug
+                  // dell'etichetta, non `tipo_slug_timestamp` (revisione ·
+                  // B·M-1). Se quel nome è già usato il server lo dice; per i
+                  // tipi tecnici il nome generato resta, perché non è uno stato
+                  // che qualcuno legge.
+                  const stepName = stepType === 'standard'
+                    ? name
+                    : `${stepType}_${name}_${Date.now().toString(36)}`
                   void addWorkflowStep({ variables: {
-                    definitionId: def.id, name: `${stepType}_${name}_${Date.now().toString(36)}`,
+                    definitionId: def.id, name: stepName,
                     label: stepLabel.trim(), type: stepType,
                     timerDelayMinutes: stepType === 'timer_wait' && timerMins ? Number(timerMins) : undefined,
                   } })
@@ -183,8 +211,13 @@ export function WorkflowToolbar({
             </div>
             <div>
               <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>LABEL</div>
-              <input value={stepLabel} onChange={e => setStepLabel(e.target.value)} placeholder="es. Attesa Timer" style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
+              <input value={stepLabel} onChange={e => setStepLabel(e.target.value)} placeholder={stepType === 'standard' ? 'es. CAB settimanale' : 'es. Attesa Timer'} style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
             </div>
+            {stepType === 'standard' && (
+              <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', lineHeight: 1.45 }}>
+                {t('workflow.addStepStandardHint')}
+              </div>
+            )}
             {stepType === 'timer_wait' && (
               <div>
                 <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>RITARDO (minuti)</div>
