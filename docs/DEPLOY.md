@@ -149,13 +149,30 @@ nell'ambiente del build **locale** (le `args` del compose valgono solo per il
 portal). `apps/web/.env.local`, se presente, ha la precedenza.
 
 ```bash
+./apps/web/build-local.sh      # legge le VITE_* da infra/.env e VERIFICA il bundle
+```
+
+Forma manuale equivalente (ma senza la verifica finale):
+
+```bash
 set -a; . infra/.env; set +a
 pnpm install --frozen-lockfile
 pnpm --filter "./packages/*" build
 pnpm --filter @opengraphity/web build
 # se punti a un Keycloak remoto (Tailscale) il bundle non deve citare localhost:8080:
 grep -o 'localhost:8080' apps/web/dist/assets/index-*.js | wc -l   # atteso 0
+# e DEVE contenere lo slug del tenant, altrimenti il realm di Keycloak viene
+# dedotto dal nome host e l'accesso finisce in un ciclo di redirect (414):
+grep -c "$VITE_TENANT_SLUG" apps/web/dist/assets/index-*.js        # atteso ≥ 1
 ```
+
+> **Non scrivere a mano l'elenco delle `VITE_*`.** Il 18 set 2026 un bundle
+> costruito con un elenco battuto a mano ha omesso `VITE_TENANT_SLUG` (e citava
+> `VITE_KEYCLOAK_REALM`, che il codice non legge): da un host Tailscale il
+> realm di Keycloak veniva dedotto dal nome host, non esisteva, e il login
+> rimbalzava su sé stesso annidando il `redirect_uri` finché nginx rispondeva
+> **414 Request-URI Too Large** — applicazione irraggiungibile. Lo script sopra
+> esiste per questo, e la verifica finale fa fallire la build invece del login.
 
 `pnpm deploy:web` (root `package.json`) concatena build + `compose up -d --build web`.
 
