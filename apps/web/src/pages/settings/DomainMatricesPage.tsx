@@ -244,7 +244,10 @@ function PreApprovedChangeTypesCard() {
   const current = draft ?? saved?.types ?? []
   const dirty = draft !== null && saved != null && (draft.length !== saved.types.length || draft.some((v) => !saved.types.includes(v)))
 
-  const [save, { loading: saving }] = useMutation(UPDATE_PRE_APPROVED_CHANGE_TYPES, {
+  // Nome distinto da quello della card delle matrici: due hook `save` nello
+  // stesso file confondono chi legge (e il test di contratto dei documenti,
+  // che associa le variabili al documento per nome della funzione).
+  const [savePreApproved, { loading: saving }] = useMutation(UPDATE_PRE_APPROVED_CHANGE_TYPES, {
     refetchQueries: [GET_PRE_APPROVED_CHANGE_TYPES],
     onCompleted: () => { toast.success(t('pages.domainMatrices.preApproved.saved')); setDraft(null) },
     onError: (e) => toast.error(e.message),
@@ -280,7 +283,7 @@ function PreApprovedChangeTypesCard() {
               {t('pages.domainMatrices.preApproved.none')}
             </p>
           )}
-          <Button onClick={() => void save({ variables: { types: current } })} disabled={!dirty || saving}>
+          <Button onClick={() => void savePreApproved({ variables: { types: current } })} disabled={!dirty || saving}>
             <Save size={14} /> {t('common.save')}
           </Button>
         </>

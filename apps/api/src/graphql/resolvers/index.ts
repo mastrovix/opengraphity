@@ -371,6 +371,14 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...changeResolvers.Change,
       ...eventResolvers.Change,     // suppressedEvents (Event Management)
     },
+    // `currentInstances`: quante istanze stanno ORA su uno step. Era stata
+    // aggiunta allo SDL e a `workflowResolvers` senza essere unita QUI: i
+    // resolver si uniscono tipo per tipo, a mano, quindi un tipo nuovo che non
+    // viene aggiunto a questo elenco resta senza resolver. Lo schema
+    // dichiarava `Int!`, il resolver predefinito restituiva `undefined`, e il
+    // disegnatore riceveva «Cannot return null for non-nullable field». Il test
+    // `resolverWiring.test.ts` ora impedisce che ricapiti.
+    WorkflowStep:       { ...workflowResolvers.WorkflowStep },
     Team:               teamResolvers.Team,
     User:               { teams: userTeams },
     Problem:            {
