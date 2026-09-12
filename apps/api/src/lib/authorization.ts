@@ -95,7 +95,8 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   'updateITILType', 'createITILField', 'updateITILField', 'deleteITILField',
   'createITILCIRelationRule', 'deleteITILCIRelationRule',
   'createEnumType', 'updateEnumType', 'deleteEnumType', 'customizeEnumType',
-  'updateDomainMatrix', 'updatePreApprovedChangeTypes',
+  'renameEnumValue', 'reorderEnumValues',
+  'updateDomainMatrix', 'updatePreApprovedChangeTypes', 'updateRiskBandThresholds',
   'createFieldVisibilityRule', 'updateFieldVisibilityRule', 'deleteFieldVisibilityRule',
   'setFieldRequirement', 'deleteFieldRequirement',
   // cataloghi e questionari

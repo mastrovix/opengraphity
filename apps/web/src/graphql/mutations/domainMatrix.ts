@@ -18,3 +18,19 @@ export const UPDATE_PRE_APPROVED_CHANGE_TYPES = gql`
     updatePreApprovedChangeTypes(types: $types) { types vocabulary }
   }
 `
+
+/**
+ * Sostituisce le soglie delle fasce di rischio. Ogni fascia deve essere nel
+ * vocabolario `risk_band` del cliente, le soglie devono crescere e l'ultima
+ * arrivare a 100: una scala con un buco lascerebbe dei punteggi senza fascia,
+ * cioè un errore nel momento peggiore — l'apertura di una change.
+ */
+export const UPDATE_RISK_BAND_THRESHOLDS = gql`
+  mutation UpdateRiskBandThresholds($entries: [RiskBandThresholdInput!]!) {
+    updateRiskBandThresholds(entries: $entries) {
+      thresholds { band upTo }
+      vocabulary
+      isDefault
+    }
+  }
+`

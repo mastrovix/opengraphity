@@ -46,3 +46,30 @@ describe('domainMatrixFake resta uguale al vero', () => {
     }
   })
 })
+
+/**
+ * Lo stesso patto per il doppio delle **soglie di rischio** (rimedio 3): i
+ * numeri sono ricopiati a mano in `riskBandsFake.ts` perché un mock non può
+ * importare ciò che sostituisce, quindi qualcosa deve impedire che divergano.
+ */
+describe('riskBandsFake ↔ lib/riskBands.ts', () => {
+  it('le soglie di fabbrica e il massimo sono gli stessi', async () => {
+    const vero  = await import('../riskBands.js')
+    const finto = await import('./riskBandsFake.js')
+    expect(finto.FACTORY_RISK_THRESHOLDS).toEqual(vero.FACTORY_RISK_THRESHOLDS)
+    expect(finto.MAX_RISK_SCORE).toBe(vero.MAX_RISK_SCORE)
+  })
+
+  it('`factoryThresholdsFor` si comporta allo stesso modo', async () => {
+    const vero  = await import('../riskBands.js')
+    const finto = await import('./riskBandsFake.js')
+    expect(finto.factoryThresholdsFor(['a', 'b', 'c'])).toEqual(vero.factoryThresholdsFor(['a', 'b', 'c']))
+    expect(finto.factoryThresholdsFor(['a', 'b'])).toBeNull()
+    expect(vero.factoryThresholdsFor(['a', 'b'])).toBeNull()
+  })
+
+  it('il doppio non scrive, e lo dice invece di fingere', async () => {
+    const finto = await import('./riskBandsFake.js')
+    await expect(finto.setRiskBandThresholds()).rejects.toThrow(/questo doppio non scrive/)
+  })
+})

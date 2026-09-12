@@ -27,6 +27,7 @@ import {
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import { criticalServiceCriticalities } from '../../services/serviceImpact/incident.js'
 import { preApprovedChangeTypes, setPreApprovedChangeTypes, changeTypeVocabulary } from '../../lib/changePolicy.js'
+import { riskBandThresholds, setRiskBandThresholds } from '../../lib/riskBands.js'
 
 interface CellOut { key: string; inputs: string[]; value: string | null }
 
@@ -199,11 +200,48 @@ async function updatePreApprovedChangeTypes(_: unknown, args: { types: string[] 
   return { types: [...saved], vocabulary: [...vocabulary] }
 }
 
+/**
+ * Le soglie delle fasce di rischio (rimedio 3 · revisione C·N-2). Come i tipi
+ * pre-approvati: non è una matrice — un punteggio non è un valore di
+ * vocabolario — ma per l'amministratore è la stessa cosa, una regola di dominio
+ * che decide lui, e vive nella stessa pagina.
+ */
+async function riskBandThresholdsQuery(_: unknown, __: unknown, ctx: GraphQLContext) {
+  const [thresholds, vocabulary, declared] = await Promise.all([
+    riskBandThresholds(ctx.tenantId),
+    domainVocabulary(ctx.tenantId, 'risk_band'),
+    tenantHasRiskBandThresholds(ctx.tenantId),
+  ])
+  return { thresholds: [...thresholds], vocabulary: [...vocabulary], isDefault: !declared }
+}
+
+/** Il cliente le ha dichiarate, o sta usando quelle di fabbrica? */
+async function tenantHasRiskBandThresholds(tenantId: string): Promise<boolean> {
+  const session = getSession()
+  try {
+    const row = await runQueryOne<{ declared: boolean }>(session,
+      'MATCH (t:Tenant {id: $tenantId}) RETURN t.risk_band_thresholds IS NOT NULL AS declared', { tenantId })
+    return row?.declared === true
+  } finally { await session.close() }
+}
+
+async function updateRiskBandThresholds(
+  _: unknown, args: { entries: Array<{ band: string; upTo: number }> }, ctx: GraphQLContext,
+) {
+  // La leva dell'invalidazione la tira `setRiskBandThresholds`, dov'è la
+  // scrittura: la chiamano anche le migrazioni.
+  const saved = await setRiskBandThresholds(ctx.tenantId, args.entries)
+  void audit(ctx, 'change.risk_band_thresholds.updated', 'Tenant', ctx.tenantId, { thresholds: [...saved] })
+  const vocabulary = await domainVocabulary(ctx.tenantId, 'risk_band')
+  return { thresholds: [...saved], vocabulary: [...vocabulary], isDefault: false }
+}
+
 export const domainMatrixResolvers = {
   Query: {
     domainMatrices,
     criticalServiceCriticalities: criticalServiceCriticalitiesQuery,
     preApprovedChangeTypes: preApprovedChangeTypesQuery,
+    riskBandThresholds: riskBandThresholdsQuery,
   },
-  Mutation: { updateDomainMatrix, updatePreApprovedChangeTypes },
+  Mutation: { updateDomainMatrix, updatePreApprovedChangeTypes, updateRiskBandThresholds },
 }

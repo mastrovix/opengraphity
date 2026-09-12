@@ -25,6 +25,25 @@ vi.mock('@opengraphity/neo4j', () => ({
   toNumber: (v: unknown) => (v == null ? 0 : Number(v)),
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+// Revisione delle otto ondate · C·N-4: impatto e urgenza della `severity_map`
+// si validano contro il vocabolario DEL CLIENTE, non contro una costante del
+// codice — prima chi rinominava `impact` non poteva più salvare la policy,
+// cioè l'unica correzione possibile gli era rifiutata.
+vi.mock('../../../lib/domainMatrix.js', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../../../lib/domainMatrix.js')>()
+  const allowed: Record<string, string[]> = { impact: ['low', 'medium', 'high'], urgency: ['low', 'medium', 'high'] }
+  return {
+    ...orig,
+    assertDomainValue: vi.fn(async (_t: string, vocabulary: string, value: unknown) => {
+      const values = allowed[vocabulary] ?? []
+      if (typeof value !== 'string' || !values.includes(value)) {
+        const { ValidationError } = await import('../../../lib/errors.js')
+        throw new ValidationError(`${vocabulary}: "${String(value)}" non è nel vocabolario di questo cliente. Ammessi: ${values.join(', ')}.`)
+      }
+      return value
+    }),
+  }
+})
 vi.mock('../../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../services/incidentService.js', () => ({ createIncident: vi.fn() }))
 vi.mock('../../../jobs/eventIngestWorker.js', () => ({ enqueueEvents: vi.fn() }))
@@ -176,7 +195,8 @@ describe('updateEventPolicy', () => {
     ['null esplicito', { openDelaySeconds: null }, /openDelaySeconds cannot be null/],
     ['severityMap non JSON', { severityMap: '{nope' }, /severityMap is not valid JSON/],
     ['severityMap senza una chiave', { severityMap: JSON.stringify({ critical: { impact: 'high', urgency: 'high' }, warning: { impact: 'medium', urgency: 'medium' } }) }, /severityMap\.info is missing/],
-    ['severityMap con impact fuori enum', { severityMap: JSON.stringify({ ...DEFAULT_EVENT_POLICY.severity_map, info: { impact: 'none', urgency: 'low' } }) }, /severityMap\.info\.impact must be one of: low, medium, high/],
+    ['severityMap con impact fuori vocabolario', { severityMap: JSON.stringify({ ...DEFAULT_EVENT_POLICY.severity_map, info: { impact: 'none', urgency: 'low' } }) }, /severityMap\.info\.impact: impact: "none" non è nel vocabolario di questo cliente/],
+    ['severityMap con impact vuoto', { severityMap: JSON.stringify({ ...DEFAULT_EVENT_POLICY.severity_map, info: { impact: '', urgency: 'low' } }) }, /severityMap\.info\.impact must be a non-empty string/],
     ['severityMap con chiave estranea', { severityMap: JSON.stringify({ ...DEFAULT_EVENT_POLICY.severity_map, fatal: { impact: 'high', urgency: 'high' } }) }, /unknown keys: fatal/],
   ])('%s → BAD_USER_INPUT, nulla persistito', async (_n, input, pattern) => {
     await expectCode(eventResolvers.Mutation.updateEventPolicy(null, { input: input as never }, admin), 'BAD_USER_INPUT', pattern)

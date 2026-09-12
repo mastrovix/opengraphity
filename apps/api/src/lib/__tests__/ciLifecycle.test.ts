@@ -24,7 +24,12 @@ vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: (t: string) 
 let tenantVocabulary: string[] = ['active', 'dismesso']
 function vocabulary(values: string[]): void { tenantVocabulary = values }
 
+/** Il default DICHIARATO sul vocabolario del cliente (revisione · C·N-2). */
+let tenantDefault: string | null = null
+function declaredDefault(value: string | null): void { tenantDefault = value }
+
 vi.mock('../domainMatrix.js', () => ({
+  domainVocabularyDefault: () => Promise.resolve(tenantDefault),
   assertDomainValue: (_t: string, vocabulary_: string, value: unknown) =>
     (typeof value === 'string' && tenantVocabulary.includes(value)
       ? Promise.resolve(value)
@@ -37,7 +42,7 @@ const {
   lifecycleVocabulary, assertTenantLifecycleStatuses, lifecyclePolicyReferences, initialCIStatus,
 } = await import('../ciLifecycle.js')
 
-beforeEach(() => { vi.clearAllMocks(); vocabulary(['active', 'dismesso']) })
+beforeEach(() => { vi.clearAllMocks(); vocabulary(['active', 'dismesso']); declaredDefault(null) })
 
 describe('il nome del vocabolario è tutto ciò che il codice conosce', () => {
   it('CI_STATUS_VOCABULARY è il nome, non i valori', () => {
@@ -147,10 +152,25 @@ describe('lifecyclePolicyReferences (ciò che rende sicure le due liste)', () =>
 })
 
 describe('initialCIStatus — lo stato con cui nasce un CI', () => {
-  it('è il primo valore del vocabolario DEL CLIENTE, non il letterale «active»', async () => {
-    // Un cliente che rinomina `ci_status` in `attivo/dismesso` non deve
-    // ritrovarsi CI con uno stato che il suo Dizionario non ha: il form lo
-    // mostrerebbe vuoto e un salvataggio distratto azzererebbe il campo (A-13).
+  it('il DEFAULT DICHIARATO vince sulla posizione (revisione · C·N-2)', async () => {
+    // Il difetto: `initialCIStatus` prendeva il primo valore della lista, e il
+    // Dizionario sapeva solo aggiungere in coda — quindi rinominare `active` in
+    // `attivo` lo spostava in fondo e un CI nuovo nasceva `inactive`, cioè in
+    // `retired_statuses`: subito fuori dalla salute dei servizi, e i suoi
+    // allarmi non aprivano più incident. Dichiarare il default toglie la regola
+    // dalla posizione.
+    vocabulary(['inactive', 'in_manutenzione', 'attivo'])
+    declaredDefault('attivo')
+    expect(await initialCIStatus('c-two')).toBe('attivo')
+  })
+
+  it('un default dichiarato ma FUORI vocabolario è un errore che lo nomina', async () => {
+    vocabulary(['attivo', 'dismesso'])
+    declaredDefault('active')
+    await expect(initialCIStatus('c-two')).rejects.toThrow(/dichiara "active" come stato iniziale, ma quel valore non è \(più\) fra i suoi/)
+  })
+
+  it('senza default dichiarato resta il primo valore, come prima (tenant non ancora migrato)', async () => {
     vocabulary(['attivo', 'in_manutenzione', 'dismesso'])
     expect(await initialCIStatus('c-two')).toBe('attivo')
     vocabulary(['active', 'inactive'])

@@ -49,7 +49,12 @@ export const GROUP_BY           = EVENT_GROUP_BY
 export const IMPACT_URGENCY     = ['low', 'medium', 'high'] as const
 
 export type { EventSeverity }
-export type SeverityMapEntry = { impact: (typeof IMPACT_URGENCY)[number]; urgency: (typeof IMPACT_URGENCY)[number] }
+/**
+ * Con quale impatto e urgenza aprire l'incident per una severità d'allarme.
+ * Stringhe, non l'unione dei tre letterali: sono valori del vocabolario del
+ * cliente, che può averli rinominati (revisione · C·N-4).
+ */
+export type SeverityMapEntry = { impact: string; urgency: string }
 export type SeverityMap = Record<EventSeverity, SeverityMapEntry>
 
 /**
@@ -173,6 +178,18 @@ function assertEnum<T extends string>(value: unknown, allowed: readonly T[], fie
   return value as T
 }
 
+/**
+ * Una stringa non vuota. La usano impatto e urgenza della `severity_map`: sono
+ * valori del vocabolario del CLIENTE, e l'appartenenza si controlla col suo
+ * Dizionario (`mergeEventPolicyInput`), non con una lista scritta qui.
+ */
+function assertNonEmptyString(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new ValidationError(`${field} must be a non-empty string. Got: ${JSON.stringify(value)}`)
+  }
+  return value
+}
+
 function assertNonNegativeInt(value: unknown, field: string): number {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
     throw new ValidationError(`${field} must be an integer >= 0. Got: ${JSON.stringify(value)}`)
@@ -249,7 +266,25 @@ export function assertLifecycleStatuses(value: unknown, field = 'ignore_lifecycl
 export const LIFECYCLE_POLICY_LISTS = ['ignore_lifecycle_statuses', 'retired_statuses', 'maintenance_statuses'] as const
 export type LifecyclePolicyList = (typeof LIFECYCLE_POLICY_LISTS)[number]
 
-/** Valida una severity_map già decodificata: esattamente le tre severità, ognuna con impact/urgency ammessi. */
+/**
+ * Valida una severity_map già decodificata: esattamente le tre severità
+ * d'allarme, ognuna con un impatto e un'urgenza **testuali**.
+ *
+ * ## Perché non più contro una lista scritta qui (revisione · C·N-4)
+ * Impatto e urgenza erano confrontati con `IMPACT_URGENCY = ['low','medium','high']`,
+ * una costante di questo file. Ma quei due sono vocabolari **del cliente**, che
+ * può rinominarli: chi lo faceva finiva in un vicolo cieco misurato dal vivo —
+ * l'ingest registrava l'allarme, la pipeline moriva su `createIncident` perché
+ * la policy citava ancora `high`, il job finiva nella coda dei falliti, e la
+ * pagina della policy **rifiutava** di salvare `alto`, che era l'unica
+ * correzione possibile. Il cliente vedeva allarmi in console e nessun ticket,
+ * senza una via d'uscita.
+ *
+ * Qui resta la forma (le tre chiavi, due stringhe non vuote); l'appartenenza ai
+ * vocabolari **del cliente** la controlla `mergeEventPolicyInput`, che è
+ * asincrono e ha il tenant. E la rinomina riscrive questa mappa da sé
+ * (`lib/enumValueUsage.ts`), così il vicolo cieco non si presenta più.
+ */
 export function assertSeverityMap(value: unknown, field = 'severity_map'): SeverityMap {
   if (!isRecord(value)) throw new ValidationError(`${field} must be a JSON object keyed by ${EVENT_SEVERITIES.join(', ')}`)
   const out = {} as SeverityMap
@@ -257,8 +292,8 @@ export function assertSeverityMap(value: unknown, field = 'severity_map'): Sever
     const entry = value[sev]
     if (!isRecord(entry)) throw new ValidationError(`${field}.${sev} is missing or not an object`)
     out[sev] = {
-      impact:  assertEnum(entry['impact'],  IMPACT_URGENCY, `${field}.${sev}.impact`),
-      urgency: assertEnum(entry['urgency'], IMPACT_URGENCY, `${field}.${sev}.urgency`),
+      impact:  assertNonEmptyString(entry['impact'],  `${field}.${sev}.impact`),
+      urgency: assertNonEmptyString(entry['urgency'], `${field}.${sev}.urgency`),
     }
   }
   const extra = Object.keys(value).filter((k) => !(EVENT_SEVERITIES as readonly string[]).includes(k))
@@ -516,7 +551,18 @@ export async function applyEventPolicyInput(
       let parsed: unknown
       try { parsed = JSON.parse(v as string) }
       catch (e) { throw new ValidationError(`severityMap is not valid JSON: ${e instanceof Error ? e.message : String(e)}`) }
-      next[key] = assertSeverityMap(parsed, 'severityMap')
+      const map = assertSeverityMap(parsed, 'severityMap')
+      // Il punto unico di validazione, come per le liste del ciclo di vita: i
+      // vocabolari sono quelli del CLIENTE, non una lista scritta in questo
+      // file (era il vicolo cieco C·N-4: la pagina rifiutava il valore nuovo
+      // dopo una rinomina, cioè l'unica correzione possibile).
+      for (const [sev, entry] of Object.entries(map)) {
+        await assertDomainValue(tenantId, 'impact',  entry.impact)
+          .catch((e: unknown) => { throw new ValidationError(`severityMap.${sev}.impact: ${e instanceof Error ? e.message : String(e)}`) })
+        await assertDomainValue(tenantId, 'urgency', entry.urgency)
+          .catch((e: unknown) => { throw new ValidationError(`severityMap.${sev}.urgency: ${e instanceof Error ? e.message : String(e)}`) })
+      }
+      next[key] = map
     } else {
       next[key] = v
     }

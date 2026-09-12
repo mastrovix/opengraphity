@@ -73,6 +73,27 @@ export async function invertPriority(tenantId: string, priority: unknown): Promi
   }
   const chosen = candidates.find((k) => { const parts = k.split('|'); return parts.every((v) => v === parts[0]) }) ?? candidates[0]!
   const [impact, urgency] = chosen.split('|')
+  // La CHIAVE della cella non era validata (revisione delle otto ondate ·
+  // C·N-6): una chiave rimasta al valore vecchio dopo una rinomina — la matrice
+  // la conserva finché nessuno la ricompila — faceva nascere l'incident con un
+  // impatto e un'urgenza che il Dizionario del cliente non ha più. Il difetto si
+  // manifestava molto più tardi, come «un incident che non compare nei filtri
+  // per impatto». Adesso è un errore che nomina la cella da correggere, come
+  // per il valore d'uscita (`lib/domainValue.ts`).
+  await assertDomainValue(tenantId, 'impact', impact).catch((e: unknown) => {
+    throw new ValidationError(
+      `Matrice "priority" del cliente ${tenantId}, cella "${chosen}": l'impatto "${String(impact)}" non è (più) nel ` +
+      `vocabolario. ${e instanceof Error ? e.message : String(e)} ` +
+      `Succede quando si rinomina un valore senza aggiornare la matrice: correggila in Impostazioni → Matrici di dominio.`,
+    )
+  })
+  await assertDomainValue(tenantId, 'urgency', urgency).catch((e: unknown) => {
+    throw new ValidationError(
+      `Matrice "priority" del cliente ${tenantId}, cella "${chosen}": l'urgenza "${String(urgency)}" non è (più) nel ` +
+      `vocabolario. ${e instanceof Error ? e.message : String(e)} ` +
+      `Succede quando si rinomina un valore senza aggiornare la matrice: correggila in Impostazioni → Matrici di dominio.`,
+    )
+  })
   if (impact === undefined || urgency === undefined) {
     throw new Error(`Matrice "priority": la cella "${chosen}" non ha due dimensioni`)
   }

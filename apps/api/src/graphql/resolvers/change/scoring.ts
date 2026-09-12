@@ -12,7 +12,7 @@
  * restano sincrone e senza dipendenze.
  */
 import { ValidationError } from '../../../lib/errors.js'
-import { assertDomainValue, domainVocabulary } from '../../../lib/domainMatrix.js'
+import { assertDomainValue } from '../../../lib/domainMatrix.js'
 import { resolveDomainValue } from '../../../lib/domainValue.js'
 
 export interface QuestionScore {
@@ -103,22 +103,13 @@ export function determineApprovalRoute(aggregateScore: number): 'low' | 'medium'
  * `medium`, una con rischio basso misurato era `low`. Collassarle avrebbe
  * cambiato in silenzio la priorità di ogni change a rischio basso.
  *
- * **L'ordine del vocabolario conta**: le fasce si leggono dalla più bassa alla
- * più alta. Rinominarle è sicuro (la matrice usa i nomi del cliente),
- * riordinarle cambia il significato delle soglie.
+ * **Le soglie non sono più qui** (revisione delle otto ondate · C·N-2): erano
+ * 30 e 60 nel codice, e le fasce si leggevano per POSIZIONE (`bands[0..2]`) —
+ * quindi riordinare il vocabolario invertiva le fasce in silenzio, e una quarta
+ * fascia era irraggiungibile. Ora sono dato del cliente: `lib/riskBands.ts`.
  */
-export function riskBandOf(aggregateRiskScore: number | null | undefined, bands: readonly string[]): string {
-  if (bands.length < 3) {
-    throw new ValidationError(
-      `Vocabolario "risk_band": servono almeno tre fasce (bassa, media, alta) per derivare la priorità di una change; trovate ${bands.length}: ${bands.join(', ')}.`,
-    )
-  }
-  const [low, medium, high] = bands as readonly [string, string, string]
-  if (aggregateRiskScore == null) {
-    throw new Error('riskBandOf: il rischio non valutato non ha una fascia — usa la matrice change_priority_initial')
-  }
-  return aggregateRiskScore <= 30 ? low : aggregateRiskScore <= 60 ? medium : high
-}
+export { riskBandOf } from '../../../lib/riskBands.js'
+import { riskBandOf } from '../../../lib/riskBands.js'
 
 /**
  * Priorità della Change = **tipo × fascia di rischio** (decisione del
@@ -140,6 +131,5 @@ export async function deriveChangePriority(
   if (aggregateRiskScore == null) {
     return resolveDomainValue(tenantId, 'change_priority_initial', type)
   }
-  const bands = await domainVocabulary(tenantId, 'risk_band')
-  return resolveDomainValue(tenantId, 'change_priority', type, riskBandOf(aggregateRiskScore, bands))
+  return resolveDomainValue(tenantId, 'change_priority', type, await riskBandOf(tenantId, aggregateRiskScore))
 }

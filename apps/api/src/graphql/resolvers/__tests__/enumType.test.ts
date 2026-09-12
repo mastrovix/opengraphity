@@ -43,7 +43,7 @@ const rec = (map: Record<string, unknown>) => ({ keys: Object.keys(map), get: (k
 /** Un `count(...)` come lo dà il driver quando i numeri sono «lossless». */
 const int = (n: number) => neo4jInt(n)
 
-const ENUM_ROW = { id: 'e-1', tenantId: 'tenant-1', name: 'ticket_source', label: 'Origine', values: ['portal', 'email'], isSystem: false, scope: 'itil', createdAt: 'c', updatedAt: 'u' }
+const ENUM_ROW = { id: 'e-1', tenantId: 'tenant-1', name: 'ticket_source', label: 'Origine', values: ['portal', 'email'], isSystem: false, scope: 'itil', defaultValue: null, createdAt: 'c', updatedAt: 'u' }
 
 function fakeSession(responses: Array<{ records: unknown[] }>) {
   const queue = [...responses]
@@ -248,7 +248,7 @@ describe('updateEnumType', () => {
     const out = await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { label: 'Nuova' } }, admin)
     const [cypher, params] = s.txRun.mock.calls[1]!
     expect(cypher).toContain('SET e.label      = coalesce($label, e.label)')
-    expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1', label: 'Nuova', values: null, scope: null, now: expect.any(String) })
+    expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1', label: 'Nuova', values: null, scope: null, defaultValue: null, now: expect.any(String) })
     expect(out.label).toBe('Nuova')
   })
 
@@ -598,5 +598,106 @@ describe('ogni scrittura di un vocabolario invalida le cache del metamodello', (
       'BAD_USER_INPUT', /spedito col prodotto/,
     )
     expect(svuotati).toEqual([])
+  })
+})
+
+/**
+ * Revisione delle otto ondate · C·N-2 — **rinominare un valore**, che finora
+ * era un'operazione che il prodotto non aveva.
+ *
+ * Il Dizionario sapeva solo `addValue` (in coda) e `removeValue`: rinominare
+ * era togliere + aggiungere, cioè **spostare il valore in fondo**. E tre regole
+ * di dominio leggevano il vocabolario per posizione — lo stato con cui nasce un
+ * CI, le fasce di rischio, l'impatto più alto. Misurato dal vivo: dopo aver
+ * rinominato `active` in `attivo`, un CI nuovo nasceva `inactive`, cioè fuori
+ * servizio.
+ */
+describe('renameEnumValue — il valore resta al suo posto', () => {
+  const row = (over: Record<string, unknown> = {}) => rec({
+    tenantId: 'tenant-1', name: 'ci_status', values: ['active', 'inactive', 'dismesso'], defaultValue: 'active', ...over,
+  })
+
+  it('sostituisce IN POSIZIONE, non in coda', async () => {
+    const s = fakeSession([
+      { records: [row()] },                                                   // check
+      { records: [] },                                                         // enumValueBindings
+      { records: [rec({ raw: null })] },                                        // policy degli allarmi
+      { records: [rec({ ...ENUM_ROW, name: 'ci_status', values: ['attivo', 'inactive', 'dismesso'] })] },
+    ])
+    const out = await enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'active', to: 'attivo' }, admin)
+    expect(out.values).toEqual(['attivo', 'inactive', 'dismesso'])
+    const [cypher, params] = s.txRun.mock.calls.at(-1)!
+    expect(cypher).toContain('SET e.values        = $values')
+    expect(params).toMatchObject({ values: ['attivo', 'inactive', 'dismesso'], from: 'active', to: 'attivo' })
+  })
+
+  it('porta dietro il valore di DEFAULT del vocabolario', async () => {
+    const s = fakeSession([{ records: [row()] }, { records: [] }, { records: [rec({ raw: null })] }, { records: [rec(ENUM_ROW)] }])
+    await enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'active', to: 'attivo' }, admin)
+    expect(s.txRun.mock.calls.at(-1)![0]).toContain('e.default_value = CASE WHEN e.default_value = $from THEN $to ELSE e.default_value END')
+  })
+
+  it('un valore che non c\'è è un rifiuto che elenca quelli veri', async () => {
+    fakeSession([{ records: [row()] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'attivo', to: 'x' }, admin),
+      'BAD_USER_INPUT', /"attivo" non è fra quelli di "ci_status" \(active, inactive, dismesso\)/,
+    )
+  })
+
+  it('rinominare SU un valore esistente unirebbe due valori: rifiutato, dicendo la strada', async () => {
+    fakeSession([{ records: [row()] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'active', to: 'inactive' }, admin),
+      'BAD_USER_INPUT', /unirebbe due valori distinti in uno.*togli "active" indicando "inactive" come sostituzione/s,
+    )
+  })
+
+  it('su un vocabolario SPEDITO rimanda a «Personalizza»', async () => {
+    fakeSession([{ records: [row({ tenantId: 'system' })] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-sys', from: 'active', to: 'attivo' }, admin),
+      'BAD_USER_INPUT', /spedito col prodotto.*Usa "Personalizza"/s,
+    )
+  })
+
+  it('il vocabolario del PROTOCOLLO in ingresso non si rinomina, e il rifiuto dice dov\'è la manopola', async () => {
+    // `event_severity` è la severità che mandano i sistemi di monitoraggio: il
+    // prodotto normalizza gli allarmi a info/warning/critical, quindi
+    // rinominarla non cambia quello che arriva e rompe la traduzione. Il
+    // revisore l'ha chiamato «un vocabolario finto», e aveva ragione.
+    fakeSession([{ records: [row({ name: 'event_severity', values: ['info', 'warning', 'critical'] })] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'info', to: 'informativo' }, admin),
+      'BAD_USER_INPUT', /è la severità che mandano i sistemi di monitoraggio.*Matrici di dominio/s,
+    )
+  })
+
+  it('non-admin → Forbidden prima di toccare la sessione', async () => {
+    const s = fakeSession([])
+    await expectCode(enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'a', to: 'b' }, operator), 'FORBIDDEN')
+    expect(s.executeRead).not.toHaveBeenCalled()
+  })
+})
+
+describe('reorderEnumValues — l\'ordine è una scala, e ora si modifica', () => {
+  const row = (values: string[]) => rec({ tenantId: 'tenant-1', name: 'impact', values })
+
+  it('lo stesso insieme, permutato', async () => {
+    const s = fakeSession([
+      { records: [row(['low', 'medium', 'high'])] },
+      { records: [rec({ ...ENUM_ROW, name: 'impact', values: ['high', 'medium', 'low'] })] },
+    ])
+    const out = await enumTypeResolvers.Mutation.reorderEnumValues(null, { id: 'e-1', values: ['high', 'medium', 'low'] }, admin)
+    expect(out.values).toEqual(['high', 'medium', 'low'])
+    expect(s.txRun.mock.calls.at(-1)![0]).toContain('SET e.values = $values')
+  })
+
+  it('un insieme DIVERSO è rifiutato, e dice quale operazione serve', async () => {
+    fakeSession([{ records: [row(['low', 'medium', 'high'])] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.reorderEnumValues(null, { id: 'e-1', values: ['low', 'medium', 'estremo'] }, admin),
+      'BAD_USER_INPUT', /cambia solo l'ORDINE.*mancano: high.*in più: estremo.*per cambiargli nome la rinomina/s,
+    )
   })
 })

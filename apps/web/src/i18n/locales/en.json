@@ -466,7 +466,16 @@
       "shippedNote": "This dictionary ships with the product: it is the same for every customer, so it cannot be edited here. «Customize» creates your own copy with the same values: from then on yours applies, and only to you.",
       "shippedValuesNote": "The values of a dictionary that ships with the product cannot be changed here: customize it and edit your copy.",
       "customizeButton": "Customize",
-      "customized": "Your copy of \"{{label}}\" is ready: you are now editing it."
+      "customized": "Your copy of \"{{label}}\" is ready: you are now editing it.",
+      "valueRenamed": "Value renamed: records, policy and matrices updated together.",
+      "defaultSet": "Default value updated.",
+      "defaultBadge": "default",
+      "setDefaultLabel": "Use \"{{value}}\" as the default value",
+      "renameValueLabel": "Rename \"{{value}}\"",
+      "renameConfirmLabel": "Confirm the rename",
+      "moveUpLabel": "Move \"{{value}}\" up",
+      "moveDownLabel": "Move \"{{value}}\" down",
+      "orderNote": "Order matters: for scale vocabularies the first value is the lowest and the last the highest (the highest impact is the last one). Renaming a value keeps it in place and updates records, the alarm policy and the domain matrices; the default is the value used when nobody specifies one."
     },
     "sync": {
       "sourceCreated": "Sync source created",
@@ -1046,6 +1055,18 @@
         "help": "A change of a pre-approved type skips the approval chain (ITIL pre-authorised change). This used to be the value “standard” written in the code: renaming it in the Dictionary silently lost the pre-approval.",
         "none": "No pre-approved types: every change will go through approvals.",
         "saved": "Pre-approved types saved"
+      },
+      "riskBands": {
+        "title": "Change risk bands",
+        "help": "Which risk score (0-100) falls into which band. The band, together with the change type, decides the priority through the «change_priority» matrix. The thresholds used to be hardcoded (30 and 60) and the bands were read by position in the vocabulary: reordering it silently inverted them, and a fourth band never fired even though it appeared in the matrix.",
+        "usingFactory": "You are using the factory thresholds (≤30, ≤60, the rest). Saving makes them explicit.",
+        "band": "Band",
+        "upTo": "Up to",
+        "lastMustBe100": "The last band must reach 100: a higher score would have no band.",
+        "ascending": "Thresholds must ascend, from the lowest band to the highest.",
+        "saved": "Risk bands saved.",
+        "addBand": "Add a band",
+        "removeBand": "Remove the \"{{band}}\" band"
       }
     }
   },
@@ -1852,7 +1873,9 @@
       "selectTeamFirst": "Select a team in the Details card first",
       "selectUserFirst": "Select a user in the Details card first",
       "aiDraftFailed": "AI draft failed: {{error}}",
-      "aiDraftNoResponse": "AI draft failed: no response"
+      "aiDraftNoResponse": "AI draft failed: no response",
+      "matrixUnavailable": "Domain matrices are unreachable ({{error}}): impact, urgency and priority come from there, so the ticket cannot be created right now.",
+      "matrixIncomplete": "The priority matrix does not cover the selected combination: complete it in Settings → Domain matrices, or pick another pair."
     },
     "problem": {
       "created": "Problem created",

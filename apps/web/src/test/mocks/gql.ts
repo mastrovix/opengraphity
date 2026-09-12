@@ -2,7 +2,7 @@
  * Mock GraphQL riusabili (MockedProvider). I risultati includono `__typename`
  * perché la cache Apollo 4 aggiunge sempre il campo alla query.
  */
-import { GET_ME, GET_ANOMALY_STATS, GET_TEAMS, GET_USERS, GET_WORKFLOW_LIST, GET_WORKFLOW_DEFINITION, GET_ITIL_TYPES, GET_BASE_CI_TYPE } from '@/graphql/queries'
+import { GET_ME, GET_ANOMALY_STATS, GET_TEAMS, GET_USERS, GET_WORKFLOW_LIST, GET_WORKFLOW_DEFINITION, GET_ITIL_TYPES, GET_BASE_CI_TYPE, GET_DOMAIN_MATRICES } from '@/graphql/queries'
 import type { GqlMock } from '@/test/utils'
 
 export interface MeFixture {
@@ -168,6 +168,48 @@ export function itilTypesMock(): GqlMock {
         ],
       },
     ] } },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  }
+}
+
+/**
+ * Le matrici di dominio (revisione delle otto ondate · C·N-3). Impatto,
+ * urgenza e priorità dei form vengono da qui: il web ne teneva una copia, e chi
+ * rinominava i vocabolari vedeva i valori vecchi e ogni invio rifiutato dal
+ * server.
+ *
+ * `values` permette di simulare il cliente che ha rinominato: è il caso che
+ * conta, e senza questo mock non si può scrivere.
+ */
+export function domainMatricesMock(opts: {
+  impacts?:    string[]
+  urgencies?:  string[]
+  priorities?: string[]
+  /** Celle `impatto|urgenza → priorità`; se assente, una matrice piena plausibile. */
+  cells?:      Record<string, string>
+} = {}): GqlMock {
+  const impacts    = opts.impacts    ?? ['low', 'medium', 'high']
+  const urgencies  = opts.urgencies  ?? ['low', 'medium', 'high']
+  const priorities = opts.priorities ?? ['low', 'medium', 'high', 'critical']
+  const cells = opts.cells ?? Object.fromEntries(
+    impacts.flatMap((i, ii) => urgencies.map((u, ui) => {
+      // Più in alto la coppia, più alta la priorità: serve una matrice
+      // plausibile, non quella del prodotto (che è dato del cliente).
+      const rank = Math.min(priorities.length - 1, Math.round(((ii + ui) / (impacts.length + urgencies.length - 2)) * (priorities.length - 1)))
+      return [`${i}|${u}`, priorities[rank]!]
+    })),
+  )
+  return {
+    request: { query: GET_DOMAIN_MATRICES },
+    result: { data: { domainMatrices: [{
+      __typename: 'DomainMatrix',
+      kind: 'priority', inputs: ['impact', 'urgency'], output: 'priority',
+      inputValues: [impacts, urgencies], outputValues: priorities,
+      cells: Object.entries(cells).map(([key, value]) => ({
+        __typename: 'DomainMatrixCell', key, inputs: key.split('|'), value,
+      })),
+      missing: [], stale: [], invalid: [], isDefault: false, updatedAt: null,
+    }] } },
     maxUsageCount: Number.POSITIVE_INFINITY,
   }
 }

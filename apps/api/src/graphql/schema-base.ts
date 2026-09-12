@@ -401,6 +401,24 @@ export function buildBaseSDL(): string {
     updateEnumType(id: ID!, input: UpdateEnumTypeInput!): EnumTypeDefinition!
     deleteEnumType(id: ID!): Boolean!
     """
+    Cambia NOME a un valore, tenendolo al suo posto — e porta dietro tutto:
+    i record che lo usano, le liste e la mappa delle severità della policy
+    degli allarmi, le chiavi e le celle delle matrici di dominio, il valore di
+    default del vocabolario. Tutto nella stessa transazione.
+
+    Era l'operazione che il prodotto non aveva: il Dizionario sapeva solo
+    aggiungere in coda e togliere, quindi «rinominare» voleva dire spostare il
+    valore in fondo, e tre regole di dominio leggono il vocabolario per
+    posizione (con quali conseguenze è scritto sul resolver).
+    """
+    renameEnumValue(id: ID!, from: String!, to: String!): EnumTypeDefinition!
+    """
+    Cambia l'ORDINE dei valori: lo stesso insieme, permutato. Per i vocabolari
+    di scala l'ordine porta significato (l'impatto più alto è l'ultimo valore) e
+    finora non era modificabile.
+    """
+    reorderEnumValues(id: ID!, values: [String!]!): EnumTypeDefinition!
+    """
     Personalizza un vocabolario spedito col prodotto: crea la copia del tenant
     con gli stessi valori e la restituisce. Da lì si modifica; la copia vince in
     lettura solo per chi la possiede, gli altri clienti continuano a vedere

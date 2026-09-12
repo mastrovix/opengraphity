@@ -24,13 +24,34 @@
  *     già valutate a basso rischio, che passano da P4 a P3. Dichiarato nel
  *     rapporto dell'ondata 7.
  *
- * Le SOGLIE (30 / 60) restano nel codice — `riskBandOf` — ed è un limite
- * dichiarato: sono un modello di punteggio, non una traduzione fra valori di
- * dominio. Configurabili sono i NOMI delle fasce e la matrice.
+ * Le SOGLIE (30 / 60) **non sono più nel codice** (revisione delle otto ondate ·
+ * C·N-2, e l'aperto n. 7 dell'ondata 7): erano lette per posizione
+ * (`bands[0..2]`), quindi riordinare il vocabolario invertiva le fasce in
+ * silenzio — e la matrice trovava poi una cella valida, cioè una priorità
+ * plausibile e sbagliata — e una quarta fascia era irraggiungibile. Adesso sono
+ * dato del cliente (`lib/riskBands.ts`), seminate con quelle che il codice
+ * usava: il primo giorno non cambia niente, ed è quello che questi test
+ * verificano.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const executeRead = vi.fn()
+/** Le soglie salvate sul tenant (null = non dichiarate → quelle di fabbrica). */
+let thresholdsRaw: string | null = null
+/** La riga della matrice salvata (records vuoto = il seme del prodotto). */
+let matrixRecords: Array<{ get: (k: string) => unknown }> = []
+
+/**
+ * Una sola `executeRead` per due letture diverse (la matrice e le soglie del
+ * tenant): si smista sul testo della query, perché è quello che distingue le
+ * due nel codice vero.
+ */
+const executeRead = vi.fn(async (work: (tx: { run: (c: string) => Promise<{ records: Array<{ get: (k: string) => unknown }> }> }) => unknown) =>
+  work({
+    run: async (cypher: string) => (cypher.includes('risk_band_thresholds')
+      ? { records: [{ get: (k: string) => (k === 'raw' ? thresholdsRaw : null) }] }
+      : { records: matrixRecords }),
+  }),
+)
 const close = vi.fn().mockResolvedValue(undefined)
 const loadTenantEnumOverrides = vi.fn()
 
@@ -39,6 +60,7 @@ vi.mock('../../../../lib/enumScope.js', () => ({ loadTenantEnumOverrides }))
 
 const { deriveChangePriority, riskBandOf, determineApprovalRoute } = await import('../scoring.js')
 const { clearDomainCaches, DOMAIN_MATRIX_SEEDS } = await import('../../../../lib/domainMatrix.js')
+const { clearRiskBandCache } = await import('../../../../lib/riskBands.js')
 
 function vocab(over: Record<string, string[]> = {}) {
   const base: Record<string, string[]> = {
@@ -52,14 +74,21 @@ function vocab(over: Record<string, string[]> = {}) {
 
 /** Nessun nodo salvato → il seme del prodotto. */
 function factoryMatrix() {
-  executeRead.mockReset()
-  executeRead.mockResolvedValue({ records: [] })
+  matrixRecords = []
+}
+
+/** La matrice salvata del cliente. */
+function savedMatrix(entries: Record<string, string>) {
+  matrixRecords = [{ get: (k: string) => (k === 'entries' ? JSON.stringify(entries) : null) }]
 }
 
 beforeEach(() => {
-  vi.clearAllMocks(); clearDomainCaches()
+  clearDomainCaches(); clearRiskBandCache()
   loadTenantEnumOverrides.mockResolvedValue(vocab())
   factoryMatrix()
+  // Soglie non dichiarate: `riskBandThresholds` usa quelle di fabbrica sui
+  // valori del cliente — cioè esattamente il comportamento di prima.
+  thresholdsRaw = null
 })
 
 /**
@@ -93,10 +122,7 @@ describe('deriveChangePriority — dalla matrice del cliente', () => {
   it('un tipo aggiunto dal cliente è tradotto dalla SUA matrice, non schiacciato su «normal»', async () => {
     // Il difetto B-14: `['standard','normal','emergency'].includes(x) ? x : 'normal'`.
     loadTenantEnumOverrides.mockResolvedValue(vocab({ change_type: ['standard', 'normal', 'emergency', 'major'] }))
-    executeRead.mockReset()
-    executeRead.mockResolvedValue({
-      records: [{ get: (k: string) => (k === 'entries' ? JSON.stringify({ ...DOMAIN_MATRIX_SEEDS.change_priority, 'major|low': 'high', 'major|medium': 'critical', 'major|high': 'critical' }) : null) }],
-    })
+    savedMatrix({ ...DOMAIN_MATRIX_SEEDS.change_priority, 'major|low': 'high', 'major|medium': 'critical', 'major|high': 'critical' })
     expect(await deriveChangePriority('c-one', 'major', 70)).toBe('critical')
   })
 
@@ -117,30 +143,66 @@ describe('deriveChangePriority — dalla matrice del cliente', () => {
   })
 })
 
-describe('riskBandOf — le soglie restano nel codice, i nomi no', () => {
-  it('i nomi delle fasce vengono dal vocabolario del cliente', () => {
-    expect(riskBandOf(10, ['bassa', 'media', 'alta'])).toBe('bassa')
-    expect(riskBandOf(45, ['bassa', 'media', 'alta'])).toBe('media')
-    expect(riskBandOf(90, ['bassa', 'media', 'alta'])).toBe('alta')
+describe('riskBandOf — le soglie sono dato del cliente, non posizioni (revisione · C·N-2)', () => {
+  it('senza soglie dichiarate usa quelle di fabbrica sui nomi del cliente: nulla cambia', async () => {
+    loadTenantEnumOverrides.mockResolvedValue(vocab({ risk_band: ['bassa', 'media', 'alta'] }))
+    expect(await riskBandOf('c-one', 10)).toBe('bassa')
+    expect(await riskBandOf('c-one', 45)).toBe('media')
+    expect(await riskBandOf('c-one', 90)).toBe('alta')
   })
 
-  it('rischio non valutato non ha una fascia: chi lo chiede sbaglia strada', () => {
+  it('le soglie DICHIARATE vincono, e possono essere quante il cliente vuole', async () => {
+    // Il difetto: `bands[0..2]` ignorava la quarta fascia, la matrice
+    // pretendeva le sue celle e nessuno diceva che non sarebbero mai scattate.
+    loadTenantEnumOverrides.mockResolvedValue(vocab({ risk_band: ['minimo', 'basso', 'alto', 'estremo'] }))
+    thresholdsRaw = JSON.stringify([
+      { band: 'minimo', upTo: 10 }, { band: 'basso', upTo: 40 },
+      { band: 'alto', upTo: 80 }, { band: 'estremo', upTo: 100 },
+    ])
+    expect(await riskBandOf('c-one', 5)).toBe('minimo')
+    expect(await riskBandOf('c-one', 40)).toBe('basso')
+    expect(await riskBandOf('c-one', 81)).toBe('estremo')
+  })
+
+  it('l\'ORDINE del vocabolario non decide più niente', async () => {
+    // Prima: riordinare (o rinominare, che spostava in coda) invertiva le
+    // fasce in silenzio — `riskBandOf(10)` restituiva `medium` e
+    // `riskBandOf(80)` la fascia bassa rinominata.
+    loadTenantEnumOverrides.mockResolvedValue(vocab({ risk_band: ['media', 'alta', 'bassa'] }))
+    thresholdsRaw = JSON.stringify([{ band: 'bassa', upTo: 30 }, { band: 'media', upTo: 60 }, { band: 'alta', upTo: 100 }])
+    expect(await riskBandOf('c-one', 10)).toBe('bassa')
+    expect(await riskBandOf('c-one', 80)).toBe('alta')
+  })
+
+  it('rischio non valutato non ha una fascia: chi lo chiede sbaglia strada', async () => {
     // «Non valutato» non è «basso»: ha la sua matrice
     // (`change_priority_initial`). Se qualcuno lo facesse cadere nella fascia
     // più bassa, ogni change a rischio basso cambierebbe priorità in silenzio.
-    expect(() => riskBandOf(null, ['low', 'medium', 'high'])).toThrow(/change_priority_initial/)
-    expect(() => riskBandOf(undefined, ['low', 'medium', 'high'])).toThrow(/change_priority_initial/)
+    await expect(riskBandOf('c-one', null)).rejects.toThrow(/change_priority_initial/)
+    await expect(riskBandOf('c-one', undefined)).rejects.toThrow(/change_priority_initial/)
   })
 
-  it('le soglie coincidono con determineApprovalRoute (30 / 60 inclusivi)', () => {
-    const bands = ['low', 'medium', 'high'] as const
+  it('le soglie di fabbrica coincidono con determineApprovalRoute (30 / 60 inclusivi)', async () => {
     for (const score of [0, 10, 30, 31, 60, 61, 90]) {
-      expect(riskBandOf(score, bands), `score ${score}`).toBe(determineApprovalRoute(score))
+      expect(await riskBandOf('c-one', score), `score ${score}`).toBe(determineApprovalRoute(score))
     }
   })
 
-  it('un vocabolario con meno di tre fasce è un errore che spiega cosa serve', () => {
-    expect(() => riskBandOf(50, ['bassa', 'alta']))
-      .toThrow(/servono almeno tre fasce.*trovate 2: bassa, alta/)
+  it('vocabolario senza tre valori e soglie non dichiarate → si ferma e dice di dichiararle', async () => {
+    loadTenantEnumOverrides.mockResolvedValue(vocab({ risk_band: ['bassa', 'alta'] }))
+    await expect(riskBandOf('c-one', 50))
+      .rejects.toThrow(/non sono dichiarate e il vocabolario "risk_band" ha 2 valori.*Dichiara le soglie/s)
+  })
+
+  it('una fascia dichiarata FUORI vocabolario è un errore che la nomina', async () => {
+    loadTenantEnumOverrides.mockResolvedValue(vocab({ risk_band: ['bassa', 'media', 'alta'] }))
+    thresholdsRaw = JSON.stringify([{ band: 'bassa', upTo: 30 }, { band: 'medium', upTo: 60 }, { band: 'alta', upTo: 100 }])
+    await expect(riskBandOf('c-one', 50)).rejects.toThrow(/citano "medium", che non è \(più\) nel vocabolario/)
+  })
+
+  it('soglie che non arrivano a 100 sono un errore: un punteggio resterebbe senza fascia', async () => {
+    loadTenantEnumOverrides.mockResolvedValue(vocab({ risk_band: ['bassa', 'media', 'alta'] }))
+    thresholdsRaw = JSON.stringify([{ band: 'bassa', upTo: 30 }, { band: 'media', upTo: 60 }, { band: 'alta', upTo: 90 }])
+    await expect(riskBandOf('c-one', 95)).rejects.toThrow(/si fermano a 90 e un punteggio più alto non avrebbe fascia/)
   })
 })

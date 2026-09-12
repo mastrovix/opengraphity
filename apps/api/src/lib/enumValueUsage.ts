@@ -42,6 +42,80 @@ import { toNumber } from '@opengraphity/neo4j'
 import { assertFieldName, assertLabel } from './cypherIdentifiers.js'
 import { toSnakeCase } from './mappers.js'
 import { lifecyclePolicyReferences, CI_STATUS_VOCABULARY } from './ciLifecycle.js'
+import { DOMAIN_MATRIX_KINDS, type DomainMatrixKind } from './domainMatrix.js'
+
+/**
+ * Dove vivono i valori dei vocabolari **di dominio** (revisione delle otto
+ * ondate · C·N-7 / D·N-2).
+ *
+ * ## Il buco
+ * `enumValueBindings` trova i campi agganciati con `USES_ENUM`, cioè i campi
+ * del **metamodello dei CI e ITIL**. Ma i vocabolari di dominio non sono campi
+ * del metamodello: `impact`, `urgency`, `priority` sono proprietà scritte
+ * direttamente sui nodi ITIL, e nessun `USES_ENUM` le collega al vocabolario.
+ * Verificato dal vivo nella revisione: l'ITIL type `incident` non ha nemmeno un
+ * campo `impact`. Risultato — togliere un valore da `urgency` era **permesso
+ * contando zero usi**, con migliaia di incident che lo portavano. Il conteggio
+ * dava una fiducia che non aveva una base.
+ *
+ * ## La tabella
+ * Dichiarata, perché nel grafo non c'è niente da cui dedurla, e verificata
+ * contro `db.schema.nodeTypeProperties()` sul dato vivo. Il test
+ * `lib/__tests__/enumValueUsage.test.ts` pretende che ogni vocabolario
+ * nominato da `DOMAIN_MATRIX_KINDS` (ingressi e uscite) compaia qui o sia
+ * dichiarato senza record: una matrice nuova non può entrare senza dire dove
+ * vivono i suoi valori.
+ *
+ * ## Due cose che sembrano errori e non lo sono
+ *  - **`priority` → `Incident.severity`**: sull'incident la priorità si chiama
+ *    `severity` (`lib/priority.ts` la valida contro il vocabolario `priority`).
+ *    Non è un refuso: è il nome storico della proprietà.
+ *  - **`severity` e `priority` puntano alla stessa proprietà**: sono due
+ *    vocabolari distinti con gli stessi valori di fabbrica, e a seconda del
+ *    cammino (monitoraggio o impatto×urgenza) su `Incident.severity` finisce
+ *    l'uno o l'altro. Contare due volte è la direzione **sicura**: sotto-contare
+ *    vorrebbe dire permettere di togliere un valore in uso, che è il difetto.
+ */
+export const DOMAIN_VALUE_BINDINGS: Readonly<Record<string, readonly { label: string; property: string }[]>> = {
+  impact:  [
+    { label: 'Incident',                   property: 'impact' },
+    { label: 'Problem',                    property: 'impact' },
+    { label: 'StandardChangeCatalogEntry', property: 'impact' },
+  ],
+  urgency: [
+    { label: 'Incident', property: 'urgency' },
+    { label: 'Problem',  property: 'urgency' },
+  ],
+  priority: [
+    { label: 'Incident',       property: 'severity' },   // sì: `severity`, vedi sopra
+    { label: 'Change',         property: 'priority' },
+    { label: 'Problem',        property: 'priority' },
+    { label: 'ServiceRequest', property: 'priority' },
+    { label: 'SLAPolicyNode',  property: 'priority' },   // una policy SLA punta a una priorità
+  ],
+  severity: [
+    { label: 'Incident', property: 'severity' },
+  ],
+  change_type: [
+    { label: 'Change', property: 'change_type' },
+  ],
+  service_criticality: [
+    { label: 'BusinessApplication', property: 'criticality' },
+  ],
+  event_severity: [
+    { label: 'Event',             property: 'severity' },
+    { label: 'Anomaly',           property: 'severity' },
+    { label: 'EventHistoryEntry', property: 'severity' },
+  ],
+  /**
+   * Nessun record: la fascia di rischio si **deriva** dal punteggio a ogni
+   * lettura, non si salva sui nodi. I suoi valori vivono solo nelle chiavi
+   * della matrice `change_priority`, che il conteggio scansiona a parte.
+   */
+  risk_band: [],
+  /** Nessun record: è il vocabolario del file di import, non del prodotto. */
+  import_severity: [],
+}
 
 /** Etichetta vera dei nodi del tipo base `__base__`: i CI non hanno un'etichetta «__base__». */
 export const BASE_TYPE_PLACEHOLDER = '__base__'
@@ -100,6 +174,69 @@ export async function enumValueBindings(
       typeName: String(rec.typeName),
     })
   }
+  // I vocabolari di dominio non hanno `USES_ENUM`: le loro proprietà sono
+  // dichiarate (vedi DOMAIN_VALUE_BINDINGS in testa al file). Si aggiungono
+  // DOPO e solo se non già trovate: quando una coppia (etichetta, proprietà)
+  // arriva da entrambe le strade vince quella del metamodello, che porta i nomi
+  // veri di tipo e campo per il messaggio. E contarla due volte raddoppierebbe
+  // i numeri.
+  const seen = new Set(out.map((b) => `${b.label}.${b.property}`))
+  for (const b of DOMAIN_VALUE_BINDINGS[vocabularyName] ?? []) {
+    const label    = assertLabel(b.label, `vocabolario "${vocabularyName}": etichetta dichiarata`)
+    const property = assertFieldName(b.property, `vocabolario "${vocabularyName}": proprietà dichiarata`)
+    if (seen.has(`${label}.${property}`)) continue
+    seen.add(`${label}.${property}`)
+    out.push({ label, property, fieldName: property, typeName: label })
+  }
+  return out
+}
+
+/**
+ * Le matrici di dominio che citano un valore di questo vocabolario, nelle
+ * **chiavi** o nei **valori** (revisione delle otto ondate · D·N-2).
+ *
+ * L'ondata 7 rifiutava di togliere un valore «in uso», ma «in uso» voleva dire
+ * *record nel grafo* più *liste del ciclo di vita*: le `DomainMatrix` — che
+ * l'ondata 7 ha appena creato, e che si rompono esattamente così — non erano
+ * nell'elenco. Misurato dal vivo: aggiunto `estremo` a `impact`, completata la
+ * matrice `priority` con le sue celle, e poi tolto `estremo` — **accettato,
+ * senza una parola**, lasciando due celle che puntano a un valore che non
+ * esiste più.
+ */
+async function matrixReferences(
+  q: Session | ManagedTransaction, tenantId: string, vocabularyName: string, values: readonly string[],
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>(values.map((v) => [v, []]))
+  const kinds = Object.entries(DOMAIN_MATRIX_KINDS).filter(
+    ([, spec]) => (spec.inputs as readonly string[]).includes(vocabularyName) || spec.output === vocabularyName,
+  )
+  if (kinds.length === 0) return out
+
+  const rows = await run(q, `
+    MATCH (m:DomainMatrix {tenant_id: $tenantId})
+    WHERE m.kind IN $kinds
+    RETURN m.kind AS kind, m.entries AS entries
+  `, { tenantId, kinds: kinds.map(([k]) => k) })
+
+  for (const row of rows) {
+    const kind = String(row.kind)
+    const spec = DOMAIN_MATRIX_KINDS[kind as DomainMatrixKind]
+    let entries: Record<string, unknown>
+    try { entries = JSON.parse(String(row.entries)) as Record<string, unknown> }
+    catch { continue }   // una matrice illeggibile è un problema suo: lo dice `loadDomainMatrix`
+    for (const [key, value] of Object.entries(entries)) {
+      const parts = key.split('|')
+      for (const [i, vocabulary] of spec.inputs.entries()) {
+        if (vocabulary !== vocabularyName) continue
+        const hit = out.get(parts[i] ?? '')
+        if (hit && !hit.includes(`${kind} (chiave "${key}")`)) hit.push(`${kind} (chiave "${key}")`)
+      }
+      if (spec.output === vocabularyName) {
+        const hit = out.get(String(value))
+        if (hit && !hit.includes(`${kind} (cella "${key}")`)) hit.push(`${kind} (cella "${key}")`)
+      }
+    }
+  }
   return out
 }
 
@@ -109,6 +246,8 @@ export interface EnumValueUsage {
   records: { typeName: string; fieldName: string; count: number }[]
   /** Liste della policy del ciclo di vita che citano il valore (`retired_statuses`, …). */
   policyLists: readonly string[]
+  /** Matrici di dominio che citano il valore, in una chiave o in una cella. */
+  matrices: readonly string[]
   total: number
 }
 
@@ -123,7 +262,7 @@ export async function countEnumValueUsage(
   if (values.length === 0) return []
   const bindings = await enumValueBindings(session, tenantId, vocabularyName)
   const byValue = new Map<string, EnumValueUsage>(
-    values.map((v) => [v, { value: v, records: [], policyLists: [], total: 0 }]),
+    values.map((v) => [v, { value: v, records: [], policyLists: [], matrices: [], total: 0 }]),
   )
   for (const b of bindings) {
     const counted = await run(session, `
@@ -148,6 +287,12 @@ export async function countEnumValueUsage(
       usage.total += usage.policyLists.length
     }
   }
+  // E le matrici di dominio, che si rompono esattamente così (D·N-2).
+  const inMatrices = await matrixReferences(session, tenantId, vocabularyName, values)
+  for (const usage of byValue.values()) {
+    usage.matrices = inMatrices.get(usage.value) ?? []
+    usage.total += usage.matrices.length
+  }
   return [...byValue.values()].filter((u) => u.total > 0)
 }
 
@@ -157,6 +302,7 @@ export function enumValueUsageMessage(vocabularyName: string, usages: readonly E
     const where = [
       ...u.records.map((r) => `${String(r.count)} ${r.typeName}.${r.fieldName}`),
       ...u.policyLists.map((l) => `la policy degli allarmi (${l})`),
+      ...u.matrices.map((m) => `la matrice ${m}`),
     ]
     return `"${u.value}" è ancora usato da ${where.join(', ')}`
   })
@@ -185,32 +331,119 @@ export async function replaceEnumValue(
     `, { tenantId, from, to })
     for (const row of updated) touched += toNumber(row.n)
   }
-  if (vocabularyName === CI_STATUS_VOCABULARY) {
-    // Le tre liste del ciclo di vita nella policy: sostituzione testuale sul
-    // JSON no — si rilegge, si riscrive la lista, si risalva.
-    const r = await run(tx, 'MATCH (t:Tenant {id: $tenantId}) RETURN t.event_policy AS raw', { tenantId })
-    const raw = r.length ? r[0]!.raw : null
-    if (typeof raw === 'string' && raw !== '') {
-      let parsed: unknown
-      try { parsed = JSON.parse(raw) } catch { parsed = null }
-      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const p = parsed as Record<string, unknown>
-        let changed = false
-        for (const key of ['ignore_lifecycle_statuses', 'retired_statuses', 'maintenance_statuses']) {
-          const list = p[key]
-          if (!Array.isArray(list) || !list.includes(from)) continue
-          const next = [...new Set(list.map((v) => (v === from ? to : v)))]
-          p[key] = next
-          changed = true
-        }
-        if (changed) {
-          await runWrite(tx, 'MATCH (t:Tenant {id: $tenantId}) SET t.event_policy = $policy, t.updated_at = $now',
-            { tenantId, policy: JSON.stringify(p), now: new Date().toISOString() })
-        }
+  // Il numero restituito resta «quanti RECORD»: la policy e le matrici sono
+  // configurazione, non dati, e sommarle darebbe un conteggio che non significa
+  // niente in nessuna delle due unità.
+  await replaceInPolicy(tx, tenantId, vocabularyName, from, to)
+  await replaceInMatrices(tx, tenantId, vocabularyName, from, to)
+  return touched
+}
+
+/**
+ * La policy degli allarmi: le tre liste del ciclo di vita e la mappa delle
+ * severità. Sostituzione testuale sul JSON no — si rilegge, si riscrive, si
+ * risalva.
+ *
+ * `severity_map` è la seconda metà (revisione delle otto ondate · C·N-4): la
+ * mappa dice, per ogni severità d'allarme, con quale **impatto e urgenza**
+ * aprire l'incident, e quei due valori sono del vocabolario del cliente. Chi
+ * rinominava `impact` si trovava in un vicolo cieco: l'ingest registrava
+ * l'allarme, la pipeline moriva su `createIncident` perché la policy citava il
+ * valore vecchio, il job finiva nella coda dei falliti — e la pagina della
+ * policy **rifiutava** di salvare il valore nuovo, perché la validazione
+ * confrontava con una lista scritta nel codice. Ora la rinomina riscrive anche
+ * questa mappa, e la validazione passa dal vocabolario del cliente.
+ */
+async function replaceInPolicy(
+  tx: ManagedTransaction, tenantId: string, vocabularyName: string, from: string, to: string,
+): Promise<number> {
+  const isLifecycle = vocabularyName === CI_STATUS_VOCABULARY
+  const isSeverityMapValue = vocabularyName === 'impact' || vocabularyName === 'urgency'
+  if (!isLifecycle && !isSeverityMapValue) return 0
+
+  const r = await run(tx, 'MATCH (t:Tenant {id: $tenantId}) RETURN t.event_policy AS raw', { tenantId })
+  const raw = r.length ? r[0]!.raw : null
+  if (typeof raw !== 'string' || raw === '') return 0
+  let parsed: unknown
+  try { parsed = JSON.parse(raw) } catch { return 0 }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return 0
+
+  const p = parsed as Record<string, unknown>
+  let changed = 0
+  if (isLifecycle) {
+    for (const key of ['ignore_lifecycle_statuses', 'retired_statuses', 'maintenance_statuses']) {
+      const list = p[key]
+      if (!Array.isArray(list) || !list.includes(from)) continue
+      p[key] = [...new Set(list.map((v) => (v === from ? to : v)))]
+      changed += 1
+    }
+  }
+  if (isSeverityMapValue) {
+    const map = p['severity_map']
+    if (map !== null && typeof map === 'object' && !Array.isArray(map)) {
+      for (const entry of Object.values(map as Record<string, unknown>)) {
+        if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) continue
+        const e = entry as Record<string, unknown>
+        if (e[vocabularyName] === from) { e[vocabularyName] = to; changed += 1 }
       }
     }
   }
-  return touched
+  if (changed > 0) {
+    await runWrite(tx, 'MATCH (t:Tenant {id: $tenantId}) SET t.event_policy = $policy, t.updated_at = $now',
+      { tenantId, policy: JSON.stringify(p), now: new Date().toISOString() })
+  }
+  return changed
+}
+
+/**
+ * Le matrici di dominio: **chiavi e valori** (revisione · C·N-2 / D·N-2).
+ *
+ * È il pezzo che rende la rinomina un'operazione vera invece di una mezza.
+ * Rinominare `low` → `basso` senza toccare la matrice `priority` lascia nove
+ * celle con chiavi `low|…`: `resolveDomainMatrix` non trova più niente e ogni
+ * apertura di incident si ferma. Prima l'unico modo era ricompilare la matrice
+ * a mano dalla pagina, cella per cella — e l'admin non sapeva di doverlo fare.
+ */
+async function replaceInMatrices(
+  tx: ManagedTransaction, tenantId: string, vocabularyName: string, from: string, to: string,
+): Promise<number> {
+  const kinds = Object.entries(DOMAIN_MATRIX_KINDS).filter(
+    ([, spec]) => (spec.inputs as readonly string[]).includes(vocabularyName) || spec.output === vocabularyName,
+  )
+  if (kinds.length === 0) return 0
+
+  const rows = await run(tx, `
+    MATCH (m:DomainMatrix {tenant_id: $tenantId})
+    WHERE m.kind IN $kinds
+    RETURN m.kind AS kind, m.entries AS entries
+  `, { tenantId, kinds: kinds.map(([k]) => k) })
+
+  let changed = 0
+  for (const row of rows) {
+    const kind = String(row.kind)
+    const spec = DOMAIN_MATRIX_KINDS[kind as DomainMatrixKind]
+    let entries: Record<string, unknown>
+    try { entries = JSON.parse(String(row.entries)) as Record<string, unknown> }
+    catch { continue }
+
+    const next: Record<string, string> = {}
+    let touchedHere = 0
+    for (const [key, value] of Object.entries(entries)) {
+      const parts = key.split('|')
+      const newParts = parts.map((part, i) =>
+        (spec.inputs[i] === vocabularyName && part === from ? to : part))
+      const newValue = spec.output === vocabularyName && String(value) === from ? to : String(value)
+      if (newParts.join('|') !== key || newValue !== String(value)) touchedHere += 1
+      next[newParts.join('|')] = newValue
+    }
+    if (touchedHere === 0) continue
+    await runWrite(tx, `
+      MATCH (m:DomainMatrix {tenant_id: $tenantId, kind: $kind})
+      SET m.entries = $entries, m.updated_at = $now
+    `, { tenantId, kind, entries: JSON.stringify(next), now: new Date().toISOString() })
+    changed += touchedHere
+  }
+  return changed
 }
 
 // ── Dettagli ─────────────────────────────────────────────────────────────────

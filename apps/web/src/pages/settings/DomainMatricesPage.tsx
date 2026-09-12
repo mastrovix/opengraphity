@@ -18,16 +18,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Save, Table2 } from 'lucide-react'
+import { AlertTriangle, Save, Table2, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { PageTitle } from '@/components/PageTitle'
 import { Button } from '@/components/Button'
-import { Select } from '@/components/ui/FormControls'
+import { Select, Input } from '@/components/ui/FormControls'
 import { inputS, labelS } from '@/components/ui/styles'
-import { GET_DOMAIN_MATRICES, GET_PRE_APPROVED_CHANGE_TYPES } from '@/graphql/queries'
-import { UPDATE_DOMAIN_MATRIX, UPDATE_PRE_APPROVED_CHANGE_TYPES } from '@/graphql/mutations'
+import { GET_DOMAIN_MATRICES, GET_PRE_APPROVED_CHANGE_TYPES, GET_RISK_BAND_THRESHOLDS } from '@/graphql/queries'
+import { UPDATE_DOMAIN_MATRIX, UPDATE_PRE_APPROVED_CHANGE_TYPES, UPDATE_RISK_BAND_THRESHOLDS } from '@/graphql/mutations'
 import { colors } from '@/lib/tokens'
 
 // ── Tipi ──────────────────────────────────────────────────────────────────────
@@ -292,6 +292,108 @@ function PreApprovedChangeTypesCard() {
   )
 }
 
+// ── Fasce di rischio ──────────────────────────────────────────────────────────
+// Rimedio 3 · revisione C·N-2. Le soglie erano 30 e 60 scritte nel codice, e le
+// fasce si leggevano per POSIZIONE nel vocabolario (`bands[0..2]`): riordinarlo
+// — o rinominare un valore, che lo spostava in coda — invertiva le fasce **in
+// silenzio**, e la matrice trovava poi una cella valida, cioè una priorità
+// plausibile e sbagliata. Una quarta fascia era irraggiungibile: l'admin la
+// compilava nella matrice e credeva che valesse.
+
+interface RiskBandThreshold { band: string; upTo: number }
+
+function RiskBandsCard() {
+  const { t } = useTranslation()
+  const { data, loading, error } = useQuery<{ riskBandThresholds: { thresholds: RiskBandThreshold[]; vocabulary: string[]; isDefault: boolean } }>(
+    GET_RISK_BAND_THRESHOLDS, { fetchPolicy: 'cache-and-network' },
+  )
+  const [draft, setDraft] = useState<RiskBandThreshold[] | null>(null)
+  const saved   = data?.riskBandThresholds
+  const current = draft ?? saved?.thresholds ?? []
+  const dirty   = draft !== null
+
+  const [saveRiskBands, { loading: savingBands }] = useMutation(UPDATE_RISK_BAND_THRESHOLDS, {
+    refetchQueries: [GET_RISK_BAND_THRESHOLDS],
+    onCompleted: () => { toast.success(t('pages.domainMatrices.riskBands.saved')); setDraft(null) },
+    onError: (e) => toast.error(e.message),
+  })
+
+  const setRow = (i: number, patch: Partial<RiskBandThreshold>) =>
+    setDraft(current.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  const removeRow = (i: number) => setDraft(current.filter((_, j) => j !== i))
+  const addRow = () => {
+    const unused = (saved?.vocabulary ?? []).find((v) => !current.some((r) => r.band === v))
+    setDraft([...current, { band: unused ?? '', upTo: 100 }])
+  }
+
+  // Gli stessi controlli del server, mostrati PRIMA di salvare: le soglie
+  // devono crescere e l'ultima arrivare a 100, altrimenti un punteggio
+  // resterebbe senza fascia — cioè un errore nell'apertura di una change.
+  const ascending = current.every((r, i) => i === 0 || r.upTo > current[i - 1]!.upTo)
+  const endsAt100 = current.length > 0 && current[current.length - 1]!.upTo === 100
+  const complete  = current.every((r) => r.band !== '')
+  const canSave   = dirty && ascending && endsAt100 && complete && !savingBands
+
+  return (
+    <SectionCard title={t('pages.domainMatrices.riskBands.title')} defaultOpen>
+      <p style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, marginTop: 0 }}>
+        {t('pages.domainMatrices.riskBands.help')}
+      </p>
+      {loading && !data && <p>{t('common.loading')}</p>}
+      {error && <p style={{ color: 'var(--color-danger-text)' }}>{error.message}</p>}
+      {saved && (
+        <>
+          {saved.isDefault && (
+            <p style={{ fontSize: 'var(--font-size-label)', color: colors.slateLight, marginTop: 0 }}>
+              {t('pages.domainMatrices.riskBands.usingFactory')}
+            </p>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+            {current.map((row, i) => (
+              <div key={`${row.band}-${String(i)}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Select
+                  value={row.band}
+                  onChange={(ev) => setRow(i, { band: ev.target.value })}
+                  style={{ flex: 1 }}
+                  aria-label={t('pages.domainMatrices.riskBands.band')}
+                >
+                  <option value="">—</option>
+                  {saved.vocabulary.map((v) => <option key={v} value={v}>{v}</option>)}
+                </Select>
+                <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight }}>
+                  {t('pages.domainMatrices.riskBands.upTo')}
+                </span>
+                <Input
+                  type="number" min={0} max={100}
+                  value={String(row.upTo)}
+                  onChange={(ev) => setRow(i, { upTo: Number(ev.target.value) })}
+                  style={{ width: 90 }}
+                  aria-label={t('pages.domainMatrices.riskBands.upTo')}
+                />
+                <button type="button" onClick={() => removeRow(i)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', display: 'flex' }}
+                  aria-label={t('pages.domainMatrices.riskBands.removeBand', { band: row.band })}>
+                  <X size={13} aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </div>
+          {!ascending && <p style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger-text)' }}>{t('pages.domainMatrices.riskBands.ascending')}</p>}
+          {!endsAt100 && <p style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger-text)' }}>{t('pages.domainMatrices.riskBands.lastMustBe100')}</p>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="secondary" onClick={addRow}>
+              <Plus size={14} /> {t('pages.domainMatrices.riskBands.addBand')}
+            </Button>
+            <Button onClick={() => void saveRiskBands({ variables: { entries: current } })} disabled={!canSave}>
+              <Save size={14} /> {t('common.save')}
+            </Button>
+          </div>
+        </>
+      )}
+    </SectionCard>
+  )
+}
+
 // ── Pagina ────────────────────────────────────────────────────────────────────
 
 export function DomainMatricesPage() {
@@ -313,6 +415,7 @@ export function DomainMatricesPage() {
       {loading && !data && <p>{t('common.loading')}</p>}
       {error && <p style={{ color: 'var(--color-danger-text)' }}>{error.message}</p>}
       {data?.domainMatrices.map((m) => <MatrixCard key={m.kind} matrix={m} />)}
+      <RiskBandsCard />
       <PreApprovedChangeTypesCard />
     </PageContainer>
   )

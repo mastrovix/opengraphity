@@ -1,5 +1,6 @@
-import { useId, useState } from 'react'
-import { derivePriority, priorityCode, IMPACT_URGENCY_OPTIONS, IMPACT_URGENCY_LABEL, type ImpactUrgency } from '@/lib/priority'
+import { useEffect, useId, useState } from 'react'
+import { derivePriority, priorityCode } from '@/lib/priority'
+import { usePriorityMatrix } from '@/hooks/usePriorityMatrix'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useMutation, useQuery } from '@apollo/client/react'
@@ -39,9 +40,16 @@ export function CreateProblemPage() {
   const ids = { title: useId(), description: useId(), ciSearch: useId(), teamSearch: useId() }
 
   const [title,       setTitle]       = useState('')
-  const [impact,      setImpact]      = useState<ImpactUrgency>('medium')
-  const [urgency,     setUrgency]     = useState<ImpactUrgency>('medium')
-  const priority = derivePriority(impact, urgency)
+  // Dalla matrice DEL CLIENTE, non da una copia nel web (revisione · C·N-3).
+  const { matrix } = usePriorityMatrix()
+  const [impact,      setImpact]      = useState('')
+  const [urgency,     setUrgency]     = useState('')
+  useEffect(() => {
+    if (!matrix) return
+    setImpact((v) => (v === '' ? (matrix.impacts[Math.floor((matrix.impacts.length - 1) / 2)] ?? '') : v))
+    setUrgency((v) => (v === '' ? (matrix.urgencies[Math.floor((matrix.urgencies.length - 1) / 2)] ?? '') : v))
+  }, [matrix])
+  const priority = derivePriority(matrix, impact, urgency) ?? ''
   const [description, setDescription] = useState('')
   const [selectedTeam,     setSelectedTeam]     = useState<Team | null>(null)
   const [teamSearch,       setTeamSearch]       = useState('')
@@ -147,11 +155,11 @@ export function CreateProblemPage() {
 
           {/* IMPATTO × URGENZA → PRIORITÀ */}
           <div style={{ marginBottom: 20, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            {([['Impatto', impact, setImpact], ['Urgenza', urgency, setUrgency]] as const).map(([label, val, setVal]) => (
+            {([['Impatto', impact, setImpact, matrix?.impacts ?? []], ['Urgenza', urgency, setUrgency, matrix?.urgencies ?? []]] as const).map(([label, val, setVal, options]) => (
               <div key={label}>
                 <div style={fieldLabel}>{label} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  {IMPACT_URGENCY_OPTIONS.map(o => {
+                  {options.map(o => {
                     const sel = val === o
                     return (
                       <button key={o} type="button" onClick={() => setVal(o)}
@@ -159,7 +167,7 @@ export function CreateProblemPage() {
                           border: `1.5px solid ${sel ? 'var(--color-brand)' : colors.border}`,
                           background: sel ? palette.info.light : 'var(--color-slate-bg)',
                           color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}>
-                        {IMPACT_URGENCY_LABEL[o]}
+                        {o}
                       </button>
                     )
                   })}
@@ -172,7 +180,8 @@ export function CreateProblemPage() {
                 border: `1.5px solid ${(PRIORITY_STYLES[priority]?.border ?? colors.border)}`,
                 background: PRIORITY_STYLES[priority]?.bg ?? 'var(--color-slate-bg)',
                 color: PRIORITY_STYLES[priority]?.color ?? 'var(--color-slate)', fontWeight: 600 }}>
-                <span>{priorityCode(priority)}</span><span style={{ textTransform: 'capitalize' }}>{priority}</span>
+                <span>{priority === '' ? '—' : priorityCode(matrix?.priorities ?? [], priority)}</span>
+                <span style={{ textTransform: 'capitalize' }}>{priority === '' ? 'da compilare nella matrice' : priority}</span>
               </div>
             </div>
           </div>

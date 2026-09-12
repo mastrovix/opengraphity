@@ -11,12 +11,13 @@ import { QueryError } from '@/components/QueryError'
 import { Modal } from '@/components/Modal'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SeverityBadge } from '@/components/SeverityBadge'
-import { priorityCode } from '@/lib/priority'
+
 import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
 import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI, SET_INCIDENT_MAJOR, UPDATE_INCIDENT, LINK_RELATED_TICKET, UNLINK_RELATED_TICKET, LINK_INCIDENT_TO_PROBLEM, UNLINK_INCIDENT_FROM_PROBLEM, LINK_RESOLVED_TICKET, UNLINK_RESOLVED_TICKET } from '@/graphql/mutations'
 import { UnifiedLinkedTickets, type LinkedTicketItem } from '@/components/UnifiedLinkedTickets'
 import { Input, FieldLabel } from '@/components/ui/FormControls'
-import { IMPACT_URGENCY_OPTIONS, IMPACT_URGENCY_LABEL, derivePriority, priorityCode as prioCode } from '@/lib/priority'
+import { derivePriority, priorityCode } from '@/lib/priority'
+import { usePriorityMatrix } from '@/hooks/usePriorityMatrix'
 import { Pencil } from 'lucide-react'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { IncidentHeader } from './IncidentHeader'
@@ -139,6 +140,7 @@ interface User { id: string; name: string; email: string; teams: { id: string; n
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function IncidentDetailPage() {
+  const { matrix } = usePriorityMatrix()
   const { t }    = useTranslation()
   const editIds  = { title: useId(), description: useId(), impact: useId(), urgency: useId(), team: useId(), user: useId() }
   const { id }   = useParams<{ id: string }>()
@@ -485,18 +487,28 @@ export function IncidentDetailPage() {
           <div>
             <FieldLabel htmlFor={editIds.impact}>Impatto</FieldLabel>
             <Select id={editIds.impact} value={editForm.impact} onChange={(e) => setEditForm({ ...editForm, impact: e.target.value })}>
-              {IMPACT_URGENCY_OPTIONS.map((o) => <option key={o} value={o}>{IMPACT_URGENCY_LABEL[o]}</option>)}
+              {(matrix?.impacts ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
             </Select>
           </div>
           <div>
             <FieldLabel htmlFor={editIds.urgency}>Urgenza</FieldLabel>
             <Select id={editIds.urgency} value={editForm.urgency} onChange={(e) => setEditForm({ ...editForm, urgency: e.target.value })}>
-              {IMPACT_URGENCY_OPTIONS.map((o) => <option key={o} value={o}>{IMPACT_URGENCY_LABEL[o]}</option>)}
+              {(matrix?.urgencies ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
             </Select>
           </div>
         </div>
         <p style={{ marginTop: 10, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
-          Priorità risultante: <strong>{prioCode(derivePriority(editForm.impact as 'high'|'medium'|'low', editForm.urgency as 'high'|'medium'|'low'))} — {derivePriority(editForm.impact as 'high'|'medium'|'low', editForm.urgency as 'high'|'medium'|'low')}</strong>
+          {/* Dalla matrice del cliente, non da una copia nel web (revisione ·
+              C·N-3): una coppia che la matrice non copre lo dice, invece di
+              mostrare una priorità che il server poi rifiuta. */}
+          Priorità risultante: <strong>{
+            (() => {
+              const p = derivePriority(matrix, editForm.impact, editForm.urgency)
+              return p === null
+                ? 'non coperta dalla matrice — completala in Impostazioni → Matrici di dominio'
+                : `${priorityCode(matrix?.priorities ?? [], p)} — ${p}`
+            })()
+          }</strong>
         </p>
       </Modal>
 
@@ -518,7 +530,7 @@ export function IncidentDetailPage() {
                 } />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                  <DetailField label="Priorità" value={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><b>{priorityCode(incident.priority)}</b><SeverityBadge value={incident.priority} /></span>} />
+                  <DetailField label="Priorità" value={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><b>{priorityCode(matrix?.priorities ?? [], incident.priority)}</b><SeverityBadge value={incident.priority} /></span>} />
                   {incident.impact && incident.urgency && <DetailField label="Impatto / Urgenza" value={`${incident.impact} / ${incident.urgency}`} />}
                   <DetailField label={t('sla.title')} value={
                     incident.slaStatus

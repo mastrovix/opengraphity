@@ -25,6 +25,11 @@ vi.mock('../../../../lib/logger.js', () => ({
 // interessa la ROUTE, non la priorità: il doppio risponde con la matrice di
 // fabbrica e i vocabolari spediti (lib/__tests__/domainMatrixFake.ts).
 vi.mock('../../../../lib/domainMatrix.js', () => import('../../../../lib/__tests__/domainMatrixFake.js'))
+// Rimedio 3: le soglie delle fasce di rischio sono dato del cliente, quindi
+// `deriveChangePriority` legge il tenant anche solo per sapere che fascia è un
+// punteggio. Questo test misura la rotta d'approvazione: il doppio risponde con
+// le soglie di fabbrica senza grafo.
+vi.mock('../../../../lib/riskBands.js', () => import('../../../../lib/__tests__/riskBandsFake.js'))
 
 vi.mock('../../../../lib/workflowHelpers.js', () => ({
   getInitialStepName: vi.fn().mockResolvedValue('assessment'),

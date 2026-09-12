@@ -36,9 +36,53 @@ interface EnumTypeDef {
   isSystem:  boolean
   /** `tenant_id = 'system'`: spedito col prodotto, uguale per tutti i clienti. */
   isShipped: boolean
+  /**
+   * Il valore da usare quando nessuno lo indica. `null` = non dichiarato.
+   *
+   * Serve a togliere una regola di dominio dalla POSIZIONE (revisione delle
+   * otto ondate · C·N-2): `initialCIStatus` prendeva il **primo** valore della
+   * lista, e siccome il Dizionario sapeva solo aggiungere in coda, rinominare
+   * un valore lo spostava in fondo — un CI nuovo nasceva `inactive`, cioè
+   * subito escluso dalla salute dei servizi. «Con che valore nasce» è un
+   * default, non una posizione: adesso si dichiara.
+   */
+  defaultValue: string | null
   scope:     string
   createdAt: string
   updatedAt: string
+}
+
+/**
+ * I vocabolari i cui valori **non sono del cliente** (revisione delle otto
+ * ondate · C·N-5).
+ *
+ * `event_severity` è la severità che i sistemi di monitoraggio **mandano**: è
+ * il vocabolario del protocollo in ingresso, e il codice che normalizza gli
+ * allarmi produce esattamente `info | warning | critical`
+ * (`lib/eventVocabularies.ts`). Il Dizionario però lo offriva come qualunque
+ * altro, la mutation lo accettava, e l'ingest lo rifiutava: un cliente che lo
+ * rinominava vedeva la matrice pretendere i nomi nuovi e gli allarmi arrivare
+ * coi vecchi — nessuna delle tre parti avvisava. Il revisore l'ha chiamato «un
+ * vocabolario finto», e aveva ragione.
+ *
+ * La scelta: si **vede** (è utile sapere cosa mandano le sorgenti) ma i suoi
+ * valori non si toccano, e il rifiuto dice dov'è la manopola vera — la matrice
+ * «Severità allarme → Severità incident», dove il cliente decide cosa
+ * diventano. L'etichetta resta modificabile: è testo per gli umani.
+ */
+export const WIRE_VOCABULARIES: Readonly<Record<string, string>> = {
+  event_severity:
+    'è la severità che mandano i sistemi di monitoraggio (il prodotto normalizza gli allarmi a info, warning, critical): ' +
+    'cambiarne i valori non cambia quello che arriva, e fa smettere di funzionare la traduzione. ' +
+    'Quello che decidi tu è in quale severità di incident si traducono: Impostazioni → Matrici di dominio, ' +
+    'matrice «event_severity».',
+}
+
+/** Un vocabolario del protocollo in ingresso non cambia valori: dice perché, e dov'è la manopola. */
+function assertVocabularyEditable(name: string, what: string): void {
+  const reason = WIRE_VOCABULARIES[name]
+  if (reason === undefined) return
+  throw new ValidationError(`${what}: il vocabolario "${name}" ${reason}`)
 }
 
 /**
@@ -72,6 +116,7 @@ function mapEnum(r: { get: (k: string) => unknown }): EnumTypeDef {
     // `is_system` è un flag di protezione scritto anche sulle copie per tenant
     // (A-3): il proprietario si legge dal tenant, non da quel flag.
     isShipped: tenantId === SYSTEM_TENANT,
+    defaultValue: (r.get('defaultValue') ?? null) as string | null,
     scope:     r.get('scope')     as string,
     createdAt: r.get('createdAt') as string,
     updatedAt: r.get('updatedAt') as string,
@@ -110,6 +155,7 @@ export async function enumTypes(
                e.values    AS values,
                e.is_system AS isSystem,
                e.scope     AS scope,
+               e.default_value AS defaultValue,
                e.created_at AS createdAt,
                e.updated_at AS updatedAt
         ORDER BY e.scope, e.name
@@ -139,6 +185,7 @@ export async function enumType(
                e.values    AS values,
                e.is_system AS isSystem,
                e.scope     AS scope,
+               e.default_value AS defaultValue,
                e.created_at AS createdAt,
                e.updated_at AS updatedAt
       `, { id: args.id, tenantId: ctx.tenantId }),
@@ -214,6 +261,7 @@ export async function createEnumType(
     return {
       id, tenantId: ctx.tenantId, name: input.name, label: input.label,
       values: input.values, isSystem: false, isShipped: false, scope: input.scope,
+      defaultValue: null,
       createdAt: now, updatedAt: now,
     }
   } finally {
@@ -250,7 +298,7 @@ export async function customizeEnumType(
         MATCH (e:EnumTypeDefinition {id: $id})
         WHERE e.tenant_id IN [$tenantId, $systemTenant]
         RETURN e.tenant_id AS tenantId, e.name AS name, e.label AS label,
-               e.values AS values, e.scope AS scope
+               e.values AS values, e.scope AS scope, e.default_value AS defaultValue
       `, { id: args.id, tenantId: ctx.tenantId, systemTenant: SYSTEM_TENANT }),
     )
     if (!src.records.length) throw new NotFoundError('EnumTypeDefinition', args.id)
@@ -292,6 +340,10 @@ export async function customizeEnumType(
           values:     $values,
           is_system:  false,
           scope:      $scope,
+          // La copia porta anche il valore di default: senza, personalizzare un
+          // vocabolario ne perderebbe il default e initialCIStatus ripiegherebbe
+          // sul primo valore, cioe' il difetto che il default chiude.
+          default_value: $defaultValue,
           created_at: $now,
           updated_at: $now
         })
@@ -302,12 +354,14 @@ export async function customizeEnumType(
                e.values    AS values,
                e.is_system AS isSystem,
                e.scope     AS scope,
+               e.default_value AS defaultValue,
                e.created_at AS createdAt,
                e.updated_at AS updatedAt
       `, {
         id, tenantId: ctx.tenantId, name,
         label: row.get('label') as string, values,
         scope: row.get('scope') as string, now,
+        defaultValue: (row.get('defaultValue') ?? null) as string | null,
       }),
     )
     if (!created.records.length) throw new Error(`customizeEnumType("${name}"): la CREATE non ha restituito il nodo`)
@@ -342,7 +396,7 @@ export async function customizeEnumType(
  */
 export async function updateEnumType(
   _: unknown,
-  args: { id: string; input: { label?: string; values?: string[]; scope?: string; replacements?: { from: string; to: string }[] } },
+  args: { id: string; input: { label?: string; values?: string[]; scope?: string; defaultValue?: string; replacements?: { from: string; to: string }[] } },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
   if (ctx.role !== 'admin') throw new ForbiddenError()
@@ -374,6 +428,9 @@ export async function updateEnumType(
     if (isSystem && input.scope) {
       throw new ValidationError('Cannot change scope of system enum types')
     }
+    if (input.values) {
+      assertVocabularyEditable(check.records[0]!.get('name') as string, 'Cambiare i valori')
+    }
 
     // ── Valori che sparirebbero (B7-2) ────────────────────────────────────
     const name       = check.records[0]!.get('name') as string
@@ -402,6 +459,14 @@ export async function updateEnumType(
       if (usages.length) throw new ValidationError(enumValueUsageMessage(name, usages))
     }
 
+    // Il valore di default deve stare fra i valori NUOVI: un default fuori
+    // vocabolario è il difetto che il default esiste per chiudere.
+    if (input.defaultValue !== undefined && !next.includes(input.defaultValue)) {
+      throw new ValidationError(
+        `Il valore di default "${input.defaultValue}" non è fra i valori di "${name}" (${next.join(', ')}).`,
+      )
+    }
+
     const now = new Date().toISOString()
     const result = await session.executeWrite(async (tx) => {
       // La riscrittura dei record e quella del vocabolario nella STESSA
@@ -416,6 +481,7 @@ export async function updateEnumType(
         SET e.label      = coalesce($label, e.label),
             e.values     = coalesce($values, e.values),
             e.scope      = CASE WHEN $scope IS NOT NULL AND NOT e.is_system THEN $scope ELSE e.scope END,
+            e.default_value = coalesce($defaultValue, e.default_value),
             e.updated_at = $now
         RETURN e.id        AS id,
                e.tenant_id AS tenantId,
@@ -424,6 +490,7 @@ export async function updateEnumType(
                e.values    AS values,
                e.is_system AS isSystem,
                e.scope     AS scope,
+               e.default_value AS defaultValue,
                e.created_at AS createdAt,
                e.updated_at AS updatedAt
       `, {
@@ -432,6 +499,7 @@ export async function updateEnumType(
         label:  input.label  ?? null,
         values: input.values ?? null,
         scope:  input.scope  ?? null,
+        defaultValue: input.defaultValue ?? null,
         now,
       })
     })
@@ -537,7 +605,207 @@ export async function deleteEnumType(
   }
 }
 
+/**
+ * **Rinominare** un valore, che finora era un'operazione che il prodotto non
+ * aveva (revisione delle otto ondate · C·N-2 — il difetto centrale del
+ * programma).
+ *
+ * ## Cosa faceva il cliente, e cosa succedeva
+ * Il Dizionario sapeva solo `addValue` (in coda) e `removeValue`. Rinominare
+ * era quindi togliere + aggiungere, cioè **spostare il valore in fondo**. E
+ * tre regole di dominio leggevano il vocabolario per POSIZIONE. Misurato dal
+ * vivo, con la mutation vera:
+ *
+ *     risk_band  rinomino low→basso  ⇒ ["medium","high","basso"]
+ *       riskBandOf(10) [rischio BASSO] = "medium"   ← era "low"
+ *       riskBandOf(80) [rischio ALTO ] = "basso"    ← era "high"
+ *     ci_status  rinomino active→attivo
+ *       initialCIStatus = "inactive"   ← un CI NUOVO nasce fuori servizio
+ *     impact     rinomino low→basso
+ *       criticalServiceCriticalities = []   ← il banner dei servizi critici si spegne
+ *
+ * Tutte e tre silenziose, tutte su strada dritta. E senza uscita: per rimettere
+ * il valore in testa bisognava togliere e riaggiungere gli altri, ma togliere
+ * un valore in uso è (giustamente) rifiutato.
+ *
+ * ## Cos'è una rinomina, per davvero
+ * Un solo comando che tiene insieme cinque cose, **nella stessa transazione**:
+ *  1. il valore nella lista, **al suo posto** (non in coda);
+ *  2. i record che lo portano (`replaceEnumValue`, che ora conosce anche i
+ *     vocabolari di dominio senza `USES_ENUM`);
+ *  3. le liste della policy degli allarmi e la `severity_map`;
+ *  4. le chiavi e le celle delle **matrici di dominio** — senza questo la
+ *     rinomina rompeva la matrice e ogni apertura di incident si fermava;
+ *  5. il valore di default del vocabolario, se era quello.
+ *
+ * Non è una scorciatoia per «togli + aggiungi»: è l'operazione che il cliente
+ * intendeva fare, e che prima doveva improvvisare.
+ */
+export async function renameEnumValue(
+  _: unknown,
+  args: { id: string; from: string; to: string },
+  ctx: GraphQLContext,
+): Promise<EnumTypeDef> {
+  if (ctx.role !== 'admin') throw new ForbiddenError()
+  const { id } = args
+  const from = args.from.trim()
+  const to   = args.to.trim()
+  if (to === '') throw new ValidationError('Il valore nuovo non può essere vuoto.')
+
+  const session = getSession(undefined, 'WRITE')
+  try {
+    const check = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (e:EnumTypeDefinition {id: $id})
+        WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')
+        RETURN e.tenant_id AS tenantId, e.name AS name, e.values AS values, e.default_value AS defaultValue
+      `, { id, tenantId: ctx.tenantId }),
+    )
+    if (!check.records.length) throw new NotFoundError('EnumTypeDefinition', id)
+    const row  = check.records[0]!
+    const name = row.get('name') as string
+
+    if ((row.get('tenantId') as string) === SYSTEM_TENANT) {
+      throw new ValidationError(
+        `Il vocabolario "${name}" è spedito col prodotto: è lo stesso per tutti i clienti e non si modifica in posto. ` +
+        `Usa "Personalizza" per averne una copia tua, e rinomina i valori su quella.`,
+      )
+    }
+    assertVocabularyEditable(name, `Rinominare "${from}" in "${to}"`)
+
+    const rawValues = row.get('values')
+    const current = Array.isArray(rawValues) ? rawValues as string[] : JSON.parse(String(rawValues)) as string[]
+    const at = current.indexOf(from)
+    if (at === -1) {
+      throw new ValidationError(
+        `Il valore "${from}" non è fra quelli di "${name}" (${current.join(', ')}): non c'è niente da rinominare.`,
+      )
+    }
+    if (from === to) throw new ValidationError(`Il valore "${from}" si chiama già così.`)
+    if (current.includes(to)) {
+      throw new ValidationError(
+        `"${name}" ha già un valore "${to}". Rinominare "${from}" in "${to}" unirebbe due valori distinti in uno, ` +
+        `e i record del primo diventerebbero del secondo senza che nessuno l'abbia chiesto. ` +
+        `Se è quello che vuoi, togli "${from}" indicando "${to}" come sostituzione (updateEnumType).`,
+      )
+    }
+
+    const next = [...current]
+    next[at] = to
+    const now = new Date().toISOString()
+
+    const result = await session.executeWrite(async (tx) => {
+      // I record, la policy e le matrici PRIMA: se qualcosa qui lancia, il
+      // vocabolario non è ancora cambiato e non resta niente a metà.
+      const touched = await replaceEnumValue(tx, ctx.tenantId, name, from, to)
+      void audit(ctx, 'enum_type.value_renamed', 'EnumTypeDefinition', id, { name, from, to, records: touched })
+      return tx.run(`
+        MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId})
+        SET e.values        = $values,
+            e.default_value = CASE WHEN e.default_value = $from THEN $to ELSE e.default_value END,
+            e.updated_at    = $now
+        RETURN e.id        AS id,
+               e.tenant_id AS tenantId,
+               e.name      AS name,
+               e.label     AS label,
+               e.values    AS values,
+               e.is_system AS isSystem,
+               e.scope     AS scope,
+               e.default_value AS defaultValue,
+               e.created_at AS createdAt,
+               e.updated_at AS updatedAt
+      `, { id, tenantId: ctx.tenantId, values: next, from, to, now })
+    })
+    if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', id)
+    vocabularyChanged(ctx.tenantId)
+    return mapEnum(result.records[0]!)
+  } finally {
+    await session.close()
+  }
+}
+
+/**
+ * **Riordinare** i valori: l'altra metà della rinomina (revisione · C·N-2).
+ *
+ * Per i vocabolari di scala l'ordine PORTA SIGNIFICATO — `impact` va dal più
+ * basso al più alto, e «l'impatto più alto» è l'ultimo valore — ma non era
+ * modificabile: il Dizionario aggiungeva solo in coda. Un cliente che avesse
+ * aggiunto una severità intermedia non poteva metterla al suo posto.
+ *
+ * Qui si cambia **solo** l'ordine: lo stesso insieme di valori, permutato. Un
+ * insieme diverso è un errore che rimanda alle operazioni giuste, perché
+ * togliere un valore ha un conteggio e una sostituzione da rispettare, e
+ * aggiungerne uno no — confonderli qui vorrebbe dire aggirarli.
+ */
+export async function reorderEnumValues(
+  _: unknown,
+  args: { id: string; values: string[] },
+  ctx: GraphQLContext,
+): Promise<EnumTypeDef> {
+  if (ctx.role !== 'admin') throw new ForbiddenError()
+  const { id, values } = args
+
+  const session = getSession(undefined, 'WRITE')
+  try {
+    const check = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (e:EnumTypeDefinition {id: $id})
+        WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')
+        RETURN e.tenant_id AS tenantId, e.name AS name, e.values AS values
+      `, { id, tenantId: ctx.tenantId }),
+    )
+    if (!check.records.length) throw new NotFoundError('EnumTypeDefinition', id)
+    const row  = check.records[0]!
+    const name = row.get('name') as string
+    if ((row.get('tenantId') as string) === SYSTEM_TENANT) {
+      throw new ValidationError(
+        `Il vocabolario "${name}" è spedito col prodotto: usa "Personalizza" per averne una copia tua e riordinare quella.`,
+      )
+    }
+    assertVocabularyEditable(name, 'Riordinare i valori')
+    const rawValues = row.get('values')
+    const current = Array.isArray(rawValues) ? rawValues as string[] : JSON.parse(String(rawValues)) as string[]
+
+    const sortedA = [...current].sort()
+    const sortedB = [...values].sort()
+    if (values.length !== current.length || sortedA.some((v, i) => v !== sortedB[i])) {
+      const missing = current.filter((v) => !values.includes(v))
+      const extra   = values.filter((v) => !current.includes(v))
+      throw new ValidationError(
+        `Il riordino cambia solo l'ORDINE dei valori di "${name}", non l'insieme` +
+        (missing.length ? `; mancano: ${missing.join(', ')}` : '') +
+        (extra.length   ? `; in più: ${extra.join(', ')}`   : '') +
+        `. Per aggiungere o togliere un valore usa la modifica del vocabolario (che conta chi lo usa), ` +
+        `per cambiargli nome la rinomina.`,
+      )
+    }
+
+    const result = await session.executeWrite((tx) =>
+      tx.run(`
+        MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId})
+        SET e.values = $values, e.updated_at = $now
+        RETURN e.id        AS id,
+               e.tenant_id AS tenantId,
+               e.name      AS name,
+               e.label     AS label,
+               e.values    AS values,
+               e.is_system AS isSystem,
+               e.scope     AS scope,
+               e.default_value AS defaultValue,
+               e.created_at AS createdAt,
+               e.updated_at AS updatedAt
+      `, { id, tenantId: ctx.tenantId, values, now: new Date().toISOString() }),
+    )
+    if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', id)
+    vocabularyChanged(ctx.tenantId)
+    void audit(ctx, 'enum_type.values_reordered', 'EnumTypeDefinition', id, { name, values })
+    return mapEnum(result.records[0]!)
+  } finally {
+    await session.close()
+  }
+}
+
 export const enumTypeResolvers = {
   Query:    { enumTypes, enumType },
-  Mutation: { createEnumType, updateEnumType, deleteEnumType, customizeEnumType },
+  Mutation: { createEnumType, updateEnumType, deleteEnumType, customizeEnumType, renameEnumValue, reorderEnumValues },
 }

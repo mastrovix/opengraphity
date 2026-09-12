@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
-import { Lock, LockOpen, Package, Plus, X, Save, Trash2, Tag, Copy } from 'lucide-react'
+import { Lock, LockOpen, Package, Plus, X, Save, Trash2, Tag, Copy, Pencil, ArrowUp, ArrowDown, Star, Check } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
@@ -13,6 +13,8 @@ import { GET_ENUM_TYPES } from '@/graphql/queries'
 import {
   CREATE_ENUM_TYPE,
   UPDATE_ENUM_TYPE,
+  RENAME_ENUM_VALUE,
+  REORDER_ENUM_VALUES,
   DELETE_ENUM_TYPE,
   CUSTOMIZE_ENUM_TYPE,
 } from '@/graphql/mutations'
@@ -25,6 +27,14 @@ interface EnumType {
   name:      string
   label:     string
   values:    string[]
+  /**
+   * Il valore con cui si nasce quando nessuno lo indica (`null` = non
+   * dichiarato). Serve a togliere una regola di dominio dalla POSIZIONE: lo
+   * stato iniziale di un CI era il PRIMO valore della lista, e siccome si
+   * poteva solo aggiungere in coda, rinominare un valore lo spostava in fondo
+   * (revisione delle otto ondate · C·N-2).
+   */
+  defaultValue: string | null
   /** Protezione (non si cancella): è vero anche su copie vecchie del tenant. */
   isSystem:  boolean
   /** Spedito col prodotto (`tenant_id = 'system'`): uno per tutti i clienti. */
@@ -38,6 +48,11 @@ interface EnumType {
 // Shared design-system constants (E-09): no page-local copies.
 // The former local `btnPrimary` used the compact (7px 14px / body) size; kept via override.
 const btnPrimary: React.CSSProperties = { ...sharedBtnPrimary, padding: '7px 14px', fontSize: 'var(--font-size-body)' }
+/** I bottoncini di riga di un valore (ordine, rinomina, default, rimozione). */
+const iconBtn: React.CSSProperties = {
+  background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+  display: 'flex', color: 'var(--color-slate-light)', lineHeight: 1,
+}
 /** Campo in sola lettura (vocabolario spedito col prodotto, o nome tecnico). */
 const readOnlyS: React.CSSProperties = { background: 'var(--color-slate-bg)', color: colors.slateLight }
 
@@ -178,6 +193,9 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
   const [values, setValues] = useState<string[]>(e.values)
   const [newVal, setNewVal] = useState('')
   const [dirty, setDirty]   = useState(false)
+  /** Il valore che si sta rinominando, e il nome nuovo (null = nessuno). */
+  const [renamingFrom, setRenamingFrom] = useState<string | null>(null)
+  const [renameTo,     setRenameTo]     = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const [updateEnum, { loading: saving }] = useMutation(UPDATE_ENUM_TYPE, {
@@ -189,6 +207,36 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
   const [deleteEnum, { loading: deleting }] = useMutation(DELETE_ENUM_TYPE, {
     refetchQueries: [GET_ENUM_TYPES],
     onCompleted: () => { toast.success(t('pages.dictionary.deleted')); onDeleted() },
+    onError: (err) => toast.error(err.message),
+  })
+
+  /**
+   * Rinominare, riordinare e scegliere il default sono **operazioni del
+   * server**, non modifiche locali da salvare dopo: toccano i record, la policy
+   * degli allarmi e le matrici di dominio nella stessa transazione del
+   * vocabolario. Quindi partono subito, una per clic, e la lista si ricarica.
+   */
+  const [renameValue, { loading: renaming }] = useMutation(RENAME_ENUM_VALUE, {
+    refetchQueries: [GET_ENUM_TYPES],
+    awaitRefetchQueries: true,
+    onCompleted: (d: unknown) => {
+      const updated = (d as { renameEnumValue: EnumType }).renameEnumValue
+      setValues(updated.values)
+      setRenamingFrom(null); setRenameTo('')
+      toast.success(t('pages.dictionary.valueRenamed'))
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const [reorderValues, { loading: reordering }] = useMutation(REORDER_ENUM_VALUES, {
+    refetchQueries: [GET_ENUM_TYPES],
+    onCompleted: (d: unknown) => { setValues((d as { reorderEnumValues: EnumType }).reorderEnumValues.values) },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const [setDefault, { loading: settingDefault }] = useMutation(UPDATE_ENUM_TYPE, {
+    refetchQueries: [GET_ENUM_TYPES],
+    onCompleted: () => toast.success(t('pages.dictionary.defaultSet')),
     onError: (err) => toast.error(err.message),
   })
 
@@ -217,6 +265,21 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
   const removeValue = (v: string) => {
     setValues((prev) => prev.filter((x) => x !== v))
     setDirty(true)
+  }
+
+  /** Sposta un valore di un posto: l'ordine è una scala, e ora si modifica. */
+  const move = (index: number, by: -1 | 1) => {
+    const target = index + by
+    if (target < 0 || target >= values.length) return
+    const next = [...values]
+    ;[next[index], next[target]] = [next[target]!, next[index]!]
+    void reorderValues({ variables: { id: e.id, values: next } })
+  }
+
+  const confirmRename = () => {
+    const to = renameTo.trim()
+    if (!renamingFrom || to === '' || to === renamingFrom) { setRenamingFrom(null); return }
+    void renameValue({ variables: { id: e.id, from: renamingFrom, to } })
   }
 
   const handleSave = () => {
@@ -310,36 +373,93 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
       {/* Values */}
       <div>
         <label style={labelS}>{t('pages.dictionary.valuesLabel')}</label>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10, minHeight: 32 }}>
-          {values.map((v) => (
-            <span
-              key={v}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                padding: '3px 10px', background: palette.info.bg, borderRadius: 20,
-                fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', fontWeight: 500,
-              }}
-            >
-              {v}
+        {/* Revisione delle otto ondate · C·N-2. Erano pillole con una X: si
+            potevano solo aggiungere in coda e togliere, quindi «rinominare»
+            voleva dire spostare un valore in fondo — e tre regole di dominio
+            leggono il vocabolario per POSIZIONE (lo stato con cui nasce un CI,
+            le fasce di rischio, l'impatto più alto). Una riga per valore, con
+            le operazioni che mancavano: rinomina, ordine, valore di default. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10, minHeight: 32 }}>
+          {values.map((v, i) => (
+            <div key={v} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px',
+              background: palette.info.bg, borderRadius: 6,
+              fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', fontWeight: 500,
+            }}>
               {!shipped && (
-                <button
-                  type="button"
-                  onClick={() => removeValue(v)}
-                  style={{
-                    background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                    display: 'flex', color: colors.slateLight, lineHeight: 1,
-                  }}
-                  aria-label={t('pages.dictionary.removeValueLabel', { value: v })}
-                >
-                  <X size={10} aria-hidden="true" />
-                </button>
+                <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 0 }}>
+                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0 || reordering}
+                    style={iconBtn} aria-label={t('pages.dictionary.moveUpLabel', { value: v })}>
+                    <ArrowUp size={11} aria-hidden="true" />
+                  </button>
+                  <button type="button" onClick={() => move(i, 1)} disabled={i === values.length - 1 || reordering}
+                    style={iconBtn} aria-label={t('pages.dictionary.moveDownLabel', { value: v })}>
+                    <ArrowDown size={11} aria-hidden="true" />
+                  </button>
+                </span>
               )}
-            </span>
+
+              {renamingFrom === v ? (
+                <>
+                  <Input
+                    style={{ ...inputS, flex: 1, height: 26 }}
+                    value={renameTo}
+                    onChange={(ev) => setRenameTo(ev.target.value)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === 'Enter') { ev.preventDefault(); confirmRename() }
+                      if (ev.key === 'Escape') setRenamingFrom(null)
+                    }}
+                    aria-label={t('pages.dictionary.renameValueLabel', { value: v })}
+                  />
+                  <button type="button" onClick={confirmRename} disabled={renaming} style={iconBtn}
+                    aria-label={t('pages.dictionary.renameConfirmLabel')}>
+                    <Check size={12} aria-hidden="true" />
+                  </button>
+                  <button type="button" onClick={() => setRenamingFrom(null)} style={iconBtn} aria-label={t('common.cancel')}>
+                    <X size={11} aria-hidden="true" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span style={{ flex: 1 }}>{v}</span>
+                  {e.defaultValue === v && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--font-size-table)', fontWeight: 600 }}>
+                      <Star size={10} aria-hidden="true" /> {t('pages.dictionary.defaultBadge')}
+                    </span>
+                  )}
+                  {!shipped && (
+                    <>
+                      {e.defaultValue !== v && (
+                        <button type="button" style={iconBtn} disabled={settingDefault}
+                          onClick={() => { void setDefault({ variables: { id: e.id, input: { defaultValue: v } } }) }}
+                          aria-label={t('pages.dictionary.setDefaultLabel', { value: v })}>
+                          <Star size={11} aria-hidden="true" />
+                        </button>
+                      )}
+                      <button type="button" style={iconBtn}
+                        onClick={() => { setRenamingFrom(v); setRenameTo(v) }}
+                        aria-label={t('pages.dictionary.renameValueLabel', { value: v })}>
+                        <Pencil size={11} aria-hidden="true" />
+                      </button>
+                      <button type="button" onClick={() => removeValue(v)} style={iconBtn}
+                        aria-label={t('pages.dictionary.removeValueLabel', { value: v })}>
+                        <X size={11} aria-hidden="true" />
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
           ))}
           {values.length === 0 && (
             <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight }}>{t('pages.dictionary.noValues')}</span>
           )}
         </div>
+        {!shipped && values.length > 1 && (
+          <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '0 0 8px', lineHeight: 1.45 }}>
+            {t('pages.dictionary.orderNote')}
+          </p>
+        )}
         {shipped ? (
           <p id="editor-shipped-note" style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
             {t('pages.dictionary.shippedValuesNote')}

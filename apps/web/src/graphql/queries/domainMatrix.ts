@@ -39,3 +39,20 @@ export const GET_PRE_APPROVED_CHANGE_TYPES = gql`
     preApprovedChangeTypes { types vocabulary }
   }
 `
+
+/**
+ * Le **soglie** delle fasce di rischio (rimedio 3 · revisione C·N-2): quale
+ * punteggio cade in quale fascia. Erano 30 e 60 scritte nel codice, con le
+ * fasce lette per POSIZIONE nel vocabolario — quindi riordinarlo invertiva le
+ * fasce in silenzio, e una quarta fascia era irraggiungibile pur comparendo
+ * nella matrice `change_priority`.
+ */
+export const GET_RISK_BAND_THRESHOLDS = gql`
+  query GetRiskBandThresholds {
+    riskBandThresholds {
+      thresholds { band upTo }
+      vocabulary
+      isDefault
+    }
+  }
+`

@@ -328,8 +328,54 @@ async function loadVocabularyFromGraph(tenantId: string, vocabulary: string): Pr
   }
 }
 
+// ── Il valore di DEFAULT di un vocabolario ───────────────────────────────────
+
+const defaultCache = createMetamodelCache<string | null>({
+  name: 'domain-vocabulary-default',
+  load: (tenantId, vocabulary) => loadVocabularyDefaultFromGraph(tenantId, vocabulary),
+})
+
+/**
+ * Il valore dichiarato come default sul vocabolario di questo cliente, o
+ * `null` se non l'ha dichiarato (revisione delle otto ondate · C·N-2).
+ *
+ * Perché esiste: `initialCIStatus` prendeva il **primo** valore della lista, e
+ * il Dizionario sapeva solo aggiungere in coda — quindi rinominare un valore lo
+ * spostava in fondo e un CI nuovo nasceva col primo valore rimasto (dal vivo
+ * `inactive`: subito fuori dalla salute dei servizi, e i suoi allarmi non
+ * aprivano più incident). «Con quale valore si nasce» è un **default**, non una
+ * posizione: si dichiara.
+ *
+ * Stessa precedenza dei valori: il vocabolario del cliente vince su quello
+ * spedito, per nome.
+ */
+export function domainVocabularyDefault(tenantId: string, vocabulary: string): Promise<string | null> {
+  return defaultCache.get(tenantId, vocabulary)
+}
+
+async function loadVocabularyDefaultFromGraph(tenantId: string, vocabulary: string): Promise<string | null> {
+  const session = getSession()
+  try {
+    const r = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (e:EnumTypeDefinition {name: $name})
+         WHERE e.tenant_id IN [$tenantId, 'system']
+         RETURN e.tenant_id AS tenantId, e.default_value AS defaultValue`,
+        { name: vocabulary, tenantId },
+      ),
+    )
+    const own    = r.records.find((rec) => (rec.get('tenantId') as string) === tenantId)
+    const chosen = own ?? r.records[0]
+    const value  = chosen?.get('defaultValue')
+    return typeof value === 'string' && value !== '' ? value : null
+  } finally {
+    await session.close()
+  }
+}
+
 /** Solo per i test. */
 export function clearDomainCaches(): void {
   cache.clear()
   vocabCache.clear()
+  defaultCache.clear()
 }

@@ -466,7 +466,16 @@
       "shippedNote": "Questo dizionario è spedito col prodotto: è lo stesso per tutti i clienti, quindi non si modifica qui. Con «Personalizza» ne crei la tua copia, con gli stessi valori: da quel momento vale la tua, e solo per te.",
       "shippedValuesNote": "I valori di un dizionario spedito col prodotto non si cambiano qui: personalizzalo e modifica la tua copia.",
       "customizeButton": "Personalizza",
-      "customized": "Creata la tua copia di \"{{label}}\": ora modifichi questa."
+      "customized": "Creata la tua copia di \"{{label}}\": ora modifichi questa.",
+      "valueRenamed": "Valore rinominato: record, policy e matrici aggiornati insieme.",
+      "defaultSet": "Valore di default aggiornato.",
+      "defaultBadge": "default",
+      "setDefaultLabel": "Usa \"{{value}}\" come valore di default",
+      "renameValueLabel": "Rinomina \"{{value}}\"",
+      "renameConfirmLabel": "Conferma la rinomina",
+      "moveUpLabel": "Sposta \"{{value}}\" più in alto",
+      "moveDownLabel": "Sposta \"{{value}}\" più in basso",
+      "orderNote": "L'ordine conta: per i vocabolari di scala il primo valore è il più basso e l'ultimo il più alto (l'impatto più alto è l'ultimo). Rinominare un valore lo lascia al suo posto e aggiorna i record, la policy degli allarmi e le matrici di dominio; il default è il valore usato quando nessuno lo indica."
     },
     "sync": {
       "sourceCreated": "Sync source created",
@@ -1046,6 +1055,18 @@
         "help": "Una change di un tipo pre-approvato salta la catena di approvazioni (il cambiamento pre-autorizzato dell'ITIL). Prima era il valore «standard» scritto nel codice: chi lo rinominava nel Dizionario perdeva la pre-approvazione senza saperlo.",
         "none": "Nessun tipo pre-approvato: ogni change passerà dalle approvazioni.",
         "saved": "Tipi pre-approvati salvati"
+      },
+      "riskBands": {
+        "title": "Fasce di rischio delle change",
+        "help": "Quale punteggio di rischio (0-100) cade in quale fascia. La fascia, insieme al tipo di change, decide la priorità con la matrice «change_priority». Le soglie erano scritte nel codice (30 e 60) e le fasce venivano lette per posizione nel vocabolario: riordinarlo invertiva le fasce in silenzio, e una quarta fascia non scattava mai pur comparendo nella matrice.",
+        "usingFactory": "Stai usando le soglie di fabbrica (≤30, ≤60, il resto). Salvando le rendi esplicite.",
+        "band": "Fascia",
+        "upTo": "Fino a",
+        "lastMustBe100": "L'ultima fascia deve arrivare a 100: un punteggio più alto resterebbe senza fascia.",
+        "ascending": "Le soglie devono crescere, dalla fascia più bassa alla più alta.",
+        "saved": "Fasce di rischio salvate.",
+        "addBand": "Aggiungi una fascia",
+        "removeBand": "Togli la fascia \"{{band}}\""
       }
     }
   },
@@ -1852,7 +1873,9 @@
       "selectTeamFirst": "Seleziona prima un team dalla card Dettagli",
       "selectUserFirst": "Seleziona prima un utente dalla card Dettagli",
       "aiDraftFailed": "Bozza AI fallita: {{error}}",
-      "aiDraftNoResponse": "Bozza AI fallita: nessuna risposta"
+      "aiDraftNoResponse": "Bozza AI fallita: nessuna risposta",
+      "matrixUnavailable": "Le matrici di dominio non sono raggiungibili ({{error}}): impatto, urgenza e priorità vengono da lì, quindi il ticket non si può creare adesso.",
+      "matrixIncomplete": "La matrice della priorità non copre la combinazione scelta: completala in Impostazioni → Matrici di dominio, oppure scegli un'altra coppia."
     },
     "problem": {
       "created": "Problem creato",

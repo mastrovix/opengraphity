@@ -40,6 +40,8 @@ import { ciLifecycleSemantics } from './20260917_1810_ci_lifecycle_semantics.js'
 import { changePrioritySeedFix } from './20260917_1820_change_priority_seed_fix.js'
 import { provisionTenantDataMigration } from './20260918_1910_provision_tenant_data.js'
 import { preApprovedChangeTypesSeed } from './20260918_1920_pre_approved_change_types.js'
+import { ciStatusDefaultSeed } from './20260919_1600_ci_status_default.js'
+import { riskBandThresholdsSeed } from './20260919_1610_risk_band_thresholds.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -74,4 +76,6 @@ export const MIGRATIONS: readonly Migration[] = [
   changePrioritySeedFix,
   provisionTenantDataMigration,
   preApprovedChangeTypesSeed,
+  ciStatusDefaultSeed,
+  riskBandThresholdsSeed,
 ]

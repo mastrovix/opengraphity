@@ -62,7 +62,8 @@
 import type { Session } from 'neo4j-driver'
 import { ValidationError } from './errors.js'
 import { CI_STATUS_VOCABULARY } from './eventVocabularies.js'
-import { assertDomainValue, domainVocabulary } from './domainMatrix.js'
+import { assertDomainValue, domainVocabulary, domainVocabularyDefault } from './domainMatrix.js'
+import { logger } from './logger.js'
 import { getEventPolicy } from '../services/events/policy.js'
 
 export { CI_STATUS_VOCABULARY }
@@ -118,16 +119,37 @@ export async function lifecycleVocabulary(tenantId: string): Promise<readonly st
  * (`assertDomainValue`): prima l'errore elencava i valori del **codice**, e su
  * un cliente che aveva rinominato i propri era un messaggio sbagliato.
  */
+/** Tenant per cui si è già detto che il default non è dichiarato (un log per processo). */
+const defaultNotDeclared = new Set<string>()
+
 /**
- * Lo stato con cui nasce un CI quando il chiamante non lo indica: il **primo**
- * valore del vocabolario del cliente, cioè l'ordine in cui il Dizionario li
- * presenta (di fabbrica `active`).
+ * Lo stato con cui nasce un CI quando il chiamante non lo indica: il valore
+ * **dichiarato come default** sul vocabolario del cliente.
  *
+ * ## Com'era, e perché è cambiato
  * Prima la creazione scriveva il letterale `'active'`. Con il vocabolario
- * rinominato — `attivo` — quel valore non è nel Dizionario del cliente: il
- * form lo mostra vuoto e un salvataggio distratto azzera il campo (A-13). Un
- * vocabolario vuoto è un errore, non un ripiego: significa che il cliente non
- * ha nessuno stato con cui creare un CI, e deve saperlo.
+ * rinominato — `attivo` — quel valore non era nel Dizionario del cliente: il
+ * form lo mostrava vuoto e un salvataggio distratto azzerava il campo (A-13).
+ * L'ondata 7 l'ha sostituito col **primo valore** della lista. Ma il Dizionario
+ * sapeva solo aggiungere in coda, quindi rinominare un valore lo spostava in
+ * fondo, e il primo valore rimasto diventava lo stato di nascita: dal vivo,
+ * dopo aver rinominato `active` → `attivo`, un CI nuovo nasceva **`inactive`**
+ * — cioè in `retired_statuses`, subito escluso dal calcolo dei servizi, e i
+ * suoi allarmi non aprivano più incident. Silenzioso, e su strada dritta
+ * (revisione delle otto ondate · C·N-2).
+ *
+ * «Con quale stato si nasce» non è una posizione: è un **default**, e adesso si
+ * dichiara sul vocabolario (`default_value`). La rinomina lo porta dietro.
+ *
+ * ## I tre casi, tutti detti
+ *  - default dichiarato e nel vocabolario → quello;
+ *  - default dichiarato ma **fuori** vocabolario → errore che lo nomina (è lo
+ *    stesso difetto di prima, un piano più in alto: un default che punta a un
+ *    valore che non c'è);
+ *  - default non dichiarato (tenant creato prima della migrazione
+ *    `20260919_1600`) → il primo valore, **come prima**, e lo si dice nei log
+ *    una volta per tenant. Non è un ripiego silenzioso: è il comportamento
+ *    precedente, mantenuto per non cambiare i dati di nessuno all'aggiornamento.
  */
 export async function initialCIStatus(tenantId: string): Promise<string> {
   const values = await lifecycleVocabulary(tenantId)
@@ -136,6 +158,27 @@ export async function initialCIStatus(tenantId: string): Promise<string> {
     throw new ValidationError(
       `Il vocabolario "${CI_STATUS_VOCABULARY}" di questo cliente è vuoto: non c'è uno stato con cui creare un CI. ` +
       `Aggiungi almeno un valore nel Dizionario.`,
+    )
+  }
+
+  const declared = await domainVocabularyDefault(tenantId, CI_STATUS_VOCABULARY)
+  if (declared != null) {
+    if (!values.includes(declared)) {
+      throw new ValidationError(
+        `Il vocabolario "${CI_STATUS_VOCABULARY}" di questo cliente dichiara "${declared}" come stato iniziale, ` +
+        `ma quel valore non è (più) fra i suoi (${values.join(', ')}): un CI nuovo nascerebbe con uno stato che il ` +
+        `Dizionario non ha. Scegli lo stato iniziale fra i valori attuali.`,
+      )
+    }
+    return declared
+  }
+
+  if (!defaultNotDeclared.has(tenantId)) {
+    defaultNotDeclared.add(tenantId)
+    logger.info(
+      { tenantId, vocabulary: CI_STATUS_VOCABULARY, using: first },
+      'Il vocabolario degli stati del CI non dichiara uno stato iniziale: si usa il primo valore, come prima ' +
+      '(applica la migrazione 20260919_1600_ci_status_default per renderlo esplicito e modificabile)',
     )
   }
   return first

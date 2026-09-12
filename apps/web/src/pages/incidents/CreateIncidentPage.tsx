@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useMutation, useQuery } from '@apollo/client/react'
@@ -6,7 +6,8 @@ import { useTranslation } from 'react-i18next'
 import { X, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_INCIDENT, ASSIGN_INCIDENT_TO_TEAM } from '@/graphql/mutations'
-import { derivePriority, priorityCode, impactUrgencyFromPriority, IMPACT_URGENCY_OPTIONS, IMPACT_URGENCY_LABEL, type ImpactUrgency } from '@/lib/priority'
+import { derivePriority, priorityCode, impactUrgencyFromPriority } from '@/lib/priority'
+import { usePriorityMatrix } from '@/hooks/usePriorityMatrix'
 import { GET_INCIDENTS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
 import { useEnumValues } from '@/hooks/useEnumValues'
@@ -49,9 +50,19 @@ export function CreateIncidentPage() {
 
   const [title,       setTitle]       = useState('')
   const [category,    setCategory]    = useState('')
-  const [impact,      setImpact]      = useState<ImpactUrgency>('medium')
-  const [urgency,     setUrgency]     = useState<ImpactUrgency>('medium')
-  const priority = derivePriority(impact, urgency)
+  // Impatto, urgenza e priorità vengono dalla matrice DEL CLIENTE (revisione ·
+  // C·N-3): qui c'era una copia della matrice di fabbrica, e chi rinominava i
+  // vocabolari vedeva i tre bottoni vecchi e ogni invio rifiutato dal server.
+  // Il valore iniziale è quello mediano della scala del cliente, non «medium».
+  const { matrix, loading: matrixLoading, error: matrixError } = usePriorityMatrix()
+  const [impact,      setImpact]      = useState('')
+  const [urgency,     setUrgency]     = useState('')
+  useEffect(() => {
+    if (!matrix) return
+    setImpact((v) => (v === '' ? (matrix.impacts[Math.floor((matrix.impacts.length - 1) / 2)] ?? '') : v))
+    setUrgency((v) => (v === '' ? (matrix.urgencies[Math.floor((matrix.urgencies.length - 1) / 2)] ?? '') : v))
+  }, [matrix])
+  const priority = derivePriority(matrix, impact, urgency) ?? ''
   const [description, setDescription] = useState('')
   const [selectedTeam,      setSelectedTeam]      = useState<{ id: string; name: string } | null>(null)
   const [teamSearch,        setTeamSearch]        = useState('')
@@ -173,11 +184,11 @@ export function CreateIncidentPage() {
 
           {/* IMPATTO × URGENZA → PRIORITÀ (ITIL) */}
           <div style={{ marginBottom: 20, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            {([['Impatto', impact, setImpact], ['Urgenza', urgency, setUrgency]] as const).map(([label, val, setVal]) => (
+            {([['Impatto', impact, setImpact, matrix?.impacts ?? []], ['Urgenza', urgency, setUrgency, matrix?.urgencies ?? []]] as const).map(([label, val, setVal, options]) => (
               <div key={label}>
                 <div style={fieldLabel}>{label} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  {IMPACT_URGENCY_OPTIONS.map(o => {
+                  {options.map(o => {
                     const sel = val === o
                     return (
                       <button key={o} type="button" onClick={() => setVal(o)}
@@ -185,7 +196,7 @@ export function CreateIncidentPage() {
                           border: `1.5px solid ${sel ? 'var(--color-brand)' : colors.border}`,
                           background: sel ? palette.info.light : 'var(--color-slate-bg)',
                           color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}>
-                        {IMPACT_URGENCY_LABEL[o]}
+                        {o}
                       </button>
                     )
                   })}
@@ -198,8 +209,12 @@ export function CreateIncidentPage() {
                 border: `1.5px solid ${(SEVERITY_STYLES[priority]?.border ?? colors.border)}`,
                 background: SEVERITY_STYLES[priority]?.bg ?? 'var(--color-slate-bg)',
                 color: SEVERITY_STYLES[priority]?.color ?? 'var(--color-slate)', fontWeight: 600 }}>
-                <span>{priorityCode(priority)}</span>
-                <span style={{ textTransform: 'capitalize' }}>{priority}</span>
+                <span>{priority === '' ? '—' : priorityCode(matrix?.priorities ?? [], priority)}</span>
+                <span style={{ textTransform: 'capitalize' }}>
+                  {priority !== '' ? priority
+                    : matrixLoading ? 'in caricamento…'
+                    : 'da compilare nella matrice'}
+                </span>
               </div>
             </div>
           </div>
@@ -230,8 +245,12 @@ export function CreateIncidentPage() {
             ciIds={selectedCIs.map(ci => ci.id)}
             onApply={({ severity: sev, category: cat, teamName }) => {
               // AI suggests a severity → map back to impact/urgency
-              const iu = impactUrgencyFromPriority(sev)
-              setImpact(iu.impact); setUrgency(iu.urgency)
+              // La coppia si ricava dalla matrice del cliente; se quella
+              // priorità nessuna cella la produce, impatto e urgenza restano
+              // quelli scelti dall'utente invece di essere sovrascritti con un
+              // valore inventato.
+              const iu = impactUrgencyFromPriority(matrix, sev)
+              if (iu) { setImpact(iu.impact); setUrgency(iu.urgency) }
               setCategory(cat)
               if (teamName) {
                 const team = teamsData?.teams.find(t => t.name === teamName)
@@ -385,6 +404,18 @@ export function CreateIncidentPage() {
                 if (!canSubmit || loading) return
                 if (fieldRulesError) {
                   toast.error(t('toast.incident.fieldRulesUnavailable', { error: fieldRulesError.message }))
+                  return
+                }
+                // La matrice è la sorgente di impatto, urgenza e priorità: se non
+                // si legge, o se non copre la coppia scelta, non si inventa un
+                // valore — il server lo rifiuterebbe comunque, e il messaggio
+                // qui dice cosa fare.
+                if (matrixError) {
+                  toast.error(t('toast.incident.matrixUnavailable', { error: matrixError.message }))
+                  return
+                }
+                if (priority === '') {
+                  toast.error(t('toast.incident.matrixIncomplete'))
                   return
                 }
                 const errs: Record<string, string> = {}

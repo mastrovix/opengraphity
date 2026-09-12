@@ -19,6 +19,15 @@ export function enumTypeSDL(): string {
     copia vince in lettura solo per chi la possiede).
     """
     isShipped: Boolean!
+    """
+    Il valore da usare quando nessuno lo indica (\`null\` = non dichiarato).
+    Serve a togliere una regola di dominio dalla POSIZIONE: \`initialCIStatus\`
+    prendeva il PRIMO valore della lista, e siccome il Dizionario sapeva solo
+    aggiungere in coda, rinominare un valore lo spostava in fondo e un CI nuovo
+    nasceva col primo valore rimasto — dal vivo \`inactive\`, cioè subito
+    escluso dalla salute dei servizi.
+    """
+    defaultValue: String
     scope:     String!
     createdAt: String!
     updatedAt: String!
@@ -43,6 +52,11 @@ export function enumTypeSDL(): string {
     del vocabolario, con audit.
     """
     replacements: [EnumValueReplacementInput!]
+    """
+    Il valore con cui si nasce quando nessuno lo indica. Deve essere fra i
+    valori (quelli nuovi, se li stai cambiando nella stessa chiamata).
+    """
+    defaultValue: String
   }
 
   """Un valore che si sta togliendo (from) e il valore nuovo su cui riscrivere i record che lo usano (to, deve essere fra i valori nuovi)."""

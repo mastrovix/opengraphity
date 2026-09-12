@@ -86,6 +86,40 @@ export function domainMatrixSDL(): string {
     Admin: è configurazione del tenant.
     """
     preApprovedChangeTypes: PreApprovedChangeTypes!
+
+    """
+    Le **soglie** delle fasce di rischio di questo cliente: quale punteggio
+    (0-100) cade in quale fascia. Prima erano 30 e 60 scritte nel codice, e le
+    fasce si leggevano per POSIZIONE nel vocabolario — quindi riordinarlo (o
+    rinominare un valore, che lo spostava in coda) invertiva le fasce in
+    silenzio, e una quarta fascia era irraggiungibile pur comparendo nella
+    matrice \`change_priority\`. Admin: è configurazione del tenant.
+    """
+    riskBandThresholds: RiskBandThresholds!
+  }
+
+  """Una fascia di rischio e il punteggio massimo che le appartiene."""
+  type RiskBandThreshold {
+    band: String!
+    """Punteggio massimo incluso in questa fascia. L'ultima arriva sempre a 100."""
+    upTo: Int!
+  }
+
+  """Le soglie, e i valori fra cui scegliere."""
+  type RiskBandThresholds {
+    thresholds: [RiskBandThreshold!]!
+    """Il vocabolario \`risk_band\` del cliente: le fasce possibili."""
+    vocabulary: [String!]!
+    """
+    Vero quando il cliente non le ha dichiarate e si stanno usando quelle di
+    fabbrica (≤30, ≤60, il resto): il comportamento di prima, detto.
+    """
+    isDefault:  Boolean!
+  }
+
+  input RiskBandThresholdInput {
+    band: String!
+    upTo: Int!
   }
 
   """La lista, e i valori fra cui scegliere."""
@@ -112,6 +146,14 @@ export function domainMatrixSDL(): string {
     vuole scoprirlo.
     """
     updateDomainMatrix(kind: String!, entries: [DomainMatrixEntryInput!]!): DomainMatrix!
+
+    """
+    Sostituisce le soglie delle fasce di rischio. Ogni fascia deve essere nel
+    vocabolario \`risk_band\` del cliente, le soglie devono crescere e l'ultima
+    arrivare a 100: una scala con un buco lascerebbe dei punteggi senza fascia,
+    cioè un errore nel momento peggiore — l'apertura di una change.
+    """
+    updateRiskBandThresholds(entries: [RiskBandThresholdInput!]!): RiskBandThresholds!
   }
   `
 }
