@@ -40,12 +40,24 @@
  *    `RESUBSCRIBE_DELAY_MS` finché non riesce;
  *  - disconnessione, riconnessione e ri-sottoscrizione sono loggate;
  *  - `metamodelBusStatus()` dice in ogni momento se il processo è sottoscritto.
+ *
+ * ## Le metriche (ondata 8)
+ * I log dicono tutto questo a chi li legge; Prometheus lo sorveglia da sé:
+ * `metamodel_published_total{result}` (delivered | no_receivers | error),
+ * `metamodel_received_total{result}` (applied | stale | malformed),
+ * `metamodel_cache_clear_failures_total{cache}` e
+ * `metamodel_bus_subscribed` (0 = questo processo non verrà avvisato).
+ * Le regole d'allarme stanno in `infra/prometheus/`, e cosa guardare in
+ * `docs/OPERATIONS.md`.
  */
 import { randomUUID } from 'node:crypto'
 import { Redis } from 'ioredis'
 import { getRedisConnection } from '@opengraphity/events'
 import { getSharedRedis } from './bullmq.js'
 import { logger } from './logger.js'
+import {
+  metamodelPublishedTotal, metamodelReceivedTotal, metamodelCacheClearFailuresTotal, metamodelBusSubscribed,
+} from '../middleware/metrics.js'
 import {
   clearLocalMetamodelCaches,
   registerMetamodelPublisher,
@@ -110,6 +122,7 @@ async function doPublish(tenantId: string, local?: LocalInvalidation): Promise<v
     const payload: MetamodelChange = { tenantId, version, origin: BUS_ORIGIN }
     const receivers = await redis.publish(METAMODEL_CHANNEL, JSON.stringify(payload))
     const fields = { tenantId, version, receivers, cleared: local?.cleared ?? [], failed: local?.failed ?? [] }
+    metamodelPublishedTotal.inc({ result: receivers === 0 ? 'no_receivers' : 'delivered' })
     if (receivers === 0) {
       log.warn(fields,
         '[metamodel] nessun processo in ascolto sul canale: le cache degli altri processi (worker, altre repliche) resteranno vecchie fino alla scadenza del TTL')
@@ -117,6 +130,7 @@ async function doPublish(tenantId: string, local?: LocalInvalidation): Promise<v
       log.info(fields, '[metamodel] cambiamento pubblicato: gli altri processi svuoteranno le loro cache di questo tenant')
     }
   } catch (err) {
+    metamodelPublishedTotal.inc({ result: 'error' })
     log.error({ err, tenantId, channel: METAMODEL_CHANNEL },
       '[metamodel] pubblicazione fallita: solo QUESTO processo ha svuotato le sue cache; le altre repliche restano vecchie fino alla scadenza del TTL')
   }
@@ -170,11 +184,13 @@ export function startMetamodelBus(): void {
   })
   subscriber.on('close', () => {
     subscribed = false
+    metamodelBusSubscribed.set({}, 0)
     log.warn({ channel: METAMODEL_CHANNEL },
       '[metamodel] connessione di ascolto chiusa: sottoscrizione persa, in attesa di riconnessione')
   })
   subscriber.on('reconnecting', () => {
     subscribed = false
+    metamodelBusSubscribed.set({}, 0)
     log.warn({ channel: METAMODEL_CHANNEL }, '[metamodel] riconnessione della connessione di ascolto in corso')
   })
   // ioredis ri-sottoscrive da sé dopo una riconnessione; ri-emettere SUBSCRIBE
@@ -191,11 +207,13 @@ async function subscribeNow(): Promise<void> {
   try {
     await s.subscribe(METAMODEL_CHANNEL)
     subscribed = true
+    metamodelBusSubscribed.set({}, 1)
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = null }
     log.info({ channel: METAMODEL_CHANNEL, origin: BUS_ORIGIN, clearers: registeredMetamodelCacheClearers() },
       '[metamodel] in ascolto sul canale: le cache di questo processo verranno svuotate quando il metamodello cambia altrove (`clearers` = quelle registrate finora; i moduli caricati più tardi si aggiungono da sé)')
   } catch (err) {
     subscribed = false
+    metamodelBusSubscribed.set({}, 0)
     log.error({ err, channel: METAMODEL_CHANNEL, retryInMs: RESUBSCRIBE_DELAY_MS },
       '[metamodel] sottoscrizione FALLITA: questo processo non verrà avvisato dei cambiamenti del metamodello — riprovo')
     scheduleRetry()
@@ -218,10 +236,12 @@ function onMessage(channel: string, raw: string): void {
   try {
     parsed = JSON.parse(raw)
   } catch (err) {
+    metamodelReceivedTotal.inc({ result: 'malformed' })
     log.error({ err, channel }, '[metamodel] messaggio non è JSON: ignorato (le cache di questo processo NON sono state svuotate)')
     return
   }
   if (!isMetamodelChange(parsed)) {
+    metamodelReceivedTotal.inc({ result: 'malformed' })
     log.error({ channel, keys: typeof parsed === 'object' && parsed ? Object.keys(parsed) : typeof parsed },
       '[metamodel] messaggio malformato (attesi tenantId, version, origin): ignorato')
     return
@@ -232,6 +252,7 @@ function onMessage(channel: string, raw: string): void {
 
   const seen = lastAppliedVersion.get(parsed.tenantId)
   if (seen !== undefined && parsed.version <= seen) {
+    metamodelReceivedTotal.inc({ result: 'stale' })
     log.debug({ tenantId: parsed.tenantId, version: parsed.version, seen },
       '[metamodel] messaggio già applicato o fuori ordine: ignorato')
     return
@@ -239,6 +260,8 @@ function onMessage(channel: string, raw: string): void {
   lastAppliedVersion.set(parsed.tenantId, parsed.version)
 
   const local = clearLocalMetamodelCaches(parsed.tenantId)
+  metamodelReceivedTotal.inc({ result: 'applied' })
+  for (const f of local.failed) metamodelCacheClearFailuresTotal.inc({ cache: f.name })
   log.info({ tenantId: parsed.tenantId, version: parsed.version, cleared: local.cleared, failed: local.failed },
     '[metamodel] cambiato in un altro processo: cache locali di questo tenant svuotate')
 }
@@ -250,6 +273,7 @@ export async function stopMetamodelBus(): Promise<void> {
   const s = subscriber
   subscriber = null
   subscribed = false
+  metamodelBusSubscribed.set({}, 0)
   lastAppliedVersion.clear()
   if (!s) return
   try {

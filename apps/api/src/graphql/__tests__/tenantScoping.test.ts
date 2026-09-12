@@ -16,24 +16,8 @@ import { fileURLToPath } from 'node:url'
 const here = dirname(fileURLToPath(import.meta.url))
 const apiSrc = join(here, '../..')
 
-// Ogni label di dominio che porta tenant_id. I tipi del metamodello
-// (CITypeDefinition, EnumTypeDefinition) possono essere condivisi con tenant
-// 'system': il pattern ammesso è `WHERE x.tenant_id IN [$tenantId, 'system']`.
-const DOMAIN_LABELS = [
-  'Incident', 'Problem', 'Change', 'ServiceRequest', 'KBArticle',
-  'Team', 'User',
-  'AssessmentTask', 'DeployPlanTask', 'ValidationTest', 'DeploymentTask', 'ReviewTask', 'ChangeApproval',
-  'WorkflowInstance', 'WorkflowDefinition', 'WorkflowStep',
-  'NotificationChannel', 'NotificationRule', 'OutboundWebhook', 'InboundWebhook', 'ApiKey',
-  'SyncSource', 'SyncRun',
-  'ReportTemplate', 'ReportSection', 'ReportConversation', 'DashboardConfig', 'DashboardWidget', 'CustomWidget',
-  'Anomaly', 'AnomalyConfig', 'AutoTrigger', 'BusinessRule', 'SLAPolicyNode', 'OLAContract', 'SLAStatus',
-  'Attachment', 'EntityComment', 'AuditEntry', 'ApprovalRequest', 'InternalMessage', 'Notification',
-  'CIGroup', 'ConfigurationItem', 'EnumTypeDefinition', 'CITypeDefinition',
-  'FieldVisibilityRule', 'FieldRequirementRule', 'ITILCIRelationRule', 'ServiceCatalogItem', 'AssessmentQuestion',
-  'Event', 'CIAlias', 'EventHistoryEntry',
-  'ServiceMap', 'ServiceHealthEntry',
-]
+// L'elenco vive in `domainLabels.ts`, condiviso con `tenantOnCreate.test.ts`.
+import { DOMAIN_LABELS } from './domainLabels'
 
 // Tutta l'API (Ondata 1 della revisione a tappeto). Fuori: script operativi
 // (hanno guardie proprie: --tenant obbligatorio) e test.
@@ -59,6 +43,23 @@ const MATCH_RE = new RegExp(`MATCH \\((\\w+):(${DOMAIN_LABELS.join('|')})\\s*\\{
 
 interface Offender { file: string; line: number; text: string }
 
+/**
+ * Un nodo la cui chiave viene INTERAMENTE da un alias già legato nella query
+ * (`{instance_id: wi.id}`, `{definition_id: wd.id}`) è vincolato dal grafo, non
+ * dall'input del chiamante: se `wi` è scopato, lo è anche lui. È la convenzione
+ * che `lib/ciTypeUsage.ts:77-78` già annotava a mano; qui diventa la regola,
+ * così i figli di un nodo scopato non chiedono un marcatore a testa.
+ *
+ * Vincolo stretto: nessun `$parametro` nella mappa (un parametro arriva dal
+ * chiamante e va scopato) e ogni valore della forma `alias.proprieta`.
+ */
+const BOUND_VALUE_RE = /^\s*\w+\s*:\s*\w+\.\w+\s*$/
+function keyedOnBoundAlias(props: string): boolean {
+  if (props.includes('$')) return false
+  const parts = props.split(',').filter((p) => p.trim())
+  return parts.length > 0 && parts.every((p) => BOUND_VALUE_RE.test(p))
+}
+
 function scan(file: string): Offender[] {
   const lines = readFileSync(file, 'utf8').split('\n')
   const out: Offender[] = []
@@ -68,6 +69,7 @@ function scan(file: string): Offender[] {
     while ((m = MATCH_RE.exec(line)) !== null) {
       const props = m[3]!
       if (props.includes('tenant_id')) continue
+      if (keyedOnBoundAlias(props)) continue
       const next = lines[i + 1] ?? ''
       const prev = lines[i - 1] ?? ''
       if (line.slice(m.index + m[0].length).includes('tenant_id')) continue // WHERE inline sulla stessa riga
@@ -82,6 +84,13 @@ function scan(file: string): Offender[] {
 describe('tenant scoping sui MATCH di dominio (tutta l\'API)', () => {
   const files = SCOPE.flatMap(listFiles)
   it('perimetro non vuoto', () => { expect(files.length).toBeGreaterThan(100) })
+  it('la chiave presa da un alias già legato non chiede il tenant, un parametro sì', () => {
+    expect(keyedOnBoundAlias('instance_id: wi.id')).toBe(true)
+    expect(keyedOnBoundAlias('definition_id: wi.definition_id, name: wi.current_step')).toBe(true)
+    expect(keyedOnBoundAlias('id: $id')).toBe(false)
+    expect(keyedOnBoundAlias('id: wi.id, name: $stepName')).toBe(false)
+    expect(keyedOnBoundAlias('')).toBe(false)
+  })
   for (const f of files) {
     it(relative(apiSrc, f), () => {
       const offenders = scan(f)
@@ -122,6 +131,92 @@ function scanMergeContent(content: string, displayName: string): Offender[] {
 }
 
 const scanMerge = (file: string) => scanMergeContent(readFileSync(file, 'utf8'), relative(apiSrc, file))
+
+/**
+ * Terzo punto cieco, dichiarato da D-18: le due regex sopra esigono la **mappa
+ * di proprietà** `{…}`, quindi un `MATCH (e:EnumTypeDefinition)` nudo — il
+ * pattern che tutte le fughe del metamodello usavano — non le fa scattare
+ * affatto. Qui si copre il caso nudo.
+ *
+ * Perimetro della regola, scelto per non fare rumore su casi che il tenant
+ * scoping non riguarda:
+ * - solo il nodo di **ancoraggio** (subito dopo `MATCH (`): il bersaglio di un
+ *   attraversamento (`(t)-[:HAS_FIELD]->(f:CIFieldDefinition)`) non è
+ *   un'ancora e la regex non lo vede;
+ * - solo il pattern **isolato**: se dopo la parentesi comincia una relazione
+ *   (`MATCH (wi:WorkflowInstance)-[:CURRENT_STEP]->(s)`) il nodo è vincolato
+ *   dall'attraversamento verso un nodo già scopato, che è una classe di
+ *   rischio diversa;
+ * - il `tenant_id` si cerca nel **blocco WHERE** che segue (non solo sulla riga
+ *   dopo), perché un WHERE multi-riga è la norma.
+ *
+ * Un WHERE **interpolato** (`WHERE ${conditions.join(' AND ')}`) non è
+ * verificabile staticamente: è esattamente il posto dove un filtro mancante si
+ * nasconde, quindi NON passa da sé — va marcato `// tenant-ok` dicendo da dove
+ * arriva il filtro.
+ */
+const BARE_MATCH_RE = new RegExp(`MATCH \\((\\w+):(${DOMAIN_LABELS.join('|')})\\s*\\)(?![-<])`, 'g')
+// Fine del blocco WHERE: la clausola Cypher successiva, o la fine del template.
+const CLAUSE_END_RE = /\b(RETURN|WITH|MATCH|MERGE|CREATE|SET|DELETE|DETACH|CALL|UNWIND|ORDER BY|SKIP|LIMIT|FOREACH)\b/
+
+function scanBareContent(content: string, displayName: string): Offender[] {
+  const lines = content.split('\n')
+  const out: Offender[] = []
+  lines.forEach((line, i) => {
+    BARE_MATCH_RE.lastIndex = 0
+    let m: RegExpExecArray | null
+    while ((m = BARE_MATCH_RE.exec(line)) !== null) {
+      if (line.slice(m.index + m[0].length).includes('tenant_id')) continue
+      if (line.includes('tenant-ok') || (lines[i - 1] ?? '').includes('tenant-ok')) continue
+      let scoped = false
+      for (let j = i + 1; j < lines.length; j++) {
+        const l = lines[j] ?? ''
+        if (l.includes('tenant_id')) { scoped = true; break }
+        if (CLAUSE_END_RE.test(l)) break
+        if (l.includes('`')) break                        // fine del template literal
+      }
+      if (scoped) continue
+      out.push({ file: displayName, line: i + 1, text: line.trim() })
+    }
+  })
+  return out
+}
+
+const scanBare = (file: string) => scanBareContent(readFileSync(file, 'utf8'), relative(apiSrc, file))
+
+describe('tenant scoping sui MATCH nudi di dominio, senza mappa di proprietà', () => {
+  const files = SCOPE.flatMap(listFiles)
+
+  it('l\'euristica vede il nudo, ignora attraversamenti e bersagli, e non si fida dell\'interpolazione', () => {
+    const sample = [
+      'MATCH (e:EnumTypeDefinition)',                                  // ok: WHERE multi-riga
+      "WHERE e.active = true",
+      "  AND (e.tenant_id = $tenantId OR e.tenant_id = 'system')",
+      'RETURN e',
+      'MATCH (wd:WorkflowDefinition {tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep)',
+      'OPTIONAL MATCH (wi:WorkflowInstance)-[:CURRENT_STEP]->(s)',     // ok: attraversamento
+      'OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)',        // ok: bersaglio, non ancora
+      '// tenant-ok: metrica di processo',
+      'MATCH (w:InboundWebhook)',                                      // ok: marcatore
+      'MATCH (a:Anomaly)',                                             // VIOLAZIONE: nessun filtro
+      'RETURN a',
+      'MATCH (i:Incident)',                                            // VIOLAZIONE: WHERE interpolato
+      'WHERE ${conditions.join(\' AND \')}',
+      'RETURN i',
+    ].join('\n')
+    expect(scanBareContent(sample, 'sample.ts')).toEqual([
+      { file: 'sample.ts', line: 10, text: 'MATCH (a:Anomaly)' },
+      { file: 'sample.ts', line: 12, text: 'MATCH (i:Incident)' },
+    ])
+  })
+
+  for (const f of files) {
+    it(relative(apiSrc, f), () => {
+      const offenders = scanBare(f)
+      expect(offenders.map((o) => `${o.file}:${o.line}  ${o.text}`)).toEqual([])
+    })
+  }
+})
 
 describe('tenant scoping sui MERGE di dominio (tutta l\'API)', () => {
   const files = SCOPE.flatMap(listFiles)

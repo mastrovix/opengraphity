@@ -1,5 +1,8 @@
 import { getSession } from '@opengraphity/neo4j'
+import type { Session } from 'neo4j-driver'
 import { toPascalCase } from '@opengraphity/schema-generator'
+import { getWorkflowSteps } from './workflowHelpers.js'
+import { logger } from './logger.js'
 
 export interface NavigableField {
   name:       string
@@ -35,7 +38,13 @@ const FIXED_ENTITIES: NavigableEntity[] = [
     fields: [
       { name: 'title',       label: 'Title',        fieldType: 'text',   enumValues: [] },
       { name: 'severity',    label: 'Severity',     fieldType: 'enum',   enumValues: ['critical', 'high', 'medium', 'low'] },
-      { name: 'status',      label: 'Status',       fieldType: 'enum',   enumValues: ['open', 'assigned', 'in_progress', 'resolved', 'closed'] },
+      // `enumValues` vuoto qui e riempito per tenant da `withWorkflowStatuses`
+      // (ondata 8 · B-11): i valori dello stato sono i PASSI del workflow di
+      // questo cliente. La lista fissa offriva `open`, che nessun workflow
+      // produce, e non offriva i passi veri (`new`, `security_review`, o
+      // qualunque cosa il cliente abbia aggiunto): un filtro di report sullo
+      // stato non poteva selezionare niente di esistente.
+      { name: 'status',      label: 'Status',       fieldType: 'enum',   enumValues: [] },
       { name: 'created_at',  label: 'Created At',   fieldType: 'date',   enumValues: [] },
       { name: 'resolved_at', label: 'Resolved At',  fieldType: 'date',   enumValues: [] },
     ],
@@ -49,7 +58,8 @@ const FIXED_ENTITIES: NavigableEntity[] = [
       { name: 'title',           label: 'Title',           fieldType: 'text', enumValues: [] },
       { name: 'type',            label: 'Type',            fieldType: 'enum', enumValues: ['standard', 'normal', 'emergency'] },
       { name: 'priority',        label: 'Priority',        fieldType: 'enum', enumValues: ['low', 'medium', 'high', 'critical'] },
-      { name: 'status',          label: 'Status',          fieldType: 'enum', enumValues: ['draft', 'pending_approval', 'approved', 'in_progress', 'completed', 'failed', 'cancelled'] },
+      // Come sopra: i passi della definizione change di questo cliente.
+      { name: 'status',          label: 'Status',          fieldType: 'enum', enumValues: [] },
       { name: 'scheduled_start', label: 'Scheduled Start', fieldType: 'date', enumValues: [] },
     ],
     relations: [],
@@ -250,10 +260,49 @@ export async function getNavigableEntities(tenantId: string): Promise<NavigableE
       }
     })
 
-    return [...ciEntities, ...FIXED_ENTITIES]
+    return [...ciEntities, ...await withWorkflowStatuses(session, tenantId)]
   } finally {
     await session.close()
   }
+}
+
+/**
+ * Le entità fisse con il campo `status` riempito dai PASSI del workflow di
+ * questo cliente (ondata 8 · B-11). `STATUS_FROM_WORKFLOW` dice quale
+ * `entity_type` di workflow corrisponde a quale entità navigabile.
+ *
+ * Nessun ripiego sulla lista di fabbrica: se il cliente non ha un workflow per
+ * quell'entità, `enumValues` resta vuoto e il costruttore di report offre un
+ * campo di testo libero (`ConditionRowEditor`) invece di una tendina di valori
+ * che non esistono nel suo grafo.
+ */
+const STATUS_FROM_WORKFLOW: Record<string, string> = { Incident: 'incident', Change: 'change' }
+
+async function withWorkflowStatuses(session: Session, tenantId: string): Promise<NavigableEntity[]> {
+  const out: NavigableEntity[] = []
+  for (const entity of FIXED_ENTITIES) {
+    const workflowEntityType = STATUS_FROM_WORKFLOW[entity.entityType]
+    if (!workflowEntityType) { out.push(entity); continue }
+    const steps = await getWorkflowSteps(session, tenantId, workflowEntityType)
+    // Senza ripetizioni: un tenant con due definizioni attive della stessa
+    // entità (c-one ne ha due per gli incident, base e «Security») contribuisce
+    // con l'unione dei passi, e i nomi in comune arrivano due volte — una
+    // tendina con «resolved» ripetuto due volte è peggio di una lista fissa.
+    const names = [...new Set(
+      steps
+        .slice()
+        .sort((a, b) => (a.stepOrder ?? 999) - (b.stepOrder ?? 999) || a.name.localeCompare(b.name))
+        .map((s) => s.name),
+    )]
+    if (names.length === 0) {
+      logger.warn({ module: 'navigable-graph', tenantId, entityType: entity.entityType }, 'Nessun passo di workflow: il filtro di stato dei report non offrirà valori')
+    }
+    out.push({
+      ...entity,
+      fields: entity.fields.map((f) => (f.name === 'status' ? { ...f, enumValues: names } : f)),
+    })
+  }
+  return out
 }
 
 export async function getNavigableRelations(

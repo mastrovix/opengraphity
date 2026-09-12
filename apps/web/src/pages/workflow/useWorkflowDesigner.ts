@@ -27,14 +27,32 @@ import { colors, lookupOrError } from '@/lib/tokens'
 
 const ACCENT_COLOR = colors.brand
 
+/**
+ * Quale disposizione predefinita degli archi usare sulla tela. È una scelta
+ * COSMETICA (da quale lato di un nodo esce una freccia), non una regola di
+ * dominio.
+ *
+ * B-25: la scelta si faceva annusando il NOME della definizione
+ * (`name.includes('standard' | 'normal' | 'emergency')`), residuo di quando si
+ * pensava a una definizione per tipo di change. Nessuna definizione spedita si
+ * chiama così — quindi quei tre rami non si sono mai accesi e il risultato era
+ * sempre `'standard'` — ma un cliente che chiamasse la sua definizione
+ * «Emergenza normale» si vedeva cambiare la disposizione degli archi senza
+ * capire perché. Ora decide il tipo di entità, che non si rinomina.
+ *
+ * APERTO, e va deciso guardando la tela: `'normal'` e `'emergency'` non sono
+ * più raggiungibili, e le loro tabelle (`NORMAL_HANDLES`/`NORMAL_POSITIONS`,
+ * `EMERGENCY_*` in `WorkflowCanvas.tsx`) NON sono codice morto — sono le
+ * disposizioni scritte per i passi che la definizione «Change RFC Process»
+ * ha davvero (`draft → assessment → cab_approval → …`), mentre
+ * `STANDARD_HANDLES` nomina passi (`draft → approved`) che quella definizione
+ * non ha. Cioè: oggi la tela delle change non usa nessuna disposizione su
+ * misura, e prima non la usava per la stessa ragione (il nome non conteneva
+ * «normal»). Passare le change a `'normal'` è un cambiamento VISIBILE del
+ * disegnatore: si fa vedendolo, non a scatola chiusa.
+ */
 export function defToWorkflowKey(def: WorkflowDefinition | null): WorkflowKey {
-  if (!def) return 'incident'
-  if (def.entityType === 'incident') return 'incident'
-  const n = def.name.toLowerCase()
-  if (n.includes('standard'))  return 'standard'
-  if (n.includes('normal'))    return 'normal'
-  if (n.includes('emergency')) return 'emergency'
-  return 'standard'
+  return def?.entityType === 'incident' || !def ? 'incident' : 'standard'
 }
 
 export interface PendingStepChange {

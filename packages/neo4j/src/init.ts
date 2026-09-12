@@ -177,6 +177,37 @@ const CONSTRAINTS: SchemaStatement[] = [
   // Servizi monitorati (apps/api/src/services/serviceImpact/): mappa del servizio e cronologia della sua salute.
   { label: 'ServiceMap.id', cypher: 'CREATE CONSTRAINT service_map_id_unique IF NOT EXISTS FOR (n:ServiceMap) REQUIRE n.id IS UNIQUE' },
   { label: 'ServiceHealthEntry.id', cypher: 'CREATE CONSTRAINT service_health_entry_id_unique IF NOT EXISTS FOR (n:ServiceHealthEntry) REQUIRE n.id IS UNIQUE' },
+  // ── Metamodello (D-17) ───────────────────────────────────────────────────
+  // Il metamodello — i tipi CI, i loro campi e relazioni, i vocabolari — era
+  // il solo pezzo di modello SENZA un vincolo: due «Salva» in parallelo dal
+  // disegnatore creavano due nodi omonimi (`createEnumType` legge e poi crea in
+  // due transazioni separate), e `loadMetamodel` ne scarta silenziosamente uno
+  // mentre l'interfaccia continua a mostrarne due.
+  //
+  // La chiave naturale di un TIPO e di un VOCABOLARIO è (tenant_id, name) —
+  // `system` è un tenant come gli altri, quindi il tipo condiviso e la copia
+  // del cliente convivono. I due indici di range sulla stessa schema devono
+  // cadere prima (Neo4j rifiuta il vincolo altrimenti): l'indice di appoggio
+  // del vincolo li sostituisce per le ricerche.
+  //
+  // La chiave naturale di un CAMPO e di una RELAZIONE è invece (tipo, name),
+  // cioè passa per la relazione `HAS_FIELD`/`HAS_RELATION`: un vincolo di nodo
+  // non la può esprimere (`status` esiste su quasi ogni tipo). Lì l'unicità è
+  // applicata in scrittura da `addCIField`/`addCIRelation`/`addITILField`, e
+  // qui si vincola solo l'identità.
+  {
+    label: 'drop range index ci_type_definition_tenant_name (superseded by the constraint)',
+    cypher: 'DROP INDEX ci_type_definition_tenant_name IF EXISTS',
+  },
+  { label: 'CITypeDefinition(tenant_id, name)', cypher: 'CREATE CONSTRAINT ci_type_definition_tenant_name_unique IF NOT EXISTS FOR (n:CITypeDefinition) REQUIRE (n.tenant_id, n.name) IS UNIQUE' },
+  {
+    label: 'drop range index enum_type_definition_tenant_name (superseded by the constraint)',
+    cypher: 'DROP INDEX enum_type_definition_tenant_name IF EXISTS',
+  },
+  { label: 'EnumTypeDefinition(tenant_id, name)', cypher: 'CREATE CONSTRAINT enum_type_definition_tenant_name_unique IF NOT EXISTS FOR (n:EnumTypeDefinition) REQUIRE (n.tenant_id, n.name) IS UNIQUE' },
+  { label: 'CIFieldDefinition.id', cypher: 'CREATE CONSTRAINT ci_field_definition_id_unique IF NOT EXISTS FOR (n:CIFieldDefinition) REQUIRE n.id IS UNIQUE' },
+  { label: 'CIRelationDefinition.id', cypher: 'CREATE CONSTRAINT ci_relation_definition_id_unique IF NOT EXISTS FOR (n:CIRelationDefinition) REQUIRE n.id IS UNIQUE' },
+  { label: 'CISystemRelationDefinition.id', cypher: 'CREATE CONSTRAINT ci_system_relation_definition_id_unique IF NOT EXISTS FOR (n:CISystemRelationDefinition) REQUIRE n.id IS UNIQUE' },
 ]
 
 const INDEXES: SchemaStatement[] = [
@@ -314,12 +345,12 @@ const INDEXES: SchemaStatement[] = [
   // `EntityComment` (generic, resolvers/comments.ts + portal). Both indexed.
   { label: 'EntityComment(tenant_id, entity_id)', cypher: 'CREATE INDEX entity_comment_tenant_entity IF NOT EXISTS FOR (n:EntityComment) ON (n.tenant_id, n.entity_id)' },
   { label: 'Comment(tenant_id)', cypher: 'CREATE INDEX comment_tenant IF NOT EXISTS FOR (n:Comment) ON (n.tenant_id)' },
-  // Metamodel definitions (id lookups from the dynamic CI resolvers; nodes are
-  // MERGEd on (tenant_id, name), so `id` gets a plain index, not a constraint).
+  // Metamodel definitions (id lookups from the dynamic CI resolvers). Le chiavi
+  // naturali (tenant_id, name) sono VINCOLI di unicità (D-17, vedi CONSTRAINTS):
+  // i loro indici di appoggio servono anche queste ricerche, quindi qui restano
+  // solo gli indici su `id`.
   { label: 'CITypeDefinition(id)', cypher: 'CREATE INDEX ci_type_definition_id IF NOT EXISTS FOR (n:CITypeDefinition) ON (n.id)' },
-  { label: 'CITypeDefinition(tenant_id, name)', cypher: 'CREATE INDEX ci_type_definition_tenant_name IF NOT EXISTS FOR (n:CITypeDefinition) ON (n.tenant_id, n.name)' },
   { label: 'EnumTypeDefinition(id)', cypher: 'CREATE INDEX enum_type_definition_id IF NOT EXISTS FOR (n:EnumTypeDefinition) ON (n.id)' },
-  { label: 'EnumTypeDefinition(tenant_id, name)', cypher: 'CREATE INDEX enum_type_definition_tenant_name IF NOT EXISTS FOR (n:EnumTypeDefinition) ON (n.tenant_id, n.name)' },
   // Reports — moved here from apps/api/src/scripts/seed-report-templates.ts
   // (init.ts is the single source of schema; that script is now redundant).
   { label: 'ReportTemplate(tenant_id)', cypher: 'CREATE INDEX report_template_tenant IF NOT EXISTS FOR (r:ReportTemplate) ON (r.tenant_id)' },
@@ -488,6 +519,33 @@ const UNIQUENESS_PRECHECKS: UniquenessPrecheck[] = [
     hint: 'Keep the WorkflowDefinition whose steps carry the running WorkflowInstances ' +
           '(CURRENT_STEP), re-point the others’ HAS_STEP/instances to it, DETACH DELETE the ' +
           'others, then rerun neo4j:init.',
+  },
+  // Metamodello (D-17): i due vincoli nuovi dell'ondata 8. `init.ts` gira a
+  // OGNI avvio dell'API, quindi un duplicato preesistente non deve diventare
+  // un'API che non parte con un errore del driver: qui si nomina il gruppo.
+  {
+    label: 'CITypeDefinition(tenant_id, name)',
+    cypher: `
+      MATCH (t:CITypeDefinition) WHERE t.tenant_id IS NOT NULL AND t.name IS NOT NULL
+      WITH t.tenant_id AS tenant_id, t.name AS name,
+           collect({id: t.id, label: t.label, scope: t.scope, active: t.active}) AS nodes
+      WHERE size(nodes) > 1
+      RETURN tenant_id, name, nodes ORDER BY tenant_id, name`,
+    hint: 'Due tipi CI omonimi nello stesso tenant: `loadMetamodel` ne userebbe uno e ' +
+          'l\'altro resterebbe visibile nel disegnatore. Tieni quello a cui puntano i CI ' +
+          '(e i suoi HAS_FIELD/HAS_RELATION), DETACH DELETE l\'altro, poi rilancia neo4j:init.',
+  },
+  {
+    label: 'EnumTypeDefinition(tenant_id, name)',
+    cypher: `
+      MATCH (e:EnumTypeDefinition) WHERE e.tenant_id IS NOT NULL AND e.name IS NOT NULL
+      WITH e.tenant_id AS tenant_id, e.name AS name,
+           collect({id: e.id, label: e.label, is_system: e.is_system, scope: e.scope}) AS nodes
+      WHERE size(nodes) > 1
+      RETURN tenant_id, name, nodes ORDER BY tenant_id, name`,
+    hint: 'Due vocabolari omonimi nello stesso tenant (il check-then-create di ' +
+          '`createEnumType`, ora chiuso). Tieni quello a cui puntano i campi (USES_ENUM), ' +
+          'ri-aggancia gli altri legami a lui, DETACH DELETE l\'altro, poi rilancia neo4j:init.',
   },
 ]
 

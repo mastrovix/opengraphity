@@ -74,9 +74,36 @@ export function domainMatrixSDL(): string {
     banner — in silenzio (C-7). Lettura per tutto lo staff, come il banner.
     """
     criticalServiceCriticalities: [String!]!
+
+    """
+    I tipi di change PRE-APPROVATI di questo cliente, con il vocabolario fra
+    cui scegliere. Una change di un tipo pre-approvato salta la catena di
+    approvazioni (è il cambiamento pre-autorizzato dell'ITIL).
+
+    Prima era il letterale \`standard\` in quattro punti del codice: chi
+    rinominava quel valore nel Dizionario perdeva la pre-approvazione, e chi
+    aggiungeva un tipo che considerava pre-approvato non veniva riconosciuto.
+    Admin: è configurazione del tenant.
+    """
+    preApprovedChangeTypes: PreApprovedChangeTypes!
+  }
+
+  """La lista, e i valori fra cui scegliere."""
+  type PreApprovedChangeTypes {
+    types:      [String!]!
+    """Il vocabolario \`change_type\` del cliente: le opzioni possibili."""
+    vocabulary: [String!]!
   }
 
   extend type Mutation {
+    """
+    Sostituisce la lista dei tipi di change pre-approvati. Ogni valore
+    deve essere nel vocabolario \`change_type\` del cliente: una lista con un
+    tipo che non esiste sarebbe una pre-approvazione che non si applica a
+    nulla. Una lista vuota è legittima (nessuna pre-approvazione).
+    """
+    updatePreApprovedChangeTypes(types: [String!]!): PreApprovedChangeTypes!
+
     """
     Salva una matrice. Valida ogni chiave e ogni valore contro i vocabolari
     dichiarati dal tipo di matrice e rifiuta una matrice INCOMPLETA dicendo

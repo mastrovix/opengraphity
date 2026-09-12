@@ -3,6 +3,8 @@ import { ValidationError } from '../../lib/errors.js'
 import { randomUUID } from 'crypto'
 import { withSession } from './ci-utils.js'
 import { invalidateWorkflowCache } from '../../lib/workflowHelpers.js'
+import { workflowLogger } from '../../lib/logger.js'
+import { audit } from '../../lib/audit.js'
 import type { GraphQLContext } from '../../context.js'
 import {
   serviceRequestWorkflowInstance,
@@ -188,14 +190,46 @@ async function removeWorkflowStep(
       )
     }
 
-    await session.executeWrite(tx =>
-      tx.run(`
+    // Regole di obbligatorietà per QUESTO passo: restano orfane (ondata 8 ·
+    // B-21). Prima il pannello continuava a mostrarle come regole attive di un
+    // passo che non esiste più, e non valevano per nessuna transizione. Si
+    // cancellano insieme al passo, e il numero finisce nei log e nell'audit:
+    // una configurazione che sparisce senza dirlo è peggio del difetto.
+    // Il passo può esistere anche in un'altra definizione attiva della stessa
+    // entità (varianti per categoria): in quel caso le regole servono ancora e
+    // non si toccano.
+    const orphanRules = await session.executeWrite(async (tx) => {
+      const stillThere = await tx.run(`
+        MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})-[:HAS_STEP]->(s:WorkflowStep {name: $stepName})
+        WHERE wd.id <> $definitionId
+        RETURN count(s) AS n
+      `, { tenantId: ctx.tenantId, entityType, stepName, definitionId })
+      const elsewhere = Number(stillThere.records[0]?.get('n') ?? 0)
+      await tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: $stepName})
         DETACH DELETE s
         SET wd.version = wd.version + 1, wd.updated_at = $now
         ${MARK_CUSTOMIZED}
-      `, { definitionId, tenantId: ctx.tenantId, stepName, now: new Date().toISOString(), ...customizedParams(ctx) }),
-    )
+      `, { definitionId, tenantId: ctx.tenantId, stepName, now: new Date().toISOString(), ...customizedParams(ctx) })
+      if (elsewhere > 0) return { deleted: 0, fields: [] as string[] }
+      const rules = await tx.run(`
+        MATCH (r:FieldRequirementRule {tenant_id: $tenantId, entity_type: $entityType, workflow_step: $stepName})
+        WITH r, r.field_name AS fieldName
+        DETACH DELETE r
+        RETURN collect(fieldName) AS fields
+      `, { tenantId: ctx.tenantId, entityType, stepName })
+      const fields = (rules.records[0]?.get('fields') ?? []) as string[]
+      return { deleted: fields.length, fields }
+    })
+    if (orphanRules.deleted > 0) {
+      workflowLogger.warn(
+        { tenantId: ctx.tenantId, entityType, stepName, fields: orphanRules.fields },
+        `[workflow] step eliminato: rimosse ${orphanRules.deleted} regole di obbligatorietà che lo nominavano`,
+      )
+      void audit(ctx, 'fieldRequirementRule.orphansRemoved', 'WorkflowStep', stepName, {
+        entityType, removedFields: orphanRules.fields,
+      })
+    }
     invalidateWorkflowCache(ctx.tenantId, entityType)
     return workflowDefinitionById(_, { id: definitionId }, ctx)
   }, true)

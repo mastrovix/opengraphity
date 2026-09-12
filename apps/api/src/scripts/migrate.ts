@@ -4,6 +4,9 @@
  *
  *   migrate                       applica le migrazioni pendenti, in ordine
  *   migrate --status              stato di ogni migrazione (applicata quando / pendente / drift / sconosciuta)
+ *                                 + i tenant INCOMPLETI (D-14): un tenant nato da una migrazione
+ *                                   ha il nodo :Tenant e non ha workflow, e il sintomo arriva solo
+ *                                   al primo createIncident. La migrazione 20260918_1910 li completa.
  *   migrate --dry-run             elenca cosa verrebbe applicato, senza lock né scritture
  *   migrate --to <id>             applica fino a <id> incluso
  *   migrate --init-schema         prima constraint/indici/counter (initSchema di packages/neo4j), poi le migrazioni
@@ -15,6 +18,8 @@
 import { parseArgs }  from 'node:util'
 import { getSession, initSchema, listMigrationStatus, runMigrations } from '@opengraphity/neo4j'
 import { MIGRATIONS } from './migrations/index.js'
+import { SHARED_TENANT_ID } from './migrations/20260918_1910_provision_tenant_data.js'
+import { tenantProvisioningGaps } from '../lib/provisionTenantData.js'
 import { runScript }  from './lib/runScript.js'
 
 const { values } = parseArgs({
@@ -44,6 +49,7 @@ runScript('migrate', async () => {
         console.log(`${r.id}  ${state}${drift}\n    ${r.description ?? ''}`)
       }
       console.log(`\n${rows.filter((r) => !r.appliedAt).length} pendenti, ${rows.filter((r) => r.appliedAt && !r.unknown).length} applicate`)
+      await printIncompleteTenants(session)
       return
     }
 
@@ -58,3 +64,29 @@ runScript('migrate', async () => {
     await session.close()
   }
 })
+
+/**
+ * I tenant che esistono ma non possono funzionare (D-14). `c-two` era in questo
+ * stato da giorni — 0 `WorkflowDefinition` — e non c'era nessun modo di
+ * accorgersene prima del primo ticket. `--status` lo dice.
+ */
+async function printIncompleteTenants(session: Parameters<typeof tenantProvisioningGaps>[0]): Promise<void> {
+  const r = await session.run(`
+    MATCH (t:Tenant)
+    WHERE t.id IS NOT NULL AND t.id <> $shared
+    RETURN t.id AS id ORDER BY t.id
+  `, { shared: SHARED_TENANT_ID })
+  const incomplete: Array<[string, string[]]> = []
+  for (const record of r.records) {
+    const tenantId = String(record.get('id'))
+    const gaps = await tenantProvisioningGaps(session, tenantId)
+    if (gaps.length > 0) incomplete.push([tenantId, gaps])
+  }
+  if (incomplete.length === 0) {
+    console.log(`\n${r.records.length} tenant, tutti completi (dashboard, regole di notifica, matrici, workflow).`)
+    return
+  }
+  console.log(`\n${incomplete.length} tenant INCOMPLETI su ${r.records.length}:`)
+  for (const [tenantId, gaps] of incomplete) console.log(`  ${tenantId}: ${gaps.join(' · ')}`)
+  console.log(`  → li completa la migrazione 20260918_1910_provision_tenant_data (idempotente, additiva).`)
+}

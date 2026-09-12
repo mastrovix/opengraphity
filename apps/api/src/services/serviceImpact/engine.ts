@@ -656,8 +656,8 @@ export interface ServiceGaugesSnapshot {
 export async function refreshServiceGauges(): Promise<ServiceGaugesSnapshot> {
   const session = getSession()
   try {
-    // tenant-ok: metrica di processo su tutti i tenant (solo conteggi, nessuna scrittura)
     const rows = await runQuery<{ health: string | null; n: unknown; stale: unknown }>(session, `
+      // tenant-ok: metrica di processo su tutti i tenant (solo conteggi, nessuna scrittura)
       MATCH (m:ServiceMap)
       RETURN m.health AS health, count(m) AS n, sum(CASE WHEN m.stale = true THEN 1 ELSE 0 END) AS stale
     `)

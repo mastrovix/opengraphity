@@ -78,6 +78,8 @@ const fieldRow = (over: Record<string, unknown> = {}) => ({ records: [rec({ name
 const enumRow  = (over: Record<string, unknown> = {}) => ({ records: [rec({ id: 'e-1', name: 'origine', tenantId: 'tenant-1', ...over })] })
 /** Il primo `run` di ogni lettura è `loadTenantEnumOverrides` (nessuna personalizzazione). */
 const noOverrides = { records: [] }
+/** La CREATE di `createITILField` ritorna il campo nuovo (ondata 8 · D-17). */
+const fieldCreated = { records: [rec({ f: { properties: { id: 'f-new' } } })] }
 
 describe('letture ITIL — tenant + system', () => {
   beforeEach(() => reset())
@@ -183,9 +185,12 @@ describe('createITILField', () => {
   })
 
   it('campo creato con tenant_id = $tenantId, scope itil, is_system false; enum linkato solo se del tenant/sistema; enum_values inline azzerati se c\'è enumTypeId', async () => {
-    reset([enumRow(), { records: [] }, noOverrides, { records: [typeRecord()] }])
+    // Ondata 8 · D-17: la CREATE ritorna il campo creato — zero righe ora vuol
+    // dire «il tipo ha già un campo con questo nome», non «riuscito».
+    reset([enumRow(), fieldCreated, noOverrides, { records: [typeRecord()] }])
     await mutations.createITILField(null, { typeId: 'it-1', input: { name: 'origine', label: 'Origine', fieldType: 'enum', enumTypeId: 'e-1', enumValues: ['a'] } }, admin)
     const { cypher, params } = call(1)
+    expect(cypher).toContain('dup.name = $name')
     expect(cypher).toContain(`WHERE ${ITIL_SCOPE}`)
     expect(cypher).toContain("scope:             'itil'")
     expect(cypher).toContain('tenant_id:         $tenantId')
@@ -195,7 +200,7 @@ describe('createITILField', () => {
   })
 
   it('enum inline (senza enumTypeId, fieldType non enum) → enum_values serializzato, nessuna lettura del vocabolario', async () => {
-    reset([{ records: [] }, noOverrides, { records: [typeRecord()] }])
+    reset([fieldCreated, noOverrides, { records: [typeRecord()] }])
     await mutations.createITILField(null, { typeId: 'it-1', input: { name: 'x', label: 'X', fieldType: 'string', enumValues: ['a', 'b'] } }, admin)
     expect(call(0).params['enumValues']).toBe('["a","b"]')
   })
@@ -207,6 +212,20 @@ describe('createITILField', () => {
     await expect(mutations.createITILField(null, { typeId: 'it-1', input: { name: 'x', label: 'X', fieldType: 'enum', enumTypeId: 'e-altrui' } }, admin))
       .rejects.toThrow(/appartiene a un altro cliente/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  // Ondata 8 · D-17: due campi omonimi sullo stesso tipo e `loadMetamodel` ne
+  // scarta uno in silenzio (vince quello con `order` minore) mentre il
+  // disegnatore ne mostra due. La chiave naturale è (tipo, nome) e passa per
+  // HAS_FIELD: un vincolo di nodo non la esprime, la guardia sta nella CREATE.
+  it('nome già presente sul tipo (la guardia morde, zero righe) → rifiuto esplicito, schema non invalidato', async () => {
+    reset([enumRow(), { records: [] }])
+    const err = await mutations.createITILField(null, { typeId: 'it-1', input: { name: 'origine', label: 'Origine', fieldType: 'enum', enumTypeId: 'e-1' } }, admin)
+      .then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err).not.toBeNull()
+    expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(err!.message).toContain('ha già un campo «origine»')
+    expect(invalidateSchema).not.toHaveBeenCalled()
   })
 
   it('vocabolario inesistente → NOT_FOUND, nessuna CREATE', async () => {

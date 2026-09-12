@@ -91,7 +91,7 @@ The Apollo Sandbox is available at `http://localhost:4000/graphql` in developmen
 | `blastRadius(id)` | Downstream impact of a CI |
 | `ciIncidents(ciId)` | Incidents linked to a CI |
 | `ciChanges(ciId)` | Changes linked to a CI |
-| `ciTypes` | All registered CI type definitions |
+| `ciTypes` | CI type definitions **visible to the caller's tenant**: the shared ones (`tenant_id = 'system'`, shipped with the product and read-only) plus the tenant's own. A type another customer created is never returned. See `docs/CUSTOMIZATION.md` |
 | `topology(types, environment, status, selectedCiId, maxHops)` | Topology graph data |
 
 ### Teams and Users
@@ -162,7 +162,7 @@ service map.
 | `executeReport(templateId)` | Run a report template |
 | `myDashboards` | Current user's dashboards |
 | `logs(level, module, search, limit, offset)` | Application logs |
-| `enumTypes(scope)` | Dictionary/enum definitions |
+| `enumTypes(scope)` | Dictionary definitions **visible to the caller's tenant**: the tenant's own, plus the shipped ones (`is_system = true` **and** `tenant_id = 'system'`). Shipped dictionaries are one node for every customer: a tenant customises one with `customizeEnumType`, which makes a copy of its own that wins by name. See `docs/CUSTOMIZATION.md` |
 | `auditLog(page, pageSize, action, entityType, fromDate, toDate)` | Audit log |
 | `queueStats` | BullMQ queue depths. Every `QueueStat` carries `group` (`events` / `services` / `itsm` / `platform`: the subsystem, from the API's single queue registry) and `retryable` (whether `retryQueueJob` accepts jobs of that queue — the four domain-consumer queues are not retryable from the UI: an exhausted event must be re-emitted by its producer). The Queues page groups by `group` and shows the retry button only where `retryable` is true; no queue name is hard-coded in the web |
 | `queueJobs(queueName, status, limit)` | Jobs of one registered queue (`Unknown queue` for a name outside the registry) |
@@ -273,9 +273,9 @@ retention).
 
 | Mutation | Description |
 |----------|-------------|
-| `createEnumType(input)` | Create dictionary type |
+| `createEnumType(input)` | Create one of the tenant's dictionaries. `(tenant_id, name)` is unique (database constraint): a second dictionary with the same name is refused, also when two requests arrive together |
 | `updateEnumType(id, input)` | Update label/values |
-| `deleteEnumType(id)` | Delete (non-system only) |
+| `deleteEnumType(id)` | Delete one of the tenant's own dictionaries (never a shipped one, and never one still used by a field). Deleting a customised copy puts the shipped dictionary of the same name back in play |
 
 ---
 
@@ -440,7 +440,7 @@ Historical data importer for migrations from other ITSM tools. Both endpoints ac
 
 Idempotency: each row's `external_id` is stored as `import_external_id` on the node; re-running the same CSV updates the existing records (`updated`) instead of duplicating them.
 
-**Incident CSV columns** — `external_id` (required, idempotency key), `title` (required), `description`, `severity` (free values mapped case-insensitively to low/medium/high/critical; unknown → warning + `medium`), `status` (matched case-insensitively against the tenant's incident workflow step names; unknown → warning + initial step), `number` (optional: preserved; collision with another incident → row error; generated progressively as `INC…` when absent), `created_at`/`updated_at`/`resolved_at` (ISO; invalid → row error), `assignee_email` (unknown user → warning, row still imported), `team_name` (unknown team → warning), `comments` (JSON array `[{author_email, text, created_at}]`).
+**Incident CSV columns** — `external_id` (required, idempotency key), `title` (required), `description`, `severity` (translated by the tenant's `import_severity` domain matrix — Settings → Domain matrices, seeded with 25 synonyms and editable; a value the matrix cannot resolve puts the **row in error**, it is never rewritten to `medium`; an empty cell uses the declared default `medium`, which is itself validated against the tenant's severity vocabulary), `status` (matched case-insensitively against the tenant's incident workflow step names; unknown → warning + initial step), `number` (optional: preserved; collision with another incident → row error; generated progressively as `INC…` when absent), `created_at`/`updated_at`/`resolved_at` (ISO; invalid → row error), `assignee_email` (unknown user → warning, row still imported), `team_name` (unknown team → warning), `comments` (JSON array `[{author_email, text, created_at}]`).
 
 **KB article CSV columns** — `external_id` (required), `title` (required), `body` (markdown), `category`, `tags` (separated by `;`), `status` (`published`/`draft`, default `draft`), `author_name`, `created_at`, `published_at`. The slug is generated from the title and deduplicated with `-2`, `-3`, … suffixes; on update the existing slug is kept.
 

@@ -1040,7 +1040,13 @@
       "missingWarning_other": "{{count}} combinations with no value ({{keys}}). While they stay empty, the operation that needs them — opening an incident, or an incoming alarm — stops and says so: fill them in here.",
       "invalidWarning_one": "One cell points at a value that is no longer in your vocabulary ({{keys}}): it is what a rename left behind, and at runtime it is an error. Pick the new value.",
       "invalidWarning_other": "{{count}} cells point at values that are no longer in your vocabulary ({{keys}}): they are what a rename left behind, and at runtime they are errors. Pick the new values.",
-      "outOfVocabulary": "{{value}} — no longer in the vocabulary"
+      "outOfVocabulary": "{{value}} — no longer in the vocabulary",
+      "preApproved": {
+        "title": "Pre-approved changes",
+        "help": "A change of a pre-approved type skips the approval chain (ITIL pre-authorised change). This used to be the value “standard” written in the code: renaming it in the Dictionary silently lost the pre-approval.",
+        "none": "No pre-approved types: every change will go through approvals.",
+        "saved": "Pre-approved types saved"
+      }
     }
   },
   "filter": {
@@ -1528,6 +1534,7 @@
         "entityType": "Entity type",
         "fieldMapping": "Field mapping (JSON)",
         "defaultValues": "Default values (JSON)",
+        "allowedTargets": "Allowed targets: {{fields}}. An entry outside this list is refused on save.",
         "transformScript": "Transform script",
         "url": "URL",
         "method": "Method",

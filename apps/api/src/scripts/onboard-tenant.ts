@@ -36,18 +36,10 @@ import { v4 as uuidv4 } from 'uuid'
 import { parseArgs } from 'node:util'
 import { getSession } from '@opengraphity/neo4j'
 import { USER_ROLES, type Tenant } from '@opengraphity/types'
-import { seedNotificationRules } from '../lib/seedNotificationRules.js'
 import { seedSystemEnumTypes } from '../lib/seedEnumTypes.js'
-import { seedDomainMatrices } from '../lib/domainMatrixSeed.js'
+import { provisionTenantData } from '../lib/provisionTenantData.js'
 import { DEFAULT_EVENT_POLICY_JSON } from '../lib/eventPolicy.js'
 import { DEFAULT_TENANT_PLAN, DEFAULT_TENANT_TIMEZONE, PLAN_SETTINGS } from '../lib/tenantPlans.js'
-import {
-  seedKBWorkflowForTenant,
-  seedProblemWorkflowForTenant,
-  seedWorkflowDefinition,
-  seedWorkflowForTenant,
-} from '@opengraphity/workflow'
-import { CHANGE_RFC_WORKFLOW, SERVICE_REQUEST_WORKFLOW } from './lib/workflowDefinitions.js'
 import { ScriptArgError } from './lib/scriptArgs.js'
 import { runScript } from './lib/runScript.js'
 import { assignRealmRole, createKeycloakAdmin, findUserIdByEmail, keycloakConfigFromEnv, type KeycloakAdmin } from './lib/keycloakAdmin.js'
@@ -346,43 +338,28 @@ async function provisionNeo4j(a: Args): Promise<void> {
     const userCreated = userResult.records[0]?.get('wasCreated') as boolean
     console.log(userCreated ? `  ✓ User Neo4j creato: ${email} (tenant_id: ${slug})` : `  ↩ User Neo4j già esistente: ${email} — skip`)
 
-    // 6b. Default DashboardConfig — MERGE is idempotent
-    const dashId = uuidv4()
-    const dashResult = await session.executeWrite((tx) =>
-      tx.run(
-        `MERGE (d:DashboardConfig {tenant_id: $tenantId, name: 'Dashboard', is_default: true})
-         ON CREATE SET
-           d.id         = $id,
-           d.user_id    = $userId,
-           d.visibility = 'private',
-           d.created_at = $now,
-           d.updated_at = $now
-         RETURN (d.created_at = $now) AS wasCreated`,
-        { tenantId: slug, id: dashId, userId, now },
-      ),
-    )
-    const dashCreated = dashResult.records[0]?.get('wasCreated') as boolean
-    console.log(dashCreated ? `  ✓ DashboardConfig default creato` : `  ↩ DashboardConfig già esistente — skip`)
-
-    // 6c. Notification rules default
-    await seedNotificationRules(slug, session)
-
-    // 6d. Vocabolari spediti col prodotto — uno solo, su `tenant_id = 'system'`
+    // 6b. Vocabolari spediti col prodotto — uno solo, su `tenant_id = 'system'`
     //     (A-2 / C-6): l'onboarding NON ne crea più una copia per tenant. Le
     //     copie sono le personalizzazioni e nascono da `customizeEnumType`.
     await seedSystemEnumTypes(session)
     console.log(`  ✓ Vocabolari spediti verificati su tenant_id='system' (nessuna copia per ${slug})`)
 
-    // 6e. Matrici di dominio (ondata 7): priorità = impatto × urgenza,
-    //     criticità del servizio → impatto, severità dell'allarme, tipo di
-    //     change × fascia di rischio, severità dell'import. Sono dato PER
-    //     TENANT — due clienti hanno matrici diverse — e nascono col seme del
-    //     prodotto, così il primo giorno il comportamento è quello di sempre.
-    //     Stessa funzione della migrazione 20260917_1800: una sorgente sola.
-    const seededMatrices = await seedDomainMatrices(session, slug)
-    console.log(`  ✓ Matrici di dominio create per ${slug}: ${seededMatrices.length === 0 ? 'nessuna (erano già presenti)' : seededMatrices.join(', ')}`)
+    // 6c. Il dato del tenant — dashboard, regole di notifica, matrici di
+    //     dominio, definizioni di workflow — in UNA funzione condivisa con la
+    //     migrazione che completa i tenant nati dall'altra strada (D-14: un
+    //     tenant nasce in un modo solo). Additiva e idempotente: una
+    //     definizione o una matrice già presenti NON vengono riallineate al
+    //     seme, perché potrebbero essere personalizzazioni del cliente.
+    const provisioned = await provisionTenantData(session, slug, { userId })
+    console.log(provisioned.dashboardCreated ? `  ✓ DashboardConfig default creato` : `  ↩ DashboardConfig già esistente — skip`)
+    console.log(`  ✓ Regole di notifica: ${provisioned.notificationRulesCreated} create`)
+    console.log(`  ✓ Matrici di dominio create per ${slug}: ${provisioned.matricesCreated.length === 0 ? 'nessuna (erano già presenti)' : provisioned.matricesCreated.join(', ')}`)
+    for (const w of provisioned.workflows) {
+      console.log(`  ✓ Workflow "${w.name}"${w.created === false ? ' — già presente, lasciata com\'è' : ''}`)
+    }
+    console.log('  ℹ Le definizioni già presenti NON sono state toccate (vedi le righe [workflow] sopra).')
 
-    // 6f/6g. Verify shared CITypeDefinitions (scope='base' / 'itil')
+    // 6d/6e. Verify shared CITypeDefinitions (scope='base' / 'itil')
     for (const [scope, seedScript] of [['base', 'seed-metamodel.ts'], ['itil', 'seed-itil-metamodel.ts']] as const) {
       const res = await session.executeRead((tx) =>
         tx.run(
@@ -426,26 +403,6 @@ async function main(): Promise<void> {
 
   console.log('\n▶ Neo4j')
   await provisionNeo4j(a)
-
-  // Every ticket type needs its WorkflowDefinition before the first create*
-  // (createInstance fails loud without one).
-  //
-  // Idempotente DAVVERO (B-2): un secondo giro non riscrive nulla. Una
-  // definizione che esiste già viene saltata, non riallineata al seed — così
-  // l'onboarding rilanciato sullo stesso slug non cancella le modifiche fatte
-  // dal disegnatore. Per riallineare serve `seed:<x>-workflow -- --overwrite`.
-  console.log('\n▶ Workflow')
-  await seedWorkflowForTenant(a.slug)
-  console.log(`  ✓ Incident workflows (base + security)`)
-  await seedProblemWorkflowForTenant(a.slug)
-  console.log(`  ✓ Problem workflow`)
-  await seedKBWorkflowForTenant(a.slug)
-  console.log(`  ✓ KB Article workflow`)
-  for (const def of [CHANGE_RFC_WORKFLOW, SERVICE_REQUEST_WORKFLOW]) {
-    const res = await seedWorkflowDefinition(a.slug, def)
-    console.log(`  ✓ "${def.name}" ${res.created ? 'creata' : 'già presente — lasciata com\'è'} (defId: ${res.definitionId})`)
-  }
-  console.log('  ℹ Le definizioni già presenti NON sono state toccate (vedi le righe [workflow] sopra).')
 
   // Riepilogo SENZA password; quella generata è stampata una sola volta sotto.
   console.log(`

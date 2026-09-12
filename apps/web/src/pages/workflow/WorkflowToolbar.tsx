@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
-import { colors, lookupOrError, palette } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 import type { WorkflowDefinition, WorkflowKey } from './workflow-types'
@@ -96,19 +96,6 @@ export function WorkflowToolbar({
               v{def.version} · Attivo
             </Pill>
           )}
-          {def?.changeSubtype && (() => {
-            const subtypeStyles: Record<string, { bg: string; fg: string }> = {
-              standard:  { bg: palette.success.tint, fg: palette.success.strong },
-              normal:    { bg: palette.info.tint, fg: palette.info.text },
-              emergency: { bg: palette.danger.tint, fg: palette.danger.strong },
-            }
-            const s = lookupOrError(subtypeStyles, def.changeSubtype, 'subtypeStyles', { bg: 'var(--color-danger)', fg: colors.white })
-            return (
-              <Pill bg={s.bg} color={s.fg} radius={4}>
-                {def.changeSubtype === 'standard' ? 'Standard' : def.changeSubtype === 'normal' ? 'Normal' : 'Emergency'}
-              </Pill>
-            )
-          })()}
         </div>
       </div>
 

@@ -326,7 +326,7 @@ async function events(_: unknown, args: { filter?: EventFilter | null; limit?: n
   // stesso WHERE (tenant per primo); senza, il MATCH sull'indice
   // (tenant_id, status, last_seen_at) o (tenant_id, last_seen_at).
   const source = lucene === null
-    ? `MATCH (e:Event)\n      ${where}`
+    ? `MATCH (e:Event)\n      ${where}`   // tenant-ok: $where parte da e.tenant_id = $tenantId (conditions, riga 284)
     : `CALL db.index.fulltext.queryNodes('event_search', $search) YIELD node AS e\n      ${where}`
 
   const session = getSession()

@@ -12,6 +12,7 @@ import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { requireRole } from '../../../lib/requireRole.js'
 import { getStepPurpose } from '../../../lib/workflowHelpers.js'
+import { validateRequiredFields, propsToFieldValues } from '../../../lib/validateRequiredFields.js'
 import { stepNamesByPurposeOrdered } from '../../../lib/workflowTargets.js'
 import { createChangeRFC } from '../../../services/changeCreationService.js'
 import { change as getChange } from './queries.js'
@@ -385,6 +386,25 @@ export async function executeChangeTransition(
         await assertAllApprovalsSatisfied(session, args.changeId, ctx.tenantId)
       }
     }
+
+    // Campi obbligatori del passo di ARRIVO (ondata 8 · B-21). Le regole
+    // `FieldRequirementRule` con `workflow_step` erano valutate solo da
+    // `executeWorkflowTransition` (la mutation generica, che le change non
+    // usano): una regola «la data di rilascio è obbligatoria entrando in
+    // programmata» valeva per un bottone e non per quello delle change, e chi
+    // l'aveva configurata non poteva accorgersene. Le note della transizione
+    // contano come valore, come nella mutation generica.
+    const requirementValues: Record<string, unknown> = { ...propsToFieldValues(entityProps) }
+    if (args.notes) {
+      requirementValues['resolution_notes'] = args.notes
+      requirementValues['root_cause']       = args.notes
+    }
+    await validateRequiredFields(session, {
+      entityType:  'change',
+      fieldValues: requirementValues,
+      tenantId:    ctx.tenantId,
+      toStep:      args.toStep,
+    })
 
     // Il rollback non è più un campo del change: è valutato (con punteggio)
     // nell'assessment tecnico ("Is a tested rollback plan available?"), che si

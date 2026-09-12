@@ -66,6 +66,8 @@ vi.mock('../../../lib/workflowHelpers.js', () => ({ invalidateWorkflowCache: vi.
 
 const { workflowResolvers } = await import('../workflow.js')
 const { invalidateWorkflowCache } = await import('../../../lib/workflowHelpers.js')
+const { workflowLogger } = await import('../../../lib/logger.js')
+const { audit } = await import('../../../lib/audit.js')
 
 const M = workflowResolvers.Mutation
 const ctx: GraphQLContext = { tenantId: 'c-two', userId: 'user-1', userEmail: 'u@test.io', role: 'admin' }
@@ -180,6 +182,60 @@ describe('removeWorkflowStep (B2-2 / B-1): non si cancella un passo con dei tick
     results = [{ records: [] }]
     await expect(M.removeWorkflowStep(null, { definitionId: 'def-1', stepName: 'fantasma' }, ctx))
       .rejects.toThrow(/non trovato in questa definizione/)
+  })
+
+  // ── Ondata 8 · B-21: le regole di obbligatorietà del passo non restano orfane
+  // Una regola «campo X obbligatorio entrando in questo passo» sopravviveva al
+  // passo: il pannello continuava a mostrarla come attiva e non valeva per
+  // nessuna transizione. Si cancella col passo, e lo si dice (log + audit).
+  it('le regole di obbligatorietà del passo eliminato vengono rimosse, e il numero finisce nei log', async () => {
+    results = [
+      { records: [stepRow()] },                                             // lettura metadata
+      { records: [makeRecord({ n: 0 })] },                                  // il passo non esiste in altre definizioni attive
+      { records: [] },                                                      // DETACH DELETE
+      { records: [makeRecord({ fields: ['planned_start', 'rollback_plan'] })] }, // regole rimosse
+    ]
+    await M.removeWorkflowStep(null, { definitionId: 'def-1', stepName: 'pending' }, ctx)
+    const cypher = writtenCypher()
+    expect(cypher).toContain('MATCH (r:FieldRequirementRule {tenant_id: $tenantId, entity_type: $entityType, workflow_step: $stepName})')
+    expect(workflowLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ stepName: 'pending', fields: ['planned_start', 'rollback_plan'] }),
+      expect.stringContaining('rimosse 2 regole di obbligatorietà'),
+    )
+    expect(audit).toHaveBeenCalledWith(ctx, 'fieldRequirementRule.orphansRemoved', 'WorkflowStep', 'pending', expect.anything())
+  })
+
+  it('lo stesso nome di passo esiste in un\'altra definizione attiva (variante per categoria) → le regole restano', async () => {
+    results = [
+      { records: [stepRow()] },
+      { records: [makeRecord({ n: 1 })] },   // c'è anche nella variante «Incident — Security»
+      { records: [] },
+    ]
+    await M.removeWorkflowStep(null, { definitionId: 'def-1', stepName: 'security_review' }, ctx)
+    expect(writtenCypher()).not.toContain('FieldRequirementRule')
+    expect(audit).not.toHaveBeenCalledWith(ctx, 'fieldRequirementRule.orphansRemoved', expect.anything(), expect.anything(), expect.anything())
+  })
+})
+
+/**
+ * Ondata 8: le mutation che cambiano la definizione incrementano la VERSIONE.
+ * Quattro non lo facevano (modifica di un passo e le tre sulle transizioni), e
+ * il lock ottimistico del disegnatore confronta le versioni: due sessioni
+ * aperte sullo stesso workflow non si accorgevano di quelle modifiche, e
+ * l'ultima salvava sopra l'altra in silenzio.
+ */
+describe('la versione della definizione si muove a ogni modifica (ondata 8)', () => {
+  it('aggiungere, modificare e togliere una transizione incrementano wd.version', async () => {
+    for (const run of [
+      () => M.addWorkflowTransition(null, { definitionId: 'def-1', fromStepName: 'a', toStepName: 'b', trigger: 'manual' }, ctx),
+      () => M.updateWorkflowTransition(null, { transitionId: 't-1', label: 'x' }, ctx),
+      () => M.removeWorkflowTransition(null, { definitionId: 'def-1', transitionId: 't-1' }, ctx),
+    ]) {
+      results = [{ records: [makeRecord({ tr: { properties: { id: 't-1' } }, fromStep: 'a', toStep: 'b', entityType: 'incident', deletedId: 't-1' } )] }, { records: [] }]
+      await run().catch(() => undefined)   // alcune rispondono NOT_FOUND col mock minimo: conta il Cypher
+      expect(writtenCypher(), 'la versione deve essere incrementata').toContain('wd.version = wd.version + 1')
+      expect(writtenCypher()).toContain('wd.customized_at = $customizedAt')
+    }
   })
 })
 

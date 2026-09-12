@@ -2,6 +2,7 @@ import pino from 'pino'
 import { randomUUID } from 'node:crypto'
 import { pushLog } from './logBuffer.js'
 import { config } from './config.js'
+import { serviceNameFor } from './serviceName.js'
 
 const LEVEL_MAP: Record<number, string> = {
   10: 'trace',
@@ -49,7 +50,11 @@ export const logger = pino(
   {
     level: config.logLevel,
     base: {
-      service: 'opengrafo-api',
+      // Il nome del processo, non quello dell'immagine (ondata 5): API, worker
+      // degli embedding e worker degli allarmi condividono immagine e logger, e
+      // scrivendo sempre `opengrafo-api` i loro log erano indistinguibili in
+      // Loki. Vedi `lib/serviceName.ts`.
+      service: serviceNameFor(process.argv[1], config.workerProfile),
       env:     config.nodeEnv,
     },
     // pino redact: `*` matches exactly ONE path segment (no `**`), so each

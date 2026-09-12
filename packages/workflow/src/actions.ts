@@ -14,6 +14,7 @@ import type {
   CallWebhookParams,
   CreateApprovalRequestParams,
 } from './types.js'
+import { updateFieldRejection } from '@opengraphity/types'
 
 const log = pino({ level: process.env['LOG_LEVEL'] ?? 'info' }).child({ module: 'workflow:actions' })
 
@@ -278,10 +279,12 @@ export async function runAction(
         throw new Error('update_field: updateField callback not provided by the calling context')
       }
       const p = action.params as unknown as UpdateFieldParams
-      const ALLOWED_FIELDS = new Set(['severity', 'priority', 'status', 'description', 'category'])
-      if (!ALLOWED_FIELDS.has(p.field)) {
-        throw new Error(`update_field: field "${p.field}" is not in the allowed list (${[...ALLOWED_FIELDS].join(', ')})`)
-      }
+      // Allow-list e messaggi in types.ts: la stessa regola vale a runtime,
+      // in scrittura (`assertStepActions`) e nel disegnatore. `status` non è
+      // più scrivibile (B-9): lo scrive il motore, e scavalcarlo faceva
+      // divergere il ticket dal suo processo.
+      const rejection = updateFieldRejection(p.field)
+      if (rejection) throw new Error(rejection)
       const resolved = typeof p.value === 'string' ? resolveTemplate(p.value, buildTemplateCtx(instance, ctx.entityData)) : p.value
       await ctx.updateField(instance.entityId, p.field, resolved)
       await ctx.publishEvent?.(`${instance.entityType}.updated`, {

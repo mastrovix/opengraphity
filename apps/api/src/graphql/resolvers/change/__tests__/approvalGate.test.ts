@@ -16,8 +16,21 @@ vi.mock('../../ci-utils.js', () => ({
   runQuery:    vi.fn(),
   runQueryOne: vi.fn(),
 }))
+/**
+ * I tipi pre-approvati sono dato del cliente (ondata 8): questo test misura il
+ * GATE, non la policy, quindi la policy è un doppio pilotabile. Il suo
+ * comportamento vero è in `lib/__tests__/changePolicy.test.ts`.
+ */
+let preApproved: string[] = ['standard']
+vi.mock('../../../../lib/changePolicy.js', () => ({
+  isPreApprovedChangeType: (_t: string, type: unknown) => Promise.resolve(typeof type === 'string' && preApproved.includes(type)),
+  preApprovedChangeTypes:  () => Promise.resolve(preApproved),
+}))
+
 vi.mock('../../../../lib/logger.js', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  // `child` serve ai moduli che si prendono un logger di modulo (domainMatrix,
+  // changePolicy): senza, l'import del gate fallisce prima dei test.
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
 import { runQuery, runQueryOne } from '../../ci-utils.js'
@@ -62,6 +75,19 @@ describe('getApprovalGateState', () => {
 })
 
 describe('assertAllApprovalsSatisfied (gate condiviso da approve + executeChangeTransition)', () => {
+  it('il tipo pre-approvato viene dalla LISTA del cliente, non dal letterale «standard»', async () => {
+    // Ondata 8: un cliente che rinomina `standard` in `preautorizzata` deve
+    // continuare ad avere quelle change pre-approvate. Prima il codice
+    // confrontava il nome, e la pre-approvazione si spegneva in silenzio.
+    preApproved = ['preautorizzata']
+    mockedOne.mockResolvedValueOnce(gateRow({ changeType: 'preautorizzata', total: 0, pending: 0, cm: 0 }))
+    await expect(assertAllApprovalsSatisfied(session, 'chg', 't1')).resolves.toBeUndefined()
+    // e il letterale, che ora NON è nella lista, non passa più
+    mockedOne.mockResolvedValueOnce(gateRow({ changeType: 'standard', total: 0, pending: 0, cm: 0 }))
+    await expect(assertAllApprovalsSatisfied(session, 'chg', 't1')).rejects.toThrow(/Requisiti di approvazione non ancora creati/)
+    preApproved = ['standard']
+  })
+
   it('standard: passa sempre, anche senza record', async () => {
     mockedOne.mockResolvedValueOnce(gateRow({ changeType: 'standard', total: 0, cm: 0 }))
     await expect(assertAllApprovalsSatisfied(session, 'chg', 't1')).resolves.toBeUndefined()

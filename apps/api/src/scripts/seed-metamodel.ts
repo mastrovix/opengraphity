@@ -511,7 +511,13 @@ async function main() {
          WITH e
          MATCH (f:CIFieldDefinition {name: 'chain', tenant_id: $tenantId})
          MERGE (f)-[:USES_ENUM]->(e)`,
-        { tenantId: TENANT_ID, values: JSON.stringify(['Application', 'Infrastructure']), now },
+        // A-18: `values` è una LISTA, come in ogni altro vocabolario. Qui era
+        // l'unico posto che la scriveva come stringa JSON, e `mapEnum` doveva
+        // tollerare le due forme: bastava un consumatore che facesse
+        // `values.length` (o l'SDL che dichiarasse l'enum ITIL) perché
+        // diventasse un difetto. La migrazione 20260918_1910 normalizza il
+        // nodo già scritto.
+        { tenantId: TENANT_ID, values: ['Application', 'Infrastructure'], now },
       ),
     )
     console.log('✓ ci_chain enum created + linked via USES_ENUM')

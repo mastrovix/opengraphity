@@ -62,9 +62,25 @@ export function usersMock(users: UserRowFixture[], variables: Record<string, unk
  * ogni riquadro che mostra lo stato o il passo di un ticket con l'etichetta
  * dell'app invece del nome grezzo del passo.
  */
+export interface WorkflowStepMock {
+  name: string
+  label: string
+  /**
+   * Metadata del passo. Sono questi a dire «risolto», «chiuso», «approvazione»
+   * — mai il nome (ondata 8 · B-22): un test che vuole provare una rinomina
+   * passa i propri nomi e la categoria/lo scopo giusti. Se omessi, si ricade
+   * sulla convenzione posizionale storica (primo = iniziale, ultimo = terminale).
+   */
+  category?: string | null
+  purpose?:  string | null
+  isInitial?:  boolean
+  isTerminal?: boolean
+  isOpen?:     boolean
+}
+
 export function workflowDefinitionMock(
   entityType = 'incident',
-  steps: { name: string; label: string }[] = [
+  steps: WorkflowStepMock[] = [
     { name: 'new', label: 'New' },
     { name: 'in_progress', label: 'In lavorazione' },
     { name: 'resolved', label: 'Resolved' },
@@ -76,11 +92,16 @@ export function workflowDefinitionMock(
       data: {
         workflowDefinition: {
           __typename: 'WorkflowDefinition', id: `wd-${entityType}`, name: entityType, entityType,
-          category: null, version: 1, active: true, changeSubtype: null,
+          category: null, version: 1, active: true,
           steps: steps.map((s, i) => ({
             __typename: 'WorkflowStep', id: `st-${i}`, name: s.name, label: s.label, type: 'state',
-            enterActions: [], exitActions: [], isInitial: i === 0, isTerminal: i === steps.length - 1,
-            isOpen: i < steps.length - 1, category: null, order: i,
+            enterActions: [], exitActions: [],
+            isInitial:  s.isInitial  ?? i === 0,
+            isTerminal: s.isTerminal ?? i === steps.length - 1,
+            isOpen:     s.isOpen     ?? i < steps.length - 1,
+            category:   s.category   ?? null,
+            purpose:    s.purpose    ?? null,
+            order: i,
           })),
           transitions: [],
         },

@@ -25,6 +25,7 @@ import { Input, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import { GET_WORKFLOW_EVENT_TYPES } from '@/graphql/queries'
 import { Toggle } from '@/components/ui/Toggle'
+import { API_KEY_PERMISSIONS, INBOUND_TICKET_FIELDS } from '@opengraphity/types'
 import { Tabs, type TabItem } from '@/components/ui/Tabs'
 import { useMutationWithToast, errorMessage } from '@/hooks/useMutationWithToast'
 import { useListQueryState } from '@/hooks/useListQueryState'
@@ -67,7 +68,15 @@ type ModalKey = 'inbound' | 'outbound' | 'apikey' | 'secret'
 // `event` NON è tra le opzioni: le sorgenti di monitoraggio si creano dalla
 // procedura guidata di Monitoraggio → Sorgenti (senza JSON); qui restano
 // visibili in elenco con il link "gestisci in Monitoraggio".
-const ENTITY_TYPES = ['incident', 'problem', 'change', 'service_request', 'ci'] as const
+/**
+ * D-25: la tendina offriva anche `change`, `service_request` e `ci`, che la
+ * consegna rifiuta con 400 «Unsupported entity_type» — tre tipi che non
+ * possono funzionare. I tipi veri sono quelli per cui il server sa creare
+ * un'entità, e sono la stessa sorgente che valida i bersagli della mappa
+ * (`INBOUND_TICKET_FIELDS`, @opengraphity/types). Le sorgenti di monitoraggio
+ * (`entityType = event`) nascono nella pagina Sorgenti, non qui.
+ */
+const ENTITY_TYPES = Object.keys(INBOUND_TICKET_FIELDS) as Array<keyof typeof INBOUND_TICKET_FIELDS>
 const HTTP_METHODS = ['POST', 'PUT', 'PATCH'] as const
 /**
  * I tipi di evento «di prodotto» a cui un webhook si può abbonare. Erano gli
@@ -77,9 +86,18 @@ const HTTP_METHODS = ['POST', 'PUT', 'PATCH'] as const
  * letti da `workflowEventTypes`.
  */
 const PRODUCT_OUTBOUND_EVENTS = ['incident.created', 'incident.resolved', 'change.approved', 'change.completed', 'problem.created', 'sla.breached'] as const
-const PERMISSIONS = ['incidents:read', 'incidents:write', 'changes:read', 'changes:write', 'problems:read', 'problems:write', 'ci:read', 'ci:write', 'kb:read'] as const
+/**
+ * D-26: la lista scritta qui a mano mentiva in due direzioni — offriva
+ * `ci:write` (nessuna rotta lo richiede) e non offriva `kb:write` (richiesto da
+ * POST /api/v1/import/kb-articles, quindi la chiave creata da qui prendeva 403).
+ * La sorgente unica è `API_KEY_PERMISSIONS`: la stessa che `createApiKey`
+ * applica e che un lint statico confronta con i `requirePermission` delle rotte.
+ */
+const PERMISSIONS = API_KEY_PERMISSIONS
 
 const textareaS: React.CSSProperties = { ...sharedTextareaS, minHeight: 70 }
+/** Suggerimento sotto un campo: la stessa scala della label, un tono più tenue. */
+const hintS: React.CSSProperties = { fontSize: 'var(--font-size-caption)', color: 'var(--color-slate)', margin: '-6px 0 0' }
 // Pill overrides: these badges are regular-weight with a small right gap.
 const PILL_S: React.CSSProperties = { fontWeight: 400, marginRight: 4 }
 const ROW_ACTIONS: React.CSSProperties = { display: 'flex', gap: 6 }
@@ -186,6 +204,8 @@ export function IntegrationsPage() {
   // ── Form state ──────────────────────────────────────────────────────────────
 
   const [inForm, setInForm] = useState({ name: '', entityType: 'incident', fieldMapping: '{}', defaultValues: '{}', transformScript: '' })
+  // D-25: i bersagli ammessi dipendono dal tipo di entità scelto.
+  const allowedTargets: readonly string[] = INBOUND_TICKET_FIELDS[inForm.entityType as keyof typeof INBOUND_TICKET_FIELDS] ?? []
   const [outForm, setOutForm] = useState({ name: '', url: '', method: 'POST', headers: '{}', events: [] as string[], payloadTemplate: '', secret: '', retryOnFailure: true })
   const [keyForm, setKeyForm] = useState({ name: '', permissions: [] as string[], rateLimit: 1000, expiresAt: '' })
 
@@ -396,8 +416,12 @@ export function IntegrationsPage() {
                   {ENTITY_TYPES.map(et => <option key={et} value={et}>{et}</option>)}
                 </Select>
               </div>
-              <div><label htmlFor={fid('in-field-mapping')} style={labelS}>{t('admin.integrations.form.fieldMapping')}</label><textarea id={fid('in-field-mapping')} style={textareaS} value={inForm.fieldMapping} onChange={e => setInForm({ ...inForm, fieldMapping: e.target.value })} /></div>
-              <div><label htmlFor={fid('in-default-values')} style={labelS}>{t('admin.integrations.form.defaultValues')}</label><textarea id={fid('in-default-values')} style={textareaS} value={inForm.defaultValues} onChange={e => setInForm({ ...inForm, defaultValues: e.target.value })} /></div>
+              <div><label htmlFor={fid('in-field-mapping')} style={labelS}>{t('admin.integrations.form.fieldMapping')}</label><textarea id={fid('in-field-mapping')} style={textareaS} value={inForm.fieldMapping} onChange={e => setInForm({ ...inForm, fieldMapping: e.target.value })} aria-describedby={fid('in-targets')} /></div>
+              {/* D-25: i bersagli che il server scrive davvero. Fuori da questo
+                  elenco il salvataggio rifiuta, invece di accettare la voce e
+                  poi scartarla alla consegna con un 201 Created. */}
+              <p id={fid('in-targets')} style={hintS}>{t('admin.integrations.form.allowedTargets', { fields: allowedTargets.join(', ') })}</p>
+              <div><label htmlFor={fid('in-default-values')} style={labelS}>{t('admin.integrations.form.defaultValues')}</label><textarea id={fid('in-default-values')} style={textareaS} value={inForm.defaultValues} onChange={e => setInForm({ ...inForm, defaultValues: e.target.value })} aria-describedby={fid('in-targets')} /></div>
               <div><label htmlFor={fid('in-transform-script')} style={labelS}>{t('admin.integrations.form.transformScript')}</label><textarea id={fid('in-transform-script')} style={textareaS} value={inForm.transformScript} onChange={e => setInForm({ ...inForm, transformScript: e.target.value })} /></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>

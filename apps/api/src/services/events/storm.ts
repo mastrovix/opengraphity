@@ -162,8 +162,8 @@ export async function getStormState(tenantId: string, sourceId: string): Promise
 async function refreshStormGauge(): Promise<void> {
   const session = getSession()
   try {
-    // tenant-ok: metrica di processo su tutte le sorgenti in tempesta
     const row = await runQueryOne<{ n: unknown }>(session, `
+      // tenant-ok: metrica di processo su tutte le sorgenti in tempesta
       MATCH (w:InboundWebhook)
       WHERE w.storm_since IS NOT NULL
       RETURN count(w) AS n
@@ -504,8 +504,8 @@ export async function endCooledStorms(now: string = new Date().toISOString()): P
     fetchPage: async (cursor, limit) => {
       const session = getSession()
       try {
-        // tenant-ok: job di manutenzione su tutti i tenant; ogni sorgente è poi trattata nel suo tenant
         const rows = await runQuery<{ props: Props }>(session, `
+          // tenant-ok: job di manutenzione su tutti i tenant; ogni sorgente è poi trattata nel suo tenant
           MATCH (w:InboundWebhook)
           WHERE w.storm_since IS NOT NULL AND w.id > $cursor
           RETURN properties(w) AS props

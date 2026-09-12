@@ -8,6 +8,8 @@ import { invalidateRulesCache } from '../../lib/rulesEngine.js'
 import { parseConditions, type ConditionOperator } from '../../lib/conditionEvaluator.js'
 import { parseActions, type ActionType } from '../../lib/actionExecutor.js'
 import { ValidationError } from '../../lib/errors.js'
+import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
+import type { Session } from 'neo4j-driver'
 
 type Props = Record<string, unknown>
 
@@ -71,6 +73,90 @@ export function assertActionsJson(raw: unknown): string | null {
     }
   })
   return raw
+}
+
+// ── Bersagli di passo in scrittura (ondata 8 · B-18) ─────────────────────────
+
+/**
+ * Valida i **nomi di passo** che un'automazione nomina, contro i passi veri
+ * del workflow di QUESTO cliente: `transition_workflow.to_step` e le
+ * condizioni di uguaglianza su `status`.
+ *
+ * ## Il difetto
+ * `assertActionsJson` controllava il *tipo* dell'azione ma non il suo
+ * bersaglio. Una regola che punta a un passo che non esiste (rinominato,
+ * tolto, o mai esistito) risultava **attiva e sana**: a ogni esecuzione il
+ * motore rifiutava la transizione e nessuno lo vedeva. Dal vivo: la regola
+ * «Change emergency → approvazione immediata» di un tenant reale punta al
+ * passo `approved`, che il workflow change non ha — l'auto-approvazione delle
+ * emergency non è mai avvenuta.
+ *
+ * ## La regola
+ * Il nome del passo non lo decide questo file: lo si chiede al workflow del
+ * tenant (`getWorkflowSteps`, che unisce le definizioni attive dell'entità).
+ * Un bersaglio fuori elenco è rifiutato **nominando i passi esistenti**, così
+ * chi salva sa subito cosa scegliere. È la stessa forma di `assertStepActions`
+ * per le azioni di passo (ondata 2).
+ *
+ * Solo `equals`/`not_equals` sulle condizioni: `contains` su `status` può
+ * essere un prefisso legittimo, e `is_null` non nomina un passo.
+ */
+export async function assertStepTargets(
+  session: Session,
+  tenantId: string,
+  entityType: string,
+  opts: { actions?: string | null; conditions?: string | null },
+): Promise<void> {
+  const hasActionTarget    = opts.actions    != null && opts.actions.includes('transition_workflow')
+  const hasStatusCondition = opts.conditions != null && opts.conditions.includes('"status"')
+  if (!hasActionTarget && !hasStatusCondition) return
+
+  const steps = await getWorkflowSteps(session, tenantId, entityType)
+  const names = steps.map((s) => s.name)
+  const known = new Set(names)
+  const nameList = names.length > 0 ? names.join(', ') : '(nessuno)'
+
+  const reject = (what: string, value: string): never => {
+    throw new ValidationError(
+      names.length === 0
+        ? `${what} nomina il passo "${value}", ma il workflow "${entityType}" del tenant non ha nessun passo: ` +
+          `crea la definizione di workflow prima di configurare l'automazione.`
+        : `${what} nomina il passo "${value}", che non esiste nel workflow "${entityType}" di questo cliente. ` +
+          `Passi disponibili: ${nameList}.`,
+    )
+  }
+
+  if (hasActionTarget) {
+    parseActions(opts.actions).forEach((a, i) => {
+      if (a?.type !== 'transition_workflow') return
+      const toStep = a.params?.['to_step']
+      if (toStep == null || String(toStep).trim() === '') {
+        throw new ValidationError(`Invalid actions: item ${i} (transition_workflow) richiede il passo di arrivo (to_step).`)
+      }
+      if (!known.has(String(toStep))) reject(`Invalid actions: item ${i} (transition_workflow)`, String(toStep))
+    })
+  }
+
+  if (hasStatusCondition) {
+    parseConditions(opts.conditions ?? null).forEach((c, i) => {
+      if (c?.field !== 'status') return
+      if (c.operator !== 'equals' && c.operator !== 'not_equals') return
+      const value = c.value
+      if (value == null || String(value).trim() === '') return
+      if (!known.has(String(value))) reject(`Invalid conditions: item ${i} (status ${c.operator})`, String(value))
+    })
+  }
+}
+
+/** L'`entity_type` salvato sul nodo: non è modificabile, quindi si legge da lì per validare un aggiornamento. */
+async function entityTypeOf(session: Session, label: 'AutoTrigger' | 'BusinessRule', id: string, tenantId: string): Promise<string> {
+  const rows = await runQuery<{ entityType: string }>(session, `
+    MATCH (n:${label} {id: $id, tenant_id: $tenantId})
+    RETURN n.entity_type AS entityType
+  `, { id, tenantId })
+  const found = rows[0]?.entityType
+  if (!found) throw new ValidationError(`${label} ${id} non trovato`)
+  return found
 }
 
 function assertTimerDelay(value: unknown): number | null {
@@ -171,6 +257,7 @@ async function createAutoTrigger(_: unknown, args: { input: Props }, ctx: GraphQ
     throw new ValidationError('An on_timer trigger requires timerDelayMinutes > 0')
   }
   return withSession(async (session) => {
+    await assertStepTargets(session, ctx.tenantId, entityType, { actions, conditions })
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (t:AutoTrigger {
         id: $id, tenant_id: $tenantId,
@@ -214,6 +301,13 @@ async function updateAutoTrigger(_: unknown, args: { id: string; input: Props },
     }
   }
   return withSession(async (session) => {
+    if (args.input['actions'] !== undefined || args.input['conditions'] !== undefined) {
+      const entityType = await entityTypeOf(session, 'AutoTrigger', args.id, ctx.tenantId)
+      await assertStepTargets(session, ctx.tenantId, entityType, {
+        actions:    params['actions']    as string | null | undefined,
+        conditions: params['conditions'] as string | null | undefined,
+      })
+    }
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (t:AutoTrigger {id: $id, tenant_id: $tenantId})
       SET ${sets.join(', ')}
@@ -261,6 +355,7 @@ async function createBusinessRule(_: unknown, args: { input: Props }, ctx: Graph
   const conditions     = assertConditionsJson(input['conditions'])
   const actions        = assertActionsJson(input['actions'])
   return withSession(async (session) => {
+    await assertStepTargets(session, ctx.tenantId, entityType, { actions, conditions })
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (r:BusinessRule {
         id: $id, tenant_id: $tenantId,
@@ -307,6 +402,13 @@ async function updateBusinessRule(_: unknown, args: { id: string; input: Props }
     }
   }
   return withSession(async (session) => {
+    if (args.input['actions'] !== undefined || args.input['conditions'] !== undefined) {
+      const entityType = await entityTypeOf(session, 'BusinessRule', args.id, ctx.tenantId)
+      await assertStepTargets(session, ctx.tenantId, entityType, {
+        actions:    params['actions']    as string | null | undefined,
+        conditions: params['conditions'] as string | null | undefined,
+      })
+    }
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (r:BusinessRule {id: $id, tenant_id: $tenantId})
       SET ${sets.join(', ')}

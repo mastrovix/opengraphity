@@ -128,7 +128,7 @@ export class WorkflowEngine {
               ELSE 2
             END AS priority
           WHERE priority < 2
-          RETURN wd.id AS defId, startStep.id AS stepId, startStep.name AS stepName
+          RETURN wd.id AS defId, startStep.id AS stepId, startStep.name AS stepName, wd.category AS defCategory
           ORDER BY priority ASC, wd.version DESC, stepPriority ASC, startStep.name ASC
           LIMIT 1
         `
@@ -143,13 +143,37 @@ export class WorkflowEngine {
         // sbagliata.
         const anyDef = await tx.run(
           definitionId
-            ? `MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId, active: true}) RETURN wd.name AS name LIMIT 1`
-            : `MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true}) RETURN wd.name AS name LIMIT 1`,
+            ? `MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId, active: true})
+               OPTIONAL MATCH (wd)-[:HAS_STEP]->(st:WorkflowStep)
+                 WHERE coalesce(st.is_initial, st.type = 'start')
+               RETURN wd.name AS name, wd.category AS category, count(st) AS initials LIMIT 1`
+            : `MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
+               OPTIONAL MATCH (wd)-[:HAS_STEP]->(st:WorkflowStep)
+                 WHERE coalesce(st.is_initial, st.type = 'start')
+               WITH wd, count(st) AS initials
+               RETURN wd.name AS name, wd.category AS category, initials
+               ORDER BY initials DESC LIMIT 1`,
           defParams,
         )
         if (anyDef.records.length > 0) {
+          const row      = anyDef.records[0]!
+          const defName  = row.get('name') as string
+          const initials = toNumber(row.get('initials'))
+          // Terzo caso, che prima veniva scambiato per il secondo (B-13): la
+          // definizione c'è, ha un passo iniziale, e non è stata scelta perché
+          // la sua CATEGORIA non combacia con quella dell'entità e non esiste
+          // una definizione senza categoria su cui ripiegare. Dire «non ha
+          // nessuno step iniziale» mandava a cercare la cosa sbagliata.
+          if (initials > 0 && !definitionId) {
+            throw new Error(
+              `Nessuna definizione di workflow "${entityType}" del tenant "${tenantId}" si applica alla categoria ` +
+              `"${category ?? '(nessuna)'}": "${defName}" è riservata alla categoria "${row.get('category') as string ?? '(nessuna)'}" e non esiste una ` +
+              `definizione senza categoria su cui ripiegare. Allinea la categoria della definizione al vocabolario, ` +
+              `oppure aggiungi una definizione base.`,
+            )
+          }
           throw new Error(
-            `Workflow "${anyDef.records[0]!.get('name') as string}" (${entityType}, tenant "${tenantId}") non ha nessuno step iniziale: ` +
+            `Workflow "${defName}" (${entityType}, tenant "${tenantId}") non ha nessuno step iniziale: ` +
             `marca uno step come iniziale nel disegnatore.`,
           )
         }
@@ -160,6 +184,32 @@ export class WorkflowEngine {
       const defId    = rec.get('defId')    as string
       const stepId   = rec.get('stepId')   as string
       const stepName = rec.get('stepName') as string
+
+      // Variante per categoria (B-13): la scelta confronta `wd.category` con la
+      // categoria dell'entità per UGUAGLIANZA, e ripiega sulla definizione
+      // senza categoria. Il ripiego è giusto — un incident di categoria
+      // «network» deve seguire il flusso base — ma finora era **muto**: se il
+      // cliente rinominava il valore di vocabolario (`security` → `sicurezza`)
+      // la variante restava nel grafo e non veniva più scelta da nessuno, e i
+      // ticket di sicurezza seguivano il flusso base senza un solo avviso.
+      // Non si può decidere al posto suo (la variante potrebbe essere stata
+      // dismessa di proposito), ma si dice.
+      if (!definitionId && category != null && category !== '' && rec.get('defCategory') == null) {
+        const variants = await tx.run(`
+          MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
+          WHERE wd.category IS NOT NULL
+          RETURN collect(DISTINCT wd.category) AS categories
+        `, { tenantId, entityType })
+        const categories = (variants.records[0]?.get('categories') ?? []) as string[]
+        if (categories.length > 0) {
+          workflowLogger.warn(
+            { tenantId, entityType, entityId, category, variantCategories: categories },
+            `[workflow-engine] nessuna variante di workflow "${entityType}" ha categoria "${category}" ` +
+            `(varianti presenti: ${categories.join(', ')}): si usa la definizione base. ` +
+            `Se la variante doveva valere, allinea la categoria della definizione al valore del vocabolario.`,
+          )
+        }
+      }
 
       // Lo start step è cercato DENTRO la definizione scelta: gli id degli step
       // non sono garantiti unici tra definizioni (seed storici `${tenant}-step-new`).
@@ -254,6 +304,8 @@ export class WorkflowEngine {
             nextStep.id                   AS nextStepId,
             nextStep.name                 AS nextStepName,
             nextStep.type                 AS nextStepType,
+            nextStep.category             AS nextStepCategory,
+            coalesce(nextStep.is_terminal, nextStep.type = 'end') AS nextStepTerminal,
             nextStep.enter_actions        AS nextEnterActions,
             nextStep.timer_delay_minutes  AS timerDelayMinutes,
             nextStep.sub_workflow_id      AS subWorkflowId,
@@ -276,6 +328,25 @@ export class WorkflowEngine {
       const nextStepId        = rec.get('nextStepId')         as string
       const nextStepName      = rec.get('nextStepName')       as string
       const nextStepType      = rec.get('nextStepType')       as string
+      // Metadata del passo di arrivo: sono LORO a dire cos'è quel passo, non
+      // il suo nome (B-5 / B-20). `category` e `is_terminal` sono quello che il
+      // cliente vede e cambia nel disegnatore.
+      const nextStepCategory  = (rec.get('nextStepCategory') ?? null) as string | null
+      const nextStepTerminal  = Boolean(rec.get('nextStepTerminal'))
+      // Il passo di RISOLUZIONE si riconosce dalla categoria, come già fa
+      // `incidentStepInfo` lato API. Prima era `nextStepName === 'resolved'`:
+      // un cliente che chiamava «Risolto» (o «Chiuso tecnicamente») il proprio
+      // passo di risoluzione non vedeva più valorizzati `resolved_at` e
+      // `root_cause` — e da lì il digest «risolti oggi» restava a zero, in
+      // silenzio.
+      const nextStepResolves  = nextStepCategory === 'resolved'
+      // Una sola nozione di «terminale»: `is_terminal` con ripiego su
+      // `type = 'end'`, la stessa di `workflowHelpers`. Prima l'istanza
+      // diventava `completed` solo per `type = 'end'`, quindi un passo
+      // `standard` marcato terminale dal disegnatore (come `resolved` di
+      // fabbrica) lasciava l'istanza `active`: i contatori su `wi.status` e
+      // quelli su `is_terminal` dicevano cose diverse.
+      const wiStatus: WorkflowInstance['status'] = nextStepTerminal ? 'completed' : 'active'
       const timerDelayMinutes = rec.get('timerDelayMinutes')  as unknown
       const subWorkflowId     = rec.get('subWorkflowId')      as string | null
       const trigger           = rec.get('trigger')            as string | null
@@ -397,7 +468,7 @@ export class WorkflowEngine {
           durationMs,
           nextStepId,
           nextStepName,
-          wiStatus:     nextStepType === 'end' ? 'completed' : 'active',
+          wiStatus,
           execId,
           tenantId:     wi['tenant_id'] as string,
           triggeredBy:  input.triggeredBy,
@@ -409,16 +480,21 @@ export class WorkflowEngine {
         }
 
         // Sync dello status sull'entità — stessa transazione, label esplicita.
-        if (nextStepName === 'resolved') {
+        // `entity.status` è SEMPRE il nome del passo (anche per il passo di
+        // risoluzione: prima era il letterale `'resolved'`, che per il passo di
+        // fabbrica coincideva col nome e per qualunque altro no). Quello che la
+        // categoria `resolved` aggiunge è la data di risoluzione e la causa.
+        if (nextStepResolves) {
           await tx.run(`
             MATCH (entity:${label} {id: $entityId, tenant_id: $tenantId})
-            SET entity.status      = 'resolved',
+            SET entity.status      = $status,
                 entity.root_cause  = coalesce($rootCause, entity.root_cause),
                 entity.resolved_at = $now,
                 entity.updated_at  = $now
           `, {
             entityId:  wi['entity_id'] as string,
             tenantId:  wi['tenant_id'] as string,
+            status:    nextStepName,
             rootCause: input.notes ?? null,
             now,
           })
@@ -449,7 +525,7 @@ export class WorkflowEngine {
         entityId:     wi['entity_id']     as string,
         entityType,
         currentStep:  nextStepName,
-        status:       nextStepType === 'end' ? 'completed' : 'active',
+        status:       wiStatus,
         createdAt:    wi['created_at']    as string,
         updatedAt:    now,
       }
@@ -478,10 +554,18 @@ export class WorkflowEngine {
           const { Queue } = await import('bullmq')
           const { getRedisConnection } = await import('@opengraphity/events')
           const queue = new Queue('notification-jobs', { connection: getRedisConnection() })
+          // Il passo di arrivo si legge ADESSO solo per dire subito se l'arco
+          // manca (un passo di attesa senza uscita automatica è una definizione
+          // rotta, e l'amministratore lo deve sapere al primo ingresso). Chi
+          // esegue il job lo risolve di nuovo al momento della scadenza —
+          // in mezzo il workflow può essere cambiato (B-18): il nome nel
+          // payload è un'indicazione, non il bersaglio.
           const nextTransRes = await session.executeRead(tx =>
             tx.run(`
               MATCH (step:WorkflowStep {id: $stepId})-[tr:TRANSITIONS_TO {trigger: 'automatic'}]->(nextStep:WorkflowStep)
-              RETURN nextStep.name AS toStep LIMIT 1
+              RETURN nextStep.name AS toStep
+              ORDER BY coalesce(nextStep.step_order, 999), nextStep.name
+              LIMIT 1
             `, { stepId: nextStepId }),
           )
           const toStep = nextTransRes.records[0]?.get('toStep') as string | null

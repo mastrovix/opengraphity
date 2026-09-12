@@ -59,10 +59,15 @@ export function IncidentHeader({
   onTransitionClick,
   onRequestChange,
 }: IncidentHeaderProps) {
-  const { byName: stepByName } = useWorkflowSteps('incident')
+  const { byName: stepByName, isTerminal, categoryOf } = useWorkflowSteps('incident')
   // "Richiedi Change" è un'azione opzionale (non uno step del workflow):
-  // disponibile finché l'incident è aperto.
-  const canRequestChange = !['resolved', 'closed'].includes(incident.status)
+  // disponibile finché l'incident è aperto. «Aperto» lo dicono i METADATA del
+  // passo (terminale / categoria `resolved`), non i due nomi di fabbrica
+  // (B-22): con la lista di nomi si poteva chiedere una change su un incident
+  // fermo in un passo terminale aggiunto dal cliente («Annullato»), e non si
+  // poteva più chiederla su un passo di risoluzione rinominato… nel verso
+  // sbagliato, cioè sempre.
+  const canRequestChange = !isTerminal(incident.status) && categoryOf(incident.status) !== 'resolved'
   return (
     <div style={{ marginBottom: 24 }}>
       {/* Row 1 — back */}

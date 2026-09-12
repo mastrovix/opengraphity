@@ -385,7 +385,22 @@ describe('update_field', () => {
     await expect(runAction(action('update_field', { field: 'severity', value: 'low' }), instance, ctx())).rejects.toThrow('update_field: updateField callback not provided')
     const updateField = vi.fn(async () => {})
     await expect(runAction(action('update_field', { field: 'tenant_id', value: 'evil' }), instance, ctx({ updateField })))
-      .rejects.toThrow('update_field: field "tenant_id" is not in the allowed list (severity, priority, status, description, category)')
+      .rejects.toThrow('il campo "tenant_id" non è fra quelli che update_field può scrivere (severity, priority, description, category)')
+    expect(updateField).not.toHaveBeenCalled()
+  })
+
+  // Ondata 8 · B-9: `status` era nell'allow-list, e il pannello del disegnatore
+  // offriva `update_field` con tutti i campi dell'entità. Scriverlo da qui
+  // scavalca il motore: `entity.status` e `WorkflowInstance.current_step`
+  // divergono, il ticket si mostra chiuso mentre il processo è aperto.
+  it('status (e gli altri campi del motore) non sono scrivibili: il rifiuto indica la transizione', async () => {
+    const updateField = vi.fn(async () => {})
+    for (const field of ['status', 'workflow_step', 'workflow_instance_id']) {
+      const err = await runAction(action('update_field', { field, value: 'closed' }), instance, ctx({ updateField }))
+        .then(() => null, (e: unknown) => e as Error)
+      expect(err?.message, field).toContain(`il campo "${field}" lo scrive il motore dei workflow`)
+      expect(err?.message, field).toContain('usa una transizione')
+    }
     expect(updateField).not.toHaveBeenCalled()
   })
 

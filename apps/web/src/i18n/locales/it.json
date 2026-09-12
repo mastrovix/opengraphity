@@ -1040,7 +1040,13 @@
       "missingWarning_other": "{{count}} combinazioni senza valore ({{keys}}). Finché restano vuote, quando servono — all'apertura di un incident o all'arrivo di un allarme — l'operazione si ferma e lo dice: compilale qui.",
       "invalidWarning_one": "Una cella porta a un valore che non è più nel tuo vocabolario ({{keys}}): è il residuo di una rinomina, e a runtime è un errore. Scegli il valore nuovo.",
       "invalidWarning_other": "{{count}} celle portano a valori che non sono più nel tuo vocabolario ({{keys}}): è il residuo di una rinomina, e a runtime sono errori. Scegli i valori nuovi.",
-      "outOfVocabulary": "{{value}} — non più nel vocabolario"
+      "outOfVocabulary": "{{value}} — non più nel vocabolario",
+      "preApproved": {
+        "title": "Change pre-approvate",
+        "help": "Una change di un tipo pre-approvato salta la catena di approvazioni (il cambiamento pre-autorizzato dell'ITIL). Prima era il valore «standard» scritto nel codice: chi lo rinominava nel Dizionario perdeva la pre-approvazione senza saperlo.",
+        "none": "Nessun tipo pre-approvato: ogni change passerà dalle approvazioni.",
+        "saved": "Tipi pre-approvati salvati"
+      }
     }
   },
   "filter": {
@@ -1528,6 +1534,7 @@
         "entityType": "Tipo entità",
         "fieldMapping": "Mappatura dei campi (JSON)",
         "defaultValues": "Valori predefiniti (JSON)",
+        "allowedTargets": "Bersagli ammessi: {{fields}}. Una voce fuori da questo elenco viene rifiutata al salvataggio.",
         "transformScript": "Script di trasformazione",
         "url": "URL",
         "method": "Metodo",

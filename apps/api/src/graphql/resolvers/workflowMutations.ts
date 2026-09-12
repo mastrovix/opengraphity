@@ -6,6 +6,7 @@ import type { ActionContext } from '@opengraphity/workflow'
 import {
   NOTIFICATION_TARGETS, isTargetApplicable, applicableNotificationTargets,
   WORKFLOW_STEP_PURPOSES, isWorkflowStepPurpose,
+  UPDATE_FIELD_ALLOWED, updateFieldRejection,
 } from '@opengraphity/types'
 import { publish } from '@opengraphity/events'
 import { sseManager } from '@opengraphity/notifications'
@@ -184,6 +185,21 @@ export function assertStepActions(raw: string | null | undefined, label: string)
         { extensions: { code: 'BAD_USER_INPUT' } },
       )
     }
+    // `update_field` non può scrivere lo stato (B-9): la stessa allow-list che
+    // il motore applica a runtime, applicata qui — così il rifiuto arriva
+    // all'amministratore nel disegnatore e non dentro un log a ticket rotto.
+    if (type === 'update_field') {
+      const field = (action as { params?: Record<string, unknown> }).params?.['field']
+      if (field == null || String(field).trim() === '') {
+        throw new GraphQLError(`${label}[${i}]: update_field richiede il campo da scrivere (params.field).`, { extensions: { code: 'BAD_USER_INPUT' } })
+      }
+      const rejection = updateFieldRejection(String(field))
+      if (rejection) {
+        throw new GraphQLError(`${label}[${i}]: ${rejection}`, {
+          extensions: { code: 'BAD_USER_INPUT', field: String(field), allowedFields: [...UPDATE_FIELD_ALLOWED] },
+        })
+      }
+    }
     if (type === 'notify_rule') {
       const target = (action as { params?: Record<string, unknown> }).params?.['target']
       if (target != null && target !== '') {
@@ -250,6 +266,24 @@ export function normalizeStepPurpose(raw: string | null | undefined, label: stri
  */
 export const MARK_CUSTOMIZED = 'SET wd.customized_at = $customizedAt, wd.customized_by = $customizedBy'
 
+/**
+ * Come `MARK_CUSTOMIZED`, ma incrementa anche la **versione** della
+ * definizione (ondata 8).
+ *
+ * Cinque mutation del disegnatore cambiavano la definizione senza toccare
+ * `wd.version`: aggiungere un passo, modificarlo, e le tre sulle transizioni.
+ * Il lock ottimistico del disegnatore confronta le versioni, quindi due
+ * sessioni aperte sullo stesso workflow non si accorgevano di quelle
+ * modifiche — l'ultima salvava sopra l'altra in silenzio. `saveWorkflowChanges`
+ * e la rimozione di un passo incrementavano già per conto loro e continuano a
+ * usare `MARK_CUSTOMIZED`, altrimenti conterebbero due volte.
+ *
+ * Usa `$customizedAt` anche per `updated_at`: è lo stesso istante, e non
+ * chiede un parametro in più alle query che non ce l'hanno.
+ */
+export const MARK_CUSTOMIZED_BUMP =
+  'SET wd.version = wd.version + 1, wd.updated_at = $customizedAt, wd.customized_at = $customizedAt, wd.customized_by = $customizedBy'
+
 /** Parametri di `MARK_CUSTOMIZED`; da unire a quelli della query. */
 export function customizedParams(ctx: GraphQLContext): { customizedAt: string; customizedBy: string } {
   return { customizedAt: new Date().toISOString(), customizedBy: ctx.userId }
@@ -275,7 +309,7 @@ export async function updateWorkflowStep(
             s.enter_actions = CASE WHEN $enterActions IS NOT NULL THEN $enterActions ELSE s.enter_actions END,
             s.exit_actions  = CASE WHEN $exitActions  IS NOT NULL THEN $exitActions  ELSE s.exit_actions  END,
             s.purpose       = CASE WHEN $purposeGiven THEN $purpose ELSE s.purpose END
-        ${MARK_CUSTOMIZED}
+        ${MARK_CUSTOMIZED_BUMP}
         RETURN s, wd.entity_type AS entityType
       `, {
         definitionId, stepName, tenantId: ctx.tenantId, label,
@@ -322,7 +356,7 @@ export async function updateWorkflowTransition(
         // tenant-ok: la definizione dello step di partenza è scopata alla riga dopo
         MATCH (src:WorkflowStep)-[t:TRANSITIONS_TO {id: $transitionId}]->()
         MATCH (wd:WorkflowDefinition {id: src.definition_id, tenant_id: $tenantId})
-        ${MARK_CUSTOMIZED}
+        ${MARK_CUSTOMIZED_BUMP}
         SET t.label          = coalesce($label, t.label),
             t.trigger        = coalesce($trigger, t.trigger),
             t.requires_input = $requiresInput,
@@ -388,7 +422,7 @@ export async function addWorkflowTransition(
           requires_input: false, input_field: null, condition: null, timer_hours: null,
           source_handle: $sourceHandle, target_handle: $targetHandle
         }]->(to)
-        ${MARK_CUSTOMIZED}
+        ${MARK_CUSTOMIZED_BUMP}
         RETURN tr, from.name AS fromStep, to.name AS toStep, wd.entity_type AS entityType
       `, {
         definitionId, tenantId: ctx.tenantId, fromStepName, toStepName, id,
@@ -430,7 +464,7 @@ export async function removeWorkflowTransition(
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
         // tenant-ok: step della definizione appena scopata
         MATCH (:WorkflowStep {definition_id: $definitionId})-[tr:TRANSITIONS_TO {id: $transitionId}]->()
-        ${MARK_CUSTOMIZED}
+        ${MARK_CUSTOMIZED_BUMP}
         WITH wd, tr, tr.id AS deletedId
         DELETE tr
         RETURN deletedId, wd.entity_type AS entityType

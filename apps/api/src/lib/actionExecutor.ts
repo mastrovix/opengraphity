@@ -200,11 +200,23 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
         `, { entityId: ctx.entityId, tenantId: ctx.tenantId }))
         if (wiRes.records.length === 0) throw new Error('No workflow instance found')
         const instanceId = wiRes.records[0].get('instanceId') as string
-        await workflowEngine.transition(session, {
+        const result = await workflowEngine.transition(session, {
           instanceId, toStepName: toStep,
           triggeredBy: 'system', triggerType: 'automatic',
           notes: `Auto: ${ctx.sourceName}`,
         }, { userId: ctx.userId, entityData: ctx.entity })
+        // B-18: l'esito del motore era IGNORATO. Un `to_step` che non esiste
+        // più (passo rinominato o tolto dal disegnatore), o un arco non
+        // percorribile, faceva risultare l'azione eseguita e la regola sana:
+        // il ticket non si muoveva e nessuno lo sapeva. Ora è un errore
+        // dell'azione, che nomina il bersaglio e finisce nel risultato della
+        // regola (`matched + error`) e nei log.
+        if (!result.success) {
+          throw new Error(
+            `transition_workflow: la transizione verso "${toStep}" non è avvenuta (${result.error ?? 'errore ignoto del motore'}). ` +
+            `Controlla che "${toStep}" sia ancora un passo del workflow ${ctx.entityType} e che ci sia un arco dal passo corrente.`,
+          )
+        }
       }, true)
       break
     }

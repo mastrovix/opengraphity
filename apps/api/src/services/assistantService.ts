@@ -22,6 +22,11 @@ import { getEmbedder, vectorIndexName } from './embeddings.js'
 // fissa l'assistente non trovava i CI dei tipi creati dal cliente e rispondeva
 // «non trovato» — un buco invisibile a chi fa la domanda.
 import { ciLabelsForTenant } from '../lib/ciLabelsForTenant.js'
+// «Aperto» e «concluso» vengono dai metadata dei passi del workflow di QUESTO
+// cliente (ondata 8 · B-22): le liste di nomi scritte a mano contavano come
+// aperto un passo terminale aggiunto dal cliente, e nominavano stati
+// (`completed`, `cancelled`) che nessun workflow produce.
+import { concludedStatusNames } from '../lib/statusStepNames.js'
 import { logger } from '../lib/logger.js'
 
 const log = logger.child({ module: 'assistant' })
@@ -149,15 +154,19 @@ function buildTools(tenantId: string) {
         WITH ci, dipendenti_diretti, dipendenti_secondo_livello,
              collect(DISTINCT cap.name)[..5] AS business_capability
         OPTIONAL MATCH (inc:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(ci)
-        WHERE NOT inc.status IN ['closed', 'resolved']
+        WHERE NOT inc.status IN $incidentConcluded
         WITH ci, dipendenti_diretti, dipendenti_secondo_livello, business_capability,
              collect(DISTINCT inc.number) AS incident_aperti
         OPTIONAL MATCH (ch:Change {tenant_id: $tenantId})-[:AFFECTS]->(ci)
-        WHERE NOT ch.status IN ['completed', 'closed', 'cancelled', 'failed'] AND coalesce(ch.deleted, false) = false
+        WHERE NOT ch.status IN $changeConcluded AND coalesce(ch.deleted, false) = false
         RETURN ci.name AS nome, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS tipo, ci.environment AS ambiente,
                dipendenti_diretti, dipendenti_secondo_livello, business_capability,
                incident_aperti, collect(DISTINCT ch.number) AS change_in_corso
-      `, { tenantId, labels: await ciLabelsForTenant(tenantId), key: ci_id_o_nome })
+      `, {
+        tenantId, labels: await ciLabelsForTenant(tenantId), key: ci_id_o_nome,
+        incidentConcluded: await concludedStatusNames(tenantId, 'incident'),
+        changeConcluded:   await concludedStatusNames(tenantId, 'change'),
+      })
       return rows.length ? j(rows[0]) : j({ errore: `CI "${ci_id_o_nome}" non trovato — prova cerca_ci per il nome esatto` })
     },
   })
@@ -168,8 +177,8 @@ function buildTools(tenantId: string) {
     inputSchema: {
       type: 'object',
       properties: {
-        stato:       { type: 'string', description: 'Filtro stato esatto (es. new, assigned, in_progress, resolved, closed)' },
-        solo_aperti: { type: 'boolean', description: 'true = escludi resolved e closed' },
+        stato:       { type: 'string', description: 'Filtro stato esatto: il NOME del passo di workflow di questo cliente' },
+        solo_aperti: { type: 'boolean', description: 'true = escludi i ticket conclusi (passi risolti e terminali del workflow di questo cliente)' },
         severity:    { type: 'string', description: 'Filtro severity (low, medium, high, critical)' },
         categoria:   { type: 'string', description: 'Filtro categoria' },
         limit:       { type: 'number', description: 'Max incident elencati (default 15; il totale è comunque esatto)' },
@@ -186,7 +195,7 @@ function buildTools(tenantId: string) {
         WHERE ($stato IS NULL OR i.status = $stato)
           AND ($severity IS NULL OR i.severity = $severity)
           AND ($categoria IS NULL OR i.category = $categoria)
-          AND ($soloAperti = false OR NOT i.status IN ['resolved', 'closed'])
+          AND ($soloAperti = false OR NOT i.status IN $concluded)
         WITH i ORDER BY i.created_at DESC
         WITH collect({numero: i.number, titolo: i.title, stato: i.status,
                       severity: i.severity, categoria: i.category, creato: i.created_at}) AS tutti
@@ -197,6 +206,7 @@ function buildTools(tenantId: string) {
         severity: severity ?? null,
         categoria: categoria ?? null,
         soloAperti: solo_aperti === true,
+        concluded: solo_aperti === true ? await concludedStatusNames(tenantId, 'incident') : [],
       })
       const r = rows[0] ?? { totale: 0, incident: [] }
       return j({ totale: r.totale, elencati: Array.isArray(r.incident) ? r.incident.length : 0, incident: r.incident })
@@ -215,7 +225,7 @@ function buildTools(tenantId: string) {
       const { limit } = input as { limit?: number }
       const rows = await readQuery(`
         MATCH (ch:Change {tenant_id: $tenantId})
-        WHERE NOT ch.status IN ['completed', 'closed', 'cancelled', 'failed'] AND coalesce(ch.deleted, false) = false
+        WHERE NOT ch.status IN $concluded AND coalesce(ch.deleted, false) = false
         OPTIONAL MATCH (ch)-[:AFFECTS]->(ci)
         WITH ch, collect(DISTINCT ci.name) AS cis
         RETURN ch.number AS numero, ch.title AS titolo, ch.status AS stato,
@@ -223,7 +233,7 @@ function buildTools(tenantId: string) {
                ch.planned_start AS inizio_pianificato, cis AS ci_toccati
         ORDER BY ch.created_at DESC
         LIMIT ${clampLimit(limit, 10, 25)}
-      `, { tenantId })
+      `, { tenantId, concluded: await concludedStatusNames(tenantId, 'change') })
       return j(rows)
     },
   })

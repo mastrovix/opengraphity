@@ -198,4 +198,28 @@ describe('addTicketComment — ownership check', () => {
       authorEmail: 'mario@test.io',
     })
   })
+
+  /**
+   * Ondata 2 → 8: il commento nasceva SENZA `entity_type`/`entity_id`, legato
+   * all'incident solo dalla relazione `HAS_ENTITY_COMMENT`. Il lato operatore
+   * legge per proprietà (`resolvers/comments.ts`,
+   * `MATCH (c:EntityComment {tenant_id, entity_type, entity_id})`): quel
+   * commento non compariva nel ticket, quindi il cliente scriveva e nessuno
+   * leggeva. Il difetto l'ha trovato il lint `tenantOnCreate`.
+   */
+  it('il commento porta entity_type/entity_id, o non lo vede il lato operatore', async () => {
+    mockSession.executeRead
+      .mockResolvedValueOnce({ records: [makeRecord({ createdBy: 'user-1' })] })
+      .mockResolvedValueOnce({ records: [makeRecord({ name: 'Mario Rossi', email: 'mario@test.io' })] })
+
+    await addTicketComment(null, { ticketId: 'inc-42', body: 'ciao' }, ctx)
+
+    const tx = { run: vi.fn() }
+    await (mockSession.executeWrite.mock.calls[0]![0] as (t: typeof tx) => unknown)(tx)
+    const [cypher, params] = tx.run.mock.calls[0]! as [string, Record<string, unknown>]
+    expect(cypher).toContain("entity_type:  'incident'")
+    expect(cypher).toContain('entity_id:    $ticketId')
+    expect(cypher).toContain('CREATE (i)-[:HAS_ENTITY_COMMENT]->(c)')
+    expect(params['ticketId']).toBe('inc-42')
+  })
 })

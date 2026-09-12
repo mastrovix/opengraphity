@@ -132,11 +132,11 @@ describe('createApiKey — solo l\'hash è persistito', () => {
   })
 
   it('admin → chiave og_live_… restituita in chiaro una volta; nei parametri Cypher c\'è solo sha256 + prefisso', async () => {
-    const out = await integrationsResolvers.Mutation.createApiKey(null, { input: { name: 'CI bot', permissions: ['read'], rateLimit: 100 } }, admin)
+    const out = await integrationsResolvers.Mutation.createApiKey(null, { input: { name: 'CI bot', permissions: ['incidents:read'], rateLimit: 100 } }, admin)
 
     expect(out.key).toMatch(/^og_live_[0-9a-f]{64}$/)
     expect(out.keyPrefix).toBe(out.key.slice(0, 16))
-    expect(out).toMatchObject({ name: 'CI bot', permissions: ['read'] })
+    expect(out).toMatchObject({ name: 'CI bot', permissions: ['incidents:read'] })
 
     const { cypher, params } = lastQuery()
     expect(cypher).toContain('CREATE (k:ApiKey {id: $id, tenant_id: $t')
@@ -396,5 +396,64 @@ describe('deleteInboundWebhook — D4.1: la sorgente se ne va e i suoi allarmi r
     vi.mocked(deleteSourceAndResolveEvents).mockRejectedValueOnce(new Error('1 re-evaluations failed'))
     await expect(integrationsResolvers.Mutation.deleteInboundWebhook(null, { id: 'iw-1' }, admin)).rejects.toThrow(/re-evaluations failed/)
     expect(invalidateSourceCache).toHaveBeenLastCalledWith('tenant-1', 'iw-1')
+  })
+})
+
+// ── Ondata 8 · D-25 / D-26: l'interfaccia offre ciò che il server applica ────
+
+describe('mappa dei campi di un webhook di ticket: solo i bersagli che il server scrive (D-25)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(runQuery).mockResolvedValue([{ props: { id: 'iw-1', name: 'Zabbix', entity_type: 'incident', field_mapping: '{}' } }] as never)
+  })
+
+  it.each([
+    ['fieldMapping',  { fieldMapping: '{"alert_name":"title","cost_center":"costCenter"}' }, /"costCenter".*not a field.*Allowed targets: title, description, severity, category/s],
+    ['defaultValues', { fieldMapping: '{"alert_name":"title"}', defaultValues: '{"assignedTo":"u-1"}' }, /"assignedTo".*Allowed targets/s],
+  ])('bersaglio fuori elenco in %s → rifiutato al salvataggio, nominando gli ammessi', async (_where, extra, pattern) => {
+    await expect(integrationsResolvers.Mutation.createInboundWebhook(null, { input: { name: 'Zabbix', entityType: 'incident', ...extra } }, admin))
+      .rejects.toThrow(pattern)
+    expect(runQuery).not.toHaveBeenCalled()
+  })
+
+  it('i quattro bersagli di un incident passano, e quelli di un problem sono i suoi', async () => {
+    await integrationsResolvers.Mutation.createInboundWebhook(null, { input: { name: 'Z', entityType: 'incident', fieldMapping: '{"a":"title","b":"description","c":"severity","d":"category"}' } }, admin)
+    expect(runQuery).toHaveBeenCalled()
+    // `severity` non è un campo del problem: il problem ha `priority`
+    await expect(integrationsResolvers.Mutation.createInboundWebhook(null, { input: { name: 'P', entityType: 'problem', fieldMapping: '{"a":"severity"}' } }, admin))
+      .rejects.toThrow(/"severity".*Allowed targets: title, description, priority, category/s)
+  })
+
+  it('una sorgente di monitoraggio (entityType = event) non passa da questo elenco: ha la sua validazione per connettore', async () => {
+    await integrationsResolvers.Mutation.createInboundWebhook(null, { input: { name: 'AM', entityType: 'event', connectorKind: 'alertmanager', fieldMapping: '{}' } }, admin)
+    expect(runQuery).toHaveBeenCalled()
+  })
+})
+
+describe('permessi di una chiave API: solo quelli che una rotta applica (D-26)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(runQuery).mockResolvedValue([] as never)
+  })
+
+  it.each([
+    [['ci:write'], /"ci:write".*Allowed: /s],                  // offerto un tempo, richiesto da nessuna rotta
+    [['incident:read'], /"incident:read".*Allowed: /s],        // refuso al singolare
+    ['non-una-lista', /permissions must be a list of strings/],
+  ])('permesso non applicato %j → rifiutato in scrittura, nessuna CREATE', async (permissions, pattern) => {
+    await expect(integrationsResolvers.Mutation.createApiKey(null, { input: { name: 'x', permissions } }, admin))
+      .rejects.toThrow(pattern)
+    expect(runQuery).not.toHaveBeenCalled()
+  })
+
+  it('kb:write è ammesso (lo richiede POST /api/v1/import/kb-articles) e arriva ai parametri', async () => {
+    await integrationsResolvers.Mutation.createApiKey(null, { input: { name: 'importer', permissions: ['kb:read', 'kb:write'] } }, admin)
+    expect(lastQuery().params['permissions']).toEqual(['kb:read', 'kb:write'])
+  })
+
+  it('updateApiKey valida allo stesso modo', async () => {
+    await expect(integrationsResolvers.Mutation.updateApiKey(null, { id: 'k-1', input: { permissions: ['ci:write'] } }, admin))
+      .rejects.toThrow(/"ci:write"/)
+    expect(runQuery).not.toHaveBeenCalled()
   })
 })

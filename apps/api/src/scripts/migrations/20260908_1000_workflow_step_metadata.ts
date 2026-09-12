@@ -18,6 +18,17 @@
  * I nomi di fabbrica restano una **derivazione di ripiego**: sono i seed a
  * dichiarare i metadati dei propri passi (packages/workflow/src/seed*.ts,
  * scripts/lib/workflowDefinitions.ts).
+ *
+ * D-8: questa derivazione dal nome è una **migrazione storica**, non una regola
+ * del prodotto. Serviva a dare metadati ai passi nati prima che i metadati
+ * esistessero, e resta qui solo per quelli. Il prodotto non riconosce un passo
+ * dal nome da nessuna parte: decidono `purpose`, `category`, `is_terminal`
+ * (ondata 4), che il cliente vede e modifica nel disegnatore.
+ *
+ * **Regola di linea per le migrazioni future: mai derivare qualcosa dal nome di
+ * un passo, di un valore o di un tipo.** Se un dato manca, si dichiara dove
+ * nasce. La tabella «personalizzabile / condiviso / riservato» sta in
+ * `docs/CUSTOMIZATION.md`.
  */
 import type { Migration, Queryable } from '@opengraphity/neo4j'
 

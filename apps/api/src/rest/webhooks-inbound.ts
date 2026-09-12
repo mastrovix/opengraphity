@@ -20,6 +20,7 @@ import * as incidentService from '../services/incidentService.js'
 import * as problemService from '../services/problemService.js'
 import { sourceConfigOf, normalizeBatchWithConfig, rejectionSummary } from '../services/eventService.js'
 import { enqueueEvents } from '../jobs/eventIngestWorker.js'
+import { assertInboundTicketTargets } from '../lib/inboundTicketTargets.js'
 
 const log = logger.child({ module: 'webhook-inbound' })
 const router: ExpressRouter = Router()
@@ -207,6 +208,14 @@ router.post('/webhooks/inbound/:hookId', json({ limit: WEBHOOK_BODY_LIMIT }), as
     for (const [field, value] of Object.entries(defaults)) {
       if (mapped[field] === undefined || mapped[field] === null) mapped[field] = value
     }
+
+    // D-25: i bersagli fuori elenco venivano costruiti qui e poi SCARTATI dallo
+    // switch di creazione, con risposta 201 e l'id dell'entità: l'integrazione
+    // «funzionava» e perdeva metà dei dati. Dall'ondata 8 il salvataggio li
+    // rifiuta (`validateInboundConfig`), quindi qui possono arrivare solo da
+    // una configurazione più vecchia della regola: è un errore della
+    // consegna, che il `catch` scrive in `last_error` sulla sorgente.
+    assertInboundTicketTargets(entityType, Object.keys(mapped), 'field_mapping/default_values')
 
     // A webhook that produces no title is misconfigured — refuse rather than
     // fabricate a placeholder entity.

@@ -10,6 +10,7 @@ import { useQuery } from '@apollo/client/react'
 import { GET_TEAMS, GET_WORKFLOW_LIST, GET_USERS } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { useEntityFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
+import { UPDATE_FIELD_ALLOWED } from '@opengraphity/types'
 import { fieldTypeLabel } from '@/lib/automationOperators'
 import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
@@ -51,6 +52,9 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
     .filter((s, i, arr) => arr.findIndex(x => x.name === s.name) === i)
 
   const selectedFieldMeta = fieldMetas.find(f => f.name === params['field'])
+  // `update_field` (vocabolario workflow_step) scrive solo questi campi: la
+  // stessa allow-list che il motore applica a runtime e l'API in scrittura.
+  const updatableFields = fieldMetas.filter(f => (UPDATE_FIELD_ALLOWED as readonly string[]).includes(f.name))
 
   const text = (key: string, label: string, placeholder = '', type = 'text') => (
     <Labeled key={key} label={label}>
@@ -204,10 +208,23 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
           <Labeled label="field">
+            {/*
+              Solo i campi che `update_field` sa davvero scrivere
+              (UPDATE_FIELD_ALLOWED, vocabolario unico in @opengraphity/types).
+              Prima la tendina offriva TUTTI i campi dell'entità — compreso
+              `status`, che il motore dei workflow scrive da sé: configurarlo
+              qui faceva divergere lo stato del ticket dal passo del processo,
+              e ogni altro campo fuori lista falliva a runtime con l'azione già
+              salvata (B-9).
+            */}
             <Select style={selectS} value={params['field'] ?? 'severity'} onChange={e => onChange('field', e.target.value)}>
-              {fieldMetas.filter(f => f.fieldType !== 'user' && f.fieldType !== 'team').map(f => (
+              {updatableFields.map(f => (
                 <option key={f.name} value={f.name}>{f.label} ({fieldTypeLabel(f.fieldType)})</option>
               ))}
+              {/* Valore già salvato ma non più ammesso: resta visibile invece di sembrare un altro campo. */}
+              {params['field'] && !updatableFields.some(f => f.name === params['field']) && (
+                <option value={params['field']}>{params['field']} (non ammesso)</option>
+              )}
             </Select>
           </Labeled>
           {/* Testo libero: il valore può essere un template ({field}), non solo un enum */}

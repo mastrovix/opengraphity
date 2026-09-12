@@ -20,6 +20,7 @@
 import { GraphQLError } from 'graphql'
 import { runQuery, runQueryOne } from '../ci-utils.js'
 import { logger } from '../../../lib/logger.js'
+import { isPreApprovedChangeType, preApprovedChangeTypes } from '../../../lib/changePolicy.js'
 
 type Session = Parameters<typeof runQuery>[0]
 
@@ -56,7 +57,9 @@ export async function getApprovalGateState(session: Session, changeId: string, t
  */
 export async function assertAllApprovalsSatisfied(session: Session, changeId: string, tenantId: string): Promise<void> {
   const s = await getApprovalGateState(session, changeId, tenantId)
-  if (s.changeType === 'standard') return
+  // Pre-approvata: quali tipi lo sono è dato del cliente (lib/changePolicy.ts),
+  // non il letterale `standard` — che un cliente può aver rinominato.
+  if (await isPreApprovedChangeType(tenantId, s.changeType)) return
   if (s.total === 0) {
     throw new GraphQLError('Requisiti di approvazione non ancora creati: la change non può essere approvata', { extensions: { code: 'CONFLICT' } })
   }
@@ -71,7 +74,7 @@ export async function assertAllApprovalsSatisfied(session: Session, changeId: st
 /** True quando tutti i requisiti sono soddisfatti (per l'auto-advance). */
 export async function areAllApprovalsSatisfied(session: Session, changeId: string, tenantId: string): Promise<boolean> {
   const s = await getApprovalGateState(session, changeId, tenantId)
-  if (s.changeType === 'standard') return true
+  if (await isPreApprovedChangeType(tenantId, s.changeType)) return true
   return s.total > 0 && s.hasChangeManager && s.pending === 0
 }
 
@@ -86,7 +89,7 @@ export async function createChangeApprovals(session: Session, changeId: string, 
     RETURN c.change_type AS changeType
   `, { changeId, tenantId })
   if (!change) throw new GraphQLError(`Change ${changeId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
-  if (change.changeType === 'standard') return
+  if (await isPreApprovedChangeType(tenantId, change.changeType)) return
 
   const cmTeam = await runQueryOne<{ id: string }>(session, `
     MATCH (cm:Team {tenant_id: $tenantId, is_change_manager: true})
@@ -128,14 +131,16 @@ export async function createChangeApprovals(session: Session, changeId: string, 
  * date sotto un gate senza CM non valgono e ripartono.
  */
 export async function backfillChangeManagerApprovals(session: Session, tenantId: string, cmTeamId: string): Promise<number> {
+  // I tipi pre-approvati sono dato del cliente, non il letterale `standard`.
+  const preApproved = await preApprovedChangeTypes(tenantId)
   const rows = await runQuery<{ id: string }>(session, `
     MATCH (c:Change {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
     WHERE s.purpose = 'approval'
       AND coalesce(c.deleted, false) = false
-      AND coalesce(c.change_type, 'normal') <> 'standard'
+      AND NOT coalesce(c.change_type, '') IN $preApproved
       AND NOT EXISTS { (c)-[:HAS_APPROVAL]->(:ChangeApproval {kind: 'change_manager'}) }
     RETURN c.id AS id
-  `, { tenantId })
+  `, { tenantId, preApproved: [...preApproved] })
   for (const r of rows) await createChangeApprovals(session, r.id, tenantId)
   if (rows.length > 0) logger.info({ tenantId, cmTeamId, n: rows.length }, '[approvalGate] requisiti ricreati per change già in approvazione senza Change Manager')
   return rows.length

@@ -49,6 +49,16 @@ vi.mock('../embeddings.js', () => ({
   getEmbedder:     vi.fn(() => ({ embed: vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2])) })),
   vectorIndexName: vi.fn((label: string) => `${label.toLowerCase()}_embedding_test`),
 }))
+// ── Ondata 8 (B-22): «aperto» e «concluso» vengono dai passi del workflow ────
+// I passi hanno nomi del CLIENTE (`sistemato`, `archiviato`, `archiviata`): il
+// servizio non deve conoscere `resolved`/`closed`/`completed`, deve chiedere.
+// Il modulo è mockato per non aprire una seconda sessione Neo4j nei tool (la
+// derivazione vera è provata in workflowHelpers/statusStepNames).
+vi.mock('../../lib/statusStepNames.js', () => ({
+  concludedStatusNames: vi.fn(async (_t: string, entityType: string) =>
+    entityType === 'change' ? ['archiviata'] : ['sistemato', 'archiviato']),
+  statusNamesForClasses: vi.fn(async () => ['archiviato']),
+}))
 vi.mock('../../lib/logger.js', () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
@@ -223,6 +233,25 @@ describe('tool dell\'assistente — tenant scoping e sola lettura', () => {
     }
   })
 
+  // B-22: incident aperti e change in corso dentro analisi_impatto e
+  // change_aperti si riconoscono dai passi del workflow del cliente. Prima le
+  // liste erano scritte a mano e contenevano valori che nessun workflow produce
+  // (`completed`, `cancelled`), quindi una change ferma in un passo terminale
+  // aggiunto dal cliente risultava «in corso».
+  it('analisi_impatto e change_aperti escludono i passi conclusivi del workflow del cliente', async () => {
+    const tools = await toolsFor(TENANT)
+    vi.mocked(runQuery).mockClear()
+    await tools.get('analisi_impatto')!.run({ ci_id_o_nome: 'db-01' })
+    expect(queries()[0]!.params).toMatchObject({
+      incidentConcluded: ['sistemato', 'archiviato'],
+      changeConcluded:   ['archiviata'],
+    })
+
+    vi.mocked(runQuery).mockClear()
+    await tools.get('change_aperti')!.run({})
+    expect(queries()[0]!.params['concluded']).toEqual(['archiviata'])
+  })
+
   it('apre una sessione READ e la chiude anche se la query fallisce', async () => {
     const tools = await toolsFor(TENANT)
     vi.mocked(getSession).mockClear(); h.session.close.mockClear()
@@ -254,7 +283,14 @@ describe('tool dell\'assistente — tenant scoping e sola lettura', () => {
   it('lista_incident: filtri assenti → null (query neutra), solo_aperti → soloAperti boolean; conteggio esatto anche con elenco troncato', async () => {
     const tools = await toolsFor(TENANT)
     await tools.get('lista_incident')!.run({})
-    expect(queries()[0]!.params).toEqual({ tenantId: TENANT, stato: null, severity: null, categoria: null, soloAperti: false })
+    expect(queries()[0]!.params).toEqual({ tenantId: TENANT, stato: null, severity: null, categoria: null, soloAperti: false, concluded: [] })
+
+    // solo_aperti → i passi CONCLUSIVI del workflow di questo cliente (nomi suoi),
+    // non i letterali `['resolved','closed']`.
+    vi.mocked(runQuery).mockClear()
+    await tools.get('lista_incident')!.run({ solo_aperti: true })
+    expect(queries()[0]!.params['concluded']).toEqual(['sistemato', 'archiviato'])
+    expect(queries()[0]!.cypher).toContain('NOT i.status IN $concluded')
 
     vi.mocked(runQuery).mockResolvedValue([{ totale: 120, incident: [{ numero: 'a' }] }])
     expect(JSON.parse(await tools.get('lista_incident')!.run({ solo_aperti: true, limit: 1 })))

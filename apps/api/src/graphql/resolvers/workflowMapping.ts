@@ -112,7 +112,6 @@ export function mapWorkflowDefinition(
     name:          wd['name']            as string,
     entityType:    wd['entity_type']     as string,
     category:      (wd['category']       ?? null) as string | null,
-    changeSubtype: (wd['change_subtype'] ?? null) as string | null,
     version:       Number(wd['version'] ?? 1),
     active:        wd['active']          as boolean,
     steps:         steps.map((s) => mapWorkflowStep(s.properties)).sort((a, b) => a.order - b.order),

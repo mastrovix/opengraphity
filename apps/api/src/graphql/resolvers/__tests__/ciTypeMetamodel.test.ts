@@ -82,6 +82,9 @@ function defaultResponse(cypher: string): { records: unknown[] } {
   // Ondata 5: i nomi già presi (la porta, A-12) e i nomi di campo del tipo.
   if (cypher.includes("WHERE t.scope IN ['base', 'itil']")) return res(EXISTING_TYPE_ROWS)
   if (cypher.includes('collect(DISTINCT f.name) + collect(DISTINCT bf.name)')) return res([row({ names: ['os', 'name', 'status'] })])
+  // Ondata 8 · D-17: la diagnosi del nome duplicato (solo nella via infelice di
+  // `addCIRelation`); di default nessun omonimo.
+  if (cypher.includes('HAS_RELATION]->(r:CIRelationDefinition {name: $name})')) return res()
   return res([typeRecord()])
 }
 
@@ -756,5 +759,53 @@ describe('addCIRelation valida il tipo di relazione (C-3)', () => {
     reset([{ records: [row({ scope: 'tenant', name: 'load_balancer', label: 'Bilanciatore' })] }])
     await expect(mutations.addCIRelation(null, relInput(bad), admin)).rejects.toThrow(/non è un tipo di relazione valido/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+})
+
+// ── Ondata 8 · D-17: campi e relazioni di un tipo hanno nomi unici ──────────
+// La chiave naturale di un campo e di una relazione è (tipo, nome) e passa per
+// `HAS_FIELD`/`HAS_RELATION`: un vincolo di NODO non la esprime (`status`
+// esiste su quasi ogni tipo), quindi l'unicità è applicata dalla mutation. Il
+// controllo stava in una transazione e la scrittura in un'altra: due «Salva»
+// ravvicinati passavano entrambi, e `loadMetamodel` scartava poi uno dei due
+// campi in silenzio mentre il disegnatore continuava a mostrarne due.
+
+describe('nomi unici nel metamodello di un tipo (D-17)', () => {
+  it('addCIField: la CREATE porta la guardia sul nome, nello stesso pattern', async () => {
+    reset()
+    await mutations.addCIField(null, { typeId: 'ct-1', input: { name: 'costCenter', label: 'Centro di costo', fieldType: 'string' } }, admin)
+    const write = txRun.mock.calls.map(c => c[0] as string).find(c => c.includes('CREATE (f:CIFieldDefinition'))!
+    expect(write).toContain('AND NOT EXISTS { (t)-[:HAS_FIELD]->(:CIFieldDefinition {name: $name}) }')
+  })
+
+  it('addCIField: guardia scattata (zero righe) → rifiuto esplicito, e lo schema NON viene invalidato', async () => {
+    // solo la CREATE torna a vuoto: le letture di servizio restano quelle di default
+    reset()
+    txRun.mockImplementation(async (cypher: string) =>
+      cypher.includes('CREATE (f:CIFieldDefinition') ? res0() : defaultResponse(cypher))
+    const err = await mutations.addCIField(null, { typeId: 'ct-1', input: { name: 'costCenter', label: 'X', fieldType: 'string' } }, admin)
+      .then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err).not.toBeNull()
+    expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(err!.message).toContain('ha già un campo «costCenter»')
+    expect(invalidateSchema).not.toHaveBeenCalled()
+  })
+
+  it('addCIRelation: la CREATE porta la guardia, e a zero righe la diagnosi nomina il duplicato', async () => {
+    reset()
+    await mutations.addCIRelation(null, { typeId: 'ct-1', input: { name: 'bilancia', label: 'B', relationshipType: 'BILANCIA', targetType: 'application', cardinality: 'many', direction: 'outgoing' } }, admin)
+    const write = txRun.mock.calls.map(c => c[0] as string).find(c => c.includes('CREATE (r:CIRelationDefinition'))!
+    expect(write).toContain('AND NOT EXISTS { (t)-[:HAS_RELATION]->(:CIRelationDefinition {name: $name}) }')
+
+    reset()
+    txRun.mockImplementation(async (cypher: string) =>
+      cypher.includes('CREATE (r:CIRelationDefinition') ? res0()
+      : cypher.includes('HAS_RELATION]->(r:CIRelationDefinition {name: $name})') ? res([row({ id: 'r-esistente' })])
+      : defaultResponse(cypher))
+    const err = await mutations.addCIRelation(null, { typeId: 'ct-1', input: { name: 'bilancia', label: 'B', relationshipType: 'BILANCIA', targetType: 'application', cardinality: 'many', direction: 'outgoing' } }, admin)
+      .then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(err!.message).toContain('ha già una relazione «bilancia»')
+    expect(invalidateSchema).not.toHaveBeenCalled()
   })
 })

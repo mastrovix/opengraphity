@@ -4,6 +4,7 @@ import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { withSession } from './ci-utils.js'
 import { audit } from '../../lib/audit.js'
 import { requireRole } from '../../lib/requireRole.js'
+import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
 import type { GraphQLContext } from '../../context.js'
 
 type Props = Record<string, unknown>
@@ -186,6 +187,25 @@ async function setFieldRequirement(
   const now = new Date().toISOString()
 
   return withSession(async (session) => {
+    // Il passo citato dalla regola deve ESISTERE nel workflow di questo cliente
+    // (ondata 8 · B-21). `workflow_step` era testo libero: una regola «campo X
+    // obbligatorio entrando in `resolved`» scritta su un tenant che ha
+    // rinominato quel passo restava nel pannello, apparentemente attiva, e non
+    // si applicava a nessuna transizione. `null` = regola globale, sempre valida.
+    if (args.workflowStep != null && args.workflowStep !== '') {
+      const steps = await getWorkflowSteps(session, ctx.tenantId, args.entityType)
+      if (!steps.some((s) => s.name === args.workflowStep)) {
+        const names = steps.map((s) => s.name)
+        throw new GraphQLError(
+          `Lo step "${args.workflowStep}" non esiste nel workflow "${args.entityType}" di questo cliente, quindi la regola non ` +
+          `si applicherebbe a nessuna transizione. ` +
+          (names.length > 0
+            ? `Step disponibili: ${names.join(', ')}.`
+            : `Questo cliente non ha ancora una definizione di workflow per "${args.entityType}".`),
+          { extensions: { code: 'BAD_USER_INPUT', workflowStep: args.workflowStep, availableSteps: names } },
+        )
+      }
+    }
     // Upsert: match on (tenant, entityType, fieldName, workflowStep)
     const existing = await runQueryOne<{ p: Props }>(session, `
       MATCH (r:FieldRequirementRule {

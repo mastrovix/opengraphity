@@ -61,6 +61,9 @@ async function loadDueTemplates(now: Date): Promise<TemplateRow[]> {
   try {
     const result = await session.executeRead(tx =>
       tx.run(`
+        // Job di pianificazione: legge i template di TUTTI i tenant, e ognuno viene
+        // poi eseguito nel proprio (loadTemplate scopa per tenant_id).
+        // tenant-ok: passata di manutenzione cross-tenant, sola lettura.
         MATCH (r:ReportTemplate)
         WHERE r.schedule_enabled = true AND r.schedule_cron IS NOT NULL
         RETURN properties(r) AS props

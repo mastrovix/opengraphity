@@ -31,6 +31,14 @@ vi.mock('@opengraphity/neo4j', () => ({
 vi.mock('../embeddings.js', () => ({
   vectorIndexName: vi.fn((label: string) => `${label.toLowerCase()}_embedding_test`),
 }))
+// ── Ondata 8 (B-22): chiuso e risolto vengono dai passi del workflow ─────────
+// I nomi sono del CLIENTE (`archiviato`, `sistemato`): il servizio non deve
+// conoscere `closed`/`resolved`. Mockato per non aprire una seconda sessione
+// Neo4j (la derivazione dai metadata è provata in workflowHelpers).
+vi.mock('../../lib/statusStepNames.js', () => ({
+  statusNamesForClasses: vi.fn(async () => ['archiviato']),
+  concludedStatusNames:  vi.fn(async () => ['sistemato', 'archiviato']),
+}))
 vi.mock('../../lib/logger.js', () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
@@ -46,9 +54,9 @@ const TENANT = 'tenant-A'
 type Ctx = { props: Record<string, unknown>; comments: Array<{ text: string | null; created_at: string }>; steps: Array<{ step: string | null; at: string | null; trigger: string | null }>; cis: string[] }
 
 const CTX: Ctx = {
-  props: { id: 'inc-1', title: 'DB down', description: 'timeout', severity: 'critical', category: 'database', status: 'resolved' },
+  props: { id: 'inc-1', title: 'DB down', description: 'timeout', severity: 'critical', category: 'database', status: 'sistemato' },
   comments: [{ text: 'Riavviato il servizio', created_at: '2026-01-01T10:00:00Z' }, { text: null, created_at: '2026-01-01T10:01:00Z' }],
-  steps: [{ step: 'new', at: '2026-01-01T09:00:00Z', trigger: 'system' }, { step: null, at: null, trigger: null }, { step: 'resolved', at: '2026-01-01T11:00:00Z', trigger: 'manual' }],
+  steps: [{ step: 'new', at: '2026-01-01T09:00:00Z', trigger: 'system' }, { step: null, at: null, trigger: null }, { step: 'sistemato', at: '2026-01-01T11:00:00Z', trigger: 'manual' }],
   cis: ['db-01'],
 }
 
@@ -110,7 +118,7 @@ describe('draftResolutionNotes', () => {
     expect(userContent()).toEqual({
       titolo: 'DB down', descrizione: 'timeout', severity: 'critical', categoria: 'database', ci_coinvolti: ['db-01'],
       commenti: [{ text: 'Riavviato il servizio', created_at: '2026-01-01T10:00:00Z' }],
-      passaggi_workflow: [{ step: 'new', at: '2026-01-01T09:00:00Z', trigger: 'system' }, { step: 'resolved', at: '2026-01-01T11:00:00Z', trigger: 'manual' }],
+      passaggi_workflow: [{ step: 'new', at: '2026-01-01T09:00:00Z', trigger: 'system' }, { step: 'sistemato', at: '2026-01-01T11:00:00Z', trigger: 'manual' }],
     })
   })
 
@@ -134,7 +142,11 @@ describe('draftKbContent', () => {
     await graphqlFailure(draftKbContent(TENANT, 'inc-x'), 'NOT_FOUND')
     incident({ ...CTX, props: { ...CTX.props, status: 'in_progress' } })
     const err = await graphqlFailure(draftKbContent(TENANT, 'inc-1'), 'BAD_USER_INPUT')
-    expect(err.message).toBe('La bozza KB si genera solo da incident risolti o chiusi')
+    // Il rifiuto nomina il passo e i passi conclusivi del workflow del cliente:
+    // prima diceva solo «risolti o chiusi», che con passi rinominati non
+    // aiutava a capire perché il bottone non funzionava.
+    expect(err.message).toContain('La bozza KB si genera solo da incident risolti o chiusi')
+    expect(err.message).toContain('sistemato, archiviato')
     expect(h.create).not.toHaveBeenCalled()
   })
 
@@ -144,7 +156,10 @@ describe('draftKbContent', () => {
     expect(h.create).not.toHaveBeenCalled()
   })
 
-  it.each(['resolved', 'closed'])('status %s → schema json_schema con title/body/category/tags e bozza parsata', async (status) => {
+  // I due passi CONCLUSIVI del workflow di questo cliente, con i suoi nomi:
+  // prima erano i letterali `resolved`/`closed` e un passo di risoluzione
+  // rinominato rendeva la bozza KB irraggiungibile.
+  it.each(['sistemato', 'archiviato'])('status %s → schema json_schema con title/body/category/tags e bozza parsata', async (status) => {
     incident({ ...CTX, props: { ...CTX.props, status } })
     h.create.mockResolvedValue(modelReply(JSON.stringify(KB)))
     await expect(draftKbContent(TENANT, 'inc-1')).resolves.toEqual(KB)
@@ -198,12 +213,14 @@ describe('problemCandidates', () => {
     await problemCandidates(TENANT)
     const calls = vi.mocked(runQuery).mock.calls
     const list = calls[0]!
-    expect(list[1]).toContain("NOT i.status IN ['closed'] AND i.embedding IS NOT NULL")
-    expect(list[2]).toEqual({ tenantId: TENANT })
+    // I passi della classe «chiuso» del workflow del cliente, non il letterale.
+    expect(list[1]).toContain('NOT i.status IN $closedSteps AND i.embedding IS NOT NULL')
+    expect(list[2]).toEqual({ tenantId: TENANT, closedSteps: ['archiviato'] })
     const peers = calls[1]!
     expect(peers[1]).toContain('score >= 0.72')
     expect(peers[1]).toContain('node.tenant_id = $tenantId AND node.id <> $selfId')
-    expect(peers[2]).toMatchObject({ tenantId: TENANT, selfId: 'i1', embedding: [1], index: 'incident_embedding_test' })
+    expect(peers[1]).toContain('NOT node.status IN $closedSteps')
+    expect(peers[2]).toMatchObject({ tenantId: TENANT, selfId: 'i1', embedding: [1], index: 'incident_embedding_test', closedSteps: ['archiviato'] })
   })
 
   it('union-find: cluster ≥ 3 → il modello nomina i cluster; candidati con cluster_index inesistente scartati; vicini estranei ignorati', async () => {

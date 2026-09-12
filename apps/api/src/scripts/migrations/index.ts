@@ -38,6 +38,8 @@ import { globalSearchConfigurationItem } from './20260916_1700_global_search_con
 import { domainMatrices } from './20260917_1800_domain_matrices.js'
 import { ciLifecycleSemantics } from './20260917_1810_ci_lifecycle_semantics.js'
 import { changePrioritySeedFix } from './20260917_1820_change_priority_seed_fix.js'
+import { provisionTenantDataMigration } from './20260918_1910_provision_tenant_data.js'
+import { preApprovedChangeTypesSeed } from './20260918_1920_pre_approved_change_types.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -70,4 +72,6 @@ export const MIGRATIONS: readonly Migration[] = [
   domainMatrices,
   ciLifecycleSemantics,
   changePrioritySeedFix,
+  provisionTenantDataMigration,
+  preApprovedChangeTypesSeed,
 ]

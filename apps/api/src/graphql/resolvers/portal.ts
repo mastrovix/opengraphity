@@ -405,6 +405,15 @@ async function addTicketComment(
         CREATE (c:EntityComment {
           id:           $commentId,
           tenant_id:    $tenantId,
+          // Ondata 2, trovato dal lint tenantOnCreate e chiuso nell'ondata 8:
+          // il commento dal portale nasceva SENZA entity_type/entity_id, legato
+          // all'incident solo dalla relazione. Il lato operatore legge per
+          // proprieta' (resolvers/comments.ts, MATCH (c:EntityComment
+          // {tenant_id, entity_type, entity_id})), quindi quel commento non
+          // compariva nel ticket: il cliente scriveva e nessuno lo leggeva.
+          // La relazione resta, per il portale.
+          entity_type:  'incident',
+          entity_id:    $ticketId,
           body:         $body,
           is_internal:  false,
           author_id:    $authorId,

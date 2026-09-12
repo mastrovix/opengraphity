@@ -62,7 +62,6 @@ export interface WorkflowDefinition {
   entityType:      string
   version:         number
   active:          boolean
-  changeSubtype:   string | null
   steps:           WFStep[]
   transitions:     WFTransition[]
 }

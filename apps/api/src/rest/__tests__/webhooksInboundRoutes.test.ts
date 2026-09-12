@@ -396,6 +396,28 @@ describe('fail-loud payload/config handling', () => {
     expect(createIncident).not.toHaveBeenCalled()
   })
 
+  // Ondata 8 · D-25: un bersaglio fuori elenco veniva costruito e poi SCARTATO
+  // dallo switch di creazione, con risposta 201 e l'id dell'entità. Dall'ondata
+  // 8 il salvataggio lo rifiuta; qui può arrivare solo da una configurazione
+  // più vecchia della regola, e allora è un errore che lascia traccia in
+  // `last_error` sulla sorgente, non un silenzio.
+  it('bersaglio della mappa che il server non scrive → 400 che nomina gli ammessi, nessun incident', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue(hook({
+      field_mapping: JSON.stringify({ summary: 'title', level: 'severity', cc: 'costCenter' }),
+    }))
+    const res = await post('hook-1', { body: { summary: 'x', level: 'high', cc: 'IT-42' } })
+    expect(res.status).toBe(400)
+    expect((await err(res)).message).toMatch(/"costCenter".*Allowed targets: title, description, severity, category/s)
+    expect(createIncident).not.toHaveBeenCalled()
+  })
+
+  it('un bersaglio ammesso passa come prima (nessuna regressione sulla via felice)', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue(hook())
+    const res = await post('hook-1', { body: { summary: 'x', level: 'high', body: 'b' } })
+    expect(res.status).toBe(201)
+    expect(createIncident).toHaveBeenCalled()
+  })
+
   it('unsupported entity_type → 400', async () => {
     vi.mocked(runQueryOne).mockResolvedValue(hook({ entity_type: 'change' }))
     const res = await post('hook-1')

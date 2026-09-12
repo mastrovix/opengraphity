@@ -81,6 +81,7 @@ export const anomalyResolvers = {
 
         // Two separate queries — same pattern as incident resolver
         const itemRows = await runQuery<{ props: Props }>(session, `
+          // tenant-ok: il WHERE interpolato parte da a.tenant_id = $tenantId (conditions, riga 75)
           MATCH (a:Anomaly)
           ${where}
           WITH a ORDER BY ${orderByClause}
@@ -89,6 +90,7 @@ export const anomalyResolvers = {
         `, params)
 
         const countRows = await runQuery<{ total: unknown }>(session, `
+          // tenant-ok: stesso $where della query di pagina, tenant per primo (conditions, riga 75)
           MATCH (a:Anomaly)
           ${where}
           RETURN count(a) AS total

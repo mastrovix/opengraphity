@@ -12,3 +12,9 @@ export const UPDATE_DOMAIN_MATRIX = gql`
   }
   ${DOMAIN_MATRIX_FIELDS}
 `
+
+export const UPDATE_PRE_APPROVED_CHANGE_TYPES = gql`
+  mutation UpdatePreApprovedChangeTypes($types: [String!]!) {
+    updatePreApprovedChangeTypes(types: $types) { types vocabulary }
+  }
+`

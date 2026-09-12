@@ -4,6 +4,8 @@ import { getEventPolicy } from '../../services/events/policy.js'
 import { EVENT_POLICY_V4_MIGRATION } from '../../lib/eventPolicy.js'
 import { invalidateSourceCache } from '../../services/eventStorm.js'
 import { DEFAULT_WEBHOOK_RATE_LIMIT_PER_MINUTE, rateLimitOf, validateRateLimitPerMinute } from '../../lib/webhookRateLimit.js'
+import { API_KEY_PERMISSIONS, isApiKeyPermission } from '@opengraphity/types'
+import { assertInboundTicketTargets } from '../../lib/inboundTicketTargets.js'
 
 /**
  * Un webhook di Event Management ha senso solo se il tenant ha una policy
@@ -57,13 +59,21 @@ export function validateConnectorKind(entityType: unknown, connectorKind: unknow
  * preset traduce severità/stato dello strumento prima della tabella incorporata.
  */
 export function validateInboundConfig(final: { entityType: unknown; connectorKind: string | null; fieldMapping: unknown; defaultValues: unknown; valueMapping: unknown }): void {
-  parseConfigJSON<Record<string, unknown>>(final.fieldMapping, 'fieldMapping')
-  parseConfigJSON<Record<string, unknown>>(final.defaultValues, 'defaultValues')
+  const mapping  = parseConfigJSON<Record<string, unknown>>(final.fieldMapping, 'fieldMapping')
+  const defaults = parseConfigJSON<Record<string, unknown>>(final.defaultValues, 'defaultValues')
   parseConfigJSON<Record<string, unknown>>(final.valueMapping, 'valueMapping')
   if (final.entityType === 'event') {
     sourceConfigOf({ connector_kind: final.connectorKind, field_mapping: final.fieldMapping, default_values: final.defaultValues, value_mapping: final.valueMapping })
+    return
   }
+  // D-25: la mappa accettava QUALUNQUE bersaglio e la consegna ne scriveva
+  // quattro, scartando il resto con un 201 Created. Qui il salvataggio dice
+  // subito cosa il server applica — come già fa il ramo `event` col suo
+  // connettore — invece di far scoprire il buco aprendo un ticket importato.
+  assertInboundTicketTargets(final.entityType, Object.values(mapping ?? {}), 'fieldMapping')
+  assertInboundTicketTargets(final.entityType, Object.keys(defaults ?? {}), 'defaultValues')
 }
+
 import { requireRole } from '../../lib/requireRole.js'
 import { randomBytes, createHash, createHmac } from 'crypto'
 import { v4 as uuidv4 } from 'uuid'
@@ -317,19 +327,44 @@ async function apiKeys(_: unknown, args: { filters?: string; sortField?: string;
   })
 }
 
+/**
+ * I permessi di una chiave API si validano in scrittura (D-26): `permissions`
+ * veniva salvato così com'era, quindi un refuso (`incident:read` al singolare,
+ * o `ci:write`, che nessuna rotta richiede) diventava una chiave che non poteva
+ * fare niente — e il 403 «Missing permissions» arrivava molto dopo, a chi
+ * chiamava. L'elenco è `API_KEY_PERMISSIONS` (`@opengraphity/types`), lo stesso
+ * che offre la pagina Integrazioni e che un lint statico confronta con i
+ * letterali di `requirePermission` nelle rotte.
+ */
+export function assertApiKeyPermissions(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    throw new ValidationError(`permissions must be a list of strings. Allowed: ${API_KEY_PERMISSIONS.join(', ')}`)
+  }
+  const bad = value.filter((p) => !isApiKeyPermission(p))
+  if (bad.length > 0) {
+    throw new ValidationError(
+      `permissions: ${bad.map((p) => JSON.stringify(p)).join(', ')} ` +
+      `${bad.length === 1 ? 'is not a permission' : 'are not permissions'} that any route applies. ` +
+      `Allowed: ${API_KEY_PERMISSIONS.join(', ')}`,
+    )
+  }
+  return value as string[]
+}
+
 async function createApiKey(_: unknown, args: { input: Props }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
   const { input } = args
   const key = genApiKey()
   const id = uuidv4()
   const now = new Date().toISOString()
+  const permissions = assertApiKeyPermissions(input['permissions'])
   return withSession(async (s) => {
     await runQuery(s, `
       CREATE (k:ApiKey {id: $id, tenant_id: $t, name: $name, key_hash: $keyHash, key_prefix: $keyPrefix,
         permissions: $permissions, rate_limit: $rateLimit, enabled: true,
         request_count: 0, created_by: $createdBy, expires_at: $expiresAt, created_at: $now, updated_at: $now})
-    `, { id, t: ctx.tenantId, name: input['name'], keyHash: hash(key), keyPrefix: key.slice(0, 16), permissions: input['permissions'], rateLimit: input['rateLimit'] ?? 60, createdBy: ctx.userId, expiresAt: input['expiresAt'] ?? null, now })
-    return { id, name: input['name'] as string, key, keyPrefix: key.slice(0, 16), permissions: input['permissions'] }
+    `, { id, t: ctx.tenantId, name: input['name'], keyHash: hash(key), keyPrefix: key.slice(0, 16), permissions, rateLimit: input['rateLimit'] ?? 60, createdBy: ctx.userId, expiresAt: input['expiresAt'] ?? null, now })
+    return { id, name: input['name'] as string, key, keyPrefix: key.slice(0, 16), permissions }
   }, true)
 }
 
@@ -338,6 +373,7 @@ async function updateApiKey(_: unknown, args: { id: string; input: Props }, ctx:
   const { input } = args
   const sets: string[] = ['k.updated_at = $now']
   const params: Props = { id: args.id, t: ctx.tenantId, now: new Date().toISOString() }
+  if (input['permissions'] !== undefined) input['permissions'] = assertApiKeyPermissions(input['permissions'])
   const map: Record<string, string> = { name: 'name', permissions: 'permissions', rateLimit: 'rate_limit', enabled: 'enabled', expiresAt: 'expires_at' }
   for (const [gql, neo] of Object.entries(map)) { if (input[gql] !== undefined) { sets.push(`k.${neo} = $${gql}`); params[gql] = input[gql] } }
   return withSession(async (s) => {

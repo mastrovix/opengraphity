@@ -71,7 +71,7 @@ describe('initSchema — clean database', () => {
     await expect(initSchema({ log: m => log.push(m) })).resolves.toBeUndefined()
 
     const prechecks = calls().filter(c => isPrecheck(c.cypher))
-    expect(prechecks).toHaveLength(6)
+    expect(prechecks).toHaveLength(8)
     expect(prechecks.every(c => c.mode === 'READ')).toBe(true)
     // every precheck precedes the first schema statement
     const firstCreate = calls().findIndex(c => c.cypher.startsWith('CREATE '))
@@ -126,6 +126,14 @@ describe('initSchema — clean database', () => {
       'CREATE INDEX event_status_id IF NOT EXISTS FOR (n:Event) ON (n.status, n.id)',
       'CREATE INDEX event_status_correlation IF NOT EXISTS FOR (n:Event) ON (n.status, n.correlation)',
       'CREATE INDEX notification_rule_tenant_event IF NOT EXISTS FOR (n:NotificationRule) ON (n.tenant_id, n.event_type)',
+      // Metamodello (D-17, ondata 8): le chiavi naturali dei tipi e dei vocabolari
+      // diventano vincoli; i campi e le relazioni hanno la chiave (tipo, nome), che un
+      // vincolo di nodo non esprime — lì l'unicità la applica la mutation.
+      'CREATE CONSTRAINT ci_type_definition_tenant_name_unique IF NOT EXISTS FOR (n:CITypeDefinition) REQUIRE (n.tenant_id, n.name) IS UNIQUE',
+      'CREATE CONSTRAINT enum_type_definition_tenant_name_unique IF NOT EXISTS FOR (n:EnumTypeDefinition) REQUIRE (n.tenant_id, n.name) IS UNIQUE',
+      'CREATE CONSTRAINT ci_field_definition_id_unique IF NOT EXISTS FOR (n:CIFieldDefinition) REQUIRE n.id IS UNIQUE',
+      'CREATE CONSTRAINT ci_relation_definition_id_unique IF NOT EXISTS FOR (n:CIRelationDefinition) REQUIRE n.id IS UNIQUE',
+      'CREATE CONSTRAINT ci_system_relation_definition_id_unique IF NOT EXISTS FOR (n:CISystemRelationDefinition) REQUIRE n.id IS UNIQUE',
     ]) {
       expect(writes).toContain(expected)
     }
@@ -147,6 +155,13 @@ describe('initSchema — clean database', () => {
       .toBeLessThan(writes.findIndex(c => c.includes('user_tenant_email_unique')))
     expect(writes.indexOf('DROP INDEX ci_discovery_key IF EXISTS'))
       .toBeLessThan(writes.findIndex(c => c.includes('ci_discovery_key_unique')))
+    expect(writes.indexOf('DROP INDEX ci_type_definition_tenant_name IF EXISTS'))
+      .toBeLessThan(writes.findIndex(c => c.includes('ci_type_definition_tenant_name_unique')))
+    expect(writes.indexOf('DROP INDEX enum_type_definition_tenant_name IF EXISTS'))
+      .toBeLessThan(writes.findIndex(c => c.includes('enum_type_definition_tenant_name_unique')))
+    // e l'indice di range che il vincolo sostituisce non viene ricreato dopo
+    expect(writes.some(c => c.startsWith('CREATE INDEX ci_type_definition_tenant_name '))).toBe(false)
+    expect(writes.some(c => c.startsWith('CREATE INDEX enum_type_definition_tenant_name '))).toBe(false)
 
     // order: all constraints → all indexes → counter seeds
     const firstIndex   = writes.findIndex(c => c.startsWith('CREATE INDEX') || c.startsWith('CREATE FULLTEXT'))

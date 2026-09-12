@@ -1,5 +1,4 @@
 export { WorkflowEngine, workflowEngine, ENTITY_LABELS } from './engine.js'
-export { selectWorkflowForEntity, type SelectedWorkflow } from './selector.js'
 export {
   seedWorkflowDefinition, CustomizedWorkflowError, computeSeedDiff, formatSeedDiff, seedDiffIsEmpty,
   type SeedableWorkflow, type SeedResult, type SeedOptions, type SeedDiff, type SeedSkipReason,

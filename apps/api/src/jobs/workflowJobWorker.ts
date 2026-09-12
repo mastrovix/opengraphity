@@ -262,9 +262,36 @@ async function processNotificationJob(job: Job): Promise<void> {
     }
 
     case 'timer_wait': {
-      const { instanceId, toStep } = job.data as { instanceId: string; toStep: string; tenantId: string }
+      const { instanceId, toStep: scheduledToStep, tenantId } = job.data as { instanceId: string; toStep?: string; tenantId: string }
       const session = getSession(undefined, 'WRITE')
       try {
+        // B-18: il passo di arrivo si risolve ORA, non quando il timer è
+        // partito. Il job può aspettare ore o giorni, e in mezzo
+        // l'amministratore può aver cambiato l'arco automatico in uscita dal
+        // passo di attesa: il nome messo nel payload al momento dell'ingresso
+        // puntava al vuoto e la transizione falliva (un solo tentativo, poi il
+        // job resta nei falliti — nessuno lo vede). Si riparte dal passo dove
+        // l'istanza si trova adesso.
+        const fresh = await session.executeRead((tx) => tx.run(`
+          MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})-[:CURRENT_STEP]->(cur:WorkflowStep)
+          OPTIONAL MATCH (cur)-[:TRANSITIONS_TO {trigger: 'automatic'}]->(next:WorkflowStep)
+          WITH cur, next ORDER BY coalesce(next.step_order, 999), next.name
+          RETURN cur.name AS currentStep, collect(next.name)[0] AS toStep
+        `, { instanceId, tenantId }))
+        if (fresh.records.length === 0) {
+          throw new Error(`timer_wait: l'istanza ${instanceId} del tenant ${tenantId} non esiste più o non ha un passo corrente — il timer non può concludersi`)
+        }
+        const currentStep = fresh.records[0]!.get('currentStep') as string
+        const toStep      = fresh.records[0]!.get('toStep') as string | null
+        if (!toStep) {
+          throw new Error(
+            `timer_wait: dal passo "${currentStep}" non esce nessuna transizione automatica, quindi l'attesa non può concludersi ` +
+            `(l'arco era previsto verso "${scheduledToStep ?? 'n/d'}" quando il timer è partito). Aggiungi l'arco nel disegnatore.`,
+          )
+        }
+        if (scheduledToStep && scheduledToStep !== toStep) {
+          logger.warn({ instanceId, scheduledToStep, toStep, currentStep }, '[notification-jobs] timer_wait: il passo di arrivo è cambiato dopo la partenza del timer — si usa quello di adesso')
+        }
         const result = await workflowEngine.transition(
           session,
           { instanceId, toStepName: toStep, triggeredBy: 'timer', triggerType: 'automatic' },

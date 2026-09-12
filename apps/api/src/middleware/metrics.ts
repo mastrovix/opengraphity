@@ -477,6 +477,24 @@ export function metricsAccessAllowed(req: Pick<Request, 'headers' | 'socket'>, t
   return isPrivateAddress(req.socket?.remoteAddress)
 }
 
+// ── Canale del metamodello fra i processi (ondata 5 → 8) ─────────────────────
+// `lib/metamodelBus.ts` porta «il metamodello di questo tenant è cambiato» alle
+// altre repliche e ai worker. Finora si vedeva solo nei log, e i due guasti che
+// contano sono silenziosi per chi guarda un grafico: un `PUBLISH` che trova
+// **zero** ascoltatori (le altre repliche resteranno vecchie fino al TTL) e un
+// processo che **non è sottoscritto** (non verrà mai avvisato). Qui diventano
+// numeri, con la regola Prometheus che li sorveglia in infra/prometheus/.
+
+export const metamodelPublishedTotal = createCounter('metamodel_published_total', 'Cambiamenti del metamodello pubblicati sul canale, per esito: delivered = almeno un processo in ascolto, no_receivers = nessuno (le altre repliche restano vecchie), error = PUBLISH fallito', ['result'])
+export const metamodelReceivedTotal = createCounter('metamodel_received_total', 'Messaggi del canale del metamodello ricevuti da QUESTO processo, per esito: applied = cache svuotate, stale = versione già applicata o fuori ordine, malformed = messaggio scartato', ['result'])
+export const metamodelCacheClearFailuresTotal = createCounter('metamodel_cache_clear_failures_total', 'Cache del metamodello che NON si sono svuotate (il clearer ha lanciato): quel processo resta con dati vecchi per quel tenant fino alla scadenza del TTL', ['cache'])
+export const metamodelBusSubscribed = createGauge('metamodel_bus_subscribed', 'Questo processo è sottoscritto al canale del metamodello (1) oppure no (0): a 0 non viene avvisato dei cambiamenti fatti altrove', [])
+
+/** Metriche del canale del metamodello, nell'ordine di esposizione. */
+export const METAMODEL_BUS_METRICS = [
+  metamodelPublishedTotal, metamodelReceivedTotal, metamodelCacheClearFailuresTotal, metamodelBusSubscribed,
+] as const
+
 export const METRICS_CONTENT_TYPE = 'text/plain; version=0.0.4; charset=utf-8'
 
 /** L'esposizione Prometheus completa di questo processo (API e worker la servono allo stesso modo). */
@@ -491,6 +509,7 @@ export function renderMetrics(): string {
     backupLastSuccessTimestamp.collect(),
     ...EVENT_MANAGEMENT_METRICS.map((m) => m.collect()),
     ...SCHEMA_METRICS.map((m) => m.collect()),
+    ...METAMODEL_BUS_METRICS.map((m) => m.collect()),
   ].join('\n\n')
 }
 

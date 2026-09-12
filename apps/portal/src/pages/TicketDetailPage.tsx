@@ -93,8 +93,13 @@ export function TicketDetailPage() {
     )
   }
 
-  const isClosed   = ticket.status === 'closed'
-  const isResolved = ticket.status === 'resolved'
+  // Chiuso / risolto si leggono dalla CATEGORIA del passo di workflow di questo
+  // cliente (già esposta dall'API, ondata 7 · D-15) e non dai due nomi di
+  // fabbrica (B-22): con un passo rinominato o aggiunto nel disegnatore il
+  // portale continuava a offrire la risposta su un ticket chiuso e non mostrava
+  // il riquadro «risolto» su uno risolto.
+  const isClosed   = ticket.statusCategory === 'closed'
+  const isResolved = ticket.statusCategory === 'resolved'
   const canReply   = !isClosed
 
   // Build timeline: merge comments + history entries, sorted by date

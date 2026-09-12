@@ -261,11 +261,35 @@ KEYCLOAK_ADMIN_PASSWORD=… pnpm --filter @opengraphity/api onboard-tenant -- \
 ```
 
 Crea realm Keycloak (= slug = `Tenant.id`), client, ruoli, utente admin, nodo
-`Tenant`, dashboard, enum, regole di notifica e tutti i workflow. Poi:
-`seed:metamodel` (una volta per stack), `seed:field-rules`, `seed:automation`
-se servono, e aggiungere `https://<host-del-tenant>` a `KEYCLOAK_PUBLIC_URL`/`CORS_ORIGIN`
-se il tenant ha un hostname proprio. Dal secondo giorno il tenant è nel backup
-notturno (realm compreso).
+`Tenant`, e poi chiama `provisionTenantData` — la funzione che porta il tenant
+allo stato usabile: dashboard predefinita, regole di notifica, matrici di
+dominio e le definizioni di workflow di **ogni** tipo di ticket. È la **stessa**
+funzione che chiama la migrazione `20260918_1910`, perché un tenant nasce in un
+modo solo (D-14): prima ce n'erano due, e un tenant creato da una migrazione
+(webhook, chiave API, import, o un onboarding interrotto) restava senza
+workflow — il sintomo arrivava al primo ticket, con
+`No active workflow definition for "incident"`.
+
+**Idempotenza, per davvero**: un secondo giro non riscrive niente. Le
+definizioni di workflow, le matrici e le regole già presenti vengono **saltate**,
+non riallineate al seme — potrebbero essere personalizzazioni del cliente. I
+vocabolari spediti col prodotto non vengono più copiati per tenant: sono un
+nodo su `tenant_id = 'system'` (vedi `docs/CUSTOMIZATION.md`).
+
+Poi: `seed:metamodel` (una volta per stack, non per tenant: i tipi CI base e
+ITIL sono **condivisi**), e `seed:automation` se serve. Aggiungere
+`https://<host-del-tenant>` a `KEYCLOAK_PUBLIC_URL`/`CORS_ORIGIN` se il tenant ha
+un hostname proprio. Dal secondo giorno il tenant è nel backup notturno (realm
+compreso).
+
+`seed:field-rules` **non** fa parte dell'onboarding: scrive due regole di
+obbligatorietà (assegnatario entrando in `in_progress`, note di risoluzione
+entrando in `resolved`) e si ferma a voce alta se quel cliente ha rinominato i
+passi o non ha i campi (D-11). Eseguilo solo se quelle due regole ti servono.
+
+**Tenant incompleti**: `migrate --status` elenca, dopo lo stato delle
+migrazioni, i tenant che esistono e non possono funzionare (senza dashboard,
+regole, matrici o workflow) e dice quale migrazione li completa.
 
 ---
 
@@ -561,6 +585,39 @@ ogni replica ha la sua, e vale il TTL.
 `last_error`, `secret`, `enabled` **non** passano dalla cache: il webhook in
 ingresso legge la sorgente dal grafo a ogni richiesta, l'ingest la legge nel
 MERGE.
+
+#### Canale del metamodello (fra i processi)
+
+Le cache che dipendono dal **metamodello del cliente** — schema GraphQL per
+tenant, whitelist dei report, tipi di relazione ammessi, mappa etichetta → tipo
+— non aspettano il TTL: `lib/metamodelBus.ts` pubblica «il metamodello di
+questo tenant è cambiato» sul canale Redis `og:metamodel.changed`, e ogni
+processo in ascolto svuota le sue. Prima si vedeva solo nei log; dall'ondata 8
+ci sono le metriche e tre regole d'allarme (`infra/prometheus/alerts.yml`,
+gruppo `metamodel-bus`):
+
+| Metrica | Tipo | Cosa dice |
+|---|---|---|
+| `metamodel_bus_subscribed` | gauge | 1 = questo processo è in ascolto; **0 = non verrà avvisato** e servirà dati vecchi fino al TTL (lo schema GraphQL, per sempre). Allarme `MetamodelBusNotSubscribed` dopo 5 minuti |
+| `metamodel_published_total{result}` | counter | `delivered` (almeno un ascoltatore), `no_receivers` (nessuno: le altre repliche e i worker restano vecchi), `error` (PUBLISH fallito, Redis giù). Allarme `MetamodelChangesNotDelivered` |
+| `metamodel_received_total{result}` | counter | `applied`, `stale` (versione già applicata o fuori ordine: normale), `malformed` |
+| `metamodel_cache_clear_failures_total{cache}` | counter | un clearer ha lanciato: quel processo resta con dati vecchi per quel tenant. Allarme `MetamodelCacheClearFailures` |
+
+Sintomo tipico di un canale muto: una relazione appena definita nel disegnatore
+viene rifiutata da un'altra replica con «Invalid relation type».
+
+**APERTO — la cache delle regole di notifica non è su questo canale.**
+`packages/notifications/src/dispatcher.ts` tiene le regole per
+(tenant, tipo di evento) con TTL di 60 s, e le mutation
+(`createNotificationRule`, `updateNotificationRule`) svuotano **solo la cache
+del processo che le ha servite**. Una regola cambiata dall'interfaccia continua
+quindi a valere nella versione precedente nei processi worker per al più 60
+secondi. Non è stata agganciata al canale del metamodello perché quel canale
+dice una cosa diversa — «il metamodello è cambiato» — e usarlo per le regole
+significherebbe far pubblicare a `createNotificationRule` un messaggio che non
+corrisponde al fatto (e far svuotare le regole a ogni modifica di un tipo CI).
+La strada giusta è un canale con una **famiglia di cache** nel messaggio: costo
+M, e finché non c'è la finestra di 60 secondi è questa.
 
 ### Policy per tenant
 

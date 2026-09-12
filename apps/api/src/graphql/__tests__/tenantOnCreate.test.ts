@@ -22,22 +22,8 @@ import { fileURLToPath } from 'node:url'
 const here = dirname(fileURLToPath(import.meta.url))
 const apiSrc = join(here, '../..')
 
-/** Le label che portano `tenant_id`; stesso elenco di tenantScoping.test.ts. */
-const DOMAIN_LABELS = [
-  'Incident', 'Problem', 'Change', 'ServiceRequest', 'KBArticle',
-  'Team', 'User',
-  'AssessmentTask', 'DeployPlanTask', 'ValidationTest', 'DeploymentTask', 'ReviewTask', 'ChangeApproval',
-  'WorkflowInstance', 'WorkflowDefinition', 'WorkflowStep', 'WorkflowStepExecution',
-  'NotificationChannel', 'NotificationRule', 'OutboundWebhook', 'InboundWebhook', 'ApiKey',
-  'SyncSource', 'SyncRun',
-  'ReportTemplate', 'ReportSection', 'ReportConversation', 'DashboardConfig', 'DashboardWidget', 'CustomWidget',
-  'Anomaly', 'AnomalyConfig', 'AutoTrigger', 'BusinessRule', 'SLAPolicyNode', 'OLAContract', 'SLAStatus',
-  'Attachment', 'EntityComment', 'Comment', 'AuditEntry', 'ApprovalRequest', 'InternalMessage', 'Notification',
-  'CIGroup', 'ConfigurationItem', 'EnumTypeDefinition', 'CITypeDefinition',
-  'FieldVisibilityRule', 'FieldRequirementRule', 'ITILCIRelationRule', 'ServiceCatalogItem', 'AssessmentQuestion',
-  'Event', 'CIAlias', 'EventHistoryEntry',
-  'ServiceMap', 'ServiceHealthEntry',
-]
+/** L'elenco vive in `domainLabels.ts`, condiviso con `tenantScoping.test.ts`. */
+import { DOMAIN_LABELS } from './domainLabels'
 
 const EXCLUDED_DIRS = new Set(['__tests__'])
 

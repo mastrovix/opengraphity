@@ -196,3 +196,35 @@ groups:
           summary: "{{ $labels.service }} is not answering GET /metrics"
           description: "Target {{ $labels.instance }} ({{ $labels.service }}) has been down for 2 minutes: the container is restarting or crashed (docker compose ps / logs)."
           runbook: "docs/OPERATIONS.md §6 «Checklist incidenti operativi»"
+
+  # ── Canale del metamodello fra i processi (ondata 8) ────────────────────────
+  # `lib/metamodelBus.ts` porta «il metamodello di questo tenant è cambiato»
+  # alle altre repliche e ai worker. I due guasti che contano non hanno sintomi
+  # visibili — le cache restano semplicemente vecchie — e prima si vedevano
+  # solo nei log.
+  - name: metamodel-bus
+    rules:
+      - alert: MetamodelBusNotSubscribed
+        expr: min(metamodel_bus_subscribed) == 0
+        for: 5m
+        labels: { severity: warning, subsystem: platform }
+        annotations:
+          summary: "A process is not subscribed to the metamodel channel"
+          description: "metamodel_bus_subscribed = 0 for 5 minutes on at least one process: it will NOT be told when a customer changes CI types, fields or dictionaries, and will serve stale data until its TTL expires (up to 5 minutes per cache, indefinitely for the GraphQL schema)."
+          runbook: "docs/OPERATIONS.md §7 «Canale del metamodello»"
+
+      - alert: MetamodelChangesNotDelivered
+        expr: sum(increase(metamodel_published_total{result!="delivered"}[15m])) > 0
+        labels: { severity: warning, subsystem: platform }
+        annotations:
+          summary: "Metamodel changes published with no listener (or failed)"
+          description: "{{ $value }} change(s) in 15 minutes with result no_receivers or error: the other replicas and the workers keep their old caches. A relation just defined in the designer can be refused elsewhere with «Invalid relation type»."
+          runbook: "docs/OPERATIONS.md §7 «Canale del metamodello»"
+
+      - alert: MetamodelCacheClearFailures
+        expr: sum by (cache) (increase(metamodel_cache_clear_failures_total[15m])) > 0
+        labels: { severity: warning, subsystem: platform }
+        annotations:
+          summary: "Metamodel cache {{ $labels.cache }} did not clear"
+          description: "{{ $value }} failure(s) in 15 minutes: that process keeps stale data for that tenant until the TTL expires. The log line carries the tenant and the error."
+          runbook: "docs/OPERATIONS.md §7 «Canale del metamodello»"

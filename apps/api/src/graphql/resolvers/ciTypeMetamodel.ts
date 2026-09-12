@@ -125,6 +125,28 @@ function assertWrote(result: unknown, what: string): void {
 }
 
 /**
+ * Perché `addCIRelation` non ha scritto? Dopo `assertTenantOwnedType` il tipo è
+ * del tenant, quindi l'unico predicato che può aver morso è la guardia sul nome
+ * duplicato (D-17). Si legge solo nella via infelice: la via felice resta a una
+ * Cypher sola.
+ */
+async function assertNoDuplicateRelationName(
+  session: Session, typeId: string, tenantId: string, name: unknown, writeResult: unknown,
+): Promise<void> {
+  const c = updatesOf(writeResult, `addCIRelation(${typeId})`)
+  if ((c.nodesCreated ?? 0) > 0) return
+  const dup = await session.executeRead((tx) =>
+    tx.run(`
+      MATCH (t:CITypeDefinition {id: $typeId, tenant_id: $tenantId})-[:HAS_RELATION]->(r:CIRelationDefinition {name: $name})
+      RETURN r.id AS id LIMIT 1
+    `, { typeId, tenantId, name }),
+  )
+  if (dup.records.length) {
+    throw new ValidationError(`Il tipo ha già una relazione «${String(name)}»: i nomi delle relazioni di un tipo sono unici.`)
+  }
+}
+
+/**
  * I tipi CI che finiranno nello stesso schema di quello che si sta creando:
  * quelli spediti col prodotto (base e ITIL) e quelli del cliente. Servono alla
  * porta sui nomi (A-12), che confronta i nomi **emessi** — PascalCase,
@@ -724,10 +746,17 @@ export function buildMetamodelMutations() {
         // vocabolario di un altro cliente è rifiutato con il messaggio, non
         // ignorato in silenzio come faceva il `WHERE` dentro il CALL.
         if (enumTypeId) await assertEnumTypeLinkable(session, enumTypeId, String(input['name'] ?? ''), ctx.tenantId)
-        await session.executeWrite(tx =>
+        // D-17: `assertNewCIFieldName` legge i nomi in una transazione e la
+        // CREATE gira in un'altra — due «Salva» ravvicinati passavano entrambi
+        // il controllo. La chiave naturale di un campo è (tipo, nome), che un
+        // vincolo di NODO non può esprimere (`status` esiste su quasi ogni
+        // tipo): la guardia sta quindi nella scrittura stessa, come predicato
+        // sullo stesso pattern che crea il campo.
+        const wrote = await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})
             WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
+              AND NOT EXISTS { (t)-[:HAS_FIELD]->(:CIFieldDefinition {name: $name}) }
             CREATE (f:CIFieldDefinition {
               id:                $fieldId,
               name:              $name,
@@ -772,6 +801,13 @@ export function buildMetamodelMutations() {
             defaultScript:    input['defaultScript']     ?? null,
           }),
         )
+        // Zero righe qui vuol dire una cosa sola: la guardia ha morso, cioè un
+        // altro «Salva» ha vinto la corsa fra il controllo e la scrittura.
+        if (!wrote.records.length) {
+          throw new GraphQLError(`Il tipo ha già un campo «${String(input['name'])}»`, {
+            extensions: { code: 'BAD_USER_INPUT' },
+          })
+        }
       }, true)
 
       invalidateSchema(ctx.tenantId)
@@ -830,10 +866,18 @@ export function buildMetamodelMutations() {
         // mappe dei servizi e nel pattern INTERPOLATO della soppressione in
         // finestra di change: passa solo un identificatore Neo4j.
         const relationshipType = assertRelationshipTypeName(input['relationshipType'], `addCIRelation(${typeId}).relationshipType`)
+        // D-17: le relazioni non avevano NESSUN controllo di nome duplicato —
+        // due omonime sullo stesso tipo e `loadMetamodel` ne scarta una in
+        // silenzio, mentre il disegnatore continua a mostrarne due. Come per i
+        // campi la chiave naturale è (tipo, nome) e la guardia sta nella
+        // scrittura stessa: unico predicato, unica transazione, nessuna corsa.
+        // Il perché di un rifiuto lo si va a leggere solo SE la scrittura non
+        // ha scritto — così la via felice resta a una sola Cypher.
         const r = await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})
             WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
+              AND NOT EXISTS { (t)-[:HAS_RELATION]->(:CIRelationDefinition {name: $name}) }
             CREATE (r:CIRelationDefinition {
               id:                $relId,
               name:              $name,
@@ -862,6 +906,7 @@ export function buildMetamodelMutations() {
             order:            input['order'] ?? 0,
           }),
         )
+        await assertNoDuplicateRelationName(session, typeId, ctx.tenantId, input['name'], r)
         assertWrote(r, `addCIRelation(${typeId})`)
       }, true)
 

@@ -170,7 +170,7 @@ function toNumberish(v: unknown): number | null {
 
 export function computeSeedDiff(
   def:       SeedableWorkflow,
-  liveDef:   { version: unknown; active: unknown; category: unknown; changeSubtype: unknown },
+  liveDef:   { version: unknown; active: unknown; category: unknown },
   liveSteps: readonly LiveStep[],
   liveTrs:   readonly LiveTransition[],
 ): SeedDiff {
@@ -178,7 +178,6 @@ export function computeSeedDiff(
   if (!sameValue(liveDef.version, def.version))                             definitionFields.push(`version ${String(liveDef.version)} → ${String(def.version)}`)
   if (!sameValue(liveDef.active, def.active))                               definitionFields.push(`active ${String(liveDef.active)} → ${String(def.active)}`)
   if (!sameValue(liveDef.category, def.category ?? null))                   definitionFields.push(`category ${String(liveDef.category)} → ${String(def.category ?? null)}`)
-  if (!sameValue(liveDef.changeSubtype, def.changeSubtype ?? null))         definitionFields.push(`change_subtype ${String(liveDef.changeSubtype)} → ${String(def.changeSubtype ?? null)}`)
 
   const liveByName = new Map(liveSteps.map((s) => [s.name, s]))
   const seedNames  = new Set(def.steps.map((s) => s.name))
@@ -251,7 +250,6 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
       const existing = await tx.run(`
         MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, name: $name})
         RETURN wd.id AS id, wd.version AS version, wd.active AS active, wd.category AS category,
-               wd.change_subtype AS changeSubtype,
                wd.customized_at AS customizedAt, wd.customized_by AS customizedBy
         LIMIT 1
       `, { tenantId, entityType: def.entityType, name: def.name })
@@ -314,7 +312,6 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
           version:       existedRec.get('version'),
           active:        existedRec.get('active'),
           category:      existedRec.get('category'),
-          changeSubtype: existedRec.get('changeSubtype'),
         }, liveSteps, liveTrs)
         for (const line of formatSeedDiff(def.name, tenantId, diff)) console.log(line)
         if (customizedAt !== null) {
@@ -326,13 +323,13 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
         MERGE (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, name: $name})
         ON CREATE SET wd.id = $newDefId, wd.created_at = $now
         SET wd.version = $version, wd.active = $active, wd.category = $category,
-            wd.change_subtype = $changeSubtype, wd.updated_at = $now
+            wd.updated_at = $now
         ${existed ? 'SET wd.customized_at = null, wd.customized_by = null, wd.seed_overwritten_at = $now' : ''}
         RETURN wd.id AS id
       `, {
         tenantId, entityType: def.entityType, name: def.name, newDefId, now,
         version: def.version, active: def.active,
-        category: def.category ?? null, changeSubtype: def.changeSubtype ?? null,
+        category: def.category ?? null,
       })
       const defId = defRes.records[0]!.get('id') as string
 

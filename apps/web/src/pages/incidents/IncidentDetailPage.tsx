@@ -284,7 +284,7 @@ export function IncidentDetailPage() {
   const users     = usersData?.users ?? []
   const teams     = teamsData?.teams ?? []
   const ciResults = ciSearchData?.allCIs?.items ?? []
-  const { byName: incidentStepByName, error: workflowStepsError } = useWorkflowSteps('incident')
+  const { byName: incidentStepByName, error: workflowStepsError, isTerminal: incidentStepIsTerminal, categoryOf: incidentStepCategory } = useWorkflowSteps('incident')
 
   function handleTransitionClick(tr: WorkflowTransition) {
     // Guard rails come from the workflow definition: if it failed to load we
@@ -424,7 +424,12 @@ export function IncidentDetailPage() {
         >
           {incident.major ? 'Revoca Major' : 'Dichiara Major Incident'}
         </Button>
-        {(incident.status === 'resolved' || incident.status === 'closed') && (
+        {/*
+          La bozza KB si offre sui ticket CHIUSI o RISOLTI, riconosciuti dai
+          metadata del passo e non dai due nomi di fabbrica (B-22): con un
+          passo di risoluzione rinominato il bottone non compariva mai.
+        */}
+        {(incidentStepIsTerminal(incident.status) || incidentStepCategory(incident.status) === 'resolved') && (
           <Button
             variant="secondary"
             disabled={kbDraftLoading}

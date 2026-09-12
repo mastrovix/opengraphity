@@ -85,6 +85,14 @@ export interface UpdateFieldParams {
   value: string | number | boolean
 }
 
+/**
+ * L'allow-list dei campi di `update_field` sta in `@opengraphity/types`
+ * (`workflowFields.ts`) perché la leggono anche l'API in scrittura e il
+ * **disegnatore** — e il web non dipende da questo pacchetto. Qui si
+ * ri-esporta per i chiamanti del motore: una definizione sola.
+ */
+export { UPDATE_FIELD_ALLOWED, UPDATE_FIELD_ENGINE_OWNED, updateFieldRejection } from '@opengraphity/types'
+
 export interface CallWebhookParams {
   url:               string
   method:            'GET' | 'POST' | 'PUT'
@@ -177,7 +185,6 @@ export interface WorkflowDefinition {
   tenantId:        string
   name:            string
   entityType:      string
-  changeSubtype?:  string | null
   version:         number
   active:          boolean
   steps:           WorkflowStepDef[]
@@ -191,7 +198,14 @@ export interface WorkflowInstance {
   entityId:     string
   entityType:   string
   currentStep:  string
-  status:       'active' | 'completed' | 'failed'
+  /**
+   * Stato dell'ISTANZA (non del ticket): `completed` quando l'istanza entra in
+   * un passo **terminale** (`is_terminal`, con ripiego su `type='end'`: una
+   * nozione sola, la stessa di `workflowHelpers`), `cancelled` quando la
+   * change viene annullata (`changeMutations`: lo scriveva già, fuori dal
+   * vocabolario — B-20), `failed` per un'istanza che non può proseguire.
+   */
+  status:       'active' | 'completed' | 'cancelled' | 'failed'
   createdAt:    string
   updatedAt:    string
 }

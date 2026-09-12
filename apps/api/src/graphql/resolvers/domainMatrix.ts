@@ -25,6 +25,7 @@ import {
   loadDomainMatrix, matrixKey, type DomainMatrixKind,
 } from '../../lib/domainMatrix.js'
 import { criticalServiceCriticalities } from '../../services/serviceImpact/incident.js'
+import { preApprovedChangeTypes, setPreApprovedChangeTypes, changeTypeVocabulary } from '../../lib/changePolicy.js'
 
 interface CellOut { key: string; inputs: string[]; value: string | null }
 
@@ -168,7 +169,32 @@ async function criticalServiceCriticalitiesQuery(_: unknown, __: unknown, ctx: G
   return criticalServiceCriticalities(ctx.tenantId)
 }
 
+/**
+ * I tipi di change pre-approvati (ondata 8). Non è una matrice — «essere
+ * pre-approvato» è un concetto del codice, non un valore che il cliente possa
+ * rinominare — ma vive nella stessa pagina, perché per l'amministratore è la
+ * stessa cosa: una regola di dominio che decide lui.
+ */
+async function preApprovedChangeTypesQuery(_: unknown, __: unknown, ctx: GraphQLContext) {
+  const [types, vocabulary] = await Promise.all([
+    preApprovedChangeTypes(ctx.tenantId),
+    changeTypeVocabulary(ctx.tenantId),
+  ])
+  return { types: [...types], vocabulary: [...vocabulary] }
+}
+
+async function updatePreApprovedChangeTypes(_: unknown, args: { types: string[] }, ctx: GraphQLContext) {
+  const saved = await setPreApprovedChangeTypes(ctx.tenantId, args.types)
+  void audit(ctx, 'change.pre_approved_types.updated', 'Tenant', ctx.tenantId, { types: [...saved] })
+  const vocabulary = await changeTypeVocabulary(ctx.tenantId)
+  return { types: [...saved], vocabulary: [...vocabulary] }
+}
+
 export const domainMatrixResolvers = {
-  Query:    { domainMatrices, criticalServiceCriticalities: criticalServiceCriticalitiesQuery },
-  Mutation: { updateDomainMatrix },
+  Query: {
+    domainMatrices,
+    criticalServiceCriticalities: criticalServiceCriticalitiesQuery,
+    preApprovedChangeTypes: preApprovedChangeTypesQuery,
+  },
+  Mutation: { updateDomainMatrix, updatePreApprovedChangeTypes },
 }

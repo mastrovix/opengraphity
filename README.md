@@ -170,6 +170,15 @@ The apps read their env vars from `apps/api/.env` — copy from `infra/.env.exam
 
 Stack: Neo4j 5, Redis 7, Keycloak 24, Node 20, React 19, Vite 7, Apollo GraphQL, pnpm workspaces.
 
+## Documentation
+
+| Page | What it covers |
+|---|---|
+| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Prerequisites, first start, upgrade, rollback, backup/restore, production hardening |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Day-two: tenant onboarding, seeds, migrations, secret rotation, runbooks |
+| [`docs/API.md`](docs/API.md) | GraphQL schema, REST v1, inbound webhooks and connectors, CSV import |
+| [`docs/CUSTOMIZATION.md`](docs/CUSTOMIZATION.md) | What a customer can change and what stays factory: shared vs per-tenant, reserved names, renaming a workflow step, the closed vocabularies |
+
 ## Testing
 
 - `pnpm test` — unit tests across the workspace (vitest, fully mocked)

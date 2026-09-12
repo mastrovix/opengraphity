@@ -16,7 +16,7 @@ function definitionMock(entityType = 'incident'): GqlMock {
   return {
     request: { query: GET_WORKFLOW_DEFINITION_BY_ID, variables: { id: DEF_ID } },
     result: { data: { workflowDefinitionById: {
-      __typename: 'WorkflowDefinition', id: DEF_ID, name: 'Incident', entityType, category: null, version: 1, active: true, changeSubtype: null,
+      __typename: 'WorkflowDefinition', id: DEF_ID, name: 'Incident', entityType, category: null, version: 1, active: true,
       steps: [], transitions: [],
     } } },
     maxUsageCount: Number.POSITIVE_INFINITY,

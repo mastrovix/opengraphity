@@ -395,10 +395,21 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
         // tenant. Quello di un altro cliente no, e `assertEnumLinkable` lo dice.
         await assertEnumTypeLinkable(session, enumTypeId, { name: String(input['name']), tenantId: ctx.tenantId }, ctx.tenantId)
 
-        await session.executeWrite(tx =>
+        // D-17: nessun controllo di nome duplicato, qui. Due campi omonimi sullo
+        // stesso tipo e `loadMetamodel` ne scarta uno in silenzio (vince quello
+        // con `order` minore) mentre il disegnatore continua a mostrarne due. La
+        // chiave naturale è (tipo, nome) e passa per `HAS_FIELD`: un vincolo di
+        // nodo non la esprime, quindi la guardia è un predicato sullo stesso
+        // pattern che crea il campo — una transazione, nessuna corsa. Il
+        // confronto è sui campi VISIBILI al tenant: i suoi e quelli spediti.
+        const wrote = await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})
             WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
+              AND NOT EXISTS {
+                (t)-[:HAS_FIELD]->(dup:CIFieldDefinition)
+                WHERE dup.name = $name AND dup.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
+              }
             CREATE (f:CIFieldDefinition {
               id:                $fieldId,
               name:              $name,
@@ -442,6 +453,11 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
             now:              new Date().toISOString(),
           }),
         )
+        if (!wrote.records.length) {
+          throw new GraphQLError(`Il tipo ha già un campo «${String(input['name'])}»`, {
+            extensions: { code: 'BAD_USER_INPUT' },
+          })
+        }
       }, true)
 
       invalidateSchema(ctx.tenantId)

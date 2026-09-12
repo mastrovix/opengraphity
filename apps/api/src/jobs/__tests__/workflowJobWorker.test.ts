@@ -320,14 +320,49 @@ describe('workflow-jobs: job sconosciuto', () => {
 // ── notification-jobs ────────────────────────────────────────────────────────
 
 describe('notification-jobs', () => {
-  it('timer_wait → transizione automatica con triggeredBy=timer; success:false → il job rigetta', async () => {
+  // Ondata 8 · B-18: il passo di arrivo si risolve al momento dell'ESECUZIONE,
+  // leggendo l'arco automatico che esce dal passo dove l'istanza si trova
+  // adesso. Il nome messo nel payload quando il timer è partito (ore o giorni
+  // prima) è solo un'indicazione: se in mezzo l'amministratore ha cambiato il
+  // workflow, quel nome punta al vuoto e la transizione falliva senza che
+  // nessuno lo vedesse (un tentativo solo, poi il job resta nei falliti).
+  it('timer_wait → risolve il passo di arrivo ADESSO e transiziona con triggeredBy=timer', async () => {
+    readRows = [[{ currentStep: 'resolved', toStep: 'closed' }]]
     await expect(notificationProcessor(job('timer_wait', { instanceId: 'wi-2', toStep: 'closed', tenantId: 't1' }))).resolves.toBeUndefined()
+    const s = sessions.at(-1)!
+    expect(s.mode).toBe('WRITE')
+    expect(s.reads[0]!.p).toEqual({ instanceId: 'wi-2', tenantId: 't1' })
+    expect(s.reads[0]!.q).toContain("TRANSITIONS_TO {trigger: 'automatic'}")
     expect(transition).toHaveBeenCalledWith(
       expect.objectContaining({ mode: 'WRITE' }),
       { instanceId: 'wi-2', toStepName: 'closed', triggeredBy: 'timer', triggerType: 'automatic' },
       { userId: 'system', entityData: {} },
     )
+  })
 
+  it('timer_wait: il workflow è cambiato dopo la partenza → si usa il passo di ADESSO (warn), non quello nel payload', async () => {
+    readRows = [[{ currentStep: 'risolto', toStep: 'archiviato' }]]
+    await expect(notificationProcessor(job('timer_wait', { instanceId: 'wi-2', toStep: 'closed', tenantId: 't1' }))).resolves.toBeUndefined()
+    expect(transition).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ toStepName: 'archiviato' }), expect.anything())
+    expect(logWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ scheduledToStep: 'closed', toStep: 'archiviato', currentStep: 'risolto' }),
+      expect.stringContaining('il passo di arrivo è cambiato'),
+    )
+  })
+
+  it('timer_wait: nessun arco automatico dal passo corrente → il job rigetta nominando il passo (niente attesa infinita muta)', async () => {
+    readRows = [[{ currentStep: 'in_attesa', toStep: null }]]
+    await expect(notificationProcessor(job('timer_wait', { instanceId: 'wi-2', toStep: 'closed', tenantId: 't1' })))
+      .rejects.toThrow(/dal passo "in_attesa" non esce nessuna transizione automatica/)
+    expect(transition).not.toHaveBeenCalled()
+  })
+
+  it('timer_wait: istanza scomparsa → il job rigetta; transizione fallita → il job rigetta con l\'errore del motore', async () => {
+    readRows = [[]]
+    await expect(notificationProcessor(job('timer_wait', { instanceId: 'wi-2', toStep: 'closed', tenantId: 't1' })))
+      .rejects.toThrow(/l'istanza wi-2 del tenant t1 non esiste più/)
+
+    readRows = [[{ currentStep: 'resolved', toStep: 'closed' }]]
     transition.mockResolvedValue({ success: false, error: 'no such step' })
     await expect(notificationProcessor(job('timer_wait', { instanceId: 'wi-2', toStep: 'closed', tenantId: 't1' })))
       .rejects.toThrow('timer_wait transition failed for instance wi-2 → closed: no such step')

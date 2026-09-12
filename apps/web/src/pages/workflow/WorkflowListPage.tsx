@@ -17,13 +17,6 @@ interface WorkflowDef {
   category:       string | null
   active:         boolean
   version:        number
-  changeSubtype:  string | null
-}
-
-const SUBTYPE_COLORS: Record<string, { bg: string; fg: string }> = {
-  standard:  { bg: palette.success.tint, fg: palette.success.strong },
-  normal:    { bg: palette.info.tint, fg: palette.info.text },
-  emergency: { bg: palette.danger.tint, fg: palette.danger.strong },
 }
 
 const ENTITY_META: Record<string, { label: string; Icon: typeof AlertCircle; color: string }> = {
@@ -143,14 +136,6 @@ export function WorkflowListPage() {
                           {def.name}
                         </span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          {def.changeSubtype && (() => {
-                            const sc = lookupOrError(SUBTYPE_COLORS, def.changeSubtype, 'SUBTYPE_COLORS', { bg: 'var(--color-danger)', fg: colors.white })
-                            return (
-                              <Pill bg={sc.bg} color={sc.fg} radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
-                                {def.changeSubtype === 'standard' ? 'Standard' : def.changeSubtype === 'normal' ? 'Normal' : 'Emergency'}
-                              </Pill>
-                            )
-                          })()}
                           {def.category ? (
                             <Pill bg={palette.warning.tint} color={palette.warning.strong} radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
                               {def.category}

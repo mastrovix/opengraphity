@@ -67,8 +67,23 @@ async function expectCode(p: Promise<unknown>, code: string, pattern?: RegExp) {
 describe('letture — tenant + sistema', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  /**
+   * RINEGOZIATO (ondata 8 · A-18): questo test pinnava la TOLLERANZA di
+   * `mapEnum` verso le due forme di `values` (lista o stringa JSON). La
+   * stringa era scritta da un posto solo — `seed-metamodel.ts` per `ci_chain` —
+   * e quel `JSON.parse` di ripiego nascondeva l'incoerenza a tutti: al primo
+   * consumatore che facesse `values.length` sarebbe stato un difetto. Ora il
+   * seed scrive una lista, la migrazione 20260918_1910 normalizza il nodo
+   * esistente, e una stringa è un dato rotto da dire, non da indovinare.
+   */
+  it('values come stringa JSON → errore che nomina il nodo e la migrazione, invece di un JSON.parse silenzioso', async () => {
+    fakeSession([{ records: [rec({ ...ENUM_ROW, tenantId: 'system', name: 'ci_chain', values: '["Application","Infrastructure"]' })] }])
+    await expect(enumTypeResolvers.Query.enumTypes(null, {}, operator))
+      .rejects.toThrow(/system\/ci_chain: "values" non è una lista di stringhe.*20260918_1910/s)
+  })
+
   it('enumTypes: WHERE (e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = \'system\')), scope opzionale include "shared"', async () => {
-    const s = fakeSession([{ records: [rec(ENUM_ROW), rec({ ...ENUM_ROW, id: 'e-sys', tenantId: 'system', isSystem: true, values: '["a","b"]' })] }])
+    const s = fakeSession([{ records: [rec(ENUM_ROW), rec({ ...ENUM_ROW, id: 'e-sys', tenantId: 'system', isSystem: true, values: ['a', 'b'] })] }])
 
     const out = await enumTypeResolvers.Query.enumTypes(null, { scope: 'itil' }, operator)
 
@@ -76,7 +91,6 @@ describe('letture — tenant + sistema', () => {
     expect(cypher).toContain("(e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system'))")
     expect(cypher).toContain('(e.scope = $scope OR e.scope = "shared")')
     expect(params).toEqual({ tenantId: 'tenant-1', scope: 'itil' })
-    // values sia come lista nativa sia come JSON serializzato
     expect(out.map((e) => e.values)).toEqual([['portal', 'email'], ['a', 'b']])
     expect(s.close).toHaveBeenCalledOnce()
   })
@@ -143,20 +157,55 @@ describe('createEnumType', () => {
     expect(getSession).not.toHaveBeenCalled()
   })
 
-  it('nome già usato nel tenant → ValidationError, nessuna CREATE', async () => {
-    const s = fakeSession([{ records: [rec({ id: 'e-dup' })] }])
+  /**
+   * D-17 (ondata 8): la creazione era «leggi, poi crea» in DUE transazioni, e
+   * i due test che stavano qui pinnavano proprio quella forma (una MATCH di
+   * controllo, poi una CREATE). Ora è UNA scrittura idempotente: MERGE sulla
+   * chiave naturale (tenant_id, name), e chi arriva secondo lo capisce
+   * dall'`id` che torna diverso dal suo. I due test sono riscritti sulla forma
+   * nuova — la promessa verso il chiamante (stesso messaggio, stesso codice) è
+   * identica.
+   */
+  function mergeSession(returnedId: 'echo' | string) {
+    const txRun = vi.fn().mockImplementation(async (_c: string, p: Record<string, unknown>) => ({
+      records: [rec({ id: returnedId === 'echo' ? p['id'] : returnedId })],
+    }))
+    const tx = { run: txRun }
+    const s = {
+      txRun,
+      executeRead:  vi.fn().mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx)),
+      executeWrite: vi.fn().mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx)),
+      close: vi.fn().mockResolvedValue(undefined),
+    }
+    vi.mocked(getSession).mockReturnValue(s as never)
+    return s
+  }
+
+  it('nome già usato nel tenant → ValidationError; una sola scrittura, nessuna lettura di controllo', async () => {
+    const s = mergeSession('e-dup')
     await expectCode(enumTypeResolvers.Mutation.createEnumType(null, { input: { name: 'ticket_source', label: 'X', values: ['a'], scope: 'itil' } }, admin), 'BAD_USER_INPUT', /already exists for this tenant/)
-    expect(s.txRun.mock.calls[0]![0]).toContain('MATCH (e:EnumTypeDefinition {name: $name, tenant_id: $tenantId})')
-    expect(s.executeWrite).not.toHaveBeenCalled()
+    expect(s.executeRead).not.toHaveBeenCalled()
+    expect(s.txRun).toHaveBeenCalledTimes(1)
   })
 
-  it('valido → CREATE con tenant_id = $tenantId (mai "system") e is_system: false', async () => {
-    const s = fakeSession([{ records: [] }])
+  it('corsa persa contro il vincolo → lo stesso rifiuto, non un errore interno', async () => {
+    const txRun = vi.fn().mockRejectedValue(new Error('Node(7) already exists with label `EnumTypeDefinition` and properties'))
+    const tx = { run: txRun }
+    vi.mocked(getSession).mockReturnValue({
+      executeRead:  vi.fn().mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx)),
+      executeWrite: vi.fn().mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx)),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as never)
+    await expectCode(enumTypeResolvers.Mutation.createEnumType(null, { input: { name: 'ticket_source', label: 'X', values: ['a'], scope: 'itil' } }, admin), 'BAD_USER_INPUT', /already exists for this tenant/)
+  })
+
+  it('valido → MERGE sulla chiave naturale, tenant_id = $tenantId (mai "system") e is_system = false', async () => {
+    const s = mergeSession('echo')
     const out = await enumTypeResolvers.Mutation.createEnumType(null, { input: { name: 'ticket_source', label: 'Origine', values: ['portal'], scope: 'cmdb' } }, admin)
-    const [cypher, params] = s.txRun.mock.calls[1]!
-    expect(cypher).toContain('CREATE (e:EnumTypeDefinition {')
-    expect(cypher).toContain('tenant_id:  $tenantId')
-    expect(cypher).toContain('is_system:  false')
+    const [cypher, params] = s.txRun.mock.calls[0]!
+    expect(cypher).toContain('MERGE (e:EnumTypeDefinition {tenant_id: $tenantId, name: $name})')
+    expect(cypher).toContain('ON CREATE SET')
+    expect(cypher).toContain('e.is_system  = false')
     expect(cypher).not.toContain("'system'")
     expect(params).toMatchObject({ tenantId: 'tenant-1', name: 'ticket_source', values: ['portal'], scope: 'cmdb' })
     expect(out).toMatchObject({ tenantId: 'tenant-1', isSystem: false, name: 'ticket_source' })

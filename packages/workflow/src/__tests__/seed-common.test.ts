@@ -49,7 +49,7 @@ interface FakeOpts {
 
 function fakeSession(opts: FakeOpts = {}) {
   const existing = opts.existing === undefined
-    ? { id: 'def-1', version: 3, active: true, category: null, changeSubtype: null, customizedAt: null, customizedBy: null }
+    ? { id: 'def-1', version: 3, active: true, category: null, customizedAt: null, customizedBy: null }
     : opts.existing
   const queries: string[] = []
   const txRun = vi.fn(async (cypher: string, _params: Record<string, unknown> = {}) => {
@@ -127,12 +127,12 @@ describe('seedWorkflowDefinition — B-2: il seed non distrugge le personalizzaz
   })
 
   it('su una definizione marchiata come personalizzata l\'overwrite semplice si RIFIUTA, nominando data e autore', async () => {
-    const s = fakeSession({ existing: { id: 'def-1', version: 3, active: true, category: null, changeSubtype: null, customizedAt: '2026-09-11T10:22:00.000Z', customizedBy: 'user-42' } })
+    const s = fakeSession({ existing: { id: 'def-1', version: 3, active: true, category: null, customizedAt: '2026-09-11T10:22:00.000Z', customizedBy: 'user-42' } })
     await expect(seedWorkflowDefinition('c-one', FACTORY, { session: s as never, overwrite: true }))
       .rejects.toThrow(CustomizedWorkflowError)
     expect(wrote(s.queries)).toEqual({ steps: false, definition: false, transitions: false })
 
-    const s2 = fakeSession({ existing: { id: 'def-1', version: 3, active: true, category: null, changeSubtype: null, customizedAt: '2026-09-11T10:22:00.000Z', customizedBy: 'user-42' } })
+    const s2 = fakeSession({ existing: { id: 'def-1', version: 3, active: true, category: null, customizedAt: '2026-09-11T10:22:00.000Z', customizedBy: 'user-42' } })
     const err = await seedWorkflowDefinition('c-one', FACTORY, { session: s2 as never, overwrite: true }).catch((e: unknown) => e as Error)
     expect(err.message).toContain('Incident Management')
     expect(err.message).toContain('2026-09-11T10:22:00.000Z')
@@ -141,7 +141,7 @@ describe('seedWorkflowDefinition — B-2: il seed non distrugge le personalizzaz
   })
 
   it('overwriteCustomized scrive e toglie il marchio (implica overwrite)', async () => {
-    const s = fakeSession({ existing: { id: 'def-1', version: 3, active: true, category: null, changeSubtype: null, customizedAt: '2026-09-11T10:22:00.000Z', customizedBy: 'user-42' } })
+    const s = fakeSession({ existing: { id: 'def-1', version: 3, active: true, category: null, customizedAt: '2026-09-11T10:22:00.000Z', customizedBy: 'user-42' } })
     const r = await seedWorkflowDefinition('c-one', FACTORY, { session: s as never, overwriteCustomized: true })
     expect(r.skipped).toBe(false)
     expect(r.customizedAt).toBe('2026-09-11T10:22:00.000Z')
@@ -152,7 +152,7 @@ describe('seedWorkflowDefinition — B-2: il seed non distrugge le personalizzaz
 
   it('una definizione marchiata viene saltata anche senza overwrite, e il motivo nomina la personalizzazione', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
-    const s = fakeSession({ existing: { id: 'def-1', version: 3, active: true, category: null, changeSubtype: null, customizedAt: '2026-09-11T10:22:00.000Z', customizedBy: 'user-42' } })
+    const s = fakeSession({ existing: { id: 'def-1', version: 3, active: true, category: null, customizedAt: '2026-09-11T10:22:00.000Z', customizedBy: 'user-42' } })
     const r = await seedWorkflowDefinition('c-one', FACTORY, { session: s as never })
     expect(r.skipped).toBe(true)
     expect(r.customizedBy).toBe('user-42')
@@ -160,7 +160,7 @@ describe('seedWorkflowDefinition — B-2: il seed non distrugge le personalizzaz
   })
 
   it('una definizione senza la proprietà customized_at non è considerata personalizzata (assente = non personalizzata)', async () => {
-    const s = fakeSession({ existing: { id: 'def-1', version: 3, active: true, category: null, changeSubtype: null } })
+    const s = fakeSession({ existing: { id: 'def-1', version: 3, active: true, category: null } })
     const r = await seedWorkflowDefinition('c-one', FACTORY, { session: s as never, overwrite: true })
     expect(r.customizedAt).toBeNull()
     expect(r.skipped).toBe(false)
@@ -176,7 +176,7 @@ describe('seedWorkflowDefinition — B-2: il seed non distrugge le personalizzaz
 })
 
 describe('computeSeedDiff', () => {
-  const liveDef = { version: 3, active: true, category: null, changeSubtype: null }
+  const liveDef = { version: 3, active: true, category: null }
 
   it('elenca passi e transizioni aggiunti, rimossi e cambiati', () => {
     const d = computeSeedDiff(FACTORY, liveDef, LIVE_STEPS.map((s) => ({ ...s, metadata: s.props })), LIVE_TRS)
@@ -194,7 +194,7 @@ describe('computeSeedDiff', () => {
       enterActions: JSON.stringify(s.enterActions), exitActions: JSON.stringify(s.exitActions),
       metadata: { ...s.metadata },
     }))
-    const d = computeSeedDiff(FACTORY, { version: 1, active: true, category: null, changeSubtype: null }, steps, FACTORY.transitions)
+    const d = computeSeedDiff(FACTORY, { version: 1, active: true, category: null }, steps, FACTORY.transitions)
     expect(seedDiffIsEmpty(d)).toBe(true)
     expect(formatSeedDiff('x', 'c-two', d).join('\n')).toContain('nessuna differenza')
   })

@@ -27,3 +27,15 @@ export const GET_CRITICAL_SERVICE_CRITICALITIES = gql`
     criticalServiceCriticalities
   }
 `
+
+/**
+ * I tipi di change PRE-APPROVATI (ondata 8). Non è una matrice — «essere
+ * pre-approvato» è un concetto del codice, non un valore rinominabile — ma per
+ * l'amministratore è la stessa cosa: una regola di dominio che decide lui, e
+ * vive nella stessa pagina.
+ */
+export const GET_PRE_APPROVED_CHANGE_TYPES = gql`
+  query GetPreApprovedChangeTypes {
+    preApprovedChangeTypes { types vocabulary }
+  }
+`

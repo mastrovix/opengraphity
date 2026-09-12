@@ -6,6 +6,7 @@ import { Sparkles, BookOpen } from 'lucide-react'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SeverityBadge } from '@/components/ui/badges'
 import { colors, palette } from '@/lib/tokens'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 
 const GET_SIMILAR_INCIDENTS = gql`
   query SimilarIncidents($incidentId: ID!, $limit: Int) {
@@ -35,6 +36,11 @@ function scorePct(score: number): string {
 }
 
 export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
+  // Chiuso/risolto si legge dai METADATA del passo di questo cliente, non da
+  // `['closed','resolved']` (B-22): un passo terminale aggiunto dal cliente
+  // veniva reso come «aperto», e l'etichetta mostrava il nome grezzo del passo
+  // al posto di quella scelta nel disegnatore.
+  const { isTerminal, categoryOf, labelFor } = useWorkflowSteps('incident')
   const { data, loading, error, startPolling, stopPolling } = useQuery<QueryData>(GET_SIMILAR_INCIDENTS, {
     variables: { incidentId, limit: 5 },
     fetchPolicy: 'cache-and-network',
@@ -81,7 +87,7 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {similar?.items.map((it) => {
-              const closed = it.status === 'closed' || it.status === 'resolved'
+              const closed = isTerminal(it.status) || categoryOf(it.status) === 'resolved'
               return (
                 <Link
                   key={it.id}
@@ -102,7 +108,7 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <SeverityBadge value={it.severity} />
                     <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: closed ? palette.success.tint : colors.slateBg, color: closed ? palette.success.text : 'var(--color-slate)', textTransform: 'uppercase' }}>
-                      {it.status.replace(/_/g, ' ')}
+                      {labelFor(it.status).replace(/_/g, ' ')}
                     </span>
                   </div>
                 </Link>

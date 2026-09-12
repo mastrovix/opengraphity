@@ -10,7 +10,17 @@ vi.mock('../../../lib/triggerEngine.js', () => ({ invalidateTriggerCache: vi.fn(
 vi.mock('../../../lib/rulesEngine.js', () => ({ invalidateRulesCache: vi.fn() }))
 vi.mock('../../../lib/filterBuilder.js', () => ({ buildAdvancedWhere: vi.fn() }))
 
-const { assertConditionsJson, assertActionsJson, automationResolvers } = await import('../automation.js')
+// Ondata 8 · B-18: i bersagli di passo si validano contro i passi VERI del
+// tenant. Il nucleo (`getWorkflowSteps`) è mockato: qui si prova la porta di
+// scrittura, non la lettura dei metadata.
+vi.mock('../../../lib/workflowHelpers.js', () => ({
+  getWorkflowSteps: vi.fn(async (_s: unknown, _t: string, entityType: string) =>
+    entityType === 'change'
+      ? [{ name: 'valutazione' }, { name: 'cab_settimanale' }, { name: 'in_calendario' }, { name: 'archiviata' }]
+      : [{ name: 'nuovo' }, { name: 'in_lavorazione' }, { name: 'sistemato' }]),
+}))
+
+const { assertConditionsJson, assertActionsJson, assertStepTargets, automationResolvers } = await import('../automation.js')
 const { ValidationError } = await import('../../../lib/errors.js')
 
 describe('assertConditionsJson', () => {
@@ -65,5 +75,54 @@ describe('mutations: enum a scrittura', () => {
       .rejects.toThrow(/unknown type "nope"/)
     await expect(automationResolvers.Mutation.updateBusinessRule(null, { id: '1', input: { conditions: 'garbage' } }, ctx))
       .rejects.toThrow(/Invalid conditions/)
+  })
+})
+
+// ── Bersagli di passo (ondata 8 · B-18) ──────────────────────────────────────
+// Dal vivo: una business rule «Change emergency → approvazione immediata» punta
+// al passo `approved`, che la definizione change non ha mai avuto. La regola
+// risultava attiva e sana, e l'auto-approvazione non è mai avvenuta: il motore
+// rifiutava la transizione e l'esito veniva ignorato.
+
+describe('assertStepTargets', () => {
+  const session = {} as never
+
+  it('non legge i passi se non c\'è niente da validare', async () => {
+    const { getWorkflowSteps } = await import('../../../lib/workflowHelpers.js')
+    vi.mocked(getWorkflowSteps).mockClear()
+    await assertStepTargets(session, 't', 'change', { actions: '[{"type":"assign_team","params":{"team_id":"t1"}}]', conditions: '[]' })
+    expect(getWorkflowSteps).not.toHaveBeenCalled()
+  })
+
+  it('to_step di un passo RINOMINATO è accettato; un passo inesistente è rifiutato nominando quelli veri', async () => {
+    await expect(assertStepTargets(session, 't', 'change', { actions: '[{"type":"transition_workflow","params":{"to_step":"in_calendario"}}]' }))
+      .resolves.toBeUndefined()
+    await expect(assertStepTargets(session, 't', 'change', { actions: '[{"type":"transition_workflow","params":{"to_step":"approved"}}]' }))
+      .rejects.toThrow(/nomina il passo "approved", che non esiste nel workflow "change"[\s\S]*valutazione, cab_settimanale, in_calendario, archiviata/)
+  })
+
+  it('to_step vuoto → rifiutato (una regola che non dice dove andare non è configurata)', async () => {
+    await expect(assertStepTargets(session, 't', 'change', { actions: '[{"type":"transition_workflow","params":{}}]' }))
+      .rejects.toThrow(/richiede il passo di arrivo/)
+  })
+
+  it('condizione status equals/not_equals: il valore deve essere un passo; contains e is_null non si toccano', async () => {
+    await expect(assertStepTargets(session, 't', 'incident', { conditions: '[{"field":"status","operator":"equals","value":"nuovo"}]' }))
+      .resolves.toBeUndefined()
+    await expect(assertStepTargets(session, 't', 'incident', { conditions: '[{"field":"status","operator":"equals","value":"open"}]' }))
+      .rejects.toThrow(/nomina il passo "open", che non esiste nel workflow "incident"/)
+    await expect(assertStepTargets(session, 't', 'incident', { conditions: '[{"field":"status","operator":"not_equals","value":"closed"}]' }))
+      .rejects.toThrow(/nomina il passo "closed"/)
+    await expect(assertStepTargets(session, 't', 'incident', { conditions: '[{"field":"status","operator":"contains","value":"lavor"}]' }))
+      .resolves.toBeUndefined()
+    await expect(assertStepTargets(session, 't', 'incident', { conditions: '[{"field":"status","operator":"is_null"}]' }))
+      .resolves.toBeUndefined()
+  })
+
+  it('tenant senza definizione di workflow → il rifiuto lo dice, invece di elencare «(nessuno)»', async () => {
+    const { getWorkflowSteps } = await import('../../../lib/workflowHelpers.js')
+    vi.mocked(getWorkflowSteps).mockResolvedValueOnce([])
+    await expect(assertStepTargets(session, 't', 'problem', { actions: '[{"type":"transition_workflow","params":{"to_step":"x"}}]' }))
+      .rejects.toThrow(/non ha nessun passo: crea la definizione di workflow/)
   })
 })

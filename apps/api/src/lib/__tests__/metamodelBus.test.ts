@@ -354,3 +354,84 @@ describe('la versione del metamodello', () => {
     expect(a.bus.metamodelVersionKey('c-one')).toBe('og:metamodel:version:c-one')
   })
 })
+
+/**
+ * Ondata 8: il canale parlava solo ai log. I due guasti che contano — nessuno
+ * in ascolto, e un processo non sottoscritto — non hanno sintomi visibili (le
+ * cache restano semplicemente vecchie), quindi devono essere NUMERI che
+ * Prometheus sorveglia. Le regole sono in `infra/prometheus/alerts.yml`, gruppo
+ * `metamodel-bus`.
+ *
+ * Nota sull'apparato: `vi.resetModules()` dà a ogni «processo» anche la SUA
+ * copia di `middleware/metrics.js`, come in due container distinti. I contatori
+ * si leggono quindi dal processo che li ha incrementati.
+ */
+describe('le metriche del canale (ondata 8)', () => {
+  type Metrics = typeof import('../../middleware/metrics.js')
+
+  async function startProcessWithMetrics(): Promise<FakeProcess & { metrics: Metrics }> {
+    vi.resetModules()
+    const metrics = await import('../../middleware/metrics.js')
+    const bus     = await import('../metamodelBus.js')
+    const inv     = await import('../schemaInvalidator.js')
+    const cache   = await import('../cache.js')
+    const labels  = await import('../ciTypeFromLabels.js')
+    bus.startMetamodelBus()
+    await vi.waitFor(() => expect(bus.metamodelBusStatus().subscribed).toBe(true))
+    return { bus, inv, cache, labels, metrics }
+  }
+
+  /** Il valore di un contatore per etichetta, letto dall'esposizione. */
+  function counter(metric: { collect(): string }, label: string): number {
+    const line = metric.collect().split('\n').find((l) => l.includes(`result="${label}"`))
+    return line ? Number(line.trim().split(/\s+/)[1]) : 0
+  }
+
+  it('pubblicare con qualcuno in ascolto → delivered qui, applied là', async () => {
+    const p1 = await startProcessWithMetrics()
+    const p2 = await startProcessWithMetrics()
+    warm(p2, 't-metriche')
+
+    p1.inv.invalidateSchema('t-metriche')
+    await vi.waitFor(() => expect(isWarm(p2, 't-metriche')).toBe(false))
+
+    expect(counter(p1.metrics.metamodelPublishedTotal, 'delivered')).toBe(1)
+    expect(counter(p1.metrics.metamodelPublishedTotal, 'no_receivers')).toBe(0)
+    expect(counter(p2.metrics.metamodelReceivedTotal, 'applied')).toBe(1)
+    // Chi pubblica non conta il proprio messaggio come ricevuto.
+    expect(counter(p1.metrics.metamodelReceivedTotal, 'applied')).toBe(0)
+  })
+
+  it('nessuno in ascolto → no_receivers: il canale muto si vede in un numero', async () => {
+    const solo = await startProcessWithMetrics()
+    // La sua sottoscrizione è l'unica: togliendola, il PUBLISH non trova nessuno.
+    await solo.bus.stopMetamodelBus()
+    solo.inv.registerMetamodelPublisher(solo.bus.publishMetamodelChange)
+
+    solo.inv.invalidateSchema('t-solo')
+    await vi.waitFor(() => expect(counter(solo.metrics.metamodelPublishedTotal, 'no_receivers')).toBe(1))
+    expect(counter(solo.metrics.metamodelPublishedTotal, 'delivered')).toBe(0)
+  })
+
+  it('un messaggio già applicato è `stale`, uno malformato è `malformed`', async () => {
+    const p = await startProcessWithMetrics()
+
+    // Due volte la stessa versione, da un'altra origine: la seconda è stale.
+    const msg = JSON.stringify({ tenantId: 't-stale', version: 7, origin: 'un-altro-processo' })
+    hub.publish(p.bus.METAMODEL_CHANNEL, msg)
+    hub.publish(p.bus.METAMODEL_CHANNEL, msg)
+    await vi.waitFor(() => expect(counter(p.metrics.metamodelReceivedTotal, 'stale')).toBe(1))
+    expect(counter(p.metrics.metamodelReceivedTotal, 'applied')).toBe(1)
+
+    hub.publish(p.bus.METAMODEL_CHANNEL, 'non è JSON')
+    hub.publish(p.bus.METAMODEL_CHANNEL, JSON.stringify({ manca: 'tutto' }))
+    await vi.waitFor(() => expect(counter(p.metrics.metamodelReceivedTotal, 'malformed')).toBe(2))
+  })
+
+  it('`metamodel_bus_subscribed` è 1 in ascolto e 0 dopo lo spegnimento', async () => {
+    const p = await startProcessWithMetrics()
+    expect(p.metrics.metamodelBusSubscribed.collect()).toMatch(/metamodel_bus_subscribed 1\b/)
+    await p.bus.stopMetamodelBus()
+    expect(p.metrics.metamodelBusSubscribed.collect()).toMatch(/metamodel_bus_subscribed 0\b/)
+  })
+})

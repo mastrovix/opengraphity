@@ -67,7 +67,7 @@ export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
   'serviceRelationshipTypes',
   // Ondata 7 · A7-4: le matrici di dominio sono configurazione del tenant
   // (priorità = impatto × urgenza, criticità → impatto, …), come i vocabolari.
-  'domainMatrices',
+  'domainMatrices', 'preApprovedChangeTypes',
 ])
 
 export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
@@ -95,7 +95,7 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   'updateITILType', 'createITILField', 'updateITILField', 'deleteITILField',
   'createITILCIRelationRule', 'deleteITILCIRelationRule',
   'createEnumType', 'updateEnumType', 'deleteEnumType', 'customizeEnumType',
-  'updateDomainMatrix',
+  'updateDomainMatrix', 'updatePreApprovedChangeTypes',
   'createFieldVisibilityRule', 'updateFieldVisibilityRule', 'deleteFieldVisibilityRule',
   'setFieldRequirement', 'deleteFieldRequirement',
   // cataloghi e questionari

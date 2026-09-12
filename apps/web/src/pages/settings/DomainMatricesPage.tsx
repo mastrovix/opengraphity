@@ -26,8 +26,8 @@ import { PageTitle } from '@/components/PageTitle'
 import { Button } from '@/components/Button'
 import { Select } from '@/components/ui/FormControls'
 import { inputS, labelS } from '@/components/ui/styles'
-import { GET_DOMAIN_MATRICES } from '@/graphql/queries'
-import { UPDATE_DOMAIN_MATRIX } from '@/graphql/mutations'
+import { GET_DOMAIN_MATRICES, GET_PRE_APPROVED_CHANGE_TYPES } from '@/graphql/queries'
+import { UPDATE_DOMAIN_MATRIX, UPDATE_PRE_APPROVED_CHANGE_TYPES } from '@/graphql/mutations'
 import { colors } from '@/lib/tokens'
 
 // ── Tipi ──────────────────────────────────────────────────────────────────────
@@ -225,6 +225,70 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
   )
 }
 
+
+// ── Tipi di change pre-approvati (ondata 8) ──────────────────────────────────
+//
+// Non è una matrice: «essere pre-approvato» è un concetto del codice, non un
+// valore che il cliente possa rinominare. Ma per l'amministratore è la stessa
+// cosa — una regola di dominio che decide lui — e prima era il letterale
+// `standard` in quattro punti del codice: chi rinominava quel valore nel
+// Dizionario perdeva la pre-approvazione senza che nessuno gliel'avesse detto.
+
+function PreApprovedChangeTypesCard() {
+  const { t } = useTranslation()
+  const { data, loading, error } = useQuery<{ preApprovedChangeTypes: { types: string[]; vocabulary: string[] } }>(
+    GET_PRE_APPROVED_CHANGE_TYPES, { fetchPolicy: 'cache-and-network' },
+  )
+  const [draft, setDraft] = useState<string[] | null>(null)
+  const saved = data?.preApprovedChangeTypes
+  const current = draft ?? saved?.types ?? []
+  const dirty = draft !== null && saved != null && (draft.length !== saved.types.length || draft.some((v) => !saved.types.includes(v)))
+
+  const [save, { loading: saving }] = useMutation(UPDATE_PRE_APPROVED_CHANGE_TYPES, {
+    refetchQueries: [GET_PRE_APPROVED_CHANGE_TYPES],
+    onCompleted: () => { toast.success(t('pages.domainMatrices.preApproved.saved')); setDraft(null) },
+    onError: (e) => toast.error(e.message),
+  })
+
+  const toggle = (value: string) =>
+    setDraft(current.includes(value) ? current.filter((v) => v !== value) : [...current, value])
+
+  return (
+    <SectionCard title={t('pages.domainMatrices.preApproved.title')} defaultOpen>
+      <p style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, marginTop: 0 }}>
+        {t('pages.domainMatrices.preApproved.help')}
+      </p>
+      {loading && !data && <p>{t('common.loading')}</p>}
+      {error && <p style={{ color: 'var(--color-danger-text)' }}>{error.message}</p>}
+      {saved && (
+        <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+            {saved.vocabulary.map((value) => (
+              <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={current.includes(value)}
+                  onChange={() => toggle(value)}
+                  style={{ accentColor: 'var(--color-brand)' }}
+                />
+                {value}
+              </label>
+            ))}
+          </div>
+          {current.length === 0 && (
+            <p style={{ fontSize: 'var(--font-size-label)', color: colors.slateLight }}>
+              {t('pages.domainMatrices.preApproved.none')}
+            </p>
+          )}
+          <Button onClick={() => void save({ variables: { types: current } })} disabled={!dirty || saving}>
+            <Save size={14} /> {t('common.save')}
+          </Button>
+        </>
+      )}
+    </SectionCard>
+  )
+}
+
 // ── Pagina ────────────────────────────────────────────────────────────────────
 
 export function DomainMatricesPage() {
@@ -246,6 +310,7 @@ export function DomainMatricesPage() {
       {loading && !data && <p>{t('common.loading')}</p>}
       {error && <p style={{ color: 'var(--color-danger-text)' }}>{error.message}</p>}
       {data?.domainMatrices.map((m) => <MatrixCard key={m.kind} matrix={m} />)}
+      <PreApprovedChangeTypesCard />
     </PageContainer>
   )
 }

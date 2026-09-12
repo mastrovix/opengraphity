@@ -14,6 +14,9 @@ import { GraphQLError } from 'graphql'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { vectorIndexName } from './embeddings.js'
 import { logger } from '../lib/logger.js'
+// I passi conclusivi (risolti/terminali) vengono dal workflow di QUESTO cliente
+// e non da `['closed']`/`['resolved','closed']` (ondata 8 · B-22).
+import { statusNamesForClasses, concludedStatusNames } from '../lib/statusStepNames.js'
 
 const log = logger.child({ module: 'post-incident' })
 
@@ -114,13 +117,16 @@ const CLUSTER_THRESHOLD = 0.72
 const CLUSTER_MIN_SIZE = 3
 
 export async function problemCandidates(tenantId: string): Promise<ProblemCandidate[]> {
-  // Non-closed incidents with an embedding
+  // Incident non CHIUSI (un incident risolto ma non chiuso è ancora un
+  // candidato: il cluster serve a capire se il problema si ripete). «Chiuso» è
+  // la classe di stato del workflow del cliente, non il nome `closed`.
+  const closedSteps = await statusNamesForClasses(tenantId, 'incident', ['closed'])
   const incidents = await readQuery<{ id: string; number: string | null; title: string; status: string; severity: string; embedding: number[] }>(`
     MATCH (i:Incident {tenant_id: $tenantId})
-    WHERE NOT i.status IN ['closed'] AND i.embedding IS NOT NULL
+    WHERE NOT i.status IN $closedSteps AND i.embedding IS NOT NULL
     RETURN i.id AS id, i.number AS number, i.title AS title,
            i.status AS status, i.severity AS severity, i.embedding AS embedding
-  `, { tenantId })
+  `, { tenantId, closedSteps })
 
   // Cluster: for each incident query its similar peers above threshold, then union-find
   const parent = new Map<string, string>()
@@ -138,9 +144,9 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
       CALL db.index.vector.queryNodes($index, 15, $embedding)
       YIELD node, score
       WHERE node.tenant_id = $tenantId AND node.id <> $selfId
-        AND NOT node.status IN ['closed'] AND score >= ${CLUSTER_THRESHOLD}
+        AND NOT node.status IN $closedSteps AND score >= ${CLUSTER_THRESHOLD}
       RETURN node.id AS id, score
-    `, { index, embedding: i.embedding, tenantId, selfId: i.id })
+    `, { index, embedding: i.embedding, tenantId, selfId: i.id, closedSteps })
     for (const p of peers) if (parent.has(p.id)) union(i.id, p.id)
   }
 
@@ -224,8 +230,16 @@ export interface KbDraftContent {
 export async function draftKbContent(tenantId: string, incidentId: string): Promise<KbDraftContent> {
   const ctx = await loadIncidentContext(tenantId, incidentId)
   const status = String(ctx.props['status'] ?? '')
-  if (status !== 'resolved' && status !== 'closed') {
-    throw new GraphQLError('La bozza KB si genera solo da incident risolti o chiusi', { extensions: { code: 'BAD_USER_INPUT' } })
+  // Risolto o chiuso secondo i METADATA del passo di questo cliente: con un
+  // passo di risoluzione rinominato la bozza KB era irraggiungibile (il web non
+  // mostrava il bottone e il server l'avrebbe rifiutata comunque).
+  const concluded = await concludedStatusNames(tenantId, 'incident')
+  if (!concluded.includes(status)) {
+    throw new GraphQLError(
+      `La bozza KB si genera solo da incident risolti o chiusi: questo è nel passo "${status}". ` +
+      `Passi conclusivi del workflow incident: ${concluded.length > 0 ? concluded.join(', ') : '(nessuno dichiarato — marca un passo come terminale o di categoria "resolved" nel disegnatore)'}.`,
+      { extensions: { code: 'BAD_USER_INPUT' } },
+    )
   }
 
   const client = getClient()

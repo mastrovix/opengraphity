@@ -20,6 +20,19 @@ interface EnumTypeDef {
   updatedAt: string
 }
 
+/**
+ * I valori di un vocabolario: una lista di stringhe, o un errore che nomina il
+ * nodo. Vedi A-18.
+ */
+function assertEnumValues(vals: unknown, tenantId: unknown, name: unknown): string[] {
+  if (Array.isArray(vals) && vals.every((v) => typeof v === 'string')) return vals as string[]
+  throw new Error(
+    `EnumTypeDefinition ${String(tenantId)}/${String(name)}: "values" non è una lista di stringhe ` +
+    `(${typeof vals === 'string' ? 'è una stringa' : typeof vals}). ` +
+    `Esegui la migrazione 20260918_1910_provision_tenant_data, che normalizza i vocabolari scritti come stringa JSON.`,
+  )
+}
+
 function mapEnum(r: { get: (k: string) => unknown }): EnumTypeDef {
   const vals     = r.get('values')
   const tenantId = r.get('tenantId') as string
@@ -28,7 +41,12 @@ function mapEnum(r: { get: (k: string) => unknown }): EnumTypeDef {
     tenantId,
     name:      r.get('name')      as string,
     label:     r.get('label')     as string,
-    values:    Array.isArray(vals) ? vals as string[] : JSON.parse(vals as string) as string[],
+    // A-18: `values` è una lista, sempre. Il ripiego `JSON.parse` copriva UN
+    // nodo (`ci_chain`, scritto come stringa JSON dal seed del metamodello) e
+    // nascondeva l'incoerenza a tutti: il seed ora scrive una lista e la
+    // migrazione 20260918_1910 normalizza il nodo esistente, quindi una
+    // stringa qui è un dato rotto e va detto, non indovinato.
+    values:    assertEnumValues(vals, tenantId, r.get('name')),
     isSystem:  r.get('isSystem')  as boolean,
     // `is_system` è un flag di protezione scritto anche sulle copie per tenant
     // (A-3): il proprietario si legge dal tenant, non da quel flag.
@@ -59,6 +77,9 @@ export async function enumTypes(
     }
     const result = await session.executeRead((tx) =>
       tx.run(`
+        // Il WHERE interpolato parte dal predicato di visibilita' (conditions, riga
+        // 54): proprio tenant, oppure il tenant condiviso 'system'.
+        // tenant-ok: filtro di tenant sempre in testa a conditions.
         MATCH (e:EnumTypeDefinition)
         WHERE ${conditions.join(' AND ')}
         RETURN e.id        AS id,
@@ -130,32 +151,41 @@ export async function createEnumType(
 
   const session = getSession(undefined, 'WRITE')
   try {
-    // Check uniqueness per tenant
-    const existing = await session.executeRead((tx) =>
-      tx.run(`
-        MATCH (e:EnumTypeDefinition {name: $name, tenant_id: $tenantId})
-        RETURN e.id AS id LIMIT 1
-      `, { name: input.name, tenantId: ctx.tenantId }),
-    )
-    if (existing.records.length) {
+    // D-17: era «leggi, poi crea» in DUE transazioni — due «Salva» ravvicinati
+    // (doppio clic, due admin) passavano entrambi il controllo e creavano due
+    // vocabolari omonimi, che `loadMetamodel` poi scarta a metà in silenzio.
+    // Qui la creazione è UNA scrittura idempotente: il MERGE sulla chiave
+    // naturale (tenant_id, name) regge la corsa — il vincolo di unicità in
+    // `packages/neo4j/src/init.ts` la fa reggere anche fra processi — e chi
+    // arriva secondo lo scopre dall'`id` che torna diverso dal suo.
+    let createdId: string
+    try {
+      const res = await session.executeWrite((tx) =>
+        tx.run(`
+          MERGE (e:EnumTypeDefinition {tenant_id: $tenantId, name: $name})
+          ON CREATE SET
+            e.id         = $id,
+            e.label      = $label,
+            e.values     = $values,
+            e.is_system  = false,
+            e.scope      = $scope,
+            e.created_at = $now,
+            e.updated_at = $now
+          RETURN e.id AS id
+        `, { id, tenantId: ctx.tenantId, name: input.name, label: input.label, values: input.values, scope: input.scope, now }),
+      )
+      createdId = res.records[0]!.get('id') as string
+    } catch (err) {
+      // Corsa persa contro un altro processo: il vincolo ha parlato. Lo stesso
+      // rifiuto di sempre, non un errore interno.
+      if (String(err).includes('already exists') || String(err).includes('ConstraintValidationFailed')) {
+        throw new ValidationError(`An enum type named "${input.name}" already exists for this tenant`)
+      }
+      throw err
+    }
+    if (createdId !== id) {
       throw new ValidationError(`An enum type named "${input.name}" already exists for this tenant`)
     }
-
-    await session.executeWrite((tx) =>
-      tx.run(`
-        CREATE (e:EnumTypeDefinition {
-          id:         $id,
-          tenant_id:  $tenantId,
-          name:       $name,
-          label:      $label,
-          values:     $values,
-          is_system:  false,
-          scope:      $scope,
-          created_at: $now,
-          updated_at: $now
-        })
-      `, { id, tenantId: ctx.tenantId, name: input.name, label: input.label, values: input.values, scope: input.scope, now }),
-    )
 
     void audit(ctx, 'enum_type.created', 'EnumTypeDefinition', id, { name: input.name })
 

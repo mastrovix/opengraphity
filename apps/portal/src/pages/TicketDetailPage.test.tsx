@@ -13,6 +13,9 @@ const meMock: GqlMock = {
 
 const TICKET = {
   __typename: 'Ticket', id: 'tk-1', type: 'incident', title: 'Printer broken', description: 'It smokes', status: 'in_progress',
+  // La categoria del passo (ondata 7 · D-15) è quella che dice al portale se il
+  // ticket è chiuso o risolto: il nome del passo è del cliente (ondata 8 · B-22).
+  statusCategory: 'active', statusLabel: null,
   priority: 'high', category: 'hardware', createdAt: '2026-09-08T08:00:00Z', updatedAt: '2026-09-08T09:00:00Z', assignedTeam: 'Service Desk',
   comments: [
     { __typename: 'EntityComment', id: 'c1', body: 'Ciao, ho un problema', isInternal: false, authorId: 'me-1', authorName: 'Mario Rossi', authorEmail: 'mario@acme.com', createdAt: '2026-09-08T08:10:00Z' },
@@ -95,13 +98,17 @@ describe('TicketDetailPage', () => {
     await waitFor(() => expect(screen.getByPlaceholderText('Write your reply...')).toHaveValue(''))
   })
 
-  it('ticket chiuso → nessun form di risposta; risolto → banner con "Reopen ticket"', async () => {
-    const { unmount } = renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, ticketMock({ ...TICKET, status: 'closed' })] })
+  // Passi RINOMINATI dal cliente («archiviato», «sistemato»): chiuso e risolto
+  // si riconoscono dalla categoria del passo, non dal nome (ondata 8 · B-22).
+  // Con il vecchio confronto sui nomi di fabbrica questi due casi davano il
+  // contrario: risposta offerta su un ticket chiuso, nessun banner su uno risolto.
+  it('ticket chiuso → nessun form di risposta; risolto → banner con "Reopen ticket" (passi rinominati)', async () => {
+    const { unmount } = renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, ticketMock({ ...TICKET, status: 'archiviato', statusCategory: 'closed' })] })
     await screen.findByRole('heading', { level: 1, name: 'Printer broken' })
     expect(screen.queryByPlaceholderText('Write your reply...')).not.toBeInTheDocument()
     unmount()
 
-    renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, ticketMock({ ...TICKET, status: 'resolved' })] })
+    renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, ticketMock({ ...TICKET, status: 'sistemato', statusCategory: 'resolved' })] })
     await screen.findByRole('heading', { level: 1, name: 'Printer broken' })
     expect(screen.getByText(/This ticket has been resolved/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reopen ticket' })).toBeInTheDocument()
