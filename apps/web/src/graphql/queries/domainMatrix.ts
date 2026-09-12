@@ -56,3 +56,22 @@ export const GET_RISK_BAND_THRESHOLDS = gql`
     }
   }
 `
+
+/**
+ * Cosa c'è da sistemare nella configurazione di questo cliente. Il prodotto lo
+ * sapeva già e lo diceva a tutti tranne che a chi può rimediare: intestazione
+ * HTTP, metrica, log e `migrate --status` non arrivano all'amministratore del
+ * tenant, che vede solo pagine che non funzionano.
+ */
+export const GET_CONFIGURATION_ISSUES = gql`
+  query GetConfigurationIssues {
+    configurationIssues { kind severity message where }
+  }
+`
+
+/** Cosa manca a questo cliente per essere usabile (lista vuota = completo). */
+export const GET_TENANT_PROVISIONING_GAPS = gql`
+  query GetTenantProvisioningGaps {
+    tenantProvisioningGaps
+  }
+`

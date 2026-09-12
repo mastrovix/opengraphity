@@ -16,7 +16,13 @@ const redisState = vi.hoisted(() => ({
   ctorOpts:   [] as unknown[],
 }))
 
-vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
+// Mock PARZIALE: le funzioni pure del pacchetto (`toNumber`, che converte gli
+// Integer del driver) restano quelle vere. Sostituirle nasconderebbe proprio le
+// conversioni che in passato hanno rotto `deleteEnumType`.
+vi.mock('@opengraphity/neo4j', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('@opengraphity/neo4j')>()
+  return { ...orig, getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }
+})
 vi.mock('@opengraphity/events', () => ({
   getRedisConnection: vi.fn(() => ({ host: 'redis.internal', port: 6380, password: 'pw' })),
 }))

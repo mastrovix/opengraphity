@@ -72,14 +72,25 @@ function touch(tenantId: string, entry: SchemaCacheEntry): void {
   graphqlSchemaCacheEntries.set({}, cache.size)
 }
 
+/**
+ * Il tenant condiviso non si sfratta (revisione delle otto ondate · A·#7).
+ *
+ * `'system'` è l'unico tenant che nessuna richiesta «tocca»: il suo schema lo
+ * costruisce l'avvio, e la LRU sfratta il meno usato di recente — cioè proprio
+ * lui, appena si superano `GRAPHQL_SCHEMA_CACHE_MAX` tenant serviti. Su quella
+ * istanza gira la Sandbox Apollo (`GET /graphql`), che quindi smetteva di
+ * rispondere dopo un po' di traffico, su un'installazione sana.
+ */
+const NEVER_EVICTED = 'system'
+
 function evictIfNeeded(): void {
   const max = Math.max(1, config.graphqlSchemaCacheMax)
   while (cache.size > max) {
-    const oldest = cache.keys().next()
-    if (oldest.done) break
-    cache.delete(oldest.value)
+    const victim = [...cache.keys()].find((k) => k !== NEVER_EVICTED)
+    if (victim === undefined) break   // resta solo il condiviso: niente da sfrattare
+    cache.delete(victim)
     graphqlSchemaEvictionsTotal.inc({})
-    logger.info({ tenantId: oldest.value, max }, 'Schema sfrattato dalla cache (limite raggiunto): verrà ricostruito alla prossima richiesta')
+    logger.info({ tenantId: victim, max }, 'Schema sfrattato dalla cache (limite raggiunto): verrà ricostruito alla prossima richiesta')
   }
   graphqlSchemaCacheEntries.set({}, cache.size)
 }

@@ -619,7 +619,11 @@
     },
     "workflow": {
       "title": "Workflow",
-      "noResults": "No workflows found"
+      "noResults": "No workflows found",
+      "incompleteTitle": "This tenant's configuration is incomplete",
+      "provisionButton": "Complete the configuration",
+      "provisionDone": "Configuration completed: the tenant is usable.",
+      "provisionPartial": "Configuration created, but this is still missing: {{gaps}}"
     },
     "changeCatalog": {
       "title": "Standard Change Catalog",
@@ -3195,5 +3199,11 @@
         "degraded_other": "{{count}} degraded"
       }
     }
+  },
+  "configurationIssues": {
+    "title_one": "There is 1 thing to fix in the configuration",
+    "title_other": "There are {{count}} things to fix in the configuration",
+    "goFix": "Go and fix it",
+    "dismiss": "Hide until the next load"
   }
 }

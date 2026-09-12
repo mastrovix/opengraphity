@@ -41,6 +41,7 @@ const DEFAULT_MUTATION_ROLES: readonly Role[] = ['admin', 'operator']
 
 /** Configurazione del tenant: solo admin. */
 export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
+  'tenantProvisioningGaps', 'configurationIssues',
   // `auditActions` sta col registro: elenca le azioni presenti nell'audit del
   // tenant (D-22), e chi non può leggere il registro non deve poterne dedurre
   // il contenuto dalla tendina del filtro.
@@ -74,6 +75,7 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   // utenti e team
   'createUser', 'updateUserTeams', 'createTeam', 'setTeamManager', 'removeTeamManager', 'setChangeManagerTeam',
   // definizioni di workflow
+  'provisionTenantData',
   'addWorkflowStep', 'removeWorkflowStep', 'updateWorkflowStep',
   'addWorkflowTransition', 'removeWorkflowTransition', 'updateWorkflowTransition',
   'saveWorkflowLayout', 'saveWorkflowChanges',

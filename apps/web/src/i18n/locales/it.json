@@ -619,7 +619,11 @@
     },
     "workflow": {
       "title": "Workflow",
-      "noResults": "Nessun workflow trovato"
+      "noResults": "Nessun workflow trovato",
+      "incompleteTitle": "La configurazione di questo cliente è incompleta",
+      "provisionButton": "Completa la configurazione",
+      "provisionDone": "Configurazione completata: il cliente è usabile.",
+      "provisionPartial": "Configurazione creata, ma manca ancora: {{gaps}}"
     },
     "changeCatalog": {
       "title": "Catalogo Standard Change",
@@ -3195,5 +3199,11 @@
         "degraded_other": "{{count}} degradati"
       }
     }
+  },
+  "configurationIssues": {
+    "title_one": "C'è 1 cosa da sistemare nella configurazione",
+    "title_other": "Ci sono {{count}} cose da sistemare nella configurazione",
+    "goFix": "Vai a sistemare",
+    "dismiss": "Nascondi fino al prossimo caricamento"
   }
 }

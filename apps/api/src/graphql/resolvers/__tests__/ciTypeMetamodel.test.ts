@@ -31,7 +31,13 @@ import type { GraphQLContext } from '../../../context.js'
 
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
-vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
+// Mock PARZIALE: le funzioni pure restano quelle vere (`toNumber`, che converte
+// gli Integer del driver: sostituirla nasconderebbe le conversioni che in
+// passato hanno rotto `deleteEnumType`).
+vi.mock('@opengraphity/neo4j', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('@opengraphity/neo4j')>()
+  return { ...orig, getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }
+})
 
 vi.mock('../ci-utils.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn(mockSession)),
@@ -81,6 +87,12 @@ function defaultResponse(cypher: string): { records: unknown[] } {
   if (cypher.includes('RETURN collect(t.name) AS names')) {
     return res([row({ names: ['server', 'application', 'firewall', 'incident'] })])
   }
+  // Il tetto al numero di tipi (revisione · A·#6): infrastruttura per questi
+  // test, non la cosa che misurano — risponde sempre il router, così la coda
+  // resta allineata alle scritture.
+  if (cypher.includes("MATCH (t:CITypeDefinition {tenant_id: $tenantId, scope: 'tenant'}) RETURN count(t) AS n")) {
+    return res([row({ n: 3 })])
+  }
   if (cypher.includes('MATCH (e:EnumTypeDefinition {tenant_id: $tenantId})')) return res()   // nessuna personalizzazione
   if (cypher.includes('RETURN t.scope AS scope')) return res([row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })])
   if (cypher.includes('MATCH (e:EnumTypeDefinition {id: $enumTypeId})')) return res([row({ id: 'e-1', name: 'stato_rete', tenantId: 'tenant-1' })])
@@ -128,7 +140,7 @@ function reset(responses: Array<{ records: unknown[] }> = []) {
   // la cosa che misurano: risponde sempre il router, così la coda resta
   // allineata alle scritture e nessun test va riscritto per una lettura in più.
   txRun.mockImplementation(async (cypher: string) =>
-    (cypher.includes('RETURN collect(t.name) AS names')
+    (cypher.includes('RETURN collect(t.name) AS names') || cypher.includes("scope: 'tenant'}) RETURN count(t) AS n")
       ? defaultResponse(cypher)
       : queue.shift() ?? defaultResponse(cypher)))
   const tx = { run: txRun }
@@ -248,7 +260,7 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
     const out = await mutations.createCIType(null, { input: { name: 'firewall', label: 'Firewall' } }, admin)
     // call(0) è la porta sui nomi (A-12): l'elenco dei nomi già presi.
     expect(call(0).cypher).toContain("WHERE t.scope IN ['base', 'itil'] OR (t.scope = 'tenant' AND t.tenant_id = $tenantId)")
-    const { cypher, params } = call(1)
+    const { cypher, params } = callWith('MERGE (t:CITypeDefinition')
     expect(cypher).toContain('MERGE (t:CITypeDefinition {name: $name, tenant_id: $tenantId})')
     expect(cypher).toContain("t.scope            = 'tenant'")
     expect(cypher).not.toContain("'system'")
@@ -330,12 +342,14 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
 
   it('createCIType: chainFamilies scritte alla creazione; senza famiglie il parametro è null (proprietà assente)', async () => {
     await mutations.createCIType(null, { input: { name: 'firewall', label: 'Firewall', chainFamilies: ['Infrastructure'] } }, admin)
-    expect(call(1).cypher).toContain('t.chain_families   = $chainFamilies')
-    expect(call(1).params['chainFamilies']).toBe('["Infrastructure"]')
+    // Per contenuto e non per indice: fra la porta sui nomi e la scrittura c'è
+    // ora anche il tetto al numero di tipi (revisione · A·#6).
+    expect(callWith('MERGE (t:CITypeDefinition').cypher).toContain('t.chain_families   = $chainFamilies')
+    expect(callWith('MERGE (t:CITypeDefinition').params['chainFamilies']).toBe('["Infrastructure"]')
 
     reset()
     await mutations.createCIType(null, { input: { name: 'firewall', label: 'Firewall' } }, admin)
-    expect(call(1).params['chainFamilies']).toBeNull()
+    expect(callWith('MERGE (t:CITypeDefinition').params['chainFamilies']).toBeNull()
   })
 
   // `removeCIField` è fuori da questo elenco dall'ondata 1: prima della
@@ -527,7 +541,7 @@ describe('createCIType — la porta sui nomi di tipo (A-12)', () => {
 
   it('un nome libero passa e la label resta quella scelta', async () => {
     await expect(create('load_balancer')).resolves.toMatchObject({ name: 'firewall' })
-    expect(call(1).params).toMatchObject({ name: 'load_balancer', neo4jLabel: 'LoadBalancer' })
+    expect(callWith('MERGE (t:CITypeDefinition').params).toMatchObject({ name: 'load_balancer', neo4jLabel: 'LoadBalancer' })
     expect(invalidateSchema).toHaveBeenCalledWith('tenant-1')
   })
 
@@ -728,16 +742,16 @@ describe('serviceRole (A-10)', () => {
   it('createCIType lo scrive; omesso, lo propone dalle famiglie di catena', async () => {
     reset()
     await mutations.createCIType(null, { input: { name: 'firewall', label: 'Firewall', chainFamilies: ['Application'] } }, admin)
-    expect(call(1).cypher).toContain('t.service_role     = $serviceRole')
-    expect(call(1).params['serviceRole']).toBe('component')
+    expect(callWith('MERGE (t:CITypeDefinition').cypher).toContain('t.service_role     = $serviceRole')
+    expect(callWith('MERGE (t:CITypeDefinition').params['serviceRole']).toBe('component')
 
     reset()
     await mutations.createCIType(null, { input: { name: 'firewall', label: 'Firewall' } }, admin)
-    expect(call(1).params['serviceRole']).toBe('infrastructure')
+    expect(callWith('MERGE (t:CITypeDefinition').params['serviceRole']).toBe('infrastructure')
 
     reset()
     await mutations.createCIType(null, { input: { name: 'firewall', label: 'Firewall', serviceRole: 'certificate' } }, admin)
-    expect(call(1).params['serviceRole']).toBe('certificate')
+    expect(callWith('MERGE (t:CITypeDefinition').params['serviceRole']).toBe('certificate')
   })
 
   it('updateCIType lo scrive, e `null` lo rimette in mano al prodotto', async () => {
@@ -840,5 +854,36 @@ describe('nomi unici nel metamodello di un tipo (D-17)', () => {
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
     expect(err!.message).toContain('ha già una relazione «bilancia»')
     expect(invalidateSchema).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Revisione delle otto ondate · A·#6 — nessun tetto alla personalizzazione.
+ *
+ * Mille tipi CI — importabili via API in pochi minuti — costano 313 MB di heap
+ * e mezzo secondo a ogni ricostruzione dello schema, e la ricostruzione avviene
+ * a ogni modifica del metamodello **in ogni processo in ascolto sul canale**.
+ * Era un modo per un cliente di rallentare il processo che serve anche gli
+ * altri. Il limite della cache contava le voci, non la loro taglia.
+ */
+describe('il tetto al numero di tipi CI (A·#6)', () => {
+  it('sotto il limite si crea; raggiunto il limite il rifiuto dice cosa costa e come alzarlo', async () => {
+    reset()
+    await expect(mutations.createCIType(null, { input: { name: 'firewall', label: 'Firewall' } }, admin)).resolves.toBeDefined()
+
+    // Il router risponde al conteggio: qui si alza al limite.
+    const { config } = await import('../../../lib/config.js')
+    reset()
+    txRun.mockImplementation(async (cypher: string) =>
+      (cypher.includes("scope: 'tenant'}) RETURN count(t) AS n")
+        ? res([row({ n: config.maxCITypesPerTenant })])
+        : defaultResponse(cypher)))
+
+    const err = await mutations.createCIType(null, { input: { name: 'altro', label: 'Altro' } }, admin)
+      .then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err).not.toBeNull()
+    expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(err!.message).toMatch(/è il massimo.*il costo lo pagano anche gli altri clienti.*MAX_CI_TYPES_PER_TENANT/s)
+    expect(txRun.mock.calls.map((c) => c[0] as string).join('\n')).not.toContain('MERGE (t:CITypeDefinition')
   })
 })

@@ -33,7 +33,7 @@ import { incidents } from './deps.js'
 import { monitoringContext } from './shared.js'
 import { historyParams, historyWriteCypher } from './history.js'
 import { recomputeCIHealth } from './ciHealth.js'
-import { incidentStepInfo } from './incidentWorkflow.js'
+import { incidentTerminalSteps } from './incidentWorkflow.js'
 import { runEventPipeline } from './pipeline.js'
 
 const log = logger.child({ module: 'event-cascade' })
@@ -140,7 +140,12 @@ export function serviceMapDeletedComment(serviceName: string): string {
 
 /** Incident non terminali che perdono il loro ULTIMO CI impattato con la cancellazione di `ciId`. */
 export async function findIncidentsLosingTheirOnlyCI(session: Session, tenantId: string, ciId: string): Promise<{ ciName: string; incidentIds: string[] }> {
-  const info = await incidentStepInfo(session, tenantId)
+  // Solo i passi terminali: qui interessa «quali incident sono ancora aperti»,
+  // non dove si porta un incident per risolverlo. Chiedere `incidentStepInfo`
+  // pretendeva un passo di categoria `resolved` e rendeva impossibile
+  // cancellare un CI a un tenant che non l'ha — e quindi cancellare un tipo CI
+  // (revisione · A·3.4).
+  const terminalSteps = await incidentTerminalSteps(session, tenantId)
   const rows = await runQuery<{ incidentId: string; ciName: string | null }>(session, `
     MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})
     MATCH (i)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
@@ -150,19 +155,20 @@ export async function findIncidentsLosingTheirOnlyCI(session: Session, tenantId:
     WITH i, ci.name AS ciName, count(DISTINCT other) AS others
     WHERE others = 0
     RETURN i.id AS incidentId, ciName
-  `, { tenantId, ciId, terminalSteps: info.terminalSteps })
+  `, { tenantId, ciId, terminalSteps })
   return { ciName: rows[0]?.ciName ?? ciId, incidentIds: rows.map((r) => r.incidentId) }
 }
 
 /** Incident di servizio non terminali collegati alla mappa `mapId` (con il nome del servizio). */
 export async function findIncidentsOfServiceMap(session: Session, tenantId: string, mapId: string): Promise<{ serviceName: string; incidentIds: string[] }> {
-  const info = await incidentStepInfo(session, tenantId)
+  // Come sopra: serve solo sapere quali sono ancora aperti.
+  const terminalSteps = await incidentTerminalSteps(session, tenantId)
   const rows = await runQuery<{ incidentId: string; serviceName: string | null }>(session, `
     MATCH (i:Incident {tenant_id: $tenantId})-[:IMPACTS_SERVICE]->(m:ServiceMap {id: $mapId, tenant_id: $tenantId})
     MATCH (i)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
     WHERE NOT wi.current_step IN $terminalSteps
     RETURN i.id AS incidentId, m.name AS serviceName
-  `, { tenantId, mapId, terminalSteps: info.terminalSteps })
+  `, { tenantId, mapId, terminalSteps })
   return { serviceName: rows[0]?.serviceName ?? mapId, incidentIds: rows.map((r) => r.incidentId) }
 }
 

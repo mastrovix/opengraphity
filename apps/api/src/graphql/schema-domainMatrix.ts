@@ -96,6 +96,29 @@ export function domainMatrixSDL(): string {
     matrice \`change_priority\`. Admin: è configurazione del tenant.
     """
     riskBandThresholds: RiskBandThresholds!
+
+    """
+    Cosa c'è da sistemare nella configurazione di questo cliente: schema
+    degradato, buchi di configurazione, matrici incomplete, liste della policy
+    che citano valori fuori vocabolario, stati del ciclo di vita senza
+    semantica. Lista vuota = niente da fare.
+
+    Il prodotto sapeva già tutte queste cose e le diceva a tutti tranne che a
+    chi può rimediare: l'intestazione HTTP, la metrica, il log e
+    \`migrate --status\` non arrivano all'amministratore del tenant, che vede
+    solo pagine che non funzionano. Admin.
+    """
+    configurationIssues: [ConfigurationIssue!]!
+  }
+
+  """Una cosa da sistemare nella configurazione del cliente."""
+  type ConfigurationIssue {
+    kind:     String!
+    """\`error\` = qualcosa è già rotto; \`warning\` = lo sarà, o è silenziosamente sbagliato."""
+    severity: String!
+    message:  String!
+    """Il percorso dell'interfaccia dove si rimedia, quando esiste."""
+    where:    String
   }
 
   """Una fascia di rischio e il punteggio massimo che le appartiene."""

@@ -251,11 +251,26 @@ function onMessage(channel: string, raw: string): void {
   if (parsed.origin === BUS_ORIGIN) return
 
   const seen = lastAppliedVersion.get(parsed.tenantId)
-  if (seen !== undefined && parsed.version <= seen) {
+  if (seen !== undefined && parsed.version === seen) {
     metamodelReceivedTotal.inc({ result: 'stale' })
     log.debug({ tenantId: parsed.tenantId, version: parsed.version, seen },
-      '[metamodel] messaggio già applicato o fuori ordine: ignorato')
+      '[metamodel] messaggio già applicato: ignorato')
     return
+  }
+  // Versione PIÙ BASSA di quella vista: il contatore è ripartito da capo
+  // (revisione delle otto ondate · D·#2). `version` è un `INCR` su una chiave
+  // Redis: un riavvio senza persistenza, o un `FLUSHALL` durante un incidente,
+  // la riporta a 1 — e il ricevitore, che ha in memoria «ho già applicato la
+  // 7», scartava TUTTO fino alla 8. L'invalidazione fra processi si spegneva in
+  // silenzio, con un log a `debug` e un contatore senza allarme.
+  //
+  // Un contatore che torna indietro non è un messaggio vecchio: è un contatore
+  // nuovo. Si applica e si riparte da lì, dicendolo.
+  if (seen !== undefined && parsed.version < seen) {
+    log.warn({ tenantId: parsed.tenantId, version: parsed.version, seen },
+      '[metamodel] il contatore di versione è ripartito da capo (Redis riavviato o svuotato): ' +
+      'riparto da questa versione invece di scartare i messaggi — altrimenti l\'invalidazione fra processi ' +
+      'resterebbe spenta fino al superamento della versione vecchia')
   }
   lastAppliedVersion.set(parsed.tenantId, parsed.version)
 

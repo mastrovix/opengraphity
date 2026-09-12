@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
+import { ConfigurationIssuesBanner } from '@/components/ConfigurationIssuesBanner'
 import { useTranslation } from 'react-i18next'
 import { keycloak } from '../../lib/keycloak'
 import { ConfirmProvider } from '@/hooks/useConfirm'
@@ -66,6 +67,11 @@ export function AppLayout() {
           }}
         >
           <Topbar />
+          {/* Revisione delle otto ondate · A·#3: lo schema degradato, le
+              matrici incomplete e i buchi di configurazione avevano metrica,
+              log e intestazione HTTP — e l'amministratore del tenant, l'unico
+              che può rimediare, vedeva solo pagine che non funzionano. */}
+          <ConfigurationIssuesBanner />
           <main
             id="main-content"
             style={{

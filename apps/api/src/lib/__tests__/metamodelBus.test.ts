@@ -435,3 +435,33 @@ describe('le metriche del canale (ondata 8)', () => {
     expect(p.metrics.metamodelBusSubscribed.collect()).toMatch(/metamodel_bus_subscribed 0\b/)
   })
 })
+
+/**
+ * Revisione delle otto ondate · D·#2 — il contatore che riparte da capo.
+ *
+ * `version` è un `INCR` su una chiave Redis. Un riavvio senza persistenza, o un
+ * `FLUSHALL` durante un incidente, la riporta a 1: il ricevitore, che ha in
+ * memoria «ho già applicato la 7», scartava tutto fino alla 8 — con un log a
+ * `debug` e un contatore senza allarme. L'invalidazione fra processi si
+ * spegneva in modo invisibile, che è il difetto che il canale esiste per
+ * chiudere, con un nome nuovo.
+ */
+describe('il contatore di versione che riparte da capo (D·#2)', () => {
+  it('una versione PIÙ BASSA non è un messaggio vecchio: si applica e si riparte da lì', async () => {
+    const p = await startProcess()
+    const key = p.cache.metamodelCacheKey('allowed_rel_types', 'c-two')
+    const arriva = (version: number): boolean => {
+      p.cache.cache.set(key, ['DEPENDS_ON'], 300)
+      hub.publish(p.bus.METAMODEL_CHANNEL, JSON.stringify({ tenantId: 'c-two', version, origin: 'un-altro-processo' }))
+      return p.cache.cache.get(key) === null
+    }
+
+    expect(arriva(7), 'la 7 si applica').toBe(true)
+    // Redis riavviato: il contatore riparte da 1. Prima veniva scartata.
+    expect(arriva(1), 'il contatore ripartito si applica').toBe(true)
+    // E da lì in poi vale il contatore nuovo: la stessa versione è un doppione.
+    expect(arriva(1), 'lo stesso messaggio due volte non si riapplica').toBe(false)
+    expect(arriva(2), 'la versione successiva si applica').toBe(true)
+    await p.bus.stopMetamodelBus()
+  })
+})

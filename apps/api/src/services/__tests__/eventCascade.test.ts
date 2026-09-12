@@ -17,6 +17,11 @@ vi.mock('../events/ciHealth.js', () => ({ recomputeCIHealth: vi.fn().mockResolve
 vi.mock('../events/pipeline.js', () => ({ runEventPipeline: vi.fn().mockResolvedValue({ outcome: 'auto_resolved', status: 'resolved', suppressedByChangeId: null, incidentId: 'inc-1' }) }))
 vi.mock('../events/incidentWorkflow.js', () => ({
   incidentStepInfo: vi.fn(async () => ({ resolvedStep: 'resolved', terminalSteps: ['closed'] })),
+  // Revisione delle otto ondate · A·3.4: la cascata della cancellazione chiede
+  // SOLO i passi terminali. Chiedere `incidentStepInfo` pretendeva un passo di
+  // categoria `resolved` e rendeva impossibile cancellare un CI (e quindi un
+  // tipo CI) a un tenant che non l'ha.
+  incidentTerminalSteps: vi.fn(async () => ['closed']),
 }))
 
 const cascade = await import('../events/cascade.js')

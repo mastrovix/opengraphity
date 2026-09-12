@@ -2,6 +2,7 @@ import { Router, type Router as ExpressRouter } from 'express'
 import { getSession } from '@opengraphity/neo4j'
 import { getRedisConnection } from '@opengraphity/events'
 import { Redis } from 'ioredis'
+import { provisioningGaps } from '../lib/provisioningGauge.js'
 
 const router: ExpressRouter = Router()
 
@@ -50,11 +51,20 @@ router.get('/health', async (_req, res) => {
 
   const allOk = neo4j === 'ok' && redis === 'ok'
 
+  // Quali clienti sono incompleti (revisione delle otto ondate · D·D4). Non
+  // cambia lo stato della sonda — un tenant da configurare non è un guasto del
+  // processo — ma smette di essere una cosa che sa solo `migrate --status`:
+  // finisce qui e nel gauge `tenant_provisioning_gaps`. Ricalcolato al massimo
+  // ogni cinque minuti, e un database che non risponde non fa fallire /health.
+  const gaps: Record<string, string[]> = neo4j === 'ok' ? await provisioningGaps().catch(() => ({})) : {}
+  const incomplete = Object.fromEntries(Object.entries(gaps).filter(([, g]) => g.length > 0))
+
   res.status(allOk ? 200 : 503).json({
     status:    allOk ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
     version:   '0.1.0',
     services:  { neo4j, redis },
+    ...(Object.keys(incomplete).length ? { incompleteTenants: incomplete } : {}),
   })
 })
 

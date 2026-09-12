@@ -1,12 +1,15 @@
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@apollo/client/react'
+import { useQuery, useMutation } from '@apollo/client/react'
+import { toast } from 'sonner'
+import { Button } from '@/components/Button'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
 import { AlertCircle, GitPullRequest, Route, BookOpen, Search, Inbox } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
 import { Skeleton } from '@/components/ui/skeleton'
-import { GET_WORKFLOW_LIST } from '@/graphql/queries'
+import { GET_WORKFLOW_LIST, GET_TENANT_PROVISIONING_GAPS } from '@/graphql/queries'
+import { PROVISION_TENANT_DATA } from '@/graphql/mutations'
 import { lookupOrError, colors, palette } from '@/lib/tokens'
 import { Pill } from '@/components/ui/Pill'
 
@@ -33,6 +36,30 @@ export function WorkflowListPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { data, loading } = useQuery<{ workflowDefinitions: WorkflowDef[] }>(GET_WORKFLOW_LIST)
+
+  /**
+   * L'uscita da un cliente senza workflow (revisione delle otto ondate · D·D4).
+   *
+   * Nello SDL non esisteva nessuna mutation che creasse una definizione: un
+   * tenant senza workflow non ne usciva dall'interfaccia — ogni apertura di
+   * ticket si fermava, e il rimedio era una migrazione da riga di comando.
+   * `provisionTenantData` è idempotente e non sovrascrive le definizioni che
+   * già ci sono.
+   */
+  const { data: gapsData, refetch: refetchGaps } = useQuery<{ tenantProvisioningGaps: string[] }>(
+    GET_TENANT_PROVISIONING_GAPS, { fetchPolicy: 'cache-and-network' },
+  )
+  const gaps = gapsData?.tenantProvisioningGaps ?? []
+  const [provision, { loading: provisioning }] = useMutation(PROVISION_TENANT_DATA, {
+    refetchQueries: [GET_WORKFLOW_LIST],
+    onCompleted: (d: unknown) => {
+      const r = (d as { provisionTenantData: { remainingGaps: string[] } }).provisionTenantData
+      void refetchGaps()
+      if (r.remainingGaps.length === 0) toast.success(t('pages.workflow.provisionDone'))
+      else toast.warning(t('pages.workflow.provisionPartial', { gaps: r.remainingGaps.join('; ') }))
+    },
+    onError: (e) => toast.error(e.message),
+  })
 
   const defs = data?.workflowDefinitions ?? []
 
@@ -69,6 +96,22 @@ export function WorkflowListPage() {
           </p>
         </div>
       </div>
+
+      {gaps.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 16px', marginBottom: 20,
+          background: 'var(--color-danger-bg)', borderRadius: 8, border: '1px solid var(--color-border)',
+        }}>
+          <AlertCircle size={16} aria-hidden="true" style={{ marginTop: 2, color: 'var(--color-danger-text)' }} />
+          <div style={{ flex: 1, fontSize: 'var(--font-size-body)' }}>
+            <strong>{t('pages.workflow.incompleteTitle')}</strong>
+            <div style={{ color: 'var(--color-slate-dark)', marginTop: 2 }}>{gaps.join('; ')}</div>
+          </div>
+          <Button onClick={() => void provision()} disabled={provisioning}>
+            {t('pages.workflow.provisionButton')}
+          </Button>
+        </div>
+      )}
 
       {loading ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 24 }}>

@@ -34,3 +34,16 @@ export const UPDATE_RISK_BAND_THRESHOLDS = gql`
     }
   }
 `
+
+/**
+ * Crea quello che manca a questo cliente (dashboard, regole di notifica,
+ * matrici, workflow). Idempotente e non distruttiva: una definizione che esiste
+ * già viene saltata, non riallineata al seme.
+ */
+export const PROVISION_TENANT_DATA = gql`
+  mutation ProvisionTenantData {
+    provisionTenantData {
+      dashboardCreated notificationRulesCreated matricesCreated workflows remainingGaps
+    }
+  }
+`

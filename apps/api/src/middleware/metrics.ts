@@ -270,6 +270,14 @@ export const eventsFlappingTotal      = createCounter('events_flapping_total',  
  * nessuno lo sappia (ondata 4 · A4-1).
  */
 export const workflowPurposeMissingTotal = createCounter('workflow_step_purpose_missing_total', 'Domain rules that found no workflow step declaring the purpose they look for, by rule', ['rule'])
+
+/**
+ * Quante cose mancano a un cliente per essere usabile (revisione delle otto
+ * ondate · D·D4). Il prodotto lo sapeva già (`tenantProvisioningGaps`) ma lo
+ * diceva solo a chi lanciava `migrate --status`: un tenant incompleto restava
+ * incompleto finché qualcuno non apriva un ticket e vedeva l'errore.
+ */
+export const tenantProvisioningGapsGauge = createGauge('tenant_provisioning_gaps', 'Configuration gaps that make a tenant unusable (0 = complete), by tenant', ['tenant'])
 export const incidentsAutoOpenedTotal = createCounter('incidents_auto_opened_total', 'Incidents opened automatically by event correlation (storm incidents included)', [])
 export const incidentsAutoResolvedTotal = createCounter('incidents_auto_resolved_total', 'Incidents resolved automatically when every correlated event cleared', [])
 export const incidentsReopenedTotal   = createCounter('incidents_reopened_total',   'Resolved incidents reopened by a returning monitoring event', [])
@@ -402,6 +410,7 @@ export const SCHEMA_METRICS = [
 export const EVENT_MANAGEMENT_METRICS = [
   eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsAmbiguousTotal, eventsSuppressedTotal, eventsFlappingTotal,
   workflowPurposeMissingTotal,
+  tenantProvisioningGapsGauge,
   incidentsAutoOpenedTotal, incidentsAutoResolvedTotal, incidentsReopenedTotal, eventsPurgedTotal,
   eventsOutOfOrderTotal, eventsIngestFailedTotal, eventsRejectedTotal, eventsResolvedUnknownTotal, eventStormsActive, webhookRateLimitedTotal,
   eventsCorrelatedTotal, eventPipelineDurationSeconds, eventPassTotal, eventPassDurationSeconds,

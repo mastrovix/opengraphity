@@ -129,6 +129,17 @@ const readers = {
    * metamodello). Si vede con `graphql_schema_evictions_total`.
    */
   graphqlSchemaCacheMax: (): number => intEnv('GRAPHQL_SCHEMA_CACHE_MAX', 25),
+  /**
+   * Quanti tipi CI può avere un cliente (revisione delle otto ondate · A·#6).
+   *
+   * Non c'era nessun tetto: mille tipi — importabili via API in pochi minuti —
+   * costano 313 MB di heap e mezzo secondo a ogni ricostruzione dello schema,
+   * e la ricostruzione avviene a ogni modifica del metamodello **in ogni
+   * processo in ascolto sul canale**. Era un modo per un cliente di rallentare
+   * il processo che serve anche gli altri. Duecento è largo (dal vivo il
+   * cliente più ricco ne ha 13) e si alza con la variabile d'ambiente.
+   */
+  maxCITypesPerTenant:  (): number => intEnv('MAX_CI_TYPES_PER_TENANT', 200),
   /** Bearer token for GET /metrics; empty → loopback/private networks only. */
   metricsToken:         (): string | undefined => optionalEnv('METRICS_TOKEN'),
   /** Base URL of the web app used in every outbound link (emails, Slack cards). */
@@ -232,7 +243,7 @@ export const CONFIG_PROFILES = {
     'nodeEnv', 'port', 'logLevel', 'workerProfile',
     'neo4jUri', 'neo4jUser', 'neo4jPassword', 'neo4jMaxPoolSize',
     'keycloakUrl', 'keycloakPublicUrls', 'keycloakAdminUser',
-    'allowLegacyJwt', 'corsOrigin', 'rateLimitMax', 'graphqlIntrospection', 'graphqlSchemaCacheMax', 'metricsToken', 'appUrl',
+    'allowLegacyJwt', 'corsOrigin', 'rateLimitMax', 'graphqlIntrospection', 'graphqlSchemaCacheMax', 'maxCITypesPerTenant', 'metricsToken', 'appUrl',
     'attachmentDir', 'backupDir', 'reportDir',
     'embeddingsProvider', 'transformersCache', 'embeddingWorkerExternal',
     'emailFrom', 'otelEnabled', 'otelEndpoint',

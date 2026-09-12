@@ -50,16 +50,20 @@ vi.mock('@opengraphity/workflow', () => ({
   isWorkflowActionType: (t: unknown) => typeof t === 'string' && (WORKFLOW_ACTION_TYPES_MOCK as readonly string[]).includes(t),
 }))
 vi.mock('@opengraphity/notifications', () => ({ sseManager: { sendToUser: vi.fn() } }))
-vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
+// Mock PARZIALE: le funzioni pure del pacchetto (`toNumber`, che converte gli
+// Integer del driver) restano quelle vere. Sostituirle nasconderebbe proprio le
+// conversioni che in passato hanno rotto `deleteEnumType`.
+vi.mock('@opengraphity/neo4j', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('@opengraphity/neo4j')>()
+  return { ...orig, getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }
+})
 vi.mock('../ci-utils.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn(mockSession)),
   getSession: vi.fn(),
 }))
 vi.mock('../../../services/incidentService.js', () => ({ publishIncidentTransition: vi.fn() }))
-vi.mock('../../../lib/logger.js', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  workflowLogger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}))
+const fakeLog = () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => fakeLog() })
+vi.mock('../../../lib/logger.js', () => ({ logger: fakeLog(), workflowLogger: fakeLog() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/validateRequiredFields.js', () => ({ validateRequiredFields: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/workflowHelpers.js', () => ({ invalidateWorkflowCache: vi.fn() }))

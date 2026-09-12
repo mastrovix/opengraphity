@@ -6,6 +6,9 @@ import { invalidateWorkflowCache } from '../../lib/workflowHelpers.js'
 import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
 import type { GraphQLContext } from '../../context.js'
+import type { Queryable } from '@opengraphity/neo4j'
+import { requireRole } from '../../lib/requireRole.js'
+import { provisionTenantData, tenantProvisioningGaps } from '../../lib/provisionTenantData.js'
 import {
   serviceRequestWorkflowInstance,
   serviceRequestAvailableTransitionsField,
@@ -249,8 +252,52 @@ async function removeWorkflowStep(
 
 // ── Combined resolver object ──────────────────────────────────────────────────
 
+/**
+ * Cosa manca a questo cliente per essere usabile, e come rimediare **dalla
+ * pagina** (revisione delle otto ondate · D·D4).
+ *
+ * ## Il vicolo cieco
+ * Nello SDL non esisteva **nessuna** mutation che creasse, clonasse o
+ * ripristinasse una `WorkflowDefinition`: c'erano solo `addWorkflowStep` e
+ * `addWorkflowTransition`, che pretendono una definizione già esistente. Un
+ * tenant senza workflow — `c-two` lo era — non ne usciva dall'interfaccia: ogni
+ * `createIncident` si fermava, e il rimedio era `migrate --force --to
+ * 20260918_1910_provision_tenant_data` dalla riga di comando. Lo stato è
+ * raggiungibile anche dopo quella migrazione: basta disattivare un workflow.
+ *
+ * `provisionTenantData` esiste dall'ondata 8, è idempotente e non riallinea le
+ * definizioni esistenti al seme (una definizione che c'è viene SALTATA, non
+ * sovrascritta): mancava solo la porta per chiamarla.
+ */
+async function tenantProvisioningGapsQuery(_: unknown, __: unknown, ctx: GraphQLContext): Promise<string[]> {
+  requireRole(ctx, 'admin')
+  return withSession((session) => tenantProvisioningGaps(session as unknown as Queryable, ctx.tenantId))
+}
+
+async function provisionTenantDataMutation(_: unknown, __: unknown, ctx: GraphQLContext) {
+  requireRole(ctx, 'admin')
+  const result = await withSession((session) => provisionTenantData(session, ctx.tenantId, { userId: ctx.userId }), true)
+  // I workflow nuovi cambiano i metadata dei passi che tutto il resto legge.
+  invalidateWorkflowCache(ctx.tenantId)
+  void audit(ctx, 'tenant.provisioned', 'Tenant', ctx.tenantId, {
+    dashboard: result.dashboardCreated,
+    notificationRules: result.notificationRulesCreated,
+    matrices: result.matricesCreated,
+    workflows: result.workflows.map((w) => w.name),
+  })
+  const gaps = await withSession((session) => tenantProvisioningGaps(session as unknown as Queryable, ctx.tenantId))
+  return {
+    dashboardCreated:         result.dashboardCreated,
+    notificationRulesCreated: result.notificationRulesCreated,
+    matricesCreated:          [...result.matricesCreated],
+    workflows:                result.workflows.map((w) => w.name),
+    remainingGaps:            gaps,
+  }
+}
+
 export const workflowResolvers = {
   Query: {
+    tenantProvisioningGaps: tenantProvisioningGapsQuery,
     incidentWorkflow,
     incidentAvailableTransitions,
     incidentWorkflowHistory,
@@ -259,6 +306,7 @@ export const workflowResolvers = {
     workflowDefinitions,
   },
   Mutation: {
+    provisionTenantData: provisionTenantDataMutation,
     addWorkflowStep,
     removeWorkflowStep,
     updateWorkflowStep,

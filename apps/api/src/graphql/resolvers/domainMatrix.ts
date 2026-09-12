@@ -28,6 +28,7 @@ import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import { criticalServiceCriticalities } from '../../services/serviceImpact/incident.js'
 import { preApprovedChangeTypes, setPreApprovedChangeTypes, changeTypeVocabulary } from '../../lib/changePolicy.js'
 import { riskBandThresholds, setRiskBandThresholds } from '../../lib/riskBands.js'
+import { configurationIssues } from '../../lib/configurationIssues.js'
 
 interface CellOut { key: string; inputs: string[]; value: string | null }
 
@@ -236,8 +237,13 @@ async function updateRiskBandThresholds(
   return { thresholds: [...saved], vocabulary: [...vocabulary], isDefault: false }
 }
 
+async function configurationIssuesQuery(_: unknown, __: unknown, ctx: GraphQLContext) {
+  return configurationIssues(ctx.tenantId)
+}
+
 export const domainMatrixResolvers = {
   Query: {
+    configurationIssues: configurationIssuesQuery,
     domainMatrices,
     criticalServiceCriticalities: criticalServiceCriticalitiesQuery,
     preApprovedChangeTypes: preApprovedChangeTypesQuery,

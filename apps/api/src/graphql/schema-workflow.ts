@@ -2,6 +2,20 @@ export function workflowSDL(): string {
   return `
   # ── Workflow types ─────────────────────────────────────────────────────────
 
+  """
+  L'esito di provisionTenantData: cosa è stato creato e cosa manca ancora.
+  Un elenco "remainingGaps" vuoto significa che il cliente è usabile.
+  """
+  type TenantProvisioning {
+    dashboardCreated:         Boolean!
+    notificationRulesCreated: Int!
+    """Le matrici di dominio create adesso (quelle che c'erano non sono state toccate)."""
+    matricesCreated:          [String!]!
+    """I workflow esaminati (creati o già presenti: la mutation non sovrascrive)."""
+    workflows:                [String!]!
+    remainingGaps:            [String!]!
+  }
+
   type WorkflowInstance {
     id:          ID!
     currentStep: String!

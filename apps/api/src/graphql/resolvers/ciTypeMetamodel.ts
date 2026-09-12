@@ -13,6 +13,8 @@ import {
   SYSTEM_TENANT, enumScopeClause, loadTenantEnumOverrides, applyEnumOverrides, assertEnumLinkable,
 } from '../../lib/enumScope.js'
 import type { Session } from 'neo4j-driver'
+import { toNumber } from '@opengraphity/neo4j'
+import { config } from '../../lib/config.js'
 
 type Props = Record<string, unknown>
 
@@ -135,6 +137,27 @@ async function assertRelationTargetType(
     `${what}: il tipo "${name}" non esiste fra i tipi di questo cliente. ` +
     `Disponibili: ${[...names].sort().join(', ')}.`,
     { extensions: { code: 'BAD_USER_INPUT' } },
+  )
+}
+
+/**
+ * Quanti tipi CI ha già questo cliente, e se può averne un altro. Il conteggio
+ * è sui SUOI (i tipi spediti non contano: non li ha creati lui e non li può
+ * togliere).
+ */
+async function assertCITypeQuotaAvailable(session: Session, tenantId: string): Promise<void> {
+  const max = config.maxCITypesPerTenant
+  const r = await session.executeRead((tx) =>
+    tx.run(`MATCH (t:CITypeDefinition {tenant_id: $tenantId, scope: 'tenant'}) RETURN count(t) AS n`, { tenantId }),
+  )
+  const current = toNumber(r.records[0]?.get('n'))
+  if (current < max) return
+  throw new GraphQLError(
+    `Questo cliente ha già ${String(current)} tipi CI, che è il massimo. Ogni tipo entra nello schema GraphQL, ` +
+    `che viene ricostruito a ogni modifica del metamodello in ogni processo: oltre un certo numero il costo lo ` +
+    `pagano anche gli altri clienti. Elimina un tipo che non usi, oppure alza il limite ` +
+    `(MAX_CI_TYPES_PER_TENANT) sapendo cosa costa.`,
+    { extensions: { code: 'BAD_USER_INPUT', current, max } },
   )
 }
 
@@ -677,6 +700,13 @@ export function buildMetamodelMutations() {
         // tipo del prodotto). Non c'è nessuna rete a valle che lo prenda: se
         // questo controllo non gira, non gira niente.
         assertNewCITypeName(name, await loadExistingCITypeNames(session, ctx.tenantId))
+        // Un tetto al numero di tipi (revisione delle otto ondate · A·#6). Non
+        // c'era: mille tipi — importabili via API in pochi minuti — costano 313
+        // MB di heap e mezzo secondo a ogni ricostruzione dello schema, che
+        // avviene a ogni modifica del metamodello IN OGNI processo in ascolto
+        // sul canale. Era un modo per un cliente di rallentare il processo che
+        // serve anche gli altri.
+        await assertCITypeQuotaAvailable(session, ctx.tenantId)
         const neo4jLabel = toPascalCase(name)
         await session.executeWrite(tx =>
           tx.run(`

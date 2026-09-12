@@ -122,6 +122,16 @@ export function buildBaseSDL(): string {
     topology(types: [String!], environment: String, status: String, selectedCiId: ID, maxHops: Int): TopologyData!
 
     # Workflow
+    """
+    Cosa manca a questo cliente per essere usabile: dashboard, regole di
+    notifica, matrici di dominio, workflow attivi per le cinque entità. Lista
+    vuota = completo. Admin.
+
+    Il prodotto lo sapeva già (ondata 8) ma lo diceva solo a chi lanciava
+    "migrate --status": un tenant incompleto restava incompleto finché qualcuno
+    non apriva un ticket e vedeva l'errore.
+    """
+    tenantProvisioningGaps: [String!]!
     incidentWorkflow(incidentId: ID!): WorkflowInstance
     incidentWorkflowHistory(incidentId: ID!): [WorkflowStepExecution!]!
     incidentAvailableTransitions(incidentId: ID!): [WorkflowTransition!]!
@@ -265,6 +275,19 @@ export function buildBaseSDL(): string {
     removeCIRelationship(sourceId: ID!, targetId: ID!, relationType: String!): Boolean!
 
     # Workflow
+    """
+    Crea quello che manca a questo cliente: dashboard, regole di notifica,
+    matrici di dominio e le definizioni di workflow delle cinque entità.
+    Idempotente e **non distruttiva**: una definizione che esiste già viene
+    saltata, non riallineata al seme.
+
+    Era l'uscita che non c'era: nello SDL non esisteva nessuna mutation che
+    creasse una WorkflowDefinition, quindi un tenant senza workflow non ne
+    usciva dall'interfaccia — ogni apertura di ticket si fermava e il rimedio
+    era una migrazione da riga di comando. Admin.
+    """
+    provisionTenantData: TenantProvisioning!
+
     addWorkflowStep(
       definitionId:      ID!
       name:              String!

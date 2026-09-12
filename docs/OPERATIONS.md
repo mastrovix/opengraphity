@@ -1626,3 +1626,25 @@ mittente:
 Regola pratica: dopo un incidente di Redis, confrontare lo strumento (allarmi
 accesi) con la console eventi del tenant (filtro `status = firing`) e chiudere
 a mano ciò che lo strumento non ha più.
+
+### Clienti con la configurazione incompleta
+
+`tenant_provisioning_gaps{tenant}` = quante cose mancano a quel cliente per
+essere usabile (0 = completo): nessuna dashboard, nessuna regola di notifica,
+nessuna matrice di dominio, nessun workflow attivo per una delle cinque entità.
+Si ricalcola al massimo ogni cinque minuti, quando qualcuno interroga `/health`
+— che riporta anche `incompleteTenants` con l'elenco per tenant.
+
+Il prodotto lo sapeva già (`tenantProvisioningGaps`, ondata 8) ma lo diceva solo
+a chi lanciava `migrate --status`: `c-two` è stato incompleto per giorni e
+nessuno lo sapeva, perché il sintomo arriva al primo `createIncident`. Adesso lo
+dice anche a chi può rimediare: l'amministratore del tenant vede il banner
+«C'è qualcosa da sistemare nella configurazione» e, nella pagina Workflow, il
+pulsante **Completa la configurazione** (mutation `provisionTenantData`:
+idempotente, non sovrascrive le definizioni che ci sono già).
+
+La stessa diagnostica (`configurationIssues`) copre anche: schema GraphQL
+degradato, matrici di dominio incomplete o con residui di una rinomina, liste
+della policy degli allarmi che citano stati fuori vocabolario, e stati del ciclo
+di vita che nessuna lista cita — per il prodotto quei CI sono **in servizio**,
+e sul dato vivo erano 68.

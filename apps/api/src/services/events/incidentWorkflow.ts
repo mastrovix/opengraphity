@@ -26,6 +26,36 @@ export interface IncidentStepInfo {
   reopenSteps: string[]
 }
 
+/**
+ * I passi TERMINALI del workflow degli incident, e solo quelli (revisione delle
+ * otto ondate · A·3.4).
+ *
+ * ## Il vicolo cieco che questa funzione apre
+ * Chi deve sapere soltanto «quali incident sono ancora aperti» chiedeva
+ * `incidentStepInfo`, che **lancia** se il workflow non ha un passo di
+ * categoria `resolved`. Ma quel passo serve a un'altra cosa (risolvere un
+ * incident dal monitoraggio), e pretenderlo qui chiudeva una porta che non
+ * c'entrava niente:
+ *
+ *   cancellare un CI → annotare gli incident che perdono la loro unica causa
+ *   → «Tenant c-two: incident workflow has no step with category "resolved"»
+ *
+ * E siccome un tipo CI non si cancella finché ha dei CI, il cliente restava
+ * chiuso fuori dal proprio metamodello: il tipo non si cancella perché ha dei
+ * CI, i CI non si cancellano perché hanno degli incident, gli incident non si
+ * chiudono perché manca il passo. Incontrato dal vivo su `c-two` mentre si
+ * ripuliva una prova dell'ondata 4.
+ *
+ * Il fail-loud di `incidentStepInfo` resta dov'è giusto — chi deve **portare**
+ * un incident nel passo risolto non può indovinarlo. Qui serve una lista, e una
+ * lista vuota è una risposta legittima: un tenant senza workflow non ha
+ * nemmeno istanze, quindi nessun incident da escludere.
+ */
+export async function incidentTerminalSteps(session: Session, tenantId: string): Promise<string[]> {
+  const steps = await getWorkflowSteps(session, tenantId, 'incident')
+  return steps.filter((s) => s.isTerminal).map((s) => s.name)
+}
+
 export async function incidentStepInfo(session: Session, tenantId: string): Promise<IncidentStepInfo> {
   const steps = await getWorkflowSteps(session, tenantId, 'incident')
   const resolved = steps.find((s) => s.category === 'resolved') ?? steps.find((s) => s.name === 'resolved')
