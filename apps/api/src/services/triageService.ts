@@ -17,6 +17,7 @@ import { GraphQLError } from 'graphql'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { getEmbedder, vectorIndexName } from './embeddings.js'
 import { logger } from '../lib/logger.js'
+import { enumScopeClause, loadTenantEnumOverrides, applyEnumOverride } from '../lib/enumScope.js'
 
 const log = logger.child({ module: 'triage' })
 
@@ -44,15 +45,34 @@ export interface TriageSuggestion {
 
 // ── Context gathering ────────────────────────────────────────────────────────
 
+/**
+ * I valori ammessi per `incident.<campo>`, come li vede QUESTO cliente.
+ *
+ * A-2: il tipo `incident` è spedito col prodotto (`tenant_id = 'system'`),
+ * quindi il suo `USES_ENUM` è unico per tutti i clienti — letto senza ambito
+ * portava qui i valori del cliente che per primo aveva agganciato il proprio
+ * vocabolario. Ora si legge solo il vocabolario di sistema o del tenant, e la
+ * personalizzazione del tenant (stesso nome) vince, come nel metamodello.
+ */
 async function loadEnumValues(field: 'severity' | 'category', tenantId: string): Promise<string[]> {
   const session = getSession(undefined, 'READ')
   try {
-    const rows = await runQuery<{ values: string[] | null }>(session, `
-      MATCH (t:CITypeDefinition {name: 'incident', tenant_id: $tenantId})-[:HAS_FIELD]->(f:CIFieldDefinition {name: $field})
+    const rows = await runQuery<{ values: string[] | string | null; enumId: string | null; enumName: string | null }>(session, `
+      MATCH (t:CITypeDefinition {name: 'incident'})-[:HAS_FIELD]->(f:CIFieldDefinition {name: $field})
+      WHERE t.tenant_id IN [$tenantId, 'system']
       OPTIONAL MATCH (f)-[:USES_ENUM]->(e:EnumTypeDefinition)
-      RETURN coalesce(e.values, f.enum_values) AS values
+        ${enumScopeClause('e')}
+      RETURN coalesce(e.values, f.enum_values) AS values, e.id AS enumId, e.name AS enumName
     `, { field, tenantId })
-    const values = rows[0]?.values
+    if (!rows.length) throw new Error(`[triage] incident.${field} not found in the metamodel`)
+    const overrides = await loadTenantEnumOverrides(session, tenantId)
+    const row = applyEnumOverride(
+      { enumId: rows[0]!.enumId, enumName: rows[0]!.enumName, enumValues: rows[0]!.values },
+      overrides,
+    )
+    const values = Array.isArray(row.enumValues) ? row.enumValues
+      : typeof row.enumValues === 'string' ? (JSON.parse(row.enumValues) as string[])
+      : null
     if (!values?.length) throw new Error(`[triage] enum values for incident.${field} not found in the metamodel`)
     return values
   } finally {

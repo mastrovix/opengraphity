@@ -36,10 +36,15 @@ import { colors, palette, alpha } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+// Specchio di `BASE_TYPE_FIELDS` di packages/schema-generator/src/generator.ts:
+// i campi che l'SDL NON ri-dichiara sui tipi generati perché stanno già su
+// CIBase. Le due liste devono restare identiche: qui mancavano `chain`,
+// `health`, `healthSource` e `lastEventAt`.
 const BASE_TYPE_FIELDS = new Set([
   'id', 'name', 'type', 'status', 'environment',
-  'description', 'createdAt', 'updatedAt', 'notes',
+  'description', 'chain', 'createdAt', 'updatedAt', 'notes',
   'ownerGroup', 'supportGroup', 'dependencies', 'dependents',
+  'health', 'healthSource', 'lastEventAt',
 ])
 
 interface CIRef {
@@ -287,8 +292,17 @@ export function CIDetailPage() {
     }
   }, [searchCIs])
 
+  // A-5: la query dinamica chiede allo schema SOLO i campi che lo schema ha.
+  // `generateSDL` esclude i campi `is_system` (oltre a quelli già su CIBase),
+  // quindi filtrare per NOME non bastava: un campo di sistema con un nome non
+  // in elenco (`chain`, o un campo che qualcuno avesse aggiunto al `__base__`
+  // condiviso) entrava nella query e la pagina di dettaglio di OGNI CI
+  // rispondeva `Cannot query field "<campo>" on type "<Tipo>"`. Il filtro è
+  // lo stesso dell'SDL: nome noto O campo di sistema.
   const specificFields = useMemo(
-    () => ciType?.fields.filter(f => !BASE_TYPE_FIELDS.has(f.name)).sort((a, b) => a.order - b.order) ?? [],
+    () => ciType?.fields
+      .filter(f => !BASE_TYPE_FIELDS.has(f.name) && !f.isSystem)
+      .sort((a, b) => a.order - b.order) ?? [],
     [ciType],
   )
 

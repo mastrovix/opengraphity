@@ -15,4 +15,23 @@ export interface EnumTypeRef {
   label: string
   values: string[]
   scope: string
+  /**
+   * Spedito col prodotto (`tenant_id = 'system'`): è lo stesso vocabolario per
+   * tutti i clienti e non si modifica in posto — si personalizza dal
+   * Dizionario, che ne crea la copia del tenant.
+   */
+  isShipped: boolean
+}
+
+/**
+ * Etichetta di un vocabolario nelle tendine dei disegnatori: label, scope e —
+ * la parte che mancava — **di chi è**. Senza il proprietario un cliente non
+ * distingueva i vocabolari del prodotto dai propri, cioè non sapeva quale
+ * poteva cambiare.
+ */
+export function enumOptionLabel(
+  e: Pick<EnumTypeRef, 'label' | 'scope' | 'isShipped'>,
+  t: (key: string) => string,
+): string {
+  return `${e.label} (${e.scope}) — ${t(e.isShipped ? 'pages.dictionary.shippedBadge' : 'pages.dictionary.ownBadge')}`
 }

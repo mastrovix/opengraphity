@@ -13,9 +13,20 @@ const h = vi.hoisted(() => {
   const cfg = { anthropicApiKey: undefined as string | undefined }
   const create = vi.fn<(p: Record<string, unknown>) => Promise<unknown>>()
   const constructed: unknown[] = []
-  const session = { close: vi.fn().mockResolvedValue(undefined) }
+  // A-2: il triage legge anche le PERSONALIZZAZIONI del tenant
+  // (`loadTenantEnumOverrides`), che passa da `session.executeRead`/`tx.run` e
+  // non da `runQuery`: la sessione finta deve saperlo fare. `ownEnums` sono i
+  // vocabolari propri del tenant (vuoto = nessuna personalizzazione).
+  const ownEnums: Array<Record<string, unknown>> = []
+  const overridesRun = vi.fn(async () => ({
+    records: ownEnums.map((m) => ({ get: (k: string) => (k in m ? m[k] : null) })),
+  }))
+  const session = {
+    close: vi.fn().mockResolvedValue(undefined),
+    executeRead: (fn: (tx: { run: typeof overridesRun }) => unknown) => fn({ run: overridesRun }),
+  }
   const embed = vi.fn<(texts: string[]) => Promise<number[][]>>()
-  return { cfg, create, constructed, session, embed }
+  return { cfg, create, constructed, session, embed, ownEnums, overridesRun }
 })
 
 vi.mock('../../lib/config.js', () => ({ config: h.cfg }))
@@ -80,6 +91,7 @@ async function failure(promise: Promise<unknown>): Promise<unknown> {
 beforeEach(() => {
   vi.clearAllMocks()
   h.constructed.length = 0
+  h.ownEnums.length = 0
   h.cfg.anthropicApiKey = 'sk-test'
   h.embed.mockResolvedValue([[0.1, 0.2, 0.3]])
   h.create.mockResolvedValue(modelReply(JSON.stringify(SUGGESTION)))
@@ -148,6 +160,40 @@ describe('suggestTriage — chiamata al modello', () => {
     }
     const impact = calls.find(c => (c[1] as string).includes('BusinessCapability'))!
     expect((impact[2] as Record<string, unknown>)['ciIds']).toEqual(['a', 'b', 'c', 'd', 'e'])
+  })
+
+  // ── A-2: i valori ammessi sono quelli di QUESTO cliente ───────────────────
+  // `incident` è un tipo spedito col prodotto: il suo `USES_ENUM` è unico per
+  // tutti, e letto senza ambito portava qui i vocabolari del cliente che li
+  // aveva agganciati per primo (dal vivo: c-one).
+
+  it('il vocabolario agganciato si legge solo se di sistema o del tenant, e il tipo incident è quello condiviso', async () => {
+    await suggestTriage(input)
+    const enumCalls = vi.mocked(runQuery).mock.calls.filter((c) => (c[1] as string).includes('CITypeDefinition'))
+    expect(enumCalls).toHaveLength(2)
+    for (const c of enumCalls) {
+      expect(c[1]).toContain("WHERE t.tenant_id IN [$tenantId, 'system']")
+      expect(c[1]).toContain("WHERE e.tenant_id IN [$tenantId, 'system']")
+    }
+  })
+
+  it('la personalizzazione del tenant (stesso nome) vince sui valori agganciati', async () => {
+    h.ownEnums.push({ id: 'own-sev', name: 'severity', values: ['bassa', 'alta'] })
+    vi.mocked(runQuery).mockImplementation(async (_s: unknown, cypher: string, params?: Record<string, unknown>) => {
+      if (cypher.includes('CITypeDefinition')) {
+        return [params?.['field'] === 'severity'
+          ? { values: ['low', 'high'], enumId: 'sys-sev', enumName: 'severity' }
+          : { values: ['network'],     enumId: 'sys-cat', enumName: 'category' }]
+      }
+      if (cypher.includes('db.index.vector.queryNodes')) return SIMILAR
+      return []
+    })
+    h.create.mockResolvedValue(modelReply(JSON.stringify({ ...SUGGESTION, severity: 'alta', category: 'network' })))
+    await suggestTriage({ ...input, ciIds: [] })
+    const outputConfig = h.create.mock.calls[0]![0]['output_config'] as { format: { schema: { properties: Record<string, { enum?: string[] }> } } }
+    // i valori del vocabolario agganciato (low/high) non arrivano al modello
+    expect(outputConfig.format.schema.properties['severity']!.enum).toEqual(['bassa', 'alta'])
+    expect(outputConfig.format.schema.properties['category']!.enum).toEqual(['network'])
   })
 
   it('senza CI non interroga l\'impatto e passa impatto_ci vuoto', async () => {

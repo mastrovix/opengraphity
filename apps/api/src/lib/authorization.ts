@@ -21,13 +21,20 @@
  * campo silenziosamente aperto o chiuso).
  */
 import type { GraphQLResolveInfo } from 'graphql'
+import { USER_ROLES } from '@opengraphity/types'
 import { ForbiddenError } from './errors.js'
 import type { GraphQLContext } from '../context.js'
 
 export type Role = GraphQLContext['role']
 export type RootKind = 'Query' | 'Mutation'
 
-export const ROLES: readonly Role[] = ['admin', 'operator', 'viewer', 'end_user']
+/**
+ * I ruoli veri, in un posto solo: `USER_ROLES` di @opengraphity/types, la
+ * stessa lista che `assertRole` applica al login (auth/resolveAuth.ts) e che
+ * gli script di onboarding usano. Qui prima c'era una seconda lista letterale
+ * identica: due copie che potevano divergere in silenzio (D-13).
+ */
+export const ROLES: readonly Role[] = USER_ROLES
 
 const DEFAULT_QUERY_ROLES:    readonly Role[] = ['admin', 'operator', 'viewer']
 const DEFAULT_MUTATION_ROLES: readonly Role[] = ['admin', 'operator']
@@ -77,7 +84,7 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   // metamodello e regole di campo
   'updateITILType', 'createITILField', 'updateITILField', 'deleteITILField',
   'createITILCIRelationRule', 'deleteITILCIRelationRule',
-  'createEnumType', 'updateEnumType', 'deleteEnumType',
+  'createEnumType', 'updateEnumType', 'deleteEnumType', 'customizeEnumType',
   'createFieldVisibilityRule', 'updateFieldVisibilityRule', 'deleteFieldVisibilityRule',
   'setFieldRequirement', 'deleteFieldRequirement',
   // cataloghi e questionari

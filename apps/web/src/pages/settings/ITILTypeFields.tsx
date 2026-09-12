@@ -7,6 +7,7 @@ import {
 } from './shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import type { EnumTypeRef } from './shared/designerStyles'
+import { enumOptionLabel } from './shared/designerStyles'
 import type { ITILField, FieldFormState, EnumTypeOption } from './useITILTypeDesigner'
 import { emptyForm, fieldToForm } from './useITILTypeDesigner'
 import { colors } from '@/lib/tokens'
@@ -96,7 +97,7 @@ function FieldEditor({
           >
             <option value="">{t('itilDesigner.selectEnum')}</option>
             {(enumTypesData?.enumTypes ?? []).map((e) => (
-              <option key={e.id} value={e.id}>{e.label} ({e.scope})</option>
+              <option key={e.id} value={e.id}>{enumOptionLabel(e, t)}</option>
             ))}
           </Select>
         </div>

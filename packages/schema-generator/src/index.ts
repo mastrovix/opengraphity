@@ -1,4 +1,5 @@
-export { loadMetamodel, generateSDL, loadITILTypes, generateITILEnumsSDL } from './generator.js'
+export { loadMetamodel, generateSDL, loadITILTypes, generateITILEnumsSDL, metamodelSDL } from './generator.js'
+export type { EnumScope } from './generator.js'
 export { toPascalCase, pluralize } from './stringUtils.js'
 export type {
   CITypeWithDefinitions,

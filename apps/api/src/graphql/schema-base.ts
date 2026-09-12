@@ -164,6 +164,7 @@ export function buildBaseSDL(): string {
     slaReport(windowDays: Int): SLAReport!
 
     # Portal (Self-Service)
+    "\`status\` è una CLASSE di stato (open | in_progress | resolved | closed), tradotta nei nomi dei passi del workflow del tenant — mai un nome di passo (B0-3)."
     myTickets(status: String, page: Int, pageSize: Int): MyTicketsResult!
     myTicket(id: ID!): MyTicketDetail!
     myTicketStats: MyTicketStats!
@@ -381,6 +382,13 @@ export function buildBaseSDL(): string {
     createEnumType(input: CreateEnumTypeInput!): EnumTypeDefinition!
     updateEnumType(id: ID!, input: UpdateEnumTypeInput!): EnumTypeDefinition!
     deleteEnumType(id: ID!): Boolean!
+    """
+    Personalizza un vocabolario spedito col prodotto: crea la copia del tenant
+    con gli stessi valori e la restituisce. Da lì si modifica; la copia vince in
+    lettura solo per chi la possiede, gli altri clienti continuano a vedere
+    quello spedito.
+    """
+    customizeEnumType(id: ID!): EnumTypeDefinition!
 
     # Approval Workflow
     createApprovalRequest(entityType: String!, entityId: String!, title: String!, description: String, approvers: [String!]!, approvalType: String, dueDate: String): ApprovalRequest!

@@ -1,9 +1,39 @@
+/**
+ * Metamodello ITIL (`incident`, `change`, `problem`, `service_request`).
+ *
+ * I quattro tipi e i loro 36 campi sono SPEDITI col prodotto: un solo nodo
+ * `tenant_id = 'system'` per tutti i clienti. Da qui le due regole di questo
+ * file (personalizzazioni, ondata 1):
+ *
+ * - **A-2 / C-6, vocabolari**: ogni `USES_ENUM` si legge con
+ *   `enumScopeClause` (il vocabolario di un altro cliente non esiste) e si
+ *   scrive con `assertEnumLinkable` (un campo condiviso non si aggancia al
+ *   vocabolario di un cliente). La personalizzazione passa per il NOME:
+ *   `loadTenantEnumOverrides` + `applyEnumOverrides` fanno vincere il
+ *   vocabolario del tenant, e solo per chi lo possiede. Fonte unica:
+ *   `lib/enumScope.ts`.
+ * - **A-4, campi**: le letture mostrano solo i campi del tenant e quelli
+ *   spediti (`f.tenant_id IN [$tenantId, 'system']`), così l'id del campo di un
+ *   altro cliente non arriva mai all'interfaccia; le scritture toccano solo i
+ *   campi del tenant. Un campo spedito è in sola lettura **etichetta, ordine e
+ *   script compresi** — prima le guardie `CASE WHEN f.is_system` coprivano solo
+ *   `required`/`field_type`/`name`, e `visibility_script` scritto da un cliente
+ *   girava nel contesto di tutti gli altri.
+ */
 import { withSession } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 import { GraphQLError } from 'graphql'
+import type { Session } from 'neo4j-driver'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
+import {
+  SYSTEM_TENANT, enumScopeClause, loadTenantEnumOverrides, applyEnumOverrides,
+  assertEnumLinkable, type EnumOverride, type EnumRow,
+} from '../../lib/enumScope.js'
 
 type Props = Record<string, unknown>
+
+/** Campi visibili: i propri più quelli spediti. Mai quelli di un altro cliente. */
+const FIELD_SCOPE = `f.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']`
 
 // ── mapITILField ──────────────────────────────────────────────────────────────
 
@@ -14,7 +44,7 @@ function parseInlineEnumValues(raw: unknown): string[] {
   return arr as string[]
 }
 
-export function mapITILField(f: Props, enumRef?: { id: string; name: string; label: string; values: string[] }) {
+export function mapITILField(f: Props, enumRef?: { id: string; name: string; values: string[] }) {
   return {
     id:               f['id'],
     name:             f['name'],
@@ -33,20 +63,57 @@ export function mapITILField(f: Props, enumRef?: { id: string; name: string; lab
   }
 }
 
+// ── Righe di campo + vocabolario ──────────────────────────────────────────────
+
+/** Una riga «campo + vocabolario agganciato», nella forma che `enumScope` sa personalizzare. */
+interface ITILFieldRow extends EnumRow {
+  props: Props
+}
+
+function toValues(raw: string[] | string | null, name: string): string[] {
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string') {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) throw new Error(`Vocabolario "${name}": values non è un array`)
+    return parsed as string[]
+  }
+  return []
+}
+
+/**
+ * Applica la personalizzazione del tenant (il suo vocabolario con lo stesso
+ * nome vince) e mappa le righe. La precedenza risultante è quella del
+ * contratto: vocabolario del tenant > agganciato di sistema > `enum_values`
+ * inline del campo (l'inline lo usa `mapITILField` quando non c'è aggancio).
+ */
+function mapFieldRows(rows: readonly ITILFieldRow[], overrides: Map<string, EnumOverride>) {
+  return applyEnumOverrides(rows, overrides)
+    .map((r) => {
+      const enumRef = r.enumId
+        ? { id: r.enumId, name: r.enumName ?? '', values: toValues(r.enumValues, r.enumName ?? r.enumId) }
+        : undefined
+      return mapITILField(r.props, enumRef)
+    })
+    .sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
+}
+
 // ── fetchITILTypeById ─────────────────────────────────────────────────────────
 
 export async function fetchITILTypeById(id: string, tenantId: string) {
   return withSession(async session => {
+    const overrides = await loadTenantEnumOverrides(session, tenantId)
     const r = await session.executeRead(tx =>
       tx.run(`
         MATCH (t:CITypeDefinition {id: $id})
-        WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system']
+        WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
         OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
+          WHERE ${FIELD_SCOPE}
         OPTIONAL MATCH (f)-[:USES_ENUM]->(enumDef:EnumTypeDefinition)
+          ${enumScopeClause('enumDef')}
         OPTIONAL MATCH (t)-[:HAS_RELATION]->(rel:CIRelationDefinition)
         OPTIONAL MATCH (t)-[:HAS_SYSTEM_RELATION]->(sr:CISystemRelationDefinition)
         RETURN t,
-          collect(DISTINCT {f: f, enumTypeId: enumDef.id, enumTypeName: enumDef.name, enumTypeLabel: enumDef.label, enumTypeValues: enumDef.values}) AS fieldData,
+          collect(DISTINCT {f: f, enumTypeId: enumDef.id, enumTypeName: enumDef.name, enumTypeValues: enumDef.values}) AS fieldData,
           collect(DISTINCT rel) AS relations,
           collect(DISTINCT sr)  AS systemRels
       `, { id, tenantId }),
@@ -55,20 +122,13 @@ export async function fetchITILTypeById(id: string, tenantId: string) {
     const rec = r.records[0]
     const t = rec.get('t').properties as Props
 
-    type FieldData = { f: { properties: Props } | null; enumTypeId: string | null; enumTypeName: string | null; enumTypeLabel: string | null; enumTypeValues: string[] | null }
-    const fieldData = rec.get('fieldData') as FieldData[]
-    const fields = fieldData
-      .filter(d => d.f)
-      .map(d => {
-        const enumRef = d.enumTypeId ? {
-          id:     d.enumTypeId,
-          name:   d.enumTypeName ?? '',
-          label:  d.enumTypeLabel ?? '',
-          values: d.enumTypeValues ?? [],
-        } : undefined
-        return mapITILField(d.f!.properties, enumRef)
-      })
-      .sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
+    type FieldData = { f: { properties: Props } | null; enumTypeId: string | null; enumTypeName: string | null; enumTypeValues: string[] | null }
+    const fields = mapFieldRows(
+      (rec.get('fieldData') as FieldData[])
+        .filter(d => d.f)
+        .map(d => ({ props: d.f!.properties, enumId: d.enumTypeId, enumName: d.enumTypeName, enumValues: d.enumTypeValues })),
+      overrides,
+    )
 
     return {
       id:               t['id'],
@@ -109,14 +169,17 @@ export async function fetchITILTypeById(id: string, tenantId: string) {
 export function buildITILTypesResolver() {
   return async (_: unknown, __: unknown, ctx: GraphQLContext) =>
     withSession(async session => {
+      const overrides = await loadTenantEnumOverrides(session, ctx.tenantId)
       const r = await session.executeRead(tx =>
         tx.run(
           `MATCH (t:CITypeDefinition)
-           WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system'] AND t.active = true
+           WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}'] AND t.active = true
            OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
+             WHERE ${FIELD_SCOPE}
            OPTIONAL MATCH (f)-[:USES_ENUM]->(enumDef:EnumTypeDefinition)
+             ${enumScopeClause('enumDef')}
            RETURN t,
-             collect(DISTINCT {f: f, enumTypeId: enumDef.id, enumTypeName: enumDef.name, enumTypeLabel: enumDef.label, enumTypeValues: enumDef.values}) AS fieldData
+             collect(DISTINCT {f: f, enumTypeId: enumDef.id, enumTypeName: enumDef.name, enumTypeValues: enumDef.values}) AS fieldData
            ORDER BY t.name`,
           { tenantId: ctx.tenantId },
         ),
@@ -124,20 +187,13 @@ export function buildITILTypesResolver() {
       return r.records.map(rec => {
         const t = rec.get('t').properties as Props
 
-        type FieldData = { f: { properties: Props } | null; enumTypeId: string | null; enumTypeName: string | null; enumTypeLabel: string | null; enumTypeValues: string[] | null }
-        const fieldData = rec.get('fieldData') as FieldData[]
-        const fields = fieldData
-          .filter(d => d.f)
-          .map(d => {
-            const enumRef = d.enumTypeId ? {
-              id:     d.enumTypeId,
-              name:   d.enumTypeName ?? '',
-              label:  d.enumTypeLabel ?? '',
-              values: d.enumTypeValues ?? [],
-            } : undefined
-            return mapITILField(d.f!.properties, enumRef)
-          })
-          .sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
+        type FieldData = { f: { properties: Props } | null; enumTypeId: string | null; enumTypeName: string | null; enumTypeValues: string[] | null }
+        const fields = mapFieldRows(
+          (rec.get('fieldData') as FieldData[])
+            .filter(d => d.f)
+            .map(d => ({ props: d.f!.properties, enumId: d.enumTypeId, enumName: d.enumTypeName, enumValues: d.enumTypeValues })),
+          overrides,
+        )
 
         return {
           id:               t['id'],
@@ -160,29 +216,98 @@ export function buildITILTypesResolver() {
 export function buildITILTypeFieldsResolver() {
   return async (_: unknown, args: { typeId: string }, ctx: GraphQLContext) =>
     withSession(async session => {
+      const overrides = await loadTenantEnumOverrides(session, ctx.tenantId)
       const r = await session.executeRead(tx =>
         tx.run(
           `MATCH (t:CITypeDefinition {id: $typeId})
-           WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system']
+           WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
            MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
+           WHERE ${FIELD_SCOPE}
            OPTIONAL MATCH (f)-[:USES_ENUM]->(enumDef:EnumTypeDefinition)
+             ${enumScopeClause('enumDef')}
            RETURN f, enumDef.id AS enumTypeId, enumDef.name AS enumTypeName,
-                  enumDef.label AS enumTypeLabel, enumDef.values AS enumTypeValues
+                  enumDef.values AS enumTypeValues
            ORDER BY f.order`,
           { typeId: args.typeId, tenantId: ctx.tenantId },
         ),
       )
-      return r.records.map(rec => {
-        const enumId = rec.get('enumTypeId') as string | null
-        const enumRef = enumId ? {
-          id:     enumId,
-          name:   rec.get('enumTypeName') as string ?? '',
-          label:  rec.get('enumTypeLabel') as string ?? '',
-          values: rec.get('enumTypeValues') as string[] ?? [],
-        } : undefined
-        return mapITILField(rec.get('f').properties as Props, enumRef)
-      })
+      return mapFieldRows(
+        r.records.map(rec => ({
+          props:      rec.get('f').properties as Props,
+          enumId:     rec.get('enumTypeId')     as string | null,
+          enumName:   rec.get('enumTypeName')   as string | null,
+          enumValues: rec.get('enumTypeValues') as string[] | null,
+        })),
+        overrides,
+      )
     })
+}
+
+// ── Guardie di scrittura (A-4) ────────────────────────────────────────────────
+
+/**
+ * Il campo si può SCRIVERE? Solo se è del tenant. Un campo spedito col prodotto
+ * è in sola lettura per intero (etichetta, ordine, script compresi): il nodo è
+ * uno per tutti i clienti. Un campo di un altro cliente non esiste (le letture
+ * lo nascondono, la scrittura dice «non trovato»: non si conferma che c'è).
+ */
+async function assertFieldWritable(
+  session: Session, typeId: string, fieldId: string, tenantId: string,
+): Promise<{ name: string; tenantId: string }> {
+  const r = await session.executeRead(tx =>
+    tx.run(`
+      MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
+      WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
+        AND ${FIELD_SCOPE}
+      RETURN f.name AS name, f.tenant_id AS fieldTenantId, f.is_system AS isSystem
+    `, { typeId, fieldId, tenantId }),
+  )
+  const rec = r.records[0]
+  if (!rec) throw new GraphQLError('Campo non trovato', { extensions: { code: 'NOT_FOUND' } })
+
+  const name          = rec.get('name')          as string
+  const fieldTenantId = rec.get('fieldTenantId') as string | null
+  const isSystem      = rec.get('isSystem')      as boolean | null
+
+  if (fieldTenantId === SYSTEM_TENANT || isSystem === true) {
+    throw new GraphQLError(
+      `Il campo "${name}" è spedito col prodotto: è lo stesso per tutti i clienti e non si modifica, ` +
+      `nemmeno l'etichetta, l'ordine o gli script. Aggiungi un campo tuo sul tipo.`,
+      { extensions: { code: 'BAD_USER_INPUT' } },
+    )
+  }
+  if (fieldTenantId !== tenantId) {
+    throw new GraphQLError('Campo non trovato', { extensions: { code: 'NOT_FOUND' } })
+  }
+  return { name, tenantId: fieldTenantId }
+}
+
+/**
+ * Il vocabolario si può agganciare a questo campo? Delega a
+ * `assertEnumLinkable` (lib/enumScope.ts). Il campo è descritto dal suo
+ * PROPRIETARIO (`tenant_id`): lo `scope` non serve, perché su questi tipi tutti
+ * i campi hanno `scope = 'itil'` — spediti e personalizzati — mentre il
+ * `tenant_id` distingue («system» = spedito, verificato dal vivo su 36 campi).
+ */
+async function assertEnumTypeLinkable(
+  session: Session, enumTypeId: string | null, field: { name: string; tenantId: string | null }, tenantId: string,
+): Promise<void> {
+  if (!enumTypeId) return
+  const r = await session.executeRead(tx =>
+    tx.run(`
+      MATCH (e:EnumTypeDefinition {id: $enumTypeId})
+      RETURN e.id AS id, e.name AS name, e.tenant_id AS tenantId
+    `, { enumTypeId }),
+  )
+  const rec = r.records[0]
+  if (!rec) {
+    throw new GraphQLError(`Vocabolario ${enumTypeId} non trovato`, { extensions: { code: 'NOT_FOUND' } })
+  }
+  assertEnumLinkable(
+    { id: rec.get('id') as string, name: rec.get('name') as string, tenantId: rec.get('tenantId') as string },
+    { name: field.name, tenantId: field.tenantId },
+    tenantId,
+  )
 }
 
 // ── buildITILMutations ────────────────────────────────────────────────────────
@@ -203,6 +328,28 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
       if (validationScript !== undefined) updates['validation_script'] = validationScript ?? null
 
       await withSession(async session => {
+        // A-4: prima il `MATCH (t {id, tenant_id: $tenantId})` non trovava i
+        // tipi `system` — cioè tutti e quattro — e la mutation restituiva il
+        // tipo come se avesse scritto: no-op silenzioso. Adesso si ferma e lo
+        // dice.
+        const check = await session.executeRead(tx =>
+          tx.run(
+            `MATCH (t:CITypeDefinition {id: $id})
+             WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
+             RETURN t.name AS name, t.tenant_id AS typeTenantId`,
+            { id: args.id, tenantId: ctx.tenantId },
+          ),
+        )
+        const rec = check.records[0]
+        if (!rec) throw new GraphQLError('ITIL type non trovato', { extensions: { code: 'NOT_FOUND' } })
+        if ((rec.get('typeTenantId') as string) === SYSTEM_TENANT) {
+          throw new GraphQLError(
+            `Il tipo "${rec.get('name') as string}" è spedito col prodotto: è lo stesso per tutti i clienti ` +
+            `e non si modifica (etichetta, icona, colore e script di validazione compresi).`,
+            { extensions: { code: 'BAD_USER_INPUT' } },
+          )
+        }
+
         await session.executeWrite(tx =>
           tx.run(
             `MATCH (t:CITypeDefinition {id: $id, tenant_id: $tenantId}) WHERE t.scope = 'itil' SET t += $updates`,
@@ -237,10 +384,15 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
         : Array.isArray(input['enumValues']) ? JSON.stringify(input['enumValues']) : null
 
       await withSession(async session => {
+        // Il campo nuovo è del TENANT (`tenant_id`, `is_system: false`) anche
+        // su un tipo condiviso: quindi può essere agganciato al vocabolario del
+        // tenant. Quello di un altro cliente no, e `assertEnumLinkable` lo dice.
+        await assertEnumTypeLinkable(session, enumTypeId, { name: String(input['name']), tenantId: ctx.tenantId }, ctx.tenantId)
+
         await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})
-            WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system']
+            WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
             CREATE (f:CIFieldDefinition {
               id:                $fieldId,
               name:              $name,
@@ -262,7 +414,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
             CALL {
               WITH f
               MATCH (e:EnumTypeDefinition {id: $enumTypeId})
-              WHERE $enumTypeId IS NOT NULL AND e.tenant_id IN [$tenantId, 'system']
+              WHERE $enumTypeId IS NOT NULL AND e.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
               MERGE (f)-[:USES_ENUM]->(e)
               RETURN count(e) AS linked
             }
@@ -311,28 +463,36 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
         : Array.isArray(input['enumValues']) ? JSON.stringify(input['enumValues']) : null
 
       await withSession(async session => {
+        // A-4: solo i campi del tenant. Un campo spedito è in sola lettura per
+        // intero, non solo su name/field_type/required.
+        const field = await assertFieldWritable(session, typeId, fieldId, ctx.tenantId)
+        await assertEnumTypeLinkable(session, enumTypeId, field, ctx.tenantId)
+
         await session.executeWrite(tx =>
           tx.run(`
-            MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
-            WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system']
+            MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId, tenant_id: $tenantId})
+            WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
             SET f.label             = $label,
                 f.enum_values       = CASE WHEN f.field_type = 'enum' THEN $enumValues ELSE f.enum_values END,
-                f.required          = CASE WHEN f.is_system = true THEN f.required ELSE $required END,
-                f.field_type        = CASE WHEN f.is_system = true THEN f.field_type ELSE $fieldType END,
-                f.name              = CASE WHEN f.is_system = true THEN f.name ELSE $name END,
+                f.required          = $required,
+                f.field_type        = $fieldType,
+                f.name              = $name,
                 f.order             = $order,
                 f.validation_script = $validationScript,
                 f.visibility_script = $visibilityScript,
                 f.default_script    = $defaultScript
             WITH f
             // Remove any existing USES_ENUM relation first (clean slate for enum reference)
+            // Qui non si LEGGE il vocabolario: si stacca il legame vecchio del
+            // campo, qualunque sia (anche uno sbagliato, da ripulire).
+            // tenant-ok: f è già vincolato a tenant_id = $tenantId dal MATCH sopra.
             OPTIONAL MATCH (f)-[oldRel:USES_ENUM]->(:EnumTypeDefinition)
             DELETE oldRel
             WITH f
             CALL {
               WITH f
               MATCH (e:EnumTypeDefinition {id: $enumTypeId})
-              WHERE $enumTypeId IS NOT NULL AND e.tenant_id IN [$tenantId, 'system']
+              WHERE $enumTypeId IS NOT NULL AND e.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
               MERGE (f)-[:USES_ENUM]->(e)
               RETURN count(e) AS linked
             }
@@ -366,21 +526,14 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
     ) => {
       requireAdmin(ctx)
       await withSession(async session => {
-        const check = await session.executeRead(tx =>
-          tx.run(`
-            MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
-            WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system']
-            RETURN f.is_system AS isSystem
-          `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId }),
-        )
-        const isSystem = check.records[0]?.get('isSystem') as boolean | null | undefined
-        if (isSystem == null) throw new GraphQLError('Campo non trovato')
-        if (isSystem === true) throw new GraphQLError('I campi di sistema non possono essere eliminati')
+        // A-4: `f.is_system` non basta — i campi custom di un altro cliente
+        // hanno `is_system = false` ed erano quindi cancellabili da qui.
+        await assertFieldWritable(session, args.typeId, args.fieldId, ctx.tenantId)
 
         await session.executeWrite(tx =>
           tx.run(`
-            MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
-            WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, 'system']
+            MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId, tenant_id: $tenantId})
+            WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
             DETACH DELETE f
           `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId }),
         )

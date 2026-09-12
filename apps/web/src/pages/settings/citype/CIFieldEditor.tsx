@@ -3,10 +3,11 @@ import { useQuery } from '@apollo/client/react'
 import { Modal } from '@/components/Modal'
 import { GET_ENUM_TYPES } from '@/graphql/queries'
 import type { CIFieldDef } from '@/contexts/MetamodelContext'
+import { useTranslation } from 'react-i18next'
 import {
   inputS, selectS, textareaS, labelS,
   btnPrimary, btnSecondary,
-  FIELD_TYPES,
+  FIELD_TYPES, enumOptionLabel,
 } from '../shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
@@ -71,6 +72,7 @@ interface FieldModalProps {
 }
 
 export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }: FieldModalProps) {
+  const { t } = useTranslation()
   const [form, setForm] = useState<FieldForm>(initial ?? { ...emptyFieldForm(), order: existingCount })
   const [saving, setSaving] = useState(false)
   const [scriptTab, setScriptTab] = useState<'validation' | 'visibility' | 'default'>('validation')
@@ -129,7 +131,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
           <Select style={selectS} value={form.enumTypeId ?? ''} onChange={(e) => set('enumTypeId', e.target.value || null)}>
             <option value="">— Seleziona enum —</option>
             {enumTypes.map((e) => (
-              <option key={e.id} value={e.id}>{e.label} ({e.scope})</option>
+              <option key={e.id} value={e.id}>{enumOptionLabel(e, t)}</option>
             ))}
           </Select>
           {selectedEnum && (

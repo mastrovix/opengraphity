@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
+import { CI_LIFECYCLE_STATUSES } from '../lib/eventVocabularies.js'
 
 const TENANT_ID = 'system'
 const now = new Date().toISOString()
@@ -59,8 +60,12 @@ const BASE_TYPE: CIType = {
   fields: [
     { name: 'id',          label: 'ID',           field_type: 'string', is_system: true, order: 0 },
     { name: 'name',        label: 'Nome',         field_type: 'string', is_system: true, order: 1 },
+    // Ciclo di vita del CI: fonte unica lib/eventVocabularies.ts (la stessa da
+    // cui nasce l'enum `ci_status`). Il seed elencava tre valori a mano e si
+    // era già scollato dal dato vero (mancavano decommissioned, expired e
+    // revoked: B0-4).
     { name: 'status',      label: 'Stato',        field_type: 'enum',   is_system: true, order: 2,
-      enum_values: ['active', 'inactive', 'maintenance'] },
+      enum_values: [...CI_LIFECYCLE_STATUSES] },
     { name: 'environment', label: 'Ambiente',     field_type: 'enum',   is_system: true, order: 3,
       enum_values: ['production', 'staging', 'development'] },
     { name: 'description', label: 'Descrizione',  field_type: 'string', is_system: true, order: 4 },

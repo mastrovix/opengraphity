@@ -12,14 +12,18 @@
  *
  * In all cases: MERGE (f)-[:USES_ENUM]->(e), SET f.enum_values = null
  *
- * Tenant scoping (multi-tenant DB):
+ * Tenant scoping (multi-tenant DB) — la regola, che PRIMA di questa ondata
+ * viveva solo in questo commento (A-2 / C-6: nel grafo i legami c'erano
+ * comunque), adesso è CODICE: ogni legame passa da `assertEnumLinkable`
+ * (lib/enumScope.ts), la stessa guardia dei resolver.
  *   - By default ONLY fields of CITypeDefinition owned by --tenant are touched.
  *     Shared types (scope IN ['base','itil'] or tenant_id = 'system') are
  *     EXCLUDED: linking them to a tenant enum would leak that enum to every
  *     other tenant and wipe their inline enum_values.
  *   - With --include-shared the shared fields are migrated too, but they are
- *     matched ONLY against system enums (is_system = true) and any enum
- *     auto-created for them is {tenant_id: 'system', is_system: true}.
+ *     matched ONLY against SHIPPED enums (`tenant_id = 'system'` — non il flag
+ *     `is_system`, che è scritto anche sulle copie per tenant) e ogni enum
+ *     creato per loro è {tenant_id: 'system', is_system: true}.
  *   - Every write on a field is constrained by the tenant of its parent type.
  *
  * Usage:
@@ -31,8 +35,8 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import { resolveTenantArg, hasFlag } from './lib/scriptArgs.js'
+import { SYSTEM_TENANT, assertEnumLinkable } from '../lib/enumScope.js'
 
-const SYSTEM_TENANT = 'system'
 const SHARED_SCOPES = ['base', 'itil']
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -43,6 +47,8 @@ interface EnumDef {
   label:    string
   values:   string[]
   isSystem: boolean
+  /** Proprietario: `system` = spedito col prodotto. È questo che conta, non `isSystem`. */
+  tenantId: string
 }
 
 interface FieldRecord {
@@ -54,6 +60,8 @@ interface FieldRecord {
   typeTenantId: string
   /** shared type (base/itil/system): enum must be a system enum */
   shared:       boolean
+  /** tenant_id del CAMPO: è quello che `assertEnumLinkable` guarda */
+  fieldTenantId: string | null
   enumValues:   string[]
 }
 
@@ -154,14 +162,15 @@ async function main() {
     const enumResult = await session.executeRead((tx) =>
       tx.run(`
         MATCH (e:EnumTypeDefinition)
-        WHERE e.tenant_id = $tenantId OR e.is_system = true
-        RETURN e.id     AS id,
-               e.name   AS name,
-               e.label  AS label,
-               e.values AS values,
+        WHERE e.tenant_id IN [$tenantId, $systemTenant]
+        RETURN e.id        AS id,
+               e.name      AS name,
+               e.label     AS label,
+               e.values    AS values,
+               e.tenant_id AS tenantId,
                coalesce(e.is_system, false) AS isSystem
         ORDER BY e.name
-      `, { tenantId }),
+      `, { tenantId, systemTenant: SYSTEM_TENANT }),
     )
 
     const enumDefs: EnumDef[] = enumResult.records.map((r) => ({
@@ -170,6 +179,7 @@ async function main() {
       label:    r.get('label')    as string,
       values:   r.get('values')   as string[],
       isSystem: r.get('isSystem') as boolean,
+      tenantId: r.get('tenantId') as string,
     }))
 
     console.info(`  Found ${enumDefs.length} EnumTypeDefinition(s):`)
@@ -195,6 +205,7 @@ async function main() {
           )
         RETURN f.id          AS fieldId,
                f.name        AS fieldName,
+               f.tenant_id   AS fieldTenantId,
                f.enum_values AS enumValuesJson,
                t.name        AS typeName,
                t.scope       AS typeScope,
@@ -216,6 +227,7 @@ async function main() {
           typeScope:    r.get('typeScope')    as string,
           typeTenantId: r.get('typeTenantId') as string,
           shared:       r.get('shared')       as boolean,
+          fieldTenantId: r.get('fieldTenantId') as string | null,
           enumValues,
         }
       })
@@ -230,7 +242,11 @@ async function main() {
 
     for (const field of fields) {
       // A shared field may only reference a system enum (never a tenant enum).
-      const candidates = field.shared ? enumDefs.filter((e) => e.isSystem) : enumDefs
+      // Un campo condiviso può essere agganciato SOLO a un vocabolario
+      // SPEDITO. Il filtro era su `e.isSystem`, cioè sul flag di protezione che
+      // il vecchio seed scriveva anche sulle copie per tenant: passavano i
+      // vocabolari di un cliente.
+      const candidates = field.shared ? enumDefs.filter((e) => e.tenantId === SYSTEM_TENANT) : enumDefs
       let match = findMatch(field.enumValues, field.fieldName, candidates)
 
       if (!match) {
@@ -276,6 +292,7 @@ async function main() {
           label:    createdRec.get('label')    as string,
           values:   field.enumValues,
           isSystem: createdRec.get('isSystem') as boolean,
+          tenantId: enumTenant,
         }
 
         // Also add to local enumDefs so subsequent fields can reuse it
@@ -283,6 +300,16 @@ async function main() {
         console.info(`  NEW   ${field.typeName}.${field.fieldName} → created ${isSystem ? 'system ' : ''}enum "${match.name}" [${field.enumValues.join(', ')}]`)
         created++
       }
+
+      // La guardia dell'intestazione, come codice: un vocabolario di un altro
+      // cliente non si aggancia a niente, e il vocabolario del tenant non si
+      // aggancia a un campo condiviso (i suoi valori finirebbero negli altri
+      // clienti). Errore rumoroso: lo script si ferma, non salta la riga.
+      assertEnumLinkable(
+        { id: match.id, name: match.name, tenantId: match.tenantId },
+        { name: field.fieldName, scope: field.shared ? field.typeScope : 'tenant', tenantId: field.fieldTenantId },
+        tenantId,
+      )
 
       // Create USES_ENUM relation (MERGE = idempotent) and remove inline
       // enum_values. The field is matched THROUGH its parent type, constrained

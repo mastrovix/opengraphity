@@ -1,6 +1,7 @@
 import { makeExecutableSchema } from '@graphql-tools/schema'
 import type { GraphQLSchema } from 'graphql'
-import { loadMetamodel, generateSDL, loadITILTypes, generateITILEnumsSDL } from '@opengraphity/schema-generator'
+import { loadMetamodel, generateSDL, loadITILTypes, generateITILEnumsSDL, type EnumScope } from '@opengraphity/schema-generator'
+import { enumScopeClause, loadTenantEnumOverrides, applyEnumOverrides } from './enumScope.js'
 import { buildBaseSDL } from '../graphql/schema-base.js'
 import { buildResolvers } from '../graphql/resolvers/index.js'
 import { logger } from './logger.js'
@@ -15,6 +16,18 @@ interface SchemaCacheEntry {
 
 const cache = new Map<string, SchemaCacheEntry>()
 const TTL = 5 * 60 * 1000  // 5 minuti
+
+/**
+ * L'ambito dei vocabolari che il generatore di schema deve usare (A-2 / C-6).
+ * `packages/schema-generator` non può importare `apps/api`, quindi la regola —
+ * che ha una sorgente sola, `lib/enumScope.ts` — gliela passiamo noi invece di
+ * riscriverla là.
+ */
+const ENUM_SCOPE: EnumScope = {
+  clause:         enumScopeClause,
+  loadOverrides:  loadTenantEnumOverrides,
+  applyOverrides: applyEnumOverrides,
+}
 
 // Register invalidator so dynamic-ci.ts can call it without circular imports
 registerSchemaInvalidator((tenantId: string) => {
@@ -35,7 +48,7 @@ export async function regenerateSchema(tenantId: string): Promise<GraphQLSchema>
 
   const [ciTypes, itilTypes] = await Promise.all([
     loadMetamodel(tenantId),
-    loadITILTypes(tenantId),
+    loadITILTypes(tenantId, ENUM_SCOPE),
   ])
   registerCITypes(ciTypes)
   const dynamicSDL    = generateSDL(ciTypes)

@@ -459,7 +459,13 @@
       "nameFieldLabel": "Name (snake_case)",
       "namePlaceholder": "e.g. priority",
       "labelPlaceholder": "e.g. Priority",
-      "invalidName": "Name must be snake_case (e.g. \"my_enum\")"
+      "invalidName": "Name must be snake_case (e.g. \"my_enum\")",
+      "shippedBadge": "Shipped with the product",
+      "ownBadge": "Yours",
+      "shippedNote": "This dictionary ships with the product: it is the same for every customer, so it cannot be edited here. «Customize» creates your own copy with the same values: from then on yours applies, and only to you.",
+      "shippedValuesNote": "The values of a dictionary that ships with the product cannot be changed here: customize it and edit your copy.",
+      "customizeButton": "Customize",
+      "customized": "Your copy of \"{{label}}\" is ready: you are now editing it."
     },
     "sync": {
       "sourceCreated": "Sync source created",
@@ -1084,9 +1090,12 @@
     "target": {
       "all": "Everyone",
       "assignee": "Assignee",
-      "teamOwner": "Team owner",
-      "adminOnly": "Admins only",
-      "managerOnly": "Managers only"
+      "teamOwner": "Assigned team",
+      "roleAdmin": "Admins only",
+      "roleOperator": "Operators only",
+      "roleViewer": "Viewers only",
+      "roleEndUser": "Portal users only",
+      "notApplicable": "{{target}} — not applicable to this event"
     },
     "severity": {
       "info": "Info",
@@ -1107,7 +1116,12 @@
       "sla_response": "response",
       "sla_resolve": "resolution",
       "after": "after"
-    }
+    },
+    "deleteBlockedInitial": "This is the process's initial step: deleting it would stop any new ticket from being created. Mark another step as initial first.",
+    "deleteBlockedInstances_one": "{{count}} ticket is currently on this step: deleting it would leave it with no current step and unable to move on. Move it to another step first.",
+    "deleteBlockedInstances_other": "{{count}} tickets are currently on this step: deleting it would leave them with no current step and unable to move on. Move them to another step first.",
+    "initialOnTerminal": "A terminal step cannot also be the initial step: every new ticket would be born already closed.",
+    "deleteBlockedFactory": "The process's start and end steps cannot be deleted: they are the workflow's endpoints."
   },
   "itilDesigner": {
     "title": "ITIL Type Designer",

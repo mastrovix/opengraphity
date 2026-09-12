@@ -459,7 +459,13 @@
       "nameFieldLabel": "Nome (snake_case)",
       "namePlaceholder": "es. priority",
       "labelPlaceholder": "es. Priority",
-      "invalidName": "Il nome deve essere in snake_case (es. \"my_enum\")"
+      "invalidName": "Il nome deve essere in snake_case (es. \"my_enum\")",
+      "shippedBadge": "Spedito col prodotto",
+      "ownBadge": "Tuo",
+      "shippedNote": "Questo dizionario è spedito col prodotto: è lo stesso per tutti i clienti, quindi non si modifica qui. Con «Personalizza» ne crei la tua copia, con gli stessi valori: da quel momento vale la tua, e solo per te.",
+      "shippedValuesNote": "I valori di un dizionario spedito col prodotto non si cambiano qui: personalizzalo e modifica la tua copia.",
+      "customizeButton": "Personalizza",
+      "customized": "Creata la tua copia di \"{{label}}\": ora modifichi questa."
     },
     "sync": {
       "sourceCreated": "Sync source created",
@@ -1084,9 +1090,12 @@
     "target": {
       "all": "Tutti",
       "assignee": "Assegnatario",
-      "teamOwner": "Responsabile del team",
-      "adminOnly": "Solo amministratori",
-      "managerOnly": "Solo manager"
+      "teamOwner": "Team assegnato",
+      "roleAdmin": "Solo amministratori",
+      "roleOperator": "Solo operatori",
+      "roleViewer": "Solo osservatori",
+      "roleEndUser": "Solo utenti del portale",
+      "notApplicable": "{{target}} — non applicabile a questo evento"
     },
     "severity": {
       "info": "Info",
@@ -1107,7 +1116,12 @@
       "sla_response": "risposta",
       "sla_resolve": "risoluzione",
       "after": "dopo"
-    }
+    },
+    "deleteBlockedInitial": "Questo è lo step iniziale del processo: eliminandolo nessun nuovo ticket potrebbe più nascere. Marca prima un altro step come iniziale.",
+    "deleteBlockedInstances_one": "{{count}} ticket si trova ora su questo step: eliminandolo resterebbe senza step corrente e non potrebbe più avanzare. Spostalo prima su un altro step.",
+    "deleteBlockedInstances_other": "{{count}} ticket si trovano ora su questo step: eliminandolo resterebbero senza step corrente e non potrebbero più avanzare. Spostali prima su un altro step.",
+    "initialOnTerminal": "Uno step terminale non può essere anche lo step iniziale: ogni nuovo ticket nascerebbe già chiuso.",
+    "deleteBlockedFactory": "Gli step di inizio e fine del processo non si eliminano: sono i capi del workflow."
   },
   "itilDesigner": {
     "title": "ITIL Type Designer",

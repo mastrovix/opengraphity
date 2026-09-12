@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
-import { Lock, LockOpen, Plus, X, Save, Trash2, Tag } from 'lucide-react'
+import { Lock, LockOpen, Package, Plus, X, Save, Trash2, Tag, Copy } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
@@ -14,6 +14,7 @@ import {
   CREATE_ENUM_TYPE,
   UPDATE_ENUM_TYPE,
   DELETE_ENUM_TYPE,
+  CUSTOMIZE_ENUM_TYPE,
 } from '@/graphql/mutations'
 import { colors, palette } from '@/lib/tokens'
 
@@ -24,7 +25,10 @@ interface EnumType {
   name:      string
   label:     string
   values:    string[]
+  /** Protezione (non si cancella): è vero anche su copie vecchie del tenant. */
   isSystem:  boolean
+  /** Spedito col prodotto (`tenant_id = 'system'`): uno per tutti i clienti. */
+  isShipped: boolean
   scope:     string
   createdAt: string
   updatedAt: string
@@ -34,6 +38,8 @@ interface EnumType {
 // Shared design-system constants (E-09): no page-local copies.
 // The former local `btnPrimary` used the compact (7px 14px / body) size; kept via override.
 const btnPrimary: React.CSSProperties = { ...sharedBtnPrimary, padding: '7px 14px', fontSize: 'var(--font-size-body)' }
+/** Campo in sola lettura (vocabolario spedito col prodotto, o nome tecnico). */
+const readOnlyS: React.CSSProperties = { background: 'var(--color-slate-bg)', color: colors.slateLight }
 
 // ── CreateEnumDialog ──────────────────────────────────────────────────────────
 
@@ -126,10 +132,47 @@ function CreateEnumDialog({
   )
 }
 
+// ── OwnerBadge ────────────────────────────────────────────────────────────────
+
+/**
+ * Di chi è il vocabolario. `isSystem` non lo dice (è una protezione, ed è vero
+ * anche sulle copie per tenant seminate in passato): il proprietario è
+ * `isShipped`. Senza questa distinzione il Dizionario mostrava allo stesso
+ * modo i vocabolari del prodotto e i propri.
+ */
+function OwnerBadge({ shipped, compact = false }: { shipped: boolean; compact?: boolean }) {
+  const { t } = useTranslation()
+  const label = shipped ? t('pages.dictionary.shippedBadge') : t('pages.dictionary.ownBadge')
+  return (
+    <span
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
+        fontSize: compact ? 'var(--font-size-label)' : 'var(--font-size-table)',
+        background: shipped ? 'var(--color-slate-bg)' : palette.info.bg,
+        color: shipped ? 'var(--color-slate)' : 'var(--color-brand)',
+        padding: compact ? '1px 6px' : '2px 8px', borderRadius: 20, fontWeight: 500,
+      }}
+    >
+      {shipped
+        ? <Package  size={compact ? 9 : 10} aria-hidden="true" />
+        : <LockOpen size={compact ? 9 : 10} aria-hidden="true" />}
+      {label}
+    </span>
+  )
+}
+
 // ── EnumEditor ────────────────────────────────────────────────────────────────
 
-function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted: () => void }) {
+function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
+  enumType:     EnumType
+  onDeleted:    () => void
+  onCustomized: (copy: EnumType) => void
+}) {
   const { t } = useTranslation()
+  // Un vocabolario spedito col prodotto è UN nodo per tutti i clienti: non si
+  // modifica in posto. L'interfaccia lo dice e offre «Personalizza», che ne
+  // crea la copia del tenant (quella vince in lettura solo per chi la ha).
+  const shipped = e.isShipped
   const [label, setLabel]   = useState(e.label)
   const [scope, setScope]   = useState(e.scope)
   const [values, setValues] = useState<string[]>(e.values)
@@ -146,6 +189,17 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
   const [deleteEnum, { loading: deleting }] = useMutation(DELETE_ENUM_TYPE, {
     refetchQueries: [GET_ENUM_TYPES],
     onCompleted: () => { toast.success(t('pages.dictionary.deleted')); onDeleted() },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const [customizeEnum, { loading: customizing }] = useMutation(CUSTOMIZE_ENUM_TYPE, {
+    refetchQueries: [GET_ENUM_TYPES],
+    awaitRefetchQueries: true,
+    onCompleted: (d: unknown) => {
+      const copy = (d as { customizeEnumType: EnumType }).customizeEnumType
+      toast.success(t('pages.dictionary.customized', { label: copy.label }))
+      onCustomized(copy)
+    },
     onError: (err) => toast.error(err.message),
   })
 
@@ -182,7 +236,8 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <Tag size={18} style={{ color: 'var(--color-brand)' }} aria-hidden="true" />
         <h2 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600 }}>{e.label}</h2>
-        {e.isSystem && (
+        <OwnerBadge shipped={shipped} />
+        {e.isSystem && !shipped && (
           <span style={{
             display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-table)',
             background: palette.info.bg, color: 'var(--color-brand)', padding: '2px 8px',
@@ -191,14 +246,24 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
             <Lock size={10} aria-hidden="true" /> {t('pages.dictionary.systemBadge')}
           </span>
         )}
+        {shipped && (
+          <button
+            type="button"
+            style={{ ...btnPrimary, marginLeft: 'auto' }}
+            onClick={() => { void customizeEnum({ variables: { id: e.id } }) }}
+            disabled={customizing}
+          >
+            <Copy size={13} aria-hidden="true" /> {t('pages.dictionary.customizeButton')}
+          </button>
+        )}
       </div>
 
-      {e.isSystem && (
+      {(shipped || e.isSystem) && (
         <p style={{
           fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: 'var(--color-slate-bg)',
           padding: '10px 14px', borderRadius: 6, margin: 0,
         }}>
-          {t('pages.dictionary.systemNote')}
+          {shipped ? t('pages.dictionary.shippedNote') : t('pages.dictionary.systemNote')}
         </p>
       )}
 
@@ -218,9 +283,11 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
         <label htmlFor="editor-label" style={labelS}>{t('pages.dictionary.labelLabel')}</label>
         <Input
           id="editor-label"
-          style={inputS}
+          style={{ ...inputS, ...(shipped ? readOnlyS : {}) }}
           value={label}
           onChange={(ev) => setDirtyLabel(ev.target.value)}
+          readOnly={shipped}
+          aria-describedby={shipped ? 'editor-shipped-note' : undefined}
         />
       </div>
 
@@ -229,10 +296,10 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
         <label htmlFor="editor-scope" style={labelS}>{t('pages.dictionary.scopeLabel')}</label>
         <Select
           id="editor-scope"
-          style={{ ...inputS, ...(e.isSystem ? { background: 'var(--color-slate-bg)', color: colors.slateLight } : {}) }}
+          style={{ ...inputS, ...(e.isSystem || shipped ? readOnlyS : {}) }}
           value={scope}
           onChange={(ev) => setDirtyScope(ev.target.value)}
-          disabled={e.isSystem}
+          disabled={e.isSystem || shipped}
         >
           <option value="shared">{t('pages.dictionary.scopeShared')}</option>
           <option value="itil">{t('pages.dictionary.scopeItil')}</option>
@@ -254,36 +321,44 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
               }}
             >
               {v}
-              <button
-                type="button"
-                onClick={() => removeValue(v)}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                  display: 'flex', color: colors.slateLight, lineHeight: 1,
-                }}
-                aria-label={t('pages.dictionary.removeValueLabel', { value: v })}
-              >
-                <X size={10} aria-hidden="true" />
-              </button>
+              {!shipped && (
+                <button
+                  type="button"
+                  onClick={() => removeValue(v)}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                    display: 'flex', color: colors.slateLight, lineHeight: 1,
+                  }}
+                  aria-label={t('pages.dictionary.removeValueLabel', { value: v })}
+                >
+                  <X size={10} aria-hidden="true" />
+                </button>
+              )}
             </span>
           ))}
           {values.length === 0 && (
             <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight }}>{t('pages.dictionary.noValues')}</span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Input
-            style={{ ...inputS, flex: 1 }}
-            value={newVal}
-            onChange={(ev) => setNewVal(ev.target.value)}
-            onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); addValue() } }}
-            placeholder={t('pages.dictionary.addValuePlaceholder')}
-            aria-label={t('pages.dictionary.addValueLabel')}
-          />
-          <button type="button" style={btnPrimary} onClick={addValue} aria-label={t('pages.dictionary.addValueLabel')}>
-            <Plus size={14} aria-hidden="true" />
-          </button>
-        </div>
+        {shipped ? (
+          <p id="editor-shipped-note" style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
+            {t('pages.dictionary.shippedValuesNote')}
+          </p>
+        ) : (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Input
+              style={{ ...inputS, flex: 1 }}
+              value={newVal}
+              onChange={(ev) => setNewVal(ev.target.value)}
+              onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); addValue() } }}
+              placeholder={t('pages.dictionary.addValuePlaceholder')}
+              aria-label={t('pages.dictionary.addValueLabel')}
+            />
+            <button type="button" style={btnPrimary} onClick={addValue} aria-label={t('pages.dictionary.addValueLabel')}>
+              <Plus size={14} aria-hidden="true" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Actions */}
@@ -298,7 +373,7 @@ function EnumEditor({ enumType: e, onDeleted }: { enumType: EnumType; onDeleted:
             </button>
           </>
         )}
-        {!e.isSystem && (
+        {!e.isSystem && !shipped && (
           <div style={{ marginLeft: 'auto' }}>
             {!confirmDelete ? (
               <button type="button" style={btnDanger} onClick={() => setConfirmDelete(true)}>
@@ -416,13 +491,14 @@ export function EnumDesignerPage() {
                     }}
                     aria-current={selectedId === e.id ? 'true' : undefined}
                   >
-                    {e.isSystem
-                      ? <Lock     size={11} style={{ color: 'var(--color-brand)', flexShrink: 0 }} aria-hidden="true" />
-                      : <LockOpen size={11} style={{ color: colors.slateLight, flexShrink: 0 }} aria-hidden="true" />
+                    {e.isShipped
+                      ? <Package  size={11} style={{ color: 'var(--color-slate-light)', flexShrink: 0 }} aria-hidden="true" />
+                      : <LockOpen size={11} style={{ color: 'var(--color-brand)', flexShrink: 0 }} aria-hidden="true" />
                     }
                     <span style={{ flex: 1, fontSize: 'var(--font-size-body)', fontWeight: selectedId === e.id ? 600 : 500, color: selectedId === e.id ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {e.label}
                     </span>
+                    <OwnerBadge shipped={e.isShipped} compact />
                     <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', flexShrink: 0 }}>
                       {e.values.length}
                     </span>
@@ -440,6 +516,7 @@ export function EnumDesignerPage() {
               key={selected.id}
               enumType={selected}
               onDeleted={() => setSelectedId(null)}
+              onCustomized={(copy) => setSelectedId(copy.id)}
             />
           ) : (
             <div style={{

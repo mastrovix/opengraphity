@@ -1,9 +1,10 @@
 import { useId, useState } from 'react'
 import { X, Check } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
   inputS, selectS, textareaS, labelS,
   btnPrimary, btnSecondary,
-  FIELD_TYPES,
+  FIELD_TYPES, enumOptionLabel,
 } from '../shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
@@ -44,6 +45,7 @@ export function CIFieldInlineEditor({
   onCancel:      () => void
   enumTypes:     EnumTypeOption[]
 }) {
+  const { t } = useTranslation()
   const [form, setForm] = useState<FieldForm>(
     initial ?? {
       name: '', label: '', fieldType: 'string', required: false,
@@ -115,7 +117,7 @@ export function CIFieldInlineEditor({
           >
             <option value="">— Seleziona enum —</option>
             {enumTypes.map((e) => (
-              <option key={e.id} value={e.id}>{e.label} ({e.scope})</option>
+              <option key={e.id} value={e.id}>{enumOptionLabel(e, t)}</option>
             ))}
           </Select>
           {selectedEnum && (

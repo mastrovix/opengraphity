@@ -34,8 +34,13 @@ const GET_ATTACHMENTS = gql`
   }
 `
 
-const field = (name: string, fieldType: string, order: number, enumValues: string[] = []) => ({
-  __typename: 'CIField', id: `f-${name}`, name, label: name, fieldType, required: false, enumValues, order, isSystem: true,
+// A-5: `isSystem` qui era `true` su OGNI campo, `ip_address` compreso — ma
+// `generateSDL` esclude i campi di sistema dallo SDL, quindi un campo così non
+// è interrogabile e la pagina non deve chiederlo. Sul dato vero i campi
+// specifici dei tipi spediti hanno `is_system` falso; di sistema sono i 9 campi
+// di `__base__` (id, name, status, …), che la pagina esclude comunque per nome.
+const field = (name: string, fieldType: string, order: number, enumValues: string[] = [], isSystem = false) => ({
+  __typename: 'CIField', id: `f-${name}`, name, label: name, fieldType, required: false, enumValues, order, isSystem,
   validationScript: null, visibilityScript: null, defaultScript: null,
 })
 
@@ -44,7 +49,15 @@ const ciTypesMock: GqlMock = {
   result: { data: { ciTypes: [{
     __typename: 'CIType', id: 'ct-server', name: 'server', label: 'Server', icon: 'server', color: '#0284c7', active: true,
     validationScript: null, chainFamilies: [],
-    fields: [field('name', 'string', 1), field('status', 'enum', 2, ['active', 'inactive']), field('environment', 'enum', 3, ['production', 'staging']), field('ip_address', 'string', 4)],
+    fields: [
+      field('name', 'string', 1, [], true), field('status', 'enum', 2, ['active', 'inactive'], true),
+      field('environment', 'enum', 3, ['production', 'staging'], true), field('ip_address', 'string', 4),
+      // Campo di sistema aggiunto al `__base__` condiviso: NON è nello SDL,
+      // quindi la query dinamica non deve chiederlo (se lo chiedesse, la
+      // pagina di dettaglio di ogni CI di ogni cliente risponderebbe
+      // `Cannot query field "costo_annuo" on type "Server"`).
+      field('costo_annuo', 'string', 5, [], true),
+    ],
     relations: [], systemRelations: [],
   }] } },
   maxUsageCount: Number.POSITIVE_INFINITY,

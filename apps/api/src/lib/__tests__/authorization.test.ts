@@ -52,7 +52,11 @@ describe('policy ↔ schema', () => {
   })
 
   it('la configurazione del tenant è admin-only (campione)', () => {
-    for (const f of ['createTeam', 'createOutboundWebhook', 'triggerSync', 'saveWorkflowChanges', 'createBusinessRule', 'createUser']) {
+    // `customizeEnumType` (personalizzazioni A1-1) crea la copia di un
+    // vocabolario spedito: è configurazione del metamodello, come le altre
+    // mutation sugli enum.
+    for (const f of ['createTeam', 'createOutboundWebhook', 'triggerSync', 'saveWorkflowChanges', 'createBusinessRule', 'createUser',
+      'createEnumType', 'updateEnumType', 'deleteEnumType', 'customizeEnumType']) {
       expect(allowedRoles('Mutation', f)).toEqual(['admin'])
     }
     for (const f of ['logs', 'apiKeys', 'syncSources', 'notificationChannels']) {

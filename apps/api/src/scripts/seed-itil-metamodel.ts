@@ -200,16 +200,22 @@ async function seedITILType(
       ),
     )
 
-    // Link to EnumTypeDefinition via USES_ENUM when uses_enum is specified
-    // Enum may live under a different tenant_id (e.g. 'c-one' vs 'system'),
-    // so match by name only and pick any available instance.
+    // Aggancio a EnumTypeDefinition via USES_ENUM quando c'è `uses_enum`.
+    //
+    // A-2 / C-6: il vocabolario deve essere quello SPEDITO
+    // (`tenant_id = 'system'`). Il `MATCH (e {name: $enumName})` di prima —
+    // «pick any available instance» — è la riga che ha agganciato i 30 campi
+    // condivisi alle copie di c-one, cioè che ha fatto vedere a ogni altro
+    // cliente i valori di c-one. Se il vocabolario di sistema non c'è, ci si
+    // ferma: `seed-enum-types.ts` lo semina.
     if (f.uses_enum) {
-      await session.executeWrite(tx =>
+      const linked = await session.executeWrite(tx =>
         tx.run(
           `MATCH (f:CIFieldDefinition {name: $fieldName, tenant_id: $tenantId})
                  -[:BELONGS_TO]->(t:CITypeDefinition {name: $typeName, tenant_id: $tenantId})
-           MATCH (e:EnumTypeDefinition {name: $enumName})
-           MERGE (f)-[:USES_ENUM]->(e)`,
+           MATCH (e:EnumTypeDefinition {name: $enumName, tenant_id: 'system'})
+           MERGE (f)-[:USES_ENUM]->(e)
+           RETURN e.id AS id`,
           {
             fieldName: f.name,
             typeName:  itil.name,
@@ -218,6 +224,13 @@ async function seedITILType(
           },
         ),
       )
+      if (!linked.records.length) {
+        throw new Error(
+          `${itil.name}.${f.name}: nessun vocabolario spedito "${f.uses_enum}" ` +
+          `(EnumTypeDefinition {name: "${f.uses_enum}", tenant_id: "system"}). ` +
+          `Esegui prima scripts/seed-enum-types.ts.`,
+        )
+      }
     }
   }
 }
