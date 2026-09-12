@@ -41,8 +41,22 @@ while IFS= read -r line; do
 done < <(grep -E '^VITE_[A-Z0-9_]+=' "$envfile" || true)
 
 : "${VITE_API_URL:=/graphql}"
-: "${VITE_KEYCLOAK_CLIENT_ID:=opengraphity-web}"
-export VITE_API_URL VITE_KEYCLOAK_CLIENT_ID
+export VITE_API_URL
+
+# `VITE_KEYCLOAK_CLIENT_ID` NON ha un valore predefinito qui: deve venire da
+# `infra/.env`. Un default sbagliato è come l'elenco scritto a mano — il 18 set
+# 2026 ho tirato a indovinare «opengraphity-web» mentre il client del realm si
+# chiama «opengrafo-web», e Keycloak rispondeva «Client not found» a login già
+# avviato: un secondo errore dello stesso tipo, subito dopo il primo.
+if [ -z "${VITE_KEYCLOAK_CLIENT_ID:-}" ]; then
+  echo "build-local: ERRORE — VITE_KEYCLOAK_CLIENT_ID non è in infra/.env." >&2
+  echo "  È il nome del client nel realm di Keycloak (vedi infra/.env.example)." >&2
+  echo "  Verificalo così, senza credenziali:" >&2
+  echo "    curl -s -o /dev/null -w '%{http_code}\\n' \\" >&2
+  echo "      \"\$VITE_KEYCLOAK_URL/realms/\$VITE_TENANT_SLUG/protocol/openid-connect/auth?client_id=<nome>&response_type=code&scope=openid&redirect_uri=\$VITE_KEYCLOAK_URL/\"" >&2
+  echo "  200 = il client esiste, 400 con «Client not found» = no." >&2
+  exit 1
+fi
 
 echo "build-local: variabili del bundle"
 for v in VITE_API_URL VITE_API_BASE_URL VITE_KEYCLOAK_URL VITE_KEYCLOAK_CLIENT_ID VITE_TENANT_SLUG; do

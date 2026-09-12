@@ -166,6 +166,21 @@ grep -o 'localhost:8080' apps/web/dist/assets/index-*.js | wc -l   # atteso 0
 grep -c "$VITE_TENANT_SLUG" apps/web/dist/assets/index-*.js        # atteso ≥ 1
 ```
 
+> **Il client di Keycloak si verifica, non si indovina.** Nello stesso pomeriggio,
+> subito dopo il difetto sotto, il bundle è stato costruito con
+> `VITE_KEYCLOAK_CLIENT_ID=opengraphity-web` mentre il client del realm si chiama
+> **`opengrafo-web`**: Keycloak risponde «We are sorry… Client not found» a login
+> già avviato. Il controllo, senza credenziali:
+>
+> ```bash
+> curl -s -o /dev/null -w '%{http_code}\n' \
+>   "$VITE_KEYCLOAK_URL/realms/$VITE_TENANT_SLUG/protocol/openid-connect/auth?client_id=<nome>&response_type=code&scope=openid&redirect_uri=$VITE_KEYCLOAK_URL/"
+> ```
+>
+> `200` = il client esiste; `400` (con «Client not found» nel corpo) = no.
+> `build-local.sh` non ha più un valore predefinito per quella variabile: se
+> manca in `infra/.env`, la build si ferma.
+
 > **Non scrivere a mano l'elenco delle `VITE_*`.** Il 18 set 2026 un bundle
 > costruito con un elenco battuto a mano ha omesso `VITE_TENANT_SLUG` (e citava
 > `VITE_KEYCLOAK_REALM`, che il codice non legge): da un host Tailscale il
