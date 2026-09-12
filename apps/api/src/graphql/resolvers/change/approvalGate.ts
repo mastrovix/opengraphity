@@ -1,15 +1,17 @@
 /**
  * Approvazione multi-parte della Change (normal/emergency).
  *
- * Una change, entrando nello step "approval", richiede:
+ * Una change, entrando in un passo di scopo `approval`, richiede:
  *   - 1 approvazione del team "Change Manager" (team designato, is_change_manager)
  *   - 1 approvazione per ciascun OWNER GROUP distinto dei CI affected
  *
  * Ogni requisito è un nodo (c)-[:HAS_APPROVAL]->(:ChangeApproval {kind, team_id,
  * status}). Quando TUTTI sono 'approved' (incluso il Change Manager) la change
- * avanza automaticamente a "scheduled". Un rifiuto riporta la change ad
- * "assessment" riaprendo i task scelti. Le change 'standard' sono
- * pre-approvate: nessun record, nessun gate.
+ * avanza automaticamente al passo di SCOPO `scheduled`; un rifiuto la riporta a
+ * quello di scopo `assessment`, riaprendo i task scelti. I passi si
+ * riconoscono dallo scopo e non dal nome (ondata 4 · A4-2): il cliente può
+ * chiamarli «CAB settimanale», «in calendario», «valutazione». Le change
+ * 'standard' sono pre-approvate: nessun record, nessun gate.
  *
  * I requisiti vengono creati/riconciliati in approvalCreation.ts; il gate
  * (assertAllApprovalsSatisfied) è condiviso con executeChangeTransition.
@@ -23,6 +25,7 @@ import { change as getChange } from './queries.js'
 import { evaluateAutoTransitions } from './autoTransitions.js'
 import { afterEnterStep, getInstanceId, writeAudit } from './helpers.js'
 import { areAllApprovalsSatisfied } from './approvalCreation.js'
+import { targetStepByPurpose } from '../../../lib/workflowTargets.js'
 import { deriveChangePriority } from './scoring.js'
 
 type Session = Parameters<typeof runQueryOne>[0]
@@ -36,16 +39,24 @@ async function assertEligible(session: Session, teamId: string, ctx: GraphQLCont
   if (!row?.ok) throw new GraphQLError('Non sei autorizzato ad approvare per questo team', { extensions: { code: 'FORBIDDEN' } })
 }
 
-/** La change (non eliminata) deve essere in "approval"; ritorna tipo e nome team. */
+/**
+ * La change (non eliminata) deve essere in un passo di **scopo** `approval`;
+ * ritorna tipo e nome team. Lo scopo si legge dal nodo del passo, che questa
+ * query ha già in mano (ondata 4 · A4-2): prima il confronto era
+ * `s.name <> 'approval'`, e un cliente che chiamava il suo passo «CAB
+ * settimanale» non riusciva più né ad approvare né a rifiutare.
+ */
 async function assertInApproval(session: Session, changeId: string, teamId: string, tenantId: string): Promise<{ changeType: string; teamName: string }> {
-  const row = await runQueryOne<{ step: string; changeType: string | null; teamName: string | null }>(session, `
+  const row = await runQueryOne<{ step: string; purpose: string | null; changeType: string | null; teamName: string | null }>(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi)-[:CURRENT_STEP]->(s:WorkflowStep)
     WHERE coalesce(c.deleted, false) = false
     OPTIONAL MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-    RETURN s.name AS step, c.change_type AS changeType, t.name AS teamName
+    RETURN s.name AS step, s.purpose AS purpose, c.change_type AS changeType, t.name AS teamName
   `, { changeId, teamId, tenantId })
   if (!row) throw new GraphQLError('Change non trovata', { extensions: { code: 'NOT_FOUND' } })
-  if (row.step !== 'approval') throw new GraphQLError('La change non è in fase di approvazione', { extensions: { code: 'BAD_USER_INPUT' } })
+  if (row.purpose !== 'approval') {
+    throw new GraphQLError(`La change non è in fase di approvazione (passo "${row.step}", scopo ${row.purpose ?? 'non dichiarato'})`, { extensions: { code: 'BAD_USER_INPUT' } })
+  }
   return { changeType: row.changeType ?? 'normal', teamName: row.teamName ?? teamId }
 }
 
@@ -71,11 +82,18 @@ export async function approveChangeApproval(_: unknown, args: { changeId: string
     // "approvato" con la change ferma per sempre in approval.
     if (await areAllApprovalsSatisfied(session, args.changeId, ctx.tenantId)) {
       const instanceId = await getInstanceId(session, args.changeId, ctx.tenantId)
-      const res = await workflowEngine.transition(session, { instanceId, toStepName: 'scheduled', triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: 'Approvazioni complete' }, { userId: ctx.userId ?? 'system', entityData: {} })
+      // Il bersaglio è il passo di SCOPO `scheduled` del tenant, non il nome
+      // `scheduled`: fra i candidati si preferisce quello davvero raggiungibile
+      // dal passo corrente. Se nessun passo dichiara lo scopo, l'errore lo dice
+      // e indica il disegnatore (prima: un CONFLICT che non spiegava niente).
+      const avail = await workflowEngine.getAvailableTransitions(session, instanceId, ctx.tenantId)
+      const toStep = await targetStepByPurpose(session, ctx.tenantId, 'change', ['scheduled'],
+        'avanzamento della change dopo le approvazioni complete', avail.map((t) => t.toStep))
+      const res = await workflowEngine.transition(session, { instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: 'Approvazioni complete' }, { userId: ctx.userId ?? 'system', entityData: {} })
       if (!res.success) {
-        throw new GraphQLError(`Approvazioni complete ma la change non è avanzata a "scheduled": ${res.error ?? 'transizione fallita'}`, { extensions: { code: 'CONFLICT' } })
+        throw new GraphQLError(`Approvazioni complete ma la change non è avanzata a "${toStep}": ${res.error ?? 'transizione fallita'}`, { extensions: { code: 'CONFLICT' } })
       }
-      await afterEnterStep(session, args.changeId, ctx.tenantId, 'scheduled')
+      await afterEnterStep(session, args.changeId, ctx.tenantId, toStep)
       await evaluateAutoTransitions(session, args.changeId, ctx, afterEnterStep)
     }
     return getChange(null, { id: args.changeId }, ctx)
@@ -117,12 +135,17 @@ export async function rejectChangeApproval(_: unknown, args: { changeId: string;
     `, { changeId: args.changeId, tenantId: ctx.tenantId, all: reopenAll, ids: reopenIds, now, priority: deriveChangePriority(changeType, null) }))
 
     const instanceId = await getInstanceId(session, args.changeId, ctx.tenantId)
-    const res = await workflowEngine.transition(session, { instanceId, toStepName: 'assessment', triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: `Approvazione rifiutata: ${args.note.trim()}` }, { userId: ctx.userId ?? 'system', entityData: {} })
+    // Il rifiuto riporta la change al passo di SCOPO `assessment` (il cliente
+    // può averlo chiamato «valutazione»), preferendo quello raggiungibile.
+    const availReject = await workflowEngine.getAvailableTransitions(session, instanceId, ctx.tenantId)
+    const backStep = await targetStepByPurpose(session, ctx.tenantId, 'change', ['assessment'],
+      'rientro della change dopo un rifiuto dell\'approvazione', availReject.map((t) => t.toStep))
+    const res = await workflowEngine.transition(session, { instanceId, toStepName: backStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: `Approvazione rifiutata: ${args.note.trim()}` }, { userId: ctx.userId ?? 'system', entityData: {} })
     // Se fallisce, la change resta in approval con i task riaperti e senza
     // requisiti: il gate blocca l'approvazione e il rigetto è ripetibile.
     if (!res.success) throw new GraphQLError(res.error ?? 'Rigetto non riuscito', { extensions: { code: 'CONFLICT' } })
     await writeAudit(session, args.changeId, ctx.tenantId, 'change_rejected', ctx.userId, `${teamName}: ${args.note.trim()}`)
-    await afterEnterStep(session, args.changeId, ctx.tenantId, 'assessment')
+    await afterEnterStep(session, args.changeId, ctx.tenantId, backStep)
     return getChange(null, { id: args.changeId }, ctx)
   }, true)
 }

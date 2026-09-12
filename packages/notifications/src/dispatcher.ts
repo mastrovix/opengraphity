@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import { BaseConsumer } from '@opengraphity/events'
-import type { DomainEvent } from '@opengraphity/types'
+import type { DomainEvent, StepEnteredFacts } from '@opengraphity/types'
+import { isStepEnteredEventType, stepEnteredEntityType, legacyStepEventType } from '@opengraphity/types'
 import { getSession } from '@opengraphity/neo4j'
 import { sseManager, InAppNotification } from './sse.js'
 import { sendTeamsAdaptiveMessage, type TeamsAdaptiveCard } from './index.js'
@@ -23,20 +24,39 @@ interface NotificationRule {
   titleKey:         string
   channels:         string[]
   target:           string
+  /**
+   * Restringimento delle regole sul tipo STABILE `<entità>.step_entered`
+   * (D-22): la regola scatta solo per i passi con quello scopo / quella
+   * categoria. `null` su entrambi = vale per ogni ingresso in un passo.
+   * Su ogni altro tipo di evento non hanno senso e valgono `null`.
+   */
+  stepPurpose:      string | null
+  stepCategory:     string | null
 }
 
 // ── Rule cache (60s TTL, per-process) ─────────────────────────────────────────
 
-interface CachedRule { rule: NotificationRule | null; expiresAt: number }
+interface CachedRules { rules: NotificationRule[]; expiresAt: number }
 
 const CACHE_TTL_MS = 60_000
-const ruleCache = new Map<string, CachedRule>()
+const ruleCache = new Map<string, CachedRules>()
 
 function cacheKey(tenantId: string, eventType: string): string {
   return `${tenantId}:${eventType}`
 }
 
-async function fetchRule(tenantId: string, eventType: string): Promise<NotificationRule | null> {
+/**
+ * TUTTE le regole del tenant per quel tipo, comprese quelle spente.
+ *
+ * Due differenze da prima, entrambe necessarie al tipo stabile (D-22):
+ *  - una LISTA: sul tipo stabile convivono più regole, ciascuna per uno scopo
+ *    o una categoria di passo;
+ *  - le regole SPENTE non vengono scartate qui: chi decide deve poter
+ *    distinguere «non esiste nessuna regola per questo passo» (e allora vale
+ *    quella stabile) da «l'amministratore l'ha spenta» (e allora non si
+ *    notifica: spegnere una regola non deve farne scattare un'altra).
+ */
+async function fetchRules(tenantId: string, eventType: string): Promise<NotificationRule[]> {
   const session = getSession()
   try {
     const result = await session.executeRead((tx) =>
@@ -46,29 +66,56 @@ async function fetchRule(tenantId: string, eventType: string): Promise<Notificat
         { tenantId, eventType },
       ),
     )
-    if (!result.records.length) return null
-    const props = result.records[0].get('r').properties as Record<string, unknown>
-    if (!props['enabled']) return null
-    return {
-      id:               props['id']                as string,
-      enabled:          props['enabled']           as boolean,
-      severityOverride: (props['severity_override'] ?? 'info') as string,
-      titleKey:         props['title_key']         as string,
-      channels:         (props['channels']         as string[]) ?? ['in_app'],
-      target:           (props['target']           as string)   ?? 'all',
-    }
+    return result.records.map((rec) => {
+      const props = rec.get('r').properties as Record<string, unknown>
+      return {
+        id:               props['id']                as string,
+        enabled:          Boolean(props['enabled']),
+        severityOverride: (props['severity_override'] ?? 'info') as string,
+        titleKey:         props['title_key']         as string,
+        channels:         (props['channels']         as string[]) ?? ['in_app'],
+        target:           (props['target']           as string)   ?? 'all',
+        stepPurpose:      (props['step_purpose']     ?? null) as string | null,
+        stepCategory:     (props['step_category']    ?? null) as string | null,
+      }
+    })
   } finally {
     await session.close()
   }
 }
 
-async function getRule(tenantId: string, eventType: string): Promise<NotificationRule | null> {
+async function getRules(tenantId: string, eventType: string): Promise<NotificationRule[]> {
   const key = cacheKey(tenantId, eventType)
   const cached = ruleCache.get(key)
-  if (cached && Date.now() < cached.expiresAt) return cached.rule
-  const rule = await fetchRule(tenantId, eventType)
-  ruleCache.set(key, { rule, expiresAt: Date.now() + CACHE_TTL_MS })
-  return rule
+  if (cached && Date.now() < cached.expiresAt) return cached.rules
+  const rules = await fetchRules(tenantId, eventType)
+  ruleCache.set(key, { rules, expiresAt: Date.now() + CACHE_TTL_MS })
+  return rules
+}
+
+/** La regola attiva per un tipo di evento «normale» (comportamento storico). */
+async function getRule(tenantId: string, eventType: string): Promise<NotificationRule | null> {
+  const rules = await getRules(tenantId, eventType)
+  return rules.find((r) => r.enabled) ?? null
+}
+
+/**
+ * La regola che vale per l'ingresso in QUESTO passo, fra quelle agganciate al
+ * tipo stabile. Dalla più specifica alla più generica: scopo del passo →
+ * categoria del passo → nessun restringimento. Una regola che restringe su uno
+ * scopo o una categoria diversi non c'entra e viene ignorata.
+ */
+export function pickStepRule(rules: readonly NotificationRule[], facts: StepEnteredFacts): NotificationRule | null {
+  const enabled = rules.filter((r) => r.enabled)
+  const byPurpose = facts.step_purpose != null
+    ? enabled.find((r) => r.stepPurpose === facts.step_purpose)
+    : undefined
+  if (byPurpose) return byPurpose
+  const byCategory = facts.step_category != null
+    ? enabled.find((r) => r.stepPurpose == null && r.stepCategory === facts.step_category)
+    : undefined
+  if (byCategory) return byCategory
+  return enabled.find((r) => r.stepPurpose == null && r.stepCategory == null) ?? null
 }
 
 export function invalidateRuleCache(tenantId: string, eventType?: string): void {
@@ -139,6 +186,15 @@ function extractMessage(eventType: string, payload: unknown): string {
   const explicit = MESSAGE_BY_EVENT[eventType]
   if (explicit) return explicit(p)
 
+  // Tipo stabile dell'ingresso in un passo: il corpo dice a che passo è
+  // arrivato il ticket con l'ETICHETTA del passo (quella che il cliente ha
+  // scritto), non con il nome tecnico.
+  if (isStepEnteredEventType(eventType)) {
+    const title = typeof p['title'] === 'string' && p['title'] ? p['title'] as string : null
+    const label = required(p, 'step_label', eventType)
+    return title ? `${title} — ${label}` : label
+  }
+
   const title      = typeof p['title']      === 'string' && p['title']      ? p['title']      as string : null
   const severity   = typeof p['severity']   === 'string' && p['severity']   ? p['severity']   as string : null
   const assignedTo = typeof p['assignedTo'] === 'string' && p['assignedTo'] !== '—' ? p['assignedTo'] as string : null
@@ -193,9 +249,72 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       return
     }
 
+    // Tipo STABILE dell'ingresso in un passo (`incident.step_entered`): la
+    // regola si sceglie per scopo/categoria del passo, non per nome (D-22).
+    if (isStepEnteredEventType(event.type)) {
+      await this.processStepEntered(event)
+      return
+    }
+
     const rule = await getRule(event.tenant_id, event.type)
     if (!rule) return
+    await this.deliver(event, rule)
+  }
 
+  /**
+   * Ingresso in un passo, tipo stabile. Precedenza:
+   *  1. esiste una regola per l'ALIAS `<entità>.<nome del passo>`? Allora è
+   *     quella a comandare e la consegna avviene sull'evento alias (che viene
+   *     pubblicato insieme a questo): qui si esce, altrimenti il destinatario
+   *     riceverebbe DUE notifiche per la stessa transizione. Vale anche se la
+   *     regola dell'alias è spenta: spegnere una regola non deve farne
+   *     scattare un'altra al suo posto.
+   *  2. altrimenti la regola del tipo stabile più specifica che combacia
+   *     (scopo del passo → categoria → nessun restringimento).
+   *  3. nessuna delle due: un avviso nei log che NOMINA passo, scopo e tipo.
+   *     È il punto in cui prima si usciva su `if (!rule) return`, senza una
+   *     riga: un passo personalizzato non notificava e non si sapeva perché.
+   */
+  private async processStepEntered(event: DomainEvent<unknown>): Promise<void> {
+    const p = event.payload as Record<string, unknown>
+    const entityType = stepEnteredEntityType(event.type)
+    if (!entityType) throw new Error(`${event.type}: tipo di evento di passo malformato`)
+    const stepName = p['step_name']
+    if (typeof stepName !== 'string' || !stepName) {
+      throw new Error(`${event.type} payload has no "step_name": impossibile scegliere la regola del passo`)
+    }
+    const facts: StepEnteredFacts = {
+      step_id:       typeof p['step_id'] === 'string' ? p['step_id'] as string : '',
+      step_name:     stepName,
+      step_label:    typeof p['step_label'] === 'string' && p['step_label'] ? p['step_label'] as string : stepName,
+      step_purpose:  typeof p['step_purpose']  === 'string' ? p['step_purpose']  as string : null,
+      step_category: typeof p['step_category'] === 'string' ? p['step_category'] as string : null,
+    }
+
+    const aliasType  = legacyStepEventType(entityType, stepName)
+    const aliasRules = await getRules(event.tenant_id, aliasType)
+    if (aliasRules.length > 0) return
+
+    const rule = pickStepRule(await getRules(event.tenant_id, event.type), facts)
+    if (!rule) {
+      console.warn(
+        `[notifications] ${event.type}: nessuna regola per il passo "${facts.step_name}" ` +
+        `(scopo: ${facts.step_purpose ?? 'nessuno'}, categoria: ${facts.step_category ?? 'nessuna'}, ` +
+        `tenant ${event.tenant_id}). Nessuna notifica inviata. Per notificarlo crea una regola su ` +
+        `"${event.type}" (eventualmente ristretta allo scopo o alla categoria del passo) oppure su "${aliasType}".`,
+      )
+      return
+    }
+    await this.deliver(event, rule, facts.step_label)
+  }
+
+  /**
+   * Consegna di una notifica guidata da una NotificationRule. `titleFallback`
+   * è il testo da mostrare quando la chiave i18n del titolo non è tradotta
+   * (per i passi: l'etichetta del passo — B-16): il pannello mostrava la
+   * chiave grezza `notification.custom.step.title`.
+   */
+  private async deliver(event: DomainEvent<unknown>, rule: NotificationRule, titleFallback?: string): Promise<void> {
     // Channels the dispatcher cannot route for this event type (e.g. `slack`
     // on `event.storm_started`, which has no Slack formatter). The routable
     // ones are delivered first, then the job fails naming the others — the
@@ -209,6 +328,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       id:          randomUUID(),
       type:        event.type,
       title:       rule.titleKey,
+      title_fallback: titleFallback,
       message:     extractMessage(event.type, event.payload),
       severity:    rule.severityOverride as InAppNotification['severity'],
       entity_id:   extractEntityId(event.payload),
@@ -246,6 +366,8 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
   private async processWorkflowStep(event: DomainEvent<unknown>): Promise<void> {
     const p = event.payload as {
       stepName: string
+      /** Etichetta del passo: titolo di ripiego quando la chiave i18n non c'è (B-16). */
+      stepLabel?: string
       entityType: string
       entityId: string
       /** `target` assente = regola di passo scritta prima dei bersagli: trasmissione al tenant. */
@@ -258,7 +380,8 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       id:          randomUUID(),
       type:        'workflow.step.entered',
       title:       nr.title_key,
-      message:     p.stepName,
+      title_fallback: p.stepLabel ?? p.stepName,
+      message:     p.stepLabel ?? p.stepName,
       severity:    nr.severity as InAppNotification['severity'],
       entity_id:   p.entityId,
       entity_type: p.entityType,

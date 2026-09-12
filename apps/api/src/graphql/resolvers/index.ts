@@ -32,7 +32,7 @@ import { topologyResolvers } from './topology.js'
 import { notificationRuleResolvers } from './notificationRules.js'
 import { queueStatsResolvers } from './queueStats.js'
 import { syncResolvers } from './sync.js'
-import { auditLog } from './auditLog.js'
+import { auditLog, auditActions } from './auditLog.js'
 import { enumTypeResolvers } from './enumType.js'
 import { monitoringResolvers } from './monitoring.js'
 import { approvalResolvers } from './approval.js'
@@ -308,6 +308,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...similarityResolvers.Query,
       ...impactResolvers.Query,
       auditLog,
+      auditActions,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
       ciGroupMembers: ciGroupResolvers.Query.ciGroupMembers,

@@ -27,10 +27,18 @@ vi.mock('../../lib/logger.js', () => {
 })
 vi.mock('../serviceImpact/incident.js', () => ({ reconcileServiceIncident: vi.fn().mockResolvedValue({ outcome: 'none', incidentId: null, incidentNumber: null }) }))
 vi.mock('../../middleware/metrics.js', () => ({
+  workflowPurposeMissingTotal: { inc: vi.fn() },
   serviceEvaluationsTotal: { inc: vi.fn() }, serviceEvaluationDurationSeconds: { observe: vi.fn() }, servicesHealth: { set: vi.fn() },
   serviceMapsStale: { set: vi.fn() },
   eventsSuppressedTotal: { inc: vi.fn() },
   redisLockTimeoutsTotal: { inc: vi.fn() }, redisLockHoldSeconds: { observe: vi.fn() },
+}))
+
+vi.mock('../../lib/workflowHelpers.js', () => ({
+  // Ondata 4 · A4-1: i passi della finestra di change vengono dallo SCOPO.
+  // Il tenant di prova ha i nomi di fabbrica con gli scopi della migrazione.
+  getStepNamesByPurpose: vi.fn(async (_s: unknown, _t: unknown, _e: unknown, purposes: readonly string[]) =>
+    purposes.includes('implementation') ? ['deployment'] : ['scheduled']),
 }))
 
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
@@ -44,13 +52,16 @@ const { serviceHistoryWriteCypher, serviceHistoryParams } = await import('../ser
 const { evaluateServiceMap, createServiceMap, findMapsIncludingCI, evaluateStaleOrOldMaps, refreshServiceGauges, loadServiceMapState, assertServiceMapPlanLimit, loadServiceMapCypher, SERVICE_MAP_PLAN_LIMIT_CYPHER, evaluationWriteCypher, evaluationHoldWriteCypher, stormingSourcesOf, upstreamWindowsOf, SERVICE_EVALUATION_HELD, SERVICE_STALE_EVALUATION_MINUTES, EVALUATION_VERSION_RETRIES } = await import('../serviceImpact/engine.js')
 const { PLAN_SETTINGS } = await import('../../lib/tenantPlans.js')
 const { SERVICE_HISTORY_MAX, SERVICE_MAP_MAX_NODES, DEFAULT_SERVICE_IMPACT_RULES_JSON, SERVICE_RELATIONSHIP_TYPES } = await import('../../lib/serviceVocabularies.js')
-const { CHANGE_IMPLEMENTATION_STEP, CHANGE_WINDOW_STEPS } = await import('../events/suppression.js')
+
 const { ALL_CI_LABELS } = await import('../../lib/ciLabels.js')
 
 const NOW = '2026-09-10T10:00:00.000Z'
 const log = logger.child({})
 const tx = { run: vi.fn() }
-const session = { close: vi.fn().mockResolvedValue(undefined), executeWrite: vi.fn(async (work: (t: unknown) => Promise<unknown>) => work(tx)) }
+// `executeRead` c'è perché la sessione vera ce l'ha: la risoluzione dei passi
+// di finestra per SCOPO (ondata 4 · A4-1) riusa la sessione del chiamante
+// invece di aprirne una in più per valutazione.
+const session = { close: vi.fn().mockResolvedValue(undefined), executeWrite: vi.fn(async (work: (t: unknown) => Promise<unknown>) => work(tx)), executeRead: vi.fn(async (work: (t: unknown) => Promise<unknown>) => work(tx)) }
 
 function onCypher(rules: Array<[RegExp, unknown]>) {
   const impl = async (_s: unknown, cypher: string, params?: Record<string, unknown>) => {
@@ -255,7 +266,7 @@ describe('evaluateServiceMap', () => {
     expect(load.cypher).toContain('[rel:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE*1..1]->(up:ConfigurationItem {tenant_id: $tenantId})')
     expect(load.cypher).toContain("[(e:Event {tenant_id: $tenantId, status: 'firing'})-[:RAISED_ON]->(ci)")
     expect(load.cypher).toContain('WHERE w.storm_since IS NOT NULL | coalesce(w.name, w.id)]')
-    expect(load.params).toEqual({ mapId: 'map-1', tenantId: 't1', windowSteps: CHANGE_WINDOW_STEPS, implementationStep: CHANGE_IMPLEMENTATION_STEP })
+    expect(load.params).toEqual({ mapId: 'map-1', tenantId: 't1', windowSteps: ['deployment', 'scheduled'], implementationSteps: ['deployment'] })
 
     const w = callMatching(WRITE_RE)!
     expect(w.cypher).toBe(evaluationWriteCypher())

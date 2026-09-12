@@ -21,6 +21,12 @@ export interface StepRow {
   isTerminal: boolean
   isOpen:     boolean
   category:   string | null
+  /**
+   * Lo SCOPO del passo (`WORKFLOW_STEP_PURPOSES`): che ruolo ha nel processo.
+   * `null` = il cliente non l'ha dichiarato. Chi decide in base allo scopo
+   * deve dire cosa fa in quel caso, mai indovinare dal nome (B-4).
+   */
+  purpose:    string | null
   stepOrder:  number | null
 }
 
@@ -41,6 +47,7 @@ async function loadSteps(session: Session, tenantId: string, entityType: string)
              coalesce(s.is_terminal, s.type = 'end')   AS isTerminal,
              coalesce(s.is_open,     s.type <> 'end')  AS isOpen,
              s.category    AS category,
+             s.purpose     AS purpose,
              s.step_order  AS stepOrder
     `, { tenantId, entityType })
     return res.records.map((r) => ({
@@ -49,6 +56,7 @@ async function loadSteps(session: Session, tenantId: string, entityType: string)
       isTerminal: Boolean(r.get('isTerminal')),
       isOpen:     Boolean(r.get('isOpen')),
       category:   (r.get('category') ?? null) as string | null,
+      purpose:    (r.get('purpose')  ?? null) as string | null,
       stepOrder:  r.get('stepOrder') != null ? Number(r.get('stepOrder')) : null,
     }))
   })
@@ -191,4 +199,60 @@ export async function getStepNamesByClass(
     resolved:    [...out.resolved],
     closed:      [...out.closed],
   }
+}
+
+// ── Scopo del passo (ondata 4, B-4 / C-9 / D-22) ──────────────────────────────
+
+/**
+ * I nomi dei passi che hanno uno di questi SCOPI, nel workflow del tenant.
+ *
+ * È il sostituto dei letterali: dove il codice scriveva
+ * `wi.current_step IN ['scheduled','deployment']` ora chiede «quali passi
+ * hanno scopo `scheduled` o `implementation`», e il cliente può chiamarli
+ * «CAB approvato» e «Rilascio» senza spegnere niente.
+ *
+ * Ritorna una lista, non un nome: un cliente può avere due passi con lo stesso
+ * scopo (due finestre di rilascio, due livelli di approvazione), e più
+ * definizioni attive per la stessa entità contribuiscono con l'unione.
+ */
+export async function getStepNamesByPurpose(
+  session: Session, tenantId: string, entityType: string, purposes: readonly string[],
+): Promise<string[]> {
+  const steps = await loadSteps(session, tenantId, entityType)
+  const wanted = new Set(purposes)
+  return [...new Set(steps.filter((s) => s.purpose != null && wanted.has(s.purpose)).map((s) => s.name))]
+}
+
+/**
+ * Lo scopo di un passo preciso, `null` se non dichiarato. Serve a chi ha in
+ * mano il nome corrente di un'istanza e deve capire dove si trova.
+ */
+export async function getStepPurpose(
+  session: Session, tenantId: string, entityType: string, stepName: string,
+): Promise<string | null> {
+  const steps = await loadSteps(session, tenantId, entityType)
+  return steps.find((s) => s.name === stepName)?.purpose ?? null
+}
+
+/**
+ * Come `getStepNamesByPurpose`, ma **fail-loud**: se nel workflow del tenant
+ * nessun passo dichiara nessuno degli scopi richiesti, l'operazione si ferma e
+ * lo dice, invece di procedere con una lista vuota che spegnerebbe in silenzio
+ * una regola di dominio (soppressione degli allarmi, varco delle approvazioni,
+ * sincronizzazione fra change e problem).
+ *
+ * `what` descrive l'operazione, e finisce nel messaggio.
+ */
+export async function requireStepNamesByPurpose(
+  session: Session, tenantId: string, entityType: string, purposes: readonly string[], what: string,
+): Promise<string[]> {
+  const names = await getStepNamesByPurpose(session, tenantId, entityType, purposes)
+  if (names.length === 0) {
+    throw new Error(
+      `${what}: nel workflow "${entityType}" del tenant ${tenantId} nessun passo dichiara lo scopo ` +
+      `[${purposes.join(', ')}]. Assegna lo scopo ai passi nel disegnatore: senza, questa regola non ha ` +
+      `su quali passi applicarsi.`,
+    )
+  }
+  return names
 }

@@ -6,7 +6,14 @@ import { clientLogger } from '@/lib/clientLogger'
 export interface InAppNotification {
   id: string
   type: string
+  /** Chiave i18n del titolo, così come la regola di notifica l'ha configurata. */
   title: string
+  /**
+   * Testo da mostrare quando `title` non è una chiave tradotta: per le
+   * notifiche di passo è l'etichetta del passo (B-16). Senza, il pannello
+   * mostrava la chiave grezza a chi aveva aggiunto un passo suo.
+   */
+  title_fallback?: string
   message: string
   severity: 'info' | 'warning' | 'error' | 'success'
   entity_id?: string

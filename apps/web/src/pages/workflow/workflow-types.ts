@@ -16,6 +16,12 @@ export interface WFStep {
   isOpen?:      boolean
   category?:    string | null
   /**
+   * Lo SCOPO del passo (vocabolario chiuso `WORKFLOW_STEP_PURPOSES`): che ruolo
+   * ha nel processo. È quello che le regole di dominio riconoscono, così un
+   * passo rinominato continua a funzionare. `null` = nessuno scopo, legittimo.
+   */
+  purpose?:     string | null
+  /**
    * Istanze di workflow ferme ORA su questo step. > 0 ⇒ eliminarlo lascerebbe
    * quei ticket senza step corrente: il pannello spegne «Elimina step» e dice
    * quante sono. `undefined` = la query non l'ha chiesto.

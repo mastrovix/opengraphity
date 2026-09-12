@@ -12,7 +12,7 @@
  *     DISTINTO dei CI affected.
  *   - Senza un team Change Manager designato NON si entra in approvazione:
  *     fail-loud (CONFLICT), mai un gate silenziosamente parziale.
- *   - All'ingresso nello step "approval" i requisiti vengono RICREATI da zero
+ *   - All'ingresso in un passo di scopo `approval` i requisiti vengono RICREATI da zero
  *     (riconciliazione): così un rientro dopo un rigetto — anche via transizione
  *     manuale approval → assessment → approval — riparte con tutti i requisiti
  *     'pending' invece di restare bloccato su record stantii.
@@ -121,16 +121,17 @@ export async function createChangeApprovals(session: Session, changeId: string, 
 }
 
 /**
- * Quando viene designato un team Change Manager, le change già ferme in
- * "approval" senza requisito CM (perché prima non esisteva, quindi il gate
+ * Quando viene designato un team Change Manager, le change già ferme in un
+ * passo di scopo `approval` (ondata 4 · A4-2: lo scopo, non il nome) senza requisito CM (perché prima non esisteva, quindi il gate
  * era rimasto parziale o vuoto) vengono riconciliate per intero: tutti i
  * requisiti (CM + owner group) ricreati 'pending'. Eventuali approvazioni
  * date sotto un gate senza CM non valgono e ripartono.
  */
 export async function backfillChangeManagerApprovals(session: Session, tenantId: string, cmTeamId: string): Promise<number> {
   const rows = await runQuery<{ id: string }>(session, `
-    MATCH (c:Change {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep {name: 'approval'})
-    WHERE coalesce(c.deleted, false) = false
+    MATCH (c:Change {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
+    WHERE s.purpose = 'approval'
+      AND coalesce(c.deleted, false) = false
       AND coalesce(c.change_type, 'normal') <> 'standard'
       AND NOT EXISTS { (c)-[:HAS_APPROVAL]->(:ChangeApproval {kind: 'change_manager'}) }
     RETURN c.id AS id

@@ -825,6 +825,7 @@ cruscotto Grafana `infra/grafana/dashboards/opengraphity-api.json`):
 | `events_orphan_total` | counter | ingest senza CI riconosciuto |
 | `events_ambiguous_total` | counter | ingest lasciato orfano perché più CI hanno lo stesso nome (`match_reason = ambiguous`; conta anche in `events_orphan_total`) — un valore che cresce = nomi duplicati nella CMDB da disambiguare con alias o rinomina |
 | `events_suppressed_total` | counter | prima soppressione per finestra di change (non le ripetizioni) |
+| `workflow_step_purpose_missing_total{rule}` | counter | una regola di dominio ha cercato i passi con uno SCOPO (`WORKFLOW_STEP_PURPOSES`) e il workflow del tenant **ha** dei passi ma nessuno lo dichiara: configurazione incompleta. Con `rule="change_window"` l'elaborazione **si ferma dicendolo** (il lavoro resta nella coda dei falliti, rigiocabile dalla pagina Code) invece di lasciare i rilasci senza soppressione e aprire incident falsi in silenzio: finché lo scopo non è assegnato ai passi nel disegnatore, gli allarmi di quel tenant non vengono elaborati. Un tenant **senza** workflow delle change non conta qui (non c'è niente da sopprimere). L'allarme `WorkflowStepPurposeMissing` lo segnala |
 | `events_flapping_total` | counter | ingresso in sfarfallio |
 | `incidents_auto_opened_total` | counter | incident aperti dalla correlazione e incident di tempesta (non `createIncidentFromEvent`) |
 | `incidents_auto_resolved_total` | counter | chiusure automatiche |

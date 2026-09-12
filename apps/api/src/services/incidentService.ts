@@ -13,6 +13,8 @@ import { enqueueEmbedding } from '../jobs/embeddingWorker.js'
 import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
+import { loadStepFacts } from '../lib/stepEvent.js'
+import { stepEnteredEventType, legacyStepEventType } from '@opengraphity/types'
 import { ciLabelPredicate } from '../lib/ciLabels.js'
 import { assertUserInAssignedTeam, setTicketTeam, setTicketUser } from './ticketAssignment.js'
 
@@ -444,30 +446,39 @@ export async function inProgressIncident(
   )
 }
 
-/** Emit a generic transition event. Event type is `incident.<stepName>`. */
+/**
+ * L'ingresso dell'incident in un passo del workflow (D-22).
+ *
+ * Pubblica DUE eventi con lo stesso payload e lo stesso istante:
+ *  1. `incident.step_entered` — il tipo **stabile**, che una rinomina del passo
+ *     non tocca. Il nome del passo è nel payload (`step_name`), insieme a
+ *     etichetta, scopo, categoria e id: è un dettaglio del passo, non
+ *     l'identità dell'evento. È a questo che si agganciano le regole nuove
+ *     (per scopo o per categoria) e i webhook di un passo personalizzato.
+ *  2. `incident.<stepName>` — l'**alias** storico. Resta perché a lui sono
+ *     agganciate le 35 regole di fabbrica, le regole già scritte dai tenant, i
+ *     formatter Slack/Teams (che sono per tipo esatto: `incident.resolved` →
+ *     carta «risolto») e gli abbonamenti dei webhook: toglierlo spegnerebbe
+ *     tutto questo **in silenzio**, che è esattamente il difetto da chiudere.
+ *
+ * Il dispatcher non consegna due volte: sull'evento stabile salta se esiste
+ * già una regola per l'alias di quel passo (vedi packages/notifications).
+ */
 export async function publishIncidentTransition(
   id: string,
   stepName: string,
   ctx: ServiceCtx,
 ) {
   const now = new Date().toISOString()
-  const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
-  await publishEvent(`incident.${stepName}`, ctx.tenantId, ctx.userId,
-    requirePayload(payload, id),
-    now,
-  )
-}
-
-export async function onHoldIncident(
-  id: string,
-  ctx: ServiceCtx,
-) {
-  const now = new Date().toISOString()
-  const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
-  await publishEvent('incident.on_hold', ctx.tenantId, ctx.userId,
-    requirePayload(payload, id),
-    now,
-  )
+  const { payload, facts } = await withSession(async (s) => ({
+    payload: await loadIncidentPayload(s, id, ctx.tenantId),
+    // Fail-loud: un passo che non esiste nel workflow attivo ferma l'evento
+    // (il job resta nella coda dei falliti) invece di inventare i suoi fatti.
+    facts:   await loadStepFacts(s, ctx.tenantId, 'incident', stepName),
+  }))
+  const body = { ...requirePayload(payload, id), ...facts }
+  await publishEvent(stepEnteredEventType('incident'), ctx.tenantId, ctx.userId, body, now)
+  await publishEvent(legacyStepEventType('incident', stepName), ctx.tenantId, ctx.userId, body, now)
 }
 
 export async function closeIncident(

@@ -14,12 +14,18 @@ import { DescriptionField, DetailField, RiskBadge, fmtDate } from './shared'
 import { colors } from '@/lib/tokens'
 
 export function ChangeInfoCard({
-  change, currentStep, initialStepName, isTerminal, isAdmin,
+  change, currentStep, atApproval, initialStepName, isTerminal, isAdmin,
   transitioning, totalTasks, completedTasks, transitions,
   onTransitionClick, stepLabel,
 }: {
   change: ChangeData
   currentStep: string
+  /**
+   * La change è nel passo di approvazione (SCOPO `approval`, non il nome:
+   * ondata 4 · A4-3). Lo decide la pagina, che ha i metadata dei passi; la
+   * card resta presentazionale.
+   */
+  atApproval: boolean
   initialStepName: string | null
   isTerminal: boolean
   isAdmin: boolean
@@ -58,7 +64,7 @@ export function ChangeInfoCard({
             <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', flexShrink: 0 }}>{completedTasks}/{totalTasks} task completati</span>
           </div>
         )}
-        {isAdmin && currentStep !== 'approval' && transitions.map((tr) => (
+        {isAdmin && !atApproval && transitions.map((tr) => (
           <button
             key={tr.toStep}
             type="button"

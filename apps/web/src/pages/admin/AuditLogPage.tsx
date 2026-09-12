@@ -12,6 +12,20 @@ import { QueryError } from '@/components/QueryError'
 import { Pagination } from '@/components/ui/Pagination'
 import { alpha, colors, palette } from '@/lib/tokens'
 
+/**
+ * Le azioni presenti nel registro di audit, con quante voci ciascuna: la
+ * tendina del filtro le offre invece di chiedere all'amministratore di
+ * indovinarle. Dopo il taglio di vocabolario dell'ondata 4 (le transizioni di
+ * workflow sono sotto `<entità>.step_entered`, prima sotto il nome del passo)
+ * le voci storiche non sono state riscritte — è un registro di conformità — e
+ * questa lista le mostra comunque, così la storia si ritrova tutta.
+ */
+const GET_AUDIT_ACTIONS = gql`
+  query GetAuditActions {
+    auditActions { action count }
+  }
+`
+
 const GET_AUDIT_LOG = gql`
   query GetAuditLog(
     $page: Int, $pageSize: Int,
@@ -54,8 +68,24 @@ export function AuditLogPage() {
   const [sortDir, setSortDir]       = useState<'asc' | 'desc'>('desc')
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
   function handleSort(field: string, direction: 'asc' | 'desc') { setSortField(field); setSortDir(direction); setPage(0) }
+  // Le azioni presenti nel registro, dal server: la tendina le offre invece di
+  // chiedere di indovinarle a testo libero. Dopo il taglio di vocabolario
+  // dell'ondata 4 (le transizioni di workflow sono sotto
+  // `<entità>.step_entered`, prima sotto il nome del passo) le voci storiche
+  // NON sono state riscritte — è un registro di conformità — quindi qui
+  // compaiono entrambe le metà della storia e nessuna diventa introvabile.
+  const actionsQuery = useQuery<{ auditActions: { action: string; count: number }[] }>(
+    GET_AUDIT_ACTIONS, { fetchPolicy: 'cache-first' },
+  )
+  const actionOptions = (actionsQuery.data?.auditActions ?? [])
+    .map(({ action, count }) => ({ value: action, label: `${action} (${count})` }))
+
   const AUDIT_FILTER_FIELDS: FieldConfig[] = [
-    { key: 'action', label: 'Azione', type: 'text' },
+    // `text` finché le azioni non sono arrivate: meglio un filtro che funziona
+    // a testo libero che una tendina vuota.
+    actionOptions.length > 0
+      ? { key: 'action', label: t('pages.audit.colAction'), type: 'enum', options: actionOptions }
+      : { key: 'action', label: t('pages.audit.colAction'), type: 'text' },
     { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
       { value: 'Incident', label: 'Incident' }, { value: 'Change', label: 'Change' },
       { value: 'Problem', label: 'Problem' }, { value: 'User', label: 'User' },

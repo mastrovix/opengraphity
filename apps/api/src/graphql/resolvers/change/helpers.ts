@@ -18,7 +18,8 @@ import { runQuery, runQueryOne, getSession, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { calculateCIRiskScore, determineApprovalRoute, deriveChangePriority } from './scoring.js'
-import { getInitialStepName } from '../../../lib/workflowHelpers.js'
+import { getInitialStepName, getStepPurpose } from '../../../lib/workflowHelpers.js'
+import { targetStepByPurpose } from '../../../lib/workflowTargets.js'
 import { toNumber } from '@opengraphity/neo4j'
 
 export type Session = ReturnType<typeof getSession>
@@ -394,22 +395,30 @@ export async function afterEnterStep(session: SessionOrTx, changeId: string, ten
     WHERE step.name = $stepName
     RETURN step.on_enter_create AS hook
   `, { changeId, tenantId, stepName })
-  // Entrando in "approval": crea i requisiti di approvazione (CM + owner group).
-  if (stepName === 'approval') {
+  // Entrando in un passo di SCOPO `approval` (ondata 4 · A4-2: lo scopo, non il
+  // nome — il cliente può chiamarlo «CAB settimanale»): crea i requisiti di
+  // approvazione (CM + owner group). Lo scopo del passo si chiede al nucleo e
+  // non alla query qui sopra, che è legata al passo CORRENTE: così il gancio
+  // resta corretto anche se il workflow è già avanzato.
+  const purpose = await getStepPurpose(session as Session, tenantId, 'change', stepName)
+  if (purpose === 'approval') {
     const { createChangeApprovals } = await import('./approvalCreation.js')
     await createChangeApprovals(session, changeId, tenantId)
-    // Standard = pre-approvata: nessun requisito, avanza subito a scheduled.
+    // Standard = pre-approvata: nessun requisito, avanza subito al passo di
+    // scopo `scheduled`.
     const ct = await runQueryOne<{ t: string }>(session, `MATCH (c:Change {id: $changeId, tenant_id: $tenantId}) RETURN c.change_type AS t`, { changeId, tenantId })
     if (ct?.t === 'standard') {
       const { workflowEngine } = await import('@opengraphity/workflow')
       const instanceId = await getInstanceId(session as Session, changeId, tenantId)
-      const res = await workflowEngine.transition(session as Session, { instanceId, toStepName: 'scheduled', triggeredBy: 'system', triggerType: 'automatic', notes: 'Standard: pre-approvata' }, { userId: 'system', entityData: {} })
-      // Fail-loud: una standard ferma in approval senza requisiti non si
+      const toStep = await targetStepByPurpose(session as Session, tenantId, 'change', ['scheduled'],
+        'pre-approvazione di una change standard')
+      const res = await workflowEngine.transition(session as Session, { instanceId, toStepName: toStep, triggeredBy: 'system', triggerType: 'automatic', notes: 'Standard: pre-approvata' }, { userId: 'system', entityData: {} })
+      // Fail-loud: una standard ferma in approvazione senza requisiti non si
       // sbloccherebbe mai (nessun record da approvare).
       if (!res.success) {
         throw new GraphQLError(`Change standard: pre-approvazione non riuscita (${res.error ?? 'transizione fallita'})`, { extensions: { code: 'CONFLICT' } })
       }
-      await afterEnterStep(session, changeId, tenantId, 'scheduled')
+      await afterEnterStep(session, changeId, tenantId, toStep)
     }
   }
   const hook = row?.hook

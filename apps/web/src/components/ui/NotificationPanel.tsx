@@ -83,7 +83,11 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
           overflow:    'hidden',
           textOverflow:'ellipsis',
         }}>
-          {t(notif.title)}
+          {/* Il titolo è una CHIAVE i18n scelta nella regola di notifica. Se la
+              chiave non esiste (una regola su un passo aggiunto dal cliente ha
+              una chiave che il web non conosce), si mostra il ripiego che
+              l'evento porta — l'etichetta del passo — e mai la chiave grezza. */}
+          {t(notif.title, { defaultValue: notif.title_fallback ?? notif.title })}
         </div>
         <div style={{
           fontSize:    12,

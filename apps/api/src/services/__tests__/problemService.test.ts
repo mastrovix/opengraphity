@@ -46,7 +46,7 @@ vi.mock('../../lib/logger.js', () => ({
 }))
 
 const { createProblem, publishProblemTransition } = await import('../problemService.js')
-const { runQuery } = await import('@opengraphity/neo4j')
+const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { workflowEngine } = await import('@opengraphity/workflow')
 const { publishEvent } = await import('../../lib/publishEvent.js')
 const { evaluateTriggers } = await import('../../lib/triggerEngine.js')
@@ -232,11 +232,27 @@ describe('publishProblemTransition', () => {
     expect(publishEvent).not.toHaveBeenCalled()
   })
 
-  it('pubblica problem.<step> con payload dal grafo (assegnatario: utente, poi team, poi —)', async () => {
+  /**
+   * CONTRATTO RINEGOZIATO (ondata 4, D-22). Prima il test pinnava UN evento
+   * col nome del passo nel tipo (`problem.in_progress`). Ora ne vengono
+   * pubblicati DUE con lo stesso payload: il tipo **stabile**
+   * `problem.step_entered` (che una rinomina del passo non tocca) e l'**alias**
+   * storico `problem.in_progress`, mantenuto perché a lui sono agganciate le
+   * regole di notifica di fabbrica e quelle già scritte dai tenant. Il nome del
+   * passo, con etichetta, scopo e categoria, è nel payload.
+   */
+  it('pubblica il tipo stabile E l\'alias col nome del passo, con i fatti del passo nel payload', async () => {
     h.session.executeRead.mockResolvedValue({ records: [row({ id: 'prb-1', title: 'T', priority: 'high', status: 'in_progress', assignedTo: null, teamName: 'NOC' })] })
+    vi.mocked(runQueryOne).mockResolvedValue({ stepId: 'st-1', label: 'In lavorazione', purpose: 'investigation', category: 'active' })
     await publishProblemTransition('prb-1', 'in_progress', ctx)
-    expect(publishEvent).toHaveBeenCalledWith('problem.in_progress', 'tenant-1', 'user-1',
-      { id: 'prb-1', title: 'T', priority: 'high', status: 'in_progress', assignedTo: 'NOC' })
+    const body = {
+      id: 'prb-1', title: 'T', priority: 'high', status: 'in_progress', assignedTo: 'NOC',
+      step_id: 'st-1', step_name: 'in_progress', step_label: 'In lavorazione',
+      step_purpose: 'investigation', step_category: 'active',
+    }
+    expect(publishEvent).toHaveBeenCalledWith('problem.step_entered', 'tenant-1', 'user-1', body)
+    expect(publishEvent).toHaveBeenCalledWith('problem.in_progress',  'tenant-1', 'user-1', body)
+    expect(publishEvent).toHaveBeenCalledTimes(2)
     // la query è tenant-scoped
     const tx = { run: vi.fn().mockResolvedValue({ records: [] }) }
     await (h.session.executeRead.mock.calls[0]![0] as (t: typeof tx) => Promise<unknown>)(tx)

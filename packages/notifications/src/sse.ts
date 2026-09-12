@@ -3,7 +3,15 @@ import { randomUUID } from 'crypto'
 export interface InAppNotification {
   id: string
   type: string
+  /** Chiave i18n del titolo (è quella che la regola di notifica configura). */
   title: string
+  /**
+   * Testo da mostrare quando `title` non è una chiave tradotta: per le
+   * notifiche di passo è l'ETICHETTA del passo (B-16). Senza, il pannello
+   * mostrava la chiave grezza — `notification.custom.step.title` — a chi
+   * aveva aggiunto un passo suo.
+   */
+  title_fallback?: string
   message: string
   severity?: 'info' | 'warning' | 'error' | 'success'
   entity_id?: string

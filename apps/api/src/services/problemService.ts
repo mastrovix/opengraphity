@@ -12,6 +12,8 @@ import { logger } from '../lib/logger.js'
 import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { getInitialStepName } from '../lib/workflowHelpers.js'
+import { loadStepFacts } from '../lib/stepEvent.js'
+import { stepEnteredEventType, legacyStepEventType } from '@opengraphity/types'
 import { ciLabelPredicate } from '../lib/ciLabels.js'
 
 export interface ProblemEventPayload {
@@ -162,10 +164,19 @@ export async function createProblem(
   return created
 }
 
-/** Emit a generic transition event. Event type is `problem.<stepName>`. */
+/**
+ * L'ingresso del problem in un passo del workflow (D-22): come per l'incident,
+ * il tipo **stabile** `problem.step_entered` (col nome, l'etichetta, lo scopo e
+ * la categoria del passo nel payload) e l'**alias** storico
+ * `problem.<stepName>`, a cui restano agganciate le regole di fabbrica
+ * (`problem.under_investigation`, `problem.deferred`, …) e quelle dei tenant.
+ */
 export async function publishProblemTransition(id: string, stepName: string, ctx: ServiceCtx) {
-  const payload = await loadProblemPayload(id, ctx.tenantId)
-  await publishEvent(`problem.${stepName}`, ctx.tenantId, ctx.userId,
-    requireProblemPayload(payload, id),
-  )
+  // Prima il payload (un problem inesistente è l'errore da dire), poi i fatti
+  // del passo: l'ordine è quello dei messaggi, e non va invertito.
+  const payload = requireProblemPayload(await loadProblemPayload(id, ctx.tenantId), id)
+  const facts   = await withSession((s) => loadStepFacts(s, ctx.tenantId, 'problem', stepName))
+  const body    = { ...payload, ...facts }
+  await publishEvent(stepEnteredEventType('problem'), ctx.tenantId, ctx.userId, body)
+  await publishEvent(legacyStepEventType('problem', stepName), ctx.tenantId, ctx.userId, body)
 }

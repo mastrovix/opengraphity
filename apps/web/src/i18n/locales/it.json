@@ -1106,7 +1106,16 @@
       "high": "Alta",
       "medium": "Media",
       "low": "Bassa"
-    }
+    },
+    "eventNotProduced": "Niente produce l'evento «{{eventType}}»: questa regola è accesa ma non scatterà mai. Scegli un tipo di evento che i tuoi workflow producono davvero.",
+    "narrowPurpose": "Solo i passi con scopo: {{purpose}}",
+    "narrowCategory": "Solo i passi di categoria: {{category}}",
+    "eventGroupStandard": "Standard",
+    "eventGroupWorkflow": "Passi dei tuoi workflow",
+    "stepPurpose": "Solo i passi con scopo",
+    "stepCategory": "Solo i passi di categoria",
+    "stepNarrowingAny": "— Qualunque passo —",
+    "stepNarrowingHint": "Senza restringimento la regola vale per ogni ingresso in un passo. Restringere per scopo o categoria, invece che per nome, è ciò che la fa sopravvivere alla rinomina di un passo."
   },
   "workflow": {
     "addAction": "Aggiungi azione",
@@ -1121,7 +1130,23 @@
     "deleteBlockedInstances_one": "{{count}} ticket si trova ora su questo step: eliminandolo resterebbe senza step corrente e non potrebbe più avanzare. Spostalo prima su un altro step.",
     "deleteBlockedInstances_other": "{{count}} ticket si trovano ora su questo step: eliminandolo resterebbero senza step corrente e non potrebbero più avanzare. Spostali prima su un altro step.",
     "initialOnTerminal": "Uno step terminale non può essere anche lo step iniziale: ogni nuovo ticket nascerebbe già chiuso.",
-    "deleteBlockedFactory": "Gli step di inizio e fine del processo non si eliminano: sono i capi del workflow."
+    "deleteBlockedFactory": "Gli step di inizio e fine del processo non si eliminano: sono i capi del workflow.",
+    "purpose": "Scopo",
+    "purposeNone": "— Nessuno —",
+    "purposeHint": "Lo scopo dice che RUOLO ha il passo nel processo, e non cambia se rinomini il passo: le regole di dominio (approvazioni, finestra di rilascio, sincronizzazione con i problem, notifiche) riconoscono lo scopo, non il nome. Lasciarlo vuoto è legittimo: nessuno scopo viene indovinato dal nome.",
+    "purposeOption": {
+      "assessment": "Valutazione di impatto e rischio",
+      "planning": "Pianificazione del rilascio",
+      "approval": "Raccolta delle approvazioni",
+      "scheduled": "In calendario (finestra programmata)",
+      "implementation": "Rilascio in corso (finestra aperta)",
+      "validation": "Verifica dell'esito",
+      "review": "Revisione a posteriori",
+      "triage": "Presa in carico e smistamento",
+      "investigation": "Analisi della causa radice",
+      "change_requested": "In attesa di una change",
+      "change_in_progress": "Change in corso"
+    }
   },
   "itilDesigner": {
     "title": "ITIL Type Designer",
@@ -1310,6 +1335,11 @@
     "ci": {
       "health_changed": {
         "title": "Salute del CI cambiata"
+      }
+    },
+    "incident": {
+      "on_hold": {
+        "title": "Incident in attesa"
       }
     }
   },

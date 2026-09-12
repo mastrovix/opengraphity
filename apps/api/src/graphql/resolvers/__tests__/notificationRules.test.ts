@@ -12,7 +12,10 @@ import { NOTIFICATION_TARGETS, USER_ROLES } from '@opengraphity/types'
 
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
-vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn() }))
+// `runQuery` serve a `workflowEventTypeRows` (lib/stepEvent.ts), che il
+// resolver usa per dire se il tipo di evento di una regola è prodotto da
+// qualcosa (`eventProduced`): nessun workflow nel mock → lista vuota.
+vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn().mockResolvedValue([]) }))
 vi.mock('../ci-utils.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn(mockSession)),
 }))
@@ -72,6 +75,9 @@ describe('createNotificationRule — canali non instradabili → BAD_USER_INPUT 
   })
 
   it('canali instradabili (slack+teams su incident.created) → CREATE', async () => {
+    // create ora legge prima se esiste già una regola per lo stesso tipo e lo
+    // stesso restringimento (due regole identiche sono ambigue): nessuna.
+    mockSession.executeRead.mockImplementationOnce(async () => ({ records: [] }))
     mockSession.executeWrite.mockImplementationOnce(async () => ruleNode({ id: 'r1', event_type: 'incident.created', enabled: true, title_key: 'k', channels: ['in_app', 'slack', 'teams'], target: 'all' }))
     const out = await notificationRuleResolvers.Mutation.createNotificationRule(null, { input: { ...base, eventType: 'incident.created', channels: ['in_app', 'slack', 'teams'] } }, ctx)
     expect(out.channels).toEqual(['in_app', 'slack', 'teams'])

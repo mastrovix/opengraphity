@@ -101,6 +101,23 @@ groups:
 
   - name: opengraphity-services
     rules:
+      - alert: WorkflowStepPurposeMissing
+        # Ondata 4 · A4-1: una regola di dominio ha cercato i passi con uno
+        # SCOPO e il workflow del tenant HA dei passi, ma nessuno lo dichiara.
+        # Con `rule="change_window"` l'elaborazione si ferma dicendolo (il
+        # lavoro resta nella coda dei falliti, rigiocabile) invece di lasciare
+        # i rilasci senza soppressione: finché non si assegna lo scopo ai passi
+        # nel disegnatore, gli allarmi di quel tenant non vengono elaborati.
+        # Un tenant SENZA workflow delle change non conta qui: non c'è niente
+        # da sopprimere e non incrementa il contatore.
+        expr: sum by (rule) (increase(workflow_step_purpose_missing_total[15m])) > 0
+        for: 15m
+        labels: { severity: warning, subsystem: services }
+        annotations:
+          summary: "A domain rule found no workflow step with the purpose it needs ({{ $labels.rule }})"
+          description: "{{ $value | humanize }} evaluation(s) with no step declaring the purpose: assign the step purpose in the workflow designer."
+          runbook: "docs/OPERATIONS.md «Servizi monitorati → Risoluzione dei problemi»"
+
       - alert: ServiceEvaluationErrors
         expr: sum(rate(service_evaluations_total{result="error"}[15m])) > 0
         for: 5m

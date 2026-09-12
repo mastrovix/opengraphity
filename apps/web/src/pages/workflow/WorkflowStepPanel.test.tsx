@@ -7,7 +7,7 @@ import type { WFStep } from './workflow-types'
 import { GET_WORKFLOW_DEFINITION_BY_ID } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { teamsMock, usersMock, workflowListMock, itilTypesMock } from '@/test/mocks/gql'
-import { NOTIFICATION_TARGETS } from '@opengraphity/types'
+import { NOTIFICATION_TARGETS, WORKFLOW_STEP_PURPOSES } from '@opengraphity/types'
 import { TARGET_OPTIONS } from '@/pages/settings/NotificationRuleList'
 
 const DEF_ID = 'wf-incident'
@@ -273,5 +273,85 @@ describe('WorkflowStepPanel — cambio step selezionato (F-01)', () => {
     await user.click(screen.getByText('select B'))
     expect(screen.getByText('b')).toBeInTheDocument()            // le prop passano…
     expect(screen.getByDisplayValue('Step A')).toBeInTheDocument()  // …ma la label editabile è stantia
+  })
+})
+
+/**
+ * Ondata 4 — B4-3: lo SCOPO del passo si assegna dal pannello.
+ *
+ * Lo scopo è quello che le regole di dominio riconoscono (approvazioni,
+ * finestra di rilascio, sincronizzazione con i problem, notifiche): è il
+ * motivo per cui un passo rinominato continua a funzionare. Il vocabolario è
+ * chiuso e arriva da @opengraphity/types — la stessa lista che il server
+ * valida in scrittura — e «nessuno scopo» è una scelta legittima: il pannello
+ * non ne inventa uno dal nome del passo.
+ */
+describe('WorkflowStepPanel — lo scopo del passo (B4-3)', () => {
+  const openMetadata = async (s: WFStep) => {
+    const r = renderPanel(s)
+    await r.user.click(screen.getByRole('tab', { name: 'Metadati' }))
+    return r
+  }
+  it('offre tutti e 11 gli scopi tradotti, più «nessuno», e una riga che spiega cosa cambia', async () => {
+    await openMetadata(step({ name: 'deployment', type: 'standard', isInitial: false }))
+    const select = screen.getByDisplayValue(T('workflow.purposeNone')) as HTMLSelectElement
+    const values = [...select.options].map((o) => o.value)
+    expect(values).toEqual(['', ...WORKFLOW_STEP_PURPOSES])
+    // ogni opzione ha un'etichetta tradotta, non la chiave i18n
+    for (const p of WORKFLOW_STEP_PURPOSES) {
+      const label = T(`workflow.purposeOption.${p}`)
+      expect(label).not.toContain('workflow.purposeOption')
+      expect([...select.options].map((o) => o.textContent)).toContain(label)
+    }
+    expect(screen.getByText(T('workflow.purposeHint'))).toBeInTheDocument()
+  })
+
+  it('mostra lo scopo già salvato e salvarne uno nuovo lo manda al server', async () => {
+    const onSaved = vi.fn(); const onSaveLocally = vi.fn()
+    const s = step({ name: 'deployment', label: 'Rilascio', type: 'standard', isInitial: false, purpose: 'planning' })
+    const r = renderWithProviders(
+      <WorkflowStepPanel step={s} definitionId={DEF_ID} onClose={() => {}} onSaved={onSaved} onSaveLocally={onSaveLocally} />,
+      { mocks: baseMocks() },
+    )
+    await r.user.click(screen.getByRole('tab', { name: 'Metadati' }))
+    const select = screen.getByDisplayValue(T('workflow.purposeOption.planning')) as HTMLSelectElement
+    expect(saveButton()).toBeDisabled()
+
+    await r.user.selectOptions(select, 'implementation')
+    expect(saveButton()).toBeEnabled()
+    await r.user.click(saveButton())
+
+    expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'implementation' }))
+    // al server la stringa: '' vorrebbe dire «togli», qui è uno scopo vero
+    expect(onSaveLocally).toHaveBeenCalledWith(expect.objectContaining({ stepName: 'deployment', purpose: 'implementation' }))
+  })
+
+  it('«nessuno» è salvabile e viaggia come stringa vuota: togliere lo scopo è reversibile', async () => {
+    const onSaved = vi.fn(); const onSaveLocally = vi.fn()
+    const s = step({ name: 'deployment', type: 'standard', isInitial: false, purpose: 'implementation' })
+    const r = renderWithProviders(
+      <WorkflowStepPanel step={s} definitionId={DEF_ID} onClose={() => {}} onSaved={onSaved} onSaveLocally={onSaveLocally} />,
+      { mocks: baseMocks() },
+    )
+    await r.user.click(screen.getByRole('tab', { name: 'Metadati' }))
+    await r.user.selectOptions(screen.getByDisplayValue(T('workflow.purposeOption.implementation')), '')
+    await r.user.click(saveButton())
+
+    expect(onSaveLocally).toHaveBeenCalledWith(expect.objectContaining({ purpose: '' }))
+    expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ purpose: null }))
+  })
+
+  it('un passo senza scopo resta senza scopo: nessuno viene indovinato dal nome', async () => {
+    const onSaveLocally = vi.fn()
+    // il nome è quello di fabbrica della finestra di rilascio: se il pannello
+    // indovinasse dal nome, qui comparirebbe «implementation».
+    const s = step({ name: 'deployment', label: 'Rilascio', type: 'standard', isInitial: false, purpose: null })
+    const r = renderWithProviders(
+      <WorkflowStepPanel step={s} definitionId={DEF_ID} onClose={() => {}} onSaved={() => {}} onSaveLocally={onSaveLocally} />,
+      { mocks: baseMocks() },
+    )
+    await r.user.click(screen.getByRole('tab', { name: 'Metadati' }))
+    expect((screen.getByDisplayValue(T('workflow.purposeNone')) as HTMLSelectElement).value).toBe('')
+    expect(saveButton()).toBeDisabled()
   })
 })

@@ -107,3 +107,41 @@ export async function auditLog(
     await session.close()
   }
 }
+
+/**
+ * Le azioni **realmente presenti** nel registro del tenant, con quante voci
+ * ciascuna. Serve alla pagina dell'audit per offrirle in tendina invece di
+ * chiedere all'amministratore di indovinarle a testo libero.
+ *
+ * È il rimedio al taglio di vocabolario dell'ondata 4 (D-22): le transizioni
+ * di workflow ora si registrano sotto un'azione stabile
+ * (`incident.step_entered`), prima sotto il nome del passo
+ * (`incident.assigned`, `incident.in_progress`). Le voci storiche NON sono
+ * state riscritte — è un registro di conformità — quindi le due metà della
+ * storia convivono, e questa tendina le mostra entrambe: chi cerca
+ * `incident.assigned` lo trova ancora, e vede che dopo una certa data le
+ * transizioni stanno sotto l'azione stabile.
+ */
+export async function auditActions(
+  _: unknown,
+  __: unknown,
+  ctx: GraphQLContext,
+): Promise<Array<{ action: string; count: number }>> {
+  if (ctx.role !== 'admin') {
+    throw new GraphQLError('Forbidden: admin role required', { extensions: { code: 'FORBIDDEN' } })
+  }
+  const session = getSession(undefined, 'READ')
+  try {
+    const res = await session.executeRead((tx) => tx.run(`
+      MATCH (a:AuditEntry {tenant_id: $tenantId})
+      RETURN a.action AS action, count(*) AS n
+      ORDER BY action
+    `, { tenantId: ctx.tenantId }))
+    return res.records.map((r) => ({
+      action: r.get('action') as string,
+      count:  Number(r.get('n')),
+    }))
+  } finally {
+    await session.close()
+  }
+}

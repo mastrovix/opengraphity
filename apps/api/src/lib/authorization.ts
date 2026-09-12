@@ -41,7 +41,10 @@ const DEFAULT_MUTATION_ROLES: readonly Role[] = ['admin', 'operator']
 
 /** Configurazione del tenant: solo admin. */
 export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
-  'logs', 'auditLog', 'queueStats', 'queueJobs', 'systemHealth', 'systemMetrics', 'traceInfo',
+  // `auditActions` sta col registro: elenca le azioni presenti nell'audit del
+  // tenant (D-22), e chi non può leggere il registro non deve poterne dedurre
+  // il contenuto dalla tendina del filtro.
+  'logs', 'auditLog', 'auditActions', 'queueStats', 'queueJobs', 'systemHealth', 'systemMetrics', 'traceInfo',
   'apiKeys', 'inboundWebhooks', 'outboundWebhooks',
   'syncSources', 'syncSource', 'syncRuns', 'syncConflicts', 'syncStats', 'availableConnectors', 'syncChangeHistory',
   'notificationChannels', 'notificationRules',

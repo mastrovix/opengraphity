@@ -6,6 +6,8 @@ import { toNumber } from '@opengraphity/neo4j'
 import { runQuery, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
+import { getStepPurpose } from '../../../lib/workflowHelpers.js'
+import { stepNamesByCategory, stepNamesByPurposeOrdered, targetStepByCategory, targetStepByPurpose } from '../../../lib/workflowTargets.js'
 // Side-effect: registra le condizioni ITSM (all_assessments_complete, …)
 // sull'engine. Il walker le valuta dal registro, come fa l'engine stesso.
 import '../../../workflow/conditions.js'
@@ -65,8 +67,12 @@ async function syncServiceMaintenance(
     RETURN wi.current_step AS step, c.service_window AS notified
   `, { changeId, tenantId: ctx.tenantId })
   if (!row) return
-  const { CHANGE_WINDOW_STEPS } = await import('../../../services/eventCorrelation.js')
-  const inWindow = CHANGE_WINDOW_STEPS.includes(row.step)
+  // I passi di finestra vengono dallo SCOPO dei passi del tenant (ondata 4 ·
+  // A4-1): con i due letterali di prima, un passo di rilascio rinominato non
+  // mandava più il servizio in manutenzione.
+  const { resolveChangeWindowSteps } = await import('../../../services/eventCorrelation.js')
+  const windowSteps = await resolveChangeWindowSteps(ctx.tenantId, session)
+  const inWindow = windowSteps.all.includes(row.step)
   if (inWindow === (row.notified === true)) return
   await runQueryOne(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
@@ -80,7 +86,7 @@ async function syncServiceMaintenance(
 
 /**
  * Fine finestra di change (Event Management, ondata 3 + revisione): se la
- * change non è più in un passo "di finestra" (deployment / scheduled) e ha
+ * change non è più in un passo "di finestra" (scopo implementation/scheduled) e ha
  * ancora allarmi silenziati, la mutation ACCODA il job
  * `reevaluate-change-window` (coda events-correlate, id deterministico per
  * tenant/change/epoca del passo) e torna: la rivalutazione — lunga e
@@ -101,8 +107,9 @@ async function syncSuppressedEvents(
     RETURN wi.current_step AS step, wi.updated_at AS enteredAt, count(e) AS suppressed
   `, { changeId, tenantId: ctx.tenantId })
   if (!row || toNumber(row.suppressed) === 0) return
-  const { CHANGE_WINDOW_STEPS } = await import('../../../services/eventCorrelation.js')
-  if (CHANGE_WINDOW_STEPS.includes(row.step)) return
+  const { resolveChangeWindowSteps } = await import('../../../services/eventCorrelation.js')
+  const windowSteps = await resolveChangeWindowSteps(ctx.tenantId, session)
+  if (windowSteps.all.includes(row.step)) return
   const { enqueueChangeWindowReevaluation } = await import('../../../jobs/eventCorrelateWorker.js')
   // Epoca del passo = ingresso nel passo corrente (WorkflowInstance.updated_at):
   // stessa uscita dalla finestra → stesso job id (le mutation a raffica non
@@ -132,25 +139,34 @@ async function syncLinkedIncidents(
     RETURN cw.current_step AS changeStep, c.code AS code, iw.id AS instanceId, iw.current_step AS incidentStep
   `, { changeId, tenantId: ctx.tenantId })
 
+  if (rows.length === 0) return
+  // «Change finita» e «incident risolvibile» sono CATEGORIE, non nomi (ondata 4
+  // · A4-3): la categoria è il ruolo che questi passi hanno davvero — lo stato
+  // visibile da fuori — e gli incident la usano già da prima.
+  const changeClosed = await stepNamesByCategory(session, ctx.tenantId, 'change', ['closed'])
+  const resolvable   = await stepNamesByCategory(session, ctx.tenantId, 'incident', ['active', 'escalated'])
+
   for (const r of rows) {
-    if (r.changeStep !== 'closed') continue
-    if (r.incidentStep !== 'in_progress' && r.incidentStep !== 'escalated') {
-      logger.info({ changeId, instanceId: r.instanceId, incidentStep: r.incidentStep },
+    if (!changeClosed.includes(r.changeStep)) continue
+    if (!resolvable.includes(r.incidentStep)) {
+      logger.info({ changeId, instanceId: r.instanceId, incidentStep: r.incidentStep, resolvable },
         '[syncLinkedIncidents] change chiusa ma incident non in uno step risolvibile — nessun auto-resolve')
       continue
     }
+    const toStep = await targetStepByCategory(session, ctx.tenantId, 'incident', ['resolved'],
+      'risoluzione automatica dell\'incident risolto da una change chiusa')
     const res = await workflowEngine.transition(
       session,
-      { instanceId: r.instanceId, toStepName: 'resolved', triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: `Risolto dalla change ${r.code}` },
+      { instanceId: r.instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: `Risolto dalla change ${r.code}` },
       { userId: ctx.userId ?? 'system', entityData: {} },
     )
-    if (!res.success) logger.warn({ changeId, instanceId: r.instanceId, error: res.error }, '[syncLinkedIncidents] auto-resolve incident non riuscito')
+    if (!res.success) logger.warn({ changeId, instanceId: r.instanceId, toStep, error: res.error }, '[syncLinkedIncidents] auto-resolve incident non riuscito')
   }
 }
 
 /**
  * Fa avanzare i Problem collegati (RESOLVED_BY) in base allo step attuale della
- * change: deployment/review → change_in_progress, closed → resolved. Le loro
+ * change: rilascio/revisione → «change in corso», change finita → problem risolto. Le loro
  * transizioni sono automatiche e nessun altro le innescherebbe (il problem
  * resterebbe bloccato su change_requested, non chiudibile). Da "resolved" il
  * problem si chiude poi manualmente ("Verifica soluzione e chiudi").
@@ -167,6 +183,16 @@ async function syncLinkedProblems(
     RETURN cw.current_step AS changeStep, pw.id AS instanceId, pw.current_step AS problemStep
   `, { changeId, tenantId: ctx.tenantId })
 
+  if (rows.length === 0) return
+  // Ondata 4 · A4-2: SCOPO per i passi che hanno un ruolo nel processo
+  // (rilascio, revisione, «aspetta la change», «la change è in corso»),
+  // CATEGORIA per quelli che sono uno stato visibile (change finita, problem
+  // risolto).
+  const changeWorking  = await stepNamesByPurposeOrdered(session, ctx.tenantId, 'change',  ['implementation', 'review'])
+  const changeClosed   = await stepNamesByCategory(session, ctx.tenantId, 'change',  ['closed'])
+  const probRequested  = await stepNamesByPurposeOrdered(session, ctx.tenantId, 'problem', ['change_requested'])
+  const probInProgress = await stepNamesByPurposeOrdered(session, ctx.tenantId, 'problem', ['change_in_progress'])
+
   for (const r of rows) {
     const changeStep = r.changeStep
     const instanceId = r.instanceId
@@ -182,17 +208,23 @@ async function syncLinkedProblems(
       else logger.warn({ changeId, instanceId, toStep, error: res.error }, '[syncLinkedProblems] transizione problem non riuscita')
     }
 
-    if (changeStep === 'deployment' || changeStep === 'review') {
-      if (problemStep === 'change_requested') await drive('change_in_progress')
-    } else if (changeStep === 'closed') {
-      if (problemStep === 'change_requested') await drive('change_in_progress')
-      if (problemStep === 'change_in_progress') await drive('resolved')
+    const toInProgress = async () => drive(await targetStepByPurpose(session, ctx.tenantId, 'problem', ['change_in_progress'],
+      'avanzamento del problem mentre la change risolutiva è in corso'))
+
+    if (changeWorking.includes(changeStep)) {
+      if (probRequested.includes(problemStep)) await toInProgress()
+    } else if (changeClosed.includes(changeStep)) {
+      if (probRequested.includes(problemStep)) await toInProgress()
+      if (probInProgress.includes(problemStep)) {
+        await drive(await targetStepByCategory(session, ctx.tenantId, 'problem', ['resolved'],
+          'risoluzione del problem dopo la chiusura della change'))
+      }
     }
   }
 }
 
 /**
- * Retrocede un problem a "under_investigation" quando la change risolutiva viene
+ * Retrocede un problem al passo di analisi (scopo `investigation`) quando la change risolutiva viene
  * scollegata o eliminata: se il problem era avanzato SOLO grazie alla change
  * (change_requested / change_in_progress) non ha più nulla che lo risolva, quindi
  * torna in analisi. Idempotente e silenzioso se il problem è in un altro step.
@@ -207,14 +239,18 @@ export async function revertProblemAfterChangeDetached(
     RETURN pw.id AS instanceId, pw.current_step AS step
   `, { problemId, tenantId: ctx.tenantId })
   if (!row) return
-  if (row.step !== 'change_requested' && row.step !== 'change_in_progress') return
+  // Lo scopo del passo, non il suo nome (ondata 4 · A4-2).
+  const purpose = await getStepPurpose(session, ctx.tenantId, 'problem', row.step)
+  if (purpose !== 'change_requested' && purpose !== 'change_in_progress') return
 
+  const toStep = await targetStepByPurpose(session, ctx.tenantId, 'problem', ['investigation'],
+    'ritorno del problem in analisi dopo lo scollegamento della change')
   const res = await workflowEngine.transition(
     session,
-    { instanceId: row.instanceId, toStepName: 'under_investigation', triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: 'Change risolutiva scollegata' },
+    { instanceId: row.instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: 'Change risolutiva scollegata' },
     { userId: ctx.userId ?? 'system', entityData: {} },
   )
-  if (!res.success) logger.warn({ problemId, from: row.step, error: res.error }, '[revertProblemAfterChangeDetached] transizione non riuscita')
+  if (!res.success) logger.warn({ problemId, from: row.step, toStep, error: res.error }, '[revertProblemAfterChangeDetached] transizione non riuscita')
 }
 
 async function walkAutoTransitions(

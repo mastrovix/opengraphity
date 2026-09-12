@@ -31,6 +31,7 @@ vi.mock('../../lib/logger.js', () => {
   return { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => child } }
 })
 vi.mock('../../middleware/metrics.js', () => ({
+  workflowPurposeMissingTotal: { inc: vi.fn() },
   serviceMapSyncsTotal: { inc: vi.fn() },
   serviceEvaluationsTotal: { inc: vi.fn() }, serviceEvaluationDurationSeconds: { observe: vi.fn() }, servicesHealth: { set: vi.fn() },
   serviceMapsStale: { set: vi.fn() }, eventsSuppressedTotal: { inc: vi.fn() },
@@ -42,6 +43,13 @@ vi.mock('../serviceImpact/engine.js', async (importOriginal) => ({
 vi.mock('../../jobs/serviceImpactWorker.js', () => ({
   enqueueServiceMapSync: vi.fn().mockResolvedValue(undefined),
   enqueueServiceMapEvaluation: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('../../lib/workflowHelpers.js', () => ({
+  // Ondata 4 · A4-1: i passi della finestra di change vengono dallo SCOPO.
+  // Il tenant di prova ha i nomi di fabbrica con gli scopi della migrazione.
+  getStepNamesByPurpose: vi.fn(async (_s: unknown, _t: unknown, _e: unknown, purposes: readonly string[]) =>
+    purposes.includes('implementation') ? ['deployment'] : ['scheduled']),
 }))
 
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
@@ -59,7 +67,10 @@ const { DEFAULT_SERVICE_IMPACT_RULES_JSON, SERVICE_MAP_MAX_NODES } = await impor
 
 const NOW = '2026-09-10T18:00:00.000Z'
 const tx = { run: vi.fn() }
-const session = { close: vi.fn().mockResolvedValue(undefined), executeWrite: vi.fn(async (work: (t: unknown) => Promise<unknown>) => work(tx)) }
+// `executeRead` c'è perché la sessione vera ce l'ha: la risoluzione dei passi
+// di finestra per SCOPO (ondata 4 · A4-1) riusa la sessione del chiamante
+// invece di aprirne una in più per valutazione.
+const session = { close: vi.fn().mockResolvedValue(undefined), executeWrite: vi.fn(async (work: (t: unknown) => Promise<unknown>) => work(tx)), executeRead: vi.fn(async (work: (t: unknown) => Promise<unknown>) => work(tx)) }
 
 function onCypher(rules: Array<[RegExp, unknown]>) {
   const impl = async (_s: unknown, cypher: string, params?: Record<string, unknown>) => {

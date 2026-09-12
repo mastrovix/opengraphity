@@ -11,6 +11,8 @@ import { withSession, runQuery, runQueryOne, getSession, type Props } from '../c
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { requireRole } from '../../../lib/requireRole.js'
+import { getStepPurpose } from '../../../lib/workflowHelpers.js'
+import { stepNamesByPurposeOrdered } from '../../../lib/workflowTargets.js'
 import { createChangeRFC } from '../../../services/changeCreationService.js'
 import { change as getChange } from './queries.js'
 import { evaluateAutoTransitions, revertProblemAfterChangeDetached } from './autoTransitions.js'
@@ -225,22 +227,32 @@ async function linkChangeToRequestingProblem(
     if (linked.records.length === 0) {
       throw new GraphQLError('Problem non trovato per il collegamento della change', { extensions: { code: 'NOT_FOUND' } })
     }
-    // 2. Avanza il problem a change_requested, se la transizione è disponibile
-    // dallo step corrente (lo è da under_investigation e known_error).
+    // 2. Avanza il problem al passo di SCOPO `change_requested` (ondata 4 ·
+    // A4-2: lo scopo, non il nome), se la transizione è disponibile dallo step
+    // corrente (di fabbrica lo è da under_investigation e known_error).
     const wi = await session.executeRead((tx) =>
       tx.run(`MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(w:WorkflowInstance) RETURN w.id AS id`, { problemId, tenantId: ctx.tenantId }),
     )
     const instanceId = wi.records[0]?.get('id') as string | undefined
     if (!instanceId) return
     const avail = await workflowEngine.getAvailableTransitions(session, instanceId)
-    if (!avail.some((t) => t.toStep === 'change_requested')) return
+    const candidates = await stepNamesByPurposeOrdered(session, ctx.tenantId, 'problem', ['change_requested'])
+    const toStep = candidates.find((n) => avail.some((t) => t.toStep === n))
+    if (!toStep) {
+      // Non è un errore (il problem può essere in un passo da cui quella
+      // transizione non parte), ma non è più muto: prima un `return` secco
+      // nascondeva anche il caso «nessun passo dichiara lo scopo».
+      logger.warn({ problemId, changeId, candidates, available: avail.map((t) => t.toStep) },
+        '[createChange] problem collegato ma nessun passo di scopo change_requested è raggiungibile: il problem resta dov\'è')
+      return
+    }
     const res = await workflowEngine.transition(
       session,
-      { instanceId, toStepName: 'change_requested', triggeredBy: ctx.userId, triggerType: 'manual', notes: `RFC ${changeCode} creata` },
+      { instanceId, toStepName: toStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: `RFC ${changeCode} creata` },
       { userId: ctx.userId, entityData: {} } as ActionContext,
     )
     if (!res.success) {
-      logger.warn({ problemId, changeId, error: res.error }, '[createChange] problem collegato ma transizione a change_requested non riuscita')
+      logger.warn({ problemId, changeId, toStep, error: res.error }, '[createChange] problem collegato ma transizione al passo di scopo change_requested non riuscita')
     }
   }, true)
 }
@@ -352,14 +364,20 @@ export async function executeChangeTransition(
     const changeType = (entityProps['change_type'] as string) ?? 'normal'
 
     // ── Gate di approvazione ──────────────────────────────────────────────────
-    // Uscire da `approval` verso avanti significa approvare la change: oltre
-    // al ruolo admin, TUTTI i requisiti multi-parte (Change Manager + owner
-    // group) devono essere 'approved' — lo stesso gate dell'auto-advance.
-    // Il rigetto (approval → assessment) deve passare da rejectChangeApproval,
-    // che riapre i task: una transizione "nuda" lascerebbe gli assessment
-    // completi e la change rimbalzerebbe subito in approval.
-    if (currentStep === 'approval' && args.toStep !== 'approval') {
-      if (args.toStep === 'assessment') {
+    // Uscire da un passo di SCOPO `approval` verso avanti significa approvare la
+    // change: oltre al ruolo admin, TUTTI i requisiti multi-parte (Change
+    // Manager + owner group) devono essere 'approved' — lo stesso gate
+    // dell'auto-advance. Il rigetto (verso il passo di scopo `assessment`) deve
+    // passare da rejectChangeApproval, che riapre i task: una transizione
+    // "nuda" lascerebbe gli assessment completi e la change rimbalzerebbe
+    // subito in approvazione. Ondata 4 · A4-2: sono gli SCOPI, non i nomi —
+    // con un passo «CAB settimanale» il gate non scattava più.
+    const [currentPurpose, targetPurpose] = await Promise.all([
+      getStepPurpose(session, ctx.tenantId, 'change', currentStep),
+      getStepPurpose(session, ctx.tenantId, 'change', args.toStep),
+    ])
+    if (currentPurpose === 'approval' && targetPurpose !== 'approval') {
+      if (targetPurpose === 'assessment') {
         throw new GraphQLError('Per rigettare usa "Rigetta" nella sezione Approvazione (rejectChangeApproval), che riapre gli assessment', { extensions: { code: 'CONFLICT' } })
       }
       if (changeType !== 'standard') {

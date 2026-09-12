@@ -23,6 +23,7 @@ import { toast } from 'sonner'
 import { inputS, selectS, labelS, textareaS as sharedTextareaS } from '@/components/ui/styles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
+import { GET_WORKFLOW_EVENT_TYPES } from '@/graphql/queries'
 import { Toggle } from '@/components/ui/Toggle'
 import { Tabs, type TabItem } from '@/components/ui/Tabs'
 import { useMutationWithToast, errorMessage } from '@/hooks/useMutationWithToast'
@@ -68,7 +69,14 @@ type ModalKey = 'inbound' | 'outbound' | 'apikey' | 'secret'
 // visibili in elenco con il link "gestisci in Monitoraggio".
 const ENTITY_TYPES = ['incident', 'problem', 'change', 'service_request', 'ci'] as const
 const HTTP_METHODS = ['POST', 'PUT', 'PATCH'] as const
-const OUTBOUND_EVENTS = ['incident.created', 'incident.resolved', 'change.approved', 'change.completed', 'problem.created', 'sla.breached'] as const
+/**
+ * I tipi di evento «di prodotto» a cui un webhook si può abbonare. Erano gli
+ * unici sei offerti, e nessuno di loro è un passo intermedio: abbonare un
+ * webhook al proprio passo — o a un passo rinominato — era **impossibile**
+ * (D-22). Ora a questi si aggiungono i tipi veri dei workflow del tenant,
+ * letti da `workflowEventTypes`.
+ */
+const PRODUCT_OUTBOUND_EVENTS = ['incident.created', 'incident.resolved', 'change.approved', 'change.completed', 'problem.created', 'sla.breached'] as const
 const PERMISSIONS = ['incidents:read', 'incidents:write', 'changes:read', 'changes:write', 'problems:read', 'problems:write', 'ci:read', 'ci:write', 'kb:read'] as const
 
 const textareaS: React.CSSProperties = { ...sharedTextareaS, minHeight: 70 }
@@ -138,6 +146,15 @@ export function IntegrationsPage() {
   const inQ = useQuery<{ inboundWebhooks: InboundWebhook[] }>(GET_INBOUND_WEBHOOKS, { variables: inList.variables })
   const outQ = useQuery<{ outboundWebhooks: OutboundWebhook[] }>(GET_OUTBOUND_WEBHOOKS, { variables: outList.variables })
   const keyQ = useQuery<{ apiKeys: ApiKeyRow[] }>(GET_API_KEYS, { variables: keyList.variables })
+  // I tipi di evento dei workflow del tenant (D-22): il tipo stabile
+  // <entità>.step_entered e un alias per ogni passo, etichetta compresa.
+  const evQ = useQuery<{ workflowEventTypes: Array<{ eventType: string; stepLabel: string | null; stable: boolean }> }>(GET_WORKFLOW_EVENT_TYPES)
+  const outboundEventOptions: Array<{ eventType: string; label: string | null }> = [
+    ...PRODUCT_OUTBOUND_EVENTS.map((e) => ({ eventType: e, label: null })),
+    ...(evQ.data?.workflowEventTypes ?? [])
+      .filter((e) => !(PRODUCT_OUTBOUND_EVENTS as readonly string[]).includes(e.eventType))
+      .map((e) => ({ eventType: e.eventType, label: e.stepLabel })),
+  ]
 
   // Writes refresh the ACTIVE list query via its `refetch()` (keeps the live
   // sort/filter variables; `refetchQueries: [{ query }]` without variables
@@ -419,10 +436,10 @@ export function IntegrationsPage() {
               <div>
                 <div style={labelS}>{t('admin.integrations.form.events')}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {OUTBOUND_EVENTS.map(ev => (
+                  {outboundEventOptions.map(({ eventType: ev, label }) => (
                     <label key={ev} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                       <input type="checkbox" checked={outForm.events.includes(ev)} onChange={() => setOutForm({ ...outForm, events: toggleList(outForm.events, ev) })} />
-                      {ev}
+                      {label ? `${ev} — ${label}` : ev}
                     </label>
                   ))}
                 </div>

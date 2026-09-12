@@ -153,7 +153,9 @@ export interface WorkflowStepDef {
   /**
    * Proprietà aggiuntive persistite così come sono sul nodo WorkflowStep
    * (chiavi snake_case: is_initial, is_terminal, is_open, category,
-   * on_enter_create, step_order). Lette da portale, reportAI e dagli hook
+   * on_enter_create, step_order, purpose). `purpose` è lo SCOPO del passo
+   * (`WORKFLOW_STEP_PURPOSES` in @opengraphity/types): è quello che le regole
+   * di dominio riconoscono, al posto del nome (B-4). Lette da portale, reportAI e dagli hook
    * di ingresso step delle change: il seed deve poterle dichiarare.
    */
   metadata?:    Record<string, string | number | boolean | null>

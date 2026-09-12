@@ -72,7 +72,7 @@ export function ChangeDetailPage() {
   const { data: auditData, refetch: refetchAudit } = useQuery<{ changeAuditTrail: ChangeAuditEntryData[] }>(GET_CHANGE_AUDIT_TRAIL, { variables: { changeId }, fetchPolicy: 'cache-and-network' })
   const { me } = useMe()
   const meData: { me: MeData | null } = { me }
-  const { steps: wfSteps, byName: wfByName, initialStep: wfInitialStep, isTerminal: wfIsTerminal } = useWorkflowSteps('change')
+  const { steps: wfSteps, byName: wfByName, initialStep: wfInitialStep, isTerminal: wfIsTerminal, purposeOf: wfPurposeOf } = useWorkflowSteps('change')
 
   const refetchAll = async () => { await refetchChange(); await refetchAffected(); await refetchAudit() }
   const [executeTransition, { loading: transitioning }] = useMutation<{ executeChangeTransition?: { actionErrors?: string[] | null } }>(EXECUTE_CHANGE_TRANSITION, {
@@ -197,12 +197,15 @@ export function ChangeDetailPage() {
     }
   }
 
-  // Posizione rispetto allo step di approvazione: il box Approvazione è aperto
-  // e azionabile DURANTE approval, poi resta visibile ma collassato (esito).
+  // Posizione rispetto al passo di approvazione: il box Approvazione è aperto
+  // e azionabile DURANTE l'approvazione, poi resta visibile ma collassato
+  // (esito). Il passo si riconosce dallo SCOPO `approval` e non dal nome
+  // (ondata 4 · A4-3): con un passo chiamato «CAB settimanale» il box non si
+  // apriva mai e le approvazioni erano invisibili.
   const stepNames    = wfSteps.map(s => s.name)
-  const approvalIdx  = stepNames.indexOf('approval')
+  const approvalIdx  = wfSteps.findIndex(s => s.purpose === 'approval')
   const currentIdx   = stepNames.indexOf(currentStep)
-  const atApproval   = currentStep === 'approval'
+  const atApproval   = wfPurposeOf(currentStep) === 'approval'
   const pastApproval = approvalIdx >= 0 && currentIdx > approvalIdx
   const showApproval = atApproval || pastApproval
 
@@ -237,6 +240,7 @@ export function ChangeDetailPage() {
       <ChangeInfoCard
         change={change}
         currentStep={currentStep}
+        atApproval={atApproval}
         initialStepName={wfInitialStep?.name ?? null}
         isTerminal={wfIsTerminal(currentStep)}
         isAdmin={isAdmin}
@@ -355,9 +359,9 @@ export function ChangeDetailPage() {
         affected={affected}
         isAdmin={isAdmin}
         userTeamIds={userTeamIds}
-        defaultOpen={currentStep !== 'approval'}
-        activeColor={currentStep === 'approval' ? undefined : palette.yellow.bg}
-        activeTextColor={currentStep === 'approval' ? undefined : 'var(--color-slate-dark)'}
+        defaultOpen={!atApproval}
+        activeColor={atApproval ? undefined : palette.yellow.bg}
+        activeTextColor={atApproval ? undefined : 'var(--color-slate-dark)'}
       />
 
       <SectionCard title="CIs Involved" collapsible count={affected.length}>

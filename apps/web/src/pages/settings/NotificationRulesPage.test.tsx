@@ -8,22 +8,47 @@
 import { describe, it, expect, vi } from 'vitest'
 import { screen, within } from '@testing-library/react'
 import NotificationRulesPage from './NotificationRulesPage'
-import { GET_NOTIFICATION_RULES, GET_NOTIFICATION_ROUTING } from '@/graphql/queries'
+import { GET_NOTIFICATION_RULES, GET_NOTIFICATION_ROUTING, GET_WORKFLOW_EVENT_TYPES } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
-import { NOTIFICATION_TARGETS, USER_ROLES } from '@opengraphity/types'
+import { NOTIFICATION_TARGETS, USER_ROLES, WORKFLOW_STEP_PURPOSES } from '@opengraphity/types'
+import i18n from '@/i18n/i18n'
+
+const T2 = (key: string, opts?: Record<string, unknown>) => i18n.t(key, opts) as string
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
   Toaster: () => null,
 }))
 
-function rule(id: string, eventType: string, channels: string[]) {
+function rule(id: string, eventType: string, channels: string[], over: Record<string, unknown> = {}) {
   return {
     __typename: 'NotificationRule', id, eventType, enabled: true, severityOverride: 'info', titleKey: `notification.${eventType}.title`,
     channels, target: 'all', conditions: null, isSeed: true,
+    // Ondata 4 (D-22): restringimento della regola di passo ed «è prodotto da
+    // qualcosa?», entrambi dal server.
+    stepPurpose: null, stepCategory: null, eventProduced: true,
     escalationDelayMinutes: null, escalationTarget: null, escalationMessage: null,
     slaWarningThresholdPercent: null, slaWarningTarget: null, digestTime: null, digestRecipients: null,
+    ...over,
   }
+}
+
+/** I tipi di evento veri dei workflow del tenant (`workflowEventTypes`). */
+function eventType(over: Record<string, unknown>) {
+  return {
+    __typename: 'WorkflowEventType', eventType: '', entityType: 'incident',
+    stepName: null, stepLabel: null, stepPurpose: null, stepCategory: null, stable: false, ...over,
+  }
+}
+
+const workflowEventTypesMock: GqlMock = {
+  request: { query: GET_WORKFLOW_EVENT_TYPES },
+  result: { data: { workflowEventTypes: [
+    eventType({ eventType: 'incident.step_entered', stable: true }),
+    eventType({ eventType: 'incident.created',            stepName: 'created',   stepLabel: 'Creato',     stepCategory: 'active'  }),
+    eventType({ eventType: 'incident.in_attesa_fornitore', stepName: 'in_attesa_fornitore', stepLabel: 'In attesa del fornitore', stepCategory: 'waiting' }),
+  ] } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
 }
 
 const rulesMock: GqlMock = {
@@ -65,7 +90,7 @@ const channelsOf = (eventType: string) => within(rowOf(eventType)).getAllByRole(
 
 describe('NotificationRulesPage — canali consegnabili', () => {
   it('ogni riga offre solo i canali che il server dichiara per quel tipo', async () => {
-    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock] })
+    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock, workflowEventTypesMock] })
     expect((await screen.findAllByText('event.storm_started')).length).toBeGreaterThan(0)
 
     expect(channelsOf('incident.created')).toEqual(['In app', 'Email', 'Slack', 'Teams'])
@@ -74,7 +99,7 @@ describe('NotificationRulesPage — canali consegnabili', () => {
   })
 
   it('un canale salvato ma non consegnabile resta visibile, spuntato e con l\'avviso, così si può togliere', async () => {
-    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock] })
+    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock, workflowEventTypesMock] })
     await screen.findAllByText('service.incident_opened')
 
     const row = rowOf('service.incident_opened')
@@ -87,7 +112,7 @@ describe('NotificationRulesPage — canali consegnabili', () => {
   })
 
   it('le regole degli allarmi e dei servizi hanno la loro sezione (non «Custom»)', async () => {
-    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock] })
+    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock, workflowEventTypesMock] })
     await screen.findAllByText('event.storm_started')
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
     expect(headings).toEqual(['Incident', 'Change', 'Alarms and CI health', 'Monitored services'])
@@ -95,7 +120,7 @@ describe('NotificationRulesPage — canali consegnabili', () => {
   })
 
   it('nuova regola: i canali seguono il tipo scelto (incident.created → 4, event.storm_started → 2)', async () => {
-    const { user } = renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock] })
+    const { user } = renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock, workflowEventTypesMock] })
     await screen.findAllByText('event.storm_started')
     await user.click(screen.getByRole('button', { name: 'New rule' }))
 
@@ -127,7 +152,7 @@ describe('NotificationRulesPage — canali consegnabili', () => {
    * offrire (il server rifiuterebbe la regola).
    */
   it('i destinatari offerti sono quelli applicabili all\'evento, e i ruoli offerti sono quelli che l\'autenticazione accetta', async () => {
-    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock] })
+    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock, workflowEventTypesMock] })
     await screen.findAllByText('event.storm_started')
 
     // nella riga ci sono due tendine: gravità e destinatari (nell'ordine delle colonne)
@@ -146,8 +171,74 @@ describe('NotificationRulesPage — canali consegnabili', () => {
 
   it('se la tabella dei canali non arriva, la pagina mostra l\'errore invece di un elenco di canali a prescindere', async () => {
     const routingError: GqlMock = { request: { query: GET_NOTIFICATION_ROUTING }, error: new Error('routing unavailable') }
-    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingError], showWarnings: false })
+    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingError, workflowEventTypesMock], showWarnings: false })
     expect(await screen.findByText('routing unavailable')).toBeInTheDocument()
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * Ondata 4 — D-22 / B-16: le regole del passo e quelle che non scatteranno mai.
+ *
+ * - una regola sul tipo stabile può essere ristretta allo SCOPO o alla
+ *   CATEGORIA del passo, ed è ciò che la fa sopravvivere a una rinomina: la
+ *   riga lo dice, invece di mostrare solo il tipo di evento;
+ * - più regole possono condividere lo stesso tipo (una per scopo/categoria):
+ *   la pagina le mostra tutte, non una sola;
+ * - una regola il cui evento non è prodotto da niente — era il caso di
+ *   `incident.on_hold`, viva in ogni tenant e morta da sempre — è marcata con
+ *   un avviso: prima non risultava da nessuna parte;
+ * - il dialogo offre i tipi VERI dei workflow del tenant, non sei costanti.
+ */
+describe('NotificationRulesPage — regole di passo e regole morte (ondata 4)', () => {
+  const stepRules: GqlMock = {
+    request: { query: GET_NOTIFICATION_RULES },
+    result: { data: { notificationRules: [
+      rule('r1', 'incident.step_entered', ['in_app'], { stepCategory: 'waiting', titleKey: 'notification.incident.on_hold.title' }),
+      rule('r2', 'incident.step_entered', ['in_app'], { id: 'r2', stepPurpose: 'approval', titleKey: 'x.approval' }),
+      rule('r3', 'incident.on_hold',      ['in_app'], { id: 'r3', eventProduced: false }),
+    ] } },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  }
+
+  it('mostra TUTTE le regole dello stesso tipo, ciascuna col suo restringimento', async () => {
+    renderWithProviders(<NotificationRulesPage />, { mocks: [stepRules, routingMock, workflowEventTypesMock] })
+    await screen.findAllByText('incident.step_entered')
+
+    const rows = new Set(screen.getAllByText('incident.step_entered').map((el) => el.closest('tr')))
+    expect(rows.size).toBe(2)
+    expect(screen.getByText(T2('notificationRules.narrowCategory', { category: 'waiting' }))).toBeInTheDocument()
+    expect(screen.getByText(T2('notificationRules.narrowPurpose', { purpose: T2('workflow.purposeOption.approval') }))).toBeInTheDocument()
+  })
+
+  it('una regola il cui evento non è prodotto da niente porta l\'avviso; le altre no', async () => {
+    renderWithProviders(<NotificationRulesPage />, { mocks: [stepRules, routingMock, workflowEventTypesMock] })
+    await screen.findAllByText('incident.on_hold')
+
+    const dead = screen.getAllByText('incident.on_hold')[0]!.closest('tr')!
+    expect(within(dead).getByLabelText(T2('notificationRules.eventNotProduced', { eventType: 'incident.on_hold' }))).toBeInTheDocument()
+    const alive = screen.getAllByText('incident.step_entered')[0]!.closest('tr')!
+    expect(within(alive).queryByLabelText(/non scatterà mai|will never fire/)).not.toBeInTheDocument()
+  })
+
+  it('il dialogo offre i passi dei workflow del tenant, e per il tipo stabile chiede scopo o categoria', async () => {
+    const { user } = renderWithProviders(<NotificationRulesPage />, { mocks: [stepRules, routingMock, workflowEventTypesMock] })
+    await screen.findAllByText('incident.step_entered')
+    await user.click(screen.getByRole('button', { name: 'New rule' }))
+    const dialog = screen.getByRole('dialog')
+    const typeSelect = within(dialog).getByRole('combobox', { name: 'Event type' })
+
+    // il passo del cliente è offerto con la sua etichetta: prima non c'era modo
+    // di indovinare il nome del tipo generato
+    expect(within(typeSelect).getByRole('option', { name: /incident\.in_attesa_fornitore — In attesa del fornitore/ })).toBeInTheDocument()
+
+    // nessun restringimento finché il tipo non è quello stabile
+    expect(within(dialog).queryByRole('combobox', { name: T2('notificationRules.stepPurpose') })).not.toBeInTheDocument()
+    await user.selectOptions(typeSelect, 'incident.step_entered')
+    const purpose = within(dialog).getByRole('combobox', { name: T2('notificationRules.stepPurpose') })
+    expect(within(purpose).getAllByRole('option').length).toBe(WORKFLOW_STEP_PURPOSES.length + 1)
+    // le categorie offerte sono quelle che i passi del tenant usano davvero
+    const category = within(dialog).getByRole('combobox', { name: T2('notificationRules.stepCategory') })
+    expect(within(category).getAllByRole('option').map((o) => (o as HTMLOptionElement).value)).toEqual(['', 'active', 'waiting'])
   })
 })

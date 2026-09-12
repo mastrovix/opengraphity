@@ -8,6 +8,7 @@ import { mapUser, mapTeam } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { getScalarFields } from '../../lib/schemaFields.js'
 import { audit } from '../../lib/audit.js'
+import { auditStepEntered } from '../../lib/stepEvent.js'
 import { logger } from '../../lib/logger.js'
 import type { GraphQLContext } from '../../context.js'
 import { ciLabelPredicate } from '../../lib/ciLabels.js'
@@ -408,12 +409,13 @@ async function executeProblemTransition(
         '[problem] transition persisted but step actions failed')
     }
 
-    // Emit a generic transition event named after the target step and audit
-    // the transition. Consumers that care about specific steps subscribe to
-    // "problem.<stepName>" — no step-name branching needed here.
+    // L'ingresso nel passo: evento con il tipo STABILE `problem.step_entered`
+    // (più l'alias storico `problem.<passo>` per le regole già agganciate) e
+    // azione di audit stabile con il passo nei dettagli (D-22). Né l'evento né
+    // l'audit hanno più il nome del passo nella loro identità.
     const svcCtx = { tenantId: ctx.tenantId, userId: ctx.userId }
     await problemService.publishProblemTransition(args.problemId, args.toStep, svcCtx)
-    void audit(ctx, `problem.${args.toStep}`, 'Problem', args.problemId)
+    void auditStepEntered(session, ctx, 'problem', 'Problem', args.problemId, args.toStep)
 
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props

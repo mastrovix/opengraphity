@@ -1106,7 +1106,16 @@
       "high": "High",
       "medium": "Medium",
       "low": "Low"
-    }
+    },
+    "eventNotProduced": "Nothing produces the event “{{eventType}}”: this rule is on but will never fire. Pick an event type your workflows actually produce.",
+    "narrowPurpose": "Only steps with purpose: {{purpose}}",
+    "narrowCategory": "Only steps in category: {{category}}",
+    "eventGroupStandard": "Standard",
+    "eventGroupWorkflow": "Steps of your workflows",
+    "stepPurpose": "Only steps with purpose",
+    "stepCategory": "Only steps in category",
+    "stepNarrowingAny": "— Any step —",
+    "stepNarrowingHint": "With no narrowing the rule applies to every step entry. Narrowing by purpose or category instead of by name is what makes it survive a step rename."
   },
   "workflow": {
     "addAction": "Add action",
@@ -1121,7 +1130,23 @@
     "deleteBlockedInstances_one": "{{count}} ticket is currently on this step: deleting it would leave it with no current step and unable to move on. Move it to another step first.",
     "deleteBlockedInstances_other": "{{count}} tickets are currently on this step: deleting it would leave them with no current step and unable to move on. Move them to another step first.",
     "initialOnTerminal": "A terminal step cannot also be the initial step: every new ticket would be born already closed.",
-    "deleteBlockedFactory": "The process's start and end steps cannot be deleted: they are the workflow's endpoints."
+    "deleteBlockedFactory": "The process's start and end steps cannot be deleted: they are the workflow's endpoints.",
+    "purpose": "Purpose",
+    "purposeNone": "— None —",
+    "purposeHint": "The purpose says what ROLE the step plays in the process, and it does not change when you rename the step: domain rules (approvals, release window, problem sync, notifications) recognise the purpose, not the name. Leaving it empty is legitimate: no purpose is ever guessed from the name.",
+    "purposeOption": {
+      "assessment": "Impact and risk assessment",
+      "planning": "Release planning",
+      "approval": "Approval gathering",
+      "scheduled": "Scheduled (planned window)",
+      "implementation": "Release under way (open window)",
+      "validation": "Outcome validation",
+      "review": "Post-implementation review",
+      "triage": "Intake and triage",
+      "investigation": "Root-cause analysis",
+      "change_requested": "Waiting for a change",
+      "change_in_progress": "Change under way"
+    }
   },
   "itilDesigner": {
     "title": "ITIL Type Designer",
@@ -1310,6 +1335,11 @@
     "ci": {
       "health_changed": {
         "title": "CI health changed"
+      }
+    },
+    "incident": {
+      "on_hold": {
+        "title": "Incident on hold"
       }
     }
   },

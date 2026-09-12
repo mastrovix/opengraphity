@@ -72,7 +72,12 @@ export const RULE_CATEGORIES: { key: string; events: string[] }[] = [
     key: 'incident',
     events: [
       'incident.created', 'incident.assigned', 'incident.in_progress',
-      'incident.on_hold', 'incident.escalated', 'incident.resolved', 'incident.closed',
+      // Il tipo STABILE dell'ingresso in un passo (D-22) prende il posto di
+      // `incident.on_hold`, che nessun evento produceva: il passo di attesa di
+      // fabbrica si chiama `pending`. Una regola su questo tipo può essere
+      // ristretta allo scopo o alla categoria del passo, e regge alla rinomina.
+      'incident.step_entered',
+      'incident.escalated', 'incident.resolved', 'incident.closed',
     ],
   },
   {
@@ -85,7 +90,7 @@ export const RULE_CATEGORIES: { key: string; events: string[] }[] = [
   {
     key: 'problem',
     events: [
-      'problem.created', 'problem.under_investigation', 'problem.deferred',
+      'problem.created', 'problem.step_entered', 'problem.under_investigation', 'problem.deferred',
       'problem.resolved', 'problem.closed',
     ],
   },
@@ -165,6 +170,15 @@ export interface NotificationRule {
   channels:         string[]
   target:           string
   isSeed:           boolean
+  /** Restringimento della regola sul tipo stabile del passo: scopo / categoria. */
+  stepPurpose?:     string | null
+  stepCategory?:    string | null
+  /**
+   * Falso = niente, nel prodotto o nei workflow di questo tenant, produce il
+   * tipo di evento della regola: la regola è accesa e non scatterà mai. Prima
+   * non risultava da nessuna parte (il dispatcher usciva in silenzio).
+   */
+  eventProduced?:   boolean
   escalationDelayMinutes?:     number | null
   escalationTarget?:           string | null
   escalationMessage?:          string | null
@@ -244,8 +258,25 @@ export function RuleRow({
             ? <span title={t('notificationRules.systemRule',   'Regola di sistema')}     style={{ display: 'inline-flex', flexShrink: 0 }}><Lock   size={14} color={colors.slateLight} /></span>
             : <span title={t('notificationRules.customRule',   'Regola personalizzata')} style={{ display: 'inline-flex', flexShrink: 0 }}><Unlock size={14} color={colors.slateLight} /></span>
           }
+          {/* Regola che non scatterà mai: nessun evento di questo tipo viene
+              prodotto. Era il caso di `incident.on_hold`, viva in ogni tenant e
+              morta da sempre, e non si vedeva da nessuna parte (D-22/B-16). */}
+          {rule.eventProduced === false && (
+            <span title={t('notificationRules.eventNotProduced', { eventType: rule.eventType })} style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--color-danger)' }}>
+              <AlertTriangle size={14} aria-label={t('notificationRules.eventNotProduced', { eventType: rule.eventType })} />
+            </span>
+          )}
         </div>
         <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontFamily: 'monospace', marginTop: 1 }}>{rule.eventType}</div>
+        {/* Restringimento della regola del passo: si imposta alla creazione ed
+            è ciò che la rende riconoscibile senza nominare un passo. */}
+        {(rule.stepPurpose || rule.stepCategory) && (
+          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 1 }}>
+            {rule.stepPurpose
+              ? t('notificationRules.narrowPurpose', { purpose: t(`workflow.purposeOption.${rule.stepPurpose}`) })
+              : t('notificationRules.narrowCategory', { category: rule.stepCategory })}
+          </div>
+        )}
       </td>
 
       {/* Severity */}

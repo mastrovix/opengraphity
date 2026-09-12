@@ -2,7 +2,24 @@ import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { colors, fontWeight, lookupOrError, alpha, palette } from '@/lib/tokens'
+import { WORKFLOW_STEP_PURPOSES } from '@opengraphity/types'
 import { SEVERITY_COLOR, CHANNEL_LABEL_KEY, STANDARD_EVENTS, TARGET_OPTIONS, routableFor, type NotificationRouting } from './NotificationRuleList'
+
+/**
+ * Un tipo di evento che i workflow del tenant producono davvero
+ * (`workflowEventTypes`, D-22). Prima il dialogo offriva solo le costanti di
+ * `STANDARD_EVENTS`: chi aveva aggiunto o rinominato un passo doveva scrivere
+ * a mano un tipo generato che non poteva indovinare.
+ */
+export interface WorkflowEventType {
+  eventType:    string
+  entityType:   string | null
+  stepName:     string | null
+  stepLabel:    string | null
+  stepPurpose:  string | null
+  stepCategory: string | null
+  stable:       boolean
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -13,6 +30,9 @@ export interface CreateInput {
   titleKey:         string
   channels:         string[]
   target:           string
+  /** Restringimento per i soli tipi `<entità>.step_entered`: scopo / categoria del passo. */
+  stepPurpose?:                string | null
+  stepCategory?:               string | null
   escalationDelayMinutes?:     number | null
   escalationTarget?:           string | null
   escalationMessage?:          string | null
@@ -32,12 +52,15 @@ const CUSTOM_SENTINEL = '__custom__'
 
 export function NewRuleDialog({
   routing,
+  workflowEventTypes,
   onSave,
   onClose,
   saving,
 }: {
   /** Canali consegnabili per tipo di evento (dal server): il dialogo offre solo quelli. */
   routing: NotificationRouting
+  /** I tipi di evento veri dei workflow del tenant (dal server). */
+  workflowEventTypes: readonly WorkflowEventType[]
   onSave:  (input: CreateInput) => void
   onClose: () => void
   saving:  boolean
@@ -59,12 +82,24 @@ export function NewRuleDialog({
   const [slaTarget,        setSlaTarget]         = useState('all')
   // Digest fields
   const [digestTime,       setDigestTime]        = useState('08:00')
+  // Restringimento della regola di passo (solo per i tipi `*.step_entered`)
+  const [stepPurpose,     setStepPurpose]        = useState('')
+  const [stepCategory,    setStepCategory]       = useState('')
 
   const isCustom          = eventTypeSelect === CUSTOM_SENTINEL
   const eventType         = isCustom ? customEventType.trim() : eventTypeSelect
   const isEscalation      = eventType === 'incident.escalation'
   const isSlaWarning      = eventType === 'sla.warning'
   const isDigest          = eventType === 'digest.daily'
+  // Tipo stabile di ingresso in un passo: è l'unico che accetta un
+  // restringimento per scopo o categoria del passo (il server rifiuta il
+  // restringimento su ogni altro tipo, dove non verrebbe applicato).
+  const isStepEntered     = workflowEventTypes.some((e) => e.eventType === eventType && e.stable)
+  // Le categorie di passo che il tenant usa davvero: derivate dai suoi passi,
+  // non da una lista scritta a mano.
+  const stepCategories    = [...new Set(workflowEventTypes.map((e) => e.stepCategory).filter((c): c is string => !!c))].sort()
+  // I tipi dei workflow non ancora fra le costanti: sono i passi del cliente.
+  const workflowOnly      = workflowEventTypes.filter((e) => !STANDARD_EVENTS.includes(e.eventType))
   // Canali offerti per il tipo scelto (i predefiniti finché non c'è un tipo);
   // un canale spuntato che il nuovo tipo non ammette non viene inviato.
   const routable          = routableFor(routing, eventType)
@@ -123,9 +158,18 @@ export function NewRuleDialog({
           <span style={labelTextStyle}>{t('notificationRules.eventType')}</span>
           <select value={eventTypeSelect} onChange={(e) => setEventTypeSelect(e.target.value)} style={inputStyle}>
             <option value="">— {t('common.select', 'Seleziona')} —</option>
-            <optgroup label="Standard">
+            <optgroup label={t('notificationRules.eventGroupStandard')}>
               {STANDARD_EVENTS.map((e) => <option key={e} value={e}>{e}</option>)}
             </optgroup>
+            {workflowOnly.length > 0 && (
+              <optgroup label={t('notificationRules.eventGroupWorkflow')}>
+                {workflowOnly.map((e) => (
+                  <option key={e.eventType} value={e.eventType}>
+                    {e.stepLabel ? `${e.eventType} — ${e.stepLabel}` : e.eventType}
+                  </option>
+                ))}
+              </optgroup>
+            )}
             <option value={CUSTOM_SENTINEL}>{t('notificationRules.customEvent')}</option>
           </select>
         </label>
@@ -194,6 +238,34 @@ export function NewRuleDialog({
           </select>
         </label>
 
+        {/* Restringimento della regola di passo: scopo (vocabolario chiuso) o
+            categoria (quelle che il tenant usa). Senza restringimento la regola
+            vale per OGNI ingresso in un passo — legittimo, ed è così che una
+            regola regge alla rinomina di un passo. */}
+        {isStepEntered && (
+          <>
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>{t('notificationRules.stepPurpose')}</span>
+              <select value={stepPurpose} onChange={(e) => { setStepPurpose(e.target.value); if (e.target.value) setStepCategory('') }} style={inputStyle}>
+                <option value="">{t('notificationRules.stepNarrowingAny')}</option>
+                {WORKFLOW_STEP_PURPOSES.map((p) => (
+                  <option key={p} value={p}>{t(`workflow.purposeOption.${p}`)}</option>
+                ))}
+              </select>
+            </label>
+            {!stepPurpose && (
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>{t('notificationRules.stepCategory')}</span>
+                <select value={stepCategory} onChange={(e) => setStepCategory(e.target.value)} style={inputStyle}>
+                  <option value="">{t('notificationRules.stepNarrowingAny')}</option>
+                  {stepCategories.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </label>
+            )}
+            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('notificationRules.stepNarrowingHint')}</span>
+          </>
+        )}
+
         {/* Escalation conditional fields */}
         {isEscalation && (
           <>
@@ -248,6 +320,8 @@ export function NewRuleDialog({
           <button type="button"
             onClick={() => onSave({
               eventType, titleKey: titleKey.trim(), severityOverride: severity, channels: chosenChannels, target, enabled: true,
+              stepPurpose:  isStepEntered ? stepPurpose  || undefined : undefined,
+              stepCategory: isStepEntered && !stepPurpose ? stepCategory || undefined : undefined,
               escalationDelayMinutes: isEscalation && escalationDelay ? Number(escalationDelay) : undefined,
               escalationTarget:  isEscalation ? escalationTarget || undefined : undefined,
               escalationMessage: isEscalation ? escalationMessage || undefined : undefined,

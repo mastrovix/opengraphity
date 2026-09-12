@@ -20,9 +20,9 @@ export type { EventRecord, PipelineMode, PipelineInput, PipelineResult, Pipeline
 export { CORRELATION_OUTCOMES, type CorrelationOutcome } from '../lib/eventVocabularies.js'
 export { runEventPipeline } from './events/pipeline.js'
 export {
-  CHANGE_IMPLEMENTATION_STEP, CHANGE_PLANNED_STEPS, CHANGE_WINDOW_STEPS,
+  resolveChangeWindowSteps, changeWindowParams,
   changeIsInWindow, findSuppressingChange,
-  type EventSuppressedPayload, type SuppressingChange,
+  type ChangeWindowSteps, type EventSuppressedPayload, type SuppressingChange,
 } from './events/suppression.js'
 export { isFlapping, isStable, type EventFlappingPayload, type EventStablePayload } from './events/flapping.js'
 export {

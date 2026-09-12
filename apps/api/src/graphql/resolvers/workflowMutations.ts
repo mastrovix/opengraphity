@@ -3,7 +3,10 @@ import { ValidationError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine, isWorkflowActionType, WORKFLOW_ACTION_TYPES } from '@opengraphity/workflow'
 import type { ActionContext } from '@opengraphity/workflow'
-import { NOTIFICATION_TARGETS, isTargetApplicable, applicableNotificationTargets } from '@opengraphity/types'
+import {
+  NOTIFICATION_TARGETS, isTargetApplicable, applicableNotificationTargets,
+  WORKFLOW_STEP_PURPOSES, isWorkflowStepPurpose,
+} from '@opengraphity/types'
 import { publish } from '@opengraphity/events'
 import { sseManager } from '@opengraphity/notifications'
 import type { GraphQLContext } from '../../context.js'
@@ -14,6 +17,7 @@ import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
 import { invalidateWorkflowCache } from '../../lib/workflowHelpers.js'
+import { auditStepEntered } from '../../lib/stepEvent.js'
 
 // Safe label map — prevents Cypher injection when creating entities dynamically
 const ENTITY_LABELS: Record<string, string> = {
@@ -104,12 +108,16 @@ async function publishNotifyRuleActions(
        MATCH (wd:WorkflowDefinition {id: wi.definition_id})
        // tenant-ok: idem
        MATCH (s:WorkflowStep {definition_id: wd.id, name: $stepName})
-       RETURN s.enter_actions AS enterActions`,
+       RETURN s.enter_actions AS enterActions, s.label AS stepLabel`,
       { instanceId, stepName, tenantId },
     ),
   )
   if (!result.records.length) return
   const raw = result.records[0].get('enterActions') as string | null
+  // L'etichetta del passo viaggia nell'evento: è il titolo di ripiego della
+  // notifica quando la chiave i18n della regola non è tradotta (B-16), al
+  // posto della chiave grezza «notification.custom.step.title».
+  const stepLabel = (result.records[0].get('stepLabel') as string | null) ?? stepName
   if (!raw) return
 
   let actions: Array<{ type: string; params?: Record<string, unknown> }>
@@ -131,6 +139,7 @@ async function publishNotifyRuleActions(
       actor_id:       userId,
       payload: {
         stepName,
+        stepLabel,
         entityType,
         entityId,
         notifyRule: action.params ?? {},
@@ -197,6 +206,36 @@ export function assertStepActions(raw: string | null | undefined, label: string)
   })
 }
 
+// ── Scopo del passo in scrittura (ondata 4, B4-3) ─────────────────────────────
+
+/**
+ * Convenzione del campo `purpose` in scrittura, uguale in `updateWorkflowStep`
+ * e in `saveWorkflowChanges`:
+ *  - `undefined`/`null` → campo non mandato: lo scopo salvato resta com'è;
+ *  - `''` (stringa vuota) → **toglie** lo scopo. Un passo senza scopo è
+ *    legittimo, quindi il disegnatore deve poter tornare a «nessuno»: senza un
+ *    valore per «togli», un `coalesce` renderebbe lo scopo irreversibile.
+ *  - qualunque altra stringa → deve stare nel vocabolario chiuso.
+ *
+ * Uno scopo fuori vocabolario è rifiutato nominando i valori ammessi: è la
+ * stessa forma di `assertStepActions`. Il codice di produzione non deve
+ * indovinare lo scopo dal nome del passo (`FACTORY_STEP_PURPOSES` serve solo a
+ * seed e migrazione), quindi l'unica via per assegnarlo è questa.
+ */
+export function normalizeStepPurpose(raw: string | null | undefined, label: string): string | null | undefined {
+  if (raw == null) return undefined       // non mandato
+  if (raw.trim() === '') return null      // togli
+  const value = raw.trim()
+  if (!isWorkflowStepPurpose(value)) {
+    throw new GraphQLError(
+      `${label}: scopo "${value}" fuori vocabolario. Ammessi: ${WORKFLOW_STEP_PURPOSES.join(', ')} ` +
+      `(oppure vuoto per nessuno scopo).`,
+      { extensions: { code: 'BAD_USER_INPUT', purpose: value, allowedPurposes: [...WORKFLOW_STEP_PURPOSES] } },
+    )
+  }
+  return value
+}
+
 // ── Marchio di personalizzazione (contratto con i seed, ondata 2) ─────────────
 
 /**
@@ -220,11 +259,12 @@ export function customizedParams(ctx: GraphQLContext): { customizedAt: string; c
 
 export async function updateWorkflowStep(
   _: unknown,
-  { definitionId, stepName, label, enterActions, exitActions }: { definitionId: string; stepName: string; label: string; enterActions?: string | null; exitActions?: string | null },
+  { definitionId, stepName, label, enterActions, exitActions, purpose }: { definitionId: string; stepName: string; label: string; enterActions?: string | null; exitActions?: string | null; purpose?: string | null },
   ctx: GraphQLContext,
 ) {
   assertStepActions(enterActions, `enter_actions dello step "${stepName}"`)
   assertStepActions(exitActions,  `exit_actions dello step "${stepName}"`)
+  const purposeValue = normalizeStepPurpose(purpose, `step "${stepName}"`)
   return withSession(async (session) => {
     const now = new Date().toISOString()
     const result = await session.executeWrite((tx) =>
@@ -233,10 +273,16 @@ export async function updateWorkflowStep(
         SET s.label        = $label,
             s.updated_at   = $now,
             s.enter_actions = CASE WHEN $enterActions IS NOT NULL THEN $enterActions ELSE s.enter_actions END,
-            s.exit_actions  = CASE WHEN $exitActions  IS NOT NULL THEN $exitActions  ELSE s.exit_actions  END
+            s.exit_actions  = CASE WHEN $exitActions  IS NOT NULL THEN $exitActions  ELSE s.exit_actions  END,
+            s.purpose       = CASE WHEN $purposeGiven THEN $purpose ELSE s.purpose END
         ${MARK_CUSTOMIZED}
         RETURN s, wd.entity_type AS entityType
-      `, { definitionId, stepName, tenantId: ctx.tenantId, label, enterActions: enterActions ?? null, exitActions: exitActions ?? null, now, ...customizedParams(ctx) }),
+      `, {
+        definitionId, stepName, tenantId: ctx.tenantId, label,
+        enterActions: enterActions ?? null, exitActions: exitActions ?? null,
+        purposeGiven: purposeValue !== undefined, purpose: purposeValue ?? null,
+        now, ...customizedParams(ctx),
+      }),
     )
     if (!result.records.length) throw new GraphQLError('WorkflowStep non trovato', { extensions: { code: 'NOT_FOUND' } })
     invalidateWorkflowCache(ctx.tenantId, result.records[0].get('entityType') as string)
@@ -248,6 +294,7 @@ export async function updateWorkflowStep(
       type:         s['type']           as string,
       enterActions: (s['enter_actions'] ?? null) as string | null,
       exitActions:  (s['exit_actions']  ?? null) as string | null,
+      purpose:      (s['purpose']       ?? null) as string | null,
     }
   }, true)
 }
@@ -710,7 +757,11 @@ export async function executeWorkflowTransition(
         // step and audit. Field updates (resolved_at, assigned_at, etc.)
         // are driven by the step's `on_enter_fields` metadata, applied below.
         await post('publish incident transition', () => incidentService.publishIncidentTransition(incidentId, toStep, { tenantId, userId: ctx.userId }))
-        void audit(ctx, `incident.${toStep}`, 'Incident', incidentId)
+        // Azione di audit STABILE, passo nei dettagli (D-22): l'azione non è
+        // più composta col nome del passo, che una rinomina cambiava spezzando
+        // in due la storia dei filtri e dei report. Il taglio nel vocabolario è
+        // dichiarato (vedi auditStepEntered): le voci storiche NON si riscrivono.
+        void auditStepEntered(session, ctx, 'incident', 'Incident', incidentId, toStep)
 
         await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes, ctx.tenantId))
 
@@ -732,7 +783,7 @@ export async function executeWorkflowTransition(
       if (kbResult.records.length > 0) {
         const kbId     = kbResult.records[0].get('id')     as string
         const tenantId = kbResult.records[0].get('tenantId') as string
-        void audit(ctx, `kb_article.${toStep}`, 'KBArticle', kbId)
+        void auditStepEntered(session, ctx, 'kb_article', 'KBArticle', kbId, toStep)
         await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes, ctx.tenantId))
         await post('notify rules', () => publishNotifyRuleActions(session, instanceId, toStep, tenantId, ctx.userId, 'kb_article', kbId))
       }
@@ -776,6 +827,7 @@ export async function saveWorkflowChanges(
       isTerminal?:  boolean | null
       isOpen?:      boolean | null
       category?:    string | null
+      purpose?:     string | null
     }> | null
     /** Optimistic lock: versione letta dal client. Null = nessun controllo. */
     expectedVersion?: number | null
@@ -785,10 +837,14 @@ export async function saveWorkflowChanges(
   const now = new Date().toISOString()
   // Azioni validate PRIMA di aprire la transazione (B0-5): un tipo fuori
   // vocabolario non entra nel grafo dal disegnatore.
-  for (const st of steps ?? []) {
+  // Azioni e scopo validati PRIMA di aprire la transazione: uno scopo fuori
+  // vocabolario non entra nel grafo dal disegnatore (B4-3).
+  const stepRows = (steps ?? []).map((st) => {
     assertStepActions(st.enterActions, `enter_actions dello step "${st.stepName}"`)
     assertStepActions(st.exitActions,  `exit_actions dello step "${st.stepName}"`)
-  }
+    const purposeValue = normalizeStepPurpose(st.purpose, `step "${st.stepName}"`)
+    return { ...st, purposeGiven: purposeValue !== undefined, purpose: purposeValue ?? null }
+  })
   return withSession(async (session) => {
     // Tutto in UNA transazione: controllo di versione, aggiornamenti e
     // incremento. Prima erano write separate senza confronto di versione →
@@ -861,8 +917,11 @@ export async function saveWorkflowChanges(
               s.is_initial    = coalesce(st.isInitial,  s.is_initial),
               s.is_terminal   = coalesce(st.isTerminal, s.is_terminal),
               s.is_open       = coalesce(st.isOpen,     s.is_open),
-              s.category      = coalesce(st.category,   s.category)
-        `, { definitionId, tenantId: ctx.tenantId, steps })
+              s.category      = coalesce(st.category,   s.category),
+              // NON coalesce: lo scopo si deve poter TOGLIERE (purpose = null
+              // con purposeGiven = true). Un coalesce lo renderebbe definitivo.
+              s.purpose       = CASE WHEN st.purposeGiven THEN st.purpose ELSE s.purpose END
+        `, { definitionId, tenantId: ctx.tenantId, steps: stepRows })
 
         // If any step was marked isInitial=true, demote the others in the same
         // workflow so there's at most one initial step.

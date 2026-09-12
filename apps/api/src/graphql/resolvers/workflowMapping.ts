@@ -74,6 +74,10 @@ export function mapWorkflowStep(s: Props) {
     isTerminal:        Boolean(s['is_terminal'] ?? s['type'] === 'end'),
     isOpen:            (s['is_open'] != null) ? Boolean(s['is_open']) : !(s['type'] === 'end'),
     category:          (s['category'] ?? null) as string | null,
+    // Lo scopo del passo (ondata 4): che ruolo ha nel processo. Il disegnatore
+    // lo legge e lo scrive; `null` = il cliente non l'ha dichiarato, e non si
+    // indovina dal nome.
+    purpose:           (s['purpose'] ?? null) as string | null,
     order:             s['step_order'] != null ? Number(s['step_order']) : 999,
     // Designer layout: written by saveWorkflowChanges.positions, read back
     // here so the canvas does not fall back to the default layout.

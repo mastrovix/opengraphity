@@ -23,12 +23,20 @@ vi.mock('../../lib/logger.js', () => {
   return { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => child } }
 })
 vi.mock('../../middleware/metrics.js', () => ({
+  workflowPurposeMissingTotal: { inc: vi.fn() },
   serviceEvaluationsTotal: { inc: vi.fn() }, serviceEvaluationDurationSeconds: { observe: vi.fn() }, servicesHealth: { set: vi.fn() },
   eventsSuppressedTotal: { inc: vi.fn() },
 }))
 vi.mock('../serviceImpact/engine.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../serviceImpact/engine.js')>()),
   evaluateServiceMap: vi.fn(),
+}))
+
+vi.mock('../../lib/workflowHelpers.js', () => ({
+  // Ondata 4 · A4-1: i passi della finestra di change vengono dallo SCOPO.
+  // Il tenant di prova ha i nomi di fabbrica con gli scopi della migrazione.
+  getStepNamesByPurpose: vi.fn(async (_s: unknown, _t: unknown, _e: unknown, purposes: readonly string[]) =>
+    purposes.includes('implementation') ? ['deployment'] : ['scheduled']),
 }))
 
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
@@ -43,7 +51,10 @@ const { DEFAULT_SERVICE_IMPACT_RULES, DEFAULT_SERVICE_IMPACT_RULES_JSON, SERVICE
 
 const NOW = '2026-09-10T10:00:00.000Z'
 const tx = { run: vi.fn() }
-const session = { close: vi.fn().mockResolvedValue(undefined), executeWrite: vi.fn(async (work: (t: unknown) => Promise<unknown>) => work(tx)) }
+// `executeRead` c'è perché la sessione vera ce l'ha: la risoluzione dei passi
+// di finestra per SCOPO (ondata 4 · A4-1) riusa la sessione del chiamante
+// invece di aprirne una in più per valutazione.
+const session = { close: vi.fn().mockResolvedValue(undefined), executeWrite: vi.fn(async (work: (t: unknown) => Promise<unknown>) => work(tx)), executeRead: vi.fn(async (work: (t: unknown) => Promise<unknown>) => work(tx)) }
 
 function onCypher(rules: Array<[RegExp, unknown]>) {
   const impl = async (_s: unknown, cypher: string, params?: Record<string, unknown>) => {
@@ -262,7 +273,11 @@ describe('updateServiceImpactRules', () => {
 
     expect(getSession).toHaveBeenCalledWith(undefined, 'WRITE')
     expect(session.executeWrite).toHaveBeenCalledTimes(1)
-    expect(session.close).toHaveBeenCalledTimes(1)
+    // Due sessioni chiuse, non una: la scrittura (WRITE) e la lettura dei passi
+    // di finestra per SCOPO, che dentro una `ManagedTransaction` non può
+    // riusare nulla e apre la propria (ondata 4 · A4-1; a cache calda non
+    // esegue nessuna query). La transazione di scrittura resta UNA.
+    expect(session.close).toHaveBeenCalledTimes(2)
     const w = callMatching(RULES_RE)!
     expect(w.session).toBe(tx)
     expect(w.cypher).toBe(UPDATE_RULES_CYPHER)
@@ -291,7 +306,8 @@ describe('updateServiceImpactRules', () => {
     await expectCode(updateServiceImpactRules({ tenantId: 't1', mapId: 'map-1', expectedVersion: 1, rules, actorId: 'u-1', now: NOW }), 'BAD_USER_INPUT', /modified by someone else \(expected version 1, current is 2, updated at T-prec\)/)
     expect(callMatching(RULES_RE)).toBeUndefined()
     expect(evaluateServiceMap).not.toHaveBeenCalled()
-    expect(session.close).toHaveBeenCalledTimes(1)
+    // 2 = sessione di scrittura + lettura dei passi di finestra per scopo (vedi sopra)
+    expect(session.close).toHaveBeenCalledTimes(2)
 
     onCypher([[LOAD_RE, null]])
     await expectCode(updateServiceImpactRules({ tenantId: 't1', mapId: 'map-x', expectedVersion: 2, rules, actorId: 'u-1', now: NOW }), 'NOT_FOUND')

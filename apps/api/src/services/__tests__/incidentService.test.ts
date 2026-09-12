@@ -67,7 +67,7 @@ vi.mock('../../lib/mappers.js', () => ({
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
-const { createIncident, resolveIncident, escalateIncident } = await import('../incidentService.js')
+const { createIncident, resolveIncident, escalateIncident, publishIncidentTransition } = await import('../incidentService.js')
 const { publish } = await import('@opengraphity/events')
 const { workflowEngine } = await import('@opengraphity/workflow')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
@@ -196,5 +196,52 @@ describe('escalateIncident', () => {
 
     const event = vi.mocked(publish).mock.calls[0]![0] as { actor_id: string }
     expect(event.actor_id).toBe('admin-99')
+  })
+})
+
+/**
+ * D-22 — l'identità dell'evento di transizione non è più il NOME del passo.
+ *
+ * Prima: `publishEvent(\`incident.${stepName}\`, …)`. Dopo una rinomina l'API
+ * pubblicava `incident.lavorazione`, nessuna regola di notifica
+ * corrispondeva, nessun webhook aveva quel tipo, e niente lo diceva.
+ *
+ * Ora vengono pubblicati DUE eventi con lo stesso payload e lo stesso
+ * istante: il tipo **stabile** `incident.step_entered` (col passo nel
+ * payload: nome, etichetta, scopo, categoria, id) e l'**alias** storico
+ * `incident.<passo>`, mantenuto perché a lui sono agganciate le 35 regole di
+ * fabbrica, le regole già scritte dai tenant e i formatter Slack/Teams (che
+ * sono per tipo esatto). Il dispatcher non consegna due volte.
+ */
+describe('publishIncidentTransition — tipo stabile + alias storico', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    const payloadRow = { get: (k: string) => (({ id: 'inc-1', title: 'DB down', severity: 'high', status: 'in_attesa_fornitore', ciName: 'srv-1', assignedTo: 'Mario' }) as Record<string, string>)[k] }
+    mockSession.executeRead.mockResolvedValue({ records: [payloadRow] })
+    vi.mocked(runQueryOne).mockResolvedValue({ stepId: 'st-7', label: 'In attesa del fornitore', purpose: null, category: 'waiting' })
+  })
+
+  it('pubblica il tipo stabile E l\'alias del passo rinominato, con gli stessi fatti del passo', async () => {
+    await publishIncidentTransition('inc-1', 'in_attesa_fornitore', ctx)
+
+    const types = vi.mocked(publish).mock.calls.map((c) => (c[0] as { type: string }).type)
+    expect(types).toEqual(['incident.step_entered', 'incident.in_attesa_fornitore'])
+    for (const call of vi.mocked(publish).mock.calls) {
+      const payload = (call[0] as { payload: Record<string, unknown> }).payload
+      expect(payload).toMatchObject({
+        id: 'inc-1', title: 'DB down',
+        step_id: 'st-7', step_name: 'in_attesa_fornitore', step_label: 'In attesa del fornitore',
+        step_purpose: null, step_category: 'waiting',
+      })
+    }
+    // stesso istante: le due pubblicazioni sono la STESSA transizione
+    const [a, b] = vi.mocked(publish).mock.calls.map((c) => (c[0] as { timestamp: string }).timestamp)
+    expect(a).toBe(b)
+  })
+
+  it('un passo che non esiste nel workflow attivo ferma l\'evento invece di inventarne i fatti', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue(null)
+    await expect(publishIncidentTransition('inc-1', 'fantasma', ctx)).rejects.toThrow(/"fantasma"/)
+    expect(publish).not.toHaveBeenCalled()
   })
 })

@@ -13,13 +13,28 @@ import { MONITORING_ACTOR } from './shared.js'
 
 const log = logger.child({ module: 'event-correlation' })
 
-export interface IncidentStepInfo { resolvedStep: string; terminalSteps: string[] }
+export interface IncidentStepInfo {
+  resolvedStep: string
+  terminalSteps: string[]
+  /**
+   * I passi in cui un incident riaperto torna «in lavorazione»: categoria
+   * `active` o `escalated` e non il passo iniziale, in ordine di `step_order`
+   * (ondata 4 · A4-3). Prima `reopenIncident` cercava il NOME `in_progress` con
+   * un ripiego «primo passo non terminale», che in un workflow rinominato
+   * poteva riaprire l'incident in un passo qualsiasi.
+   */
+  reopenSteps: string[]
+}
 
 export async function incidentStepInfo(session: Session, tenantId: string): Promise<IncidentStepInfo> {
   const steps = await getWorkflowSteps(session, tenantId, 'incident')
   const resolved = steps.find((s) => s.category === 'resolved') ?? steps.find((s) => s.name === 'resolved')
   if (!resolved) throw new Error(`Tenant ${tenantId}: incident workflow has no step with category "resolved"`)
-  return { resolvedStep: resolved.name, terminalSteps: steps.filter((s) => s.isTerminal).map((s) => s.name) }
+  const reopenSteps = steps
+    .filter((s) => !s.isInitial && !s.isTerminal && (s.category === 'active' || s.category === 'escalated'))
+    .sort((a, b) => (a.stepOrder ?? Number.MAX_SAFE_INTEGER) - (b.stepOrder ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name))
+    .map((s) => s.name)
+  return { resolvedStep: resolved.name, terminalSteps: steps.filter((s) => s.isTerminal).map((s) => s.name), reopenSteps }
 }
 
 export interface OpenIncidentRow { incidentId: string; instanceId: string; step: string }
@@ -90,13 +105,26 @@ export async function runMonitoringTransition(session: Session, tenantId: string
 /**
  * Riapre un incident risolto con la transizione manuale "Riapri" (seed:
  * tr-resolved-inprogress, `inputField: notes`) tramite il motore del workflow,
- * come fa la mutation manuale. Nessuna transizione di riapertura → errore.
+ * come fa la mutation manuale.
+ *
+ * Il bersaglio si scelge per CATEGORIA (`info.reopenSteps`: `active` /
+ * `escalated`, non iniziale), coerente con `incidentStepInfo` che è la parte
+ * già fatta bene di questo file — non per il nome `in_progress` e senza più il
+ * ripiego «primo passo non terminale», che era un fallback silenzioso: in un
+ * workflow rinominato poteva riaprire l'incident in un passo che non c'entrava
+ * niente (ondata 4 · A4-3, rinegoziazione dichiarata nel rapporto).
+ * Nessuna transizione manuale verso un passo di lavorazione → errore.
  */
 export async function reopenIncident(session: Session, tenantId: string, inc: OpenIncidentRow, info: IncidentStepInfo, notes: string): Promise<string> {
   const transitions = await (await engine()).getAvailableTransitions(session, inc.instanceId, tenantId)
-  const target = transitions.find((t) => t.toStep === 'in_progress')
-    ?? transitions.find((t) => t.toStep !== info.resolvedStep && !info.terminalSteps.includes(t.toStep))
-  if (!target) throw new Error(`Incident ${inc.incidentId}: no manual transition out of "${inc.step}" to reopen it`)
-  await runMonitoringTransition(session, tenantId, inc.incidentId, inc.instanceId, target.toStep, 'manual', notes, 'reopen')
-  return target.toStep
+  const toStep = info.reopenSteps.find((name) => transitions.some((t) => t.toStep === name))
+  if (!toStep) {
+    throw new Error(
+      `Incident ${inc.incidentId}: no manual transition out of "${inc.step}" leads to a step with category ` +
+      `"active"/"escalated" to reopen it (candidates: ${info.reopenSteps.join(', ') || 'none'}; ` +
+      `available: ${transitions.map((t) => t.toStep).join(', ') || 'none'})`,
+    )
+  }
+  await runMonitoringTransition(session, tenantId, inc.incidentId, inc.instanceId, toStep, 'manual', notes, 'reopen')
+  return toStep
 }

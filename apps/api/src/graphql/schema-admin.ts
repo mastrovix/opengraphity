@@ -82,5 +82,11 @@ export function adminSDL(): string {
     items: [AuditEntry!]!
     total: Int!
   }
+
+  "Un'azione presente nel registro di audit e quante voci la portano."
+  type AuditActionCount {
+    action: String!
+    count:  Int!
+  }
   `
 }

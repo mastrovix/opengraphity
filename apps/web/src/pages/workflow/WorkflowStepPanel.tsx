@@ -24,6 +24,7 @@ import {
 } from './workflow-panel-helpers'
 import { Input, Select } from '@/components/ui/FormControls'
 import { TARGET_OPTIONS } from '@/pages/settings/NotificationRuleList'
+import { WORKFLOW_STEP_PURPOSES } from '@opengraphity/types'
 
 const ACCENT_COLOR = colors.brand
 
@@ -155,6 +156,7 @@ interface StepPanelProps {
     isTerminal?:  boolean
     isOpen?:      boolean
     category?:    string | null
+    purpose?:     string | null
   }) => void
 }
 
@@ -203,6 +205,9 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
   const [isTerminal, setIsTerminal] = useState(Boolean(step.isTerminal))
   const [isOpen,     setIsOpen]     = useState(step.isOpen ?? !step.isTerminal)
   const [category,   setCategory]   = useState(step.category ?? '')
+  // Scopo del passo: '' = nessuno scopo (legittimo). Il server riceve '' come
+  // «togli» e qualunque altro valore come uno scopo del vocabolario chiuso.
+  const [purpose,    setPurpose]    = useState(step.purpose ?? '')
 
   // Parse initial actions (computed once from props — stable until save).
   // Un JSON corrotto su enter/exit_actions NON deve far cadere l'intera pagina
@@ -274,6 +279,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
     || isTerminal !== Boolean(step.isTerminal)
     || isOpen     !== (step.isOpen ?? !step.isTerminal)
     || category   !== (step.category ?? '')
+    || purpose    !== (step.purpose  ?? '')
   const propsUnchanged      = label === step.label && !enterActionsChanged && !exitActionsChanged && !metadataChanged
   const notifyUnchanged     = notifyEnabled === !!existingNR
     && notifyTitleKey === (existingNR?.params.title_key  ?? '')
@@ -303,13 +309,17 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
     const enterActions = buildEnterActions()
     const exitActions  = buildExitActions()
     const categoryValue = category.trim() ? category.trim() : null
+    // Lo scopo viaggia come stringa: '' dice al server «togli lo scopo»
+    // (null vorrebbe dire «non l'ho mandato» e lo lascerebbe com'è).
+    const purposeValue = purpose.trim()
     onSaveLocally?.({
       stepName: step.name, label, enterActions, exitActions,
-      isInitial, isTerminal, isOpen, category: categoryValue,
+      isInitial, isTerminal, isOpen, category: categoryValue, purpose: purposeValue,
     })
     onSaved({
       label, enterActions, exitActions,
       isInitial, isTerminal, isOpen, category: categoryValue,
+      purpose: purposeValue === '' ? null : purposeValue,
     })
   }
 
@@ -575,6 +585,21 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
               <option value="failed" />
               <option value="draft" />
             </datalist>
+          </PanelField>
+          {/* Scopo del passo (ondata 4, B4-3). Il vocabolario è chiuso e arriva
+              da @opengraphity/types: la stessa lista che il server valida in
+              scrittura. «Nessuno» è una scelta legittima — nessuno scopo viene
+              indovinato dal nome del passo. */}
+          <PanelField label={t('workflow.purpose')}>
+            <Select value={purpose} onChange={(e) => setPurpose(e.target.value)} style={inputStyle}>
+              <option value="">{t('workflow.purposeNone')}</option>
+              {WORKFLOW_STEP_PURPOSES.map((p) => (
+                <option key={p} value={p}>{t(`workflow.purposeOption.${p}`)}</option>
+              ))}
+            </Select>
+            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', lineHeight: 1.4 }}>
+              {t('workflow.purposeHint')}
+            </span>
           </PanelField>
         </div>
       )}

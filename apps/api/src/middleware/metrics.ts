@@ -260,6 +260,16 @@ export const eventsOrphanTotal        = createCounter('events_orphan_total',    
 export const eventsAmbiguousTotal     = createCounter('events_ambiguous_total',     'Monitoring events left orphan because more than one CI matched the resource name (match_reason = ambiguous)', [])
 export const eventsSuppressedTotal    = createCounter('events_suppressed_total',    'Monitoring events silenced by a change window', [])
 export const eventsFlappingTotal      = createCounter('events_flapping_total',      'Monitoring events that entered the flapping state', [])
+/**
+ * Una regola di dominio ha cercato i passi con uno SCOPO (`WORKFLOW_STEP_PURPOSES`)
+ * e nel workflow del tenant non ce n'è nessuno: la regola non si applica a
+ * niente. `rule` è il nome della regola (bounded: oggi solo `change_window`).
+ * Serve perché una regola spenta da una configurazione incompleta deve VEDERSI:
+ * senza questo contatore, un tenant che non ha assegnato lo scopo al passo di
+ * rilascio smetterebbe di silenziare gli allarmi durante i rilasci senza che
+ * nessuno lo sappia (ondata 4 · A4-1).
+ */
+export const workflowPurposeMissingTotal = createCounter('workflow_step_purpose_missing_total', 'Domain rules that found no workflow step declaring the purpose they look for, by rule', ['rule'])
 export const incidentsAutoOpenedTotal = createCounter('incidents_auto_opened_total', 'Incidents opened automatically by event correlation (storm incidents included)', [])
 export const incidentsAutoResolvedTotal = createCounter('incidents_auto_resolved_total', 'Incidents resolved automatically when every correlated event cleared', [])
 export const incidentsReopenedTotal   = createCounter('incidents_reopened_total',   'Resolved incidents reopened by a returning monitoring event', [])
@@ -373,6 +383,7 @@ export const redisLockHoldSeconds   = createHistogram('redis_lock_hold_seconds',
 /** Tutte le metriche dell'Event Management (e dei servizi monitorati), nell'ordine di esposizione. */
 export const EVENT_MANAGEMENT_METRICS = [
   eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsAmbiguousTotal, eventsSuppressedTotal, eventsFlappingTotal,
+  workflowPurposeMissingTotal,
   incidentsAutoOpenedTotal, incidentsAutoResolvedTotal, incidentsReopenedTotal, eventsPurgedTotal,
   eventsOutOfOrderTotal, eventsIngestFailedTotal, eventsRejectedTotal, eventsResolvedUnknownTotal, eventStormsActive, webhookRateLimitedTotal,
   eventsCorrelatedTotal, eventPipelineDurationSeconds, eventPassTotal, eventPassDurationSeconds,

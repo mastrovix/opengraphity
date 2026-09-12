@@ -229,3 +229,67 @@ export interface SLABreachedPayload {
   entity_type: string
   breached_at: string
 }
+
+// --- Ingresso in un passo di workflow (ondata 4, D-22) ----------------------
+
+/**
+ * Il suffisso del tipo di evento STABILE per l'ingresso in un passo:
+ * `incident.step_entered`, `problem.step_entered`.
+ *
+ * ## Il difetto che chiude
+ * Il tipo dell'evento era composto col NOME del passo
+ * (`publishEvent('incident.' + stepName)`), e il nome del passo è
+ * personalizzabile. Dopo una rinomina l'API pubblicava
+ * `incident.lavorazione`: nessuna regola di notifica corrispondeva, nessun
+ * webhook aveva quel tipo fra i suoi, e **niente lo diceva** — il dispatcher
+ * usciva su `if (!rule) return`.
+ *
+ * ## Il contratto
+ * Il nome del passo resta nel PAYLOAD (`step_name`, e con lui etichetta,
+ * scopo, categoria e id): è un dettaglio del passo, non l'identità
+ * dell'evento. L'identità è il tipo stabile, che una rinomina non tocca.
+ *
+ * Il tipo composto col nome continua a essere pubblicato come **alias** per
+ * gli abbonamenti esistenti (regole di notifica dei tenant, webhook in
+ * uscita): togliere quell'alias spegnerebbe in silenzio le 35 regole di
+ * fabbrica e ogni regola già scritta, che è esattamente il difetto.
+ */
+export const STEP_ENTERED_SUFFIX = 'step_entered'
+
+/** Il tipo stabile per l'entità: `incident` → `incident.step_entered`. */
+export function stepEnteredEventType(entityType: string): string {
+  return `${entityType}.${STEP_ENTERED_SUFFIX}`
+}
+
+/** Vero se il tipo è un ingresso-in-un-passo stabile (qualunque entità). */
+export function isStepEnteredEventType(eventType: string): boolean {
+  return eventType.endsWith(`.${STEP_ENTERED_SUFFIX}`)
+}
+
+/** L'entità di un tipo stabile (`incident.step_entered` → `incident`), null se non lo è. */
+export function stepEnteredEntityType(eventType: string): string | null {
+  if (!isStepEnteredEventType(eventType)) return null
+  return eventType.slice(0, -(STEP_ENTERED_SUFFIX.length + 1)) || null
+}
+
+/**
+ * Il tipo composto col nome del passo — l'ALIAS storico, mantenuto per gli
+ * abbonamenti già scritti. Non usarlo per decidere niente: è un alias, non
+ * un'identità.
+ */
+export function legacyStepEventType(entityType: string, stepName: string): string {
+  return `${entityType}.${stepName}`
+}
+
+/**
+ * I fatti del passo che ogni evento stabile porta con sé. `step_purpose` è
+ * `null` quando il cliente non ha dichiarato lo scopo: è legittimo, e non si
+ * indovina dal nome.
+ */
+export interface StepEnteredFacts {
+  step_id:       string
+  step_name:     string
+  step_label:    string
+  step_purpose:  string | null
+  step_category: string | null
+}

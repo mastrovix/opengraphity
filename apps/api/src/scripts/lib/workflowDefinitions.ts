@@ -6,6 +6,7 @@
  * and `seed:sr-workflow` would create.
  */
 import type { SeedableWorkflow } from '@opengraphity/workflow'
+import { FACTORY_STEP_PURPOSES } from '@opengraphity/types'
 
 type Step = SeedableWorkflow['steps'][number]
 type Transition = SeedableWorkflow['transitions'][number]
@@ -15,7 +16,10 @@ type Transition = SeedableWorkflow['transitions'][number]
 // 'assessment' è lo step iniziale: engine.createInstance cerca lo step con
 // type='start'. La UI lo mostra come step normale.
 function changeStep(name: string, label: string, type: Step['type'], order: number, meta: Omit<NonNullable<Step['metadata']>, 'step_order'>): Step {
-  return { id: `change-rfc-${name}`, name, label, type, enterActions: [], exitActions: [], metadata: { ...meta, step_order: order } }
+  // Lo SCOPO viene dalla tabella dei nomi di fabbrica (@opengraphity/types): un
+  // passo seminato nasce già riconoscibile per ruolo, senza che il codice di
+  // produzione guardi mai il nome (B-4).
+  return { id: `change-rfc-${name}`, name, label, type, enterActions: [], exitActions: [], metadata: { ...meta, step_order: order, purpose: FACTORY_STEP_PURPOSES[name] ?? null } }
 }
 
 function changeTr(from: string, to: string, trigger: Transition['trigger'], label: string, condition: string | null = null, inputField: string | null = null): Transition {
@@ -48,7 +52,7 @@ export const CHANGE_RFC_WORKFLOW: SeedableWorkflow = {
 // ── Service Request Fulfillment ───────────────────────────────────────────────
 
 function srStep(name: string, label: string, type: Step['type'], order: number, meta: Omit<NonNullable<Step['metadata']>, 'step_order' | 'on_enter_create'>): Step {
-  return { id: `sr-${name}`, name, label, type, enterActions: [], exitActions: [], metadata: { ...meta, on_enter_create: null, step_order: order } }
+  return { id: `sr-${name}`, name, label, type, enterActions: [], exitActions: [], metadata: { ...meta, on_enter_create: null, step_order: order, purpose: FACTORY_STEP_PURPOSES[name] ?? null } }
 }
 
 function srTr(from: string, to: string, label: string, inputField: string | null = null): Transition {

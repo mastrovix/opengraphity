@@ -47,6 +47,13 @@ vi.mock('../../../services/serviceImpact/config.js', async (importOriginal) => (
 }))
 vi.mock('../../../services/serviceImpact/sync.js', () => ({ syncServiceMap: vi.fn(), notifyCIGraphChanged: vi.fn() }))
 
+vi.mock('../../../lib/workflowHelpers.js', () => ({
+  // Ondata 4 · A4-1: i passi della finestra di change vengono dallo SCOPO.
+  // Il tenant di prova ha i nomi di fabbrica con gli scopi della migrazione.
+  getStepNamesByPurpose: vi.fn(async (_s: unknown, _t: unknown, _e: unknown, purposes: readonly string[]) =>
+    purposes.includes('implementation') ? ['deployment'] : ['scheduled']),
+}))
+
 const { serviceResolvers, mapServiceMap, parseStoredCauses, SERVICE_MAP_ORDER, SERVICE_NODE_GONE_ADDED_BY, SET_STATUS_CYPHER } = await import('../services.js')
 const config = await import('../../../services/serviceImpact/config.js')
 const sync = await import('../../../services/serviceImpact/sync.js')
@@ -54,7 +61,7 @@ const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j'
 const { audit } = await import('../../../lib/audit.js')
 const { createServiceMap, evaluateServiceMap } = await import('../../../services/serviceImpact/engine.js')
 const { DEFAULT_SERVICE_IMPACT_RULES_JSON, SERVICE_RELATIONSHIP_TYPES } = await import('../../../lib/serviceVocabularies.js')
-const { CHANGE_IMPLEMENTATION_STEP, CHANGE_WINDOW_STEPS } = await import('../../../services/events/suppression.js')
+
 const { forgetServiceMapJobs } = await import('../../../jobs/serviceImpactWorker.js')
 const { noteServiceMapDeletion } = await import('../../../services/events/cascade.js')
 
@@ -62,7 +69,10 @@ const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'adm-1', userEm
 const operator: GraphQLContext = { ...admin, userId: 'op-1', role: 'operator' }
 const viewer:   GraphQLContext = { ...admin, userId: 'v-1', role: 'viewer' }
 const tx = { run: vi.fn() }
-const session = { close: vi.fn().mockResolvedValue(undefined), executeWrite: vi.fn(async (work: (t: unknown) => Promise<unknown>) => work(tx)) }
+// `executeRead` c'è perché la sessione vera ce l'ha: la risoluzione dei passi
+// di finestra per SCOPO (ondata 4 · A4-1) riusa la sessione del chiamante
+// invece di aprirne una in più per valutazione.
+const session = { close: vi.fn().mockResolvedValue(undefined), executeWrite: vi.fn(async (work: (t: unknown) => Promise<unknown>) => work(tx)), executeRead: vi.fn(async (work: (t: unknown) => Promise<unknown>) => work(tx)) }
 
 async function expectCode(p: Promise<unknown>, code: string, pattern?: RegExp) {
   const err = await p.then(() => null, (e: unknown) => e)
@@ -242,7 +252,7 @@ describe('ServiceMap field resolver', () => {
       { ci: { id: 'cert-1', name: 'CERT-01', type: 'certificate', status: 'active', health: null }, level: 2, role: 'certificate', propagate: 'never', weight: 3, critical: false, via: 'app-3', addedBy: 'auto', health: null, inMaintenance: false, contributes: false, excludedReason: 'never' },
       { ci: { id: 'db-01', name: 'DB-01', type: 'database', status: 'active', health: 'down' }, level: 2, role: 'infrastructure', propagate: 'weighted', weight: 5, critical: false, via: 'app-3', addedBy: 'auto', health: 'down', inMaintenance: false, contributes: true, excludedReason: null },
     ])
-    expect(callMatching(/inc:INCLUDES/)!.params).toEqual({ mapId: 'map-1', tenantId: 'tenant-1', windowSteps: CHANGE_WINDOW_STEPS, implementationStep: CHANGE_IMPLEMENTATION_STEP })
+    expect(callMatching(/inc:INCLUDES/)!.params).toEqual({ mapId: 'map-1', tenantId: 'tenant-1', windowSteps: ['deployment', 'scheduled'], implementationSteps: ['deployment'] })
     onCypher([[/inc:INCLUDES/, null]])
     await expectCode(serviceResolvers.ServiceMap.nodes({ id: 'map-x' }, null, viewer), 'NOT_FOUND')
   })

@@ -31,6 +31,8 @@ import { systemEnumTypes } from './20260913_1300_system_enum_types.js'
 import { tenantFieldsOnSharedTypes } from './20260913_1310_tenant_fields_on_shared_types.js'
 import { workflowStepOrderSeeded } from './20260913_1400_workflow_step_order_seeded.js'
 import { workflowStepTenantBackfill } from './20260913_1410_workflow_step_tenant_backfill.js'
+import { workflowStepPurpose } from './20260914_1500_workflow_step_purpose.js'
+import { stepEnteredNotificationRules } from './20260914_1520_step_entered_notification_rules.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -56,4 +58,6 @@ export const MIGRATIONS: readonly Migration[] = [
   tenantFieldsOnSharedTypes,
   workflowStepOrderSeeded,
   workflowStepTenantBackfill,
+  workflowStepPurpose,
+  stepEnteredNotificationRules,
 ]

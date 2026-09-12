@@ -46,6 +46,8 @@ export interface PendingStepChange {
   isTerminal?:  boolean
   isOpen?:      boolean
   category?:    string | null
+  /** Scopo del passo: assente = non cambia, '' = tolto, altrimenti uno di WORKFLOW_STEP_PURPOSES. */
+  purpose?:     string | null
 }
 
 export function useWorkflowDesigner(def: WorkflowDefinition | null) {
@@ -125,7 +127,8 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
       const pending  = pendingStepByName.get(step.name)
       const mergedStep: WFStep = pending
         ? { ...step, label: pending.label, enterActions: pending.enterActions, exitActions: pending.exitActions,
-            isInitial: pending.isInitial, isTerminal: pending.isTerminal, isOpen: pending.isOpen, category: pending.category }
+            isInitial: pending.isInitial, isTerminal: pending.isTerminal, isOpen: pending.isOpen,
+            category: pending.category, purpose: pending.purpose ?? null }
         : step
       return {
         id:       step.id,

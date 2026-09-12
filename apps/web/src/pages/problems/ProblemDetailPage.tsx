@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useConfirm } from '@/hooks/useConfirm'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
@@ -227,6 +228,10 @@ export function ProblemDetailPage() {
     onError: (err) => toast.error(err.message),
   })
 
+  // Metadata dei passi del workflow problem: serve lo SCOPO del passo di
+  // arrivo di una transizione (ondata 4 · A4-3), non il suo nome.
+  const { purposeOf: wfPurposeOf } = useWorkflowSteps('problem')
+
   const problem         = data?.problem
   const users           = usersData?.users ?? []
   const teams           = teamsData?.teams ?? []
@@ -236,8 +241,11 @@ export function ProblemDetailPage() {
   function handleTransitionClick(tr: WorkflowTransition) {
     // "Richiedi Change": non è una semplice transizione — apre la creazione di
     // una RFC risolutiva. Alla creazione la change viene collegata al problem e
-    // il workflow avanza a change_requested (lato backend).
-    if (tr.toStep === 'change_requested') {
+    // il workflow avanza al passo di scopo `change_requested` (lato backend).
+    // Il passo si riconosce dallo SCOPO e non dal nome (ondata 4 · A4-3): con
+    // un passo rinominato il bottone eseguiva una transizione nuda, il problem
+    // finiva ad aspettare una change che nessuno creava.
+    if (wfPurposeOf(tr.toStep) === 'change_requested') {
       if (!problem) return
       navigate(`/changes/new?problemId=${problem.id}`)
       return

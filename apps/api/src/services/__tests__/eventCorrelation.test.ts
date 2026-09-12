@@ -54,7 +54,7 @@ vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
   return { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => child } }
 })
-vi.mock('../../lib/workflowHelpers.js', () => ({ getWorkflowSteps: vi.fn() }))
+vi.mock('../../lib/workflowHelpers.js', () => ({ getWorkflowSteps: vi.fn(), getStepNamesByPurpose: vi.fn() }))
 vi.mock('../incidentService.js', () => ({
   createIncident: vi.fn(), resolveIncident: vi.fn(), addIncidentComment: vi.fn().mockResolvedValue(undefined), publishIncidentTransition: vi.fn().mockResolvedValue(undefined),
 }))
@@ -77,11 +77,12 @@ vi.mock('../../middleware/metrics.js', () => ({
   eventsFlappingTotal: { inc: vi.fn() }, eventsSuppressedTotal: { inc: vi.fn() },
   incidentsAutoOpenedTotal: { inc: vi.fn() }, incidentsAutoResolvedTotal: { inc: vi.fn() }, incidentsReopenedTotal: { inc: vi.fn() },
   eventsCorrelatedTotal: { inc: vi.fn() }, eventPipelineDurationSeconds: { observe: vi.fn() },
+  workflowPurposeMissingTotal: { inc: vi.fn() },
   redisLockTimeoutsTotal: { inc: vi.fn() }, redisLockHoldSeconds: { observe: vi.fn() },
 }))
 
 const corr = await import('../eventCorrelation.js')
-const { runEventPipeline, findSuppressingChange, reevaluateSuppressedEvents, reevaluateClosedWindows, reevaluateFlappingEvents, reevaluatePendingEvents, openIncidentFromEvent, meetsOpenThreshold, changeIsInWindow, findAutoResolvePath, isFlapping, isStable, groupLockKey, CHANGE_IMPLEMENTATION_STEP, CHANGE_WINDOW_STEPS, MONITORING_ACTOR, AUTO_RESOLVE_MAX_HOPS, CORRELATION_OUTCOMES, PENDING_CORRELATIONS, STUCK_FIRING_WHERE, DUE_CORRELATION_WHERE, UNCORRELATED_WHERE, OVERDUE_DELAYED_WHERE, stuckEventParams, UNCORRELATED_AFTER_MINUTES, OVERDUE_DELAYED_GRACE_MINUTES, GROUP_LOCK_TTL_SECONDS, GROUP_LOCK_WAIT_MS, GROUP_LOCK_POLL_MS } = corr
+const { runEventPipeline, findSuppressingChange, reevaluateSuppressedEvents, reevaluateClosedWindows, reevaluateFlappingEvents, reevaluatePendingEvents, openIncidentFromEvent, meetsOpenThreshold, changeIsInWindow, resolveChangeWindowSteps, findAutoResolvePath, isFlapping, isStable, groupLockKey, MONITORING_ACTOR, AUTO_RESOLVE_MAX_HOPS, CORRELATION_OUTCOMES, PENDING_CORRELATIONS, STUCK_FIRING_WHERE, DUE_CORRELATION_WHERE, UNCORRELATED_WHERE, OVERDUE_DELAYED_WHERE, stuckEventParams, UNCORRELATED_AFTER_MINUTES, OVERDUE_DELAYED_GRACE_MINUTES, GROUP_LOCK_TTL_SECONDS, GROUP_LOCK_WAIT_MS, GROUP_LOCK_POLL_MS } = corr
 // Revisione 1.18: helper della chiusura automatica (non passano dalla facciata).
 const { suppressedSummary, STILL_FIRING_STATUSES } = await import('../events/autoResolve.js')
 // Revisione 2 · D6.2: la definizione condivisa di «CI in finestra di change».
@@ -92,7 +93,7 @@ const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j'
 const { workflowEngine, INCIDENT_WORKFLOW_BASE } = await import('@opengraphity/workflow')
 const { publishEvent } = await import('../../lib/publishEvent.js')
 const { audit } = await import('../../lib/audit.js')
-const { getWorkflowSteps } = await import('../../lib/workflowHelpers.js')
+const { getWorkflowSteps, getStepNamesByPurpose } = await import('../../lib/workflowHelpers.js')
 const incidentService = await import('../incidentService.js')
 const { getEventPolicy, recomputeCIHealth } = await import('../eventService.js')
 const { enqueueCorrelation } = await import('../../jobs/eventCorrelateWorker.js')
@@ -220,6 +221,10 @@ beforeEach(() => {
   vi.mocked(trackSourceStorm).mockResolvedValue(NO_STORM)
   vi.mocked(getStormState).mockResolvedValue(NO_STORM)
   vi.mocked(getWorkflowSteps).mockResolvedValue(INCIDENT_STEPS)
+  // Ondata 4 · A4-1: i passi della finestra vengono dallo SCOPO. Il tenant di
+  // prova ha i nomi di fabbrica, con gli scopi assegnati dalla migrazione.
+  vi.mocked(getStepNamesByPurpose).mockImplementation(async (_s, _t, _e, purposes) =>
+    (purposes as readonly string[]).includes('implementation') ? ['deployment'] : ['scheduled'])
   vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([] as never)
   vi.mocked(workflowEngine.transition).mockResolvedValue({ success: true } as never)
   vi.mocked(incidentService.createIncident).mockResolvedValue({ id: 'inc-new', number: 'INC00000009' } as never)
@@ -239,18 +244,58 @@ describe('helper puri', () => {
     expect(meetsOpenThreshold('info', 'warning')).toBe(false)
   })
 
-  it('changeIsInWindow: deployment sempre; scheduled solo con una finestra del piano che contiene l\'istante; altri passi mai', () => {
+  it('changeIsInWindow: i passi di finestra vengono dallo SCOPO del tenant, non dai nomi (ondata 4 · A4-1)', async () => {
     const at = Date.parse(NOW)
     const plan = JSON.stringify([{ title: 'go', validationWindow: { start: '2026-09-09T08:00:00Z', end: '2026-09-09T09:00:00Z' }, releaseWindow: { start: '2026-09-09T09:30:00Z', end: '2026-09-09T11:00:00Z' } }])
     const past = JSON.stringify([{ title: 'old', validationWindow: { start: '', end: '' }, releaseWindow: { start: '2026-09-08T09:00:00Z', end: '2026-09-08T11:00:00Z' } }])
-    expect(CHANGE_IMPLEMENTATION_STEP).toBe('deployment')
-    expect(CHANGE_WINDOW_STEPS).toEqual(['deployment', 'scheduled'])
-    expect(changeIsInWindow('deployment', [], at)).toBe(true)
-    expect(changeIsInWindow('scheduled', [plan], at)).toBe(true)
-    expect(changeIsInWindow('scheduled', [past, null], at)).toBe(false)
-    expect(changeIsInWindow('scheduled', [], at)).toBe(false)
-    expect(changeIsInWindow('review', [plan], at)).toBe(false)
-    expect(changeIsInWindow('approval', [plan], at)).toBe(false)
+
+    // Nomi di fabbrica: la finestra aperta è `deployment`, la programmata `scheduled`.
+    const factory = await resolveChangeWindowSteps('t1')
+    expect(factory).toEqual({ implementation: ['deployment'], planned: ['scheduled'], all: ['deployment', 'scheduled'] })
+    expect(changeIsInWindow('deployment', [], at, factory)).toBe(true)
+    expect(changeIsInWindow('scheduled', [plan], at, factory)).toBe(true)
+    expect(changeIsInWindow('scheduled', [past, null], at, factory)).toBe(false)
+    expect(changeIsInWindow('scheduled', [], at, factory)).toBe(false)
+    expect(changeIsInWindow('review', [plan], at, factory)).toBe(false)
+    expect(changeIsInWindow('approval', [plan], at, factory)).toBe(false)
+
+    // Il cliente ha rinominato tutto: gli stessi scopi su nomi diversi.
+    vi.mocked(getStepNamesByPurpose).mockImplementation(async (_s, _t, _e, purposes) =>
+      (purposes as readonly string[]).includes('implementation') ? ['rilascio_notturno'] : ['in_calendario'])
+    const cliente = await resolveChangeWindowSteps('t1')
+    expect(cliente.all).toEqual(['rilascio_notturno', 'in_calendario'])
+    expect(changeIsInWindow('rilascio_notturno', [], at, cliente)).toBe(true)
+    expect(changeIsInWindow('in_calendario', [plan], at, cliente)).toBe(true)
+    expect(changeIsInWindow('in_calendario', [], at, cliente)).toBe(false)
+    // ...e i nomi di fabbrica non silenziano più niente, perché non sono i suoi passi
+    expect(changeIsInWindow('deployment', [], at, cliente)).toBe(false)
+
+    // Il workflow delle change ESISTE ma nessun passo dichiara lo scopo: è
+    // configurazione incompleta, e la conseguenza sarebbe silenziosa (nessun
+    // allarme silenziato durante i rilasci, incident falsi). Si ferma e lo
+    // dice — l'allarme resta acceso alla sorgente e il lavoro è rigiocabile.
+    vi.mocked(getStepNamesByPurpose).mockResolvedValue([])
+    vi.mocked(getWorkflowSteps).mockResolvedValue(
+      ['valutazione', 'cab', 'in_calendario', 'rilascio', 'chiusa'].map((name) => ({
+        name, isInitial: false, isTerminal: false, isOpen: true, category: 'active', purpose: null, stepOrder: null,
+      })),
+    )
+    const err = await resolveChangeWindowSteps('t1').then(() => null, (e: unknown) => e)
+    expect(String((err as Error).message)).toMatch(/ha 5 passi e nessuno dichiara lo scopo \[scheduled, implementation\]/)
+    expect(String((err as Error).message)).toMatch(/disegnatore dei workflow/)
+    expect(String((err as Error).message)).toMatch(/rigiocabile dalla pagina Code/)
+    expect(metrics.workflowPurposeMissingTotal.inc).toHaveBeenCalledWith({ rule: 'change_window' })
+
+    // Il tenant NON ha affatto un workflow delle change (è il caso di c-two):
+    // non c'è niente da sopprimere e non c'è niente di sbagliato — nessun
+    // errore e nessun contatore, altrimenti un allarme per ogni allarme
+    // insegnerebbe solo a ignorare gli allarmi.
+    vi.mocked(metrics.workflowPurposeMissingTotal.inc).mockClear()
+    vi.mocked(getWorkflowSteps).mockResolvedValue([])
+    const senzaChange = await resolveChangeWindowSteps('t1')
+    expect(senzaChange).toEqual({ implementation: [], planned: [], all: [] })
+    expect(changeIsInWindow('deployment', [], at, senzaChange)).toBe(false)
+    expect(metrics.workflowPurposeMissingTotal.inc).not.toHaveBeenCalled()
   })
 })
 
@@ -274,7 +319,7 @@ describe('soppressione in finestra di change', () => {
     expect(find.cypher).toContain('wi.current_step IN $windowSteps')
     // B2-12: i piani di rilascio sono quelli del CI toccato, non di tutta la change
     expect(find.cypher).toContain('[(c)-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask {tenant_id: $tenantId}) WHERE dp.ci_id = target.id | dp.steps]')
-    expect(find.params).toMatchObject({ ciIds: ['ci-1'], tenantId: 't1', windowSteps: ['deployment', 'scheduled'], implementationStep: 'deployment' })
+    expect(find.params).toMatchObject({ ciIds: ['ci-1'], tenantId: 't1', windowSteps: ['deployment', 'scheduled'], implementationSteps: ['deployment'] })
 
     const sup = callMatching(Q.suppress)!
     expect(sup.cypher).toContain("SET e.status = 'suppressed', e.suppressed_by_change_id = $changeId")
@@ -401,10 +446,11 @@ describe('soppressione in finestra di change', () => {
     const past = JSON.stringify([{ releaseWindow: { start: '2026-09-08T09:00:00Z', end: '2026-09-08T11:00:00Z' } }])
     const now = JSON.stringify([{ releaseWindow: { start: '2026-09-09T09:00:00Z', end: '2026-09-09T11:00:00Z' } }])
     const row = (over: Record<string, unknown>) => ({ changeId: 'c', code: 'CHG', step: 'scheduled', plans: [], viaCiId: 'ci-1', viaCiName: 'ci-1', upstream: false, ...over })
-    expect(pickChangeWindow([row({ plans: [past] })], Date.parse(NOW))).toBeNull()
-    expect(pickChangeWindow([row({ changeId: 'c1', plans: [past] }), row({ changeId: 'c2', plans: [now] })], Date.parse(NOW))?.changeId).toBe('c2')
+    const WIN = { implementation: ['deployment'], planned: ['scheduled'], all: ['deployment', 'scheduled'] }
+    expect(pickChangeWindow([row({ plans: [past] })], Date.parse(NOW), WIN)).toBeNull()
+    expect(pickChangeWindow([row({ changeId: 'c1', plans: [past] }), row({ changeId: 'c2', plans: [now] })], Date.parse(NOW), WIN)?.changeId).toBe('c2')
     // B2-13: la copertura può venire da un CI a monte, e si vede
-    const upstream = pickChangeWindow([row({ changeId: 'c3', step: 'deployment', viaCiId: 'srv-1', viaCiName: 'SRV-01', upstream: true })], Date.parse(NOW))
+    const upstream = pickChangeWindow([row({ changeId: 'c3', step: 'deployment', viaCiId: 'srv-1', viaCiName: 'SRV-01', upstream: true })], Date.parse(NOW), WIN)
     expect(upstream).toEqual({ changeId: 'c3', code: 'CHG', step: 'deployment', viaCiId: 'srv-1', viaCiName: 'SRV-01', upstream: true })
 
     // B2-12: i piani sono filtrati per CI toccato; B2-13: le relazioni sono quelle dei servizi
@@ -418,8 +464,8 @@ describe('soppressione in finestra di change', () => {
     const q = callMatching(Q.suppressing)!
     expect(q.cypher).toContain('WHERE dp.ci_id = target.id')
     expect(q.cypher).toContain('[rel:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE*1..2]')
-    expect(q.cypher).toContain('ORDER BY dist, CASE WHEN wi.current_step = $implementationStep THEN 0 ELSE 1 END, c.created_at')
-    expect(q.params).toMatchObject({ ciIds: ['vm-1', 'vm-2'], tenantId: 't1' })
+    expect(q.cypher).toContain('ORDER BY dist, CASE WHEN wi.current_step IN $implementationSteps THEN 0 ELSE 1 END, c.created_at')
+    expect(q.params).toMatchObject({ ciIds: ['vm-1', 'vm-2'], tenantId: 't1', windowSteps: ['deployment', 'scheduled'], implementationSteps: ['deployment'] })
     // nessun CI → nessuna query
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     expect((await changeWindowsForCIs(session as never, 't1', [], 1, NOW)).size).toBe(0)
@@ -603,6 +649,36 @@ describe('raggruppamento per CI', () => {
     expect(callMatching(Q.setCorr)!.params['correlation']).toBe('reopened')
     expect(incidentService.createIncident).not.toHaveBeenCalled()
     expect(publishEvent).toHaveBeenCalledWith('event.correlated', 't1', 'monitoring', expect.objectContaining({ outcome: 'reopened', incident_id: 'inc-1' }), NOW)
+  })
+
+  it('riapertura su un workflow RINOMINATO: il bersaglio si sceglie per categoria «active», non per il nome in_progress (ondata 4 · A4-3)', async () => {
+    // Il cliente ha rinominato i passi: `presa_in_carico` e `lavorazione` sono
+    // i suoi passi attivi. Il nome `in_progress` non esiste più.
+    vi.mocked(getWorkflowSteps).mockResolvedValue([
+      { name: 'nuovo',           isInitial: true,  isTerminal: false, isOpen: true,  category: 'active',   stepOrder: 1 },
+      { name: 'presa_in_carico', isInitial: false, isTerminal: false, isOpen: true,  category: 'active',   stepOrder: 2 },
+      { name: 'lavorazione',     isInitial: false, isTerminal: false, isOpen: true,  category: 'active',   stepOrder: 3 },
+      { name: 'sospeso',         isInitial: false, isTerminal: false, isOpen: true,  category: 'waiting',  stepOrder: 4 },
+      { name: 'risolto',         isInitial: false, isTerminal: false, isOpen: true,  category: 'resolved', stepOrder: 5 },
+      { name: 'chiuso',          isInitial: false, isTerminal: true,  isOpen: false, category: 'closed',   stepOrder: 6 },
+    ])
+    // Da «risolto» si può solo riaprire in «lavorazione» (e chiudere).
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'chiuso' }, { toStep: 'lavorazione', label: 'Riapri' }] as never)
+    onCypher([...baseRules(), [Q.group, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'risolto' }]])
+    const out = await runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })
+    expect(out).toMatchObject({ outcome: 'reopened', incidentId: 'inc-1' })
+    expect(workflowEngine.transition).toHaveBeenCalledWith(
+      session,
+      expect.objectContaining({ toStepName: 'lavorazione', triggerType: 'manual' }),
+      expect.anything(),
+    )
+
+    // Nessuna transizione verso un passo «active» → errore che lo dice, senza
+    // ripiegare sul «primo passo non terminale» (era un fallback silenzioso).
+    vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([{ toStep: 'sospeso' }] as never)
+    onCypher([...baseRules(), [Q.group, { incidentId: 'inc-1', instanceId: 'wi-1', step: 'risolto' }]])
+    await expect(runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW }))
+      .rejects.toThrow(/no manual transition out of "risolto" leads to a step with category "active"\/"escalated"/)
   })
 
   it('riapertura: nessuna transizione manuale da resolved o transizione fallita → errore (nessun fallback), evento non marcato', async () => {

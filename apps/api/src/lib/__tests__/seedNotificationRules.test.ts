@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { unroutableChannels, routableChannels, isNotificationChannel } from '@opengraphity/notifications'
-import { isNotificationTarget } from '@opengraphity/types'
+import { isNotificationTarget, isStepEnteredEventType } from '@opengraphity/types'
 import { applicableNotificationTargets, isTargetApplicable } from '@opengraphity/types'
 
 vi.mock('../logger.js', () => ({
@@ -56,6 +56,33 @@ describe('DEFAULT_NOTIFICATION_RULES ↔ canali instradabili', () => {
   it('nessun tipo di evento duplicato nel seed', () => {
     const types = DEFAULT_NOTIFICATION_RULES.map((r) => r.event_type)
     expect(new Set(types).size).toBe(types.length)
+  })
+
+  /**
+   * B-16 — il seed non deve seminare una regola agganciata a un passo che il
+   * workflow di fabbrica non ha. `incident.on_hold` era così: il passo di
+   * attesa si chiama `pending`, l'evento era `incident.pending`, e la regola
+   * era accesa in ogni tenant e morta da sempre (nessuna notifica, nessun log).
+   * Ora l'attesa si riconosce dalla CATEGORIA del passo sul tipo stabile, e
+   * regge anche a una rinomina o a un passo di attesa aggiunto dal cliente.
+   */
+  it('nessuna regola di fabbrica nomina un passo inventato: on_hold è sostituito dal tipo stabile ristretto alla categoria waiting', () => {
+    expect(DEFAULT_NOTIFICATION_RULES.map((r) => r.event_type)).not.toContain('incident.on_hold')
+    const waiting = DEFAULT_NOTIFICATION_RULES.find((r) => r.event_type === 'incident.step_entered')!
+    expect(waiting).toBeDefined()
+    expect(waiting.step_category).toBe('waiting')
+    expect(waiting.step_purpose).toBeUndefined()
+  })
+
+  /**
+   * Il restringimento vale SOLO sul tipo stabile: su un altro tipo verrebbe
+   * salvato e mai applicato (il resolver lo rifiuta in scrittura).
+   */
+  it('scopo e categoria del passo compaiono solo sulle regole <entità>.step_entered', () => {
+    for (const r of DEFAULT_NOTIFICATION_RULES) {
+      if (r.step_purpose == null && r.step_category == null) continue
+      expect(isStepEnteredEventType(r.event_type), `${r.event_type} non è un tipo di ingresso in un passo`).toBe(true)
+    }
   })
 
   // Una regola di serie con un bersaglio impossibile per il suo evento

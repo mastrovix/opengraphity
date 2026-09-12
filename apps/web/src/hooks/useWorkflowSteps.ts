@@ -11,6 +11,13 @@ export interface WorkflowStepMeta {
   isTerminal: boolean
   isOpen:     boolean
   category:   string | null
+  /**
+   * Lo SCOPO del passo (vocabolario chiuso `WORKFLOW_STEP_PURPOSES`): che ruolo
+   * ha nel processo — approvazione, finestra di rilascio, analisi… È così che
+   * le pagine riconoscono un passo che il cliente ha rinominato (ondata 4).
+   * `null` = non dichiarato, e non si indovina dal nome.
+   */
+  purpose:    string | null
   order:      number
 }
 
@@ -45,6 +52,14 @@ export function useWorkflowSteps(entityType: string) {
       (stepName && byName.get(stepName)?.label) || stepName || ''
     const categoryOf = (stepName: string | null | undefined) =>
       (stepName && byName.get(stepName)?.category) || null
+    /** Lo scopo di un passo, `null` se il passo non c'è o non lo dichiara. */
+    const purposeOf = (stepName: string | null | undefined) =>
+      (stepName && byName.get(stepName)?.purpose) || null
+    /** True se il passo ha quello scopo: il modo giusto di dire «è l'approvazione». */
+    const hasPurpose = (stepName: string | null | undefined, purpose: string) =>
+      purposeOf(stepName) === purpose
+    /** I passi con quello scopo, in ordine di flusso (un tenant può averne più di uno). */
+    const stepsByPurpose = (purpose: string) => steps.filter((s) => s.purpose === purpose)
 
     return {
       loading, error,
@@ -57,6 +72,9 @@ export function useWorkflowSteps(entityType: string) {
       isOpen,
       labelFor,
       categoryOf,
+      purposeOf,
+      hasPurpose,
+      stepsByPurpose,
     }
   }, [data, loading, error])
 }

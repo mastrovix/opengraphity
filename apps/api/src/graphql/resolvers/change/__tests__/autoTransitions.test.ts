@@ -52,7 +52,9 @@ vi.mock('../../../../lib/logger.js', () => {
 // eventi soppressi; la mutation ACCODA il job `reevaluate-change-window`, non
 // rivaluta in linea. Qui si verifica quando (e con che cosa) viene accodato.
 vi.mock('../../../../services/eventCorrelation.js', () => ({
-  CHANGE_WINDOW_STEPS: ['deployment', 'scheduled'],
+  // Ondata 4 · A4-1: i passi di finestra vengono dallo SCOPO dei passi del
+  // tenant, non da due letterali. Qui il tenant ha i nomi di fabbrica.
+  resolveChangeWindowSteps: vi.fn().mockResolvedValue({ implementation: ['deployment'], planned: ['scheduled'], all: ['deployment', 'scheduled'] }),
   reevaluateSuppressedEvents: vi.fn().mockResolvedValue(2),
 }))
 vi.mock('../../../../jobs/eventCorrelateWorker.js', () => ({
@@ -332,5 +334,90 @@ describe('evaluateAutoTransitions', () => {
       await expect(evaluateAutoTransitions(mockSession, 'chg-1', ctx)).resolves.toBeUndefined()
       expect(notifyChangeWindowChanged).toHaveBeenCalledTimes(1)
     })
+  })
+})
+
+// ── Ondata 4 · A4-2/A4-3: change ↔ problem ↔ incident per SCOPO e CATEGORIA ───
+
+/**
+ * Il tenant ha rinominato i passi di change, problem e incident. Con il codice
+ * di prima (`changeStep === 'deployment'`, `problemStep === 'change_requested'`,
+ * `toStepName: 'resolved'`) nessuna di queste sincronizzazioni scattava: il
+ * problem restava per sempre ad aspettare una change già rilasciata.
+ *
+ * Il nucleo `lib/workflowHelpers.ts` non è mockato: la sessione risponde alla
+ * sua query, per entity_type.
+ */
+describe('sincronizzazione con problem e incident su workflow rinominati (A4-2/A4-3)', () => {
+  const rec = (m: Record<string, unknown>) => ({ get: (k: string) => (k in m ? m[k] : null) })
+  const STEPS: Record<string, Array<[string, string | null, string, number]>> = {
+    // nome, scopo, categoria, ordine
+    change:  [['valutazione', 'assessment', 'active', 1], ['cab_settimanale', 'approval', 'waiting', 2],
+              ['in_calendario', 'scheduled', 'waiting', 3], ['rilascio_notturno', 'implementation', 'active', 4],
+              ['verifica', 'review', 'active', 5], ['archiviata', null, 'closed', 6]],
+    problem: [['analisi', 'investigation', 'active', 1], ['attesa_change', 'change_requested', 'waiting', 2],
+              ['change_in_corso', 'change_in_progress', 'waiting', 3], ['risolto', null, 'resolved', 4]],
+    incident:[['nuovo', null, 'active', 1], ['lavorazione', null, 'active', 2], ['sistemato', null, 'resolved', 3]],
+  }
+  const session = {
+    executeRead: (fn: (tx: { run: (c: string, p: Record<string, unknown>) => Promise<{ records: unknown[] }> }) => unknown) =>
+      fn({ run: async (_c: string, p: Record<string, unknown>) => ({
+        records: (STEPS[p['entityType'] as string] ?? []).map(([name, purpose, category, order]) => rec({
+          name, purpose, category, stepOrder: order,
+          isInitial: order === 1, isTerminal: category === 'closed', isOpen: category !== 'closed',
+        })),
+      }) }),
+  } as never
+
+  /** `changeStep` per la change, e una riga di problem/incident collegato. */
+  function mockDb2(changeStep: string, linked: { problemStep?: string; incidentStep?: string }) {
+    vi.mocked(runQueryOne).mockImplementation((async (_s: unknown, q: string) => {
+      if (q.includes('c.service_window AS notified')) return { step: changeStep, notified: false }
+      if (q.includes('HAS_WORKFLOW')) return { instanceId: 'wi-1', step: changeStep, tenantId: 'tenant-1', entityProps: { id: 'chg-1' } }
+      return { pending: 1 }
+    }) as never)
+    vi.mocked(runQuery).mockImplementation((async (_s: unknown, q: string) => {
+      if (q.includes('TRANSITIONS_TO')) return []
+      if (q.includes('(p:Problem')) return linked.problemStep ? [{ changeStep, instanceId: 'pw-1', problemStep: linked.problemStep }] : []
+      if (q.includes('(i:Incident')) return linked.incidentStep ? [{ changeStep, code: 'CHG1', instanceId: 'iw-1', incidentStep: linked.incidentStep }] : []
+      return []
+    }) as never)
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: true } as never)
+    const { invalidateWorkflowCache } = await import('../../../../lib/workflowHelpers.js')
+    invalidateWorkflowCache()
+  })
+
+  it('change nel passo di scopo implementation → il problem in «attesa_change» passa a «change_in_corso»', async () => {
+    mockDb2('rilascio_notturno', { problemStep: 'attesa_change' })
+    await evaluateAutoTransitions(session, 'chg-1', ctx)
+    expect(workflowEngine.transition).toHaveBeenCalledWith(
+      session, expect.objectContaining({ instanceId: 'pw-1', toStepName: 'change_in_corso' }), expect.anything())
+  })
+
+  it('change nel passo di categoria closed → problem risolto (categoria resolved) e incident risolto', async () => {
+    mockDb2('archiviata', { problemStep: 'change_in_corso', incidentStep: 'lavorazione' })
+    await evaluateAutoTransitions(session, 'chg-1', ctx)
+    const targets = vi.mocked(workflowEngine.transition).mock.calls.map((c) => (c[1] as { instanceId: string; toStepName: string }))
+    expect(targets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ instanceId: 'pw-1', toStepName: 'risolto' }),
+      expect.objectContaining({ instanceId: 'iw-1', toStepName: 'sistemato' }),
+    ]))
+  })
+
+  it('incident in un passo non lavorabile (categoria resolved) → nessun auto-resolve, e lo dice', async () => {
+    mockDb2('archiviata', { incidentStep: 'sistemato' })
+    await evaluateAutoTransitions(session, 'chg-1', ctx)
+    expect(vi.mocked(workflowEngine.transition).mock.calls.filter((c) => (c[1] as { instanceId: string }).instanceId === 'iw-1')).toHaveLength(0)
+    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ incidentStep: 'sistemato' }), expect.stringContaining('nessun auto-resolve'))
+  })
+
+  it('change in un passo che non è né rilascio né chiusura → nessuna sincronizzazione', async () => {
+    mockDb2('cab_settimanale', { problemStep: 'attesa_change', incidentStep: 'lavorazione' })
+    await evaluateAutoTransitions(session, 'chg-1', ctx)
+    expect(workflowEngine.transition).not.toHaveBeenCalled()
   })
 })

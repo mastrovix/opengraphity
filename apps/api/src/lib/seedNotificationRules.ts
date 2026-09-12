@@ -17,13 +17,28 @@ interface RuleDef {
    * correlato (`event.correlated`) e la salute del CI restano notificati.
    */
   enabled?:   boolean
+  /**
+   * Restringimento per il tipo STABILE `<entità>.step_entered` (D-22): la
+   * regola scatta solo per i passi con quello scopo / quella categoria. Il
+   * seed ha **una sola** regola per tipo di evento, quindi il MERGE su
+   * (tenant, event_type) resta univoco.
+   */
+  step_purpose?:  string
+  step_category?: string
 }
 
 export const DEFAULT_NOTIFICATION_RULES: readonly RuleDef[] = [
   { event_type: 'incident.created',             severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.incident.created.title'      },
   { event_type: 'incident.assigned',            severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.incident.assigned.title'     },
   { event_type: 'incident.in_progress',         severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.incident.in_progress.title'  },
-  { event_type: 'incident.on_hold',             severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.incident.on_hold.title'      },
+  // Era `incident.on_hold`, e non è MAI scattata: il passo di fabbrica si
+  // chiama `pending`, quindi l'evento era `incident.pending` e nessun evento
+  // corrispondeva alla regola (B-16). Ora si aggancia a ciò che ESISTE — la
+  // CATEGORIA del passo, `waiting` — sul tipo stabile: vale per `pending`, per
+  // un passo di attesa rinominato e per un passo di attesa aggiunto dal
+  // cliente. La categoria e non lo scopo perché nel vocabolario degli scopi
+  // «in attesa» non c'è: l'attesa è come il ticket si vede da fuori.
+  { event_type: 'incident.step_entered',        severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.incident.on_hold.title',     step_category: 'waiting' },
   { event_type: 'incident.escalated',           severity: 'error',   channels: ['in_app', 'slack'], target: 'all',      title_key: 'notification.incident.escalated.title'    },
   { event_type: 'incident.resolved',            severity: 'success', channels: ['in_app'],          target: 'all',      title_key: 'notification.incident.resolved.title'     },
   { event_type: 'incident.closed',              severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.incident.closed.title'       },
@@ -103,6 +118,8 @@ export async function seedNotificationRules(tenantId: string, session: Queryable
          r.title_key         = $titleKey,
          r.channels          = $channels,
          r.target            = $target,
+         r.step_purpose      = $stepPurpose,
+         r.step_category     = $stepCategory,
          r.conditions        = null,
          r.is_seed           = true,
          r.created_at        = $now,
@@ -117,6 +134,8 @@ export async function seedNotificationRules(tenantId: string, session: Queryable
         channels:  rule.channels,
         target:    rule.target,
         enabled:   rule.enabled ?? true,
+        stepPurpose:  rule.step_purpose  ?? null,
+        stepCategory: rule.step_category ?? null,
         now,
       },
     )

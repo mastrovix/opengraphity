@@ -64,7 +64,7 @@ import {
 } from '../../lib/serviceVocabularies.js'
 import { MONITORING_ACTOR, monitoringContext, toNumber, toStr, type Props } from '../events/shared.js'
 import { getEventPolicy } from '../events/policy.js'
-import { CHANGE_WINDOW_PARAMS, changeWindowSubqueryCypher, pickChangeWindow, type ChangeWindow, type ChangeWindowRow } from '../events/suppression.js'
+import { changeWindowParams, changeWindowSubqueryCypher, pickChangeWindow, resolveChangeWindowSteps, type ChangeWindow, type ChangeWindowRow, type ChangeWindowSteps } from '../events/suppression.js'
 import { evaluateImpact, serviceHealthNote, type ImpactCause, type ImpactNodeInput, type UpstreamWindowRef } from './rules.js'
 import { causeIdsOf, sameCauseIds, serviceHistoryParams, serviceHistoryWriteCypher, type StoredCause } from './history.js'
 import { buildServiceMap, createServiceMapNode, type ServiceMapProposal } from './build.js'
@@ -118,8 +118,9 @@ interface StateRow { props: Props; nodes: NodeRow[] }
  *  - le change che lo coprono (diretta o a monte entro `hops` salti), con i
  *    piani di rilascio **del CI toccato** — il frammento condiviso con la
  *    soppressione degli allarmi (services/events/suppression.ts, revisione 2 ·
- *    D6.2): la finestra vera (deployment sempre, scheduled solo dentro una
- *    finestra del piano) si decide in TypeScript con `pickChangeWindow`;
+ *    D6.2): la finestra vera (scopo `implementation` sempre, scopo `scheduled`
+ *    solo dentro una finestra del piano) si decide in TypeScript con
+ *    `pickChangeWindow`;
  *  - le sorgenti in tempesta dei suoi allarmi accesi (revisione 2 · D6.4),
  *    lette qui e non con un giro in più.
  * `hops` è interpolato nel pattern (intero validato dalla policy): la query è
@@ -153,12 +154,12 @@ function assertEnum<T extends string>(value: unknown, allowed: readonly T[], wha
   return value as T
 }
 
-function mapNode(row: NodeRow, mapId: string, nowMs: number): LoadedNode {
+function mapNode(row: NodeRow, mapId: string, nowMs: number, windowSteps: ChangeWindowSteps): LoadedNode {
   const where = `ServiceMap ${mapId} node ${row.ciId}`
   const health = row.health == null ? null : assertEnum<CIHealth>(row.health, ['operational', 'degraded', 'down'], `${where} health`)
   // Stessa scelta della soppressione degli allarmi: la prima change davvero in
   // finestra fra le candidate (prima la diretta, poi quelle a monte).
-  const changeWindow = pickChangeWindow(row.changes, nowMs)
+  const changeWindow = pickChangeWindow(row.changes, nowMs, windowSteps)
   const stormSources = [...new Set((row.stormSources ?? []).filter((x): x is string => typeof x === 'string' && x !== ''))]
   return {
     ciId:          row.ciId,
@@ -205,9 +206,14 @@ export async function loadServiceMapState(session: Queryable, tenantId: string, 
   const nowMs = Date.parse(now)
   if (Number.isNaN(nowMs)) throw new Error(`loadServiceMapState: "${now}" is not an ISO date`)
   const hops = (await getEventPolicy(tenantId)).suppress_upstream_hops
-  const row = await runQueryOne<StateRow>(session, loadServiceMapCypher(hops), { mapId, tenantId, ...CHANGE_WINDOW_PARAMS })
+  // I passi della finestra di change vengono dallo SCOPO dei passi del tenant
+  // (ondata 4 · A4-1), non dai nomi di fabbrica. Si riusa la sessione del
+  // chiamante quando sa leggere; dentro una transazione altrui la risoluzione
+  // apre la propria lettura (a cache calda non è nemmeno una query).
+  const windowSteps = await resolveChangeWindowSteps(tenantId, session)
+  const row = await runQueryOne<StateRow>(session, loadServiceMapCypher(hops), { mapId, tenantId, ...changeWindowParams(windowSteps) })
   if (!row) throw new NotFoundError('ServiceMap', mapId)
-  const nodes = row.nodes.map((n) => mapNode(n, mapId, nowMs))
+  const nodes = row.nodes.map((n) => mapNode(n, mapId, nowMs, windowSteps))
   const nodeIds = row.props['node_ids']
   if (!Array.isArray(nodeIds)) throw new Error(`ServiceMap ${mapId} has no node_ids — run the 20260910_1080_service_maps_bootstrap migration`)
   const present = new Set(nodes.map((n) => n.ciId))

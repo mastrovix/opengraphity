@@ -27,7 +27,8 @@ vi.mock('@opengraphity/sla', () => ({
 }))
 vi.mock('../../../../services/eventCorrelation.js', () => ({
   reevaluateSuppressedEvents: vi.fn().mockResolvedValue(0),
-  CHANGE_WINDOW_STEPS: ['deployment', 'scheduled'],
+  // Ondata 4 · A4-1: i passi di finestra vengono dallo SCOPO dei passi del tenant.
+  resolveChangeWindowSteps: vi.fn().mockResolvedValue({ implementation: ['deployment'], planned: ['scheduled'], all: ['deployment', 'scheduled'] }),
 }))
 vi.mock('../../../../jobs/eventCorrelateWorker.js', () => ({
   enqueueChangeWindowReevaluation: vi.fn().mockResolvedValue(undefined),

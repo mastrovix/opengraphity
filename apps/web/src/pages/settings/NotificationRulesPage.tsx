@@ -6,13 +6,13 @@ import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { Plus, Bell } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
-import { GET_NOTIFICATION_RULES, GET_NOTIFICATION_ROUTING } from '@/graphql/queries'
+import { GET_NOTIFICATION_RULES, GET_NOTIFICATION_ROUTING, GET_WORKFLOW_EVENT_TYPES } from '@/graphql/queries'
 import { UPDATE_NOTIFICATION_RULE, CREATE_NOTIFICATION_RULE, DELETE_NOTIFICATION_RULE } from '@/graphql/mutations'
 import { fontSize, fontWeight, colors } from '@/lib/tokens'
 import { RuleRow, routableFor, targetOptionsFor, RULE_CATEGORIES, STANDARD_EVENTS } from './NotificationRuleList'
 import type { NotificationRule, NotificationRouting, UpdateInput } from './NotificationRuleList'
 import { NewRuleDialog } from './NotificationRuleForm'
-import type { CreateInput } from './NotificationRuleForm'
+import type { CreateInput, WorkflowEventType } from './NotificationRuleForm'
 import { QueryError } from '@/components/QueryError'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -41,6 +41,11 @@ export default function NotificationRulesPage() {
   // della pagina, non un elenco di canali «a prescindere».
   const routingQuery = useQuery<{ notificationRouting: NotificationRouting }>(GET_NOTIFICATION_ROUTING)
   const routing = routingQuery.data?.notificationRouting
+  // I tipi di evento veri dei workflow del tenant (D-22): il dialogo li offre
+  // accanto alle costanti, così una regola su un passo aggiunto o rinominato
+  // si sceglie da un elenco invece di indovinarne il nome generato.
+  const eventTypesQuery = useQuery<{ workflowEventTypes: WorkflowEventType[] }>(GET_WORKFLOW_EVENT_TYPES)
+  const workflowEventTypes = eventTypesQuery.data?.workflowEventTypes ?? []
 
   // Errors → toast with the server message; success → refetch() of the
   // active query (E-08).
@@ -74,7 +79,12 @@ export default function NotificationRulesPage() {
   }, [confirm, deleteRule, t])
 
   const allRules   = data?.notificationRules ?? []
-  const byEvent    = allRules.reduce<Record<string, NotificationRule>>((acc, r) => { acc[r.eventType] = r; return acc }, {})
+  // Un tipo di evento può avere PIÙ regole: sul tipo stabile del passo
+  // (`incident.step_entered`) ne convivono una per scopo/categoria. Quando
+  // questa mappa teneva una regola sola per tipo, le altre non comparivano.
+  const byEvent    = allRules.reduce<Record<string, NotificationRule[]>>((acc, r) => {
+    (acc[r.eventType] ??= []).push(r); return acc
+  }, {})
   const customRules = allRules.filter((r) => !STANDARD_EVENTS.includes(r.eventType))
 
   const tableHeader = (
@@ -121,7 +131,7 @@ export default function NotificationRulesPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
           {RULE_CATEGORIES.map(({ key, events }) => {
-            const rules = events.map((e) => byEvent[e]).filter(Boolean) as NotificationRule[]
+            const rules = events.flatMap((e) => byEvent[e] ?? [])
             if (!rules.length) return null
             return (
               <section key={key} aria-labelledby={`notification-rules-${key}`}>
@@ -174,6 +184,7 @@ export default function NotificationRulesPage() {
       {showDialog && routing && (
         <NewRuleDialog
           routing={routing}
+          workflowEventTypes={workflowEventTypes}
           onSave={handleCreate}
           onClose={() => setShowDialog(false)}
           saving={creating}

@@ -79,6 +79,13 @@ export function buildBaseSDL(): string {
     notificationRules: [NotificationRule!]!
     "Canali instradabili per tipo di evento: sorgente unica per l'interfaccia delle regole (D3.1)."
     notificationRouting: NotificationRouting!
+    """
+    I tipi di evento che i workflow di QUESTO tenant possono produrre, derivati
+    dai suoi passi (D-22): il form delle regole e gli abbonamenti dei webhook in
+    uscita non offrono più sei costanti, ma ciò che esiste davvero. Senza
+    entityType li elenca tutti.
+    """
+    workflowEventTypes(entityType: String): [WorkflowEventType!]!
 
     # Reports (AI conversations)
     reportConversations: [ReportConversation!]!
@@ -136,6 +143,13 @@ export function buildBaseSDL(): string {
 
     # Audit Log (admin only)
     auditLog(page: Int, pageSize: Int, filters: String, sortField: String, sortDirection: String): AuditEntriesResult!
+    """
+    Le azioni presenti nel registro di audit del tenant, con il numero di voci.
+    La pagina le offre in tendina: dopo il taglio di vocabolario dell'ondata 4
+    (transizioni sotto <entità>.step_entered, prima sotto il nome del passo) le
+    voci storiche non sono state riscritte, e questa lista le mostra comunque.
+    """
+    auditActions: [AuditActionCount!]!
 
     # Approval Workflow
     approvalRequests(page: Int, pageSize: Int, filters: String, sortField: String, sortDirection: String): ApprovalRequestsResult!
@@ -270,6 +284,9 @@ export function buildBaseSDL(): string {
       label:        String!
       enterActions: String
       exitActions:  String
+      # Scopo del passo: assente = non cambia, "" = tolto, altrimenti deve
+      # stare in WORKFLOW_STEP_PURPOSES (vedi StepChangeInput.purpose).
+      purpose:      String
     ): WorkflowStep!
 
     addWorkflowTransition(

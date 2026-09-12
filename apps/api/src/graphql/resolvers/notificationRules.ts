@@ -4,8 +4,12 @@ import type { Queue } from 'bullmq'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { invalidateRuleCache, DEFAULT_ROUTABLE_CHANNELS, ROUTABLE_CHANNELS_BY_EVENT, routableChannels, unroutableChannels } from '@opengraphity/notifications'
-import { NOTIFICATION_TARGETS, isNotificationTarget, applicableNotificationTargets, isTargetApplicable } from '@opengraphity/types'
+import {
+  NOTIFICATION_TARGETS, isNotificationTarget, applicableNotificationTargets, isTargetApplicable,
+  WORKFLOW_STEP_PURPOSES, isWorkflowStepPurpose, isStepEnteredEventType,
+} from '@opengraphity/types'
 import { SEEDED_EVENT_TYPES } from '../../lib/seedNotificationRules.js'
+import { workflowEventTypeRows } from '../../lib/stepEvent.js'
 import { validateEnum } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
 import { getQueue } from '../../lib/bullmq.js'
@@ -17,9 +21,12 @@ function getNotifQueue(): Queue {
   return _notifQueue
 }
 
-function mapRule(props: Record<string, unknown>) {
+function mapRule(props: Record<string, unknown>, eventProduced = true) {
   const digestRecipients = props['digest_recipients']
   return {
+    stepPurpose:      (props['step_purpose']  ?? null) as string | null,
+    stepCategory:     (props['step_category'] ?? null) as string | null,
+    eventProduced,
     id:               props['id']                as string,
     eventType:        props['event_type']        as string,
     enabled:          props['enabled']           as boolean,
@@ -107,6 +114,58 @@ function assertTargetApplicable(eventType: string, target: string): void {
   }
 }
 
+/**
+ * Scopo e categoria del passo restringono SOLO le regole sul tipo stabile
+ * `<entità>.step_entered`: su `incident.created` non vogliono dire niente, e
+ * una regola che li porta lì sembrerebbe ristretta senza esserlo. Uno scopo
+ * fuori dal vocabolario chiuso è rifiutato nominando i valori ammessi.
+ *
+ * `''` = togli il restringimento; `undefined`/`null` = non mandato.
+ */
+export function normalizeStepNarrowing(
+  eventType: string,
+  raw: string | null | undefined,
+  field: 'stepPurpose' | 'stepCategory',
+): string | null | undefined {
+  if (raw == null) return undefined
+  const value = raw.trim()
+  if (value === '') return null
+  if (!isStepEnteredEventType(eventType)) {
+    throw new GraphQLError(
+      `${field} vale solo per i tipi di evento di ingresso in un passo (<entità>.step_entered): ` +
+      `"${eventType}" non lo è, quindi il restringimento non verrebbe applicato.`,
+      { extensions: { code: 'BAD_USER_INPUT', eventType, field } },
+    )
+  }
+  if (field === 'stepPurpose' && !isWorkflowStepPurpose(value)) {
+    throw new GraphQLError(
+      `stepPurpose "${value}" fuori vocabolario. Ammessi: ${WORKFLOW_STEP_PURPOSES.join(', ')}.`,
+      { extensions: { code: 'BAD_USER_INPUT', allowedPurposes: [...WORKFLOW_STEP_PURPOSES] } },
+    )
+  }
+  return value
+}
+
+/**
+ * I tipi di evento che qualcosa produce davvero per questo tenant: quelli
+ * seminati dal prodotto, quelli derivati dai suoi workflow (D-22) e i tre che
+ * l'interfaccia offre senza seminarli. Serve a marcare le regole che non
+ * scatteranno mai (`eventProduced: false`) invece di lasciarle apparire
+ * identiche alle altre.
+ *
+ * Limite dichiarato: un tipo SEMINATO è considerato producibile per
+ * definizione. È corretto solo se il seed non semina tipi morti — ed è
+ * esattamente la ragione per cui `incident.on_hold` è stato tolto dal seed
+ * (B-16): una regola di fabbrica agganciata a un passo inventato è un difetto
+ * del seed, non un caso da segnalare all'amministratore.
+ */
+const UI_ONLY_EVENT_TYPES = ['incident.escalation', 'digest.daily', 'workflow.step.entered'] as const
+
+async function producedEventTypes(session: Parameters<typeof workflowEventTypeRows>[0], tenantId: string): Promise<Set<string>> {
+  const rows = await workflowEventTypeRows(session, tenantId)
+  return new Set<string>([...SEEDED_EVENT_TYPES, ...UI_ONLY_EVENT_TYPES, ...rows.map((r) => r.eventType)])
+}
+
 /** La tabella dei canali instradabili, così com'è nel pacchetto: l'interfaccia non conosce nomi di eventi o canali. */
 function notificationRouting() {
   return {
@@ -126,8 +185,17 @@ async function notificationRules(_: unknown, __: unknown, ctx: GraphQLContext) {
         { tenantId: ctx.tenantId },
       ),
     )
-    return result.records.map((rec) => mapRule(rec.get('r').properties as Record<string, unknown>))
+    const produced = await producedEventTypes(session, ctx.tenantId)
+    return result.records.map((rec) => {
+      const props = rec.get('r').properties as Record<string, unknown>
+      return mapRule(props, produced.has(props['event_type'] as string))
+    })
   })
+}
+
+/** I tipi di evento veri del tenant, derivati dai suoi passi (contratto con il web). */
+async function workflowEventTypes(_: unknown, args: { entityType?: string | null }, ctx: GraphQLContext) {
+  return withSession((session) => workflowEventTypeRows(session, ctx.tenantId, args.entityType ?? null))
 }
 
 async function updateNotificationRule(
@@ -139,6 +207,8 @@ async function updateNotificationRule(
       severityOverride?: string  | null
       channels?:         string[]| null
       target?:           string  | null
+      stepPurpose?:      string  | null
+      stepCategory?:     string  | null
       escalationDelayMinutes?:    number | null
       escalationTarget?:          string | null
       escalationMessage?:         string | null
@@ -156,7 +226,9 @@ async function updateNotificationRule(
   if (input.target != null) assertTargetKnown(input.target)
   return withSession(async (session) => {
     const now = new Date().toISOString()
-    if (input.channels != null || input.target != null) {
+    let stepPurpose:  string | null | undefined
+    let stepCategory: string | null | undefined
+    if (input.channels != null || input.target != null || input.stepPurpose != null || input.stepCategory != null) {
       // The event type is on the node, not in the input: read it first so both
       // checks name the real type (a rule id is opaque to the client).
       const current = await session.executeRead((tx) =>
@@ -166,6 +238,8 @@ async function updateNotificationRule(
       const eventType = current.records[0].get('eventType') as string
       if (input.channels != null) assertChannelsRoutable(eventType, input.channels)
       if (input.target   != null) assertTargetApplicable(eventType, input.target)
+      stepPurpose  = normalizeStepNarrowing(eventType, input.stepPurpose,  'stepPurpose')
+      stepCategory = normalizeStepNarrowing(eventType, input.stepCategory, 'stepCategory')
     }
     const result = await session.executeWrite((tx) =>
       tx.run(
@@ -175,6 +249,10 @@ async function updateNotificationRule(
            , r.severity_override = CASE WHEN $severityOverride IS NOT NULL THEN $severityOverride ELSE r.severity_override END
            , r.channels          = CASE WHEN $channels         IS NOT NULL THEN $channels         ELSE r.channels          END
            , r.target            = CASE WHEN $target           IS NOT NULL THEN $target           ELSE r.target            END
+           // Restringimento del passo: NON coalesce, si deve poter togliere
+           // ('' in ingresso → null qui, con il "given" a true).
+           , r.step_purpose       = CASE WHEN $stepPurposeGiven  THEN $stepPurpose  ELSE r.step_purpose  END
+           , r.step_category      = CASE WHEN $stepCategoryGiven THEN $stepCategory ELSE r.step_category END
            , r.escalation_delay_minutes     = CASE WHEN $escalationDelayMinutes     IS NOT NULL THEN $escalationDelayMinutes     ELSE r.escalation_delay_minutes     END
            , r.escalation_target            = CASE WHEN $escalationTarget            IS NOT NULL THEN $escalationTarget            ELSE r.escalation_target            END
            , r.escalation_message           = CASE WHEN $escalationMessage           IS NOT NULL THEN $escalationMessage           ELSE r.escalation_message           END
@@ -191,6 +269,10 @@ async function updateNotificationRule(
           severityOverride: input.severityOverride ?? null,
           channels:         input.channels         ?? null,
           target:           input.target           ?? null,
+          stepPurposeGiven:  stepPurpose  !== undefined,
+          stepPurpose:       stepPurpose  ?? null,
+          stepCategoryGiven: stepCategory !== undefined,
+          stepCategory:      stepCategory ?? null,
           escalationDelayMinutes:     input.escalationDelayMinutes     ?? null,
           escalationTarget:           input.escalationTarget           ?? null,
           escalationMessage:          input.escalationMessage          ?? null,
@@ -203,7 +285,8 @@ async function updateNotificationRule(
     )
     if (!result.records.length) throw new GraphQLError('NotificationRule non trovata', { extensions: { code: 'NOT_FOUND' } })
     const props = result.records[0].get('r').properties as Record<string, unknown>
-    const rule = mapRule(props)
+    const produced = await producedEventTypes(session, ctx.tenantId)
+    const rule = mapRule(props, produced.has(props['event_type'] as string))
     invalidateRuleCache(ctx.tenantId, rule.eventType)
     if (rule.eventType === 'digest.daily') {
       await syncDigestJob(id, rule.digestTime, rule.enabled)
@@ -223,6 +306,8 @@ async function createNotificationRule(
       titleKey:         string
       channels:         string[]
       target:           string
+      stepPurpose?:     string | null
+      stepCategory?:    string | null
       escalationDelayMinutes?:    number | null
       escalationTarget?:          string | null
       escalationMessage?:         string | null
@@ -237,9 +322,31 @@ async function createNotificationRule(
   assertChannelsRoutable(input.eventType, input.channels)
   assertTargetKnown(input.target)
   assertTargetApplicable(input.eventType, input.target)
+  const stepPurpose  = normalizeStepNarrowing(input.eventType, input.stepPurpose,  'stepPurpose')
+  const stepCategory = normalizeStepNarrowing(input.eventType, input.stepCategory, 'stepCategory')
   return withSession(async (session) => {
     const now = new Date().toISOString()
     const id  = randomUUID()
+    // Due regole identiche per lo stesso tipo e lo stesso restringimento sono
+    // ambigue: il dispatcher ne applicherebbe una sola, scelta a caso. Sul tipo
+    // stabile del passo il restringimento fa parte dell'identità della regola.
+    const dup = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (r:NotificationRule {tenant_id: $tenantId, event_type: $eventType})
+         WHERE coalesce(r.step_purpose, '') = coalesce($stepPurpose, '')
+           AND coalesce(r.step_category, '') = coalesce($stepCategory, '')
+         RETURN r.id AS id LIMIT 1`,
+        { tenantId: ctx.tenantId, eventType: input.eventType, stepPurpose: stepPurpose ?? null, stepCategory: stepCategory ?? null },
+      ),
+    )
+    if (dup.records.length) {
+      const narrowing = stepPurpose ? ` (scopo "${stepPurpose}")` : stepCategory ? ` (categoria "${stepCategory}")` : ''
+      throw new GraphQLError(
+        `Esiste già una regola per "${input.eventType}"${narrowing}: modificala invece di crearne una seconda ` +
+        `(con due regole identiche il dispatcher ne applicherebbe una sola, e non è detto quale).`,
+        { extensions: { code: 'BAD_USER_INPUT', existingRuleId: dup.records[0].get('id') } },
+      )
+    }
     const result = await session.executeWrite((tx) =>
       tx.run(
         `CREATE (r:NotificationRule {
@@ -251,6 +358,8 @@ async function createNotificationRule(
            title_key:         $titleKey,
            channels:          $channels,
            target:            $target,
+           step_purpose:      $stepPurpose,
+           step_category:     $stepCategory,
            conditions:        null,
            is_seed:           false,
            escalation_delay_minutes:      $escalationDelayMinutes,
@@ -273,6 +382,8 @@ async function createNotificationRule(
           titleKey:         input.titleKey,
           channels:         input.channels,
           target:           input.target,
+          stepPurpose:      stepPurpose  ?? null,
+          stepCategory:     stepCategory ?? null,
           escalationDelayMinutes:     input.escalationDelayMinutes     ?? null,
           escalationTarget:           input.escalationTarget           ?? null,
           escalationMessage:          input.escalationMessage          ?? null,
@@ -285,7 +396,8 @@ async function createNotificationRule(
       ),
     )
     const props = result.records[0].get('r').properties as Record<string, unknown>
-    const rule = mapRule(props)
+    const produced = await producedEventTypes(session, ctx.tenantId)
+    const rule = mapRule(props, produced.has(props['event_type'] as string))
     if (rule.eventType === 'digest.daily') {
       await syncDigestJob(id, rule.digestTime, rule.enabled)
     }
@@ -324,6 +436,6 @@ async function deleteNotificationRule(
 }
 
 export const notificationRuleResolvers = {
-  Query:    { notificationRules, notificationRouting },
+  Query:    { notificationRules, notificationRouting, workflowEventTypes },
   Mutation: { createNotificationRule, updateNotificationRule, deleteNotificationRule },
 }

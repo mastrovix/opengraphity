@@ -1,9 +1,9 @@
 /**
  * Passo 1 della pipeline: soppressione in finestra di change.
  *
- * Una change "in finestra" (passo `deployment`, oppure `scheduled` con una
- * releaseWindow/validationWindow del piano di rilascio che contiene
- * l'istante) collegata al CI dell'evento o a un CI a monte (le relazioni
+ * Una change "in finestra" (un passo con scopo `implementation`, oppure uno
+ * con scopo `scheduled` e una releaseWindow/validationWindow del piano di
+ * rilascio che contiene l'istante) collegata al CI dell'evento o a un CI a monte (le relazioni
  * tecniche di SUPPRESSION_REL_TYPES, fino a `suppress_upstream_hops` salti)
  * silenzia l'evento: status `suppressed`, SUPPRESSED_BY, `event.suppressed`.
  * Niente salute, niente incident.
@@ -27,13 +27,14 @@
  */
 import { getSession, runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import type { Session } from 'neo4j-driver'
-import type { MonitoringEventPayload } from '@opengraphity/types'
+import { CHANGE_WINDOW_PURPOSES, type MonitoringEventPayload } from '@opengraphity/types'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import { anyDeployWindowContains } from '../../lib/deployWindows.js'
 import { SERVICE_RELATIONSHIP_TYPES } from '../../lib/serviceVocabularies.js'
-import { eventsSuppressedTotal } from '../../middleware/metrics.js'
+import { getStepNamesByPurpose, getWorkflowSteps } from '../../lib/workflowHelpers.js'
+import { eventsSuppressedTotal, workflowPurposeMissingTotal } from '../../middleware/metrics.js'
 import { mapEventPayload, monitoringContext, toNumber, toStr } from './shared.js'
 import { historyParams, historyWriteCypher } from './history.js'
 import type { EventRecord, PipelineMode } from './types.js'
@@ -41,14 +42,82 @@ import type { EventRecord, PipelineMode } from './types.js'
 const log = logger.child({ module: 'event-correlation' })
 
 /**
- * Passi del workflow change (scripts/lib/workflowDefinitions.ts:
- * assessment → approval → scheduled → deployment → review → closed).
- * `deployment` è l'implementazione: silenzia sempre. `scheduled` è la change
- * approvata e pianificata: silenzia solo dentro una finestra del piano.
+ * Passi della finestra, **per SCOPO e non per nome** (ondata 4 · A4-1).
+ *
+ * Prima erano due letterali (`'deployment'`, `'scheduled'`): un cliente che
+ * chiamava il suo passo di rilascio «rilascio notturno» non silenziava più
+ * niente e apriva incident falsi durante ogni rilascio, senza un errore.
+ * Ora i nomi arrivano dal workflow del tenant: i passi con scopo
+ * `implementation` sono la finestra APERTA (silenziano sempre), quelli con
+ * scopo `scheduled` la finestra PROGRAMMATA (silenziano solo dentro una
+ * finestra del piano di rilascio). Un tenant può averne più di uno per scopo.
  */
-export const CHANGE_IMPLEMENTATION_STEP = 'deployment'
-export const CHANGE_PLANNED_STEPS = ['scheduled'] as const
-export const CHANGE_WINDOW_STEPS: readonly string[] = [CHANGE_IMPLEMENTATION_STEP, ...CHANGE_PLANNED_STEPS]
+export interface ChangeWindowSteps {
+  /** Nomi dei passi con scopo `implementation` (finestra aperta). */
+  implementation: readonly string[]
+  /** Nomi dei passi con scopo `scheduled` (finestra programmata). */
+  planned:        readonly string[]
+  /** Unione dei due: è la lista che il Cypher filtra (`$windowSteps`). */
+  all:            readonly string[]
+}
+
+/** Lo scopo della finestra APERTA; gli altri di `CHANGE_WINDOW_PURPOSES` sono «programmata». */
+const IMPLEMENTATION_PURPOSE = 'implementation'
+const PLANNED_PURPOSES: readonly string[] = CHANGE_WINDOW_PURPOSES.filter((p) => p !== IMPLEMENTATION_PURPOSE)
+
+/**
+ * I passi di finestra del tenant, letti dal workflow `change` tramite lo
+ * SCOPO (`getStepNamesByPurpose`, lib/workflowHelpers.ts — cache di 30 s
+ * condivisa con tutto il resto, quindi normalmente nemmeno una query).
+ *
+ * Due casi che NON vanno confusi:
+ *
+ *  - **il tenant non ha un workflow delle change** (nessun passo): non c'è
+ *    niente da sopprimere e non c'è niente di sbagliato. Nessun allarme,
+ *    nessun contatore: `c-two` è esattamente così, e un warn a ogni allarme
+ *    insegnerebbe solo a ignorare i warn.
+ *  - **il workflow delle change esiste, ma nessuno dei suoi passi dichiara lo
+ *    scopo della finestra**: questa è configurazione incompleta, e la
+ *    conseguenza è grave e silenziosa — nessun allarme silenziato durante i
+ *    rilasci, nessun servizio in manutenzione, incident falsi. Qui
+ *    l'operazione **si ferma e lo dice** (decisione dell'utente per tutto il
+ *    programma). Fermarsi non perde nulla: l'allarme resta acceso alla
+ *    sorgente, il job finisce nella coda dei falliti — visibile e rigiocabile
+ *    dalla pagina Code — e il contatore
+ *    `workflow_step_purpose_missing_total{rule="change_window"}` lo conta,
+ *    così la cosa si vede in Prometheus anche prima che qualcuno guardi la coda.
+ *
+ * `session` è opzionale e può essere anche una transazione altrui: se sa
+ * leggere (`executeRead`) la si riusa, altrimenti — dentro una
+ * `ManagedTransaction`, come nei Servizi monitorati — questa apre la propria
+ * lettura. A cache calda non parte nessuna query, quindi non è un giro in più.
+ */
+export async function resolveChangeWindowSteps(tenantId: string, session?: Queryable): Promise<ChangeWindowSteps> {
+  const reusable = typeof (session as Session | undefined)?.executeRead === 'function' ? (session as Session) : null
+  const own = reusable ?? getSession()
+  try {
+    const implementation = await getStepNamesByPurpose(own, tenantId, 'change', [IMPLEMENTATION_PURPOSE])
+    const planned        = await getStepNamesByPurpose(own, tenantId, 'change', PLANNED_PURPOSES)
+    const all = [...new Set([...implementation, ...planned])]
+    if (all.length === 0) {
+      // Nessun passo di change nel tenant: niente da sopprimere, nessun errore.
+      const steps = await getWorkflowSteps(own, tenantId, 'change')
+      if (steps.length === 0) return { implementation, planned, all }
+
+      workflowPurposeMissingTotal.inc({ rule: 'change_window' })
+      throw new Error(
+        `Soppressione degli allarmi durante i rilasci: il workflow "change" del tenant ${tenantId} ha ` +
+        `${String(steps.length)} passi e nessuno dichiara lo scopo [${CHANGE_WINDOW_PURPOSES.join(', ')}]. ` +
+        `Senza, nessun allarme verrebbe silenziato durante un rilascio e nessun servizio entrerebbe in ` +
+        `manutenzione, in silenzio: assegna lo scopo ai passi nel disegnatore dei workflow. ` +
+        `L'allarme resta acceso alla sorgente e questo lavoro è rigiocabile dalla pagina Code.`,
+      )
+    }
+    return { implementation, planned, all }
+  } finally {
+    if (!reusable) await own.close()
+  }
+}
 
 /**
  * Relazioni percorse verso i CI a MONTE (revisione 2 · B2-13): la stessa
@@ -64,10 +133,12 @@ export interface EventSuppressedPayload extends MonitoringEventPayload { change_
 /**
  * Una change è "in finestra" se è in implementazione, oppure pianificata con
  * almeno una finestra (release o validation) del piano che contiene l'istante.
+ * `steps` sono i passi di finestra DEL TENANT (`resolveChangeWindowSteps`):
+ * il nome del passo non decide più niente da solo.
  */
-export function changeIsInWindow(step: string, plans: readonly unknown[], atMs: number): boolean {
-  if (step === CHANGE_IMPLEMENTATION_STEP) return true
-  if ((CHANGE_PLANNED_STEPS as readonly string[]).includes(step)) return anyDeployWindowContains(plans, atMs)
+export function changeIsInWindow(step: string, plans: readonly unknown[], atMs: number, steps: ChangeWindowSteps): boolean {
+  if (steps.implementation.includes(step)) return true
+  if (steps.planned.includes(step)) return anyDeployWindowContains(plans, atMs)
   return false
 }
 
@@ -102,7 +173,8 @@ export function assertUpstreamHops(hops: number): number {
  * senza un giro in più.
  *
  * Parametri attesi dal chiamante: `$tenantId`, `$windowSteps`,
- * `$implementationStep`. `hops` è interpolato (intero validato).
+ * `$implementationSteps` (entrambe liste, da `changeWindowParams`). `hops` è
+ * interpolato (intero validato).
  */
 export function changeWindowSubqueryCypher(hops: number): string {
   const targets = assertUpstreamHops(hops) > 0
@@ -119,7 +191,7 @@ export function changeWindowSubqueryCypher(hops: number): string {
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
       WHERE wi.current_step IN $windowSteps
       WITH c, wi, target, min(dist) AS dist
-      ORDER BY dist, CASE WHEN wi.current_step = $implementationStep THEN 0 ELSE 1 END, c.created_at
+      ORDER BY dist, CASE WHEN wi.current_step IN $implementationSteps THEN 0 ELSE 1 END, c.created_at
       RETURN collect({
         changeId: c.id, code: coalesce(c.code, c.id), step: wi.current_step,
         viaCiId: target.id, viaCiName: coalesce(target.name, target.id), upstream: dist > 0,
@@ -128,17 +200,22 @@ export function changeWindowSubqueryCypher(hops: number): string {
     }`
 }
 
-/** I parametri che `changeWindowSubqueryCypher` si aspetta (oltre a `$tenantId`). */
-export const CHANGE_WINDOW_PARAMS = { windowSteps: CHANGE_WINDOW_STEPS, implementationStep: CHANGE_IMPLEMENTATION_STEP } as const
+/**
+ * I parametri che `changeWindowSubqueryCypher` si aspetta (oltre a
+ * `$tenantId`), a partire dai passi di finestra del tenant.
+ */
+export function changeWindowParams(steps: ChangeWindowSteps): { windowSteps: readonly string[]; implementationSteps: readonly string[] } {
+  return { windowSteps: steps.all, implementationSteps: steps.implementation }
+}
 
 /**
  * La prima candidata davvero in finestra all'istante `atMs` (le righe arrivano
  * già ordinate dal Cypher). Funzione pura: la usano gli allarmi e i servizi.
  */
-export function pickChangeWindow(rows: readonly ChangeWindowRow[] | null | undefined, atMs: number): ChangeWindow | null {
+export function pickChangeWindow(rows: readonly ChangeWindowRow[] | null | undefined, atMs: number, steps: ChangeWindowSteps): ChangeWindow | null {
   for (const r of rows ?? []) {
     if (typeof r.step !== 'string') continue
-    if (changeIsInWindow(r.step, r.plans ?? [], atMs)) {
+    if (changeIsInWindow(r.step, r.plans ?? [], atMs, steps)) {
       return { changeId: r.changeId, code: r.code, step: r.step, viaCiId: r.viaCiId, viaCiName: r.viaCiName, upstream: r.upstream === true }
     }
   }
@@ -158,19 +235,24 @@ function atMsOf(at: string, what: string): number {
  * tutti i CI. È la definizione condivisa di «CI in finestra di change»
  * (revisione 2 · D6.2). Legge nella sessione del chiamante.
  */
-export async function changeWindowsForCIs(session: Queryable, tenantId: string, ciIds: readonly string[], hops: number, at: string): Promise<Map<string, ChangeWindow>> {
+export async function changeWindowsForCIs(session: Queryable, tenantId: string, ciIds: readonly string[], hops: number, at: string, windowSteps?: ChangeWindowSteps): Promise<Map<string, ChangeWindow>> {
   const ids = [...new Set(ciIds)]
   const out = new Map<string, ChangeWindow>()
   if (ids.length === 0) return out
   const atMs = atMsOf(at, 'changeWindowsForCIs')
+  const steps = windowSteps ?? await resolveChangeWindowSteps(tenantId)
+  // Nessun passo di finestra nel workflow del tenant → nessuna change può
+  // essere in finestra: la query filtrerebbe su una lista vuota e tornerebbe
+  // zero righe. L'avviso e la metrica li ha già scritti resolveChangeWindowSteps.
+  if (steps.all.length === 0) return out
   const rows = await runQuery<{ ciId: string; changes: ChangeWindowRow[] | null }>(session, `
     UNWIND $ciIds AS cid
     MATCH (ci:ConfigurationItem {id: cid, tenant_id: $tenantId})
     ${changeWindowSubqueryCypher(hops)}
     RETURN ci.id AS ciId, changes
-  `, { ciIds: ids, tenantId, ...CHANGE_WINDOW_PARAMS })
+  `, { ciIds: ids, tenantId, ...changeWindowParams(steps) })
   for (const r of rows) {
-    const window = pickChangeWindow(r.changes, atMs)
+    const window = pickChangeWindow(r.changes, atMs, steps)
     if (window) out.set(r.ciId, window)
   }
   return out
@@ -188,7 +270,8 @@ export async function findSuppressingChange(tenantId: string, ciId: string, hops
   atMsOf(at, 'findSuppressingChange')
   const session = getSession()
   try {
-    return (await changeWindowsForCIs(session, tenantId, [ciId], hops, at)).get(ciId) ?? null
+    const steps = await resolveChangeWindowSteps(tenantId, session)
+    return (await changeWindowsForCIs(session, tenantId, [ciId], hops, at, steps)).get(ciId) ?? null
   } finally { await session.close() }
 }
 
