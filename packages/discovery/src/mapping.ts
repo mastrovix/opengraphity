@@ -8,6 +8,10 @@ export function applyMappingRules(ci: DiscoveredCI, rules: MappingRule[]): Disco
   const properties = { ...ci.properties }
 
   for (const rule of rules) {
+    // Le regole `ci_type` sono alias di TIPO, non di proprietà: le legge
+    // `ciTypeAliases` (ondata 6 · A-11). Senza questo salto un alias il cui
+    // nome coincidesse con un tag scriverebbe anche una proprietà, per caso.
+    if (rule.kind === 'ci_type') continue
     const raw = ci.tags[rule.source_field]
     if (raw === undefined) continue
 
@@ -22,6 +26,29 @@ export function applyMappingRules(ci: DiscoveredCI, rules: MappingRule[]): Disco
   }
 
   return { ...ci, properties }
+}
+
+/**
+ * Gli alias di tipo dichiarati nelle regole della sorgente (ondata 6 · A-11):
+ * valore in arrivo (minuscolo) → nome del tipo CI del cliente. Una regola con
+ * un capo vuoto è un errore di configurazione e si dice: un alias che non
+ * mappa niente farebbe credere di aver risolto il problema.
+ */
+export function ciTypeAliases(rules: readonly MappingRule[]): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const rule of rules) {
+    if (rule.kind !== 'ci_type') continue
+    const from = rule.source_field?.trim()
+    const to   = rule.target_field?.trim()
+    if (!from || !to) {
+      throw new Error(
+        `mapping_rules: una regola di tipo "ci_type" ha source_field=${JSON.stringify(rule.source_field)} e ` +
+        `target_field=${JSON.stringify(rule.target_field)}: servono entrambi (il valore in arrivo e il nome del tipo CI).`,
+      )
+    }
+    out.set(from.toLowerCase(), to)
+  }
+  return out
 }
 
 // ── inferCIType ───────────────────────────────────────────────────────────────

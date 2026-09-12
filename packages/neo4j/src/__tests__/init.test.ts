@@ -129,7 +129,12 @@ describe('initSchema — clean database', () => {
     ]) {
       expect(writes).toContain(expected)
     }
-    expect(writes.some(c => c.startsWith('CREATE FULLTEXT INDEX global_search IF NOT EXISTS'))).toBe(true)
+    // A6-2: `global_search` copre i CI per :ConfigurationItem, non per tipo —
+    // un indice fulltext non si estende a runtime, quindi con le etichette dei
+    // tipi un tipo creato dal cliente non sarebbe mai cercabile. Su un
+    // database già avviato la ridefinizione la fa la migrazione
+    // 20260916_1700 (`IF NOT EXISTS` non ridefinisce un indice esistente).
+    expect(writes).toContain('CREATE FULLTEXT INDEX global_search IF NOT EXISTS FOR (n:Incident|Change|Problem|ServiceRequest|KBArticle|ConfigurationItem) ON EACH [n.title, n.number, n.code, n.name]')
     // ogni indice è dichiarato una volta sola (init.ts è la sorgente unica: niente doppioni fra ondate)
     const names = writes.filter(c => c.startsWith('CREATE INDEX') || c.startsWith('CREATE FULLTEXT INDEX')).map(c => c.split(' IF NOT EXISTS')[0])
     expect(new Set(names).size).toBe(names.length)

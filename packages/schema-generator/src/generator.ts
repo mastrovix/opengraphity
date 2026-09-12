@@ -67,6 +67,7 @@ export async function loadMetamodel(tenantId: string): Promise<CITypeWithDefinit
         active:           t['active'] as boolean,
         neo4jLabel:       t['neo4j_label'] as string,
         validationScript: (t['validation_script'] as string | null) ?? null,
+        serviceRole:      (t['service_role']      as string | null) ?? null,
         // Missing chain_families → none; corrupt JSON → throw (an invented
         // default would silently alter chain calculation for the whole type).
         chainFamilies:    (() => {
@@ -212,6 +213,7 @@ export async function loadITILTypes(tenantId: string, enumScope: EnumScope): Pro
         active:           t['active'] as boolean,
         neo4jLabel:       (t['neo4j_label'] as string) ?? '',
         validationScript: (t['validation_script'] as string | null) ?? null,
+        serviceRole:      (t['service_role']      as string | null) ?? null,
         fields,
         relations:        [],
         systemRelations:  [],
@@ -279,6 +281,8 @@ input CreateCITypeInput {
   color: String
   """Famiglie di catena del tipo (Application / Infrastructure): scritte in \`chain_families\`."""
   chainFamilies: [String!]
+  """Ruolo nella mappa di un servizio: component | infrastructure | certificate. Omesso = lo propone il prodotto dalle famiglie di catena."""
+  serviceRole: String
 }
 
 input UpdateCITypeInput {
@@ -289,6 +293,8 @@ input UpdateCITypeInput {
   validationScript: String
   """Famiglie di catena del tipo (Application / Infrastructure): scritte in \`chain_families\`."""
   chainFamilies: [String!]
+  """Ruolo nella mappa di un servizio: component | infrastructure | certificate."""
+  serviceRole: String
 }
 
 input CIFieldInput {

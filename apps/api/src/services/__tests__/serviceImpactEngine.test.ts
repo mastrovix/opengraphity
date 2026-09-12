@@ -12,6 +12,12 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
+import { ALL_CI_LABELS as ALL_CI_LABELS_SEED } from '../../lib/ciLabels.js'
+import { ROLE_BY_CI_LABEL } from '../../lib/serviceVocabularies.js'
+
+/** Il ruolo per etichetta come lo darebbe il metamodello: seme + il tipo del cliente. */
+const TENANT_ROLES: ReadonlyMap<string, 'component' | 'infrastructure' | 'certificate'> =
+  new Map([...Object.entries(ROLE_BY_CI_LABEL), ['ErpSystem', 'component']] as [string, 'component' | 'infrastructure' | 'certificate'][])
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
@@ -34,6 +40,23 @@ vi.mock('../../middleware/metrics.js', () => ({
   redisLockTimeoutsTotal: { inc: vi.fn() }, redisLockHoldSeconds: { observe: vi.fn() },
 }))
 
+// Ondata 6 · C-1 / A-10 / C-3: etichette, ruoli e tipi di relazione vengono dal
+// metamodello DEL TENANT. Qui si mockano le due sorgenti per tenant con il
+// metamodello del prodotto più UN tipo del cliente (`ErpSystem`, ruolo
+// `component`) e UN tipo di relazione suo (`BILANCIA`): i test pinnano che la
+// costruzione li usi davvero, invece delle tre costanti di prima.
+const TENANT_CI_LABELS = [...ALL_CI_LABELS_SEED, 'ErpSystem'].sort()
+const TENANT_REL_TYPES = ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE', 'BILANCIA']
+vi.mock('../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelsForTenant:       vi.fn(async () => TENANT_CI_LABELS),
+  apocLabelFilterForTenant: vi.fn(async () => TENANT_CI_LABELS.map((l: string) => `+${l}`).join('|')),
+}))
+vi.mock('../../lib/ciMetamodelForTenant.js', () => ({
+  serviceRelationshipTypesForTenant: vi.fn(async () => TENANT_REL_TYPES),
+  suppressionRelPatternForTenant:    vi.fn(async () => TENANT_REL_TYPES.join('|')),
+  serviceRolesForTenant:             vi.fn(async () => TENANT_ROLES),
+}))
+
 vi.mock('../../lib/workflowHelpers.js', () => ({
   // Ondata 4 · A4-1: i passi della finestra di change vengono dallo SCOPO.
   // Il tenant di prova ha i nomi di fabbrica con gli scopi della migrazione.
@@ -47,13 +70,11 @@ const { audit } = await import('../../lib/audit.js')
 const { logger } = await import('../../lib/logger.js')
 const metrics = await import('../../middleware/metrics.js')
 const { reconcileServiceIncident } = await import('../serviceImpact/incident.js')
-const { buildServiceMap, proposeNodeSettings, relationshipFilterOf, CI_LABEL_FILTER, ENTRY_NODES_CYPHER, EXPAND_NODES_CYPHER, CREATE_SERVICE_MAP_CYPHER, assertRelationshipTypes, assertMaxDepth } = await import('../serviceImpact/build.js')
+const { buildServiceMap, proposeNodeSettings, relationshipFilterOf, ENTRY_NODES_CYPHER, EXPAND_NODES_CYPHER, CREATE_SERVICE_MAP_CYPHER, assertRelationshipTypes, assertMaxDepth } = await import('../serviceImpact/build.js')
 const { serviceHistoryWriteCypher, serviceHistoryParams } = await import('../serviceImpact/history.js')
 const { evaluateServiceMap, createServiceMap, findMapsIncludingCI, evaluateStaleOrOldMaps, refreshServiceGauges, loadServiceMapState, assertServiceMapPlanLimit, loadServiceMapCypher, SERVICE_MAP_PLAN_LIMIT_CYPHER, evaluationWriteCypher, evaluationHoldWriteCypher, stormingSourcesOf, upstreamWindowsOf, SERVICE_EVALUATION_HELD, SERVICE_STALE_EVALUATION_MINUTES, EVALUATION_VERSION_RETRIES } = await import('../serviceImpact/engine.js')
 const { PLAN_SETTINGS } = await import('../../lib/tenantPlans.js')
 const { SERVICE_HISTORY_MAX, SERVICE_MAP_MAX_NODES, DEFAULT_SERVICE_IMPACT_RULES_JSON, SERVICE_RELATIONSHIP_TYPES } = await import('../../lib/serviceVocabularies.js')
-
-const { ALL_CI_LABELS } = await import('../../lib/ciLabels.js')
 
 const NOW = '2026-09-10T10:00:00.000Z'
 const log = logger.child({})
@@ -131,7 +152,9 @@ describe('buildServiceMap', () => {
     expect(e.cypher).toBe(ENTRY_NODES_CYPHER)
     expect(e.cypher).toContain("WHERE ANY(l IN labels(app) WHERE l IN $ciLabels)")
     expect(e.cypher).toContain('status: a.status, health: a.health')
-    expect(e.params).toEqual({ serviceId: 'ba-1', tenantId: 't1', ciLabels: ALL_CI_LABELS })
+    // Ondata 6 · C-1: le etichette sono quelle del TENANT (il tipo del cliente compreso), non la costante.
+    expect(e.params).toEqual({ serviceId: 'ba-1', tenantId: 't1', ciLabels: TENANT_CI_LABELS })
+    expect(e.params['ciLabels']).toContain('ErpSystem')
     const x = callMatching(/apoc\.path\.expandConfig/)!
     expect(x.cypher).toBe(EXPAND_NODES_CYPHER)
     expect(x.cypher).toMatch(/MATCH \(app \{tenant_id: \$tenantId\}\)\s+WHERE app\.id IN \$appIds\s+WITH collect\(app\) AS apps/)
@@ -142,10 +165,11 @@ describe('buildServiceMap', () => {
     expect(x.cypher).toContain('WITH last(nodes(path)) AS node, length(path) + 1 AS level, nodes(path)[-2] AS pred')
     expect(x.cypher).toContain('node.status AS status, node.health AS health')
     expect(x.params).toEqual({
-      tenantId: 't1', appIds: ['app-3'], relFilter: 'DEPENDS_ON>|HOSTED_ON>|INSTALLED_ON>|USES_CERTIFICATE>', labelFilter: CI_LABEL_FILTER,
+      tenantId: 't1', appIds: ['app-3'], relFilter: 'DEPENDS_ON>|HOSTED_ON>|INSTALLED_ON>|USES_CERTIFICATE>',
+      labelFilter: TENANT_CI_LABELS.map((l: string) => `+${l}`).join('|'),
       maxLevel: 3, limit: SERVICE_MAP_MAX_NODES + 1,
     })
-    expect(CI_LABEL_FILTER).toBe(ALL_CI_LABELS.map((l) => `+${l}`).join('|'))
+    expect(x.params['labelFilter']).toContain('+ErpSystem')
     expect(relationshipFilterOf(['HOSTED_ON'])).toBe('HOSTED_ON>')
   })
 
@@ -188,23 +212,36 @@ describe('buildServiceMap', () => {
   it('validazione di profondità e relazioni → BAD_USER_INPUT prima di ogni query', async () => {
     for (const d of [0, 9, 2.5, NaN]) await expect(buildServiceMap(session as never, 't1', 'ba-1', d, ['DEPENDS_ON'])).rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT' } })
     await expect(buildServiceMap(session as never, 't1', 'ba-1', 4, [])).rejects.toThrow(/at least one of/)
+    // Ondata 6 · C-3: `REALIZES` resta rifiutato — è una relazione SPEDITA col
+    // prodotto (il livello 1 della mappa), non una del cliente; ma un tipo di
+    // relazione DEL cliente ora è ammesso, e l'ordine canonico lo mette dopo i
+    // quattro spediti.
     await expect(buildServiceMap(session as never, 't1', 'ba-1', 4, ['REALIZES'])).rejects.toThrow(/"REALIZES" is not one of/)
     expect(runQueryOne).not.toHaveBeenCalled()
     expect(assertMaxDepth(8)).toBe(8)
-    expect(assertRelationshipTypes(['HOSTED_ON'])).toEqual(['HOSTED_ON'])
+    expect(assertRelationshipTypes(['HOSTED_ON'], TENANT_REL_TYPES)).toEqual(['HOSTED_ON'])
+    expect(assertRelationshipTypes(['BILANCIA', 'DEPENDS_ON'], TENANT_REL_TYPES)).toEqual(['DEPENDS_ON', 'BILANCIA'])
+    expect(() => assertRelationshipTypes(['BILANCIA'], ['DEPENDS_ON'])).toThrow(/"BILANCIA" is not one of DEPENDS_ON/)
   })
 
-  it('proposeNodeSettings: livello 1 → entry 8 critico; certificato → never 3; infrastruttura/componente → weighted 5; label non del metamodello → errore', () => {
-    expect(proposeNodeSettings(['Server'], 1)).toEqual({ role: 'entry', propagate: 'weighted', weight: 8, critical: true })
-    expect(proposeNodeSettings(['SslCertificate'], 2)).toEqual({ role: 'certificate', propagate: 'never', weight: 3, critical: false })
-    expect(proposeNodeSettings(['Microservice'], 3)).toEqual({ role: 'component', propagate: 'weighted', weight: 5, critical: false })
-    expect(proposeNodeSettings(['VirtualMachine'], 2).role).toBe('infrastructure')
-    expect(() => proposeNodeSettings(['ErpSystem'], 2)).toThrow(/No service node role for CI labels \["ErpSystem"\]/)
+  it('proposeNodeSettings: livello 1 → entry 8 critico; certificato → never 3; infrastruttura/componente → weighted 5; il ruolo viene dal metamodello del tenant, e un\'etichetta che nessun tipo attivo dichiara → errore', () => {
+    expect(proposeNodeSettings(TENANT_ROLES, ['Server'], 1)).toEqual({ role: 'entry', propagate: 'weighted', weight: 8, critical: true })
+    expect(proposeNodeSettings(TENANT_ROLES, ['SslCertificate'], 2)).toEqual({ role: 'certificate', propagate: 'never', weight: 3, critical: false })
+    expect(proposeNodeSettings(TENANT_ROLES, ['Microservice'], 3)).toEqual({ role: 'component', propagate: 'weighted', weight: 5, critical: false })
+    expect(proposeNodeSettings(TENANT_ROLES, ['VirtualMachine'], 2).role).toBe('infrastructure')
+    // Ondata 6 · A-10 — RINEGOZIATO: `ErpSystem` era l'esempio del tipo del
+    // cliente e DOVEVA lanciare, perché il ruolo era una tabella nel codice.
+    // Ora il tipo del cliente ha il suo ruolo nel metamodello e la mappa lo
+    // include; lancia ancora — e deve — l'etichetta che NESSUN tipo attivo
+    // dichiara (tipo cancellato, disattivato, o CI nato da una discovery).
+    expect(proposeNodeSettings(TENANT_ROLES, ['ErpSystem'], 2)).toEqual({ role: 'component', propagate: 'weighted', weight: 5, critical: false })
+    expect(() => proposeNodeSettings(TENANT_ROLES, ['TipoCancellato'], 2)).toThrow(/No service node role for CI labels \["TipoCancellato"\]/)
+    expect(() => proposeNodeSettings(new Map(), ['Server'], 2)).toThrow(/no active CI type of this tenant declares them/)
     // Revisione 2 · D6.3: un CI dismesso (o fuori servizio) è proposto come informativo — si vede ma non conta
-    expect(proposeNodeSettings(['Server'], 2, 'decommissioned')).toEqual({ role: 'infrastructure', propagate: 'never', weight: 5, critical: false })
-    expect(proposeNodeSettings(['Server'], 2, 'inactive').propagate).toBe('never')
-    expect(proposeNodeSettings(['Server'], 1, 'decommissioned')).toEqual({ role: 'entry', propagate: 'never', weight: 8, critical: false })
-    expect(proposeNodeSettings(['Server'], 2, 'maintenance').propagate).toBe('weighted')
+    expect(proposeNodeSettings(TENANT_ROLES, ['Server'], 2, 'decommissioned')).toEqual({ role: 'infrastructure', propagate: 'never', weight: 5, critical: false })
+    expect(proposeNodeSettings(TENANT_ROLES, ['Server'], 2, 'inactive').propagate).toBe('never')
+    expect(proposeNodeSettings(TENANT_ROLES, ['Server'], 1, 'decommissioned')).toEqual({ role: 'entry', propagate: 'never', weight: 8, critical: false })
+    expect(proposeNodeSettings(TENANT_ROLES, ['Server'], 2, 'maintenance').propagate).toBe('weighted')
   })
 })
 
@@ -259,11 +296,14 @@ describe('evaluateServiceMap', () => {
     // i salti a monte della policy e i piani del CI toccato (B2-12); le
     // sorgenti in tempesta (D6.4) arrivano nella stessa query.
     const load = callMatching(LOAD_RE)!
-    expect(load.cypher).toBe(loadServiceMapCypher(1))
+    // Ondata 6 · C-3: le relazioni percorse a monte sono quelle del tenant
+    // (`BILANCIA` compresa), non i quattro tipi spediti.
+    expect(load.cypher).toBe(loadServiceMapCypher(1, TENANT_REL_TYPES.join('|')))
+    expect(load.cypher).toContain('|BILANCIA*1..1]->')
     expect(load.cypher).toContain('MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS_CI]->(target)')
     expect(load.cypher).toContain('WHERE wi.current_step IN $windowSteps')
     expect(load.cypher).toContain('plans: [(c)-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask {tenant_id: $tenantId}) WHERE dp.ci_id = target.id | dp.steps]')
-    expect(load.cypher).toContain('[rel:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE*1..1]->(up:ConfigurationItem {tenant_id: $tenantId})')
+    expect(load.cypher).toContain(`[rel:${TENANT_REL_TYPES.join('|')}*1..1]->(up:ConfigurationItem {tenant_id: $tenantId})`)
     expect(load.cypher).toContain("[(e:Event {tenant_id: $tenantId, status: 'firing'})-[:RAISED_ON]->(ci)")
     expect(load.cypher).toContain('WHERE w.storm_since IS NOT NULL | coalesce(w.name, w.id)]')
     expect(load.params).toEqual({ mapId: 'map-1', tenantId: 't1', windowSteps: ['deployment', 'scheduled'], implementationSteps: ['deployment'] })

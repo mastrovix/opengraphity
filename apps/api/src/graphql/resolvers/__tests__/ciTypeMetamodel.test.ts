@@ -32,10 +32,11 @@ import type { GraphQLContext } from '../../../context.js'
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
+
 vi.mock('../ci-utils.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn(mockSession)),
 }))
-vi.mock('../../../lib/schemaInvalidator.js', () => ({ invalidateSchema: vi.fn() }))
+vi.mock('../../../lib/schemaInvalidator.js', () => ({ invalidateSchema: vi.fn(), registerMetamodelCacheClearer: vi.fn() }))
 // `@opengraphity/schema-generator` NON è più finto: la porta sui nomi (A-12)
 // usa le sue regole vere, e finger `toPascalCase` con una versione che divide
 // anche su spazi e trattini nasconderebbe esattamente il difetto che la regola
@@ -44,6 +45,7 @@ vi.mock('../../../lib/schemaInvalidator.js', () => ({ invalidateSchema: vi.fn() 
 const { buildMetamodelMutations, buildCITypesResolver, buildBaseCITypeResolver, fetchCITypeById, requireAdmin } = await import('../ciTypeMetamodel.js')
 const { withSession } = await import('../ci-utils.js')
 const { invalidateSchema } = await import('../../../lib/schemaInvalidator.js')
+const { runQueryOne } = await import('@opengraphity/neo4j')
 
 const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
 const operator: GraphQLContext = { ...admin, role: 'operator' }
@@ -93,8 +95,24 @@ const EXISTING_TYPE_ROWS = [
 
 const txRun = vi.fn()
 const queue: Array<{ records: unknown[] }> = []
+
+/**
+ * Ondata 6 · A-8/D-10: `deleteCIType` e la disattivazione contano prima i CI
+ * del tipo e i riferimenti al suo nome (`lib/ciTypeUsage.ts`, che legge con
+ * `runQueryOne`). `usage()` è quella riga: senza argomenti dice «non è usato»,
+ * ed è lo stato in cui i test di scopatura vogliono trovarsi.
+ */
+function usage(over: Record<string, number> = {}): void {
+  vi.mocked(runQueryOne).mockResolvedValue({
+    cis: 0, itil_relation_rules: 0, assessment_questions: 0, dynamic_ci_groups: 0,
+    field_visibility_rules: 0, field_requirement_rules: 0, business_rules: 0,
+    auto_triggers: 0, custom_widgets: 0, report_nodes: 0, ...over,
+  } as never)
+}
+
 function reset(responses: Array<{ records: unknown[] }> = []) {
   vi.clearAllMocks()
+  usage()
   queue.splice(0, queue.length, ...responses)
   txRun.mockImplementation(async (cypher: string) => queue.shift() ?? defaultResponse(cypher))
   const tx = { run: txRun }
@@ -612,5 +630,131 @@ describe('scope e tenantId sono esposti (A-6)', () => {
     const shipped = { properties: { id: 'ct-b', name: 'server', label: 'Server', scope: 'base', tenant_id: 'system', active: true } }
     reset([{ records: [{ get: (k: string) => ({ t: shipped, fields: [], relations: [], systemRels: [] })[k] }] }])
     await expect(fetchCITypeById('ct-b', 'tenant-1')).resolves.toMatchObject({ scope: 'base', tenantId: 'system' })
+  })
+})
+
+// ── Ondata 6 · A-8 / D-10: un tipo in uso non si cancella né si disattiva ────
+// Prima `deleteCIType` faceva `DETACH DELETE` senza contare niente e
+// `active = false` aveva lo stesso effetto sulle letture: i CI restavano nel
+// grafo, con le loro relazioni, e non comparivano più da nessuna parte.
+
+describe('il tipo in uso non si cancella (A-8 / D-10)', () => {
+  const tenantType = () => ({ records: [row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })] })
+
+  it('deleteCIType con CI di quel tipo → si ferma col NUMERO, e non scrive niente', async () => {
+    reset([tenantType()])
+    usage({ cis: 12 })
+    const err = await mutations.deleteCIType(null, { id: 'ct-1' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(err!.message).toContain('12 CI di tipo Firewall')
+    expect(err!.message).toContain('non è stato eliminato')
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+    expect(invalidateSchema).not.toHaveBeenCalled()
+  })
+
+  it('il messaggio elenca anche chi cita il tipo per nome (regole, gruppi, widget, report)', async () => {
+    reset([tenantType()])
+    usage({ cis: 3, itil_relation_rules: 2, dynamic_ci_groups: 1, report_nodes: 4 })
+    const err = await mutations.deleteCIType(null, { id: 'ct-1' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.message).toContain('2 regole di relazione ITIL')
+    expect(err!.message).toContain('1 gruppi dinamici')
+    expect(err!.message).toContain('4 nodi dei template di report')
+  })
+
+  it('nessun CI ma riferimenti appesi → si ferma comunque, dicendo quali', async () => {
+    reset([tenantType()])
+    usage({ custom_widgets: 1, assessment_questions: 5 })
+    const err = await mutations.deleteCIType(null, { id: 'ct-1' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.message).toContain('nessun CI di questo tipo')
+    expect(err!.message).toContain('1 widget della dashboard')
+    expect(err!.message).toContain('5 domande di assessment')
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('disattivare è come cancellare, per chi legge: `active: false` con CI → rifiutato', async () => {
+    reset([tenantType()])
+    usage({ cis: 7 })
+    const err = await mutations.updateCIType(null, { id: 'ct-1', input: { active: false } }, admin)
+      .then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.message).toContain('non è stato disattivato')
+    expect(err!.message).toContain('7 CI di tipo Firewall')
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('riattivare (o cambiare etichetta) non conta nessun CI: la guardia è solo sulla disattivazione', async () => {
+    reset([tenantType(), res()])
+    usage({ cis: 7 })
+    await expect(mutations.updateCIType(null, { id: 'ct-1', input: { active: true, label: 'FW' } }, admin)).resolves.toBeTruthy()
+    expect(mockSession.executeWrite).toHaveBeenCalled()
+  })
+})
+
+// ── Ondata 6 · A-10: il ruolo nella mappa del servizio è del TIPO ────────────
+
+describe('serviceRole (A-10)', () => {
+  it('createCIType lo scrive; omesso, lo propone dalle famiglie di catena', async () => {
+    reset()
+    await mutations.createCIType(null, { input: { name: 'firewall', label: 'Firewall', chainFamilies: ['Application'] } }, admin)
+    expect(call(1).cypher).toContain('t.service_role     = $serviceRole')
+    expect(call(1).params['serviceRole']).toBe('component')
+
+    reset()
+    await mutations.createCIType(null, { input: { name: 'firewall', label: 'Firewall' } }, admin)
+    expect(call(1).params['serviceRole']).toBe('infrastructure')
+
+    reset()
+    await mutations.createCIType(null, { input: { name: 'firewall', label: 'Firewall', serviceRole: 'certificate' } }, admin)
+    expect(call(1).params['serviceRole']).toBe('certificate')
+  })
+
+  it('updateCIType lo scrive, e `null` lo rimette in mano al prodotto', async () => {
+    reset([{ records: [row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })] }, res()])
+    await mutations.updateCIType(null, { id: 'ct-1', input: { serviceRole: 'component' } }, admin)
+    expect((call(1).params['updates'] as Record<string, unknown>)['service_role']).toBe('component')
+
+    reset([{ records: [row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })] }, res()])
+    await mutations.updateCIType(null, { id: 'ct-1', input: { serviceRole: null } }, admin)
+    expect((call(1).params['updates'] as Record<string, unknown>)['service_role']).toBeNull()
+  })
+
+  it('un ruolo inventato → BAD_USER_INPUT che lo nomina, nessuna scrittura; `entry` non si dichiara', async () => {
+    reset()
+    for (const bad of ['entry', 'rete', '']) {
+      const err = await mutations.updateCIType(null, { id: 'ct-1', input: { serviceRole: bad } }, admin)
+        .then(() => null, (e: unknown) => e as GraphQLError)
+      expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
+      expect(err!.message).toContain('component, infrastructure, certificate')
+    }
+    expect(txRun).not.toHaveBeenCalled()
+  })
+
+  it('ciTypes e fetchCITypeById lo espongono', async () => {
+    reset()
+    const out = await buildCITypesResolver()(null, null, admin) as Array<Record<string, unknown>>
+    expect(out[0]).toHaveProperty('serviceRole')
+    await expect(fetchCITypeById('ct-1', 'tenant-1')).resolves.toHaveProperty('serviceRole')
+  })
+})
+
+// ── Ondata 6 · C-3: il tipo di relazione è validato ─────────────────────────
+
+describe('addCIRelation valida il tipo di relazione (C-3)', () => {
+  const relInput = (relationshipType: unknown) => ({
+    typeId: 'ct-1',
+    input: { name: 'bilancia', label: 'Bilancia', relationshipType, targetType: 'application', cardinality: 'many', direction: 'outgoing' },
+  })
+
+  it('un identificatore valido passa, e la definizione nasce CON un proprietario', async () => {
+    reset([{ records: [row({ scope: 'tenant', name: 'load_balancer', label: 'Bilanciatore' })] }, res()])
+    await mutations.addCIRelation(null, relInput('BILANCIA'), admin)
+    expect(call(1).params['relationshipType']).toBe('BILANCIA')
+    expect(call(1).cypher).toContain('tenant_id:         $tenantId')
+    expect(call(1).cypher).toContain("scope:             'tenant'")
+  })
+
+  it.each(['bilancia', 'BILANCIA UNO', 'BILANCIA-1', '', 'Bilancia', 42, null])('%s → rifiutato prima di scrivere', async (bad) => {
+    reset([{ records: [row({ scope: 'tenant', name: 'load_balancer', label: 'Bilanciatore' })] }])
+    await expect(mutations.addCIRelation(null, relInput(bad), admin)).rejects.toThrow(/non è un tipo di relazione valido/)
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 })

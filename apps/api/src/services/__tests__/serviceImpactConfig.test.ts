@@ -32,6 +32,21 @@ vi.mock('../serviceImpact/engine.js', async (importOriginal) => ({
   evaluateServiceMap: vi.fn(),
 }))
 
+// Ondata 6 (C-1/A-10/C-3): etichette, ruoli e relazioni vengono dal metamodello
+// del tenant; qui il tenant di prova ha quello del prodotto.
+vi.mock('../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelsForTenant:        vi.fn(async () => ['Application', 'Server', 'Database', 'Certificate', 'Storage']),
+  apocLabelFilterForTenant: vi.fn(async () => '+Application|+Server|+Database|+Certificate|+Storage'),
+}))
+vi.mock('../../lib/ciMetamodelForTenant.js', () => ({
+  serviceRelationshipTypesForTenant: vi.fn(async () => ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE']),
+  suppressionRelPatternForTenant:    vi.fn(async () => 'DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE'),
+  serviceRolesForTenant:             vi.fn(async () => new Map([
+    ['Application', 'component'], ['Server', 'infrastructure'], ['Database', 'infrastructure'],
+    ['Certificate', 'certificate'], ['Storage', 'infrastructure'],
+  ])),
+}))
+
 vi.mock('../../lib/workflowHelpers.js', () => ({
   // Ondata 4 · A4-1: i passi della finestra di change vengono dallo SCOPO.
   // Il tenant di prova ha i nomi di fabbrica con gli scopi della migrazione.

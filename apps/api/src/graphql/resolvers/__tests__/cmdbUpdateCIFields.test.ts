@@ -1,4 +1,16 @@
 import { describe, it, expect, vi } from 'vitest'
+
+// ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
+// `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
+// Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
+// tipo non contavano, in silenzio.
+vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
+  apocLabelFilterForTenant:  vi.fn(async () => '+Application|+LoadBalancer|+Server'),
+  ciTypeNameForLabel:        vi.fn(async (_t: string, label: string) => (label === 'LoadBalancer' ? 'load_balancer' : null)),
+  clearCILabelCache:         vi.fn(),
+}))
 import { GraphQLError } from 'graphql'
 
 vi.mock('@opengraphity/neo4j', () => ({
@@ -58,6 +70,9 @@ describe('updateCIFields resolver', () => {
 
     const [, cypher, params] = vi.mocked(runQuery).mock.calls[0]!
     expect(cypher).toContain('SET ci += $updates')
+    // A-9: predicato dal metamodello del tenant (prima un CI di un tipo del
+    // cliente non veniva trovato e la modifica diceva «non trovato»).
+    expect(cypher).toContain('ci:LoadBalancer')
     expect(cypher).not.toContain('ip_address')
     expect(params).toMatchObject({ id: 'ci-1', tenantId: 't1', updates: { name: 'web-01', ip_address: '10.0.0.1' } })
   })

@@ -7,9 +7,20 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 vi.mock('@opengraphity/discovery', () => ({
   applyMappingRules: vi.fn((ci: unknown) => ci),
+  ciTypeAliases: vi.fn(() => new Map<string, string>()),
   inferCIType: vi.fn(() => 'server'),
   normalizeProperties: vi.fn((props: unknown) => props),
 }))
+vi.mock('@opengraphity/schema-generator', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  // Ondata 6 · A-11: il tipo in arrivo si risolve contro i tipi ATTIVI del
+  // cliente. Il tenant di prova ha `server` (i lotti dei test sono di server).
+  loadMetamodel: vi.fn(async () => [
+    { name: 'server', neo4jLabel: 'Server', scope: 'base', active: true },
+    { name: 'application', neo4jLabel: 'Application', scope: 'base', active: true },
+  ]),
+}))
+
 
 const { reconcileBatch, assertDiscoveredPropertyKeys, createCICypher } = await import('../reconciliationEngine.js')
 const { getSession } = await import('@opengraphity/neo4j')

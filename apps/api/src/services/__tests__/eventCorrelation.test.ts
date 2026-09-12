@@ -24,6 +24,7 @@
  * raggruppamento, ripetizione senza rumore, chiusura con un solo commento.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
 import { GraphQLError } from 'graphql'
 
 vi.mock('@opengraphity/neo4j', () => ({
@@ -55,6 +56,13 @@ vi.mock('../../lib/logger.js', () => {
   return { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => child } }
 })
 vi.mock('../../lib/workflowHelpers.js', () => ({ getWorkflowSteps: vi.fn(), getStepNamesByPurpose: vi.fn() }))
+// Ondata 6 · C-3: le relazioni percorse a monte sono quelle del tenant. Qui il
+// tenant di prova ha solo le quattro spedite col prodotto, così i Cypher
+// pinnati restano quelli (e un test dedicato mostra il caso con una relazione
+// del cliente: services/__tests__/serviceImpactEngine.test.ts).
+vi.mock('../../lib/ciMetamodelForTenant.js', () => ({
+  suppressionRelPatternForTenant: vi.fn(async () => 'DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE'),
+}))
 vi.mock('../incidentService.js', () => ({
   createIncident: vi.fn(), resolveIncident: vi.fn(), addIncidentComment: vi.fn().mockResolvedValue(undefined), publishIncidentTransition: vi.fn().mockResolvedValue(undefined),
 }))

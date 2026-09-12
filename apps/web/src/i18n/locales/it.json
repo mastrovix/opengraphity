@@ -1196,7 +1196,15 @@
     "deleteRelationTitle": "Eliminare la relazione \"{{name}}\"?",
     "shippedBadge": "spedito col prodotto",
     "shippedFieldLabel": "Campo spedito col prodotto",
-    "shippedRelationLabel": "sola lettura"
+    "shippedRelationLabel": "sola lettura",
+    "serviceRole": "Ruolo nella mappa di un servizio",
+    "serviceRoleAuto": "Proposto dal prodotto",
+    "serviceRoleHint": "Come pesa un CI di questo tipo nella mappa di un servizio monitorato. «Proposto dal prodotto» lo deriva dalle famiglie di catena. Il ruolo «ingresso» non si sceglie: nella mappa lo prende sempre il primo livello.",
+    "serviceRoles": {
+      "component": "Componente (software: soffre)",
+      "infrastructure": "Infrastruttura (ospita)",
+      "certificate": "Certificato (informativo)"
+    }
   },
   "fieldRules": {
     "show": "Mostra",
@@ -2934,7 +2942,8 @@
         "submit": "Crea",
         "noResult": "createServiceMap non ha restituito la mappa",
         "draft": "Crea come bozza",
-        "draftHint": "Una mappa in bozza non viene valutata: controllala e poi attivala dal dettaglio."
+        "draftHint": "Una mappa in bozza non viene valutata: controllala e poi attivala dal dettaglio.",
+        "relationshipsError": "Tipi di relazione non leggibili: {{error}}"
       },
       "ciSection": {
         "title": "Servizi che dipendono da questo CI",

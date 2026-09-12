@@ -6,9 +6,22 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 vi.mock('@opengraphity/discovery', () => ({
   applyMappingRules: vi.fn((ci: unknown) => ci),
+  // vero: serve al test dell'alias di tipo (ondata 6 · A-11)
+  ciTypeAliases: vi.fn((rules: Array<{ kind?: string; source_field: string; target_field: string }>) =>
+    new Map(rules.filter((r) => r.kind === 'ci_type').map((r) => [r.source_field.toLowerCase(), r.target_field]))),
   inferCIType: vi.fn(() => 'server'),
   normalizeProperties: vi.fn((props: unknown) => props),
 }))
+vi.mock('@opengraphity/schema-generator', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  // Ondata 6 · A-11: il tipo in arrivo si risolve contro i tipi ATTIVI del
+  // cliente. Il tenant di prova ha `server` (i lotti dei test sono di server).
+  loadMetamodel: vi.fn(async () => [
+    { name: 'server', neo4jLabel: 'Server', scope: 'base', active: true },
+    { name: 'application', neo4jLabel: 'Application', scope: 'base', active: true },
+  ]),
+}))
+
 vi.mock('../../services/serviceImpact/sync.js', () => ({ notifyCIGraphChanged: vi.fn().mockResolvedValue(0) }))
 
 // Import after mocks
@@ -283,5 +296,57 @@ describe('markStale', () => {
 
     expect(count).toBe(0)
     expect(mockSession.close).toHaveBeenCalledOnce()
+  })
+})
+
+// ── Ondata 6 · A-11: un ci_type che non esiste non crea più un CI ───────────
+// Prima l'etichetta era il PascalCase della stringa in arrivo: un CSV con
+// `ci_type = "Bilanciatore"` creava `:ConfigurationItem:Bilanciatore`, che
+// nessuna pagina mostra, e il run lo contava «creato».
+
+describe('reconcileBatch: ci_type sconosciuto (A-11)', () => {
+  const unknownBatch = [{
+    external_id: 'ext-900', source: 'csv', ci_type: 'Bilanciatore', name: 'lb-01',
+    properties: {}, tags: {}, relationships: [],
+  }]
+
+  beforeEach(() => vi.clearAllMocks())
+
+  it('nessun CI creato, un SyncConflict unknown_ci_type con il motivo, e il conteggio fra i conflitti', async () => {
+    const writes: Array<{ query: string; params: Record<string, unknown> }> = []
+    const mockSession = {
+      executeRead:  vi.fn().mockResolvedValue({ records: [] }),
+      executeWrite: vi.fn().mockImplementation(async (fn: (tx: { run: (q: string, p: Record<string, unknown>) => unknown }) => unknown) =>
+        fn({ run: (query, params) => { writes.push({ query, params }); return { records: [] } } })),
+      close: vi.fn().mockResolvedValue(undefined),
+    }
+    vi.mocked(getSession).mockReturnValue(mockSession as never)
+
+    const stats = makeStats()
+    await reconcileBatch(unknownBatch, testSource, 'run-9', 'tenant-1', stats)
+
+    expect(stats.ciCreated).toBe(0)
+    expect(stats.ciConflicts).toBe(1)
+    expect(writes).toHaveLength(1)
+    expect(writes[0]!.query).toContain('MERGE (c:SyncConflict')
+    expect(writes[0]!.query).toContain("conflict_kind: 'unknown_ci_type'")
+    expect(writes[0]!.query).not.toContain('ON CREATE SET ci:')
+    expect(writes[0]!.params).toMatchObject({ externalId: 'ext-900', ciType: 'Bilanciatore', tenantId: 'tenant-1', runId: 'run-9' })
+    expect(String(writes[0]!.params['message'])).toContain('non è un tipo di CI di questo cliente')
+    // idempotente: due passate dello stesso run non fanno due conflitti (MERGE sulla chiave)
+    expect(writes[0]!.query).toContain('external_id: $externalId')
+  })
+
+  it('con un alias nelle regole della sorgente lo stesso lotto crea il CI, con l\'etichetta del tipo vero', async () => {
+    const mockSession = makeMockSession([[]], [[{ created: true }]])
+    vi.mocked(getSession).mockReturnValue(mockSession as never)
+    const stats = makeStats()
+    await reconcileBatch(
+      unknownBatch,
+      { ...testSource, mapping_rules: [{ kind: 'ci_type', source_field: 'Bilanciatore', target_field: 'application' }] as never },
+      'run-9', 'tenant-1', stats,
+    )
+    expect(stats.ciConflicts).toBe(0)
+    expect(stats.ciCreated).toBe(1)
   })
 })

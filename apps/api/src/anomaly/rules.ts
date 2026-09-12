@@ -1,10 +1,28 @@
 /**
  * Anomaly Detection Rules
  *
- * CI nodes use Neo4j labels (Application, Server, Database, DatabaseInstance, Certificate).
- * The `type` property is null — always use `toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))` for entitySubtype.
+ * CI nodes use Neo4j labels; the `type` property is null — always use
+ * `toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))` for entitySubtype.
  *
  * Each query MUST RETURN: entityId, entityType, entitySubtype, entityName, description, severity
+ *
+ * ## «Un CI» è `:ConfigurationItem`, non un elenco di tipi (ondata 6, A-9)
+ * Le regole elencavano cinque etichette (`Application`, `Server`, `Database`,
+ * `DatabaseInstance`, `Certificate`): fuori restavano non solo i tipi creati
+ * dal cliente ma anche tre tipi **spediti col prodotto**
+ * (`BusinessApplication`, `BusinessCapability`, `DynamicCIGroup`). Un CI fuori
+ * da quell'elenco non era mai orfano, mai SPOF, mai senza owner: le anomalie
+ * non venivano trovate, in silenzio.
+ *
+ * Qui si usa `:ConfigurationItem` e non `ciLabelPredicateForTenant` per due
+ * motivi: (1) queste sono Cypher **costanti di modulo**, senza tenant e senza
+ * `await` (le esegue `anomalyEngine` per ogni tenant e anche
+ * `scripts/run-anomaly-scan.ts`); (2) la domanda che pongono è esattamente «è
+ * un Configuration Item?», e ogni CI porta quella etichetta (migrazione
+ * `20260908_1010`; dal vivo 2049 su 2049). Le due regole che parlano di tipi
+ * precisi (`unauthorized_relation`: `Server -DEPENDS_ON-> Application`, e il
+ * candidato di `isolated_cluster`) restano sui loro tipi: è la loro semantica,
+ * non una lista di comodo.
  */
 
 export interface AnomalyRule {
@@ -17,7 +35,7 @@ export interface AnomalyRule {
 
 // Shared predicate reused in every rule
 const CI_MATCH = `
-  WHERE (ci:Application OR ci:Server OR ci:Database OR ci:DatabaseInstance OR ci:Certificate)
+  WHERE ci:ConfigurationItem
     AND ci.tenant_id = $tenantId
 `
 
@@ -53,7 +71,7 @@ export const ANOMALY_RULES: AnomalyRule[] = [
       MATCH (ci)
       ${CI_MATCH}
       MATCH (dep)-[:DEPENDS_ON]->(ci)
-      WHERE (dep:Application OR dep:Server OR dep:Database OR dep:DatabaseInstance OR dep:Certificate)
+      WHERE dep:ConfigurationItem
         AND dep.tenant_id = $tenantId
       WITH ci, count(dep) AS depCount
       WHERE depCount >= 5
@@ -143,15 +161,18 @@ export const ANOMALY_RULES: AnomalyRule[] = [
     cypher: `
       MATCH (ci)
       ${CI_MATCH}
+        // Candidati di proposito i due tipi «foglia» del grafo spedito: non è
+        // una lista di comodo, è il perimetro della regola (un cluster isolato
+        // si cerca partendo da un'applicazione o da un certificato).
         AND (ci:Application OR ci:Certificate)
       OPTIONAL MATCH (ci)-[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE*1..6]-(reached)
-      WHERE (reached:Application OR reached:Server OR reached:Database OR reached:DatabaseInstance OR reached:Certificate)
+      WHERE reached:ConfigurationItem
         AND reached.tenant_id = $tenantId
       WITH ci, count(DISTINCT reached) AS reachable, collect(DISTINCT reached) AS peers
       WHERE reachable >= 1 AND reachable <= 5
       UNWIND peers AS p
       OPTIONAL MATCH (p)-[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE*1..6]-(pr)
-      WHERE (pr:Application OR pr:Server OR pr:Database OR pr:DatabaseInstance OR pr:Certificate)
+      WHERE pr:ConfigurationItem
         AND pr.tenant_id = $tenantId
       WITH ci, reachable, p, count(DISTINCT pr) AS peerReachable
       WITH ci, reachable, max(peerReachable) AS maxPeerReachable

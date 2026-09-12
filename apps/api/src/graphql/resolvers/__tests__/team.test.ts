@@ -4,6 +4,18 @@
  * team/CI fuori tenant → NotFound; ruoli non ammessi → Forbidden (policy).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+// ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
+// `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
+// Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
+// tipo non contavano, in silenzio.
+vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
+  apocLabelFilterForTenant:  vi.fn(async () => '+Application|+LoadBalancer|+Server'),
+  ciTypeNameForLabel:        vi.fn(async (_t: string, label: string) => (label === 'LoadBalancer' ? 'load_balancer' : null)),
+  clearCILabelCache:         vi.fn(),
+}))
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
 
@@ -53,6 +65,9 @@ describe('assignCIOwner — relazione OWNED_BY single-valued', () => {
     expect(cypher).not.toContain('MERGE')
     expect(cypher).not.toContain('MATCH (t:Team')
     expect(cypher).toContain('MATCH (ci {id: $ciId, tenant_id: $tenantId})')
+    // A-9: le etichette dei CI vengono dal metamodello del tenant, quindi un CI
+    // di un tipo creato dal cliente si trova (prima: «ConfigurationItem or Team»).
+    expect(cypher).toContain('ci:LoadBalancer')
     expect(params).toEqual({ ciId: 'ci-1', teamId: null, tenantId: 'tenant-1' })
     // sessione di scrittura
     expect(vi.mocked(withSession).mock.calls[0]![1]).toBe(true)

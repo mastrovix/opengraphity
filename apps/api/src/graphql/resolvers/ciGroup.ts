@@ -12,7 +12,8 @@
 import { withSession, mapCI, ciTypeFromLabels, runQuery, runQueryOne } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 import type { Props } from './ci-utils.js'
-import { TYPE_TO_LABEL, ALL_CI_LABELS } from '../../lib/ciLabels.js'
+import { ciLabelsForTenant } from '../../lib/ciLabelsForTenant.js'
+import { ciLabelsForTypeNames } from '../../lib/ciTypeNameToLabel.js'
 import { NotFoundError } from '../../lib/errors.js'
 
 const GROUP_LABEL = 'DynamicCIGroup'
@@ -27,19 +28,24 @@ function prop(props: Props, snake: string, camel: string): string | null {
 }
 
 /**
- * CSV of CI type names → deduped Neo4j labels via the TYPE_TO_LABEL whitelist.
- * Unknown type names are silently ignored (they cannot inject Cypher).
- * DynamicCIGroup itself is never a valid member label.
+ * CSV dei nomi dei tipi CI → etichette Neo4j **del metamodello di questo
+ * cliente** (deduplicate, DynamicCIGroup mai un membro valido).
+ *
+ * ## Il difetto (A-9)
+ * Prima la traduzione passava da `TYPE_TO_LABEL` e i nomi ignoti erano
+ * «silently ignored»: un gruppo con criterio «solo load_balancer» restava con
+ * zero etichette, cadeva nel ramo «nessun criterio di tipo» e restituiva i CI
+ * di **tutti** i tipi — l'opposto di quello che l'utente aveva chiesto, senza
+ * un errore né un log. Ora un tipo che questo cliente non ha **ferma la
+ * lettura del gruppo**, col nome del tipo e i tipi ammessi nel messaggio.
  */
-export function criteriaTypesToLabels(csv: string | null): string[] {
+export async function criteriaTypesToLabels(tenantId: string, csv: string | null): Promise<string[]> {
   const requested = (csv ?? '')
     .split(',')
-    .map(t => t.trim().toLowerCase())
+    .map(t => t.trim())
     .filter(Boolean)
-  const labels = requested
-    .map(t => TYPE_TO_LABEL[t])
-    .filter((l): l is string => Boolean(l) && l !== GROUP_LABEL)
-  return [...new Set(labels)]
+  const labels = await ciLabelsForTypeNames(tenantId, requested, 'criteri del gruppo dinamico (criteriaCiTypes)')
+  return labels.filter(l => l !== GROUP_LABEL)
 }
 
 async function ciGroupMembers(_: unknown, args: { groupId: string }, ctx: GraphQLContext) {
@@ -58,10 +64,10 @@ async function ciGroupMembers(_: unknown, args: { groupId: string }, ctx: GraphQ
 
     if (membershipType === 'dynamic') {
       // Build the member query from the criteria fields.
-      const typeLabels = criteriaTypesToLabels(prop(group.props, 'criteria_ci_types', 'criteriaCiTypes'))
+      const typeLabels = await criteriaTypesToLabels(ctx.tenantId, prop(group.props, 'criteria_ci_types', 'criteriaCiTypes'))
       const memberLabels = typeLabels.length > 0
         ? typeLabels
-        : ALL_CI_LABELS.filter(l => l !== GROUP_LABEL)
+        : (await ciLabelsForTenant(ctx.tenantId)).filter(l => l !== GROUP_LABEL)
       const labelPredicate = '(' + memberLabels.map(l => `m:${l}`).join(' OR ') + ')'
 
       const params: Record<string, unknown> = {
@@ -95,8 +101,9 @@ async function ciGroupMembers(_: unknown, args: { groupId: string }, ctx: GraphQ
       if (!countRow) throw new Error(`ciGroupMembers: count query returned no row for group ${args.groupId}`)
       total = Number(countRow.total)
     } else {
-      // Manual membership: HAS_MEMBER relationships toward any known CI label.
-      const labelPredicate = '(' + ALL_CI_LABELS.map(l => `m:${l}`).join(' OR ') + ')'
+      // Manual membership: HAS_MEMBER verso un CI di un tipo di QUESTO cliente
+      // (prima un membro di tipo nuovo era escluso dall'elenco in silenzio).
+      const labelPredicate = '(' + (await ciLabelsForTenant(ctx.tenantId)).map(l => `m:${l}`).join(' OR ') + ')'
       rows = await runQuery<{ props: Props; nodeLabels: string[] }>(session,
         `MATCH (g:${GROUP_LABEL} {id: $groupId, tenant_id: $tenantId})-[:HAS_MEMBER]->(m)
          WHERE ${labelPredicate} AND m.tenant_id = $tenantId

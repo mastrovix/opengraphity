@@ -21,11 +21,11 @@ import { Input, Select, FieldLabel } from '@/components/ui/FormControls'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { enumLabel } from '@/lib/ciEnums'
 import { colors } from '@/lib/tokens'
-import { GET_SERVICE_MAP_CANDIDATES } from '@/graphql/queries'
+import { GET_SERVICE_MAP_CANDIDATES, GET_SERVICE_RELATIONSHIP_TYPES } from '@/graphql/queries'
 import { CREATE_SERVICE_MAP } from '@/graphql/mutations'
 import {
-  SERVICE_MAP_DEFAULT_DEPTH, SERVICE_MAP_MAX_DEPTH, SERVICE_RELATIONSHIP_TYPES,
-  type ServiceMapDetail, type ServiceRef, type ServiceRelationshipType,
+  SERVICE_MAP_DEFAULT_DEPTH, SERVICE_MAP_MAX_DEPTH, SHIPPED_SERVICE_RELATIONSHIP_TYPES,
+  type ServiceMapDetail, type ServiceRef,
 } from '@/types/services'
 
 const SEARCH_DEBOUNCE = 300
@@ -49,7 +49,10 @@ export function CreateServiceMapDialog({ open, onClose, onCreated }: Props) {
   const [debounced, setDebounced] = useState('')
   const [serviceId, setServiceId] = useState('')
   const [depth, setDepth] = useState(SERVICE_MAP_DEFAULT_DEPTH)
-  const [rels, setRels] = useState<Set<ServiceRelationshipType>>(() => new Set(SERVICE_RELATIONSHIP_TYPES))
+  // Ondata 6 · C-3: i tipi percorribili sono quelli del CLIENTE (spediti +
+  // suoi), non quattro caselle scritte qui. Finché la lista non è arrivata si
+  // parte dai quattro spediti, che sono la scelta predefinita dell'API.
+  const [rels, setRels] = useState<Set<string>>(() => new Set(SHIPPED_SERVICE_RELATIONSHIP_TYPES))
   const [asDraft, setAsDraft] = useState(false)
 
   useEffect(() => {
@@ -63,9 +66,14 @@ export function CreateServiceMapDialog({ open, onClose, onCreated }: Props) {
     fetchPolicy: 'network-only',
   })
   const candidates = data?.serviceMapCandidates ?? []
+  const { data: relData, error: relError } = useQuery<{ serviceRelationshipTypes: string[] }>(GET_SERVICE_RELATIONSHIP_TYPES, { skip: !open })
+  // Nessun ripiego silenzioso su una lista scritta nel web: finché la risposta
+  // non c'è si mostrano i quattro spediti (la scelta predefinita dell'API), e
+  // un errore si vede.
+  const relTypes = relData?.serviceRelationshipTypes ?? SHIPPED_SERVICE_RELATIONSHIP_TYPES
   const [create, { loading: creating }] = useMutation<{ createServiceMap: ServiceMapDetail }>(CREATE_SERVICE_MAP)
 
-  const toggleRel = (r: ServiceRelationshipType) => setRels((prev) => {
+  const toggleRel = (r: string) => setRels((prev) => {
     const next = new Set(prev)
     if (next.has(r)) next.delete(r); else next.add(r)
     return next
@@ -132,7 +140,7 @@ export function CreateServiceMapDialog({ open, onClose, onCreated }: Props) {
             {t('monitoring.services.create.relationships')}
           </legend>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
-            {SERVICE_RELATIONSHIP_TYPES.map((r) => (
+            {relTypes.map((r) => (
               <label key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: colors.slateDark }}>
                 <input type="checkbox" checked={rels.has(r)} onChange={() => toggleRel(r)} />
                 {r}
@@ -140,6 +148,7 @@ export function CreateServiceMapDialog({ open, onClose, onCreated }: Props) {
             ))}
           </div>
           <p style={hint}>{t('monitoring.services.create.relationshipsHint')}</p>
+          {relError && <p role="alert" style={{ ...hint, color: colors.danger }}>{t('monitoring.services.create.relationshipsError', { error: relError.message })}</p>}
           {rels.size === 0 && <p role="alert" style={{ ...hint, color: colors.danger }}>{t('monitoring.services.create.relationshipsRequired')}</p>}
         </fieldset>
         <div>

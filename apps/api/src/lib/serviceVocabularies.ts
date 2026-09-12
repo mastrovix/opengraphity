@@ -34,6 +34,27 @@ export type NodePropagation = (typeof NODE_PROPAGATIONS)[number]
 export const SERVICE_NODE_ROLES = ['entry', 'component', 'infrastructure', 'certificate'] as const
 export type ServiceNodeRole = (typeof SERVICE_NODE_ROLES)[number]
 
+/**
+ * I ruoli che un **tipo di CI** può dichiarare (`CITypeDefinition.service_role`,
+ * ondata 6 · A-10): `entry` non è fra questi, perché non è una proprietà del
+ * tipo ma della posizione — il livello 1 della mappa è sempre `entry`, qualunque
+ * sia il tipo del CI.
+ */
+export const SETTABLE_SERVICE_NODE_ROLES = ['component', 'infrastructure', 'certificate'] as const
+export type SettableServiceNodeRole = (typeof SETTABLE_SERVICE_NODE_ROLES)[number]
+
+/**
+ * Valida un `service_role` in arrivo dall'interfaccia o letto dal grafo. Un
+ * valore fuori vocabolario FERMA chi chiama nominandolo: dedurre un ruolo
+ * cambierebbe in silenzio il peso di ogni componente di quel tipo in ogni mappa.
+ */
+export function assertServiceRole(value: unknown, what: string): SettableServiceNodeRole {
+  if (typeof value !== 'string' || !(SETTABLE_SERVICE_NODE_ROLES as readonly string[]).includes(value)) {
+    throw new Error(`${what} must be one of: ${SETTABLE_SERVICE_NODE_ROLES.join(', ')}. Got: ${JSON.stringify(value)}`)
+  }
+  return value as SettableServiceNodeRole
+}
+
 /** Cosa ha innescato una voce di cronologia del servizio (`ServiceHealthEntry.trigger`). */
 export const SERVICE_HEALTH_TRIGGERS = ['created', 'ci_health', 'rules_changed', 'map_changed', 'maintenance', 'manual', 'periodic'] as const
 export type ServiceHealthTrigger = (typeof SERVICE_HEALTH_TRIGGERS)[number]
@@ -149,13 +170,24 @@ export const NODE_WEIGHT_ENTRY = 8
 export const NODE_WEIGHT_CERTIFICATE = 3
 
 /**
- * Ruolo proposto dal tipo (label Neo4j) del CI, per i nodi oltre il livello 1
- * (il livello 1 è sempre `entry`). Copre TUTTE le label statiche del
- * metamodello (lib/ciLabels.ts): la costruzione include solo CI con quelle
- * label, quindi una label assente qui è un errore di programmazione, non un
- * caso da coprire con un default.
+ * Il **seme** dei ruoli per i tipi spediti col prodotto (ondata 6 · A-10).
+ *
+ * ## Com'era
+ * Questa tabella era la verità: `roleOfLabels` lanciava su qualunque etichetta
+ * non elencata. Non si vedeva perché il filtro delle etichette (statico anche
+ * lui) scartava i tipi del cliente ancora prima — cioè il tipo nuovo non
+ * entrava in nessuna mappa, in silenzio. Aperto il filtro al metamodello del
+ * tenant, senza il ruolo la costruzione della mappa sarebbe FALLITA.
+ *
+ * ## Com'è
+ * Il ruolo è una proprietà del **tipo** (`CITypeDefinition.service_role`),
+ * impostabile dal disegnatore; questa tabella resta come seme dei tipi spediti
+ * (la migrazione `20260916_1710_service_role_and_relation_scope` la scrive sui
+ * nodi) e come rete per le etichette spedite che nel metamodello non hanno un
+ * tipo (dal vivo: 15 etichette, 9 tipi base). La sorgente per tenant è
+ * `lib/ciMetamodelForTenant.ts#serviceRolesForTenant`.
  */
-export const ROLE_BY_CI_LABEL: Readonly<Record<string, ServiceNodeRole>> = {
+export const ROLE_BY_CI_LABEL: Readonly<Record<string, SettableServiceNodeRole>> = {
   Application:         'component',
   Microservice:        'component',
   ApiEndpoint:         'component',
@@ -173,13 +205,26 @@ export const ROLE_BY_CI_LABEL: Readonly<Record<string, ServiceNodeRole>> = {
   SslCertificate:      'certificate',
 }
 
-export function roleOfLabels(labels: readonly string[], level: number): ServiceNodeRole {
+/** Etichetta Neo4j → ruolo dichiarato dal tipo, per UN tenant (`serviceRolesForTenant`). */
+export type ServiceRoleByLabel = ReadonlyMap<string, SettableServiceNodeRole>
+
+/**
+ * Il ruolo di un nodo della mappa: `entry` al livello 1, altrimenti quello
+ * dichiarato dal **tipo del tenant** (`roles`, risolto una volta per
+ * costruzione). Un'etichetta che nessun tipo attivo dichiara lancia: non è più
+ * un errore di programmazione ma un tipo cancellato o disattivato mentre la
+ * mappa si costruiva, e inventare un ruolo ne falserebbe il peso in silenzio.
+ */
+export function roleOfLabels(roles: ServiceRoleByLabel, labels: readonly string[], level: number): ServiceNodeRole {
   if (level === 1) return 'entry'
   for (const l of labels) {
-    const role = ROLE_BY_CI_LABEL[l]
+    const role = roles.get(l)
     if (role) return role
   }
-  throw new Error(`No service node role for CI labels ${JSON.stringify(labels)}: the label is not in ROLE_BY_CI_LABEL (lib/serviceVocabularies.ts)`)
+  throw new Error(
+    `No service node role for CI labels ${JSON.stringify(labels)}: no active CI type of this tenant declares them ` +
+    `(service_role in the metamodel — lib/ciMetamodelForTenant.ts). Known labels: ${[...roles.keys()].join(', ')}`,
+  )
 }
 
 // ── Regole d'impatto del servizio (ServiceMap.rules, JSON versionato) ────────

@@ -18,7 +18,10 @@ import { config } from '../lib/config.js'
 import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { getEmbedder, vectorIndexName } from './embeddings.js'
-import { ALL_CI_LABELS } from '../lib/ciLabels.js'
+// Le etichette dei CI vengono dal metamodello del tenant (A-9): con la lista
+// fissa l'assistente non trovava i CI dei tipi creati dal cliente e rispondeva
+// «non trovato» — un buco invisibile a chi fa la domanda.
+import { ciLabelsForTenant } from '../lib/ciLabelsForTenant.js'
 import { logger } from '../lib/logger.js'
 
 const log = logger.child({ module: 'assistant' })
@@ -119,7 +122,7 @@ function buildTools(tenantId: string) {
         RETURN ci.id AS id, ci.name AS nome, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS tipo,
                ci.environment AS ambiente, ci.status AS stato
         LIMIT ${clampLimit(limit, 8, 20)}
-      `, { tenantId, labels: ALL_CI_LABELS, query })
+      `, { tenantId, labels: await ciLabelsForTenant(tenantId), query })
       return j(rows)
     },
   })
@@ -154,7 +157,7 @@ function buildTools(tenantId: string) {
         RETURN ci.name AS nome, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS tipo, ci.environment AS ambiente,
                dipendenti_diretti, dipendenti_secondo_livello, business_capability,
                incident_aperti, collect(DISTINCT ch.number) AS change_in_corso
-      `, { tenantId, labels: ALL_CI_LABELS, key: ci_id_o_nome })
+      `, { tenantId, labels: await ciLabelsForTenant(tenantId), key: ci_id_o_nome })
       return rows.length ? j(rows[0]) : j({ errore: `CI "${ci_id_o_nome}" non trovato — prova cerca_ci per il nome esatto` })
     },
   })

@@ -5,6 +5,9 @@ import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import { toPascalCase } from '@opengraphity/schema-generator'
 import { assertNewCITypeName, assertNewCIFieldName, type ExistingCIType } from '../../lib/metamodelNames.js'
 import { CHAIN_FAMILIES, chainFamiliesToJSON } from '../../lib/chainCalculator.js'
+import { assertRelationshipTypeName, defaultServiceRoleOf } from '../../lib/ciMetamodelForTenant.js'
+import { describeCITypeUsage, loadCITypeUsage, type CITypeUsage } from '../../lib/ciTypeUsage.js'
+import { SETTABLE_SERVICE_NODE_ROLES } from '../../lib/serviceVocabularies.js'
 import { ValidationError } from '../../lib/errors.js'
 import {
   SYSTEM_TENANT, enumScopeClause, loadTenantEnumOverrides, applyEnumOverrides, assertEnumLinkable,
@@ -235,6 +238,10 @@ export function mapCITypeNode(t: Props, fields: CIFieldRow[], relations: Props[]
     tenantId:         t['tenant_id'] ?? SYSTEM_TENANT,
     validationScript: t['validation_script'] ?? null,
     chainFamilies:    parseChainFamilies(t['chain_families']),
+    // A-10: il ruolo nella mappa di un servizio è del TIPO. `null` = non
+    // dichiarato: il ruolo lo propone il prodotto (seme dei tipi spediti, poi
+    // le famiglie di catena), e il disegnatore lo mostra come tale.
+    serviceRole:      t['service_role'] ?? null,
     fields: fields
       .filter(fd => fd?.f?.properties)
       .map(fd => {
@@ -440,6 +447,7 @@ export function buildCITypesResolver() {
           tenantId: t['tenant_id'] ?? SYSTEM_TENANT,
           validationScript: t['validation_script'] ?? null,
           chainFamilies: parseChainFamilies(t['chain_families']),
+          serviceRole:   t['service_role'] ?? null,
           fields,
           relations: (rec.get('relations') as Array<{ properties: Props }>)
             .filter(r => r?.properties)
@@ -493,18 +501,78 @@ export function buildBaseCITypeResolver() {
     })
 }
 
+// ── assertServiceRoleInput / assertCITypeNotInUse ─────────────────────────────
+
+/**
+ * Il ruolo nella mappa di un servizio in arrivo dall'interfaccia (A-10).
+ * `undefined` = campo non mandato: nessuna scrittura. `null` = «torna a farlo
+ * proporre al prodotto». Un valore fuori vocabolario FERMA la mutation
+ * nominandolo: dedurre un ruolo cambierebbe in silenzio il peso di ogni
+ * componente di quel tipo in ogni mappa.
+ */
+export function assertServiceRoleInput(value: string | null | undefined): string | null | undefined {
+  if (value === undefined || value === null) return value
+  if (!(SETTABLE_SERVICE_NODE_ROLES as readonly string[]).includes(value)) {
+    throw new GraphQLError(
+      `serviceRole: ${JSON.stringify(value)} non è un ruolo valido (${SETTABLE_SERVICE_NODE_ROLES.join(', ')}). ` +
+      `Il ruolo \`entry\` non si dichiara: nella mappa lo prende sempre il livello 1.`,
+      { extensions: { code: 'BAD_USER_INPUT' } },
+    )
+  }
+  return value
+}
+
+/**
+ * A-8 / D-10 — non si cancella (né si disattiva) un tipo che è ancora in uso.
+ *
+ * Prima `deleteCIType` faceva `DETACH DELETE` senza contare niente, e
+ * `active = false` aveva lo stesso effetto sulle letture: i CI restavano nel
+ * grafo e non comparivano più da nessuna parte. Qui si conta e si dice, con il
+ * numero e con l'elenco di chi cita il tipo per nome.
+ */
+async function assertCITypeNotInUse(
+  session: Session, tenantId: string, typeId: string, type: { name: string; label: string }, action: 'delete' | 'deactivate',
+): Promise<void> {
+  const neo4jLabel = toPascalCase(type.name)
+  const usage: CITypeUsage = await loadCITypeUsage(session, tenantId, typeId, type.name, neo4jLabel)
+  const refs = describeCITypeUsage(usage)
+  const what = action === 'delete'
+    ? `Il tipo "${type.label}" (${type.name}) non è stato eliminato`
+    : `Il tipo "${type.label}" (${type.name}) non è stato disattivato`
+  const consequence = action === 'delete'
+    ? `i loro dati e le loro relazioni resterebbero nel grafo senza comparire più da nessuna parte (liste, impatto, mappe dei servizi, ricerca): una perdita silenziosa.`
+    : `un tipo disattivato sparisce dalle letture come se fosse cancellato, quindi quei CI non comparirebbero più da nessuna parte.`
+
+  if (usage.cis > 0) {
+    throw new ValidationError(
+      `${what}: ci sono ancora ${String(usage.cis)} CI di tipo ${neo4jLabel} in questo cliente, e ${consequence} ` +
+      `Sposta o elimina prima quei CI.` + (refs ? ` Il tipo è citato anche da: ${refs}.` : ''),
+    )
+  }
+  if (refs) {
+    throw new ValidationError(
+      `${what}: nessun CI di questo tipo, ma il tipo è ancora citato da ${refs}. ` +
+      `Quei riferimenti sono per NOME: resterebbero appesi a un tipo che non esiste più. Togli prima i riferimenti.`,
+    )
+  }
+}
+
 // ── buildMetamodelMutations ───────────────────────────────────────────────────
 
 export function buildMetamodelMutations() {
   return {
     createCIType: async (
       _: unknown,
-      args: { input: { name: string; label: string; icon?: string; color?: string; chainFamilies?: string[] } },
+      args: { input: { name: string; label: string; icon?: string; color?: string; chainFamilies?: string[]; serviceRole?: string | null } },
       ctx: GraphQLContext,
     ) => {
       requireAdmin(ctx)
       const { name, label, icon = 'box', color = '#0284c7' } = args.input
       const chainFamilies = assertChainFamilies(args.input.chainFamilies)
+      // A-10: il ruolo nella mappa di un servizio nasce col tipo. Se non lo
+      // dichiara, lo propone il prodotto dalle famiglie di catena — scritto
+      // ORA, così le mappe non devono indovinarlo a ogni costruzione.
+      const serviceRole = assertServiceRoleInput(args.input.serviceRole) ?? defaultServiceRoleOf(args.input.chainFamilies)
       const id = crypto.randomUUID()
 
       await withSession(async session => {
@@ -527,13 +595,15 @@ export function buildMetamodelMutations() {
               t.active           = true,
               t.neo4j_label      = $neo4jLabel,
               t.tenant_id        = $tenantId,
-              t.chain_families   = $chainFamilies
+              t.chain_families   = $chainFamilies,
+              t.service_role     = $serviceRole
             ON MATCH SET
               t.label            = $label,
               t.icon             = $icon,
               t.color            = $color,
-              t.chain_families   = coalesce($chainFamilies, t.chain_families)
-          `, { name, tenantId: ctx.tenantId, id, label, icon, color, neo4jLabel, chainFamilies }),
+              t.chain_families   = coalesce($chainFamilies, t.chain_families),
+              t.service_role     = coalesce($serviceRole, t.service_role)
+          `, { name, tenantId: ctx.tenantId, id, label, icon, color, neo4jLabel, chainFamilies, serviceRole }),
         )
       }, true)
 
@@ -543,12 +613,13 @@ export function buildMetamodelMutations() {
 
     updateCIType: async (
       _: unknown,
-      args: { id: string; input: { label?: string; icon?: string; color?: string; active?: boolean; validationScript?: string; chainFamilies?: string[] } },
+      args: { id: string; input: { label?: string; icon?: string; color?: string; active?: boolean; validationScript?: string; chainFamilies?: string[]; serviceRole?: string | null } },
       ctx: GraphQLContext,
     ) => {
       requireAdmin(ctx)
       const updates: Props = {}
       const { label, icon, color, active, validationScript, chainFamilies } = args.input
+      const serviceRole = assertServiceRoleInput(args.input.serviceRole)
       if (label             !== undefined) updates['label']             = label
       if (icon              !== undefined) updates['icon']              = icon
       if (color             !== undefined) updates['color']             = color
@@ -558,6 +629,9 @@ export function buildMetamodelMutations() {
       // sempre; finché l'input non lo dichiarava, Apollo rifiutava l'intera
       // richiesta e il salvataggio non funzionava MAI.
       if (chainFamilies     !== undefined) updates['chain_families']    = assertChainFamilies(chainFamilies)
+      // A-10: `null` è un valore, non «campo assente»: rimette il ruolo in mano
+      // al prodotto (seme dei tipi spediti, poi le famiglie di catena).
+      if (serviceRole       !== undefined) updates['service_role']      = serviceRole
 
       // A-6: `SET t += {}` scrive 0 proprietà anche su un tipo che c'è — senza
       // questo controllo il no-op del chiamante diventerebbe un errore che
@@ -571,7 +645,10 @@ export function buildMetamodelMutations() {
         // conseguenza; il controllo dei contatori qui sotto è la rete per tutti
         // gli altri modi di non scrivere niente (id sbagliato, tipo eliminato
         // da un'altra sessione).
-        await assertTenantOwnedType(session, args.id, ctx.tenantId, 'update')
+        const owned = await assertTenantOwnedType(session, args.id, ctx.tenantId, 'update')
+        // A-8: disattivare è come cancellare, per chi legge. Non si fa mentre
+        // ci sono CI di quel tipo (o riferimenti al suo nome).
+        if (active === false) await assertCITypeNotInUse(session, ctx.tenantId, args.id, owned, 'deactivate')
         const r = await session.executeWrite(tx =>
           tx.run(
             `MATCH (t:CITypeDefinition {id: $id})
@@ -592,7 +669,11 @@ export function buildMetamodelMutations() {
       await withSession(async session => {
         // A-6: prima il controllo esplicito era solo su `scope = 'base'`, e un
         // tipo ITIL rispondeva `true` senza eliminare niente.
-        await assertTenantOwnedType(session, args.id, ctx.tenantId, 'delete')
+        const owned = await assertTenantOwnedType(session, args.id, ctx.tenantId, 'delete')
+        // A-8 / D-10: prima si conta. `DETACH DELETE` porterebbe via anche le
+        // domande di assessment agganciate, e lascerebbe i CI nel grafo
+        // invisibili a tutto il prodotto.
+        await assertCITypeNotInUse(session, ctx.tenantId, args.id, owned, 'delete')
         const r = await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $id})
@@ -743,6 +824,12 @@ export function buildMetamodelMutations() {
         // rispondeva con `fetchCITypeById` — il disegnatore diceva «Relazione
         // aggiunta» e la relazione non c'era.
         await assertTenantOwnedType(session, typeId, ctx.tenantId, 'addRelation')
+        // C-3: `relationship_type` NON era validato affatto — un `String!`
+        // passato come parametro Cypher, quindi «bilancia», «a b» o una riga
+        // vuota entravano nel metamodello. Da qui quei tipi finiscono nelle
+        // mappe dei servizi e nel pattern INTERPOLATO della soppressione in
+        // finestra di change: passa solo un identificatore Neo4j.
+        const relationshipType = assertRelationshipTypeName(input['relationshipType'], `addCIRelation(${typeId}).relationshipType`)
         const r = await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})
@@ -755,14 +842,20 @@ export function buildMetamodelMutations() {
               target_type:       $targetType,
               cardinality:       $cardinality,
               direction:         $direction,
-              order:             $order
+              order:             $order,
+              // C-3: senza tenant_id questa definizione non era di nessuno, e
+              // allowedRelTypes (che filtra per proprietario) NON la vedeva:
+              // la relazione appena definita nel disegnatore veniva rifiutata
+              // con «Invalid relation type».
+              tenant_id:         $tenantId,
+              scope:             'tenant'
             })
             CREATE (t)-[:HAS_RELATION]->(r)
           `, {
             typeId, tenantId: ctx.tenantId, relId,
             name:             input['name'],
             label:            input['label'],
-            relationshipType: input['relationshipType'],
+            relationshipType,
             targetType:       input['targetType'],
             cardinality:      input['cardinality'],
             direction:        input['direction'],

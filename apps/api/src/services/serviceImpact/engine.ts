@@ -64,7 +64,7 @@ import {
 } from '../../lib/serviceVocabularies.js'
 import { MONITORING_ACTOR, monitoringContext, toNumber, toStr, type Props } from '../events/shared.js'
 import { getEventPolicy } from '../events/policy.js'
-import { changeWindowParams, changeWindowSubqueryCypher, pickChangeWindow, resolveChangeWindowSteps, type ChangeWindow, type ChangeWindowRow, type ChangeWindowSteps } from '../events/suppression.js'
+import { changeWindowParams, changeWindowSubqueryCypher, pickChangeWindow, resolveChangeWindowSteps, suppressionRelTypes, type ChangeWindow, type ChangeWindowRow, type ChangeWindowSteps } from '../events/suppression.js'
 import { evaluateImpact, serviceHealthNote, type ImpactCause, type ImpactNodeInput, type UpstreamWindowRef } from './rules.js'
 import { causeIdsOf, sameCauseIds, serviceHistoryParams, serviceHistoryWriteCypher, type StoredCause } from './history.js'
 import { buildServiceMap, createServiceMapNode, type ServiceMapProposal } from './build.js'
@@ -126,11 +126,11 @@ interface StateRow { props: Props; nodes: NodeRow[] }
  * `hops` è interpolato nel pattern (intero validato dalla policy): la query è
  * una funzione, non una costante.
  */
-export function loadServiceMapCypher(hops: number): string {
+export function loadServiceMapCypher(hops: number, relTypes: string): string {
   return `
   MATCH (m:ServiceMap {id: $mapId, tenant_id: $tenantId})
   OPTIONAL MATCH (m)-[inc:INCLUDES]->(ci {tenant_id: $tenantId})
-  ${changeWindowSubqueryCypher(hops)}
+  ${changeWindowSubqueryCypher(hops, relTypes)}
   WITH m, inc, ci, changes,
        CASE WHEN ci IS NULL THEN [] ELSE
          [(e:Event {tenant_id: $tenantId, status: 'firing'})-[:RAISED_ON]->(ci)
@@ -211,7 +211,7 @@ export async function loadServiceMapState(session: Queryable, tenantId: string, 
   // chiamante quando sa leggere; dentro una transazione altrui la risoluzione
   // apre la propria lettura (a cache calda non è nemmeno una query).
   const windowSteps = await resolveChangeWindowSteps(tenantId, session)
-  const row = await runQueryOne<StateRow>(session, loadServiceMapCypher(hops), { mapId, tenantId, ...changeWindowParams(windowSteps) })
+  const row = await runQueryOne<StateRow>(session, loadServiceMapCypher(hops, await suppressionRelTypes(tenantId)), { mapId, tenantId, ...changeWindowParams(windowSteps) })
   if (!row) throw new NotFoundError('ServiceMap', mapId)
   const nodes = row.nodes.map((n) => mapNode(n, mapId, nowMs, windowSteps))
   const nodeIds = row.props['node_ids']

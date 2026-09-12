@@ -4,6 +4,18 @@
  * never a bare CREATE (:Incident); the impacted CI is mandatory.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+// ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
+// `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
+// Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
+// tipo non contavano, in silenzio.
+vi.mock('../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
+  apocLabelFilterForTenant:  vi.fn(async () => '+Application|+LoadBalancer|+Server'),
+  ciTypeNameForLabel:        vi.fn(async (_t: string, label: string) => (label === 'LoadBalancer' ? 'load_balancer' : null)),
+  clearCILabelCache:         vi.fn(),
+}))
 import { createHmac } from 'node:crypto'
 import type { Request, Response } from 'express'
 
@@ -35,13 +47,21 @@ function fakeRes() {
 const rec = (map: Record<string, unknown>) => ({ get: (k: string) => map[k] })
 const userRow = rec({ u: { properties: { id: 'user-1', tenant_id: 'tenant-1' } } })
 
-function sessionWith(reads: unknown[][]) {
+/** Cypher delle letture eseguite, per asserire i predicati (A-9). */
+const reads: string[] = []
+
+function sessionWith(rows: unknown[][]) {
   let i = 0
   const writes: Array<{ q: string; p: Record<string, unknown> }> = []
   return {
     writes,
     session: {
-      executeRead:  vi.fn().mockImplementation(() => Promise.resolve({ records: reads[i++] ?? [] })),
+      executeRead:  vi.fn().mockImplementation(async (fn: (tx: unknown) => unknown) => {
+        const records = rows[i++] ?? []
+        // il lettore esegue `tx.run(cypher, params)`: catturiamo il cypher
+        await fn({ run: (q: string) => { reads.push(q); return Promise.resolve({ records }) } })
+        return { records }
+      }),
       executeWrite: vi.fn().mockImplementation((fn: (tx: unknown) => unknown) =>
         fn({ run: (q: string, p: Record<string, unknown>) => { writes.push({ q, p }); return Promise.resolve({ records: [] }) } })),
       close: vi.fn().mockResolvedValue(undefined),
@@ -50,7 +70,7 @@ function sessionWith(reads: unknown[][]) {
 }
 
 describe('/og incident apri', () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => { vi.clearAllMocks(); reads.length = 0 })
 
   it('creates via incidentService with the resolved CI, then marks created_by', async () => {
     const { session, writes } = sessionWith([[userRow], [rec({ id: 'ci-web' })]])
@@ -71,6 +91,9 @@ describe('/og incident apri', () => {
     expect(writes[0]!.p).toMatchObject({ id: 'inc-1', tenantId: 'tenant-1', userId: 'user-1' })
     expect((res.body as { response_type: string; text: string }).response_type).toBe('in_channel')
     expect((res.body as { text: string }).text).toContain('INC00000042')
+    // A-9: la risoluzione del CI usa le etichette del metamodello del tenant —
+    // con la lista fissa un CI di un tipo del cliente dava «CI non trovato».
+    expect(reads.find((q) => q.includes('MATCH (ci {tenant_id: $tenantId})'))).toContain('ci:LoadBalancer')
   })
 
   it('missing ci= → usage, nothing created', async () => {

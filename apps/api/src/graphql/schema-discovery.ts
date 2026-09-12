@@ -44,6 +44,10 @@ export function discoverySDL(): string {
     runId:          String!
     externalId:     String!
     ciType:         String!
+    """locked_fields = un campo bloccato è cambiato alla sorgente; unknown_ci_type = il ci_type in arrivo non è un tipo di questo cliente, il CI NON è stato creato (ondata 6 · A-11)."""
+    kind:           String!
+    """Per unknown_ci_type: che cosa non si è risolto e cosa fare (creare il tipo, o aggiungere un alias nelle regole di mappatura)."""
+    message:        String
     conflictFields: String!
     resolution:     String
     status:         String!

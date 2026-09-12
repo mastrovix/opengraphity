@@ -3,15 +3,22 @@
  *
  * Dalla BusinessApplication: `REALIZES` verso le applicazioni tecniche
  * (livello 1), poi le relazioni tecniche scelte IN USCITA
- * (`(x)-[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE]->(y)`: y è un
+ * (`(x)-[:DEPENDS_ON|HOSTED_ON|…]->(y)`: y è un
  * fornitore di x, x soffre se y è giù) fino a `maxDepth`, con
  * `apoc.path.expandConfig` in ampiezza (BFS) e unicità `NODE_GLOBAL`: un
  * nodo raggiungibile da più percorsi entra UNA volta sola, al livello del
- * percorso più corto, con `via` = il predecessore su quel percorso. Solo CI
- * con label del metamodello (CI_LABELS, come la topologia), scopati per
- * tenant. Oltre SERVICE_MAP_MAX_NODES → ValidationError con il conteggio (mai
+ * percorso più corto, con `via` = il predecessore su quel percorso.
+ * Oltre SERVICE_MAP_MAX_NODES → ValidationError con il conteggio (mai
  * un taglio silenzioso). Servizio senza REALIZES → mappa vuota consentita
  * (salute `unknown`), con un warning nel log.
+ *
+ * ## Tre liste che ora sono del cliente (ondata 6 · C-1 / A-10 / C-3)
+ * Le etichette ammesse (`$ciLabels`, `labelFilter`), il **ruolo** di ogni nodo
+ * e i tipi di relazione percorribili vengono dal metamodello del tenant
+ * (`lib/ciLabelsForTenant.ts`, `lib/ciMetamodelForTenant.ts`), non da tre
+ * costanti. Prima un CI di un tipo creato dal cliente era scartato dal filtro
+ * e non poteva far parte di NESSUNA mappa, in silenzio; e una relazione sua
+ * non era percorribile nemmeno scegliendola.
  *
  * La proposta (nodi con livello, via, ruolo, propaga, peso, critico) è pura
  * rispetto alla scrittura: `createServiceMapNode` la persiste in UNA
@@ -19,13 +26,14 @@
  * motore (engine.ts#createServiceMap).
  */
 import { runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
-import { ALL_CI_LABELS as CI_LABELS } from '../../lib/ciLabels.js'
+import { apocLabelFilterForTenant, ciLabelsForTenant } from '../../lib/ciLabelsForTenant.js'
+import { serviceRelationshipTypesForTenant, serviceRolesForTenant } from '../../lib/ciMetamodelForTenant.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { logger } from '../../lib/logger.js'
 import {
   DEFAULT_SERVICE_IMPACT_RULES_JSON, NODE_WEIGHT_CERTIFICATE, NODE_WEIGHT_DEFAULT, NODE_WEIGHT_ENTRY,
-  SERVICE_MAP_MAX_DEPTH, SERVICE_MAP_MAX_NODES, SERVICE_RELATIONSHIP_TYPES, isRetiredLifecycle, roleOfLabels,
-  type NodePropagation, type ServiceMapStatus, type ServiceNodeRole, type ServiceRelationshipType,
+  SERVICE_MAP_MAX_DEPTH, SERVICE_MAP_MAX_NODES, isRetiredLifecycle, roleOfLabels,
+  type NodePropagation, type ServiceMapStatus, type ServiceNodeRole, type ServiceRoleByLabel,
 } from '../../lib/serviceVocabularies.js'
 
 const log = logger.child({ module: 'service-impact' })
@@ -49,7 +57,7 @@ export interface ServiceMapProposal {
   serviceName:       string
   /** Profondità e relazioni VALIDATE con cui la proposta è stata costruita (vengono salvate sulla mappa). */
   maxDepth:          number
-  relationshipTypes: ServiceRelationshipType[]
+  relationshipTypes: string[]
   nodes:             ProposedNode[]
 }
 
@@ -71,24 +79,30 @@ export function assertMaxDepth(maxDepth: number): number {
   return maxDepth
 }
 
-/** Sottoinsieme non vuoto di SERVICE_RELATIONSHIP_TYPES, senza doppioni, nell'ordine canonico. */
-export function assertRelationshipTypes(types: readonly string[]): ServiceRelationshipType[] {
-  if (types.length === 0) throw new ValidationError(`relationshipTypes must include at least one of: ${SERVICE_RELATIONSHIP_TYPES.join(', ')}`)
+/**
+ * Sottoinsieme non vuoto dei tipi di relazione percorribili **da questo
+ * cliente** (`allowed`: i quattro spediti più quelli dichiarati dai suoi tipi,
+ * lib/ciMetamodelForTenant.ts), senza doppioni, nell'ordine canonico di
+ * `allowed`. Funzione pura: il chiamante risolve `allowed` una volta.
+ *
+ * Ondata 6 · C-3: prima la lista ammessa era la costante dei quattro tipi
+ * spediti, quindi un tipo di relazione del cliente («BILANCIA») non era
+ * nemmeno selezionabile e il ramo mancava da ogni mappa.
+ */
+export function assertRelationshipTypes(types: readonly string[], allowed: readonly string[]): string[] {
+  if (types.length === 0) throw new ValidationError(`relationshipTypes must include at least one of: ${allowed.join(', ')}`)
   for (const t of types) {
-    if (!(SERVICE_RELATIONSHIP_TYPES as readonly string[]).includes(t)) {
-      throw new ValidationError(`relationshipTypes: ${JSON.stringify(t)} is not one of ${SERVICE_RELATIONSHIP_TYPES.join(', ')}`)
+    if (!allowed.includes(t)) {
+      throw new ValidationError(`relationshipTypes: ${JSON.stringify(t)} is not one of ${allowed.join(', ')}`)
     }
   }
-  return SERVICE_RELATIONSHIP_TYPES.filter((t) => types.includes(t))
+  return allowed.filter((t) => types.includes(t))
 }
 
 /** Filtro APOC delle relazioni in uscita: `DEPENDS_ON>|HOSTED_ON>|…`. */
-export function relationshipFilterOf(types: readonly ServiceRelationshipType[]): string {
+export function relationshipFilterOf(types: readonly string[]): string {
   return types.map((t) => `${t}>`).join('|')
 }
-
-/** Filtro APOC delle label (allowlist): `+Application|+Server|…`. */
-export const CI_LABEL_FILTER = CI_LABELS.map((l) => `+${l}`).join('|')
 
 /**
  * Ruolo, propagazione, peso e criticità proposti per un nodo (contratto ondata
@@ -96,8 +110,8 @@ export const CI_LABEL_FILTER = CI_LABELS.map((l) => `+${l}`).join('|')
  * proposto con `propagate: never` — si vede sulla mappa ma non conta, perché
  * il monitoraggio non ne aggiorna più la salute.
  */
-export function proposeNodeSettings(labels: readonly string[], level: number, status: string | null = null): Pick<ProposedNode, 'role' | 'propagate' | 'weight' | 'critical'> {
-  const role = roleOfLabels(labels, level)
+export function proposeNodeSettings(roles: ServiceRoleByLabel, labels: readonly string[], level: number, status: string | null = null): Pick<ProposedNode, 'role' | 'propagate' | 'weight' | 'critical'> {
+  const role = roleOfLabels(roles, labels, level)
   const retired = isRetiredLifecycle(status)
   if (role === 'entry') return { role, propagate: retired ? 'never' : 'weighted', weight: NODE_WEIGHT_ENTRY, critical: !retired }
   if (role === 'certificate') return { role, propagate: 'never', weight: NODE_WEIGHT_CERTIFICATE, critical: false }
@@ -149,9 +163,15 @@ export const EXPAND_NODES_CYPHER = `
  */
 export async function buildServiceMap(session: Queryable, tenantId: string, serviceId: string, maxDepth: number, relationshipTypes: readonly string[]): Promise<ServiceMapProposal> {
   const depth = assertMaxDepth(maxDepth)
-  const types = assertRelationshipTypes(relationshipTypes)
+  const types = assertRelationshipTypes(relationshipTypes, await serviceRelationshipTypesForTenant(tenantId))
+  // Etichette e ruoli vengono dal metamodello DI QUESTO cliente, risolti una
+  // volta per costruzione (ondata 6 · C-1/A-10): il filtro e il ruolo sono due
+  // metà della stessa cosa — aprire il filtro senza i ruoli farebbe fallire la
+  // proposta sul primo nodo di un tipo del cliente.
+  const ciLabels = await ciLabelsForTenant(tenantId)
+  const roles = await serviceRolesForTenant(tenantId)
 
-  const entry = await runQueryOne<EntryRow>(session, ENTRY_NODES_CYPHER, { serviceId, tenantId, ciLabels: CI_LABELS })
+  const entry = await runQueryOne<EntryRow>(session, ENTRY_NODES_CYPHER, { serviceId, tenantId, ciLabels: [...ciLabels] })
   if (!entry) throw new NotFoundError('BusinessApplication', serviceId)
   const apps = entry.apps
   if (apps.length === 0) {
@@ -159,11 +179,11 @@ export async function buildServiceMap(session: Queryable, tenantId: string, serv
     return { serviceName: entry.serviceName, maxDepth: depth, relationshipTypes: types, nodes: [] }
   }
 
-  const nodes: ProposedNode[] = apps.map((a) => ({ ciId: a.ciId, name: a.name ?? '', labels: a.labels, status: a.status ?? null, health: a.health ?? null, level: 1, via: null, ...proposeNodeSettings(a.labels, 1, a.status ?? null) }))
+  const nodes: ProposedNode[] = apps.map((a) => ({ ciId: a.ciId, name: a.name ?? '', labels: a.labels, status: a.status ?? null, health: a.health ?? null, level: 1, via: null, ...proposeNodeSettings(roles, a.labels, 1, a.status ?? null) }))
   if (depth > 1) {
     const expanded = await runQuery<ExpandedRow>(session, EXPAND_NODES_CYPHER, {
       tenantId, appIds: apps.map((a) => a.ciId),
-      relFilter: relationshipFilterOf(types), labelFilter: CI_LABEL_FILTER,
+      relFilter: relationshipFilterOf(types), labelFilter: await apocLabelFilterForTenant(tenantId),
       maxLevel: depth - 1, limit: SERVICE_MAP_MAX_NODES + 1,
     })
     // Precedenza del percorso più corto: le righe arrivano per livello e
@@ -174,7 +194,7 @@ export async function buildServiceMap(session: Queryable, tenantId: string, serv
     for (const r of expanded) {
       if (seen.has(r.ciId)) continue
       seen.add(r.ciId)
-      nodes.push({ ciId: r.ciId, name: r.name ?? '', labels: r.labels, status: r.status ?? null, health: r.health ?? null, level: r.level, via: r.via, ...proposeNodeSettings(r.labels, r.level, r.status ?? null) })
+      nodes.push({ ciId: r.ciId, name: r.name ?? '', labels: r.labels, status: r.status ?? null, health: r.health ?? null, level: r.level, via: r.via, ...proposeNodeSettings(roles, r.labels, r.level, r.status ?? null) })
     }
   }
   if (nodes.length > SERVICE_MAP_MAX_NODES) {

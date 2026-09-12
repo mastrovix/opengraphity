@@ -61,6 +61,10 @@ export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
   // (ondata 2). Le letture (serviceMaps, serviceMap, servicesImpactedByCI)
   // restano a ruoli predefiniti.
   'serviceMapCandidates', 'serviceMapProposal', 'serviceImpactPreview',
+  // Ondata 6 · C-3: i tipi di relazione percorribili servono al dialogo di
+  // creazione della mappa, che è admin. È una lettura del metamodello, non
+  // della pagina Servizi.
+  'serviceRelationshipTypes',
 ])
 
 export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([

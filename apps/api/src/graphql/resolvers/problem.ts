@@ -8,10 +8,12 @@ import { mapUser, mapTeam } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { getScalarFields } from '../../lib/schemaFields.js'
 import { audit } from '../../lib/audit.js'
+import { ValidationError } from '../../lib/errors.js'
 import { auditStepEntered } from '../../lib/stepEvent.js'
 import { logger } from '../../lib/logger.js'
 import type { GraphQLContext } from '../../context.js'
-import { ciLabelPredicate } from '../../lib/ciLabels.js'
+import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
+import { ciLabelsForTypeNames } from '../../lib/ciTypeNameToLabel.js'
 import * as problemService from '../../services/problemService.js'
 import { validateRequiredFields, propsToFieldValues } from '../../lib/validateRequiredFields.js'
 import { resolvePriorityPatch } from '../../lib/priority.js'
@@ -309,19 +311,24 @@ async function addCIToProblem(
   const allowedTypes = await getAllowedCILabels(ctx.tenantId, 'problem')
   const ciWhereClause = allowedTypes.length > 0
     ? `ANY(label IN labels(ci) WHERE label IN $allowedLabels)`
-    : ciLabelPredicate('ci')
-  const allowedLabels = allowedTypes.map((t) =>
-    t.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(''),
-  )
+    : await ciLabelPredicateForTenant('ci', ctx.tenantId)
+  // Etichette dal metamodello, non da una PascalCase a mano (vedi incident.ts).
+  const allowedLabels = await ciLabelsForTypeNames(ctx.tenantId, allowedTypes, 'regole ITIL problem→CI')
 
   return withSession(async (session) => {
-    await session.executeWrite((tx) => tx.run(`
+    // Righe contate (C-2): un CI che non esiste, o di un tipo che le regole
+    // ITIL non ammettono, dava un MERGE muto e una risposta di successo.
+    const res = await session.executeWrite((tx) => tx.run(`
       MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
       WHERE ${ciWhereClause}
       MERGE (p)-[r:AFFECTS]->(ci)
       SET p.updated_at = $now, r.relation_type = $relationType
+      RETURN count(r) AS linked
     `, { problemId: args.problemId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString(), allowedLabels, relationType: args.relationType ?? null }))
+    if (Number(res.records[0]?.get('linked') ?? 0) === 0) {
+      throw new ValidationError(`CI ${args.ciId} non collegato al problem: non esiste in questo cliente o il suo tipo non è ammesso dalle regole ITIL${allowedTypes.length > 0 ? ` (ammessi: ${allowedTypes.join(', ')})` : ''}`)
+    }
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props
     `, { id: args.problemId, tenantId: ctx.tenantId })

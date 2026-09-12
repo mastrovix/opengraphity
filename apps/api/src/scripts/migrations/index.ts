@@ -33,6 +33,8 @@ import { workflowStepOrderSeeded } from './20260913_1400_workflow_step_order_see
 import { workflowStepTenantBackfill } from './20260913_1410_workflow_step_tenant_backfill.js'
 import { workflowStepPurpose } from './20260914_1500_workflow_step_purpose.js'
 import { stepEnteredNotificationRules } from './20260914_1520_step_entered_notification_rules.js'
+import { serviceRoleAndRelationScope } from './20260916_1710_service_role_and_relation_scope.js'
+import { globalSearchConfigurationItem } from './20260916_1700_global_search_configuration_item.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -60,4 +62,6 @@ export const MIGRATIONS: readonly Migration[] = [
   workflowStepTenantBackfill,
   workflowStepPurpose,
   stepEnteredNotificationRules,
+  globalSearchConfigurationItem,
+  serviceRoleAndRelationScope,
 ]

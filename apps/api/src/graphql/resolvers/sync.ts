@@ -8,6 +8,8 @@ import {
 } from '@opengraphity/discovery'
 import type { GraphQLContext } from '../../context.js'
 import { syncQueue } from '../../discovery/syncWorker.js'
+import { CONFLICT_LOCKED_FIELDS, CONFLICT_UNKNOWN_CI_TYPE } from '../../discovery/reconciliationEngine.js'
+import { CITypeResolver } from '../../discovery/ciTypeResolution.js'
 import { withSession } from './ci-utils.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { validateStringLength, validateCronExpression } from '../../lib/validation.js'
@@ -75,6 +77,10 @@ function mapConflict(p: Props) {
     runId:          toStr(p['run_id']),
     externalId:     toStr(p['external_id']),
     ciType:         toStr(p['ci_type']),
+    // I conflitti scritti prima dell'ondata 6 non hanno `conflict_kind`: erano
+    // tutti del genere «campo bloccato», quindi il default non inventa niente.
+    kind:           toStr(p['conflict_kind'] ?? CONFLICT_LOCKED_FIELDS),
+    message:        p['message'] ? toStr(p['message']) : null,
     conflictFields: toStr(p['conflict_fields'] ?? '[]'),
     resolution:     p['resolution']  ? toStr(p['resolution'])  : null,
     status:         toStr(p['status']),
@@ -413,20 +419,44 @@ export const syncResolvers = {
         if (!conflictRow) throw new NotFoundError('Conflict', args.conflictId)
 
         const conflict = mapConflict(conflictRow.p)
+        // A-11: un conflitto «tipo sconosciuto» non si risolve da qui. Le tre
+        // risoluzioni (merged/distinct/linked) parlano di un CI esistente e di
+        // un CI da creare: qui non c'è nessun CI esistente e il tipo da creare
+        // non esiste nel metamodello. Risolverlo avrebbe creato l'etichetta
+        // inventata che la riconciliazione ha appena rifiutato.
+        if (conflict.kind === CONFLICT_UNKNOWN_CI_TYPE) {
+          throw new ValidationError(
+            `Il conflitto ${args.conflictId} è di tipo ${CONFLICT_UNKNOWN_CI_TYPE}: nessun CI è stato creato, ` +
+            `perché "${conflict.ciType}" non è un tipo di CI di questo cliente. ` +
+            `${conflict.message ?? ''} Risolvilo alla radice (crea il tipo, o aggiungi un alias nelle regole di ` +
+            `mappatura della sorgente) e rilancia la sincronizzazione: il conflitto si chiude da sé.`,
+          )
+        }
         const discovered = JSON.parse(conflict.discoveredCi) as Record<string, unknown>
         const discoveredProps  = (discovered['properties']  ?? {}) as Record<string, unknown>
         const discoveredTags   = (discovered['tags']        ?? {}) as Record<string, string>
         const discoveredName   = discovered['name']        as string | undefined
         const discoveredExtId  = discovered['external_id'] as string | undefined
         const discoveredSource = discovered['source']      as string | undefined
-        // Validate ciType against allowed CI labels to prevent label injection
-        const ciLabel = conflict.ciType
-          .split('_')
-          .map((s: string) => s.charAt(0).toUpperCase() + s.slice(1))
-          .join('')
-        if (!/^[A-Za-z][A-Za-z0-9]*$/.test(ciLabel)) {
-          throw new ValidationError(`Invalid CI type label: ${conflict.ciType}`)
+        // A-11: l'etichetta viene dal TIPO risolto nel metamodello del cliente,
+        // non dal PascalCase della stringa. Prima un conflitto su un `ci_type`
+        // che non esiste creava `:ConfigurationItem:Bilanciatore`, cioè un CI
+        // che nessuna pagina mostra — lo stesso difetto della riconciliazione,
+        // per un'altra strada.
+        const sourceRow = await runQueryOne<{ rules: string }>(session,
+          `MATCH (n:SyncSource {id: $sourceId, tenant_id: $tenantId}) RETURN coalesce(n.mapping_rules, '[]') AS rules`,
+          { sourceId: conflict.sourceId, tenantId: ctx.tenantId },
+        )
+        const resolver = await CITypeResolver.forSource(ctx.tenantId, {
+          mapping_rules: JSON.parse(sourceRow?.rules ?? '[]') as never,
+        })
+        const resolvedType = resolver.resolve(conflict.ciType)
+        if (!resolvedType.ok) {
+          throw new ValidationError(
+            `Il conflitto ${args.conflictId} non si può risolvere: ${resolvedType.reason}`,
+          )
         }
+        const ciLabel = resolvedType.type.label
 
         if (args.resolution === 'merged') {
           // Update existing CI with discovered properties
@@ -478,7 +508,7 @@ export const syncResolvers = {
               newCiId,
               tenantId: ctx.tenantId,
               name:      discoveredName  ?? discoveredExtId ?? 'Unknown',
-              ciType:    conflict.ciType,
+              ciType:    resolvedType.type.name,
               source:    discoveredSource ?? '',
               externalId: discoveredExtId ?? '',
               now,
@@ -514,7 +544,7 @@ export const syncResolvers = {
               newCiId,
               tenantId:    ctx.tenantId,
               name:        discoveredName  ?? discoveredExtId ?? 'Unknown',
-              ciType:      conflict.ciType,
+              ciType:      resolvedType.type.name,
               source:      discoveredSource ?? '',
               externalId:  discoveredExtId  ?? '',
               existingCiId: conflict.existingCiId,

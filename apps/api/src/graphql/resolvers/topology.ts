@@ -12,8 +12,11 @@ interface TopologyArgs {
   maxHops?:      number | null
 }
 
-// All known CI labels in Neo4j — single source of truth
-import { ALL_CI_LABELS as CI_LABELS, TYPE_TO_LABEL } from '../../lib/ciLabels.js'
+// Le etichette dei CI vengono dal metamodello del tenant (ondata 6: A-9): con
+// la lista fissa un CI di un tipo del cliente non compariva nella topologia e
+// non veniva attraversato, in silenzio.
+import { ciLabelsForTenant, apocLabelFilterForTenant } from '../../lib/ciLabelsForTenant.js'
+import { ciLabelsForTypeNames } from '../../lib/ciTypeNameToLabel.js'
 import { toNumber } from '@opengraphity/neo4j'
 
 const NODE_LIMIT = 2000
@@ -34,10 +37,6 @@ export const TICKET_COUNT_MATCHES = `
             WHERE ch.tenant_id = $tenantId
               AND NOT ch.status IN $changeTerminal
               AND coalesce(ch.deleted, false) = false`
-
-function labelFromType(t: string): string {
-  return TYPE_TO_LABEL[t.toLowerCase()] ?? t
-}
 
 function mapNode(tenantId: string, r: { get: (k: string) => unknown }) {
   return {
@@ -67,6 +66,8 @@ export const topologyResolvers = {
       return withSession(async (session) => {
         const incidentTerminal = await getTerminalStepNames(session, ctx.tenantId, 'incident')
         const changeTerminal   = await getTerminalStepNames(session, ctx.tenantId, 'change')
+        const CI_LABELS        = await ciLabelsForTenant(ctx.tenantId)
+        const CI_LABEL_FILTER  = await apocLabelFilterForTenant(ctx.tenantId)
 
         // ── BRANCH A: ego-network from a specific CI ──────────────────────
         if (args.selectedCiId) {
@@ -86,7 +87,7 @@ export const topologyResolvers = {
               AND ANY(lbl IN labels(origin) WHERE lbl IN $ciLabels)
             CALL apoc.path.subgraphNodes(origin, {
               relationshipFilter: null,
-              labelFilter:        '${CI_LABELS.map((l) => '+' + l).join('|')}',
+              labelFilter:        '${CI_LABEL_FILTER}',
               maxLevel:           $depth,
               limit:              ${NODE_LIMIT}
             }) YIELD node
@@ -156,8 +157,12 @@ export const topologyResolvers = {
         // ── BRANCH B: full topology with type/env/status filters ──────────
         const params: Record<string, unknown> = {
           tenantId: ctx.tenantId,
+          // Un tipo che questo cliente non ha ferma la query dicendolo: prima
+          // `TYPE_TO_LABEL[t] ?? t` passava il NOME del tipo come etichetta
+          // (`load_balancer`), che non corrisponde a nessun nodo — filtro muto
+          // e topologia vuota senza spiegazione.
           ciLabels: args.types && args.types.length > 0
-            ? args.types.map(labelFromType)
+            ? await ciLabelsForTypeNames(ctx.tenantId, args.types, 'topology(types:)')
             : CI_LABELS,
           incidentTerminal,
           changeTerminal,

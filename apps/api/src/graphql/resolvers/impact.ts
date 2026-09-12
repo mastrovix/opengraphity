@@ -2,21 +2,32 @@ import { withSession, getSession, ciTypeFromLabels } from './ci-utils.js'
 import { calculateRiskScore } from '../../lib/riskScore.js'
 import { getTerminalStepNames } from '../../lib/workflowHelpers.js'
 import type { GraphQLContext } from '../../context.js'
-import { ciLabelPredicate, IMPACT_REL_TYPES } from '../../lib/ciLabels.js'
+import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
+import { impactRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
 import { toNumber } from '@opengraphity/neo4j'
 
 type Session = ReturnType<typeof getSession>
 
 export async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: string[]) {
   const incidentTerminal = await getTerminalStepNames(session, tenantId, 'incident')
+  // Le etichette dei CI vengono dal metamodello di QUESTO cliente: con la
+  // lista fissa un CI di un tipo suo non era né origine né impattato, quindi
+  // il blast radius si fermava prima di lui senza dirlo (A-9 / C-2).
+  const ciPredicate       = await ciLabelPredicateForTenant('ci', tenantId)
+  const impactedPredicate = await ciLabelPredicateForTenant('impacted', tenantId)
+  // Anche i TIPI DI RELAZIONE vengono dal metamodello del cliente (C-3): con
+  // i sei fissi di `IMPACT_REL_TYPES` una relazione aggiunta dal cliente
+  // (`RUNS_ON`, `CONNECTS_TO`) non veniva percorsa, quindi il blast radius si
+  // fermava prima senza dirlo. Sorgente unica con mappe e soppressione.
+  const impactRelPattern  = await impactRelPatternForTenant(tenantId)
 
   // 1. Blast radius
   const blastResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
     MATCH (ci {id: ciId, tenant_id: $tenantId})
-    WHERE ${ciLabelPredicate('ci')}
-    MATCH path = (ci)<-[:${IMPACT_REL_TYPES}*1..5]-(impacted)
-    WHERE ${ciLabelPredicate('impacted')}
+    WHERE ${ciPredicate}
+    MATCH path = (ci)<-[:${impactRelPattern}*1..5]-(impacted)
+    WHERE ${impactedPredicate}
     AND impacted.tenant_id = $tenantId
     AND NOT impacted.id IN $ciIds
     WITH impacted, head([l IN labels(impacted) WHERE l <> 'ConfigurationItem']) AS lbl, min(length(path)) AS distance
@@ -113,7 +124,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
   const ciResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
     MATCH (ci {id: ciId, tenant_id: $tenantId})
-    WHERE ${ciLabelPredicate('ci')}
+    WHERE ${ciPredicate}
     RETURN ci.environment AS env
   `, { ciIds, tenantId }))
 

@@ -310,10 +310,12 @@ export function servicesSDL(): string {
     serviceImpactPreview(id: ID!, rules: ServiceImpactRulesInput, nodes: [ServiceMapNodeInput!]): ServiceImpactPreview!
     """Le capacità di business del tenant con la salute dei servizi che le abilitano, per gravità poi per nome. Sola lettura: nessun nodo nuovo, nessuna modifica."""
     businessCapabilitiesHealth: [BusinessCapabilityHealth!]!
+    """I tipi di relazione che la costruzione di una mappa può percorrere per QUESTO cliente: i quattro spediti col prodotto più quelli dichiarati dai suoi tipi CI nel disegnatore (ondata 6 · C-3). Nell'ordine in cui vanno offerti."""
+    serviceRelationshipTypes: [String!]!
   }
 
   extend type Mutation {
-    """Costruzione automatica dalla BusinessApplication (REALIZES → relazioni tecniche in uscita fino a maxDepth, default 4, max 8; relationshipTypes fra DEPENDS_ON, HOSTED_ON, INSTALLED_ON, USES_CERTIFICATE, default tutte), status active (o draft per una bozza), valutazione immediata. Una sola mappa per servizio; oltre 500 componenti → BAD_USER_INPUT."""
+    """Costruzione automatica dalla BusinessApplication (REALIZES → relazioni tecniche in uscita fino a maxDepth, default 4, max 8; relationshipTypes fra quelle di serviceRelationshipTypes — i quattro spediti più quelle definite dal cliente —, default i quattro spediti), status active (o draft per una bozza), valutazione immediata. Una sola mappa per servizio; oltre 500 componenti → BAD_USER_INPUT."""
     createServiceMap(serviceId: ID!, maxDepth: Int, relationshipTypes: [String!], status: ServiceMapStatus, autoSync: Boolean): ServiceMap!
     """Rivaluta ora (trigger manual)."""
     reevaluateServiceMap(id: ID!): ServiceMap!

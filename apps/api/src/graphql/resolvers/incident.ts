@@ -2,7 +2,7 @@ import type { GraphQLResolveInfo } from 'graphql'
 import { resolvePriorityPatch } from '../../lib/priority.js'
 import { propsToFieldValues as mergedFieldValues } from '../../lib/validateRequiredFields.js'
 import { requireRole } from '../../lib/requireRole.js'
-import { NotFoundError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
@@ -13,7 +13,8 @@ import type { GraphQLContext } from '../../context.js'
 import * as incidentService from '../../services/incidentService.js'
 import { audit } from '../../lib/audit.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
-import { ciLabelPredicate } from '../../lib/ciLabels.js'
+import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
+import { ciLabelsForTypeNames } from '../../lib/ciTypeNameToLabel.js'
 export type { IncidentEventPayload } from '../../services/incidentService.js'
 
 // ── Mapper ───────────────────────────────────────────────────────────────────
@@ -233,19 +234,28 @@ async function addAffectedCI(
   const allowedTypes = await getAllowedCILabels(ctx.tenantId, 'incident')
   const ciWhereClause = allowedTypes.length > 0
     ? `ANY(label IN labels(ci) WHERE label IN $allowedLabels)`
-    : ciLabelPredicate('ci')
-  const allowedLabels = allowedTypes.map((t) =>
-    t.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(''),
-  )
+    : await ciLabelPredicateForTenant('ci', ctx.tenantId)
+  // Le etichette delle regole ITIL vengono dal metamodello, non da una
+  // PascalCase fatta a mano: un tipo la cui etichetta non segue quella
+  // convenzione dava un `MERGE` che non scriveva niente, senza errore.
+  const allowedLabels = await ciLabelsForTypeNames(ctx.tenantId, allowedTypes, 'regole ITIL incident→CI')
 
   return withSession(async (session) => {
-    await session.executeWrite((tx) => tx.run(`
+    // Righe CONTATE come in `createIncident` (C-2): se il CI non esiste in
+    // questo cliente, o non è un CI ammesso dalle regole ITIL, il MERGE non
+    // scrive niente — e prima la mutation rispondeva con l'incident intatto,
+    // come se il collegamento ci fosse.
+    const res = await session.executeWrite((tx) => tx.run(`
       MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
       WHERE ${ciWhereClause}
       MERGE (i)-[r:AFFECTED_BY]->(ci)
       SET i.updated_at = $now, r.relation_type = $relationType
+      RETURN count(r) AS linked
     `, { incidentId: args.incidentId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString(), allowedLabels, relationType: args.relationType ?? null }))
+    if (Number(res.records[0]?.get('linked') ?? 0) === 0) {
+      throw new ValidationError(`CI ${args.ciId} non collegato all'incident: non esiste in questo cliente o il suo tipo non è ammesso dalle regole ITIL${allowedTypes.length > 0 ? ` (ammessi: ${allowedTypes.join(', ')})` : ''}`)
+    }
     const r = await session.executeRead((tx) => tx.run(
       `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
       { id: args.incidentId, tenantId: ctx.tenantId },

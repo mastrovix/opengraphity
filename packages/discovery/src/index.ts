@@ -29,6 +29,7 @@ export {
 
 export {
   applyMappingRules,
+  ciTypeAliases,
   inferCIType,
   normalizeProperties,
 } from './mapping.js'

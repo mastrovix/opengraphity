@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
 
+// ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
+// `LoadBalancer` è un tipo creato dal cliente: la ricerca per id deve vederlo.
+vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
+  apocLabelFilterForTenant:  vi.fn(async () => '+Application|+LoadBalancer|+Server'),
+  ciTypeNameForLabel:        vi.fn(async () => null),
+  clearCILabelCache:         vi.fn(),
+}))
+
 // ── Session mock usato da withSession ─────────────────────────────────────────
 
 const mockSession = {
@@ -205,5 +215,19 @@ describe('globalSearch', () => {
 
     expect(res.cis.map((c) => c.id)).toEqual(['ci-dup', 'ci-txt'])
     expect(paramsOf('STARTS WITH $q')['q']).toBe('ci-dup')
+  })
+
+  // A-9 / A6-2: il lookup per id usa le etichette del metamodello del tenant
+  // (prima la lista fissa: un CI di un tipo del cliente non si trovava per id);
+  // il ramo fulltext è indipendente dai tipi perché l'indice copre ora
+  // `:ConfigurationItem` (packages/neo4j/src/init.ts + migrazione 20260916_1700).
+  it('il lookup per id usa il predicato del TENANT, e la ricerca resta filtrata per tenant', async () => {
+    primeQueries({})
+    await globalSearch(null, { query: 'ci-1' }, ctx)
+    const byId = vi.mocked(runQuery).mock.calls.find(([, c]) => c.includes('STARTS WITH $q'))!
+    expect(byId[1]).toContain('ci:LoadBalancer')
+    const fulltext = vi.mocked(runQuery).mock.calls.find(([, c]) => c.includes('db.index.fulltext.queryNodes'))!
+    expect(fulltext[1]).toContain('WHERE node.tenant_id = $tenantId')
+    expect(fulltext[1]).not.toMatch(/node:Server|node:Application/)
   })
 })

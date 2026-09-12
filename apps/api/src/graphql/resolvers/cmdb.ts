@@ -12,7 +12,7 @@ import { assertWritablePropertyKey } from '../../lib/cypherIdentifiers.js'
 import { runQuery, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
-import { ciLabelPredicate } from '../../lib/ciLabels.js'
+import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { toSnakeCase } from '../../lib/mappers.js'
 import { withSession } from './ci-utils.js'
 
@@ -93,9 +93,12 @@ async function updateCIFields(
 
   return withSession(async (session) => {
     // Keys never reach the query text: validated names, then `SET ci += $updates`.
+    // Le etichette sono quelle del metamodello del tenant: con la lista fissa
+    // un CI di un tipo del cliente non veniva trovato e la modifica rispondeva
+    // «ConfigurationItem non trovato» (A-9).
     const cypher = `
       MATCH (ci {id: $id, tenant_id: $tenantId})
-      WHERE ${ciLabelPredicate('ci')}
+      WHERE ${await ciLabelPredicateForTenant('ci', ctx.tenantId)}
       SET ci += $updates
       RETURN properties(ci) as props
     `

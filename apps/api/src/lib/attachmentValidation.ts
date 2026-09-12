@@ -3,13 +3,20 @@
  * Kept free of Express/Neo4j so they can be unit-tested directly.
  */
 import path from 'node:path'
-import { ALL_CI_LABELS } from './ciLabels.js'
 import { ValidationError } from './errors.js'
 
 /**
  * entityType (client field) → Neo4j labels the target entity may carry.
  * The label used in Cypher ALWAYS comes from this table, never from input.
  * Mirrors the entityType values the web passes to <AttachmentsSection>.
+ *
+ * `ci` è `:ConfigurationItem`, non l'elenco dei tipi (ondata 6, A-9): qui
+ * serve solo sapere «è un CI di questo cliente», e ogni CI porta quella
+ * etichetta (migrazione `20260908_1010`, dal vivo 2049 su 2049). Con l'elenco
+ * dei quindici tipi spediti, allegare un file a un CI di un tipo creato dal
+ * cliente rispondeva 404. La validazione resta **sincrona** di proposito:
+ * `rest/attachments.ts` la esegue dentro il callback `busboy.on('file')`,
+ * prima di aprire il flusso su disco.
  */
 export const ATTACHMENT_ENTITY_LABELS: Readonly<Record<string, readonly string[]>> = {
   incident:        ['Incident'],
@@ -19,7 +26,7 @@ export const ATTACHMENT_ENTITY_LABELS: Readonly<Record<string, readonly string[]
   kb_article:      ['KBArticle'],
   team:            ['Team'],
   task:            ['AssessmentTask', 'DeployPlanTask', 'ValidationTest', 'DeploymentTask', 'ReviewTask'],
-  ci:              ALL_CI_LABELS,
+  ci:              ['ConfigurationItem'],
 }
 
 /** RFC-4122 shape (8-4-4-4-12 hex). Rejects anything usable as a path segment attack. */

@@ -74,14 +74,25 @@ export async function calculateChain(ciId: string, tenantId: string): Promise<st
 /**
  * Recalculate chain for ALL CIs in a tenant.
  * Uses batch approach: first set single-family types, then resolve ambiguous ones.
+ *
+ * Il perimetro è `:ConfigurationItem`, non un elenco di cinque etichette
+ * (ondata 6, A-9): la catena è un campo **base** di ogni CI e la vogliono i
+ * widget «per catena» e l'analisi d'impatto. Con l'elenco fisso, i CI dei tipi
+ * creati dal cliente (e anche i `BusinessApplication`, `BusinessCapability`,
+ * `DynamicCIGroup` spediti col prodotto) restavano con `chain` nulla, quindi
+ * fuori da ogni conteggio, in silenzio — e il `total` riportato dal ricalcolo
+ * ne nascondeva l'assenza perché contava con lo stesso filtro. Qui non serve
+ * il predicato per tenant: la domanda è «è un CI?», e ogni CI porta
+ * `:ConfigurationItem` (migrazione `20260908_1010`, dal vivo 2049 su 2049);
+ * inoltre il tipo viene comunque risolto riga per riga contro
+ * `CITypeDefinition`, che è la stessa sorgente del metamodello.
  */
 export async function calculateAllChains(tenantId: string): Promise<{ total: number; app: number; infra: number }> {
   const session = getSession(undefined, 'WRITE')
   try {
     // Step 1: Set chain for CIs whose type has a single chain_family
     await session.executeWrite(tx => tx.run(`
-      MATCH (ci {tenant_id: $tenantId})
-      WHERE ci:Application OR ci:Server OR ci:Database OR ci:DatabaseInstance OR ci:Certificate
+      MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
       WITH ci, labels(ci) AS ciLabels
       UNWIND ciLabels AS lbl
       // tenant-ok: tipo CI condiviso per label
@@ -91,8 +102,7 @@ export async function calculateAllChains(tenantId: string): Promise<{ total: num
     `, { tenantId }))
 
     await session.executeWrite(tx => tx.run(`
-      MATCH (ci {tenant_id: $tenantId})
-      WHERE ci:Application OR ci:Server OR ci:Database OR ci:DatabaseInstance OR ci:Certificate
+      MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
       WITH ci, labels(ci) AS ciLabels
       UNWIND ciLabels AS lbl
       // tenant-ok: tipo CI condiviso per label
@@ -103,9 +113,8 @@ export async function calculateAllChains(tenantId: string): Promise<{ total: num
 
     // Step 2: For CIs with multiple families, check upstream
     await session.executeWrite(tx => tx.run(`
-      MATCH (ci {tenant_id: $tenantId})
+      MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
       WHERE ci.chain IS NULL
-        AND (ci:Application OR ci:Server OR ci:Database OR ci:DatabaseInstance OR ci:Certificate)
       OPTIONAL MATCH (app:Application {tenant_id: $tenantId})-[:DEPENDS_ON|HOSTED_ON|USES_CERTIFICATE*0..10]->(ci)
       WITH ci, count(app) > 0 AS hasApp
       SET ci.chain = CASE WHEN hasApp THEN 'Application' ELSE 'Infrastructure' END
@@ -113,8 +122,7 @@ export async function calculateAllChains(tenantId: string): Promise<{ total: num
 
     // Count results
     const r = await session.executeRead(tx => tx.run(`
-      MATCH (ci {tenant_id: $tenantId})
-      WHERE ci:Application OR ci:Server OR ci:Database OR ci:DatabaseInstance OR ci:Certificate
+      MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
       RETURN count(ci) AS total,
         sum(CASE WHEN ci.chain = 'Application' THEN 1 ELSE 0 END) AS app,
         sum(CASE WHEN ci.chain = 'Infrastructure' THEN 1 ELSE 0 END) AS infra

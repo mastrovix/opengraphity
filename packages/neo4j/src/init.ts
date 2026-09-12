@@ -8,6 +8,24 @@ interface SchemaStatement {
   cypher: string
 }
 
+/**
+ * Le etichette dell'indice fulltext `global_search` — sorgente unica condivisa
+ * con la migrazione che lo ricrea sui database già avviati
+ * (`20260916_1700_global_search_configuration_item`), perché due elenchi che
+ * divergono darebbero una ricerca che funziona sui sistemi nuovi e non su
+ * quelli vecchi, senza che nessuno se ne accorga.
+ *
+ * I CI stanno qui per `:ConfigurationItem` (ondata 6, A6-2): gli indici
+ * fulltext non si estendono a runtime, quindi elencare i tipi voleva dire che
+ * un tipo creato dal cliente non era cercabile.
+ */
+export const GLOBAL_SEARCH_LABELS: readonly string[] = [
+  'Incident', 'Change', 'Problem', 'ServiceRequest', 'KBArticle', 'ConfigurationItem',
+]
+
+/** Le proprietà indicizzate da `global_search`, nello stesso ordine. */
+export const GLOBAL_SEARCH_PROPERTIES: readonly string[] = ['title', 'number', 'code', 'name']
+
 const CONSTRAINTS: SchemaStatement[] = [
   {
     label: 'Tenant.id',
@@ -271,8 +289,15 @@ const INDEXES: SchemaStatement[] = [
   { label: 'ServiceCatalogItem(tenant_id)', cypher: 'CREATE INDEX service_catalog_tenant IF NOT EXISTS FOR (n:ServiceCatalogItem) ON (n.tenant_id)' },
   // Discovery reconciliation lookups by (tenant_id, source, external_id) are
   // served by the ci_discovery_key_unique constraint's backing index (CONSTRAINTS).
-  // Fulltext for the command-palette global search (CONTAINS cannot use range indexes)
-  { label: 'global_search (fulltext)', cypher: 'CREATE FULLTEXT INDEX global_search IF NOT EXISTS FOR (n:Incident|Change|Problem|ServiceRequest|KBArticle|BusinessCapability|BusinessApplication|Application|Database|DatabaseInstance|Server|Certificate|SslCertificate|VirtualMachine|NetworkDevice|Storage|CloudService|ApiEndpoint|Microservice|DynamicCIGroup) ON EACH [n.title, n.number, n.code, n.name]' },
+  // Fulltext for the command-palette global search (CONTAINS cannot use range indexes).
+  // I CI entrano per `:ConfigurationItem`, non per venti etichette fisse
+  // (ondata 6, A6-2): un indice fulltext NON si estende a runtime, quindi un
+  // tipo creato dal cliente non era cercabile e non lo sarebbe mai diventato
+  // senza un intervento sul codice. Ogni CI porta `:ConfigurationItem`
+  // (migrazione `20260908_1010`). Su un database già avviato la definizione
+  // non cambia da sé (`IF NOT EXISTS` non ridefinisce): la ricrea la migrazione
+  // `20260916_1700_global_search_configuration_item`.
+  { label: 'global_search (fulltext)', cypher: `CREATE FULLTEXT INDEX global_search IF NOT EXISTS FOR (n:${GLOBAL_SEARCH_LABELS.join('|')}) ON EACH [${GLOBAL_SEARCH_PROPERTIES.map((p) => `n.${p}`).join(', ')}]` },
   { label: 'AssessmentTask(code)', cypher: 'CREATE INDEX assessment_task_code IF NOT EXISTS FOR (t:AssessmentTask) ON (t.code)' },
   { label: 'DeployPlanTask(code)', cypher: 'CREATE INDEX deploy_plan_task_code IF NOT EXISTS FOR (t:DeployPlanTask) ON (t.code)' },
   { label: 'ValidationTest(code)', cypher: 'CREATE INDEX validation_test_code IF NOT EXISTS FOR (t:ValidationTest) ON (t.code)' },

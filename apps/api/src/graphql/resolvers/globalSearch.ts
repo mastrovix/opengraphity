@@ -5,7 +5,7 @@ import { mapProblem } from './problem.js'
 import { mapArticle, ARTICLE_RETURN_WITH_WI } from './knowledgeBase.js'
 import type { GraphQLContext } from '../../context.js'
 import type { Props } from './ci-utils.js'
-import { ALL_CI_LABELS } from '../../lib/ciLabels.js'
+import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 
 // ── result shape ──────────────────────────────────────────────────────────────
 
@@ -34,9 +34,6 @@ function emptyResults(): GlobalSearchResults {
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
-// CI labels covered by the `global_search` fulltext index — single source of truth
-const CI_LABEL_UNION = ALL_CI_LABELS.map((l) => `ci:${l}`).join(' OR ')
-
 // Task label → frontend `kind` convention (see apps/web/src/pages/tasks/).
 const TASK_KIND: Record<string, string> = {
   AssessmentTask: 'assessment',
@@ -63,7 +60,11 @@ function toLucene(raw: string): string {
  *
  * - Textual entities (Incident/Change/Problem/KBArticle/CI names) go through
  *   the `global_search` fulltext index (see packages/neo4j/src/init.ts):
- *   indexed prefix search instead of unindexed CONTAINS scans.
+ *   indexed prefix search instead of unindexed CONTAINS scans. Dall'ondata 6
+ *   l'indice copre i CI per `:ConfigurationItem` invece che per venti
+ *   etichette fisse: gli indici fulltext non si estendono a runtime, quindi
+ *   un tipo creato dal cliente non era cercabile (A6-2). Il filtro per tenant
+ *   resta sui risultati (`node.tenant_id = $tenantId`).
  * - CIs additionally match on `id STARTS WITH $query` for direct UUID lookup
  *   (union with the fulltext hits, no duplicates).
  * - Change tasks (5 labels) match on `code` and are resolved back to their
@@ -122,7 +123,7 @@ async function globalSearch(
     //    Direct matches take priority; union with fulltext hits, no duplicates.
     const idRows = await runQuery<{ props: Props; labels: string[] }>(session, `
       MATCH (ci)
-      WHERE (${CI_LABEL_UNION})
+      WHERE ${await ciLabelPredicateForTenant('ci', ctx.tenantId)}
         AND ci.tenant_id = $tenantId
         AND ci.id STARTS WITH $q
       RETURN properties(ci) AS props, labels(ci) AS labels

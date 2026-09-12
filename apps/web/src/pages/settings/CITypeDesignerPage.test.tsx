@@ -26,7 +26,7 @@ const ciType = (over: Record<string, unknown>) => ({
   __typename: 'CITypeDefinition',
   id: 't-own', name: 'load_balancer', label: 'Load Balancer', icon: 'box', color: '#0284c7',
   active: true, scope: 'tenant', tenantId: 'c-two',
-  validationScript: null, chainFamilies: ['Infrastructure'],
+  validationScript: null, chainFamilies: ['Infrastructure'], serviceRole: null,
   fields: [], relations: [], systemRelations: [],
   ...over,
 })
@@ -149,5 +149,32 @@ describe('il nome del campo nuovo è validato prima di inviarlo (A-12)', () => {
     await r.user.type(screen.getByLabelText(/name \(camelCase/), 'costCenter')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Salva/ })).toBeEnabled()
+  })
+})
+
+// ── Ondata 6 · A-10: il ruolo nella mappa di un servizio è del TIPO ─────────
+// Prima era una tabella per etichetta nel codice dell'API: un tipo creato dal
+// cliente non aveva ruolo, e quindi non poteva entrare in nessuna mappa.
+
+describe('ruolo nella mappa di un servizio (A-10)', () => {
+  it('la tendina c\'è, parte da «proposto dal prodotto» e offre i tre ruoli (mai «ingresso»)', async () => {
+    await openType('Load Balancer', [OWN])
+    const select = screen.getByRole('combobox', { name: /Role in a service map/ })
+    expect(select).toHaveValue('')
+    expect(screen.getByRole('option', { name: 'Proposed by the product' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Component/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Infrastructure/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Certificate/ })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /entry/i })).not.toBeInTheDocument()
+  })
+
+  it('il ruolo già dichiarato dal tipo è quello selezionato', async () => {
+    await openType('Load Balancer', [ciType({ serviceRole: 'component' })])
+    expect(screen.getByRole('combobox', { name: /Role in a service map/ })).toHaveValue('component')
+  })
+
+  it('su un tipo spedito col prodotto la tendina è spenta come il resto', async () => {
+    await openType('Server', [SHIPPED, OWN])
+    expect(screen.getByRole('combobox', { name: /Role in a service map/ })).toBeDisabled()
   })
 })

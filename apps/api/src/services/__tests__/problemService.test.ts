@@ -7,6 +7,18 @@
  * errori (tipizzati o — dove il sorgente non lo fa — pinnati come BUG).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+// ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
+// `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
+// Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
+// tipo non contavano, in silenzio.
+vi.mock('../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
+  apocLabelFilterForTenant:  vi.fn(async () => '+Application|+LoadBalancer|+Server'),
+  ciTypeNameForLabel:        vi.fn(async (_t: string, label: string) => (label === 'LoadBalancer' ? 'load_balancer' : null)),
+  clearCILabelCache:         vi.fn(),
+}))
 import { GraphQLError } from 'graphql'
 
 const h = vi.hoisted(() => {
@@ -70,7 +82,11 @@ beforeEach(() => {
     cypher.includes('CREATE (p:Problem')
       ? [{ props: { id: params?.['id'], number: params?.['number'], title: params?.['title'], priority: params?.['priority'],
           impact: params?.['impact'], urgency: params?.['urgency'], status: params?.['status'], tenant_id: params?.['tenantId'] } }]
-      : [])
+      // Ondata 6 (C-2): il MERGE dei CI impattati ora RITORNA il conteggio e
+      // chi chiama lo legge — zero righe significa CI non collegato.
+      : cypher.includes('MERGE (p)-[r:AFFECTS]->(ci)')
+        ? [{ linked: 1 }]
+        : [])
   vi.mocked(workflowEngine.createInstance).mockResolvedValue({ id: 'wi-1' } as never)
 })
 
@@ -194,12 +210,16 @@ describe('createProblem — numero, workflow, evento e link', () => {
 
   it('affectedCIs → un MERGE AFFECTS per CI, tenant-scoped; relatedIncidents → CAUSED_BY', async () => {
     await createProblem({ title: 'P', priority: 'high', affectedCIs: ['ci-1', 'ci-2'], relatedIncidents: ['inc-9'] }, ctx)
-    const affects = queriesWith('MERGE (p)-[:AFFECTS]->(ci)')
+    const affects = queriesWith('MERGE (p)-[r:AFFECTS]->(ci)')
     expect(affects.map(([, p]) => p)).toEqual([
       { id: expect.any(String), tenantId: 'tenant-1', ciId: 'ci-1' },
       { id: expect.any(String), tenantId: 'tenant-1', ciId: 'ci-2' },
     ])
     expect(affects[0]![0]).toContain('MATCH (ci {id: $ciId, tenant_id: $tenantId})')
+    // Ondata 6 (A-9): il predicato viene dal metamodello del tenant, quindi
+    // comprende il tipo creato dal cliente; e il MERGE ritorna il conteggio.
+    expect(affects[0]![0]).toContain('ci:LoadBalancer')
+    expect(affects[0]![0]).toContain('RETURN count(r) AS linked')
     const caused = queriesWith('MERGE (p)-[:CAUSED_BY]->(i)')
     expect(caused).toHaveLength(1)
     expect(caused[0]![1]).toMatchObject({ tenantId: 'tenant-1', incidentId: 'inc-9' })

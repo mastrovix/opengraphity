@@ -4,6 +4,28 @@
  * parameter, 404 on unknown id, label predicate on every query.
  */
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+
+// ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
+// `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
+// Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
+// tipo non contavano, in silenzio.
+vi.mock('../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
+  apocLabelFilterForTenant:  vi.fn(async () => '+Application|+LoadBalancer|+Server'),
+  ciTypeNameForLabel:        vi.fn(async (_t: string, label: string) => (label === 'LoadBalancer' ? 'load_balancer' : null)),
+  clearCILabelCache:         vi.fn(),
+}))
+
+// Il metamodello del tenant: `lib/ciTypeNameToLabel.ts` ci risolve il verso
+// nome del tipo → etichetta (prima era una tabella fissa o una PascalCase a mano).
+vi.mock('@opengraphity/schema-generator', () => ({
+  loadMetamodel: vi.fn(async () => [
+    { name: 'application',   neo4jLabel: 'Application',  scope: 'base',   active: true },
+    { name: 'server',        neo4jLabel: 'Server',       scope: 'base',   active: true },
+    { name: 'load_balancer', neo4jLabel: 'LoadBalancer', scope: 'tenant', active: true },
+  ]),
+}))
 import express from 'express'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -54,7 +76,9 @@ describe('GET /api/v1/ci', () => {
       meta: { page: 2, limit: 10, total: 12 },
     })
     const [, cypher, params] = vi.mocked(runQuery).mock.calls[0]!
-    expect(cypher).toMatch(/\(ci:BusinessCapability OR ci:BusinessApplication OR/)
+    // Ondata 6 (A-9): il predicato viene dal metamodello del tenant, quindi
+    // comprende il tipo creato dal cliente (prima erano quindici etichette fisse).
+    expect(cypher).toMatch(/\(ci:Application OR ci:LoadBalancer OR ci:Server\)/)
     expect(cypher).toMatch(/SKIP toInteger\(\$offset\) LIMIT toInteger\(\$limit\)/)
     expect(params).toEqual({ tenantId: 'tenant-1', offset: 10, limit: 10 })
     expect(vi.mocked(runQueryOne).mock.calls[0]![2]).toEqual(params)
@@ -77,6 +101,24 @@ describe('GET /api/v1/ci', () => {
     expect(runQueryOne).not.toHaveBeenCalled()
   })
 
+  // A-9: un tipo creato dal cliente è interrogabile — prima
+  // `?type=load_balancer` dava 400 «Unknown CI type» perché il tipo non era
+  // nella tabella dei tipi spediti col prodotto.
+  it('un tipo del CLIENTE è un filtro valido e diventa la sua etichetta', async () => {
+    vi.mocked(runQueryOne).mockResolvedValueOnce({ total: 0 })
+    vi.mocked(runQuery).mockResolvedValueOnce([])
+    const res = await fetch(`${base}?type=load_balancer`)
+    expect(res.status).toBe(200)
+    const [, cypher] = vi.mocked(runQuery).mock.calls[0]!
+    expect(cypher).toMatch(/AND ci:LoadBalancer/)
+  })
+
+  it('il 400 di un tipo sconosciuto elenca i tipi ammessi (del cliente compresi)', async () => {
+    const res = await fetch(`${base}?type=bilanciatore`)
+    expect(res.status).toBe(400)
+    expect((await err(res)).message).toMatch(/Unknown CI type: bilanciatore \(available: .*load_balancer/)
+  })
+
   it.each(['?status[]=a', '?type[]=server', '?limit=999'])('%s → 400', async (qs) => {
     const res = await fetch(`${base}${qs}`)
     expect(res.status).toBe(400)
@@ -92,7 +134,7 @@ describe('GET /api/v1/ci/:id', () => {
     expect(await err(res)).toEqual({ code: 'NOT_FOUND', message: 'CI ci-404 not found' })
     const [, cypher, params] = vi.mocked(runQueryOne).mock.calls[0]!
     expect(cypher).toMatch(/tenant_id: \$tenantId/)
-    expect(cypher).toMatch(/ci:Server OR/)
+    expect(cypher).toMatch(/ci:LoadBalancer OR/)
     expect(params).toEqual({ id: 'ci-404', tenantId: 'tenant-1' })
   })
 

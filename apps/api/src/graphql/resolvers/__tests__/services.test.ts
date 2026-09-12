@@ -47,6 +47,14 @@ vi.mock('../../../services/serviceImpact/config.js', async (importOriginal) => (
 }))
 vi.mock('../../../services/serviceImpact/sync.js', () => ({ syncServiceMap: vi.fn(), notifyCIGraphChanged: vi.fn() }))
 
+// Ondata 6 · C-3: le relazioni percorse a monte sono quelle del tenant (il
+// field resolver `nodes` riusa la lettura del motore).
+vi.mock('../../../lib/ciMetamodelForTenant.js', () => ({
+  serviceRelationshipTypesForTenant: vi.fn(async () => ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE']),
+  suppressionRelPatternForTenant:    vi.fn(async () => 'DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE'),
+  serviceRolesForTenant:             vi.fn(async () => new Map()),
+}))
+
 vi.mock('../../../lib/workflowHelpers.js', () => ({
   // Ondata 4 · A4-1: i passi della finestra di change vengono dallo SCOPO.
   // Il tenant di prova ha i nomi di fabbrica con gli scopi della migrazione.

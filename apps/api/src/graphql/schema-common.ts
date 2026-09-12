@@ -47,6 +47,8 @@ export function cmdbSDL(): string {
     tenantId: String!
     validationScript: String
     chainFamilies: [String!]!
+    """Ruolo del tipo nella mappa di un servizio: component | infrastructure | certificate. \`null\` = non dichiarato, il ruolo lo propone il prodotto (seme dei tipi spediti, poi le famiglie di catena)."""
+    serviceRole: String
     fields: [CIFieldDef!]!
     relations: [CIRelationDef!]!
     systemRelations: [CISystemRelationDef!]!

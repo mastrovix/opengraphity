@@ -14,7 +14,7 @@ import { publishEvent } from '../lib/publishEvent.js'
 import { getInitialStepName } from '../lib/workflowHelpers.js'
 import { loadStepFacts } from '../lib/stepEvent.js'
 import { stepEnteredEventType, legacyStepEventType } from '@opengraphity/types'
-import { ciLabelPredicate } from '../lib/ciLabels.js'
+import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 
 export interface ProblemEventPayload {
   id: string; title: string; priority: string; status: string; assignedTo: string
@@ -113,16 +113,32 @@ export async function createProblem(
   }, true)
 
   if (input.affectedCIs?.length) {
+    // Etichette dal metamodello del tenant, e righe CONTATE: come in
+    // `createIncident` (C-2), il `MERGE` sotto la lista fissa non collegava i
+    // CI di un tipo del cliente e nessuno leggeva l'esito. A differenza
+    // dell'incident un Problem può legittimamente non avere CI, quindi il
+    // problem resta creato — ma chi ha chiesto quei CI lo viene a sapere.
+    const ciPredicate = await ciLabelPredicateForTenant('ci', ctx.tenantId)
+    const missing: string[] = []
     await withSession(async (session) => {
       for (const ciId of input.affectedCIs!) {
-        await runQuery(session, `
+        const rows = await runQuery<{ linked: unknown }>(session, `
           MATCH (p:Problem {id: $id, tenant_id: $tenantId})
           MATCH (ci {id: $ciId, tenant_id: $tenantId})
-          WHERE ${ciLabelPredicate('ci')}
-          MERGE (p)-[:AFFECTS]->(ci)
+          WHERE ${ciPredicate}
+          MERGE (p)-[r:AFFECTS]->(ci)
+          RETURN count(r) AS linked
         `, { id, tenantId: ctx.tenantId, ciId })
+        if (Number(rows[0]?.linked ?? 0) === 0) missing.push(ciId)
       }
     }, true)
+    if (missing.length > 0) {
+      logger.error({ problemId: id, tenantId: ctx.tenantId, missing },
+        '[problemService] CI non collegati al problem: non esistono in questo cliente o non sono Configuration Item')
+      throw new ValidationError(
+        `Problem creato, ma ${missing.length} dei ${input.affectedCIs.length} CI indicati non esistono in questo cliente o non sono Configuration Item (${missing.join(', ')})`,
+      )
+    }
   }
 
   if (input.relatedIncidents?.length) {

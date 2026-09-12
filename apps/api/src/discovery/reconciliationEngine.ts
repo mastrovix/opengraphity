@@ -8,6 +8,7 @@ import type {
   CIDiscoveryMetadata,
 } from '@opengraphity/discovery'
 import { applyMappingRules, inferCIType, normalizeProperties } from '@opengraphity/discovery'
+import { CITypeResolver } from './ciTypeResolution.js'
 import { logger } from '../lib/logger.js'
 import { FIELD_NAME_RE } from '../lib/cypherIdentifiers.js'
 import { ValidationError } from '../lib/errors.js'
@@ -26,6 +27,10 @@ export interface ReconciliationStats {
   relationsCreated: number
   relationsRemoved: number
 }
+
+/** Tipo di conflitto su `SyncConflict.conflict_kind` (ondata 6 · A-11). */
+export const CONFLICT_LOCKED_FIELDS = 'locked_fields'
+export const CONFLICT_UNKNOWN_CI_TYPE = 'unknown_ci_type'
 
 interface ExistingCI {
   id:            string
@@ -59,9 +64,13 @@ export async function reconcileBatch(
   // sincronizzazione per mappa, non 500.
   const touched = new Set<string>()
   try {
+    // A-11: i tipi attivi del cliente e gli alias della sorgente, UNA volta per
+    // lotto. Se il metamodello non si legge il run fallisce: continuare
+    // significherebbe inventare etichette, che è il difetto che si sta chiudendo.
+    const ciTypes = await CITypeResolver.forSource(tenantId, source)
     for (const raw of batch) {
       const ci = applyMappingRules(raw, source.mapping_rules ?? [])
-      await reconcileOne(ci, source, runId, tenantId, stats, session, touched)
+      await reconcileOne(ci, source, runId, tenantId, stats, session, touched, ciTypes)
     }
   } finally {
     await session.close()
@@ -80,9 +89,20 @@ async function reconcileOne(
   stats:      ReconciliationStats,
   session:    Session,
   touched:    Set<string>,
+  ciTypes:    CITypeResolver,
 ): Promise<void> {
-  const ciType   = discovered.ci_type ?? inferCIType(discovered)
-  const label    = ciTypeToLabel(ciType)
+  const rawType = discovered.ci_type ?? inferCIType(discovered)
+  // A-11 — LA PORTA. Prima l'etichetta era il PascalCase della stringa in
+  // arrivo, senza nessun controllo: un `ci_type` che non esiste creava un CI
+  // con un'etichetta che nessuna pagina mostra, e il run lo contava «creato».
+  const resolution = ciTypes.resolve(rawType)
+  if (!resolution.ok) {
+    await createUnknownTypeConflict(session, discovered, rawType, resolution.reason, source, runId, tenantId, new Date().toISOString())
+    stats.ciConflicts++
+    return
+  }
+  const ciType   = resolution.type.name
+  const label    = resolution.type.label
   const now      = new Date().toISOString()
 
   // ── 1. Find existing CI by external_id + source ───────────────────────────
@@ -148,15 +168,9 @@ export function assertDiscoveredPropertyKeys(props: Record<string, unknown>, ext
   }
 }
 
-function ciTypeToLabel(ciType: string): string {
-  // Convert snake_case ci_type to PascalCase Neo4j label
-  const label = ciType
-    .split('_')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join('')
-  if (!SAFE_LABEL_RE.test(label)) throw new Error(`Invalid CI type label: ${ciType}`)
-  return label
-}
+// `ciTypeToLabel` non esiste più (ondata 6 · A-11): era il PascalCase della
+// stringa in arrivo, cioè il modo in cui la discovery inventava etichette.
+// L'etichetta viene dal tipo risolto nel metamodello (./ciTypeResolution.ts).
 
 async function findExisting(
   session:    Session,
@@ -362,6 +376,7 @@ async function createConflict(
        id: $id, source_id: $sourceId, tenant_id: $tenantId, run_id: $runId,
        external_id: $externalId, ci_type: $ciType,
        conflict_fields: $conflictFields,
+       conflict_kind: '${CONFLICT_LOCKED_FIELDS}',
        status: 'open',
        discovered_ci: $discoveredCi,
        existing_ci_id: $existingCiId,
@@ -382,6 +397,45 @@ async function createConflict(
     },
   ))
   logger.warn({ id, externalId: discovered.external_id, conflicts }, '[reconcile] Conflict created')
+}
+
+/**
+ * Il CI non si crea perché il suo tipo non esiste (A-11): resta un
+ * `SyncConflict` di tipo `unknown_ci_type` con il motivo E cosa fare (creare il
+ * tipo o aggiungere un alias). `existing_ci_id` è vuoto — non c'è nessun CI
+ * esistente in ballo, qui il conflitto è fra il dato e il metamodello — e
+ * `match_reason` lo dice. Idempotente: uno per (sorgente, external_id, run).
+ */
+async function createUnknownTypeConflict(
+  session:    Session,
+  discovered: DiscoveredCI,
+  rawType:    string,
+  reason:     string,
+  source:     SyncSourceConfig,
+  runId:      string,
+  tenantId:   string,
+  now:        string,
+): Promise<void> {
+  const id = randomUUID()
+  await session.executeWrite(tx => tx.run(
+    `MERGE (c:SyncConflict {tenant_id: $tenantId, source_id: $sourceId, run_id: $runId, external_id: $externalId, conflict_kind: '${CONFLICT_UNKNOWN_CI_TYPE}'})
+     ON CREATE SET
+       c.id = $id, c.ci_type = $ciType, c.conflict_fields = $conflictFields, c.status = 'open',
+       c.discovered_ci = $discoveredCi, c.existing_ci_id = '', c.match_reason = 'ci_type',
+       c.message = $message, c.created_at = $now
+     ON MATCH SET c.message = $message, c.discovered_ci = $discoveredCi`,
+    {
+      id, tenantId, sourceId: source.id, runId,
+      externalId:     discovered.external_id,
+      ciType:         rawType,
+      conflictFields: JSON.stringify(['ci_type']),
+      discoveredCi:   JSON.stringify(discovered),
+      message:        reason,
+      now,
+    },
+  ))
+  logger.warn({ externalId: discovered.external_id, ciType: rawType, sourceId: source.id, runId, tenantId, reason },
+    '[reconcile] CI non creato: il ci_type non esiste nel metamodello del cliente')
 }
 
 async function syncRelations(

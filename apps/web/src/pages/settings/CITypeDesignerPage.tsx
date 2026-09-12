@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { Layers, Layout, Plus, Trash2 } from 'lucide-react'
@@ -36,6 +36,14 @@ import { colors, palette } from '@/lib/tokens'
 import { isShippedType } from '@/lib/ciTypeNames'
 import { Package } from 'lucide-react'
 
+/**
+ * I ruoli che un tipo può dichiarare per la mappa di un servizio (ondata 6 ·
+ * A-10). `entry` non è fra questi: nella mappa lo prende sempre il livello 1,
+ * qualunque sia il tipo. Stesso vocabolario dell'API
+ * (`SETTABLE_SERVICE_NODE_ROLES`), che rifiuta tutto il resto.
+ */
+const SERVICE_ROLES = ['component', 'infrastructure', 'certificate'] as const
+
 // ── Style helpers ──────────────────────────────────────────────────────────────
 
 const ICONS = ['box', 'database', 'server', 'shield', 'hard-drive', 'cloud', 'globe', 'cpu', 'network', 'monitor', 'lock']
@@ -72,8 +80,9 @@ export function CITypeDesignerPage() {
   const [editingBaseField, setEditingBaseField]     = useState<CIFieldDef | null>(null)
 
   const [showRelModal, setShowRelModal] = useState(false)
+  const ids = { serviceRole: useId() }
 
-  const [settingsForm, setSettingsForm] = useState<{ label: string; icon: string; color: string; validationScript: string; chainFamilies: string[] } | null>(null)
+  const [settingsForm, setSettingsForm] = useState<{ label: string; icon: string; color: string; validationScript: string; chainFamilies: string[]; serviceRole: string } | null>(null)
   const [settingsSaving, setSettingsSaving] = useState(false)
 
   const selected = ciTypes.find((t) => t.id === selectedId) ?? null
@@ -98,7 +107,7 @@ export function CITypeDesignerPage() {
     setActiveTab('settings')
     setEditingFieldId(null)
     setAddingField(false)
-    setSettingsForm({ label: t.label, icon: t.icon ?? 'box', color: t.color ?? 'var(--color-brand)', validationScript: t.validationScript ?? '', chainFamilies: t.chainFamilies ?? [] })
+    setSettingsForm({ label: t.label, icon: t.icon ?? 'box', color: t.color ?? 'var(--color-brand)', validationScript: t.validationScript ?? '', chainFamilies: t.chainFamilies ?? [], serviceRole: t.serviceRole ?? '' })
   }
 
   const [createType]    = useMutation(CREATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success(t('toast.citype.typeCreated')) }, onError: (e) => toast.error(e.message) })
@@ -314,6 +323,22 @@ export function CITypeDesignerPage() {
                       <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('ciTypeDesigner.chainFamiliesTooltip')}</p>
                     </div>
 
+                    {/* A-10 — Ruolo nella mappa di un servizio. Prima era una
+                        tabella per etichetta nel codice dell'API: un tipo
+                        creato dal cliente non aveva ruolo, e quindi non poteva
+                        entrare in nessuna mappa. */}
+                    <FormField label={t('ciTypeDesigner.serviceRole')} htmlFor={ids.serviceRole}>
+                      <Select id={ids.serviceRole} value={settingsForm.serviceRole} disabled={shipped}
+                        title={shipped ? shippedNote : undefined}
+                        onChange={(e) => setSettingsForm((p) => p && ({ ...p, serviceRole: e.target.value }))}>
+                        <option value="">{t('ciTypeDesigner.serviceRoleAuto')}</option>
+                        {SERVICE_ROLES.map((r) => (
+                          <option key={r} value={r}>{t(`ciTypeDesigner.serviceRoles.${r}`)}</option>
+                        ))}
+                      </Select>
+                      <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('ciTypeDesigner.serviceRoleHint')}</p>
+                    </FormField>
+
                     <FormField label="Validation script (opzionale)">
                       <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                         Variabili: <code>input</code>. Usa <code>throw 'msg'</code> per errore globale.
@@ -334,6 +359,10 @@ export function CITypeDesignerPage() {
                               label: settingsForm.label, icon: settingsForm.icon,
                               color: settingsForm.color, validationScript: settingsForm.validationScript || null,
                               chainFamilies: settingsForm.chainFamilies,
+                              // A-10: stringa vuota = «non dichiarato», cioè
+                              // `null`: il ruolo torna a essere proposto dal
+                              // prodotto invece di restare quello di prima.
+                              serviceRole: settingsForm.serviceRole || null,
                             } } })
                           } finally { setSettingsSaving(false) }
                         }}>

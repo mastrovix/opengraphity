@@ -4,7 +4,7 @@ import type { Request, Response } from 'express'
 import { getSession } from '@opengraphity/neo4j'
 import { GraphQLError } from 'graphql'
 import { logger } from '../lib/logger.js'
-import { ciLabelPredicate } from '../lib/ciLabels.js'
+import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 
 const VALID_SEVERITIES = ['critical', 'high', 'medium', 'low'] as const
 const USAGE = '`/og incident apri <titolo> ci=<id-o-nome-CI> <' + VALID_SEVERITIES.join('|') + '>`'
@@ -85,10 +85,13 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
       userId   = u['id']        as string
 
       // Resolve the CI by id or (case-insensitive) exact name, tenant-scoped.
+      // Etichette dal metamodello del tenant: con la lista fissa un CI di un
+      // tipo del cliente rispondeva «CI non trovato» in Slack (A-9).
+      const ciPredicate = await ciLabelPredicateForTenant('ci', tenantId)
       const ciResult = await session.executeRead((tx) =>
         tx.run(`
           MATCH (ci {tenant_id: $tenantId})
-          WHERE ${ciLabelPredicate('ci')} AND (ci.id = $ref OR toLower(ci.name) = toLower($ref))
+          WHERE ${ciPredicate} AND (ci.id = $ref OR toLower(ci.name) = toLower($ref))
           RETURN ci.id AS id LIMIT 2
         `, { tenantId, ref: ciRef }),
       )

@@ -138,3 +138,16 @@ export const GET_SERVICE_MAP_CANDIDATES = gql`
     }
   }
 `
+
+/**
+ * I tipi di relazione che la costruzione della mappa può percorrere per QUESTO
+ * cliente (ondata 6 · C-3): i quattro spediti col prodotto più quelli
+ * dichiarati dai suoi tipi CI nel disegnatore. Prima il dialogo mostrava
+ * quattro caselle scritte a mano nel web, quindi una relazione del cliente non
+ * compariva mai — e nemmeno la mappa la percorreva.
+ */
+export const GET_SERVICE_RELATIONSHIP_TYPES = gql`
+  query GetServiceRelationshipTypes {
+    serviceRelationshipTypes
+  }
+`

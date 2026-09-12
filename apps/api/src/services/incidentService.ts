@@ -15,7 +15,7 @@ import { publishEvent } from '../lib/publishEvent.js'
 import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
 import { loadStepFacts } from '../lib/stepEvent.js'
 import { stepEnteredEventType, legacyStepEventType } from '@opengraphity/types'
-import { ciLabelPredicate } from '../lib/ciLabels.js'
+import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 import { assertUserInAssignedTeam, setTicketTeam, setTicketUser } from './ticketAssignment.js'
 
 export interface IncidentEventPayload {
@@ -172,17 +172,48 @@ export async function createIncident(
     return mapIncident(rows[0].props)
   }, true)
 
-  if (input.affectedCIIds?.length) {
+  // C-2 (CRITICO): il collegamento ai CI impattati viene CONTATO e, se manca,
+  // l'operazione fallisce. Prima il `MERGE` girava sotto un predicato con le
+  // etichette fisse e nessuno leggeva il risultato: un CI di un tipo del
+  // cliente (o cancellato fra la creazione e questo passo) dava zero righe,
+  // cioè un incident senza `AFFECTED_BY` — in contraddizione con la guardia
+  // «un incident deve avere almeno un CI impattato» tre righe sopra, senza
+  // errore, senza log, e invisibile all'incident di servizio (che cita gli
+  // incident tecnici proprio via `AFFECTED_BY`). Contare le righe scritte è la
+  // pratica già usata due volte nello stesso sottosistema
+  // (serviceImpact/build.ts:241-243, config.ts:612-614).
+  {
+    const affectedCIIds = input.affectedCIIds
+    const ciPredicate = await ciLabelPredicateForTenant('ci', ctx.tenantId)
+    const missing: string[] = []
     await withSession(async (session) => {
-      for (const ciId of input.affectedCIIds!) {
-        await runQuery(session, `
+      for (const ciId of affectedCIIds) {
+        const rows = await runQuery<{ linked: unknown }>(session, `
           MATCH (i:Incident {id: $id, tenant_id: $tenantId})
           MATCH (ci {id: $ciId, tenant_id: $tenantId})
-          WHERE ${ciLabelPredicate('ci')}
-          MERGE (i)-[:AFFECTED_BY]->(ci)
+          WHERE ${ciPredicate}
+          MERGE (i)-[r:AFFECTED_BY]->(ci)
+          RETURN count(r) AS linked
         `, { id, tenantId: ctx.tenantId, ciId })
+        if (Number(rows[0]?.linked ?? 0) === 0) missing.push(ciId)
       }
     }, true)
+    if (missing.length > 0) {
+      // L'incident era già stato committato in una transazione sua: lasciarlo
+      // lì significherebbe tenere in banca dati proprio l'incident senza CI
+      // che la guardia vieta, e senza istanza di workflow (creata dopo). Lo si
+      // toglie e si dice perché.
+      await withSession(async (session) => {
+        await runQuery(session, `
+          MATCH (i:Incident {id: $id, tenant_id: $tenantId}) DETACH DELETE i
+        `, { id, tenantId: ctx.tenantId })
+      }, true)
+      logger.error({ incidentId: id, tenantId: ctx.tenantId, missing, number: created.number },
+        '[incidentService] CI impattati non collegabili: incident annullato (violerebbe l\'invariante «almeno un CI impattato»)')
+      throw new ValidationError(
+        `Incident non creato: ${missing.length} dei ${affectedCIIds.length} CI impattati non esistono in questo cliente o non sono Configuration Item (${missing.join(', ')})`,
+      )
+    }
   }
 
   await withSession(async (session) => {

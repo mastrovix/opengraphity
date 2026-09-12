@@ -67,9 +67,17 @@ export const MIN_NODES_MAX = 1000
 export type ServiceHealthTrigger = 'created' | 'ci_health' | 'rules_changed' | 'map_changed' | 'maintenance' | 'manual' | 'periodic'
 export const SERVICE_HEALTH_TRIGGERS: readonly ServiceHealthTrigger[] = ['created', 'ci_health', 'rules_changed', 'map_changed', 'maintenance', 'manual', 'periodic']
 
-/** Relazioni tecniche percorse in uscita (chi fornisce) per costruire la mappa. */
-export const SERVICE_RELATIONSHIP_TYPES = ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE'] as const
-export type ServiceRelationshipType = (typeof SERVICE_RELATIONSHIP_TYPES)[number]
+/**
+ * Le relazioni tecniche percorribili **spedite col prodotto** (ondata 6 · C-3).
+ *
+ * Non sono più «la lista»: i tipi percorribili da questo cliente li dice l'API
+ * (`serviceRelationshipTypes`), perché comprendono quelli definiti nel
+ * disegnatore dei tipi CI. Questa costante resta solo come stato di partenza
+ * del dialogo (è anche la scelta predefinita dell'API), non come vocabolario:
+ * prima era una copia della lista del server, e una relazione del cliente non
+ * compariva mai fra le caselle.
+ */
+export const SHIPPED_SERVICE_RELATIONSHIP_TYPES = ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE'] as const
 
 export const SERVICE_MAP_DEFAULT_DEPTH = 4
 export const SERVICE_MAP_MAX_DEPTH     = 8

@@ -4,7 +4,7 @@
  * Una change "in finestra" (un passo con scopo `implementation`, oppure uno
  * con scopo `scheduled` e una releaseWindow/validationWindow del piano di
  * rilascio che contiene l'istante) collegata al CI dell'evento o a un CI a monte (le relazioni
- * tecniche di SUPPRESSION_REL_TYPES, fino a `suppress_upstream_hops` salti)
+ * tecniche del cliente, fino a `suppress_upstream_hops` salti)
  * silenzia l'evento: status `suppressed`, SUPPRESSED_BY, `event.suppressed`.
  * Niente salute, niente incident.
  *
@@ -20,8 +20,8 @@
  *  - B2-12: i piani di rilascio sono **per CI** (`dp.ci_id`), quindi la
  *    finestra del piano di un CI non silenzia gli allarmi di un altro CI della
  *    stessa change;
- *  - B2-13: a monte si percorrono le relazioni tecniche di
- *    SUPPRESSION_REL_TYPES (le stesse che i servizi navigano), non solo
+ *  - B2-13: a monte si percorrono le relazioni tecniche che i servizi
+ *    navigano (`suppressionRelTypes`, per tenant dall'ondata 6), non solo
  *    `DEPENDS_ON`: il caso più comune è la change sul server con gli allarmi
  *    sulle VM `HOSTED_ON`.
  */
@@ -32,7 +32,7 @@ import { publishEvent } from '../../lib/publishEvent.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import { anyDeployWindowContains } from '../../lib/deployWindows.js'
-import { SERVICE_RELATIONSHIP_TYPES } from '../../lib/serviceVocabularies.js'
+import { suppressionRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
 import { getStepNamesByPurpose, getWorkflowSteps } from '../../lib/workflowHelpers.js'
 import { eventsSuppressedTotal, workflowPurposeMissingTotal } from '../../middleware/metrics.js'
 import { mapEventPayload, monitoringContext, toNumber, toStr } from './shared.js'
@@ -121,12 +121,19 @@ export async function resolveChangeWindowSteps(tenantId: string, session?: Query
 
 /**
  * Relazioni percorse verso i CI a MONTE (revisione 2 · B2-13): la stessa
- * famiglia tecnica che la mappa di un servizio segue per l'impatto
- * (SERVICE_RELATIONSHIP_TYPES, lib/serviceVocabularies.ts) — «x dipende da /
- * gira su / usa y», quindi una change su y tocca x. Nessuna manopola nuova:
- * una definizione sola per allarmi e servizi.
+ * famiglia tecnica che la mappa di un servizio segue per l'impatto — «x
+ * dipende da / gira su / usa y», quindi una change su y tocca x. Nessuna
+ * manopola nuova: una definizione sola per allarmi e servizi.
+ *
+ * Ondata 6 · C-3: la famiglia è **del cliente**
+ * (`lib/ciMetamodelForTenant.ts`), non la costante dei quattro tipi spediti.
+ * Prima una change sul bilanciatore, legato alle sue applicazioni da un tipo
+ * di relazione definito dal cliente, non silenziava niente: gli allarmi delle
+ * applicazioni suonavano durante ogni rilascio, e nessuno lo diceva.
  */
-export const SUPPRESSION_REL_TYPES: string = SERVICE_RELATIONSHIP_TYPES.join('|')
+export async function suppressionRelTypes(tenantId: string): Promise<string> {
+  return suppressionRelPatternForTenant(tenantId)
+}
 
 export interface EventSuppressedPayload extends MonitoringEventPayload { change_id: string }
 
@@ -173,12 +180,17 @@ export function assertUpstreamHops(hops: number): number {
  * senza un giro in più.
  *
  * Parametri attesi dal chiamante: `$tenantId`, `$windowSteps`,
- * `$implementationSteps` (entrambe liste, da `changeWindowParams`). `hops` è
- * interpolato (intero validato).
+ * `$implementationSteps` (entrambe liste, da `changeWindowParams`). `hops` e i
+ * tipi di relazione a monte (`relTypes`, da `suppressionRelTypes(tenantId)`)
+ * sono interpolati: il primo è un intero validato, i secondi identificatori
+ * validati alla lettura del metamodello.
  */
-export function changeWindowSubqueryCypher(hops: number): string {
+export function changeWindowSubqueryCypher(hops: number, relTypes: string): string {
+  // `relTypes` arriva già validato tipo per tipo da `assertRelationshipTypeName`
+  // (lib/ciMetamodelForTenant.ts): è il solo modo in cui un tipo di relazione
+  // entra in quella lista, e qui finisce nel testo della query.
   const targets = assertUpstreamHops(hops) > 0
-    ? `[{node: ci, dist: 0}] + [(ci)-[rel:${SUPPRESSION_REL_TYPES}*1..${hops}]->(up:ConfigurationItem {tenant_id: $tenantId}) | {node: up, dist: size(rel)}]`
+    ? `[{node: ci, dist: 0}] + [(ci)-[rel:${relTypes}*1..${hops}]->(up:ConfigurationItem {tenant_id: $tenantId}) | {node: up, dist: size(rel)}]`
     : '[{node: ci, dist: 0}]'
   return `
     CALL {
@@ -248,7 +260,7 @@ export async function changeWindowsForCIs(session: Queryable, tenantId: string, 
   const rows = await runQuery<{ ciId: string; changes: ChangeWindowRow[] | null }>(session, `
     UNWIND $ciIds AS cid
     MATCH (ci:ConfigurationItem {id: cid, tenant_id: $tenantId})
-    ${changeWindowSubqueryCypher(hops)}
+    ${changeWindowSubqueryCypher(hops, await suppressionRelTypes(tenantId))}
     RETURN ci.id AS ciId, changes
   `, { ciIds: ids, tenantId, ...changeWindowParams(steps) })
   for (const r of rows) {

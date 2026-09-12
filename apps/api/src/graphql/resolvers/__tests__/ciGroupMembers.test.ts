@@ -1,4 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+// ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
+// `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
+// Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
+// tipo non contavano, in silenzio.
+vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelsForTenant:         vi.fn(async () => ['Application', 'Database', 'DynamicCIGroup', 'LoadBalancer', 'Server']),
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:Database OR ${alias}:DynamicCIGroup OR ${alias}:LoadBalancer OR ${alias}:Server)`),
+  apocLabelFilterForTenant:  vi.fn(async () => '+Application|+Database|+DynamicCIGroup|+LoadBalancer|+Server'),
+  ciTypeNameForLabel:        vi.fn(async (_t: string, label: string) => (label === 'LoadBalancer' ? 'load_balancer' : null)),
+  clearCILabelCache:         vi.fn(),
+}))
+
+// Il metamodello del tenant: `lib/ciTypeNameToLabel.ts` ci risolve il verso
+// nome del tipo → etichetta (prima era una tabella fissa o una PascalCase a mano).
+vi.mock('@opengraphity/schema-generator', () => ({
+  loadMetamodel: vi.fn(async () => [
+    { name: 'application',      neo4jLabel: 'Application',    scope: 'base',   active: true },
+    { name: 'database',          neo4jLabel: 'Database',       scope: 'base',   active: true },
+    { name: 'dynamic_ci_group',  neo4jLabel: 'DynamicCIGroup', scope: 'base',   active: true },
+    { name: 'server',            neo4jLabel: 'Server',         scope: 'base',   active: true },
+    { name: 'load_balancer',     neo4jLabel: 'LoadBalancer',   scope: 'tenant', active: true },
+  ]),
+}))
 import type { GraphQLContext } from '../../../context.js'
 
 // ── Session mock usato da withSession ─────────────────────────────────────────
@@ -131,11 +155,11 @@ describe('ciGroupMembers', () => {
     expect(countCall[2]).toMatchObject({ tenantId: 'tenant-1' })
   })
 
-  it('dynamic → label whitelist dai criteri, type sconosciuti ignorati silenziosamente', async () => {
+  it('dynamic → label dai criteri, compreso un tipo del CLIENTE', async () => {
     primeGroup({
       id: 'g2',
       membership_type:    'dynamic',
-      criteria_ci_types:  'server, nonexistent_type, application',
+      criteria_ci_types:  'server, load_balancer, application',
       criteria_environment: 'production',
       criteria_status:      'active',
       criteria_name_contains: 'prod',
@@ -147,8 +171,8 @@ describe('ciGroupMembers', () => {
     const { cypher, params } = memberQueryCall()
     expect(cypher).toContain('m:Server')
     expect(cypher).toContain('m:Application')
-    // il type sconosciuto non produce alcun label (né Cypher injection)
-    expect(cypher).not.toContain('nonexistent')
+    // A-9: il tipo creato dal cliente entra nei criteri (prima veniva scartato)
+    expect(cypher).toContain('m:LoadBalancer')
     expect(cypher).not.toContain('HAS_MEMBER')
     expect(params).toMatchObject({
       tenantId:     'tenant-1',
@@ -167,10 +191,11 @@ describe('ciGroupMembers', () => {
     await ciGroupMembers(null, { groupId: 'g3' }, ctx)
 
     const { cypher, params } = memberQueryCall()
-    // tutte le label note...
+    // tutte le label del TENANT (metamodello), non una lista fissa...
     expect(cypher).toContain('m:Server')
     expect(cypher).toContain('m:Application')
     expect(cypher).toContain('m:Database')
+    expect(cypher).toContain('m:LoadBalancer')
     // ...ma i gruppi sono esclusi: l'unica occorrenza di m:DynamicCIGroup è
     // la clausola di esclusione, mai il predicato label
     expect(cypher).toContain('NOT m:DynamicCIGroup')
@@ -204,11 +229,28 @@ describe('ciGroupMembers', () => {
 })
 
 describe('criteriaTypesToLabels', () => {
-  it('CSV → label dedupe, whitelist-only, gruppo escluso', () => {
-    expect(criteriaTypesToLabels('server, application , server')).toEqual(['Server', 'Application'])
-    expect(criteriaTypesToLabels('bogus, MALICIOUS) DETACH DELETE (n')).toEqual([])
-    expect(criteriaTypesToLabels('dynamic_ci_group')).toEqual([])
-    expect(criteriaTypesToLabels(null)).toEqual([])
-    expect(criteriaTypesToLabels('SERVER')).toEqual(['Server'])
+  it('CSV → label del tenant, dedupe, gruppo escluso', async () => {
+    expect(await criteriaTypesToLabels('tenant-1', 'server, application , server')).toEqual(['Server', 'Application'])
+    expect(await criteriaTypesToLabels('tenant-1', 'load_balancer')).toEqual(['LoadBalancer'])
+    expect(await criteriaTypesToLabels('tenant-1', 'dynamic_ci_group')).toEqual([])
+    expect(await criteriaTypesToLabels('tenant-1', null)).toEqual([])
+    expect(await criteriaTypesToLabels('tenant-1', 'SERVER')).toEqual(['Server'])
+  })
+
+  // Ondata 6 (A-9) — comportamento RINEGOZIATO: prima un nome di tipo ignoto
+  // era «silently ignored», e un gruppo «solo bilanciatori» finiva senza
+  // criteri, cioè restituiva i CI di TUTTI i tipi. Ora si ferma dicendolo.
+  it('un tipo che questo cliente non ha FERMA la lettura, col nome e i tipi ammessi', async () => {
+    await expect(criteriaTypesToLabels('tenant-1', 'server, bilanciatore'))
+      .rejects.toThrow(/"bilanciatore" non è un tipo di CI di questo cliente \(ammessi: application, database, dynamic_ci_group, load_balancer, server\)/)
+    // e non c'è modo di iniettare Cypher passando dal nome del tipo
+    await expect(criteriaTypesToLabels('tenant-1', 'MALICIOUS) DETACH DELETE (n'))
+      .rejects.toThrow(/non è un tipo di CI di questo cliente/)
+  })
+
+  it('un gruppo con un tipo ignoto nei criteri non restituisce «tutti i CI»: fallisce', async () => {
+    primeGroup({ id: 'g9', membership_type: 'dynamic', criteria_ci_types: 'bilanciatore' })
+    primeMembers([])
+    await expect(ciGroupMembers(null, { groupId: 'g9' }, ctx)).rejects.toThrow(/non è un tipo di CI di questo cliente/)
   })
 })

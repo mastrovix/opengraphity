@@ -1196,7 +1196,15 @@
     "deleteRelationTitle": "Delete relation \"{{name}}\"?",
     "shippedBadge": "shipped with the product",
     "shippedFieldLabel": "Field shipped with the product",
-    "shippedRelationLabel": "read-only"
+    "shippedRelationLabel": "read-only",
+    "serviceRole": "Role in a service map",
+    "serviceRoleAuto": "Proposed by the product",
+    "serviceRoleHint": "How a CI of this type weighs in a monitored service map. \"Proposed by the product\" derives it from the chain families. The \"entry\" role is not a choice: in a map the first level always takes it.",
+    "serviceRoles": {
+      "component": "Component (software: it suffers)",
+      "infrastructure": "Infrastructure (it hosts)",
+      "certificate": "Certificate (informational)"
+    }
   },
   "fieldRules": {
     "show": "Show",
@@ -2934,7 +2942,8 @@
         "submit": "Create",
         "noResult": "createServiceMap did not return the map",
         "draft": "Create as a draft",
-        "draftHint": "A draft map is not evaluated: check it, then activate it from the detail page."
+        "draftHint": "A draft map is not evaluated: check it, then activate it from the detail page.",
+        "relationshipsError": "Could not load relationship types: {{error}}"
       },
       "ciSection": {
         "title": "Services depending on this CI",

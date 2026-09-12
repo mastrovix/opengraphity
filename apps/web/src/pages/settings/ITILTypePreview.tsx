@@ -23,6 +23,8 @@ export function ITILTypePreview({ selectedType, setActiveTab }: ITILTypePreviewP
     scope:            'itil',
     tenantId:         'system',
     validationScript: selectedType.validationScript ?? null,
+    // I tipi ITIL non sono CI e non entrano nelle mappe dei servizi: nessun ruolo.
+    serviceRole:      null,
     chainFamilies:    ['Application', 'Infrastructure'],
     relations:        [],
     systemRelations:  [],

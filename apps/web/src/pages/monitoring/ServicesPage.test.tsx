@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { ServicesPage } from './ServicesPage'
-import { GET_SERVICE_MAPS, GET_SERVICE_MAP_CANDIDATES, GET_BUSINESS_CAPABILITIES_HEALTH } from '@/graphql/queries'
+import { GET_SERVICE_MAPS, GET_SERVICE_MAP_CANDIDATES, GET_BUSINESS_CAPABILITIES_HEALTH, GET_SERVICE_RELATIONSHIP_TYPES } from '@/graphql/queries'
 import { CREATE_SERVICE_MAP } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
@@ -225,6 +225,17 @@ describe('ServicesPage', () => {
     expect(screen.queryByRole('button', { name: 'Create a map' })).not.toBeInTheDocument()
   })
 
+  /**
+   * Ondata 6 · C-3: le relazioni offerte dal dialogo sono quelle del CLIENTE
+   * (`serviceRelationshipTypes`), non quattro caselle scritte nel web. Qui il
+   * tenant di prova ha anche `BILANCIA`, definita nel disegnatore dei tipi CI.
+   */
+  const relTypes = (types: string[] = ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE', 'BILANCIA']): GqlMock => ({
+    request: { query: GET_SERVICE_RELATIONSHIP_TYPES, variables: {} },
+    result: { data: { serviceRelationshipTypes: types } },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  })
+
   it('stato vuoto per l\'admin: «Crea una mappa» apre il dialogo (candidati, profondità, relazioni) → createServiceMap → dettaglio', async () => {
     const candidates: GqlMock = {
       request: { query: GET_SERVICE_MAP_CANDIDATES, variables: { search: null, limit: 50 } },
@@ -236,7 +247,7 @@ describe('ServicesPage', () => {
       request: { query: CREATE_SERVICE_MAP, variables: (v) => { seen.push(v); return true } },
       result: { data: { createServiceMap: mapDetail({ id: 'map-9', name: 'CRM' }) } },
     }
-    const { user } = renderPage('admin', { page: pageMock(EMPTY), extra: [candidates, create] })
+    const { user } = renderPage('admin', { page: pageMock(EMPTY), extra: [candidates, create, relTypes()] })
     // Prima lo stato vuoto (il pulsante dell'intestazione sparisce all'arrivo dei dati), poi il CTA dello stato vuoto.
     await screen.findByText('No monitored service yet')
     await user.click(screen.getByRole('button', { name: 'Create a map' }))
@@ -249,6 +260,10 @@ describe('ServicesPage', () => {
     // profondità 6, togli USES_CERTIFICATE
     const depth = within(dialog).getByRole('spinbutton', { name: 'Maximum depth' })
     await user.clear(depth); await user.type(depth, '6')
+    // C-3: la relazione definita dal cliente è fra le caselle, e parte spenta
+    // (le spunte iniziali sono i quattro tipi spediti, il default dell'API)
+    const custom = await within(dialog).findByRole('checkbox', { name: 'BILANCIA' })
+    expect(custom).not.toBeChecked()
     await user.click(within(dialog).getByRole('checkbox', { name: 'USES_CERTIFICATE' }))
     // nessuna relazione → bloccato con il motivo; poi rimettine una
     for (const r of ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON']) await user.click(within(dialog).getByRole('checkbox', { name: r }))
@@ -263,7 +278,7 @@ describe('ServicesPage', () => {
 
   it('dialogo: la lista dei candidati che fallisce è un errore visibile; la mutation che fallisce è un toast con il messaggio del server', async () => {
     const candidatesDown: GqlMock = { request: { query: GET_SERVICE_MAP_CANDIDATES, variables: () => true }, error: new Error('candidates down'), maxUsageCount: Number.POSITIVE_INFINITY }
-    const { user } = renderPage('admin', { extra: [candidatesDown] })
+    const { user } = renderPage('admin', { extra: [candidatesDown, relTypes()] })
     await user.click(await screen.findByRole('button', { name: 'Create a map' }))
     const dialog = await screen.findByRole('dialog', { name: 'Create a map' })
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Candidates unavailable: candidates down')

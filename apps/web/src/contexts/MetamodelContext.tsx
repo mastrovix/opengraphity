@@ -50,6 +50,12 @@ export interface CITypeDef {
   tenantId: string
   validationScript: string | null
   chainFamilies: string[]
+  /**
+   * Ruolo del tipo nella mappa di un servizio (`component | infrastructure |
+   * certificate`, ondata 6 · A-10). `null` = non dichiarato: lo propone il
+   * prodotto (dalle famiglie di catena), e il disegnatore lo mostra così.
+   */
+  serviceRole: string | null
   fields: CIFieldDef[]
   relations: CIRelationDef[]
   systemRelations: CISystemRelationDef[]

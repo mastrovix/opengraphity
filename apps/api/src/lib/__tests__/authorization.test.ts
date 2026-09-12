@@ -140,6 +140,9 @@ describe('Servizi monitorati: ogni campo root di servicesSDL() ha i ruoli attesi
     // strumento della creazione (BusinessApplication senza mappa) e strumenti
     // della configurazione (ondata 2): diff con il grafo e anteprima del calcolo
     serviceMapCandidates: ADMIN, serviceMapProposal: ADMIN, serviceImpactPreview: ADMIN,
+    // ondata 6 · C-3: i tipi di relazione percorribili dal cliente, per il
+    // dialogo di creazione (admin come le candidate)
+    serviceRelationshipTypes: ADMIN,
   }
   const EXPECTED_MUTATIONS: Record<string, readonly string[]> = {
     createServiceMap: ADMIN, reevaluateServiceMap: ADMIN, setServiceMapStatus: ADMIN, deleteServiceMap: ADMIN,
@@ -172,7 +175,7 @@ describe('Servizi monitorati: ogni campo root di servicesSDL() ha i ruoli attesi
       expect(() => authorize('Mutation', f, 'operator')).toThrow(new RegExp(f))
       expect(() => authorize('Mutation', f, 'viewer')).toThrow(new RegExp(f))
     }
-    for (const f of ['serviceMapCandidates', 'serviceMapProposal', 'serviceImpactPreview']) {
+    for (const f of ['serviceMapCandidates', 'serviceMapProposal', 'serviceImpactPreview', 'serviceRelationshipTypes']) {
       expect(() => authorize('Query', f, 'operator')).toThrow(new RegExp(f))
       expect(() => authorize('Query', f, 'viewer')).toThrow(new RegExp(f))
     }

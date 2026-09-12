@@ -11,6 +11,18 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
+// `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
+// Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
+// tipo non contavano, in silenzio.
+vi.mock('../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
+  apocLabelFilterForTenant:  vi.fn(async () => '+Application|+LoadBalancer|+Server'),
+  ciTypeNameForLabel:        vi.fn(async (_t: string, label: string) => (label === 'LoadBalancer' ? 'load_balancer' : null)),
+  clearCILabelCache:         vi.fn(),
+}))
+
 type ToolLike = { name: string; run: (input: unknown) => Promise<string> }
 type RunnerParams = { tools: ToolLike[]; messages: unknown[]; model: string; stream: boolean; max_iterations: number; system: unknown }
 
@@ -196,6 +208,18 @@ describe('tool dell\'assistente — tenant scoping e sola lettura', () => {
         expect(JSON.stringify(params), name).not.toContain('tenant-EVIL')
         expect(cypher, name).not.toMatch(/\b(CREATE|MERGE|SET|DELETE|DETACH|REMOVE)\b/)
       }
+    }
+  })
+
+  // A-9: i tool sui CI chiedono le etichette al metamodello del tenant — prima
+  // usavano la lista fissa e l'assistente rispondeva «non trovato» per i CI dei
+  // tipi creati dal cliente.
+  it('cerca_ci / analisi_impatto passano le etichette del TENANT, compreso un suo tipo', async () => {
+    const tools = await toolsFor(TENANT)
+    for (const name of ['cerca_ci', 'analisi_impatto']) {
+      vi.mocked(runQuery).mockClear()
+      await tools.get(name)!.run(INPUTS[name])
+      expect(queries()[0]!.params['labels'], name).toEqual(['Application', 'LoadBalancer', 'Server'])
     }
   })
 

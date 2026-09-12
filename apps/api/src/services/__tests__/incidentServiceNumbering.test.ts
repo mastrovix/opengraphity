@@ -8,6 +8,18 @@
  *    title fuori range → ValidationError, prima di ogni scrittura.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+// ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
+// `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
+// Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
+// tipo non contavano, in silenzio.
+vi.mock('../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
+  apocLabelFilterForTenant:  vi.fn(async () => '+Application|+LoadBalancer|+Server'),
+  ciTypeNameForLabel:        vi.fn(async (_t: string, label: string) => (label === 'LoadBalancer' ? 'load_balancer' : null)),
+  clearCILabelCache:         vi.fn(),
+}))
 import { GraphQLError } from 'graphql'
 
 const h = vi.hoisted(() => ({
@@ -69,7 +81,11 @@ beforeEach(() => {
     cypher.includes('CREATE (i:Incident')
       ? [{ props: { id: params?.['id'], number: params?.['number'], title: params?.['title'], severity: params?.['severity'],
           impact: params?.['impact'], urgency: params?.['urgency'], status: params?.['status'], tenant_id: params?.['tenantId'] } }]
-      : [])
+      // Ondata 6 (C-2): il MERGE verso i CI impattati ritorna il conteggio e
+      // `createIncident` lo legge (zero righe = incident annullato).
+      : cypher.includes('MERGE (i)-[r:AFFECTED_BY]->(ci)')
+        ? [{ linked: 1 }]
+        : [])
 })
 
 describe('createIncident — numero progressivo', () => {

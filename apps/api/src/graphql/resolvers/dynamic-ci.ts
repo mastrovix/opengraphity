@@ -1,4 +1,5 @@
 import { withSession } from './ci-utils.js'
+import { GraphQLError } from 'graphql'
 import { getSession, toNumber } from '@opengraphity/neo4j'
 import { neo4jDateToISO, toSnakeCase } from '../../lib/mappers.js'
 import { toPascalCase, pluralize } from '@opengraphity/schema-generator'
@@ -282,12 +283,25 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
     Query,
     Mutation,
     CIBase: {
+      // A-8: il ripiego su `'Application'` diceva al client che un CI di tipo
+      // sconosciuto è un'Application — i suoi campi non esistono su quel tipo,
+      // e la pagina di dettaglio mostrava un'altra cosa senza che nessuno lo
+      // sapesse. Il caso si presenta quando il tipo è stato cancellato o
+      // disattivato mentre i suoi CI erano ancora nel grafo (ora rifiutato,
+      // vedi `assertCITypeNotInUse`) o dopo una discovery che ha inventato
+      // un'etichetta (ora rifiutata, vedi `reconcileOne`): sono guasti da
+      // dire, non da nascondere.
       __resolveType(obj: { type?: string; __typename?: string; ciType?: string; neo4j_label?: string }) {
         if (obj.__typename) return obj.__typename
         if (obj.ciType) return obj.ciType.charAt(0).toUpperCase() + obj.ciType.slice(1)
         if (obj.neo4j_label) return obj.neo4j_label
         const t = types.find(t => t.name === obj.type)
-        return t ? toPascalCase(t.name) : 'Application'
+        if (t) return toPascalCase(t.name)
+        throw new GraphQLError(
+          `CIBase: non so di che tipo è questo CI (type=${JSON.stringify(obj.type)}). ` +
+          `Nessun tipo CI attivo di questo cliente lo dichiara: il tipo è stato cancellato o disattivato, ` +
+          `oppure il CI è nato da una discovery con un tipo che non esiste nel metamodello.`,
+        )
       },
     },
     ...typeResolvers,

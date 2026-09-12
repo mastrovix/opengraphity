@@ -41,8 +41,7 @@ import { audit } from '../../lib/audit.js'
 import { requireRole } from '../../lib/requireRole.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
-import { TYPE_TO_LABEL } from '../../lib/ciLabels.js'
-import { toPascalCase } from '@opengraphity/schema-generator'
+import { ciLabelForTypeName, ciTypeNamesForTenant } from '../../lib/ciTypeNameToLabel.js'
 import { mapIncident, mapUser } from '../../lib/mappers.js'
 import { validateStringLength } from '../../lib/validation.js'
 import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
@@ -537,9 +536,22 @@ interface CIHealthOverviewRow {
 /** Ordine di gravità delle righe: prima ciò che è giù, poi degradato, poi operativo. */
 export const CI_HEALTH_SEVERITY_ORDER = `CASE ci.health WHEN 'down' THEN 0 WHEN 'degraded' THEN 1 ELSE 2 END`
 
-/** Tipo del metamodello → label Neo4j (statici da ciLabels, dinamici per convenzione PascalCase, inversa di ciTypeFromLabels). */
-function labelOfType(type: string): string {
-  return TYPE_TO_LABEL[type] ?? toPascalCase(type)
+/**
+ * Tipo del metamodello → etichetta Neo4j, chiedendolo al **metamodello del
+ * tenant** (ondata 6). Prima era `TYPE_TO_LABEL[type] ?? toPascalCase(type)`:
+ * una tabella fissa di sedici tipi con, per tutto il resto, un'etichetta
+ * INVENTATA dal nome. Quindi un filtro su un tipo che non esiste non dava
+ * errore — produceva un'etichetta plausibile e una lista vuota, che è il modo
+ * peggiore di sbagliare: sembra «nessun CI in quello stato».
+ */
+async function labelOfType(tenantId: string, type: string): Promise<string> {
+  const label = await ciLabelForTypeName(tenantId, type)
+  if (!label) {
+    throw new ValidationError(
+      `Tipo di CI "${type}" sconosciuto per questo cliente: ammessi ${(await ciTypeNamesForTenant(tenantId)).join(', ')}.`,
+    )
+  }
+  return label
 }
 
 function mapCIHealthRow(tenantId: string, r: CIHealthOverviewRow) {
@@ -598,7 +610,7 @@ async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | nu
     for (const h of f.health) if (!(CI_HEALTHS as readonly string[]).includes(h)) throw new ValidationError(`Invalid health filter ${JSON.stringify(h)}: expected one of ${CI_HEALTHS.join(', ')}`)
     conditions.push('ci.health IN $health'); params['health'] = f.health
   }
-  if (f.type?.trim())        { conditions.push('$typeLabel IN labels(ci)'); params['typeLabel'] = labelOfType(f.type.trim()) }
+  if (f.type?.trim())        { conditions.push('$typeLabel IN labels(ci)'); params['typeLabel'] = await labelOfType(ctx.tenantId, f.type.trim()) }
   if (f.environment?.trim()) { conditions.push('ci.environment = $environment'); params['environment'] = f.environment.trim() }
   if (f.team?.trim())        { conditions.push('EXISTS { (ci)-[:OWNED_BY]->(:Team {id: $team, tenant_id: $tenantId}) }'); params['team'] = f.team.trim() }
   if (f.search?.trim())      { conditions.push('toLower(ci.name) CONTAINS $search'); params['search'] = f.search.trim().toLowerCase() }

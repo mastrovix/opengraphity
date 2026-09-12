@@ -46,6 +46,14 @@ vi.mock('../../../lib/redisLock.js', () => ({ withRedisLock: vi.fn(async (_k: st
 // Ondata 4: le tempeste (contatori Redis) sono in services/__tests__/eventStorm.test.ts.
 vi.mock('../../../services/eventStorm.js', () => ({ listStormSources: vi.fn().mockResolvedValue([]) }))
 vi.mock('../change/queries.js', () => ({ change: vi.fn() }))
+// Ondata 6: il filtro per tipo non inventa più l'etichetta dal nome — la
+// chiede al metamodello del tenant. Qui si finge un cliente che ha i tipi
+// spediti più un `erp_system` suo.
+vi.mock('../../../lib/ciTypeNameToLabel.js', () => ({
+  ciLabelForTypeName: vi.fn(async (_t: string, name: string) =>
+    ({ database_instance: 'DatabaseInstance', erp_system: 'ErpSystem' } as Record<string, string>)[name] ?? null),
+  ciTypeNamesForTenant: vi.fn(async () => ['database_instance', 'erp_system']),
+}))
 // reevaluateEvent: i passi terminali dell'incident (per "incident ancora aperto") vengono dal workflow.
 vi.mock('../../../lib/workflowHelpers.js', () => ({
   getWorkflowSteps: vi.fn().mockResolvedValue([
@@ -1077,11 +1085,20 @@ describe('ciHealthOverview', () => {
     expect(q.cypher.split(where)).toHaveLength(3)
     expect(q.cypher.indexOf(where)).toBeGreaterThan(q.cypher.indexOf('AS unmonitored'))
     expect(q.params).toMatchObject({ health: ['down', 'degraded'], typeLabel: 'DatabaseInstance', environment: 'staging', team: 'team-9', search: 'db', limit: 500, offset: 50 })
-    // tipo dinamico (non in TYPE_TO_LABEL) → label PascalCase per convenzione
+    // un tipo del CLIENTE: l'etichetta viene dal suo metamodello, non da una
+    // tabella fissa né da una convenzione sul nome
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     onCypher([[OVERVIEW_RE, { ...COUNTS, total: 0, items: [] }]])
     await eventResolvers.Query.ciHealthOverview(null, { filter: { type: 'erp_system' } }, operator)
     expect(callMatching(OVERVIEW_RE)!.params['typeLabel']).toBe('ErpSystem')
+
+    // Ondata 6: un tipo che quel cliente NON ha non produce più un'etichetta
+    // inventata e una lista vuota («nessun CI in quello stato»), ma un errore
+    // che elenca i tipi ammessi.
+    vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
+    await expect(eventResolvers.Query.ciHealthOverview(null, { filter: { type: 'bilanciatore' } }, operator))
+      .rejects.toThrow(/Tipo di CI "bilanciatore" sconosciuto per questo cliente: ammessi database_instance, erp_system/)
+    expect(getSession).not.toHaveBeenCalled()
   })
 
   it('salute fuori vocabolario → BAD_USER_INPUT senza query; riga senza label di tipo → errore esplicito; query senza riga → errore esplicito', async () => {

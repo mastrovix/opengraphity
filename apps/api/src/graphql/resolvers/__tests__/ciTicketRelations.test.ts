@@ -8,6 +8,28 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 
+// ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
+// `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
+// Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
+// tipo non contavano, in silenzio.
+vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
+  apocLabelFilterForTenant:  vi.fn(async () => '+Application|+LoadBalancer|+Server'),
+  ciTypeNameForLabel:        vi.fn(async (_t: string, label: string) => (label === 'LoadBalancer' ? 'load_balancer' : null)),
+  clearCILabelCache:         vi.fn(),
+}))
+
+// Il metamodello del tenant: `lib/ciTypeNameToLabel.ts` ci risolve il verso
+// nome del tipo → etichetta (prima era una tabella fissa o una PascalCase a mano).
+vi.mock('@opengraphity/schema-generator', () => ({
+  loadMetamodel: vi.fn(async () => [
+    { name: 'application',   neo4jLabel: 'Application',  scope: 'base',   active: true },
+    { name: 'server',        neo4jLabel: 'Server',       scope: 'base',   active: true },
+    { name: 'load_balancer', neo4jLabel: 'LoadBalancer', scope: 'tenant', active: true },
+  ]),
+}))
+
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
 vi.mock('../ci-utils.js', () => ({ withSession: vi.fn() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn() }))

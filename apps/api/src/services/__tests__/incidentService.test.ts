@@ -1,5 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
+// `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
+// Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
+// tipo non contavano, in silenzio.
+vi.mock('../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
+  apocLabelFilterForTenant:  vi.fn(async () => '+Application|+LoadBalancer|+Server'),
+  ciTypeNameForLabel:        vi.fn(async (_t: string, label: string) => (label === 'LoadBalancer' ? 'load_balancer' : null)),
+  clearCILabelCache:         vi.fn(),
+}))
+
 // ── Session mock usato da withSession ─────────────────────────────────────────
 
 const mockSession = {
@@ -76,15 +88,27 @@ const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 
 const ctx = { tenantId: 'tenant-1', userId: 'user-1' }
 
+/**
+ * `runQuery` per cypher: la CREATE dell'incident ritorna le props, il MERGE dei
+ * CI impattati ritorna `linked` (il conteggio che `createIncident` legge, C-2).
+ */
+function primeIncidentRow(props: Record<string, unknown>, linked = 1): void {
+  vi.mocked(runQuery).mockImplementation(async (_s: unknown, cypher: string) =>
+    cypher.includes('MERGE (i)-[r:AFFECTED_BY]->(ci)')
+      ? ([{ linked }] as never)
+      : ([{ props }] as never))
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 describe('createIncident', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // runQuery must return an array with a row that mapIncident can use
-    vi.mocked(runQuery).mockResolvedValue([
-      { props: { id: 'inc-1', title: 'Test incident', severity: 'high', status: 'open' } },
-    ])
+    // runQuery must return an array with a row that mapIncident can use.
+    // Ondata 6 (C-2): il MERGE verso i CI impattati ritorna il conteggio dei
+    // collegamenti e `createIncident` lo LEGGE — prima nessuno lo guardava e un
+    // incident poteva nascere senza CI, in silenzio.
+    primeIncidentRow({ id: 'inc-1', title: 'Test incident', severity: 'high', status: 'open' })
     // incident-number progressive count
     vi.mocked(runQueryOne).mockResolvedValue({ cnt: 0 })
   })
@@ -97,6 +121,39 @@ describe('createIncident', () => {
       createIncident({ title: 'CI vuoto', severity: 'high', affectedCIIds: [] }, ctx),
     ).rejects.toThrow(/almeno un CI/)
     expect(publish).not.toHaveBeenCalled()
+  })
+
+  // ── C-2 (CRITICO) ─────────────────────────────────────────────────────────
+  // Il MERGE verso i CI impattati girava sotto il predicato con le etichette
+  // FISSE e nessuno leggeva il risultato: zero righe = incident senza
+  // AFFECTED_BY, senza errore e senza log, in contraddizione con la guardia
+  // «almeno un CI impattato» tre righe sopra.
+  it('il collegamento ai CI usa il predicato del TENANT e ne conta le righe', async () => {
+    await createIncident({ title: 'Test incident', severity: 'high', affectedCIIds: ['ci-1'] }, ctx)
+    const merge = vi.mocked(runQuery).mock.calls
+      .map(c => c[1] as string)
+      .find(c => c.includes('MERGE (i)-[r:AFFECTED_BY]->(ci)'))
+    expect(merge, 'nessun MERGE AFFECTED_BY eseguito').toBeDefined()
+    expect(merge).toContain('ci:LoadBalancer')          // tipo del cliente, non più escluso
+    expect(merge).toContain('RETURN count(r) AS linked') // il risultato si legge
+  })
+
+  it('CI impattato non collegabile → errore, incident ANNULLATO, nessun evento né workflow', async () => {
+    // Il CI non è un CI di questo cliente (o è sparito): il MERGE scrive zero righe.
+    primeIncidentRow({ id: 'inc-1', title: 'Test incident', severity: 'high', status: 'open' }, 0)
+
+    await expect(
+      createIncident({ title: 'Test incident', severity: 'high', affectedCIIds: ['ci-ignoto'] }, ctx),
+    ).rejects.toThrow(/Incident non creato: 1 dei 1 CI impattati.*ci-ignoto/)
+
+    // L'incident committato in transazione propria viene rimosso: non resta in
+    // banca dati un incident senza CI (e senza istanza di workflow).
+    const cleanup = vi.mocked(runQuery).mock.calls
+      .map(c => c[1] as string)
+      .find(c => c.includes('DETACH DELETE i'))
+    expect(cleanup, 'l\'incident non è stato annullato').toBeDefined()
+    expect(publish).not.toHaveBeenCalled()
+    expect(workflowEngine.createInstance).not.toHaveBeenCalled()
   })
 
   it('chiama publish con type incident.created', async () => {
@@ -130,9 +187,7 @@ describe('createIncident', () => {
   it('include tenantId e severity nell\'evento', async () => {
     // The event carries the created incident's severity (derived priority) —
     // make the CREATE mock echo it.
-    vi.mocked(runQuery).mockResolvedValue([
-      { props: { id: 'inc-1', title: 'Alert critico', severity: 'critical', status: 'open' } },
-    ])
+    primeIncidentRow({ id: 'inc-1', title: 'Alert critico', severity: 'critical', status: 'open' })
     await createIncident(
       { title: 'Alert critico', severity: 'critical', affectedCIIds: ['ci-1'] },
       ctx,

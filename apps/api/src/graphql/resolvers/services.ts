@@ -26,6 +26,7 @@ import { audit } from '../../lib/audit.js'
 import { requireRole } from '../../lib/requireRole.js'
 import { mapIncident, mapTeam } from '../../lib/mappers.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
+import { serviceRelationshipTypesForTenant } from '../../lib/ciMetamodelForTenant.js'
 import {
   NODE_WEIGHT_MIN, SERVICE_CRITICALITIES,
   SERVICE_HEALTHS, SERVICE_HEALTH_SEVERITY_ORDER, SERVICE_HEALTH_TRIGGERS, SERVICE_HISTORY_MAX, SERVICE_MAP_DEFAULT_DEPTH, SERVICE_MAP_STATUSES,
@@ -565,6 +566,16 @@ async function serviceMapHistoryCount(parent: { id: string }, _: unknown, ctx: G
   } finally { await session.close() }
 }
 
+/**
+ * I tipi di relazione percorribili da questo cliente (ondata 6 · C-3): la
+ * stessa sorgente che valida `createServiceMap`, così il dialogo offre le
+ * relazioni vere del cliente invece di quattro caselle scritte a mano nel web
+ * — che per un tipo suo non comparivano mai.
+ */
+async function serviceRelationshipTypes(_: unknown, __: unknown, ctx: GraphQLContext) {
+  return [...await serviceRelationshipTypesForTenant(ctx.tenantId)]
+}
+
 // ── Mutation ─────────────────────────────────────────────────────────────────
 
 async function createServiceMap(_: unknown, args: { serviceId: string; maxDepth?: number | null; relationshipTypes?: string[] | null; status?: string | null; autoSync?: boolean | null }, ctx: GraphQLContext) {
@@ -771,7 +782,7 @@ async function deleteServiceMap(_: unknown, args: { id: string }, ctx: GraphQLCo
 }
 
 export const serviceResolvers = {
-  Query: { serviceMaps, serviceMap, servicesImpactedByCI, serviceMapCandidates, serviceMapProposal, serviceImpactPreview, businessCapabilitiesHealth },
+  Query: { serviceMaps, serviceMap, servicesImpactedByCI, serviceMapCandidates, serviceMapProposal, serviceImpactPreview, businessCapabilitiesHealth, serviceRelationshipTypes },
   Mutation: {
     createServiceMap, reevaluateServiceMap, setServiceMapStatus, deleteServiceMap,
     updateServiceImpactRules, updateServiceMapNodes, applyServiceMapProposal, removeServiceMapExclusion,

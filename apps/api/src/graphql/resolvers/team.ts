@@ -3,7 +3,7 @@ import { NotFoundError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
-import { ciLabelPredicate } from '../../lib/ciLabels.js'
+import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import type { GraphQLContext } from '../../context.js'
 import { mapTeam } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
@@ -103,20 +103,24 @@ async function setCITeamRelation(
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
+    // Etichette dal metamodello del tenant: con la lista fissa, assegnare un
+    // team a un CI di un tipo del cliente non trovava il nodo e rispondeva
+    // «ConfigurationItem or Team» (A-9).
+    const ciPredicate = await ciLabelPredicateForTenant('ci', ctx.tenantId)
     // The relation is single-valued: drop any existing edge before setting the
     // new one, otherwise re-assigning would leave the CI with multiple owners
     // (breaks change creation, which assumes exactly one owner team).
     const cypher = args.teamId == null
       ? `
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
-      WHERE ${ciLabelPredicate('ci')}
+      WHERE ${ciPredicate}
       OPTIONAL MATCH (ci)-[old:${relType}]->(:Team)
       DELETE old
       RETURN properties(ci) as props, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
     `
       : `
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
-      WHERE ${ciLabelPredicate('ci')}
+      WHERE ${ciPredicate}
       MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
       WITH ci, t
       OPTIONAL MATCH (ci)-[old:${relType}]->(:Team)
