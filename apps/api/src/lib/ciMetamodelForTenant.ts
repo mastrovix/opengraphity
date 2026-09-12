@@ -37,7 +37,7 @@
  * pattern Cypher della soppressione — sarebbe un buco.
  */
 import { loadMetamodel } from '@opengraphity/schema-generator'
-import { registerMetamodelCacheClearer } from './schemaInvalidator.js'
+import { createMetamodelCache } from './metamodelCache.js'
 import { CHAIN_FAMILIES } from './chainCalculator.js'
 import { logger } from './logger.js'
 import {
@@ -99,18 +99,18 @@ interface TenantCIMetamodel {
   relationshipTypes: readonly string[]
 }
 
-/** Cache per tenant, svuotata dal canale del metamodello (non a tempo), come il nucleo. */
-const cache = new Map<string, Promise<TenantCIMetamodel>>()
-
-registerMetamodelCacheClearer('ci-metamodel-for-tenant', (tenantId: string) => {
-  cache.delete(tenantId)
+/** Cache per tenant: la svuota il canale del metamodello, e scade da sé, come il nucleo. */
+const cache = createMetamodelCache<TenantCIMetamodel>({
+  name: 'ci-metamodel-for-tenant',
+  load: (tenantId) => loadRolesAndRelations(tenantId),
 })
 
-async function metamodelOf(tenantId: string): Promise<TenantCIMetamodel> {
-  const hit = cache.get(tenantId)
-  if (hit) return hit
+function metamodelOf(tenantId: string): Promise<TenantCIMetamodel> {
+  return cache.get(tenantId)
+}
 
-  const load = loadMetamodel(tenantId)
+function loadRolesAndRelations(tenantId: string): Promise<TenantCIMetamodel> {
+  return loadMetamodel(tenantId)
     .then((types) => {
       // Seme: le etichette spedite col prodotto che nel metamodello non hanno
       // un tipo (SslCertificate, VirtualMachine, Storage… — dal vivo 15
@@ -145,13 +145,9 @@ async function metamodelOf(tenantId: string): Promise<TenantCIMetamodel> {
       }
     })
     .catch((err: unknown) => {
-      cache.delete(tenantId)
       log.error({ tenantId, err }, 'Metamodello dei CI non leggibile: ruoli e tipi di relazione non risolvibili')
       throw err
     })
-
-  cache.set(tenantId, load)
-  return load
 }
 
 /** Etichetta → ruolo nella mappa, per i tipi attivi di QUESTO cliente. */

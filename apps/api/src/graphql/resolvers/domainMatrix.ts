@@ -21,9 +21,10 @@ import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
 import {
-  DOMAIN_MATRIX_KINDS, domainVocabulary, invalidateDomainMatrix, isDomainMatrixKind,
+  DOMAIN_MATRIX_KINDS, domainVocabulary, isDomainMatrixKind,
   loadDomainMatrix, matrixKey, type DomainMatrixKind,
 } from '../../lib/domainMatrix.js'
+import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import { criticalServiceCriticalities } from '../../services/serviceImpact/incident.js'
 import { preApprovedChangeTypes, setPreApprovedChangeTypes, changeTypeVocabulary } from '../../lib/changePolicy.js'
 
@@ -160,7 +161,13 @@ async function updateDomainMatrix(
     if (!row) throw new Error(`Matrice "${kind}": la scrittura non ha toccato nessun nodo`)
   } finally { await session.close() }
 
-  invalidateDomainMatrix(ctx.tenantId, kind)
+  // La leva unica, non `invalidateDomainMatrix` (revisione · C-N9 / D-N1):
+  // quella svuotava solo la cache di QUESTO processo, e la cache delle matrici
+  // non aveva scadenza. Misurato dal vivo: una matrice corretta dalla pagina
+  // restava vecchia nell'events-worker per sempre, cioè «completa la matrice e
+  // rigioca il job» — la procedura scritta in `services/events/shared.ts` —
+  // non funzionava senza riavviare il worker.
+  invalidateSchema(ctx.tenantId)
   void audit(ctx, 'domain_matrix_updated', 'DomainMatrix', kind, { kind, cells: Object.keys(entries).length })
   return readMatrix(ctx.tenantId, kind)
 }
@@ -184,6 +191,8 @@ async function preApprovedChangeTypesQuery(_: unknown, __: unknown, ctx: GraphQL
 }
 
 async function updatePreApprovedChangeTypes(_: unknown, args: { types: string[] }, ctx: GraphQLContext) {
+  // La leva la tira `setPreApprovedChangeTypes`, dov'è la scrittura: quella
+  // funzione è chiamata anche da migrazioni e script.
   const saved = await setPreApprovedChangeTypes(ctx.tenantId, args.types)
   void audit(ctx, 'change.pre_approved_types.updated', 'Tenant', ctx.tenantId, { types: [...saved] })
   const vocabulary = await changeTypeVocabulary(ctx.tenantId)

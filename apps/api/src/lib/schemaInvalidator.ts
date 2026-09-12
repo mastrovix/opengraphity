@@ -20,16 +20,27 @@
  *  - **i clearer**: ogni modulo che tiene una cache derivata dal metamodello
  *    si registra da sé al proprio caricamento (`schemaCache` attraverso
  *    `registerSchemaInvalidator`, `reportWhitelist`, `cache`,
- *    `ciTypeFromLabels`). Un processo svuota quello che ha: un modulo mai
- *    caricato non ha niente da svuotare.
+ *    `ciTypeFromLabels`, e tutte quelle costruite con
+ *    `lib/metamodelCache.ts` — vocabolari, matrici di dominio, tipi di change
+ *    pre-approvati, etichette e metamodello dei CI). Un processo svuota quello
+ *    che ha: un modulo mai caricato non ha niente da svuotare.
  *  - **il publisher**: `lib/metamodelBus.ts` lo registra all'avvio del
  *    processo e porta il cambiamento sul canale Redis, così le altre repliche
  *    svuotano le **loro** cache. Il ricevitore chiama
  *    `clearLocalMetamodelCaches` (che NON pubblica): nessun rimbalzo.
  *
  * `invalidateSchema(tenantId)` resta la firma che chiama tutto il resto del
- * codice (11 punti fra `ciTypeMetamodel.ts` e `itilTypeResolvers.ts`): è lei a
- * svuotare le cache locali e a pubblicare.
+ * codice: è lei a svuotare le cache locali e a pubblicare. Chi scrive
+ * metamodello **deve** chiamarla — `ciTypeMetamodel.ts`, `itilTypeResolvers.ts`,
+ * `enumType.ts`, il resolver delle matrici, `lib/changePolicy.ts` — e il lint
+ * statico `graphql/__tests__/metamodelInvalidation.test.ts` lo verifica: la
+ * revisione delle otto ondate ha misurato che le mutation dei vocabolari, delle
+ * matrici e dei tipi pre-approvati non la chiamavano (0 messaggi sul canale),
+ * quindi dopo una rinomina nel Dizionario lo stesso processo rifiutava il
+ * valore nuovo e accettava quello rimosso.
+ *
+ * E le cache hanno **tutte** una scadenza (60 s quelle del metamodello, 5 min
+ * lo schema): il canale è la via normale, il TTL è la rete per quando tace.
  *
  * Niente silenzi: un clearer che lancia non ferma gli altri ed è raccolto in
  * `failed`; se nessun publisher è registrato (processo senza bus, script,
@@ -122,7 +133,7 @@ export function clearLocalMetamodelCaches(tenantId: string): LocalInvalidation {
     // processo: non può passare in silenzio.
     void import('./logger.js').then(({ logger }) =>
       logger.error({ tenantId, failed, cleared },
-        '[metamodel] una o più cache NON sono state svuotate: questo processo resta con dati vecchi per quel tenant fino alla scadenza del TTL'),
+        '[metamodel] una o più cache NON sono state svuotate: questo processo resta con dati vecchi per quel tenant fino alla scadenza del loro TTL (60 s le cache del metamodello, 5 min lo schema)'),
     )
   }
   return { tenantId, cleared, failed }

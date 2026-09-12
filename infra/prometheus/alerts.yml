@@ -210,7 +210,7 @@ groups:
         labels: { severity: warning, subsystem: platform }
         annotations:
           summary: "A process is not subscribed to the metamodel channel"
-          description: "metamodel_bus_subscribed = 0 for 5 minutes on at least one process: it will NOT be told when a customer changes CI types, fields or dictionaries, and will serve stale data until its TTL expires (up to 5 minutes per cache, indefinitely for the GraphQL schema)."
+          description: "metamodel_bus_subscribed = 0 for 5 minutes on at least one process: it will NOT be told when a customer changes CI types, fields or dictionaries, and will serve stale data until its TTL expires (60s for the metamodel caches, 5 minutes for the GraphQL schema)."
           runbook: "docs/OPERATIONS.md §7 «Canale del metamodello»"
 
       - alert: MetamodelChangesNotDelivered

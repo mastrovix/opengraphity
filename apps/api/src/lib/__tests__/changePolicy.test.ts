@@ -122,3 +122,40 @@ describe('la scrittura valida contro il vocabolario del cliente', () => {
     expect(await setPreApprovedChangeTypes('c-one', [])).toEqual([])
   })
 })
+
+/**
+ * Revisione delle otto ondate · D-N1. `setPreApprovedChangeTypes` svuotava
+ * **solo la sua** cache locale, e quella cache non aveva scadenza: il worker
+ * che decide se una change salta la catena di approvazioni restava sulla lista
+ * vecchia fino al riavvio. Ora tira la leva unica, che svuota tutte le cache
+ * del metamodello di questo processo e pubblica sul canale per gli altri.
+ */
+describe('la scrittura tira la leva dell\'invalidazione', () => {
+  it('svuota la propria cache E le altre del metamodello di quel tenant', async () => {
+    const svuotati: string[] = []
+    const { registerMetamodelCacheClearer } = await import('../schemaInvalidator.js')
+    registerMetamodelCacheClearer('test-altra-cache', (tenantId) => { svuotati.push(tenantId) })
+
+    tenantHas(['standard'])
+    expect(await preApprovedChangeTypes('c-one')).toEqual(['standard'])
+
+    executeWrite.mockResolvedValue({ records: [rec({ types: ['standard', 'preautorizzata'] })] })
+    await setPreApprovedChangeTypes('c-one', ['standard', 'preautorizzata'])
+
+    // L'altra cache del metamodello è stata avvisata…
+    expect(svuotati).toEqual(['c-one'])
+    // …e la propria rilegge dal grafo invece di rendere la lista di prima.
+    tenantHas(['standard', 'preautorizzata'])
+    expect(await preApprovedChangeTypes('c-one')).toEqual(['standard', 'preautorizzata'])
+  })
+
+  it('una scrittura rifiutata dal vocabolario non invalida niente', async () => {
+    const svuotati: string[] = []
+    const { registerMetamodelCacheClearer } = await import('../schemaInvalidator.js')
+    registerMetamodelCacheClearer('test-altra-cache-2', (tenantId) => { svuotati.push(tenantId) })
+
+    await expect(setPreApprovedChangeTypes('c-one', ['inventata'])).rejects.toThrow(/non è nel vocabolario/)
+    expect(svuotati).toEqual([])
+    expect(executeWrite).not.toHaveBeenCalled()
+  })
+})

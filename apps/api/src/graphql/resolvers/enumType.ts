@@ -5,6 +5,27 @@ import { ForbiddenError, NotFoundError, ValidationError } from '../../lib/errors
 import { audit } from '../../lib/audit.js'
 import { SYSTEM_TENANT } from '../../lib/enumScope.js'
 import { countEnumValueUsage, enumValueUsageMessage, replaceEnumValue } from '../../lib/enumValueUsage.js'
+import { invalidateSchema } from '../../lib/schemaInvalidator.js'
+
+/**
+ * Il vocabolario di questo cliente è cambiato: svuota le cache derivate e
+ * avvisa gli altri processi (revisione delle otto ondate · C-N1 / D-N1).
+ *
+ * Perché serviva, e perché è la prima cosa dell'ondata di rimedio: nessuna
+ * mutation di questo file invalidava niente, e la cache dei vocabolari
+ * (`lib/domainMatrix.ts`) non aveva scadenza. Misurato dal vivo: subito dopo
+ * una rinomina nel Dizionario lo **stesso processo API** continuava a
+ * rifiutare il valore nuovo — «non è nel vocabolario di questo cliente» — e ad
+ * accettare quello appena rimosso, scrivendolo sui ticket, **fino al riavvio**.
+ * Nei worker, che non servono mai queste mutation, per sempre.
+ *
+ * `invalidateSchema` è la leva unica: svuota tutti i clearer registrati in
+ * questo processo (vocabolari, matrici, etichette dei CI, schema…) e pubblica
+ * sul canale Redis del metamodello perché gli altri processi svuotino i loro.
+ */
+function vocabularyChanged(tenantId: string): void {
+  invalidateSchema(tenantId)
+}
 
 interface EnumTypeDef {
   id:        string
@@ -187,6 +208,7 @@ export async function createEnumType(
       throw new ValidationError(`An enum type named "${input.name}" already exists for this tenant`)
     }
 
+    vocabularyChanged(ctx.tenantId)
     void audit(ctx, 'enum_type.created', 'EnumTypeDefinition', id, { name: input.name })
 
     return {
@@ -290,6 +312,7 @@ export async function customizeEnumType(
     )
     if (!created.records.length) throw new Error(`customizeEnumType("${name}"): la CREATE non ha restituito il nodo`)
 
+    vocabularyChanged(ctx.tenantId)
     void audit(ctx, 'enum_type.customized', 'EnumTypeDefinition', id, { name, shippedId: args.id })
     return mapEnum(created.records[0]!)
   } finally {
@@ -414,6 +437,7 @@ export async function updateEnumType(
     })
 
     if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', id)
+    vocabularyChanged(ctx.tenantId)
     void audit(ctx, 'enum_type.updated', 'EnumTypeDefinition', id, { label: input.label, removed, replacements })
     return mapEnum(result.records[0])
   } finally {
@@ -505,6 +529,7 @@ export async function deleteEnumType(
         { id: args.id, tenantId: ctx.tenantId }),
     )
 
+    vocabularyChanged(ctx.tenantId)
     void audit(ctx, 'enum_type.deleted', 'EnumTypeDefinition', args.id)
     return true
   } finally {

@@ -31,7 +31,8 @@
  * contro il suo vocabolario `change_type`.
  */
 import { getSession } from '@opengraphity/neo4j'
-import { registerMetamodelCacheClearer } from './schemaInvalidator.js'
+import { createMetamodelCache } from './metamodelCache.js'
+import { invalidateSchema } from './schemaInvalidator.js'
 import { assertDomainValue, domainVocabulary } from './domainMatrix.js'
 import { ValidationError } from './errors.js'
 import { logger } from './logger.js'
@@ -41,14 +42,13 @@ const log = logger.child({ module: 'change-policy' })
 /** Il valore iniziale: esattamente il letterale che il codice usava. */
 export const DEFAULT_PRE_APPROVED_CHANGE_TYPES: readonly string[] = ['standard']
 
-const cache = new Map<string, Promise<readonly string[]>>()
-
-registerMetamodelCacheClearer('pre-approved-change-types', (tenantId: string) => {
-  cache.delete(tenantId)
+const cache = createMetamodelCache<readonly string[]>({
+  name: 'pre-approved-change-types',
+  load: (tenantId) => loadPreApprovedChangeTypes(tenantId),
 })
 
 export function invalidatePreApprovedChangeTypes(tenantId?: string): void {
-  if (tenantId) { cache.delete(tenantId); return }
+  if (tenantId) { cache.invalidate(tenantId); return }
   cache.clear()
 }
 
@@ -60,11 +60,11 @@ export function invalidatePreApprovedChangeTypes(tenantId?: string): void {
  * comportamento silenzioso nella direzione opposta a quella di prima. Si usa
  * il valore iniziale e lo si dice nei log una volta per tenant.
  */
-export async function preApprovedChangeTypes(tenantId: string): Promise<readonly string[]> {
-  const hit = cache.get(tenantId)
-  if (hit) return hit
+export function preApprovedChangeTypes(tenantId: string): Promise<readonly string[]> {
+  return cache.get(tenantId)
+}
 
-  const load = (async (): Promise<readonly string[]> => {
+async function loadPreApprovedChangeTypes(tenantId: string): Promise<readonly string[]> {
     const session = getSession()
     try {
       const r = await session.executeRead((tx) =>
@@ -87,13 +87,6 @@ export async function preApprovedChangeTypes(tenantId: string): Promise<readonly
     } finally {
       await session.close()
     }
-  })().catch((err: unknown) => {
-    cache.delete(tenantId)
-    throw err
-  })
-
-  cache.set(tenantId, load)
-  return load
 }
 
 /** Questo tipo di change salta la catena di approvazioni? */
@@ -126,7 +119,14 @@ export async function setPreApprovedChangeTypes(tenantId: string, types: readonl
       ),
     )
     if (!r.records.length) throw new ValidationError(`Tenant ${tenantId} inesistente`)
-    cache.delete(tenantId)
+    // La leva unica, non `cache.invalidate` (revisione delle otto ondate ·
+    // D-N1): quella svuotava la cache di QUESTO processo, e questa cache non
+    // aveva scadenza — quindi il worker che decide se una change salta le
+    // approvazioni restava sulla lista vecchia fino al riavvio.
+    // `invalidateSchema` svuota tutte le cache del metamodello qui e pubblica
+    // sul canale per gli altri processi (in una migrazione o in uno script, dove
+    // non c'è nessun canale, si limita a svuotare e lo dice nei log).
+    invalidateSchema(tenantId)
     return r.records[0].get('types') as string[]
   } finally {
     await session.close()

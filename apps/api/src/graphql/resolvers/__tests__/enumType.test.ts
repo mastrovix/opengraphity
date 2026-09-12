@@ -33,6 +33,8 @@ vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undef
 
 const { enumTypeResolvers, customizeEnumType } = await import('../enumType.js')
 const { getSession } = await import('@opengraphity/neo4j')
+const { registerMetamodelCacheClearer, registeredMetamodelCacheClearers } =
+  await import('../../../lib/schemaInvalidator.js')
 
 const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
 const operator: GraphQLContext = { ...admin, role: 'operator' }
@@ -508,5 +510,93 @@ describe('deleteEnumType', () => {
     ])
     await expect(enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-1' }, admin)).resolves.toBe(true)
     expect(s.executeWrite).toHaveBeenCalled()
+  })
+})
+
+/**
+ * Revisione delle otto ondate · C-N1 / D-N1 — **il difetto capitale**.
+ *
+ * Nessuna mutation di questo file invalidava niente: `enumType.ts` non
+ * importava nemmeno `invalidateSchema`. E la cache dei vocabolari
+ * (`lib/domainMatrix.ts`) non aveva scadenza. Misurato dal vivo: subito dopo
+ * una rinomina nel Dizionario, lo **stesso processo API** continuava a
+ * rifiutare il valore nuovo («non è nel vocabolario di questo cliente») e ad
+ * accettare quello appena rimosso, scrivendolo sui ticket — fino al riavvio.
+ * Nei worker, che non servono mai queste mutation, per sempre.
+ *
+ * Qui si prova la leva, non la cache: si registra un clearer finto nel registro
+ * vero e si guarda che ogni mutation lo faccia scattare col tenant giusto. È il
+ * legame che mancava; `lib/__tests__/metamodelCache.test.ts` prova l'altra metà
+ * (che un clearer registrato svuoti davvero, e che la scadenza esista).
+ */
+describe('ogni scrittura di un vocabolario invalida le cache del metamodello', () => {
+  const svuotati: string[] = []
+  registerMetamodelCacheClearer('test-vocabolari', (tenantId) => { svuotati.push(tenantId) })
+
+  beforeEach(() => { svuotati.length = 0 })
+
+  it('il registro contiene il clearer di prova (la prova non è vacua)', () => {
+    expect(registeredMetamodelCacheClearers()).toContain('test-vocabolari')
+  })
+
+  it('createEnumType', async () => {
+    // Come `mergeSession('echo')`: il MERGE restituisce l'id che ha ricevuto,
+    // cioè «l'ho creato io» (un id diverso significa corsa persa).
+    const txRun = vi.fn().mockImplementation(async (_c: string, p: Record<string, unknown>) => ({
+      records: [rec({ id: p['id'] })],
+    }))
+    const tx = { run: txRun }
+    vi.mocked(getSession).mockReturnValue({
+      txRun,
+      executeRead:  vi.fn().mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx)),
+      executeWrite: vi.fn().mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx)),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as never)
+    await enumTypeResolvers.Mutation.createEnumType(
+      null, { input: { name: 'gravita', label: 'Gravità', values: ['bassa'], scope: 'itil' } }, admin,
+    )
+    expect(svuotati).toEqual(['tenant-1'])
+  })
+
+  it('customizeEnumType', async () => {
+    fakeSession([
+      { records: [rec({ tenantId: 'system', name: 'impact', label: 'Impatto', values: ['low'], scope: 'shared' })] },
+      { records: [] },
+      { records: [rec({ ...ENUM_ROW, name: 'impact' })] },
+    ])
+    await customizeEnumType(null, { id: 'e-sys' }, admin)
+    expect(svuotati).toEqual(['tenant-1'])
+  })
+
+  it('updateEnumType', async () => {
+    fakeSession([
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'impact', values: ['low', 'high'] })] },
+      { records: [rec({ ...ENUM_ROW, name: 'impact', values: ['basso', 'high'] })] },
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(
+      null, { id: 'e-1', input: { values: ['low', 'high', 'estremo'] } }, admin,
+    )
+    expect(svuotati).toEqual(['tenant-1'])
+  })
+
+  it('deleteEnumType', async () => {
+    fakeSession([
+      { records: [rec({ isSystem: false, usageCount: int(0), name: 'gravita', values: ['bassa'], shippedValues: null })] },
+      { records: [] },
+      { records: [] },
+      { records: [rec({ raw: null })] },
+      { records: [] },
+    ])
+    await enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-1' }, admin)
+    expect(svuotati).toEqual(['tenant-1'])
+  })
+
+  it('una mutation RIFIUTATA non invalida niente (non è cambiato nulla)', async () => {
+    fakeSession([{ records: [rec({ isSystem: false, tenantId: 'system', name: 'impact', values: ['low'] })] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-sys', input: { label: 'X' } }, admin),
+      'BAD_USER_INPUT', /spedito col prodotto/,
+    )
+    expect(svuotati).toEqual([])
   })
 })

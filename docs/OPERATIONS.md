@@ -589,22 +589,42 @@ MERGE.
 #### Canale del metamodello (fra i processi)
 
 Le cache che dipendono dal **metamodello del cliente** — schema GraphQL per
-tenant, whitelist dei report, tipi di relazione ammessi, mappa etichetta → tipo
-— non aspettano il TTL: `lib/metamodelBus.ts` pubblica «il metamodello di
-questo tenant è cambiato» sul canale Redis `og:metamodel.changed`, e ogni
-processo in ascolto svuota le sue. Prima si vedeva solo nei log; dall'ondata 8
-ci sono le metriche e tre regole d'allarme (`infra/prometheus/alerts.yml`,
-gruppo `metamodel-bus`):
+tenant, vocabolari, matrici di dominio, whitelist dei report, tipi di relazione
+ammessi, mappa etichetta → tipo — non aspettano il TTL: `lib/metamodelBus.ts`
+pubblica «il metamodello di questo tenant è cambiato» sul canale Redis
+`og:metamodel.changed`, e ogni processo in ascolto svuota le sue. Prima si
+vedeva solo nei log; dall'ondata 8 ci sono le metriche e tre regole d'allarme
+(`infra/prometheus/alerts.yml`, gruppo `metamodel-bus`):
 
 | Metrica | Tipo | Cosa dice |
 |---|---|---|
-| `metamodel_bus_subscribed` | gauge | 1 = questo processo è in ascolto; **0 = non verrà avvisato** e servirà dati vecchi fino al TTL (lo schema GraphQL, per sempre). Allarme `MetamodelBusNotSubscribed` dopo 5 minuti |
+| `metamodel_bus_subscribed` | gauge | 1 = questo processo è in ascolto; **0 = non verrà avvisato** e servirà dati vecchi fino al TTL della singola cache (tabella sotto). Allarme `MetamodelBusNotSubscribed` dopo 5 minuti |
 | `metamodel_published_total{result}` | counter | `delivered` (almeno un ascoltatore), `no_receivers` (nessuno: le altre repliche e i worker restano vecchi), `error` (PUBLISH fallito, Redis giù). Allarme `MetamodelChangesNotDelivered` |
 | `metamodel_received_total{result}` | counter | `applied`, `stale` (versione già applicata o fuori ordine: normale), `malformed` |
 | `metamodel_cache_clear_failures_total{cache}` | counter | un clearer ha lanciato: quel processo resta con dati vecchi per quel tenant. Allarme `MetamodelCacheClearFailures` |
 
 Sintomo tipico di un canale muto: una relazione appena definita nel disegnatore
 viene rifiutata da un'altra replica con «Invalid relation type».
+
+**Chi tira la leva.** `invalidateSchema(tenantId)` è il punto unico: svuota le
+cache di questo processo **e** pubblica. La chiamano le mutation del metamodello
+dei CI, quelle dei tipi ITIL, quelle dei **vocabolari** (`resolvers/enumType.ts`),
+delle **matrici di dominio** e dei **tipi di change pre-approvati**. Il test
+`graphql/__tests__/metamodelInvalidation.test.ts` lo verifica staticamente: una
+mutation nuova che scriva metamodello e non tiri la leva fa cadere quel test.
+
+**E il TTL è la rete, non la via normale.** Ogni cache del metamodello scade da
+sé, perché il canale può tacere (Redis giù, processo iscritto dopo, messaggio
+perso) e una cache senza scadenza resterebbe sbagliata **fino al riavvio del
+processo**:
+
+| Cache (nome del clearer) | TTL |
+|---|---|
+| `schema` (`lib/schemaCache.ts`) | 5 min |
+| `domain-vocabulary`, `domain-matrix`, `pre-approved-change-types`, `ci-labels-for-tenant`, `ci-type-name-to-label`, `ci-metamodel-for-tenant` (`lib/metamodelCache.ts`) | 60 s |
+| `report-whitelist` (`lib/reportWhitelist.ts`) | 60 s |
+| `memory-cache` (`lib/cache.ts`) | per chiave (30 s la policy del ciclo di vita) |
+| `ci-type-labels` (`lib/ciTypeFromLabels.ts`) | nessuno **per costruzione**: non è una cache a domanda ma la proiezione dello schema, riscritta da `registerCITypes` a ogni rigenerazione — quindi la sua staleness è quella dello schema (5 min) |
 
 **APERTO — la cache delle regole di notifica non è su questo canale.**
 `packages/notifications/src/dispatcher.ts` tiene le regole per

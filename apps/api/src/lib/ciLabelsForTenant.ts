@@ -27,17 +27,16 @@
  * del canale del metamodello (ondata 5).
  */
 import { loadMetamodel } from '@opengraphity/schema-generator'
-import { registerMetamodelCacheClearer } from './schemaInvalidator.js'
+import { createMetamodelCache } from './metamodelCache.js'
 import { ALL_CI_LABELS } from './ciLabels.js'
 import { logger } from './logger.js'
 
 const log = logger.child({ module: 'ci-labels' })
 
-/** Cache per tenant. Svuotata dal canale del metamodello, non a tempo. */
-const cache = new Map<string, Promise<readonly string[]>>()
-
-registerMetamodelCacheClearer('ci-labels-for-tenant', (tenantId: string) => {
-  cache.delete(tenantId)
+/** Cache per tenant: la svuota il canale del metamodello, e scade da sé. */
+const cache = createMetamodelCache<readonly string[]>({
+  name: 'ci-labels-for-tenant',
+  load: (tenantId) => loadLabels(tenantId),
 })
 
 /**
@@ -45,11 +44,12 @@ registerMetamodelCacheClearer('ci-labels-for-tenant', (tenantId: string) => {
  * col prodotto più i suoi. In ordine stabile (serve a rendere deterministici i
  * predicati Cypher che ne derivano, e quindi la cache dei piani di query).
  */
-export async function ciLabelsForTenant(tenantId: string): Promise<readonly string[]> {
-  const hit = cache.get(tenantId)
-  if (hit) return hit
+export function ciLabelsForTenant(tenantId: string): Promise<readonly string[]> {
+  return cache.get(tenantId)
+}
 
-  const load = loadMetamodel(tenantId)
+function loadLabels(tenantId: string): Promise<readonly string[]> {
+  return loadMetamodel(tenantId)
     .then((types) => {
       const labels = new Set<string>(ALL_CI_LABELS)
       for (const t of types) if (t.neo4jLabel) labels.add(t.neo4jLabel)
@@ -63,14 +63,11 @@ export async function ciLabelsForTenant(tenantId: string): Promise<readonly stri
       // nasconde l'errore dietro le etichette statiche, perché una lista
       // incompleta significa CI che scompaiono da impatto, mappe e ricerca —
       // esattamente il difetto che questo modulo chiude. Chi chiama decide se
-      // fermarsi; la cache non trattiene il fallimento.
-      cache.delete(tenantId)
+      // fermarsi; la cache non trattiene il fallimento (lo garantisce
+      // `createMetamodelCache`).
       log.error({ tenantId, err }, 'Etichette dei CI non leggibili dal metamodello')
       throw err
     })
-
-  cache.set(tenantId, load)
-  return load
 }
 
 /**

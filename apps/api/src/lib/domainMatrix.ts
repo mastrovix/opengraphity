@@ -39,7 +39,7 @@
  */
 import { getSession } from '@opengraphity/neo4j'
 import { ValidationError } from './errors.js'
-import { registerMetamodelCacheClearer } from './schemaInvalidator.js'
+import { createMetamodelCache } from './metamodelCache.js'
 import { loadTenantEnumOverrides } from './enumScope.js'
 import { logger } from './logger.js'
 
@@ -165,54 +165,54 @@ export const DOMAIN_MATRIX_SEEDS: Readonly<Record<DomainMatrixKind, DomainMatrix
 
 // ── Lettura ──────────────────────────────────────────────────────────────────
 
-const cache = new Map<string, Promise<DomainMatrix>>()
-
-registerMetamodelCacheClearer('domain-matrix', (tenantId: string) => {
-  for (const key of [...cache.keys()]) if (key.startsWith(`${tenantId}::`)) cache.delete(key)
+const cache = createMetamodelCache<DomainMatrix>({
+  name: 'domain-matrix',
+  load: (tenantId, kind) => loadMatrixFromGraph(tenantId, kind as DomainMatrixKind),
 })
 
-/** Svuota la cache di una matrice (la chiama la mutation che la salva). */
+/**
+ * Svuota la cache di una matrice **in questo processo**.
+ *
+ * Non è la leva da tirare dopo una scrittura: quella è `invalidateSchema`, che
+ * svuota tutte le cache del metamodello e lo dice agli altri processi (la
+ * revisione ha misurato una matrice corretta dalla pagina che restava vecchia
+ * nell'events-worker, senza scadenza). Questa resta per i test e per chi ha già
+ * invalidato tutto il resto.
+ */
 export function invalidateDomainMatrix(tenantId: string, kind?: DomainMatrixKind): void {
-  if (kind) { cache.delete(`${tenantId}::${kind}`); return }
-  for (const key of [...cache.keys()]) if (key.startsWith(`${tenantId}::`)) cache.delete(key)
+  cache.invalidate(tenantId, kind)
 }
 
-export async function loadDomainMatrix(tenantId: string, kind: DomainMatrixKind): Promise<DomainMatrix> {
-  const cacheKey = `${tenantId}::${kind}`
-  const hit = cache.get(cacheKey)
-  if (hit) return hit
+export function loadDomainMatrix(tenantId: string, kind: DomainMatrixKind): Promise<DomainMatrix> {
+  return cache.get(tenantId, kind)
+}
 
-  const load = (async (): Promise<DomainMatrix> => {
-    const session = getSession()
-    try {
-      const r = await session.executeRead((tx) =>
-        tx.run(
-          `MATCH (m:DomainMatrix {tenant_id: $tenantId, kind: $kind})
-           RETURN m.entries AS entries, m.updated_at AS updatedAt`,
-          { tenantId, kind },
-        ),
-      )
-      if (!r.records.length) {
-        // Nessuna matrice salvata: il cliente non l'ha mai toccata e la
-        // migrazione non è ancora passata. Si usa il seme, e si DICE quale
-        // caso è: non è un ripiego su un valore inventato, è il contenuto di
-        // fabbrica dichiarato.
-        return { kind, entries: DOMAIN_MATRIX_SEEDS[kind], isDefault: true, updatedAt: null }
-      }
-      const raw = r.records[0].get('entries')
-      const entries = parseEntries(raw, kind)
-      return { kind, entries, isDefault: false, updatedAt: (r.records[0].get('updatedAt') as string | null) ?? null }
-    } finally {
-      await session.close()
+async function loadMatrixFromGraph(tenantId: string, kind: DomainMatrixKind): Promise<DomainMatrix> {
+  const session = getSession()
+  try {
+    const r = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (m:DomainMatrix {tenant_id: $tenantId, kind: $kind})
+         RETURN m.entries AS entries, m.updated_at AS updatedAt`,
+        { tenantId, kind },
+      ),
+    )
+    if (!r.records.length) {
+      // Nessuna matrice salvata: il cliente non l'ha mai toccata e la
+      // migrazione non è ancora passata. Si usa il seme, e si DICE quale
+      // caso è: non è un ripiego su un valore inventato, è il contenuto di
+      // fabbrica dichiarato.
+      return { kind, entries: DOMAIN_MATRIX_SEEDS[kind], isDefault: true, updatedAt: null }
     }
-  })().catch((err: unknown) => {
-    cache.delete(cacheKey)
+    const raw = r.records[0].get('entries')
+    const entries = parseEntries(raw, kind)
+    return { kind, entries, isDefault: false, updatedAt: (r.records[0].get('updatedAt') as string | null) ?? null }
+  } catch (err) {
     log.error({ tenantId, kind, err }, 'Matrice di dominio non leggibile')
     throw err
-  })
-
-  cache.set(cacheKey, load)
-  return load
+  } finally {
+    await session.close()
+  }
 }
 
 function parseEntries(raw: unknown, kind: DomainMatrixKind): DomainMatrixEntries {
@@ -287,10 +287,9 @@ export async function isDomainValue(tenantId: string, vocabulary: string, value:
   return (await domainVocabulary(tenantId, vocabulary)).includes(value)
 }
 
-const vocabCache = new Map<string, Promise<readonly string[]>>()
-
-registerMetamodelCacheClearer('domain-vocabulary', (tenantId: string) => {
-  for (const key of [...vocabCache.keys()]) if (key.startsWith(`${tenantId}::`)) vocabCache.delete(key)
+const vocabCache = createMetamodelCache<readonly string[]>({
+  name: 'domain-vocabulary',
+  load: (tenantId, vocabulary) => loadVocabularyFromGraph(tenantId, vocabulary),
 })
 
 /**
@@ -299,42 +298,34 @@ registerMetamodelCacheClearer('domain-vocabulary', (tenantId: string) => {
  * non esiste da nessuna parte è un errore: significa che il codice sta
  * chiedendo un nome sbagliato, e un elenco vuoto lo nasconderebbe.
  */
-export async function domainVocabulary(tenantId: string, vocabulary: string): Promise<readonly string[]> {
-  const cacheKey = `${tenantId}::${vocabulary}`
-  const hit = vocabCache.get(cacheKey)
-  if (hit) return hit
+export function domainVocabulary(tenantId: string, vocabulary: string): Promise<readonly string[]> {
+  return vocabCache.get(tenantId, vocabulary)
+}
 
-  const load = (async (): Promise<readonly string[]> => {
-    const session = getSession()
-    try {
-      const own = await loadTenantEnumOverrides(session, tenantId)
-      const mine = own.get(vocabulary)
-      if (mine) return mine.values
-      const r = await session.executeRead((tx) =>
-        tx.run(
-          `MATCH (e:EnumTypeDefinition {tenant_id: 'system', name: $name}) RETURN e.values AS values`,
-          { name: vocabulary },
-        ),
+async function loadVocabularyFromGraph(tenantId: string, vocabulary: string): Promise<readonly string[]> {
+  const session = getSession()
+  try {
+    const own = await loadTenantEnumOverrides(session, tenantId)
+    const mine = own.get(vocabulary)
+    if (mine) return mine.values
+    const r = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (e:EnumTypeDefinition {tenant_id: 'system', name: $name}) RETURN e.values AS values`,
+        { name: vocabulary },
+      ),
+    )
+    if (!r.records.length) {
+      throw new Error(
+        `Vocabolario "${vocabulary}" inesistente (né del cliente ${tenantId} né di sistema): ` +
+        `il codice sta chiedendo un nome che il Dizionario non ha.`,
       )
-      if (!r.records.length) {
-        throw new Error(
-          `Vocabolario "${vocabulary}" inesistente (né del cliente ${tenantId} né di sistema): ` +
-          `il codice sta chiedendo un nome che il Dizionario non ha.`,
-        )
-      }
-      const raw = r.records[0].get('values')
-      const values = Array.isArray(raw) ? raw as string[] : JSON.parse(String(raw)) as string[]
-      return values
-    } finally {
-      await session.close()
     }
-  })().catch((err: unknown) => {
-    vocabCache.delete(cacheKey)
-    throw err
-  })
-
-  vocabCache.set(cacheKey, load)
-  return load
+    const raw = r.records[0].get('values')
+    const values = Array.isArray(raw) ? raw as string[] : JSON.parse(String(raw)) as string[]
+    return values
+  } finally {
+    await session.close()
+  }
 }
 
 /** Solo per i test. */

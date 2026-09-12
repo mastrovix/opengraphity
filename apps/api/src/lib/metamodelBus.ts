@@ -125,14 +125,14 @@ async function doPublish(tenantId: string, local?: LocalInvalidation): Promise<v
     metamodelPublishedTotal.inc({ result: receivers === 0 ? 'no_receivers' : 'delivered' })
     if (receivers === 0) {
       log.warn(fields,
-        '[metamodel] nessun processo in ascolto sul canale: le cache degli altri processi (worker, altre repliche) resteranno vecchie fino alla scadenza del TTL')
+        '[metamodel] nessun processo in ascolto sul canale: le cache degli altri processi (worker, altre repliche) resteranno vecchie fino alla scadenza del loro TTL (60 s le cache del metamodello, 5 min lo schema)')
     } else {
       log.info(fields, '[metamodel] cambiamento pubblicato: gli altri processi svuoteranno le loro cache di questo tenant')
     }
   } catch (err) {
     metamodelPublishedTotal.inc({ result: 'error' })
     log.error({ err, tenantId, channel: METAMODEL_CHANNEL },
-      '[metamodel] pubblicazione fallita: solo QUESTO processo ha svuotato le sue cache; le altre repliche restano vecchie fino alla scadenza del TTL')
+      '[metamodel] pubblicazione fallita: solo QUESTO processo ha svuotato le sue cache; le altre repliche restano vecchie fino alla scadenza del loro TTL (60 s le cache del metamodello, 5 min lo schema)')
   }
 }
 

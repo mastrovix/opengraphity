@@ -28,15 +28,14 @@
  */
 import { loadMetamodel } from '@opengraphity/schema-generator'
 import { ciLabelsForTenant } from './ciLabelsForTenant.js'
-import { registerMetamodelCacheClearer } from './schemaInvalidator.js'
+import { createMetamodelCache } from './metamodelCache.js'
 import { TYPE_TO_LABEL } from './ciLabels.js'
 import { ValidationError } from './errors.js'
 
 /** `tenantId → (nome del tipo in minuscolo → etichetta)`. */
-const cache = new Map<string, Promise<ReadonlyMap<string, string>>>()
-
-registerMetamodelCacheClearer('ci-type-name-to-label', (tenantId: string) => {
-  cache.delete(tenantId)
+const cache = createMetamodelCache<ReadonlyMap<string, string>>({
+  name: 'ci-type-name-to-label',
+  load: (tenantId) => loadNameToLabel(tenantId),
 })
 
 /**
@@ -49,10 +48,11 @@ registerMetamodelCacheClearer('ci-type-name-to-label', (tenantId: string) => {
  * tipo del metamodello che il nucleo non elenca non entra.
  */
 function nameToLabel(tenantId: string): Promise<ReadonlyMap<string, string>> {
-  const hit = cache.get(tenantId)
-  if (hit) return hit
+  return cache.get(tenantId)
+}
 
-  const load = (async () => {
+function loadNameToLabel(tenantId: string): Promise<ReadonlyMap<string, string>> {
+  return (async () => {
     const labels = new Set(await ciLabelsForTenant(tenantId))
     const types = await loadMetamodel(tenantId)
     const map = new Map<string, string>()
@@ -65,15 +65,7 @@ function nameToLabel(tenantId: string): Promise<ReadonlyMap<string, string>> {
       if (labels.has(label) && !map.has(alias)) map.set(alias, label)
     }
     return map as ReadonlyMap<string, string>
-  })().catch((err: unknown) => {
-    // Come nel nucleo: una mappa incompleta farebbe sparire in silenzio i CI
-    // di un tipo. L'errore esce e non resta in cache.
-    cache.delete(tenantId)
-    throw err
-  })
-
-  cache.set(tenantId, load)
-  return load
+  })()
 }
 
 /** I nomi dei tipi CI che questo cliente può nominare, in ordine stabile (messaggi d'errore). */
