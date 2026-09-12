@@ -137,6 +137,10 @@ export async function fetchITILTypeById(id: string, tenantId: string) {
       icon:             t['icon']  ?? '',
       color:            t['color'] ?? '',
       active:           t['active'] ?? true,
+      // A-6: i tipi ITIL sono spediti col prodotto; il campo lo dice, invece
+      // di lasciarlo dedurre al web.
+      scope:            t['scope']     ?? 'itil',
+      tenantId:         t['tenant_id'] ?? SYSTEM_TENANT,
       validationScript: t['validation_script'] ?? null,
       fields,
       relations: (rec.get('relations') as Array<{ properties: Props } | null>)
@@ -202,6 +206,8 @@ export function buildITILTypesResolver() {
           icon:             t['icon']  ?? '',
           color:            t['color'] ?? '',
           active:           t['active'],
+          scope:            t['scope']     ?? 'itil',
+          tenantId:         t['tenant_id'] ?? SYSTEM_TENANT,
           validationScript: t['validation_script'] ?? null,
           fields,
           relations:       [],

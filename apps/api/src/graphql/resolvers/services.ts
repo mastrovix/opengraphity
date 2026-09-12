@@ -85,8 +85,8 @@ export function parseStoredCauses(raw: unknown, what: string): ReturnType<typeof
 }
 
 /** `ConfigurationItemRef` da un CI letto dal grafo (esclusioni, nodi della proposta). */
-function mapCIRef(r: { id: string; name: string | null; labels: readonly string[]; status: string | null; health: string | null }) {
-  return { id: r.id, name: r.name ?? '', type: ciTypeFromLabels([...r.labels]), status: r.status, health: r.health }
+function mapCIRef(tenantId: string, r: { id: string; name: string | null; labels: readonly string[]; status: string | null; health: string | null }) {
+  return { id: r.id, name: r.name ?? '', type: ciTypeFromLabels(tenantId, [...r.labels]), status: r.status, health: r.health }
 }
 
 /**
@@ -94,9 +94,9 @@ function mapCIRef(r: { id: string; name: string | null; labels: readonly string[
  * dettaglio e per il diff. `inMaintenance` è la sola finestra di change (la
  * manutenzione di ciclo di vita si legge da `ci.status` e da `excludedReason`).
  */
-function mapLoadedNode(n: LoadedNode, rules: ServiceImpactRules) {
+function mapLoadedNode(tenantId: string, n: LoadedNode, rules: ServiceImpactRules) {
   return {
-    ci:             { id: n.ciId, name: n.name, type: ciTypeFromLabels(n.labels), status: n.status, health: n.health },
+    ci:             { id: n.ciId, name: n.name, type: ciTypeFromLabels(tenantId, n.labels), status: n.status, health: n.health },
     level:          n.level,
     role:           n.role,
     propagate:      n.propagate,
@@ -362,7 +362,7 @@ async function serviceMapProposal(_: unknown, args: { id: string }, ctx: GraphQL
     maxDepth:          d.maxDepth,
     relationshipTypes: d.relationshipTypes,
     added:             d.added.map((n) => ({
-      ci:        mapCIRef({ id: n.ciId, name: n.name, labels: n.labels, status: n.status, health: n.health }),
+      ci:        mapCIRef(ctx.tenantId, { id: n.ciId, name: n.name, labels: n.labels, status: n.status, health: n.health }),
       level:     n.level,
       role:      n.role,
       propagate: n.propagate,
@@ -370,15 +370,15 @@ async function serviceMapProposal(_: unknown, args: { id: string }, ctx: GraphQL
       critical:  n.critical,
       via:       n.via,
     })),
-    removed:           d.removed.map((r) => (r.node ? mapLoadedNode(r.node, d.rules) : mapGoneNode(r.ciId))),
+    removed:           d.removed.map((r) => (r.node ? mapLoadedNode(ctx.tenantId, r.node, d.rules) : mapGoneNode(r.ciId))),
     moved:             d.moved.map((m) => ({
-      ci:            { id: m.node.ciId, name: m.node.name, type: ciTypeFromLabels(m.node.labels), status: m.node.status, health: m.node.health },
+      ci:            { id: m.node.ciId, name: m.node.name, type: ciTypeFromLabels(ctx.tenantId, m.node.labels), status: m.node.status, health: m.node.health },
       level:         m.node.level,
       proposedLevel: m.proposedLevel,
       via:           m.node.via,
       proposedVia:   m.proposedVia,
     })),
-    excluded:          d.excluded.map(mapCIRef),
+    excluded:          d.excluded.map((r) => mapCIRef(ctx.tenantId, r)),
     totalProposed:     d.totalProposed,
   }
 }
@@ -474,7 +474,7 @@ async function serviceMapNodes(parent: { id: string }, _: unknown, ctx: GraphQLC
     return state.nodes
       .slice()
       .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
-      .map((n) => mapLoadedNode(n, state.rules))
+      .map((n) => mapLoadedNode(ctx.tenantId, n, state.rules))
   } finally { await session.close() }
 }
 
@@ -482,7 +482,7 @@ async function serviceMapNodes(parent: { id: string }, _: unknown, ctx: GraphQLC
 async function serviceMapExcluded(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   const session = getSession()
   try {
-    return (await loadServiceMapExclusions(session, ctx.tenantId, parent.id)).map(mapCIRef)
+    return (await loadServiceMapExclusions(session, ctx.tenantId, parent.id)).map((r) => mapCIRef(ctx.tenantId, r))
   } finally { await session.close() }
 }
 

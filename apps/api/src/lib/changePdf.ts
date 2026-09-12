@@ -169,7 +169,7 @@ export async function loadChangeDossier(
     changeOwner: userRef(people?.ownerUser),
     affectedCIs: ciRows.map((r) => ({
       name:              (r.ciProps['name'] ?? r.ciProps['id'] ?? '') as string,
-      type:              ciTypeFromLabels(r.nodeLabels ?? []),
+      type:              ciTypeFromLabels(tenantId, r.nodeLabels ?? []),
       environment:       (r.ciProps['environment'] ?? null) as string | null,
       riskScore:         r.riskScore == null ? null : Number(r.riskScore),
       ciPhase:           (r.ciPhase ?? null) as string | null,

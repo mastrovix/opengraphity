@@ -121,6 +121,14 @@ const readers = {
   rateLimitMax:         (): number  => intEnv('RATE_LIMIT_MAX', 1000),
   /** Apollo introspection in production (off by default; always on outside). */
   graphqlIntrospection: (): boolean => boolEnv('GRAPHQL_INTROSPECTION', false),
+  /**
+   * Quanti schemi GraphQL per tenant questo processo tiene in memoria
+   * (ondata 5, A-1). Ogni voce è uno schema eseguibile generato dal
+   * metamodello del tenant: al superamento si sfratta il meno usato di
+   * recente e si ricostruisce alla richiesta successiva (una lettura del
+   * metamodello). Si vede con `graphql_schema_evictions_total`.
+   */
+  graphqlSchemaCacheMax: (): number => intEnv('GRAPHQL_SCHEMA_CACHE_MAX', 25),
   /** Bearer token for GET /metrics; empty → loopback/private networks only. */
   metricsToken:         (): string | undefined => optionalEnv('METRICS_TOKEN'),
   /** Base URL of the web app used in every outbound link (emails, Slack cards). */
@@ -224,7 +232,7 @@ export const CONFIG_PROFILES = {
     'nodeEnv', 'port', 'logLevel', 'workerProfile',
     'neo4jUri', 'neo4jUser', 'neo4jPassword', 'neo4jMaxPoolSize',
     'keycloakUrl', 'keycloakPublicUrls', 'keycloakAdminUser',
-    'allowLegacyJwt', 'corsOrigin', 'rateLimitMax', 'graphqlIntrospection', 'metricsToken', 'appUrl',
+    'allowLegacyJwt', 'corsOrigin', 'rateLimitMax', 'graphqlIntrospection', 'graphqlSchemaCacheMax', 'metricsToken', 'appUrl',
     'attachmentDir', 'backupDir', 'reportDir',
     'embeddingsProvider', 'transformersCache', 'embeddingWorkerExternal',
     'emailFrom', 'otelEnabled', 'otelEndpoint',

@@ -11,6 +11,7 @@ import { Pill } from '@/components/ui/Pill'
 import type { EnumTypeRef } from '../shared/designerStyles'
 import type { FieldForm } from './CIFieldEditor'
 import { colors, palette } from '@/lib/tokens'
+import { checkCIFieldName } from '@/lib/ciTypeNames'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ export function FormField({ label, htmlFor, children }: { label: string; htmlFor
 
 export function CIFieldInlineEditor({
   initial, existingCount, isSystem, onSave, onCancel, enumTypes,
+  existingFieldNames = [], typeLabel,
 }: {
   initial:       FieldForm | null
   existingCount: number
@@ -44,6 +46,9 @@ export function CIFieldInlineEditor({
   onSave:        (f: FieldForm) => void
   onCancel:      () => void
   enumTypes:     EnumTypeOption[]
+  /** I campi già presenti sul tipo (compresi quelli di `__base__`): A-12. */
+  existingFieldNames?: readonly string[]
+  typeLabel?:    string
 }) {
   const { t } = useTranslation()
   const [form, setForm] = useState<FieldForm>(
@@ -58,20 +63,38 @@ export function CIFieldInlineEditor({
   const set = (k: keyof FieldForm, v: unknown) => setForm((p) => ({ ...p, [k]: v }))
   const selectedEnum = form.enumTypeId ? enumTypes.find((e) => e.id === form.enumTypeId) : null
 
+  // A-12: il nome del campo diventa una proprietà Neo4j (`costCenter` →
+  // `cost_center`). Un campo chiamato `tenantId` scriverebbe `tenant_id`, che è
+  // il cliente proprietario del CI: il CI nascerebbe nel cliente scelto da chi
+  // chiama l'API. La difesa vera è nell'API; qui si dice subito.
+  // Su un campo esistente il nome è bloccato, quindi non si valida.
+  const nameError = !initial && form.name
+    ? checkCIFieldName(form.name, { existingFieldNames, typeLabel })
+    : null
+
   return (
     <div style={{ background: 'var(--color-slate-bg)', border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, marginBottom: 8 }}>
       {/* name + label */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
         <div>
-          <label htmlFor={`${id}-name`} style={labelS}>name (slug) *</label>
+          <label htmlFor={`${id}-name`} style={labelS}>name (camelCase) *</label>
           <input
             id={`${id}-name`}
             style={{ ...inputS, background: isSystem || !!initial ? colors.slateBg : colors.white }}
             value={form.name}
             disabled={isSystem || !!initial}
-            onChange={(e) => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
-            placeholder="field_name"
+            aria-invalid={nameError ? true : undefined}
+            aria-describedby={nameError ? `${id}-name-error` : undefined}
+            // A-12: camelCase, senza trattini basso — `costCenter` e
+            // `cost_center` finirebbero sulla stessa proprietà Neo4j.
+            onChange={(e) => set('name', e.target.value.replace(/[^A-Za-z0-9]/g, ''))}
+            placeholder="costCenter"
           />
+          {nameError && (
+            <p id={`${id}-name-error`} role="alert" style={{ margin: '6px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-danger)' }}>
+              {nameError}
+            </p>
+          )}
         </div>
         <div>
           <label htmlFor={`${id}-label`} style={labelS}>label *</label>
@@ -193,7 +216,8 @@ export function CIFieldInlineEditor({
         <button type="button" style={btnSecondary} onClick={onCancel}>
           <X size={13} /> Annulla
         </button>
-        <button type="button" style={btnPrimary} onClick={() => onSave(form)}>
+        <button type="button" style={{ ...btnPrimary, opacity: nameError ? 0.6 : 1 }} disabled={!!nameError}
+          onClick={() => onSave(form)}>
           <Check size={13} /> Salva
         </button>
       </div>

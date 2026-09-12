@@ -33,19 +33,14 @@ import { ADD_CI_RELATIONSHIP, REMOVE_CI_RELATIONSHIP, UPDATE_CI, ASSIGN_CI_OWNER
 import { X, Plus, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import { colors, palette, alpha } from '@/lib/tokens'
+// I campi che l'SDL NON ri-dichiara sui tipi generati perché stanno già su
+// CIBase. Non più uno «specchio» da tenere allineato a mano (mancavano `chain`,
+// `health`, `healthSource` e `lastEventAt`): è la STESSA lista che usa il
+// generatore.
+import { BASE_TYPE_FIELDS } from '@opengraphity/schema-generator/names'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-// Specchio di `BASE_TYPE_FIELDS` di packages/schema-generator/src/generator.ts:
-// i campi che l'SDL NON ri-dichiara sui tipi generati perché stanno già su
-// CIBase. Le due liste devono restare identiche: qui mancavano `chain`,
-// `health`, `healthSource` e `lastEventAt`.
-const BASE_TYPE_FIELDS = new Set([
-  'id', 'name', 'type', 'status', 'environment',
-  'description', 'chain', 'createdAt', 'updatedAt', 'notes',
-  'ownerGroup', 'supportGroup', 'dependencies', 'dependents',
-  'health', 'healthSource', 'lastEventAt',
-])
 
 interface CIRef {
   id: string; name: string; type: string

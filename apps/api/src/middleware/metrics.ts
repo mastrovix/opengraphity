@@ -380,6 +380,24 @@ export const eventsFailedTotal = createCounter('events_failed_total', 'Domain ev
 export const redisLockTimeoutsTotal = createCounter('redis_lock_timeouts_total', 'Redis lock acquisitions abandoned after the wait timeout (the job retries), by lock family', ['lock'])
 export const redisLockHoldSeconds   = createHistogram('redis_lock_hold_seconds', 'Time a Redis lock was held (critical section duration) in seconds, by lock family', ['lock'], [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60])
 
+// ── Schema GraphQL per tenant (ondata 5, A-1) ────────────────────────────────
+// Lo schema non è più uno solo: ogni tenant ha il proprio, generato dal suo
+// metamodello e tenuto in una cache limitata. Queste metriche dicono se la
+// cache sta lavorando e — soprattutto — se lo schema di un tenant NON si
+// costruisce: in quel caso l'API serve lo schema «sicuro» (base + ITIL, senza
+// i tipi del cliente) per non lasciare il tenant senza API e senza la mutation
+// per rimediare, e questo contatore è l'unico modo per accorgersene.
+
+export const graphqlSchemaBuildsTotal = createCounter('graphql_schema_builds_total', 'Schemi GraphQL generati (per tenant): un valore che cresce senza modifiche al metamodello significa cache che non trattiene', [])
+export const graphqlSchemaEvictionsTotal = createCounter('graphql_schema_evictions_total', 'Schemi tolti dalla cache perché è piena (GRAPHQL_SCHEMA_CACHE_MAX): se cresce, alza il limite o riduci i tenant per replica', [])
+export const graphqlSchemaBuildFailedTotal = createCounter('graphql_schema_build_failed_total', 'Schemi di un tenant che NON si sono costruiti (di norma un tipo o un campo personalizzato che collide): il tenant sta ricevendo lo schema sicuro, senza i suoi tipi. Va guardato subito', [])
+export const graphqlSchemaCacheEntries = createGauge('graphql_schema_cache_entries', 'Schemi GraphQL attualmente in cache in questo processo', [])
+
+/** Metriche dello schema per tenant, nell'ordine di esposizione. */
+export const SCHEMA_METRICS = [
+  graphqlSchemaBuildsTotal, graphqlSchemaEvictionsTotal, graphqlSchemaBuildFailedTotal, graphqlSchemaCacheEntries,
+] as const
+
 /** Tutte le metriche dell'Event Management (e dei servizi monitorati), nell'ordine di esposizione. */
 export const EVENT_MANAGEMENT_METRICS = [
   eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsAmbiguousTotal, eventsSuppressedTotal, eventsFlappingTotal,
@@ -472,6 +490,7 @@ export function renderMetrics(): string {
     backupRunsTotal.collect(),
     backupLastSuccessTimestamp.collect(),
     ...EVENT_MANAGEMENT_METRICS.map((m) => m.collect()),
+    ...SCHEMA_METRICS.map((m) => m.collect()),
   ].join('\n\n')
 }
 

@@ -372,7 +372,7 @@ export async function previewServiceImpact(input: PreviewInput): Promise<Service
   return {
     health:            result.health,
     impactScore:       result.impactScore,
-    causes:            storedCausesOf(result.causes, nodes),
+    causes:            storedCausesOf(input.tenantId, result.causes, nodes),
     contributingCount: nodes.filter((n) => nodeContributes(n, rules)).length,
     nodeCount:         nodes.length,
   }

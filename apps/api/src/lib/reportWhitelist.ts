@@ -6,6 +6,7 @@
 
 import { getNavigableEntities } from './navigableGraph.js'
 import { LABEL_RE, REL_TYPE_RE } from './cypherIdentifiers.js'
+import { registerMetamodelCacheClearer } from './schemaInvalidator.js'
 
 export interface ReportWhitelist {
   labels:            ReadonlySet<string>
@@ -67,7 +68,19 @@ export async function getReportWhitelist(tenantId: string): Promise<ReportWhitel
   return value
 }
 
-/** Test hook / metamodel change hook: drop cached whitelists. */
+/** Test hook: drop every cached whitelist. */
 export function clearReportWhitelistCache(): void {
   cache.clear()
 }
+
+/**
+ * Un tenant solo: la chiama il canale del metamodello (A-16) quando un tipo,
+ * un campo o una relazione cambiano — qui o in un altro processo. Prima questa
+ * cache restava vecchia per 60 s anche nel processo che aveva servito la
+ * mutation: un tipo nuovo non era riportabile e uno cancellato lo era ancora.
+ */
+export function invalidateReportWhitelist(tenantId: string): void {
+  cache.delete(tenantId)
+}
+
+registerMetamodelCacheClearer('report-whitelist', invalidateReportWhitelist)

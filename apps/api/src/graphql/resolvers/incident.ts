@@ -83,7 +83,7 @@ async function incidents(
         base.affectedCIs  = r.cis
           .filter((c) => c.props && c.props['id'])
           .map((c) => {
-            const t = ciTypeFromLabels([c.label])
+            const t = ciTypeFromLabels(ctx.tenantId, [c.label])
             c.props['type'] = t
             const ci = mapCI(c.props) as Record<string, unknown>
             ci['ciType']     = t
@@ -369,7 +369,7 @@ async function incidentAffectedCIs(
       id: parent.id, tenantId: ctx.tenantId,
     })
     return rows.map((r) => {
-      const t = ciTypeFromLabels([r.label])
+      const t = ciTypeFromLabels(ctx.tenantId, [r.label])
       r.props['type'] = t
       const ci = mapCI(r.props) as Record<string, unknown>
       ci['ciType']     = t
@@ -408,7 +408,7 @@ async function incidentImpactedApplications(
       session, cypher, { id: parent.id, tenantId: ctx.tenantId },
     )
     return rows.map((r) => {
-      const t = ciTypeFromLabels([r.label])
+      const t = ciTypeFromLabels(ctx.tenantId, [r.label])
       r.props['type'] = t
       const ci = mapCI(r.props) as Record<string, unknown>
       ci['ciType']     = t
@@ -417,7 +417,7 @@ async function incidentImpactedApplications(
         ci,
         distance: Number(r.distance),
         via: r.via,
-        path: r.path.map((n) => ({ id: n.id, name: n.name, type: ciTypeFromLabels([n.type]) })),
+        path: r.path.map((n) => ({ id: n.id, name: n.name, type: ciTypeFromLabels(ctx.tenantId, [n.type]) })),
       }
     })
   })

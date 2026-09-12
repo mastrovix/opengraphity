@@ -9,6 +9,21 @@
  * passano da `enumScopeClause` + le personalizzazioni del tenant, e le
  * mutation sui campi rifiutano i tipi spediti invece di riuscire a metà
  * (`addCIField`) o di non fare niente in silenzio (`removeCIField`).
+ *
+ * Ondata 5 «la personalizzazione dei CI diventa vera» (A-12 / A-6):
+ * - `createCIType` e `addCIField` passano dalla PORTA sui nomi
+ *   (`lib/metamodelNames.ts`), che legge prima l'elenco dei nomi già presi:
+ *   per questo la Cypher della scrittura non è più la prima chiamata;
+ * - `updateCIType`, `deleteCIType`, `addCIRelation` e `removeCIRelation`
+ *   leggono l'ambito del tipo PRIMA di scrivere e verificano i contatori DOPO:
+ *   «riuscito con zero righe» non esiste più.
+ *
+ * Rinegoziato in quest'ondata: il test che pinnava `invalidateSchema` dopo
+ * `createCIType` resta, ma ora quell'azione ha un effetto (schema per tenant);
+ * e `deleteCIType` su un tipo spedito dice «è spedito col prodotto» invece di
+ * «I tipi base non possono essere eliminati» — lo stesso messaggio di tutte le
+ * altre mutation, e vale anche per i tipi ITIL, che prima rispondevano `true`
+ * senza eliminare niente.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
@@ -21,9 +36,10 @@ vi.mock('../ci-utils.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn(mockSession)),
 }))
 vi.mock('../../../lib/schemaInvalidator.js', () => ({ invalidateSchema: vi.fn() }))
-vi.mock('@opengraphity/schema-generator', () => ({
-  toPascalCase: (s: string) => s.split(/[_\s-]+/).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(''),
-}))
+// `@opengraphity/schema-generator` NON è più finto: la porta sui nomi (A-12)
+// usa le sue regole vere, e finger `toPascalCase` con una versione che divide
+// anche su spazi e trattini nasconderebbe esattamente il difetto che la regola
+// `^[a-z][a-z0-9_]*$` esiste per impedire.
 
 const { buildMetamodelMutations, buildCITypesResolver, buildBaseCITypeResolver, fetchCITypeById, requireAdmin } = await import('../ciTypeMetamodel.js')
 const { withSession } = await import('../ci-utils.js')
@@ -41,18 +57,39 @@ const typeRecord = (over: Record<string, unknown> = {}) => ({
 const row = (map: Record<string, unknown>) => ({ get: (k: string) => (k in map ? map[k] : null) })
 
 /**
+ * Contatori di scrittura, come li restituisce il driver
+ * (`result.summary.counters.updates()`). Da quest'ondata le mutation del
+ * metamodello li LEGGONO: «zero righe scritte» è un errore, non un successo.
+ */
+const WROTE   = { summary: { counters: { updates: () => ({ propertiesSet: 1, nodesCreated: 1, nodesDeleted: 1, relationshipsCreated: 1, relationshipsDeleted: 1 }) } } }
+const WROTE_0 = { summary: { counters: { updates: () => ({ propertiesSet: 0, nodesCreated: 0, nodesDeleted: 0, relationshipsCreated: 0, relationshipsDeleted: 0 }) } } }
+const res    = (records: unknown[] = []) => ({ records, ...WROTE })
+const res0   = (records: unknown[] = []) => ({ records, ...WROTE_0 })
+
+/**
  * Le query «di servizio» dell'ondata 1 (ambito del tipo, vocabolario da
  * agganciare, personalizzazioni del tenant) hanno una risposta di default
  * sensata, così i test che non le riguardano non devono accodarle. Le
  * risposte accodate con `reset([...])` vincono, nell'ordine.
  */
 function defaultResponse(cypher: string): { records: unknown[] } {
-  if (cypher.includes('MATCH (e:EnumTypeDefinition {tenant_id: $tenantId})')) return { records: [] }   // nessuna personalizzazione
-  if (cypher.includes('RETURN t.scope AS scope')) return { records: [row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })] }
-  if (cypher.includes('MATCH (e:EnumTypeDefinition {id: $enumTypeId})')) return { records: [row({ id: 'e-1', name: 'stato_rete', tenantId: 'tenant-1' })] }
-  if (cypher.includes('DETACH DELETE f')) return { records: [row({ name: 'stato' })] }
-  return { records: [typeRecord()] }
+  if (cypher.includes('MATCH (e:EnumTypeDefinition {tenant_id: $tenantId})')) return res()   // nessuna personalizzazione
+  if (cypher.includes('RETURN t.scope AS scope')) return res([row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })])
+  if (cypher.includes('MATCH (e:EnumTypeDefinition {id: $enumTypeId})')) return res([row({ id: 'e-1', name: 'stato_rete', tenantId: 'tenant-1' })])
+  if (cypher.includes('DETACH DELETE f')) return res([row({ name: 'stato' })])
+  // Ondata 5: i nomi già presi (la porta, A-12) e i nomi di campo del tipo.
+  if (cypher.includes("WHERE t.scope IN ['base', 'itil']")) return res(EXISTING_TYPE_ROWS)
+  if (cypher.includes('collect(DISTINCT f.name) + collect(DISTINCT bf.name)')) return res([row({ names: ['os', 'name', 'status'] })])
+  return res([typeRecord()])
 }
+
+/** I tipi CI già presenti nello schema, come li legge `loadExistingCITypeNames`. */
+const EXISTING_TYPE_ROWS = [
+  row({ name: 'server', scope: 'base' }),
+  row({ name: 'application', scope: 'base' }),
+  row({ name: '__base__', scope: 'base' }),
+  row({ name: 'incident', scope: 'itil' }),
+]
 
 const txRun = vi.fn()
 const queue: Array<{ records: unknown[] }> = []
@@ -164,7 +201,9 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
 
   it('createCIType: MERGE {name, tenant_id: $tenantId} con scope tenant, mai "system"; poi invalidateSchema(tenant)', async () => {
     const out = await mutations.createCIType(null, { input: { name: 'firewall', label: 'Firewall' } }, admin)
-    const { cypher, params } = call(0)
+    // call(0) è la porta sui nomi (A-12): l'elenco dei nomi già presi.
+    expect(call(0).cypher).toContain("WHERE t.scope IN ['base', 'itil'] OR (t.scope = 'tenant' AND t.tenant_id = $tenantId)")
+    const { cypher, params } = call(1)
     expect(cypher).toContain('MERGE (t:CITypeDefinition {name: $name, tenant_id: $tenantId})')
     expect(cypher).toContain("t.scope            = 'tenant'")
     expect(cypher).not.toContain("'system'")
@@ -176,22 +215,29 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
 
   it('updateCIType: SET solo dei campi passati, WHERE t.scope = \'tenant\' AND t.tenant_id = $tenantId', async () => {
     await mutations.updateCIType(null, { id: 'ct-1', input: { label: 'FW', active: false } }, admin)
-    const { cypher, params } = call(0)
+    // call(0) è la lettura dell'ambito del tipo (A-6).
+    expect(call(0).cypher).toContain('RETURN t.scope AS scope')
+    const { cypher, params } = call(1)
     expect(cypher).toContain("WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId")
     expect(cypher).toContain('SET t += $updates')
     expect(cypher).not.toContain("'system'")
     expect(params).toEqual({ id: 'ct-1', tenantId: 'tenant-1', updates: { label: 'FW', active: false } })
   })
 
-  it('deleteCIType: tipo base → errore PRIMA di qualunque DELETE', async () => {
-    reset([{ records: [{ get: () => 'base' }] }])
-    await expect(mutations.deleteCIType(null, { id: 'ct-base' }, admin)).rejects.toThrow('I tipi base non possono essere eliminati')
+  // Rinegoziato (A-6): il messaggio è quello di tutte le altre mutation sui
+  // tipi spediti, e ora vale anche per i tipi ITIL — che prima rispondevano
+  // `true` senza eliminare niente.
+  it.each(['base', 'itil'])('deleteCIType: tipo %s → errore PRIMA di qualunque DELETE', async (scope) => {
+    reset([{ records: [row({ scope, name: 'server', label: 'Server' })] }])
+    const err = await mutations.deleteCIType(null, { id: 'ct-base' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.message).toContain('spedito col prodotto')
+    expect(err!.message).toContain('sparirebbe dalla CMDB di ogni cliente')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
 
   it('deleteCIType: tipo del tenant → DETACH DELETE con t.scope = \'tenant\' AND t.tenant_id = $tenantId', async () => {
-    reset([{ records: [{ get: () => 'tenant' }] }, { records: [] }])
+    reset([{ records: [row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })] }, res()])
     await expect(mutations.deleteCIType(null, { id: 'ct-1' }, admin)).resolves.toBe(true)
     const { cypher, params } = call(1)
     expect(cypher).toContain("WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId")
@@ -209,17 +255,17 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
 
   it('updateCIType: chainFamilies validate e scritte in chain_families come JSON canonico', async () => {
     await mutations.updateCIType(null, { id: 'ct-1', input: { chainFamilies: ['Infrastructure', 'Application'] } }, admin)
-    expect(call(0).params).toEqual({ id: 'ct-1', tenantId: 'tenant-1', updates: { chain_families: '["Application","Infrastructure"]' } })
+    expect(call(1).params).toEqual({ id: 'ct-1', tenantId: 'tenant-1', updates: { chain_families: '["Application","Infrastructure"]' } })
   })
 
   it('updateCIType: una sola famiglia resta una sola famiglia (catena non ambigua)', async () => {
     await mutations.updateCIType(null, { id: 'ct-1', input: { chainFamilies: ['Infrastructure'] } }, admin)
-    expect((call(0).params['updates'] as Record<string, unknown>)['chain_families']).toBe('["Infrastructure"]')
+    expect((call(1).params['updates'] as Record<string, unknown>)['chain_families']).toBe('["Infrastructure"]')
   })
 
   it('updateCIType: nessuna famiglia = lista vuota scritta (non "campo non mandato")', async () => {
     await mutations.updateCIType(null, { id: 'ct-1', input: { chainFamilies: [] } }, admin)
-    expect((call(0).params['updates'] as Record<string, unknown>)['chain_families']).toBe('[]')
+    expect((call(1).params['updates'] as Record<string, unknown>)['chain_families']).toBe('[]')
   })
 
   it('updateCIType: famiglia inventata → BAD_USER_INPUT che la nomina, nessuna scrittura', async () => {
@@ -239,12 +285,12 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
 
   it('createCIType: chainFamilies scritte alla creazione; senza famiglie il parametro è null (proprietà assente)', async () => {
     await mutations.createCIType(null, { input: { name: 'firewall', label: 'Firewall', chainFamilies: ['Infrastructure'] } }, admin)
-    expect(call(0).cypher).toContain('t.chain_families   = $chainFamilies')
-    expect(call(0).params['chainFamilies']).toBe('["Infrastructure"]')
+    expect(call(1).cypher).toContain('t.chain_families   = $chainFamilies')
+    expect(call(1).params['chainFamilies']).toBe('["Infrastructure"]')
 
     reset()
     await mutations.createCIType(null, { input: { name: 'firewall', label: 'Firewall' } }, admin)
-    expect(call(0).params['chainFamilies']).toBeNull()
+    expect(call(1).params['chainFamilies']).toBeNull()
   })
 
   // `removeCIField` è fuori da questo elenco dall'ondata 1: prima della
@@ -252,7 +298,9 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
   // quella della cancellazione (ha i suoi test qui sotto).
   it.each(['addCIRelation', 'removeCIRelation'] as const)('%s: WHERE t.scope = \'tenant\' AND t.tenant_id = $tenantId', async (name) => {
     await mutations[name](null, { typeId: 'ct-1', relationId: 'r-1', input: { name: 'n', label: 'l', relationshipType: 'DEPENDS_ON', targetType: 'server', cardinality: 'many', direction: 'out' } }, admin)
-    const { cypher, params } = call(0)
+    // call(0) è la lettura dell'ambito del tipo (A-6).
+    expect(call(0).cypher).toContain('RETURN t.scope AS scope')
+    const { cypher, params } = call(1)
     expect(cypher).toContain("WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId")
     expect(cypher).not.toContain("'system'")
     expect(params['tenantId']).toBe('tenant-1')
@@ -338,8 +386,10 @@ describe('addCIField', () => {
 
   it('il campo è creato sul tipo del tenant, con scope tenant e is_system false', async () => {
     await mutations.addCIField(null, { typeId: 'ct-1', input: { name: 'stato', label: 'Stato', fieldType: 'enum', enumTypeId: 'e-1' } }, admin)
-    // call(0) = ambito del tipo, call(1) = il vocabolario da agganciare
-    const { cypher, params } = call(2)
+    // call(0) = ambito del tipo, call(1) = i nomi di campo già presi (porta
+    // A-12), call(2) = il vocabolario da agganciare
+    expect(call(1).cypher).toContain('collect(DISTINCT f.name) + collect(DISTINCT bf.name)')
+    const { cypher, params } = call(3)
     expect(cypher).toContain('CREATE (f:CIFieldDefinition {')
     expect(cypher).toContain("WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId")
     expect(cypher).toContain('tenant_id:         $tenantId')
@@ -352,6 +402,7 @@ describe('addCIField', () => {
   it('il vocabolario di un ALTRO cliente non si aggancia: errore che lo dice, nessuna scrittura', async () => {
     reset([
       { records: [row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })] },
+      { records: [row({ names: ['os'] })] },
       { records: [row({ id: 'e-9', name: 'severity', tenantId: 'tenant-2' })] },
     ])
     const err = await mutations.addCIField(null, { typeId: 'ct-1', input: { name: 'stato', label: 'Stato', fieldType: 'enum', enumTypeId: 'e-9' } }, admin)
@@ -363,6 +414,7 @@ describe('addCIField', () => {
   it('vocabolario inesistente → errore, non un campo enum senza valori', async () => {
     reset([
       { records: [row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })] },
+      { records: [row({ names: ['os'] })] },
       { records: [] },
     ])
     await expect(mutations.addCIField(null, { typeId: 'ct-1', input: { name: 'stato', label: 'Stato', fieldType: 'enum', enumTypeId: 'e-fantasma' } }, admin))
@@ -372,7 +424,193 @@ describe('addCIField', () => {
 
   it('senza enum non si legge nessun vocabolario', async () => {
     reset()
-    await mutations.addCIField(null, { typeId: 'ct-1', input: { name: 'note_interne', label: 'Note', fieldType: 'string' } }, admin)
+    await mutations.addCIField(null, { typeId: 'ct-1', input: { name: 'noteInterne', label: 'Note', fieldType: 'string' } }, admin)
     expect(txRun.mock.calls.some((c) => String(c[0]).includes('RETURN e.id AS id, e.name AS name, e.tenant_id AS tenantId'))).toBe(false)
+  })
+})
+
+// ── A-12: la PORTA sui nomi ───────────────────────────────────────────────────
+// La validazione dei nomi deve esistere PRIMA che lo schema per tenant faccia
+// arrivare i tipi personalizzati all'API. Il caso da cui parte è il campo
+// chiamato `tenantId`: `toSnakeCase` lo porta a `tenant_id`, non è fra i campi
+// esclusi dagli input, e la scrittura del CI copia i campi del metamodello
+// DOPO aver impostato il cliente proprietario — il CI nascerebbe nel cliente
+// scelto da chi chiama l'API.
+//
+// E per i NOMI DI TIPO questa è l'unica difesa che esiste: due tipi GraphQL
+// omonimi non fanno lanciare `makeExecutableSchema`, vengono fusi in silenzio
+// (pinnato in `lib/__tests__/metamodelNames.test.ts`).
+
+describe('createCIType — la porta sui nomi di tipo (A-12)', () => {
+  beforeEach(() => reset())
+
+  const create = (name: string) =>
+    mutations.createCIType(null, { input: { name, label: 'Qualcosa' } }, admin)
+
+  it.each(['server', 'application', 'incident'])('rifiuta «%s»: nome già preso, nessuna scrittura', async (name) => {
+    const err = await create(name).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(err!.message).toContain(`«${name}»`)
+    expect(err!.message).toContain('già preso')
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+    expect(invalidateSchema).not.toHaveBeenCalled()
+  })
+
+  it.each(['2fa_token', 'my-type', 'Load Balancer'])('rifiuta «%s»: non è un identificatore', async (name) => {
+    const err = await create(name).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(err!.message).toContain('^[a-z][a-z0-9_]*$')
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('il rifiuto dice cosa scrivere invece', async () => {
+    const err = await create('2fa_token').then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.message).toContain('«fa2_token»')
+  })
+
+  it('rifiuta un nome che il cliente ha già usato, dicendo che è suo', async () => {
+    reset([{ records: [...EXISTING_TYPE_ROWS, row({ name: 'firewall', scope: 'tenant' })] }])
+    const err = await create('firewall').then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.message).toContain('un tuo tipo CI')
+  })
+
+  it('un nome libero passa e la label resta quella scelta', async () => {
+    await expect(create('load_balancer')).resolves.toMatchObject({ name: 'firewall' })
+    expect(call(1).params).toMatchObject({ name: 'load_balancer', neo4jLabel: 'LoadBalancer' })
+    expect(invalidateSchema).toHaveBeenCalledWith('tenant-1')
+  })
+
+  it('la porta legge anche i tipi ITIL: stanno nello stesso schema', async () => {
+    await create('load_balancer')
+    expect(call(0).cypher).toContain("t.scope IN ['base', 'itil']")
+    expect(call(0).params).toEqual({ tenantId: 'tenant-1' })
+  })
+})
+
+describe('addCIField — la porta sui nomi di campo (A-12)', () => {
+  beforeEach(() => reset())
+
+  const add = (name: string) =>
+    mutations.addCIField(null, { typeId: 'ct-1', input: { name, label: 'Etichetta', fieldType: 'string' } }, admin)
+
+  it('tenantId: rifiutato, e il messaggio dice che il CI nascerebbe in un altro cliente', async () => {
+    const err = await add('tenantId').then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(err!.message).toContain('tenant_id')
+    expect(err!.message).toContain('il CI nascerebbe nel cliente scelto dal chiamante')
+    expect(err!.message).toContain('Firewall')          // il tipo, per nome visualizzato
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+    expect(invalidateSchema).not.toHaveBeenCalled()
+  })
+
+  it.each(['id', 'nameKey', 'healthSource', 'discoverySourceId'])('rifiuta «%s»: proprietà del prodotto', async (name) => {
+    const err = await add(name).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it.each(['Centro di costo', 'cost_center', '2fa'])('rifiuta «%s»: non è camelCase', async (name) => {
+    const err = await add(name).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.message).toContain('^[a-z][A-Za-z0-9]*$')
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('rifiuta un campo già presente sul tipo (o eredidato da __base__)', async () => {
+    // `os` è fra i campi che la lettura restituisce per questo tipo.
+    const err = await add('os').then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.message).toContain('esiste già')
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it.each(['name', 'status', 'description'])('rifiuta «%s»: è un campo base di ogni CI', async (name) => {
+    const err = await add(name).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.message).toContain('esiste già su ogni CI')
+  })
+
+  it('un nome camelCase libero passa', async () => {
+    await add('costCenter')
+    expect(call(2).params).toMatchObject({ name: 'costCenter' })
+    expect(invalidateSchema).toHaveBeenCalledWith('tenant-1')
+  })
+})
+
+// ── A-6: «Salvato» quando non è stato salvato niente ─────────────────────────
+// `updateCIType`, `addCIRelation` e `removeCIRelation` hanno tutte
+// `WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId`: sui tipi spediti col
+// prodotto eseguivano zero righe senza lanciare, e rispondevano con
+// `fetchCITypeById`, che su quei tipi TROVA il nodo. Il disegnatore faceva il
+// toast di successo su `onCompleted`, che scatta anche a zero righe.
+
+describe('le mutation sui tipi non dicono più «fatto» a zero righe (A-6)', () => {
+  const shippedType = (name = 'server') => ({ records: [row({ scope: 'base', name, label: name })] })
+
+  it.each([
+    ['updateCIType',     { id: 'ct-1', input: { label: 'X' } },                          'sola lettura'],
+    ['addCIRelation',    { typeId: 'ct-1', input: { name: 'n', label: 'l', relationshipType: 'DEPENDS_ON', targetType: 'server', cardinality: 'many', direction: 'outgoing' } }, 'in sola lettura'],
+    ['removeCIRelation', { typeId: 'ct-1', relationId: 'r-1' },                          'in sola lettura'],
+  ] as const)('%s su un tipo spedito → errore prima di scrivere', async (name, args) => {
+    reset([shippedType()])
+    const fn = mutations[name] as (p: unknown, a: unknown, c: GraphQLContext) => Promise<unknown>
+    const err = await fn(null, args, admin).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(err!.message).toContain('spedito col prodotto')
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+    expect(invalidateSchema).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['updateCIType',     { id: 'ct-1', input: { label: 'X' } }],
+    ['addCIRelation',    { typeId: 'ct-1', input: { name: 'n', label: 'l', relationshipType: 'DEPENDS_ON', targetType: 'server', cardinality: 'many', direction: 'outgoing' } }],
+    ['removeCIRelation', { typeId: 'ct-1', relationId: 'r-1' }],
+    ['deleteCIType',     { id: 'ct-1' }],
+  ] as const)('%s con contatori a zero → errore, non «salvato»', async (name, args) => {
+    reset([
+      { records: [row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })] },
+      res0(),
+    ])
+    const fn = mutations[name] as (p: unknown, a: unknown, c: GraphQLContext) => Promise<unknown>
+    const err = await fn(null, args, admin).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err, `${name} ha risposto «fatto» con zero scritture`).not.toBeNull()
+    expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(err!.message).toContain('non è stato scritto niente')
+    expect(invalidateSchema).not.toHaveBeenCalled()
+  })
+
+  it('updateCIType senza nessun campo da modificare lo dice, invece di accusare il tipo', async () => {
+    reset()
+    const err = await mutations.updateCIType(null, { id: 'ct-1', input: {} }, admin)
+      .then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.message).toContain('nessun campo da modificare')
+    expect(withSession).not.toHaveBeenCalled()
+  })
+
+  it('se il driver non dà i contatori si lancia: «avrà scritto» sarebbe il fallback di prima', async () => {
+    reset([
+      { records: [row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })] },
+      { records: [] },   // nessun summary
+    ])
+    await expect(mutations.updateCIType(null, { id: 'ct-1', input: { label: 'X' } }, admin))
+      .rejects.toThrow(/non ha restituito i contatori/)
+  })
+})
+
+// ── A-6: DI CHI è il tipo ────────────────────────────────────────────────────
+
+describe('scope e tenantId sono esposti (A-6)', () => {
+  beforeEach(() => reset())
+
+  it('ciTypes li restituisce: senza questi il disegnatore non sa quali azioni hanno effetto', async () => {
+    const out = await buildCITypesResolver()(null, null, admin) as Array<Record<string, unknown>>
+    expect(out[0]).toMatchObject({ scope: 'tenant', tenantId: 'tenant-1' })
+  })
+
+  it('fetchCITypeById li restituisce', async () => {
+    await expect(fetchCITypeById('ct-1', 'tenant-1')).resolves.toMatchObject({ scope: 'tenant', tenantId: 'tenant-1' })
+  })
+
+  it('un tipo spedito col prodotto si riconosce da scope/tenantId', async () => {
+    const shipped = { properties: { id: 'ct-b', name: 'server', label: 'Server', scope: 'base', tenant_id: 'system', active: true } }
+    reset([{ records: [{ get: (k: string) => ({ t: shipped, fields: [], relations: [], systemRels: [] })[k] }] }])
+    await expect(fetchCITypeById('ct-b', 'tenant-1')).resolves.toMatchObject({ scope: 'base', tenantId: 'system' })
   })
 })

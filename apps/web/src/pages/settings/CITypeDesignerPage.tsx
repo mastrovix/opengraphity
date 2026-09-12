@@ -33,6 +33,8 @@ import { CreateTypeDialog } from './citype/CreateTypeDialog'
 import { FieldRulesPanel } from './shared/FieldRulesPanel'
 import { useConfirm } from '@/hooks/useConfirm'
 import { colors, palette } from '@/lib/tokens'
+import { isShippedType } from '@/lib/ciTypeNames'
+import { Package } from 'lucide-react'
 
 // ── Style helpers ──────────────────────────────────────────────────────────────
 
@@ -75,6 +77,20 @@ export function CITypeDesignerPage() {
   const [settingsSaving, setSettingsSaving] = useState(false)
 
   const selected = ciTypes.find((t) => t.id === selectedId) ?? null
+
+  // A-6 — DI CHI è il tipo. Un tipo spedito col prodotto (`scope` diverso da
+  // `tenant`) è UN nodo per tutti i clienti: `updateCIType`, `addCIRelation`,
+  // `removeCIRelation`, `removeCIField` e `deleteCIType` hanno tutte
+  // `WHERE t.scope = 'tenant'`, quindi su questi tipi eseguivano ZERO righe
+  // senza lanciare — e il toast su `onCompleted` diceva «Salvato». Ora l'API
+  // rifiuta a voce alta, e qui le azioni sono disattivate con il perché:
+  // meglio non farle nemmeno provare.
+  const shipped = selected ? isShippedType(selected) : false
+  const shippedNote = selected
+    ? `«${selected.label}» è spedito col prodotto: è un solo tipo per tutti i clienti, quindi etichetta, campi e relazioni ` +
+      `sono in sola lettura. Per un tipo con le tue etichette e i tuoi campi, creane uno tuo.`
+    : ''
+  const readOnlyIf = (on: boolean) => (on ? { opacity: 0.5, cursor: 'not-allowed' as const } : {})
 
   const selectType = (t: CITypeDef) => {
     setSelectedBase(false)
@@ -192,12 +208,21 @@ export function CITypeDesignerPage() {
                     <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{selected.name}</div>
                   </div>
                   <button type="button"
+                    disabled={shipped}
+                    title={shipped ? shippedNote : undefined}
                     onClick={() => updateType({ variables: { id: selected.id, input: { active: !selected.active } } })}
-                    style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 100, fontSize: 'var(--font-size-body)', cursor: 'pointer', background: selected.active ? palette.success.tint : 'var(--color-border-light)', color: selected.active ? 'var(--color-success)' : 'var(--color-slate-light)', fontWeight: 500 }}>
+                    style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 100, fontSize: 'var(--font-size-body)', cursor: shipped ? 'not-allowed' : 'pointer', background: selected.active ? palette.success.tint : 'var(--color-border-light)', color: selected.active ? 'var(--color-success)' : 'var(--color-slate-light)', fontWeight: 500, ...readOnlyIf(shipped) }}>
                     {selected.active ? '● active' : '○ inactive'}
                   </button>
+                  {shipped && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-table)', background: 'var(--color-slate-bg)', color: 'var(--color-slate)', padding: '2px 8px', borderRadius: 20, fontWeight: 500 }}>
+                      <Package size={10} aria-hidden="true" /> {t('ciTypeDesigner.shippedBadge')}
+                    </span>
+                  )}
                 </div>
-                <button type="button" style={btnDanger}
+                <button type="button" style={{ ...btnDanger, ...readOnlyIf(shipped) }}
+                  disabled={shipped}
+                  title={shipped ? shippedNote : undefined}
                   onClick={async () => {
                     if (!(await confirm({ title: t('ciTypeDesigner.deleteTypeTitle', { label: selected.label }), danger: true }))) return
                     void deleteType({ variables: { id: selected.id } })
@@ -205,6 +230,13 @@ export function CITypeDesignerPage() {
                   <Trash2 size={12} /> Elimina tipo
                 </button>
               </div>
+
+              {/* A-6: il perché, non solo i bottoni grigi. */}
+              {shipped && (
+                <p id="citype-shipped-note" style={{ margin: 0, padding: '10px 20px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: 'var(--color-slate-bg)', borderBottom: '1px solid var(--border)' }}>
+                  {shippedNote}
+                </p>
+              )}
 
               {/* Tabs */}
               <div style={{ padding: '0 20px' }}>
@@ -291,7 +323,10 @@ export function CITypeDesignerPage() {
                         placeholder={"// Esempio: validazione cross-field\nif (input.env === 'production' && !input.owner) throw 'Ambiente production richiede un owner'"} />
                     </FormField>
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <button type="button" style={{ ...btnPrimary, opacity: settingsSaving ? 0.6 : 1 }} disabled={settingsSaving}
+                      <button type="button" style={{ ...btnPrimary, opacity: settingsSaving || shipped ? 0.6 : 1 }}
+                        disabled={settingsSaving || shipped}
+                        title={shipped ? shippedNote : undefined}
+                        aria-describedby={shipped ? 'citype-shipped-note' : undefined}
                         onClick={async () => {
                           setSettingsSaving(true)
                           try {
@@ -340,7 +375,11 @@ export function CITypeDesignerPage() {
                           <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', letterSpacing: '0.06em' }}>
                             CAMPI SPECIFICI ({specificFields.length})
                           </div>
-                          <button type="button" style={btnPrimary} onClick={() => { setAddingField(true); setEditingFieldId(null) }} disabled={addingField}>
+                          <button type="button" style={{ ...btnPrimary, ...readOnlyIf(shipped) }}
+                            onClick={() => { setAddingField(true); setEditingFieldId(null) }}
+                            disabled={addingField || shipped}
+                            title={shipped ? shippedNote : undefined}
+                            aria-describedby={shipped ? 'citype-shipped-note' : undefined}>
                             <Plus size={13} /> Aggiungi campo
                           </button>
                         </div>
@@ -353,6 +392,10 @@ export function CITypeDesignerPage() {
                             onSave={async (form) => { await handleSaveField(form) }}
                             onCancel={() => setAddingField(false)}
                             enumTypes={enumTypes}
+                            // A-12: i nomi già presi su questo tipo (compresi
+                            // quelli ereditati da __base__).
+                            existingFieldNames={[...selected.fields.map((f) => f.name), ...(baseType?.fields ?? []).map((f) => f.name)]}
+                            typeLabel={selected.label}
                           />
                         )}
 
@@ -370,14 +413,14 @@ export function CITypeDesignerPage() {
                           ) : (
                             <DesignerFieldRow
                               key={f.id}
-                              field={{ ...f, enumValues: (f as unknown as { enumValues?: string[] }).enumValues ?? [] }}
+                              field={{ ...f, enumValues: (f as unknown as { enumValues?: string[] }).enumValues ?? [], isSystem: f.isSystem || shipped }}
                               onEdit={() => { setEditingFieldId(f.id); setAddingField(false) }}
                               onDelete={async () => {
                                 if (!(await confirm({ title: t('ciTypeDesigner.deleteFieldTitle', { name: f.name }), danger: true }))) return
                                 void removeField({ variables: { typeId: selected.id, fieldId: f.id } })
                               }}
-                              editLabel="Modifica"
-                              systemFieldLabel="Campo di sistema"
+                              editLabel={shipped ? '' : 'Modifica'}
+                              systemFieldLabel={shipped ? t('ciTypeDesigner.shippedFieldLabel') : 'Campo di sistema'}
                             />
                           )
                         ))}
@@ -396,12 +439,17 @@ export function CITypeDesignerPage() {
                 {activeTab === 'relations' && (
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-                      <button type="button" style={btnPrimary} onClick={() => setShowRelModal(true)}>
+                      <button type="button" style={{ ...btnPrimary, ...readOnlyIf(shipped) }}
+                        onClick={() => setShowRelModal(true)}
+                        disabled={shipped}
+                        title={shipped ? shippedNote : undefined}
+                        aria-describedby={shipped ? 'citype-shipped-note' : undefined}>
                         <Plus size={13} /> Aggiungi relazione
                       </button>
                     </div>
                     <CIRelationTable
                       relations={selected.relations}
+                      readOnly={shipped}
                       onRemove={(r: CIRelationDef) => void removeRelation({ variables: { typeId: selected.id, relationId: r.id } })}
                     />
                   </div>
@@ -445,6 +493,8 @@ export function CITypeDesignerPage() {
       <CreateTypeDialog
         open={showCreate}
         onClose={() => setShowCreate(false)}
+        // A-12: i nomi già presi, dal metamodello vivo.
+        existingTypes={ciTypes}
         onSave={async (form) => {
           const res = await createType({ variables: { input: form } })
           // Con onError la promise si risolve anche in caso di fallimento:

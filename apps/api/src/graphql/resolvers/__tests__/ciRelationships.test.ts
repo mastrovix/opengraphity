@@ -7,7 +7,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
-vi.mock('../../../lib/cache.js', () => ({ cache: { get: vi.fn(() => null), set: vi.fn(), invalidate: vi.fn() } }))
+vi.mock('../../../lib/cache.js', () => ({
+  cache: { get: vi.fn(() => null), set: vi.fn(), invalidate: vi.fn() },
+  // Il resolver costruisce le chiavi con la sorgente unica di lib/cache.ts
+  // (`METAMODEL_CACHE_PREFIXES`): il finto deve esporla come il vero modulo.
+  metamodelCacheKey: (prefix: string, tenantId: string) => `${prefix}:${tenantId}`,
+}))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/chainCalculator.js', () => ({ calculateChain: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) } }))

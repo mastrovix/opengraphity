@@ -18,6 +18,10 @@ export function ITILTypePreview({ selectedType, setActiveTab }: ITILTypePreviewP
     icon:             selectedType.icon  || '',
     color:            selectedType.color || 'var(--color-trigger-manual)',
     active:           selectedType.active,
+    // I tipi ITIL sono spediti col prodotto (A-6): qui serve solo l'anteprima
+    // del form, ma il tipo lo dichiara comunque invece di mentire.
+    scope:            'itil',
+    tenantId:         'system',
     validationScript: selectedType.validationScript ?? null,
     chainFamilies:    ['Application', 'Infrastructure'],
     relations:        [],

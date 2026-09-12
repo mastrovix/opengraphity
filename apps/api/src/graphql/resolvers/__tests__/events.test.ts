@@ -73,6 +73,8 @@ const { DEFAULT_EVENT_POLICY } = await import('../../../lib/eventPolicy.js')
 const { MATCH_REASONS } = await import('../../../lib/eventVocabularies.js')
 
 const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'adm-1', userEmail: 'adm@test.io', role: 'admin' }
+/** Il tenant che i mapper ricevono: `ciTypeFromLabels` è per tenant (A-17). */
+const TENANT = 'tenant-1'
 const operator: GraphQLContext = { ...admin, userId: 'op-1', role: 'operator' }
 const session = { close: vi.fn().mockResolvedValue(undefined) }
 
@@ -459,17 +461,17 @@ describe('campi di correlazione', () => {
   it('mapEvent: correlation e correlationAt esposti; evento senza correlation → errore che indica la migrazione', async () => {
     const { mapEvent } = await import('../events.js')
     const row = eventRow({ correlation: 'attached', correlation_at: 'T3', suppressed_by_change_id: 'chg-1' })
-    expect(mapEvent(row.props, row)).toMatchObject({ correlation: 'attached', correlationAt: 'T3', suppressedByChangeId: 'chg-1' })
+    expect(mapEvent(TENANT, row.props, row)).toMatchObject({ correlation: 'attached', correlationAt: 'T3', suppressedByChangeId: 'chg-1' })
     const legacy = eventRow(); delete (legacy.props as Record<string, unknown>)['correlation']
-    expect(() => mapEvent(legacy.props, legacy)).toThrow(/20260909_1030_event_management_correlation_rules/)
+    expect(() => mapEvent(TENANT, legacy.props, legacy)).toThrow(/20260909_1030_event_management_correlation_rules/)
   })
 
   it('mapEvent: M9 maxSeverity e M2 resourceExternalId esposti; assenti (eventi pre-ondata 4) → null, mai un valore inventato', async () => {
     const { mapEvent } = await import('../events.js')
     const row = eventRow({ severity: 'warning', max_severity: 'critical', resource_external_id: 'HOST-1A2B' })
-    expect(mapEvent(row.props, row)).toMatchObject({ severity: 'warning', maxSeverity: 'critical', resourceExternalId: 'HOST-1A2B' })
+    expect(mapEvent(TENANT, row.props, row)).toMatchObject({ severity: 'warning', maxSeverity: 'critical', resourceExternalId: 'HOST-1A2B' })
     const bare = eventRow()
-    expect(mapEvent(bare.props, bare)).toMatchObject({ maxSeverity: null, resourceExternalId: null })
+    expect(mapEvent(TENANT, bare.props, bare)).toMatchObject({ maxSeverity: null, resourceExternalId: null })
   })
 
   it('Event.suppressedBy → null senza change; con change carica la change del tenant', async () => {
@@ -674,11 +676,11 @@ describe('events', () => {
 
   it('P-1 — event(id) e le mutation restituiscono la riga con le giunzioni: mapEvent espone incident/source/acknowledgedBy (anche null) solo se la riga li porta', async () => {
     const { mapEvent } = await import('../events.js')
-    const full = mapEvent(joinedRow().props, joinedRow())
+    const full = mapEvent(TENANT, joinedRow().props, joinedRow())
     expect(full).toMatchObject({ incident: { id: 'inc-1', number: 'INC00000001', title: 'T' }, source: { id: 'hook-1', name: 'Zabbix', connectorKind: 'zabbix', enabled: true }, acknowledgedBy: { id: 'u-1', name: 'Ada', email: 'a@x.io' } })
-    const nulls = mapEvent(eventRow().props, { ...eventRow(), incident: null, source: null, acknowledgedBy: null })
+    const nulls = mapEvent(TENANT, eventRow().props, { ...eventRow(), incident: null, source: null, acknowledgedBy: null })
     expect(nulls).toMatchObject({ incident: null, source: null, acknowledgedBy: null })
-    const bare = mapEvent(eventRow().props, eventRow())
+    const bare = mapEvent(TENANT, eventRow().props, eventRow())
     expect('incident' in bare).toBe(false); expect('source' in bare).toBe(false); expect('acknowledgedBy' in bare).toBe(false)
 
     onCypher([[/MATCH \(e:Event \{id: \$id, tenant_id: \$tenantId\}\)\s+OPTIONAL MATCH \(e\)-\[:RAISED_ON\]/, joinedRow()]])
@@ -745,8 +747,8 @@ describe('events', () => {
   it('C-2 — mapEvent: labels è String! e un nodo senza labels è un errore esplicito (non una stringa inventata)', async () => {
     const { mapEvent } = await import('../events.js')
     const legacy = eventRow(); delete (legacy.props as Record<string, unknown>)['labels']
-    expect(() => mapEvent(legacy.props, legacy)).toThrow(/Event ev-1 has no labels field/)
-    expect(mapEvent(eventRow({ labels: '{"env":"prod"}' }).props, eventRow()).labels).toBe('{"env":"prod"}')
+    expect(() => mapEvent(TENANT, legacy.props, legacy)).toThrow(/Event ev-1 has no labels field/)
+    expect(mapEvent(TENANT, eventRow({ labels: '{"env":"prod"}' }).props, eventRow()).labels).toBe('{"env":"prod"}')
   })
 })
 

@@ -96,9 +96,15 @@ export function CIRelationEditor({ open, onClose, onSave, allTypes }: RelationMo
 interface RelationTableProps {
   relations: CIRelationDef[]
   onRemove: (r: CIRelationDef) => void
+  /**
+   * Tipo spedito col prodotto (A-6): `removeCIRelation` ha
+   * `WHERE t.scope = 'tenant'`, quindi qui non cancellava niente e
+   * l'interfaccia diceva «Relazione rimossa». Il bottone non c'è.
+   */
+  readOnly?: boolean
 }
 
-export function CIRelationTable({ relations, onRemove }: RelationTableProps) {
+export function CIRelationTable({ relations, onRemove, readOnly = false }: RelationTableProps) {
   const { t } = useTranslation()
   const confirm = useConfirm()
   const handleRemove = async (r: CIRelationDef) => {
@@ -126,11 +132,15 @@ export function CIRelationTable({ relations, onRemove }: RelationTableProps) {
             <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.cardinality}</td>
             <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.direction}</td>
             <td style={{ padding: '8px' }}>
-              <button type="button" style={{ ...btnDanger, padding: '3px 10px' }}
-                aria-label={`Elimina relazione ${r.name}`}
-                onClick={() => void handleRemove(r)}>
-                <X size={12} aria-hidden="true" />
-              </button>
+              {readOnly
+                ? <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('ciTypeDesigner.shippedRelationLabel')}</span>
+                : (
+                  <button type="button" style={{ ...btnDanger, padding: '3px 10px' }}
+                    aria-label={`Elimina relazione ${r.name}`}
+                    onClick={() => void handleRemove(r)}>
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                )}
             </td>
           </tr>
         ))}

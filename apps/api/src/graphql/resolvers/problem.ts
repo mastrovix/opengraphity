@@ -125,7 +125,7 @@ async function problems(
         base.affectedCIs  = r.cis
           .filter((c) => c.props && c.props['id'])
           .map((c) => {
-            const t = ciTypeFromLabels([c.label])
+            const t = ciTypeFromLabels(ctx.tenantId, [c.label])
             c.props['type'] = t
             const ci = mapCI(c.props) as Record<string, unknown>
             ci['ciType']     = t
@@ -472,7 +472,7 @@ async function problemAffectedCIs(
       RETURN properties(ci) as props, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
     `, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => {
-      const t = ciTypeFromLabels([r.label])
+      const t = ciTypeFromLabels(ctx.tenantId, [r.label])
       r.props['type'] = t
       const ci = mapCI(r.props) as Record<string, unknown>
       ci['ciType']     = t

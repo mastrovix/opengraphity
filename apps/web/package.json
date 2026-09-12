@@ -38,6 +38,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@microsoft/fetch-event-source": "^2.0.1",
+    "@opengraphity/schema-generator": "workspace:*",
     "@opengraphity/types": "workspace:*",
     "@opengraphity/web-core": "workspace:*",
     "@tiptap/extension-code-block-lowlight": "^3.31.3",

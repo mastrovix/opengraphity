@@ -44,6 +44,10 @@ export interface CITypeDef {
   icon: string
   color: string
   active: boolean
+  /** base | itil | tenant. Diverso da `tenant` = spedito col prodotto, in sola lettura (A-6). */
+  scope: string
+  /** Il cliente proprietario: `system` per i tipi spediti col prodotto. */
+  tenantId: string
   validationScript: string | null
   chainFamilies: string[]
   fields: CIFieldDef[]

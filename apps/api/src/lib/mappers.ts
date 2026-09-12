@@ -1,9 +1,16 @@
 export type Props = Record<string, unknown>
 
-/** camelCase → snake_case (`ipAddress` → `ip_address`), the Neo4j property convention. */
-export function toSnakeCase(s: string): string {
-  return s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
-}
+/**
+ * camelCase → snake_case (`ipAddress` → `ip_address`), the Neo4j property
+ * convention.
+ *
+ * Definizione unica in `@opengraphity/schema-generator` (`stringUtils.ts`):
+ * la validazione dei nomi del metamodello (A-12) deve sapere su quale
+ * proprietà finirebbe un campo prima di accettarlo, e quel pacchetto non può
+ * importare `apps/api`. Due copie della stessa trasformazione vorrebbero dire
+ * un campo accettato dalla porta e scritto altrove.
+ */
+export { toSnakeCase } from '@opengraphity/schema-generator'
 
 // Neo4j DateTime/Date objects come back as structured objects instead of strings.
 // This helper normalises them to ISO 8601 strings.

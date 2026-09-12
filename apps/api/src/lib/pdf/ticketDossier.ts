@@ -151,7 +151,7 @@ export async function loadTicketDossier(
     props:    base.props,
     assignee: userRef(base.uProps),
     team:     base.tProps ? { name: (base.tProps['name'] ?? '') as string } : null,
-    affectedCIs: ciRows.map(mapAffectedCI),
+    affectedCIs: ciRows.map((r) => mapAffectedCI(tenantId, r)),
     workflowHistory: historyRows.map((r) => mapWorkflowHistory(r.eProps)),
     comments: commentRows.map((r) => ({
       author:    r.uProps ? ((r.uProps['name'] ?? r.uProps['email'] ?? null) as string | null) : null,
@@ -168,10 +168,10 @@ export async function loadTicketDossier(
   }
 }
 
-export function mapAffectedCI(r: { props: Props; nodeLabels: string[] }): AffectedCI {
+export function mapAffectedCI(tenantId: string, r: { props: Props; nodeLabels: string[] }): AffectedCI {
   return {
     name:        (r.props['name'] ?? r.props['id'] ?? '') as string,
-    type:        ciTypeFromLabels(r.nodeLabels ?? []),
+    type:        ciTypeFromLabels(tenantId, r.nodeLabels ?? []),
     environment: (r.props['environment'] ?? null) as string | null,
     status:      (r.props['status'] ?? null) as string | null,
   }

@@ -41,6 +41,10 @@ export function cmdbSDL(): string {
     icon: String
     color: String
     active: Boolean!
+    """base | itil | tenant. I tipi \`base\` e \`itil\` sono spediti col prodotto: UN nodo per tutti i clienti, in sola lettura. Senza questo campo il disegnatore offriva azioni che non scrivevano niente (A-6)."""
+    scope: String!
+    """Il cliente proprietario del tipo: \`system\` per quelli spediti col prodotto."""
+    tenantId: String!
     validationScript: String
     chainFamilies: [String!]!
     fields: [CIFieldDef!]!

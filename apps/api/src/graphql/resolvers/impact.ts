@@ -31,7 +31,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
   const blastRadius = blastResult.records.map((r) => ({
     id:          r.get('id') as string,
     name:        r.get('name') as string,
-    type:        ciTypeFromLabels([r.get('label') as string]),
+    type:        ciTypeFromLabels(tenantId, [r.get('label') as string]),
     environment: (r.get('environment') ?? 'unknown') as string,
     distance:    toNumber(r.get('distance')),
   }))

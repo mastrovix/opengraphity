@@ -1193,7 +1193,10 @@
     "chainFamiliesTooltip": "A quali catene di servizio appartiene questo tipo CI",
     "deleteTypeTitle": "Eliminare il tipo \"{{label}}\"?",
     "deleteFieldTitle": "Eliminare il campo \"{{name}}\"?",
-    "deleteRelationTitle": "Eliminare la relazione \"{{name}}\"?"
+    "deleteRelationTitle": "Eliminare la relazione \"{{name}}\"?",
+    "shippedBadge": "spedito col prodotto",
+    "shippedFieldLabel": "Campo spedito col prodotto",
+    "shippedRelationLabel": "sola lettura"
   },
   "fieldRules": {
     "show": "Mostra",

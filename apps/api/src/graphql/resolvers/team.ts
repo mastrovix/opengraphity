@@ -37,7 +37,7 @@ async function teams(_: unknown, args: { filters?: string; sortField?: string; s
       ORDER BY ${orderBy} ${orderDir}
     `
     const rows = await runQuery<{ props: Props; members: Props[]; ownedCIs: { props: Props; label: string }[]; supportedCIs: { props: Props; label: string }[]; managers: Props[] }>(session, cypher, params)
-    const mapCIRow = (c: { props: Props; label: string }) => { c.props['type'] = ciTypeFromLabels([c.label]); return mapCI(c.props) }
+    const mapCIRow = (c: { props: Props; label: string }) => { c.props['type'] = ciTypeFromLabels(ctx.tenantId, [c.label]); return mapCI(c.props) }
     return rows.map((r) => ({
       ...mapTeam(r.props),
       _members:       r.members,
@@ -129,7 +129,7 @@ async function setCITeamRelation(
     })
     const row = rows[0]
     if (!row) throw new NotFoundError('ConfigurationItem or Team')
-    row.props['type'] = ciTypeFromLabels([row.label])
+    row.props['type'] = ciTypeFromLabels(ctx.tenantId, [row.label])
     return mapCI(row.props)
   }, true)
 }
@@ -178,7 +178,7 @@ async function teamOwnedCIs(parent: { id: string; _ownedCIs?: unknown[] }, _: un
     `
     const rows = await runQuery<{ props: Props; label: string }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => {
-      r.props['type'] = ciTypeFromLabels([r.label])
+      r.props['type'] = ciTypeFromLabels(ctx.tenantId, [r.label])
       return mapCI(r.props)
     })
   })
@@ -195,7 +195,7 @@ async function teamSupportedCIs(parent: { id: string; _supportedCIs?: unknown[] 
     `
     const rows = await runQuery<{ props: Props; label: string }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => {
-      r.props['type'] = ciTypeFromLabels([r.label])
+      r.props['type'] = ciTypeFromLabels(ctx.tenantId, [r.label])
       return mapCI(r.props)
     })
   })

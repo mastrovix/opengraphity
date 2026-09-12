@@ -113,7 +113,7 @@ async function globalSearch(
       } else if (r.labels.includes('ServiceRequest')) {
         // Not part of the grouped results.
       } else if (ciTextHits.length < limit) {
-        r.props['type'] = ciTypeFromLabels(r.labels)
+        r.props['type'] = ciTypeFromLabels(ctx.tenantId, r.labels)
         ciTextHits.push(mapCI(r.props))
       }
     }
@@ -130,7 +130,7 @@ async function globalSearch(
     `, { q, tenantId: ctx.tenantId, limit })
     const seen = new Set<string>()
     for (const r of idRows) {
-      r.props['type'] = ciTypeFromLabels(r.labels)
+      r.props['type'] = ciTypeFromLabels(ctx.tenantId, r.labels)
       const ci = mapCI(r.props)
       if (!seen.has(ci.id)) {
         seen.add(ci.id)

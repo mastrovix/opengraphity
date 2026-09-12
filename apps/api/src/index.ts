@@ -26,6 +26,10 @@ import { getAllQueues, getQueue, closeAllQueues } from './lib/bullmq.js'
 import { QUEUE_REGISTRY } from './lib/queueRegistry.js'
 import { wireDomainEventFailureMetric } from './lib/domainEventFailures.js'
 import { runGracefulShutdown, type Closable } from './lib/shutdown.js'
+// Canale del metamodello (A-16): l'import registra i clearer dei moduli che
+// tengono cache derivate dal metamodello; `startMetamodelBus()` apre la
+// sottoscrizione Redis e registra il publisher usato da invalidateSchema.
+import { startMetamodelBus, stopMetamodelBus } from './lib/metamodelBus.js'
 
 // Instrument every Neo4j session.run() — covers all 400+ call sites
 registerSessionTracker((durationMs, query) => {
@@ -48,6 +52,11 @@ import { logger } from './lib/logger.js'
 import type { Worker } from 'bullmq'
 
 async function main() {
+  // Prima del server: una mutation sul metamodello servita subito dopo l'avvio
+  // deve già trovare il canale aperto, altrimenti le altre repliche non
+  // vengono avvisate e nessuno se ne accorge.
+  startMetamodelBus()
+
   const httpServer = await startServer()
 
   // Domain-event consumers that exhaust their retries → events_failed_total{queue,type}
@@ -156,6 +165,7 @@ async function main() {
       workers: closables,
       // Code singleton (lib/bullmq), poi SLA scheduler, poi publisher (D-24, A-13), poi il driver
       resources: [
+        { name: 'metamodel-bus',    close: () => stopMetamodelBus() },
         { name: 'bullmq-queues',    close: () => closeAllQueues() },
         { name: 'sla-scheduler',    close: () => closeScheduler() },
         { name: 'event-connection', close: () => closeConnection() },

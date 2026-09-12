@@ -50,6 +50,7 @@ export const GET_BASE_CI_TYPE = gql`
   query GetBaseCIType {
     baseCIType {
       id name label icon color active
+      scope tenantId
       validationScript
       fields {
         id name label fieldType
@@ -69,6 +70,7 @@ export const GET_CI_TYPES = gql`
   query GetCITypes {
     ciTypes {
       id name label icon color active
+      scope tenantId
       validationScript chainFamilies
       fields {
         id name label fieldType

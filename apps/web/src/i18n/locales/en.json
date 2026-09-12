@@ -1193,7 +1193,10 @@
     "chainFamiliesTooltip": "Which service chains this CI type belongs to",
     "deleteTypeTitle": "Delete type \"{{label}}\"?",
     "deleteFieldTitle": "Delete field \"{{name}}\"?",
-    "deleteRelationTitle": "Delete relation \"{{name}}\"?"
+    "deleteRelationTitle": "Delete relation \"{{name}}\"?",
+    "shippedBadge": "shipped with the product",
+    "shippedFieldLabel": "Field shipped with the product",
+    "shippedRelationLabel": "read-only"
   },
   "fieldRules": {
     "show": "Show",

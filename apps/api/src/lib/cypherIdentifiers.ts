@@ -6,6 +6,10 @@
 // Values (not identifiers) always travel as query parameters.
 
 import { ValidationError } from './errors.js'
+import {
+  RESERVED_CI_PROPERTY_KEYS as CI_KEYS,
+  RESERVED_CI_PROPERTY_PREFIXES as CI_PREFIXES,
+} from '@opengraphity/schema-generator'
 
 /** Property / field names: snake_case identifiers only. */
 export const FIELD_NAME_RE = /^[a-z][a-z0-9_]*$/
@@ -45,6 +49,44 @@ export function assertWritablePropertyKey(name: unknown, what: string): string {
   const key = assertFieldName(name, what)
   if (RESERVED_PROPERTY_KEYS.has(key)) {
     throw new ValidationError(`${what}: property "${key}" is system-managed and cannot be set`)
+  }
+  return key
+}
+
+/**
+ * Le proprietà di un CI che il prodotto gestisce da sé (A-12). Sovrainsieme di
+ * `RESERVED_PROPERTY_KEYS`: oltre alle chiavi di sistema di qualunque nodo ci
+ * sono quelle della CMDB (`name_key`, la salute di Event Management, `chain`,
+ * `type`) e tutto ciò che comincia per `discovery_`.
+ *
+ * **Definita in `@opengraphity/schema-generator/nameValidation.ts`** e qui
+ * soltanto ri-esportata: la validazione dei nomi del metamodello deve poterla
+ * leggere, e quel pacchetto non può importare `apps/api`. Un test
+ * (`cypherIdentifiers.test.ts`) pinna che contenga tutta
+ * `RESERVED_PROPERTY_KEYS`, così le due non possono divergere.
+ */
+export const RESERVED_CI_PROPERTY_KEYS = CI_KEYS
+export const RESERVED_CI_PROPERTY_PREFIXES = CI_PREFIXES
+
+/**
+ * La chiave di proprietà che una scrittura di CI sta per impostare partendo da
+ * un campo del metamodello.
+ *
+ * È la rete sotto la porta di `createCIType`/`addCIField`: la scrittura di un
+ * CI (`ciMutations.ts`) copia i campi del metamodello **dopo** aver impostato
+ * `tenant_id`, `id` e `name_key`, quindi un campo chiamato `tenantId` — se
+ * fosse mai entrato nel metamodello per altre vie — farebbe nascere il CI nel
+ * cliente scelto da chi chiama l'API. Qui non si può riparare niente: si
+ * rifiuta nominando il campo.
+ */
+export function assertWritableCIPropertyKey(key: string, fieldName: string): string {
+  const prefix = RESERVED_CI_PROPERTY_PREFIXES.find((p) => key.startsWith(p))
+  if (RESERVED_CI_PROPERTY_KEYS.has(key) || prefix) {
+    throw new ValidationError(
+      `Il campo "${fieldName}" del metamodello scriverebbe la proprietà "${key}", che è gestita dal prodotto` +
+      (prefix ? ` (prefisso riservato "${prefix}")` : '') +
+      `: la scrittura è rifiutata. Rinomina il campo nel disegnatore dei tipi CI.`,
+    )
   }
   return key
 }

@@ -226,10 +226,10 @@ export async function loadServiceMapState(session: Queryable, tenantId: string, 
 }
 
 /** Riferimento a un CI per la spiegazione (istantanea): dai nodi caricati; un `via` non più nella mappa resta solo con l'id. */
-function causeRef(id: string, byId: ReadonlyMap<string, LoadedNode>): StoredCause['ci'] {
+function causeRef(tenantId: string, id: string, byId: ReadonlyMap<string, LoadedNode>): StoredCause['ci'] {
   const n = byId.get(id)
   if (!n) return { id, name: id, type: 'unknown', health: null }
-  return { id, name: n.name, type: ciTypeFromLabels(n.labels), health: n.health }
+  return { id, name: n.name, type: ciTypeFromLabels(tenantId, n.labels), health: n.health }
 }
 
 /**
@@ -237,9 +237,9 @@ function causeRef(id: string, byId: ReadonlyMap<string, LoadedNode>): StoredCaus
  * la usano la valutazione (che le persiste) e l'anteprima dell'ondata 2 (che
  * non scrive nulla), così la spiegazione ha la stessa forma in entrambe.
  */
-export function storedCausesOf(causes: readonly ImpactCause[], nodes: readonly LoadedNode[]): StoredCause[] {
+export function storedCausesOf(tenantId: string, causes: readonly ImpactCause[], nodes: readonly LoadedNode[]): StoredCause[] {
   const byId = new Map(nodes.map((n) => [n.ciId, n]))
-  return causes.map((c) => ({ ...c, ci: causeRef(c.ciId, byId), path: c.path.map((id) => causeRef(id, byId)) }))
+  return causes.map((c) => ({ ...c, ci: causeRef(tenantId, c.ciId, byId), path: c.path.map((id) => causeRef(tenantId, id, byId)) }))
 }
 
 // ── Valutazione ──────────────────────────────────────────────────────────────
@@ -417,7 +417,7 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
       for (let attempt = 0; ; attempt++) {
         state = await loadServiceMapState(session, tenantId, mapId, now)
         result = evaluateImpact(state.nodes, state.rules)
-        causes = storedCausesOf(result.causes, state.nodes)
+        causes = storedCausesOf(tenantId, result.causes, state.nodes)
         const stormSources = stormingSourcesOf(state.nodes)
         // D6.4: sorgente in tempesta e regola `hold` → la valutazione è
         // sospesa. Si scrive solo la nota (e `evaluated_at`, così la passata

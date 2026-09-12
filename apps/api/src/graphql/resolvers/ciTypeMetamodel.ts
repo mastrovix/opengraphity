@@ -3,6 +3,7 @@ import type { GraphQLContext } from '../../context.js'
 import { GraphQLError } from 'graphql'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import { toPascalCase } from '@opengraphity/schema-generator'
+import { assertNewCITypeName, assertNewCIFieldName, type ExistingCIType } from '../../lib/metamodelNames.js'
 import { CHAIN_FAMILIES, chainFamiliesToJSON } from '../../lib/chainCalculator.js'
 import { ValidationError } from '../../lib/errors.js'
 import {
@@ -30,14 +31,40 @@ export function fieldScopeClause(fieldVar: string): string {
          ` OR (${fieldVar}.scope = 'tenant' AND ${fieldVar}.tenant_id = $tenantId)`
 }
 
+/** Le azioni che una mutation del disegnatore può tentare su un tipo CI. */
+type TypeAction = 'add' | 'remove' | 'update' | 'addRelation' | 'removeRelation' | 'delete'
+
+const CONSEQUENCE: Record<TypeAction, string> = {
+  add:
+    'Aggiungere un campo qui lo farebbe comparire nella CMDB di ogni cliente, e siccome lo schema non lo dichiara ' +
+    'romperebbe la pagina di dettaglio di tutti i CI. Crea un tuo tipo CI e mettici il campo, oppure usa un campo già spedito.',
+  remove:
+    'I suoi campi sono in sola lettura: togliere un campo da qui lo toglierebbe a ogni cliente. ' +
+    'Si possono eliminare solo i campi dei tuoi tipi.',
+  update:
+    'Etichetta, icona, colore, script e famiglie di catena sono in sola lettura: cambiarli qui li cambierebbe a ogni ' +
+    'cliente. Per un tipo con le tue etichette, creane uno tuo.',
+  addRelation:
+    'Le sue relazioni sono in sola lettura: aggiungerne una qui la aggiungerebbe a ogni cliente. ' +
+    'Le relazioni si definiscono sui tuoi tipi.',
+  removeRelation:
+    'Le sue relazioni sono in sola lettura: togliere una relazione da qui la toglierebbe a ogni cliente.',
+  delete:
+    'Non si elimina: sparirebbe dalla CMDB di ogni cliente. Puoi solo non usarlo.',
+}
+
 /**
- * Il tipo CI su cui una mutation di campo sta per scrivere: esiste, ed è del
- * tenant? Un tipo **spedito col prodotto** (`__base__`, `server`, `incident`,
- * …) è UN nodo per tutti i clienti: aggiungerci o togliergli un campo cambia
- * la CMDB di tutti, perciò si rifiuta a voce alta invece di riuscire a metà
- * (`addCIField`) o di non fare niente in silenzio (`removeCIField`).
+ * Il tipo CI su cui una mutation del disegnatore sta per scrivere: esiste, ed è
+ * del tenant? Un tipo **spedito col prodotto** (`__base__`, `server`,
+ * `incident`, …) è UN nodo per tutti i clienti, perciò si rifiuta a voce alta
+ * invece di riuscire a metà (`addCIField`) o di non fare niente in silenzio
+ * (`removeCIField`, `updateCIType`, `addCIRelation`, `removeCIRelation`: tutte
+ * rispondevano con `fetchCITypeById`, che sui tipi base TROVA il nodo — così
+ * il disegnatore mostrava «Salvato» e i dati erano quelli di prima, A-6).
  */
-async function assertTenantOwnedType(session: Session, typeId: string, tenantId: string, action: 'add' | 'remove'): Promise<void> {
+async function assertTenantOwnedType(
+  session: Session, typeId: string, tenantId: string, action: TypeAction,
+): Promise<{ name: string; label: string }> {
   const r = await session.executeRead((tx) =>
     tx.run(
       `MATCH (t:CITypeDefinition {id: $typeId})
@@ -48,15 +75,96 @@ async function assertTenantOwnedType(session: Session, typeId: string, tenantId:
   )
   if (!r.records.length) throw new GraphQLError('CIType non trovato')
   const scope = r.records[0]!.get('scope') as string | null
-  if (scope === 'tenant') return
   const name  = r.records[0]!.get('name')  as string
   const label = (r.records[0]!.get('label') as string | null) ?? name
-  const consequence = action === 'add'
-    ? 'Aggiungere un campo qui lo farebbe comparire nella CMDB di ogni cliente, e siccome lo schema non lo dichiara ' +
-      'romperebbe la pagina di dettaglio di tutti i CI. Crea un tuo tipo CI e mettici il campo, oppure usa un campo già spedito.'
-    : 'I suoi campi sono in sola lettura: togliere un campo da qui lo toglierebbe a ogni cliente. ' +
-      'Si possono eliminare solo i campi dei tuoi tipi.'
-  throw new ValidationError(`Il tipo "${label}" (${name}) è spedito col prodotto: è un solo tipo per tutti i clienti. ${consequence}`)
+  if (scope === 'tenant') return { name, label }
+  throw new ValidationError(`Il tipo "${label}" (${name}) è spedito col prodotto: è un solo tipo per tutti i clienti. ${CONSEQUENCE[action]}`)
+}
+
+/**
+ * Una mutation del metamodello ha scritto qualcosa? (A-6)
+ *
+ * `MATCH … WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId` che non trova
+ * il nodo esegue zero righe e non lancia: la mutation rispondeva con
+ * `fetchCITypeById` e il disegnatore faceva il toast «Salvato» su `onCompleted`,
+ * che scatta anche a 0 righe. Il silenzio si chiude qui: se i contatori dicono
+ * che non è stato scritto niente, la mutation fallisce.
+ */
+type Updates = { propertiesSet?: number; nodesCreated?: number; nodesDeleted?: number; relationshipsCreated?: number; relationshipsDeleted?: number }
+
+/**
+ * I contatori della scrittura appena eseguita. Se il driver non li ha
+ * restituiti si lancia: dedurre «avrà scritto» sarebbe il fallback silenzioso
+ * che questo punto esiste per togliere.
+ *
+ * Nota verificata su Neo4j 5: `SET n += {…}` conta `propertiesSet` anche
+ * quando il valore è identico a quello di prima — un salvataggio che non
+ * cambia niente NON viene preso per un no-op.
+ */
+function updatesOf(result: unknown, what: string): Updates {
+  const counters = (result as { summary?: { counters?: { updates?: () => Updates } } }).summary?.counters
+  if (typeof counters?.updates !== 'function') {
+    throw new Error(`${what}: il driver Neo4j non ha restituito i contatori della scrittura, non si può sapere se ha scritto.`)
+  }
+  return counters.updates()
+}
+
+function assertWrote(result: unknown, what: string): void {
+  const c = updatesOf(result, what)
+  const written =
+    (c.propertiesSet ?? 0) + (c.nodesCreated ?? 0) + (c.nodesDeleted ?? 0) +
+    (c.relationshipsCreated ?? 0) + (c.relationshipsDeleted ?? 0)
+  if (written > 0) return
+  throw new ValidationError(
+    `${what}: non è stato scritto niente, e nessuna modifica è stata salvata. ` +
+    `L'elemento non esiste più, oppure il tipo è spedito col prodotto — un solo nodo per tutti i clienti, in sola lettura.`,
+  )
+}
+
+/**
+ * I tipi CI che finiranno nello stesso schema di quello che si sta creando:
+ * quelli spediti col prodotto (base e ITIL) e quelli del cliente. Servono alla
+ * porta sui nomi (A-12), che confronta i nomi **emessi** — PascalCase,
+ * plurale, input, mutation — non il nome scritto.
+ *
+ * `__base__` è compreso: non emette tipi propri, ma occuparne il nome
+ * romperebbe ogni lettura del metamodello.
+ */
+async function loadExistingCITypeNames(session: Session, tenantId: string): Promise<ExistingCIType[]> {
+  const r = await session.executeRead((tx) =>
+    tx.run(
+      // tenant-ok: i tipi spediti col prodotto vivono su 'system' e stanno
+      // nello schema di OGNI cliente, quindi i loro nomi sono presi per tutti.
+      `MATCH (t:CITypeDefinition)
+       WHERE t.scope IN ['base', 'itil'] OR (t.scope = 'tenant' AND t.tenant_id = $tenantId)
+       RETURN t.name AS name, t.scope AS scope`,
+      { tenantId },
+    ),
+  )
+  return r.records.map((rec) => ({ name: rec.get('name') as string, scope: rec.get('scope') as string | null }))
+}
+
+/**
+ * I nomi di campo già presi su un tipo: i suoi e quelli di `__base__`, che ogni
+ * tipo CI eredita. Un campo omonimo di uno di questi sarebbe dichiarato due
+ * volte nell'SDL generato.
+ */
+async function loadFieldNamesFor(session: Session, typeId: string, tenantId: string): Promise<string[]> {
+  const r = await session.executeRead((tx) =>
+    tx.run(
+      `MATCH (t:CITypeDefinition {id: $typeId})
+       WHERE t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
+       OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
+         ${fieldScopeClause('f')}
+       // tenant-ok: __base__ è il tipo condiviso di sistema, i suoi campi li filtra fieldScopeClause come altrove
+       OPTIONAL MATCH (base:CITypeDefinition {name: '__base__'})-[:HAS_FIELD]->(bf:CIFieldDefinition)
+         ${fieldScopeClause('bf')}
+       RETURN collect(DISTINCT f.name) + collect(DISTINCT bf.name) AS names`,
+      { typeId, tenantId },
+    ),
+  )
+  if (!r.records.length) return []
+  return ((r.records[0]!.get('names') as Array<string | null>) ?? []).filter((n): n is string => typeof n === 'string')
 }
 
 /**
@@ -120,6 +228,11 @@ export function mapCITypeNode(t: Props, fields: CIFieldRow[], relations: Props[]
     icon:             t['icon'],
     color:            t['color'],
     active:           t['active'] ?? true,
+    // A-6: DI CHI è il tipo. Senza questi due campi il disegnatore non poteva
+    // distinguere un tipo spedito col prodotto dai propri, e offriva azioni
+    // che non scrivevano niente rispondendo «Salvato».
+    scope:            t['scope'] ?? 'base',
+    tenantId:         t['tenant_id'] ?? SYSTEM_TENANT,
     validationScript: t['validation_script'] ?? null,
     chainFamilies:    parseChainFamilies(t['chain_families']),
     fields: fields
@@ -321,6 +434,10 @@ export function buildCITypesResolver() {
           icon:  t['icon'],
           color: t['color'],
           active: t['active'],
+          // A-6: vedi mapCITypeNode — il disegnatore ne ha bisogno per sapere
+          // quali azioni hanno effetto.
+          scope:    t['scope'] ?? 'base',
+          tenantId: t['tenant_id'] ?? SYSTEM_TENANT,
           validationScript: t['validation_script'] ?? null,
           chainFamilies: parseChainFamilies(t['chain_families']),
           fields,
@@ -389,9 +506,15 @@ export function buildMetamodelMutations() {
       const { name, label, icon = 'box', color = '#0284c7' } = args.input
       const chainFamilies = assertChainFamilies(args.input.chainFamilies)
       const id = crypto.randomUUID()
-      const neo4jLabel = toPascalCase(name)
 
       await withSession(async session => {
+        // A-12 — LA PORTA. Deve stare qui e prima della scrittura: due tipi
+        // GraphQL con lo stesso nome NON fanno lanciare `makeExecutableSchema`,
+        // vengono fusi in silenzio (i campi del tipo del cliente entrano nel
+        // tipo del prodotto). Non c'è nessuna rete a valle che lo prenda: se
+        // questo controllo non gira, non gira niente.
+        assertNewCITypeName(name, await loadExistingCITypeNames(session, ctx.tenantId))
+        const neo4jLabel = toPascalCase(name)
         await session.executeWrite(tx =>
           tx.run(`
             MERGE (t:CITypeDefinition {name: $name, tenant_id: $tenantId})
@@ -436,8 +559,20 @@ export function buildMetamodelMutations() {
       // richiesta e il salvataggio non funzionava MAI.
       if (chainFamilies     !== undefined) updates['chain_families']    = assertChainFamilies(chainFamilies)
 
+      // A-6: `SET t += {}` scrive 0 proprietà anche su un tipo che c'è — senza
+      // questo controllo il no-op del chiamante diventerebbe un errore che
+      // accusa il tipo di essere spedito col prodotto.
+      if (!Object.keys(updates).length) {
+        throw new ValidationError('updateCIType: nessun campo da modificare nella richiesta.')
+      }
+
       await withSession(async session => {
-        await session.executeWrite(tx =>
+        // A-6: il tipo spedito col prodotto va detto PRIMA, con la sua
+        // conseguenza; il controllo dei contatori qui sotto è la rete per tutti
+        // gli altri modi di non scrivere niente (id sbagliato, tipo eliminato
+        // da un'altra sessione).
+        await assertTenantOwnedType(session, args.id, ctx.tenantId, 'update')
+        const r = await session.executeWrite(tx =>
           tx.run(
             `MATCH (t:CITypeDefinition {id: $id})
              WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
@@ -445,6 +580,7 @@ export function buildMetamodelMutations() {
             { id: args.id, tenantId: ctx.tenantId, updates },
           ),
         )
+        assertWrote(r, `updateCIType(${args.id})`)
       }, true)
 
       invalidateSchema(ctx.tenantId)
@@ -454,13 +590,10 @@ export function buildMetamodelMutations() {
     deleteCIType: async (_: unknown, args: { id: string }, ctx: GraphQLContext) => {
       requireAdmin(ctx)
       await withSession(async session => {
-        const r = await session.executeRead(tx =>
-          tx.run(`MATCH (t:CITypeDefinition {id: $id}) WHERE t.tenant_id IN [$tenantId, 'system'] RETURN t.scope AS scope`, { id: args.id, tenantId: ctx.tenantId }),
-        )
-        if (r.records.length && r.records[0].get('scope') === 'base') {
-          throw new GraphQLError('I tipi base non possono essere eliminati')
-        }
-        await session.executeWrite(tx =>
+        // A-6: prima il controllo esplicito era solo su `scope = 'base'`, e un
+        // tipo ITIL rispondeva `true` senza eliminare niente.
+        await assertTenantOwnedType(session, args.id, ctx.tenantId, 'delete')
+        const r = await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $id})
             WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
@@ -470,6 +603,7 @@ export function buildMetamodelMutations() {
             DETACH DELETE t, f, rel, sr
           `, { id: args.id, tenantId: ctx.tenantId }),
         )
+        assertWrote(r, `deleteCIType(${args.id})`)
       }, true)
       invalidateSchema(ctx.tenantId)
       return true
@@ -495,7 +629,16 @@ export function buildMetamodelMutations() {
         // A-5: un campo si aggiunge SOLO a un tipo del tenant. Sul `__base__`
         // (o su un altro tipo spedito) il campo entrava con `scope: 'base'` e
         // `is_system: true` e finiva nella CMDB di tutti i clienti.
-        await assertTenantOwnedType(session, typeId, ctx.tenantId, 'add')
+        const owned = await assertTenantOwnedType(session, typeId, ctx.tenantId, 'add')
+        // A-12 — LA PORTA sui nomi di campo. Il caso da cui nasce è `tenantId`:
+        // `toSnakeCase` lo porta a `tenant_id`, non è fra i campi esclusi dagli
+        // input, e la scrittura del CI copia i campi del metamodello DOPO aver
+        // impostato il cliente proprietario — il CI nascerebbe nel cliente
+        // scelto da chi chiama l'API.
+        assertNewCIFieldName(input['name'], {
+          typeLabel:          owned.label,
+          existingFieldNames: await loadFieldNamesFor(session, typeId, ctx.tenantId),
+        })
         // A-2: il vocabolario agganciato passa dal nucleo. Il legame verso il
         // vocabolario di un altro cliente è rifiutato con il messaggio, non
         // ignorato in silenzio come faceva il `WHERE` dentro il CALL.
@@ -596,7 +739,11 @@ export function buildMetamodelMutations() {
       const relId = crypto.randomUUID()
 
       await withSession(async session => {
-        await session.executeWrite(tx =>
+        // A-6: sui tipi spediti col prodotto la CREATE non girava e la mutation
+        // rispondeva con `fetchCITypeById` — il disegnatore diceva «Relazione
+        // aggiunta» e la relazione non c'era.
+        await assertTenantOwnedType(session, typeId, ctx.tenantId, 'addRelation')
+        const r = await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})
             WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
@@ -622,6 +769,7 @@ export function buildMetamodelMutations() {
             order:            input['order'] ?? 0,
           }),
         )
+        assertWrote(r, `addCIRelation(${typeId})`)
       }, true)
 
       invalidateSchema(ctx.tenantId)
@@ -635,13 +783,17 @@ export function buildMetamodelMutations() {
     ) => {
       requireAdmin(ctx)
       await withSession(async session => {
-        await session.executeWrite(tx =>
+        // A-6: idem in rimozione — la DELETE non girava e l'interfaccia diceva
+        // «Relazione rimossa».
+        await assertTenantOwnedType(session, args.typeId, ctx.tenantId, 'removeRelation')
+        const r = await session.executeWrite(tx =>
           tx.run(`
-            MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_RELATION]->(r:CIRelationDefinition {id: $relationId})
+            MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_RELATION]->(rel:CIRelationDefinition {id: $relationId})
             WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
-            DETACH DELETE r
+            DETACH DELETE rel
           `, { typeId: args.typeId, relationId: args.relationId, tenantId: ctx.tenantId }),
         )
+        assertWrote(r, `removeCIRelation(${args.relationId})`)
       }, true)
       invalidateSchema(ctx.tenantId)
       return fetchCITypeById(args.typeId, ctx.tenantId)

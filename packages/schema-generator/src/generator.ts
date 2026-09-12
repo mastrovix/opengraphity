@@ -1,6 +1,7 @@
 import { getSession } from '@opengraphity/neo4j'
 import type { CITypeWithDefinitions, CIFieldDefinition, CIRelationDefinition, CISystemRelationDefinition } from './types.js'
 import { toPascalCase, pluralize } from './stringUtils.js'
+import { assertGeneratableNames, BASE_TYPE_FIELDS, BASE_INPUT_FIELDS } from './nameValidation.js'
 
 export async function loadMetamodel(tenantId: string): Promise<CITypeWithDefinitions[]> {
   const session = getSession(undefined, 'READ')
@@ -249,17 +250,10 @@ export function generateITILEnumsSDL(_itilTypes: CITypeWithDefinitions[]): strin
  * Uses `extend type Query` / `extend type Mutation` to augment the base schema.
  * Generated concrete types use `type` (not `ciType`) to match CIBase interface.
  */
-// Fields already present in CIBase / hardcoded in inputs — must not be duplicated.
-// `health`, `healthSource`, `lastEventAt` are written ONLY by Event Management
-// (eventService.recomputeCIHealth / setCIHealthOverride): they are read-only
-// here and never appear in the Create/Update inputs.
-const BASE_TYPE_FIELDS  = new Set(['id', 'name', 'type', 'status', 'environment',
-  'description', 'chain', 'createdAt', 'updatedAt', 'notes',
-  'ownerGroup', 'supportGroup', 'dependencies', 'dependents',
-  'health', 'healthSource', 'lastEventAt'])
-const BASE_INPUT_FIELDS = new Set(['name', 'status', 'environment', 'description',
-  'notes', 'ownerGroupId', 'supportGroupId',
-  'health', 'healthSource', 'lastEventAt'])
+// Campi già presenti in CIBase / scritti a mano negli input: la loro
+// definizione sta in `nameValidation.ts`, che è anche il modulo che rifiuta un
+// campo del cliente con uno di questi nomi (una seconda lista qui divergerebbe
+// alla prima aggiunta a CIBase).
 
 /**
  * Parte STATICA dello schema del metamodello: non dipende dai tipi CI del
@@ -331,7 +325,26 @@ ${METAMODEL_INPUTS}
 `
 }
 
+/**
+ * SDL della parte DINAMICA dello schema: un tipo concreto, le query e le
+ * mutation per ogni tipo CI, più la parte statica del metamodello
+ * (`metamodelSDL`), che viaggia qui perché è questo il pezzo che chi assembla
+ * lo schema concatena a quello di base.
+ *
+ * Con **zero tipi** restituisce la sola parte statica del metamodello: valida
+ * da assemblare, e con `createCIType` ancora dentro. Restituire stringa vuota
+ * sarebbe peggio che un errore — un cliente senza tipi CI non avrebbe più la
+ * mutation per crearne uno.
+ */
 export function generateSDL(types: CITypeWithDefinitions[]): string {
+  // A-12: i nomi PRIMA di interpolarli. Un nome non identificatore farebbe
+  // lanciare `makeExecutableSchema` con un errore di sintassi che non dice di
+  // chi è la colpa; un plurale omonimo di una query esistente fra i tipi
+  // ricevuti farebbe fallire il merge. La collisione col nome di un tipo dello
+  // schema di base, invece, è silenziosa all'assemblaggio: quella la ferma la
+  // porta in scrittura (`apps/api/src/lib/metamodelNames.ts`).
+  assertGeneratableNames(types)
+
   const parts: string[] = []
 
   // Concrete type for each CI type
@@ -371,20 +384,26 @@ type ${typeName}sResult {
 `)
   }
 
-  // extend type Query with per-type queries
-  const queryFields = types.map(type => {
-    const typeName = toPascalCase(type.name)
-    const plural = pluralize(typeName)
-    const pluralKey = plural.charAt(0).toLowerCase() + plural.slice(1)
-    return `  ${pluralKey}(limit: Int, offset: Int, status: String, environment: String, search: String, filters: String, sortField: String, sortDirection: String): ${typeName}sResult!
+  // extend type Query with per-type queries.
+  // Con zero tipi il blocco NON si emette: `extend type Query { }` con il corpo
+  // vuoto non è SDL valido (`Syntax Error: Expected Name, found "}"`) e faceva
+  // fallire proprio chi chiama il generatore senza tipi — per esempio lo schema
+  // «sicuro» servito quando quello del cliente non si assembla.
+  if (types.length) {
+    const queryFields = types.map(type => {
+      const typeName = toPascalCase(type.name)
+      const plural = pluralize(typeName)
+      const pluralKey = plural.charAt(0).toLowerCase() + plural.slice(1)
+      return `  ${pluralKey}(limit: Int, offset: Int, status: String, environment: String, search: String, filters: String, sortField: String, sortDirection: String): ${typeName}sResult!
   ${type.name}(id: ID!): ${typeName}`
-  }).join('\n')
+    }).join('\n')
 
-  parts.push(`
+    parts.push(`
 extend type Query {
 ${queryFields}
 }
 `)
+  }
 
   // extend type Mutation with per-type CRUD + input types
   const mutationFields: string[] = []

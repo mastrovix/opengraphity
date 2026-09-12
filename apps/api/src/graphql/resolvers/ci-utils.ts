@@ -4,14 +4,6 @@ import { neo4jDateToISO } from '../../lib/mappers.js'
 
 export { ciTypeFromLabels }
 
-/**
- * @deprecated Use ciTypeFromLabels([label]) instead.
- * Kept for compatibility — delegates to ciTypeFromLabels.
- */
-export function labelToType(label: string): string {
-  return ciTypeFromLabels([label])
-}
-
 export type Props = Record<string, unknown>
 
 export async function withSession<T>(fn: (s: ReturnType<typeof getSession>) => Promise<T>, write = false): Promise<T> {
@@ -27,7 +19,7 @@ export function mapBase(props: Props) {
   return {
     id:           props['id']          as string,
     name:         (props['name']       ?? '') as string,
-    // type must be set by the caller via ciTypeFromLabels([label]) before mapCI is called
+    // type must be set by the caller via ciTypeFromLabels(tenantId, [label]) before mapCI is called
     type:         (props['type']       ?? null) as string | null,
     status:       props['status']      as string | null ?? null,
     environment:  props['environment'] as string | null ?? null,

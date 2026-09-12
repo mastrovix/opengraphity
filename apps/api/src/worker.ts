@@ -41,6 +41,9 @@ import { closeAllQueues } from './lib/bullmq.js'
 import { wireDomainEventFailureMetric } from './lib/domainEventFailures.js'
 import { startMetricsServer } from './lib/metricsServer.js'
 import { runGracefulShutdown, type Closable } from './lib/shutdown.js'
+// Canale del metamodello (A-16): questo processo ha la SUA copia delle cache
+// derivate dal metamodello e prima non veniva mai avvisato dei cambiamenti.
+import { startMetamodelBus, stopMetamodelBus } from './lib/metamodelBus.js'
 import { logger } from './lib/logger.js'
 import type { Worker } from 'bullmq'
 
@@ -50,6 +53,8 @@ registerSessionTracker((durationMs, query) => {
 })
 
 async function main() {
+  startMetamodelBus()
+
   const workers: Worker[] = []
   const consumers: Closable[] = []
 
@@ -90,6 +95,7 @@ async function main() {
         ...consumers,
       ],
       resources: [
+        { name: 'metamodel-bus',    close: () => stopMetamodelBus() },
         { name: 'bullmq-queues',    close: () => closeAllQueues() },
         { name: 'event-connection', close: () => closeConnection() },
         { name: 'neo4j-driver',     close: () => closeDriver() },

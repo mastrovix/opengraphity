@@ -39,11 +39,11 @@ function labelFromType(t: string): string {
   return TYPE_TO_LABEL[t.toLowerCase()] ?? t
 }
 
-function mapNode(r: { get: (k: string) => unknown }) {
+function mapNode(tenantId: string, r: { get: (k: string) => unknown }) {
   return {
     id:            r.get('id')           as string,
     name:          r.get('name')         as string,
-    type:          ciTypeFromLabels([r.get('type') as string]),
+    type:          ciTypeFromLabels(tenantId, [r.get('type') as string]),
     status:        r.get('status')       as string,
     health:        (r.get('health') ?? null) as string | null,
     environment:   r.get('environment')  as string | null,
@@ -131,7 +131,7 @@ export const topologyResolvers = {
             ORDER BY ci.name
           `, { nodeIds, tenantId: ctx.tenantId, ciId: args.selectedCiId, environment, status, incidentTerminal, changeTerminal }))
 
-          const nodes = nodesResult.records.map(mapNode)
+          const nodes = nodesResult.records.map((r) => mapNode(ctx.tenantId, r))
 
           // 3. Edges between the loaded nodes
           const edgesResult = await session.executeRead((tx) => tx.run(`
@@ -199,7 +199,7 @@ export const topologyResolvers = {
           LIMIT ${NODE_LIMIT}
         `, params))
 
-        const nodes = nodesResult.records.map(mapNode)
+        const nodes = nodesResult.records.map((r) => mapNode(ctx.tenantId, r))
         const truncated = nodes.length >= NODE_LIMIT
 
         if (nodes.length === 0) return { nodes: [], edges: [], truncated: false, nodeLimit: NODE_LIMIT }

@@ -8,6 +8,7 @@ import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
 import { calculateChain } from '../../lib/chainCalculator.js'
 import { toSnakeCase } from '../../lib/mappers.js'
+import { assertWritableCIPropertyKey } from '../../lib/cypherIdentifiers.js'
 import { ciNameKey } from '../../lib/ciNameKey.js'
 import { notifyCIGraphChanged, notifyCIMaintenanceChanged } from '../../services/serviceImpact/sync.js'
 import { CI_LIFECYCLE_MAINTENANCE } from '../../services/serviceImpact/engine.js'
@@ -120,7 +121,13 @@ export function buildCreateMutation(
       }
       for (const field of ciType.fields) {
         if (input[field.name] !== undefined) {
-          props[toSnakeCase(field.name)] = input[field.name]
+          // A-12: le proprietà del prodotto (`tenant_id`, `id`, `name_key`, la
+          // salute, `discovery_*`) sono già impostate sopra. Un campo del
+          // metamodello chiamato `tenantId` le sovrascriverebbe con il valore
+          // mandato dal chiamante — e il CI nascerebbe nel cliente scelto da
+          // lui. La porta (`createCIType`/`addCIField`) non lascia entrare
+          // nomi così; questa è la rete per quelli entrati per altre vie.
+          props[assertWritableCIPropertyKey(toSnakeCase(field.name), field.name)] = input[field.name]
         }
       }
 
@@ -204,7 +211,10 @@ export function buildUpdateMutation(
       if (input['name'] !== undefined) updates['name_key'] = ciNameKey(input['name'])
       for (const field of ciType.fields) {
         if (input[field.name] !== undefined) {
-          updates[toSnakeCase(field.name)] = input[field.name]
+          // A-12, come in creazione: `updated_at` e `name_key` sono già in
+          // `updates`, e un campo `tenantId` porterebbe il CI in un altro
+          // cliente con un `SET n += $updates`.
+          updates[assertWritableCIPropertyKey(toSnakeCase(field.name), field.name)] = input[field.name]
         }
       }
       const result = await session.executeWrite(tx =>

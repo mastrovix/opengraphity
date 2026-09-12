@@ -108,7 +108,7 @@ async function ciGroupMembers(_: unknown, args: { groupId: string }, ctx: GraphQ
     }
 
     const items = rows.map((r) => {
-      r.props['type'] = ciTypeFromLabels(r.nodeLabels)
+      r.props['type'] = ciTypeFromLabels(ctx.tenantId, r.nodeLabels)
       return mapCI(r.props)
     })
     return { items, total, truncated: total > items.length }

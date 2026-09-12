@@ -18,12 +18,12 @@ import { withSession } from './ci-utils.js'
 
 type Props = Record<string, unknown>
 
-function mapCI(props: Props, label?: string) {
+function mapCI(tenantId: string, props: Props, label?: string) {
   return {
     id:          props['id']          as string,
     tenantId:    props['tenant_id']   as string,
     name:        props['name']        as string,
-    type:        label ? ciTypeFromLabels([label]) : (props['type'] as string ?? 'unknown'),
+    type:        label ? ciTypeFromLabels(tenantId, [label]) : (props['type'] as string ?? 'unknown'),
     status:      props['status']      as string,
     environment: props['environment'] as string,
     createdAt:   props['created_at']  as string,
@@ -102,7 +102,7 @@ async function updateCIFields(
     const rows = await runQuery<{ props: Props }>(session, cypher, { id, tenantId: ctx.tenantId, updates })
     const row = rows[0]
     if (!row) throw new NotFoundError('ConfigurationItem')
-    return mapCI(row.props)
+    return mapCI(ctx.tenantId, row.props)
   }, true)
 }
 

@@ -5,13 +5,14 @@ import compression from 'compression'
 import { rateLimit } from 'express-rate-limit'
 import { config } from './lib/config.js'
 import { ApolloServer } from '@apollo/server'
+import type { GraphQLSchema } from 'graphql'
 import { ApolloServerPluginLandingPageLocalDefault, ApolloServerPluginLandingPageProductionDefault } from '@apollo/server/plugin/landingPage/default'
 import { expressMiddleware } from '@apollo/server/express4'
 import type { GraphQLRequestContextDidEncounterErrors } from '@apollo/server'
 import type { ValidationRule } from 'graphql'
 import { GraphQLError } from 'graphql'
 import { buildContext, type GraphQLContext } from './context.js'
-import { getSchemaForTenant } from './lib/schemaCache.js'
+import { getSchemaForTenant, getSchemaState } from './lib/schemaCache.js'
 import { healthRouter } from './rest/health.js'
 import { sseRouter } from './rest/sse.js'
 import { reportStreamRouter } from './rest/report-stream.js'
@@ -246,11 +247,14 @@ app.use('/api', reportsRouter)
 
 // ── startServer ───────────────────────────────────────────────────────────────
 
-export async function startServer(): Promise<http.Server> {
-  // Build schema from metamodel at startup (cached with TTL)
-  const schema = await getSchemaForTenant('system')
-
-  const apolloServer = new ApolloServer<GraphQLContext>({
+/**
+ * Un'istanza Apollo per uno schema. Ondata 5 (A-1): lo schema non è più uno
+ * solo, quindi la costruzione — plugin, regole di validazione, formato degli
+ * errori, tracciamento — diventa una fabbrica che si chiama una volta per
+ * tenant. Le opzioni sono le stesse di prima, parola per parola.
+ */
+function buildApolloServer(schema: GraphQLSchema): ApolloServer<GraphQLContext> {
+  return new ApolloServer<GraphQLContext>({
     schema,
     // Off in production unless explicitly re-enabled (local compose sets
     // NODE_ENV=production, so the flag keeps Apollo Sandbox usable in dev)
@@ -324,15 +328,133 @@ export async function startServer(): Promise<http.Server> {
       },
     ],
   })
+}
 
-  await apolloServer.start()
+/** Istanza Apollo viva per un tenant, legata allo schema con cui è nata. */
+interface TenantApollo {
+  schema:  GraphQLSchema
+  server:  ApolloServer<GraphQLContext>
+  handler: express.RequestHandler
+}
 
-  app.use(
-    '/graphql',
-    expressMiddleware(apolloServer, {
-      context: async ({ req }) => buildContext(req),
-    }),
-  )
+const apolloByTenant = new Map<string, TenantApollo>()
+const apolloInFlight = new Map<string, Promise<TenantApollo>>()
+
+/** Simbolo su cui la rotta lascia il contesto già costruito, per non autenticare due volte. */
+const CONTEXT_KEY = Symbol('graphqlContext')
+
+/**
+ * L'istanza Apollo del tenant per QUESTO schema. Se lo schema è cambiato (il
+ * metamodello è stato modificato e la cache invalidata) l'istanza vecchia
+ * viene fermata e sostituita: il confronto è sull'identità dell'oggetto, che
+ * `getSchemaForTenant` mantiene stabile finché la voce in cache è valida.
+ */
+async function apolloFor(tenantId: string, schema: GraphQLSchema): Promise<TenantApollo> {
+  const live = apolloByTenant.get(tenantId)
+  if (live && live.schema === schema) {
+    // Uso recente: riordina per lo sfratto (la prima chiave è la meno usata).
+    apolloByTenant.delete(tenantId)
+    apolloByTenant.set(tenantId, live)
+    return live
+  }
+  const running = apolloInFlight.get(tenantId)
+  if (running) return running
+
+  const start = (async (): Promise<TenantApollo> => {
+    const server = buildApolloServer(schema)
+    await server.start()
+    const handler = expressMiddleware(server, {
+      // Il contesto è già stato costruito dalla rotta (serve a scegliere lo
+      // schema del tenant): qui si riusa, non si autentica una seconda volta.
+      context: async ({ req }) => {
+        const holder = req as unknown as Record<symbol, GraphQLContext | undefined>
+        return holder[CONTEXT_KEY] ?? buildContext(req)
+      },
+    })
+    const entry: TenantApollo = { schema, server, handler }
+    const previous = apolloByTenant.get(tenantId)
+    apolloByTenant.set(tenantId, entry)
+    if (previous) void previous.server.stop().catch((e: unknown) => graphqlLogger.warn({ tenantId, err: String(e) }, 'Vecchia istanza Apollo non fermata'))
+    // Lo stesso limite degli schemi: un'istanza per schema in memoria.
+    while (apolloByTenant.size > Math.max(1, config.graphqlSchemaCacheMax)) {
+      const oldest = apolloByTenant.keys().next()
+      if (oldest.done || oldest.value === tenantId) break
+      const victim = apolloByTenant.get(oldest.value)!
+      apolloByTenant.delete(oldest.value)
+      void victim.server.stop().catch(() => undefined)
+      logger.info({ tenantId: oldest.value }, 'Istanza Apollo del tenant fermata (limite di cache raggiunto)')
+    }
+    return entry
+  })().finally(() => apolloInFlight.delete(tenantId))
+
+  apolloInFlight.set(tenantId, start)
+  return start
+}
+
+/**
+ * Errore di autenticazione nella stessa forma di prima: l'autenticazione
+ * avveniva dentro il contesto di Apollo, che risponde 500 con il corpo
+ * GraphQL. Cambiare quel codice adesso romperebbe il web, quindi si riproduce
+ * identico (il 500 su «non autorizzato» è un difetto suo, da correggere a
+ * parte e con il web davanti).
+ */
+function respondAuthError(res: express.Response, err: unknown): void {
+  const e = err as { message?: string; extensions?: Record<string, unknown> }
+  res.status(500).json({
+    errors: [{
+      message:    e?.message ?? 'Unauthorized',
+      extensions: e?.extensions ?? { code: 'UNAUTHORIZED' },
+    }],
+  })
+}
+
+export async function startServer(): Promise<http.Server> {
+  // Lo schema di sistema si costruisce all'avvio: se la parte base non
+  // assembla, l'API non deve partire (fail-fast), e serve alle richieste che
+  // non hanno un tenant (la pagina di Apollo Sandbox in sviluppo).
+  const systemSchema = await getSchemaForTenant('system')
+  await apolloFor('system', systemSchema)
+
+  /**
+   * Una rotta sola, che sceglie lo schema del tenant: autentica (una volta),
+   * prende lo schema di QUEL tenant e passa la richiesta alla sua istanza
+   * Apollo. Prima qui c'era un'istanza unica con lo schema di `'system'`:
+   * ecco perché i tipi creati dal disegnatore non arrivavano all'API.
+   */
+  app.use('/graphql', (req, res, next) => {
+    // GET = pagina di Apollo Sandbox (in sviluppo) e richieste senza corpo:
+    // non hanno un tenant e passano dallo schema di sistema, come prima.
+    if (req.method !== 'POST') {
+      const system = apolloByTenant.get('system')
+      if (!system) { next(new Error('Istanza Apollo di sistema non pronta')); return }
+      system.handler(req, res, next); return
+    }
+
+    void (async () => {
+      let ctx: GraphQLContext
+      try {
+        ctx = await buildContext(req)
+      } catch (err) {
+        respondAuthError(res, err)
+        return
+      }
+      try {
+        const state = await getSchemaState(ctx.tenantId)
+        if (state.degraded) {
+          // Chi chiama deve poter sapere che sta parlando con lo schema sicuro
+          // (senza i tipi del cliente): è un'informazione operativa, non un
+          // dettaglio interno.
+          res.setHeader('X-Schema-Degraded', encodeURIComponent((state.reason ?? 'schema non assemblabile').slice(0, 200)))
+        }
+        const holder = req as unknown as Record<symbol, GraphQLContext>
+        holder[CONTEXT_KEY] = ctx
+        const { handler } = await apolloFor(ctx.tenantId, state.schema)
+        handler(req, res, next)
+      } catch (err) {
+        next(err)
+      }
+    })()
+  })
 
   return new Promise((resolve) => {
     const httpServer = http.createServer(app)

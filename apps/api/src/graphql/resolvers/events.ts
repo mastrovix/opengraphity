@@ -97,12 +97,12 @@ function toStrOrNull(v: unknown): string | null { return v == null ? null : toSt
 export interface CIRefRow { ciId: string | null; ciName: string | null; ciStatus: string | null; ciHealth: string | null; ciLabels: string[] | null }
 
 /** `ConfigurationItemRef` dal frammento CI_REF; null se l'evento è orfano. */
-export function mapCIRef(row: CIRefRow) {
+export function mapCIRef(tenantId: string, row: CIRefRow) {
   if (!row.ciId) return null
   return {
     id:     row.ciId,
     name:   row.ciName ?? '',
-    type:   ciTypeFromLabels(row.ciLabels ?? []),
+    type:   ciTypeFromLabels(tenantId, row.ciLabels ?? []),
     status: row.ciStatus ?? null,   // ciclo di vita (active, maintenance, …)
     health: row.ciHealth ?? null,   // salute dal monitoraggio (operational/degraded/down)
   }
@@ -116,7 +116,7 @@ export function mapCIRef(row: CIRefRow) {
  */
 export interface EventJoins { incident?: Props | null; source?: Props | null; acknowledgedBy?: Props | null }
 
-export function mapEvent(props: Props, ci: CIRefRow & EventJoins) {
+export function mapEvent(tenantId: string, props: Props, ci: CIRefRow & EventJoins) {
   // `correlation` è non-null nel contratto: la migrazione 20260909_1030 lo
   // scrive sugli eventi esistenti e ingestEvent su quelli nuovi. Assente =
   // migrazione non eseguita → errore, non un valore inventato.
@@ -160,7 +160,7 @@ export function mapEvent(props: Props, ci: CIRefRow & EventJoins) {
     acknowledgedById:     toStrOrNull(props['acknowledged_by']),
     sourceId:             toStrOrNull(props['source_id']),
     suppressedByChangeId: toStrOrNull(props['suppressed_by_change_id']),
-    ci:             mapCIRef(ci),
+    ci:             mapCIRef(tenantId, ci),
     ...('incident'       in ci ? { incident:       ci.incident       ? mapIncident(ci.incident)       : null } : {}),
     ...('source'         in ci ? { source:         ci.source         ? mapSourceRef(ci.source)        : null } : {}),
     ...('acknowledgedBy' in ci ? { acknowledgedBy: ci.acknowledgedBy ? mapUser(ci.acknowledgedBy)    : null } : {}),
@@ -181,8 +181,8 @@ export function mapSourceRef(p: Props) {
   }
 }
 
-function mapAlias(props: Props, ci: CIRefRow) {
-  const ref = mapCIRef(ci)
+function mapAlias(tenantId: string, props: Props, ci: CIRefRow) {
+  const ref = mapCIRef(tenantId, ci)
   if (!ref) throw new Error(`CIAlias ${toStr(props['id'])} has no ALIAS_OF target`)
   return {
     id:        toStr(props['id']),
@@ -351,7 +351,7 @@ async function events(_: unknown, args: { filter?: EventFilter | null; limit?: n
       RETURN total, items
     `, params)
     if (!row) throw new Error('events: the page query returned no row (count/collect must always yield one)')
-    return { items: row.items.map((r) => mapEvent(r.props, r)), total: toNumber(row.total) }
+    return { items: row.items.map((r) => mapEvent(ctx.tenantId, r.props, r)), total: toNumber(row.total) }
   } finally {
     await session.close()
   }
@@ -365,7 +365,7 @@ async function event(_: unknown, args: { id: string }, ctx: GraphQLContext) {
       ${eventRowColumns()}
       ${EVENT_ROW_RETURN}
     `, { id: args.id, tenantId: ctx.tenantId })
-    return row ? mapEvent(row.props, row) : null
+    return row ? mapEvent(ctx.tenantId, row.props, row) : null
   } finally {
     await session.close()
   }
@@ -424,7 +424,7 @@ async function ciAliases(_: unknown, args: { ciId: string }, ctx: GraphQLContext
              [l IN labels(ci) WHERE l <> 'ConfigurationItem'] AS ciLabels
       ORDER BY a.kind, a.value
     `, { ciId: args.ciId, tenantId: ctx.tenantId })
-    return rows.map((r) => mapAlias(r.props, r))
+    return rows.map((r) => mapAlias(ctx.tenantId, r.props, r))
   } finally {
     await session.close()
   }
@@ -542,12 +542,12 @@ function labelOfType(type: string): string {
   return TYPE_TO_LABEL[type] ?? toPascalCase(type)
 }
 
-function mapCIHealthRow(r: CIHealthOverviewRow) {
+function mapCIHealthRow(tenantId: string, r: CIHealthOverviewRow) {
   if (!r.label) throw new Error(`CI ${r.id} has no type label besides ConfigurationItem`)
   return {
     id:           r.id,
     name:         r.name ?? '',
-    type:         ciTypeFromLabels([r.label]),
+    type:         ciTypeFromLabels(tenantId, [r.label]),
     environment:  r.environment ?? null,
     health:       r.health,
     healthSource: r.healthSource ?? null,
@@ -646,7 +646,7 @@ async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | nu
     return {
       down: n('down'), degraded: n('degraded'), operational: n('operational'), unmonitored: n('unmonitored'),
       downDependents: n('downDependents'), degradedDependents: n('degradedDependents'),
-      items: row.items.map(mapCIHealthRow),
+      items: row.items.map((r) => mapCIHealthRow(ctx.tenantId, r)),
       total: n('total'),
     }
   } finally { await session.close() }
@@ -838,7 +838,7 @@ async function acknowledgeEvent(_: unknown, args: { id: string }, ctx: GraphQLCo
     throw new ValidationError(`Event ${args.id} is already acknowledged by ${await userLabel(by, ctx.tenantId)} since ${toStr(current.props['acknowledged_at'])}`)
   }
   void audit(ctx, 'event.acknowledged', 'Event', args.id, { previousAcknowledgedBy: row.previous ?? null })
-  return mapEvent(row.props, row)
+  return mapEvent(ctx.tenantId, row.props, row)
 }
 
 /**
@@ -879,7 +879,7 @@ async function resolveEvent(_: unknown, args: { id: string; note?: string | null
   await runEventPipeline({ tenantId: ctx.tenantId, eventId: args.id, actorId: ctx.userId, now, mode: 'reevaluate' })
   await publishEvent('event.resolved', ctx.tenantId, ctx.userId, mapEventPayload(row.props, row.ciId), now)
   void audit(ctx, 'event.resolved', 'Event', args.id, { note: args.note ?? null })
-  return mapEvent(row.props, row)
+  return mapEvent(ctx.tenantId, row.props, row)
 }
 
 /**
@@ -967,7 +967,7 @@ async function linkEventToCI(_: unknown, args: { eventId: string; ciId: string; 
   // change, salute del nuovo CI, correlazione): è il reevaluateEvent implicito.
   const pipeline = await runEventPipeline({ tenantId: ctx.tenantId, eventId: args.eventId, actorId: ctx.userId, now, mode: 'reevaluate' })
   void audit(ctx, 'event.linked', 'Event', args.eventId, { ciId: args.ciId, previousCiId, aliasCreated, correlation: pipeline.outcome })
-  return loadEvent(args.eventId, ctx.tenantId).then((r) => mapEvent(r.props, r))
+  return loadEvent(args.eventId, ctx.tenantId).then((r) => mapEvent(ctx.tenantId, r.props, r))
 }
 
 /** Incident non terminale a cui l'evento è correlato (CORRELATED_INTO), se esiste. */
@@ -1017,7 +1017,7 @@ async function reevaluateEvent(_: unknown, args: { id: string }, ctx: GraphQLCon
   const pipeline = await runEventPipeline({ tenantId: ctx.tenantId, eventId: args.id, actorId: ctx.userId, mode: 'reevaluate' })
   void audit(ctx, 'event.reevaluated', 'Event', args.id, { previousStatus: status, previousCorrelation: correlation, outcome: pipeline.outcome, incidentId: pipeline.incidentId })
   const row = await loadEvent(args.id, ctx.tenantId)
-  return mapEvent(row.props, row)
+  return mapEvent(ctx.tenantId, row.props, row)
 }
 
 /** hostname/ip/fqdn si confrontano in minuscolo; external_id è esatto. */
@@ -1098,7 +1098,7 @@ async function createCIAlias(_: unknown, args: { ciId: string; kind: string; val
     `, { ciId: args.ciId, tenantId: ctx.tenantId, id: uuidv4(), kind: args.kind, value, userId: ctx.userId, now })
     if (!row) throw new NotFoundError('ConfigurationItem', args.ciId)
     void audit(ctx, 'ci_alias.created', 'CIAlias', toStr(row.props['id']), { ciId: args.ciId, kind: args.kind, value })
-    return mapAlias(row.props, row)
+    return mapAlias(ctx.tenantId, row.props, row)
   } finally {
     await session.close()
   }
@@ -1348,7 +1348,7 @@ async function historyCI(parent: EventHistoryEntryOut, _: unknown, ctx: GraphQLC
       RETURN ci.id AS ciId, ci.name AS ciName, ci.status AS ciStatus, ci.health AS ciHealth,
              [l IN labels(ci) WHERE l <> 'ConfigurationItem'] AS ciLabels
     `, { id: parent.ciId, tenantId: ctx.tenantId })
-    return row ? mapCIRef(row) : null
+    return row ? mapCIRef(ctx.tenantId, row) : null
   } finally { await session.close() }
 }
 
@@ -1381,7 +1381,7 @@ async function incidentCorrelatedEvents(parent: { id: string }, args: PageArgs, 
       ${eventRowColumns()}
       ${EVENT_ROW_RETURN}
     `, { id: parent.id, tenantId: ctx.tenantId, ...pageOf(args) })
-    return rows.map((r) => mapEvent(r.props, r))
+    return rows.map((r) => mapEvent(ctx.tenantId, r.props, r))
   } finally { await session.close() }
 }
 
@@ -1421,7 +1421,7 @@ async function changeSuppressedEvents(parent: { id: string }, args: PageArgs, ct
       ${eventRowColumns()}
       ${EVENT_ROW_RETURN}
     `, { id: parent.id, tenantId: ctx.tenantId, ...pageOf(args) })
-    return rows.map((r) => mapEvent(r.props, r))
+    return rows.map((r) => mapEvent(ctx.tenantId, r.props, r))
   } finally { await session.close() }
 }
 
