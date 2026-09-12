@@ -11,8 +11,16 @@ import { colors, palette, alpha } from '@/lib/tokens'
 
 const PAGE_SIZE = 15
 
+/**
+ * Le schede mandano una CLASSE di stato, non il nome di un passo: l'API la
+ * traduce nei passi del workflow del tenant (`is_open`, `is_initial`,
+ * `is_terminal`, `category`). Prima qui c'era `open: 'open'`, confrontato per
+ * uguaglianza con `Incident.status`: nessun workflow definisce un passo
+ * chiamato `open`, quindi la scheda «Aperti» era vuota per costruzione — e non
+ * coincideva col contatore della home. Ora la sorgente è una sola.
+ */
 type FilterKey = 'all' | 'open' | 'inProgress' | 'resolved' | 'closed'
-const FILTER_STATUS: Record<FilterKey, string | null> = {
+const FILTER_CLASS: Record<FilterKey, string | null> = {
   all:        null,
   open:       'open',
   inProgress: 'in_progress',
@@ -37,9 +45,9 @@ export function TicketListPage() {
   const [page, setPage]           = useState(1)
 
   // The list polls for status changes made by the IT team; nothing else does.
-  const { data, loading } = useQuery<{ myTickets: { items: Ticket[]; total: number } }>(
+  const { data, loading, error } = useQuery<{ myTickets: { items: Ticket[]; total: number } }>(
     GET_MY_TICKETS,
-    { variables: { status: FILTER_STATUS[filter], page, pageSize: PAGE_SIZE }, pollInterval: TICKET_POLL_INTERVAL_MS },
+    { variables: { status: FILTER_CLASS[filter], page, pageSize: PAGE_SIZE }, pollInterval: TICKET_POLL_INTERVAL_MS },
   )
 
   const tickets   = data?.myTickets?.items ?? []
@@ -109,6 +117,14 @@ export function TicketListPage() {
       {/* Tickets list */}
       {loading ? (
         <div style={{ padding: 32, textAlign: 'center', color: colors.slateLight }}>{t('common.loading')}</div>
+      ) : error ? (
+        /* Fail-loud: se il workflow del tenant non dichiara nessun passo per la
+           classe scelta, l'API lo dice — e va detto in pagina, invece di
+           mostrare una lista vuota che si legge come «non hai ticket». */
+        <div role="alert" style={{ padding: '32px 24px', textAlign: 'center', color: palette.danger.text, backgroundColor: palette.danger.bg, border: `1px solid ${palette.danger.border}`, borderRadius: 10 }}>
+          <p style={{ fontWeight: 600, marginBottom: 8 }}>{t('ticket.filterError')}</p>
+          <p style={{ fontSize: 12 }}>{error.message}</p>
+        </div>
       ) : tickets.length === 0 ? (
         <div style={{ padding: '48px 0', textAlign: 'center', color: colors.slateLight }}>
           <p style={{ marginBottom: 16 }}>{t(`ticket.empty.${filter}`)}</p>

@@ -7,6 +7,8 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { unroutableChannels, routableChannels, isNotificationChannel } from '@opengraphity/notifications'
+import { isNotificationTarget } from '@opengraphity/types'
+import { applicableNotificationTargets, isTargetApplicable } from '@opengraphity/types'
 
 vi.mock('../logger.js', () => ({
   notificationLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -21,6 +23,17 @@ describe('DEFAULT_NOTIFICATION_RULES ↔ canali instradabili', () => {
       .map((r) => ({ type: r.event_type, bad: unroutableChannels(r.event_type, r.channels) }))
       .filter((x) => x.bad.length > 0)
     expect(offending, `canali inerti nel seed (aggiungi il formatter o togli il canale): ${JSON.stringify(offending)}`).toEqual([])
+  })
+
+  /**
+   * D-23: ogni destinatario seminato dev'essere fra quelli che il dispatcher
+   * sa risolvere, altrimenti la prima notifica di quel tipo fallirebbe il job
+   * su un tenant appena creato.
+   */
+  it('ogni regola seminata ha un destinatario del vocabolario', () => {
+    for (const r of DEFAULT_NOTIFICATION_RULES) {
+      expect(isNotificationTarget(r.target), `${r.event_type}: ${r.target}`).toBe(true)
+    }
   })
 
   it('ogni regola ha almeno un canale, tutti noti, e in_app è sempre presente (la campanella è il minimo garantito)', () => {
@@ -43,5 +56,18 @@ describe('DEFAULT_NOTIFICATION_RULES ↔ canali instradabili', () => {
   it('nessun tipo di evento duplicato nel seed', () => {
     const types = DEFAULT_NOTIFICATION_RULES.map((r) => r.event_type)
     expect(new Set(types).size).toBe(types.length)
+  })
+
+  // Una regola di serie con un bersaglio impossibile per il suo evento
+  // arriverebbe su OGNI tenant e farebbe fallire il job a ogni evento. È il
+  // difetto trovato su un tenant (`incident.created → team_owner`): qui si
+  // impedisce che entri nel prodotto.
+  it('ogni regola seminata ha un bersaglio applicabile al suo tipo di evento', () => {
+    for (const rule of DEFAULT_NOTIFICATION_RULES) {
+      expect(
+        isTargetApplicable(rule.event_type, rule.target),
+        `${rule.event_type}: il bersaglio "${rule.target}" non è risolvibile per questo evento (ammessi: ${applicableNotificationTargets(rule.event_type).join(', ')})`,
+      ).toBe(true)
+    }
   })
 })

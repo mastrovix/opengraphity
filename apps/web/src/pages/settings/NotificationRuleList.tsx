@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Lock, Unlock, AlertTriangle } from 'lucide-react'
+import { NOTIFICATION_TARGETS } from '@opengraphity/types'
 import { colors, fontSize, fontWeight, palette } from '@/lib/tokens'
 import { Toggle as SharedToggle } from '@/components/ui/Toggle'
 
@@ -30,10 +31,34 @@ export const CHANNEL_LABEL_KEY: Record<string, string> = {
 export interface NotificationRouting {
   defaultChannels: string[]
   byEventType: Array<{ eventType: string; channels: string[] }>
+  defaultTargets: string[]
+  targetsByEventType: Array<{ eventType: string; targets: string[] }>
 }
 
 export function routableFor(routing: NotificationRouting, eventType: string): string[] {
   return routing.byEventType.find((e) => e.eventType === eventType)?.channels ?? routing.defaultChannels
+}
+
+/**
+ * I bersagli che hanno senso per quel tipo di evento. Alla nascita di un
+ * ticket non esistono ancora assegnatario e team, quindi offrirli sarebbe
+ * offrire una regola che non consegnerà mai niente: il server la rifiuta, e
+ * qui non la proponiamo nemmeno. Un bersaglio già salvato ma non più
+ * applicabile resta visibile (con l'avviso) perché si possa cambiare.
+ */
+export function targetsFor(routing: NotificationRouting, eventType: string): string[] {
+  return routing.targetsByEventType.find((e) => e.eventType === eventType)?.targets ?? routing.defaultTargets
+}
+
+/** Le opzioni della tendina per quell'evento, più il valore salvato se non è più fra quelli applicabili. */
+export function targetOptionsFor(routing: NotificationRouting, eventType: string, current: string): { value: string; labelKey: string; applicable: boolean }[] {
+  const applicable = targetsFor(routing, eventType)
+  const options = TARGET_OPTIONS.filter((o) => applicable.includes(o.value)).map((o) => ({ ...o, applicable: true }))
+  if (!applicable.includes(current)) {
+    const saved = TARGET_OPTIONS.find((o) => o.value === current)
+    if (saved) options.unshift({ ...saved, applicable: false })
+  }
+  return options
 }
 
 /**
@@ -98,13 +123,31 @@ export const STANDARD_EVENTS = RULE_CATEGORIES.flatMap((c) => c.events)
 
 const SEVERITY_OPTIONS = ['info', 'success', 'warning', 'error'] as const
 
-const TARGET_OPTIONS: { value: string; labelKey: string }[] = [
-  { value: 'all',          labelKey: 'notificationRules.target.all'         },
-  { value: 'assignee',     labelKey: 'notificationRules.target.assignee'    },
-  { value: 'team_owner',   labelKey: 'notificationRules.target.teamOwner'   },
-  { value: 'role:admin',   labelKey: 'notificationRules.target.adminOnly'   },
-  { value: 'role:manager', labelKey: 'notificationRules.target.managerOnly' },
-]
+/**
+ * Etichette dei destinatari. QUALI destinatari esistono lo dice il
+ * vocabolario condiviso `NOTIFICATION_TARGETS` (@opengraphity/types): la
+ * stessa lista che il resolver valida in scrittura e che il dispatcher sa
+ * risolvere, con un bersaglio per ruolo derivato da `USER_ROLES`. Prima qui
+ * c'era una lista scritta a mano che offriva `role:manager` — un ruolo che
+ * l'autenticazione non conosce, quindi zero destinatari (D-13/D-23).
+ * Un bersaglio del vocabolario senza etichetta qui è un errore al caricamento
+ * del modulo (lo prende il test): mai un'opzione muta in tendina.
+ */
+const TARGET_LABEL_KEY: Record<string, string> = {
+  'all':            'notificationRules.target.all',
+  'assignee':       'notificationRules.target.assignee',
+  'team_owner':     'notificationRules.target.teamOwner',
+  'role:admin':     'notificationRules.target.roleAdmin',
+  'role:operator':  'notificationRules.target.roleOperator',
+  'role:viewer':    'notificationRules.target.roleViewer',
+  'role:end_user':  'notificationRules.target.roleEndUser',
+}
+
+export const TARGET_OPTIONS: { value: string; labelKey: string }[] = NOTIFICATION_TARGETS.map((value) => {
+  const labelKey = TARGET_LABEL_KEY[value]
+  if (!labelKey) throw new Error(`TARGET_LABEL_KEY: manca l'etichetta del destinatario "${value}" — aggiungi la chiave e le traduzioni it/en prima di offrirlo`)
+  return { value, labelKey }
+})
 
 const selectStyle: React.CSSProperties = {
   padding: '4px 8px', border: `1px solid ${colors.border}`, borderRadius: 4,
@@ -150,12 +193,15 @@ export function Toggle({ value, onChange, label }: { value: boolean; onChange: (
 export function RuleRow({
   rule,
   routable,
+  targets,
   onUpdate,
   onDelete,
 }: {
   rule:     NotificationRule
   /** Canali consegnabili per `rule.eventType` (dal server). */
   routable: readonly string[]
+  /** Bersagli applicabili a `rule.eventType`, col valore salvato in testa se non lo è più (dal server). */
+  targets:  readonly { value: string; labelKey: string; applicable: boolean }[]
   onUpdate: (id: string, input: UpdateInput) => void
   onDelete: (id: string) => void
 }) {
@@ -244,8 +290,10 @@ export function RuleRow({
       {/* Target */}
       <td style={{ padding: '10px 12px', width: 160 }}>
         <select value={rule.target} onChange={(e) => debounce({ target: e.target.value })} style={{ ...selectStyle, color: 'var(--color-slate)' }}>
-          {TARGET_OPTIONS.map(({ value, labelKey }) => (
-            <option key={value} value={value}>{t(labelKey)}</option>
+          {targets.map(({ value, labelKey, applicable }) => (
+            <option key={value} value={value}>
+              {applicable ? t(labelKey) : t('notificationRules.target.notApplicable', { target: t(labelKey) })}
+            </option>
           ))}
         </select>
       </td>

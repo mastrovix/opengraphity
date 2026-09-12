@@ -18,6 +18,11 @@ vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), 
 vi.mock('../../services/incidentService.js', () => ({ createIncident: vi.fn() }))
 vi.mock('../../services/problemService.js', () => ({ createProblem: vi.fn() }))
 vi.mock('@opengraphity/scripting', () => ({ runScript: vi.fn() }))
+// D-12: lo script di trasformazione è del cliente e passa dal limite di piano
+// (`Tenant.scripting_enabled`). Qui la lettura del tenant è simulata: il suo
+// contratto è pinnato da lib/__tests__/scriptingPlan.test.ts.
+const assertScriptingEnabled = vi.fn<(tenantId: string, what: string) => Promise<void>>(async () => {})
+vi.mock('../../lib/scriptingPlan.js', () => ({ assertScriptingEnabled: (t: string, w: string) => assertScriptingEnabled(t, w) }))
 // Redis in memoria: lo script Lua INCR+EXPIRE conta per chiave; il suffisso
 // `:<minuto>` viene ignorato così un test a cavallo di due minuti non si azzera.
 const rateCounts = new Map<string, number>()
@@ -39,6 +44,7 @@ const { logger } = await import('../../lib/logger.js')
 const { webhookRateLimitedTotal } = await import('../../middleware/metrics.js')
 const { webhookInboundRouter, transformScriptSemaphore, TRANSFORM_SCRIPT_MAX_CONCURRENCY, TRANSFORM_SCRIPT_MAX_WAIT_MS, TRANSFORM_SCRIPT_RETRY_AFTER_SECONDS, WEBHOOK_BODY_LIMIT } = await import('../webhooks-inbound.js')
 const { SemaphoreTimeoutError } = await import('../../lib/semaphore.js')
+const { ValidationError } = await import('../../lib/errors.js')
 
 const TOKEN = 'wh-secret-token'
 const sha = (s: string) => createHash('sha256').update(s).digest('hex')
@@ -74,6 +80,7 @@ beforeAll(async () => {
 afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())) })
 beforeEach(() => {
   vi.clearAllMocks()
+  assertScriptingEnabled.mockImplementation(async () => {})
   vi.mocked(getSession).mockReturnValue(session as never)
   vi.mocked(runQuery).mockResolvedValue([])
   vi.mocked(createIncident).mockResolvedValue({ id: 'inc-new', number: 'INC00000007' } as never)
@@ -330,6 +337,17 @@ describe('fail-loud payload/config handling', () => {
     expect(runQuery).toHaveBeenCalledTimes(1)
     expect(vi.mocked(runQuery).mock.calls[0]![1]).toMatch(/SET w\.last_error = \$message/)
     expect(vi.mocked(runQuery).mock.calls[0]![1]).not.toMatch(/receive_count/)
+  })
+
+  it('piano senza script → 400 con il motivo, lo script di trasformazione NON gira e il payload grezzo non passa avanti (D-12)', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue(hook({ transform_script: 'return input' }))
+    assertScriptingEnabled.mockRejectedValueOnce(new ValidationError('script di trasformazione del webhook hook-1: il piano "starter" del tenant tenant-1 non include gli script (scripting_enabled = false). Rimuovi lo script dalla configurazione oppure passa a un piano che li include.'))
+    const res = await post('hook-1', { body: { summary: 'Da trasformare' } })
+    expect(res.status).toBe(400)
+    expect((await err(res)).message).toMatch(/non include gli script/)
+    expect(assertScriptingEnabled).toHaveBeenCalledWith('tenant-1', 'script di trasformazione del webhook hook-1')
+    expect(runScript).not.toHaveBeenCalled()
+    expect(createIncident).not.toHaveBeenCalled()
   })
 
   it('transform script returning a non-object → 400', async () => {

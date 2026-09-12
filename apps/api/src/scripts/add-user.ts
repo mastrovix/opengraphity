@@ -7,7 +7,8 @@
  *   pnpm --filter @opengraphity/api add-user -- \
  *     --slug c-one \
  *     --email mario@acme.com \
- *     [--username mario] [--first-name Mario] [--last-name Rossi] [--role user] \
+ *     --role operator \
+ *     [--username mario] [--first-name Mario] [--last-name Rossi] \
  *     [--password-stdin]
  *
  * Password (mai in argv — `--password X` è rifiutato):
@@ -23,6 +24,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { parseArgs } from 'node:util'
 import { getSession } from '@opengraphity/neo4j'
+import { USER_ROLES, type UserRole } from '@opengraphity/types'
 import { ScriptArgError } from './lib/scriptArgs.js'
 import { runScript } from './lib/runScript.js'
 import { assignRealmRole, createKeycloakAdmin, findUserIdByEmail, keycloakConfigFromEnv, type KeycloakAdmin } from './lib/keycloakAdmin.js'
@@ -30,8 +32,17 @@ import { PASSWORD_STDIN_FLAG, assertNoPasswordInArgv, printOneTimePassword, reso
 
 // ── Args ──────────────────────────────────────────────────────────────────────
 
-const ALLOWED_ROLES = ['admin', 'user', 'manager', 'operator', 'viewer', 'end_user'] as const
-type Role = typeof ALLOWED_ROLES[number]
+/**
+ * I ruoli che l'autenticazione accetta, importati (non copiati) da
+ * @opengraphity/types: `USER_ROLES`, la stessa lista di `assertRole`
+ * (auth/resolveAuth.ts) e della policy RBAC (lib/authorization.ts).
+ * Prima qui c'erano anche `user` e `manager`, che l'API rifiuta al login, e
+ * `user` era persino il DEFAULT: `add-user` senza `--role` creava di serie un
+ * utente che non riesce a entrare (D-13). Ora il ruolo è obbligatorio: meglio
+ * un errore al comando che un utente inutilizzabile.
+ */
+const ALLOWED_ROLES = USER_ROLES
+type Role = UserRole
 
 interface Args {
   slug:      string
@@ -55,21 +66,21 @@ function parseCliArgs(argv: readonly string[]): Args {
       'email':          { type: 'string' },
       'first-name':     { type: 'string' },
       'last-name':      { type: 'string' },
-      'role':           { type: 'string', default: 'user' },
+      'role':           { type: 'string' },   // obbligatorio: nessun default (un default invalido creava utenti che non entrano)
       'password-stdin': { type: 'boolean', default: false },
     },
   })
 
   const slug  = args['slug']
   const email = args['email']
-  if (!slug || !email) {
+  const role  = args['role']
+  if (!slug || !email || !role) {
     throw new ScriptArgError(
-      `argomenti mancanti. Uso: --slug <slug> --email <email> [--username <u>] [--first-name <n>] [--last-name <c>] [--role user] [${PASSWORD_STDIN_FLAG}]`,
+      `argomenti mancanti. Uso: --slug <slug> --email <email> --role <${ALLOWED_ROLES.join('|')}> [--username <u>] [--first-name <n>] [--last-name <c>] [${PASSWORD_STDIN_FLAG}]`,
     )
   }
 
-  const role = args['role']!
-  if (!ALLOWED_ROLES.includes(role as Role)) {
+  if (!(ALLOWED_ROLES as readonly string[]).includes(role)) {
     throw new ScriptArgError(`--role deve essere uno di: ${ALLOWED_ROLES.join(', ')}`)
   }
 

@@ -4,6 +4,8 @@ import type { Queue } from 'bullmq'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { invalidateRuleCache, DEFAULT_ROUTABLE_CHANNELS, ROUTABLE_CHANNELS_BY_EVENT, routableChannels, unroutableChannels } from '@opengraphity/notifications'
+import { NOTIFICATION_TARGETS, isNotificationTarget, applicableNotificationTargets, isTargetApplicable } from '@opengraphity/types'
+import { SEEDED_EVENT_TYPES } from '../../lib/seedNotificationRules.js'
 import { validateEnum } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
 import { getQueue } from '../../lib/bullmq.js'
@@ -68,11 +70,50 @@ function assertChannelsRoutable(eventType: string, channels: readonly string[]):
   }
 }
 
+/**
+ * Il bersaglio deve essere uno di quelli che il dispatcher sa risolvere
+ * (`NOTIFICATION_TARGETS` in @opengraphity/types, la stessa lista che
+ * l'interfaccia offre). Prima il campo veniva scritto senza controllo e poi
+ * ignorato in consegna: `role:manager` — un ruolo che l'autenticazione non
+ * conosce (D-13) — era salvabile e non avrebbe mai selezionato nessuno.
+ * Rifiutare qui è la prima linea; la seconda è l'errore del job nel
+ * dispatcher (D-23).
+ */
+function assertTargetKnown(target: string): void {
+  if (!isNotificationTarget(target)) {
+    throw new GraphQLError(
+      `Target "${target}" non è un destinatario valido. Ammessi: ${NOTIFICATION_TARGETS.join(', ')}`,
+      { extensions: { code: 'BAD_USER_INPUT', target, allowedTargets: [...NOTIFICATION_TARGETS] } },
+    )
+  }
+}
+
+/**
+ * Un bersaglio valido ma impossibile per QUEL tipo di evento è una regola che
+ * non consegnerà mai niente: alla nascita di un incident non esistono ancora
+ * assegnatario né team (`CreateIncidentInput` non li accetta), quindi
+ * `incident.created → team_owner` fa fallire il job a ogni incident creato.
+ * Prima il bersaglio veniva ignorato e il difetto non si vedeva. Stessa forma
+ * di `assertChannelsRoutable`: la tabella sta in @opengraphity/types e la usa
+ * anche la tendina dell'interfaccia.
+ */
+function assertTargetApplicable(eventType: string, target: string): void {
+  if (!isTargetApplicable(eventType, target)) {
+    const allowed = applicableNotificationTargets(eventType)
+    throw new GraphQLError(
+      `Target "${target}" non può essere risolto per l'evento "${eventType}": l'entità non ha quel destinatario nel momento in cui l'evento accade. Ammessi: ${allowed.join(', ')}`,
+      { extensions: { code: 'BAD_USER_INPUT', eventType, target, allowedTargets: [...allowed] } },
+    )
+  }
+}
+
 /** La tabella dei canali instradabili, così com'è nel pacchetto: l'interfaccia non conosce nomi di eventi o canali. */
 function notificationRouting() {
   return {
     defaultChannels: [...DEFAULT_ROUTABLE_CHANNELS],
     byEventType:     Object.entries(ROUTABLE_CHANNELS_BY_EVENT).map(([eventType, channels]) => ({ eventType, channels: [...channels] })),
+    targetsByEventType: SEEDED_EVENT_TYPES.map((eventType) => ({ eventType, targets: [...applicableNotificationTargets(eventType)] })),
+    defaultTargets:  [...NOTIFICATION_TARGETS],
   }
 }
 
@@ -112,16 +153,19 @@ async function updateNotificationRule(
   if (input.severityOverride) {
     validateEnum(input.severityOverride, ['low', 'medium', 'high', 'critical', ''] as const, 'severityOverride')
   }
+  if (input.target != null) assertTargetKnown(input.target)
   return withSession(async (session) => {
     const now = new Date().toISOString()
-    if (input.channels != null) {
-      // The event type is on the node, not in the input: read it first so the
-      // channel check names the real type (a rule id is opaque to the client).
+    if (input.channels != null || input.target != null) {
+      // The event type is on the node, not in the input: read it first so both
+      // checks name the real type (a rule id is opaque to the client).
       const current = await session.executeRead((tx) =>
         tx.run(`MATCH (r:NotificationRule {id: $id, tenant_id: $tenantId}) RETURN r.event_type AS eventType`, { id, tenantId: ctx.tenantId }),
       )
       if (!current.records.length) throw new GraphQLError('NotificationRule non trovata', { extensions: { code: 'NOT_FOUND' } })
-      assertChannelsRoutable(current.records[0].get('eventType') as string, input.channels)
+      const eventType = current.records[0].get('eventType') as string
+      if (input.channels != null) assertChannelsRoutable(eventType, input.channels)
+      if (input.target   != null) assertTargetApplicable(eventType, input.target)
     }
     const result = await session.executeWrite((tx) =>
       tx.run(
@@ -191,6 +235,8 @@ async function createNotificationRule(
   ctx: GraphQLContext,
 ) {
   assertChannelsRoutable(input.eventType, input.channels)
+  assertTargetKnown(input.target)
+  assertTargetApplicable(input.eventType, input.target)
   return withSession(async (session) => {
     const now = new Date().toISOString()
     const id  = randomUUID()

@@ -10,6 +10,7 @@ import type { DomainEvent } from '@opengraphity/types'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import { ValidationError } from './errors.js'
 import { assertSafeOutboundUrl, loggableUrl } from './safeUrl.js'
+import { assertScriptingEnabled } from './scriptingPlan.js'
 
 const log = pino({ level: process.env['LOG_LEVEL'] ?? 'info' }).child({ module: 'action-executor' })
 
@@ -248,6 +249,11 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
     case 'execute_script': {
       const code = String(p['code'] ?? '')
       if (!code) throw new Error('execute_script: code is required')
+      // Limite di piano (D-12): l'automazione è del cliente, quindi passa dal
+      // limite. Piano senza script → l'azione non gira e l'errore lo dice
+      // (l'esecuzione dell'automazione fallisce e resta visibile), invece di
+      // essere saltata in silenzio.
+      await assertScriptingEnabled(ctx.tenantId, `azione execute_script di "${ctx.sourceName}"`)
       const { runScript } = await import('@opengraphity/scripting')
       const result = await runScript(
         { id: 'inline', tenant_id: ctx.tenantId, name: ctx.sourceName, trigger: 'automation' as never, code, enabled: true, created_at: now, updated_at: now },

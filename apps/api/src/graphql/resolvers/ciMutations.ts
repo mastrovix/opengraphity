@@ -12,6 +12,7 @@ import { ciNameKey } from '../../lib/ciNameKey.js'
 import { notifyCIGraphChanged, notifyCIMaintenanceChanged } from '../../services/serviceImpact/sync.js'
 import { CI_LIFECYCLE_MAINTENANCE } from '../../services/serviceImpact/engine.js'
 import { recomputeCIHealth } from '../../services/events/ciHealth.js'
+import { assertScriptingEnabled, isTenantOwnedDefinition } from '../../lib/scriptingPlan.js'
 
 type Props = Record<string, unknown>
 
@@ -36,7 +37,15 @@ async function runValidationScript(
   data: { input: Record<string, unknown>; value?: unknown },
   name: string,
   tenantId: string,
+  scope: string | undefined,
 ): Promise<string | null> {
+  // Limite di piano (D-12): uno script scritto dal cliente non gira se il suo
+  // piano non include gli script, e il rifiuto è esplicito. Gli script del
+  // metamodello condiviso (scope base/itil: url, ipAddress, expiresAt,
+  // certificate) sono comportamento del prodotto e non passano dal limite.
+  if (isTenantOwnedDefinition(scope)) {
+    await assertScriptingEnabled(tenantId, `${name}`)
+  }
   const { runScript } = await import('@opengraphity/scripting')
   const now = new Date().toISOString()
   const result = await runScript(
@@ -71,14 +80,14 @@ export async function validateCIInput(
       continue
     }
     if (field.validationScript && value != null) {
-      const err = await runValidationScript(field.validationScript, { input, value }, `${ciType.name}.${field.name}.validation_script`, tenantId)
+      const err = await runValidationScript(field.validationScript, { input, value }, `${ciType.name}.${field.name}.validation_script`, tenantId, field.scope)
       if (err) errors.push(`${field.label || field.name}: ${err}`)
     }
   }
   if (errors.length) throw new ValidationError(`Validazione CI fallita: ${errors.join('; ')}`)
 
   if (ciType.validationScript) {
-    const err = await runValidationScript(ciType.validationScript, { input }, `${ciType.name}.validation_script`, tenantId)
+    const err = await runValidationScript(ciType.validationScript, { input }, `${ciType.name}.validation_script`, tenantId, ciType.scope)
     if (err) throw new ValidationError(`Validazione CI fallita: ${err}`)
   }
 }

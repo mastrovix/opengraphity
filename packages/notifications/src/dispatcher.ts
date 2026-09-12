@@ -12,6 +12,7 @@ import type { IncidentData, ChangeTaskPayload } from './formatters.js'
 import { APP_URL } from './appUrl.js'
 import { escapeHtml } from './escapeHtml.js'
 import { assertRoutableChannels, notificationEntityPath, unroutableChannels } from './routing.js'
+import { resolveNotificationRecipients, targetNeedsRecipients, type NotificationRecipient } from './recipients.js'
 
 // ── Rule model ────────────────────────────────────────────────────────────────
 
@@ -216,8 +217,19 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       read:        false,
     }
 
+    // Destinatari del bersaglio della regola (D-23), risolti PRIMA di
+    // consegnare: se il bersaglio non seleziona nessuno la consegna non parte
+    // affatto e il job fallisce nominandolo — l'alternativa (trasmettere a
+    // tutto il tenant) è esattamente la fuga di riservatezza da correggere.
+    // Slack/Teams vanno ai canali del tenant (sono abbonamenti di canale, non
+    // di persona): il bersaglio non li riguarda e non vengono risolti se la
+    // regola chiede solo quelli.
+    const recipients = channels.some((c) => c === 'in_app' || c === 'email')
+      ? await this.resolveRecipients(event, rule.target)
+      : null
+
     if (channels.includes('in_app')) {
-      sseManager.sendToTenant(event.tenant_id, notification)
+      this.sendInApp(event.tenant_id, notification, recipients)
     }
 
     if (channels.some((c) => c === 'slack' || c === 'teams')) {
@@ -225,7 +237,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     }
 
     if (channels.includes('email')) {
-      await this.dispatchEmail(event, notification)
+      await this.dispatchEmail(event, notification, recipients)
     }
 
     if (unroutable.length > 0) assertRoutableChannels(event.type, rule.channels)
@@ -236,7 +248,8 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       stepName: string
       entityType: string
       entityId: string
-      notifyRule: { title_key: string; severity: string; channels: string[]; target: string }
+      /** `target` assente = regola di passo scritta prima dei bersagli: trasmissione al tenant. */
+      notifyRule: { title_key: string; severity: string; channels: string[]; target?: string }
     }
     const nr = p.notifyRule
     if (!nr) throw new Error('workflow.step.entered event without notifyRule payload')
@@ -253,11 +266,18 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       read:        false,
     }
 
+    // Stesso bersaglio, stesse regole delle notifiche da NotificationRule: la
+    // regola del passo vive nel payload, ma «solo l'assegnatario» deve valere
+    // anche qui (prima il campo era ignorato in entrambi i percorsi).
+    const recipients = nr.channels.some((c) => c === 'in_app' || c === 'email')
+      ? await this.resolveRecipients(event, nr.target ?? 'all', { type: p.entityType, id: p.entityId })
+      : null
+
     if (nr.channels.includes('in_app')) {
-      sseManager.sendToTenant(event.tenant_id, notification)
+      this.sendInApp(event.tenant_id, notification, recipients)
     }
     if (nr.channels.includes('email')) {
-      await this.dispatchEmail(event, notification)
+      await this.dispatchEmail(event, notification, recipients)
     }
     // Slack/Teams for workflow steps are not implemented: refuse loudly instead
     // of silently dropping a channel the admin configured (same table as the
@@ -265,6 +285,39 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     const unsupported = unroutableChannels('workflow.step.entered', nr.channels)
     if (unsupported.length > 0) {
       throw new Error(`workflow.step.entered notify_rule requests unsupported channels [${unsupported.join(', ')}] — only in_app and email are implemented`)
+    }
+  }
+
+  // ── Bersaglio della regola → destinatari (D-23) ─────────────────────────────
+
+  /**
+   * Destinatari del bersaglio, oppure `null` per `all`: la trasmissione a tutto
+   * il tenant (in-app) e l'email ad admin/operator, cioè il comportamento
+   * storico, che per `all` è quello giusto. Per ogni altro bersaglio la lista
+   * è non vuota per costruzione (`resolveNotificationRecipients` fallisce
+   * nominando il bersaglio se non seleziona nessuno).
+   */
+  private async resolveRecipients(
+    event: DomainEvent<unknown>,
+    target: string,
+    entity?: { type: string; id: string | undefined },
+  ): Promise<NotificationRecipient[] | null> {
+    if (!targetNeedsRecipients(target)) return null
+    return resolveNotificationRecipients(event.tenant_id, target, {
+      type:      entity?.type ?? extractEntityType(event.type, event.payload),
+      id:        entity ? entity.id : extractEntityId(event.payload),
+      eventType: event.type,
+    })
+  }
+
+  /** In-app: trasmissione al tenant per `all`, una consegna per destinatario altrimenti. */
+  private sendInApp(tenantId: string, notification: InAppNotification, recipients: NotificationRecipient[] | null): void {
+    if (recipients === null) {
+      sseManager.sendToTenant(tenantId, notification)
+      return
+    }
+    for (const recipient of recipients) {
+      sseManager.sendToUser(tenantId, recipient.id, notification)
     }
   }
 
@@ -368,38 +421,54 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     await dispatchIncidentNotification(event.tenant_id, notifType, incident, platforms)
   }
 
-  private async dispatchEmail(event: DomainEvent<unknown>, notification: InAppNotification): Promise<void> {
+  private async dispatchEmail(
+    event: DomainEvent<unknown>,
+    notification: InAppNotification,
+    recipients: NotificationRecipient[] | null,
+  ): Promise<void> {
     // No silent catch here: a failure (DB lookup, Resend, import) propagates to
     // the consumer, fails the BullMQ job and gets retried — a lost email must
     // never be invisible.
     const { sendEmail } = await import('./email.js')
 
-    // Recipients: admin/operator users with an email address who have not
-    // opted out. `notifications_enabled` is the ONLY exclusion criterion
-    // (absent → enabled, false → excluded) — demo accounts are flagged with
-    // it instead of being pattern-matched on their address (D-20).
+    // Bersaglio ≠ `all`: gli indirizzi sono quelli dei destinatari già risolti
+    // (D-23), lo stesso insieme che riceve la notifica in-app. `all`:
+    // admin/operator con indirizzo che non si sono tirati fuori.
+    const emails = recipients !== null
+      ? recipients.filter((r) => r.email !== null && r.notificationsEnabled).map((r) => r.email as string)
+      : await this.broadcastEmailRecipients(event.tenant_id)
+    if (emails.length === 0) return
+
+    const subject = `[${event.tenant_id}] ${notification.title}: ${notification.message.slice(0, 80)}`
+    const html = renderNotificationEmail(notification)
+
+    // Batch emails (Resend limit: 50 per call)
+    for (let i = 0; i < emails.length; i += 50) {
+      const batch = emails.slice(i, i + 50)
+      await sendEmail({ to: batch, subject, html })
+    }
+  }
+
+  /**
+   * Destinatari email della trasmissione (`target: 'all'`): admin/operator con
+   * un indirizzo che non hanno disattivato le notifiche.
+   * `notifications_enabled` è l'UNICO criterio di esclusione (assente →
+   * attivo, false → escluso) — gli account dimostrativi sono marcati con
+   * quello invece di essere riconosciuti dall'indirizzo (D-20).
+   */
+  private async broadcastEmailRecipients(tenantId: string): Promise<string[]> {
     const session = getSession()
     try {
-        const result = await session.executeRead(tx => tx.run(
-          `MATCH (u:User {tenant_id: $tenantId})
-           WHERE u.role IN ['admin', 'operator', 'TENANT_ADMIN', 'OPERATOR']
-             AND u.email IS NOT NULL
-             AND u.email <> ''
-             AND coalesce(u.notifications_enabled, true) = true
-           RETURN u.email AS email`,
-          { tenantId: event.tenant_id },
-        ))
-        const emails = result.records.map(r => r.get('email') as string).filter(Boolean)
-        if (emails.length === 0) return
-
-        const subject = `[${event.tenant_id}] ${notification.title}: ${notification.message.slice(0, 80)}`
-        const html = renderNotificationEmail(notification)
-
-      // Batch emails (Resend limit: 50 per call)
-      for (let i = 0; i < emails.length; i += 50) {
-        const batch = emails.slice(i, i + 50)
-        await sendEmail({ to: batch, subject, html })
-      }
+      const result = await session.executeRead(tx => tx.run(
+        `MATCH (u:User {tenant_id: $tenantId})
+         WHERE u.role IN ['admin', 'operator', 'TENANT_ADMIN', 'OPERATOR']
+           AND u.email IS NOT NULL
+           AND u.email <> ''
+           AND coalesce(u.notifications_enabled, true) = true
+         RETURN u.email AS email`,
+        { tenantId },
+      ))
+      return result.records.map(r => r.get('email') as string).filter(Boolean)
     } finally {
       await session.close()
     }

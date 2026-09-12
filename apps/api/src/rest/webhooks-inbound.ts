@@ -13,6 +13,7 @@ import { logger } from '../lib/logger.js'
 import { ServiceUnavailableError, ValidationError } from '../lib/errors.js'
 import { Semaphore } from '../lib/semaphore.js'
 import { consumeWebhookRate, rateLimitOf } from '../lib/webhookRateLimit.js'
+import { assertScriptingEnabled } from '../lib/scriptingPlan.js'
 import { eventsRejectedTotal, webhookRateLimitedTotal } from '../middleware/metrics.js'
 import { restErrorHandler } from './errorHandler.js'
 import * as incidentService from '../services/incidentService.js'
@@ -126,6 +127,10 @@ router.post('/webhooks/inbound/:hookId', json({ limit: WEBHOOK_BODY_LIMIT }), as
     }
     const transformScript = wh['transform_script'] as string | null
     if (transformScript) {
+      // Limite di piano (D-12): lo script di trasformazione è del cliente.
+      // Piano senza script → 400 con il motivo, mai il payload grezzo passato
+      // avanti come se lo script non ci fosse.
+      await assertScriptingEnabled(tenantId, `script di trasformazione del webhook ${hookId}`)
       const { runScript } = await import('@opengraphity/scripting')
       const rawPayload = payload
       const result = await transformScriptSemaphore.run(() => runScript(

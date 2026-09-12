@@ -89,14 +89,23 @@ export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
   const save = async () => {
     setSaving(true)
     try {
+      // I criteri NON sono campi di `UpdateCIFieldsInput`: passano dal varco
+      // dichiarato per le proprietà non di base, `customFields` (l'API le
+      // converte in snake_case: criteria_ci_types, …, che è quello che legge
+      // `ciGroupMembers`). Mandarli come chiavi di primo livello — come si
+      // faceva — faceva rifiutare da Apollo l'intera richiesta: «Salva
+      // criteri» non ha mai salvato nulla. Ora il contratto è pinnato dal test
+      // API ↔ web sulle variabili (webDocuments.test.ts).
       await updateCIFields({
         variables: {
           id: groupId,
           input: {
-            criteriaCiTypes:      [...selectedTypes].join(','),
-            criteriaEnvironment:  environment,
-            criteriaStatus:       status,
-            criteriaNameContains: nameContains.trim(),
+            customFields: JSON.stringify({
+              criteriaCiTypes:      [...selectedTypes].join(','),
+              criteriaEnvironment:  environment,
+              criteriaStatus:       status,
+              criteriaNameContains: nameContains.trim(),
+            }),
           },
         },
       })

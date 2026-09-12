@@ -71,6 +71,13 @@ export const DEFAULT_NOTIFICATION_RULES: readonly RuleDef[] = [
 // test lib/__tests__/seedNotificationRules.test.ts lo pinna; la migrazione
 // 20260911_1150 ripulisce le regole già scritte sui tenant esistenti.
 
+/**
+ * I tipi di evento che il prodotto semina, in ordine: l'interfaccia li usa per
+ * sapere quali bersagli offrire per ciascuno (`notificationRouting`). Derivati
+ * dalle regole di serie, così non esiste una seconda lista da tenere allineata.
+ */
+export const SEEDED_EVENT_TYPES: readonly string[] = DEFAULT_NOTIFICATION_RULES.map((r) => r.event_type)
+
 export interface SeedNotificationRulesResult { created: number; skipped: number }
 
 /**

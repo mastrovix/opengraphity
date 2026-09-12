@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { colors, fontWeight, lookupOrError, alpha, palette } from '@/lib/tokens'
-import { SEVERITY_COLOR, CHANNEL_LABEL_KEY, STANDARD_EVENTS, routableFor, type NotificationRouting } from './NotificationRuleList'
+import { SEVERITY_COLOR, CHANNEL_LABEL_KEY, STANDARD_EVENTS, TARGET_OPTIONS, routableFor, type NotificationRouting } from './NotificationRuleList'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -25,14 +25,6 @@ export interface CreateInput {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const SEVERITY_OPTIONS = ['info', 'success', 'warning', 'error'] as const
-
-const TARGET_OPTIONS: { value: string; labelKey: string }[] = [
-  { value: 'all',          labelKey: 'notificationRules.target.all'         },
-  { value: 'assignee',     labelKey: 'notificationRules.target.assignee'    },
-  { value: 'team_owner',   labelKey: 'notificationRules.target.teamOwner'   },
-  { value: 'role:admin',   labelKey: 'notificationRules.target.adminOnly'   },
-  { value: 'role:manager', labelKey: 'notificationRules.target.managerOnly' },
-]
 
 const CUSTOM_SENTINEL = '__custom__'
 

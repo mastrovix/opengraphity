@@ -10,6 +10,7 @@ import { screen, within } from '@testing-library/react'
 import NotificationRulesPage from './NotificationRulesPage'
 import { GET_NOTIFICATION_RULES, GET_NOTIFICATION_ROUTING } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
+import { NOTIFICATION_TARGETS, USER_ROLES } from '@opengraphity/types'
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
@@ -44,6 +45,15 @@ const routingMock: GqlMock = {
     byEventType: [
       { __typename: 'NotificationRoutableChannels', eventType: 'incident.created', channels: ['in_app', 'email', 'slack', 'teams'] },
       { __typename: 'NotificationRoutableChannels', eventType: 'change.approved',  channels: ['in_app', 'email', 'slack'] },
+    ],
+    // I bersagli applicabili per evento (il server li calcola dalla tabella in
+    // @opengraphity/types): alla NASCITA di un incident non esistono ancora
+    // assegnatario e team, quindi non vengono offerti.
+    defaultTargets: [...NOTIFICATION_TARGETS],
+    targetsByEventType: [
+      { __typename: 'NotificationEventTargets', eventType: 'incident.created',     targets: NOTIFICATION_TARGETS.filter((t) => t !== 'assignee' && t !== 'team_owner') },
+      { __typename: 'NotificationEventTargets', eventType: 'incident.assigned',    targets: [...NOTIFICATION_TARGETS] },
+      { __typename: 'NotificationEventTargets', eventType: 'event.storm_started',  targets: NOTIFICATION_TARGETS.filter((t) => t !== 'assignee' && t !== 'team_owner') },
     ],
   } } },
   maxUsageCount: Number.POSITIVE_INFINITY,
@@ -103,6 +113,35 @@ describe('NotificationRulesPage — canali consegnabili', () => {
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Event type' }), 'event.storm_started')
     expect(labels()).toEqual(['In app', 'Email'])
     expect(within(dialog).getByText('Only the channels the system can deliver for this event type.')).toBeInTheDocument()
+  })
+
+  /**
+   * D-23 + D-13: i destinatari offerti sono il vocabolario condiviso
+   * (`NOTIFICATION_TARGETS`), che ha un bersaglio per ogni ruolo VERO
+   * (`USER_ROLES`). Prima la tendina offriva `role:manager`, un ruolo che
+   * l'autenticazione non conosce: la regola si salvava e non avrebbe mai
+   * selezionato nessuno.
+   *
+   * E i bersagli offerti seguono il TIPO DI EVENTO: alla nascita di un
+   * incident non esistono ancora assegnatario e team, quindi non si possono
+   * offrire (il server rifiuterebbe la regola).
+   */
+  it('i destinatari offerti sono quelli applicabili all\'evento, e i ruoli offerti sono quelli che l\'autenticazione accetta', async () => {
+    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock] })
+    await screen.findAllByText('event.storm_started')
+
+    // nella riga ci sono due tendine: gravità e destinatari (nell'ordine delle colonne)
+    const select = within(rowOf('incident.created')).getAllByRole('combobox')[1]!
+    const values = within(select).getAllByRole('option').map((o) => (o as HTMLOptionElement).value)
+    expect(values).not.toContain('assignee')
+    expect(values).not.toContain('team_owner')
+
+    const offeredRoles = values.filter((v) => v.startsWith('role:')).map((v) => v.slice('role:'.length))
+    expect(offeredRoles).toEqual([...USER_ROLES])
+    expect(values).not.toContain('role:manager')
+    // ogni opzione ha un'etichetta tradotta, non il valore grezzo
+    expect(within(select).getAllByRole('option').map((o) => o.textContent))
+      .toEqual(['Everyone', 'Admins only', 'Operators only', 'Viewers only', 'Portal users only'])
   })
 
   it('se la tabella dei canali non arriva, la pagina mostra l\'errore invece di un elenco di canali a prescindere', async () => {

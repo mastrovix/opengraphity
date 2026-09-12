@@ -1,6 +1,26 @@
 import { getSession } from '@opengraphity/neo4j'
 
 /**
+ * Famiglie di catena ammesse su `CITypeDefinition.chain_families` — fonte
+ * unica (B0-1). Non è un vocabolario di dominio rinominabile dal cliente: è
+ * la dicotomia strutturale su cui la Cypher qui sotto confronta le stringhe
+ * (`'["Application"]'`) e su cui il campo base `chain` è costruito. Un valore
+ * fuori da qui viene rifiutato dalla mutation, non normalizzato in silenzio.
+ */
+export const CHAIN_FAMILIES = ['Application', 'Infrastructure'] as const
+export type ChainFamily = (typeof CHAIN_FAMILIES)[number]
+
+/**
+ * Normalizza una lista di famiglie in JSON canonico per `chain_families`:
+ * ordine di CHAIN_FAMILIES, senza doppioni. L'ordine conta perché la Cypher
+ * di calcolo confronta la stringa JSON per intero.
+ */
+export function chainFamiliesToJSON(families: readonly string[]): string {
+  const set = new Set(families)
+  return JSON.stringify(CHAIN_FAMILIES.filter((f) => set.has(f)))
+}
+
+/**
  * Calculate chain for a single CI based on chain_families of its type and upstream dependencies.
  */
 export async function calculateChain(ciId: string, tenantId: string): Promise<string> {

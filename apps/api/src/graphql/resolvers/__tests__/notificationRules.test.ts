@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
 import { ROUTABLE_CHANNELS_BY_EVENT, DEFAULT_ROUTABLE_CHANNELS } from '@opengraphity/notifications'
+import { NOTIFICATION_TARGETS, USER_ROLES } from '@opengraphity/types'
 
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
@@ -23,6 +24,7 @@ vi.mock('@opengraphity/notifications', async (importOriginal) => {
 })
 
 const { notificationRuleResolvers } = await import('../notificationRules.js')
+import { isTargetApplicable } from '@opengraphity/types'
 
 const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
 const ruleNode = (props: Record<string, unknown>) => ({ records: [{ get: () => ({ properties: props }) }] })
@@ -77,6 +79,46 @@ describe('createNotificationRule — canali non instradabili → BAD_USER_INPUT 
   })
 })
 
+/**
+ * D-23 — il destinatario viene validato in scrittura contro il vocabolario
+ * condiviso (`NOTIFICATION_TARGETS`), che ha un bersaglio per ruolo VERO
+ * (USER_ROLES). Prima `target` veniva scritto senza controllo e poi ignorato
+ * in consegna: `role:manager` era salvabile e non avrebbe mai selezionato
+ * nessuno.
+ */
+describe('target — validato in scrittura contro NOTIFICATION_TARGETS', () => {
+  it('il vocabolario ha un bersaglio per ogni ruolo vero e nessun role:manager', () => {
+    expect(NOTIFICATION_TARGETS).toEqual(['all', 'assignee', 'team_owner', ...USER_ROLES.map((r) => `role:${r}`)])
+    expect(NOTIFICATION_TARGETS).not.toContain('role:manager')
+  })
+
+  it('create con role:manager → BAD_USER_INPUT con i valori ammessi, nessuna scrittura', async () => {
+    await expectBadInput(
+      notificationRuleResolvers.Mutation.createNotificationRule(null, { input: { titleKey: 'k', eventType: 'incident.created', channels: ['in_app'], target: 'role:manager' } }, ctx),
+      /Target "role:manager" non è un destinatario valido\. Ammessi: all, assignee, team_owner, role:admin/,
+    )
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('update con un bersaglio inventato → BAD_USER_INPUT, nessuna lettura e nessuna scrittura', async () => {
+    await expectBadInput(
+      notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { target: 'squadra' } }, ctx),
+      /Target "squadra" non è un destinatario valido/,
+    )
+    expect(mockSession.executeRead).not.toHaveBeenCalled()
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('update con role:operator → scrittura', async () => {
+    // Cambiare il bersaglio ora legge prima il tipo di evento dal nodo: serve
+    // per dire se quel bersaglio è risolvibile per quell'evento.
+    mockSession.executeRead.mockImplementationOnce(async () => ({ records: [{ get: () => 'incident.created' }] }))
+    mockSession.executeWrite.mockImplementationOnce(async () => ruleNode({ id: 'r1', event_type: 'incident.created', enabled: true, title_key: 'k', channels: ['in_app'], target: 'role:operator' }))
+    const out = await notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { target: 'role:operator' } }, ctx)
+    expect(out.target).toBe('role:operator')
+  })
+})
+
 describe('updateNotificationRule — il tipo si legge dal nodo, poi i canali vengono verificati', () => {
   it('teams su una regola change.approved → BAD_USER_INPUT, nessuna scrittura', async () => {
     mockSession.executeRead.mockImplementationOnce(async () => ({ records: [{ get: () => 'change.approved' }] }))
@@ -106,5 +148,34 @@ describe('updateNotificationRule — il tipo si legge dal nodo, poi i canali ven
     mockSession.executeWrite.mockImplementationOnce(async () => ruleNode({ id: 'r1', event_type: 'sla.breached', enabled: true, title_key: 'k', channels: ['in_app', 'teams'], target: 'all' }))
     const out = await notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { channels: ['in_app', 'teams'] } }, ctx)
     expect(out.channels).toEqual(['in_app', 'teams'])
+  })
+
+})
+
+describe('target — applicabilità per tipo di evento', () => {
+  // Il bersaglio esiste nel vocabolario ma non può essere risolto per QUEL
+  // tipo di evento: alla nascita di un incident non ci sono ancora
+  // assegnatario e team, quindi la regola non consegnerebbe mai niente.
+  it('rifiuta un bersaglio impossibile per il tipo di evento, e accetta lo stesso bersaglio su un evento successivo', async () => {
+    await expectBadInput(
+      notificationRuleResolvers.Mutation.createNotificationRule(
+        null,
+        { input: { eventType: 'incident.created', titleKey: 'x', channels: ['in_app'], target: 'team_owner' } },
+        ctx,
+      ),
+      /non può essere risolto per l'evento "incident\.created"/,
+    )
+    await expectBadInput(
+      notificationRuleResolvers.Mutation.createNotificationRule(
+        null,
+        { input: { eventType: 'event.storm_started', titleKey: 'x', channels: ['in_app'], target: 'assignee' } },
+        ctx,
+      ),
+      /non può essere risolto/,
+    )
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+    // lo stesso bersaglio su un evento in cui l'assegnazione esiste: nessun errore di applicabilità
+    expect(isTargetApplicable('incident.assigned', 'team_owner')).toBe(true)
+    expect(isTargetApplicable('change.task_assigned', 'assignee')).toBe(true)
   })
 })

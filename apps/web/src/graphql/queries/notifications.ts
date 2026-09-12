@@ -20,6 +20,8 @@ export const GET_NOTIFICATION_ROUTING = gql`
     notificationRouting {
       defaultChannels
       byEventType { eventType channels }
+      defaultTargets
+      targetsByEventType { eventType targets }
     }
   }
 `

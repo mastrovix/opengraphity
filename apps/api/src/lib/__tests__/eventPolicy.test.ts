@@ -14,6 +14,7 @@ import {
   assertEventPolicy, parseEventPolicy, completeEventPolicy, toEventPolicyGQL, applyEventPolicyInput,
   EVENT_POLICY_CACHE_TTL_MS, getCachedEventPolicy, cacheEventPolicy, invalidateEventPolicyCache,
 } from '../eventPolicy.js'
+import { CI_LIFECYCLE_STATUSES } from '../eventVocabularies.js'
 
 const { flap_stable_minutes: _a, storm_threshold_per_minute: _b, storm_cooldown_minutes: _c, ...V1 } = DEFAULT_EVENT_POLICY
 
@@ -148,8 +149,16 @@ describe('ignore_lifecycle_statuses (D6.3)', () => {
     expect(EVENT_POLICY_V5_MIGRATION).toBe('20260911_1130_shared_domain_rules')
     expect(assertLifecycleStatuses([])).toEqual([])
     expect(assertLifecycleStatuses(['inactive', 'decommissioned'])).toEqual(['inactive', 'decommissioned'])
-    expect(() => assertLifecycleStatuses('decommissioned')).toThrow(/must be a list of CI lifecycle statuses \(active, inactive, maintenance, decommissioned\)/)
-    expect(() => assertLifecycleStatuses(['dismesso'])).toThrow(/"dismesso" is not one of active, inactive, maintenance, decommissioned/)
+    // Il vocabolario è quello di CI_LIFECYCLE_STATUSES, non una lista scritta
+    // qui: B0-4 gli ha aggiunto `expired` e `revoked` (i cicli di vita dei
+    // certificati, già sui CI e in nessun vocabolario). La validazione resta
+    // «lista chiusa sul vocabolario del codice»; solo il vocabolario è più
+    // completo. (Validare contro l'enum del TENANT è C-4, altra ondata.)
+    expect(CI_LIFECYCLE_STATUSES).toContain('expired')
+    expect(CI_LIFECYCLE_STATUSES).toContain('revoked')
+    expect(assertLifecycleStatuses(['expired', 'revoked'])).toEqual(['expired', 'revoked'])
+    expect(() => assertLifecycleStatuses('decommissioned')).toThrow(`must be a list of CI lifecycle statuses (${CI_LIFECYCLE_STATUSES.join(', ')})`)
+    expect(() => assertLifecycleStatuses(['dismesso'])).toThrow(`"dismesso" is not one of ${CI_LIFECYCLE_STATUSES.join(', ')}`)
     expect(() => assertLifecycleStatuses(['inactive', 'inactive'])).toThrow(/inactive appears twice/)
     expect(() => assertEventPolicy({ ...DEFAULT_EVENT_POLICY, ignore_lifecycle_statuses: ['nope'] })).toThrow(/event_policy\.ignore_lifecycle_statuses/)
   })

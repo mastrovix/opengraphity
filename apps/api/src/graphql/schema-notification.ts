@@ -46,6 +46,15 @@ export function notificationSDL(): string {
     defaultChannels: [String!]!
     "Tipi di evento con un formatter Slack/Teams dedicato e i loro canali (comprendono sempre i predefiniti)."
     byEventType: [NotificationRoutableChannels!]!
+    "Tutti i bersagli del vocabolario: quelli offerti per un tipo di evento che non ha una riga dedicata."
+    defaultTargets: [String!]!
+    "I bersagli che hanno senso per ciascun tipo di evento: alla nascita di un ticket non esistono ancora assegnatario e team."
+    targetsByEventType: [NotificationEventTargets!]!
+  }
+
+  type NotificationEventTargets {
+    eventType: String!
+    targets: [String!]!
   }
 
   type NotificationRoutableChannels {

@@ -51,7 +51,15 @@ export type CIHealth = (typeof CI_HEALTHS)[number]
  * `ignore_lifecycle_statuses` (revisione 2 · D6.3) sceglie fra questi valori
  * quelli per cui un allarme non apre incident e non cambia la salute.
  */
-export const CI_LIFECYCLE_STATUSES = ['active', 'inactive', 'maintenance', 'decommissioned'] as const
+/**
+ * `expired` e `revoked` sono i cicli di vita dei certificati: erano già sui CI
+ * (dal vivo su c-one: 49 e 19) e NON stavano in nessun vocabolario, quindi non
+ * si potevano scegliere nella policy né nell'editor del CI (C-4, parte già
+ * attiva — B0-4). Aggiungerli allinea il vocabolario al dato; la SEMANTICA
+ * (quali stati contano come ritirati o in manutenzione) non cambia e resta in
+ * CI_LIFECYCLE_RETIRED / CI_LIFECYCLE_MAINTENANCE.
+ */
+export const CI_LIFECYCLE_STATUSES = ['active', 'inactive', 'maintenance', 'decommissioned', 'expired', 'revoked'] as const
 export type CILifecycleStatus = (typeof CI_LIFECYCLE_STATUSES)[number]
 
 /** Ciclo di vita del CI «fuori servizio»: il default di `ignore_lifecycle_statuses` e i componenti che non contano in una mappa di servizio (D6.3). */

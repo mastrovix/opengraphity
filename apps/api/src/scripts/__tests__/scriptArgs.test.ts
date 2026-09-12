@@ -6,6 +6,7 @@ import {
   resolveTenantArg,
   requireConfirmFlag,
   refuseInProduction,
+  resolveSeedOverwriteOpts,
 } from '../lib/scriptArgs.js'
 
 describe('readOptionValue', () => {
@@ -69,4 +70,15 @@ describe('refuseInProduction', () => {
   it('is exact-match: "Production" or "prod" do not trigger the guard', () => {
     expect(() => refuseInProduction('seed-x', { NODE_ENV: 'prod' })).not.toThrow()
   })
+})
+
+describe('resolveSeedOverwriteOpts (B-2)', () => {
+  it('senza flag il seed non sovrascrive niente', () =>
+    expect(resolveSeedOverwriteOpts(['--tenant=c-two'])).toEqual({ overwrite: false, overwriteCustomized: false }))
+  it('--overwrite da solo non basta per una definizione personalizzata', () =>
+    expect(resolveSeedOverwriteOpts(['--overwrite'])).toEqual({ overwrite: true, overwriteCustomized: false }))
+  it('--overwrite-customized implica --overwrite', () =>
+    expect(resolveSeedOverwriteOpts(['--overwrite-customized'])).toEqual({ overwrite: true, overwriteCustomized: true }))
+  it('token esatto: --overwrite=false non accende niente', () =>
+    expect(resolveSeedOverwriteOpts(['--overwrite=false'])).toEqual({ overwrite: false, overwriteCustomized: false }))
 })

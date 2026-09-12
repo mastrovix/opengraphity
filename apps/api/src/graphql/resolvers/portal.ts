@@ -1,5 +1,6 @@
 import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
+import type { Session } from 'neo4j-driver'
 import { withSession } from './ci-utils.js'
 import { ForbiddenError, ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
@@ -8,6 +9,7 @@ import { workflowEngine } from '@opengraphity/workflow'
 import { validateStringLength } from '../../lib/validation.js'
 import type { GraphQLContext } from '../../context.js'
 import { toNumber } from '@opengraphity/neo4j'
+import { getStepNamesByClass, TICKET_STATUS_CLASSES, type TicketStatusClass } from '../../lib/workflowHelpers.js'
 
 /** Load allowed values for a system enum from Neo4j (cached per request). */
 async function loadEnumValues(tenantId: string, enumName: string): Promise<Set<string>> {
@@ -57,6 +59,36 @@ function mapTicket(p: Record<string, unknown>) {
 
 // ── Query: myTickets ──────────────────────────────────────────────────────────
 
+/**
+ * `status` è una CLASSE (`open | in_progress | resolved | closed`), non il nome
+ * di un passo: B0-3. Il portale mandava il nome `'open'`, che nessun workflow
+ * definisce — la scheda «Aperti» era vuota su qualunque tenant. La traduzione
+ * classe → nomi di passo viene dal workflow del tenant (`is_open`,
+ * `is_initial`, `is_terminal`, `category`), quindi una rinomina dei passi non
+ * la rompe, ed è la STESSA usata dal contatore della home: i due numeri
+ * coincidono per costruzione.
+ *
+ * Fail-loud: una classe fuori vocabolario è un errore (nomina le classi
+ * ammesse); una classe che nel workflow del tenant non ha nessun passo è un
+ * errore che lo dice, invece di una lista vuota che il cliente leggerebbe come
+ * «non ho ticket».
+ */
+async function resolveStatusClass(
+  session: Session,
+  tenantId: string,
+  statusClass: string,
+): Promise<string[]> {
+  if (!(TICKET_STATUS_CLASSES as readonly string[]).includes(statusClass)) {
+    throw new ValidationError(`status must be one of ${TICKET_STATUS_CLASSES.join(', ')} (it is a class, not a workflow step name). Got: ${JSON.stringify(statusClass)}`)
+  }
+  const byClass = await getStepNamesByClass(session, tenantId, 'incident')
+  const names = byClass[statusClass as TicketStatusClass]
+  if (names.length === 0) {
+    throw new ValidationError(`The incident workflow of tenant "${tenantId}" declares no step in the "${statusClass}" class: the portal cannot list those tickets. Fix the workflow steps (is_open / is_terminal / category) in the designer.`)
+  }
+  return names
+}
+
 async function myTickets(
   _: unknown,
   { status, page = 1, pageSize = 20 }: { status?: string | null; page?: number; pageSize?: number },
@@ -65,24 +97,26 @@ async function myTickets(
   const offset = (page - 1) * pageSize
 
   return withSession(async (session) => {
+    const statuses = status ? await resolveStatusClass(session, ctx.tenantId, status) : null
+
     const result = await session.executeRead((tx) =>
       tx.run(`
         MATCH (i:Incident {tenant_id: $tenantId, created_by: $userId})
-        WHERE ($status IS NULL OR i.status = $status)
+        WHERE ($statuses IS NULL OR i.status IN $statuses)
         OPTIONAL MATCH (i)-[:ASSIGNED_TO]->(t:Team)
         WITH i, t
         ORDER BY i.updated_at DESC
         SKIP toInteger($offset) LIMIT toInteger($limit)
         RETURN properties(i) AS props, t.name AS assignedTeam
-      `, { tenantId: ctx.tenantId, userId: ctx.userId, status: status ?? null, offset, limit: pageSize }),
+      `, { tenantId: ctx.tenantId, userId: ctx.userId, statuses, offset, limit: pageSize }),
     )
 
     const countResult = await session.executeRead((tx) =>
       tx.run(`
         MATCH (i:Incident {tenant_id: $tenantId, created_by: $userId})
-        WHERE ($status IS NULL OR i.status = $status)
+        WHERE ($statuses IS NULL OR i.status IN $statuses)
         RETURN count(i) AS total
-      `, { tenantId: ctx.tenantId, userId: ctx.userId, status: status ?? null }),
+      `, { tenantId: ctx.tenantId, userId: ctx.userId, statuses }),
     )
 
     const total = toNumber(countResult.records[0]?.get('total'))
@@ -199,9 +233,11 @@ async function myTicketStats(
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
-    const { getWorkflowSteps } = await import('../../lib/workflowHelpers.js')
-    const steps = await getWorkflowSteps(session, ctx.tenantId, 'incident')
-    const stepByName = new Map(steps.map((s) => [s.name, s]))
+    // STESSA classificazione della scheda del portale (B0-3): `open` qui e
+    // «Aperti» là sono lo stesso insieme di passi, quindi lo stesso numero.
+    // `resolved` resta «risolti o chiusi», come prima.
+    const byClass = await getStepNamesByClass(session, ctx.tenantId, 'incident')
+    const inClass = (cls: TicketStatusClass, status: string) => byClass[cls].includes(status)
 
     const result = await session.executeRead((tx) =>
       tx.run(`
@@ -211,15 +247,30 @@ async function myTicketStats(
     )
 
     let open = 0, inProgress = 0, resolved = 0, total = 0
+    const unclassified: string[] = []
     for (const r of result.records) {
       const status = r.get('status') as string
       const cnt    = toNumber(r.get('cnt'))
       total += cnt
-      const step = stepByName.get(status)
-      if (!step) continue
-      if (step.category === 'resolved' || step.isTerminal) resolved += cnt
-      else if (step.isInitial) open += cnt
-      else inProgress += cnt
+      const isOpen     = inClass('open', status)
+      const isProgress = inClass('in_progress', status)
+      const isDone     = inClass('resolved', status) || inClass('closed', status)
+      if (isOpen)     open       += cnt
+      if (isProgress) inProgress += cnt
+      if (isDone)     resolved   += cnt
+      if (!isOpen && !isProgress && !isDone) unclassified.push(`${status} (${cnt})`)
+    }
+
+    // Fail-loud: un ticket in un passo che nessuna definizione attiva del
+    // tenant classifica non finirebbe in nessun contatore e sparirebbe dalla
+    // home restando nel totale — lo stesso silenzio della scheda «Aperti»
+    // vuota (B0-3), solo spostato di un numero.
+    if (unclassified.length) {
+      throw new ValidationError(
+        `Tenant "${ctx.tenantId}": ${unclassified.length} stati dei ticket non appartengono a nessuna classe del workflow incident attivo ` +
+        `[${unclassified.join(', ')}]: i contatori del portale non li conterebbero. ` +
+        `Sistema i passi (is_open / is_terminal / category) o riallinea gli Incident nel designer.`,
+      )
     }
 
     return { open, inProgress, resolved, total }
@@ -329,6 +380,7 @@ async function addTicketComment(
         MATCH (i:Incident {id: $ticketId, tenant_id: $tenantId})
         CREATE (c:EntityComment {
           id:           $commentId,
+          tenant_id:    $tenantId,
           body:         $body,
           is_internal:  false,
           author_id:    $authorId,

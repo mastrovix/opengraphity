@@ -58,10 +58,28 @@ async function loadSteps(session: Session, tenantId: string, entityType: string)
   return promise
 }
 
-/** Invalidate cached step metadata for a tenant+entity (call after designer saves). */
+/**
+ * Svuota la cache dei metadata dei passi. La chiamano TUTTE le mutation che
+ * cambiano una definizione o i suoi passi (B-24): senza, dopo un salvataggio
+ * dal disegnatore il processo continuava fino a 30 s con i flag vecchi —
+ * un passo appena marcato terminale che per le liste era ancora aperto.
+ *
+ * - `(tenant, entityType)` → solo quella chiave;
+ * - `(tenant)` → tutte le entità di quel tenant (gli altri tenant non si
+ *   toccano: prima cadeva l'intera cache, e con essa quella degli altri);
+ * - nessun argomento → tutto.
+ *
+ * Resta fuori portata il multi-replica: worker ed `events-worker` sono processi
+ * separati, con la loro copia della cache, e non se ne accorgono (vedi rapporto).
+ */
 export function invalidateWorkflowCache(tenantId?: string, entityType?: string) {
-  if (tenantId && entityType) stepsCache.delete(cacheKey(tenantId, entityType))
-  else stepsCache.clear()
+  if (tenantId && entityType) { stepsCache.delete(cacheKey(tenantId, entityType)); return }
+  if (tenantId) {
+    const prefix = `${tenantId}::`
+    for (const key of [...stepsCache.keys()]) if (key.startsWith(prefix)) stepsCache.delete(key)
+    return
+  }
+  stepsCache.clear()
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -115,4 +133,62 @@ export async function getStepCategory(session: Session, tenantId: string, entity
 /** All step rows for an entity type — useful for bulk operations (filters, UI). */
 export async function getWorkflowSteps(session: Session, tenantId: string, entityType: string): Promise<StepRow[]> {
   return loadSteps(session, tenantId, entityType)
+}
+
+// ── Classi di stato (B0-3) ────────────────────────────────────────────────────
+
+/**
+ * Le quattro classi di stato con cui il portale filtra e conta i ticket.
+ * Sono classi, NON nomi di passo: il portale filtrava per il nome `'open'`,
+ * che nessun workflow definisce (di fabbrica il passo iniziale si chiama
+ * `new`), quindi la scheda «Aperti» era vuota per costruzione e non coincideva
+ * col contatore della home, che invece ragionava sui metadata.
+ */
+export const TICKET_STATUS_CLASSES = ['open', 'in_progress', 'resolved', 'closed'] as const
+export type TicketStatusClass = (typeof TICKET_STATUS_CLASSES)[number]
+
+/**
+ * Classi a cui appartiene un passo, dedotte SOLO dal dato (`is_open`,
+ * `is_initial`, `is_terminal`, `category`), mai dal nome: un cliente che
+ * rinomina «assigned» in «preso in carico» non cambia nulla qui.
+ *
+ * - `resolved`: la categoria del passo è `resolved`
+ * - `closed`:   il passo è terminale e non è la categoria `resolved`
+ * - `open`:     il passo è aperto (`is_open`) e non è la categoria `resolved`
+ * - `in_progress`: sottoinsieme di `open` che non è il passo iniziale
+ *
+ * `open` e `in_progress` si SOVRAPPONGONO di proposito: «Aperti» è tutto ciò
+ * che è ancora in gioco (ed è il numero della home), «In lavorazione» è la
+ * parte che qualcuno ha già preso in mano.
+ */
+export function stepStatusClasses(step: StepRow): TicketStatusClass[] {
+  const out: TicketStatusClass[] = []
+  const isResolved = step.category === 'resolved'
+  if (isResolved) out.push('resolved')
+  if (step.isTerminal && !isResolved) out.push('closed')
+  if (step.isOpen && !isResolved) {
+    out.push('open')
+    if (!step.isInitial) out.push('in_progress')
+  }
+  return out
+}
+
+/**
+ * Nomi dei passi del workflow del tenant per ogni classe. Un tenant con due
+ * definizioni attive per la stessa entità (c-one ne ha due per gli incident)
+ * contribuisce con l'unione dei nomi: un nome appartiene a una classe se
+ * almeno una definizione attiva lo mette lì.
+ */
+export async function getStepNamesByClass(
+  session: Session, tenantId: string, entityType: string,
+): Promise<Record<TicketStatusClass, string[]>> {
+  const steps = await loadSteps(session, tenantId, entityType)
+  const out = { open: new Set<string>(), in_progress: new Set<string>(), resolved: new Set<string>(), closed: new Set<string>() }
+  for (const step of steps) for (const cls of stepStatusClasses(step)) out[cls].add(step.name)
+  return {
+    open:        [...out.open],
+    in_progress: [...out.in_progress],
+    resolved:    [...out.resolved],
+    closed:      [...out.closed],
+  }
 }

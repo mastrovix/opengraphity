@@ -20,6 +20,10 @@ vi.mock('../../services/incidentService.js', () => ({ createIncident: vi.fn() })
 vi.mock('../../services/problemService.js', () => ({ createProblem: vi.fn() }))
 vi.mock('../../jobs/eventIngestWorker.js', () => ({ enqueueEvents: vi.fn() }))
 vi.mock('@opengraphity/scripting', () => ({ runScript: vi.fn() }))
+// D-12: lo script di trasformazione passa dal limite di piano del tenant
+// (`Tenant.scripting_enabled`); qui il piano lo include sempre — il contratto
+// del limite è pinnato da lib/__tests__/scriptingPlan.test.ts.
+vi.mock('../../lib/scriptingPlan.js', () => ({ assertScriptingEnabled: vi.fn(async () => {}) }))
 // Rate limit su Redis (lib/webhookRateLimit.ts): qui conta sempre 1, il limite non è in gioco.
 vi.mock('../../lib/bullmq.js', () => ({ getSharedRedis: () => ({ eval: vi.fn().mockResolvedValue(1) }) }))
 vi.mock('../../middleware/metrics.js', () => ({ webhookRateLimitedTotal: { inc: vi.fn() }, eventsRejectedTotal: { inc: vi.fn() } }))
@@ -29,6 +33,7 @@ const { eventsRejectedTotal } = await import('../../middleware/metrics.js')
 const { createIncident } = await import('../../services/incidentService.js')
 const { enqueueEvents } = await import('../../jobs/eventIngestWorker.js')
 const { runScript } = await import('@opengraphity/scripting')
+const { assertScriptingEnabled } = await import('../../lib/scriptingPlan.js')
 const { webhookInboundRouter } = await import('../webhooks-inbound.js')
 
 const TOKEN = 'wh-secret-token'
@@ -72,6 +77,7 @@ beforeEach(() => {
   vi.mocked(runQuery).mockResolvedValue([])
   vi.mocked(runQueryOne).mockResolvedValue(hook())
   vi.mocked(enqueueEvents).mockImplementation(async (_t, _s, events) => events.length)
+  vi.mocked(assertScriptingEnabled).mockImplementation(async () => {})
 })
 
 function post(body: unknown, hookId = 'hook-ev') {

@@ -78,6 +78,21 @@ export function requireConfirmFlag(flagName: string, argv: readonly string[] = d
 }
 
 /**
+ * Opzioni di sovrascrittura dei seed di workflow (B-2).
+ *
+ * Il seed NON tocca una definizione che esiste già: riallinearla al seed di
+ * fabbrica è deliberato (`--overwrite`, che prima stampa il diff) e su una
+ * definizione marchiata come personalizzata dal disegnatore serve il secondo
+ * consenso (`--overwrite-customized`, che implica il primo).
+ */
+export function resolveSeedOverwriteOpts(argv: readonly string[] = defaultArgv()): { overwrite: boolean; overwriteCustomized: boolean } {
+  return {
+    overwrite:           hasFlag('--overwrite', argv) || hasFlag('--overwrite-customized', argv),
+    overwriteCustomized: hasFlag('--overwrite-customized', argv),
+  }
+}
+
+/**
  * Rifiuta l'esecuzione quando NODE_ENV === 'production'.
  * `what` descrive l'operazione, per un messaggio d'errore leggibile.
  */

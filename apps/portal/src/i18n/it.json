@@ -61,6 +61,7 @@
       "resolved": "Risolti",
       "closed": "Chiusi"
     },
+    "filterError": "Non riesco a elencare i ticket di questa scheda",
     "submit": "Invia ticket",
     "created": "Ticket creato! Il team IT è stato notificato.",
     "resolved": "Questo ticket è stato risolto",

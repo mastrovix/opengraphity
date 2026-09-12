@@ -5,9 +5,18 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
+import { ValidationError } from '../../../lib/errors.js'
 
 const runScript = vi.fn()
 vi.mock('@opengraphity/scripting', () => ({ runScript: (...a: unknown[]) => runScript(...a) }))
+// D-12: il limite di piano sugli script. `isTenantOwnedDefinition` resta quella
+// vera (è la regola che decide CHI passa dal limite); solo la lettura del
+// tenant è simulata.
+const assertScriptingEnabled = vi.fn<(tenantId: string, what: string) => Promise<void>>(async () => {})
+vi.mock('../../../lib/scriptingPlan.js', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../../../lib/scriptingPlan.js')>()
+  return { ...orig, assertScriptingEnabled: (t: string, w: string) => assertScriptingEnabled(t, w) }
+})
 vi.mock('../ci-utils.js', () => ({ withSession: vi.fn() }))
 vi.mock('../../../lib/cache.js', () => ({ cache: { invalidate: vi.fn() } }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
@@ -29,18 +38,36 @@ const { noteIncidentsBeforeCIDeletion } = await import('../../../services/events
 
 const IP_SCRIPT = 'if (!/^\\d+\\.\\d+\\.\\d+\\.\\d+$/.test(value)) throw new Error("IP non valido")'
 
+/**
+ * Il tipo `server` come arriva dal metamodello CONDIVISO: `scope: 'base'`,
+ * `tenantId: 'system'` — come dal vivo per i campi che hanno uno script di
+ * validazione (`url`, `ipAddress`, `expiresAt`) e per il tipo `certificate`.
+ * Sono script del prodotto, non del cliente: non passano dal limite di piano
+ * (altrimenti nessun tenant starter potrebbe creare un CI).
+ */
 function ciType(over: Partial<CITypeWithDefinitions> = {}): CITypeWithDefinitions {
   return {
     id: 'ct-server', name: 'server', label: 'Server', neo4jLabel: 'Server', icon: '', color: '',
+    scope: 'base', tenantId: 'system',
     validationScript: null,
     fields: [
-      { id: 'f1', name: 'ipAddress', label: 'IP', type: 'string', required: true,  defaultValue: null, enumValues: [], validationScript: IP_SCRIPT, visibilityScript: null, defaultScript: null, isSystem: false },
-      { id: 'f2', name: 'rack',      label: 'Rack', type: 'string', required: false, defaultValue: null, enumValues: [], validationScript: null,      visibilityScript: null, defaultScript: null, isSystem: false },
-      { id: 'f3', name: 'createdAt', label: 'Creato', type: 'datetime', required: true, defaultValue: null, enumValues: [], validationScript: null,  visibilityScript: null, defaultScript: null, isSystem: true },
+      { id: 'f1', name: 'ipAddress', label: 'IP', type: 'string', required: true,  defaultValue: null, enumValues: [], validationScript: IP_SCRIPT, visibilityScript: null, defaultScript: null, isSystem: false, scope: 'base', tenantId: 'system' },
+      { id: 'f2', name: 'rack',      label: 'Rack', type: 'string', required: false, defaultValue: null, enumValues: [], validationScript: null,      visibilityScript: null, defaultScript: null, isSystem: false, scope: 'base', tenantId: 'system' },
+      { id: 'f3', name: 'createdAt', label: 'Creato', type: 'datetime', required: true, defaultValue: null, enumValues: [], validationScript: null,  visibilityScript: null, defaultScript: null, isSystem: true, scope: 'base', tenantId: 'system' },
     ],
     relations: [],
     ...over,
   } as unknown as CITypeWithDefinitions
+}
+
+/** Lo stesso tipo con un campo aggiunto DAL CLIENTE (`scope: 'tenant'`) che ha uno script. */
+function ciTypeWithTenantScript(): CITypeWithDefinitions {
+  return ciType({
+    fields: [
+      ...ciType().fields,
+      { id: 'f4', name: 'costCenter', label: 'Centro di costo', required: false, defaultValue: null, enumValues: [], validationScript: 'if (!value) throw "obbligatorio"', visibilityScript: null, defaultScript: null, isSystem: false, scope: 'tenant', tenantId: 't1' } as unknown as CITypeWithDefinitions['fields'][number],
+    ],
+  })
 }
 
 function fakeSession(props: Record<string, unknown> | null = null) {
@@ -101,6 +128,35 @@ describe('validateCIInput (F-13)', () => {
     runScript.mockResolvedValueOnce({ success: false, error: 'Script validation failed: Access to "process" is not allowed', logs: [], duration_ms: 0 })
     await expect(validateCIInput(ciType(), { name: 'srv', ipAddress: '10.0.0.1' }, 't1'))
       .rejects.toThrow(/Script validation failed/)
+  })
+})
+
+describe('limite di piano sugli script del metamodello (D-12)', () => {
+  it('uno script del metamodello CONDIVISO (scope base) gira senza passare dal limite di piano', async () => {
+    await validateCIInput(ciType(), { name: 'srv', ipAddress: '10.0.0.1' }, 't1')
+    expect(runScript).toHaveBeenCalledTimes(1)
+    expect(assertScriptingEnabled).not.toHaveBeenCalled()
+  })
+
+  it('uno script scritto dal CLIENTE (scope tenant) passa dal limite, nominando il campo', async () => {
+    await validateCIInput(ciTypeWithTenantScript(), { name: 'srv', ipAddress: '10.0.0.1', costCenter: 'CC1' }, 't1')
+    expect(assertScriptingEnabled).toHaveBeenCalledTimes(1)
+    expect(assertScriptingEnabled).toHaveBeenCalledWith('t1', 'server.costCenter.validation_script')
+  })
+
+  it('piano senza script → lo script NON gira e l\'errore lo dice', async () => {
+    assertScriptingEnabled.mockRejectedValueOnce(new ValidationError('server.costCenter.validation_script: il piano "starter" del tenant t1 non include gli script (scripting_enabled = false). Rimuovi lo script dalla configurazione oppure passa a un piano che li include.'))
+    await expect(validateCIInput(ciTypeWithTenantScript(), { name: 'srv', ipAddress: '10.0.0.1', costCenter: 'CC1' }, 't1'))
+      .rejects.toThrow(/non include gli script/)
+    // lo script condiviso di ipAddress è già girato, quello del cliente no
+    expect(runScript).toHaveBeenCalledTimes(1)
+    expect(runScript.mock.calls[0]![0].code).toContain(IP_SCRIPT)
+  })
+
+  it('uno script di TIPO scritto dal cliente (scope tenant) passa dal limite', async () => {
+    const t = ciType({ scope: 'tenant', tenantId: 't1', validationScript: 'if (input.rack === "R0") throw "riservato"' } as Partial<CITypeWithDefinitions>)
+    await validateCIInput(t, { name: 'srv', ipAddress: '10.0.0.1' }, 't1')
+    expect(assertScriptingEnabled).toHaveBeenCalledWith('t1', 'server.validation_script')
   })
 })
 

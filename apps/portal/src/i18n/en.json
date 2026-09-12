@@ -61,6 +61,7 @@
       "resolved": "Resolved",
       "closed": "Closed"
     },
+    "filterError": "I cannot list the tickets of this tab",
     "submit": "Submit ticket",
     "created": "Ticket created! The IT team has been notified.",
     "resolved": "This ticket has been resolved",
