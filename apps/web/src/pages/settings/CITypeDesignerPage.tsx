@@ -8,7 +8,7 @@ import { toast } from 'sonner'
 import { GET_CI_TYPES, GET_BASE_CI_TYPE, GET_ENUM_TYPES } from '@/graphql/queries'
 import {
   CREATE_CI_TYPE, UPDATE_CI_TYPE, DELETE_CI_TYPE,
-  ADD_CI_FIELD, REMOVE_CI_FIELD,
+  ADD_CI_FIELD, UPDATE_CI_FIELD, REMOVE_CI_FIELD,
   ADD_CI_RELATION, REMOVE_CI_RELATION,
 } from '@/graphql/mutations'
 import { EmptyState } from '@/components/EmptyState'
@@ -116,12 +116,37 @@ export function CITypeDesignerPage() {
   const [addField]      = useMutation(ADD_CI_FIELD,      { onCompleted: () => { void refetch();     setAddingField(false); setEditingFieldId(null); toast.success(t('toast.citype.fieldAdded')) }, onError: (e) => toast.error(e.message) })
   const [addBaseField]  = useMutation(ADD_CI_FIELD,      { onCompleted: () => { void refetchBase(); setShowBaseFieldModal(false); toast.success(t('toast.citype.baseFieldAdded')) }, onError: (e) => toast.error(e.message) })
   const [removeField]   = useMutation(REMOVE_CI_FIELD,   { onCompleted: () => { void refetch(); toast.success(t('toast.citype.fieldRemoved')) }, onError: (e) => toast.error(e.message) })
+  // Revisione delle otto ondate · A·3.1: il pulsante «Modifica» chiamava
+  // `addCIField`, che la porta sui nomi rifiutava sempre («Il campo esiste
+  // già»). Ora esiste la mutation che serve.
+  const [updateField]   = useMutation(UPDATE_CI_FIELD,   { onCompleted: () => { void refetch();     setEditingFieldId(null); toast.success(t('toast.citype.fieldSaved')) }, onError: (e) => toast.error(e.message) })
+  const [updateBaseField] = useMutation(UPDATE_CI_FIELD, { onCompleted: () => { void refetchBase(); setEditingFieldId(null); toast.success(t('toast.citype.fieldSaved')) }, onError: (e) => toast.error(e.message) })
   const [addRelation]   = useMutation(ADD_CI_RELATION,   { onCompleted: () => { void refetch(); setShowRelModal(false); toast.success(t('toast.citype.relationAdded')) }, onError: (e) => toast.error(e.message) })
   const [removeRelation] = useMutation(REMOVE_CI_RELATION, { onCompleted: () => { void refetch(); toast.success(t('toast.citype.relationRemoved')) }, onError: (e) => toast.error(e.message) })
 
-  const handleSaveField = async (form: FieldForm) => {
+  /**
+   * `fieldId` presente = si sta MODIFICANDO un campo esistente: nome e tipo
+   * non si toccano (il nome è la proprietà sui nodi, il tipo descrive i valori
+   * già scritti), quindi non vanno nemmeno nell'input.
+   */
+  const handleSaveField = async (form: FieldForm, fieldId?: string) => {
     const targetId = selectedBase ? baseType?.id : selected?.id
     if (!targetId) return
+    if (fieldId) {
+      const patch = {
+        label:            form.label,
+        required:         form.required,
+        defaultValue:     form.defaultValue || null,
+        enumTypeId:       form.fieldType === 'enum' ? form.enumTypeId : null,
+        order:            form.order,
+        validationScript: form.validationScript || null,
+        visibilityScript: form.visibilityScript || null,
+        defaultScript:    form.defaultScript    || null,
+      }
+      const run = selectedBase ? updateBaseField : updateField
+      await run({ variables: { typeId: targetId, fieldId, input: patch } })
+      return
+    }
     const input = {
       name:             form.name,
       label:            form.label,
@@ -435,7 +460,7 @@ export function CITypeDesignerPage() {
                               initial={fieldToForm(f)}
                               existingCount={specificFields.length}
                               isSystem={false}
-                              onSave={async (form) => { await handleSaveField(form) }}
+                              onSave={async (form) => { await handleSaveField(form, f.id) }}
                               onCancel={() => setEditingFieldId(null)}
                               enumTypes={enumTypes}
                             />

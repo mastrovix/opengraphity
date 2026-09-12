@@ -1795,7 +1795,8 @@
       "relationAdded": "Relation added",
       "relationRemoved": "Relation removed",
       "previewNoSave": "Preview — nothing saved",
-      "nameLabelRequired": "Name and label are required"
+      "nameLabelRequired": "Name and label are required",
+      "fieldSaved": "Field saved."
     },
     "import": {
       "requestFailed": "Import request failed: {{error}}"

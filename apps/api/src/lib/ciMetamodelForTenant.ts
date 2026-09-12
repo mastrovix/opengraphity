@@ -36,6 +36,7 @@
  * peso dei componenti o — per le relazioni, che finiscono **interpolate** nel
  * pattern Cypher della soppressione — sarebbe un buco.
  */
+import { ENUM_SCOPE } from './enumScope.js'
 import { loadMetamodel } from '@opengraphity/schema-generator'
 import { createMetamodelCache } from './metamodelCache.js'
 import { CHAIN_FAMILIES } from './chainCalculator.js'
@@ -110,7 +111,7 @@ function metamodelOf(tenantId: string): Promise<TenantCIMetamodel> {
 }
 
 function loadRolesAndRelations(tenantId: string): Promise<TenantCIMetamodel> {
-  return loadMetamodel(tenantId)
+  return loadMetamodel(tenantId, ENUM_SCOPE)
     .then((types) => {
       // Seme: le etichette spedite col prodotto che nel metamodello non hanno
       // un tipo (SslCertificate, VirtualMachine, Storage… — dal vivo 15

@@ -33,6 +33,7 @@
  * metamodello. Una cache qui vorrebbe un'invalidazione fra replica e replica
  * per una tabella che cambia una volta al mese.
  */
+import type { EnumScope } from '@opengraphity/schema-generator'
 import type { Session } from 'neo4j-driver'
 import { ValidationError } from './errors.js'
 
@@ -148,4 +149,19 @@ export function assertEnumLinkable(
       `— il tuo vince in lettura solo per te.`,
     )
   }
+}
+
+/**
+ * L'ambito dei vocabolari che il generatore di schema deve usare (A-2 / C-6).
+ *
+ * `packages/schema-generator` non può importare `apps/api`, quindi la regola —
+ * che ha una sorgente sola, questo file — gliela passiamo noi invece di
+ * riscriverla là. Stava in `lib/schemaCache.ts`: da qui la usano tutti i
+ * chiamanti di `loadMetamodel`, che dal rimedio 4 risolve anche lui i
+ * vocabolari agganciati.
+ */
+export const ENUM_SCOPE: EnumScope = {
+  clause:         enumScopeClause,
+  loadOverrides:  loadTenantEnumOverrides,
+  applyOverrides: applyEnumOverrides,
 }

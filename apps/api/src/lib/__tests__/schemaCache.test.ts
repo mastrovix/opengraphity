@@ -107,28 +107,53 @@ describe('lo schema sicuro quando quello del tenant non si assembla', () => {
     // errore di sintassi GraphQL crudo che non dice di chi è la colpa.
     expect(state.reason).toMatch(/«2fa»/)
     expect(state.reason).toMatch(/eliminalo o rinominalo/i)
-    expect(state.schema.getType('Sede')).toBeUndefined()   // nessun tipo del cliente
-    expect(state.schema.getQueryType()).toBeDefined()      // ma l'API risponde
-    expect(state.schema.getType('Incident')).toBeDefined() // e il prodotto è tutto lì
+    // RINEGOZIATO (revisione delle otto ondate · A·2.3): il degrado era del
+    // CLIENTE INTERO — si scartavano tutti i suoi tipi, quindi un campo
+    // sbagliato su un tipo che nessuno usa faceva sparire dall'API anche i tipi
+    // usati ogni giorno, e per un cliente con migliaia di CI la CMDB si
+    // svuotava per colpa di uno. Ora si scarta SOLO il tipo che non assembla:
+    // `Sede` resta servito.
+    expect(state.schema.getType('Sede')).toBeDefined()
+    expect(state.schema.getType('2fa')).toBeUndefined()
+    expect(state.schema.getQueryType()).toBeDefined()
+    expect(state.schema.getType('Incident')).toBeDefined()
+  })
+
+  it('un solo tipo rotto non porta via gli altri: il motivo nomina solo lui', async () => {
+    loadMetamodel.mockResolvedValue([ciType('2fa'), ciType('sede'), ciType('armadio')])
+    const state = await getSchemaState('c-one')
+    expect(state.degraded).toBe(true)
+    expect(state.reason).toMatch(/tipo "2fa"/)
+    expect(state.reason).not.toMatch(/sede|armadio/)
+    expect(state.schema.getType('Sede')).toBeDefined()
+    expect(state.schema.getType('Armadio')).toBeDefined()
   })
 
   /**
-   * CORREZIONE alla diagnosi del rapporto A-12, verificata direttamente su
-   * @graphql-tools/schema: un tipo con il NOME che collide **non** fa lanciare
-   * l'assemblaggio — viene MERGE, in silenzio. Un tipo CI chiamato `incident`
-   * inietta i suoi campi nel tipo `Incident` del prodotto.
+   * Il caso peggiore, e il motivo per cui questo test è cambiato (revisione
+   * delle otto ondate · D·N-4).
    *
-   * Quindi la rete dello schema sicuro NON copre questo caso: l'unica difesa è
-   * la validazione dei nomi in SCRITTURA. Questo test esiste per impedire che
-   * qualcuno la consideri ridondante «perché tanto lo schema se ne accorge».
+   * `@graphql-tools/schema` con un tipo dal NOME che collide **non lancia**:
+   * FONDE. Un tipo CI chiamato `incident` iniettava i suoi campi nel tipo
+   * `Incident` del prodotto — dal vivo, da 32 a 44 campi — e nessuno lo diceva.
+   * La validazione in scrittura (ondata 5) impedisce di crearne uno nuovo, ma
+   * non protegge il dato già scritto: un tipo così, nel metamodello di un
+   * cliente, restava invisibile.
+   *
+   * Adesso l'assemblaggio conosce i nomi già occupati dallo schema di base,
+   * quindi quel tipo viene **escluso** e il degrado lo nomina. La validazione
+   * in scrittura resta obbligatoria: è lei che impedisce di arrivare qui.
    */
-  it('un tipo con lo stesso nome di uno base NON fa fallire l\'assemblaggio: viene fuso in silenzio (per questo la validazione in scrittura è obbligatoria)', async () => {
-    loadMetamodel.mockResolvedValue([ciType('incident')])
+  it('un tipo con lo stesso nome di uno base viene ESCLUSO, non fuso in silenzio', async () => {
+    loadMetamodel.mockResolvedValue([ciType('incident'), ciType('sede')])
     const state = await getSchemaState('c-two')
-    expect(state.degraded).toBe(false)
+    expect(state.degraded).toBe(true)
+    expect(state.reason).toMatch(/incident/)
     const incident = state.schema.getType('Incident') as { getFields(): Record<string, unknown> }
-    // i campi del prodotto e quello del cliente convivono nello stesso tipo
-    expect(Object.keys(incident.getFields())).toContain('etichetta')
+    // Il tipo del prodotto è intatto: nessun campo del cliente innestato.
+    expect(Object.keys(incident.getFields())).not.toContain('etichetta')
+    // E l'altro tipo del cliente resta servito.
+    expect(state.schema.getType('Sede')).toBeDefined()
   })
 
   it('con i tipi spediti la costruzione riesce e lo stato non è degradato', async () => {

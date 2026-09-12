@@ -26,6 +26,7 @@
  * hanno una `CITypeDefinition` nel grafo): senza di loro un client REST che
  * chiama `?type=virtual_machine` da oggi prenderebbe un 400.
  */
+import { ENUM_SCOPE } from './enumScope.js'
 import { loadMetamodel } from '@opengraphity/schema-generator'
 import { ciLabelsForTenant } from './ciLabelsForTenant.js'
 import { createMetamodelCache } from './metamodelCache.js'
@@ -54,7 +55,7 @@ function nameToLabel(tenantId: string): Promise<ReadonlyMap<string, string>> {
 function loadNameToLabel(tenantId: string): Promise<ReadonlyMap<string, string>> {
   return (async () => {
     const labels = new Set(await ciLabelsForTenant(tenantId))
-    const types = await loadMetamodel(tenantId)
+    const types = await loadMetamodel(tenantId, ENUM_SCOPE)
     const map = new Map<string, string>()
     for (const t of types) {
       if (t.neo4jLabel && labels.has(t.neo4jLabel)) map.set(t.name.toLowerCase(), t.neo4jLabel)

@@ -40,7 +40,15 @@ describe('generateSDL — un tipo del cliente', () => {
   it('emette il tipo concreto che implementa CIBase, con i campi specifici', () => {
     expect(sdl).toContain('type LoadBalancer implements CIBase {')
     expect(sdl).toContain('  costCenter: String')
-    expect(sdl).toContain('  porte: Float!')
+    // Rinegoziato (revisione delle otto ondate · A·3.1): `required` NON diventa
+    // `!` nello SDL. Spuntare «Obbligatorio» su un campo di un tipo che ha già
+    // dei CI faceva fallire OGNI lettura di quel tipo (`data: null`, non un
+    // campo nullo) e impediva ogni modifica parziale di un altro campo — e
+    // `updateCIField` non esisteva, quindi non si tornava indietro. Un campo
+    // obbligatorio è una regola su ciò che si SCRIVE, e la impone
+    // `validateCIInput` in un posto solo.
+    expect(sdl).toContain('  porte: Float')
+    expect(sdl).not.toContain('  porte: Float!')
   })
 
   it('non ri-emette i campi base né quelli di sistema', () => {

@@ -2,7 +2,7 @@ import { withSession } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 import { GraphQLError } from 'graphql'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
-import { toPascalCase } from '@opengraphity/schema-generator'
+import { toPascalCase, CI_FIELD_TYPES, isCIFieldType } from '@opengraphity/schema-generator'
 import { assertNewCITypeName, assertNewCIFieldName, type ExistingCIType } from '../../lib/metamodelNames.js'
 import { CHAIN_FAMILIES, chainFamiliesToJSON } from '../../lib/chainCalculator.js'
 import { assertRelationshipTypeName, defaultServiceRoleOf } from '../../lib/ciMetamodelForTenant.js'
@@ -65,6 +65,79 @@ const CONSEQUENCE: Record<TypeAction, string> = {
  * rispondevano con `fetchCITypeById`, che sui tipi base TROVA il nodo — così
  * il disegnatore mostrava «Salvato» e i dati erano quelli di prima, A-6).
  */
+/**
+ * I VALORI del metamodello, non i nomi (revisione delle otto ondate · A·3.2 /
+ * A·3.7).
+ *
+ * La porta dell'ondata 5 sorveglia i nomi di tipo e di campo con cura
+ * maniacale; `fieldType`, `direction`, `cardinality` e `targetType` non erano
+ * sorvegliati affatto. E la personalizzazione che rompe oggi non passa da un
+ * nome: passa da un valore — un `fieldType` sconosciuto fa degradare l'intero
+ * schema del cliente, una relazione con una direzione inventata è inerte in
+ * silenzio.
+ */
+function assertCIFieldType(value: unknown, what: string): string {
+  if (isCIFieldType(value)) return value
+  throw new GraphQLError(
+    `${what}: tipo di campo "${String(value)}" sconosciuto. Ammessi: ${CI_FIELD_TYPES.join(', ')}. ` +
+    `Un tipo che il generatore non sa tradurre fa degradare lo schema GraphQL di questo cliente: ` +
+    `tutti i suoi tipi CI spariscono dall'API finché il campo non viene corretto.`,
+    { extensions: { code: 'BAD_USER_INPUT', fieldType: value, allowedFieldTypes: [...CI_FIELD_TYPES] } },
+  )
+}
+
+/** `outgoing` o `incoming`: da che parte si percorre la relazione. */
+function assertRelationDirection(value: unknown, what: string): string {
+  const allowed = ['outgoing', 'incoming']
+  if (typeof value === 'string' && allowed.includes(value)) return value
+  throw new GraphQLError(
+    `${what}: direzione "${String(value)}" sconosciuta. Ammesse: ${allowed.join(', ')}. ` +
+    `Una direzione inventata non viene percorsa da nessuno: la relazione resterebbe nel disegnatore e inerte.`,
+    { extensions: { code: 'BAD_USER_INPUT' } },
+  )
+}
+
+/** `one` o `many`. */
+function assertRelationCardinality(value: unknown, what: string): string {
+  const allowed = ['one', 'many']
+  if (typeof value === 'string' && allowed.includes(value)) return value
+  throw new GraphQLError(
+    `${what}: cardinalità "${String(value)}" sconosciuta. Ammesse: ${allowed.join(', ')}.`,
+    { extensions: { code: 'BAD_USER_INPUT' } },
+  )
+}
+
+/**
+ * Il tipo di arrivo deve esistere: fra i tipi spediti col prodotto o fra quelli
+ * di questo cliente. Una relazione verso un tipo inesistente non produce
+ * nessun campo nello SDL — la si vede nel disegnatore e non esiste per l'API.
+ */
+async function assertRelationTargetType(
+  session: Session, value: unknown, tenantId: string, what: string,
+): Promise<string> {
+  const name = typeof value === 'string' ? value.trim() : ''
+  if (name === '') {
+    throw new GraphQLError(`${what}: il tipo di arrivo è obbligatorio.`, { extensions: { code: 'BAD_USER_INPUT' } })
+  }
+  // Una lettura sola: l'elenco serve sia a decidere sia a dirlo nel messaggio,
+  // e un rifiuto che non elenca le alternative non aiuta nessuno a rimediare.
+  const r = await session.executeRead((tx) =>
+    tx.run(`
+      MATCH (t:CITypeDefinition)
+      WHERE (t.scope IN ['base', 'itil'] OR t.tenant_id = $tenantId)
+        AND t.active = true AND t.name <> '__base__'
+      RETURN collect(t.name) AS names
+    `, { tenantId }),
+  )
+  const names = (r.records[0]?.get('names') ?? []) as string[]
+  if (names.includes(name)) return name
+  throw new GraphQLError(
+    `${what}: il tipo "${name}" non esiste fra i tipi di questo cliente. ` +
+    `Disponibili: ${[...names].sort().join(', ')}.`,
+    { extensions: { code: 'BAD_USER_INPUT' } },
+  )
+}
+
 async function assertTenantOwnedType(
   session: Session, typeId: string, tenantId: string, action: TypeAction,
 ): Promise<{ name: string; label: string }> {
@@ -722,6 +795,13 @@ export function buildMetamodelMutations() {
       const fieldId    = crypto.randomUUID()
       const enumTypeId = (input['enumTypeId'] as string | null | undefined) ?? null
 
+      // La porta sui NOMI c'era (ondata 5); sui VALORI no (revisione delle otto
+      // ondate · A·3.2). `fieldType` finiva nel metamodello senza controlli, e
+      // l'unico posto che conosce i tipi ammessi lancia molto più tardi —
+      // quando si genera lo SDL, cioè quando il cliente ha già perso tutti i
+      // suoi tipi dall'API.
+      assertCIFieldType(input['fieldType'], `addCIField(${typeId}).fieldType`)
+
       if (input['fieldType'] === 'enum' && !enumTypeId) {
         throw new GraphQLError('enumTypeId obbligatorio per campi di tipo enum', {
           extensions: { code: 'BAD_USER_INPUT' },
@@ -814,6 +894,117 @@ export function buildMetamodelMutations() {
       return fetchCITypeById(typeId, ctx.tenantId)
     },
 
+    /**
+     * **Modificare** un campo esistente (revisione delle otto ondate · A·3.1).
+     *
+     * Non esisteva. Il disegnatore offriva comunque il pulsante «Modifica»,
+     * che chiamava `addCIField` — e la porta sui nomi lo rifiutava sempre con
+     * «Il campo esiste già sul tipo». L'unica via era cancellare e ricreare, e
+     * `removeCIField` non tocca le proprietà dei nodi: i valori già scritti
+     * restavano nel grafo senza nessuna definizione che li dichiarasse, e
+     * **riapparivano** quando il campo veniva ricreato con lo stesso nome. Un
+     * cliente che «pulisce» un campo cancellandolo e lo rifà si ritrovava i
+     * vecchi valori.
+     *
+     * ## Cosa si cambia, e cosa no
+     * Si cambiano etichetta, obbligatorietà, valore predefinito, ordine, il
+     * vocabolario agganciato e i tre script. **Non** si cambiano:
+     *  - il **nome**: è la proprietà sui nodi CI (`cost_center` su migliaia di
+     *    record). Rinominarlo è una migrazione di dati, non una modifica al
+     *    metamodello, e farla come effetto collaterale di un «Salva» è
+     *    esattamente il silenzio che questo programma chiude;
+     *  - il **tipo**: i valori già scritti sono di quel tipo. Passare da
+     *    `string` a `number` lascerebbe nel grafo stringhe in un campo che
+     *    l'API dichiara numerico — e il difetto si vedrebbe in lettura, a caso.
+     * Per entrambi la strada è togliere il campo e rifarlo, sapendo cosa si fa.
+     */
+    updateCIField: async (
+      _: unknown,
+      args: { typeId: string; fieldId: string; input: Record<string, unknown> },
+      ctx: GraphQLContext,
+    ) => {
+      requireAdmin(ctx)
+      const { typeId, fieldId, input } = args
+      const enumTypeId = (input['enumTypeId'] as string | null | undefined) ?? null
+
+      await withSession(async session => {
+        // Come per le altre: su un tipo spedito col prodotto si rifiuta a voce
+        // alta invece di non fare niente rispondendo «Salvato».
+        await assertTenantOwnedType(session, typeId, ctx.tenantId, 'update')
+
+        const existing = await session.executeRead((tx) =>
+          tx.run(`
+            MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
+            WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
+            RETURN f.name AS name, f.field_type AS fieldType, f.is_system AS isSystem
+          `, { typeId, fieldId, tenantId: ctx.tenantId }),
+        )
+        if (!existing.records.length) {
+          throw new GraphQLError(`Campo ${fieldId} non trovato sul tipo ${typeId} di questo cliente`, {
+            extensions: { code: 'NOT_FOUND' },
+          })
+        }
+        const fieldName = existing.records[0]!.get('name') as string
+        const fieldType = existing.records[0]!.get('fieldType') as string
+
+        // Un campo `enum` senza vocabolario non ha valori ammessi: la
+        // validazione non avrebbe niente con cui confrontare, che è il difetto
+        // A·3.3 dall'altro capo.
+        if (fieldType === 'enum' && enumTypeId) {
+          await assertEnumTypeLinkable(session, enumTypeId, fieldName, ctx.tenantId)
+        }
+
+        const r = await session.executeWrite(tx =>
+          tx.run(`
+            MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
+            WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
+            SET f.label             = coalesce($label, f.label),
+                f.required          = coalesce($required, f.required),
+                f.default_value     = CASE WHEN $defaultValueGiven THEN $defaultValue ELSE f.default_value END,
+                f.order             = coalesce($order, f.order),
+                f.validation_script = CASE WHEN $validationGiven THEN $validationScript ELSE f.validation_script END,
+                f.visibility_script = CASE WHEN $visibilityGiven THEN $visibilityScript ELSE f.visibility_script END,
+                f.default_script    = CASE WHEN $defaultScriptGiven THEN $defaultScript ELSE f.default_script END
+            WITH f
+            CALL {
+              WITH f
+              // Il vocabolario agganciato si SOSTITUISCE: il legame vecchio va
+              // via, altrimenti loadMetamodel ne troverebbe due e ne
+              // sceglierebbe uno a caso.
+              // tenant-ok: l'ambito l'ha già imposto assertEnumTypeLinkable.
+              MATCH (e:EnumTypeDefinition {id: $enumTypeId})
+              WHERE $enumTypeId IS NOT NULL
+              // Si stacca il legame vecchio del campo, non si legge un
+              // vocabolario di nessuno.
+              // tenant-ok: il campo appartiene a un tipo già verificato come di questo cliente (assertTenantOwnedType)
+              OPTIONAL MATCH (f)-[old:USES_ENUM]->()
+              DELETE old
+              MERGE (f)-[:USES_ENUM]->(e)
+              RETURN count(e) AS linked
+            }
+            RETURN f
+          `, {
+            typeId, fieldId, tenantId: ctx.tenantId, enumTypeId,
+            label:             input['label']            ?? null,
+            required:          input['required']         ?? null,
+            defaultValueGiven: input['defaultValue']     !== undefined,
+            defaultValue:      input['defaultValue']     ?? null,
+            order:             input['order']            ?? null,
+            validationGiven:   input['validationScript'] !== undefined,
+            validationScript:  input['validationScript'] ?? null,
+            visibilityGiven:   input['visibilityScript'] !== undefined,
+            visibilityScript:  input['visibilityScript'] ?? null,
+            defaultScriptGiven: input['defaultScript']   !== undefined,
+            defaultScript:     input['defaultScript']    ?? null,
+          }),
+        )
+        assertWrote(r, `updateCIField(${fieldId})`)
+      }, true)
+
+      invalidateSchema(ctx.tenantId)
+      return fetchCITypeById(typeId, ctx.tenantId)
+    },
+
     removeCIField: async (
       _: unknown,
       args: { typeId: string; fieldId: string },
@@ -866,6 +1057,14 @@ export function buildMetamodelMutations() {
         // mappe dei servizi e nel pattern INTERPOLATO della soppressione in
         // finestra di change: passa solo un identificatore Neo4j.
         const relationshipType = assertRelationshipTypeName(input['relationshipType'], `addCIRelation(${typeId}).relationshipType`)
+        // Revisione · A·3.7: `direction`, `cardinality` e `targetType` non
+        // erano validati affatto. Una relazione con `direction: "destra"` o
+        // verso un tipo che non esiste entrava nel metamodello ed era **inerte
+        // in silenzio**: il disegnatore la mostrava, le mappe non la
+        // percorrevano, e nessuno diceva perché.
+        assertRelationDirection(input['direction'],   `addCIRelation(${typeId}).direction`)
+        assertRelationCardinality(input['cardinality'], `addCIRelation(${typeId}).cardinality`)
+        await assertRelationTargetType(session, input['targetType'], ctx.tenantId, `addCIRelation(${typeId}).targetType`)
         // D-17: le relazioni non avevano NESSUN controllo di nome duplicato —
         // due omonime sullo stesso tipo e `loadMetamodel` ne scarta una in
         // silenzio, mentre il disegnatore continua a mostrarne due. Come per i

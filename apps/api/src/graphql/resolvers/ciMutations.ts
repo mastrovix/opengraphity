@@ -4,6 +4,7 @@ import { ValidationError } from '../../lib/errors.js'
 import { withSession } from './ci-utils.js'
 import { cache } from '../../lib/cache.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
+import { BASE_INPUT_FIELDS } from '@opengraphity/schema-generator'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
 import { calculateChain } from '../../lib/chainCalculator.js'
@@ -102,7 +103,19 @@ export async function validateCIInput(
 ): Promise<void> {
   const errors: string[] = []
   for (const field of ciType.fields) {
-    if (field.isSystem) continue   // id/created_at/…: managed by the API, never user input
+    // Revisione delle otto ondate · A·3.3. Il filtro era `field.isSystem`, e
+    // `is_system` è vero su TUTTI e nove i campi di `__base__` — `status` e
+    // `environment` compresi, che sono i più scritti della CMDB. Quindi la
+    // validazione del vocabolario non girava mai su di loro: `status: "pizza"`
+    // entrava, ed entrava anche il valore che il cliente aveva TOLTO dal suo
+    // Dizionario.
+    //
+    // Il discriminante giusto non è «di sistema» ma «è un campo d'ingresso»:
+    // `BASE_INPUT_FIELDS` sono i campi che il generatore dichiara negli input
+    // (name, status, environment, description, notes, i due gruppi, e i tre
+    // della salute), quindi scrivibili; `id`, `createdAt`, `updatedAt` e
+    // `chain` non lo sono, e su quelli non c'è niente da validare.
+    if (field.isSystem && !BASE_INPUT_FIELDS.has(field.name)) continue
     const value = input[field.name]
     if (field.required && (value == null || value === '')) {
       errors.push(`${field.label || field.name} è obbligatorio`)

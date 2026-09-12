@@ -75,6 +75,12 @@ const res0   = (records: unknown[] = []) => ({ records, ...WROTE_0 })
  * risposte accodate con `reset([...])` vincono, nell'ordine.
  */
 function defaultResponse(cypher: string): { records: unknown[] } {
+  // Revisione delle otto ondate · A·3.7: il tipo di ARRIVO di una relazione
+  // deve esistere (prima non era validato, e una relazione verso un tipo
+  // inesistente entrava nel metamodello ed era inerte in silenzio).
+  if (cypher.includes('RETURN collect(t.name) AS names')) {
+    return res([row({ names: ['server', 'application', 'firewall', 'incident'] })])
+  }
   if (cypher.includes('MATCH (e:EnumTypeDefinition {tenant_id: $tenantId})')) return res()   // nessuna personalizzazione
   if (cypher.includes('RETURN t.scope AS scope')) return res([row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })])
   if (cypher.includes('MATCH (e:EnumTypeDefinition {id: $enumTypeId})')) return res([row({ id: 'e-1', name: 'stato_rete', tenantId: 'tenant-1' })])
@@ -117,12 +123,30 @@ function reset(responses: Array<{ records: unknown[] }> = []) {
   vi.clearAllMocks()
   usage()
   queue.splice(0, queue.length, ...responses)
-  txRun.mockImplementation(async (cypher: string) => queue.shift() ?? defaultResponse(cypher))
+  // La guardia sul tipo di arrivo di una relazione (revisione · A·3.7) legge i
+  // tipi disponibili prima di scrivere. È infrastruttura per questi test, non
+  // la cosa che misurano: risponde sempre il router, così la coda resta
+  // allineata alle scritture e nessun test va riscritto per una lettura in più.
+  txRun.mockImplementation(async (cypher: string) =>
+    (cypher.includes('RETURN collect(t.name) AS names')
+      ? defaultResponse(cypher)
+      : queue.shift() ?? defaultResponse(cypher)))
   const tx = { run: txRun }
   mockSession.executeRead.mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx))
   mockSession.executeWrite.mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx))
 }
 const call = (i: number) => ({ cypher: txRun.mock.calls[i]![0] as string, params: txRun.mock.calls[i]![1] as Record<string, unknown> })
+/**
+ * La Cypher che contiene questo frammento, invece del suo indice: le guardie
+ * aggiunte dalle ondate inseriscono letture PRIMA della scrittura, e un test
+ * che pinna «la chiamata numero 1» si rompe a ogni guardia nuova senza che ci
+ * sia niente di sbagliato.
+ */
+const callWith = (needle: string) => {
+  const hit = txRun.mock.calls.find((c) => (c[0] as string).includes(needle))
+  if (!hit) throw new Error(`nessuna Cypher contiene «${needle}»; eseguite: ${String(txRun.mock.calls.length)}`)
+  return { cypher: hit[0] as string, params: hit[1] as Record<string, unknown> }
+}
 
 async function expectCode(p: Promise<unknown>, code: string) {
   const err = await p.then(() => null, (e: unknown) => e)
@@ -318,10 +342,16 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
   // scrittura legge l'ambito del tipo, quindi la sua prima Cypher non è più
   // quella della cancellazione (ha i suoi test qui sotto).
   it.each(['addCIRelation', 'removeCIRelation'] as const)('%s: WHERE t.scope = \'tenant\' AND t.tenant_id = $tenantId', async (name) => {
-    await mutations[name](null, { typeId: 'ct-1', relationId: 'r-1', input: { name: 'n', label: 'l', relationshipType: 'DEPENDS_ON', targetType: 'server', cardinality: 'many', direction: 'out' } }, admin)
-    // call(0) è la lettura dell'ambito del tipo (A-6).
+    // `direction: 'out'` era la fixture: un valore che il dato vivo non ha
+    // (sono `outgoing`/`incoming`) e che ora la guardia dei VALORI rifiuta —
+    // revisione delle otto ondate · A·3.7, una relazione con una direzione
+    // inventata entrava nel metamodello ed era inerte in silenzio.
+    await mutations[name](null, { typeId: 'ct-1', relationId: 'r-1', input: { name: 'n', label: 'l', relationshipType: 'DEPENDS_ON', targetType: 'server', cardinality: 'many', direction: 'outgoing' } }, admin)
+    // call(0) è la lettura dell'ambito del tipo (A-6). Fra quella e la
+    // scrittura ora c'è anche la guardia sul tipo di arrivo (A·3.7), quindi la
+    // scrittura si cerca per contenuto e non per indice.
     expect(call(0).cypher).toContain('RETURN t.scope AS scope')
-    const { cypher, params } = call(1)
+    const { cypher, params } = callWith('CIRelationDefinition')
     expect(cypher).toContain("WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId")
     expect(cypher).not.toContain("'system'")
     expect(params['tenantId']).toBe('tenant-1')
@@ -750,9 +780,12 @@ describe('addCIRelation valida il tipo di relazione (C-3)', () => {
   it('un identificatore valido passa, e la definizione nasce CON un proprietario', async () => {
     reset([{ records: [row({ scope: 'tenant', name: 'load_balancer', label: 'Bilanciatore' })] }, res()])
     await mutations.addCIRelation(null, relInput('BILANCIA'), admin)
-    expect(call(1).params['relationshipType']).toBe('BILANCIA')
-    expect(call(1).cypher).toContain('tenant_id:         $tenantId')
-    expect(call(1).cypher).toContain("scope:             'tenant'")
+    // Per contenuto e non per indice: fra la lettura dell'ambito e la
+    // scrittura c'è ora anche la guardia sul tipo di arrivo (A·3.7).
+    const created = callWith('CREATE (r:CIRelationDefinition')
+    expect(created.params['relationshipType']).toBe('BILANCIA')
+    expect(created.cypher).toContain('tenant_id:         $tenantId')
+    expect(created.cypher).toContain("scope:             'tenant'")
   })
 
   it.each(['bilancia', 'BILANCIA UNO', 'BILANCIA-1', '', 'Bilancia', 42, null])('%s → rifiutato prima di scrivere', async (bad) => {

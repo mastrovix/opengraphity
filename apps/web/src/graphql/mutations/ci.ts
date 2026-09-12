@@ -42,6 +42,25 @@ export const DELETE_CI_TYPE = gql`
   }
 `
 
+/**
+ * Modifica un campo esistente (revisione delle otto ondate · A·3.1).
+ *
+ * Il pulsante «Modifica» del disegnatore chiamava `addCIField`, e la porta sui
+ * nomi lo rifiutava **sempre** con «Il campo esiste già sul tipo»: l'unica via
+ * era cancellare e ricreare, e i valori già scritti sui nodi riapparivano col
+ * campo ricreato. Il nome e il tipo non si cambiano da qui, e non è una
+ * dimenticanza: sono il nome della proprietà sui nodi e la forma dei valori
+ * già scritti.
+ */
+export const UPDATE_CI_FIELD = gql`
+  mutation UpdateCIField($typeId: ID!, $fieldId: ID!, $input: CIFieldUpdateInput!) {
+    updateCIField(typeId: $typeId, fieldId: $fieldId, input: $input) {
+      id fields { id name label fieldType required enumValues order
+        validationScript visibilityScript defaultScript }
+    }
+  }
+`
+
 export const ADD_CI_FIELD = gql`
   mutation AddCIField($typeId: ID!, $input: CIFieldInput!) {
     addCIField(typeId: $typeId, input: $input) {

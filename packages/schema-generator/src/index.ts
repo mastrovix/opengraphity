@@ -1,4 +1,6 @@
 export { loadMetamodel, generateSDL, loadITILTypes, generateITILEnumsSDL, metamodelSDL } from './generator.js'
+export { CI_FIELD_TYPES, isCIFieldType } from './generator.js'
+export type { CIFieldType } from './generator.js'
 export type { EnumScope } from './generator.js'
 export { toPascalCase, pluralize, toSnakeCase } from './stringUtils.js'
 export {

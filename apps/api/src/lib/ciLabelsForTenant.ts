@@ -26,6 +26,7 @@
  * cambia — anche in un altro processo — perché si registra fra i «clearer»
  * del canale del metamodello (ondata 5).
  */
+import { ENUM_SCOPE } from './enumScope.js'
 import { loadMetamodel } from '@opengraphity/schema-generator'
 import { createMetamodelCache } from './metamodelCache.js'
 import { ALL_CI_LABELS } from './ciLabels.js'
@@ -49,7 +50,7 @@ export function ciLabelsForTenant(tenantId: string): Promise<readonly string[]> 
 }
 
 function loadLabels(tenantId: string): Promise<readonly string[]> {
-  return loadMetamodel(tenantId)
+  return loadMetamodel(tenantId, ENUM_SCOPE)
     .then((types) => {
       const labels = new Set<string>(ALL_CI_LABELS)
       for (const t of types) if (t.neo4jLabel) labels.add(t.neo4jLabel)
@@ -94,7 +95,7 @@ export async function apocLabelFilterForTenant(tenantId: string): Promise<string
  * dirlo, non inventare un nome «per convenzione».
  */
 export async function ciTypeNameForLabel(tenantId: string, label: string): Promise<string | null> {
-  const types = await loadMetamodel(tenantId)
+  const types = await loadMetamodel(tenantId, ENUM_SCOPE)
   return types.find((t) => t.neo4jLabel === label)?.name ?? null
 }
 

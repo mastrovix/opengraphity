@@ -162,6 +162,15 @@ export interface ReservedSchemaNames {
   mutationFields: Map<string, string>
 }
 
+/** Copia: la verifica aggiunge i nomi emessi, e non deve sporcare la cache del chiamante. */
+export function cloneReservedNames(r: ReservedSchemaNames): ReservedSchemaNames {
+  return {
+    types:          new Map(r.types),
+    queryFields:    new Map(r.queryFields),
+    mutationFields: new Map(r.mutationFields),
+  }
+}
+
 export function emptyReservedNames(): ReservedSchemaNames {
   return { types: new Map(), queryFields: new Map(), mutationFields: new Map() }
 }
@@ -403,8 +412,22 @@ export function assertCIFieldName(name: unknown, ctx: CIFieldNameContext = {}): 
  */
 export function assertGeneratableNames(
   types: readonly { name: string; label?: string; fields: readonly { name: string; isSystem?: boolean }[] }[],
+  /**
+   * I nomi già occupati dallo schema di BASE (revisione delle otto ondate ·
+   * D·N-4). Senza questo la verifica partiva da un insieme vuoto, quindi
+   * vedeva solo le collisioni fra i tipi del cliente: un tipo CI chiamato
+   * `incident` passava — e graphql-tools **non lancia**, FONDE, quindi i suoi
+   * campi finivano innestati sul tipo base `Incident` (dal vivo: da 32 a 44
+   * campi) senza un errore da nessuna parte. La validazione in scrittura
+   * (ondata 5) usa gli stessi nomi, ma non protegge il dato già scritto.
+   *
+   * Il generatore non può calcolarli da sé (l'SDL di base sta in `apps/api`),
+   * quindi glieli passa il chiamante — la stessa sorgente unica di
+   * `reservedNamesOfBaseSchema()`.
+   */
+  reserved?: ReservedSchemaNames,
 ): void {
-  const seen = emptyReservedNames()
+  const seen = reserved ? cloneReservedNames(reserved) : emptyReservedNames()
   for (const type of types) {
     // Il messaggio di `assertCITypeName` parla a chi sta creando un tipo; qui
     // il tipo esiste già, e la via d'uscita è eliminarlo o rinominarlo.

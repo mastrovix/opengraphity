@@ -198,6 +198,63 @@ describe('validateCIInput — vocabolario dei campi enum (B7-2 / A-13)', () => {
       .rejects.toThrow(/"expired" non è nel vocabolario/)
   })
 
+  /**
+   * Revisione delle otto ondate · A·3.3 — **la forma che il metamodello
+   * produce davvero**.
+   *
+   * La fixture qui sopra costruisce `status` con `isSystem: false`, e un campo
+   * del cliente con `enumValues` popolato: due forme che `loadMetamodel` non
+   * produce mai. Dal vivo i nove campi di `__base__` hanno TUTTI
+   * `is_system = true` — `status` e `environment` compresi — e la validazione
+   * li saltava per quel flag: `status: "pizza"` entrava, ed entrava anche il
+   * valore che il cliente aveva TOLTO dal suo Dizionario. Il test passava e la
+   * produzione no; è esattamente lo spazio che la revisione indica.
+   */
+  describe('la forma vera: `status` è is_system e i valori vengono dal vocabolario del cliente', () => {
+    const realShape = () => {
+      const t = ciType()
+      t.fields = [
+        // Come li dà `loadMetamodel`: tutti i campi di `__base__` sono di
+        // sistema, e i valori sono quelli del vocabolario DEL CLIENTE
+        // (`ci_status` personalizzato in `attivo/dismesso`).
+        { id: 'f-id',     name: 'id',        label: 'ID',       fieldType: 'string', required: false, defaultValue: null, enumValues: [], validationScript: null, visibilityScript: null, defaultScript: null, isSystem: true,  scope: 'base', tenantId: 'system', order: 0 },
+        { id: 'f-status', name: 'status',    label: 'Stato',    fieldType: 'enum',   required: false, defaultValue: null, enumValues: ['attivo', 'dismesso'], validationScript: null, visibilityScript: null, defaultScript: null, isSystem: true, scope: 'base', tenantId: 'system', order: 1 },
+        { id: 'f-env',    name: 'environment', label: 'Ambiente', fieldType: 'enum', required: false, defaultValue: null, enumValues: ['produzione', 'collaudo'], validationScript: null, visibilityScript: null, defaultScript: null, isSystem: true, scope: 'base', tenantId: 'system', order: 2 },
+        { id: 'f-chain',  name: 'chain',     label: 'Catena',   fieldType: 'enum',   required: false, defaultValue: null, enumValues: ['Application', 'Infrastructure'], validationScript: null, visibilityScript: null, defaultScript: null, isSystem: true, scope: 'base', tenantId: 'system', order: 3 },
+      ] as never
+      return t
+    }
+
+    it('il valore inventato NON entra più', async () => {
+      await expect(validateCIInput(realShape(), { name: 'srv', status: 'pizza' }, 't1'))
+        .rejects.toMatchObject({ message: expect.stringContaining('Stato: "pizza" non è nel vocabolario di questo cliente. Ammessi: attivo, dismesso') })
+    })
+
+    it('nemmeno il valore che il cliente ha TOLTO dal suo Dizionario', async () => {
+      await expect(validateCIInput(realShape(), { name: 'srv', status: 'active' }, 't1'))
+        .rejects.toMatchObject({ message: expect.stringContaining('non è nel vocabolario di questo cliente') })
+    })
+
+    it('il valore del cliente passa, su `status` come su `environment`', async () => {
+      await expect(validateCIInput(realShape(), { name: 'srv', status: 'attivo', environment: 'collaudo' }, 't1'))
+        .resolves.toBeUndefined()
+    })
+
+    it('`chain` non è un campo d\'ingresso: non lo si valida (lo calcola il prodotto)', async () => {
+      // `chain` è di sistema E fuori da BASE_INPUT_FIELDS: nessun input lo
+      // dichiara, quindi non c'è niente da validare — e validarlo romperebbe
+      // il calcolo della catena.
+      await expect(validateCIInput(realShape(), { name: 'srv', chain: 'Qualunque' }, 't1')).resolves.toBeUndefined()
+    })
+
+    it('in modifica si controlla solo ciò che si scrive, anche sui campi di sistema', async () => {
+      await expect(validateCIInput(realShape(), { name: 'nuovo', status: 'active' }, 't1', new Set(['name'])))
+        .resolves.toBeUndefined()
+      await expect(validateCIInput(realShape(), { name: 'nuovo', status: 'active' }, 't1', new Set(['status'])))
+        .rejects.toMatchObject({ message: expect.stringContaining('non è nel vocabolario') })
+    })
+  })
+
   it('il valore fuori vocabolario è un rifiuto PRIMA dello script del campo (nessuno script su un valore che non esiste)', async () => {
     const t = withEnum()
     ;(t.fields[1] as { validationScript: string | null }).validationScript = 'throw new Error("mai")'

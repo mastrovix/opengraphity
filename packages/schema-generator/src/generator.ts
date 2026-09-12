@@ -2,10 +2,35 @@ import { getSession } from '@opengraphity/neo4j'
 import type { CITypeWithDefinitions, CIFieldDefinition, CIRelationDefinition, CISystemRelationDefinition } from './types.js'
 import { toPascalCase, pluralize } from './stringUtils.js'
 import { assertGeneratableNames, BASE_TYPE_FIELDS, BASE_INPUT_FIELDS } from './nameValidation.js'
+import type { ReservedSchemaNames } from './nameValidation.js'
 
-export async function loadMetamodel(tenantId: string): Promise<CITypeWithDefinitions[]> {
+/**
+ * Il metamodello dei CI di questo cliente.
+ *
+ * ## `enumScope` è obbligatorio, e non era (revisione delle otto ondate · A·3.3)
+ * Questa funzione **non interrogava `USES_ENUM`**: `mapField` prendeva
+ * `enumValues` dalla proprietà **inline** `enum_values` del campo, che è quella
+ * SPEDITA col prodotto. E `addCIField` non scrive mai `enum_values` (l'input
+ * non ce l'ha nemmeno), quindi ogni campo enum del cliente arrivava con
+ * `enumValues: []`.
+ *
+ * Conseguenza, misurata dal vivo su un `ci_status` personalizzato: la
+ * validazione della CMDB (`validateCIInput`) confrontava con la lista SPEDITA
+ * dove la lista esisteva, e con una lista VUOTA sui campi del cliente — cioè
+ * non confrontava niente. `status: "pizza"` entrava; entrava anche il valore
+ * che il cliente aveva **tolto**; e il form (che legge il metamodello vivo) e
+ * la scrittura avevano **due liste diverse** per lo stesso campo.
+ *
+ * Ora fa come `loadITILTypes`: risolve il vocabolario agganciato con la
+ * clausola di ambito e applica la personalizzazione del cliente. Il parametro è
+ * obbligatorio proprio perché nessun chiamante possa tornare a leggere la
+ * lista spedita per sbaglio.
+ */
+export async function loadMetamodel(tenantId: string, enumScope: EnumScope): Promise<CITypeWithDefinitions[]> {
   const session = getSession(undefined, 'READ')
   try {
+    const overrides = await enumScope.loadOverrides(session, tenantId)
+    const enumScopeClause = enumScope.clause
     const result = await session.executeRead(tx =>
       tx.run(`
         MATCH (t:CITypeDefinition)
@@ -14,14 +39,18 @@ export async function loadMetamodel(tenantId: string): Promise<CITypeWithDefinit
           AND t.name <> '__base__'
         OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
           WHERE f.scope = 'base' OR (f.scope = 'tenant' AND f.tenant_id = $tenantId)
+        OPTIONAL MATCH (f)-[:USES_ENUM]->(fEnum:EnumTypeDefinition)
+          ${enumScopeClause('fEnum')}
         OPTIONAL MATCH (t)-[:HAS_RELATION]->(r:CIRelationDefinition)
         OPTIONAL MATCH (t)-[:HAS_SYSTEM_RELATION]->(sr:CISystemRelationDefinition)
         OPTIONAL MATCH (base:CITypeDefinition {name: '__base__'})
           WHERE base.tenant_id = $tenantId OR base.tenant_id = 'system'
         OPTIONAL MATCH (base)-[:HAS_FIELD]->(bf:CIFieldDefinition)
+        OPTIONAL MATCH (bf)-[:USES_ENUM]->(bfEnum:EnumTypeDefinition)
+          ${enumScopeClause('bfEnum')}
         RETURN t,
-          collect(DISTINCT f)  AS typeFields,
-          collect(DISTINCT bf) AS baseFields,
+          collect(DISTINCT {props: f,  enumId: fEnum.id,  enumName: fEnum.name,  enumValues: fEnum.values})  AS typeFieldData,
+          collect(DISTINCT {props: bf, enumId: bfEnum.id, enumName: bfEnum.name, enumValues: bfEnum.values}) AS baseFieldData,
           collect(DISTINCT r)  AS relations,
           collect(DISTINCT sr) AS systemRelations
         ORDER BY t.name
@@ -31,13 +60,8 @@ export async function loadMetamodel(tenantId: string): Promise<CITypeWithDefinit
     return result.records.map(record => {
       const t = record.get('t').properties as Record<string, unknown>
 
-      const typeFields = (record.get('typeFields') as Array<{ properties: Record<string, unknown> }>)
-        .filter(f => f && f.properties)
-        .map(f => mapField(f.properties))
-
-      const baseFields = (record.get('baseFields') as Array<{ properties: Record<string, unknown> }>)
-        .filter(f => f && f.properties)
-        .map(f => mapField(f.properties))
+      const typeFields = mapFieldsWithEnums(record.get('typeFieldData') as FieldData[], enumScope, overrides)
+      const baseFields = mapFieldsWithEnums(record.get('baseFieldData') as FieldData[], enumScope, overrides)
 
       // Merge: base fields first, then type-specific; deduplicate by name
       const seen = new Set<string>()
@@ -89,6 +113,36 @@ export async function loadMetamodel(tenantId: string): Promise<CITypeWithDefinit
   } finally {
     await session.close()
   }
+}
+
+/** Una riga «campo + vocabolario agganciato», come la collezionano le query. */
+interface FieldData {
+  props:      { properties: Record<string, unknown> } | null
+  enumId:     string | null
+  enumName:   string | null
+  enumValues: string[] | string | null
+}
+
+/**
+ * Campi con i valori del vocabolario **del cliente**: la personalizzazione
+ * vince per nome (ondata 1), e senza questo passaggio i campi enum del cliente
+ * arrivavano con la lista vuota e la validazione non confrontava niente.
+ *
+ * La proprietà inline `enum_values` resta il ripiego per i campi che non hanno
+ * un vocabolario agganciato (i campi spediti col prodotto ce l'hanno: è da lì
+ * che il seed parte).
+ */
+function mapFieldsWithEnums(
+  rows: readonly FieldData[], enumScope: EnumScope,
+  overrides: Map<string, { id: string; name: string; values: string[] }>,
+): CIFieldDefinition[] {
+  return enumScope.applyOverrides(rows.filter((d) => d.props), overrides).map((d) => {
+    const field = mapField(d.props!.properties)
+    if (d.enumId && d.enumValues) {
+      field.enumValues = Array.isArray(d.enumValues) ? d.enumValues : (JSON.parse(d.enumValues) as string[])
+    }
+    return field
+  })
 }
 
 function mapField(f: Record<string, unknown>): CIFieldDefinition {
@@ -269,6 +323,14 @@ export const METAMODEL_MUTATION_FIELDS = `
   updateCIType(id: ID!, input: UpdateCITypeInput!): CITypeDefinition!
   deleteCIType(id: ID!): Boolean!
   addCIField(typeId: ID!, input: CIFieldInput!): CITypeDefinition!
+  """
+  Modifica un campo esistente: etichetta, obbligatorietà, valore predefinito,
+  ordine, vocabolario agganciato, script. Non esisteva — il disegnatore offriva
+  il pulsante «Modifica» che chiamava addCIField, e la porta sui nomi lo
+  rifiutava sempre con «Il campo esiste già». L'unica via era cancellare e
+  rifare, e i valori già scritti sui nodi riapparivano col campo ricreato.
+  """
+  updateCIField(typeId: ID!, fieldId: ID!, input: CIFieldUpdateInput!): CITypeDefinition!
   removeCIField(typeId: ID!, fieldId: ID!): CITypeDefinition!
   addCIRelation(typeId: ID!, input: CIRelationInput!): CITypeDefinition!
   removeCIRelation(typeId: ID!, relationId: ID!): CITypeDefinition!`
@@ -310,6 +372,24 @@ input CIFieldInput {
   defaultScript: String
 }
 
+"""
+Modifica di un campo esistente. NON contiene "name" né "fieldType", e non è una
+dimenticanza: il nome è la proprietà sui nodi CI (rinominarlo è una migrazione
+di dati) e il tipo descrive i valori già scritti (passare da stringa a numero
+lascerebbe stringhe in un campo dichiarato numerico). Per cambiarli si toglie il
+campo e si rifà, sapendo che i valori vecchi restano sui nodi.
+"""
+input CIFieldUpdateInput {
+  label: String
+  required: Boolean
+  defaultValue: String
+  enumTypeId: ID
+  order: Int
+  validationScript: String
+  visibilityScript: String
+  defaultScript: String
+}
+
 input CIRelationInput {
   name: String!
   label: String!
@@ -342,23 +422,45 @@ ${METAMODEL_INPUTS}
  * sarebbe peggio che un errore — un cliente senza tipi CI non avrebbe più la
  * mutation per crearne uno.
  */
-export function generateSDL(types: CITypeWithDefinitions[]): string {
+export function generateSDL(
+  types: CITypeWithDefinitions[],
+  /**
+   * I nomi dello schema di base già occupati (revisione · D·N-4). Opzionale per
+   * i chiamanti che generano SDL isolato (test del generatore); lo schema vero
+   * li passa, altrimenti un tipo CI omonimo di un tipo base non verrebbe
+   * intercettato — e graphql-tools non lancia, fonde.
+   */
+  reserved?: ReservedSchemaNames,
+): string {
   // A-12: i nomi PRIMA di interpolarli. Un nome non identificatore farebbe
   // lanciare `makeExecutableSchema` con un errore di sintassi che non dice di
   // chi è la colpa; un plurale omonimo di una query esistente fra i tipi
   // ricevuti farebbe fallire il merge. La collisione col nome di un tipo dello
   // schema di base, invece, è silenziosa all'assemblaggio: quella la ferma la
   // porta in scrittura (`apps/api/src/lib/metamodelNames.ts`).
-  assertGeneratableNames(types)
+  assertGeneratableNames(types, reserved)
 
   const parts: string[] = []
 
   // Concrete type for each CI type
   for (const type of types) {
     const typeName = toPascalCase(type.name)
+    // `required` NON diventa `!` nello SDL (revisione delle otto ondate · A·3.1).
+    //
+    // Il difetto, misurato dal vivo: il cliente spunta «Obbligatorio» su un
+    // campo di un tipo che ha già dei CI, e la lista di quel tipo non si apre
+    // più — `Cannot return null for non-nullable field X.campo`, con
+    // `data: null`, cioè non un campo nullo ma l'intera risposta perduta. Idem
+    // il dettaglio. E non c'era marcia indietro: `updateCIField` non esisteva.
+    //
+    // Un campo obbligatorio è una regola di **dominio** su ciò che si scrive,
+    // non una garanzia sul dato già scritto: i CI nati prima che il campo
+    // esistesse non hanno quel valore, e nessuna spunta può cambiare il
+    // passato. L'obbligatorietà la impone `validateCIInput`, in un posto solo,
+    // con un messaggio che nomina il campo.
     const specificFields = type.fields
       .filter(f => !BASE_TYPE_FIELDS.has(f.name) && !f.isSystem)
-      .map(f => `  ${f.name}: ${graphqlFieldType(f.fieldType)}${f.required ? '!' : ''}`)
+      .map(f => `  ${f.name}: ${graphqlFieldType(f.fieldType)}`)
       .join('\n')
 
     parts.push(`
@@ -417,9 +519,15 @@ ${queryFields}
 
   for (const type of types) {
     const typeName = toPascalCase(type.name)
+    // Nemmeno negli input (stessa ragione, seconda metà del difetto): con
+    // `campo: String!` in `Update…Input` ogni modifica PARZIALE di un altro
+    // campo veniva rifiutata — «of required type String! was not provided» —
+    // quindi il ticket non si poteva più correggere. Un input è per definizione
+    // parziale in modifica, e in creazione l'obbligatorietà la dice
+    // `validateCIInput` con il suo messaggio.
     const inputFields = type.fields
       .filter(f => !BASE_INPUT_FIELDS.has(f.name) && !f.isSystem)
-      .map(f => `  ${f.name}: ${graphqlFieldType(f.fieldType)}${f.required ? '!' : ''}`)
+      .map(f => `  ${f.name}: ${graphqlFieldType(f.fieldType)}`)
       .join('\n')
 
     mutationFields.push(
@@ -464,6 +572,26 @@ ${inputTypes.join('\n')}
 `)
 
   return parts.join('\n')
+}
+
+/**
+ * I tipi di campo che il generatore sa tradurre in GraphQL: **l'unica sorgente**
+ * (revisione delle otto ondate · A·3.2).
+ *
+ * Il difetto: `addCIField` accettava `fieldType: String!` e lo scriveva senza
+ * controlli; l'unico posto che conosceva i valori ammessi era
+ * `graphqlFieldType`, che **lancia** al momento di generare l'SDL. Dal vivo,
+ * `addCIField(vipAddress, fieldType: "integer")` veniva accettato e lo schema
+ * di quel cliente andava in degrado: il tenant perdeva **tutti** i suoi tipi
+ * dall'API per colpa di un campo, e il motivo non diceva nemmeno quale. Il
+ * disegnatore offre solo i cinque buoni, ma l'API è una via documentata, usata
+ * da script e integrazioni.
+ */
+export const CI_FIELD_TYPES = ['string', 'number', 'boolean', 'date', 'enum'] as const
+export type CIFieldType = (typeof CI_FIELD_TYPES)[number]
+
+export function isCIFieldType(value: unknown): value is CIFieldType {
+  return typeof value === 'string' && (CI_FIELD_TYPES as readonly string[]).includes(value)
 }
 
 function graphqlFieldType(fieldType: string): string {

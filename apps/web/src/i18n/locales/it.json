@@ -1795,7 +1795,8 @@
       "relationAdded": "Relazione aggiunta",
       "relationRemoved": "Relazione rimossa",
       "previewNoSave": "Preview — nessun dato salvato",
-      "nameLabelRequired": "Nome e label obbligatori"
+      "nameLabelRequired": "Nome e label obbligatori",
+      "fieldSaved": "Campo salvato."
     },
     "import": {
       "requestFailed": "Richiesta di import fallita: {{error}}"

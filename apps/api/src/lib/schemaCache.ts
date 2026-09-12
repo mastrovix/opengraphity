@@ -32,8 +32,10 @@
  */
 import { makeExecutableSchema } from '@graphql-tools/schema'
 import type { GraphQLSchema } from 'graphql'
-import { loadMetamodel, generateSDL, loadITILTypes, generateITILEnumsSDL, type EnumScope } from '@opengraphity/schema-generator'
-import { enumScopeClause, loadTenantEnumOverrides, applyEnumOverrides } from './enumScope.js'
+import { loadMetamodel, generateSDL, loadITILTypes, generateITILEnumsSDL } from '@opengraphity/schema-generator'
+import type { ReservedSchemaNames } from '@opengraphity/schema-generator'
+import { reservedNamesOfBaseSchema } from './metamodelNames.js'
+import { ENUM_SCOPE } from './enumScope.js'
 import { buildBaseSDL } from '../graphql/schema-base.js'
 import { buildResolvers } from '../graphql/resolvers/index.js'
 import { logger } from './logger.js'
@@ -82,18 +84,6 @@ function evictIfNeeded(): void {
   graphqlSchemaCacheEntries.set({}, cache.size)
 }
 
-/**
- * L'ambito dei vocabolari che il generatore di schema deve usare (A-2 / C-6).
- * `packages/schema-generator` non può importare `apps/api`, quindi la regola —
- * che ha una sorgente sola, `lib/enumScope.ts` — gliela passiamo noi invece di
- * riscriverla là.
- */
-const ENUM_SCOPE: EnumScope = {
-  clause:         enumScopeClause,
-  loadOverrides:  loadTenantEnumOverrides,
-  applyOverrides: applyEnumOverrides,
-}
-
 // Register invalidator so dynamic-ci.ts can call it without circular imports.
 // Il log dice la VERITÀ: prima affermava «verrà rigenerato» anche quando in
 // cache non c'era nessuna voce per quel tenant (ed era il caso normale).
@@ -136,14 +126,18 @@ export async function getSchemaState(tenantId: string): Promise<{ schema: GraphQ
 async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
   logger.info({ tenantId }, 'Generando schema GraphQL')
   const [ciTypes, itilTypes] = await Promise.all([
-    loadMetamodel(tenantId),
+    loadMetamodel(tenantId, ENUM_SCOPE),
     loadITILTypes(tenantId, ENUM_SCOPE),
   ])
   const itilEnumsSDL = generateITILEnumsSDL(itilTypes)
   const baseSDL      = buildBaseSDL()
+  // I nomi già occupati dallo schema di base: senza, un tipo CI del cliente
+  // omonimo di un tipo base non verrebbe intercettato — graphql-tools non
+  // lancia, FONDE, e i suoi campi finirebbero sul tipo base (revisione · D·N-4).
+  const reserved     = reservedNamesOfBaseSchema()
 
   try {
-    const schema = assemble(ciTypes, baseSDL, itilEnumsSDL)
+    const schema = assemble(ciTypes, baseSDL, itilEnumsSDL, reserved)
     registerCITypes(tenantId, ciTypes)
     graphqlSchemaBuildsTotal.inc({})
     const entry: SchemaCacheEntry = { schema, generatedAt: Date.now(), tenantId, degraded: false, reason: null }
@@ -155,18 +149,52 @@ async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
     // Lo schema del tenant non si assembla: quasi sempre un tipo o un campo
     // personalizzato che collide (la validazione in scrittura, A-12, è la
     // difesa a monte). Senza rete, questo tenant resterebbe senza API E senza
-    // la mutation per rimediare. Si serve lo schema sicuro — i suoi tipi non
-    // ci sono — e lo si dice in ogni modo disponibile.
-    const reason = e instanceof Error ? e.message : String(e)
-    const shipped = ciTypes.filter((t) => t.scope !== 'tenant')
+    // la mutation per rimediare.
+    //
+    // Il raggio del degrado era il CLIENTE INTERO (revisione delle otto ondate
+    // · A·2.3): si scartavano in blocco tutti i tipi con `scope === 'tenant'`,
+    // quindi un campo con un `fieldType` sbagliato su un tipo che nessuno usa
+    // faceva sparire dall'API anche i nove tipi usati ogni giorno — per un
+    // cliente con migliaia di CI, la CMDB si svuotava per colpa di uno. E il
+    // motivo non diceva nemmeno quale tipo fosse.
+    //
+    // Adesso si scarta **un tipo per volta**: si riparte dai tipi spediti e si
+    // aggiunge un tipo del cliente alla volta, tenendo quelli che assemblano.
+    // È una `makeExecutableSchema` per tipo, ma solo su questa strada — che è
+    // rara — e in cambio il cliente perde soltanto il tipo rotto. L'ordine
+    // incrementale coglie anche le collisioni FRA due tipi del cliente: il
+    // primo entra, il secondo viene escluso nominando il conflitto.
+    const firstReason = e instanceof Error ? e.message : String(e)
+    const kept: typeof ciTypes    = ciTypes.filter((t) => t.scope !== 'tenant')
+    const excluded: { name: string; reason: string }[] = []
+    for (const type of ciTypes.filter((t) => t.scope === 'tenant')) {
+      try {
+        assemble([...kept, type], baseSDL, itilEnumsSDL, reserved)
+        kept.push(type)
+      } catch (inner) {
+        excluded.push({ name: type.name, reason: inner instanceof Error ? inner.message : String(inner) })
+      }
+    }
+
+    const reason = excluded.length
+      ? excluded.map((x) => `tipo "${x.name}": ${x.reason}`).join(' | ')
+      : firstReason
     graphqlSchemaBuildFailedTotal.inc({})
     logger.error(
-      { tenantId, reason, tenantTypes: ciTypes.length - shipped.length },
-      'Schema del tenant NON assemblabile: servo lo schema sicuro (base + ITIL, senza i tipi del cliente). ' +
-      'Correggi o cancella il tipo che collide: la mutation resta disponibile.',
+      { tenantId, excluded, keptTenantTypes: kept.filter((t) => t.scope === 'tenant').map((t) => t.name), firstReason },
+      excluded.length
+        ? 'Schema del tenant: ESCLUSI i tipi che non si assemblano; gli altri restano serviti. ' +
+          'Correggi o cancella i tipi nominati qui: le mutation del metamodello restano disponibili.'
+        : 'Schema del tenant NON assemblabile e nessun singolo tipo del cliente ne è la causa: ' +
+          'servo lo schema sicuro (base + ITIL). Il motivo è nel campo firstReason.',
     )
-    const schema = assemble(shipped, baseSDL, itilEnumsSDL)
-    registerCITypes(tenantId, shipped)
+
+    // Nessun tipo colpevole isolato (la causa è nella parte spedita o negli
+    // enum ITIL): si torna alla rete di prima, lo schema sicuro.
+    const schema = excluded.length
+      ? assemble(kept, baseSDL, itilEnumsSDL, reserved)
+      : assemble(ciTypes.filter((t) => t.scope !== 'tenant'), baseSDL, itilEnumsSDL, reserved)
+    registerCITypes(tenantId, excluded.length ? kept : ciTypes.filter((t) => t.scope !== 'tenant'))
     graphqlSchemaBuildsTotal.inc({})
     const entry: SchemaCacheEntry = { schema, generatedAt: Date.now(), tenantId, degraded: true, reason }
     touch(tenantId, entry)
@@ -179,6 +207,7 @@ function assemble(
   ciTypes: Awaited<ReturnType<typeof loadMetamodel>>,
   baseSDL: string,
   itilEnumsSDL: string,
+  reserved: ReservedSchemaNames,
 ): GraphQLSchema {
   // `generateSDL` va chiamato SEMPRE, anche con zero tipi: in quel caso
   // restituisce la parte statica del metamodello — cioè `createCIType`, la
@@ -186,7 +215,7 @@ function assemble(
   // chiuderebbe fuori dalla propria configurazione. (Con zero tipi non emette
   // più blocchi `extend` vuoti, che non erano SDL valido: corretto alla radice
   // nel generatore.)
-  const parts = [baseSDL, generateSDL(ciTypes), itilEnumsSDL].filter((sdl) => sdl.trim() !== '')
+  const parts = [baseSDL, generateSDL(ciTypes, reserved), itilEnumsSDL].filter((sdl) => sdl.trim() !== '')
   return makeExecutableSchema({
     typeDefs:  parts,
     resolvers: buildResolvers(ciTypes),

@@ -25,6 +25,7 @@
  * `unknown_ci_type` che dice cosa fare (creare il tipo, o aggiungere l'alias).
  * Mai un'etichetta inventata.
  */
+import { ENUM_SCOPE } from '../lib/enumScope.js'
 import { loadMetamodel } from '@opengraphity/schema-generator'
 import type { SyncSourceConfig } from '@opengraphity/discovery'
 import { ciTypeAliases } from '@opengraphity/discovery'
@@ -66,7 +67,7 @@ export class CITypeResolver {
   ) {}
 
   static async forSource(tenantId: string, source: Pick<SyncSourceConfig, 'mapping_rules'>): Promise<CITypeResolver> {
-    const types = await loadMetamodel(tenantId)
+    const types = await loadMetamodel(tenantId, ENUM_SCOPE)
     const byName  = new Map<string, ResolvedCIType>()
     const byLabel = new Map<string, ResolvedCIType>()
     for (const t of types) {

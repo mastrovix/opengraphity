@@ -128,7 +128,7 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
  */
 export const ADMIN_ONLY_DYNAMIC_MUTATIONS: ReadonlySet<string> = new Set([
   'createCIType', 'updateCIType', 'deleteCIType',
-  'addCIField', 'removeCIField', 'addCIRelation', 'removeCIRelation',
+  'addCIField', 'updateCIField', 'removeCIField', 'addCIRelation', 'removeCIRelation',
 ])
 
 /** Azioni personali consentite anche in sola lettura (viewer). */
