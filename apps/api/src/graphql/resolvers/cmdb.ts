@@ -1,3 +1,4 @@
+import { GraphQLError } from 'graphql'
 /**
  * CMDB resolvers wired in resolvers/index.ts: only `updateCIFields`.
  *
@@ -8,7 +9,7 @@
  * tenant/label scoping that diverged from the live dynamic CI resolvers.
  */
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
-import { assertWritablePropertyKey } from '../../lib/cypherIdentifiers.js'
+import { assertWritablePropertyKey, assertWritableCIPropertyKey } from '../../lib/cypherIdentifiers.js'
 import { runQuery, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
@@ -69,7 +70,18 @@ export function buildCIFieldUpdates(
       throw new ValidationError('customFields must be a JSON object')
     }
     for (const [key, val] of Object.entries(custom as Record<string, unknown>)) {
-      updates[assertWritablePropertyKey(toSnakeCase(key), 'customFields')] = val
+      // DUE guardie, non una: la prima valida la FORMA del nome (è lei che
+      // ferma l'injection in una chiave: `x = 1 SET ci.tenant_id`, backtick,
+      // spazi) e rifiuta le chiavi di sistema di qualunque nodo; la seconda
+      // aggiunge le riservate DEI CI, che sono un sovrainsieme (`name_key`, la
+      // salute, `chain`, `type`, i `discovery_*`) e da qui passavano — la
+      // stessa fuga che l'ondata 5 ha chiuso su `ciMutations`, aperta qui.
+      // Sostituire la prima con la seconda (tentazione naturale: «è più
+      // completa») toglierebbe la validazione della forma, cioè la difesa
+      // dall'injection: sono ortogonali e servono entrambe.
+      const named = assertWritablePropertyKey(toSnakeCase(key), 'customFields')
+      const snake = assertWritableCIPropertyKey(named, `customFields.${key}`)
+      updates[snake] = val
     }
   }
   return updates
@@ -100,12 +112,25 @@ async function updateCIFields(
       MATCH (ci {id: $id, tenant_id: $tenantId})
       WHERE ${await ciLabelPredicateForTenant('ci', ctx.tenantId)}
       SET ci += $updates
-      RETURN properties(ci) as props
+      RETURN properties(ci) as props,
+             head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
     `
-    const rows = await runQuery<{ props: Props }>(session, cypher, { id, tenantId: ctx.tenantId, updates })
+    const rows = await runQuery<{ props: Props; label: string | null }>(session, cypher, { id, tenantId: ctx.tenantId, updates })
     const row = rows[0]
     if (!row) throw new NotFoundError('ConfigurationItem')
-    return mapCI(ctx.tenantId, row.props)
+    // L'ETICHETTA, non `props.type`: i nodi CI non portano `type` (dal vivo 0
+    // su 2049), quindi senza di essa `mapCI` ripiegava su `'unknown'` e il
+    // `__resolveType` — reso fail-loud nell'ondata 6, correttamente — lanciava
+    // DOPO la scrittura: il salvataggio di un CI dal web riusciva e rispondeva
+    // errore. Vale la pena notare che il difetto non era il fail-loud: era
+    // questo chiamante, che non gli dava l'informazione che possiede.
+    if (!row.label) {
+      throw new GraphQLError(
+        `ConfigurationItem ${id} non ha un'etichetta di tipo oltre a ConfigurationItem: dato incompleto, impossibile dire di che tipo è.`,
+        { extensions: { code: 'CONFLICT' } },
+      )
+    }
+    return mapCI(ctx.tenantId, row.props, row.label)
   }, true)
 }
 

@@ -61,7 +61,9 @@ describe('updateCIFields resolver', () => {
   it('uses SET ci += $updates with a parameter map (no key in the query text)', async () => {
     const session = { close: vi.fn() }
     vi.mocked(getSession).mockReturnValue(session as never)
-    vi.mocked(runQuery).mockResolvedValue([{ props: { id: 'ci-1', name: 'web-01', tenant_id: 't1' } }] as never)
+    // L'etichetta è parte del contratto: `mapCI` deriva il tipo da lì (i nodi CI
+    // non portano `type`).
+    vi.mocked(runQuery).mockResolvedValue([{ props: { id: 'ci-1', name: 'web-01', tenant_id: 't1' }, label: 'LoadBalancer' }] as never)
 
     const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator' as const }
     await cmdbResolvers.Mutation.updateCIFields(undefined, {
@@ -84,5 +86,49 @@ describe('updateCIFields resolver', () => {
       id: 'ci-1', input: { customFields: JSON.stringify({ 'x = 1 SET ci.tenant_id': 'evil' }) },
     }, ctx)).rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT' } })
     expect(runQuery).not.toHaveBeenCalled()
+  })
+})
+
+// ── Il tipo viene dall'ETICHETTA (revisione delle otto ondate) ───────────────
+//
+// `mapCI` ripiegava su `props.type`, che sui nodi CI NON esiste (dal vivo: 0 su
+// 2049): il tipo diventava `'unknown'` e il `__resolveType` — reso fail-loud
+// nell'ondata 6, correttamente — lanciava DOPO la scrittura. Il salvataggio di
+// un CI dal web riusciva e rispondeva errore, per ogni CI di ogni cliente.
+// Il difetto non era il fail-loud: era questo chiamante, che non gli passava
+// l'informazione che possiede.
+describe('updateCIFields — il tipo dall\'etichetta, e le proprietà del prodotto', () => {
+  const props = { id: 'ci-1', tenant_id: 't1', name: 'LB-01', status: 'active' }
+  const call = (input: Record<string, unknown>) =>
+    cmdbResolvers.Mutation.updateCIFields(undefined, { id: 'ci-1', input }, { tenantId: 't1', userId: 'u', userEmail: 'u@x', role: 'operator' as const })
+
+  it('chiede l\'etichetta nella query e risolve il tipo del CLIENTE', async () => {
+    vi.mocked(getSession).mockReturnValue({ close: vi.fn() } as never)
+    vi.mocked(runQuery).mockResolvedValue([{ props, label: 'LoadBalancer' }] as never)
+    const out = await call({ name: 'LB-01' }) as { type: string }
+    const [, cypher] = vi.mocked(runQuery).mock.calls.at(-1)!
+    expect(cypher).toContain("head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label")
+    expect(out.type).toBe('load_balancer')
+  })
+
+  it('un CI senza etichetta di tipo → CONFLICT che lo dice, non «unknown»', async () => {
+    vi.mocked(getSession).mockReturnValue({ close: vi.fn() } as never)
+    vi.mocked(runQuery).mockResolvedValue([{ props, label: null }] as never)
+    const err = await call({ name: 'x' }).then(() => null, (e: unknown) => e)
+    expect((err as GraphQLError).extensions?.code).toBe('CONFLICT')
+    expect((err as GraphQLError).message).toMatch(/non ha un'etichetta di tipo/)
+  })
+
+  // La guardia sulle chiavi è DOPPIA: forma (anti-injection) + riservate dei CI.
+  // Da `customFields` passavano `name_key`, `health`, `chain`, `type` e i
+  // `discovery_*`: la fuga che l'ondata 5 aveva chiuso su `ciMutations`.
+  it.each(['nameKey', 'health', 'healthSource', 'chain', 'type', 'discoverySourceId'])(
+    'rifiuta la proprietà del prodotto "%s" senza scrivere', (key) => {
+      expectBadInput(() => buildCIFieldUpdates({ customFields: JSON.stringify({ [key]: 'x' }) }, NOW), 'gestita dal prodotto')
+    })
+
+  it('un campo normale del cliente passa', () => {
+    expect(buildCIFieldUpdates({ customFields: JSON.stringify({ costCenter: 'IT-42' }) }, NOW))
+      .toEqual({ updated_at: NOW, cost_center: 'IT-42' })
   })
 })
