@@ -3,9 +3,17 @@
  *
  * Extracted from assessmentMutations.ts (task score) and helpers.ts
  * (CI risk, approval route) so they can be unit-tested without a Neo4j
- * session. Behaviour is identical to the previous inline code.
+ * session.
+ *
+ * Ondata 7 (B-14 / C-8): la priorita' della change non e' piu' una cascata di
+ * `if` sui nomi di fabbrica ma la matrice `change_priority` del cliente
+ * (tipo x fascia di rischio). Le funzioni di punteggio puro — fattore
+ * d'ambiente, punteggio della domanda, rischio del CI, rotta d'approvazione —
+ * restano sincrone e senza dipendenze.
  */
 import { ValidationError } from '../../../lib/errors.js'
+import { assertDomainValue, domainVocabulary } from '../../../lib/domainMatrix.js'
+import { resolveDomainValue } from '../../../lib/domainValue.js'
 
 export interface QuestionScore {
   /** rel.weight on (CITypeDefinition)-[:HAS_QUESTION]->(question), default 1 */
@@ -78,36 +86,60 @@ export function determineApprovalRoute(aggregateScore: number): 'low' | 'medium'
                                 'high'
 }
 
-export type ChangePriority = 'critical' | 'high' | 'medium' | 'low'
+/**
+ * Fascia di rischio (`risk_band`) dal punteggio aggregato.
+ *
+ * Le **soglie** restano nel codice (le stesse di `determineApprovalRoute`:
+ * ≤30 bassa, ≤60 media, oltre alta) — sono un modello di punteggio, non una
+ * traduzione fra valori di dominio, e renderle configurabili è un lavoro a
+ * parte (dichiarato come limite nel rapporto dell'ondata 7). I **nomi** delle
+ * fasce invece no: sono il vocabolario `risk_band` del cliente, e la coppia
+ * (tipo, fascia) si traduce in priorità con la sua matrice `change_priority`.
+ *
+ * Rischio **non ancora valutato** (`null`, prima dell'assessment) NON passa
+ * da qui: è una regola distinta, la matrice `change_priority_initial`. «Non
+ * valutato» e «basso» sono due cose diverse, e il codice che questa funzione
+ * sostituisce le teneva separate — una change `normal` appena creata era
+ * `medium`, una con rischio basso misurato era `low`. Collassarle avrebbe
+ * cambiato in silenzio la priorità di ogni change a rischio basso.
+ *
+ * **L'ordine del vocabolario conta**: le fasce si leggono dalla più bassa alla
+ * più alta. Rinominarle è sicuro (la matrice usa i nomi del cliente),
+ * riordinarle cambia il significato delle soglie.
+ */
+export function riskBandOf(aggregateRiskScore: number | null | undefined, bands: readonly string[]): string {
+  if (bands.length < 3) {
+    throw new ValidationError(
+      `Vocabolario "risk_band": servono almeno tre fasce (bassa, media, alta) per derivare la priorità di una change; trovate ${bands.length}: ${bands.join(', ')}.`,
+    )
+  }
+  const [low, medium, high] = bands as readonly [string, string, string]
+  if (aggregateRiskScore == null) {
+    throw new Error('riskBandOf: il rischio non valutato non ha una fascia — usa la matrice change_priority_initial')
+  }
+  return aggregateRiskScore <= 30 ? low : aggregateRiskScore <= 60 ? medium : high
+}
 
 /**
- * Priorità della Change = tipo × rischio (pratica ITIL — non Impatto×Urgenza).
- * Il livello di rischio usa le stesse soglie di determineApprovalRoute
- * (≤30 basso, ≤60 medio, >60 alto). Prima dell'assessment (risk null) la
- * priorità è data dal solo tipo.
+ * Priorità della Change = **tipo × fascia di rischio** (decisione del
+ * prodotto: NON Impatto×Urgenza, che vale per incident e problem).
  *
- *              risk: low     medium    high        (null = non valutato)
- *   standard        low      low       medium      → low
- *   normal          low      medium    high        → medium
- *   emergency       high     high      critical    → high
+ * Prima era una cascata di `if` sui nomi di fabbrica (`emergency`, `standard`,
+ * poi «normal» come ramo finale): un tipo aggiunto dal cliente — `major` —
+ * finiva nel ramo `normal` **in silenzio**, con la priorità di una change
+ * ordinaria. Ora il tipo è validato contro il vocabolario `change_type` del
+ * cliente e la coppia si traduce con la sua matrice.
  */
-export function deriveChangePriority(
-  changeType: string | null | undefined,
+export async function deriveChangePriority(
+  tenantId: string,
+  changeType: unknown,
   aggregateRiskScore: number | null | undefined,
-): ChangePriority {
-  const type = changeType ?? 'normal'
-  const riskLevel: 'low' | 'medium' | 'high' | null =
-    aggregateRiskScore == null ? null :
-    aggregateRiskScore <= 30 ? 'low' :
-    aggregateRiskScore <= 60 ? 'medium' : 'high'
-
-  if (type === 'emergency') {
-    return riskLevel === 'high' ? 'critical' : 'high'
+): Promise<string> {
+  const type = await assertDomainValue(tenantId, 'change_type', changeType)
+  // Rischio non ancora valutato: la sua matrice, non la fascia più bassa.
+  if (aggregateRiskScore == null) {
+    return resolveDomainValue(tenantId, 'change_priority_initial', type)
   }
-  if (type === 'standard') {
-    return riskLevel === 'high' ? 'medium' : 'low'
-  }
-  // normal
-  if (riskLevel === null) return 'medium'
-  return riskLevel // low | medium | high
+  const bands = await domainVocabulary(tenantId, 'risk_band')
+  return resolveDomainValue(tenantId, 'change_priority', type, riskBandOf(aggregateRiskScore, bands))
 }

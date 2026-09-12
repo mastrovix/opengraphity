@@ -212,11 +212,12 @@ export async function resetChangeRisk(session: SessionOrTx, changeId: string, te
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId}) RETURN c.change_type AS changeType
   `, { changeId, tenantId })
   if (!row) throw new GraphQLError(`Change ${changeId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+  const priority = await deriveChangePriority(tenantId, row.changeType, null)
   await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     SET c.aggregate_risk_score = null, c.approval_route = null, c.approval_status = null,
         c.priority = $priority, c.updated_at = $now
-  `, { changeId, tenantId, priority: deriveChangePriority(row.changeType ?? 'normal', null), now: new Date().toISOString() })
+  `, { changeId, tenantId, priority, now: new Date().toISOString() })
 }
 
 /** Istanza di workflow della change; rifiuta le change eliminate (nessuna mutation su una change cancellata). */
@@ -316,7 +317,7 @@ export async function computeAggregateRisk(session: SessionOrTx, changeId: strin
   const approvalRoute = determineApprovalRoute(maxRisk)
   // Priorità (ITIL) = tipo × rischio, ricalcolata e MEMORIZZATA quando il
   // rischio aggregato cambia.
-  const priority = deriveChangePriority(row?.changeType ?? 'normal', maxRisk)
+  const priority = await deriveChangePriority(tenantId, row?.changeType, maxRisk)
   await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     SET c.aggregate_risk_score = $maxRisk,

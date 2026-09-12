@@ -19,6 +19,11 @@ const mockSession = {
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+// Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
+// dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
+// fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
+
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: {
     createInstance: vi.fn().mockResolvedValue({ id: 'wi-1' }),
@@ -150,19 +155,33 @@ describe('parseCsv', () => {
 // ── importIncidents ───────────────────────────────────────────────────────────
 
 describe('importIncidents', () => {
-  it('mappa severity libere case-insensitive e segnala warning su valori sconosciuti', async () => {
+  // CONTRATTO RINEGOZIATO (ondata 7 · D-16). Prima questo punto pretendeva
+  // `urgentissimo` → **warning + `medium`**: la riga entrava nel CMDB con una
+  // severità che il file non diceva, e l'unica traccia era una riga nel
+  // riepilogo dell'import. Adesso la traduzione è la matrice `import_severity`
+  // del cliente e una severità non traducibile mette la **riga in errore**:
+  // non si scrive un ticket con una priorità inventata. I 25 sinonimi storici
+  // (`P1`, `sev2`, `crit`, …) restano, perché sono il seme della matrice.
+  it('i sinonimi restano (case-insensitive); una severità non traducibile mette la RIGA IN ERRORE, non a «medium»', async () => {
     const result = await importIncidents([
       { external_id: 'A-1', title: 'T1', severity: 'P1' },
       { external_id: 'A-2', title: 'T2', severity: 'urgentissimo' },
     ], ctx)
 
-    expect(result.created).toBe(2)
-    expect(result.errors).toHaveLength(0)
-    expect(result.warnings).toHaveLength(1)
-    expect(result.warnings[0]).toMatchObject({ row: 2, externalId: 'A-2' })
-    expect(result.warnings[0]!.message).toContain('urgentissimo')
+    expect(result.created).toBe(1)
+    expect(result.warnings).toHaveLength(0)
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]).toMatchObject({ row: 2, externalId: 'A-2' })
+    expect(result.errors[0]!.message).toContain('urgentissimo')
+    // Il messaggio dice la strada: il vocabolario e la matrice.
+    expect(result.errors[0]!.message).toMatch(/Import Severity/)
     expect(mergedIncidentParams(0)['severity']).toBe('critical')
-    expect(mergedIncidentParams(1)['severity']).toBe('medium')
+  })
+
+  it('senza colonna severity la riga nasce col default dichiarato, non con un valore inventato', async () => {
+    const result = await importIncidents([{ external_id: 'A-1', title: 'T1' }], ctx)
+    expect(result.errors).toHaveLength(0)
+    expect(mergedIncidentParams(0)['severity']).toBe('medium')
   })
 
   it('mappa status case-insensitive sugli step del workflow; sconosciuto → warning + step iniziale', async () => {
@@ -220,9 +239,12 @@ describe('importIncidents', () => {
       { external_id: '',    title: 'Invalida' },
     ], ctx, { dryRun: true })
 
-    expect(result).toMatchObject({ totalRows: 3, created: 1, updated: 1 })
-    expect(result.errors).toHaveLength(1)
-    expect(result.warnings).toHaveLength(1)
+    // Ondata 7: `severity: 'boh'` non e' piu' un avviso con ripiego a `medium`
+    // ma un errore di riga, quindi la riga «Nuovo» non viene creata: due
+    // errori (severita' non traducibile, external_id assente) e zero avvisi.
+    expect(result).toMatchObject({ totalRows: 3, created: 0, updated: 1 })
+    expect(result.errors).toHaveLength(2)
+    expect(result.warnings).toHaveLength(0)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(mockTx.run).not.toHaveBeenCalled()
     expect(workflowEngine.createInstance).not.toHaveBeenCalled()

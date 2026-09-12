@@ -28,6 +28,18 @@ vi.mock('../../../services/serviceImpact/sync.js', () => ({
 // Revisione 2 · B2-14: uscire dalla manutenzione ricalcola la salute del CI (la
 // manutenzione la congela); D4.3: i commenti prima della cancellazione.
 vi.mock('../../../services/events/ciHealth.js', () => ({ recomputeCIHealth: vi.fn().mockResolvedValue('operational') }))
+// Ondata 7 · C-4: «in manutenzione» è la semantica DEL CLIENTE, letta dalla
+// policy del tenant, non il letterale `maintenance`. Qui la policy del cliente
+// di prova ha i valori iniziali (gli stessi che il codice aveva come costanti):
+// il gancio verso i Servizi monitorati deve continuare a scattare esattamente
+// come prima.
+vi.mock('../../../services/events/policy.js', () => ({
+  getEventPolicy: vi.fn().mockResolvedValue({
+    retired_statuses: ['inactive', 'decommissioned'],
+    maintenance_statuses: ['maintenance'],
+    ignore_lifecycle_statuses: ['decommissioned'],
+  }),
+}))
 vi.mock('../../../services/events/cascade.js', () => ({ noteIncidentsBeforeCIDeletion: vi.fn().mockResolvedValue(undefined) }))
 
 const { buildCreateMutation, buildUpdateMutation, buildDeleteMutation, validateCIInput } = await import('../ciMutations.js')
@@ -128,6 +140,69 @@ describe('validateCIInput (F-13)', () => {
     runScript.mockResolvedValueOnce({ success: false, error: 'Script validation failed: Access to "process" is not allowed', logs: [], duration_ms: 0 })
     await expect(validateCIInput(ciType(), { name: 'srv', ipAddress: '10.0.0.1' }, 't1'))
       .rejects.toThrow(/Script validation failed/)
+  })
+})
+
+/**
+ * Ondata 7 · B7-2 / A-13 — l'appartenenza al vocabolario è imposta dall'API.
+ *
+ * Lo SDL generato descrive un campo `enum` come `String`
+ * (`schema-generator/src/generator.ts`), quindi GraphQL non impone niente: un
+ * client con API key poteva scrivere `status: 'expired'` con `expired` fuori
+ * dal vocabolario, e nessuno lo diceva (dal vivo su c-one: 68 CI). I valori
+ * ammessi sono `field.enumValues`, cioè il vocabolario DI QUESTO CLIENTE —
+ * `ciTypeMetamodel.ts` lo risolve già con la precedenza dell'ondata 1.
+ */
+describe('validateCIInput — vocabolario dei campi enum (B7-2 / A-13)', () => {
+  /** Il tipo con un campo `enum` e il vocabolario del cliente (che ha rinominato «dismesso»). */
+  const withEnum = () => {
+    const t = ciType()
+    t.fields = [
+      { id: 'f1', name: 'ipAddress', label: 'IP', fieldType: 'string', required: false, defaultValue: null, enumValues: [], validationScript: null, visibilityScript: null, defaultScript: null, isSystem: false, scope: 'base', tenantId: 'system', order: 0 },
+      { id: 'f2', name: 'status', label: 'Stato', fieldType: 'enum', required: false, defaultValue: null, enumValues: ['active', 'dismesso'], validationScript: null, visibilityScript: null, defaultScript: null, isSystem: false, scope: 'base', tenantId: 'system', order: 1 },
+      { id: 'f3', name: 'libero', label: 'Libero', fieldType: 'enum', required: false, defaultValue: null, enumValues: [], validationScript: null, visibilityScript: null, defaultScript: null, isSystem: false, scope: 'tenant', tenantId: 't1', order: 2 },
+    ] as never
+    return t
+  }
+
+  it('valore del vocabolario del cliente → passa; valore fuori vocabolario → rifiutato, con i valori ammessi nel messaggio', async () => {
+    await expect(validateCIInput(withEnum(), { name: 'srv', status: 'dismesso' }, 't1')).resolves.toBeUndefined()
+    await expect(validateCIInput(withEnum(), { name: 'srv', status: 'expired' }, 't1'))
+      .rejects.toMatchObject({
+        message: expect.stringContaining('Stato: "expired" non è nel vocabolario di questo cliente. Ammessi: active, dismesso'),
+        extensions: { code: 'BAD_USER_INPUT' },
+      })
+  })
+
+  it('valore assente o vuoto su un campo non obbligatorio → nessun controllo di appartenenza', async () => {
+    for (const status of [null, undefined, '']) {
+      await expect(validateCIInput(withEnum(), { name: 'srv', status }, 't1')).resolves.toBeUndefined()
+    }
+  })
+
+  it('campo enum senza valori nel metamodello → non si rifiuta nulla (il vocabolario mancante è un problema del metamodello, non della scrittura)', async () => {
+    await expect(validateCIInput(withEnum(), { name: 'srv', libero: 'qualunque' }, 't1')).resolves.toBeUndefined()
+  })
+
+  /**
+   * In MODIFICA il controllo riguarda solo i campi che la richiesta scrive: un
+   * valore già sul CI e non più nel vocabolario è un dato storico, e rifiutare
+   * il salvataggio di un altro campo renderebbe il record immodificabile
+   * proprio quando lo si vuole sistemare. Il form lo mostra come «non più nel
+   * vocabolario» (B7-3), così a correggerlo si va di proposito.
+   */
+  it('in modifica: un valore storico fuori vocabolario non blocca la scrittura di un ALTRO campo, ma lo blocca se lo si riscrive', async () => {
+    const merged = { name: 'srv-nuovo', status: 'expired' }
+    await expect(validateCIInput(withEnum(), merged, 't1', new Set(['name']))).resolves.toBeUndefined()
+    await expect(validateCIInput(withEnum(), merged, 't1', new Set(['name', 'status'])))
+      .rejects.toThrow(/"expired" non è nel vocabolario/)
+  })
+
+  it('il valore fuori vocabolario è un rifiuto PRIMA dello script del campo (nessuno script su un valore che non esiste)', async () => {
+    const t = withEnum()
+    ;(t.fields[1] as { validationScript: string | null }).validationScript = 'throw new Error("mai")'
+    await expect(validateCIInput(t, { name: 'srv', status: 'expired' }, 't1')).rejects.toThrow(/non è nel vocabolario/)
+    expect(runScript).not.toHaveBeenCalled()
   })
 })
 

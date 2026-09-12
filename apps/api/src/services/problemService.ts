@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { nextSequenceValue } from '../lib/sequence.js'
-import { derivePriority, impactUrgencyFromPriority, isImpactUrgency } from '../lib/priority.js'
+import { resolveNewTicketPriority } from '../lib/priority.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
@@ -61,15 +61,13 @@ export async function createProblem(
   ctx: ServiceCtx,
 ) {
   validateStringLength(input.title, 'title', 1, 500)
-  // ITIL: Priority = f(Impact, Urgency). Impact+urgency take precedence.
-  let impact = input.impact, urgency = input.urgency, priority = input.priority
-  if (isImpactUrgency(impact) && isImpactUrgency(urgency)) {
-    priority = derivePriority(impact, urgency)
-  } else if (priority) {
-    const iu = impactUrgencyFromPriority(priority); impact = impact ?? iu.impact; urgency = urgency ?? iu.urgency
-  } else {
-    throw new ValidationError('Fornire impact+urgency oppure priority')
-  }
+  // ITIL: Priority = f(Impact, Urgency). Impatto+urgenza vincono. Ondata 7
+  // (C-8): valori validati contro i vocabolari del cliente e tradotti dalla
+  // sua matrice `priority` — mai piu' un `medium` ricostruito in silenzio.
+  const resolved = await resolveNewTicketPriority(ctx.tenantId, { severity: input.priority, impact: input.impact, urgency: input.urgency }, 'priority')
+  const priority = resolved.severity
+  const impact   = resolved.impact
+  const urgency  = resolved.urgency
   const id  = uuidv4()
   const now = new Date().toISOString()
 
@@ -97,7 +95,7 @@ export async function createProblem(
     `, {
       id, tenantId: ctx.tenantId, number,
       title: input.title, description: input.description ?? null,
-      priority, impact: impact ?? null, urgency: urgency ?? null,
+      priority, impact, urgency,
       workaround: input.workaround ?? null,
       status: initialStatus, now,
     })

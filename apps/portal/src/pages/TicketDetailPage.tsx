@@ -21,6 +21,8 @@ interface Attachment { id: string; filename: string; mimeType: string; sizeBytes
 interface HistoryEntry { fromStep: string; toStep: string; label: string | null; triggeredAt: string; triggeredBy: string }
 interface Ticket {
   id: string; title: string; description: string | null; status: string
+  /** Categoria ed etichetta del passo nel workflow del cliente (ondata 7 · D-15). */
+  statusCategory: string | null; statusLabel: string | null
   priority: string; category: string; createdAt: string; updatedAt: string
   assignedTeam: string | null
   comments:    EntityComment[]
@@ -137,7 +139,7 @@ export function TicketDetailPage() {
           <h1 style={{ fontSize: 20, fontWeight: 600, color: colors.slateDark, flex: 1, minWidth: 0 }}>
             {ticket.title}
           </h1>
-          <TicketStatusBadge status={ticket.status} size="md" />
+          <TicketStatusBadge status={ticket.status} statusCategory={ticket.statusCategory} statusLabel={ticket.statusLabel} size="md" />
         </div>
 
         {/* Info bar */}

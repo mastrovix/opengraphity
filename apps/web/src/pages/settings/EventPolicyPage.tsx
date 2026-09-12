@@ -98,8 +98,21 @@ interface FormState {
   matchShortHostname:   boolean
   /** Stati del ciclo di vita ignorati dagli allarmi (D6.3): sempre nell'ordine del vocabolario, così il confronto con i valori letti è stabile. */
   ignoreLifecycleStatuses: string[]
+  /** Ondata 7 · C-4: gli stati che contano come «ritirato» (fuori dal calcolo dei servizi). */
+  retiredStatuses:      string[]
+  /** Ondata 7 · C-4: gli stati che contano come «in manutenzione» (il monitoraggio non ne aggiorna la salute). */
+  maintenanceStatuses:  string[]
   severityMap:          SeverityMap
 }
+
+/**
+ * I tre campi che contengono valori di `ci_status`. La semantica del ciclo di
+ * vita è dato del cliente (ondata 7 · C-4/A-14): prima quali stati contassero
+ * come «ritirato» o «in manutenzione» era scritto nel codice dell'API, e un
+ * valore rinominato nel Dizionario cambiava il comportamento in silenzio.
+ */
+const LIFECYCLE_FIELDS = ['ignoreLifecycleStatuses', 'retiredStatuses', 'maintenanceStatuses'] as const
+type LifecycleField = (typeof LIFECYCLE_FIELDS)[number]
 
 type NumberField = { [K in keyof FormState]: FormState[K] extends number ? K : never }[keyof FormState]
 
@@ -136,6 +149,8 @@ function toForm(p: EventPolicy): { form: FormState; mapError: string | null } {
       retentionDays: p.retentionDays,
       matchShortHostname: p.matchShortHostname,
       ignoreLifecycleStatuses: [...p.ignoreLifecycleStatuses],
+      retiredStatuses:     [...p.retiredStatuses],
+      maintenanceStatuses: [...p.maintenanceStatuses],
       severityMap: map,
     },
     mapError: error,
@@ -227,6 +242,8 @@ export function EventPolicyPage() {
         retentionDays: form.retentionDays,
         matchShortHostname: form.matchShortHostname,
         ignoreLifecycleStatuses: form.ignoreLifecycleStatuses,
+        retiredStatuses:     form.retiredStatuses,
+        maintenanceStatuses: form.maintenanceStatuses,
         severityMap: JSON.stringify(form.severityMap),
       } } })
       toast.success(t('toast.events.policySaved'))
@@ -285,13 +302,13 @@ export function EventPolicyPage() {
    */
   const lifecycleOptions = [
     ...baseEnums.statuses,
-    ...form.ignoreLifecycleStatuses.filter((s) => !baseEnums.statuses.includes(s)),
+    ...LIFECYCLE_FIELDS.flatMap((k) => form[k]).filter((s, i, all) => !baseEnums.statuses.includes(s) && all.indexOf(s) === i),
   ]
   const lifecycleLabel = (value: string) =>
     baseEnums.statuses.includes(value) ? enumLabel(value) : t('events.policy.lifecycleUnknown', { value })
   /** Spunta/despunta uno stato ricostruendo la lista nell'ordine delle opzioni: il confronto con i valori letti resta stabile. */
-  const toggleLifecycle = (value: string, on: boolean) =>
-    set('ignoreLifecycleStatuses', lifecycleOptions.filter((s) => (s === value ? on : form.ignoreLifecycleStatuses.includes(s))))
+  const toggleLifecycle = (key: LifecycleField, value: string, on: boolean) =>
+    set(key, lifecycleOptions.filter((s) => (s === value ? on : form[key].includes(s))))
 
   const grid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } as const
 
@@ -401,27 +418,45 @@ export function EventPolicyPage() {
           </div>
         </Group>
 
-        {/* 2 bis. Ciclo di vita del CI (D6.3): gli allarmi sui CI in questi stati non aprono incident e non cambiano la salute. */}
+        {/*
+          2 bis. Ciclo di vita del CI: le tre liste che danno SIGNIFICATO ai
+          valori di `ci_status`. Ondata 7 · C-4/A-14: «ritirato» e «in
+          manutenzione» erano scritti nel codice dell'API, quindi un valore
+          rinominato nel Dizionario cambiava in silenzio la salute dei servizi
+          e l'apertura degli incident. Qui si vedono e si modificano, con i
+          valori veri del vocabolario del cliente nelle spunte.
+        */}
         <Group name="lifecycle">
-          <FieldLabel><span id={fid('lifecycle-label')}>{t('events.policy.ignoreLifecycleStatuses')}</span></FieldLabel>
-          <div
-            role="group"
-            aria-labelledby={fid('lifecycle-label')}
-            aria-describedby={helpId('ignoreLifecycleStatuses')}
-            style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', marginTop: 4 }}
-          >
-            {lifecycleOptions.map((value) => (
-              <label key={value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: colors.slateDark, cursor: saving ? 'default' : 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={form.ignoreLifecycleStatuses.includes(value)}
-                  disabled={saving}
-                  onChange={(e) => toggleLifecycle(value, e.target.checked)}
-                />
-                {lifecycleLabel(value)}
-              </label>
-            ))}
-          </div>
+          {LIFECYCLE_FIELDS.map((key) => (
+            <div key={key} style={{ marginBottom: 16 }}>
+              <FieldLabel><span id={fid(`${key}-label`)}>{t(`events.policy.${key}`)}</span></FieldLabel>
+              <div
+                role="group"
+                aria-labelledby={fid(`${key}-label`)}
+                aria-describedby={helpId(key)}
+                style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', marginTop: 4 }}
+              >
+                {lifecycleOptions.map((value) => (
+                  <label key={value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: colors.slateDark, cursor: saving ? 'default' : 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={form[key].includes(value)}
+                      disabled={saving}
+                      onChange={(e) => toggleLifecycle(key, value, e.target.checked)}
+                    />
+                    {lifecycleLabel(value)}
+                  </label>
+                ))}
+              </div>
+              {/* Quanti stati sono spuntati: con nessuno si dice cosa comporta, non si lascia il vuoto. */}
+              <p data-testid={`lifecycle-selected-${key}`} style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: colors.slateLight }}>
+                {form[key].length === 0
+                  ? t(`events.policy.selectedNone.${key}`)
+                  : t('events.policy.lifecycleSelected', { count: form[key].length })}
+              </p>
+              <Help field={key} />
+            </div>
+          ))}
           {/* Vocabolario assente: lo si dice, non si mostra un riquadro vuoto senza spiegazione. */}
           {baseEnums.error && (
             <p role="alert" style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: colors.danger, fontWeight: 500 }}>
@@ -431,13 +466,6 @@ export function EventPolicyPage() {
           {!baseEnums.loading && !baseEnums.error && lifecycleOptions.length === 0 && (
             <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: colors.slateLight }}>{t('events.policy.lifecycleEmptyVocabulary')}</p>
           )}
-          {/* Quanti stati sono spuntati: con nessuno si dice cosa comporta, non si lascia il vuoto. */}
-          <p data-testid="lifecycle-selected" style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: colors.slateLight }}>
-            {form.ignoreLifecycleStatuses.length === 0
-              ? t('events.policy.lifecycleSelectedNone')
-              : t('events.policy.lifecycleSelected', { count: form.ignoreLifecycleStatuses.length })}
-          </p>
-          <Help field="ignoreLifecycleStatuses" />
         </Group>
 
         {/* 3. Sfarfallio e tempeste */}

@@ -35,6 +35,20 @@ export function enumTypeSDL(): string {
     label:  String
     values: [String!]
     scope:  String
+    """
+    Ondata 7 · B7-2: togliere un valore ancora usato da qualche record (o dalla
+    semantica del ciclo di vita nella policy degli allarmi) viene RIFIUTATO, con
+    il conteggio nel messaggio. Per procedere si indica qui, valore per valore,
+    su cosa riscrivere i record: la riscrittura avviene nella stessa transazione
+    del vocabolario, con audit.
+    """
+    replacements: [EnumValueReplacementInput!]
+  }
+
+  """Un valore che si sta togliendo (from) e il valore nuovo su cui riscrivere i record che lo usano (to, deve essere fra i valori nuovi)."""
+  input EnumValueReplacementInput {
+    from: String!
+    to:   String!
   }
   `
 }

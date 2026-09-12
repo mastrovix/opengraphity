@@ -41,10 +41,12 @@
  *
  * Revisione 2: la scrittura ha una **guardia di versione** (E1) — se la
  * composizione è cambiata fra la lettura e la scrittura si rilegge e si
- * ricalcola una volta — e le due manutenzioni sono distinte (R1): il ciclo di
- * vita `ci.status = 'maintenance'` toglie il nodo dal calcolo, solo una change
- * in finestra su un componente critico rende il servizio `maintenance` (e
- * `health_if_active` dice quale sarebbe la salute senza quella finestra).
+ * ricalcola una volta — e le due manutenzioni sono distinte (R1): un ciclo di
+ * vita che il CLIENTE dichiara «in manutenzione» (ondata 7 · C-4,
+ * `lib/ciLifecycle.ts`: non più il valore `maintenance` di fabbrica) toglie il
+ * nodo dal calcolo, solo una change in finestra su un componente critico rende
+ * il servizio `maintenance` (e `health_if_active` dice quale sarebbe la salute
+ * senza quella finestra).
  */
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
@@ -59,9 +61,10 @@ import { serviceEvaluationDurationSeconds, serviceEvaluationsTotal, serviceMapsS
 import type { CIHealth } from '../../lib/eventVocabularies.js'
 import {
   NODE_PROPAGATIONS, SERVICE_HEALTHS, SERVICE_MAP_STATUSES, SERVICE_NODE_ROLES,
-  SERVICE_STALE_MISSING_CI, SERVICE_STALE_OVER_LIMIT, isRetiredLifecycle, parseServiceImpactRules,
+  SERVICE_STALE_MISSING_CI, SERVICE_STALE_OVER_LIMIT, parseServiceImpactRules,
   type NodePropagation, type ServiceHealth, type ServiceHealthTrigger, type ServiceImpactRules, type ServiceMapStatus, type ServiceNodeRole,
 } from '../../lib/serviceVocabularies.js'
+import { isRetiredLifecycle, isMaintenanceLifecycle, resolveCILifecycleSemantics, type CILifecycleSemantics } from '../../lib/ciLifecycle.js'
 import { MONITORING_ACTOR, monitoringContext, toNumber, toStr, type Props } from '../events/shared.js'
 import { getEventPolicy } from '../events/policy.js'
 import { changeWindowParams, changeWindowSubqueryCypher, pickChangeWindow, resolveChangeWindowSteps, suppressionRelTypes, type ChangeWindow, type ChangeWindowRow, type ChangeWindowSteps } from '../events/suppression.js'
@@ -144,9 +147,6 @@ export function loadServiceMapCypher(hops: number, relTypes: string): string {
   RETURN properties(m) AS props, [n IN nodes WHERE n IS NOT NULL] AS nodes`
 }
 
-/** Ciclo di vita del CI per cui l'Event Management non aggiorna la salute (services/events/ciHealth.ts). */
-export const CI_LIFECYCLE_MAINTENANCE = 'maintenance'
-
 function assertEnum<T extends string>(value: unknown, allowed: readonly T[], what: string): T {
   if (typeof value !== 'string' || !(allowed as readonly string[]).includes(value)) {
     throw new Error(`${what} is ${JSON.stringify(value)}: expected one of ${allowed.join(', ')}`)
@@ -154,7 +154,7 @@ function assertEnum<T extends string>(value: unknown, allowed: readonly T[], wha
   return value as T
 }
 
-function mapNode(row: NodeRow, mapId: string, nowMs: number, windowSteps: ChangeWindowSteps): LoadedNode {
+function mapNode(row: NodeRow, mapId: string, nowMs: number, windowSteps: ChangeWindowSteps, semantics: CILifecycleSemantics): LoadedNode {
   const where = `ServiceMap ${mapId} node ${row.ciId}`
   const health = row.health == null ? null : assertEnum<CIHealth>(row.health, ['operational', 'degraded', 'down'], `${where} health`)
   // Stessa scelta della soppressione degli allarmi: la prima change davvero in
@@ -183,10 +183,13 @@ function mapNode(row: NodeRow, mapId: string, nowMs: number, windowSteps: Change
     // per sempre).
     inChangeWindow:       changeWindow !== null,
     changeWindowUpstream: changeWindow?.upstream === true,
-    lifecycleMaintenance: row.status === CI_LIFECYCLE_MAINTENANCE,
+    // Ondata 7 · C-4: «in manutenzione» è la semantica DEL CLIENTE
+    // (lib/ciLifecycle.ts), non il letterale 'maintenance' — un cliente che
+    // rinominava lo stato si ritrovava i CI in manutenzione dentro al calcolo.
+    lifecycleMaintenance: isMaintenanceLifecycle(row.status, semantics),
     // Dismesso o fuori servizio (revisione 2 · D6.3): fuori dal calcolo come
     // `propagate: never`, e senza portare il servizio in manutenzione.
-    lifecycleRetired:     isRetiredLifecycle(row.status),
+    lifecycleRetired:     isRetiredLifecycle(row.status, semantics),
     changeWindow,
     stormSources,
   }
@@ -213,7 +216,8 @@ export async function loadServiceMapState(session: Queryable, tenantId: string, 
   const windowSteps = await resolveChangeWindowSteps(tenantId, session)
   const row = await runQueryOne<StateRow>(session, loadServiceMapCypher(hops, await suppressionRelTypes(tenantId)), { mapId, tenantId, ...changeWindowParams(windowSteps) })
   if (!row) throw new NotFoundError('ServiceMap', mapId)
-  const nodes = row.nodes.map((n) => mapNode(n, mapId, nowMs, windowSteps))
+  const semantics = await resolveCILifecycleSemantics(tenantId)
+  const nodes = row.nodes.map((n) => mapNode(n, mapId, nowMs, windowSteps, semantics))
   const nodeIds = row.props['node_ids']
   if (!Array.isArray(nodeIds)) throw new Error(`ServiceMap ${mapId} has no node_ids — run the 20260910_1080_service_maps_bootstrap migration`)
   const present = new Set(nodes.map((n) => n.ciId))

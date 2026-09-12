@@ -9,14 +9,21 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { seedSystemEnumTypes, SYSTEM_ENUMS } from '../seedEnumTypes.js'
-import { CI_LIFECYCLE_STATUSES } from '../eventVocabularies.js'
+import { CI_LIFECYCLE_STATUSES, EVENT_SEVERITIES } from '../eventVocabularies.js'
+import { SERVICE_CRITICALITIES } from '../serviceVocabularies.js'
+import { IMPORT_SEVERITY_VALUES } from '../domainMatrixSeed.js'
 
+/**
+ * Ondata 7: `seedSystemEnumTypes` prende un `Queryable` (sessione **o**
+ * transazione) e usa `run` direttamente, perché la chiama anche la migrazione
+ * 20260917_1800, che riceve una transazione gestita.
+ */
 function fakeSession() {
   const calls: Array<{ cypher: string; params: Record<string, unknown> }> = []
   const run = vi.fn(async (cypher: string, params: Record<string, unknown> = {}) => {
     calls.push({ cypher, params }); return { records: [] }
   })
-  return { calls, session: { executeWrite: (fn: (tx: { run: typeof run }) => unknown) => fn({ run }) } as never }
+  return { calls, session: { run } as never }
 }
 
 describe('seedSystemEnumTypes', () => {
@@ -39,12 +46,28 @@ describe('seedSystemEnumTypes', () => {
     // tipi CMDB spediti): senza questi nomi la migrazione A1-1 si fermerebbe.
     for (const n of ['severity', 'category', 'priority', 'risk', 'impact', 'change_type',
       'status_incident', 'status_change', 'status_problem', 'status_service_request',
-      'ci_status', 'environment', 'os', 'instance_type', 'certificate_type']) {
+      'ci_status', 'environment', 'os', 'instance_type', 'certificate_type',
+      // Ondata 7: i vocabolari che le matrici di dominio presuppongono. Senza
+      // questi nomi `domainVocabulary` lancia, e l'apertura di un incident
+      // fallirebbe con «Vocabolario "urgency" inesistente».
+      'urgency', 'risk_band', 'event_severity', 'service_criticality', 'import_severity']) {
       expect(names).toContain(n)
     }
   })
 
   it('il ciclo di vita del CI viene da eventVocabularies (fonte unica), non riscritto a mano', () => {
     expect(SYSTEM_ENUMS.find((e) => e.name === 'ci_status')!.values).toEqual([...CI_LIFECYCLE_STATUSES])
+  })
+
+  it('ondata 7: i vocabolari delle matrici vengono dalle fonti uniche, non riscritti a mano', () => {
+    // Se una di queste liste venisse ricopiata qui, il Dizionario e il codice
+    // potrebbero divergere di nuovo: e' il difetto che l'ondata chiude.
+    expect(SYSTEM_ENUMS.find((e) => e.name === 'event_severity')!.values).toEqual([...EVENT_SEVERITIES])
+    expect(SYSTEM_ENUMS.find((e) => e.name === 'service_criticality')!.values).toEqual([...SERVICE_CRITICALITIES])
+    expect(SYSTEM_ENUMS.find((e) => e.name === 'import_severity')!.values).toEqual(IMPORT_SEVERITY_VALUES)
+    // L'urgenza ha la stessa scala dell'impatto: prima era il tipo
+    // `ImpactUrgency` di lib/priority.ts, che le usava per entrambi.
+    expect(SYSTEM_ENUMS.find((e) => e.name === 'urgency')!.values)
+      .toEqual(SYSTEM_ENUMS.find((e) => e.name === 'impact')!.values)
   })
 })

@@ -111,6 +111,9 @@ export async function rejectChangeApproval(_: unknown, args: { changeId: string;
     const { changeType, teamName } = await assertInApproval(session, args.changeId, args.teamId, ctx.tenantId)
     await assertEligible(session, args.teamId, ctx)
     const now = new Date().toISOString()
+    // Priorità dal tipo con rischio azzerato: letta PRIMA della transazione
+    // (legge la matrice del cliente, che è un'altra sessione).
+    const priority = await deriveChangePriority(ctx.tenantId, changeType, null)
 
     // Un'unica transazione: riapre i task scelti (assessment + planning) a
     // in_progress azzerando i punteggi — così all_assessments_complete torna
@@ -132,7 +135,7 @@ export async function rejectChangeApproval(_: unknown, args: { changeId: string;
       WITH c
       OPTIONAL MATCH (c)-[:HAS_APPROVAL]->(a:ChangeApproval)
       DETACH DELETE a
-    `, { changeId: args.changeId, tenantId: ctx.tenantId, all: reopenAll, ids: reopenIds, now, priority: deriveChangePriority(changeType, null) }))
+    `, { changeId: args.changeId, tenantId: ctx.tenantId, all: reopenAll, ids: reopenIds, now, priority }))
 
     const instanceId = await getInstanceId(session, args.changeId, ctx.tenantId)
     // Il rifiuto riporta la change al passo di SCOPO `assessment` (il cliente

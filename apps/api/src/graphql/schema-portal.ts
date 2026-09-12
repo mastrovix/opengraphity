@@ -9,6 +9,18 @@ export function portalSDL(): string {
     title:        String!
     description:  String
     status:       String!
+    """
+    CATEGORIA del passo di workflow in cui si trova il ticket (active, waiting,
+    resolved, closed, …), dal workflow di QUESTO cliente.
+    Ondata 7 · D-15: il portale coloriva lo stato con una mappa di otto nomi di
+    passo di fabbrica e un grigio silenzioso per tutto il resto, quindi un passo
+    rinominato o aggiunto nel disegnatore diventava una pastiglia grigia con il
+    nome grezzo. La categoria è la stessa cosa che usa il web (PhaseBadge) e
+    sopravvive a una rinomina. null = il passo non dichiara una categoria.
+    """
+    statusCategory: String
+    """Etichetta del passo nel workflow del cliente; null se il passo non è (più) nel workflow — allora il portale mostra il valore grezzo."""
+    statusLabel:  String
     priority:     String!
     category:     String!
     createdAt:    String!
@@ -30,6 +42,18 @@ export function portalSDL(): string {
     title:        String!
     description:  String
     status:       String!
+    """
+    CATEGORIA del passo di workflow in cui si trova il ticket (active, waiting,
+    resolved, closed, …), dal workflow di QUESTO cliente.
+    Ondata 7 · D-15: il portale coloriva lo stato con una mappa di otto nomi di
+    passo di fabbrica e un grigio silenzioso per tutto il resto, quindi un passo
+    rinominato o aggiunto nel disegnatore diventava una pastiglia grigia con il
+    nome grezzo. La categoria è la stessa cosa che usa il web (PhaseBadge) e
+    sopravvive a una rinomina. null = il passo non dichiara una categoria.
+    """
+    statusCategory: String
+    """Etichetta del passo nel workflow del cliente; null se il passo non è (più) nel workflow — allora il portale mostra il valore grezzo."""
+    statusLabel:  String
     priority:     String!
     category:     String!
     createdAt:    String!

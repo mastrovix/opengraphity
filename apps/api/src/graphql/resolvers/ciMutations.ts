@@ -10,8 +10,9 @@ import { calculateChain } from '../../lib/chainCalculator.js'
 import { toSnakeCase } from '../../lib/mappers.js'
 import { assertWritableCIPropertyKey } from '../../lib/cypherIdentifiers.js'
 import { ciNameKey } from '../../lib/ciNameKey.js'
+import { initialCIStatus } from '../../lib/ciLifecycle.js'
 import { notifyCIGraphChanged, notifyCIMaintenanceChanged } from '../../services/serviceImpact/sync.js'
-import { CI_LIFECYCLE_MAINTENANCE } from '../../services/serviceImpact/engine.js'
+import { isMaintenanceLifecycle, resolveCILifecycleSemantics } from '../../lib/ciLifecycle.js'
 import { recomputeCIHealth } from '../../services/events/ciHealth.js'
 import { assertScriptingEnabled, isTenantOwnedDefinition } from '../../lib/scriptingPlan.js'
 
@@ -61,16 +62,43 @@ async function runValidationScript(
 }
 
 /**
- * Enforces `required`, per-field `validationScript` and the type-level
- * `validationScript` of the metamodel on the API (the browser already does
- * it; an API-key client or a broken sandbox must not bypass it). `input` is
- * the full camelCase CI (for updates: existing values merged with the patch).
+ * Enforces `required`, l'appartenenza al vocabolario per i campi `enum`, il
+ * `validationScript` del campo e quello del tipo, sull'**API** (il browser li
+ * applica già; un client con API key o un sandbox rotto non devono poterli
+ * scavalcare). `input` è il CI intero in camelCase (in modifica: i valori
+ * esistenti fusi con la patch).
+ *
+ * ## Il vocabolario, ondata 7 · A-13
+ * Lo SDL generato descrive un campo `enum` come `String`
+ * (`schema-generator/src/generator.ts`), quindi GraphQL non impone niente: un
+ * client REST o con API key poteva scrivere `status: 'expired'` con `expired`
+ * fuori dal vocabolario, e nessuno lo diceva. Dal vivo su c-one erano 68 CI
+ * (49 `expired`, 19 `revoked`) — l'ondata 0 ha allineato il vocabolario al
+ * dato, ma il meccanismo restava aperto.
+ *
+ * I valori ammessi sono `field.enumValues`, cioè il vocabolario **di questo
+ * cliente**: `graphql/resolvers/ciTypeMetamodel.ts` lo risolve già con la
+ * precedenza dell'ondata 1 (l'enum del tenant vince su quello di sistema
+ * agganciato, che vince sugli `enum_values` inline del campo). Non si chiama
+ * `assertDomainValue` perché `CIFieldDefinition` non porta il NOME del
+ * vocabolario, e un campo con soli valori inline non ne ha uno: la lista
+ * risolta è la stessa cosa, per il campo che si sta scrivendo.
+ *
+ * `touched` = i nomi dei campi che la richiesta scrive davvero. In modifica
+ * l'appartenenza si controlla **solo** su quelli: un valore già sul CI e non
+ * più nel vocabolario è un dato storico, e rifiutare il salvataggio di un
+ * altro campo renderebbe il record immodificabile proprio quando lo si vuole
+ * sistemare. Il form lo mostra come «non più nel vocabolario» (B7-3), così a
+ * correggerlo si va di proposito. Senza `touched` (creazione) si controlla
+ * tutto.
+ *
  * Throws ValidationError with the script's message. Exported for tests.
  */
 export async function validateCIInput(
   ciType: CITypeWithDefinitions,
   input: Record<string, unknown>,
   tenantId: string,
+  touched?: ReadonlySet<string>,
 ): Promise<void> {
   const errors: string[] = []
   for (const field of ciType.fields) {
@@ -78,6 +106,17 @@ export async function validateCIInput(
     const value = input[field.name]
     if (field.required && (value == null || value === '')) {
       errors.push(`${field.label || field.name} è obbligatorio`)
+      continue
+    }
+    if (
+      field.fieldType === 'enum' && value != null && value !== '' &&
+      field.enumValues.length > 0 && (touched === undefined || touched.has(field.name)) &&
+      !field.enumValues.includes(String(value))
+    ) {
+      errors.push(
+        `${field.label || field.name}: "${String(value)}" non è nel vocabolario di questo cliente. ` +
+        `Ammessi: ${field.enumValues.join(', ')}`,
+      )
       continue
     }
     if (field.validationScript && value != null) {
@@ -113,7 +152,14 @@ export function buildCreateMutation(
         id, tenant_id: ctx.tenantId,
         name:        input['name'],
         name_key:    ciNameKey(input['name']),   // riconoscimento per nome degli allarmi (lib/ciNameKey.ts)
-        status:      input['status']      ?? 'active',
+        // Ondata 7: lo stato iniziale NON è il letterale `'active'`. Il
+        // cliente può aver rinominato il vocabolario `ci_status` (per esempio
+        // in `attivo`), e scrivere `'active'` metterebbe sul CI un valore che
+        // il suo Dizionario non ha: il form lo mostrerebbe vuoto e un
+        // salvataggio distratto lo azzererebbe (A-13). Senza uno stato
+        // esplicito si prende il PRIMO valore del suo vocabolario, che è
+        // l'ordine in cui il Dizionario li presenta.
+        status:      input['status'] ?? await initialCIStatus(ctx.tenantId),
         environment: input['environment'] ?? null,
         description: input['description'] ?? null,
         notes:       input['notes']       ?? null,
@@ -202,7 +248,7 @@ export function buildUpdateMutation(
           ? input[field.name]
           : (current[toSnakeCase(field.name)] ?? current[field.name] ?? null)
       }
-      await validateCIInput(ciType, merged, ctx.tenantId)
+      await validateCIInput(ciType, merged, ctx.tenantId, new Set(Object.keys(input)))
 
       const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
       for (const f of BASE_FIELDS) {
@@ -232,8 +278,13 @@ export function buildUpdateMutation(
       // cambia la salute di ogni mappa che lo include. Senza questo gancio il
       // cambiamento si vedeva solo alla passata periodica, fino a 15 minuti
       // dopo. Dopo la scrittura e senza mai lanciare.
-      const wasMaintenance = current['status'] === CI_LIFECYCLE_MAINTENANCE
-      const isMaintenance  = updates['status'] === undefined ? wasMaintenance : updates['status'] === CI_LIFECYCLE_MAINTENANCE
+      // Ondata 7 · C-4: «in manutenzione» è la semantica del cliente, non il
+      // valore `maintenance` di fabbrica — su un vocabolario rinominato il
+      // gancio non scattava e la mappa restava ferma fino alla passata
+      // periodica.
+      const lifecycle = await resolveCILifecycleSemantics(ctx.tenantId)
+      const wasMaintenance = isMaintenanceLifecycle(current['status'] as string | null, lifecycle)
+      const isMaintenance  = updates['status'] === undefined ? wasMaintenance : isMaintenanceLifecycle(updates['status'] as string | null, lifecycle)
       if (wasMaintenance !== isMaintenance) {
         // Revisione 2 · B2-14: PRIMA la salute, poi le mappe. In manutenzione
         // il monitoraggio non scrive `ci.health` (services/events/ciHealth.ts):

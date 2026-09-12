@@ -13,6 +13,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
 // Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
 // tipo non contavano, in silenzio.
+// Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
+// dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
+// fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
+
 vi.mock('../../lib/ciLabelsForTenant.js', () => ({
   ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
   ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
@@ -57,7 +62,7 @@ vi.mock('../../lib/logger.js', () => ({
 const { createIncident } = await import('../incidentService.js')
 const { runQuery } = await import('@opengraphity/neo4j')
 const { publishEvent } = await import('../../lib/publishEvent.js')
-const { derivePriority, impactUrgencyFromPriority } = await import('../../lib/priority.js')
+const { derivePriority, invertPriority } = await import('../../lib/priority.js')
 
 const ctx = { tenantId: 'tenant-1', userId: 'user-1' }
 
@@ -118,14 +123,16 @@ describe('createIncident — priorità Impatto×Urgenza', () => {
   ] as const)('impact=%s urgency=%s → severity %s (una severity esplicita incoerente è ignorata)', async (impact, urgency, expected) => {
     await createIncident({ title: 'T', impact, urgency, severity: 'low', affectedCIIds: ['ci-1'] }, ctx)
     expect(createParams()).toMatchObject({ severity: expected, impact, urgency })
-    expect(expected).toBe(derivePriority(impact, urgency))
+    expect(expected).toBe(await derivePriority(ctx.tenantId, impact, urgency))
   })
 
   it.each(['critical', 'high', 'medium', 'low'] as const)('solo severity=%s → impact/urgency retro-derivati coerenti', async (severity) => {
     await createIncident({ title: 'T', severity, affectedCIIds: ['ci-1'] }, ctx)
-    const iu = impactUrgencyFromPriority(severity)
+    // Ondata 7: l'inverso viene DALLA matrice (`invertPriority`), non da una
+    // tabella parallela con un `default → medium`.
+    const iu = await invertPriority(ctx.tenantId, severity)
     expect(createParams()).toMatchObject({ severity, impact: iu.impact, urgency: iu.urgency })
-    expect(derivePriority(iu.impact, iu.urgency)).toBe(severity)
+    expect(await derivePriority(ctx.tenantId, iu.impact, iu.urgency)).toBe(severity)
   })
 
   it('l\'evento incident.created porta la priorità derivata, non la severity dell\'input', async () => {

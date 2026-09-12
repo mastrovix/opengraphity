@@ -11,14 +11,12 @@ export const PRIORITY_COLOR: Record<string, string> = {
   critical: 'var(--color-trigger-sla-breach)', high: 'var(--color-brand)', medium: palette.warning.text, low: 'var(--color-success)',
 }
 
-export const STATUS_BG: Record<string, string> = {
-  new: 'var(--color-brand-light)', under_investigation: 'var(--color-brand-light)', change_requested: 'var(--color-brand-light)',
-  change_in_progress: 'var(--color-brand-light)', resolved: 'var(--color-brand-light)', closed: 'var(--color-brand-light)',
-  rejected: 'var(--color-brand-light)', deferred: 'var(--color-brand-light)',
-}
-
-export const STATUS_FG: Record<string, string> = {
-  new: 'var(--color-brand)', under_investigation: 'var(--color-brand)', change_requested: 'var(--color-brand)',
-  change_in_progress: 'var(--color-brand)', resolved: 'var(--color-brand)', closed: 'var(--color-brand)',
-  rejected: 'var(--color-brand)', deferred: 'var(--color-brand)',
-}
+/*
+ * Ondata 7 · D-15: qui c'erano `STATUS_BG` e `STATUS_FG`, gli otto passi del
+ * workflow problem di fabbrica elencati **tutti con lo stesso colore** — una
+ * lista che non portava informazione ma che, letta con `lookupOrError`,
+ * mandava in errore qualunque passo aggiunto o rinominato nel disegnatore.
+ * Adesso lo stile viene dalla CATEGORIA del passo (`lib/workflowStepStyle`),
+ * che è già il modo in cui il resto del web colora i passi: un passo nuovo
+ * prende il colore della sua categoria, e una categoria sconosciuta il neutro.
+ */

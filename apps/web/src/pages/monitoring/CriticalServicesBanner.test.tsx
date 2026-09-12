@@ -9,12 +9,18 @@
  * lo applica come farebbe l'API, così il caso «21 servizi giù, l'unico critico
  * oltre il limite» misura davvero ciò che cambia: prima si leggevano le prime
  * venti righe e si scartava la criticità a valle, e il banner taceva.
+ *
+ * Ondata 7 (C-7, seconda metà): QUALI criticità contano non è più una costante
+ * del web ma una query — `criticalServiceCriticalities`, che il server ricava
+ * dalla matrice `service_impact` del cliente. Il test lo mocka, e un caso in
+ * più misura la cosa che prima non si poteva fare: una criticità AGGIUNTA
+ * dall'admin (`tier_0`) ora entra nel banner senza toccare il codice.
  */
 import { describe, it, expect } from 'vitest'
 import { screen, within } from '@testing-library/react'
 import { useQuery } from '@apollo/client/react'
-import { CriticalServicesBanner, CRITICAL_CRITICALITIES, CRITICAL_SERVICES_PATH } from './CriticalServicesBanner'
-import { GET_SERVICE_MAPS } from '@/graphql/queries'
+import { CriticalServicesBanner, CRITICAL_SERVICES_PATH } from './CriticalServicesBanner'
+import { GET_SERVICE_MAPS, GET_CRITICAL_SERVICE_CRITICALITIES } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { COUNTS, mapRow, SERVICE } from '@/test/mocks/services'
 import type { ServiceMapPage } from '@/types/services'
@@ -45,9 +51,21 @@ function serverMock(items: Record<string, unknown>[] = []): GqlMock {
  * reale (i dati SONO arrivati), invece di verificare un'assenza che sarebbe
  * vera anche solo perché la risposta non è ancora tornata.
  */
-function Probe() {
-  const { data } = useQuery<{ serviceMaps: ServiceMapPage }>(GET_SERVICE_MAPS, { variables: { filter: { health: ['down'], status: 'active', criticality: [...CRITICAL_CRITICALITIES] }, limit: 20, offset: 0 } })
+function Probe({ criticality = [...SERVER_CRITICALITIES] }: { criticality?: string[] }) {
+  const { data } = useQuery<{ serviceMaps: ServiceMapPage }>(GET_SERVICE_MAPS, { variables: { filter: { health: ['down'], status: 'active', criticality }, limit: 20, offset: 0 } })
   return <span data-testid="probe">{data ? `rows:${data.serviceMaps.items.length}` : '…'}</span>
+}
+
+/** Ciò che il server risponde di default: le due criticità a impatto alto del seme. */
+const SERVER_CRITICALITIES: readonly string[] = ['mission_critical', 'business_critical']
+
+/** `criticalServiceCriticalities` come lo serve l'API (i valori vengono dalla matrice del cliente). */
+function criticalitiesMock(values: readonly string[] = SERVER_CRITICALITIES): GqlMock {
+  return {
+    request: { query: GET_CRITICAL_SERVICE_CRITICALITIES, variables: () => true },
+    result: () => ({ data: { criticalServiceCriticalities: [...values] } }),
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  }
 }
 
 const criticalDown = mapRow({ id: 'map-1', name: 'Enterprise Billing', health: 'down', impactScore: 100 })
@@ -70,7 +88,8 @@ const twentyNonCritical = Array.from({ length: 20 }, (_, i) => mapRow({
   service: { ...SERVICE, id: `ba-nc-${i}`, name: `Intranet ${i}`, criticality: 'office_productivity' },
 }))
 
-const render = (mock: GqlMock) => renderWithProviders(<><CriticalServicesBanner /><Probe /></>, { mocks: [mock] })
+const render = (mock: GqlMock, criticalities: readonly string[] = SERVER_CRITICALITIES) =>
+  renderWithProviders(<><CriticalServicesBanner /><Probe criticality={[...criticalities]} /></>, { mocks: [mock, criticalitiesMock(criticalities)] })
 
 describe('CriticalServicesBanner', () => {
   it('un servizio critico giù: banner con la riga del servizio (link) e il rimando alla lista filtrata', async () => {
@@ -131,5 +150,18 @@ describe('CriticalServicesBanner', () => {
     render(failing)
     expect(await screen.findByRole('alert')).toHaveTextContent('Cannot tell whether a critical service is down: services down')
     expect(screen.queryByTestId('critical-services-banner')).not.toBeInTheDocument()
+  })
+
+  // Ondata 7 (C-7): la criticità aggiunta dall'admin. Prima era impossibile —
+  // le due criticità «critiche» erano scritte nel web e mandate al server come
+  // filtro, quindi un servizio `tier_0` giù non compariva mai nel banner.
+  it('una criticità aggiunta dal cliente entra nel banner senza toccare il codice', async () => {
+    const tierZeroDown = mapRow({
+      id: 'map-9', name: 'Trading', health: 'down', impactScore: 100,
+      service: { ...SERVICE, id: 'ba-9', name: 'Trading', criticality: 'tier_0' },
+    })
+    render(serverMock([tierZeroDown]), ['tier_0'])
+    const banner = await screen.findByTestId('critical-services-banner')
+    expect(within(banner).getByRole('link', { name: 'Trading' })).toHaveAttribute('href', '/monitoring/services/map-9')
   })
 })

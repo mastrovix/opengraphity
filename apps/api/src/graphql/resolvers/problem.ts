@@ -196,7 +196,8 @@ async function updateProblem(
       fieldValues: { ...propsToFieldValues(current.props), ...(input as Record<string, unknown>) },
       tenantId:    ctx.tenantId,
     })
-    const prio = resolvePriorityPatch(
+    const prio = await resolvePriorityPatch(
+      ctx.tenantId,
       { impact: current.props['impact'] as string | null, urgency: current.props['urgency'] as string | null },
       { priority: input.priority, impact: input.impact, urgency: input.urgency },
     )

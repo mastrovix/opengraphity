@@ -12,12 +12,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
 
+// Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
+// dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
+// fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+vi.mock('../../../lib/domainMatrix.js', () => import('../../../lib/__tests__/domainMatrixFake.js'))
+
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 // Revisione 2 · D6.2: la lettura della mappa prende `suppress_upstream_hops`
 // dalla policy degli allarmi (cache in memoria): qui la policy è mockata, così
 // la mappa resta UNA sola query nel test.
-vi.mock('../../../services/events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValue({ suppress_upstream_hops: 1 }) }))
+vi.mock('../../../services/events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValue({ suppress_upstream_hops: 1,
+  // Ondata 7 · C-4: la SEMANTICA del ciclo di vita («ritirato», «in
+  // manutenzione») è dato del cliente e vive sulla policy. Qui i valori
+  // iniziali, gli stessi che il codice aveva come costanti.
+  retired_statuses: ['inactive', 'decommissioned'], maintenance_statuses: ['maintenance'], ignore_lifecycle_statuses: ['decommissioned'] }) }))
 
 vi.mock('../../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
@@ -191,7 +200,11 @@ describe('serviceMaps', () => {
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     await expectCode(serviceResolvers.Query.serviceMaps(null, { filter: { health: ['broken'] } }, viewer), 'BAD_USER_INPUT', /Invalid health filter "broken"/)
     await expectCode(serviceResolvers.Query.serviceMaps(null, { filter: { status: 'archived' } }, viewer), 'BAD_USER_INPUT', /Invalid status filter/)
-    await expectCode(serviceResolvers.Query.serviceMaps(null, { filter: { criticality: ['molto_critico'] } }, viewer), 'BAD_USER_INPUT', /Invalid criticality filter "molto_critico"/)
+    // Ondata 7: la criticità si valida contro il VOCABOLARIO DEL CLIENTE
+    // (`assertDomainValue`), non contro la copia in lib/serviceVocabularies.ts
+    // — che era il seme del prodotto e rifiutava una criticità aggiunta
+    // dall'admin. Il messaggio elenca gli ammessi di QUESTO cliente.
+    await expectCode(serviceResolvers.Query.serviceMaps(null, { filter: { criticality: ['molto_critico'] } }, viewer), 'BAD_USER_INPUT', /service_criticality: "molto_critico" non è nel vocabolario di questo cliente/)
     expect(runQueryOne).not.toHaveBeenCalled()
   })
 

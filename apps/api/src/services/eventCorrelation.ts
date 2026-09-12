@@ -15,7 +15,7 @@
  * Questo file ri-esporta tutto con gli stessi nomi: i chiamanti (resolver,
  * worker, mutation della change) e i loro test non cambiano.
  */
-export { MONITORING_ACTOR, monitoringContext } from './events/shared.js'
+export { MONITORING_ACTOR, MAX_EVENT_SEVERITY, monitoringContext, incidentSeverityFromEvent } from './events/shared.js'
 export type { EventRecord, PipelineMode, PipelineInput, PipelineResult, PipelineOutcome } from './events/types.js'
 export { CORRELATION_OUTCOMES, type CorrelationOutcome } from '../lib/eventVocabularies.js'
 export { runEventPipeline } from './events/pipeline.js'
@@ -27,7 +27,7 @@ export {
 export { isFlapping, isStable, type EventFlappingPayload, type EventStablePayload } from './events/flapping.js'
 export {
   GROUP_LOCK_TTL_SECONDS, GROUP_LOCK_WAIT_MS, GROUP_LOCK_POLL_MS, GROUP_LOCK_OPTS,
-  groupLockKey, groupIdOf, INCIDENT_SEVERITY_FROM_EVENT, meetsOpenThreshold, openIncidentFromEvent,
+  groupLockKey, groupIdOf, meetsOpenThreshold, openIncidentFromEvent,
   type EventCorrelatedPayload, type OpenIncidentArgs,
 } from './events/grouping.js'
 export {

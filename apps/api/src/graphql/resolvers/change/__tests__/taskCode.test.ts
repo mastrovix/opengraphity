@@ -15,7 +15,9 @@ vi.mock('../../ci-utils.js', () => ({
 }))
 
 vi.mock('../../../../lib/logger.js', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  // `child` serve perché scoring.ts ora importa lib/domainMatrix.js, che si
+  // prende un logger figlio al caricamento del modulo (ondata 7).
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
 vi.mock('../../../../lib/workflowHelpers.js', () => ({

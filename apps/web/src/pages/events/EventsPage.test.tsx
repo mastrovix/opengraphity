@@ -4,7 +4,7 @@ import { EventsPage } from './EventsPage'
 import { GET_EVENTS, GET_EVENT_STATS, GET_ENTITY_FILTER_FIELDS, GET_MONITORING_SOURCE_REFS, GET_EVENT_POLICY } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
-import { serviceMapsMock, mapRow } from '@/test/mocks/services'
+import { serviceMapsMock, criticalCriticalitiesMock, mapRow } from '@/test/mocks/services'
 import { formatDateTime } from '@/lib/datetime'
 import { FILTER_GROUP_PARAM, decodeFilterGroup, encodeFilterGroup } from '@/lib/filterGroupUrl'
 import type { EventRow, EventStats, StormSource } from '@/types/events'
@@ -95,7 +95,7 @@ const sourcesMock = (names: string[] = ['Prometheus', 'Zabbix']): GqlMock => ({
 })
 
 function renderPage(role: string, seen?: Vars[], opts: { route?: string; sources?: string[]; events?: EventRow[]; storms?: StormSource[]; eventsMocks?: GqlMock[]; downServices?: Record<string, unknown>[] } = {}) {
-  return renderWithProviders(<EventsPage />, { route: opts.route ?? '/events', mocks: [meMock(role), statsMock(opts.storms), ...(opts.eventsMocks ?? [eventsMock(opts.events ?? EVENTS, seen)]), fieldsMock(), sourcesMock(opts.sources), policyMock(), serviceMapsMock(opts.downServices)] })
+  return renderWithProviders(<EventsPage />, { route: opts.route ?? '/events', mocks: [meMock(role), statsMock(opts.storms), ...(opts.eventsMocks ?? [eventsMock(opts.events ?? EVENTS, seen)]), fieldsMock(), sourcesMock(opts.sources), policyMock(), serviceMapsMock(opts.downServices), criticalCriticalitiesMock()] })
 }
 
 const bodyRows = () => within(screen.getAllByRole('rowgroup')[1]!).getAllByRole('row')
@@ -487,7 +487,7 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
 
   it('errore della query delle sorgenti → messaggio accanto al filtro', async () => {
     const failing: GqlMock = { request: { query: GET_MONITORING_SOURCE_REFS }, error: new Error('sources down'), maxUsageCount: Number.POSITIVE_INFINITY }
-    renderWithProviders(<EventsPage />, { route: '/events', mocks: [meMock('viewer'), statsMock(), eventsMock(), fieldsMock(), failing, policyMock(), serviceMapsMock()] })
+    renderWithProviders(<EventsPage />, { route: '/events', mocks: [meMock('viewer'), statsMock(), eventsMock(), fieldsMock(), failing, policyMock(), serviceMapsMock(), criticalCriticalitiesMock()] })
     await screen.findByText('CPU high on web-01')
     expect(await screen.findByRole('alert')).toHaveTextContent('Sources not loaded: sources down')
   })

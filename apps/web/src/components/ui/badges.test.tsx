@@ -1,15 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { SeverityBadge, RoleBadge, RiskBadge, riskLevel, SEVERITY_STYLE, PhaseBadge, StatusLabel } from './badges'
+import { DomainVocabularyContext } from '@/contexts/DomainVocabularyContext'
+import { NEUTRAL_VALUE_STYLE } from '@/lib/domainStyle'
+import { enumLabel } from '@/lib/ciEnums'
 
 const BROKEN_BG = 'var(--color-danger)'
 let consoleError: ReturnType<typeof vi.spyOn>
 beforeEach(() => { consoleError = vi.spyOn(console, 'error').mockImplementation(() => {}) })
 
+/**
+ * Vocabolario del cliente per il test: il provider vero fa una query, qui si
+ * inietta il contesto a mano (ondata 7 · D-15).
+ */
+function withVocabulary(values: readonly string[] | null, ui: React.ReactElement) {
+  return render(
+    <DomainVocabularyContext.Provider value={{ valuesOf: () => values, loading: false, error: null }}>
+      {ui}
+    </DomainVocabularyContext.Provider>,
+  )
+}
+
 describe('SeverityBadge', () => {
   it.each(Object.keys(SEVERITY_STYLE))('%s → pill con la palette dedicata', (sev) => {
-    render(<SeverityBadge value={sev} />)
-    const pill = screen.getByText(sev)
+    withVocabulary(Object.keys(SEVERITY_STYLE), <SeverityBadge value={sev} />)
+    const pill = screen.getByText(enumLabel(sev))
     expect(pill).toHaveStyle({ background: SEVERITY_STYLE[sev]!.bg, color: SEVERITY_STYLE[sev]!.color, textTransform: 'uppercase' })
     expect(consoleError).not.toHaveBeenCalled()
   })
@@ -17,13 +32,36 @@ describe('SeverityBadge', () => {
     expect(SEVERITY_STYLE['critical']).not.toEqual(SEVERITY_STYLE['low'])
   })
   it('valore assente → "—"', () => {
-    render(<SeverityBadge value={null} />)
+    withVocabulary(null, <SeverityBadge value={null} />)
     expect(screen.getByText('—')).toBeInTheDocument()
   })
-  it('valore ignoto → stile "rotto" rosso e console.error, il testo resta visibile', () => {
-    render(<SeverityBadge value="blocker" />)
-    expect(screen.getByText('blocker')).toHaveStyle({ background: BROKEN_BG, color: 'var(--color-white)' })
-    expect(consoleError).toHaveBeenCalledWith('[SEVERITY_STYLE] valore sconosciuto: "blocker"')
+
+  /**
+   * CONTRATTO RINEGOZIATO (ondata 7 · D-15). Prima questo test pretendeva che
+   * `<SeverityBadge value="blocker" />` rendesse una pastiglia **rossa piena**
+   * con `console.error`: la regola «niente fallback silenziosi» applicata a un
+   * valore che il cliente ha tutto il diritto di avere nel suo vocabolario. In
+   * una lista di incident diventavano cinquanta pastiglie rosse e cinquanta
+   * righe di errore in console, e la personalizzazione sembrava rotta.
+   *
+   * Adesso i due casi sono distinti, e sono tre righe di test invece di una.
+   */
+  it('valore NEL vocabolario del cliente senza stile assegnato → neutro e silenzioso', () => {
+    withVocabulary([...Object.keys(SEVERITY_STYLE), 'blocker'], <SeverityBadge value="blocker" />)
+    expect(screen.getByText('Blocker')).toHaveStyle({ background: NEUTRAL_VALUE_STYLE.bg, color: NEUTRAL_VALUE_STYLE.color })
+    expect(consoleError).not.toHaveBeenCalled()
+  })
+  it('valore FUORI dal vocabolario del cliente → stile rotto (rosso) e console.error', () => {
+    withVocabulary(Object.keys(SEVERITY_STYLE), <SeverityBadge value="blocker" />)
+    expect(screen.getByText('Blocker')).toHaveStyle({ background: BROKEN_BG, color: 'var(--color-white)' })
+    expect(consoleError).toHaveBeenCalledWith('[SEVERITY_STYLE/severity] "blocker" non è nel vocabolario di questo cliente (critical, high, medium, low)')
+  })
+  it('vocabolario non disponibile → neutro e console.warn (non si accusa di essere rotto ciò che non si è potuto verificare)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    withVocabulary(null, <SeverityBadge value="blocker" />)
+    expect(screen.getByText('Blocker')).toHaveStyle({ background: NEUTRAL_VALUE_STYLE.bg })
+    expect(consoleError).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledWith('[SEVERITY_STYLE/severity] "blocker" senza stile e vocabolario del cliente non disponibile: stile neutro')
   })
 })
 

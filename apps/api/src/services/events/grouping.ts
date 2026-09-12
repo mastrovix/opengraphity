@@ -26,7 +26,7 @@ import type { EventPolicy } from '../../lib/eventPolicy.js'
 import type { CorrelationOutcome, EventSeverity } from '../../lib/eventVocabularies.js'
 import { incidentsAutoOpenedTotal, incidentsReopenedTotal } from '../../middleware/metrics.js'
 import { incidents, queue } from './deps.js'
-import { MONITORING_ACTOR, SEVERITY_RANK, assertSeverity, mapEventPayload, monitoringContext, toNumber, toStr, type Props } from './shared.js'
+import { MONITORING_ACTOR, SEVERITY_RANK, assertSeverity, incidentSeverityFromEvent, mapEventPayload, monitoringContext, toNumber, toStr, type Props } from './shared.js'
 import { getEventPolicy } from './policy.js'
 import { attachEventToIncident, setCorrelation } from './repo.js'
 import { incidentStep, incidentStepInfo, reopenIncident, type IncidentStepInfo, type OpenIncidentRow } from './incidentWorkflow.js'
@@ -63,9 +63,6 @@ export function groupIdOf(policy: Pick<EventPolicy, 'group_by'>, ev: Pick<EventR
   if (policy.group_by === 'ci' && ev.ciId) return ev.ciId
   return toStr(ev.props['fingerprint']) || eventId
 }
-
-/** Severity dell'evento → priorità dell'incident (createIncident accetta anche la sola severity). */
-export const INCIDENT_SEVERITY_FROM_EVENT: Readonly<Record<EventSeverity, string>> = { critical: 'critical', warning: 'medium', info: 'low' }
 
 export interface EventCorrelatedPayload extends MonitoringEventPayload { incident_id: string | null; outcome: PipelineOutcome }
 
@@ -119,7 +116,7 @@ export async function openIncidentFromEvent(args: OpenIncidentArgs) {
   const incident = await (await incidents()).createIncident({
     title:         toStr(props['title']),
     description,
-    severity:      INCIDENT_SEVERITY_FROM_EVENT[severity],
+    severity:      await incidentSeverityFromEvent(tenantId, severity),
     impact:        iu.impact,
     urgency:       iu.urgency,
     affectedCIIds: [ciId],

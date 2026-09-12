@@ -22,6 +22,8 @@ import { logger } from '../lib/logger.js'
 import { withSession, getSession } from '../graphql/resolvers/ci-utils.js'
 import { ValidationError } from '../lib/errors.js'
 import { getWorkflowSteps, type StepRow } from '../lib/workflowHelpers.js'
+import { assertDomainValue } from '../lib/domainMatrix.js'
+import { resolveDomainValue } from '../lib/domainValue.js'
 
 type Session = ReturnType<typeof getSession>
 
@@ -116,12 +118,53 @@ function parseIsoDate(value: string): string | null {
   return d.toISOString()
 }
 
-const SEVERITY_MAP: Record<string, string> = {
-  low: 'low', l: 'low', minor: 'low', trivial: 'low', p4: 'low', '4': 'low', sev4: 'low',
-  medium: 'medium', med: 'medium', m: 'medium', moderate: 'medium', normal: 'medium', p3: 'medium', '3': 'medium', sev3: 'medium',
-  high: 'high', h: 'high', major: 'high', p2: 'high', '2': 'high', sev2: 'high',
-  critical: 'critical', crit: 'critical', urgent: 'critical', blocker: 'critical', p1: 'critical', '1': 'critical', sev1: 'critical',
+/**
+ * Severità in ingresso → severità del cliente (ondata 7 · D-16).
+ *
+ * Era `SEVERITY_MAP`, 25 sinonimi scritti qui, e una severità non riconosciuta
+ * diventava `medium` con un avviso di riga. Due guasti, non uno:
+ *  - un cliente che aggiungeva `blocker` come valore LEGITTIMO se lo vedeva
+ *    riscritto in `critical` senza nemmeno un avviso, perché la mappa
+ *    «risolveva»;
+ *  - `critical` veniva scritto anche su un cliente che l'aveva tolto dal suo
+ *    vocabolario.
+ * Lo `status`, nella stessa funzione, era già risolto sui passi del workflow
+ * **del tenant**: qui si allinea la severità a quel modello.
+ *
+ * Ora: la traduzione è la matrice `import_severity` del cliente (seminata con
+ * gli stessi 25 sinonimi, così il primo giorno non cambia niente, ma ora
+ * visibili e modificabili in Impostazioni → Matrici di dominio). Le severità
+ * distinte del file si risolvono in un passaggio SOLO, prima del ciclo per
+ * riga — come già fa la mappa dei passi — e una severità non risolvibile
+ * mette la **riga in errore**, non a `medium`.
+ */
+async function resolveImportSeverities(
+  tenantId: string, rows: readonly CsvRow[],
+): Promise<Map<string, { severity: string } | { error: string }>> {
+  const out = new Map<string, { severity: string } | { error: string }>()
+  const distinct = new Set<string>()
+  for (const row of rows) {
+    const raw = (row['severity'] ?? '').trim()
+    if (raw) distinct.add(raw.toLowerCase())
+  }
+  for (const key of distinct) {
+    try {
+      out.set(key, { severity: await resolveDomainValue(tenantId, 'import_severity', key) })
+    } catch (e) {
+      out.set(key, { error: e instanceof Error ? e.message : String(e) })
+    }
+  }
+  return out
 }
+
+/**
+ * La severità con cui nasce una riga che non ne dichiara nessuna. È un default
+ * DICHIARATO — il file non ha detto niente, non ha detto una cosa che non
+ * capiamo — e passa comunque dalla validazione: se il cliente ha rinominato
+ * `medium`, l'import si ferma e lo dice invece di scrivere un valore fantasma
+ * su tutte le righe senza colonna.
+ */
+export const DEFAULT_IMPORT_SEVERITY = 'medium'
 
 /**
  * Move an existing workflow instance to `stepName` (no-op if already there).
@@ -286,6 +329,11 @@ export async function importIncidents(
     `, { tenantId: ctx.tenantId })
     let nextIncNum = Number(maxRow?.maxNum ?? 0)
 
+    // Severità: un passaggio solo per valore distinto, PRIMA del ciclo per
+    // riga (il ciclo e' sincrono, e la matrice e' una lettura).
+    const severityByRaw  = await resolveImportSeverities(ctx.tenantId, rows)
+    const defaultSeverity = await assertDomainValue(ctx.tenantId, 'severity', DEFAULT_IMPORT_SEVERITY)
+
     // ── Per-row validation → plan ─────────────────────────────────────────────
     const plans: IncidentPlan[] = []
     const seenExternalIds = new Set<string>()
@@ -305,13 +353,23 @@ export async function importIncidents(
       if (!title) { fail('title è obbligatorio'); return }
       if (title.length > 500) { fail('title supera i 500 caratteri'); return }
 
-      // severity: free values mapped case-insensitively; unknown → warning + medium
+      // severity: tradotta dalla matrice `import_severity` del cliente
+      // (risolta una volta per valore distinto, sopra). Non risolvibile →
+      // riga in ERRORE: mai piu' un `medium` scritto al posto di quello che
+      // il file diceva.
       const rawSeverity = (row['severity'] ?? '').trim()
-      let severity = 'medium'
+      let severity = defaultSeverity
       if (rawSeverity) {
-        const mapped = SEVERITY_MAP[rawSeverity.toLowerCase()]
-        if (mapped) severity = mapped
-        else warn(`severity sconosciuta "${rawSeverity}" — uso "medium"`)
+        const resolved = severityByRaw.get(rawSeverity.toLowerCase())
+        if (!resolved) { fail(`severity "${rawSeverity}" non risolta (errore interno: valore non pre-calcolato)`); return }
+        if ('error' in resolved) {
+          fail(
+            `severity "${rawSeverity}" non e' traducibile: ${resolved.error} ` +
+            `Aggiungi il valore al vocabolario «Import Severity» e la cella alla matrice, oppure correggi il file.`,
+          )
+          return
+        }
+        severity = resolved.severity
       }
 
       // status: matched case-insensitively on the tenant's incident workflow steps

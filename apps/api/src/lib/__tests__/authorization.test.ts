@@ -55,13 +55,23 @@ describe('policy ↔ schema', () => {
     // `customizeEnumType` (personalizzazioni A1-1) crea la copia di un
     // vocabolario spedito: è configurazione del metamodello, come le altre
     // mutation sugli enum.
+    // `updateDomainMatrix` (ondata 7) modifica una regola di dominio del
+    // cliente — priorità = impatto × urgenza, criticità → impatto: è
+    // configurazione del tenant come i vocabolari da cui prende i valori.
     for (const f of ['createTeam', 'createOutboundWebhook', 'triggerSync', 'saveWorkflowChanges', 'createBusinessRule', 'createUser',
-      'createEnumType', 'updateEnumType', 'deleteEnumType', 'customizeEnumType']) {
+      'createEnumType', 'updateEnumType', 'deleteEnumType', 'customizeEnumType', 'updateDomainMatrix']) {
       expect(allowedRoles('Mutation', f)).toEqual(['admin'])
     }
-    for (const f of ['logs', 'apiKeys', 'syncSources', 'notificationChannels']) {
+    for (const f of ['logs', 'apiKeys', 'syncSources', 'notificationChannels', 'domainMatrices']) {
       expect(allowedRoles('Query', f)).toEqual(['admin'])
     }
+  })
+
+  it('ondata 7: le criticità «critiche» le legge tutto lo staff, non solo l\'admin', () => {
+    // Il banner della console allarmi le chiede per costruire il filtro: se
+    // fosse admin-only, per un operatore il banner tacerebbe — che è
+    // esattamente il guasto C-7 in un'altra forma.
+    expect(allowedRoles('Query', 'criticalServiceCriticalities')).toEqual(['admin', 'operator', 'viewer'])
   })
 })
 

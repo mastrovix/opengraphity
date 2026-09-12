@@ -1142,7 +1142,7 @@ async function deleteCIAlias(_: unknown, args: { id: string }, ctx: GraphQLConte
 async function updateEventPolicy(_: unknown, args: { input: EventPolicyInputGQL }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
   const current = await getEventPolicy(ctx.tenantId)
-  const next = applyEventPolicyInput(current, args.input ?? {})
+  const next = await applyEventPolicyInput(ctx.tenantId, current, args.input ?? {})
   await setEventPolicy(ctx.tenantId, next)
   void audit(ctx, 'event_policy.updated', 'Tenant', ctx.tenantId, { input: args.input, version: next.version, previousVersion: current.version })
   return toEventPolicyGQL(next)

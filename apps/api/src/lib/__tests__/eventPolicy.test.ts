@@ -5,16 +5,37 @@
  * indica la migrazione 1040 quando mancano; completeEventPolicy (usata dalla
  * migrazione) aggiunge solo ciò che manca.
  */
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { GraphQLError } from 'graphql'
 import {
   DEFAULT_EVENT_POLICY, DEFAULT_EVENT_POLICY_JSON, EVENT_POLICY_V2_KEYS, EVENT_POLICY_V2_MIGRATION,
   EVENT_POLICY_V3_KEYS, EVENT_POLICY_V3_MIGRATION, EVENT_POLICY_V4_KEYS, EVENT_POLICY_V4_MIGRATION,
-  EVENT_POLICY_V5_KEYS, EVENT_POLICY_V5_MIGRATION, EVENT_POLICY_MAX, assertLifecycleStatuses,
+  EVENT_POLICY_V5_KEYS, EVENT_POLICY_V5_MIGRATION, EVENT_POLICY_V6_KEYS, EVENT_POLICY_V6_MIGRATION,
+  EVENT_POLICY_MAX, assertLifecycleStatuses,
   assertEventPolicy, parseEventPolicy, completeEventPolicy, toEventPolicyGQL, applyEventPolicyInput,
   EVENT_POLICY_CACHE_TTL_MS, getCachedEventPolicy, cacheEventPolicy, invalidateEventPolicyCache,
 } from '../eventPolicy.js'
 import { CI_LIFECYCLE_STATUSES } from '../eventVocabularies.js'
+
+/**
+ * Ondata 7 · C-4/A-14: `applyEventPolicyInput` è ASINCRONA e valida le tre
+ * liste del ciclo di vita contro il vocabolario `ci_status` **del cliente**
+ * (`assertDomainValue`, lib/domainMatrix.ts). Qui il Dizionario si simula: il
+ * vocabolario di questo finto cliente è il seme più `dismesso`, così si vede
+ * che un valore rinominato dal cliente viene ACCETTATO (prima era rifiutato,
+ * ed era il difetto) e uno inventato no.
+ */
+const TENANT_CI_STATUS = [...CI_LIFECYCLE_STATUSES, 'dismesso']
+vi.mock('../domainMatrix.js', () => ({
+  assertDomainValue: (_t: string, vocabulary: string, value: unknown) => {
+    if (typeof value !== 'string' || !TENANT_CI_STATUS.includes(value)) {
+      return Promise.reject(new GraphQLError(`${vocabulary}: "${String(value)}" non è nel vocabolario di questo cliente. Ammessi: ${TENANT_CI_STATUS.join(', ')}.`, { extensions: { code: 'BAD_USER_INPUT' } }))
+    }
+    return Promise.resolve(value)
+  },
+}))
+
+const T = 'acme'
 
 const { flap_stable_minutes: _a, storm_threshold_per_minute: _b, storm_cooldown_minutes: _c, ...V1 } = DEFAULT_EVENT_POLICY
 
@@ -64,13 +85,13 @@ describe('completeEventPolicy (migrazione 1040)', () => {
 })
 
 describe('GraphQL ↔ persistita', () => {
-  it('toEventPolicyGQL espone flapStableMinutes / stormThresholdPerMinute / stormCooldownMinutes; applyEventPolicyInput li applica e valida', () => {
+  it('toEventPolicyGQL espone flapStableMinutes / stormThresholdPerMinute / stormCooldownMinutes; applyEventPolicyInput li applica e valida', async () => {
     expect(toEventPolicyGQL(DEFAULT_EVENT_POLICY)).toMatchObject({ flapStableMinutes: 15, stormThresholdPerMinute: 50, stormCooldownMinutes: 5 })
     // tempesta spenta (soglia 0) con raffreddamento 0: coerente
-    const next = applyEventPolicyInput(DEFAULT_EVENT_POLICY, { flapStableMinutes: 30, stormThresholdPerMinute: 0, stormCooldownMinutes: 0 })
+    const next = await applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { flapStableMinutes: 30, stormThresholdPerMinute: 0, stormCooldownMinutes: 0 })
     expect(next).toMatchObject({ flap_stable_minutes: 30, storm_threshold_per_minute: 0, storm_cooldown_minutes: 0, flap_threshold: 4 })
-    expect(() => applyEventPolicyInput(DEFAULT_EVENT_POLICY, { stormThresholdPerMinute: -5 })).toThrow(/storm_threshold_per_minute must be an integer >= 0/)
-    expect(() => applyEventPolicyInput(DEFAULT_EVENT_POLICY, { flapStableMinutes: null })).toThrow(/flapStableMinutes cannot be null/)
+    await expect(applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { stormThresholdPerMinute: -5 })).rejects.toThrow(/storm_threshold_per_minute must be an integer >= 0/)
+    await expect(applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { flapStableMinutes: null })).rejects.toThrow(/flapStableMinutes cannot be null/)
   })
 })
 
@@ -85,15 +106,15 @@ describe('version / updated_at (C-4)', () => {
     expect(toEventPolicyGQL({ ...DEFAULT_EVENT_POLICY, version: 7, updated_at: '2026-09-09T10:00:00.000Z' })).toMatchObject({ version: 7, updatedAt: '2026-09-09T10:00:00.000Z' })
   })
 
-  it('applyEventPolicyInput incrementa version e scrive updated_at = now; expectedVersion uguale → ok, diverso → ValidationError con le due versioni; assente → nessun controllo', () => {
+  it('applyEventPolicyInput incrementa version e scrive updated_at = now; expectedVersion uguale → ok, diverso → ValidationError con le due versioni; assente → nessun controllo', async () => {
     const now = '2026-09-09T12:00:00.000Z'
-    const next = applyEventPolicyInput(DEFAULT_EVENT_POLICY, { retentionDays: 30, expectedVersion: 1 }, now)
+    const next = await applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { retentionDays: 30, expectedVersion: 1 }, now)
     expect(next).toMatchObject({ version: 2, updated_at: now, retention_days: 30 })
-    const third = applyEventPolicyInput(next, { flapThreshold: 5 }, '2026-09-09T13:00:00.000Z')
+    const third = await applyEventPolicyInput(T, next, { flapThreshold: 5 }, '2026-09-09T13:00:00.000Z')
     expect(third).toMatchObject({ version: 3, updated_at: '2026-09-09T13:00:00.000Z', retention_days: 30, flap_threshold: 5 })
-    expect(() => applyEventPolicyInput(next, { flapThreshold: 5, expectedVersion: 1 })).toThrow(/modified by someone else \(expected version 1, current is 2, updated at 2026-09-09T12:00:00\.000Z\): reload it/)
+    await expect(applyEventPolicyInput(T, next, { flapThreshold: 5, expectedVersion: 1 })).rejects.toThrow(/modified by someone else \(expected version 1, current is 2, updated at 2026-09-09T12:00:00\.000Z\): reload it/)
     // il client non può scrivere version/updated_at direttamente: non sono nell'input
-    expect(applyEventPolicyInput(DEFAULT_EVENT_POLICY, {} as never, now)).toMatchObject({ version: 2, updated_at: now })
+    expect(await applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, {} as never, now)).toMatchObject({ version: 2, updated_at: now })
   })
 
   it('assertEventPolicy: version intero ≥ 1, updated_at ISO o null; senza version → errore che indica la migrazione 1060 (dopo la 1040 se mancano anche le chiavi v2)', () => {
@@ -129,48 +150,87 @@ describe('massimi e coerenza (I-7)', () => {
     expect(EVENT_POLICY_MAX).toMatchObject({ suppress_upstream_hops: 10, open_delay_seconds: 86_400, flap_window_minutes: 1_440, flap_stable_minutes: 1_440, storm_cooldown_minutes: 1_440 })
   })
 
-  it('flap_threshold > 0 richiede flap_window_minutes > 0; storm_threshold_per_minute > 0 richiede storm_cooldown_minutes > 0; con la soglia a 0 la finestra può essere 0', () => {
+  it('flap_threshold > 0 richiede flap_window_minutes > 0; storm_threshold_per_minute > 0 richiede storm_cooldown_minutes > 0; con la soglia a 0 la finestra può essere 0', async () => {
     expect(() => assertEventPolicy({ ...DEFAULT_EVENT_POLICY, flap_threshold: 4, flap_window_minutes: 0 })).toThrow(/flap_window_minutes must be > 0 when flap_threshold is > 0/)
     expect(assertEventPolicy({ ...DEFAULT_EVENT_POLICY, flap_threshold: 0, flap_window_minutes: 0 }).flap_threshold).toBe(0)
     expect(() => assertEventPolicy({ ...DEFAULT_EVENT_POLICY, storm_threshold_per_minute: 50, storm_cooldown_minutes: 0 })).toThrow(/storm_cooldown_minutes must be > 0 when storm_threshold_per_minute is > 0/)
     expect(assertEventPolicy({ ...DEFAULT_EVENT_POLICY, storm_threshold_per_minute: 0, storm_cooldown_minutes: 0 }).storm_cooldown_minutes).toBe(0)
     // via input GraphQL: stesso messaggio (la UI lo mostra)
-    expect(() => applyEventPolicyInput(DEFAULT_EVENT_POLICY, { stormCooldownMinutes: 0 })).toThrow(/eventPolicy\.storm_cooldown_minutes must be > 0 when storm_threshold_per_minute is > 0/)
-    expect(() => applyEventPolicyInput(DEFAULT_EVENT_POLICY, { suppressUpstreamHops: 11 })).toThrow(/eventPolicy\.suppress_upstream_hops must be at most 10\. Got: 11/)
+    await expect(applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { stormCooldownMinutes: 0 })).rejects.toThrow(/eventPolicy\.storm_cooldown_minutes must be > 0 when storm_threshold_per_minute is > 0/)
+    await expect(applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { suppressUpstreamHops: 11 })).rejects.toThrow(/eventPolicy\.suppress_upstream_hops must be at most 10\. Got: 11/)
   })
 })
 
 // ── Revisione 2 · D6.3: ciclo di vita ignorato dagli allarmi ─────────────────
 
-describe('ignore_lifecycle_statuses (D6.3)', () => {
-  it('default `[decommissioned]`; lista chiusa sul vocabolario del ciclo di vita, vuota ammessa, senza doppioni', () => {
+describe('ignore_lifecycle_statuses (D6.3) e la semantica del ciclo di vita (ondata 7 · C-4/A-14)', () => {
+  /**
+   * CONTRATTO RINEGOZIATO (ondata 7 · C-4/A-14). Prima questo test pretendeva
+   * che `assertLifecycleStatuses(['dismesso'])` lanciasse con il messaggio
+   * `"dismesso" is not one of active, inactive, maintenance, decommissioned…`,
+   * cioè che la validazione avvenisse contro `CI_LIFECYCLE_STATUSES`, la lista
+   * del CODICE. Quella era la forma scritta del difetto: i valori di
+   * `ci_status` sono rinominabili dal cliente, quindi rifiutare `dismesso` era
+   * sbagliato (rumoroso) e accettare `decommissioned` dopo la rinomina era
+   * peggio (silenzioso).
+   *
+   * Adesso: `assertLifecycleStatuses` valida solo la FORMA (lista di stringhe
+   * non vuote, senza doppioni) e non nomina più nessun valore;
+   * l'appartenenza al vocabolario del cliente la controlla
+   * `applyEventPolicyInput`, in scrittura, con `assertDomainValue`.
+   */
+  it('forma: lista di stringhe distinte, vuota ammessa; NESSUNA lista di valori nel codice', () => {
     expect(DEFAULT_EVENT_POLICY.ignore_lifecycle_statuses).toEqual(['decommissioned'])
     expect(EVENT_POLICY_V5_KEYS).toEqual(['ignore_lifecycle_statuses'])
     expect(EVENT_POLICY_V5_MIGRATION).toBe('20260911_1130_shared_domain_rules')
     expect(assertLifecycleStatuses([])).toEqual([])
     expect(assertLifecycleStatuses(['inactive', 'decommissioned'])).toEqual(['inactive', 'decommissioned'])
-    // Il vocabolario è quello di CI_LIFECYCLE_STATUSES, non una lista scritta
-    // qui: B0-4 gli ha aggiunto `expired` e `revoked` (i cicli di vita dei
-    // certificati, già sui CI e in nessun vocabolario). La validazione resta
-    // «lista chiusa sul vocabolario del codice»; solo il vocabolario è più
-    // completo. (Validare contro l'enum del TENANT è C-4, altra ondata.)
-    expect(CI_LIFECYCLE_STATUSES).toContain('expired')
-    expect(CI_LIFECYCLE_STATUSES).toContain('revoked')
     expect(assertLifecycleStatuses(['expired', 'revoked'])).toEqual(['expired', 'revoked'])
-    expect(() => assertLifecycleStatuses('decommissioned')).toThrow(`must be a list of CI lifecycle statuses (${CI_LIFECYCLE_STATUSES.join(', ')})`)
-    expect(() => assertLifecycleStatuses(['dismesso'])).toThrow(`"dismesso" is not one of ${CI_LIFECYCLE_STATUSES.join(', ')}`)
+    // Un valore che il CLIENTE ha aggiunto o rinominato passa la forma: non
+    // c'è più nessuna lista chiusa da superare (era il difetto).
+    expect(assertLifecycleStatuses(['dismesso'])).toEqual(['dismesso'])
+    // …e il messaggio non elenca più i valori del codice.
+    expect(() => assertLifecycleStatuses('decommissioned')).toThrow(/must be a list of CI lifecycle statuses \(values of the ci_status vocabulary\)/)
+    expect(() => assertLifecycleStatuses('decommissioned')).not.toThrow(new RegExp(CI_LIFECYCLE_STATUSES.join(', ')))
+    expect(() => assertLifecycleStatuses([''])).toThrow(/is not a non-empty string/)
+    expect(() => assertLifecycleStatuses([3])).toThrow(/is not a non-empty string/)
     expect(() => assertLifecycleStatuses(['inactive', 'inactive'])).toThrow(/inactive appears twice/)
-    expect(() => assertEventPolicy({ ...DEFAULT_EVENT_POLICY, ignore_lifecycle_statuses: ['nope'] })).toThrow(/event_policy\.ignore_lifecycle_statuses/)
+    expect(() => assertEventPolicy({ ...DEFAULT_EVENT_POLICY, ignore_lifecycle_statuses: 'nope' })).toThrow(/event_policy\.ignore_lifecycle_statuses/)
   })
 
-  it('GraphQL: ignoreLifecycleStatuses in lettura e in scrittura (lista completa, mai null); un valore fuori vocabolario è rifiutato', () => {
+  it('la SEMANTICA è dato del cliente: retired_statuses e maintenance_statuses partono dai valori che il codice usava', () => {
+    expect(DEFAULT_EVENT_POLICY.retired_statuses).toEqual(['inactive', 'decommissioned'])
+    expect(DEFAULT_EVENT_POLICY.maintenance_statuses).toEqual(['maintenance'])
+    expect(EVENT_POLICY_V6_KEYS).toEqual(['retired_statuses', 'maintenance_statuses'])
+    expect(EVENT_POLICY_V6_MIGRATION).toBe('20260917_1810_ci_lifecycle_semantics')
+    expect(toEventPolicyGQL(DEFAULT_EVENT_POLICY)).toMatchObject({
+      retiredStatuses: ['inactive', 'decommissioned'], maintenanceStatuses: ['maintenance'],
+    })
+  })
+
+  it('policy senza le chiavi dell\'ondata 7 → errore che indica la migrazione 1810; completeEventPolicy le aggiunge', () => {
+    const { retired_statuses: _r, maintenance_statuses: _m, ...withoutV6 } = DEFAULT_EVENT_POLICY
+    expect(() => parseEventPolicy(JSON.stringify(withoutV6), 'acme')).toThrow(/ — missing retired_statuses, maintenance_statuses: run the 20260917_1810_ci_lifecycle_semantics migration/)
+    expect(completeEventPolicy({ ...withoutV6 })).toEqual({ ...withoutV6, retired_statuses: ['inactive', 'decommissioned'], maintenance_statuses: ['maintenance'] })
+    expect(completeEventPolicy({ ...DEFAULT_EVENT_POLICY })).toBeNull()
+  })
+
+  it('GraphQL: le tre liste in lettura e scrittura (lista completa, mai null); l\'appartenenza è al vocabolario DEL CLIENTE', async () => {
     expect(toEventPolicyGQL(DEFAULT_EVENT_POLICY)).toMatchObject({ ignoreLifecycleStatuses: ['decommissioned'] })
-    expect(applyEventPolicyInput(DEFAULT_EVENT_POLICY, { ignoreLifecycleStatuses: [] })).toMatchObject({ ignore_lifecycle_statuses: [], version: 2 })
-    expect(applyEventPolicyInput(DEFAULT_EVENT_POLICY, { ignoreLifecycleStatuses: ['inactive', 'decommissioned'] }).ignore_lifecycle_statuses).toEqual(['inactive', 'decommissioned'])
-    expect(() => applyEventPolicyInput(DEFAULT_EVENT_POLICY, { ignoreLifecycleStatuses: null })).toThrow(/ignoreLifecycleStatuses cannot be null/)
-    expect(() => applyEventPolicyInput(DEFAULT_EVENT_POLICY, { ignoreLifecycleStatuses: ['spento'] })).toThrow(/ignoreLifecycleStatuses: "spento" is not one of/)
+    expect(await applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { ignoreLifecycleStatuses: [] })).toMatchObject({ ignore_lifecycle_statuses: [], version: 2 })
+    expect((await applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { ignoreLifecycleStatuses: ['inactive', 'decommissioned'] })).ignore_lifecycle_statuses).toEqual(['inactive', 'decommissioned'])
+    await expect(applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { ignoreLifecycleStatuses: null })).rejects.toThrow(/ignoreLifecycleStatuses cannot be null/)
+    // Il valore RINOMINATO dal cliente è ora accettato: è nel suo vocabolario.
+    expect((await applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { ignoreLifecycleStatuses: ['dismesso'] })).ignore_lifecycle_statuses).toEqual(['dismesso'])
+    expect((await applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { retiredStatuses: ['dismesso'] })).retired_statuses).toEqual(['dismesso'])
+    expect((await applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { maintenanceStatuses: [] })).maintenance_statuses).toEqual([])
+    // Un valore che NON è nel vocabolario del cliente resta rifiutato, e il
+    // messaggio elenca i valori VERI del cliente.
+    await expect(applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { ignoreLifecycleStatuses: ['spento'] })).rejects.toThrow(/"spento" non è nel vocabolario di questo cliente/)
+    await expect(applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { retiredStatuses: ['spento'] })).rejects.toThrow(/"spento" non è nel vocabolario di questo cliente/)
+    await expect(applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { maintenanceStatuses: ['spento'] })).rejects.toThrow(/"spento" non è nel vocabolario di questo cliente/)
     // assente nell'input → invariata
-    expect(applyEventPolicyInput({ ...DEFAULT_EVENT_POLICY, ignore_lifecycle_statuses: [] }, { retentionDays: 10 }).ignore_lifecycle_statuses).toEqual([])
+    expect((await applyEventPolicyInput(T, { ...DEFAULT_EVENT_POLICY, ignore_lifecycle_statuses: [] }, { retentionDays: 10 })).ignore_lifecycle_statuses).toEqual([])
   })
 
   it('policy senza la chiave → errore che indica la migrazione 1130; completeEventPolicy la aggiunge col default', () => {
@@ -187,17 +247,17 @@ describe('ignore_lifecycle_statuses (D6.3)', () => {
 // ── Revisione A-2 (3): riconoscimento per nome corto/FQDN ────────────────────
 
 describe('match_short_hostname (A-2)', () => {
-  it('DEFAULT è false; booleano obbligatorio; toEventPolicyGQL/applyEventPolicyInput lo espongono come matchShortHostname', () => {
+  it('DEFAULT è false; booleano obbligatorio; toEventPolicyGQL/applyEventPolicyInput lo espongono come matchShortHostname', async () => {
     expect(DEFAULT_EVENT_POLICY.match_short_hostname).toBe(false)
     expect(EVENT_POLICY_V4_KEYS).toEqual(['match_short_hostname'])
     expect(EVENT_POLICY_V4_MIGRATION).toBe('20260910_1070_event_management_tenants')
     expect(() => assertEventPolicy({ ...DEFAULT_EVENT_POLICY, match_short_hostname: 'yes' })).toThrow(/match_short_hostname must be a boolean/)
     expect(() => assertEventPolicy({ ...DEFAULT_EVENT_POLICY, match_short_hostname: 1 })).toThrow(/match_short_hostname must be a boolean/)
     expect(toEventPolicyGQL(DEFAULT_EVENT_POLICY)).toMatchObject({ matchShortHostname: false })
-    expect(applyEventPolicyInput(DEFAULT_EVENT_POLICY, { matchShortHostname: true })).toMatchObject({ match_short_hostname: true, version: 2 })
-    expect(() => applyEventPolicyInput(DEFAULT_EVENT_POLICY, { matchShortHostname: null })).toThrow(/matchShortHostname cannot be null/)
+    expect(await applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { matchShortHostname: true })).toMatchObject({ match_short_hostname: true, version: 2 })
+    await expect(applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { matchShortHostname: null })).rejects.toThrow(/matchShortHostname cannot be null/)
     // assente nell'input → invariata
-    expect(applyEventPolicyInput({ ...DEFAULT_EVENT_POLICY, match_short_hostname: true }, { retentionDays: 10 }).match_short_hostname).toBe(true)
+    expect((await applyEventPolicyInput(T, { ...DEFAULT_EVENT_POLICY, match_short_hostname: true }, { retentionDays: 10 })).match_short_hostname).toBe(true)
   })
 
   it('policy senza match_short_hostname → errore che indica la migrazione 1070 (dopo la 1040 e la 1060 se mancano anche quelle); completeEventPolicy la aggiunge a false', () => {

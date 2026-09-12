@@ -6,7 +6,7 @@ export const GET_MY_TICKETS = gql`
   query MyTickets($status: String, $page: Int, $pageSize: Int) {
     myTickets(status: $status, page: $page, pageSize: $pageSize) {
       items {
-        id type title status priority category
+        id type title status statusCategory statusLabel priority category
         createdAt updatedAt assignedTeam
       }
       total
@@ -17,7 +17,7 @@ export const GET_MY_TICKETS = gql`
 export const GET_MY_TICKET = gql`
   query MyTicket($id: ID!) {
     myTicket(id: $id) {
-      id type title description status priority category
+      id type title description status statusCategory statusLabel priority category
       createdAt updatedAt assignedTeam
       comments {
         id body isInternal authorId authorName authorEmail createdAt

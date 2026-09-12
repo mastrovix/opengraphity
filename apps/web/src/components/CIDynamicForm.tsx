@@ -123,21 +123,36 @@ function FieldRenderer({
         />
       )
 
-    case 'enum':
+    case 'enum': {
+      // Ondata 7 · A-13: un valore già sul CI che il vocabolario non ha più
+      // (dal vivo su c-one: 68 CI con `expired`/`revoked`) NON deve
+      // scomparire. Prima non c'era la sua `<option>`, quindi la tendina
+      // appariva **vuota** e un salvataggio distratto azzerava il campo.
+      // Adesso c'è, disabilitata e marcata «non più nel vocabolario»: il
+      // valore si vede, si capisce perché è fuori posto, e lo si cambia di
+      // proposito.
+      const current = value !== null && value !== undefined ? String(value) : ''
+      const orphan = current !== '' && !field.enumValues.includes(current)
       return (
         <select
           id={id}
-          value={value !== null && value !== undefined ? String(value) : ''}
+          value={current}
           onChange={e => onChange(e.target.value || null)}
           style={{ ...selectBase, borderColor }}
           {...focusHandlers(hasError)}
         >
           <option value="">{t('components.ciDynamicForm.selectOption')}</option>
+          {orphan && (
+            <option value={current} disabled>
+              {t('components.ciDynamicForm.valueOutsideVocabulary', { value: current })}
+            </option>
+          )}
           {field.enumValues.map(opt => (
             <option key={opt} value={opt}>{opt}</option>
           ))}
         </select>
       )
+    }
 
     default: // string
       return (

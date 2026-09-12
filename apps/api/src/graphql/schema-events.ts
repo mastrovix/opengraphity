@@ -233,6 +233,10 @@ export function eventsSDL(): string {
     matchShortHostname:   Boolean!
     """Stati del ciclo di vita del CI (ci.status) per cui un allarme non apre incident e non cambia la salute: esito skipped_lifecycle, l'allarme resta in console con il suo motivo. Default: decommissioned."""
     ignoreLifecycleStatuses: [String!]!
+    """Stati del ciclo di vita che contano come «ritirato»: un CI così non pesa nel calcolo della salute dei servizi (excludedReason lifecycle_decommissioned). Valori iniziali: inactive, decommissioned."""
+    retiredStatuses:      [String!]!
+    """Stati del ciclo di vita che contano come «in manutenzione»: il monitoraggio non ne aggiorna la salute e il componente esce dal calcolo (excludedReason lifecycle_maintenance). Valore iniziale: maintenance."""
+    maintenanceStatuses:  [String!]!
     """Mappa severità → impatto/urgenza, JSON serializzato."""
     severityMap:          String!
   }
@@ -274,8 +278,12 @@ export function eventsSDL(): string {
     stormCooldownMinutes: Int
     retentionDays:        Int
     matchShortHostname:   Boolean
-    """Lista completa (non un delta): sostituisce quella attuale; [] = nessuno stato ignorato. Valori ammessi: gli stati del vocabolario ci_status."""
+    """Lista completa (non un delta): sostituisce quella attuale; [] = nessuno stato ignorato. Valori ammessi: gli stati del vocabolario ci_status di questo cliente."""
     ignoreLifecycleStatuses: [String!]
+    """Lista completa: gli stati che contano come «ritirato». Valori ammessi: gli stati del vocabolario ci_status di questo cliente."""
+    retiredStatuses:      [String!]
+    """Lista completa: gli stati che contano come «in manutenzione». Valori ammessi: gli stati del vocabolario ci_status di questo cliente."""
+    maintenanceStatuses:  [String!]
     severityMap:          String
   }
 

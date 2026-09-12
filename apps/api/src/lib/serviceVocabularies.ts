@@ -13,7 +13,6 @@
  *
  * Progetto: scratchpad service-impact-opengrafo.html (10 set 2026), ondata 1.
  */
-import { CI_LIFECYCLE_DECOMMISSIONED, CI_LIFECYCLE_INACTIVE, type CILifecycleStatus } from './eventVocabularies.js'
 
 /** Salute del servizio (`ServiceMap.health`): gli stessi termini del CI più maintenance e unknown. */
 export const SERVICE_HEALTHS = ['operational', 'degraded', 'down', 'maintenance', 'unknown'] as const
@@ -84,15 +83,14 @@ export type DuringStormMode = (typeof DURING_STORM_MODES)[number]
  * Ciclo di vita del CI per cui un componente NON conta nella mappa (revisione
  * 2 · D6.3): dismesso o fuori servizio. Il monitoraggio non ne aggiorna la
  * salute e nessuno lo «chiude», quindi non rende il servizio `maintenance`:
- * esce dal calcolo con `excludedReason = lifecycle_decommissioned`. È la
- * stessa famiglia di stati che la policy degli allarmi ignora di default.
+ * esce dal calcolo con `excludedReason = lifecycle_decommissioned`.
+ *
+ * Ondata 7 · C-4/A-14: **quali** stati siano non sta più qui. Era la costante
+ * `CI_LIFECYCLE_RETIRED = ['inactive','decommissioned']`, e un cliente che
+ * rinominava `decommissioned` si ritrovava i CI dismessi di nuovo dentro il
+ * calcolo, in silenzio. Adesso è la semantica del tenant:
+ * `resolveCILifecycleSemantics` / `isRetiredLifecycle` in `lib/ciLifecycle.ts`.
  */
-export const CI_LIFECYCLE_RETIRED: readonly CILifecycleStatus[] = [CI_LIFECYCLE_INACTIVE, CI_LIFECYCLE_DECOMMISSIONED]
-
-/** True se il ciclo di vita del CI lo mette fuori dal calcolo della mappa. */
-export function isRetiredLifecycle(status: string | null | undefined): boolean {
-  return status != null && (CI_LIFECYCLE_RETIRED as readonly string[]).includes(status)
-}
 
 /** Soglia di salute da cui il servizio apre un incident (ondata 3; in ondata 1 solo conservata). */
 export const SERVICE_OPEN_INCIDENT_FROM = ['never', 'down', 'degraded'] as const

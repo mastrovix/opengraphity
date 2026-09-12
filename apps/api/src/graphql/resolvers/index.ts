@@ -34,6 +34,7 @@ import { queueStatsResolvers } from './queueStats.js'
 import { syncResolvers } from './sync.js'
 import { auditLog, auditActions } from './auditLog.js'
 import { enumTypeResolvers } from './enumType.js'
+import { domainMatrixResolvers } from './domainMatrix.js'
 import { monitoringResolvers } from './monitoring.js'
 import { approvalResolvers } from './approval.js'
 import { attachmentResolvers } from './attachments.js'
@@ -291,6 +292,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...monitoringResolvers.Query,
       ...syncResolvers.Query,
       ...enumTypeResolvers.Query,
+      ...domainMatrixResolvers.Query,
       ...approvalResolvers.Query,
       ...attachmentResolvers.Query,
       ...globalSearchResolvers.Query,
@@ -337,6 +339,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...notificationRuleResolvers.Mutation,
       ...syncResolvers.Mutation,
       ...enumTypeResolvers.Mutation,
+      ...domainMatrixResolvers.Mutation,
       ...approvalResolvers.Mutation,
       ...attachmentResolvers.Mutation,
       ...commentResolvers.Mutation,

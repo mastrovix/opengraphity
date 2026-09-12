@@ -45,6 +45,7 @@ import {
   Radar,
   HeartPulse,
   Boxes,
+  Table2,
 } from 'lucide-react'
 import { useMe } from '@/hooks/useMe'
 import { isStaff } from '@/lib/roles'
@@ -91,6 +92,7 @@ const CONFIG_ITEM_DEFS = [
   { to: '/settings/ci-types',        labelKey: 'sidebar.ciTypeDesigner',  icon: Layers   },
   { to: '/settings/itil-designer',   labelKey: 'sidebar.itilDesigner',    icon: Settings2 },
   { to: '/settings/enum-designer',   labelKey: 'sidebar.enumDesigner',    icon: Tag      },
+  { to: '/settings/domain-matrices', labelKey: 'sidebar.domainMatrices',  icon: Table2   },
   { to: '/workflow',                  labelKey: 'sidebar.workflowDesigner', icon: Route    },
 ]
 

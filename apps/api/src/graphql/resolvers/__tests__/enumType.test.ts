@@ -16,9 +16,19 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
+import { int as neo4jInt } from 'neo4j-driver'
 import type { GraphQLContext } from '../../../context.js'
 
-vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn() }))
+/**
+ * `toNumber` è quello VERO (non un finto): `deleteEnumType` converte il
+ * `count(...)` con lui, e il difetto che questo test non vedeva era proprio
+ * una conversione fatta a mano (`.toNumber()` su un valore che può essere un
+ * `number` normale). Mockarlo nasconderebbe di nuovo il problema.
+ */
+vi.mock('@opengraphity/neo4j', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('@opengraphity/neo4j')>()
+  return { getSession: vi.fn(), toNumber: orig.toNumber }
+})
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 
 const { enumTypeResolvers, customizeEnumType } = await import('../enumType.js')
@@ -26,7 +36,10 @@ const { getSession } = await import('@opengraphity/neo4j')
 
 const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
 const operator: GraphQLContext = { ...admin, role: 'operator' }
-const rec = (map: Record<string, unknown>) => ({ get: (k: string) => (k in map ? map[k] : null) })
+/** `keys` serve a lib/enumValueUsage.ts, che legge le righe per chiave (B7-2). */
+const rec = (map: Record<string, unknown>) => ({ keys: Object.keys(map), get: (k: string) => (k in map ? map[k] : null) })
+/** Un `count(...)` come lo dà il driver quando i numeri sono «lossless». */
+const int = (n: number) => neo4jInt(n)
 
 const ENUM_ROW = { id: 'e-1', tenantId: 'tenant-1', name: 'ticket_source', label: 'Origine', values: ['portal', 'email'], isSystem: false, scope: 'itil', createdAt: 'c', updatedAt: 'u' }
 
@@ -180,7 +193,7 @@ describe('updateEnumType', () => {
   })
 
   it('enum del tenant → SET con label/values coalesce, tenantId del contesto nei parametri', async () => {
-    const s = fakeSession([{ records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source' })] }, { records: [rec({ ...ENUM_ROW, label: 'Nuova' })] }])
+    const s = fakeSession([{ records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'] })] }, { records: [rec({ ...ENUM_ROW, label: 'Nuova' })] }])
     const out = await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { label: 'Nuova' } }, admin)
     const [cypher, params] = s.txRun.mock.calls[1]!
     expect(cypher).toContain('SET e.label      = coalesce($label, e.label)')
@@ -189,9 +202,109 @@ describe('updateEnumType', () => {
   })
 
   it('la mutation scrive SOLO con tenant_id = $tenantId (mai "system")', async () => {
-    const s = fakeSession([{ records: [rec({ isSystem: true, tenantId: 'tenant-1', name: 'severity' })] }, { records: [rec({ ...ENUM_ROW })] }])
+    const s = fakeSession([
+      { records: [rec({ isSystem: true, tenantId: 'tenant-1', name: 'severity', values: ['x'] })] },
+      { records: [rec({ ...ENUM_ROW })] },
+    ])
     await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-own', input: { values: ['x'] } }, admin)
     expect(s.txRun.mock.calls[1]![0]).not.toContain("'system'")
+  })
+})
+
+/**
+ * Ondata 7 · B7-2 / A-13 — togliere un valore ancora in uso.
+ *
+ * Prima `values` veniva sostituito in blocco: nessun conteggio, e i record
+ * restavano con un valore che il vocabolario non aveva più (dal vivo 68 CI su
+ * c-one). Ora si conta e si rifiuta; per procedere serve una sostituzione
+ * esplicita, applicata nella STESSA transazione.
+ */
+describe('updateEnumType — valore in uso (B7-2)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const OWN = (values: string[]) => rec({ isSystem: false, tenantId: 'tenant-1', name: 'ci_status', values })
+  /** Le righe che `enumValueBindings` e il conteggio si aspettano. */
+  const BINDING = { records: [rec({ label: 'ConfigurationItem', typeName: '__base__', fieldName: 'status' })] }
+  const COUNT   = (value: string, n: number) => ({ records: [rec({ value, n })] })
+  const POLICY  = (raw: string | null) => ({ records: [rec({ raw })] })
+
+  it('valore rimosso e ancora su dei record → rifiutato, con il conteggio e la via d\'uscita; nessuna scrittura', async () => {
+    const s = fakeSession([
+      { records: [OWN(['active', 'decommissioned'])] },
+      BINDING,
+      COUNT('decommissioned', 12),
+      POLICY(null),
+    ])
+    await expectCode(
+      enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active'] } }, admin),
+      'BAD_USER_INPUT',
+      /"decommissioned" è ancora usato da 12 __base__\.status.*replacements/s,
+    )
+    expect(s.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('valore rimosso e citato dalla SEMANTICA del ciclo di vita → rifiutato (è ciò che rende sicura la scelta delle due liste sulla policy)', async () => {
+    fakeSession([
+      { records: [OWN(['active', 'decommissioned'])] },
+      BINDING,
+      COUNT('decommissioned', 0),
+      POLICY(JSON.stringify({ retired_statuses: ['inactive', 'decommissioned'], maintenance_statuses: ['maintenance'], ignore_lifecycle_statuses: [] })),
+    ])
+    await expectCode(
+      enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active'] } }, admin),
+      'BAD_USER_INPUT',
+      /la policy degli allarmi \(retired_statuses\)/,
+    )
+  })
+
+  it('valore rimosso e non usato da nessuno → passa', async () => {
+    const s = fakeSession([
+      { records: [OWN(['active', 'obsoleto'])] },
+      BINDING,
+      { records: [] },
+      POLICY(null),
+      { records: [rec({ ...ENUM_ROW, name: 'ci_status', values: ['active'] })] },
+    ])
+    const out = await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active'] } }, admin)
+    expect(out.values).toEqual(['active'])
+    expect(s.executeWrite).toHaveBeenCalled()
+  })
+
+  it('sostituzione: `to` deve stare fra i valori nuovi e `from` fra quelli rimossi', async () => {
+    fakeSession([{ records: [OWN(['active', 'decommissioned'])] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active'], replacements: [{ from: 'decommissioned', to: 'dismesso' }] } }, admin),
+      'BAD_USER_INPUT',
+      /il valore di sostituzione "dismesso" non è fra i valori nuovi/,
+    )
+    fakeSession([{ records: [OWN(['active', 'decommissioned'])] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active', 'decommissioned'], replacements: [{ from: 'active', to: 'decommissioned' }] } }, admin),
+      'BAD_USER_INPUT',
+      /"active" non è fra i valori che stai togliendo/,
+    )
+  })
+
+  it('sostituzione valida → non conta gli usi, riscrive i record e poi il vocabolario, nella stessa transazione', async () => {
+    const s = fakeSession([
+      { records: [OWN(['active', 'decommissioned'])] },
+      BINDING,                                                   // enumValueBindings, dentro la transazione
+      { records: [rec({ n: 7 })] },                              // SET sui 7 CI
+      POLICY(null),                                              // niente policy da riscrivere
+      { records: [rec({ ...ENUM_ROW, name: 'ci_status', values: ['active', 'dismesso'] })] },
+    ])
+    const out = await enumTypeResolvers.Mutation.updateEnumType(
+      null,
+      { id: 'e-1', input: { values: ['active', 'dismesso'], replacements: [{ from: 'decommissioned', to: 'dismesso' }] } },
+      admin,
+    )
+    expect(out.values).toEqual(['active', 'dismesso'])
+    const setCall = s.txRun.mock.calls.find((c) => String(c[0]).includes('SET n.status = $to'))
+    expect(setCall).toBeDefined()
+    expect(setCall![1]).toMatchObject({ tenantId: 'tenant-1', from: 'decommissioned', to: 'dismesso' })
+    // il vocabolario si scrive DOPO i record
+    const enumWriteIdx = s.txRun.mock.calls.findIndex((c) => String(c[0]).includes('SET e.label'))
+    expect(enumWriteIdx).toBeGreaterThan(s.txRun.mock.calls.indexOf(setCall!))
   })
 })
 
@@ -276,28 +389,75 @@ describe('deleteEnumType', () => {
     await expectCode(enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-sys' }, admin), 'NOT_FOUND')
     const [cypher, params] = s.txRun.mock.calls[0]!
     expect(cypher).toContain('MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId})')
-    expect(cypher).not.toContain("'system'")
+    // Il vocabolario da cancellare si cerca SOLO nel tenant; `'system'` compare
+    // adesso in una sola riga, quella che legge il vocabolario SPEDITO con lo
+    // stesso nome (ondata 7 · B7-2: cancellare la copia del cliente lo rimette
+    // in gioco, e non deve far sparire in silenzio i valori suoi ancora in uso).
+    expect(cypher).toContain("OPTIONAL MATCH (shipped:EnumTypeDefinition {name: e.name, tenant_id: 'system'})")
+    expect(cypher.match(/'system'/g)).toHaveLength(1)
     expect(params).toEqual({ id: 'e-sys', tenantId: 'tenant-1' })
     expect(s.executeWrite).not.toHaveBeenCalled()
   })
 
   it('enum del tenant marcato is_system → ValidationError, nessuna DELETE', async () => {
-    const s = fakeSession([{ records: [rec({ isSystem: true, usageCount: { toNumber: () => 0 } })] }])
+    const s = fakeSession([{ records: [rec({ isSystem: true, usageCount: 0 })] }])
     await expectCode(enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-1' }, admin), 'BAD_USER_INPUT', /System enum types cannot be deleted/)
     expect(s.executeWrite).not.toHaveBeenCalled()
   })
 
   it('enum in uso da campi → ValidationError con conteggio', async () => {
-    const s = fakeSession([{ records: [rec({ isSystem: false, usageCount: { toNumber: () => 2 } })] }])
+    const s = fakeSession([{ records: [rec({ isSystem: false, usageCount: int(2) })] }])
     await expectCode(enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-1' }, admin), 'BAD_USER_INPUT', /Enum in use by 2 fields/)
     expect(s.executeWrite).not.toHaveBeenCalled()
   })
 
-  it('enum libero del tenant → DETACH DELETE scoped per tenant', async () => {
-    const s = fakeSession([{ records: [rec({ isSystem: false, usageCount: { toNumber: () => 0 } })] }])
+  /**
+   * Il percorso RIUSCITO, nelle DUE forme in cui `count(...)` può arrivare.
+   * Prima il conteggio veniva convertito a mano con `.toNumber()`: con un
+   * `number` normale la cancellazione moriva con «get(...).toNumber is not a
+   * function» su QUALUNQUE vocabolario, anche uno non usato da nessuno — e i
+   * test non se ne accorgevano perché fabbricavano solo la forma `Integer`.
+   */
+  it.each([['number semplice', 0 as unknown], ['Integer del driver', int(0) as unknown]])(
+    'enum libero del tenant (%s) → DETACH DELETE scoped per tenant',
+    async (_shape, usageCount) => {
+      const s = fakeSession([{ records: [rec({ isSystem: false, usageCount, name: 'ticket_source', values: ['portal'], shippedValues: ['portal'] })] }])
+      await expect(enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-1' }, admin)).resolves.toBe(true)
+      const [cypher, params] = s.txRun.mock.calls[1]!
+      expect(cypher).toContain('MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId}) DETACH DELETE e')
+      expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1' })
+    },
+  )
+
+  /**
+   * Ondata 7 · B7-2. `usageCount` conta solo i campi agganciati a QUESTO nodo,
+   * e dal vivo i campi condivisi sono agganciati ai nodi di un altro cliente
+   * (C-6): cancellare la copia del cliente tornava quindi a quello spedito
+   * **in silenzio**, facendo sparire dai menu i valori che il cliente aveva
+   * aggiunto e lasciando i record su valori che nessun vocabolario ha più —
+   * lo stesso difetto A-13, da un'altra porta.
+   */
+  it('la copia del tenant con valori SUOI ancora in uso → rifiutata, dicendo quali valori e dove', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, usageCount: 0, name: 'ci_status', values: ['active', 'dismesso'], shippedValues: ['active'] })] },
+      { records: [rec({ label: 'ConfigurationItem', typeName: '__base__', fieldName: 'status' })] },   // enumValueBindings
+      { records: [rec({ value: 'dismesso', n: int(7) })] },                                            // conteggio
+      { records: [rec({ raw: null })] },                                                               // policy
+    ])
+    await expectCode(enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-1' }, admin), 'BAD_USER_INPUT',
+      /riporterebbe a quello spedito col prodotto \(active\).*"dismesso" \(7 __base__\.status\)/s)
+    expect(s.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('la copia del tenant i cui valori extra NON sono in uso → si cancella (annullare la personalizzazione resta possibile)', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, usageCount: 0, name: 'ci_status', values: ['active', 'dismesso'], shippedValues: ['active'] })] },
+      { records: [rec({ label: 'ConfigurationItem', typeName: '__base__', fieldName: 'status' })] },
+      { records: [] },                                                                                 // nessun record con `dismesso`
+      { records: [rec({ raw: null })] },
+      { records: [] },                                                                                 // la DELETE
+    ])
     await expect(enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-1' }, admin)).resolves.toBe(true)
-    const [cypher, params] = s.txRun.mock.calls[1]!
-    expect(cypher).toContain('MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId}) DETACH DELETE e')
-    expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1' })
+    expect(s.executeWrite).toHaveBeenCalled()
   })
 })

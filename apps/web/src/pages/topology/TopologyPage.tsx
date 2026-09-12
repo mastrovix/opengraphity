@@ -393,7 +393,7 @@ export function TopologyPage() {
             {/* Fields */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <DetailField label={t('pages.cmdb.status')}>
-                <StatusBadge status={selectedNode.status} />
+                <StatusBadge status={selectedNode.status} statuses={baseEnums.loading || baseEnums.error ? null : baseEnums.statuses} />
               </DetailField>
 
               {selectedNode.health && (
@@ -658,8 +658,12 @@ function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxPro
   )
 }
 
-/** Stato CI colorato: palette unica in lib/ciEnums (CI_STATUS_STYLE). */
-function StatusBadge({ status }: { status: string }) {
-  const s = ciStatusStyle(status)
+/**
+ * Stato CI colorato: palette unica in lib/ciEnums (CI_STATUS_STYLE). `statuses`
+ * è il vocabolario `ci_status` del cliente (ondata 7 · D-15): uno stato suo
+ * senza colore assegnato è neutro, uno fuori vocabolario resta rosso.
+ */
+function StatusBadge({ status, statuses }: { status: string; statuses: readonly string[] | null }) {
+  const s = ciStatusStyle(status, statuses)
   return <Pill bg={s.bg} color={s.color} radius={10} style={{ fontSize: 'var(--font-size-body)' }}>{status}</Pill>
 }

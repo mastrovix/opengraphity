@@ -38,6 +38,7 @@ import { getSession } from '@opengraphity/neo4j'
 import { USER_ROLES, type Tenant } from '@opengraphity/types'
 import { seedNotificationRules } from '../lib/seedNotificationRules.js'
 import { seedSystemEnumTypes } from '../lib/seedEnumTypes.js'
+import { seedDomainMatrices } from '../lib/domainMatrixSeed.js'
 import { DEFAULT_EVENT_POLICY_JSON } from '../lib/eventPolicy.js'
 import { DEFAULT_TENANT_PLAN, DEFAULT_TENANT_TIMEZONE, PLAN_SETTINGS } from '../lib/tenantPlans.js'
 import {
@@ -371,6 +372,15 @@ async function provisionNeo4j(a: Args): Promise<void> {
     //     copie sono le personalizzazioni e nascono da `customizeEnumType`.
     await seedSystemEnumTypes(session)
     console.log(`  ✓ Vocabolari spediti verificati su tenant_id='system' (nessuna copia per ${slug})`)
+
+    // 6e. Matrici di dominio (ondata 7): priorità = impatto × urgenza,
+    //     criticità del servizio → impatto, severità dell'allarme, tipo di
+    //     change × fascia di rischio, severità dell'import. Sono dato PER
+    //     TENANT — due clienti hanno matrici diverse — e nascono col seme del
+    //     prodotto, così il primo giorno il comportamento è quello di sempre.
+    //     Stessa funzione della migrazione 20260917_1800: una sorgente sola.
+    const seededMatrices = await seedDomainMatrices(session, slug)
+    console.log(`  ✓ Matrici di dominio create per ${slug}: ${seededMatrices.length === 0 ? 'nessuna (erano già presenti)' : seededMatrices.join(', ')}`)
 
     // 6f/6g. Verify shared CITypeDefinitions (scope='base' / 'itil')
     for (const [scope, seedScript] of [['base', 'seed-metamodel.ts'], ['itil', 'seed-itil-metamodel.ts']] as const) {

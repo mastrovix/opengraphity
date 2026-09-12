@@ -5,7 +5,7 @@
  * non pesa, salute sconosciuta) → degradato, punteggio 41. I risultati
  * includono `__typename` perché la cache Apollo 4 lo aggiunge a ogni query.
  */
-import { GET_SERVICE_MAPS } from '@/graphql/queries'
+import { GET_SERVICE_MAPS, GET_CRITICAL_SERVICE_CRITICALITIES } from '@/graphql/queries'
 import type { GqlMock } from '@/test/utils'
 
 export const SERVICE = { __typename: 'ServiceRef', id: 'ba-1', name: 'Enterprise Billing', criticality: 'business_critical', ownerGroup: { __typename: 'Team', id: 't1', name: 'Billing Ops' } }
@@ -109,6 +109,23 @@ export function serviceMapsMock(items: Record<string, unknown>[] = []): GqlMock 
   return {
     request: { query: GET_SERVICE_MAPS, variables: () => true },
     result: { data: { serviceMaps: { __typename: 'ServiceMapPage', total: items.length, counts: COUNTS, items } } },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  }
+}
+
+/**
+ * `criticalServiceCriticalities` (ondata 7 · C-7): quali criticità valgono
+ * «servizio critico» lo dice il SERVER, leggendo la matrice `service_impact`
+ * del cliente. Prima erano due valori scritti in
+ * `CriticalServicesBanner.tsx`, quindi una criticità aggiunta dall'admin non
+ * compariva mai nel banner. Ogni pagina che monta quel banner ha bisogno di
+ * questo mock: senza, il banner mostra il suo errore (fail-loud), che è il
+ * comportamento giusto ma non quello che quei test misurano.
+ */
+export function criticalCriticalitiesMock(values: readonly string[] = ['mission_critical', 'business_critical']): GqlMock {
+  return {
+    request: { query: GET_CRITICAL_SERVICE_CRITICALITIES, variables: () => true },
+    result: { data: { criticalServiceCriticalities: [...values] } },
     maxUsageCount: Number.POSITIVE_INFINITY,
   }
 }

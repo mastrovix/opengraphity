@@ -14,9 +14,11 @@
  * (`customizeEnumType`). Una copia con lo stesso nome vince in lettura per chi
  * la possiede, e solo per lui (`lib/enumScope.ts`).
  */
-import type { Session } from 'neo4j-driver'
+import type { Queryable } from '@opengraphity/neo4j'
 import { v4 as uuidv4 } from 'uuid'
-import { CI_LIFECYCLE_STATUSES } from './eventVocabularies.js'
+import { CI_LIFECYCLE_STATUSES, EVENT_SEVERITIES } from './eventVocabularies.js'
+import { SERVICE_CRITICALITIES } from './serviceVocabularies.js'
+import { IMPORT_SEVERITY_VALUES } from './domainMatrixSeed.js'
 import { SYSTEM_TENANT } from './enumScope.js'
 
 interface SystemEnum {
@@ -50,17 +52,30 @@ export const SYSTEM_ENUMS: readonly SystemEnum[] = [
   { name: 'os',                      label: 'OS',                     values: ['Windows', 'Linux'],                               scope: 'cmdb' },
   { name: 'instance_type',           label: 'Instance Type',          values: ['PostgreSQL', 'Oracle', 'SQL Server'],             scope: 'cmdb' },
   { name: 'certificate_type',        label: 'Certificate Type',       values: ['public', 'external'],                             scope: 'cmdb' },
+  // ── Ondata 7: i vocabolari che le matrici di dominio presuppongono ────────
+  // Erano liste nel codice, quindi il cliente non poteva rinominarli e il
+  // codice ripiegava in silenzio su `medium`/`normal` quando non riconosceva
+  // un valore. Ora sono vocabolari veri: `lib/domainMatrix.ts` li legge con
+  // `domainVocabulary` (la copia del cliente vince), e le matrici di
+  // `Impostazioni → Matrici di dominio` li usano come tendine.
+  // Il perché di ciascuno è in lib/domainMatrixSeed.ts.
+  { name: 'urgency',                 label: 'Urgency',                values: ['low', 'medium', 'high'],                          scope: 'shared' },
+  { name: 'risk_band',               label: 'Risk Band',              values: ['low', 'medium', 'high'],                          scope: 'shared' },
+  { name: 'event_severity',          label: 'Event Severity',         values: [...EVENT_SEVERITIES],                              scope: 'shared' },
+  { name: 'service_criticality',     label: 'Service Criticality',    values: [...SERVICE_CRITICALITIES],                         scope: 'cmdb' },
+  { name: 'import_severity',         label: 'Import Severity',        values: IMPORT_SEVERITY_VALUES,                             scope: 'shared' },
 ]
 
 /**
  * Semina i vocabolari spediti su `tenant_id = 'system'`. Idempotente, e NON
  * per tenant: non prende uno slug perché non ne crea più copie.
  */
-export async function seedSystemEnumTypes(session: Session): Promise<void> {
+export async function seedSystemEnumTypes(session: Queryable): Promise<void> {
   const now = new Date().toISOString()
   for (const e of SYSTEM_ENUMS) {
-    await session.executeWrite((tx) =>
-      tx.run(`
+    // `Queryable` (sessione **o** transazione) perché la chiamano sia
+    // l'onboarding sia una migrazione, che riceve una transazione gestita.
+    await session.run(`
         MERGE (e:EnumTypeDefinition {name: $name, tenant_id: $tenantId})
         ON CREATE SET
           e.id         = $id,
@@ -81,7 +96,6 @@ export async function seedSystemEnumTypes(session: Session): Promise<void> {
         values:   e.values,
         scope:    e.scope,
         now,
-      }),
-    )
+    })
   }
 }

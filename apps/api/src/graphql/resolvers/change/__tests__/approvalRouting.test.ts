@@ -16,8 +16,15 @@ vi.mock('../../ci-utils.js', () => ({
 }))
 
 vi.mock('../../../../lib/logger.js', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  // `child` serve perché scoring.ts ora importa lib/domainMatrix.js, che si
+  // prende un logger figlio al caricamento del modulo (ondata 7).
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
+
+// Ondata 7: la priorità della change esce dalla matrice del cliente. Qui
+// interessa la ROUTE, non la priorità: il doppio risponde con la matrice di
+// fabbrica e i vocabolari spediti (lib/__tests__/domainMatrixFake.ts).
+vi.mock('../../../../lib/domainMatrix.js', () => import('../../../../lib/__tests__/domainMatrixFake.js'))
 
 vi.mock('../../../../lib/workflowHelpers.js', () => ({
   getInitialStepName: vi.fn().mockResolvedValue('assessment'),
@@ -62,7 +69,7 @@ describe('computeAggregateRisk (integrazione con la route)', () => {
   })
 
   it('scrive aggregate_risk_score = max e approval_route derivata (80 → high)', async () => {
-    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: 80 } as never)
+    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: 80, changeType: 'normal' } as never)
 
     await computeAggregateRisk(mockTx as never, 'chg-1', 'tenant-1')
 
@@ -74,17 +81,17 @@ describe('computeAggregateRisk (integrazione con la route)', () => {
   })
 
   it('45 → medium, 20 → low', async () => {
-    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: 45 } as never)
+    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: 45, changeType: 'normal' } as never)
     await computeAggregateRisk(mockTx as never, 'chg-1', 'tenant-1')
     expect((mockTx.run.mock.calls[0]![1] as Record<string, unknown>)['route']).toBe('medium')
 
-    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: 20 } as never)
+    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: 20, changeType: 'normal' } as never)
     await computeAggregateRisk(mockTx as never, 'chg-1', 'tenant-1')
     expect((mockTx.run.mock.calls[1]![1] as Record<string, unknown>)['route']).toBe('low')
   })
 
   it('nessun risk score sui CI (maxRisk null) → 0 → low', async () => {
-    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: null } as never)
+    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: null, changeType: 'normal' } as never)
 
     await computeAggregateRisk(mockTx as never, 'chg-1', 'tenant-1')
 

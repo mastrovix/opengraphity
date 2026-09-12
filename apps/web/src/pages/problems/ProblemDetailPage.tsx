@@ -41,8 +41,8 @@ import { downloadPdf } from '@/lib/downloadPdf'
 import { FileDown, Loader2, Trash2 } from 'lucide-react'
 import { DetailField } from '@/components/ui/DetailField'
 import { Input, Select, Textarea } from '@/components/ui/FormControls'
-import { Pill } from '@/components/ui/Pill'
-import { formatDate, timeAgo, PRIORITY_COLOR, STATUS_BG, STATUS_FG } from './ProblemCard'
+import { PhaseBadge } from '@/components/ui/badges'
+import { formatDate, timeAgo, PRIORITY_COLOR } from './ProblemCard'
 import { colors, lookupOrError } from '@/lib/tokens'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -230,7 +230,7 @@ export function ProblemDetailPage() {
 
   // Metadata dei passi del workflow problem: serve lo SCOPO del passo di
   // arrivo di una transizione (ondata 4 · A4-3), non il suo nome.
-  const { purposeOf: wfPurposeOf } = useWorkflowSteps('problem')
+  const { purposeOf: wfPurposeOf, categoryOf: wfCategoryOf, labelFor: wfLabelFor } = useWorkflowSteps('problem')
 
   const problem         = data?.problem
   const users           = usersData?.users ?? []
@@ -360,9 +360,12 @@ export function ProblemDetailPage() {
                 <span style={{ fontWeight: 600, color: lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)') }}>{problem.priority}</span>
               } />
               <DetailField label={t('detail.workflowStep')} value={
-                <Pill bg={lookupOrError(STATUS_BG, problem.status, 'STATUS_BG', 'var(--color-border-light)')} color={lookupOrError(STATUS_FG, problem.status, 'STATUS_FG', 'var(--color-slate)')} radius={4} style={{ fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
-                  {problem.workflowInstance?.currentStep.replace(/_/g, ' ') ?? problem.status.replace(/_/g, ' ')}
-                </Pill>
+                <PhaseBadge
+                  phase={problem.workflowInstance?.currentStep ?? problem.status}
+                  label={wfLabelFor(problem.workflowInstance?.currentStep ?? problem.status) || (problem.workflowInstance?.currentStep ?? problem.status).replace(/_/g, ' ')}
+                  category={wfCategoryOf(problem.workflowInstance?.currentStep ?? problem.status)}
+                  style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, textTransform: 'none' }}
+                />
               } />
 
               {/* Team assignment */}

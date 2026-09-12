@@ -12,7 +12,8 @@
 import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { GET_BASE_CI_TYPE } from '@/graphql/queries'
-import { lookupStyle, palette } from '@/lib/tokens'
+import { palette } from '@/lib/tokens'
+import { domainValueStyle } from '@/lib/domainStyle'
 
 interface BaseCITypeData {
   baseCIType: {
@@ -75,8 +76,17 @@ export const CI_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   decommissioned: { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' },
 }
 
-export function ciStatusStyle(status: string): { bg: string; color: string } {
-  return lookupStyle(CI_STATUS_STYLE, status, 'CI_STATUS_STYLE')
+/**
+ * Ondata 7 · D-15: `vocabulary` sono gli stati ammessi per QUESTO cliente
+ * (`useCIBaseEnums().statuses`, o `null` mentre non si sanno). Uno stato del
+ * vocabolario senza colore assegnato — `expired`, `revoked`, o un valore che
+ * il cliente ha aggiunto — è normale e prende lo stile neutro; uno stato
+ * **fuori** dal vocabolario resta rosso, perché quello è un record da
+ * sistemare. Prima erano lo stesso caso, e ogni riga di lista finiva con una
+ * pastiglia rossa e un `console.error`.
+ */
+export function ciStatusStyle(status: string, vocabulary: readonly string[] | null = null): { bg: string; color: string } {
+  return domainValueStyle(CI_STATUS_STYLE, status, 'CI_STATUS_STYLE', vocabulary)
 }
 
 // ── Etichette i18n dei tipi CI "storici" ─────────────────────────────────────

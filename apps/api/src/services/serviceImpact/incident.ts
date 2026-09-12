@@ -62,9 +62,12 @@ import type { ServiceIncidentOpenedPayload } from '@opengraphity/types'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
+import { ValidationError } from '../../lib/errors.js'
 import { withRedisLock, type RedisLockOptions } from '../../lib/redisLock.js'
 import { getSharedRedis } from '../../lib/bullmq.js'
-import { derivePriority, type ImpactUrgency } from '../../lib/priority.js'
+import { derivePriority } from '../../lib/priority.js'
+import { assertDomainValue, domainVocabulary, loadDomainMatrix } from '../../lib/domainMatrix.js'
+import { resolveDomainValue } from '../../lib/domainValue.js'
 import { serviceIncidentsOpenedTotal, serviceIncidentsResolvedTotal } from '../../middleware/metrics.js'
 import { SERVICE_MAX_CAUSES, type ServiceHealth, type ServiceImpactRules, type ServiceMapStatus, type ServiceOpenIncidentFrom } from '../../lib/serviceVocabularies.js'
 import { MONITORING_ACTOR, monitoringContext, toStr } from '../events/shared.js'
@@ -105,35 +108,89 @@ export function meetsServiceOpenThreshold(health: ServiceHealth, openFrom: Servi
 }
 
 /**
- * Impatto dell'incident dalla criticità del servizio (BusinessApplication.criticality,
- * vocabolario del metamodello in scripts/seed-metamodel.ts): i due livelli
- * "critici" valgono impatto alto, gli altri medio. Una criticità assente o
- * fuori vocabolario (CI importato da una discovery, campo mai compilato) vale
- * medio CON un warning: è un dato incompleto, non un errore di programmazione,
- * ma non deve passare inosservato.
+ * Impatto dell'incident dalla criticità del servizio
+ * (`BusinessApplication.criticality`), dalla matrice `service_impact` **del
+ * cliente** (ondata 7 · C-7).
+ *
+ * ## Com'era, e perché era il difetto più silenzioso dell'area
+ * `IMPACT_BY_CRITICALITY` aveva quattro chiavi scritte qui e
+ * `serviceImpactOf` ripiegava su `DEFAULT_SERVICE_IMPACT = 'medium'` con un
+ * `log.warn` che nessun utente vede. Il vocabolario della criticità è però
+ * **del cliente**: aggiungere `tier_0`, o rinominare `mission_critical` in
+ * `critica`, faceva nascere l'incident del servizio a impatto medio — quindi
+ * P3 invece di P1/P2 — e sbagliava di conseguenza la SLA selezionata per
+ * severità. Il vecchio commento lo giustificava come «dato incompleto, non un
+ * errore di programmazione»: con il Dizionario aperto alle rinomine quella
+ * lettura non regge più, perché il valore nuovo è una configurazione
+ * legittima, non un campo mai compilato.
+ *
+ * ## Com'è adesso
+ * Due casi, distinti e nessuno silenzioso:
+ *  - criticità **assente** (CI importato da una discovery, campo mai
+ *    compilato): è un dato incompleto, e resta un errore dell'apertura con un
+ *    messaggio che dice quale servizio e cosa compilare — perché aprire un
+ *    incident con un impatto inventato è peggio che non aprirlo e ritentare;
+ *  - criticità **presente**: validata contro il vocabolario
+ *    `service_criticality` del cliente e tradotta dalla sua matrice. Una cella
+ *    che manca nomina la combinazione e la pagina dove completarla.
+ *
+ * Siamo sul cammino della valutazione di una mappa, che gira in un job: un
+ * errore qui lascia il job nella coda dei falliti, rigiocabile — la stessa
+ * regola dell'ingest degli allarmi (ondata 4).
  */
-export const IMPACT_BY_CRITICALITY: Readonly<Record<string, ImpactUrgency>> = {
-  mission_critical:     'high',
-  business_critical:    'high',
-  business_operational: 'medium',
-  office_productivity:  'medium',
+export async function serviceImpactOf(
+  tenantId: string, criticality: string | null | undefined, ctx: { mapId: string; serviceName?: string },
+): Promise<string> {
+  if (criticality == null || criticality === '') {
+    throw new ValidationError(
+      `Il servizio ${ctx.serviceName ? `"${ctx.serviceName}" ` : ''}(mappa ${ctx.mapId}) non ha una criticità: ` +
+      `compila «Criticità» sull'applicazione di business per poter aprire un incident di servizio con l'impatto giusto. ` +
+      `Ammessi: ${(await domainVocabulary(tenantId, 'service_criticality')).join(', ')}.`,
+    )
+  }
+  const c = await assertDomainValue(tenantId, 'service_criticality', criticality)
+  return resolveDomainValue(tenantId, 'service_impact', c)
 }
-export const DEFAULT_SERVICE_IMPACT: ImpactUrgency = 'medium'
 
-export function serviceImpactOf(criticality: string | null, ctx: { tenantId: string; mapId: string }): ImpactUrgency {
-  const known = criticality == null ? undefined : IMPACT_BY_CRITICALITY[criticality]
-  if (known) return known
-  log.warn({ ...ctx, criticality }, `Service criticality ${JSON.stringify(criticality)} is absent or unknown: incident impact falls back to ${DEFAULT_SERVICE_IMPACT}`)
-  return DEFAULT_SERVICE_IMPACT
+/**
+ * Le criticità che la matrice del cliente traduce nell'impatto più alto: è la
+ * definizione di «servizio critico» per il banner della pagina Servizi, che
+ * prima la copiava a mano nel web (`CriticalServicesBanner.tsx`) e la mandava
+ * al server come filtro — quindi un servizio con una criticità nuova non
+ * compariva mai nel banner, in silenzio.
+ *
+ * «Più alto» si legge dal vocabolario `impact`: l'ULTIMO valore, perché i
+ * vocabolari di scala del prodotto sono ordinati dal più basso al più alto
+ * (`impact = [low, medium, high]`), ed è l'ordine che l'admin vede e riordina
+ * nel Dizionario.
+ */
+export async function criticalServiceCriticalities(tenantId: string): Promise<string[]> {
+  const impacts = await domainVocabulary(tenantId, 'impact')
+  const highest = impacts[impacts.length - 1]
+  if (highest === undefined) {
+    throw new Error(`Vocabolario "impact" del cliente ${tenantId}: vuoto, non c'è un impatto «più alto»`)
+  }
+  const matrix = await loadDomainMatrix(tenantId, 'service_impact')
+  return Object.keys(matrix.entries).filter((k) => matrix.entries[k] === highest)
 }
 
-/** Urgenza dell'incident dalla salute del servizio. Una salute che non apre incident qui è un errore di programmazione. */
-export const URGENCY_BY_HEALTH: Readonly<Partial<Record<ServiceHealth, ImpactUrgency>>> = { down: 'high', degraded: 'medium' }
+/**
+ * Urgenza dell'incident dalla salute del servizio. La salute NON è un
+ * vocabolario del cliente (`SERVICE_HEALTHS` è un concetto del prodotto: la
+ * mappa la calcola), quindi questa tabella resta nel codice — e non esiste
+ * una matrice `service_urgency` nel vocabolario chiuso di
+ * `DOMAIN_MATRIX_KINDS`. Limite dichiarato nel rapporto dell'ondata 7.
+ *
+ * Ciò che l'ondata 7 sistema è il lato d'**uscita**: i due valori sono del
+ * vocabolario `urgency` del cliente e vengono validati, così chi lo rinomina
+ * ottiene un errore che lo dice invece di un'urgenza fantasma sull'incident.
+ */
+export const URGENCY_BY_HEALTH: Readonly<Partial<Record<ServiceHealth, string>>> = { down: 'high', degraded: 'medium' }
 
-export function serviceUrgencyOf(health: ServiceHealth): ImpactUrgency {
+export async function serviceUrgencyOf(tenantId: string, health: ServiceHealth): Promise<string> {
   const urgency = URGENCY_BY_HEALTH[health]
   if (!urgency) throw new Error(`Service health "${health}" has no incident urgency: only down and degraded open an incident`)
-  return urgency
+  return assertDomainValue(tenantId, 'urgency', urgency)
 }
 
 // ── Testi ────────────────────────────────────────────────────────────────────
@@ -492,8 +549,8 @@ async function openServiceIncident(session: Session, input: ServiceIncidentInput
   let incident: { id: string; number: string } | null = null
   let technical: TechnicalIncidentRef[] = []
   let severity: string | null = null
-  let impact: ImpactUrgency | null = null
-  let urgency: ImpactUrgency | null = null
+  let impact: string | null = null
+  let urgency: string | null = null
   if (orphan) {
     // L'incident esiste già (creato al giro precedente) ma non è collegato:
     // `findServiceIncident` cerca solo via IMPACTS_SERVICE e non l'ha visto.
@@ -508,9 +565,9 @@ async function openServiceIncident(session: Session, input: ServiceIncidentInput
   }
 
   if (!incident) {
-    impact  = serviceImpactOf(input.criticality, { tenantId, mapId })
-    urgency = serviceUrgencyOf(health)
-    severity = derivePriority(impact, urgency)
+    impact  = await serviceImpactOf(tenantId, input.criticality, { mapId, serviceName: input.serviceName })
+    urgency = await serviceUrgencyOf(tenantId, health)
+    severity = await derivePriority(tenantId, impact, urgency)
     technical = await findTechnicalIncidents(session, tenantId, causeIds, info)
     incident = await (await incidents()).createIncident({
       title:         serviceIncidentTitle(input.serviceName, health),

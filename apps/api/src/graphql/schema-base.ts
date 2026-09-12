@@ -1,5 +1,6 @@
 import { cmdbSDL } from './schema-common.js'
 import { enumTypeSDL } from './schema-enum.js'
+import { domainMatrixSDL } from './schema-domainMatrix.js'
 import { incidentSDL } from './schema-incident.js'
 import { problemSDL } from './schema-problem.js'
 import { changeSDL } from './schema-change.js'
@@ -481,6 +482,7 @@ export function buildBaseSDL(): string {
   ${monitoringSDL()}
   ${cmdbSDL()}
   ${enumTypeSDL()}
+  ${domainMatrixSDL()}
   ${approvalSDL()}
   ${attachmentsSDL()}
   ${commentsSDL()}

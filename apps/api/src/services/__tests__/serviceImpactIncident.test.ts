@@ -38,6 +38,11 @@ const incidentService = vi.hoisted(() => ({
 }))
 const workflow = vi.hoisted(() => ({ getAvailableTransitions: vi.fn().mockResolvedValue([]) }))
 
+// Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
+// dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
+// fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
+
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
 vi.mock('../../middleware/metrics.js', () => ({
   serviceIncidentsOpenedTotal: { inc: vi.fn() }, serviceIncidentsResolvedTotal: { inc: vi.fn() },
@@ -159,23 +164,56 @@ describe('soglia, impatto, urgenza, testi', () => {
     }
   })
 
-  it('impatto dalla criticità (mission/business critical → high, gli altri → medium); assente o ignota → medium con warning', () => {
-    const ctx = { tenantId: 't1', mapId: 'map-1' }
-    expect(serviceImpactOf('mission_critical', ctx)).toBe('high')
-    expect(serviceImpactOf('business_critical', ctx)).toBe('high')
-    expect(serviceImpactOf('business_operational', ctx)).toBe('medium')
-    expect(serviceImpactOf('office_productivity', ctx)).toBe('medium')
-    expect(log.warn).not.toHaveBeenCalled()
-    expect(serviceImpactOf(null, ctx)).toBe('medium')
-    expect(serviceImpactOf('boh', ctx)).toBe('medium')
-    expect(log.warn).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(log.warn).mock.calls[0]![1]).toContain('falls back to medium')
+  // CONTRATTO RINEGOZIATO (ondata 7 · C-7). Questo punto pretendeva
+  // `serviceImpactOf(null) === 'medium'` e `serviceImpactOf('boh') === 'medium'`
+  // con un solo `log.warn`: era il difetto, non una garanzia. Il Dizionario
+  // permette di aggiungere o rinominare le criticità, quindi `boh` può essere
+  // una configurazione legittima — e l'incident del servizio nasceva P3 invece
+  // di P1/P2, con la SLA sbagliata di conseguenza, senza che nessun utente
+  // vedesse niente. Ora: la criticità si valida contro il vocabolario del
+  // cliente e si traduce con la sua matrice `service_impact`; l'assenza e il
+  // valore fuori vocabolario sono errori che nominano il servizio e la strada,
+  // e il job resta nella coda dei falliti (rigiocabile).
+  it('impatto dalla criticità, dalla matrice del cliente (mission/business critical → high, gli altri → medium)', async () => {
+    const ctx = { mapId: 'map-1', serviceName: 'Enterprise Billing' }
+    expect(await serviceImpactOf('t1', 'mission_critical', ctx)).toBe('high')
+    expect(await serviceImpactOf('t1', 'business_critical', ctx)).toBe('high')
+    expect(await serviceImpactOf('t1', 'business_operational', ctx)).toBe('medium')
+    expect(await serviceImpactOf('t1', 'office_productivity', ctx)).toBe('medium')
   })
 
-  it('urgenza dalla salute: giù → high, degradato → medium; una salute che non apre incident è un errore', () => {
-    expect(serviceUrgencyOf('down')).toBe('high')
-    expect(serviceUrgencyOf('degraded')).toBe('medium')
-    expect(() => serviceUrgencyOf('operational')).toThrow(/no incident urgency/)
+  it('criticità ASSENTE: errore che nomina il servizio e dice cosa compilare, non un «medium» silenzioso', async () => {
+    const err = await serviceImpactOf('t1', null, { mapId: 'map-1', serviceName: 'Enterprise Billing' })
+      .then(() => null, (e: unknown) => e as Error)
+    expect(err!.message).toContain('Enterprise Billing')
+    expect(err!.message).toMatch(/non ha una criticità/)
+    expect(err!.message).toMatch(/mission_critical, business_critical/)
+  })
+
+  it('criticità FUORI vocabolario: errore che elenca gli ammessi (prima era «medium» con un log)', async () => {
+    await expect(serviceImpactOf('t1', 'boh', { mapId: 'map-1' }))
+      .rejects.toThrow(/service_criticality: "boh" non è nel vocabolario di questo cliente/)
+  })
+
+  it('criticità del vocabolario ma SENZA cella nella matrice: nomina la combinazione', async () => {
+    // Il caso che il cliente crea aggiungendo un valore e dimenticando la
+    // matrice: si dice, non si ripiega.
+    const { FAKE_VOCABULARIES } = await import('../../lib/__tests__/domainMatrixFake.js')
+    const vocab = FAKE_VOCABULARIES as Record<string, readonly string[]>
+    const original = [...vocab['service_criticality']!]
+    vocab['service_criticality'] = [...original, 'tier_0']
+    try {
+      await expect(serviceImpactOf('t1', 'tier_0', { mapId: 'map-1' }))
+        .rejects.toThrow(/Matrice "service_impact".*service_criticality="tier_0"/s)
+    } finally {
+      vocab['service_criticality'] = original
+    }
+  })
+
+  it('urgenza dalla salute: giù → high, degradato → medium; una salute che non apre incident è un errore', async () => {
+    expect(await serviceUrgencyOf('t1', 'down')).toBe('high')
+    expect(await serviceUrgencyOf('t1', 'degraded')).toBe('medium')
+    await expect(serviceUrgencyOf('t1', 'operational')).rejects.toThrow(/no incident urgency/)
   })
 
   it('titolo e descrizione in italiano, con punteggio, cause e percorso', () => {

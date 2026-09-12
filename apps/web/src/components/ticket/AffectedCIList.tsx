@@ -12,7 +12,8 @@ import { Input } from '@/components/ui/FormControls'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { ciPath } from '@/lib/ciPath'
-import { alpha, colors, palette } from '@/lib/tokens'
+import { ciStatusStyle, enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
+import { alpha, colors } from '@/lib/tokens'
 
 export interface AffectedCIRef {
   id:          string
@@ -30,18 +31,30 @@ export interface CIRelationRule {
   description:  string | null
 }
 
-const STATUS_BG: Record<string, string> = { active: palette.success.tint, maintenance: palette.yellow.bg, decommissioned: palette.danger.tint }
+// Ondata 7 · D-15: qui c'era una quarta copia della palette degli stati CI,
+// con TRE valori e accesso diretto (`STATUS_BG[ci.status]`): uno stato che il
+// cliente aggiunge — o i 68 CI `expired`/`revoked` dal vivo — finiva su
+// `undefined` e la pastiglia restava sul neutro del `MicroBadge`, senza che
+// nessuno lo dicesse. Adesso è la palette unica (`lib/ciEnums`), col
+// vocabolario del cliente: valore suo senza colore = neutro, valore fuori
+// vocabolario = rosso e detto.
 
 function groupByType<T extends { type: string }>(items: T[]): Record<string, T[]> {
   return items.reduce<Record<string, T[]>>((acc, item) => { (acc[item.type] ??= []).push(item); return acc }, {})
 }
 
-function MicroBadge({ children, bg }: { children: React.ReactNode; bg?: string }) {
+function MicroBadge({ children, bg, fg }: { children: React.ReactNode; bg?: string; fg?: string }) {
   return (
-    <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 4, backgroundColor: bg ?? 'var(--surface-2)', color: 'var(--text-muted)', fontSize: 'var(--font-size-caption)', fontWeight: 500 }}>
+    <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 4, backgroundColor: bg ?? 'var(--surface-2)', color: fg ?? 'var(--text-muted)', fontSize: 'var(--font-size-caption)', fontWeight: 500 }}>
       {children}
     </span>
   )
+}
+
+/** Sfondo e testo della pastiglia dello stato, dalla palette unica. */
+function statusBadgeStyle(status: string, vocabulary: readonly string[] | null): { bg: string; fg: string } {
+  const s = ciStatusStyle(status, vocabulary)
+  return { bg: s.bg, fg: s.color }
 }
 
 interface Props {
@@ -57,6 +70,8 @@ interface Props {
 
 export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, onAddCI, onRemoveCI, defaultOpen = false }: Props) {
   const navigate = useNavigate()
+  const baseEnums = useCIBaseEnums()
+  const ciStatuses = baseEnums.loading || baseEnums.error ? null : baseEnums.statuses
   const [open, setOpen] = useState(defaultOpen)
   const [showSearch, setShowSearch] = useState(false)
   const [search, setSearch] = useState('')
@@ -148,7 +163,7 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
                   {cis.map((ci) => (
                     <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0' }}>
                       <button type="button" onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
-                      <MicroBadge bg={STATUS_BG[ci.status]}>{ci.status}</MicroBadge>
+                      <MicroBadge {...statusBadgeStyle(ci.status, ciStatuses)}>{enumLabel(ci.status)}</MicroBadge>
                       <MicroBadge>{ci.environment}</MicroBadge>
                       <button type="button" onClick={() => onRemoveCI(ci.id)} title="Rimuovi CI" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}><X size={14} /></button>
                     </div>

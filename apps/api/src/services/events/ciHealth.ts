@@ -3,7 +3,7 @@
  *
  * Il monitoraggio scrive SOLO `ci.health` (operational/degraded/down),
  * `ci.health_source` e `ci.last_event_at`; non tocca mai `ci.status`, che è
- * il ciclo di vita del CI (active/inactive/maintenance/decommissioned).
+ * il ciclo di vita del CI (il vocabolario `ci_status` del cliente).
  *
  * `deriveCIHealth` (pura) e il CASE Cypher di `recomputeCIHealth` nascono
  * dalla stessa tabella CI_HEALTH_RULES: la funzione documenta e testa la
@@ -13,6 +13,7 @@
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import type { CIHealth, CIHealthChangedPayload } from '@opengraphity/types'
 import { publishEvent } from '../../lib/publishEvent.js'
+import { resolveCILifecycleSemantics } from '../../lib/ciLifecycle.js'
 
 /**
  * Severità degli eventi firing → salute, in ordine di gravità: vince la prima
@@ -41,8 +42,12 @@ interface HealthRow { rule: 'manual' | 'maintenance' | 'monitoring'; previous: s
 
 /**
  * Ricalcola `health` del CI dagli eventi firing in una sola query. Non tocca
- * un CI con `health_source = 'manual'` né la salute di uno con
- * `status = 'maintenance'` (ciclo di vita). Scrive `health_source =
+ * un CI con `health_source = 'manual'` né la salute di uno il cui ciclo di
+ * vita è «in manutenzione» per QUESTO cliente (ondata 7 · C-4: la lista arriva
+ * dalla semantica del tenant e viaggia come parametro `$maintenanceStatuses`;
+ * prima `'maintenance'` era un letterale nel Cypher, e un cliente che
+ * rinominava lo stato tornava a farsi aggiornare la salute dagli allarmi su un
+ * CI in manutenzione, in silenzio). Scrive `health_source =
  * 'monitoring'` e `last_event_at`; se la salute cambia scrive `health_since =
  * now` (a salute invariata non va toccata) e pubblica `ci.health_changed`.
  * In manutenzione `health_source` deve esistere se esiste `health` (I-9):
@@ -53,6 +58,7 @@ interface HealthRow { rule: 'manual' | 'maintenance' | 'monitoring'; previous: s
  */
 export async function recomputeCIHealth(tenantId: string, ciId: string, actorId: string): Promise<string | null> {
   const now = new Date().toISOString()
+  const maintenanceStatuses = [...(await resolveCILifecycleSemantics(tenantId)).maintenance]
   const session = getSession(undefined, 'WRITE')
   try {
     const row = await runQueryOne<HealthRow>(session, `
@@ -63,7 +69,7 @@ export async function recomputeCIHealth(tenantId: string, ciId: string, actorId:
       WITH ci, severities, count(f) > 0 AS flapping, ci.status AS status, ci.health AS previous, ci.health_source AS healthSource
       WITH ci, previous, healthSource,
            ${ciHealthCaseCypher('severities', 'flapping')} AS derived,
-           CASE WHEN healthSource = 'manual' THEN 'manual' WHEN status = 'maintenance' THEN 'maintenance' ELSE 'monitoring' END AS rule
+           CASE WHEN healthSource = 'manual' THEN 'manual' WHEN status IN $maintenanceStatuses THEN 'maintenance' ELSE 'monitoring' END AS rule
       WITH ci, previous, healthSource, derived, rule, (rule = 'monitoring' AND (previous IS NULL OR previous <> derived)) AS changed
       FOREACH (_ IN CASE WHEN rule = 'monitoring' THEN [1] ELSE [] END |
         SET ci.health = derived, ci.health_source = 'monitoring', ci.last_event_at = $now, ci.updated_at = $now,
@@ -73,7 +79,7 @@ export async function recomputeCIHealth(tenantId: string, ciId: string, actorId:
         SET ci.health_source = 'monitoring', ci.updated_at = $now
       )
       RETURN rule, previous, CASE WHEN rule = 'monitoring' THEN derived ELSE previous END AS health, changed, ci.name AS name
-    `, { tenantId, ciId, now })
+    `, { tenantId, ciId, now, maintenanceStatuses })
     if (!row) return null
     if (row.changed) {
       const payload: CIHealthChangedPayload = {

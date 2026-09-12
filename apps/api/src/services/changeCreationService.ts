@@ -20,6 +20,7 @@ import { ValidationError } from '../lib/errors.js'
 import { logger } from '../lib/logger.js'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../lib/taskStatus.js'
 import { deriveChangePriority } from '../graphql/resolvers/change/scoring.js'
+import { assertDomainValue } from '../lib/domainMatrix.js'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import {
   writeAudit,
@@ -28,13 +29,21 @@ import {
   assertCIHasOwnerAndSupport,
 } from '../graphql/resolvers/change/helpers.js'
 
+/**
+ * Il tipo con cui nasce una change quando il chiamante non lo passa (la rotta
+ * REST `POST /api/v1/changes` non lo chiede). È un default DICHIARATO, non un
+ * ripiego: viene comunque validato contro il vocabolario del cliente, quindi
+ * se lui l'ha rinominato la creazione senza tipo esplicito fallisce e lo dice.
+ */
+export const DEFAULT_CHANGE_TYPE = 'normal'
+
 export interface ChangeCreationInput {
   title:         string
   why:           string          // motivazione (WHY) — obbligatorio
   what:          string          // cosa si cambia (WHAT) — obbligatorio
   changeOwner?:  string | null
   affectedCIIds: string[]
-  changeType?:   string | null   // standard | normal | emergency (default normal)
+  changeType?:   string | null   // un valore del vocabolario `change_type` del cliente (assente → DEFAULT_CHANGE_TYPE)
 }
 
 export interface ChangeCreationCtx {
@@ -55,7 +64,22 @@ export async function createChangeRFC(
   const { title, changeOwner, affectedCIIds } = input
   const why  = input.why?.trim()  ?? ''
   const what = input.what?.trim() ?? ''
-  const changeType = ['standard', 'normal', 'emergency'].includes(input.changeType ?? '') ? input.changeType! : 'normal'
+  // Ondata 7 (B-14): il tipo è validato contro il vocabolario `change_type`
+  // DEL CLIENTE, non contro una lista scritta qui.
+  //
+  // Prima: `['standard','normal','emergency'].includes(x) ? x : 'normal'` —
+  // un tipo aggiunto dal cliente (`major`) veniva sostituito con `normal` in
+  // silenzio, e la change nasceva con priorità e rotta d'approvazione di una
+  // change ordinaria. Ora un tipo fuori vocabolario è un rifiuto che elenca
+  // gli ammessi.
+  //
+  // L'ASSENZA del tipo resta un default dichiarato (`DEFAULT_CHANGE_TYPE`):
+  // la rotta REST `POST /api/v1/changes` non lo chiede e non si rompe un
+  // contratto pubblico dentro quest'ondata. Ma il default passa comunque dalla
+  // validazione: un cliente che rinomina o toglie `normal` ottiene un errore
+  // che gli dice di passare il tipo esplicitamente, non una change con un
+  // valore che il suo Dizionario non ha.
+  const changeType = await assertDomainValue(ctx.tenantId, 'change_type', input.changeType ?? DEFAULT_CHANGE_TYPE)
   if (!affectedCIIds || affectedCIIds.length === 0) {
     throw new ValidationError('Un change deve avere almeno un CI impattato')
   }
@@ -77,6 +101,9 @@ export async function createChangeRFC(
     }))
     const id = uuidv4()
     const now = new Date().toISOString()
+    // Priorità = tipo × fascia di rischio, con rischio non ancora valutato:
+    // letta dalla matrice del cliente PRIMA della transazione di scrittura.
+    const priority = await deriveChangePriority(ctx.tenantId, changeType, null)
 
     // TRANSACTIONAL: all writes in single tx — Change + AFFECTS_CI + 2 AssessmentTask
     // e 1 DeployPlanTask per CI + ASSIGNED_TO_TEAM + WorkflowInstance + audit entry.
@@ -132,7 +159,7 @@ export async function createChangeRFC(
       `, {
         id, code, title, why, what,
         changeType,
-        priority: deriveChangePriority(changeType, null),
+        priority,
         requesterId: ctx.userId,
         ownerId: changeOwner ?? null,
         ciTasks,

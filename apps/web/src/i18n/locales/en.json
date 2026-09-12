@@ -110,7 +110,8 @@
     "monitoringSources": "Sources",
     "ciHealth": "CI health",
     "platformMonitoring": "Platform monitoring",
-    "services": "Services"
+    "services": "Services",
+    "domainMatrices": "Domain matrices"
   },
   "pages": {
     "incidents": {
@@ -1001,6 +1002,45 @@
       "serviceHealthStaffOnly": "The Services page is reserved to staff (administrators, operators and viewers).",
       "unknownDataFreeWidget": "Unknown data-free widget type: {{type}}",
       "serviceHealthHint": "This widget shows the monitored-service counters: no entity or metric to configure."
+    },
+    "domainMatrices": {
+      "title": "Domain matrices",
+      "subtitle": "The rules that translate one vocabulary value into another: priority = impact × urgency, service criticality → impact, alarm severity, change type × risk band, import severity. They used to live in the code; here they change with no deploy.",
+      "saved": "Matrix saved",
+      "emptyCell": "— to fill in",
+      "vocabularies": "Vocabularies: {{inputs}} → {{output}}",
+      "factory": "factory content (never edited)",
+      "editedAt": "edited on {{at}}",
+      "tableCaption": "Rows: {{rows}} · Columns: {{cols}}",
+      "staleTitle": "Cells outside the vocabulary",
+      "staleHint": "These keys no longer match any value in your vocabularies: they are what a rename left behind. Saving the matrix removes them.",
+      "kinds": {
+        "priority": {
+          "title": "Ticket priority",
+          "description": "Incident and problem priority = impact × urgency (ITIL). The derived priority is stored in the «severity» field, which SLA, badges and filters read."
+        },
+        "service_impact": {
+          "title": "Service criticality → impact",
+          "description": "The impact of the incident a service map opens, from the criticality of the business application. The criticalities that translate to the highest impact are also the ones behind the «critical services down» banner."
+        },
+        "event_severity": {
+          "title": "Alarm severity → incident severity",
+          "description": "The severity an incident opened by monitoring is born with. It also applies to an alarm-storm incident, which uses the highest alarm severity."
+        },
+        "change_priority": {
+          "title": "Change priority",
+          "description": "Change priority = type × risk band (not impact × urgency). With the risk not yet assessed, the lowest band is used."
+        },
+        "import_severity": {
+          "title": "Incoming severity from the import",
+          "description": "How the severities written in a ticket import file are translated. A severity that cannot be translated puts the row in error: it is no longer rewritten to «medium»."
+        }
+      },
+      "missingWarning_one": "One combination with no value ({{keys}}). While it stays empty, the operation that needs it — opening an incident, or an incoming alarm — stops and says so: fill it in here.",
+      "missingWarning_other": "{{count}} combinations with no value ({{keys}}). While they stay empty, the operation that needs them — opening an incident, or an incoming alarm — stops and says so: fill them in here.",
+      "invalidWarning_one": "One cell points at a value that is no longer in your vocabulary ({{keys}}): it is what a rename left behind, and at runtime it is an error. Pick the new value.",
+      "invalidWarning_other": "{{count}} cells point at values that are no longer in your vocabulary ({{keys}}): they are what a rename left behind, and at runtime they are errors. Pick the new values.",
+      "outOfVocabulary": "{{value}} — no longer in the vocabulary"
     }
   },
   "filter": {
@@ -1871,7 +1911,8 @@
       "nameRequired": "Name is required",
       "scriptError": "Scripting sandbox error:",
       "metamodelError": "Metamodel:",
-      "saving": "Saving..."
+      "saving": "Saving...",
+      "valueOutsideVocabulary": "{{value}} — no longer in the vocabulary"
     },
     "ciGraph": {
       "showBlastRadius": "Show blast radius",
@@ -2052,7 +2093,6 @@
       "lifecycleUnknown": "Unknown: {{value}}",
       "lifecycleVocabularyUnavailable": "Lifecycle statuses unavailable from the metamodel ({{error}}): only the ones already saved in the policy can be ticked.",
       "lifecycleEmptyVocabulary": "The metamodel exposes no lifecycle status: there is nothing to ignore.",
-      "lifecycleSelectedNone": "No status ignored: alarms are evaluated on every CI.",
       "lifecycleSelected_one": "{{count}} status ignored.",
       "lifecycleSelected_other": "{{count}} statuses ignored.",
       "autoResolve": "Auto-resolve when the source resolves",
@@ -2098,7 +2138,9 @@
         "flapStableMinutes": "How long the alarm must stay still (no new firing or resolved) before leaving the flapping state and returning to normal correlation.",
         "stormThresholdPerMinute": "When a source exceeds this number of new alarms per minute, a storm starts: its alarms are grouped into a single incident instead of opening one per CI. 0 = storm detection off.",
         "stormCooldownMinutes": "The storm ends once the rate stays below the threshold for this many minutes; later alarms return to normal correlation.",
-        "ignoreLifecycleStatuses": "Alarms on CIs in these statuses open no incident and do not change the CI health: they stay in the console with the reason “lifecycle ignored”. “decommissioned” is usually enough: a retired CI the monitoring has not switched off yet must wake nobody."
+        "ignoreLifecycleStatuses": "Alarms on CIs in these statuses open no incident and do not change the CI health: they stay in the console with the reason “lifecycle ignored”. “decommissioned” is usually enough: a retired CI the monitoring has not switched off yet must wake nobody.",
+        "retiredStatuses": "A CI in these statuses does not count in the service health: it shows on the map, marked “retired”, but carries no weight and never puts the service under maintenance. Shipped default: “inactive” and “decommissioned”.",
+        "maintenanceStatuses": "A CI in these statuses is not updated by monitoring and leaves the map calculation, marked “under maintenance”. This is the CI lifecycle, not a change window. Shipped default: “maintenance”."
       },
       "flapStableMinutes": "Stable minutes before resuming",
       "stormThresholdPerMinute": "Storm threshold (new alarms per minute)",
@@ -2124,6 +2166,13 @@
         "expectedObject": "severityMap: expected a JSON object",
         "missingSeverity": "severityMap: severity \"{{severity}}\" is missing",
         "invalidLevel": "severityMap.{{severity}}: impact/urgency must be low | medium | high"
+      },
+      "retiredStatuses": "Statuses that count as “retired”",
+      "maintenanceStatuses": "Statuses that count as “under maintenance”",
+      "selectedNone": {
+        "ignoreLifecycleStatuses": "No status ignored: alarms are evaluated on every CI.",
+        "retiredStatuses": "No status counts as retired: every component weighs in the service health, retired ones included.",
+        "maintenanceStatuses": "No status counts as maintenance: monitoring updates the health of every CI."
       }
     },
     "health": {

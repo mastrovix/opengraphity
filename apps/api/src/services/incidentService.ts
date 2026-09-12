@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { nextSequenceValue } from '../lib/sequence.js'
-import { derivePriority, impactUrgencyFromPriority, isImpactUrgency } from '../lib/priority.js'
+import { resolveNewTicketPriority } from '../lib/priority.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
@@ -123,19 +123,19 @@ export async function createIncident(
     throw new ValidationError('Un incident deve avere almeno un CI impattato')
   }
 
-  // ITIL: Priority = f(Impact, Urgency). The derived priority is stored in the
-  // `severity` field (SLA/badges/filters read it). Impact+urgency take
-  // precedence; a bare `severity` is still accepted for API clients.
-  let impact = input.impact, urgency = input.urgency
-  let severity = input.severity
-  if (isImpactUrgency(impact) && isImpactUrgency(urgency)) {
-    severity = derivePriority(impact, urgency)
-  } else if (severity) {
-    const iu = impactUrgencyFromPriority(severity)
-    impact = impact ?? iu.impact; urgency = urgency ?? iu.urgency
-  } else {
-    throw new ValidationError('Fornire impact+urgency oppure severity')
-  }
+  // ITIL: Priority = f(Impact, Urgency). La priorità derivata si salva nel
+  // campo `severity` (SLA/pastiglie/filtri leggono quello). Impatto+urgenza
+  // vincono; la sola `severity` resta accettata per i client API.
+  //
+  // Ondata 7 (C-8): impatto, urgenza e severità sono validati contro i
+  // VOCABOLARI DEL CLIENTE e tradotti dalla sua matrice `priority`. Prima
+  // nessuno li validava: un allarme o un client API scriveva `severity =
+  // 'critical'` anche su un tenant che aveva rinominato quel valore, e la
+  // selezione della SLA e i report non lo contavano piu'.
+  const resolved = await resolveNewTicketPriority(ctx.tenantId, input)
+  const severity = resolved.severity
+  const impact   = resolved.impact
+  const urgency  = resolved.urgency
 
   const id  = uuidv4()
   const now = new Date().toISOString()
@@ -164,7 +164,7 @@ export async function createIncident(
     `, {
       id, tenantId: ctx.tenantId, number,
       title: input.title, description: input.description ?? null,
-      severity, impact: impact ?? null, urgency: urgency ?? null,
+      severity, impact, urgency,
       category: input.category ?? null,
       status: initialStatus, now,
     })

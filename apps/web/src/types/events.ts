@@ -259,6 +259,15 @@ export interface EventPolicy {
    * un vocabolario chiuso del web.
    */
   ignoreLifecycleStatuses: string[]
+  /**
+   * Ondata 7 · C-4/A-14 — la SEMANTICA del ciclo di vita, dato del cliente:
+   * quali stati contano come «ritirato» (il componente non pesa nel calcolo
+   * della salute dei servizi) e quali come «in manutenzione» (il monitoraggio
+   * non ne aggiorna la salute). Prima erano costanti nell'API, e un valore
+   * rinominato nel Dizionario cambiava il comportamento in silenzio.
+   */
+  retiredStatuses:      string[]
+  maintenanceStatuses:  string[]
   /** Mappa severità → impatto/urgenza, JSON serializzato. */
   severityMap:          string
 }

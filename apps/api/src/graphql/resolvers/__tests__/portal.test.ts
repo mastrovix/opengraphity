@@ -36,6 +36,24 @@ vi.mock('../../../lib/audit.js', () => ({
   audit: vi.fn().mockResolvedValue(undefined),
 }))
 
+/**
+ * Ondata 7 · D-15: il portale espone `statusCategory`/`statusLabel` dal
+ * workflow DEL CLIENTE, perché lo stile della pastiglia viene dalla categoria
+ * del passo e non da una mappa di nomi di fabbrica. Qui il workflow del cliente
+ * di prova ha un passo rinominato (`in_carico`) con categoria `active`.
+ */
+vi.mock('../../../lib/workflowHelpers.js', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../../../lib/workflowHelpers.js')>()
+  return {
+    ...orig,
+    getWorkflowSteps: vi.fn().mockResolvedValue([
+      { name: 'new',       label: 'Nuovo',    isInitial: true,  isTerminal: false, isOpen: true,  category: 'active',   purpose: null, stepOrder: 1 },
+      { name: 'in_carico', label: 'In carico', isInitial: false, isTerminal: false, isOpen: true,  category: 'active',   purpose: null, stepOrder: 2 },
+      { name: 'closed',    label: 'Chiuso',   isInitial: false, isTerminal: true,  isOpen: false, category: 'closed',   purpose: null, stepOrder: 3 },
+    ]),
+  }
+})
+
 vi.mock('../../../lib/publishEvent.js', () => ({
   publishEvent: vi.fn().mockResolvedValue(undefined),
 }))
@@ -118,6 +136,30 @@ describe('myTicket — ownership check', () => {
     })
     // 1 ticket + 1 commenti + 1 allegati + 1 storia
     expect(mockSession.executeRead).toHaveBeenCalledTimes(4)
+    // `open` non è un passo del workflow di questo cliente: categoria ed
+    // etichetta sono `null`, non inventate (il portale mostra il valore grezzo
+    // e lo stile neutro).
+    expect(result).toMatchObject({ statusCategory: null, statusLabel: null })
+  })
+
+  /**
+   * Ondata 7 · D-15: il passo RINOMINATO dal cliente porta la sua categoria e
+   * la sua etichetta. Prima il portale non aveva né l'una né l'altra: coloriva
+   * per nome di passo di fabbrica e mostrava il nome grezzo.
+   */
+  it('passo rinominato dal cliente → categoria ed etichetta del suo workflow', async () => {
+    mockSession.executeRead.mockResolvedValueOnce({
+      records: [makeRecord({
+        props: {
+          id: 'inc-2', title: 'Monitor', status: 'in_carico', priority: 'low',
+          category: 'hardware', created_by: 'user-1',
+          created_at: '2026-07-01T10:00:00Z', updated_at: '2026-07-02T10:00:00Z',
+        },
+        assignedTeam: null,
+      })],
+    })
+    const result = await myTicket(null, { id: 'inc-2' }, ctx)
+    expect(result).toMatchObject({ status: 'in_carico', statusCategory: 'active', statusLabel: 'In carico' })
   })
 })
 

@@ -45,26 +45,42 @@ export const CI_HEALTHS = ['operational', 'degraded', 'down'] as const
 export type CIHealth = (typeof CI_HEALTHS)[number]
 
 /**
- * Ciclo di vita del CI (`ci.status`): il vocabolario `ci_status` del
- * metamodello (lib/seedEnumTypes.ts lo semina da qui). Niente a che vedere con
- * la salute: il monitoraggio non lo scrive mai, lo legge soltanto — la policy
- * `ignore_lifecycle_statuses` (revisione 2 · D6.3) sceglie fra questi valori
- * quelli per cui un allarme non apre incident e non cambia la salute.
+ * Nome del vocabolario del ciclo di vita del CI nel Dizionario. **Questo** è
+ * ciò che il codice ha il diritto di conoscere: il NOME. I valori sono del
+ * cliente e si leggono con `domainVocabulary(tenantId, CI_STATUS_VOCABULARY)`
+ * (lib/domainMatrix.ts), mai da una lista scritta qui.
  */
+export const CI_STATUS_VOCABULARY = 'ci_status'
+
 /**
+ * Ciclo di vita del CI (`ci.status`): il **seme** del vocabolario `ci_status`
+ * (lib/seedEnumTypes.ts e scripts/seed-metamodel.ts lo seminano da qui, la
+ * migrazione 20260912_1210 lo allinea al dato). Niente a che vedere con la
+ * salute: il monitoraggio non lo scrive mai, lo legge soltanto.
+ *
+ * ⚠️ **Non è una lista di validazione** (ondata 7 · C-4/A-14): il cliente
+ * rinomina, aggiunge e toglie questi valori dal Dizionario, quindi chi deve
+ * sapere se un valore è ammesso chiede `domainVocabulary(tenantId,
+ * CI_STATUS_VOCABULARY)`. Validare contro questa costante era il difetto
+ * (`assertLifecycleStatuses` rifiutava «dismesso» e accettava
+ * `decommissioned` anche dopo che il cliente l'aveva rinominato).
+ *
  * `expired` e `revoked` sono i cicli di vita dei certificati: erano già sui CI
- * (dal vivo su c-one: 49 e 19) e NON stavano in nessun vocabolario, quindi non
- * si potevano scegliere nella policy né nell'editor del CI (C-4, parte già
- * attiva — B0-4). Aggiungerli allinea il vocabolario al dato; la SEMANTICA
- * (quali stati contano come ritirati o in manutenzione) non cambia e resta in
- * CI_LIFECYCLE_RETIRED / CI_LIFECYCLE_MAINTENANCE.
+ * (dal vivo su c-one: 49 e 19) e non stavano in nessun vocabolario (C-4, parte
+ * chiusa dall'ondata 0 — B0-4).
  */
 export const CI_LIFECYCLE_STATUSES = ['active', 'inactive', 'maintenance', 'decommissioned', 'expired', 'revoked'] as const
 export type CILifecycleStatus = (typeof CI_LIFECYCLE_STATUSES)[number]
 
-/** Ciclo di vita del CI «fuori servizio»: il default di `ignore_lifecycle_statuses` e i componenti che non contano in una mappa di servizio (D6.3). */
+/**
+ * I tre valori del seme che portano una SEMANTICA nel prodotto appena
+ * installato. Servono solo a scrivere la semantica iniziale del tenant
+ * (`DEFAULT_EVENT_POLICY` e la migrazione 20260917_1810): dopo, comanda il
+ * dato — `lib/ciLifecycle.ts`.
+ */
 export const CI_LIFECYCLE_DECOMMISSIONED: CILifecycleStatus = 'decommissioned'
 export const CI_LIFECYCLE_INACTIVE: CILifecycleStatus = 'inactive'
+export const CI_LIFECYCLE_MAINTENANCE: CILifecycleStatus = 'maintenance'
 
 /** Origine della salute: calcolata dagli allarmi o forzata a mano (`ci.health_source`). */
 export const HEALTH_SOURCES = ['monitoring', 'manual'] as const

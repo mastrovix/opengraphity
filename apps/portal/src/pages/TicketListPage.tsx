@@ -36,6 +36,8 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 interface Ticket {
   id: string; title: string; status: string; priority: string
+  /** Categoria ed etichetta del passo nel workflow del cliente (ondata 7 · D-15). */
+  statusCategory: string | null; statusLabel: string | null
   category: string; createdAt: string; updatedAt: string; assignedTeam: string | null
 }
 
@@ -179,7 +181,7 @@ export function TicketListPage() {
 
               {/* Status + priority pill */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                <TicketStatusBadge status={ticket.status} />
+                <TicketStatusBadge status={ticket.status} statusCategory={ticket.statusCategory} statusLabel={ticket.statusLabel} />
                 <span style={{
                   fontSize:        11,
                   padding:         '1px 8px',

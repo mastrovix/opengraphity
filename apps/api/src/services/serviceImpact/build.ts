@@ -32,9 +32,10 @@ import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { logger } from '../../lib/logger.js'
 import {
   DEFAULT_SERVICE_IMPACT_RULES_JSON, NODE_WEIGHT_CERTIFICATE, NODE_WEIGHT_DEFAULT, NODE_WEIGHT_ENTRY,
-  SERVICE_MAP_MAX_DEPTH, SERVICE_MAP_MAX_NODES, isRetiredLifecycle, roleOfLabels,
+  SERVICE_MAP_MAX_DEPTH, SERVICE_MAP_MAX_NODES, roleOfLabels,
   type NodePropagation, type ServiceMapStatus, type ServiceNodeRole, type ServiceRoleByLabel,
 } from '../../lib/serviceVocabularies.js'
+import { isRetiredLifecycle, resolveCILifecycleSemantics, type CILifecycleSemantics } from '../../lib/ciLifecycle.js'
 
 const log = logger.child({ module: 'service-impact' })
 
@@ -109,10 +110,15 @@ export function relationshipFilterOf(types: readonly string[]): string {
  * 1). Revisione 2 · D6.3: un CI dismesso o fuori servizio (`ci.status`) è
  * proposto con `propagate: never` — si vede sulla mappa ma non conta, perché
  * il monitoraggio non ne aggiorna più la salute.
+ *
+ * Ondata 7 · C-4: **quali** stati siano «dismesso o fuori servizio» arriva da
+ * `semantics` (la semantica del cliente, lib/ciLifecycle.ts), non da una
+ * costante: il parametro è obbligatorio perché nessun chiamante possa
+ * dimenticarlo e ricadere su una lista di fabbrica.
  */
-export function proposeNodeSettings(roles: ServiceRoleByLabel, labels: readonly string[], level: number, status: string | null = null): Pick<ProposedNode, 'role' | 'propagate' | 'weight' | 'critical'> {
+export function proposeNodeSettings(roles: ServiceRoleByLabel, labels: readonly string[], level: number, status: string | null, semantics: CILifecycleSemantics): Pick<ProposedNode, 'role' | 'propagate' | 'weight' | 'critical'> {
   const role = roleOfLabels(roles, labels, level)
-  const retired = isRetiredLifecycle(status)
+  const retired = isRetiredLifecycle(status, semantics)
   if (role === 'entry') return { role, propagate: retired ? 'never' : 'weighted', weight: NODE_WEIGHT_ENTRY, critical: !retired }
   if (role === 'certificate') return { role, propagate: 'never', weight: NODE_WEIGHT_CERTIFICATE, critical: false }
   return { role, propagate: retired ? 'never' : 'weighted', weight: NODE_WEIGHT_DEFAULT, critical: false }
@@ -170,6 +176,7 @@ export async function buildServiceMap(session: Queryable, tenantId: string, serv
   // proposta sul primo nodo di un tipo del cliente.
   const ciLabels = await ciLabelsForTenant(tenantId)
   const roles = await serviceRolesForTenant(tenantId)
+  const semantics = await resolveCILifecycleSemantics(tenantId)
 
   const entry = await runQueryOne<EntryRow>(session, ENTRY_NODES_CYPHER, { serviceId, tenantId, ciLabels: [...ciLabels] })
   if (!entry) throw new NotFoundError('BusinessApplication', serviceId)
@@ -179,7 +186,7 @@ export async function buildServiceMap(session: Queryable, tenantId: string, serv
     return { serviceName: entry.serviceName, maxDepth: depth, relationshipTypes: types, nodes: [] }
   }
 
-  const nodes: ProposedNode[] = apps.map((a) => ({ ciId: a.ciId, name: a.name ?? '', labels: a.labels, status: a.status ?? null, health: a.health ?? null, level: 1, via: null, ...proposeNodeSettings(roles, a.labels, 1, a.status ?? null) }))
+  const nodes: ProposedNode[] = apps.map((a) => ({ ciId: a.ciId, name: a.name ?? '', labels: a.labels, status: a.status ?? null, health: a.health ?? null, level: 1, via: null, ...proposeNodeSettings(roles, a.labels, 1, a.status ?? null, semantics) }))
   if (depth > 1) {
     const expanded = await runQuery<ExpandedRow>(session, EXPAND_NODES_CYPHER, {
       tenantId, appIds: apps.map((a) => a.ciId),
@@ -194,7 +201,7 @@ export async function buildServiceMap(session: Queryable, tenantId: string, serv
     for (const r of expanded) {
       if (seen.has(r.ciId)) continue
       seen.add(r.ciId)
-      nodes.push({ ciId: r.ciId, name: r.name ?? '', labels: r.labels, status: r.status ?? null, health: r.health ?? null, level: r.level, via: r.via, ...proposeNodeSettings(roles, r.labels, r.level, r.status ?? null) })
+      nodes.push({ ciId: r.ciId, name: r.name ?? '', labels: r.labels, status: r.status ?? null, health: r.health ?? null, level: r.level, via: r.via, ...proposeNodeSettings(roles, r.labels, r.level, r.status ?? null, semantics) })
     }
   }
   if (nodes.length > SERVICE_MAP_MAX_NODES) {

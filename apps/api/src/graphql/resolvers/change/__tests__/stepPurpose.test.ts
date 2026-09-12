@@ -61,6 +61,10 @@ vi.mock('../helpers.js', () => ({
   writeAudit:     vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('../approvalCreation.js', () => ({ areAllApprovalsSatisfied: vi.fn().mockResolvedValue(true) }))
+// Ondata 7: il rifiuto riscrive la priorità dalla matrice del cliente. Qui si
+// misurano i PASSI, non la priorità: il doppio risponde con la matrice di
+// fabbrica (lib/__tests__/domainMatrixFake.ts).
+vi.mock('../../../../lib/domainMatrix.js', () => import('../../../../lib/__tests__/domainMatrixFake.js'))
 vi.mock('../../../../lib/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))

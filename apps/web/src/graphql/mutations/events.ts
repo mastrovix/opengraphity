@@ -64,7 +64,7 @@ export const UPDATE_EVENT_POLICY = gql`
       openIncidentFrom groupBy openDelaySeconds autoResolve
       suppressUpstreamHops flapThreshold flapWindowMinutes flapStableMinutes
       stormThresholdPerMinute stormCooldownMinutes retentionDays matchShortHostname severityMap
-      ignoreLifecycleStatuses
+      ignoreLifecycleStatuses retiredStatuses maintenanceStatuses
     }
   }
 `

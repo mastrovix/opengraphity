@@ -9,7 +9,7 @@ import { workflowEngine } from '@opengraphity/workflow'
 import { validateStringLength } from '../../lib/validation.js'
 import type { GraphQLContext } from '../../context.js'
 import { toNumber } from '@opengraphity/neo4j'
-import { getStepNamesByClass, TICKET_STATUS_CLASSES, type TicketStatusClass } from '../../lib/workflowHelpers.js'
+import { getStepNamesByClass, getWorkflowSteps, TICKET_STATUS_CLASSES, type TicketStatusClass } from '../../lib/workflowHelpers.js'
 
 /** Load allowed values for a system enum from Neo4j (cached per request). */
 async function loadEnumValues(tenantId: string, enumName: string): Promise<Set<string>> {
@@ -40,6 +40,27 @@ function requireProp(p: Record<string, unknown>, key: string): string {
     throw new Error(`Incident ${String(p['id'])}: missing required property '${key}'`)
   }
   return v
+}
+
+/**
+ * Categoria ed etichetta del passo di workflow, per nome di passo. Ondata 7 ·
+ * D-15: il portale coloriva lo stato con una mappa di otto nomi di fabbrica e
+ * un grigio silenzioso per tutto il resto — un passo rinominato nel
+ * disegnatore diventava una pastiglia grigia con il nome grezzo. La categoria
+ * è la stessa cosa che usa il web e sopravvive a una rinomina.
+ *
+ * Una sola lettura dei passi per richiesta, riusata per tutti i ticket
+ * dell'elenco (`loadSteps` ha già la sua cache).
+ */
+async function stepMeta(session: Session, tenantId: string): Promise<(status: string) => { statusCategory: string | null; statusLabel: string | null }> {
+  const steps = await getWorkflowSteps(session, tenantId, 'incident')
+  const byName = new Map(steps.map((s) => [s.name, s]))
+  return (status: string) => {
+    const step = byName.get(status)
+    // Passo che il workflow non ha (più): `null`, non un'etichetta inventata.
+    // Il portale mostra allora il valore grezzo e lo stile neutro.
+    return { statusCategory: step?.category ?? null, statusLabel: step?.label ?? null }
+  }
 }
 
 function mapTicket(p: Record<string, unknown>) {
@@ -120,10 +141,11 @@ async function myTickets(
     )
 
     const total = toNumber(countResult.records[0]?.get('total'))
-    const items = result.records.map((r) => ({
-      ...mapTicket(r.get('props') as Record<string, unknown>),
-      assignedTeam: (r.get('assignedTeam') ?? null) as string | null,
-    }))
+    const meta = await stepMeta(session, ctx.tenantId)
+    const items = result.records.map((r) => {
+      const t = mapTicket(r.get('props') as Record<string, unknown>)
+      return { ...t, ...meta(t.status), assignedTeam: (r.get('assignedTeam') ?? null) as string | null }
+    })
 
     return { items, total }
   })
@@ -150,8 +172,10 @@ async function myTicket(
     const props = ticketResult.records[0].get('props') as Record<string, unknown>
     if (props['created_by'] !== ctx.userId) throw new ForbiddenError('Access denied')
 
+    const mapped = mapTicket(props)
     const ticket = {
-      ...mapTicket(props),
+      ...mapped,
+      ...(await stepMeta(session, ctx.tenantId))(mapped.status),
       assignedTeam: (ticketResult.records[0].get('assignedTeam') ?? null) as string | null,
     }
 

@@ -51,6 +51,7 @@ import NotificationRulesPage from '@/pages/settings/NotificationRulesPage'
 import { CITypeDesignerPage } from '@/pages/settings/CITypeDesignerPage'
 import { ITILTypeDesignerPage } from '@/pages/settings/ITILTypeDesignerPage'
 import { EnumDesignerPage }     from '@/pages/settings/EnumDesignerPage.js'
+import { DomainMatricesPage }   from '@/pages/settings/DomainMatricesPage'
 import { SyncPage }             from '@/pages/settings/SyncPage'
 const ReportsPage = lazy(() => import('@/pages/reports/ReportsPage'))
 const CustomReportsPage = lazy(() => import('@/pages/reports/CustomReportsPage').then(m => ({ default: m.CustomReportsPage })))
@@ -79,6 +80,7 @@ import { RequireRole } from '@/components/RequireRole'
 import type { UserRole } from '@/hooks/useMe'
 import { STAFF_ROLES } from '@/lib/roles'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
+import { DomainVocabularyProvider } from '@/contexts/DomainVocabularyContext'
 import { NotificationProvider } from '@/contexts/NotificationContext'
 import { initKeycloak, keycloak } from '@/lib/keycloak'
 import { startTokenRefreshLoop } from '@/lib/tokenRefresh'
@@ -199,6 +201,7 @@ const router = createBrowserRouter([
       { path: 'settings/ci-types',         element: admin(<CITypeDesignerPage />),   errorElement: <RouteError /> },
       { path: 'settings/itil-designer',   element: admin(<ITILTypeDesignerPage />), errorElement: <RouteError /> },
       { path: 'settings/enum-designer',  element: admin(<EnumDesignerPage />),     errorElement: <RouteError /> },
+      { path: 'settings/domain-matrices', element: admin(<DomainMatricesPage />),   errorElement: <RouteError /> },
       { path: 'settings/sync',            element: admin(<SyncPage />),             errorElement: <RouteError /> },
       { path: 'settings/event-policy',    element: admin(<EventPolicyPage />),      errorElement: <RouteError /> },
       { path: 'reports',                   element: <Suspense fallback={<PageLoader />}><ReportsPage /></Suspense>,             errorElement: <RouteError /> },
@@ -247,10 +250,13 @@ initKeycloak().then((authenticated) => {
       <ErrorBoundary>
         <ApolloProvider client={apolloClient}>
           <MetamodelProvider>
-            <NotificationProvider>
-              <RouterProvider router={router} />
-              <Toaster richColors position="top-right" />
-            </NotificationProvider>
+            {/* Ondata 7 · D-15: i vocabolari del cliente, UNA query, per le palette per valore. */}
+            <DomainVocabularyProvider>
+              <NotificationProvider>
+                <RouterProvider router={router} />
+                <Toaster richColors position="top-right" />
+              </NotificationProvider>
+            </DomainVocabularyProvider>
           </MetamodelProvider>
         </ApolloProvider>
       </ErrorBoundary>

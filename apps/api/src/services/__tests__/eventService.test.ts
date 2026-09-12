@@ -14,11 +14,27 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 
+// Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
+// dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
+// fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
+
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(),
   toNumber: (v: unknown) => (v == null ? 0 : Number(v)),
 }))
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
+// Ondata 7 · C-4: `recomputeCIHealth` non ha più il letterale `'maintenance'`
+// nel Cypher — gli stati «in manutenzione» arrivano dalla semantica del
+// cliente come parametro `$maintenanceStatuses`. Qui la semantica del cliente
+// di prova, con i valori iniziali.
+vi.mock('../../lib/ciLifecycle.js', () => ({
+  resolveCILifecycleSemantics: vi.fn().mockResolvedValue({
+    retired: new Set(['inactive', 'decommissioned']),
+    maintenance: new Set(['maintenance']),
+    ignored: new Set(['decommissioned']),
+  }),
+}))
 vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
   return { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => child } }
@@ -973,12 +989,15 @@ describe('recomputeCIHealth', () => {
     await expect(recomputeCIHealth('t1', 'ci-1', 'op')).resolves.toBe('down')
     expect(calls()).toHaveLength(1)
     const { cypher, params } = calls()[0]!
-    expect(params).toEqual({ tenantId: 't1', ciId: 'ci-1', now: expect.any(String) })
+    // Ondata 7 · C-4: gli stati «in manutenzione» viaggiano come PARAMETRO
+    // (la semantica del cliente), non come letterale nel Cypher.
+    expect(params).toEqual({ tenantId: 't1', ciId: 'ci-1', now: expect.any(String), maintenanceStatuses: ['maintenance'] })
     expect(cypher).toContain('MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})')
     expect(cypher).toContain("OPTIONAL MATCH (e:Event {tenant_id: $tenantId, status: 'firing'})-[:RAISED_ON]->(ci)")
     expect(cypher).toContain("OPTIONAL MATCH (f:Event {tenant_id: $tenantId, status: 'flapping'})-[:RAISED_ON]->(ci)")
     expect(cypher).toContain(ciHealthCaseCypher('severities', 'flapping'))
-    expect(cypher).toContain("CASE WHEN healthSource = 'manual' THEN 'manual' WHEN status = 'maintenance' THEN 'maintenance' ELSE 'monitoring' END AS rule")
+    expect(cypher).toContain("CASE WHEN healthSource = 'manual' THEN 'manual' WHEN status IN $maintenanceStatuses THEN 'maintenance' ELSE 'monitoring' END AS rule")
+    expect(cypher).not.toContain("status = 'maintenance'")   // nessun valore di dominio scritto nel Cypher
     expect(cypher).toContain("FOREACH (_ IN CASE WHEN rule = 'monitoring' THEN [1] ELSE [] END |")
     expect(cypher).toContain("SET ci.health = derived, ci.health_source = 'monitoring', ci.last_event_at = $now, ci.updated_at = $now")
     expect(cypher).toContain('ci.health_since = CASE WHEN changed THEN $now ELSE ci.health_since END')

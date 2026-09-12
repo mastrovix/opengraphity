@@ -125,3 +125,19 @@ export const IMPACTED_SERVICE_FIELDS = gql`
     id name health impactScore
   }
 `
+
+/**
+ * Matrice di dominio (ondata 7): la regola che traduce un valore di
+ * vocabolario in un altro. `cells` arriva già completa di tutte le
+ * combinazioni che i vocabolari del cliente rendono possibili — `value: null`
+ * è una cella da compilare — più le chiavi rimaste fuori vocabolario dopo una
+ * rinomina (`stale`). La query e la mutation selezionano gli stessi campi, così
+ * il salvataggio aggiorna la cache della pagina.
+ * Contratto: apps/api/src/graphql/schema-domainMatrix.ts.
+ */
+export const DOMAIN_MATRIX_FIELDS = gql`
+  fragment DomainMatrixFields on DomainMatrix {
+    kind inputs output inputValues outputValues missing stale invalid isDefault updatedAt
+    cells { key inputs value }
+  }
+`

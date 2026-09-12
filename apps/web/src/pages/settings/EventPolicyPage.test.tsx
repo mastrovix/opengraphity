@@ -22,6 +22,10 @@ const POLICY = {
   stormThresholdPerMinute: 50, stormCooldownMinutes: 5, retentionDays: 30,
   matchShortHostname: false,
   ignoreLifecycleStatuses: ['decommissioned'],
+  // Ondata 7 · C-4: la semantica del ciclo di vita è dato del cliente e vive
+  // sulla policy, accanto agli stati ignorati.
+  retiredStatuses: ['inactive', 'decommissioned'],
+  maintenanceStatuses: ['maintenance'],
   severityMap: JSON.stringify(MAP),
 }
 
@@ -260,7 +264,7 @@ describe('EventPolicyPage — spiegazioni (ondata 3)', () => {
   })
 })
 
-describe('EventPolicyPage — stati del ciclo di vita da ignorare (revisione 2, D6.3)', () => {
+describe('EventPolicyPage — ciclo di vita del CI: stati ignorati (revisione 2, D6.3) e SEMANTICA (ondata 7 · C-4/A-14)', () => {
   it('scelta multipla dal vocabolario del metamodello, «dismesso» spuntato dalla policy, conteggio con plurale e salvataggio dei valori scelti', async () => {
     const seen: Input[] = []
     const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
@@ -273,13 +277,13 @@ describe('EventPolicyPage — stati del ciclo di vita da ignorare (revisione 2, 
     expect(decommissioned).toBeChecked()
     expect(inactive).not.toBeChecked()
     expect(group).toHaveAccessibleDescription(/open no incident and do not change the CI health/)
-    expect(screen.getByTestId('lifecycle-selected')).toHaveTextContent('1 status ignored.')
+    expect(screen.getByTestId('lifecycle-selected-ignoreLifecycleStatuses')).toHaveTextContent('1 status ignored.')
 
     // il riquadro ha il suo titolo, come gli altri
     expect(within(screen.getByRole('group', { name: 'CI lifecycle' })).getByText('Lifecycle statuses to ignore')).toBeInTheDocument()
 
     await user.click(inactive)
-    expect(screen.getByTestId('lifecycle-selected')).toHaveTextContent('2 statuses ignored.')
+    expect(screen.getByTestId('lifecycle-selected-ignoreLifecycleStatuses')).toHaveTextContent('2 statuses ignored.')
     expect(screen.getByRole('status')).toHaveTextContent('Unsaved changes')
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(seen).toHaveLength(1))
@@ -287,30 +291,77 @@ describe('EventPolicyPage — stati del ciclo di vita da ignorare (revisione 2, 
     expect(seen[0]).toMatchObject({ ignoreLifecycleStatuses: ['inactive', 'decommissioned'], expectedVersion: 3 })
   })
 
+  /**
+   * Ondata 7 · C-4/A-14 — la semantica del ciclo di vita si vede e si modifica.
+   * Prima quali stati contassero come «ritirato» e quale come «in manutenzione»
+   * era scritto nel codice dell'API (`CI_LIFECYCLE_RETIRED`,
+   * `CI_LIFECYCLE_MAINTENANCE`, e `'maintenance'` come letterale nel Cypher di
+   * ciHealth.ts): un valore rinominato nel Dizionario cambiava in silenzio la
+   * salute dei servizi e l'apertura degli incident, e non c'era nessun posto in
+   * cui guardare.
+   */
+  it('le due liste della semantica partono dalla policy, hanno il loro aiuto e si salvano', async () => {
+    const seen: Input[] = []
+    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
+
+    const retired = await screen.findByRole('group', { name: 'Statuses that count as “retired”' })
+    expect(within(retired).getByRole('checkbox', { name: 'Inactive' })).toBeChecked()
+    expect(within(retired).getByRole('checkbox', { name: 'Decommissioned' })).toBeChecked()
+    expect(within(retired).getByRole('checkbox', { name: 'Active' })).not.toBeChecked()
+    expect(retired).toHaveAccessibleDescription(/does not count in the service health/)
+    expect(screen.getByTestId('lifecycle-selected-retiredStatuses')).toHaveTextContent('2 statuses ignored.')
+
+    const maintenance = screen.getByRole('group', { name: 'Statuses that count as “under maintenance”' })
+    expect(within(maintenance).getByRole('checkbox', { name: 'Maintenance' })).toBeChecked()
+    expect(maintenance).toHaveAccessibleDescription(/not updated by monitoring/)
+
+    // Le tre liste vivono nello stesso riquadro «Ciclo di vita del CI».
+    const box = screen.getByRole('group', { name: 'CI lifecycle' })
+    expect(within(box).getByText('Statuses that count as “retired”')).toBeInTheDocument()
+    expect(within(box).getByText('Statuses that count as “under maintenance”')).toBeInTheDocument()
+
+    await user.click(within(maintenance).getByRole('checkbox', { name: 'Maintenance' }))
+    expect(screen.getByTestId('lifecycle-selected-maintenanceStatuses'))
+      .toHaveTextContent('No status counts as maintenance: monitoring updates the health of every CI.')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(seen).toHaveLength(1))
+    expect(seen[0]).toMatchObject({
+      ignoreLifecycleStatuses: ['decommissioned'],
+      retiredStatuses: ['inactive', 'decommissioned'],
+      maintenanceStatuses: [],
+    })
+  })
+
   it('togliendo tutti gli stati il conteggio dice cosa comporta e si salva una lista vuota', async () => {
     const seen: Input[] = []
     const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
     const group = await screen.findByRole('group', { name: 'Lifecycle statuses to ignore' })
     await user.click(within(group).getByRole('checkbox', { name: 'Decommissioned' }))
-    expect(screen.getByTestId('lifecycle-selected')).toHaveTextContent('No status ignored: alarms are evaluated on every CI.')
+    expect(screen.getByTestId('lifecycle-selected-ignoreLifecycleStatuses')).toHaveTextContent('No status ignored: alarms are evaluated on every CI.')
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(seen).toHaveLength(1))
     expect(seen[0]).toMatchObject({ ignoreLifecycleStatuses: [] })
   })
 
-  it('uno stato salvato che il metamodello non conosce resta spuntabile e detto in chiaro (nessuna riga muta)', async () => {
+  it('uno stato salvato che il metamodello non conosce resta spuntabile e detto in chiaro (nessuna riga muta), in tutte e tre le liste', async () => {
     renderWithProviders(<EventPolicyPage />, {
       mocks: [baseCITypeMock(['active', 'decommissioned']), policyMock({ ignoreLifecycleStatuses: ['decommissioned', 'retired'] }), updateMock([])],
     })
     const group = await screen.findByRole('group', { name: 'Lifecycle statuses to ignore' })
     expect(within(group).getByRole('checkbox', { name: 'Unknown: retired' })).toBeChecked()
-    expect(screen.getByTestId('lifecycle-selected')).toHaveTextContent('2 statuses ignored.')
+    expect(screen.getByTestId('lifecycle-selected-ignoreLifecycleStatuses')).toHaveTextContent('2 statuses ignored.')
+    // `inactive` è nella semantica della policy ma non nel metamodello di
+    // questo cliente: compare come «Sconosciuto» anche nelle altre liste, e
+    // resta spuntato — nessun valore sparisce di nascosto.
+    const retired = screen.getByRole('group', { name: 'Statuses that count as “retired”' })
+    expect(within(retired).getByRole('checkbox', { name: 'Unknown: inactive' })).toBeChecked()
   })
 
   it('metamodello non raggiungibile: l\'errore è visibile e restano solo gli stati già salvati', async () => {
     renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeErrorMock(), policyMock()] })
     const group = await screen.findByRole('group', { name: 'Lifecycle statuses to ignore' })
-    expect(within(group).getAllByRole('checkbox')).toHaveLength(1)
+    // gli stati citati dalle TRE liste della policy: decommissioned, inactive, maintenance
+    expect(within(group).getAllByRole('checkbox')).toHaveLength(3)
     expect(within(group).getByRole('checkbox', { name: 'Unknown: decommissioned' })).toBeChecked()
     expect(screen.getByRole('alert')).toHaveTextContent('Lifecycle statuses unavailable from the metamodel (metamodel down): only the ones already saved in the policy can be ticked.')
   })

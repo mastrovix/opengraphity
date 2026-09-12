@@ -35,6 +35,9 @@ import { workflowStepPurpose } from './20260914_1500_workflow_step_purpose.js'
 import { stepEnteredNotificationRules } from './20260914_1520_step_entered_notification_rules.js'
 import { serviceRoleAndRelationScope } from './20260916_1710_service_role_and_relation_scope.js'
 import { globalSearchConfigurationItem } from './20260916_1700_global_search_configuration_item.js'
+import { domainMatrices } from './20260917_1800_domain_matrices.js'
+import { ciLifecycleSemantics } from './20260917_1810_ci_lifecycle_semantics.js'
+import { changePrioritySeedFix } from './20260917_1820_change_priority_seed_fix.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -64,4 +67,7 @@ export const MIGRATIONS: readonly Migration[] = [
   stepEnteredNotificationRules,
   globalSearchConfigurationItem,
   serviceRoleAndRelationScope,
+  domainMatrices,
+  ciLifecycleSemantics,
+  changePrioritySeedFix,
 ]

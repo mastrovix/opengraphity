@@ -17,9 +17,11 @@
  */
 import { ValidationError } from './errors.js'
 import {
-  CI_LIFECYCLE_DECOMMISSIONED, CI_LIFECYCLE_STATUSES, EVENT_GROUP_BY, EVENT_SEVERITIES, OPEN_INCIDENT_FROM,
-  type CILifecycleStatus, type EventGroupBy, type EventSeverity, type OpenIncidentFrom,
+  CI_LIFECYCLE_DECOMMISSIONED, CI_LIFECYCLE_INACTIVE, CI_LIFECYCLE_MAINTENANCE, CI_STATUS_VOCABULARY,
+  EVENT_GROUP_BY, EVENT_SEVERITIES, OPEN_INCIDENT_FROM,
+  type EventGroupBy, type EventSeverity, type OpenIncidentFrom,
 } from './eventVocabularies.js'
+import { assertDomainValue } from './domainMatrix.js'
 
 /** Chiavi introdotte dall'ondata 4: se mancano, la policy è di una versione precedente (migrazione 1040 non eseguita). */
 export const EVENT_POLICY_V2_KEYS = ['flap_stable_minutes', 'storm_threshold_per_minute', 'storm_cooldown_minutes'] as const
@@ -33,6 +35,13 @@ export const EVENT_POLICY_V4_MIGRATION = '20260910_1070_event_management_tenants
 /** Chiave introdotta dalla revisione 2 · D6.3: cicli di vita del CI ignorati dagli allarmi (migrazione 1130). */
 export const EVENT_POLICY_V5_KEYS = ['ignore_lifecycle_statuses'] as const
 export const EVENT_POLICY_V5_MIGRATION = '20260911_1130_shared_domain_rules'
+/**
+ * Chiavi introdotte dall'ondata 7 · C-4/A-14: la **semantica** del ciclo di
+ * vita del CI diventa dato del cliente (migrazione 1810). Vedi
+ * `lib/ciLifecycle.ts` per il perché della forma scelta.
+ */
+export const EVENT_POLICY_V6_KEYS = ['retired_statuses', 'maintenance_statuses'] as const
+export const EVENT_POLICY_V6_MIGRATION = '20260917_1810_ci_lifecycle_semantics'
 
 /** Vocabolari: la definizione è in eventVocabularies.ts (fonte unica anche per gli enum SDL); ri-esportati per i chiamanti storici. */
 export { OPEN_INCIDENT_FROM, EVENT_SEVERITIES }
@@ -99,11 +108,28 @@ export interface EventPolicy {
    * non cambia la salute: esito `skipped_lifecycle`, l'allarme resta in
    * console con il suo motivo (revisione 2 · D6.3). Default
    * `['decommissioned']`; lista vuota = nessuno stato ignorato. I valori
-   * stanno nel vocabolario del ciclo di vita (CI_LIFECYCLE_STATUSES): la
-   * stessa definizione che usano i Servizi monitorati per escludere dal
-   * calcolo i componenti dismessi.
+   * appartengono al vocabolario `ci_status` **del cliente** (ondata 7: la
+   * validazione di appartenenza è in scrittura, `lib/ciLifecycle.ts`).
    */
-  ignore_lifecycle_statuses: CILifecycleStatus[]
+  ignore_lifecycle_statuses: string[]
+  /**
+   * Ondata 7 · C-4/A-14 — **la semantica «ritirato»**: i cicli di vita per cui
+   * un CI non conta in una mappa di servizio (`excludedReason =
+   * lifecycle_decommissioned`). Era la costante `CI_LIFECYCLE_RETIRED`
+   * (`['inactive','decommissioned']`): ora è dato del cliente, con quel
+   * contenuto come valore iniziale.
+   */
+  retired_statuses:       string[]
+  /**
+   * Ondata 7 · C-4/A-14 — **la semantica «in manutenzione»**: i cicli di vita
+   * per cui il monitoraggio non aggiorna `ci.health` e il componente esce dal
+   * calcolo della mappa con `excludedReason = lifecycle_maintenance`. Era il
+   * letterale `'maintenance'` nel Cypher di ciHealth.ts e la costante
+   * `CI_LIFECYCLE_MAINTENANCE`: ora è dato del cliente, ed è una LISTA (un
+   * cliente può avere «in manutenzione programmata» e «in manutenzione
+   * straordinaria»), con `['maintenance']` come valore iniziale.
+   */
+  maintenance_statuses:   string[]
   severity_map:           SeverityMap
 }
 
@@ -123,6 +149,8 @@ export const DEFAULT_EVENT_POLICY: EventPolicy = {
   retention_days:         90,
   match_short_hostname:   false,
   ignore_lifecycle_statuses: [CI_LIFECYCLE_DECOMMISSIONED],
+  retired_statuses:       [CI_LIFECYCLE_INACTIVE, CI_LIFECYCLE_DECOMMISSIONED],
+  maintenance_statuses:   [CI_LIFECYCLE_MAINTENANCE],
   severity_map: {
     critical: { impact: 'high',   urgency: 'high' },
     warning:  { impact: 'medium', urgency: 'medium' },
@@ -182,22 +210,44 @@ function assertBoolean(value: unknown, field: string): boolean {
 }
 
 /**
- * Valida `ignore_lifecycle_statuses`: lista (anche vuota) di stati del
- * vocabolario del ciclo di vita, senza doppioni. Mai un valore inventato: uno
- * stato fuori vocabolario non silenzierebbe nulla e nessuno se ne accorgerebbe.
+ * Valida la **forma** di una delle tre liste del ciclo di vita
+ * (`ignore_lifecycle_statuses`, `retired_statuses`, `maintenance_statuses`):
+ * lista, anche vuota, di stringhe non vuote, senza doppioni.
+ *
+ * Ondata 7 · C-4/A-14 — **qui non c'è più nessuna lista di valori**. Prima
+ * questa funzione confrontava i valori con `CI_LIFECYCLE_STATUSES`, la lista
+ * del CODICE: un cliente che avesse rinominato `decommissioned` in `dismesso`
+ * si vedeva rifiutare il valore giusto (rumoroso) e conservare quello vecchio
+ * (silenzioso). L'appartenenza al vocabolario `ci_status` **del cliente** si
+ * controlla dove si può leggere il Dizionario, cioè in scrittura:
+ * `assertTenantLifecycleStatuses` in lib/ciLifecycle.ts, chiamata da
+ * `applyEventPolicyInput`.
+ *
+ * Perché la LETTURA (`parseEventPolicy`) valida solo la forma: la policy
+ * salvata è dato del cliente e viene riletta a ogni allarme e a ogni
+ * valutazione di mappa. Se togliere un valore dal Dizionario facesse fallire
+ * la lettura, una modifica del vocabolario spegnerebbe l'intera pipeline degli
+ * allarmi — molto peggio del difetto. Un valore rimasto nella lista e non più
+ * nel vocabolario semplicemente non combacia con nessun CI; e non può nemmeno
+ * restarci per sbaglio, perché `updateEnumType` rifiuta di togliere un valore
+ * in uso, la policy inclusa (ondata 7 · B7-2).
  */
-export function assertLifecycleStatuses(value: unknown, field = 'ignore_lifecycle_statuses'): CILifecycleStatus[] {
-  if (!Array.isArray(value)) throw new ValidationError(`${field} must be a list of CI lifecycle statuses (${CI_LIFECYCLE_STATUSES.join(', ')}). Got: ${JSON.stringify(value)}`)
-  const out: CILifecycleStatus[] = []
+export function assertLifecycleStatuses(value: unknown, field = 'ignore_lifecycle_statuses'): string[] {
+  if (!Array.isArray(value)) throw new ValidationError(`${field} must be a list of CI lifecycle statuses (values of the ci_status vocabulary). Got: ${JSON.stringify(value)}`)
+  const out: string[] = []
   for (const v of value) {
-    if (typeof v !== 'string' || !(CI_LIFECYCLE_STATUSES as readonly string[]).includes(v)) {
-      throw new ValidationError(`${field}: ${JSON.stringify(v)} is not one of ${CI_LIFECYCLE_STATUSES.join(', ')}`)
+    if (typeof v !== 'string' || v === '') {
+      throw new ValidationError(`${field}: ${JSON.stringify(v)} is not a non-empty string`)
     }
-    if (out.includes(v as CILifecycleStatus)) throw new ValidationError(`${field}: ${v} appears twice`)
-    out.push(v as CILifecycleStatus)
+    if (out.includes(v)) throw new ValidationError(`${field}: ${v} appears twice`)
+    out.push(v)
   }
   return out
 }
+
+/** Le tre liste della policy che contengono valori di `ci_status`: una definizione sola per validazione e interfaccia. */
+export const LIFECYCLE_POLICY_LISTS = ['ignore_lifecycle_statuses', 'retired_statuses', 'maintenance_statuses'] as const
+export type LifecyclePolicyList = (typeof LIFECYCLE_POLICY_LISTS)[number]
 
 /** Valida una severity_map già decodificata: esattamente le tre severità, ognuna con impact/urgency ammessi. */
 export function assertSeverityMap(value: unknown, field = 'severity_map'): SeverityMap {
@@ -241,6 +291,8 @@ export function assertEventPolicy(value: unknown, what = 'event_policy'): EventP
     retention_days:         assertIntUpTo(value['retention_days'], EVENT_POLICY_MAX.retention_days, `${what}.retention_days`),
     match_short_hostname:   assertBoolean(value['match_short_hostname'], `${what}.match_short_hostname`),
     ignore_lifecycle_statuses: assertLifecycleStatuses(value['ignore_lifecycle_statuses'], `${what}.ignore_lifecycle_statuses`),
+    retired_statuses:       assertLifecycleStatuses(value['retired_statuses'], `${what}.retired_statuses`),
+    maintenance_statuses:   assertLifecycleStatuses(value['maintenance_statuses'], `${what}.maintenance_statuses`),
     severity_map:           assertSeverityMap(value['severity_map'], `${what}.severity_map`),
   }
   if (policy.flap_threshold > 0 && policy.flap_window_minutes === 0) {
@@ -281,10 +333,12 @@ export function parseEventPolicy(raw: unknown, tenantId: string): EventPolicy {
       const missingV3 = EVENT_POLICY_V3_KEYS.filter((k) => parsed[k] === undefined)
       const missingV4 = EVENT_POLICY_V4_KEYS.filter((k) => parsed[k] === undefined)
       const missingV5 = EVENT_POLICY_V5_KEYS.filter((k) => parsed[k] === undefined)
+      const missingV6 = EVENT_POLICY_V6_KEYS.filter((k) => parsed[k] === undefined)
       if (missingV2.length) hints.push(` — missing ${missingV2.join(', ')}: run the ${EVENT_POLICY_V2_MIGRATION} migration`)
       else if (missingV3.length) hints.push(` — missing ${missingV3.join(', ')}: run the ${EVENT_POLICY_V3_MIGRATION} migration`)
       else if (missingV4.length) hints.push(` — missing ${missingV4.join(', ')}: run the ${EVENT_POLICY_V4_MIGRATION} migration`)
       else if (missingV5.length) hints.push(` — missing ${missingV5.join(', ')}: run the ${EVENT_POLICY_V5_MIGRATION} migration`)
+      else if (missingV6.length) hints.push(` — missing ${missingV6.join(', ')}: run the ${EVENT_POLICY_V6_MIGRATION} migration`)
     }
     throw new Error(`Tenant ${tenantId} event_policy is invalid: ${e instanceof Error ? e.message : String(e)}${hints.join('')}`)
   }
@@ -355,6 +409,8 @@ export interface EventPolicyGQL {
   retentionDays:        number
   matchShortHostname:   boolean
   ignoreLifecycleStatuses: string[]
+  retiredStatuses:      string[]
+  maintenanceStatuses:  string[]
   severityMap:          string
 }
 
@@ -375,6 +431,8 @@ export function toEventPolicyGQL(p: EventPolicy): EventPolicyGQL {
     retentionDays:        p.retention_days,
     matchShortHostname:   p.match_short_hostname,
     ignoreLifecycleStatuses: [...p.ignore_lifecycle_statuses],
+    retiredStatuses:      [...p.retired_statuses],
+    maintenanceStatuses:  [...p.maintenance_statuses],
     severityMap:          JSON.stringify(p.severity_map),
   }
 }
@@ -397,6 +455,10 @@ export interface EventPolicyInputGQL {
   matchShortHostname?:   boolean | null
   /** Lista completa (non un delta): quella passata sostituisce la precedente; `[]` = nessuno stato ignorato. */
   ignoreLifecycleStatuses?: string[] | null
+  /** Ondata 7: gli stati che contano come «ritirato» (lista completa, come sopra). */
+  retiredStatuses?:      string[] | null
+  /** Ondata 7: gli stati che contano come «in manutenzione» (lista completa, come sopra). */
+  maintenanceStatuses?:  string[] | null
   severityMap?:          string | null
 }
 
@@ -407,8 +469,16 @@ export interface EventPolicyInputGQL {
  * `version` = attuale + 1 e `updated_at` = `now`. Con `expectedVersion`
  * diverso dalla versione attuale → ValidationError: il client ha letto una
  * policy che un altro amministratore ha già modificato (lost update).
+ *
+ * Ondata 7 · C-4/A-14: è **il** punto di scrittura della policy, quindi è qui
+ * che le tre liste del ciclo di vita vengono confrontate con il vocabolario
+ * `ci_status` **del cliente** (`assertDomainValue`, lib/domainMatrix.ts).
+ * `tenantId` serve solo a questo. Per questo la funzione è asincrona: leggere
+ * il Dizionario è una query (a cache calda, nessuna).
  */
-export function applyEventPolicyInput(current: EventPolicy, input: EventPolicyInputGQL, now: string = new Date().toISOString()): EventPolicy {
+export async function applyEventPolicyInput(
+  tenantId: string, current: EventPolicy, input: EventPolicyInputGQL, now: string = new Date().toISOString(),
+): Promise<EventPolicy> {
   if (input.expectedVersion != null && input.expectedVersion !== current.version) {
     throw new ValidationError(`eventPolicy was modified by someone else (expected version ${input.expectedVersion}, current is ${current.version}${current.updated_at ? `, updated at ${current.updated_at}` : ''}): reload it and apply your changes again`)
   }
@@ -427,14 +497,21 @@ export function applyEventPolicyInput(current: EventPolicy, input: EventPolicyIn
     retentionDays:        'retention_days',
     matchShortHostname:   'match_short_hostname',
     ignoreLifecycleStatuses: 'ignore_lifecycle_statuses',
+    retiredStatuses:      'retired_statuses',
+    maintenanceStatuses:  'maintenance_statuses',
     severityMap:          'severity_map',
   }
+  const LIFECYCLE_INPUTS: readonly string[] = ['ignoreLifecycleStatuses', 'retiredStatuses', 'maintenanceStatuses']
   for (const [gql, key] of Object.entries(map) as [Exclude<keyof EventPolicyInputGQL, 'expectedVersion'>, keyof EventPolicy][]) {
     const v = input[gql]
     if (v === undefined) continue
     if (v === null) throw new ValidationError(`${gql} cannot be null`)
-    if (gql === 'ignoreLifecycleStatuses') {
-      next[key] = assertLifecycleStatuses(v, 'ignoreLifecycleStatuses')
+    if (LIFECYCLE_INPUTS.includes(gql)) {
+      const values = assertLifecycleStatuses(v, gql)
+      // Il punto unico di validazione: il vocabolario è quello del cliente,
+      // non una lista scritta qui (era il difetto C-4/A-14).
+      for (const value of values) await assertDomainValue(tenantId, CI_STATUS_VOCABULARY, value)
+      next[key] = values
     } else if (gql === 'severityMap') {
       let parsed: unknown
       try { parsed = JSON.parse(v as string) }

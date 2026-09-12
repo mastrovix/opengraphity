@@ -12,6 +12,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
 // Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
 // tipo non contavano, in silenzio.
+// Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
+// dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
+// fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
+
 vi.mock('../../lib/ciLabelsForTenant.js', () => ({
   ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
   ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
@@ -62,7 +67,7 @@ const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { workflowEngine } = await import('@opengraphity/workflow')
 const { publishEvent } = await import('../../lib/publishEvent.js')
 const { evaluateTriggers } = await import('../../lib/triggerEngine.js')
-const { derivePriority, impactUrgencyFromPriority } = await import('../../lib/priority.js')
+const { derivePriority, invertPriority } = await import('../../lib/priority.js')
 
 const ctx = { tenantId: 'tenant-1', userId: 'user-1' }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -107,22 +112,30 @@ describe('createProblem — priorità Impatto×Urgenza', () => {
     await createProblem({ title: 'P', impact, urgency, priority: 'low' }, ctx)
     const [[, params]] = queriesWith('CREATE (p:Problem')
     expect(params).toMatchObject({ priority: expected, impact, urgency })
-    expect(params['priority']).toBe(derivePriority(impact, urgency))
+    expect(params['priority']).toBe(await derivePriority(ctx.tenantId, impact, urgency))
   })
 
   it.each(['critical', 'high', 'medium', 'low'] as const)('solo priority=%s → impact/urgency retro-derivati e coerenti con la matrice', async (priority) => {
     await createProblem({ title: 'P', priority }, ctx)
     const [[, params]] = queriesWith('CREATE (p:Problem')
-    const iu = impactUrgencyFromPriority(priority)
+    // Ondata 7: l'inverso si calcola DALLA matrice (`invertPriority`), non da
+    // una tabella parallela con un `default → medium`.
+    const iu = await invertPriority(ctx.tenantId, priority)
     expect(params).toMatchObject({ priority, impact: iu.impact, urgency: iu.urgency })
     // invariante: la coppia retro-derivata rimappa sulla stessa priorità
-    expect(derivePriority(iu.impact, iu.urgency)).toBe(priority)
+    expect(await derivePriority(ctx.tenantId, iu.impact, iu.urgency)).toBe(priority)
   })
 
-  it('impact valido ma urgency assente → si usa priority esplicita e si completa solo il campo mancante', async () => {
-    await createProblem({ title: 'P', impact: 'low', priority: 'critical' }, ctx)
-    const [[, params]] = queriesWith('CREATE (p:Problem')
-    expect(params).toMatchObject({ priority: 'critical', impact: 'low', urgency: 'high' })
+  // CONTRATTO RINEGOZIATO (ondata 7): prima `impact` senza `urgency` cadeva nel
+  // ramo della severità e metà del dato dell'utente sparìa in silenzio —
+  // l'impatto dato veniva tenuto, l'urgenza inventata dalla priorità, e la
+  // priorità NON era più impatto × urgenza (low × high dà medium, non
+  // critical: l'invariante ITIL era rotta nel dato salvato). Ora è un rifiuto
+  // che dice come passarli.
+  it('impact senza urgency è un rifiuto: metà del dato non passa più in silenzio', async () => {
+    await expect(createProblem({ title: 'P', impact: 'low', priority: 'critical' }, ctx))
+      .rejects.toThrow(/Impatto e urgenza si passano insieme/)
+    expect(runQuery).not.toHaveBeenCalled()
   })
 
   it('senza impact+urgency né priority → errore esplicito, nessuna scrittura', async () => {
@@ -131,7 +144,7 @@ describe('createProblem — priorità Impatto×Urgenza', () => {
     expect(publishEvent).not.toHaveBeenCalled()
   })
 
-  it('senza priorità l\'errore è tipizzato (BAD_USER_INPUT) — BUG: problemService.ts:66 lancia un Error generico (incidentService usa ValidationError)', async () => {
+  it('senza priorità l\'errore è tipizzato (BAD_USER_INPUT): ondata 7, ora `ValidationError` come incidentService', async () => {
     const err = await createProblem({ title: 'P' }, ctx).then(() => null, (e: unknown) => e)
     expect(err).toBeInstanceOf(GraphQLError)
     expect((err as GraphQLError).extensions['code']).toBe('BAD_USER_INPUT')

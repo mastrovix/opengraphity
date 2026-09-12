@@ -1,6 +1,8 @@
 /**
  * Banner in testa alla console allarmi: almeno un servizio critico
- * (`mission_critical` / `business_critical`) è giù adesso.
+ * è giù adesso. QUALI criticità rendono «critico» un servizio lo dice il
+ * server (`criticalServiceCriticalities`, ondata 7): sono le celle della
+ * matrice `service_impact` del cliente che portano all'impatto più alto.
  *
  * Stessa forma del banner di tempesta (StormBanner): ambra, `role="status"`
  * (è un avviso, non un errore), una riga per servizio con `<Trans>` — così
@@ -25,7 +27,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
 import { Trans, useTranslation } from 'react-i18next'
 import { XCircle } from 'lucide-react'
-import { GET_SERVICE_MAPS } from '@/graphql/queries'
+import { GET_SERVICE_MAPS, GET_CRITICAL_SERVICE_CRITICALITIES } from '@/graphql/queries'
 import { enumLabel } from '@/lib/ciEnums'
 import { pausedWhenHidden } from '@/lib/polling'
 import { AMBER_BANNER } from '@/lib/eventPalette'
@@ -33,11 +35,10 @@ import { colors } from '@/lib/tokens'
 import { servicePath } from './ServicesPage'
 import type { ServiceMapFilterVars, ServiceMapPage, ServiceMapRow } from '@/types/services'
 
-/** Criticità che rendono «critico» un servizio (enum `criticality` del metamodello). */
-export const CRITICAL_CRITICALITIES: readonly string[] = ['mission_critical', 'business_critical']
-
 /** Filtro del banner: solo mappe attive, giù e critiche — tutto e tre lato server. */
-const FILTER: ServiceMapFilterVars = { health: ['down'], status: 'active', criticality: [...CRITICAL_CRITICALITIES] }
+const filterFor = (criticality: readonly string[]): ServiceMapFilterVars => ({
+  health: ['down'], status: 'active', criticality: [...criticality],
+})
 /** Il link va alla lista dei servizi giù (l'etichetta dice «Servizi giù», non «critici»): un soprainsieme onesto. */
 export const CRITICAL_SERVICES_PATH = '/monitoring/services?health=down&status=active'
 
@@ -49,11 +50,31 @@ const linkStyle = { color: AMBER_BANNER.text, fontWeight: 600 } as const
 
 export function CriticalServicesBanner() {
   const { t } = useTranslation()
+  // Ondata 7 (C-7): quali criticità contano lo dice il SERVER, leggendo la
+  // matrice `service_impact` del cliente (le celle che portano all'impatto
+  // più alto). Prima erano due valori scritti qui e mandati al server come
+  // filtro: un servizio con una criticità aggiunta dall'admin non compariva
+  // mai nel banner, in silenzio.
+  const { data: critData, error: critError } =
+    useQuery<{ criticalServiceCriticalities: string[] }>(GET_CRITICAL_SERVICE_CRITICALITIES, { fetchPolicy: 'cache-first' })
+  const criticalities = critData?.criticalServiceCriticalities
+
   const { data, error } = useQuery<{ serviceMaps: ServiceMapPage }>(GET_SERVICE_MAPS, {
-    variables: { filter: FILTER, limit: LIMIT, offset: 0 },
+    variables: { filter: filterFor(criticalities ?? []), limit: LIMIT, offset: 0 },
+    // Finché non si sa quali criticità contano non si chiede niente: un filtro
+    // vuoto vorrebbe dire «tutte», e il banner conterebbe servizi non critici.
+    skip: !criticalities?.length,
     fetchPolicy: 'cache-and-network',
     ...pausedWhenHidden(POLL_MS),
   })
+
+  if (critError) {
+    return (
+      <p role="alert" style={{ margin: '0 0 16px', fontSize: 'var(--font-size-table)', color: colors.danger }}>
+        {t('monitoring.criticalBanner.loadError', { error: critError.message })}
+      </p>
+    )
+  }
 
   if (error && !data) {
     return (
@@ -68,7 +89,7 @@ export function CriticalServicesBanner() {
   // contratto e si dice in console, non si mostra una riga «è giù ()».
   const critical = (data?.serviceMaps.items ?? []).flatMap((s: ServiceMapRow) => {
     if (s.service.criticality === null) {
-      console.error(`CriticalServicesBanner: serviceMaps(criticality: ${CRITICAL_CRITICALITIES.join(', ')}) ha restituito «${s.name}» senza criticità`)
+      console.error(`CriticalServicesBanner: serviceMaps(criticality: ${(criticalities ?? []).join(', ')}) ha restituito «${s.name}» senza criticità`)
       return []
     }
     return [{ id: s.id, name: s.name, criticality: s.service.criticality }]

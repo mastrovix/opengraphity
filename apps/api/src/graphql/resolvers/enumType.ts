@@ -1,9 +1,10 @@
 import { v4 as uuidv4 } from 'uuid'
-import { getSession } from '@opengraphity/neo4j'
+import { getSession, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { ForbiddenError, NotFoundError, ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
 import { SYSTEM_TENANT } from '../../lib/enumScope.js'
+import { countEnumValueUsage, enumValueUsageMessage, replaceEnumValue } from '../../lib/enumValueUsage.js'
 
 interface EnumTypeDef {
   id:        string
@@ -266,9 +267,29 @@ export async function customizeEnumType(
   }
 }
 
+/**
+ * Modifica un vocabolario del tenant.
+ *
+ * ## Togliere un valore, ondata 7 · B7-2 / A-13
+ * Prima `values` veniva sostituito **in blocco**: nessun conteggio, e i record
+ * restavano nel grafo con un valore che il vocabolario non aveva più (il form
+ * mostrava il campo vuoto, i filtri per valore non lo offrivano più, i
+ * conteggi lo perdevano — tutto in silenzio; dal vivo 68 CI su c-one).
+ *
+ * Adesso: si calcola quali valori sparirebbero, si contano gli usi
+ * (`lib/enumValueUsage.ts`: i record di ogni tipo il cui campo usa questo
+ * vocabolario, **più** la semantica del ciclo di vita sulla policy degli
+ * allarmi) e si **rifiuta** dicendo quanti e dove. Per procedere si passa una
+ * sostituzione esplicita — `input.replacements: [{from, to}]` — e i record
+ * vengono riscritti **nella stessa transazione** del vocabolario, con audit.
+ *
+ * Perché non riscrivere da soli senza chiedere: cambiare il valore di decine
+ * di record è una modifica ai *dati*, e farla come effetto collaterale di una
+ * modifica al Dizionario sarebbe lo stesso genere di silenzio.
+ */
 export async function updateEnumType(
   _: unknown,
-  args: { id: string; input: { label?: string; values?: string[]; scope?: string } },
+  args: { id: string; input: { label?: string; values?: string[]; scope?: string; replacements?: { from: string; to: string }[] } },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
   if (ctx.role !== 'admin') throw new ForbiddenError()
@@ -280,7 +301,7 @@ export async function updateEnumType(
       tx.run(`
         MATCH (e:EnumTypeDefinition {id: $id})
         WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')
-        RETURN e.is_system AS isSystem, e.tenant_id AS tenantId, e.name AS name
+        RETURN e.is_system AS isSystem, e.tenant_id AS tenantId, e.name AS name, e.values AS values
       `, { id, tenantId: ctx.tenantId }),
     )
     if (!check.records.length) throw new NotFoundError('EnumTypeDefinition', id)
@@ -301,9 +322,43 @@ export async function updateEnumType(
       throw new ValidationError('Cannot change scope of system enum types')
     }
 
+    // ── Valori che sparirebbero (B7-2) ────────────────────────────────────
+    const name       = check.records[0]!.get('name') as string
+    const rawCurrent = check.records[0]!.get('values')
+    const current    = Array.isArray(rawCurrent) ? rawCurrent as string[] : JSON.parse(String(rawCurrent)) as string[]
+    const next       = input.values ?? current
+    const removed    = current.filter((v) => !next.includes(v))
+    const replacements = input.replacements ?? []
+
+    for (const r of replacements) {
+      if (!removed.includes(r.from)) {
+        throw new ValidationError(
+          `replacements: "${r.from}" non è fra i valori che stai togliendo da "${name}" (${removed.length ? removed.join(', ') : 'nessuno'}).`,
+        )
+      }
+      if (!next.includes(r.to)) {
+        throw new ValidationError(
+          `replacements: il valore di sostituzione "${r.to}" non è fra i valori nuovi di "${name}" (${next.join(', ')}).`,
+        )
+      }
+    }
+    const replaced = new Map(replacements.map((r) => [r.from, r.to]))
+    const orphaned = removed.filter((v) => !replaced.has(v))
+    if (orphaned.length) {
+      const usages = await countEnumValueUsage(session, ctx.tenantId, name, orphaned)
+      if (usages.length) throw new ValidationError(enumValueUsageMessage(name, usages))
+    }
+
     const now = new Date().toISOString()
-    const result = await session.executeWrite((tx) =>
-      tx.run(`
+    const result = await session.executeWrite(async (tx) => {
+      // La riscrittura dei record e quella del vocabolario nella STESSA
+      // transazione: non esiste un istante in cui i record puntano a un valore
+      // che il vocabolario non ha.
+      for (const [from, to] of replaced) {
+        const touched = await replaceEnumValue(tx, ctx.tenantId, name, from, to)
+        void audit(ctx, 'enum_type.value_replaced', 'EnumTypeDefinition', id, { name, from, to, records: touched })
+      }
+      return tx.run(`
         MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId})
         SET e.label      = coalesce($label, e.label),
             e.values     = coalesce($values, e.values),
@@ -325,11 +380,11 @@ export async function updateEnumType(
         values: input.values ?? null,
         scope:  input.scope  ?? null,
         now,
-      }),
-    )
+      })
+    })
 
     if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', id)
-    void audit(ctx, 'enum_type.updated', 'EnumTypeDefinition', id, { label: input.label })
+    void audit(ctx, 'enum_type.updated', 'EnumTypeDefinition', id, { label: input.label, removed, replacements })
     return mapEnum(result.records[0])
   } finally {
     await session.close()
@@ -355,18 +410,64 @@ export async function deleteEnumType(
         // cancellare un vocabolario ancora in uso.
         // tenant-ok: il vocabolario e è già vincolato a $tenantId dal MATCH sopra.
         OPTIONAL MATCH (f:CIFieldDefinition)-[:USES_ENUM]->(e)
-        RETURN e.is_system AS isSystem, count(f) AS usageCount
+        // Il vocabolario SPEDITO con lo stesso nome: cancellare la copia del
+        // cliente lo rimette in gioco (vince per nome, lib/enumScope.ts).
+        // tenant-ok: shipped è vincolato al tenant condiviso per definizione.
+        OPTIONAL MATCH (shipped:EnumTypeDefinition {name: e.name, tenant_id: 'system'})
+        RETURN e.is_system AS isSystem, e.name AS name, e.values AS values,
+               count(f) AS usageCount, head(collect(shipped.values)) AS shippedValues
       `, { id: args.id, tenantId: ctx.tenantId }),
     )
     if (!check.records.length) throw new NotFoundError('EnumTypeDefinition', args.id)
     const isSystem   = check.records[0]!.get('isSystem') as boolean
-    const usageCount = (check.records[0]!.get('usageCount') as { toNumber(): number }).toNumber()
+    // `count(...)` non è sempre un `Integer` del driver: dipende dalla
+    // configurazione del driver e dal percorso (dentro una `CALL { … }`, o con
+    // una sessione finta nei test, è un `number` normale). `.toNumber()` su un
+    // numero non esiste, e la cancellazione moriva con
+    // «get(...).toNumber is not a function» — su QUALUNQUE vocabolario, anche
+    // uno non usato da nessuno. Il repo ha già il convertitore giusto
+    // (`toNumber` di @opengraphity/neo4j), che accetta entrambe le forme.
+    const usageCount = toNumber(check.records[0]!.get('usageCount'))
 
     if (isSystem) {
       throw new ValidationError('System enum types cannot be deleted')
     }
     if (usageCount > 0) {
       throw new ValidationError(`Enum in use by ${usageCount} field${usageCount > 1 ? 's' : ''}`)
+    }
+
+    // ── Ondata 7 · B7-2: cancellare la copia del cliente NON è mai silenzioso
+    //
+    // `usageCount` conta solo i campi agganciati a QUESTO nodo. Ma un
+    // vocabolario del cliente vince **per nome** (lib/enumScope.ts), e dal
+    // vivo i campi condivisi sono agganciati ai nodi di un altro cliente
+    // (C-6): quel conteggio è quindi zero anche quando la cancellazione
+    // cambia davvero il vocabolario di un campo. Tornare a quello spedito è
+    // legittimo — è il modo di annullare una personalizzazione — ma non deve
+    // far sparire in silenzio i valori che il cliente aveva AGGIUNTO e che
+    // stanno ancora su dei record (o nella semantica del ciclo di vita).
+    const name   = check.records[0]!.get('name') as string
+    const rawOwn = check.records[0]!.get('values')
+    const own    = Array.isArray(rawOwn) ? rawOwn as string[] : JSON.parse(String(rawOwn)) as string[]
+    const rawShipped = check.records[0]!.get('shippedValues')
+    const shipped = rawShipped == null ? []
+      : Array.isArray(rawShipped) ? rawShipped as string[] : JSON.parse(String(rawShipped)) as string[]
+    const lost = own.filter((v) => !shipped.includes(v))
+    if (lost.length) {
+      const usages = await countEnumValueUsage(session, ctx.tenantId, name, lost)
+      if (usages.length) {
+        throw new ValidationError(
+          `Cancellare il tuo vocabolario "${name}" lo riporterebbe a quello spedito col prodotto` +
+          `${shipped.length ? ` (${shipped.join(', ')})` : ' (che non esiste: nessun valore resterebbe)'}, ` +
+          `e questi valori tuoi sono ancora in uso: ` +
+          usages.map((u) => `"${u.value}" (${[
+            ...u.records.map((r) => `${String(r.count)} ${r.typeName}.${r.fieldName}`),
+            ...u.policyLists.map((l) => `policy degli allarmi: ${l}`),
+          ].join(', ')})`).join('; ') +
+          `. Cambia prima quei record, oppure togli i valori uno per uno con updateEnumType ` +
+          `(che accetta un valore di sostituzione).`,
+        )
+      }
     }
 
     await session.executeWrite((tx) =>

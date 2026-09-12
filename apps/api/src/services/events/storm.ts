@@ -59,7 +59,7 @@ import type { EventPolicy } from '../../lib/eventPolicy.js'
 import { eventStormsActive, incidentsAutoOpenedTotal } from '../../middleware/metrics.js'
 import { incidents } from './deps.js'
 import { getEventPolicy } from './policy.js'
-import { MONITORING_ACTOR, monitoringContext, toNumber, toStr, type Props } from './shared.js'
+import { MAX_EVENT_SEVERITY, MONITORING_ACTOR, incidentSeverityFromEvent, monitoringContext, toNumber, toStr, type Props } from './shared.js'
 import { invalidateSourceCache, loadSource } from './sourceCache.js'
 
 const log = logger.child({ module: 'event-storm' })
@@ -223,10 +223,18 @@ async function openStormIncident(tenantId: string, sourceId: string, sourceName:
   ].join('\n')
 
   const incidentService = await incidents()
+  // Severità dell'incident di tempesta: quella che la matrice `event_severity`
+  // del cliente assegna alla severità d'allarme PIÙ ALTA. Prima era
+  // `'critical'` scritta a mano (ondata 7 · C-8): su un cliente che avesse
+  // rinominato quel valore l'incident nasceva con una severità che il suo
+  // Dizionario non aveva, e SLA e report non lo contavano. La tempesta è per
+  // definizione il caso peggiore, quindi il grado più alto è la scelta giusta
+  // — ma il NOME lo decide il cliente, non il codice.
+  const severity = await incidentSeverityFromEvent(tenantId, MAX_EVENT_SEVERITY)
   const incident = await incidentService.createIncident({
     title:         `Tempesta di allarmi da ${sourceName}: ${rate} allarmi al minuto`,
     description,
-    severity:      'critical',
+    severity,
     affectedCIIds: [ciId],
   }, { tenantId, userId: MONITORING_ACTOR })
 

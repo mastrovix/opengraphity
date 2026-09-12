@@ -15,7 +15,11 @@ vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolved
 // Revisione 2 · D6.2: la lettura della mappa prende `suppress_upstream_hops`
 // dalla policy degli allarmi (cache in memoria): qui la policy è mockata, così
 // la mappa resta UNA sola query nel test.
-vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValue({ suppress_upstream_hops: 1 }) }))
+vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValue({ suppress_upstream_hops: 1,
+  // Ondata 7 · C-4: la SEMANTICA del ciclo di vita («ritirato», «in
+  // manutenzione») è dato del cliente e vive sulla policy. Qui i valori
+  // iniziali, gli stessi che il codice aveva come costanti.
+  retired_statuses: ['inactive', 'decommissioned'], maintenance_statuses: ['maintenance'], ignore_lifecycle_statuses: ['decommissioned'] }) }))
 
 vi.mock('../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../lib/logger.js', () => {

@@ -10,7 +10,7 @@
  * Uso: pnpm --filter @opengraphity/api seed:relations -- --tenant=<slug> --yes-delete
  */
 import neo4j from 'neo4j-driver'
-import { getSession } from '@opengraphity/neo4j'
+import { getSession, toNumber } from '@opengraphity/neo4j'
 import { refuseInProduction, requireConfirmFlag, resolveTenantArg } from './lib/scriptArgs.js'
 import { runScript } from './lib/runScript.js'
 
@@ -62,7 +62,9 @@ async function seed(TENANT_ID: string) {
      RETURN count(r) AS deleted`,
     { tenantId: TENANT_ID }
   )
-  const deleted = (cleanResult.records[0].get('deleted') as { toNumber(): number }).toNumber()
+  // `count(...)` non è sempre un `Integer` del driver: `toNumber` copre
+  // entrambe le forme (lo stesso inciampo che teneva rotto `deleteEnumType`).
+  const deleted = toNumber(cleanResult.records[0].get('deleted'))
   console.log(`  Deleted ${deleted} existing relations`)
 
   // ── STEP 2: DB chain — Database → DatabaseInstance → Server ──────────────

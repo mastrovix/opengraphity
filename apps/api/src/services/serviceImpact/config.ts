@@ -32,13 +32,14 @@ import { ValidationError } from '../../lib/errors.js'
 import { logger } from '../../lib/logger.js'
 import {
   NODE_PROPAGATIONS, NODE_WEIGHT_MAX, NODE_WEIGHT_MIN, SERVICE_EXCLUSION_REASON_MANUAL, SERVICE_MAP_MAX_NODES,
-  SERVICE_MAP_STATUSES, SERVICE_STALE_MISSING_CI, assertServiceImpactRules, isRetiredLifecycle,
+  SERVICE_MAP_STATUSES, SERVICE_STALE_MISSING_CI, assertServiceImpactRules,
   type DuringStormMode, type NodePropagation, type ServiceHealth, type ServiceImpactRules, type ServiceMapStatus,
   type ServiceOpenIncidentFrom, type UnknownNodesMode,
 } from '../../lib/serviceVocabularies.js'
 import { toNumber, toStr, type Props } from '../events/shared.js'
 import { buildServiceMap, type ProposedNode } from './build.js'
 import { evaluateImpact, nodeContributes } from './rules.js'
+import { isRetiredLifecycle, resolveCILifecycleSemantics } from '../../lib/ciLifecycle.js'
 import { evaluateServiceMap, loadServiceMapState, storedCausesOf, type EvaluateResult, type LoadedNode, type ServiceMapState } from './engine.js'
 import { SERVICE_HISTORY_STATE_FROM_MAP, serviceConfigHistoryParams, serviceHistoryWriteCypher, type StoredCause } from './history.js'
 
@@ -278,7 +279,8 @@ export async function computeServiceMapDiff(session: Queryable, tenantId: string
   // raggiungibilità (un nodo incluso ed escluso non è «sparito dal grafo»).
   // Revisione 2 · D6.3: un CI dismesso non si propone come componente nuovo —
   // non conterebbe comunque.
-  const proposable = proposal.nodes.filter((n) => !excludedIds.has(n.ciId) && !isRetiredLifecycle(n.status))
+  const semantics = await resolveCILifecycleSemantics(tenantId)
+  const proposable = proposal.nodes.filter((n) => !excludedIds.has(n.ciId) && !isRetiredLifecycle(n.status, semantics))
 
   const added = proposable.filter((n) => !current.has(n.ciId))
   const moved: MovedNode[] = []

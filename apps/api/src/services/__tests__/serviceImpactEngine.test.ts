@@ -24,7 +24,11 @@ vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolved
 // Revisione 2 · D6.2: la lettura della mappa prende `suppress_upstream_hops`
 // dalla policy degli allarmi (cache in memoria): qui la policy è mockata, così
 // la mappa resta UNA sola query nel test.
-vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValue({ suppress_upstream_hops: 1 }) }))
+vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValue({ suppress_upstream_hops: 1,
+  // Ondata 7 · C-4: la SEMANTICA del ciclo di vita («ritirato», «in
+  // manutenzione») è dato del cliente e vive sulla policy. Qui i valori
+  // iniziali, gli stessi che il codice aveva come costanti.
+  retired_statuses: ['inactive', 'decommissioned'], maintenance_statuses: ['maintenance'], ignore_lifecycle_statuses: ['decommissioned'] }) }))
 
 vi.mock('../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../lib/logger.js', () => {
@@ -225,23 +229,26 @@ describe('buildServiceMap', () => {
   })
 
   it('proposeNodeSettings: livello 1 → entry 8 critico; certificato → never 3; infrastruttura/componente → weighted 5; il ruolo viene dal metamodello del tenant, e un\'etichetta che nessun tipo attivo dichiara → errore', () => {
-    expect(proposeNodeSettings(TENANT_ROLES, ['Server'], 1)).toEqual({ role: 'entry', propagate: 'weighted', weight: 8, critical: true })
-    expect(proposeNodeSettings(TENANT_ROLES, ['SslCertificate'], 2)).toEqual({ role: 'certificate', propagate: 'never', weight: 3, critical: false })
-    expect(proposeNodeSettings(TENANT_ROLES, ['Microservice'], 3)).toEqual({ role: 'component', propagate: 'weighted', weight: 5, critical: false })
-    expect(proposeNodeSettings(TENANT_ROLES, ['VirtualMachine'], 2).role).toBe('infrastructure')
+    // Ondata 7 · C-4: la semantica del ciclo di vita è un parametro
+    // obbligatorio, non una costante. Qui quella del cliente di prova.
+    const SEM = { retired: new Set(['inactive', 'decommissioned']), maintenance: new Set(['maintenance']), ignored: new Set(['decommissioned']) }
+    expect(proposeNodeSettings(TENANT_ROLES, ['Server'], 1, null, SEM)).toEqual({ role: 'entry', propagate: 'weighted', weight: 8, critical: true })
+    expect(proposeNodeSettings(TENANT_ROLES, ['SslCertificate'], 2, null, SEM)).toEqual({ role: 'certificate', propagate: 'never', weight: 3, critical: false })
+    expect(proposeNodeSettings(TENANT_ROLES, ['Microservice'], 3, null, SEM)).toEqual({ role: 'component', propagate: 'weighted', weight: 5, critical: false })
+    expect(proposeNodeSettings(TENANT_ROLES, ['VirtualMachine'], 2, null, SEM).role).toBe('infrastructure')
     // Ondata 6 · A-10 — RINEGOZIATO: `ErpSystem` era l'esempio del tipo del
     // cliente e DOVEVA lanciare, perché il ruolo era una tabella nel codice.
     // Ora il tipo del cliente ha il suo ruolo nel metamodello e la mappa lo
     // include; lancia ancora — e deve — l'etichetta che NESSUN tipo attivo
     // dichiara (tipo cancellato, disattivato, o CI nato da una discovery).
-    expect(proposeNodeSettings(TENANT_ROLES, ['ErpSystem'], 2)).toEqual({ role: 'component', propagate: 'weighted', weight: 5, critical: false })
-    expect(() => proposeNodeSettings(TENANT_ROLES, ['TipoCancellato'], 2)).toThrow(/No service node role for CI labels \["TipoCancellato"\]/)
-    expect(() => proposeNodeSettings(new Map(), ['Server'], 2)).toThrow(/no active CI type of this tenant declares them/)
+    expect(proposeNodeSettings(TENANT_ROLES, ['ErpSystem'], 2, null, SEM)).toEqual({ role: 'component', propagate: 'weighted', weight: 5, critical: false })
+    expect(() => proposeNodeSettings(TENANT_ROLES, ['TipoCancellato'], 2, null, SEM)).toThrow(/No service node role for CI labels \["TipoCancellato"\]/)
+    expect(() => proposeNodeSettings(new Map(), ['Server'], 2, null, SEM)).toThrow(/no active CI type of this tenant declares them/)
     // Revisione 2 · D6.3: un CI dismesso (o fuori servizio) è proposto come informativo — si vede ma non conta
-    expect(proposeNodeSettings(TENANT_ROLES, ['Server'], 2, 'decommissioned')).toEqual({ role: 'infrastructure', propagate: 'never', weight: 5, critical: false })
-    expect(proposeNodeSettings(TENANT_ROLES, ['Server'], 2, 'inactive').propagate).toBe('never')
-    expect(proposeNodeSettings(TENANT_ROLES, ['Server'], 1, 'decommissioned')).toEqual({ role: 'entry', propagate: 'never', weight: 8, critical: false })
-    expect(proposeNodeSettings(TENANT_ROLES, ['Server'], 2, 'maintenance').propagate).toBe('weighted')
+    expect(proposeNodeSettings(TENANT_ROLES, ['Server'], 2, 'decommissioned', SEM)).toEqual({ role: 'infrastructure', propagate: 'never', weight: 5, critical: false })
+    expect(proposeNodeSettings(TENANT_ROLES, ['Server'], 2, 'inactive', SEM).propagate).toBe('never')
+    expect(proposeNodeSettings(TENANT_ROLES, ['Server'], 1, 'decommissioned', SEM)).toEqual({ role: 'entry', propagate: 'never', weight: 8, critical: false })
+    expect(proposeNodeSettings(TENANT_ROLES, ['Server'], 2, 'maintenance', SEM).propagate).toBe('weighted')
   })
 })
 

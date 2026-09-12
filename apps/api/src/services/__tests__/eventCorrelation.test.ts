@@ -27,6 +27,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 import { GraphQLError } from 'graphql'
 
+// Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
+// dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
+// fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
+
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(),
   toNumber: (v: unknown) => (v == null ? 0 : Number(v)),

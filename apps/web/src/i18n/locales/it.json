@@ -110,7 +110,8 @@
     "monitoringSources": "Sorgenti",
     "ciHealth": "Salute CI",
     "platformMonitoring": "Platform monitoring",
-    "services": "Servizi"
+    "services": "Servizi",
+    "domainMatrices": "Matrici di dominio"
   },
   "pages": {
     "incidents": {
@@ -1001,6 +1002,45 @@
       "serviceHealthStaffOnly": "La pagina Servizi è riservata allo staff (amministratori, operatori e visualizzatori).",
       "unknownDataFreeWidget": "Tipo di widget senza dati sconosciuto: {{type}}",
       "serviceHealthHint": "Questo widget mostra i contatori dei servizi monitorati: nessuna entità o metrica da configurare."
+    },
+    "domainMatrices": {
+      "title": "Matrici di dominio",
+      "subtitle": "Le regole che traducono un valore di vocabolario in un altro: priorità = impatto × urgenza, criticità del servizio → impatto, severità dell'allarme, tipo di change × fascia di rischio, severità dell'import. Erano nel codice; qui si modificano senza deploy.",
+      "saved": "Matrice salvata",
+      "emptyCell": "— da compilare",
+      "vocabularies": "Vocabolari: {{inputs}} → {{output}}",
+      "factory": "contenuto di fabbrica (mai modificata)",
+      "editedAt": "modificata il {{at}}",
+      "tableCaption": "Righe: {{rows}} · Colonne: {{cols}}",
+      "staleTitle": "Celle fuori vocabolario",
+      "staleHint": "Queste chiavi non corrispondono più a nessun valore dei tuoi vocabolari: è il residuo di una rinomina. Salvando la matrice vengono rimosse.",
+      "kinds": {
+        "priority": {
+          "title": "Priorità del ticket",
+          "description": "Priorità di incident e problem = impatto × urgenza (ITIL). La priorità derivata si salva nel campo «severità», che SLA, pastiglie e filtri leggono."
+        },
+        "service_impact": {
+          "title": "Criticità del servizio → impatto",
+          "description": "L'impatto dell'incident che una mappa di servizio apre, dalla criticità dell'applicazione di business. Le criticità tradotte nell'impatto più alto sono anche quelle del banner «servizi critici giù»."
+        },
+        "event_severity": {
+          "title": "Severità dell'allarme → severità dell'incident",
+          "description": "Con quale severità nasce l'incident aperto dal monitoraggio. Vale anche per l'incident di una tempesta di allarmi, che usa la severità d'allarme più alta."
+        },
+        "change_priority": {
+          "title": "Priorità della change",
+          "description": "Priorità della change = tipo × fascia di rischio (non impatto × urgenza). Con il rischio non ancora valutato si usa la fascia più bassa."
+        },
+        "import_severity": {
+          "title": "Severità in ingresso dall'import",
+          "description": "Come si traducono le severità scritte in un file di import dei ticket. Una severità che non si traduce mette la riga in errore: non viene più riscritta a «medium»."
+        }
+      },
+      "missingWarning_one": "Una combinazione senza valore ({{keys}}). Finché resta vuota, quando serve — all'apertura di un incident o all'arrivo di un allarme — l'operazione si ferma e lo dice: compilala qui.",
+      "missingWarning_other": "{{count}} combinazioni senza valore ({{keys}}). Finché restano vuote, quando servono — all'apertura di un incident o all'arrivo di un allarme — l'operazione si ferma e lo dice: compilale qui.",
+      "invalidWarning_one": "Una cella porta a un valore che non è più nel tuo vocabolario ({{keys}}): è il residuo di una rinomina, e a runtime è un errore. Scegli il valore nuovo.",
+      "invalidWarning_other": "{{count}} celle portano a valori che non sono più nel tuo vocabolario ({{keys}}): è il residuo di una rinomina, e a runtime sono errori. Scegli i valori nuovi.",
+      "outOfVocabulary": "{{value}} — non più nel vocabolario"
     }
   },
   "filter": {
@@ -1871,7 +1911,8 @@
       "nameRequired": "Il nome è obbligatorio",
       "scriptError": "Errore sandbox scripting:",
       "metamodelError": "Metamodello:",
-      "saving": "Salvataggio..."
+      "saving": "Salvataggio...",
+      "valueOutsideVocabulary": "{{value}} — non più nel vocabolario"
     },
     "ciGraph": {
       "showBlastRadius": "Mostra blast radius",
@@ -2052,7 +2093,6 @@
       "lifecycleUnknown": "Sconosciuto: {{value}}",
       "lifecycleVocabularyUnavailable": "Stati del ciclo di vita non disponibili dal metamodello ({{error}}): restano spuntabili solo quelli già salvati nella policy.",
       "lifecycleEmptyVocabulary": "Il metamodello non espone nessuno stato del ciclo di vita: non c'è niente da ignorare.",
-      "lifecycleSelectedNone": "Nessuno stato ignorato: gli allarmi vengono valutati su qualunque CI.",
       "lifecycleSelected_one": "{{count}} stato ignorato.",
       "lifecycleSelected_other": "{{count}} stati ignorati.",
       "autoResolve": "Chiusura automatica quando la sorgente risolve",
@@ -2098,7 +2138,9 @@
         "flapStableMinutes": "Quanto a lungo l'allarme deve restare fermo (né nuovi attivi né risolti) prima di uscire dallo sfarfallio e tornare alla correlazione normale.",
         "stormThresholdPerMinute": "Se una sorgente supera questo numero di allarmi nuovi al minuto, scatta la tempesta: i suoi allarmi sono raggruppati in un unico incident invece di aprirne uno per CI. 0 = rilevamento tempeste disattivato.",
         "stormCooldownMinutes": "La tempesta si chiude quando il tasso resta sotto la soglia per questi minuti; gli allarmi successivi tornano alla correlazione normale.",
-        "ignoreLifecycleStatuses": "Gli allarmi sui CI in questi stati non aprono incident e non cambiano la salute del CI: restano in console con il motivo «ciclo di vita ignorato». Di norma basta «decommissioned»: un CI dismesso che il monitoraggio non ha ancora spento non deve svegliare nessuno."
+        "ignoreLifecycleStatuses": "Gli allarmi sui CI in questi stati non aprono incident e non cambiano la salute del CI: restano in console con il motivo «ciclo di vita ignorato». Di norma basta «decommissioned»: un CI dismesso che il monitoraggio non ha ancora spento non deve svegliare nessuno.",
+        "retiredStatuses": "Un CI in questi stati non conta nel calcolo della salute dei servizi: si vede nella mappa, marcato «dismesso», ma non pesa e non porta il servizio in manutenzione. Di fabbrica «inactive» e «decommissioned».",
+        "maintenanceStatuses": "Un CI in questi stati non si fa aggiornare la salute dagli allarmi ed esce dal calcolo della mappa, marcato «in manutenzione». È il ciclo di vita del CI, non la finestra di una change. Di fabbrica «maintenance»."
       },
       "flapStableMinutes": "Minuti di stabilità prima di riprendere",
       "stormThresholdPerMinute": "Soglia di tempesta (allarmi nuovi al minuto)",
@@ -2124,6 +2166,13 @@
         "expectedObject": "severityMap: atteso un oggetto JSON",
         "missingSeverity": "severityMap: manca la severità \"{{severity}}\"",
         "invalidLevel": "severityMap.{{severity}}: impact/urgency devono essere low | medium | high"
+      },
+      "retiredStatuses": "Stati che contano come «ritirato»",
+      "maintenanceStatuses": "Stati che contano come «in manutenzione»",
+      "selectedNone": {
+        "ignoreLifecycleStatuses": "Nessuno stato ignorato: gli allarmi vengono valutati su qualunque CI.",
+        "retiredStatuses": "Nessuno stato conta come ritirato: ogni componente pesa nel calcolo della salute dei servizi, anche se dismesso.",
+        "maintenanceStatuses": "Nessuno stato conta come manutenzione: il monitoraggio aggiorna la salute di qualunque CI."
       }
     },
     "health": {

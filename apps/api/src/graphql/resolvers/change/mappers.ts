@@ -1,6 +1,5 @@
 import { mapCI } from '../ci-utils.js'
 import { mapUser, mapTeam } from '../../../lib/mappers.js'
-import { deriveChangePriority } from './scoring.js'
 import { toNumber } from '@opengraphity/neo4j'
 import { parseDeploySteps } from '../../../lib/deployWindows.js'
 
@@ -19,10 +18,17 @@ export function mapChange(props: Props) {
     why:                (props['why']                  ?? null) as string | null,
     what:               (props['what']                 ?? null) as string | null,
     aggregateRiskScore,
-    // Priorità (ITIL): tipo × rischio. Memorizzata sul nodo (aggiornata a
-    // creazione e ad ogni ricalcolo del rischio); fallback derivato per i
-    // change creati prima dell'introduzione del campo.
-    priority:           (props['priority'] ?? deriveChangePriority(changeType, aggregateRiskScore)) as string,
+    // Priorità (ITIL): tipo × fascia di rischio. Memorizzata sul nodo
+    // (aggiornata a creazione e ad ogni ricalcolo del rischio).
+    //
+    // Ondata 7 (B-14): qui NON si deriva più niente. Il fallback derivato
+    // «per i change creati prima dell'introduzione del campo» era una
+    // seconda sorgente della priorità — sincrona, quindi cieca alla matrice
+    // del cliente — che a ogni lettura poteva contraddire quella scritta sul
+    // nodo. Una change senza `priority` è un dato incompleto e si mostra
+    // così: il campo SDL è nullabile, il web lo rende «—». Dal vivo
+    // (12 set 2026) le change senza `priority` sono zero.
+    priority:           (props['priority'] ?? null) as string | null,
     approvalRoute:      (props['approval_route']       ?? null) as string | null,
     changeType,
     approvalStatus:     (props['approval_status']      ?? null) as string | null,

@@ -10,6 +10,8 @@ import { colors, palette, alpha } from '@/lib/tokens'
 
 interface Ticket {
   id: string; title: string; status: string; priority: string
+  /** Categoria ed etichetta del passo nel workflow del cliente (ondata 7 · D-15). */
+  statusCategory: string | null; statusLabel: string | null
   category: string; createdAt: string; updatedAt: string
 }
 interface Stats { open: number; inProgress: number; resolved: number; total: number }
@@ -156,7 +158,7 @@ export function HomePage() {
                     {fmtRelative(ticket.updatedAt, 'day')}
                   </div>
                 </div>
-                <TicketStatusBadge status={ticket.status} />
+                <TicketStatusBadge status={ticket.status} statusCategory={ticket.statusCategory} statusLabel={ticket.statusLabel} />
               </Link>
             ))}
           </div>

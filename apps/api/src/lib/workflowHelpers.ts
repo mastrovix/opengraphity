@@ -17,6 +17,8 @@ const stepsCache = new Map<string, Promise<StepRow[]>>()
 
 export interface StepRow {
   name:       string
+  /** Etichetta scelta dal cliente nel disegnatore; `null` se non l'ha messa. */
+  label:      string | null
   isInitial:  boolean
   isTerminal: boolean
   isOpen:     boolean
@@ -43,6 +45,7 @@ async function loadSteps(session: Session, tenantId: string, entityType: string)
       MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
       MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
       RETURN s.name       AS name,
+             s.label      AS label,
              coalesce(s.is_initial,  s.type = 'start') AS isInitial,
              coalesce(s.is_terminal, s.type = 'end')   AS isTerminal,
              coalesce(s.is_open,     s.type <> 'end')  AS isOpen,
@@ -52,6 +55,7 @@ async function loadSteps(session: Session, tenantId: string, entityType: string)
     `, { tenantId, entityType })
     return res.records.map((r) => ({
       name:       r.get('name')       as string,
+      label:      (r.get('label') ?? null) as string | null,
       isInitial:  Boolean(r.get('isInitial')),
       isTerminal: Boolean(r.get('isTerminal')),
       isOpen:     Boolean(r.get('isOpen')),

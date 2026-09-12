@@ -161,7 +161,8 @@ async function updateIncident(
     // Priorità (severity) = Impatto × Urgenza, sempre coerenti tra loro:
     //  - impact/urgency nella patch → severity ricalcolata (merge col corrente);
     //  - solo severity nella patch → impact/urgency riallineati alla severity.
-    const { severity, impact, urgency } = resolvePriorityPatch(
+    const { severity, impact, urgency } = await resolvePriorityPatch(
+      ctx.tenantId,
       { impact: current.props['impact'] as string | null, urgency: current.props['urgency'] as string | null },
       { priority: input.severity, impact: input.impact, urgency: input.urgency },
     )
