@@ -15,6 +15,12 @@ export interface WFStep {
   isTerminal?:  boolean
   isOpen?:      boolean
   category?:    string | null
+  /**
+   * Istanze di workflow ferme ORA su questo step. > 0 ⇒ eliminarlo lascerebbe
+   * quei ticket senza step corrente: il pannello spegne «Elimina step» e dice
+   * quante sono. `undefined` = la query non l'ha chiesto.
+   */
+  currentInstances?: number
   // Posizione salvata dal designer; null/undefined → layout di default
   positionX?:   number | null
   positionY?:   number | null

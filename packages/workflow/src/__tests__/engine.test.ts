@@ -82,6 +82,46 @@ describe('WorkflowEngine', () => {
       await new WorkflowEngine().createInstance(session as never, 'c-one', 'incident-789', 'incident')
       expect(session.executeWrite).toHaveBeenCalledOnce()
     })
+
+    // ── B2-3 (B-8): il passo di partenza lo dice il DATO ──────────────────────
+    // Il pannello «Step iniziale» scrive `is_initial` e non tocca `type`:
+    // cercando `WorkflowStep {type:'start'}` l'istanza nasceva sul vecchio
+    // passo e l'entità con lo status di quello nuovo (`assertInitialStep`
+    // rifiutava poi ogni addCIToChange).
+
+    /** Sessione che ESEGUE la callback; `defRow` è la riga della query di scelta. */
+    function makeCreateSession(defRow: ReturnType<typeof mockRecord> | null, anyDefName?: string) {
+      const queries: string[] = []
+      const txRun = vi.fn(async (q: string) => {
+        queries.push(q)
+        if (q.includes('AS defId')) return { records: defRow ? [defRow] : [] }
+        if (q.includes('AS name'))  return { records: anyDefName ? [mockRecord({ name: anyDefName })] : [] }
+        return { records: [mockRecord({ id: 'wi-1' })] }
+      })
+      return { queries, txRun, executeRead: vi.fn(), executeWrite: vi.fn(async (w: (tx: { run: typeof txRun }) => Promise<unknown>) => w({ run: txRun })) }
+    }
+
+    it('parte dallo step marcato is_initial, non da type=start', async () => {
+      const session = makeCreateSession(mockRecord({ defId: 'def-1', stepId: 'step-assigned', stepName: 'assigned' }))
+      const wi = await new WorkflowEngine().createInstance(session as never, 'c-one', 'inc-1', 'incident')
+      expect(wi.currentStep).toBe('assigned')
+      const defQuery = session.queries[0]!
+      expect(defQuery).toContain("coalesce(startStep.is_initial, startStep.type = 'start')")
+      // nessun aggancio al nome del tipo: era `WorkflowStep {type: 'start'}`
+      expect(defQuery).not.toContain("{type: 'start'}")
+    })
+
+    it('definizione senza nessuno step iniziale → errore che la NOMINA (non «non esiste»)', async () => {
+      const session = makeCreateSession(null, 'Incident Management')
+      await expect(new WorkflowEngine().createInstance(session as never, 'c-one', 'inc-1', 'incident'))
+        .rejects.toThrow(/Workflow "Incident Management".*non ha nessuno step iniziale/s)
+    })
+
+    it('nessuna definizione attiva → il messaggio storico', async () => {
+      const session = makeCreateSession(null)
+      await expect(new WorkflowEngine().createInstance(session as never, 'c-one', 'inc-1', 'incident'))
+        .rejects.toThrow('No active workflow definition for "incident" in tenant "c-one"')
+    })
   })
 
   describe('transition — validazione prima di scrivere', () => {
@@ -142,6 +182,44 @@ describe('WorkflowEngine', () => {
       expect(result.success).toBe(false)
       expect(result.error).toContain('ENTITY_LABELS')
       expect(session.executeWrite).not.toHaveBeenCalled()
+    })
+
+    // ── B0-5: vocabolario delle azioni ───────────────────────────────────────
+    // Dal vivo, un passo di «Incident — Security» aveva un'azione
+    // `create_notification` che il motore non conosce: la transizione passava,
+    // l'azione non avveniva e l'errore finiva in `actionErrors`, che per gli
+    // incident il web non chiede. Ora la transizione si ferma PRIMA di
+    // scrivere e nomina l'azione.
+
+    it('azione ignota fra le enter_actions → transizione fallita che la NOMINA, nessuna scrittura', async () => {
+      const session = makeSession([stateRow({
+        nextEnterActions: JSON.stringify([{ type: 'create_notification', params: { channel: 'in_app', message: 'x' } }]),
+      })])
+      const result = await new WorkflowEngine().transition(session as never, manual, actx)
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('Unknown workflow action type')
+      expect(result.error).toContain('"create_notification"')
+      expect(result.error).toContain('enter_actions[0] di "resolved"')
+      expect(result.error).toContain('publish_event')   // il vocabolario ammesso è nel messaggio
+      expect(session.executeWrite).not.toHaveBeenCalled()
+    })
+
+    it('azione ignota fra le exit_actions dello step corrente → stesso trattamento', async () => {
+      const session = makeSession([stateRow({
+        exitActions: JSON.stringify([{ type: 'sla_stop', params: { sla_type: 'response' } }, { type: 'teleport', params: {} }]),
+      })])
+      const result = await new WorkflowEngine().transition(session as never, manual, actx)
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('"teleport" (exit_actions[1] di "in_progress")')
+      expect(session.executeWrite).not.toHaveBeenCalled()
+    })
+
+    it('azioni tutte del vocabolario → la transizione procede', async () => {
+      const session = makeWritableSession([stateRow({
+        nextEnterActions: JSON.stringify([{ type: 'notify_rule', params: { title_key: 'k' } }]),
+      })], 1)
+      const result = await new WorkflowEngine().transition(session as never, manual, actx)
+      expect(result.success).toBe(true)
     })
   })
 

@@ -1,7 +1,62 @@
+import { GraphQLError } from 'graphql'
 import { workflowEngine } from '@opengraphity/workflow'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { loadTransitionRows, mapWorkflowDefinition } from './workflowMapping.js'
+
+// ── WorkflowStep.currentInstances ─────────────────────────────────────────────
+
+/**
+ * Conteggi per definizione, vivi solo per il giro corrente dell'event loop:
+ * i field resolver degli N step di una definizione partono tutti nello stesso
+ * tick, quindi la prima chiamata fa l'unica query e le altre aspettano la sua
+ * promessa (niente N+1). `setImmediate` la butta via subito dopo: questo NON è
+ * una cache di dati, un `refetch` dopo un'eliminazione deve rileggere il grafo.
+ */
+const stepInstanceCounts = new Map<string, Promise<Record<string, number>>>()
+
+function loadStepInstanceCounts(tenantId: string, definitionId: string): Promise<Record<string, number>> {
+  const key = `${tenantId}::${definitionId}`
+  const hit = stepInstanceCounts.get(key)
+  if (hit) return hit
+  const promise = withSession(async (session) => {
+    const res = await session.executeRead((tx) => tx.run(`
+      MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep)
+      OPTIONAL MATCH (wi:WorkflowInstance)-[:CURRENT_STEP]->(s)
+      RETURN s.name AS name, count(wi) AS n
+    `, { definitionId, tenantId }))
+    const out: Record<string, number> = {}
+    for (const r of res.records) out[r.get('name') as string] = Number(r.get('n') ?? 0)
+    return out
+  })
+  stepInstanceCounts.set(key, promise)
+  setImmediate(() => stepInstanceCounts.delete(key))
+  return promise
+}
+
+/**
+ * Quante istanze di workflow stanno ORA su questo step. È il numero che rende
+ * l'eliminazione dello step un'operazione distruttiva (B-1): il disegnatore lo
+ * usa per spegnere il bottone «Elimina step» e dire perché.
+ */
+export async function workflowStepCurrentInstances(
+  step: { definitionId?: string | null; name: string },
+  _: unknown,
+  ctx: GraphQLContext,
+): Promise<number> {
+  if (!step.definitionId) {
+    throw new GraphQLError(`Step "${step.name}" senza definition_id: dato incompleto, impossibile contarne le istanze`, { extensions: { code: 'CONFLICT' } })
+  }
+  const counts = await loadStepInstanceCounts(ctx.tenantId, step.definitionId)
+  const n = counts[step.name]
+  if (n == null) {
+    throw new GraphQLError(
+      `Step "${step.name}" non trovato nella definizione ${step.definitionId}: non si può dire quante istanze lo occupano`,
+      { extensions: { code: 'CONFLICT' } },
+    )
+  }
+  return n
+}
 
 // ── Shared mappers ────────────────────────────────────────────────────────────
 

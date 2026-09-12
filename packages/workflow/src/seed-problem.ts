@@ -1,5 +1,5 @@
 import type { WorkflowDefinition } from './types.js'
-import { seedWorkflowDefinition } from './seed-common.js'
+import { seedWorkflowDefinition, type SeedOptions } from './seed-common.js'
 
 export const PROBLEM_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
   name:       'Problem Management',
@@ -7,15 +7,15 @@ export const PROBLEM_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
   version:    1,
   active:     true,
   steps: [
-    { id: 'step-prb-new',                name: 'new',                label: 'Nuovo',                  type: 'start',    enterActions: [], exitActions: [] },
-    { id: 'step-prb-under_investigation', name: 'under_investigation', label: 'In Analisi',            type: 'standard', enterActions: [], exitActions: [] },
-    { id: 'step-prb-known_error',        name: 'known_error',        label: 'Errore Noto (KEDB)',     type: 'standard', enterActions: [], exitActions: [] },
-    { id: 'step-prb-change_requested',   name: 'change_requested',   label: 'Change Richiesta',       type: 'standard', enterActions: [], exitActions: [] },
-    { id: 'step-prb-change_in_progress', name: 'change_in_progress', label: 'Change in Esecuzione',   type: 'standard', enterActions: [], exitActions: [] },
-    { id: 'step-prb-resolved',           name: 'resolved',           label: 'Risolto',                type: 'standard', enterActions: [], exitActions: [] },
-    { id: 'step-prb-closed',             name: 'closed',             label: 'Chiuso',                 type: 'end',      enterActions: [], exitActions: [] },
-    { id: 'step-prb-rejected',           name: 'rejected',           label: 'Rigettato',              type: 'end',      enterActions: [], exitActions: [] },
-    { id: 'step-prb-deferred',           name: 'deferred',           label: 'Posticipato',            type: 'standard', enterActions: [], exitActions: [] },
+    { id: 'step-prb-new',                name: 'new',                label: 'Nuovo',                  type: 'start',    enterActions: [], exitActions: [], metadata: { step_order: 1, is_initial: true,  is_terminal: false, is_open: true,  category: 'active' } },
+    { id: 'step-prb-under_investigation', name: 'under_investigation', label: 'In Analisi',            type: 'standard', enterActions: [], exitActions: [], metadata: { step_order: 2, is_initial: false, is_terminal: false, is_open: true,  category: 'active' } },
+    { id: 'step-prb-known_error',        name: 'known_error',        label: 'Errore Noto (KEDB)',     type: 'standard', enterActions: [], exitActions: [], metadata: { step_order: 3, is_initial: false, is_terminal: false, is_open: true,  category: 'active' } },
+    { id: 'step-prb-change_requested',   name: 'change_requested',   label: 'Change Richiesta',       type: 'standard', enterActions: [], exitActions: [], metadata: { step_order: 4, is_initial: false, is_terminal: false, is_open: true,  category: 'active' } },
+    { id: 'step-prb-change_in_progress', name: 'change_in_progress', label: 'Change in Esecuzione',   type: 'standard', enterActions: [], exitActions: [], metadata: { step_order: 5, is_initial: false, is_terminal: false, is_open: true,  category: 'active' } },
+    { id: 'step-prb-resolved',           name: 'resolved',           label: 'Risolto',                type: 'standard', enterActions: [], exitActions: [], metadata: { step_order: 6, is_initial: false, is_terminal: true,  is_open: false, category: 'resolved' } },
+    { id: 'step-prb-closed',             name: 'closed',             label: 'Chiuso',                 type: 'end',      enterActions: [], exitActions: [], metadata: { step_order: 9, is_initial: false, is_terminal: true,  is_open: false, category: 'closed' } },
+    { id: 'step-prb-rejected',           name: 'rejected',           label: 'Rigettato',              type: 'end',      enterActions: [], exitActions: [], metadata: { step_order: 8, is_initial: false, is_terminal: true,  is_open: false, category: 'failed' } },
+    { id: 'step-prb-deferred',           name: 'deferred',           label: 'Posticipato',            type: 'standard', enterActions: [], exitActions: [], metadata: { step_order: 7, is_initial: false, is_terminal: false, is_open: true,  category: 'active' } },
   ],
   transitions: [
     { id: 'tr-prb-new-investigation',          fromStepName: 'new',                toStepName: 'under_investigation', trigger: 'manual',    label: 'Inizia analisi',               condition: null,               requiresInput: false, inputField: null },
@@ -35,8 +35,8 @@ export const PROBLEM_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
   ],
 }
 
-export async function seedProblemWorkflowForTenant(tenantId: string): Promise<string> {
-  const r = await seedWorkflowDefinition(tenantId, PROBLEM_WORKFLOW)
+export async function seedProblemWorkflowForTenant(tenantId: string, opts: SeedOptions = {}): Promise<string> {
+  const r = await seedWorkflowDefinition(tenantId, PROBLEM_WORKFLOW, opts)
   return r.definitionId
 }
 

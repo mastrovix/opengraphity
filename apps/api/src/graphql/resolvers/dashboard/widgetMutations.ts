@@ -89,6 +89,7 @@ export async function saveDashboardLayout(
         await tx.run(
           `MATCH (d:DashboardConfig {id: $dashboardId, tenant_id: $tenantId})
            UNWIND $creates AS c
+           // tenant-ok: il widget vive solo appeso alla DashboardConfig scopata sopra
            CREATE (w:DashboardWidget {
              id: randomUUID(),
              dashboard_id: $dashboardId,
@@ -165,6 +166,7 @@ export async function addDashboardWidget(
       tx.run(
         `
         MATCH (d:DashboardConfig {id: $dashId, tenant_id: $tenantId})
+        // tenant-ok: il widget vive solo appeso alla DashboardConfig scopata sopra
         CREATE (w:DashboardWidget {
           id: randomUUID(),
           dashboard_id: $dashId,

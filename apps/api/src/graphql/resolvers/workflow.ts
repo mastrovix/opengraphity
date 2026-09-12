@@ -1,6 +1,8 @@
+import { GraphQLError } from 'graphql'
 import { ValidationError } from '../../lib/errors.js'
 import { randomUUID } from 'crypto'
 import { withSession } from './ci-utils.js'
+import { invalidateWorkflowCache } from '../../lib/workflowHelpers.js'
 import type { GraphQLContext } from '../../context.js'
 import {
   serviceRequestWorkflowInstance,
@@ -14,6 +16,7 @@ import {
   incidentWorkflowInstance,
   incidentAvailableTransitionsField,
   incidentWorkflowHistoryField,
+  workflowStepCurrentInstances,
   changeWorkflowInstance,
   changeAvailableTransitionsField,
   changeWorkflowHistoryField,
@@ -25,6 +28,8 @@ import {
   removeWorkflowTransition,
   executeWorkflowTransition,
   saveWorkflowChanges,
+  MARK_CUSTOMIZED,
+  customizedParams,
 } from './workflowMutations.js'
 
 export * from './workflowQueries.js'
@@ -70,11 +75,18 @@ async function addWorkflowStep(
 
   return withSession(async (session) => {
     const stepId = randomUUID()
-    await session.executeWrite(tx =>
+    const res = await session.executeWrite(tx =>
       tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        // tenant-ok: passi della definizione appena scopata
+        OPTIONAL MATCH (wd)-[:HAS_STEP]->(ex:WorkflowStep)
+        WITH wd,
+             coalesce(max(ex.step_order), 0) + 1     AS nextOrder,
+             count(CASE WHEN ex.name = $name THEN 1 END) AS sameName
+        WHERE sameName = 0
         CREATE (s:WorkflowStep {
           id:                  $stepId,
+          tenant_id:           $tenantId,
           definition_id:       $definitionId,
           name:                $name,
           label:               $label,
@@ -82,18 +94,39 @@ async function addWorkflowStep(
           timer_delay_minutes: $timerDelayMinutes,
           sub_workflow_id:     $subWorkflowId,
           enter_actions:       '[]',
-          exit_actions:        '[]'
+          exit_actions:        '[]',
+          is_initial:          false,
+          is_terminal:         false,
+          is_open:             true,
+          category:            $category,
+          step_order:          nextOrder,
+          created_at:          $now,
+          updated_at:          $now
         })
         CREATE (wd)-[:HAS_STEP]->(s)
         SET wd.version = wd.version + 1, wd.updated_at = $now
+        ${MARK_CUSTOMIZED}
+        RETURN wd.entity_type AS entityType
       `, {
         definitionId, tenantId: ctx.tenantId, stepId,
         name, label, type,
         timerDelayMinutes: timerDelayMinutes ?? null,
         subWorkflowId: subWorkflowId ?? null,
+        // Un passo nuovo nasce intermedio e aperto: `active` è la stessa
+        // categoria che la migrazione dei metadata assegna a un passo non
+        // terminale. L'amministratore la cambia dai Metadati del pannello.
+        category: 'active',
         now: new Date().toISOString(),
+        ...customizedParams(ctx),
       }),
     )
+    if (!res.records.length) {
+      // O la definizione non è di questo tenant, o esiste già un passo con
+      // questo nome: due passi omonimi nella stessa definizione renderebbero
+      // ambigue tutte le scritture per nome (saveWorkflowChanges, transizioni).
+      throw new ValidationError(`Impossibile creare lo step "${name}": definizione non trovata o nome già usato in questo workflow`)
+    }
+    invalidateWorkflowCache(ctx.tenantId, res.records[0].get('entityType') as string)
     return workflowDefinitionById(_, { id: definitionId }, ctx)
   }, true)
 }
@@ -107,21 +140,63 @@ async function removeWorkflowStep(
 ) {
   const PROTECTED = new Set(['start', 'end'])
   return withSession(async (session) => {
+    // Quante istanze stanno ORA su questo passo, e in che stato. `DETACH
+    // DELETE` porterebbe via anche il `CURRENT_STEP`: quelle istanze
+    // resterebbero con `current_step` che punta a un passo inesistente, cioè
+    // ticket che non transizionano più. Il seed questa guardia ce l'ha
+    // (seed-common.ts), l'API no: è lo stesso rifiuto, con i numeri.
     const res = await session.executeRead(tx =>
-      tx.run(`MATCH (s:WorkflowStep {definition_id: $definitionId, name: $stepName, tenant_id: $tenantId}) RETURN s.type AS type`, { definitionId, stepName, tenantId: ctx.tenantId }),
+      tx.run(`
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: $stepName})
+        OPTIONAL MATCH (wi:WorkflowInstance)-[:CURRENT_STEP]->(s)
+        WITH wd, s, wi.status AS instanceStatus, count(wi) AS n
+        RETURN s.type AS type,
+               coalesce(s.is_initial, s.type = 'start') AS isInitial,
+               wd.entity_type AS entityType,
+               instanceStatus, n
+      `, { definitionId, stepName, tenantId: ctx.tenantId }),
     )
-    const stepType = res.records[0]?.get('type') as string | null
-    if (!stepType || PROTECTED.has(stepType)) throw new ValidationError(`Cannot remove step: ${stepName}`)
+    if (!res.records.length) throw new ValidationError(`Step "${stepName}" non trovato in questa definizione`)
+    const stepType   = res.records[0].get('type') as string | null
+    const isInitial  = Boolean(res.records[0].get('isInitial'))
+    const entityType = res.records[0].get('entityType') as string
+    // Messaggio parlante anche qui: «Cannot remove step: new» lasciava
+    // l'amministratore senza sapere perché, ed è il primo rifiuto che incontra
+    // (il passo di partenza è quasi sempre anche `type: 'start'`).
+    if (!stepType || PROTECTED.has(stepType)) {
+      throw new ValidationError(
+        `Lo step "${stepName}" è di tipo "${stepType ?? 'ignoto'}": i passi di apertura e di chiusura del processo non si eliminano, ` +
+        `altrimenti il workflow non avrebbe più un inizio o una fine. Puoi rinominarlo, o cambiarne le azioni.`,
+      )
+    }
+    if (isInitial) {
+      throw new ValidationError(
+        `Lo step "${stepName}" è lo step iniziale del processo: eliminandolo nessun nuovo ticket potrebbe più nascere. Marca prima un altro step come iniziale.`,
+      )
+    }
+
+    const byStatus = res.records
+      .map((r) => ({ status: r.get('instanceStatus') as string | null, n: Number(r.get('n') ?? 0) }))
+      .filter((r) => r.n > 0)
+    const live = byStatus.reduce((acc, r) => acc + r.n, 0)
+    if (live > 0) {
+      const detail = byStatus.map((r) => `${r.status ?? 'senza stato'}: ${r.n}`).join(', ')
+      throw new GraphQLError(
+        `Non puoi eliminare lo step "${stepName}": ${live} istanze di workflow si trovano ora su questo passo (${detail}). ` +
+        `Spostale prima su un altro step — eliminandolo resterebbero senza step corrente e non potrebbero più transizionare.`,
+        { extensions: { code: 'CONFLICT', stepName, instances: live } },
+      )
+    }
 
     await session.executeWrite(tx =>
       tx.run(`
-        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
-        // tenant-ok: step della definizione appena scopata
-        MATCH (s:WorkflowStep {definition_id: $definitionId, name: $stepName})
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: $stepName})
         DETACH DELETE s
         SET wd.version = wd.version + 1, wd.updated_at = $now
-      `, { definitionId, tenantId: ctx.tenantId, stepName, now: new Date().toISOString() }),
+        ${MARK_CUSTOMIZED}
+      `, { definitionId, tenantId: ctx.tenantId, stepName, now: new Date().toISOString(), ...customizedParams(ctx) }),
     )
+    invalidateWorkflowCache(ctx.tenantId, entityType)
     return workflowDefinitionById(_, { id: definitionId }, ctx)
   }, true)
 }
@@ -147,6 +222,9 @@ export const workflowResolvers = {
     executeWorkflowTransition,
     saveWorkflowLayout,
     saveWorkflowChanges,
+  },
+  WorkflowStep: {
+    currentInstances: workflowStepCurrentInstances,
   },
   Incident: {
     workflowInstance:     incidentWorkflowInstance,

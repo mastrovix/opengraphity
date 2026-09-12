@@ -1,5 +1,5 @@
 import type { WorkflowDefinition } from './types.js'
-import { seedWorkflowDefinition } from './seed-common.js'
+import { seedWorkflowDefinition, type SeedOptions } from './seed-common.js'
 
 export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
   name:       'Incident Management',
@@ -14,6 +14,7 @@ export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'>
       type:         'start',
       enterActions: [],
       exitActions:  [],
+      metadata:     { step_order: 1, is_initial: true, is_terminal: false, is_open: true, category: 'active' },
     },
     {
       id:    'step-assigned',
@@ -24,6 +25,7 @@ export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'>
         { type: 'sla_start', params: { sla_type: 'response' } },
       ],
       exitActions: [],
+      metadata:     { step_order: 2, is_initial: false, is_terminal: false, is_open: true, category: 'active' },
     },
     {
       id:    'step-in_progress',
@@ -35,6 +37,7 @@ export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'>
         { type: 'sla_start', params: { sla_type: 'resolve' } },
       ],
       exitActions: [],
+      metadata:     { step_order: 4, is_initial: false, is_terminal: false, is_open: true, category: 'active' },
     },
     {
       id:    'step-pending',
@@ -47,6 +50,7 @@ export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'>
       exitActions: [
         { type: 'sla_resume', params: { sla_type: 'resolve' } },
       ],
+      metadata:     { step_order: 5, is_initial: false, is_terminal: false, is_open: true, category: 'waiting' },
     },
     {
       id:    'step-escalated',
@@ -55,6 +59,7 @@ export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'>
       type:  'standard',
       enterActions: [],
       exitActions: [],
+      metadata:     { step_order: 6, is_initial: false, is_terminal: false, is_open: true, category: 'escalated' },
     },
     {
       id:    'step-resolved',
@@ -68,6 +73,7 @@ export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'>
       exitActions: [
         { type: 'cancel_job', params: { job: 'auto_close' } },
       ],
+      metadata:     { step_order: 7, is_initial: false, is_terminal: true, is_open: false, category: 'resolved' },
     },
     {
       id:    'step-closed',
@@ -76,6 +82,7 @@ export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'>
       type:  'end',
       enterActions: [],
       exitActions: [],
+      metadata:     { step_order: 8, is_initial: false, is_terminal: true, is_open: false, category: 'closed' },
     },
   ],
   transitions: [
@@ -201,14 +208,14 @@ export const INCIDENT_SECURITY_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenant
   version:    1,
   active:     true,
   steps: [
-    { id: 'step-new',             name: 'new',             label: 'Nuovo',           type: 'start',    enterActions: [], exitActions: [] },
-    { id: 'step-assigned',        name: 'assigned',        label: 'Assegnato',       type: 'standard', enterActions: [{ type: 'sla_start', params: { sla_type: 'response' } }], exitActions: [] },
-    { id: 'step-security_review', name: 'security_review', label: 'Security Review', type: 'standard', enterActions: [{ type: 'publish_event', params: { event: 'incident.security_review' } }], exitActions: [] },
-    { id: 'step-in_progress',     name: 'in_progress',     label: 'In Lavorazione',  type: 'standard', enterActions: [{ type: 'sla_stop', params: { sla_type: 'response' } }, { type: 'sla_start', params: { sla_type: 'resolve' } }], exitActions: [] },
-    { id: 'step-pending',         name: 'pending',         label: 'In Attesa',       type: 'standard', enterActions: [{ type: 'sla_pause', params: { sla_type: 'resolve' } }], exitActions: [{ type: 'sla_resume', params: { sla_type: 'resolve' } }] },
-    { id: 'step-escalated',       name: 'escalated',       label: 'Escalato',        type: 'standard', enterActions: [], exitActions: [] },
-    { id: 'step-resolved',        name: 'resolved',        label: 'Risolto',         type: 'standard', enterActions: [{ type: 'sla_stop', params: { sla_type: 'resolve' } }, { type: 'schedule_job', params: { job: 'auto_close', delay_hours: '72' } }], exitActions: [{ type: 'cancel_job', params: { job: 'auto_close' } }] },
-    { id: 'step-closed',          name: 'closed',          label: 'Chiuso',          type: 'end',      enterActions: [], exitActions: [] },
+    { id: 'step-new',             name: 'new',             label: 'Nuovo',           type: 'start',    enterActions: [], exitActions: [], metadata: { step_order: 1, is_initial: true,  is_terminal: false, is_open: true,  category: 'active' } },
+    { id: 'step-assigned',        name: 'assigned',        label: 'Assegnato',       type: 'standard', enterActions: [{ type: 'sla_start', params: { sla_type: 'response' } }], exitActions: [], metadata: { step_order: 2, is_initial: false, is_terminal: false, is_open: true,  category: 'active' } },
+    { id: 'step-security_review', name: 'security_review', label: 'Security Review', type: 'standard', enterActions: [{ type: 'publish_event', params: { event: 'incident.security_review' } }], exitActions: [], metadata: { step_order: 3, is_initial: false, is_terminal: false, is_open: true,  category: 'active' } },
+    { id: 'step-in_progress',     name: 'in_progress',     label: 'In Lavorazione',  type: 'standard', enterActions: [{ type: 'sla_stop', params: { sla_type: 'response' } }, { type: 'sla_start', params: { sla_type: 'resolve' } }], exitActions: [], metadata: { step_order: 4, is_initial: false, is_terminal: false, is_open: true,  category: 'active' } },
+    { id: 'step-pending',         name: 'pending',         label: 'In Attesa',       type: 'standard', enterActions: [{ type: 'sla_pause', params: { sla_type: 'resolve' } }], exitActions: [{ type: 'sla_resume', params: { sla_type: 'resolve' } }], metadata: { step_order: 5, is_initial: false, is_terminal: false, is_open: true,  category: 'waiting' } },
+    { id: 'step-escalated',       name: 'escalated',       label: 'Escalato',        type: 'standard', enterActions: [], exitActions: [], metadata: { step_order: 6, is_initial: false, is_terminal: false, is_open: true,  category: 'escalated' } },
+    { id: 'step-resolved',        name: 'resolved',        label: 'Risolto',         type: 'standard', enterActions: [{ type: 'sla_stop', params: { sla_type: 'resolve' } }, { type: 'schedule_job', params: { job: 'auto_close', delay_hours: '72' } }], exitActions: [{ type: 'cancel_job', params: { job: 'auto_close' } }], metadata: { step_order: 7, is_initial: false, is_terminal: true,  is_open: false, category: 'resolved' } },
+    { id: 'step-closed',          name: 'closed',          label: 'Chiuso',          type: 'end',      enterActions: [], exitActions: [], metadata: { step_order: 8, is_initial: false, is_terminal: true,  is_open: false, category: 'closed' } },
   ],
   transitions: [
     { id: 'tr-new-assigned',           fromStepName: 'new',             toStepName: 'assigned',        trigger: 'manual',     label: 'Assegna',                    condition: null, requiresInput: false, inputField: null },
@@ -228,13 +235,15 @@ export const INCIDENT_SECURITY_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenant
 }
 
 // ── Seed functions ───────────────────────────────────────────────────────────
-// Idempotenti (vedi seed-common.ts): rieseguibili senza duplicare definizioni
-// né orfanare le istanze in corso.
+// Idempotenti (vedi seed-common.ts): una definizione che esiste già viene
+// SALTATA, non riallineata — le personalizzazioni del cliente sopravvivono.
+// Per riallinearla al seed serve `overwrite` (e `overwriteCustomized` se il
+// disegnatore l'ha marchiata).
 
-export async function seedWorkflowForTenant(tenantId: string): Promise<string> {
-  const base = await seedWorkflowDefinition(tenantId, INCIDENT_WORKFLOW_BASE)
+export async function seedWorkflowForTenant(tenantId: string, opts: SeedOptions = {}): Promise<string> {
+  const base = await seedWorkflowDefinition(tenantId, INCIDENT_WORKFLOW_BASE, opts)
   // Also seed the security variant
-  await seedWorkflowDefinition(tenantId, INCIDENT_SECURITY_WORKFLOW)
+  await seedWorkflowDefinition(tenantId, INCIDENT_SECURITY_WORKFLOW, opts)
   return base.definitionId
 }
 

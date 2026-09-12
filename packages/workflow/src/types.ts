@@ -33,21 +33,37 @@ export type WorkflowTrigger =
   | 'sla_breach'   // SLA engine lo triggera
   | 'timer'        // BullMQ job
 
-export type WorkflowActionType =
-  | 'sla_start'
-  | 'sla_stop'
-  | 'sla_pause'
-  | 'sla_resume'
-  | 'notify'
-  | 'publish_event'
-  | 'schedule_job'
-  | 'cancel_job'
-  | 'notify_rule'
-  | 'create_entity'
-  | 'assign_to'
-  | 'update_field'
-  | 'call_webhook'
-  | 'create_approval_request'
+/**
+ * Vocabolario UNICO delle azioni che il motore dei workflow sa eseguire
+ * (`runAction`). Esportato come valore perché serve anche a VALIDARE il dato:
+ * una definizione con un'azione che il motore non conosce fa fallire la
+ * transizione nominandola (B0-5), invece di essere ignorata in silenzio.
+ * Non è il vocabolario delle automazioni (lib/actionExecutor.ts): quello è un
+ * altro insieme, e la loro unificazione è un'ondata successiva.
+ */
+export const WORKFLOW_ACTION_TYPES = [
+  'sla_start',
+  'sla_stop',
+  'sla_pause',
+  'sla_resume',
+  'notify',
+  'publish_event',
+  'schedule_job',
+  'cancel_job',
+  'notify_rule',
+  'create_entity',
+  'assign_to',
+  'update_field',
+  'call_webhook',
+  'create_approval_request',
+] as const
+
+export type WorkflowActionType = (typeof WORKFLOW_ACTION_TYPES)[number]
+
+/** `true` se il motore sa eseguire questo tipo di azione. */
+export function isWorkflowActionType(type: unknown): type is WorkflowActionType {
+  return typeof type === 'string' && (WORKFLOW_ACTION_TYPES as readonly string[]).includes(type)
+}
 
 // ── Typed params per action type ──────────────────────────────────────────────
 

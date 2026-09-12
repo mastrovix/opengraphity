@@ -13,7 +13,7 @@ export const GET_WORKFLOW_DEFINITION_BY_ID = gql`
   query GetWorkflowDefinitionById($id: ID!) {
     workflowDefinitionById(id: $id) {
       id name entityType category version active changeSubtype
-      steps { id name label type enterActions exitActions isInitial isTerminal isOpen category order positionX positionY }
+      steps { id name label type enterActions exitActions isInitial isTerminal isOpen category order currentInstances positionX positionY }
       transitions {
         id fromStepName toStepName trigger label requiresInput inputField condition timerHours sourceHandle targetHandle
       }

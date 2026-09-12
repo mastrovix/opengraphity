@@ -7,6 +7,8 @@ import type { WFStep } from './workflow-types'
 import { GET_WORKFLOW_DEFINITION_BY_ID } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { teamsMock, usersMock, workflowListMock, itilTypesMock } from '@/test/mocks/gql'
+import { NOTIFICATION_TARGETS } from '@opengraphity/types'
+import { TARGET_OPTIONS } from '@/pages/settings/NotificationRuleList'
 
 const DEF_ID = 'wf-incident'
 
@@ -149,6 +151,97 @@ describe('WorkflowStepPanel — operatore persistito non supportato', () => {
     await user.selectOptions(fieldSelect, 'severity')
     await user.click(screen.getByRole('button', { name: 'Confirm' }))
     expect(screen.getByTitle('sla_start')).toBeInTheDocument()   // azione di default aggiunta
+  })
+})
+
+/**
+ * D-13/A0-2 — la notifica all'ingresso nel passo offriva una SECONDA lista di
+ * destinatari scritta a mano, con `role:manager`: un ruolo che
+ * l'autenticazione non conosce. Da quando il dispatcher risolve davvero il
+ * bersaglio, quel valore non è più ignorato — fa fallire il job di notifica a
+ * ogni ingresso nel passo. Qui i destinatari sono il vocabolario condiviso.
+ */
+describe('WorkflowStepPanel — destinatari della notifica all\'ingresso', () => {
+  it('offre i destinatari del vocabolario condiviso, tradotti, e nessun role:manager', async () => {
+    const { user } = renderPanel(step())
+    await user.click(screen.getByRole('tab', { name: 'Notifiche' }))
+    await user.click(screen.getByRole('switch', { name: 'Notifica all\'ingresso' }))
+
+    // nella scheda Notifiche ci sono due tendine: Severità e Destinatari
+    const select = screen.getAllByRole('combobox')[1]!
+    const options = within(select).getAllByRole('option') as HTMLOptionElement[]
+    expect(options.map((o) => o.value)).toEqual([...NOTIFICATION_TARGETS])
+    expect(options.map((o) => o.value)).not.toContain('role:manager')
+    expect(options.map((o) => o.textContent)).toEqual(TARGET_OPTIONS.map(({ labelKey }) => T(labelKey)))
+  })
+})
+
+/**
+ * Ondata 2 — B2-2 (B-1): «Elimina step» non si offre quando romperebbe dei
+ * ticket. Prima il bottone c'era sempre (tranne sullo step iniziale) e il
+ * server cancellava il passo insieme al `CURRENT_STEP` delle istanze sopra.
+ */
+describe('WorkflowStepPanel — eliminazione dello step', () => {
+  const renderWithDelete = (s: WFStep, onDelete = vi.fn()) => ({
+    onDelete,
+    ...renderWithProviders(
+      <WorkflowStepPanel step={s} definitionId={DEF_ID} onClose={() => {}} onSaved={() => {}} onDelete={onDelete} />,
+      { mocks: baseMocks() },
+    ),
+  })
+  const deleteButton = () => screen.queryByRole('button', { name: 'Elimina step' })
+
+  it('step di fabbrica start/end → niente bottone (il server li protegge per `type`)', () => {
+    renderWithDelete(step({ name: 'closed', type: 'end', isInitial: false, isTerminal: true, currentInstances: 0 }))
+    expect(deleteButton()).not.toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveTextContent(T('workflow.deleteBlockedFactory'))
+  })
+
+  it('nessuna istanza sul passo → il bottone c\'è', () => {
+    renderWithDelete(step({ name: 'pending', type: 'standard', isInitial: false, currentInstances: 0 }))
+    expect(deleteButton()).toBeInTheDocument()
+  })
+
+  it('istanze sul passo → niente bottone, ma il motivo con il numero', () => {
+    renderWithDelete(step({ name: 'assigned', type: 'standard', isInitial: false, currentInstances: 148 }))
+    expect(deleteButton()).not.toBeInTheDocument()
+    const note = screen.getByRole('note')
+    expect(note).toHaveTextContent(T('workflow.deleteBlockedInstances', { count: 148 }))
+    expect(note).toHaveTextContent('148')
+  })
+
+  it('passo marcato iniziale (anche se `standard`) → niente bottone, e il motivo è quello giusto', () => {
+    renderWithDelete(step({ name: 'assigned', type: 'standard', isInitial: true, currentInstances: 0 }))
+    expect(deleteButton()).not.toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveTextContent(T('workflow.deleteBlockedInitial'))
+  })
+
+  it('togliere la spunta «Step iniziale» senza salvare NON abilita l\'eliminazione', async () => {
+    const { user } = renderWithDelete(step({ name: 'assigned', type: 'standard', isInitial: true, currentInstances: 0 }))
+    await user.click(screen.getByRole('tab', { name: 'Metadati' }))
+    await user.click(screen.getByRole('checkbox', { name: /Il processo parte da questo step/ }))
+    expect(deleteButton()).not.toBeInTheDocument()
+  })
+})
+
+/** Ondata 2 — B2-3 (B-8): iniziale e terminale non stanno insieme. */
+describe('WorkflowStepPanel — step iniziale e terminale insieme', () => {
+  it('spuntare «iniziale» su uno step terminale → avviso e Salva disabilitato', async () => {
+    const { user } = renderPanel(step({ name: 'closed', type: 'standard', isInitial: false, isTerminal: true, isOpen: false }))
+    await user.click(screen.getByRole('tab', { name: 'Metadati' }))
+    await user.click(screen.getByRole('checkbox', { name: /Il processo parte da questo step/ }))
+    const alert = screen.getAllByRole('alert').find((a) => a.textContent?.includes(T('workflow.initialOnTerminal')))
+    expect(alert).toBeDefined()
+    expect(saveButton()).toBeDisabled()
+  })
+
+  it('togliendo «terminale» l\'avviso sparisce e si può salvare', async () => {
+    const { user } = renderPanel(step({ name: 'closed', type: 'standard', isInitial: false, isTerminal: true, isOpen: false }))
+    await user.click(screen.getByRole('tab', { name: 'Metadati' }))
+    await user.click(screen.getByRole('checkbox', { name: /Il processo parte da questo step/ }))
+    await user.click(screen.getByRole('checkbox', { name: /Il processo è chiuso quando arriva qui/ }))
+    expect(screen.queryByText(T('workflow.initialOnTerminal'))).not.toBeInTheDocument()
+    expect(saveButton()).toBeEnabled()
   })
 })
 

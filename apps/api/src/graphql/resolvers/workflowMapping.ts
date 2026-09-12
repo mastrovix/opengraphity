@@ -59,6 +59,10 @@ export async function loadTransitionRows(session: Session, definitionId: string,
 export function mapWorkflowStep(s: Props) {
   return {
     id:                s['id']    as string,
+    // `definitionId` non è nello SDL: serve al field resolver
+    // `WorkflowStep.currentInstances`, che senza di esso non saprebbe in quale
+    // definizione cercare lo step (i nomi si ripetono tra definizioni).
+    definitionId:      s['definition_id'] as string,
     name:              s['name']  as string,
     label:             s['label'] as string,
     type:              s['type']  as string,

@@ -169,6 +169,7 @@ export async function createSectionWithNodesEdges(
 
   await write(runner, `
       MATCH (r:ReportTemplate {id: $templateId, tenant_id: $tenantId})
+      // tenant-ok: la sezione vive solo appesa al ReportTemplate scopato sopra
       CREATE (s:ReportSection {
         id:                $id,
         template_id:       $templateId,

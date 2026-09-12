@@ -268,6 +268,7 @@ export async function cloneDashboard(_: unknown, args: { id: string; newName: st
       tx.run(
         `MATCH (src:DashboardConfig {id: $srcId, tenant_id: $tenantId})-[:HAS_WIDGET]->(w:DashboardWidget)
          MATCH (dst:DashboardConfig {id: $dstId, tenant_id: $tenantId})
+         // tenant-ok: il widget vive solo appeso alla DashboardConfig scopata sopra
          CREATE (wc:DashboardWidget {
            id: randomUUID(), dashboard_id: $dstId,
            report_template_id: w.report_template_id,

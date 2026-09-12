@@ -220,6 +220,15 @@ Wrapper per singola migrazione: `migrate:workflow-metadata -- [--force]`,
 marcata; entrambe sono idempotenti). `migrate-enum-references.ts` **non** è
 una migrazione versionata (è per tenant, richiede `--tenant`): resta manuale.
 
+`migrate:workflow-metadata` completa solo i metadati **mancanti** dei passi
+(`coalesce`): `category` / `is_terminal` / `is_initial` / `is_open` /
+`step_order` già valorizzati non vengono mai riscritti, nemmeno con `--force`
+(personalizzazioni ondata 2, B-15 — prima `--force` riportava tutto ai valori
+derivati dai nomi di fabbrica, cancellando in silenzio le scelte
+dell'amministratore). Il ripristino di fabbrica vero è un'altra operazione,
+esplicita: `migrate:workflow-metadata -- --reset-from-factory` stampa il diff e
+scrive solo con `--yes-reset` (`--dry-run` per vedere il diff senza scrivere).
+
 ---
 
 ## 4. Script operativi

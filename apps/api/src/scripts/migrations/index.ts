@@ -25,6 +25,12 @@ import { serviceMapAutoSync } from './20260910_1110_service_map_auto_sync.js'
 import { serviceMapReview2 } from './20260910_1120_service_map_review2.js'
 import { sharedDomainRules } from './20260911_1130_shared_domain_rules.js'
 import { notificationChannelsRoutable } from './20260911_1150_notification_channels_routable.js'
+import { ciStatusVocabulary } from './20260912_1210_ci_status_vocabulary.js'
+import { workflowStepActions } from './20260912_1210_workflow_step_actions.js'
+import { systemEnumTypes } from './20260913_1300_system_enum_types.js'
+import { tenantFieldsOnSharedTypes } from './20260913_1310_tenant_fields_on_shared_types.js'
+import { workflowStepOrderSeeded } from './20260913_1400_workflow_step_order_seeded.js'
+import { workflowStepTenantBackfill } from './20260913_1410_workflow_step_tenant_backfill.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -44,4 +50,10 @@ export const MIGRATIONS: readonly Migration[] = [
   serviceMapReview2,
   sharedDomainRules,
   notificationChannelsRoutable,
+  ciStatusVocabulary,
+  workflowStepActions,
+  systemEnumTypes,
+  tenantFieldsOnSharedTypes,
+  workflowStepOrderSeeded,
+  workflowStepTenantBackfill,
 ]

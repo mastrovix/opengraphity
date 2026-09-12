@@ -8,18 +8,23 @@
  * La definizione vive in ./lib/workflowDefinitions.ts (senza side effect) ed è
  * la stessa usata dall'onboarding tenant.
  *
+ * Il seed NON sovrascrive una definizione esistente (B-2): se c'è già, la salta
+ * e dice perché. Per riallinearla al seed di fabbrica: `--overwrite` (stampa
+ * prima il diff); se il disegnatore l'ha marchiata come personalizzata serve
+ * anche `--overwrite-customized`.
+ *
  * Invocazione: pnpm --filter @opengraphity/api seed:change-workflow -- --tenant=c-one
  */
 import { seedWorkflowDefinition } from '@opengraphity/workflow'
-import { resolveTenantArg } from './lib/scriptArgs.js'
+import { resolveTenantArg, resolveSeedOverwriteOpts } from './lib/scriptArgs.js'
 import { CHANGE_RFC_WORKFLOW } from './lib/workflowDefinitions.js'
 
 export { CHANGE_RFC_WORKFLOW }
 
 async function main() {
   const tenantId = resolveTenantArg()
-  const res = await seedWorkflowDefinition(tenantId, CHANGE_RFC_WORKFLOW)
-  console.log(`[seed-change-workflow] "${CHANGE_RFC_WORKFLOW.name}" tenant=${tenantId} defId=${res.definitionId} ${res.created ? 'creata' : 'aggiornata'}`)
+  const res = await seedWorkflowDefinition(tenantId, CHANGE_RFC_WORKFLOW, resolveSeedOverwriteOpts())
+  console.log(`[seed-change-workflow] "${CHANGE_RFC_WORKFLOW.name}" tenant=${tenantId} defId=${res.definitionId} ${res.created ? 'creata' : res.skipped ? 'saltata (già presente)' : 'riscritta dal seed'}`)
 }
 
 main()

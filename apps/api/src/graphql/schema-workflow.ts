@@ -52,6 +52,11 @@ export function workflowSDL(): string {
     isOpen:              Boolean!
     category:            String
     order:               Int!
+    # Quante istanze di workflow si trovano ORA su questo step. Finché è > 0 lo
+    # step non si può eliminare: le istanze resterebbero senza step corrente
+    # (ticket che non transizionano più). Il disegnatore lo legge per dire
+    # perché il bottone «Elimina step» è spento, invece di offrirlo e rompere.
+    currentInstances:    Int!
     # Posizione salvata dal designer (saveWorkflowChanges.positions); null se
     # lo step non è mai stato disposto a mano → il web usa il layout di default.
     positionX:           Float

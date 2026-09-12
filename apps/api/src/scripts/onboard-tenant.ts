@@ -35,7 +35,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { parseArgs } from 'node:util'
 import { getSession } from '@opengraphity/neo4j'
-import type { Tenant } from '@opengraphity/types'
+import { USER_ROLES, type Tenant } from '@opengraphity/types'
 import { seedNotificationRules } from '../lib/seedNotificationRules.js'
 import { seedSystemEnumTypes } from '../lib/seedEnumTypes.js'
 import { DEFAULT_EVENT_POLICY_JSON } from '../lib/eventPolicy.js'
@@ -54,7 +54,16 @@ import { PASSWORD_STDIN_FLAG, assertNoPasswordInArgv, printOneTimePassword, reso
 
 // ── Args ──────────────────────────────────────────────────────────────────────
 
-const ALLOWED_ROLES = ['admin', 'user', 'manager'] as const
+/**
+ * Ruoli del tenant: `USER_ROLES` di @opengraphity/types, importati e non
+ * copiati. Sono sia i valori ammessi per `--admin-role` sia i ruoli di realm
+ * creati in Keycloak, così la lista è una sola. Prima erano
+ * `['admin','user','manager']`: `--admin-role manager` (opzione documentata)
+ * creava un primo amministratore che al login veniva rifiutato da `assertRole`,
+ * e i ruoli di realm `user`/`manager` non esistevano da nessun'altra parte
+ * (D-13).
+ */
+const ALLOWED_ROLES = USER_ROLES
 const ALLOWED_PLANS = ['starter', 'pro', 'enterprise'] as const satisfies readonly Tenant['plan'][]
 
 interface Args {
@@ -357,9 +366,11 @@ async function provisionNeo4j(a: Args): Promise<void> {
     // 6c. Notification rules default
     await seedNotificationRules(slug, session)
 
-    // 6d. Seed system enum types
-    await seedSystemEnumTypes(slug, session)
-    console.log(`  ✓ System enum types seeded`)
+    // 6d. Vocabolari spediti col prodotto — uno solo, su `tenant_id = 'system'`
+    //     (A-2 / C-6): l'onboarding NON ne crea più una copia per tenant. Le
+    //     copie sono le personalizzazioni e nascono da `customizeEnumType`.
+    await seedSystemEnumTypes(session)
+    console.log(`  ✓ Vocabolari spediti verificati su tenant_id='system' (nessuna copia per ${slug})`)
 
     // 6f/6g. Verify shared CITypeDefinitions (scope='base' / 'itil')
     for (const [scope, seedScript] of [['base', 'seed-metamodel.ts'], ['itil', 'seed-itil-metamodel.ts']] as const) {
@@ -407,18 +418,24 @@ async function main(): Promise<void> {
   await provisionNeo4j(a)
 
   // Every ticket type needs its WorkflowDefinition before the first create*
-  // (createInstance fails loud without one). All seeds are idempotent MERGEs.
+  // (createInstance fails loud without one).
+  //
+  // Idempotente DAVVERO (B-2): un secondo giro non riscrive nulla. Una
+  // definizione che esiste già viene saltata, non riallineata al seed — così
+  // l'onboarding rilanciato sullo stesso slug non cancella le modifiche fatte
+  // dal disegnatore. Per riallineare serve `seed:<x>-workflow -- --overwrite`.
   console.log('\n▶ Workflow')
   await seedWorkflowForTenant(a.slug)
-  console.log(`  ✓ Incident workflows seeded (base + security)`)
+  console.log(`  ✓ Incident workflows (base + security)`)
   await seedProblemWorkflowForTenant(a.slug)
-  console.log(`  ✓ Problem workflow seeded`)
+  console.log(`  ✓ Problem workflow`)
   await seedKBWorkflowForTenant(a.slug)
-  console.log(`  ✓ KB Article workflow seeded`)
+  console.log(`  ✓ KB Article workflow`)
   for (const def of [CHANGE_RFC_WORKFLOW, SERVICE_REQUEST_WORKFLOW]) {
     const res = await seedWorkflowDefinition(a.slug, def)
-    console.log(`  ✓ "${def.name}" ${res.created ? 'seeded' : 'already present — updated'} (defId: ${res.definitionId})`)
+    console.log(`  ✓ "${def.name}" ${res.created ? 'creata' : 'già presente — lasciata com\'è'} (defId: ${res.definitionId})`)
   }
+  console.log('  ℹ Le definizioni già presenti NON sono state toccate (vedi le righe [workflow] sopra).')
 
   // Riepilogo SENZA password; quella generata è stampata una sola volta sotto.
   console.log(`

@@ -1,5 +1,5 @@
 import type { WorkflowDefinition } from './types.js'
-import { seedWorkflowDefinition } from './seed-common.js'
+import { seedWorkflowDefinition, type SeedOptions } from './seed-common.js'
 
 export const KB_ARTICLE_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
   name:       'KB Article Lifecycle',
@@ -14,6 +14,7 @@ export const KB_ARTICLE_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId
       type:         'start',
       enterActions: [],
       exitActions:  [],
+      metadata:     { step_order: 1, is_initial: true,  is_terminal: false, is_open: true,  category: 'draft' },
     },
     {
       id:    'step-pending_review',
@@ -31,6 +32,7 @@ export const KB_ARTICLE_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId
         },
       ],
       exitActions: [],
+      metadata:     { step_order: 2, is_initial: false, is_terminal: false, is_open: true,  category: 'waiting' },
     },
     {
       id:           'step-published',
@@ -39,6 +41,7 @@ export const KB_ARTICLE_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId
       type:         'standard',
       enterActions: [],
       exitActions:  [],
+      metadata:     { step_order: 3, is_initial: false, is_terminal: false, is_open: true,  category: 'published' },
     },
     {
       id:           'step-archived',
@@ -47,6 +50,7 @@ export const KB_ARTICLE_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId
       type:         'end',
       enterActions: [],
       exitActions:  [],
+      metadata:     { step_order: 4, is_initial: false, is_terminal: true,  is_open: false, category: 'closed' },
     },
   ],
   transitions: [
@@ -124,11 +128,10 @@ export const KB_ARTICLE_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId
 }
 
 /**
- * Il workflow KB è personalizzabile dal designer: se esiste già NON viene
- * riallineato al seed (skipIfExists), a differenza di incident/problem.
+ * Come TUTTI i workflow (B-2): se la definizione esiste già NON viene
+ * riallineata al seed. Il salto, con il motivo, lo stampa seedWorkflowDefinition.
  */
-export async function seedKBWorkflowForTenant(tenantId: string): Promise<string> {
-  const r = await seedWorkflowDefinition(tenantId, KB_ARTICLE_WORKFLOW_BASE, { skipIfExists: true })
-  if (!r.created) console.log(`[workflow] KB workflow already exists for tenant "${tenantId}" — skipping`)
+export async function seedKBWorkflowForTenant(tenantId: string, opts: SeedOptions = {}): Promise<string> {
+  const r = await seedWorkflowDefinition(tenantId, KB_ARTICLE_WORKFLOW_BASE, opts)
   return r.definitionId
 }

@@ -23,12 +23,21 @@ import {
   buildActionParams,
 } from './workflow-panel-helpers'
 import { Input, Select } from '@/components/ui/FormControls'
+import { TARGET_OPTIONS } from '@/pages/settings/NotificationRuleList'
 
 const ACCENT_COLOR = colors.brand
 
 const NR_CHANNELS   = ['in_app', 'slack', 'teams', 'email'] as const
 const NR_SEVERITIES = ['info', 'success', 'warning', 'error'] as const
-const NR_TARGETS    = ['all', 'assignee', 'team_owner', 'role:admin', 'role:manager'] as const
+
+/**
+ * I destinatari dell'azione `notify_rule` sono QUELLI del vocabolario
+ * condiviso, le stesse opzioni delle regole di notifica: qui c'era una seconda
+ * lista scritta a mano con `role:manager`, un ruolo che l'autenticazione non
+ * conosce (D-13). Da quando il dispatcher risolve davvero il bersaglio (A0-1)
+ * un valore così non viene più ignorato: fa fallire il job di notifica a ogni
+ * ingresso nel passo. Il server lo rifiuta in scrittura (`assertStepActions`).
+ */
 
 // ── inputStyle alias ─────────────────────────────────────────────────────────
 
@@ -271,7 +280,24 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
     && notifySeverity === (existingNR?.params.severity   ?? 'info')
     && JSON.stringify(notifyChannels) === JSON.stringify(existingNR?.params.channels ?? ['in_app'])
     && notifyTarget   === (existingNR?.params.target     ?? 'all')
-  const saveDisabled = actionsParseError !== null || (propsUnchanged && notifyUnchanged)
+  // Iniziale + terminale insieme = ogni nuovo ticket nasce già chiuso: il
+  // server lo rifiuta (saveWorkflowChanges), qui si dice prima di provarci.
+  const initialOnTerminal = isInitial && isTerminal
+  const saveDisabled = actionsParseError !== null || initialOnTerminal || (propsUnchanged && notifyUnchanged)
+
+  // Perché «Elimina step» non si può offrire. Si guarda il DATO salvato, non le
+  // spunte del pannello: togliere la spunta «Step iniziale» senza salvare non
+  // rende lo step eliminabile.
+  const stepIsInitial   = step.isInitial ?? step.type === 'start'
+  const liveInstances   = step.currentInstances ?? 0
+  const deleteBlockedReason =
+      // start/end sono protetti dal server per `type`, indipendentemente da
+      // `is_initial`: senza questa riga il pannello offrirebbe un bottone che
+      // il server rifiuta (dicendo perché, ma dopo il clic).
+      step.type === 'start' || step.type === 'end' ? t('workflow.deleteBlockedFactory')
+    : stepIsInitial      ? t('workflow.deleteBlockedInitial')
+    : liveInstances > 0  ? t('workflow.deleteBlockedInstances', { count: liveInstances })
+    : null
 
   const handleSave = () => {
     const enterActions = buildEnterActions()
@@ -503,6 +529,18 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
               <span>Il processo parte da questo step</span>
             </label>
           </PanelField>
+          {initialOnTerminal && (
+            <div
+              role="alert"
+              style={{
+                padding: '6px 10px', borderRadius: 6,
+                background: 'var(--color-danger-bg)', border: '1px solid var(--color-danger)',
+                color: 'var(--color-danger)', fontSize: 'var(--font-size-label)', lineHeight: 1.4,
+              }}
+            >
+              {t('workflow.initialOnTerminal')}
+            </div>
+          )}
           <PanelField label="Step terminale">
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
               <input
@@ -637,7 +675,9 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
 
               <PanelField label="Destinatari">
                 <Select value={notifyTarget} onChange={(e) => setNotifyTarget(e.target.value)} style={inputStyle}>
-                  {NR_TARGETS.map((tgt) => <option key={tgt} value={tgt}>{tgt}</option>)}
+                  {TARGET_OPTIONS.map(({ value, labelKey }) => (
+                    <option key={value} value={value}>{t(labelKey)}</option>
+                  ))}
                 </Select>
               </PanelField>
             </>
@@ -654,22 +694,43 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
         Salva
       </button>
 
-      {onDelete && !isInitial && (
-        <button
-          type="button"
-          onClick={() => {
-            void confirm({ title: `Eliminare lo step "${step.label || step.name}"?`, body: 'Verranno rimosse anche le transizioni collegate.', danger: true }).then((ok) => {
-              if (ok) onDelete(step.name)
-            })
-          }}
-          style={{
-            marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 6,
-            border: '1px solid var(--color-danger)', background: colors.white,
-            color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600,
-          }}
-        >
-          Elimina step
-        </button>
+      {/*
+        L'eliminazione di uno step con dei ticket sopra li lascia senza step
+        corrente: non transizionano più, e nessuno se ne accorge finché qualcuno
+        non ci prova. Qui il motivo si vede PRIMA, con il numero; il server
+        rifiuta comunque (è lui l'autorità), ma non si offre un bottone che
+        romperà i ticket.
+      */}
+      {onDelete && (deleteBlockedReason
+        ? (
+          <div
+            role="note"
+            style={{
+              marginTop: 8, padding: '8px 10px', borderRadius: 6,
+              border: '1px solid var(--color-border)', background: 'var(--color-slate-bg)',
+              color: 'var(--color-slate)', fontSize: 'var(--font-size-label)', lineHeight: 1.4,
+            }}
+          >
+            {deleteBlockedReason}
+          </div>
+        )
+        : (
+          <button
+            type="button"
+            onClick={() => {
+              void confirm({ title: `Eliminare lo step "${step.label || step.name}"?`, body: 'Verranno rimosse anche le transizioni collegate.', danger: true }).then((ok) => {
+                if (ok) onDelete(step.name)
+              })
+            }}
+            style={{
+              marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 6,
+              border: '1px solid var(--color-danger)', background: colors.white,
+              color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600,
+            }}
+          >
+            Elimina step
+          </button>
+        )
       )}
     </div>
   )

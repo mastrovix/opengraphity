@@ -17,12 +17,20 @@ vi.mock('@opengraphity/events', () => ({
   getRedisOptions: vi.fn(() => ({})),
 }))
 
+const WORKFLOW_ACTION_TYPES_MOCK = [
+  'sla_start', 'sla_stop', 'sla_pause', 'sla_resume', 'notify', 'publish_event',
+  'schedule_job', 'cancel_job', 'notify_rule', 'create_entity', 'assign_to',
+  'update_field', 'call_webhook', 'create_approval_request',
+] as const
+
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: {
     createInstance: vi.fn().mockResolvedValue({ id: 'wi-1' }),
     transition:     vi.fn().mockResolvedValue({ success: true }),
     registerCondition: vi.fn(),
   },
+  WORKFLOW_ACTION_TYPES: WORKFLOW_ACTION_TYPES_MOCK,
+  isWorkflowActionType: (t: unknown) => typeof t === 'string' && (WORKFLOW_ACTION_TYPES_MOCK as readonly string[]).includes(t),
 }))
 
 vi.mock('@opengraphity/notifications', () => ({
@@ -61,7 +69,7 @@ vi.mock('../../../lib/validateRequiredFields.js', () => ({
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
-const { executeWorkflowTransition } = await import('../workflowMutations.js')
+const { executeWorkflowTransition, updateWorkflowStep, assertStepActions } = await import('../workflowMutations.js')
 const { workflowEngine } = await import('@opengraphity/workflow')
 const { validateRequiredFields } = await import('../../../lib/validateRequiredFields.js')
 
@@ -156,5 +164,76 @@ describe('executeWorkflowTransition — tenant isolation guard', () => {
         toStep:     'resolved',
       }),
     )
+  })
+})
+
+// ── B0-5: il vocabolario delle azioni è imposto anche in SCRITTURA ───────────
+// Dal vivo un passo di «Incident — Security» ha un `create_notification` (il
+// vocabolario delle AUTOMAZIONI) che il motore non conosce: la transizione
+// passava e l'azione non avveniva. Il motore ora la ferma; qui si chiude la
+// porta da cui quel dato è entrato.
+
+describe('azioni dei passi: vocabolario imposto alla scrittura', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockSession.executeRead.mockResolvedValue({ records: [] })
+    mockSession.executeWrite.mockResolvedValue({ records: [] })
+  })
+
+  it('assertStepActions: accetta le azioni del vocabolario e il campo non mandato', () => {
+    expect(() => assertStepActions(null, 'enter_actions')).not.toThrow()
+    expect(() => assertStepActions('[]', 'enter_actions')).not.toThrow()
+    expect(() => assertStepActions(JSON.stringify([{ type: 'publish_event', params: { event: 'x.y' } }]), 'enter_actions')).not.toThrow()
+  })
+
+  it('assertStepActions: `create_notification` è rifiutato con il vocabolario nel messaggio', () => {
+    const err = (() => { try { assertStepActions(JSON.stringify([{ type: 'create_notification', params: {} }]), 'enter_actions dello step "security_review"') } catch (e) { return e } })()
+    expect(err).toBeInstanceOf(GraphQLError)
+    expect((err as GraphQLError).extensions['code']).toBe('BAD_USER_INPUT')
+    expect((err as GraphQLError).message).toContain('enter_actions dello step "security_review"[0]')
+    expect((err as GraphQLError).message).toContain('"create_notification"')
+    expect((err as GraphQLError).message).toContain('publish_event')
+  })
+
+  /**
+   * Il `target` di un `notify_rule` viene risolto davvero dal dispatcher
+   * (A0-1): un bersaglio che non esiste non è più ignorato, fa fallire il job
+   * di notifica a ogni ingresso nel passo. Il pannello del designer offriva
+   * `role:manager`, un ruolo che l'autenticazione non conosce (D-13).
+   */
+  it('assertStepActions: il target di notify_rule è validato col vocabolario dei destinatari', () => {
+    const at = (target: string) => JSON.stringify([{ type: 'notify_rule', params: { title_key: 'k', channels: ['in_app'], target } }])
+    const err = (() => { try { assertStepActions(at('role:manager'), 'enter_actions dello step "triage"') } catch (e) { return e } })()
+    expect(err).toBeInstanceOf(GraphQLError)
+    expect((err as GraphQLError).extensions['code']).toBe('BAD_USER_INPUT')
+    expect((err as GraphQLError).message).toContain('enter_actions dello step "triage"[0]')
+    expect((err as GraphQLError).message).toMatch(/target "role:manager" non è un destinatario valido/)
+    expect((err as GraphQLError).message).toContain('role:admin')
+    // i bersagli veri passano, e un notify_rule senza target non viene validato
+    expect(() => assertStepActions(at('team_owner'), 'enter_actions')).not.toThrow()
+    expect(() => assertStepActions(at('role:operator'), 'enter_actions')).not.toThrow()
+    expect(() => assertStepActions(JSON.stringify([{ type: 'notify_rule', params: { title_key: 'k' } }]), 'enter_actions')).not.toThrow()
+  })
+
+  it('assertStepActions: JSON non valido e non-lista sono rifiutati', () => {
+    expect(() => assertStepActions('{non json', 'enter_actions')).toThrow(/non è JSON valido/)
+    expect(() => assertStepActions('{"type":"notify"}', 'enter_actions')).toThrow(/deve essere una lista di azioni/)
+  })
+
+  it('updateWorkflowStep: azione ignota → nessuna scrittura', async () => {
+    await expect(updateWorkflowStep(null, {
+      definitionId: 'def-1', stepName: 'security_review', label: 'Security Review',
+      enterActions: JSON.stringify([{ type: 'create_notification', params: { channel: 'in_app' } }]),
+    }, ctx)).rejects.toThrow(/create_notification/)
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('updateWorkflowStep: azioni valide → la scrittura avviene', async () => {
+    mockSession.executeWrite.mockResolvedValueOnce({ records: [makeRecord({ s: { properties: { id: 's-1', name: 'security_review', label: 'Security Review', type: 'standard', enter_actions: '[]' } } })] })
+    await updateWorkflowStep(null, {
+      definitionId: 'def-1', stepName: 'security_review', label: 'Security Review',
+      enterActions: JSON.stringify([{ type: 'publish_event', params: { event: 'incident.security_review' } }]),
+    }, ctx)
+    expect(mockSession.executeWrite).toHaveBeenCalledOnce()
   })
 })

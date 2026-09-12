@@ -1,8 +1,9 @@
 import { GraphQLError } from 'graphql'
 import { ValidationError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
-import { workflowEngine } from '@opengraphity/workflow'
+import { workflowEngine, isWorkflowActionType, WORKFLOW_ACTION_TYPES } from '@opengraphity/workflow'
 import type { ActionContext } from '@opengraphity/workflow'
+import { NOTIFICATION_TARGETS, isTargetApplicable, applicableNotificationTargets } from '@opengraphity/types'
 import { publish } from '@opengraphity/events'
 import { sseManager } from '@opengraphity/notifications'
 import type { GraphQLContext } from '../../context.js'
@@ -12,6 +13,7 @@ import * as incidentService from '../../services/incidentService.js'
 import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
+import { invalidateWorkflowCache } from '../../lib/workflowHelpers.js'
 
 // Safe label map — prevents Cypher injection when creating entities dynamically
 const ENTITY_LABELS: Record<string, string> = {
@@ -137,6 +139,83 @@ async function publishNotifyRuleActions(
   }
 }
 
+// ── Validazione delle azioni in scrittura (B0-5) ──────────────────────────────
+
+/**
+ * Valida il JSON delle azioni di un passo PRIMA di scriverlo: lista di oggetti
+ * con un `type` del vocabolario del motore. È la porta da cui è entrata la
+ * deriva vista dal vivo (un `create_notification` — vocabolario delle
+ * automazioni — su un passo di «Incident — Security»): il motore ora ferma la
+ * transizione nominando l'azione, ma un dato del genere non deve poter più
+ * entrare da qui. `null` = campo non mandato, non si valida nulla.
+ *
+ * Il `target` di un'azione `notify_rule` viene validato con lo stesso
+ * vocabolario delle regole di notifica (`NOTIFICATION_TARGETS`): dal momento in
+ * cui il dispatcher RISOLVE i bersagli (A0-1), un bersaglio inesistente qui non
+ * è più ignorato — fa fallire il job di notifica a ogni ingresso nel passo. Il
+ * pannello del designer offriva `role:admin, role:manager`: il secondo non è un
+ * ruolo che l'autenticazione conosce.
+ */
+export function assertStepActions(raw: string | null | undefined, label: string): void {
+  if (raw == null) return
+  let parsed: unknown
+  try { parsed = JSON.parse(raw) }
+  catch (e) {
+    throw new GraphQLError(`${label} non è JSON valido (${e instanceof Error ? e.message : String(e)})`, { extensions: { code: 'BAD_USER_INPUT' } })
+  }
+  if (!Array.isArray(parsed)) {
+    throw new GraphQLError(`${label} deve essere una lista di azioni`, { extensions: { code: 'BAD_USER_INPUT' } })
+  }
+  parsed.forEach((action, i) => {
+    const type = (action as { type?: unknown } | null)?.type
+    if (!isWorkflowActionType(type)) {
+      throw new GraphQLError(
+        `${label}[${i}]: azione di tipo ${JSON.stringify(type ?? null)} sconosciuta al motore dei workflow. ` +
+        `Ammesse: ${WORKFLOW_ACTION_TYPES.join(', ')}.`,
+        { extensions: { code: 'BAD_USER_INPUT' } },
+      )
+    }
+    if (type === 'notify_rule') {
+      const target = (action as { params?: Record<string, unknown> }).params?.['target']
+      if (target != null && target !== '') {
+        const t = String(target)
+        if (!(NOTIFICATION_TARGETS as readonly string[]).includes(t)) {
+          throw new GraphQLError(
+            `${label}[${i}]: target "${t}" non è un destinatario valido. Ammessi: ${NOTIFICATION_TARGETS.join(', ')}.`,
+            { extensions: { code: 'BAD_USER_INPUT' } },
+          )
+        }
+        if (!isTargetApplicable('workflow.step.entered', t)) {
+          throw new GraphQLError(
+            `${label}[${i}]: target "${t}" non può essere risolto all'ingresso in un passo. ` +
+            `Applicabili: ${applicableNotificationTargets('workflow.step.entered').join(', ')}.`,
+            { extensions: { code: 'BAD_USER_INPUT' } },
+          )
+        }
+      }
+    }
+  })
+}
+
+// ── Marchio di personalizzazione (contratto con i seed, ondata 2) ─────────────
+
+/**
+ * Ogni mutation che cambia una definizione di workflow o i suoi passi e
+ * transizioni marchia la definizione come «toccata dall'amministratore».
+ * È il contratto che i seed leggono (B-2): un seed che rieseguirebbe sopra una
+ * definizione marchiata si rifiuta, e il rifiuto nomina data e autore.
+ *
+ * `saveWorkflowLayout` NON marchia: la posizione dei nodi sul canvas non è
+ * configurazione di processo, e un seed che la sovrascrive non toglie niente
+ * al cliente.
+ */
+export const MARK_CUSTOMIZED = 'SET wd.customized_at = $customizedAt, wd.customized_by = $customizedBy'
+
+/** Parametri di `MARK_CUSTOMIZED`; da unire a quelli della query. */
+export function customizedParams(ctx: GraphQLContext): { customizedAt: string; customizedBy: string } {
+  return { customizedAt: new Date().toISOString(), customizedBy: ctx.userId }
+}
+
 // ── Mutation resolvers ────────────────────────────────────────────────────────
 
 export async function updateWorkflowStep(
@@ -144,19 +223,23 @@ export async function updateWorkflowStep(
   { definitionId, stepName, label, enterActions, exitActions }: { definitionId: string; stepName: string; label: string; enterActions?: string | null; exitActions?: string | null },
   ctx: GraphQLContext,
 ) {
+  assertStepActions(enterActions, `enter_actions dello step "${stepName}"`)
+  assertStepActions(exitActions,  `exit_actions dello step "${stepName}"`)
   return withSession(async (session) => {
     const now = new Date().toISOString()
     const result = await session.executeWrite((tx) =>
       tx.run(`
-        MATCH (s:WorkflowStep {definition_id: $definitionId, name: $stepName, tenant_id: $tenantId})
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: $stepName})
         SET s.label        = $label,
             s.updated_at   = $now,
             s.enter_actions = CASE WHEN $enterActions IS NOT NULL THEN $enterActions ELSE s.enter_actions END,
             s.exit_actions  = CASE WHEN $exitActions  IS NOT NULL THEN $exitActions  ELSE s.exit_actions  END
-        RETURN s
-      `, { definitionId, stepName, tenantId: ctx.tenantId, label, enterActions: enterActions ?? null, exitActions: exitActions ?? null, now }),
+        ${MARK_CUSTOMIZED}
+        RETURN s, wd.entity_type AS entityType
+      `, { definitionId, stepName, tenantId: ctx.tenantId, label, enterActions: enterActions ?? null, exitActions: exitActions ?? null, now, ...customizedParams(ctx) }),
     )
     if (!result.records.length) throw new GraphQLError('WorkflowStep non trovato', { extensions: { code: 'NOT_FOUND' } })
+    invalidateWorkflowCache(ctx.tenantId, result.records[0].get('entityType') as string)
     const s = result.records[0].get('s').properties as Record<string, unknown>
     return {
       id:           s['id']             as string,
@@ -189,8 +272,10 @@ export async function updateWorkflowTransition(
   return withSession(async (session) => {
     await session.executeWrite((tx) =>
       tx.run(`
+        // tenant-ok: la definizione dello step di partenza è scopata alla riga dopo
         MATCH (src:WorkflowStep)-[t:TRANSITIONS_TO {id: $transitionId}]->()
-        MATCH (:WorkflowDefinition {id: src.definition_id, tenant_id: $tenantId})
+        MATCH (wd:WorkflowDefinition {id: src.definition_id, tenant_id: $tenantId})
+        ${MARK_CUSTOMIZED}
         SET t.label          = coalesce($label, t.label),
             t.trigger        = coalesce($trigger, t.trigger),
             t.requires_input = $requiresInput,
@@ -200,6 +285,7 @@ export async function updateWorkflowTransition(
       `, {
         transitionId,
         tenantId: ctx.tenantId,
+        ...customizedParams(ctx),
         label:         label         ?? null,
         trigger:       trigger       ?? null,
         requiresInput,
@@ -219,6 +305,7 @@ export async function updateWorkflowTransition(
     if (!wdResult.records.length) throw new GraphQLError('WorkflowDefinition non trovata', { extensions: { code: 'NOT_FOUND' } })
     const wd    = wdResult.records[0].get('wd').properties    as Record<string, unknown>
     const steps = wdResult.records[0].get('steps') as Array<{ properties: Record<string, unknown> }>
+    invalidateWorkflowCache(ctx.tenantId, wd['entity_type'] as string)
     const transitions = await loadTransitionRows(session, definitionId, ctx.tenantId)
     return mapWorkflowDefinition(wd, steps, transitions)
   }, true)
@@ -254,16 +341,19 @@ export async function addWorkflowTransition(
           requires_input: false, input_field: null, condition: null, timer_hours: null,
           source_handle: $sourceHandle, target_handle: $targetHandle
         }]->(to)
-        RETURN tr, from.name AS fromStep, to.name AS toStep
+        ${MARK_CUSTOMIZED}
+        RETURN tr, from.name AS fromStep, to.name AS toStep, wd.entity_type AS entityType
       `, {
         definitionId, tenantId: ctx.tenantId, fromStepName, toStepName, id,
         trigger: trigger ?? 'manual', label: label ?? 'Nuova transizione',
         sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null,
+        ...customizedParams(ctx),
       }),
     )
     if (!result.records.length) {
       throw new GraphQLError('Step non trovati o non appartenenti a questa definizione', { extensions: { code: 'NOT_FOUND' } })
     }
+    invalidateWorkflowCache(ctx.tenantId, result.records[0].get('entityType') as string)
     const tr = result.records[0].get('tr').properties as Record<string, unknown>
     return {
       id,
@@ -291,13 +381,17 @@ export async function removeWorkflowTransition(
     const result = await session.executeWrite((tx) =>
       tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        // tenant-ok: step della definizione appena scopata
         MATCH (:WorkflowStep {definition_id: $definitionId})-[tr:TRANSITIONS_TO {id: $transitionId}]->()
-        WITH tr, tr.id AS deletedId
+        ${MARK_CUSTOMIZED}
+        WITH wd, tr, tr.id AS deletedId
         DELETE tr
-        RETURN deletedId
-      `, { definitionId, tenantId: ctx.tenantId, transitionId }),
+        RETURN deletedId, wd.entity_type AS entityType
+      `, { definitionId, tenantId: ctx.tenantId, transitionId, ...customizedParams(ctx) }),
     )
-    return result.records.length > 0
+    if (!result.records.length) return false
+    invalidateWorkflowCache(ctx.tenantId, result.records[0].get('entityType') as string)
+    return true
   }, true)
 }
 
@@ -661,7 +755,7 @@ export async function executeWorkflowTransition(
 
 export async function saveWorkflowChanges(
   _: unknown,
-  { definitionId, positions, steps, expectedVersion }: {
+  { definitionId, transitions, positions, steps, expectedVersion }: {
     definitionId: string
     transitions: Array<{
       transitionId:  string
@@ -689,6 +783,12 @@ export async function saveWorkflowChanges(
   ctx: GraphQLContext,
 ) {
   const now = new Date().toISOString()
+  // Azioni validate PRIMA di aprire la transazione (B0-5): un tipo fuori
+  // vocabolario non entra nel grafo dal disegnatore.
+  for (const st of steps ?? []) {
+    assertStepActions(st.enterActions, `enter_actions dello step "${st.stepName}"`)
+    assertStepActions(st.exitActions,  `exit_actions dello step "${st.stepName}"`)
+  }
   return withSession(async (session) => {
     // Tutto in UNA transazione: controllo di versione, aggiornamenti e
     // incremento. Prima erano write separate senza confronto di versione →
@@ -724,6 +824,34 @@ export async function saveWorkflowChanges(
       }
       // Update step properties (label, enterActions, exitActions, metadata)
       if (steps && steps.length > 0) {
+        // Un passo non può essere insieme iniziale e terminale: il processo
+        // nascerebbe già chiuso (B-8). Il controllo tiene conto sia di quello
+        // che questa chiamata sta scrivendo sia di quello che c'è nel grafo.
+        const wantsInitial = steps.filter((s) => s.isInitial === true)
+        if (wantsInitial.length > 1) {
+          throw new GraphQLError(
+            `Un solo step può essere iniziale: ne hai marcati ${wantsInitial.length} (${wantsInitial.map((s) => s.stepName).join(', ')}).`,
+            { extensions: { code: 'BAD_USER_INPUT' } },
+          )
+        }
+        const initial = wantsInitial[0]
+        if (initial) {
+          const cur = await tx.run(`
+            MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: $stepName})
+            RETURN coalesce(s.is_terminal, s.type = 'end') AS terminal
+          `, { definitionId, tenantId: ctx.tenantId, stepName: initial.stepName })
+          if (!cur.records.length) {
+            throw new GraphQLError(`Step "${initial.stepName}" non trovato in questa definizione`, { extensions: { code: 'NOT_FOUND' } })
+          }
+          const terminalAfter = initial.isTerminal ?? Boolean(cur.records[0].get('terminal'))
+          if (terminalAfter) {
+            throw new GraphQLError(
+              `Lo step "${initial.stepName}" è terminale: non può essere anche lo step iniziale, ` +
+              `altrimenti ogni nuovo ticket nascerebbe già chiuso. Togli «Step terminale» oppure scegli un altro step iniziale.`,
+              { extensions: { code: 'BAD_USER_INPUT' } },
+            )
+          }
+        }
         await tx.run(`
           UNWIND $steps AS st
           MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: st.stepName})
@@ -763,12 +891,14 @@ export async function saveWorkflowChanges(
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
         SET wd.version    = wd.version + 1,
             wd.updated_at = $now
+        ${MARK_CUSTOMIZED}
         RETURN wd
-      `, { definitionId, tenantId: ctx.tenantId, now })
+      `, { definitionId, tenantId: ctx.tenantId, now, ...customizedParams(ctx) })
       if (!wdResult.records.length) throw new GraphQLError('WorkflowDefinition non trovata', { extensions: { code: 'NOT_FOUND' } })
       return wdResult.records[0].get('wd').properties as Record<string, unknown>
     })
 
+    invalidateWorkflowCache(ctx.tenantId, wd['entity_type'] as string)
     void audit(ctx, 'workflow.updated', 'WorkflowDefinition', definitionId)
 
     const stepsResult = await session.executeRead((tx) =>
@@ -776,7 +906,11 @@ export async function saveWorkflowChanges(
         { definitionId, tenantId: ctx.tenantId }),
     )
     const savedSteps = stepsResult.records[0]?.get('steps') as Array<{ properties: Record<string, unknown> }> ?? []
-    const transitions = await loadTransitionRows(session, definitionId, ctx.tenantId)
-    return mapWorkflowDefinition(wd, savedSteps, transitions)
+    // NB: nome diverso dal parametro `transitions`. Quando questa variabile si
+    // chiamava come lui, il `transitions.length` dentro la transazione leggeva
+    // QUESTA (zona morta temporale) e la mutation falliva sempre con un
+    // ReferenceError — «Salva modifiche» del disegnatore non salvava niente.
+    const savedTransitions = await loadTransitionRows(session, definitionId, ctx.tenantId)
+    return mapWorkflowDefinition(wd, savedSteps, savedTransitions)
   }, true)
 }
