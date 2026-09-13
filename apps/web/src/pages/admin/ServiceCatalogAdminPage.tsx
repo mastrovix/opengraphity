@@ -88,6 +88,7 @@ export function ServiceCatalogAdminPage() {
 
       {items.length > 0 && (
         <div style={{ border: '1px solid var(--color-border-light)', borderRadius: 10, overflow: 'hidden' }}>
+          <div className="og-scroll-x">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
             <thead>
               <tr style={{ background: 'var(--surface-1)', textAlign: 'left', color: 'var(--color-slate-light)' }}>
@@ -126,6 +127,7 @@ export function ServiceCatalogAdminPage() {
               ))}
             </tbody>
           </table>
+        </div>
         </div>
       )}
 

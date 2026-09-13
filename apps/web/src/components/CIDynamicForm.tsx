@@ -357,7 +357,7 @@ export function CIDynamicForm({
           <strong>{t('components.ciDynamicForm.metamodelError')}</strong> {baseEnums.error}
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div className="og-pair">
         <div>
           <label htmlFor={fieldId('status')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>{t('pages.cmdb.status')}</label>
           <select id={fieldId('status')} value={String(formValues['status'] ?? '')} onChange={e => handleChange('status', e.target.value)} style={inputBase}>

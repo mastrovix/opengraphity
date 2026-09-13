@@ -109,7 +109,7 @@ export function EventDetailPage() {
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: 24, alignItems: 'start' }}>
+      <div className="og-split">
         <div>
           <SectionCard title={t('events.correlation.title')} defaultOpen>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -154,6 +154,7 @@ export function EventDetailPage() {
             {labels.error && <p role="alert" style={{ color: colors.danger, fontSize: 'var(--font-size-body)', margin: 0 }}>{t('events.detail.labelsInvalid', { error: labels.error })}</p>}
             {!labels.error && labels.entries.length === 0 && <p style={{ color: colors.slateLight, fontSize: 'var(--font-size-body)', margin: 0 }}>{t('events.detail.noLabels')}</p>}
             {labels.entries.length > 0 && (
+              <div className="og-scroll-x">
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
                 <thead>
                   <tr>
@@ -170,6 +171,7 @@ export function EventDetailPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
             )}
           </SectionCard>
         </div>

@@ -102,6 +102,7 @@ function VersionHistory({ articleId, onRestored }: { articleId: string; onRestor
 
   return (
     <div style={{ marginTop: 8, border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden' }}>
+      <div className="og-scroll-x">
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-table)' }}>
         <thead>
           <tr style={{ background: colors.white, textAlign: 'left', color: 'var(--color-slate-light)' }}>
@@ -132,6 +133,7 @@ function VersionHistory({ articleId, onRestored }: { articleId: string; onRestor
           ))}
         </tbody>
       </table>
+    </div>
     </div>
   )
 }
@@ -438,7 +440,7 @@ export function KBAdminPage() {
           </div>
 
           {/* Fields */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div className="og-pair" style={{ marginBottom: 12 }}>
             <div style={{ gridColumn: '1 / -1' }}>
               <label htmlFor={ids.title} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('common.title')} *</label>
               <input id={ids.title} value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} style={inputStyle} placeholder="Titolo articolo" />

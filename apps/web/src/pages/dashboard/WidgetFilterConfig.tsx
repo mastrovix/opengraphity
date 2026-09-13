@@ -103,7 +103,7 @@ export function WidgetFilterConfig({
       {/* Filter */}
       <div>
         <label htmlFor={ids.filter} style={labelStyle}>{t('pages.dashboard.filterOptional')}</label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <div className="og-pair">
           <select id={ids.filter} value={filterField} onChange={(e) => onFilterFieldChange(e.target.value)} style={selectStyle}>
             <option value="">{t('pages.dashboard.noFilter')}</option>
             {fields.map((f) => <option key={f} value={f}>{fieldOptionLabel(f)}</option>)}

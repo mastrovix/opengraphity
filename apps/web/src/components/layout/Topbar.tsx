@@ -148,9 +148,16 @@ export function Topbar() {
         zIndex:          30,
       }}
     >
-      <Breadcrumb />
+      {/*
+        `minWidth: 0` su entrambi i lati: senza, un flex non scende sotto la
+        larghezza del suo contenuto e il piu lungo dei due spinge la barra
+        fuori. Il percorso di navigazione si tronca (e la sua lunghezza cambia
+        da pagina a pagina: e per questo che solo ALCUNE pagine scorrevano),
+        il gruppo di destra si stringe fino al minimo della ricerca.
+      */}
+      <div style={{ minWidth: 0, overflow: 'hidden' }}><Breadcrumb /></div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flexShrink: 1 }}>
         {/* Global search */}
         <GlobalSearch />
 

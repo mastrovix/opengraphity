@@ -362,7 +362,12 @@ export function EventPolicyPage() {
   const toggleLifecycle = (key: LifecycleField, value: string, on: boolean) =>
     set(key, lifecycleOptions.filter((s) => (s === value ? on : form[key].includes(s))))
 
-  const grid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } as const
+  /*
+    `og-pair` invece dell'oggetto di stile: due colonne che sotto i 700px
+    diventano una. Era l'ultimo caso a colonne fisse, e passava dal guardiano
+    perché non stava inline nel JSX ma in una costante.
+  */
+  const grid = 'og-pair'
 
   return (
     <PageContainer>
@@ -395,7 +400,7 @@ export function EventPolicyPage() {
       <div style={{ maxWidth: 760, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* 0. Riconoscimento del CI (A-2): nome corto ↔ FQDN */}
         <Group name="recognition">
-          <div style={grid}>
+          <div className={grid}>
             <div>
               {toggleRow('matchShortHostname', saving)}
               <Help field="matchShortHostname" />
@@ -405,7 +410,7 @@ export function EventPolicyPage() {
 
         {/* 1. Apertura e chiusura degli incident (+ mappa severità → impatto/urgenza) */}
         <Group name="incidents">
-          <div style={grid}>
+          <div className={grid}>
             <div>
               <FieldLabel htmlFor={fid('openIncidentFrom')}>{t('events.policy.openIncidentFrom')}</FieldLabel>
               <Select id={fid('openIncidentFrom')} value={form.openIncidentFrom} onChange={(e) => set('openIncidentFrom', e.target.value)} disabled={saving} aria-describedby={helpId('openIncidentFrom')}>
@@ -435,6 +440,7 @@ export function EventPolicyPage() {
           <div style={{ marginTop: 16, opacity: never ? 0.6 : 1 }}>
             <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slateDark, marginBottom: 2 }}>{t('events.policy.severityMap')}</div>
             <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-label)', color: colors.slateLight, lineHeight: 1.5 }}>{t('events.policy.help.severityMap')}</p>
+            <div className="og-scroll-x">
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
               <thead>
                 <tr>
@@ -461,11 +467,12 @@ export function EventPolicyPage() {
               </tbody>
             </table>
           </div>
+          </div>
         </Group>
 
         {/* 2. Silenzio in finestra di change */}
         <Group name="changeWindow">
-          <div style={grid}>
+          <div className={grid}>
             {numberField('suppressUpstreamHops')}
           </div>
         </Group>
@@ -528,7 +535,7 @@ export function EventPolicyPage() {
 
         {/* 3. Sfarfallio e tempeste */}
         <Group name="flapStorm">
-          <div style={grid}>
+          <div className={grid}>
             {numberField('flapThreshold')}
             {numberField('flapWindowMinutes')}
             {numberField('flapStableMinutes')}
@@ -539,7 +546,7 @@ export function EventPolicyPage() {
 
         {/* 4. Conservazione */}
         <Group name="retention">
-          <div style={grid}>
+          <div className={grid}>
             {numberField('retentionDays')}
           </div>
         </Group>

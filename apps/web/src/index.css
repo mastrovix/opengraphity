@@ -422,3 +422,73 @@ tr:hover .sft-td * {
 .hover-bg:hover {
   background-color: var(--hover-bg, var(--color-slate-bg));
 }
+
+/* ══ RESPONSIVITÀ: da 700 a 1400px ═══════════════════════════════════════════
+   Ondata 4 delle quattro decise il 13 set 2026.
+
+   Fino a oggi in apps/web non c'era UNA media query: ogni misura stava negli
+   stili inline, che non possono contenerne. Da qui viene ogni difetto visto nel
+   browser — la colonna laterale del dettaglio evento a 129px con il testo
+   spezzato carattere per carattere, lo scorrimento orizzontale della pagina
+   intera sulle liste, il titolo che tocca i bottoni a 0px di distanza.
+
+   La scelta del proprietario: niente si rompe fra i 700 e i 1400px. Da telefono
+   resta scomodo ma leggibile — le tabelle non diventano schede e la barra
+   laterale non diventa un cassetto, che sarebbero un'altra ondata.
+
+   Un LIVELLO DI CLASSI, non media query sparse: gli stili inline restano dove
+   sono, e chi ha bisogno di adattarsi prende una classe. Così la regola sta in
+   un posto solo e si legge tutta insieme.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* La soglia. Sotto, due colonne diventano una. */
+:root { --og-split-min: 900px; }
+
+/*
+  Due colonne, principale e laterale (2:1). Sotto la soglia diventano una:
+  `minmax(0, …)` lascia stringere il contenuto, ma stringere una colonna
+  laterale sotto i ~200px non la rende più piccola, la rende illeggibile.
+*/
+.og-split {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .og-split { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Due colonne pari (form affiancati). */
+.og-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 700px) {
+  .og-pair { grid-template-columns: 1fr; }
+}
+
+/*
+  Contenuto larghezza-fissa (tabelle, diagrammi, blocchi di codice): scorre
+  DENTRO il suo contenitore, così la pagina non scorre di lato. È la regola che
+  mancava su ogni lista: la tabella spingeva il body e la barra laterale usciva
+  dallo schermo.
+*/
+.og-scroll-x {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/*
+  Testata: titolo a sinistra, azioni a destra, e a capo quando non ci stanno —
+  con un margine fra i due. Senza `gap` il titolo arrivava a toccare il primo
+  bottone, e sembrava sovrapposto.
+*/
+.og-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+}

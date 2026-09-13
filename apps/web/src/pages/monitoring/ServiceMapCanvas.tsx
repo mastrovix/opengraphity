@@ -47,6 +47,7 @@ import { useMetamodel } from '@/contexts/MetamodelContext'
 import { CIIcon } from '@/lib/ciIcon'
 import { ciTypeLabelKey, enumLabel } from '@/lib/ciEnums'
 import { alpha, colors, palette } from '@/lib/tokens'
+import { srOnlyStyle } from '@/lib/a11y'
 import {
   layoutServiceMap,
   NODE_W, NODE_H, GAP_Y, LABEL_W, PAD, CHIP_W, CHIP_H, FOCUS_THRESHOLD,
@@ -80,10 +81,13 @@ const SCALE_MAX = 1
 /** Quanti nomi al più nell'elenco della ricerca. */
 const SEARCH_MAX = 8
 
-/** Testo solo per le tecnologie assistive (riassunto della mappa, descrizioni via `aria-describedby`). */
-const SR_ONLY: React.CSSProperties = {
-  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
-}
+/*
+  La copia locale di questo stile aveva lo stesso difetto dell'originale —
+  `position: absolute` senza coordinate, quindi dentro una tabella larga
+  allungava la pagina — ed essendo una copia non si correggeva correggendo
+  l'originale. Ora punta a quella condivisa: un posto solo.
+*/
+const SR_ONLY = srOnlyStyle
 
 export function ServiceMapCanvas({ map, selectedId, onSelect, isolatedId = null, onIsolate }: Props) {
   const { t } = useTranslation()

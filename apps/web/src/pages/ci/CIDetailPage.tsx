@@ -535,7 +535,7 @@ export function CIDetailPage() {
           >
             {editMode ? (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="og-pair">
                   {/* Read-only fields */}
                   <DetailField label="ID" value={ci.id} mono />
                   <DetailField label={t('pages.cmdb.type')} value={ciType.label} />
@@ -581,7 +581,7 @@ export function CIDetailPage() {
               </>
             ) : (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="og-pair">
                   <DetailField label="ID" value={ci.id} mono />
                   <DetailField label={t('pages.cmdb.name')} value={ci.name} />
                   <DetailField label={t('pages.cmdb.type')} value={ciType.label} />

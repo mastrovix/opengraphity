@@ -233,7 +233,7 @@ export function AutoTriggersPage() {
           <Input id={ids.name} value={form.name} onChange={e => patch({ name: e.target.value })} placeholder="es. Auto-assign P1 incidents" />
 
           {/* Entity + Event */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
+          <div className="og-pair" style={{ marginTop: 14 }}>
             <div>
               <label htmlFor={ids.entityType} style={labelS}>Tipo entità</label>
               <Select id={ids.entityType} style={selectS} value={form.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>

@@ -100,7 +100,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
         </>
       }>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+      <div className="og-pair">
         <Field label="name (slug) *">
           <Input style={inputS} value={form.name} disabled={!!initial}
             onChange={(e) => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />

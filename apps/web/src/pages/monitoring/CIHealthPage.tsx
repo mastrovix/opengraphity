@@ -59,6 +59,7 @@ import { CIHealthBadge, CI_HEALTH_ACCENT } from '@/pages/events/eventShared'
 import { servicesForCIPath } from './ServicesPage'
 import type { CIHealth, CIHealthOverview, CIHealthRow, CIHealthFilterVars } from '@/types/events'
 import { colors, palette } from '@/lib/tokens'
+import { srOnlyStyle } from '@/lib/a11y'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 const PAGE_SIZE       = 50
@@ -84,10 +85,13 @@ const TILE_STYLE: Record<TileKey, { accent: string; tint: string; icon: LucideIc
   unmonitored: { accent: 'var(--color-slate)',         tint: 'var(--color-slate-bg)', icon: EyeOff },
 }
 
-/** Testo solo per le tecnologie assistive (descrizioni via `aria-describedby`): fuori dal flusso, mai visibile. */
-const SR_ONLY: React.CSSProperties = {
-  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
-}
+/*
+  La copia locale di questo stile aveva lo stesso difetto dell'originale —
+  `position: absolute` senza coordinate, quindi dentro una tabella larga
+  allungava la pagina — ed essendo una copia non si correggeva correggendo
+  l'originale. Ora punta a quella condivisa: un posto solo.
+*/
+const SR_ONLY = srOnlyStyle
 
 interface HealthFilter {
   /** Stato scelto dal riquadro (un solo stato alla volta); null = tutti. */

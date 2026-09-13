@@ -56,7 +56,7 @@ export function CIRelationEditor({ open, onClose, onSave, allTypes }: RelationMo
           </button>
         </>
       }>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+      <div className="og-pair">
         <Field label="name (slug) *">
           <Input style={inputS} value={form.name}
             onChange={e => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
@@ -115,6 +115,7 @@ export function CIRelationTable({ relations, onRemove, readOnly = false }: Relat
     return <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Nessuna relazione CI configurata.</p>
   }
   return (
+    <div className="og-scroll-x">
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
       <thead>
         <tr style={{ borderBottom: '2px solid var(--border)' }}>
@@ -147,5 +148,6 @@ export function CIRelationTable({ relations, onRemove, readOnly = false }: Relat
         ))}
       </tbody>
     </table>
+  </div>
   )
 }

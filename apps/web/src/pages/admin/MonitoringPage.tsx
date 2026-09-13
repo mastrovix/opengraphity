@@ -222,6 +222,7 @@ export function MonitoringPage() {
       <div style={card}>
         <p style={sectionTitle}>{t('pages.monitoring.queues.title')}</p>
         {metrics?.queues && metrics.queues.length > 0 ? (
+          <div className="og-scroll-x">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -246,6 +247,7 @@ export function MonitoringPage() {
               ))}
             </tbody>
           </table>
+        </div>
         ) : (
           <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, textAlign: 'center', padding: 24 }}>
             {t('common.noResults')}
@@ -276,6 +278,7 @@ export function MonitoringPage() {
             <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slate, marginBottom: 8 }}>
               {t('pages.monitoring.neo4j.slowQueries')}
             </div>
+            <div className="og-scroll-x">
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
               <tbody>
                 {metrics.neo4j.slowQueries.map((sq, i) => (
@@ -293,6 +296,7 @@ export function MonitoringPage() {
                 ))}
               </tbody>
             </table>
+          </div>
           </>
         )}
       </div>
@@ -314,6 +318,7 @@ export function MonitoringPage() {
               </div>
 
               {trace.recentTraces.length > 0 ? (
+                <div className="og-scroll-x">
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -347,6 +352,7 @@ export function MonitoringPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
               ) : (
                 <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight }}>No recent traces</div>
               )}

@@ -40,7 +40,7 @@ export function PresetRulesEditor({ kind, rules, onChange }: Props) {
         <h3 style={sectionTitleStyle}>{t('monitoring.preset.valuesTitle')}</h3>
         <p style={hintStyle}>{t('monitoring.preset.valuesIntro')}</p>
         <p style={{ ...hintStyle, marginTop: 4 }}>{t(`monitoring.preset.hints.${kind}`)}</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 10 }}>
+        <div className="og-pair" style={{ marginTop: 10 }}>
           <ValueTable<EventSeverity>
             title={t('monitoring.preset.severityValues')}
             hint={t('monitoring.preset.severityHint')}

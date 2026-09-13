@@ -339,7 +339,7 @@ export function QuestionAdminPage() {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div className="og-pair" style={{ marginBottom: 16 }}>
                 <div>
                   <label htmlFor={ids.category} style={labelStyle}>Categoria</label>
                   <select id={ids.category} value={category} onChange={e => setCategory(e.target.value as QuestionCategoryKey)} style={inputStyle} title="Categoria della domanda">

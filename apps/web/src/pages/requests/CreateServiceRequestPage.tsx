@@ -180,7 +180,7 @@ export function CreateServiceRequestPage() {
           </div>
 
           {/* Priority + Due date in grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+          <div className="og-pair" style={{ marginBottom: 24 }}>
 
             {/* Priority */}
             <div>

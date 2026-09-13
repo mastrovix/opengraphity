@@ -184,7 +184,7 @@ export function UsersPage() {
       >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div><label style={labelS}>{t('pages.users.email')} {REQUIRED}</label><Input type="email" required value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="mario@acme.com" /></div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="og-pair">
               <div><label style={labelS}>{t('pages.users.firstName')} {REQUIRED}</label><Input required value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder="Mario" /></div>
               <div><label style={labelS}>{t('pages.users.lastName')} {REQUIRED}</label><Input required value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} placeholder="Rossi" /></div>
             </div>

@@ -219,7 +219,7 @@ export function ServiceRequestDetailPage() {
           <FieldLabel htmlFor={ids.description}>Descrizione</FieldLabel>
           <Textarea id={ids.description} value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={3} />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="og-pair">
           <div>
             <FieldLabel htmlFor={ids.priority}>Priorità</FieldLabel>
             <Select id={ids.priority} value={editForm.priority} onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}>

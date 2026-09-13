@@ -72,6 +72,7 @@ export function WidgetBody({ widgetType, color, data, caption, height = 180, lar
   if (widgetType === 'table') {
     return (
       <div style={{ overflow: 'auto', maxHeight: 220 }}>
+        <div className="og-scroll-x">
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
           <thead>
             <tr style={{ background: 'var(--color-slate-bg)' }}>
@@ -90,6 +91,7 @@ export function WidgetBody({ widgetType, color, data, caption, height = 180, lar
             ))}
           </tbody>
         </table>
+      </div>
       </div>
     )
   }

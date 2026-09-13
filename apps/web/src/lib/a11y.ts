@@ -6,8 +6,24 @@ import type { CSSProperties, KeyboardEvent } from 'react'
  * dettaglio starebbe altrimenti solo in un `title` (invisibile da tastiera e touch).
  */
 export const srOnlyStyle: CSSProperties = {
-  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
-  overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+  /*
+    `left`/`top` a zero NON sono decorativi: senza, questo span allunga la
+    pagina.
+    Un elemento `position: absolute` senza coordinate resta dove lo mette il
+    flusso. Dentro una tabella larga 1000px che scorre nel suo riquadro, il suo
+    blocco contenitore e la PAGINA (nessun antenato posizionato), quindi
+    finisce a x=1195 su una finestra da 731 — invisibile, larghezza 1px, e la
+    pagina intera scorre di lato di 465px, barra laterale compresa. Misurato su
+    `monitoring/health`, che era fra gli aperti da settimane come «scorrimento
+    orizzontale, inconcludente»: il colpevole era un testo per lettori di
+    schermo.
+    Ancorandolo a (0, 0) del blocco contenitore non sborda mai. La posizione e
+    irrilevante per un lettore di schermo, che legge l'ordine del DOM.
+  */
+  position: 'absolute', left: 0, top: 0,
+  width: 1, height: 1, padding: 0, margin: -1,
+  overflow: 'hidden', clip: 'rect(0 0 0 0)', clipPath: 'inset(50%)',
+  whiteSpace: 'nowrap', border: 0,
 }
 
 /**

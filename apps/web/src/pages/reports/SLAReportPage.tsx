@@ -175,6 +175,7 @@ export function SLAReportPage() {
               <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Nessun dato SLA nel periodo.</p>
             ) : (
               <div style={{ border: '1px solid var(--color-border-light)', borderRadius: 10, overflow: 'hidden' }}>
+                <div className="og-scroll-x">
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
                   <thead>
                     <tr style={{ background: palette.neutral.surface1, textAlign: 'left', color: 'var(--color-slate-light)' }}>
@@ -202,6 +203,7 @@ export function SLAReportPage() {
                   </tbody>
                 </table>
               </div>
+              </div>
             )}
           </div>
 
@@ -219,6 +221,7 @@ export function SLAReportPage() {
             </p>
           ) : (
             <div style={{ border: '1px solid var(--color-border-light)', borderRadius: 10, overflow: 'hidden' }}>
+              <div className="og-scroll-x">
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
                 <thead>
                   <tr style={{ background: palette.neutral.surface1, textAlign: 'left', color: 'var(--color-slate-light)' }}>
@@ -264,6 +267,7 @@ export function SLAReportPage() {
                 </tbody>
               </table>
             </div>
+            </div>
           )}
 
           <p style={{ marginTop: 10, fontSize: 12, color: 'var(--color-slate-light)' }}>
@@ -286,7 +290,7 @@ export function SLAReportPage() {
           </>
         }
       >
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="og-pair">
           <div>
             <FieldLabel htmlFor={ids.type}>Tipo</FieldLabel>
             <Select id={ids.type} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} disabled={modal?.mode === 'edit'}>

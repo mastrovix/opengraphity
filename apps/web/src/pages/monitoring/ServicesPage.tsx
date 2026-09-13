@@ -45,6 +45,7 @@ import { formatDateTime, formatDuration, currentLocale } from '@/lib/datetime'
 import { pausedWhenHidden } from '@/lib/polling'
 import { GET_SERVICE_MAPS } from '@/graphql/queries'
 import { colors, palette } from '@/lib/tokens'
+import { srOnlyStyle } from '@/lib/a11y'
 import { CreateServiceMapDialog } from './CreateServiceMapDialog'
 import { BusinessCapabilitiesSection } from './BusinessCapabilitiesSection'
 import { SERVICE_HEALTH_FAMILY, ServiceHealthBadge, ServiceStatusPill, ImpactScore, causeLabel, healthIfActiveNote, isServiceHealth, serviceHealthFamily, staleShortLabel } from './servicesShared'
@@ -72,10 +73,13 @@ export const servicesForCIPath = (ciId: string) => `/monitoring/services?ciId=${
 const TILE_ORDER: ServiceHealth[] = ['down', 'degraded', 'maintenance', 'operational', 'unknown']
 const TILE_ICON: Record<ServiceHealth, LucideIcon> = { down: XCircle, degraded: AlertTriangle, maintenance: Wrench, operational: CheckCircle2, unknown: HelpCircle }
 
-/** Testo solo per le tecnologie assistive (descrizioni via `aria-describedby`). */
-const SR_ONLY: React.CSSProperties = {
-  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
-}
+/*
+  La copia locale di questo stile aveva lo stesso difetto dell'originale —
+  `position: absolute` senza coordinate, quindi dentro una tabella larga
+  allungava la pagina — ed essendo una copia non si correggeva correggendo
+  l'originale. Ora punta a quella condivisa: un posto solo.
+*/
+const SR_ONLY = srOnlyStyle
 
 interface ServicesFilter {
   health: ServiceHealth | null

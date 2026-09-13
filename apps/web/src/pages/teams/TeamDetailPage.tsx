@@ -156,7 +156,7 @@ export function TeamDetailPage() {
       {/* Body */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <SectionCard title={t('detail.sections.information')} defaultOpen>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="og-pair">
             <DetailField label="ID" value={team.id} mono />
             <DetailField label={t('pages.teams.name')} value={team.name} />
             <DetailField label="Tenant ID" value={team.tenantId} mono />

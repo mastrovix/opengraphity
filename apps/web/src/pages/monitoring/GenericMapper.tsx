@@ -239,7 +239,7 @@ export function GenericMapper({ mapping, onChange, payload, onPayloadChange, onP
         <div>
           <h3 style={sectionTitleStyle}>{t('monitoring.mapper.translateTitle')}</h3>
           <p style={hintStyle}>{t('monitoring.mapper.translateIntro')}</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 10 }}>
+          <div className="og-pair" style={{ marginTop: 10 }}>
             <ValueTable<EventSeverity>
               title={t('monitoring.mapper.severityValues')}
               fieldPath={mapping.fields.severity}
@@ -265,7 +265,7 @@ export function GenericMapper({ mapping, onChange, payload, onPayloadChange, onP
         <div>
           <h3 style={sectionTitleStyle}>{t('monitoring.mapper.defaultsTitle')}</h3>
           <p style={hintStyle}>{t('monitoring.mapper.defaultsIntro')}</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 10 }}>
+          <div className="og-pair" style={{ marginTop: 10 }}>
             <div>
               <FieldLabel htmlFor={fid('defaultSeverity')}>{t('monitoring.mapper.defaultSeverity')}</FieldLabel>
               <Select id={fid('defaultSeverity')} value={mapping.defaultSeverity} onChange={(e) => onChange({ ...mapping, defaultSeverity: e.target.value as EventSeverity | '' })}>

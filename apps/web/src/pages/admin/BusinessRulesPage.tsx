@@ -313,7 +313,7 @@ export function BusinessRulesPage() {
         }
       >
           {/* Basic fields */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+          <div className="og-pair" style={{ marginBottom: 16 }}>
             <div>
               <label htmlFor={ids.name} style={labelS}>Nome *</label>
               <Input id={ids.name} value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Assegna priorità alta" />
@@ -327,7 +327,7 @@ export function BusinessRulesPage() {
             <label htmlFor={ids.description} style={labelS}>Descrizione</label>
             <Textarea id={ids.description} value={draft.description} onChange={e => patch({ description: e.target.value })} rows={2} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+          <div className="og-pair" style={{ marginBottom: 16 }}>
             <div>
               <label htmlFor={ids.entityType} style={labelS}>Tipo entità</label>
               <Select id={ids.entityType} style={selectS} value={draft.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>

@@ -21,6 +21,12 @@ export function SimpleTable<T extends { id: string }>({ columns, rows, onRowClic
 }) {
   if (rows.length === 0) return <>{empty ?? null}</>
   return (
+    /*
+      Dentro un contenitore che scorre (`og-scroll-x`, index.css): questa
+      tabella vive nelle pagine di dettaglio, dentro una colonna che su schermo
+      stretto si restringe. Senza, spingeva la pagina di lato.
+    */
+    <div className="og-scroll-x">
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
       <thead>
         <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -51,5 +57,6 @@ export function SimpleTable<T extends { id: string }>({ columns, rows, onRowClic
         ))}
       </tbody>
     </table>
+    </div>
   )
 }

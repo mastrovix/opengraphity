@@ -190,6 +190,8 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
             </tbody>
           </table>
         ) : (
+          /* Il suo contenitore, non quello 26 righe sopra: la regola si legge qui. */
+          <div className="og-scroll-x">
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead>
               <tr>
@@ -206,6 +208,7 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

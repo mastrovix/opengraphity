@@ -32,7 +32,7 @@ export function ITILTypeCIRelations({
       {/* Add-relation inline form */}
       {showRelForm ? (
         <div style={{ background: 'var(--color-slate-bg)', border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, marginBottom: 16 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div className="og-pair" style={{ marginBottom: 12 }}>
             <div>
               <label style={labelS}>{t('itilDesigner.ciRelations.ciType')} *</label>
               <Select style={selectS} value={relForm.ciType}
@@ -57,7 +57,7 @@ export function ITILTypeCIRelations({
               <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 3 }}>{t('itilDesigner.ciRelations.suggestions')}</div>
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div className="og-pair" style={{ marginBottom: 12 }}>
             <div>
               <label style={labelS}>{t('itilDesigner.ciRelations.direction')}</label>
               <Select style={selectS} value={relForm.direction}
@@ -102,6 +102,7 @@ export function ITILTypeCIRelations({
       {rules.length === 0 ? (
         <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('itilDesigner.ciRelations.empty')}</p>
       ) : (
+        <div className="og-scroll-x">
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid var(--border)' }}>
@@ -140,6 +141,7 @@ export function ITILTypeCIRelations({
             })}
           </tbody>
         </table>
+      </div>
       )}
     </div>
   )

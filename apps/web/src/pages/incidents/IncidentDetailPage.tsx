@@ -485,7 +485,7 @@ export function IncidentDetailPage() {
           <FieldLabel htmlFor={editIds.description}>Descrizione</FieldLabel>
           <Textarea id={editIds.description} value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={4} />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'end' }}>
+        <div className="og-pair" style={{ alignItems: 'end' }}>
           <div>
             <FieldLabel htmlFor={editIds.impact}>Impatto</FieldLabel>
             <Select id={editIds.impact} value={editForm.impact} onChange={(e) => setEditForm({ ...editForm, impact: e.target.value })}>
@@ -531,7 +531,7 @@ export function IncidentDetailPage() {
                     : <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
                 } />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div className="og-pair" style={{ marginBottom: 16 }}>
                   <DetailField label={t('detail.priority')} value={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><b>{priorityCode(matrix?.priorities ?? [], incident.priority)}</b><SeverityBadge value={incident.priority} /></span>} />
                   {incident.impact && incident.urgency && (
                     <DetailField label={t('detail.impactUrgency')} value={

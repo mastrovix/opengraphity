@@ -94,7 +94,7 @@ export function UserDetailPage() {
       {/* Body */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <SectionCard title="Informazioni" defaultOpen>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="og-pair">
             <DetailField label="ID" value={user.id} mono />
             <DetailField label="Code" value={user.code} />
             <DetailField label="Nome" value={user.firstName} />

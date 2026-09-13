@@ -234,7 +234,16 @@ export function GlobalSearch() {
           alignItems:   'center',
           gap:          8,
           height:       32,
-          width:        260,
+          /*
+            `width: 260` fisso spingeva la barra in alto fuori dallo schermo su
+            finestra stretta — misurato su /monitoring/health a 731px: il
+            gruppo di destra (ricerca 260 + campanella + utente) faceva 424px
+            dentro 491px, e la PAGINA scorreva di lato, barra laterale
+            compresa. 260 resta il massimo, non il minimo.
+          */
+          width:        '100%',
+          maxWidth:     260,
+          minWidth:     120,
           padding:      '0 10px',
           borderRadius: 6,
           border:       `1px solid ${C.border}`,

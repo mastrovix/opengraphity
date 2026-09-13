@@ -277,7 +277,7 @@ export function SLAPoliciesPage() {
               <Input id={fid('name')} value={form.name} onChange={e => patch({ name: e.target.value })} placeholder="es. SLA Critical Incident" />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="og-pair">
               <div>
                 <label htmlFor={fid('entity-type')} style={labelS}>{t('admin.sla.entityType')} *</label>
                 <Select id={fid('entity-type')} style={selectS} value={form.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
@@ -296,7 +296,7 @@ export function SLAPoliciesPage() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="og-pair">
               <div>
                 <label htmlFor={fid('category')} style={labelS}>{t('admin.sla.category')}</label>
                 <Select id={fid('category')} style={selectS} value={form.category} onChange={e => patch({ category: e.target.value })}>
@@ -313,7 +313,7 @@ export function SLAPoliciesPage() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="og-pair">
               <div>
                 <label htmlFor={fid('response-minutes')} style={labelS}>Tempo Risposta (minuti) *</label>
                 <Input id={fid('response-minutes')} type="number" min={1} value={form.responseMinutes} onChange={e => patch({ responseMinutes: Number(e.target.value) })} />
@@ -324,7 +324,7 @@ export function SLAPoliciesPage() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'end' }}>
+            <div className="og-pair" style={{ alignItems: 'end' }}>
               <div>
                 <label htmlFor={fid('timezone')} style={labelS}>Timezone</label>
                 <Input id={fid('timezone')} value={form.timezone} onChange={e => patch({ timezone: e.target.value })} />

@@ -32,7 +32,7 @@ function FieldEditor({
   return (
     <div style={{ background: 'var(--color-slate-bg)', border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, marginBottom: 8 }}>
       {/* name + label */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+      <div className="og-pair" style={{ marginBottom: 12 }}>
         <div>
           <label style={labelS}>{t('itilDesigner.fieldName')}</label>
           <input

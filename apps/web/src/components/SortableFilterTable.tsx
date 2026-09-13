@@ -162,8 +162,8 @@ export function SortableFilterTable<T extends object>({
   const totalCols = columns.length + (selectable ? 1 : 0)
 
   return (
-    <div className="card-border" style={{ overflow: 'hidden' }}>
-      <table role="table" aria-label={label} style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <div className="card-border og-scroll-x">
+      <table role="table" aria-label={label} style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse' }}>
         <colgroup>
           {selectable && <col style={{ width: '40px' }} />}
           {columns.map((col) => (
