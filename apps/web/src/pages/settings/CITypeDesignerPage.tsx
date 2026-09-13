@@ -293,7 +293,7 @@ export function CITypeDesignerPage() {
                 {/* Tab: Impostazioni */}
                 {activeTab === 'settings' && settingsForm && (
                   <div style={{ maxWidth: 480 }}>
-                    <FormField label="Label">
+                    <FormField label={t('common.label')}>
                       <Input style={inputS} value={settingsForm.label}
                         onChange={(e) => setSettingsForm((p) => p && ({ ...p, label: e.target.value }))} />
                     </FormField>

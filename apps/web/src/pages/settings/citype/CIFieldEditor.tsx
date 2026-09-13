@@ -105,7 +105,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
           <Input style={inputS} value={form.name} disabled={!!initial}
             onChange={(e) => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
         </Field>
-        <Field label="label *">
+        <Field label={`${t('common.label')} *`}>
           <Input style={inputS} value={form.label} onChange={(e) => set('label', e.target.value)} />
         </Field>
         <Field label="Tipo">
@@ -116,7 +116,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
             {FIELD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </Select>
         </Field>
-        <Field label="Order">
+        <Field label={t('common.order')}>
           <Input style={inputS} type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
         </Field>
       </div>

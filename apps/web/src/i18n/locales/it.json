@@ -23,7 +23,14 @@
     "select": "Seleziona",
     "writeHere": "Scrivi qui...",
     "close": "Chiudi",
-    "yes": "Sì"
+    "yes": "Sì",
+    "name": "Nome",
+    "type": "Tipo",
+    "status": "Stato",
+    "label": "Etichetta",
+    "order": "Ordine",
+    "actions": "Azioni",
+    "all": "Tutti"
   },
   "bulk": {
     "selected_one": "{{count}} selezionato",
@@ -3277,6 +3284,12 @@
         "degraded_one": "{{count}} degradato",
         "degraded_other": "{{count}} degradati"
       }
+    },
+    "opColumns": {
+      "operation": "Operazione",
+      "duration": "Durata",
+      "status": "Stato",
+      "time": "Quando"
     }
   },
   "configurationIssues": {
@@ -3290,5 +3303,19 @@
     "description": "Descrizione",
     "fieldRequired": "Campo obbligatorio",
     "selectCategory": "Seleziona una categoria"
+  },
+  "changeTasks": {
+    "activeTasks": "Task attivi",
+    "colEnv": "Ambiente",
+    "colRisk": "Rischio",
+    "functional": "Funzionale",
+    "technical": "Tecnico",
+    "planning": "Pianificazione",
+    "validation": "Validazione",
+    "deploy": "Deploy",
+    "review": "Revisione"
+  },
+  "sync": {
+    "createSource": "Crea sorgente"
   }
 }

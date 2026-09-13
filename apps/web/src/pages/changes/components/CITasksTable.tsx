@@ -6,6 +6,7 @@
  * of app-level workflow.
  */
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -17,6 +18,7 @@ import { EyeButton, OpenTaskButton, RiskBadge, TaskStatusRow } from './shared'
 import { colors, palette } from '@/lib/tokens'
 
 function CIExpandedRow({ a }: { a: AffectedCI }) {
+  const { t } = useTranslation()
   const bothAssessDone = a.assessmentOwner?.status === TASK_STATUS.COMPLETED && a.assessmentSupport?.status === TASK_STATUS.COMPLETED
   const [modal, setModal] = useState<'functional' | 'technical' | 'plan' | null>(null)
 
@@ -68,37 +70,37 @@ function CIExpandedRow({ a }: { a: AffectedCI }) {
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', marginBottom: 6 }}>Task</div>
         {a.assessmentOwner && (
-          <TaskStatusRow label="Functional" code={a.assessmentOwner.code} status={a.assessmentOwner.status ?? null}
+          <TaskStatusRow label={t('changeTasks.functional')} code={a.assessmentOwner.code} status={a.assessmentOwner.status ?? null}
             actor={a.assessmentOwner.completedBy?.name} date={a.assessmentOwner.completedAt}
             assignedTeam={a.assessmentOwner.assignedTeam?.name} assignee={a.assessmentOwner.assignee?.name}
             action={assessAction(a.assessmentOwner, 'functional')} />
         )}
         {a.assessmentSupport && (
-          <TaskStatusRow label="Technical" code={a.assessmentSupport.code} status={a.assessmentSupport.status ?? null}
+          <TaskStatusRow label={t('changeTasks.technical')} code={a.assessmentSupport.code} status={a.assessmentSupport.status ?? null}
             actor={a.assessmentSupport.completedBy?.name} date={a.assessmentSupport.completedAt}
             assignedTeam={a.assessmentSupport.assignedTeam?.name} assignee={a.assessmentSupport.assignee?.name}
             action={assessAction(a.assessmentSupport, 'technical')} />
         )}
         {a.deployPlan && (
-          <TaskStatusRow label="Planning" code={a.deployPlan.code} status={a.deployPlan.status ?? null}
+          <TaskStatusRow label={t('changeTasks.planning')} code={a.deployPlan.code} status={a.deployPlan.status ?? null}
             actor={a.deployPlan.completedBy?.name} date={a.deployPlan.completedAt}
             assignedTeam={a.deployPlan.assignedTeam?.name} assignee={a.deployPlan.assignee?.name}
             action={planAction()} />
         )}
         {a.validation && (
-          <TaskStatusRow label="Validation" code={a.validation.code} status={a.validation.status ?? null}
+          <TaskStatusRow label={t('changeTasks.validation')} code={a.validation.code} status={a.validation.status ?? null}
             scheduledDate={firstValStart} result={a.validation.result}
             actor={a.validation.testedBy?.name} date={a.validation.testedAt}
             action={valAction()} />
         )}
         {a.deployment && a.deployment.status !== TASK_STATUS.PLANNING && (
-          <TaskStatusRow label="Deploy" code={a.deployment.code} status={a.deployment.status ?? null}
+          <TaskStatusRow label={t('changeTasks.deploy')} code={a.deployment.code} status={a.deployment.status ?? null}
             scheduledDate={firstRelStart}
             actor={a.deployment.deployedBy?.name} date={a.deployment.deployedAt}
             action={depAction()} />
         )}
         {a.review && (
-          <TaskStatusRow label="Review" code={a.review.code} status={a.review.status ?? null}
+          <TaskStatusRow label={t('changeTasks.review')} code={a.review.code} status={a.review.status ?? null}
             result={a.review.result}
             actor={a.review.reviewedBy?.name} date={a.review.reviewedAt}
             action={revAction()} />
@@ -131,6 +133,7 @@ export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = tru
   activeColor?: string
   activeTextColor?: string
 }) {
+  const { t } = useTranslation()
   const [expandedCIId, setExpandedCIId] = useState<string | null>(null)
   // Conteggio = CI con task ancora attivi (non completati), non il totale dei CI.
   const activeCount = affected.filter(a => !isCIDone(a)).length
@@ -149,14 +152,14 @@ export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = tru
   }
 
   return (
-    <SectionCard title="Active Tasks" count={activeCount} collapsible defaultOpen={defaultOpen} activeColor={activeColor} activeTextColor={activeTextColor}>
+    <SectionCard title={t('changeTasks.activeTasks')} count={activeCount} collapsible defaultOpen={defaultOpen} activeColor={activeColor} activeTextColor={activeTextColor}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border)', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
         <span style={{ width: 24, flexShrink: 0 }} />
-        <span style={{ flex: 1 }}>Nome</span>
-        <span style={{ width: 80 }}>Tipo</span>
-        <span style={{ width: 80 }}>Env</span>
-        <span style={{ width: 80 }}>Risk</span>
-        <span style={{ width: 130 }}>Status</span>
+        <span style={{ flex: 1 }}>{t('common.name')}</span>
+        <span style={{ width: 80 }}>{t('common.type')}</span>
+        <span style={{ width: 80 }}>{t('changeTasks.colEnv')}</span>
+        <span style={{ width: 80 }}>{t('changeTasks.colRisk')}</span>
+        <span style={{ width: 130 }}>{t('common.status')}</span>
         <span style={{ width: 90 }} />
       </div>
       {affected.map((a) => {

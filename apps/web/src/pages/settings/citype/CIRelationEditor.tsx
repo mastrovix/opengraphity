@@ -37,6 +37,7 @@ interface RelationModalProps {
 }
 
 export function CIRelationEditor({ open, onClose, onSave, allTypes }: RelationModalProps) {
+  const { t } = useTranslation()
   const [form, setForm] = useState<RelationForm>(emptyRelForm())
   const [saving, setSaving] = useState(false)
   const set = (k: keyof RelationForm, v: unknown) => setForm(p => ({ ...p, [k]: v }))
@@ -60,7 +61,7 @@ export function CIRelationEditor({ open, onClose, onSave, allTypes }: RelationMo
           <Input style={inputS} value={form.name}
             onChange={e => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
         </Field>
-        <Field label="label *">
+        <Field label={`${t('common.label')} *`}>
           <Input style={inputS} value={form.label} onChange={e => set('label', e.target.value)} />
         </Field>
         <Field label="Tipo relazione Neo4j *">

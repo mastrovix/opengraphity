@@ -276,8 +276,8 @@ export function QuestionAdminPage() {
             style={{ ...inputStyle, marginBottom: 12 }}
           >
             <option value="">Tutte le categorie</option>
-            <option value="functional">Functional</option>
-            <option value="technical">Technical</option>
+            <option value="functional">{t('changeTasks.functional')}</option>
+            <option value="technical">{t('changeTasks.technical')}</option>
           </select>
 
           <div style={{ maxHeight: 600, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>

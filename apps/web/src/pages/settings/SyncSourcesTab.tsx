@@ -177,6 +177,7 @@ export function SyncSourcesTab({
   sources, connectors, loading,
   onCreateSource, onDeleteSource, onTriggerSync, onTestConnection, onSaveSchedule,
 }: SyncSourcesTabProps) {
+  const { t } = useTranslation()
   const fid = useId()
   // Local UI state
   const [showCreate,   setShowCreate]   = useState(false)
@@ -281,8 +282,8 @@ export function SyncSourcesTab({
           width={400}
           footer={
             <>
-              <Button variant="secondary" onClick={() => setSchedSource(null)} style={btnStyle(colors.white, palette.neutral.textMuted)}>Cancel</Button>
-              <Button onClick={() => void handleSaveScheduleLocal()} style={btnStyle(colors.brand, colors.white)}>Save</Button>
+              <Button variant="secondary" onClick={() => setSchedSource(null)} style={btnStyle(colors.white, palette.neutral.textMuted)}>{t('common.cancel')}</Button>
+              <Button onClick={() => void handleSaveScheduleLocal()} style={btnStyle(colors.brand, colors.white)}>{t('common.save')}</Button>
             </>
           }
         >
@@ -310,12 +311,12 @@ export function SyncSourcesTab({
           onSubmit={(e) => void handleCreate(e)}
           footer={
             <>
-              <Button variant="secondary" onClick={() => setShowCreate(false)} style={btnStyle(colors.white, palette.neutral.textMuted)}>Cancel</Button>
-              <Button type="submit" style={btnStyle(colors.brand, colors.white)}>Create Source</Button>
+              <Button variant="secondary" onClick={() => setShowCreate(false)} style={btnStyle(colors.white, palette.neutral.textMuted)}>{t('common.cancel')}</Button>
+              <Button type="submit" style={btnStyle(colors.brand, colors.white)}>{t('sync.createSource')}</Button>
             </>
           }
         >
-              <label htmlFor={`${fid}-name`} style={labelStyle}>Name</label>
+              <label htmlFor={`${fid}-name`} style={labelStyle}>{t('common.name')}</label>
               <Input id={`${fid}-name`} style={inputStyle} value={form['name'] ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
 
               <label htmlFor={`${fid}-connector`} style={labelStyle}>Connector Type</label>

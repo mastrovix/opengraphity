@@ -97,7 +97,7 @@ export function CIFieldInlineEditor({
           )}
         </div>
         <div>
-          <label htmlFor={`${id}-label`} style={labelS}>label *</label>
+          <label htmlFor={`${id}-label`} style={labelS}>{t('common.label')} *</label>
           <Input id={`${id}-label`} style={inputS} value={form.label} onChange={(e) => set('label', e.target.value)} placeholder="Field Label" />
         </div>
       </div>
@@ -117,7 +117,7 @@ export function CIFieldInlineEditor({
           </Select>
         </div>
         <div>
-          <label htmlFor={`${id}-order`} style={labelS}>Order</label>
+          <label htmlFor={`${id}-order`} style={labelS}>{t('common.order')}</label>
           <Input id={`${id}-order`} style={inputS} type="number" value={form.order} onChange={(e) => set('order', Number(e.target.value))} />
         </div>
         <div style={{ paddingTop: 20 }}>

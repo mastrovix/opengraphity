@@ -267,6 +267,9 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // «team» e la parola che il prodotto usa in italiano (Team assegnato, Team e
   // Utenti): «squadra» non e il termine del dominio.
   'admin.sla.team',
+  // «deploy» e la parola che il prodotto usa in italiano: il passo del workflow
+  // si chiama cosi, e «dispiegamento» non lo dice nessuno.
+  'changeTasks.deploy',
   'events.aliases.kind.fqdn',
   'events.aliases.kind.hostname',
   'events.aliases.kind.ip',
@@ -431,8 +434,183 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
 
 // ── report ───────────────────────────────────────────────────────────────────
 
+// ── (e) PROSA LETTERALE: stringhe che nessuno ha mai passato da `t()` ────────
+//
+// I controlli (b) e (c) verificano le chiavi che PASSANO da `t()`. Una stringa
+// che non ci e mai passata e invisibile a entrambi: non ha una chiave da
+// cercare, quindi non manca niente. E' il buco da cui sono entrati i 56
+// letterali trovati girando nel browser — i peggiori sono le testate dei task
+// della change (`label="Functional"`, `"Technical"`, `"Planning"`,
+// `"Validation"`, `"Deploy"`, `"Review"`): inglese in un'interfaccia italiana,
+// e nessun guardiano che dicesse niente.
+//
+// Cosa si guarda: il valore LETTERALE delle prop che finiscono a schermo, e i
+// nodi di testo JSX. Cosa NON e prosa, e va lasciato stare: identificatori
+// (snake_case, camelCase, kebab-case), valori CSS, percorsi, chiavi i18n,
+// simboli e numeri. La regola e conservativa di proposito: un guardiano che
+// grida al lupo viene spento, e allora non guarda piu niente.
+
+/** Prop il cui valore letterale finisce sotto gli occhi di qualcuno. */
+const PROP_VISIBILI = ['label', 'title', 'placeholder', 'aria-label', 'description', 'emptyMessage', 'emptyTitle', 'helpText', 'tooltip']
+const RE_PROP_LETTERALE = new RegExp('\\b(' + PROP_VISIBILI.join('|') + ')="([^"{}]{2,})"', 'g')
+/**
+ * Testo JSX fra un tag e la sua CHIUSURA: `>Qualcosa</`.
+ *
+ * La chiusura e obbligatoria di proposito: con il solo `<` finale entravano i
+ * generici TypeScript — `Promise<void>`, `Record<string, unknown>` — e il
+ * guardiano segnalava «Promise» ventiquattro volte. Un guardiano che grida al
+ * lupo viene spento.
+ */
+const RE_TESTO_JSX = new RegExp('>([^<>{}\\n]{4,})</', 'g')
+
+/** Un identificatore o un valore tecnico: non e prosa da tradurre. */
+function tecnico(v) {
+  const t = v.trim()
+  if (t.length < 2) return true
+  if (!/[A-Za-zÀ-ÖØ-öø-ÿ]/.test(t)) return true                 // solo simboli o numeri
+  if (/^[a-z0-9]+([_-][a-z0-9]+)+$/.test(t)) return true         // snake_case, kebab-case
+  if (/^[a-z]+([A-Z][a-z0-9]*)+$/.test(t)) return true           // camelCase
+  if (/^[a-z]+(\.[a-z][A-Za-z0-9_]*)+$/.test(t)) return true     // chiave i18n: pages.foo.bar
+  if (/^(var\(|--|#[0-9a-fA-F]{3,8}$|\/|https?:|\d)/.test(t)) return true  // CSS, percorsi, URL, numeri
+  if (/^[A-Z][a-zA-Z0-9]*$/.test(t) && t.length <= 3) return true // sigle corte (ID, OS, CI)
+  return false
+}
+
+/**
+ * Prosa: due parole, oppure una parola sola abbastanza lunga da essere un
+ * termine dell'interfaccia (>= 4 lettere). Con una soglia piu bassa entrano
+ * `px`, `auto`, `N/D` e simili.
+ */
+function prosa(v) {
+  const t = v.trim()
+  if (tecnico(t)) return false
+  // Codice travestito da testo: virgolette, punti e virgola, uguali, parentesi.
+  if (/['";=()]/.test(t)) return false
+  if (/\s/.test(t)) return /[A-Za-zÀ-ÖØ-öø-ÿ]{2,}\s+\S/.test(t)
+  // Una parola sola: solo se comincia per maiuscola. `input`, `value`, `label`
+  // sono identificatori, «Annulla» e un bottone.
+  return /^[A-ZÀ-Ö][a-zà-öø-ÿ]{3,}$/.test(t)
+}
+
+{
+  /**
+   * IL DEBITO DICHIARATO: quanti letterali di prosa ha ancora ogni file.
+   *
+   * Non una lista di file «sorvegliati» che si allarga a mano — che nessuno
+   * allarga — ma il contrario: il debito è enumerato e **può solo scendere**.
+   * Un file che non è qui e ha un letterale è un ERRORE; un file che è qui e
+   * ne ha uno in più di quanti dichiara è un errore; uno che ne ha meno lo
+   * dice, così il numero si aggiorna e non resta a mentire.
+   *
+   * I 394 di partenza sono prosa ITALIANA corretta: si rompono solo se qualcuno
+   * usa l'inglese. Gli inglesi in interfaccia italiana — le testate dei task
+   * della change, «Active Tasks», «Cancel», «Save», «Order», «Label» — erano
+   * difetti di oggi e sono stati chiusi.
+   */
+  const PROSA_DEBITO = {
+  'components/ActionParamsEditor.tsx': 5,
+  'components/AutomationPreview.tsx': 1,
+  'components/CIChangeList.tsx': 1,
+  'components/CIIncidentsCard.tsx': 1,
+  'components/ReportChartConfig.tsx': 9,
+  'components/ReportPreview.tsx': 1,
+  'components/ReportSectionBuilder.tsx': 14,
+  'components/SimilarIncidentsPanel.tsx': 1,
+  'components/UnifiedLinkedTickets.tsx': 4,
+  'components/ticket/AffectedCIList.tsx': 3,
+  'components/ticket/WorkflowTimeline.tsx': 1,
+  'hooks/useCrudModal.ts': 2,
+  'main.tsx': 1,
+  'pages/MyTasksPage.tsx': 5,
+  'pages/admin/AutoTriggersPage.tsx': 13,
+  'pages/admin/BusinessRulesPage.tsx': 16,
+  'pages/admin/KBAdminPage.tsx': 9,
+  'pages/admin/MonitoringPage.tsx': 2,
+  'pages/admin/QuestionAdminPage.tsx': 10,
+  'pages/admin/SLAPoliciesPage.tsx': 8,
+  'pages/admin/ServiceCatalogAdminPage.tsx': 20,
+  'pages/assistant/AssistantPage.tsx': 1,
+  'pages/changes/ChangeDetailPage.tsx': 31,
+  'pages/changes/CreateChangePage.tsx': 6,
+  'pages/changes/components/AddCIModal.tsx': 5,
+  'pages/changes/components/AuditTimeline.tsx': 2,
+  'pages/changes/components/CITasksTable.tsx': 3,
+  'pages/changes/components/ChangeInfoCard.tsx': 10,
+  'pages/changes/components/PlanModal.tsx': 1,
+  'pages/changes/components/shared.tsx': 1,
+  'pages/incidents/CreateIncidentPage.tsx': 4,
+  'pages/incidents/IncidentDetailPage.tsx': 7,
+  'pages/problems/CreateProblemPage.tsx': 4,
+  'pages/problems/ProblemDetailPage.tsx': 6,
+  'pages/reports/ReportListView.tsx': 11,
+  'pages/reports/ReportScheduleSettings.tsx': 14,
+  'pages/reports/ReportsPage.tsx': 4,
+  'pages/reports/SLAReportPage.tsx': 31,
+  'pages/requests/CreateServiceRequestPage.tsx': 2,
+  'pages/requests/ServiceRequestDetailPage.tsx': 9,
+  'pages/settings/CITypeDesignerPage.tsx': 6,
+  'pages/settings/ITILTypeFields.tsx': 1,
+  'pages/settings/ITILTypeSettings.tsx': 3,
+  'pages/settings/NotificationRuleForm.tsx': 3,
+  'pages/settings/NotificationsPage.tsx': 11,
+  'pages/settings/SyncConflictsTab.tsx': 6,
+  'pages/settings/SyncHistoryTab.tsx': 2,
+  'pages/settings/SyncSourcesTab.tsx': 10,
+  'pages/settings/citype/CIFieldEditor.tsx': 6,
+  'pages/settings/citype/CIFieldInlineEditor.tsx': 5,
+  'pages/settings/citype/CIRelationEditor.tsx': 7,
+  'pages/settings/citype/CITypeList.tsx': 3,
+  'pages/settings/citype/CreateTypeDialog.tsx': 5,
+  'pages/settings/shared/FieldRulesPanel.tsx': 1,
+  'pages/tasks/TaskViewPage.tsx': 3,
+  'pages/tasks/components/AssessmentTaskForm.tsx': 1,
+  'pages/tasks/components/ChangeOverviewSidebar.tsx': 2,
+  'pages/tasks/components/PlanTaskForm.tsx': 5,
+  'pages/teams/TeamDetailPage.tsx': 5,
+  'pages/teams/TeamsPage.tsx': 1,
+  'pages/users/UserDetailPage.tsx': 15,
+  'pages/users/UsersPage.tsx': 2,
+  'pages/workflow/WorkflowCanvas.tsx': 1,
+  'pages/workflow/WorkflowStepPanel.tsx': 8,
+  'pages/workflow/WorkflowToolbar.tsx': 1,
+  'pages/workflow/WorkflowTransitionPanel.tsx': 2,
+  }
+  /** Quanti ne ammette un file: zero se non è nel debito. */
+  const ammessi = (rel) => PROSA_DEBITO[rel] ?? 0
+
+  for (const file of files) {
+    const rel = path.relative(WEB_SRC, file)
+    const src = fs.readFileSync(file, 'utf8')
+    const trovati = []
+    for (const m of src.matchAll(RE_PROP_LETTERALE)) {
+      if (prosa(m[2])) trovati.push({ dove: `${m[1]}="${m[2]}"`, riga: lineOf(src, m.index) })
+    }
+    for (const m of src.matchAll(RE_TESTO_JSX)) {
+      if (prosa(m[1])) trovati.push({ dove: `testo JSX «${m[1].trim()}»`, riga: lineOf(src, m.index) })
+    }
+    const quota = ammessi(rel)
+    if (trovati.length > quota) {
+      for (const t of trovati) {
+        err(`[prosa] ${rel}:${t.riga} ${t.dove} — stringa a schermo mai passata da t(): non ha una chiave, quindi nessun controllo la vede`)
+      }
+      if (quota > 0) {
+        err(`[prosa] ${rel}: ${trovati.length} letterali, il debito dichiarato ne ammette ${quota}. `
+          + `Il debito può solo SCENDERE: sposta le stringhe in i18n, non alzare il numero`)
+      }
+    } else {
+      for (const t of trovati) warn(`[prosa] ${rel}:${t.riga} ${t.dove} — debito dichiarato, da bonificare`)
+      if (trovati.length < quota) {
+        warn(`[prosa] ${rel}: ${trovati.length} letterali su ${quota} dichiarati — `
+          + `aggiorna PROSA_DEBITO in scripts/check-i18n.mjs, altrimenti il numero mente`)
+      }
+    }
+  }
+}
+
 for (const w of warnings) console.warn(`WARN  ${w}`)
 for (const e of errors) console.error(`ERROR ${e}`)
+
+
 console.log(`\ncheck-i18n: ${files.length} file, ${defined.size} chiavi, ${usedPrefixes.size} prefissi dinamici (${[...usedPrefixes].sort().join(', ') || '—'})`)
 console.log(`  ${errors.length} errori, ${warnings.length} warning${STRICT ? ' (strict)' : ''}. ${DYNAMIC_KEY_ALLOWLIST_NOTE}.`)
 process.exit(errors.length ? 1 : 0)

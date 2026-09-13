@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { CIIcon } from '@/lib/ciIcon'
 import { FormField } from './citype/CIFieldInlineEditor'
 import { inputS, selectS, textareaS, btnPrimary } from './shared/designerStyles'
@@ -16,9 +17,10 @@ export interface ITILTypeSettingsProps {
 }
 
 export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving, onSaveSettings, FallbackIcon }: ITILTypeSettingsProps) {
+  const { t } = useTranslation()
   return (
     <div style={{ maxWidth: 480 }}>
-      <FormField label="Label">
+      <FormField label={t('common.label')}>
         <Input
           style={inputS}
           value={settingsForm.label}

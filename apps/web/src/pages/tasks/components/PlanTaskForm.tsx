@@ -4,6 +4,7 @@
  * notifies the parent on every edit and on explicit save/complete.
  */
 import { useId } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Plus, X } from 'lucide-react'
 import { TASK_STATUS } from '@/lib/taskStatus'
 import type { DeployPlanTaskData, DeployStep } from '@/types/change'
@@ -31,6 +32,7 @@ export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, 
   onSave: () => void
   onComplete: () => void
 }) {
+  const { t } = useTranslation()
   const baseId = useId()
   const completed = task.status === TASK_STATUS.COMPLETED
   const allComplete = steps.length >= 1 && steps.every(isStepComplete)
@@ -77,7 +79,7 @@ export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, 
             </div>
           </div>
           <div>
-            <label htmlFor={`${baseId}-rel-start-${i}`} style={labelStyle}>Deploy *</label>
+            <label htmlFor={`${baseId}-rel-start-${i}`} style={labelStyle}>{t('changeTasks.deploy')} *</label>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <input id={`${baseId}-rel-start-${i}`} type="datetime-local" disabled={!canEdit || completed}
                 value={s.releaseWindow.start ? toLocal(s.releaseWindow.start) : ''}

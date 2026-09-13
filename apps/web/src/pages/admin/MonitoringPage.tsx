@@ -317,10 +317,10 @@ export function MonitoringPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <th style={{ textAlign: 'left', padding: '6px 0', color: colors.slate, fontWeight: 600 }}>Operation</th>
-                      <th style={{ textAlign: 'right', padding: '6px 12px', color: colors.slate, fontWeight: 600 }}>Duration</th>
-                      <th style={{ textAlign: 'right', padding: '6px 12px', color: colors.slate, fontWeight: 600 }}>Status</th>
-                      <th style={{ textAlign: 'right', padding: '6px 0', color: colors.slate, fontWeight: 600 }}>Time</th>
+                      <th style={{ textAlign: 'left', padding: '6px 0', color: colors.slate, fontWeight: 600 }}>{t('monitoring.opColumns.operation')}</th>
+                      <th style={{ textAlign: 'right', padding: '6px 12px', color: colors.slate, fontWeight: 600 }}>{t('monitoring.opColumns.duration')}</th>
+                      <th style={{ textAlign: 'right', padding: '6px 12px', color: colors.slate, fontWeight: 600 }}>{t('monitoring.opColumns.status')}</th>
+                      <th style={{ textAlign: 'right', padding: '6px 0', color: colors.slate, fontWeight: 600 }}>{t('monitoring.opColumns.time')}</th>
                     </tr>
                   </thead>
                   <tbody>
