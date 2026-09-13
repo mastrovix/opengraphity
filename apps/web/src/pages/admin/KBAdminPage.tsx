@@ -19,7 +19,7 @@ import { inputS } from '@/components/ui/styles'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { styleForCategory } from '@/lib/workflowStepStyle'
 import { colors } from '@/lib/tokens'
-import { formatDateTime } from '@/lib/datetime'
+import { formatDate, formatDateTime } from '@/lib/datetime'
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 
@@ -103,16 +103,16 @@ function VersionHistory({ articleId, onRestored }: { articleId: string; onRestor
   if (versions.length === 0) return <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '12px 0 0' }}>{t('pages.kbAdmin.noVersions')}</p>
 
   return (
-    <div style={{ marginTop: 8, border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ marginTop: 8, border: `1px solid ${colors.border}`, overflow: 'hidden' }}>
       <div className="og-scroll-x">
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-table)' }}>
         <thead>
-          <tr style={{ background: colors.white, textAlign: 'left', color: 'var(--color-slate-light)' }}>
-            <th style={{ padding: '7px 12px', fontWeight: 600 }}>Ver.</th>
-            <th style={{ padding: '7px 12px', fontWeight: 600 }}>{t('common.title')}</th>
-            <th style={{ padding: '7px 12px', fontWeight: 600 }}>{t('pages.kbAdmin.editedBy')}</th>
-            <th style={{ padding: '7px 12px', fontWeight: 600 }}>{t('pages.kbAdmin.date')}</th>
-            <th style={{ padding: '7px 12px', fontWeight: 600, textAlign: 'right' }}></th>
+          <tr style={{ textAlign: 'left' }}>
+            <th style={{ padding: '7px 12px' }}>Ver.</th>
+            <th style={{ padding: '7px 12px' }}>{t('common.title')}</th>
+            <th style={{ padding: '7px 12px' }}>{t('pages.kbAdmin.editedBy')}</th>
+            <th style={{ padding: '7px 12px' }}>{t('pages.kbAdmin.date')}</th>
+            <th style={{ padding: '7px 12px', textAlign: 'right' }}></th>
           </tr>
         </thead>
         <tbody>
@@ -387,7 +387,7 @@ export function KBAdminPage() {
     } },
     { key: 'authorName', label: t('pages.kbAdmin.colAuthor'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
     { key: 'views', label: 'Views', render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
-    { key: 'updatedAt', label: t('pages.kbAdmin.colUpdated'), render: (v) => <span style={{ color: 'var(--color-slate-light)' }}>{new Date(String(v)).toLocaleDateString()}</span> },
+    { key: 'updatedAt', label: t('pages.kbAdmin.colUpdated'), render: (v) => <span style={{ color: 'var(--color-slate-light)' }}>{formatDate(String(v))}</span> },
     { key: 'id', label: t('common.actions'), render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <button type="button" onClick={() => startEdit(row)} style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.edit')}><Pencil size={14} /></button>
@@ -416,7 +416,7 @@ export function KBAdminPage() {
             {t('pages.kbAdmin.title')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : total === 1 ? '1 articolo' : `${total} articoli`}
+            {loading ? '—' : t('pages.kbAdmin.articleCount', { count: total })}
           </p>
         </div>
         <button type="button"
@@ -468,7 +468,7 @@ export function KBAdminPage() {
               placeholder={t('pages.kbAdmin.bodyPlaceholder')}
               minHeight="320px"
             />
-            <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{form.body.length} / 50000 caratteri</div>
+            <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('pages.kbAdmin.charCount', { used: form.body.length, max: 50000 })}</div>
           </div>
 
           {/* ── Action buttons ── */}

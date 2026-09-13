@@ -303,6 +303,7 @@ export function buildBaseSDL(): string {
 
     # Teams
     createTeam(input: CreateTeamInput!): Team!
+    updateTeam(id: ID!, input: UpdateTeamInput!): Team!
     # teamId null → rimuove l'assegnazione (OWNED_BY / SUPPORTED_BY)
     assignCIOwner(ciId: ID!, teamId: ID): CIBase!
     assignCISupportGroup(ciId: ID!, teamId: ID): CIBase!

@@ -7,8 +7,10 @@
  * sempre il nome vecchio dopo una rinomina, perché il nome era COPIATO sul
  * contratto. Un team di questo cliente è un'entità: si cita per id.
  *
- * Il fornitore esterno non è un'entità del prodotto e resta una stringa: è la
- * forma giusta per lui, e questi test pinnano che le due forme non si mescolino.
+ * E il FORNITORE esterno è anche lui un team: da quando ogni team dice se è
+ * interno o esterno (`Team.sourcing`), «team interno» vuol dire un team con
+ * sourcing = internal e «fornitore esterno» un team con sourcing = external. Il
+ * nome del fornitore scritto a mano non esiste più.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -16,6 +18,8 @@ const admin = { tenantId: 't1', userId: 'u1', role: 'admin' } as never
 
 let righe: Record<string, unknown>[] = []
 let unaRiga: Record<string, unknown> | null = null
+/** Risposte in ordine per `runQueryOne` (lo stato attuale del contratto, poi il team). */
+let coda: (Record<string, unknown> | null)[] = []
 const cypher: string[] = []
 
 vi.mock('@opengraphity/neo4j', async (importOriginal) => {
@@ -23,7 +27,7 @@ vi.mock('@opengraphity/neo4j', async (importOriginal) => {
   return {
     ...orig,
     runQuery: vi.fn(async (_s: unknown, q: string) => { cypher.push(q); return righe }),
-    runQueryOne: vi.fn(async (_s: unknown, q: string) => { cypher.push(q); return unaRiga }),
+    runQueryOne: vi.fn(async (_s: unknown, q: string) => { cypher.push(q); return coda.length > 0 ? coda.shift()! : unaRiga }),
   }
 })
 vi.mock('../ci-utils.js', () => ({ withSession: async (fn: (s: unknown) => unknown) => fn({}) }))
@@ -43,7 +47,7 @@ const INPUT = {
   responseMinutes: 60, resolveMinutes: 240,
 }
 
-beforeEach(() => { cypher.length = 0; righe = [{ props: props(), teamName: 'NOC' }]; unaRiga = null })
+beforeEach(() => { cypher.length = 0; righe = [{ props: props(), teamName: 'NOC' }]; unaRiga = null; coda = [] })
 
 async function errore(p: Promise<unknown>): Promise<{ message: string; extensions: Record<string, unknown> }> {
   const e = await p.then(() => null, (err: unknown) => err)
@@ -51,76 +55,76 @@ async function errore(p: Promise<unknown>): Promise<{ message: string; extension
   return e as { message: string; extensions: Record<string, unknown> }
 }
 
-describe('createOLAContract — il responsabile', () => {
-  it('un team si cita per ID, e il suo nome NON viene copiato sul contratto', async () => {
-    unaRiga = { name: 'NOC' }   // il team esiste
-    await createOLAContract(null, { input: { ...INPUT, partyType: 'team', teamId: 'team-noc', partyName: 'scritto a mano' } }, admin)
+describe('createOLAContract — il responsabile è un team col Sourcing giusto', () => {
+  it('team interno: un team con sourcing internal, citato per ID, senza copiarne il nome', async () => {
+    unaRiga = { name: 'NOC', sourcing: 'internal' }
+    await createOLAContract(null, { input: { ...INPUT, partyType: 'team', teamId: 'team-noc' } }, admin)
     const create = cypher.find((q) => q.includes('CREATE (o:OLAContract'))!
     expect(create).toContain('team_id: $teamId')
-    // Il nome scritto a mano si scarta: la verità è il nome del team, risolto
-    // in lettura. Copiarlo qui vorrebbe dire mostrarlo vecchio dopo una rinomina.
     const { runQuery } = await import('@opengraphity/neo4j')
     const params = vi.mocked(runQuery).mock.calls.at(-1)![2] as Record<string, unknown>
     expect(params['partyName']).toBeNull()
     expect(params['teamId']).toBe('team-noc')
   })
 
-  it('senza il team il rifiuto lo dice, invece di salvare un responsabile che non esiste', async () => {
-    const e = await errore(createOLAContract(null, { input: { ...INPUT, partyType: 'team' } }, admin))
-    expect(e.extensions['i18n']).toMatchObject({ key: 'errors.ola.teamRequired' })
-    expect(cypher.some((q) => q.includes('CREATE'))).toBe(false)
-  })
-
-  it('un team di un ALTRO cliente (o inesistente) è un rifiuto che lo nomina', async () => {
-    unaRiga = null   // nessun :Team con quell'id in questo tenant
-    const e = await errore(createOLAContract(null, { input: { ...INPUT, partyType: 'team', teamId: 'team-di-altri' } }, admin))
-    expect(e.extensions['i18n']).toMatchObject({ key: 'errors.ola.teamUnknown', params: { team: 'team-di-altri' } })
-    expect(cypher.some((q) => q.includes('CREATE'))).toBe(false)
-  })
-
-  it('un FORNITORE esterno resta una stringa: non sta fra i team, e il nome serve', async () => {
-    righe = [{ props: props({ party_type: 'supplier', party_name: 'Acme Cloud', team_id: null }), teamName: null }]
-    await createOLAContract(null, { input: { ...INPUT, type: 'uc', partyType: 'supplier', partyName: 'Acme Cloud' } }, admin)
+  it('fornitore esterno: un team con sourcing external, anche lui citato per ID', async () => {
+    unaRiga = { name: 'Acme Cloud', sourcing: 'external' }
+    righe = [{ props: props({ type: 'uc', party_type: 'supplier', team_id: 'team-acme' }), teamName: 'Acme Cloud' }]
+    await createOLAContract(null, { input: { ...INPUT, type: 'uc', partyType: 'supplier', teamId: 'team-acme' } }, admin)
     const { runQuery } = await import('@opengraphity/neo4j')
     const params = vi.mocked(runQuery).mock.calls.at(-1)![2] as Record<string, unknown>
-    expect(params['partyName']).toBe('Acme Cloud')
-    expect(params['teamId']).toBeNull()
+    expect(params['teamId']).toBe('team-acme')
+    expect(params['partyName']).toBeNull()
   })
 
-  it('un fornitore senza nome è un rifiuto: sarebbe un contratto senza controparte', async () => {
-    const e = await errore(createOLAContract(null, { input: { ...INPUT, type: 'uc', partyType: 'supplier' } }, admin))
-    expect(e.extensions['i18n']).toMatchObject({ key: 'errors.ola.supplierNameRequired' })
+  it.each([
+    ['team',     'external', 'pages.teams.sourcing.internal', 'pages.teams.sourcing.external'],
+    ['supplier', 'internal', 'pages.teams.sourcing.external', 'pages.teams.sourcing.internal'],
+    ['supplier', null,       'pages.teams.sourcing.external', 'pages.teams.sourcing.notSet'],
+  ])('responsabile %s con un team di sourcing %s → rifiuto che dice quale serviva', async (partyType, sourcing, expectedKey, actualKey) => {
+    unaRiga = { name: 'Rete', sourcing }
+    const e = await errore(createOLAContract(null, { input: { ...INPUT, partyType, teamId: 'team-x' } }, admin))
+    expect(e.extensions['i18n']).toMatchObject({ key: 'errors.ola.teamWrongSourcing', params: { team: 'Rete', expectedKey, actualKey } })
+    expect(cypher.some((q) => q.includes('CREATE'))).toBe(false)
+  })
+
+  it.each([['team', 'errors.ola.teamRequired'], ['supplier', 'errors.ola.supplierTeamRequired']])(
+    'responsabile %s senza team → rifiuto, nessuna scrittura', async (partyType, key) => {
+      const e = await errore(createOLAContract(null, { input: { ...INPUT, partyType } }, admin))
+      expect(e.extensions['i18n']).toMatchObject({ key })
+      expect(cypher.some((q) => q.includes('CREATE'))).toBe(false)
+    })
+
+  it('un team di un ALTRO cliente (o inesistente) è un rifiuto che lo nomina', async () => {
+    unaRiga = null
+    const e = await errore(createOLAContract(null, { input: { ...INPUT, partyType: 'supplier', teamId: 'team-di-altri' } }, admin))
+    expect(e.extensions['i18n']).toMatchObject({ key: 'errors.ola.teamUnknown', params: { team: 'team-di-altri' } })
+  })
+
+  it('un tipo di responsabile sconosciuto è un rifiuto', async () => {
+    const e = await errore(createOLAContract(null, { input: { ...INPUT, partyType: 'vendor', teamId: 't' } }, admin))
+    expect(e.extensions['i18n']).toMatchObject({ key: 'errors.ola.partyTypeOneOf' })
   })
 })
 
 describe('updateOLAContract — il responsabile', () => {
-  it('passando a fornitore il riferimento al team si scorda (le due forme non convivono)', async () => {
-    unaRiga = { partyType: 'team', teamId: 'team-noc', partyName: null }
-    righe = [{ props: props({ party_type: 'supplier', party_name: 'Acme', team_id: null }), teamName: null }]
-    await updateOLAContract(null, { id: 'ola-1', input: { partyType: 'supplier', partyName: 'Acme' } }, admin)
+  it('cambiare tipo E team: si valida il team nuovo contro il tipo nuovo', async () => {
+    coda = [{ partyType: 'team', teamId: 'team-noc' }, { name: 'Acme', sourcing: 'external' }]
+    await updateOLAContract(null, { id: 'ola-1', input: { partyType: 'supplier', teamId: 'team-acme' } }, admin)
     const { runQuery } = await import('@opengraphity/neo4j')
     const params = vi.mocked(runQuery).mock.calls.at(-1)![2] as { sets: Record<string, unknown> }
-    expect(params.sets['team_id']).toBeNull()
-    expect(params.sets['party_name']).toBe('Acme')
-  })
-
-  it('passando a team si scorda il nome scritto a mano', async () => {
-    unaRiga = { partyType: 'supplier', teamId: null, partyName: 'Acme' }
-    await updateOLAContract(null, { id: 'ola-1', input: { partyType: 'team', teamId: 'team-noc' } }, admin)
-    const { runQuery } = await import('@opengraphity/neo4j')
-    const params = vi.mocked(runQuery).mock.calls.at(-1)![2] as { sets: Record<string, unknown> }
+    expect(params.sets['team_id']).toBe('team-acme')
     expect(params.sets['party_name']).toBeNull()
-    expect(params.sets['team_id']).toBe('team-noc')
   })
 
   /**
-   * Il caso che una validazione sull'INPUT non prende: la modifica manda solo
-   * il tipo, e la metà che conta è quella già salvata.
+   * Il caso che una validazione sull'INPUT non prende: si cambia solo il TIPO,
+   * e il team già salvato ha il Sourcing dell'altro tipo.
    */
-  it('cambiare tipo a team SENZA mandare il team è un rifiuto, non un contratto rotto', async () => {
-    unaRiga = { partyType: 'supplier', teamId: null, partyName: 'Acme' }
-    const e = await errore(updateOLAContract(null, { id: 'ola-1', input: { partyType: 'team' } }, admin))
-    expect(e.extensions['i18n']).toMatchObject({ key: 'errors.ola.teamRequired' })
+  it('cambiare solo il tipo tenendo il team di prima è un rifiuto: il suo Sourcing non torna', async () => {
+    coda = [{ partyType: 'team', teamId: 'team-noc' }, { name: 'NOC', sourcing: 'internal' }]
+    const e = await errore(updateOLAContract(null, { id: 'ola-1', input: { partyType: 'supplier' } }, admin))
+    expect(e.extensions['i18n']).toMatchObject({ key: 'errors.ola.teamWrongSourcing' })
     expect(cypher.some((q) => q.includes('SET o +='))).toBe(false)
   })
 

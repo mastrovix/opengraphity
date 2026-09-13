@@ -105,7 +105,7 @@ export function ITILTypeCIRelations({
         <div className="og-scroll-x">
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
           <thead>
-            <tr style={{ borderBottom: '2px solid var(--border)' }}>
+            <tr>
               {[
                 t('itilDesigner.ciRelations.ciType'),
                 t('itilDesigner.ciRelations.relationType'),
@@ -113,7 +113,7 @@ export function ITILTypeCIRelations({
                 t('itilDesigner.ciRelations.description'),
                 '',
               ].map((h) => (
-                <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+                <th key={h} style={{ textAlign: 'left', padding: '6px 8px' }}>{h}</th>
               ))}
             </tr>
           </thead>

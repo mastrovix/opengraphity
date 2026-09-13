@@ -29,9 +29,9 @@ export function SimpleTable<T extends { id: string }>({ columns, rows, onRowClic
     <div className="og-scroll-x">
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
       <thead>
-        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+        <tr>
           {columns.map((c) => (
-            <th key={c.key} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)', textTransform: 'uppercase', letterSpacing: '0.04em', width: c.width }}>
+            <th key={c.key} style={{ textAlign: 'left', padding: '6px 8px', width: c.width }}>
               {c.label}
             </th>
           ))}

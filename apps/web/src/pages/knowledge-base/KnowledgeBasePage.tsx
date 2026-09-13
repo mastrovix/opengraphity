@@ -121,7 +121,7 @@ export function KnowledgeBasePage() {
               >
                 <div style={{ fontSize: 'var(--font-size-page-title)', marginBottom: 6 }}>{kbCategoryIcon(cat.name)}</div>
                 <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slateDark, marginBottom: 2 }}>{cat.name}</div>
-                <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{cat.count} articoli</div>
+                <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('pages.kbAdmin.articleCount', { count: cat.count })}</div>
               </button>
             ))}
           </div>

@@ -148,7 +148,7 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
           onClick={d.onAddFilter}
           style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', background: 'none', border: `1px dashed ${palette.neutral.borderStrong}`, borderRadius: 6, padding: '4px 8px', cursor: 'pointer', width: '100%', marginBottom: 4 }}
         >
-          + filtro
+          {t('reportBuilder.addFilter')}
         </button>
         <button
           type="button"

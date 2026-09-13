@@ -194,7 +194,7 @@ export function CreateProblemPage() {
           {/* DESCRIZIONE */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.description} style={fieldLabel}>
-              Descrizione <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
+              {t('common.description')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             <textarea
               id={ids.description}

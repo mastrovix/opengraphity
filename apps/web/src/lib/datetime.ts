@@ -11,6 +11,14 @@
  * Lingua: le date seguono la lingua attiva di i18next (`resolvedLanguage`,
  * fallback `en`), le etichette relative ("adesso", "5 min fa") le chiavi
  * `time.*`. Modulo puro (niente React): usa `i18n.t` direttamente.
+ *
+ * PERCHE' PASSARE SEMPRE DA QUI. `new Date(x).toLocaleDateString()` senza
+ * locale usa quello del BROWSER: su una macchina italiana l'interfaccia in
+ * inglese mostrava «13/09/2026» invece di «13/09/2026» in formato inglese —
+ * la stessa colonna, due formati, a seconda del computer di chi guarda. E' lo
+ * stesso difetto per cui `navigator` e' stato togliere dal rilevamento della
+ * lingua: il browser non decide la lingua di questo prodotto. Il guardiano
+ * `check-i18n` ora rifiuta un `toLocale*String()` senza locale.
  */
 import i18n from '@/i18n/i18n'
 
@@ -46,6 +54,19 @@ export function formatDateShort(iso: string | null | undefined): string {
   if (Number.isNaN(d.getTime())) return iso
   const p = (n: number) => String(n).padStart(2, '0')
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+/**
+ * Solo ora, lingua attiva. '—' se assente.
+ *
+ * Esiste per la stessa ragione delle altre: `toLocaleTimeString()` SENZA
+ * locale prende quello del browser, e il browser non decide la lingua di
+ * questo prodotto.
+ */
+export function formatTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleTimeString(currentLocale())
 }
 
 /** "adesso", "5 min fa", "3 ore fa", "2 giorni fa", poi la data completa. */

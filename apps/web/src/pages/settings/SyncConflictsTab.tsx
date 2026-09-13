@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { SyncConflict } from './useSyncPage'
-import { formatDate, StatusBadge, btnStyle } from './syncShared'
+import { StatusBadge, btnStyle } from './syncShared'
 import { colors, palette } from '../../lib/tokens'
+import { formatDateTime } from '@/lib/datetime'
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -52,7 +53,7 @@ export function SyncConflictsTab({ conflicts, loading, onResolveConflict }: Sync
                       <StatusBadge status={c.status} />
                     </div>
                     <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate, marginTop: 2 }}>
-                      Locked fields: {fields.join(', ') || '—'} · {formatDate(c.createdAt)}
+                      Locked fields: {fields.join(', ') || '—'} · {formatDateTime(c.createdAt)}
                     </div>
                     {c.resolution && (
                       <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-success)', marginTop: 2 }}>{t('pages.sync.conflict.resolution', { resolution: c.resolution })}</div>

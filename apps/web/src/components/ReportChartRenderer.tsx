@@ -111,13 +111,9 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily }}>
             <thead>
-              <tr style={{ borderBottom: `2px solid ${colors.border}` }}>
+              <tr>
                 {d.columns.map(col => (
-                  <th key={col} style={{
-                    textAlign: 'left', padding: '10px 14px',
-                    fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate)',
-                    textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
-                  }}>
+                  <th key={col} style={{ textAlign: 'left', padding: '10px 14px', whiteSpace: 'nowrap' }}>
                     {col}
                   </th>
                 ))}

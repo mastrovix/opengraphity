@@ -11,13 +11,14 @@ import {
   GET_ANOMALIES, GET_ANOMALY_STATS, GET_ANOMALY_SCAN_STATUS,
   RESOLVE_ANOMALY, RUN_ANOMALY_SCANNER,
 } from '@/graphql/queries'
-import { colors, alpha, lookupOrError } from '@/lib/tokens'
+import { colors, lookupOrError } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
 import { ciTypeLabelKey } from '@/lib/ciEnums'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
 import { DetailPanel } from './AnomalyDetail'
 import type { Anomaly, AnomalyStats, AnomalyScanStatus } from '@/types/anomaly'
+import { StatTile, StatTileGrid } from '@/components/ui/StatTile'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -77,26 +78,6 @@ export function AnomalyStatusBadge({ value }: { value: string }) {
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, accent }: { label: string; value: number; accent?: string }) {
-  return (
-    <div style={{
-      background: colors.white,
-      border: `1px solid ${colors.border}`,
-      borderRadius: 10,
-      boxShadow: `0 1px 2px ${alpha.black05}`,
-      padding: '14px 18px',
-      minWidth: 110,
-      flex: 1,
-    }}>
-      <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 500, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: accent ?? colors.slateDark }}>
-        {value}
-      </div>
-    </div>
-  )
-}
 
 // ── Smart empty state ─────────────────────────────────────────────────────────
 
@@ -362,13 +343,13 @@ export function AnomalyPage() {
       {/* Stats */}
       {stats && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <StatCard label={t('pages.anomalies.statsOpen')} value={stats.open}     accent={colors.danger}                     />
-            <StatCard label={t('pages.anomalies.severities.critical')} value={stats.critical} accent={colors.severity.critical.text} />
-            <StatCard label={t('pages.anomalies.severities.high')}     value={stats.high}     accent={colors.severity.high.text}     />
-            <StatCard label={t('pages.anomalies.severities.medium')}   value={stats.medium}   accent={colors.severity.medium.text}   />
-            <StatCard label={t('pages.anomalies.severities.low')}      value={stats.low}      accent={colors.severity.low.text}      />
-          </div>
+          <StatTileGrid>
+            <StatTile label={t('pages.anomalies.statsOpen')} value={stats.open}     accent={colors.danger} />
+            <StatTile label={t('pages.anomalies.severities.critical')} value={stats.critical} accent={colors.severity.critical.text} />
+            <StatTile label={t('pages.anomalies.severities.high')}     value={stats.high}     accent={colors.severity.high.text}     />
+            <StatTile label={t('pages.anomalies.severities.medium')}   value={stats.medium}   accent={colors.severity.medium.text}   />
+            <StatTile label={t('pages.anomalies.severities.low')}      value={stats.low}      accent={colors.severity.low.text}      />
+          </StatTileGrid>
           {(stats.falsePositive > 0 || stats.acceptedRisk > 0) && (
             <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, paddingLeft: 2 }}>
               {[

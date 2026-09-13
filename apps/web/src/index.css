@@ -356,12 +356,78 @@ tr:hover .sft-td * {
   color: #0f172a !important;
 }
 
+/*
+  La striscia della riga al passaggio del mouse: un'ombra INTERNA della prima
+  cella, non un bordo della riga. Un bordo sinistro su un <tr> in una tabella
+  `border-collapse: collapse` sposta tutta la tabella di meta della sua
+  larghezza — e lasciava una fascia bianca di 4px prima della testata.
+  L'ombra non entra nel calcolo delle dimensioni.
+*/
+.sft-row > td:first-child {
+  transition: box-shadow 0.15s;
+}
+.sft-row:hover > td:first-child {
+  box-shadow: inset 8px 0 0 var(--color-icon-accent);
+}
+
 /* ── Card border — uniform style for all white panels ──── */
 .card-border {
   background:    #fff;
   border:        1px solid var(--border);
   border-radius: 10px;
   box-shadow:    0 1px 2px rgba(0,0,0,0.05);
+}
+
+/*
+  ── Le tabelle sono SQUADRATE ───────────────────────────
+  Scelta del proprietario: un riquadro con dentro una tabella non si arrotonda.
+  `.card-border` resta arrotondato per i pannelli; questa e' la sua variante
+  per le tabelle, e vive qui invece che come `borderRadius: 0` sparso nei file
+  perche' altrimenti la prossima tabella nasce arrotondata di nuovo.
+  `:has()` copre anche i contenitori che non sono stati convertiti a mano.
+*/
+.og-table-card {
+  background:    #fff;
+  border:        1px solid var(--border);
+  border-radius: 0;
+  box-shadow:    0 1px 2px rgba(0,0,0,0.05);
+}
+
+.og-table-card,
+.card-border:has(> table),
+.card-border:has(> .og-scroll-x > table),
+.og-scroll-x:has(> table),
+.og-table-card table,
+.card-border > table {
+  border-radius: 0;
+}
+
+/*
+  ── LE TESTATE DI TABELLA HANNO UNO STILE SOLO ─────────────
+  Erano tre stili e ventitre varianti: la tabella ordinabile con la tinta del
+  turchese e maiuscole a 11px (SortableFilterTable), SimpleTable — condivisa
+  anche lei — su fondo bianco e a corpo pieno, e ogni tabella scritta a mano
+  con il suo grigio, il suo colore, il suo peso. Si vedeva passando da una
+  pagina all'altra: l'SLA Report aveva la testata grigia e minuscola.
+
+  La regola sta qui, con `!important`, perche e l'unico modo in cui uno stile
+  in linea non la puo sovrascrivere: una tabella nuova la eredita senza
+  saperlo. Restano della tabella l'ALLINEAMENTO (i numeri a destra) e la
+  SPAZIATURA, che dipendono dal contenuto. Il guardiano e
+  `__tests__/testateTabelle.test.ts`.
+*/
+table thead th {
+  background:     var(--color-brand-a20) !important;
+  border-bottom:  2px solid var(--border) !important;
+  font-size:      11px !important;
+  font-weight:    600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  color:          var(--color-slate-dark) !important;
+  white-space:    nowrap;
+}
+table thead tr {
+  background: none !important;
 }
 
 /* ── Utility classes ───────────────────────────────────── */

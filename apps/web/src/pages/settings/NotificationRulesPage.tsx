@@ -142,7 +142,7 @@ export default function NotificationRulesPage() {
                 }}>
                   {t(`notificationRules.category.${key}`)}
                 </h2>
-                <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden', background: colors.white }}>
+                <div style={{ border: `1px solid ${colors.border}`, overflow: 'hidden', background: colors.white }}>
                   <div className="og-scroll-x">
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>{tableHeader}</thead>
@@ -168,7 +168,7 @@ export default function NotificationRulesPage() {
               }}>
                 {t('notificationRules.category.custom')}
               </h2>
-              <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden', background: colors.white }}>
+              <div style={{ border: `1px solid ${colors.border}`, overflow: 'hidden', background: colors.white }}>
                 <div className="og-scroll-x">
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>{tableHeader}</thead>

@@ -120,7 +120,7 @@ export function HomePage() {
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <h2 style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark }}>{t('home.recentTickets')}</h2>
-          <Link to="/tickets" style={{ fontSize: 10, color: colors.brand }}>Tutti →</Link>
+          <Link to="/tickets" style={{ fontSize: 10, color: colors.brand }}>{t('home.seeAll')}</Link>
         </div>
 
         {tickets.length === 0 ? (

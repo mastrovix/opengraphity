@@ -266,7 +266,7 @@ export function ChangeDetailPage() {
             defaultOpen={atApproval}
             activeColor={palette.yellow.bg}
             activeTextColor="var(--color-slate-dark)"
-            headerRight={<span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{approvedN}/{approvals.length} approvate</span>}
+            headerRight={<span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{t('pages.changeDetail.approvedCount', { done: approvedN, total: approvals.length })}</span>}
           >
             {approvals.length === 0 ? (
               <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
@@ -541,7 +541,7 @@ export function ChangeDetailPage() {
         <Modal
           open
           onClose={() => setRejectModal(null)}
-          title={`Rigetta approvazione — ${rejectModal.teamName}`}
+          title={t('pages.changeDetail.rejectApprovalTitle', { team: rejectModal.teamName })}
           width={520}
           footer={
             <>

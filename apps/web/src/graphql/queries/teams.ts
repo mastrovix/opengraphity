@@ -5,7 +5,7 @@ import { USER_REF } from '../fragments'
 
 export const GET_TEAMS = gql`
   query GetTeams($filters: String, $sortField: String, $sortDirection: String) {
-    teams(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name description type createdAt }
+    teams(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name description type sourcing createdAt }
   }
 `
 
@@ -24,7 +24,7 @@ export const GET_TEAM = gql`
   ${USER_REF}
   query GetTeam($id: ID!) {
     team(id: $id) {
-      id tenantId name description type createdAt isChangeManager
+      id tenantId name description type sourcing createdAt isChangeManager
       manager { ...UserRef }
       members { ...UserRef role }
       ownedCIs { id name type environment status }

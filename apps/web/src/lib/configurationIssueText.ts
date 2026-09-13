@@ -76,6 +76,12 @@ export function issueText(t: TFunction, esiste: EsisteChiave, issue: IssueData):
   const params = valori(issue.params)
   // `reason` può mancare (lo schema degradato non sempre sa dire perché): il
   // ripiego è una frase TRADOTTA, non una italiana scritta nell'API.
+  // «(e altri N)» si dice solo se N > 0: con 3 team su 3 in elenco, «e altri
+  // 0» e una frase sbagliata. Il frammento e tradotto, non composto qui.
+  if (issue.kind === 'teams_without_sourcing') {
+    const altri = Number(params['others'] ?? 0)
+    params['more'] = altri > 0 ? t('configurationIssues.andMore', { count: altri }) : ''
+  }
   if (issue.kind === 'schema_degraded' && params['reason'] === undefined) {
     params['reason'] = t('configurationIssues.reasonUnavailable')
   }

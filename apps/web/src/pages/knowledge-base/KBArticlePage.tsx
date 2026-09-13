@@ -105,7 +105,7 @@ export function KBArticlePage() {
             <Calendar size={11} /> {formatDate(article.publishedAt)}
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Eye size={11} /> {article.views} visualizzazioni
+            <Eye size={11} /> {t('pages.kb.views', { count: article.views })}
           </span>
         </div>
 

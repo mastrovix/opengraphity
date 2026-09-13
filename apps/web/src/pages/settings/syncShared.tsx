@@ -1,6 +1,8 @@
+import { useTranslation } from 'react-i18next'
 import { RefreshCw, CheckCircle, XCircle, Clock, AlertTriangle, Database, Cloud } from 'lucide-react'
 import type { SyncStats } from './useSyncPage'
 import { lookupOrError, colors, palette } from '@/lib/tokens'
+import { StatTile, StatTileGrid } from '@/components/ui/StatTile'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -9,11 +11,6 @@ export function formatMs(ms: number | null): string {
   if (ms < 1000) return `${ms}ms`
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
   return `${(ms / 60000).toFixed(1)}m`
-}
-
-export function formatDate(iso: string | null): string {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleString()
 }
 
 export function StatusBadge({ status }: { status: string }) {
@@ -36,23 +33,20 @@ export function StatusBadge({ status }: { status: string }) {
 // ── StatsBar ──────────────────────────────────────────────────────────────────
 
 export function StatsBar({ stats }: { stats: SyncStats }) {
+  const { t } = useTranslation()
+  // Il box numerico comune (components/ui/StatTile): qui c'era una versione
+  // sua, con raggio 8 e l'icona accanto all'etichetta — e le etichette erano
+  // parole inglesi scritte nel codice.
   const cards = [
-    { label: 'Sources',        value: `${stats.enabledSources}/${stats.totalSources}`, icon: <Database size={16} /> },
-    { label: 'CIs managed',   value: stats.ciManaged,    icon: <Cloud size={16} /> },
-    { label: 'Open conflicts', value: stats.openConflicts, icon: <AlertTriangle size={16} /> },
-    { label: 'Success rate',   value: `${Math.round(stats.successRate * 100)}%`, icon: <CheckCircle size={16} /> },
+    { labelKey: 'sync.stats.sources',       value: `${stats.enabledSources}/${stats.totalSources}`, icon: <Database size={18} /> },
+    { labelKey: 'sync.stats.ciManaged',     value: stats.ciManaged,    icon: <Cloud size={18} /> },
+    { labelKey: 'sync.stats.openConflicts', value: stats.openConflicts, icon: <AlertTriangle size={18} /> },
+    { labelKey: 'sync.stats.successRate',   value: `${Math.round(stats.successRate * 100)}%`, icon: <CheckCircle size={18} /> },
   ]
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
-      {cards.map(c => (
-        <div key={c.label} style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: colors.slate, fontSize: 'var(--font-size-body)', marginBottom: 4 }}>
-            {c.icon}{c.label}
-          </div>
-          <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: colors.slateDark }}>{c.value}</div>
-        </div>
-      ))}
-    </div>
+    <StatTileGrid>
+      {cards.map(c => <StatTile key={c.labelKey} label={t(c.labelKey)} value={c.value} icon={c.icon} />)}
+    </StatTileGrid>
   )
 }
 

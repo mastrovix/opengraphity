@@ -138,7 +138,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
         <button
           type="button"
           onClick={() => {
-            void confirm({ title: `Eliminare la transizione ${transition.fromStepName} → ${transition.toStepName}?`, danger: true }).then((ok) => {
+            void confirm({ title: t('workflow.panel.deleteTransitionTitle', { from: transition.fromStepName, to: transition.toStepName }), danger: true }).then((ok) => {
               if (ok) onDelete(transition.id)
             })
           }}

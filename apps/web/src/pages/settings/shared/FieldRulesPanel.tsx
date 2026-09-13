@@ -271,11 +271,11 @@ function RequirementRulesSection({ entityType, fields, workflowSteps }: { entity
         <table style={{ width: '100%', fontSize: 'var(--font-size-body)', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
-              <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--color-slate)', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
+              <th style={{ textAlign: 'left', padding: '6px 8px', whiteSpace: 'nowrap' }}>
                 {t('fieldRules.requirement.field')}
               </th>
               {stepOptions.map((s) => (
-                <th key={s} style={{ textAlign: 'center', padding: '6px 8px', color: 'var(--color-slate)', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
+                <th key={s} style={{ textAlign: 'center', padding: '6px 8px', whiteSpace: 'nowrap' }}>
                   {s === '' ? t('fieldRules.requirement.allSteps') : s}
                 </th>
               ))}

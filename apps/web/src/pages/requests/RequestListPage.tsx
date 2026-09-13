@@ -3,7 +3,7 @@ import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
-import { Inbox } from 'lucide-react'
+import { Inbox, Plus } from 'lucide-react'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
@@ -16,6 +16,7 @@ import { GET_SERVICE_REQUESTS } from '@/graphql/queries'
 import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { exportToCsv } from '@/lib/csvExport'
+import { formatDate } from '@/lib/datetime'
 
 interface ServiceRequest {
   id:        string
@@ -59,7 +60,7 @@ export function RequestListPage() {
       sortable: true,
       render:   (v) => (
         <span style={{ color: 'var(--color-slate-light)' }}>
-          {new Date(String(v)).toLocaleDateString()}
+          {formatDate(String(v))}
         </span>
       ),
     },
@@ -87,7 +88,7 @@ export function RequestListPage() {
           </p>
         }
         actions={
-          <Button onClick={() => navigate('/requests/new')}>
+          <Button icon={<Plus size={15} aria-hidden="true" />} onClick={() => navigate('/requests/new')}>
             {t('pages.requests.new')}
           </Button>
         }

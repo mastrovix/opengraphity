@@ -72,6 +72,7 @@ import { KBAdminPage } from '@/pages/admin/KBAdminPage'
 import { AutoTriggersPage } from '@/pages/admin/AutoTriggersPage'
 import { BusinessRulesPage } from '@/pages/admin/BusinessRulesPage'
 import { SLAPoliciesPage } from '@/pages/admin/SLAPoliciesPage'
+import { OLAContractsPage } from '@/pages/admin/OLAContractsPage'
 import { ServiceCatalogAdminPage } from '@/pages/admin/ServiceCatalogAdminPage'
 const SLAReportPage = lazy(() => import('@/pages/reports/SLAReportPage').then(m => ({ default: m.SLAReportPage })))
 import { IntegrationsPage } from '@/pages/admin/IntegrationsPage'
@@ -225,6 +226,7 @@ const router = createBrowserRouter([
       { path: 'admin/triggers',            element: admin(<AutoTriggersPage />),            errorElement: <RouteError /> },
       { path: 'admin/business-rules',      element: admin(<BusinessRulesPage />),           errorElement: <RouteError /> },
       { path: 'admin/sla-policies',        element: admin(<SLAPoliciesPage />),             errorElement: <RouteError /> },
+      { path: 'admin/ola-uc',              element: admin(<OLAContractsPage />),            errorElement: <RouteError /> },
       { path: 'admin/service-catalog',     element: admin(<ServiceCatalogAdminPage />),     errorElement: <RouteError /> },
       { path: 'reports/sla',               element: <Suspense fallback={<PageLoader />}><SLAReportPage /></Suspense>, errorElement: <RouteError /> },
       { path: 'admin/integrations',        element: admin(<IntegrationsPage />),            errorElement: <RouteError /> },

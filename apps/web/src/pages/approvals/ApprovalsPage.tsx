@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/FormControls'
 import { useConfirm } from '@/hooks/useConfirm'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { formatDate, formatDateTime } from '@/lib/datetime'
 
 const MY_PENDING = gql`
   query MyPendingApprovals {
@@ -170,7 +171,7 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
         }}
       >
         <BookOpen size={13} />
-        Anteprima articolo
+        {t('pages.approvals.articlePreview')}
         {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
       </button>
 
@@ -202,7 +203,7 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
                       <span>·</span>
                       <span>{t('pages.approvals.byAuthor', { author: article.authorName })}</span>
                       <span>·</span>
-                      {article.updatedAt && <span>{t('pages.approvals.updatedOn', { date: new Date(article.updatedAt).toLocaleDateString() })}</span>}
+                      {article.updatedAt && <span>{t('pages.approvals.updatedOn', { date: formatDate(article.updatedAt) })}</span>}
                     </div>
                   </div>
                   {(article.tags ?? []).length > 0 && (
@@ -281,9 +282,9 @@ function ApprovalCard({
             <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-body)', color: palette.neutral.textStrong }}>{req.description}</p>
           )}
           <div style={{ display: 'flex', gap: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
-            <span><Clock size={11} style={{ verticalAlign: 'middle' }} /> {new Date(req.requestedAt).toLocaleString()}</span>
+            <span><Clock size={11} style={{ verticalAlign: 'middle' }} /> {formatDateTime(req.requestedAt)}</span>
             <span>{t('pages.approvals.approvalCount', { done: req.approvedBy.length, total: req.approvers.length })}</span>
-            {req.dueDate && <span>{t('pages.approvals.dueOn', { date: new Date(req.dueDate).toLocaleDateString() })}</span>}
+            {req.dueDate && <span>{t('pages.approvals.dueOn', { date: formatDate(req.dueDate) })}</span>}
           </div>
           {req.resolutionNote && (
             <p style={{ margin: '8px 0 0', fontSize: 'var(--font-size-body)', color: palette.neutral.textStrong, fontStyle: 'italic' }}>

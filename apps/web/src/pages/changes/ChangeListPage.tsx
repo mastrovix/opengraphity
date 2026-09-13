@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { GitPullRequest } from 'lucide-react'
+import { GitPullRequest, Plus } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
@@ -17,6 +17,7 @@ import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { exportToCsv } from '@/lib/csvExport'
 import { apolloClient } from '@/lib/apollo'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { formatDate } from '@/lib/datetime'
 
 interface ChangeRow {
   id:                 string
@@ -145,7 +146,7 @@ export function ChangeListPage() {
       sortable: true,
       render:   (v) => (
         <span style={{ color: 'var(--color-slate-light)' }}>
-          {new Date(String(v)).toLocaleDateString()}
+          {formatDate(String(v))}
         </span>
       ),
     },
@@ -162,7 +163,7 @@ export function ChangeListPage() {
           </p>
         }
         actions={
-          <Button onClick={() => navigate('/changes/new')}>
+          <Button icon={<Plus size={15} aria-hidden="true" />} onClick={() => navigate('/changes/new')}>
             {t('pages.changes.new')}
           </Button>
         }

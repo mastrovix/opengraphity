@@ -87,7 +87,7 @@ describe('WorkflowStepPanel — azioni corrotte (fail-loud)', () => {
   it('JSON valido ma non array → stesso banner con il tipo trovato', () => {
     renderPanel(step({ exitActions: '{"type":"sla_stop"}' }))
     const alert = screen.getAllByRole('alert').find((a) => a.textContent?.includes("The step's actions are corrupted"))!
-    expect(alert).toHaveTextContent('exit_actions: atteso un array JSON, trovato object')
+    expect(alert).toHaveTextContent('exit_actions: expected a JSON array, found object')
     expect(saveButton()).toBeDisabled()
   })
 

@@ -3,7 +3,7 @@ import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
-import { User, Users, X } from 'lucide-react'
+import { User, Users, X, Plus } from 'lucide-react'
 import { gql } from '@apollo/client'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
@@ -24,6 +24,7 @@ import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { useListQueryState } from '@/hooks/useListQueryState'
 import { ALL_ROLES } from '@/hooks/useMe'
 import { colors, palette, alpha } from '@/lib/tokens'
+import { formatDate } from '@/lib/datetime'
 
 // ── GraphQL ──────────────────────────────────────────────────────────────────
 
@@ -77,7 +78,7 @@ export function UsersPage() {
       label:   t('pages.users.createdAt'),
       width:   '120px',
       sortable: true,
-      render:  (v) => v ? new Date(v as string).toLocaleDateString() : '—',
+      render:  (v) => formatDate(v as string),
     },
   ]
   const navigate = useNavigate()
@@ -121,7 +122,7 @@ export function UsersPage() {
           </p>
         }
         actions={
-          <Button onClick={() => { setModalOpen(true); setTeamSearch(''); setForm(EMPTY_FORM) }}>
+          <Button icon={<Plus size={15} aria-hidden="true" />} onClick={() => { setModalOpen(true); setTeamSearch(''); setForm(EMPTY_FORM) }}>
             {t('pages.users.newUser')}
           </Button>
         }
@@ -183,7 +184,7 @@ export function UsersPage() {
         }
       >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div><label style={labelS}>{t('pages.users.email')} {REQUIRED}</label><Input type="email" required value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="mario@acme.com" /></div>
+            <div><label style={labelS}>{t('pages.users.email')} {REQUIRED}</label><Input type="email" required value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder={t('pages.users.emailPlaceholder')} /></div>
             <div className="og-pair">
               <div><label style={labelS}>{t('pages.users.firstName')} {REQUIRED}</label><Input required value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder={t('pages.users.firstNamePlaceholder')} /></div>
               <div><label style={labelS}>{t('pages.users.lastName')} {REQUIRED}</label><Input required value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} placeholder={t('pages.users.lastNamePlaceholder')} /></div>

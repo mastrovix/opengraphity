@@ -15,8 +15,9 @@ export function olaSDL(): string {
     responseMinutes: Int!
     resolveMinutes:  Int!
     businessHours:   Boolean!
-    partyType:       String    # team | supplier
-    partyName:       String    # supplier name (UC) or team label (OLA)
+    partyType:       String    # team (sourcing internal) | supplier (sourcing external)
+    # Legacy: il nome del fornitore scritto a mano. Oggi il responsabile e sempre un team (teamId/teamName).
+    partyName:       String
     teamId:          String
     teamName:        String
     enabled:         Boolean!
@@ -31,8 +32,8 @@ export function olaSDL(): string {
     responseMinutes: Int!
     resolveMinutes:  Int!
     businessHours:   Boolean
+    # team → un team con sourcing internal; supplier → un team con sourcing external
     partyType:       String
-    partyName:       String
     teamId:          String
   }
 
@@ -44,7 +45,6 @@ export function olaSDL(): string {
     resolveMinutes:  Int
     businessHours:   Boolean
     partyType:       String
-    partyName:       String
     teamId:          String
     enabled:         Boolean
   }

@@ -220,7 +220,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
       if (!raw) return []
       try {
         const parsed: unknown = JSON.parse(raw)
-        if (!Array.isArray(parsed)) return `${field}: atteso un array JSON, trovato ${typeof parsed}`
+        if (!Array.isArray(parsed)) return t('workflow.panel.expectedArray', { field, found: typeof parsed })
         return parsed as AnyAction[]
       } catch (e) {
         return `${field}: ${e instanceof Error ? e.message : String(e)}`
@@ -234,7 +234,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
       initExitActions:   Array.isArray(exit)  ? exit  : [],
       actionsParseError: errors.length > 0 ? errors.join(' · ') : null,
     }
-  }, [step.enterActions, step.exitActions])
+  }, [step.enterActions, step.exitActions, t])
   const existingNR = allEnterActions.find((a) => a.type === 'notify_rule') as NotifyRuleAction | undefined
   const initEnterActions = allEnterActions.filter((a) => a.type !== 'notify_rule')
 
@@ -569,7 +569,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
           <PanelField label={t('workflow.panel.step_aperto')}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer', opacity: isTerminal ? 0.5 : 1 }}>
               <input type="checkbox" checked={isOpen} disabled={isTerminal} onChange={(e) => setIsOpen(e.target.checked)} style={{ accentColor: ACCENT_COLOR }} />
-              <span>L'entità è considerata "aperta" in questo step</span>
+              <span>{t('workflow.panel.isOpenStep')}</span>
             </label>
           </PanelField>
           {/* Revisione delle otto ondate · B·N-3. Era un campo di testo con una

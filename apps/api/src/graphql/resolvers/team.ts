@@ -1,5 +1,8 @@
 import { GraphQLError } from 'graphql'
-import { NotFoundError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
+import { assertDomainValue } from '../../lib/domainMatrix.js'
+import { TEAM_TYPE_VOCABULARY } from '../../lib/teamVocabularies.js'
+import { assertTeamSourcing } from '../../lib/teamSourcing.js'
 import { v4 as uuidv4 } from 'uuid'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
@@ -14,7 +17,9 @@ type Props = Record<string, unknown>
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
-const TEAM_ALLOWED_FIELDS = new Set(['name', 'createdAt'])
+// `type` c'era nel filtro della pagina ma NON qui: il filtro si applicava e
+// non filtrava niente. E' un valore del vocabolario `team_type`.
+const TEAM_ALLOWED_FIELDS = new Set(['name', 'type', 'sourcing', 'createdAt'])
 
 async function teams(_: unknown, args: { filters?: string; sortField?: string; sortDirection?: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
@@ -63,12 +68,20 @@ async function team(_: unknown, args: { id: string }, ctx: GraphQLContext) {
 
 async function createTeam(
   _: unknown,
-  args: { input: { name: string; description?: string } },
+  args: { input: { name: string; description?: string; type?: string | null; sourcing: string } },
   ctx: GraphQLContext,
 ) {
   const { input } = args
   const id  = uuidv4()
   const now = new Date().toISOString()
+  // Ogni team dice se e interno o esterno: senza, e un rifiuto, non un default.
+  const sourcing = assertTeamSourcing(input.sourcing)
+  // Il tipo e OBBLIGATORIO in creazione (scelta del proprietario) ed e un
+  // valore del vocabolario `team_type`, non una parola qualunque: un team con
+  // `type: "ownr"` non sarebbe nel filtro ne nella pastiglia. Assente o vuoto
+  // e un rifiuto — `assertDomainValue` non accetta un valore mancante, e dice
+  // quali sono ammessi.
+  const type = await assertDomainValue(ctx.tenantId, TEAM_TYPE_VOCABULARY, input.type)
 
   return withSession(async (session) => {
     const cypher = `
@@ -78,17 +91,74 @@ async function createTeam(
         name:        $name,
         description: $description,
         type:        $type,
+        sourcing:    $sourcing,
         created_at:  $now,
         updated_at:  $now
       })
       RETURN properties(t) as props
     `
     const rows = await runQuery<{ props: Props }>(session, cypher, {
-      id, tenantId: ctx.tenantId, name: input.name, description: input.description ?? null, type: null, now,
+      id, tenantId: ctx.tenantId, name: input.name, description: input.description ?? null, type, sourcing, now,
     })
     const row = rows[0]
     if (!row) throw new GraphQLError('Failed to create Team', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
     void audit(ctx, 'team.created', 'Team', id)
+    return mapTeam(row.props)
+  }, true)
+}
+
+/**
+ * Cambia nome, descrizione o TIPO di un team che esiste.
+ *
+ * Serviva perche il tipo si poteva solo *guardare*: la colonna c'era, il
+ * filtro c'era, e non esisteva nessuna scrittura — i team seminati avevano un
+ * tipo, quelli creati dall'interfaccia no, per sempre.
+ *
+ * Un campo assente non si tocca (`undefined` != `null`): cosi la stessa
+ * mutation serve sia «rinomina» sia «dai un tipo» senza azzerare il resto.
+ * Per TOGLIERE il tipo si manda la stringa vuota, che e una scelta esplicita.
+ */
+async function updateTeam(
+  _: unknown,
+  args: { id: string; input: { name?: string | null; description?: string | null; type?: string | null; sourcing?: string | null } },
+  ctx: GraphQLContext,
+) {
+  const { input } = args
+  const sets: string[] = ['t.updated_at = $now']
+  const params: Record<string, unknown> = { id: args.id, tenantId: ctx.tenantId, now: new Date().toISOString() }
+
+  if (input.name != null) {
+    const name = input.name.trim()
+    if (name === '') {
+      throw new ValidationError('The team name cannot be empty', { key: 'errors.team.nameEmpty' })
+    }
+    sets.push('t.name = $name'); params['name'] = name
+  }
+  if (input.description !== undefined) {
+    sets.push('t.description = $description')
+    params['description'] = input.description === null || input.description.trim() === '' ? null : input.description.trim()
+  }
+  // Interno/esterno si CAMBIA ma non si toglie: un team deve dirlo sempre, e
+  // `null` o la stringa vuota qui sono un rifiuto, non «non tocco».
+  if (input.sourcing !== undefined) {
+    sets.push('t.sourcing = $sourcing')
+    params['sourcing'] = assertTeamSourcing(input.sourcing)
+  }
+  // Come Sourcing: si CAMBIA ma non si toglie. Un tipo obbligatorio in
+  // creazione che poi si potesse svuotare non sarebbe obbligatorio.
+  if (input.type !== undefined) {
+    sets.push('t.type = $type')
+    params['type'] = await assertDomainValue(ctx.tenantId, TEAM_TYPE_VOCABULARY, input.type)
+  }
+
+  return withSession(async (session) => {
+    const row = await runQueryOne<{ props: Props }>(session, `
+      MATCH (t:Team {id: $id, tenant_id: $tenantId})
+      SET ${sets.join(', ')}
+      RETURN properties(t) AS props
+    `, params)
+    if (!row) throw new NotFoundError('Team', args.id)
+    void audit(ctx, 'team.updated', 'Team', args.id)
     return mapTeam(row.props)
   }, true)
 }
@@ -279,7 +349,7 @@ async function setChangeManagerTeam(_: unknown, args: { teamId: string; value: b
 
 export const teamResolvers = {
   Query:    { teams, team },
-  Mutation: { createTeam, assignCIOwner, assignCISupportGroup, setTeamManager, removeTeamManager, setChangeManagerTeam },
+  Mutation: { createTeam, updateTeam, assignCIOwner, assignCISupportGroup, setTeamManager, removeTeamManager, setChangeManagerTeam },
   Team: {
     manager:      teamManager,
     members:      teamMembers,

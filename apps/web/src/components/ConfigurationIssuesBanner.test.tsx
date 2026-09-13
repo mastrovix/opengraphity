@@ -125,6 +125,24 @@ describe('ConfigurationIssuesBanner', () => {
   })
 
   /**
+   * «(e altri N)» solo se N > 0. Visto nel browser: 3 team senza interno/esterno,
+   * tutti e 3 in elenco, e la frase diceva «(and 0 more)».
+   */
+  it('team senza interno/esterno: «e altri N» compare solo quando ce ne sono altri', async () => {
+    const voce = (count: string, teams: string, others: string): Issue => ({
+      kind: 'teams_without_sourcing', severity: 'warning', where: '/teams', gaps: [],
+      params: [{ name: 'count', value: count }, { name: 'teams', value: teams }, { name: 'others', value: others }],
+    })
+    renderWithProviders(<ConfigurationIssuesBanner />, {
+      mocks: [meMock('admin'), issuesMock([voce('3', 'Rete, Server, Desk', '0'), voce('12', 'Alfa, Beta', '10')])],
+    })
+    const banner = await screen.findByRole('status')
+    expect(banner.textContent).toContain('Rete, Server, Desk.')
+    expect(banner.textContent).not.toContain('(and 0 more)')
+    expect(banner.textContent).toContain('Alfa, Beta (and 10 more)')
+  })
+
+  /**
    * Un'API più nuova del bundle: una `kind` che questo client non conosce. Non
    * si nasconde — si legge la chiave grezza, che e brutta ma dice la verita.
    * Mostrare niente sarebbe peggio: «C'e 1 cosa da sistemare» e sotto il vuoto.

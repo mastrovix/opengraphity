@@ -272,7 +272,7 @@ export function BusinessRulesPage() {
         <div>
           <PageTitle icon={<GitBranch size={22} color="var(--color-icon-accent)" />}>{t('sidebar.businessRules')}</PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${rules.length} regole`}
+            {loading ? '—' : t('pages.businessRules.count', { count: rules.length })}
           </p>
         </div>
         <Button icon={<Plus size={14} aria-hidden="true" />} onClick={modal.openCreate}>{t('pages.businessRules.newRule')}</Button>

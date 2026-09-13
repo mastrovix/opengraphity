@@ -162,7 +162,7 @@ export function SortableFilterTable<T extends object>({
   const totalCols = columns.length + (selectable ? 1 : 0)
 
   return (
-    <div className="card-border og-scroll-x">
+    <div className="og-table-card og-scroll-x">
       <table role="table" aria-label={label} style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse' }}>
         <colgroup>
           {selectable && <col style={{ width: '40px' }} />}
@@ -282,23 +282,38 @@ export function SortableFilterTable<T extends object>({
               return (
                 <React.Fragment key={rowId}>
                   <tr
-                    onClick={() => onRowClick?.(row)}
+                    /*
+                      Un clic su un CONTROLLO dentro la riga (pulsante, link,
+                      interruttore, tendina) e del controllo, non della riga:
+                      senza questo, spegnere una policy o premere «Elimina»
+                      apriva anche il dettaglio. Qui una volta sola, invece di
+                      un `stopPropagation` da ricordarsi in ogni pagina.
+                    */
+                    onClick={(e) => {
+                      if (!onRowClick) return
+                      const controllo = (e.target as HTMLElement).closest('button, a, input, select, textarea, label, [role="switch"]')
+                      if (controllo && e.currentTarget.contains(controllo)) return
+                      onRowClick(row)
+                    }}
                     // Clickable rows are reachable and activatable from the keyboard (E-14),
                     // unless the caller says the row already carries a Link (`focusableRows`).
                     tabIndex={onRowClick && focusableRows ? 0 : undefined}
                     onKeyDown={onRowClick ? (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onRowClick(row) } } : undefined}
+                    /*
+                      La striscia turchese al passaggio del mouse NON e un
+                      bordo della riga. Lo era (`border-left: 8px transparent`),
+                      e con `border-collapse: collapse` la tabella riservava
+                      meta di quel bordo — 4px — a sinistra di OGNI riga,
+                      testata compresa: la testata non ha il bordo, quindi i
+                      4px restavano bianchi prima della tinta. Ora e un'ombra
+                      interna della prima cella (`.sft-row`, index.css), che
+                      nel calcolo della tabella non occupa spazio.
+                    */
+                    className="sft-row"
                     style={{
                       borderBottom:    expandedContent ? 'none' : `1px solid ${palette.neutral.borderLight}`,
                       cursor:          onRowClick ? 'pointer' : 'default',
                       backgroundColor: colors.white,
-                      borderLeft:      '8px solid transparent',
-                      transition:      'border-color 0.15s',
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLTableRowElement).style.borderLeft = '8px solid var(--color-icon-accent)'
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLTableRowElement).style.borderLeft = '8px solid transparent'
                     }}
                   >
                     {selectable && (

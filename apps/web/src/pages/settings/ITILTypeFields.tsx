@@ -147,7 +147,7 @@ function FieldEditor({
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.defaultScript}
                 onChange={(e) => set('defaultScript', e.target.value)}
-                placeholder={"// Esempio:\nreturn input.priority === 'critical' ? 'immediata' : 'normale'"} />
+                placeholder={t('itilDesigner.defaultPlaceholder')} />
             </div>
           )}
         </div>

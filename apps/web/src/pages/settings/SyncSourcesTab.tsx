@@ -2,11 +2,12 @@ import { useId, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Play, Clock, Upload, X } from 'lucide-react'
 import type { SyncSource, ConnectorInfo } from './useSyncPage'
-import { formatMs, formatDate, StatusBadge, inputStyle, labelStyle, btnStyle } from './syncShared'
+import { formatMs, StatusBadge, inputStyle, labelStyle, btnStyle } from './syncShared'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 import { colors, palette } from '@/lib/tokens'
+import { formatDateTime } from '@/lib/datetime'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -257,7 +258,7 @@ export function SyncSourcesTab({
                 <span style={{ fontSize: 'var(--font-size-table)', color: s.enabled ? 'var(--color-success)' : colors.slate }}>{s.enabled ? 'enabled' : 'disabled'}</span>
               </div>
               <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate, marginTop: 2 }}>
-                Last sync: {formatDate(s.lastSyncAt)}
+                Last sync: {formatDateTime(s.lastSyncAt)}
                 {s.lastSyncStatus && <> · <StatusBadge status={s.lastSyncStatus} /></>}
                 {s.lastSyncDurationMs != null && <> · {formatMs(s.lastSyncDurationMs)}</>}
                 {s.scheduleCron && <> · cron: <code style={{ fontSize: 'var(--font-size-table)' }}>{s.scheduleCron}</code></>}

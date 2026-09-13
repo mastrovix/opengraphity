@@ -139,7 +139,7 @@ export function CreateServiceRequestPage() {
           {/* Catalog item (consigliato, ma la richiesta generica resta possibile) */}
           <div style={{ marginBottom: 24 }}>
             <label htmlFor={ids.catalog} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
-              Voce di catalogo <span style={{ fontWeight: 400, color: 'var(--color-slate-light)' }}>(consigliata)</span>
+              {t('pages.createRequest.catalogItem')} <span style={{ fontWeight: 400, color: 'var(--color-slate-light)' }}>{t('pages.createRequest.recommended')}</span>
             </label>
             <select
               id={ids.catalog}

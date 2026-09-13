@@ -94,8 +94,8 @@ export function CIIncidentsCard({ ciId }: { ciId: string }) {
             ? <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '12px 0 0' }}>{t('components.ciIncidents.empty')}</p>
             : (
               <>
-                {renderGroup('In corso', open_incidents)}
-                {renderGroup('Chiusi',   closed_incidents, true)}
+                {renderGroup(t('components.ciGroups.inProgress'), open_incidents)}
+                {renderGroup(t('components.ciGroups.closed'), closed_incidents, true)}
               </>
             )
           }

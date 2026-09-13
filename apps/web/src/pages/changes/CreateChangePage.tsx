@@ -75,10 +75,10 @@ export function CreateChangePage() {
     if (requestSource && !prefilled) {
       setSelectedCIs((requestSource.affectedCIs ?? []).map((ci) => ({ id: ci.id, name: ci.name, type: ci.type, environment: ci.environment })))
       const label = requestSource.kind === 'problem' ? 'problem' : 'incident'
-      setTitle(`Risoluzione ${label} ${requestSource.number}: ${requestSource.title}`)
+      setTitle(t('pages.createChange.resolutionTitle', { kind: label, number: requestSource.number, title: requestSource.title }))
       setPrefilled(true)
     }
-  }, [requestSource, prefilled])
+  }, [requestSource, prefilled, t])
 
   const { data: usersData } = useQuery<{ users: UserRef[] }>(GET_USERS, {
     variables: { sortField: 'name', sortDirection: 'asc' },
@@ -199,16 +199,16 @@ export function CreateChangePage() {
           <div style={{ marginBottom: 20 }}>
             <div style={fieldLabel}>{t('pages.createChange.changeType')}</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {(['standard','normal','emergency'] as const).map(t => {
-                const sel = changeType === t
-                const labels = { standard: 'Standard (pre-approvato)', normal: 'Normal', emergency: 'Emergency' }
+              {(['standard','normal','emergency'] as const).map(tipo => {
+                const sel = changeType === tipo
+                const labels = { standard: t('pages.createChange.typeStandard'), normal: 'Normal', emergency: 'Emergency' }
                 return (
-                  <button key={t} type="button" onClick={() => setChangeType(t)}
+                  <button key={tipo} type="button" onClick={() => setChangeType(tipo)}
                     style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
                       border: `1.5px solid ${sel ? 'var(--color-brand)' : 'var(--color-border)'}`,
                       background: sel ? palette.info.light : 'var(--color-slate-bg)',
                       color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}>
-                    {labels[t]}
+                    {labels[tipo]}
                   </button>
                 )
               })}
@@ -235,7 +235,7 @@ export function CreateChangePage() {
 
           {/* WHAT (Cosa) */}
           <div style={{ marginBottom: 20 }}>
-            <label htmlFor={ids.what} style={fieldLabel}>Cosa <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
+            <label htmlFor={ids.what} style={fieldLabel}>{t('pages.createChange.what')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
             <textarea
               id={ids.what}
               value={what}

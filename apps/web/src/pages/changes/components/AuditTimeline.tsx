@@ -9,26 +9,26 @@ import type { ChangeAuditEntryData } from '@/types/change'
 import { formatDateShort } from '@/lib/datetime'
 import { colors, palette } from '@/lib/tokens'
 
-type AuditCategory = 'stato' | 'assessment' | 'assegnazioni' | 'commenti' | 'sistema'
+type AuditCategory = 'status' | 'assessment' | 'assignments' | 'comments' | 'system'
 const AUDIT_CAT_COLOR: Record<AuditCategory, string> = {
-  stato: 'var(--color-success)', assessment: colors.brand,
-  assegnazioni: palette.purple.base, commenti: 'var(--color-slate)',
-  sistema: 'var(--color-slate-light)',
+  status: 'var(--color-success)', assessment: colors.brand,
+  assignments: palette.purple.base, comments: 'var(--color-slate)',
+  system: 'var(--color-slate-light)',
 }
 /** Le categorie come CHIAVI: la frase la risolve chi la mostra. */
 const AUDIT_CAT_KEY: Record<AuditCategory, string> = {
-  stato: 'pages.auditTimeline.cat.status', assessment: 'pages.auditTimeline.cat.assessment',
-  assegnazioni: 'pages.auditTimeline.cat.assignments',
-  commenti: 'pages.auditTimeline.cat.comments', sistema: 'pages.auditTimeline.cat.system',
+  status: 'pages.auditTimeline.cat.status', assessment: 'pages.auditTimeline.cat.assessment',
+  assignments: 'pages.auditTimeline.cat.assignments',
+  comments: 'pages.auditTimeline.cat.comments', system: 'pages.auditTimeline.cat.system',
 }
 
 function categorizeAction(action: string): AuditCategory {
   const a = action.toLowerCase()
-  if (a.includes('phase') || a.includes('approv') || a.includes('reject') || a.includes('auto_approv') || a.includes('closed') || a.includes('advanced_to')) return 'stato'
+  if (a.includes('phase') || a.includes('approv') || a.includes('reject') || a.includes('auto_approv') || a.includes('closed') || a.includes('advanced_to')) return 'status'
   if (a.includes('assessment') || a.includes('response') || a.includes('risk') || a.includes('deploy_plan')) return 'assessment'
-  if (a.includes('assign') || a.includes('team')) return 'assegnazioni'
-  if (a.includes('comment')) return 'commenti'
-  return 'sistema'
+  if (a.includes('assign') || a.includes('team')) return 'assignments'
+  if (a.includes('comment')) return 'comments'
+  return 'system'
 }
 
 export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {

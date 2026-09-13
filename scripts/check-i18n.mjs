@@ -270,6 +270,7 @@ for (const k of [...defined].sort()) {
 const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // «OLA / UC» sono due sigle ITIL: la stessa cosa nelle due lingue.
   'pages.slaReport.contracts',
+  'sidebar.olaContracts',
   /*
     PAROLE TECNICHE O D'USO STANDARD: in italiano si dicono in inglese, e
     tradurle rende il prodotto piu difficile da usare, non piu italiano.
@@ -301,6 +302,9 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // «Preview» e la parola che il prodotto usa in italiano per l'anteprima del
   // form del disegnatore: e il nome della tab, come lo chiama chi ci lavora.
   'citypeDesigner.tab.preview',
+  // «Sourcing» e il termine ITIL/procurement per «da dove viene chi fa il
+  // lavoro» (team interno o fornitore): scelto dal proprietario, uguale nelle due lingue.
+  'pages.teams.sourcing.label',
   // «Attainment» e il termine SLA che si usa anche in italiano: e la
   // percentuale del contratto rispettata, e si chiama cosi nei report.
   'pages.slaReport.attainment',
@@ -368,6 +372,11 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // «deploy» e la parola che il prodotto usa in italiano: il passo del workflow
   // si chiama cosi, e «dispiegamento» non lo dice nessuno.
   'changeTasks.deploy',
+  // Stesse parole del processo change (Assessment, Review, Deploy) nei titoli dei task e nei pallini.
+  'changeTasks.kind.assessment',
+  'changeTasks.kind.review',
+  'changeTasks.phaseName.deploy',
+  'changeTasks.phaseName.review',
   'events.aliases.kind.fqdn',
   'events.aliases.kind.hostname',
   'events.aliases.kind.ip',
@@ -734,13 +743,42 @@ function prosa(v) {
   */
   const CHIAVE = /^[a-z][A-Za-z0-9_]*(?:\.(?:[A-Za-z0-9_]+|\$\{[^}]*\}))+\.?$/
 
+  /*
+    LA LISTA DELLE PAROLE ITALIANE È IT.JSON.
+
+    La lista scritta a mano sopra non finisce mai: «(orario lavorativo)»
+    nell'anteprima delle SLA policy è passato perché né «orario» né
+    «lavorativo» c'erano. Ma la lista completa esiste già: sono le parole delle
+    traduzioni italiane che non compaiono MAI in quelle inglesi. Cresce da sola
+    a ogni frase tradotta, e toglie da sé le parole comuni alle due lingue
+    («team», «Owner», «Incident», «SLA»). Solo parole di almeno 4 lettere: sotto,
+    le coincidenze con identificatori e sigle diventano rumore.
+  */
+  const paroleDi = (valori) => {
+    const out = new Set()
+    for (const v of valori) {
+      if (typeof v !== 'string') continue
+      for (const w of v.replace(/\{\{[^}]*\}\}/g, ' ').replace(/<[^>]+>/g, ' ').match(/[A-Za-zÀ-ÖØ-öø-ÿ]{4,}/g) ?? []) {
+        out.add(w.toLowerCase())
+      }
+    }
+    return out
+  }
+  const paroleInglesi = paroleDi(Object.values(en))
+  const PAROLE_SOLO_ITALIANE = new Set([...paroleDi(Object.values(it))].filter((w) => !paroleInglesi.has(w)))
+
   const italiano = (testo) => {
-    const t = testo.trim()
+    // Le interpolazioni di un template sono CODICE: `${chiave} (${extra})` ha
+    // nomi di variabile italiani, non testo a schermo.
+    const t = testo.replace(/\$\{[^}]*\}/g, ' ').trim()
+    // Una chiamata di metodo (`LINGUE.flatMap(`) catturata come testo JSX e codice.
+    if (/[A-Za-z_]\.[A-Za-z_]\w*\(/.test(t)) return false
     if (t.length < 3) return false
     if (CHIAVE.test(t)) return false
     if (ACCENTATE.test(t)) return true
     const parole = t.match(/[A-Za-zÀ-ÖØ-öø-ÿ']+/g)
-    return parole ? parole.some((w) => PAROLE_IT.test(w)) : false
+    if (!parole) return false
+    return parole.some((w) => PAROLE_IT.test(w) || (w.length >= 4 && PAROLE_SOLO_ITALIANE.has(w.toLowerCase())))
   }
 
   /*
@@ -853,6 +891,74 @@ function prosa(v) {
       */
       if (/[{}]/.test(testo)) continue
       if (italiano(testo)) segnala(lineOf(pulito, m.index), `testo JSX «${testo.trim().slice(0, 80)}»`)
+    }
+  }
+}
+
+// ── (f) LA DATA NON LA FORMATTA IL BROWSER ───────────────────────────────────
+//
+// `new Date(x).toLocaleDateString()` SENZA locale usa quello del browser. Su
+// una macchina italiana l'interfaccia in inglese mostrava «13/09/2026» — la
+// stessa colonna, due formati, a seconda del computer di chi guarda. E' lo
+// stesso difetto per cui `navigator` e' stato togliere dal rilevamento della
+// lingua: il browser non decide la lingua di questo prodotto.
+//
+// La lingua attiva la sa `apps/web/src/lib/datetime.ts` (`currentLocale()`, da
+// `i18n.resolvedLanguage`), e le sue funzioni la passano a `Intl`. Chi formatta
+// una data passa da li'. Trovati cosi' 18 siti, tutti in tabelle e pannelli.
+{
+  const RE_TOLOCALE = /\.toLocale(?:Date|Time)?String\(\s*\)/g
+  const daScansionare = [...files.map((f) => [f, WEB_SRC])]
+  const PORTAL = path.join(ROOT, 'apps/portal/src')
+  if (fs.existsSync(PORTAL)) for (const f of walk(PORTAL)) daScansionare.push([f, path.join(ROOT, 'apps')])
+
+  for (const [file, base] of daScansionare) {
+    const relPath = path.relative(base, file)
+    // Le righe di commento si escludono: la nota in testa a `datetime.ts`
+    // CITA la chiamata sbagliata per spiegare perche' e' sbagliata, e un
+    // guardiano che accusa la propria documentazione viene spento.
+    const src = fs.readFileSync(file, 'utf8')
+    const commenti = new Set()
+    {
+      let dentroBlocco = false
+      src.split('\n').forEach((riga, i) => {
+        const t = riga.trim()
+        if (dentroBlocco) { commenti.add(i + 1); if (t.includes('*' + '/')) dentroBlocco = false; return }
+        if (t.startsWith('//') || t.startsWith('*')) { commenti.add(i + 1); return }
+        if (t.startsWith('/*')) { commenti.add(i + 1); if (!t.includes('*' + '/')) dentroBlocco = true }
+      })
+    }
+    for (const m of src.matchAll(RE_TOLOCALE)) {
+      const riga = lineOf(src, m.index)
+      if (commenti.has(riga)) continue
+      err(`[data] ${relPath}:${riga} ${m[0]} senza locale — `
+        + `prende quello del BROWSER, non la lingua del prodotto. `
+        + `Usa formatDate / formatDateTime / formatTime da @/lib/datetime`)
+    }
+  }
+}
+
+// ── (g) LE CHIAVI DEL PORTALE ESISTONO NEI FILE DEL PORTALE ────────────────────
+//
+// Il portale ha i SUOI locale (`apps/portal/src/i18n/{en,it}.json`), e nessun
+// controllo li guardava: tre chiavi nuove del portale erano finite nei file del
+// web, e il portale avrebbe mostrato «kb.thanksFeedback» a schermo. Stessa
+// regola del web: una chiave usata con t('…') esiste in entrambe le lingue.
+{
+  const PORTAL_SRC = path.join(ROOT, 'apps/portal/src')
+  const PORTAL_I18N = path.join(PORTAL_SRC, 'i18n')
+  if (fs.existsSync(PORTAL_I18N)) {
+    const pEn = flatten(JSON.parse(fs.readFileSync(path.join(PORTAL_I18N, 'en.json'), 'utf8')))
+    const pIt = flatten(JSON.parse(fs.readFileSync(path.join(PORTAL_I18N, 'it.json'), 'utf8')))
+    const esiste = (tab, k) => tab[k] !== undefined || Object.keys(tab).some((x) => x.startsWith(k + '_'))
+    for (const file of walk(PORTAL_SRC)) {
+      const src = fs.readFileSync(file, 'utf8')
+      for (const m of src.matchAll(/\bt\(\s*'([a-zA-Z0-9_.]+)'/g)) {
+        const k = m[1]
+        for (const [lingua, tab] of [['en', pEn], ['it', pIt]]) {
+          if (!esiste(tab, k)) err(`[portal] ${path.relative(ROOT, file)}:${lineOf(src, m.index)} chiave non definita in portal/${lingua}.json: ${k}`)
+        }
+      }
     }
   }
 }

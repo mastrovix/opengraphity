@@ -4,7 +4,7 @@ import { gql } from '@apollo/client'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
-import { Search, Sparkles } from 'lucide-react'
+import { Search, Sparkles, Plus } from 'lucide-react'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
@@ -22,6 +22,7 @@ import { apolloClient } from '@/lib/apollo'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { colors, palette } from '@/lib/tokens'
+import { formatDate } from '@/lib/datetime'
 
 const PROBLEM_CANDIDATES = gql`
   query ProblemCandidates {
@@ -77,7 +78,7 @@ export function ProblemListPage() {
       sortable: true,
       render:   (v) => (
         <span style={{ color: "var(--color-slate-light)" }}>
-          {new Date(String(v)).toLocaleDateString()}
+          {formatDate(String(v))}
         </span>
       ),
     },
@@ -129,9 +130,9 @@ export function ProblemListPage() {
                 })
               }}
             >
-              {candidatesLoading ? 'Analisi in corso…' : 'Candidati Problem'}
+              {candidatesLoading ? t('components.triage.analyzing') : t('pages.problems.candidatesButton')}
             </Button>
-            <Button onClick={() => navigate('/problems/new')}>
+            <Button icon={<Plus size={15} aria-hidden="true" />} onClick={() => navigate('/problems/new')}>
               {t('pages.problems.new')}
             </Button>
           </div>

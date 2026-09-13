@@ -8,6 +8,7 @@ import ReactECharts         from 'echarts-for-react'
 import { GET_SYSTEM_HEALTH, GET_SYSTEM_METRICS, GET_TRACE_INFO } from '@/graphql/queries'
 import { colors, palette } from '@/lib/tokens'
 import { cssVar } from '@/lib/charts/cssVar'
+import { formatTime } from '@/lib/datetime'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -225,13 +226,13 @@ export function MonitoringPage() {
           <div className="og-scroll-x">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                <th style={{ textAlign: 'left', padding: '6px 12px 6px 0', color: colors.slate, fontWeight: 600 }}>{t('pages.monitoring.queues.queue')}</th>
-                <th style={{ textAlign: 'right', padding: '6px 12px', color: colors.brand, fontWeight: 600 }}>{t('pages.monitoring.queues.waiting')}</th>
-                <th style={{ textAlign: 'right', padding: '6px 12px', color: palette.success.base, fontWeight: 600 }}>{t('pages.monitoring.queues.active')}</th>
-                <th style={{ textAlign: 'right', padding: '6px 12px', color: colors.slate, fontWeight: 600 }}>{t('pages.monitoring.queues.completed')}</th>
-                <th style={{ textAlign: 'right', padding: '6px 12px', color: 'var(--color-danger)', fontWeight: 600 }}>{t('pages.monitoring.queues.failed')}</th>
-                <th style={{ textAlign: 'right', padding: '6px 12px', color: palette.purple.light, fontWeight: 600 }}>{t('pages.monitoring.queues.delayed')}</th>
+              <tr>
+                <th style={{ textAlign: 'left', padding: '6px 12px 6px 0' }}>{t('pages.monitoring.queues.queue')}</th>
+                <th style={{ textAlign: 'right', padding: '6px 12px' }}>{t('pages.monitoring.queues.waiting')}</th>
+                <th style={{ textAlign: 'right', padding: '6px 12px' }}>{t('pages.monitoring.queues.active')}</th>
+                <th style={{ textAlign: 'right', padding: '6px 12px' }}>{t('pages.monitoring.queues.completed')}</th>
+                <th style={{ textAlign: 'right', padding: '6px 12px' }}>{t('pages.monitoring.queues.failed')}</th>
+                <th style={{ textAlign: 'right', padding: '6px 12px' }}>{t('pages.monitoring.queues.delayed')}</th>
               </tr>
             </thead>
             <tbody>
@@ -290,7 +291,7 @@ export function MonitoringPage() {
                       {sq.durationMs.toFixed(0)}ms
                     </td>
                     <td style={{ padding: '6px 0', color: colors.slateLight, whiteSpace: 'nowrap' }}>
-                      {new Date(sq.timestamp).toLocaleTimeString()}
+                      {formatTime(sq.timestamp)}
                     </td>
                   </tr>
                 ))}
@@ -321,11 +322,11 @@ export function MonitoringPage() {
                 <div className="og-scroll-x">
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      <th style={{ textAlign: 'left', padding: '6px 0', color: colors.slate, fontWeight: 600 }}>{t('monitoring.opColumns.operation')}</th>
-                      <th style={{ textAlign: 'right', padding: '6px 12px', color: colors.slate, fontWeight: 600 }}>{t('monitoring.opColumns.duration')}</th>
-                      <th style={{ textAlign: 'right', padding: '6px 12px', color: colors.slate, fontWeight: 600 }}>{t('monitoring.opColumns.status')}</th>
-                      <th style={{ textAlign: 'right', padding: '6px 0', color: colors.slate, fontWeight: 600 }}>{t('monitoring.opColumns.time')}</th>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: '6px 0' }}>{t('monitoring.opColumns.operation')}</th>
+                      <th style={{ textAlign: 'right', padding: '6px 12px' }}>{t('monitoring.opColumns.duration')}</th>
+                      <th style={{ textAlign: 'right', padding: '6px 12px' }}>{t('monitoring.opColumns.status')}</th>
+                      <th style={{ textAlign: 'right', padding: '6px 0' }}>{t('monitoring.opColumns.time')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -346,7 +347,7 @@ export function MonitoringPage() {
                           </span>
                         </td>
                         <td style={{ textAlign: 'right', padding: '6px 0', color: colors.slateLight }}>
-                          {new Date(tr.timestamp).toLocaleTimeString()}
+                          {formatTime(tr.timestamp)}
                         </td>
                       </tr>
                     ))}

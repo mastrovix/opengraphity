@@ -135,6 +135,19 @@ export function cmdbSDL(): string {
   input CreateTeamInput {
     name: String!
     description: String
+    # Obbligatorio: un valore del vocabolario team_type (Dizionario).
+    type: String!
+    # Obbligatorio: 'internal' o 'external'. Ogni team dice da dove viene.
+    sourcing: String!
+  }
+
+  input UpdateTeamInput {
+    name: String
+    description: String
+    # Assente = non si tocca. Non si puo togliere: solo cambiare con un altro valore del vocabolario.
+    type: String
+    # Assente = non si tocca. Non si puo togliere: solo cambiare fra 'internal' ed 'external'.
+    sourcing: String
   }
   `
 }

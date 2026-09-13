@@ -55,7 +55,7 @@ export function UserDetailPage() {
   })
   const { data: allTeamsData } = useQuery<{ teams: { id: string; name: string; description: string | null; type: string | null }[] }>(GET_TEAMS)
 
-  const [updateTeams] = useMutationWithToast(UPDATE_USER_TEAMS, { successMessage: 'Team aggiornati', refetch })
+  const [updateTeams] = useMutationWithToast(UPDATE_USER_TEAMS, { successMessage: t('toast.user.teamsUpdated'), refetch })
 
   const user = data?.user
   const allTeams = allTeamsData?.teams ?? []

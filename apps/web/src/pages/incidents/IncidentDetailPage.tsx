@@ -426,7 +426,7 @@ export function IncidentDetailPage() {
           onClick={() => void setMajor({ variables: { id: incident.id, major: !incident.major } })}
           style={incident.major ? { color: 'var(--color-danger)', borderColor: 'var(--color-danger)' } : undefined}
         >
-          {incident.major ? 'Revoca Major' : 'Dichiara Major Incident'}
+          {t(incident.major ? 'pages.incidentDetail.revokeMajor' : 'pages.incidentDetail.declareMajor')}
         </Button>
         {/*
           La bozza KB si offre sui ticket CHIUSI o RISOLTI, riconosciuti dai
@@ -811,7 +811,7 @@ export function IncidentDetailPage() {
               type="button"
               disabled={transitioning || transitionNotes.trim().length < 10}
               onClick={() => {
-                if (transitionNotes.trim().length < 10) { setNotesError('Minimo 10 caratteri'); return }
+                if (transitionNotes.trim().length < 10) { setNotesError(t('forms.minChars', { count: 10 })); return }
                 if (!incident?.workflowInstance?.id) { toast.error(t('toast.incident.workflowInstanceMissing')); return }
                 if (!pendingTransition?.toStep) { toast.error(t('toast.incident.transitionNotSelected')); return }
                 void execTransition({

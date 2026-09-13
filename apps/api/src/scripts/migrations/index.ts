@@ -48,6 +48,8 @@ import { itilPriorityImpactUrgency } from './20260920_1720_itil_priority_impact_
 import { enumValueLabelsPerLingua } from './20260920_1730_enum_value_labels_per_lingua.js'
 import { enumValueLabelsIdentiche } from './20260920_1740_enum_value_labels_identiche.js'
 import { tenantDefaultLanguage } from './20260920_1750_tenant_default_language.js'
+import { teamTypeVocabolario } from './20260921_1000_team_type_vocabolario.js'
+import { teamTypeEtichette } from './20260921_1010_team_type_etichette.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -90,4 +92,6 @@ export const MIGRATIONS: readonly Migration[] = [
   enumValueLabelsPerLingua,
   enumValueLabelsIdentiche,
   tenantDefaultLanguage,
+  teamTypeVocabolario,
+  teamTypeEtichette,
 ]

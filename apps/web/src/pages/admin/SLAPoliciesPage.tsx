@@ -94,14 +94,6 @@ function fmtMinutes(m: number, t: TFunction): string {
   return d === Math.floor(d) ? u('days', d) : `${u('days', Math.floor(d))} ${fmtMinutes(m % 1440, t)}`
 }
 
-/** La frase «si applica a …» si compone di frammenti tradotti, non di pezzi cuciti. */
-function applicabilityText(p: SLAPolicy, t: TFunction): string {
-  const scope = scopeParts(p.priority, p.category, p.teamName, t)
-  return scope.length === 0
-    ? t('admin.sla.appliesToAll',   { entity: entityName(p.entityType) })
-    : t('admin.sla.appliesToSome',  { entity: entityName(p.entityType), scope: scope.join(', ') })
-}
-
 const entityName = (et: string) => lookupOrError(ENTITY_LABELS, et, 'ENTITY_LABELS', et)
 
 function scopeParts(priority: string | null, category: string | null, teamName: string | null, t: TFunction): string[] {
@@ -198,22 +190,32 @@ export function SLAPoliciesPage() {
   }
 
   const policyColumns: ColumnDef<SLAPolicy>[] = [
-    { key: 'name', label: t('common.name'), sortable: true, render: (_v, row) => (
-      <div>
-        <div style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{row.name}</div>
-        <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{applicabilityText(row, t)}</div>
-      </div>
+    /*
+      Nome e AMBITO in due colonne, invece di cinque. C'erano «Nome» (con sotto
+      in corsivo «Si applica a: Incident con categoria network»), «Ambito»,
+      «Categoria» e «Team»: la frase ripeteva le tre colonne accanto, e nove
+      colonne in una pagina di 700px spingevano fuori schermo proprio quella
+      con la matita per modificare. Filtrare per priorita, categoria o team
+      resta possibile dai filtri avanzati.
+    */
+    { key: 'name', label: t('common.name'), sortable: true, render: (v) => (
+      <span style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{String(v)}</span>
     ) },
-    { key: 'priority', label: t('admin.sla.scopeField'), sortable: true, render: (v) => v ? <Pill bg={palette.warning.tint} color={palette.warning.strong} radius={10}>{String(v)}</Pill> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{t('admin.sla.anyScope')}</span> },
-    { key: 'category', label: t('pages.serviceCatalogAdmin.category'), sortable: true, render: (v) => v ? <Pill bg={palette.info.tint} color={palette.info.text} radius={10}>{String(v)}</Pill> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{t('common.all')}</span> },
-    { key: 'teamName', label: 'Team', sortable: true, render: (v) => <span style={{ color: v ? 'var(--color-slate-dark)' : 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{v ? String(v) : t('common.all')}</span> },
+    { key: 'priority', label: t('admin.sla.appliesToColumn'), sortable: false, render: (_v, row) => {
+      const scope = scopeParts(row.priority, row.category, row.teamName, t)
+      return (
+        <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>
+          {scope.length === 0 ? t('common.all') : scope.join(', ')}
+        </span>
+      )
+    } },
     { key: 'responseMinutes', label: t('admin.sla.response'), sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v), t)}</span> },
     { key: 'resolveMinutes', label: t('admin.sla.resolution'), sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v), t)}</span> },
-    { key: 'businessHours', label: 'Business Hours', sortable: true, render: (v) => <Pill bg={v ? palette.success.tint : 'var(--color-border-light)'} color={v ? palette.success.text : 'var(--color-slate)'} radius={10}>{v ? t('common.yes') : t('common.no')}</Pill> },
+    { key: 'businessHours', label: t('admin.sla.businessHours'), sortable: true, width: '110px', render: (v) => <Pill bg={v ? palette.success.tint : 'var(--color-border-light)'} color={v ? palette.success.text : 'var(--color-slate)'} radius={10}>{v ? t('common.yes') : t('common.no')}</Pill> },
     { key: 'enabled', label: t('admin.rules.active'), sortable: true, render: (_v, row) => (
       <Toggle checked={row.enabled} onChange={() => void handleToggle(row)} label={t('admin.sla.toggleLabel', { name: row.name })} />
     ) },
-    { key: 'id', label: t('common.actions'), sortable: true, render: (_v, row) => (
+    { key: 'id', label: t('common.actions'), sortable: false, render: (_v, row) => (
       <div style={{ display: 'inline-flex', gap: 6 }}>
         <Button variant="ghost" title={t('common.edit')} aria-label={t('common.edit')} onClick={() => modal.openEdit(row)} style={{ padding: 4 }}><Pencil size={15} aria-hidden="true" color="var(--color-slate)" /></Button>
         <Button variant="ghost" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => void handleDelete(row)} style={{ padding: 4 }}><Trash2 size={15} aria-hidden="true" color="var(--color-danger)" /></Button>
@@ -265,6 +267,8 @@ export function SLAPoliciesPage() {
             sortDir={list.sortDir}
             columns={policyColumns}
             data={items}
+            // Tutta la riga apre la modifica: non dipende piu dal vedere la colonna delle azioni.
+            onRowClick={(row) => modal.openEdit(row)}
             loading={false}
             label={t('admin.sla.tableLabel', { entity: ENTITY_LABELS[entityType] })}
           />
@@ -353,7 +357,7 @@ export function SLAPoliciesPage() {
             {/* Preview */}
             <div style={{ background: palette.info.light, border: `1px solid ${palette.info.border}`, borderRadius: 8, padding: '10px 14px', fontSize: 'var(--font-size-body)', color: 'var(--accent-hover)' }}>
               <strong>{t('admin.sla.previewLabel')}</strong> {formPreview()} — {t('admin.sla.previewTimes', { response: fmtMinutes(form.responseMinutes, t), resolve: fmtMinutes(form.resolveMinutes, t) })}
-              {form.businessHours ? ' (orario lavorativo)' : ' (24/7)'}
+              {' '}{t(form.businessHours ? 'admin.sla.previewBusinessHours' : 'admin.sla.preview247')}
             </div>
           </div>
       </Modal>

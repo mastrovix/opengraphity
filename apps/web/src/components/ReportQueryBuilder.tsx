@@ -80,7 +80,7 @@ export function ReportQueryBuilder({ entities, nodes, nodeDataMap, onSelectRoot 
         {t('reportBuilder.whatToAnalyseHint')}
       </p>
       {renderGroup('ITSM', itsmEntities)}
-      {renderGroup('Organizzazione', orgEntities)}
+      {renderGroup(t('reportBuilder.groupOrganization'), orgEntities)}
       {renderGroup('CI', ciEntities)}
     </div>
   )

@@ -302,11 +302,11 @@ export function useCustomReports() {
 
   function handleDeleteTemplate(id: string) {
     setMenuOpenId(null)
-    void confirm({ title: 'Eliminare il report?', danger: true }).then((ok) => { if (ok) void deleteTemplate({ variables: { id } }) })
+    void confirm({ title: t('pages.reports.deleteReportTitle'), danger: true }).then((ok) => { if (ok) void deleteTemplate({ variables: { id } }) })
   }
 
   function handleRemoveSection(templateId: string, sectionId: string) {
-    void confirm({ title: 'Rimuovere la sezione?', danger: true }).then((ok) => { if (ok) void removeSection({ variables: { templateId, sectionId } }) })
+    void confirm({ title: t('pages.reports.removeSectionTitle'), danger: true }).then((ok) => { if (ok) void removeSection({ variables: { templateId, sectionId } }) })
   }
 
   function handleExecuteAndGoToDetail(tpl: ReportTemplate) {

@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { SyncSource, SyncRun } from './useSyncPage'
-import { formatMs, formatDate, StatusBadge, inputStyle } from './syncShared'
+import { formatMs, StatusBadge, inputStyle } from './syncShared'
 import { Select } from '@/components/ui/FormControls'
 import { colors, palette } from '@/lib/tokens'
+import { formatDateTime } from '@/lib/datetime'
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ export function SyncHistoryTab({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <StatusBadge status={r.status} />
                   <span style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{r.syncType}</span>
-                  <span style={{ fontSize: 'var(--font-size-body)', color: palette.neutral.textMuted }}>{formatDate(r.startedAt)}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: palette.neutral.textMuted }}>{formatDateTime(r.startedAt)}</span>
                   {r.durationMs != null && <span style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>({formatMs(r.durationMs)})</span>}
                 </div>
                 <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate, display: 'flex', gap: 12 }}>

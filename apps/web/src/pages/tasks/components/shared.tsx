@@ -13,9 +13,10 @@ export const labelStyle: React.CSSProperties = {
   color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6,
 }
 
-export const KIND_TITLE: Record<string, string> = {
-  assessment: 'Assessment', 'deploy-plan': 'Piano di Deploy',
-  validation: 'Validation', deployment: 'Deployment', review: 'Review',
+/** Chiavi del titolo del task per tipo: la lingua la decide il client. */
+export const KIND_TITLE_KEY: Record<string, string> = {
+  assessment: 'changeTasks.kind.assessment', 'deploy-plan': 'changeTasks.kind.deployPlan',
+  validation: 'changeTasks.kind.validation', deployment: 'changeTasks.kind.deployment', review: 'changeTasks.kind.review',
 }
 
 export function toLocal(iso: string): string {

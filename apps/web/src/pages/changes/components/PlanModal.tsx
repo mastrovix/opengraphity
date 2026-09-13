@@ -17,7 +17,7 @@ export function PlanModal({ steps, ciName, onClose }: {
         <div key={i} style={{ padding: '10px 0', borderBottom: i < steps.length - 1 ? '1px solid var(--color-border-light)' : 'none' }}>
           <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 4 }}>Step {i + 1}: {s.title}</div>
           <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>
-            Validazione: {fmtShort(s.validationWindow.start)} → {fmtShort(s.validationWindow.end)}
+            {t('changeTasks.validationWindow', { start: fmtShort(s.validationWindow.start), end: fmtShort(s.validationWindow.end) })}
           </div>
           <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>
             Deploy: {fmtShort(s.releaseWindow.start)} → {fmtShort(s.releaseWindow.end)}

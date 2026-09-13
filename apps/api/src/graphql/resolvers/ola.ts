@@ -5,6 +5,7 @@ import { withSession } from './ci-utils.js'
 import { requireRole } from '../../lib/requireRole.js'
 import { audit } from '../../lib/audit.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
+import type { TeamSourcing } from '../../lib/teamSourcing.js'
 
 type Props = Record<string, unknown>
 
@@ -185,46 +186,68 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
 interface OLAInput {
   type?: string; name?: string; description?: string; entityType?: string
   responseMinutes?: number; resolveMinutes?: number; businessHours?: boolean
-  partyType?: string; partyName?: string; teamId?: string; enabled?: boolean
+  partyType?: string; teamId?: string; enabled?: boolean
 }
 
 /**
- * CHI È IL RESPONSABILE: un RIFERIMENTO se è un team, una stringa se è un
- * fornitore.
+ * CHI È IL RESPONSABILE: sempre un TEAM, e il suo Sourcing deve tornare.
  *
- * Un team di questo cliente è un'entità che esiste (`:Team`), e il contratto
- * lo cita per `team_id`: il nome lo risolve la lettura (`teamName`), così
- * rinominare il team non lascia in giro una copia vecchia del suo nome. Il
- * campo era invece un testo libero — «Es. Network Ops» — e questo permetteva
- * tre cose tutte sbagliate: scrivere un team che non esiste, scriverne uno
- * esistente con un refuso (due responsabili dove ce n'è uno), e vedere il
- * nome vecchio per sempre dopo una rinomina.
+ * Com'era: per un OLA il responsabile era un team scelto (`team_id`), per un
+ * fornitore esterno un NOME scritto a mano (`party_name`). Da quando ogni team
+ * dice se è interno o esterno (`Team.sourcing`), anche il fornitore è un team —
+ * un team con Sourcing = External — e il nome scritto a mano non serve più:
+ * permetteva un fornitore con un refuso, due fornitori dove ce n'è uno, e un
+ * nome che non si aggiornava mai.
  *
- * Un FORNITORE esterno non è un'entità del prodotto — non sta fra i team — e
- * per lui il testo libero è la forma giusta: si continua a scrivere il nome.
+ *   partyType `team`     → un team con sourcing = `internal`
+ *   partyType `supplier` → un team con sourcing = `external`
  *
- * La regola sta qui e non solo nella pagina: una tendina è una comodità, il
- * rifiuto è la garanzia (questo repo tratta l'API come una strada documentata,
- * usata da script e integrazioni).
+ * Il contratto cita il team per `team_id`, e il nome lo risolve la lettura
+ * (`teamName`). Un team il cui Sourcing non torna è un rifiuto che dice quale
+ * serviva e quale ha: la tendina filtra già, ma la tendina è una comodità e il
+ * rifiuto è la garanzia (l'API è una strada documentata, usata da script e
+ * integrazioni). Un team che non dice ancora da dove viene (sourcing null) è
+ * rifiutato allo stesso modo: non si indovina.
  */
+const SOURCING_PER_RESPONSABILE: Readonly<Record<string, TeamSourcing>> = {
+  team:     'internal',
+  supplier: 'external',
+}
+
 async function assertResponsabile(
   session: Queryable, tenantId: string, partyType: string | null | undefined,
-  teamId: string | null | undefined, partyName: string | null | undefined,
+  teamId: string | null | undefined,
 ): Promise<void> {
-  if (partyType === 'supplier') {
-    if (!partyName?.trim()) {
-      throw new ValidationError('partyName is required when the responsible party is a supplier', { key: 'errors.ola.supplierNameRequired' })
-    }
-    return
+  if (partyType == null) return
+  const atteso = SOURCING_PER_RESPONSABILE[partyType]
+  if (!atteso) {
+    throw new ValidationError(`partyType must be one of: ${Object.keys(SOURCING_PER_RESPONSABILE).join(', ')}`,
+      { key: 'errors.ola.partyTypeOneOf', params: { allowed: Object.keys(SOURCING_PER_RESPONSABILE).join(', ') } })
   }
-  if (partyType !== 'team') return
   if (!teamId?.trim()) {
-    throw new ValidationError('teamId is required when the responsible party is an internal team', { key: 'errors.ola.teamRequired' })
+    throw new ValidationError(
+      `teamId is required: the responsible party is a team with sourcing = ${atteso}`,
+      { key: atteso === 'internal' ? 'errors.ola.teamRequired' : 'errors.ola.supplierTeamRequired' },
+    )
   }
-  const row = await runQueryOne<{ name: string }>(session, `
-    MATCH (t:Team {id: $teamId, tenant_id: $tenantId}) RETURN t.name AS name
+  const row = await runQueryOne<{ name: string; sourcing: string | null }>(session, `
+    MATCH (t:Team {id: $teamId, tenant_id: $tenantId}) RETURN t.name AS name, t.sourcing AS sourcing
   `, { teamId, tenantId })
   if (!row) throw new ValidationError(`Team ${teamId} does not exist in this tenant`, { key: 'errors.ola.teamUnknown', params: { team: teamId } })
+  if (row.sourcing !== atteso) {
+    throw new ValidationError(
+      `Team "${row.name}" has sourcing ${row.sourcing ?? 'not set'}, but this responsible party needs a team with sourcing = ${atteso}`,
+      {
+        key: 'errors.ola.teamWrongSourcing',
+        params: {
+          team: row.name,
+          expectedKey: `pages.teams.sourcing.${atteso}`,
+          actualKey: row.sourcing === 'internal' || row.sourcing === 'external'
+            ? `pages.teams.sourcing.${row.sourcing}` : 'pages.teams.sourcing.notSet',
+        },
+      },
+    )
+  }
 }
 
 export async function createOLAContract(_: unknown, args: { input: OLAInput }, ctx: GraphQLContext) {
@@ -239,7 +262,7 @@ export async function createOLAContract(_: unknown, args: { input: OLAInput }, c
 
   const id = uuidv4(); const now = new Date().toISOString()
   return withSession(async (session) => {
-    await assertResponsabile(session, ctx.tenantId, input.partyType ?? 'team', input.teamId, input.partyName)
+    await assertResponsabile(session, ctx.tenantId, input.partyType ?? 'team', input.teamId)
     const rows = await runQuery<{ props: Props; teamName: string | null }>(session, `
       CREATE (o:OLAContract {
         id: $id, tenant_id: $tenantId, type: $type, name: $name, description: $description,
@@ -255,10 +278,10 @@ export async function createOLAContract(_: unknown, args: { input: OLAInput }, c
       description: input.description ?? null, entityType: input.entityType,
       responseMinutes: input.responseMinutes, resolveMinutes: input.resolveMinutes,
       businessHours: input.businessHours ?? false, partyType: input.partyType ?? null,
-      // Se il responsabile è un team, il nome NON si copia qui: lo risolve
-      // `teamName` alla lettura, e una rinomina si vede subito.
-      partyName: input.partyType === 'team' ? null : (input.partyName ?? null),
-      teamId: input.partyType === 'team' ? (input.teamId ?? null) : null, now,
+      // Il responsabile è sempre un team, citato per id: nessun nome copiato
+      // sul contratto (lo risolve `teamName` alla lettura).
+      partyName: null,
+      teamId: input.teamId ?? null, now,
     })
     void audit(ctx, 'ola_contract.created', 'OLAContract', id)
     return mapOLA(rows[0]!.props, rows[0]!.teamName)
@@ -280,7 +303,6 @@ export async function updateOLAContract(_: unknown, args: { id: string; input: O
   if (input.resolveMinutes !== undefined)  sets['resolve_minutes']  = input.resolveMinutes
   if (input.businessHours !== undefined)   sets['business_hours']   = input.businessHours
   if (input.partyType !== undefined)       sets['party_type']       = input.partyType
-  if (input.partyName !== undefined)       sets['party_name']       = input.partyName
   if (input.teamId !== undefined)          sets['team_id']          = input.teamId
   if (input.enabled !== undefined)         sets['enabled']          = input.enabled
   if (Object.keys(sets).length === 0) throw new ValidationError('updateOLAContract: no field to update', { key: 'errors.nothingToUpdate' })
@@ -291,20 +313,19 @@ export async function updateOLAContract(_: unknown, args: { id: string; input: O
       una modifica può cambiare solo il tipo (team → fornitore) e lasciare
       fuori l'altra metà, e allora la metà che conta è quella già salvata.
     */
-    if (input.partyType !== undefined || input.teamId !== undefined || input.partyName !== undefined) {
-      const attuale = await runQueryOne<{ partyType: string | null; teamId: string | null; partyName: string | null }>(session, `
+    if (input.partyType !== undefined || input.teamId !== undefined) {
+      const attuale = await runQueryOne<{ partyType: string | null; teamId: string | null }>(session, `
         MATCH (o:OLAContract {id: $id, tenant_id: $tenantId})
-        RETURN o.party_type AS partyType, o.team_id AS teamId, o.party_name AS partyName
+        RETURN o.party_type AS partyType, o.team_id AS teamId
       `, { id: args.id, tenantId: ctx.tenantId })
       if (!attuale) throw new NotFoundError('OLAContract', args.id)
       const partyType = input.partyType ?? attuale.partyType
+      // Cambiare il TIPO di responsabile senza cambiare il team non basta: il
+      // team di prima ha il Sourcing sbagliato, e il controllo lo dice.
       const teamId    = input.teamId    ?? attuale.teamId
-      const partyName = input.partyName ?? attuale.partyName
-      await assertResponsabile(session, ctx.tenantId, partyType, teamId, partyName)
-      // Le due forme non convivono: passando a team si scorda il nome scritto
-      // a mano, passando a fornitore si scorda il riferimento al team.
-      if (partyType === 'team')     { sets['party_name'] = null; sets['team_id'] = teamId }
-      if (partyType === 'supplier') { sets['team_id'] = null; sets['party_name'] = partyName }
+      await assertResponsabile(session, ctx.tenantId, partyType, teamId)
+      sets['team_id'] = teamId
+      sets['party_name'] = null
     }
     const rows = await runQuery<{ props: Props; teamName: string | null }>(session, `
       MATCH (o:OLAContract {id: $id, tenant_id: $tenantId})

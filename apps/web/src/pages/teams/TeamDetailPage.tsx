@@ -14,7 +14,12 @@ import { SimpleTable, type SimpleColumn } from '@/components/ui/SimpleTable'
 import { EmptyState } from '@/components/EmptyState'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EnvBadge } from '@/components/Badges'
+import { Select } from '@/components/ui/FormControls'
 import { GET_TEAM } from '@/graphql/queries'
+import { UPDATE_TEAM } from '@/graphql/mutations'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { TEAM_TYPE_VOCABULARY } from '@/lib/teamVocabularies'
+import { TEAM_SOURCINGS, teamSourcingKey } from '@/lib/teamSourcing'
 import { SET_TEAM_MANAGER, REMOVE_TEAM_MANAGER, SET_CHANGE_MANAGER_TEAM } from '@/graphql/mutations'
 import { ciPath } from '@/lib/ciPath'
 import { toast } from 'sonner'
@@ -49,6 +54,7 @@ interface Team {
   name:         string
   description:  string | null
   type:         string | null
+  sourcing:     string | null
   createdAt:    string
   isChangeManager: boolean | null
   manager:      ManagerRef | null
@@ -57,7 +63,7 @@ interface Team {
   supportedCIs: CIRef[]
 }
 
-function TypeBadge({ type }: { type: string | null }) {
+function TypeBadge({ type, label }: { type: string | null; label?: string | null }) {
   if (!type) return <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>—</span>
   const styles: Record<string, { bg: string; color: string }> = {
     owner:   { bg: 'var(--color-info-bg)', color: colors.brand },
@@ -66,7 +72,7 @@ function TypeBadge({ type }: { type: string | null }) {
   const s = lookupStyle(styles, type, 'TEAM_TYPE_STYLES')
   return (
     <Pill bg={s.bg} color={s.color} radius={4} style={{ fontSize: 'var(--font-size-body)', textTransform: 'capitalize' }}>
-      {type}
+      {label ?? type}
     </Pill>
   )
 }
@@ -106,6 +112,17 @@ export function TeamDetailPage() {
     fetchPolicy: 'cache-and-network',
     skip:        !id,
   })
+  // Il tipo e un vocabolario del cliente: qui non c'e nessuna lista.
+  const { entriesOf, labelOf } = useDomainVocabularies()
+  const tipiTeam = entriesOf(TEAM_TYPE_VOCABULARY) ?? []
+  const [updateTeam, { loading: savingType }] = useMutation(UPDATE_TEAM, {
+    // La diagnostica elenca i team senza interno/esterno: dopo una scrittura
+    // va riletta, altrimenti l'avviso in cima continua a contare il team appena sistemato.
+    refetchQueries: ['GetConfigurationIssues'],
+    onCompleted: () => { toast.success(t('toast.team.updated')); refetch() },
+    onError: (err) => toast.error(err.message),
+  })
+
   const [setManager] = useMutation(SET_TEAM_MANAGER, {
     onCompleted: () => { toast.success(t('toast.team.managerUpdated')); refetch(); setShowManagerModal(false) },
     onError: (err) => toast.error(err.message),
@@ -161,7 +178,57 @@ export function TeamDetailPage() {
             <DetailField label="ID" value={team.id} mono />
             <DetailField label={t('pages.teams.name')} value={team.name} />
             <DetailField label={t('pages.userDetail.tenantId')} value={team.tenantId} mono />
-            <DetailField label={t('pages.teams.type')} value={<TypeBadge type={team.type} />} />
+            <DetailField label={t('pages.teams.sourcing.label')} value={
+              /*
+                Si CAMBIA ma non si toglie: l'opzione «non indicato» compare
+                solo finche il team non l'ha (i team di prima del campo), e
+                non si puo riselezionare — l'API la rifiuterebbe.
+              */
+              <Select
+                value={team.sourcing ?? ''}
+                disabled={savingType}
+                aria-label={t('pages.teams.sourcing.label')}
+                onChange={(e) => { if (e.target.value) void updateTeam({ variables: { id: team.id, input: { sourcing: e.target.value } } }) }}
+                style={{ maxWidth: 220 }}
+              >
+                {!team.sourcing && <option value="" disabled>{t('pages.teams.sourcing.notSet')}</option>}
+                {TEAM_SOURCINGS.map((v) => <option key={v} value={v}>{t(teamSourcingKey(v))}</option>)}
+              </Select>
+            } />
+            <DetailField label={t('pages.teams.type')} value={
+              /*
+                Il tipo si CAMBIA da qui. Prima era in sola lettura su ogni
+                cammino: una pastiglia e nessuna scrittura, quindi i team
+                creati dall'interfaccia restavano senza tipo per sempre.
+                Senza vocabolario (nessun valore nel Dizionario) si mostra la
+                pastiglia e si dice perche' non c'e' niente da scegliere,
+                invece di una tendina vuota.
+              */
+              tipiTeam.length === 0
+                ? (
+                  <div>
+                    <TypeBadge type={team.type} label={team.type ? labelOf(TEAM_TYPE_VOCABULARY, team.type) : null} />
+                    <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
+                      {t('pages.teams.noTypeVocabulary')}
+                    </p>
+                  </div>
+                )
+                : (
+                  <Select
+                    value={team.type ?? ''}
+                    disabled={savingType}
+                    aria-label={t('pages.teams.type')}
+                    onChange={(e) => { if (e.target.value) void updateTeam({ variables: { id: team.id, input: { type: e.target.value } } }) }}
+                    style={{ maxWidth: 220 }}
+                  >
+                    {/* Si cambia ma non si toglie: «nessun tipo» c'e solo per i team di prima, e non si riseleziona. */}
+                    {!team.type && <option value="" disabled>{t('pages.teams.noType')}</option>}
+                    {tipiTeam.map((v) => (
+                      <option key={v.value} value={v.value}>{v.label ?? v.value}</option>
+                    ))}
+                  </Select>
+                )
+            } />
             <DetailField label={t('pages.teamDetail.manager')} value={
               team.manager ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

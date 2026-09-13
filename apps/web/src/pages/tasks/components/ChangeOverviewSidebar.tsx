@@ -41,9 +41,11 @@ function simpleDotState(t: { status: string; result?: string | null } | null): D
 }
 
 // Ordine dei 6 pallini di stato per CI (deve combaciare con CIDots).
-const CI_PHASE_LABELS = ['Functional', 'Technical', 'Piano', 'Validation', 'Deploy', 'Review'] as const
+/** Chiavi delle sei fasi, nell'ordine dei pallini. */
+const CI_PHASE_KEYS = ['changeTasks.phaseName.functional', 'changeTasks.phaseName.technical', 'changeTasks.phaseName.plan', 'changeTasks.phaseName.validation', 'changeTasks.phaseName.deploy', 'changeTasks.phaseName.review'] as const
 
 function CIDots({ a }: { a: AffectedCI }) {
+  const { t } = useTranslation()
   const states: DotState[] = [
     assessDotState(a.assessmentOwner),
     assessDotState(a.assessmentSupport),
@@ -55,7 +57,7 @@ function CIDots({ a }: { a: AffectedCI }) {
   return (
     <div style={{ display: 'flex', gap: 3 }}>
       {states.map((state, i) => (
-        <span key={i} title={CI_PHASE_LABELS[i]} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: DOT_COLOR[state], display: 'inline-block' }} />
+        <span key={i} title={t(CI_PHASE_KEYS[i]!)} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: DOT_COLOR[state], display: 'inline-block' }} />
       ))}
     </div>
   )
@@ -74,7 +76,7 @@ function CIDotsLegend() {
   return (
     <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12, lineHeight: 1.6 }}>
       <div style={{ marginBottom: 4 }}>
-        Pallini (in ordine): {CI_PHASE_LABELS.map((l, i) => `${i + 1} ${l}`).join(' · ')}
+        {t('changeTasks.dotsLegend', { phases: CI_PHASE_KEYS.map((k, i) => `${i + 1} ${t(k)}`).join(' · ') })}
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', alignItems: 'center' }}>
         {colorItems.map((c) => (
@@ -155,7 +157,7 @@ export function ChangeOverviewSidebar({
             {ciAffected && ciAffected.assessmentOwner?.status === TASK_STATUS.COMPLETED && ciAffected.assessmentSupport?.status === TASK_STATUS.COMPLETED && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', marginBottom: 6, fontSize: 'var(--font-size-label)' }}>
-                  Risposte Assessment · {currentCIName}
+                  {t('changeTasks.assessmentAnswers', { ci: currentCIName })}
                 </div>
                 {[ciAffected.assessmentOwner, ciAffected.assessmentSupport].map((at, i) => (
                   <div key={i} style={{ marginBottom: 6 }}>

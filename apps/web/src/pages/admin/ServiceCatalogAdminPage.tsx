@@ -75,7 +75,7 @@ export function ServiceCatalogAdminPage() {
   return (
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <PageTitle icon={<ShoppingCart size={20} />}>{t('sidebar.serviceCatalog')}</PageTitle>
+        <PageTitle icon={<ShoppingCart size={22} color="var(--color-icon-accent)" />}>{t('sidebar.serviceCatalog')}</PageTitle>
         <Button icon={<Plus size={15} aria-hidden="true" />} onClick={modal.openCreate}>{t('pages.serviceCatalogAdmin.newItem')}</Button>
       </div>
 
@@ -87,16 +87,16 @@ export function ServiceCatalogAdminPage() {
       )}
 
       {items.length > 0 && (
-        <div style={{ border: '1px solid var(--color-border-light)', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ border: '1px solid var(--color-border-light)', overflow: 'hidden' }}>
           <div className="og-scroll-x">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
             <thead>
-              <tr style={{ background: 'var(--surface-1)', textAlign: 'left', color: 'var(--color-slate-light)' }}>
-                <th style={{ padding: '10px 14px', fontWeight: 600 }}>{t('common.name')}</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600 }}>{t('pages.serviceCatalogAdmin.category')}</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600 }}>{t('pages.changeDetail.approval')}</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600 }}>{t('common.status')}</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600, textAlign: 'right' }}>{t('common.actions')}</th>
+              <tr style={{ textAlign: 'left' }}>
+                <th style={{ padding: '10px 14px' }}>{t('common.name')}</th>
+                <th style={{ padding: '10px 14px' }}>{t('pages.serviceCatalogAdmin.category')}</th>
+                <th style={{ padding: '10px 14px' }}>{t('pages.changeDetail.approval')}</th>
+                <th style={{ padding: '10px 14px' }}>{t('common.status')}</th>
+                <th style={{ padding: '10px 14px', textAlign: 'right' }}>{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>

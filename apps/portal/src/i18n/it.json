@@ -21,7 +21,8 @@
     "needHelp": "Hai bisogno di assistenza?",
     "open": "Aperti",
     "inProgress": "In corso",
-    "total": "Totale"
+    "total": "Totale",
+    "seeAll": "Tutti →"
   },
   "ticket": {
     "new": "Nuovo ticket",
@@ -112,7 +113,8 @@
     "views": "visualizzazioni",
     "breadcrumb": "Knowledge Base",
     "notFound": "Articolo non trovato",
-    "searchButton": "Cerca"
+    "searchButton": "Cerca",
+    "thanksFeedback": "Grazie per il tuo feedback!"
   },
   "common": {
     "loading": "Caricamento...",
@@ -147,5 +149,8 @@
     "sessionExpired": "Sessione scaduta — nuovo accesso necessario",
     "authRestored": "Connessione al server di autenticazione ripristinata",
     "authUnreachable": "Server di autenticazione non raggiungibile — nuovo tentativo tra {{seconds}}s"
+  },
+  "auth": {
+    "bootstrapError": "Errore di autenticazione"
   }
 }

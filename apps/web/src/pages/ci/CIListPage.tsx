@@ -26,6 +26,7 @@ import { toPascalCase, pluralize } from '@/lib/stringUtils'
 import { formatDate } from '@/lib/datetime'
 import { ciTypeLabelKey, toEnumOptions, useCIBaseEnums } from '@/lib/ciEnums'
 import { palette } from '@/lib/tokens'
+import { Plus } from 'lucide-react'
 
 const PAGE_SIZE = 50
 
@@ -194,7 +195,7 @@ export function CIListPage() {
           </p>
         }
         actions={
-          <Button onClick={() => setShowCreate(true)}>
+          <Button icon={<Plus size={15} aria-hidden="true" />} onClick={() => setShowCreate(true)}>
             {newLabel}
           </Button>
         }

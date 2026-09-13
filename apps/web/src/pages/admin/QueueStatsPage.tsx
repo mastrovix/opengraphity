@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { GET_QUEUE_STATS, GET_QUEUE_JOBS } from '@/graphql/queries'
 import { RETRY_QUEUE_JOB } from '@/graphql/mutations'
 import { alpha, colors, fontSize, fontWeight, layoutPalette, palette } from '@/lib/tokens'
+import { formatDateTime } from '@/lib/datetime'
 
 interface QueueJobCounts {
   waiting: number
@@ -64,7 +65,7 @@ const GROUP_ORDER = ['events', 'services', 'itsm', 'platform'] as const
 
 function formatTs(iso: string | null): string {
   if (!iso) return '—'
-  return new Date(iso).toLocaleString()
+  return formatDateTime(iso)
 }
 
 /** Raggruppa le code per `group`, nell'ordine di GROUP_ORDER e poi per nome per i gruppi sconosciuti. */
@@ -323,7 +324,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
                   </span>
                 )}
                 <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
-                  {new Date(job.timestamp).toLocaleString()}
+                  {formatDateTime(job.timestamp)}
                 </span>
               </button>
 

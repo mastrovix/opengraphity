@@ -73,7 +73,7 @@ export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
 
 export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   // utenti e team
-  'createUser', 'updateUserTeams', 'createTeam', 'setTeamManager', 'removeTeamManager', 'setChangeManagerTeam',
+  'createUser', 'updateUserTeams', 'createTeam', 'updateTeam', 'setTeamManager', 'removeTeamManager', 'setChangeManagerTeam',
   // la lingua predefinita del cliente (configurazione dell'azienda, non
   // preferenza di una persona: quella sta nel Profilo e non passa da qui)
   'setTenantDefaultLanguage',

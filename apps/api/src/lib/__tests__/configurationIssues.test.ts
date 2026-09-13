@@ -46,6 +46,9 @@ vi.mock('../tenantLanguage.js', () => ({
   LINGUA_DI_ULTIMA_ISTANZA: 'en',
 }))
 vi.mock('../provisionTenantData.js', () => ({ tenantProvisioningGaps: vi.fn(async () => gaps) }))
+/** I team senza interno/esterno: di default nessuno, cosi i test degli altri controlli non li vedono. */
+let senzaProvenienza: { count: number; names: string[] } = { count: 0, names: [] }
+vi.mock('../teamSourcing.js', () => ({ teamsWithoutSourcing: vi.fn(async () => senzaProvenienza) }))
 vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: vi.fn(async () => policy) }))
 vi.mock('../domainMatrix.js', async (importOriginal) => {
   const orig = await importOriginal<typeof import('../domainMatrix.js')>()
@@ -220,6 +223,23 @@ describe('configurationIssues', () => {
   it('con la lingua configurata, nessun avviso: e una scelta, non un ripiego', async () => {
     linguaDelCliente = 'it'
     expect((await configurationIssues('c-one')).find((i) => i.kind === 'default_language_not_set')).toBeUndefined()
+  })
+
+  /**
+   * Interno/esterno e un campo nuovo: i team che esistevano prima non lo
+   * hanno, e la migrazione non lo indovina. Si dice qui, con i nomi.
+   */
+  it('team senza interno/esterno → avviso con quanti sono, i primi nomi e quanti restano fuori elenco', async () => {
+    senzaProvenienza = { count: 12, names: ['Rete', 'Server'] }
+    const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'teams_without_sourcing')
+    expect(issue).toMatchObject({ severity: 'warning', where: '/teams' })
+    expect(par(issue)).toMatchObject({ count: '12', teams: 'Rete, Server', others: '10' })
+    senzaProvenienza = { count: 0, names: [] }
+  })
+
+  it('con tutti i team indicati, nessun avviso', async () => {
+    senzaProvenienza = { count: 0, names: [] }
+    expect((await configurationIssues('c-one')).find((i) => i.kind === 'teams_without_sourcing')).toBeUndefined()
   })
 
   it('un controllo che fallisce diventa una voce, e non nasconde gli altri', async () => {

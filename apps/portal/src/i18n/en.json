@@ -21,7 +21,8 @@
     "needHelp": "Need help?",
     "open": "Open",
     "inProgress": "In progress",
-    "total": "Total"
+    "total": "Total",
+    "seeAll": "All →"
   },
   "ticket": {
     "new": "New ticket",
@@ -112,7 +113,8 @@
     "views": "views",
     "breadcrumb": "Knowledge Base",
     "notFound": "Article not found",
-    "searchButton": "Search"
+    "searchButton": "Search",
+    "thanksFeedback": "Thanks for your feedback!"
   },
   "common": {
     "loading": "Loading...",
@@ -147,5 +149,8 @@
     "sessionExpired": "Session expired — please sign in again",
     "authRestored": "Connection to the authentication server restored",
     "authUnreachable": "Authentication server unreachable — retrying in {{seconds}}s"
+  },
+  "auth": {
+    "bootstrapError": "Authentication error"
   }
 }

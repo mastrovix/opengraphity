@@ -335,7 +335,7 @@ export function ProblemDetailPage() {
           disabled={deleting}
           icon={<Trash2 size={13} />}
           onClick={() => {
-            void confirm({ title: `Eliminare definitivamente il problem ${problem.number || ''}?`, body: t('confirm.irreversible'), danger: true }).then((ok) => {
+            void confirm({ title: t('pages.problemDetail.deleteTitle', { number: problem.number || '' }), body: t('confirm.irreversible'), danger: true }).then((ok) => {
               if (ok) void deleteProblem({ variables: { id: problem.id } })
             })
           }}
@@ -577,7 +577,7 @@ export function ProblemDetailPage() {
         <Modal
           open
           onClose={() => { setIsTransitionDialogOpen(false); setTransitionNotes('') }}
-          title={`Transizione → ${pendingTransition.toStep.replace(/_/g, ' ')}`}
+          title={t('pages.incidents.transitionTo', { step: pendingTransition.toStep.replace(/_/g, ' ') })}
           footer={
             <>
               <Button

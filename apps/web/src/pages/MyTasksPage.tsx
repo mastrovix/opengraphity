@@ -14,6 +14,8 @@ import { GET_MY_TASKS } from '@/graphql/queries'
 import { useMe } from '@/hooks/useMe'
 import { ASSIGN_ASSESSMENT_TASK_TO_USER } from '@/graphql/mutations'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '@/lib/taskStatus'
+import { formatDate } from '@/lib/datetime'
+import type { TFunction } from 'i18next'
 
 interface MyTask {
   id:         string
@@ -35,12 +37,13 @@ interface MyTasksResult {
   unassigned:   MyTask[]
 }
 
-const KIND_LABEL: Record<string, string> = {
-  assessment:    'Assessment',
-  'deploy-plan': 'Piano Deploy',
-  validation:    'Validation',
-  deployment:    'Deployment',
-  review:        'Review',
+/** Chiavi, non etichette: la lingua la decide il client. */
+const KIND_LABEL_KEY: Record<string, string> = {
+  assessment:    'changeTasks.kind.assessment',
+  'deploy-plan': 'changeTasks.kind.deployPlan',
+  validation:    'changeTasks.kind.validation',
+  deployment:    'changeTasks.kind.deployment',
+  review:        'changeTasks.kind.review',
 }
 
 const KIND_COLOR: Record<string, { bg: string; color: string }> = {
@@ -51,22 +54,22 @@ const KIND_COLOR: Record<string, { bg: string; color: string }> = {
   review:        { bg: palette.info.tint, color: palette.info.text },
 }
 
-const STATE_COLOR: Record<string, { bg: string; color: string; label: string }> = {
-  pending:       { bg: colors.slateBg, color: 'var(--color-slate-light)', label: 'Da fare' },
-  'in-progress': { bg: palette.warning.tint, color: palette.warning.text,                  label: 'In corso' },
-  in_progress:   { bg: palette.warning.tint, color: palette.warning.text,                  label: 'In corso' },
+const STATE_COLOR: Record<string, { bg: string; color: string; labelKey: string }> = {
+  pending:       { bg: colors.slateBg, color: 'var(--color-slate-light)', labelKey: 'changeTasks.state.todo' },
+  'in-progress': { bg: palette.warning.tint, color: palette.warning.text, labelKey: 'changeTasks.dot.inProgress' },
+  in_progress:   { bg: palette.warning.tint, color: palette.warning.text, labelKey: 'changeTasks.dot.inProgress' },
 }
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—'
-  try { return new Date(iso).toLocaleDateString() } catch { return iso }
+  return formatDate(iso)
 }
 
-function kindWithRole(t: MyTask): string {
-  if (t.kind === 'assessment') {
-    return t.role === ASSESSMENT_ROLE.OWNER ? 'Assessment Functional' : 'Assessment Technical'
+function kindWithRole(task: MyTask, t: TFunction): string {
+  if (task.kind === 'assessment') {
+    return t(task.role === ASSESSMENT_ROLE.OWNER ? 'changeTasks.kind.assessmentFunctional' : 'changeTasks.kind.assessmentTechnical')
   }
-  return KIND_LABEL[t.kind] ?? t.kind
+  return KIND_LABEL_KEY[task.kind] ? t(KIND_LABEL_KEY[task.kind]!) : task.kind
 }
 
 interface TaskRowProps {
@@ -106,7 +109,7 @@ function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
           cursor:          'pointer',
         }}
       >
-        {kindWithRole(task)}
+        {kindWithRole(task, t)}
       </Link>
       <Link
         to={`/tasks/${task.id}`}
@@ -124,7 +127,7 @@ function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
         </div>
       </Link>
       <Pill bg={stateColor.bg} color={stateColor.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'uppercase', flexShrink: 0 }}>
-        {stateColor.label}
+        {t(stateColor.labelKey)}
       </Pill>
       {onClaim && (
         <button

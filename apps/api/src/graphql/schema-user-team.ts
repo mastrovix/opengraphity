@@ -22,6 +22,8 @@ export function userTeamSDL(): string {
     name: String!
     description: String
     type: String
+    # 'internal' | 'external'. null = team creato prima che il campo esistesse: la diagnostica lo segnala.
+    sourcing: String
     createdAt: String!
     manager: User
     members: [User!]!

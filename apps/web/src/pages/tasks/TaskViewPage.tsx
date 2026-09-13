@@ -50,7 +50,7 @@ import { ReviewTaskForm } from './components/ReviewTaskForm'
 import { ChangeOverviewSidebar } from './components/ChangeOverviewSidebar'
 import { ReopenModal } from './components/ReopenModal'
 import { TeamGatePanel } from './components/TeamGatePanel'
-import { KIND_TITLE, inputStyle } from './components/shared'
+import { KIND_TITLE_KEY, inputStyle } from './components/shared'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { colors, palette } from '@/lib/tokens'
 
@@ -165,7 +165,7 @@ export function TaskViewPage() {
     : false
   )
 
-  const taskTitle = KIND_TITLE[task.kind] ?? task.kind
+  const taskTitle = KIND_TITLE_KEY[task.kind] ? t(KIND_TITLE_KEY[task.kind]!) : task.kind
 
   const isTaskCompleted = (() => {
     if (task.kind === 'assessment') return assessTask?.status === TASK_STATUS.COMPLETED

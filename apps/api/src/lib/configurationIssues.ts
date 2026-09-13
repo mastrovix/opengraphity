@@ -47,6 +47,7 @@ import { getEventPolicy } from '../services/events/policy.js'
 import { logger } from './logger.js'
 import { LINGUE, parseValueLabels, vocabularyCarriesLabels } from './enumValueLabels.js'
 import { tenantDefaultLanguage, LINGUA_DI_ULTIMA_ISTANZA } from './tenantLanguage.js'
+import { teamsWithoutSourcing } from './teamSourcing.js'
 
 const log = logger.child({ module: 'configuration-issues' })
 
@@ -63,6 +64,7 @@ export type ConfigurationIssueKind =
   | 'value_labels_missing'
   | 'value_labels_partial'
   | 'default_language_not_set'
+  | 'teams_without_sourcing'
 
 export interface ConfigurationIssue {
   /** La CHIAVE del problema: il client la risolve nella sua lingua. */
@@ -85,7 +87,7 @@ export async function configurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkLanguage]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkLanguage, checkTeamSourcing]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -280,6 +282,28 @@ async function checkLanguage(tenantId: string): Promise<ConfigurationIssue[]> {
   return [{
     kind: 'default_language_not_set', severity: 'warning', where: '/settings/organization',
     params: { fallback: LINGUA_DI_ULTIMA_ISTANZA, available: LINGUE.join(', ') },
+  }]
+}
+
+/**
+ * Team che non dicono se sono interni o esterni.
+ *
+ * Sono quelli nati prima del campo: la migrazione non lo indovina (un team
+ * «Rete» può essere il tuo o quello del fornitore), quindi resta vuoto e si
+ * dice qui, con i nomi, finché qualcuno non lo sceglie dalla pagina del team.
+ * I team nuovi non possono finire in questa lista: l'API pretende il valore.
+ */
+async function checkTeamSourcing(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const { count, names } = await teamsWithoutSourcing(session, tenantId)
+  if (count === 0) return []
+  return [{
+    kind: 'teams_without_sourcing', severity: 'warning', where: '/teams',
+    params: {
+      count: String(count),
+      teams: names.join(', '),
+      // Quanti nomi NON sono in elenco: la frase lo dice invece di troncare muta.
+      others: String(Math.max(0, count - names.length)),
+    },
   }]
 }
 

@@ -8,7 +8,7 @@ import { UsersRound, Plus } from 'lucide-react'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
-import { Input, Textarea, FieldLabel } from '@/components/ui/FormControls'
+import { Input, Textarea, FieldLabel, Select } from '@/components/ui/FormControls'
 import { CREATE_TEAM } from '@/graphql/mutations'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { EmptyState } from '@/components/EmptyState'
@@ -21,16 +21,21 @@ import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { exportToCsv } from '@/lib/csvExport'
 import { useListQueryState } from '@/hooks/useListQueryState'
+import { formatDate } from '@/lib/datetime'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { TEAM_TYPE_VOCABULARY } from '@/lib/teamVocabularies'
+import { TEAM_SOURCINGS, teamSourcingKey, type TeamSourcing } from '@/lib/teamSourcing'
 
 interface Team {
   id:          string
   name:        string
   description: string | null
   type:        string | null
+  sourcing:    string | null
   createdAt:   string
 }
 
-function TypeBadge({ type }: { type: string | null }) {
+function TypeBadge({ type, label }: { type: string | null; label?: string | null }) {
   if (!type) return <span style={{ color: 'var(--color-slate-light)' }}>—</span>
   const styles: Record<string, { bg: string; color: string }> = {
     owner:   { bg: 'var(--color-info-bg)', color: colors.brand },
@@ -39,20 +44,24 @@ function TypeBadge({ type }: { type: string | null }) {
   const s = lookupStyle(styles, type, 'TEAM_TYPE_STYLES')
   return (
     <Pill bg={s.bg} color={s.color} radius={4} style={{ fontSize: 'inherit', textTransform: 'capitalize' }}>
-      {type}
+      {label ?? type}
     </Pill>
   )
 }
 
 export function TeamsPage() {
   const { t } = useTranslation()
+  // Il tipo di team e un VOCABOLARIO del cliente (Dizionario → Team Type):
+  // qui non c'e nessuna lista di valori, ne per il filtro ne per la tendina.
+  const { entriesOf, labelOf } = useDomainVocabularies()
+  const tipiTeam = entriesOf(TEAM_TYPE_VOCABULARY) ?? []
 
   const FILTER_FIELDS: FieldConfig[] = [
     { key: 'name',      label: t('pages.teams.name'),      type: 'text' },
-    { key: 'type',      label: t('pages.teams.type'),      type: 'enum', options: [
-      { value: 'owner',   label: 'Owner'   },
-      { value: 'support', label: 'Support' },
-    ]},
+    { key: 'type',      label: t('pages.teams.type'),      type: 'enum',
+      options: tipiTeam.map((v) => ({ value: v.value, label: v.label ?? v.value })) },
+    { key: 'sourcing',  label: t('pages.teams.sourcing.label'), type: 'enum',
+      options: TEAM_SOURCINGS.map((v) => ({ value: v, label: t(teamSourcingKey(v)) })) },
     { key: 'createdAt', label: t('pages.teams.createdAt'), type: 'date' },
   ]
 
@@ -64,14 +73,23 @@ export function TeamsPage() {
       label:  t('pages.teams.type'),
       width:  '120px',
       sortable: true,
-      render: (v) => <TypeBadge type={v as string | null} />,
+      render: (v) => <TypeBadge type={v as string | null} label={v ? labelOf(TEAM_TYPE_VOCABULARY, v as string) : null} />,
+    },
+    {
+      key:    'sourcing',
+      label:  t('pages.teams.sourcing.label'),
+      width:  '150px',
+      sortable: true,
+      render: (v) => v
+        ? t(teamSourcingKey(v as string))
+        : <span style={{ color: 'var(--color-slate-light)' }}>{t('pages.teams.sourcing.notSet')}</span>,
     },
     {
       key:    'createdAt',
       label:  t('pages.teams.createdAt'),
       width:  '120px',
       sortable: true,
-      render: (v) => v ? new Date(v as string).toLocaleDateString() : '—',
+      render: (v) => formatDate(v as string),
     },
   ]
   const navigate = useNavigate()
@@ -84,14 +102,17 @@ export function TeamsPage() {
   })
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [form, setForm] = useState({ name: '', description: '' })
+  const [form, setForm] = useState<{ name: string; description: string; type: string; sourcing: TeamSourcing | '' }>({ name: '', description: '', type: '', sourcing: '' })
   const [createTeam, { loading: creating }] = useMutation(CREATE_TEAM, {
-    onCompleted: async () => { setCreateOpen(false); setForm({ name: '', description: '' }); await refetch(); toast.success(t('toast.team.created')) },
+    // La diagnostica elenca i team senza interno/esterno: dopo una scrittura
+    // va riletta, altrimenti l'avviso in cima continua a contare il team appena sistemato.
+    refetchQueries: ['GetConfigurationIssues'],
+    onCompleted: async () => { setCreateOpen(false); setForm({ name: '', description: '', type: '', sourcing: '' }); await refetch(); toast.success(t('toast.team.created')) },
     onError: (e) => toast.error(e.message),
   })
   const submitTeam = (e: React.FormEvent) => {
     e.preventDefault()
-    void createTeam({ variables: { input: { name: form.name.trim(), description: form.description.trim() || null } } })
+    void createTeam({ variables: { input: { name: form.name.trim(), description: form.description.trim() || null, type: form.type, sourcing: form.sourcing } } })
   }
 
   const teams = data?.teams ?? []
@@ -123,7 +144,7 @@ export function TeamsPage() {
         footer={
           <>
             <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
-            <Button type="submit" disabled={creating || form.name.trim().length === 0}>{creating ? t('common.creating') : t('common.create')}</Button>
+            <Button type="submit" disabled={creating || form.name.trim().length === 0 || form.sourcing === '' || form.type === ''}>{creating ? t('common.creating') : t('common.create')}</Button>
           </>
         }
       >
@@ -137,6 +158,43 @@ export function TeamsPage() {
             autoFocus
             placeholder={t('pages.teams.namePlaceholder')}
           />
+        </div>
+        {/*
+          Interno o esterno: OBBLIGATORIO, e senza una scelta preselezionata —
+          «Crea» resta spento finche non si sceglie. Preselezionare «Interno»
+          sarebbe decidere al posto dell'admin proprio l'informazione che
+          questo campo esiste per raccogliere.
+        */}
+        <fieldset style={{ border: 'none', padding: 0, margin: '0 0 14px' }}>
+          <legend style={{ padding: 0 }}><FieldLabel>{t('pages.teams.sourcing.label')} *</FieldLabel></legend>
+          <div style={{ display: 'flex', gap: 16 }}>
+            {TEAM_SOURCINGS.map((v) => (
+              <label key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', cursor: 'pointer' }}>
+                <input type="radio" name="team-sourcing" value={v} required
+                  checked={form.sourcing === v}
+                  onChange={() => setForm({ ...form, sourcing: v })} />
+                {t(teamSourcingKey(v))}
+              </label>
+            ))}
+          </div>
+          <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
+            {t('pages.teams.sourcing.hint')}
+          </p>
+        </fieldset>
+        <div style={{ marginBottom: 14 }}>
+          {/* Obbligatorio, e senza un valore preselezionato: come Sourcing. */}
+          <FieldLabel>{t('pages.teams.type')} *</FieldLabel>
+          <Select value={form.type} required onChange={(e) => setForm({ ...form, type: e.target.value })}>
+            <option value="" disabled>{t('pages.teams.chooseType')}</option>
+            {tipiTeam.map((v) => (
+              <option key={v.value} value={v.value}>{v.label ?? v.value}</option>
+            ))}
+          </Select>
+          {tipiTeam.length === 0 && (
+            <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
+              {t('pages.teams.noTypeVocabulary')}
+            </p>
+          )}
         </div>
         <div>
           <FieldLabel>{t('pages.teams.description')}</FieldLabel>

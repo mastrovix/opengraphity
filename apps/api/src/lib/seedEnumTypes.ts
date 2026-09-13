@@ -64,6 +64,17 @@ export const SYSTEM_ENUMS: readonly SystemEnum[] = [
   { name: 'event_severity',          label: 'Event Severity',         values: [...EVENT_SEVERITIES],                              scope: 'shared' },
   { name: 'service_criticality',     label: 'Service Criticality',    values: [...SERVICE_CRITICALITIES],                         scope: 'cmdb' },
   { name: 'import_severity',         label: 'Import Severity',        values: IMPORT_SEVERITY_VALUES,                             scope: 'shared' },
+  /*
+    TIPO DI TEAM. Era una lista scritta nella pagina e mai scrivibile: la
+    colonna e il filtro di «Team e Utenti» offrivano `owner` e `support`
+    cablati, `CreateTeamInput` non aveva il campo e `createTeam` scriveva
+    `type: null` — quindi un team nuovo nasceva senza tipo e non c'era modo di
+    darglielo (`type` non era nemmeno fra i campi filtrabili, quindi il filtro
+    non filtrava). Ora e un vocabolario come gli altri: il cliente lo
+    rinomina o ne aggiunge dei suoi dal Dizionario, e l'API rifiuta un valore
+    che non c'e.
+  */
+  { name: 'team_type',               label: 'Team Type',              values: ['owner', 'support'],                               scope: 'shared' },
 ]
 
 /**

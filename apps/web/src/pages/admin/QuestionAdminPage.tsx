@@ -254,7 +254,9 @@ export function QuestionAdminPage() {
         <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>
-              Domande ({questions.length}{filterCat && questions.length !== allQuestions.length ? ` / ${allQuestions.length}` : ''})
+              {filterCat && questions.length !== allQuestions.length
+                ? t('admin.questions.headerFiltered', { shown: questions.length, total: allQuestions.length })
+                : t('admin.questions.header', { count: questions.length })}
             </h3>
             <button
               type="button"

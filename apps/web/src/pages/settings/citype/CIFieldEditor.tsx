@@ -191,7 +191,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
             </p>
             <textarea style={{ ...textareaS, minHeight: 100 }} value={form.defaultScript}
               onChange={(e) => set('defaultScript', e.target.value)}
-              placeholder={"// Esempio:\nreturn input.instanceType === 'PostgreSQL' ? 5432 : 3306"} />
+              placeholder={t('citypeDesigner.field.defaultPlaceholder')} />
           </div>
         )}
       </div>

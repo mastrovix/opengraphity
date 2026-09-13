@@ -445,7 +445,7 @@ export function EventPolicyPage() {
               <thead>
                 <tr>
                   {['severity', 'impact', 'urgency'].map((h) => (
-                    <th key={h} scope="col" style={{ textAlign: 'left', padding: '4px 8px', color: colors.slateLight, fontWeight: 500, fontSize: 'var(--font-size-label)', textTransform: 'uppercase', borderBottom: `1px solid ${colors.border}` }}>
+                    <th key={h} scope="col" style={{ textAlign: 'left', padding: '4px 8px' }}>
                       {t(`events.policy.map.${h}`)}
                     </th>
                   ))}

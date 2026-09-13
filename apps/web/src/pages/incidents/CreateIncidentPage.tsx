@@ -337,7 +337,7 @@ export function CreateIncidentPage() {
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.teamSearch} style={fieldLabel}>
               Team{' '}
-              <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
+              <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>{t('common.optional')}</span>
             </label>
 
             {/* Tag team selezionato */}

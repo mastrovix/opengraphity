@@ -112,7 +112,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
         <button type="button" onClick={() => void handleExportExcel()} disabled={exportingExcel} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>
           {exportingExcel ? '\u2026' : '\u2193 Excel'}
         </button>
-        <button type="button" onClick={() => setView('add-section')} style={btnPrimary}>+ Sezione</button>
+        <button type="button" onClick={() => setView('add-section')} style={btnPrimary}>{t('pages.reports.addSection')}</button>
       </div>
 
       {/* Sections */}
@@ -120,7 +120,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
         {selected.sections.length === 0 && (
           <div style={{ textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-card-title)', paddingTop: 60 }}>
             <div style={{ fontSize: 36, marginBottom: 10 }}>&#x1F4CB;</div>
-            Nessuna sezione. Clicca "+ Sezione" per iniziare.
+            {t('pages.reports.noSections')}
           </div>
         )}
         {[...selected.sections].sort((a, b) => a.order - b.order).map(sec => {

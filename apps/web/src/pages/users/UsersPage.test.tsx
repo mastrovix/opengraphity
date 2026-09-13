@@ -28,7 +28,7 @@ const names = () => bodyRows().map((r) => within(r).getAllByRole('cell')[0]!.tex
 
 async function applyRoleFilter(user: ReturnType<typeof renderWithProviders>['user'], role: string) {
   await user.click(screen.getByRole('button', { name: /Advanced filters/ }))
-  await user.click(screen.getByRole('button', { name: '+ Add filter' }))
+  await user.click(screen.getByRole('button', { name: 'Add filter' }))
   const [fieldSelect] = screen.getAllByRole('combobox')
   await user.selectOptions(fieldSelect!, 'role')
   const selects = screen.getAllByRole('combobox')
@@ -122,10 +122,10 @@ describe('UsersPage', () => {
   it('"New User" apre il modale con i campi obbligatori e Create disabilitato finché incompleto', async () => {
     const { user } = renderWithProviders(<UsersPage />, { mocks: [usersAnySort(), teamsMock()], route: '/users' })
     await screen.findByText('Mario Rossi')
-    await user.click(screen.getByRole('button', { name: '+ New User' }))
+    await user.click(screen.getByRole('button', { name: 'New User' }))
     const dialog = await screen.findByRole('dialog', { name: 'New user' })
     expect(within(dialog).getByRole('button', { name: 'Create' })).toBeDisabled()
-    await user.type(within(dialog).getByPlaceholderText('mario@acme.com'), 'x@y.z')
+    await user.type(within(dialog).getByPlaceholderText('jane@acme.com'), 'x@y.z')
     await user.type(within(dialog).getByPlaceholderText('Jane'), 'X')
     await user.type(within(dialog).getByPlaceholderText('Smith'), 'Y')
     await user.type(within(dialog).getByPlaceholderText('At least 8 characters'), 'password1')

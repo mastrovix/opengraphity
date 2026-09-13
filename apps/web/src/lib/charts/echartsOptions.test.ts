@@ -122,7 +122,7 @@ describe('buildPieOption', () => {
     expect(donut.series[0]!.radius).toEqual(['40%', '65%'])
     expect(donut.graphic?.[0]?.style.text).toBe('9')
     expect(donut.graphic?.[0]?.style.fontSize).toBe(24)
-    expect(donut.graphic?.[1]?.style.text).toBe('totale')
+    expect(donut.graphic?.[1]?.style.text).toBe('total')
   })
 
   it('più fette della palette → i colori ciclano', () => {

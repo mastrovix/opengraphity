@@ -185,7 +185,7 @@ describe('EventsPage — prestazioni (ondata 3)', () => {
     const { user } = renderPage('viewer')
     await screen.findByText('CPU high on web-01')
     await user.click(screen.getByRole('button', { name: /Advanced filters/ }))
-    await user.click(screen.getByRole('button', { name: '+ Add filter' }))
+    await user.click(screen.getByRole('button', { name: 'Add filter' }))
     // l'ultimo combobox è il campo della regola appena aggiunta (il primo è il filtro Sorgente)
     const fieldSelect = screen.getAllByRole('combobox').at(-1) as HTMLSelectElement
     const values = Array.from(fieldSelect.options).map((o) => o.value)
@@ -423,7 +423,7 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
     const { user } = renderPage('viewer')
     await screen.findByText('CPU high on web-01')
     await user.click(screen.getByRole('button', { name: /Advanced filters/ }))
-    await user.click(screen.getByRole('button', { name: '+ Add filter' }))
+    await user.click(screen.getByRole('button', { name: 'Add filter' }))
     // l'ultimo combobox è il campo della regola appena aggiunta (il primo è il filtro Sorgente)
     await user.selectOptions(screen.getAllByRole('combobox').at(-1)!, 'title')
     await user.type(screen.getByPlaceholderText('Value…'), 'Disk')

@@ -71,7 +71,7 @@ export function CIRelationEditor({ open, onClose, onSave, allTypes }: RelationMo
         </Field>
         <Field label={t('citypeDesigner.relation.targetType')}>
           <Select style={selectS} value={form.targetType} onChange={e => set('targetType', e.target.value)}>
-            <option value="any">qualsiasi</option>
+            <option value="any">{t('common.any')}</option>
             {allTypes.map(t => <option key={t.name} value={t.name}>{t.label}</option>)}
           </Select>
         </Field>
@@ -118,9 +118,9 @@ export function CIRelationTable({ relations, onRemove, readOnly = false }: Relat
     <div className="og-scroll-x">
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
       <thead>
-        <tr style={{ borderBottom: '2px solid var(--border)' }}>
+        <tr>
           {['name', 'label', t('citypeDesigner.relation.neo4jTypeShort'), 'target', 'card.', 'dir.', ''].map(h => (
-            <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+            <th key={h} style={{ textAlign: 'left', padding: '6px 8px' }}>{h}</th>
           ))}
         </tr>
       </thead>

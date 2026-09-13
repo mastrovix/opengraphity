@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { Sparkles, Send, Search, Trash2 } from 'lucide-react'
 import { apiUrl, authHeader } from '@/lib/apiBase'
 import { PageContainer } from '@/components/PageContainer'
+import { PageTitle } from '@/components/PageTitle'
 import { colors, palette } from '@/lib/tokens'
 
 interface ChatMessage {
@@ -133,9 +134,8 @@ export function AssistantPage() {
     <PageContainer style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 56px)' }}>
       <div style={{ maxWidth: 780, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 0 12px' }}>
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
-            <Sparkles size={20} color="var(--color-brand)" /> {t('sidebar.assistant')}
-          </h1>
+          {/* Il titolo passa da PageTitle come le altre pagine: era un <h1> scritto a mano, con l'icona piu piccola e di un altro colore. */}
+          <PageTitle icon={<Sparkles size={22} color="var(--color-icon-accent)" />}>{t('sidebar.assistant')}</PageTitle>
           {messages.length > 0 && (
             <button type="button"
               onClick={() => setMessages([])}
@@ -202,7 +202,7 @@ export function AssistantPage() {
                 </div>
               )}
               <div style={{ padding: '10px 14px', borderRadius: 12, background: colors.white, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', lineHeight: 1.5, whiteSpace: 'pre-wrap', color: 'var(--color-slate-dark)' }}>
-                {streamText || 'Sto consultando il grafo…'}
+                {streamText || t('pages.assistant.thinking')}
               </div>
             </div>
           )}

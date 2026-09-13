@@ -158,8 +158,8 @@ export function EventDetailPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
                 <thead>
                   <tr>
-                    <th scope="col" style={{ textAlign: 'left', padding: '4px 8px', color: colors.slateLight, fontWeight: 500, fontSize: 'var(--font-size-label)', textTransform: 'uppercase', borderBottom: `1px solid ${colors.border}` }}>{t('events.detail.labelKey')}</th>
-                    <th scope="col" style={{ textAlign: 'left', padding: '4px 8px', color: colors.slateLight, fontWeight: 500, fontSize: 'var(--font-size-label)', textTransform: 'uppercase', borderBottom: `1px solid ${colors.border}` }}>{t('events.detail.labelValue')}</th>
+                    <th scope="col" style={{ textAlign: 'left', padding: '4px 8px' }}>{t('events.detail.labelKey')}</th>
+                    <th scope="col" style={{ textAlign: 'left', padding: '4px 8px' }}>{t('events.detail.labelValue')}</th>
                   </tr>
                 </thead>
                 <tbody>

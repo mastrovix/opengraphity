@@ -3,7 +3,7 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { AlertCircle, Users, CheckCircle2, Loader2 } from 'lucide-react'
+import { AlertCircle, Users, CheckCircle2, Loader2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
@@ -24,6 +24,7 @@ import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { SlaBadge, type SlaStatusInfo } from '@/components/SlaBadge'
 import { exportToCsv } from '@/lib/csvExport'
 import { apolloClient } from '@/lib/apollo'
+import { formatDate } from '@/lib/datetime'
 
 interface Incident {
   id:        string
@@ -71,7 +72,7 @@ export function IncidentListPage() {
       sortable: true,
       render:   (v) => (
         <span style={{ color: "var(--color-slate-light)" }}>
-          {new Date(String(v)).toLocaleDateString()}
+          {formatDate(String(v))}
         </span>
       ),
     },
@@ -194,7 +195,7 @@ export function IncidentListPage() {
           </p>
         }
         actions={
-          <Button onClick={() => navigate('/incidents/new')}>
+          <Button icon={<Plus size={15} aria-hidden="true" />} onClick={() => navigate('/incidents/new')}>
             {t('pages.incidents.new')}
           </Button>
         }

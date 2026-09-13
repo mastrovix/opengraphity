@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { PageTitle } from './PageTitle'
 
 interface ListPageHeaderProps {
-  /** Icon element passed to PageTitle (e.g. <AlertCircle size={22} color="var(--color-icon-accent)" />) */
+  /** L'icona passata a PageTitle, es. `<AlertCircle />`: misura e colore li impone PageTitle. */
   icon: ReactNode
   title: string
   /** Ready-made count paragraph node (caller keeps its own loading logic) */

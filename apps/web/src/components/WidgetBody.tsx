@@ -75,9 +75,9 @@ export function WidgetBody({ widgetType, color, data, caption, height = 180, lar
         <div className="og-scroll-x">
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
           <thead>
-            <tr style={{ background: 'var(--color-slate-bg)' }}>
-              <th style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--color-slate-light)', fontWeight: 600 }}>{t('components.widgetBody.label')}</th>
-              <th style={{ padding: '6px 10px', textAlign: 'right', color: 'var(--color-slate-light)', fontWeight: 600 }}>{t('components.widgetBody.value')}</th>
+            <tr>
+              <th style={{ padding: '6px 10px', textAlign: 'left' }}>{t('components.widgetBody.label')}</th>
+              <th style={{ padding: '6px 10px', textAlign: 'right' }}>{t('components.widgetBody.value')}</th>
             </tr>
           </thead>
           <tbody>

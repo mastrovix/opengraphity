@@ -49,7 +49,8 @@
     "enable": "Attiva",
     "disable": "Disattiva",
     "showAllCount_one": "Mostra tutti ({{count}})",
-    "showAllCount_other": "Mostra tutti ({{count}})"
+    "showAllCount_other": "Mostra tutti ({{count}})",
+    "any": "qualsiasi"
   },
   "bulk": {
     "selected_one": "{{count}} selezionato",
@@ -138,12 +139,13 @@
     "platformMonitoring": "Monitoraggio della piattaforma",
     "services": "Servizi",
     "domainMatrices": "Matrici di dominio",
-    "organization": "Organizzazione"
+    "organization": "Organizzazione",
+    "olaContracts": "OLA / UC"
   },
   "pages": {
     "incidents": {
       "title": "Incident",
-      "new": "+ Nuovo Incident",
+      "new": "Nuovo Incident",
       "severity": "Severità",
       "status": "Stato",
       "createdAt": "Creato il",
@@ -189,7 +191,7 @@
     },
     "changes": {
       "title": "Change",
-      "new": "+ Nuovo Change",
+      "new": "Nuovo Change",
       "code": "Codice",
       "phase": "Fase",
       "requester": "Richiedente",
@@ -212,7 +214,7 @@
     },
     "problems": {
       "title": "Problem",
-      "new": "+ Nuovo Problem",
+      "new": "Nuovo Problem",
       "priority": "Priorità",
       "status": "Stato",
       "title_col": "Titolo",
@@ -223,11 +225,12 @@
       "count_other": "{{count}} problem",
       "notFound": "Problem non trovato.",
       "candidatesTitle": "Candidati Problem da incident ricorrenti",
-      "candidatesEmpty": "Nessun cluster di incident simili ricorrenti trovato (minimo 3 incident non chiusi con lo stesso pattern)."
+      "candidatesEmpty": "Nessun cluster di incident simili ricorrenti trovato (minimo 3 incident non chiusi con lo stesso pattern).",
+      "candidatesButton": "Candidati Problem"
     },
     "requests": {
       "title": "Richieste",
-      "new": "+ Nuova Richiesta",
+      "new": "Nuova Richiesta",
       "title_col": "Titolo",
       "priority": "Priorità",
       "status": "Stato",
@@ -243,8 +246,8 @@
       "health": "Salute",
       "count_one": "{{count}} CI",
       "count_other": "{{count}} CI",
-      "new": "+ Nuovo {{type}}",
-      "newFeminine": "+ Nuova {{type}}",
+      "new": "Nuovo {{type}}",
+      "newFeminine": "Nuova {{type}}",
       "name": "Nome",
       "type": "Tipo",
       "status": "Stato",
@@ -337,7 +340,7 @@
     },
     "teams": {
       "title": "Team",
-      "new": "+ Nuovo Team",
+      "new": "Nuovo Team",
       "name": "Nome",
       "description": "Descrizione",
       "type": "Tipo",
@@ -359,11 +362,21 @@
       "assignManagerTitle": "Assegna manager",
       "isChangeManager": "Questo team approva le change (normal/emergency)",
       "makeChangeManager": "Designa come team Change Manager",
-      "replaceManagerConfirm": "Il manager attuale <strong>{{current}}</strong> verrà sostituito da <strong>{{next}}</strong>. Confermi?"
+      "replaceManagerConfirm": "Il manager attuale <strong>{{current}}</strong> verrà sostituito da <strong>{{next}}</strong>. Confermi?",
+      "noType": "— nessun tipo —",
+      "noTypeVocabulary": "Nessun tipo di team nel dizionario: aggiungi i valori in Impostazioni → Dizionario → Team Type.",
+      "sourcing": {
+        "label": "Sourcing",
+        "internal": "Interno",
+        "external": "Esterno",
+        "notSet": "— non indicato —",
+        "hint": "Interno: persone della tua organizzazione. Esterno: un fornitore."
+      },
+      "chooseType": "— Scegli un tipo —"
     },
     "users": {
       "title": "Utenti",
-      "newUser": "+ Nuovo Utente",
+      "newUser": "Nuovo Utente",
       "name": "Nome",
       "email": "Email",
       "role": "Ruolo",
@@ -386,7 +399,8 @@
       "firstNamePlaceholder": "Mario",
       "lastNamePlaceholder": "Rossi",
       "addToTeam": "Aggiungi a un team",
-      "created": "Utente creato"
+      "created": "Utente creato",
+      "emailPlaceholder": "mario@acme.com"
     },
     "logs": {
       "title": "Log",
@@ -683,7 +697,8 @@
       "approvalCount": "{{done}}/{{total}} approvazioni",
       "dueOn": "Scadenza: {{date}}",
       "confirmApproval": "Conferma approvazione",
-      "confirmRejection": "Conferma rifiuto"
+      "confirmRejection": "Conferma rifiuto",
+      "articlePreview": "Anteprima articolo"
     },
     "kb": {
       "title": "Knowledge Base",
@@ -705,7 +720,9 @@
       "updated": "Aggiornato",
       "views": "Visualizzazioni",
       "resultsFor_one": "{{count}} risultato per «{{query}}»",
-      "resultsFor_other": "{{count}} risultati per «{{query}}»"
+      "resultsFor_other": "{{count}} risultati per «{{query}}»",
+      "views_one": "{{count}} visualizzazione",
+      "views_other": "{{count}} visualizzazioni"
     },
     "kbAdmin": {
       "title": "Knowledge Base Admin",
@@ -740,7 +757,10 @@
       },
       "saveVsSubmitHint": "«Salva» aggiorna il contenuto senza cambiare stato. «Invia per revisione» salva e avvia il processo di approvazione.",
       "colAuthor": "Autore",
-      "colUpdated": "Aggiornato"
+      "colUpdated": "Aggiornato",
+      "articleCount_one": "{{count}} articolo",
+      "articleCount_other": "{{count}} articoli",
+      "charCount": "{{used}} / {{max}} caratteri"
     },
     "workflow": {
       "title": "Workflow",
@@ -1271,9 +1291,7 @@
       "namePlaceholder": "Es. Ripristino rete entro 4h",
       "partyTeam": "Team interno",
       "partySupplier": "Fornitore esterno",
-      "supplierName": "Nome fornitore",
       "teamName": "Team responsabile",
-      "supplierPlaceholder": "Es. Acme Cloud Srl",
       "teamPlaceholder": "Es. Network Ops",
       "generatedNote": "Generato il {{date}}. Il rispetto degli obiettivi OLA/UC confronta il tempo di risoluzione reale delle entità concluse nel periodo con il target del contratto.",
       "pickTeam": "Scegli un team...",
@@ -1289,7 +1307,8 @@
       "windowDays_one": "{{count}}g",
       "windowDays_other": "{{count}}gg",
       "slaInWindow": "SLA nel periodo ({{window}})",
-      "attainment": "Attainment ({{window}})"
+      "attainment": "Attainment ({{window}})",
+      "manageContracts": "Gestisci i contratti →"
     },
     "changeDetail": {
       "notFound": "Change non trovato",
@@ -1328,7 +1347,9 @@
       "rejectNote": "Il rifiuto riporta la change in <b>assessment</b>, riapre i task scelti e azzera le approvazioni.",
       "deleteConfirm": "Eliminare <b>{{code}}</b>? La change sparirà dagli elenchi e i suoi collegamenti — compreso quello creato da sé dal ticket richiedente — non si vedranno più. È una cancellazione logica.",
       "impactError": "Errore nel calcolo dei CI impattati: {{message}}",
-      "stepInProgress": "{{step}} in corso"
+      "stepInProgress": "{{step}} in corso",
+      "approvedCount": "{{done}}/{{total}} approvate",
+      "rejectApprovalTitle": "Rigetta approvazione — {{team}}"
     },
     "reportSchedule": {
       "lastRun": "Ultima esecuzione: {{date}}",
@@ -1374,7 +1395,11 @@
       "addSectionTo": "Aggiungi sezione — {{report}}",
       "editSectionOf": "Modifica sezione: {{section}}",
       "editSettings": "Modifica impostazioni",
-      "duplicate": "Duplica"
+      "duplicate": "Duplica",
+      "addSection": "+ Sezione",
+      "noSections": "Nessuna sezione. Clicca «+ Sezione» per iniziare.",
+      "deleteReportTitle": "Eliminare il report?",
+      "removeSectionTitle": "Rimuovere la sezione?"
     },
     "serviceCatalogAdmin": {
       "newItem": "Nuova voce",
@@ -1418,7 +1443,9 @@
       "addCondition": "Aggiungi una condizione",
       "addAction": "Aggiungi un'azione",
       "editRule": "Modifica la regola",
-      "stopOnMatch": "Fermati alla prima che corrisponde"
+      "stopOnMatch": "Fermati alla prima che corrisponde",
+      "count_one": "{{count}} regola",
+      "count_other": "{{count}} regole"
     },
     "autoTriggers": {
       "newTrigger": "Nuovo trigger",
@@ -1496,7 +1523,9 @@
       "transitionNoteHint": "Aggiungi una nota per questa transizione (minimo 10 caratteri).",
       "aiDraft": "Bozza AI dalle attività",
       "aiDraftRunning": "Genero bozza dalle attività…",
-      "running": "Esecuzione…"
+      "running": "Esecuzione…",
+      "declareMajor": "Dichiara Major Incident",
+      "revokeMajor": "Revoca Major"
     },
     "problemDetail": {
       "rootCause": "Causa radice",
@@ -1506,7 +1535,8 @@
       "transitionNotes": "Note sul passaggio...",
       "pickGroupFirst": "Assegna prima un gruppo, poi potrai scegliere un utente.",
       "noteRequired": "Aggiungi una nota per questo passaggio (almeno 10 caratteri).",
-      "noUserInTeam": "Nessun utente nel gruppo {{team}}."
+      "noUserInTeam": "Nessun utente nel gruppo {{team}}.",
+      "deleteTitle": "Eliminare definitivamente il problem {{number}}?"
     },
     "createChange": {
       "titlePlaceholder": "Es. Aggiornamento del database di produzione a PostgreSQL 16",
@@ -1525,7 +1555,10 @@
       "rfcProblemNote": "Alla creazione la change verrà collegata e il problem passerà a change requested.",
       "rfcIncidentNote": "Alla creazione la change verrà collegata all'incident, che si risolverà automaticamente quando la change sarà completata.",
       "affectedCIsPreloaded": "I CI impattati sono stati precaricati.",
-      "submit": "Crea Change"
+      "submit": "Crea Change",
+      "resolutionTitle": "Risoluzione {{kind}} {{number}}: {{title}}",
+      "typeStandard": "Standard (pre-approvato)",
+      "what": "Cosa"
     },
     "myTasks": {
       "emptyTitle": "Nessun task per te",
@@ -1577,7 +1610,8 @@
         "changesInFlight": "Quali change sono in corso e che CI toccano?",
         "shutdownImpact": "Se spengo SRV-009 cosa impatto?",
         "similarOpenIncidents": "Ci sono incident aperti simili tra loro?"
-      }
+      },
+      "thinking": "Sto consultando il grafo…"
     },
     "taskView": {
       "changeOverview": "Riepilogo della change",
@@ -1619,7 +1653,9 @@
       "title": "Nuova richiesta di servizio",
       "subtitle": "Chiedi un servizio o un supporto all'IT",
       "genericItem": "— Richiesta generica (nessuna voce di catalogo) —",
-      "needsApproval": "Questa voce richiede un'approvazione: la richiesta passerà dal flusso di approvazione."
+      "needsApproval": "Questa voce richiede un'approvazione: la richiesta passerà dal flusso di approvazione.",
+      "catalogItem": "Voce di catalogo",
+      "recommended": "(consigliata)"
     },
     "planTask": {
       "validation": "Validazione *",
@@ -1635,11 +1671,18 @@
       "changeManager": "Change Manager",
       "searchMember": "Cerca un membro...",
       "noMemberFound": "Nessun membro trovato"
+    },
+    "olaContracts": {
+      "subtitle": "Accordi sui livelli operativi fra team interni e contratti di supporto con i fornitori.",
+      "empty": "Ancora nessun contratto",
+      "supplierTeam": "Team esterno",
+      "noInternalTeams": "Nessun team con Sourcing = Internal. Lo imposti nella pagina del team, in Team.",
+      "noExternalTeams": "Nessun team con Sourcing = External. Crea il fornitore come team, con Sourcing = External, in Team."
     }
   },
   "filter": {
     "advancedFilters": "Filtri avanzati",
-    "addFilter": "+ Aggiungi filtro",
+    "addFilter": "Aggiungi filtro",
     "selectField": "Seleziona campo...",
     "andConnector": "E",
     "orConnector": "O",
@@ -1852,7 +1895,10 @@
       "deleteStepBody": "Verranno rimosse anche le transizioni collegate.",
       "entityTypeUnavailable": "Tipo entità del workflow non disponibile ({{error}}): campi e valori delle condizioni non caricabili.",
       "titleKeyPlaceholder": "es. notification.custom.step.title",
-      "inputField": "Campo di input"
+      "inputField": "Campo di input",
+      "deleteTransitionTitle": "Eliminare la transizione {{from}} → {{to}}?",
+      "expectedArray": "{{field}}: atteso un array JSON, trovato {{found}}",
+      "isOpenStep": "L'entità è considerata «aperta» in questo step"
     },
     "stepType": {
       "standard": "Passo",
@@ -1914,7 +1960,8 @@
     "itilTypes": "ITIL Types",
     "previewNote": "Anteprima del form — tutti i campi visibili.",
     "previewNoFields": "Nessun campo. Aggiungi campi nella tab «Campi».",
-    "visibilityPlaceholder": "// Mostra solo se severity = 'critical':\nreturn input.severity === 'critical'"
+    "visibilityPlaceholder": "// Mostra solo se severity = 'critical':\nreturn input.severity === 'critical'",
+    "defaultPlaceholder": "// Esempio:\nreturn input.priority === 'critical' ? 'immediata' : 'normale'"
   },
   "ciTypeDesigner": {
     "chain": "Catena",
@@ -2192,8 +2239,6 @@
       "scopePriority": "priorità {{value}}",
       "scopeCategory": "categoria {{value}}",
       "scopeTeam": "team {{value}}",
-      "appliesToAll": "Si applica a: tutti gli {{entity}}",
-      "appliesToSome": "Si applica a: {{entity}} con {{scope}}",
       "previewAll": "Tutti gli {{entity}}",
       "previewSome": "{{entity}} con {{scope}}",
       "previewLabel": "Anteprima:",
@@ -2205,7 +2250,11 @@
         "hours_other": "{{count}}h",
         "days_one": "{{count}}g",
         "days_other": "{{count}}gg"
-      }
+      },
+      "businessHours": "Orario lavorativo",
+      "appliesToColumn": "Si applica a",
+      "previewBusinessHours": "(orario lavorativo)",
+      "preview247": "(24/7)"
     },
     "integrations": {
       "tabsLabel": "Sezioni integrazioni",
@@ -2295,7 +2344,10 @@
       "deleteBody": "Non sarà possibile se esistono risposte associate.",
       "created": "Domanda creata",
       "updated": "Domanda aggiornata",
-      "deleted": "Domanda eliminata"
+      "deleted": "Domanda eliminata",
+      "header_one": "Domande ({{count}})",
+      "header_other": "Domande ({{count}})",
+      "headerFiltered": "Domande ({{shown}} / {{total}})"
     },
     "approvals": {
       "cancelRequestTitle": "Annullare la richiesta di approvazione?"
@@ -2341,9 +2393,11 @@
       "responseMinutes": "I minuti di presa in carico devono essere maggiori di zero.",
       "resolveMinutes": "I minuti di risoluzione devono essere maggiori di zero.",
       "typeImmutable": "Il tipo di contratto non si può cambiare.",
-      "supplierNameRequired": "Per un fornitore esterno serve il nome.",
       "teamRequired": "Scegli il team responsabile: un team di questo cliente, non un nome scritto a mano.",
-      "teamUnknown": "Il team {{team}} non esiste in questo cliente."
+      "teamUnknown": "Il team {{team}} non esiste in questo cliente.",
+      "partyTypeOneOf": "Il responsabile deve essere uno fra: {{allowed}}.",
+      "supplierTeamRequired": "Scegli il fornitore esterno: un team di questo cliente con Sourcing = External.",
+      "teamWrongSourcing": "Il team «{{team}}» è {{actual}}, ma questo responsabile vuole un team {{expected}}."
     },
     "question": {
       "textEmpty": "Il testo della domanda non può essere vuoto: è ciò che l'operatore legge nel task.",
@@ -2692,6 +2746,10 @@
         "tenant": "che è gestita dal prodotto — con «tenant_id» il CI nascerebbe nel cliente scelto dal chiamante"
       },
       "duplicateFieldRace": "Il tipo ha già un campo «{{name}}»: qualcuno ha salvato lo stesso nome un istante prima di te."
+    },
+    "team": {
+      "nameEmpty": "Il nome del team non può essere vuoto",
+      "sourcingRequired": "Un team deve dire se è interno o esterno."
     }
   },
   "errorBoundary": {
@@ -2811,7 +2869,8 @@
       "created": "Team creato",
       "managerUpdated": "Manager aggiornato",
       "managerRemoved": "Manager rimosso",
-      "changeManagerUpdated": "Team Change Manager aggiornato"
+      "changeManagerUpdated": "Team Change Manager aggiornato",
+      "updated": "Team aggiornato"
     },
     "task": {
       "claimed": "Task presa in carico",
@@ -3011,6 +3070,9 @@
       "syncSkipped": "Sincronizzazione rifiutata: {{reason}}. Non è stato cambiato nulla.",
       "syncSkippedNoReason": "il motore non ha dato un motivo",
       "componentExcluded": "{{name}} escluso: è fuori dalla mappa e non verrà più riproposto"
+    },
+    "user": {
+      "teamsUpdated": "Team aggiornati"
     }
   },
   "components": {
@@ -3094,6 +3156,14 @@
       "confidenceLow": "confidenza bassa",
       "basedOn_one": "Basato su {{count}} incident simile, cioè {{examples}}.",
       "basedOn_other": "Basato su {{count}} incident simili, tra cui {{examples}}."
+    },
+    "ciGroups": {
+      "inProgress": "In corso",
+      "completed": "Completati",
+      "closed": "Chiusi"
+    },
+    "ciIcon": {
+      "unknown": "icona sconosciuta: {{icon}}"
     }
   },
   "events": {
@@ -4327,7 +4397,9 @@
       "value_labels_missing": "Questi valori non hanno un'etichetta in nessuna lingua, quindi a schermo si leggono col loro nome interno: {{details}}. **Si scrive dal Dizionario**, accanto al valore.",
       "value_labels_partial": "Questi valori hanno l'etichetta in una lingua sola: chi usa l'altra li legge in italiano ({{languages}}). {{details}}. **Si completa dal Dizionario**.",
       "default_language_not_set": "Nessuno ha scelto la lingua di questa organizzazione, quindi il prodotto si legge in «{{fallback}}» — la prima delle lingue disponibili ({{available}}), non una decisione. **Si sceglie da Impostazioni → Organizzazione**, e vale per chi non ha una lingua propria nel Profilo.",
-      "check_failed": "Il controllo «{{check}}» non è riuscito: {{error}}"
+      "check_failed": "Il controllo «{{check}}» non è riuscito: {{error}}",
+      "teams_without_sourcing_one": "{{count}} team non dice se è **interno o esterno**: {{teams}}{{more}}. Nessuno l'ha indovinato al posto tuo — **lo scegli nella pagina del team**, in Team.",
+      "teams_without_sourcing_other": "{{count}} team non dicono se sono **interni o esterni**: {{teams}}{{more}}. Nessuno l'ha indovinato al posto tuo — **lo scegli nella pagina di ogni team**, in Team."
     },
     "gap": {
       "tenant_missing": "nessuna riga: il tenant non esiste",
@@ -4338,14 +4410,18 @@
       "no_assessment_questions": "nessuna domanda di assessment: nessuna change potrebbe superare la fase di assessment (Domande Assessment)",
       "no_teams": "nessun team: senza team i CI non hanno Owner/Support Group e nessuna change si crea (Team e Utenti)",
       "no_change_manager": "nessun team designato Change Manager: le change normal ed emergency non possono entrare in approvazione (Team e Utenti)"
-    }
+    },
+    "andMore_one": " (e un altro)",
+    "andMore_other": " (e altri {{count}})"
   },
   "forms": {
     "title": "Titolo",
     "description": "Descrizione",
     "fieldRequired": "Campo obbligatorio",
     "selectCategory": "Seleziona una categoria",
-    "requiredField": "{{field}} è obbligatorio"
+    "requiredField": "{{field}} è obbligatorio",
+    "minChars_one": "Minimo {{count}} carattere",
+    "minChars_other": "Minimo {{count}} caratteri"
   },
   "changeTasks": {
     "activeTasks": "Task attivi",
@@ -4386,6 +4462,29 @@
     "phase": {
       "current": "corrente",
       "pending": "in sospeso"
+    },
+    "assessmentAnswers": "Risposte assessment · {{ci}}",
+    "dotsLegend": "Pallini (in ordine): {{phases}}",
+    "validationWindow": "Validazione: {{start}} → {{end}}",
+    "state": {
+      "todo": "Da fare"
+    },
+    "kind": {
+      "assessment": "Assessment",
+      "assessmentFunctional": "Assessment funzionale",
+      "assessmentTechnical": "Assessment tecnico",
+      "deployPlan": "Piano di deploy",
+      "validation": "Validazione",
+      "deployment": "Deploy",
+      "review": "Review"
+    },
+    "phaseName": {
+      "functional": "Funzionale",
+      "technical": "Tecnico",
+      "plan": "Piano",
+      "validation": "Validazione",
+      "deploy": "Deploy",
+      "review": "Review"
     }
   },
   "sync": {
@@ -4395,7 +4494,13 @@
     "addSource": "Aggiungi sorgente",
     "noSources": "Nessuna sorgente di sincronizzazione configurata. Aggiungine una per iniziare a importare CI.",
     "scheduleCron": "Pianificazione (cron, opzionale)",
-    "scheduleCronPlaceholder": "0 */6 * * * (ogni 6h)"
+    "scheduleCronPlaceholder": "0 */6 * * * (ogni 6h)",
+    "stats": {
+      "sources": "Sorgenti",
+      "ciManaged": "CI gestiti",
+      "openConflicts": "Conflitti aperti",
+      "successRate": "Tasso di successo"
+    }
   },
   "languages": {
     "it": "Italiano",
@@ -4434,7 +4539,9 @@
     "useSuggested": "Usa: «{{title}}»",
     "valuePlaceholder": "valore",
     "environment": "Ambiente",
-    "next": "Avanti"
+    "next": "Avanti",
+    "addFilter": "+ filtro",
+    "groupOrganization": "Organizzazione"
   },
   "reportChart": {
     "chartType": "Tipo di visualizzazione",
@@ -4479,7 +4586,8 @@
     "needsDateField": "⚠ Il grafico a linea ha bisogno di un campo data, e questa entità non ne ha: scegli un altro tipo di grafico.",
     "needsColumn": "⚠ Una tabella ha bisogno di almeno una colonna: senza campi scelti il server rifiuta la sezione.",
     "configureToPreview": "Configura il grafico per vedere l'anteprima",
-    "fieldOption": "Campo…"
+    "fieldOption": "Campo…",
+    "total": "totale"
   },
   "citypeDesigner": {
     "relation": {
@@ -4509,7 +4617,8 @@
       "displayLabel": "label (nome visualizzato) *",
       "editTitle": "Modifica campo: {{name}}",
       "visibilityHint": "Variabili: <code>input</code>. Ritorna <code>true/false</code>.",
-      "visibilityPlaceholder": "// Mostra solo se un altro campo è valorizzato:\nreturn !!input.instanceType"
+      "visibilityPlaceholder": "// Mostra solo se un altro campo è valorizzato:\nreturn !!input.instanceType",
+      "defaultPlaceholder": "// Esempio:\nreturn input.instanceType === 'PostgreSQL' ? 5432 : 3306"
     },
     "baseFields": "Campi base",
     "baseFieldsHint": "Ereditati da tutti i tipi di CI",

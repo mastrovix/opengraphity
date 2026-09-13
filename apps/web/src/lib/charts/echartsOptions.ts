@@ -10,6 +10,7 @@
  * numeri/hex, non `var(--…)`.
  */
 import { cssVar, cssVarPx } from './cssVar'
+import i18n from '@/i18n/i18n'
 
 // ── Dati ─────────────────────────────────────────────────────────────────────
 
@@ -205,7 +206,7 @@ export function buildPieOption(points: ChartPoint[], style: ChartStyle & { donut
       ? {
           graphic: [
             { type: 'text', left: 'center', top: '40%', style: { text: style.centerText, fontSize: t.fsTitle, fontWeight: 700, fill: t.textDark, fontFamily: t.font } },
-            { type: 'text', left: 'center', top: '50%', style: { text: 'totale', fontSize: t.fsBody, fill: t.text, fontFamily: t.font } },
+            { type: 'text', left: 'center', top: '50%', style: { text: i18n.t('reportChart.total'), fontSize: t.fsBody, fill: t.text, fontFamily: t.font } },
           ],
         }
       : {}),

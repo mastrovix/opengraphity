@@ -160,8 +160,8 @@ export function CIChangeList({ ciId }: { ciId: string }) {
               }}>{t('components.ciChanges.empty')}</p>
             : (
               <>
-                {renderGroup('In corso',   active)}
-                {renderGroup('Completati', closed, true)}
+                {renderGroup(t('components.ciGroups.inProgress'), active)}
+                {renderGroup(t('components.ciGroups.completed'), closed, true)}
               </>
             )
           }

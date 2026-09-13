@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Timer, CheckCircle2, AlertTriangle, PauseCircle } from 'lucide-react'
 import { colors, palette } from '@/lib/tokens'
+import { formatDateTime } from '@/lib/datetime'
 
 export interface SlaStatusInfo {
   startedAt:        string
@@ -89,7 +90,7 @@ export function SlaBadge({ sla, compact = false }: { sla: SlaStatusInfo | null |
 
   return (
     <span
-      title={`${t('sla.response')}: ${new Date(sla.responseDeadline).toLocaleString()} · ${t('sla.resolve')}: ${new Date(sla.resolveDeadline).toLocaleString()}`}
+      title={`${t('sla.response')}: ${formatDateTime(sla.responseDeadline)} · ${t('sla.resolve')}: ${formatDateTime(sla.resolveDeadline)}`}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: compact ? '2px 8px' : '4px 10px', borderRadius: 12, fontSize: compact ? 'var(--font-size-table)' : 'var(--font-size-body)', fontWeight: 600, background: bg, color: fg, whiteSpace: 'nowrap' }}
     >
       <Icon size={compact ? 11 : 13} />
