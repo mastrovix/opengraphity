@@ -15,6 +15,7 @@ import { audit } from '../../lib/audit.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { ciLabelsForTypeNames } from '../../lib/ciTypeNameToLabel.js'
+import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
 export type { IncidentEventPayload } from '../../services/incidentService.js'
 
 // ── Mapper ───────────────────────────────────────────────────────────────────
@@ -121,7 +122,7 @@ async function incident(
 
 async function createIncident(
   _: unknown,
-  args: { input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[] } },
+  args: { input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[]; acknowledgeNoSla?: boolean | null } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -130,6 +131,7 @@ async function createIncident(
       fieldValues: args.input as Record<string, unknown>,
       tenantId:    ctx.tenantId,
     })
+    assertMayAcknowledgeNoSla(ctx, args.input.acknowledgeNoSla)
     const result = await incidentService.createIncident(args.input, ctx)
     void audit(ctx, 'incident.created', 'Incident', result.id as string)
     return result

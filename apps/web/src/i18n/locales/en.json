@@ -1646,7 +1646,29 @@
     "createTicket": {
       "searchByName": "Search by name...",
       "searchTeam": "Search a team by name...",
-      "derivedPriority": "Priority (derived)"
+      "derivedPriority": "Priority (derived)",
+      "noSla": {
+        "incident": {
+          "title": "No SLA policy covers this incident",
+          "body": "No SLA policy covers an incident with priority «{{priority}}» and category «{{category}}». If you create it, it will have no SLA: no response or resolution deadline.",
+          "bodyTeam": "No SLA policy covers an incident with priority «{{priority}}», category «{{category}}» and team «{{team}}». If you create it, it will have no SLA: no response or resolution deadline.",
+          "hint": "If it should have one, go back and change priority, category or team, or ask an administrator for a policy in Admin → SLA Policies. Tickets created without SLA after this warning do not appear in the configuration warnings."
+        },
+        "problem": {
+          "title": "No SLA policy covers this problem",
+          "body": "No SLA policy covers a problem with priority «{{priority}}». If you create it, it will have no SLA: no response or resolution deadline.",
+          "bodyTeam": "No SLA policy covers a problem with priority «{{priority}}» and team «{{team}}». If you create it, it will have no SLA: no response or resolution deadline.",
+          "hint": "If it should have one, go back and change priority or team, or ask an administrator for a policy in Admin → SLA Policies. Tickets created without SLA after this warning do not appear in the configuration warnings."
+        },
+        "service_request": {
+          "title": "No SLA policy covers this service request",
+          "body": "No SLA policy covers a service request with priority «{{priority}}». If you create it, it will have no SLA: no response or resolution deadline.",
+          "hint": "If it should have one, go back and change the priority, or ask an administrator for a policy in Admin → SLA Policies. Tickets created without SLA after this warning do not appear in the configuration warnings."
+        },
+        "confirm": "Create without SLA",
+        "cancel": "Go back",
+        "anyCategory": "none"
+      }
     },
     "createProblem": {
       "titlePlaceholder": "E.g. Memory leak in the authentication service",
@@ -1670,7 +1692,8 @@
       "genericItem": "— Generic request (no catalog item) —",
       "needsApproval": "This item needs an approval: the request will go through the approval flow.",
       "catalogItem": "Catalog item",
-      "recommended": "(recommended)"
+      "recommended": "(recommended)",
+      "submit": "Create the request"
     },
     "planTask": {
       "validation": "Validation *",
@@ -2401,6 +2424,10 @@
     "network": "Cannot reach the server",
     "nothingToUpdate": "No field to update.",
     "notFound": "{{entity}} {{id}} not found.",
+    "sla": {
+      "acknowledgeStaffOnly": "Only staff can create a ticket without SLA: the portal does not decide the SLA configuration.",
+      "priorityRequired": "The priority is required to find the SLA policy."
+    },
     "ola": {
       "typeOneOf": "The type must be one of: {{allowed}}.",
       "entityTypeOneOf": "The entity type must be one of: {{allowed}}.",
@@ -2985,6 +3012,7 @@
       "created": "Incident created",
       "updated": "Incident updated",
       "teamAssignmentFailed": "Team assignment: {{error}}",
+      "slaCoverageUnavailable": "Could not check whether an SLA policy covers the incident: {{error}}",
       "fieldRulesUnavailable": "Cannot validate required fields: {{error}}",
       "kbDraftCreated": "KB draft created: \"{{title}}\" — find it in Knowledge Base Admin",
       "kbDraftFailed": "KB draft failed: {{error}}",
@@ -3027,7 +3055,8 @@
       "incidentUnlinked": "Incident unlinked",
       "changeLinked": "Change linked",
       "commentAdded": "Comment added",
-      "notesTooShort": "Notes too short (minimum 10 characters)"
+      "notesTooShort": "Notes too short (minimum 10 characters)",
+      "slaCoverageUnavailable": "Could not check whether an SLA policy covers the problem: {{error}}"
     },
     "change": {
       "created": "Change {{code}} created",
@@ -3045,7 +3074,8 @@
     "request": {
       "created": "Service request created",
       "updated": "Request updated",
-      "transitionFailed": "Transition failed"
+      "transitionFailed": "Transition failed",
+      "slaCoverageUnavailable": "Could not check whether an SLA policy covers the service request: {{error}}"
     },
     "events": {
       "acknowledged": "Alarm acknowledged",
@@ -4414,7 +4444,9 @@
       "default_language_not_set": "Nobody has chosen this organization's language, so the product reads in «{{fallback}}» — the first of the available languages ({{available}}), not a decision. **You choose it in Settings → Organization**, and it applies to whoever has no language of their own in their Profile.",
       "check_failed": "Check «{{check}}» did not run: {{error}}",
       "teams_without_sourcing_one": "{{count}} team does not say whether it is **internal or external**: {{teams}}{{more}}. Nobody guessed it for you — **you set it on the team page**, in Teams.",
-      "teams_without_sourcing_other": "{{count}} teams do not say whether they are **internal or external**: {{teams}}{{more}}. Nobody guessed it for you — **you set it on each team page**, in Teams."
+      "teams_without_sourcing_other": "{{count}} teams do not say whether they are **internal or external**: {{teams}}{{more}}. Nobody guessed it for you — **you set it on each team page**, in Teams.",
+      "tickets_without_sla_one": "{{count}} open ticket has **no SLA**: no SLA policy covers it ({{tickets}}{{more}}). There is no built-in SLA to fall back on — **add or widen a policy in Admin → SLA Policies**; tickets created from then on get their SLA.",
+      "tickets_without_sla_other": "{{count}} open tickets have **no SLA**: no SLA policy covers them ({{tickets}}{{more}}). There is no built-in SLA to fall back on — **add or widen a policy in Admin → SLA Policies**; tickets created from then on get their SLA."
     },
     "gap": {
       "tenant_missing": "no row: the tenant does not exist",

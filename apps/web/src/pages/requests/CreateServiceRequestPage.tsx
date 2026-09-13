@@ -9,6 +9,8 @@ import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
 import { GET_SERVICE_REQUESTS, GET_SERVICE_CATALOG_ADMIN } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { colors, palette, lookupOrError } from '@/lib/tokens'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
 const inputBase: React.CSSProperties = {
@@ -58,6 +60,7 @@ const PRIORITY_DOT: Record<string, string> = {
 
 export function CreateServiceRequestPage() {
   const { t } = useTranslation()
+  const { labelOf } = useDomainVocabularies()
   const navigate = useNavigate()
   const ids = { catalog: useId(), title: useId(), priority: useId(), dueDate: useId(), description: useId() }
 
@@ -83,7 +86,7 @@ export function CreateServiceRequestPage() {
     }
   }
 
-  const titleError = submitted && !title.trim() ? 'This field is required' : ''
+  const titleError = submitted && !title.trim() ? t('forms.fieldRequired') : ''
 
   const [createRequest, { loading }] = useMutation(CREATE_SERVICE_REQUEST, {
     refetchQueries: [{ query: GET_SERVICE_REQUESTS }],
@@ -91,10 +94,30 @@ export function CreateServiceRequestPage() {
     onError:     (err) => toast.error(err.message),
   })
 
+  const checkSlaCoverage = useSlaCoverageCheck()
+  const [checkingSla, setCheckingSla] = useState(false)
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitted(true)
-    if (!title.trim()) return
+    if (!title.trim() || loading || checkingSla) return
+    // Prima di creare: una policy SLA copre questa richiesta? Se no, chi la
+    // crea lo sa adesso e decide (useSlaCoverageCheck).
+    setCheckingSla(true)
+    let decisione: Awaited<ReturnType<typeof checkSlaCoverage>>
+    try {
+      decisione = await checkSlaCoverage({
+        entityType: 'service_request',
+        priority, priorityLabel: labelOf('priority', priority) ?? priority,
+        category: null, categoryLabel: null, teamId: null, teamName: null,
+      })
+    } catch (err) {
+      toast.error(t('toast.request.slaCoverageUnavailable', { error: err instanceof Error ? err.message : String(err) }))
+      return
+    } finally {
+      setCheckingSla(false)
+    }
+    if (decisione === 'cancelled') return
     await createRequest({
       variables: {
         input: {
@@ -102,6 +125,7 @@ export function CreateServiceRequestPage() {
           priority,
           description: description || undefined,
           catalogItemId: catalogItemId || undefined,
+          ...(decisione === 'accepted' ? { acknowledgeNoSla: true } : {}),
         },
       },
     })
@@ -246,12 +270,12 @@ export function CreateServiceRequestPage() {
             </button>
             <button
               type="submit"
-              disabled={loading}
-              style={{ padding: '8px 20px', backgroundColor: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.8 : 1 }}
+              disabled={loading || checkingSla}
+              style={{ padding: '8px 20px', backgroundColor: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: loading || checkingSla ? 'not-allowed' : 'pointer', opacity: loading || checkingSla ? 0.8 : 1 }}
               onMouseEnter={(e) => { if (!loading) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)' }}
               onMouseLeave={(e) => { if (!loading) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }}
             >
-              {loading ? 'Creating…' : 'Create Request'}
+              {loading ? t('common.creating') : t('pages.createRequest.submit')}
             </button>
           </div>
 

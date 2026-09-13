@@ -45,6 +45,26 @@ export async function getActiveOLAContractsFor(tenantId: string, entityType: str
 }
 
 /**
+ * Il fuso del tenant, per i controlli OLA/UC in orario lavorativo. Fail-loud:
+ * un tenant senza fuso sposterebbe ogni scadenza in silenzio.
+ */
+export async function getTenantTimezone(tenantId: string): Promise<string> {
+  const session = getSession(undefined, 'READ')
+  try {
+    const res = await session.executeRead((tx) =>
+      tx.run('MATCH (t:Tenant {id: $tenantId}) RETURN t.timezone AS timezone', { tenantId }),
+    )
+    const tz = res.records[0]?.get('timezone') as unknown
+    if (typeof tz !== 'string' || tz === '') {
+      throw new Error(`[sla:ola] Tenant ${tenantId} has no timezone configured — OLA/UC checks cannot compute business-hours deadlines`)
+    }
+    return tz
+  } finally {
+    await session.close()
+  }
+}
+
+/**
  * True if the entity has already reached its resolution/completion timestamp —
  * i.e. an OLA breach check firing now would be a false alarm. Entity types
  * without a known resolution field are treated as still-open.

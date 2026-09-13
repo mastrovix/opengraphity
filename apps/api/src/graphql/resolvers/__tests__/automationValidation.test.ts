@@ -9,6 +9,8 @@ vi.mock('../ci-utils.js', () => ({ withSession: vi.fn() }))
 vi.mock('../../../lib/triggerEngine.js', () => ({ invalidateTriggerCache: vi.fn() }))
 vi.mock('../../../lib/rulesEngine.js', () => ({ invalidateRulesCache: vi.fn() }))
 vi.mock('../../../lib/filterBuilder.js', () => ({ buildAdvancedWhere: vi.fn() }))
+const selectSLAForEntity = vi.fn(async (..._a: unknown[]) => null as null | { id: string; name: string })
+vi.mock('@opengraphity/sla', () => ({ selectSLAForEntity }))
 
 // Ondata 8 · B-18: i bersagli di passo si validano contro i passi VERI del
 // tenant. Il nucleo (`getWorkflowSteps`) è mockato: qui si prova la porta di
@@ -124,5 +126,28 @@ describe('assertStepTargets', () => {
     vi.mocked(getWorkflowSteps).mockResolvedValueOnce([])
     await expect(assertStepTargets(session, 't', 'problem', { actions: '[{"type":"transition_workflow","params":{"to_step":"x"}}]' }))
       .rejects.toThrow(/has no step at all: create the workflow definition/)
+  })
+})
+
+/**
+ * slaCoverage: il form di creazione chiede se una policy coprirà il ticket.
+ * Deve rispondere lo STESSO selettore del motore SLA, con gli stessi valori.
+ */
+describe('slaCoverage', () => {
+  const ctx = { tenantId: 't1' } as never
+  it('passa tipo, priorità, categoria e team al selettore del motore, e ne riporta la policy', async () => {
+    selectSLAForEntity.mockResolvedValueOnce({ id: 'p1', name: 'Rete' })
+    const r = await automationResolvers.Query.slaCoverage(null, { entityType: 'incident', priority: 'medium', category: 'network', teamId: 'tm1' }, ctx)
+    expect(selectSLAForEntity).toHaveBeenCalledWith('t1', 'incident', 'medium', 'network', 'tm1')
+    expect(r).toEqual({ policyId: 'p1', policyName: 'Rete' })
+  })
+  it('nessuna policy → null', async () => {
+    selectSLAForEntity.mockResolvedValueOnce(null)
+    expect(await automationResolvers.Query.slaCoverage(null, { entityType: 'incident', priority: 'low' }, ctx)).toBeNull()
+    expect(selectSLAForEntity).toHaveBeenLastCalledWith('t1', 'incident', 'low', null, null)
+  })
+  it('tipo sconosciuto o priorità vuota → rifiuto, non «nessuna policy»', async () => {
+    await expect(automationResolvers.Query.slaCoverage(null, { entityType: 'ticket', priority: 'low' }, ctx)).rejects.toThrow(/Invalid entityType/)
+    await expect(automationResolvers.Query.slaCoverage(null, { entityType: 'incident', priority: ' ' }, ctx)).rejects.toThrow(/priority is required/)
   })
 })

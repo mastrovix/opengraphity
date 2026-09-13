@@ -161,6 +161,26 @@ describe('createIncident', () => {
     expect(workflowEngine.createInstance).not.toHaveBeenCalled()
   })
 
+  /**
+   * Chi crea ha visto l'avviso «nessuna policy SLA copre questo incident» e
+   * l'ha accettato: l'incident lo registra (quando e chi), e la diagnostica
+   * dei ticket senza SLA non lo conta. Senza accettazione i campi restano null.
+   */
+  it('acknowledgeNoSla → registra quando e chi ha accettato di crearlo senza SLA', async () => {
+    await createIncident({ title: 'Stampante', severity: 'medium', affectedCIIds: ['ci-1'], acknowledgeNoSla: true }, ctx)
+    const create = vi.mocked(runQuery).mock.calls.find(c => (c[1] as string).includes('CREATE (i:Incident'))!
+    expect(create[1]).toContain('sla_absence_acknowledged_at: $ackAt')
+    const params = create[2] as { ackAt: string | null; ackBy: string | null; now: string }
+    expect(params.ackAt).toBe(params.now)
+    expect(params.ackBy).toBe('user-1')
+  })
+
+  it('senza acknowledgeNoSla nessuna accettazione registrata', async () => {
+    await createIncident({ title: 'Stampante', severity: 'medium', affectedCIIds: ['ci-1'] }, ctx)
+    const create = vi.mocked(runQuery).mock.calls.find(c => (c[1] as string).includes('CREATE (i:Incident'))!
+    expect(create[2]).toMatchObject({ ackAt: null, ackBy: null })
+  })
+
   it('chiama publish con type incident.created', async () => {
     await createIncident(
       { title: 'Test incident', severity: 'high', affectedCIIds: ['ci-1'] },

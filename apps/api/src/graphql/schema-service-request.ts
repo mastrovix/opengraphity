@@ -53,6 +53,11 @@ export function serviceRequestSDL(): string {
     priority: String!
     dueDate: String
     catalogItemId: ID
+    """
+    Chi crea sa che nessuna policy SLA copre il ticket e accetta che nasca
+    senza SLA: la diagnostica di configurazione non lo conta.
+    """
+    acknowledgeNoSla: Boolean
   }
 
   input UpdateServiceRequestInput {

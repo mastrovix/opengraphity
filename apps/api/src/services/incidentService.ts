@@ -113,7 +113,7 @@ function requirePayload(payload: IncidentEventPayload | null, id: string): Incid
 // ── Public service operations ─────────────────────────────────────────────────
 
 export async function createIncident(
-  input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[] },
+  input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[]; acknowledgeNoSla?: boolean | null },
   ctx: ServiceCtx,
 ) {
   validateStringLength(input.title, 'title', 1, 500)
@@ -159,7 +159,11 @@ export async function createIncident(
         category:     $category,
         status:       $status,
         created_at:   $now,
-        updated_at:   $now
+        updated_at:   $now,
+        // Chi l'ha creato ha visto l'avviso «nessuna policy SLA lo copre» e
+        // l'ha accettato: la diagnostica non lo conta fra i ticket senza SLA.
+        sla_absence_acknowledged_at: $ackAt,
+        sla_absence_acknowledged_by: $ackBy
       })
       RETURN properties(i) as props
     `, {
@@ -168,6 +172,8 @@ export async function createIncident(
       severity, impact, urgency,
       category: input.category ?? null,
       status: initialStatus, now,
+      ackAt: input.acknowledgeNoSla === true ? now : null,
+      ackBy: input.acknowledgeNoSla === true ? ctx.userId : null,
     })
     if (!rows[0]) throw new ValidationError('Failed to create incident')
     return mapIncident(rows[0].props)

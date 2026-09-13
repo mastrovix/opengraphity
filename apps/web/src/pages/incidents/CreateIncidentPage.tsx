@@ -15,6 +15,7 @@ import { FieldWrapper } from '@/components/FieldWrapper'
 import { TriageSuggestionCard } from '@/components/TriageSuggestionCard'
 import { colors, palette, alpha } from '@/lib/tokens'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -101,6 +102,9 @@ export function CreateIncidentPage() {
   const [assignToTeam] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
     onError: (err) => toast.error(t('toast.incident.teamAssignmentFailed', { error: err.message })),
   })
+
+  const checkSlaCoverage = useSlaCoverageCheck()
+  const [checkingSla, setCheckingSla] = useState(false)
 
   const canSubmit = title.trim() !== '' && description.trim() !== '' && category !== '' && selectedCIs.length > 0
 
@@ -410,9 +414,9 @@ export function CreateIncidentPage() {
             </button>
             <button
               type="button"
-              disabled={!canSubmit || loading}
+              disabled={!canSubmit || loading || checkingSla}
               onClick={() => {
-                if (!canSubmit || loading) return
+                if (!canSubmit || loading || checkingSla) return
                 if (fieldRulesError) {
                   toast.error(t('toast.incident.fieldRulesUnavailable', { error: fieldRulesError.message }))
                   return
@@ -440,24 +444,38 @@ export function CreateIncidentPage() {
                   return
                 }
                 setFieldErrors({})
-                void createIncident({
-                  variables: {
-                    input: {
-                      title: title.trim(),
-                      impact,
-                      urgency,
-                      category: category || undefined,
-                      description: description.trim() || undefined,
-                      affectedCIIds: selectedCIs.map(ci => ci.id),
+                // Prima di creare: una policy SLA copre questo incident? Se no,
+                // chi lo crea lo sa adesso e decide (useSlaCoverageCheck).
+                setCheckingSla(true)
+                void checkSlaCoverage({
+                  entityType: 'incident',
+                  priority, priorityLabel: labelOf('priority', priority) ?? priority,
+                  category: category || null, categoryLabel: category ? (labelOf('category', category) ?? category) : null,
+                  teamId: selectedTeam?.id ?? null, teamName: selectedTeam?.name ?? null,
+                }).then((decisione) => {
+                  if (decisione === 'cancelled') return
+                  void createIncident({
+                    variables: {
+                      input: {
+                        title: title.trim(),
+                        impact,
+                        urgency,
+                        category: category || undefined,
+                        description: description.trim() || undefined,
+                        affectedCIIds: selectedCIs.map(ci => ci.id),
+                        ...(decisione === 'accepted' ? { acknowledgeNoSla: true } : {}),
+                      },
                     },
-                  },
-                })
+                  })
+                }).catch((err: unknown) => {
+                  toast.error(t('toast.incident.slaCoverageUnavailable', { error: err instanceof Error ? err.message : String(err) }))
+                }).finally(() => setCheckingSla(false))
               }}
               style={{
                 background: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 8,
                 padding: '10px 24px', fontSize: 'var(--font-size-card-title)', fontWeight: 600,
-                cursor: canSubmit && !loading ? 'pointer' : 'not-allowed',
-                opacity: canSubmit && !loading ? 1 : 0.5,
+                cursor: canSubmit && !loading && !checkingSla ? 'pointer' : 'not-allowed',
+                opacity: canSubmit && !loading && !checkingSla ? 1 : 0.5,
                 transition: 'opacity 150ms',
               }}
             >

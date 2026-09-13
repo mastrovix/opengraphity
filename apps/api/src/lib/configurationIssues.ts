@@ -48,6 +48,7 @@ import { logger } from './logger.js'
 import { LINGUE, parseValueLabels, vocabularyCarriesLabels } from './enumValueLabels.js'
 import { tenantDefaultLanguage, LINGUA_DI_ULTIMA_ISTANZA } from './tenantLanguage.js'
 import { teamsWithoutSourcing } from './teamSourcing.js'
+import { ticketsWithoutSla } from './ticketsWithoutSla.js'
 
 const log = logger.child({ module: 'configuration-issues' })
 
@@ -65,6 +66,7 @@ export type ConfigurationIssueKind =
   | 'value_labels_partial'
   | 'default_language_not_set'
   | 'teams_without_sourcing'
+  | 'tickets_without_sla'
 
 export interface ConfigurationIssue {
   /** La CHIAVE del problema: il client la risolve nella sua lingua. */
@@ -87,7 +89,7 @@ export async function configurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkLanguage, checkTeamSourcing]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkLanguage, checkTeamSourcing, checkTicketsWithoutSla]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -303,6 +305,26 @@ async function checkTeamSourcing(tenantId: string, session: Session): Promise<Co
       teams: names.join(', '),
       // Quanti nomi NON sono in elenco: la frase lo dice invece di troncare muta.
       others: String(Math.max(0, count - names.length)),
+    },
+  }]
+}
+
+/**
+ * Ticket aperti che nessuna policy SLA copre, quindi senza SLA.
+ *
+ * Prima non potevano esistere: le policy di fabbrica scritte nel codice
+ * coprivano tutto, in silenzio. Tolte quelle, un ticket senza policy resta
+ * senza SLA — e si dice qui, con i primi numeri.
+ */
+async function checkTicketsWithoutSla(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const { count, numbers } = await ticketsWithoutSla(session, tenantId)
+  if (count === 0) return []
+  return [{
+    kind: 'tickets_without_sla', severity: 'warning', where: '/admin/sla-policies',
+    params: {
+      count: String(count),
+      tickets: numbers.join(', '),
+      others: String(Math.max(0, count - numbers.length)),
     },
   }]
 }

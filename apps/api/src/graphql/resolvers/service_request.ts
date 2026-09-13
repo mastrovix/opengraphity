@@ -17,6 +17,7 @@ type Props = Record<string, unknown>
 // Mapper unico in requestService (la copia locale perdeva catalogItemId e
 // requiresApproval: dichiarati nello schema ma sempre null in lettura).
 import { mapRequest } from '../../services/requestService.js'
+import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
 
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
@@ -76,7 +77,7 @@ async function serviceRequest(
 
 async function createServiceRequest(
   _: unknown,
-  args: { input: { title: string; description?: string; priority: string; dueDate?: string; catalogItemId?: string } },
+  args: { input: { title: string; description?: string; priority: string; dueDate?: string; catalogItemId?: string; acknowledgeNoSla?: boolean | null } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -94,6 +95,7 @@ async function createServiceRequest(
       if (!item) throw new NotFoundError('ServiceCatalogItem', args.input.catalogItemId)
       requiresApproval = item.requiresApproval ?? false
     }
+    assertMayAcknowledgeNoSla(ctx, args.input.acknowledgeNoSla)
     const result = await requestService.createRequest({ ...args.input, requiresApproval }, ctx)
     void audit(ctx, 'request.created', 'ServiceRequest', result.id as string)
     return result

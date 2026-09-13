@@ -31,7 +31,7 @@ export function mapRequest(props: Props) {
 }
 
 export async function createRequest(
-  input: { title: string; description?: string; priority: string; dueDate?: string; catalogItemId?: string; requiresApproval?: boolean },
+  input: { title: string; description?: string; priority: string; dueDate?: string; catalogItemId?: string; requiresApproval?: boolean; acknowledgeNoSla?: boolean | null },
   ctx: ServiceCtx,
 ) {
   const id  = uuidv4()
@@ -57,7 +57,11 @@ export async function createRequest(
         catalog_item_id:   $catalogItemId,
         requires_approval: $requiresApproval,
         created_at:        $now,
-        updated_at:        $now
+        updated_at:        $now,
+        // Chi l'ha creata ha visto l'avviso «nessuna policy SLA la copre» e
+        // l'ha accettato: la diagnostica non la conta fra i ticket senza SLA.
+        sla_absence_acknowledged_at: $ackAt,
+        sla_absence_acknowledged_by: $ackBy
       })
       RETURN properties(r) as props
     `, {
@@ -67,6 +71,8 @@ export async function createRequest(
       catalogItemId: input.catalogItemId ?? null,
       requiresApproval: input.requiresApproval ?? false,
       now,
+      ackAt: input.acknowledgeNoSla === true ? now : null,
+      ackBy: input.acknowledgeNoSla === true ? ctx.userId : null,
     })
     if (!rows[0]) throw new Error('Failed to create service request')
 

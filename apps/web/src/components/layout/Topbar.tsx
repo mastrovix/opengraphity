@@ -16,8 +16,9 @@ import { keycloak } from '@/lib/keycloak'
 import { layoutPalette as C, alpha, colors } from '@/lib/tokens'
 import { useNotificationContext } from '@/contexts/NotificationContext'
 import { NotificationPanel } from '@/components/ui/NotificationPanel'
+import { posizioneNelMenu } from './menu'
 
-function Breadcrumb() {
+export function Breadcrumb() {
   const { t } = useTranslation()
   const { pathname } = useLocation()
 
@@ -55,12 +56,6 @@ function Breadcrumb() {
     sources:            t('sidebar.monitoringSources'),
     'event-policy':     t('sidebar.eventPolicy'),
   }
-  // Etichette per percorso intero, dove il segmento da solo è ambiguo:
-  // /admin/monitoring è "Platform monitoring", /monitoring è il gruppo ITSM.
-  const PATH_LABELS: Record<string, string> = {
-    '/admin/monitoring': t('sidebar.platformMonitoring'),
-  }
-
   const formatSegment = (part: string): string => {
     if (LABELS[part]) return LABELS[part]
     if (/^[0-9a-f-]{20,}$/i.test(part)) return t('topbar.detail')
@@ -73,25 +68,45 @@ function Breadcrumb() {
     return <span style={{ color: C.textDefault, fontWeight: 600, fontSize: 12 }}>{t('sidebar.dashboard')}</span>
   }
 
+  // Una pagina che sta nel menu prende nome e gruppo dal menu: il gruppo
+  // (testo, non è una pagina), la voce, poi i segmenti sotto la voce. Le
+  // pagine fuori dal menu (tipi di CI, indirizzi storici) seguono i segmenti.
+  type Crumb = { key: string; label: string; to: string | null }
+  const pos = posizioneNelMenu(pathname)
+  const crumbs: Crumb[] = []
+  if (pos) {
+    if (pos.groupKey) crumbs.push({ key: `group:${pos.groupKey}`, label: t(pos.groupKey), to: null })
+    crumbs.push({ key: pos.item.to, label: t(pos.item.labelKey), to: pos.item.to })
+    pos.rest.forEach((part, i) => {
+      const path = `${pos.item.to}/${pos.rest.slice(0, i + 1).join('/')}`
+      crumbs.push({ key: path, label: formatSegment(part), to: path })
+    })
+  } else {
+    parts.forEach((part, i) => {
+      const path = '/' + parts.slice(0, i + 1).join('/')
+      crumbs.push({ key: path, label: formatSegment(part), to: path })
+    })
+  }
+
   return (
     <nav aria-label={t('topbar.breadcrumb')} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-      {parts.map((part, i) => {
-        const isLast = i === parts.length - 1
-        const path   = '/' + parts.slice(0, i + 1).join('/')
-        const label  = PATH_LABELS[path] ?? formatSegment(part)
+      {crumbs.map((c, i) => {
+        const isLast = i === crumbs.length - 1
         return (
-          <span key={path} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {i > 0 && <span aria-hidden="true" style={{ color: C.textMuted }}>/</span>}
             {isLast ? (
-              <span aria-current="page" style={{ color: C.textDefault, fontWeight: 600 }}>{label}</span>
+              <span aria-current="page" style={{ color: C.textDefault, fontWeight: 600 }}>{c.label}</span>
+            ) : c.to === null ? (
+              <span style={{ color: C.textMuted }}>{c.label}</span>
             ) : (
               <Link
-                to={path}
+                to={c.to}
                 style={{ color: C.textMuted, textDecoration: 'none' }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = C.textDefault }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = C.textMuted }}
               >
-                {label}
+                {c.label}
               </Link>
             )}
           </span>

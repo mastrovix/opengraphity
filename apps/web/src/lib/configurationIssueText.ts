@@ -78,7 +78,7 @@ export function issueText(t: TFunction, esiste: EsisteChiave, issue: IssueData):
   // ripiego è una frase TRADOTTA, non una italiana scritta nell'API.
   // «(e altri N)» si dice solo se N > 0: con 3 team su 3 in elenco, «e altri
   // 0» e una frase sbagliata. Il frammento e tradotto, non composto qui.
-  if (issue.kind === 'teams_without_sourcing') {
+  if (issue.kind === 'teams_without_sourcing' || issue.kind === 'tickets_without_sla') {
     const altri = Number(params['others'] ?? 0)
     params['more'] = altri > 0 ? t('configurationIssues.andMore', { count: altri }) : ''
   }

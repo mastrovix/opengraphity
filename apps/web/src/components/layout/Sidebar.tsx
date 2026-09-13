@@ -3,7 +3,7 @@ import { useQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
 import { GET_ANOMALY_STATS } from '@/graphql/queries'
-import { LayoutDashboard, AlertCircle, Search, GitPullRequest, HelpCircle, ClipboardList, Inbox, ListChecks, SlidersHorizontal, Route, Server, Users, UsersRound, User, BarChart2, BrainCircuit, LayoutGrid, ScrollText, Layers, Settings, Settings2, Activity, ShieldAlert, ShieldCheck, Share2, Bell, UserCircle, Tag, CheckSquare, BookOpen, Zap, GitBranch, Clock, Plug, FlaskConical, Sparkles, ShoppingCart, Gauge, Radar, HeartPulse, Boxes, Table2, Building2, Handshake } from 'lucide-react'
+import { ListChecks, SlidersHorizontal, Server, Users, BarChart2, Settings, Activity, Radar } from 'lucide-react'
 import { useMe } from '@/hooks/useMe'
 import { isStaff } from '@/lib/roles'
 import { useMetamodel } from '@/contexts/MetamodelContext'
@@ -11,6 +11,7 @@ import { CIIcon } from '@/lib/ciIcon'
 import { C, NavItem, SubItem } from './SidebarNavItems'
 import { SidebarGroup, useGroupOpen } from './SidebarGroup'
 import { voceAttiva } from './menuActive'
+import { NAV_ITEM_DEFS, ANALYSIS_ITEM_DEFS, MONITORING_ITEM_DEFS, CONFIG_ITEM_DEFS, PROFILE_ITEM, ITSM_ITEM_DEFS, REPORTING_ITEM_DEFS, TEAMS_ITEM_DEFS, SETTINGS_ITEM_DEFS, ADMIN_NAV_ITEM_DEFS } from './menu'
 import { SidebarCollapseButton } from './SidebarUserMenu'
 import { colors } from '@/lib/tokens'
 
@@ -19,85 +20,6 @@ const MY_PENDING_APPROVALS_COUNT = gql`
     myPendingApprovals { id }
   }
 `
-
-const NAV_ITEM_DEFS = [
-  { to: '/dashboard',      labelKey: 'sidebar.dashboard',     icon: LayoutDashboard },
-  { to: '/approvals',      labelKey: 'sidebar.approvals',     icon: CheckSquare },
-  { to: '/knowledge-base', labelKey: 'sidebar.knowledgeBase', icon: BookOpen },
-  { to: '/assistant',      labelKey: 'sidebar.assistant',     icon: Sparkles },
-]
-
-const ANALYSIS_ITEM_DEFS = [
-  { to: '/anomalies',        labelKey: 'sidebar.anomalies',   icon: ShieldAlert  },
-  { to: '/topology',         labelKey: 'sidebar.topologyMap', icon: Share2       },
-  { to: '/analysis/what-if', labelKey: 'sidebar.whatIf',      icon: FlaskConical },
-]
-
-// Monitoraggio (Event Management): console allarmi, Servizi monitorati e
-// pagina Salute CI (staff: stesso predicato `isStaff` delle rotte `staff(...)`
-// in main.tsx, il gruppo intero è nascosto agli end user), sorgenti e policy
-// (admin: le voci sono filtrate per ruolo nel render). La mappa con la salute
-// evidenziata resta raggiungibile da "Vedi sulla mappa".
-const MONITORING_ITEM_DEFS = [
-  { to: '/events',                labelKey: 'sidebar.events',            icon: Radar,      adminOnly: false },
-  { to: '/monitoring/services',   labelKey: 'sidebar.services',          icon: Boxes,      adminOnly: false },
-  { to: '/monitoring/health',     labelKey: 'sidebar.ciHealth',          icon: HeartPulse, adminOnly: false },
-  { to: '/monitoring/sources',    labelKey: 'sidebar.monitoringSources', icon: Plug,       adminOnly: true  },
-  { to: '/settings/event-policy', labelKey: 'sidebar.eventPolicy',       icon: Settings2,  adminOnly: true  },
-]
-
-const CONFIG_ITEM_DEFS = [
-  { to: '/settings/organization',    labelKey: 'sidebar.organization',    icon: Building2 },
-  { to: '/settings/ci-types',        labelKey: 'sidebar.ciTypeDesigner',  icon: Layers   },
-  { to: '/settings/itil-designer',   labelKey: 'sidebar.itilDesigner',    icon: Settings2 },
-  { to: '/settings/enum-designer',   labelKey: 'sidebar.enumDesigner',    icon: Tag      },
-  { to: '/settings/domain-matrices', labelKey: 'sidebar.domainMatrices',  icon: Table2   },
-  { to: '/workflow',                  labelKey: 'sidebar.workflowDesigner', icon: Route    },
-]
-
-// Personal page, every role (E-13): language + Slack link.
-const PROFILE_ITEM = { to: '/profile', labelKey: 'sidebar.profile', icon: UserCircle }
-
-const ITSM_ITEM_DEFS = [
-  { to: '/incidents', labelKey: 'sidebar.incidents', icon: AlertCircle    },
-  { to: '/problems',  labelKey: 'sidebar.problems',  icon: Search         },
-  { to: '/changes',   labelKey: 'sidebar.changes',   icon: GitPullRequest },
-  { to: '/my-tasks',  labelKey: 'sidebar.myTasks',   icon: ClipboardList  },
-  { to: '/requests',  labelKey: 'sidebar.requests',  icon: Inbox          },
-]
-
-const REPORTING_ITEM_DEFS = [
-  { to: '/reports',        labelKey: 'sidebar.aiAnalysis',    icon: BrainCircuit },
-  { to: '/reports/sla',    labelKey: 'sidebar.slaReport',     icon: Gauge        },
-  { to: '/reports/ola-uc', labelKey: 'sidebar.olaReport',     icon: Handshake    },
-  { to: '/custom-reports', labelKey: 'sidebar.reportBuilder', icon: LayoutGrid   },
-]
-
-const TEAMS_ITEM_DEFS = [
-  { to: '/teams', labelKey: 'sidebar.teams', icon: UsersRound },
-  { to: '/users', labelKey: 'sidebar.users', icon: User },
-]
-
-const SETTINGS_ITEM_DEFS = [
-  { to: '/settings/notifications',      labelKey: 'sidebar.notificationChannels', icon: Bell },
-  { to: '/settings/notification-rules', labelKey: 'sidebar.notificationRules',    icon: Bell },
-  { to: '/settings/sync',               labelKey: 'sidebar.cmdbSync',             icon: Activity },
-  { to: '/admin/queues',                labelKey: 'sidebar.bullBoard',            icon: Activity },
-]
-
-const ADMIN_NAV_ITEM_DEFS = [
-  { to: '/logs',                   labelKey: 'sidebar.logs',           icon: ScrollText  },
-  { to: '/admin/audit',            labelKey: 'sidebar.auditLog',       icon: ShieldCheck },
-  { to: '/admin/monitoring',       labelKey: 'sidebar.platformMonitoring', icon: Activity },
-  { to: '/admin/knowledge-base',   labelKey: 'sidebar.kbAdmin',        icon: BookOpen    },
-  { to: '/admin/triggers',         labelKey: 'sidebar.autoTriggers',   icon: Zap         },
-  { to: '/admin/business-rules',   labelKey: 'sidebar.businessRules',  icon: GitBranch   },
-  { to: '/admin/sla-policies',     labelKey: 'sidebar.slaPolicies',    icon: Clock       },
-  { to: '/admin/ola-uc',           labelKey: 'sidebar.olaContracts',   icon: Handshake   },
-  { to: '/admin/service-catalog',  labelKey: 'sidebar.serviceCatalog', icon: ShoppingCart},
-  { to: '/admin/integrations',         labelKey: 'sidebar.integrations',        icon: Plug        },
-  { to: '/admin/assessment-questions', labelKey: 'sidebar.assessmentQuestions', icon: HelpCircle  },
-]
 
 // CI type → sidebar label key (module scope: not rebuilt on every render, E-12).
 const CI_LABEL_KEYS: Record<string, string> = {

@@ -22,17 +22,25 @@ vi.mock('../status.js', () => ({
   markResponseMet, markResolveMet, getSLAStatus, createSLAStatus, getEntityCreatedAt, getEntityScope,
   pauseSLA: vi.fn(), resumeSLA: vi.fn(),
 }))
+const scheduleOLABreaches = vi.fn(async (_p: unknown) => {})
+const getActiveOLAContractsFor = vi.fn(async (_t: string, _e: string) => [] as unknown[])
+const getTenantTimezone = vi.fn(async (_t: string) => 'Europe/Rome')
 vi.mock('../scheduler.js', () => ({
   initScheduler: vi.fn(), cancelSLAJobs, scheduleWarning, scheduleBreachCheck, scheduleResponseCheck,
-  scheduleOLABreaches: vi.fn(async () => {}),
+  scheduleOLABreaches,
 }))
 vi.mock('../selector.js', () => ({ selectSLAForEntity }))
-vi.mock('../olaBreach.js', () => ({ getActiveOLAContractsFor: vi.fn(async () => []) }))
+vi.mock('../olaBreach.js', () => ({ getActiveOLAContractsFor, getTenantTimezone }))
 
 const { SLAEngine } = await import('../engine.js')
 
 function event<T>(type: string, payload: T, timestamp = '2026-05-01T10:00:00.000Z'): DomainEvent<T> {
   return { id: 'evt-1', type, tenant_id: 't1', timestamp, correlation_id: 'c', actor_id: 'u', payload } as DomainEvent<T>
+}
+
+const POLICY_GENERICA = {
+  id: 'pol-all', name: 'Tutti gli incident', timezone: 'Europe/Rome',
+  response_minutes: 60, resolve_minutes: 480, business_hours: false,
 }
 
 const baseStatus = {
@@ -49,6 +57,11 @@ beforeEach(() => {
   createSLAStatus.mockResolvedValue(baseStatus)
   getSLAStatus.mockResolvedValue(baseStatus)
   markResolveMet.mockResolvedValue({ ...baseStatus, resolve_met: true })
+  // Una policy del tenant che copre tutto: i test che non parlano di policy
+  // vogliono uno SLA creato. Non ci sono più policy di fabbrica a cui ricadere.
+  selectSLAForEntity.mockResolvedValue(POLICY_GENERICA)
+  getActiveOLAContractsFor.mockResolvedValue([])
+  getTenantTimezone.mockResolvedValue('Europe/Rome')
 })
 
 describe('SLAEngine — response met cancels the response timer (D-01)', () => {
@@ -181,7 +194,7 @@ describe('SLAEngine — l\'ambito della policy (categoria e team) arriva al sele
     expect(selectSLAForEntity).toHaveBeenCalledWith('t1', 'incident', 'medium', null, null)
   })
 
-  it('la policy del tenant vince sui default, e i suoi minuti arrivano allo stato', async () => {
+  it('la policy del tenant sceglie lo SLA, e i suoi minuti arrivano allo stato', async () => {
     getEntityScope.mockResolvedValue({ category: 'network', teamId: null })
     getEntityCreatedAt.mockResolvedValue(new Date('2026-05-01T09:00:00.000Z'))
     selectSLAForEntity.mockResolvedValue({
@@ -195,5 +208,42 @@ describe('SLAEngine — l\'ambito della policy (categoria e team) arriva al sele
     expect(params.policy.tiers[0]!.response_minutes).toBe(7)
     expect(params.policy.tiers[0]!.resolve_minutes).toBe(30)
     expect(params.policy.tiers[0]!.severity).toBe('medium')
+  })
+})
+
+/**
+ * NESSUNA POLICY DI FABBRICA. Un ticket che nessuna policy del tenant copre
+ * riceveva lo SLA da «Default Incident SLA», scritta nel codice e invisibile
+ * nella pagina SLA Policies: su c-test 6 SLA su 8 venivano da lì.
+ */
+describe('SLAEngine — senza una policy del tenant, nessuno SLA', () => {
+  it('nessuna policy corrisponde → nessuno SLA, nessun timer, e lo dice nel log', async () => {
+    selectSLAForEntity.mockResolvedValue(null)
+    getEntityCreatedAt.mockResolvedValue(new Date('2026-05-01T09:00:00.000Z'))
+    const avvisi: string[] = []
+    const spia = vi.spyOn(console, 'warn').mockImplementation((...a: unknown[]) => { avvisi.push(a.join(' ')) })
+    const engine = new SLAEngine()
+    await engine.process(event('incident.created', { id: 'inc-20', title: 'x', severity: 'critical', affected_ci_ids: [] }))
+    spia.mockRestore()
+    expect(createSLAStatus).not.toHaveBeenCalled()
+    expect(scheduleWarning).not.toHaveBeenCalled()
+    expect(scheduleBreachCheck).not.toHaveBeenCalled()
+    expect(scheduleResponseCheck).not.toHaveBeenCalled()
+    expect(avvisi.join(' ')).toMatch(/No SLA policy matches incident inc-20/)
+  })
+
+  it('i controlli OLA/UC si armano anche senza SLA, col fuso del tenant', async () => {
+    selectSLAForEntity.mockResolvedValue(null)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const contratto = { id: 'ola-1', name: 'Rete', type: 'ola', resolve_minutes: 240, business_hours: true }
+    getActiveOLAContractsFor.mockResolvedValue([contratto])
+    getTenantTimezone.mockResolvedValue('America/New_York')
+    const engine = new SLAEngine()
+    await engine.process(event('incident.created', { id: 'inc-21', title: 'x', severity: 'medium', affected_ci_ids: [] }))
+    expect(createSLAStatus).not.toHaveBeenCalled()
+    expect(getTenantTimezone).toHaveBeenCalledWith('t1')
+    expect(scheduleOLABreaches).toHaveBeenCalledWith(expect.objectContaining({
+      entityId: 'inc-21', tenantId: 't1', timezone: 'America/New_York', contracts: [contratto],
+    }))
   })
 })

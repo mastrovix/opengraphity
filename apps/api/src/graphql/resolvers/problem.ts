@@ -18,6 +18,7 @@ import * as problemService from '../../services/problemService.js'
 import { validateRequiredFields, propsToFieldValues } from '../../lib/validateRequiredFields.js'
 import { resolvePriorityPatch } from '../../lib/priority.js'
 import { assertUserInAssignedTeam, setTicketTeam, setTicketUser } from '../../services/ticketAssignment.js'
+import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
 
 type Props = Record<string, unknown>
 
@@ -160,7 +161,7 @@ async function problem(
 
 async function createProblem(
   _: unknown,
-  args: { input: { title: string; description?: string; priority?: string; impact?: string; urgency?: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string } },
+  args: { input: { title: string; description?: string; priority?: string; impact?: string; urgency?: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string; acknowledgeNoSla?: boolean | null } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -169,6 +170,7 @@ async function createProblem(
       fieldValues: args.input as Record<string, unknown>,
       tenantId:    ctx.tenantId,
     })
+    assertMayAcknowledgeNoSla(ctx, args.input.acknowledgeNoSla)
     const props = await problemService.createProblem(args.input, ctx)
     void audit(ctx, 'problem.created', 'Problem', (props as Props)['id'] as string)
     return mapProblem(props as Props)

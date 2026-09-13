@@ -97,6 +97,21 @@ beforeEach(() => {
 
 // ── Priorità ITIL ─────────────────────────────────────────────────────────────
 
+describe('createProblem — «crea senza SLA»', () => {
+  it('acknowledgeNoSla → registra quando e chi ha accettato di crearlo senza SLA; senza, nulla', async () => {
+    await createProblem({ title: 'P', priority: 'low', acknowledgeNoSla: true }, ctx)
+    const [[cypher, params]] = queriesWith('CREATE (p:Problem')
+    expect(cypher).toContain('sla_absence_acknowledged_at: $ackAt')
+    expect(params['ackAt']).toBe(params['now'])
+    expect(params['ackBy']).toBe('user-1')
+
+    vi.clearAllMocks()
+    await createProblem({ title: 'P', priority: 'low' }, ctx)
+    const [[, p2]] = queriesWith('CREATE (p:Problem')
+    expect(p2).toMatchObject({ ackAt: null, ackBy: null })
+  })
+})
+
 describe('createProblem — priorità Impatto×Urgenza', () => {
   it.each([
     ['high',   'high',   'critical'],

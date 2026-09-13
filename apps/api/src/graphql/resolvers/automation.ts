@@ -10,6 +10,7 @@ import { parseActions, type ActionType } from '../../lib/actionExecutor.js'
 import { ValidationError } from '../../lib/errors.js'
 import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
 import type { Session } from 'neo4j-driver'
+import { selectSLAForEntity } from '@opengraphity/sla'
 
 type Props = Record<string, unknown>
 
@@ -445,6 +446,24 @@ async function reorderBusinessRules(_: unknown, args: { ruleIds: string[] }, ctx
 
 // ── SLA Policies ─────────────────────────────────────────────────────────────
 
+/**
+ * La policy che il motore SLA sceglierebbe per un ticket con questi valori, o
+ * null. Lo STESSO selettore del motore (`selectSLAForEntity`): una copia della
+ * regola qui potrebbe dire «coperto» a un ticket che poi nasce senza SLA.
+ */
+async function slaCoverage(
+  _: unknown,
+  args: { entityType: string; priority: string; category?: string | null; teamId?: string | null },
+  ctx: GraphQLContext,
+) {
+  const entityType = assertEnum('entityType', args.entityType, AUTOMATION_ENTITY_TYPES)
+  if (args.priority.trim() === '') {
+    throw new ValidationError('priority is required to find the SLA policy', { key: 'errors.sla.priorityRequired' })
+  }
+  const policy = await selectSLAForEntity(ctx.tenantId, entityType, args.priority, args.category ?? null, args.teamId ?? null)
+  return policy ? { policyId: policy.id, policyName: policy.name } : null
+}
+
 async function slaPolicies(_: unknown, args: { entityType?: string; filters?: string; sortField?: string; sortDirection?: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const params: Props = { tenantId: ctx.tenantId, entityType: args.entityType ?? null }
@@ -529,6 +548,7 @@ export const automationResolvers = {
     autoTriggers,
     businessRules,
     slaPolicies,
+    slaCoverage,
   },
   Mutation: {
     createAutoTrigger,

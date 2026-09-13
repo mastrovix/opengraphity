@@ -14,55 +14,14 @@ export interface SLAPolicy {
   tiers: SLATier[]
 }
 
-export const DEFAULT_SLA_POLICIES: SLAPolicy[] = [
-  {
-    id: 'default-incident-sla',
-    tenant_id: '*',
-    name: 'Default Incident SLA',
-    entity_type: 'incident',
-    timezone: 'Europe/Rome',
-    tiers: [
-      { severity: 'critical', response_minutes: 15,   resolve_minutes: 240,  business_hours: false },
-      { severity: 'high',     response_minutes: 60,   resolve_minutes: 480,  business_hours: false },
-      { severity: 'medium',   response_minutes: 240,  resolve_minutes: 1440, business_hours: true  },
-      { severity: 'low',      response_minutes: 480,  resolve_minutes: 4320, business_hours: true  },
-    ],
-  },
-  {
-    id: 'default-problem-sla',
-    tenant_id: '*',
-    name: 'Default Problem SLA',
-    entity_type: 'problem',
-    timezone: 'Europe/Rome',
-    tiers: [
-      { severity: 'critical', response_minutes: 60,  resolve_minutes: 2880, business_hours: false },
-      { severity: 'high',     response_minutes: 240, resolve_minutes: 7200, business_hours: true  },
-    ],
-  },
-  {
-    id: 'default-request-sla',
-    tenant_id: '*',
-    name: 'Default Service Request SLA',
-    entity_type: 'service_request',
-    timezone: 'Europe/Rome',
-    tiers: [
-      { severity: 'high',   response_minutes: 240,  resolve_minutes: 1440, business_hours: true },
-      { severity: 'medium', response_minutes: 480,  resolve_minutes: 4320, business_hours: true },
-      { severity: 'low',    response_minutes: 1440, resolve_minutes: 7200, business_hours: true },
-    ],
-  },
-  {
-    id: 'default-change-sla',
-    tenant_id: '*',
-    name: 'Default Change SLA',
-    entity_type: 'change',
-    timezone: 'Europe/Rome',
-    // Deadline is determined dynamically from window_end, not from tiers
-    tiers: [
-      { severity: 'any', response_minutes: 0, resolve_minutes: 0, business_hours: false },
-    ],
-  },
-]
+/*
+  NESSUNA POLICY DI FABBRICA. Qui c'erano quattro policy scritte nel codice
+  («Default Incident SLA» e le sorelle) che il motore applicava a ogni ticket
+  che non corrispondeva a nessuna policy del cliente: invisibili nella pagina
+  SLA Policies, non modificabili, con fuso e orari fissi. Uno SLA nasce solo da
+  una policy del tenant (o da una business rule); un ticket che non ne ha
+  nessuna resta senza SLA e la diagnostica di configurazione lo conta.
+*/
 
 // ── Business hours helpers ───────────────────────────────────────────────────
 

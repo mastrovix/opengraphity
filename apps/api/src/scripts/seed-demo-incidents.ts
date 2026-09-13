@@ -84,7 +84,7 @@ function derive(impact: IU, urgency: IU): 'critical' | 'high' | 'medium' | 'low'
   if ((impact === 'high' && urgency === 'low') || (impact === 'medium' && urgency === 'medium') || (impact === 'low' && urgency === 'high')) return 'medium'
   return 'low'
 }
-// Default incident SLA tiers (minuti) — allineati a DEFAULT_SLA_POLICIES
+// Livelli SLA dei dati dimostrativi (minuti): solo per questo seed, non sono policy del prodotto
 const TIER: Record<string, { resp: number; res: number }> = {
   critical: { resp: 15, res: 240 }, high: { resp: 60, res: 480 },
   medium: { resp: 240, res: 1440 }, low: { resp: 480, res: 4320 },

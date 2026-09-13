@@ -8,7 +8,7 @@ import type {
   ProblemCreatedPayload,
   ProblemResolvedPayload,
 } from '@opengraphity/types'
-import { DEFAULT_SLA_POLICIES, type SLAPolicy } from './policy.js'
+import type { SLAPolicy } from './policy.js'
 import { selectSLAForEntity } from './selector.js'
 import {
   createSLAStatus, markResponseMet, getSLAStatus, markResolveMet, pauseSLA, resumeSLA,
@@ -22,18 +22,16 @@ import {
   scheduleOLABreaches,
   cancelSLAJobs,
 } from './scheduler.js'
-import { getActiveOLAContractsFor } from './olaBreach.js'
-
-function findDefaultPolicy(entityType: 'incident' | 'change' | 'service_request' | 'problem') {
-  return DEFAULT_SLA_POLICIES.find((p) => p.entity_type === entityType) ?? null
-}
+import { getActiveOLAContractsFor, getTenantTimezone } from './olaBreach.js'
 
 /**
- * Resolves the SLA policy for an entity: tenant-configured policies from the
- * DB take precedence; the hardcoded platform defaults are the DOCUMENTED
- * fallback only when the tenant has configured nothing. A corrupt tenant
- * policy throws (selector is fail-fast) and fails the job — it is never
- * silently replaced by the defaults.
+ * La policy SLA del tenant per un'entità, o null se nessuna corrisponde.
+ *
+ * Null vuol dire NESSUNO SLA. Prima qui c'era il ripiego sulle policy di
+ * fabbrica scritte nel codice, applicate anche a un tenant con le sue policy
+ * quando nessuna copriva il ticket: invisibili nella pagina SLA Policies e non
+ * modificabili. Una policy del tenant corrotta lancia (il selettore è
+ * fail-fast) e fa fallire il job.
  */
 async function resolvePolicy(
   tenantId:   string,
@@ -63,7 +61,7 @@ async function resolvePolicy(
       }],
     }
   }
-  return findDefaultPolicy(entityType)
+  return null
 }
 
 export class SLAEngine extends BaseConsumer<unknown> {
@@ -152,18 +150,29 @@ export class SLAEngine extends BaseConsumer<unknown> {
     getSeverity: (payload: unknown) => string,
   ): Promise<void> {
     const payload  = event.payload
-    const severity = getSeverity(payload)
-    const policy   = await resolvePolicy(event.tenant_id, entityType, severity, payload.id)
 
+    // I controlli OLA/UC non dipendono dallo SLA: un contratto copre il tipo di
+    // ticket anche quando nessuna policy SLA gli corrisponde. Prima si
+    // armavano solo dopo aver creato lo SLA (e col fuso della policy SLA).
+    const olaContracts = await this.scheduleOLAChecks(event.tenant_id, entityType, payload.id)
+
+    const severity = getSeverity(payload)
+    if (typeof severity !== 'string' || severity === '') {
+      // Senza priorità non c'è policy da scegliere: nessuno SLA, e si dice.
+      console.error(`[sla:engine] No SLA tier for ${entityType} severity="${String(severity)}" — NO SLA CREATED for ${payload.id}`)
+      return
+    }
+
+    const policy = await resolvePolicy(event.tenant_id, entityType, severity, payload.id)
     if (!policy) {
-      console.warn(`[sla:engine] No SLA policy for entity type "${entityType}"`)
+      // Nessuna policy del tenant copre il ticket: nessuno SLA. Non è un
+      // errore del job — è configurazione, e la diagnostica conta questi ticket.
+      console.warn(`[sla:engine] No SLA policy matches ${entityType} ${payload.id} (severity="${severity}") — NO SLA CREATED`)
       return
     }
 
     const tier = policy.tiers.find((t) => t.severity === severity)
     if (!tier) {
-      // Loud: an entity whose severity has no tier gets NO SLA — that is a
-      // policy-coverage gap the admin must see, not an info line.
       console.error(
         `[sla:engine] No SLA tier for ${entityType} severity="${severity}" (policy "${policy.name}") — NO SLA CREATED for ${payload.id}`,
       )
@@ -193,24 +202,30 @@ export class SLAEngine extends BaseConsumer<unknown> {
       scheduleResponseCheck(status),
     ])
 
-    // Schedule OLA/UC breach checks for every contract covering this entity type
-    // (proactive: fires at created_at + the contract's resolve target).
-    const olaContracts = await getActiveOLAContractsFor(event.tenant_id, entityType)
-    if (olaContracts.length > 0) {
-      await scheduleOLABreaches({
-        entityId:   payload.id,
-        entityType,
-        tenantId:   event.tenant_id,
-        timezone:   policy.timezone,
-        contracts:  olaContracts,
-      })
-    }
-
     console.log(
       `[sla:engine] SLA started for ${entityType} ${payload.id}: ` +
         `response by ${status.response_deadline}, resolve by ${status.resolve_deadline}` +
-        (olaContracts.length ? ` (+${olaContracts.length} OLA/UC checks)` : ''),
+        (olaContracts ? ` (+${olaContracts} OLA/UC checks)` : ''),
     )
+  }
+
+  /**
+   * Arma un controllo per ogni contratto OLA/UC attivo sul tipo di ticket
+   * (scatta a created_at + l'obiettivo del contratto). Il fuso è quello del
+   * tenant: il contratto non ha un fuso suo e non deve prenderlo in prestito
+   * dalla policy SLA. Ritorna quanti controlli ha armato.
+   */
+  private async scheduleOLAChecks(
+    tenantId: string, entityType: string, entityId: string,
+  ): Promise<number> {
+    const contracts = await getActiveOLAContractsFor(tenantId, entityType)
+    if (contracts.length === 0) return 0
+    await scheduleOLABreaches({
+      entityId, entityType, tenantId,
+      timezone:  await getTenantTimezone(tenantId),
+      contracts,
+    })
+    return contracts.length
   }
 
   private eventEntityId(event: DomainEvent<unknown>): string {

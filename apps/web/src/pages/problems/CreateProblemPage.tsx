@@ -11,6 +11,7 @@ import { GET_PROBLEMS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } from
 import { CREATE_PROBLEM, ASSIGN_PROBLEM_TO_TEAM } from '@/graphql/mutations'
 import { colors, palette, alpha } from '@/lib/tokens'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -98,19 +99,41 @@ export function CreateProblemPage() {
     onError: (err) => toast.error(err.message),
   })
 
+  const checkSlaCoverage = useSlaCoverageCheck()
+  const [checkingSla, setCheckingSla] = useState(false)
+
   const handleSubmit = () => {
-    if (!canSubmit || loading) return
-    void createProblem({
-      variables: {
-        input: {
-          title:           title.trim(),
-          impact,
-          urgency,
-          description:     description.trim() || undefined,
-          affectedCIs:     selectedCIs.map(ci => ci.id),
+    if (!canSubmit || loading || checkingSla) return
+    // Senza priorità il server rifiuta comunque: niente da verificare.
+    if (priority === '') {
+      toast.error(t('toast.incident.matrixIncomplete'))
+      return
+    }
+    // Prima di creare: una policy SLA copre questo problem? Se no, chi lo crea
+    // lo sa adesso e decide (useSlaCoverageCheck).
+    setCheckingSla(true)
+    void checkSlaCoverage({
+      entityType: 'problem',
+      priority, priorityLabel: labelOf('priority', priority) ?? priority,
+      category: null, categoryLabel: null,
+      teamId: selectedTeam?.id ?? null, teamName: selectedTeam?.name ?? null,
+    }).then((decisione) => {
+      if (decisione === 'cancelled') return
+      void createProblem({
+        variables: {
+          input: {
+            title:           title.trim(),
+            impact,
+            urgency,
+            description:     description.trim() || undefined,
+            affectedCIs:     selectedCIs.map(ci => ci.id),
+            ...(decisione === 'accepted' ? { acknowledgeNoSla: true } : {}),
+          },
         },
-      },
-    })
+      })
+    }).catch((err: unknown) => {
+      toast.error(t('toast.problem.slaCoverageUnavailable', { error: err instanceof Error ? err.message : String(err) }))
+    }).finally(() => setCheckingSla(false))
   }
 
   return (
@@ -341,12 +364,12 @@ export function CreateProblemPage() {
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={!canSubmit || loading}
+              disabled={!canSubmit || loading || checkingSla}
               style={{
                 background: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 8,
                 padding: '10px 24px', fontSize: 'var(--font-size-card-title)', fontWeight: 600,
-                cursor: canSubmit && !loading ? 'pointer' : 'not-allowed',
-                opacity: canSubmit && !loading ? 1 : 0.5,
+                cursor: canSubmit && !loading && !checkingSla ? 'pointer' : 'not-allowed',
+                opacity: canSubmit && !loading && !checkingSla ? 1 : 0.5,
                 transition: 'opacity 150ms',
               }}
             >

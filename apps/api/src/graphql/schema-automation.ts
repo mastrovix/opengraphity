@@ -115,7 +115,21 @@ export const automationSchema = `
     enabled: Boolean
   }
 
+  """
+  La policy SLA che coprirebbe un ticket con questi valori. Null: nessuna — il
+  ticket nascerebbe senza SLA (non esistono policy di fabbrica).
+  """
+  type SLACoverage {
+    policyId: ID!
+    policyName: String!
+  }
+
   extend type Query {
+    """
+    Chiesta dal form di creazione prima di inviare: se nessuna policy copre il
+    ticket, chi lo crea lo sa e decide. Stesso selettore del motore SLA.
+    """
+    slaCoverage(entityType: String!, priority: String!, category: String, teamId: ID): SLACoverage
     autoTriggers(entityType: String, filters: String, sortField: String, sortDirection: String): [AutoTrigger!]!
     businessRules(entityType: String, filters: String, sortField: String, sortDirection: String): [BusinessRule!]!
     slaPolicies(entityType: String, filters: String, sortField: String, sortDirection: String): [SLAPolicyNode!]!

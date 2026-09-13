@@ -61,7 +61,7 @@ function requireProblemPayload<T>(payload: T | null, id: string): T {
 // ── Public service operations ─────────────────────────────────────────────────
 
 export async function createProblem(
-  input: { title: string; description?: string; priority?: string; impact?: string; urgency?: string; category?: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string },
+  input: { title: string; description?: string; priority?: string; impact?: string; urgency?: string; category?: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string; acknowledgeNoSla?: boolean | null },
   ctx: ServiceCtx,
 ) {
   validateStringLength(input.title, 'title', 1, 500)
@@ -93,7 +93,11 @@ export async function createProblem(
         status:      $status,
         workaround:  $workaround,
         created_at:  $now,
-        updated_at:  $now
+        updated_at:  $now,
+        // Chi l'ha creato ha visto l'avviso «nessuna policy SLA lo copre» e
+        // l'ha accettato: la diagnostica non lo conta fra i ticket senza SLA.
+        sla_absence_acknowledged_at: $ackAt,
+        sla_absence_acknowledged_by: $ackBy
       })
       RETURN properties(p) as props
     `, {
@@ -102,6 +106,8 @@ export async function createProblem(
       priority, impact, urgency,
       workaround: input.workaround ?? null,
       status: initialStatus, now,
+      ackAt: input.acknowledgeNoSla === true ? now : null,
+      ackBy: input.acknowledgeNoSla === true ? ctx.userId : null,
     })
     if (!rows[0]) throw new Error('Failed to create problem')
     // Autore (Problem.createdBy): prima nessuno scriveva CREATED_BY e il campo

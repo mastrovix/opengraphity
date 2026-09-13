@@ -1646,7 +1646,29 @@
     "createTicket": {
       "searchByName": "Cerca per nome...",
       "searchTeam": "Cerca un team per nome...",
-      "derivedPriority": "Priorità (calcolata)"
+      "derivedPriority": "Priorità (calcolata)",
+      "noSla": {
+        "incident": {
+          "title": "Nessuna policy SLA copre questo incident",
+          "body": "Nessuna policy SLA copre un incident con priorità «{{priority}}» e categoria «{{category}}». Se lo crei, non avrà SLA: nessuna scadenza di risposta né di risoluzione.",
+          "bodyTeam": "Nessuna policy SLA copre un incident con priorità «{{priority}}», categoria «{{category}}» e team «{{team}}». Se lo crei, non avrà SLA: nessuna scadenza di risposta né di risoluzione.",
+          "hint": "Se deve averlo, torna indietro e cambia priorità, categoria o team, oppure chiedi a un amministratore una policy in Admin → SLA Policies. I ticket creati senza SLA dopo questo avviso non compaiono negli avvisi di configurazione."
+        },
+        "problem": {
+          "title": "Nessuna policy SLA copre questo problem",
+          "body": "Nessuna policy SLA copre un problem con priorità «{{priority}}». Se lo crei, non avrà SLA: nessuna scadenza di risposta né di risoluzione.",
+          "bodyTeam": "Nessuna policy SLA copre un problem con priorità «{{priority}}» e team «{{team}}». Se lo crei, non avrà SLA: nessuna scadenza di risposta né di risoluzione.",
+          "hint": "Se deve averlo, torna indietro e cambia priorità o team, oppure chiedi a un amministratore una policy in Admin → SLA Policies. I ticket creati senza SLA dopo questo avviso non compaiono negli avvisi di configurazione."
+        },
+        "service_request": {
+          "title": "Nessuna policy SLA copre questa service request",
+          "body": "Nessuna policy SLA copre una service request con priorità «{{priority}}». Se la crei, non avrà SLA: nessuna scadenza di risposta né di risoluzione.",
+          "hint": "Se deve averlo, torna indietro e cambia la priorità, oppure chiedi a un amministratore una policy in Admin → SLA Policies. I ticket creati senza SLA dopo questo avviso non compaiono negli avvisi di configurazione."
+        },
+        "confirm": "Crea senza SLA",
+        "cancel": "Torna indietro",
+        "anyCategory": "nessuna"
+      }
     },
     "createProblem": {
       "titlePlaceholder": "Es. Perdita di memoria nel servizio di autenticazione",
@@ -1670,7 +1692,8 @@
       "genericItem": "— Richiesta generica (nessuna voce di catalogo) —",
       "needsApproval": "Questa voce richiede un'approvazione: la richiesta passerà dal flusso di approvazione.",
       "catalogItem": "Voce di catalogo",
-      "recommended": "(consigliata)"
+      "recommended": "(consigliata)",
+      "submit": "Crea la richiesta"
     },
     "planTask": {
       "validation": "Validazione *",
@@ -2401,6 +2424,10 @@
     "network": "Errore di connessione al server",
     "nothingToUpdate": "Nessun campo da aggiornare.",
     "notFound": "{{entity}} {{id}} non trovato.",
+    "sla": {
+      "acknowledgeStaffOnly": "Solo lo staff può creare un ticket senza SLA: il portale non decide la configurazione SLA.",
+      "priorityRequired": "Serve la priorità per trovare la policy SLA."
+    },
     "ola": {
       "typeOneOf": "Il tipo deve essere uno di: {{allowed}}.",
       "entityTypeOneOf": "Il tipo di entità deve essere uno di: {{allowed}}.",
@@ -2985,6 +3012,7 @@
       "created": "Incident creato",
       "updated": "Incident aggiornato",
       "teamAssignmentFailed": "Assegnazione team: {{error}}",
+      "slaCoverageUnavailable": "Non è stato possibile verificare se una policy SLA copre l'incident: {{error}}",
       "fieldRulesUnavailable": "Impossibile validare i campi obbligatori: {{error}}",
       "kbDraftCreated": "Bozza KB creata: \"{{title}}\" — la trovi in Knowledge Base Admin",
       "kbDraftFailed": "Bozza KB fallita: {{error}}",
@@ -3027,7 +3055,8 @@
       "incidentUnlinked": "Incident scollegato",
       "changeLinked": "Change collegata",
       "commentAdded": "Commento aggiunto",
-      "notesTooShort": "Note troppo brevi (minimo 10 caratteri)"
+      "notesTooShort": "Note troppo brevi (minimo 10 caratteri)",
+      "slaCoverageUnavailable": "Non è stato possibile verificare se una policy SLA copre il problem: {{error}}"
     },
     "change": {
       "created": "Change {{code}} creato",
@@ -3045,7 +3074,8 @@
     "request": {
       "created": "Richiesta di servizio creata",
       "updated": "Richiesta aggiornata",
-      "transitionFailed": "Transizione non riuscita"
+      "transitionFailed": "Transizione non riuscita",
+      "slaCoverageUnavailable": "Non è stato possibile verificare se una policy SLA copre la service request: {{error}}"
     },
     "events": {
       "acknowledged": "Allarme preso in carico",
@@ -4414,7 +4444,9 @@
       "default_language_not_set": "Nessuno ha scelto la lingua di questa organizzazione, quindi il prodotto si legge in «{{fallback}}» — la prima delle lingue disponibili ({{available}}), non una decisione. **Si sceglie da Impostazioni → Organizzazione**, e vale per chi non ha una lingua propria nel Profilo.",
       "check_failed": "Il controllo «{{check}}» non è riuscito: {{error}}",
       "teams_without_sourcing_one": "{{count}} team non dice se è **interno o esterno**: {{teams}}{{more}}. Nessuno l'ha indovinato al posto tuo — **lo scegli nella pagina del team**, in Team.",
-      "teams_without_sourcing_other": "{{count}} team non dicono se sono **interni o esterni**: {{teams}}{{more}}. Nessuno l'ha indovinato al posto tuo — **lo scegli nella pagina di ogni team**, in Team."
+      "teams_without_sourcing_other": "{{count}} team non dicono se sono **interni o esterni**: {{teams}}{{more}}. Nessuno l'ha indovinato al posto tuo — **lo scegli nella pagina di ogni team**, in Team.",
+      "tickets_without_sla_one": "{{count}} ticket aperto è **senza SLA**: nessuna policy SLA lo copre ({{tickets}}{{more}}). Non c'è uno SLA di fabbrica a cui ricadere — **aggiungi o allarga una policy in Admin → SLA Policies**; i ticket creati da quel momento ricevono il loro SLA.",
+      "tickets_without_sla_other": "{{count}} ticket aperti sono **senza SLA**: nessuna policy SLA li copre ({{tickets}}{{more}}). Non c'è uno SLA di fabbrica a cui ricadere — **aggiungi o allarga una policy in Admin → SLA Policies**; i ticket creati da quel momento ricevono il loro SLA."
     },
     "gap": {
       "tenant_missing": "nessuna riga: il tenant non esiste",

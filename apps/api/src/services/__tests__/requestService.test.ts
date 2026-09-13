@@ -119,6 +119,19 @@ describe('createRequest', () => {
     expect(bare).toMatchObject({ catalogItemId: null, requiresApproval: false })
   })
 
+  it('acknowledgeNoSla → registra quando e chi ha accettato di crearla senza SLA; senza, nulla', async () => {
+    await createRequest({ title: 'VPN', priority: 'low', acknowledgeNoSla: true }, ctx)
+    const [[cypher, params]] = queriesWith('CREATE (r:ServiceRequest')
+    expect(cypher).toContain('sla_absence_acknowledged_at: $ackAt')
+    expect(params['ackAt']).toBe(params['now'])
+    expect(params['ackBy']).toBe('user-1')
+
+    vi.clearAllMocks()
+    await createRequest({ title: 'VPN', priority: 'low' }, ctx)
+    const [[, p2]] = queriesWith('CREATE (r:ServiceRequest')
+    expect(p2).toMatchObject({ ackAt: null, ackBy: null })
+  })
+
   it('collega il richiedente con REQUESTED_BY (tenant-scoped) e crea l\'istanza di workflow service_request', async () => {
     await createRequest({ title: 'T', priority: 'low' }, ctx)
     const [[cypher, params]] = queriesWith('MERGE (r)-[:REQUESTED_BY]->(u)')

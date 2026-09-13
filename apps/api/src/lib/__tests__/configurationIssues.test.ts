@@ -49,6 +49,9 @@ vi.mock('../provisionTenantData.js', () => ({ tenantProvisioningGaps: vi.fn(asyn
 /** I team senza interno/esterno: di default nessuno, cosi i test degli altri controlli non li vedono. */
 let senzaProvenienza: { count: number; names: string[] } = { count: 0, names: [] }
 vi.mock('../teamSourcing.js', () => ({ teamsWithoutSourcing: vi.fn(async () => senzaProvenienza) }))
+/** I ticket aperti senza SLA: di default nessuno. */
+let senzaSla: { count: number; numbers: string[] } = { count: 0, numbers: [] }
+vi.mock('../ticketsWithoutSla.js', () => ({ ticketsWithoutSla: vi.fn(async () => senzaSla) }))
 vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: vi.fn(async () => policy) }))
 vi.mock('../domainMatrix.js', async (importOriginal) => {
   const orig = await importOriginal<typeof import('../domainMatrix.js')>()
@@ -240,6 +243,22 @@ describe('configurationIssues', () => {
   it('con tutti i team indicati, nessun avviso', async () => {
     senzaProvenienza = { count: 0, names: [] }
     expect((await configurationIssues('c-one')).find((i) => i.kind === 'teams_without_sourcing')).toBeUndefined()
+  })
+
+  /**
+   * Senza policy SLA di fabbrica, un ticket che nessuna policy copre resta
+   * senza SLA: l'amministratore lo deve vedere, con i numeri.
+   */
+  it('ticket aperti senza SLA → avviso con quanti sono, i primi numeri e il posto dove si rimedia', async () => {
+    senzaSla = { count: 3, numbers: ['INC00000009', 'PRB00000004'] }
+    const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'tickets_without_sla')
+    expect(issue).toMatchObject({ severity: 'warning', where: '/admin/sla-policies' })
+    expect(par(issue)).toMatchObject({ count: '3', tickets: 'INC00000009, PRB00000004', others: '1' })
+    senzaSla = { count: 0, numbers: [] }
+  })
+
+  it('con ogni ticket aperto coperto da uno SLA, nessun avviso', async () => {
+    expect((await configurationIssues('c-one')).find((i) => i.kind === 'tickets_without_sla')).toBeUndefined()
   })
 
   it('un controllo che fallisce diventa una voce, e non nasconde gli altri', async () => {

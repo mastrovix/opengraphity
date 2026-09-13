@@ -47,3 +47,12 @@ export const GET_OLA_REPORT = gql`
     }
   }
 `
+
+/** La policy SLA che coprirebbe un ticket con questi valori; null = nessuna. */
+export const GET_SLA_COVERAGE = gql`
+  query GetSLACoverage($entityType: String!, $priority: String!, $category: String, $teamId: ID) {
+    slaCoverage(entityType: $entityType, priority: $priority, category: $category, teamId: $teamId) {
+      policyId policyName
+    }
+  }
+`
