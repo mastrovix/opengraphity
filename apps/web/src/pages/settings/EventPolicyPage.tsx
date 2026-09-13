@@ -39,17 +39,35 @@ import { Input, Select, FieldLabel } from '@/components/ui/FormControls'
 import { Toggle } from '@/components/ui/Toggle'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
-import { GET_EVENT_POLICY } from '@/graphql/queries'
+import { GET_EVENT_POLICY, GET_DOMAIN_MATRICES } from '@/graphql/queries'
 import { UPDATE_EVENT_POLICY } from '@/graphql/mutations'
 import { colors, palette } from '@/lib/tokens'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { EVENT_SEVERITIES, type EventPolicy, type EventSeverity } from '@/types/events'
 
 const OPEN_FROM  = ['info', 'warning', 'critical', 'never'] as const
 const GROUP_BY   = ['ci', 'fingerprint'] as const
-const LEVELS     = ['low', 'medium', 'high'] as const
-type Level = typeof LEVELS[number]
+/**
+ * I valori di impatto e urgenza NON sono una lista in questo file.
+ *
+ * Erano `['low','medium','high'] as const`, e questa pagina li offriva in
+ * tendina tradotti («Bassa/Media/Alta»). Ma `impact` e `urgency` sono
+ * vocabolari DEL CLIENTE, e l'API valida la mappa con `assertDomainValue`
+ * contro quelli: un cliente che rinominava `high` in `alta` si trovava una
+ * pagina che offriva tre valori e un server che li rifiutava tutti e tre —
+ * la Policy eventi diventava non salvabile, cioè lo stesso vicolo cieco
+ * (C·N-4) che l'API aveva già chiuso dalla sua parte. Trovato dal browser
+ * nella terza revisione.
+ *
+ * I valori arrivano dalla matrice `priority` (ingressi `impact` × `urgency`),
+ * che è già la sorgente unica dei due vocabolari nel web. Sotto, un valore
+ * salvato che non è (più) nel vocabolario resta in tendina marcato
+ * «sconosciuto», come per gli stati del ciclo di vita: si vede, e si può
+ * correggere.
+ */
+const DEFAULT_LEVELS = ['low', 'medium', 'high'] as const
 
-type SeverityMap = Record<EventSeverity, { impact: Level; urgency: Level }>
+type SeverityMap = Record<EventSeverity, { impact: string; urgency: string }>
 
 const DEFAULT_MAP: SeverityMap = {
   critical: { impact: 'high',   urgency: 'high' },
@@ -57,12 +75,18 @@ const DEFAULT_MAP: SeverityMap = {
   info:     { impact: 'low',    urgency: 'low' },
 }
 
-const isLevel = (v: unknown): v is Level => typeof v === 'string' && (LEVELS as readonly string[]).includes(v)
+/** Un valore di vocabolario: una stringa non vuota. Chi decide se è AMMESSO è il server. */
+const isLevel = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0
 
 /**
- * severityMap (JSON) → tabella. Un JSON malformato o con valori fuori
- * vocabolario NON viene corretto in silenzio: torna `error` e il form parte
- * dai default, con l'avviso visibile finché l'admin non salva.
+ * severityMap (JSON) → tabella. Un JSON malformato o con una severità mancante
+ * NON viene corretto in silenzio: torna `error` e il form parte dai default,
+ * con l'avviso visibile finché l'admin non salva.
+ *
+ * Qui si valida la FORMA, non l'appartenenza al vocabolario: quella la decide
+ * il server (`assertDomainValue`), che conosce i vocabolari del cliente. Un
+ * parser che la decidesse qui, con una lista scritta in questo file, avrebbe
+ * buttato via la mappa di ogni cliente che ha rinominato un valore.
  */
 function parseSeverityMap(raw: string): { map: SeverityMap; error: string | null } {
   try {
@@ -184,6 +208,16 @@ export function EventPolicyPage() {
   const { data, loading, error, refetch } = useQuery<{ eventPolicy: EventPolicy }>(GET_EVENT_POLICY, { fetchPolicy: 'cache-and-network' })
   // Il vocabolario del ciclo di vita è quello del metamodello: se manca lo si dice (baseEnums.error), non si inventa una lista.
   const baseEnums = useCIBaseEnums()
+  /**
+   * I vocabolari di `impact` e `urgency` del cliente, presi dalla matrice
+   * `priority` (i suoi due ingressi SONO quei vocabolari). Serve perché la
+   * mappa severità → impatto/urgenza scrive valori che il server valida
+   * contro il vocabolario del cliente: offrirne altri rende la pagina non
+   * salvabile.
+   */
+  const matrices = useQuery<{ domainMatrices: { kind: string; inputs: string[]; inputValues: string[][] }[] }>(
+    GET_DOMAIN_MATRICES, { fetchPolicy: METAMODEL_FETCH_POLICY },
+  )
   // EventPolicy non ha un id: senza `update` il risultato della mutation non
   // toccherebbe ROOT_QUERY.eventPolicy e le pagine cache-first resterebbero
   // sulla policy vecchia fino al ricaricamento (D·1.5).
@@ -213,8 +247,26 @@ export function EventPolicyPage() {
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => (f ? { ...f, [key]: value } : f))
   // Campo vuoto → NaN (non 0): la validazione lo segnala invece di salvare uno zero mai scritto.
   const setNum = (key: NumberField) => (e: React.ChangeEvent<HTMLInputElement>) => set(key, e.target.value.trim() === '' ? Number.NaN : Number(e.target.value))
-  const setMap = (sev: EventSeverity, field: 'impact' | 'urgency', value: Level) =>
+  const setMap = (sev: EventSeverity, field: 'impact' | 'urgency', value: string) =>
     setForm((f) => (f ? { ...f, severityMap: { ...f.severityMap, [sev]: { ...f.severityMap[sev], [field]: value } } } : f))
+
+  const prioritaMatrice = matrices.data?.domainMatrices.find((m) => m.kind === 'priority')
+  /**
+   * Le voci della tendina per `impact` o `urgency`: il vocabolario del cliente
+   * più — se serve — il valore SALVATO che non vi appartiene (più), marcato
+   * sconosciuto. Senza quest'ultimo un valore rinominato sparirebbe dalla
+   * tendina e il primo salvataggio lo sostituirebbe in silenzio.
+   * Finché la matrice non è arrivata si usano i tre valori di fabbrica: sono
+   * quelli con cui nasce ogni tenant, e la tendina non resta vuota.
+   */
+  const levelOptions = (field: 'impact' | 'urgency', current: string): { value: string; label: string }[] => {
+    const i = prioritaMatrice?.inputs.indexOf(field) ?? -1
+    const valori = i >= 0 ? (prioritaMatrice?.inputValues[i] ?? []) : []
+    const base = valori.length > 0 ? valori : [...DEFAULT_LEVELS]
+    const voci = base.map((v) => ({ value: v, label: enumLabel(v) }))
+    if (current && !base.includes(current)) voci.push({ value: current, label: t('events.policy.lifecycleUnknown', { value: current }) })
+    return voci
+  }
 
   const errors = validatePolicyForm(form)
   const invalid = Object.keys(errors).length > 0
@@ -399,8 +451,8 @@ export function EventPolicyPage() {
                     <td style={{ padding: '6px 8px', fontWeight: 500, color: colors.slateDark }}>{t(`events.severity.${sev}`)}</td>
                     {(['impact', 'urgency'] as const).map((field) => (
                       <td key={field} style={{ padding: '6px 8px' }}>
-                        <Select aria-label={`${t(`events.severity.${sev}`)} – ${t(`events.policy.map.${field}`)}`} value={form.severityMap[sev][field]} onChange={(e) => setMap(sev, field, e.target.value as Level)} disabled={saving || never} aria-describedby={never ? neverNoteId : undefined}>
-                          {LEVELS.map((l) => <option key={l} value={l}>{t(`events.policy.level.${l}`)}</option>)}
+                        <Select aria-label={`${t(`events.severity.${sev}`)} – ${t(`events.policy.map.${field}`)}`} value={form.severityMap[sev][field]} onChange={(e) => setMap(sev, field, e.target.value)} disabled={saving || never} aria-describedby={never ? neverNoteId : undefined}>
+                          {levelOptions(field, form.severityMap[sev][field]).map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
                         </Select>
                       </td>
                     ))}
@@ -448,11 +500,17 @@ export function EventPolicyPage() {
                   </label>
                 ))}
               </div>
-              {/* Quanti stati sono spuntati: con nessuno si dice cosa comporta, non si lascia il vuoto. */}
+              {/*
+                Quanti stati sono spuntati: con nessuno si dice cosa comporta,
+                non si lascia il vuoto. La frase è PER LISTA, non una sola per
+                tutte e tre: la chiave condivisa diceva «2 stati ignorati»
+                anche sotto «Stati che contano come ritirato», cioè descriveva
+                all'admin una semantica diversa da quella che stava scegliendo.
+              */}
               <p data-testid={`lifecycle-selected-${key}`} style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: colors.slateLight }}>
                 {form[key].length === 0
                   ? t(`events.policy.selectedNone.${key}`)
-                  : t('events.policy.lifecycleSelected', { count: form[key].length })}
+                  : t(`events.policy.selectedSome.${key}`, { count: form[key].length })}
               </p>
               <Help field={key} />
             </div>

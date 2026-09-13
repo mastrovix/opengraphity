@@ -1,7 +1,7 @@
 import { ApolloClient, InMemoryCache, HttpLink, from } from '@apollo/client/core'
 import { setContext } from '@apollo/client/link/context'
 import { ErrorLink } from '@apollo/client/link/error'
-import { CombinedGraphQLErrors } from '@apollo/client/errors'
+import { CombinedGraphQLErrors, ServerError } from '@apollo/client/errors'
 import { Observable } from '@apollo/client/utilities'
 import type { ApolloLink } from '@apollo/client/link'
 import type { ClientLogger } from './logger.js'
@@ -54,6 +54,30 @@ export const NETWORK_DEDUPE_KEY = 'network'
 function hasUnauthorized(result: ApolloLink.Result): boolean {
   const errors = (result as { errors?: readonly { extensions?: Record<string, unknown> }[] }).errors
   return Array.isArray(errors) && errors.some((e) => e.extensions?.['code'] === 'UNAUTHORIZED')
+}
+
+/**
+ * UNAUTHORIZED arrivato come `ServerError` invece che come errore GraphQL.
+ *
+ * `HttpLink` legge il corpo di una risposta non-2xx **solo** se il media type
+ * è `application/graphql-response+json`; con qualunque altro tipo solleva
+ * `ServerError` senza guardarci dentro. L'API manda quello giusto, ma basta un
+ * reverse proxy che riscriva il `Content-Type` — o un'altra API davanti a
+ * questo client — perché un token scaduto torni a comparire come «errore di
+ * rete» e il rinfresco muoia in silenzio, che è esattamente il difetto che
+ * questa riga chiude. Qui si guarda lo stato **e** il corpo: 401 da solo non
+ * basta a dire che rinfrescare il token serva.
+ */
+function isUnauthorizedServerError(error: unknown): boolean {
+  if (!ServerError.is(error) || error.statusCode !== 401) return false
+  try {
+    const body: unknown = JSON.parse(error.bodyText)
+    const errors = (body as { errors?: readonly { extensions?: Record<string, unknown> }[] }).errors
+    return Array.isArray(errors) && errors.some((e) => e.extensions?.['code'] === 'UNAUTHORIZED')
+  } catch {
+    // 401 senza un corpo GraphQL leggibile: non è questo il caso da ritentare.
+    return false
+  }
 }
 
 /**
@@ -116,6 +140,13 @@ export function createErrorLink(o: ErrorLinkOptions): ErrorLink {
   const once   = createDeduper(o.dedupeMs ?? DEFAULT_DEDUPE_MS)
 
   return new ErrorLink(({ error, operation, forward }) => {
+    // Stessa decisione per le due forme in cui UNAUTHORIZED può arrivare.
+    if (isUnauthorizedServerError(error)) {
+      logger.warn('UNAUTHORIZED arrivato come ServerError (media type non GraphQL): rinfresco comunque', {
+        operation: operation.operationName,
+      })
+      return retryAfterRefresh(o, once, logger, operation, forward)
+    }
     if (CombinedGraphQLErrors.is(error)) {
       const unauthorized = error.errors.some((e) => e.extensions?.['code'] === 'UNAUTHORIZED')
       if (unauthorized) {

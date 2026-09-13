@@ -12,13 +12,14 @@ const cancelSLAJobs     = vi.fn(async () => {})
 const scheduleWarning   = vi.fn(async () => {})
 const scheduleBreachCheck = vi.fn(async () => {})
 const scheduleResponseCheck = vi.fn(async () => {})
-const selectSLAForEntity = vi.fn(async () => null)
+const selectSLAForEntity = vi.fn<(t: string, e: string, p: string | null, c: string | null, tm: string | null) => Promise<unknown>>(async () => null)
+const getEntityScope = vi.fn(async () => ({ category: null as string | null, teamId: null as string | null }))
 
 vi.mock('@opengraphity/events', () => ({
   BaseConsumer: class { constructor(public queueName: string) {} async start() {} async stop() {} },
 }))
 vi.mock('../status.js', () => ({
-  markResponseMet, markResolveMet, getSLAStatus, createSLAStatus, getEntityCreatedAt,
+  markResponseMet, markResolveMet, getSLAStatus, createSLAStatus, getEntityCreatedAt, getEntityScope,
   pauseSLA: vi.fn(), resumeSLA: vi.fn(),
 }))
 vi.mock('../scheduler.js', () => ({
@@ -81,12 +82,34 @@ describe('SLAEngine — SLA clock starts at the entity created_at (D-29)', () =>
     expect(scheduleResponseCheck).toHaveBeenCalled()
   })
 
-  it('uses payload.created_at when present (no DB round-trip)', async () => {
+  /**
+   * Il payload è quello che `problemService` PUBBLICA DAVVERO — `priority`,
+   * `status`, `assignedTo` — non quello che questo test si costruiva prima
+   * (`impact: 'critical'`, campo che nessuno ha mai spedito, con un valore che
+   * non è nemmeno del vocabolario dell'impatto). Con quel payload inventato il
+   * test passava e il prodotto non creava **nessuno** SLA per **nessun**
+   * problem: il motore leggeva `impact`, sempre `undefined`.
+   *
+   * Per questo il test asserisce anche il livello scelto: è l'asserzione che
+   * lega il payload al risultato, e che prima mancava.
+   */
+  it('uses payload.created_at when present (no DB round-trip), and keys the tier on priority', async () => {
     const engine = new SLAEngine()
-    await engine.process(event('problem.created', { id: 'prb-1', title: 'x', impact: 'critical', affected_ci_ids: [], created_at: '2026-05-01T08:30:00.000Z' }))
+    await engine.process(event('problem.created', { id: 'prb-1', title: 'x', priority: 'critical', status: 'new', assignedTo: '—', created_at: '2026-05-01T08:30:00.000Z' }))
     expect(getEntityCreatedAt).not.toHaveBeenCalled()
-    const params = createSLAStatus.mock.calls[0]![0] as { startedAt: Date }
+    const params = createSLAStatus.mock.calls[0]![0] as { startedAt: Date; severity: string }
     expect(params.startedAt.toISOString()).toBe('2026-05-01T08:30:00.000Z')
+    expect(params.severity).toBe('critical')
+  })
+
+  it('un problem SENZA priorità nel payload non riceve SLA, e lo dice', async () => {
+    const engine = new SLAEngine()
+    const errori: string[] = []
+    const spia = vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => { errori.push(a.join(' ')) })
+    await engine.process(event('problem.created', { id: 'prb-2', title: 'x', status: 'new', assignedTo: '—', created_at: '2026-05-01T08:30:00.000Z' }))
+    spia.mockRestore()
+    expect(createSLAStatus).not.toHaveBeenCalled()
+    expect(errori.join(' ')).toMatch(/No SLA tier for problem/)
   })
 
   it('propagates a missing created_at on the node (no silent "now" fallback)', async () => {
@@ -124,5 +147,53 @@ describe('SLAEngine — resolution passes the real resolved_at (D-02)', () => {
     await engine.process(event('incident.resolved', { id: 'inc-9', resolved_at: '2026-05-01T12:00:00.000Z' }))
     expect(markResolveMet).not.toHaveBeenCalled()
     expect(cancelSLAJobs).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * L'AMBITO della policy: categoria e team.
+ *
+ * `resolvePolicy` passava `null, null` al selettore, sempre. Il selettore sa
+ * distinguere cinque specificità (priorità+categoria+team, priorità+categoria,
+ * priorità, categoria, tutto) e con due null ne restavano raggiungibili due:
+ * «priorità sola» e «tutto». Una policy con una categoria o un team non si
+ * applicava MAI — e la pagina «Policy SLA» la offre, e ne stampa perfino la
+ * riga «Si applica a: Incident con categoria network».
+ *
+ * Provato dal browser: creata quella policy (7 min di risposta), aperto un
+ * incident di categoria `network` → l'incident ha ricevuto i 240 minuti del
+ * livello `medium` di fabbrica.
+ */
+describe('SLAEngine — l\'ambito della policy (categoria e team) arriva al selettore', () => {
+  it('categoria e team dell\'entità vengono passati, non null', async () => {
+    getEntityScope.mockResolvedValue({ category: 'network', teamId: 'team-rete' })
+    getEntityCreatedAt.mockResolvedValue(new Date('2026-05-01T09:00:00.000Z'))
+    const engine = new SLAEngine()
+    await engine.process(event('incident.created', { id: 'inc-9', title: 'x', severity: 'medium', affected_ci_ids: [] }))
+    expect(selectSLAForEntity).toHaveBeenCalledWith('t1', 'incident', 'medium', 'network', 'team-rete')
+  })
+
+  it('un\'entità senza categoria né team passa null: una policy che li chiede non deve applicarsi', async () => {
+    getEntityScope.mockResolvedValue({ category: null, teamId: null })
+    getEntityCreatedAt.mockResolvedValue(new Date('2026-05-01T09:00:00.000Z'))
+    const engine = new SLAEngine()
+    await engine.process(event('incident.created', { id: 'inc-10', title: 'x', severity: 'medium', affected_ci_ids: [] }))
+    expect(selectSLAForEntity).toHaveBeenCalledWith('t1', 'incident', 'medium', null, null)
+  })
+
+  it('la policy del tenant vince sui default, e i suoi minuti arrivano allo stato', async () => {
+    getEntityScope.mockResolvedValue({ category: 'network', teamId: null })
+    getEntityCreatedAt.mockResolvedValue(new Date('2026-05-01T09:00:00.000Z'))
+    selectSLAForEntity.mockResolvedValue({
+      id: 'pol-1', name: 'Incident di rete', timezone: 'Europe/Rome',
+      response_minutes: 7, resolve_minutes: 30, business_hours: true,
+    })
+    const engine = new SLAEngine()
+    await engine.process(event('incident.created', { id: 'inc-11', title: 'x', severity: 'medium', affected_ci_ids: [] }))
+    const params = createSLAStatus.mock.calls[0]![0] as { policy: { name: string; tiers: { severity: string; response_minutes: number; resolve_minutes: number }[] } }
+    expect(params.policy.name).toBe('Incident di rete')
+    expect(params.policy.tiers[0]!.response_minutes).toBe(7)
+    expect(params.policy.tiers[0]!.resolve_minutes).toBe(30)
+    expect(params.policy.tiers[0]!.severity).toBe('medium')
   })
 })

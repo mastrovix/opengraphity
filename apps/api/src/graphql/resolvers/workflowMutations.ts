@@ -1010,7 +1010,7 @@ export async function executeWorkflowTransition(
         // più composta col nome del passo, che una rinomina cambiava spezzando
         // in due la storia dei filtri e dei report. Il taglio nel vocabolario è
         // dichiarato (vedi auditStepEntered): le voci storiche NON si riscrivono.
-        void auditStepEntered(session, ctx, 'incident', 'Incident', incidentId, toStep)
+        await post('audit step entered', () => auditStepEntered(session, ctx, 'incident', 'Incident', incidentId, toStep))
 
         await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes, ctx.tenantId))
 
@@ -1032,7 +1032,7 @@ export async function executeWorkflowTransition(
       if (kbResult.records.length > 0) {
         const kbId     = kbResult.records[0].get('id')     as string
         const tenantId = kbResult.records[0].get('tenantId') as string
-        void auditStepEntered(session, ctx, 'kb_article', 'KBArticle', kbId, toStep)
+        await post('audit step entered', () => auditStepEntered(session, ctx, 'kb_article', 'KBArticle', kbId, toStep))
         await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes, ctx.tenantId))
         await post('notify rules', () => publishNotifyRuleActions(session, instanceId, toStep, tenantId, ctx.userId, 'kb_article', kbId))
       }

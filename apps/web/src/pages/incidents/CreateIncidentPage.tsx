@@ -143,8 +143,14 @@ export function CreateIncidentPage() {
           {/* TITOLO */}
           <FieldWrapper
             visible={fieldRules['title']?.visible ?? true}
-            required={fieldRules['title']?.required ?? false}
-            label="Titolo"
+            /*
+              Il titolo È obbligatorio — `canSubmit` lo esige e lo schema lo
+              dichiara `String!` — e il suo era l'unico campo obbligatorio del
+              form senza l'asterisco: `?? false`. Primo campo della pagina, e
+              l'unico che non diceva di esserlo.
+            */
+            required
+            label={t('forms.title')}
             error={fieldErrors['title']}
             style={{ marginBottom: 20 }}
           >
@@ -223,7 +229,7 @@ export function CreateIncidentPage() {
           <FieldWrapper
             visible={fieldRules['description']?.visible ?? true}
             required={true}
-            label="Descrizione"
+            label={t('forms.description')}
             error={fieldErrors['description']}
             style={{ marginBottom: 20 }}
           >
@@ -419,11 +425,11 @@ export function CreateIncidentPage() {
                   return
                 }
                 const errs: Record<string, string> = {}
-                if (!title.trim()) errs['title'] = 'Campo obbligatorio'
-                if (!category) errs['category'] = 'Seleziona una categoria'
-                if (!description.trim()) errs['description'] = 'Campo obbligatorio'
+                if (!title.trim()) errs['title'] = t('forms.fieldRequired')
+                if (!category) errs['category'] = t('forms.selectCategory')
+                if (!description.trim()) errs['description'] = t('forms.fieldRequired')
                 const missing = validateFormFields(fieldRules, formValues)
-                missing.forEach((f) => { if (!errs[f]) errs[f] = 'Campo obbligatorio' })
+                missing.forEach((f) => { if (!errs[f]) errs[f] = t('forms.fieldRequired') })
                 if (Object.keys(errs).length > 0) {
                   setFieldErrors(errs)
                   return

@@ -392,20 +392,37 @@ async function apolloFor(tenantId: string, schema: GraphQLSchema): Promise<Tenan
 }
 
 /**
- * Errore di autenticazione nella stessa forma di prima: l'autenticazione
- * avveniva dentro il contesto di Apollo, che risponde 500 con il corpo
- * GraphQL. Cambiare quel codice adesso romperebbe il web, quindi si riproduce
- * identico (il 500 su «non autorizzato» è un difetto suo, da correggere a
- * parte e con il web davanti).
+ * Errore di autenticazione: **401**, col corpo GraphQL e il media type
+ * `application/graphql-response+json`.
+ *
+ * Qui c'era un 500, e il commento diceva «da correggere a parte e con il web
+ * davanti». Il web davanti ha mostrato che il difetto era più grosso dello
+ * stato sbagliato: **il rinfresco del token non funzionava affatto** su HTTP.
+ * `HttpLink` di Apollo, per una risposta non-2xx con media type
+ * `application/json`, solleva `ServerError` e NON legge il corpo; la catena di
+ * link riconosce UNAUTHORIZED solo da `CombinedGraphQLErrors`, quindi un token
+ * scaduto finiva nel ramo «errore di rete» — avviso «Errore di connessione al
+ * server» e pagina in errore, invece di un rinfresco silenzioso. I test di
+ * `web-core` passavano perché iniettavano `CombinedGraphQLErrors` a mano, con
+ * un link finto: un'altra asserzione su una forma che il prodotto non produce.
+ *
+ * `application/graphql-response+json` è il media type che la specifica GraphQL
+ * over HTTP riserva alle risposte GraphQL ben formate, e per cui Apollo legge
+ * il corpo anche su un 4xx. Con questo la catena vede UNAUTHORIZED, rinfresca
+ * e ripete — e lo stato resta quello giusto per tutti gli altri (monitoraggio
+ * compreso: un 500 sveglia qualcuno, un 401 no).
+ * Pinnato in `packages/web-core/src/__tests__/apollo.test.ts`.
  */
 function respondAuthError(res: express.Response, err: unknown): void {
   const e = err as { message?: string; extensions?: Record<string, unknown> }
-  res.status(500).json({
-    errors: [{
-      message:    e?.message ?? 'Unauthorized',
-      extensions: e?.extensions ?? { code: 'UNAUTHORIZED' },
-    }],
-  })
+  res.status(401)
+    .type('application/graphql-response+json')
+    .send(JSON.stringify({
+      errors: [{
+        message:    e?.message ?? 'Unauthorized',
+        extensions: e?.extensions ?? { code: 'UNAUTHORIZED' },
+      }],
+    }))
 }
 
 export async function startServer(): Promise<http.Server> {

@@ -530,8 +530,8 @@ export function IncidentDetailPage() {
                 } />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                  <DetailField label="Priorità" value={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><b>{priorityCode(matrix?.priorities ?? [], incident.priority)}</b><SeverityBadge value={incident.priority} /></span>} />
-                  {incident.impact && incident.urgency && <DetailField label="Impatto / Urgenza" value={`${incident.impact} / ${incident.urgency}`} />}
+                  <DetailField label={t('detail.priority')} value={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><b>{priorityCode(matrix?.priorities ?? [], incident.priority)}</b><SeverityBadge value={incident.priority} /></span>} />
+                  {incident.impact && incident.urgency && <DetailField label={t('detail.impactUrgency')} value={`${incident.impact} / ${incident.urgency}`} />}
                   <DetailField label={t('sla.title')} value={
                     incident.slaStatus
                       ? <SlaBadge sla={incident.slaStatus} />
@@ -559,7 +559,7 @@ export function IncidentDetailPage() {
                   )}
                   {incident.rootCause && (
                     <div style={{ gridColumn: '1 / -1' }}>
-                      <DetailField label="Root Cause" value={incident.rootCause} />
+                      <DetailField label={t('detail.rootCause')} value={incident.rootCause} />
                     </div>
                   )}
                 </div>

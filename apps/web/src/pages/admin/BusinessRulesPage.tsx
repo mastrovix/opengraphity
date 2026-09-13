@@ -45,28 +45,40 @@ interface BusinessRule {
 
 type RuleDraft = {
   name: string; description: string; entityType: string; eventType: string
-  conditionLogic: 'AND' | 'OR'; conditions: Condition[]; actions: RuleAction[]
+  conditionLogic: ConditionLogic; conditions: Condition[]; actions: RuleAction[]
   priority: number; stopOnMatch: boolean; enabled: boolean
 }
 
 import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
+import { entityLabel, eventOptionLabel, automationActionLabel } from '@/lib/automationOperators'
 import { colors, palette } from '@/lib/tokens'
 const EVENT_TYPES   = ['on_create', 'on_update', 'on_transition'] as const
+/**
+ * I DUE VALORI, scritti come li vuole l'API: minuscoli.
+ *
+ * Il difetto (terza revisione, trovato nel browser): la bozza teneva `'AND' |
+ * 'OR'` e li spediva così, mentre `assertEnum('conditionLogic', …,
+ * CONDITION_LOGICS)` ammette `and`/`or`. Ogni «Crea regola» finiva in
+ * «Invalid conditionLogic "AND" — expected one of: and, or», e siccome la
+ * bozza NASCE con `AND`, nessuna business rule era creabile dall'interfaccia.
+ * Nemmeno OR: erano sbagliati tutti e due.
+ *
+ * Il valore resta minuscolo dentro; a schermo si scrive maiuscolo, perché un
+ * operatore logico si legge così. I filtri della lista lo avevano già giusto
+ * (`{ value: 'and', label: 'AND' }`): era solo la bozza a divergere.
+ */
+const CONDITION_LOGICS = ['and', 'or'] as const
+type ConditionLogic = typeof CONDITION_LOGICS[number]
 // Operators now handled by ConditionRowEditor component
 const ACTION_TYPES  = ['set_field', 'assign_team', 'assign_user', 'transition_workflow', 'create_notification', 'create_comment', 'set_priority', 'execute_script', 'call_webhook', 'set_sla'] as const
-const ACTION_LABELS: Record<string, string> = {
-  set_field: 'Imposta campo', assign_team: 'Assegna team', assign_user: 'Assegna utente',
-  transition_workflow: 'Transizione workflow', create_notification: 'Crea notifica',
-  create_comment: 'Crea commento', set_priority: 'Imposta priorità',
-  execute_script: 'Esegui script', call_webhook: 'Chiama webhook', set_sla: 'Imposta SLA',
-}
+
 
 const EMPTY_CONDITION: Condition = { field: '', operator: 'equals', value: '' }
 const EMPTY_ACTION: RuleAction   = { type: 'set_field', params: {} }
 
 const emptyDraft = (): RuleDraft => ({
   name: '', description: '', entityType: 'incident', eventType: 'on_create',
-  conditionLogic: 'AND', conditions: [{ ...EMPTY_CONDITION }], actions: [{ ...EMPTY_ACTION }],
+  conditionLogic: 'and', conditions: [{ ...EMPTY_CONDITION }], actions: [{ ...EMPTY_ACTION }],
   priority: 10, stopOnMatch: false, enabled: true,
 })
 
@@ -116,12 +128,22 @@ function migrateActions(raw: unknown[]): RuleAction[] {
   })
 }
 
+/**
+ * La logica letta dall'API. Rifiuta un valore che non sia dei due, invece di
+ * farlo passare con un cast: era il cast (`as 'AND' | 'OR'`) a nascondere che
+ * i due lati non parlavano la stessa lingua.
+ */
+function asConditionLogic(value: string): ConditionLogic {
+  if ((CONDITION_LOGICS as readonly string[]).includes(value)) return value as ConditionLogic
+  throw new Error(`conditionLogic "${value}" non riconosciuto: attesi ${CONDITION_LOGICS.join(', ')}`)
+}
+
 /** Refuses corrupt data (throws): see parseStored. */
 function ruleToDraft(r: BusinessRule): RuleDraft {
   return {
     name: r.name, description: r.description ?? '',
     entityType: r.entityType, eventType: r.eventType,
-    conditionLogic: r.conditionLogic as 'AND' | 'OR',
+    conditionLogic: asConditionLogic(r.conditionLogic),
     conditions: parseStored(r.conditions, [{ ...EMPTY_CONDITION }], 'conditions'),
     actions:    migrateActions(parseStored(r.actions, [{ ...EMPTY_ACTION }], 'actions')),
     priority: r.priority, stopOnMatch: r.stopOnMatch, enabled: r.enabled,
@@ -214,8 +236,8 @@ export function BusinessRulesPage() {
     { key: 'priority', label: '#', sortable: true, render: (v) => <span style={{ fontWeight: 600, color: 'var(--color-brand)' }}>{String(v)}</span> },
     { key: 'name', label: 'Nome', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
     { key: 'entityType', label: 'Entità', sortable: true },
-    { key: 'eventType', label: 'Evento', sortable: true, render: (v) => String(v).replace('on_', '') },
-    { key: 'conditionLogic', label: 'Logica', sortable: true, render: (v) => <Pill bg={v === 'AND' ? palette.info.tint : palette.warning.tint} color={v === 'AND' ? palette.info.text : palette.warning.strong} radius={10}>{String(v)}</Pill> },
+    { key: 'eventType', label: 'Evento', sortable: true, render: (v) => eventOptionLabel(String(v)) },
+    { key: 'conditionLogic', label: 'Logica', sortable: true, render: (v) => <Pill bg={v === 'and' ? palette.info.tint : palette.warning.tint} color={v === 'and' ? palette.info.text : palette.warning.strong} radius={10}>{String(v).toUpperCase()}</Pill> },
     { key: 'stopOnMatch', label: 'Stop', sortable: true, render: (v) => v ? <Pill bg={palette.danger.tint} color="var(--color-trigger-sla-breach)" radius={10}>STOP</Pill> : null },
     { key: 'enabled', label: 'Attiva', sortable: true, render: (_v, row) => (
       <Toggle checked={row.enabled} onChange={() => void handleToggleEnabled(row)} label={t('admin.rules.toggleLabel', { name: row.name })} />
@@ -309,13 +331,13 @@ export function BusinessRulesPage() {
             <div>
               <label htmlFor={ids.entityType} style={labelS}>Tipo entità</label>
               <Select id={ids.entityType} style={selectS} value={draft.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
-                {ENTITY_TYPES.map(et => <option key={et} value={et}>{et}</option>)}
+                {ENTITY_TYPES.map(et => <option key={et} value={et}>{entityLabel(et)}</option>)}
               </Select>
             </div>
             <div>
               <label htmlFor={ids.eventType} style={labelS}>Evento</label>
               <Select id={ids.eventType} style={selectS} value={draft.eventType} onChange={e => patch({ eventType: e.target.value })}>
-                {EVENT_TYPES.map(et => <option key={et} value={et}>{et}</option>)}
+                {EVENT_TYPES.map(et => <option key={et} value={et}>{eventOptionLabel(et)}</option>)}
               </Select>
             </div>
           </div>
@@ -324,13 +346,13 @@ export function BusinessRulesPage() {
           <div style={{ marginBottom: 16 }}>
             <div style={labelS}>Logica condizioni</div>
             <div role="group" aria-label="Logica condizioni" style={{ display: 'flex', gap: 0 }}>
-              {(['AND', 'OR'] as const).map(v => (
+              {CONDITION_LOGICS.map(v => (
                 <button key={v} type="button" aria-pressed={draft.conditionLogic === v} onClick={() => patch({ conditionLogic: v })} style={{
                   padding: '6px 18px', fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer',
                   border: '1px solid var(--border)', background: draft.conditionLogic === v ? 'var(--color-brand)' : colors.white,
                   color: draft.conditionLogic === v ? colors.white : 'var(--color-slate)',
-                  borderRadius: v === 'AND' ? '6px 0 0 6px' : '0 6px 6px 0',
-                }}>{v}</button>
+                  borderRadius: v === 'and' ? '6px 0 0 6px' : '0 6px 6px 0',
+                }}>{v.toUpperCase()}</button>
               ))}
             </div>
           </div>
@@ -356,7 +378,7 @@ export function BusinessRulesPage() {
             {draft.actions.map((a, i) => (
               <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 8 }}>
                 <Select style={{ ...selectS, width: 170 }} value={a.type} onChange={e => updateAction(i, { type: e.target.value, params: {} })}>
-                  {ACTION_TYPES.map(at => <option key={at} value={at}>{ACTION_LABELS[at] ?? at}</option>)}
+                  {ACTION_TYPES.map(at => <option key={at} value={at}>{automationActionLabel(at)}</option>)}
                 </Select>
                 <ActionParamsEditor
                   actionType={a.type}

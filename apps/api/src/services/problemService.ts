@@ -13,12 +13,16 @@ import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { getInitialStepName } from '../lib/workflowHelpers.js'
 import { loadStepFacts } from '../lib/stepEvent.js'
-import { stepEnteredEventType, legacyStepEventType } from '@opengraphity/types'
+import { stepEnteredEventType, legacyStepEventType, type ProblemCreatedPayload } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 
-export interface ProblemEventPayload {
-  id: string; title: string; priority: string; status: string; assignedTo: string
-}
+/**
+ * Il payload degli eventi del problem. È **lo stesso tipo** che consuma il
+ * motore SLA (`@opengraphity/types`), non una copia: due dichiarazioni dello
+ * stesso payload sono esattamente come i due lati hanno finito per divergere
+ * (il consumatore leggeva `impact`, il produttore spediva `priority`).
+ */
+export type ProblemEventPayload = ProblemCreatedPayload
 
 type Props = Record<string, unknown>
 

@@ -101,6 +101,44 @@ export async function getEntityCreatedAt(tenantId: string, entityId: string): Pr
   }
 }
 
+/**
+ * La CATEGORIA e il TEAM dell'entità, per scegliere la policy SLA.
+ *
+ * Il difetto che questo chiude (terza revisione, provato dal browser): la
+ * pagina «Policy SLA» offre quattro ambiti — priorità, categoria, team, e le
+ * loro combinazioni — e il selettore riceveva `null` per categoria e team,
+ * SEMPRE. Delle cinque specificità che sa distinguere restavano raggiungibili
+ * solo due: «priorità sola» e «tutto». Una policy con una categoria o un team
+ * non si applicava mai, e la pagina la mostrava con la sua riga «Si applica a:
+ * Incident con categoria network» — una promessa che il motore non manteneva,
+ * senza un log, senza un avviso.
+ *
+ * Entità senza categoria o senza team: `null`, che è il valore giusto — una
+ * policy che chiede una categoria non deve applicarsi a un ticket che non ne
+ * ha.
+ */
+export async function getEntityScope(
+  tenantId: string, entityId: string,
+): Promise<{ category: string | null; teamId: string | null }> {
+  const cypher = `
+    MATCH (e {id: $entityId, tenant_id: $tenantId})
+    WHERE e:Incident OR e:Problem OR e:ServiceRequest OR e:Change
+    OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(t:Team)
+    RETURN e.category AS category, t.id AS teamId
+  `
+  const session = readSession()
+  try {
+    const row = await runQueryOne<{ category: unknown; teamId: unknown }>(session, cypher, { tenantId, entityId })
+    if (!row) throw new Error(`[sla:status] Entity ${entityId} not found for tenant ${tenantId}`)
+    return {
+      category: typeof row.category === 'string' && row.category !== '' ? row.category : null,
+      teamId:   typeof row.teamId   === 'string' && row.teamId   !== '' ? row.teamId   : null,
+    }
+  } finally {
+    await session.close()
+  }
+}
+
 /** ISO string → Date, loud on anything unparseable. */
 function parseInstant(value: unknown, what: string): Date {
   if (typeof value !== 'string' || value === '') {

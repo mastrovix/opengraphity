@@ -1446,6 +1446,8 @@
     "assignee": "Assegnatario",
     "dueDate": "Scadenza",
     "priority": "Priorità",
+    "impactUrgency": "Impatto / Urgenza",
+    "rootCause": "Causa radice",
     "affectedUsers": "Utenti impattati",
     "reassign": "Riassegna",
     "selectTeam": "Seleziona team…",
@@ -1584,7 +1586,15 @@
     "sla": {
       "deleteTitle": "Eliminare la policy SLA?",
       "toggleLabel": "Attiva/disattiva {{name}}",
-      "businessHoursLabel": "Solo orario lavorativo"
+      "businessHoursLabel": "Solo orario lavorativo",
+      "entityType": "Tipo entità",
+      "scopeField": "Ambito",
+      "category": "Categoria",
+      "team": "Team",
+      "anyScope": "Tutte",
+      "anyTeam": "Tutti",
+      "scopeHintIncident": "Severità dell’incident a cui la policy si applica.",
+      "scopeHintOther": "Priorità del ticket a cui la policy si applica."
     },
     "integrations": {
       "tabsLabel": "Sezioni integrazioni",
@@ -2220,19 +2230,20 @@
       "lifecycleUnknown": "Sconosciuto: {{value}}",
       "lifecycleVocabularyUnavailable": "Stati del ciclo di vita non disponibili dal metamodello ({{error}}): restano spuntabili solo quelli già salvati nella policy.",
       "lifecycleEmptyVocabulary": "Il metamodello non espone nessuno stato del ciclo di vita: non c'è niente da ignorare.",
-      "lifecycleSelected_one": "{{count}} stato ignorato.",
-      "lifecycleSelected_other": "{{count}} stati ignorati.",
+      "selectedSome": {
+        "ignoreLifecycleStatuses_one": "{{count}} stato ignorato.",
+        "ignoreLifecycleStatuses_other": "{{count}} stati ignorati.",
+        "retiredStatuses_one": "{{count}} stato conta come ritirato.",
+        "retiredStatuses_other": "{{count}} stati contano come ritirati.",
+        "maintenanceStatuses_one": "{{count}} stato conta come manutenzione.",
+        "maintenanceStatuses_other": "{{count}} stati contano come manutenzione."
+      },
       "autoResolve": "Chiusura automatica quando la sorgente risolve",
       "severityMap": "Mappa severità → impatto / urgenza",
       "map": {
         "severity": "Severità",
         "impact": "Impatto",
         "urgency": "Urgenza"
-      },
-      "level": {
-        "low": "Bassa",
-        "medium": "Media",
-        "high": "Alta"
       },
       "howItWorks": {
         "title": "Come funziona",
@@ -3272,5 +3283,11 @@
     "title_other": "Ci sono {{count}} cose da sistemare nella configurazione",
     "goFix": "Vai a sistemare",
     "dismiss": "Nascondi fino al prossimo caricamento"
+  },
+  "forms": {
+    "title": "Titolo",
+    "description": "Descrizione",
+    "fieldRequired": "Campo obbligatorio",
+    "selectCategory": "Seleziona una categoria"
   }
 }

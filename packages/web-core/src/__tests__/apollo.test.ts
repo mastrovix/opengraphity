@@ -190,3 +190,88 @@ describe('createDeduper', () => {
     vi.useRealTimers()
   })
 })
+
+/**
+ * IL CODICE HTTP DI «NON AUTORIZZATO», con il web davanti.
+ *
+ * `respondAuthError` in apps/api/src/server.ts rispondeva **500** a un errore
+ * di autenticazione, e il suo commento lo diceva: «il 500 su non autorizzato è
+ * un difetto suo, da correggere a parte e con il web davanti». Il pezzo che
+ * mancava per correggerlo era questa prova: la catena di link riconosce
+ * UNAUTHORIZED dal CORPO GraphQL, non dallo stato HTTP, e `HttpLink` tratta
+ * 401 e 500 nello stesso modo quando il corpo è un errore GraphQL valido —
+ * entrambi diventano `CombinedGraphQLErrors`, quindi il rinfresco del token e
+ * il replay continuano a funzionare identici.
+ *
+ * Questo test usa `HttpLink` VERO con `fetch` finto: è l'unico modo di pinnare
+ * il comportamento di Apollo invece di ragionarci sopra.
+ */
+describe('lo stato HTTP di un errore di autenticazione (401 o 500) non cambia la catena', () => {
+  const corpoNonAutorizzato = JSON.stringify({
+    errors: [{ message: 'Unauthorized', extensions: { code: 'UNAUTHORIZED' } }],
+  })
+
+  async function chiedi(status: number, tipo = 'application/graphql-response+json') {
+    const { HttpLink } = await import('@apollo/client/link/http')
+    let chiamate = 0
+    const fetchFinto = vi.fn(async () => {
+      chiamate += 1
+      // Primo tentativo: non autorizzato con lo stato in prova. Secondo: dati.
+      return chiamate === 1
+        ? new Response(corpoNonAutorizzato, { status, headers: { 'content-type': tipo } })
+        : new Response(JSON.stringify({ data: { me: { __typename: 'User', id: 'u1' } } }), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+    const { opts } = makeOptions()
+    const client = new ApolloClient({
+      link:  from([createErrorLink(opts), createAuthLink(() => 'tok').concat(new HttpLink({ uri: 'http://x/graphql', fetch: fetchFinto as unknown as typeof fetch }))]),
+      cache: new InMemoryCache(),
+    })
+    const res = await client.query({ query: QUERY, fetchPolicy: 'no-cache' })
+    return { res, tentativi: chiamate, opts }
+  }
+
+  it('401: il token si rinfresca e l\'operazione si ripete, come col 500', async () => {
+    const { res, tentativi, opts } = await chiedi(401)
+    expect(opts.refreshToken).toHaveBeenCalled()
+    expect(tentativi).toBe(2)
+    expect(res.data).toEqual({ me: { __typename: 'User', id: 'u1' } })
+    // Nessun avviso all'utente: il rinfresco è silenzioso.
+    expect(opts.onGraphQLError).not.toHaveBeenCalled()
+    expect(opts.onNetworkError).not.toHaveBeenCalled()
+  })
+
+  it('500: identico — è il comportamento che c\'era, e resta il riferimento', async () => {
+    const { res, tentativi, opts } = await chiedi(500)
+    expect(opts.refreshToken).toHaveBeenCalled()
+    expect(tentativi).toBe(2)
+    expect(res.data).toEqual({ me: { __typename: 'User', id: 'u1' } })
+  })
+
+  /**
+   * Il caso che il prodotto aveva davvero, e che nessun test copriva: media
+   * type `application/json`. `HttpLink` non guarda il corpo e solleva
+   * `ServerError`; senza `isUnauthorizedServerError` la catena lo trattava
+   * come errore di rete, mostrava «Errore di connessione al server» e non
+   * rinfrescava niente.
+   */
+  it('401 con media type application/json: si rinfresca comunque, non è un errore di rete', async () => {
+    const { res, tentativi, opts } = await chiedi(401, 'application/json')
+    expect(opts.refreshToken).toHaveBeenCalled()
+    expect(tentativi).toBe(2)
+    expect(res.data).toEqual({ me: { __typename: 'User', id: 'u1' } })
+    expect(opts.onNetworkError).not.toHaveBeenCalled()
+  })
+
+  it('un 401 che NON è un UNAUTHORIZED GraphQL resta un errore, non un ciclo di rinfreschi', async () => {
+    const { HttpLink } = await import('@apollo/client/link/http')
+    const fetchFinto = vi.fn(async () => new Response('<html>nginx</html>', { status: 401, headers: { 'content-type': 'text/html' } }))
+    const { opts } = makeOptions()
+    const client = new ApolloClient({
+      link:  from([createErrorLink(opts), createAuthLink(() => 'tok').concat(new HttpLink({ uri: 'http://x/graphql', fetch: fetchFinto as unknown as typeof fetch }))]),
+      cache: new InMemoryCache(),
+    })
+    await expect(client.query({ query: QUERY, fetchPolicy: 'no-cache' })).rejects.toThrow()
+    expect(opts.refreshToken).not.toHaveBeenCalled()
+    expect(opts.onNetworkError).toHaveBeenCalled()
+  })
+})

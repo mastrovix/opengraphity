@@ -31,6 +31,11 @@ export function problemSDL(): string {
     availableTransitions: [WorkflowTransition!]!
     workflowHistory: [WorkflowStepExecution!]!
     comments: [ProblemComment!]!
+    # Lo SLA del problem. Il motore lo creava (dopo la correzione del payload:
+    # leggeva «impact», che nessuno pubblica) ma il tipo non lo esponeva, quindi
+    # non c'era modo di vederne la scadenza da nessuna pagina — ed è la ragione
+    # per cui «nessuno SLA per nessun problem» è passato inosservato.
+    slaStatus: SLAStatusInfo
     # Valorizzato SOLO dal risultato di executeProblemTransition: azioni di step
     # fallite DOPO che la transizione è stata persistita.
     actionErrors: [String!]

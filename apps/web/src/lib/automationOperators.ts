@@ -30,10 +30,42 @@ export const ENTITY_LABELS: Record<string, string> = {
   incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'Service Request',
 }
 
+/**
+ * Participi passati, perché servono UNA frase: l'anteprima compone «Quando un
+ * Incident viene …». `on_timer` è «creato» di proposito — un trigger a timer
+ * scatta alla creazione e l'anteprima aggiunge «dopo N minuti» da sé.
+ *
+ * Per una TENDINA non vanno bene («viene dopo timer» è una frase, «dopo
+ * timer» è una voce di menu): quelle sono `EVENT_OPTION_LABELS`.
+ */
 export const EVENT_LABELS: Record<string, string> = {
   on_create: 'creato', on_update: 'aggiornato', on_timer: 'creato',
   on_sla_breach: 'in breach SLA', on_field_change: 'modificato',
   on_transition: 'transizionato',
+}
+
+/**
+ * Gli stessi eventi come VOCI DI MENU, in un posto solo.
+ *
+ * Il difetto (terza revisione, visto nel browser): la pagina dei trigger
+ * teneva una sua copia di queste etichette e mostrava «creato»,
+ * «aggiornato»…; la pagina delle business rule non ne aveva nessuna e
+ * mostrava `on_create`, `on_update`, `on_transition` — il nome interno, nella
+ * tendina, all'amministratore. Due pagine gemelle, lo stesso vocabolario,
+ * due rese diverse.
+ */
+export const EVENT_OPTION_LABELS: Record<string, string> = {
+  on_create: 'creato', on_update: 'aggiornato', on_timer: 'dopo timer',
+  on_sla_breach: 'SLA violato', on_field_change: 'campo modificato',
+  on_transition: 'transizione di stato',
+}
+
+export function eventOptionLabel(eventType: string): string {
+  return lookupOrError(EVENT_OPTION_LABELS, eventType, 'EVENT_OPTION_LABELS', `?${eventType}`)
+}
+
+export function entityLabel(entityType: string): string {
+  return lookupOrError(ENTITY_LABELS, entityType, 'ENTITY_LABELS', `?${entityType}`)
 }
 
 export const FIELD_TYPE_LABELS: Record<string, string> = {
@@ -125,8 +157,8 @@ export function fromWorkflowOperator(op: string): { ok: true; value: AutomationO
 
 export const AUTOMATION_ACTION_LABELS: Record<string, string> = {
   set_field: 'Imposta campo', assign_team: 'Assegna team', assign_user: 'Assegna utente',
-  transition_workflow: 'Transizione', create_notification: 'Notifica',
-  create_comment: 'Commento', set_priority: 'Imposta priorità',
+  transition_workflow: 'Transizione workflow', create_notification: 'Crea notifica',
+  create_comment: 'Crea commento', set_priority: 'Imposta priorità',
   execute_script: 'Esegui script', call_webhook: 'Chiama webhook', set_sla: 'Imposta SLA',
 }
 

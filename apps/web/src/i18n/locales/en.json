@@ -1446,6 +1446,8 @@
     "assignee": "Assignee",
     "dueDate": "Due date",
     "priority": "Priority",
+    "impactUrgency": "Impact / Urgency",
+    "rootCause": "Root cause",
     "affectedUsers": "Affected users",
     "reassign": "Reassign",
     "selectTeam": "Select team…",
@@ -1584,7 +1586,15 @@
     "sla": {
       "deleteTitle": "Delete this SLA policy?",
       "toggleLabel": "Toggle {{name}}",
-      "businessHoursLabel": "Business hours only"
+      "businessHoursLabel": "Business hours only",
+      "entityType": "Entity type",
+      "scopeField": "Scope",
+      "category": "Category",
+      "team": "Team",
+      "anyScope": "All",
+      "anyTeam": "All",
+      "scopeHintIncident": "Incident severity the policy applies to.",
+      "scopeHintOther": "Ticket priority the policy applies to."
     },
     "integrations": {
       "tabsLabel": "Integration sections",
@@ -2220,19 +2230,20 @@
       "lifecycleUnknown": "Unknown: {{value}}",
       "lifecycleVocabularyUnavailable": "Lifecycle statuses unavailable from the metamodel ({{error}}): only the ones already saved in the policy can be ticked.",
       "lifecycleEmptyVocabulary": "The metamodel exposes no lifecycle status: there is nothing to ignore.",
-      "lifecycleSelected_one": "{{count}} status ignored.",
-      "lifecycleSelected_other": "{{count}} statuses ignored.",
+      "selectedSome": {
+        "ignoreLifecycleStatuses_one": "{{count}} status ignored.",
+        "ignoreLifecycleStatuses_other": "{{count}} statuses ignored.",
+        "retiredStatuses_one": "{{count}} status counts as retired.",
+        "retiredStatuses_other": "{{count}} statuses count as retired.",
+        "maintenanceStatuses_one": "{{count}} status counts as maintenance.",
+        "maintenanceStatuses_other": "{{count}} statuses count as maintenance."
+      },
       "autoResolve": "Auto-resolve when the source resolves",
       "severityMap": "Severity map → impact / urgency",
       "map": {
         "severity": "Severity",
         "impact": "Impact",
         "urgency": "Urgency"
-      },
-      "level": {
-        "low": "Low",
-        "medium": "Medium",
-        "high": "High"
       },
       "howItWorks": {
         "title": "How it works",
@@ -3272,5 +3283,11 @@
     "title_other": "There are {{count}} things to fix in the configuration",
     "goFix": "Go and fix it",
     "dismiss": "Hide until the next load"
+  },
+  "forms": {
+    "title": "Title",
+    "description": "Description",
+    "fieldRequired": "Required field",
+    "selectCategory": "Pick a category"
   }
 }

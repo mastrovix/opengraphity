@@ -423,7 +423,20 @@ async function executeProblemTransition(
     // l'audit hanno più il nome del passo nella loro identità.
     const svcCtx = { tenantId: ctx.tenantId, userId: ctx.userId }
     await problemService.publishProblemTransition(args.problemId, args.toStep, svcCtx)
-    void auditStepEntered(session, ctx, 'problem', 'Problem', args.problemId, args.toStep)
+    // ATTESA, non `void`: una sessione Neo4j non regge due operazioni in
+    // parallelo. Lasciata partire e non attesa, la lettura dei fatti del passo
+    // era ancora aperta quando partiva la query qui sotto, e il driver
+    // rispondeva «Queries cannot be run directly on a session with an open
+    // transaction» — messaggio che finiva a schermo all'operatore DOPO che la
+    // transizione era già avvenuta: lo stato avanzava e l'interfaccia diceva
+    // che era fallita. Trovato dal browser su un problem vero (terza
+    // revisione). L'audit non deve far fallire la mutazione: il suo errore si
+    // registra e si va avanti — ma in fila, non in parallelo.
+    await auditStepEntered(session, ctx, 'problem', 'Problem', args.problemId, args.toStep)
+      .catch((err: unknown) => {
+        logger.error({ err, problemId: args.problemId, toStep: args.toStep },
+          '[problem] transizione avvenuta, voce di audit NON scritta')
+      })
 
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props
@@ -618,6 +631,35 @@ async function problemCreatedBy(
   })
 }
 
+/**
+ * Lo SLA del problem, letto dal nodo che il motore collega con `HAS_SLA`.
+ * Stessa forma di `Incident.slaStatus`: una sola `SLAStatusInfo` per tutte le
+ * entità che hanno un orologio.
+ */
+async function problemSlaStatus(
+  parent: { id: string },
+  _: unknown,
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const result = await session.executeRead((tx) => tx.run(`
+      MATCH (p:Problem {id: $id, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
+      RETURN s ORDER BY s.started_at DESC LIMIT 1
+    `, { id: parent.id, tenantId: ctx.tenantId }))
+    if (!result.records.length) return null
+    const s = result.records[0]!.get('s').properties as Props
+    return {
+      startedAt:        s['started_at'],
+      responseDeadline: s['response_deadline'],
+      resolveDeadline:  s['resolve_deadline'],
+      responseMet:      Boolean(s['response_met']),
+      resolveMet:       Boolean(s['resolve_met']),
+      breached:         Boolean(s['breached']),
+      pausedAt:         (s['paused_at'] ?? null) as string | null,
+    }
+  })
+}
+
 // ── Export ───────────────────────────────────────────────────────────────────
 
 async function knownErrors(_: unknown, args: { search?: string }, ctx: GraphQLContext) {
@@ -648,6 +690,7 @@ export const problemResolvers = {
     addProblemComment,
   },
   Problem: {
+    slaStatus:            problemSlaStatus,
     affectedCIs:          problemAffectedCIs,
     workflowInstance:     problemWorkflowInstance,
     availableTransitions: problemAvailableTransitions,

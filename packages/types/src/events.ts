@@ -22,7 +22,6 @@ export interface DomainEvent<T = unknown> {
 export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical'
 export type ChangeType       = 'standard' | 'normal' | 'emergency'
 export type ChangeRisk       = 'low' | 'medium' | 'high'
-export type ProblemImpact    = 'low' | 'medium' | 'high' | 'critical'
 export type CIStatus         = 'operational' | 'degraded' | 'down' | 'maintenance'
 /**
  * Salute del CI derivata dal monitoraggio (`ci.health`), separata dal ciclo di
@@ -82,11 +81,28 @@ export interface ChangeDeployedPayload {
 
 // --- Problem ---
 
+/**
+ * Il payload di `problem.created` **come viene davvero pubblicato** da
+ * `problemService.publishProblemCreated`.
+ *
+ * Prima questo tipo dichiarava `impact: ProblemImpact` e
+ * `affected_ci_ids: string[]`: due campi che nessuno ha mai spedito. Il motore
+ * SLA faceva `event as DomainEvent<ProblemCreatedPayload>` e leggeva
+ * `.impact` — sempre `undefined`, quindi nessun livello trovato e **nessuno
+ * SLA creato per nessun problem, in nessun tenant**. Il cast è ciò che ha
+ * tenuto in piedi la bugia per mesi; il test del motore se la costruiva da sé
+ * (`impact: 'critical'`, un valore che non è nemmeno del vocabolario
+ * dell'impatto) e quindi passava.
+ *
+ * `priority` è una stringa, non un'unione: la priorità è vocabolario DEL
+ * CLIENTE e si rinomina dal Dizionario.
+ */
 export interface ProblemCreatedPayload {
   id: string
   title: string
-  impact: ProblemImpact
-  affected_ci_ids: string[]
+  priority: string
+  status: string
+  assignedTo: string
 }
 
 export interface ProblemRootCauseIdentifiedPayload {

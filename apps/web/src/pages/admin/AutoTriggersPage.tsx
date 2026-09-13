@@ -27,20 +27,13 @@ import { formatDateTime } from '@/lib/datetime'
 // ── Constants ────────────────────────────────────────────────────────────────
 
 import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
+import { entityLabel, eventOptionLabel, automationActionLabel } from '@/lib/automationOperators'
 import { palette } from '@/lib/tokens'
 const EVENT_TYPES  = ['on_create', 'on_update', 'on_timer', 'on_sla_breach', 'on_field_change'] as const
 // Operators now handled by ConditionRowEditor component
 const ACTION_TYPES = ['set_field', 'assign_team', 'assign_user', 'transition_workflow', 'create_notification', 'create_comment', 'set_priority'] as const
 
-const EVENT_LABELS: Record<string, string> = {
-  on_create: 'creato', on_update: 'aggiornato', on_timer: 'dopo timer',
-  on_sla_breach: 'SLA violato', on_field_change: 'campo modificato',
-}
-const ACTION_LABELS: Record<string, string> = {
-  set_field: 'Imposta campo', assign_team: 'Assegna team', assign_user: 'Assegna utente',
-  transition_workflow: 'Transizione workflow', create_notification: 'Crea notifica',
-  create_comment: 'Crea commento', set_priority: 'Imposta priorità',
-}
+
 
 const TRIGGER_FILTER_FIELDS: FieldConfig[] = [
   { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
@@ -172,7 +165,7 @@ export function AutoTriggersPage() {
   const triggerColumns: ColumnDef<AutoTrigger>[] = [
     { key: 'name', label: 'Nome', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
     { key: 'entityType', label: 'Entità', sortable: true },
-    { key: 'eventType', label: 'Evento', sortable: true, render: (v) => EVENT_LABELS[String(v)] || String(v) },
+    { key: 'eventType', label: 'Evento', sortable: true, render: (v) => eventOptionLabel(String(v)) },
     { key: 'enabled', label: 'Abilitato', sortable: true, render: (_v, row) => (
       <Toggle checked={row.enabled} onChange={() => handleToggleEnabled(row)} label={t('admin.triggers.toggleLabel', { name: row.name })} />
     ) },
@@ -244,13 +237,13 @@ export function AutoTriggersPage() {
             <div>
               <label htmlFor={ids.entityType} style={labelS}>Tipo entità</label>
               <Select id={ids.entityType} style={selectS} value={form.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
-                {ENTITY_TYPES.map(et => <option key={et} value={et}>{et}</option>)}
+                {ENTITY_TYPES.map(et => <option key={et} value={et}>{entityLabel(et)}</option>)}
               </Select>
             </div>
             <div>
               <label htmlFor={ids.eventType} style={labelS}>Tipo evento</label>
               <Select id={ids.eventType} style={selectS} value={form.eventType} onChange={e => patch({ eventType: e.target.value })}>
-                {EVENT_TYPES.map(et => <option key={et} value={et}>{EVENT_LABELS[et] || et}</option>)}
+                {EVENT_TYPES.map(et => <option key={et} value={et}>{eventOptionLabel(et)}</option>)}
               </Select>
             </div>
           </div>
@@ -284,7 +277,7 @@ export function AutoTriggersPage() {
             {form.actions.map((a, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
                 <Select style={{ ...selectS, width: 180 }} value={a.type} onChange={e => setAction(i, { type: e.target.value, params: {} })}>
-                  {ACTION_TYPES.map(at => <option key={at} value={at}>{ACTION_LABELS[at]}</option>)}
+                  {ACTION_TYPES.map(at => <option key={at} value={at}>{automationActionLabel(at)}</option>)}
                 </Select>
                 <ActionParamsEditor
                   actionType={a.type}

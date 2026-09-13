@@ -101,11 +101,25 @@ function applicabilityText(p: SLAPolicy): string {
 export function SLAPoliciesPage() {
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const { values: PRIORITIES } = useEnumValues('incident', 'priority')
-  const { values: CATEGORIES } = useEnumValues('incident', 'category')
   const list  = useListQueryState()
   const modal = useCrudModal<SLAPolicy, FormState>(EMPTY_FORM, policyToForm)
   const { draft: form, patch } = modal
+  /**
+   * IL CAMPO CHE IL MOTORE CONFRONTA, non quello che l'etichetta prometteva.
+   *
+   * `SLAPolicyNode.priority` riceve, per un incident, la **severità**
+   * (`resolvePolicy(…, severity)` la passa come argomento `priority` del
+   * selettore); per problem e service request riceve la priorità. La tendina
+   * leggeva invece `incident.priority` dal metamodello — un campo che non
+   * esiste — quindi era **vuota**: su questa pagina non si poteva scrivere
+   * nessuna policy per severità. Trovato aprendo la pagina su un tenant vero.
+   *
+   * E leggeva sempre `'incident'`, anche con «Problem» scelto: le categorie
+   * offerte erano quelle degli incident.
+   */
+  const campoAmbito = form.entityType === 'incident' ? 'severity' : 'priority'
+  const { values: PRIORITIES } = useEnumValues(form.entityType, campoAmbito)
+  const { values: CATEGORIES } = useEnumValues(form.entityType, 'category')
 
   const { data, loading, refetch } = useQuery<{ slaPolicies: SLAPolicy[] }>(GET_SLA_POLICIES, { variables: list.variables })
   const { data: teamsData }           = useQuery<{ teams: Team[] }>(GET_TEAMS)
@@ -174,7 +188,7 @@ export function SLAPoliciesPage() {
         <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{applicabilityText(row)}</div>
       </div>
     ) },
-    { key: 'priority', label: 'Priorita', sortable: true, render: (v) => v ? <Pill bg={palette.warning.tint} color={palette.warning.strong} radius={10}>{String(v)}</Pill> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>Tutte</span> },
+    { key: 'priority', label: t('admin.sla.scopeField'), sortable: true, render: (v) => v ? <Pill bg={palette.warning.tint} color={palette.warning.strong} radius={10}>{String(v)}</Pill> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{t('admin.sla.anyScope')}</span> },
     { key: 'category', label: 'Categoria', sortable: true, render: (v) => v ? <Pill bg={palette.info.tint} color={palette.info.text} radius={10}>{String(v)}</Pill> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>Tutte</span> },
     { key: 'teamName', label: 'Team', sortable: true, render: (v) => <span style={{ color: v ? 'var(--color-slate-dark)' : 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{v ? String(v) : 'Tutti'}</span> },
     { key: 'responseMinutes', label: 'Risposta', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v))}</span> },
@@ -265,32 +279,35 @@ export function SLAPoliciesPage() {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label htmlFor={fid('entity-type')} style={labelS}>Tipo Entita *</label>
+                <label htmlFor={fid('entity-type')} style={labelS}>{t('admin.sla.entityType')} *</label>
                 <Select id={fid('entity-type')} style={selectS} value={form.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
                   {ENTITY_TYPES.map(et => <option key={et} value={et}>{ENTITY_LABELS[et]}</option>)}
                 </Select>
               </div>
               <div>
-                <label htmlFor={fid('priority')} style={labelS}>Priorita</label>
-                <Select id={fid('priority')} style={selectS} value={form.priority} onChange={e => patch({ priority: e.target.value })}>
-                  <option value="">Tutte</option>
+                <label htmlFor={fid('priority')} style={labelS}>{t('admin.sla.scopeField')}</label>
+                <Select id={fid('priority')} style={selectS} value={form.priority} onChange={e => patch({ priority: e.target.value })} aria-describedby={fid('scope-hint')}>
+                  <option value="">{t('admin.sla.anyScope')}</option>
                   {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
                 </Select>
+                <p id={fid('scope-hint')} style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>
+                  {t(form.entityType === 'incident' ? 'admin.sla.scopeHintIncident' : 'admin.sla.scopeHintOther')}
+                </p>
               </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label htmlFor={fid('category')} style={labelS}>Categoria</label>
+                <label htmlFor={fid('category')} style={labelS}>{t('admin.sla.category')}</label>
                 <Select id={fid('category')} style={selectS} value={form.category} onChange={e => patch({ category: e.target.value })}>
-                  <option value="">Tutte</option>
+                  <option value="">{t('admin.sla.anyScope')}</option>
                   {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </Select>
               </div>
               <div>
-                <label htmlFor={fid('team')} style={labelS}>Team</label>
+                <label htmlFor={fid('team')} style={labelS}>{t('admin.sla.team')}</label>
                 <Select id={fid('team')} style={selectS} value={form.teamId} onChange={e => patch({ teamId: e.target.value })}>
-                  <option value="">Tutti</option>
+                  <option value="">{t('admin.sla.anyTeam')}</option>
                   {teams.map(tm => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
                 </Select>
               </div>

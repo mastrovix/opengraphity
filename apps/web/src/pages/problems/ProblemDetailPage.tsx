@@ -29,6 +29,7 @@ import {
   DELETE_PROBLEM,
 } from '@/graphql/mutations'
 import { ProblemHeader } from './ProblemHeader'
+import { SlaBadge, type SlaStatusInfo } from '@/components/SlaBadge'
 import { WorkflowTimeline } from '@/components/ticket/WorkflowTimeline'
 import { AffectedCIList } from '@/components/ticket/AffectedCIList'
 import { CommentsSection } from '@/components/ticket/CommentsSection'
@@ -101,6 +102,7 @@ interface Problem {
   createdAt:            string
   updatedAt:            string | null
   resolvedAt:           string | null
+  slaStatus:            SlaStatusInfo | null
   createdBy:            { id: string; name: string } | null
   assignee:             { id: string; name: string; email: string } | null
   assignedTeam:         { id: string; name: string } | null
@@ -358,6 +360,16 @@ export function ProblemDetailPage() {
               } />
               <DetailField label={t('detail.priority')} value={
                 <span style={{ fontWeight: 600, color: lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)') }}>{problem.priority}</span>
+              } />
+              {/*
+                Lo SLA del problem. Mancava: il motore non lo creava (leggeva
+                un campo che nessuno pubblica) e il tipo non lo esponeva, così
+                non c'era nessuna pagina da cui accorgersene.
+              */}
+              <DetailField label={t('sla.title')} value={
+                problem.slaStatus
+                  ? <SlaBadge sla={problem.slaStatus} />
+                  : <span style={{ color: 'var(--text-muted)' }}>{t('sla.none')}</span>
               } />
               <DetailField label={t('detail.workflowStep')} value={
                 <PhaseBadge

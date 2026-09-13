@@ -309,11 +309,18 @@ describe('EventPolicyPage — ciclo di vita del CI: stati ignorati (revisione 2,
     expect(within(retired).getByRole('checkbox', { name: 'Decommissioned' })).toBeChecked()
     expect(within(retired).getByRole('checkbox', { name: 'Active' })).not.toBeChecked()
     expect(retired).toHaveAccessibleDescription(/does not count in the service health/)
-    expect(screen.getByTestId('lifecycle-selected-retiredStatuses')).toHaveTextContent('2 statuses ignored.')
+    // Il conteggio dice la semantica DI QUESTA LISTA. Questa riga asseriva
+    // «2 statuses ignored.» — la frase della PRIMA lista, riusata su tutte e
+    // tre da una chiave condivisa: il test pinnava il difetto, cioè una
+    // pagina che descriveva all'admin una semantica diversa da quella che
+    // stava scegliendo. Trovato nel browser spuntando `expired`/`revoked`.
+    expect(screen.getByTestId('lifecycle-selected-retiredStatuses')).toHaveTextContent('2 statuses count as retired.')
 
     const maintenance = screen.getByRole('group', { name: 'Statuses that count as “under maintenance”' })
     expect(within(maintenance).getByRole('checkbox', { name: 'Maintenance' })).toBeChecked()
     expect(maintenance).toHaveAccessibleDescription(/not updated by monitoring/)
+    expect(screen.getByTestId('lifecycle-selected-maintenanceStatuses')).toHaveTextContent('1 status counts as maintenance.')
+    expect(screen.getByTestId('lifecycle-selected-ignoreLifecycleStatuses')).toHaveTextContent('1 status ignored.')
 
     // Le tre liste vivono nello stesso riquadro «Ciclo di vita del CI».
     const box = screen.getByRole('group', { name: 'CI lifecycle' })

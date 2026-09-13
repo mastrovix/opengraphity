@@ -12,7 +12,7 @@ import { DEFAULT_SLA_POLICIES, type SLAPolicy } from './policy.js'
 import { selectSLAForEntity } from './selector.js'
 import {
   createSLAStatus, markResponseMet, getSLAStatus, markResolveMet, pauseSLA, resumeSLA,
-  getEntityCreatedAt, type SLAPauseType,
+  getEntityCreatedAt, getEntityScope, type SLAPauseType,
 } from './status.js'
 import {
   initScheduler,
@@ -39,8 +39,13 @@ async function resolvePolicy(
   tenantId:   string,
   entityType: 'incident' | 'change' | 'service_request' | 'problem',
   severity:   string,
+  entityId:   string,
 ): Promise<SLAPolicy | null> {
-  const tenantPolicy = await selectSLAForEntity(tenantId, entityType, severity, null, null)
+  // Categoria e team dell'entità: senza di essi il selettore poteva scegliere
+  // solo fra «priorità sola» e «tutto», e ogni policy con una categoria o un
+  // team era codice morto — pur essendo offerta dalla pagina.
+  const { category, teamId } = await getEntityScope(tenantId, entityId)
+  const tenantPolicy = await selectSLAForEntity(tenantId, entityType, severity, category, teamId)
   if (tenantPolicy) {
     // Adapt the flat per-priority record to the tiered SLAPolicy shape used
     // by createSLAStatus: one tier matching the entity's severity.
@@ -125,7 +130,7 @@ export class SLAEngine extends BaseConsumer<unknown> {
         await this.handleEntityCreated(
           event as DomainEvent<ProblemCreatedPayload>,
           'problem',
-          (p) => (p as ProblemCreatedPayload).impact,
+          (p) => (p as ProblemCreatedPayload).priority,
         )
         break
 
@@ -148,7 +153,7 @@ export class SLAEngine extends BaseConsumer<unknown> {
   ): Promise<void> {
     const payload  = event.payload
     const severity = getSeverity(payload)
-    const policy   = await resolvePolicy(event.tenant_id, entityType, severity)
+    const policy   = await resolvePolicy(event.tenant_id, entityType, severity, payload.id)
 
     if (!policy) {
       console.warn(`[sla:engine] No SLA policy for entity type "${entityType}"`)
