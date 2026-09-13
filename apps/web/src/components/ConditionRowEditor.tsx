@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n/i18n'
 import { colors } from '@/lib/tokens'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove, 
   const { fields: allFields, error: fieldsError } = useEntityFieldMetas(entityType)
   const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { data: usersData } = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: METAMODEL_FETCH_POLICY })
+  const { labelOf } = useDomainVocabularies()
 
   const selectedField = allFields.find(f => f.name === condition.field)
   const fieldType     = selectedField?.fieldType ?? 'string'
@@ -85,7 +87,7 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove, 
     </Select>
   )
 
-  const valueInput = !hideValue && renderValueInput(condition, selectedField, onChange, usersData?.users ?? [], teamsData?.teams ?? [])
+  const valueInput = !hideValue && renderValueInput(condition, selectedField, onChange, usersData?.users ?? [], teamsData?.teams ?? [], labelOf)
   const removeButton = <button type="button" style={removeBtn} onClick={onRemove} title={t('conditionEditor.remove')} aria-label={t('conditionEditor.remove')}><X size={14} color={colors.danger} /></button>
 
   const errorLine = fieldsError && (
@@ -124,6 +126,8 @@ function renderValueInput(
   onChange: (patch: Partial<Condition>) => void,
   users: { id: string; name: string; email: string }[],
   teams: { id: string; name: string }[],
+  /** L'etichetta di un valore di vocabolario, `null` quando non la conosciamo. */
+  labelOf: (vocabolario: string, valore: string) => string | null,
 ) {
   if (!field) {
     return <Input style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder={i18n.t('conditionEditor.value')} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
@@ -154,7 +158,12 @@ function renderValueInput(
     return (
       <Select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
         <option value="">{i18n.t('conditionEditor.valuePlaceholder')}</option>
-        {field.enumValues.map(v => <option key={v} value={v}>{v}</option>)}
+        {/* L'etichetta del valore, col valore nel title: è il valore che finisce nella condizione. */}
+        {field.enumValues.map(v => (
+          <option key={v} value={v} title={v}>
+            {(field.enumTypeName ? labelOf(field.enumTypeName, v) : null) ?? v}
+          </option>
+        ))}
       </Select>
     )
   }

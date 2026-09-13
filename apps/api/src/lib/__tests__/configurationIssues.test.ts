@@ -14,8 +14,26 @@ let gaps: string[] = []
 let policy: Record<string, string[]> = { ignore_lifecycle_statuses: [], retired_statuses: [], maintenance_statuses: [] }
 let vocabularies: Record<string, string[]> = {}
 let matrices: Record<string, Record<string, string>> = {}
+/**
+ * I vocabolari come stanno sul grafo, per il controllo delle ETICHETTE
+ * (ondata 1): quello legge il nodo, non `domainVocabulary`, perché gli serve
+ * anche `value_labels`.
+ */
+let enumRows: Array<{ name: string; owner: string; values: string[]; labels: string | null }> = []
 
-vi.mock('@opengraphity/neo4j', () => ({ getSession: () => ({ run: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }) }))
+vi.mock('@opengraphity/neo4j', () => ({
+  getSession: () => ({
+    run: vi.fn(),
+    executeRead: (fn: (tx: { run: () => Promise<unknown> }) => unknown) => fn({
+      run: async () => ({
+        records: enumRows.map((r) => ({
+          get: (k: string) => ({ name: r.name, owner: r.owner, values: r.values, labels: r.labels }[k] ?? null),
+        })),
+      }),
+    }),
+    close: vi.fn().mockResolvedValue(undefined),
+  }),
+}))
 vi.mock('../schemaCache.js', () => ({ getSchemaState: vi.fn(async () => degraded) }))
 vi.mock('../provisionTenantData.js', () => ({ tenantProvisioningGaps: vi.fn(async () => gaps) }))
 vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: vi.fn(async () => policy) }))
@@ -46,6 +64,11 @@ function healthy(): void {
     return [kind, { [key]: vocabularies[spec.output]![0]! }]
   }))
   policy = { ignore_lifecycle_statuses: [], retired_statuses: ['dismesso'], maintenance_statuses: [] }
+  // Ogni valore con la sua etichetta: lo stato in cui il controllo tace.
+  enumRows = Object.entries(vocabularies).map(([name, values]) => ({
+    name, owner: 'system', values,
+    labels: JSON.stringify(Object.fromEntries(values.map((v) => [v, `Etichetta ${v}`]))),
+  }))
 }
 
 beforeEach(() => { healthy() })
@@ -152,5 +175,51 @@ describe('configurationIssues', () => {
     const issues = await configurationIssues('c-one')
     expect(issues.find((i) => i.kind === 'check_failed')?.message).toContain('neo4j giù')
     expect(issues.find((i) => i.kind === 'provisioning_gap')).toBeDefined()
+  })
+})
+
+/**
+ * I valori senza ETICHETTA (ondata 1).
+ *
+ * La migrazione semina l'italiano per i valori spediti il giorno in cui è
+ * scritta, e non può sapere niente di quelli aggiunti dopo — né di quelli che
+ * il cliente aggiunge da sé. Nessuna lista congelata può prevedere il futuro:
+ * quel pezzo lo fa questa diagnostica, dove c'è un admin a cui dirlo.
+ */
+describe('checkValueLabels', () => {
+  it('un valore senza etichetta è un AVVISO che lo nomina e dice dove si rimedia', async () => {
+    enumRows = enumRows.map((r) => (r.name === 'priority'
+      ? { ...r, labels: JSON.stringify({}) }   // priority ha un valore, e nessuna etichetta
+      : r))
+    const issues = await configurationIssues('c-one')
+    const issue = issues.find((i) => i.kind === 'value_labels_missing')
+    expect(issue).toBeDefined()
+    expect(issue!.severity).toBe('warning')     // si legge peggio, non è rotto
+    expect(issue!.where).toBe('/settings/enum-designer')
+    expect(issue!.message).toMatch(/«priority»: low/)
+    expect(issue!.message).toMatch(/Si scrive dal Dizionario/)
+  })
+
+  it('i vocabolari senza etichette PER SCELTA non fanno rumore, mai', async () => {
+    // `import_severity` (28 chiavi di riconoscimento) e i nomi dei passi:
+    // lamentarsene per sempre renderebbe il banner invisibile in una settimana.
+    enumRows = [
+      { name: 'import_severity', owner: 'system', values: ['p1', 'sev1'], labels: null },
+      { name: 'status_incident', owner: 'system', values: ['new', 'closed'], labels: null },
+    ]
+    const issues = await configurationIssues('c-one')
+    expect(issues.find((i) => i.kind === 'value_labels_missing')).toBeUndefined()
+  })
+
+  it('il vocabolario del CLIENTE vince su quello spedito, come in lettura', async () => {
+    // Lo spedito ha le etichette, la copia del cliente no: è la copia che si
+    // legge, quindi è la copia che va segnalata.
+    enumRows = [
+      { name: 'priority', owner: 'system',  values: ['low'], labels: '{"low":"Bassa"}' },
+      { name: 'priority', owner: 'c-one',   values: ['low', 'urgentissima'], labels: '{"low":"Bassa"}' },
+    ]
+    const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'value_labels_missing')
+    expect(issue!.message).toMatch(/urgentissima/)
+    expect(issue!.message).not.toMatch(/: low/)
   })
 })

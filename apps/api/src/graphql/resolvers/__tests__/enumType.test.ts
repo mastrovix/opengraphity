@@ -270,7 +270,10 @@ describe('updateEnumType', () => {
     // `finalDefault` (terza revisione · C2) al posto del vecchio `defaultValue`:
     // il default non è più «quello che c'è se non me ne dài uno», è calcolato —
     // le sostituzioni valgono anche per lui. Qui non c'è default, quindi null.
-    expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1', label: 'Nuova', values: null, scope: null, finalDefault: null, now: expect.any(String) })
+    // `valueLabels` e sempre fra i parametri: `null` quando il vocabolario non
+    // ha etichette, com'e qui. Le etichette per valore sono dell'ondata 1 —
+    // il valore resta quello che e, l'etichetta e come si legge a schermo.
+    expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1', label: 'Nuova', values: null, scope: null, finalDefault: null, valueLabels: null, now: expect.any(String) })
     expect(out.label).toBe('Nuova')
   })
 
@@ -815,5 +818,86 @@ describe('il valore di default segue i valori', () => {
     ])
     await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { label: 'Stato del CI' } }, admin)
     expect(scritto(s)).toBe('active')
+  })
+})
+
+/**
+ * LE ETICHETTE PER VALORE (ondata 1).
+ *
+ * Il valore resta quello che è (`high`): lo scrivono i record, le condizioni
+ * delle regole, le celle delle matrici. L'etichetta è come si legge a schermo.
+ * Qui si pinnano i tre punti in cui si perderebbero in silenzio.
+ */
+describe('etichette per valore', () => {
+  it('mapEnum: l\'etichetta c\'è SEMPRE — dove manca, il valore con le iniziali maiuscole', async () => {
+    fakeSession([{ records: [rec({ ...ENUM_ROW, values: ['portal', 'email'], valueLabels: '{"portal":"Portale"}' })] }])
+    const out = await enumTypeResolvers.Query.enumType(null, { id: 'e-1' }, admin)
+    expect(out!.valueLabels).toEqual([
+      { value: 'portal', label: 'Portale' },
+      { value: 'email',  label: 'Email' },
+    ])
+  })
+
+  it('un value_labels CORROTTO non rende illeggibile il vocabolario', async () => {
+    fakeSession([{ records: [rec({ ...ENUM_ROW, valueLabels: '{nope' })] }])
+    const out = await enumTypeResolvers.Query.enumType(null, { id: 'e-1' }, admin)
+    expect(out!.values).toEqual(['portal', 'email'])
+    expect(out!.valueLabels.map((e) => e.label)).toEqual(['Portal', 'Email'])
+  })
+
+  it('RINOMINARE un valore porta con sé la sua etichetta', async () => {
+    const s = fakeSession([
+      { records: [rec({ tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueLabels: '{"portal":"Portale","email":"Email"}' })] },
+      { records: [] },                       // enumValueBindings (replaceEnumValue)
+      { records: [rec({ ...ENUM_ROW, values: ['sportello', 'email'] })] },
+    ])
+    await enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'portal', to: 'sportello' }, admin)
+    const [, params] = s.txRun.mock.calls.at(-1)!
+    // «Portale» è passata su `sportello`: senza questo resterebbe appesa a una
+    // chiave che non esiste più, e a schermo comparirebbe «Sportello» per caso.
+    expect(JSON.parse((params as { valueLabels: string }).valueLabels))
+      .toEqual({ sportello: 'Portale', email: 'Email' })
+  })
+
+  it('TOGLIERE un valore ne scarta l\'etichetta: non resta appesa', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueLabels: '{"portal":"Portale","email":"Email"}' })] },
+      { records: [] },                       // nessuna entita lega questo vocabolario → uso zero
+      { records: [rec({ ...ENUM_ROW, values: ['email'] })] },
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['email'] } }, admin)
+    const [, params] = s.txRun.mock.calls.at(-1)!
+    expect(JSON.parse((params as { valueLabels: string }).valueLabels)).toEqual({ email: 'Email' })
+  })
+
+  it('le etichette mandate SOSTITUISCONO in blocco, e una vuota vale come assente', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueLabels: '{"portal":"Vecchia"}' })] },
+      { records: [rec({ ...ENUM_ROW })] },
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, {
+      id: 'e-1',
+      input: { valueLabels: [{ value: 'portal', label: 'Portale' }, { value: 'email', label: '   ' }] },
+    }, admin)
+    const [, params] = s.txRun.mock.calls.at(-1)!
+    expect(JSON.parse((params as { valueLabels: string }).valueLabels)).toEqual({ portal: 'Portale' })
+  })
+
+  it('PERSONALIZZARE un vocabolario spedito ne copia le etichette', async () => {
+    const s = fakeSession([
+      { records: [rec({ tenantId: 'system', name: 'impact', label: 'Impact', values: ['low', 'medium', 'high'], scope: 'shared', defaultValue: null, valueLabels: '{"low":"Basso","medium":"Medio","high":"Alto"}' })] },
+      { records: [] },  // nessuna copia esistente per il tenant
+      { records: [rec({ ...ENUM_ROW, name: 'impact', values: ['low', 'medium', 'high'] })] },
+    ])
+    await enumTypeResolvers.Mutation.customizeEnumType(null, { id: 'sys-impact' }, admin)
+    const [cypher, params] = s.txRun.mock.calls.at(-1)!
+    // Il CYPHER deve scrivere la proprietà, non solo ricevere il parametro:
+    // asserire il solo parametro era vacuo — passa anche se la CREATE lo
+    // ignora, e infatti togliendo `value_labels` dalla CREATE il test passava.
+    expect(String(cypher)).toContain('value_labels: $valueLabels')
+    // Senza questo, personalizzare «impact» per aggiungere un valore avrebbe
+    // fatto tornare in inglese i tre che c'erano già.
+    expect(JSON.parse((params as { valueLabels: string }).valueLabels))
+      .toEqual({ low: 'Basso', medium: 'Medio', high: 'Alto' })
   })
 })

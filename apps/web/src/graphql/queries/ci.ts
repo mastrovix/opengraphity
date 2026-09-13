@@ -54,7 +54,7 @@ export const GET_BASE_CI_TYPE = gql`
       validationScript
       fields {
         id name label fieldType
-        required enumValues order
+        required enumValues order enumTypeName
         isSystem
         validationScript
         visibilityScript
@@ -74,7 +74,7 @@ export const GET_CI_TYPES = gql`
       validationScript chainFamilies serviceRole
       fields {
         id name label fieldType
-        required enumValues order
+        required enumValues order enumTypeName
         isSystem
         validationScript
         visibilityScript

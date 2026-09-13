@@ -477,7 +477,8 @@
       "moveDownLabel": "Move \"{{value}}\" down",
       "orderNote": "Order matters: for scale vocabularies the first value is the lowest and the last the highest (the highest impact is the last one). Renaming a value keeps it in place and updates records, the alarm policy and the domain matrices; the default is the value used when nobody specifies one.",
       "valueCount_one": "1 value",
-      "valueCount_other": "{{count}} values"
+      "valueCount_other": "{{count}} values",
+      "valueLabelFor": "Label for value {{value}}"
     },
     "sync": {
       "sourceCreated": "Sync source created",

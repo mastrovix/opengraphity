@@ -8,7 +8,7 @@ import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
-import { StatusBadge } from '@/components/StatusBadge'
+import { TicketStatusBadge } from '@/components/StatusBadge'
 import { EmptyState } from '@/components/EmptyState'
 import { FilterBuilder, type FilterGroup } from '@/components/FilterBuilder'
 import { useEntityFields } from '@/hooks/useEntityFields'
@@ -50,7 +50,7 @@ export function RequestListPage() {
       label:    t('pages.requests.status'),
       width:    '130px',
       sortable: true,
-      render:   (v) => <StatusBadge value={String(v)} />,
+      render:   (v) => <TicketStatusBadge value={String(v)} entityType="service_request" />,
     },
     {
       key:      'createdAt',

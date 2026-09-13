@@ -31,6 +31,25 @@ export function enumTypeSDL(): string {
     scope:     String!
     createdAt: String!
     updatedAt: String!
+    """
+    Il valore e l'etichetta con cui si legge, NELL'ORDINE DEI VALORI e sempre
+    completa: dove l'admin non ha scritto un'etichetta c'e il valore con le
+    iniziali maiuscole, quindi chi legge non deve ripiegare da se. Prima
+    l'etichetta non esisteva e il dettaglio di un incident mostrava «high /
+    high»: i valori spediti sono parole inglesi in un'interfaccia italiana.
+
+    Quattro vocabolari non ne portano di proposito — i «status_*», i cui valori
+    sono i nomi dei passi e l'italiano lo scrive l'admin sul passo — e
+    «import_severity», i cui 28 valori sono chiavi di riconoscimento dei dati in
+    arrivo, non voci di menu.
+    """
+    valueLabels: [EnumValueLabel!]!
+  }
+
+  """Un valore del vocabolario e l'etichetta con cui si legge a schermo."""
+  type EnumValueLabel {
+    value: String!
+    label: String!
   }
 
   input CreateEnumTypeInput {
@@ -53,10 +72,22 @@ export function enumTypeSDL(): string {
     """
     replacements: [EnumValueReplacementInput!]
     """
+    Le etichette per valore, SOSTITUITE in blocco (la lista che si manda e
+    quella che resta). Un'etichetta vuota o assente significa «leggi il
+    valore»: non c'e bisogno di cancellarla, basta non mandarla. Le etichette
+    dei valori che non esistono piu si scartano da se.
+    """
+    valueLabels: [EnumValueLabelInput!]
+    """
     Il valore con cui si nasce quando nessuno lo indica. Deve essere fra i
     valori (quelli nuovi, se li stai cambiando nella stessa chiamata).
     """
     defaultValue: String
+  }
+
+  input EnumValueLabelInput {
+    value: String!
+    label: String!
   }
 
   """Un valore che si sta togliendo (from) e il valore nuovo su cui riscrivere i record che lo usano (to, deve essere fra i valori nuovi)."""

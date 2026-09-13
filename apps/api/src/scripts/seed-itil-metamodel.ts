@@ -62,6 +62,30 @@ const ITIL_TYPES: ITILType[] = [
       { name: 'created_at',  label: 'Creato il',     field_type: 'date',   required: true,  order: 7 },
       { name: 'updated_at',  label: 'Aggiornato il', field_type: 'date',   required: true,  order: 8 },
       { name: 'resolved_at', label: 'Risolto il',    field_type: 'date',   required: false, order: 9 },
+      /*
+       * ONDATA 2 (13 set 2026) — impatto, urgenza e priorità nel metamodello.
+       *
+       * Il nodo Incident LI HA e l'interfaccia li mostra, ma il metamodello no:
+       * quindi trigger e business rule non li potevano nominare né nelle
+       * condizioni né nelle azioni, e la tendina delle policy SLA cercava
+       * `incident.priority` senza trovarlo. Scritto nel nodo da sempre, non
+       * dichiarato da nessuna parte.
+       *
+       * `required: false` di proposito: `required` guida
+       * `validateRequiredFields`, che gira anche sul percorso REST v1 —
+       * marcarli obbligatori comincerebbe a rifiutare richieste che ieri
+       * passavano. Qui il campo serve a essere NOMINABILE; chi deve esserci lo
+       * impongono già il form e la matrice.
+       *
+       * In coda per non rinumerare i campi esistenti, il cui ordine decide la
+       * disposizione nelle pagine che li rendono.
+       */
+      { name: 'impact',      label: 'Impatto',       field_type: 'enum',   required: false, order: 10,
+        uses_enum: 'impact' },
+      { name: 'urgency',     label: 'Urgenza',       field_type: 'enum',   required: false, order: 11,
+        uses_enum: 'urgency' },
+      { name: 'priority',    label: 'Priorità',      field_type: 'enum',   required: false, order: 12,
+        uses_enum: 'priority' },
     ],
   },
   {
@@ -103,6 +127,12 @@ const ITIL_TYPES: ITILType[] = [
       { name: 'workaround',  label: 'Workaround',    field_type: 'string', required: false, order: 7 },
       { name: 'created_at',  label: 'Creato il',     field_type: 'date',   required: true,  order: 8 },
       { name: 'updated_at',  label: 'Aggiornato il', field_type: 'date',   required: true,  order: 9 },
+      // Ondata 2: il problem ha già `priority`, ma non impatto e urgenza — e il
+      // suo form li scrive (priorità = impatto × urgenza, come per l'incident).
+      { name: 'impact',      label: 'Impatto',       field_type: 'enum',   required: false, order: 10,
+        uses_enum: 'impact' },
+      { name: 'urgency',     label: 'Urgenza',       field_type: 'enum',   required: false, order: 11,
+        uses_enum: 'urgency' },
     ],
   },
   {

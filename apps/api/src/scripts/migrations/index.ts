@@ -42,6 +42,9 @@ import { provisionTenantDataMigration } from './20260918_1910_provision_tenant_d
 import { preApprovedChangeTypesSeed } from './20260918_1920_pre_approved_change_types.js'
 import { ciStatusDefaultSeed } from './20260919_1600_ci_status_default.js'
 import { riskBandThresholdsSeed } from './20260919_1610_risk_band_thresholds.js'
+import { enumValueLabelsSeed } from './20260920_1700_enum_value_labels.js'
+import { enumValueLabelsTenantCopies } from './20260920_1710_enum_value_labels_tenant_copies.js'
+import { itilPriorityImpactUrgency } from './20260920_1720_itil_priority_impact_urgency.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -78,4 +81,7 @@ export const MIGRATIONS: readonly Migration[] = [
   preApprovedChangeTypesSeed,
   ciStatusDefaultSeed,
   riskBandThresholdsSeed,
+  enumValueLabelsSeed,
+  enumValueLabelsTenantCopies,
+  itilPriorityImpactUrgency,
 ]

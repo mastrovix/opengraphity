@@ -153,7 +153,18 @@ export async function workflowDefinition(
       tx.run(`
         MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
         MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
-        RETURN wd, collect(s) AS steps
+        WITH wd, collect(s) AS steps
+        // Un tenant puo avere PIU definizioni attive per la stessa entita (su
+        // c-test: «Incident Management» e «Incident — Security», una per
+        // categoria). Questo LIMIT 1 era senza ORDER BY: quale delle due
+        // uscisse lo decideva il piano di esecuzione, quindi poteva cambiare
+        // fra due caricamenti. Da quando le etichette dei passi arrivano da
+        // qui — pastiglie di stato, timeline, campo «Step workflow» — una
+        // scelta non deterministica vorrebbe dire etichette che ballano.
+        // Si prende quella SENZA categoria (la generica) e, a pari merito, la
+        // versione piu alta: la stessa regola di loadStepFacts.
+        ORDER BY (wd.category IS NULL) DESC, wd.version DESC, wd.name
+        RETURN wd, steps
         LIMIT 1
       `, { tenantId: ctx.tenantId, entityType }),
     )

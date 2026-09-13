@@ -6,6 +6,11 @@ import { audit } from '../../lib/audit.js'
 import { SYSTEM_TENANT } from '../../lib/enumScope.js'
 import { countEnumValueUsage, enumValueUsageMessage, replaceEnumValue } from '../../lib/enumValueUsage.js'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
+import {
+  type EnumValueLabelEntry, type EnumValueLabels,
+  parseValueLabels, valueLabelEntries, pruneValueLabels, renameValueLabel, serializeValueLabels,
+} from '../../lib/enumValueLabels.js'
+import { logger } from '../../lib/logger.js'
 
 /**
  * Il vocabolario di questo cliente è cambiato: svuota le cache derivate e
@@ -33,6 +38,8 @@ interface EnumTypeDef {
   name:      string
   label:     string
   values:    string[]
+  /** Valore + etichetta, nell'ordine dei valori e sempre completa (vedi lib/enumValueLabels.ts). */
+  valueLabels: EnumValueLabelEntry[]
   isSystem:  boolean
   /** `tenant_id = 'system'`: spedito col prodotto, uguale per tutti i clienti. */
   isShipped: boolean
@@ -141,6 +148,17 @@ function assertEnumValues(vals: unknown, tenantId: unknown, name: unknown): stri
 function mapEnum(r: { get: (k: string) => unknown }): EnumTypeDef {
   const vals     = r.get('values')
   const tenantId = r.get('tenantId') as string
+  const valori   = assertEnumValues(vals, tenantId, r.get('name'))
+  // Un `value_labels` corrotto NON rende illeggibile il vocabolario: si
+  // perdono le etichette (e a schermo si legge il valore, che è vero) e il
+  // motivo finisce nei log. Un vocabolario si legge su ogni pagina.
+  const { labels: etichette, error: erroreEtichette } = parseValueLabels(r.get('valueLabels'))
+  if (erroreEtichette) {
+    logger.warn(
+      { module: 'enum-type', tenantId, name: r.get('name'), err: erroreEtichette },
+      '[vocabolario] etichette per valore non leggibili: a schermo si legge il valore',
+    )
+  }
   return {
     id:        r.get('id')        as string,
     tenantId,
@@ -151,7 +169,8 @@ function mapEnum(r: { get: (k: string) => unknown }): EnumTypeDef {
     // nascondeva l'incoerenza a tutti: il seed ora scrive una lista e la
     // migrazione 20260918_1910 normalizza il nodo esistente, quindi una
     // stringa qui è un dato rotto e va detto, non indovinato.
-    values:    assertEnumValues(vals, tenantId, r.get('name')),
+    values:    valori,
+    valueLabels: valueLabelEntries(valori, etichette),
     isSystem:  r.get('isSystem')  as boolean,
     // `is_system` è un flag di protezione scritto anche sulle copie per tenant
     // (A-3): il proprietario si legge dal tenant, non da quel flag.
@@ -197,7 +216,7 @@ export async function enumTypes(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels
         ORDER BY e.scope, e.name
       `, params),
     )
@@ -227,7 +246,7 @@ export async function enumType(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels
       `, { id: args.id, tenantId: ctx.tenantId }),
     )
     return result.records.length ? mapEnum(result.records[0]) : null
@@ -299,6 +318,9 @@ export async function createEnumType(
     return {
       id, tenantId: ctx.tenantId, name: input.name, label: input.label,
       values: input.values, isSystem: false, isShipped: false, scope: input.scope,
+      // Un vocabolario nuovo nasce senza etichette: a schermo si legge il
+      // valore, e l'admin le scrive dal Dizionario quando vuole.
+      valueLabels: valueLabelEntries(input.values, {}),
       defaultValue: null,
       createdAt: now, updatedAt: now,
     }
@@ -336,7 +358,8 @@ export async function customizeEnumType(
         MATCH (e:EnumTypeDefinition {id: $id})
         WHERE e.tenant_id IN [$tenantId, $systemTenant]
         RETURN e.tenant_id AS tenantId, e.name AS name, e.label AS label,
-               e.values AS values, e.scope AS scope, e.default_value AS defaultValue
+               e.values AS values, e.scope AS scope, e.default_value AS defaultValue,
+               e.value_labels AS valueLabels
       `, { id: args.id, tenantId: ctx.tenantId, systemTenant: SYSTEM_TENANT }),
     )
     if (!src.records.length) throw new NotFoundError('EnumTypeDefinition', args.id)
@@ -382,6 +405,11 @@ export async function customizeEnumType(
           // vocabolario ne perderebbe il default e initialCIStatus ripiegherebbe
           // sul primo valore, cioe' il difetto che il default chiude.
           default_value: $defaultValue,
+          // E porta le ETICHETTE, per la stessa ragione: personalizzare
+          // «impact» per aggiungere un valore non deve far tornare gli altri
+          // tre in inglese. Chi personalizza parte da dov'era, e cambia quel
+          // che vuole.
+          value_labels: $valueLabels,
           created_at: $now,
           updated_at: $now
         })
@@ -394,12 +422,13 @@ export async function customizeEnumType(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels
       `, {
         id, tenantId: ctx.tenantId, name,
         label: row.get('label') as string, values,
         scope: row.get('scope') as string, now,
         defaultValue: (row.get('defaultValue') ?? null) as string | null,
+        valueLabels: (row.get('valueLabels') ?? null) as string | null,
       }),
     )
     if (!created.records.length) throw new Error(`customizeEnumType("${name}"): la CREATE non ha restituito il nodo`)
@@ -434,7 +463,7 @@ export async function customizeEnumType(
  */
 export async function updateEnumType(
   _: unknown,
-  args: { id: string; input: { label?: string; values?: string[]; scope?: string; defaultValue?: string; replacements?: { from: string; to: string }[] } },
+  args: { id: string; input: { label?: string; values?: string[]; scope?: string; defaultValue?: string; replacements?: { from: string; to: string }[]; valueLabels?: { value: string; label: string }[] } },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
   if (ctx.role !== 'admin') throw new ForbiddenError()
@@ -447,7 +476,7 @@ export async function updateEnumType(
         MATCH (e:EnumTypeDefinition {id: $id})
         WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')
         RETURN e.is_system AS isSystem, e.tenant_id AS tenantId, e.name AS name, e.values AS values,
-               e.default_value AS defaultValue
+               e.default_value AS defaultValue, e.value_labels AS valueLabels
       `, { id, tenantId: ctx.tenantId }),
     )
     if (!check.records.length) throw new NotFoundError('EnumTypeDefinition', id)
@@ -516,6 +545,28 @@ export async function updateEnumType(
       : currentDefault
     const finalDefault = input.defaultValue !== undefined ? input.defaultValue : defaultAfterReplace
 
+    /**
+     * LE ETICHETTE DOPO QUESTA MODIFICA.
+     *
+     * Tre cose in una, e ognuna chiude un modo di perderle:
+     *  - se l'input le porta, SOSTITUISCONO in blocco (la lista mandata e
+     *    quella che resta): e come il Dizionario le modifica, tutte insieme;
+     *  - le sostituzioni (`replacements`, cioe togliere un valore riscrivendo i
+     *    record su un altro) spostano l'etichetta come fa la rinomina, altrimenti
+     *    l'etichetta del valore tolto resterebbe appesa a una chiave morta;
+     *  - le etichette dei valori che NON esistono piu si scartano: senza,
+     *    ricreare un valore con lo stesso nome ne farebbe riapparire
+     *    un'etichetta scritta mesi prima e dimenticata.
+     */
+    const { labels: etichetteCorrenti } = parseValueLabels(check.records[0]!.get('valueLabels'))
+    let etichette: EnumValueLabels = input.valueLabels
+      ? Object.fromEntries(input.valueLabels
+          .filter((e) => e.label.trim() !== '')
+          .map((e) => [e.value, e.label.trim()]))
+      : etichetteCorrenti
+    for (const [from, to] of replaced) etichette = renameValueLabel(etichette, from, to)
+    const etichetteFinali = serializeValueLabels(pruneValueLabels(etichette, next))
+
     if (finalDefault != null && !next.includes(finalDefault)) {
       // Chi lo legge deve sapere quali sono le sue due uscite.
       throw new ValidationError(
@@ -554,6 +605,7 @@ export async function updateEnumType(
             e.values     = coalesce($values, e.values),
             e.scope      = CASE WHEN $scope IS NOT NULL AND NOT e.is_system THEN $scope ELSE e.scope END,
             e.default_value = $finalDefault,
+            e.value_labels = $valueLabels,
             e.updated_at = $now
         RETURN e.id        AS id,
                e.tenant_id AS tenantId,
@@ -564,7 +616,7 @@ export async function updateEnumType(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels
       `, {
         id,
         tenantId: ctx.tenantId,
@@ -572,6 +624,7 @@ export async function updateEnumType(
         values: input.values ?? null,
         scope:  input.scope  ?? null,
         finalDefault,
+        valueLabels: etichetteFinali,
         now,
       })
     })
@@ -733,7 +786,8 @@ export async function renameEnumValue(
       tx.run(`
         MATCH (e:EnumTypeDefinition {id: $id})
         WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')
-        RETURN e.tenant_id AS tenantId, e.name AS name, e.values AS values, e.default_value AS defaultValue
+        RETURN e.tenant_id AS tenantId, e.name AS name, e.values AS values, e.default_value AS defaultValue,
+               e.value_labels AS valueLabels
       `, { id, tenantId: ctx.tenantId }),
     )
     if (!check.records.length) throw new NotFoundError('EnumTypeDefinition', id)
@@ -769,6 +823,13 @@ export async function renameEnumValue(
     next[at] = to
     const now = new Date().toISOString()
 
+    // L'ETICHETTA SEGUE IL VALORE. Senza questo, rinominare `high` in `alta`
+    // lascerebbe «Alta» appesa a una chiave che non esiste piu: a schermo
+    // comparirebbe «Alta» per caso (title-case del valore nuovo) o si
+    // perderebbe del tutto l'etichetta che l'admin aveva scritto.
+    const { labels: etichetteCorrenti } = parseValueLabels(row.get('valueLabels'))
+    const etichetteNuove = serializeValueLabels(renameValueLabel(etichetteCorrenti, from, to))
+
     /** Quanti record ha toccato l'ULTIMO tentativo: l'audit va dopo il commit. */
     let touchedRecords = 0
     const result = await session.executeWrite(async (tx) => {
@@ -782,6 +843,7 @@ export async function renameEnumValue(
         MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId})
         SET e.values        = $values,
             e.default_value = CASE WHEN e.default_value = $from THEN $to ELSE e.default_value END,
+            e.value_labels  = $valueLabels,
             e.updated_at    = $now
         RETURN e.id        AS id,
                e.tenant_id AS tenantId,
@@ -792,8 +854,8 @@ export async function renameEnumValue(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt
-      `, { id, tenantId: ctx.tenantId, values: next, from, to, now })
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels
+      `, { id, tenantId: ctx.tenantId, values: next, from, to, now, valueLabels: etichetteNuove })
     })
     if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', id)
     vocabularyChanged(ctx.tenantId)
@@ -873,7 +935,7 @@ export async function reorderEnumValues(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels
       `, { id, tenantId: ctx.tenantId, values, now: new Date().toISOString() }),
     )
     if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', id)

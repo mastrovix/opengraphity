@@ -40,10 +40,17 @@ export const SEVERITY_STYLE: Record<string, { bg: string; color: string }> = {
  * rosso (D-15).
  */
 export function SeverityBadge({ value, vocabulary = 'severity' }: { value: string | null | undefined; vocabulary?: string }) {
-  const { valuesOf } = useDomainVocabularies()
+  const { valuesOf, labelOf } = useDomainVocabularies()
   if (!value) return <span style={{ color: 'var(--color-slate-light)' }}>—</span>
   const s = domainValueStyle(SEVERITY_STYLE, value, `SEVERITY_STYLE/${vocabulary}`, valuesOf(vocabulary))
-  return <Pill bg={s.bg} color={s.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'uppercase' }}>{enumLabel(value)}</Pill>
+  // L'ETICHETTA del cliente («Critica»), e finché non la conosciamo il valore
+  // con le iniziali maiuscole, come prima. Il `title` porta sempre il valore:
+  // è quello che si cerca nei filtri e che si trova nei log.
+  return (
+    <Pill bg={s.bg} color={s.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'uppercase' }} title={value}>
+      {labelOf(vocabulary, value) ?? enumLabel(value)}
+    </Pill>
+  )
 }
 
 // ── Ruolo utente (admin / operator / viewer / end_user) ─────────────────────

@@ -14,6 +14,7 @@ import { useEnumValues } from '@/hooks/useEnumValues'
 import { FieldWrapper } from '@/components/FieldWrapper'
 import { TriageSuggestionCard } from '@/components/TriageSuggestionCard'
 import { colors, palette, alpha } from '@/lib/tokens'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -45,6 +46,7 @@ const SEVERITY_STYLES: Record<string, { bg: string; border: string; color: strin
 
 export function CreateIncidentPage() {
   const { t } = useTranslation()
+  const { labelOf } = useDomainVocabularies()
   const navigate = useNavigate()
   const ids = { category: useId(), ciSearch: useId(), teamSearch: useId() }
 
@@ -181,7 +183,7 @@ export function CreateIncidentPage() {
               >
                 <option value="">-- Seleziona categoria --</option>
                 {categoryValues.map(c => (
-                  <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                  <option key={c} value={c}>{labelOf('category', c) ?? (c.charAt(0).toUpperCase() + c.slice(1))}</option>
                 ))}
               </select>
             )}
@@ -190,7 +192,7 @@ export function CreateIncidentPage() {
 
           {/* IMPATTO × URGENZA → PRIORITÀ (ITIL) */}
           <div style={{ marginBottom: 20, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            {([['Impatto', impact, setImpact, matrix?.impacts ?? []], ['Urgenza', urgency, setUrgency, matrix?.urgencies ?? []]] as const).map(([label, val, setVal, options]) => (
+            {([['Impatto', 'impact', impact, setImpact, matrix?.impacts ?? []], ['Urgenza', 'urgency', urgency, setUrgency, matrix?.urgencies ?? []]] as const).map(([label, vocabolario, val, setVal, options]) => (
               <div key={label}>
                 <div style={fieldLabel}>{label} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -201,8 +203,10 @@ export function CreateIncidentPage() {
                         style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
                           border: `1.5px solid ${sel ? 'var(--color-brand)' : colors.border}`,
                           background: sel ? palette.info.light : 'var(--color-slate-bg)',
-                          color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}>
-                        {o}
+                          color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}
+                        title={o}>
+                        {/* L'etichetta del cliente: «Alto» per l'impatto, «Alta» per l'urgenza. */}
+                        {labelOf(vocabolario, o) ?? o}
                       </button>
                     )
                   })}
@@ -217,7 +221,8 @@ export function CreateIncidentPage() {
                 color: SEVERITY_STYLES[priority]?.color ?? 'var(--color-slate)', fontWeight: 600 }}>
                 <span>{priority === '' ? '—' : priorityCode(matrix?.priorities ?? [], priority)}</span>
                 <span style={{ textTransform: 'capitalize' }}>
-                  {priority !== '' ? priority
+                  {/* L'etichetta della priorità, non il valore: qui si leggeva «Medium». */}
+                  {priority !== '' ? (labelOf('priority', priority) ?? priority)
                     : matrixLoading ? 'in caricamento…'
                     : 'da compilare nella matrice'}
                 </span>

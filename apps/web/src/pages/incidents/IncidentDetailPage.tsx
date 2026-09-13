@@ -20,6 +20,7 @@ import { derivePriority, priorityCode } from '@/lib/priority'
 import { usePriorityMatrix } from '@/hooks/usePriorityMatrix'
 import { Pencil } from 'lucide-react'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { IncidentHeader } from './IncidentHeader'
 import { WorkflowTimeline } from '@/components/ticket/WorkflowTimeline'
 import { AffectedCIList } from '@/components/ticket/AffectedCIList'
@@ -286,7 +287,8 @@ export function IncidentDetailPage() {
   const users     = usersData?.users ?? []
   const teams     = teamsData?.teams ?? []
   const ciResults = ciSearchData?.allCIs?.items ?? []
-  const { byName: incidentStepByName, error: workflowStepsError, isTerminal: incidentStepIsTerminal, categoryOf: incidentStepCategory } = useWorkflowSteps('incident')
+  const { byName: incidentStepByName, error: workflowStepsError, isTerminal: incidentStepIsTerminal, categoryOf: incidentStepCategory, labelFor: incidentStepLabel } = useWorkflowSteps('incident')
+  const { labelOf } = useDomainVocabularies()
 
   function handleTransitionClick(tr: WorkflowTransition) {
     // Guard rails come from the workflow definition: if it failed to load we
@@ -531,7 +533,16 @@ export function IncidentDetailPage() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
                   <DetailField label={t('detail.priority')} value={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><b>{priorityCode(matrix?.priorities ?? [], incident.priority)}</b><SeverityBadge value={incident.priority} /></span>} />
-                  {incident.impact && incident.urgency && <DetailField label={t('detail.impactUrgency')} value={`${incident.impact} / ${incident.urgency}`} />}
+                  {incident.impact && incident.urgency && (
+                    <DetailField label={t('detail.impactUrgency')} value={
+                      /*
+                        Le ETICHETTE, non i valori: qui si leggeva «high / high».
+                        E si chiedono a due vocabolari diversi di proposito —
+                        `low` è «Basso» per l'impatto e «Bassa» per l'urgenza.
+                      */
+                      `${labelOf('impact', incident.impact) ?? incident.impact} / ${labelOf('urgency', incident.urgency) ?? incident.urgency}`
+                    } />
+                  )}
                   <DetailField label={t('sla.title')} value={
                     incident.slaStatus
                       ? <SlaBadge sla={incident.slaStatus} />
@@ -539,7 +550,13 @@ export function IncidentDetailPage() {
                   } />
                   <DetailField label={t('detail.workflowStep')} value={
                     <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-body)', textTransform: 'capitalize' }}>
-                      {incident.workflowInstance?.currentStep.replace(/_/g, ' ') ?? 'N/D'}
+                      {/*
+                        L'ETICHETTA del passo, come la timeline e come la
+                        pagina del problem: qui si leggeva il nome interno
+                        («New») mentre la timeline, venti pixel a destra,
+                        diceva già «Nuovo» — sullo stesso incident.
+                      */}
+                      {incident.workflowInstance ? (incidentStepLabel(incident.workflowInstance.currentStep) || incident.workflowInstance.currentStep.replace(/_/g, ' ')) : 'N/D'}
                     </Pill>
                   } />
                   <DetailField label={t('detail.assignedTo')} value={
@@ -760,6 +777,7 @@ export function IncidentDetailPage() {
         {/* Right column */}
         <div>
           <WorkflowTimeline
+            entityType="incident"
             historyDesc={historyDesc}
             timelineOpen={timelineOpen}
             onToggle={() => setTimelineOpen((p) => !p)}

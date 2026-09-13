@@ -21,13 +21,26 @@ vi.mock('sonner', () => ({
   Toaster: () => null,
 }))
 
-const enumType = (over: Record<string, unknown>) => ({
-  __typename: 'EnumTypeDefinition',
-  id: 'e-1', name: 'severity', label: 'Severità', values: ['low', 'high'],
-  isSystem: true, isShipped: true, scope: 'itil',
-  createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
-  ...over,
-})
+/**
+ * `valueLabels` c'è SEMPRE (il server la completa: valore con le iniziali
+ * maiuscole dove l'admin non ha scritto un'etichetta), quindi la finzione la
+ * deriva dai valori invece di ometterla — altrimenti il test proverebbe una
+ * forma che l'API non produce, che è il modo in cui un test finisce per
+ * asserire una bugia.
+ */
+const etichette = (values: string[], scritte: Record<string, string> = {}) =>
+  values.map((v) => ({ __typename: 'EnumValueLabel', value: v, label: scritte[v] ?? v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }))
+
+const enumType = (over: Record<string, unknown>) => {
+  const base: Record<string, unknown> = {
+    __typename: 'EnumTypeDefinition',
+    id: 'e-1', name: 'severity', label: 'Severità', values: ['low', 'high'],
+    isSystem: true, isShipped: true, scope: 'itil',
+    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    ...over,
+  }
+  return { ...base, valueLabels: base.valueLabels ?? etichette(base.values as string[]) }
+}
 
 const SHIPPED = enumType({})
 const OWN     = enumType({ id: 'e-2', name: 'colore_sede', label: 'Colore sede', values: ['rosso'], isSystem: false, isShipped: false, scope: 'cmdb' })

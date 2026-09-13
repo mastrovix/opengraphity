@@ -11,6 +11,7 @@
 import { timeAgo, formatDuration } from '@/lib/datetime'
 import { alpha, colors } from '@/lib/tokens'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 
 export interface WorkflowStepExecution {
   id:          string
@@ -28,9 +29,18 @@ interface Props {
   timelineOpen: boolean
   onToggle:    () => void
   title?:      string
+  /**
+   * Il tipo di entità del workflow (`incident`, `problem`, …): serve a leggere
+   * l'ETICHETTA del passo, quella che l'admin scrive nel disegnatore. Senza,
+   * la timeline mostrava il nome interno — `under_investigation` → «under
+   * investigation» — mentre venti pixel a sinistra il campo «Step workflow»
+   * diceva «In Analisi». Stesso stato, stessa pagina, due lingue.
+   */
+  entityType:  string
 }
 
-export function WorkflowTimeline({ historyDesc, timelineOpen, onToggle, title = 'Timeline workflow' }: Props) {
+export function WorkflowTimeline({ historyDesc, timelineOpen, onToggle, entityType, title = 'Timeline workflow' }: Props) {
+  const { labelFor } = useWorkflowSteps(entityType)
   return (
     <SectionCard title={title} open={timelineOpen} onToggle={onToggle}>
       {historyDesc.length === 0 ? (
@@ -45,7 +55,7 @@ export function WorkflowTimeline({ historyDesc, timelineOpen, onToggle, title = 
                 {!isLast && <div style={{ position: 'absolute', left: 7, top: 18, bottom: 0, width: 2, backgroundColor: 'var(--color-slate)', opacity: 0.3 }} />}
                 <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: isCurrent ? 'var(--color-brand)' : 'var(--color-slate)', flexShrink: 0, marginTop: 2, border: `2px solid ${colors.white}`, boxShadow: isCurrent ? `0 0 0 3px ${alpha.brand20}` : `0 0 0 1px ${alpha.black20}` }} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{exec.stepName.replace(/_/g, ' ')}</div>
+                  <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{labelFor(exec.stepName) || exec.stepName.replace(/_/g, ' ')}</div>
                   <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', display: 'flex', gap: 6 }}>
                     <span>{timeAgo(exec.enteredAt)}</span>
                     {exec.durationMs != null && <span>({formatDuration(exec.durationMs)})</span>}

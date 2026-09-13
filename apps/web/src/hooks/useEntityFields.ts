@@ -22,17 +22,25 @@ export interface FieldMeta {
   label:      string
   fieldType:  string
   enumValues: string[]
+  /**
+   * Il nome del VOCABOLARIO a cui il campo è legato (`null` se non è un enum,
+   * o se il legame manca). Serve a leggere l'ETICHETTA dei valori: senza
+   * sapere di che vocabolario si tratta, le tendine delle condizioni e delle
+   * azioni mostravano il valore grezzo — `low → low` — mentre la stessa parola
+   * a due righe di distanza si leggeva «Bassa».
+   */
+  enumTypeName: string | null
 }
 
 interface TypeDef {
   name:   string
-  fields: { name: string; label: string; fieldType: string; enumValues?: string[] | null }[]
+  fields: { name: string; label: string; fieldType: string; enumValues?: string[] | null; enumTypeName?: string | null }[]
 }
 
 /** Campi "virtuali" di relazione, offerti oltre a quelli del tipo. */
 const VIRTUAL_RELATION_FIELDS: FieldMeta[] = [
-  { name: 'assigned_to',   label: 'Assegnato a',    fieldType: 'user', enumValues: [] },
-  { name: 'assigned_team', label: 'Team assegnato', fieldType: 'team', enumValues: [] },
+  { name: 'assigned_to',   label: 'Assegnato a',    fieldType: 'user', enumValues: [], enumTypeName: null },
+  { name: 'assigned_team', label: 'Team assegnato', fieldType: 'team', enumValues: [], enumTypeName: null },
 ]
 
 /**
@@ -57,6 +65,7 @@ export function useEntityFieldMetas(entityType: string, { withVirtual = true }: 
     if (!typeDef) return { fields: [], error: `tipo "${entityType}" non presente nel metamodello` }
     const fields: FieldMeta[] = typeDef.fields.map(f => ({
       name: f.name, label: f.label || f.name, fieldType: f.fieldType, enumValues: f.enumValues ?? [],
+      enumTypeName: f.enumTypeName ?? null,
     }))
     if (withVirtual) {
       for (const v of VIRTUAL_RELATION_FIELDS) {

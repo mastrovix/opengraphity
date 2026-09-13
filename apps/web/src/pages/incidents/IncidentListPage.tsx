@@ -12,7 +12,7 @@ import { BulkActionsBar } from '@/components/BulkActionsBar'
 import { Select, Textarea, FieldLabel } from '@/components/ui/FormControls'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
-import { StatusBadge } from '@/components/StatusBadge'
+import { TicketStatusBadge } from '@/components/StatusBadge'
 import { EmptyState } from '@/components/EmptyState'
 import { GET_INCIDENTS, GET_TEAMS } from '@/graphql/queries'
 import { ASSIGN_INCIDENT_TO_TEAM, RESOLVE_INCIDENT } from '@/graphql/mutations'
@@ -55,7 +55,7 @@ export function IncidentListPage() {
       label:   t('pages.incidents.status'),
       width:   '130px',
       sortable: true,
-      render:  (v) => <StatusBadge value={String(v)} />,
+      render:  (v) => <TicketStatusBadge value={String(v)} entityType="incident" />,
     },
     {
       key:      'slaStatus',

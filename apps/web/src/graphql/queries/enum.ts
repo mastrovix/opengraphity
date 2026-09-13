@@ -6,6 +6,7 @@ export const GET_ENUM_TYPES = gql`
   query GetEnumTypes($scope: String) {
     enumTypes(scope: $scope) {
       id name label values defaultValue isSystem isShipped scope createdAt updatedAt
+      valueLabels { value label }
     }
   }
 `
@@ -14,6 +15,7 @@ export const GET_ENUM_TYPE = gql`
   query GetEnumType($id: ID!) {
     enumType(id: $id) {
       id name label values defaultValue isSystem isShipped scope createdAt updatedAt
+      valueLabels { value label }
     }
   }
 `

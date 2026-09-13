@@ -9,7 +9,7 @@ import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
-import { StatusBadge } from '@/components/StatusBadge'
+import { TicketStatusBadge } from '@/components/StatusBadge'
 import { EmptyState } from '@/components/EmptyState'
 import { GET_PROBLEMS } from '@/graphql/queries'
 import { FilterBuilder, type FilterGroup } from '@/components/FilterBuilder'
@@ -68,7 +68,7 @@ export function ProblemListPage() {
       label:   t('pages.problems.status'),
       width:   '130px',
       sortable: true,
-      render:  (v) => <StatusBadge value={String(v)} />,
+      render:  (v) => <TicketStatusBadge value={String(v)} entityType="problem" />,
     },
     {
       key:      'createdAt',

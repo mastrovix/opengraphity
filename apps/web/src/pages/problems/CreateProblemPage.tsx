@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { GET_PROBLEMS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
 import { CREATE_PROBLEM, ASSIGN_PROBLEM_TO_TEAM } from '@/graphql/mutations'
 import { colors, palette, alpha } from '@/lib/tokens'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -36,6 +37,7 @@ const PRIORITY_STYLES: Record<string, { bg: string; border: string; color: strin
 
 export function CreateProblemPage() {
   const { t } = useTranslation()
+  const { labelOf } = useDomainVocabularies()
   const navigate = useNavigate()
   const ids = { title: useId(), description: useId(), ciSearch: useId(), teamSearch: useId() }
 
@@ -155,7 +157,7 @@ export function CreateProblemPage() {
 
           {/* IMPATTO × URGENZA → PRIORITÀ */}
           <div style={{ marginBottom: 20, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            {([['Impatto', impact, setImpact, matrix?.impacts ?? []], ['Urgenza', urgency, setUrgency, matrix?.urgencies ?? []]] as const).map(([label, val, setVal, options]) => (
+            {([['Impatto', 'impact', impact, setImpact, matrix?.impacts ?? []], ['Urgenza', 'urgency', urgency, setUrgency, matrix?.urgencies ?? []]] as const).map(([label, vocabolario, val, setVal, options]) => (
               <div key={label}>
                 <div style={fieldLabel}>{label} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -166,8 +168,10 @@ export function CreateProblemPage() {
                         style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
                           border: `1.5px solid ${sel ? 'var(--color-brand)' : colors.border}`,
                           background: sel ? palette.info.light : 'var(--color-slate-bg)',
-                          color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}>
-                        {o}
+                          color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}
+                        title={o}>
+                        {/* L'etichetta del cliente: «Alto» per l'impatto, «Alta» per l'urgenza. */}
+                        {labelOf(vocabolario, o) ?? o}
                       </button>
                     )
                   })}
@@ -181,7 +185,8 @@ export function CreateProblemPage() {
                 background: PRIORITY_STYLES[priority]?.bg ?? 'var(--color-slate-bg)',
                 color: PRIORITY_STYLES[priority]?.color ?? 'var(--color-slate)', fontWeight: 600 }}>
                 <span>{priority === '' ? '—' : priorityCode(matrix?.priorities ?? [], priority)}</span>
-                <span style={{ textTransform: 'capitalize' }}>{priority === '' ? 'da compilare nella matrice' : priority}</span>
+                {/* L'etichetta della priorità, non il valore. */}
+                <span style={{ textTransform: 'capitalize' }}>{priority === '' ? 'da compilare nella matrice' : (labelOf('priority', priority) ?? priority)}</span>
               </div>
             </div>
           </div>

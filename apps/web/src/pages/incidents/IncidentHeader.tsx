@@ -1,6 +1,6 @@
 import { ArrowLeft } from 'lucide-react'
 import { SeverityBadge } from '@/components/SeverityBadge'
-import { StatusBadge }   from '@/components/StatusBadge'
+import { TicketStatusBadge } from '@/components/StatusBadge'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { buttonStyleForCategory } from '@/lib/workflowStepStyle'
 
@@ -97,7 +97,7 @@ export function IncidentHeader({
           {incident.number}
         </h1>
         <SeverityBadge value={incident.severity} />
-        <StatusBadge   value={incident.status} />
+        <TicketStatusBadge value={incident.status} entityType="incident" />
       </div>
 
       {/* Row 3 — title */}

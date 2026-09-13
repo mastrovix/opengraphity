@@ -24,7 +24,7 @@ const EXEC = {
 describe('testate dei riquadri dei ticket', () => {
   it('cronologia del workflow: testata condivisa, stato aperto controllato dal chiamante', async () => {
     const { user, rerender } = renderWithProviders(
-      <WorkflowTimeline historyDesc={[EXEC]} timelineOpen={false} onToggle={() => {}} />,
+      <WorkflowTimeline historyDesc={[EXEC]} entityType="incident" timelineOpen={false} onToggle={() => {}} />,
     )
     const toggle = screen.getByRole('button', { name: /Timeline workflow/ })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
@@ -32,12 +32,12 @@ describe('testate dei riquadri dei ticket', () => {
 
     // controllato: il clic avvisa il chiamante e non apre da sé
     let toggled = 0
-    rerender(<WorkflowTimeline historyDesc={[EXEC]} timelineOpen={false} onToggle={() => { toggled++ }} />)
+    rerender(<WorkflowTimeline historyDesc={[EXEC]} entityType="incident" timelineOpen={false} onToggle={() => { toggled++ }} />)
     await user.click(screen.getByRole('button', { name: /Timeline workflow/ }))
     expect(toggled).toBe(1)
     expect(screen.getByRole('button', { name: /Timeline workflow/ })).toHaveAttribute('aria-expanded', 'false')
 
-    rerender(<WorkflowTimeline historyDesc={[EXEC]} timelineOpen onToggle={() => {}} />)
+    rerender(<WorkflowTimeline historyDesc={[EXEC]} entityType="incident" timelineOpen onToggle={() => {}} />)
     expect(screen.getByRole('button', { name: /Timeline workflow/ })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('nota della voce')).toBeInTheDocument()
   })

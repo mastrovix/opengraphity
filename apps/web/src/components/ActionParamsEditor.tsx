@@ -15,6 +15,7 @@ import { fieldTypeLabel } from '@/lib/automationOperators'
 import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 
 interface Props {
   actionType: string
@@ -42,6 +43,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
   const { data: usersData }    = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { data: workflowData } = useQuery<{ workflowDefinitions: { id: string; name: string; entityType: string; steps: { name: string; label: string }[] }[] }>(GET_WORKFLOW_LIST, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { values: priorityValues } = useEnumValues(entityType || 'incident', 'priority')
+  const { labelOf } = useDomainVocabularies()
   const { values: severityValues } = useEnumValues(entityType || 'incident', 'severity')
   const { fields: fieldMetas } = useEntityFieldMetas(entityType)
 
@@ -100,8 +102,15 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
       return (
         <Select style={{ ...selectS, flex: 1 }} value={params['priority'] ?? ''} onChange={e => onChange('priority', e.target.value)}>
           <option value="">-- Seleziona priorità --</option>
+          {/*
+            L'etichetta del vocabolario che si sta offrendo davvero: `priority`
+            se il tipo lo dichiara, altrimenti `severity` (per l'incident era
+            l'unico che esistesse, prima dell'ondata 2).
+          */}
           {(priorityValues.length > 0 ? priorityValues : severityValues).map(v =>
-            <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>
+            <option key={v} value={v} title={v}>
+              {labelOf(priorityValues.length > 0 ? 'priority' : 'severity', v) ?? (v.charAt(0).toUpperCase() + v.slice(1))}
+            </option>
           )}
         </Select>
       )
@@ -121,7 +130,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
             ))}
           </Select>
           {/* Value input — adapts to field type */}
-          {renderFieldValue(params['value'] ?? '', v => onChange('value', v), selectedFieldMeta, users, teams)}
+          {renderFieldValue(params['value'] ?? '', v => onChange('value', v), selectedFieldMeta, users, teams, labelOf)}
         </div>
       )
 
@@ -257,6 +266,7 @@ function renderFieldValue(
   field: FieldMeta | undefined,
   users: { id: string; name: string; email: string }[],
   teams: { id: string; name: string }[],
+  labelOf: (vocabolario: string, valore: string) => string | null,
 ) {
   if (!field) return <Input style={{ ...inputS, flex: 1 }} placeholder="Seleziona un campo" disabled />
 
@@ -264,7 +274,11 @@ function renderFieldValue(
     return (
       <Select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
         <option value="">-- Valore --</option>
-        {field.enumValues.map(v => <option key={v} value={v}>{v}</option>)}
+        {field.enumValues.map(v => (
+          <option key={v} value={v} title={v}>
+            {(field.enumTypeName ? labelOf(field.enumTypeName, v) : null) ?? v}
+          </option>
+        ))}
       </Select>
     )
   }

@@ -4,7 +4,7 @@ import { useQuery } from '@apollo/client/react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { CountBadge } from '@/components/ui/CountBadge'
 import { SeverityBadge } from '@/components/ui/badges'
-import { StatusBadge } from '@/components/StatusBadge'
+import { TicketStatusBadge } from '@/components/StatusBadge'
 import { GET_CI_INCIDENTS } from '@/graphql/queries'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { colors, palette } from '@/lib/tokens'
@@ -53,7 +53,7 @@ export function CIIncidentsCard({ ciId }: { ciId: string }) {
           <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {inc.title}
           </div>
-          <div style={{ marginTop: 2 }}><StatusBadge value={inc.status} /></div>
+          <div style={{ marginTop: 2 }}><TicketStatusBadge value={inc.status} entityType="incident" /></div>
         </div>
       </button>
     )

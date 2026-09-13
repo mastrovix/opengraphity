@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
@@ -123,6 +124,7 @@ interface User  { id: string; name: string; email: string; teams: { id: string; 
 
 export function ProblemDetailPage() {
   const { t }    = useTranslation()
+  const { labelOf } = useDomainVocabularies()
   const confirm  = useConfirm()
   const { id }   = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -359,7 +361,7 @@ export function ProblemDetailPage() {
                   : <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
               } />
               <DetailField label={t('detail.priority')} value={
-                <span style={{ fontWeight: 600, color: lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)') }}>{problem.priority}</span>
+                <span style={{ fontWeight: 600, color: lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)') }} title={problem.priority}>{labelOf('priority', problem.priority) ?? problem.priority}</span>
               } />
               {/*
                 Lo SLA del problem. Mancava: il motore non lo creava (leggeva
@@ -561,6 +563,7 @@ export function ProblemDetailPage() {
 
           {/* Timeline workflow (come nell'incident) */}
           <WorkflowTimeline
+            entityType="problem"
             historyDesc={historyDesc}
             timelineOpen={timelineOpen}
             onToggle={() => setTimelineOpen((p) => !p)}

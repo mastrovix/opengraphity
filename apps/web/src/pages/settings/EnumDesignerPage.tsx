@@ -22,11 +22,21 @@ import { colors, palette } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+interface EnumValueLabel { value: string; label: string }
+
 interface EnumType {
   id:        string
   name:      string
   label:     string
   values:    string[]
+  /**
+   * Valore + etichetta con cui si legge a schermo, nell'ordine dei valori e
+   * sempre completa: dove l'admin non ha scritto niente il server mette il
+   * valore con le iniziali maiuscole. Ondata 1: il valore resta quello che è
+   * — lo scrivono i record e le condizioni delle regole — e l'etichetta è
+   * come la si legge.
+   */
+  valueLabels: EnumValueLabel[]
   /**
    * Il valore con cui si nasce quando nessuno lo indica (`null` = non
    * dichiarato). Serve a togliere una regola di dominio dalla POSIZIONE: lo
@@ -212,6 +222,14 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
   }, [renamingFrom])
   const [renameTo,     setRenameTo]     = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  /**
+   * Le etichette in modifica. Si scrivono SUBITO (all'uscita dal campo o con
+   * Invio), non col «Salva» del vocabolario: un'etichetta non tocca né i
+   * record né le matrici, quindi non ha bisogno di stare in una bozza insieme
+   * ai valori — e trattarla come i valori avrebbe fatto perdere la modifica a
+   * chi la scrive e poi cambia vocabolario.
+   */
+  const [labelDrafts, setLabelDrafts] = useState<Record<string, string>>({})
 
   const [updateEnum, { loading: saving }] = useMutation(UPDATE_ENUM_TYPE, {
     refetchQueries: [GET_ENUM_TYPES],
@@ -305,7 +323,29 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
     setLabel(e.label)
     setScope(e.scope)
     setValues(e.values)
+    setLabelDrafts({})
     setDirty(false)
+  }
+
+  /** L'etichetta come sta sul server (il server la completa sempre: vedi valueLabels). */
+  const etichettaSalvata = (v: string) => e.valueLabels.find((x) => x.value === v)?.label ?? v
+  /** Quella nel campo: la bozza se c'è, altrimenti quella salvata. */
+  const etichettaInCampo = (v: string) => labelDrafts[v] ?? etichettaSalvata(v)
+
+  /**
+   * Scrive l'etichetta di UN valore. Manda la lista intera perché la mutation
+   * sostituisce in blocco: mandare solo quella toccata cancellerebbe le altre.
+   * Un'etichetta uguale al valore si manda vuota — «leggi il valore» è
+   * l'assenza di etichetta, non un'etichetta che ripete il valore.
+   */
+  const salvaEtichetta = (v: string) => {
+    const nuova = (labelDrafts[v] ?? '').trim()
+    if (nuova === '' || nuova === etichettaSalvata(v)) { setLabelDrafts((d) => { const n = { ...d }; delete n[v]; return n }); return }
+    const lista = values
+      .map((val) => ({ value: val, label: val === v ? nuova : etichettaSalvata(val) }))
+      .filter((x) => x.label !== x.value)
+    setLabelDrafts((d) => { const n = { ...d }; delete n[v]; return n })
+    void updateEnum({ variables: { id: e.id, input: { valueLabels: lista } } })
   }
 
   return (
@@ -397,7 +437,11 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10, minHeight: 32 }}>
           {values.map((v, i) => (
             <div key={v} style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px',
+              // `wrap` + una larghezza minima sul campo dell'etichetta: senza,
+              // la riga (frecce, valore, etichetta, stella, matita, ×) si
+              // stringeva finché l'input restava largo 22px, cioè inusabile.
+              // Andare a capo costa una riga, restringere costa il campo.
+              display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', flexWrap: 'wrap',
               background: palette.info.bg, borderRadius: 6,
               fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', fontWeight: 500,
             }}>
@@ -437,7 +481,28 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
                 </>
               ) : (
                 <>
-                  <span style={{ flex: 1 }}>{v}</span>
+                  <span style={{ flex: '0 0 auto', fontFamily: 'var(--font-mono, monospace)' }}>{v}</span>
+                  {/*
+                    L'ETICHETTA con cui il valore si legge a schermo (ondata 1).
+                    Si scrive qui e si vede in ogni pastiglia, tendina e
+                    tabella. Sul vocabolario spedito è in sola lettura, come i
+                    valori: per cambiarla si usa «Personalizza», che la copia.
+                  */}
+                  {shipped ? (
+                    <span style={{ flex: 1, fontWeight: 400, color: 'var(--color-slate)' }}>{etichettaSalvata(v)}</span>
+                  ) : (
+                    <Input
+                      style={{ ...inputS, flex: '1 1 140px', minWidth: 120, height: 26, fontWeight: 400 }}
+                      value={etichettaInCampo(v)}
+                      onChange={(ev) => setLabelDrafts((d) => ({ ...d, [v]: ev.target.value }))}
+                      onBlur={() => salvaEtichetta(v)}
+                      onKeyDown={(ev) => {
+                        if (ev.key === 'Enter') { ev.preventDefault(); salvaEtichetta(v) }
+                        if (ev.key === 'Escape') setLabelDrafts((d) => { const n = { ...d }; delete n[v]; return n })
+                      }}
+                      aria-label={t('pages.dictionary.valueLabelFor', { value: v })}
+                    />
+                  )}
                   {e.defaultValue === v && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--font-size-table)', fontWeight: 600 }}>
                       <Star size={10} aria-hidden="true" /> {t('pages.dictionary.defaultBadge')}

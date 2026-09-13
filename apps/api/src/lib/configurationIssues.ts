@@ -36,6 +36,7 @@ import { CI_STATUS_VOCABULARY } from './eventVocabularies.js'
 import { LIFECYCLE_POLICY_LISTS } from './eventPolicy.js'
 import { getEventPolicy } from '../services/events/policy.js'
 import { logger } from './logger.js'
+import { parseValueLabels, vocabularyCarriesLabels } from './enumValueLabels.js'
 
 const log = logger.child({ module: 'configuration-issues' })
 
@@ -47,6 +48,7 @@ export type ConfigurationIssueKind =
   | 'vocabulary_without_semantics'
   | 'check_failed'
   | 'vocabulary_empty'
+  | 'value_labels_missing'
 
 export interface ConfigurationIssue {
   kind: ConfigurationIssueKind
@@ -62,7 +64,7 @@ export async function configurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -158,6 +160,58 @@ async function checkMatrices(tenantId: string): Promise<ConfigurationIssue[]> {
     })
   }
   return out
+}
+
+/**
+ * I valori senza ETICHETTA (ondata 1).
+ *
+ * La migrazione ha seminato l'italiano per i valori SPEDITI il giorno in cui è
+ * stata scritta, e non può sapere niente di quelli aggiunti dopo — né di quelli
+ * che il cliente aggiunge da sé. Un valore senza etichetta si legge a schermo
+ * col suo nome interno («mission_critical» → «Mission Critical»), che è vero ma
+ * non è la lingua del prodotto.
+ *
+ * È un avviso, non un errore: il prodotto funziona, si legge solo peggio. E
+ * salta i vocabolari che di proposito non portano etichette
+ * (`VOCABULARIES_WITHOUT_LABELS`), altrimenti si lamenterebbe per sempre dei 28
+ * valori di `import_severity` e dei nomi dei passi.
+ */
+async function checkValueLabels(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const r = await session.executeRead((tx) =>
+    tx.run(
+      `MATCH (e:EnumTypeDefinition)
+       WHERE e.tenant_id IN [$tenantId, 'system']
+       RETURN e.name AS name, e.tenant_id AS owner, e.values AS values, e.value_labels AS labels`,
+      { tenantId },
+    ),
+  )
+  // Precedenza, la stessa di domainVocabulary: il vocabolario del cliente vince.
+  const perNome = new Map<string, { values: string[]; labels: unknown; own: boolean }>()
+  for (const rec of r.records) {
+    const name = rec.get('name') as string
+    const own  = (rec.get('owner') as string) !== 'system'
+    if (perNome.has(name) && !own) continue
+    const values = rec.get('values')
+    perNome.set(name, { values: Array.isArray(values) ? values as string[] : [], labels: rec.get('labels'), own })
+  }
+
+  const senza: string[] = []
+  for (const [name, v] of perNome) {
+    if (!vocabularyCarriesLabels(name)) continue
+    const { labels } = parseValueLabels(v.labels)
+    const mancanti = v.values.filter((val) => !(val in labels))
+    if (mancanti.length > 0) senza.push(`«${name}»: ${mancanti.join(', ')}`)
+  }
+  if (senza.length === 0) return []
+
+  return [{
+    kind: 'value_labels_missing',
+    severity: 'warning',
+    where: '/settings/enum-designer',
+    message:
+      `Questi valori non hanno un'etichetta, quindi a schermo si leggono col loro nome interno: ` +
+      `${senza.join(' · ')}. **Si scrive dal Dizionario**, accanto al valore.`,
+  }]
 }
 
 async function checkLifecyclePolicy(tenantId: string): Promise<ConfigurationIssue[]> {

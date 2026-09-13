@@ -13,9 +13,20 @@ beforeEach(() => { consoleError = vi.spyOn(console, 'error').mockImplementation(
  * Vocabolario del cliente per il test: il provider vero fa una query, qui si
  * inietta il contesto a mano (ondata 7 · D-15).
  */
-function withVocabulary(values: readonly string[] | null, ui: React.ReactElement) {
+function withVocabulary(
+  values: readonly string[] | null,
+  ui: React.ReactElement,
+  /** Le etichette del cliente (ondata 1): assenti per default, come su un tenant non ancora migrato. */
+  labels: Readonly<Record<string, string>> = {},
+) {
   return render(
-    <DomainVocabularyContext.Provider value={{ valuesOf: () => values, loading: false, error: null }}>
+    <DomainVocabularyContext.Provider value={{
+      valuesOf:  () => values,
+      labelOf:   (_n, v) => labels[v] ?? null,
+      entriesOf: () => (values ? values.map((v) => ({ value: v, label: labels[v] ?? v })) : null),
+      loading: false,
+      error: null,
+    }}>
       {ui}
     </DomainVocabularyContext.Provider>,
   )
@@ -112,5 +123,39 @@ describe('PhaseBadge / StatusLabel', () => {
     expect(screen.getByText('in-progress')).toHaveStyle({ color: 'var(--color-warning)' })
     rerender(<StatusLabel status={null} />)
     expect(screen.getByText('—')).toBeInTheDocument()
+  })
+})
+
+/**
+ * LE ETICHETTE DEL CLIENTE (ondata 1).
+ *
+ * Il valore resta quello che è — lo scrivono i record, i filtri, le condizioni
+ * delle regole — e a schermo si legge l'etichetta che l'admin ha scritto nel
+ * Dizionario. Prima la pastiglia mostrava il valore con le iniziali maiuscole,
+ * e per i vocabolari SPEDITI quella è una parola inglese in un'interfaccia
+ * italiana: «CRITICAL» invece di «CRITICA».
+ */
+describe('SeverityBadge — etichette per valore', () => {
+  it('mostra l\'etichetta del cliente, non il valore', () => {
+    withVocabulary(['low', 'medium', 'high', 'critical'], <SeverityBadge value="critical" />, { critical: 'Critica' })
+    expect(screen.getByText('Critica')).toBeInTheDocument()
+    expect(screen.queryByText('Critical')).not.toBeInTheDocument()
+  })
+
+  it('il `title` porta SEMPRE il valore: è quello che si cerca nei filtri e si trova nei log', () => {
+    withVocabulary(['critical'], <SeverityBadge value="critical" />, { critical: 'Critica' })
+    expect(screen.getByText('Critica')).toHaveAttribute('title', 'critical')
+  })
+
+  it('senza etichetta resta il valore con le iniziali maiuscole, come prima', () => {
+    withVocabulary(['high'], <SeverityBadge value="high" />)
+    expect(screen.getByText('High')).toBeInTheDocument()
+  })
+
+  it('l\'etichetta si cerca nel vocabolario GIUSTO: la stessa parola vale diversamente', () => {
+    // `low` è «Basso» per l'impatto e «Bassa» per l'urgenza: la pastiglia deve
+    // chiedere al vocabolario che le è stato dato, non a uno qualsiasi.
+    withVocabulary(['low'], <SeverityBadge value="low" vocabulary="impact" />, { low: 'Basso' })
+    expect(screen.getByText('Basso')).toBeInTheDocument()
   })
 })

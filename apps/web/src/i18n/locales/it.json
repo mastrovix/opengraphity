@@ -477,7 +477,8 @@
       "moveDownLabel": "Sposta \"{{value}}\" più in basso",
       "orderNote": "L'ordine conta: per i vocabolari di scala il primo valore è il più basso e l'ultimo il più alto (l'impatto più alto è l'ultimo). Rinominare un valore lo lascia al suo posto e aggiorna i record, la policy degli allarmi e le matrici di dominio; il default è il valore usato quando nessuno lo indica.",
       "valueCount_one": "1 valore",
-      "valueCount_other": "{{count}} valori"
+      "valueCount_other": "{{count}} valori",
+      "valueLabelFor": "Etichetta del valore {{value}}"
     },
     "sync": {
       "sourceCreated": "Sync source created",

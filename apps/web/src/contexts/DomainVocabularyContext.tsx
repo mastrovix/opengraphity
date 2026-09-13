@@ -29,20 +29,38 @@ import { useQuery } from '@apollo/client/react'
 import { GET_ENUM_TYPES } from '@/graphql/queries'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
-interface EnumTypeRow { name: string; values: string[]; isShipped: boolean }
+interface EnumValueLabelRow { value: string; label: string }
+interface EnumTypeRow { name: string; values: string[]; isShipped: boolean; valueLabels: EnumValueLabelRow[] }
 
 export interface DomainVocabularies {
   /** I valori ammessi, o `null` se non si conoscono (vedi sopra: non è «vuoto»). */
   valuesOf: (name: string) => readonly string[] | null
+  /**
+   * L'ETICHETTA con cui si legge un valore (ondata 1): `impact`/`high` → «Alto».
+   *
+   * Restituisce `null` quando non la conosciamo — query in corso, in errore,
+   * provider non montato, vocabolario assente — e chi chiama mostra il valore,
+   * che è vero. NON ripiega da sé sul title-case: quel ripiego lo fa già il
+   * server, che ha il valore e l'etichetta insieme, e farlo anche qui
+   * nasconderebbe la differenza fra «l'etichetta è il valore» e «non so
+   * ancora».
+   *
+   * Un valore fuori vocabolario torna `null`: non gli si inventa un'etichetta.
+   */
+  labelOf: (name: string, value: string) => string | null
+  /** Valore + etichetta, nell'ordine del vocabolario: per le tendine e i gruppi di bottoni. */
+  entriesOf: (name: string) => readonly EnumValueLabelRow[] | null
   loading:  boolean
   error:    string | null
 }
 
 /** Esportato per i test, che iniettano il vocabolario del cliente senza query. */
 export const DomainVocabularyContext = createContext<DomainVocabularies>({
-  valuesOf: () => null,
-  loading:  false,
-  error:    null,
+  valuesOf:  () => null,
+  labelOf:   () => null,
+  entriesOf: () => null,
+  loading:   false,
+  error:     null,
 })
 
 export function DomainVocabularyProvider({ children }: { children: ReactNode }) {
@@ -50,14 +68,18 @@ export function DomainVocabularyProvider({ children }: { children: ReactNode }) 
   const value = useMemo<DomainVocabularies>(() => {
     // Due mappe e una precedenza sola: il vocabolario del cliente vince, e
     // quello spedito resta la seconda scelta.
-    const own     = new Map<string, readonly string[]>()
-    const shipped = new Map<string, readonly string[]>()
+    const own     = new Map<string, EnumTypeRow>()
+    const shipped = new Map<string, EnumTypeRow>()
     for (const row of data?.enumTypes ?? []) {
-      (row.isShipped ? shipped : own).set(row.name, row.values)
+      (row.isShipped ? shipped : own).set(row.name, row)
     }
     const ready = !loading && !error
+    /** Il vocabolario che vince per questo cliente, o `undefined`. */
+    const riga = (name: string) => (ready ? (own.get(name) ?? shipped.get(name)) : undefined)
     return {
-      valuesOf: (name: string) => (ready ? (own.get(name) ?? shipped.get(name) ?? null) : null),
+      valuesOf:  (name) => riga(name)?.values ?? null,
+      entriesOf: (name) => riga(name)?.valueLabels ?? null,
+      labelOf:   (name, value) => riga(name)?.valueLabels.find((v) => v.value === value)?.label ?? null,
       loading,
       error: error ? error.message : null,
     }
