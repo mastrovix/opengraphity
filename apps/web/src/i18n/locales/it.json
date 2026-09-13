@@ -433,7 +433,7 @@
       "entries": "voci"
     },
     "dictionary": {
-      "title": "Dictionary Designer",
+      "title": "Dizionario dei valori",
       "subtitle": "Definisci e gestisci i dizionari di valori per i campi enum dell'applicazione",
       "listHeader": "Dizionari",
       "newButton": "Nuovo",
@@ -475,7 +475,9 @@
       "renameConfirmLabel": "Conferma la rinomina",
       "moveUpLabel": "Sposta \"{{value}}\" più in alto",
       "moveDownLabel": "Sposta \"{{value}}\" più in basso",
-      "orderNote": "L'ordine conta: per i vocabolari di scala il primo valore è il più basso e l'ultimo il più alto (l'impatto più alto è l'ultimo). Rinominare un valore lo lascia al suo posto e aggiorna i record, la policy degli allarmi e le matrici di dominio; il default è il valore usato quando nessuno lo indica."
+      "orderNote": "L'ordine conta: per i vocabolari di scala il primo valore è il più basso e l'ultimo il più alto (l'impatto più alto è l'ultimo). Rinominare un valore lo lascia al suo posto e aggiorna i record, la policy degli allarmi e le matrici di dominio; il default è il valore usato quando nessuno lo indica.",
+      "valueCount_one": "1 valore",
+      "valueCount_other": "{{count}} valori"
     },
     "sync": {
       "sourceCreated": "Sync source created",
@@ -1195,7 +1197,21 @@
     "actions": {
       "sla_response": "risposta",
       "sla_resolve": "risoluzione",
-      "after": "dopo"
+      "after": "dopo",
+      "sla_start": "Avvia SLA",
+      "sla_stop": "Ferma SLA",
+      "sla_pause": "Sospendi SLA",
+      "sla_resume": "Riprendi SLA",
+      "notify": "Notifica",
+      "publish_event": "Pubblica evento",
+      "schedule_job": "Programma lavoro",
+      "cancel_job": "Annulla lavoro",
+      "notify_rule": "Applica regola di notifica",
+      "create_entity": "Crea entita",
+      "assign_to": "Assegna a",
+      "update_field": "Aggiorna campo",
+      "call_webhook": "Chiama webhook",
+      "create_approval_request": "Crea richiesta di approvazione"
     },
     "deleteBlockedInitial": "Questo è lo step iniziale del processo: eliminandolo nessun nuovo ticket potrebbe più nascere. Marca prima un altro step come iniziale.",
     "deleteBlockedInstances_one": "{{count}} ticket si trova ora su questo step: eliminandolo resterebbe senza step corrente e non potrebbe più avanzare. Spostalo prima su un altro step.",
@@ -1242,7 +1258,37 @@
       "rootCause != null": "La causa radice è compilata"
     },
     "triggerHint": "Chi percorre l'arco: «manuale» una persona dal ticket, «automatico» il motore quando la condizione è soddisfatta, «timer» la fine di un'attesa, «sfondamento SLA» l'escalation.",
-    "addStepStandardHint": "Nasce «in lavorazione» e senza scopo: apri il pannello del passo per assegnargli categoria e scopo, altrimenti le regole di dominio non lo riconoscono."
+    "addStepStandardHint": "Nasce «in lavorazione» e senza scopo: apri il pannello del passo per assegnargli categoria e scopo, altrimenti le regole di dominio non lo riconoscono.",
+    "panel": {
+      "label": "Etichetta",
+      "name": "Nome (tecnico)",
+      "type": "Tipo",
+      "enter_actions": "Azioni all'ingresso",
+      "exit_actions": "Azioni all'uscita",
+      "step_iniziale": "Passo iniziale",
+      "step_terminale": "Passo terminale",
+      "step_aperto": "Passo aperto",
+      "notifica_all_ingresso": "Notifica all'ingresso",
+      "chiave_titolo_i18n": "Chiave del titolo (i18n)",
+      "severit": "Severità",
+      "canali": "Canali",
+      "destinatari": "Destinatari",
+      "from_to": "Da → A",
+      "trigger": "Innesco",
+      "richiede_input": "Richiede un valore",
+      "campo_input": "Campo del valore",
+      "timer_ore": "Timer (ore)"
+    },
+    "stepType": {
+      "standard": "Passo",
+      "parallel_fork": "Biforcazione",
+      "parallel_join": "Ricongiunzione",
+      "timer_wait": "Attesa a tempo",
+      "sub_workflow": "Sotto-workflow"
+    },
+    "addStep": "Passo",
+    "addStepDialog": "Aggiungi un passo",
+    "timerMinutesPlaceholder": "es. 60"
   },
   "itilDesigner": {
     "title": "ITIL Type Designer",

@@ -475,7 +475,9 @@
       "renameConfirmLabel": "Confirm the rename",
       "moveUpLabel": "Move \"{{value}}\" up",
       "moveDownLabel": "Move \"{{value}}\" down",
-      "orderNote": "Order matters: for scale vocabularies the first value is the lowest and the last the highest (the highest impact is the last one). Renaming a value keeps it in place and updates records, the alarm policy and the domain matrices; the default is the value used when nobody specifies one."
+      "orderNote": "Order matters: for scale vocabularies the first value is the lowest and the last the highest (the highest impact is the last one). Renaming a value keeps it in place and updates records, the alarm policy and the domain matrices; the default is the value used when nobody specifies one.",
+      "valueCount_one": "1 value",
+      "valueCount_other": "{{count}} values"
     },
     "sync": {
       "sourceCreated": "Sync source created",
@@ -1195,7 +1197,21 @@
     "actions": {
       "sla_response": "response",
       "sla_resolve": "resolution",
-      "after": "after"
+      "after": "after",
+      "sla_start": "Start SLA",
+      "sla_stop": "Stop SLA",
+      "sla_pause": "Pause SLA",
+      "sla_resume": "Resume SLA",
+      "notify": "Notify",
+      "publish_event": "Publish event",
+      "schedule_job": "Schedule job",
+      "cancel_job": "Cancel job",
+      "notify_rule": "Apply notification rule",
+      "create_entity": "Create entity",
+      "assign_to": "Assign to",
+      "update_field": "Update field",
+      "call_webhook": "Call webhook",
+      "create_approval_request": "Create approval request"
     },
     "deleteBlockedInitial": "This is the process's initial step: deleting it would stop any new ticket from being created. Mark another step as initial first.",
     "deleteBlockedInstances_one": "{{count}} ticket is currently on this step: deleting it would leave it with no current step and unable to move on. Move it to another step first.",
@@ -1242,7 +1258,37 @@
       "rootCause != null": "Root cause is filled in"
     },
     "triggerHint": "Who follows the arrow: «manual» a person from the ticket, «automatic» the engine when the condition holds, «timer» the end of a wait, «SLA breach» escalation.",
-    "addStepStandardHint": "It is born «in progress» with no purpose: open the step panel to give it a category and a purpose, otherwise domain rules will not recognise it."
+    "addStepStandardHint": "It is born «in progress» with no purpose: open the step panel to give it a category and a purpose, otherwise domain rules will not recognise it.",
+    "panel": {
+      "label": "Label",
+      "name": "Name (technical)",
+      "type": "Type",
+      "enter_actions": "Enter actions",
+      "exit_actions": "Exit actions",
+      "step_iniziale": "Initial step",
+      "step_terminale": "Terminal step",
+      "step_aperto": "Open step",
+      "notifica_all_ingresso": "Notify on enter",
+      "chiave_titolo_i18n": "Title key (i18n)",
+      "severit": "Severity",
+      "canali": "Channels",
+      "destinatari": "Recipients",
+      "from_to": "From → To",
+      "trigger": "Trigger",
+      "richiede_input": "Requires input",
+      "campo_input": "Input field",
+      "timer_ore": "Timer (hours)"
+    },
+    "stepType": {
+      "standard": "Step",
+      "parallel_fork": "Fork",
+      "parallel_join": "Join",
+      "timer_wait": "Timer wait",
+      "sub_workflow": "Sub-workflow"
+    },
+    "addStep": "Step",
+    "addStepDialog": "Add a step",
+    "timerMinutesPlaceholder": "e.g. 60"
   },
   "itilDesigner": {
     "title": "ITIL Type Designer",

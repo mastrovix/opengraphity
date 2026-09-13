@@ -272,6 +272,17 @@ export const eventsFlappingTotal      = createCounter('events_flapping_total',  
 export const workflowPurposeMissingTotal = createCounter('workflow_step_purpose_missing_total', 'Domain rules that found no workflow step declaring the purpose they look for, by rule', ['rule'])
 
 /**
+ * Transizioni automatiche RIFIUTATE dal varco della finestra di rilascio
+ * (terza revisione · C1). Su un cammino automatico il varco non lancia — non
+ * c'e un umano, e far fallire l'azione di un operatore per una configurazione
+ * che non e sua sarebbe un vicolo cieco — quindi il rifiuto vive qui e nel
+ * log. Se questo contatore sale, un cliente ha un arco automatico che porta
+ * dentro la finestra di rilascio scavalcando l'approvazione: e una
+ * configurazione da correggere, non un guasto del prodotto.
+ */
+export const changeWindowGateBlockedTotal = createCounter('change_window_gate_blocked_total', 'Automatic workflow transitions refused because the change would enter the release window without satisfied approvals, by path and reason', ['path', 'reason'])
+
+/**
  * Quante cose mancano a un cliente per essere usabile (revisione delle otto
  * ondate · D·D4). Il prodotto lo sapeva già (`tenantProvisioningGaps`) ma lo
  * diceva solo a chi lanciava `migrate --status`: un tenant incompleto restava
@@ -410,6 +421,7 @@ export const SCHEMA_METRICS = [
 export const EVENT_MANAGEMENT_METRICS = [
   eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsAmbiguousTotal, eventsSuppressedTotal, eventsFlappingTotal,
   workflowPurposeMissingTotal,
+  changeWindowGateBlockedTotal,
   tenantProvisioningGapsGauge,
   incidentsAutoOpenedTotal, incidentsAutoResolvedTotal, incidentsReopenedTotal, eventsPurgedTotal,
   eventsOutOfOrderTotal, eventsIngestFailedTotal, eventsRejectedTotal, eventsResolvedUnknownTotal, eventStormsActive, webhookRateLimitedTotal,

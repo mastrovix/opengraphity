@@ -45,9 +45,23 @@ const int = (n: number) => neo4jInt(n)
 
 const ENUM_ROW = { id: 'e-1', tenantId: 'tenant-1', name: 'ticket_source', label: 'Origine', values: ['portal', 'email'], isSystem: false, scope: 'itil', defaultValue: null, createdAt: 'c', updatedAt: 'u' }
 
+/**
+ * Le sedi di CONFIGURAZIONE (terza revisione · G1) aggiungono una lettura per
+ * sede a ogni sostituzione. Questa coda risponde per POSIZIONE, quindi quelle
+ * letture in piu le sfilerebbero le risposte destinate al vocabolario: si
+ * riconoscono dall'etichetta e si servono vuote SENZA consumare la coda. I
+ * test dedicati alle sedi stanno in `lib/__tests__/enumValueUsage.test.ts`,
+ * dove la sessione finta smista sul Cypher invece di rispondere in coda.
+ */
+// Le query delle sedi usano tutte l'alias `n`: la policy degli allarmi legge
+// `MATCH (t:Tenant …) RETURN t.event_policy`, e un filtro sul solo nome
+// dell'etichetta si sarebbe mangiato anche quella (mi e successo).
+const CONFIG_LABELS = /\(n:(?:BusinessRule|AutoTrigger|SLAPolicyNode|DynamicCIGroup|StandardChangeCatalogEntry|FieldVisibilityRule)\b|risk_band_thresholds/
+
 function fakeSession(responses: Array<{ records: unknown[] }>) {
   const queue = [...responses]
-  const txRun = vi.fn().mockImplementation(async () => queue.shift() ?? { records: [] })
+  const txRun = vi.fn().mockImplementation(async (cypher: string) =>
+    (CONFIG_LABELS.test(String(cypher)) ? { records: [] } : queue.shift() ?? { records: [] }))
   const tx = { run: txRun }
   const s = {
     txRun,
@@ -152,7 +166,12 @@ describe('createEnumType', () => {
 
   it.each([
     [{ name: 'NotSnake', label: 'X', values: ['a'], scope: 'itil' }, /snake_case/],
-    [{ name: 'ok_name', label: 'X', values: [], scope: 'itil' }, /at least one entry/],
+    // Terza revisione · M7: il messaggio ora dice la CONSEGUENZA («nessun
+    // record potrebbe piu essere creato») e le due uscite, e la stessa regola
+    // vale anche per `updateEnumType`, che prima non guardava affatto.
+    [{ name: 'ok_name', label: 'X', values: [], scope: 'itil' }, /non puo restare senza valori/],
+    [{ name: 'ok_name', label: 'X', values: ['a', 'a'], scope: 'itil' }, /ripete "a"/],
+    [{ name: 'ok_name', label: 'X', values: ['a', '  '], scope: 'itil' }, /valore\/i vuoto/],
     [{ name: 'ok_name', label: 'X', values: ['a'], scope: 'global' }, /scope must be one of: itil, cmdb, shared/],
   ])('input non valido %j → ValidationError senza sessione', async (input, pattern) => {
     await expectCode(enumTypeResolvers.Mutation.createEnumType(null, { input }, admin), 'BAD_USER_INPUT', pattern)
@@ -248,7 +267,10 @@ describe('updateEnumType', () => {
     const out = await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { label: 'Nuova' } }, admin)
     const [cypher, params] = s.txRun.mock.calls[1]!
     expect(cypher).toContain('SET e.label      = coalesce($label, e.label)')
-    expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1', label: 'Nuova', values: null, scope: null, defaultValue: null, now: expect.any(String) })
+    // `finalDefault` (terza revisione · C2) al posto del vecchio `defaultValue`:
+    // il default non è più «quello che c'è se non me ne dài uno», è calcolato —
+    // le sostituzioni valgono anche per lui. Qui non c'è default, quindi null.
+    expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1', label: 'Nuova', values: null, scope: null, finalDefault: null, now: expect.any(String) })
     expect(out.label).toBe('Nuova')
   })
 
@@ -699,5 +721,99 @@ describe('reorderEnumValues — l\'ordine è una scala, e ora si modifica', () =
       enumTypeResolvers.Mutation.reorderEnumValues(null, { id: 'e-1', values: ['low', 'medium', 'estremo'] }, admin),
       'BAD_USER_INPUT', /cambia solo l'ORDINE.*mancano: high.*in più: estremo.*per cambiargli nome la rinomina/s,
     )
+  })
+})
+
+/**
+ * IL DEFAULT SEGUE I VALORI (terza revisione · C2).
+ *
+ * `renameEnumValue` portava dietro `default_value` con un `CASE WHEN`;
+ * `updateEnumType` faceva `coalesce($defaultValue, e.default_value)` — «tieni
+ * quello che c'è» — anche quando quello che c'era era il valore appena tolto.
+ * E `countEnumValueUsage` non guarda il default, quindi su un tenant dove
+ * nessun record usa quel valore la rimozione passava muta. Poi
+ * `initialCIStatus` lancia su ogni CI creato senza stato esplicito, che è il
+ * caso normale: nessun CI nasce più.
+ */
+describe('il valore di default segue i valori', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  /** La riga del vocabolario come la legge `updateEnumType`, col suo default. */
+  const ROW = (values: string[], defaultValue: string | null) =>
+    ({ records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ci_status', values, defaultValue })] })
+  const BINDING = { records: [rec({ label: 'ConfigurationItem', typeName: '__base__', fieldName: 'status' })] }
+  const COUNT   = (value: string, n: number) => ({ records: [rec({ value, n })] })
+  const POLICY  = (raw: string | null) => ({ records: [rec({ raw })] })
+  const FINAL   = (values: string[], defaultValue: string | null) =>
+    ({ records: [rec({ ...ENUM_ROW, name: 'ci_status', values, defaultValue })] })
+  /** Il parametro `finalDefault` scritto sul nodo del vocabolario. */
+  const scritto = (s: { txRun: { mock: { calls: unknown[][] } } }) => {
+    const w = s.txRun.mock.calls.find((c) => String(c[0]).includes('SET e.label'))
+    expect(w, 'il vocabolario non è stato scritto').toBeDefined()
+    return (w![1] as { finalDefault: string | null }).finalDefault
+  }
+
+  it('togliere il default senza dire su cosa riscriverlo è RIFIUTATO, e il messaggio nomina le due uscite', async () => {
+    const s = fakeSession([ROW(['active', 'inactive'], 'active'), BINDING, COUNT('active', 0), POLICY(null)])
+    const err = await enumTypeResolvers.Mutation.updateEnumType(
+      null, { id: 'e-1', input: { values: ['inactive'] } }, admin,
+    ).then(() => null, (e: GraphQLError) => e)
+    expect(err).toBeInstanceOf(GraphQLError)
+    expect(err!.message).toMatch(/valore di default/)
+    expect(err!.message).toMatch(/replacements/)
+    expect(err!.message).toMatch(/defaultValue/)
+    // E non ha scritto niente: il vocabolario resta com'era.
+    expect(s.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('una sostituzione porta dietro il default, come fa la rinomina', async () => {
+    const s = fakeSession([
+      ROW(['active', 'inactive'], 'active'),
+      BINDING, { records: [rec({ n: 3 })] }, POLICY(null),
+      FINAL(['inactive'], 'inactive'),
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, {
+      id: 'e-1', input: { values: ['inactive'], replacements: [{ from: 'active', to: 'inactive' }] },
+    }, admin)
+    expect(scritto(s)).toBe('inactive')
+  })
+
+  it('si può togliere il default scegliendone un altro nella stessa chiamata', async () => {
+    const s = fakeSession([
+      ROW(['active', 'inactive'], 'active'),
+      BINDING, { records: [rec({ n: 0 })] }, POLICY(null),
+      FINAL(['inactive'], 'inactive'),
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, {
+      id: 'e-1',
+      input: { values: ['inactive'], replacements: [{ from: 'active', to: 'inactive' }], defaultValue: 'inactive' },
+    }, admin)
+    expect(scritto(s)).toBe('inactive')
+  })
+
+  it('un default che non è fra i valori nuovi è rifiutato anche se lo si indica a mano', async () => {
+    fakeSession([ROW(['active', 'inactive'], null)])
+    await expectCode(
+      enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active', 'inactive'], defaultValue: 'pizza' } }, admin),
+      'BAD_USER_INPUT', /non è fra i valori/,
+    )
+  })
+
+  it('un vocabolario senza default resta senza default (non se ne inventa uno)', async () => {
+    const s = fakeSession([
+      ROW(['active', 'inactive'], null),
+      FINAL(['active', 'inactive', 'nuovo'], null),
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active', 'inactive', 'nuovo'] } }, admin)
+    expect(scritto(s)).toBeNull()
+  })
+
+  it('e il default NON viene toccato quando si cambia solo l\'etichetta', async () => {
+    const s = fakeSession([
+      ROW(['active', 'inactive'], 'active'),
+      FINAL(['active', 'inactive'], 'active'),
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { label: 'Stato del CI' } }, admin)
+    expect(scritto(s)).toBe('active')
   })
 })

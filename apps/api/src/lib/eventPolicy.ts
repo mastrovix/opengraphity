@@ -16,6 +16,7 @@
  * utenti), un input che esce dai valori ammessi è una ValidationError.
  */
 import { ValidationError } from './errors.js'
+import { registerMetamodelCacheClearer } from './schemaInvalidator.js'
 import {
   CI_LIFECYCLE_DECOMMISSIONED, CI_LIFECYCLE_INACTIVE, CI_LIFECYCLE_MAINTENANCE, CI_STATUS_VOCABULARY,
   EVENT_GROUP_BY, EVENT_SEVERITIES, OPEN_INCIDENT_FROM,
@@ -424,6 +425,24 @@ export function invalidateEventPolicyCache(tenantId?: string): void {
   if (tenantId === undefined) policyCache.clear()
   else policyCache.delete(tenantId)
 }
+
+/**
+ * La policy degli allarmi SULLA LEVA DEL METAMODELLO (terza revisione · G4).
+ *
+ * Questa cache non era registrata fra i «clearer», quindi `invalidateSchema`
+ * — la leva unica dell'ondata 1 — non la svuotava. E `replaceEnumValue`
+ * scrive `t.event_policy` con Cypher diretto, scavalcando l'unico posto che
+ * chiamava `invalidateEventPolicyCache`.
+ *
+ * Conseguenza, su un'operazione che il cliente fa proprio quando rinomina:
+ * rinominato `maintenance`, per i 30 secondi di TTL — in OGNI processo, api,
+ * worker ed events-worker — `resolveCILifecycleSemantics` rispondeva ancora
+ * `maintenance: {'maintenance'}` mentre nessun CI portava piu quel valore. I
+ * CI in manutenzione non erano piu riconosciuti come tali, e la pipeline
+ * apriva incident su macchine spente di proposito. E il difetto C-4
+ * dell'ondata 7, in una finestra di mezzo minuto.
+ */
+registerMetamodelCacheClearer('event_policy', (tenantId?: string) => { invalidateEventPolicyCache(tenantId) })
 
 // ── GraphQL ↔ persistita ─────────────────────────────────────────────────────
 

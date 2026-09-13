@@ -61,7 +61,23 @@ export async function assertAllApprovalsSatisfied(session: Session, changeId: st
   // non il letterale `standard` — che un cliente può aver rinominato.
   if (await isPreApprovedChangeType(tenantId, s.changeType)) return
   if (s.total === 0) {
-    throw new GraphQLError('Requisiti di approvazione non ancora creati: la change non può essere approvata', { extensions: { code: 'CONFLICT' } })
+    // Terza revisione · G4: questo messaggio diceva solo cosa NON si puo fare.
+    // Ma lo stato in cui compare piu spesso non e un errore dell'utente: e una
+    // change nata PRE-APPROVATA — quindi senza nessun requisito, per
+    // costruzione — il cui tipo l'admin ha poi togliuto dai pre-approvati, cosa
+    // perfettamente sensata. La change si ritrovava ferma, anche per un admin,
+    // e non esiste un arco che la riporti all'approvazione. Le due uscite
+    // esistono entrambe: il messaggio ora le nomina, come fa il ramo gemello
+    // del varco cinque righe piu in la.
+    throw new GraphQLError(
+      `La change e di tipo "${s.changeType}", che non e fra i tipi pre-approvati, e non ha nessun ` +
+      `requisito di approvazione: i requisiti si creano entrando in un passo di scopo «Approvazione», ` +
+      `e questa change non ci e mai passata (quando e nata, il suo tipo era pre-approvato). ` +
+      `Due uscite: rimetti "${s.changeType}" fra i tipi pre-approvati (Impostazioni -> Matrici di ` +
+      `dominio) — e le change come questa ripartono da sole; oppure riportala al passo di ` +
+      `approvazione, che i requisiti li crea entrando.`,
+      { extensions: { code: 'CONFLICT', changeType: s.changeType } },
+    )
   }
   if (!s.hasChangeManager) {
     throw new GraphQLError('Manca il requisito del Change Manager: designa un team Change Manager (Team e Utenti) prima di approvare', { extensions: { code: 'CONFLICT' } })

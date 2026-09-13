@@ -92,7 +92,12 @@ describe('configurationIssues', () => {
   it('la policy che cita uno stato fuori vocabolario → errore che dice la conseguenza', async () => {
     policy = { ...policy, retired_statuses: ['decommissioned'] }   // il cliente l'ha rinominato
     const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'policy_out_of_vocabulary')
-    expect(issue).toMatchObject({ severity: 'error', where: '/settings/events' })
+    // La rotta VERA e `settings/event-policy`: questo test pinnava la stringa
+    // che l'autore credeva giusta, e il pulsante «Vai a sistemare» portava su
+    // una pagina vuota. Chi risolve i `where` contro il router e
+    // `apps/web/src/__tests__/configurationIssueRoutes.test.ts`; qui si pinna
+    // solo che il campo ci sia e sia quello.
+    expect(issue).toMatchObject({ severity: 'error', where: '/settings/event-policy' })
     expect(issue!.message).toContain('retired_statuses → decommissioned')
     expect(issue!.message).toMatch(/tornano a pesare nella salute dei servizi/)
   })
@@ -114,6 +119,30 @@ describe('configurationIssues', () => {
   it('il primo valore della scala non è «senza semantica»: è lo stato in servizio', async () => {
     vocabularies['ci_status'] = ['active', 'dismesso']
     expect((await configurationIssues('c-one')).find((i) => i.kind === 'vocabulary_without_semantics')).toBeUndefined()
+  })
+
+  /**
+   * Terza revisione · M10. Con un vocabolario vuoto, `cartesian([])` e vuoto,
+   * quindi OGNI chiave della matrice risultava «rimasta da una rinomina»: la
+   * diagnosi accusava la matrice e mandava l'admin alla pagina dove un «Salva»
+   * cancella le chiavi residue — cioe a distruggere una matrice sana. E del
+   * vocabolario vuoto, che e il problema vero, non diceva niente.
+   */
+  it('un vocabolario VUOTO si accusa per nome, e della matrice non si dice niente', async () => {
+    vocabularies['impact'] = []
+    const issues = await configurationIssues('c-one')
+
+    const vuoto = issues.find((i) => i.kind === 'vocabulary_empty')
+    expect(vuoto).toMatchObject({ severity: 'error', where: '/settings/enum-designer' })
+    expect(vuoto!.message).toContain('«impact»')
+    // Dice la conseguenza vera...
+    expect(vuoto!.message).toMatch(/non si apre piu nessun ticket/)
+    // ...e mette in guardia dal rimedio sbagliato.
+    expect(vuoto!.message).toMatch(/NON salvare la matrice/)
+
+    // E la matrice che USA quel vocabolario non viene accusata.
+    const matrice = issues.filter((i) => i.kind === 'matrix_incomplete')
+    expect(matrice.map((i) => i.message).join(' ')).not.toContain('«priority»')
   })
 
   it('un controllo che fallisce diventa una voce, e non nasconde gli altri', async () => {

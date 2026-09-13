@@ -193,13 +193,40 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
       const toStep = String(p['to_step'] ?? '')
       if (!toStep) throw new Error('transition_workflow: to_step is required')
       const { workflowEngine } = await import('@opengraphity/workflow')
+      // Import differito come quello sopra: `lib/` non deve dipendere da
+      // `graphql/resolvers/` al caricamento del modulo.
+      const { assertAutomaticTransitionAllowed } = await import('../graphql/resolvers/change/windowGate.js')
       await withSession(async (session) => {
         const wiRes = await session.executeRead(tx => tx.run(`
           MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-          RETURN wi.id AS instanceId
+          OPTIONAL MATCH (wi)-[:CURRENT_STEP]->(cur:WorkflowStep)
+          // Serve al varco della finestra di rilascio: questa azione transisce
+          // QUALUNQUE entita con un workflow, change comprese.
+          RETURN wi.id AS instanceId, cur.name AS currentStep,
+                 CASE WHEN 'Change' IN labels(e) THEN e.id          ELSE null END AS changeId,
+                 CASE WHEN 'Change' IN labels(e) THEN e.change_type ELSE null END AS changeType
         `, { entityId: ctx.entityId, tenantId: ctx.tenantId }))
         if (wiRes.records.length === 0) throw new Error('No workflow instance found')
         const instanceId = wiRes.records[0].get('instanceId') as string
+
+        // IL VARCO DELLA FINESTRA DI RILASCIO (terza revisione * C1, quarto
+        // cammino). Questa azione e configurabile dall'interfaccia — pagine
+        // «Business Rules» e «Trigger Automatici» — e il suo `to_step` arriva
+        // dai parametri: una regola con bersaglio il passo programmato
+        // spingeva qualunque change dentro la finestra di rilascio senza
+        // approvazioni. Nessuno dei due revisori l'aveva visto; l'ho trovato
+        // contando i chiamanti di `workflowEngine.transition` (erano 14, non 3).
+        const changeId   = wiRes.records[0].get('changeId')   as string | null
+        const changeType = wiRes.records[0].get('changeType') as string | null
+        if (changeId) {
+          await assertAutomaticTransitionAllowed(session, {
+            tenantId:    ctx.tenantId,
+            changeId,
+            changeType:  changeType ?? '',
+            currentStep: (wiRes.records[0].get('currentStep') as string | null) ?? '',
+            toStep,
+          }, 'rule_action')
+        }
         const result = await workflowEngine.transition(session, {
           instanceId, toStepName: toStep,
           triggeredBy: 'system', triggerType: 'automatic',

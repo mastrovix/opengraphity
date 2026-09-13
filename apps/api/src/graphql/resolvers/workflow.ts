@@ -3,6 +3,7 @@ import { ValidationError } from '../../lib/errors.js'
 import { randomUUID } from 'crypto'
 import { withSession } from './ci-utils.js'
 import { invalidateWorkflowCache } from '../../lib/workflowHelpers.js'
+import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
 import type { GraphQLContext } from '../../context.js'
@@ -279,6 +280,14 @@ async function provisionTenantDataMutation(_: unknown, __: unknown, ctx: GraphQL
   const result = await withSession((session) => provisionTenantData(session, ctx.tenantId, { userId: ctx.userId }), true)
   // I workflow nuovi cambiano i metadata dei passi che tutto il resto legge.
   invalidateWorkflowCache(ctx.tenantId)
+  // E LA LEVA DEL METAMODELLO (terza revisione · M2). `provisionTenantData`
+  // semina anche le MATRICI DI DOMINIO (`seedDomainMatrices`, un MERGE su
+  // `:DomainMatrix`), cioè scrive metamodello — e questa mutation invalidava
+  // solo la cache dei workflow. Il lint `metamodelInvalidation.test.ts` non la
+  // vedeva perché la Cypher sta in `lib/`, ed era esentata con la motivazione
+  // «chiamato solo dagli script», che il codice smentisce: il chiamante è
+  // proprio questa mutation.
+  invalidateSchema(ctx.tenantId)
   void audit(ctx, 'tenant.provisioned', 'Tenant', ctx.tenantId, {
     dashboard: result.dashboardCreated,
     notificationRules: result.notificationRulesCreated,

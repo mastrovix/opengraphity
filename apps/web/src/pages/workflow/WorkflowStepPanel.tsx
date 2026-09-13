@@ -533,7 +533,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
 
       {activeTab === 'metadata' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '8px 0' }}>
-          <PanelField label="Step iniziale">
+          <PanelField label={t('workflow.panel.step_iniziale')}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
               <input type="checkbox" checked={isInitial} onChange={(e) => setIsInitial(e.target.checked)} style={{ accentColor: ACCENT_COLOR }} />
               <span>Il processo parte da questo step</span>
@@ -551,7 +551,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
               {t('workflow.initialOnTerminal')}
             </div>
           )}
-          <PanelField label="Step terminale">
+          <PanelField label={t('workflow.panel.step_terminale')}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
               <input
                 type="checkbox"
@@ -562,7 +562,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
               <span>Il processo è chiuso quando arriva qui</span>
             </label>
           </PanelField>
-          <PanelField label="Step aperto">
+          <PanelField label={t('workflow.panel.step_aperto')}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer', opacity: isTerminal ? 0.5 : 1 }}>
               <input type="checkbox" checked={isOpen} disabled={isTerminal} onChange={(e) => setIsOpen(e.target.checked)} style={{ accentColor: ACCENT_COLOR }} />
               <span>L'entità è considerata "aperta" in questo step</span>
@@ -608,19 +608,19 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
 
       {activeTab === 'props' && (
         <>
-          <PanelField label="Label">
+          <PanelField label={t('workflow.panel.label')}>
             <Input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} />
           </PanelField>
 
-          <PanelField label="Name">
+          <PanelField label={t('workflow.panel.name')}>
             <code style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{step.name}</code>
           </PanelField>
 
-          <PanelField label="Type">
+          <PanelField label={t('workflow.panel.type')}>
             <code style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{step.type}</code>
           </PanelField>
 
-          <PanelField label="Enter Actions">
+          <PanelField label={t('workflow.panel.enter_actions')}>
             {renderActionList(
               editableEnterActions,
               (i) => setEditableEnterActions((prev) => prev.filter((_, idx) => idx !== i)),
@@ -628,7 +628,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
             )}
           </PanelField>
 
-          <PanelField label="Exit Actions">
+          <PanelField label={t('workflow.panel.exit_actions')}>
             {renderActionList(
               editableExitActions,
               (i) => setEditableExitActions((prev) => prev.filter((_, idx) => idx !== i)),
@@ -640,7 +640,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
 
       {activeTab === 'notify' && (
         <>
-          <PanelField label="Notifica all'ingresso">
+          <PanelField label={t('workflow.panel.notifica_all_ingresso')}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button
                 type="button"
@@ -669,7 +669,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
 
           {notifyEnabled && (
             <>
-              <PanelField label="Chiave titolo (i18n)">
+              <PanelField label={t('workflow.panel.chiave_titolo_i18n')}>
                 <Input
                   value={notifyTitleKey}
                   onChange={(e) => setNotifyTitleKey(e.target.value)}
@@ -678,13 +678,13 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                 />
               </PanelField>
 
-              <PanelField label="Severità">
+              <PanelField label={t('workflow.panel.severit')}>
                 <Select value={notifySeverity} onChange={(e) => setNotifySeverity(e.target.value)} style={inputStyle}>
                   {NR_SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </Select>
               </PanelField>
 
-              <PanelField label="Canali">
+              <PanelField label={t('workflow.panel.canali')}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                   {NR_CHANNELS.map((ch) => (
                     <label key={ch} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
@@ -700,7 +700,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                 </div>
               </PanelField>
 
-              <PanelField label="Destinatari">
+              <PanelField label={t('workflow.panel.destinatari')}>
                 <Select value={notifyTarget} onChange={(e) => setNotifyTarget(e.target.value)} style={inputStyle}>
                   {TARGET_OPTIONS.map(({ value, labelKey }) => (
                     <option key={value} value={value}>{t(labelKey)}</option>

@@ -22,6 +22,28 @@ import { useMe } from '@/hooks/useMe'
 
 interface Issue { kind: string; severity: string; message: string; where: string | null }
 
+/**
+ * I messaggi della diagnostica usano `**…**` per l'enfasi, e il banner li
+ * rendeva come testo nudo: l'admin leggeva «Per il prodotto sono CI **in
+ * servizio**», asterischi compresi. Terza revisione, trovato in un browser
+ * vero — nessun test poteva prenderlo, perché il testo con gli asterischi è
+ * esattamente quello che un test sul contenuto si aspetta.
+ *
+ * Non un renderer markdown: l'enfasi qui è CONTENUTO (dice quale metà della
+ * frase è la conseguenza per il prodotto), quindi si rende, e basta questa.
+ */
+function EnfasiDelMessaggio({ testo }: { testo: string }) {
+  // Le parti dispari sono quelle fra i `**`.
+  const parti = testo.split(/\*\*(.+?)\*\*/g)
+  return (
+    <>
+      {parti.map((parte, i) => (
+        i % 2 === 1 ? <strong key={i}>{parte}</strong> : <span key={i}>{parte}</span>
+      ))}
+    </>
+  )
+}
+
 export function ConfigurationIssuesBanner() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -59,7 +81,7 @@ export function ConfigurationIssuesBanner() {
         <strong>{t('configurationIssues.title', { count: issues.length })}</strong>
         {issues.map((issue, i) => (
           <div key={`${issue.kind}-${String(i)}`} style={{ display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
-            <span style={{ color: 'var(--color-slate-dark)' }}>{issue.message}</span>
+            <span style={{ color: 'var(--color-slate-dark)' }}><EnfasiDelMessaggio testo={issue.message} /></span>
             {issue.where && (
               <button
                 type="button"

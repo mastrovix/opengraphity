@@ -84,7 +84,14 @@ describe('assertAllApprovalsSatisfied (gate condiviso da approve + executeChange
     await expect(assertAllApprovalsSatisfied(session, 'chg', 't1')).resolves.toBeUndefined()
     // e il letterale, che ora NON è nella lista, non passa più
     mockedOne.mockResolvedValueOnce(gateRow({ changeType: 'standard', total: 0, pending: 0, cm: 0 }))
-    await expect(assertAllApprovalsSatisfied(session, 'chg', 't1')).rejects.toThrow(/Requisiti di approvazione non ancora creati/)
+    // Terza revisione · G4: il messaggio non diceva cosa fare. Lo stato in cui
+    // compare piu spesso e una change nata pre-approvata il cui tipo e stato
+    // togliuto dai pre-approvati: si pinnano le DUE uscite, non la frase.
+    const err = await assertAllApprovalsSatisfied(session, 'chg', 't1').then(() => null, (e: Error) => e)
+    expect(err).not.toBeNull()
+    expect(err!.message).toMatch(/non ha nessun requisito di approvazione/)
+    expect(err!.message).toMatch(/tipi pre-approvati/)
+    expect(err!.message).toMatch(/riportala al passo di approvazione/)
     preApproved = ['standard']
   })
 
@@ -94,7 +101,7 @@ describe('assertAllApprovalsSatisfied (gate condiviso da approve + executeChange
   })
   it('CONFLICT se non esistono requisiti', async () => {
     mockedOne.mockResolvedValueOnce(gateRow({ total: 0, pending: 0, cm: 0 }))
-    await expectCode(assertAllApprovalsSatisfied(session, 'chg', 't1'), 'CONFLICT', 'non ancora creati')
+    await expectCode(assertAllApprovalsSatisfied(session, 'chg', 't1'), 'CONFLICT', 'non ha nessun requisito di approvazione')
   })
   it('CONFLICT se manca il requisito del Change Manager anche con gli owner group approvati', async () => {
     mockedOne.mockResolvedValueOnce(gateRow({ total: 2, pending: 0, cm: 0 }))

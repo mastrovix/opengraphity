@@ -99,8 +99,8 @@ describe('countEnumValueUsage', () => {
     ])
     const out = await countEnumValueUsage(s as never, 'acme', 'ci_status', ['decommissioned', 'expired', 'mai_usato'])
     expect(out).toEqual([
-      { value: 'decommissioned', records: [{ typeName: '__base__', fieldName: 'status', count: 12 }], policyLists: ['retired_statuses'], matrices: [], total: 13 },
-      { value: 'expired',        records: [{ typeName: '__base__', fieldName: 'status', count: 49 }], policyLists: [], matrices: [], total: 49 },
+      { value: 'decommissioned', records: [{ typeName: '__base__', fieldName: 'status', count: 12 }], policyLists: ['retired_statuses'], matrices: [], configSites: [], total: 13 },
+      { value: 'expired',        records: [{ typeName: '__base__', fieldName: 'status', count: 49 }], policyLists: [], matrices: [], configSites: [], total: 49 },
     ])
     expect(s.calls[1]!.cypher).toContain('MATCH (n:ConfigurationItem {tenant_id: $tenantId})')
     expect(s.calls[1]!.cypher).toContain('WHERE n.status IN $values')
@@ -118,14 +118,14 @@ describe('countEnumValueUsage', () => {
       [{ value: 'blocker', n: 3 }],
     ])
     const out = await countEnumValueUsage(s as never, 'acme', 'severity', ['blocker'])
-    expect(out).toEqual([{ value: 'blocker', records: [{ typeName: 'incident', fieldName: 'severity', count: 3 }], policyLists: [], matrices: [], total: 3 }])
+    expect(out).toEqual([{ value: 'blocker', records: [{ typeName: 'incident', fieldName: 'severity', count: 3 }], policyLists: [], matrices: [], configSites: [], total: 3 }])
   })
 })
 
 describe('enumValueUsageMessage', () => {
   it('dice quanti record, dove, e la via d\'uscita', () => {
     const msg = enumValueUsageMessage('ci_status', [
-      { value: 'decommissioned', records: [{ typeName: '__base__', fieldName: 'status', count: 12 }], policyLists: ['retired_statuses'], matrices: [], total: 13 },
+      { value: 'decommissioned', records: [{ typeName: '__base__', fieldName: 'status', count: 12 }], policyLists: ['retired_statuses'], matrices: [], configSites: [], total: 13 },
     ])
     expect(msg).toContain('Il vocabolario "ci_status" non può perdere questi valori')
     expect(msg).toContain('"decommissioned" è ancora usato da 12 __base__.status, la policy degli allarmi (retired_statuses)')
@@ -259,3 +259,135 @@ describe('replaceEnumValue riscrive anche matrici e severity_map', () => {
     expect(s.calls.some((c) => c.cypher.includes('SET m.entries'))).toBe(false)
   })
 })
+
+/**
+ * LE SEDI DI CONFIGURAZIONE (terza revisione · G1).
+ *
+ * Il danno era silenzioso: rinominando `critical`, la regola «Incident
+ * security critico → SecOps» non scattava mai più perché `evaluateConditions`
+ * restituiva `false`. Nessun errore, nessun log, e il conteggio diceva zero —
+ * quindi anche la RIMOZIONE del valore passava senza una parola.
+ *
+ * Questa sessione finta SMISTA SUL CYPHER invece di rispondere in coda: la
+ * coda è comoda ma cieca, ed è il motivo per cui due test della rinomina
+ * dell'ondata 3 non riscrivevano un solo record senza accorgersene.
+ */
+describe('il perimetro della configurazione', () => {
+  interface Scena {
+    conditions?: Row[]      // righe di BusinessRule (l'unica sede a condizioni della scena)
+    scalar?: Record<string, Row[]>   // righe per PROPRIETA, cosi ogni sede ha le sue
+    thresholds?: Row[]      // righe del Tenant
+  }
+
+  function smistante(scena: Scena) {
+    const scritture: Array<{ cypher: string; params: Row }> = []
+    const run = vi.fn(async (cypher: string, params?: Row) => {
+      const p = params ?? {}
+      if (/SET n\./.test(cypher)) { scritture.push({ cypher, params: p }); return { records: [rec({ n: int(1) })] } }
+      if (cypher.includes('USES_ENUM'))            return { records: [] }              // nessun campo CI
+      if (cypher.includes(':DomainMatrix'))        return { records: [] }              // nessuna matrice
+      if (cypher.includes('AS raw, n.entity_type')) {
+        // Solo BusinessRule: AutoTrigger ha la stessa forma, e rispondere a
+        // entrambe raddoppierebbe ogni conteggio senza provare niente in piu.
+        return { records: (cypher.includes(':BusinessRule') ? (scena.conditions ?? []) : []).map(rec) }
+      }
+      if (cypher.includes('risk_band_thresholds AS raw')) return { records: (scena.thresholds ?? []).map(rec) }
+      const scal = /RETURN n\.([a-z_]+) AS value/.exec(cypher)
+      if (scal) return { records: (scena.scalar?.[scal[1]!] ?? []).map(rec) }
+      return { records: [] }
+    })
+    const tx = { run }
+    return {
+      run, scritture,
+      executeRead:  (fn: (t: typeof tx) => unknown) => fn(tx),
+      executeWrite: (fn: (t: typeof tx) => unknown) => fn(tx),
+    }
+  }
+
+  const REGOLA = {
+    id: 'br-1', name: 'Incident security critico → SecOps', entityType: 'incident',
+    raw: JSON.stringify([
+      { field: 'severity', operator: 'equals', value: 'critical' },
+      { field: 'category', operator: 'equals', value: 'security' },
+    ]),
+  }
+
+  it('una condizione di regola che cita il valore lo rende NON rimovibile, e il messaggio nomina la regola', async () => {
+    const s = smistante({ conditions: [REGOLA] })
+    const out = await countEnumValueUsage(s as never, 'acme', 'severity', ['critical'])
+    expect(out).toHaveLength(1)
+    expect(out[0]!.configSites).toEqual(['le condizioni di una Business Rule «Incident security critico → SecOps»'])
+    expect(out[0]!.total).toBe(1)
+    expect(enumValueUsageMessage('severity', out)).toContain('Business Rule')
+  })
+
+  it('e la rinomina riscrive il JSON della condizione, lasciando in pace le altre', async () => {
+    const s = smistante({ conditions: [REGOLA] })
+    await replaceEnumValue(s as never, 'acme', 'severity', 'critical', 'critico')
+    const w = s.scritture.find((c) => c.cypher.includes('SET n.conditions'))
+    expect(w, 'la condizione non è stata riscritta').toBeDefined()
+    expect(JSON.parse(String(w!.params['raw']))).toEqual([
+      { field: 'severity', operator: 'equals', value: 'critico' },
+      { field: 'category', operator: 'equals', value: 'security' },   // intatta
+    ])
+  })
+
+  it('un campo governato da un ALTRO vocabolario non viene toccato', async () => {
+    const s = smistante({ conditions: [REGOLA] })
+    // `category` non è `severity`: rinominando severity, la seconda condizione resta.
+    const out = await countEnumValueUsage(s as never, 'acme', 'severity', ['security'])
+    expect(out).toEqual([])
+  })
+
+  it('`status` si risolve con l\'entità della regola', async () => {
+    const regola = { id: 'br-2', name: 'R', entityType: 'change',
+      raw: JSON.stringify([{ field: 'status', operator: 'equals', value: 'draft' }]) }
+    const perChange = await countEnumValueUsage(smistante({ conditions: [regola] }) as never, 'acme', 'status_change', ['draft'])
+    expect(perChange).toHaveLength(1)
+    const perIncident = await countEnumValueUsage(smistante({ conditions: [regola] }) as never, 'acme', 'status_incident', ['draft'])
+    expect(perIncident).toEqual([])
+  })
+
+  it('un `value` NUMERICO non è un valore di vocabolario e viene ignorato', async () => {
+    // `BusinessRule.priority` dal vivo vale 1.0/2.0/3.0: è l'ordine della regola.
+    const regola = { id: 'br-3', name: 'R', entityType: 'incident',
+      raw: JSON.stringify([{ field: 'priority', operator: 'equals', value: 2 }]) }
+    const out = await countEnumValueUsage(smistante({ conditions: [regola] }) as never, 'acme', 'priority', ['2'])
+    expect(out).toEqual([])
+  })
+
+  it('un JSON corrotto nelle condizioni non fa esplodere il conteggio', async () => {
+    const s = smistante({ conditions: [{ id: 'br-4', name: 'R', entityType: 'incident', raw: '{' }] })
+    await expect(countEnumValueUsage(s as never, 'acme', 'severity', ['critical'])).resolves.toEqual([])
+  })
+
+  /** IL CRITICO: le soglie delle fasce di rischio. */
+  it('le soglie delle fasce di rischio contano come uso, e la rinomina le riscrive', async () => {
+    const thresholds = [{ raw: JSON.stringify([
+      { band: 'low', upTo: 30 }, { band: 'medium', upTo: 60 }, { band: 'high', upTo: 100 },
+    ]) }]
+    const out = await countEnumValueUsage(smistante({ thresholds }) as never, 'acme', 'risk_band', ['low'])
+    expect(out).toHaveLength(1)
+    expect(out[0]!.configSites).toEqual(['le soglie delle fasce di rischio'])
+
+    const s = smistante({ thresholds })
+    await replaceEnumValue(s as never, 'acme', 'risk_band', 'low', 'basso')
+    const w = s.scritture.find((c) => c.cypher.includes('SET n.risk_band_thresholds'))
+    expect(w, 'le soglie non sono state riscritte: e il critico della terza revisione').toBeDefined()
+    expect(JSON.parse(String(w!.params['raw']))).toEqual([
+      { band: 'basso', upTo: 30 }, { band: 'medium', upTo: 60 }, { band: 'high', upTo: 100 },
+    ])
+  })
+
+  it('una sede scalare col vocabolario nominato da un altro campo si tiene solo se combacia', async () => {
+    // FieldVisibilityRule {trigger_field: 'category', trigger_value: 'hardware'}
+    const scalar = { trigger_value: [{ value: 'hardware', field: 'category', name: 'Mostra il modello' }] }
+    const conCategory = await countEnumValueUsage(smistante({ scalar }) as never, 'acme', 'category', ['hardware'])
+    expect(conCategory).toHaveLength(1)
+    expect(conCategory[0]!.configSites[0]).toContain('visibilita')
+    // Con un altro vocabolario la stessa riga non conta: `trigger_field` dice «category».
+    const conAltro = await countEnumValueUsage(smistante({ scalar }) as never, 'acme', 'environment', ['hardware'])
+    expect(conAltro).toEqual([])
+  })
+})
+

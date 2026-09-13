@@ -11,15 +11,12 @@ import { withSession, runQuery, runQueryOne, getSession, type Props } from '../c
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { requireRole } from '../../../lib/requireRole.js'
-import { getStepPurpose, getStepNamesByPurpose } from '../../../lib/workflowHelpers.js'
 import { validateRequiredFields, propsToFieldValues } from '../../../lib/validateRequiredFields.js'
 import { stepNamesByPurposeOrdered } from '../../../lib/workflowTargets.js'
 import { createChangeRFC } from '../../../services/changeCreationService.js'
 import { change as getChange } from './queries.js'
 import { evaluateAutoTransitions, revertProblemAfterChangeDetached } from './autoTransitions.js'
-import { assertAllApprovalsSatisfied } from './approvalCreation.js'
-import { isPreApprovedChangeType } from '../../../lib/changePolicy.js'
-import { CHANGE_WINDOW_PURPOSES } from '@opengraphity/types'
+import { assertChangeWindowGate } from './windowGate.js'
 import {
   writeAudit,
   getNextTaskCodes,
@@ -367,68 +364,18 @@ export async function executeChangeTransition(
     const changeType = (entityProps['change_type'] as string) ?? 'normal'
 
     // ── Gate di approvazione ──────────────────────────────────────────────────
-    // Uscire da un passo di SCOPO `approval` verso avanti significa approvare la
-    // change: oltre al ruolo admin, TUTTI i requisiti multi-parte (Change
-    // Manager + owner group) devono essere 'approved' — lo stesso gate
-    // dell'auto-advance. Il rigetto (verso il passo di scopo `assessment`) deve
-    // passare da rejectChangeApproval, che riapre i task: una transizione
-    // "nuda" lascerebbe gli assessment completi e la change rimbalzerebbe
-    // subito in approvazione. Ondata 4 · A4-2: sono gli SCOPI, non i nomi —
-    // con un passo «CAB settimanale» il gate non scattava più.
-    const [currentPurpose, targetPurpose] = await Promise.all([
-      getStepPurpose(session, ctx.tenantId, 'change', currentStep),
-      getStepPurpose(session, ctx.tenantId, 'change', args.toStep),
-    ])
-    // Pre-approvata = niente varco. Quali tipi lo sono è dato del cliente
-    // (ondata 8), non il letterale `standard` che un cliente può rinominare:
-    // qui c'era ancora `changeType !== 'standard'`. Si legge solo quando serve
-    // — cioè quando un varco è in gioco — per non aggiungere una lettura a
-    // ogni transizione di ogni workflow.
-    const entersWindow = targetPurpose != null && (CHANGE_WINDOW_PURPOSES as readonly string[]).includes(targetPurpose)
-    const gateInPlay   = currentPurpose === 'approval' || entersWindow
-    const preApproved  = gateInPlay ? await isPreApprovedChangeType(ctx.tenantId, changeType) : false
-
-    if (currentPurpose === 'approval' && targetPurpose !== 'approval') {
-      if (targetPurpose === 'assessment') {
-        throw new GraphQLError('Per rigettare usa "Rigetta" nella sezione Approvazione (rejectChangeApproval), che riapre gli assessment', { extensions: { code: 'CONFLICT' } })
-      }
-      if (!preApproved) {
-        requireRole(ctx, 'admin')
-        await assertAllApprovalsSatisfied(session, args.changeId, ctx.tenantId)
-      }
-    }
-
-    // ── Lo stesso varco, dal lato del passo di ARRIVO ─────────────────────────
-    // Revisione delle otto ondate · B·N-1. Il varco sopra guarda solo lo scopo
-    // del passo di PARTENZA, e `requireRole` + il controllo dei requisiti stanno
-    // DENTRO quel ramo: mettendo lo scopo del passo di approvazione a «nessuno»
-    // — due clic nel disegnatore — il ramo non si apre e cadono con lui. Dal
-    // vivo: un `operator` ha portato una change dal passo di approvazione a
-    // quello programmato senza approvazioni e senza errore.
-    //
-    // La difesa non può stare sulla forma del workflow (il cliente la cambia):
-    // sta sulla REGOLA DI DOMINIO. Entrare nella finestra — programmata o
-    // aperta — è l'atto di mandare in produzione: una change non pre-approvata
-    // che entra lì deve avere le sue approvazioni soddisfatte, da qualunque
-    // passo arrivi e qualunque scopo abbia quel passo.
-    if (!preApproved && currentPurpose !== 'approval' && entersWindow) {
-      // Se il cliente non ha NESSUN passo di approvazione, rifiutare senza
-      // dire dove approvare sarebbe un vicolo cieco: il messaggio nomina le
-      // due uscite, entrambe raggiungibili dall'interfaccia.
-      const approvalSteps = await getStepNamesByPurpose(session, ctx.tenantId, 'change', ['approval'])
-      if (approvalSteps.length === 0) {
-        throw new GraphQLError(
-          `La change è di tipo "${changeType}", che non è fra i tipi pre-approvati, e nel workflow delle change ` +
-          `nessun passo dichiara lo scopo «Approvazione»: non esiste un posto dove approvarla, quindi non può ` +
-          `entrare nella finestra di rilascio. Assegna lo scopo «Approvazione» al passo in cui si approva ` +
-          `(disegnatore dei workflow), oppure aggiungi "${changeType}" ai tipi pre-approvati ` +
-          `(Impostazioni → Matrici di dominio).`,
-          { extensions: { code: 'CONFLICT' } },
-        )
-      }
-      requireRole(ctx, 'admin')
-      await assertAllApprovalsSatisfied(session, args.changeId, ctx.tenantId)
-    }
+    // Il varco della finestra di rilascio vive in `windowGate.ts`, non qui.
+    // Terza revisione * C1: stava scritto qui dentro, e il suo commento
+    // affermava di valere «da qualunque passo arrivi e qualunque scopo abbia
+    // quel passo» — mentre valeva per questo cammino e non per i due
+    // automatici (`evaluateAutoTransitions`, job `timer_wait`), dove le cinque
+    // guardie avevano ZERO occorrenze. Ora la regola di dominio sta in un
+    // posto solo e i tre cammini la chiamano; il lint
+    // `__tests__/changeWindowGate.test.ts` pretende che resti cosi.
+    await assertChangeWindowGate(session, ctx, {
+      tenantId: ctx.tenantId, changeId: args.changeId, changeType,
+      currentStep, toStep: args.toStep,
+    })
 
     // Campi obbligatori del passo di ARRIVO (ondata 8 · B-21). Le regole
     // `FieldRequirementRule` con `workflow_step` erano valutate solo da

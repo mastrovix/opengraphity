@@ -1633,7 +1633,7 @@ a mano ciò che lo strumento non ha più.
 essere usabile (0 = completo): nessuna dashboard, nessuna regola di notifica,
 nessuna matrice di dominio, nessun workflow attivo per una delle cinque entità.
 Si ricalcola al massimo ogni cinque minuti, quando qualcuno interroga `/health`
-— che riporta anche `incompleteTenants` con l'elenco per tenant.
+— che riporta anche `incompleteTenants` con **quanti** clienti sono incompleti. I NOMI no: `/health` sta prima dell'autenticazione (giusto, una sonda non ha un token) e non deve elencare gli identificativi dei clienti a chiunque lo interroghi. Per sapere QUALI, `tenant_provisioning_gaps{tenant}` su `/metrics`, che il token protegge.
 
 Il prodotto lo sapeva già (`tenantProvisioningGaps`, ondata 8) ma lo diceva solo
 a chi lanciava `migrate --status`: `c-two` è stato incompleto per giorni e

@@ -57,14 +57,20 @@ router.get('/health', async (_req, res) => {
   // finisce qui e nel gauge `tenant_provisioning_gaps`. Ricalcolato al massimo
   // ogni cinque minuti, e un database che non risponde non fa fallire /health.
   const gaps: Record<string, string[]> = neo4j === 'ok' ? await provisioningGaps().catch(() => ({})) : {}
-  const incomplete = Object.fromEntries(Object.entries(gaps).filter(([, g]) => g.length > 0))
+  const incomplete = Object.entries(gaps).filter(([, g]) => g.length > 0)
 
+  // SOLO IL NUMERO, non i nomi (terza revisione · M15). Questo endpoint sta
+  // prima di qualunque autenticazione — e giusto, una sonda non ha un token —
+  // e il campo elencava gli IDENTIFICATIVI DEI CLIENTI: una sonda di uptime o
+  // un load balancer si portava via la lista dei tenant. Chi ha diritto ai nomi
+  // li trova nel gauge `tenant_provisioning_gaps{tenant}` su `/metrics`, che un
+  // token protegge — cioe il posto che il prodotto tratta già come sensibile.
   res.status(allOk ? 200 : 503).json({
     status:    allOk ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
     version:   '0.1.0',
     services:  { neo4j, redis },
-    ...(Object.keys(incomplete).length ? { incompleteTenants: incomplete } : {}),
+    ...(incomplete.length ? { incompleteTenants: incomplete.length } : {}),
   })
 })
 

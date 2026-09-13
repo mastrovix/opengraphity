@@ -8,6 +8,7 @@ import { createWorker, getQueue } from '../lib/bullmq.js'
 import { evaluateConditions, parseConditions } from '../lib/conditionEvaluator.js'
 import { executeActions, parseActions, type ActionExecutionContext } from '../lib/actionExecutor.js'
 import { assertSafeOutboundUrl, loggableUrl } from '../lib/safeUrl.js'
+import { automaticTransitionAllowed } from '../graphql/resolvers/change/windowGate.js'
 
 // ── Job data shape produced by packages/workflow/src/actions.ts ───────────────
 
@@ -305,10 +306,14 @@ async function processNotificationJob(job: Job): Promise<void> {
           // su un arco che esce da un'attesa, ed era inerte: nessun consumatore
           // lo percorreva (revisione · B-M-4). Adesso conclude l'attesa come
           // "automatic" — e' la stessa cosa, detta meglio.
+          // Se l'istanza e di una change, servono id e tipo per il varco
+          // della finestra di rilascio (terza revisione * C1).
+          OPTIONAL MATCH (c:Change {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi)
           OPTIONAL MATCH (cur)-[tr:TRANSITIONS_TO]->(next:WorkflowStep)
             WHERE tr.trigger IN ['automatic', 'timer']
-          WITH cur, next ORDER BY coalesce(next.step_order, 999), next.name
-          RETURN cur.name AS currentStep, collect(next.name)[0] AS toStep
+          WITH cur, c, next ORDER BY coalesce(next.step_order, 999), next.name
+          RETURN cur.name AS currentStep, collect(next.name)[0] AS toStep,
+                 c.id AS changeId, c.change_type AS changeType
         `, { instanceId, tenantId }))
         if (fresh.records.length === 0) {
           throw new Error(`timer_wait: l'istanza ${instanceId} del tenant ${tenantId} non esiste più o non ha un passo corrente — il timer non può concludersi`)
@@ -323,6 +328,22 @@ async function processNotificationJob(job: Job): Promise<void> {
         }
         if (scheduledToStep && scheduledToStep !== toStep) {
           logger.warn({ instanceId, scheduledToStep, toStep, currentStep }, '[notification-jobs] timer_wait: il passo di arrivo è cambiato dopo la partenza del timer — si usa quello di adesso')
+        }
+        // IL VARCO, anche a orologeria. L'ondata 2 aveva ALLARGATO questo
+        // match da `automatic` a `automatic|timer` senza portarsi dietro il
+        // varco: un passo `timer_wait` in un workflow delle change — ora
+        // aggiungibile dall'interfaccia — con un arco `timer` verso il passo
+        // programmato era lo stesso scavalcamento, differito. Se il varco
+        // rifiuta, il job finisce senza transire: la change resta nell'attesa
+        // e il rifiuto e nel log e nel contatore. Rilanciare non servirebbe a
+        // niente — le approvazioni non compaiono ritentando.
+        const changeId   = fresh.records[0]!.get('changeId') as string | null
+        const changeType = fresh.records[0]!.get('changeType') as string | null
+        if (changeId) {
+          const allowed = await automaticTransitionAllowed(session, {
+            tenantId, changeId, changeType: changeType ?? '', currentStep, toStep,
+          }, 'timer_job')
+          if (!allowed) break
         }
         const result = await workflowEngine.transition(
           session,

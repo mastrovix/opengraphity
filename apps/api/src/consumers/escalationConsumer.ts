@@ -45,7 +45,11 @@ export class EscalationConsumer extends BaseConsumer<unknown> {
           MATCH (cur:WorkflowStep {definition_id: wi.definition_id, name: wi.current_step})
                 -[:TRANSITIONS_TO {trigger: 'sla_breach'}]->(to:WorkflowStep)
           RETURN wi.id AS instanceId, wi.entity_type AS entityType, wi.current_step AS fromStep,
-                 to.name AS toStep, e.title AS title, e.severity AS severity
+                 to.name AS toStep, e.title AS title, e.severity AS severity,
+                 // Per il varco della finestra di rilascio: questo consumatore e
+                 // GENERICO sul tipo di entita, e sla_breach e una delle quattro
+                 // voci della tendina degli inneschi.
+                 CASE WHEN 'Change' IN labels(e) THEN e.change_type ELSE null END AS changeType
           LIMIT 1
         `, { entityId, tenantId }),
       )
@@ -57,6 +61,20 @@ export class EscalationConsumer extends BaseConsumer<unknown> {
       const fromStep   = r.get('fromStep')   as string
       const toStep     = r.get('toStep')     as string
 
+      // IL VARCO DELLA FINESTRA DI RILASCIO (terza revisione * C1, quinto
+      // cammino). Un workflow delle change con un arco `sla_breach` verso il
+      // passo programmato faceva entrare in produzione una change non
+      // approvata allo scadere di un SLA. Non si rilancia: ritentare non fa
+      // comparire le approvazioni.
+      if (entityType === 'change') {
+        const { automaticTransitionAllowed } = await import('../graphql/resolvers/change/windowGate.js')
+        const allowed = await automaticTransitionAllowed(session, {
+          tenantId, changeId: entityId,
+          changeType:  (r.get('changeType') as string | null) ?? '',
+          currentStep: fromStep, toStep,
+        }, 'sla_breach')
+        if (!allowed) return
+      }
       const result = await workflowEngine.transition(
         session,
         { instanceId, toStepName: toStep, triggeredBy: 'sla-engine', triggerType: 'sla_breach' },

@@ -89,6 +89,46 @@ function assertVocabularyEditable(name: string, what: string): void {
  * I valori di un vocabolario: una lista di stringhe, o un errore che nomina il
  * nodo. Vedi A-18.
  */
+/**
+ * I valori che un vocabolario puo avere (terza revisione · M7/M10).
+ *
+ * `createEnumType` rifiutava la lista vuota; `updateEnumType` NO — scriveva
+ * `values: input.values ?? null` senza guardare. Via API (che questo repo
+ * definisce «una strada documentata, usata da script e integrazioni») un
+ * vocabolario si svuotava, e da li in poi:
+ *   - `assertDomainValue` rifiuta OGNI valore, quindi non si apre piu un ticket;
+ *   - la diagnostica accusa la MATRICE («9 chiavi rimaste da una rinomina»),
+ *     perche il prodotto cartesiano di una lista vuota e vuoto, e manda
+ *     l'admin a una pagina dove un «Salva» cancella tutte le celle;
+ *   - del vocabolario vuoto, che e il problema vero, nessuno dice niente.
+ * Si chiude all'origine: un vocabolario senza valori non esiste.
+ *
+ * E i duplicati: `['a','a']` passava, e un valore due volte nella scala rende
+ * ambigua la POSIZIONE, che in questo prodotto e una regola di dominio.
+ */
+function assertValuesUsable(values: readonly string[], name: string): void {
+  if (values.length === 0) {
+    throw new ValidationError(
+      `Il vocabolario "${name}" non puo restare senza valori: nessun record potrebbe piu essere ` +
+      `creato, perche ogni valore verrebbe rifiutato come fuori vocabolario. Se non serve piu, ` +
+      `cancellalo (deleteEnumType); se stai riscrivendo la scala, mandala completa.`,
+    )
+  }
+  const vuoti = values.filter((v) => v.trim() === '')
+  if (vuoti.length) {
+    throw new ValidationError(`Il vocabolario "${name}" ha ${String(vuoti.length)} valore/i vuoto/i: ogni valore deve avere un nome.`)
+  }
+  const visti = new Set<string>()
+  const doppi = values.filter((v) => (visti.has(v) ? true : (visti.add(v), false)))
+  if (doppi.length) {
+    throw new ValidationError(
+      `Il vocabolario "${name}" ripete ${[...new Set(doppi)].map((v) => `"${v}"`).join(', ')}: ` +
+      `in una scala la posizione e una regola di dominio (il primo valore e il piu basso, l'ultimo ` +
+      `il piu alto), e un valore ripetuto la rende ambigua.`,
+    )
+  }
+}
+
 function assertEnumValues(vals: unknown, tenantId: unknown, name: unknown): string[] {
   if (Array.isArray(vals) && vals.every((v) => typeof v === 'string')) return vals as string[]
   throw new Error(
@@ -206,9 +246,7 @@ export async function createEnumType(
   if (!input.name.match(/^[a-z][a-z0-9_]*$/)) {
     throw new ValidationError('name must be snake_case (lowercase letters, numbers, underscores)')
   }
-  if (input.values.length === 0) {
-    throw new ValidationError('values must contain at least one entry')
-  }
+  assertValuesUsable(input.values, input.name)
   const VALID_SCOPES = ['itil', 'cmdb', 'shared'] as const
   if (!VALID_SCOPES.includes(input.scope as typeof VALID_SCOPES[number])) {
     throw new ValidationError(`scope must be one of: ${VALID_SCOPES.join(', ')}`)
@@ -408,7 +446,8 @@ export async function updateEnumType(
       tx.run(`
         MATCH (e:EnumTypeDefinition {id: $id})
         WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')
-        RETURN e.is_system AS isSystem, e.tenant_id AS tenantId, e.name AS name, e.values AS values
+        RETURN e.is_system AS isSystem, e.tenant_id AS tenantId, e.name AS name, e.values AS values,
+               e.default_value AS defaultValue
       `, { id, tenantId: ctx.tenantId }),
     )
     if (!check.records.length) throw new NotFoundError('EnumTypeDefinition', id)
@@ -430,6 +469,7 @@ export async function updateEnumType(
     }
     if (input.values) {
       assertVocabularyEditable(check.records[0]!.get('name') as string, 'Cambiare i valori')
+      assertValuesUsable(input.values, check.records[0]!.get('name') as string)
     }
 
     // ── Valori che sparirebbero (B7-2) ────────────────────────────────────
@@ -459,29 +499,61 @@ export async function updateEnumType(
       if (usages.length) throw new ValidationError(enumValueUsageMessage(name, usages))
     }
 
-    // Il valore di default deve stare fra i valori NUOVI: un default fuori
-    // vocabolario è il difetto che il default esiste per chiudere.
-    if (input.defaultValue !== undefined && !next.includes(input.defaultValue)) {
+    // ── IL DEFAULT SEGUE I VALORI (terza revisione · C2) ──────────────────
+    // La rinomina porta dietro il default (`CASE WHEN e.default_value = $from`),
+    // questa strada NO: il Cypher faceva `coalesce($defaultValue,
+    // e.default_value)`, cioè «se non me ne dài uno nuovo, tieni quello che
+    // c'è» — anche quando quello che c'è era il valore appena TOLTO. E
+    // `countEnumValueUsage` non guarda `default_value`, quindi su un tenant
+    // dove nessun record usa quel valore la rimozione passava in silenzio.
+    // Dopo: `initialCIStatus` lancia su ogni CI creato senza stato esplicito,
+    // che è il caso normale — nessun CI nasce più.
+    const currentDefault = (check.records[0]!.get('defaultValue') ?? null) as string | null
+    // Le sostituzioni valgono anche per il default: è un riferimento al
+    // vocabolario come i record, la policy e le celle delle matrici.
+    const defaultAfterReplace = currentDefault != null && replaced.has(currentDefault)
+      ? replaced.get(currentDefault)!
+      : currentDefault
+    const finalDefault = input.defaultValue !== undefined ? input.defaultValue : defaultAfterReplace
+
+    if (finalDefault != null && !next.includes(finalDefault)) {
+      // Chi lo legge deve sapere quali sono le sue due uscite.
       throw new ValidationError(
-        `Il valore di default "${input.defaultValue}" non è fra i valori di "${name}" (${next.join(', ')}).`,
+        currentDefault === finalDefault && input.defaultValue === undefined
+          ? `Stai togliendo "${finalDefault}" da "${name}", che ne è il valore di default: un record nuovo ` +
+            `nascerebbe con un valore che il vocabolario non ha. Indica su cosa riscriverlo (replacements) ` +
+            `oppure scegli un nuovo default (defaultValue) nella stessa chiamata.`
+          : `Il valore di default "${finalDefault}" non è fra i valori di "${name}" (${next.join(', ')}).`,
       )
     }
 
     const now = new Date().toISOString()
+    /** Le riscritture avvenute: si scrivono in audit solo DOPO il commit. */
+    const auditQueue: { from: string; to: string; records: number }[] = []
     const result = await session.executeWrite(async (tx) => {
+      // Un ritentativo della transazione ricomincia da capo: la coda si svuota
+      // per non contare due volte la stessa riscrittura.
+      auditQueue.length = 0
       // La riscrittura dei record e quella del vocabolario nella STESSA
       // transazione: non esiste un istante in cui i record puntano a un valore
       // che il vocabolario non ha.
       for (const [from, to] of replaced) {
-        const touched = await replaceEnumValue(tx, ctx.tenantId, name, from, to)
-        void audit(ctx, 'enum_type.value_replaced', 'EnumTypeDefinition', id, { name, from, to, records: touched })
+        // L'audit si RACCOGLIE qui e si scrive dopo il commit (terza revisione
+        // · M3): `audit` apre una sessione propria, quindi stava fuori dalla
+        // transazione pur essendo chiamato dentro — e `executeWrite` RITENTA
+        // sugli errori transienti, che e il suo comportamento normale. Ogni
+        // ritentativo lasciava una voce d'audit per una riscrittura che non era
+        // avvenuta, o la duplicava. L'audit del rimedio e una delle
+        // giustificazioni dichiarate di questa strada: non puo essere il pezzo
+        // meno affidabile.
+        auditQueue.push({ from, to, records: await replaceEnumValue(tx, ctx.tenantId, name, from, to) })
       }
       return tx.run(`
         MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId})
         SET e.label      = coalesce($label, e.label),
             e.values     = coalesce($values, e.values),
             e.scope      = CASE WHEN $scope IS NOT NULL AND NOT e.is_system THEN $scope ELSE e.scope END,
-            e.default_value = coalesce($defaultValue, e.default_value),
+            e.default_value = $finalDefault,
             e.updated_at = $now
         RETURN e.id        AS id,
                e.tenant_id AS tenantId,
@@ -499,13 +571,16 @@ export async function updateEnumType(
         label:  input.label  ?? null,
         values: input.values ?? null,
         scope:  input.scope  ?? null,
-        defaultValue: input.defaultValue ?? null,
+        finalDefault,
         now,
       })
     })
 
     if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', id)
     vocabularyChanged(ctx.tenantId)
+    for (const a of auditQueue) {
+      void audit(ctx, 'enum_type.value_replaced', 'EnumTypeDefinition', id, { name, from: a.from, to: a.to, records: a.records })
+    }
     void audit(ctx, 'enum_type.updated', 'EnumTypeDefinition', id, { label: input.label, removed, replacements })
     return mapEnum(result.records[0])
   } finally {
@@ -694,11 +769,15 @@ export async function renameEnumValue(
     next[at] = to
     const now = new Date().toISOString()
 
+    /** Quanti record ha toccato l'ULTIMO tentativo: l'audit va dopo il commit. */
+    let touchedRecords = 0
     const result = await session.executeWrite(async (tx) => {
       // I record, la policy e le matrici PRIMA: se qualcosa qui lancia, il
       // vocabolario non è ancora cambiato e non resta niente a metà.
-      const touched = await replaceEnumValue(tx, ctx.tenantId, name, from, to)
-      void audit(ctx, 'enum_type.value_renamed', 'EnumTypeDefinition', id, { name, from, to, records: touched })
+      // L'audit invece va FUORI (terza revisione · M3): apre una sessione
+      // propria, e `executeWrite` ritenta sugli errori transienti — restavano
+      // voci per rinomine mai avvenute.
+      touchedRecords = await replaceEnumValue(tx, ctx.tenantId, name, from, to)
       return tx.run(`
         MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId})
         SET e.values        = $values,
@@ -718,6 +797,7 @@ export async function renameEnumValue(
     })
     if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', id)
     vocabularyChanged(ctx.tenantId)
+    void audit(ctx, 'enum_type.value_renamed', 'EnumTypeDefinition', id, { name, from, to, records: touchedRecords })
     return mapEnum(result.records[0]!)
   } finally {
     await session.close()

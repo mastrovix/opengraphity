@@ -28,7 +28,15 @@ interface MatrixOut {
 }
 
 export function usePriorityMatrix(): { matrix: PriorityMatrix | null; loading: boolean; error: Error | null } {
-  const { data, loading, error } = useQuery(GET_DOMAIN_MATRICES, { fetchPolicy: 'cache-first' })
+  // `cache-and-network` e non `cache-first` (terza revisione · M4): la matrice
+  // e DATO DEL CLIENTE e cambia mentre l'app e aperta — una rinomina nel
+  // Dizionario riscrive le chiavi della matrice sul server. Con `cache-first`,
+  // l'admin che rinominava `low` in `basso` e poi apriva «Crea incident» nella
+  // stessa scheda vedeva ancora i bottoni vecchi, e ogni invio veniva rifiutato
+  // da `assertDomainValue`: cioe esattamente il difetto che questo hook esiste
+  // per chiudere, riaperto dalla cache. La cache serve ancora il primo
+  // fotogramma, la rete lo corregge.
+  const { data, loading, error } = useQuery(GET_DOMAIN_MATRICES, { fetchPolicy: 'cache-and-network' })
 
   const matrix = useMemo<PriorityMatrix | null>(() => {
     const all = (data as { domainMatrices?: MatrixOut[] } | undefined)?.domainMatrices

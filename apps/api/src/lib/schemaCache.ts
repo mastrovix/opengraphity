@@ -136,10 +136,44 @@ export async function getSchemaState(tenantId: string): Promise<{ schema: GraphQ
 
 async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
   logger.info({ tenantId }, 'Generando schema GraphQL')
-  const [ciTypes, itilTypes] = await Promise.all([
-    loadMetamodel(tenantId, ENUM_SCOPE),
-    loadITILTypes(tenantId, ENUM_SCOPE),
-  ])
+
+  // IL CARICAMENTO DEL METAMODELLO STA DENTRO LA RETE (terza revisione · G5b).
+  // `loadMetamodel` e `loadITILTypes` erano FUORI dal `try` che degrada, e
+  // lanciano su dato corrotto: `chainFamilies` con un JSON non valido,
+  // `parseValues` su un `values` che non e ne` un array ne` JSON. In quel caso
+  // `getSchemaState` rigettava e ogni richiesta GraphQL del tenant rispondeva
+  // 500 — banner della diagnostica compreso, perche la diagnosi vive nello
+  // schema che non si costruisce. Cioe esattamente lo stato che la rete esiste
+  // per evitare, un gradino piu in alto: nessuna API, nessuna diagnosi,
+  // nessuna mutation per rimediare.
+  //
+  // Adesso un dato corrotto degrada come un tipo che non si assembla: lo
+  // schema di base viene servito, il motivo finisce nell'intestazione, nel
+  // log e nel banner, e l'admin ha una pagina da cui rimediare.
+  let ciTypes: Awaited<ReturnType<typeof loadMetamodel>> = []
+  let itilTypes: Awaited<ReturnType<typeof loadITILTypes>> = []
+  try {
+    const caricati = await Promise.all([
+      loadMetamodel(tenantId, ENUM_SCOPE),
+      loadITILTypes(tenantId, ENUM_SCOPE),
+    ])
+    ciTypes   = caricati[0]
+    itilTypes = caricati[1]
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e)
+    logger.error({ tenantId, err: e }, 'Metamodello del tenant illeggibile: si serve lo schema di base')
+    const schema = assemble([], buildBaseSDL(), '', reservedNamesOfBaseSchema())
+    registerCITypes(tenantId, [])
+    graphqlSchemaBuildsTotal.inc({})
+    const entry: SchemaCacheEntry = {
+      schema, generatedAt: Date.now(), tenantId, degraded: true,
+      reason: `il metamodello del cliente non e leggibile: ${reason}`,
+    }
+    touch(tenantId, entry)
+    evictIfNeeded()
+    return entry
+  }
+
   const itilEnumsSDL = generateITILEnumsSDL(itilTypes)
   const baseSDL      = buildBaseSDL()
   // I nomi già occupati dallo schema di base: senza, un tipo CI del cliente

@@ -10,6 +10,7 @@ import {
   WORKFLOW_TRANSITION_TRIGGERS, isWorkflowTransitionTrigger,
   WORKFLOW_TRANSITION_CONDITIONS, isWorkflowTransitionCondition,
   UPDATE_FIELD_ALLOWED, updateFieldRejection,
+  CHANGE_WINDOW_PURPOSES,
 } from '@opengraphity/types'
 import { publish } from '@opengraphity/events'
 import { sseManager } from '@opengraphity/notifications'
@@ -395,6 +396,52 @@ async function assertApprovalPurposeSurvives(
   )
 }
 
+/**
+ * GLI SCOPI DELLA FINESTRA DI RILASCIO NON SI PERDONO (terza revisione · G2).
+ *
+ * `assertApprovalPurposeSurvives` protegge lo scopo `approval`. Gli scopi
+ * della finestra — `scheduled`, `implementation` — non avevano NESSUNA
+ * guardia, e su di loro e indicizzata metà del varco: con `targetPurpose =
+ * null` il calcolo di `entersWindow` da `false`, quindi il varco dal lato del
+ * passo di arrivo si spegne per sempre. Il passo resta quello del rilascio —
+ * il cliente ci manda ancora le change — ma non lo dice piu a nessuno, e con
+ * lui si spegne anche la soppressione degli allarmi in finestra.
+ *
+ * Non si rifiuta «zero passi di finestra» in assoluto: un cliente che non ne
+ * ha mai avuto uno verrebbe bloccato per una regola che non lo riguarda. Si
+ * rifiuta di **togliere l'ultimo**, confrontando prima e dopo.
+ */
+async function countWindowPurposeSteps(
+  tx: { run: (q: string, p: Record<string, unknown>) => Promise<{ records: Array<{ get: (k: string) => unknown }> }> },
+  tenantId: string, definitionId: string,
+): Promise<number | null> {
+  const res = await tx.run(`
+    MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+    WHERE wd.entity_type = 'change'
+    // tenant-ok: i passi sono quelli della definizione già scopata sopra
+    OPTIONAL MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
+      WHERE s.purpose IN $windowPurposes
+    RETURN count(s) AS n
+  `, { definitionId, tenantId, windowPurposes: [...CHANGE_WINDOW_PURPOSES] })
+  // Nessuna riga = non e un workflow delle change: niente da verificare.
+  if (!res.records.length) return null
+  return Number(res.records[0]!.get('n'))
+}
+
+function assertWindowPurposeSurvives(before: number | null, after: number | null): void {
+  if (before == null || after == null) return
+  if (before === 0 || after > 0) return
+  throw new GraphQLError(
+    `Nel workflow delle change nessun passo avrebbe più uno scopo della finestra di rilascio ` +
+    `(${CHANGE_WINDOW_PURPOSES.join(', ')}), e su quegli scopi è indicizzato il varco delle ` +
+    `approvazioni dal lato del passo di arrivo: senza di loro una change non approvata potrebbe ` +
+    `entrare in produzione senza che nessuno la fermi, e gli allarmi non verrebbero più silenziati ` +
+    `durante il rilascio. Assegna lo scopo «Programmata» o «Implementazione» al passo in cui la ` +
+    `change va in produzione.`,
+    { extensions: { code: 'CONFLICT' } },
+  )
+}
+
 // ── Marchio di personalizzazione (contratto con i seed, ondata 2) ─────────────
 
 /**
@@ -445,6 +492,11 @@ export async function updateWorkflowStep(
   return withSession(async (session) => {
     const now = new Date().toISOString()
     const result = await session.executeWrite(async (tx) => {
+      // Quanti passi di finestra c'erano PRIMA: si rifiuta di togliere
+      // l'ultimo, non di non averne (vedi assertWindowPurposeSurvives).
+      const windowBefore = purposeValue !== undefined
+        ? await countWindowPurposeSteps(tx, ctx.tenantId, definitionId)
+        : null
       const written = await tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: $stepName})
         SET s.label        = $label,
@@ -461,9 +513,19 @@ export async function updateWorkflowStep(
         now, ...customizedParams(ctx),
       })
       // Togliere lo scopo è legittimo; togliere l'ULTIMO passo di approvazione
-      // di un workflow delle change non lo è (vedi la guardia). Dentro la
-      // stessa transazione: se si ferma, la scrittura non resta a metà.
-      if (purposeValue === null) await assertApprovalPurposeSurvives(tx, ctx.tenantId, definitionId)
+      // (o l'ultimo della finestra di rilascio) di un workflow delle change non
+      // lo è. Dentro la stessa transazione: se si ferma, la scrittura non resta
+      // a metà.
+      //
+      // Terza revisione · G2: la condizione era `purposeValue === null`, cioè
+      // scattava solo TOGLIENDO lo scopo. Scegliere «Revisione» invece di
+      // «nessuno» sull'unico passo di approvazione lo SOSTITUISCE — due clic
+      // nel disegnatore — e la guardia non partiva. Ora scatta su qualunque
+      // cambio di scopo.
+      if (purposeValue !== undefined) {
+        await assertApprovalPurposeSurvives(tx, ctx.tenantId, definitionId)
+        assertWindowPurposeSurvives(windowBefore, await countWindowPurposeSteps(tx, ctx.tenantId, definitionId))
+      }
       return written
     })
     if (!result.records.length) throw new GraphQLError('WorkflowStep non trovato', { extensions: { code: 'NOT_FOUND' } })
@@ -1102,6 +1164,9 @@ export async function saveWorkflowChanges(
             )
           }
         }
+        const windowBefore = stepRows.some((st) => st.purposeGiven)
+          ? await countWindowPurposeSteps(tx, ctx.tenantId, definitionId)
+          : null
         await tx.run(`
           UNWIND $steps AS st
           MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: st.stepName})
@@ -1117,10 +1182,16 @@ export async function saveWorkflowChanges(
               s.purpose       = CASE WHEN st.purposeGiven THEN st.purpose ELSE s.purpose END
         `, { definitionId, tenantId: ctx.tenantId, steps: stepRows })
 
-        // Se una delle modifiche ha tolto lo scopo, il workflow delle change
-        // deve conservare un posto dove approvare (revisione · B·N-1).
-        if (stepRows.some((st) => st.purposeGiven && st.purpose === null)) {
+        // Se una delle modifiche ha TOCCATO lo scopo, il workflow delle change
+        // deve conservare un posto dove approvare (revisione · B·N-1) e almeno
+        // un passo della finestra di rilascio (terza revisione · G2).
+        //
+        // La condizione era `st.purpose === null`, cioè solo la RIMOZIONE:
+        // sostituire lo scopo dell'unico passo di approvazione con un altro
+        // valore della tendina svuotava il workflow senza svegliare la guardia.
+        if (stepRows.some((st) => st.purposeGiven)) {
           await assertApprovalPurposeSurvives(tx, ctx.tenantId, definitionId)
+          assertWindowPurposeSurvives(windowBefore, await countWindowPurposeSteps(tx, ctx.tenantId, definitionId))
         }
 
         // If any step was marked isInitial=true, demote the others in the same

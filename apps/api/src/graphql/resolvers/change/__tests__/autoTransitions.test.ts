@@ -62,6 +62,12 @@ vi.mock('../../../../jobs/eventCorrelateWorker.js', () => ({
 }))
 // Servizi monitorati (revisione 2 · D6.1): ingresso e uscita dalla finestra
 // accodano la valutazione delle mappe che includono i CI della change.
+// Il varco della finestra di rilascio ha i suoi test (`windowGate.test.ts`):
+// qui si prova il CAMMINATORE, quindi il varco e un doppio. Il test in fondo
+// («il varco rifiuta») prova che il camminatore lo ascolta.
+const automaticTransitionAllowed = vi.fn<() => Promise<boolean>>()
+vi.mock('../windowGate.js', () => ({ automaticTransitionAllowed }))
+
 vi.mock('../../../../services/serviceImpact/sync.js', () => ({
   notifyChangeWindowChanged: vi.fn().mockResolvedValue(1),
 }))
@@ -95,6 +101,7 @@ function mockDb(opts: { transitions: Array<{ toStep: string; condition: string |
     return { pending: opts.pending ?? 0 } as never
   })
   let transitionsCall = 0
+  automaticTransitionAllowed.mockResolvedValue(true)
   vi.mocked(runQuery).mockImplementation(async () => {
     transitionsCall += 1
     return (transitionsCall === 1 ? opts.transitions : []) as never
@@ -419,5 +426,66 @@ describe('sincronizzazione con problem e incident su workflow rinominati (A4-2/A
     mockDb2('cab_settimanale', { problemStep: 'attesa_change', incidentStep: 'lavorazione' })
     await evaluateAutoTransitions(session, 'chg-1', ctx)
     expect(workflowEngine.transition).not.toHaveBeenCalled()
+  })
+})
+
+describe('il varco della finestra di rilascio (terza revisione * C1)', () => {
+  // Questo describe e fratello di quello sopra, quindi il suo beforeEach non
+  // gira qui: senza questo, le chiamate di un test restavano nella lista del
+  // successivo e l'asserzione «non parte» passava (o cadeva) per il motivo
+  // sbagliato.
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: true } as never)
+  })
+
+  /** Lo scenario del difetto: un arco automatico senza condizione verso il passo programmato. */
+  const scenarioC1 = () => mockDb({ transitions: [{ toStep: 'rilascio_programmato', condition: null }] })
+
+  /**
+   * Le transizioni della CHANGE, non quelle che `evaluateAutoTransitions` fa a
+   * valle sui problem e sugli incident collegati (`syncLinkedProblems` &c.):
+   * quelle partono comunque e non c'entrano col varco.
+   */
+  const transizioniDellaChange = () =>
+    vi.mocked(workflowEngine.transition).mock.calls
+      .filter((c) => (c[1] as { toStepName: string }).toStepName === 'rilascio_programmato')
+
+  it('senza varco questo scenario FAREBBE la transizione (cosi era il difetto)', async () => {
+    // Questo test esiste per non lasciare vacui i due che seguono: dimostra che
+    // lo scenario arriva davvero a chiamare il motore quando il varco dice si.
+    scenarioC1()
+    automaticTransitionAllowed.mockResolvedValue(true)
+    await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+    expect(transizioniDellaChange()).toHaveLength(1)
+    expect(transizioniDellaChange()[0]![1]).toEqual(
+      { instanceId: 'wi-1', toStepName: 'rilascio_programmato', triggeredBy: 'system', triggerType: 'automatic' },
+    )
+  })
+
+  it('se il varco rifiuta, la transizione NON parte', async () => {
+    scenarioC1()
+    automaticTransitionAllowed.mockResolvedValue(false)
+    const afterEnterStep = vi.fn()
+
+    await evaluateAutoTransitions(mockSession, 'chg-1', ctx, afterEnterStep)
+    expect(transizioniDellaChange()).toEqual([])
+    expect(afterEnterStep).not.toHaveBeenCalled()
+  })
+
+  it('e non lancia: l\'azione che ha innescato il cammino resta valida', async () => {
+    scenarioC1()
+    automaticTransitionAllowed.mockResolvedValue(false)
+    await expect(evaluateAutoTransitions(mockSession, 'chg-1', ctx)).resolves.toBeUndefined()
+  })
+
+  it('il varco riceve tenant, change e passi giusti, e l\'etichetta del cammino', async () => {
+    scenarioC1()
+    automaticTransitionAllowed.mockResolvedValue(true)
+    await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+    const [, input, path] = vi.mocked(automaticTransitionAllowed).mock.calls[0] as unknown as [unknown, Record<string, unknown>, string]
+    expect(input).toMatchObject({ tenantId: 'tenant-1', changeId: 'chg-1', currentStep: 'assessment', toStep: 'rilascio_programmato' })
+    expect(input).toHaveProperty('changeType')
+    expect(path).toBe('auto_transition')
   })
 })

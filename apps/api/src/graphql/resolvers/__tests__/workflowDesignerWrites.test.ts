@@ -460,59 +460,124 @@ describe('innesco e condizione delle transizioni sono vocabolari chiusi (B·M-4)
  * sul passo di ARRIVO (vedi `changeApprovalWindowGate.test.ts`); questa impedisce
  * di **entrare** nello stato, che è sempre meglio che accorgersene dopo.
  */
-describe('togliere l\'ultimo scopo «approval» da un workflow delle change (B·N-1)', () => {
+describe('gli scopi che il workflow delle change non puo perdere (B·N-1 + terza revisione · G2)', () => {
   const base = { definitionId: 'def-1', transitions: [], positions: [], expectedVersion: null }
   const step = (over: Record<string, unknown> = {}) => ({
     stepName: 'cab', label: 'CAB', enterActions: null, exitActions: null, purpose: '', ...over,
   })
 
+  /**
+   * L'ordine delle query quando si tocca uno scopo: versione, conteggio dei
+   * passi di finestra PRIMA, scrittura dei passi, guardia dell'approvazione,
+   * conteggio dei passi di finestra DOPO.
+   */
+  const coda = (opts: { approvalSteps?: number | null; windowBefore?: number; windowAfter?: number }) => [
+    { records: [makeRecord({ version: 3 })] },
+    { records: [makeRecord({ n: opts.windowBefore ?? 1 })] },
+    { records: [] },
+    opts.approvalSteps == null ? { records: [] } : { records: [makeRecord({ approvalSteps: opts.approvalSteps })] },
+    { records: [makeRecord({ n: opts.windowAfter ?? 1 })] },
+    // La rilettura finale della definizione: senza, la mutation muore con un
+    // NOT_FOUND che non c'entra con le guardie.
+    { records: [makeRecord({ version: 4, id: 'def-1', entityType: 'change', name: 'Change', steps: [], transitions: [] })] },
+  ]
+
+  /** Esegue e restituisce l'errore, o `null` se e andata. Niente `String(err)`. */
+  const esegui = (steps: ReturnType<typeof step>[]) =>
+    M.saveWorkflowChanges(null, { ...base, steps }, ctx).then(() => null, (e: Error) => e)
+
+  /**
+   * «Le guardie hanno girato e hanno lasciato passare.»
+   *
+   * Non si assertisce che la mutation arrivi in fondo: con una coda di risposte
+   * finta muore piu tardi per motivi suoi, e allungare la coda a indovinare e
+   * fragile. Ma non si assertisce nemmeno `String(err).not.toMatch(...)` come
+   * prima — quella passa anche con `String(null)` e con qualunque altro
+   * errore. Si prova che la guardia e stata ESEGUITA, e che non e lei ad aver
+   * fermato la mutation.
+   */
+  const expectVarchiAperti = (err: Error | null): void => {
+    expect(writtenCypher(), 'la guardia dell\'approvazione non ha nemmeno girato').toContain("WHERE wd.entity_type = 'change'")
+    if (err) {
+      expect(err.message).not.toMatch(/scopo «Approvazione»/)
+      expect(err.message).not.toMatch(/finestra di rilascio/)
+    }
+  }
+
   beforeEach(() => { preApprovedTypes = ['standard']; changeTypes = ['standard', 'normal', 'emergency'] })
 
-  it('rifiutato, nominando i tipi di change che resterebbero senza posto dove essere approvati', async () => {
-    results = [
-      { records: [makeRecord({ version: 3 })] },                 // lettura versione
-      { records: [] },                                            // UNWIND dei passi
-      { records: [makeRecord({ approvalSteps: 0 })] },             // la guardia: nessun passo `approval`
-    ]
-    await expect(M.saveWorkflowChanges(null, { ...base, steps: [step()] }, ctx))
-      .rejects.toThrow(/nessun passo avrebbe più lo scopo «Approvazione».*"normal", "emergency"/s)
+  it('togliere l\'ultimo passo di approvazione e rifiutato, nominando i tipi che resterebbero scoperti', async () => {
+    results = coda({ approvalSteps: 0 })
+    const err = await esegui([step()])
+    expect(err).not.toBeNull()
+    expect(err!.message).toMatch(/nessun passo avrebbe più lo scopo «Approvazione»/)
+    expect(err!.message).toMatch(/"normal", "emergency"/)
   })
 
-  it('se ne resta un altro con quello scopo, si può togliere', async () => {
-    results = [
-      { records: [makeRecord({ version: 3 })] },
-      { records: [] },
-      { records: [makeRecord({ approvalSteps: 1 })] },
-    ]
-    const err = await M.saveWorkflowChanges(null, { ...base, steps: [step()] }, ctx).then(() => null, (e: unknown) => e)
-    expect(String(err)).not.toMatch(/Approvazione/)
-    expect(writtenCypher()).toContain("WHERE wd.entity_type = 'change'")
+  /**
+   * IL DIFETTO G2. `normalizeStepPurpose` restituisce `null` solo per la
+   * stringa vuota, e la guardia partiva solo su `null`: scegliere «Revisione»
+   * invece di «nessuno» nella tendina SOSTITUIVA lo scopo e il workflow
+   * restava senza nessun passo di approvazione. Due clic, gli stessi due clic
+   * della revisione precedente. E il test che c'era pinnava la lacuna come
+   * comportamento voluto.
+   */
+  it('SOSTITUIRE lo scopo dell\'ultimo passo di approvazione e rifiutato come toglierlo', async () => {
+    results = coda({ approvalSteps: 0 })
+    const err = await esegui([step({ purpose: 'review' })])
+    expect(err).not.toBeNull()
+    expect(err!.message).toMatch(/nessun passo avrebbe più lo scopo «Approvazione»/)
   })
 
-  it('se il cliente ha pre-approvato TUTTI i suoi tipi di change, non c\'è niente da approvare', async () => {
+  it('se un altro passo conserva lo scopo, si puo togliere — e la mutation RIESCE', async () => {
+    results = coda({ approvalSteps: 1 })
+    expectVarchiAperti(await esegui([step()]))
+  })
+
+  it('se il cliente ha pre-approvato TUTTI i suoi tipi, non c\'e niente da approvare', async () => {
     preApprovedTypes = ['standard', 'normal', 'emergency']
+    results = coda({ approvalSteps: 0 })
+    expectVarchiAperti(await esegui([step()]))
+  })
+
+  it('su un workflow che non e delle change nessuna delle due guardie si applica', async () => {
+    // Entrambe le letture non trovano la definizione: non e `change`.
     results = [
       { records: [makeRecord({ version: 3 })] },
       { records: [] },
-      { records: [makeRecord({ approvalSteps: 0 })] },
-    ]
-    const err = await M.saveWorkflowChanges(null, { ...base, steps: [step()] }, ctx).then(() => null, (e: unknown) => e)
-    expect(String(err)).not.toMatch(/Approvazione/)
-  })
-
-  it('su un workflow che non è delle change la guardia non si applica', async () => {
-    results = [
-      { records: [makeRecord({ version: 3 })] },
       { records: [] },
-      { records: [] },                                            // la guardia non trova la definizione: non è `change`
+      { records: [] },
+      { records: [] },
+      { records: [makeRecord({ version: 4, id: 'def-1', entityType: 'incident', name: 'Incident', steps: [], transitions: [] })] },
     ]
-    const err = await M.saveWorkflowChanges(null, { ...base, steps: [step()] }, ctx).then(() => null, (e: unknown) => e)
-    expect(String(err)).not.toMatch(/Approvazione/)
+    expectVarchiAperti(await esegui([step()]))
   })
 
-  it('la guardia non parte se non si stava togliendo nessuno scopo', async () => {
+  /**
+   * Terza revisione · G2, seconda metà: su `scheduled` e `implementation` e
+   * indicizzato il varco dal lato del passo di ARRIVO. Togliendo lo scopo,
+   * `entersWindow` da sempre `false` e il varco si spegne — e con lui la
+   * soppressione degli allarmi in finestra. Non c'era nessuna guardia.
+   */
+  it('togliere l\'ULTIMO passo della finestra di rilascio e rifiutato', async () => {
+    results = coda({ approvalSteps: 1, windowBefore: 1, windowAfter: 0 })
+    const err = await esegui([step({ stepName: 'scheduled', purpose: '' })])
+    expect(err).not.toBeNull()
+    expect(err!.message).toMatch(/finestra di rilascio/)
+    expect(err!.message).toMatch(/scheduled, implementation/)
+    // Il messaggio dice cosa fare, non solo cosa e vietato.
+    expect(err!.message).toMatch(/Assegna lo scopo/)
+  })
+
+  it('ma un workflow che non ne aveva nessuno non viene bloccato', async () => {
+    // `before === 0`: non si sta togliendo l'ultimo, non ce n'erano.
+    results = coda({ approvalSteps: 1, windowBefore: 0, windowAfter: 0 })
+    expectVarchiAperti(await esegui([step()]))
+  })
+
+  it('e se non si tocca nessuno scopo, nessuna delle due guardie legge niente', async () => {
     results = [{ records: [makeRecord({ version: 3 })] }]
-    await M.saveWorkflowChanges(null, { ...base, steps: [step({ purpose: 'approval' })] }, ctx).catch(() => null)
+    await M.saveWorkflowChanges(null, { ...base, steps: [step({ purpose: undefined })] }, ctx).catch(() => null)
     expect(writtenCypher()).not.toContain("WHERE wd.entity_type = 'change'")
   })
 })

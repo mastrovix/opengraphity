@@ -10,7 +10,7 @@
  * del tenant e apre quella.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { screen, within } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { EnumDesignerPage } from './EnumDesignerPage'
 import { GET_ENUM_TYPES } from '@/graphql/queries'
 import { CUSTOMIZE_ENUM_TYPE } from '@/graphql/mutations'
@@ -50,12 +50,28 @@ const mocks = (extra: readonly GqlMock[] = []) => [
 ]
 
 describe('Dizionario — di chi è il vocabolario', () => {
-  it('l\'elenco distingue «spedito col prodotto» da «tuo»', async () => {
+  /**
+   * Terza revisione: il distintivo stava anche nelle righe della lista, e con
+   * `flexShrink: 0` e la parola intera schiacciava il NOME a 16 pixel — una
+   * lettera e i puntini, senza `title`. Ora l'appartenenza sta nel NOME
+   * ACCESSIBILE della riga (dove la legge chi non vede l'icona) e il distintivo
+   * intero resta nel pannello di destra. Il test si sposta con lei: non si
+   * pinna il pixel, si pinna che l'informazione ci sia ancora.
+   */
+  it('l\'elenco dice di chi e il vocabolario, nel nome accessibile della riga', async () => {
     renderWithProviders(<EnumDesignerPage />, { mocks: mocks() })
-    const shippedRow = (await screen.findByRole('button', { name: /Severità/ }))
-    expect(within(shippedRow).getByText('Shipped with the product')).toBeInTheDocument()
+    const shippedRow = await screen.findByRole('button', { name: /Severità/ })
+    expect(shippedRow).toHaveAccessibleName(/Shipped with the product/)
+    expect(shippedRow).toHaveAccessibleName(/2 values/)
     const ownRow = screen.getByRole('button', { name: /Colore sede/ })
-    expect(within(ownRow).getByText('Yours')).toBeInTheDocument()
+    expect(ownRow).toHaveAccessibleName(/Yours/)
+  })
+
+  it('e il nome del vocabolario resta recuperabile col puntatore anche se la colonna lo taglia', async () => {
+    renderWithProviders(<EnumDesignerPage />, { mocks: mocks() })
+    const row = await screen.findByRole('button', { name: /Severità/ })
+    // `title` sul nome: senza, un nome tagliato era irrecuperabile.
+    expect(row.querySelector('[title="Severità"]')).not.toBeNull()
   })
 
   it('un vocabolario spedito non si modifica in posto: campi in sola lettura, spiegazione, nessuna eliminazione', async () => {

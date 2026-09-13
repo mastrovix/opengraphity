@@ -405,19 +405,28 @@ export async function afterEnterStep(session: SessionOrTx, changeId: string, ten
   if (purpose === 'approval') {
     const { createChangeApprovals } = await import('./approvalCreation.js')
     await createChangeApprovals(session, changeId, tenantId)
-    // Standard = pre-approvata: nessun requisito, avanza subito al passo di
-    // scopo `scheduled`.
+    // Pre-approvata = nessun requisito: avanza subito al passo di scopo
+    // `scheduled`. Terza revisione: qui c'era ancora il LETTERALE
+    // `ct?.t === 'standard'`, cioe il difetto che l'ondata 8 aveva sostituito
+    // con `isPreApprovedChangeType` in ogni altro posto. Due danni, non uno:
+    // un cliente che rinomina `standard` non vedeva piu avanzare le sue
+    // change pre-approvate (ferme in approvazione senza requisiti da
+    // approvare: il vicolo cieco che il fail-loud qui sotto teme, un gradino
+    // piu in alto); e un cliente che TOGLIE `standard` dai pre-approvati
+    // vedeva la change transire comunque nella finestra di rilascio, con i
+    // requisiti appena creati e pendenti.
     const ct = await runQueryOne<{ t: string }>(session, `MATCH (c:Change {id: $changeId, tenant_id: $tenantId}) RETURN c.change_type AS t`, { changeId, tenantId })
-    if (ct?.t === 'standard') {
+    const { isPreApprovedChangeType } = await import('../../../lib/changePolicy.js')
+    if (ct?.t != null && await isPreApprovedChangeType(tenantId, ct.t)) {
       const { workflowEngine } = await import('@opengraphity/workflow')
       const instanceId = await getInstanceId(session as Session, changeId, tenantId)
       const toStep = await targetStepByPurpose(session as Session, tenantId, 'change', ['scheduled'],
         'pre-approvazione di una change standard')
       const res = await workflowEngine.transition(session as Session, { instanceId, toStepName: toStep, triggeredBy: 'system', triggerType: 'automatic', notes: 'Standard: pre-approvata' }, { userId: 'system', entityData: {} })
-      // Fail-loud: una standard ferma in approvazione senza requisiti non si
-      // sbloccherebbe mai (nessun record da approvare).
+      // Fail-loud: una pre-approvata ferma in approvazione senza requisiti non
+      // si sbloccherebbe mai (nessun record da approvare).
       if (!res.success) {
-        throw new GraphQLError(`Change standard: pre-approvazione non riuscita (${res.error ?? 'transizione fallita'})`, { extensions: { code: 'CONFLICT' } })
+        throw new GraphQLError(`Change di tipo pre-approvato "${ct.t}": pre-approvazione non riuscita (${res.error ?? 'transizione fallita'})`, { extensions: { code: 'CONFLICT' } })
       }
       await afterEnterStep(session, changeId, tenantId, toStep)
     }

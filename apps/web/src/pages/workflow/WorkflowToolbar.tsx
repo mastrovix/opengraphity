@@ -33,11 +33,15 @@ const WORKFLOW_LABELS: Record<WorkflowKey, string> = {
  * che serve normalmente.
  */
 const SPECIAL_STEP_TYPES = [
-  { type: 'standard',      label: '▢ Passo',        name: 'step'          },
-  { type: 'parallel_fork', label: '⑂ Fork',         name: 'parallel_fork' },
-  { type: 'parallel_join', label: '⑂ Join',         name: 'parallel_join' },
-  { type: 'timer_wait',    label: '⏱ Timer Wait',   name: 'timer_wait'    },
-  { type: 'sub_workflow',  label: '⊞ Sub-Workflow', name: 'sub_workflow'  },
+  // Terza revisione: le etichette erano LETTERALI, e mescolavano due lingue nel
+  // medesimo menu («Passo», «Fork», «Join», «Timer Wait», «Sub-Workflow»). Per
+  // un cliente inglese «Passo» restava «Passo». Il simbolo resta qui — e
+  // grafica, non testo — e la parola viene dal vocabolario delle traduzioni.
+  { type: 'standard',      glyph: '▢', labelKey: 'workflow.stepType.standard',      name: 'step'          },
+  { type: 'parallel_fork', glyph: '⑂', labelKey: 'workflow.stepType.parallel_fork', name: 'parallel_fork' },
+  { type: 'parallel_join', glyph: '⑂', labelKey: 'workflow.stepType.parallel_join', name: 'parallel_join' },
+  { type: 'timer_wait',    glyph: '⏱', labelKey: 'workflow.stepType.timer_wait',    name: 'timer_wait'    },
+  { type: 'sub_workflow',  glyph: '⊞', labelKey: 'workflow.stepType.sub_workflow',  name: 'sub_workflow'  },
 ]
 
 interface WorkflowToolbarProps {
@@ -125,7 +129,7 @@ export function WorkflowToolbar({
             onClick={() => setShowAddStep(true)}
             style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid var(--color-border)', background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}
           >
-            + Step
+            + {t('workflow.addStep')}
           </button>
         )}
         <button
@@ -167,7 +171,7 @@ export function WorkflowToolbar({
         <Modal
           open
           onClose={() => setShowAddStep(false)}
-          title="Aggiungi Step"
+          title={t('workflow.addStepDialog')}
           width={380}
           footer={
             <>
@@ -204,7 +208,7 @@ export function WorkflowToolbar({
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {SPECIAL_STEP_TYPES.map(s => (
                   <button type="button" key={s.type} aria-pressed={stepType === s.type} onClick={() => setStepType(s.type)} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${stepType === s.type ? accentColor : 'var(--color-border)'}`, background: stepType === s.type ? 'var(--color-brand-a08)' : colors.white, color: stepType === s.type ? accentColor : 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
-                    {s.label}
+                    {s.glyph} {t(s.labelKey)}
                   </button>
                 ))}
               </div>
@@ -221,7 +225,7 @@ export function WorkflowToolbar({
             {stepType === 'timer_wait' && (
               <div>
                 <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>RITARDO (minuti)</div>
-                <input type="number" min={1} value={timerMins} onChange={e => setTimerMins(e.target.value)} placeholder="es. 60" style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
+                <input type="number" min={1} value={timerMins} onChange={e => setTimerMins(e.target.value)} placeholder={t('workflow.timerMinutesPlaceholder')} style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
               </div>
             )}
           </div>

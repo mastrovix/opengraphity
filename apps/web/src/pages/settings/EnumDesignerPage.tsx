@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
@@ -155,22 +155,22 @@ function CreateEnumDialog({
  * `isShipped`. Senza questa distinzione il Dizionario mostrava allo stesso
  * modo i vocabolari del prodotto e i propri.
  */
-function OwnerBadge({ shipped, compact = false }: { shipped: boolean; compact?: boolean }) {
+function OwnerBadge({ shipped }: { shipped: boolean }) {
   const { t } = useTranslation()
   const label = shipped ? t('pages.dictionary.shippedBadge') : t('pages.dictionary.ownBadge')
   return (
     <span
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
-        fontSize: compact ? 'var(--font-size-label)' : 'var(--font-size-table)',
+        fontSize: 'var(--font-size-table)',
         background: shipped ? 'var(--color-slate-bg)' : palette.info.bg,
         color: shipped ? 'var(--color-slate)' : 'var(--color-brand)',
-        padding: compact ? '1px 6px' : '2px 8px', borderRadius: 20, fontWeight: 500,
+        padding: '2px 8px', borderRadius: 20, fontWeight: 500,
       }}
     >
       {shipped
-        ? <Package  size={compact ? 9 : 10} aria-hidden="true" />
-        : <LockOpen size={compact ? 9 : 10} aria-hidden="true" />}
+        ? <Package  size={10} aria-hidden="true" />
+        : <LockOpen size={10} aria-hidden="true" />}
       {label}
     </span>
   )
@@ -195,6 +195,21 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
   const [dirty, setDirty]   = useState(false)
   /** Il valore che si sta rinominando, e il nome nuovo (null = nessuno). */
   const [renamingFrom, setRenamingFrom] = useState<string | null>(null)
+  /**
+   * Il fuoco sul campo di rinomina (terza revisione). Avevo tolto `autoFocus`
+   * per soddisfare `jsx-a11y/no-autofocus` — e l'ho soddisfatta togliendo la
+   * gestione del fuoco invece di scriverla: il campo compariva col valore
+   * giusto e il fuoco restava sul bottone. Trovato in un browser vero.
+   * `select()` perche si rinomina riscrivendo, non aggiungendo in coda.
+   */
+  const renameInputRef = useRef<HTMLInputElement | null>(null)
+  useEffect(() => {
+    if (renamingFrom == null) return
+    const el = renameInputRef.current
+    if (!el) return
+    el.focus()
+    el.select()
+  }, [renamingFrom])
   const [renameTo,     setRenameTo]     = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -402,6 +417,7 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
               {renamingFrom === v ? (
                 <>
                   <Input
+                    ref={renameInputRef}
                     style={{ ...inputS, flex: 1, height: 26 }}
                     value={renameTo}
                     onChange={(ev) => setRenameTo(ev.target.value)}
@@ -610,15 +626,31 @@ export function EnumDesignerPage() {
                       borderBottom: `1px solid ${palette.neutral.borderLight}`,
                     }}
                     aria-current={selectedId === e.id ? 'true' : undefined}
+                    aria-label={`${e.label} — ${e.isShipped ? t('pages.dictionary.shippedBadge') : t('pages.dictionary.ownBadge')} — ${t('pages.dictionary.valueCount', { count: e.values.length })}`}
                   >
                     {e.isShipped
                       ? <Package  size={11} style={{ color: 'var(--color-slate-light)', flexShrink: 0 }} aria-hidden="true" />
                       : <LockOpen size={11} style={{ color: 'var(--color-brand)', flexShrink: 0 }} aria-hidden="true" />
                     }
-                    <span style={{ flex: 1, fontSize: 'var(--font-size-body)', fontWeight: selectedId === e.id ? 600 : 500, color: selectedId === e.id ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {/*
+                      Terza revisione, trovato in un browser vero: qui c'era
+                      anche `<OwnerBadge compact />`, e con `flexShrink: 0` e la
+                      parola intera («Spedito col prodotto», ~105px in una
+                      colonna di 220) il NOME finiva schiacciato a 16 pixel —
+                      una lettera e i puntini — senza nemmeno un `title` per
+                      recuperarlo. Il `compact` rimpiccioliva font e padding, non
+                      la parola. Il distintivo era anche ridondante: l'icona qui
+                      a sinistra dice la stessa cosa. Resta intero nel pannello
+                      di destra, dove c'e spazio; qui il proprietario entra nel
+                      NOME ACCESSIBILE della riga, cosi non si perde per chi non
+                      vede le icone.
+                    */}
+                    <span
+                      title={e.label}
+                      style={{ flex: 1, minWidth: 0, fontSize: 'var(--font-size-body)', fontWeight: selectedId === e.id ? 600 : 500, color: selectedId === e.id ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                    >
                       {e.label}
                     </span>
-                    <OwnerBadge shipped={e.isShipped} compact />
                     <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', flexShrink: 0 }}>
                       {e.values.length}
                     </span>

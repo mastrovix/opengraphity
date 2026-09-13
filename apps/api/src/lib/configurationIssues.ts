@@ -46,6 +46,7 @@ export type ConfigurationIssueKind =
   | 'policy_out_of_vocabulary'
   | 'vocabulary_without_semantics'
   | 'check_failed'
+  | 'vocabulary_empty'
 
 export interface ConfigurationIssue {
   kind: ConfigurationIssueKind
@@ -110,6 +111,33 @@ async function checkMatrices(tenantId: string): Promise<ConfigurationIssue[]> {
     const inputValues  = await Promise.all(spec.inputs.map((v) => domainVocabulary(tenantId, v)))
     const outputValues = await domainVocabulary(tenantId, spec.output)
 
+    // UN VOCABOLARIO VUOTO non e un problema della matrice (terza revisione · M10).
+    // `cartesian([])` e vuoto, quindi `wanted` e vuoto, quindi OGNI chiave
+    // esistente risulta «rimasta da una rinomina»: la diagnosi accusava la
+    // matrice, mandava l'admin alla sua pagina, e la pagina offre un «Salva»
+    // che rimuove le chiavi residue — cioe cancellava una matrice sana. Del
+    // problema vero (nessun ticket si apre piu, perche `assertDomainValue`
+    // rifiuta ogni valore) non diceva niente. Falso positivo distruttivo e
+    // falso negativo nella stessa voce.
+    const vuoti: string[] = spec.inputs.filter((_, i) => inputValues[i]!.length === 0)
+    if (outputValues.length === 0) vuoti.push(spec.output)
+    if (vuoti.length) {
+      out.push({
+        kind: 'vocabulary_empty',
+        severity: 'error',
+        where: '/settings/enum-designer',
+        message:
+          `${vuoti.length === 1 ? 'Il vocabolario' : 'I vocabolari'} ` +
+          `${vuoti.map((v) => `«${v}»`).join(', ')} ${vuoti.length === 1 ? 'non ha' : 'non hanno'} nessun valore, ` +
+          `e la matrice «${kind}» ne ha bisogno: finche resta cosi ogni valore viene rifiutato come fuori ` +
+          `vocabolario e non si apre piu nessun ticket. Rimetti i valori nel Dizionario — NON salvare la ` +
+          `matrice, che e ancora buona e verrebbe svuotata.`,
+      })
+      // E non si dice niente della matrice: il suo contenuto non e giudicabile
+      // finche il vocabolario e vuoto.
+      continue
+    }
+
     const wanted  = cartesian(inputValues).map((v) => matrixKey(...v))
     const missing = wanted.filter((k) => matrix.entries[k] === undefined)
     const stale   = Object.keys(matrix.entries).filter((k) => !wanted.includes(k))
@@ -145,7 +173,7 @@ async function checkLifecyclePolicy(tenantId: string): Promise<ConfigurationIssu
   }
   if (fuori.size) {
     out.push({
-      kind: 'policy_out_of_vocabulary', severity: 'error', where: '/settings/events',
+      kind: 'policy_out_of_vocabulary', severity: 'error', where: '/settings/event-policy',
       message:
         `La policy degli allarmi cita stati che il tuo Dizionario non ha (più): ` +
         [...fuori].map(([l, v]) => `${l} → ${v.join(', ')}`).join('; ') +
@@ -162,7 +190,7 @@ async function checkLifecyclePolicy(tenantId: string): Promise<ConfigurationIssu
   const atteso = senzaSemantica.length > 0 && senzaSemantica[0] === values[0] ? senzaSemantica.slice(1) : senzaSemantica
   if (atteso.length) {
     out.push({
-      kind: 'vocabulary_without_semantics', severity: 'warning', where: '/settings/events',
+      kind: 'vocabulary_without_semantics', severity: 'warning', where: '/settings/event-policy',
       message:
         `Questi stati del ciclo di vita non sono in nessuna lista della policy degli allarmi: ` +
         `${atteso.join(', ')}. Per il prodotto sono CI **in servizio**: i loro allarmi aprono incident e ` +

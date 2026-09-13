@@ -29,8 +29,14 @@
  * Fuori perimetro, e perché:
  *  - `scripts/` (migrazioni, seed, onboarding): processi a colpo singolo, dove
  *    non esiste nessuna cache viva da svuotare né nessun altro processo da
- *    avvisare. `lib/seedEnumTypes.ts` e `lib/domainMatrixSeed.ts` sono chiamati
- *    solo da lì (verificato: nessun chiamante in `graphql/` o `rest/`);
+ *    avvisare. `lib/seedEnumTypes.ts` è chiamato solo da lì.
+ *    `lib/domainMatrixSeed.ts` NO, e la frase che c'era qui — «sono chiamati
+ *    solo da lì (verificato: nessun chiamante in graphql/ o rest/)» — era
+ *    falsa: `provisionTenantDataMutation` in `graphql/resolvers/workflow.ts`
+ *    lo chiama attraverso `lib/provisionTenantData.ts`, e il lint non lo vede
+ *    perché la Cypher sta in `lib/`. Terza revisione · M2: quella mutation ora
+ *    invalida lo schema. Un'esenzione giustificata da un'affermazione che il
+ *    codice smentisce è il presupposto del prossimo difetto capitale;
  *  - `lib/`: non è un perimetro di richiesta. L'unica eccezione è verificata a
  *    parte qui sotto, perché è una scrittura di mutation che vive in un lib:
  *    `setPreApprovedChangeTypes`.

@@ -108,13 +108,82 @@ export const DOMAIN_VALUE_BINDINGS: Readonly<Record<string, readonly { label: st
     { label: 'EventHistoryEntry', property: 'severity' },
   ],
   /**
-   * Nessun record: la fascia di rischio si **deriva** dal punteggio a ogni
-   * lettura, non si salva sui nodi. I suoi valori vivono solo nelle chiavi
-   * della matrice `change_priority`, che il conteggio scansiona a parte.
+   * Nessun RECORD: la fascia di rischio si deriva dal punteggio a ogni lettura
+   * e non si salva sui nodi.
+   *
+   * Ma non era vero che «i suoi valori vivono solo nelle chiavi della matrice
+   * `change_priority`»: lo STESSO commit che scrisse quella frase introdusse
+   * `Tenant.risk_band_thresholds`, che è una lista di `{band, upTo}` dove
+   * `band` è un valore di questo vocabolario. Una rinomina lasciava le soglie
+   * orfane e `parseThresholds` lanciava: nessuna change si creava più.
+   * Adesso le soglie sono in `CONFIG_VALUE_SITES`, e
+   * `__tests__/enumValuePerimeter.test.ts` pretende che ci restino.
    */
   risk_band: [],
   /** Nessun record: è il vocabolario del file di import, non del prodotto. */
   import_severity: [],
+}
+
+/**
+ * SEDI DI CONFIGURAZIONE che contengono valori di vocabolario (terza revisione · G1).
+ *
+ * `DOMAIN_VALUE_BINDINGS` sopra copre le PROPRIETA dei nodi ITIL. Non copriva
+ * la configurazione, dove i valori vivono dentro un JSON o in proprieta con
+ * nomi che non somigliano al vocabolario. Verificato sul grafo vivo: tre
+ * `BusinessRule` con `{"field":"severity","value":"critical"}`, un
+ * `SLAPolicyNode` con `category: "security"`, un `DynamicCIGroup` con
+ * `criteria_environment: "production"`, un `FieldVisibilityRule` con
+ * `trigger_field: "category", trigger_value: "hardware"`.
+ *
+ * Il danno era SILENZIOSO, che e peggio dei critici: rinominando `critical`,
+ * la regola «Incident security critico → SecOps» non scattava mai piu perche
+ * `evaluateConditions` restituiva `false`. Nessun errore, nessun log.
+ */
+export type ConfigSiteShape = 'scalar' | 'conditions' | 'risk_bands'
+
+export interface ConfigValueSite {
+  label:    string
+  property: string
+  shape:    ConfigSiteShape
+  /** Il vocabolario che governa la proprieta, quando e fisso. */
+  vocabulary?: string
+  /** Oppure la proprieta che NOMINA il campo, e quindi il vocabolario (FieldVisibilityRule). */
+  vocabularyFromField?: string
+  /** Come si chiama nel messaggio all'amministratore. */
+  where: string
+}
+
+export const CONFIG_VALUE_SITES: readonly ConfigValueSite[] = [
+  { label: 'BusinessRule',  property: 'conditions', shape: 'conditions', where: 'le condizioni di una Business Rule' },
+  { label: 'AutoTrigger',   property: 'conditions', shape: 'conditions', where: 'le condizioni di un Trigger Automatico' },
+  { label: 'SLAPolicyNode', property: 'category',   shape: 'scalar', vocabulary: 'category',    where: 'la categoria di una Policy SLA' },
+  { label: 'DynamicCIGroup', property: 'criteria_environment', shape: 'scalar', vocabulary: 'environment', where: "l'ambiente di un gruppo CI dinamico" },
+  { label: 'StandardChangeCatalogEntry', property: 'default_priority', shape: 'scalar', vocabulary: 'priority', where: 'la priorita di una change standard di catalogo' },
+  { label: 'FieldVisibilityRule', property: 'trigger_value', shape: 'scalar', vocabularyFromField: 'trigger_field', where: 'la condizione di visibilita di un campo' },
+  // Il CRITICO della terza revisione (A · C1): le soglie delle fasce di
+  // rischio vivono sul Tenant come `[{band, upTo}]`, dove `band` e un valore
+  // del vocabolario `risk_band`. La tabella dichiarava `risk_band: []` con la
+  // motivazione «i suoi valori vivono solo nelle chiavi della matrice», che
+  // era falsa dal commit che ha introdotto le soglie. Dopo una rinomina,
+  // `parseThresholds` lancia e NESSUNA change si crea piu.
+  { label: 'Tenant', property: 'risk_band_thresholds', shape: 'risk_bands', vocabulary: 'risk_band', where: 'le soglie delle fasce di rischio' },
+]
+
+/**
+ * Quale vocabolario governa il `field` di una condizione. `status` dipende
+ * dall'entita della regola (`status_incident`, `status_change`, …), quindi si
+ * compone col suo `entity_type`.
+ */
+export const CONDITION_FIELD_VOCABULARY: Readonly<Record<string, string>> = {
+  severity: 'severity', priority: 'priority', impact: 'impact', urgency: 'urgency',
+  category: 'category', type: 'change_type', change_type: 'change_type',
+  environment: 'environment', criticality: 'service_criticality',
+}
+
+/** Il vocabolario di un campo di condizione, dato il tipo di entita della regola. */
+export function conditionFieldVocabulary(field: string, entityType: string | null): string | null {
+  if (field === 'status') return entityType ? `status_${entityType}` : null
+  return CONDITION_FIELD_VOCABULARY[field] ?? null
 }
 
 /** Etichetta vera dei nodi del tipo base `__base__`: i CI non hanno un'etichetta «__base__». */
@@ -248,6 +317,14 @@ export interface EnumValueUsage {
   policyLists: readonly string[]
   /** Matrici di dominio che citano il valore, in una chiave o in una cella. */
   matrices: readonly string[]
+  /**
+   * Sedi di CONFIGURAZIONE che citano il valore (terza revisione · G1): le
+   * condizioni delle regole e dei trigger, la categoria di una policy SLA,
+   * l'ambiente di un gruppo dinamico, le soglie delle fasce di rischio. Erano
+   * fuori dal perimetro: il conteggio diceva zero, quindi togliere il valore
+   * passava in silenzio e la regola non scattava piu, senza un errore.
+   */
+  configSites: readonly string[]
   total: number
 }
 
@@ -262,7 +339,7 @@ export async function countEnumValueUsage(
   if (values.length === 0) return []
   const bindings = await enumValueBindings(session, tenantId, vocabularyName)
   const byValue = new Map<string, EnumValueUsage>(
-    values.map((v) => [v, { value: v, records: [], policyLists: [], matrices: [], total: 0 }]),
+    values.map((v) => [v, { value: v, records: [], policyLists: [], matrices: [], configSites: [], total: 0 }]),
   )
   for (const b of bindings) {
     const counted = await run(session, `
@@ -293,6 +370,13 @@ export async function countEnumValueUsage(
     usage.matrices = inMatrices.get(usage.value) ?? []
     usage.total += usage.matrices.length
   }
+  // E la CONFIGURAZIONE (terza revisione · G1): regole, trigger, policy SLA,
+  // gruppi dinamici, soglie delle fasce. Erano fuori dal perimetro.
+  const inConfig = await configReferences(session, tenantId, vocabularyName, values)
+  for (const usage of byValue.values()) {
+    usage.configSites = inConfig.get(usage.value) ?? []
+    usage.total += usage.configSites.length
+  }
   return [...byValue.values()].filter((u) => u.total > 0)
 }
 
@@ -303,6 +387,7 @@ export function enumValueUsageMessage(vocabularyName: string, usages: readonly E
       ...u.records.map((r) => `${String(r.count)} ${r.typeName}.${r.fieldName}`),
       ...u.policyLists.map((l) => `la policy degli allarmi (${l})`),
       ...u.matrices.map((m) => `la matrice ${m}`),
+      ...u.configSites,
     ]
     return `"${u.value}" è ancora usato da ${where.join(', ')}`
   })
@@ -336,6 +421,7 @@ export async function replaceEnumValue(
   // niente in nessuna delle due unità.
   await replaceInPolicy(tx, tenantId, vocabularyName, from, to)
   await replaceInMatrices(tx, tenantId, vocabularyName, from, to)
+  await replaceInConfig(tx, tenantId, vocabularyName, from, to)
   return touched
 }
 
@@ -451,6 +537,184 @@ async function replaceInMatrices(
 type Row = Record<string, unknown>
 
 /** Lettura, che la si dia una sessione o la transazione del chiamante. */
+/**
+ * Le SEDI DI CONFIGURAZIONE che citano ciascuno dei `values` (terza revisione · G1).
+ *
+ * Si legge e si interpreta in JS invece di filtrare in Cypher, perche in tre
+ * casi su quattro il valore sta dentro un JSON e il vocabolario che lo governa
+ * dipende da un ALTRO campo dello stesso nodo (`trigger_field`, `entity_type`).
+ * Un filtro in Cypher lo direbbe a meta.
+ */
+async function configReferences(
+  q: Session | ManagedTransaction, tenantId: string, vocabularyName: string, values: readonly string[],
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>()
+  const add = (value: string, where: string): void => {
+    const list = out.get(value) ?? []
+    if (!list.includes(where)) list.push(where)
+    out.set(value, list)
+  }
+  const wanted = new Set(values)
+
+  for (const site of CONFIG_VALUE_SITES) {
+    // Il Tenant non porta `tenant_id`: si identifica per slug.
+    const match = site.label === 'Tenant'
+      ? 'MATCH (n:Tenant {slug: $tenantId})'
+      : `MATCH (n:${site.label} {tenant_id: $tenantId})`
+
+    if (site.shape === 'scalar') {
+      if (site.vocabulary != null && site.vocabulary !== vocabularyName) continue
+      const rows = await run(q, `
+        ${match}
+        WHERE n.${site.property} IS NOT NULL
+        RETURN n.${site.property} AS value, n.${site.vocabularyFromField ?? site.property} AS field, n.name AS name
+      `, { tenantId })
+      for (const row of rows) {
+        const value = String(row['value'])
+        if (!wanted.has(value)) continue
+        // Sede il cui vocabolario e nominato da un altro campo: si tiene solo
+        // se quel campo nomina proprio il vocabolario in questione.
+        if (site.vocabularyFromField != null && String(row['field']) !== vocabularyName) continue
+        add(value, `${site.where}${row['name'] != null ? ` «${String(row['name'])}»` : ''}`)
+      }
+      continue
+    }
+
+    if (site.shape === 'conditions') {
+      const rows = await run(q, `
+        ${match}
+        WHERE n.${site.property} IS NOT NULL
+        RETURN n.${site.property} AS raw, n.entity_type AS entityType, n.name AS name
+      `, { tenantId })
+      for (const row of rows) {
+        for (const c of parseConditionList(row['raw'])) {
+          if (conditionFieldVocabulary(c.field, row['entityType'] == null ? null : String(row['entityType'])) !== vocabularyName) continue
+          if (!wanted.has(c.value)) continue
+          add(c.value, `${site.where}${row['name'] != null ? ` «${String(row['name'])}»` : ''}`)
+        }
+      }
+      continue
+    }
+
+    // `risk_bands`: [{band, upTo}] sul Tenant.
+    if (site.vocabulary !== vocabularyName) continue
+    const rows = await run(q, `${match} RETURN n.${site.property} AS raw`, { tenantId })
+    for (const row of rows) {
+      for (const band of parseRiskBandNames(row['raw'])) {
+        if (wanted.has(band)) add(band, site.where)
+      }
+    }
+  }
+  return out
+}
+
+/** Riscrive `from` → `to` nelle sedi di configurazione, nella transazione del chiamante. */
+async function replaceInConfig(
+  tx: ManagedTransaction, tenantId: string, vocabularyName: string, from: string, to: string,
+): Promise<void> {
+  for (const site of CONFIG_VALUE_SITES) {
+    const match = site.label === 'Tenant'
+      ? 'MATCH (n:Tenant {slug: $tenantId})'
+      : `MATCH (n:${site.label} {tenant_id: $tenantId})`
+
+    if (site.shape === 'scalar') {
+      if (site.vocabulary != null && site.vocabulary !== vocabularyName) continue
+      if (site.vocabularyFromField != null) {
+        await runWrite(tx, `
+          ${match}
+          WHERE n.${site.property} = $from AND n.${site.vocabularyFromField} = $vocabulary
+          SET n.${site.property} = $to
+          RETURN count(*) AS n
+        `, { tenantId, from, to, vocabulary: vocabularyName })
+      } else {
+        await runWrite(tx, `
+          ${match}
+          WHERE n.${site.property} = $from
+          SET n.${site.property} = $to
+          RETURN count(*) AS n
+        `, { tenantId, from, to })
+      }
+      continue
+    }
+
+    if (site.shape === 'conditions') {
+      // JSON: si rilegge, si riscrive, si risalva — mai sostituzione testuale,
+      // che prenderebbe anche un nome di campo o una sottostringa.
+      const rows = await runWrite(tx, `
+        ${match}
+        WHERE n.${site.property} IS NOT NULL
+        RETURN n.id AS id, n.${site.property} AS raw, n.entity_type AS entityType
+      `, { tenantId })
+      for (const row of rows) {
+        const list = parseConditionList(row['raw'])
+        if (list.length === 0) continue
+        let changed = false
+        const next = list.map((c) => {
+          const vocab = conditionFieldVocabulary(c.field, row['entityType'] == null ? null : String(row['entityType']))
+          if (vocab !== vocabularyName || c.value !== from) return c.raw
+          changed = true
+          return { ...c.raw, value: to }
+        })
+        if (!changed) continue
+        await runWrite(tx, `
+          MATCH (n:${site.label} {id: $id, tenant_id: $tenantId})
+          SET n.${site.property} = $raw
+          RETURN count(*) AS n
+        `, { tenantId, id: String(row['id']), raw: JSON.stringify(next) })
+      }
+      continue
+    }
+
+    if (site.vocabulary !== vocabularyName) continue
+    const rows = await runWrite(tx, `${match} RETURN n.${site.property} AS raw`, { tenantId })
+    for (const row of rows) {
+      const parsed = parseRiskBandList(row['raw'])
+      if (!parsed.some((b) => b.band === from)) continue
+      const next = parsed.map((b) => (b.band === from ? { ...b, band: to } : b))
+      await runWrite(tx, `
+        ${match}
+        SET n.${site.property} = $raw
+        RETURN count(*) AS n
+      `, { tenantId, raw: JSON.stringify(next) })
+    }
+  }
+}
+
+interface ParsedCondition { field: string; value: string; raw: Record<string, unknown> }
+
+/** Le condizioni di una regola, saltando quelle che non hanno la forma attesa. */
+function parseConditionList(raw: unknown): ParsedCondition[] {
+  if (raw == null) return []
+  let parsed: unknown
+  try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return [] }
+  if (!Array.isArray(parsed)) return []
+  const out: ParsedCondition[] = []
+  for (const item of parsed) {
+    if (item == null || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const field = o['field']
+    const value = o['value']
+    // Solo i confronti con un valore di testo: un `value` numerico o una lista
+    // non e un valore di vocabolario.
+    if (typeof field !== 'string' || typeof value !== 'string') continue
+    out.push({ field, value, raw: o })
+  }
+  return out
+}
+
+function parseRiskBandList(raw: unknown): { band: string; [k: string]: unknown }[] {
+  if (raw == null) return []
+  let parsed: unknown
+  try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return [] }
+  if (!Array.isArray(parsed)) return []
+  return parsed.filter((b): b is { band: string } =>
+    b != null && typeof b === 'object' && typeof (b as Record<string, unknown>)['band'] === 'string')
+}
+
+function parseRiskBandNames(raw: unknown): string[] {
+  return parseRiskBandList(raw).map((b) => b.band)
+}
+
 async function run(q: Session | ManagedTransaction, cypher: string, params: Record<string, unknown>): Promise<Row[]> {
   const asSession = q as Session
   const res = typeof asSession.executeRead === 'function'

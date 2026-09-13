@@ -1,3 +1,4 @@
+import { forwardRef } from 'react'
 import type { CSSProperties, InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
 import { colors, palette } from '@/lib/tokens'
 
@@ -14,9 +15,18 @@ export const controlStyle: CSSProperties = {
   outline: 'none',
 }
 
-export function Input({ style, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...rest} style={{ ...controlStyle, ...style }} />
-}
+/**
+ * Inoltra il `ref` (terza revisione): senza, chi apre un campo in risposta a
+ * un click non puo spostarci il fuoco. Nel Dizionario la rinomina compariva
+ * col valore giusto e il fuoco restava dov'era — conseguenza dell'aver tolto
+ * `autoFocus` per la regola eslint `jsx-a11y/no-autofocus` invece di gestire
+ * il fuoco. Chi usa la tastiera attivava «Rinomina» e non raggiungeva il campo.
+ */
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  function Input({ style, ...rest }, ref) {
+    return <input ref={ref} {...rest} style={{ ...controlStyle, ...style }} />
+  },
+)
 
 export function Select({ style, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...rest} style={{ ...controlStyle, ...style }}>{children}</select>

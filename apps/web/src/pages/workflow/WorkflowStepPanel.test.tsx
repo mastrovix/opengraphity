@@ -141,7 +141,10 @@ describe('WorkflowStepPanel — operatore persistito non supportato', () => {
 
   it('nuova azione: Conferma è disabilitato finché una condizione ha operatore non mappabile', async () => {
     const { user } = renderPanel(step())
-    const enterField = screen.getByText('Enter Actions').parentElement!
+    // Terza revisione: le etichette del pannello erano LETTERALI e mescolavano
+    // due lingue («Label», «Enter Actions», «Step iniziale»). Ora vengono dal
+    // vocabolario: qui si usa la stringa inglese, che e la lingua dei test.
+    const enterField = screen.getByText('Enter actions').parentElement!
     await user.click(within(enterField).getByRole('button', { name: '+ Add action' }))
     await user.click(await screen.findByRole('button', { name: '+ Aggiungi condizione' }))
     expect(screen.getByRole('button', { name: 'Confirm' })).toBeEnabled()   // riga vuota: scartata, non bloccante

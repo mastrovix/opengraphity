@@ -40,17 +40,17 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
     <div style={panelStyle}>
       <PanelHeader title="Modifica Transizione" onClose={onClose} />
 
-      <PanelField label="From → To">
+      <PanelField label={t('workflow.panel.from_to')}>
         <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
           <code>{transition.fromStepName}</code> → <code>{transition.toStepName}</code>
         </span>
       </PanelField>
 
-      <PanelField label="Label">
+      <PanelField label={t('workflow.panel.label')}>
         <Input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} />
       </PanelField>
 
-      <PanelField label="Trigger">
+      <PanelField label={t('workflow.panel.trigger')}>
         <Select value={trigger} onChange={(e) => setTrigger(e.target.value)} style={inputStyle}>
           {WORKFLOW_TRANSITION_TRIGGERS.map((tr) => (
             <option key={tr} value={tr}>{tr}</option>
@@ -61,7 +61,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
         </span>
       </PanelField>
 
-      <PanelField label="Richiede Input">
+      <PanelField label={t('workflow.panel.richiede_input')}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
           <input
             type="checkbox"
@@ -73,7 +73,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
       </PanelField>
 
       {requiresInput && (
-        <PanelField label="Campo Input">
+        <PanelField label={t('workflow.panel.campo_input')}>
           <Select value={inputField} onChange={(e) => setInputField(e.target.value)} style={inputStyle}>
             <option value="">— nessuno —</option>
             <option value="rootCause">rootCause</option>
@@ -100,7 +100,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
       </PanelField>
 
       {trigger === 'timer' && (
-        <PanelField label="Timer (ore)">
+        <PanelField label={t('workflow.panel.timer_ore')}>
           <Input
             type="number"
             min={1}

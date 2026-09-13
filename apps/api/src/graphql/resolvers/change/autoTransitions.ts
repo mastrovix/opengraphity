@@ -7,6 +7,7 @@ import { runQuery, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { getStepPurpose } from '../../../lib/workflowHelpers.js'
+import { automaticTransitionAllowed } from './windowGate.js'
 import { stepNamesByCategory, stepNamesByPurposeOrdered, targetStepByCategory, targetStepByPurpose } from '../../../lib/workflowTargets.js'
 // Side-effect: registra le condizioni ITSM (all_assessments_complete, …)
 // sull'engine. Il walker le valuta dal registro, come fa l'engine stesso.
@@ -301,6 +302,23 @@ async function walkAutoTransitions(
       if (visited.has(tr.toStep)) {
         throw new GraphQLError(`Workflow change mal configurato: ciclo di transizioni automatiche ${wi.step} → ${tr.toStep} (step già attraversato)`, { extensions: { code: 'CONFLICT' } })
       }
+
+      // IL VARCO DELLA FINESTRA DI RILASCIO (terza revisione * C1). Qui non
+      // c'era: un arco `assessment -> scheduled` con innesco `automatic` e
+      // nessuna condizione portava una change non approvata dentro la finestra
+      // di rilascio, accendendo la soppressione degli allarmi, senza un errore
+      // e con il log a `info`. Non lancia — l'azione che ha innescato questo
+      // walk e legittima (un operatore che chiude un assessment task) e farla
+      // fallire per una configurazione che non e sua sarebbe un vicolo cieco:
+      // la transizione viene rifiutata, contata e scritta a `warn`.
+      const allowed = await automaticTransitionAllowed(session, {
+        tenantId:    ctx.tenantId,
+        changeId,
+        changeType:  String(wi.entityProps['change_type'] ?? ''),
+        currentStep: wi.step,
+        toStep:      tr.toStep,
+      }, 'auto_transition')
+      if (!allowed) continue
 
       const actionCtx: ActionContext = {
         userId:     ctx.userId ?? 'system',

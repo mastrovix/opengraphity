@@ -103,7 +103,13 @@ describe('saveWorkflowChanges — lo scopo si scrive, si toglie e non si inventa
   it('scrive lo scopo del passo, senza coalesce (così si può anche togliere)', async () => {
     results = [
       { records: [makeRecord({ version: 3 })] },           // lettura della versione
+      // Terza revisione · G2: le guardie scattano su QUALUNQUE cambio di scopo,
+      // non solo sulla rimozione, quindi prima e dopo la scrittura si contano i
+      // passi della finestra di rilascio.
+      { records: [makeRecord({ n: 1 })] },                  // passi di finestra PRIMA
       { records: [] },                                      // UNWIND steps
+      { records: [makeRecord({ approvalSteps: 1 })] },      // guardia dell'approvazione
+      { records: [makeRecord({ n: 1 })] },                  // passi di finestra DOPO
       { records: [makeRecord({ wd: { properties: { id: 'def-1', entity_type: 'change', version: 4 } } })] },
       { records: [] },
     ]
@@ -116,10 +122,13 @@ describe('saveWorkflowChanges — lo scopo si scrive, si toglie e non si inventa
 
   it('stringa vuota → lo scopo viene TOLTO (purpose null con purposeGiven true)', async () => {
     results = [
-      { records: [makeRecord({ version: 1 })] }, { records: [] },
+      { records: [makeRecord({ version: 1 })] },
+      { records: [makeRecord({ n: 1 })] },                  // passi di finestra PRIMA
+      { records: [] },
       // La guardia dell'ondata di rimedio 2: resta un altro passo con lo scopo
       // `approval`, quindi togliere questo è legittimo.
       { records: [makeRecord({ approvalSteps: 1 })] },
+      { records: [makeRecord({ n: 1 })] },                  // passi di finestra DOPO
       { records: [makeRecord({ wd: { properties: { id: 'def-1', entity_type: 'change', version: 2 } } })] }, { records: [] },
     ]
     await saveWorkflowChanges(null, { ...base, steps: [step({ purpose: '' })], expectedVersion: 1 }, ctx)
@@ -146,7 +155,14 @@ describe('saveWorkflowChanges — lo scopo si scrive, si toglie e non si inventa
 
 describe('updateWorkflowStep — stessa convenzione', () => {
   it('scrive lo scopo e lo restituisce', async () => {
-    results = [{ records: [makeRecord({ s: { properties: { id: 's1', name: 'cab_settimanale', label: 'CAB', type: 'standard', purpose: 'approval' } }, entityType: 'change' })] }]
+    results = [
+      // Terza revisione · G2: con uno scopo indicato, `updateWorkflowStep`
+      // conta i passi della finestra PRIMA, scrive, poi verifica le due guardie.
+      { records: [makeRecord({ n: 1 })] },                  // passi di finestra PRIMA
+      { records: [makeRecord({ s: { properties: { id: 's1', name: 'cab_settimanale', label: 'CAB', type: 'standard', purpose: 'approval' } }, entityType: 'change' })] },
+      { records: [makeRecord({ approvalSteps: 1 })] },      // guardia dell'approvazione
+      { records: [makeRecord({ n: 1 })] },                  // passi di finestra DOPO
+    ]
     const out = await updateWorkflowStep(null, { definitionId: 'def-1', stepName: 'cab_settimanale', label: 'CAB', purpose: 'approval' }, ctx)
     expect(out.purpose).toBe('approval')
     const p = paramsOf('SET s.label')!
