@@ -43,12 +43,12 @@ const NEUTRAL: CategoryStyle = { bg: colors.slateBg, color: colors.slate }
 
 export function styleForStatusCategory(category: string | null | undefined, status: string): CategoryStyle {
   if (!category) {
-    console.warn(`[TicketStatusBadge] il passo "${status}" non dichiara una categoria: pastiglia neutra`)
+    console.warn(`[TicketStatusBadge] step "${status}" declares no category: neutral pill`)
     return NEUTRAL
   }
   const style = CATEGORY_STYLE[category]
   if (!style) {
-    console.error(`[TicketStatusBadge] categoria sconosciuta "${category}" sul passo "${status}"`)
+    console.error(`[TicketStatusBadge] unknown category "${category}" on step "${status}"`)
     return NEUTRAL
   }
   return style

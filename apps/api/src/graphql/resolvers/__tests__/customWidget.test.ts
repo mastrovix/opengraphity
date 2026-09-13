@@ -29,7 +29,7 @@ describe('validateWidgetConfig (C-23)', () => {
     // categorical field → refused up front (avg(status) would be null → previously rendered as 0)
     const err = (() => { try { validateWidgetConfig({ entityType: 'server', metric, groupByField: 'status', filterField: null }); return null } catch (e) { return e as GraphQLError } })()
     expect(err?.extensions?.code).toBe('BAD_USER_INPUT')
-    expect(err?.message).toContain('non è numerico')
+    expect(err?.message).toContain('is not numeric')
     expect(err?.message).toContain('cpu_cores')
     expect(code(() => validateWidgetConfig({ entityType: 'incident', metric, groupByField: 'severity', filterField: null }))).toBe('BAD_USER_INPUT')
     expect(code(() => validateWidgetConfig({ entityType: 'server', metric, groupByField: null, filterField: null }))).toBe('BAD_USER_INPUT')

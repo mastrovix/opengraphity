@@ -45,6 +45,9 @@ import { riskBandThresholdsSeed } from './20260919_1610_risk_band_thresholds.js'
 import { enumValueLabelsSeed } from './20260920_1700_enum_value_labels.js'
 import { enumValueLabelsTenantCopies } from './20260920_1710_enum_value_labels_tenant_copies.js'
 import { itilPriorityImpactUrgency } from './20260920_1720_itil_priority_impact_urgency.js'
+import { enumValueLabelsPerLingua } from './20260920_1730_enum_value_labels_per_lingua.js'
+import { enumValueLabelsIdentiche } from './20260920_1740_enum_value_labels_identiche.js'
+import { tenantDefaultLanguage } from './20260920_1750_tenant_default_language.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -84,4 +87,7 @@ export const MIGRATIONS: readonly Migration[] = [
   enumValueLabelsSeed,
   enumValueLabelsTenantCopies,
   itilPriorityImpactUrgency,
+  enumValueLabelsPerLingua,
+  enumValueLabelsIdentiche,
+  tenantDefaultLanguage,
 ]

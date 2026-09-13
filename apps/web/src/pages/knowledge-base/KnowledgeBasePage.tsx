@@ -143,7 +143,7 @@ export function KnowledgeBasePage() {
       <div>
         {search && (
           <h2 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 16 }}>
-            {loading ? '...' : `${total} risultati per "${search}"`}
+            {loading ? '…' : t('pages.kb.resultsFor', { count: total, query: search })}
           </h2>
         )}
 

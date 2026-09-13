@@ -105,10 +105,10 @@ function makeImportHandler(importer: Importer) {
     try {
       rows = parseCsv(upload.content)
     } catch (err) {
-      throw new ValidationError(`CSV non valido: ${err instanceof Error ? err.message : 'parse error'}`)
+      throw new ValidationError(`invalid CSV: ${err instanceof Error ? err.message : 'parse error'}`, { key: 'errors.import.invalidCsv', params: { reason: err instanceof Error ? err.message : 'parse error' } })
     }
     if (rows.length === 0) {
-      throw new ValidationError('Il CSV non contiene righe dati (serve una riga di intestazione + almeno una riga)')
+      throw new ValidationError('The CSV has no data rows (a header row plus at least one row is needed)', { key: 'errors.import.noRows' })
     }
 
     const dryRun = String(req.query['dryRun'] ?? '').toLowerCase() === 'true'

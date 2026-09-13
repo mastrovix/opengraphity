@@ -8,7 +8,7 @@
  *    vocabolario RINOMINATO — è il caso silenzioso che l'ondata chiude (prima
  *    un CI «dismesso» tornava a pesare nel calcolo della salute dei servizi e
  *    i suoi allarmi tornavano ad aprire incident);
- *  - i sei valori di fabbrica si comportano esattamente come prima;
+ *  - i sei valori factory si comportano esattamente come prima;
  *  - `lifecyclePolicyReferences` è ciò che rende sicuro tenere la semantica in
  *    due liste sulla policy: dice se un valore che si sta togliendo dal
  *    Dizionario è citato dalla semantica.
@@ -33,7 +33,7 @@ vi.mock('../domainMatrix.js', () => ({
   assertDomainValue: (_t: string, vocabulary_: string, value: unknown) =>
     (typeof value === 'string' && tenantVocabulary.includes(value)
       ? Promise.resolve(value)
-      : Promise.reject(new GraphQLError(`${vocabulary_}: "${String(value)}" non è nel vocabolario di questo cliente. Ammessi: ${tenantVocabulary.join(', ')}.`, { extensions: { code: 'BAD_USER_INPUT' } }))),
+      : Promise.reject(new GraphQLError(`${vocabulary_}: "${String(value)}" is not in the dictionary of this tenant. Allowed: ${tenantVocabulary.join(', ')}.`, { extensions: { code: 'BAD_USER_INPUT' } }))),
   domainVocabulary: () => Promise.resolve(tenantVocabulary),
 }))
 
@@ -139,7 +139,7 @@ describe('assertTenantLifecycleStatuses', () => {
     await expect(assertTenantLifecycleStatuses('acme', ['active', 'dismesso'], 'retired_statuses'))
       .resolves.toEqual(['active', 'dismesso'])
     await expect(assertTenantLifecycleStatuses('acme', ['decommissioned'], 'retired_statuses'))
-      .rejects.toThrow(/retired_statuses: ci_status: "decommissioned" non è nel vocabolario di questo cliente/)
+      .rejects.toThrow(/retired_statuses: ci_status: "decommissioned" is not in the dictionary of this tenant/)
   })
 })
 
@@ -186,7 +186,7 @@ describe('initialCIStatus — lo stato con cui nasce un CI', () => {
   it('un default dichiarato ma FUORI vocabolario è un errore che lo nomina', async () => {
     vocabulary(['attivo', 'dismesso'])
     declaredDefault('active')
-    await expect(initialCIStatus('c-two')).rejects.toThrow(/dichiara "active" come stato iniziale, ma quel valore non è \(più\) fra i suoi/)
+    await expect(initialCIStatus('c-two')).rejects.toThrow(/declares "active" as the initial state, but that value is not \(any more\) among its own/)
   })
 
   it('senza default dichiarato resta il primo valore, come prima (tenant non ancora migrato)', async () => {
@@ -198,6 +198,6 @@ describe('initialCIStatus — lo stato con cui nasce un CI', () => {
 
   it('un vocabolario vuoto è un errore, non un ripiego', async () => {
     vocabulary([])
-    await expect(initialCIStatus('c-two')).rejects.toThrow(/è vuoto: non c'è uno stato con cui creare un CI/)
+    await expect(initialCIStatus('c-two')).rejects.toThrow(/is empty: there is no state to create a CI with/)
   })
 })

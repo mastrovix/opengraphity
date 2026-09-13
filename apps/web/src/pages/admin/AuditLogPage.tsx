@@ -87,14 +87,14 @@ export function AuditLogPage() {
     actionOptions.length > 0
       ? { key: 'action', label: t('pages.audit.colAction'), type: 'enum', options: actionOptions }
       : { key: 'action', label: t('pages.audit.colAction'), type: 'text' },
-    { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
+    { key: 'entityType', label: t('pages.audit.colEntityType'), type: 'enum', options: [
       { value: 'Incident', label: 'Incident' }, { value: 'Change', label: 'Change' },
       { value: 'Problem', label: 'Problem' }, { value: 'User', label: 'User' },
       { value: 'Team', label: 'Team' }, { value: 'AutoTrigger', label: 'Trigger' },
       { value: 'BusinessRule', label: 'Business Rule' },
     ]},
-    { key: 'userEmail', label: 'Utente (email)', type: 'text' },
-    { key: 'createdAt', label: 'Data', type: 'date' },
+    { key: 'userEmail', label: t('pages.audit.colUserEmail'), type: 'text' },
+    { key: 'createdAt', label: t('pages.audit.colDate'), type: 'date' },
   ]
 
   // Variables derived from state: every change of page/sort/filter re-runs the

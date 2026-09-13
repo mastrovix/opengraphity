@@ -119,16 +119,16 @@ export function CreateServiceRequestPage() {
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate-light)' }}
       >
         <ArrowLeft size={14} />
-        Back to service requests
+        {t('pages.createRequest.back')}
       </button>
 
       {/* Page header */}
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', letterSpacing: '-0.02em', margin: 0 }}>
-          New Service Request
+          {t('pages.createRequest.title')}
         </h1>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 6, marginBottom: 0 }}>
-          Submit a request for IT services or support
+          {t('pages.createRequest.subtitle')}
         </p>
       </div>
 
@@ -148,14 +148,14 @@ export function CreateServiceRequestPage() {
               style={selectBase}
               {...focusHandlers(false)}
             >
-              <option value="">— Richiesta generica (nessuna voce) —</option>
+              <option value="">{t('pages.createRequest.genericItem')}</option>
               {catalogItems.map((it) => (
                 <option key={it.id} value={it.id}>{it.category ? `${it.category} · ` : ''}{it.name}</option>
               ))}
             </select>
             {selectedItem?.requiresApproval && (
               <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-body)', color: palette.warning.text }}>
-                Questa voce richiede approvazione: la richiesta passerà dal flusso di approvazione.
+                {t('pages.createRequest.needsApproval')}
               </p>
             )}
           </div>
@@ -170,7 +170,7 @@ export function CreateServiceRequestPage() {
               type="text"
               value={title}
               onChange={(e) => { setTitle(e.target.value); if (submitted) setSubmitted(false) }}
-              placeholder="What do you need?"
+              placeholder={t('pages.createRequest.titlePlaceholder')}
               style={{ ...inputBase, borderColor: titleError ? 'var(--color-trigger-sla-breach)' : colors.border }}
               {...focusHandlers(!!titleError)}
             />
@@ -191,7 +191,7 @@ export function CreateServiceRequestPage() {
                 <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: lookupOrError(PRIORITY_DOT, priority, 'PRIORITY_DOT', 'var(--color-slate-light)'), pointerEvents: 'none', zIndex: 1 }} />
                 <select id={ids.priority} value={priority} onChange={(e) => setPriority(e.target.value)} disabled={priorityLoading} style={{ ...selectBase, paddingLeft: 30 }} {...focusHandlers(false)}>
                   {priorityLoading
-                    ? <option value="">Caricamento…</option>
+                    ? <option value="">{t('common.loading')}</option>
                     : priorityValues.map(v => (
                         <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>
                       ))
@@ -203,7 +203,7 @@ export function CreateServiceRequestPage() {
             {/* Due date */}
             <div>
               <label htmlFor={ids.dueDate} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
-                Due Date
+                {t('detail.dueDate')}
               </label>
               <input
                 id={ids.dueDate}
@@ -220,13 +220,13 @@ export function CreateServiceRequestPage() {
           {/* Description */}
           <div style={{ marginBottom: 0 }}>
             <label htmlFor={ids.description} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
-              Description
+              {t('common.description')}
             </label>
             <textarea
               id={ids.description}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe what you need and why…"
+              placeholder={t('pages.createRequest.descriptionPlaceholder')}
               rows={4}
               style={{ ...inputBase, minHeight: 120, resize: 'vertical' }}
               {...focusHandlers(false)}
@@ -242,7 +242,7 @@ export function CreateServiceRequestPage() {
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = palette.neutral.surface2 }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = colors.white }}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="submit"

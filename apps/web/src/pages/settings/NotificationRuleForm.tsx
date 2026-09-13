@@ -157,7 +157,7 @@ export function NewRuleDialog({
         <label style={labelStyle}>
           <span style={labelTextStyle}>{t('notificationRules.eventType')}</span>
           <select value={eventTypeSelect} onChange={(e) => setEventTypeSelect(e.target.value)} style={inputStyle}>
-            <option value="">— {t('common.select', 'Seleziona')} —</option>
+            <option value="">— {t('common.select')} —</option>
             <optgroup label={t('notificationRules.eventGroupStandard')}>
               {STANDARD_EVENTS.map((e) => <option key={e} value={e}>{e}</option>)}
             </optgroup>
@@ -270,16 +270,16 @@ export function NewRuleDialog({
         {isEscalation && (
           <>
             <label style={labelStyle}>
-              <span style={labelTextStyle}>Ritardo escalation (minuti)</span>
+              <span style={labelTextStyle}>{t('notificationRules.escalationDelay')}</span>
               <input type="number" min={1} value={escalationDelay} onChange={e => setEscalationDelay(e.target.value)} style={inputStyle} placeholder="es. 30" />
             </label>
             <label style={labelStyle}>
-              <span style={labelTextStyle}>Target escalation (userId o &apos;all&apos;)</span>
+              <span style={labelTextStyle}>{t('notificationRules.escalationTarget')}</span>
               <input value={escalationTarget} onChange={e => setEscalationTarget(e.target.value)} style={inputStyle} placeholder="all" />
             </label>
             <label style={labelStyle}>
-              <span style={labelTextStyle}>Messaggio escalation</span>
-              <input value={escalationMessage} onChange={e => setEscalationMessage(e.target.value)} style={inputStyle} placeholder="Incident non risolto dopo N minuti" />
+              <span style={labelTextStyle}>{t('notificationRules.escalationMessage')}</span>
+              <input value={escalationMessage} onChange={e => setEscalationMessage(e.target.value)} style={inputStyle} placeholder={t('notificationRules.escalationMessagePlaceholder')} />
             </label>
           </>
         )}
@@ -288,11 +288,11 @@ export function NewRuleDialog({
         {isSlaWarning && (
           <>
             <label style={labelStyle}>
-              <span style={labelTextStyle}>Soglia avviso SLA (%)</span>
+              <span style={labelTextStyle}>{t('notificationRules.slaThreshold')}</span>
               <input type="number" min={1} max={100} value={slaThreshold} onChange={e => setSlaThreshold(e.target.value)} style={inputStyle} placeholder="80" />
             </label>
             <label style={labelStyle}>
-              <span style={labelTextStyle}>Target avviso SLA</span>
+              <span style={labelTextStyle}>{t('notificationRules.slaWarningTarget')}</span>
               <input value={slaTarget} onChange={e => setSlaTarget(e.target.value)} style={inputStyle} placeholder="all" />
             </label>
           </>
@@ -301,7 +301,7 @@ export function NewRuleDialog({
         {/* Digest conditional fields */}
         {isDigest && (
           <label style={labelStyle}>
-            <span style={labelTextStyle}>Orario digest (HH:MM)</span>
+            <span style={labelTextStyle}>{t('notificationRules.digestTime')}</span>
             <input type="time" value={digestTime} onChange={e => setDigestTime(e.target.value)} style={inputStyle} />
           </label>
         )}

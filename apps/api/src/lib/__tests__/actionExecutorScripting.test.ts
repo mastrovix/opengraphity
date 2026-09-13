@@ -21,8 +21,8 @@ vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
 }))
 const runScript = vi.fn(async () => ({ success: true, logs: [], duration_ms: 1 }))
 vi.mock('@opengraphity/scripting', () => ({ runScript: (...a: unknown[]) => runScript(...(a as [])) }))
-const assertScriptingEnabled = vi.fn<(tenantId: string, what: string) => Promise<void>>(async () => {})
-vi.mock('../scriptingPlan.js', () => ({ assertScriptingEnabled: (t: string, w: string) => assertScriptingEnabled(t, w) }))
+const assertScriptingEnabled = vi.fn<(tenantId: string, what: string, whatKey?: string) => Promise<void>>(async () => {})
+vi.mock('../scriptingPlan.js', () => ({ assertScriptingEnabled: (t: string, w: string, k?: string) => assertScriptingEnabled(t, w, k) }))
 
 const { executeActions } = await import('../actionExecutor.js')
 const { ValidationError } = await import('../errors.js')
@@ -42,7 +42,7 @@ beforeEach(() => {
 describe('execute_script — limite di piano', () => {
   it('piano con script → il limite è comunque controllato, nominando la regola, poi lo script gira', async () => {
     const results = await executeActions([action], ctx)
-    expect(assertScriptingEnabled).toHaveBeenCalledWith('t1', 'azione execute_script di "Chiudi i duplicati"')
+    expect(assertScriptingEnabled).toHaveBeenCalledWith('t1', 'execute_script action of "Chiudi i duplicati"', 'errors.scripting.what.action')
     expect(runScript).toHaveBeenCalledTimes(1)
     expect(results).toEqual([{ action: 'execute_script', success: true }])
   })

@@ -7,9 +7,11 @@ import { SYSTEM_TENANT } from '../../lib/enumScope.js'
 import { countEnumValueUsage, enumValueUsageMessage, replaceEnumValue } from '../../lib/enumValueUsage.js'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import {
-  type EnumValueLabelEntry, type EnumValueLabels,
+  type EnumValueLabelEntry, type EnumValueLabels, type Lingua,
+  LINGUE,
   parseValueLabels, valueLabelEntries, pruneValueLabels, renameValueLabel, serializeValueLabels,
 } from '../../lib/enumValueLabels.js'
+import { languageFor } from '../../lib/tenantLanguage.js'
 import { logger } from '../../lib/logger.js'
 
 /**
@@ -38,8 +40,8 @@ interface EnumTypeDef {
   name:      string
   label:     string
   values:    string[]
-  /** Valore + etichetta, nell'ordine dei valori e sempre completa (vedi lib/enumValueLabels.ts). */
-  valueLabels: EnumValueLabelEntry[]
+  /** Le etichette come stanno sul nodo: valore → lingua → etichetta. Risolte dal field resolver. */
+  valueLabelsRaw: EnumValueLabels
   isSystem:  boolean
   /** `tenant_id = 'system'`: spedito col prodotto, uguale per tutti i clienti. */
   isShipped: boolean
@@ -77,19 +79,32 @@ interface EnumTypeDef {
  * «Severità allarme → Severità incident», dove il cliente decide cosa
  * diventano. L'etichetta resta modificabile: è testo per gli umani.
  */
-export const WIRE_VOCABULARIES: Readonly<Record<string, string>> = {
-  event_severity:
-    'è la severità che mandano i sistemi di monitoraggio (il prodotto normalizza gli allarmi a info, warning, critical): ' +
-    'cambiarne i valori non cambia quello che arriva, e fa smettere di funzionare la traduzione. ' +
-    'Quello che decidi tu è in quale severità di incident si traducono: Impostazioni → Matrici di dominio, ' +
-    'matrice «event_severity».',
+/*
+  IL MOTIVO È UNA CHIAVE, non un paragrafo.
+  Era un paragrafo italiano in questa costante, incollato nel messaggio e
+  passato al client come parametro: prosa travestita da dato, che in
+  un'interfaccia inglese restava italiana. Qui resta la versione inglese per i
+  log, e la chiave per chi ha una lingua.
+*/
+export const WIRE_VOCABULARIES: Readonly<Record<string, { reason: string; reasonKey: string }>> = {
+  event_severity: {
+    reason:
+      'is the severity the monitoring systems send (the product normalizes alarms to info, warning, critical): '
+      + 'changing its values does not change what arrives, and breaks the translation. '
+      + 'What you decide is which incident severity they translate into: Settings → Domain matrices, '
+      + 'matrix «event_severity».',
+    reasonKey: 'errors.enum.wireReason.event_severity',
+  },
 }
 
 /** Un vocabolario del protocollo in ingresso non cambia valori: dice perché, e dov'è la manopola. */
-function assertVocabularyEditable(name: string, what: string): void {
-  const reason = WIRE_VOCABULARIES[name]
-  if (reason === undefined) return
-  throw new ValidationError(`${what}: il vocabolario "${name}" ${reason}`)
+function assertVocabularyEditable(name: string, opKey: string, opParams: Record<string, string> = {}): void {
+  const wire = WIRE_VOCABULARIES[name]
+  if (wire === undefined) return
+  throw new ValidationError(
+    `${opKey}: dictionary "${name}" ${wire.reason}`,
+    { key: 'errors.enum.wireVocabulary', params: { name, opKey, reasonKey: wire.reasonKey, ...opParams } },
+  )
 }
 
 /**
@@ -116,22 +131,24 @@ function assertVocabularyEditable(name: string, what: string): void {
 function assertValuesUsable(values: readonly string[], name: string): void {
   if (values.length === 0) {
     throw new ValidationError(
-      `Il vocabolario "${name}" non puo restare senza valori: nessun record potrebbe piu essere ` +
-      `creato, perche ogni valore verrebbe rifiutato come fuori vocabolario. Se non serve piu, ` +
-      `cancellalo (deleteEnumType); se stai riscrivendo la scala, mandala completa.`,
+      `Dictionary "${name}" cannot be left without values: no record could be created any more, `
+      + `because every value would be rejected as out of vocabulary. If it is no longer needed, `
+      + `delete it (deleteEnumType); if you are rewriting the scale, send it whole.`,
+      { key: 'errors.enum.noValues', params: { name } },
     )
   }
   const vuoti = values.filter((v) => v.trim() === '')
   if (vuoti.length) {
-    throw new ValidationError(`Il vocabolario "${name}" ha ${String(vuoti.length)} valore/i vuoto/i: ogni valore deve avere un nome.`)
+    throw new ValidationError(`Dictionary "${name}" has ${String(vuoti.length)} empty value(s): every value needs a name.`, { key: 'errors.enum.emptyValues', params: { name, count: vuoti.length } })
   }
   const visti = new Set<string>()
   const doppi = values.filter((v) => (visti.has(v) ? true : (visti.add(v), false)))
   if (doppi.length) {
     throw new ValidationError(
-      `Il vocabolario "${name}" ripete ${[...new Set(doppi)].map((v) => `"${v}"`).join(', ')}: ` +
-      `in una scala la posizione e una regola di dominio (il primo valore e il piu basso, l'ultimo ` +
-      `il piu alto), e un valore ripetuto la rende ambigua.`,
+      `Dictionary "${name}" repeats ${[...new Set(doppi)].map((v) => `"${v}"`).join(', ')}: `
+      + `in a scale the position is a domain rule (the first value is the lowest, the last the `
+      + `highest), and a repeated value makes it ambiguous.`,
+      { key: 'errors.enum.duplicateValues', params: { name, values: [...new Set(doppi)].join(', ') } },
     )
   }
 }
@@ -142,6 +159,19 @@ function assertEnumValues(vals: unknown, tenantId: unknown, name: unknown): stri
     `EnumTypeDefinition ${String(tenantId)}/${String(name)}: "values" non è una lista di stringhe ` +
     `(${typeof vals === 'string' ? 'è una stringa' : typeof vals}). ` +
     `Esegui la migrazione 20260918_1910_provision_tenant_data, che normalizza i vocabolari scritti come stringa JSON.`,
+  )
+}
+
+/**
+ * La lingua chiesta, o un rifiuto che dice quali ci sono. Non si ripiega in
+ * silenzio su `it`: chi manda `de` sta scrivendo un'etichetta che nessuno
+ * leggerebbe mai, e va detto invece di salvarla come italiana.
+ */
+function assertLingua(v: unknown): Lingua {
+  if (typeof v === 'string' && (LINGUE as readonly string[]).includes(v)) return v as Lingua
+  throw new ValidationError(
+    `Language "${String(v)}" not recognised: the product has ${LINGUE.join(', ')}.`,
+    { key: 'errors.enum.unknownLanguage', params: { language: String(v), available: LINGUE.join(', ') } },
   )
 }
 
@@ -170,7 +200,12 @@ function mapEnum(r: { get: (k: string) => unknown }): EnumTypeDef {
     // migrazione 20260918_1910 normalizza il nodo esistente, quindi una
     // stringa qui è un dato rotto e va detto, non indovinato.
     values:    valori,
-    valueLabels: valueLabelEntries(valori, etichette),
+    /*
+      Le etichette GREZZE (valore → lingua → etichetta): la risoluzione nella
+      lingua chiesta la fa il field resolver `EnumTypeDefinition.valueLabels`,
+      che e' l'unico posto che conosce l'argomento `language`.
+    */
+    valueLabelsRaw: etichette,
     isSystem:  r.get('isSystem')  as boolean,
     // `is_system` è un flag di protezione scritto anche sulle copie per tenant
     // (A-3): il proprietario si legge dal tenant, non da quel flag.
@@ -320,7 +355,7 @@ export async function createEnumType(
       values: input.values, isSystem: false, isShipped: false, scope: input.scope,
       // Un vocabolario nuovo nasce senza etichette: a schermo si legge il
       // valore, e l'admin le scrive dal Dizionario quando vuole.
-      valueLabels: valueLabelEntries(input.values, {}),
+      valueLabelsRaw: {},
       defaultValue: null,
       createdAt: now, updatedAt: now,
     }
@@ -348,7 +383,7 @@ export async function customizeEnumType(
 ): Promise<EnumTypeDef> {
   if (ctx.role !== 'admin') throw new ForbiddenError()
   if (ctx.tenantId === SYSTEM_TENANT) {
-    throw new ValidationError('Il tenant di sistema non personalizza i vocabolari spediti: li modifica il prodotto.')
+    throw new ValidationError('The system tenant does not customize the shipped dictionaries: the product changes those.', { key: 'errors.enum.systemTenant' })
   }
 
   const session = getSession(undefined, 'WRITE')
@@ -372,7 +407,8 @@ export async function customizeEnumType(
 
     if (ownerId !== SYSTEM_TENANT) {
       throw new ValidationError(
-        `Il vocabolario "${name}" è già tuo: modificalo direttamente, non c'è niente da personalizzare.`,
+        `Dictionary "${name}" is already yours: edit it directly, there is nothing to customize.`,
+        { key: 'errors.enum.alreadyYours', params: { name } },
       )
     }
 
@@ -384,8 +420,9 @@ export async function customizeEnumType(
     )
     if (existing.records.length) {
       throw new ValidationError(
-        `Hai già un vocabolario "${name}" (${existing.records[0]!.get('id') as string}): è quello che vince in lettura per te. ` +
-        `Modifica quello invece di crearne un altro.`,
+        `You already have a dictionary "${name}" (${existing.records[0]!.get('id') as string}): that is the one you read. `
+        + `Edit it instead of creating another.`,
+        { key: 'errors.enum.yoursExists', params: { name, id: existing.records[0]!.get('id') as string } },
       )
     }
 
@@ -463,7 +500,7 @@ export async function customizeEnumType(
  */
 export async function updateEnumType(
   _: unknown,
-  args: { id: string; input: { label?: string; values?: string[]; scope?: string; defaultValue?: string; replacements?: { from: string; to: string }[]; valueLabels?: { value: string; label: string }[] } },
+  args: { id: string; input: { label?: string; values?: string[]; scope?: string; defaultValue?: string; replacements?: { from: string; to: string }[]; valueLabels?: { value: string; language: string; label: string }[] } },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
   if (ctx.role !== 'admin') throw new ForbiddenError()
@@ -488,8 +525,9 @@ export async function updateEnumType(
     // copia del tenant, che vince in lettura solo per chi la possiede.
     if ((check.records[0]!.get('tenantId') as string) === SYSTEM_TENANT) {
       throw new ValidationError(
-        `Il vocabolario "${check.records[0]!.get('name') as string}" è spedito col prodotto: è lo stesso per tutti i clienti ` +
-        `e non si modifica in posto. Usa "Personalizza" (customizeEnumType) per averne una copia tua e modificare quella.`,
+        `Dictionary "${check.records[0]!.get('name') as string}" ships with the product: it is the same for every tenant `
+        + `and cannot be edited in place. Use "Customize" (customizeEnumType) to get your own copy and edit that.`,
+        { key: 'errors.enum.shippedUseCustomize', params: { name: check.records[0]!.get('name') as string } },
       )
     }
 
@@ -497,7 +535,7 @@ export async function updateEnumType(
       throw new ValidationError('Cannot change scope of system enum types')
     }
     if (input.values) {
-      assertVocabularyEditable(check.records[0]!.get('name') as string, 'Cambiare i valori')
+      assertVocabularyEditable(check.records[0]!.get('name') as string, 'errors.enum.op.changeValues')
       assertValuesUsable(input.values, check.records[0]!.get('name') as string)
     }
 
@@ -512,12 +550,14 @@ export async function updateEnumType(
     for (const r of replacements) {
       if (!removed.includes(r.from)) {
         throw new ValidationError(
-          `replacements: "${r.from}" non è fra i valori che stai togliendo da "${name}" (${removed.length ? removed.join(', ') : 'nessuno'}).`,
+          `replacements: "${r.from}" is not among the values you are removing from "${name}" (${removed.length ? removed.join(', ') : 'none'}).`,
+          { key: removed.length ? 'errors.enum.replacementNotRemoved' : 'errors.enum.replacementNothingRemoved', params: { from: r.from, name, removed: removed.join(', ') } },
         )
       }
       if (!next.includes(r.to)) {
         throw new ValidationError(
-          `replacements: il valore di sostituzione "${r.to}" non è fra i valori nuovi di "${name}" (${next.join(', ')}).`,
+          `replacements: the replacement value "${r.to}" is not among the new values of "${name}" (${next.join(', ')}).`,
+          { key: 'errors.enum.replacementNotNew', params: { to: r.to, name, values: next.join(', ') } },
         )
       }
     }
@@ -560,9 +600,18 @@ export async function updateEnumType(
      */
     const { labels: etichetteCorrenti } = parseValueLabels(check.records[0]!.get('valueLabels'))
     let etichette: EnumValueLabels = input.valueLabels
-      ? Object.fromEntries(input.valueLabels
-          .filter((e) => e.label.trim() !== '')
-          .map((e) => [e.value, e.label.trim()]))
+      ? (() => {
+          // Una voce per valore E PER LINGUA: `{value, language, label}`.
+          // Un'etichetta vuota significa «non scritta», e non si conserva.
+          const per: Record<string, Partial<Record<Lingua, string>>> = {}
+          for (const e of input.valueLabels) {
+            const etichetta = e.label.trim()
+            if (etichetta === '') continue
+            const lingua = assertLingua(e.language)
+            per[e.value] = { ...per[e.value], [lingua]: etichetta }
+          }
+          return per
+        })()
       : etichetteCorrenti
     for (const [from, to] of replaced) etichette = renameValueLabel(etichette, from, to)
     const etichetteFinali = serializeValueLabels(pruneValueLabels(etichette, next))
@@ -571,10 +620,13 @@ export async function updateEnumType(
       // Chi lo legge deve sapere quali sono le sue due uscite.
       throw new ValidationError(
         currentDefault === finalDefault && input.defaultValue === undefined
-          ? `Stai togliendo "${finalDefault}" da "${name}", che ne è il valore di default: un record nuovo ` +
-            `nascerebbe con un valore che il vocabolario non ha. Indica su cosa riscriverlo (replacements) ` +
-            `oppure scegli un nuovo default (defaultValue) nella stessa chiamata.`
-          : `Il valore di default "${finalDefault}" non è fra i valori di "${name}" (${next.join(', ')}).`,
+          ? `You are removing "${finalDefault}" from "${name}", which is its default value: a new record `
+            + `would be born with a value the dictionary does not have. Say what to rewrite it to (replacements) `
+            + `or choose a new default (defaultValue) in the same call.`
+          : `The default value "${finalDefault}" is not among the values of "${name}" (${next.join(', ')}).`,
+        currentDefault === finalDefault && input.defaultValue === undefined
+          ? { key: 'errors.enum.removingDefault', params: { value: finalDefault, name } }
+          : { key: 'errors.enum.defaultNotInValues', params: { value: finalDefault, name, values: next.join(', ') } },
       )
     }
 
@@ -707,15 +759,26 @@ export async function deleteEnumType(
       const usages = await countEnumValueUsage(session, ctx.tenantId, name, lost)
       if (usages.length) {
         throw new ValidationError(
-          `Cancellare il tuo vocabolario "${name}" lo riporterebbe a quello spedito col prodotto` +
-          `${shipped.length ? ` (${shipped.join(', ')})` : ' (che non esiste: nessun valore resterebbe)'}, ` +
-          `e questi valori tuoi sono ancora in uso: ` +
-          usages.map((u) => `"${u.value}" (${[
+          `Deleting your dictionary "${name}" would bring it back to the one shipped with the product`
+          + `${shipped.length ? ` (${shipped.join(', ')})` : ' (which does not exist: no value would be left)'}, `
+          + `and these values of yours are still in use: `
+          + usages.map((u) => `"${u.value}" (${[
             ...u.records.map((r) => `${String(r.count)} ${r.typeName}.${r.fieldName}`),
-            ...u.policyLists.map((l) => `policy degli allarmi: ${l}`),
-          ].join(', ')})`).join('; ') +
-          `. Cambia prima quei record, oppure togli i valori uno per uno con updateEnumType ` +
-          `(che accetta un valore di sostituzione).`,
+            ...u.policyLists.map((l) => `alarm policy: ${l}`),
+          ].join(', ')})`).join('; ')
+          + `. Change those records first, or remove the values one by one with updateEnumType `
+          + `(which takes a replacement value).`,
+          {
+            key: shipped.length ? 'errors.enum.deleteInUse' : 'errors.enum.deleteInUseNoShipped',
+            params: {
+              name,
+              shipped: shipped.join(', '),
+              usages: usages.map((u) => `"${u.value}" (${[
+                ...u.records.map((r) => `${String(r.count)} ${r.typeName}.${r.fieldName}`),
+                ...u.policyLists.map((l) => l),
+              ].join(', ')})`).join('; '),
+            },
+          },
         )
       }
     }
@@ -778,7 +841,7 @@ export async function renameEnumValue(
   const { id } = args
   const from = args.from.trim()
   const to   = args.to.trim()
-  if (to === '') throw new ValidationError('Il valore nuovo non può essere vuoto.')
+  if (to === '') throw new ValidationError('The new value cannot be empty.', { key: 'errors.enum.renameEmpty' })
 
   const session = getSession(undefined, 'WRITE')
   try {
@@ -796,26 +859,29 @@ export async function renameEnumValue(
 
     if ((row.get('tenantId') as string) === SYSTEM_TENANT) {
       throw new ValidationError(
-        `Il vocabolario "${name}" è spedito col prodotto: è lo stesso per tutti i clienti e non si modifica in posto. ` +
-        `Usa "Personalizza" per averne una copia tua, e rinomina i valori su quella.`,
+        `Dictionary "${name}" ships with the product: it is the same for every tenant and cannot be edited in place. `
+        + `Use "Customize" to get your own copy, and rename the values on that one.`,
+        { key: 'errors.enum.shippedRename', params: { name } },
       )
     }
-    assertVocabularyEditable(name, `Rinominare "${from}" in "${to}"`)
+    assertVocabularyEditable(name, 'errors.enum.op.rename', { from, to })
 
     const rawValues = row.get('values')
     const current = Array.isArray(rawValues) ? rawValues as string[] : JSON.parse(String(rawValues)) as string[]
     const at = current.indexOf(from)
     if (at === -1) {
       throw new ValidationError(
-        `Il valore "${from}" non è fra quelli di "${name}" (${current.join(', ')}): non c'è niente da rinominare.`,
+        `Value "${from}" is not among those of "${name}" (${current.join(', ')}): there is nothing to rename.`,
+        { key: 'errors.enum.renameMissing', params: { from, name, values: current.join(', ') } },
       )
     }
-    if (from === to) throw new ValidationError(`Il valore "${from}" si chiama già così.`)
+    if (from === to) throw new ValidationError(`Value "${from}" is already called that.`, { key: 'errors.enum.renameSame', params: { value: from } })
     if (current.includes(to)) {
       throw new ValidationError(
-        `"${name}" ha già un valore "${to}". Rinominare "${from}" in "${to}" unirebbe due valori distinti in uno, ` +
-        `e i record del primo diventerebbero del secondo senza che nessuno l'abbia chiesto. ` +
-        `Se è quello che vuoi, togli "${from}" indicando "${to}" come sostituzione (updateEnumType).`,
+        `"${name}" already has a value "${to}". Renaming "${from}" to "${to}" would merge two distinct values into one, `
+        + `and the records of the first would become the second without anyone asking. `
+        + `If that is what you want, remove "${from}" giving "${to}" as its replacement (updateEnumType).`,
+        { key: 'errors.enum.renameWouldMerge', params: { name, from, to } },
       )
     }
 
@@ -901,10 +967,11 @@ export async function reorderEnumValues(
     const name = row.get('name') as string
     if ((row.get('tenantId') as string) === SYSTEM_TENANT) {
       throw new ValidationError(
-        `Il vocabolario "${name}" è spedito col prodotto: usa "Personalizza" per averne una copia tua e riordinare quella.`,
+        `Dictionary "${name}" ships with the product: use "Customize" to get your own copy and reorder that one.`,
+        { key: 'errors.enum.shippedReorder', params: { name } },
       )
     }
-    assertVocabularyEditable(name, 'Riordinare i valori')
+    assertVocabularyEditable(name, 'errors.enum.op.reorder')
     const rawValues = row.get('values')
     const current = Array.isArray(rawValues) ? rawValues as string[] : JSON.parse(String(rawValues)) as string[]
 
@@ -914,11 +981,12 @@ export async function reorderEnumValues(
       const missing = current.filter((v) => !values.includes(v))
       const extra   = values.filter((v) => !current.includes(v))
       throw new ValidationError(
-        `Il riordino cambia solo l'ORDINE dei valori di "${name}", non l'insieme` +
-        (missing.length ? `; mancano: ${missing.join(', ')}` : '') +
-        (extra.length   ? `; in più: ${extra.join(', ')}`   : '') +
-        `. Per aggiungere o togliere un valore usa la modifica del vocabolario (che conta chi lo usa), ` +
-        `per cambiargli nome la rinomina.`,
+        `Reordering changes only the ORDER of the values of "${name}", not the set`
+        + (missing.length ? `; missing: ${missing.join(', ')}` : '')
+        + (extra.length   ? `; extra: ${extra.join(', ')}`    : '')
+        + `. To add or remove a value use the dictionary edit (which counts who uses it), `
+        + `to change its name use the rename.`,
+        { key: 'errors.enum.reorderSameSet', params: { name, missing: missing.join(', '), extra: extra.join(', ') } },
       )
     }
 
@@ -947,7 +1015,30 @@ export async function reorderEnumValues(
   }
 }
 
+/**
+ * `EnumTypeDefinition.valueLabels(language)`: l'unico posto che conosce la
+ * lingua chiesta. L'API non la sa da se — non c'e' `Accept-Language` e l'utente
+ * non la porta — quindi la chiede il client, che e' l'unico a saperla.
+ *
+ * Senza l'argomento si usa la lingua predefinita DEL CLIENTE, che e
+ * configurazione (`lib/tenantLanguage.ts`), e quella e anche il ripiego per le
+ * etichette scritte in una lingua sola. Una lingua chiesta e non riconosciuta
+ * non si ripiega in silenzio: si rifiuta, dicendo quali ci sono — chiedere
+ * `language: "de"` e ricevere l'inglese senza una parola e il modo migliore di
+ * non accorgersi che il tedesco non c'e.
+ */
+async function enumValueLabelsField(
+  parent: EnumTypeDef,
+  args: { language?: string | null },
+  ctx: GraphQLContext,
+): Promise<EnumValueLabelEntry[]> {
+  const predefinita = await languageFor(ctx.tenantId)
+  const lingua = args.language == null || args.language === '' ? predefinita : assertLingua(args.language)
+  return valueLabelEntries(parent.values, parent.valueLabelsRaw, lingua, predefinita)
+}
+
 export const enumTypeResolvers = {
   Query:    { enumTypes, enumType },
   Mutation: { createEnumType, updateEnumType, deleteEnumType, customizeEnumType, renameEnumValue, reorderEnumValues },
+  EnumTypeDefinition: { valueLabels: enumValueLabelsField },
 }

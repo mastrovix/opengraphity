@@ -81,13 +81,13 @@ export async function createChangeRFC(
   // valore che il suo Dizionario non ha.
   const changeType = await assertDomainValue(ctx.tenantId, 'change_type', input.changeType ?? DEFAULT_CHANGE_TYPE)
   if (!affectedCIIds || affectedCIIds.length === 0) {
-    throw new ValidationError('Un change deve avere almeno un CI impattato')
+    throw new ValidationError('A change must have at least one impacted CI', { key: 'errors.change.needsCI' })
   }
   if (!title || title.trim().length === 0) {
-    throw new ValidationError('title è obbligatorio')
+    throw new ValidationError('title is required', { key: 'errors.titleRequired' })
   }
-  if (!why)  throw new ValidationError('Il campo "Perché" (WHY) è obbligatorio')
-  if (!what) throw new ValidationError('Il campo "Cosa" (WHAT) è obbligatorio')
+  if (!why)  throw new ValidationError('The "why" field is required', { key: 'errors.change.whyRequired' })
+  if (!what) throw new ValidationError('The "what" field is required', { key: 'errors.change.whatRequired' })
   return withSession(async (session) => {
     // Letture e validazioni PRIMA della transazione: se falliscono non c'è nulla da annullare.
     await assertCIHasOwnerAndSupport(session, ctx.tenantId, affectedCIIds)

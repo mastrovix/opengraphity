@@ -105,7 +105,7 @@ export async function setPreApprovedChangeTypes(tenantId: string, types: readonl
   const seen = new Set<string>()
   for (const t of types) {
     await assertDomainValue(tenantId, 'change_type', t)
-    if (seen.has(t)) throw new ValidationError(`Il tipo di change "${t}" compare due volte nella lista dei pre-approvati.`)
+    if (seen.has(t)) throw new ValidationError(`Change type "${t}" appears twice in the pre-approved list.`, { key: 'errors.changePolicy.duplicateType', params: { type: t } })
     seen.add(t)
   }
   const session = getSession()

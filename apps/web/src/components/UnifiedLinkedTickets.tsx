@@ -13,6 +13,7 @@
  * I link non rimovibili (removable === false, es. change auto-collegate)
  * mostrano un lucchetto invece della ✕.
  */
+import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
@@ -59,6 +60,7 @@ function useLinkSearch(kind: LinkedKind | null, term: string): LinkedTicketItem[
 }
 
 export function UnifiedLinkedTickets({ title, types, excludeId }: { title: string; types: LinkedTypeConfig[]; excludeId?: string }) {
+  const { t } = useTranslation()
   const [showSearch, setShowSearch] = useState(false)
   const [activeKind, setActiveKind] = useState<LinkedKind>(types[0]?.kind ?? 'INCIDENT')
   const [term, setTerm] = useState('')
@@ -80,7 +82,7 @@ export function UnifiedLinkedTickets({ title, types, excludeId }: { title: strin
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
         <button type="button" onClick={() => { setShowSearch((s) => !s); setTerm('') }}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--color-brand)', color: 'var(--color-brand)', background: 'transparent', fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: 'pointer' }}>
-          <Plus size={12} /> {showSearch ? 'Chiudi' : 'Collega ticket'}
+          <Plus size={12} /> {t(showSearch ? 'common.close' : 'components.linkedTickets.link')}
         </button>
       </div>
 
@@ -94,13 +96,13 @@ export function UnifiedLinkedTickets({ title, types, excludeId }: { title: strin
               </button>
             ))}
           </div>
-          <Input type="text" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={`Cerca ${active.label.toLowerCase()} per numero o titolo...`}
+          <Input type="text" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={t('components.linkedTickets.searchPlaceholder', { kind: active.label.toLowerCase() })}
             // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: campo di ricerca montato dopo il click su "Collega ticket"
             autoFocus
             style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', width: '100%', boxSizing: 'border-box' }} />
           <div style={{ marginTop: 8, maxHeight: 220, overflowY: 'auto' }}>
             {results.length === 0 ? (
-              <p style={{ margin: '4px 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>Nessun risultato.</p>
+              <p style={{ margin: '4px 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{t('common.noResults')}</p>
             ) : results.map((r) => (
               <button key={r.id} type="button" onClick={() => active.onLink(r.id)} className="hover-bg"
                 style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)', padding: '8px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', color: 'inherit', ['--hover-bg' as string]: 'var(--surface-2)' }}>
@@ -114,7 +116,7 @@ export function UnifiedLinkedTickets({ title, types, excludeId }: { title: strin
       )}
 
       {total === 0 ? (
-        <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Nessun ticket collegato.</p>
+        <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('components.linkedTickets.empty')}</p>
       ) : (
         groups.map((g) => (
           <div key={g.kind} style={{ marginBottom: 12 }}>
@@ -131,11 +133,11 @@ export function UnifiedLinkedTickets({ title, types, excludeId }: { title: strin
                 <span style={{ width: 120, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>{(r.status || '—').replace(/_/g, ' ')}</span>
                 <span style={{ width: 30, display: 'flex', justifyContent: 'flex-end' }}>
                   {r.removable === false ? (
-                    <span title="Collegamento automatico: si rimuove solo eliminando la change" style={{ padding: 2, color: 'var(--color-slate-light)', display: 'inline-flex' }}>
+                    <span title={t('components.linkedTickets.automatic')} style={{ padding: 2, color: 'var(--color-slate-light)', display: 'inline-flex' }}>
                       <Lock size={12} />
                     </span>
                   ) : (
-                    <button type="button" title="Scollega" onClick={() => g.onUnlink(r.id)}
+                    <button type="button" title={t('components.linkedTickets.unlink')} onClick={() => g.onUnlink(r.id)}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--color-slate-light)' }}>
                       <X size={14} />
                     </button>

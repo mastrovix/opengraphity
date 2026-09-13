@@ -139,14 +139,16 @@ export function assertEnumLinkable(
   if (enumDef.tenantId === SYSTEM_TENANT) return
   if (enumDef.tenantId !== tenantId) {
     throw new ValidationError(
-      `Il vocabolario "${enumDef.name}" appartiene a un altro cliente: non può essere agganciato al campo "${field.name}".`,
+      `Dictionary "${enumDef.name}" belongs to another tenant: it cannot be attached to field "${field.name}".`,
+      { key: 'errors.enum.otherTenant', params: { name: enumDef.name, field: field.name } },
     )
   }
   if (isSharedField(field)) {
     throw new ValidationError(
-      `Il campo "${field.name}" è spedito col prodotto ed è condiviso da tutti i clienti: non può essere agganciato al tuo vocabolario "${enumDef.name}", ` +
-      `perché i tuoi valori finirebbero anche negli altri clienti. Crea un vocabolario con il nome "${enumDef.name}" ` +
-      `— il tuo vince in lettura solo per te.`,
+      `Field "${field.name}" ships with the product and is shared by every tenant: it cannot be attached to your dictionary "${enumDef.name}", `
+      + `because your values would end up in the other tenants too. Create a dictionary named "${enumDef.name}" `
+      + `— yours wins on read only for you.`,
+      { key: 'errors.enum.sharedFieldOwnDictionary', params: { field: field.name, name: enumDef.name } },
     )
   }
 }

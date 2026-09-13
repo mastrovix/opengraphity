@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
@@ -50,7 +51,7 @@ type RuleDraft = {
 }
 
 import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
-import { entityLabel, eventOptionLabel, automationActionLabel } from '@/lib/automationOperators'
+import { entityLabel, eventOptionKey, automationActionKey } from '@/lib/automationOperators'
 import { colors, palette } from '@/lib/tokens'
 const EVENT_TYPES   = ['on_create', 'on_update', 'on_transition'] as const
 /**
@@ -82,22 +83,24 @@ const emptyDraft = (): RuleDraft => ({
   priority: 10, stopOnMatch: false, enabled: true,
 })
 
-const RULE_FILTER_FIELDS: FieldConfig[] = [
-  { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
+/** Come nei trigger: le etichette dei filtri sono testo a schermo, quindi una funzione di `t`. */
+const ruleFilterFields = (t: TFunction): FieldConfig[] => [
+  { key: 'entityType', label: t('admin.rules.filter.entityType'), type: 'enum', options: [
     { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' },
     { value: 'problem', label: 'Problem' }, { value: 'service_request', label: 'Service Request' },
   ]},
-  { key: 'eventType', label: 'Tipo evento', type: 'enum', options: [
-    { value: 'on_create', label: 'Creazione' }, { value: 'on_update', label: 'Aggiornamento' },
-    { value: 'on_transition', label: 'Transizione' },
+  { key: 'eventType', label: t('admin.rules.filter.eventType'), type: 'enum', options: [
+    { value: 'on_create',     label: t('automation.eventFilter.onCreate') },
+    { value: 'on_update',     label: t('automation.eventFilter.onUpdate') },
+    { value: 'on_transition', label: t('automation.eventFilter.onTransition') },
   ]},
-  { key: 'enabled', label: 'Abilitato', type: 'enum', options: [
-    { value: 'true', label: 'Sì' }, { value: 'false', label: 'No' },
+  { key: 'enabled', label: t('admin.triggers.enabledLabel'), type: 'enum', options: [
+    { value: 'true', label: t('common.yes') }, { value: 'false', label: t('common.no') },
   ]},
-  { key: 'conditionLogic', label: 'Logica', type: 'enum', options: [
+  { key: 'conditionLogic', label: t('admin.rules.logic'), type: 'enum', options: [
     { value: 'and', label: 'AND' }, { value: 'or', label: 'OR' },
   ]},
-  { key: 'name', label: 'Nome', type: 'text' },
+  { key: 'name', label: t('common.name'), type: 'text' },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -135,7 +138,7 @@ function migrateActions(raw: unknown[]): RuleAction[] {
  */
 function asConditionLogic(value: string): ConditionLogic {
   if ((CONDITION_LOGICS as readonly string[]).includes(value)) return value as ConditionLogic
-  throw new Error(`conditionLogic "${value}" non riconosciuto: attesi ${CONDITION_LOGICS.join(', ')}`)
+  throw new Error(`unrecognised conditionLogic "${value}": expected ${CONDITION_LOGICS.join(', ')}`)
 }
 
 /** Refuses corrupt data (throws): see parseStored. */
@@ -234,15 +237,15 @@ export function BusinessRulesPage() {
       )
     } },
     { key: 'priority', label: '#', sortable: true, render: (v) => <span style={{ fontWeight: 600, color: 'var(--color-brand)' }}>{String(v)}</span> },
-    { key: 'name', label: 'Nome', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
-    { key: 'entityType', label: 'Entità', sortable: true },
-    { key: 'eventType', label: 'Evento', sortable: true, render: (v) => eventOptionLabel(String(v)) },
-    { key: 'conditionLogic', label: 'Logica', sortable: true, render: (v) => <Pill bg={v === 'and' ? palette.info.tint : palette.warning.tint} color={v === 'and' ? palette.info.text : palette.warning.strong} radius={10}>{String(v).toUpperCase()}</Pill> },
-    { key: 'stopOnMatch', label: 'Stop', sortable: true, render: (v) => v ? <Pill bg={palette.danger.tint} color="var(--color-trigger-sla-breach)" radius={10}>STOP</Pill> : null },
-    { key: 'enabled', label: 'Attiva', sortable: true, render: (_v, row) => (
+    { key: 'name', label: t('common.name'), sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
+    { key: 'entityType', label: t('automation.columns.entity'), sortable: true },
+    { key: 'eventType', label: t('automation.columns.event'), sortable: true, render: (v) => t(eventOptionKey(String(v))) },
+    { key: 'conditionLogic', label: t('admin.rules.logic'), sortable: true, render: (v) => <Pill bg={v === 'and' ? palette.info.tint : palette.warning.tint} color={v === 'and' ? palette.info.text : palette.warning.strong} radius={10}>{String(v).toUpperCase()}</Pill> },
+    { key: 'stopOnMatch', label: t('admin.rules.stop'), sortable: true, render: (v) => v ? <Pill bg={palette.danger.tint} color="var(--color-trigger-sla-breach)" radius={10}>STOP</Pill> : null },
+    { key: 'enabled', label: t('admin.rules.active'), sortable: true, render: (_v, row) => (
       <Toggle checked={row.enabled} onChange={() => void handleToggleEnabled(row)} label={t('admin.rules.toggleLabel', { name: row.name })} />
     ) },
-    { key: 'id', label: 'Azioni', sortable: true, render: (_v, row) => (
+    { key: 'id', label: t('common.actions'), sortable: true, render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6 }}>
         <Button variant="icon" size="xs" title={t('common.edit')} onClick={() => openEdit(row)}><Pencil size={13} aria-hidden="true" /></Button>
         <Button variant="icon" size="xs" title={t('common.delete')} onClick={() => void handleDelete(row)} style={{ color: 'var(--color-danger)', borderColor: palette.danger.border }}><Trash2 size={13} aria-hidden="true" /></Button>
@@ -267,20 +270,20 @@ export function BusinessRulesPage() {
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<GitBranch size={22} color="var(--color-icon-accent)" />}>Business Rules</PageTitle>
+          <PageTitle icon={<GitBranch size={22} color="var(--color-icon-accent)" />}>{t('sidebar.businessRules')}</PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${rules.length} regole`}
           </p>
         </div>
-        <Button icon={<Plus size={14} aria-hidden="true" />} onClick={modal.openCreate}>Nuova regola</Button>
+        <Button icon={<Plus size={14} aria-hidden="true" />} onClick={modal.openCreate}>{t('pages.businessRules.newRule')}</Button>
       </div>
 
-      <FilterBuilder fields={RULE_FILTER_FIELDS} onApply={list.setFilterGroup} />
+      <FilterBuilder fields={ruleFilterFields(t)} onApply={list.setFilterGroup} />
 
       {!loading && !rules.length && (
         <EmptyState
           icon={<GitBranch size={32} color="var(--color-slate-light)" />}
-          title="Nessuna regola configurata"
+          title={t('pages.businessRules.empty')}
         />
       )}
 
@@ -292,7 +295,7 @@ export function BusinessRulesPage() {
           sortDir={list.sortDir}
           data={rules}
           loading={false}
-          label="Business Rules"
+          label={t('sidebar.businessRules')}
         />
       )}
 
@@ -300,7 +303,7 @@ export function BusinessRulesPage() {
       <Modal
         open={modal.open}
         onClose={modal.close}
-        title={modal.editing ? 'Modifica regola' : 'Nuova regola'}
+        title={t(modal.editing ? 'pages.businessRules.editRule' : 'pages.businessRules.newRule')}
         width={680}
         zIndex={9000}
         closeOnOverlay={false}
@@ -308,44 +311,44 @@ export function BusinessRulesPage() {
         footer={
           <>
             <Button variant="secondary" size="xs" onClick={modal.close}>{t('common.cancel')}</Button>
-            <Button onClick={() => void handleSave()}>{modal.editing ? 'Salva modifiche' : 'Crea regola'}</Button>
+            <Button onClick={() => void handleSave()}>{modal.editing ? t('common.saveChanges') : t('admin.rules.create')}</Button>
           </>
         }
       >
           {/* Basic fields */}
           <div className="og-pair" style={{ marginBottom: 16 }}>
             <div>
-              <label htmlFor={ids.name} style={labelS}>Nome *</label>
-              <Input id={ids.name} value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Assegna priorità alta" />
+              <label htmlFor={ids.name} style={labelS}>{t('pages.slaReport.nameRequired')}</label>
+              <Input id={ids.name} value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder={t('pages.businessRules.namePlaceholder')} />
             </div>
             <div>
-              <label htmlFor={ids.priority} style={labelS}>Priorità</label>
+              <label htmlFor={ids.priority} style={labelS}>{t('detail.priority')}</label>
               <Input id={ids.priority} type="number" value={draft.priority} onChange={e => patch({ priority: +e.target.value })} min={1} />
             </div>
           </div>
           <div style={{ marginBottom: 16 }}>
-            <label htmlFor={ids.description} style={labelS}>Descrizione</label>
+            <label htmlFor={ids.description} style={labelS}>{t('common.description')}</label>
             <Textarea id={ids.description} value={draft.description} onChange={e => patch({ description: e.target.value })} rows={2} />
           </div>
           <div className="og-pair" style={{ marginBottom: 16 }}>
             <div>
-              <label htmlFor={ids.entityType} style={labelS}>Tipo entità</label>
+              <label htmlFor={ids.entityType} style={labelS}>{t('pages.businessRules.entityType')}</label>
               <Select id={ids.entityType} style={selectS} value={draft.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
                 {ENTITY_TYPES.map(et => <option key={et} value={et}>{entityLabel(et)}</option>)}
               </Select>
             </div>
             <div>
-              <label htmlFor={ids.eventType} style={labelS}>Evento</label>
+              <label htmlFor={ids.eventType} style={labelS}>{t('pages.businessRules.event')}</label>
               <Select id={ids.eventType} style={selectS} value={draft.eventType} onChange={e => patch({ eventType: e.target.value })}>
-                {EVENT_TYPES.map(et => <option key={et} value={et}>{eventOptionLabel(et)}</option>)}
+                {EVENT_TYPES.map(et => <option key={et} value={et}>{t(eventOptionKey(et))}</option>)}
               </Select>
             </div>
           </div>
 
           {/* Condition Logic toggle */}
           <div style={{ marginBottom: 16 }}>
-            <div style={labelS}>Logica condizioni</div>
-            <div role="group" aria-label="Logica condizioni" style={{ display: 'flex', gap: 0 }}>
+            <div style={labelS}>{t('pages.businessRules.conditionLogic')}</div>
+            <div role="group" aria-label={t('pages.businessRules.conditionLogic')} style={{ display: 'flex', gap: 0 }}>
               {CONDITION_LOGICS.map(v => (
                 <button key={v} type="button" aria-pressed={draft.conditionLogic === v} onClick={() => patch({ conditionLogic: v })} style={{
                   padding: '6px 18px', fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer',
@@ -359,7 +362,7 @@ export function BusinessRulesPage() {
 
           {/* Conditions builder */}
           <div style={{ marginBottom: 20 }}>
-            <div style={{ ...labelS, marginBottom: 8 }}>Condizioni</div>
+            <div style={{ ...labelS, marginBottom: 8 }}>{t('pages.businessRules.conditions')}</div>
             {draft.conditions.map((c, i) => (
               <ConditionRowEditor
                 key={i}
@@ -369,16 +372,16 @@ export function BusinessRulesPage() {
                 onRemove={() => removeCondition(i)}
               />
             ))}
-            <Button variant="secondary" size="xs" icon={<Plus size={12} aria-hidden="true" />} onClick={addCondition} style={{ marginTop: 4 }}>Aggiungi condizione</Button>
+            <Button variant="secondary" size="xs" icon={<Plus size={12} aria-hidden="true" />} onClick={addCondition} style={{ marginTop: 4 }}>{t('pages.businessRules.addCondition')}</Button>
           </div>
 
           {/* Actions builder */}
           <div style={{ marginBottom: 20 }}>
-            <div style={{ ...labelS, marginBottom: 8 }}>Azioni</div>
+            <div style={{ ...labelS, marginBottom: 8 }}>{t('common.actions')}</div>
             {draft.actions.map((a, i) => (
               <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 8 }}>
                 <Select style={{ ...selectS, width: 170 }} value={a.type} onChange={e => updateAction(i, { type: e.target.value, params: {} })}>
-                  {ACTION_TYPES.map(at => <option key={at} value={at}>{automationActionLabel(at)}</option>)}
+                  {ACTION_TYPES.map(at => <option key={at} value={at}>{t(automationActionKey(at))}</option>)}
                 </Select>
                 <ActionParamsEditor
                   actionType={a.type}
@@ -389,16 +392,16 @@ export function BusinessRulesPage() {
                 <Button variant="ghost" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => removeAction(i)} style={{ padding: 4, flexShrink: 0, color: 'var(--color-danger)' }}><Trash2 size={14} aria-hidden="true" /></Button>
               </div>
             ))}
-            <Button variant="secondary" size="xs" icon={<Plus size={12} aria-hidden="true" />} onClick={addAction} style={{ marginTop: 4 }}>Aggiungi azione</Button>
+            <Button variant="secondary" size="xs" icon={<Plus size={12} aria-hidden="true" />} onClick={addAction} style={{ marginTop: 4 }}>{t('pages.businessRules.addAction')}</Button>
           </div>
 
           {/* Toggles */}
           <div style={{ display: 'flex', gap: 24, marginBottom: 20 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={draft.stopOnMatch} onChange={e => patch({ stopOnMatch: e.target.checked })} /> Stop on match
+              <input type="checkbox" checked={draft.stopOnMatch} onChange={e => patch({ stopOnMatch: e.target.checked })} /> {t('pages.businessRules.stopOnMatch')}
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={draft.enabled} onChange={e => patch({ enabled: e.target.checked })} /> Attiva
+              <input type="checkbox" checked={draft.enabled} onChange={e => patch({ enabled: e.target.checked })} /> {t('pages.autoTriggers.enabled')}
             </label>
           </div>
 

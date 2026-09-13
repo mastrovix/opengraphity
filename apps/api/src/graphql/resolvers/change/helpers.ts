@@ -8,6 +8,7 @@
  */
 
 import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../../lib/errors.js'
 import type { ManagedTransaction } from 'neo4j-driver'
 import { ForbiddenError, ValidationError } from '../../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
@@ -115,7 +116,7 @@ export async function assertCIHasOwnerAndSupport(session: Session, tenantId: str
     if (!r.ownerTeamId || !r.supportTeamId) {
       logger.error({ ciId: r.id, ciName: r.name, hasOwner: !!r.ownerTeamId, hasSupport: !!r.supportTeamId },
         '[createChange] CI manca di Owner Group o Support Group')
-      throw new ValidationError(`CI ${r.name} manca di Owner Group o Support Group`)
+      throw new ValidationError(`CI ${r.name} has no Owner Group or Support Group`, { key: 'errors.ci.missingGroups', params: { ci: r.name } })
     }
   }
 }
@@ -181,8 +182,8 @@ export async function loadChangeWorkflow(session: Session, changeId: string, ten
     RETURN properties(c) AS props, coalesce(c.deleted, false) AS deleted,
            wi.id AS instanceId, wi.current_step AS wiStep, s.name AS relStep
   `, { id: changeId, tenantId })
-  if (!row) throw new GraphQLError(`Change ${changeId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
-  if (row.deleted) throw new GraphQLError('La change è stata eliminata: nessuna operazione è più possibile', { extensions: { code: 'CONFLICT' } })
+  if (!row) throw new NotFoundError('Change', changeId)
+  if (row.deleted) throw new GraphQLError('The change was deleted: no operation is possible any more', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.deleted' } } })
   if (!row.instanceId) throw new GraphQLError(`Change ${changeId} senza WorkflowInstance collegata`, { extensions: { code: 'CONFLICT' } })
   if (!row.relStep) throw new GraphQLError(`Change ${changeId}: istanza di workflow senza CURRENT_STEP (ri-esegui il seed del workflow per ricollegarla)`, { extensions: { code: 'CONFLICT' } })
   if (row.wiStep !== row.relStep) {
@@ -211,7 +212,7 @@ export async function resetChangeRisk(session: SessionOrTx, changeId: string, te
   const row = await runQueryOne<{ changeType: string | null }>(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId}) RETURN c.change_type AS changeType
   `, { changeId, tenantId })
-  if (!row) throw new GraphQLError(`Change ${changeId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+  if (!row) throw new NotFoundError('Change', changeId)
   const priority = await deriveChangePriority(tenantId, row.changeType, null)
   await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
@@ -227,15 +228,15 @@ export async function getInstanceId(session: Session, changeId: string, tenantId
     OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
     RETURN wi.id AS id, coalesce(c.deleted, false) AS deleted
   `, { id: changeId, tenantId })
-  if (!row) throw new GraphQLError(`Change ${changeId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
-  if (row.deleted) throw new GraphQLError('La change è stata eliminata: nessuna operazione è più possibile', { extensions: { code: 'CONFLICT' } })
+  if (!row) throw new NotFoundError('Change', changeId)
+  if (row.deleted) throw new GraphQLError('The change was deleted: no operation is possible any more', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.deleted' } } })
   if (!row.id) throw new GraphQLError(`Change ${changeId} senza WorkflowInstance collegata`, { extensions: { code: 'CONFLICT' } })
   return row.id
 }
 
 export async function assertInitialStep(session: Session, changeId: string, tenantId: string): Promise<Props> {
   const props = await loadChange(session, changeId, tenantId)
-  if (!props) throw new GraphQLError(`Change ${changeId} non trovato`, { extensions: { code: 'NOT_FOUND' } })
+  if (!props) throw new NotFoundError('Change', changeId)
   const current = await getCurrentStep(session, changeId, tenantId)
   const initial = await getInitialStepName(session, tenantId, 'change')
   if (current !== initial) {
@@ -259,7 +260,7 @@ export async function assertUserInCITeam(
   if (ctx.role === 'admin') return
   if (!ctx.userId) {
     logger.error({ ciId, role }, '[authz] utente non identificato')
-    throw new ForbiddenError('Non autorizzato: utente non identificato')
+    throw new ForbiddenError('Not authorized: the user is not identified', { key: 'errors.authz.noUser' })
   }
   const rel = ROLE_TO_RELATION[role]
   const roleLabel = ROLE_LABEL[role]
@@ -270,14 +271,14 @@ export async function assertUserInCITeam(
   `, { ciId, tenantId, userId: ctx.userId })
   if (!row || !row.ok) {
     logger.error({ userId: ctx.userId, ciId, role, tenantId }, `[authz] user ${ctx.userId} non è nel ${roleLabel} Group del CI ${ciId}`)
-    throw new ForbiddenError(`Non autorizzato: solo il ${roleLabel} Group del CI può eseguire questa azione`)
+    throw new ForbiddenError(`Not authorized: only the CI's ${roleLabel} group can do this`, { key: 'errors.authz.wrongGroup', params: { group: roleLabel } })
   }
 }
 
 export function assertAdmin(ctx: GraphQLContext) {
   if (ctx.role !== 'admin') {
     logger.error({ userId: ctx.userId, role: ctx.role }, '[authz] reopen tentativo non-admin')
-    throw new ForbiddenError('Solo gli admin possono riaprire task')
+    throw new ForbiddenError('Only admins can reopen tasks', { key: 'errors.authz.reopenAdmin' })
   }
 }
 
@@ -426,7 +427,7 @@ export async function afterEnterStep(session: SessionOrTx, changeId: string, ten
       // Fail-loud: una pre-approvata ferma in approvazione senza requisiti non
       // si sbloccherebbe mai (nessun record da approvare).
       if (!res.success) {
-        throw new GraphQLError(`Change di tipo pre-approvato "${ct.t}": pre-approvazione non riuscita (${res.error ?? 'transizione fallita'})`, { extensions: { code: 'CONFLICT' } })
+        throw new GraphQLError(`Pre-approved change type "${ct.t}": pre-approval failed (${res.error ?? 'transition failed'})`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.preApprovalFailed', params: { type: ct.t, reason: res.error ?? '' } } } })
       }
       await afterEnterStep(session, changeId, tenantId, toStep)
     }

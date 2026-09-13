@@ -112,7 +112,7 @@ describe('suggestTriage — precondizioni', () => {
     h.cfg.anthropicApiKey = undefined
     const err = await failure(suggestTriage(input))
     expect(err).toBeInstanceOf(GraphQLError)
-    expect((err as GraphQLError).message).toBe('Triage AI non configurato: ANTHROPIC_API_KEY mancante')
+    expect((err as GraphQLError).message).toBe('AI triage not configured: ANTHROPIC_API_KEY missing')
     expect((err as GraphQLError).extensions['code']).toBe('FAILED_PRECONDITION')
     expect(h.constructed).toHaveLength(0)
     expect(h.create).not.toHaveBeenCalled()

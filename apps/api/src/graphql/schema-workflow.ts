@@ -13,7 +13,7 @@ export function workflowSDL(): string {
     matricesCreated:          [String!]!
     """I workflow esaminati (creati o già presenti: la mutation non sovrascrive)."""
     workflows:                [String!]!
-    remainingGaps:            [String!]!
+    remainingGaps:            [ProvisioningGap!]!
   }
 
   type WorkflowInstance {

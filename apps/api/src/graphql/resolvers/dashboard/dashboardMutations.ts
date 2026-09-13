@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../../context.js'
@@ -208,7 +209,7 @@ export async function deleteDashboard(
       ),
     )
     const cnt = Math.round(Number(countResult.records[0].get('cnt')))
-    if (cnt <= 1) throw new GraphQLError('Non puoi eliminare l\'unica dashboard', { extensions: { code: 'CONFLICT' } })
+    if (cnt <= 1) throw new GraphQLError('The only dashboard cannot be deleted', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.dashboard.lastOne' } } })
 
     await session.executeWrite((tx) =>
       tx.run(
@@ -238,7 +239,7 @@ export async function cloneDashboard(_: unknown, args: { id: string; newName: st
         { id: args.id, tenantId: ctx.tenantId },
       ),
     )
-    if (!src.records.length) throw new GraphQLError('Dashboard non trovata', { extensions: { code: 'NOT_FOUND' } })
+    if (!src.records.length) throw new NotFoundError('Dashboard')
     const sp = src.records[0].get('p') as Props
 
     // Create cloned dashboard

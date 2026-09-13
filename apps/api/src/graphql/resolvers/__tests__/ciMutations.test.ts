@@ -12,10 +12,10 @@ vi.mock('@opengraphity/scripting', () => ({ runScript: (...a: unknown[]) => runS
 // D-12: il limite di piano sugli script. `isTenantOwnedDefinition` resta quella
 // vera (è la regola che decide CHI passa dal limite); solo la lettura del
 // tenant è simulata.
-const assertScriptingEnabled = vi.fn<(tenantId: string, what: string) => Promise<void>>(async () => {})
+const assertScriptingEnabled = vi.fn<(tenantId: string, what: string, whatKey?: string) => Promise<void>>(async () => {})
 vi.mock('../../../lib/scriptingPlan.js', async (importOriginal) => {
   const orig = await importOriginal<typeof import('../../../lib/scriptingPlan.js')>()
-  return { ...orig, assertScriptingEnabled: (t: string, w: string) => assertScriptingEnabled(t, w) }
+  return { ...orig, assertScriptingEnabled: (t: string, w: string, k?: string) => assertScriptingEnabled(t, w, k) }
 })
 vi.mock('../ci-utils.js', () => ({ withSession: vi.fn() }))
 vi.mock('../../../lib/cache.js', () => ({ cache: { invalidate: vi.fn() } }))
@@ -106,7 +106,7 @@ beforeEach(() => {
 describe('validateCIInput (F-13)', () => {
   it('required field missing → ValidationError, no script executed', async () => {
     await expect(validateCIInput(ciType(), { name: 'srv', ipAddress: '' }, 't1'))
-      .rejects.toMatchObject({ message: expect.stringContaining('IP è obbligatorio'), extensions: { code: 'BAD_USER_INPUT' } })
+      .rejects.toMatchObject({ message: expect.stringContaining('IP is required'), extensions: { code: 'BAD_USER_INPUT' } })
     expect(runScript).not.toHaveBeenCalled()
   })
 
@@ -169,7 +169,7 @@ describe('validateCIInput — vocabolario dei campi enum (B7-2 / A-13)', () => {
     await expect(validateCIInput(withEnum(), { name: 'srv', status: 'dismesso' }, 't1')).resolves.toBeUndefined()
     await expect(validateCIInput(withEnum(), { name: 'srv', status: 'expired' }, 't1'))
       .rejects.toMatchObject({
-        message: expect.stringContaining('Stato: "expired" non è nel vocabolario di questo cliente. Ammessi: active, dismesso'),
+        message: expect.stringContaining('Stato: "expired" is not in the dictionary of this tenant. Allowed: active, dismesso'),
         extensions: { code: 'BAD_USER_INPUT' },
       })
   })
@@ -195,7 +195,7 @@ describe('validateCIInput — vocabolario dei campi enum (B7-2 / A-13)', () => {
     const merged = { name: 'srv-nuovo', status: 'expired' }
     await expect(validateCIInput(withEnum(), merged, 't1', new Set(['name']))).resolves.toBeUndefined()
     await expect(validateCIInput(withEnum(), merged, 't1', new Set(['name', 'status'])))
-      .rejects.toThrow(/"expired" non è nel vocabolario/)
+      .rejects.toThrow(/"expired" is not in the dictionary of this tenant/)
   })
 
   /**
@@ -227,12 +227,12 @@ describe('validateCIInput — vocabolario dei campi enum (B7-2 / A-13)', () => {
 
     it('il valore inventato NON entra più', async () => {
       await expect(validateCIInput(realShape(), { name: 'srv', status: 'pizza' }, 't1'))
-        .rejects.toMatchObject({ message: expect.stringContaining('Stato: "pizza" non è nel vocabolario di questo cliente. Ammessi: attivo, dismesso') })
+        .rejects.toMatchObject({ message: expect.stringContaining('Stato: "pizza" is not in the dictionary of this tenant. Allowed: attivo, dismesso') })
     })
 
     it('nemmeno il valore che il cliente ha TOLTO dal suo Dizionario', async () => {
       await expect(validateCIInput(realShape(), { name: 'srv', status: 'active' }, 't1'))
-        .rejects.toMatchObject({ message: expect.stringContaining('non è nel vocabolario di questo cliente') })
+        .rejects.toMatchObject({ message: expect.stringContaining('is not in the dictionary of this tenant') })
     })
 
     it('il valore del cliente passa, su `status` come su `environment`', async () => {
@@ -251,14 +251,14 @@ describe('validateCIInput — vocabolario dei campi enum (B7-2 / A-13)', () => {
       await expect(validateCIInput(realShape(), { name: 'nuovo', status: 'active' }, 't1', new Set(['name'])))
         .resolves.toBeUndefined()
       await expect(validateCIInput(realShape(), { name: 'nuovo', status: 'active' }, 't1', new Set(['status'])))
-        .rejects.toMatchObject({ message: expect.stringContaining('non è nel vocabolario') })
+        .rejects.toMatchObject({ message: expect.stringContaining('is not in the dictionary of this tenant') })
     })
   })
 
   it('il valore fuori vocabolario è un rifiuto PRIMA dello script del campo (nessuno script su un valore che non esiste)', async () => {
     const t = withEnum()
     ;(t.fields[1] as { validationScript: string | null }).validationScript = 'throw new Error("mai")'
-    await expect(validateCIInput(t, { name: 'srv', status: 'expired' }, 't1')).rejects.toThrow(/non è nel vocabolario/)
+    await expect(validateCIInput(t, { name: 'srv', status: 'expired' }, 't1')).rejects.toThrow(/is not in the dictionary of this tenant/)
     expect(runScript).not.toHaveBeenCalled()
   })
 })
@@ -273,7 +273,7 @@ describe('limite di piano sugli script del metamodello (D-12)', () => {
   it('uno script scritto dal CLIENTE (scope tenant) passa dal limite, nominando il campo', async () => {
     await validateCIInput(ciTypeWithTenantScript(), { name: 'srv', ipAddress: '10.0.0.1', costCenter: 'CC1' }, 't1')
     expect(assertScriptingEnabled).toHaveBeenCalledTimes(1)
-    expect(assertScriptingEnabled).toHaveBeenCalledWith('t1', 'server.costCenter.validation_script')
+    expect(assertScriptingEnabled).toHaveBeenCalledWith('t1', 'field script of "server.costCenter.validation_script"', 'errors.scripting.what.field')
   })
 
   it('piano senza script → lo script NON gira e l\'errore lo dice', async () => {
@@ -288,7 +288,7 @@ describe('limite di piano sugli script del metamodello (D-12)', () => {
   it('uno script di TIPO scritto dal cliente (scope tenant) passa dal limite', async () => {
     const t = ciType({ scope: 'tenant', tenantId: 't1', validationScript: 'if (input.rack === "R0") throw "riservato"' } as Partial<CITypeWithDefinitions>)
     await validateCIInput(t, { name: 'srv', ipAddress: '10.0.0.1' }, 't1')
-    expect(assertScriptingEnabled).toHaveBeenCalledWith('t1', 'server.validation_script')
+    expect(assertScriptingEnabled).toHaveBeenCalledWith('t1', 'field script of "server.validation_script"', 'errors.scripting.what.field')
   })
 })
 
@@ -379,7 +379,7 @@ describe('buildUpdateMutation', () => {
     vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
     const update = buildUpdateMutation(ciType(), 'Server', mapCI)
 
-    await expect(update(undefined, { id: 'ci-1', input: { ipAddress: '' } }, ctx)).rejects.toThrow(/IP è obbligatorio/)
+    await expect(update(undefined, { id: 'ci-1', input: { ipAddress: '' } }, ctx)).rejects.toThrow(/IP is required/)
     expect(session.run.mock.calls.some(([c]) => String(c).includes('SET n +='))).toBe(false)
   })
 

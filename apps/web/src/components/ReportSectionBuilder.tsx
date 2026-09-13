@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef, useId } from 'react'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 import { useQuery, useLazyQuery } from '@apollo/client/react'
 import {
   ReactFlow, Background, Controls,
@@ -58,11 +58,11 @@ type NodeDataEntry = {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const WIZARD_STEPS: { n: 1 | 2 | 3 | 4; label: string }[] = [
-  { n: 1, label: 'Cosa analizzare' },
-  { n: 2, label: 'Grafo e filtri' },
-  { n: 3, label: 'Come mostrarlo' },
-  { n: 4, label: 'Titolo e salva' },
+const WIZARD_STEPS: { n: 1 | 2 | 3 | 4; labelKey: string }[] = [
+  { n: 1, labelKey: 'reportBuilder.wizard.what' },
+  { n: 2, labelKey: 'reportBuilder.wizard.graph' },
+  { n: 3, labelKey: 'reportBuilder.wizard.display' },
+  { n: 4, labelKey: 'reportBuilder.wizard.titleAndSave' },
 ]
 
 const inputStyle: React.CSSProperties = {
@@ -117,15 +117,15 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
     const isCIEntity = !['Incident', 'Change', 'Team', 'User'].includes(entity?.entityType ?? '')
     if (!isCIEntity) return typeFields
     const baseFields: NavigableField[] = [
-      { name: 'name',        label: 'Nome',        fieldType: 'string', enumValues: [] },
-      { name: 'status',      label: 'Stato',       fieldType: 'enum',   enumValues: baseEnums.statuses },
-      { name: 'environment', label: 'Ambiente',    fieldType: 'enum',   enumValues: baseEnums.environments },
-      { name: 'description', label: 'Descrizione', fieldType: 'string', enumValues: [] },
+      { name: 'name',        label: t('common.name'),        fieldType: 'string', enumValues: [] },
+      { name: 'status',      label: t('common.status'),      fieldType: 'enum',   enumValues: baseEnums.statuses },
+      { name: 'environment', label: t('reportBuilder.environment'), fieldType: 'enum', enumValues: baseEnums.environments },
+      { name: 'description', label: t('common.description'), fieldType: 'string', enumValues: [] },
     ]
     const merged = [...baseFields]
     typeFields.forEach(f => { if (!merged.find(b => b.name === f.name)) merged.push(f) })
     return merged
-  }, [entities, baseEnums.statuses, baseEnums.environments])
+  }, [entities, baseEnums.statuses, baseEnums.environments, t])
 
   // ── Node data callbacks ──────────────────────────────────────────────────────
 
@@ -365,7 +365,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
             <button
               type="button"
-              aria-label={s.label}
+              aria-label={t(s.labelKey)}
               aria-current={wizardStep === s.n ? 'step' : undefined}
               disabled={wizardStep <= s.n}
               onClick={() => { if (wizardStep > s.n) setWizardStep(s.n) }}
@@ -384,7 +384,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
               fontSize: 'var(--font-size-body)', fontWeight: 500, whiteSpace: 'nowrap',
               color: wizardStep === s.n ? 'var(--color-brand)' : wizardStep > s.n ? colors.success : 'var(--color-slate-light)',
             }}>
-              {s.label}
+              {t(s.labelKey)}
             </span>
           </div>
           {i < WIZARD_STEPS.length - 1 && (
@@ -399,19 +399,19 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
     onBack: (() => void) | null,
     onNext: () => void,
     nextDisabled = false,
-    nextLabel = 'Avanti',
+    nextLabel = t('reportBuilder.next'),
     isLastStep = false,
   ) => (
     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
       {onBack ? (
         <button type="button" onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-          <ChevronLeft size={18} /> Indietro
+          <ChevronLeft size={18} /> {t('pages.reportSchedule.back')}
         </button>
       ) : <div />}
       <div style={{ display: 'flex', gap: 10 }}>
         {isLastStep && (
           <button type="button" onClick={onCancel} style={{ padding: '10px 16px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-            Annulla
+            {t('common.cancel')}
           </button>
         )}
         <button type="button" onClick={onNext} disabled={nextDisabled} style={{
@@ -434,8 +434,8 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   const renderStep2 = () => (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, padding: '0 32px 12px' }}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>Grafo e filtri</h3>
-        <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>Visualizza e configura le entità collegate.</p>
+        <h3 style={{ margin: '0 0 4px', fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>{t('reportBuilder.graphAndFilters')}</h3>
+        <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{t('reportBuilder.graphHint')}</p>
       </div>
 
       <div style={{ flex: 1, border: '0', overflow: 'hidden', position: 'relative' }}>
@@ -463,15 +463,15 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         {connectingNodeId && (
           <div style={{ position: 'absolute', top: 0, right: 0, width: 260, height: '100%', background: colors.white, borderLeft: `1px solid ${colors.border}`, overflowY: 'auto', padding: 16, zIndex: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)' }}>Connetti a...</span>
+              <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)' }}>{t('reportBuilder.connectTo')}</span>
               <button type="button" onClick={() => setConnectingNodeId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)' }}>
                 <X size={16} />
               </button>
             </div>
             {reachableLoading ? (
-              <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', textAlign: 'center' }}>Caricamento...</p>
+              <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', textAlign: 'center' }}>{t('common.loading')}</p>
             ) : (reachableData?.reachableEntities ?? []).length === 0 ? (
-              <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', textAlign: 'center' }}>Nessuna connessione trovata</p>
+              <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', textAlign: 'center' }}>{t('reportBuilder.noConnection')}</p>
             ) : (
               (reachableData?.reachableEntities ?? []).map((re, i) => (
                 <button key={`${re.neo4jLabel}:${re.relationshipType}:${re.direction}:${i}`}
@@ -495,12 +495,14 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
       {orphan ? (
         <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)', padding: '8px 32px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-          ⚠ Ci sono nodi non collegati. Collega o elimina i nodi isolati prima di continuare.
+          {t('reportBuilder.disconnectedNodes')}
         </div>
       ) : (
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', padding: '6px 32px 0', flexShrink: 0 }}>
-          Clicca <strong>+ Connetti a...</strong> su un nodo per aggiungere entità collegate.
-          Usa <Star size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> per marcare le entità da includere nel risultato.
+          <Trans
+            i18nKey="reportBuilder.hint"
+            components={{ b: <strong />, star: <Star size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> }}
+          />
         </p>
       )}
     </div>
@@ -511,7 +513,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   const renderStep4 = () => {
     const chartDef     = CHART_TYPES.find(c => c.value === chartType)
     const rootEntry    = Object.values(nodeDataMap).find(nd => nd.isRoot)
-    const suggestedTitle = rootEntry ? `${rootEntry.label} - ${chartDef?.label ?? chartType}` : ''
+    const suggestedTitle = rootEntry ? `${rootEntry.label} - ${chartDef ? t(chartDef.labelKey) : chartType}` : ''
     const isKpi        = chartType === 'kpi'
     const isTable      = chartType === 'table'
     const isTS         = chartType === 'line' || chartType === 'area'
@@ -519,37 +521,37 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
     return (
       <div>
-        <h3 style={{ margin: '0 0 6px', fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>Dai un nome alla sezione</h3>
-        <p style={{ margin: '0 0 24px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>Scegli un titolo descrittivo per questa sezione del report.</p>
+        <h3 style={{ margin: '0 0 6px', fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>{t('reportBuilder.nameTheSection')}</h3>
+        <p style={{ margin: '0 0 24px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{t('reportBuilder.nameHint')}</p>
 
         <div style={{ display: 'flex', gap: 24 }}>
           <div style={{ flex: '0 0 300px' }}>
             <div style={{ marginBottom: 20 }}>
-              <label htmlFor={titleInputId} style={labelStyle}>Titolo sezione</label>
-              <input id={titleInputId} value={title} onChange={e => setTitle(e.target.value)} style={inputStyle} placeholder="Titolo..." />
+              <label htmlFor={titleInputId} style={labelStyle}>{t('reportBuilder.sectionTitle')}</label>
+              <input id={titleInputId} value={title} onChange={e => setTitle(e.target.value)} style={inputStyle} placeholder={t('reportBuilder.titlePlaceholder')} />
               {suggestedTitle && title !== suggestedTitle && (
                 <button type="button" onClick={() => setTitle(suggestedTitle)} style={{ marginTop: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand)', fontSize: 'var(--font-size-body)', padding: 0 }}>
-                  Usa: "{suggestedTitle}"
+                  {t('reportBuilder.useSuggested', { title: suggestedTitle })}
                 </button>
               )}
             </div>
 
             <div style={{ background: 'var(--color-slate-bg)', border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16 }}>
-              <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Riepilogo</div>
+              <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>{t('reportBuilder.summary')}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {rootEntry && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', flexShrink: 0 }}>Analisi</span>
+                    <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', flexShrink: 0 }}>{t('reportBuilder.analysis')}</span>
                     <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{rootEntry.label}</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', flexShrink: 0 }}>Nodi</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', flexShrink: 0 }}>{t('reportBuilder.nodes')}</span>
                   <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{nodes.length}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', flexShrink: 0 }}>Visualizzazione</span>
-                  <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{chartDef?.label ?? chartType}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', flexShrink: 0 }}>{t('reportBuilder.chart')}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', textAlign: 'right' }}>{chartDef ? t(chartDef.labelKey) : chartType}</span>
                 </div>
                 {needsLimit && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
@@ -562,8 +564,8 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
           </div>
 
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={labelStyle}>Anteprima finale</div>
-            <ReportPreview loading={previewLoading} data={previewData} title={title || undefined} placeholder="Nessuna anteprima disponibile" />
+            <div style={labelStyle}>{t('reportBuilder.finalPreview')}</div>
+            <ReportPreview loading={previewLoading} data={previewData} title={title || undefined} placeholder={t('reportBuilder.noPreview')} />
           </div>
         </div>
       </div>
@@ -581,13 +583,16 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         onNext: () => {
           if (!title) {
             const rootEntry = Object.values(nodeDataMap).find(nd => nd.isRoot)
-            if (rootEntry) setTitle(`${rootEntry.label} - ${CHART_TYPES.find(c => c.value === chartType)?.label ?? chartType}`)
+            if (rootEntry) {
+              const def = CHART_TYPES.find(c => c.value === chartType)
+              setTitle(`${rootEntry.label} - ${def ? t(def.labelKey) : chartType}`)
+            }
           }
           setWizardStep(4)
         },
         nextDisabled: !canProceedStep3,
       }
-      case 4: return { onBack: () => setWizardStep(3), onNext: () => onSave(buildInput()), nextDisabled: !title, nextLabel: 'Salva sezione', isLastStep: true }
+      case 4: return { onBack: () => setWizardStep(3), onNext: () => onSave(buildInput()), nextDisabled: !title, nextLabel: t('reportBuilder.saveSection'), isLastStep: true }
     }
   })()
 

@@ -56,7 +56,7 @@ export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, 
             )}
           </div>
           <div style={{ marginBottom: 10 }}>
-            <label htmlFor={`${baseId}-title-${i}`} style={labelStyle}>Titolo *</label>
+            <label htmlFor={`${baseId}-title-${i}`} style={labelStyle}>{t('pages.serviceRequestDetail.titleRequired')}</label>
             <input
               id={`${baseId}-title-${i}`}
               type="text" disabled={!canEdit || completed} value={s.title}
@@ -65,14 +65,14 @@ export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, 
             />
           </div>
           <div style={{ marginBottom: 10 }}>
-            <label htmlFor={`${baseId}-val-start-${i}`} style={labelStyle}>Validazione *</label>
+            <label htmlFor={`${baseId}-val-start-${i}`} style={labelStyle}>{t('pages.planTask.validation')}</label>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <input id={`${baseId}-val-start-${i}`} type="datetime-local" disabled={!canEdit || completed}
                 value={s.validationWindow.start ? toLocal(s.validationWindow.start) : ''}
                 onChange={e => updateStep(i, { validationWindow: { ...s.validationWindow, start: fromLocal(e.target.value) } })}
                 style={{ ...inputStyle, flex: 1 }} />
               <span style={{ color: 'var(--color-slate-light)' }}>→</span>
-              <input type="datetime-local" disabled={!canEdit || completed} aria-label="Fine validazione"
+              <input type="datetime-local" disabled={!canEdit || completed} aria-label={t('pages.planTask.validationEnd')}
                 value={s.validationWindow.end ? toLocal(s.validationWindow.end) : ''}
                 onChange={e => updateStep(i, { validationWindow: { ...s.validationWindow, end: fromLocal(e.target.value) } })}
                 style={{ ...inputStyle, flex: 1 }} />
@@ -86,7 +86,7 @@ export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, 
                 onChange={e => updateStep(i, { releaseWindow: { ...s.releaseWindow, start: fromLocal(e.target.value) } })}
                 style={{ ...inputStyle, flex: 1 }} />
               <span style={{ color: 'var(--color-slate-light)' }}>→</span>
-              <input type="datetime-local" disabled={!canEdit || completed} aria-label="Fine deploy"
+              <input type="datetime-local" disabled={!canEdit || completed} aria-label={t('pages.planTask.deployEnd')}
                 value={s.releaseWindow.end ? toLocal(s.releaseWindow.end) : ''}
                 onChange={e => updateStep(i, { releaseWindow: { ...s.releaseWindow, end: fromLocal(e.target.value) } })}
                 style={{ ...inputStyle, flex: 1 }} />
@@ -98,22 +98,22 @@ export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, 
       {canEdit && !completed && (
         <button type="button" onClick={() => { setSteps([...steps, emptyStep()]); setDirty(true) }}
           style={{ background: 'none', border: `1.5px dashed ${colors.border}`, borderRadius: 8, padding: '8px 16px', color: 'var(--color-brand)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 12 }}>
-          <Plus size={14} /> Aggiungi step
+          <Plus size={14} /> {t('changeTasks.addStep')}
         </button>
       )}
 
       {canEdit && !completed && dirty && allComplete && (
         <button type="button" onClick={onSave}
           style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid var(--color-brand)', background: colors.white, color: 'var(--color-brand)', fontWeight: 600, cursor: 'pointer', marginBottom: 12 }}>
-          Salva piano
+          {t('changeTasks.savePlan')}
         </button>
       )}
 
       {!completed && (
         <StickyAction
-          label="Completa piano"
+          label={t('pages.planTask.complete')}
           disabled={!canEdit || !allComplete || dirty}
-          blockReason={!canEdit ? 'Non sei nel team corretto' : !allComplete ? 'Compila tutti gli step prima di completare' : dirty ? 'Salva le modifiche prima di completare' : undefined}
+          blockReason={!canEdit ? t('pages.planTask.wrongTeam') : !allComplete ? t('pages.planTask.fillAll') : dirty ? t('pages.planTask.saveFirst') : undefined}
           onClick={onComplete}
         />
       )}

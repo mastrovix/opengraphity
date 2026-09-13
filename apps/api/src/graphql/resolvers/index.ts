@@ -55,6 +55,7 @@ import { similarityResolvers } from './similarity.js'
 import { impactResolvers } from './impact.js'
 import { ciRelationshipResolvers } from './ciRelationships.js'
 import { cmdbResolvers } from './cmdb.js'
+import { tenantLanguageResolvers } from './tenantLanguage.js'
 const { updateCIFields: updateCIFieldsMutation } = cmdbResolvers.Mutation
 import type { GraphQLContext } from '../../context.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
@@ -147,7 +148,7 @@ async function createUser(_: unknown, args: { input: { email: string; name: stri
   requireRole(ctx, 'admin')
   const { email, name, password, role, teamIds } = args.input
   if (!['admin', 'operator', 'viewer', 'end_user'].includes(role)) {
-    throw new GraphQLError(`Ruolo non valido: ${role}`, { extensions: { code: 'BAD_USER_INPUT' } })
+    throw new GraphQLError(`Invalid role: ${role}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.authz.invalidRole', params: { role } } } })
   }
   const tenantId = ctx.tenantId
   const KEYCLOAK_URL        = config.keycloakUrl
@@ -309,6 +310,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...whatifResolvers.Query,
       ...similarityResolvers.Query,
       ...impactResolvers.Query,
+      ...tenantLanguageResolvers.Query,
       auditLog,
       auditActions,
       ciIncidents: ciResolvers.Query.ciIncidents,
@@ -336,6 +338,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...eventResolvers.Mutation,
       ...serviceResolvers.Mutation,
       ...similarityResolvers.Mutation,
+      ...tenantLanguageResolvers.Mutation,
       ...notificationRuleResolvers.Mutation,
       ...syncResolvers.Mutation,
       ...enumTypeResolvers.Mutation,
@@ -370,6 +373,18 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...workflowResolvers.Change,
       ...changeResolvers.Change,
       ...eventResolvers.Change,     // suppressedEvents (Event Management)
+    },
+    /*
+      `valueLabels(language)`: l'unico posto che conosce la lingua chiesta.
+      Dimenticato QUI la prima volta, ed e' andata esattamente come dice il
+      commento sotto — il resolver predefinito trovava `undefined` e la pagina
+      riceveva «Cannot return null for non-nullable field
+      EnumTypeDefinition.valueLabels». Il test `resolverWiring` doveva
+      prenderlo e non l'ha fatto: la sua lista dei moduli era anch'essa a mano.
+      Ora quel test scopre i moduli da se.
+    */
+    EnumTypeDefinition: {
+      ...enumTypeResolvers.EnumTypeDefinition,
     },
     // `currentInstances`: quante istanze stanno ORA su uno step. Era stata
     // aggiunta allo SDL e a `workflowResolvers` senza essere unita QUI: i

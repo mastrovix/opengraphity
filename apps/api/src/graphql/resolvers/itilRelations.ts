@@ -94,7 +94,7 @@ async function createITILCIRelationRule(
       ),
     )
     if (existing.records.length > 0) {
-      throw new GraphQLError('Esiste già una relazione con questo tipo di CI.', { extensions: { code: 'CONFLICT' } })
+      throw new GraphQLError('A relationship with this CI type already exists.', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.itilRelation.duplicate' } } })
     }
 
     await session.executeWrite((tx) =>

@@ -73,12 +73,12 @@ describe('assertNewCITypeName — contro lo schema di base vero', () => {
   it.each([
     // `server` e `application` non compaiono nell'SDL di base (i tipi CI sono
     // generati): li prende l'altra metà dell'elenco, quella dei tipi CI.
-    ['server',      'un tipo CI spedito col prodotto'],
-    ['application', 'un tipo CI spedito col prodotto'],
+    ['server',      'a CI type that ships with the product'],
+    ['application', 'a CI type that ships with the product'],
     // `incident` e `change` sono ANCHE tipi dell'SDL di base, e lì la
     // collisione si vede prima.
-    ['incident',    'è un tipo dello schema di base'],
-    ['change',      'è un tipo dello schema di base'],
+    ['incident',    'is a type of the base schema'],
+    ['change',      'is a type of the base schema'],
   ])('rifiuta «%s»: %s', (name, origin) => {
     const err = (() => { try { assertNewCITypeName(name, EXISTING); return null } catch (e) { return e } })()
     expect(err).toBeInstanceOf(ValidationError)
@@ -99,7 +99,7 @@ describe('assertNewCITypeName — contro lo schema di base vero', () => {
   it('rifiuta un nome già usato da un tipo del CLIENTE', () => {
     const withOwn = [...EXISTING, { name: 'load_balancer', scope: 'tenant' }]
     const err = (() => { try { assertNewCITypeName('load_balancer', withOwn); return null } catch (e) { return e } })()
-    expect((err as Error).message).toContain('un tuo tipo CI')
+    expect((err as Error).message).toContain('a CI type of yours')
   })
 
   it.each(['2fa_token', 'my-type', 'Load Balancer', ''])('rifiuta «%s»: non è un identificatore', (name) => {
@@ -122,7 +122,7 @@ describe('assertNewCIFieldName — il caso tenantId', () => {
     const err = (() => { try { assertNewCIFieldName('tenantId', { typeLabel: 'Load Balancer' }); return null } catch (e) { return e as Error } })()!
     expect(err).toBeInstanceOf(ValidationError)
     expect(err.message).toContain('tenant_id')
-    expect(err.message).toContain('il CI nascerebbe nel cliente scelto dal chiamante')
+    expect(err.message).toContain('the CI would be born in the tenant chosen by the caller')
   })
 
   it('accetta un nome camelCase libero', () => {

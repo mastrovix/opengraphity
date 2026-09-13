@@ -28,6 +28,8 @@ export const apolloClient = createApolloClient({
   // Never swallow: the portal has no per-page error handling, so an ignored
   // error would just render "no tickets / not found".
   onGraphQLError:   (message) => notifyError(message),
+  // Come nel web: la chiave la risolve chi ha una lingua.
+  traduciErrore:    (key, params) => (i18n.exists(key, params) ? i18n.t(key, params) : null),
   clientLogger,
   defaultOptions: {
     watchQuery: { fetchPolicy: 'cache-and-network' },

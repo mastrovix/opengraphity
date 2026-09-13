@@ -242,15 +242,15 @@ describe('criteriaTypesToLabels', () => {
   // criteri, cioè restituiva i CI di TUTTI i tipi. Ora si ferma dicendolo.
   it('un tipo che questo cliente non ha FERMA la lettura, col nome e i tipi ammessi', async () => {
     await expect(criteriaTypesToLabels('tenant-1', 'server, bilanciatore'))
-      .rejects.toThrow(/"bilanciatore" non è un tipo di CI di questo cliente \(ammessi: application, database, dynamic_ci_group, load_balancer, server\)/)
+      .rejects.toThrow(/"bilanciatore" is not a CI type of this tenant \(allowed: application, database, dynamic_ci_group, load_balancer, server\)/)
     // e non c'è modo di iniettare Cypher passando dal nome del tipo
     await expect(criteriaTypesToLabels('tenant-1', 'MALICIOUS) DETACH DELETE (n'))
-      .rejects.toThrow(/non è un tipo di CI di questo cliente/)
+      .rejects.toThrow(/is not a CI type of this tenant/)
   })
 
   it('un gruppo con un tipo ignoto nei criteri non restituisce «tutti i CI»: fallisce', async () => {
     primeGroup({ id: 'g9', membership_type: 'dynamic', criteria_ci_types: 'bilanciatore' })
     primeMembers([])
-    await expect(ciGroupMembers(null, { groupId: 'g9' }, ctx)).rejects.toThrow(/non è un tipo di CI di questo cliente/)
+    await expect(ciGroupMembers(null, { groupId: 'g9' }, ctx)).rejects.toThrow(/is not a CI type of this tenant/)
   })
 })

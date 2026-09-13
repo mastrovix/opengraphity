@@ -4,6 +4,7 @@ import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
 import { Link } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n/i18n'
 import { CheckSquare, Clock, CheckCircle, XCircle, ChevronDown, ChevronRight, ExternalLink, BookOpen, GitPullRequest, AlertCircle } from 'lucide-react'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -87,19 +88,20 @@ interface KBPreviewData {
   tags?: string[]; status: string; authorName: string; updatedAt?: string
 }
 
-const STATUS_COLORS: Record<string, { bg: string; color: string; label: string }> = {
-  pending:   { bg: palette.yellow.bg, color: palette.yellow.text, label: 'In attesa' },
-  approved:  { bg: palette.success.tint, color: palette.success.strong, label: 'Approvato' },
-  rejected:  { bg: palette.danger.tint, color: palette.danger.strong, label: 'Rifiutato' },
-  expired:   { bg: colors.slateBg, color: palette.neutral.textStrong, label: 'Scaduto' },
-  cancelled: { bg: colors.slateBg, color: palette.neutral.textStrong, label: 'Annullato' },
+const STATUS_COLORS: Record<string, { bg: string; color: string; labelKey: string }> = {
+  pending:   { bg: palette.yellow.bg,    color: palette.yellow.text,          labelKey: 'pages.approvals.statusPending' },
+  approved:  { bg: palette.success.tint, color: palette.success.strong,       labelKey: 'pages.approvals.statusApproved' },
+  rejected:  { bg: palette.danger.tint,  color: palette.danger.strong,        labelKey: 'pages.approvals.statusRejected' },
+  expired:   { bg: colors.slateBg,       color: palette.neutral.textStrong,   labelKey: 'pages.approvals.statusExpired' },
+  cancelled: { bg: colors.slateBg,       color: palette.neutral.textStrong,   labelKey: 'pages.approvals.statusCancelled' },
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const s = lookupOrError(STATUS_COLORS, status, 'STATUS_COLORS', { bg: 'var(--color-danger)', color: colors.white, label: status })
+  const { t } = useTranslation()
+  const s = lookupOrError(STATUS_COLORS, status, 'STATUS_COLORS', { bg: 'var(--color-danger)', color: colors.white, labelKey: status })
   return (
     <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: 'var(--font-size-table)', fontWeight: 600, background: s.bg, color: s.color }}>
-      {s.label}
+      {i18n.exists(s.labelKey) ? t(s.labelKey) : s.labelKey}
     </span>
   )
 }
@@ -135,6 +137,7 @@ function EntityLink({ entityType, entityId }: { entityType: string; entityId: st
 
 /** Expandable KB article preview panel. Fetches content lazily on first open. */
 function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
 
   const [fetchArticle, { data, loading, error }] = useLazyQuery<{ kbArticle: KBPreviewData }>(
@@ -180,11 +183,11 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
           overflow:     'hidden',
         }}>
           {loading && (
-            <div style={{ padding: '20px 16px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Caricamento...</div>
+            <div style={{ padding: '20px 16px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('common.loading')}</div>
           )}
           {error && (
             <div style={{ padding: '12px 16px', fontSize: 'var(--font-size-body)', color: 'var(--color-danger)' }}>
-              Errore nel caricamento dell'articolo.
+              {t('pages.approvals.loadError')}
             </div>
           )}
           {article && (
@@ -197,9 +200,9 @@ function KBArticlePreviewPanel({ entityId }: { entityId: string }) {
                     <div style={{ display: 'flex', gap: 8, marginTop: 4, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
                       <span>{article.category}</span>
                       <span>·</span>
-                      <span>di {article.authorName}</span>
+                      <span>{t('pages.approvals.byAuthor', { author: article.authorName })}</span>
                       <span>·</span>
-                      {article.updatedAt && <span>aggiornato {new Date(article.updatedAt).toLocaleDateString()}</span>}
+                      {article.updatedAt && <span>{t('pages.approvals.updatedOn', { date: new Date(article.updatedAt).toLocaleDateString() })}</span>}
                     </div>
                   </div>
                   {(article.tags ?? []).length > 0 && (
@@ -263,9 +266,9 @@ function ApprovalCard({
               {req.entityType}
             </span>
             <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
-              {req.approvalType === 'any' ? '1 approvatore sufficiente' :
-               req.approvalType === 'all' ? 'tutti gli approvatori richiesti' :
-               'maggioranza richiesta'}
+              {t(req.approvalType === 'any' ? 'pages.approvals.anyApprover'
+                : req.approvalType === 'all' ? 'pages.approvals.allApprovers'
+                : 'pages.approvals.majorityApprovers')}
             </span>
           </div>
 
@@ -279,12 +282,12 @@ function ApprovalCard({
           )}
           <div style={{ display: 'flex', gap: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
             <span><Clock size={11} style={{ verticalAlign: 'middle' }} /> {new Date(req.requestedAt).toLocaleString()}</span>
-            <span>{req.approvedBy.length}/{req.approvers.length} approvazioni</span>
-            {req.dueDate && <span>Scadenza: {new Date(req.dueDate).toLocaleDateString()}</span>}
+            <span>{t('pages.approvals.approvalCount', { done: req.approvedBy.length, total: req.approvers.length })}</span>
+            {req.dueDate && <span>{t('pages.approvals.dueOn', { date: new Date(req.dueDate).toLocaleDateString() })}</span>}
           </div>
           {req.resolutionNote && (
             <p style={{ margin: '8px 0 0', fontSize: 'var(--font-size-body)', color: palette.neutral.textStrong, fontStyle: 'italic' }}>
-              Nota: {req.resolutionNote}
+              {t('common.note')}: {req.resolutionNote}
             </p>
           )}
 
@@ -300,13 +303,13 @@ function ApprovalCard({
               onClick={() => setNoteOpen(noteOpen === 'approve' ? null : 'approve')}
               style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none', background: colors.success, color: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
             >
-              <CheckCircle size={14} /> Approva
+              <CheckCircle size={14} /> {t('pages.changeDetail.approve')}
             </button>
             <button type="button"
               onClick={() => setNoteOpen(noteOpen === 'reject' ? null : 'reject')}
               style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none', background: 'var(--color-danger)', color: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
             >
-              <XCircle size={14} /> Rifiuta
+              <XCircle size={14} /> {t('pages.changeDetail.reject')}
             </button>
           </div>
         )}
@@ -317,7 +320,7 @@ function ApprovalCard({
             onClick={() => void handleCancel()}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--color-danger)', background: colors.white, color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500, flexShrink: 0, alignSelf: 'flex-start' }}
           >
-            <XCircle size={14} /> Annulla richiesta
+            <XCircle size={14} /> {t('pages.approvals.cancelRequest')}
           </button>
         )}
       </div>
@@ -325,7 +328,7 @@ function ApprovalCard({
       {noteOpen && (
         <div style={{ marginTop: 12, padding: 12, background: 'var(--color-slate-bg)', borderRadius: 6, border: `1px solid ${colors.border}` }}>
           <Textarea
-            placeholder={noteOpen === 'reject' ? 'Motivo del rifiuto (obbligatorio)...' : 'Nota opzionale...'}
+            placeholder={t(noteOpen === 'reject' ? 'pages.approvals.rejectReason' : 'pages.approvals.optionalNote')}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={3}
@@ -342,13 +345,13 @@ function ApprovalCard({
               }}
               style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: noteOpen === 'approve' ? colors.success : 'var(--color-danger)', color: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500 }}
             >
-              Conferma {noteOpen === 'approve' ? 'Approvazione' : 'Rifiuto'}
+              {t(noteOpen === 'approve' ? 'pages.approvals.confirmApproval' : 'pages.approvals.confirmRejection')}
             </button>
             <button type="button"
               onClick={() => { setNoteOpen(null); setNote('') }}
               style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
             >
-              Annulla
+              {t('common.cancel')}
             </button>
           </div>
         </div>
@@ -365,14 +368,16 @@ export function ApprovalsPage() {
 
   const PAGE_SIZE = 20
   const APPROVAL_FILTER_FIELDS: FieldConfig[] = [
-    { key: 'status', label: 'Stato', type: 'enum', options: [
-      { value: 'pending', label: 'In attesa' }, { value: 'approved', label: 'Approvato' }, { value: 'rejected', label: 'Rifiutato' },
+    { key: 'status', label: t('common.status'), type: 'enum', options: [
+      { value: 'pending',  label: t('pages.approvals.statusPending') },
+      { value: 'approved', label: t('pages.approvals.statusApproved') },
+      { value: 'rejected', label: t('pages.approvals.statusRejected') },
     ]},
-    { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
+    { key: 'entityType', label: t('pages.audit.colEntityType'), type: 'enum', options: [
       { value: 'change', label: 'Change' }, { value: 'kb_article', label: 'KB Article' },
     ]},
-    { key: 'title', label: 'Titolo', type: 'text' },
-    { key: 'requestedAt', label: 'Data richiesta', type: 'date' },
+    { key: 'title', label: t('common.title'), type: 'text' },
+    { key: 'requestedAt', label: t('pages.approvals.requestedAt'), type: 'date' },
   ]
 
   const { data: myData, loading: myLoading, error: myError, refetch: refetchMine } = useQuery<{ myPendingApprovals: ApprovalRequest[] }>(

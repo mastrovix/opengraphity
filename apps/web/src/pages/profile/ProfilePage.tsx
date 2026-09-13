@@ -16,6 +16,7 @@ import { useMe } from '@/hooks/useMe'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { RoleBadge } from '@/components/ui/badges'
 import { colors, palette } from '@/lib/tokens'
+import { scegliLinguaPersonale } from '@/i18n/tenantLanguage'
 
 const LINK_SLACK = gql`
   mutation LinkSlack($slackId: String!) {
@@ -100,7 +101,7 @@ export function ProfilePage() {
           <p style={sectionDesc}>{t('pages.profile.languageDescription')}</p>
           <select
             value={i18n.language.startsWith('it') ? 'it' : 'en'}
-            onChange={(e) => void i18n.changeLanguage(e.target.value)}
+            onChange={(e) => { void scegliLinguaPersonale(e.target.value) }}
             style={{
               padding: '8px 12px',
               borderRadius: 6,

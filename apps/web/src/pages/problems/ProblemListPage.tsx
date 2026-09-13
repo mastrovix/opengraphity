@@ -111,7 +111,7 @@ export function ProblemListPage() {
         icon={<Search size={22} color="var(--color-icon-accent)" />}
         title={t('pages.problems.title')}
         subtitle={
-          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.problems.count', { count: total })}
           </p>
         }
@@ -141,11 +141,11 @@ export function ProblemListPage() {
       {candidates !== null && (
         <div style={{ background: palette.info.light, border: `1px solid ${palette.info.border}`, borderRadius: 10, padding: '14px 18px', marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)', marginBottom: 8 }}>
-            <Sparkles size={14} color="var(--color-brand)" /> Candidati Problem da incident ricorrenti
+            <Sparkles size={14} color="var(--color-brand)" /> {t('pages.problems.candidatesTitle')}
           </div>
           {candidates.length === 0 ? (
             <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-              Nessun cluster di incident simili ricorrenti trovato (minimo 3 incident non chiusi con lo stesso pattern).
+              {t('pages.problems.candidatesEmpty')}
             </p>
           ) : candidates.map((c, i) => (
             <div key={i} style={{ background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>

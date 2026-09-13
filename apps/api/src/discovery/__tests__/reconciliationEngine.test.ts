@@ -332,7 +332,7 @@ describe('reconcileBatch: ci_type sconosciuto (A-11)', () => {
     expect(writes[0]!.query).toContain("conflict_kind: 'unknown_ci_type'")
     expect(writes[0]!.query).not.toContain('ON CREATE SET ci:')
     expect(writes[0]!.params).toMatchObject({ externalId: 'ext-900', ciType: 'Bilanciatore', tenantId: 'tenant-1', runId: 'run-9' })
-    expect(String(writes[0]!.params['message'])).toContain('non è un tipo di CI di questo cliente')
+    expect(String(writes[0]!.params['message'])).toContain('is not a CI type of this tenant')
     // idempotente: due passate dello stesso run non fanno due conflitti (MERGE sulla chiave)
     expect(writes[0]!.query).toContain('external_id: $externalId')
   })

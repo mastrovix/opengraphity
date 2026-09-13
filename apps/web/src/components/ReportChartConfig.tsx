@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Hash, PieChart, CircleDot, BarChart2, BarChart, LineChart, TrendingUp,
   Table as TableIcon,
@@ -8,23 +9,28 @@ import type { SectionResult } from './ReportPreview'
 import type { NavigableField } from './ReportFlowNodes'
 import { colors, palette } from '@/lib/tokens'
 
+/*
+  CHIAVI, non etichette: erano frasi italiane in una costante, e a schermo
+  restavano italiane in qualunque lingua. Chi le mostra le risolve con `t()`;
+  chi le usa per COMPORRE un titolo (il suggerimento della sezione) pure.
+*/
 export const CHART_TYPES = [
-  { value: 'kpi',            label: 'Numero totale',     desc: 'Quanti elementi ci sono?',       icon: <Hash size={18} /> },
-  { value: 'pie',            label: 'Torta',             desc: 'Distribuzione in percentuale',    icon: <PieChart size={18} /> },
-  { value: 'donut',          label: 'Donut',             desc: 'Distribuzione ad anello',         icon: <CircleDot size={18} /> },
-  { value: 'bar',            label: 'Barre verticali',   desc: 'Confronto tra categorie',         icon: <BarChart2 size={18} /> },
-  { value: 'bar_horizontal', label: 'Barre orizzontali', desc: 'Confronto con etichette lunghe',  icon: <BarChart size={18} /> },
-  { value: 'line',           label: 'Linea',             desc: 'Andamento nel tempo',             icon: <LineChart size={18} /> },
-  { value: 'area',           label: 'Area',              desc: 'Andamento con riempimento',       icon: <TrendingUp size={18} /> },
-  { value: 'table',          label: 'Tabella',           desc: 'Dati dettagliati con colonne',    icon: <TableIcon size={18} /> },
+  { value: 'kpi',            labelKey: 'reportChart.type.kpi',           descKey: 'reportChart.desc.kpi',           icon: <Hash size={18} /> },
+  { value: 'pie',            labelKey: 'reportChart.type.pie',           descKey: 'reportChart.desc.pie',           icon: <PieChart size={18} /> },
+  { value: 'donut',          labelKey: 'reportChart.type.donut',         descKey: 'reportChart.desc.donut',         icon: <CircleDot size={18} /> },
+  { value: 'bar',            labelKey: 'reportChart.type.bar',           descKey: 'reportChart.desc.bar',           icon: <BarChart2 size={18} /> },
+  { value: 'bar_horizontal', labelKey: 'reportChart.type.barHorizontal', descKey: 'reportChart.desc.barHorizontal', icon: <BarChart size={18} /> },
+  { value: 'line',           labelKey: 'reportChart.type.line',          descKey: 'reportChart.desc.line',          icon: <LineChart size={18} /> },
+  { value: 'area',           labelKey: 'reportChart.type.area',          descKey: 'reportChart.desc.area',          icon: <TrendingUp size={18} /> },
+  { value: 'table',          labelKey: 'reportChart.type.table',         descKey: 'reportChart.desc.table',         icon: <TableIcon size={18} /> },
 ]
 
 export const METRIC_TYPES = [
-  { value: 'count', label: 'Conteggio' },
-  { value: 'avg',   label: 'Media' },
-  { value: 'sum',   label: 'Somma' },
-  { value: 'min',   label: 'Minimo' },
-  { value: 'max',   label: 'Massimo' },
+  { value: 'count', labelKey: 'reportChart.metric.count' },
+  { value: 'avg',   labelKey: 'reportChart.metric.avg' },
+  { value: 'sum',   labelKey: 'reportChart.metric.sum' },
+  { value: 'min',   labelKey: 'reportChart.metric.min' },
+  { value: 'max',   labelKey: 'reportChart.metric.max' },
 ]
 
 export const DATE_FIELD_NAMES = ['created_at', 'updated_at', 'resolved_at', 'expires_at', 'scheduled_start', 'scheduled_end', 'implemented_at']
@@ -80,6 +86,7 @@ export function ReportChartConfig({
   step3DateFields,
   previewLoading, previewData,
 }: Props) {
+  const { t } = useTranslation()
   const uid = useId()
   const ids = { metric: `${uid}-metric`, metricField: `${uid}-metric-field`, limit: `${uid}-limit`, sortDir: `${uid}-sort-dir` }
   const isKpi        = chartType === 'kpi'
@@ -94,17 +101,17 @@ export function ReportChartConfig({
   return (
     <div>
       <h3 style={{ margin: '0 0 6px', fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
-        Come vuoi vedere i dati?
+        {t('reportChart.howToSee')}
       </h3>
       <p style={{ margin: '0 0 24px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-        Configura la visualizzazione della sezione.
+        {t('reportChart.configure')}
       </p>
 
       <div style={{ display: 'flex', gap: 24 }}>
         <div style={{ flex: '0 0 420px', display: 'flex', flexDirection: 'column', gap: 18 }}>
 
           <div>
-            <div style={labelStyle}>Tipo di visualizzazione</div>
+            <div style={labelStyle}>{t('reportChart.chartType')}</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
               {CHART_TYPES.map(ct => (
                 <button key={ct.value} type="button" aria-pressed={chartType === ct.value} onClick={() => onChartTypeChange(ct.value)} style={{
@@ -117,8 +124,8 @@ export function ReportChartConfig({
                 }}>
                   {ct.icon}
                   <div>
-                    <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600 }}>{ct.label}</div>
-                    <div style={{ fontSize: 'var(--font-size-body)', color: chartType === ct.value ? palette.teal.light : 'var(--color-slate-light)', marginTop: 2 }}>{ct.desc}</div>
+                    <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600 }}>{t(ct.labelKey)}</div>
+                    <div style={{ fontSize: 'var(--font-size-body)', color: chartType === ct.value ? palette.teal.light : 'var(--color-slate-light)', marginTop: 2 }}>{t(ct.descKey)}</div>
                   </div>
                 </button>
               ))}
@@ -127,16 +134,16 @@ export function ReportChartConfig({
 
           {needsGroupBy && resultNodes.length > 0 && (
             <div>
-              <div style={labelStyle}>Raggruppa per</div>
+              <div style={labelStyle}>{t('reportChart.groupBy')}</div>
               <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                 <select value={groupByNodeId} onChange={e => onGroupByNodeIdChange(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
-                  <option value="">Nodo...</option>
+                  <option value="">{t('reportChart.nodePlaceholder')}</option>
                   {resultNodes.map(([nid, nd]) => (
                     <option key={nid} value={nid}>{nd.label}</option>
                   ))}
                 </select>
                 <select value={groupByField} onChange={e => onGroupByFieldChange(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
-                  <option value="">Campo...</option>
+                  <option value="">{t('reportChart.fieldOption')}</option>
                   {groupByNodeId && nodeDataMap[groupByNodeId]
                     ? nodeDataMap[groupByNodeId].fields
                         .filter(f => !isTimeSeries || f.fieldType === 'date' || DATE_FIELD_NAMES.includes(f.name))
@@ -148,7 +155,7 @@ export function ReportChartConfig({
               </div>
               {isTimeSeries && step3DateFields.length === 0 && (
                 <div style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)', marginTop: 8 }}>
-                  ⚠ Il grafico a linea richiede un campo data. Nessun campo data disponibile per questa entità. Scegli un altro tipo di grafico.
+                  {t('reportChart.needsDateField')}
                 </div>
               )}
             </div>
@@ -157,16 +164,16 @@ export function ReportChartConfig({
           {!isKpi && !isTable && (
             <div style={{ display: 'flex', gap: 12 }}>
               <div style={{ flex: 1 }}>
-                <label htmlFor={ids.metric} style={labelStyle}>Metrica</label>
+                <label htmlFor={ids.metric} style={labelStyle}>{t('reportChart.metricLabel')}</label>
                 <select id={ids.metric} value={metric} onChange={e => onMetricChange(e.target.value)} style={selectStyle}>
-                  {METRIC_TYPES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  {METRIC_TYPES.map(m => <option key={m.value} value={m.value}>{t(m.labelKey)}</option>)}
                 </select>
               </div>
               {metric !== 'count' && resultNodes.length > 0 && (
                 <div style={{ flex: 1 }}>
-                  <label htmlFor={ids.metricField} style={labelStyle}>Campo</label>
+                  <label htmlFor={ids.metricField} style={labelStyle}>{t('reportChart.field')}</label>
                   <select id={ids.metricField} value={metricField} onChange={e => onMetricFieldChange(e.target.value)} style={selectStyle}>
-                    <option value="">Seleziona...</option>
+                    <option value="">{t('common.select')}</option>
                     {resultNodes.flatMap(([, nd]) =>
                       nd.fields.filter(f => f.fieldType === 'number').map(f => (
                         <option key={f.name} value={f.name}>{f.label}</option>
@@ -181,14 +188,14 @@ export function ReportChartConfig({
           {needsLimit && (
             <div style={{ display: 'flex', gap: 12 }}>
               <div style={{ flex: 1 }}>
-                <label htmlFor={ids.limit} style={labelStyle}>Mostra i primi N</label>
+                <label htmlFor={ids.limit} style={labelStyle}>{t('reportChart.topN')}</label>
                 <input id={ids.limit} type="number" value={limit} onChange={e => onLimitChange(Number(e.target.value))} style={inputStyle} min={1} max={100} />
               </div>
               <div style={{ flex: 1 }}>
-                <label htmlFor={ids.sortDir} style={labelStyle}>Ordine</label>
+                <label htmlFor={ids.sortDir} style={labelStyle}>{t('common.order')}</label>
                 <select id={ids.sortDir} value={sortDir} onChange={e => onSortDirChange(e.target.value)} style={selectStyle}>
-                  <option value="DESC">Decrescente</option>
-                  <option value="ASC">Crescente</option>
+                  <option value="DESC">{t('reportChart.descending')}</option>
+                  <option value="ASC">{t('reportChart.ascending')}</option>
                 </select>
               </div>
             </div>
@@ -196,10 +203,10 @@ export function ReportChartConfig({
 
           {isTable && resultNodes.length > 0 && (
             <div>
-              <div style={labelStyle}>Colonne da mostrare (per nodo risultato)</div>
+              <div style={labelStyle}>{t('reportChart.columnsToShow')}</div>
               {tableColumnCount === 0 && (
                 <div style={{ color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)', marginBottom: 8 }}>
-                  ⚠ Una tabella richiede almeno una colonna: il server rifiuta la sezione senza campi selezionati.
+                  {t('reportChart.needsColumn')}
                 </div>
               )}
               {resultNodes.map(([nid, nd]) => (
@@ -229,7 +236,7 @@ export function ReportChartConfig({
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={labelStyle}>Anteprima in tempo reale</div>
+          <div style={labelStyle}>{t('reportChart.livePreview')}</div>
           <ReportPreview loading={previewLoading} data={previewData} />
         </div>
       </div>

@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 import { CIIcon } from '@/lib/ciIcon'
 import { FormField } from './citype/CIFieldInlineEditor'
 import { inputS, selectS, textareaS, btnPrimary } from './shared/designerStyles'
@@ -29,13 +29,13 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
       </FormField>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, marginBottom: 14 }}>
-        <FormField label="Icona">
+        <FormField label={t('citypeDesigner.icon')}>
           <Select
             style={selectS}
             value={settingsForm.icon}
             onChange={(e) => setSettingsForm((p) => p && ({ ...p, icon: e.target.value }))}
           >
-            <option value="">— nessuna —</option>
+            <option value="">{t('citypeDesigner.noIcon')}</option>
             {ICONS.map((i) => <option key={i} value={i}>{i}</option>)}
           </Select>
         </FormField>
@@ -48,7 +48,7 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
         </div>
       </div>
 
-      <FormField label="Colore">
+      <FormField label={t('citypeDesigner.color')}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input
             type="color"
@@ -60,15 +60,15 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
         </div>
       </FormField>
 
-      <FormField label="Validation script (opzionale)">
+      <FormField label={t('citypeDesigner.validationScript')}>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
-          Variabili: <code>input</code>. Usa <code>throw 'msg'</code> per errore globale.
+          <Trans i18nKey="citypeDesigner.validationScriptHint" components={{ code: <code /> }} />
         </p>
         <textarea
           style={{ ...textareaS, minHeight: 100 }}
           value={settingsForm.validationScript}
           onChange={(e) => setSettingsForm((p) => p && ({ ...p, validationScript: e.target.value }))}
-          placeholder={"// Esempio:\nif (!input.title) throw 'Titolo obbligatorio'"}
+          placeholder={t('itilDesigner.validationPlaceholder')}
         />
       </FormField>
 
@@ -78,7 +78,7 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
           disabled={settingsSaving}
           onClick={() => void onSaveSettings()}
         >
-          {settingsSaving ? 'Salvataggio…' : 'Salva impostazioni'}
+          {settingsSaving ? t('common.saving') : t('citypeDesigner.saveSettings')}
         </button>
       </div>
     </div>

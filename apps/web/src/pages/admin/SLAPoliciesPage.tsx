@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
@@ -59,41 +60,56 @@ const ENTITY_LABELS: Record<string, string> = {
   incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'Service Request',
 }
 
-const SLA_FILTER_FIELDS: FieldConfig[] = [
-  { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
+const slaFilterFields = (t: TFunction): FieldConfig[] => [
+  { key: 'entityType', label: t('admin.sla.entityType'), type: 'enum', options: [
     { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' },
     { value: 'problem', label: 'Problem' }, { value: 'service_request', label: 'Service Request' },
   ]},
-  { key: 'priority', label: 'Priorità', type: 'enum', options: [
+  { key: 'priority', label: t('admin.sla.priority'), type: 'enum', options: [
     { value: 'critical', label: 'Critical' }, { value: 'high', label: 'High' },
     { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' },
   ]},
-  { key: 'category', label: 'Categoria', type: 'enum', options: [
+  { key: 'category', label: t('admin.sla.category'), type: 'enum', options: [
     { value: 'hardware', label: 'Hardware' }, { value: 'software', label: 'Software' },
     { value: 'network', label: 'Network' }, { value: 'access', label: 'Access' },
     { value: 'security', label: 'Security' }, { value: 'other', label: 'Other' },
   ]},
-  { key: 'enabled', label: 'Abilitata', type: 'enum', options: [
-    { value: 'true', label: 'Sì' }, { value: 'false', label: 'No' },
+  { key: 'enabled', label: t('admin.sla.enabled'), type: 'enum', options: [
+    { value: 'true', label: t('common.yes') }, { value: 'false', label: t('common.no') },
   ]},
-  { key: 'name', label: 'Nome', type: 'text' },
+  { key: 'name', label: t('common.name'), type: 'text' },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmtMinutes(m: number): string {
-  if (m < 60) return `${m}min`
-  if (m < 1440) return m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h ${m % 60}min`
+/**
+ * Le unita (min / h / g) sono ABBREVIAZIONI a schermo: vengono dalle chiavi,
+ * perche «gg» in inglese e «d». Il resto e aritmetica.
+ */
+function fmtMinutes(m: number, t: TFunction): string {
+  const u = (k: string, n: number) => t(`admin.sla.unit.${k}`, { count: n })
+  if (m < 60) return u('minutes', m)
+  if (m < 1440) return m % 60 === 0 ? u('hours', m / 60) : `${u('hours', Math.floor(m / 60))} ${u('minutes', m % 60)}`
   const d = m / 1440
-  return d === Math.floor(d) ? `${d}gg` : `${Math.floor(d)}gg ${fmtMinutes(m % 1440)}`
+  return d === Math.floor(d) ? u('days', d) : `${u('days', Math.floor(d))} ${fmtMinutes(m % 1440, t)}`
 }
 
-function applicabilityText(p: SLAPolicy): string {
-  const parts: string[] = [`${lookupOrError(ENTITY_LABELS, p.entityType, 'ENTITY_LABELS', p.entityType)}`]
-  if (p.priority) parts.push(`priorita ${p.priority}`)
-  if (p.category) parts.push(`categoria ${p.category}`)
-  if (p.teamName) parts.push(`team ${p.teamName}`)
-  return parts.length === 1 ? `Si applica a: tutti gli ${parts[0]}` : `Si applica a: ${parts[0]} con ${parts.slice(1).join(', ')}`
+/** La frase «si applica a …» si compone di frammenti tradotti, non di pezzi cuciti. */
+function applicabilityText(p: SLAPolicy, t: TFunction): string {
+  const scope = scopeParts(p.priority, p.category, p.teamName, t)
+  return scope.length === 0
+    ? t('admin.sla.appliesToAll',   { entity: entityName(p.entityType) })
+    : t('admin.sla.appliesToSome',  { entity: entityName(p.entityType), scope: scope.join(', ') })
+}
+
+const entityName = (et: string) => lookupOrError(ENTITY_LABELS, et, 'ENTITY_LABELS', et)
+
+function scopeParts(priority: string | null, category: string | null, teamName: string | null, t: TFunction): string[] {
+  const parts: string[] = []
+  if (priority) parts.push(t('admin.sla.scopePriority', { value: priority }))
+  if (category) parts.push(t('admin.sla.scopeCategory', { value: category }))
+  if (teamName) parts.push(t('admin.sla.scopeTeam',     { value: teamName }))
+  return parts
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -182,22 +198,22 @@ export function SLAPoliciesPage() {
   }
 
   const policyColumns: ColumnDef<SLAPolicy>[] = [
-    { key: 'name', label: 'Nome', sortable: true, render: (_v, row) => (
+    { key: 'name', label: t('common.name'), sortable: true, render: (_v, row) => (
       <div>
         <div style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{row.name}</div>
-        <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{applicabilityText(row)}</div>
+        <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{applicabilityText(row, t)}</div>
       </div>
     ) },
     { key: 'priority', label: t('admin.sla.scopeField'), sortable: true, render: (v) => v ? <Pill bg={palette.warning.tint} color={palette.warning.strong} radius={10}>{String(v)}</Pill> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{t('admin.sla.anyScope')}</span> },
-    { key: 'category', label: 'Categoria', sortable: true, render: (v) => v ? <Pill bg={palette.info.tint} color={palette.info.text} radius={10}>{String(v)}</Pill> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>Tutte</span> },
-    { key: 'teamName', label: 'Team', sortable: true, render: (v) => <span style={{ color: v ? 'var(--color-slate-dark)' : 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{v ? String(v) : 'Tutti'}</span> },
-    { key: 'responseMinutes', label: 'Risposta', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v))}</span> },
-    { key: 'resolveMinutes', label: 'Risoluzione', sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v))}</span> },
-    { key: 'businessHours', label: 'Business Hours', sortable: true, render: (v) => <Pill bg={v ? palette.success.tint : 'var(--color-border-light)'} color={v ? palette.success.text : 'var(--color-slate)'} radius={10}>{v ? 'Si' : 'No'}</Pill> },
-    { key: 'enabled', label: 'Attiva', sortable: true, render: (_v, row) => (
+    { key: 'category', label: t('pages.serviceCatalogAdmin.category'), sortable: true, render: (v) => v ? <Pill bg={palette.info.tint} color={palette.info.text} radius={10}>{String(v)}</Pill> : <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{t('common.all')}</span> },
+    { key: 'teamName', label: 'Team', sortable: true, render: (v) => <span style={{ color: v ? 'var(--color-slate-dark)' : 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>{v ? String(v) : t('common.all')}</span> },
+    { key: 'responseMinutes', label: t('admin.sla.response'), sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v), t)}</span> },
+    { key: 'resolveMinutes', label: t('admin.sla.resolution'), sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v), t)}</span> },
+    { key: 'businessHours', label: 'Business Hours', sortable: true, render: (v) => <Pill bg={v ? palette.success.tint : 'var(--color-border-light)'} color={v ? palette.success.text : 'var(--color-slate)'} radius={10}>{v ? t('common.yes') : t('common.no')}</Pill> },
+    { key: 'enabled', label: t('admin.rules.active'), sortable: true, render: (_v, row) => (
       <Toggle checked={row.enabled} onChange={() => void handleToggle(row)} label={t('admin.sla.toggleLabel', { name: row.name })} />
     ) },
-    { key: 'id', label: 'Azioni', sortable: true, render: (_v, row) => (
+    { key: 'id', label: t('common.actions'), sortable: true, render: (_v, row) => (
       <div style={{ display: 'inline-flex', gap: 6 }}>
         <Button variant="ghost" title={t('common.edit')} aria-label={t('common.edit')} onClick={() => modal.openEdit(row)} style={{ padding: 4 }}><Pencil size={15} aria-hidden="true" color="var(--color-slate)" /></Button>
         <Button variant="ghost" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => void handleDelete(row)} style={{ padding: 4 }}><Trash2 size={15} aria-hidden="true" color="var(--color-danger)" /></Button>
@@ -207,12 +223,11 @@ export function SLAPoliciesPage() {
 
   // ── Preview text for modal form ───────────────────────────────────────────
   function formPreview(): string {
-    const parts: string[] = [lookupOrError(ENTITY_LABELS, form.entityType, 'ENTITY_LABELS', form.entityType)]
-    if (form.priority) parts.push(`priorita ${form.priority}`)
-    if (form.category) parts.push(`categoria ${form.category}`)
     const team = teams.find(tm => tm.id === form.teamId)
-    if (team) parts.push(`team ${team.name}`)
-    return parts.length === 1 ? `Tutti gli ${parts[0]}` : `${parts[0]} con ${parts.slice(1).join(', ')}`
+    const scope = scopeParts(form.priority, form.category, team?.name ?? null, t)
+    return scope.length === 0
+      ? t('admin.sla.previewAll',  { entity: entityName(form.entityType) })
+      : t('admin.sla.previewSome', { entity: entityName(form.entityType), scope: scope.join(', ') })
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -221,23 +236,23 @@ export function SLAPoliciesPage() {
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <PageTitle icon={<Shield size={22} color="var(--color-icon-accent)" />}>SLA Policies</PageTitle>
+          <PageTitle icon={<Shield size={22} color="var(--color-icon-accent)" />}>{t('sidebar.slaPolicies')}</PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : `${policies.length} policy`}
           </p>
         </div>
-        <Button icon={<Plus size={15} aria-hidden="true" />} onClick={modal.openCreate}>Nuova Policy</Button>
+        <Button icon={<Plus size={15} aria-hidden="true" />} onClick={modal.openCreate}>{t('pages.slaPolicies.newPolicy')}</Button>
       </div>
 
       {!loading && policies.length === 0 && (
         <EmptyState
           icon={<Shield size={32} color="var(--color-slate-light)" />}
-          title="Nessuna SLA policy configurata"
-          description="Crea la prima policy per definire i tempi di risposta e risoluzione."
+          title={t('pages.slaPolicies.emptyTitle')}
+          description={t('pages.slaPolicies.emptyDescription')}
         />
       )}
 
-      <FilterBuilder fields={SLA_FILTER_FIELDS} onApply={list.setFilterGroup} />
+      <FilterBuilder fields={slaFilterFields(t)} onApply={list.setFilterGroup} />
 
       {Object.entries(grouped).map(([entityType, items]) => (
         <div key={entityType} style={{ marginBottom: 28 }}>
@@ -251,7 +266,7 @@ export function SLAPoliciesPage() {
             columns={policyColumns}
             data={items}
             loading={false}
-            label={`SLA Policies — ${ENTITY_LABELS[entityType]}`}
+            label={t('admin.sla.tableLabel', { entity: ENTITY_LABELS[entityType] })}
           />
         </div>
       ))}
@@ -260,7 +275,7 @@ export function SLAPoliciesPage() {
       <Modal
         open={modal.open}
         onClose={modal.close}
-        title={modal.editing ? 'Modifica Policy' : 'Nuova SLA Policy'}
+        title={t(modal.editing ? 'pages.slaPolicies.editPolicy' : 'pages.slaPolicies.newPolicy')}
         width={560}
         zIndex={9000}
         closeOnOverlay={false}
@@ -273,8 +288,8 @@ export function SLAPoliciesPage() {
       >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
-              <label htmlFor={fid('name')} style={labelS}>Nome *</label>
-              <Input id={fid('name')} value={form.name} onChange={e => patch({ name: e.target.value })} placeholder="es. SLA Critical Incident" />
+              <label htmlFor={fid('name')} style={labelS}>{t('pages.slaReport.nameRequired')}</label>
+              <Input id={fid('name')} value={form.name} onChange={e => patch({ name: e.target.value })} placeholder={t('pages.slaPolicies.namePlaceholder')} />
             </div>
 
             <div className="og-pair">
@@ -315,18 +330,18 @@ export function SLAPoliciesPage() {
 
             <div className="og-pair">
               <div>
-                <label htmlFor={fid('response-minutes')} style={labelS}>Tempo Risposta (minuti) *</label>
+                <label htmlFor={fid('response-minutes')} style={labelS}>{t('pages.slaPolicies.responseMinutes')}</label>
                 <Input id={fid('response-minutes')} type="number" min={1} value={form.responseMinutes} onChange={e => patch({ responseMinutes: Number(e.target.value) })} />
               </div>
               <div>
-                <label htmlFor={fid('resolve-minutes')} style={labelS}>Tempo Risoluzione (minuti) *</label>
+                <label htmlFor={fid('resolve-minutes')} style={labelS}>{t('pages.slaPolicies.resolveMinutes')}</label>
                 <Input id={fid('resolve-minutes')} type="number" min={1} value={form.resolveMinutes} onChange={e => patch({ resolveMinutes: Number(e.target.value) })} />
               </div>
             </div>
 
             <div className="og-pair" style={{ alignItems: 'end' }}>
               <div>
-                <label htmlFor={fid('timezone')} style={labelS}>Timezone</label>
+                <label htmlFor={fid('timezone')} style={labelS}>{t('pages.slaPolicies.timezone')}</label>
                 <Input id={fid('timezone')} value={form.timezone} onChange={e => patch({ timezone: e.target.value })} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 2 }}>
@@ -337,7 +352,7 @@ export function SLAPoliciesPage() {
 
             {/* Preview */}
             <div style={{ background: palette.info.light, border: `1px solid ${palette.info.border}`, borderRadius: 8, padding: '10px 14px', fontSize: 'var(--font-size-body)', color: 'var(--accent-hover)' }}>
-              <strong>Anteprima:</strong> {formPreview()} — risposta entro {fmtMinutes(form.responseMinutes)}, risoluzione entro {fmtMinutes(form.resolveMinutes)}
+              <strong>{t('admin.sla.previewLabel')}</strong> {formPreview()} — {t('admin.sla.previewTimes', { response: fmtMinutes(form.responseMinutes, t), resolve: fmtMinutes(form.resolveMinutes, t) })}
               {form.businessHours ? ' (orario lavorativo)' : ' (24/7)'}
             </div>
           </div>

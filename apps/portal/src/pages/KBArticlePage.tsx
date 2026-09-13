@@ -89,7 +89,7 @@ export function KBArticlePage() {
           {t('kb.helpful')}
         </div>
         {voted !== null ? (
-          <p style={{ fontSize: 10, color: colors.slate }}>Grazie per il tuo feedback!</p>
+          <p style={{ fontSize: 10, color: colors.slate }}>{t('kb.thanksFeedback')}</p>
         ) : (
           <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
             <button

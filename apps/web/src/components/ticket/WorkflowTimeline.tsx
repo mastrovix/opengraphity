@@ -8,6 +8,7 @@
  * colore diverso dalle altre schede della stessa pagina. Qui il riquadro è
  * CONTROLLATO dal chiamante (`timelineOpen`/`onToggle`), come prima.
  */
+import { useTranslation } from 'react-i18next'
 import { timeAgo, formatDuration } from '@/lib/datetime'
 import { alpha, colors } from '@/lib/tokens'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -39,12 +40,13 @@ interface Props {
   entityType:  string
 }
 
-export function WorkflowTimeline({ historyDesc, timelineOpen, onToggle, entityType, title = 'Timeline workflow' }: Props) {
+export function WorkflowTimeline({ historyDesc, timelineOpen, onToggle, entityType, title }: Props) {
+  const { t } = useTranslation()
   const { labelFor } = useWorkflowSteps(entityType)
   return (
-    <SectionCard title={title} open={timelineOpen} onToggle={onToggle}>
+    <SectionCard title={title ?? t('components.workflowTimeline.title')} open={timelineOpen} onToggle={onToggle}>
       {historyDesc.length === 0 ? (
-        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>Nessuna storia workflow.</p>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('components.workflowTimeline.empty')}</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
           {historyDesc.map((exec, idx) => {

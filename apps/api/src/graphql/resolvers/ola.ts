@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
-import { runQuery, toNumber } from '@opengraphity/neo4j'
+import { runQuery, runQueryOne, toNumber, type Queryable } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { requireRole } from '../../lib/requireRole.js'
@@ -188,18 +188,58 @@ interface OLAInput {
   partyType?: string; partyName?: string; teamId?: string; enabled?: boolean
 }
 
+/**
+ * CHI È IL RESPONSABILE: un RIFERIMENTO se è un team, una stringa se è un
+ * fornitore.
+ *
+ * Un team di questo cliente è un'entità che esiste (`:Team`), e il contratto
+ * lo cita per `team_id`: il nome lo risolve la lettura (`teamName`), così
+ * rinominare il team non lascia in giro una copia vecchia del suo nome. Il
+ * campo era invece un testo libero — «Es. Network Ops» — e questo permetteva
+ * tre cose tutte sbagliate: scrivere un team che non esiste, scriverne uno
+ * esistente con un refuso (due responsabili dove ce n'è uno), e vedere il
+ * nome vecchio per sempre dopo una rinomina.
+ *
+ * Un FORNITORE esterno non è un'entità del prodotto — non sta fra i team — e
+ * per lui il testo libero è la forma giusta: si continua a scrivere il nome.
+ *
+ * La regola sta qui e non solo nella pagina: una tendina è una comodità, il
+ * rifiuto è la garanzia (questo repo tratta l'API come una strada documentata,
+ * usata da script e integrazioni).
+ */
+async function assertResponsabile(
+  session: Queryable, tenantId: string, partyType: string | null | undefined,
+  teamId: string | null | undefined, partyName: string | null | undefined,
+): Promise<void> {
+  if (partyType === 'supplier') {
+    if (!partyName?.trim()) {
+      throw new ValidationError('partyName is required when the responsible party is a supplier', { key: 'errors.ola.supplierNameRequired' })
+    }
+    return
+  }
+  if (partyType !== 'team') return
+  if (!teamId?.trim()) {
+    throw new ValidationError('teamId is required when the responsible party is an internal team', { key: 'errors.ola.teamRequired' })
+  }
+  const row = await runQueryOne<{ name: string }>(session, `
+    MATCH (t:Team {id: $teamId, tenant_id: $tenantId}) RETURN t.name AS name
+  `, { teamId, tenantId })
+  if (!row) throw new ValidationError(`Team ${teamId} does not exist in this tenant`, { key: 'errors.ola.teamUnknown', params: { team: teamId } })
+}
+
 export async function createOLAContract(_: unknown, args: { input: OLAInput }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
   const { input } = args
-  if (!VALID_TYPES.includes(input.type ?? '')) throw new ValidationError(`type deve essere uno di: ${VALID_TYPES.join(', ')}`)
-  if (!VALID_ENTITY_TYPES.includes(input.entityType ?? '')) throw new ValidationError(`entityType deve essere uno di: ${VALID_ENTITY_TYPES.join(', ')}`)
+  if (!VALID_TYPES.includes(input.type ?? '')) throw new ValidationError(`type must be one of: ${VALID_TYPES.join(', ')}`, { key: 'errors.ola.typeOneOf', params: { allowed: VALID_TYPES.join(', ') } })
+  if (!VALID_ENTITY_TYPES.includes(input.entityType ?? '')) throw new ValidationError(`entityType must be one of: ${VALID_ENTITY_TYPES.join(', ')}`, { key: 'errors.ola.entityTypeOneOf', params: { allowed: VALID_ENTITY_TYPES.join(', ') } })
   const name = input.name?.trim()
-  if (!name) throw new ValidationError('name è obbligatorio')
-  if (!input.responseMinutes || input.responseMinutes <= 0) throw new ValidationError('responseMinutes deve essere > 0')
-  if (!input.resolveMinutes || input.resolveMinutes <= 0) throw new ValidationError('resolveMinutes deve essere > 0')
+  if (!name) throw new ValidationError('name is required', { key: 'errors.ola.nameRequired' })
+  if (!input.responseMinutes || input.responseMinutes <= 0) throw new ValidationError('responseMinutes must be > 0', { key: 'errors.ola.responseMinutes' })
+  if (!input.resolveMinutes || input.resolveMinutes <= 0) throw new ValidationError('resolveMinutes must be > 0', { key: 'errors.ola.resolveMinutes' })
 
   const id = uuidv4(); const now = new Date().toISOString()
   return withSession(async (session) => {
+    await assertResponsabile(session, ctx.tenantId, input.partyType ?? 'team', input.teamId, input.partyName)
     const rows = await runQuery<{ props: Props; teamName: string | null }>(session, `
       CREATE (o:OLAContract {
         id: $id, tenant_id: $tenantId, type: $type, name: $name, description: $description,
@@ -215,7 +255,10 @@ export async function createOLAContract(_: unknown, args: { input: OLAInput }, c
       description: input.description ?? null, entityType: input.entityType,
       responseMinutes: input.responseMinutes, resolveMinutes: input.resolveMinutes,
       businessHours: input.businessHours ?? false, partyType: input.partyType ?? null,
-      partyName: input.partyName ?? null, teamId: input.teamId ?? null, now,
+      // Se il responsabile è un team, il nome NON si copia qui: lo risolve
+      // `teamName` alla lettura, e una rinomina si vede subito.
+      partyName: input.partyType === 'team' ? null : (input.partyName ?? null),
+      teamId: input.partyType === 'team' ? (input.teamId ?? null) : null, now,
     })
     void audit(ctx, 'ola_contract.created', 'OLAContract', id)
     return mapOLA(rows[0]!.props, rows[0]!.teamName)
@@ -225,9 +268,9 @@ export async function createOLAContract(_: unknown, args: { input: OLAInput }, c
 export async function updateOLAContract(_: unknown, args: { id: string; input: OLAInput }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
   const { input } = args
-  if (input.type !== undefined) throw new ValidationError('type non è modificabile')
+  if (input.type !== undefined) throw new ValidationError('type cannot be changed', { key: 'errors.ola.typeImmutable' })
   if (input.entityType !== undefined && !VALID_ENTITY_TYPES.includes(input.entityType)) {
-    throw new ValidationError(`entityType deve essere uno di: ${VALID_ENTITY_TYPES.join(', ')}`)
+    throw new ValidationError(`entityType must be one of: ${VALID_ENTITY_TYPES.join(', ')}`, { key: 'errors.ola.entityTypeOneOf', params: { allowed: VALID_ENTITY_TYPES.join(', ') } })
   }
   const sets: Record<string, unknown> = {}
   if (input.name !== undefined)            sets['name']             = input.name
@@ -240,9 +283,29 @@ export async function updateOLAContract(_: unknown, args: { id: string; input: O
   if (input.partyName !== undefined)       sets['party_name']       = input.partyName
   if (input.teamId !== undefined)          sets['team_id']          = input.teamId
   if (input.enabled !== undefined)         sets['enabled']          = input.enabled
-  if (Object.keys(sets).length === 0) throw new ValidationError('updateOLAContract: nessun campo da aggiornare')
+  if (Object.keys(sets).length === 0) throw new ValidationError('updateOLAContract: no field to update', { key: 'errors.nothingToUpdate' })
 
   return withSession(async (session) => {
+    /*
+      Il responsabile si valida sullo stato FINALE, non su quello che arriva:
+      una modifica può cambiare solo il tipo (team → fornitore) e lasciare
+      fuori l'altra metà, e allora la metà che conta è quella già salvata.
+    */
+    if (input.partyType !== undefined || input.teamId !== undefined || input.partyName !== undefined) {
+      const attuale = await runQueryOne<{ partyType: string | null; teamId: string | null; partyName: string | null }>(session, `
+        MATCH (o:OLAContract {id: $id, tenant_id: $tenantId})
+        RETURN o.party_type AS partyType, o.team_id AS teamId, o.party_name AS partyName
+      `, { id: args.id, tenantId: ctx.tenantId })
+      if (!attuale) throw new NotFoundError('OLAContract', args.id)
+      const partyType = input.partyType ?? attuale.partyType
+      const teamId    = input.teamId    ?? attuale.teamId
+      const partyName = input.partyName ?? attuale.partyName
+      await assertResponsabile(session, ctx.tenantId, partyType, teamId, partyName)
+      // Le due forme non convivono: passando a team si scorda il nome scritto
+      // a mano, passando a fornitore si scorda il riferimento al team.
+      if (partyType === 'team')     { sets['party_name'] = null; sets['team_id'] = teamId }
+      if (partyType === 'supplier') { sets['team_id'] = null; sets['party_name'] = partyName }
+    }
     const rows = await runQuery<{ props: Props; teamName: string | null }>(session, `
       MATCH (o:OLAContract {id: $id, tenant_id: $tenantId})
       SET o += $sets

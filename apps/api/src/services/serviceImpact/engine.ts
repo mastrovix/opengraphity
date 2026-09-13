@@ -557,7 +557,7 @@ export async function assertServiceMapPlanLimit(session: Queryable, tenantId: st
   const max = toNumber(row.maxServiceMaps)
   const maps = toNumber(row.maps)
   if (maps >= max) {
-    throw new ValidationError(`piano ${row.plan}: massimo ${max} mappe di servizio, ne esistono già ${maps}`)
+    throw new ValidationError(`plan ${row.plan}: at most ${max} service maps, ${maps} already exist`, { key: 'errors.serviceMap.planLimit', params: { plan: row.plan, max, existing: maps } })
   }
 }
 

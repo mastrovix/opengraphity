@@ -3,6 +3,7 @@
  * Local state: category filter, expanded long entries, "show all" toggle.
  */
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { SectionCard } from '@/components/ui/SectionCard'
 import type { ChangeAuditEntryData } from '@/types/change'
 import { formatDateShort } from '@/lib/datetime'
@@ -14,9 +15,11 @@ const AUDIT_CAT_COLOR: Record<AuditCategory, string> = {
   assegnazioni: palette.purple.base, commenti: 'var(--color-slate)',
   sistema: 'var(--color-slate-light)',
 }
-const AUDIT_CAT_LABEL: Record<AuditCategory, string> = {
-  stato: 'Stato', assessment: 'Assessment', assegnazioni: 'Assegnazioni',
-  commenti: 'Commenti', sistema: 'Sistema',
+/** Le categorie come CHIAVI: la frase la risolve chi la mostra. */
+const AUDIT_CAT_KEY: Record<AuditCategory, string> = {
+  stato: 'pages.auditTimeline.cat.status', assessment: 'pages.auditTimeline.cat.assessment',
+  assegnazioni: 'pages.auditTimeline.cat.assignments',
+  commenti: 'pages.auditTimeline.cat.comments', sistema: 'pages.auditTimeline.cat.system',
 }
 
 function categorizeAction(action: string): AuditCategory {
@@ -29,6 +32,7 @@ function categorizeAction(action: string): AuditCategory {
 }
 
 export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
+  const { t } = useTranslation()
   const [filter, setFilter] = useState<AuditCategory | 'all'>('all')
   const [showAll, setShowAll] = useState(false)
   const [expandedIdx, setExpandedIdx] = useState<Set<number>>(new Set())
@@ -37,17 +41,17 @@ export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
   const fmtTS = formatDateShort
 
   return (
-    <SectionCard title="Audit Trail" collapsible defaultOpen={false} count={audit.length}>
+    <SectionCard title={t('pages.auditTimeline.title')} collapsible defaultOpen={false} count={audit.length}>
       <div style={{ marginBottom: 12 }}>
         <select value={filter} onChange={(e) => { setFilter(e.target.value as AuditCategory | 'all'); setShowAll(false) }} style={{ padding: '5px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)' }}>
-          <option value="all">Tutti ({audit.length})</option>
-          {(Object.keys(AUDIT_CAT_LABEL) as AuditCategory[]).map(cat => {
+          <option value="all">{t('common.all')} ({audit.length})</option>
+          {(Object.keys(AUDIT_CAT_KEY) as AuditCategory[]).map(cat => {
             const n = audit.filter(e => categorizeAction(e.action) === cat).length
-            return n > 0 ? <option key={cat} value={cat}>{AUDIT_CAT_LABEL[cat]} ({n})</option> : null
+            return n > 0 ? <option key={cat} value={cat}>{t(AUDIT_CAT_KEY[cat])} ({n})</option> : null
           })}
         </select>
       </div>
-      {filtered.length === 0 && <p style={{ color: 'var(--color-slate-light)', margin: 0 }}>Nessun evento</p>}
+      {filtered.length === 0 && <p style={{ color: 'var(--color-slate-light)', margin: 0 }}>{t('pages.auditTimeline.empty')}</p>}
       <div>
         {visible.map((e, i) => {
           const cat = categorizeAction(e.action); const color = AUDIT_CAT_COLOR[cat]
@@ -67,14 +71,14 @@ export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
                     {e.actor && <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{e.actor.name}</span>}
                   </div>
                   {e.detail && <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-dark)', ...(isLong && !isExp ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : {}) }}>{e.detail}</div>}
-                  {isLong && <button type="button" onClick={() => setExpandedIdx(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-label)', color: 'var(--color-brand)', marginTop: 2 }}>{isExp ? 'Mostra meno' : 'Mostra tutto'}</button>}
+                  {isLong && <button type="button" onClick={() => setExpandedIdx(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-label)', color: 'var(--color-brand)', marginTop: 2 }}>{t(isExp ? 'common.showLess' : 'common.showAll')}</button>}
                 </div>
               </div>
             </div>
           )
         })}
       </div>
-      {filtered.length > 20 && !showAll && <button type="button" onClick={() => setShowAll(true)} style={{ marginTop: 6, background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-brand)' }}>Mostra tutti ({filtered.length})</button>}
+      {filtered.length > 20 && !showAll && <button type="button" onClick={() => setShowAll(true)} style={{ marginTop: 6, background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-brand)' }}>{t('common.showAllCount', { count: filtered.length })}</button>}
     </SectionCard>
   )
 }

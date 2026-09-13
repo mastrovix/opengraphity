@@ -47,13 +47,13 @@ function render(status: string) {
 describe('IncidentHeader — «Richiedi Change» segue i metadata del passo', () => {
   it('passo aperto → il bottone c\'è', async () => {
     render('in_carico')
-    expect(await screen.findByRole('button', { name: /Richiedi Change/ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Request a change/ })).toBeInTheDocument()
   })
 
   it.each(['sistemato', 'archiviato', 'annullato'])('passo concluso «%s» (nome del cliente) → nessun bottone', async (status) => {
     const { unmount } = render(status)
     await screen.findByRole('heading', { level: 1 })
-    await waitFor(() => expect(screen.queryByRole('button', { name: /Richiedi Change/ })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Request a change/ })).not.toBeInTheDocument())
     unmount()
   })
 })

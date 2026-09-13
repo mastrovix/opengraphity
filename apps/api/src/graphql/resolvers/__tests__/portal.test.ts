@@ -39,7 +39,7 @@ vi.mock('../../../lib/audit.js', () => ({
 /**
  * Ondata 7 · D-15: il portale espone `statusCategory`/`statusLabel` dal
  * workflow DEL CLIENTE, perché lo stile della pastiglia viene dalla categoria
- * del passo e non da una mappa di nomi di fabbrica. Qui il workflow del cliente
+ * del passo e non da una mappa di nomi factory. Qui il workflow del cliente
  * di prova ha un passo rinominato (`in_carico`) con categoria `active`.
  */
 vi.mock('../../../lib/workflowHelpers.js', async (importOriginal) => {
@@ -145,7 +145,7 @@ describe('myTicket — ownership check', () => {
   /**
    * Ondata 7 · D-15: il passo RINOMINATO dal cliente porta la sua categoria e
    * la sua etichetta. Prima il portale non aveva né l'una né l'altra: coloriva
-   * per nome di passo di fabbrica e mostrava il nome grezzo.
+   * per nome di passo factory e mostrava il nome grezzo.
    */
   it('passo rinominato dal cliente → categoria ed etichetta del suo workflow', async () => {
     mockSession.executeRead.mockResolvedValueOnce({

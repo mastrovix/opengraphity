@@ -65,13 +65,23 @@ export const GET_RISK_BAND_THRESHOLDS = gql`
  */
 export const GET_CONFIGURATION_ISSUES = gql`
   query GetConfigurationIssues {
-    configurationIssues { kind severity message where }
+    configurationIssues { kind severity params { name value } gaps { kind params { name value } } where }
+  }
+`
+
+/**
+ * In che lingua si legge questo cliente. La chiede l'app all'avvio: la lingua
+ * predefinita e configurazione del cliente e sta nel grafo, non nel bundle.
+ */
+export const GET_TENANT_LANGUAGE_SETTINGS = gql`
+  query GetTenantLanguageSettings {
+    tenantLanguageSettings { available defaultLanguage fallback }
   }
 `
 
 /** Cosa manca a questo cliente per essere usabile (lista vuota = completo). */
 export const GET_TENANT_PROVISIONING_GAPS = gql`
   query GetTenantProvisioningGaps {
-    tenantProvisioningGaps
+    tenantProvisioningGaps { kind params { name value } }
   }
 `

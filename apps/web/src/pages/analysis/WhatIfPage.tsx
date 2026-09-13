@@ -200,7 +200,7 @@ export function WhatIfPage() {
         <PageTitle icon={<FlaskConical size={22} color="var(--color-icon-accent)" />}>
           {t('pages.whatIf.title')}
         </PageTitle>
-        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
           {t('pages.whatIf.subtitle')}
         </p>
       </div>

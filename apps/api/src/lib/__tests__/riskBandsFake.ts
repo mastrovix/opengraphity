@@ -8,7 +8,7 @@
  * sessione con le sole query che loro guardano: far passare anche questa da lì
  * vorrebbe dire insegnare a ognuno una query in più.
  *
- * Questo modulo risponde con le soglie **di fabbrica** (≤30, ≤60, il resto) sui
+ * Questo modulo risponde con le soglie **factory** (≤30, ≤60, il resto) sui
  * valori del vocabolario spedito, senza grafo:
  *
  *     vi.mock('../../lib/riskBands.js', () => import('../../lib/__tests__/riskBandsFake.js'))

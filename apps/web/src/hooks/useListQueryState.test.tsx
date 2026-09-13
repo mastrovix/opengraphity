@@ -97,7 +97,7 @@ describe('useListQueryState — persistInQuery', () => {
     expect(result.current.sortDir).toBe('asc')
     expect(result.current.page).toBe(0)
     expect(result.current.filterGroup).toBeNull()
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('parametro "filters" non valido'), expect.anything())
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('invalid "filters" parameter'), expect.anything())
   })
 
   it('handleSort scrive ?sort= e rimuove page; setPage scrive page 1-based (pagina 0 → nessun parametro)', () => {

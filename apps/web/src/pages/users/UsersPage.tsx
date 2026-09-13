@@ -96,7 +96,7 @@ export function UsersPage() {
   const { data: teamsData } = useQuery<{ teams: { id: string; name: string; description: string | null; type: string | null }[] }>(GET_TEAMS)
   const teams = teamsData?.teams ?? []
   const [createUserMut, { loading: creating }] = useMutationWithToast(CREATE_USER, {
-    successMessage: 'Utente creato',
+    successMessage: t('pages.users.created'),
     onSuccess:      () => { setModalOpen(false); setForm(EMPTY_FORM) },
     refetch,
   })
@@ -185,8 +185,8 @@ export function UsersPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div><label style={labelS}>{t('pages.users.email')} {REQUIRED}</label><Input type="email" required value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="mario@acme.com" /></div>
             <div className="og-pair">
-              <div><label style={labelS}>{t('pages.users.firstName')} {REQUIRED}</label><Input required value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder="Mario" /></div>
-              <div><label style={labelS}>{t('pages.users.lastName')} {REQUIRED}</label><Input required value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} placeholder="Rossi" /></div>
+              <div><label style={labelS}>{t('pages.users.firstName')} {REQUIRED}</label><Input required value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder={t('pages.users.firstNamePlaceholder')} /></div>
+              <div><label style={labelS}>{t('pages.users.lastName')} {REQUIRED}</label><Input required value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} placeholder={t('pages.users.lastNamePlaceholder')} /></div>
             </div>
             <div><label style={labelS}>{t('pages.users.password')} {REQUIRED}</label><Input type="password" required value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={t('pages.users.passwordHint')} /></div>
             <div><label style={labelS}>{t('pages.users.role')} {REQUIRED}</label>

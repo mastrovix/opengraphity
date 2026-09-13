@@ -40,10 +40,21 @@ export const UPDATE_RISK_BAND_THRESHOLDS = gql`
  * matrici, workflow). Idempotente e non distruttiva: una definizione che esiste
  * già viene saltata, non riallineata al seme.
  */
+/**
+ * La lingua predefinita dell'azienda (admin). Era una costante nel codice:
+ * cambiarla voleva dire ricompilare il prodotto.
+ */
+export const SET_TENANT_DEFAULT_LANGUAGE = gql`
+  mutation SetTenantDefaultLanguage($language: String!) {
+    setTenantDefaultLanguage(language: $language) { available defaultLanguage fallback }
+  }
+`
+
 export const PROVISION_TENANT_DATA = gql`
   mutation ProvisionTenantData {
     provisionTenantData {
-      dashboardCreated notificationRulesCreated matricesCreated workflows remainingGaps
+      dashboardCreated notificationRulesCreated matricesCreated workflows
+      remainingGaps { kind params { name value } }
     }
   }
 `

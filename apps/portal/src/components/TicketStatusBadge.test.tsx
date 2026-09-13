@@ -46,12 +46,12 @@ describe('TicketStatusBadge', () => {
   it('passo SENZA categoria → neutro, e lo si dice (console.warn): configurazione incompleta, non errore', () => {
     renderWithProviders(<TicketStatusBadge status="in_verifica" statusCategory={null} />)
     expect(screen.getByText('In verifica')).toHaveStyle({ backgroundColor: 'var(--color-slate-bg)' })
-    expect(consoleWarn).toHaveBeenCalledWith('[TicketStatusBadge] il passo "in_verifica" non dichiara una categoria: pastiglia neutra')
+    expect(consoleWarn).toHaveBeenCalledWith('[TicketStatusBadge] step "in_verifica" declares no category: neutral pill')
     expect(consoleError).not.toHaveBeenCalled()
   })
 
   it('categoria che il portale non conosce → neutro e console.error (è il prodotto a essere indietro)', () => {
     renderWithProviders(<TicketStatusBadge status="x" statusCategory="inventata" />)
-    expect(consoleError).toHaveBeenCalledWith('[TicketStatusBadge] categoria sconosciuta "inventata" sul passo "x"')
+    expect(consoleError).toHaveBeenCalledWith('[TicketStatusBadge] unknown category "inventata" on step "x"')
   })
 })

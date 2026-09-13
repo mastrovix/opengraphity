@@ -32,9 +32,9 @@ export interface CIBaseEnums {
 
 function enumOf(fields: BaseCITypeData['baseCIType'], name: string): string[] | string {
   const f = fields?.fields.find((x) => x.name === name)
-  if (!f) return `campo base "${name}" assente nel metamodello`
-  if (f.fieldType !== 'enum') return `campo base "${name}" non è un enum (${f.fieldType})`
-  if (!f.enumValues || f.enumValues.length === 0) return `campo base "${name}" senza enumValues`
+  if (!f) return `base field "${name}" is not in the metamodel`
+  if (f.fieldType !== 'enum') return `base field "${name}" is not an enum (${f.fieldType})`
+  if (!f.enumValues || f.enumValues.length === 0) return `base field "${name}" has no enumValues`
   return f.enumValues
 }
 
@@ -43,7 +43,7 @@ export function useCIBaseEnums(): CIBaseEnums {
   return useMemo(() => {
     if (loading && !data) return { statuses: [], environments: [], loading: true, error: null }
     if (error) {
-      console.error('[ciEnums] baseCIType non caricato:', error.message)
+      console.error('[ciEnums] baseCIType not loaded:', error.message)
       return { statuses: [], environments: [], loading: false, error: error.message }
     }
     const st = enumOf(data?.baseCIType ?? null, 'status')

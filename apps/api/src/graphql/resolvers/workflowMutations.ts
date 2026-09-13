@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../lib/errors.js'
 import { ValidationError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine, isWorkflowActionType, WORKFLOW_ACTION_TYPES } from '@opengraphity/workflow'
@@ -175,10 +176,10 @@ export function assertStepActions(raw: string | null | undefined, label: string)
   let parsed: unknown
   try { parsed = JSON.parse(raw) }
   catch (e) {
-    throw new GraphQLError(`${label} non è JSON valido (${e instanceof Error ? e.message : String(e)})`, { extensions: { code: 'BAD_USER_INPUT' } })
+    throw new GraphQLError(`${label} is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.actionsNotJson', params: { field: label, reason: e instanceof Error ? e.message : String(e) } } } })
   }
   if (!Array.isArray(parsed)) {
-    throw new GraphQLError(`${label} deve essere una lista di azioni`, { extensions: { code: 'BAD_USER_INPUT' } })
+    throw new GraphQLError(`${label} must be a list of actions`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.actionsNotList', params: { field: label } } } })
   }
   parsed.forEach((action, i) => {
     const type = (action as { type?: unknown } | null)?.type
@@ -210,15 +211,15 @@ export function assertStepActions(raw: string | null | undefined, label: string)
         const t = String(target)
         if (!(NOTIFICATION_TARGETS as readonly string[]).includes(t)) {
           throw new GraphQLError(
-            `${label}[${i}]: target "${t}" non è un destinatario valido. Ammessi: ${NOTIFICATION_TARGETS.join(', ')}.`,
-            { extensions: { code: 'BAD_USER_INPUT' } },
+            `${label}[${i}]: target "${t}" is not a valid recipient. Allowed: ${NOTIFICATION_TARGETS.join(', ')}.`,
+            { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.badTarget', params: { field: `${label}[${i}]`, target: t, allowed: NOTIFICATION_TARGETS.join(', ') } } } },
           )
         }
         if (!isTargetApplicable('workflow.step.entered', t)) {
           throw new GraphQLError(
-            `${label}[${i}]: target "${t}" non può essere risolto all'ingresso in un passo. ` +
-            `Applicabili: ${applicableNotificationTargets('workflow.step.entered').join(', ')}.`,
-            { extensions: { code: 'BAD_USER_INPUT' } },
+            `${label}[${i}]: target "${t}" cannot be resolved when a step is entered. `
+            + `Applicable: ${applicableNotificationTargets('workflow.step.entered').join(', ')}.`,
+            { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.targetNotApplicable', params: { field: `${label}[${i}]`, target: t, applicable: applicableNotificationTargets('workflow.step.entered').join(', ') } } } },
           )
         }
       }
@@ -248,9 +249,14 @@ export function normalizeStepPurpose(raw: string | null | undefined, label: stri
   const value = raw.trim()
   if (!isWorkflowStepPurpose(value)) {
     throw new GraphQLError(
-      `${label}: scopo "${value}" fuori vocabolario. Ammessi: ${WORKFLOW_STEP_PURPOSES.join(', ')} ` +
-      `(oppure vuoto per nessuno scopo).`,
-      { extensions: { code: 'BAD_USER_INPUT', purpose: value, allowedPurposes: [...WORKFLOW_STEP_PURPOSES] } },
+      `${label}: purpose "${value}" out of vocabulary. Allowed: ${WORKFLOW_STEP_PURPOSES.join(', ')} `
+      + `(or empty for no purpose).`,
+      {
+        extensions: {
+          code: 'BAD_USER_INPUT', purpose: value, allowedPurposes: [...WORKFLOW_STEP_PURPOSES],
+          i18n: { key: 'errors.workflow.badPurpose', params: { field: label, purpose: value, allowed: WORKFLOW_STEP_PURPOSES.join(', ') } },
+        },
+      },
     )
   }
   return value
@@ -279,11 +285,16 @@ export function normalizeStepCategory(raw: string | null | undefined, label: str
   const value = raw.trim()
   if (!isWorkflowStepCategory(value)) {
     throw new GraphQLError(
-      `${label}: categoria "${value}" fuori vocabolario. Ammesse: ${WORKFLOW_STEP_CATEGORIES.join(', ')}. ` +
-      `La categoria dice come il ticket si vede da fuori, e il prodotto la legge per decidere: ` +
-      `«risolto» valorizza la data di risoluzione, «chiuso» è dove arriva la chiusura automatica. ` +
-      `Il nome che vedono gli utenti è l'etichetta del passo, non questo.`,
-      { extensions: { code: 'BAD_USER_INPUT', category: value, allowedCategories: [...WORKFLOW_STEP_CATEGORIES] } },
+      `${label}: category "${value}" out of vocabulary. Allowed: ${WORKFLOW_STEP_CATEGORIES.join(', ')}. `
+      + `The category says how the ticket looks from outside, and the product reads it to decide: `
+      + `«resolved» fills in the resolution date, «closed» is where the automatic closure lands. `
+      + `The name people see is the step label, not this one.`,
+      {
+        extensions: {
+          code: 'BAD_USER_INPUT', category: value, allowedCategories: [...WORKFLOW_STEP_CATEGORIES],
+          i18n: { key: 'errors.workflow.badCategory', params: { field: label, category: value, allowed: WORKFLOW_STEP_CATEGORIES.join(', ') } },
+        },
+      },
     )
   }
   return value
@@ -301,8 +312,13 @@ export function assertTransitionTrigger(raw: string | null | undefined, label: s
   const value = raw.trim()
   if (!isWorkflowTransitionTrigger(value)) {
     throw new GraphQLError(
-      `${label}: innesco "${value}" fuori vocabolario. Ammessi: ${WORKFLOW_TRANSITION_TRIGGERS.join(', ')}.`,
-      { extensions: { code: 'BAD_USER_INPUT', trigger: value, allowedTriggers: [...WORKFLOW_TRANSITION_TRIGGERS] } },
+      `${label}: trigger "${value}" out of vocabulary. Allowed: ${WORKFLOW_TRANSITION_TRIGGERS.join(', ')}.`,
+      {
+        extensions: {
+          code: 'BAD_USER_INPUT', trigger: value, allowedTriggers: [...WORKFLOW_TRANSITION_TRIGGERS],
+          i18n: { key: 'errors.workflow.badTrigger', params: { field: label, trigger: value, allowed: WORKFLOW_TRANSITION_TRIGGERS.join(', ') } },
+        },
+      },
     )
   }
   return value
@@ -327,10 +343,15 @@ export function assertTransitionCondition(raw: string | null | undefined, label:
   const value = raw.trim()
   if (!isWorkflowTransitionCondition(value)) {
     throw new GraphQLError(
-      `${label}: condizione "${value}" sconosciuta. Il motore sa valutare solo queste: ` +
-      `${WORKFLOW_TRANSITION_CONDITIONS.join(', ')} (oppure vuoto per nessuna condizione). ` +
-      `Una condizione non registrata blocca l'arco: il motore la rifiuta a ogni tentativo e il ticket non si muove più.`,
-      { extensions: { code: 'BAD_USER_INPUT', condition: value, allowedConditions: [...WORKFLOW_TRANSITION_CONDITIONS] } },
+      `${label}: condition "${value}" unknown. The engine can only evaluate these: `
+      + `${WORKFLOW_TRANSITION_CONDITIONS.join(', ')} (or empty for no condition). `
+      + `An unregistered condition blocks the edge: the engine rejects it on every attempt and the ticket stops moving.`,
+      {
+        extensions: {
+          code: 'BAD_USER_INPUT', condition: value, allowedConditions: [...WORKFLOW_TRANSITION_CONDITIONS],
+          i18n: { key: 'errors.workflow.badCondition', params: { field: label, condition: value, allowed: WORKFLOW_TRANSITION_CONDITIONS.join(', ') } },
+        },
+      },
     )
   }
   return value
@@ -386,13 +407,17 @@ async function assertApprovalPurposeSurvives(
   if (daApprovare.length === 0) return
 
   throw new GraphQLError(
-    `Nel workflow delle change nessun passo avrebbe più lo scopo «Approvazione», ma ` +
-    `${daApprovare.length === 1 ? 'il tipo di change' : 'i tipi di change'} ` +
-    `${daApprovare.map((t) => `"${t}"`).join(', ')} non ${daApprovare.length === 1 ? 'è' : 'sono'} pre-approvat${daApprovare.length === 1 ? 'o' : 'i'}: ` +
-    `senza quel passo non esisterebbe un posto dove approvarli, e il varco delle approvazioni non avrebbe ` +
-    `dove applicarsi. Assegna lo scopo «Approvazione» al passo in cui si approva, oppure — se per questo ` +
-    `cliente le change non si approvano — aggiungi quei tipi ai pre-approvati (Impostazioni → Matrici di dominio).`,
-    { extensions: { code: 'CONFLICT', changeTypesRequiringApproval: daApprovare } },
+    `In the change workflow no step would have the «Approval» purpose any more, but the change `
+    + `type(s) ${daApprovare.map((t) => `"${t}"`).join(', ')} are not pre-approved: `
+    + `without that step there would be no place to approve them, and the approval gate would have `
+    + `nowhere to apply. Give the «Approval» purpose to the step where approval happens, or — if in this `
+    + `tenant changes are not approved — add those types to the pre-approved ones (Settings → Domain matrices).`,
+    {
+      extensions: {
+        code: 'CONFLICT', changeTypesRequiringApproval: daApprovare,
+        i18n: { key: 'errors.workflow.noApprovalPurpose', params: { count: daApprovare.length, types: daApprovare.join(', ') } },
+      },
+    },
   )
 }
 
@@ -432,13 +457,17 @@ function assertWindowPurposeSurvives(before: number | null, after: number | null
   if (before == null || after == null) return
   if (before === 0 || after > 0) return
   throw new GraphQLError(
-    `Nel workflow delle change nessun passo avrebbe più uno scopo della finestra di rilascio ` +
-    `(${CHANGE_WINDOW_PURPOSES.join(', ')}), e su quegli scopi è indicizzato il varco delle ` +
-    `approvazioni dal lato del passo di arrivo: senza di loro una change non approvata potrebbe ` +
-    `entrare in produzione senza che nessuno la fermi, e gli allarmi non verrebbero più silenziati ` +
-    `durante il rilascio. Assegna lo scopo «Programmata» o «Implementazione» al passo in cui la ` +
-    `change va in produzione.`,
-    { extensions: { code: 'CONFLICT' } },
+    `In the change workflow no step would have a release-window purpose any more `
+    + `(${CHANGE_WINDOW_PURPOSES.join(', ')}), and the approval gate is indexed on those purposes `
+    + `from the destination-step side: without them an unapproved change could reach production `
+    + `with nobody stopping it, and alarms would no longer be silenced during the release. `
+    + `Give the «Scheduled» or «Implementation» purpose to the step where the change goes to production.`,
+    {
+      extensions: {
+        code: 'CONFLICT',
+        i18n: { key: 'errors.workflow.noWindowPurpose', params: { purposes: CHANGE_WINDOW_PURPOSES.join(', ') } },
+      },
+    },
   )
 }
 
@@ -528,7 +557,7 @@ export async function updateWorkflowStep(
       }
       return written
     })
-    if (!result.records.length) throw new GraphQLError('WorkflowStep non trovato', { extensions: { code: 'NOT_FOUND' } })
+    if (!result.records.length) throw new NotFoundError('WorkflowStep')
     invalidateWorkflowCache(ctx.tenantId, result.records[0].get('entityType') as string)
     const s = result.records[0].get('s').properties as Record<string, unknown>
     return {
@@ -597,7 +626,7 @@ export async function updateWorkflowTransition(
         LIMIT 1
       `, { definitionId, tenantId: ctx.tenantId }),
     )
-    if (!wdResult.records.length) throw new GraphQLError('WorkflowDefinition non trovata', { extensions: { code: 'NOT_FOUND' } })
+    if (!wdResult.records.length) throw new NotFoundError('WorkflowDefinition')
     const wd    = wdResult.records[0].get('wd').properties    as Record<string, unknown>
     const steps = wdResult.records[0].get('steps') as Array<{ properties: Record<string, unknown> }>
     invalidateWorkflowCache(ctx.tenantId, wd['entity_type'] as string)
@@ -647,7 +676,7 @@ export async function addWorkflowTransition(
       }),
     )
     if (!result.records.length) {
-      throw new GraphQLError('Step non trovati o non appartenenti a questa definizione', { extensions: { code: 'NOT_FOUND' } })
+      throw new GraphQLError('Steps not found, or not part of this definition', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.workflow.stepsNotInDefinition' } } })
     }
     invalidateWorkflowCache(ctx.tenantId, result.records[0].get('entityType') as string)
     const tr = result.records[0].get('tr').properties as Record<string, unknown>
@@ -714,7 +743,7 @@ async function preflightStepMetadata(
     const raw = rec.get(key) as string | null
     if (!raw) continue
     try { JSON.parse(raw) } catch (e) {
-      throw new GraphQLError(`Workflow mal configurato: ${label} dello step "${toStep}" non è JSON valido (${e instanceof Error ? e.message : String(e)})`, { extensions: { code: 'CONFLICT' } })
+      throw new GraphQLError(`Misconfigured workflow: ${label} of step "${toStep}" is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.workflow.stepActionsNotJson', params: { field: label, step: toStep, reason: e instanceof Error ? e.message : String(e) } } } })
     }
   }
 }
@@ -856,7 +885,7 @@ export async function executeWorkflowTransition(
         )
         const approverIds = adminsRes.records.map((r) => r.get('id') as string)
         if (approverIds.length === 0) {
-          throw new GraphQLError(`Nessun utente con ruolo "${approverRole ?? 'admin'}" configurato per approvare`, { extensions: { code: 'NO_APPROVER' } })
+          throw new GraphQLError(`No user with role "${approverRole ?? 'admin'}" configured to approve`, { extensions: { code: 'NO_APPROVER', i18n: { key: 'errors.workflow.noApprover', params: { role: approverRole ?? 'admin' } } } })
         }
         const finalApprovers = approverIds
 
@@ -1110,12 +1139,17 @@ export async function saveWorkflowChanges(
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
         RETURN wd.version AS version
       `, { definitionId, tenantId: ctx.tenantId })
-      if (!cur.records.length) throw new GraphQLError('WorkflowDefinition non trovata', { extensions: { code: 'NOT_FOUND' } })
+      if (!cur.records.length) throw new NotFoundError('WorkflowDefinition')
       const currentVersion = Number(cur.records[0].get('version') ?? 1)
       if (expectedVersion != null && currentVersion !== expectedVersion) {
         throw new GraphQLError(
-          `Workflow modificato da un altro utente (versione ${currentVersion}, tu stavi modificando la v${expectedVersion}). Ricarica la pagina per non sovrascrivere le sue modifiche.`,
-          { extensions: { code: 'CONFLICT', currentVersion, expectedVersion } },
+          `Workflow changed by another user (version ${currentVersion}, you were editing v${expectedVersion}). Reload the page so you do not overwrite their changes.`,
+          {
+            extensions: {
+              code: 'CONFLICT', currentVersion, expectedVersion,
+              i18n: { key: 'errors.workflow.concurrentEdit', params: { current: currentVersion, expected: expectedVersion } },
+            },
+          },
         )
       }
 
@@ -1142,8 +1176,8 @@ export async function saveWorkflowChanges(
         const wantsInitial = steps.filter((s) => s.isInitial === true)
         if (wantsInitial.length > 1) {
           throw new GraphQLError(
-            `Un solo step può essere iniziale: ne hai marcati ${wantsInitial.length} (${wantsInitial.map((s) => s.stepName).join(', ')}).`,
-            { extensions: { code: 'BAD_USER_INPUT' } },
+            `Only one step can be initial: you marked ${wantsInitial.length} (${wantsInitial.map((s) => s.stepName).join(', ')}).`,
+            { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.manyInitial', params: { count: wantsInitial.length, steps: wantsInitial.map((s) => s.stepName).join(', ') } } } },
           )
         }
         const initial = wantsInitial[0]
@@ -1153,14 +1187,14 @@ export async function saveWorkflowChanges(
             RETURN coalesce(s.is_terminal, s.type = 'end') AS terminal
           `, { definitionId, tenantId: ctx.tenantId, stepName: initial.stepName })
           if (!cur.records.length) {
-            throw new GraphQLError(`Step "${initial.stepName}" non trovato in questa definizione`, { extensions: { code: 'NOT_FOUND' } })
+            throw new GraphQLError(`Step "${initial.stepName}" not found in this definition`, { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.workflow.stepNotFound', params: { name: initial.stepName } } } })
           }
           const terminalAfter = initial.isTerminal ?? Boolean(cur.records[0].get('terminal'))
           if (terminalAfter) {
             throw new GraphQLError(
-              `Lo step "${initial.stepName}" è terminale: non può essere anche lo step iniziale, ` +
-              `altrimenti ogni nuovo ticket nascerebbe già chiuso. Togli «Step terminale» oppure scegli un altro step iniziale.`,
-              { extensions: { code: 'BAD_USER_INPUT' } },
+              `Step "${initial.stepName}" is terminal: it cannot also be the initial step, `
+              + `or every new ticket would be born already closed. Clear «Terminal step», or pick another initial step.`,
+              { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.initialAndTerminal', params: { name: initial.stepName } } } },
             )
           }
         }
@@ -1224,7 +1258,7 @@ export async function saveWorkflowChanges(
         ${MARK_CUSTOMIZED}
         RETURN wd
       `, { definitionId, tenantId: ctx.tenantId, now, ...customizedParams(ctx) })
-      if (!wdResult.records.length) throw new GraphQLError('WorkflowDefinition non trovata', { extensions: { code: 'NOT_FOUND' } })
+      if (!wdResult.records.length) throw new NotFoundError('WorkflowDefinition')
       return wdResult.records[0].get('wd').properties as Record<string, unknown>
     })
 

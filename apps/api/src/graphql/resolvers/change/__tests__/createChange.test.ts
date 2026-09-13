@@ -77,11 +77,11 @@ describe('createChange (resolver wrapper)', () => {
   })
 
   it('errore dal service → propaga e NON rilegge il change', async () => {
-    vi.mocked(createChangeRFC).mockRejectedValue(new Error('Un change deve avere almeno un CI impattato'))
+    vi.mocked(createChangeRFC).mockRejectedValue(new Error('A change must have at least one impacted CI'))
 
     await expect(
       createChange(null, { input: { title: 'X', affectedCIIds: [] } }, ctx),
-    ).rejects.toThrow('Un change deve avere almeno un CI impattato')
+    ).rejects.toThrow('A change must have at least one impacted CI')
 
     expect(getChange).not.toHaveBeenCalled()
   })

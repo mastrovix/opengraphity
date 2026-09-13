@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../lib/errors.js'
 import { getSession } from '@opengraphity/neo4j'
 import { audit } from '../../lib/audit.js'
 import type { GraphQLContext } from '../../context.js'
@@ -127,8 +128,8 @@ interface WidgetConfig {
 /** Validates the (entityType, metric, groupByField) triple; throws BAD_USER_INPUT. */
 export function validateWidgetConfig(cfg: Pick<WidgetConfig, 'entityType' | 'metric' | 'groupByField' | 'filterField'>): string {
   const neo4jLabel = ENTITY_LABEL_MAP[cfg.entityType]
-  if (!neo4jLabel) throw new GraphQLError(`Tipo entità non supportato: ${cfg.entityType}`, { extensions: { code: 'BAD_USER_INPUT' } })
-  if (!ALLOWED_METRICS.includes(cfg.metric)) throw new GraphQLError(`Metrica non supportata: ${cfg.metric}`, { extensions: { code: 'BAD_USER_INPUT' } })
+  if (!neo4jLabel) throw new GraphQLError(`Unsupported entity type: ${cfg.entityType}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.widget.entityType', params: { entityType: cfg.entityType } } } })
+  if (!ALLOWED_METRICS.includes(cfg.metric)) throw new GraphQLError(`Unsupported metric: ${cfg.metric}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.widget.metric', params: { metric: cfg.metric } } } })
 
   const allowedFields = ALLOWED_FIELDS[cfg.entityType] ?? []
   const numericFields = NUMERIC_FIELDS[cfg.entityType] ?? []
@@ -136,19 +137,26 @@ export function validateWidgetConfig(cfg: Pick<WidgetConfig, 'entityType' | 'met
 
   if (isAggregate) {
     if (!cfg.groupByField) {
-      throw new GraphQLError(`groupByField è obbligatorio per la metrica '${cfg.metric}'`, { extensions: { code: 'BAD_USER_INPUT' } })
+      throw new GraphQLError(`groupByField is required for the '${cfg.metric}' metric`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.widget.groupByRequired', params: { metric: cfg.metric } } } })
     }
     if (!numericFields.includes(cfg.groupByField)) {
       throw new GraphQLError(
-        `Il campo '${cfg.groupByField}' non è numerico per '${cfg.entityType}': ${cfg.metric} ammette solo ${numericFields.length ? numericFields.join(', ') : 'nessun campo'}`,
-        { extensions: { code: 'BAD_USER_INPUT' } },
+        `Field '${cfg.groupByField}' is not numeric for '${cfg.entityType}': ${cfg.metric} only takes ${numericFields.length ? numericFields.join(', ') : 'no field'}`,
+        {
+          extensions: {
+            code: 'BAD_USER_INPUT',
+            i18n: numericFields.length
+              ? { key: 'errors.widget.notNumeric', params: { field: cfg.groupByField, entityType: cfg.entityType, metric: cfg.metric, allowed: numericFields.join(', ') } }
+              : { key: 'errors.widget.noNumericField', params: { field: cfg.groupByField, entityType: cfg.entityType, metric: cfg.metric } },
+          },
+        },
       )
     }
   } else if (cfg.groupByField && !allowedFields.includes(cfg.groupByField)) {
-    throw new GraphQLError(`Campo group_by non consentito: ${cfg.groupByField}`, { extensions: { code: 'BAD_USER_INPUT' } })
+    throw new GraphQLError(`group_by field not allowed: ${cfg.groupByField}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.widget.groupByNotAllowed', params: { field: cfg.groupByField } } } })
   }
   if (cfg.filterField && !allowedFields.includes(cfg.filterField)) {
-    throw new GraphQLError(`Campo filtro non consentito: ${cfg.filterField}`, { extensions: { code: 'BAD_USER_INPUT' } })
+    throw new GraphQLError(`filter field not allowed: ${cfg.filterField}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.widget.filterNotAllowed', params: { field: cfg.filterField } } } })
   }
   return neo4jLabel
 }
@@ -157,12 +165,12 @@ export function validateWidgetConfig(cfg: Pick<WidgetConfig, 'entityType' | 'met
 function aggregateValue(records: Array<{ get: (k: string) => unknown }>, what: string): number {
   const raw = records[0]?.get('value')
   if (raw == null) {
-    throw new GraphQLError(`${what}: nessun valore numerico (nessuna entità corrispondente o campo non valorizzato)`, { extensions: { code: 'NO_DATA' } })
+    throw new GraphQLError(`${what}: no numeric value (no matching entity, or the field is empty)`, { extensions: { code: 'NO_DATA', i18n: { key: 'errors.widget.noData', params: { what } } } })
   }
   const n = typeof raw === 'object' && typeof (raw as { toNumber?: () => number }).toNumber === 'function'
     ? (raw as { toNumber: () => number }).toNumber()
     : Number(raw)
-  if (!Number.isFinite(n)) throw new GraphQLError(`${what}: risultato non numerico (${String(raw)})`)
+  if (!Number.isFinite(n)) throw new GraphQLError(`${what}: non-numeric result (${String(raw)})`)
   return n
 }
 
@@ -197,7 +205,7 @@ async function executeWidgetQuery(cfg: WidgetConfig, tenantId: string) {
       resultData = { value: aggregateValue(res.records, 'count'), label: cfg.title ?? '', series: [] }
 
     } else if (cfg.metric === 'count_by_field') {
-      if (!cfg.groupByField) throw new GraphQLError("groupByField è obbligatorio per la metrica 'count_by_field'", { extensions: { code: 'BAD_USER_INPUT' } })
+      if (!cfg.groupByField) throw new GraphQLError("groupByField is required for the 'count_by_field' metric", { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.widget.groupByRequired', params: { metric: 'count_by_field' } } } })
       const field = cfg.groupByField
       cypher = `MATCH (n:${neo4jLabel}) ${whereStr} RETURN n.${field} AS label, count(n) AS value ORDER BY value DESC LIMIT 20`
       const res = await session.executeRead((tx) => tx.run(cypher, params))
@@ -246,7 +254,7 @@ async function widgetData(_: unknown, args: { widgetId: string }, ctx: GraphQLCo
         { id: args.widgetId, tenantId: ctx.tenantId },
       ),
     )
-    if (!widgetRes.records.length) throw new GraphQLError('Widget non trovato')
+    if (!widgetRes.records.length) throw new NotFoundError('Widget')
     const w = mapWidget(widgetRes.records[0].get('w') as Props)
     return executeWidgetQuery(w, ctx.tenantId)
   } finally {
@@ -428,7 +436,7 @@ async function updateCustomWidget(
         params,
       ),
     )
-    if (!res.records.length) throw new GraphQLError('Widget non trovato')
+    if (!res.records.length) throw new NotFoundError('Widget')
     void audit(ctx, 'customWidget.updated', 'CustomWidget', args.id)
     return mapWidget(res.records[0].get('w') as Props)
   } finally {

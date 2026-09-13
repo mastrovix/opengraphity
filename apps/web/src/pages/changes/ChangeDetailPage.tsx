@@ -12,7 +12,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { ChevronRight, FileDown, Loader2, Plus, PlusCircle, X, CheckCircle, XCircle, Trash2 } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 import { downloadPdf } from '@/lib/downloadPdf'
 import { PageContainer } from '@/components/PageContainer'
 import { Button } from '@/components/Button'
@@ -173,9 +173,9 @@ export function ChangeDetailPage() {
     onError: (e) => toast.error(e.message),
   })
 
-  if (loading && !change) return <PageContainer><p>Caricamento...</p></PageContainer>
+  if (loading && !change) return <PageContainer><p>{t('common.loading')}</p></PageContainer>
   if (changeError && !changeData) return <PageContainer><QueryError message={changeError.message} onRetry={() => void refetchChange()} /></PageContainer>
-  if (!change) return <PageContainer><p>Change non trovato</p></PageContainer>
+  if (!change) return <PageContainer><p>{t('pages.changeDetail.notFound')}</p></PageContainer>
 
   const currentStep = change.workflowInstance?.currentStep ?? ''
   const transitions = change.availableTransitions ?? []
@@ -230,7 +230,7 @@ export function ChangeDetailPage() {
               icon={deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
               onClick={() => setConfirmDelete(true)}
             >
-              Elimina
+              {t('common.delete')}
             </Button>
           )}
         </div>
@@ -260,7 +260,7 @@ export function ChangeDetailPage() {
         return (
           <SectionCard
             key={`approval-${currentStep}`}
-            title="Approvazione"
+            title={t('pages.changeDetail.approval')}
             count={approvals.length}
             collapsible
             defaultOpen={atApproval}
@@ -270,16 +270,16 @@ export function ChangeDetailPage() {
           >
             {approvals.length === 0 ? (
               <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
-                Nessun requisito di approvazione. Verifica che sia designato un team <strong>Change Manager</strong> (Team e Utenti) e che i CI affected abbiano un owner group.
+                <Trans i18nKey="pages.changeDetail.noApprovalRequirements" components={{ b: <strong /> }} />
               </p>
             ) : (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border)', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
-                  <span style={{ width: 150 }}>Requisito</span>
-                  <span style={{ flex: 1 }}>Team</span>
-                  <span style={{ width: 110 }}>Stato</span>
-                  <span style={{ flex: 1 }}>Approvato da</span>
-                  <span style={{ width: 200 }}>Azioni</span>
+                  <span style={{ width: 150 }}>{t('pages.changeDetail.requirement')}</span>
+                  <span style={{ flex: 1 }}>{t('sidebar.teams')}</span>
+                  <span style={{ width: 110 }}>{t('common.status')}</span>
+                  <span style={{ flex: 1 }}>{t('pages.changeDetail.approvedBy')}</span>
+                  <span style={{ width: 200 }}>{t('common.actions')}</span>
                 </div>
                 {approvals.map((a) => (
                   <div key={`${a.kind}-${a.teamId}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-body)' }}>
@@ -287,8 +287,8 @@ export function ChangeDetailPage() {
                     <span style={{ flex: 1, color: 'var(--color-slate)' }}>{a.teamName ?? '—'}</span>
                     <span style={{ width: 110 }}>
                       {a.status === 'approved'
-                        ? <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: palette.success.strong, background: palette.success.tint, padding: '2px 8px', borderRadius: 12 }}>Approvato</span>
-                        : <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: palette.yellow.text, background: palette.yellow.bg, padding: '2px 8px', borderRadius: 12 }}>In attesa</span>}
+                        ? <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: palette.success.strong, background: palette.success.tint, padding: '2px 8px', borderRadius: 12 }}>{t('pages.changeDetail.approved')}</span>
+                        : <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: palette.yellow.text, background: palette.yellow.bg, padding: '2px 8px', borderRadius: 12 }}>{t('pages.changeDetail.pending')}</span>}
                     </span>
                     <span style={{ flex: 1, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
                       {a.approvedByName ? `${a.approvedByName}${a.approvedAt ? ` · ${fmtDate(a.approvedAt)}` : ''}` : '—'}
@@ -298,11 +298,11 @@ export function ChangeDetailPage() {
                         <>
                           <button type="button" disabled={approving} onClick={() => void approveApproval({ variables: { changeId, teamId: a.teamId, note: null } })}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: 'none', background: palette.success.base, color: colors.white, fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: approving ? 'wait' : 'pointer' }}>
-                            <CheckCircle size={14} /> Approva
+                            <CheckCircle size={14} /> {t('pages.changeDetail.approve')}
                           </button>
                           <button type="button" onClick={() => { setRejectNote(''); setReopenMode('all'); setReopenIds(new Set()); setRejectModal({ teamId: a.teamId!, teamName: a.teamName ?? '' }) }}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-danger)', background: colors.white, color: 'var(--color-danger)', fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: 'pointer' }}>
-                            <XCircle size={14} /> Rigetta
+                            <XCircle size={14} /> {t('pages.changeDetail.reject')}
                           </button>
                         </>
                       )}
@@ -316,7 +316,7 @@ export function ChangeDetailPage() {
       })()}
 
       <UnifiedLinkedTickets
-        title="Ticket collegati"
+        title={t('pages.changeDetail.linkedTickets')}
         types={[
           {
             kind: 'PROBLEM', label: 'Problem', routeBase: '/problems',
@@ -337,7 +337,7 @@ export function ChangeDetailPage() {
       <SuppressedAlarmsSection events={change.suppressedEvents ?? []} changeId={change.id} />
 
       {!wfIsTerminal(currentStep) && affected.some(a => a.deployPlan && a.deployPlan.steps.length > 0 && !a.validation) && (
-        <SectionCard title="Prossimi Step" collapsible count={affected.filter(a => (a.deployPlan?.steps?.length ?? 0) > 0).length}>
+        <SectionCard title={t('pages.changeDetail.nextSteps')} collapsible count={affected.filter(a => (a.deployPlan?.steps?.length ?? 0) > 0).length}>
           {affected.map((a) => {
             const steps = a.deployPlan?.steps ?? []
             if (steps.length === 0) return null
@@ -364,7 +364,7 @@ export function ChangeDetailPage() {
         activeTextColor={atApproval ? undefined : 'var(--color-slate-dark)'}
       />
 
-      <SectionCard title="CIs Involved" collapsible count={affected.length}>
+      <SectionCard title={t('pages.changeDetail.involvedCIs')} collapsible count={affected.length}>
         <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)' }}>
           {(['affected', 'impacted'] as const).map(tab => {
             const active = ciTab === tab
@@ -395,7 +395,7 @@ export function ChangeDetailPage() {
                     fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: 'pointer',
                     display: 'flex', alignItems: 'center', gap: 4,
                   }}>
-                    <Plus size={12} /> Aggiungi
+                    <Plus size={12} /> {t('pages.questions.add')}
                   </button>
                 </div>
               )}
@@ -422,27 +422,27 @@ export function ChangeDetailPage() {
           {ciTab === 'impacted' && (
             <>
               <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 500, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>Profondità</span>
+                <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 500, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>{t('pages.changeDetail.depth')}</span>
                 <select value={impactDepth} onChange={e => setImpactDepth(Number(e.target.value))} style={{ padding: '4px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)' }}>
                   {[1, 2, 3, 4, 5].map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
               {impactError && (
                 <div style={{ padding: '10px 12px', backgroundColor: palette.danger.bg, border: '1px solid var(--color-danger-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', marginBottom: 8 }}>
-                  Errore nel calcolo dei CI impattati: {impactError.message}{' '}
-                  <button type="button" onClick={() => void refetchImpacted()} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', textDecoration: 'underline', cursor: 'pointer', fontSize: 'var(--font-size-body)', padding: 0 }}>Riprova</button>
+                  {t('pages.changeDetail.impactError', { message: impactError.message })}{' '}
+                  <button type="button" onClick={() => void refetchImpacted()} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', textDecoration: 'underline', cursor: 'pointer', fontSize: 'var(--font-size-body)', padding: 0 }}>{t('pages.changeDetail.retry')}</button>
                 </div>
               )}
-              {!impactError && impactedCIs.length === 0 && <EmptyState icon={<ChevronRight size={24} />} title="Nessun CI impattato" description={`Nessun CI impattato a profondità ${impactDepth}.`} />}
+              {!impactError && impactedCIs.length === 0 && <EmptyState icon={<ChevronRight size={24} />} title={t('pages.changeDetail.noImpactedCI')} description={t('pages.changeDetail.noImpactedCIAtDepth', { depth: impactDepth })} />}
               {impactedCIs.length > 0 && (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border)', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
                     <span style={{ width: 24, flexShrink: 0 }} />
-                    <span style={{ flex: 1 }}>CI Impattato</span>
-                    <span style={{ width: 80 }}>Tipo</span>
+                    <span style={{ flex: 1 }}>{t('pages.changeDetail.impactedCI')}</span>
+                    <span style={{ width: 80 }}>{t('common.type')}</span>
                     <span style={{ width: 80 }}>Env</span>
                     <span style={{ width: 60 }}>Dist.</span>
-                    <span style={{ width: 140 }}>Impattato da</span>
+                    <span style={{ width: 140 }}>{t('pages.changeDetail.impactedVia')}</span>
                     {currentStep === wfInitialStep?.name && <span style={{ width: 100, flexShrink: 0 }} />}
                   </div>
                   {impactedCIs.map((b, i) => {
@@ -468,7 +468,7 @@ export function ChangeDetailPage() {
                             <span style={{ width: 100, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
                               <button
                                 type="button"
-                                title="Sposta in CI Affected"
+                                title={t('pages.changeDetail.moveToAffected')}
                                 onClick={() => void addCIFromImpacted({ variables: { changeId, ciId: b.ci.id } })}
                                 style={{
                                   padding: '4px 8px', borderRadius: 6, border: '1px solid var(--color-brand)',
@@ -477,7 +477,7 @@ export function ChangeDetailPage() {
                                   display: 'flex', alignItems: 'center', gap: 4,
                                 }}
                               >
-                                <PlusCircle size={14} /> Aggiungi
+                                <PlusCircle size={14} /> {t('pages.questions.add')}
                               </button>
                             </span>
                           )}
@@ -511,17 +511,17 @@ export function ChangeDetailPage() {
           <Modal
             open
             onClose={() => setConfirmRemoveCI(null)}
-            title="Rimuovere CI"
+            title={t('pages.changeDetail.removeCITitle')}
             width={420}
             footer={
               <>
-                <Button variant="secondary" size="xs" onClick={() => setConfirmRemoveCI(null)}>Annulla</Button>
-                <Button size="xs" onClick={() => void removeCI({ variables: { changeId, ciId: confirmRemoveCI.id } })} style={{ backgroundColor: 'var(--color-danger)', fontWeight: 600 }}>Rimuovi</Button>
+                <Button variant="secondary" size="xs" onClick={() => setConfirmRemoveCI(null)}>{t('common.cancel')}</Button>
+                <Button size="xs" onClick={() => void removeCI({ variables: { changeId, ciId: confirmRemoveCI.id } })} style={{ backgroundColor: 'var(--color-danger)', fontWeight: 600 }}>{t('pages.changeDetail.remove')}</Button>
               </>
             }
           >
             <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-              Rimuovere <strong>{confirmRemoveCI.name}</strong> dal change? Tutti i task associati verranno eliminati.
+              <Trans i18nKey="pages.changeDetail.removeCIConfirm" values={{ ci: confirmRemoveCI.name }} components={{ b: <strong /> }} />
             </p>
           </Modal>
         )}
@@ -545,7 +545,7 @@ export function ChangeDetailPage() {
           width={520}
           footer={
             <>
-              <Button variant="secondary" size="xs" onClick={() => setRejectModal(null)}>Annulla</Button>
+              <Button variant="secondary" size="xs" onClick={() => setRejectModal(null)}>{t('common.cancel')}</Button>
               <Button
                 size="xs"
                 disabled={!canConfirm}
@@ -560,16 +560,16 @@ export function ChangeDetailPage() {
                 }}
                 style={{ backgroundColor: 'var(--color-danger)', fontWeight: 600, opacity: canConfirm ? 1 : 0.6 }}
               >
-                Rigetta
+                {t('pages.changeDetail.reject')}
               </Button>
             </>
           }
         >
           <p style={{ margin: '0 0 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-            Il rigetto riporta la change in <strong>assessment</strong> riaprendo i task selezionati e azzera le approvazioni.
+            <Trans i18nKey="pages.changeDetail.rejectNote" components={{ b: <strong /> }} />
           </p>
 
-          <label htmlFor={rejectNoteId} style={{ display: 'block', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>Motivo <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+          <label htmlFor={rejectNoteId} style={{ display: 'block', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6 }}>{t('pages.requests.rejectionReason')} <span style={{ color: 'var(--color-danger)' }}>*</span></label>
           <textarea
             id={rejectNoteId}
             value={rejectNote}
@@ -581,15 +581,15 @@ export function ChangeDetailPage() {
           />
 
           <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
-            <legend style={{ display: 'block', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6, padding: 0 }}>Assessment da riaprire</legend>
+            <legend style={{ display: 'block', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginBottom: 6, padding: 0 }}>{t('pages.changeDetail.assessmentsToReopen')}</legend>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
                 <input type="radio" name="reopenMode" checked={reopenMode === 'all'} onChange={() => setReopenMode('all')} />
-                Riapri <strong>tutti</strong> gli assessment
+                <Trans i18nKey="pages.changeDetail.reopenAll" components={{ b: <strong /> }} />
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
                 <input type="radio" name="reopenMode" checked={reopenMode === 'some'} onChange={() => setReopenMode('some')} />
-                Riapri <strong>alcuni specifici</strong>
+                <Trans i18nKey="pages.changeDetail.reopenSome" components={{ b: <strong /> }} />
               </label>
             </div>
           </fieldset>
@@ -597,7 +597,7 @@ export function ChangeDetailPage() {
           {reopenMode === 'some' && (
             <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '8px 12px', maxHeight: 240, overflowY: 'auto' }}>
               {taskGroups.length === 0 ? (
-                <p style={{ margin: 0, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>Nessun task disponibile.</p>
+                <p style={{ margin: 0, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{t('pages.changeDetail.noTasks')}</p>
               ) : taskGroups.map((g) => (
                 <div key={g.ciName} style={{ marginBottom: 8 }}>
                   <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.03em', padding: '4px 0' }}>{g.ciName}</div>
@@ -627,7 +627,7 @@ export function ChangeDetailPage() {
           title={transitionModal.label}
           footer={
             <>
-              <Button variant="secondary" size="xs" onClick={() => setTransitionModal(null)}>Annulla</Button>
+              <Button variant="secondary" size="xs" onClick={() => setTransitionModal(null)}>{t('common.cancel')}</Button>
               <Button
                 size="xs"
                 disabled={!transitionNotes.trim()}
@@ -638,7 +638,7 @@ export function ChangeDetailPage() {
                 }}
                 style={{ fontWeight: 600, opacity: transitionNotes.trim() ? 1 : 0.6 }}
               >
-                Conferma
+                {t('common.confirm')}
               </Button>
             </>
           }
@@ -666,17 +666,17 @@ export function ChangeDetailPage() {
         <Modal
           open
           onClose={() => setConfirmDelete(false)}
-          title="Elimina change"
+          title={t('pages.changeDetail.deleteTitle')}
           width={460}
           footer={
             <>
-              <Button variant="secondary" size="xs" onClick={() => setConfirmDelete(false)}>Annulla</Button>
-              <Button size="xs" disabled={deleting} onClick={() => void deleteChange({ variables: { id: changeId } })} style={{ backgroundColor: 'var(--color-danger)', fontWeight: 600 }}>Elimina</Button>
+              <Button variant="secondary" size="xs" onClick={() => setConfirmDelete(false)}>{t('common.cancel')}</Button>
+              <Button size="xs" disabled={deleting} onClick={() => void deleteChange({ variables: { id: changeId } })} style={{ backgroundColor: 'var(--color-danger)', fontWeight: 600 }}>{t('common.delete')}</Button>
             </>
           }
         >
           <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-            Eliminare <strong>{change.code}</strong>? La change sparirà dagli elenchi e i suoi collegamenti (incluso quello creato automaticamente dal ticket richiedente) non saranno più mostrati. L'operazione è una cancellazione logica.
+            <Trans i18nKey="pages.changeDetail.deleteConfirm" values={{ code: change.code }} components={{ b: <strong /> }} />
           </p>
         </Modal>
       )}

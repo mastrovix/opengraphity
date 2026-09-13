@@ -30,7 +30,7 @@ describe('pausedWhenHidden', () => {
   })
 
   it('intervallo non valido → errore, non un polling silenzioso a 0', () => {
-    expect(() => pausedWhenHidden(0)).toThrow(/pollInterval non valido/)
-    expect(() => pausedWhenHidden(Number.NaN)).toThrow(/pollInterval non valido/)
+    expect(() => pausedWhenHidden(0)).toThrow(/invalid pollInterval/)
+    expect(() => pausedWhenHidden(Number.NaN)).toThrow(/invalid pollInterval/)
   })
 })

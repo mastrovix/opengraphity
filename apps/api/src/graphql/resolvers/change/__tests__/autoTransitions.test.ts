@@ -53,7 +53,7 @@ vi.mock('../../../../lib/logger.js', () => {
 // rivaluta in linea. Qui si verifica quando (e con che cosa) viene accodato.
 vi.mock('../../../../services/eventCorrelation.js', () => ({
   // Ondata 4 · A4-1: i passi di finestra vengono dallo SCOPO dei passi del
-  // tenant, non da due letterali. Qui il tenant ha i nomi di fabbrica.
+  // tenant, non da due letterali. Qui il tenant ha i nomi factory.
   resolveChangeWindowSteps: vi.fn().mockResolvedValue({ implementation: ['deployment'], planned: ['scheduled'], all: ['deployment', 'scheduled'] }),
   reevaluateSuppressedEvents: vi.fn().mockResolvedValue(2),
 }))

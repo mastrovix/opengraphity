@@ -1,4 +1,4 @@
-import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../lib/errors.js'
 import type { Session } from 'neo4j-driver'
 import { ValidationError } from '../../lib/errors.js'
 import { withSession } from './ci-utils.js'
@@ -47,7 +47,7 @@ async function runValidationScript(
   // metamodello condiviso (scope base/itil: url, ipAddress, expiresAt,
   // certificate) sono comportamento del prodotto e non passano dal limite.
   if (isTenantOwnedDefinition(scope)) {
-    await assertScriptingEnabled(tenantId, `${name}`)
+    await assertScriptingEnabled(tenantId, `field script of "${name}"`, 'errors.scripting.what.field', { field: name })
   }
   const { runScript } = await import('@opengraphity/scripting')
   const now = new Date().toISOString()
@@ -118,7 +118,7 @@ export async function validateCIInput(
     if (field.isSystem && !BASE_INPUT_FIELDS.has(field.name)) continue
     const value = input[field.name]
     if (field.required && (value == null || value === '')) {
-      errors.push(`${field.label || field.name} è obbligatorio`)
+      errors.push(`${field.label || field.name} is required`)
       continue
     }
     if (
@@ -127,8 +127,8 @@ export async function validateCIInput(
       !field.enumValues.includes(String(value))
     ) {
       errors.push(
-        `${field.label || field.name}: "${String(value)}" non è nel vocabolario di questo cliente. ` +
-        `Ammessi: ${field.enumValues.join(', ')}`,
+        `${field.label || field.name}: "${String(value)}" is not in the dictionary of this tenant. ` +
+        `Allowed: ${field.enumValues.join(', ')}`,
       )
       continue
     }
@@ -137,11 +137,11 @@ export async function validateCIInput(
       if (err) errors.push(`${field.label || field.name}: ${err}`)
     }
   }
-  if (errors.length) throw new ValidationError(`Validazione CI fallita: ${errors.join('; ')}`)
+  if (errors.length) throw new ValidationError(`CI validation failed: ${errors.join('; ')}`, { key: 'errors.ci.validationFailed', params: { details: errors.join('; ') } })
 
   if (ciType.validationScript) {
     const err = await runValidationScript(ciType.validationScript, { input }, `${ciType.name}.validation_script`, tenantId, ciType.scope)
-    if (err) throw new ValidationError(`Validazione CI fallita: ${err}`)
+    if (err) throw new ValidationError(`CI validation failed: ${err}`, { key: 'errors.ci.validationFailed', params: { details: err } })
   }
 }
 
@@ -251,7 +251,7 @@ export function buildUpdateMutation(
           { id, tenantId: ctx.tenantId },
         ),
       )
-      if (!existing.records.length) throw new GraphQLError('CI non trovato', { extensions: { code: 'NOT_FOUND' } })
+      if (!existing.records.length) throw new NotFoundError('CI')
       const current = existing.records[0].get('p') as Props
 
       const merged: Record<string, unknown> = {}
@@ -282,7 +282,7 @@ export function buildUpdateMutation(
           { id, tenantId: ctx.tenantId, updates },
         ),
       )
-      if (!result.records.length) throw new GraphQLError('CI non trovato', { extensions: { code: 'NOT_FOUND' } })
+      if (!result.records.length) throw new NotFoundError('CI')
       cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
       cache.invalidate(`topology:${ctx.tenantId}`)
       // Servizi monitorati (revisione 2 · D6.1): il ciclo di vita

@@ -28,7 +28,7 @@ export function TeamGatePanel({ teamId, taskId, assigneeId }: {
   return (
     <div style={{ padding: 16, background: palette.warning.bg, border: `1px solid ${palette.warning.border}`, borderRadius: 8, marginBottom: 16 }}>
       <p style={{ margin: '0 0 10px', fontSize: 'var(--font-size-body)', color: palette.warning.strong, fontWeight: 500 }}>
-        Non sei nel team responsabile di questo task. Puoi sollecitare chi deve agire.
+        {t('changeTasks.notInTeam')}
       </p>
       <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', marginBottom: 8 }}>
         {team.name}
@@ -50,7 +50,7 @@ export function TeamGatePanel({ teamId, taskId, assigneeId }: {
               </span>
               {isAssigned && (
                 <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand)' }}>
-                  Assegnato
+                  {t('changeTasks.assigned')}
                 </span>
               )}
               <button
@@ -64,7 +64,7 @@ export function TeamGatePanel({ teamId, taskId, assigneeId }: {
                   fontSize: 'var(--font-size-label)', color: palette.warning.strong, fontWeight: 500,
                 }}
               >
-                <Bell size={12} /> Sollecita
+                <Bell size={12} /> {t('changeTasks.nudge')}
               </button>
             </div>
           )

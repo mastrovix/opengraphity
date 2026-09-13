@@ -53,7 +53,7 @@ vi.mock('../../lib/ciMetamodelForTenant.js', () => ({
 
 vi.mock('../../lib/workflowHelpers.js', () => ({
   // Ondata 4 · A4-1: i passi della finestra di change vengono dallo SCOPO.
-  // Il tenant di prova ha i nomi di fabbrica con gli scopi della migrazione.
+  // Il tenant di prova ha i nomi factory con gli scopi della migrazione.
   getStepNamesByPurpose: vi.fn(async (_s: unknown, _t: unknown, _e: unknown, purposes: readonly string[]) =>
     purposes.includes('implementation') ? ['deployment'] : ['scheduled']),
 }))

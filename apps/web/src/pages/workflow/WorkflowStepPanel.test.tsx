@@ -37,7 +37,7 @@ function renderPanel(s: WFStep, extra: { onSaved?: () => void; onSaveLocally?: (
   )
 }
 
-const saveButton = () => screen.getByRole('button', { name: 'Salva' })
+const saveButton = () => screen.getByRole('button', { name: 'Save' })
 const T = (key: string, opts?: Record<string, unknown>) => i18n.t(key, opts) as string
 /** Opzione mostrata da ConditionRowEditor per un operatore persistito che l'editor non conosce. */
 const unsupportedOption = (op: string) => `?${op} (${T('conditionEditor.unsupported')})`
@@ -73,7 +73,7 @@ describe('WorkflowStepPanel — proprietà', () => {
 describe('WorkflowStepPanel — azioni corrotte (fail-loud)', () => {
   it('JSON non valido in enter_actions → banner di errore e Salva disabilitato anche cambiando la label', async () => {
     const { user } = renderPanel(step({ enterActions: '{not json' }))
-    const alert = screen.getAllByRole('alert').find((a) => a.textContent?.includes('Azioni dello step corrotte'))!
+    const alert = screen.getAllByRole('alert').find((a) => a.textContent?.includes("The step's actions are corrupted"))!
     expect(alert).toBeDefined()
     expect(alert).toHaveTextContent(/enter_actions:/)
     expect(alert).toHaveTextContent('new')   // nome dello step da correggere
@@ -86,14 +86,14 @@ describe('WorkflowStepPanel — azioni corrotte (fail-loud)', () => {
 
   it('JSON valido ma non array → stesso banner con il tipo trovato', () => {
     renderPanel(step({ exitActions: '{"type":"sla_stop"}' }))
-    const alert = screen.getAllByRole('alert').find((a) => a.textContent?.includes('Azioni dello step corrotte'))!
+    const alert = screen.getAllByRole('alert').find((a) => a.textContent?.includes("The step's actions are corrupted"))!
     expect(alert).toHaveTextContent('exit_actions: atteso un array JSON, trovato object')
     expect(saveButton()).toBeDisabled()
   })
 
   it('senza azioni corrotte nessun banner', () => {
     renderPanel(step({ enterActions: '[]' }))
-    expect(screen.queryByText(/Azioni dello step corrotte/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/The step's actions are corrupted/)).not.toBeInTheDocument()
   })
 })
 
@@ -115,8 +115,8 @@ describe('WorkflowStepPanel — operatore persistito non supportato', () => {
     expect(operatorSelect.style.color).toBe('var(--color-danger)')
     expect(operatorSelect).toHaveAttribute('title', T('conditionEditor.unknownOperator', { operator: 'gte' }))
 
-    expect(screen.getByRole('button', { name: 'Aggiorna' })).toBeDisabled()
-    expect(screen.getByText('[automationOperators] operatore UI non mappabile su workflow: "gte"')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Update' })).toBeDisabled()
+    expect(screen.getByText('[automationOperators] UI operator that does not map onto a workflow one: "gte"')).toBeInTheDocument()
   })
 
   it('scegliendo un operatore supportato Aggiorna si riabilita e l\'azione viene riscritta con "gt"', async () => {
@@ -126,7 +126,7 @@ describe('WorkflowStepPanel — operatore persistito non supportato', () => {
     const operatorSelect = await screen.findByDisplayValue(unsupportedOption('gte'))
     await user.selectOptions(operatorSelect, 'greater_than')
     expect(screen.queryByText(/non mappabile/)).not.toBeInTheDocument()
-    const update = screen.getByRole('button', { name: 'Aggiorna' })
+    const update = screen.getByRole('button', { name: 'Update' })
     expect(update).toBeEnabled()
     await user.click(update)
 
@@ -146,7 +146,7 @@ describe('WorkflowStepPanel — operatore persistito non supportato', () => {
     // vocabolario: qui si usa la stringa inglese, che e la lingua dei test.
     const enterField = screen.getByText('Enter actions').parentElement!
     await user.click(within(enterField).getByRole('button', { name: '+ Add action' }))
-    await user.click(await screen.findByRole('button', { name: '+ Aggiungi condizione' }))
+    await user.click(await screen.findByRole('button', { name: '+ Add a condition' }))
     expect(screen.getByRole('button', { name: 'Confirm' })).toBeEnabled()   // riga vuota: scartata, non bloccante
     // attende il metamodello (campi) e imposta campo + operatore valido
     const fieldSelect = await screen.findByDisplayValue(T('conditionEditor.fieldPlaceholder'))
@@ -167,8 +167,8 @@ describe('WorkflowStepPanel — operatore persistito non supportato', () => {
 describe('WorkflowStepPanel — destinatari della notifica all\'ingresso', () => {
   it('offre i destinatari del vocabolario condiviso, tradotti, e nessun role:manager', async () => {
     const { user } = renderPanel(step())
-    await user.click(screen.getByRole('tab', { name: 'Notifiche' }))
-    await user.click(screen.getByRole('switch', { name: 'Notifica all\'ingresso' }))
+    await user.click(screen.getByRole('tab', { name: 'Notifications' }))
+    await user.click(screen.getByRole('switch', { name: 'Notify when the step is entered' }))
 
     // nella scheda Notifiche ci sono due tendine: Severità e Destinatari
     const select = screen.getAllByRole('combobox')[1]!
@@ -192,7 +192,7 @@ describe('WorkflowStepPanel — eliminazione dello step', () => {
       { mocks: baseMocks() },
     ),
   })
-  const deleteButton = () => screen.queryByRole('button', { name: 'Elimina step' })
+  const deleteButton = () => screen.queryByRole('button', { name: 'Delete the step' })
 
   it('step di fabbrica start/end → niente bottone (il server li protegge per `type`)', () => {
     renderWithDelete(step({ name: 'closed', type: 'end', isInitial: false, isTerminal: true, currentInstances: 0 }))
@@ -221,8 +221,8 @@ describe('WorkflowStepPanel — eliminazione dello step', () => {
 
   it('togliere la spunta «Step iniziale» senza salvare NON abilita l\'eliminazione', async () => {
     const { user } = renderWithDelete(step({ name: 'assigned', type: 'standard', isInitial: true, currentInstances: 0 }))
-    await user.click(screen.getByRole('tab', { name: 'Metadati' }))
-    await user.click(screen.getByRole('checkbox', { name: /Il processo parte da questo step/ }))
+    await user.click(screen.getByRole('tab', { name: 'Metadata' }))
+    await user.click(screen.getByRole('checkbox', { name: /The process starts at this step/ }))
     expect(deleteButton()).not.toBeInTheDocument()
   })
 })
@@ -231,8 +231,8 @@ describe('WorkflowStepPanel — eliminazione dello step', () => {
 describe('WorkflowStepPanel — step iniziale e terminale insieme', () => {
   it('spuntare «iniziale» su uno step terminale → avviso e Salva disabilitato', async () => {
     const { user } = renderPanel(step({ name: 'closed', type: 'standard', isInitial: false, isTerminal: true, isOpen: false }))
-    await user.click(screen.getByRole('tab', { name: 'Metadati' }))
-    await user.click(screen.getByRole('checkbox', { name: /Il processo parte da questo step/ }))
+    await user.click(screen.getByRole('tab', { name: 'Metadata' }))
+    await user.click(screen.getByRole('checkbox', { name: /The process starts at this step/ }))
     const alert = screen.getAllByRole('alert').find((a) => a.textContent?.includes(T('workflow.initialOnTerminal')))
     expect(alert).toBeDefined()
     expect(saveButton()).toBeDisabled()
@@ -240,9 +240,9 @@ describe('WorkflowStepPanel — step iniziale e terminale insieme', () => {
 
   it('togliendo «terminale» l\'avviso sparisce e si può salvare', async () => {
     const { user } = renderPanel(step({ name: 'closed', type: 'standard', isInitial: false, isTerminal: true, isOpen: false }))
-    await user.click(screen.getByRole('tab', { name: 'Metadati' }))
-    await user.click(screen.getByRole('checkbox', { name: /Il processo parte da questo step/ }))
-    await user.click(screen.getByRole('checkbox', { name: /Il processo è chiuso quando arriva qui/ }))
+    await user.click(screen.getByRole('tab', { name: 'Metadata' }))
+    await user.click(screen.getByRole('checkbox', { name: /The process starts at this step/ }))
+    await user.click(screen.getByRole('checkbox', { name: /The process is closed when it gets here/ }))
     expect(screen.queryByText(T('workflow.initialOnTerminal'))).not.toBeInTheDocument()
     expect(saveButton()).toBeEnabled()
   })
@@ -292,7 +292,7 @@ describe('WorkflowStepPanel — cambio step selezionato (F-01)', () => {
 describe('WorkflowStepPanel — lo scopo del passo (B4-3)', () => {
   const openMetadata = async (s: WFStep) => {
     const r = renderPanel(s)
-    await r.user.click(screen.getByRole('tab', { name: 'Metadati' }))
+    await r.user.click(screen.getByRole('tab', { name: 'Metadata' }))
     return r
   }
   it('offre tutti e 11 gli scopi tradotti, più «nessuno», e una riga che spiega cosa cambia', async () => {
@@ -316,7 +316,7 @@ describe('WorkflowStepPanel — lo scopo del passo (B4-3)', () => {
       <WorkflowStepPanel step={s} definitionId={DEF_ID} onClose={() => {}} onSaved={onSaved} onSaveLocally={onSaveLocally} />,
       { mocks: baseMocks() },
     )
-    await r.user.click(screen.getByRole('tab', { name: 'Metadati' }))
+    await r.user.click(screen.getByRole('tab', { name: 'Metadata' }))
     const select = screen.getByDisplayValue(T('workflow.purposeOption.planning')) as HTMLSelectElement
     expect(saveButton()).toBeDisabled()
 
@@ -336,7 +336,7 @@ describe('WorkflowStepPanel — lo scopo del passo (B4-3)', () => {
       <WorkflowStepPanel step={s} definitionId={DEF_ID} onClose={() => {}} onSaved={onSaved} onSaveLocally={onSaveLocally} />,
       { mocks: baseMocks() },
     )
-    await r.user.click(screen.getByRole('tab', { name: 'Metadati' }))
+    await r.user.click(screen.getByRole('tab', { name: 'Metadata' }))
     await r.user.selectOptions(screen.getByDisplayValue(T('workflow.purposeOption.implementation')), '')
     await r.user.click(saveButton())
 
@@ -353,7 +353,7 @@ describe('WorkflowStepPanel — lo scopo del passo (B4-3)', () => {
       <WorkflowStepPanel step={s} definitionId={DEF_ID} onClose={() => {}} onSaved={() => {}} onSaveLocally={onSaveLocally} />,
       { mocks: baseMocks() },
     )
-    await r.user.click(screen.getByRole('tab', { name: 'Metadati' }))
+    await r.user.click(screen.getByRole('tab', { name: 'Metadata' }))
     expect((screen.getByDisplayValue(T('workflow.purposeNone')) as HTMLSelectElement).value).toBe('')
     expect(saveButton()).toBeDisabled()
   })
@@ -373,7 +373,7 @@ describe('WorkflowStepPanel — lo scopo del passo (B4-3)', () => {
 describe('WorkflowStepPanel — la categoria è un vocabolario chiuso (B·N-3)', () => {
   const openMetadata = async (s: WFStep) => {
     const r = renderPanel(s)
-    await r.user.click(screen.getByRole('tab', { name: 'Metadati' }))
+    await r.user.click(screen.getByRole('tab', { name: 'Metadata' }))
     return r
   }
 
@@ -397,7 +397,7 @@ describe('WorkflowStepPanel — la categoria è un vocabolario chiuso (B·N-3)',
       <WorkflowStepPanel step={s} definitionId={DEF_ID} onClose={() => {}} onSaved={onSaved} onSaveLocally={onSaveLocally} />,
       { mocks: baseMocks() },
     )
-    await r.user.click(screen.getByRole('tab', { name: 'Metadati' }))
+    await r.user.click(screen.getByRole('tab', { name: 'Metadata' }))
     const select = screen.getByDisplayValue(T('workflow.categoryOption.active')) as HTMLSelectElement
     expect(saveButton()).toBeDisabled()
 

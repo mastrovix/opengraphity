@@ -20,6 +20,7 @@ import {
   MetamodelNameError,
   type ReservedSchemaNames,
 } from '@opengraphity/schema-generator/names'
+import i18n from '@/i18n/i18n'
 
 /** Quel poco che serve di un tipo CI per sapere se un nome è già preso. */
 export interface KnownCIType {
@@ -32,12 +33,17 @@ export function isShippedType(t: { scope?: string | null }): boolean {
   return (t.scope ?? 'base') !== 'tenant'
 }
 
+/**
+ * DA DOVE viene il nome già preso: finisce dentro il messaggio di rifiuto che
+ * compone `@opengraphity/schema-generator/names`. La frase la traduce il
+ * client, quindi qui si chiede la chiave a i18n invece di scriverla.
+ */
 function originOf(scope: string | null | undefined): string {
   switch (scope) {
-    case 'base':   return 'un tipo CI spedito col prodotto'
-    case 'itil':   return 'un tipo ITIL spedito col prodotto'
-    case 'tenant': return 'un tuo tipo CI'
-    default:       return 'un tipo CI già esistente'
+    case 'base':   return i18n.t('citypeDesigner.origin.base')
+    case 'itil':   return i18n.t('citypeDesigner.origin.itil')
+    case 'tenant': return i18n.t('citypeDesigner.origin.tenant')
+    default:       return i18n.t('citypeDesigner.origin.unknown')
   }
 }
 
@@ -56,10 +62,28 @@ const reservedFor = (types: readonly KnownCIType[]): ReservedSchemaNames =>
     reservedNamesForCITypes(types.map((t) => ({ name: t.name, origin: originOf(t.scope) }))),
   )
 
+/**
+ * La FRASE di rifiuto nella lingua del cliente, o `null` se il nome va bene.
+ *
+ * Il rifiuto arriva come dato (`rule` + `i18n: { key, params }`) e la frase la
+ * compone qui il client: `message` e in inglese per i log. I parametri che
+ * finiscono in `Key` sono a loro volta chiavi (le parti facoltative della
+ * frase) e si risolvono passando gli stessi parametri, come fa il link i18n
+ * di Apollo per gli errori dell'API. Se la chiave non e nei locale si mostra
+ * il `message` inglese: meglio una frase nella lingua sbagliata che nessuna.
+ */
+function fraseDiRifiuto(e: MetamodelNameError): string {
+  const params: Record<string, string> = { ...e.i18n.params }
+  for (const [nome, valore] of Object.entries(e.i18n.params)) {
+    if (nome.endsWith('Key')) params[nome.slice(0, -3)] = i18n.t(valore, params)
+  }
+  return i18n.exists(e.i18n.key) ? i18n.t(e.i18n.key, params) : e.message
+}
+
 /** Il messaggio di rifiuto, o `null` se il nome va bene. */
 export function checkCITypeName(name: string, existing: readonly KnownCIType[]): string | null {
   try { assertCITypeName(name, reservedFor(existing)); return null }
-  catch (e) { if (e instanceof MetamodelNameError) return e.message; throw e }
+  catch (e) { if (e instanceof MetamodelNameError) return fraseDiRifiuto(e); throw e }
 }
 
 /** Come sopra per un nome di campo, con i campi già presenti sul tipo. */
@@ -70,7 +94,7 @@ export function checkCIFieldName(
   try {
     assertCIFieldName(name, { existingFieldNames: opts.existingFieldNames, typeLabel: opts.typeLabel })
     return null
-  } catch (e) { if (e instanceof MetamodelNameError) return e.message; throw e }
+  } catch (e) { if (e instanceof MetamodelNameError) return fraseDiRifiuto(e); throw e }
 }
 
 export { suggestCITypeName, suggestCIFieldName, CI_TYPE_NAME_RE, CI_FIELD_NAME_RE } from '@opengraphity/schema-generator/names'

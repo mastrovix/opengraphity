@@ -12,7 +12,7 @@
  * risposte invece della cosa che misurano.
  *
  * Questo modulo si sostituisce a `lib/domainMatrix.js` e risponde **con la
- * matrice di fabbrica e i vocabolari spediti**, senza grafo:
+ * matrice factory e i vocabolari spediti**, senza grafo:
  *
  *     vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
  *
@@ -112,7 +112,7 @@ export function resolveDomainMatrix(
   if (out === undefined) {
     return Promise.reject(new ValidationError(
       `Matrice "${kind}" del cliente ${tenantId}: nessun valore per ${spec.inputs.map((i, n) => `${i}="${values[n]}"`).join(', ')}. ` +
-      `Completa la matrice in Impostazioni → Matrici di dominio (ora è quella di fabbrica: è possibile che tu abbia rinominato un valore del vocabolario senza aggiornarla).`,
+      `Completa la matrice in Impostazioni → Matrici di dominio (ora è quella factory: è possibile che tu abbia rinominato un valore del vocabolario senza aggiornarla).`,
     ))
   }
   return Promise.resolve(out)
@@ -132,10 +132,10 @@ export function domainVocabulary(tenantId: string, vocabulary: string): Promise<
 export async function assertDomainValue(tenantId: string, vocabulary: string, value: unknown): Promise<string> {
   const allowed = await domainVocabulary(tenantId, vocabulary)
   if (typeof value !== 'string' || value === '') {
-    throw new ValidationError(`${vocabulary}: valore assente o non testuale (${JSON.stringify(value ?? null)}). Ammessi: ${allowed.join(', ')}.`)
+    throw new ValidationError(`${vocabulary}: value missing or not a string (${JSON.stringify(value ?? null)}). Ammessi: ${allowed.join(', ')}.`)
   }
   if (!allowed.includes(value)) {
-    throw new ValidationError(`${vocabulary}: "${value}" non è nel vocabolario di questo cliente. Ammessi: ${allowed.join(', ')}.`)
+    throw new ValidationError(`${vocabulary}: "${value}" is not in the dictionary of this tenant. Allowed: ${allowed.join(', ')}.`)
   }
   return value
 }

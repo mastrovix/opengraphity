@@ -19,8 +19,7 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, X } from 'lucide-react'
 import { GET_CONFIGURATION_ISSUES } from '@/graphql/queries'
 import { useMe } from '@/hooks/useMe'
-
-interface Issue { kind: string; severity: string; message: string; where: string | null }
+import { issueText, type IssueData } from '@/lib/configurationIssueText'
 
 /**
  * I messaggi della diagnostica usano `**…**` per l'enfasi, e il banner li
@@ -31,6 +30,8 @@ interface Issue { kind: string; severity: string; message: string; where: string
  *
  * Non un renderer markdown: l'enfasi qui è CONTENUTO (dice quale metà della
  * frase è la conseguenza per il prodotto), quindi si rende, e basta questa.
+ * Ora gli asterischi stanno nei VALORI i18n — cioè l'enfasi la decide chi
+ * traduce, insieme al resto della frase.
  */
 function EnfasiDelMessaggio({ testo }: { testo: string }) {
   // Le parti dispari sono quelle fra i `**`.
@@ -45,13 +46,13 @@ function EnfasiDelMessaggio({ testo }: { testo: string }) {
 }
 
 export function ConfigurationIssuesBanner() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const { me } = useMe()
   const [dismissed, setDismissed] = useState(false)
   const isAdmin = me?.role === 'admin'
 
-  const { data, error } = useQuery<{ configurationIssues: Issue[] }>(GET_CONFIGURATION_ISSUES, {
+  const { data, error } = useQuery<{ configurationIssues: IssueData[] }>(GET_CONFIGURATION_ISSUES, {
     skip: !isAdmin,
     fetchPolicy: 'cache-and-network',
   })
@@ -81,7 +82,9 @@ export function ConfigurationIssuesBanner() {
         <strong>{t('configurationIssues.title', { count: issues.length })}</strong>
         {issues.map((issue, i) => (
           <div key={`${issue.kind}-${String(i)}`} style={{ display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
-            <span style={{ color: 'var(--color-slate-dark)' }}><EnfasiDelMessaggio testo={issue.message} /></span>
+            <span style={{ color: 'var(--color-slate-dark)' }}>
+              <EnfasiDelMessaggio testo={issueText(t, (k, p) => i18n.exists(k, p), issue)} />
+            </span>
             {issue.where && (
               <button
                 type="button"

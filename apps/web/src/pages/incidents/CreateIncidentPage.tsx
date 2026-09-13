@@ -133,10 +133,10 @@ export function CreateIncidentPage() {
         </button>
 
         <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
-          Nuovo Incident
+          {t('pages.createIncident.title')}
         </h1>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 24px' }}>
-          Compila i dettagli dell'incident da aprire
+          {t('pages.createIncident.subtitle')}
         </p>
 
         {/* Card */}
@@ -160,7 +160,7 @@ export function CreateIncidentPage() {
               type="text"
               value={title}
               onChange={e => { setTitle(e.target.value); setFieldErrors((p) => { const n = { ...p }; delete n['title']; return n }) }}
-              placeholder="Es. Database produzione non raggiungibile"
+              placeholder={t('pages.createIncident.titlePlaceholder')}
               style={{ ...inputBase, borderColor: fieldErrors['title'] ? 'var(--color-trigger-sla-breach)' : colors.border }}
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
               onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = fieldErrors['title'] ? 'var(--color-trigger-sla-breach)' : colors.border }}
@@ -170,10 +170,10 @@ export function CreateIncidentPage() {
           {/* CATEGORIA */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.category} style={fieldLabel}>
-              Categoria <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
+              {t('pages.kb.category')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             {categoryLoading ? (
-              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Caricamento…</span>
+              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('common.loading')}</span>
             ) : (
               <select
                 id={ids.category}
@@ -181,7 +181,7 @@ export function CreateIncidentPage() {
                 onChange={e => { setCategory(e.target.value); setFieldErrors(p => { const n = { ...p }; delete n['category']; return n }) }}
                 style={{ ...inputBase, borderColor: fieldErrors['category'] ? 'var(--color-trigger-sla-breach)' : colors.border }}
               >
-                <option value="">-- Seleziona categoria --</option>
+                <option value="">{t('pages.createIncident.selectCategory')}</option>
                 {categoryValues.map(c => (
                   <option key={c} value={c}>{labelOf('category', c) ?? (c.charAt(0).toUpperCase() + c.slice(1))}</option>
                 ))}
@@ -192,9 +192,9 @@ export function CreateIncidentPage() {
 
           {/* IMPATTO × URGENZA → PRIORITÀ (ITIL) */}
           <div style={{ marginBottom: 20, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            {([['Impatto', 'impact', impact, setImpact, matrix?.impacts ?? []], ['Urgenza', 'urgency', urgency, setUrgency, matrix?.urgencies ?? []]] as const).map(([label, vocabolario, val, setVal, options]) => (
-              <div key={label}>
-                <div style={fieldLabel}>{label} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
+            {([['pages.domainMatrices.impact', 'impact', impact, setImpact, matrix?.impacts ?? []], ['pages.domainMatrices.urgency', 'urgency', urgency, setUrgency, matrix?.urgencies ?? []]] as const).map(([labelKey, vocabolario, val, setVal, options]) => (
+              <div key={labelKey}>
+                <div style={fieldLabel}>{t(labelKey)} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {options.map(o => {
                     const sel = val === o
@@ -214,7 +214,7 @@ export function CreateIncidentPage() {
               </div>
             ))}
             <div>
-              <div style={fieldLabel}>Priorità (calcolata)</div>
+              <div style={fieldLabel}>{t('pages.createTicket.derivedPriority')}</div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 6,
                 border: `1.5px solid ${(SEVERITY_STYLES[priority]?.border ?? colors.border)}`,
                 background: SEVERITY_STYLES[priority]?.bg ?? 'var(--color-slate-bg)',
@@ -223,8 +223,8 @@ export function CreateIncidentPage() {
                 <span style={{ textTransform: 'capitalize' }}>
                   {/* L'etichetta della priorità, non il valore: qui si leggeva «Medium». */}
                   {priority !== '' ? (labelOf('priority', priority) ?? priority)
-                    : matrixLoading ? 'in caricamento…'
-                    : 'da compilare nella matrice'}
+                    : matrixLoading ? t('common.loading')
+                    : t('pages.domainMatrices.notFilledIn')}
                 </span>
               </div>
             </div>
@@ -241,7 +241,7 @@ export function CreateIncidentPage() {
             <textarea
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="Descrivi cosa sta succedendo..."
+              placeholder={t('pages.createIncident.descriptionPlaceholder')}
               rows={3}
               style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
@@ -274,7 +274,7 @@ export function CreateIncidentPage() {
           {/* CI IMPATTATI */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.ciSearch} style={fieldLabel}>
-              CI Impattati <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
+              {t('attachments.affectedCIs')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
 
             {/* Search input with icon */}
@@ -287,7 +287,7 @@ export function CreateIncidentPage() {
                 type="text"
                 value={ciSearch}
                 onChange={e => setCiSearch(e.target.value)}
-                placeholder="Cerca per nome..."
+                placeholder={t('pages.createTicket.searchByName')}
                 style={{ ...inputBase, paddingLeft: 36 }}
                 onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
                 onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
@@ -369,7 +369,7 @@ export function CreateIncidentPage() {
                   onChange={e => { setTeamSearch(e.target.value); setTeamDropdownOpen(true) }}
                   onFocus={() => setTeamDropdownOpen(true)}
                   onBlur={() => setTimeout(() => setTeamDropdownOpen(false), 150)}
-                  placeholder="Cerca team per nome..."
+                  placeholder={t('pages.createTicket.searchTeam')}
                   style={{ ...inputBase, paddingLeft: 36 }}
                   onFocusCapture={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
                   onBlurCapture={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
@@ -406,7 +406,7 @@ export function CreateIncidentPage() {
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate)' }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate)' }}
             >
-              Annulla
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -461,7 +461,7 @@ export function CreateIncidentPage() {
                 transition: 'opacity 150ms',
               }}
             >
-              {loading ? 'Creazione…' : 'Crea Incident'}
+              {loading ? t('common.creating') : t('pages.createIncident.submit')}
             </button>
           </div>
 

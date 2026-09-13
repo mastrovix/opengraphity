@@ -3,6 +3,7 @@
  * come from the server; every answer change fires `onSubmitAnswer`, and
  * "complete" is only enabled when the count matches the catalog.
  */
+import { useTranslation } from 'react-i18next'
 import { TASK_STATUS } from '@/lib/taskStatus'
 import type { AssessmentTaskData, QuestionData } from '@/types/change'
 import { StickyAction, inputStyle } from './shared'
@@ -17,6 +18,7 @@ export function AssessmentTaskForm({ task, catalog, canEdit, onSubmitAnswer, onC
   onSubmitAnswer: (questionId: string, optionId: string) => void
   onComplete: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <div>
       {catalog.map((entry) => {
@@ -34,7 +36,7 @@ export function AssessmentTaskForm({ task, catalog, canEdit, onSubmitAnswer, onC
               onChange={(e) => { if (e.target.value) onSubmitAnswer(q.id, e.target.value) }}
               style={{ ...inputStyle, maxWidth: 400 }}
             >
-              <option value="">— Seleziona —</option>
+              <option value="">{t('pages.taskView.choose')}</option>
               {q.options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
             </select>
           </div>
@@ -42,9 +44,9 @@ export function AssessmentTaskForm({ task, catalog, canEdit, onSubmitAnswer, onC
       })}
       {task.status !== TASK_STATUS.COMPLETED && (
         <StickyAction
-          label={`Completa (${task.responses.length}/${catalog.length})`}
+          label={t('changeTasks.completeCount', { done: task.responses.length, total: catalog.length })}
           disabled={!canEdit || task.responses.length < catalog.length}
-          blockReason={!canEdit ? 'Non sei nel team corretto per completare questa task' : undefined}
+          blockReason={!canEdit ? t('changeTasks.wrongTeam') : undefined}
           onClick={onComplete}
         />
       )}

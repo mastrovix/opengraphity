@@ -118,12 +118,12 @@ export async function assertChangeWindowGate(
       )
     case 'no_approval_step':
       throw new GraphQLError(
-        `La change è di tipo "${input.changeType}", che non è fra i tipi pre-approvati, e nel workflow delle change ` +
-        `nessun passo dichiara lo scopo «Approvazione»: non esiste un posto dove approvarla, quindi non può ` +
-        `entrare nella finestra di rilascio. Assegna lo scopo «Approvazione» al passo in cui si approva ` +
-        `(disegnatore dei workflow), oppure aggiungi "${input.changeType}" ai tipi pre-approvati ` +
-        `(Impostazioni → Matrici di dominio).`,
-        { extensions: { code: 'CONFLICT' } },
+        `The change is of type "${input.changeType}", which is not among the pre-approved types, and in the change `
+        + `workflow no step declares the «Approval» purpose: there is no place to approve it, so it cannot `
+        + `enter the release window. Give the «Approval» purpose to the step where approval happens `
+        + `(workflow designer), or add "${input.changeType}" to the pre-approved types `
+        + `(Settings → Domain matrices).`,
+        { extensions: { code: 'CONFLICT', i18n: { key: 'errors.window.noApprovalStep', params: { type: input.changeType } } } },
       )
     case 'needs_approvals':
       requireRole(ctx, 'admin')
@@ -193,10 +193,10 @@ export async function assertAutomaticTransitionAllowed(
 ): Promise<void> {
   if (await automaticTransitionAllowed(session, input, path)) return
   throw new Error(
-    `La change "${input.changeId}" (tipo "${input.changeType}") non puo passare da "${input.currentStep}" a ` +
-    `"${input.toStep}": entrerebbe nella finestra di rilascio senza che le sue approvazioni siano soddisfatte. ` +
-    `Se questo passaggio deve essere automatico, aggiungi "${input.changeType}" ai tipi pre-approvati ` +
-    `(Impostazioni -> Matrici di dominio); altrimenti togli questa azione dalla regola.`,
+    `Change "${input.changeId}" (type "${input.changeType}") cannot move from "${input.currentStep}" to `
+    + `"${input.toStep}": it would enter the release window without its approvals being satisfied. `
+    + `If this move must be automatic, add "${input.changeType}" to the pre-approved types `
+    + `(Settings -> Domain matrices); otherwise remove this action from the rule.`,
   )
 }
 

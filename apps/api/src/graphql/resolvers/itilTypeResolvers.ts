@@ -23,6 +23,7 @@
 import { withSession } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 import { GraphQLError } from 'graphql'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import type { Session } from 'neo4j-driver'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import {
@@ -118,7 +119,7 @@ export async function fetchITILTypeById(id: string, tenantId: string) {
           collect(DISTINCT sr)  AS systemRels
       `, { id, tenantId }),
     )
-    if (!r.records.length) throw new GraphQLError('ITIL type non trovato')
+    if (!r.records.length) throw new NotFoundError('ITILType')
     const rec = r.records[0]
     const t = rec.get('t').properties as Props
 
@@ -269,21 +270,21 @@ async function assertFieldWritable(
     `, { typeId, fieldId, tenantId }),
   )
   const rec = r.records[0]
-  if (!rec) throw new GraphQLError('Campo non trovato', { extensions: { code: 'NOT_FOUND' } })
+  if (!rec) throw new NotFoundError('Field')
 
   const name          = rec.get('name')          as string
   const fieldTenantId = rec.get('fieldTenantId') as string | null
   const isSystem      = rec.get('isSystem')      as boolean | null
 
   if (fieldTenantId === SYSTEM_TENANT || isSystem === true) {
-    throw new GraphQLError(
-      `Il campo "${name}" è spedito col prodotto: è lo stesso per tutti i clienti e non si modifica, ` +
-      `nemmeno l'etichetta, l'ordine o gli script. Aggiungi un campo tuo sul tipo.`,
-      { extensions: { code: 'BAD_USER_INPUT' } },
+    throw new ValidationError(
+      `Field "${name}" ships with the product: it is the same for every tenant and cannot be changed, `
+      + `not even the label, the order or the scripts. Add a field of your own on the type.`,
+      { key: 'errors.itilType.shippedField', params: { name } },
     )
   }
   if (fieldTenantId !== tenantId) {
-    throw new GraphQLError('Campo non trovato', { extensions: { code: 'NOT_FOUND' } })
+    throw new NotFoundError('Field')
   }
   return { name, tenantId: fieldTenantId }
 }
@@ -307,7 +308,7 @@ async function assertEnumTypeLinkable(
   )
   const rec = r.records[0]
   if (!rec) {
-    throw new GraphQLError(`Vocabolario ${enumTypeId} non trovato`, { extensions: { code: 'NOT_FOUND' } })
+    throw new NotFoundError('Dictionary', enumTypeId)
   }
   assertEnumLinkable(
     { id: rec.get('id') as string, name: rec.get('name') as string, tenantId: rec.get('tenantId') as string },
@@ -347,12 +348,12 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
           ),
         )
         const rec = check.records[0]
-        if (!rec) throw new GraphQLError('ITIL type non trovato', { extensions: { code: 'NOT_FOUND' } })
+        if (!rec) throw new NotFoundError('ITILType')
         if ((rec.get('typeTenantId') as string) === SYSTEM_TENANT) {
-          throw new GraphQLError(
-            `Il tipo "${rec.get('name') as string}" è spedito col prodotto: è lo stesso per tutti i clienti ` +
-            `e non si modifica (etichetta, icona, colore e script di validazione compresi).`,
-            { extensions: { code: 'BAD_USER_INPUT' } },
+          throw new ValidationError(
+            `Type "${rec.get('name') as string}" ships with the product: it is the same for every tenant `
+            + `and cannot be changed (label, icon, colour and validation script included).`,
+            { key: 'errors.itilType.shippedType', params: { name: rec.get('name') as string } },
           )
         }
 
@@ -379,8 +380,8 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
       const enumTypeId  = (input['enumTypeId'] as string | null | undefined) ?? null
 
       if (input['fieldType'] === 'enum' && !enumTypeId) {
-        throw new GraphQLError('enumTypeId obbligatorio per campi di tipo enum', {
-          extensions: { code: 'BAD_USER_INPUT' },
+        throw new GraphQLError('enumTypeId is required for enum fields', {
+          extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.enumIdRequired' } },
         })
       }
 
@@ -454,9 +455,10 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
           }),
         )
         if (!wrote.records.length) {
-          throw new GraphQLError(`Il tipo ha già un campo «${String(input['name'])}»`, {
-            extensions: { code: 'BAD_USER_INPUT' },
-          })
+          throw new ValidationError(
+            `The type already has a field «${String(input['name'])}»`,
+            { key: 'errors.metamodelName.duplicateFieldRace', params: { name: String(input['name']) } },
+          )
         }
       }, true)
 
@@ -474,8 +476,8 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
       const enumTypeId  = (input['enumTypeId'] as string | null | undefined) ?? null
 
       if (input['fieldType'] === 'enum' && !enumTypeId) {
-        throw new GraphQLError('enumTypeId obbligatorio per campi di tipo enum', {
-          extensions: { code: 'BAD_USER_INPUT' },
+        throw new GraphQLError('enumTypeId is required for enum fields', {
+          extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.enumIdRequired' } },
         })
       }
 

@@ -107,7 +107,7 @@ export function WorkflowToolbar({
           }}
         >
           <ArrowLeft size={13} aria-hidden="true" />
-          Workflow
+          {t('pages.workflow.title')}
         </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -116,7 +116,7 @@ export function WorkflowToolbar({
           </h1>
           {def && (
             <Pill bg="var(--color-brand-a08)" color={accentColor} radius={100} style={{ fontSize: 11 }}>
-              v{def.version} · Attivo
+              v{def.version} · {t('common.active')}
             </Pill>
           )}
         </div>
@@ -150,7 +150,7 @@ export function WorkflowToolbar({
             gap:             8,
           }}
         >
-          Salva modifiche
+          {t('common.saveChanges')}
           {pendingCount > 0 && (
             <span style={{
               fontSize:        11,
@@ -175,7 +175,7 @@ export function WorkflowToolbar({
           width={380}
           footer={
             <>
-              <Button variant="secondary" onClick={() => setShowAddStep(false)} style={{ padding: '7px 14px', border: '1px solid var(--color-border)' }}>Annulla</Button>
+              <Button variant="secondary" onClick={() => setShowAddStep(false)} style={{ padding: '7px 14px', border: '1px solid var(--color-border)' }}>{t('common.cancel')}</Button>
               <Button
                 disabled={!stepLabel.trim() || addingStep || (stepType === 'standard' && !stepSlug)}
                 onClick={() => {
@@ -197,14 +197,14 @@ export function WorkflowToolbar({
                 }}
                 style={{ padding: '7px 16px', backgroundColor: accentColor, fontSize: 'var(--font-size-body)', fontWeight: 600 }}
               >
-                Aggiungi
+                {t('pages.questions.add')}
               </Button>
             </>
           }
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
-              <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>TIPO</div>
+              <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>{t('common.type').toUpperCase()}</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {SPECIAL_STEP_TYPES.map(s => (
                   <button type="button" key={s.type} aria-pressed={stepType === s.type} onClick={() => setStepType(s.type)} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${stepType === s.type ? accentColor : 'var(--color-border)'}`, background: stepType === s.type ? 'var(--color-brand-a08)' : colors.white, color: stepType === s.type ? accentColor : 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
@@ -214,8 +214,8 @@ export function WorkflowToolbar({
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>LABEL</div>
-              <input value={stepLabel} onChange={e => setStepLabel(e.target.value)} placeholder={stepType === 'standard' ? 'es. CAB settimanale' : 'es. Attesa Timer'} style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
+              <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>{t('common.label')}</div>
+              <input value={stepLabel} onChange={e => setStepLabel(e.target.value)} placeholder={t(stepType === 'standard' ? 'pages.workflowStep.labelPlaceholder' : 'pages.workflowStep.labelPlaceholderTimer')} style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
             </div>
             {stepType === 'standard' && (
               <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', lineHeight: 1.45 }}>
@@ -224,7 +224,7 @@ export function WorkflowToolbar({
             )}
             {stepType === 'timer_wait' && (
               <div>
-                <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>RITARDO (minuti)</div>
+                <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>{t('pages.workflowStep.timerDelay')}</div>
                 <input type="number" min={1} value={timerMins} onChange={e => setTimerMins(e.target.value)} placeholder={t('workflow.timerMinutesPlaceholder')} style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
               </div>
             )}

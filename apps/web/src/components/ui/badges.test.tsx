@@ -23,7 +23,7 @@ function withVocabulary(
     <DomainVocabularyContext.Provider value={{
       valuesOf:  () => values,
       labelOf:   (_n, v) => labels[v] ?? null,
-      entriesOf: () => (values ? values.map((v) => ({ value: v, label: labels[v] ?? v })) : null),
+      entriesOf: () => (values ? values.map((v) => ({ value: v, label: labels[v] ?? v, labels: [] })) : null),
       loading: false,
       error: null,
     }}>
@@ -65,14 +65,14 @@ describe('SeverityBadge', () => {
   it('valore FUORI dal vocabolario del cliente → stile rotto (rosso) e console.error', () => {
     withVocabulary(Object.keys(SEVERITY_STYLE), <SeverityBadge value="blocker" />)
     expect(screen.getByText('Blocker')).toHaveStyle({ background: BROKEN_BG, color: 'var(--color-white)' })
-    expect(consoleError).toHaveBeenCalledWith('[SEVERITY_STYLE/severity] "blocker" non è nel vocabolario di questo cliente (critical, high, medium, low)')
+    expect(consoleError).toHaveBeenCalledWith('[SEVERITY_STYLE/severity] "blocker" is not in the vocabulary of this tenant (critical, high, medium, low)')
   })
   it('vocabolario non disponibile → neutro e console.warn (non si accusa di essere rotto ciò che non si è potuto verificare)', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     withVocabulary(null, <SeverityBadge value="blocker" />)
     expect(screen.getByText('Blocker')).toHaveStyle({ background: NEUTRAL_VALUE_STYLE.bg })
     expect(consoleError).not.toHaveBeenCalled()
-    expect(warn).toHaveBeenCalledWith('[SEVERITY_STYLE/severity] "blocker" senza stile e vocabolario del cliente non disponibile: stile neutro')
+    expect(warn).toHaveBeenCalledWith('[SEVERITY_STYLE/severity] "blocker" has no style and the vocabulary of this tenant is unavailable: neutral style')
   })
 })
 
@@ -87,7 +87,7 @@ describe('RoleBadge', () => {
     expect(screen.getByText('—')).toBeInTheDocument()
     rerender(<RoleBadge role="superuser" />)
     expect(screen.getByText('superuser')).toHaveStyle({ background: BROKEN_BG })
-    expect(consoleError).toHaveBeenCalledWith('[ROLE_STYLE] valore sconosciuto: "superuser"')
+    expect(consoleError).toHaveBeenCalledWith('[ROLE_STYLE] unknown value: "superuser"')
   })
 })
 
@@ -114,7 +114,7 @@ describe('PhaseBadge / StatusLabel', () => {
     expect(consoleError).not.toHaveBeenCalled()
     rerender(<PhaseBadge phase="weird" category="galactic" />)
     expect(screen.getByText('weird')).toBeInTheDocument()
-    expect(consoleError).toHaveBeenCalledWith('[workflowStepStyle] categoria sconosciuta: "galactic"')
+    expect(consoleError).toHaveBeenCalledWith('[workflowStepStyle] unknown category: "galactic"')
   })
   it('StatusLabel: pending → "TO BE COMPLETED", altri stati con underscore → spazio', () => {
     const { rerender } = render(<StatusLabel status="pending" />)

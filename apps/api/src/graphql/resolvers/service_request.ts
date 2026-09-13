@@ -240,7 +240,7 @@ async function updateServiceCatalogItem(
   if (input.requiresApproval !== undefined) sets['requires_approval'] = input.requiresApproval
   if (input.active !== undefined)           sets['active']            = input.active
   if (Object.keys(sets).length === 0) {
-    throw new ValidationError('updateServiceCatalogItem: nessun campo da aggiornare')
+    throw new ValidationError('updateServiceCatalogItem: no field to update', { key: 'errors.nothingToUpdate' })
   }
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session, `

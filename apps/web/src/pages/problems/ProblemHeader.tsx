@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { Pill } from '@/components/ui/Pill'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
@@ -60,13 +61,14 @@ export function ProblemHeader({
   onBack,
   onTransitionClick,
 }: ProblemHeaderProps) {
+  const { t } = useTranslation()
   const { byName: stepByName, labelFor } = useWorkflowSteps('problem')
   const { labelOf } = useDomainVocabularies()
   return (
     <div style={{ marginBottom: 24 }}>
       <button type="button" onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-card-title)', padding: 0 }}>
         <ArrowLeft size={14} />
-        Indietro
+        {t('common.back')}
       </button>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
         <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0 }}>{problem.title}</h1>

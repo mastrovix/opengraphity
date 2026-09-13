@@ -51,6 +51,7 @@ import NotificationRulesPage from '@/pages/settings/NotificationRulesPage'
 import { CITypeDesignerPage } from '@/pages/settings/CITypeDesignerPage'
 import { ITILTypeDesignerPage } from '@/pages/settings/ITILTypeDesignerPage'
 import { EnumDesignerPage }     from '@/pages/settings/EnumDesignerPage.js'
+import { OrganizationPage }     from '@/pages/settings/OrganizationPage'
 import { DomainMatricesPage }   from '@/pages/settings/DomainMatricesPage'
 import { SyncPage }             from '@/pages/settings/SyncPage'
 const ReportsPage = lazy(() => import('@/pages/reports/ReportsPage'))
@@ -86,7 +87,7 @@ import { initKeycloak, keycloak } from '@/lib/keycloak'
 import { startTokenRefreshLoop } from '@/lib/tokenRefresh'
 import '@/index.css'
 import '@xyflow/react/dist/style.css'
-import '@/i18n/i18n'
+import i18n from '@/i18n/i18n'
 
 function RouteError() {
   const error = useRouteError() as { status?: number; statusText?: string }
@@ -198,6 +199,10 @@ const router = createBrowserRouter([
       { path: 'settings/notification-rules', element: admin(<NotificationRulesPage />), errorElement: <RouteError /> },
       { path: 'settings/profile',          element: <Navigate to="/profile" replace /> },
       { path: 'profile',                   element: <UserProfilePage />,         errorElement: <RouteError /> },
+      // Organizzazione: le scelte che valgono per tutti (la lingua predefinita
+      // dell'azienda, che era una costante nel codice). La lingua di una
+      // PERSONA sta nel Profilo, aperto a ogni ruolo.
+      { path: 'settings/organization',     element: admin(<OrganizationPage />),     errorElement: <RouteError /> },
       { path: 'settings/ci-types',         element: admin(<CITypeDesignerPage />),   errorElement: <RouteError /> },
       { path: 'settings/itil-designer',   element: admin(<ITILTypeDesignerPage />), errorElement: <RouteError /> },
       { path: 'settings/enum-designer',  element: admin(<EnumDesignerPage />),     errorElement: <RouteError /> },
@@ -266,7 +271,7 @@ initKeycloak().then((authenticated) => {
   // initKeycloak throws for: no tenant in subdomain, missing VITE_KEYCLOAK_URL,
   // unknown realm, Keycloak unreachable. Without this the user sees a blank page.
   root.innerHTML = `<div style="display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui">
-    <div style="font-size:20px;font-weight:600;color:var(--color-danger)">Errore di autenticazione</div>
+    <div style="font-size:20px;font-weight:600;color:var(--color-danger)">${i18n.t('auth.error')}</div>
     <div style="color:var(--color-slate);font-size:14px">${err.message}</div>
   </div>`
 })

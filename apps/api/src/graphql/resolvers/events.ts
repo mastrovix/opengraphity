@@ -548,7 +548,8 @@ async function labelOfType(tenantId: string, type: string): Promise<string> {
   const label = await ciLabelForTypeName(tenantId, type)
   if (!label) {
     throw new ValidationError(
-      `Tipo di CI "${type}" sconosciuto per questo cliente: ammessi ${(await ciTypeNamesForTenant(tenantId)).join(', ')}.`,
+      `CI type "${type}" is unknown for this tenant: allowed ${(await ciTypeNamesForTenant(tenantId)).join(', ')}.`,
+      { key: 'errors.ciType.unknown', params: { type, allowed: (await ciTypeNamesForTenant(tenantId)).join(', ') } },
     )
   }
   return label

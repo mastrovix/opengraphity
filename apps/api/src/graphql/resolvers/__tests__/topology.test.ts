@@ -91,7 +91,7 @@ describe('topology — etichette dal metamodello del tenant', () => {
 
   it('un tipo che questo cliente non ha ferma la query dicendolo (prima: filtro muto, zero nodi)', async () => {
     await expect(topology(null, { types: ['bilanciatore'] }, ctx))
-      .rejects.toThrow(/topology\(types:\): "bilanciatore" non è un tipo di CI di questo cliente/)
+      .rejects.toThrow(/topology\(types:\): "bilanciatore" is not a CI type of this tenant/)
     expect(queries.some((q) => q.cypher.includes('labels(ci)'))).toBe(false)
   })
 })

@@ -116,7 +116,7 @@ describe('updateCIFields — il tipo dall\'etichetta, e le proprietà del prodot
     vi.mocked(runQuery).mockResolvedValue([{ props, label: null }] as never)
     const err = await call({ name: 'x' }).then(() => null, (e: unknown) => e)
     expect((err as GraphQLError).extensions?.code).toBe('CONFLICT')
-    expect((err as GraphQLError).message).toMatch(/non ha un'etichetta di tipo/)
+    expect((err as GraphQLError).message).toMatch(/has no type label/)
   })
 
   // La guardia sulle chiavi è DOPPIA: forma (anti-injection) + riservate dei CI.

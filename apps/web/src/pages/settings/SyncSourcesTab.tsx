@@ -237,7 +237,7 @@ export function SyncSourcesTab({
           onClick={() => setShowCreate(true)}
           style={{ display: 'flex', alignItems: 'center', gap: 6, backgroundColor: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
         >
-          <Plus size={14} />Add Source
+          <Plus size={14} />{t('sync.addSource')}
         </button>
       </div>
 
@@ -245,7 +245,7 @@ export function SyncSourcesTab({
       <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
         {sources.length === 0 && (
           <div style={{ padding: 32, textAlign: 'center', color: colors.slate, fontSize: 'var(--font-size-body)' }}>
-            No sync sources configured. Add one to start importing CIs.
+            {t('sync.noSources')}
           </div>
         )}
         {sources.map((s, i) => (
@@ -264,9 +264,9 @@ export function SyncSourcesTab({
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
-              <button type="button" onClick={() => onTestConnection(s.id)}  style={btnStyle(colors.white, palette.neutral.textMuted)}>Test</button>
-              <button type="button" onClick={() => openSchedule(s)}         style={btnStyle(colors.white, palette.purple.base)}><Clock size={12} />Schedule</button>
-              <button type="button" onClick={() => onTriggerSync(s.id)}     style={btnStyle(colors.brand, colors.white)}><Play size={12} />Sync Now</button>
+              <button type="button" onClick={() => onTestConnection(s.id)}  style={btnStyle(colors.white, palette.neutral.textMuted)}>{t('pages.notifications.test')}</button>
+              <button type="button" onClick={() => openSchedule(s)}         style={btnStyle(colors.white, palette.purple.base)}><Clock size={12} />{t('pages.sync.schedule')}</button>
+              <button type="button" onClick={() => onTriggerSync(s.id)}     style={btnStyle(colors.brand, colors.white)}><Play size={12} />{t('pages.sync.syncNow')}</button>
               <button type="button" onClick={() => onDeleteSource(s.id)}    style={btnStyle(colors.white, 'var(--color-trigger-sla-breach)')}><Trash2 size={12} /></button>
             </div>
           </div>
@@ -287,13 +287,13 @@ export function SyncSourcesTab({
             </>
           }
         >
-          <label htmlFor={`${fid}-sched-preset`} style={labelStyle}>Cron preset</label>
+          <label htmlFor={`${fid}-sched-preset`} style={labelStyle}>{t('pages.sync.cronPreset')}</label>
           <Select id={`${fid}-sched-preset`} style={inputStyle} value={schedPreset} onChange={e => setSchedPreset(e.target.value)}>
             {CRON_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           </Select>
           {schedPreset === '__custom__' && (
             <>
-              <label htmlFor={`${fid}-sched-custom`} style={{ ...labelStyle, marginTop: 8 }}>Custom cron expression</label>
+              <label htmlFor={`${fid}-sched-custom`} style={{ ...labelStyle, marginTop: 8 }}>{t('pages.sync.customCron')}</label>
               <Input id={`${fid}-sched-custom`} style={inputStyle} value={schedCustom} onChange={e => setSchedCustom(e.target.value)} placeholder="e.g. 0 */4 * * *" />
             </>
           )}
@@ -305,7 +305,7 @@ export function SyncSourcesTab({
         <Modal
           open
           onClose={() => setShowCreate(false)}
-          title="Add Sync Source"
+          title={t('pages.sync.addSource')}
           width={520}
           as="form"
           onSubmit={(e) => void handleCreate(e)}
@@ -319,9 +319,9 @@ export function SyncSourcesTab({
               <label htmlFor={`${fid}-name`} style={labelStyle}>{t('common.name')}</label>
               <Input id={`${fid}-name`} style={inputStyle} value={form['name'] ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
 
-              <label htmlFor={`${fid}-connector`} style={labelStyle}>Connector Type</label>
+              <label htmlFor={`${fid}-connector`} style={labelStyle}>{t('pages.sync.connectorType')}</label>
               <Select id={`${fid}-connector`} style={inputStyle} value={selectedType} onChange={e => { setSelectedType(e.target.value); setForm({}); setCredForm({}) }} required>
-                <option value="">Select connector...</option>
+                <option value="">{t('pages.sync.selectConnector')}</option>
                 {connectors.map(c => <option key={c.type} value={c.type}>{c.displayName}</option>)}
               </Select>
 
@@ -329,7 +329,7 @@ export function SyncSourcesTab({
                 <>
                   {selectedConnector.credentialFields.length > 0 && (
                     <>
-                      <div style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', margin: '16px 0 8px', color: palette.neutral.textMuted }}>Credentials</div>
+                      <div style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', margin: '16px 0 8px', color: palette.neutral.textMuted }}>{t('pages.sync.credentials')}</div>
                       {selectedConnector.credentialFields.map(f => (
                         <div key={f.name}>
                           <label htmlFor={`${fid}-cred-${f.name}`} style={labelStyle}>{f.label}{f.required && <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>}</label>
@@ -349,7 +349,7 @@ export function SyncSourcesTab({
                   )}
                   {selectedConnector.configFields.length > 0 && (
                     <>
-                      <div style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', margin: '16px 0 8px', color: palette.neutral.textMuted }}>Configuration</div>
+                      <div style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', margin: '16px 0 8px', color: palette.neutral.textMuted }}>{t('pages.sync.configuration')}</div>
                       {selectedConnector.configFields.map(f => (
                         <div key={f.name}>
                           <label htmlFor={`${fid}-cfg-${f.name}`} style={labelStyle}>{f.label}{f.required && <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>}</label>
@@ -380,8 +380,8 @@ export function SyncSourcesTab({
                     </>
                   )}
                   <div style={{ marginTop: 8 }}>
-                    <label htmlFor={`${fid}-schedule`} style={labelStyle}>Schedule (cron, optional)</label>
-                    <Input id={`${fid}-schedule`} style={inputStyle} placeholder="0 */6 * * * (every 6h)" value={form['scheduleCron'] ?? ''} onChange={e => setForm(c => ({ ...c, scheduleCron: e.target.value }))} />
+                    <label htmlFor={`${fid}-schedule`} style={labelStyle}>{t('sync.scheduleCron')}</label>
+                    <Input id={`${fid}-schedule`} style={inputStyle} placeholder={t('sync.scheduleCronPlaceholder')} value={form['scheduleCron'] ?? ''} onChange={e => setForm(c => ({ ...c, scheduleCron: e.target.value }))} />
                   </div>
                 </>
               )}

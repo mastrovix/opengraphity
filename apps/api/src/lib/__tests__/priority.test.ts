@@ -7,7 +7,7 @@
  *
  *  1. `derivePriority('high','high') === 'critical'` come funzione **pura**.
  *     Adesso la matrice è dato del cliente, quindi la funzione è asincrona e
- *     legge. I casi restano gli stessi — con la matrice di fabbrica il
+ *     legge. I casi restano gli stessi — con la matrice factory il
  *     risultato è identico — ma passano dal dato.
  *  2. `impactUrgencyFromPriority` come **tabella parallela** alla matrice, con
  *     un `default → medium` che nascondeva una priorità sconosciuta. Adesso
@@ -32,7 +32,7 @@ const { DOMAIN_MATRIX_SEEDS, clearDomainCaches } = await import('../domainMatrix
 
 const rec = (m: Record<string, unknown>) => ({ get: (k: string) => (k in m ? m[k] : null) })
 
-/** I vocabolari del cliente (quelli di fabbrica, salvo diverso). */
+/** I vocabolari del cliente (quelli factory, salvo diverso). */
 function vocab(over: Record<string, string[]> = {}) {
   const base: Record<string, string[]> = {
     impact:   ['low', 'medium', 'high'],
@@ -59,7 +59,7 @@ beforeEach(() => {
 })
 
 describe('derivePriority — la matrice ITIL, ma come dato', () => {
-  it('con la matrice di fabbrica i nove casi sono quelli di sempre', async () => {
+  it('con la matrice factory i nove casi sono quelli di sempre', async () => {
     for (const [key, expected] of Object.entries(DOMAIN_MATRIX_SEEDS.priority)) {
       const [impact, urgency] = key.split('|') as [string, string]
       clearDomainCaches(); matrix(null)
@@ -77,13 +77,13 @@ describe('derivePriority — la matrice ITIL, ma come dato', () => {
 
   it('un impatto fuori vocabolario è un rifiuto che elenca gli ammessi, non un «medium»', async () => {
     await expect(derivePriority('c-one', 'altissimo', 'high'))
-      .rejects.toThrow(/impact: "altissimo" non è nel vocabolario di questo cliente. Ammessi: low, medium, high/)
+      .rejects.toThrow(/impact: "altissimo" is not in the dictionary of this tenant. Allowed: low, medium, high/)
   })
 
   it('una combinazione che la matrice non copre nomina matrice e combinazione', async () => {
     loadTenantEnumOverrides.mockResolvedValue(vocab({ impact: ['low', 'medium', 'high', 'tier0'] }))
     await expect(derivePriority('c-one', 'tier0', 'high'))
-      .rejects.toThrow(/Matrice "priority".*impact="tier0", urgency="high"/s)
+      .rejects.toThrow(/Matrix "priority".*impact="tier0", urgency="high"/s)
   })
 })
 
@@ -113,7 +113,7 @@ describe('invertPriority — l\'inverso si calcola DALLA matrice', () => {
   it('una priorità che nessuna cella produce è un errore, non `medium|medium`', async () => {
     loadTenantEnumOverrides.mockResolvedValue(vocab({ priority: ['low', 'medium', 'high', 'critical', 'blocker'] }))
     await expect(invertPriority('c-one', 'blocker'))
-      .rejects.toThrow(/nessuna combinazione di impatto e urgenza produce "blocker"/)
+      .rejects.toThrow(/no combination of impact and urgency produces "blocker"/)
   })
 })
 
@@ -132,7 +132,7 @@ describe('resolveNewTicketPriority — incident e problem nuovi', () => {
     // Prima `impact` senza `urgency` cadeva nel ramo della severità e l'impatto
     // dato dall'utente veniva tenuto, l'urgenza inventata dalla severità.
     await expect(resolveNewTicketPriority('c-one', { impact: 'high', severity: 'low' }))
-      .rejects.toThrow(/Impatto e urgenza si passano insieme/)
+      .rejects.toThrow(/Impact and urgency go together/)
   })
 
   it('niente di niente: il messaggio dice cosa fornire', async () => {
@@ -141,7 +141,7 @@ describe('resolveNewTicketPriority — incident e problem nuovi', () => {
 
   it('una severità fuori vocabolario è un rifiuto (prima veniva scritta e mappata a medium|medium)', async () => {
     await expect(resolveNewTicketPriority('c-one', { severity: 'urgentissimo' }))
-      .rejects.toThrow(/priority: "urgentissimo" non è nel vocabolario di questo cliente/)
+      .rejects.toThrow(/priority: "urgentissimo" is not in the dictionary of this tenant/)
   })
 })
 
@@ -168,6 +168,6 @@ describe('resolvePriorityPatch — aggiornamento parziale', () => {
 
   it('un valore fuori vocabolario è un rifiuto che elenca gli ammessi', async () => {
     await expect(resolvePriorityPatch('c-one', { impact: 'low', urgency: 'low' }, { urgency: 'urgentissima' }))
-      .rejects.toThrow(/urgency: "urgentissima" non è nel vocabolario di questo cliente/)
+      .rejects.toThrow(/urgency: "urgentissima" is not in the dictionary of this tenant/)
   })
 })

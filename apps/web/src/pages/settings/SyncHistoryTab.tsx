@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { SyncSource, SyncRun } from './useSyncPage'
 import { formatMs, formatDate, StatusBadge, inputStyle } from './syncShared'
 import { Select } from '@/components/ui/FormControls'
@@ -19,6 +20,7 @@ export interface SyncHistoryTabProps {
 export function SyncHistoryTab({
   sources, runs, loading, selectedSourceId, onSelectSource,
 }: SyncHistoryTabProps) {
+  const { t } = useTranslation()
   // Local UI state to keep select in sync (allows parent to drive the query)
   const [selected, setSelected] = useState(selectedSourceId)
 
@@ -31,23 +33,23 @@ export function SyncHistoryTab({
     <div>
       <div style={{ marginBottom: 16 }}>
         <Select style={{ ...inputStyle, width: 240 }} value={selected} onChange={e => handleChange(e.target.value)}>
-          <option value="">Select source...</option>
+          <option value="">{t('pages.sync.selectSource')}</option>
           {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </Select>
       </div>
 
       {!selected && (
         <div style={{ padding: 32, textAlign: 'center', color: colors.slate, fontSize: 'var(--font-size-body)' }}>
-          Select a sync source to view run history
+          {t('pages.sync.pickSourceHint')}
         </div>
       )}
 
-      {selected && loading && <div style={{ padding: 24, color: colors.slate }}>Loading...</div>}
+      {selected && loading && <div style={{ padding: 24, color: colors.slate }}>{t('common.loading')}</div>}
 
       {selected && !loading && (
         <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
           {runs.length === 0 && (
-            <div style={{ padding: 32, textAlign: 'center', color: colors.slate, fontSize: 'var(--font-size-body)' }}>No runs yet</div>
+            <div style={{ padding: 32, textAlign: 'center', color: colors.slate, fontSize: 'var(--font-size-body)' }}>{t('pages.sync.noRuns')}</div>
           )}
           {runs.map((r, i) => (
             <div key={r.id} style={{ padding: '12px 16px', borderBottom: i < runs.length - 1 ? `1px solid ${palette.neutral.borderLight}` : 'none' }}>

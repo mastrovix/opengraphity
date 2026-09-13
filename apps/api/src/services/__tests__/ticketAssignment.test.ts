@@ -48,20 +48,20 @@ describe('assertUserInAssignedTeam', () => {
   it('nessun gruppo assegnato → ValidationError "prima il gruppo" (messaggio per entità)', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ teamId: null, teamName: null, isMember: false })
     const inc = await failure(assertUserInAssignedTeam(session, 'Incident', 'inc-1', 'u-1', 't-1'), 'BAD_USER_INPUT')
-    expect(inc.message).toBe("Assegna prima un gruppo all'incident, poi un utente di quel gruppo")
+    expect(inc.message).toBe("Incident: assign a group first, then a user from that group")
     const prb = await failure(assertUserInAssignedTeam(session, 'Problem', 'prb-1', 'u-1', 't-1'), 'BAD_USER_INPUT')
-    expect(prb.message).toBe('Assegna prima un gruppo al problem, poi un utente di quel gruppo')
+    expect(prb.message).toBe('Problem: assign a group first, then a user from that group')
     expect(lastQuery().cypher).toContain('MATCH (e:Problem {id: $id, tenant_id: $tenantId})')
   })
 
   it('utente non membro del gruppo (anche gruppo senza membri) → ValidationError col nome del gruppo', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ teamId: 'team-1', teamName: 'NOC', isMember: false })
     const err = await failure(assertUserInAssignedTeam(session, 'Incident', 'inc-1', 'u-1', 't-1'), 'BAD_USER_INPUT')
-    expect(err.message).toBe("L'utente selezionato non appartiene al gruppo assegnatario (NOC)")
+    expect(err.message).toBe("The selected user does not belong to the assigned group (NOC)")
 
     vi.mocked(runQueryOne).mockResolvedValue({ teamId: 'team-1', teamName: null, isMember: false })
     const noName = await failure(assertUserInAssignedTeam(session, 'Incident', 'inc-1', 'u-1', 't-1'), 'BAD_USER_INPUT')
-    expect(noName.message).toBe("L'utente selezionato non appartiene al gruppo assegnatario")
+    expect(noName.message).toBe("The selected user does not belong to the assigned group")
   })
 
   it('utente membro → ritorna team id e nome', async () => {

@@ -66,7 +66,7 @@ vi.mock('../../../lib/ciMetamodelForTenant.js', () => ({
 
 vi.mock('../../../lib/workflowHelpers.js', () => ({
   // Ondata 4 · A4-1: i passi della finestra di change vengono dallo SCOPO.
-  // Il tenant di prova ha i nomi di fabbrica con gli scopi della migrazione.
+  // Il tenant di prova ha i nomi factory con gli scopi della migrazione.
   getStepNamesByPurpose: vi.fn(async (_s: unknown, _t: unknown, _e: unknown, purposes: readonly string[]) =>
     purposes.includes('implementation') ? ['deployment'] : ['scheduled']),
 }))
@@ -204,7 +204,7 @@ describe('serviceMaps', () => {
     // (`assertDomainValue`), non contro la copia in lib/serviceVocabularies.ts
     // — che era il seme del prodotto e rifiutava una criticità aggiunta
     // dall'admin. Il messaggio elenca gli ammessi di QUESTO cliente.
-    await expectCode(serviceResolvers.Query.serviceMaps(null, { filter: { criticality: ['molto_critico'] } }, viewer), 'BAD_USER_INPUT', /service_criticality: "molto_critico" non è nel vocabolario di questo cliente/)
+    await expectCode(serviceResolvers.Query.serviceMaps(null, { filter: { criticality: ['molto_critico'] } }, viewer), 'BAD_USER_INPUT', /service_criticality: "molto_critico" is not in the dictionary of this tenant/)
     expect(runQueryOne).not.toHaveBeenCalled()
   })
 

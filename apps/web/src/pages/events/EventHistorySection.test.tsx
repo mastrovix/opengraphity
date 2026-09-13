@@ -128,7 +128,7 @@ describe('EventHistorySection', () => {
     renderWithProviders(<EventHistorySection entries={entries} total={6} />)
     expect(textOf('teleported')).toMatch(/^Unknown entry: teleported\./)
     expect(within(rowOf('teleported')).getByText('raw note')).toBeInTheDocument()
-    expect(error).toHaveBeenCalledWith(expect.stringContaining('[EVENT_HISTORY_ICON] valore sconosciuto: "teleported"'))
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('[EVENT_HISTORY_ICON] unknown value: "teleported"'))
     expect(textOf('storm')).toMatch(/^Grouped into the storm incident incident not recorded\./)
     expect(within(rowOf('storm')).queryByRole('link')).not.toBeInTheDocument()
     expect(textOf('suppressed')).toMatch(/^Suppressed by change change not recorded in its release window\./)

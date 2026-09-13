@@ -46,6 +46,7 @@ import {
   HeartPulse,
   Boxes,
   Table2,
+  Building2,
 } from 'lucide-react'
 import { useMe } from '@/hooks/useMe'
 import { isStaff } from '@/lib/roles'
@@ -89,6 +90,7 @@ const MONITORING_ITEM_DEFS = [
 ]
 
 const CONFIG_ITEM_DEFS = [
+  { to: '/settings/organization',    labelKey: 'sidebar.organization',    icon: Building2 },
   { to: '/settings/ci-types',        labelKey: 'sidebar.ciTypeDesigner',  icon: Layers   },
   { to: '/settings/itil-designer',   labelKey: 'sidebar.itilDesigner',    icon: Settings2 },
   { to: '/settings/enum-designer',   labelKey: 'sidebar.enumDesigner',    icon: Tag      },

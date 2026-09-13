@@ -56,7 +56,7 @@ export function calculateTaskScore(
   environment: string | null | undefined,
 ): number {
   if (questions.length === 0) {
-    throw new ValidationError('Nessuna domanda di assessment: impossibile calcolare lo score')
+    throw new ValidationError('No assessment question: the score cannot be computed', { key: 'errors.assessment.noQuestions' })
   }
   let num = 0, den = 0
   for (const q of questions) {

@@ -90,3 +90,15 @@ export const GET_SERVICE_CATALOG = gql`
     }
   }
 `
+
+/**
+ * In che lingua si legge questo cliente. Il portale la chiede come il web: la
+ * lingua predefinita e configurazione dell'azienda e sta nel grafo, e per un
+ * `end_user` — che non ha nessuna pagina dove scegliere la propria — e l'unica
+ * cosa che decide.
+ */
+export const GET_TENANT_LANGUAGE_SETTINGS = gql`
+  query GetTenantLanguageSettings {
+    tenantLanguageSettings { available defaultLanguage fallback }
+  }
+`

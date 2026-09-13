@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Outlet } from 'react-router-dom'
 import { PortalHeader } from './PortalHeader'
 import { GET_ME } from '@/graphql/queries'
+import { usePortalLanguage } from '@/hooks/usePortalLanguage'
 import { colors } from '@/lib/tokens'
 
 interface MeData {
@@ -11,6 +12,8 @@ interface MeData {
 
 export function PortalLayout() {
   const { t }      = useTranslation()
+  // La lingua del cliente, come nel web: qui e la sola che decide.
+  usePortalLanguage()
   const { data }   = useQuery<MeData>(GET_ME)
   const userName   = data?.me?.name ?? data?.me?.email ?? '—'
   const year       = new Date().getFullYear()

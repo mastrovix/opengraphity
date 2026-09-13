@@ -83,7 +83,7 @@ describe('normalizeStepPurpose — vocabolario chiuso, e «nessuno scopo» è un
   })
 
   it('rifiuta un NOME di passo usato come scopo: `deployment` non è uno scopo', () => {
-    expect(() => normalizeStepPurpose('deployment', 'x')).toThrow(/fuori vocabolario/)
+    expect(() => normalizeStepPurpose('deployment', 'x')).toThrow(/out of vocabulary/)
   })
 
   it('distingue «non mandato» (undefined/null) da «togli» (stringa vuota)', () => {
@@ -148,7 +148,7 @@ describe('saveWorkflowChanges — lo scopo si scrive, si toglie e non si inventa
 
   it('uno scopo inventato è rifiutato PRIMA di aprire la transazione: nessuna scrittura', async () => {
     await expect(saveWorkflowChanges(null, { ...base, steps: [step({ purpose: 'cab' })], expectedVersion: 1 }, ctx))
-      .rejects.toThrow(/fuori vocabolario/)
+      .rejects.toThrow(/out of vocabulary/)
     expect(calls).toHaveLength(0)
   })
 })
@@ -172,7 +172,7 @@ describe('updateWorkflowStep — stessa convenzione', () => {
 
   it('uno scopo inventato è rifiutato senza toccare il grafo', async () => {
     await expect(updateWorkflowStep(null, { definitionId: 'def-1', stepName: 'x', label: 'X', purpose: 'cab' }, ctx))
-      .rejects.toThrow(/fuori vocabolario/)
+      .rejects.toThrow(/out of vocabulary/)
     expect(calls).toHaveLength(0)
   })
 })

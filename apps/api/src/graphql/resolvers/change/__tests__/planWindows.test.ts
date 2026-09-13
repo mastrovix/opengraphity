@@ -21,7 +21,7 @@ describe('validateWindow (piano di deploy)', () => {
     expect(() => validateWindow('Step 1', { start: '2026-09-09T22:00:00Z', end: '2026-09-10 01:00' })).toThrow(/Step 1\.end/)
   })
   it('rifiuta start >= end e finestre incomplete', () => {
-    expect(() => validateWindow('Step 2', { start: '2026-09-10T01:00:00Z', end: '2026-09-09T22:00:00Z' })).toThrow(/end deve essere dopo start/)
+    expect(() => validateWindow('Step 2', { start: '2026-09-10T01:00:00Z', end: '2026-09-09T22:00:00Z' })).toThrow(/the end must come after the start/)
     expect(() => validateWindow('Step 2', { start: '', end: '2026-09-09T22:00:00Z' })).toThrow(/obbligatori/)
   })
 })

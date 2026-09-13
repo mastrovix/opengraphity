@@ -10,7 +10,7 @@ import { DetailField } from '@/components/ui/DetailField'
 import { Pill } from '@/components/ui/Pill'
 import { Skeleton } from '@/components/ui/skeleton'
 import { WatcherBar } from '@/components/WatcherBar'
-import { timeAgo } from '@/lib/datetime'
+import { timeAgo, formatDate } from '@/lib/datetime'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { Modal } from '@/components/Modal'
@@ -126,7 +126,7 @@ export function ServiceRequestDetailPage() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Button variant="secondary" onClick={openEdit}><Pencil size={13} style={{ marginRight: 6 }} />Modifica</Button>
+          <Button variant="secondary" onClick={openEdit}><Pencil size={13} style={{ marginRight: 6 }} />{t('common.edit')}</Button>
           <WatcherBar entityType="service_request" entityId={sr.id} />
         </div>
       </div>
@@ -152,14 +152,14 @@ export function ServiceRequestDetailPage() {
         <div>
           {/* Workflow transitions */}
           <div style={{ marginBottom: 16 }}>
-            <SectionCard collapsible={false} defaultOpen title="Azioni">
+            <SectionCard collapsible={false} defaultOpen title={t('common.actions')}>
               {!sr.workflowInstance ? (
                 <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
-                  Nessun workflow associato a questa richiesta.
+                  {t('pages.serviceRequestDetail.noWorkflow')}
                 </p>
               ) : sr.availableTransitions.length === 0 ? (
                 <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
-                  Nessuna azione disponibile nello stato attuale ({sr.workflowInstance.currentStep}).
+                  {t('pages.serviceRequestDetail.noActionInStep', { step: sr.workflowInstance.currentStep })}
                 </p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -189,9 +189,9 @@ export function ServiceRequestDetailPage() {
           <SectionCard collapsible={false} defaultOpen title={t('detail.sections.details')}>
             <DetailField label={t('detail.requester')} value={sr.requestedBy?.name ?? null} />
             <DetailField label={t('detail.assignee')} value={sr.assignee?.name ?? null} />
-            <DetailField label={t('detail.dueDate')} value={sr.dueDate ? new Date(sr.dueDate).toLocaleDateString('it-IT') : null} />
-            <DetailField label={t('detail.createdAt')} value={new Date(sr.createdAt).toLocaleDateString('it-IT')} />
-            {sr.completedAt && <DetailField label={t('detail.completedAt')} value={new Date(sr.completedAt).toLocaleDateString('it-IT')} />}
+            <DetailField label={t('detail.dueDate')} value={sr.dueDate ? formatDate(sr.dueDate) : null} />
+            <DetailField label={t('detail.createdAt')} value={formatDate(sr.createdAt)} />
+            {sr.completedAt && <DetailField label={t('detail.completedAt')} value={formatDate(sr.completedAt)} />}
           </SectionCard>
         </div>
       </div>
@@ -200,28 +200,28 @@ export function ServiceRequestDetailPage() {
       <Modal
         open={editOpen}
         onClose={() => setEditOpen(false)}
-        title="Modifica richiesta"
+        title={t('pages.serviceRequestDetail.editTitle')}
         as="form"
         onSubmit={submitEdit}
         footer={
           <>
-            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>Annulla</Button>
-            <Button type="submit" disabled={savingEdit || editForm.title.trim().length === 0}>{savingEdit ? 'Salvataggio…' : 'Salva'}</Button>
+            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="submit" disabled={savingEdit || editForm.title.trim().length === 0}>{savingEdit ? t('common.saving') : t('common.save')}</Button>
           </>
         }
       >
         <div style={{ marginBottom: 14 }}>
-          <FieldLabel htmlFor={ids.title}>Titolo *</FieldLabel>
+          <FieldLabel htmlFor={ids.title}>{t('pages.serviceRequestDetail.titleRequired')}</FieldLabel>
           {/* eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: primo campo del modal di modifica aperto dall'utente */}
           <Input id={ids.title} value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} required autoFocus />
         </div>
         <div style={{ marginBottom: 14 }}>
-          <FieldLabel htmlFor={ids.description}>Descrizione</FieldLabel>
+          <FieldLabel htmlFor={ids.description}>{t('common.description')}</FieldLabel>
           <Textarea id={ids.description} value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={3} />
         </div>
         <div className="og-pair">
           <div>
-            <FieldLabel htmlFor={ids.priority}>Priorità</FieldLabel>
+            <FieldLabel htmlFor={ids.priority}>{t('detail.priority')}</FieldLabel>
             <Select id={ids.priority} value={editForm.priority} onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}>
               <option value="critical">critical</option>
               <option value="high">high</option>
@@ -230,7 +230,7 @@ export function ServiceRequestDetailPage() {
             </Select>
           </div>
           <div>
-            <FieldLabel htmlFor={ids.dueDate}>Scadenza</FieldLabel>
+            <FieldLabel htmlFor={ids.dueDate}>{t('detail.dueDate')}</FieldLabel>
             <Input id={ids.dueDate} type="date" value={editForm.dueDate} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} />
           </div>
         </div>
@@ -245,20 +245,20 @@ export function ServiceRequestDetailPage() {
           width={460}
           footer={
             <>
-              <button type="button" onClick={() => setTransitionModal(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--color-border-light)', background: colors.white, cursor: 'pointer', fontSize: 13 }}>Annulla</button>
+              <button type="button" onClick={() => setTransitionModal(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--color-border-light)', background: colors.white, cursor: 'pointer', fontSize: 13 }}>{t('common.cancel')}</button>
               <button
                 type="button"
                 disabled={transitioning || transitionNotes.trim().length === 0}
                 onClick={() => runTransition(sr.workflowInstance!.id, transitionModal.toStep, transitionModal.label, transitionNotes)}
                 style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: (transitioning || transitionNotes.trim().length === 0) ? 0.6 : 1 }}
               >
-                Conferma
+                {t('common.confirm')}
               </button>
             </>
           }
         >
           <label htmlFor={ids.notes} style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>
-            {transitionModal.inputField === 'rejection_reason' ? 'Motivo del rifiuto' : 'Note'}
+            {t(transitionModal.inputField === 'rejection_reason' ? 'pages.requests.rejectionReason' : 'common.note')}
           </label>
           <textarea
             id={ids.notes}

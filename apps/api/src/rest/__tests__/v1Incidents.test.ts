@@ -119,13 +119,13 @@ describe('POST /api/v1/incidents', () => {
   })
 
   it('service ValidationError → 400 with the service message', async () => {
-    vi.mocked(createIncident).mockRejectedValueOnce(new ValidationError('Un incident deve avere almeno un CI impattato'))
+    vi.mocked(createIncident).mockRejectedValueOnce(new ValidationError('An incident must have at least one impacted CI'))
     const res = await fetch(base, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'Down', severity: 'high' }),
     })
     expect(res.status).toBe(400)
-    expect(((await res.json()) as { error: { message: string } }).error.message).toMatch(/CI impattato/)
+    expect(((await res.json()) as { error: { message: string } }).error.message).toMatch(/impacted CI/)
   })
 
   it('missing title → 400 before touching the service', async () => {

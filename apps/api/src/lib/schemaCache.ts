@@ -222,7 +222,7 @@ async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
     }
 
     const reason = excluded.length
-      ? excluded.map((x) => `tipo "${x.name}": ${x.reason}`).join(' | ')
+      ? excluded.map((x) => `type "${x.name}": ${x.reason}`).join(' | ')
       : firstReason
     graphqlSchemaBuildFailedTotal.inc({})
     logger.error(

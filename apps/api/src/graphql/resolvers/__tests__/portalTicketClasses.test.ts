@@ -4,7 +4,7 @@
  * (`is_open`, `is_initial`, `is_terminal`, `category`) e non dai nomi.
  *
  * Prima: `myTickets(status: 'open')` confrontava `i.status = 'open'`, un nome
- * di passo che nessun workflow definisce (di fabbrica il passo iniziale è
+ * di passo che nessun workflow definisce (factory il passo iniziale è
  * `new`) → scheda sempre vuota; il contatore invece contava i passi
  * `isInitial` → un terzo insieme ancora diverso.
  *
@@ -47,7 +47,7 @@ const rec = (map: Record<string, unknown>) => ({ get: (k: string) => (k in map ?
 
 interface Step { name: string; isInitial?: boolean; isTerminal?: boolean; isOpen?: boolean; category?: string | null }
 
-/** I passi di fabbrica di «Incident Management» (come c-one dal vivo). */
+/** I passi factory di «Incident Management» (come c-one dal vivo). */
 const FACTORY_STEPS: Step[] = [
   { name: 'new',         isInitial: true,  isOpen: true,  category: 'active' },
   { name: 'assigned',                      isOpen: true,  category: 'active' },
@@ -113,7 +113,7 @@ describe('stepStatusClasses — classi dedotte dai metadata, non dai nomi', () =
     isOpen: s.isOpen ?? true, category: s.category ?? null, stepOrder: null,
   })
 
-  it('i passi di fabbrica si distribuiscono su open / in_progress / resolved / closed', () => {
+  it('i passi factory si distribuiscono su open / in_progress / resolved / closed', () => {
     const byName = Object.fromEntries(FACTORY_STEPS.map((s) => [s.name, stepStatusClasses(row(s))]))
     expect(byName['new']).toEqual(['open'])
     expect(byName['assigned']).toEqual(['open', 'in_progress'])
@@ -227,6 +227,6 @@ describe('myTicketStats — lo stesso insieme di passi della scheda', () => {
     const err = await myTicketStats(null, {}, ctxFor('tenant-drift')).then(() => null, (e: unknown) => e)
     expect(err).toBeInstanceOf(GraphQLError)
     expect((err as GraphQLError).message).toMatch(/in_attesa_di_terzi \(2\)/)
-    expect((err as GraphQLError).message).toMatch(/non appartengono a nessuna classe/)
+    expect((err as GraphQLError).message).toMatch(/belong to no class/)
   })
 })

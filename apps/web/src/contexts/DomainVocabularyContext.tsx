@@ -26,10 +26,12 @@
  */
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useQuery } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { GET_ENUM_TYPES } from '@/graphql/queries'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
-interface EnumValueLabelRow { value: string; label: string }
+interface LocalizedLabelRow { language: string; label: string }
+interface EnumValueLabelRow { value: string; label: string; labels: LocalizedLabelRow[] }
 interface EnumTypeRow { name: string; values: string[]; isShipped: boolean; valueLabels: EnumValueLabelRow[] }
 
 export interface DomainVocabularies {
@@ -64,7 +66,17 @@ export const DomainVocabularyContext = createContext<DomainVocabularies>({
 })
 
 export function DomainVocabularyProvider({ children }: { children: ReactNode }) {
-  const { data, loading, error } = useQuery<{ enumTypes: EnumTypeRow[] | null }>(GET_ENUM_TYPES, { fetchPolicy: METAMODEL_FETCH_POLICY })
+  /*
+    La lingua fa parte della CHIAVE della query: l'API non la conosce (non c'e'
+    `Accept-Language` e l'utente non la porta), quindi la manda il client — ed
+    e' il client l'unico a saperla. Passandola come variabile, cambiare lingua
+    dal profilo ricarica le etichette invece di lasciare quelle di prima.
+  */
+  const { i18n } = useTranslation()
+  const lingua = i18n.resolvedLanguage ?? i18n.language
+  const { data, loading, error } = useQuery<{ enumTypes: EnumTypeRow[] | null }>(
+    GET_ENUM_TYPES, { variables: { language: lingua }, fetchPolicy: METAMODEL_FETCH_POLICY },
+  )
   const value = useMemo<DomainVocabularies>(() => {
     // Due mappe e una precedenza sola: il vocabolario del cliente vince, e
     // quello spedito resta la seconda scelta.

@@ -74,6 +74,9 @@ export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
 export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   // utenti e team
   'createUser', 'updateUserTeams', 'createTeam', 'setTeamManager', 'removeTeamManager', 'setChangeManagerTeam',
+  // la lingua predefinita del cliente (configurazione dell'azienda, non
+  // preferenza di una persona: quella sta nel Profilo e non passa da qui)
+  'setTenantDefaultLanguage',
   // definizioni di workflow
   'provisionTenantData',
   'addWorkflowStep', 'removeWorkflowStep', 'updateWorkflowStep',
@@ -146,6 +149,11 @@ export const END_USER_ALLOWED_QUERIES: ReadonlySet<string> = new Set([
   'me', 'myTickets', 'myTicket', 'myTicketStats', 'serviceCatalogItems',
   'kbArticles', 'kbArticle', 'kbArticleBySlug', 'kbCategories',
   'fieldVisibilityRules', 'fieldRequirementRules',
+  // In che lingua si legge questo cliente: la chiede il portale all'avvio,
+  // come il web. Non dice niente di riservato — quali lingue esistono e quale
+  // ha scelto l'azienda — e negarla lascerebbe il portale nella lingua
+  // sbagliata per l'unico ruolo che non puo cambiarla da nessuna parte.
+  'tenantLanguageSettings',
 ])
 export const END_USER_ALLOWED_MUTATIONS: ReadonlySet<string> = new Set([
   'createTicket', 'addTicketComment', 'reopenTicket', 'createServiceRequest', 'rateKBArticle',
@@ -166,11 +174,11 @@ export function allowedRoles(kind: RootKind, field: string): readonly Role[] {
 
 export function authorize(kind: RootKind, field: string, role: string): void {
   if (!(ROLES as readonly string[]).includes(role)) {
-    throw new ForbiddenError(`Ruolo sconosciuto '${role}': nessuna operazione consentita`)
+    throw new ForbiddenError(`Unknown role '${role}': no operation allowed`, { key: 'errors.authz.unknownRole', params: { role } })
   }
   const roles = allowedRoles(kind, field)
   if (!roles.includes(role as Role)) {
-    throw new ForbiddenError(`Il ruolo '${role}' non può eseguire ${kind}.${field} (richiesto: ${roles.join(', ')})`)
+    throw new ForbiddenError(`Role '${role}' cannot run ${kind}.${field} (required: ${roles.join(', ')})`, { key: 'errors.authz.roleNotAllowed', params: { role, operation: `${kind}.${field}`, required: roles.join(', ') } })
   }
 }
 

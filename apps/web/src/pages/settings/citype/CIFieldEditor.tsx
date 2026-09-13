@@ -3,7 +3,7 @@ import { useQuery } from '@apollo/client/react'
 import { Modal } from '@/components/Modal'
 import { GET_ENUM_TYPES } from '@/graphql/queries'
 import type { CIFieldDef } from '@/contexts/MetamodelContext'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 import {
   inputS, selectS, textareaS, labelS,
   btnPrimary, btnSecondary,
@@ -86,29 +86,29 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
   const selectedEnum = form.enumTypeId ? enumTypes.find((e) => e.id === form.enumTypeId) : null
 
   return (
-    <Modal open={open} onClose={onClose} title={initial ? `Modifica campo: ${initial.name}` : 'Aggiungi campo'} width={560}
+    <Modal open={open} onClose={onClose} title={initial ? t('citypeDesigner.field.editTitle', { name: initial.name }) : t('citypeDesigner.addField')} width={560}
       footer={
         <>
-          <button type="button" style={btnSecondary} onClick={onClose}>Annulla</button>
+          <button type="button" style={btnSecondary} onClick={onClose}>{t('common.cancel')}</button>
           <button type="button" style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} disabled={saving}
             onClick={async () => {
               setSaving(true)
               try { await onSave(form) } finally { setSaving(false) }
             }}>
-            {saving ? 'Salvataggio…' : 'Salva'}
+            {saving ? t('common.saving') : t('common.save')}
           </button>
         </>
       }>
 
       <div className="og-pair">
-        <Field label="name (slug) *">
+        <Field label={t('citypeDesigner.field.slugName')}>
           <Input style={inputS} value={form.name} disabled={!!initial}
             onChange={(e) => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
         </Field>
         <Field label={`${t('common.label')} *`}>
           <Input style={inputS} value={form.label} onChange={(e) => set('label', e.target.value)} />
         </Field>
-        <Field label="Tipo">
+        <Field label={t('common.type')}>
           <Select style={selectS} value={form.fieldType} onChange={(e) => {
             set('fieldType', e.target.value)
             if (e.target.value !== 'enum') set('enumTypeId', null)
@@ -123,13 +123,13 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
         <input type="checkbox" id="req" checked={form.required} onChange={(e) => set('required', e.target.checked)} style={{ cursor: 'pointer' }} />
-        <label htmlFor="req" style={{ fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>Obbligatorio</label>
+        <label htmlFor="req" style={{ fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>{t('citypeDesigner.field.required')}</label>
       </div>
 
       {form.fieldType === 'enum' && (
-        <Field label="Enum di riferimento *">
+        <Field label={t('citypeDesigner.field.enumRef')}>
           <Select style={selectS} value={form.enumTypeId ?? ''} onChange={(e) => set('enumTypeId', e.target.value || null)}>
-            <option value="">— Seleziona enum —</option>
+            <option value="">{t('citypeDesigner.field.selectEnum')}</option>
             {enumTypes.map((e) => (
               <option key={e.id} value={e.id}>{enumOptionLabel(e, t)}</option>
             ))}
@@ -146,7 +146,7 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
         </Field>
       )}
 
-      <Field label="Valore di default">
+      <Field label={t('citypeDesigner.field.defaultValue')}>
         <Input style={inputS} value={form.defaultValue} onChange={(e) => set('defaultValue', e.target.value)} />
       </Field>
 
@@ -167,27 +167,27 @@ export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }:
         {scriptTab === 'validation' && (
           <div>
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
-              Variabili: <code>value</code>, <code>input</code>. Usa <code>throw 'messaggio'</code> per errore.
+              <Trans i18nKey="citypeDesigner.field.validationHint" components={{ code: <code /> }} />
             </p>
             <textarea style={{ ...textareaS, minHeight: 100 }} value={form.validationScript}
               onChange={(e) => set('validationScript', e.target.value)}
-              placeholder={"// Esempio:\nif (!value.startsWith('http')) throw 'URL non valido'"} />
+              placeholder={t('citypeDesigner.field.validationPlaceholder')} />
           </div>
         )}
         {scriptTab === 'visibility' && (
           <div>
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
-              Variabili: <code>input</code>. Ritorna <code>true/false</code>.
+              <Trans i18nKey="citypeDesigner.field.visibilityHint" components={{ code: <code /> }} />
             </p>
             <textarea style={{ ...textareaS, minHeight: 100 }} value={form.visibilityScript}
               onChange={(e) => set('visibilityScript', e.target.value)}
-              placeholder={"// Mostra solo se altro campo è valorizzato:\nreturn !!input.instanceType"} />
+              placeholder={t('citypeDesigner.field.visibilityPlaceholder')} />
           </div>
         )}
         {scriptTab === 'default' && (
           <div>
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
-              Variabili: <code>input</code>. Ritorna il valore di default.
+              <Trans i18nKey="citypeDesigner.field.defaultHint" components={{ code: <code /> }} />
             </p>
             <textarea style={{ ...textareaS, minHeight: 100 }} value={form.defaultScript}
               onChange={(e) => set('defaultScript', e.target.value)}

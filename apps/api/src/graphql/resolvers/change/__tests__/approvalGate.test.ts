@@ -89,9 +89,9 @@ describe('assertAllApprovalsSatisfied (gate condiviso da approve + executeChange
     // togliuto dai pre-approvati: si pinnano le DUE uscite, non la frase.
     const err = await assertAllApprovalsSatisfied(session, 'chg', 't1').then(() => null, (e: Error) => e)
     expect(err).not.toBeNull()
-    expect(err!.message).toMatch(/non ha nessun requisito di approvazione/)
-    expect(err!.message).toMatch(/tipi pre-approvati/)
-    expect(err!.message).toMatch(/riportala al passo di approvazione/)
+    expect(err!.message).toMatch(/it has no approval requirement/)
+    expect(err!.message).toMatch(/pre-approved types/)
+    expect(err!.message).toMatch(/bring it back to the approval/)
     preApproved = ['standard']
   })
 
@@ -101,7 +101,7 @@ describe('assertAllApprovalsSatisfied (gate condiviso da approve + executeChange
   })
   it('CONFLICT se non esistono requisiti', async () => {
     mockedOne.mockResolvedValueOnce(gateRow({ total: 0, pending: 0, cm: 0 }))
-    await expectCode(assertAllApprovalsSatisfied(session, 'chg', 't1'), 'CONFLICT', 'non ha nessun requisito di approvazione')
+    await expectCode(assertAllApprovalsSatisfied(session, 'chg', 't1'), 'CONFLICT', 'it has no approval requirement')
   })
   it('CONFLICT se manca il requisito del Change Manager anche con gli owner group approvati', async () => {
     mockedOne.mockResolvedValueOnce(gateRow({ total: 2, pending: 0, cm: 0 }))

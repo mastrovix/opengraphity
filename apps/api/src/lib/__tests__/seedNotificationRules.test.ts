@@ -60,13 +60,13 @@ describe('DEFAULT_NOTIFICATION_RULES ↔ canali instradabili', () => {
 
   /**
    * B-16 — il seed non deve seminare una regola agganciata a un passo che il
-   * workflow di fabbrica non ha. `incident.on_hold` era così: il passo di
+   * workflow factory non ha. `incident.on_hold` era così: il passo di
    * attesa si chiama `pending`, l'evento era `incident.pending`, e la regola
    * era accesa in ogni tenant e morta da sempre (nessuna notifica, nessun log).
    * Ora l'attesa si riconosce dalla CATEGORIA del passo sul tipo stabile, e
    * regge anche a una rinomina o a un passo di attesa aggiunto dal cliente.
    */
-  it('nessuna regola di fabbrica nomina un passo inventato: on_hold è sostituito dal tipo stabile ristretto alla categoria waiting', () => {
+  it('nessuna regola factory nomina un passo inventato: on_hold è sostituito dal tipo stabile ristretto alla categoria waiting', () => {
     expect(DEFAULT_NOTIFICATION_RULES.map((r) => r.event_type)).not.toContain('incident.on_hold')
     const waiting = DEFAULT_NOTIFICATION_RULES.find((r) => r.event_type === 'incident.step_entered')!
     expect(waiting).toBeDefined()

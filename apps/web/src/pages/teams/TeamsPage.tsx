@@ -123,7 +123,7 @@ export function TeamsPage() {
         footer={
           <>
             <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
-            <Button type="submit" disabled={creating || form.name.trim().length === 0}>{creating ? 'Creazione…' : t('common.create')}</Button>
+            <Button type="submit" disabled={creating || form.name.trim().length === 0}>{creating ? t('common.creating') : t('common.create')}</Button>
           </>
         }
       >
@@ -135,7 +135,7 @@ export function TeamsPage() {
             required
             // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management del dialogo aperto dall'utente (Modal)
             autoFocus
-            placeholder="Es. Network Operations"
+            placeholder={t('pages.teams.namePlaceholder')}
           />
         </div>
         <div>

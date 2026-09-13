@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useQuery } from '@apollo/client/react'
 import { X } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 import { colors, palette } from '@/lib/tokens'
 import { GET_WORKFLOW_DEFINITION_BY_ID } from '@/graphql/queries'
 import { ConditionRowEditor, type Condition } from '@/components/ConditionRowEditor'
@@ -90,6 +90,7 @@ function ConditionsSection({ entityType, conditions, logic, onConditions, onLogi
   onConditions: (c: Condition[]) => void
   onLogic:      (l: 'AND' | 'OR') => void
 }) {
+  const { t } = useTranslation()
   const updateRow = (i: number, patch: Partial<Condition>) =>
     onConditions(conditions.map((c, idx) => idx === i ? { ...c, ...patch } : c))
   const addRow    = () => onConditions([...conditions, { field: '', operator: 'equals', value: '' }])
@@ -98,7 +99,7 @@ function ConditionsSection({ entityType, conditions, logic, onConditions, onLogi
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={sectionLabelStyle}>Condizioni</span>
+      <span style={sectionLabelStyle}>{t('pages.businessRules.conditions')}</span>
 
       {conditions.length >= 2 && (
         <div style={{ display: 'flex', gap: 8 }}>
@@ -134,7 +135,7 @@ function ConditionsSection({ entityType, conditions, logic, onConditions, onLogi
         onClick={addRow}
         style={{ padding: '4px 8px', backgroundColor: 'transparent', border: '1px dashed var(--color-slate-light)', borderRadius: 5, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', cursor: 'pointer', textAlign: 'left' }}
       >
-        + Aggiungi condizione
+        + {t('pages.businessRules.addCondition')}
       </button>
     </div>
   )
@@ -198,7 +199,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
   const entityType = defData?.workflowDefinitionById?.entityType ?? ''
   const entityTypeError = defError
     ? defError.message
-    : (defData && !defData.workflowDefinitionById ? `definizione workflow "${definitionId}" non trovata` : null)
+    : (defData && !defData.workflowDefinitionById ? `workflow definition "${definitionId}" not found` : null)
 
   const [activeTab, setActiveTab] = useState<'props' | 'notify' | 'metadata'>('props')
   const [label, setLabel]         = useState(step.label)
@@ -460,7 +461,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                       }}
                       style={{ ...saveButtonStyle(blocked), flex: 1, padding: '6px 0' }}
                     >
-                      Aggiorna
+                      {t('pages.workflowStep.update')}
                     </button>
                     <button type="button" onClick={() => setEditingAction(null)} style={cancelBtnStyle}>
                       {t('common.cancel')}
@@ -502,7 +503,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
 
   return (
     <div style={panelStyle}>
-      <PanelHeader title="Modifica Step" onClose={onClose} />
+      <PanelHeader title={t('pages.workflowStep.editStep')} onClose={onClose} />
 
       {actionsParseError && (
         <div
@@ -513,23 +514,25 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
             color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', lineHeight: 1.4,
           }}
         >
-          <strong>Azioni dello step corrotte</strong> — {actionsParseError}. Correggi il dato salvato
-          (enter/exit_actions dello step <code>{step.name}</code>) prima di modificarlo: il salvataggio è disabilitato
-          per non perdere le azioni illeggibili.
+          <Trans
+            i18nKey="pages.workflowStep.corruptedActions"
+            values={{ error: actionsParseError, step: step.name }}
+            components={{ b: <strong />, code: <code /> }}
+          />
         </div>
       )}
 
       {entityTypeError && (
         <div role="alert" style={{ padding: '6px 10px', marginBottom: 8, borderRadius: 6, background: 'var(--color-danger-bg)', color: 'var(--color-danger)', fontSize: 'var(--font-size-label)' }}>
-          Tipo entità del workflow non disponibile ({entityTypeError}): campi e valori delle condizioni non caricabili.
+          {t('workflow.panel.entityTypeUnavailable', { error: entityTypeError })}
         </div>
       )}
 
       {/* Tabs */}
       <div role="tablist" style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', marginBottom: 4 }}>
-        <button type="button" role="tab" aria-selected={activeTab === 'props'}    style={tabStyle(activeTab === 'props')}    onClick={() => setActiveTab('props')}>Proprietà</button>
-        <button type="button" role="tab" aria-selected={activeTab === 'metadata'} style={tabStyle(activeTab === 'metadata')} onClick={() => setActiveTab('metadata')}>Metadati</button>
-        <button type="button" role="tab" aria-selected={activeTab === 'notify'}   style={tabStyle(activeTab === 'notify')}   onClick={() => setActiveTab('notify')}>Notifiche</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'props'}    style={tabStyle(activeTab === 'props')}    onClick={() => setActiveTab('props')}>{t('pages.workflowStep.tabProps')}</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'metadata'} style={tabStyle(activeTab === 'metadata')} onClick={() => setActiveTab('metadata')}>{t('pages.workflowStep.tabMetadata')}</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'notify'}   style={tabStyle(activeTab === 'notify')}   onClick={() => setActiveTab('notify')}>{t('pages.workflowStep.tabNotify')}</button>
       </div>
 
       {activeTab === 'metadata' && (
@@ -537,7 +540,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
           <PanelField label={t('workflow.panel.step_iniziale')}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
               <input type="checkbox" checked={isInitial} onChange={(e) => setIsInitial(e.target.checked)} style={{ accentColor: ACCENT_COLOR }} />
-              <span>Il processo parte da questo step</span>
+              <span>{t('pages.workflowStep.isInitial')}</span>
             </label>
           </PanelField>
           {initialOnTerminal && (
@@ -560,7 +563,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                 onChange={(e) => { setIsTerminal(e.target.checked); setIsOpen(!e.target.checked) }}
                 style={{ accentColor: ACCENT_COLOR }}
               />
-              <span>Il processo è chiuso quando arriva qui</span>
+              <span>{t('pages.workflowStep.isTerminal')}</span>
             </label>
           </PanelField>
           <PanelField label={t('workflow.panel.step_aperto')}>
@@ -647,7 +650,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                 type="button"
                 role="switch"
                 aria-checked={notifyEnabled}
-                aria-label="Notifica all'ingresso"
+                aria-label={t('pages.workflowStep.notifyOnEnter')}
                 onClick={() => setNotifyEnabled((p) => !p)}
                 style={{
                   width: 36, height: 20, borderRadius: 10, cursor: 'pointer',
@@ -663,18 +666,18 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                 }} />
               </button>
               <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-                {notifyEnabled ? 'Attiva' : 'Disattiva'}
+                {t(notifyEnabled ? 'common.enabled' : 'common.disabled')}
               </span>
             </div>
           </PanelField>
 
           {notifyEnabled && (
             <>
-              <PanelField label={t('workflow.panel.chiave_titolo_i18n')}>
+              <PanelField label={t('workflow.panel.titleKey')}>
                 <Input
                   value={notifyTitleKey}
                   onChange={(e) => setNotifyTitleKey(e.target.value)}
-                  placeholder="es. notification.custom.step.title"
+                  placeholder={t('workflow.panel.titleKeyPlaceholder')}
                   style={inputStyle}
                 />
               </PanelField>
@@ -719,7 +722,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
         disabled={saveDisabled}
         style={saveButtonStyle(saveDisabled)}
       >
-        Salva
+        {t('common.save')}
       </button>
 
       {/*
@@ -746,7 +749,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
           <button
             type="button"
             onClick={() => {
-              void confirm({ title: `Eliminare lo step "${step.label || step.name}"?`, body: 'Verranno rimosse anche le transizioni collegate.', danger: true }).then((ok) => {
+              void confirm({ title: t('workflow.panel.deleteStepTitle', { step: step.label || step.name }), body: t('workflow.panel.deleteStepBody'), danger: true }).then((ok) => {
                 if (ok) onDelete(step.name)
               })
             }}
@@ -756,7 +759,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
               color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600,
             }}
           >
-            Elimina step
+            {t('pages.workflowStep.deleteStep')}
           </button>
         )
       )}

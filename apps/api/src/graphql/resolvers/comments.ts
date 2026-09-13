@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import { sseManager } from '@opengraphity/notifications'
@@ -96,7 +97,7 @@ export async function addComment(
     // entityId qualunque (anche di un altro tenant) creava un commento orfano
     // che l'autore credeva pubblicato.
     const label = COMMENTABLE_LABELS[args.entityType]
-    if (!label) throw new GraphQLError(`Tipo entità non commentabile: ${args.entityType}`, { extensions: { code: 'BAD_USER_INPUT' } })
+    if (!label) throw new GraphQLError(`Entity type cannot be commented on: ${args.entityType}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.comment.entityType', params: { entityType: args.entityType } } } })
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})
       CREATE (c:EntityComment {
@@ -128,7 +129,7 @@ export async function addComment(
     }))
 
     if (res.records.length === 0) {
-      throw new GraphQLError(`${label} ${args.entityId} non trovato`, { extensions: { code: 'NOT_FOUND' } })
+      throw new NotFoundError(label, args.entityId)
     }
     const created = mapComment(res.records[0])
     void audit(ctx, 'comment.added', args.entityType, args.entityId, { commentId: id, isInternal })

@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../lib/errors.js'
 import { randomUUID } from 'crypto'
 import type { Queue } from 'bullmq'
 import type { GraphQLContext } from '../../context.js'
@@ -89,8 +90,13 @@ function assertChannelsRoutable(eventType: string, channels: readonly string[]):
 function assertTargetKnown(target: string): void {
   if (!isNotificationTarget(target)) {
     throw new GraphQLError(
-      `Target "${target}" non è un destinatario valido. Ammessi: ${NOTIFICATION_TARGETS.join(', ')}`,
-      { extensions: { code: 'BAD_USER_INPUT', target, allowedTargets: [...NOTIFICATION_TARGETS] } },
+      `Target "${target}" is not a valid recipient. Allowed: ${NOTIFICATION_TARGETS.join(', ')}`,
+      {
+        extensions: {
+          code: 'BAD_USER_INPUT', target, allowedTargets: [...NOTIFICATION_TARGETS],
+          i18n: { key: 'errors.notificationRule.badTarget', params: { target, allowed: NOTIFICATION_TARGETS.join(', ') } },
+        },
+      },
     )
   }
 }
@@ -108,8 +114,13 @@ function assertTargetApplicable(eventType: string, target: string): void {
   if (!isTargetApplicable(eventType, target)) {
     const allowed = applicableNotificationTargets(eventType)
     throw new GraphQLError(
-      `Target "${target}" non può essere risolto per l'evento "${eventType}": l'entità non ha quel destinatario nel momento in cui l'evento accade. Ammessi: ${allowed.join(', ')}`,
-      { extensions: { code: 'BAD_USER_INPUT', eventType, target, allowedTargets: [...allowed] } },
+      `Target "${target}" cannot be resolved for the "${eventType}" event: the entity does not have that recipient at the moment the event happens. Allowed: ${allowed.join(', ')}`,
+      {
+        extensions: {
+          code: 'BAD_USER_INPUT', eventType, target, allowedTargets: [...allowed],
+          i18n: { key: 'errors.notificationRule.targetNotResolvable', params: { target, eventType, allowed: allowed.join(', ') } },
+        },
+      },
     )
   }
 }
@@ -132,15 +143,25 @@ export function normalizeStepNarrowing(
   if (value === '') return null
   if (!isStepEnteredEventType(eventType)) {
     throw new GraphQLError(
-      `${field} vale solo per i tipi di evento di ingresso in un passo (<entità>.step_entered): ` +
-      `"${eventType}" non lo è, quindi il restringimento non verrebbe applicato.`,
-      { extensions: { code: 'BAD_USER_INPUT', eventType, field } },
+      `${field} only applies to step-entered event types (<entity>.step_entered): `
+      + `"${eventType}" is not one, so the narrowing would not be applied.`,
+      {
+        extensions: {
+          code: 'BAD_USER_INPUT', eventType, field,
+          i18n: { key: 'errors.notificationRule.narrowingNotApplicable', params: { field, eventType } },
+        },
+      },
     )
   }
   if (field === 'stepPurpose' && !isWorkflowStepPurpose(value)) {
     throw new GraphQLError(
-      `stepPurpose "${value}" fuori vocabolario. Ammessi: ${WORKFLOW_STEP_PURPOSES.join(', ')}.`,
-      { extensions: { code: 'BAD_USER_INPUT', allowedPurposes: [...WORKFLOW_STEP_PURPOSES] } },
+      `stepPurpose "${value}" out of vocabulary. Allowed: ${WORKFLOW_STEP_PURPOSES.join(', ')}.`,
+      {
+        extensions: {
+          code: 'BAD_USER_INPUT', allowedPurposes: [...WORKFLOW_STEP_PURPOSES],
+          i18n: { key: 'errors.notificationRule.badStepPurpose', params: { purpose: value, allowed: WORKFLOW_STEP_PURPOSES.join(', ') } },
+        },
+      },
     )
   }
   return value
@@ -234,7 +255,7 @@ async function updateNotificationRule(
       const current = await session.executeRead((tx) =>
         tx.run(`MATCH (r:NotificationRule {id: $id, tenant_id: $tenantId}) RETURN r.event_type AS eventType`, { id, tenantId: ctx.tenantId }),
       )
-      if (!current.records.length) throw new GraphQLError('NotificationRule non trovata', { extensions: { code: 'NOT_FOUND' } })
+      if (!current.records.length) throw new NotFoundError('NotificationRule')
       const eventType = current.records[0].get('eventType') as string
       if (input.channels != null) assertChannelsRoutable(eventType, input.channels)
       if (input.target   != null) assertTargetApplicable(eventType, input.target)
@@ -283,7 +304,7 @@ async function updateNotificationRule(
         },
       ),
     )
-    if (!result.records.length) throw new GraphQLError('NotificationRule non trovata', { extensions: { code: 'NOT_FOUND' } })
+    if (!result.records.length) throw new NotFoundError('NotificationRule')
     const props = result.records[0].get('r').properties as Record<string, unknown>
     const produced = await producedEventTypes(session, ctx.tenantId)
     const rule = mapRule(props, produced.has(props['event_type'] as string))
@@ -342,9 +363,14 @@ async function createNotificationRule(
     if (dup.records.length) {
       const narrowing = stepPurpose ? ` (scopo "${stepPurpose}")` : stepCategory ? ` (categoria "${stepCategory}")` : ''
       throw new GraphQLError(
-        `Esiste già una regola per "${input.eventType}"${narrowing}: modificala invece di crearne una seconda ` +
-        `(con due regole identiche il dispatcher ne applicherebbe una sola, e non è detto quale).`,
-        { extensions: { code: 'BAD_USER_INPUT', existingRuleId: dup.records[0].get('id') } },
+        `A rule for "${input.eventType}"${narrowing} already exists: edit it instead of creating a second one `
+        + `(with two identical rules the dispatcher would apply only one, and which one is not defined).`,
+        {
+          extensions: {
+            code: 'BAD_USER_INPUT', existingRuleId: dup.records[0].get('id'),
+            i18n: { key: 'errors.notificationRule.duplicate', params: { eventType: input.eventType, narrowing } },
+          },
+        },
       )
     }
     const result = await session.executeWrite((tx) =>
@@ -422,7 +448,7 @@ async function deleteNotificationRule(
         { id, tenantId: ctx.tenantId },
       ),
     )
-    if (!result.records.length) throw new GraphQLError('Regola non trovata o non eliminabile', { extensions: { code: 'NOT_FOUND' } })
+    if (!result.records.length) throw new GraphQLError('Rule not found, or not deletable', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.notificationRule.notDeletable' } } })
     const eventType = result.records[0].get('eventType') as string
     invalidateRuleCache(ctx.tenantId, eventType)
     // Remove digest job if any. A failure here leaves a ghost digest job

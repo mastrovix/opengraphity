@@ -133,10 +133,18 @@ export class CITypeResolver {
     return {
       ok: false,
       reason:
-        `"${raw}" non è un tipo di CI di questo cliente (${this.tenantId}). ` +
-        `Due strade: crea il tipo nel disegnatore dei tipi CI, oppure aggiungi un alias nelle regole di ` +
-        `mappatura della sorgente ({"kind":"ci_type","source_field":"${raw}","target_field":"<tipo esistente>"}). ` +
-        `Tipi attivi: ${this.typeNames.join(', ')}.`,
+        /*
+          Questo NON e un messaggio d'errore: e il motivo che viene SALVATO sul
+          conflitto di sincronizzazione (`SyncConflict.message`), e lo si rilegge
+          nella pagina dei conflitti giorni dopo. Un dato salvato non puo essere
+          una chiave i18n — la lingua di chi lo leggera non si sa al momento in
+          cui si scrive — quindi resta una frase, e la lingua e quella del
+          prodotto: l'inglese.
+        */
+        `"${raw}" is not a CI type of this tenant (${this.tenantId}). `
+        + `Two ways out: create the type in the CI type designer, or add an alias in the source's `
+        + `mapping rules ({"kind":"ci_type","source_field":"${raw}","target_field":"<existing type>"}). `
+        + `Active types: ${this.typeNames.join(', ')}.`,
     }
   }
 }

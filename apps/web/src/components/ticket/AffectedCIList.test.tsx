@@ -68,6 +68,6 @@ describe('AffectedCIList — pastiglia dello stato del CI', () => {
     await render([ci({ status: 'zombie' })], ['active', 'inactive'])
     const pill = await screen.findByText('Zombie')
     expect(pill).toHaveStyle({ backgroundColor: 'var(--color-danger)' })
-    expect(paletteErrors()).toContain('[CI_STATUS_STYLE] "zombie" non è nel vocabolario di questo cliente (active, inactive)')
+    expect(paletteErrors()).toContain('[CI_STATUS_STYLE] "zombie" is not in the vocabulary of this tenant (active, inactive)')
   })
 })

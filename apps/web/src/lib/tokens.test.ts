@@ -12,7 +12,7 @@ describe('lookupOrError', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(lookupOrError({ a: 1 }, 'zzz', 'MY_MAP', -1)).toBe(-1)
     expect(err).toHaveBeenCalledTimes(1)
-    expect(err.mock.calls[0]![0]).toBe('[MY_MAP] valore sconosciuto: "zzz"')
+    expect(err.mock.calls[0]![0]).toBe('[MY_MAP] unknown value: "zzz"')
   })
 
   it('un valore mappato "falsy" (0, "", false) è un hit, non un fallback', () => {

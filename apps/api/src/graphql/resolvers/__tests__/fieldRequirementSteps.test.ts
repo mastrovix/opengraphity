@@ -37,7 +37,7 @@ vi.mock('../ci-utils.js', () => ({
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/requireRole.js', () => ({ requireRole: vi.fn() }))
-// I passi del workflow di questo cliente: nomi SUOI, nessuno di fabbrica.
+// I passi del workflow di questo cliente: nomi SUOI, nessuno factory.
 vi.mock('../../../lib/workflowHelpers.js', () => ({
   getWorkflowSteps: vi.fn(async () => [
     { name: 'valutazione' }, { name: 'cab_settimanale' }, { name: 'in_calendario' }, { name: 'archiviata' },
@@ -65,7 +65,7 @@ describe('setFieldRequirement — il passo citato deve esistere', () => {
       .then(() => null, (e: unknown) => e as GraphQLError)
     expect(err).toBeInstanceOf(GraphQLError)
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
-    expect(err!.message).toContain('Lo step "scheduled" non esiste nel workflow "change"')
+    expect(err!.message).toContain('Step "scheduled" does not exist in the "change" workflow')
     expect(err!.message).toContain('valutazione, cab_settimanale, in_calendario, archiviata')
     expect(err!.extensions['availableSteps']).toEqual(['valutazione', 'cab_settimanale', 'in_calendario', 'archiviata'])
     expect(calls.some((c) => c.cypher.includes('CREATE'))).toBe(false)
@@ -82,6 +82,6 @@ describe('setFieldRequirement — il passo citato deve esistere', () => {
     vi.mocked(getWorkflowSteps).mockResolvedValueOnce([])
     const err = await set({ entityType: 'problem', fieldName: 'root_cause', required: true, workflowStep: 'resolved' })
       .then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toContain('non ha ancora una definizione di workflow per "problem"')
+    expect(err!.message).toContain('has no workflow definition for "problem" yet')
   })
 })

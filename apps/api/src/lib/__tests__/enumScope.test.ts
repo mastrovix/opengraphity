@@ -99,14 +99,14 @@ describe('assertEnumLinkable — chi può essere agganciato a chi', () => {
     expect(() => assertEnumLinkable(own, tenantField, 'c-one')).not.toThrow()
     const err = (() => { try { assertEnumLinkable(own, sharedField, 'c-one') } catch (e) { return e } })()
     expect(err).toBeInstanceOf(GraphQLError)
-    expect((err as GraphQLError).message).toMatch(/spedito col prodotto ed è condiviso/)
-    expect((err as GraphQLError).message).toMatch(/Crea un vocabolario con il nome "severity"/)
+    expect((err as GraphQLError).message).toMatch(/ships with the product and is shared/)
+    expect((err as GraphQLError).message).toMatch(/Create a dictionary named "severity"/)
   })
 
   it('il vocabolario di un altro cliente non si aggancia da nessuna parte', () => {
     const other = { id: 'x1', name: 'severity', tenantId: 'c-two' }
-    expect(() => assertEnumLinkable(other, tenantField, 'c-one')).toThrow(/appartiene a un altro cliente/)
-    expect(() => assertEnumLinkable(other, sharedField, 'c-one')).toThrow(/appartiene a un altro cliente/)
+    expect(() => assertEnumLinkable(other, tenantField, 'c-one')).toThrow(/belongs to another tenant/)
+    expect(() => assertEnumLinkable(other, sharedField, 'c-one')).toThrow(/belongs to another tenant/)
   })
 
   it('un campo è condiviso per lo scope o per il proprietario', () => {

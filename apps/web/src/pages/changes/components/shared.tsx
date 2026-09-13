@@ -3,6 +3,7 @@
  * Pure: no data fetching, no mutations, no app-level state.
  */
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Eye, ExternalLink, X } from 'lucide-react'
 import { TASK_STATUS } from '@/lib/taskStatus'
@@ -16,6 +17,7 @@ export { fmtDate, fmtShort } from '@/lib/datetime'
 export { StatusLabel, RiskBadge } from '@/components/ui/badges'
 
 export function OpenTaskButton({ taskId }: { taskId: string }) {
+  const { t } = useTranslation()
   return (
     <Link to={`/tasks/${taskId}`} onClick={(e) => e.stopPropagation()} style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -23,12 +25,13 @@ export function OpenTaskButton({ taskId }: { taskId: string }) {
       fontSize: 'var(--font-size-label)', fontWeight: 500,
       color: 'var(--color-brand)', background: 'transparent', textDecoration: 'none',
     }}>
-      <ExternalLink size={12} /> Apri
+      <ExternalLink size={12} /> {t('common.open')}
     </Link>
   )
 }
 
 export function EyeButton({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation()
   return (
     <button type="button" onClick={(e) => { e.stopPropagation(); onClick() }} style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -36,7 +39,7 @@ export function EyeButton({ onClick }: { onClick: () => void }) {
       padding: '2px 6px', cursor: 'pointer', fontSize: 'var(--font-size-label)',
       color: 'var(--color-brand)', fontWeight: 500,
     }}>
-      <Eye size={12} /> Vedi
+      <Eye size={12} /> {t('common.view')}
     </button>
   )
 }
@@ -44,6 +47,7 @@ export function EyeButton({ onClick }: { onClick: () => void }) {
 export function ModalOverlay({ title, onClose, children }: {
   title: string; onClose: () => void; children: React.ReactNode
 }) {
+  const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -66,7 +70,7 @@ export function ModalOverlay({ title, onClose, children }: {
       <div ref={containerRef} role="dialog" aria-modal="true" aria-label={title} style={{ background: colors.white, borderRadius: 12, padding: 24, maxWidth: 600, width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 8px 24px var(--color-black-a15)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>{title}</h3>
-          <button type="button" onClick={onClose} aria-label="Chiudi" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={18} color="var(--color-slate-light)" /></button>
+          <button type="button" onClick={onClose} aria-label={t('common.close')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={18} color="var(--color-slate-light)" /></button>
         </div>
         {children}
       </div>
@@ -80,6 +84,7 @@ export function TaskStatusRow({ label, code, status, scheduledDate, result, acto
   assignedTeam?: string | null; assignee?: string | null
   action?: React.ReactNode
 }) {
+  const { t } = useTranslation()
   const isScheduled = scheduledDate && status === TASK_STATUS.PENDING && new Date(scheduledDate).getTime() > Date.now()
   const isCompleted = status === TASK_STATUS.COMPLETED
   return (
@@ -89,7 +94,7 @@ export function TaskStatusRow({ label, code, status, scheduledDate, result, acto
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {code && <span style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{code}</span>}
           {isScheduled
-            ? <span style={{ color: 'var(--color-slate-light)' }}>Schedulato — {fmtShort(scheduledDate)}</span>
+            ? <span style={{ color: 'var(--color-slate-light)' }}>{t('changeTasks.scheduledOn', { date: fmtShort(scheduledDate) })}</span>
             : status ? <StatusLabel status={status} /> : <span style={{ color: colors.slateLight }}>—</span>
           }
           {!isScheduled && result && <span style={{ color: 'var(--color-slate)' }}>· {result}</span>}
@@ -101,7 +106,7 @@ export function TaskStatusRow({ label, code, status, scheduledDate, result, acto
         )}
         {!isCompleted && assignedTeam && (
           <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginTop: 2 }}>
-            Assegnato a: <span style={{ fontWeight: 600 }}>{assignedTeam}</span>{assignee ? ` — ${assignee}` : ''}
+            {t('detail.assignedTo')}: <span style={{ fontWeight: 600 }}>{assignedTeam}</span>{assignee ? ` — ${assignee}` : ''}
           </div>
         )}
       </div>
@@ -127,17 +132,18 @@ export function DetailField({ label, value }: { label: string; value: string }) 
   )
 }
 
-export function DescriptionField({ value, label = 'Descrizione' }: { value: string; label?: string }) {
+export function DescriptionField({ value, label }: { value: string; label?: string }) {
+  const { t } = useTranslation()
   const [showFull, setShowFull] = useState(false)
   return (
     <div>
-      <div style={fieldLabelStyle}>{label}</div>
+      <div style={fieldLabelStyle}>{label ?? t('common.description')}</div>
       <div style={{ ...fieldValueStyle, ...(showFull ? {} : { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }) }}>
         {value}
       </div>
       {value.length > 150 && (
         <button type="button" onClick={() => setShowFull(p => !p)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-label)', color: 'var(--color-brand)', marginTop: 2 }}>
-          {showFull ? 'Mostra meno' : 'Mostra tutto'}
+          {t(showFull ? 'common.showLess' : 'common.showAll')}
         </button>
       )}
     </div>

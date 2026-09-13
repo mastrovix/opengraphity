@@ -237,7 +237,7 @@ describe('letture — tipi base/sistema + tipi del tenant', () => {
 
   it('fetchCITypeById: base o tenant; tipo di altro tenant → "CIType non trovato"', async () => {
     reset([{ records: [] }])
-    await expect(fetchCITypeById('ct-altrui', 'tenant-1')).rejects.toThrow('CIType non trovato')
+    await expect(fetchCITypeById('ct-altrui', 'tenant-1')).rejects.toThrow('CIType not found')
     const { cypher, params } = call(0)
     expect(cypher).toContain("WHERE t.scope = 'base' OR (t.scope = 'tenant' AND t.tenant_id = $tenantId)")
     expect(cypher).toContain(FIELD_CLAUSE('f'))
@@ -287,7 +287,7 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
   it.each(['base', 'itil'])('deleteCIType: tipo %s → errore PRIMA di qualunque DELETE', async (scope) => {
     reset([{ records: [row({ scope, name: 'server', label: 'Server' })] }])
     const err = await mutations.deleteCIType(null, { id: 'ct-base' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toContain('spedito col prodotto')
+    expect(err!.message).toContain('ships with the product')
     expect(err!.message).toContain('sparirebbe dalla CMDB di ogni cliente')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(invalidateSchema).not.toHaveBeenCalled()
@@ -390,7 +390,7 @@ describe('campi sui tipi spediti col prodotto (A-5)', () => {
     expect(err).toBeInstanceOf(GraphQLError)
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
     expect(err!.message).toContain('__base__')
-    expect(err!.message).toContain('spedito col prodotto')
+    expect(err!.message).toContain('ships with the product')
     expect(err!.message).toMatch(/romperebbe la pagina di dettaglio di tutti i CI/)
     expect(err!.message).toMatch(/Crea un tuo tipo CI/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
@@ -400,7 +400,7 @@ describe('campi sui tipi spediti col prodotto (A-5)', () => {
   it('addCIField: il tipo inesistente (o di un altro cliente) → CIType non trovato', async () => {
     reset([{ records: [] }])
     await expect(mutations.addCIField(null, { typeId: 'ct-altrui', input: { name: 'x', label: 'X', fieldType: 'string' } }, admin))
-      .rejects.toThrow('CIType non trovato')
+      .rejects.toThrow('CIType not found')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
@@ -436,7 +436,7 @@ describe('campi sui tipi spediti col prodotto (A-5)', () => {
       .then(() => null, (e: unknown) => e as GraphQLError)
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
     expect(err!.message).toContain('f-sistema')
-    expect(err!.message).toMatch(/in sola lettura/)
+    expect(err!.message).toMatch(/read-only/)
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
 })
@@ -472,7 +472,7 @@ describe('addCIField', () => {
     ])
     const err = await mutations.addCIField(null, { typeId: 'ct-1', input: { name: 'stato', label: 'Stato', fieldType: 'enum', enumTypeId: 'e-9' } }, admin)
       .then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toMatch(/appartiene a un altro cliente/)
+    expect(err!.message).toMatch(/belongs to another tenant/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
@@ -483,7 +483,7 @@ describe('addCIField', () => {
       { records: [] },
     ])
     await expect(mutations.addCIField(null, { typeId: 'ct-1', input: { name: 'stato', label: 'Stato', fieldType: 'enum', enumTypeId: 'e-fantasma' } }, admin))
-      .rejects.toThrow(/Il vocabolario e-fantasma non esiste/)
+      .rejects.toThrow(/Dictionary e-fantasma does not exist/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
@@ -516,7 +516,7 @@ describe('createCIType — la porta sui nomi di tipo (A-12)', () => {
     const err = await create(name).then(() => null, (e: unknown) => e as GraphQLError)
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
     expect(err!.message).toContain(`«${name}»`)
-    expect(err!.message).toContain('già preso')
+    expect(err!.message).toContain('is already taken')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
@@ -536,7 +536,7 @@ describe('createCIType — la porta sui nomi di tipo (A-12)', () => {
   it('rifiuta un nome che il cliente ha già usato, dicendo che è suo', async () => {
     reset([{ records: [...EXISTING_TYPE_ROWS, row({ name: 'firewall', scope: 'tenant' })] }])
     const err = await create('firewall').then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toContain('un tuo tipo CI')
+    expect(err!.message).toContain('a CI type of yours')
   })
 
   it('un nome libero passa e la label resta quella scelta', async () => {
@@ -562,7 +562,7 @@ describe('addCIField — la porta sui nomi di campo (A-12)', () => {
     const err = await add('tenantId').then(() => null, (e: unknown) => e as GraphQLError)
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
     expect(err!.message).toContain('tenant_id')
-    expect(err!.message).toContain('il CI nascerebbe nel cliente scelto dal chiamante')
+    expect(err!.message).toContain('the CI would be born in the tenant chosen by the caller')
     expect(err!.message).toContain('Firewall')          // il tipo, per nome visualizzato
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(invalidateSchema).not.toHaveBeenCalled()
@@ -583,13 +583,13 @@ describe('addCIField — la porta sui nomi di campo (A-12)', () => {
   it('rifiuta un campo già presente sul tipo (o eredidato da __base__)', async () => {
     // `os` è fra i campi che la lettura restituisce per questo tipo.
     const err = await add('os').then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toContain('esiste già')
+    expect(err!.message).toContain('already exists')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
   it.each(['name', 'status', 'description'])('rifiuta «%s»: è un campo base di ogni CI', async (name) => {
     const err = await add(name).then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toContain('esiste già su ogni CI')
+    expect(err!.message).toContain('already exists on every CI')
   })
 
   it('un nome camelCase libero passa', async () => {
@@ -618,7 +618,7 @@ describe('le mutation sui tipi non dicono più «fatto» a zero righe (A-6)', ()
     const fn = mutations[name] as (p: unknown, a: unknown, c: GraphQLContext) => Promise<unknown>
     const err = await fn(null, args, admin).then(() => null, (e: unknown) => e as GraphQLError)
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
-    expect(err!.message).toContain('spedito col prodotto')
+    expect(err!.message).toContain('ships with the product')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
@@ -637,7 +637,7 @@ describe('le mutation sui tipi non dicono più «fatto» a zero righe (A-6)', ()
     const err = await fn(null, args, admin).then(() => null, (e: unknown) => e as GraphQLError)
     expect(err, `${name} ha risposto «fatto» con zero scritture`).not.toBeNull()
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
-    expect(err!.message).toContain('non è stato scritto niente')
+    expect(err!.message).toContain('nothing was written')
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
 
@@ -645,7 +645,7 @@ describe('le mutation sui tipi non dicono più «fatto» a zero righe (A-6)', ()
     reset()
     const err = await mutations.updateCIType(null, { id: 'ct-1', input: {} }, admin)
       .then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toContain('nessun campo da modificare')
+    expect(err!.message).toContain('no field to change')
     expect(withSession).not.toHaveBeenCalled()
   })
 
@@ -693,8 +693,8 @@ describe('il tipo in uso non si cancella (A-8 / D-10)', () => {
     usage({ cis: 12 })
     const err = await mutations.deleteCIType(null, { id: 'ct-1' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
-    expect(err!.message).toContain('12 CI di tipo Firewall')
-    expect(err!.message).toContain('non è stato eliminato')
+    expect(err!.message).toContain('12 CIs of type Firewall')
+    expect(err!.message).toContain('was not deleted')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
@@ -712,7 +712,7 @@ describe('il tipo in uso non si cancella (A-8 / D-10)', () => {
     reset([tenantType()])
     usage({ custom_widgets: 1, assessment_questions: 5 })
     const err = await mutations.deleteCIType(null, { id: 'ct-1' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toContain('nessun CI di questo tipo')
+    expect(err!.message).toContain('no CI of this type')
     expect(err!.message).toContain('1 widget della dashboard')
     expect(err!.message).toContain('5 domande di assessment')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
@@ -723,8 +723,8 @@ describe('il tipo in uso non si cancella (A-8 / D-10)', () => {
     usage({ cis: 7 })
     const err = await mutations.updateCIType(null, { id: 'ct-1', input: { active: false } }, admin)
       .then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toContain('non è stato disattivato')
-    expect(err!.message).toContain('7 CI di tipo Firewall')
+    expect(err!.message).toContain('was not deactivated')
+    expect(err!.message).toContain('7 CIs of type Firewall')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
@@ -834,7 +834,7 @@ describe('nomi unici nel metamodello di un tipo (D-17)', () => {
       .then(() => null, (e: unknown) => e as GraphQLError)
     expect(err).not.toBeNull()
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
-    expect(err!.message).toContain('ha già un campo «costCenter»')
+    expect(err!.message).toContain('already has a field')
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
 
@@ -852,7 +852,7 @@ describe('nomi unici nel metamodello di un tipo (D-17)', () => {
     const err = await mutations.addCIRelation(null, { typeId: 'ct-1', input: { name: 'bilancia', label: 'B', relationshipType: 'BILANCIA', targetType: 'application', cardinality: 'many', direction: 'outgoing' } }, admin)
       .then(() => null, (e: unknown) => e as GraphQLError)
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
-    expect(err!.message).toContain('ha già una relazione «bilancia»')
+    expect(err!.message).toContain('already has a relationship "bilancia"')
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
 })
@@ -883,7 +883,7 @@ describe('il tetto al numero di tipi CI (A·#6)', () => {
       .then(() => null, (e: unknown) => e as GraphQLError)
     expect(err).not.toBeNull()
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
-    expect(err!.message).toMatch(/è il massimo.*il costo lo pagano anche gli altri clienti.*MAX_CI_TYPES_PER_TENANT/s)
+    expect(err!.message).toMatch(/is the maximum.*the cost is paid by the other tenants too.*MAX_CI_TYPES_PER_TENANT/s)
     expect(txRun.mock.calls.map((c) => c[0] as string).join('\n')).not.toContain('MERGE (t:CITypeDefinition')
   })
 })

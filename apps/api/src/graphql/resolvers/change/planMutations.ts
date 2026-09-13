@@ -2,6 +2,7 @@
  * Mutations on DeployPlanTask — editing and completion of the deploy plan.
  */
 import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../../lib/errors.js'
 import { ValidationError } from '../../../lib/errors.js'
 import { assertWindowDate } from '../../../lib/deployWindows.js'
 import { TASK_STATUS } from '../../../lib/taskStatus.js'
@@ -28,12 +29,12 @@ export function validateWindow(label: string, w: TimeWindowInput) {
   assertWindowDate(w.start, `${label}.start`)
   assertWindowDate(w.end, `${label}.end`)
   if (new Date(w.start).getTime() >= new Date(w.end).getTime()) {
-    throw new ValidationError(`${label}: end deve essere dopo start`)
+    throw new ValidationError(`${label}: the end must come after the start`, { key: 'errors.plan.endBeforeStart', params: { window: label } })
   }
 }
 
 function validateStep(idx: number, s: DeployStepInput) {
-  if (!s.title || !s.title.trim()) throw new ValidationError(`Step ${idx + 1}: titolo obbligatorio`)
+  if (!s.title || !s.title.trim()) throw new ValidationError(`Step ${idx + 1}: the title is required`, { key: 'errors.plan.stepTitleRequired', params: { step: idx + 1 } })
   validateWindow(`Step ${idx + 1} — finestra di validazione`, s.validationWindow)
   validateWindow(`Step ${idx + 1} — finestra di deploy`, s.releaseWindow)
 }
@@ -52,12 +53,12 @@ export async function saveDeployPlan(
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
       RETURN dp.ci_id AS ciId, c.id AS changeId, dp.status AS status, wi.current_step AS currentStep
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
-    if (!tctx) throw new GraphQLError(`DeployPlanTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+    if (!tctx) throw new NotFoundError('DeployPlanTask', args.taskId)
     if (tctx.status === TASK_STATUS.COMPLETED) throw new GraphQLError('Task già completata', { extensions: { code: 'CONFLICT' } })
     const initialStepName = await getInitialStepName(session, ctx.tenantId, 'change')
     if (tctx.currentStep !== initialStepName) throw new GraphQLError(`Piano deploy editabile solo nello step iniziale (${initialStepName})`, { extensions: { code: 'CONFLICT' } })
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, 'support')
-    if (!Array.isArray(args.steps) || args.steps.length < 1) throw new ValidationError('Almeno 1 step obbligatorio')
+    if (!Array.isArray(args.steps) || args.steps.length < 1) throw new ValidationError('At least one step is required', { key: 'errors.plan.atLeastOneStep' })
     args.steps.forEach((s, i) => validateStep(i, s))
 
     const normalized = args.steps.map(s => ({
@@ -91,13 +92,13 @@ export async function completeDeployPlanTask(_: unknown, args: { taskId: string 
       WHERE coalesce(c.deleted, false) = false
       RETURN dp.ci_id AS ciId, c.id AS changeId, dp.status AS status, dp.steps AS steps
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
-    if (!tctx) throw new GraphQLError(`DeployPlanTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+    if (!tctx) throw new NotFoundError('DeployPlanTask', args.taskId)
     if (tctx.status === TASK_STATUS.COMPLETED) throw new GraphQLError('Task già completata', { extensions: { code: 'CONFLICT' } })
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, 'support')
 
     const steps = tctx.steps ? JSON.parse(tctx.steps) as unknown[] : []
     if (!Array.isArray(steps) || steps.length === 0) {
-      throw new GraphQLError('Almeno 1 step deve essere compilato prima di completare', { extensions: { code: 'CONFLICT' } })
+      throw new GraphQLError('At least one step must be filled in before completing', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.plan.oneStepFilled' } } })
     }
 
     const now = new Date().toISOString()

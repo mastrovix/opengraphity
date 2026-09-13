@@ -133,7 +133,7 @@ describe('updateNotificationChannel', () => {
     const run = vi.fn().mockResolvedValue({ records: [] })
     mockSession.executeWrite.mockImplementation(async (fn: (tx: { run: typeof run }) => unknown) => fn({ run }))
     await expect(notificationChannelResolvers.Mutation.updateNotificationChannel(null, { id: 'ch-altrui', input: input('https://hooks.slack.com/y') }, ctx))
-      .rejects.toThrow('NotificationChannel non trovato')
+      .rejects.toThrow('NotificationChannel not found')
   })
 })
 

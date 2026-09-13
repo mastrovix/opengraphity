@@ -30,6 +30,12 @@ vi.mock('@opengraphity/neo4j', async (importOriginal) => {
   return { getSession: vi.fn(), toNumber: orig.toNumber }
 })
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+/*
+  La lingua predefinita del cliente e configurazione, quindi si legge dal grafo:
+  qui e finta, altrimenti la sua query consumerebbe la coda della sessione finta
+  e ogni asserzione su cosa legge il resolver diventerebbe inaffidabile.
+*/
+vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
 
 const { enumTypeResolvers, customizeEnumType } = await import('../enumType.js')
 const { getSession } = await import('@opengraphity/neo4j')
@@ -169,9 +175,9 @@ describe('createEnumType', () => {
     // Terza revisione · M7: il messaggio ora dice la CONSEGUENZA («nessun
     // record potrebbe piu essere creato») e le due uscite, e la stessa regola
     // vale anche per `updateEnumType`, che prima non guardava affatto.
-    [{ name: 'ok_name', label: 'X', values: [], scope: 'itil' }, /non puo restare senza valori/],
-    [{ name: 'ok_name', label: 'X', values: ['a', 'a'], scope: 'itil' }, /ripete "a"/],
-    [{ name: 'ok_name', label: 'X', values: ['a', '  '], scope: 'itil' }, /valore\/i vuoto/],
+    [{ name: 'ok_name', label: 'X', values: [], scope: 'itil' }, /cannot be left without values/],
+    [{ name: 'ok_name', label: 'X', values: ['a', 'a'], scope: 'itil' }, /repeats "a"/],
+    [{ name: 'ok_name', label: 'X', values: ['a', '  '], scope: 'itil' }, /empty value/],
     [{ name: 'ok_name', label: 'X', values: ['a'], scope: 'global' }, /scope must be one of: itil, cmdb, shared/],
   ])('input non valido %j → ValidationError senza sessione', async (input, pattern) => {
     await expectCode(enumTypeResolvers.Mutation.createEnumType(null, { input }, admin), 'BAD_USER_INPUT', pattern)
@@ -258,7 +264,7 @@ describe('updateEnumType', () => {
   // `customizeEnumType`.
   it('vocabolario SPEDITO → errore che rimanda a «Personalizza», nessuna scrittura', async () => {
     const s = fakeSession([{ records: [rec({ isSystem: true, tenantId: 'system', name: 'severity' })] }])
-    await expectCode(enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-sys', input: { values: ['x'] } }, admin), 'BAD_USER_INPUT', /spedito col prodotto.*customizeEnumType/s)
+    await expectCode(enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-sys', input: { values: ['x'] } }, admin), 'BAD_USER_INPUT', /ships with the product.*customizeEnumType/s)
     expect(s.executeWrite).not.toHaveBeenCalled()
   })
 
@@ -351,13 +357,13 @@ describe('updateEnumType — valore in uso (B7-2)', () => {
     await expectCode(
       enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active'], replacements: [{ from: 'decommissioned', to: 'dismesso' }] } }, admin),
       'BAD_USER_INPUT',
-      /il valore di sostituzione "dismesso" non è fra i valori nuovi/,
+      /the replacement value "dismesso" is not among the new values/,
     )
     fakeSession([{ records: [OWN(['active', 'decommissioned'])] }])
     await expectCode(
       enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active', 'decommissioned'], replacements: [{ from: 'active', to: 'decommissioned' }] } }, admin),
       'BAD_USER_INPUT',
-      /"active" non è fra i valori che stai togliendo/,
+      /"active" is not among the values you are removing/,
     )
   })
 
@@ -410,7 +416,7 @@ describe('customizeEnumType', () => {
 
   it('vocabolario già del tenant → errore che lo dice, nessuna copia', async () => {
     const s = fakeSession([{ records: [rec({ ...SHIPPED, tenantId: 'tenant-1' })] }])
-    await expectCode(customizeEnumType(null, { id: 'e-1' }, admin), 'BAD_USER_INPUT', /è già tuo/)
+    await expectCode(customizeEnumType(null, { id: 'e-1' }, admin), 'BAD_USER_INPUT', /is already yours/)
     expect(s.executeWrite).not.toHaveBeenCalled()
   })
 
@@ -419,7 +425,7 @@ describe('customizeEnumType', () => {
       { records: [rec(SHIPPED)] },
       { records: [rec({ id: 'own-9' })] },
     ])
-    await expectCode(customizeEnumType(null, { id: 'e-sys' }, admin), 'BAD_USER_INPUT', /Hai già un vocabolario "severity" \(own-9\)/)
+    await expectCode(customizeEnumType(null, { id: 'e-sys' }, admin), 'BAD_USER_INPUT', /You already have a dictionary "severity" \(own-9\)/)
     expect(s.executeWrite).not.toHaveBeenCalled()
   })
 
@@ -521,7 +527,7 @@ describe('deleteEnumType', () => {
       { records: [rec({ raw: null })] },                                                               // policy
     ])
     await expectCode(enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-1' }, admin), 'BAD_USER_INPUT',
-      /riporterebbe a quello spedito col prodotto \(active\).*"dismesso" \(7 __base__\.status\)/s)
+      /would bring it back to the one shipped with the product \(active\).*"dismesso" \(7 __base__\.status\)/s)
     expect(s.executeWrite).not.toHaveBeenCalled()
   })
 
@@ -545,7 +551,7 @@ describe('deleteEnumType', () => {
  * importava nemmeno `invalidateSchema`. E la cache dei vocabolari
  * (`lib/domainMatrix.ts`) non aveva scadenza. Misurato dal vivo: subito dopo
  * una rinomina nel Dizionario, lo **stesso processo API** continuava a
- * rifiutare il valore nuovo («non è nel vocabolario di questo cliente») e ad
+ * rifiutare il valore nuovo («is not in the dictionary of this tenant») e ad
  * accettare quello appena rimosso, scrivendolo sui ticket — fino al riavvio.
  * Nei worker, che non servono mai queste mutation, per sempre.
  *
@@ -620,7 +626,7 @@ describe('ogni scrittura di un vocabolario invalida le cache del metamodello', (
     fakeSession([{ records: [rec({ isSystem: false, tenantId: 'system', name: 'impact', values: ['low'] })] }])
     await expectCode(
       enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-sys', input: { label: 'X' } }, admin),
-      'BAD_USER_INPUT', /spedito col prodotto/,
+      'BAD_USER_INPUT', /ships with the product/,
     )
     expect(svuotati).toEqual([])
   })
@@ -666,7 +672,7 @@ describe('renameEnumValue — il valore resta al suo posto', () => {
     fakeSession([{ records: [row()] }])
     await expectCode(
       enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'attivo', to: 'x' }, admin),
-      'BAD_USER_INPUT', /"attivo" non è fra quelli di "ci_status" \(active, inactive, dismesso\)/,
+      'BAD_USER_INPUT', /"attivo" is not among those of "ci_status" \(active, inactive, dismesso\)/,
     )
   })
 
@@ -674,7 +680,7 @@ describe('renameEnumValue — il valore resta al suo posto', () => {
     fakeSession([{ records: [row()] }])
     await expectCode(
       enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'active', to: 'inactive' }, admin),
-      'BAD_USER_INPUT', /unirebbe due valori distinti in uno.*togli "active" indicando "inactive" come sostituzione/s,
+      'BAD_USER_INPUT', /would merge two distinct values into one.*remove "active" giving "inactive" as its replacement/s,
     )
   })
 
@@ -682,19 +688,19 @@ describe('renameEnumValue — il valore resta al suo posto', () => {
     fakeSession([{ records: [row({ tenantId: 'system' })] }])
     await expectCode(
       enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-sys', from: 'active', to: 'attivo' }, admin),
-      'BAD_USER_INPUT', /spedito col prodotto.*Usa "Personalizza"/s,
+      'BAD_USER_INPUT', /ships with the product.*Use "Customize"/s,
     )
   })
 
   it('il vocabolario del PROTOCOLLO in ingresso non si rinomina, e il rifiuto dice dov\'è la manopola', async () => {
-    // `event_severity` è la severità che mandano i sistemi di monitoraggio: il
+    // `event_severity` is the severity the monitoring systems send: il
     // prodotto normalizza gli allarmi a info/warning/critical, quindi
     // rinominarla non cambia quello che arriva e rompe la traduzione. Il
     // revisore l'ha chiamato «un vocabolario finto», e aveva ragione.
     fakeSession([{ records: [row({ name: 'event_severity', values: ['info', 'warning', 'critical'] })] }])
     await expectCode(
       enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'info', to: 'informativo' }, admin),
-      'BAD_USER_INPUT', /è la severità che mandano i sistemi di monitoraggio.*Matrici di dominio/s,
+      'BAD_USER_INPUT', /is the severity the monitoring systems send.*Domain matrices/s,
     )
   })
 
@@ -722,7 +728,7 @@ describe('reorderEnumValues — l\'ordine è una scala, e ora si modifica', () =
     fakeSession([{ records: [row(['low', 'medium', 'high'])] }])
     await expectCode(
       enumTypeResolvers.Mutation.reorderEnumValues(null, { id: 'e-1', values: ['low', 'medium', 'estremo'] }, admin),
-      'BAD_USER_INPUT', /cambia solo l'ORDINE.*mancano: high.*in più: estremo.*per cambiargli nome la rinomina/s,
+      'BAD_USER_INPUT', /changes only the ORDER.*missing: high.*extra: estremo.*to change its name use the rename/s,
     )
   })
 })
@@ -762,7 +768,7 @@ describe('il valore di default segue i valori', () => {
       null, { id: 'e-1', input: { values: ['inactive'] } }, admin,
     ).then(() => null, (e: GraphQLError) => e)
     expect(err).toBeInstanceOf(GraphQLError)
-    expect(err!.message).toMatch(/valore di default/)
+    expect(err!.message).toMatch(/default value/)
     expect(err!.message).toMatch(/replacements/)
     expect(err!.message).toMatch(/defaultValue/)
     // E non ha scritto niente: il vocabolario resta com'era.
@@ -798,7 +804,7 @@ describe('il valore di default segue i valori', () => {
     fakeSession([ROW(['active', 'inactive'], null)])
     await expectCode(
       enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active', 'inactive'], defaultValue: 'pizza' } }, admin),
-      'BAD_USER_INPUT', /non è fra i valori/,
+      'BAD_USER_INPUT', /is not among the values/,
     )
   })
 
@@ -830,11 +836,13 @@ describe('il valore di default segue i valori', () => {
  */
 describe('etichette per valore', () => {
   it('mapEnum: l\'etichetta c\'è SEMPRE — dove manca, il valore con le iniziali maiuscole', async () => {
-    fakeSession([{ records: [rec({ ...ENUM_ROW, values: ['portal', 'email'], valueLabels: '{"portal":"Portale"}' })] }])
-    const out = await enumTypeResolvers.Query.enumType(null, { id: 'e-1' }, admin)
-    expect(out!.valueLabels).toEqual([
-      { value: 'portal', label: 'Portale' },
-      { value: 'email',  label: 'Email' },
+    fakeSession([{ records: [rec({ ...ENUM_ROW, values: ['portal', 'email'], valueLabels: '{"portal":{"it":"Portale"}}' })] }])
+    const vocabolario = await enumTypeResolvers.Query.enumType(null, { id: 'e-1' }, admin)
+    // `valueLabels` e un field resolver: conosce la lingua chiesta, e nessun
+    // altro posto la conosce (l'API non la sa, la manda il client).
+    expect(await enumTypeResolvers.EnumTypeDefinition.valueLabels(vocabolario!, { language: 'it' }, admin)).toEqual([
+      { value: 'portal', label: 'Portale', labels: [{ language: 'it', label: 'Portale' }] },
+      { value: 'email',  label: 'Email',   labels: [] },
     ])
   })
 
@@ -842,12 +850,13 @@ describe('etichette per valore', () => {
     fakeSession([{ records: [rec({ ...ENUM_ROW, valueLabels: '{nope' })] }])
     const out = await enumTypeResolvers.Query.enumType(null, { id: 'e-1' }, admin)
     expect(out!.values).toEqual(['portal', 'email'])
-    expect(out!.valueLabels.map((e) => e.label)).toEqual(['Portal', 'Email'])
+    expect((await enumTypeResolvers.EnumTypeDefinition.valueLabels(out!, {}, admin)).map((e) => e.label))
+      .toEqual(['Portal', 'Email'])
   })
 
   it('RINOMINARE un valore porta con sé la sua etichetta', async () => {
     const s = fakeSession([
-      { records: [rec({ tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueLabels: '{"portal":"Portale","email":"Email"}' })] },
+      { records: [rec({ tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueLabels: '{"portal":{"it":"Portale","en":"Portal"},"email":{"it":"Email"}}' })] },
       { records: [] },                       // enumValueBindings (replaceEnumValue)
       { records: [rec({ ...ENUM_ROW, values: ['sportello', 'email'] })] },
     ])
@@ -855,37 +864,43 @@ describe('etichette per valore', () => {
     const [, params] = s.txRun.mock.calls.at(-1)!
     // «Portale» è passata su `sportello`: senza questo resterebbe appesa a una
     // chiave che non esiste più, e a schermo comparirebbe «Sportello» per caso.
+    // TUTTE le lingue seguono il valore rinominato.
     expect(JSON.parse((params as { valueLabels: string }).valueLabels))
-      .toEqual({ sportello: 'Portale', email: 'Email' })
+      .toEqual({ sportello: { it: 'Portale', en: 'Portal' }, email: { it: 'Email' } })
   })
 
   it('TOGLIERE un valore ne scarta l\'etichetta: non resta appesa', async () => {
     const s = fakeSession([
-      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueLabels: '{"portal":"Portale","email":"Email"}' })] },
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueLabels: '{"portal":{"it":"Portale"},"email":{"it":"Email"}}' })] },
       { records: [] },                       // nessuna entita lega questo vocabolario → uso zero
       { records: [rec({ ...ENUM_ROW, values: ['email'] })] },
     ])
     await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['email'] } }, admin)
     const [, params] = s.txRun.mock.calls.at(-1)!
-    expect(JSON.parse((params as { valueLabels: string }).valueLabels)).toEqual({ email: 'Email' })
+    expect(JSON.parse((params as { valueLabels: string }).valueLabels)).toEqual({ email: { it: 'Email' } })
   })
 
   it('le etichette mandate SOSTITUISCONO in blocco, e una vuota vale come assente', async () => {
     const s = fakeSession([
-      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueLabels: '{"portal":"Vecchia"}' })] },
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueLabels: '{"portal":{"it":"Vecchia"}}' })] },
       { records: [rec({ ...ENUM_ROW })] },
     ])
     await enumTypeResolvers.Mutation.updateEnumType(null, {
       id: 'e-1',
-      input: { valueLabels: [{ value: 'portal', label: 'Portale' }, { value: 'email', label: '   ' }] },
+      input: { valueLabels: [
+        { value: 'portal', language: 'it', label: 'Portale' },
+        { value: 'portal', language: 'en', label: 'Portal' },
+        { value: 'email',  language: 'it', label: '   ' },   // vuota = non scritta
+      ] },
     }, admin)
     const [, params] = s.txRun.mock.calls.at(-1)!
-    expect(JSON.parse((params as { valueLabels: string }).valueLabels)).toEqual({ portal: 'Portale' })
+    expect(JSON.parse((params as { valueLabels: string }).valueLabels))
+      .toEqual({ portal: { it: 'Portale', en: 'Portal' } })
   })
 
   it('PERSONALIZZARE un vocabolario spedito ne copia le etichette', async () => {
     const s = fakeSession([
-      { records: [rec({ tenantId: 'system', name: 'impact', label: 'Impact', values: ['low', 'medium', 'high'], scope: 'shared', defaultValue: null, valueLabels: '{"low":"Basso","medium":"Medio","high":"Alto"}' })] },
+      { records: [rec({ tenantId: 'system', name: 'impact', label: 'Impact', values: ['low', 'medium', 'high'], scope: 'shared', defaultValue: null, valueLabels: '{"low":{"it":"Basso"},"medium":{"it":"Medio"},"high":{"it":"Alto"}}' })] },
       { records: [] },  // nessuna copia esistente per il tenant
       { records: [rec({ ...ENUM_ROW, name: 'impact', values: ['low', 'medium', 'high'] })] },
     ])
@@ -898,6 +913,6 @@ describe('etichette per valore', () => {
     // Senza questo, personalizzare «impact» per aggiungere un valore avrebbe
     // fatto tornare in inglese i tre che c'erano già.
     expect(JSON.parse((params as { valueLabels: string }).valueLabels))
-      .toEqual({ low: 'Basso', medium: 'Medio', high: 'Alto' })
+      .toEqual({ low: { it: 'Basso' }, medium: { it: 'Medio' }, high: { it: 'Alto' } })
   })
 })

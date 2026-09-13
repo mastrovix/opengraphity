@@ -8,7 +8,7 @@ import { Modal } from '@/components/Modal'
 import { lookupOrError, colors } from '@/lib/tokens'
 import {
   type ReportTemplate,
-  VIS_LABELS, VIS_COLORS,
+  VIS_LABEL_KEYS, VIS_COLORS,
   inputStyle, labelStyle, btnPrimary, btnGhost,
 } from './useCustomReports'
 
@@ -84,8 +84,8 @@ export function ReportListView(props: ReportListViewProps) {
         {templates.length === 0 && (
           <EmptyState
             icon={<LayoutGrid size={32} color="var(--color-slate-light)" />}
-            title="Nessun report ancora"
-            description="Crea il tuo primo report personalizzato"
+            title={t('pages.reports.emptyTitle')}
+            description={t('pages.reports.emptyDescription')}
           />
         )}
 
@@ -121,9 +121,9 @@ export function ReportListView(props: ReportListViewProps) {
                           boxShadow: '0 4px 16px var(--color-black-a12)', minWidth: 180, overflow: 'hidden',
                         }}>
                           {[
-                            { label: '\u2699 Modifica impostazioni', action: () => openSettings(tpl), danger: false },
-                            { label: '\u29C9 Duplica',               action: () => duplicateTemplate(tpl), danger: false },
-                            { label: '\uD83D\uDDD1 Elimina',        action: () => handleDeleteTemplate(tpl.id), danger: true },
+                            { label: `\u2699 ${t('pages.reports.editSettings')}`, action: () => openSettings(tpl), danger: false },
+                            { label: `\u29C9 ${t('pages.reports.duplicate')}`,     action: () => duplicateTemplate(tpl), danger: false },
+                            { label: `\uD83D\uDDD1 ${t('common.delete')}`,        action: () => handleDeleteTemplate(tpl.id), danger: true },
                           ].map(item => (
                             <button key={item.label} type="button" onClick={item.action} className="hover-bg" style={{
                               display: 'block', width: '100%', textAlign: 'left',
@@ -142,7 +142,7 @@ export function ReportListView(props: ReportListViewProps) {
                   {/* Subtitle row */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 3, background: vc.bg, color: vc.fg }}>
-                      {lookupOrError(VIS_LABELS, tpl.visibility, 'VIS_LABELS', tpl.visibility)}
+                      {t(lookupOrError(VIS_LABEL_KEYS, tpl.visibility, 'VIS_LABEL_KEYS', tpl.visibility))}
                     </span>
                     {tpl.createdBy && (
                       <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>· {tpl.createdBy.name}</span>
@@ -174,37 +174,37 @@ export function ReportListView(props: ReportListViewProps) {
         <Modal
           open
           onClose={() => { setShowNewDialog(false); resetNew() }}
-          title="Nuovo report"
+          title={t('pages.reports.newReport')}
           width={440}
           footer={
             <>
-              <Button variant="secondary" onClick={() => { setShowNewDialog(false); resetNew() }} style={btnGhost}>Annulla</Button>
+              <Button variant="secondary" onClick={() => { setShowNewDialog(false); resetNew() }} style={btnGhost}>{t('common.cancel')}</Button>
               <Button disabled={!newName || creating} onClick={() => void handleCreateTemplate()}
                 style={{ ...btnPrimary, opacity: !newName || creating ? 0.6 : 1 }}>
-                {creating ? 'Creazione...' : 'Crea report'}
+                {creating ? t('pages.reports.creating') : t('pages.reports.create')}
               </Button>
             </>
           }
         >
             <div style={{ marginBottom: 14 }}>
-              <label htmlFor={ids.name} style={labelStyle}>Nome *</label>
-              <input id={ids.name} value={newName} onChange={e => setNewName(e.target.value)} style={inputStyle} placeholder="Nome report..." />
+              <label htmlFor={ids.name} style={labelStyle}>{t('pages.slaReport.nameRequired')}</label>
+              <input id={ids.name} value={newName} onChange={e => setNewName(e.target.value)} style={inputStyle} placeholder={t('pages.reports.namePlaceholder')} />
             </div>
             <div style={{ marginBottom: 14 }}>
-              <label htmlFor={ids.desc} style={labelStyle}>Descrizione</label>
+              <label htmlFor={ids.desc} style={labelStyle}>{t('common.description')}</label>
               <textarea id={ids.desc} value={newDesc} onChange={e => setNewDesc(e.target.value)} style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} />
             </div>
             <div style={{ marginBottom: 20 }}>
-              <label htmlFor={ids.vis} style={labelStyle}>Visibilit&agrave;</label>
+              <label htmlFor={ids.vis} style={labelStyle}>{t('pages.reports.visibility.label')}</label>
               <select id={ids.vis} value={newVis} onChange={e => setNewVis(e.target.value)} style={{ ...inputStyle, background: colors.white }}>
-                <option value="private">Privato</option>
-                <option value="groups">Gruppi selezionati</option>
-                <option value="all">Tutti</option>
+                <option value="private">{t('pages.reports.visibility.private')}</option>
+                <option value="groups">{t('pages.reports.visibility.selectedGroups')}</option>
+                <option value="all">{t('common.all')}</option>
               </select>
             </div>
             {newVis === 'groups' && teams.length > 0 && (
               <div style={{ marginBottom: 14 }}>
-                <div style={labelStyle}>Team</div>
+                <div style={labelStyle}>{t('sidebar.teams')}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {teams.map((team: { id: string; name: string }) => (
                     <label key={team.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-card-title)', cursor: 'pointer' }}>

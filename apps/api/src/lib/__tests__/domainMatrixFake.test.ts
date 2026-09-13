@@ -53,7 +53,7 @@ describe('domainMatrixFake resta uguale al vero', () => {
  * importare ciò che sostituisce, quindi qualcosa deve impedire che divergano.
  */
 describe('riskBandsFake ↔ lib/riskBands.ts', () => {
-  it('le soglie di fabbrica e il massimo sono gli stessi', async () => {
+  it('le soglie factory e il massimo sono gli stessi', async () => {
     const vero  = await import('../riskBands.js')
     const finto = await import('./riskBandsFake.js')
     expect(finto.FACTORY_RISK_THRESHOLDS).toEqual(vero.FACTORY_RISK_THRESHOLDS)

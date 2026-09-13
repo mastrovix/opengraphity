@@ -59,7 +59,7 @@ describe('20260908_1000_workflow_step_metadata — B-15: non riscrive più le sc
   })
 })
 
-describe('resetWorkflowStepMetadataFromFactory — il ripristino di fabbrica ha un nome suo e stampa il diff', () => {
+describe('resetWorkflowStepMetadataFromFactory — il ripristino factory ha un nome suo e stampa il diff', () => {
   it('con dryRun elenca i passi che cambierebbero e NON scrive', async () => {
     const lines: string[] = []
     const s = {

@@ -173,6 +173,32 @@ for (const file of files) {
   }
 }
 
+/*
+  LE CHIAVI CHE USA L'API.
+
+  Un errore dell'API porta una CHIAVE (`extensions.i18n`) e la frase la scrive
+  il client: quelle chiavi vivono nei file di lingua del web ma non compaiono
+  in nessun `t('…')` del web — le nomina il server. Senza guardare anche
+  l'API, questo controllo le dichiarava tutte «mai usate»: 410 avvisi che
+  nascondevano quelli veri.
+*/
+const API_SRC = path.join(ROOT, 'apps/api/src')
+function sorgentiApi(dir, out = []) {
+  if (!fs.existsSync(dir)) return out
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name)
+    if (e.isDirectory()) { if (e.name !== '__tests__') sorgentiApi(p, out); continue }
+    if (e.name.endsWith('.ts') && !e.name.endsWith('.test.ts')) out.push(p)
+  }
+  return out
+}
+for (const p of sorgentiApi(API_SRC)) {
+  const src = fs.readFileSync(p, 'utf8')
+  for (const m of src.matchAll(/key: '([A-Za-z0-9_.]+)'/g)) usedKeys.add(m[1])
+  // `errors.ciType.inUse${suffisso}`: la chiave si compone, e si valida il prefisso
+  for (const m of src.matchAll(/key: `([A-Za-z0-9_.]*)\$\{/g)) usedPrefixes.add(m[1])
+}
+
 // (c) chiavi mai usate: coperte da un uso letterale o da un prefisso dinamico
 for (const k of [...defined].sort()) {
   const base = baseOf(k)
@@ -242,27 +268,99 @@ for (const k of [...defined].sort()) {
 // quelli sono difetti veri (`Sync triggered`, `Heap Memory`, `Auto-refresh
 // 10s`, `External ID`): l'elenco puo solo accorciarsi.
 const IT_EN_IDENTICHE_ACCETTATE = new Set([
+  // «OLA / UC» sono due sigle ITIL: la stessa cosa nelle due lingue.
+  'pages.slaReport.contracts',
+  /*
+    PAROLE TECNICHE O D'USO STANDARD: in italiano si dicono in inglese, e
+    tradurle rende il prodotto piu difficile da usare, non piu italiano.
+    Nessuno cerca «Registro delle modifiche» in un menu: cerca «Audit Log».
+    Regola: si traduce cio che DESCRIVE (una frase, un'istruzione, un errore);
+    resta in inglese cio che NOMINA una cosa tecnica che si chiama cosi anche
+    parlando italiano (Audit Log, Business Rules, Dry-run, Uptime, SPOF, i
+    nomi dei disegnatori). Nel dubbio: come lo chiamerebbe, a voce, chi ci
+    lavora?
+  */
+  // «Root Cause Analysis» e il nome ITIL dell'analisi: in italiano si dice
+  // cosi, e il campo del workflow si chiama `rootCause`.
+  'pages.incidents.rootCauseAnalysis',
+  // «Default» e la parola che il prodotto usa in italiano per il workflow
+  // predefinito: e anche il valore che sta nel dato (`is_default`).
+  'pages.workflow.defaultBadge',
+  // «Bot API» e il nome del protocollo di Telegram: un nome proprio.
+  'pages.notifications.channelIdProtocol',
+  // «ITIL Types» e il nome del disegnatore, come `itilDesigner.title`.
+  'itilDesigner.itilTypes',
+  // «CMDB Sync» nomina la CMDB e l'operazione come le chiama chi ci lavora.
+  'sync.title',
+  // Sono i due nomi TECNICI dei campi, mostrati come tali: `name` e uno slug
+  // in snake_case, non una parola da tradurre.
+  'citypeDesigner.field.slugNameSnake',
+  // «SLA Breach», «Escalation», «Timer», «Stop», «enum», «SLA Policies»: sono i
+  // nomi che chi ci lavora usa parlando italiano, non frasi da tradurre. Sono
+  // anche i nomi dei valori salvati (`sla_breach`, `on_timer`, `stopOnMatch`).
+  // «Preview» e la parola che il prodotto usa in italiano per l'anteprima del
+  // form del disegnatore: e il nome della tab, come lo chiama chi ci lavora.
+  'citypeDesigner.tab.preview',
+  // «Attainment» e il termine SLA che si usa anche in italiano: e la
+  // percentuale del contratto rispettata, e si chiama cosi nei report.
+  'pages.slaReport.attainment',
+  'admin.rules.stop',
+  'admin.sla.tableLabel',
+  'automation.eventFilter.onSlaBreach',
+  'automation.eventFilter.onTimer',
+  'automation.fieldType.enum',
+  'pages.notifications.event.escalation',
+  'pages.notifications.event.slaBreach',
+  // «team» e la parola del dominio anche in italiano (come `admin.sla.team` e
+  // `detail.team`): «squadra» non lo dice nessuno.
+  'admin.sla.scopeTeam',
+  'automation.fieldType.team',
+  'automation.params.teamOption',
+  // «min» e «h» sono le stesse abbreviazioni nelle due lingue; «g/gg» invece
+  // differisce da «d», ed e tradotto (`admin.sla.unit.days_*`).
+  'admin.sla.unit.hours_one',
+  'admin.sla.unit.hours_other',
+  'admin.sla.unit.minutes_one',
+  'admin.sla.unit.minutes_other',
+  'admin.integrations.test',
+  'anomaly.rules.spof',
+  'itilDesigner.title',
+  'notificationRules.category.digest',
+  'notificationRules.channels.inApp',
+  'pages.audit.title',
+  'pages.import.dryRun',
+  'pages.kbAdmin.title',
+  'pages.monitoring.health.uptime',
+  'pages.monitoring.process.memory',
+  'pages.monitoring.tracing.title',
+  'roles.admin',
+  'sidebar.admin',
+  'sidebar.auditLog',
+  'sidebar.businessRules',
+  'sidebar.ciTypeDesigner',
+  'sidebar.itilDesigner',
+  'sidebar.kbAdmin',
+  'sidebar.reportBuilder',
+  'sidebar.reporting',
+  'sidebar.workflowDesigner',
+  'sidebar.workspace',
+  // «Assessment» e il termine ITIL, lo stesso nelle due lingue: e il nome di una
+  // fase del processo, non una frase.
+  'pages.auditTimeline.cat.assessment',
+  // «Area» e la stessa parola nelle due lingue: e il nome del tipo di grafico,
+  // non una frase.
+  'reportChart.type.area',
   // «report» in italiano e un prestito INVARIABILE: al singolare la frase
   // coincide con l'inglese, e non c'e una traduzione diversa da dare.
   'pages.reportBuilder.count_one',
-  'admin.integrations.apiKeys',
   'admin.integrations.columns.url',
   'admin.integrations.entityChange',
   'admin.integrations.entityIncident',
   'admin.integrations.entityProblem',
   'admin.integrations.form.url',
-  'admin.integrations.test',
-  'admin.integrations.webhookIn',
-  'admin.integrations.webhookOut',
-  'anomaly.rules.spof',
   'bulk.team',
-  'ciTypeDesigner.chain',
   'common.no',
-  'common.reset',
-  'components.widgetBody.label',
   'conditionEditor.teamPlaceholder',
-  'detail.sections.incidentInformation',
-  'detail.sections.problemInformation',
   'detail.team',
   // «team» e la parola che il prodotto usa in italiano (Team assegnato, Team e
   // Utenti): «squadra» non e il termine del dominio.
@@ -279,15 +377,12 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   'events.policy.groupByOptions.ci',
   'events.policy.openFrom.info',
   'events.severity.info',
-  'itilDesigner.title',
   'monitoring.edit.tokenTitle',
   'monitoring.errors.invalidJson',
   'monitoring.health.columns.ci',
   'monitoring.mapper.inWord',
   'monitoring.mapper.resourceKinds.fqdn',
   'monitoring.mapper.resourceKinds.hostname',
-  'monitoring.services.columns.owner',
-  'monitoring.services.detail.fields.owner',
   'monitoring.services.explain.cause',
   'monitoring.services.explain.causeVia',
   'monitoring.services.explain.sentence',
@@ -299,84 +394,50 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   'monitoring.tools.zabbix.name',
   'monitoring.wizard.token',
   'notificationRules.category.change',
-  'notificationRules.category.digest',
   'notificationRules.category.discovery',
   'notificationRules.category.escalation',
   'notificationRules.category.incident',
   'notificationRules.category.problem',
   'notificationRules.category.sla',
   'notificationRules.channels.email',
-  'notificationRules.channels.inApp',
   'notificationRules.channels.slack',
   'notificationRules.channels.teams',
   'notificationRules.eventGroupStandard',
   'notificationRules.severity.info',
-  'pages.aiAnalysis.title',
   'pages.audit.colIp',
-  'pages.audit.title',
-  'pages.changeCalendar.score',
-  'pages.changeCatalog.defaultWorkflow',
   'pages.changeCatalogAdmin.colWorkflow',
-  'pages.changeCatalogAdmin.default',
   'pages.changeCatalogAdmin.workflow',
   'pages.changes.count_one',
   'pages.cmdb.count_one',
   'pages.dashboard.badgeTeam',
   'pages.dashboard.cols_one',
-  'pages.dashboard.entity.application',
-  'pages.dashboard.entity.businessApplication',
-  'pages.dashboard.entity.certificate',
   'pages.dashboard.entity.change',
   'pages.dashboard.entity.database',
   'pages.dashboard.entity.incident',
-  'pages.dashboard.entity.networkDevice',
   'pages.dashboard.entity.problem',
   'pages.dashboard.entity.server',
-  'pages.dashboard.entity.serviceRequest',
-  'pages.dashboard.entity.vm',
   'pages.dashboard.fieldType.enum',
-  'pages.dashboard.statusCaption',
   'pages.dashboard.timeRange.24h',
   'pages.dashboard.title',
   'pages.dashboard.widgetFallback',
-  'pages.dashboard.widgetType.chartBar',
-  'pages.dashboard.widgetType.chartDonut',
-  'pages.dashboard.widgetType.chartLine',
-  'pages.dashboard.widgetType.chartPie',
-  'pages.dashboard.widgetType.counter',
-  'pages.dashboard.widgetType.gauge',
-  'pages.dashboard.widgetTypeDesc.chartLine',
-  'pages.dictionary.defaultBadge',
-  'pages.dictionary.labelLabel',
   'pages.dictionary.scopeCmdb',
   'pages.dictionary.scopeItil',
-  'pages.dictionary.scopeLabel',
-  'pages.import.apiKey',
-  'pages.import.colExternalId',
   'pages.import.columnsIncidents',
   'pages.import.columnsKb',
-  'pages.import.dryRun',
   'pages.incidents.count_one',
   'pages.incidents.impactedApplications.pathNodeFallback',
   'pages.kb.no',
   'pages.kb.title',
-  'pages.kbAdmin.title',
-  'pages.logs.autoRefresh',
   'pages.logs.count_one',
-  'pages.logs.refresh',
   'pages.logs.timestamp',
   'pages.monitoring.health.keycloak',
   'pages.monitoring.health.neo4j',
   'pages.monitoring.health.redis',
-  'pages.monitoring.health.uptime',
   'pages.monitoring.neo4j.title',
   'pages.monitoring.process.cpu',
-  'pages.monitoring.process.memory',
   'pages.monitoring.process.pid',
   'pages.monitoring.process.rss',
   'pages.monitoring.process.version',
-  'pages.monitoring.title',
-  'pages.monitoring.tracing.title',
   'pages.problems.count_one',
   'pages.profile.account',
   'pages.profile.english',
@@ -384,43 +445,45 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   'pages.queueStats.group.itsm',
   'pages.queueStats.payload',
   'pages.sync.modeInline',
-  'pages.sync.sourceCreated',
-  'pages.sync.syncTriggered',
   'pages.teams.count_one',
   'pages.topology.hops_one',
   'pages.users.email',
   'pages.users.password',
-  'pages.whatIf.riskScore',
-  'pages.whatIf.title',
   'pages.workflow.title',
-  'roles.admin',
   'search.groups.kbArticles',
-  'sidebar.admin',
-  'sidebar.aiAnalysis',
-  'sidebar.auditLog',
-  'sidebar.businessRules',
-  'sidebar.ciTypeDesigner',
   'sidebar.cmdb',
   'sidebar.dashboard',
   'sidebar.database',
-  'sidebar.itilDesigner',
-  'sidebar.kbAdmin',
   'sidebar.knowledgeBase',
-  'sidebar.platformMonitoring',
-  'sidebar.reportBuilder',
-  'sidebar.reporting',
   'sidebar.server',
-  'sidebar.whatIf',
-  'sidebar.workflowDesigner',
-  'sidebar.workspace',
   'sla.title',
   'time.lessThanMinute',
   'time.minutes_one',
   'time.minutes_other',
-  'toast.integration.testOk',
 ])
 
 {
+  /*
+    LA LISTA DEI PERMESSI PUO SOLO RESTRINGERSI.
+
+    `IT_EN_IDENTICHE_ACCETTATE` dice «questa parola e la stessa nelle due
+    lingue», e va bene per «Dashboard», «CMDB», «Email». Ma ci erano finite
+    dentro 66 chiavi che erano soltanto NON TRADOTTE — «Audit Log»,
+    «Knowledge Base Admin», «Platform monitoring», «Incident Information» — e
+    finche restavano nella lista il difetto era dichiarato normale: chi apriva
+    il prodotto in italiano leggeva quelle frasi in inglese, e nessun controllo
+    lo diceva.
+    Adesso sono tradotte, e le loro voci sono state togliere dalla lista. Una
+    voce che non serve piu e un permesso valido per un difetto che non esiste:
+    la porta aperta per rifarlo. Questo controllo le trova e le fa togliere.
+  */
+  const permessiMorti = [...IT_EN_IDENTICHE_ACCETTATE].filter((k) => it[k] === undefined || it[k] !== en[k])
+  if (permessiMorti.length > 0) {
+    err(`[lingua] IT_EN_IDENTICHE_ACCETTATE porta ${permessiMorti.length} voci che non servono piu `
+      + `(la chiave non esiste, o l'italiano ora e diverso dall'inglese): toglile, altrimenti restano `
+      + `un permesso pronto per un difetto futuro. ${permessiMorti.join(', ')}`)
+  }
+
   // `it` ed `en` sono gia appiattiti in cima al file.
   for (const [k, v] of Object.entries(it)) {
     if (en[k] !== v) continue
@@ -453,6 +516,15 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
 /** Prop il cui valore letterale finisce sotto gli occhi di qualcuno. */
 const PROP_VISIBILI = ['label', 'title', 'placeholder', 'aria-label', 'description', 'emptyMessage', 'emptyTitle', 'helpText', 'tooltip']
 const RE_PROP_LETTERALE = new RegExp('\\b(' + PROP_VISIBILI.join('|') + ')="([^"{}]{2,})"', 'g')
+/*
+  ATTRIBUTO DATO COME ESPRESSIONE: `title={cond ? 'Nuovo contratto' : '…'}`.
+  La regex sopra vede solo `title="…"`, e bastava mettere il letterale dentro
+  le graffe per passare — che e proprio cio che si fa quando il titolo dipende
+  da una condizione. Il titolo del dialogo OLA/UC e rimasto italiano cosi.
+  Qui si guardano i letterali a singolo apice dentro l'espressione; `t('chiave')`
+  non e prosa (`prosa()` scarta un identificatore puntato).
+*/
+const RE_PROP_ESPRESSIONE = new RegExp('\\b(' + PROP_VISIBILI.join('|') + ')=\\{([^}]{0,200})\\}', 'g')
 /**
  * Testo JSX fra un tag e la sua CHIUSURA: `>Qualcosa</`.
  *
@@ -461,7 +533,12 @@ const RE_PROP_LETTERALE = new RegExp('\\b(' + PROP_VISIBILI.join('|') + ')="([^"
  * guardiano segnalava «Promise» ventiquattro volte. Un guardiano che grida al
  * lupo viene spento.
  */
-const RE_TESTO_JSX = new RegExp('>([^<>{}\\n]{4,})</', 'g')
+/*
+  SU PIU RIGHE. Escludere `\n` teneva fuori ogni frase andata a capo — ed e
+  proprio come si scrive un paragrafo nel JSX. `[^<>]` garantisce comunque che
+  dentro non ci sia altro markup: quello che si cattura e un solo nodo di testo.
+*/
+const RE_TESTO_JSX = new RegExp('>([^<>{}]{4,}?)</', 'g')
 
 /** Un identificatore o un valore tecnico: non e prosa da tradurre. */
 function tecnico(v) {
@@ -484,8 +561,16 @@ function tecnico(v) {
 function prosa(v) {
   const t = v.trim()
   if (tecnico(t)) return false
-  // Codice travestito da testo: virgolette, punti e virgola, uguali, parentesi.
-  if (/['";=()]/.test(t)) return false
+  /*
+    Codice travestito da testo. La regola era `/['";=()]/`, e buttava via anche
+    la prosa vera: «Target risposta (min)» ha una parentesi, «Nessun OLA/UC
+    definito; un UC lo lega a un fornitore» ha un punto e virgola — due
+    letterali italiani che sono rimasti a schermo in un'interfaccia inglese
+    finche non li ho visti in un browser. Restano fuori solo i segni che in una
+    frase non compaiono: `=` e le virgolette (che nel JSX vogliono dire
+    attributo, non testo).
+  */
+  if (/["=]/.test(t)) return false
   if (/\s/.test(t)) return /[A-Za-zÀ-ÖØ-öø-ÿ]{2,}\s+\S/.test(t)
   // Una parola sola: solo se comincia per maiuscola. `input`, `value`, `label`
   // sono identificatori, «Annulla» e un bottone.
@@ -496,97 +581,71 @@ function prosa(v) {
   /**
    * IL DEBITO DICHIARATO: quanti letterali di prosa ha ancora ogni file.
    *
-   * Non una lista di file «sorvegliati» che si allarga a mano — che nessuno
-   * allarga — ma il contrario: il debito è enumerato e **può solo scendere**.
-   * Un file che non è qui e ha un letterale è un ERRORE; un file che è qui e
-   * ne ha uno in più di quanti dichiara è un errore; uno che ne ha meno lo
-   * dice, così il numero si aggiorna e non resta a mentire.
+   * **È VUOTO, e questa è la cosa importante.** I 394 letterali di partenza (66
+   * file) sono stati bonificati tutti: ogni stringa a schermo ha una chiave e
+   * un valore in italiano e in inglese. Con la lista vuota la regola non è più
+   * «il debito può solo scendere», è «non se ne aggiunge nessuno»: un
+   * letterale in un file qualunque è un ERRORE, e il guardiano lo dice al primo
+   * `check-i18n`.
    *
-   * I 394 di partenza sono prosa ITALIANA corretta: si rompono solo se qualcuno
-   * usa l'inglese. Gli inglesi in interfaccia italiana — le testate dei task
-   * della change, «Active Tasks», «Cancel», «Save», «Order», «Label» — erano
-   * difetti di oggi e sono stati chiusi.
+   * Non riaprire questa lista per far passare una stringa nuova. Serviva a
+   * chiudere un debito esistente senza fermare tutto, e quel debito è chiuso:
+   * scrivere qui un numero maggiore di zero è la scorciatoia che lo farebbe
+   * ricominciare, un file per volta.
+   *
+   * (Il motivo per cui andava chiuso: la lingua del prodotto è l'inglese e
+   * l'italiano è una scelta — chi legge in inglese vedeva 394 frasi italiane
+   * in mezzo alla propria interfaccia.)
    */
   const PROSA_DEBITO = {
-  'components/ActionParamsEditor.tsx': 5,
-  'components/AutomationPreview.tsx': 1,
-  'components/CIChangeList.tsx': 1,
-  'components/CIIncidentsCard.tsx': 1,
-  'components/ReportChartConfig.tsx': 9,
-  'components/ReportPreview.tsx': 1,
-  'components/ReportSectionBuilder.tsx': 14,
-  'components/SimilarIncidentsPanel.tsx': 1,
-  'components/UnifiedLinkedTickets.tsx': 4,
-  'components/ticket/AffectedCIList.tsx': 3,
-  'components/ticket/WorkflowTimeline.tsx': 1,
-  'hooks/useCrudModal.ts': 2,
-  'main.tsx': 1,
-  'pages/MyTasksPage.tsx': 5,
-  'pages/admin/AutoTriggersPage.tsx': 13,
-  'pages/admin/BusinessRulesPage.tsx': 16,
-  'pages/admin/KBAdminPage.tsx': 9,
-  'pages/admin/MonitoringPage.tsx': 2,
-  'pages/admin/QuestionAdminPage.tsx': 10,
-  'pages/admin/SLAPoliciesPage.tsx': 8,
-  'pages/admin/ServiceCatalogAdminPage.tsx': 20,
-  'pages/assistant/AssistantPage.tsx': 1,
-  'pages/changes/ChangeDetailPage.tsx': 31,
-  'pages/changes/CreateChangePage.tsx': 6,
-  'pages/changes/components/AddCIModal.tsx': 5,
-  'pages/changes/components/AuditTimeline.tsx': 2,
-  'pages/changes/components/CITasksTable.tsx': 3,
-  'pages/changes/components/ChangeInfoCard.tsx': 10,
-  'pages/changes/components/PlanModal.tsx': 1,
-  'pages/changes/components/shared.tsx': 1,
-  'pages/incidents/CreateIncidentPage.tsx': 4,
-  'pages/incidents/IncidentDetailPage.tsx': 7,
-  'pages/problems/CreateProblemPage.tsx': 4,
-  'pages/problems/ProblemDetailPage.tsx': 6,
-  'pages/reports/ReportListView.tsx': 11,
-  'pages/reports/ReportScheduleSettings.tsx': 14,
-  'pages/reports/ReportsPage.tsx': 4,
-  'pages/reports/SLAReportPage.tsx': 31,
-  'pages/requests/CreateServiceRequestPage.tsx': 2,
-  'pages/requests/ServiceRequestDetailPage.tsx': 9,
-  'pages/settings/CITypeDesignerPage.tsx': 6,
-  'pages/settings/ITILTypeFields.tsx': 1,
-  'pages/settings/ITILTypeSettings.tsx': 3,
-  'pages/settings/NotificationRuleForm.tsx': 3,
-  'pages/settings/NotificationsPage.tsx': 11,
-  'pages/settings/SyncConflictsTab.tsx': 6,
-  'pages/settings/SyncHistoryTab.tsx': 2,
-  'pages/settings/SyncSourcesTab.tsx': 10,
-  'pages/settings/citype/CIFieldEditor.tsx': 6,
-  'pages/settings/citype/CIFieldInlineEditor.tsx': 5,
-  'pages/settings/citype/CIRelationEditor.tsx': 7,
-  'pages/settings/citype/CITypeList.tsx': 3,
-  'pages/settings/citype/CreateTypeDialog.tsx': 5,
-  'pages/settings/shared/FieldRulesPanel.tsx': 1,
-  'pages/tasks/TaskViewPage.tsx': 3,
-  'pages/tasks/components/AssessmentTaskForm.tsx': 1,
-  'pages/tasks/components/ChangeOverviewSidebar.tsx': 2,
-  'pages/tasks/components/PlanTaskForm.tsx': 5,
-  'pages/teams/TeamDetailPage.tsx': 5,
-  'pages/teams/TeamsPage.tsx': 1,
-  'pages/users/UserDetailPage.tsx': 15,
-  'pages/users/UsersPage.tsx': 2,
-  'pages/workflow/WorkflowCanvas.tsx': 1,
-  'pages/workflow/WorkflowStepPanel.tsx': 8,
-  'pages/workflow/WorkflowToolbar.tsx': 1,
-  'pages/workflow/WorkflowTransitionPanel.tsx': 2,
   }
   /** Quanti ne ammette un file: zero se non è nel debito. */
   const ammessi = (rel) => PROSA_DEBITO[rel] ?? 0
 
+  /*
+    I COMMENTI NON SONO SCHERMO.
+    `useCrudModal.ts` ha un esempio d'uso nel suo commento
+    (`<Button onClick={modal.openCreate}>Nuovo</Button>`) e questo guardiano lo
+    accusava come prosa a schermo: un falso positivo che chiedeva di tradurre
+    la documentazione. Un letterale dentro un commento — di riga o di blocco —
+    non si legge da nessuna parte, e le righe di commento si escludono prima di
+    guardare. (Scrivere qui la chiusura di un commento di blocco chiude QUESTO
+    commento: preso subito, con un errore di sintassi.)
+  */
+  const righeDiCommento = (src) => {
+    const righe = src.split('\n')
+    const fuori = new Set()
+    let dentroBlocco = false
+    righe.forEach((riga, i) => {
+      const t = riga.trim()
+      if (dentroBlocco) { fuori.add(i + 1); if (t.includes('*/')) dentroBlocco = false; return }
+      if (t.startsWith('//') || t.startsWith('*')) { fuori.add(i + 1); return }
+      if (t.startsWith('/*')) { fuori.add(i + 1); if (!t.includes('*/')) dentroBlocco = true }
+    })
+    return fuori
+  }
+
   for (const file of files) {
     const rel = path.relative(WEB_SRC, file)
     const src = fs.readFileSync(file, 'utf8')
+    const commenti = righeDiCommento(src)
     const trovati = []
     for (const m of src.matchAll(RE_PROP_LETTERALE)) {
-      if (prosa(m[2])) trovati.push({ dove: `${m[1]}="${m[2]}"`, riga: lineOf(src, m.index) })
+      const riga = lineOf(src, m.index)
+      if (commenti.has(riga)) continue
+      if (prosa(m[2])) trovati.push({ dove: `${m[1]}="${m[2]}"`, riga })
+    }
+    for (const m of src.matchAll(RE_PROP_ESPRESSIONE)) {
+      const riga = lineOf(src, m.index)
+      if (commenti.has(riga)) continue
+      for (const q of m[2].matchAll(/'([^']{4,})'/g)) {
+        if (prosa(q[1])) trovati.push({ dove: `${m[1]}={… '${q[1]}' …}`, riga })
+      }
     }
     for (const m of src.matchAll(RE_TESTO_JSX)) {
-      if (prosa(m[1])) trovati.push({ dove: `testo JSX «${m[1].trim()}»`, riga: lineOf(src, m.index) })
+      const riga = lineOf(src, m.index)
+      if (commenti.has(riga)) continue
+      if (prosa(m[1])) trovati.push({ dove: `testo JSX «${m[1].trim()}»`, riga })
     }
     const quota = ammessi(rel)
     if (trovati.length > quota) {
@@ -603,6 +662,197 @@ function prosa(v) {
         warn(`[prosa] ${rel}: ${trovati.length} letterali su ${quota} dichiarati — `
           + `aggiorna PROSA_DEBITO in scripts/check-i18n.mjs, altrimenti il numero mente`)
       }
+    }
+  }
+}
+
+// ── (e) ITALIANO NEL SORGENTE ────────────────────────────────────────────────
+//
+// PERCHE' QUESTO CONTROLLO ESISTE, dopo (d).
+//
+// Il controllo (d) cerca «prosa a schermo» con un'euristica che non sa che
+// lingua stia leggendo: per non gridare al lupo guarda solo i posti dove il
+// testo si vede per certo — il valore di una prop visibile, un nodo di testo
+// JSX pulito. Tutto il resto gli sfugge, e non e poco:
+//
+//   {loading ? 'Analisi in corso…' : 'Suggerisci triage'}      dentro le graffe
+//   { label: 'Imposta priorita' }                              in una tabella di etichette
+//   throw new Error('Il filtro «Titolo» ...')                   in un errore mostrato in un toast
+//   >Creato il {fmtDate(x)}<                                    testo JSX con un'interpolazione
+//   { key: 'name', label: 'Nome', sortable: true }              in una colonna di tabella
+//
+// Sono 150 letterali italiani trovati cosi, in un prodotto la cui lingua e
+// l'inglese: chi apriva l'interfaccia in inglese leggeva quelle frasi in
+// italiano. (d) diceva «0 errori» per tutti.
+//
+// La mossa che rende il controllo possibile: NON cercare «prosa», cercare
+// ITALIANO. Distinguere una frase italiana da un identificatore inglese e
+// facile — una vocale accentata, o una delle parole funzionali che in inglese
+// non esistono — e allora si puo guardare OGNI stringa del sorgente senza
+// falsi allarmi. Il prezzo e che l'inglese cablato non lo vede: quello resta
+// affare di (d).
+//
+// I commenti e i test restano in italiano di proposito: sono per chi scrive il
+// codice, non per chi lo usa.
+{
+  const PORTAL_SRC = path.join(ROOT, 'apps/portal/src')
+  const ACCENTATE = /[àèéìòù]/
+  /*
+    Parole funzionali italiane che in inglese non esistono (o non esistono come
+    parola intera). Servono per le frasi senza accenti: «Aggiungi campo»,
+    «Nessun risultato», «Salva modifiche». La lista e volutamente di parole
+    intere: `per` non deve accendersi su `person`.
+  */
+  const PAROLE_IT = new RegExp('^(?:'
+    + 'non|della|delle|dello|degli|dalla|dallo|dagli|nella|nelle|nello|negli|alla|allo|alle|agli'
+    // `col` e `coi` NON stanno in lista: `scope="col"` e HTML, non italiano.
+    + '|nel|nei|sulla|sulle|sugli|dalle|periodo|periodi'
+    + '|questo|questa|questi|queste|quando|quello|quella|perche|oppure|anche|soltanto|invece|ancora'
+    + '|nessun|nessuna|nessuno|caricamento|conferma|annulla|aggiungi|elimina|modifica|modifiche'
+    + '|salva|salvataggio|seleziona|scegli|errore|simili|titolo|impatto|impattati|assegna|assegnato'
+    + '/|sollecita|riapri|cambia|apri|vedi|allarme|allarmi|sorgente|utente|utenti|obbligatorio'
+    + '|almeno|inserisci|creata|creato|rimossa|rimosso|eliminata|eliminato|aggiornato|aggiornata'
+    + '|campo|campi|valore|valori|ammesso|nome|nomi|gli|una|uno|che|con|per|dei|del|sul|sui|dal|dai'
+    /*
+      Seconda ondata di parole, aggiunte dopo che «Crea tipo» e «Creazione…»
+      erano passate: nessuna delle due ha accenti, e nessuna delle loro
+      parole era in lista. Le scelte qui sono volutamente PRUDENTI — niente
+      `data`, `note`, `fine`, `ora`, `no`, che sono parole anche in inglese e
+      accenderebbero il guardiano su stringhe inglesi legittime.
+    */
+    + '|crea|creazione|eliminazione|tipo|tipi|relazione|relazioni|impostazioni|ambiente|autore'
+    + '|esecuzione|richiesta|richieste|azione|azioni|attivo|attiva|chiudi|indietro|avanti'
+    + '|precedente|successivo|annullato|completato|fallito|esegui|mostra|nascondi|cerca|ricerca'
+    + '|sorgenti|motivo|giorno|giorni|minuto|minuti|categoria|urgenza|gruppo|squadra|avviso'
+    + '|messaggio|scadenza|durata|inizio|esito|verifica|salvato|salvata|inviato|inviata'
+    + ')$', 'i')
+
+  /*
+    Una CHIAVE i18n non e una frase, anche quando contiene una parola italiana:
+    `languages.${impostazioni.fallback}` e un percorso di chiave, e il nome
+    della variabile e italiano perche i sorgenti di questo progetto lo sono.
+  */
+  const CHIAVE = /^[a-z][A-Za-z0-9_]*(?:\.(?:[A-Za-z0-9_]+|\$\{[^}]*\}))+\.?$/
+
+  const italiano = (testo) => {
+    const t = testo.trim()
+    if (t.length < 3) return false
+    if (CHIAVE.test(t)) return false
+    if (ACCENTATE.test(t)) return true
+    const parole = t.match(/[A-Za-zÀ-ÖØ-öø-ÿ']+/g)
+    return parole ? parole.some((w) => PAROLE_IT.test(w)) : false
+  }
+
+  /*
+    Le stringhe si cercano DOPO aver spento i commenti: un commento italiano
+    (che e la norma in questo progetto) non e testo a schermo. Spegnere vuol
+    dire sostituire i caratteri con spazi, cosi i numeri di riga non si spostano.
+  */
+  const senzaCommenti = (src) => {
+    let out = ''
+    let i = 0
+    let stringa = null
+    while (i < src.length) {
+      const c = src[i]
+      if (stringa === null) {
+        if (c === '/' && src[i + 1] === '/') {
+          let j = src.indexOf('\n', i); if (j < 0) j = src.length
+          out += ' '.repeat(j - i); i = j; continue
+        }
+        if (c === '/' && src[i + 1] === '*') {
+          let j = src.indexOf('*' + '/', i + 2); j = j < 0 ? src.length : j + 2
+          for (let k = i; k < j; k++) out += src[k] === '\n' ? '\n' : ' '
+          i = j; continue
+        }
+        if (c === '"' || c === "'" || c === '`') { stringa = c; out += c; i++; continue }
+        /*
+          UN LETTERALE REGEX NON E' UNA STRINGA — e puo contenere un backtick.
+          `body.replace(/[#*`[\]]/g, '')` in KBListPage.tsx: quel backtick
+          faceva da apertura, e si appaiava con il primo backtick vero
+          cinquanta righe sotto, inghiottendo un oggetto di stili interi e
+          facendolo passare per una frase. Si riconosce dal carattere
+          precedente: dopo un valore (`)`, un identificatore, un numero) lo
+          slash e una divisione; dopo `( , = : [ ! & | ? { ; return` e un
+          letterale regex.
+        */
+        if (c === '/' && /[(,=:[!&|?{;\n]\s*$/.test(out.replace(/\s+$/, (sp) => sp.includes('\n') ? '\n' : ' '))) {
+          let j = i + 1
+          let dentroClasse = false
+          while (j < src.length) {
+            const d = src[j]
+            if (d === '\\') { j += 2; continue }
+            if (d === '\n') break                       // una regex non va a capo: non era una regex
+            if (d === '[') dentroClasse = true
+            else if (d === ']') dentroClasse = false
+            else if (d === '/' && !dentroClasse) { j++; break }
+            j++
+          }
+          if (src[j - 1] === '/') { out += ' '.repeat(j - i); i = j; continue }
+        }
+        out += c; i++; continue
+      }
+      if (c === '\\') { out += src.slice(i, i + 2); i += 2; continue }
+      out += c
+      if (c === stringa) stringa = null
+      i++
+    }
+    return out
+  }
+
+  const RE_STRINGA = /'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/gs
+  /*
+    Testo JSX con interpolazioni: `>Creato il {fmtDate(x)}<`. Si guardano solo
+    i pezzi FUORI dalle graffe (le graffe diventano uno spazio), e si scarta
+    tutto cio che contiene `=` o virgolette, che nel JSX vuol dire attributo.
+  */
+  const RE_TESTO_CON_ESPRESSIONI = /> {0,400}([^<>]{2,400}?)</gs
+  /*
+    E il testo che finisce dove COMINCIA un'espressione, non dove comincia un
+    tag: `>Salva modifiche{pendingCount > 0 && (`. Il `>` dentro `pendingCount
+    > 0` fa si che il primo `<` utile sia righe piu sotto, quindi la regex qui
+    sopra cattura mezzo blocco di codice e la scarta. Questa si fermaal `{`.
+  */
+  const RE_TESTO_PRIMA_DI_ESPRESSIONE = /> {0,400}([^<>{}]{3,400}?)\{/gs
+
+  const daScansionare = [...files.map((f) => [f, WEB_SRC])]
+  if (fs.existsSync(PORTAL_SRC)) {
+    for (const f of walk(PORTAL_SRC)) daScansionare.push([f, path.join(ROOT, 'apps')])
+  }
+
+  for (const [file, base] of daScansionare) {
+    const relPath = path.relative(base, file)
+    const pulito = senzaCommenti(fs.readFileSync(file, 'utf8'))
+    const visti = new Set()
+    const segnala = (riga, dove) => {
+      const chiave = `${riga}|${dove}`
+      if (visti.has(chiave)) return
+      visti.add(chiave)
+      err(`[italiano] ${relPath}:${riga} ${dove} — italiano cablato nel sorgente: `
+        + `la lingua del prodotto e l'inglese, e l'italiano e una scelta del cliente. `
+        + `Spostalo in i18n (chiave + valore it/en)`)
+    }
+    for (const m of pulito.matchAll(RE_STRINGA)) {
+      const testo = m[1] ?? m[2] ?? m[3] ?? ''
+      if (italiano(testo)) segnala(lineOf(pulito, m.index), `«${testo.slice(0, 80).replace(/\n/g, ' ')}»`)
+    }
+    for (const m of pulito.matchAll(RE_TESTO_PRIMA_DI_ESPRESSIONE)) {
+      const testo = m[1]
+      if (/[="']/.test(testo)) continue
+      if (italiano(testo)) segnala(lineOf(pulito, m.index), `testo JSX «${testo.trim().slice(0, 80)}»`)
+    }
+    for (const m of pulito.matchAll(RE_TESTO_CON_ESPRESSIONI)) {
+      const grezzo = m[1]
+      if (/[="']/.test(grezzo)) continue
+      const testo = grezzo.replace(/\{[^{}]*\}/g, ' ')
+      /*
+        Una graffa RIMASTA vuol dire che si e catturato mezzo blocco di codice,
+        non un nodo di testo: `{!impostazioni && loading ? (` finiva segnalato
+        perche il ternario si chiude righe piu sotto e la sostituzione delle
+        graffe bilanciate non lo tocca. Il nome della variabile e italiano, il
+        testo a schermo no.
+      */
+      if (/[{}]/.test(testo)) continue
+      if (italiano(testo)) segnala(lineOf(pulito, m.index), `testo JSX «${testo.trim().slice(0, 80)}»`)
     }
   }
 }

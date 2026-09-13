@@ -80,7 +80,7 @@ describe('calculateTaskScore', () => {
     let error: unknown = null
     try { calculateTaskScore([], 'production') } catch (e) { error = e }
     expect(error).toBeInstanceOf(GraphQLError)
-    expect((error as GraphQLError).message).toContain('Nessuna domanda di assessment')
+    expect((error as GraphQLError).message).toContain('No assessment question')
     expect((error as GraphQLError).extensions['code']).toBe('BAD_USER_INPUT')
   })
 

@@ -9,7 +9,7 @@
  * filtro di report sullo stato offriva valori che il grafo non contiene e non
  * offriva quelli veri — né i passi aggiunti dal cliente.
  *
- * Nessun ripiego sulla lista di fabbrica: senza workflow la tendina resta
+ * Nessun ripiego sulla lista factory: senza workflow la tendina resta
  * vuota e il costruttore mostra un campo di testo libero, invece di suggerire
  * stati inesistenti.
  */
@@ -55,7 +55,7 @@ describe('getNavigableEntities — lo stato viene dal workflow del tenant', () =
     expect(steps).toHaveBeenCalledWith(session, 'c-two', 'change')
   })
 
-  it('i valori di fabbrica non compaiono più: `open` non è un passo di nessun workflow', async () => {
+  it('i valori factory non compaiono più: `open` non è un passo di nessun workflow', async () => {
     const entities = await getNavigableEntities('c-two') as never as Array<{ entityType: string; fields: Array<{ name: string; enumValues: string[] }> }>
     expect(statusOf(entities, 'Incident')).not.toContain('open')
     expect(statusOf(entities, 'Change')).not.toContain('pending_approval')
@@ -78,7 +78,7 @@ describe('getNavigableEntities — lo stato viene dal workflow del tenant', () =
     expect(steps).toHaveBeenCalledTimes(2)
   })
 
-  it('tenant senza workflow → tendina vuota (testo libero) e un warn, non la lista di fabbrica', async () => {
+  it('tenant senza workflow → tendina vuota (testo libero) e un warn, non la lista factory', async () => {
     steps.mockResolvedValue([])
     const entities = await getNavigableEntities('c-three') as never as Array<{ entityType: string; fields: Array<{ name: string; enumValues: string[] }> }>
     expect(statusOf(entities, 'Incident')).toEqual([])

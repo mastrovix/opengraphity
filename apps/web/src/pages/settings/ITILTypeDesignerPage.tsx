@@ -29,7 +29,7 @@ export function ITILTypeDesignerPage() {
         <PageTitle icon={<Settings2 size={22} color="var(--color-icon-accent)" />}>
           {t('itilDesigner.title')}
         </PageTitle>
-        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
           {t('itilDesigner.subtitle')}
         </p>
       </div>
@@ -45,7 +45,7 @@ export function ITILTypeDesignerPage() {
           {/* Left: Type list */}
           <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
             <div style={{ padding: '5px 16px 4px', fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-slate-light)', background: 'var(--color-slate-bg)', borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
-              ITIL Types
+              {t('itilDesigner.itilTypes')}
             </div>
             <div>
               {itilTypes.map((itilType) => {
@@ -60,7 +60,7 @@ export function ITILTypeDesignerPage() {
                     <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--font-size-body)', fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {itilType.label}
                     </span>
-                    <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', flexShrink: 0 }}>{itilType.fields.length} campi</span>
+                    <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', flexShrink: 0 }}>{t('citypeDesigner.fieldCount', { count: itilType.fields.length })}</span>
                   </button>
                 )
               })}
@@ -88,7 +88,7 @@ export function ITILTypeDesignerPage() {
                   {(['settings', 'fields', 'relations', 'rules', 'preview'] as Tab[]).map((tab) => (
                     <button type="button" key={tab} onClick={() => h.handleTabChange(tab)}
                       style={{ padding: '10px 14px', border: 'none', borderBottom: h.activeTab === tab ? '2px solid var(--color-brand)' : '2px solid transparent', marginBottom: -1, background: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer', color: h.activeTab === tab ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: h.activeTab === tab ? 600 : 400 }}>
-                      {tab === 'settings' ? 'Impostazioni' : tab === 'fields' ? 'Campi' : tab === 'relations' ? 'Relazioni CI' : tab === 'rules' ? 'Regole' : 'Preview'}
+                      {t(`citypeDesigner.tab.${tab}`)}
                     </button>
                   ))}
                 </div>

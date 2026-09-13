@@ -129,10 +129,10 @@ export function CreateProblemPage() {
         </button>
 
         <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
-          Nuovo Problem
+          {t('pages.createProblem.title')}
         </h1>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 24px' }}>
-          Compila i dettagli del problem da aprire
+          {t('pages.createProblem.subtitle')}
         </p>
 
         {/* Card */}
@@ -141,14 +141,14 @@ export function CreateProblemPage() {
           {/* TITOLO */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.title} style={fieldLabel}>
-              Titolo <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
+              {t('common.title')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             <input
               id={ids.title}
               type="text"
               value={title}
               onChange={e => setTitle(e.target.value)}
-              placeholder="Es. Memory leak nel servizio di autenticazione"
+              placeholder={t('pages.createProblem.titlePlaceholder')}
               style={inputBase}
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
               onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
@@ -157,9 +157,9 @@ export function CreateProblemPage() {
 
           {/* IMPATTO × URGENZA → PRIORITÀ */}
           <div style={{ marginBottom: 20, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            {([['Impatto', 'impact', impact, setImpact, matrix?.impacts ?? []], ['Urgenza', 'urgency', urgency, setUrgency, matrix?.urgencies ?? []]] as const).map(([label, vocabolario, val, setVal, options]) => (
-              <div key={label}>
-                <div style={fieldLabel}>{label} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
+            {([['pages.domainMatrices.impact', 'impact', impact, setImpact, matrix?.impacts ?? []], ['pages.domainMatrices.urgency', 'urgency', urgency, setUrgency, matrix?.urgencies ?? []]] as const).map(([labelKey, vocabolario, val, setVal, options]) => (
+              <div key={labelKey}>
+                <div style={fieldLabel}>{t(labelKey)} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {options.map(o => {
                     const sel = val === o
@@ -179,14 +179,14 @@ export function CreateProblemPage() {
               </div>
             ))}
             <div>
-              <div style={fieldLabel}>Priorità (calcolata)</div>
+              <div style={fieldLabel}>{t('pages.createTicket.derivedPriority')}</div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 6,
                 border: `1.5px solid ${(PRIORITY_STYLES[priority]?.border ?? colors.border)}`,
                 background: PRIORITY_STYLES[priority]?.bg ?? 'var(--color-slate-bg)',
                 color: PRIORITY_STYLES[priority]?.color ?? 'var(--color-slate)', fontWeight: 600 }}>
                 <span>{priority === '' ? '—' : priorityCode(matrix?.priorities ?? [], priority)}</span>
                 {/* L'etichetta della priorità, non il valore. */}
-                <span style={{ textTransform: 'capitalize' }}>{priority === '' ? 'da compilare nella matrice' : (labelOf('priority', priority) ?? priority)}</span>
+                <span style={{ textTransform: 'capitalize' }}>{priority === '' ? t('pages.domainMatrices.notFilledIn') : (labelOf('priority', priority) ?? priority)}</span>
               </div>
             </div>
           </div>
@@ -200,7 +200,7 @@ export function CreateProblemPage() {
               id={ids.description}
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="Descrivi il problema e il suo impatto..."
+              placeholder={t('pages.createProblem.descriptionPlaceholder')}
               rows={3}
               style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
@@ -211,8 +211,8 @@ export function CreateProblemPage() {
           {/* CI IMPATTATI */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.ciSearch} style={fieldLabel}>
-              CI Impattati{' '}
-              <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
+              {t('attachments.affectedCIs')}{' '}
+              <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>{t('common.optional')}</span>
             </label>
 
             <div style={{ position: 'relative' }}>
@@ -224,7 +224,7 @@ export function CreateProblemPage() {
                 type="text"
                 value={ciSearch}
                 onChange={e => setCiSearch(e.target.value)}
-                placeholder="Cerca per nome..."
+                placeholder={t('pages.createTicket.searchByName')}
                 style={{ ...inputBase, paddingLeft: 36 }}
                 onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
                 onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
@@ -272,7 +272,7 @@ export function CreateProblemPage() {
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.teamSearch} style={fieldLabel}>
               Team{' '}
-              <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
+              <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>{t('common.optional')}</span>
             </label>
 
             {selectedTeam && (
@@ -302,7 +302,7 @@ export function CreateProblemPage() {
                   onChange={e => { setTeamSearch(e.target.value); setTeamDropdownOpen(true) }}
                   onFocus={() => setTeamDropdownOpen(true)}
                   onBlur={() => setTimeout(() => setTeamDropdownOpen(false), 150)}
-                  placeholder="Cerca team per nome..."
+                  placeholder={t('pages.createTicket.searchTeam')}
                   style={{ ...inputBase, paddingLeft: 36 }}
                   onFocusCapture={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
                   onBlurCapture={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
@@ -336,7 +336,7 @@ export function CreateProblemPage() {
               onClick={() => navigate('/problems')}
               style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', padding: 0 }}
             >
-              Annulla
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -350,7 +350,7 @@ export function CreateProblemPage() {
                 transition: 'opacity 150ms',
               }}
             >
-              {loading ? 'Creazione…' : 'Crea Problem'}
+              {loading ? t('common.creating') : t('pages.createProblem.submit')}
             </button>
           </div>
 

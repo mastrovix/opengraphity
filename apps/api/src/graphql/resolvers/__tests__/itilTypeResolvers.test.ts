@@ -108,7 +108,7 @@ describe('letture ITIL — tenant + system', () => {
 
   it('fetchITILTypeById: stessi tre predicati; tipo di altro tenant → "ITIL type non trovato"', async () => {
     reset([noOverrides, { records: [] }])
-    await expect(fetchITILTypeById('it-altrui', 'tenant-1')).rejects.toThrow('ITIL type non trovato')
+    await expect(fetchITILTypeById('it-altrui', 'tenant-1')).rejects.toThrow('ITILType not found')
     const { cypher, params } = call(1)
     expect(cypher).toContain(`WHERE ${ITIL_SCOPE}`)
     expect(cypher).toContain(`WHERE ${FIELD_SCOPE}`)
@@ -162,7 +162,7 @@ describe('updateITILType', () => {
   it('tipo spedito col prodotto → errore parlante, nessuna scrittura', async () => {
     reset([{ records: [rec({ name: 'incident', typeTenantId: 'system' })] }])
     await expect(mutations.updateITILType(null, { id: 'it-sys', input: { label: 'X' } }, admin))
-      .rejects.toThrow(/Il tipo "incident" è spedito col prodotto/)
+      .rejects.toThrow(/Type "incident" ships with the product/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
@@ -210,7 +210,7 @@ describe('createITILField', () => {
   it('vocabolario di un altro cliente → rifiutato con il messaggio, nessuna CREATE', async () => {
     reset([enumRow({ name: 'severity', tenantId: 'tenant-altrui' })])
     await expect(mutations.createITILField(null, { typeId: 'it-1', input: { name: 'x', label: 'X', fieldType: 'enum', enumTypeId: 'e-altrui' } }, admin))
-      .rejects.toThrow(/appartiene a un altro cliente/)
+      .rejects.toThrow(/belongs to another tenant/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
@@ -224,7 +224,7 @@ describe('createITILField', () => {
       .then(() => null, (e: unknown) => e as GraphQLError)
     expect(err).not.toBeNull()
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
-    expect(err!.message).toContain('ha già un campo «origine»')
+    expect(err!.message).toContain('already has a field «origine»')
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
 
@@ -247,7 +247,7 @@ describe('updateITILField / deleteITILField — solo i campi del tenant (A1-2 / 
   it('updateITILField su un campo spedito → errore che nomina etichetta/ordine/script, nessuna scrittura', async () => {
     reset([fieldRow({ name: 'impact', fieldTenantId: 'system', isSystem: true })])
     await expect(mutations.updateITILField(null, { typeId: 'it-1', fieldId: 'f-1', input: { name: 'hack', label: 'L', fieldType: 'string' } }, admin))
-      .rejects.toThrow(/Il campo "impact" è spedito col prodotto.*nemmeno l'etichetta, l'ordine o gli script/s)
+      .rejects.toThrow(/Field "impact" ships with the product.*not even the label, the order or the scripts/s)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
@@ -265,7 +265,7 @@ describe('updateITILField / deleteITILField — solo i campi del tenant (A1-2 / 
   it('updateITILField: vocabolario di un altro cliente sul proprio campo → rifiutato, nessuna scrittura', async () => {
     reset([fieldRow(), enumRow({ tenantId: 'tenant-altrui' })])
     await expect(mutations.updateITILField(null, { typeId: 'it-1', fieldId: 'f-2', input: { name: 'origine', label: 'L', fieldType: 'enum', enumTypeId: 'e-altrui' } }, admin))
-      .rejects.toThrow(/appartiene a un altro cliente/)
+      .rejects.toThrow(/belongs to another tenant/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
@@ -274,7 +274,7 @@ describe('updateITILField / deleteITILField — solo i campi del tenant (A1-2 / 
   it('deleteITILField: campo spedito → errore, nessuna DELETE', async () => {
     reset([fieldRow({ name: 'impact', fieldTenantId: 'system', isSystem: true })])
     await expect(mutations.deleteITILField(null, { typeId: 'it-1', fieldId: 'f-1' }, admin))
-      .rejects.toThrow(/spedito col prodotto/)
+      .rejects.toThrow(/ships with the product/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
@@ -282,7 +282,7 @@ describe('updateITILField / deleteITILField — solo i campi del tenant (A1-2 / 
   it('deleteITILField: campo di un ALTRO cliente → "Campo non trovato", nessuna DELETE (non si conferma che esiste)', async () => {
     reset([fieldRow({ fieldTenantId: 'tenant-altrui' })])
     const err = await mutations.deleteITILField(null, { typeId: 'it-1', fieldId: 'f-altrui' }, admin).then(() => null, (e: unknown) => e)
-    expect((err as GraphQLError).message).toBe('Campo non trovato')
+    expect((err as GraphQLError).message).toBe('Field not found')
     expect((err as GraphQLError).extensions['code']).toBe('NOT_FOUND')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
@@ -300,7 +300,7 @@ describe('updateITILField / deleteITILField — solo i campi del tenant (A1-2 / 
 
   it('deleteITILField: campo inesistente → "Campo non trovato" senza DELETE', async () => {
     reset([{ records: [] }])
-    await expect(mutations.deleteITILField(null, { typeId: 'it-1', fieldId: 'f-ghost' }, admin)).rejects.toThrow('Campo non trovato')
+    await expect(mutations.deleteITILField(null, { typeId: 'it-1', fieldId: 'f-ghost' }, admin)).rejects.toThrow('Field not found')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 

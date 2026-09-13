@@ -292,7 +292,7 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
       // limite. Piano senza script → l'azione non gira e l'errore lo dice
       // (l'esecuzione dell'automazione fallisce e resta visibile), invece di
       // essere saltata in silenzio.
-      await assertScriptingEnabled(ctx.tenantId, `azione execute_script di "${ctx.sourceName}"`)
+      await assertScriptingEnabled(ctx.tenantId, `execute_script action of "${ctx.sourceName}"`, 'errors.scripting.what.action', { source: ctx.sourceName })
       const { runScript } = await import('@opengraphity/scripting')
       const result = await runScript(
         { id: 'inline', tenant_id: ctx.tenantId, name: ctx.sourceName, trigger: 'automation' as never, code, enabled: true, created_at: now, updated_at: now },

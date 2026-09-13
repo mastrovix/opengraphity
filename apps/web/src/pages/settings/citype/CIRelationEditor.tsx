@@ -43,45 +43,45 @@ export function CIRelationEditor({ open, onClose, onSave, allTypes }: RelationMo
   const set = (k: keyof RelationForm, v: unknown) => setForm(p => ({ ...p, [k]: v }))
 
   return (
-    <Modal open={open} onClose={onClose} title="Aggiungi relazione CI" width={500}
+    <Modal open={open} onClose={onClose} title={t('citypeDesigner.relation.addTitle')} width={500}
       footer={
         <>
-          <button type="button" style={btnSecondary} onClick={onClose}>Annulla</button>
+          <button type="button" style={btnSecondary} onClick={onClose}>{t('common.cancel')}</button>
           <button type="button" style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} disabled={saving}
             onClick={async () => {
               setSaving(true)
               try { await onSave(form) } finally { setSaving(false) }
             }}>
-            {saving ? 'Salvataggio…' : 'Salva'}
+            {saving ? t('common.saving') : t('common.save')}
           </button>
         </>
       }>
       <div className="og-pair">
-        <Field label="name (slug) *">
+        <Field label={t('citypeDesigner.field.slugName')}>
           <Input style={inputS} value={form.name}
             onChange={e => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
         </Field>
         <Field label={`${t('common.label')} *`}>
           <Input style={inputS} value={form.label} onChange={e => set('label', e.target.value)} />
         </Field>
-        <Field label="Tipo relazione Neo4j *">
+        <Field label={t('citypeDesigner.relation.neo4jType')}>
           <Input style={inputS} value={form.relationshipType}
             onChange={e => set('relationshipType', e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_'))}
             placeholder="DEPENDS_ON" />
         </Field>
-        <Field label="Tipo target">
+        <Field label={t('citypeDesigner.relation.targetType')}>
           <Select style={selectS} value={form.targetType} onChange={e => set('targetType', e.target.value)}>
             <option value="any">qualsiasi</option>
             {allTypes.map(t => <option key={t.name} value={t.name}>{t.label}</option>)}
           </Select>
         </Field>
-        <Field label="Cardinalità">
+        <Field label={t('citypeDesigner.relation.cardinality')}>
           <Select style={selectS} value={form.cardinality} onChange={e => set('cardinality', e.target.value)}>
             <option value="one">one</option>
             <option value="many">many</option>
           </Select>
         </Field>
-        <Field label="Direzione">
+        <Field label={t('citypeDesigner.relation.direction')}>
           <Select style={selectS} value={form.direction} onChange={e => set('direction', e.target.value)}>
             <option value="outgoing">outgoing</option>
             <option value="incoming">incoming</option>
@@ -112,14 +112,14 @@ export function CIRelationTable({ relations, onRemove, readOnly = false }: Relat
     if (await confirm({ title: t('ciTypeDesigner.deleteRelationTitle', { name: r.name }), danger: true })) onRemove(r)
   }
   if (relations.length === 0) {
-    return <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Nessuna relazione CI configurata.</p>
+    return <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('citypeDesigner.relation.empty')}</p>
   }
   return (
     <div className="og-scroll-x">
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
       <thead>
         <tr style={{ borderBottom: '2px solid var(--border)' }}>
-          {['name', 'label', 'tipo Neo4j', 'target', 'card.', 'dir.', ''].map(h => (
+          {['name', 'label', t('citypeDesigner.relation.neo4jTypeShort'), 'target', 'card.', 'dir.', ''].map(h => (
             <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
           ))}
         </tr>
@@ -138,7 +138,7 @@ export function CIRelationTable({ relations, onRemove, readOnly = false }: Relat
                 ? <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('ciTypeDesigner.shippedRelationLabel')}</span>
                 : (
                   <button type="button" style={{ ...btnDanger, padding: '3px 10px' }}
-                    aria-label={`Elimina relazione ${r.name}`}
+                    aria-label={t('citypeDesigner.relation.deleteAria', { name: r.name })}
                     onClick={() => void handleRemove(r)}>
                     <X size={12} aria-hidden="true" />
                   </button>

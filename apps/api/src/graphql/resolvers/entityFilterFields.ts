@@ -29,9 +29,9 @@ function classify(type: GraphQLOutputType): EntityFilterField | null {
 }
 
 export function entityFilterFieldsFromSchema(schema: GraphQLResolveInfo['schema'], typeName: string): EntityFilterField[] {
-  if (!/^[A-Z][A-Za-z0-9]*$/.test(typeName)) throw new ValidationError(`typeName non valido: "${typeName}"`)
+  if (!/^[A-Z][A-Za-z0-9]*$/.test(typeName)) throw new ValidationError(`invalid typeName: "${typeName}"`, { key: 'errors.filter.invalidTypeName', params: { typeName } })
   const type = schema.getType(typeName)
-  if (!type || !(type instanceof GraphQLObjectType)) throw new ValidationError(`Tipo "${typeName}" inesistente o non filtrabile`)
+  if (!type || !(type instanceof GraphQLObjectType)) throw new ValidationError(`Type "${typeName}" does not exist, or cannot be filtered`, { key: 'errors.filter.typeNotFilterable', params: { typeName } })
   const out: EntityFilterField[] = []
   for (const [name, field] of Object.entries(type.getFields())) {
     const c = classify(field.type)

@@ -79,7 +79,7 @@ export async function deleteChange(_: unknown, args: { id: string }, ctx: GraphQ
       FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END | CREATE (e)-[:BY]->(u))
       RETURN c.id AS id
     `, { id: args.id, tenantId: ctx.tenantId, now, userId: ctx.userId ?? null }))
-    if (r.records.length === 0) throw new GraphQLError('Change non trovata o già eliminata', { extensions: { code: 'NOT_FOUND' } })
+    if (r.records.length === 0) throw new GraphQLError('Change not found, or already deleted', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.change.notFoundOrDeleted' } } })
   }, true)
   // I timer di breach OLA/UC schedulati alla creazione non devono più
   // notificare per una change eliminata. Cleanup post-commit: un errore qui
@@ -138,7 +138,7 @@ export async function deleteChange(_: unknown, args: { id: string }, ctx: GraphQ
 /** Collega/scollega un ticket (incident|problem) alla change (RESOLVED_BY). */
 export async function linkResolvedTicket(_: unknown, args: { changeId: string; entityType: string; entityId: string }, ctx: GraphQLContext) {
   const label = args.entityType === 'incident' ? 'Incident' : args.entityType === 'problem' ? 'Problem' : null
-  if (!label) throw new GraphQLError(`Tipo ticket non valido: ${args.entityType}`, { extensions: { code: 'BAD_USER_INPUT' } })
+  if (!label) throw new GraphQLError(`Invalid ticket type: ${args.entityType}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.change.badTicketType', params: { entityType: args.entityType } } } })
   await withSession(async (session) => {
     const r = await session.executeWrite((tx) => tx.run(`
       MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})
@@ -148,22 +148,22 @@ export async function linkResolvedTicket(_: unknown, args: { changeId: string; e
       SET e.updated_at = $now
       RETURN c.id AS id
     `, { changeId: args.changeId, entityId: args.entityId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
-    if (r.records.length === 0) throw new GraphQLError('Change o ticket non trovato', { extensions: { code: 'NOT_FOUND' } })
+    if (r.records.length === 0) throw new GraphQLError('Change or ticket not found', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.change.changeOrTicketNotFound' } } })
   }, true)
   return getChange(null, { id: args.changeId }, ctx)
 }
 
 export async function unlinkResolvedTicket(_: unknown, args: { changeId: string; entityType: string; entityId: string }, ctx: GraphQLContext) {
   const label = args.entityType === 'incident' ? 'Incident' : args.entityType === 'problem' ? 'Problem' : null
-  if (!label) throw new GraphQLError(`Tipo ticket non valido: ${args.entityType}`, { extensions: { code: 'BAD_USER_INPUT' } })
+  if (!label) throw new GraphQLError(`Invalid ticket type: ${args.entityType}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.change.badTicketType', params: { entityType: args.entityType } } } })
   await withSession(async (session) => {
     const r = await session.executeWrite((tx) => tx.run(`
       MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})-[r:RESOLVED_BY]->(c:Change {id: $changeId, tenant_id: $tenantId})
       RETURN coalesce(r.auto, false) AS auto
     `, { changeId: args.changeId, entityId: args.entityId, tenantId: ctx.tenantId }))
-    if (r.records.length === 0) throw new GraphQLError('Change o ticket non trovato', { extensions: { code: 'NOT_FOUND' } })
+    if (r.records.length === 0) throw new GraphQLError('Change or ticket not found', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.change.changeOrTicketNotFound' } } })
     if (r.records[0].get('auto') === true) {
-      throw new GraphQLError('Questo collegamento è stato creato automaticamente e non può essere rimosso. Elimina la change per rimuoverlo.', { extensions: { code: 'FORBIDDEN' } })
+      throw new GraphQLError('This link was created automatically and cannot be removed. Delete the change to remove it.', { extensions: { code: 'FORBIDDEN', i18n: { key: 'errors.change.automaticLink' } } })
     }
     await session.executeWrite((tx) => tx.run(`
       MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})-[r:RESOLVED_BY]->(c:Change {id: $changeId, tenant_id: $tenantId})
@@ -199,7 +199,7 @@ async function linkChangeToRequestingIncident(
       `, { incidentId, changeId, tenantId: ctx.tenantId, now: new Date().toISOString() }),
     )
     if (linked.records.length === 0) {
-      throw new GraphQLError('Incident non trovato per il collegamento della change', { extensions: { code: 'NOT_FOUND' } })
+      throw new GraphQLError('Incident not found for the change link', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.change.linkIncidentNotFound' } } })
     }
   }, true)
 }
@@ -225,7 +225,7 @@ async function linkChangeToRequestingProblem(
       `, { problemId, changeId, tenantId: ctx.tenantId, now }),
     )
     if (linked.records.length === 0) {
-      throw new GraphQLError('Problem non trovato per il collegamento della change', { extensions: { code: 'NOT_FOUND' } })
+      throw new GraphQLError('Problem not found for the change link', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.change.linkProblemNotFound' } } })
     }
     // 2. Avanza il problem al passo di SCOPO `change_requested` (ondata 4 ·
     // A4-2: lo scopo, non il nome), se la transizione è disponibile dallo step
@@ -308,7 +308,7 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->(ci {id: $ciId})
       RETURN properties(ci) AS ciProps, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS ciLabel
     `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId })
-    if (!row) throw new GraphQLError('CI non trovato dopo aggiunta', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
+    if (!row) throw new GraphQLError('CI not found after being added', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
     row.ciProps['type'] = row.ciProps['type'] as string | undefined ?? row.ciLabel.toLowerCase()
     const { mapCI } = await import('../ci-utils.js')
     return {

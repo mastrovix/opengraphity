@@ -125,7 +125,7 @@ describe('addWorkflowStep (B2-1 / B-3): il passo nasce con il dato completo', ()
   it('0 righe (definizione di un altro tenant o nome già usato) → errore, niente cache invalidata', async () => {
     results = [{ records: [] }]
     await expect(M.addWorkflowStep(null, { definitionId: 'def-1', name: 'assigned', label: 'X', type: 'standard' }, ctx))
-      .rejects.toThrow(/nome già usato/)
+      .rejects.toThrow(/the name is already used/)
     expect(invalidateWorkflowCache).not.toHaveBeenCalled()
   })
 
@@ -151,7 +151,7 @@ describe('removeWorkflowStep (B2-2 / B-1): non si cancella un passo con dei tick
     const err = await M.removeWorkflowStep(null, { definitionId: 'def-1', stepName: 'assigned' }, ctx).then(() => null, (e: unknown) => e)
     expect(err).toBeInstanceOf(GraphQLError)
     expect((err as GraphQLError).extensions['code']).toBe('CONFLICT')
-    expect((err as GraphQLError).message).toContain('150 istanze')
+    expect((err as GraphQLError).message).toContain('150 workflow instances')
     expect((err as GraphQLError).message).toContain('active: 148')
     expect((err as GraphQLError).message).toContain('suspended: 2')
     expect(writtenCypher()).not.toContain('DETACH DELETE')
@@ -169,7 +169,7 @@ describe('removeWorkflowStep (B2-2 / B-1): non si cancella un passo con dei tick
   it('passo iniziale → rifiutato (il processo non potrebbe più partire)', async () => {
     results = [{ records: [stepRow({ isInitial: true })] }]
     await expect(M.removeWorkflowStep(null, { definitionId: 'def-1', stepName: 'new' }, ctx))
-      .rejects.toThrow(/step iniziale del processo/)
+      .rejects.toThrow(/initial step of the process/)
     expect(writtenCypher()).not.toContain('DETACH DELETE')
   })
 
@@ -183,7 +183,7 @@ describe('removeWorkflowStep (B2-2 / B-1): non si cancella un passo con dei tick
     for (const type of ['start', 'end']) {
       results = [{ records: [stepRow({ type, isInitial: false })] }]
       const err = await M.removeWorkflowStep(null, { definitionId: 'def-1', stepName: 'new' }, ctx).then(() => null, (e: unknown) => e)
-      expect((err as GraphQLError).message).toMatch(/i passi di apertura e di chiusura del processo non si eliminano/)
+      expect((err as GraphQLError).message).toMatch(/the opening and closing steps of the process cannot be deleted/)
       expect((err as GraphQLError).message).toContain(`"${type}"`)
       expect((err as GraphQLError).message).not.toMatch(/^Cannot remove step/)
       expect(writtenCypher()).not.toContain('DETACH DELETE')
@@ -193,7 +193,7 @@ describe('removeWorkflowStep (B2-2 / B-1): non si cancella un passo con dei tick
   it('passo inesistente → errore esplicito, non «Cannot remove step»', async () => {
     results = [{ records: [] }]
     await expect(M.removeWorkflowStep(null, { definitionId: 'def-1', stepName: 'fantasma' }, ctx))
-      .rejects.toThrow(/non trovato in questa definizione/)
+      .rejects.toThrow(/not found in this definition/)
   })
 
   // ── Ondata 8 · B-21: le regole di obbligatorietà del passo non restano orfane
@@ -265,7 +265,7 @@ describe('saveWorkflowChanges (B2-3 / B-8): lo step iniziale non può essere ter
       { records: [makeRecord({ terminal: true })] },       // il passo è terminale
     ]
     await expect(M.saveWorkflowChanges(null, { ...base, steps: [step({ isInitial: true })] }, ctx))
-      .rejects.toThrow(/è terminale: non può essere anche lo step iniziale/)
+      .rejects.toThrow(/is terminal: it cannot also be the initial step/)
     expect(writtenCypher()).not.toContain('SET s.label')
   })
 
@@ -275,7 +275,7 @@ describe('saveWorkflowChanges (B2-3 / B-8): lo step iniziale non può essere ter
       { records: [makeRecord({ terminal: false })] },
     ]
     await expect(M.saveWorkflowChanges(null, { ...base, steps: [step({ isInitial: true, isTerminal: true })] }, ctx))
-      .rejects.toThrow(/non può essere anche lo step iniziale/)
+      .rejects.toThrow(/it cannot also be the initial step/)
   })
 
   it('due passi marcati iniziali → rifiutato dicendo quali', async () => {
@@ -283,7 +283,7 @@ describe('saveWorkflowChanges (B2-3 / B-8): lo step iniziale non può essere ter
     await expect(M.saveWorkflowChanges(null, {
       ...base,
       steps: [step({ stepName: 'a', isInitial: true }), step({ stepName: 'b', isInitial: true })],
-    }, ctx)).rejects.toThrow(/Un solo step può essere iniziale.*a, b/s)
+    }, ctx)).rejects.toThrow(/Only one step can be initial.*a, b/s)
   })
 
   it('iniziale su un passo non terminale → passa, marchia la definizione, invalida la cache', async () => {
@@ -383,13 +383,13 @@ describe('la categoria del passo è un vocabolario chiuso (B·N-3)', () => {
 
   it('la parola italiana che l\'interfaccia invitava a scrivere ora è rifiutata, dicendo le ammesse', async () => {
     await expect(M.saveWorkflowChanges(null, { ...base, steps: [step({ category: 'risolto' })] }, ctx))
-      .rejects.toThrow(/categoria "risolto" fuori vocabolario.*active, waiting, escalated, resolved, closed, draft, published, failed/s)
+      .rejects.toThrow(/category "risolto" out of vocabulary.*active, waiting, escalated, resolved, closed, draft, published, failed/s)
     expect(calls).toHaveLength(0)   // rifiutata PRIMA di aprire la transazione
   })
 
   it('il rifiuto spiega che il nome per gli utenti è l\'etichetta, non la categoria', async () => {
     await expect(M.saveWorkflowChanges(null, { ...base, steps: [step({ category: 'chiuso' })] }, ctx))
-      .rejects.toThrow(/etichetta del passo, non questo/)
+      .rejects.toThrow(/the step label, not this one/)
   })
 
   it('una categoria del vocabolario passa e viene scritta', async () => {
@@ -424,13 +424,13 @@ describe('innesco e condizione delle transizioni sono vocabolari chiusi (B·M-4)
 
   it('il refuso della revisione è rifiutato, e il messaggio dice perché è grave', async () => {
     await expect(M.saveWorkflowChanges(null, { ...base, transitions: [tr({ condition: 'all_assessment_complete' })] }, ctx))
-      .rejects.toThrow(/condizione "all_assessment_complete" sconosciuta.*blocca l'arco/s)
+      .rejects.toThrow(/condition "all_assessment_complete" unknown.*blocks the edge/s)
     expect(calls).toHaveLength(0)
   })
 
   it('un innesco inventato è rifiutato (l\'arco non verrebbe percorso da nessuno)', async () => {
     await expect(M.saveWorkflowChanges(null, { ...base, transitions: [tr({ trigger: 'quando_mi_pare' })] }, ctx))
-      .rejects.toThrow(/innesco "quando_mi_pare" fuori vocabolario.*manual, automatic, timer, sla_breach/s)
+      .rejects.toThrow(/trigger "quando_mi_pare" out of vocabulary.*manual, automatic, timer, sla_breach/s)
   })
 
   it('una condizione del registro passa; il vuoto la TOGLIE (è il modo di sbloccare un arco)', async () => {
@@ -447,7 +447,7 @@ describe('innesco e condizione delle transizioni sono vocabolari chiusi (B·M-4)
   it('addWorkflowTransition valida l\'innesco alla creazione dell\'arco', async () => {
     await expect(M.addWorkflowTransition(null, {
       definitionId: 'def-1', fromStepName: 'a', toStepName: 'b', trigger: 'timer_scaduto',
-    }, ctx)).rejects.toThrow(/innesco "timer_scaduto" fuori vocabolario/)
+    }, ctx)).rejects.toThrow(/trigger "timer_scaduto" out of vocabulary/)
   })
 })
 
@@ -500,7 +500,7 @@ describe('gli scopi che il workflow delle change non puo perdere (B·N-1 + terza
     expect(writtenCypher(), 'la guardia dell\'approvazione non ha nemmeno girato').toContain("WHERE wd.entity_type = 'change'")
     if (err) {
       expect(err.message).not.toMatch(/scopo «Approvazione»/)
-      expect(err.message).not.toMatch(/finestra di rilascio/)
+      expect(err.message).not.toMatch(/release-window purpose/)
     }
   }
 
@@ -510,7 +510,7 @@ describe('gli scopi che il workflow delle change non puo perdere (B·N-1 + terza
     results = coda({ approvalSteps: 0 })
     const err = await esegui([step()])
     expect(err).not.toBeNull()
-    expect(err!.message).toMatch(/nessun passo avrebbe più lo scopo «Approvazione»/)
+    expect(err!.message).toMatch(/no step would have the «Approval» purpose/)
     expect(err!.message).toMatch(/"normal", "emergency"/)
   })
 
@@ -526,7 +526,7 @@ describe('gli scopi che il workflow delle change non puo perdere (B·N-1 + terza
     results = coda({ approvalSteps: 0 })
     const err = await esegui([step({ purpose: 'review' })])
     expect(err).not.toBeNull()
-    expect(err!.message).toMatch(/nessun passo avrebbe più lo scopo «Approvazione»/)
+    expect(err!.message).toMatch(/no step would have the «Approval» purpose/)
   })
 
   it('se un altro passo conserva lo scopo, si puo togliere — e la mutation RIESCE', async () => {
@@ -563,10 +563,10 @@ describe('gli scopi che il workflow delle change non puo perdere (B·N-1 + terza
     results = coda({ approvalSteps: 1, windowBefore: 1, windowAfter: 0 })
     const err = await esegui([step({ stepName: 'scheduled', purpose: '' })])
     expect(err).not.toBeNull()
-    expect(err!.message).toMatch(/finestra di rilascio/)
+    expect(err!.message).toMatch(/release-window purpose/)
     expect(err!.message).toMatch(/scheduled, implementation/)
     // Il messaggio dice cosa fare, non solo cosa e vietato.
-    expect(err!.message).toMatch(/Assegna lo scopo/)
+    expect(err!.message).toMatch(/Give the «Scheduled» or «Implementation» purpose/)
   })
 
   it('ma un workflow che non ne aveva nessuno non viene bloccato', async () => {
@@ -596,14 +596,14 @@ describe('il nome del passo ha una forma (B·M-1)', () => {
   it('un nome con spazi o maiuscole è rifiutato, dicendo che l\'etichetta è libera', async () => {
     await expect(M.addWorkflowStep(null, {
       definitionId: 'def-1', name: 'CAB Settimanale', label: 'CAB settimanale', type: 'standard',
-    }, ctx)).rejects.toThrow(/non valido: minuscolo, cifre e trattini bassi.*il nome che vedono gli utenti è l'etichetta/s)
+    }, ctx)).rejects.toThrow(/lowercase, digits and underscores.*the name people see is the label/s)
     expect(calls).toHaveLength(0)
   })
 
   it('un nome che inizia per cifra è rifiutato', async () => {
     await expect(M.addWorkflowStep(null, {
       definitionId: 'def-1', name: '2_livello', label: 'Secondo livello', type: 'standard',
-    }, ctx)).rejects.toThrow(/deve iniziare con una lettera/)
+    }, ctx)).rejects.toThrow(/must start with a letter/)
   })
 
   it('uno slug valido passa, e il passo nasce «in lavorazione» e senza scopo', async () => {

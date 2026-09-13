@@ -70,7 +70,7 @@ export function ITILTypeCIRelations({
               <label style={labelS}>{t('itilDesigner.ciRelations.description')}</label>
               <Input style={inputS} value={relForm.description}
                 onChange={(e) => setRelForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="Es. Server impattati dall'incident" />
+                placeholder={t('itilDesigner.ciRelations.descriptionPlaceholder')} />
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

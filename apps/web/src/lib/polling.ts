@@ -21,7 +21,7 @@ export function isDocumentHidden(): boolean {
 
 export function pausedWhenHidden(pollInterval: number): PausedPolling {
   if (!Number.isFinite(pollInterval) || pollInterval <= 0) {
-    throw new Error(`pausedWhenHidden: pollInterval non valido (${pollInterval})`)
+    throw new Error(`pausedWhenHidden: invalid pollInterval (${pollInterval})`)
   }
   return { pollInterval, skipPollAttempt: isDocumentHidden }
 }

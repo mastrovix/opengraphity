@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { memo, useState } from 'react'
 import {
   ReactFlow,
@@ -307,17 +308,18 @@ export function WorkflowCanvas({
   def,
   children,
 }: WorkflowCanvasProps) {
+  const { t } = useTranslation()
   const accentColor = ACCENT_COLOR
 
   return (
     <div style={{ flex: 1, position: 'relative', overflow: 'hidden', width: '100%', height: 'calc(100vh - 120px)' }}>
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
-          Caricamento workflow…
+          {t('pages.workflow.loading')}
         </div>
       ) : !def ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
-          Nessun workflow trovato per questo tenant.
+          {t('pages.workflow.noneForTenant')}
         </div>
       ) : (
         <ReactFlow
@@ -375,17 +377,17 @@ export function WorkflowCanvas({
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: colors.brand }} />
-            <span style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>Nodo / Step</span>
+            <span style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('workflow.legend.node')}</span>
           </div>
           {[
-            { color: colors.trigger.manual,    label: 'Manuale' },
-            { color: colors.trigger.automatic,  label: 'Automatico' },
-            { color: colors.trigger.slaBreach,  label: 'SLA Breach' },
-            { color: colors.trigger.timer,      label: 'Timer (auto-close)' },
-          ].map(({ color, label }) => (
-            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            { color: colors.trigger.manual,     labelKey: 'workflow.legend.manual' },
+            { color: colors.trigger.automatic,  labelKey: 'workflow.legend.automatic' },
+            { color: colors.trigger.slaBreach,  labelKey: 'workflow.legend.slaBreach' },
+            { color: colors.trigger.timer,      labelKey: 'workflow.legend.timer' },
+          ].map(({ color, labelKey }) => (
+            <div key={labelKey} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 20, height: 2, backgroundColor: color, borderRadius: 1 }} />
-              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{label}</span>
+              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{t(labelKey)}</span>
             </div>
           ))}
         </div>

@@ -5,6 +5,7 @@
  * dei tool è mostrata mentre avviene.
  */
 import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Sparkles, Send, Search, Trash2 } from 'lucide-react'
 import { apiUrl, authHeader } from '@/lib/apiBase'
 import { PageContainer } from '@/components/PageContainer'
@@ -16,23 +17,30 @@ interface ChatMessage {
   error?: boolean
 }
 
-const TOOL_LABEL: Record<string, string> = {
-  cerca_incident:     'Ricerca incident',
-  dettaglio_incident: 'Dettaglio incident',
-  lista_incident:     'Elenco incident',
-  cerca_ci:           'Ricerca CI',
-  analisi_impatto:    'Analisi impatto',
-  change_aperti:      'Change aperti',
-  cerca_kb:           'Ricerca KB',
+/**
+ * I nomi dei tool arrivano dal server come identificatori; l'etichetta a
+ * schermo e una CHIAVE, cosi il chip si legge nella lingua del cliente. Un
+ * tool che il client non conosce mostra il suo identificatore, invece di
+ * sparire.
+ */
+const TOOL_LABEL_KEY: Record<string, string> = {
+  cerca_incident:     'pages.assistant.tool.searchIncidents',
+  dettaglio_incident: 'pages.assistant.tool.incidentDetail',
+  lista_incident:     'pages.assistant.tool.listIncidents',
+  cerca_ci:           'pages.assistant.tool.searchCIs',
+  analisi_impatto:    'pages.assistant.tool.impactAnalysis',
+  change_aperti:      'pages.assistant.tool.openChanges',
+  cerca_kb:           'pages.assistant.tool.searchKB',
 }
 
-const SUGGESTIONS = [
-  'Quali change sono in corso e che CI toccano?',
-  'Se spengo SRV-009 cosa impatto?',
-  'Ci sono incident aperti simili tra loro?',
+const SUGGESTION_KEYS = [
+  'pages.assistant.suggestion.changesInFlight',
+  'pages.assistant.suggestion.shutdownImpact',
+  'pages.assistant.suggestion.similarOpenIncidents',
 ]
 
 export function AssistantPage() {
+  const { t } = useTranslation()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -90,7 +98,7 @@ export function AssistantPage() {
               setMessages(prev => [...prev, { role: 'assistant', content: data.text ?? acc }])
             } else if (event === 'error') {
               finished = true
-              setMessages(prev => [...prev, { role: 'assistant', content: `Errore: ${data.message ?? 'sconosciuto'}`, error: true }])
+              setMessages(prev => [...prev, { role: 'assistant', content: t('pages.assistant.error', { message: data.message ?? t('pages.assistant.unknownError') }), error: true }])
             }
           }
         }
@@ -108,11 +116,11 @@ export function AssistantPage() {
 
       // Stream chiuso senza done/error: esito NON affidabile — dillo.
       if (!finished) {
-        setMessages(prev => [...prev, { role: 'assistant', content: 'Errore: la risposta si è interrotta prima del completamento.', error: true }])
+        setMessages(prev => [...prev, { role: 'assistant', content: t('pages.assistant.streamTruncated'), error: true }])
       }
     } catch (err) {
       if (!(err instanceof DOMException && err.name === 'AbortError')) {
-        setMessages(prev => [...prev, { role: 'assistant', content: `Errore: ${err instanceof Error ? err.message : String(err)}`, error: true }])
+        setMessages(prev => [...prev, { role: 'assistant', content: t('pages.assistant.error', { message: err instanceof Error ? err.message : String(err) }), error: true }])
       }
     } finally {
       setStreaming(false)
@@ -126,7 +134,7 @@ export function AssistantPage() {
       <div style={{ maxWidth: 780, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 0 12px' }}>
           <h1 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
-            <Sparkles size={20} color="var(--color-brand)" /> Assistente AI
+            <Sparkles size={20} color="var(--color-brand)" /> {t('sidebar.assistant')}
           </h1>
           {messages.length > 0 && (
             <button type="button"
@@ -134,7 +142,7 @@ export function AssistantPage() {
               disabled={streaming}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
             >
-              <Trash2 size={13} /> Nuova conversazione
+              <Trash2 size={13} /> {t('pages.reportsAI.newConversation')}
             </button>
           )}
         </div>
@@ -145,17 +153,17 @@ export function AssistantPage() {
             <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--color-slate-light)' }}>
               <Sparkles size={28} color="var(--color-brand)" style={{ marginBottom: 10 }} />
               <p style={{ fontSize: 'var(--font-size-body)', margin: '0 0 16px' }}>
-                Fai una domanda sul tuo ambiente: incident, CI, impatti, change, knowledge base.<br />
-                L'assistente legge il grafo reale — non inventa.
+                {t('pages.assistant.intro')}<br />
+                {t('pages.assistant.introNote')}
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
-                {SUGGESTIONS.map(s => (
+                {SUGGESTION_KEYS.map(k => (
                   <button type="button"
-                    key={s}
-                    onClick={() => void send(s)}
+                    key={k}
+                    onClick={() => void send(t(k))}
                     style={{ padding: '8px 14px', borderRadius: 18, border: '1px solid var(--border)', background: colors.white, color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)', cursor: 'pointer' }}
                   >
-                    {s}
+                    {t(k)}
                   </button>
                 ))}
               </div>
@@ -186,9 +194,9 @@ export function AssistantPage() {
             <div style={{ alignSelf: 'flex-start', maxWidth: '85%', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {activeTools.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {activeTools.map((t, i) => (
+                  {activeTools.map((tool, i) => (
                     <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '3px 8px', borderRadius: 10, background: palette.info.light, border: `1px solid ${palette.info.border}`, color: 'var(--color-brand)' }}>
-                      <Search size={10} /> {TOOL_LABEL[t] ?? t}
+                      <Search size={10} /> {TOOL_LABEL_KEY[tool] ? t(TOOL_LABEL_KEY[tool]) : tool}
                     </span>
                   ))}
                 </div>
@@ -208,7 +216,7 @@ export function AssistantPage() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(input) } }}
-            placeholder="Chiedi qualcosa sul tuo ambiente…"
+            placeholder={t('pages.assistant.placeholder')}
             disabled={streaming}
             style={{ flex: 1, padding: '11px 16px', borderRadius: 10, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', outline: 'none', background: colors.white }}
           />
@@ -217,7 +225,7 @@ export function AssistantPage() {
             disabled={streaming || !input.trim()}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 18px', borderRadius: 10, border: 'none', background: streaming || !input.trim() ? palette.info.border : 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: streaming || !input.trim() ? 'not-allowed' : 'pointer' }}
           >
-            <Send size={14} /> Invia
+            <Send size={14} /> {t('pages.reportsAI.send')}
           </button>
         </div>
       </div>

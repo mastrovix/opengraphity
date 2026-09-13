@@ -156,19 +156,18 @@ export function CreateChangePage() {
           margin:        '0 0 4px',
           letterSpacing: '-0.02em',
         }}>
-          Nuovo Change
+          {t('pages.createChange.title')}
         </h1>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 24px' }}>
-          Apri un RFC per introdurre una modifica controllata ai sistemi
+          {t('pages.createChange.subtitle')}
         </p>
 
         {requestSource && (
           <div style={{ background: 'var(--color-brand-light)', border: '1px solid var(--color-brand)', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
-            RFC risolutiva per {requestSource.kind === 'problem' ? 'il problem' : "l'incident"} <strong>{requestSource.number}</strong> — <em>{requestSource.title}</em>.
-            {requestSource.kind === 'problem'
-              ? ' Alla creazione la change verrà collegata e il problem passerà a change requested.'
-              : " Alla creazione la change verrà collegata all'incident, che si risolverà automaticamente quando la change sarà completata."}
-            {' '}I CI impattati sono stati precaricati.
+            {t(requestSource.kind === 'problem' ? 'pages.createChange.rfcForProblem' : 'pages.createChange.rfcForIncident',
+               { number: requestSource.number, title: requestSource.title })}
+            {' '}{t(requestSource.kind === 'problem' ? 'pages.createChange.rfcProblemNote' : 'pages.createChange.rfcIncidentNote')}
+            {' '}{t('pages.createChange.affectedCIsPreloaded')}
           </div>
         )}
 
@@ -182,14 +181,14 @@ export function CreateChangePage() {
           {/* TITOLO */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.title} style={fieldLabel}>
-              Titolo <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
+              {t('common.title')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             <input
               id={ids.title}
               type="text"
               value={title}
               onChange={e => setTitle(e.target.value)}
-              placeholder="Es. Upgrade database produzione a PostgreSQL 16"
+              placeholder={t('pages.createChange.titlePlaceholder')}
               style={inputBase}
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
               onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
@@ -198,7 +197,7 @@ export function CreateChangePage() {
 
           {/* TIPO DI CHANGE */}
           <div style={{ marginBottom: 20 }}>
-            <div style={fieldLabel}>Tipo di change</div>
+            <div style={fieldLabel}>{t('pages.createChange.changeType')}</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {(['standard','normal','emergency'] as const).map(t => {
                 const sel = changeType === t
@@ -215,18 +214,18 @@ export function CreateChangePage() {
               })}
             </div>
             <p style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginTop: 6 }}>
-              Standard: nessuna approvazione. Normal/Emergency: approvazione richiesta (admin). Il rollback si valuta nell'assessment tecnico.
+              {t('pages.createChange.typesNote')}
             </p>
           </div>
 
           {/* WHY (Perché) */}
           <div style={{ marginBottom: 20 }}>
-            <label htmlFor={ids.why} style={fieldLabel}>Perché <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
+            <label htmlFor={ids.why} style={fieldLabel}>{t('pages.createChange.why')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></label>
             <textarea
               id={ids.why}
               value={why}
               onChange={e => setWhy(e.target.value)}
-              placeholder="Perché serve questo change? (motivazione, problema o obiettivo)"
+              placeholder={t('pages.createChange.whyPlaceholder')}
               rows={3}
               style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
@@ -241,7 +240,7 @@ export function CreateChangePage() {
               id={ids.what}
               value={what}
               onChange={e => setWhat(e.target.value)}
-              placeholder="Cosa verrà cambiato, nel dettaglio?"
+              placeholder={t('pages.createChange.whatPlaceholder')}
               rows={3}
               style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
@@ -251,14 +250,14 @@ export function CreateChangePage() {
 
           {/* CHANGE OWNER */}
           <div style={{ marginBottom: 20 }}>
-            <label htmlFor={ids.owner} style={fieldLabel}>Change Owner</label>
+            <label htmlFor={ids.owner} style={fieldLabel}>{t('pages.changeDetail.changeOwner')}</label>
             <select
               id={ids.owner}
               value={ownerId}
               onChange={e => setOwnerId(e.target.value)}
               style={inputBase}
             >
-              <option value="">— Nessuno —</option>
+              <option value="">{t('pages.createChange.nobody')}</option>
               {users.map(u => (
                 <option key={u.id} value={u.id}>{u.name}</option>
               ))}
@@ -268,7 +267,7 @@ export function CreateChangePage() {
           {/* CI AFFECTED */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.ciSearch} style={fieldLabel}>
-              CI Impattati <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
+              {t('attachments.affectedCIs')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             <div style={{ position: 'relative' }}>
               <span style={{
@@ -287,7 +286,7 @@ export function CreateChangePage() {
                 type="text"
                 value={ciSearch}
                 onChange={e => setCiSearch(e.target.value)}
-                placeholder="Cerca CI per nome…"
+                placeholder={t('pages.createChange.searchCI')}
                 style={{ ...inputBase, paddingLeft: 36 }}
                 onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
                 onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
@@ -395,7 +394,7 @@ export function CreateChangePage() {
               color:     'var(--color-slate-light)',
               margin:    '8px 0 0',
             }}>
-              Ogni CI deve avere Owner Group e Support Group configurati, altrimenti la creazione fallirà.
+              {t('pages.createChange.ciGroupsNote')}
             </p>
           </div>
 
@@ -436,7 +435,7 @@ export function CreateChangePage() {
                 padding:    0,
               }}
             >
-              Annulla
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -455,7 +454,7 @@ export function CreateChangePage() {
                 transition:   'opacity 150ms',
               }}
             >
-              {loading ? 'Creazione…' : 'Crea Change'}
+              {loading ? t('common.creating') : t('pages.createChange.submit')}
             </button>
           </div>
         </div>

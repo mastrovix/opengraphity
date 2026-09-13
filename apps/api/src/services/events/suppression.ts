@@ -119,13 +119,13 @@ export async function resolveChangeWindowSteps(tenantId: string, session?: Query
       if (implementation.length === 0) {
         workflowPurposeMissingTotal.inc({ rule: 'change_window' })
         throw new Error(
-          `Soppressione degli allarmi durante i rilasci: il workflow "change" del tenant ${tenantId} ha ` +
-          `${String(steps.length)} passi e nessuno dichiara lo scopo "${IMPLEMENTATION_PURPOSE}" ` +
-          `${planned.length > 0 ? `(lo scopo "${PLANNED_PURPOSES.join('/')}" c'è, su [${planned.join(', ')}]: è l'altra metà, e da sola non basta)` : `(nessuno dei due: [${CHANGE_WINDOW_PURPOSES.join(', ')}])`}. ` +
-          `È lo scopo della finestra APERTA, quella che silenzia gli allarmi mentre il rilascio è in corso: ` +
-          `senza, nessun allarme verrebbe silenziato durante un rilascio e nessun servizio entrerebbe in ` +
-          `manutenzione, in silenzio. Assegna lo scopo al passo di rilascio nel disegnatore dei workflow. ` +
-          `L'allarme resta acceso alla sorgente e questo lavoro è rigiocabile dalla pagina Code.`,
+          `Alarm suppression during releases: the "change" workflow of tenant ${tenantId} has `
+          + `${String(steps.length)} steps and none declares the "${IMPLEMENTATION_PURPOSE}" purpose `
+          + `${planned.length > 0 ? `(the "${PLANNED_PURPOSES.join('/')}" purpose is there, on [${planned.join(', ')}]: that is the other half, and alone it is not enough)` : `(neither of the two: [${CHANGE_WINDOW_PURPOSES.join(', ')}])`}. `
+          + `That is the purpose of the OPEN window, the one that silences alarms while the release is running: `
+          + `without it no alarm would be silenced during a release and no service would enter `
+          + `maintenance, silently. Give the purpose to the release step in the workflow designer. `
+          + `The alarm stays on at the source and this job can be replayed from the Queues page.`,
         )
       }
 

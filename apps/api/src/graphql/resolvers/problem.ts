@@ -294,7 +294,7 @@ async function unlinkIncidentFromProblem(
       SET p.updated_at = $now
       RETURN 1 AS n
     `, { problemId: args.problemId, incidentId: args.incidentId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
-    if (res.records.length === 0) throw new GraphQLError('Collegamento problem–incident non trovato', { extensions: { code: 'NOT_FOUND' } })
+    if (res.records.length === 0) throw new GraphQLError('Problem–incident link not found', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.link.problemIncidentNotFound' } } })
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props
     `, { id: args.problemId, tenantId: ctx.tenantId })
@@ -314,7 +314,7 @@ async function addCIToProblem(
     ? `ANY(label IN labels(ci) WHERE label IN $allowedLabels)`
     : await ciLabelPredicateForTenant('ci', ctx.tenantId)
   // Etichette dal metamodello, non da una PascalCase a mano (vedi incident.ts).
-  const allowedLabels = await ciLabelsForTypeNames(ctx.tenantId, allowedTypes, 'regole ITIL problem→CI')
+  const allowedLabels = await ciLabelsForTypeNames(ctx.tenantId, allowedTypes, 'ITIL problem→CI rules', 'problemRules')
 
   return withSession(async (session) => {
     // Righe contate (C-2): un CI che non esiste, o di un tipo che le regole
@@ -328,7 +328,7 @@ async function addCIToProblem(
       RETURN count(r) AS linked
     `, { problemId: args.problemId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString(), allowedLabels, relationType: args.relationType ?? null }))
     if (Number(res.records[0]?.get('linked') ?? 0) === 0) {
-      throw new ValidationError(`CI ${args.ciId} non collegato al problem: non esiste in questo cliente o il suo tipo non è ammesso dalle regole ITIL${allowedTypes.length > 0 ? ` (ammessi: ${allowedTypes.join(', ')})` : ''}`)
+      throw new ValidationError(`CI ${args.ciId} not linked to the problem: it does not exist in this tenant, or its type is not allowed by the ITIL rules${allowedTypes.length > 0 ? ` (allowed: ${allowedTypes.join(', ')})` : ''}`, { key: allowedTypes.length > 0 ? 'errors.ciLink.problemTyped' : 'errors.ciLink.problem', params: { ci: args.ciId, allowed: allowedTypes.join(', ') } })
     }
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props

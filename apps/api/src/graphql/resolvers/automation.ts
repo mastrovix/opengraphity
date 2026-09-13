@@ -119,10 +119,13 @@ export async function assertStepTargets(
   const reject = (what: string, value: string): never => {
     throw new ValidationError(
       names.length === 0
-        ? `${what} nomina il passo "${value}", ma il workflow "${entityType}" del tenant non ha nessun passo: ` +
-          `crea la definizione di workflow prima di configurare l'automazione.`
-        : `${what} nomina il passo "${value}", che non esiste nel workflow "${entityType}" di questo cliente. ` +
-          `Passi disponibili: ${nameList}.`,
+        ? `${what} names the step "${value}", but the "${entityType}" workflow of this tenant has no step at all: `
+          + `create the workflow definition before configuring the automation.`
+        : `${what} names the step "${value}", which does not exist in the "${entityType}" workflow of this tenant. `
+          + `Available steps: ${nameList}.`,
+      names.length === 0
+        ? { key: 'errors.automation.noStepsAtAll', params: { what, step: value, entityType } }
+        : { key: 'errors.automation.unknownStep', params: { what, step: value, entityType, available: nameList } },
     )
   }
 
@@ -131,7 +134,7 @@ export async function assertStepTargets(
       if (a?.type !== 'transition_workflow') return
       const toStep = a.params?.['to_step']
       if (toStep == null || String(toStep).trim() === '') {
-        throw new ValidationError(`Invalid actions: item ${i} (transition_workflow) richiede il passo di arrivo (to_step).`)
+        throw new ValidationError(`Invalid actions: item ${i} (transition_workflow) needs the destination step (to_step).`, { key: 'errors.automation.transitionNeedsStep', params: { item: i } })
       }
       if (!known.has(String(toStep))) reject(`Invalid actions: item ${i} (transition_workflow)`, String(toStep))
     })
@@ -155,7 +158,7 @@ async function entityTypeOf(session: Session, label: 'AutoTrigger' | 'BusinessRu
     RETURN n.entity_type AS entityType
   `, { id, tenantId })
   const found = rows[0]?.entityType
-  if (!found) throw new ValidationError(`${label} ${id} non trovato`)
+  if (!found) throw new ValidationError(`${label} ${id} not found`, { key: 'errors.notFound', params: { entity: label, id } })
   return found
 }
 

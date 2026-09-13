@@ -38,7 +38,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
 
   return (
     <div style={panelStyle}>
-      <PanelHeader title="Modifica Transizione" onClose={onClose} />
+      <PanelHeader title={t('pages.workflowStep.editTransition')} onClose={onClose} />
 
       <PanelField label={t('workflow.panel.from_to')}>
         <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
@@ -73,9 +73,9 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
       </PanelField>
 
       {requiresInput && (
-        <PanelField label={t('workflow.panel.campo_input')}>
+        <PanelField label={t('workflow.panel.inputField')}>
           <Select value={inputField} onChange={(e) => setInputField(e.target.value)} style={inputStyle}>
-            <option value="">— nessuno —</option>
+            <option value="">{t('pages.workflowStep.noneMasculine')}</option>
             <option value="rootCause">rootCause</option>
             <option value="notes">notes</option>
           </Select>
@@ -131,7 +131,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
         disabled={unchanged}
         style={saveButtonStyle(unchanged)}
       >
-        Salva
+        {t('common.save')}
       </button>
 
       {onDelete && (
@@ -148,7 +148,7 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
             color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600,
           }}
         >
-          Elimina transizione
+          {t('pages.workflow.deleteTransition')}
         </button>
       )}
     </div>

@@ -57,8 +57,8 @@ export function ReportDetailView(props: ReportDetailViewProps) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '12px 32px', borderBottom: '1px solid var(--color-border)', background: colors.white, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-          <button type="button" onClick={() => setView('detail')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; Indietro</button>
-          <span style={{ fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>Aggiungi sezione &mdash; {selected.name}</span>
+          <button type="button" onClick={() => setView('detail')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; {t('common.back')}</button>
+          <span style={{ fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>{t('pages.reports.addSectionTo', { report: selected.name })}</span>
         </div>
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <ReportSectionBuilder onSave={handleAddSection} onCancel={() => setView('detail')} />
@@ -72,8 +72,8 @@ export function ReportDetailView(props: ReportDetailViewProps) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '12px 32px', borderBottom: '1px solid var(--color-border)', background: colors.white, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-          <button type="button" onClick={cancelEditSection} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; Indietro</button>
-          <span style={{ fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>Modifica sezione: {editSection.title}</span>
+          <button type="button" onClick={cancelEditSection} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)' }}>&larr; {t('common.back')}</button>
+          <span style={{ fontWeight: 600, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>{t('pages.reports.editSectionOf', { section: editSection.title })}</span>
         </div>
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <ReportSectionBuilder
@@ -92,14 +92,14 @@ export function ReportDetailView(props: ReportDetailViewProps) {
       {/* Header */}
       <div style={{ padding: '12px 32px', borderBottom: '1px solid var(--color-border)', background: colors.white, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <button type="button" onClick={() => setView('list')} style={{ ...btnGhost, padding: '6px 12px', fontSize: 'var(--font-size-body)', display: 'flex', alignItems: 'center', gap: 6 }}>
-          &larr; Tutti i report
+          &larr; {t('pages.reports.allReports')}
         </button>
         <span style={{ display: 'flex', alignItems: 'center' }}>{getReportIcon(selected)}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: 'var(--font-size-section-title)', color: 'var(--color-slate-dark)' }}>{selected.name}</div>
           {selected.description && <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{selected.description}</div>}
         </div>
-        <button type="button" onClick={() => openSettings(selected)} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>&#x2699; Impostazioni</button>
+        <button type="button" onClick={() => openSettings(selected)} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>&#x2699; {t('citypeDesigner.tab.settings')}</button>
         <button
           type="button"
           onClick={handleExecuteSelected}
@@ -134,7 +134,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button type="button" onClick={() => startEditSection(sec)}
-                    style={{ ...btnGhost, padding: '4px 10px', fontSize: 'var(--font-size-body)' }}>&#x270F; Modifica sezione</button>
+                    style={{ ...btnGhost, padding: '4px 10px', fontSize: 'var(--font-size-body)' }}>&#x270F; {t('pages.reports.editSection')}</button>
                   <button type="button" onClick={() => handleRemoveSection(selected.id, sec.id)}
                     style={{ ...btnGhost, padding: '4px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>&#x1F5D1;</button>
                 </div>
@@ -144,7 +144,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
                   <ReportChartRenderer chartType={result.chartType} data={result.data} title={result.title} error={result.error} />
                 ) : (
                   <div style={{ textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-card-title)', padding: 24 }}>
-                    Clicca &quot;&#x25B6; Esegui&quot; per caricare i dati
+                    {t('pages.reports.clickRunToLoad')}
                   </div>
                 )}
               </div>

@@ -38,7 +38,7 @@ vi.mock('../../../lib/domainMatrix.js', async (importOriginal) => {
       const values = allowed[vocabulary] ?? []
       if (typeof value !== 'string' || !values.includes(value)) {
         const { ValidationError } = await import('../../../lib/errors.js')
-        throw new ValidationError(`${vocabulary}: "${String(value)}" non è nel vocabolario di questo cliente. Ammessi: ${values.join(', ')}.`)
+        throw new ValidationError(`${vocabulary}: "${String(value)}" is not in the dictionary of this tenant. Allowed: ${values.join(', ')}.`)
       }
       return value
     }),
@@ -195,7 +195,7 @@ describe('updateEventPolicy', () => {
     ['null esplicito', { openDelaySeconds: null }, /openDelaySeconds cannot be null/],
     ['severityMap non JSON', { severityMap: '{nope' }, /severityMap is not valid JSON/],
     ['severityMap senza una chiave', { severityMap: JSON.stringify({ critical: { impact: 'high', urgency: 'high' }, warning: { impact: 'medium', urgency: 'medium' } }) }, /severityMap\.info is missing/],
-    ['severityMap con impact fuori vocabolario', { severityMap: JSON.stringify({ ...DEFAULT_EVENT_POLICY.severity_map, info: { impact: 'none', urgency: 'low' } }) }, /severityMap\.info\.impact: impact: "none" non è nel vocabolario di questo cliente/],
+    ['severityMap con impact fuori vocabolario', { severityMap: JSON.stringify({ ...DEFAULT_EVENT_POLICY.severity_map, info: { impact: 'none', urgency: 'low' } }) }, /severityMap\.info\.impact: impact: "none" is not in the dictionary of this tenant/],
     ['severityMap con impact vuoto', { severityMap: JSON.stringify({ ...DEFAULT_EVENT_POLICY.severity_map, info: { impact: '', urgency: 'low' } }) }, /severityMap\.info\.impact must be a non-empty string/],
     ['severityMap con chiave estranea', { severityMap: JSON.stringify({ ...DEFAULT_EVENT_POLICY.severity_map, fatal: { impact: 'high', urgency: 'high' } }) }, /unknown keys: fatal/],
   ])('%s → BAD_USER_INPUT, nulla persistito', async (_n, input, pattern) => {
@@ -412,9 +412,9 @@ describe('createIncidentFromEvent', () => {
 
   it('evento orfano → BAD_USER_INPUT (dall\'apertura condivisa); già correlato → BAD_USER_INPUT con l\'incident, senza chiamare l\'apertura', async () => {
     const { ValidationError } = await import('../../../lib/errors.js')
-    vi.mocked(openIncidentFromEvent).mockRejectedValueOnce(new ValidationError('Evento orfano: collega prima un CI (linkEventToCI) — un incident deve avere almeno un CI impattato'))
+    vi.mocked(openIncidentFromEvent).mockRejectedValueOnce(new ValidationError('Orphan event: link a CI first (linkEventToCI) — un incident deve avere at least one impacted CI impattato'))
     onCypher([[/OPTIONAL MATCH/, eventRow()], [/RETURN i\.id/, null]])
-    await expectCode(eventResolvers.Mutation.createIncidentFromEvent(null, { eventId: 'ev-1' }, operator), 'BAD_USER_INPUT', /orfano.*linkEventToCI/)
+    await expectCode(eventResolvers.Mutation.createIncidentFromEvent(null, { eventId: 'ev-1' }, operator), 'BAD_USER_INPUT', /Orphan event.*linkEventToCI/)
     expect(openIncidentFromEvent).toHaveBeenCalledWith(expect.objectContaining({ ciId: null, manual: true }))
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
@@ -1117,7 +1117,7 @@ describe('ciHealthOverview', () => {
     // che elenca i tipi ammessi.
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     await expect(eventResolvers.Query.ciHealthOverview(null, { filter: { type: 'bilanciatore' } }, operator))
-      .rejects.toThrow(/Tipo di CI "bilanciatore" sconosciuto per questo cliente: ammessi database_instance, erp_system/)
+      .rejects.toThrow(/CI type "bilanciatore" is unknown for this tenant: allowed database_instance, erp_system/)
     expect(getSession).not.toHaveBeenCalled()
   })
 

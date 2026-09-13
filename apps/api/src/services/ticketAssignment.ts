@@ -14,8 +14,6 @@ import { runQueryOne } from '../graphql/resolvers/ci-utils.js'
 type Session = Parameters<typeof runQueryOne>[0]
 export type TicketLabel = 'Incident' | 'Problem'
 
-const ARTICLE: Record<TicketLabel, string> = { Incident: "all'incident", Problem: 'al problem' }
-
 /** Verifica che il ticket abbia un gruppo assegnatario e che l'utente ne faccia parte. */
 export async function assertUserInAssignedTeam(
   session: Session, label: TicketLabel, id: string, userId: string, tenantId: string,
@@ -27,8 +25,8 @@ export async function assertUserInAssignedTeam(
            exists((:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(team)) AS isMember
   `, { id, userId, tenantId })
   if (!check) throw new NotFoundError(label, id)
-  if (!check.teamId) throw new ValidationError(`Assegna prima un gruppo ${ARTICLE[label]}, poi un utente di quel gruppo`)
-  if (!check.isMember) throw new ValidationError(`L'utente selezionato non appartiene al gruppo assegnatario${check.teamName ? ` (${check.teamName})` : ''}`)
+  if (!check.teamId) throw new ValidationError(`${label}: assign a group first, then a user from that group`, { key: 'errors.assignment.groupFirst' })
+  if (!check.isMember) throw new ValidationError(`The selected user does not belong to the assigned group${check.teamName ? ` (${check.teamName})` : ''}`, { key: check.teamName ? 'errors.assignment.notMemberNamed' : 'errors.assignment.notMember', params: { team: check.teamName ?? '' } })
   return { teamId: check.teamId, teamName: check.teamName }
 }
 

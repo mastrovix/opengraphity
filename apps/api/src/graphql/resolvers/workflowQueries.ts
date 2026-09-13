@@ -51,8 +51,8 @@ export async function workflowStepCurrentInstances(
   const n = counts[step.name]
   if (n == null) {
     throw new GraphQLError(
-      `Step "${step.name}" non trovato nella definizione ${step.definitionId}: non si può dire quante istanze lo occupano`,
-      { extensions: { code: 'CONFLICT' } },
+      `Step "${step.name}" not found in definition ${step.definitionId}: the number of instances on it cannot be told`,
+      { extensions: { code: 'CONFLICT', i18n: { key: 'errors.workflow.stepNotInDefinition', params: { name: step.name, definition: step.definitionId } } } },
     )
   }
   return n

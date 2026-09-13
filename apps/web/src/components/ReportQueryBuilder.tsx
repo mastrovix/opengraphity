@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { AlertCircle, GitPullRequest, Users, User, Box } from 'lucide-react'
 import type { Node } from '@xyflow/react'
 import type { NavigableEntity } from './ReportFlowNodes'
@@ -29,6 +30,7 @@ const ITSM_TYPES = ['Incident', 'Change']
 const ORG_TYPES  = ['Team', 'User']
 
 export function ReportQueryBuilder({ entities, nodes, nodeDataMap, onSelectRoot }: Props) {
+  const { t } = useTranslation()
   const itsmEntities = entities.filter(e => ITSM_TYPES.includes(e.entityType))
   const orgEntities  = entities.filter(e => ORG_TYPES.includes(e.entityType))
   const ciEntities   = entities.filter(e => !ITSM_TYPES.includes(e.entityType) && !ORG_TYPES.includes(e.entityType))
@@ -72,10 +74,10 @@ export function ReportQueryBuilder({ entities, nodes, nodeDataMap, onSelectRoot 
   return (
     <div>
       <h3 style={{ margin: '0 0 6px', fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
-        Cosa vuoi analizzare?
+        {t('reportBuilder.whatToAnalyse')}
       </h3>
       <p style={{ margin: '0 0 24px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-        Scegli il tipo di dato su cui costruire la sezione del report.
+        {t('reportBuilder.whatToAnalyseHint')}
       </p>
       {renderGroup('ITSM', itsmEntities)}
       {renderGroup('Organizzazione', orgEntities)}

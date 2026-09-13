@@ -235,7 +235,7 @@ beforeEach(() => {
   vi.mocked(getStormState).mockResolvedValue(NO_STORM)
   vi.mocked(getWorkflowSteps).mockResolvedValue(INCIDENT_STEPS)
   // Ondata 4 · A4-1: i passi della finestra vengono dallo SCOPO. Il tenant di
-  // prova ha i nomi di fabbrica, con gli scopi assegnati dalla migrazione.
+  // prova ha i nomi factory, con gli scopi assegnati dalla migrazione.
   vi.mocked(getStepNamesByPurpose).mockImplementation(async (_s, _t, _e, purposes) =>
     (purposes as readonly string[]).includes('implementation') ? ['deployment'] : ['scheduled'])
   vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValue([] as never)
@@ -262,7 +262,7 @@ describe('helper puri', () => {
     const plan = JSON.stringify([{ title: 'go', validationWindow: { start: '2026-09-09T08:00:00Z', end: '2026-09-09T09:00:00Z' }, releaseWindow: { start: '2026-09-09T09:30:00Z', end: '2026-09-09T11:00:00Z' } }])
     const past = JSON.stringify([{ title: 'old', validationWindow: { start: '', end: '' }, releaseWindow: { start: '2026-09-08T09:00:00Z', end: '2026-09-08T11:00:00Z' } }])
 
-    // Nomi di fabbrica: la finestra aperta è `deployment`, la programmata `scheduled`.
+    // Nomi factory: la finestra aperta è `deployment`, la programmata `scheduled`.
     const factory = await resolveChangeWindowSteps('t1')
     expect(factory).toEqual({ implementation: ['deployment'], planned: ['scheduled'], all: ['deployment', 'scheduled'] })
     expect(changeIsInWindow('deployment', [], at, factory)).toBe(true)
@@ -280,7 +280,7 @@ describe('helper puri', () => {
     expect(changeIsInWindow('rilascio_notturno', [], at, cliente)).toBe(true)
     expect(changeIsInWindow('in_calendario', [plan], at, cliente)).toBe(true)
     expect(changeIsInWindow('in_calendario', [], at, cliente)).toBe(false)
-    // ...e i nomi di fabbrica non silenziano più niente, perché non sono i suoi passi
+    // ...e i nomi factory non silenziano più niente, perché non sono i suoi passi
     expect(changeIsInWindow('deployment', [], at, cliente)).toBe(false)
 
     // Il workflow delle change ESISTE ma nessun passo dichiara lo scopo: è
@@ -294,8 +294,8 @@ describe('helper puri', () => {
       })),
     )
     const err = await resolveChangeWindowSteps('t1').then(() => null, (e: unknown) => e)
-    expect(String((err as Error).message)).toMatch(/ha 5 passi e nessuno dichiara lo scopo "implementation"/)
-    expect(String((err as Error).message)).toMatch(/nessuno dei due: \[scheduled, implementation\]/)
+    expect(String((err as Error).message)).toMatch(/has 5 steps and none declares the "implementation" purpose/)
+    expect(String((err as Error).message)).toMatch(/neither of the two: \[scheduled, implementation\]/)
 
     // Revisione delle otto ondate · B·N-2: il controllo era sull'UNIONE dei due
     // scopi, quindi bastava assegnare `scheduled` e dimenticare
@@ -305,8 +305,8 @@ describe('helper puri', () => {
     vi.mocked(getStepNamesByPurpose).mockImplementation(async (_s, _t, _e, purposes) =>
       (purposes as readonly string[]).includes('implementation') ? [] : ['in_calendario'])
     const soloProgrammata = await resolveChangeWindowSteps('t1').then(() => null, (e: unknown) => e)
-    expect(String((soloProgrammata as Error).message)).toMatch(/nessuno dichiara lo scopo "implementation"/)
-    expect(String((soloProgrammata as Error).message)).toMatch(/l'altra metà, e da sola non basta/)
+    expect(String((soloProgrammata as Error).message)).toMatch(/none declares the "implementation" purpose/)
+    expect(String((soloProgrammata as Error).message)).toMatch(/that is the other half, and alone it is not enough/)
 
     // L'asimmetria, deliberata: `scheduled` mancante NON ferma l'elaborazione
     // degli allarmi — la finestra aperta continua a silenziare, e un workflow
@@ -318,8 +318,8 @@ describe('helper puri', () => {
     expect(soloAperta.implementation).toEqual(['rilascio'])
     expect(soloAperta.planned).toEqual([])
     expect(soloAperta.all).toEqual(['rilascio'])
-    expect(String((err as Error).message)).toMatch(/disegnatore dei workflow/)
-    expect(String((err as Error).message)).toMatch(/rigiocabile dalla pagina Code/)
+    expect(String((err as Error).message)).toMatch(/workflow designer/)
+    expect(String((err as Error).message)).toMatch(/replayed from the Queues page/)
     expect(metrics.workflowPurposeMissingTotal.inc).toHaveBeenCalledWith({ rule: 'change_window' })
 
     // Il tenant NON ha affatto un workflow delle change (è il caso di c-two):
@@ -790,7 +790,7 @@ describe('openIncidentFromEvent', () => {
     const err = await openIncidentFromEvent({ tenantId: 't1', props: props(), ciId: null, actorId: 'op-1', manual: true }).then(() => null, (e: unknown) => e as GraphQLError)
     expect(err).toBeInstanceOf(GraphQLError)
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
-    expect(err!.message).toMatch(/orfano.*linkEventToCI/)
+    expect(err!.message).toMatch(/Orphan event.*linkEventToCI/)
     expect(incidentService.createIncident).not.toHaveBeenCalled()
 
     onCypher([[Q.attach, { created: true }], [Q.setCorr, null]])

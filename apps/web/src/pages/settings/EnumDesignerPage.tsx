@@ -22,7 +22,19 @@ import { colors, palette } from '@/lib/tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface EnumValueLabel { value: string; label: string }
+interface LocalizedLabel { language: string; label: string }
+interface EnumValueLabel { value: string; label: string; labels: LocalizedLabel[] }
+
+/**
+ * Le lingue del prodotto. Il Dizionario mostra un campo per ciascuna: le
+ * etichette sono parole del CLIENTE, quindi le scrive lui — e chi usa l'altra
+ * lingua le legge in italiano se ne ha compilata una sola (il ripiego e'
+ * dichiarato, e la diagnostica lo segnala).
+ */
+const LINGUE = [
+  { codice: 'it', nome: 'Italiano' },
+  { codice: 'en', nome: 'English'  },
+] as const
 
 interface EnumType {
   id:        string
@@ -229,7 +241,7 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
    * ai valori — e trattarla come i valori avrebbe fatto perdere la modifica a
    * chi la scrive e poi cambia vocabolario.
    */
-  const [labelDrafts, setLabelDrafts] = useState<Record<string, string>>({})
+  const [labelDrafts, setLabelDrafts] = useState<Record<string, string>>({})   // chiave: `${valore}|${lingua}`
 
   const [updateEnum, { loading: saving }] = useMutation(UPDATE_ENUM_TYPE, {
     refetchQueries: [GET_ENUM_TYPES],
@@ -327,10 +339,12 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
     setDirty(false)
   }
 
-  /** L'etichetta come sta sul server (il server la completa sempre: vedi valueLabels). */
-  const etichettaSalvata = (v: string) => e.valueLabels.find((x) => x.value === v)?.label ?? v
+  /** L'etichetta SCRITTA per quel valore in quella lingua, o '' se non c'è. */
+  const etichettaSalvata = (v: string, lingua: string) =>
+    e.valueLabels.find((x) => x.value === v)?.labels.find((l) => l.language === lingua)?.label ?? ''
   /** Quella nel campo: la bozza se c'è, altrimenti quella salvata. */
-  const etichettaInCampo = (v: string) => labelDrafts[v] ?? etichettaSalvata(v)
+  const etichettaInCampo = (v: string, lingua: string) =>
+    labelDrafts[`${v}|${lingua}`] ?? etichettaSalvata(v, lingua)
 
   /**
    * Scrive l'etichetta di UN valore. Manda la lista intera perché la mutation
@@ -338,13 +352,20 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
    * Un'etichetta uguale al valore si manda vuota — «leggi il valore» è
    * l'assenza di etichetta, non un'etichetta che ripete il valore.
    */
-  const salvaEtichetta = (v: string) => {
-    const nuova = (labelDrafts[v] ?? '').trim()
-    if (nuova === '' || nuova === etichettaSalvata(v)) { setLabelDrafts((d) => { const n = { ...d }; delete n[v]; return n }); return }
-    const lista = values
-      .map((val) => ({ value: val, label: val === v ? nuova : etichettaSalvata(val) }))
-      .filter((x) => x.label !== x.value)
-    setLabelDrafts((d) => { const n = { ...d }; delete n[v]; return n })
+  const salvaEtichetta = (v: string, lingua: string) => {
+    const chiave = `${v}|${lingua}`
+    const nuova  = (labelDrafts[chiave] ?? '').trim()
+    const scarta = () => setLabelDrafts((d) => { const n = { ...d }; delete n[chiave]; return n })
+    if (nuova === etichettaSalvata(v, lingua)) { scarta(); return }
+    // La lista INTERA, tutti i valori per tutte le lingue: la mutation
+    // sostituisce in blocco, mandarne una sola cancellerebbe le altre.
+    const lista = values.flatMap((val) =>
+      LINGUE.flatMap(({ codice }) => {
+        const etichetta = val === v && codice === lingua ? nuova : etichettaSalvata(val, codice)
+        return etichetta.trim() === '' ? [] : [{ value: val, language: codice, label: etichetta }]
+      }),
+    )
+    scarta()
     void updateEnum({ variables: { id: e.id, input: { valueLabels: lista } } })
   }
 
@@ -488,21 +509,28 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
                     tabella. Sul vocabolario spedito è in sola lettura, come i
                     valori: per cambiarla si usa «Personalizza», che la copia.
                   */}
-                  {shipped ? (
-                    <span style={{ flex: 1, fontWeight: 400, color: 'var(--color-slate)' }}>{etichettaSalvata(v)}</span>
-                  ) : (
-                    <Input
-                      style={{ ...inputS, flex: '1 1 140px', minWidth: 120, height: 26, fontWeight: 400 }}
-                      value={etichettaInCampo(v)}
-                      onChange={(ev) => setLabelDrafts((d) => ({ ...d, [v]: ev.target.value }))}
-                      onBlur={() => salvaEtichetta(v)}
-                      onKeyDown={(ev) => {
-                        if (ev.key === 'Enter') { ev.preventDefault(); salvaEtichetta(v) }
-                        if (ev.key === 'Escape') setLabelDrafts((d) => { const n = { ...d }; delete n[v]; return n })
-                      }}
-                      aria-label={t('pages.dictionary.valueLabelFor', { value: v })}
-                    />
-                  )}
+                  {LINGUE.map(({ codice, nome }) => (
+                    shipped ? (
+                      <span key={codice} style={{ flex: '1 1 120px', fontWeight: 400, color: 'var(--color-slate)' }}>
+                        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginRight: 4 }}>{codice}</span>
+                        {etichettaSalvata(v, codice) || <span style={{ fontStyle: 'italic' }}>{t('pages.dictionary.valueLabelEmpty')}</span>}
+                      </span>
+                    ) : (
+                      <Input
+                        key={codice}
+                        style={{ ...inputS, flex: '1 1 120px', minWidth: 110, height: 26, fontWeight: 400 }}
+                        value={etichettaInCampo(v, codice)}
+                        placeholder={nome}
+                        onChange={(ev) => setLabelDrafts((d) => ({ ...d, [`${v}|${codice}`]: ev.target.value }))}
+                        onBlur={() => salvaEtichetta(v, codice)}
+                        onKeyDown={(ev) => {
+                          if (ev.key === 'Enter') { ev.preventDefault(); salvaEtichetta(v, codice) }
+                          if (ev.key === 'Escape') setLabelDrafts((d) => { const n = { ...d }; delete n[`${v}|${codice}`]; return n })
+                        }}
+                        aria-label={t('pages.dictionary.valueLabelForLanguage', { value: v, language: nome })}
+                      />
+                    )
+                  ))}
                   {e.defaultValue === v && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--font-size-table)', fontWeight: 600 }}>
                       <Star size={10} aria-hidden="true" /> {t('pages.dictionary.defaultBadge')}
@@ -644,7 +672,7 @@ export function EnumDesignerPage() {
         <PageTitle icon={<Tag size={22} color="var(--color-icon-accent)" />}>
           {t('pages.dictionary.title')}
         </PageTitle>
-        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
           {t('pages.dictionary.subtitle')}
         </p>
       </div>

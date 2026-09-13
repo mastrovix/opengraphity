@@ -291,9 +291,10 @@ async function myTicketStats(
     // vuota (B0-3), solo spostato di un numero.
     if (unclassified.length) {
       throw new ValidationError(
-        `Tenant "${ctx.tenantId}": ${unclassified.length} stati dei ticket non appartengono a nessuna classe del workflow incident attivo ` +
-        `[${unclassified.join(', ')}]: i contatori del portale non li conterebbero. ` +
-        `Sistema i passi (is_open / is_terminal / category) o riallinea gli Incident nel designer.`,
+        `Tenant "${ctx.tenantId}": ${unclassified.length} ticket states belong to no class of the active incident workflow `
+        + `[${unclassified.join(', ')}]: the portal counters would not count them. `
+        + `Fix the steps (is_open / is_terminal / category) or realign the incidents in the designer.`,
+        { key: 'errors.portal.unclassifiedStates', params: { count: unclassified.length, states: unclassified.join(', ') } },
       )
     }
 

@@ -75,11 +75,11 @@ export function reservedNamesFromSDL(...sdl: string[]): ReservedSchemaNames {
         const bucket = name === 'Query' ? out.queryFields : name === 'Mutation' ? out.mutationFields : null
         if (bucket) {
           for (const f of fieldNamesOf(def)) {
-            if (!bucket.has(f.toLowerCase())) bucket.set(f.toLowerCase(), `${f} è una ${name === 'Query' ? 'query' : 'mutation'} dello schema di base`)
+            if (!bucket.has(f.toLowerCase())) bucket.set(f.toLowerCase(), `${f} is a ${name === 'Query' ? 'query' : 'mutation'} of the base schema`)
           }
         }
       }
-      if (!out.types.has(key)) out.types.set(key, `${name} è un tipo dello schema di base`)
+      if (!out.types.has(key)) out.types.set(key, `${name} is a type of the base schema`)
     }
   }
   return out
@@ -103,12 +103,20 @@ export function resetBaseSchemaNamesCache(): void {
 // ── La porta ──────────────────────────────────────────────────────────────────
 
 /** Come si chiama, per il messaggio, il tipo CI che occupa già un nome. */
+/**
+ * DA DOVE viene il nome già preso. Resta in INGLESE di proposito: finisce
+ * dentro il parametro `owner` del rifiuto, e `owner` e un dato di provenienza
+ * dello schema (come `Server (a CI type that ships with the product)`), non
+ * una frase. Per tradurre anche questo servirebbe spezzare `owner` in nome +
+ * chiave dell'origine dentro `ReservedSchemaNames` — vedi la nota in
+ * `packages/schema-generator/src/nameValidation.ts`.
+ */
 function originOf(scope: string | null | undefined): string {
   switch (scope) {
-    case 'base':   return 'un tipo CI spedito col prodotto'
-    case 'itil':   return 'un tipo ITIL spedito col prodotto'
-    case 'tenant': return 'un tuo tipo CI'
-    default:       return 'un tipo CI già esistente'
+    case 'base':   return 'a CI type that ships with the product'
+    case 'itil':   return 'an ITIL type that ships with the product'
+    case 'tenant': return 'a CI type of yours'
+    default:       return 'a CI type that already exists'
   }
 }
 
@@ -125,7 +133,8 @@ export interface ExistingCIType {
  *
  * `MetamodelNameError` → `ValidationError`, così il rifiuto arriva al web come
  * `BAD_USER_INPUT` con il messaggio intero (è il messaggio che dice cosa
- * scrivere invece).
+ * scrivere invece) E con la chiave i18n: il `message` resta in inglese per i
+ * log, la frase che legge l'utente la compone il client nella sua lingua.
  */
 export function assertNewCITypeName(name: unknown, existing: readonly ExistingCIType[]): string {
   const reserved = mergeReservedNames(
@@ -149,6 +158,6 @@ export function assertNewCIFieldName(name: unknown, ctx: CIFieldNameContext = {}
 }
 
 function asValidationError(e: unknown): unknown {
-  if (e instanceof MetamodelNameError) return new ValidationError(e.message)
+  if (e instanceof MetamodelNameError) return new ValidationError(e.message, e.i18n)
   return e
 }

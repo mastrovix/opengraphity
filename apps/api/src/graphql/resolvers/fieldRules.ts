@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { GraphQLError } from 'graphql'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { withSession } from './ci-utils.js'
 import { audit } from '../../lib/audit.js'
@@ -81,10 +82,10 @@ async function createFieldVisibilityRule(
 ) {
   requireRole(ctx, 'admin')
   if (args.triggerField === args.targetField) {
-    throw new GraphQLError('triggerField e targetField non possono essere lo stesso campo')
+    throw new ValidationError('triggerField and targetField cannot be the same field', { key: 'errors.fieldRule.sameField' })
   }
   if (args.action !== 'show' && args.action !== 'hide') {
-    throw new GraphQLError('action deve essere "show" o "hide"')
+    throw new ValidationError('action must be "show" or "hide"', { key: 'errors.fieldRule.badAction' })
   }
 
   const id  = uuidv4()
@@ -149,7 +150,7 @@ async function updateFieldVisibilityRule(
       action:       args.action       ?? null,
       now,
     })
-    if (!rows[0]) throw new GraphQLError('Regola non trovata')
+    if (!rows[0]) throw new NotFoundError('Rule')
     void audit(ctx, 'fieldVisibilityRule.updated', 'FieldVisibilityRule', args.id)
     return mapVisibilityRule(rows[0].p)
   }, true)
@@ -166,7 +167,7 @@ async function deleteFieldVisibilityRule(
       MATCH (r:FieldVisibilityRule {id: $id, tenant_id: $tenantId})
       RETURN properties(r) AS p
     `, { id: args.id, tenantId: ctx.tenantId })
-    if (!row) throw new GraphQLError('Regola non trovata')
+    if (!row) throw new NotFoundError('Rule')
     await session.executeWrite((tx) =>
       tx.run(`MATCH (r:FieldVisibilityRule {id: $id, tenant_id: $tenantId}) DETACH DELETE r`,
         { id: args.id, tenantId: ctx.tenantId }),
@@ -197,12 +198,19 @@ async function setFieldRequirement(
       if (!steps.some((s) => s.name === args.workflowStep)) {
         const names = steps.map((s) => s.name)
         throw new GraphQLError(
-          `Lo step "${args.workflowStep}" non esiste nel workflow "${args.entityType}" di questo cliente, quindi la regola non ` +
-          `si applicherebbe a nessuna transizione. ` +
-          (names.length > 0
-            ? `Step disponibili: ${names.join(', ')}.`
-            : `Questo cliente non ha ancora una definizione di workflow per "${args.entityType}".`),
-          { extensions: { code: 'BAD_USER_INPUT', workflowStep: args.workflowStep, availableSteps: names } },
+          `Step "${args.workflowStep}" does not exist in the "${args.entityType}" workflow of this tenant, so the rule `
+          + `would apply to no transition. `
+          + (names.length > 0
+            ? `Available steps: ${names.join(', ')}.`
+            : `This tenant has no workflow definition for "${args.entityType}" yet.`),
+          {
+            extensions: {
+              code: 'BAD_USER_INPUT', workflowStep: args.workflowStep, availableSteps: names,
+              i18n: names.length > 0
+                ? { key: 'errors.fieldRule.stepUnknown', params: { step: args.workflowStep, entityType: args.entityType, available: names.join(', ') } }
+                : { key: 'errors.fieldRule.stepNoWorkflow', params: { step: args.workflowStep, entityType: args.entityType } },
+            },
+          },
         )
       }
     }
@@ -273,7 +281,7 @@ async function deleteFieldRequirement(
       MATCH (r:FieldRequirementRule {id: $id, tenant_id: $tenantId})
       RETURN properties(r) AS p
     `, { id: args.id, tenantId: ctx.tenantId })
-    if (!row) throw new GraphQLError('Regola non trovata')
+    if (!row) throw new NotFoundError('Rule')
     await session.executeWrite((tx) =>
       tx.run(`MATCH (r:FieldRequirementRule {id: $id, tenant_id: $tenantId}) DETACH DELETE r`,
         { id: args.id, tenantId: ctx.tenantId }),

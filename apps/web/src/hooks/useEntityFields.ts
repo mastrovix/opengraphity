@@ -9,6 +9,7 @@
  *    ActionParamsEditor, AutomationPreview).
  */
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@apollo/client/react'
 import type { FieldConfig } from '@/components/FilterBuilder'
 import { GET_ITIL_TYPES, GET_CI_TYPES, GET_ENTITY_FILTER_FIELDS } from '@/graphql/queries'
@@ -37,10 +38,16 @@ interface TypeDef {
   fields: { name: string; label: string; fieldType: string; enumValues?: string[] | null; enumTypeName?: string | null }[]
 }
 
-/** Campi "virtuali" di relazione, offerti oltre a quelli del tipo. */
-const VIRTUAL_RELATION_FIELDS: FieldMeta[] = [
-  { name: 'assigned_to',   label: 'Assegnato a',    fieldType: 'user', enumValues: [], enumTypeName: null },
-  { name: 'assigned_team', label: 'Team assegnato', fieldType: 'team', enumValues: [], enumTypeName: null },
+/**
+ * Campi "virtuali" di relazione, offerti oltre a quelli del tipo.
+ *
+ * Le etichette dei campi del METAMODELLO sono dato del cliente e arrivano
+ * cosi come sono; queste due sono nostre, quindi portano una CHIAVE e le
+ * traduce il client (`labelKey`, come nel resto del progetto).
+ */
+const VIRTUAL_RELATION_FIELDS: (Omit<FieldMeta, 'label'> & { labelKey: string })[] = [
+  { name: 'assigned_to',   labelKey: 'detail.assignedTo', fieldType: 'user', enumValues: [], enumTypeName: null },
+  { name: 'assigned_team', labelKey: 'detail.team',       fieldType: 'team', enumValues: [], enumTypeName: null },
 ]
 
 /**
@@ -49,6 +56,7 @@ const VIRTUAL_RELATION_FIELDS: FieldMeta[] = [
  * Tipo non trovato → lista vuota + `error` (non un silenzio).
  */
 export function useEntityFieldMetas(entityType: string, { withVirtual = true }: { withVirtual?: boolean } = {}): { fields: FieldMeta[]; error: string | null } {
+  const { t } = useTranslation()
   const isITIL = isITILEntity(entityType)
   const { data: itilData, error: itilErr } = useQuery(GET_ITIL_TYPES, { skip: !isITIL || !entityType, fetchPolicy: METAMODEL_FETCH_POLICY })
   const { data: ciData,   error: ciErr   } = useQuery(GET_CI_TYPES,   { skip: isITIL  || !entityType, fetchPolicy: METAMODEL_FETCH_POLICY })
@@ -62,18 +70,18 @@ export function useEntityFieldMetas(entityType: string, { withVirtual = true }: 
       : (ciData   as { ciTypes?:   TypeDef[] } | undefined)?.ciTypes
     if (!types) return { fields: [], error: null }   // in caricamento
     const typeDef = types.find(t => t.name === entityType)
-    if (!typeDef) return { fields: [], error: `tipo "${entityType}" non presente nel metamodello` }
+    if (!typeDef) return { fields: [], error: `entity type "${entityType}" is not in the metamodel` }
     const fields: FieldMeta[] = typeDef.fields.map(f => ({
       name: f.name, label: f.label || f.name, fieldType: f.fieldType, enumValues: f.enumValues ?? [],
       enumTypeName: f.enumTypeName ?? null,
     }))
     if (withVirtual) {
-      for (const v of VIRTUAL_RELATION_FIELDS) {
-        if (!fields.find(f => f.name === v.name)) fields.push(v)
+      for (const { labelKey, ...v } of VIRTUAL_RELATION_FIELDS) {
+        if (!fields.find(f => f.name === v.name)) fields.push({ ...v, label: t(labelKey) })
       }
     }
     return { fields, error: null }
-  }, [isITIL, entityType, itilData, ciData, itilErr, ciErr, withVirtual])
+  }, [isITIL, entityType, itilData, ciData, itilErr, ciErr, withVirtual, t])
 }
 
 /** Stessi campi, indicizzati per nome (anteprime/lookup). */

@@ -103,9 +103,10 @@ async function loadThresholds(tenantId: string): Promise<readonly RiskBandThresh
       const factory = factoryThresholdsFor(bands)
       if (!factory) {
         throw new ValidationError(
-          `Le fasce di rischio di questo cliente non sono dichiarate e il vocabolario "risk_band" ha ` +
-          `${String(bands.length)} valori (${bands.join(', ')}), non tre: non c'è una divisione del punteggio ` +
-          `da usare di fabbrica. Dichiara le soglie in Impostazioni → Matrici di dominio.`,
+          `The risk bands of this tenant are not declared and the "risk_band" dictionary has `
+          + `${String(bands.length)} values (${bands.join(', ')}), not three: there is no factory split of the `
+          + `score to fall back on. Declare the thresholds in Settings → Domain matrices.`,
+          { key: 'errors.riskBand.notDeclared', params: { count: bands.length, bands: bands.join(', ') } },
         )
       }
       if (!notDeclared.has(tenantId)) {
@@ -143,8 +144,9 @@ function parseThresholds(raw: unknown, tenantId: string, bands: readonly string[
     if (upTo <= previous) throw new Error(`Tenant ${tenantId}: le soglie devono crescere (${band} = ${String(upTo)} dopo ${String(previous)})`)
     if (!bands.includes(band)) {
       throw new ValidationError(
-        `Le fasce di rischio di questo cliente citano "${band}", che non è (più) nel vocabolario "risk_band" ` +
-        `(${bands.join(', ')}): correggile in Impostazioni → Matrici di dominio.`,
+        `The risk bands of this tenant name "${band}", which is not (any more) in the "risk_band" dictionary `
+        + `(${bands.join(', ')}): fix them in Settings → Domain matrices.`,
+        { key: 'errors.riskBand.stale', params: { band, bands: bands.join(', ') } },
       )
     }
     previous = upTo
@@ -195,20 +197,21 @@ export async function riskBandOf(tenantId: string, aggregateRiskScore: number | 
 export async function setRiskBandThresholds(
   tenantId: string, entries: readonly RiskBandThreshold[],
 ): Promise<readonly RiskBandThreshold[]> {
-  if (entries.length === 0) throw new ValidationError('Serve almeno una fascia di rischio.')
+  if (entries.length === 0) throw new ValidationError('At least one risk band is required.', { key: 'errors.riskBand.atLeastOne' })
   const seen = new Set<string>()
   let previous = -1
   for (const e of entries) {
     await assertDomainValue(tenantId, 'risk_band', e.band)
-    if (seen.has(e.band)) throw new ValidationError(`La fascia "${e.band}" compare due volte.`)
+    if (seen.has(e.band)) throw new ValidationError(`Band "${e.band}" appears twice.`, { key: 'errors.riskBand.duplicate', params: { band: e.band } })
     seen.add(e.band)
     if (!Number.isInteger(e.upTo) || e.upTo < 0) {
-      throw new ValidationError(`La soglia di "${e.band}" deve essere un intero ≥ 0 (ricevuto ${String(e.upTo)}).`)
+      throw new ValidationError(`The threshold of "${e.band}" must be an integer >= 0 (got ${String(e.upTo)}).`, { key: 'errors.riskBand.threshold', params: { band: e.band, got: String(e.upTo) } })
     }
     if (e.upTo <= previous) {
       throw new ValidationError(
-        `Le soglie devono crescere: "${e.band}" arriva a ${String(e.upTo)}, che non è più della fascia precedente ` +
-        `(${String(previous)}). Le fasce si dichiarano dalla più bassa alla più alta.`,
+        `The thresholds must grow: "${e.band}" goes up to ${String(e.upTo)}, which is not more than the previous band `
+        + `(${String(previous)}). The bands are declared from the lowest to the highest.`,
+        { key: 'errors.riskBand.notGrowing', params: { band: e.band, upTo: e.upTo, previous } },
       )
     }
     previous = e.upTo
@@ -216,8 +219,9 @@ export async function setRiskBandThresholds(
   const last = entries[entries.length - 1]!
   if (last.upTo !== MAX_RISK_SCORE) {
     throw new ValidationError(
-      `L'ultima fascia ("${last.band}") deve arrivare a ${String(MAX_RISK_SCORE)}: altrimenti un punteggio più alto ` +
-      `resterebbe senza fascia, e la priorità della change non si potrebbe calcolare.`,
+      `The last band ("${last.band}") must reach ${String(MAX_RISK_SCORE)}: otherwise a higher score `
+      + `would be left without a band, and the priority of the change could not be computed.`,
+      { key: 'errors.riskBand.lastMustReachMax', params: { band: last.band, max: MAX_RISK_SCORE } },
     )
   }
 
@@ -231,7 +235,7 @@ export async function setRiskBandThresholds(
         { tenantId, value: JSON.stringify(entries), now: new Date().toISOString() },
       ),
     )
-    if (!r.records.length) throw new ValidationError(`Tenant ${tenantId} inesistente`)
+    if (!r.records.length) throw new ValidationError(`Tenant ${tenantId} does not exist`, { key: 'errors.notFound', params: { entity: 'Tenant', id: tenantId } })
     // La leva unica (rimedio 1): svuota le cache di questo processo e lo dice
     // agli altri, worker compresi — è il worker che calcola le priorità.
     invalidateSchema(tenantId)

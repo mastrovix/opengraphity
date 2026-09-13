@@ -39,10 +39,11 @@ export async function resolveDomainValue(
   const allowed = await domainVocabulary(tenantId, spec.output)
   if (!allowed.includes(out)) {
     throw new ValidationError(
-      `Matrice "${kind}", cella "${matrixKey(...values)}": il valore salvato "${out}" non è (più) nel vocabolario ` +
-      `"${spec.output}" di questo cliente. Ammessi: ${allowed.join(', ')}. ` +
-      `Succede quando si rinomina un valore del vocabolario senza aggiornare la matrice: ` +
-      `correggila in Impostazioni → Matrici di dominio.`,
+      `Matrix "${kind}", cell "${matrixKey(...values)}": the stored value "${out}" is not (any more) in the `
+      + `"${spec.output}" dictionary of this tenant. Allowed: ${allowed.join(', ')}. `
+      + `It happens when a dictionary value is renamed without updating the matrix: `
+      + `fix it in Settings → Domain matrices.`,
+      { key: 'errors.matrix.storedValueStale', params: { matrix: kind, cell: matrixKey(...values), value: out, vocabulary: spec.output, allowed: allowed.join(', ') } },
     )
   }
   return out

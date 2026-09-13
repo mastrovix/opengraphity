@@ -36,7 +36,7 @@ beforeEach(() => {
   assertDomainValue.mockImplementation((_t: string, _v: string, value: unknown) =>
     ['standard', 'normal', 'emergency', 'preautorizzata'].includes(String(value))
       ? Promise.resolve(value)
-      : Promise.reject(new Error(`change_type: "${String(value)}" non è nel vocabolario di questo cliente.`)))
+      : Promise.reject(new Error(`change_type: "${String(value)}" is not in the dictionary of this tenant.`)))
 })
 
 describe('la lista viene dal tenant', () => {
@@ -57,7 +57,7 @@ describe('la lista viene dal tenant', () => {
     expect(await isPreApprovedChangeType('c-one', 'standard')).toBe(false)
   })
 
-  it('proprietà ASSENTE = valore di fabbrica, non lista vuota (sarebbe il contrario di prima)', async () => {
+  it('proprietà ASSENTE = valore factory, non lista vuota (sarebbe il contrario di prima)', async () => {
     tenantHas(null)
     expect(await preApprovedChangeTypes('c-one')).toEqual(['standard'])
     expect(await isPreApprovedChangeType('c-one', 'standard')).toBe(true)
@@ -108,12 +108,12 @@ describe('la scrittura valida contro il vocabolario del cliente', () => {
   })
 
   it('un tipo fuori vocabolario è un rifiuto: sarebbe una pre-approvazione che non si applica a nulla', async () => {
-    await expect(setPreApprovedChangeTypes('c-one', ['inventato'])).rejects.toThrow(/non è nel vocabolario/)
+    await expect(setPreApprovedChangeTypes('c-one', ['inventato'])).rejects.toThrow(/is not in the dictionary of this tenant/)
     expect(executeWrite).not.toHaveBeenCalled()
   })
 
   it('un doppione è un rifiuto che lo nomina', async () => {
-    await expect(setPreApprovedChangeTypes('c-one', ['standard', 'standard'])).rejects.toThrow(/"standard" compare due volte/)
+    await expect(setPreApprovedChangeTypes('c-one', ['standard', 'standard'])).rejects.toThrow(/Change type "standard" appears twice/)
     expect(executeWrite).not.toHaveBeenCalled()
   })
 
@@ -154,7 +154,7 @@ describe('la scrittura tira la leva dell\'invalidazione', () => {
     const { registerMetamodelCacheClearer } = await import('../schemaInvalidator.js')
     registerMetamodelCacheClearer('test-altra-cache-2', (tenantId) => { svuotati.push(tenantId) })
 
-    await expect(setPreApprovedChangeTypes('c-one', ['inventata'])).rejects.toThrow(/non è nel vocabolario/)
+    await expect(setPreApprovedChangeTypes('c-one', ['inventata'])).rejects.toThrow(/is not in the dictionary of this tenant/)
     expect(svuotati).toEqual([])
     expect(executeWrite).not.toHaveBeenCalled()
   })

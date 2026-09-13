@@ -38,20 +38,20 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
   const results = ciData?.allCIs?.items ?? []
 
   return (
-    <Modal open onClose={onClose} title="Aggiungi CI al Change" width={560}>
+    <Modal open onClose={onClose} title={t('pages.addCI.title')} width={560}>
         <div style={{ position: 'relative', marginBottom: 12 }}>
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-slate-light)' }} />
           <input
             type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Cerca CI per nome..."
+            placeholder={t('pages.createChange.searchCI')}
             // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: campo di ricerca del modal aperto dall'utente
             autoFocus
             style={{ width: '100%', padding: '8px 12px 8px 30px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }}
           />
         </div>
         <div style={{ overflowY: 'auto', maxHeight: 400 }}>
-          {search.length < 2 && <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', margin: 0 }}>Digita almeno 2 caratteri per cercare</p>}
-          {search.length >= 2 && results.length === 0 && <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', margin: 0 }}>Nessun CI trovato</p>}
+          {search.length < 2 && <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', margin: 0 }}>{t('pages.addCI.typeTwoChars')}</p>}
+          {search.length >= 2 && results.length === 0 && <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', margin: 0 }}>{t('pages.addCI.noCIFound')}</p>}
           {results.map(ci => {
             const alreadyAdded = existingCIIds.has(ci.id)
             const hasOwner = !!ci.ownerGroup
@@ -71,11 +71,11 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
                   </div>
                 </div>
                 {alreadyAdded ? (
-                  <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', flexShrink: 0 }}>Già aggiunto</span>
+                  <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', flexShrink: 0 }}>{t('pages.addCI.alreadyAdded')}</span>
                 ) : (
                   <button
                     type="button" disabled={!canAdd || loading}
-                    title={!canAdd ? 'Owner Group e Support Group obbligatori' : undefined}
+                    title={!canAdd ? t('pages.addCI.groupsRequired') : undefined}
                     onClick={() => void addCI({ variables: { changeId, ciId: ci.id } })}
                     style={{
                       padding: '4px 10px', borderRadius: 6, border: 'none', fontSize: 'var(--font-size-label)', fontWeight: 600, flexShrink: 0,
@@ -83,7 +83,7 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
                       cursor: canAdd ? 'pointer' : 'not-allowed',
                     }}
                   >
-                    Aggiungi
+                    {t('common.add')}
                   </button>
                 )}
               </div>

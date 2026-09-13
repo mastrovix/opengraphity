@@ -126,8 +126,8 @@ async function updateCIFields(
     // questo chiamante, che non gli dava l'informazione che possiede.
     if (!row.label) {
       throw new GraphQLError(
-        `ConfigurationItem ${id} non ha un'etichetta di tipo oltre a ConfigurationItem: dato incompleto, impossibile dire di che tipo è.`,
-        { extensions: { code: 'CONFLICT' } },
+        `ConfigurationItem ${id} has no type label besides ConfigurationItem: incomplete data, its type cannot be told.`,
+        { extensions: { code: 'CONFLICT', i18n: { key: 'errors.ci.noTypeLabel', params: { id } } } },
       )
     }
     return mapCI(ctx.tenantId, row.props, row.label)

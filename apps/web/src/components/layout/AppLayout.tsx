@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { ConfigurationIssuesBanner } from '@/components/ConfigurationIssuesBanner'
+import { useTenantLanguage } from '@/hooks/useTenantLanguage'
 import { useTranslation } from 'react-i18next'
 import { keycloak } from '../../lib/keycloak'
 import { ConfirmProvider } from '@/hooks/useConfirm'
@@ -15,6 +16,9 @@ export function AppLayout() {
   const { t } = useTranslation()
   // Hooks must run unconditionally, before any early return
   const [collapsed, setCollapsed] = useState(false)
+  // In che lingua si legge questo cliente: e configurazione, sta nel grafo, e
+  // vale per chi non ha scelto la propria dal Profilo.
+  useTenantLanguage()
 
   if (!keycloak.authenticated) {
     keycloak.login()

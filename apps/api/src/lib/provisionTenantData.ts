@@ -120,12 +120,49 @@ export async function provisionTenantData(
 }
 
 /**
+ * UN BUCO, come DATO e non come frase.
+ *
+ * Prima questa funzione restituiva prosa italiana, e la consumavano tre posti:
+ * `migrate --status` (una CLI), la pagina del disegnatore e il banner della
+ * diagnostica — le ultime due in un'interfaccia che può essere in inglese, dove
+ * quelle frasi restavano italiane. Ora i FATTI stanno qui e la resa sta dove
+ * c'è una lingua: `formatGap` per la CLI e i log, `t('configurationIssues.gap.<kind>')`
+ * per il client, che è l'unico a sapere in che lingua sta guardando qualcuno.
+ */
+export interface ProvisioningGap {
+  kind:
+    | 'tenant_missing' | 'no_dashboard' | 'no_notification_rules' | 'no_domain_matrices'
+    | 'no_workflows' | 'no_assessment_questions' | 'no_teams' | 'no_change_manager'
+  /** Solo dati per l'interpolazione: mai prosa. */
+  params?: Record<string, string>
+}
+
+/**
+ * La resa di un buco per la CLI e per i log, che non hanno un i18n e non ne
+ * vogliono uno: una lingua sola, e quella lingua è l'INGLESE, che è la lingua
+ * del prodotto (13 set 2026). Il client non passa da qui — ha le sue chiavi in
+ * `configurationIssues.gap.*`, e le risolve nella lingua di chi guarda.
+ */
+export function formatGap(g: ProvisioningGap): string {
+  switch (g.kind) {
+    case 'tenant_missing':          return 'no row: the tenant does not exist'
+    case 'no_dashboard':            return 'no dashboard'
+    case 'no_notification_rules':   return 'no notification rules'
+    case 'no_domain_matrices':      return 'no domain matrices'
+    case 'no_workflows':            return `no active workflow for: ${g.params?.['entityTypes'] ?? ''}`
+    case 'no_assessment_questions': return 'no assessment questions: no change could ever get past the assessment stage (Assessment Questions)'
+    case 'no_teams':                return 'no teams: without teams CIs have no Owner/Support Group and no change can be created (Teams and Users)'
+    case 'no_change_manager':       return 'no team designated Change Manager: normal and emergency changes cannot enter approval (Teams and Users)'
+  }
+}
+
+/**
  * Cosa manca a un tenant per essere usabile. Serve a `migrate --status`, che
  * elenca i tenant incompleti: `c-two` era incompleto da giorni e nessuno lo
  * sapeva, perché il sintomo arriva al primo `createIncident`.
  */
-export async function tenantProvisioningGaps(session: Queryable, tenantId: string): Promise<string[]> {
-  const gaps: string[] = []
+export async function tenantProvisioningGaps(session: Queryable, tenantId: string): Promise<ProvisioningGap[]> {
+  const gaps: ProvisioningGap[] = []
   const r = await session.run(
     `OPTIONAL MATCH (d:DashboardConfig {tenant_id: $tenantId})
      WITH count(d) AS dashboards
@@ -146,14 +183,14 @@ export async function tenantProvisioningGaps(session: Queryable, tenantId: strin
     { tenantId },
   )
   const row = r.records[0]
-  if (!row) return ['nessuna riga: il tenant non esiste']
+  if (!row) return [{ kind: 'tenant_missing' }]
   const num = (key: string): number => Number(row.get(key) ?? 0)
   const entityTypes = ((row.get('entityTypes') as Array<string | null>) ?? []).filter((t): t is string => typeof t === 'string')
-  if (num('dashboards') === 0) gaps.push('nessuna dashboard')
-  if (num('rules') === 0) gaps.push('nessuna regola di notifica')
-  if (num('matrices') === 0) gaps.push('nessuna matrice di dominio')
+  if (num('dashboards') === 0) gaps.push({ kind: 'no_dashboard' })
+  if (num('rules') === 0) gaps.push({ kind: 'no_notification_rules' })
+  if (num('matrices') === 0) gaps.push({ kind: 'no_domain_matrices' })
   const missing = REQUIRED_WORKFLOW_ENTITY_TYPES.filter((t) => !entityTypes.includes(t))
-  if (missing.length > 0) gaps.push(`nessun workflow attivo per: ${missing.join(', ')}`)
+  if (missing.length > 0) gaps.push({ kind: 'no_workflows', params: { entityTypes: missing.join(', ') } })
 
   // ── I TEAM (terza revisione, trovato provando un tenant appena creato) ─────
   //
@@ -181,12 +218,12 @@ export async function tenantProvisioningGaps(session: Queryable, tenantId: strin
   // Estrarlo e la correzione migliore; finche non c'e, almeno il prodotto lo
   // DICE, e la pagina «Domande Assessment» permette di crearle a mano.
   if (num('questions') === 0) {
-    gaps.push('nessuna domanda di assessment: nessuna change potrebbe superare la fase di assessment (Domande Assessment)')
+    gaps.push({ kind: 'no_assessment_questions' })
   }
   if (num('teams') === 0) {
-    gaps.push('nessun team: senza team i CI non hanno Owner/Support Group e nessuna change si crea (Team e Utenti)')
+    gaps.push({ kind: 'no_teams' })
   } else if (num('changeManagers') === 0) {
-    gaps.push('nessun team designato Change Manager: le change normal ed emergency non possono entrare in approvazione (Team e Utenti)')
+    gaps.push({ kind: 'no_change_manager' })
   }
   return gaps
 }

@@ -30,7 +30,26 @@
     "label": "Label",
     "order": "Order",
     "actions": "Actions",
-    "all": "All"
+    "all": "All",
+    "saving": "Saving...",
+    "new": "New",
+    "back": "Back",
+    "add": "Add",
+    "open": "Open",
+    "view": "View",
+    "optional": "(optional)",
+    "saveChanges": "Save changes",
+    "showAll": "Show all",
+    "showLess": "Show less",
+    "creating": "Creating…",
+    "active": "Active",
+    "inactive": "Inactive",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "enable": "Enable",
+    "disable": "Disable",
+    "showAllCount_one": "Show all ({{count}})",
+    "showAllCount_other": "Show all ({{count}})"
   },
   "bulk": {
     "selected_one": "{{count}} selected",
@@ -118,7 +137,8 @@
     "ciHealth": "CI health",
     "platformMonitoring": "Platform monitoring",
     "services": "Services",
-    "domainMatrices": "Domain matrices"
+    "domainMatrices": "Domain matrices",
+    "organization": "Organization"
   },
   "pages": {
     "incidents": {
@@ -162,7 +182,10 @@
         "pathNodeRoot": "Hit CI",
         "pathNodeFallback": "CI",
         "pathFooter": "The arrows show how the impact spreads; the real dependencies run the other way (the application depends on the upstream CI)."
-      }
+      },
+      "requestChange": "Request a change",
+      "rootCauseAnalysis": "Root Cause Analysis",
+      "transitionTo": "Transition → {{step}}"
     },
     "changes": {
       "title": "Changes",
@@ -181,6 +204,10 @@
         "title": "Alarms suppressed in this window",
         "note": "Alarms received during the release window open no incident and do not change CI health; at the end of the window they are re-evaluated.",
         "empty": "No alarm suppressed by this change."
+      },
+      "assessment": {
+        "answersTitle": "{{role}} answers — {{ci}}",
+        "hiddenUntilBoth": "The answers become visible when both assessments are complete."
       }
     },
     "problems": {
@@ -194,7 +221,9 @@
       "noResultsDesc": "Create a new problem or adjust the filters.",
       "count_one": "{{count}} problem",
       "count_other": "{{count}} problems",
-      "notFound": "Problem not found."
+      "notFound": "Problem not found.",
+      "candidatesTitle": "Problem candidates from recurring incidents",
+      "candidatesEmpty": "No cluster of recurring similar incidents found (at least 3 open incidents with the same pattern)."
     },
     "requests": {
       "title": "Requests",
@@ -207,7 +236,8 @@
       "noResultsDesc": "Create a new service request.",
       "count_one": "{{count}} request",
       "count_other": "{{count}} requests",
-      "notFound": "Service request not found."
+      "notFound": "Service request not found.",
+      "rejectionReason": "Reason for rejection"
     },
     "cmdb": {
       "health": "Health",
@@ -323,7 +353,13 @@
       "noMembers": "No members",
       "changeManager": "Change",
       "assignManager": "Assign",
-      "removeManager": "Remove manager"
+      "removeManager": "Remove manager",
+      "namePlaceholder": "E.g. Network Operations",
+      "changeManagerTitle": "Change manager",
+      "assignManagerTitle": "Assign manager",
+      "isChangeManager": "This team approves changes (normal/emergency)",
+      "makeChangeManager": "Make it the Change Manager team",
+      "replaceManagerConfirm": "The current manager <strong>{{current}}</strong> will be replaced by <strong>{{next}}</strong>. Confirm?"
     },
     "users": {
       "title": "Users",
@@ -346,7 +382,11 @@
       "teams": "Teams",
       "removeTeam": "Remove {{name}}",
       "searchTeams": "Search teams…",
-      "backToList": "Users"
+      "backToList": "Users",
+      "firstNamePlaceholder": "Jane",
+      "lastNamePlaceholder": "Smith",
+      "addToTeam": "Add to a team",
+      "created": "User created"
     },
     "logs": {
       "title": "Logs",
@@ -369,7 +409,11 @@
       "placeholder": "Ask a question about your data...",
       "noConversation": "No conversations",
       "startQuestion": "Ask the first question to start.",
-      "subtitle": "Ask questions about your data in natural language"
+      "subtitle": "Ask questions about your data in natural language",
+      "errorMessage": "Error: {{message}}",
+      "unexpectedPayload": "event \"{{event}}\" with an unexpected payload",
+      "invalidJson": "invalid JSON: {{message}}",
+      "noTableInAnswer": "No table found in the answer"
     },
     "queueStats": {
       "title": "Job Queue",
@@ -437,7 +481,8 @@
       "colIp": "IP",
       "empty": "No audit entries found",
       "details": "Details — {{action}}",
-      "entries": "entries"
+      "entries": "entries",
+      "colUserEmail": "User (email)"
     },
     "dictionary": {
       "title": "Dictionary Designer",
@@ -485,7 +530,8 @@
       "orderNote": "Order matters: for scale vocabularies the first value is the lowest and the last the highest (the highest impact is the last one). Renaming a value keeps it in place and updates records, the alarm policy and the domain matrices; the default is the value used when nobody specifies one.",
       "valueCount_one": "1 value",
       "valueCount_other": "{{count}} values",
-      "valueLabelFor": "Label for value {{value}}"
+      "valueLabelForLanguage": "Label for value {{value}} in {{language}}",
+      "valueLabelEmpty": "not written"
     },
     "sync": {
       "sourceCreated": "Sync source created",
@@ -496,7 +542,28 @@
       "dropHint": "Drag here or",
       "browse": "Browse",
       "deleteSourceTitle": "Delete this sync source?",
-      "sourceDeleted": "Source deleted"
+      "sourceDeleted": "Source deleted",
+      "schedule": "Schedule",
+      "syncNow": "Sync now",
+      "cronPreset": "Cron preset",
+      "customCron": "Custom cron expression",
+      "addSource": "Add a sync source",
+      "connectorType": "Connector type",
+      "selectConnector": "Select a connector...",
+      "credentials": "Credentials",
+      "configuration": "Configuration",
+      "conflict": {
+        "merge": "Merge",
+        "mergeHint": "Update the existing CI with the imported data",
+        "distinct": "They are different",
+        "distinctHint": "Create a new CI, separate from the imported data",
+        "linked": "Link",
+        "linkedHint": "Create a new CI and link both with RELATED_TO",
+        "resolution": "Resolution: {{resolution}}"
+      },
+      "selectSource": "Select a source...",
+      "pickSourceHint": "Pick a sync source to see its run history",
+      "noRuns": "No run yet"
     },
     "import": {
       "title": "Historical data import",
@@ -567,7 +634,8 @@
         "active": "Active",
         "completed": "Completed",
         "failed": "Failed",
-        "delayed": "Delayed"
+        "delayed": "Delayed",
+        "queue": "Queue"
       },
       "neo4j": {
         "title": "Neo4j",
@@ -587,7 +655,8 @@
         "cpu": "CPU",
         "pid": "PID",
         "version": "Node.js"
-      }
+      },
+      "noTraces": "No recent traces"
     },
     "approvals": {
       "title": "Approvals",
@@ -595,7 +664,26 @@
       "tabMine": "Pending my approval",
       "tabAll": "All",
       "noPending": "No pending approvals",
-      "noApprovals": "No requests found"
+      "noApprovals": "No requests found",
+      "loadError": "Error loading the article.",
+      "cancelRequest": "Cancel the request",
+      "rejectReason": "Reason for the rejection (required)...",
+      "optionalNote": "Optional note...",
+      "anyApprover": "1 approver is enough",
+      "allApprovers": "every required approver",
+      "majorityApprovers": "a majority is required",
+      "statusPending": "Pending",
+      "statusApproved": "Approved",
+      "statusRejected": "Rejected",
+      "requestedAt": "Requested on",
+      "byAuthor": "by {{author}}",
+      "updatedOn": "updated {{date}}",
+      "statusExpired": "Expired",
+      "statusCancelled": "Cancelled",
+      "approvalCount": "{{done}}/{{total}} approvals",
+      "dueOn": "Due: {{date}}",
+      "confirmApproval": "Confirm approval",
+      "confirmRejection": "Confirm rejection"
     },
     "kb": {
       "title": "Knowledge Base",
@@ -615,7 +703,9 @@
       "author": "Author",
       "published": "Published",
       "updated": "Updated",
-      "views": "Views"
+      "views": "Views",
+      "resultsFor_one": "{{count}} result for \"{{query}}\"",
+      "resultsFor_other": "{{count}} results for \"{{query}}\""
     },
     "kbAdmin": {
       "title": "Knowledge Base Admin",
@@ -625,7 +715,32 @@
       "created": "Article created",
       "updated": "Article updated",
       "deleted": "Article deleted",
-      "noArticles": "No articles"
+      "noArticles": "No articles",
+      "loadingHistory": "Loading the history...",
+      "noVersions": "No previous version. Future edits will build the history.",
+      "editedBy": "Edited by",
+      "date": "Date",
+      "titlePlaceholder": "Article title",
+      "categoryRequired": "Category *",
+      "contentRequired": "Content *",
+      "articles": "Knowledge Base articles",
+      "restore": "Restore",
+      "tags": "Tags (comma separated)",
+      "tagsPlaceholder": "vpn, windows, access",
+      "bodyPlaceholder": "Write the body of the article...",
+      "submitForReview": "Submit for review",
+      "versions": "Version history",
+      "filter": {
+        "onlyAnd": "Article search only supports conditions joined with AND",
+        "missingValue": "Missing value for the \"{{field}}\" filter",
+        "onlyEquals": "The \"{{field}}\" filter only supports \"equals\"",
+        "onlyOnce": "The \"{{field}}\" filter can appear only once",
+        "titleOnlyContains": "The \"Title\" filter only supports \"contains\"",
+        "unsupported": "Filter not supported by article search: {{field}}"
+      },
+      "saveVsSubmitHint": "\"Save\" updates the content without changing the status. \"Submit for review\" saves and starts the approval process.",
+      "colAuthor": "Author",
+      "colUpdated": "Updated"
     },
     "workflow": {
       "title": "Workflow",
@@ -633,7 +748,12 @@
       "incompleteTitle": "This tenant's configuration is incomplete",
       "provisionButton": "Complete the configuration",
       "provisionDone": "Configuration completed: the tenant is usable.",
-      "provisionPartial": "Configuration created, but this is still missing: {{gaps}}"
+      "provisionPartial": "Configuration created, but this is still missing: {{gaps}}",
+      "loading": "Loading workflow…",
+      "noneForTenant": "No workflow found for this tenant.",
+      "stepsFixedHint": "The steps of this workflow are fixed. You can customise labels, actions and conditions.",
+      "defaultBadge": "Default",
+      "deleteTransition": "Delete transition"
     },
     "changeCatalog": {
       "title": "Standard Change Catalog",
@@ -1085,7 +1205,11 @@
         "saved": "Risk bands saved.",
         "addBand": "Add a band",
         "removeBand": "Remove the \"{{band}}\" band"
-      }
+      },
+      "notFilledIn": "to be filled in, in the matrix",
+      "notCovered": "not covered by the matrix — complete it in Settings → Domain matrices",
+      "impact": "Impact",
+      "urgency": "Urgency"
     },
     "reportBuilder": {
       "title": "Report Builder",
@@ -1102,7 +1226,415 @@
       "optionScoreFor": "Answer {{n}} score",
       "moveOptionUp": "Move answer {{n}} up",
       "moveOptionDown": "Move answer {{n}} down",
-      "removeOption": "Remove answer {{n}}"
+      "removeOption": "Remove answer {{n}}",
+      "allCategories": "All categories",
+      "empty": "No question",
+      "text": "Text",
+      "categoryTitle": "Question category",
+      "flags": "Flags",
+      "ciTypeAssignments": "CI type assignments",
+      "weight": "Weight",
+      "sortOrder": "Sort order",
+      "options": "Options",
+      "subtitle": "Manage the questions used in the change assessment and how they are assigned to CI types.",
+      "new": "New",
+      "pickOne": "Pick a question, or create a new one",
+      "core": "Always present",
+      "saveFirst": "Save the question before assigning it to specific CI types.",
+      "coreNote": "This question is <b>always present</b>: it is assigned by itself to every active CI type.",
+      "add": "Add"
+    },
+    "organization": {
+      "title": "Organization",
+      "subtitle": "The choices that apply to everyone in this company.",
+      "languageTitle": "Language",
+      "languageDescription": "The language the product reads in for anyone who has not chosen one in their own Profile. It is also the fallback for labels written in one language only.",
+      "defaultLanguage": "Default language",
+      "notConfigured": "Not configured",
+      "saved": "Organization language updated",
+      "fallbackInUse": "Nobody has chosen one yet: the product reads in {{language}}.",
+      "personalWins": "Anyone who chose a language in their own Profile keeps reading that one."
+    },
+    "slaReport": {
+      "met": "Met",
+      "breached": "Breached",
+      "breachRate": "Breach rate",
+      "avgResolution": "Average resolution time",
+      "byPriority": "By priority",
+      "noData": "No SLA data in this period.",
+      "total": "Total",
+      "compliance": "Compliance",
+      "newContract": "New contract",
+      "party": "Accountable party",
+      "target": "Target",
+      "nameRequired": "Name *",
+      "namePlaceholder": "E.g. Network restored within 4h",
+      "partyTeam": "Internal team",
+      "partySupplier": "External supplier",
+      "supplierName": "Supplier name",
+      "teamName": "Responsible team",
+      "supplierPlaceholder": "E.g. Acme Cloud Ltd",
+      "teamPlaceholder": "E.g. Network Ops",
+      "generatedNote": "Generated on {{date}}. OLA/UC compliance compares the real resolution time of the entities closed in the period with the contract target.",
+      "pickTeam": "Choose a team...",
+      "noTeams": "This tenant has no team yet: create one in Teams and Users.",
+      "contracts": "OLA / UC",
+      "noContracts": "No OLA/UC defined. An OLA sets a target between internal teams; a UC ties it to an external supplier.",
+      "editContract": "Edit the OLA/UC contract",
+      "newContractTitle": "New OLA/UC contract",
+      "typeOla": "OLA (internal teams)",
+      "typeUc": "UC (external supplier)",
+      "responseTarget": "Response target (min)",
+      "resolveTarget": "Resolution target (min)",
+      "windowDays_one": "{{count}}d",
+      "windowDays_other": "{{count}}d",
+      "slaInWindow": "SLA in the window ({{window}})",
+      "attainment": "Attainment ({{window}})"
+    },
+    "changeDetail": {
+      "notFound": "Change not found",
+      "approval": "Approval",
+      "noApprovalRequirements": "No approval requirements. Check that a <b>Change Manager</b> team is designated (Teams and Users) and that the affected CIs have an owner group.",
+      "requirement": "Requirement",
+      "approvedBy": "Approved by",
+      "approved": "Approved",
+      "pending": "Pending",
+      "linkedTickets": "Linked tickets",
+      "nextSteps": "Next steps",
+      "involvedCIs": "CIs involved",
+      "noImpactedCI": "No impacted CI",
+      "noImpactedCIAtDepth": "No CI impacted at depth {{depth}}.",
+      "retry": "Try again",
+      "depth": "Depth",
+      "impactedCI": "Impacted CI",
+      "impactedVia": "Impacted via",
+      "moveToAffected": "Move to affected CIs",
+      "removeCITitle": "Remove the CI",
+      "remove": "Remove",
+      "assessmentsToReopen": "Assessments to reopen",
+      "reopenAll": "Reopen <b>all</b> assessments",
+      "reopenSome": "Reopen <b>only some</b>",
+      "noTasks": "No task available.",
+      "deleteTitle": "Delete the change",
+      "info": "Change information",
+      "why": "Why",
+      "what": "What",
+      "changeOwner": "Change owner",
+      "requester": "Requester",
+      "tasksDone": "{{done}}/{{total}} tasks done",
+      "approve": "Approve",
+      "reject": "Reject",
+      "removeCIConfirm": "Remove <b>{{ci}}</b> from the change? Every task attached to it will be deleted.",
+      "rejectNote": "Rejecting brings the change back to <b>assessment</b>, reopens the chosen tasks and clears the approvals.",
+      "deleteConfirm": "Delete <b>{{code}}</b>? The change will disappear from the lists and its links — including the one created by itself from the requesting ticket — will no longer be shown. It is a soft delete.",
+      "impactError": "Error computing the affected CIs: {{message}}",
+      "stepInProgress": "{{step}} in progress"
+    },
+    "reportSchedule": {
+      "lastRun": "Last run: {{date}}",
+      "preset": {
+        "dailyAt9": "Every day at 9:00",
+        "mondayAt9": "Every Monday at 9:00",
+        "monthlyAt9": "On the first of the month at 9:00",
+        "custom": "Custom"
+      },
+      "back": "Back",
+      "title": "Settings",
+      "shareWithTeams": "Share with teams",
+      "enable": "Enable scheduling",
+      "frequency": "Frequency",
+      "cron": "Cron expression",
+      "slackChannel": "Slack channel",
+      "noChannel": "No channel",
+      "recipients": "Email recipients",
+      "removeRecipient": "Remove {{email}}",
+      "recipientsPlaceholder": "email@example.com, Enter",
+      "recipientsHint": "Press Enter or comma to add. (SMTP sending is not implemented yet: the addresses are kept for when it is.)",
+      "format": "Report format",
+      "saving": "Saving...",
+      "save": "Save settings"
+    },
+    "reports": {
+      "visibility": {
+        "label": "Visibility",
+        "private": "Private",
+        "groups": "Groups",
+        "all": "Everyone",
+        "selectedGroups": "Selected groups"
+      },
+      "emptyTitle": "No reports yet",
+      "emptyDescription": "Create your first custom report",
+      "newReport": "New report",
+      "creating": "Creating...",
+      "create": "Create report",
+      "namePlaceholder": "Report name...",
+      "allReports": "All reports",
+      "editSection": "Edit section",
+      "clickRunToLoad": "Click \"▶ Run\" to load the data",
+      "addSectionTo": "Add a section — {{report}}",
+      "editSectionOf": "Edit section: {{section}}",
+      "editSettings": "Edit settings",
+      "duplicate": "Duplicate"
+    },
+    "serviceCatalogAdmin": {
+      "newItem": "New item",
+      "emptyTitle": "No catalog items",
+      "emptyDescription": "Create the first item people will be able to request from the self-service portal.",
+      "category": "Category",
+      "required": "Required",
+      "active": "Active",
+      "inactive": "Inactive",
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "editTitle": "Edit catalog item",
+      "createTitle": "New catalog item",
+      "namePlaceholder": "E.g. New laptop",
+      "descriptionPlaceholder": "What the service includes...",
+      "categoryPlaceholder": "E.g. Hardware, Access, Software",
+      "noApproval": "No approval needed",
+      "needsApproval": "Approval required"
+    },
+    "userDetail": {
+      "notFound": "User not found.",
+      "info": "Information",
+      "code": "Code",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "tenantId": "Tenant ID",
+      "slackId": "Slack ID",
+      "noTeams": "No team assigned",
+      "removeFromTeam": "Remove from team",
+      "availableTeams": "Available teams",
+      "noOtherTeams": "No other team available"
+    },
+    "businessRules": {
+      "newRule": "New rule",
+      "empty": "No rule configured",
+      "namePlaceholder": "E.g. Assign high priority",
+      "entityType": "Entity type",
+      "event": "Event",
+      "conditionLogic": "Condition logic",
+      "conditions": "Conditions",
+      "addCondition": "Add a condition",
+      "addAction": "Add an action",
+      "editRule": "Edit the rule",
+      "stopOnMatch": "Stop at the first match"
+    },
+    "autoTriggers": {
+      "newTrigger": "New trigger",
+      "empty": "No trigger configured",
+      "namePlaceholder": "E.g. Auto-assign P1 incidents",
+      "eventType": "Event type",
+      "enabled": "Enabled",
+      "editTrigger": "Edit the trigger",
+      "timerDelay": "Timer delay (minutes)"
+    },
+    "notifications": {
+      "test": "Test",
+      "platform": "Platform",
+      "webhookUrl": "Webhook URL",
+      "webhookUrlRequired": "Webhook URL *",
+      "slackHint": "Use the webhook URL for public channels, the channel ID if you have configured the bot token.",
+      "eventsToNotify": "Events to notify",
+      "addChannel": "Add a channel",
+      "editChannel": "Edit the channel",
+      "empty": "No channel configured. Add Slack or Teams to receive notifications.",
+      "channelId": "Channel ID",
+      "channelIdProtocol": "(Bot API)",
+      "testSent": "✓ Sent",
+      "testFailed": "✗ Error",
+      "event": {
+        "slaBreach": "SLA Breach",
+        "escalation": "Escalation",
+        "assignedToMe": "Assigned to me",
+        "incidentResolved": "Incident resolved",
+        "changeApproved": "Change approved",
+        "changeFailed": "Change failed",
+        "assessmentAssigned": "Assessment task assigned"
+      }
+    },
+    "serviceRequestDetail": {
+      "noWorkflow": "No workflow attached to this request.",
+      "editTitle": "Edit the request",
+      "titleRequired": "Title *",
+      "noActionInStep": "No action available in the current status ({{step}})."
+    },
+    "workflowStep": {
+      "editStep": "Edit the step",
+      "corruptedActions": "<b>The step's actions are corrupted</b> — {{error}}. Fix the stored data (enter/exit_actions of step <code>{{step}}</code>) before editing it: saving is disabled so the unreadable actions are not lost.",
+      "tabProps": "Properties",
+      "tabMetadata": "Metadata",
+      "tabNotify": "Notifications",
+      "isInitial": "The process starts at this step",
+      "isTerminal": "The process is closed when it gets here",
+      "editTransition": "Edit the transition",
+      "noneMasculine": "— none —",
+      "labelPlaceholder": "E.g. Weekly CAB",
+      "labelPlaceholderTimer": "E.g. Waiting for the timer",
+      "timerDelay": "DELAY (minutes)",
+      "update": "Update",
+      "notifyOnEnter": "Notify when the step is entered",
+      "deleteStep": "Delete the step"
+    },
+    "slaPolicies": {
+      "newPolicy": "New policy",
+      "emptyTitle": "No SLA policy configured",
+      "emptyDescription": "Create the first policy to set response and resolution times.",
+      "namePlaceholder": "E.g. SLA for critical incidents",
+      "timezone": "Time zone",
+      "editPolicy": "Edit the policy",
+      "responseMinutes": "Response time (minutes) *",
+      "resolveMinutes": "Resolution time (minutes) *"
+    },
+    "incidentDetail": {
+      "editTitle": "Edit the incident",
+      "major": "⚠ MAJOR INCIDENT",
+      "kbDraft": "Knowledge Base draft",
+      "rootCausePlaceholder": "E.g. memory leak in payment-service v2.3.1...",
+      "derivedPriority": "Resulting priority:",
+      "rootCauseHint": "Describe the root cause before resolving (at least 10 characters).",
+      "transitionNoteHint": "Add a note for this transition (at least 10 characters).",
+      "aiDraft": "AI draft from the activity",
+      "aiDraftRunning": "Drafting from the activity…",
+      "running": "Running…"
+    },
+    "problemDetail": {
+      "rootCause": "Root cause",
+      "rootCausePlaceholder": "Describe the root cause of the problem...",
+      "workaround": "Workaround",
+      "workaroundPlaceholder": "Describe the temporary workaround...",
+      "transitionNotes": "Notes on the transition...",
+      "pickGroupFirst": "Assign a group first, then you can pick a user.",
+      "noteRequired": "Add a note for this transition (at least 10 characters).",
+      "noUserInTeam": "No user in the {{team}} group."
+    },
+    "createChange": {
+      "titlePlaceholder": "E.g. Upgrade the production database to PostgreSQL 16",
+      "changeType": "Change type",
+      "whatPlaceholder": "What will be changed, in detail?",
+      "nobody": "— Nobody —",
+      "searchCI": "Search a CI by name...",
+      "title": "New change",
+      "subtitle": "Open a request to introduce a controlled change to the systems",
+      "typesNote": "Standard: no approval. Normal and emergency: approval required. The rollback is assessed in the technical assessment.",
+      "whyPlaceholder": "Why is this change needed? Reason, problem or goal.",
+      "ciGroupsNote": "Every CI needs an owner group and a support group, otherwise the creation stops.",
+      "why": "Why",
+      "rfcForProblem": "Resolving RFC for problem {{number}} — {{title}}.",
+      "rfcForIncident": "Resolving RFC for incident {{number}} — {{title}}.",
+      "rfcProblemNote": "On creation the change is linked and the problem moves to change requested.",
+      "rfcIncidentNote": "On creation the change is linked to the incident, which resolves by itself once the change is complete.",
+      "affectedCIsPreloaded": "The affected CIs have been preloaded.",
+      "submit": "Create the change"
+    },
+    "myTasks": {
+      "emptyTitle": "No task for you",
+      "emptyDescription": "When a change reaches a stage that involves you, the tasks will show up here.",
+      "assignedToMe": "Assigned to me",
+      "unassigned": "To be assigned",
+      "count": "{{total}} tasks ({{mine}} assigned to you · {{free}} to pick up)",
+      "takeIt": "Take it"
+    },
+    "addCI": {
+      "title": "Add a CI to the change",
+      "typeTwoChars": "Type at least 2 characters to search",
+      "noCIFound": "No CI found",
+      "alreadyAdded": "Already added",
+      "groupsRequired": "Owner group and support group are required"
+    },
+    "auditTimeline": {
+      "title": "Audit trail",
+      "empty": "No event",
+      "cat": {
+        "status": "Status",
+        "assessment": "Assessment",
+        "assignments": "Assignments",
+        "comments": "Comments",
+        "system": "System"
+      }
+    },
+    "planModal": {
+      "empty": "No planned step",
+      "title": "Deploy plan — {{ci}}"
+    },
+    "assistant": {
+      "placeholder": "Ask something about your environment...",
+      "intro": "Ask something about your environment: incidents, CIs, impact, changes, knowledge base.",
+      "introNote": "The assistant reads the real graph — it does not make things up.",
+      "error": "Error: {{message}}",
+      "unknownError": "unknown",
+      "streamTruncated": "Error: the answer stopped before it was complete.",
+      "tool": {
+        "searchIncidents": "Incident search",
+        "incidentDetail": "Incident detail",
+        "listIncidents": "Incident list",
+        "searchCIs": "CI search",
+        "impactAnalysis": "Impact analysis",
+        "openChanges": "Open changes",
+        "searchKB": "KB search"
+      },
+      "suggestion": {
+        "changesInFlight": "Which changes are in flight and which CIs do they touch?",
+        "shutdownImpact": "If I shut down SRV-009, what do I impact?",
+        "similarOpenIncidents": "Are there open incidents similar to one another?"
+      }
+    },
+    "taskView": {
+      "changeOverview": "Change overview",
+      "choose": "— Choose —",
+      "assignedTo": "Assigned to",
+      "unassigned": "— Unassigned —",
+      "notFound": "Task not found"
+    },
+    "createIncident": {
+      "titlePlaceholder": "E.g. The production database is unreachable",
+      "descriptionPlaceholder": "Describe what is happening...",
+      "title": "New incident",
+      "subtitle": "Fill in the details of the incident to open",
+      "selectCategory": "-- Pick a category --",
+      "submit": "Create the incident"
+    },
+    "createTicket": {
+      "searchByName": "Search by name...",
+      "searchTeam": "Search a team by name...",
+      "derivedPriority": "Priority (derived)"
+    },
+    "createProblem": {
+      "titlePlaceholder": "E.g. Memory leak in the authentication service",
+      "descriptionPlaceholder": "Describe the problem and its impact...",
+      "title": "New problem",
+      "subtitle": "Fill in the details of the problem to open",
+      "submit": "Create the problem"
+    },
+    "reportsAI": {
+      "newConversation": "New conversation",
+      "send": "Send",
+      "sendHint": "Enter to send · Shift+Enter for a new line",
+      "title": "Reports"
+    },
+    "createRequest": {
+      "titlePlaceholder": "What do you need?",
+      "descriptionPlaceholder": "Describe what you need and why...",
+      "back": "Back to the requests",
+      "title": "New service request",
+      "subtitle": "Ask IT for a service or for support",
+      "genericItem": "— Generic request (no catalog item) —",
+      "needsApproval": "This item needs an approval: the request will go through the approval flow."
+    },
+    "planTask": {
+      "validation": "Validation *",
+      "validationEnd": "End of validation",
+      "deployEnd": "End of the release",
+      "complete": "Complete the plan",
+      "wrongTeam": "You are not in the right team",
+      "fillAll": "Fill in every step before completing",
+      "saveFirst": "Save your changes before completing"
+    },
+    "teamDetail": {
+      "manager": "Manager",
+      "changeManager": "Change manager",
+      "searchMember": "Search a member...",
+      "noMemberFound": "No member found"
     }
   },
   "filter": {
@@ -1125,13 +1657,15 @@
     "last7Days": "Last 7 days",
     "last30Days": "Last 30 days",
     "isOneOf": "Is one of",
-    "isNotOneOf": "Is not one of"
+    "isNotOneOf": "Is not one of",
+    "valuePlaceholderText": "Value…"
   },
   "auth": {
     "logout": "Logout",
     "forbiddenTitle": "Access denied",
     "forbiddenBody": "Your role does not allow opening this page. If you think this is a mistake, contact an administrator.",
-    "backHome": "Back to dashboard"
+    "backHome": "Back to dashboard",
+    "error": "Authentication error"
   },
   "anomaly": {
     "rules": {
@@ -1217,7 +1751,14 @@
     "stepPurpose": "Only steps with purpose",
     "stepCategory": "Only steps in category",
     "stepNarrowingAny": "— Any step —",
-    "stepNarrowingHint": "With no narrowing the rule applies to every step entry. Narrowing by purpose or category instead of by name is what makes it survive a step rename."
+    "stepNarrowingHint": "With no narrowing the rule applies to every step entry. Narrowing by purpose or category instead of by name is what makes it survive a step rename.",
+    "escalationMessage": "Escalation message",
+    "escalationMessagePlaceholder": "Incident not resolved after N minutes",
+    "slaWarningTarget": "SLA warning target",
+    "escalationDelay": "Escalation delay (minutes)",
+    "escalationTarget": "Escalation target (a user, or \"all\")",
+    "slaThreshold": "SLA warning threshold (%)",
+    "digestTime": "Digest time (HH:MM)"
   },
   "workflow": {
     "addAction": "Add action",
@@ -1298,7 +1839,7 @@
       "step_terminale": "Terminal step",
       "step_aperto": "Open step",
       "notifica_all_ingresso": "Notify on enter",
-      "chiave_titolo_i18n": "Title key (i18n)",
+      "titleKey": "Title key (i18n)",
       "severit": "Severity",
       "canali": "Channels",
       "destinatari": "Recipients",
@@ -1306,7 +1847,12 @@
       "trigger": "Trigger",
       "richiede_input": "Requires input",
       "campo_input": "Input field",
-      "timer_ore": "Timer (hours)"
+      "timer_ore": "Timer (hours)",
+      "deleteStepTitle": "Delete the step \"{{step}}\"?",
+      "deleteStepBody": "The transitions attached to it are removed too.",
+      "entityTypeUnavailable": "The workflow entity type is unavailable ({{error}}): the fields and values of the conditions cannot be loaded.",
+      "titleKeyPlaceholder": "e.g. notification.custom.step.title",
+      "inputField": "Input field"
     },
     "stepType": {
       "standard": "Step",
@@ -1317,7 +1863,14 @@
     },
     "addStep": "Step",
     "addStepDialog": "Add a step",
-    "timerMinutesPlaceholder": "e.g. 60"
+    "timerMinutesPlaceholder": "e.g. 60",
+    "legend": {
+      "node": "Node / step",
+      "manual": "Manual",
+      "automatic": "Automatic",
+      "slaBreach": "SLA breach",
+      "timer": "Timer (auto-close)"
+    }
   },
   "itilDesigner": {
     "title": "ITIL Type Designer",
@@ -1343,7 +1896,8 @@
       "confirmDelete": "Delete this relation rule?",
       "selectCIType": "— Select CI type —",
       "cancel": "Cancel",
-      "add": "Add"
+      "add": "Add",
+      "descriptionPlaceholder": "E.g. Servers impacted by the incident"
     },
     "order": "Order",
     "enumRef": "Reference enum",
@@ -1354,7 +1908,13 @@
     "customFields_one": "CUSTOM FIELD ({{count}})",
     "customFields_other": "CUSTOM FIELDS ({{count}})",
     "noCustomFields": "No custom fields. Click \"+ Add field\" to add one.",
-    "deleteFieldTitle": "Delete this field?"
+    "deleteFieldTitle": "Delete this field?",
+    "validationPlaceholder": "// Example:\nif (!input.title) throw 'The title is required'",
+    "fieldValidationPlaceholder": "// Example:\nif (!value || value.length < 3) throw 'At least 3 characters are needed'",
+    "itilTypes": "ITIL Types",
+    "previewNote": "Form preview — every field visible.",
+    "previewNoFields": "No field. Add fields in the \"Fields\" tab.",
+    "visibilityPlaceholder": "// Show only when severity = 'critical':\nreturn input.severity === 'critical'"
   },
   "ciTypeDesigner": {
     "chain": "Chain",
@@ -1411,7 +1971,11 @@
     "uploadFailed": "Upload failed",
     "download": "Download",
     "deleted": "Attachment deleted",
-    "confirmDelete": "Delete this attachment?"
+    "confirmDelete": "Delete this attachment?",
+    "addCI": "+ Add CI",
+    "affectedCIs": "Affected CIs",
+    "searchCIByName": "Search CIs by name (min. 2 characters)…",
+    "searchCIOfTypes": "Search CIs ({{types}}) — min. 2 characters…"
   },
   "queryError": {
     "title": "Failed to load data",
@@ -1466,7 +2030,9 @@
     "takeOwnership": "Take ownership",
     "backToList": "Back to list",
     "exportPdf": "Export PDF",
-    "exportPdfFailed": "PDF export failed"
+    "exportPdfFailed": "PDF export failed",
+    "impact": "Impact",
+    "urgency": "Urgency"
   },
   "search": {
     "placeholder": "Search everywhere... (Ctrl+K)",
@@ -1583,13 +2149,28 @@
     "triggers": {
       "deleteTitle": "Delete this trigger?",
       "toggleLabel": "Toggle {{name}}",
-      "enabledLabel": "Enabled"
+      "enabledLabel": "Enabled",
+      "create": "New trigger",
+      "executions": "Runs",
+      "lastExecution": "Last run",
+      "filter": {
+        "entityType": "Entity type",
+        "eventType": "Event type"
+      }
     },
     "rules": {
       "deleteTitle": "Delete this rule?",
       "moveUp": "Move up",
       "moveDown": "Move down",
-      "toggleLabel": "Toggle {{name}}"
+      "toggleLabel": "Toggle {{name}}",
+      "active": "Active",
+      "create": "New rule",
+      "filter": {
+        "entityType": "Entity type",
+        "eventType": "Event type"
+      },
+      "logic": "Logic",
+      "stop": "Stop"
     },
     "sla": {
       "deleteTitle": "Delete this SLA policy?",
@@ -1602,7 +2183,29 @@
       "anyScope": "All",
       "anyTeam": "All",
       "scopeHintIncident": "Incident severity the policy applies to.",
-      "scopeHintOther": "Ticket priority the policy applies to."
+      "scopeHintOther": "Ticket priority the policy applies to.",
+      "priority": "Priority",
+      "enabled": "Enabled",
+      "response": "Response",
+      "resolution": "Resolution",
+      "tableLabel": "SLA Policies — {{entity}}",
+      "scopePriority": "priority {{value}}",
+      "scopeCategory": "category {{value}}",
+      "scopeTeam": "team {{value}}",
+      "appliesToAll": "Applies to: every {{entity}}",
+      "appliesToSome": "Applies to: {{entity}} with {{scope}}",
+      "previewAll": "Every {{entity}}",
+      "previewSome": "{{entity}} with {{scope}}",
+      "previewLabel": "Preview:",
+      "previewTimes": "response within {{response}}, resolution within {{resolve}}",
+      "unit": {
+        "minutes_one": "{{count}}min",
+        "minutes_other": "{{count}}min",
+        "hours_one": "{{count}}h",
+        "hours_other": "{{count}}h",
+        "days_one": "{{count}}d",
+        "days_other": "{{count}}d"
+      }
     },
     "integrations": {
       "tabsLabel": "Integration sections",
@@ -1689,7 +2292,10 @@
     },
     "questions": {
       "deleteTitle": "Delete this question?",
-      "deleteBody": "Not possible if answers are linked to it."
+      "deleteBody": "Not possible if answers are linked to it.",
+      "created": "Question created",
+      "updated": "Question updated",
+      "deleted": "Question deleted"
     },
     "approvals": {
       "cancelRequestTitle": "Cancel this approval request?"
@@ -1724,7 +2330,369 @@
     "labelsNotObject": "Labels: a JSON object was expected",
     "ciNotFound": "CI not found",
     "ciNotFoundHint": "No CI with id {{id}}: it may have been deleted.",
-    "backToCmdb": "Back to the CMDB"
+    "backToCmdb": "Back to the CMDB",
+    "network": "Cannot reach the server",
+    "nothingToUpdate": "No field to update.",
+    "notFound": "{{entity}} {{id}} not found.",
+    "ola": {
+      "typeOneOf": "The type must be one of: {{allowed}}.",
+      "entityTypeOneOf": "The entity type must be one of: {{allowed}}.",
+      "nameRequired": "The name is required.",
+      "responseMinutes": "The response minutes must be greater than zero.",
+      "resolveMinutes": "The resolution minutes must be greater than zero.",
+      "typeImmutable": "The contract type cannot be changed.",
+      "supplierNameRequired": "An external supplier needs its name.",
+      "teamRequired": "Choose the responsible team: a team of this tenant, not a name typed by hand.",
+      "teamUnknown": "Team {{team}} does not exist in this tenant."
+    },
+    "question": {
+      "textEmpty": "The question text cannot be empty: it is what the operator reads in the task.",
+      "noOptions": "A question must have at least one option.",
+      "scoreRequired": "Every option must have a numeric score: it feeds the change risk.",
+      "category": "The category must be \"functional\" or \"technical\".",
+      "optionsWithoutText": "{{count}} answer options have no text: the task dropdown would show a blank entry, and whoever picked it would not know what they chose. Give every option a label, or remove the rows you do not need.",
+      "duplicateOptions": "The options repeat {{options}}: two answers with the same text and different scores make the risk score impossible to explain.",
+      "scoreBelowOne": "{{options}}: the score must be an integer of 1 or more. An answer worth 0 does not move the risk of the change, so the question measures nothing: give the least risky answer the lowest score (1), not zero.",
+      "allSameScore": "Every option is worth {{score}}: answering would not change the risk of the change, so the question measures nothing. Give the answers different scores, from the least to the most risky."
+    },
+    "enum": {
+      "dictionary": "{{what}}: dictionary \"{{name}}\" {{reason}}",
+      "emptyValues": "Dictionary \"{{name}}\" has {{count}} empty values: every value needs a name.",
+      "systemTenant": "The system tenant does not customize the shipped dictionaries: the product changes those.",
+      "renameEmpty": "The new value cannot be empty.",
+      "renameSame": "Value \"{{value}}\" is already called that.",
+      "noValues": "Dictionary \"{{name}}\" cannot be left without values: no record could be created any more, because every value would be rejected as out of vocabulary. If it is no longer needed, delete it; if you are rewriting the scale, send it whole.",
+      "duplicateValues": "Dictionary \"{{name}}\" repeats {{values}}: in a scale the position is a domain rule (the first value is the lowest, the last the highest), and a repeated value makes it ambiguous.",
+      "unknownLanguage": "Language \"{{language}}\" not recognised: the product is translated into {{available}}.",
+      "alreadyYours": "Dictionary \"{{name}}\" is already yours: edit it directly, there is nothing to customize.",
+      "yoursExists": "You already have a dictionary \"{{name}}\": that is the one you read. Edit it instead of creating another.",
+      "shippedUseCustomize": "Dictionary \"{{name}}\" ships with the product: it is the same for every tenant and cannot be edited in place. Use \"Customize\" to get your own copy and edit that.",
+      "replacementNotRemoved": "Replacements: \"{{from}}\" is not among the values you are removing from \"{{name}}\" ({{removed}}).",
+      "replacementNothingRemoved": "Replacements: \"{{from}}\" is not among the values you are removing from \"{{name}}\", and you are removing none.",
+      "replacementNotNew": "Replacements: the replacement value \"{{to}}\" is not among the new values of \"{{name}}\" ({{values}}).",
+      "removingDefault": "You are removing \"{{value}}\" from \"{{name}}\", which is its default value: a new record would be born with a value the dictionary does not have. Say what to rewrite it to, or choose a new default in the same operation.",
+      "defaultNotInValues": "The default value \"{{value}}\" is not among the values of \"{{name}}\" ({{values}}).",
+      "deleteInUse": "Deleting your dictionary \"{{name}}\" would bring it back to the one shipped with the product ({{shipped}}), and these values of yours are still in use: {{usages}}. Change those records first, or remove the values one by one with a replacement value.",
+      "deleteInUseNoShipped": "Deleting your dictionary \"{{name}}\" would leave no value at all (there is no shipped one), and these values are still in use: {{usages}}. Change those records first.",
+      "shippedRename": "Dictionary \"{{name}}\" ships with the product: it is the same for every tenant and cannot be edited in place. Use \"Customize\" to get your own copy, and rename the values on that one.",
+      "renameMissing": "Value \"{{from}}\" is not among those of \"{{name}}\" ({{values}}): there is nothing to rename.",
+      "renameWouldMerge": "\"{{name}}\" already has a value \"{{to}}\". Renaming \"{{from}}\" to \"{{to}}\" would merge two distinct values into one, and the records of the first would become the second without anyone asking. If that is what you want, remove \"{{from}}\" giving \"{{to}}\" as its replacement.",
+      "shippedReorder": "Dictionary \"{{name}}\" ships with the product: use \"Customize\" to get your own copy and reorder that one.",
+      "reorderSameSet": "Reordering changes only the ORDER of the values of \"{{name}}\", not the set (missing: {{missing}} · extra: {{extra}}). To add or remove a value use the dictionary edit, to change its name use the rename.",
+      "otherTenant": "Dictionary \"{{name}}\" belongs to another tenant: it cannot be attached to field \"{{field}}\".",
+      "sharedFieldOwnDictionary": "Field \"{{field}}\" ships with the product and is shared by every tenant: it cannot be attached to your dictionary \"{{name}}\", because your values would end up in the other tenants too. Create a dictionary named \"{{name}}\" — yours wins on read only for you.",
+      "wireVocabulary": "{{op}}: dictionary \"{{name}}\" {{reason}}",
+      "op": {
+        "changeValues": "Changing the values",
+        "rename": "Renaming \"{{from}}\" to \"{{to}}\"",
+        "reorder": "Reordering the values"
+      },
+      "wireReason": {
+        "event_severity": "is the severity the monitoring systems send (the product normalizes alarms to info, warning, critical): changing its values does not change what arrives, and breaks the translation. What you decide is which incident severity they translate into: Settings → Domain matrices, matrix «event_severity»."
+      }
+    },
+    "ciType": {
+      "shipped": "Type \"{{label}}\" ({{name}}) ships with the product: it is one type for every tenant. {{consequence}}",
+      "relationExists": "The type already has a relationship \"{{name}}\": relationship names are unique within a type.",
+      "enumMissing": "Dictionary {{enumTypeId}} does not exist: field \"{{fieldName}}\" cannot be attached to it.",
+      "unknown": "CI type \"{{type}}\" does not exist for this tenant. Allowed: {{allowed}}.",
+      "nothingWritten": "{{what}}: nothing was written and no change was saved. Either the item no longer exists, or the type ships with the product — one node for every tenant, read-only.",
+      "fieldNotYours": "Field {{field}} is not a field of yours on this type: it was not deleted. The fields that ship with the product are read-only.",
+      "unknownWithWhat": "{{what}}: \"{{type}}\" is not a CI type of this tenant (allowed: {{allowed}}).",
+      "inUseDelete": "Type \"{{label}}\" ({{name}}) was not deleted: there are still {{count}} CIs of type {{type}} in this tenant, and their data and relationships would stay in the graph without appearing anywhere any more (lists, impact, service maps, search): a silent loss. Move or delete those CIs first.",
+      "inUseDeleteWithRefs": "Type \"{{label}}\" ({{name}}) was not deleted: there are still {{count}} CIs of type {{type}} in this tenant, and their data and relationships would stay in the graph without appearing anywhere any more (lists, impact, service maps, search): a silent loss. Move or delete those CIs first. The type is also referenced by: {{refs}}.",
+      "inUseDeactivate": "Type \"{{label}}\" ({{name}}) was not deactivated: there are still {{count}} CIs of type {{type}} in this tenant, and a deactivated type disappears from reads as if it were deleted, so those CIs would not appear anywhere any more. Move or delete those CIs first.",
+      "inUseDeactivateWithRefs": "Type \"{{label}}\" ({{name}}) was not deactivated: there are still {{count}} CIs of type {{type}} in this tenant, and a deactivated type disappears from reads as if it were deleted, so those CIs would not appear anywhere any more. Move or delete those CIs first. The type is also referenced by: {{refs}}.",
+      "onlyRefsDelete": "Type \"{{label}}\" ({{name}}) was not deleted: no CI is of this type, but the type is still referenced by {{refs}}. Those references are BY NAME: they would hang off a type that no longer exists. Remove the references first.",
+      "onlyRefsDeactivate": "Type \"{{label}}\" ({{name}}) was not deactivated: no CI is of this type, but the type is still referenced by {{refs}}. Those references are BY NAME: they would hang off a type that no longer exists. Remove the references first.",
+      "where": {
+        "topology": "In the map filter",
+        "problemRules": "In the ITIL problem → CI rules",
+        "incidentRules": "In the ITIL incident → CI rules",
+        "groupCriteria": "In the dynamic group criteria"
+      },
+      "unknownFieldType": "{{what}}: field type \"{{fieldType}}\" does not exist. Allowed: {{allowed}}. A type the generator cannot translate degrades this tenant's GraphQL schema: all of its CI types disappear from the API until the field is fixed.",
+      "unknownDirection": "{{what}}: direction \"{{direction}}\" does not exist. Allowed: {{allowed}}. An invented direction is walked by nobody: the relationship would sit in the designer, inert.",
+      "targetRequired": "{{what}}: the target type is required.",
+      "notAmongTypes": "{{what}}: type \"{{name}}\" does not exist among the types of this tenant. Available: {{available}}.",
+      "tooMany": "This tenant already has {{current}} CI types, which is the maximum. Every type enters the GraphQL schema, which is rebuilt on every metamodel change in every process: beyond a certain number the cost is paid by the other tenants too. Delete a type you do not use, or raise the limit knowing what it costs.",
+      "chainFamiliesList": "The chain families must be a list ({{allowed}}). Got: {{got}}.",
+      "chainFamilyUnknown": "{{got}} is not a valid chain family ({{allowed}}).",
+      "serviceRoleUnknown": "{{got}} is not a valid role ({{allowed}}). The «entry» role is not declared: in the map it always goes to level 1.",
+      "enumIdRequired": "An \"enum\" field needs its dictionary.",
+      "fieldNotOnType": "Field {{field}} is not on type {{type}} of this tenant."
+    },
+    "titleRequired": "The title is required.",
+    "assignment": {
+      "groupFirst": "Assign a group first, then a user from that group.",
+      "notMember": "The chosen user does not belong to the assigned group.",
+      "notMemberNamed": "The chosen user does not belong to the assigned group ({{team}}).",
+      "teamRequired": "A team is required."
+    },
+    "incident": {
+      "needsCI": "An incident must have at least one impacted CI.",
+      "ciMissing": "Incident not created: {{missing}} of the {{total}} impacted CIs do not exist in this tenant, or are not Configuration Items ({{ids}})."
+    },
+    "change": {
+      "needsCI": "A change must have at least one impacted CI.",
+      "whyRequired": "The \"why\" field is required.",
+      "whatRequired": "The \"what\" field is required.",
+      "notFoundOrDeleted": "Change not found, or already deleted.",
+      "badTicketType": "Invalid ticket type: {{entityType}}.",
+      "changeOrTicketNotFound": "Change or ticket not found.",
+      "automaticLink": "This link was created automatically and cannot be removed. Delete the change to remove it.",
+      "linkIncidentNotFound": "Incident not found for the change link.",
+      "linkProblemNotFound": "Problem not found for the change link.",
+      "deleted": "The change was deleted: no operation is possible any more.",
+      "preApprovalFailed": "Pre-approved change type \"{{type}}\": the pre-approval failed ({{reason}})."
+    },
+    "import": {
+      "tenantRequired": "The tenant is missing: the import does not know where to write.",
+      "rowsArray": "The rows to import must be a list.",
+      "noWorkflow": "No active incident workflow: the import would not know which state to put them in.",
+      "noInitialStep": "The incident workflow has no initial step: the import would not know where to start.",
+      "invalidCsv": "Invalid CSV: {{reason}}",
+      "noRows": "The CSV has no data rows: a header and at least one row are needed."
+    },
+    "authz": {
+      "noUser": "Not authorized: we do not know who you are.",
+      "wrongGroup": "Not authorized: only the CI's {{group}} group can do this.",
+      "reopenAdmin": "Only an administrator can reopen a task.",
+      "notInTeam": "The user does not belong to the assigned team.",
+      "unknownRole": "Unknown role \"{{role}}\": no operation is allowed.",
+      "roleNotAllowed": "Role \"{{role}}\" cannot run {{operation}} (required: {{required}}).",
+      "invalidRole": "Invalid role: {{role}}."
+    },
+    "vocabulary": {
+      "missingValue": "{{vocabulary}}: the value is missing. Allowed: {{allowed}}.",
+      "outOfVocabulary": "{{vocabulary}}: \"{{value}}\" is not in this tenant's Dictionary. Allowed: {{allowed}}."
+    },
+    "priority": {
+      "impactUrgencyTogether": "Impact and urgency go together: either both, or the priority alone ({{field}}).",
+      "noCombination": "No combination of impact and urgency produces \"{{priority}}\": complete the priority matrix in Settings → Domain matrices.",
+      "noCombinationFactory": "No combination of impact and urgency produces \"{{priority}}\". The priority matrix is still the factory one: you may have renamed a dictionary value without updating it (Settings → Domain matrices).",
+      "cellImpactStale": "Priority matrix, cell \"{{cell}}\": the impact \"{{value}}\" is not (any more) in the Dictionary. It happens when a dictionary value is renamed without updating the matrix: fix it in Settings → Domain matrices.",
+      "cellUrgencyStale": "Priority matrix, cell \"{{cell}}\": the urgency \"{{value}}\" is not (any more) in the Dictionary. It happens when a dictionary value is renamed without updating the matrix: fix it in Settings → Domain matrices."
+    },
+    "riskBand": {
+      "atLeastOne": "At least one risk band is required.",
+      "duplicate": "Band \"{{band}}\" appears twice.",
+      "threshold": "The threshold of \"{{band}}\" must be an integer of zero or more (got {{got}}).",
+      "notDeclared": "The risk bands of this tenant are not declared, and the \"risk_band\" dictionary has {{count}} values ({{bands}}) instead of three: there is no factory split of the score to fall back on. Declare the thresholds in Settings → Domain matrices.",
+      "notGrowing": "The thresholds must grow: \"{{band}}\" goes up to {{upTo}}, which is not more than the previous band ({{previous}}). The bands are declared from the lowest to the highest.",
+      "lastMustReachMax": "The last band (\"{{band}}\") must reach {{max}}: otherwise a higher score would be left without a band, and the priority of the change could not be computed.",
+      "stale": "The risk bands of this tenant name \"{{band}}\", which is not (any more) in the \"risk_band\" dictionary ({{bands}}): fix them in Settings → Domain matrices."
+    },
+    "changePolicy": {
+      "duplicateType": "Change type \"{{type}}\" appears twice in the pre-approved list."
+    },
+    "workflow": {
+      "stepNameTaken": "Cannot create step \"{{name}}\": the definition is missing, or that name is already used in this workflow.",
+      "stepNotFound": "Step \"{{name}}\" does not exist in this definition.",
+      "invalidStepName": "Step name \"{{name}}\" is not valid: lowercase, digits and underscores, and it must start with a letter (e.g. \"weekly_cab\"). This name becomes the state of the ticket and ends up in filters and reports; the name people see is the label, which can be anything.",
+      "cannotDeleteBoundaryStep": "Step \"{{name}}\" is of kind \"{{kind}}\": the opening and closing steps of the process cannot be deleted, or the workflow would have no beginning or no end. You can rename it, or change its actions.",
+      "cannotDeleteInitialStep": "Step \"{{name}}\" is the initial step of the process: if you delete it, no new ticket could be created. Mark another step as initial first.",
+      "actionsNotJson": "{{field}} is not valid JSON ({{reason}}).",
+      "actionsNotList": "{{field}} must be a list of actions.",
+      "badTarget": "{{field}}: \"{{target}}\" is not a valid recipient. Allowed: {{allowed}}.",
+      "targetNotApplicable": "{{field}}: \"{{target}}\" cannot be resolved when a step is entered. Applicable: {{applicable}}.",
+      "badPurpose": "{{field}}: purpose \"{{purpose}}\" is out of vocabulary. Allowed: {{allowed}} (or empty for no purpose).",
+      "badCategory": "{{field}}: category \"{{category}}\" is out of vocabulary. Allowed: {{allowed}}. The category says how the ticket looks from outside, and the product reads it to decide: «resolved» fills in the resolution date, «closed» is where the automatic closure lands. The name people see is the step label, not this one.",
+      "badTrigger": "{{field}}: trigger \"{{trigger}}\" is out of vocabulary. Allowed: {{allowed}}.",
+      "badCondition": "{{field}}: condition \"{{condition}}\" does not exist. The engine can only evaluate these: {{allowed}} (or empty for no condition). An unregistered condition blocks the edge: the engine rejects it on every attempt and the ticket stops moving.",
+      "noApprovalPurpose": "In the change workflow no step would have the «Approval» purpose any more, but the change types {{types}} are not pre-approved: without that step there would be no place to approve them, and the approval gate would have nowhere to apply. Give the «Approval» purpose to the step where approval happens, or — if in this tenant changes are not approved — add those types to the pre-approved ones (Settings → Domain matrices).",
+      "noWindowPurpose": "In the change workflow no step would have a release-window purpose any more ({{purposes}}), and the approval gate is indexed on those purposes from the destination-step side: without them an unapproved change could reach production with nobody stopping it, and alarms would no longer be silenced during the release. Give the «Scheduled» or «Implementation» purpose to the step where the change goes to production.",
+      "stepActionsNotJson": "Misconfigured workflow: {{field}} of step \"{{step}}\" is not valid JSON ({{reason}}).",
+      "noApprover": "No user with the \"{{role}}\" role is configured to approve.",
+      "concurrentEdit": "The workflow was changed by someone else (version {{current}}, you were editing v{{expected}}). Reload the page so you do not overwrite their changes.",
+      "manyInitial": "Only one step can be initial: you marked {{count}} ({{steps}}).",
+      "initialAndTerminal": "Step \"{{name}}\" is terminal: it cannot also be the initial step, or every new ticket would be born already closed. Clear «terminal step», or pick another initial step.",
+      "stepsNotInDefinition": "Steps not found, or not part of this definition.",
+      "stepHasInstances": "Step \"{{name}}\" cannot be deleted: {{count}} workflow instances are on this step right now ({{detail}}). Move them to another step first — deleting it would leave them without a current step, unable to move.",
+      "stepNotInDefinition": "Step \"{{name}}\" is not in definition {{definition}}: the number of instances on it cannot be told."
+    },
+    "channel": {
+      "platform": "Platform \"{{platform}}\" is not supported. Allowed: {{allowed}}."
+    },
+    "ciLink": {
+      "problem": "CI {{ci}} was not linked to the problem: it does not exist in this tenant, or its type is not allowed by the ITIL rules.",
+      "problemTyped": "CI {{ci}} was not linked to the problem: it does not exist in this tenant, or its type is not allowed by the ITIL rules (allowed: {{allowed}}).",
+      "incident": "CI {{ci}} was not linked to the incident: it does not exist in this tenant, or its type is not allowed by the ITIL rules.",
+      "incidentTyped": "CI {{ci}} was not linked to the incident: it does not exist in this tenant, or its type is not allowed by the ITIL rules (allowed: {{allowed}})."
+    },
+    "automation": {
+      "transitionNeedsStep": "Action {{item}} (workflow transition): the destination step is missing.",
+      "noStepsAtAll": "{{what}} names the step \"{{step}}\", but the \"{{entityType}}\" workflow of this tenant has no step at all: create the workflow definition before configuring the automation.",
+      "unknownStep": "{{what}} names the step \"{{step}}\", which does not exist in the \"{{entityType}}\" workflow of this tenant. Available steps: {{available}}."
+    },
+    "matrix": {
+      "cellOutOfVocabulary": "Matrix \"{{matrix}}\", cell \"{{cell}}\": \"{{value}}\" is not in this tenant's \"{{vocabulary}}\" dictionary. Allowed: {{allowed}}.",
+      "cellRepeated": "Matrix \"{{matrix}}\": cell \"{{cell}}\" is repeated.",
+      "keyOutOfVocabulary": "Matrix \"{{matrix}}\": \"{{value}}\" is not in the \"{{vocabulary}}\" dictionary of this tenant. Allowed: {{allowed}}.",
+      "incomplete": "Matrix \"{{matrix}}\" is incomplete: {{count}} combinations with no value ({{examples}}). An empty cell becomes an error when it is needed — opening an incident, receiving an alarm — so it is filled in here, not discovered there.",
+      "noValue": "Matrix \"{{matrix}}\" has no value for {{combination}}: complete it in Settings → Domain matrices.",
+      "noValueFactory": "Matrix \"{{matrix}}\" has no value for {{combination}}, and it is still the factory one: you may have renamed a dictionary value without updating it (Settings → Domain matrices).",
+      "storedValueStale": "Matrix \"{{matrix}}\", cell \"{{cell}}\": the stored value \"{{value}}\" is not (any more) in the \"{{vocabulary}}\" dictionary of this tenant. Allowed: {{allowed}}. It happens when a value is renamed without updating the matrix: fix it in Settings → Domain matrices."
+    },
+    "filter": {
+      "invalidTypeName": "Invalid type name: \"{{typeName}}\".",
+      "typeNotFilterable": "Type \"{{typeName}}\" does not exist, or cannot be filtered."
+    },
+    "task": {
+      "resultOneOf": "The result must be one of: {{allowed}}.",
+      "notOnChange": "{{task}} for CI {{ci}} is not on the change: wrong phase, or task reopened?"
+    },
+    "plan": {
+      "endBeforeStart": "{{window}}: the end must come after the start.",
+      "stepTitleRequired": "Step {{step}}: the title is required.",
+      "atLeastOneStep": "At least one step is required.",
+      "oneStepFilled": "At least one step must be filled in before completing."
+    },
+    "assessment": {
+      "noQuestions": "No assessment question: the score cannot be computed.",
+      "noQuestionForCategory": "No assessment question is assigned to the CI type for the requested category."
+    },
+    "serviceMap": {
+      "planLimit": "Plan {{plan}} allows at most {{max}} service maps, and {{existing}} already exist.",
+      "noCriticality": "The service \"{{service}}\" has no criticality: fill in «Criticality» on the business application so a service incident can be opened with the right impact. Allowed: {{allowed}}."
+    },
+    "event": {
+      "orphan": "Orphan event: link a CI first — an incident must have at least one impacted CI."
+    },
+    "validation": {
+      "tooShort": "{{field}} must be at least {{min}} characters.",
+      "tooLong": "{{field}} must be at most {{max}} characters.",
+      "cron": "Invalid cron expression: \"{{cron}}\". Five fields are needed (minute hour day month weekday).",
+      "urlProtocol": "{{field}} must use http or https.",
+      "url": "{{field}} is not a valid URL.",
+      "email": "\"{{email}}\" is not a valid email address.",
+      "enum": "{{field}} must be one of: {{allowed}}. Got: \"{{value}}\"."
+    },
+    "ci": {
+      "validationFailed": "The CI is not valid: {{details}}",
+      "noTypeLabel": "CI {{id}} has no type: the data is incomplete and its type cannot be told.",
+      "unknownTypeOnRecord": "The type of this CI cannot be told ({{type}}). No active type of this tenant declares it: the type was deleted or deactivated, or the CI came from a discovery with a type the metamodel does not have.",
+      "missingGroups": "CI \"{{ci}}\" has no Owner Group or Support Group."
+    },
+    "portal": {
+      "unclassifiedStates": "{{count}} ticket states belong to no class of the active incident workflow ({{states}}): the portal counters would not count them. Fix the steps (initial / terminal / category) in the designer."
+    },
+    "sync": {
+      "unknownCIType": "Conflict {{id}} is about an unknown CI type: no CI was created, because \"{{ciType}}\" is not a type of this tenant. Fix it at the root — create the type, or add an alias in the source mapping rules — and run the sync again: the conflict closes by itself.",
+      "unresolvable": "Conflict {{id}} cannot be resolved: {{reason}}"
+    },
+    "ciLifecycle": {
+      "emptyVocabulary": "The \"{{vocabulary}}\" dictionary of this tenant is empty: there is no state to create a CI with. Add at least one value in the Dictionary.",
+      "staleInitialState": "The \"{{vocabulary}}\" dictionary declares \"{{declared}}\" as the initial state, but that value is not (any more) among its own ({{values}}): a new CI would be born with a state the Dictionary does not have. Choose the initial state among the current values."
+    },
+    "scripting": {
+      "planExcludesScripts": "{{what}}: the \"{{plan}}\" plan does not include scripts. Remove the script from the configuration, or move to a plan that includes them.",
+      "what": {
+        "field": "The script of field \"{{field}}\"",
+        "webhook": "The transform script of webhook {{hook}}",
+        "action": "The \"execute script\" action of \"{{source}}\""
+      }
+    },
+    "problem": {
+      "ciMissing": "Problem created, but {{missing}} of the {{total}} given CIs do not exist in this tenant, or are not Configuration Items ({{ids}})."
+    },
+    "itilType": {
+      "shippedField": "Field \"{{name}}\" ships with the product: it is the same for every tenant and cannot be changed, not even the label, the order or the scripts. Add a field of your own on the type.",
+      "shippedType": "Type \"{{name}}\" ships with the product: it is the same for every tenant and cannot be changed (label, icon, colour and validation script included)."
+    },
+    "widget": {
+      "entityType": "Unsupported entity type: {{entityType}}.",
+      "metric": "Unsupported metric: {{metric}}.",
+      "groupByRequired": "The \"{{metric}}\" metric needs the group-by field.",
+      "notNumeric": "Field \"{{field}}\" is not numeric for \"{{entityType}}\": {{metric}} only takes {{allowed}}.",
+      "noNumericField": "Field \"{{field}}\" is not numeric for \"{{entityType}}\", and {{metric}} has no numeric field to use.",
+      "groupByNotAllowed": "Group-by field not allowed: {{field}}.",
+      "filterNotAllowed": "Filter field not allowed: {{field}}.",
+      "noData": "{{what}}: no numeric value (no matching entity, or the field is empty)."
+    },
+    "notificationRule": {
+      "badTarget": "\"{{target}}\" is not a valid recipient. Allowed: {{allowed}}.",
+      "targetNotResolvable": "\"{{target}}\" cannot be resolved for the \"{{eventType}}\" event: the entity does not have that recipient at the moment the event happens. Allowed: {{allowed}}.",
+      "narrowingNotApplicable": "{{field}} only applies to step-entered events: \"{{eventType}}\" is not one, so the narrowing would not be applied.",
+      "badStepPurpose": "Step purpose \"{{purpose}}\" is out of vocabulary. Allowed: {{allowed}}.",
+      "duplicate": "A rule for \"{{eventType}}\"{{narrowing}} already exists: edit it instead of creating a second one (with two identical rules the dispatcher would apply only one, and which one is not defined).",
+      "notDeletable": "Rule not found, or not deletable."
+    },
+    "approval": {
+      "notForThisTeam": "You are not authorized to approve for this team.",
+      "notInApproval": "The change is not in the approval stage (step \"{{step}}\", purpose {{purpose}}).",
+      "notInApprovalNoPurpose": "The change is not in the approval stage: step \"{{step}}\" has no declared purpose.",
+      "requirementGone": "Approval requirement not found, or already resolved.",
+      "didNotAdvance": "The approvals are complete but the change did not move to \"{{step}}\": {{reason}}",
+      "rejectNeedsNote": "The reason for the rejection is required.",
+      "rejectFailed": "The rejection failed.",
+      "typeNoLongerPreApproved": "The change is of type \"{{type}}\", which is not among the pre-approved types, and it has no approval requirement: requirements are created when entering a step with the «Approval» purpose, and this change never went through one (when it was created, its type was pre-approved). Two ways out: put \"{{type}}\" back among the pre-approved types (Settings → Domain matrices), and changes like this one resume by themselves; or bring it back to the approval step, which creates the requirements on entry.",
+      "missingChangeManagerRequirement": "The Change Manager requirement is missing: designate a Change Manager team (Teams and Users) before approving.",
+      "noChangeManagerTeam": "No team is designated Change Manager: configure one (Teams and Users) before sending the change to approval."
+    },
+    "fieldRule": {
+      "sameField": "The field that triggers the rule and the field it acts on cannot be the same.",
+      "badAction": "The action must be \"show\" or \"hide\".",
+      "stepUnknown": "Step \"{{step}}\" does not exist in the \"{{entityType}}\" workflow of this tenant, so the rule would apply to no transition. Available steps: {{available}}.",
+      "stepNoWorkflow": "Step \"{{step}}\" does not exist: this tenant has no workflow definition for \"{{entityType}}\" yet."
+    },
+    "link": {
+      "self": "A ticket cannot be linked to itself.",
+      "problemIncidentNotFound": "Problem–incident link not found."
+    },
+    "ai": {
+      "notConfigured": "The AI is not configured: the service key is missing."
+    },
+    "kb": {
+      "onlyFromConcluded": "The Knowledge Base draft is generated only from resolved or closed incidents: this one is in step \"{{step}}\". Concluding steps of the incident workflow: {{concluded}}.",
+      "onlyFromConcludedNone": "The Knowledge Base draft is generated only from resolved or closed incidents: this one is in step \"{{step}}\", and the incident workflow has no concluding step declared. Mark a step as terminal, or of category \"resolved\", in the designer."
+    },
+    "comment": {
+      "entityType": "This entity type cannot be commented on: {{entityType}}."
+    },
+    "dashboard": {
+      "lastOne": "The only dashboard cannot be deleted."
+    },
+    "window": {
+      "noApprovalStep": "The change is of type \"{{type}}\", which is not among the pre-approved types, and in the change workflow no step declares the «Approval» purpose: there is no place to approve it, so it cannot enter the release window. Give the «Approval» purpose to the step where approval happens, or add \"{{type}}\" to the pre-approved types (Settings → Domain matrices)."
+    },
+    "itilRelation": {
+      "duplicate": "A relationship with this CI type already exists."
+    },
+    "metamodelName": {
+      "typeSyntax": "«{{name}}» is not a valid CI type name: it must start with a lowercase letter and contain only lowercase letters, digits and underscores (rule: {{pattern}}).{{instead}} The name is the technical slug; the name people read in the interface is the label, which may contain spaces, accents and capitals.",
+      "typeTaken": "The name «{{name}}» is already taken: it would generate {{what}}, which already exists in the schema — {{owner}}. {{consequence}}. Pick another name (for example «{{suggestion}}»); the name people read in the interface is the label, which can stay the one you wanted.",
+      "fieldSyntax": "«{{name}}» is not a valid field name {{where}}: it must start with a lowercase letter and contain only letters and digits, in camelCase (rule: {{pattern}}).{{instead}} The underscore is not allowed because «costCenter» and «cost_center» would land on the same Neo4j property and overwrite each other. The name people read in the interface is the label, which may contain spaces and accents.",
+      "reservedProperty": "The field «{{name}}» {{where}} would write the property «{{property}}», {{why}}: the value sent by an API caller would overwrite a system value.{{instead}}",
+      "baseField": "The field «{{name}}» already exists on every CI: it is one of the base fields ({{baseFields}}). Adding it {{where}} would declare the same field twice in the schema. Use the base field that is already there, or give yours a different name.{{instead}}",
+      "duplicateField": "The field «{{existing}}» already exists {{where}}: two fields with the same name cannot live on the same type. Edit the one that is there, or give this one a different name.{{instead}}",
+      "notGeneratable": "The GraphQL schema of this tenant cannot be generated because of the CI type «{{type}}»: {{detail}} The type already exists in the metamodel: delete it or rename it.",
+      "what": {
+        "type": "the GraphQL type «{{generated}}»",
+        "query": "the query «{{generated}}»",
+        "mutation": "the mutation «{{generated}}»"
+      },
+      "consequence": {
+        "typeMerge": "GraphQL does not reject two types with the same name: it MERGES them silently, and the fields of your type would end up inside the product one — with no error anywhere",
+        "queryClash": "two queries with the same name and different types cannot be merged: the schema of this tenant would not assemble, and while the name stays the API would answer it with the reduced schema",
+        "mutationClash": "two mutations with the same name and different types cannot be merged: the schema of this tenant would not assemble"
+      },
+      "where": {
+        "onType": "on the type «{{typeLabel}}»",
+        "anyType": "on any CI type"
+      },
+      "instead": {
+        "write": " Write «{{suggestion}}» instead.",
+        "writeType": " Write «{{suggestion}}» instead. It would become the GraphQL type «{{graphqlType}}» and the Neo4j label «{{graphqlType}}».",
+        "pickAnother": " Pick another name."
+      },
+      "why": {
+        "system": "which the product manages",
+        "syncPrefix": "which the product manages (everything starting with «{{prefix}}» belongs to synchronisation)",
+        "tenant": "which the product manages — with «tenant_id» the CI would be born in the tenant chosen by the caller"
+      },
+      "duplicateFieldRace": "The type already has a field «{{name}}»: someone saved the same name a moment before you."
+    }
   },
   "errorBoundary": {
     "title": "Something went wrong",
@@ -2082,6 +3050,50 @@
       "label": "Label",
       "value": "Value",
       "noData": "No data"
+    },
+    "ciChanges": {
+      "empty": "No change on this CI."
+    },
+    "ciIncidents": {
+      "empty": "No incident on this CI."
+    },
+    "similar": {
+      "semanticScore": "Semantic similarity",
+      "title": "Similar incidents",
+      "pending": "Analysis under way: the product is computing this incident's similarity...",
+      "empty": "No past incident is similar to this one.",
+      "kb": "Suggested articles",
+      "searchError": "Semantic search error: {{message}}"
+    },
+    "linkedTickets": {
+      "empty": "No linked ticket.",
+      "automatic": "Automatic link: it goes away only by deleting the change",
+      "unlink": "Unlink",
+      "searchPlaceholder": "Search {{kind}} by number or title…",
+      "link": "Link a ticket"
+    },
+    "affectedCI": {
+      "title": "Impacted CIs",
+      "empty": "No impacted CI recorded.",
+      "remove": "Remove the CI"
+    },
+    "workflowTimeline": {
+      "title": "Workflow history",
+      "empty": "No workflow history."
+    },
+    "triage": {
+      "needsTitle": "Write a title first",
+      "hint": "AI suggestion, based on similar incidents and CI impact",
+      "title": "AI suggestion",
+      "apply": "Apply the suggestion",
+      "analyzing": "Analysing…",
+      "suggest": "Suggest triage",
+      "error": "AI triage error: {{message}}",
+      "confidenceHigh": "high confidence",
+      "confidenceMedium": "medium confidence",
+      "confidenceLow": "low confidence",
+      "basedOn_one": "Based on {{count}} similar incident, namely {{examples}}.",
+      "basedOn_other": "Based on {{count}} similar incidents, among them {{examples}}."
     }
   },
   "events": {
@@ -3296,13 +4308,44 @@
     "title_one": "There is 1 thing to fix in the configuration",
     "title_other": "There are {{count}} things to fix in the configuration",
     "goFix": "Go and fix it",
-    "dismiss": "Hide until the next load"
+    "dismiss": "Hide until the next load",
+    "reasonUnavailable": "reason not available",
+    "issue": {
+      "schema_degraded": "Part of the CI metamodel cannot be served by the API, so those types appear nowhere at all: {{reason}}",
+      "provisioning_gap": "This tenant's configuration is incomplete ({{gaps}}). Until it is fixed, opening a ticket fails. Fix it from the workflow designer, with the «Complete the configuration» button.",
+      "matrix_missing_cells_one": "Matrix «{{matrix}}»: 1 combination with no value ({{examples}}).",
+      "matrix_missing_cells_other": "Matrix «{{matrix}}»: {{count}} combinations with no value ({{examples}}).",
+      "matrix_invalid_cells_one": "Matrix «{{matrix}}»: 1 cell holding a value outside the vocabulary.",
+      "matrix_invalid_cells_other": "Matrix «{{matrix}}»: {{count}} cells holding a value outside the vocabulary.",
+      "matrix_stale_keys_one": "Matrix «{{matrix}}»: 1 key left over from a rename.",
+      "matrix_stale_keys_other": "Matrix «{{matrix}}»: {{count}} keys left over from a rename.",
+      "vocabulary_empty_one": "Vocabulary «{{vocabularies}}» has no values at all, and matrix «{{matrix}}» needs them: until you fix it every value is rejected as outside the vocabulary and no ticket can be opened. Put the values back in the Dictionary — **do not save the matrix**, which is still good and would be emptied.",
+      "vocabulary_empty_other": "Vocabularies {{vocabularies}} have no values at all, and matrix «{{matrix}}» needs them: until you fix it every value is rejected as outside the vocabulary and no ticket can be opened. Put the values back in the Dictionary — **do not save the matrix**, which is still good and would be emptied.",
+      "policy_out_of_vocabulary": "The alarm policy names lifecycle states your Dictionary no longer has: {{details}}. Those lists match no CI at all: CIs in that state count towards service health again.",
+      "vocabulary_without_semantics_one": "This lifecycle state is in no list of the alarm policy: {{statuses}}. As far as the product is concerned it is a CI **in service**: its alarms open incidents and count towards service health. If it is a final state, add it to «retired».",
+      "vocabulary_without_semantics_other": "These lifecycle states are in no list of the alarm policy: {{statuses}}. As far as the product is concerned they are CIs **in service**: their alarms open incidents and count towards service health. If they are final states, add them to «retired».",
+      "value_labels_missing": "These values have no label in any language, so on screen they read by their internal name: {{details}}. **You write it in the Dictionary**, next to the value.",
+      "value_labels_partial": "These values have a label in one language only: whoever uses the other one reads them in Italian ({{languages}}). {{details}}. **You complete it in the Dictionary**.",
+      "default_language_not_set": "Nobody has chosen this organization's language, so the product reads in «{{fallback}}» — the first of the available languages ({{available}}), not a decision. **You choose it in Settings → Organization**, and it applies to whoever has no language of their own in their Profile.",
+      "check_failed": "Check «{{check}}» did not run: {{error}}"
+    },
+    "gap": {
+      "tenant_missing": "no row: the tenant does not exist",
+      "no_dashboard": "no dashboard",
+      "no_notification_rules": "no notification rules",
+      "no_domain_matrices": "no domain matrices",
+      "no_workflows": "no active workflow for: {{entityTypes}}",
+      "no_assessment_questions": "no assessment questions: no change could ever get past the assessment stage (Assessment Questions)",
+      "no_teams": "no teams: without teams CIs have no Owner/Support Group and no change can be created (Teams and Users)",
+      "no_change_manager": "no team designated Change Manager: normal and emergency changes cannot enter approval (Teams and Users)"
+    }
   },
   "forms": {
     "title": "Title",
     "description": "Description",
     "fieldRequired": "Required field",
-    "selectCategory": "Pick a category"
+    "selectCategory": "Pick a category",
+    "requiredField": "{{field}} is required"
   },
   "changeTasks": {
     "activeTasks": "Active tasks",
@@ -3313,9 +4356,299 @@
     "planning": "Planning",
     "validation": "Validation",
     "deploy": "Deploy",
-    "review": "Review"
+    "review": "Review",
+    "tasks": "Tasks",
+    "completed": "COMPLETED",
+    "notCompleted": "NOT YET COMPLETED",
+    "openTask": "Open the task",
+    "reopenTask": "Reopen task",
+    "notInTeam": "You are not in the team responsible for this task. You can nudge whoever has to act.",
+    "assigned": "Assigned",
+    "nudge": "Nudge",
+    "viewFullChange": "See the full change →",
+    "deployConfirmHint": "Confirm that the production deployment is complete.",
+    "deployConfirm": "Confirm deployment",
+    "addStep": "Add step",
+    "savePlan": "Save plan",
+    "completeCount": "Complete ({{done}}/{{total}})",
+    "wrongTeam": "You are not in the right team to complete this task",
+    "createdOn": "Created on {{date}}",
+    "scheduledOn": "Scheduled — {{date}}",
+    "whyLine": "Why: {{why}}",
+    "whatLine": "What: {{what}}",
+    "dot": {
+      "notStarted": "not started",
+      "inProgress": "in progress",
+      "completed": "completed",
+      "failed": "failed"
+    },
+    "doneMark": "✓ Completed",
+    "phase": {
+      "current": "current",
+      "pending": "pending"
+    }
   },
   "sync": {
-    "createSource": "Create source"
+    "createSource": "Create source",
+    "title": "CMDB Sync",
+    "subtitle": "Import and sync configuration items from external sources",
+    "addSource": "Add source",
+    "noSources": "No sync source configured. Add one to start importing CIs.",
+    "scheduleCron": "Schedule (cron, optional)",
+    "scheduleCronPlaceholder": "0 */6 * * * (every 6h)"
+  },
+  "languages": {
+    "it": "Italian",
+    "en": "English"
+  },
+  "reportBuilder": {
+    "graphAndFilters": "Graph and filters",
+    "graphHint": "See and configure the linked entities.",
+    "connectTo": "Connect to...",
+    "noConnection": "No connection found",
+    "disconnectedNodes": "⚠ Some nodes are not connected. Connect or delete the isolated nodes before going on.",
+    "hint": "Click <b>+ Connect to...</b> on a node to add the linked entities. Use <star/> to mark the entities to include in the result.",
+    "nameTheSection": "Name the section",
+    "nameHint": "Choose a descriptive title for this section of the report.",
+    "sectionTitle": "Section title",
+    "summary": "Summary",
+    "analysis": "Analysis",
+    "nodes": "Nodes",
+    "chart": "Chart",
+    "finalPreview": "Final preview",
+    "noPreview": "No preview available",
+    "loadingPreview": "Loading the preview...",
+    "root": "Root",
+    "removeFromResult": "Remove from the result",
+    "includeInResult": "Include in the result",
+    "whatToAnalyse": "What do you want to analyse?",
+    "whatToAnalyseHint": "Choose the kind of data this report section is built on.",
+    "wizard": {
+      "what": "What to analyse",
+      "graph": "Graph and filters",
+      "display": "How to show it",
+      "titleAndSave": "Title and save"
+    },
+    "saveSection": "Save section",
+    "titlePlaceholder": "Title…",
+    "useSuggested": "Use: \"{{title}}\"",
+    "valuePlaceholder": "value",
+    "environment": "Environment",
+    "next": "Next"
+  },
+  "reportChart": {
+    "chartType": "Chart type",
+    "groupBy": "Group by",
+    "nodePlaceholder": "Node...",
+    "metricLabel": "Metric",
+    "field": "Field",
+    "topN": "Show the top N",
+    "descending": "Descending",
+    "ascending": "Ascending",
+    "columnsToShow": "Columns to show (per result node)",
+    "livePreview": "Live preview",
+    "type": {
+      "kpi": "Total number",
+      "pie": "Pie",
+      "donut": "Donut",
+      "bar": "Vertical bars",
+      "barHorizontal": "Horizontal bars",
+      "line": "Line",
+      "area": "Area",
+      "table": "Table"
+    },
+    "desc": {
+      "kpi": "How many items are there?",
+      "pie": "Distribution as percentages",
+      "donut": "Distribution as a ring",
+      "bar": "Comparison across categories",
+      "barHorizontal": "Comparison with long labels",
+      "line": "Trend over time",
+      "area": "Trend with a filled area",
+      "table": "Detailed data in columns"
+    },
+    "metric": {
+      "count": "Count",
+      "avg": "Average",
+      "sum": "Sum",
+      "min": "Minimum",
+      "max": "Maximum"
+    },
+    "howToSee": "How do you want to see the data?",
+    "configure": "Configure how this section is drawn.",
+    "needsDateField": "⚠ The line chart needs a date field, and this entity has none: choose another chart type.",
+    "needsColumn": "⚠ A table needs at least one column: with no field chosen the server refuses the section.",
+    "configureToPreview": "Configure the chart to see the preview",
+    "fieldOption": "Field…"
+  },
+  "citypeDesigner": {
+    "relation": {
+      "addTitle": "Add a CI relationship",
+      "neo4jType": "Neo4j relationship type *",
+      "targetType": "Target type",
+      "cardinality": "Cardinality",
+      "direction": "Direction",
+      "empty": "No CI relationship configured.",
+      "deleteAria": "Delete relationship {{name}}",
+      "neo4jTypeShort": "Neo4j type"
+    },
+    "field": {
+      "required": "Required",
+      "enumRef": "Reference dictionary *",
+      "selectEnum": "— Choose a dictionary —",
+      "defaultValue": "Default value",
+      "labelPlaceholder": "Field label",
+      "technicalName": "Technical name (camelCase) *",
+      "advancedScripts": "Advanced scripts (validation, visibility, default value)",
+      "validationHint": "Variables: <code>value</code>, <code>input</code>. Use <code>throw</code> with a message for the error.",
+      "validationPlaceholder": "// Example:\nif (!value.startsWith('http')) throw 'Not a valid URL'",
+      "defaultHint": "Variables: <code>input</code>. Return the default value.",
+      "slugName": "Technical name (slug) *",
+      "slugNameSnake": "name (slug, snake_case) *",
+      "slugNamePlaceholder": "e.g. load_balancer",
+      "displayLabel": "label (display name) *",
+      "editTitle": "Edit field: {{name}}",
+      "visibilityHint": "Variables: <code>input</code>. Return <code>true/false</code>.",
+      "visibilityPlaceholder": "// Show only when another field has a value:\nreturn !!input.instanceType"
+    },
+    "baseFields": "Base fields",
+    "baseFieldsHint": "Inherited by every CI type",
+    "systemFields": "SYSTEM FIELDS",
+    "selectAType": "Pick a type to edit it",
+    "icon": "Icon",
+    "color": "Colour",
+    "ciTypes": "CI types",
+    "sharedByAll": "Shared by every type",
+    "noCITypes": "No CI type",
+    "noIcon": "— none —",
+    "newCIType": "New CI type",
+    "labelPlaceholder": "E.g. Load balancer",
+    "subtitle": "Define and manage the Configuration Item types and their fields.",
+    "addBaseField": "Add a base field",
+    "deleteType": "Delete the type",
+    "validationScript": "Validation script (optional)",
+    "validationScriptHint": "Variables: <code>input</code>. Use <code>throw</code> with a message for a global error.",
+    "validationScriptPlaceholder": "// Example: a validation that looks at several fields\nif (input.env === 'production' && !input.owner) throw 'Production needs an owner'",
+    "addField": "Add a field",
+    "addRelation": "Add a relationship",
+    "previewNote": "Preview of the CI creation form — the fields specific to this type.",
+    "system": "System",
+    "saveSettings": "Save settings",
+    "baseFieldLabel": "Base field",
+    "fieldCount_one": "{{count}} field",
+    "fieldCount_other": "{{count}} fields",
+    "fieldsNotDeletable_one": "{{count}} field — cannot be deleted",
+    "fieldsNotDeletable_other": "{{count}} fields — cannot be deleted",
+    "baseFieldsHeader_one": "BASE FIELD ({{count}}) — inherited from __base__ — not editable",
+    "baseFieldsHeader_other": "BASE FIELDS ({{count}}) — inherited from __base__ — not editable",
+    "specificFieldsHeader_one": "SPECIFIC FIELD ({{count}})",
+    "specificFieldsHeader_other": "SPECIFIC FIELDS ({{count}})",
+    "noSpecificFields": "No specific field. Click \"Add a field\" to create one.",
+    "shippedNote": "«{{type}}» ships with the product: it is one type for every tenant, so its label, fields and relationships are read-only. For a type with your own labels and fields, create one of your own.",
+    "origin": {
+      "base": "a CI type that ships with the product",
+      "itil": "an ITIL type that ships with the product",
+      "tenant": "a CI type of yours",
+      "unknown": "a CI type that already exists"
+    },
+    "tab": {
+      "settings": "Settings",
+      "fields": "Fields",
+      "relations": "CI relationships",
+      "rules": "Rules",
+      "preview": "Preview"
+    },
+    "previewNoFields": "No specific field. Add fields in the \"Fields\" tab.",
+    "createType": "Create the type"
+  },
+  "automation": {
+    "params": {
+      "notificationMessage": "Notification message...",
+      "commentText": "Comment text...",
+      "generic": "Parameters...",
+      "pickField": "Pick a field",
+      "value": "Value",
+      "responseMinutes": "Response (min)",
+      "resolveMinutes": "Resolution (min)",
+      "selectTeam": "-- Pick a team --",
+      "selectUser": "-- Pick a user --",
+      "selectStep": "-- Pick a step --",
+      "selectPriority": "-- Pick a priority --",
+      "selectFieldOption": "-- Field --",
+      "selectValue": "-- Value --",
+      "userOption": "-- User --",
+      "teamOption": "-- Team --",
+      "notAllowed": "not allowed"
+    },
+    "preview": "Preview",
+    "columns": {
+      "entity": "Entity",
+      "event": "Event"
+    },
+    "eventParticiple": {
+      "onCreate": "created",
+      "onUpdate": "updated",
+      "onSlaBreach": "in SLA breach",
+      "onFieldChange": "changed",
+      "onTransition": "transitioned"
+    },
+    "eventOption": {
+      "onCreate": "created",
+      "onUpdate": "updated",
+      "onTimer": "after a timer",
+      "onSlaBreach": "SLA breached",
+      "onFieldChange": "field changed",
+      "onTransition": "status transition"
+    },
+    "eventFilter": {
+      "onCreate": "Creation",
+      "onUpdate": "Update",
+      "onTimer": "Timer",
+      "onSlaBreach": "SLA Breach",
+      "onFieldChange": "Field change",
+      "onTransition": "Transition"
+    },
+    "fieldType": {
+      "string": "text",
+      "number": "number",
+      "date": "date",
+      "boolean": "boolean",
+      "enum": "enum",
+      "user": "user",
+      "team": "team"
+    },
+    "operator": {
+      "equals": "=",
+      "notEquals": "≠",
+      "contains": "contains",
+      "greaterThan": ">",
+      "lessThan": "<",
+      "isNull": "is null",
+      "isNotNull": "is not null",
+      "after": "after",
+      "before": "before"
+    },
+    "action": {
+      "setField": "Set field",
+      "assignTeam": "Assign team",
+      "assignUser": "Assign user",
+      "transitionWorkflow": "Workflow transition",
+      "createNotification": "Create notification",
+      "createComment": "Create comment",
+      "setPriority": "Set priority",
+      "executeScript": "Run script",
+      "callWebhook": "Call webhook",
+      "setSla": "Set SLA"
+    },
+    "sentence": {
+      "when": "When a {{entity}} is {{event}}",
+      "afterMinutes_one": "after {{count}} minute",
+      "afterMinutes_other": "after {{count}} minutes",
+      "if": "IF {{cond}}",
+      "then": "THEN {{act}}",
+      "and": "AND",
+      "or": "OR",
+      "slaPair": "response:{{response}}min resolution:{{resolve}}min"
+    }
   }
 }

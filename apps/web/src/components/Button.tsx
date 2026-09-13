@@ -142,7 +142,7 @@ export function Button({
 
   const ariaLabel = aria['aria-label'] ?? (variant === 'icon' ? title : undefined)
   if (variant === 'icon' && !ariaLabel && import.meta.env.DEV) {
-    console.error('[Button] variant="icon" richiede aria-label o title (nome accessibile)')
+    console.error('[Button] variant="icon" needs aria-label or title (an accessible name)')
   }
 
   return (

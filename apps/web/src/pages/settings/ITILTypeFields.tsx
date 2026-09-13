@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 import { Plus, X, Check } from 'lucide-react'
 import { DesignerFieldRow } from './shared/DesignerFieldRow'
 import {
@@ -49,7 +49,7 @@ function FieldEditor({
             style={inputS}
             value={form.label}
             onChange={(e) => set('label', e.target.value)}
-            placeholder="Field Label"
+            placeholder={t('citypeDesigner.field.labelPlaceholder')}
           />
         </div>
       </div>
@@ -123,27 +123,27 @@ function FieldEditor({
           {scriptTab === 'validation' && (
             <div>
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
-                Variabili: <code>value</code>, <code>input</code>. Usa <code>throw 'msg'</code> per errore.
+                <Trans i18nKey="citypeDesigner.field.validationHint" components={{ code: <code /> }} />
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.validationScript}
                 onChange={(e) => set('validationScript', e.target.value)}
-                placeholder={"// Esempio:\nif (!value || value.length < 3) throw 'Minimo 3 caratteri'"} />
+                placeholder={t('itilDesigner.fieldValidationPlaceholder')} />
             </div>
           )}
           {scriptTab === 'visibility' && (
             <div>
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
-                Variabili: <code>input</code>. Ritorna <code>true/false</code>.
+                <Trans i18nKey="citypeDesigner.field.visibilityHint" components={{ code: <code /> }} />
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.visibilityScript}
                 onChange={(e) => set('visibilityScript', e.target.value)}
-                placeholder={"// Mostra solo se severity = 'critical':\nreturn input.severity === 'critical'"} />
+                placeholder={t('itilDesigner.visibilityPlaceholder')} />
             </div>
           )}
           {scriptTab === 'default' && (
             <div>
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
-                Variabili: <code>input</code>. Ritorna il valore di default.
+                <Trans i18nKey="citypeDesigner.field.defaultHint" components={{ code: <code /> }} />
               </p>
               <textarea style={{ ...textareaS, minHeight: 90 }} value={form.defaultScript}
                 onChange={(e) => set('defaultScript', e.target.value)}

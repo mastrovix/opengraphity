@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Handle, Position, BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from '@xyflow/react'
 import type { EdgeProps } from '@xyflow/react'
 import { Star, X } from 'lucide-react'
@@ -37,6 +38,7 @@ export interface NodeData {
 // entry è cambiata (callback stabili per nodo), quindi gli altri non
 // rirenderizzano a ogni keystroke nei filtri.
 export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: string; data: NodeData }) {
+  const { t } = useTranslation()
   const d = data
 
   return (
@@ -62,14 +64,14 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
         <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, color: 'var(--color-slate-dark)', flex: 1, whiteSpace: 'nowrap' }}>{d.label}</span>
         {d.isRoot && (
           <span style={{ fontSize: 'var(--font-size-label)', background: palette.purple.tint, color: palette.purple.base, borderRadius: 4, padding: '1px 6px', fontWeight: 600 }}>
-            Radice
+            {t('reportBuilder.root')}
           </span>
         )}
         <button
           type="button"
           onMouseDown={e => e.stopPropagation()}
           onClick={d.onToggleResult}
-          title={d.isResult ? 'Rimuovi dal risultato' : 'Includi nel risultato'}
+          title={t(d.isResult ? 'reportBuilder.removeFromResult' : 'reportBuilder.includeInResult')}
           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 1, color: d.isResult ? 'var(--color-brand)' : palette.neutral.borderStrong }}
         >
           <Star size={12} fill={d.isResult ? 'var(--color-brand)' : 'none'} />
@@ -98,7 +100,7 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
                   onChange={e => d.onFilterChange(i, 'field', e.target.value)}
                   style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', border: `1px solid ${colors.border}`, borderRadius: 4, flex: 1 }}
                 >
-                  <option value="">-- campo --</option>
+                  <option value="">{t('automation.params.selectFieldOption')}</option>
                   {(d.fields as NavigableField[]).filter(fld => fld.fieldType === 'enum' || fld.fieldType === 'date').map(fld => (
                     <option key={fld.name} value={fld.name}>{fld.label}</option>
                   ))}
@@ -111,7 +113,7 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
                     onChange={e => d.onFilterChange(i, 'value', e.target.value)}
                     style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', border: `1px solid ${colors.border}`, borderRadius: 4, flex: 1 }}
                   >
-                    <option value="">-- valore --</option>
+                    <option value="">{t('automation.params.selectValue')}</option>
                     {((d.fields as NavigableField[]).find(fld => fld.name === f.field)?.enumValues ?? []).map(v => (
                       <option key={v} value={v}>{v}</option>
                     ))}
@@ -122,7 +124,7 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
                     onMouseDown={e => e.stopPropagation()}
                     value={f.value}
                     onChange={e => d.onFilterChange(i, 'value', e.target.value)}
-                    placeholder="valore"
+                    placeholder={t('reportBuilder.valuePlaceholder')}
                     style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', border: `1px solid ${colors.border}`, borderRadius: 4, width: 60 }}
                   />
                 )}
@@ -155,7 +157,7 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
           onClick={d.onConnect}
           style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-brand)', background: 'none', border: `1px solid ${palette.purple.border}`, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', width: '100%' }}
         >
-          + Connetti a...
+          + {t('reportBuilder.connectTo')}
         </button>
       </div>
     </div>

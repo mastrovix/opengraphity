@@ -34,14 +34,23 @@ export interface SectionResult { sectionId: string; title: string; chartType: st
 
 export type View = 'list' | 'detail' | 'add-section' | 'edit-section' | 'settings'
 
+/*
+  CHIAVI, non etichette. Erano frasi italiane in un file `.ts`, che nessun
+  guardiano dell'i18n vede — non c'e JSX — e finivano a schermo cosi come
+  sono: in un'interfaccia inglese si leggeva «Ogni lunedi alle 9:00».
+*/
 export const SCHEDULE_PRESETS = [
-  { label: 'Ogni giorno alle 9:00',      value: '0 9 * * *' },
-  { label: 'Ogni lunedì alle 9:00',      value: '0 9 * * 1' },
-  { label: 'Ogni primo del mese alle 9', value: '0 9 1 * *' },
-  { label: 'Personalizzata',             value: '__custom__' },
+  { labelKey: 'pages.reportSchedule.preset.dailyAt9',   value: '0 9 * * *' },
+  { labelKey: 'pages.reportSchedule.preset.mondayAt9',  value: '0 9 * * 1' },
+  { labelKey: 'pages.reportSchedule.preset.monthlyAt9', value: '0 9 1 * *' },
+  { labelKey: 'pages.reportSchedule.preset.custom',     value: '__custom__' },
 ]
 
-export const VIS_LABELS: Record<string, string> = { private: 'Privato', groups: 'Gruppi', all: 'Tutti' }
+export const VIS_LABEL_KEYS: Record<string, string> = {
+  private: 'pages.reports.visibility.private',
+  groups:  'pages.reports.visibility.groups',
+  all:     'pages.reports.visibility.all',
+}
 export const VIS_COLORS: Record<string, { bg: string; fg: string }> = {
   all:     { bg: palette.success.tint, fg: palette.success.text },
   groups:  { bg: palette.warning.tint, fg: palette.warning.strong },

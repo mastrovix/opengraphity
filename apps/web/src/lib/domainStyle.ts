@@ -54,10 +54,10 @@ export function domainValueStyle<T extends ValueStyle>(
   const hit = map[value]
   if (hit) return hit
   if (vocabulary === null) {
-    console.warn(`[${mapName}] "${value}" senza stile e vocabolario del cliente non disponibile: stile neutro`)
+    console.warn(`[${mapName}] "${value}" has no style and the vocabulary of this tenant is unavailable: neutral style`)
     return NEUTRAL_VALUE_STYLE
   }
   if (vocabulary.includes(value)) return NEUTRAL_VALUE_STYLE
-  console.error(`[${mapName}] "${value}" non è nel vocabolario di questo cliente (${vocabulary.join(', ') || 'vuoto'})`)
+  console.error(`[${mapName}] "${value}" is not in the vocabulary of this tenant (${vocabulary.join(', ') || 'empty'})`)
   return BROKEN_VALUE_STYLE
 }

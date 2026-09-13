@@ -66,7 +66,7 @@ export function MiniPathGraph({ pathNames, targetName, impactedName, nameTypeMap
       const iconColor = accent(d) ? colors.white : MINI_NODE_COLOR
       // Un CI del percorso senza tipo noto è un dato incoerente: si vede ("?" rosso).
       const ciType = nameTypeMap.get(d.name)
-      if (ciType === undefined) console.error(`[MiniPathGraph] CI "${d.name}" senza tipo nella mappa nome→tipo`)
+      if (ciType === undefined) console.error(`[MiniPathGraph] CI "${d.name}" has no type in the name→type map`)
       appendIcon(g, iconKeyForType(typeIconMap, ciType ?? ''), iconColor, 16)
     })
 

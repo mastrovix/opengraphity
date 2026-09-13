@@ -143,9 +143,13 @@ export async function serviceImpactOf(
 ): Promise<string> {
   if (criticality == null || criticality === '') {
     throw new ValidationError(
-      `Il servizio ${ctx.serviceName ? `"${ctx.serviceName}" ` : ''}(mappa ${ctx.mapId}) non ha una criticità: ` +
-      `compila «Criticità» sull'applicazione di business per poter aprire un incident di servizio con l'impatto giusto. ` +
-      `Ammessi: ${(await domainVocabulary(tenantId, 'service_criticality')).join(', ')}.`,
+      `The service ${ctx.serviceName ? `"${ctx.serviceName}" ` : ''}(map ${ctx.mapId}) has no criticality: `
+      + `fill in «Criticality» on the business application so a service incident can be opened with the right impact. `
+      + `Allowed: ${(await domainVocabulary(tenantId, 'service_criticality')).join(', ')}.`,
+      {
+        key: 'errors.serviceMap.noCriticality',
+        params: { service: ctx.serviceName ?? '', map: ctx.mapId, allowed: (await domainVocabulary(tenantId, 'service_criticality')).join(', ') },
+      },
     )
   }
   const c = await assertDomainValue(tenantId, 'service_criticality', criticality)

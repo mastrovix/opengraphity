@@ -101,7 +101,7 @@ describe('target — validato in scrittura contro NOTIFICATION_TARGETS', () => {
   it('create con role:manager → BAD_USER_INPUT con i valori ammessi, nessuna scrittura', async () => {
     await expectBadInput(
       notificationRuleResolvers.Mutation.createNotificationRule(null, { input: { titleKey: 'k', eventType: 'incident.created', channels: ['in_app'], target: 'role:manager' } }, ctx),
-      /Target "role:manager" non è un destinatario valido\. Ammessi: all, assignee, team_owner, role:admin/,
+      /Target "role:manager" is not a valid recipient\. Allowed: all, assignee, team_owner, role:admin/,
     )
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
@@ -109,7 +109,7 @@ describe('target — validato in scrittura contro NOTIFICATION_TARGETS', () => {
   it('update con un bersaglio inventato → BAD_USER_INPUT, nessuna lettura e nessuna scrittura', async () => {
     await expectBadInput(
       notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { target: 'squadra' } }, ctx),
-      /Target "squadra" non è un destinatario valido/,
+      /Target "squadra" is not a valid recipient/,
     )
     expect(mockSession.executeRead).not.toHaveBeenCalled()
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
@@ -169,7 +169,7 @@ describe('target — applicabilità per tipo di evento', () => {
         { input: { eventType: 'incident.created', titleKey: 'x', channels: ['in_app'], target: 'team_owner' } },
         ctx,
       ),
-      /non può essere risolto per l'evento "incident\.created"/,
+      /cannot be resolved for the "incident\.created" event/,
     )
     await expectBadInput(
       notificationRuleResolvers.Mutation.createNotificationRule(
@@ -177,7 +177,7 @@ describe('target — applicabilità per tipo di evento', () => {
         { input: { eventType: 'event.storm_started', titleKey: 'x', channels: ['in_app'], target: 'assignee' } },
         ctx,
       ),
-      /non può essere risolto/,
+      /cannot be resolved/,
     )
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     // lo stesso bersaglio su un evento in cui l'assegnazione esiste: nessun errore di applicabilità

@@ -121,10 +121,10 @@ describe('createIncident', () => {
   it('rifiuta la creazione senza CI impattato', async () => {
     await expect(
       createIncident({ title: 'Senza CI', severity: 'high' }, ctx),
-    ).rejects.toThrow(/almeno un CI/)
+    ).rejects.toThrow(/at least one impacted CI/)
     await expect(
       createIncident({ title: 'CI vuoto', severity: 'high', affectedCIIds: [] }, ctx),
-    ).rejects.toThrow(/almeno un CI/)
+    ).rejects.toThrow(/at least one impacted CI/)
     expect(publish).not.toHaveBeenCalled()
   })
 
@@ -132,7 +132,7 @@ describe('createIncident', () => {
   // Il MERGE verso i CI impattati girava sotto il predicato con le etichette
   // FISSE e nessuno leggeva il risultato: zero righe = incident senza
   // AFFECTED_BY, senza errore e senza log, in contraddizione con la guardia
-  // «almeno un CI impattato» tre righe sopra.
+  // «at least one impacted CI impattato» tre righe sopra.
   it('il collegamento ai CI usa il predicato del TENANT e ne conta le righe', async () => {
     await createIncident({ title: 'Test incident', severity: 'high', affectedCIIds: ['ci-1'] }, ctx)
     const merge = vi.mocked(runQuery).mock.calls
@@ -149,7 +149,7 @@ describe('createIncident', () => {
 
     await expect(
       createIncident({ title: 'Test incident', severity: 'high', affectedCIIds: ['ci-ignoto'] }, ctx),
-    ).rejects.toThrow(/Incident non creato: 1 dei 1 CI impattati.*ci-ignoto/)
+    ).rejects.toThrow(/Incident not created: 1 of the 1 impacted CIs.*ci-ignoto/)
 
     // L'incident committato in transazione propria viene rimosso: non resta in
     // banca dati un incident senza CI (e senza istanza di workflow).

@@ -298,9 +298,10 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
         const t = types.find(t => t.name === obj.type)
         if (t) return toPascalCase(t.name)
         throw new GraphQLError(
-          `CIBase: non so di che tipo è questo CI (type=${JSON.stringify(obj.type)}). ` +
-          `Nessun tipo CI attivo di questo cliente lo dichiara: il tipo è stato cancellato o disattivato, ` +
-          `oppure il CI è nato da una discovery con un tipo che non esiste nel metamodello.`,
+          `CIBase: the type of this CI cannot be told (type=${JSON.stringify(obj.type)}). `
+          + `No active CI type of this tenant declares it: the type was deleted or deactivated, `
+          + `or the CI came from a discovery with a type the metamodel does not have.`,
+          { extensions: { i18n: { key: 'errors.ci.unknownTypeOnRecord', params: { type: JSON.stringify(obj.type) } } } },
         )
       },
     },

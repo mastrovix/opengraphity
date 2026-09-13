@@ -2,6 +2,7 @@
  * Mutations on AssessmentTask — response submission, completion, assignment.
  */
 import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../../lib/errors.js'
 import { ForbiddenError } from '../../../lib/errors.js'
 import {
   TASK_STATUS, ASSESSMENT_ROLE, ROLE_LABEL, ROLE_TO_CATEGORY,
@@ -39,7 +40,7 @@ export async function submitAssessmentResponse(
       WHERE coalesce(c.deleted, false) = false
       RETURN properties(t) AS props, c.id AS changeId
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
-    if (!task) throw new GraphQLError(`AssessmentTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+    if (!task) throw new NotFoundError('AssessmentTask', args.taskId)
     if (task.props['status'] === TASK_STATUS.COMPLETED) {
       throw new GraphQLError('Task già completata, impossibile modificare le risposte', { extensions: { code: 'CONFLICT' } })
     }
@@ -114,7 +115,7 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
              ci.id AS ciId, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS ciLabel, ct.id AS ciTypeId,
              ci.environment AS ciEnv
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
-    if (!ctx1) throw new GraphQLError(`AssessmentTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+    if (!ctx1) throw new NotFoundError('AssessmentTask', args.taskId)
     if (ctx1.taskProps['status'] === TASK_STATUS.COMPLETED) throw new GraphQLError('Task già completata', { extensions: { code: 'CONFLICT' } })
 
     const role = ctx1.taskProps['responder_role'] === ASSESSMENT_ROLE.SUPPORT ? ASSESSMENT_ROLE.SUPPORT : ASSESSMENT_ROLE.OWNER
@@ -133,7 +134,7 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
     if (questions.length === 0) {
       logger.error({ taskId: args.taskId, ciTypeId: ctx1.ciTypeId, category: taskCategory },
         '[completeAssessmentTask] nessuna domanda assegnata al CIType per questa categoria')
-      throw new GraphQLError('Nessuna domanda di assessment assegnata al tipo di CI per la categoria richiesta', { extensions: { code: 'CONFLICT' } })
+      throw new GraphQLError('No assessment question assigned to the CI type for the requested category', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.assessment.noQuestionForCategory' } } })
     }
 
     const responses = await runQuery<{ questionId: string; score: unknown }>(session, `
@@ -221,7 +222,7 @@ export async function assignAssessmentTaskToTeam(
 ) {
   return withSession(async (session) => {
     const tctx = await loadTaskContext(session, args.taskId, ctx.tenantId)
-    if (!tctx) throw new GraphQLError(`AssessmentTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+    if (!tctx) throw new NotFoundError('AssessmentTask', args.taskId)
     const role = tctx.role === ASSESSMENT_ROLE.SUPPORT ? ASSESSMENT_ROLE.SUPPORT : ASSESSMENT_ROLE.OWNER
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, role)
 
@@ -259,7 +260,7 @@ export async function assignAssessmentTaskToUser(
 ) {
   return withSession(async (session) => {
     const tctx = await loadTaskContext(session, args.taskId, ctx.tenantId)
-    if (!tctx) throw new GraphQLError(`AssessmentTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+    if (!tctx) throw new NotFoundError('AssessmentTask', args.taskId)
     const role = tctx.role === ASSESSMENT_ROLE.SUPPORT ? ASSESSMENT_ROLE.SUPPORT : ASSESSMENT_ROLE.OWNER
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, role)
 
@@ -271,7 +272,7 @@ export async function assignAssessmentTaskToUser(
     if (!check || !check.isMember) {
       logger.error({ taskId: args.taskId, userId: args.userId },
         '[assignAssessmentTaskToUser] utente non appartiene al team assegnato')
-      throw new ForbiddenError('L\'utente non appartiene al team assegnato')
+      throw new ForbiddenError('The user does not belong to the assigned team', { key: 'errors.authz.notInTeam' })
     }
 
     await session.executeWrite((tx) => tx.run(`
@@ -314,7 +315,7 @@ export async function assignDeployPlanTaskToUser(
       WHERE coalesce(c.deleted, false) = false
       RETURN c.id AS changeId, t.ci_id AS ciId
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
-    if (!tctx) throw new GraphQLError(`DeployPlanTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+    if (!tctx) throw new NotFoundError('DeployPlanTask', args.taskId)
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, 'support')
 
     const check = await runQueryOne<{ isMember: boolean }>(session, `
@@ -324,7 +325,7 @@ export async function assignDeployPlanTaskToUser(
     `, { taskId: args.taskId, userId: args.userId, tenantId: ctx.tenantId })
     if (!check || !check.isMember) {
       logger.error({ taskId: args.taskId, userId: args.userId }, '[assignDeployPlanTaskToUser] utente non appartiene al team assegnato')
-      throw new ForbiddenError('L\'utente non appartiene al team assegnato')
+      throw new ForbiddenError('The user does not belong to the assigned team', { key: 'errors.authz.notInTeam' })
     }
 
     await session.executeWrite((tx) => tx.run(`

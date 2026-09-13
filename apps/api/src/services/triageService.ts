@@ -164,8 +164,8 @@ function suggestionSchema(severities: string[], categories: string[]) {
 let _client: Anthropic | null = null
 function getClient(): Anthropic {
   if (!config.anthropicApiKey) {
-    throw new GraphQLError('Triage AI non configurato: ANTHROPIC_API_KEY mancante', {
-      extensions: { code: 'FAILED_PRECONDITION' },
+    throw new GraphQLError('AI triage not configured: ANTHROPIC_API_KEY missing', {
+      extensions: { code: 'FAILED_PRECONDITION', i18n: { key: 'errors.ai.notConfigured' } },
     })
   }
   _client ??= new Anthropic()

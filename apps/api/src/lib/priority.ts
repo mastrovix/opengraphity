@@ -66,9 +66,10 @@ export async function invertPriority(tenantId: string, priority: unknown): Promi
   const candidates = Object.keys(matrix.entries).filter((k) => matrix.entries[k] === p)
   if (!candidates.length) {
     throw new ValidationError(
-      `Matrice "priority" del cliente ${tenantId}: nessuna combinazione di impatto e urgenza produce "${p}". ` +
-      `Completa la matrice in Impostazioni → Matrici di dominio` +
-      (matrix.isDefault ? ' (ora è quella di fabbrica: è possibile che tu abbia rinominato un valore del vocabolario senza aggiornarla).' : '.'),
+      `Matrix "priority" of tenant ${tenantId}: no combination of impact and urgency produces "${p}". `
+      + `Complete the matrix in Settings → Domain matrices`
+      + (matrix.isDefault ? ' (it is currently the factory one: you may have renamed a dictionary value without updating it).' : '.'),
+      { key: matrix.isDefault ? 'errors.priority.noCombinationFactory' : 'errors.priority.noCombination', params: { priority: p } },
     )
   }
   const chosen = candidates.find((k) => { const parts = k.split('|'); return parts.every((v) => v === parts[0]) }) ?? candidates[0]!
@@ -82,16 +83,18 @@ export async function invertPriority(tenantId: string, priority: unknown): Promi
   // per il valore d'uscita (`lib/domainValue.ts`).
   await assertDomainValue(tenantId, 'impact', impact).catch((e: unknown) => {
     throw new ValidationError(
-      `Matrice "priority" del cliente ${tenantId}, cella "${chosen}": l'impatto "${String(impact)}" non è (più) nel ` +
-      `vocabolario. ${e instanceof Error ? e.message : String(e)} ` +
-      `Succede quando si rinomina un valore senza aggiornare la matrice: correggila in Impostazioni → Matrici di dominio.`,
+      `Matrix "priority" of tenant ${tenantId}, cell "${chosen}": the impact "${String(impact)}" is not (any more) in the `
+      + `dictionary. ${e instanceof Error ? e.message : String(e)} `
+      + `It happens when a value is renamed without updating the matrix: fix it in Settings → Domain matrices.`,
+      { key: 'errors.priority.cellImpactStale', params: { cell: chosen, value: String(impact), reason: e instanceof Error ? e.message : String(e) } },
     )
   })
   await assertDomainValue(tenantId, 'urgency', urgency).catch((e: unknown) => {
     throw new ValidationError(
-      `Matrice "priority" del cliente ${tenantId}, cella "${chosen}": l'urgenza "${String(urgency)}" non è (più) nel ` +
-      `vocabolario. ${e instanceof Error ? e.message : String(e)} ` +
-      `Succede quando si rinomina un valore senza aggiornare la matrice: correggila in Impostazioni → Matrici di dominio.`,
+      `Matrix "priority" of tenant ${tenantId}, cell "${chosen}": the urgency "${String(urgency)}" is not (any more) in the `
+      + `dictionary. ${e instanceof Error ? e.message : String(e)} `
+      + `It happens when a value is renamed without updating the matrix: fix it in Settings → Domain matrices.`,
+      { key: 'errors.priority.cellUrgencyStale', params: { cell: chosen, value: String(urgency), reason: e instanceof Error ? e.message : String(e) } },
     )
   })
   if (impact === undefined || urgency === undefined) {
@@ -116,7 +119,7 @@ export async function resolveNewTicketPriority(
   if (hasImpact !== hasUrgency) {
     // Prima uno solo dei due veniva ignorato in silenzio e la priorità
     // ricostruita dalla severità: metà del dato dell'utente sparita.
-    throw new ValidationError(`Impatto e urgenza si passano insieme: fornire entrambi, oppure la sola priorità (${singleField})`)
+    throw new ValidationError(`Impact and urgency go together: send both, or only the priority (${singleField})`, { key: 'errors.priority.impactUrgencyTogether', params: { field: singleField } })
   }
   if (hasImpact && hasUrgency) {
     const severity = await derivePriority(tenantId, input.impact, input.urgency)

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { QueryError } from '@/components/QueryError'
@@ -19,6 +19,7 @@ import { SET_TEAM_MANAGER, REMOVE_TEAM_MANAGER, SET_CHANGE_MANAGER_TEAM } from '
 import { ciPath } from '@/lib/ciPath'
 import { toast } from 'sonner'
 import { colors, palette, lookupStyle } from '@/lib/tokens'
+import { formatDate } from '@/lib/datetime'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 
 interface Member {
@@ -149,7 +150,7 @@ export function TeamDetailPage() {
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{team.name}</h1>
         </div>
         <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4 }}>
-          {t('detail.createdAt')} {new Date(team.createdAt).toLocaleDateString('it-IT')}
+          {t('detail.createdAt')} {formatDate(team.createdAt)}
         </div>
       </div>
 
@@ -159,9 +160,9 @@ export function TeamDetailPage() {
           <div className="og-pair">
             <DetailField label="ID" value={team.id} mono />
             <DetailField label={t('pages.teams.name')} value={team.name} />
-            <DetailField label="Tenant ID" value={team.tenantId} mono />
+            <DetailField label={t('pages.userDetail.tenantId')} value={team.tenantId} mono />
             <DetailField label={t('pages.teams.type')} value={<TypeBadge type={team.type} />} />
-            <DetailField label="Manager" value={
+            <DetailField label={t('pages.teamDetail.manager')} value={
               team.manager ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Link to={`/users/${team.manager.id}`} style={{ color: 'var(--color-brand)', fontWeight: 500, textDecoration: 'none' }}>{team.manager.name}</Link>
@@ -183,8 +184,8 @@ export function TeamDetailPage() {
               )
             } />
             <DetailField label={t('pages.teams.description')} value={team.description} />
-            <DetailField label={t('detail.createdAt')} value={new Date(team.createdAt).toLocaleDateString('it-IT')} />
-            <DetailField label="Change Manager" value={
+            <DetailField label={t('detail.createdAt')} value={formatDate(team.createdAt)} />
+            <DetailField label={t('pages.teamDetail.changeManager')} value={
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: settingCM ? 'wait' : 'pointer' }}>
                 <input
                   type="checkbox"
@@ -193,7 +194,7 @@ export function TeamDetailPage() {
                   onChange={(e) => void setChangeManager({ variables: { teamId: team.id, value: e.target.checked } })}
                 />
                 <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-                  {team.isChangeManager ? 'Questo team approva le change (normal/emergency)' : 'Designa come team Change Manager'}
+                  {t(team.isChangeManager ? 'pages.teams.isChangeManager' : 'pages.teams.makeChangeManager')}
                 </span>
               </label>
             } />
@@ -210,7 +211,7 @@ export function TeamDetailPage() {
             <Modal
               open
               onClose={() => { setShowManagerModal(false); setPendingManagerUser(null) }}
-              title={team.manager ? 'Cambia manager' : 'Assegna manager'}
+              title={t(team.manager ? 'pages.teams.changeManagerTitle' : 'pages.teams.assignManagerTitle')}
               width={440}
             >
               {/* Cancel the Modal body padding so sections run edge-to-edge */}
@@ -219,21 +220,23 @@ export function TeamDetailPage() {
                 {pendingManagerUser && (
                   <div style={{ padding: '12px 20px', background: 'var(--color-warning-bg)', borderBottom: `1px solid ${palette.warning.border}` }}>
                     <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginBottom: 10 }}>
-                      Il manager attuale <strong>{team.manager?.name}</strong> verrà sostituito da <strong>{pendingManagerUser.name}</strong>. Confermi?
+                      <Trans i18nKey="pages.teams.replaceManagerConfirm"
+                        values={{ current: team.manager?.name ?? '', next: pendingManagerUser.name }}
+                        components={{ strong: <strong /> }} />
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <Button
                         onClick={() => { setManager({ variables: { teamId: team.id, userId: pendingManagerUser.id } }); setPendingManagerUser(null) }}
                         style={{ padding: '6px 16px', fontWeight: 600, fontSize: 'var(--font-size-body)' }}
                       >
-                        Conferma
+                        {t('common.confirm')}
                       </Button>
                       <Button
                         variant="secondary"
                         onClick={() => setPendingManagerUser(null)}
                         style={{ padding: '6px 16px', fontWeight: 600 }}
                       >
-                        Annulla
+                        {t('common.cancel')}
                       </Button>
                     </div>
                   </div>
@@ -249,7 +252,7 @@ export function TeamDetailPage() {
                         autoFocus
                         value={managerSearch}
                         onChange={e => setManagerSearch(e.target.value)}
-                        placeholder="Cerca membro..."
+                        placeholder={t('pages.teamDetail.searchMember')}
                         style={{ border: 'none', outline: 'none', flex: 1, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}
                       />
                     </div>
@@ -260,7 +263,7 @@ export function TeamDetailPage() {
                 {!pendingManagerUser && (
                   <div style={{ overflowY: 'auto', maxHeight: 'calc(70vh - 160px)' }}>
                     {filtered.length === 0 ? (
-                      <div style={{ padding: '20px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>Nessun membro trovato</div>
+                      <div style={{ padding: '20px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>{t('pages.teamDetail.noMemberFound')}</div>
                     ) : filtered.map((u, i) => (
                       <button
                         type="button"

@@ -48,7 +48,7 @@ describe('ciStatusStyle', () => {
   it('stato FUORI dal vocabolario del cliente → stile rotto (rosso) e console.error', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(ciStatusStyle('zombie', VOCABULARY)).toEqual({ bg: 'var(--color-danger)', color: 'var(--color-white)' })
-    expect(err).toHaveBeenCalledWith(`[CI_STATUS_STYLE] "zombie" non è nel vocabolario di questo cliente (${VOCABULARY.join(', ')})`)
+    expect(err).toHaveBeenCalledWith(`[CI_STATUS_STYLE] "zombie" is not in the vocabulary of this tenant (${VOCABULARY.join(', ')})`)
   })
 
   it('vocabolario non disponibile → neutro e console.warn', () => {
@@ -56,7 +56,7 @@ describe('ciStatusStyle', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     expect(ciStatusStyle('zombie')).toEqual(NEUTRAL_VALUE_STYLE)
     expect(err).not.toHaveBeenCalled()
-    expect(warn).toHaveBeenCalledWith('[CI_STATUS_STYLE] "zombie" senza stile e vocabolario del cliente non disponibile: stile neutro')
+    expect(warn).toHaveBeenCalledWith('[CI_STATUS_STYLE] "zombie" has no style and the vocabulary of this tenant is unavailable: neutral style')
   })
 })
 

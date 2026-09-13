@@ -150,7 +150,7 @@ const TARGET_LABEL_KEY: Record<string, string> = {
 
 export const TARGET_OPTIONS: { value: string; labelKey: string }[] = NOTIFICATION_TARGETS.map((value) => {
   const labelKey = TARGET_LABEL_KEY[value]
-  if (!labelKey) throw new Error(`TARGET_LABEL_KEY: manca l'etichetta del destinatario "${value}" — aggiungi la chiave e le traduzioni it/en prima di offrirlo`)
+  if (!labelKey) throw new Error(`TARGET_LABEL_KEY: no label for recipient "${value}" — add the key and its it/en translations before offering it`)
   return { value, labelKey }
 })
 
@@ -255,8 +255,8 @@ export function RuleRow({
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {titleLabel}
           {rule.isSeed
-            ? <span title={t('notificationRules.systemRule',   'Regola di sistema')}     style={{ display: 'inline-flex', flexShrink: 0 }}><Lock   size={14} color={colors.slateLight} /></span>
-            : <span title={t('notificationRules.customRule',   'Regola personalizzata')} style={{ display: 'inline-flex', flexShrink: 0 }}><Unlock size={14} color={colors.slateLight} /></span>
+            ? <span title={t('notificationRules.systemRule')}     style={{ display: 'inline-flex', flexShrink: 0 }}><Lock   size={14} color={colors.slateLight} /></span>
+            : <span title={t('notificationRules.customRule')} style={{ display: 'inline-flex', flexShrink: 0 }}><Unlock size={14} color={colors.slateLight} /></span>
           }
           {/* Regola che non scatterà mai: nessun evento di questo tipo viene
               prodotto. Era il caso di `incident.on_hold`, viva in ogni tenant e

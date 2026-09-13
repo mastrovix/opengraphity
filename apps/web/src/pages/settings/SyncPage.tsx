@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Activity } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
@@ -10,16 +11,17 @@ import { ImportTab } from './ImportTab'
 import { colors } from '@/lib/tokens'
 
 export function SyncPage() {
+  const { t } = useTranslation()
   const hook = useSyncPage()
 
   return (
     <PageContainer>
       <div style={{ marginBottom: 24 }}>
         <PageTitle icon={<Activity size={22} color="var(--color-icon-accent)" />}>
-          CMDB Sync
+          {t('sync.title')}
         </PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', margin: '4px 0 0' }}>
-          Import and sync configuration items from external sources
+          {t('sync.subtitle')}
         </p>
       </div>
 

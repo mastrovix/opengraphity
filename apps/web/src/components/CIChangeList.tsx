@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
@@ -20,6 +21,7 @@ interface ChangeRow {
 
 
 export function CIChangeList({ ciId }: { ciId: string }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
 
@@ -155,7 +157,7 @@ export function CIChangeList({ ciId }: { ciId: string }) {
                 fontSize: 'var(--font-size-body)',
                 color:    'var(--color-slate-light)',
                 margin:   '12px 0 0',
-              }}>Nessun change su questo CI.</p>
+              }}>{t('components.ciChanges.empty')}</p>
             : (
               <>
                 {renderGroup('In corso',   active)}

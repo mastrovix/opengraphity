@@ -68,7 +68,7 @@ export function ChangeListPage() {
   const filterFields: FieldConfig[] = [
     { key: 'currentStep', label: 'Step', type: 'enum',
       options: wfSteps.map((s) => ({ value: s.name, label: s.label || s.name })) },
-    { key: 'priority', label: 'Priorità', type: 'enum',
+    { key: 'priority', label: t('admin.sla.priority'), type: 'enum',
       options: [
         { value: 'critical', label: 'Critical' },
         { value: 'high',     label: 'High'     },
@@ -128,7 +128,7 @@ export function ChangeListPage() {
     },
     {
       key:    'priority',
-      label:  'Priorità',
+      label:  t('admin.sla.priority'),
       width:  '120px',
       render: (v) => v ? <SeverityBadge value={v as string} /> : <span style={{ color: 'var(--color-slate-light)' }}>—</span>,
     },
@@ -154,7 +154,7 @@ export function ChangeListPage() {
   return (
     <PageContainer>
       <ListPageHeader
-        icon={<GitPullRequest size={22} color="var(--color-brand)" />}
+        icon={<GitPullRequest size={22} color="var(--color-icon-accent)" />}
         title={t('pages.changes.title')}
         subtitle={
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>

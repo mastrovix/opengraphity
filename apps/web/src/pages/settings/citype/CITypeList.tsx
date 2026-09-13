@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Layers, Layout, Plus } from 'lucide-react'
 import { CIIcon } from '@/lib/ciIcon'
 import type { CITypeDef } from '@/contexts/MetamodelContext'
@@ -43,17 +44,18 @@ export function CITypeList({
   onSelectBase,
   onNew,
 }: CITypeListProps) {
+  const { t } = useTranslation()
   return (
     <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-        <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>Tipi CI</span>
+        <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{t('citypeDesigner.ciTypes')}</span>
         <button type="button" onClick={onNew} style={{ ...btnPrimary, padding: '4px 10px', fontSize: 'var(--font-size-body)' }}>
-          <Plus size={12} /> Nuovo
+          <Plus size={12} /> {t('common.new')}
         </button>
       </div>
 
       {loading && (
-        <div style={{ padding: 20, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Caricamento…</div>
+        <div style={{ padding: 20, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
       )}
 
       <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
@@ -62,37 +64,37 @@ export function CITypeList({
           <Layout size={15} color={selectedBase ? 'var(--color-brand)' : 'var(--color-slate)'} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 'var(--font-size-body)', fontWeight: selectedBase ? 600 : 400, color: selectedBase ? 'var(--color-brand)' : 'var(--color-slate)' }}>
-              Campi Base
+              {t('citypeDesigner.baseFields')}
             </div>
-            <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>Condivisi da tutti i tipi</div>
+            <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('citypeDesigner.sharedByAll')}</div>
           </div>
           <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 100, fontWeight: 600, background: palette.teal.bg, color: 'var(--color-brand)', flexShrink: 0 }}>
-            Sistema
+            {t('citypeDesigner.system')}
           </span>
         </button>
 
         {/* Separator */}
         <div style={{ padding: '5px 16px 4px', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'var(--color-slate-bg)', borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
-          Tipi CI
+          {t('citypeDesigner.ciTypes')}
         </div>
 
-        {ciTypes.map((t) => {
-          const isSelected = t.id === selectedId
+        {ciTypes.map((ct) => {
+          const isSelected = ct.id === selectedId
           return (
-            <button type="button" key={t.id} onClick={() => onSelectType(t)} style={typeEntryStyle(isSelected)}>
-              <CIIcon icon={t.icon} size={15} color={isSelected ? 'var(--color-brand)' : (t.color ?? 'var(--color-brand)')} />
+            <button type="button" key={ct.id} onClick={() => onSelectType(ct)} style={typeEntryStyle(isSelected)}>
+              <CIIcon icon={ct.icon} size={15} color={isSelected ? 'var(--color-brand)' : (ct.color ?? 'var(--color-brand)')} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 'var(--font-size-body)', fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {t.label}
+                  {ct.label}
                 </div>
-                <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t.name}</div>
+                <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{ct.name}</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
-                <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 100, fontWeight: 500, background: t.active ? palette.success.tint : 'var(--color-border-light)', color: t.active ? 'var(--color-success)' : 'var(--color-slate-light)' }}>
-                  {t.active ? 'active' : 'inactive'}
+                <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 100, fontWeight: 500, background: ct.active ? palette.success.tint : 'var(--color-border-light)', color: ct.active ? 'var(--color-success)' : 'var(--color-slate-light)' }}>
+                  {ct.active ? 'active' : 'inactive'}
                 </span>
                 <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
-                  {t.fields.length} campi
+                  {t('citypeDesigner.fieldCount', { count: ct.fields.length })}
                 </span>
               </div>
             </button>
@@ -103,7 +105,7 @@ export function CITypeList({
       {!loading && ciTypes.length === 0 && (
         <div style={{ padding: '16px 16px 20px', textAlign: 'center' }}>
           <Layers size={24} color={colors.slateLight} style={{ marginBottom: 8 }} />
-          <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Nessun tipo CI</div>
+          <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('citypeDesigner.noCITypes')}</div>
         </div>
       )}
     </div>

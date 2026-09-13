@@ -111,14 +111,14 @@ describe('POST /api/v1/import/incidents — permissions and upload validation', 
   it('header-only CSV (no data rows) → 400 with the Italian message', async () => {
     const res = await upload({ csv: 'external_id,title,severity\n' })
     expect(res.status).toBe(400)
-    expect((await err(res)).message).toMatch(/non contiene righe dati/)
+    expect((await err(res)).message).toMatch(/no data rows/)
     expect(importIncidents).not.toHaveBeenCalled()
   })
 
   it('malformed CSV (unterminated quote swallowing everything) → 400, importer untouched', async () => {
     const res = await upload({ csv: '"external_id,title\nINC-1,x\nINC-2,y' })
     expect(res.status).toBe(400)
-    expect((await err(res)).message).toMatch(/non contiene righe dati/)
+    expect((await err(res)).message).toMatch(/no data rows/)
     expect(importIncidents).not.toHaveBeenCalled()
   })
 

@@ -76,6 +76,7 @@ interface TaskRowProps {
 }
 
 function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
+  const { t } = useTranslation()
   const kindColor  = lookupOrError(KIND_COLOR,  task.kind,   'KIND_COLOR',  KIND_COLOR['assessment']!)
   const stateColor = lookupOrError(STATE_COLOR, task.status, 'STATE_COLOR', STATE_COLOR[TASK_STATUS.PENDING]!)
   return (
@@ -119,7 +120,7 @@ function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
           {' · '}
           CI: <strong style={{ color: 'var(--color-slate)' }}>{task.ciName}</strong>
           {' · '}
-          Creato il {fmtDate(task.createdAt)}
+          {t('changeTasks.createdOn', { date: fmtDate(task.createdAt) })}
         </div>
       </Link>
       <Pill bg={stateColor.bg} color={stateColor.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'uppercase', flexShrink: 0 }}>
@@ -146,7 +147,7 @@ function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
             flexShrink:      0,
           }}
         >
-          <UserPlus size={12} /> Prendi in carico
+          <UserPlus size={12} /> {t('pages.myTasks.takeIt')}
         </button>
       )}
     </div>
@@ -193,13 +194,13 @@ export function MyTasksPage() {
   return (
     <PageContainer>
       <ListPageHeader
-        icon={<ClipboardList size={22} color="var(--color-brand)" />}
-        title="I miei task"
+        icon={<ClipboardList size={22} color="var(--color-icon-accent)" />}
+        title={t('sidebar.myTasks')}
         subtitle={
-          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '4px 0 0' }}>
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading && total === 0
               ? '—'
-              : `${total} task (${assignedToMe.length} assegnati a te · ${unassigned.length} da prendere in carico)`
+              : t('pages.myTasks.count', { total, mine: assignedToMe.length, free: unassigned.length })
             }
           </p>
         }
@@ -212,14 +213,14 @@ export function MyTasksPage() {
           {!loading && total === 0 && (
             <EmptyState
               icon={<ClipboardList size={32} />}
-              title="Nessun task per te"
-              description="Quando un change entra in una fase che ti coinvolge, i task appariranno qui."
+              title={t('pages.myTasks.emptyTitle')}
+              description={t('pages.myTasks.emptyDescription')}
             />
           )}
 
           {/* ── Assegnati a me ── */}
           {assignedToMe.length > 0 && (
-            <SectionCard title="Assegnati a me" count={assignedToMe.length} defaultOpen>
+            <SectionCard title={t('pages.myTasks.assignedToMe')} count={assignedToMe.length} defaultOpen>
               {assignedGroups.map((g) => (
                 <div key={g.changeId} style={{ marginBottom: 4 }}>
                   {g.tasks.map((t) => (
@@ -235,7 +236,7 @@ export function MyTasksPage() {
 
           {/* ── Da assegnare ── */}
           {unassigned.length > 0 && (
-            <SectionCard title="Da assegnare" count={unassigned.length} defaultOpen>
+            <SectionCard title={t('pages.myTasks.unassigned')} count={unassigned.length} defaultOpen>
               {unassignedGroups.map((g) => (
                 <div key={g.changeId} style={{ marginBottom: 4 }}>
                   {g.tasks.map((t) => (

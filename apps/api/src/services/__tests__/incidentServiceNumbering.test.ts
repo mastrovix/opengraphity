@@ -168,6 +168,6 @@ describe('createIncident — errori tipizzati (ValidationError / BAD_USER_INPUT)
 
   it('il CI mancante è un ValidationError (codice BAD_USER_INPUT), non un Error generico', async () => {
     const err = await validationFailure(createIncident({ title: 'T', severity: 'high' }, ctx))
-    expect(err.message).toBe('Un incident deve avere almeno un CI impattato')
+    expect(err.message).toBe('An incident must have at least one impacted CI')
   })
 })

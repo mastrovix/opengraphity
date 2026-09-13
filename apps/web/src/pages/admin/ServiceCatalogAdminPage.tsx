@@ -75,15 +75,15 @@ export function ServiceCatalogAdminPage() {
   return (
     <PageContainer>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <PageTitle icon={<ShoppingCart size={20} />}>Catalogo servizi</PageTitle>
-        <Button icon={<Plus size={15} aria-hidden="true" />} onClick={modal.openCreate}>Nuova voce</Button>
+        <PageTitle icon={<ShoppingCart size={20} />}>{t('sidebar.serviceCatalog')}</PageTitle>
+        <Button icon={<Plus size={15} aria-hidden="true" />} onClick={modal.openCreate}>{t('pages.serviceCatalogAdmin.newItem')}</Button>
       </div>
 
       {loading && !data && <Skeleton style={{ height: 240 }} />}
       {error && !data && <QueryError message={error.message} onRetry={() => void refetch()} />}
 
       {data && items.length === 0 && (
-        <EmptyState icon={<ShoppingCart size={28} />} title="Nessuna voce di catalogo" description="Crea la prima voce che gli utenti potranno richiedere dal portale self-service." />
+        <EmptyState icon={<ShoppingCart size={28} />} title={t('pages.serviceCatalogAdmin.emptyTitle')} description={t('pages.serviceCatalogAdmin.emptyDescription')} />
       )}
 
       {items.length > 0 && (
@@ -92,11 +92,11 @@ export function ServiceCatalogAdminPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
             <thead>
               <tr style={{ background: 'var(--surface-1)', textAlign: 'left', color: 'var(--color-slate-light)' }}>
-                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Nome</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Categoria</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Approvazione</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Stato</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600, textAlign: 'right' }}>Azioni</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600 }}>{t('common.name')}</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600 }}>{t('pages.serviceCatalogAdmin.category')}</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600 }}>{t('pages.changeDetail.approval')}</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600 }}>{t('common.status')}</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600, textAlign: 'right' }}>{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -109,18 +109,18 @@ export function ServiceCatalogAdminPage() {
                   <td style={{ padding: '10px 14px', color: 'var(--color-slate)' }}>{it.category ?? '—'}</td>
                   <td style={{ padding: '10px 14px' }}>
                     {it.requiresApproval
-                      ? <Pill bg={palette.warning.tint} color={palette.warning.strong}>Richiesta</Pill>
+                      ? <Pill bg={palette.warning.tint} color={palette.warning.strong}>{t('pages.serviceCatalogAdmin.required')}</Pill>
                       : <span style={{ color: 'var(--color-slate-light)' }}>No</span>}
                   </td>
                   <td style={{ padding: '10px 14px' }}>
                     {it.active
-                      ? <Pill bg={palette.success.tint} color={palette.success.strong}>Attiva</Pill>
-                      : <Pill bg="var(--color-border-light)" color="var(--color-slate)">Disattivata</Pill>}
+                      ? <Pill bg={palette.success.tint} color={palette.success.strong}>{t('pages.serviceCatalogAdmin.active')}</Pill>
+                      : <Pill bg="var(--color-border-light)" color="var(--color-slate)">{t('pages.serviceCatalogAdmin.inactive')}</Pill>}
                   </td>
                   <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <Button variant="ghost" onClick={() => modal.openEdit(it)} style={{ marginRight: 6 }}>{t('common.edit')}</Button>
                     <Button variant="secondary" size="xs" onClick={() => toggleActive(it)} disabled={saving}>
-                      {it.active ? 'Disattiva' : 'Attiva'}
+                      {t(it.active ? 'pages.serviceCatalogAdmin.deactivate' : 'pages.serviceCatalogAdmin.activate')}
                     </Button>
                   </td>
                 </tr>
@@ -134,20 +134,20 @@ export function ServiceCatalogAdminPage() {
       <Modal
         open={modal.open}
         onClose={modal.close}
-        title={modal.editing ? 'Modifica voce di catalogo' : 'Nuova voce di catalogo'}
+        title={t(modal.editing ? 'pages.serviceCatalogAdmin.editTitle' : 'pages.serviceCatalogAdmin.createTitle')}
         as="form"
         onSubmit={submit}
         footer={
           <>
             <Button type="button" variant="secondary" onClick={modal.close}>{t('common.cancel')}</Button>
             <Button type="submit" disabled={saving || form.name.trim().length === 0}>
-              {saving ? 'Salvataggio…' : t('common.save')}
+              {saving ? t('common.saving') : t('common.save')}
             </Button>
           </>
         }
       >
         <div style={{ marginBottom: 14 }}>
-          <FieldLabel htmlFor={ids.name}>Nome *</FieldLabel>
+          <FieldLabel htmlFor={ids.name}>{t('pages.slaReport.nameRequired')}</FieldLabel>
           <Input
             id={ids.name}
             value={form.name}
@@ -155,22 +155,22 @@ export function ServiceCatalogAdminPage() {
             required
             // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management del dialogo aperto dall'utente (Modal)
             autoFocus
-            placeholder="Es. Nuovo laptop"
+            placeholder={t('pages.serviceCatalogAdmin.namePlaceholder')}
           />
         </div>
         <div style={{ marginBottom: 14 }}>
-          <FieldLabel htmlFor={ids.description}>Descrizione</FieldLabel>
-          <Textarea id={ids.description} value={form.description} onChange={(e) => patch({ description: e.target.value })} rows={3} placeholder="Cosa include il servizio…" />
+          <FieldLabel htmlFor={ids.description}>{t('common.description')}</FieldLabel>
+          <Textarea id={ids.description} value={form.description} onChange={(e) => patch({ description: e.target.value })} rows={3} placeholder={t('pages.serviceCatalogAdmin.descriptionPlaceholder')} />
         </div>
         <div style={{ marginBottom: 14 }}>
-          <FieldLabel htmlFor={ids.category}>Categoria</FieldLabel>
-          <Input id={ids.category} value={form.category} onChange={(e) => patch({ category: e.target.value })} placeholder="Es. Hardware, Accessi, Software" />
+          <FieldLabel htmlFor={ids.category}>{t('pages.serviceCatalogAdmin.category')}</FieldLabel>
+          <Input id={ids.category} value={form.category} onChange={(e) => patch({ category: e.target.value })} placeholder={t('pages.serviceCatalogAdmin.categoryPlaceholder')} />
         </div>
         <div>
-          <FieldLabel htmlFor={ids.approval}>Approvazione</FieldLabel>
+          <FieldLabel htmlFor={ids.approval}>{t('pages.changeDetail.approval')}</FieldLabel>
           <Select id={ids.approval} value={form.requiresApproval ? 'yes' : 'no'} onChange={(e) => patch({ requiresApproval: e.target.value === 'yes' })}>
-            <option value="no">Non richiede approvazione</option>
-            <option value="yes">Richiede approvazione</option>
+            <option value="no">{t('pages.serviceCatalogAdmin.noApproval')}</option>
+            <option value="yes">{t('pages.serviceCatalogAdmin.needsApproval')}</option>
           </Select>
         </div>
       </Modal>

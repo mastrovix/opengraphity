@@ -39,12 +39,12 @@ const CLIENTE = [
 beforeEach(() => invalidateWorkflowCache())
 
 describe('vocabolario degli scopi', () => {
-  it('è chiuso, e ogni nome di fabbrica mappa su uno scopo del vocabolario', () => {
+  it('è chiuso, e ogni nome factory mappa su uno scopo del vocabolario', () => {
     expect(isWorkflowStepPurpose('implementation')).toBe(true)
     expect(isWorkflowStepPurpose('deployment')).toBe(false)   // è un NOME, non uno scopo
     expect(isWorkflowStepPurpose('')).toBe(false)
     for (const [name, purpose] of Object.entries(FACTORY_STEP_PURPOSES)) {
-      expect(WORKFLOW_STEP_PURPOSES, `il nome di fabbrica "${name}"`).toContain(purpose)
+      expect(WORKFLOW_STEP_PURPOSES, `il nome factory "${name}"`).toContain(purpose)
     }
   })
 

@@ -177,7 +177,7 @@ export default function ReportsPage() {
               // Il messaggio utente resta visibile; l'errore compare in chat.
               setLocalMessages((prev) => [
                 ...prev,
-                { id: `tmp-err-${Date.now()}`, role: 'assistant', content: `Errore: ${errMsg}`, createdAt: new Date().toISOString() },
+                { id: `tmp-err-${Date.now()}`, role: 'assistant', content: t('pages.aiAnalysis.errorMessage', { message: errMsg }), createdAt: new Date().toISOString() },
               ])
               toast.error(errMsg)
               lastEventWasError = false
@@ -203,11 +203,11 @@ export default function ReportsPage() {
                 donePayload = { message: payload.message, conversationId: payload.conversationId }
               } else {
                 droppedFrames++
-                firstDropReason ??= `evento "${currentEvent || '(nessuno)'}" con payload inatteso`
+                firstDropReason ??= t('pages.aiAnalysis.unexpectedPayload', { event: currentEvent || '—' })
               }
             } catch (e) {
               droppedFrames++
-              firstDropReason ??= `JSON non valido: ${e instanceof Error ? e.message : String(e)}`
+              firstDropReason ??= t('pages.aiAnalysis.invalidJson', { message: e instanceof Error ? e.message : String(e) })
             }
             currentEvent = ''
             lastEventWasError = false
@@ -265,7 +265,7 @@ export default function ReportsPage() {
         // Il messaggio utente resta in chat, seguito da un errore visibile.
         setLocalMessages((prev) => [
           ...prev,
-          { id: `tmp-err-${Date.now()}`, role: 'assistant', content: `Errore: ${errMsg}`, createdAt: new Date().toISOString() },
+          { id: `tmp-err-${Date.now()}`, role: 'assistant', content: t('pages.aiAnalysis.errorMessage', { message: errMsg }), createdAt: new Date().toISOString() },
         ])
       }
     } finally {
@@ -307,7 +307,7 @@ export default function ReportsPage() {
     const lastAsst = [...localMessages].reverse().find((m) => m.role === 'assistant')
     if (!lastAsst) return
     const csv = extractCSV(lastAsst.content)
-    if (!csv) { alert('Nessuna tabella trovata nella risposta'); return }
+    if (!csv) { alert(t('pages.aiAnalysis.noTableInAnswer')); return }
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -337,12 +337,12 @@ export default function ReportsPage() {
         borderRight: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column',
       }}>
         <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>Report</span>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>{t('pages.reportsAI.title')}</span>
           <button
             type="button"
             onClick={handleNewConversation}
             style={{ fontSize: 'var(--font-size-section-title)', fontWeight: 400, color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '2px 6px', borderRadius: 4 }}
-            title="Nuova conversazione"
+            title={t('pages.reportsAI.newConversation')}
           >+</button>
         </div>
 
@@ -378,7 +378,7 @@ export default function ReportsPage() {
                   type="button"
                   onClick={(e) => { e.stopPropagation(); void handleDelete(c.id) }}
                   style={{ color: colors.slateLight, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 3, flexShrink: 0, display: 'flex', alignItems: 'center' }}
-                  title="Elimina"
+                  title={t('common.delete')}
                 ><X size={13} /></button>
               </div>
             ))
@@ -585,10 +585,10 @@ export default function ReportsPage() {
                 whiteSpace: 'nowrap', transition: 'background 0.15s',
               }}
             >
-              {loading ? '…' : 'Invia'}
+              {loading ? '…' : t('pages.reportsAI.send')}
             </button>
           </div>
-          <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 6 }}>Enter per inviare · Shift+Enter per andare a capo</div>
+          <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 6 }}>{t('pages.reportsAI.sendHint')}</div>
         </div>
       </div>
 

@@ -11,6 +11,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { config } from '../lib/config.js'
 import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../lib/errors.js'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { vectorIndexName } from './embeddings.js'
 import { logger } from '../lib/logger.js'
@@ -22,8 +23,8 @@ const log = logger.child({ module: 'post-incident' })
 
 function getClient(): Anthropic {
   if (!config.anthropicApiKey) {
-    throw new GraphQLError('AI non configurata: ANTHROPIC_API_KEY mancante', {
-      extensions: { code: 'FAILED_PRECONDITION' },
+    throw new GraphQLError('AI not configured: ANTHROPIC_API_KEY missing', {
+      extensions: { code: 'FAILED_PRECONDITION', i18n: { key: 'errors.ai.notConfigured' } },
     })
   }
   return new Anthropic()
@@ -62,7 +63,7 @@ async function loadIncidentContext(tenantId: string, incidentId: string): Promis
     OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci)
     RETURN properties(i) AS props, comments, steps, collect(DISTINCT ci.name) AS cis
   `, { tenantId, incidentId })
-  if (!rows.length) throw new GraphQLError('Incident non trovato', { extensions: { code: 'NOT_FOUND' } })
+  if (!rows.length) throw new NotFoundError('Incident')
   const r = rows[0]
   return {
     props: r.props,
@@ -236,9 +237,16 @@ export async function draftKbContent(tenantId: string, incidentId: string): Prom
   const concluded = await concludedStatusNames(tenantId, 'incident')
   if (!concluded.includes(status)) {
     throw new GraphQLError(
-      `La bozza KB si genera solo da incident risolti o chiusi: questo è nel passo "${status}". ` +
-      `Passi conclusivi del workflow incident: ${concluded.length > 0 ? concluded.join(', ') : '(nessuno dichiarato — marca un passo come terminale o di categoria "resolved" nel disegnatore)'}.`,
-      { extensions: { code: 'BAD_USER_INPUT' } },
+      `The KB draft is generated only from resolved or closed incidents: this one is in step "${status}". `
+      + `Concluding steps of the incident workflow: ${concluded.length > 0 ? concluded.join(', ') : '(none declared — mark a step as terminal, or of category "resolved", in the designer)'}.`,
+      {
+        extensions: {
+          code: 'BAD_USER_INPUT',
+          i18n: concluded.length > 0
+            ? { key: 'errors.kb.onlyFromConcluded', params: { step: status, concluded: concluded.join(', ') } }
+            : { key: 'errors.kb.onlyFromConcludedNone', params: { step: status } },
+        },
+      },
     )
   }
 

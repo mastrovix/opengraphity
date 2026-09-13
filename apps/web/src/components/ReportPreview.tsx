@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { ReportChartRenderer } from './ReportChartRenderer'
 import { colors, palette } from '@/lib/tokens'
 
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function ReportPreview({ loading, data, title, placeholder }: Props) {
+  const { t } = useTranslation()
   return (
     <div style={{
       border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16,
@@ -27,7 +29,7 @@ export function ReportPreview({ loading, data, title, placeholder }: Props) {
       justifyContent: loading || !data ? 'center' : 'flex-start',
     }}>
       {loading ? (
-        <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Caricamento anteprima...</div>
+        <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('reportBuilder.loadingPreview')}</div>
       ) : data ? (
         <ReportChartRenderer
           chartType={data.chartType}
@@ -37,7 +39,7 @@ export function ReportPreview({ loading, data, title, placeholder }: Props) {
         />
       ) : (
         <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', textAlign: 'center' }}>
-          {placeholder ?? "Configura il grafico per vedere l'anteprima"}
+          {placeholder ?? t('reportChart.configureToPreview')}
         </div>
       )}
     </div>

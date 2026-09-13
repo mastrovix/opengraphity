@@ -35,7 +35,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-/** Le soglie salvate sul tenant (null = non dichiarate → quelle di fabbrica). */
+/** Le soglie salvate sul tenant (null = non dichiarate → quelle factory). */
 let thresholdsRaw: string | null = null
 /** La riga della matrice salvata (records vuoto = il seme del prodotto). */
 let matrixRecords: Array<{ get: (k: string) => unknown }> = []
@@ -86,13 +86,13 @@ beforeEach(() => {
   clearDomainCaches(); clearRiskBandCache()
   loadTenantEnumOverrides.mockResolvedValue(vocab())
   factoryMatrix()
-  // Soglie non dichiarate: `riskBandThresholds` usa quelle di fabbrica sui
+  // Soglie non dichiarate: `riskBandThresholds` usa quelle factory sui
   // valori del cliente — cioè esattamente il comportamento di prima.
   thresholdsRaw = null
 })
 
 /**
- * La matrice di fabbrica, trascritta dal codice che sostituisce
+ * La matrice factory, trascritta dal codice che sostituisce
  * (`deriveChangePriority` prima dell'ondata 7). Le colonne sono due regole
  * DISTINTE, non una: «rischio non valutato» ha la sua matrice
  * (`change_priority_initial`), perché non è la stessa cosa di «rischio
@@ -128,23 +128,23 @@ describe('deriveChangePriority — dalla matrice del cliente', () => {
 
   it('un tipo fuori vocabolario è un rifiuto che elenca gli ammessi', async () => {
     await expect(deriveChangePriority('c-one', 'inventato', null))
-      .rejects.toThrow(/change_type: "inventato" non è nel vocabolario di questo cliente. Ammessi: standard, normal, emergency/)
+      .rejects.toThrow(/change_type: "inventato" is not in the dictionary of this tenant. Allowed: standard, normal, emergency/)
   })
 
   it('il tipo ASSENTE è un rifiuto: prima diventava «normal» in silenzio', async () => {
-    await expect(deriveChangePriority('c-one', null, null)).rejects.toThrow(/change_type: valore assente/)
-    await expect(deriveChangePriority('c-one', undefined, 70)).rejects.toThrow(/change_type: valore assente/)
+    await expect(deriveChangePriority('c-one', null, null)).rejects.toThrow(/change_type: value missing/)
+    await expect(deriveChangePriority('c-one', undefined, 70)).rejects.toThrow(/change_type: value missing/)
   })
 
   it('un tipo aggiunto SENZA la cella nella matrice nomina la combinazione, non ripiega', async () => {
     loadTenantEnumOverrides.mockResolvedValue(vocab({ change_type: ['standard', 'normal', 'emergency', 'major'] }))
     await expect(deriveChangePriority('c-one', 'major', 70))
-      .rejects.toThrow(/Matrice "change_priority".*change_type="major", risk_band="high"/s)
+      .rejects.toThrow(/Matrix "change_priority".*change_type="major", risk_band="high"/s)
   })
 })
 
 describe('riskBandOf — le soglie sono dato del cliente, non posizioni (revisione · C·N-2)', () => {
-  it('senza soglie dichiarate usa quelle di fabbrica sui nomi del cliente: nulla cambia', async () => {
+  it('senza soglie dichiarate usa quelle factory sui nomi del cliente: nulla cambia', async () => {
     loadTenantEnumOverrides.mockResolvedValue(vocab({ risk_band: ['bassa', 'media', 'alta'] }))
     expect(await riskBandOf('c-one', 10)).toBe('bassa')
     expect(await riskBandOf('c-one', 45)).toBe('media')
@@ -182,7 +182,7 @@ describe('riskBandOf — le soglie sono dato del cliente, non posizioni (revisio
     await expect(riskBandOf('c-one', undefined)).rejects.toThrow(/change_priority_initial/)
   })
 
-  it('le soglie di fabbrica coincidono con determineApprovalRoute (30 / 60 inclusivi)', async () => {
+  it('le soglie factory coincidono con determineApprovalRoute (30 / 60 inclusivi)', async () => {
     for (const score of [0, 10, 30, 31, 60, 61, 90]) {
       expect(await riskBandOf('c-one', score), `score ${score}`).toBe(determineApprovalRoute(score))
     }
@@ -191,13 +191,13 @@ describe('riskBandOf — le soglie sono dato del cliente, non posizioni (revisio
   it('vocabolario senza tre valori e soglie non dichiarate → si ferma e dice di dichiararle', async () => {
     loadTenantEnumOverrides.mockResolvedValue(vocab({ risk_band: ['bassa', 'alta'] }))
     await expect(riskBandOf('c-one', 50))
-      .rejects.toThrow(/non sono dichiarate e il vocabolario "risk_band" ha 2 valori.*Dichiara le soglie/s)
+      .rejects.toThrow(/are not declared and the "risk_band" dictionary has 2 values.*Declare the thresholds/s)
   })
 
   it('una fascia dichiarata FUORI vocabolario è un errore che la nomina', async () => {
     loadTenantEnumOverrides.mockResolvedValue(vocab({ risk_band: ['bassa', 'media', 'alta'] }))
     thresholdsRaw = JSON.stringify([{ band: 'bassa', upTo: 30 }, { band: 'medium', upTo: 60 }, { band: 'alta', upTo: 100 }])
-    await expect(riskBandOf('c-one', 50)).rejects.toThrow(/citano "medium", che non è \(più\) nel vocabolario/)
+    await expect(riskBandOf('c-one', 50)).rejects.toThrow(/name "medium", which is not \(any more\) in the "risk_band" dictionary/)
   })
 
   it('soglie che non arrivano a 100 sono un errore: un punteggio resterebbe senza fascia', async () => {

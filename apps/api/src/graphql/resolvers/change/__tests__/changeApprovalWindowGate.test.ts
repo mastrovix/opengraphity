@@ -158,7 +158,7 @@ describe('nessun passo di approvazione: il rifiuto nomina le uscite, non è un v
 
   it('il messaggio nomina lo scopo da assegnare E i tipi pre-approvati', async () => {
     await expect(executeChangeTransition(null, { changeId: 'chg-1', toStep: 'in_calendario' }, admin))
-      .rejects.toThrow(/nessun passo dichiara lo scopo «Approvazione».*disegnatore dei workflow.*pre-approvati/s)
+      .rejects.toThrow(/no step declares the «Approval» purpose.*workflow designer.*pre-approved/s)
   })
 
   it('se il cliente pre-approva quel tipo di change, la transizione passa', async () => {

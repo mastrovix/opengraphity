@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { SyncConflict } from './useSyncPage'
 import { formatDate, StatusBadge, btnStyle } from './syncShared'
 import { colors, palette } from '../../lib/tokens'
@@ -14,6 +15,7 @@ export interface SyncConflictsTabProps {
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function SyncConflictsTab({ conflicts, loading, onResolveConflict }: SyncConflictsTabProps) {
+  const { t } = useTranslation()
   const [filter, setFilter] = useState('open')
 
   const filtered = filter === 'all' ? conflicts : conflicts.filter(c => c.status === filter)
@@ -53,14 +55,14 @@ export function SyncConflictsTab({ conflicts, loading, onResolveConflict }: Sync
                       Locked fields: {fields.join(', ') || '—'} · {formatDate(c.createdAt)}
                     </div>
                     {c.resolution && (
-                      <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-success)', marginTop: 2 }}>Resolution: {c.resolution}</div>
+                      <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-success)', marginTop: 2 }}>{t('pages.sync.conflict.resolution', { resolution: c.resolution })}</div>
                     )}
                   </div>
                   {c.status === 'open' && (
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button type="button" onClick={() => onResolveConflict(c.id, 'merged')}   style={btnStyle(colors.brand, colors.white)} title="Aggiorna il CI esistente con i dati importati">Unisci</button>
-                      <button type="button" onClick={() => onResolveConflict(c.id, 'distinct')} style={btnStyle(colors.white, palette.neutral.textMuted)} title="Crea un nuovo CI separato dai dati importati">Sono diversi</button>
-                      <button type="button" onClick={() => onResolveConflict(c.id, 'linked')}   style={btnStyle(colors.white, palette.purple.base)} title="Crea un nuovo CI e collega entrambi con RELATED_TO">Collega</button>
+                      <button type="button" onClick={() => onResolveConflict(c.id, 'merged')}   style={btnStyle(colors.brand, colors.white)} title={t('pages.sync.conflict.mergeHint')}>{t('pages.sync.conflict.merge')}</button>
+                      <button type="button" onClick={() => onResolveConflict(c.id, 'distinct')} style={btnStyle(colors.white, palette.neutral.textMuted)} title={t('pages.sync.conflict.distinctHint')}>{t('pages.sync.conflict.distinct')}</button>
+                      <button type="button" onClick={() => onResolveConflict(c.id, 'linked')}   style={btnStyle(colors.white, palette.purple.base)} title={t('pages.sync.conflict.linkedHint')}>{t('pages.sync.conflict.linked')}</button>
                     </div>
                   )}
                 </div>

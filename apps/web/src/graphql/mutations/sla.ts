@@ -27,7 +27,7 @@ export const DELETE_SLA_POLICY = gql`
 export const CREATE_OLA_CONTRACT = gql`
   mutation CreateOLAContract($input: CreateOLAContractInput!) {
     createOLAContract(input: $input) {
-      id type name entityType responseMinutes resolveMinutes partyType partyName teamName enabled createdAt
+      id type name entityType responseMinutes resolveMinutes partyType partyName teamId teamName enabled createdAt
     }
   }
 `
@@ -35,7 +35,7 @@ export const CREATE_OLA_CONTRACT = gql`
 export const UPDATE_OLA_CONTRACT = gql`
   mutation UpdateOLAContract($id: ID!, $input: UpdateOLAContractInput!) {
     updateOLAContract(id: $id, input: $input) {
-      id type name entityType responseMinutes resolveMinutes partyType partyName teamName enabled createdAt
+      id type name entityType responseMinutes resolveMinutes partyType partyName teamId teamName enabled createdAt
     }
   }
 `

@@ -96,7 +96,7 @@ describe('draftResolutionNotes', () => {
   it('incident inesistente nel tenant → NOT_FOUND, nessuna chiamata al modello (anche con chiave presente)', async () => {
     incident(null)
     const err = await graphqlFailure(draftResolutionNotes(TENANT, 'inc-x'), 'NOT_FOUND')
-    expect(err.message).toBe('Incident non trovato')
+    expect(err.message).toBe('Incident not found')
     expect(h.create).not.toHaveBeenCalled()
     const [, cypher, params] = vi.mocked(runQuery).mock.calls[0]!
     expect(cypher).toContain('tenant_id: $tenantId')
@@ -106,7 +106,7 @@ describe('draftResolutionNotes', () => {
   it('ANTHROPIC_API_KEY assente → FAILED_PRECONDITION senza istanziare l\'SDK', async () => {
     h.cfg.anthropicApiKey = undefined
     const err = await graphqlFailure(draftResolutionNotes(TENANT, 'inc-1'), 'FAILED_PRECONDITION')
-    expect(err.message).toBe('AI non configurata: ANTHROPIC_API_KEY mancante')
+    expect(err.message).toBe('AI not configured: ANTHROPIC_API_KEY missing')
     expect(h.constructed).toHaveLength(0)
     expect(h.create).not.toHaveBeenCalled()
   })
@@ -145,7 +145,7 @@ describe('draftKbContent', () => {
     // Il rifiuto nomina il passo e i passi conclusivi del workflow del cliente:
     // prima diceva solo «risolti o chiusi», che con passi rinominati non
     // aiutava a capire perché il bottone non funzionava.
-    expect(err.message).toContain('La bozza KB si genera solo da incident risolti o chiusi')
+    expect(err.message).toContain('The KB draft is generated only from resolved or closed incidents')
     expect(err.message).toContain('sistemato, archiviato')
     expect(h.create).not.toHaveBeenCalled()
   })

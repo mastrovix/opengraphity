@@ -98,21 +98,21 @@ describe('assertStepTargets', () => {
     await expect(assertStepTargets(session, 't', 'change', { actions: '[{"type":"transition_workflow","params":{"to_step":"in_calendario"}}]' }))
       .resolves.toBeUndefined()
     await expect(assertStepTargets(session, 't', 'change', { actions: '[{"type":"transition_workflow","params":{"to_step":"approved"}}]' }))
-      .rejects.toThrow(/nomina il passo "approved", che non esiste nel workflow "change"[\s\S]*valutazione, cab_settimanale, in_calendario, archiviata/)
+      .rejects.toThrow(/names the step "approved", which does not exist in the "change" workflow[\s\S]*valutazione, cab_settimanale, in_calendario, archiviata/)
   })
 
   it('to_step vuoto → rifiutato (una regola che non dice dove andare non è configurata)', async () => {
     await expect(assertStepTargets(session, 't', 'change', { actions: '[{"type":"transition_workflow","params":{}}]' }))
-      .rejects.toThrow(/richiede il passo di arrivo/)
+      .rejects.toThrow(/needs the destination step/)
   })
 
   it('condizione status equals/not_equals: il valore deve essere un passo; contains e is_null non si toccano', async () => {
     await expect(assertStepTargets(session, 't', 'incident', { conditions: '[{"field":"status","operator":"equals","value":"nuovo"}]' }))
       .resolves.toBeUndefined()
     await expect(assertStepTargets(session, 't', 'incident', { conditions: '[{"field":"status","operator":"equals","value":"open"}]' }))
-      .rejects.toThrow(/nomina il passo "open", che non esiste nel workflow "incident"/)
+      .rejects.toThrow(/names the step "open", which does not exist in the "incident" workflow/)
     await expect(assertStepTargets(session, 't', 'incident', { conditions: '[{"field":"status","operator":"not_equals","value":"closed"}]' }))
-      .rejects.toThrow(/nomina il passo "closed"/)
+      .rejects.toThrow(/names the step "closed"/)
     await expect(assertStepTargets(session, 't', 'incident', { conditions: '[{"field":"status","operator":"contains","value":"lavor"}]' }))
       .resolves.toBeUndefined()
     await expect(assertStepTargets(session, 't', 'incident', { conditions: '[{"field":"status","operator":"is_null"}]' }))
@@ -123,6 +123,6 @@ describe('assertStepTargets', () => {
     const { getWorkflowSteps } = await import('../../../lib/workflowHelpers.js')
     vi.mocked(getWorkflowSteps).mockResolvedValueOnce([])
     await expect(assertStepTargets(session, 't', 'problem', { actions: '[{"type":"transition_workflow","params":{"to_step":"x"}}]' }))
-      .rejects.toThrow(/non ha nessun passo: crea la definizione di workflow/)
+      .rejects.toThrow(/has no step at all: create the workflow definition/)
   })
 })

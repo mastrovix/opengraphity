@@ -33,15 +33,37 @@ const { buildBaseSDL } = await import('../schema-base.js')
 const { makeExecutableSchema } = await import('@graphql-tools/schema')
 const { generateSDL, metamodelSDL } = await import('@opengraphity/schema-generator')
 
-/** I moduli che espongono mappe di tipo oltre a Query/Mutation. */
-const MODULES = {
-  workflow:   await import('../resolvers/workflow.js').then((m) => m.workflowResolvers),
-  incident:   await import('../resolvers/incident.js').then((m) => m.incidentResolvers),
-  change:     await import('../resolvers/change/index.js').then((m) => m.changeResolvers),
-  events:     await import('../resolvers/events.js').then((m) => m.eventResolvers),
-  services:   await import('../resolvers/services.js').then((m) => m.serviceResolvers),
-  problem:    await import('../resolvers/problem.js').then((m) => m.problemResolvers),
-} as Record<string, Record<string, unknown>>
+/**
+ * I moduli SCOPERTI, non elencati.
+ *
+ * Questa era una lista a mano — ed e' esattamente il difetto che il test
+ * esiste per chiudere: `EnumTypeDefinition.valueLabels` non e' stato unito in
+ * `resolvers/index.ts`, la pagina ha ricevuto «Cannot return null for
+ * non-nullable field», e questo test era verde perche' `enumType` non era
+ * nella lista. Un guardiano contro «l'hai dimenticato in una lista a mano»
+ * gated da una lista a mano non guarda niente.
+ *
+ * Adesso si legge la directory: ogni `resolvers/*.ts` (e `change/index.ts`) che
+ * esporta un oggetto il cui nome finisce per `Resolvers` entra da se.
+ */
+const MODULES: Record<string, Record<string, unknown>> = await (async () => {
+  const fs   = await import('node:fs')
+  const path = await import('node:path')
+  const dir  = path.join(import.meta.dirname, '../resolvers')
+  const file = [
+    ...fs.readdirSync(dir).filter((f) => f.endsWith('.ts') && f !== 'index.ts' && !f.includes('.test.')),
+    'change/index.ts',
+  ]
+  const out: Record<string, Record<string, unknown>> = {}
+  for (const f of file) {
+    const mod = await import(`../resolvers/${f.replace(/\.ts$/, '.js')}`) as Record<string, unknown>
+    for (const [nome, valore] of Object.entries(mod)) {
+      if (!nome.endsWith('Resolvers') || valore === null || typeof valore !== 'object') continue
+      out[`${f.replace(/\.ts$/, '')}:${nome}`] = valore as Record<string, unknown>
+    }
+  }
+  return out
+})()
 
 /** Query e Mutation sono uniti per campo e già coperti dai test di RBAC. */
 const SKIP = new Set(['Query', 'Mutation'])

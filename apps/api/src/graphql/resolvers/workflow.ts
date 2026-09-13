@@ -10,6 +10,7 @@ import type { GraphQLContext } from '../../context.js'
 import type { Queryable } from '@opengraphity/neo4j'
 import { requireRole } from '../../lib/requireRole.js'
 import { provisionTenantData, tenantProvisioningGaps } from '../../lib/provisionTenantData.js'
+import { mapGaps } from '../issueShape.js'
 import {
   serviceRequestWorkflowInstance,
   serviceRequestAvailableTransitionsField,
@@ -85,9 +86,10 @@ async function addWorkflowStep(
   // avrebbe prodotto uno stato che nessun filtro trova (revisione · B·M-1).
   if (!/^[a-z][a-z0-9_]*$/.test(name)) {
     throw new ValidationError(
-      `Nome di passo "${name}" non valido: minuscolo, cifre e trattini bassi, e deve iniziare con una lettera ` +
-      `(es. "cab_settimanale"). Questo nome diventa lo stato del ticket e finisce nei filtri e nei report; ` +
-      `il nome che vedono gli utenti è l'etichetta, che può essere qualunque cosa.`,
+      `Invalid step name "${name}": lowercase, digits and underscores, and it must start with a letter `
+      + `(e.g. "weekly_cab"). This name becomes the state of the ticket and ends up in filters and reports; `
+      + `the name people see is the label, which can be anything.`,
+      { key: 'errors.workflow.invalidStepName', params: { name } },
     )
   }
 
@@ -142,7 +144,7 @@ async function addWorkflowStep(
       // O la definizione non è di questo tenant, o esiste già un passo con
       // questo nome: due passi omonimi nella stessa definizione renderebbero
       // ambigue tutte le scritture per nome (saveWorkflowChanges, transizioni).
-      throw new ValidationError(`Impossibile creare lo step "${name}": definizione non trovata o nome già usato in questo workflow`)
+      throw new ValidationError(`Cannot create step "${name}": definition not found, or the name is already used in this workflow`, { key: 'errors.workflow.stepNameTaken', params: { name } })
     }
     invalidateWorkflowCache(ctx.tenantId, res.records[0].get('entityType') as string)
     return workflowDefinitionById(_, { id: definitionId }, ctx)
@@ -174,7 +176,7 @@ async function removeWorkflowStep(
                instanceStatus, n
       `, { definitionId, stepName, tenantId: ctx.tenantId }),
     )
-    if (!res.records.length) throw new ValidationError(`Step "${stepName}" non trovato in questa definizione`)
+    if (!res.records.length) throw new ValidationError(`Step "${stepName}" not found in this definition`, { key: 'errors.workflow.stepNotFound', params: { name: stepName } })
     const stepType   = res.records[0].get('type') as string | null
     const isInitial  = Boolean(res.records[0].get('isInitial'))
     const entityType = res.records[0].get('entityType') as string
@@ -183,13 +185,15 @@ async function removeWorkflowStep(
     // (il passo di partenza è quasi sempre anche `type: 'start'`).
     if (!stepType || PROTECTED.has(stepType)) {
       throw new ValidationError(
-        `Lo step "${stepName}" è di tipo "${stepType ?? 'ignoto'}": i passi di apertura e di chiusura del processo non si eliminano, ` +
-        `altrimenti il workflow non avrebbe più un inizio o una fine. Puoi rinominarlo, o cambiarne le azioni.`,
+        `Step "${stepName}" is of kind "${stepType ?? 'unknown'}": the opening and closing steps of the process cannot be deleted, `
+        + `or the workflow would have no beginning or no end. You can rename it, or change its actions.`,
+        { key: 'errors.workflow.cannotDeleteBoundaryStep', params: { name: stepName, kind: stepType ?? '' } },
       )
     }
     if (isInitial) {
       throw new ValidationError(
-        `Lo step "${stepName}" è lo step iniziale del processo: eliminandolo nessun nuovo ticket potrebbe più nascere. Marca prima un altro step come iniziale.`,
+        `Step "${stepName}" is the initial step of the process: deleting it, no new ticket could be created. Mark another step as initial first.`,
+        { key: 'errors.workflow.cannotDeleteInitialStep', params: { name: stepName } },
       )
     }
 
@@ -200,9 +204,14 @@ async function removeWorkflowStep(
     if (live > 0) {
       const detail = byStatus.map((r) => `${r.status ?? 'senza stato'}: ${r.n}`).join(', ')
       throw new GraphQLError(
-        `Non puoi eliminare lo step "${stepName}": ${live} istanze di workflow si trovano ora su questo passo (${detail}). ` +
-        `Spostale prima su un altro step — eliminandolo resterebbero senza step corrente e non potrebbero più transizionare.`,
-        { extensions: { code: 'CONFLICT', stepName, instances: live } },
+        `Step "${stepName}" cannot be deleted: ${live} workflow instances are on this step right now (${detail}). `
+        + `Move them to another step first — deleting it would leave them without a current step, unable to transition.`,
+        {
+          extensions: {
+            code: 'CONFLICT', stepName, instances: live,
+            i18n: { key: 'errors.workflow.stepHasInstances', params: { name: stepName, count: live, detail } },
+          },
+        },
       )
     }
 
@@ -270,9 +279,10 @@ async function removeWorkflowStep(
  * definizioni esistenti al seme (una definizione che c'è viene SALTATA, non
  * sovrascritta): mancava solo la porta per chiamarla.
  */
-async function tenantProvisioningGapsQuery(_: unknown, __: unknown, ctx: GraphQLContext): Promise<string[]> {
+async function tenantProvisioningGapsQuery(_: unknown, __: unknown, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
-  return withSession((session) => tenantProvisioningGaps(session as unknown as Queryable, ctx.tenantId))
+  const gaps = await withSession((session) => tenantProvisioningGaps(session as unknown as Queryable, ctx.tenantId))
+  return mapGaps(gaps)
 }
 
 async function provisionTenantDataMutation(_: unknown, __: unknown, ctx: GraphQLContext) {
@@ -300,7 +310,7 @@ async function provisionTenantDataMutation(_: unknown, __: unknown, ctx: GraphQL
     notificationRulesCreated: result.notificationRulesCreated,
     matricesCreated:          [...result.matricesCreated],
     workflows:                result.workflows.map((w) => w.name),
-    remainingGaps:            gaps,
+    remainingGaps:            mapGaps(gaps),
   }
 }
 

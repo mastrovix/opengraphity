@@ -29,7 +29,13 @@ vi.mock('sonner', () => ({
  * asserire una bugia.
  */
 const etichette = (values: string[], scritte: Record<string, string> = {}) =>
-  values.map((v) => ({ __typename: 'EnumValueLabel', value: v, label: scritte[v] ?? v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }))
+  values.map((v) => ({
+    __typename: 'EnumValueLabel',
+    value: v,
+    label: scritte[v] ?? v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+    // `labels` porta le lingue DAVVERO scritte: assente = non scritta, non vuota.
+    labels: scritte[v] ? [{ __typename: 'LocalizedLabel', language: 'it', label: scritte[v]! }] : [],
+  }))
 
 const enumType = (over: Record<string, unknown>) => {
   const base: Record<string, unknown> = {

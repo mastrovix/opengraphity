@@ -207,7 +207,7 @@ describe('azioni dei passi: vocabolario imposto alla scrittura', () => {
     expect(err).toBeInstanceOf(GraphQLError)
     expect((err as GraphQLError).extensions['code']).toBe('BAD_USER_INPUT')
     expect((err as GraphQLError).message).toContain('enter_actions dello step "triage"[0]')
-    expect((err as GraphQLError).message).toMatch(/target "role:manager" non è un destinatario valido/)
+    expect((err as GraphQLError).message).toMatch(/target "role:manager" is not a valid recipient/)
     expect((err as GraphQLError).message).toContain('role:admin')
     // i bersagli veri passano, e un notify_rule senza target non viene validato
     expect(() => assertStepActions(at('team_owner'), 'enter_actions')).not.toThrow()
@@ -216,8 +216,8 @@ describe('azioni dei passi: vocabolario imposto alla scrittura', () => {
   })
 
   it('assertStepActions: JSON non valido e non-lista sono rifiutati', () => {
-    expect(() => assertStepActions('{non json', 'enter_actions')).toThrow(/non è JSON valido/)
-    expect(() => assertStepActions('{"type":"notify"}', 'enter_actions')).toThrow(/deve essere una lista di azioni/)
+    expect(() => assertStepActions('{non json', 'enter_actions')).toThrow(/is not valid JSON/)
+    expect(() => assertStepActions('{"type":"notify"}', 'enter_actions')).toThrow(/must be a list of actions/)
   })
 
   it('updateWorkflowStep: azione ignota → nessuna scrittura', async () => {

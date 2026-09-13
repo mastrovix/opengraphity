@@ -20,7 +20,7 @@
  * una query per tenant a ogni sonda.
  */
 import { getSession } from '@opengraphity/neo4j'
-import { tenantProvisioningGaps } from './provisionTenantData.js'
+import { tenantProvisioningGaps, formatGap } from './provisionTenantData.js'
 import { tenantProvisioningGapsGauge } from '../middleware/metrics.js'
 import { logger } from './logger.js'
 
@@ -55,7 +55,8 @@ export async function provisioningGaps(): Promise<Record<string, string[]>> {
         const tenantId = String(rec.get('id'))
         if (tenantId === SHARED_TENANT) continue
         const gaps = await tenantProvisioningGaps(session, tenantId)
-        out[tenantId] = gaps
+        // La metrica e l'endpoint sono per gli operatori: resa italiana.
+        out[tenantId] = gaps.map(formatGap)
         tenantProvisioningGapsGauge.set({ tenant: tenantId }, gaps.length)
       }
       lastResult = out

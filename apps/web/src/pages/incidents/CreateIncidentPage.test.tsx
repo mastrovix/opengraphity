@@ -54,8 +54,8 @@ function scaleButtons(label: string): string[] {
 describe('CreateIncidentPage — impatto, urgenza e priorità dalla matrice del cliente', () => {
   it('i bottoni sono i valori del vocabolario, nell\'ordine della matrice', async () => {
     render(domainMatricesMock())
-    await waitFor(() => { expect(scaleButtons('Impatto')).toEqual(['low', 'medium', 'high']) })
-    expect(scaleButtons('Urgenza')).toEqual(['low', 'medium', 'high'])
+    await waitFor(() => { expect(scaleButtons('Impact')).toEqual(['low', 'medium', 'high']) })
+    expect(scaleButtons('Urgency')).toEqual(['low', 'medium', 'high'])
   })
 
   it('il cliente che ha RINOMINATO vede i suoi valori, non quelli di fabbrica', async () => {
@@ -65,8 +65,8 @@ describe('CreateIncidentPage — impatto, urgenza e priorità dalla matrice del 
       priorities: ['p4', 'p3', 'p2', 'p1'],
       cells: { 'medio|normale': 'p3', 'alto|urgente': 'p1', 'basso|rilassata': 'p4' },
     }))
-    await waitFor(() => { expect(scaleButtons('Impatto')).toEqual(['basso', 'medio', 'alto']) })
-    expect(scaleButtons('Urgenza')).toEqual(['rilassata', 'normale', 'urgente'])
+    await waitFor(() => { expect(scaleButtons('Impact')).toEqual(['basso', 'medio', 'alto']) })
+    expect(scaleButtons('Urgency')).toEqual(['rilassata', 'normale', 'urgente'])
     // E la priorità calcolata è quella della SUA matrice: il valore mediano
     // della scala è quello preselezionato.
     expect(await screen.findByText('p3')).toBeInTheDocument()
@@ -75,7 +75,7 @@ describe('CreateIncidentPage — impatto, urgenza e priorità dalla matrice del 
 
   it('una coppia che la matrice non copre lo DICE, invece di mostrare una priorità che il server rifiuta', async () => {
     render(domainMatricesMock({ cells: { 'low|low': 'low' } }))
-    await waitFor(() => { expect(scaleButtons('Impatto')).toHaveLength(3) })
-    expect(screen.getByText('da compilare nella matrice')).toBeInTheDocument()
+    await waitFor(() => { expect(scaleButtons('Impact')).toHaveLength(3) })
+    expect(screen.getByText('to be filled in, in the matrix')).toBeInTheDocument()
   })
 })

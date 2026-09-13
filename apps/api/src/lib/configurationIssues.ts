@@ -26,36 +26,57 @@
  *
  * Qui si raccolgono tutti, con la stessa forma, per un banner solo. Un
  * controllo che fallisce non nasconde gli altri: diventa lui stesso una voce.
+ *
+ * ## E la frase non si compone qui
+ * Fino a ieri ogni voce portava un `message` in italiano, scritto da questo
+ * file. Ma questo file sta nell'API, e **l'API non sa in che lingua guarda chi
+ * legge**: non c'è `Accept-Language`, non c'è `language` sull'utente. Risultato
+ * misurato in un browser in inglese: interfaccia inglese, banner della
+ * diagnostica in italiano. Ora ogni voce è un DATO — una `kind`, che è la
+ * chiave, e i soli `params` da interpolare — e la frase la compone il client,
+ * che la lingua la conosce (`configurationIssue.<kind>`).
  */
 import type { Session } from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
 import { getSchemaState } from './schemaCache.js'
-import { tenantProvisioningGaps } from './provisionTenantData.js'
+import { tenantProvisioningGaps, type ProvisioningGap } from './provisionTenantData.js'
 import { DOMAIN_MATRIX_KINDS, domainVocabulary, loadDomainMatrix, matrixKey, type DomainMatrixKind } from './domainMatrix.js'
 import { CI_STATUS_VOCABULARY } from './eventVocabularies.js'
 import { LIFECYCLE_POLICY_LISTS } from './eventPolicy.js'
 import { getEventPolicy } from '../services/events/policy.js'
 import { logger } from './logger.js'
-import { parseValueLabels, vocabularyCarriesLabels } from './enumValueLabels.js'
+import { LINGUE, parseValueLabels, vocabularyCarriesLabels } from './enumValueLabels.js'
+import { tenantDefaultLanguage, LINGUA_DI_ULTIMA_ISTANZA } from './tenantLanguage.js'
 
 const log = logger.child({ module: 'configuration-issues' })
 
 export type ConfigurationIssueKind =
   | 'schema_degraded'
   | 'provisioning_gap'
-  | 'matrix_incomplete'
+  | 'matrix_missing_cells'
+  | 'matrix_invalid_cells'
+  | 'matrix_stale_keys'
   | 'policy_out_of_vocabulary'
   | 'vocabulary_without_semantics'
   | 'check_failed'
   | 'vocabulary_empty'
   | 'value_labels_missing'
+  | 'value_labels_partial'
+  | 'default_language_not_set'
 
 export interface ConfigurationIssue {
+  /** La CHIAVE del problema: il client la risolve nella sua lingua. */
   kind: ConfigurationIssueKind
   /** `error` = qualcosa è già rotto; `warning` = lo sarà, o è silenziosamente sbagliato. */
   severity: 'error' | 'warning'
-  /** Cosa non va, nella lingua del prodotto. */
-  message: string
+  /** Solo DATI da interpolare nella chiave: mai prosa. */
+  params: Record<string, string>
+  /**
+   * I buchi di configurazione, ognuno con la SUA chiave — solo per
+   * `provisioning_gap`. Un elenco di chiavi e non una frase già cucita: la
+   * cuce il client, che sa anche come si separa un elenco nella sua lingua.
+   */
+  gaps?: ProvisioningGap[]
   /** Dove si rimedia: un percorso dell'interfaccia. */
   where: string | null
 }
@@ -64,7 +85,7 @@ export async function configurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkLanguage]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -72,7 +93,7 @@ export async function configurationIssues(tenantId: string): Promise<Configurati
         log.error({ err, tenantId, check: check.name }, 'Controllo di configurazione fallito')
         out.push({
           kind: 'check_failed', severity: 'warning', where: null,
-          message: `Il controllo «${check.name}» non è riuscito: ${err instanceof Error ? err.message : String(err)}`,
+          params: { check: check.name, error: err instanceof Error ? err.message : String(err) },
         })
       }
     }
@@ -87,9 +108,9 @@ async function checkSchema(tenantId: string): Promise<ConfigurationIssue[]> {
   if (!state.degraded) return []
   return [{
     kind: 'schema_degraded', severity: 'error', where: '/settings/ci-types',
-    message:
-      `Una parte del metamodello dei CI non è servibile dall'API, quindi quei tipi non compaiono ` +
-      `da nessuna parte: ${state.reason ?? 'motivo non disponibile'}`,
+    // `reason` puo mancare: e il client a dire «motivo non disponibile», nella
+    // sua lingua. Qui non si scrive prosa nemmeno per il ripiego.
+    params: state.reason ? { reason: state.reason } : {},
   }]
 }
 
@@ -98,10 +119,8 @@ async function checkProvisioning(tenantId: string, session: Session): Promise<Co
   if (gaps.length === 0) return []
   return [{
     kind: 'provisioning_gap', severity: 'error', where: '/workflow',
-    message:
-      `La configurazione di questo cliente è incompleta (${gaps.join('; ')}). ` +
-      `Senza, l'apertura di un ticket si ferma. Si rimedia dal disegnatore dei workflow, ` +
-      `col pulsante «Completa la configurazione».`,
+    params: { count: String(gaps.length) },
+    gaps,
   }]
 }
 
@@ -128,12 +147,9 @@ async function checkMatrices(tenantId: string): Promise<ConfigurationIssue[]> {
         kind: 'vocabulary_empty',
         severity: 'error',
         where: '/settings/enum-designer',
-        message:
-          `${vuoti.length === 1 ? 'Il vocabolario' : 'I vocabolari'} ` +
-          `${vuoti.map((v) => `«${v}»`).join(', ')} ${vuoti.length === 1 ? 'non ha' : 'non hanno'} nessun valore, ` +
-          `e la matrice «${kind}» ne ha bisogno: finche resta cosi ogni valore viene rifiutato come fuori ` +
-          `vocabolario e non si apre piu nessun ticket. Rimetti i valori nel Dizionario — NON salvare la ` +
-          `matrice, che e ancora buona e verrebbe svuotata.`,
+        // `count` decide il plurale nella lingua del client: «Il vocabolario»
+        // contro «I vocabolari» non e una scelta che possa fare l'API.
+        params: { count: String(vuoti.length), vocabularies: vuoti.join(', '), matrix: kind },
       })
       // E non si dice niente della matrice: il suo contenuto non e giudicabile
       // finche il vocabolario e vuoto.
@@ -144,19 +160,31 @@ async function checkMatrices(tenantId: string): Promise<ConfigurationIssue[]> {
     const missing = wanted.filter((k) => matrix.entries[k] === undefined)
     const stale   = Object.keys(matrix.entries).filter((k) => !wanted.includes(k))
     const invalid = Object.entries(matrix.entries).filter(([, v]) => !outputValues.includes(v)).map(([k]) => k)
-    if (!missing.length && !stale.length && !invalid.length) continue
 
-    const parts: string[] = []
-    if (missing.length) parts.push(`${String(missing.length)} combinazioni senza valore (${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ', …' : ''})`)
-    if (invalid.length) parts.push(`${String(invalid.length)} celle con un valore fuori vocabolario`)
-    if (stale.length)   parts.push(`${String(stale.length)} chiavi rimaste da una rinomina`)
-    out.push({
-      kind: 'matrix_incomplete',
-      // Una cella mancante è un errore a runtime (l'apertura di un incident si
-      // ferma); una chiave rimasta è residuo, e non ferma niente.
-      severity: missing.length || invalid.length ? 'error' : 'warning',
-      where: '/settings/domain-matrices',
-      message: `Matrice «${kind}»: ${parts.join(', ')}.`,
+    /*
+      TRE VOCI, non una con tre pezzi.
+      Prima era un messaggio solo, cucito qui incollando i pezzi presenti:
+      «Matrice «x»: 3 combinazioni senza valore (a, b), 2 chiavi rimaste da una
+      rinomina». Una frase cucita a pezzi non si traduce — e teneva insieme tre
+      casi che NON hanno la stessa gravita: una cella mancante ferma l'apertura
+      di un incident, una chiave rimasta e residuo e non ferma niente, e la
+      voce unica prendeva la gravita del peggiore. Separate, ognuna ha la sua
+      chiave, il suo plurale e la sua gravita vera.
+    */
+    if (missing.length) out.push({
+      kind: 'matrix_missing_cells', severity: 'error', where: '/settings/domain-matrices',
+      params: {
+        matrix: kind, count: String(missing.length),
+        examples: missing.slice(0, 5).join(', ') + (missing.length > 5 ? ', …' : ''),
+      },
+    })
+    if (invalid.length) out.push({
+      kind: 'matrix_invalid_cells', severity: 'error', where: '/settings/domain-matrices',
+      params: { matrix: kind, count: String(invalid.length) },
+    })
+    if (stale.length) out.push({
+      kind: 'matrix_stale_keys', severity: 'warning', where: '/settings/domain-matrices',
+      params: { matrix: kind, count: String(stale.length) },
     })
   }
   return out
@@ -196,21 +224,62 @@ async function checkValueLabels(tenantId: string, session: Session): Promise<Con
   }
 
   const senza: string[] = []
+  const incomplete: string[] = []
   for (const [name, v] of perNome) {
     if (!vocabularyCarriesLabels(name)) continue
     const { labels } = parseValueLabels(v.labels)
-    const mancanti = v.values.filter((val) => !(val in labels))
-    if (mancanti.length > 0) senza.push(`«${name}»: ${mancanti.join(', ')}`)
+    /*
+      Da quando le etichette sono PER LINGUA, «senza etichetta» ha due gradi, e
+      si segnalano entrambi perche' hanno conseguenze diverse: chi non ne ha
+      nessuna si legge col nome interno, chi ne ha una sola si legge in quella
+      lingua anche nelle altre (il ripiego passa per l'italiano).
+    */
+    const nessuna = v.values.filter((val) => labels[val] === undefined)
+    const parziali = v.values.filter((val) => {
+      const per = labels[val]
+      return per !== undefined && LINGUE.some((l) => per[l] === undefined)
+    })
+    // Nomi di vocabolario e nomi di valore: dati, non frasi. Le virgolette e i
+    // due punti sono punteggiatura, e non cambiano da una lingua all'altra.
+    if (nessuna.length > 0)  senza.push(`«${name}»: ${nessuna.join(', ')}`)
+    if (parziali.length > 0) incomplete.push(`«${name}»: ${parziali.join(', ')}`)
   }
-  if (senza.length === 0) return []
+  const out: ConfigurationIssue[] = []
+  if (senza.length > 0) {
+    out.push({
+      kind: 'value_labels_missing',
+      severity: 'warning',
+      where: '/settings/enum-designer',
+      params: { details: senza.join(' · ') },
+    })
+  }
+  if (incomplete.length > 0) {
+    out.push({
+      kind: 'value_labels_partial',
+      severity: 'warning',
+      where: '/settings/enum-designer',
+      params: { details: incomplete.join(' · '), languages: LINGUE.join(' / ') },
+    })
+  }
+  return out
+}
 
+/**
+ * LA LINGUA NON CONFIGURATA.
+ *
+ * La lingua predefinita del cliente era una costante nel codice, e ora è
+ * configurazione — il che apre un caso che prima non esisteva: nessuno l'ha
+ * scelta. Bisogna pur mostrare qualcosa, e si mostra la prima delle lingue del
+ * prodotto; ma mostrarla in silenzio sarebbe il solito ripiego muto, cioè un
+ * cliente che si chiede per mesi perché il prodotto gli parla in una lingua che
+ * non ha chiesto. È un avviso e non un errore: niente è rotto, si legge solo in
+ * una lingua che nessuno ha deciso.
+ */
+async function checkLanguage(tenantId: string): Promise<ConfigurationIssue[]> {
+  if (await tenantDefaultLanguage(tenantId) !== null) return []
   return [{
-    kind: 'value_labels_missing',
-    severity: 'warning',
-    where: '/settings/enum-designer',
-    message:
-      `Questi valori non hanno un'etichetta, quindi a schermo si leggono col loro nome interno: ` +
-      `${senza.join(' · ')}. **Si scrive dal Dizionario**, accanto al valore.`,
+    kind: 'default_language_not_set', severity: 'warning', where: '/settings/organization',
+    params: { fallback: LINGUA_DI_ULTIMA_ISTANZA, available: LINGUE.join(', ') },
   }]
 }
 
@@ -228,10 +297,7 @@ async function checkLifecyclePolicy(tenantId: string): Promise<ConfigurationIssu
   if (fuori.size) {
     out.push({
       kind: 'policy_out_of_vocabulary', severity: 'error', where: '/settings/event-policy',
-      message:
-        `La policy degli allarmi cita stati che il tuo Dizionario non ha (più): ` +
-        [...fuori].map(([l, v]) => `${l} → ${v.join(', ')}`).join('; ') +
-        `. Quelle liste non si applicano a nessun CI: i CI in quello stato tornano a pesare nella salute dei servizi.`,
+      params: { details: [...fuori].map(([l, v]) => `${l} → ${v.join(', ')}`).join('; ') },
     })
   }
 
@@ -245,10 +311,7 @@ async function checkLifecyclePolicy(tenantId: string): Promise<ConfigurationIssu
   if (atteso.length) {
     out.push({
       kind: 'vocabulary_without_semantics', severity: 'warning', where: '/settings/event-policy',
-      message:
-        `Questi stati del ciclo di vita non sono in nessuna lista della policy degli allarmi: ` +
-        `${atteso.join(', ')}. Per il prodotto sono CI **in servizio**: i loro allarmi aprono incident e ` +
-        `pesano nella salute dei servizi. Se sono stati finali, aggiungili a «ritirati».`,
+      params: { statuses: atteso.join(', '), count: String(atteso.length) },
     })
   }
   return out

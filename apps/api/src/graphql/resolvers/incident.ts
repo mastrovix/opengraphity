@@ -239,7 +239,7 @@ async function addAffectedCI(
   // Le etichette delle regole ITIL vengono dal metamodello, non da una
   // PascalCase fatta a mano: un tipo la cui etichetta non segue quella
   // convenzione dava un `MERGE` che non scriveva niente, senza errore.
-  const allowedLabels = await ciLabelsForTypeNames(ctx.tenantId, allowedTypes, 'regole ITIL incident→CI')
+  const allowedLabels = await ciLabelsForTypeNames(ctx.tenantId, allowedTypes, 'ITIL incident→CI rules', 'incidentRules')
 
   return withSession(async (session) => {
     // Righe CONTATE come in `createIncident` (C-2): se il CI non esiste in
@@ -255,7 +255,7 @@ async function addAffectedCI(
       RETURN count(r) AS linked
     `, { incidentId: args.incidentId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString(), allowedLabels, relationType: args.relationType ?? null }))
     if (Number(res.records[0]?.get('linked') ?? 0) === 0) {
-      throw new ValidationError(`CI ${args.ciId} non collegato all'incident: non esiste in questo cliente o il suo tipo non è ammesso dalle regole ITIL${allowedTypes.length > 0 ? ` (ammessi: ${allowedTypes.join(', ')})` : ''}`)
+      throw new ValidationError(`CI ${args.ciId} not linked to the incident: it does not exist in this tenant, or its type is not allowed by the ITIL rules${allowedTypes.length > 0 ? ` (allowed: ${allowedTypes.join(', ')})` : ''}`, { key: allowedTypes.length > 0 ? 'errors.ciLink.incidentTyped' : 'errors.ciLink.incident', params: { ci: args.ciId, allowed: allowedTypes.join(', ') } })
     }
     const r = await session.executeRead((tx) => tx.run(
       `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,

@@ -426,10 +426,11 @@ export const syncResolvers = {
         // inventata che la riconciliazione ha appena rifiutato.
         if (conflict.kind === CONFLICT_UNKNOWN_CI_TYPE) {
           throw new ValidationError(
-            `Il conflitto ${args.conflictId} è di tipo ${CONFLICT_UNKNOWN_CI_TYPE}: nessun CI è stato creato, ` +
-            `perché "${conflict.ciType}" non è un tipo di CI di questo cliente. ` +
-            `${conflict.message ?? ''} Risolvilo alla radice (crea il tipo, o aggiungi un alias nelle regole di ` +
-            `mappatura della sorgente) e rilancia la sincronizzazione: il conflitto si chiude da sé.`,
+            `Conflict ${args.conflictId} is of kind ${CONFLICT_UNKNOWN_CI_TYPE}: no CI was created, `
+            + `because "${conflict.ciType}" is not a CI type of this tenant. `
+            + `${conflict.message ?? ''} Fix it at the root (create the type, or add an alias in the source's `
+            + `mapping rules) and run the sync again: the conflict closes by itself.`,
+            { key: 'errors.sync.unknownCIType', params: { id: args.conflictId, ciType: conflict.ciType ?? '' } },
           )
         }
         const discovered = JSON.parse(conflict.discoveredCi) as Record<string, unknown>
@@ -453,7 +454,8 @@ export const syncResolvers = {
         const resolvedType = resolver.resolve(conflict.ciType)
         if (!resolvedType.ok) {
           throw new ValidationError(
-            `Il conflitto ${args.conflictId} non si può risolvere: ${resolvedType.reason}`,
+            `Conflict ${args.conflictId} cannot be resolved: ${resolvedType.reason}`,
+            { key: 'errors.sync.unresolvable', params: { id: args.conflictId, reason: resolvedType.reason } },
           )
         }
         const ciLabel = resolvedType.type.label

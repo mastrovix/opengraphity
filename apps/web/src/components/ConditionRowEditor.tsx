@@ -7,7 +7,7 @@
 import { useQuery } from '@apollo/client/react'
 import { GET_TEAMS, GET_USERS } from '@/graphql/queries'
 import { useEntityFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
-import { fieldTypeLabel, operatorsForFieldType, NO_VALUE_OPERATORS } from '@/lib/automationOperators'
+import { fieldTypeKey, operatorsForFieldType, NO_VALUE_OPERATORS } from '@/lib/automationOperators'
 import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { X } from 'lucide-react'
@@ -70,7 +70,7 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove, 
       <option value="">{t('conditionEditor.fieldPlaceholder')}</option>
       {unknownField && <option value={condition.field}>?{condition.field} ({t('conditionEditor.notInMetamodel')})</option>}
       {allFields.map(f => (
-        <option key={f.name} value={f.name}>{f.label} ({fieldTypeLabel(f.fieldType)})</option>
+        <option key={f.name} value={f.name}>{f.label} ({t(fieldTypeKey(f.fieldType))})</option>
       ))}
     </Select>
   )
@@ -83,7 +83,7 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove, 
       title={unknownOperator ? t('conditionEditor.unknownOperator', { operator: condition.operator }) : undefined}
     >
       {unknownOperator && <option value={condition.operator}>?{condition.operator} ({t('conditionEditor.unsupported')})</option>}
-      {operators.map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
+      {operators.map(op => <option key={op.value} value={op.value}>{t(op.labelKey)}</option>)}
     </Select>
   )
 

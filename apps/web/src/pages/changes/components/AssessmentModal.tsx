@@ -2,6 +2,7 @@
  * Read-only modal showing the assessment responses for a single role
  * (functional / technical) on a single CI.
  */
+import { useTranslation } from 'react-i18next'
 import type { AssessmentTaskData } from '@/types/change'
 import { ModalOverlay } from './shared'
 import { colors } from '@/lib/tokens'
@@ -13,11 +14,12 @@ export function AssessmentModal({ task, ciName, roleLabel, bothAssessDone, onClo
   bothAssessDone: boolean
   onClose: () => void
 }) {
+  const { t } = useTranslation()
   return (
-    <ModalOverlay title={`Risposte ${roleLabel} — ${ciName}`} onClose={onClose}>
+    <ModalOverlay title={t('pages.changes.assessment.answersTitle', { role: roleLabel, ci: ciName })} onClose={onClose}>
       {!bothAssessDone ? (
         <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', margin: '16px 0' }}>
-          Le risposte saranno visibili quando entrambi gli assessment saranno completati.
+          {t('pages.changes.assessment.hiddenUntilBoth')}
         </p>
       ) : (
         <>

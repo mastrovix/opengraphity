@@ -5,6 +5,7 @@
  * differivano solo per una prop ignorata e per i colori dello status).
  * Lo stato di apertura/ricerca è interno: il genitore passa solo dati e azioni.
  */
+import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X } from 'lucide-react'
@@ -69,6 +70,7 @@ interface Props {
 }
 
 export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, onAddCI, onRemoveCI, defaultOpen = false }: Props) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const baseEnums = useCIBaseEnums()
   const ciStatuses = baseEnums.loading || baseEnums.error ? null : baseEnums.statuses
@@ -97,7 +99,7 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
 
   return (
     <SectionCard
-      title="CI Impattati"
+      title={t('components.affectedCI.title')}
       count={affectedCIs.length}
       open={open}
       onToggle={() => setOpen((p) => !p)}
@@ -108,7 +110,7 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
            `currentColor`, cioè il colore che la testata ha in quello stato. */
         <button type="button" onClick={toggleSearch}
           style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid currentColor', background: 'transparent', cursor: 'pointer', color: 'inherit' }}>
-          {showSearch ? 'Chiudi' : '+ Aggiungi CI'}
+          {showSearch ? t('common.close') : t('attachments.addCI')}
         </button>
       }
     >
@@ -116,7 +118,7 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
         {showSearch && (
           <div style={{ position: 'relative' }}>
             <Input type="text" value={search} onChange={(e) => { setSearch(e.target.value); onSearchChange(e.target.value) }}
-              placeholder={allowedTypes.length > 0 ? `Cerca CI (${allowedTypes.join(', ')}) — min. 2 caratteri…` : 'Cerca CI per nome (min. 2 caratteri)...'}
+              placeholder={allowedTypes.length > 0 ? t('attachments.searchCIOfTypes', { types: allowedTypes.join(', ') }) : t('attachments.searchCIByName')}
               // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: campo di ricerca montato dopo il click su "Aggiungi CI"
               autoFocus style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }} />
             {filteredResults.length > 0 && (
@@ -154,7 +156,7 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
           </div>
         )}
         {affectedCIs.length === 0 ? (
-          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>Nessun CI impattato registrato.</p>
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('components.affectedCI.empty')}</p>
         ) : (
           <div>
             {Object.entries(groupByType(affectedCIs)).map(([type, cis]) => (
@@ -165,7 +167,7 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
                       <button type="button" onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
                       <MicroBadge {...statusBadgeStyle(ci.status, ciStatuses)}>{enumLabel(ci.status)}</MicroBadge>
                       <MicroBadge>{ci.environment}</MicroBadge>
-                      <button type="button" onClick={() => onRemoveCI(ci.id)} title="Rimuovi CI" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}><X size={14} /></button>
+                      <button type="button" onClick={() => onRemoveCI(ci.id)} title={t('components.affectedCI.remove')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}><X size={14} /></button>
                     </div>
                   ))}
                 </div>

@@ -90,7 +90,7 @@ export function CriticalServicesBanner() {
   // contratto e si dice in console, non si mostra una riga «è giù ()».
   const critical = (data?.serviceMaps.items ?? []).flatMap((s: ServiceMapRow) => {
     if (s.service.criticality === null) {
-      console.error(`CriticalServicesBanner: serviceMaps(criticality: ${(criticalities ?? []).join(', ')}) ha restituito «${s.name}» senza criticità`)
+      console.error(`CriticalServicesBanner: serviceMaps(criticality: ${(criticalities ?? []).join(', ')}) returned «${s.name}» with no criticality`)
       return []
     }
     return [{ id: s.id, name: s.name, criticality: s.service.criticality }]

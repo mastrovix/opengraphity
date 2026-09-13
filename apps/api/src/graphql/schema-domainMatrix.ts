@@ -113,12 +113,42 @@ export function domainMatrixSDL(): string {
 
   """Una cosa da sistemare nella configurazione del cliente."""
   type ConfigurationIssue {
+    """
+    La CHIAVE del problema: il client la risolve nella sua lingua
+    (\`configurationIssue.<kind>\`). Prima qui arrivava una frase italiana
+    composta dal server, e in un'interfaccia inglese restava italiana — il
+    server non conosce la lingua di chi guarda.
+    """
     kind:     String!
     """\`error\` = qualcosa è già rotto; \`warning\` = lo sarà, o è silenziosamente sbagliato."""
     severity: String!
-    message:  String!
+    """Solo DATI da interpolare nella chiave: mai prosa."""
+    params:   [IssueParam!]!
+    """
+    Solo per \`provisioning_gap\`: i buchi, ognuno con la SUA chiave. Un elenco
+    di chiavi e non una frase gia cucita — anche il modo di separare un elenco
+    appartiene alla lingua, e la lingua la conosce solo il client.
+    """
+    gaps:     [ProvisioningGap!]!
     """Il percorso dell'interfaccia dove si rimedia, quando esiste."""
     where:    String
+  }
+
+  """Un parametro da interpolare in un messaggio che il client risolve."""
+  type IssueParam {
+    name:  String!
+    value: String!
+  }
+
+  """
+  Un buco di configurazione come DATO, non come frase: \`kind\` è la chiave che
+  il client risolve, \`params\` i soli dati da interpolare. La resa italiana per
+  la CLI e le metriche sta in \`formatGap\`, lato server, dove una lingua sola
+  va benissimo.
+  """
+  type ProvisioningGap {
+    kind:   String!
+    params: [IssueParam!]!
   }
 
   """Una fascia di rischio e il punteggio massimo che le appartiene."""

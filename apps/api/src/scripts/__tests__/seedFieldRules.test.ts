@@ -73,7 +73,7 @@ describe('il seme stesso', () => {
 })
 
 describe('assertRulesApplicable — verifica TUTTO prima di scrivere', () => {
-  it('metamodello e workflow di fabbrica → passa (i due campi sono iniettati)', async () => {
+  it('metamodello e workflow factory → passa (i due campi sono iniettati)', async () => {
     metamodelFields.set('incident', INCIDENT_FIELDS)
     workflowSteps.set('incident', INCIDENT_STEPS)
     await expect(assertRulesApplicable('c-one')).resolves.toBeUndefined()

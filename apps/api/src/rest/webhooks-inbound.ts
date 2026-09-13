@@ -131,7 +131,7 @@ router.post('/webhooks/inbound/:hookId', json({ limit: WEBHOOK_BODY_LIMIT }), as
       // Limite di piano (D-12): lo script di trasformazione è del cliente.
       // Piano senza script → 400 con il motivo, mai il payload grezzo passato
       // avanti come se lo script non ci fosse.
-      await assertScriptingEnabled(tenantId, `script di trasformazione del webhook ${hookId}`)
+      await assertScriptingEnabled(tenantId, `transform script of webhook ${hookId}`, 'errors.scripting.what.webhook', { hook: hookId })
       const { runScript } = await import('@opengraphity/scripting')
       const rawPayload = payload
       const result = await transformScriptSemaphore.run(() => runScript(

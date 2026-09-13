@@ -34,7 +34,7 @@ const session = {} as never
 const input = (currentStep: string, toStep: string, changeType = 'normal') => ({
   tenantId: 'c-two', changeId: 'chg-1', changeType, currentStep, toStep,
 })
-/** Gli scopi dei passi come li vedrebbe il workflow di fabbrica. */
+/** Gli scopi dei passi come li vedrebbe il workflow factory. */
 const PURPOSES: Record<string, string | null> = {
   assessment: 'assessment', approval: 'approval', scheduled: 'scheduled',
   deployment: 'implementation', review: 'review', senzaScopo: null,
@@ -118,8 +118,8 @@ describe('il cammino MANUALE: lancia, e il ruolo è quello vero', () => {
     const err = await assertChangeWindowGate(session, ctx('admin'), input('assessment', 'scheduled'))
       .then(() => null, (e: Error) => e)
     expect(err).not.toBeNull()
-    expect(err!.message).toMatch(/disegnatore dei workflow/)
-    expect(err!.message).toMatch(/tipi pre-approvati/)
+    expect(err!.message).toMatch(/workflow designer/)
+    expect(err!.message).toMatch(/pre-approved types/)
     expect(err!.message).toContain('"normal"')
   })
 
@@ -187,7 +187,7 @@ describe('i cammini AUTOMATICI: rifiutano, non lanciano', () => {
     const err = await assertAutomaticTransitionAllowed(session, input('assessment', 'scheduled'), 'rule_action')
       .then(() => null, (e: Error) => e)
     expect(err).not.toBeNull()
-    expect(err!.message).toMatch(/finestra di rilascio/)
-    expect(err!.message).toMatch(/togli questa azione dalla regola/)
+    expect(err!.message).toMatch(/would enter the release window/)
+    expect(err!.message).toMatch(/remove this action from the rule/)
   })
 })

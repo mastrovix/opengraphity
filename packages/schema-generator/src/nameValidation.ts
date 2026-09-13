@@ -139,16 +139,45 @@ export type NameRule =
   | 'fieldNameBase'
   | 'fieldNameDuplicate'
 
+/**
+ * Il rifiuto in forma di DATO, perche la frase la compone il client.
+ *
+ * `message` resta in inglese — e la lingua del prodotto, e quella che finisce
+ * nei log, nelle metriche e nelle integrazioni. `i18n` porta la CHIAVE e i
+ * parametri: l'API la mette nelle extensions dell'errore GraphQL
+ * (`apps/api/src/lib/errors.ts`) e il link i18n del client la risolve nella
+ * lingua del cliente.
+ *
+ * CONVENZIONE (la stessa del resto del progetto): un parametro il cui nome
+ * finisce in `Key` e a sua volta una chiave, e il client la risolve passandole
+ * gli stessi parametri. Serve alle parti FACOLTATIVE della frase — «sul tipo
+ * X» quando il tipo si conosce, «scrivi Y invece» quando esiste un
+ * suggerimento sicuro. Nessun frammento e mai vuoto: dove non c'e nulla da
+ * dire si dice l'altra cosa vera («su qualunque tipo CI», «scegline un
+ * altro»), perche una chiave con valore vuoto e un buco che nessun controllo
+ * vede.
+ */
+export interface NameErrorI18n {
+  key: string
+  params: Record<string, string>
+}
+
 export class MetamodelNameError extends Error {
   readonly rule: NameRule
   readonly offending: string
-  constructor(rule: NameRule, offending: string, message: string) {
+  readonly i18n: NameErrorI18n
+  constructor(rule: NameRule, offending: string, message: string, i18n: NameErrorI18n) {
     super(message)
     this.name = 'MetamodelNameError'
     this.rule = rule
     this.offending = offending
+    this.i18n = i18n
   }
 }
+
+/** Radice delle chiavi di questo file, in un posto solo. */
+const K = 'errors.metamodelName'
+
 
 // ── L'elenco riservato, calcolato ─────────────────────────────────────────────
 
@@ -255,8 +284,16 @@ export function suggestCIFieldName(raw: string): string | null {
 }
 
 function insteadWrite(suggestion: string | null): string {
-  return suggestion ? ` Scrivi per esempio «${suggestion}».` : ''
+  return suggestion ? ` Write «${suggestion}» instead.` : ' Pick another name.'
 }
+
+/** La chiave del frammento «scrivi X invece», o quella del ripiego. Mai vuota. */
+const insteadKey = (suggestion: string | null) =>
+  suggestion ? `${K}.instead.write` : `${K}.instead.pickAnother`
+
+/** La chiave del frammento «sul tipo X» / «su qualunque tipo CI». Mai vuota. */
+const whereKey = (typeLabel: string | undefined) =>
+  typeLabel ? `${K}.where.onType` : `${K}.where.anyType`
 
 /**
  * Una variante del nome che NON è riservata, per il suggerimento. Se anche
@@ -289,12 +326,21 @@ export function assertCITypeName(name: unknown, reserved: ReservedSchemaNames): 
     const shown = typeof name === 'string' ? name : JSON.stringify(name)
     const fix   = typeof name === 'string' ? suggestCITypeName(name) : null
     throw new MetamodelNameError('typeNameSyntax', shown,
-      `«${shown}» non va bene come nome di tipo CI: deve cominciare con una lettera minuscola e contenere solo ` +
-      `lettere minuscole, cifre e trattini basso (regola: ${CI_TYPE_NAME_RE.source}).` +
+      `«${shown}» is not a valid CI type name: it must start with a lowercase letter and contain only ` +
+      `lowercase letters, digits and underscores (rule: ${CI_TYPE_NAME_RE.source}).` +
       insteadWrite(fix) +
-      (fix ? ` Diventerebbe il tipo GraphQL «${toPascalCase(fix)}» e la label Neo4j «${toPascalCase(fix)}».` : '') +
-      ` Il nome è lo slug tecnico; il nome che si legge nell'interfaccia è la label, che può contenere ` +
-      `spazi, accenti e maiuscole.`,
+      (fix ? ` It would become the GraphQL type «${toPascalCase(fix)}» and the Neo4j label «${toPascalCase(fix)}».` : '') +
+      ` The name is the technical slug; the name people read in the interface is the label, which may contain ` +
+      `spaces, accents and capitals.`,
+      {
+        key: `${K}.typeSyntax`,
+        params: {
+          name: shown,
+          pattern: CI_TYPE_NAME_RE.source,
+          insteadKey: fix ? `${K}.instead.writeType` : `${K}.instead.pickAnother`,
+          ...(fix ? { suggestion: fix, graphqlType: toPascalCase(fix) } : {}),
+        },
+      },
     )
   }
 
@@ -302,26 +348,43 @@ export function assertCITypeName(name: unknown, reserved: ReservedSchemaNames): 
   // Il primo caso è il grave: un tipo omonimo non fa lanciare l'assemblaggio,
   // lo fa MERGE in silenzio (vedi la nota in testa al file). Gli altri due
   // farebbero fallire l'assemblaggio, che è rumoroso ma comunque inaccettabile.
-  const checks: Array<{ names: string[]; taken: Map<string, string>; what: (n: string) => string; consequence: string }> = [
-    { names: emitted.types, taken: reserved.types, what: (n) => `il tipo GraphQL «${n}»`,
-      consequence: 'GraphQL non rifiuta due tipi con lo stesso nome: li FONDE in silenzio, e i campi del tuo tipo ' +
-        'finirebbero dentro quello del prodotto — senza nessun errore, da nessuna parte' },
-    { names: emitted.queryFields, taken: reserved.queryFields, what: (n) => `la query «${n}»`,
-      consequence: 'due query con lo stesso nome e tipi diversi non si possono fondere: lo schema di questo cliente ' +
-        'non si assemblerebbe, e finché il nome resta l\'API gli risponderebbe con lo schema ridotto' },
-    { names: emitted.mutationFields, taken: reserved.mutationFields, what: (n) => `la mutation «${n}»`,
-      consequence: 'due mutation con lo stesso nome e tipi diversi non si possono fondere: lo schema di questo ' +
-        'cliente non si assemblerebbe' },
+  const checks: Array<{
+    names: string[]; taken: Map<string, string>
+    what: (n: string) => string; whatKey: string
+    consequence: string; consequenceKey: string
+  }> = [
+    { names: emitted.types, taken: reserved.types,
+      what: (n) => `the GraphQL type «${n}»`, whatKey: `${K}.what.type`,
+      consequence: 'GraphQL does not reject two types with the same name: it MERGES them silently, and the fields ' +
+        'of your type would end up inside the product one — with no error anywhere',
+      consequenceKey: `${K}.consequence.typeMerge` },
+    { names: emitted.queryFields, taken: reserved.queryFields,
+      what: (n) => `the query «${n}»`, whatKey: `${K}.what.query`,
+      consequence: 'two queries with the same name and different types cannot be merged: the schema of this tenant ' +
+        'would not assemble, and while the name stays the API would answer it with the reduced schema',
+      consequenceKey: `${K}.consequence.queryClash` },
+    { names: emitted.mutationFields, taken: reserved.mutationFields,
+      what: (n) => `the mutation «${n}»`, whatKey: `${K}.what.mutation`,
+      consequence: 'two mutations with the same name and different types cannot be merged: the schema of this ' +
+        'tenant would not assemble',
+      consequenceKey: `${K}.consequence.mutationClash` },
   ]
   for (const check of checks) {
     for (const n of check.names) {
       const owner = check.taken.get(n.toLowerCase())
       if (owner === undefined) continue
       throw new MetamodelNameError('typeNameTaken', name,
-        `Il nome «${name}» è già preso: genererebbe ${check.what(n)}, che nello schema esiste già — ${owner}. ` +
-        `${check.consequence}. ` +
-        `Scegli un altro nome (per esempio «${name}_custom»); il nome che si legge nell'interfaccia lo decidi con la label, ` +
-        `che può restare quella che volevi.`,
+        `The name «${name}» is already taken: it would generate ${check.what(n)}, which already exists in the ` +
+        `schema — ${owner}. ${check.consequence}. ` +
+        `Pick another name (for example «${name}_custom»); the name people read in the interface is the label, ` +
+        `which can stay the one you wanted.`,
+        {
+          key: `${K}.typeTaken`,
+          params: {
+            name, owner, generated: n, suggestion: `${name}_custom`,
+            whatKey: check.whatKey, consequenceKey: check.consequenceKey,
+          },
+        },
       )
     }
   }
@@ -347,45 +410,80 @@ export interface CIFieldNameContext {
  * chi chiama l'API.
  */
 export function assertCIFieldName(name: unknown, ctx: CIFieldNameContext = {}): string {
-  const on = ctx.typeLabel ? ` sul tipo «${ctx.typeLabel}»` : ''
+  const on = ctx.typeLabel ? ` on the type «${ctx.typeLabel}»` : ''
+  const dove = { whereKey: whereKey(ctx.typeLabel), ...(ctx.typeLabel ? { typeLabel: ctx.typeLabel } : {}) }
 
   if (typeof name !== 'string' || !CI_FIELD_NAME_RE.test(name)) {
     const shown = typeof name === 'string' ? name : JSON.stringify(name)
+    const fix = typeof name === 'string' ? suggestCIFieldName(name) : null
     throw new MetamodelNameError('fieldNameSyntax', shown,
-      `«${shown}» non va bene come nome di campo${on}: deve cominciare con una lettera minuscola e contenere ` +
-      `solo lettere e cifre, in camelCase (regola: ${CI_FIELD_NAME_RE.source}).` +
-      insteadWrite(typeof name === 'string' ? suggestCIFieldName(name) : null) +
-      ` Il trattino basso non è ammesso perché «costCenter» e «cost_center» finirebbero sulla stessa proprietà ` +
-      `Neo4j e si sovrascriverebbero a vicenda. Il nome che si legge nell'interfaccia è la label, che può ` +
-      `contenere spazi e accenti.`,
+      `«${shown}» is not a valid field name${on}: it must start with a lowercase letter and contain only ` +
+      `letters and digits, in camelCase (rule: ${CI_FIELD_NAME_RE.source}).` +
+      insteadWrite(fix) +
+      ` The underscore is not allowed because «costCenter» and «cost_center» would land on the same Neo4j ` +
+      `property and overwrite each other. The name people read in the interface is the label, which may ` +
+      `contain spaces and accents.`,
+      {
+        key: `${K}.fieldSyntax`,
+        params: {
+          name: shown, pattern: CI_FIELD_NAME_RE.source, ...dove,
+          insteadKey: insteadKey(fix), ...(fix ? { suggestion: fix } : {}),
+        },
+      },
     )
   }
 
   const property = toSnakeCase(name)
   const prefix = RESERVED_CI_PROPERTY_PREFIXES.find((p) => property.startsWith(p))
   if (RESERVED_CI_PROPERTY_KEYS.has(property) || prefix) {
+    const fix = safeVariant(name)
     throw new MetamodelNameError('fieldNameReservedProperty', name,
-      `Il campo «${name}»${on} scriverebbe la proprietà «${property}», che è gestita dal prodotto` +
-      (prefix ? ` (tutto ciò che comincia per «${prefix}» appartiene alla sincronizzazione)` : '') +
-      `: il valore mandato da chi chiama l'API sovrascriverebbe un dato di sistema` +
-      (property === 'tenant_id' ? ' — con «tenant_id» il CI nascerebbe nel cliente scelto dal chiamante' : '') +
-      `.${insteadWrite(safeVariant(name))}`,
+      `The field «${name}»${on} would write the property «${property}», which the product manages` +
+      (prefix ? ` (everything starting with «${prefix}» belongs to synchronisation)` : '') +
+      `: the value sent by an API caller would overwrite a system value` +
+      (property === 'tenant_id' ? ' — with «tenant_id» the CI would be born in the tenant chosen by the caller' : '') +
+      `.${insteadWrite(fix)}`,
+      {
+        key: `${K}.reservedProperty`,
+        params: {
+          name, property, ...dove, insteadKey: insteadKey(fix), ...(fix ? { suggestion: fix } : {}),
+          whyKey: prefix ? `${K}.why.syncPrefix`
+            : property === 'tenant_id' ? `${K}.why.tenant`
+            : `${K}.why.system`,
+          ...(prefix ? { prefix } : {}),
+        },
+      },
     )
   }
 
   if (BASE_TYPE_FIELDS.has(name) || BASE_INPUT_FIELDS.has(name)) {
+    const fix = safeVariant(name)
     throw new MetamodelNameError('fieldNameBase', name,
-      `Il campo «${name}» esiste già su ogni CI: è uno dei campi base (${[...BASE_TYPE_FIELDS].join(', ')}). ` +
-      `Aggiungerlo${on} produrrebbe un campo dichiarato due volte nello schema. ` +
-      `Usa il campo base che c'è già, oppure dai al tuo un nome diverso.${insteadWrite(safeVariant(name))}`,
+      `The field «${name}» already exists on every CI: it is one of the base fields (${[...BASE_TYPE_FIELDS].join(', ')}). ` +
+      `Adding it${on} would declare the same field twice in the schema. ` +
+      `Use the base field that is already there, or give yours a different name.${insteadWrite(fix)}`,
+      {
+        key: `${K}.baseField`,
+        params: {
+          name, baseFields: [...BASE_TYPE_FIELDS].join(', '), ...dove,
+          insteadKey: insteadKey(fix), ...(fix ? { suggestion: fix } : {}),
+        },
+      },
     )
   }
 
   for (const existing of ctx.existingFieldNames ?? []) {
     if (existing.toLowerCase() === name.toLowerCase()) {
+      const fix = safeVariant(name)
       throw new MetamodelNameError('fieldNameDuplicate', name,
-        `Il campo «${existing}» esiste già${on}: due campi con lo stesso nome non possono stare sullo stesso tipo. ` +
-        `Modifica quello che c'è, oppure dai a questo un nome diverso.${insteadWrite(safeVariant(name))}`,
+        `The field «${existing}» already exists${on}: two fields with the same name cannot live on the same type. ` +
+        `Edit the one that is there, or give this one a different name.${insteadWrite(fix)}`,
+        {
+          key: `${K}.duplicateField`,
+          params: {
+            existing, ...dove, insteadKey: insteadKey(fix), ...(fix ? { suggestion: fix } : {}),
+          },
+        },
       )
     }
   }
@@ -436,14 +534,23 @@ export function assertGeneratableNames(
     } catch (e) {
       if (!(e instanceof MetamodelNameError)) throw e
       throw new MetamodelNameError(e.rule, e.offending,
-        `Lo schema GraphQL di questo cliente non si può generare per colpa del tipo CI «${type.name}»` +
+        `The GraphQL schema of this tenant cannot be generated because of the CI type «${type.name}»` +
         `${type.label && type.label !== type.name ? ` («${type.label}»)` : ''}: ${e.message} ` +
-        `Il tipo esiste già nel metamodello: eliminalo o rinominalo.`,
+        `The type already exists in the metamodel: delete it or rename it.`,
+        // `detailKey` e la chiave del rifiuto INTERNO, e i suoi parametri
+        // viaggiano insieme: il client risolve `detailKey` passandogli gli
+        // stessi parametri, quindi la frase interna si compone come se fosse
+        // stata lanciata da sola. Il parametro del wrapper si chiama `type`
+        // per non pestare il `name` di quella interna.
+        {
+          key: `${K}.notGeneratable`,
+          params: { ...e.i18n.params, type: type.name, detailKey: e.i18n.key },
+        },
       )
     }
 
     const emitted = emittedNamesForCIType(type.name)
-    const origin  = `il tipo CI "${type.name}"`
+    const origin  = `the CI type "${type.name}"`
     for (const n of emitted.types)          seen.types.set(n.toLowerCase(), `${n} (${origin})`)
     for (const n of emitted.queryFields)    seen.queryFields.set(n.toLowerCase(), `${n} (${origin})`)
     for (const n of emitted.mutationFields) seen.mutationFields.set(n.toLowerCase(), `${n} (${origin})`)

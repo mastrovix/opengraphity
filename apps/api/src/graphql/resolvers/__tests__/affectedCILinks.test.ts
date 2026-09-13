@@ -93,14 +93,14 @@ describe('addAffectedCI (incident)', () => {
   it('una regola ITIL su un tipo che il cliente non ha si ferma dicendolo', async () => {
     allowedTypes.push('bilanciatore')
     await expect(incidentResolvers.Mutation.addAffectedCI(null, { incidentId: 'inc-1', ciId: 'ci-1' }, ctx))
-      .rejects.toThrow(/"bilanciatore" non è un tipo di CI di questo cliente/)
+      .rejects.toThrow(/"bilanciatore" is not a CI type of this tenant/)
     expect(writes).toHaveLength(0)
   })
 
   it('zero collegamenti → errore esplicito (prima: successo silenzioso)', async () => {
     linked = 0
     await expect(incidentResolvers.Mutation.addAffectedCI(null, { incidentId: 'inc-1', ciId: 'ci-x' }, ctx))
-      .rejects.toThrow(/CI ci-x non collegato all'incident/)
+      .rejects.toThrow(/CI ci-x not linked to the incident/)
   })
 })
 
@@ -114,6 +114,6 @@ describe('addCIToProblem (problem)', () => {
   it('zero collegamenti → errore esplicito', async () => {
     linked = 0
     await expect(problemResolvers.Mutation.addCIToProblem(null, { problemId: 'prb-1', ciId: 'ci-x' }, ctx))
-      .rejects.toThrow(/CI ci-x non collegato al problem/)
+      .rejects.toThrow(/CI ci-x not linked to the problem/)
   })
 })

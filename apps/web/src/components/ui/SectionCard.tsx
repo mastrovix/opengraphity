@@ -65,7 +65,12 @@ export function SectionCard({
           display:        'flex',
           alignItems:     'center',
           justifyContent: 'space-between',
-          padding:        '14px 20px',
+          // Altezza FISSA (vedi --og-card-header-h in index.css): la testata di
+          // una scheda misura uguale in tutto il prodotto, che dentro ci sia
+          // solo il titolo o anche un pulsante.
+          minHeight:      'var(--og-card-header-h)',
+          boxSizing:      'border-box',
+          padding:        '6px 20px',
           borderBottom:   open ? '1px solid var(--border)' : 'none',
           transition:     'background-color 150ms, color 150ms',
           // Scheda aperta (attiva): intestazione colorata (default turchese logo).

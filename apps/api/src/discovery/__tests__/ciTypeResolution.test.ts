@@ -73,7 +73,7 @@ describe('CITypeResolver', () => {
     const r = await CITypeResolver.forSource('c-two', source())
     const out = r.resolve('Bilanciatoer')
     expect(out.ok).toBe(false)
-    expect(out.ok === false && out.reason).toContain('crea il tipo nel disegnatore')
+    expect(out.ok === false && out.reason).toContain('create the type in the CI type designer')
     expect(out.ok === false && out.reason).toContain('"kind":"ci_type"')
     expect(out.ok === false && out.reason).toContain('bilanciatore, database_instance, server')
   })

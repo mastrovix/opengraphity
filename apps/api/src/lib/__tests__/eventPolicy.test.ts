@@ -29,7 +29,7 @@ const TENANT_CI_STATUS = [...CI_LIFECYCLE_STATUSES, 'dismesso']
 vi.mock('../domainMatrix.js', () => ({
   assertDomainValue: (_t: string, vocabulary: string, value: unknown) => {
     if (typeof value !== 'string' || !TENANT_CI_STATUS.includes(value)) {
-      return Promise.reject(new GraphQLError(`${vocabulary}: "${String(value)}" non è nel vocabolario di questo cliente. Ammessi: ${TENANT_CI_STATUS.join(', ')}.`, { extensions: { code: 'BAD_USER_INPUT' } }))
+      return Promise.reject(new GraphQLError(`${vocabulary}: "${String(value)}" is not in the dictionary of this tenant. Allowed: ${TENANT_CI_STATUS.join(', ')}.`, { extensions: { code: 'BAD_USER_INPUT' } }))
     }
     return Promise.resolve(value)
   },
@@ -242,9 +242,9 @@ describe('ignore_lifecycle_statuses (D6.3) e la semantica del ciclo di vita (ond
     expect((await applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { maintenanceStatuses: [] })).maintenance_statuses).toEqual([])
     // Un valore che NON è nel vocabolario del cliente resta rifiutato, e il
     // messaggio elenca i valori VERI del cliente.
-    await expect(applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { ignoreLifecycleStatuses: ['spento'] })).rejects.toThrow(/"spento" non è nel vocabolario di questo cliente/)
-    await expect(applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { retiredStatuses: ['spento'] })).rejects.toThrow(/"spento" non è nel vocabolario di questo cliente/)
-    await expect(applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { maintenanceStatuses: ['spento'] })).rejects.toThrow(/"spento" non è nel vocabolario di questo cliente/)
+    await expect(applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { ignoreLifecycleStatuses: ['spento'] })).rejects.toThrow(/"spento" is not in the dictionary of this tenant/)
+    await expect(applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { retiredStatuses: ['spento'] })).rejects.toThrow(/"spento" is not in the dictionary of this tenant/)
+    await expect(applyEventPolicyInput(T, DEFAULT_EVENT_POLICY, { maintenanceStatuses: ['spento'] })).rejects.toThrow(/"spento" is not in the dictionary of this tenant/)
     // assente nell'input → invariata
     expect((await applyEventPolicyInput(T, { ...DEFAULT_EVENT_POLICY, ignore_lifecycle_statuses: [] }, { retentionDays: 10 })).ignore_lifecycle_statuses).toEqual([])
   })

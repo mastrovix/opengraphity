@@ -137,3 +137,17 @@ describe('il testo per lettori di schermo non allunga la pagina', () => {
     expect(copie, `usa srOnlyStyle da lib/a11y.ts:\n  ${copie.join('\n  ')}`).toEqual([])
   })
 })
+
+describe('la lingua dichiarata al browser e' + "'" + ' quella vera', () => {
+  /**
+   * `<html lang>` era `en` cablato in `index.html` e mai aggiornato: per ogni
+   * utente italiano un lettore di schermo leggeva testo italiano con le regole
+   * di pronuncia inglesi. Corretto in HTML, sbagliato in italiano — e nessun
+   * test poteva prenderlo guardando il solo markup.
+   */
+  it('i18n allinea documentElement.lang, all\'avvio e a ogni cambio', () => {
+    const src = fs.readFileSync(path.join(SRC, 'i18n/i18n.ts'), 'utf8')
+    expect(src).toMatch(/document\.documentElement\.lang\s*=/)
+    expect(src).toMatch(/i18n\.on\('languageChanged'/)
+  })
+})

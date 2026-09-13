@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { TicketStatusBadge } from '@/components/StatusBadge'
@@ -59,6 +60,7 @@ export function IncidentHeader({
   onTransitionClick,
   onRequestChange,
 }: IncidentHeaderProps) {
+  const { t } = useTranslation()
   const { byName: stepByName, isTerminal, categoryOf } = useWorkflowSteps('incident')
   // "Richiedi Change" è un'azione opzionale (non uno step del workflow):
   // disponibile finché l'incident è aperto. «Aperto» lo dicono i METADATA del
@@ -88,7 +90,7 @@ export function IncidentHeader({
         }}
       >
         <ArrowLeft size={14} />
-        Indietro
+        {t('common.back')}
       </button>
 
       {/* Row 2 — number + badges */}
@@ -125,7 +127,7 @@ export function IncidentHeader({
               onClick={onRequestChange}
               style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent)', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer' }}
             >
-              Richiedi Change
+              {t('pages.incidents.requestChange')}
             </button>
           )}
         </div>

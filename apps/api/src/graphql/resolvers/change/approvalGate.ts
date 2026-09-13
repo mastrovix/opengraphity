@@ -17,6 +17,7 @@
  * (assertAllApprovalsSatisfied) è condiviso con executeChangeTransition.
  */
 import { GraphQLError } from 'graphql'
+import { ForbiddenError, NotFoundError } from '../../../lib/errors.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { withSession, runQuery, runQueryOne } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
@@ -36,7 +37,7 @@ async function assertEligible(session: Session, teamId: string, ctx: GraphQLCont
   const row = await runQueryOne<{ ok: boolean }>(session, `
     RETURN exists((:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(:Team {id: $teamId, tenant_id: $tenantId})) AS ok
   `, { userId: ctx.userId, tenantId: ctx.tenantId, teamId })
-  if (!row?.ok) throw new GraphQLError('Non sei autorizzato ad approvare per questo team', { extensions: { code: 'FORBIDDEN' } })
+  if (!row?.ok) throw new ForbiddenError('You are not authorized to approve for this team', { key: 'errors.approval.notForThisTeam' })
 }
 
 /**
@@ -53,9 +54,9 @@ async function assertInApproval(session: Session, changeId: string, teamId: stri
     OPTIONAL MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
     RETURN s.name AS step, s.purpose AS purpose, c.change_type AS changeType, t.name AS teamName
   `, { changeId, teamId, tenantId })
-  if (!row) throw new GraphQLError('Change non trovata', { extensions: { code: 'NOT_FOUND' } })
+  if (!row) throw new NotFoundError('Change')
   if (row.purpose !== 'approval') {
-    throw new GraphQLError(`La change non è in fase di approvazione (passo "${row.step}", scopo ${row.purpose ?? 'non dichiarato'})`, { extensions: { code: 'BAD_USER_INPUT' } })
+    throw new GraphQLError(`The change is not in the approval stage (step "${row.step}", purpose ${row.purpose ?? 'not declared'})`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: row.purpose ? 'errors.approval.notInApproval' : 'errors.approval.notInApprovalNoPurpose', params: { step: row.step, purpose: row.purpose ?? '' } } } })
   }
   return { changeType: row.changeType ?? 'normal', teamName: row.teamName ?? teamId }
 }
@@ -73,7 +74,7 @@ export async function approveChangeApproval(_: unknown, args: { changeId: string
           a.approved_at = $now, a.note = $note
       RETURN a.id AS id
     `, { changeId: args.changeId, teamId: args.teamId, userId: ctx.userId, now, note: args.note ?? null, tenantId: ctx.tenantId })
-    if (!upd) throw new GraphQLError('Requisito di approvazione non trovato o già risolto', { extensions: { code: 'NOT_FOUND' } })
+    if (!upd) throw new GraphQLError('Approval requirement not found, or already resolved', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.approval.requirementGone' } } })
     await writeAudit(session, args.changeId, ctx.tenantId, 'change_approved', ctx.userId,
       `${teamName}${args.note?.trim() ? `: ${args.note.trim()}` : ''}`)
 
@@ -91,7 +92,7 @@ export async function approveChangeApproval(_: unknown, args: { changeId: string
         'avanzamento della change dopo le approvazioni complete', avail.map((t) => t.toStep))
       const res = await workflowEngine.transition(session, { instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: 'Approvazioni complete' }, { userId: ctx.userId ?? 'system', entityData: {} })
       if (!res.success) {
-        throw new GraphQLError(`Approvazioni complete ma la change non è avanzata a "${toStep}": ${res.error ?? 'transizione fallita'}`, { extensions: { code: 'CONFLICT' } })
+        throw new GraphQLError(`Approvals complete but the change did not move to "${toStep}": ${res.error ?? 'transition failed'}`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.approval.didNotAdvance', params: { step: toStep, reason: res.error ?? '' } } } })
       }
       await afterEnterStep(session, args.changeId, ctx.tenantId, toStep)
       await evaluateAutoTransitions(session, args.changeId, ctx, afterEnterStep)
@@ -101,7 +102,7 @@ export async function approveChangeApproval(_: unknown, args: { changeId: string
 }
 
 export async function rejectChangeApproval(_: unknown, args: { changeId: string; teamId: string; note: string; reopenAll?: boolean; reopenTaskIds?: string[] }, ctx: GraphQLContext) {
-  if (!args.note?.trim()) throw new GraphQLError('Il motivo del rifiuto è obbligatorio', { extensions: { code: 'BAD_USER_INPUT' } })
+  if (!args.note?.trim()) throw new GraphQLError('The reason for the rejection is required', { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.approval.rejectNeedsNote' } } })
   const reopenAll = args.reopenAll ?? false
   const reopenIds = args.reopenTaskIds ?? []
   if (!reopenAll && reopenIds.length === 0) {
@@ -146,7 +147,7 @@ export async function rejectChangeApproval(_: unknown, args: { changeId: string;
     const res = await workflowEngine.transition(session, { instanceId, toStepName: backStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: `Approvazione rifiutata: ${args.note.trim()}` }, { userId: ctx.userId ?? 'system', entityData: {} })
     // Se fallisce, la change resta in approval con i task riaperti e senza
     // requisiti: il gate blocca l'approvazione e il rigetto è ripetibile.
-    if (!res.success) throw new GraphQLError(res.error ?? 'Rigetto non riuscito', { extensions: { code: 'CONFLICT' } })
+    if (!res.success) throw new GraphQLError(res.error ?? 'Rejection failed', { extensions: { code: 'CONFLICT', i18n: res.error ? undefined : { key: 'errors.approval.rejectFailed' } } })
     await writeAudit(session, args.changeId, ctx.tenantId, 'change_rejected', ctx.userId, `${teamName}: ${args.note.trim()}`)
     await afterEnterStep(session, args.changeId, ctx.tenantId, backStep)
     return getChange(null, { id: args.changeId }, ctx)

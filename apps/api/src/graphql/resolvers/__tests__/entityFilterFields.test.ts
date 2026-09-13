@@ -17,8 +17,8 @@ describe('entityFilterFields (sostituto dell\'introspezione per il FilterBuilder
   })
 
   it('tipi interni o inesistenti → ValidationError', () => {
-    expect(() => entityFilterFieldsFromSchema(schema, '__Schema')).toThrow(/typeName non valido/)
-    expect(() => entityFilterFieldsFromSchema(schema, 'NonEsiste')).toThrow(/inesistente/)
-    expect(() => entityFilterFieldsFromSchema(schema, 'String')).toThrow(/non filtrabile/)
+    expect(() => entityFilterFieldsFromSchema(schema, '__Schema')).toThrow(/invalid typeName/)
+    expect(() => entityFilterFieldsFromSchema(schema, 'NonEsiste')).toThrow(/does not exist/)
+    expect(() => entityFilterFieldsFromSchema(schema, 'String')).toThrow(/cannot be filtered/)
   })
 })

@@ -29,6 +29,7 @@ import { criticalServiceCriticalities } from '../../services/serviceImpact/incid
 import { preApprovedChangeTypes, setPreApprovedChangeTypes, changeTypeVocabulary } from '../../lib/changePolicy.js'
 import { riskBandThresholds, setRiskBandThresholds } from '../../lib/riskBands.js'
 import { configurationIssues } from '../../lib/configurationIssues.js'
+import { mapGaps, mapParams } from '../issueShape.js'
 
 interface CellOut { key: string; inputs: string[]; value: string | null }
 
@@ -128,26 +129,29 @@ async function updateDomainMatrix(
     parts.forEach((part, i) => {
       if (!inputValues[i]!.includes(part)) {
         throw new ValidationError(
-          `Matrice "${kind}": "${part}" non è nel vocabolario "${spec.inputs[i]!}" di questo cliente. Ammessi: ${inputValues[i]!.join(', ')}.`,
+          `Matrix "${kind}": "${part}" is not in the "${spec.inputs[i]!}" dictionary of this tenant. Allowed: ${inputValues[i]!.join(', ')}.`,
+          { key: 'errors.matrix.keyOutOfVocabulary', params: { matrix: kind, value: part, vocabulary: spec.inputs[i]!, allowed: inputValues[i]!.join(', ') } },
         )
       }
     })
     if (!outputValues.includes(e.value)) {
       throw new ValidationError(
-        `Matrice "${kind}", cella "${e.key}": "${e.value}" non è nel vocabolario "${spec.output}" di questo cliente. Ammessi: ${outputValues.join(', ')}.`,
+        `Matrix "${kind}", cell "${e.key}": "${e.value}" is not in this tenant's "${spec.output}" dictionary. Allowed: ${outputValues.join(', ')}.`,
+        { key: 'errors.matrix.cellOutOfVocabulary', params: { matrix: kind, cell: e.key, value: e.value, vocabulary: spec.output, allowed: outputValues.join(', ') } },
       )
     }
-    if (e.key in entries) throw new ValidationError(`Matrice "${kind}": la cella "${e.key}" è ripetuta.`)
+    if (e.key in entries) throw new ValidationError(`Matrix "${kind}": cell "${e.key}" is repeated.`, { key: 'errors.matrix.cellRepeated', params: { matrix: kind, cell: e.key } })
     entries[e.key] = e.value
   }
 
   const missing = cartesianKeys(inputValues).map((v) => matrixKey(...v)).filter((k) => !(k in entries))
   if (missing.length) {
     throw new ValidationError(
-      `Matrice "${kind}" incompleta: ${missing.length} combinazion${missing.length === 1 ? 'e' : 'i'} senza valore ` +
-      `(${missing.slice(0, 10).join(', ')}${missing.length > 10 ? ', …' : ''}). ` +
-      `Una cella vuota diventa un errore quando serve — nell'apertura di un incident o nell'ingest di un allarme — ` +
-      `quindi si compila qui, non si scopre lì.`,
+      `Matrix "${kind}" is incomplete: ${missing.length} combination(s) with no value `
+      + `(${missing.slice(0, 10).join(', ')}${missing.length > 10 ? ', …' : ''}). `
+      + `An empty cell becomes an error when it is needed — opening an incident, ingesting an alarm — `
+      + `so it is filled in here, not discovered there.`,
+      { key: 'errors.matrix.incomplete', params: { matrix: kind, count: missing.length, examples: missing.slice(0, 10).join(', ') + (missing.length > 10 ? ', …' : '') } },
     )
   }
 
@@ -238,7 +242,10 @@ async function updateRiskBandThresholds(
 }
 
 async function configurationIssuesQuery(_: unknown, __: unknown, ctx: GraphQLContext) {
-  return configurationIssues(ctx.tenantId)
+  const issues = await configurationIssues(ctx.tenantId)
+  // I parametri come lista di coppie: e la stessa cosa, nella forma che lo
+  // schema sa dire (vedi issueShape.ts). La FRASE non si compone qui.
+  return issues.map((i) => ({ ...i, params: mapParams(i.params), gaps: mapGaps(i.gaps ?? []) }))
 }
 
 export const domainMatrixResolvers = {

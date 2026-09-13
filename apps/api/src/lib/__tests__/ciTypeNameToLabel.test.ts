@@ -62,8 +62,8 @@ describe('ciLabelsForTypeNames', () => {
   })
 
   it('un tipo ignoto FERMA l\'operazione, col nome e i tipi ammessi', async () => {
-    await expect(ciLabelsForTypeNames('c-one', ['server', 'bilanciatore'], 'criteri del gruppo'))
-      .rejects.toThrow(/criteri del gruppo: "bilanciatore" non è un tipo di CI di questo cliente \(ammessi: .*load_balancer.*server/)
+    await expect(ciLabelsForTypeNames('c-one', ['server', 'bilanciatore'], 'dynamic group criteria (criteriaCiTypes)', 'groupCriteria'))
+      .rejects.toThrow(/dynamic group criteria \(criteriaCiTypes\): "bilanciatore" is not a CI type of this tenant \(allowed: .*load_balancer.*server/)
   })
 
   it('elenco vuoto o voci vuote → nessuna etichetta, nessun errore', async () => {

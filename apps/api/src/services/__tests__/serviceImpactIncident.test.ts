@@ -186,13 +186,13 @@ describe('soglia, impatto, urgenza, testi', () => {
     const err = await serviceImpactOf('t1', null, { mapId: 'map-1', serviceName: 'Enterprise Billing' })
       .then(() => null, (e: unknown) => e as Error)
     expect(err!.message).toContain('Enterprise Billing')
-    expect(err!.message).toMatch(/non ha una criticità/)
+    expect(err!.message).toMatch(/has no criticality/)
     expect(err!.message).toMatch(/mission_critical, business_critical/)
   })
 
   it('criticità FUORI vocabolario: errore che elenca gli ammessi (prima era «medium» con un log)', async () => {
     await expect(serviceImpactOf('t1', 'boh', { mapId: 'map-1' }))
-      .rejects.toThrow(/service_criticality: "boh" non è nel vocabolario di questo cliente/)
+      .rejects.toThrow(/service_criticality: "boh" is not in the dictionary of this tenant/)
   })
 
   it('criticità del vocabolario ma SENZA cella nella matrice: nomina la combinazione', async () => {

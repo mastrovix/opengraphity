@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useEffect } from 'react'
 import { gql } from '@apollo/client'
 import { useQuery } from '@apollo/client/react'
@@ -36,6 +37,7 @@ function scorePct(score: number): string {
 }
 
 export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
+  const { t } = useTranslation()
   // Chiuso/risolto si legge dai METADATA del passo di questo cliente, non da
   // `['closed','resolved']` (B-22): un passo terminale aggiunto dal cliente
   // veniva reso come «aperto», e l'etichetta mostrava il nome grezzo del passo
@@ -63,26 +65,26 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
     <SectionCard
       title={
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Sparkles size={14} color="var(--color-brand)" /> Incident simili
+          <Sparkles size={14} color="var(--color-brand)" /> {t('components.similar.title')}
         </span>
       }
       defaultOpen
     >
       {error ? (
         <div style={{ padding: '8px 10px', background: 'var(--color-danger-bg)', border: `1px solid ${palette.danger.border}`, borderRadius: 6, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>
-          Errore ricerca semantica: {error.message}
+          {t('components.similar.searchError', { message: error.message })}
         </div>
       ) : loading && !data ? (
-        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>Caricamento…</p>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>{t('common.loading')}</p>
       ) : pending ? (
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
-          Analisi semantica in corso — l'embedding di questo incident è in calcolo…
+          {t('components.similar.pending')}
         </p>
       ) : (
         <>
           {similar && similar.items.length === 0 && (
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
-              Nessun incident storico simile.
+              {t('components.similar.empty')}
             </p>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -98,7 +100,7 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
                     <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
                       {it.number ?? it.id.slice(0, 8)}
                     </span>
-                    <span title="Similarità semantica" style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-brand)' }}>
+                    <span title={t('components.similar.semanticScore')} style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-brand)' }}>
                       {scorePct(it.score)}
                     </span>
                   </div>
@@ -119,7 +121,7 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
           {articles && articles.items.length > 0 && (
             <div style={{ marginTop: 4 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '8px 0 6px' }}>
-                <BookOpen size={12} /> KB suggerita
+                <BookOpen size={12} /> {t('components.similar.kb')}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {articles.items.map((a) => (

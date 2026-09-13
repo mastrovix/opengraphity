@@ -1,4 +1,4 @@
-import { ApolloClient, InMemoryCache, HttpLink, from } from '@apollo/client/core'
+import { ApolloClient, InMemoryCache, HttpLink, from, ApolloLink as ApolloLinkClass } from '@apollo/client/core'
 import { setContext } from '@apollo/client/link/context'
 import { ErrorLink } from '@apollo/client/link/error'
 import { CombinedGraphQLErrors, ServerError } from '@apollo/client/errors'
@@ -33,6 +33,8 @@ export interface CreateApolloClientOptions extends ErrorLinkOptions {
   uri: string
   getToken: () => string | undefined
   defaultOptions?: ApolloClient.DefaultOptions
+  /** Come si traduce la chiave di un errore. Senza, i messaggi restano quelli del server. */
+  traduciErrore?: TraduciErrore
 }
 
 export const DEFAULT_DEDUPE_MS = 5_000
@@ -169,6 +171,84 @@ export function createErrorLink(o: ErrorLinkOptions): ErrorLink {
   })
 }
 
+/**
+ * LA FRASE DI UN ERRORE, nella lingua di chi guarda.
+ *
+ * L'API manda un `message` inglese e STABILE (log, metriche, integrazioni) e,
+ * quando l'errore riguarda la persona davanti allo schermo, anche una chiave in
+ * `extensions.i18n`. Qui la chiave diventa la frase, **prima** che l'errore
+ * arrivi alle pagine: così ogni `onError: (e) => toast.error(e.message)` che
+ * esiste già — e sono decine — si trova il messaggio nella lingua giusta senza
+ * essere toccato.
+ *
+ * Il difetto che chiude: l'API non sa in che lingua guarda chi legge (non c'è
+ * `Accept-Language`, l'utente non porta una lingua), e per mesi la risposta è
+ * stata scrivere i messaggi in italiano — che in un'interfaccia inglese
+ * restavano italiani.
+ *
+ * Una chiave che il bundle non conosce NON si nasconde: resta il messaggio del
+ * server, che è vero e leggibile.
+ */
+export type TraduciErrore = (key: string, params?: Record<string, string | number>) => string | null
+
+interface ErroreConChiave {
+  message: string
+  extensions?: { i18n?: { key?: unknown; params?: unknown } } | undefined
+}
+
+/**
+ * UN PARAMETRO CHE FINISCE IN `Key` È A SUA VOLTA UNA CHIAVE.
+ *
+ * Alcune frasi si compongono di pezzi: «Riordinare i valori: il vocabolario
+ * «event_severity» è la severità che mandano i sistemi di monitoraggio…» è
+ * un'operazione + un vocabolario + un motivo, e i tre pezzi li conoscono tre
+ * posti diversi dell'API. Prima l'API li incollava e passava il risultato come
+ * parametro: prosa travestita da dato, che restava nella lingua di chi l'aveva
+ * scritta — cioè il difetto di partenza, spostato dentro un parametro.
+ *
+ * La regola: `opKey` porta una chiave, e qui diventa `op`, tradotto. I pezzi
+ * ricevono gli stessi parametri della frase che li contiene, così «Rinominare
+ * «{{from}}» in «{{to}}»» funziona come un pezzo.
+ */
+function conPezziTradotti(
+  params: Record<string, string | number>, traduci: TraduciErrore,
+): Record<string, string | number> {
+  const fuori: Record<string, string | number> = { ...params }
+  for (const [nome, valore] of Object.entries(params)) {
+    if (!nome.endsWith('Key') || typeof valore !== 'string') continue
+    fuori[nome.slice(0, -3)] = traduci(valore, params) ?? valore
+  }
+  return fuori
+}
+
+function conFrasi(result: ApolloLink.Result, traduci: TraduciErrore): ApolloLink.Result {
+  const errors = (result as { errors?: ErroreConChiave[] }).errors
+  if (!errors || errors.length === 0) return result
+  return {
+    ...result,
+    errors: errors.map((e) => {
+      const i18n = e.extensions?.i18n
+      if (!i18n || typeof i18n.key !== 'string') return e
+      const params = conPezziTradotti((i18n.params ?? {}) as Record<string, string | number>, traduci)
+      const frase = traduci(i18n.key, params)
+      return frase === null ? e : { ...e, message: frase }
+    }),
+  } as ApolloLink.Result
+}
+
+export function createI18nLink(traduci: TraduciErrore): ApolloLink {
+  return new ApolloLinkClass((operation, forward) =>
+    new Observable<ApolloLink.Result>((observer) => {
+      const sub = forward(operation).subscribe({
+        next:     (result) => observer.next(conFrasi(result, traduci)),
+        error:    (err: unknown) => observer.error(err),
+        complete: () => observer.complete(),
+      })
+      return () => sub.unsubscribe()
+    }),
+  )
+}
+
 /** Bearer from `getToken()` on every request — the token lives in memory only (keycloak-js), never in storage. */
 export function createAuthLink(getToken: () => string | undefined): ApolloLink {
   return setContext((_, { headers }) => {
@@ -183,11 +263,19 @@ export function createAuthLink(getToken: () => string | undefined): ApolloLink {
 }
 
 export function createApolloClient(opts: CreateApolloClientOptions): ApolloClient {
-  const { uri, getToken, defaultOptions, ...linkOptions } = opts
+  const { uri, getToken, defaultOptions, traduciErrore, ...linkOptions } = opts
   if (!uri) throw new Error('createApolloClient: "uri" mancante (VITE_API_URL)')
   const httpLink = new HttpLink({ uri })
+  /*
+    L'ORDINE CONTA: il link che traduce sta DENTRO quello che segnala, così la
+    frase è gia nella lingua giusta quando `ErrorLink` costruisce l'errore che
+    le pagine vedono (e quando lo passa a `onGraphQLError`, che fa il toast).
+  */
+  const catena = traduciErrore
+    ? [createErrorLink(linkOptions), createI18nLink(traduciErrore), createAuthLink(getToken).concat(httpLink)]
+    : [createErrorLink(linkOptions), createAuthLink(getToken).concat(httpLink)]
   return new ApolloClient({
-    link:  from([createErrorLink(linkOptions), createAuthLink(getToken).concat(httpLink)]),
+    link:  from(catena),
     cache: new InMemoryCache(),
     ...(defaultOptions ? { defaultOptions } : {}),
   })

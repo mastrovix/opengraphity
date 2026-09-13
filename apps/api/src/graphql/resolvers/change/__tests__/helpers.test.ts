@@ -66,7 +66,7 @@ describe('assertUserInCITeam', () => {
 
     await expectForbidden(
       assertUserInCITeam(mockSession, 'ci-1', 'tenant-1', noUserCtx, 'owner'),
-      'utente non identificato',
+      'the user is not identified',
     )
     expect(runQueryOne).not.toHaveBeenCalled()
   })
@@ -98,7 +98,7 @@ describe('assertUserInCITeam', () => {
 
     await expectForbidden(
       assertUserInCITeam(mockSession, 'ci-1', 'tenant-1', operatorCtx, 'owner'),
-      'Non autorizzato',
+      'Not authorized',
     )
   })
 
@@ -107,7 +107,7 @@ describe('assertUserInCITeam', () => {
 
     await expectForbidden(
       assertUserInCITeam(mockSession, 'ci-1', 'tenant-1', operatorCtx, 'support'),
-      'Non autorizzato',
+      'Not authorized',
     )
   })
 })
@@ -126,7 +126,7 @@ describe('assertAdmin', () => {
     try { assertAdmin(operatorCtx) } catch (e) { error = e }
 
     expect(error).toBeInstanceOf(GraphQLError)
-    expect((error as GraphQLError).message).toContain('Solo gli admin')
+    expect((error as GraphQLError).message).toContain('Only admins')
     expect((error as GraphQLError).extensions['code']).toBe('FORBIDDEN')
   })
 })

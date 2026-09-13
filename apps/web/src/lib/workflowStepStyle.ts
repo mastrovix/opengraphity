@@ -32,7 +32,7 @@ export function styleForCategory(category: string | null | undefined): CategoryS
   if (!style) {
     // Neutral styling is acceptable, silence is not: an unknown category means
     // a workflow step this map does not know about.
-    console.error(`[workflowStepStyle] categoria sconosciuta: "${category}"`)
+    console.error(`[workflowStepStyle] unknown category: "${category}"`)
     return NEUTRAL_STYLE
   }
   return style

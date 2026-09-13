@@ -127,7 +127,7 @@ export default function NotificationRulesPage() {
       {routingQuery.error ? (
         <QueryError message={routingQuery.error.message} onRetry={() => void routingQuery.refetch()} />
       ) : (loading && !data) || !routing ? (
-        <div style={{ color: 'var(--color-slate-light)', fontSize: fontSize.body }}>{t('common.loading', 'Caricamento…')}</div>
+        <div style={{ color: 'var(--color-slate-light)', fontSize: fontSize.body }}>{t('common.loading')}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
           {RULE_CATEGORIES.map(({ key, events }) => {

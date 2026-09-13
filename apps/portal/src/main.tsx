@@ -15,7 +15,7 @@ import { KBArticlePage }   from '@/pages/KBArticlePage'
 import { ServiceCatalogPage } from '@/pages/ServiceCatalogPage'
 import { NotFoundPage }    from '@/pages/NotFoundPage'
 import '@/index.css'
-import '@/i18n/i18n'
+import i18n from '@/i18n/i18n'
 
 const router = createBrowserRouter([
   {
@@ -65,7 +65,7 @@ initKeycloak().then((authenticated) => {
   box.style.cssText = 'display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui;padding:24px;text-align:center'
   const title = document.createElement('div')
   title.style.cssText = 'font-size:20px;font-weight:600;color:var(--color-danger)'
-  title.textContent = 'Errore di autenticazione'
+  title.textContent = i18n.t('auth.bootstrapError')
   const detail = document.createElement('div')
   detail.style.cssText = 'color:var(--color-slate);font-size:14px;max-width:640px'
   detail.textContent = message   // textContent: the message may echo the hostname/URL

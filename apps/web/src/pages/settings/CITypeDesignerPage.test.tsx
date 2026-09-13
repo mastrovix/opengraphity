@@ -51,35 +51,35 @@ describe('un tipo spedito col prodotto: le azioni sono spente e il perché si le
   it('mostra il badge, la nota, e disattiva salva/elimina/attivo', async () => {
     await openType('Server', [SHIPPED, OWN])
 
-    expect(screen.getByText(/spedito col prodotto/)).toBeInTheDocument()
-    expect(screen.getByText(/è un solo tipo per tutti i clienti/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Salva impostazioni/ })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /Elimina tipo/ })).toBeDisabled()
+    expect(screen.getByText(/ships with the product/)).toBeInTheDocument()
+    expect(screen.getByText(/one type for every tenant/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Save settings/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Delete the type/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: '● active' })).toBeDisabled()
   })
 
   it('«Aggiungi campo» e «Aggiungi relazione» sono disattivati', async () => {
     const r = await openType('Server', [SHIPPED, OWN])
-    await r.user.click(screen.getByRole('tab', { name: 'Campi' }))
-    expect(screen.getByRole('button', { name: /Aggiungi campo/ })).toBeDisabled()
-    await r.user.click(screen.getByRole('tab', { name: 'Relazioni CI' }))
-    expect(screen.getByRole('button', { name: /Aggiungi relazione/ })).toBeDisabled()
+    await r.user.click(screen.getByRole('tab', { name: 'Fields' }))
+    expect(screen.getByRole('button', { name: /Add a field/ })).toBeDisabled()
+    await r.user.click(screen.getByRole('tab', { name: 'CI relationships' }))
+    expect(screen.getByRole('button', { name: /Add a relationship/ })).toBeDisabled()
   })
 
   it('su un tipo PROPRIO le stesse azioni sono attive', async () => {
     const r = await openType('Load Balancer', [SHIPPED, OWN])
-    expect(screen.queryByText(/è un solo tipo per tutti i clienti/)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Salva impostazioni/ })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /Elimina tipo/ })).toBeEnabled()
-    await r.user.click(screen.getByRole('tab', { name: 'Campi' }))
-    expect(screen.getByRole('button', { name: /Aggiungi campo/ })).toBeEnabled()
+    expect(screen.queryByText(/one type for every tenant/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Save settings/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Delete the type/ })).toBeEnabled()
+    await r.user.click(screen.getByRole('tab', { name: 'Fields' }))
+    expect(screen.getByRole('button', { name: /Add a field/ })).toBeEnabled()
   })
 })
 
 describe('il nome del tipo nuovo è validato prima di inviarlo (A-12)', () => {
   async function openCreate(types: unknown[]) {
     const r = renderWithProviders(<CITypeDesignerPage />, { mocks: mocks(types) })
-    const nuovo = await waitFor(() => screen.getByRole('button', { name: /Nuovo/ }))
+    const nuovo = await waitFor(() => screen.getByRole('button', { name: /New/ }))
     await r.user.click(nuovo)
     return r
   }
@@ -88,10 +88,10 @@ describe('il nome del tipo nuovo è validato prima di inviarlo (A-12)', () => {
     const r = await openCreate([SHIPPED, OWN])
     await r.user.type(screen.getByLabelText(/name \(slug/), 'server')
     const err = await screen.findByRole('alert')
-    expect(err).toHaveTextContent(/già preso/)
+    expect(err).toHaveTextContent(/is already taken/)
     // La ragione vera: GraphQL fonde i tipi omonimi in silenzio.
-    expect(err).toHaveTextContent(/FONDE in silenzio/)
-    expect(screen.getByRole('button', { name: /Crea tipo/ })).toBeDisabled()
+    expect(err).toHaveTextContent(/MERGES them silently/)
+    expect(screen.getByRole('button', { name: /Create the type/ })).toBeDisabled()
   })
 
   it('un nome non identificatore: dice la regola e cosa scrivere invece', async () => {
@@ -109,15 +109,15 @@ describe('il nome del tipo nuovo è validato prima di inviarlo (A-12)', () => {
     await r.user.type(screen.getByLabelText(/name \(slug/), 'firewall')
     await r.user.type(screen.getByLabelText(/label/), 'Firewall')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Crea tipo/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Create the type/ })).toBeEnabled()
   })
 })
 
 describe('il nome del campo nuovo è validato prima di inviarlo (A-12)', () => {
   async function openNewField() {
     const r = await openType('Load Balancer', [SHIPPED, OWN])
-    await r.user.click(screen.getByRole('tab', { name: 'Campi' }))
-    await r.user.click(screen.getByRole('button', { name: /Aggiungi campo/ }))
+    await r.user.click(screen.getByRole('tab', { name: 'Fields' }))
+    await r.user.click(screen.getByRole('button', { name: /Add a field/ }))
     return r
   }
 
@@ -126,14 +126,14 @@ describe('il nome del campo nuovo è validato prima di inviarlo (A-12)', () => {
     await r.user.type(screen.getByLabelText(/name \(camelCase/), 'tenantId')
     const err = await screen.findByRole('alert')
     expect(err).toHaveTextContent('tenant_id')
-    expect(err).toHaveTextContent(/il CI nascerebbe nel cliente scelto dal chiamante/)
-    expect(screen.getByRole('button', { name: /Salva/ })).toBeDisabled()
+    expect(err).toHaveTextContent(/the CI would be born in the tenant chosen by the caller/)
+    expect(screen.getByRole('button', { name: /Save/ })).toBeDisabled()
   })
 
   it('un campo base: lo dice invece di produrre un campo dichiarato due volte', async () => {
     const r = await openNewField()
     await r.user.type(screen.getByLabelText(/name \(camelCase/), 'status')
-    expect(await screen.findByRole('alert')).toHaveTextContent(/esiste già su ogni CI/)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/already exists on every CI/)
   })
 
   it('il campo non accetta più i trattini basso: li toglie mentre si scrive', async () => {
@@ -148,7 +148,7 @@ describe('il nome del campo nuovo è validato prima di inviarlo (A-12)', () => {
     const r = await openNewField()
     await r.user.type(screen.getByLabelText(/name \(camelCase/), 'costCenter')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Salva/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Save/ })).toBeEnabled()
   })
 })
 

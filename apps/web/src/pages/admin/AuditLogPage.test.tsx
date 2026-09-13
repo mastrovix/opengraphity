@@ -72,7 +72,7 @@ describe('AuditLogPage', () => {
     await user.click(screen.getByRole('button', { name: '+ Add filter' }))
     await user.selectOptions(screen.getAllByRole('combobox')[0]!, 'action')
     expect(screen.getAllByRole('combobox')[1]).toHaveValue('contains')
-    await user.type(screen.getByPlaceholderText('Valore…'), 'login')
+    await user.type(screen.getByPlaceholderText('Value…'), 'login')
     await user.click(screen.getByRole('button', { name: 'Apply' }))
 
     await waitFor(() => expect(actions()).toEqual(['login']))
@@ -91,7 +91,7 @@ describe('AuditLogPage', () => {
     await user.click(screen.getByRole('button', { name: /Advanced filters/ }))
     await user.click(screen.getByRole('button', { name: '+ Add filter' }))
     await user.selectOptions(screen.getAllByRole('combobox')[0]!, 'userEmail')
-    await user.type(screen.getByPlaceholderText('Valore…'), 'anna')
+    await user.type(screen.getByPlaceholderText('Value…'), 'anna')
     await user.click(screen.getByRole('button', { name: 'Apply' }))
     await waitFor(() => expect(seen.at(-1)?.filters).toBeDefined())
     await user.click(screen.getByRole('button', { name: 'Reset' }))

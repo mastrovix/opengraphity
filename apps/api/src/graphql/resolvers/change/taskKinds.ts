@@ -10,6 +10,7 @@
  * completamento su un task inesistente è NOT_FOUND, non un no-op silenzioso.
  */
 import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../../lib/errors.js'
 import { ValidationError } from '../../../lib/errors.js'
 import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT, ROLE_LABEL } from '../../../lib/taskStatus.js'
 import { withSession, runQueryOne, type Props } from '../ci-utils.js'
@@ -88,7 +89,7 @@ export async function reopenTask(kind: TaskKind, taskId: string, reason: string,
       WHERE ${CHANGE_NOT_DELETED}
       RETURN c.id AS changeId, t.ci_id AS ciId, t.responder_role AS role
     `, { taskId, tenantId: ctx.tenantId })
-    if (!tctx) throw new GraphQLError(`${k.label} ${taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+    if (!tctx) throw new NotFoundError(k.label, taskId)
 
     const clears = k.reopen.clear.map((f) => `, t.${f} = null`).join('')
     await session.executeWrite((tx) => tx.run(`
@@ -134,7 +135,7 @@ export async function completeTask(kind: TaskKind, changeId: string, ciId: strin
   if (!c) throw new Error(`Il task di tipo "${kind}" non si completa con completeTask`)
   if (c.allowedResults) {
     if (!result || !c.allowedResults.includes(result)) {
-      throw new ValidationError(`result deve essere ${c.allowedResults.map((r) => `"${r}"`).join(' o ')}`)
+      throw new ValidationError(`result must be ${c.allowedResults.map((r) => `"${r}"`).join(' or ')}`, { key: 'errors.task.resultOneOf', params: { allowed: c.allowedResults.join(', ') } })
     }
   }
   return withSession(async (session) => {
@@ -154,7 +155,7 @@ export async function completeTask(kind: TaskKind, changeId: string, ciId: strin
       RETURN t.id AS id
     `, { changeId, ciId, result: result ?? null, completed: TASK_STATUS.COMPLETED, tenantId: ctx.tenantId, userId: ctx.userId, now }))
     if (res.records.length === 0) {
-      throw new GraphQLError(`${k.title} per il CI ${ciId} non trovato sulla change (fase sbagliata o task riaperto?)`, { extensions: { code: 'NOT_FOUND' } })
+      throw new GraphQLError(`${k.title} for CI ${ciId} not found on the change (wrong phase, or task reopened?)`, { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.task.notOnChange', params: { task: k.title, ci: ciId } } } })
     }
 
     const ciName = await getCIName(session, ciId, ctx.tenantId)

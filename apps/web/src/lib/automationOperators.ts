@@ -36,12 +36,19 @@ export const ENTITY_LABELS: Record<string, string> = {
  * scatta alla creazione e l'anteprima aggiunge «dopo N minuti» da sé.
  *
  * Per una TENDINA non vanno bene («viene dopo timer» è una frase, «dopo
- * timer» è una voce di menu): quelle sono `EVENT_OPTION_LABELS`.
+ * timer» è una voce di menu): quelle sono `EVENT_OPTION_KEYS`.
  */
-export const EVENT_LABELS: Record<string, string> = {
-  on_create: 'creato', on_update: 'aggiornato', on_timer: 'creato',
-  on_sla_breach: 'in breach SLA', on_field_change: 'modificato',
-  on_transition: 'transizionato',
+export const EVENT_PARTICIPLE_KEYS: Record<string, string> = {
+  on_create:    'automation.eventParticiple.onCreate',
+  on_update:    'automation.eventParticiple.onUpdate',
+  on_timer:     'automation.eventParticiple.onCreate',
+  on_sla_breach: 'automation.eventParticiple.onSlaBreach',
+  on_field_change: 'automation.eventParticiple.onFieldChange',
+  on_transition: 'automation.eventParticiple.onTransition',
+}
+
+export function eventParticipleKey(eventType: string): string {
+  return lookupOrError(EVENT_PARTICIPLE_KEYS, eventType, 'EVENT_PARTICIPLE_KEYS', `?${eventType}`)
 }
 
 /**
@@ -54,27 +61,32 @@ export const EVENT_LABELS: Record<string, string> = {
  * tendina, all'amministratore. Due pagine gemelle, lo stesso vocabolario,
  * due rese diverse.
  */
-export const EVENT_OPTION_LABELS: Record<string, string> = {
-  on_create: 'creato', on_update: 'aggiornato', on_timer: 'dopo timer',
-  on_sla_breach: 'SLA violato', on_field_change: 'campo modificato',
-  on_transition: 'transizione di stato',
+export const EVENT_OPTION_KEYS: Record<string, string> = {
+  on_create:    'automation.eventOption.onCreate',
+  on_update:    'automation.eventOption.onUpdate',
+  on_timer:     'automation.eventOption.onTimer',
+  on_sla_breach: 'automation.eventOption.onSlaBreach',
+  on_field_change: 'automation.eventOption.onFieldChange',
+  on_transition: 'automation.eventOption.onTransition',
 }
 
-export function eventOptionLabel(eventType: string): string {
-  return lookupOrError(EVENT_OPTION_LABELS, eventType, 'EVENT_OPTION_LABELS', `?${eventType}`)
+export function eventOptionKey(eventType: string): string {
+  return lookupOrError(EVENT_OPTION_KEYS, eventType, 'EVENT_OPTION_KEYS', `?${eventType}`)
 }
 
 export function entityLabel(entityType: string): string {
   return lookupOrError(ENTITY_LABELS, entityType, 'ENTITY_LABELS', `?${entityType}`)
 }
 
-export const FIELD_TYPE_LABELS: Record<string, string> = {
-  string: 'testo', number: 'numero', date: 'data', boolean: 'booleano', enum: 'enum',
-  user: 'utente', team: 'team',
+export const FIELD_TYPE_KEYS: Record<string, string> = {
+  string: 'automation.fieldType.string', number: 'automation.fieldType.number',
+  date:   'automation.fieldType.date',   boolean: 'automation.fieldType.boolean',
+  enum:   'automation.fieldType.enum',   user:    'automation.fieldType.user',
+  team:   'automation.fieldType.team',
 }
 
-export function fieldTypeLabel(fieldType: string): string {
-  return lookupOrError(FIELD_TYPE_LABELS, fieldType, 'FIELD_TYPE_LABELS', `?${fieldType}`)
+export function fieldTypeKey(fieldType: string): string {
+  return lookupOrError(FIELD_TYPE_KEYS, fieldType, 'FIELD_TYPE_KEYS', `?${fieldType}`)
 }
 
 // ── Operatori (vocabolario 1: auto-trigger / business rule) ─────────────────
@@ -84,15 +96,20 @@ export type AutomationOperator =
   | 'greater_than' | 'less_than'
   | 'is_null' | 'is_not_null'
 
-export interface OperatorOption { value: AutomationOperator; label: string }
+/**
+ * `labelKey` e una CHIAVE i18n, non un'etichetta: il vocabolario vive qui, la
+ * lingua la decide il client (convenzione: un nome che finisce in `Key` e una
+ * chiave). `=`, `>` e `<` restano segni: non c'e niente da tradurre.
+ */
+export interface OperatorOption { value: AutomationOperator; labelKey: string }
 
-const EQ:  OperatorOption = { value: 'equals',       label: '=' }
-const NE:  OperatorOption = { value: 'not_equals',   label: '≠' }
-const CT:  OperatorOption = { value: 'contains',     label: 'contiene' }
-const GT:  OperatorOption = { value: 'greater_than', label: '>' }
-const LT:  OperatorOption = { value: 'less_than',    label: '<' }
-const NUL: OperatorOption = { value: 'is_null',      label: 'è nullo' }
-const NN:  OperatorOption = { value: 'is_not_null',  label: 'non è nullo' }
+const EQ:  OperatorOption = { value: 'equals',       labelKey: 'automation.operator.equals' }
+const NE:  OperatorOption = { value: 'not_equals',   labelKey: 'automation.operator.notEquals' }
+const CT:  OperatorOption = { value: 'contains',     labelKey: 'automation.operator.contains' }
+const GT:  OperatorOption = { value: 'greater_than', labelKey: 'automation.operator.greaterThan' }
+const LT:  OperatorOption = { value: 'less_than',    labelKey: 'automation.operator.lessThan' }
+const NUL: OperatorOption = { value: 'is_null',      labelKey: 'automation.operator.isNull' }
+const NN:  OperatorOption = { value: 'is_not_null',  labelKey: 'automation.operator.isNotNull' }
 
 export const ALL_OPERATORS: OperatorOption[] = [EQ, NE, CT, GT, LT, NUL, NN]
 
@@ -100,7 +117,7 @@ export const OPERATORS_BY_FIELD_TYPE: Record<string, OperatorOption[]> = {
   enum:    [EQ, NE, NUL, NN],
   string:  [EQ, NE, CT, NUL, NN],
   number:  [EQ, NE, GT, LT, NUL, NN],
-  date:    [EQ, NE, { ...GT, label: 'dopo' }, { ...LT, label: 'prima' }, NUL, NN],
+  date:    [EQ, NE, { ...GT, labelKey: 'automation.operator.after' }, { ...LT, labelKey: 'automation.operator.before' }, NUL, NN],
   boolean: [EQ, NUL, NN],
   user:    [EQ, NE, NUL, NN],
   team:    [EQ, NE, NUL, NN],
@@ -110,10 +127,10 @@ export function operatorsForFieldType(fieldType: string): OperatorOption[] {
   return lookupOrError(OPERATORS_BY_FIELD_TYPE, fieldType, 'OPERATORS_BY_FIELD_TYPE', ALL_OPERATORS)
 }
 
-export const OPERATOR_LABELS: Record<string, string> = Object.fromEntries(ALL_OPERATORS.map((o) => [o.value, o.label]))
+export const OPERATOR_KEYS: Record<string, string> = Object.fromEntries(ALL_OPERATORS.map((o) => [o.value, o.labelKey]))
 
-export function operatorLabel(op: string): string {
-  return lookupOrError(OPERATOR_LABELS, op, 'OPERATOR_LABELS', `?${op}`)
+export function operatorKey(op: string): string {
+  return lookupOrError(OPERATOR_KEYS, op, 'OPERATOR_KEYS', `?${op}`)
 }
 
 /** Operatori senza valore (is_null / is_not_null). */
@@ -139,7 +156,7 @@ const FROM_WORKFLOW: Partial<Record<WorkflowStepOperator, AutomationOperator>> =
 /** UI (equals…) → formato persistito negli step (eq…). Lancia su operatore sconosciuto. */
 export function toWorkflowOperator(op: string): WorkflowStepOperator {
   const w = TO_WORKFLOW[op as AutomationOperator]
-  if (!w) throw new Error(`[automationOperators] operatore UI non mappabile su workflow: "${op}"`)
+  if (!w) throw new Error(`[automationOperators] UI operator that does not map onto a workflow one: "${op}"`)
   return w
 }
 
@@ -155,17 +172,23 @@ export function fromWorkflowOperator(op: string): { ok: true; value: AutomationO
 
 // ── Azioni (vocabolario 1: actionExecutor) ──────────────────────────────────
 
-export const AUTOMATION_ACTION_LABELS: Record<string, string> = {
-  set_field: 'Imposta campo', assign_team: 'Assegna team', assign_user: 'Assegna utente',
-  transition_workflow: 'Transizione workflow', create_notification: 'Crea notifica',
-  create_comment: 'Crea commento', set_priority: 'Imposta priorità',
-  execute_script: 'Esegui script', call_webhook: 'Chiama webhook', set_sla: 'Imposta SLA',
+export const AUTOMATION_ACTION_KEYS: Record<string, string> = {
+  set_field:           'automation.action.setField',
+  assign_team:         'automation.action.assignTeam',
+  assign_user:         'automation.action.assignUser',
+  transition_workflow: 'automation.action.transitionWorkflow',
+  create_notification: 'automation.action.createNotification',
+  create_comment:      'automation.action.createComment',
+  set_priority:        'automation.action.setPriority',
+  execute_script:      'automation.action.executeScript',
+  call_webhook:        'automation.action.callWebhook',
+  set_sla:             'automation.action.setSla',
 }
 
-export const AUTOMATION_ACTION_TYPES = Object.keys(AUTOMATION_ACTION_LABELS)
+export const AUTOMATION_ACTION_TYPES = Object.keys(AUTOMATION_ACTION_KEYS)
 
-export function automationActionLabel(type: string): string {
-  return lookupOrError(AUTOMATION_ACTION_LABELS, type, 'AUTOMATION_ACTION_LABELS', `?${type}`)
+export function automationActionKey(type: string): string {
+  return lookupOrError(AUTOMATION_ACTION_KEYS, type, 'AUTOMATION_ACTION_KEYS', `?${type}`)
 }
 
 // ── Azioni (vocabolario 2: packages/workflow WorkflowActionType) ────────────

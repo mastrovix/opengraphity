@@ -37,11 +37,11 @@ describe('checkCITypeName — l\'elenco dei nomi presi viene dai tipi vivi', () 
   })
 
   it('nome di un tipo spedito → messaggio che dice di chi è', () => {
-    expect(checkCITypeName('server', existing)).toContain('spedito col prodotto')
+    expect(checkCITypeName('server', existing)).toContain('ships with the product')
   })
 
   it('nome di un proprio tipo → messaggio che lo dice', () => {
-    expect(checkCITypeName('load_balancer', existing)).toContain('un tuo tipo CI')
+    expect(checkCITypeName('load_balancer', existing)).toContain('a CI type of yours')
   })
 
   it('nome non identificatore → la regola e il suggerimento', () => {
@@ -61,12 +61,12 @@ describe('checkCIFieldName', () => {
   it('tenantId → il messaggio del server, parola per parola', () => {
     const m = checkCIFieldName('tenantId', { typeLabel: 'Load Balancer' })!
     expect(m).toContain('tenant_id')
-    expect(m).toContain('il CI nascerebbe nel cliente scelto dal chiamante')
+    expect(m).toContain('the CI would be born in the tenant chosen by the caller')
     expect(m).toContain('Load Balancer')
   })
 
   it.each(['name', 'status', 'description'])('«%s» è già su ogni CI', (n) => {
-    expect(checkCIFieldName(n)).toContain('esiste già')
+    expect(checkCIFieldName(n)).toContain('already exists')
   })
 
   it('«createdAt» è rifiutato dalla regola più forte: scrive `created_at`', () => {
@@ -74,7 +74,7 @@ describe('checkCIFieldName', () => {
   })
 
   it('un campo già presente sul tipo', () => {
-    expect(checkCIFieldName('costCenter', { existingFieldNames: ['costCenter'] })).toContain('esiste già')
+    expect(checkCIFieldName('costCenter', { existingFieldNames: ['costCenter'] })).toContain('already exists')
   })
 
   it('camelCase libero → null', () => {

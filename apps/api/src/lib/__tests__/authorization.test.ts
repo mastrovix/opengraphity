@@ -199,7 +199,7 @@ describe('Servizi monitorati: ogni campo root di servicesSDL() ha i ruoli attesi
 
 describe('authorize()', () => {
   it('rifiuta ruoli sconosciuti con messaggio esplicito', () => {
-    expect(() => authorize('Query', 'incidents', 'manager')).toThrow(/Ruolo sconosciuto 'manager'/)
+    expect(() => authorize('Query', 'incidents', 'manager')).toThrow(/Unknown role 'manager'/)
   })
   it('rifiuta operator su mutation admin-only e end_user fuori dal portale', () => {
     expect(() => authorize('Mutation', 'createTeam', 'operator')).toThrow(/createTeam/)

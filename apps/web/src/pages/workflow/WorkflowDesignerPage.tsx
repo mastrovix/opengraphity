@@ -160,7 +160,7 @@ export function WorkflowDesignerPage() {
           fontSize: 'var(--font-size-body)',
           color: palette.warning.strong,
         }}>
-          Gli step di questo workflow sono fissi. Puoi personalizzare label, azioni e condizioni.
+          {t('pages.workflow.stepsFixedHint')}
         </div>
       )}
 

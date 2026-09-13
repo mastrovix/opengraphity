@@ -99,7 +99,7 @@ export async function openIncidentFromEvent(args: OpenIncidentArgs) {
   const now = args.now ?? new Date().toISOString()
   const eventId = toStr(props['id'])
   if (!ciId) {
-    throw new ValidationError('Evento orfano: collega prima un CI (linkEventToCI) — un incident deve avere almeno un CI impattato')
+    throw new ValidationError('Orphan event: link a CI first (linkEventToCI) — an incident must have at least one impacted CI', { key: 'errors.event.orphan' })
   }
   const severity = assertSeverity(props['severity'], eventId)
   const policy = args.policy ?? await getEventPolicy(tenantId)

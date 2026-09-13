@@ -6,12 +6,14 @@
  *  - `workflow_step`: azioni enter/exit degli step di workflow
  *    (packages/workflow) — stessi controlli, parametri persistiti invariati.
  */
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useQuery } from '@apollo/client/react'
 import { GET_TEAMS, GET_WORKFLOW_LIST, GET_USERS } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { useEntityFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
 import { UPDATE_FIELD_ALLOWED } from '@opengraphity/types'
-import { fieldTypeLabel } from '@/lib/automationOperators'
+import { fieldTypeKey } from '@/lib/automationOperators'
 import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
@@ -39,6 +41,7 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
 }
 
 export function ActionParamsEditor({ actionType, params, entityType, onChange, vocabulary = 'automation' }: Props) {
+  const { t } = useTranslation()
   const { data: teamsData }    = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { data: usersData }    = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { data: workflowData } = useQuery<{ workflowDefinitions: { id: string; name: string; entityType: string; steps: { name: string; label: string }[] }[] }>(GET_WORKFLOW_LIST, { fetchPolicy: METAMODEL_FETCH_POLICY })
@@ -77,7 +80,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
     case 'assign_team':
       return (
         <Select style={{ ...selectS, flex: 1 }} value={params['team_id'] ?? ''} onChange={e => onChange('team_id', e.target.value)}>
-          <option value="">-- Seleziona team --</option>
+          <option value="">{t('automation.params.selectTeam')}</option>
           {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </Select>
       )
@@ -85,7 +88,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
     case 'assign_user':
       return (
         <Select style={{ ...selectS, flex: 1 }} value={params['user_id'] ?? ''} onChange={e => onChange('user_id', e.target.value)}>
-          <option value="">-- Seleziona utente --</option>
+          <option value="">{t('automation.params.selectUser')}</option>
           {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
         </Select>
       )
@@ -93,7 +96,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
     case 'transition_workflow':
       return (
         <Select style={{ ...selectS, flex: 1 }} value={params['to_step'] ?? ''} onChange={e => onChange('to_step', e.target.value)}>
-          <option value="">-- Seleziona step --</option>
+          <option value="">{t('automation.params.selectStep')}</option>
           {steps.map(s => <option key={s.name} value={s.name}>{s.label || s.name}</option>)}
         </Select>
       )
@@ -101,7 +104,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
     case 'set_priority':
       return (
         <Select style={{ ...selectS, flex: 1 }} value={params['priority'] ?? ''} onChange={e => onChange('priority', e.target.value)}>
-          <option value="">-- Seleziona priorità --</option>
+          <option value="">{t('automation.params.selectPriority')}</option>
           {/*
             L'etichetta del vocabolario che si sta offrendo davvero: `priority`
             se il tipo lo dichiara, altrimenti `severity` (per l'incident era
@@ -124,24 +127,24 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
             value={params['field'] ?? ''}
             onChange={e => { onChange('field', e.target.value); onChange('value', '') }}
           >
-            <option value="">-- Campo --</option>
+            <option value="">{t('automation.params.selectFieldOption')}</option>
             {fieldMetas.map(f => (
-              <option key={f.name} value={f.name}>{f.label} ({fieldTypeLabel(f.fieldType)})</option>
+              <option key={f.name} value={f.name}>{f.label} ({t(fieldTypeKey(f.fieldType))})</option>
             ))}
           </Select>
           {/* Value input — adapts to field type */}
-          {renderFieldValue(params['value'] ?? '', v => onChange('value', v), selectedFieldMeta, users, teams, labelOf)}
+          {renderFieldValue(params['value'] ?? '', v => onChange('value', v), selectedFieldMeta, users, teams, labelOf, t)}
         </div>
       )
 
     case 'create_notification':
       return (
-        <textarea style={{ ...textareaS, flex: 1 }} placeholder="Messaggio della notifica..." value={params['message'] ?? ''} onChange={e => onChange('message', e.target.value)} />
+        <textarea style={{ ...textareaS, flex: 1 }} placeholder={t('automation.params.notificationMessage')} value={params['message'] ?? ''} onChange={e => onChange('message', e.target.value)} />
       )
 
     case 'create_comment':
       return (
-        <textarea style={{ ...textareaS, flex: 1 }} placeholder="Testo del commento..." value={params['text'] ?? ''} onChange={e => onChange('text', e.target.value)} />
+        <textarea style={{ ...textareaS, flex: 1 }} placeholder={t('automation.params.commentText')} value={params['text'] ?? ''} onChange={e => onChange('text', e.target.value)} />
       )
 
     case 'execute_script':
@@ -165,8 +168,8 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
     case 'set_sla':
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1 }}>
-          <Input style={{ ...inputS, width: 100 }} type="number" placeholder="Risposta (min)" value={params['response_minutes'] ?? ''} onChange={e => onChange('response_minutes', e.target.value)} />
-          <Input style={{ ...inputS, width: 100 }} type="number" placeholder="Risoluzione (min)" value={params['resolve_minutes'] ?? ''} onChange={e => onChange('resolve_minutes', e.target.value)} />
+          <Input style={{ ...inputS, width: 100 }} type="number" placeholder={t('automation.params.responseMinutes')} value={params['response_minutes'] ?? ''} onChange={e => onChange('response_minutes', e.target.value)} />
+          <Input style={{ ...inputS, width: 100 }} type="number" placeholder={t('automation.params.resolveMinutes')} value={params['resolve_minutes'] ?? ''} onChange={e => onChange('resolve_minutes', e.target.value)} />
         </div>
       )
 
@@ -203,7 +206,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
           {choice('target_type', 'target_type', [{ value: 'team' }, { value: 'user' }], 'team')}
           <Labeled label="target_id">
             <Select style={selectS} value={params['target_id'] ?? ''} onChange={e => onChange('target_id', e.target.value)}>
-              <option value="">-- {targetType === 'user' ? 'Utente' : 'Team'} --</option>
+              <option value="">{t(targetType === 'user' ? 'automation.params.userOption' : 'automation.params.teamOption')}</option>
               {targetType === 'user'
                 ? users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)
                 : teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -229,11 +232,11 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
             */}
             <Select style={selectS} value={params['field'] ?? 'severity'} onChange={e => onChange('field', e.target.value)}>
               {updatableFields.map(f => (
-                <option key={f.name} value={f.name}>{f.label} ({fieldTypeLabel(f.fieldType)})</option>
+                <option key={f.name} value={f.name}>{f.label} ({t(fieldTypeKey(f.fieldType))})</option>
               ))}
               {/* Valore già salvato ma non più ammesso: resta visibile invece di sembrare un altro campo. */}
               {params['field'] && !updatableFields.some(f => f.name === params['field']) && (
-                <option value={params['field']}>{params['field']} (non ammesso)</option>
+                <option value={params['field']}>{params['field']} ({t('automation.params.notAllowed')})</option>
               )}
             </Select>
           </Labeled>
@@ -256,7 +259,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
       )
 
     default:
-      return <Input style={{ ...inputS, flex: 1 }} placeholder="Parametri..." value={params['value'] ?? ''} onChange={e => onChange('value', e.target.value)} />
+      return <Input style={{ ...inputS, flex: 1 }} placeholder={t('automation.params.generic')} value={params['value'] ?? ''} onChange={e => onChange('value', e.target.value)} />
   }
 }
 
@@ -267,13 +270,14 @@ function renderFieldValue(
   users: { id: string; name: string; email: string }[],
   teams: { id: string; name: string }[],
   labelOf: (vocabolario: string, valore: string) => string | null,
+  t: TFunction,
 ) {
-  if (!field) return <Input style={{ ...inputS, flex: 1 }} placeholder="Seleziona un campo" disabled />
+  if (!field) return <Input style={{ ...inputS, flex: 1 }} placeholder={t('automation.params.pickField')} disabled />
 
   if (field.fieldType === 'enum' && field.enumValues.length > 0) {
     return (
       <Select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
-        <option value="">-- Valore --</option>
+        <option value="">{t('automation.params.selectValue')}</option>
         {field.enumValues.map(v => (
           <option key={v} value={v} title={v}>
             {(field.enumTypeName ? labelOf(field.enumTypeName, v) : null) ?? v}
@@ -286,7 +290,7 @@ function renderFieldValue(
   if (field.fieldType === 'user') {
     return (
       <Select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
-        <option value="">-- Utente --</option>
+        <option value="">{t('automation.params.userOption')}</option>
         {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
       </Select>
     )
@@ -295,7 +299,7 @@ function renderFieldValue(
   if (field.fieldType === 'team') {
     return (
       <Select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
-        <option value="">-- Team --</option>
+        <option value="">{t('automation.params.teamOption')}</option>
         {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
       </Select>
     )
@@ -304,9 +308,9 @@ function renderFieldValue(
   if (field.fieldType === 'boolean') {
     return (
       <Select style={{ ...selectS, flex: 1 }} value={value} onChange={e => onValue(e.target.value)}>
-        <option value="">-- Valore --</option>
-        <option value="true">Sì</option>
-        <option value="false">No</option>
+        <option value="">{t('automation.params.selectValue')}</option>
+        <option value="true">{t('common.yes')}</option>
+        <option value="false">{t('common.no')}</option>
       </Select>
     )
   }
@@ -316,8 +320,8 @@ function renderFieldValue(
   }
 
   if (field.fieldType === 'number') {
-    return <Input type="number" style={{ ...inputS, flex: 1 }} placeholder="Valore" value={value} onChange={e => onValue(e.target.value)} />
+    return <Input type="number" style={{ ...inputS, flex: 1 }} placeholder={t('automation.params.value')} value={value} onChange={e => onValue(e.target.value)} />
   }
 
-  return <Input style={{ ...inputS, flex: 1 }} placeholder="Valore" value={value} onChange={e => onValue(e.target.value)} />
+  return <Input style={{ ...inputS, flex: 1 }} placeholder={t('automation.params.value')} value={value} onChange={e => onValue(e.target.value)} />
 }

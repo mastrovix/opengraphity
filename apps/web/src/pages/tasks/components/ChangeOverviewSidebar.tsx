@@ -3,6 +3,7 @@
  * approval-route preview, requester/owner, per-CI status dots table, and
  * (once both assessments are done) the computed scores for the current CI.
  */
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { PhaseBadge, RiskBadge } from '@/components/ui/badges'
@@ -63,11 +64,12 @@ function CIDots({ a }: { a: AffectedCI }) {
 // Legenda dei pallini: ordine delle fasi + significato dei colori.
 // Utile su touch (iPad) dove il tooltip degli 8px non è raggiungibile.
 function CIDotsLegend() {
+  const { t } = useTranslation()
   const colorItems: Array<{ state: DotState; label: string }> = [
-    { state: 'not_started', label: 'non iniziato' },
-    { state: 'in_progress', label: 'in corso' },
-    { state: 'completed',   label: 'completato' },
-    { state: 'failed',      label: 'fallito' },
+    { state: 'not_started', label: t('changeTasks.dot.notStarted') },
+    { state: 'in_progress', label: t('changeTasks.dot.inProgress') },
+    { state: 'completed',   label: t('changeTasks.dot.completed') },
+    { state: 'failed',      label: t('changeTasks.dot.failed') },
   ]
   return (
     <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12, lineHeight: 1.6 }}>
@@ -100,9 +102,10 @@ export function ChangeOverviewSidebar({
   stepCategory: string | null
   onRowClick: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <div style={{ position: 'sticky', top: 16 }}>
-      <SectionCard title="Overview Change" collapsible={false}>
+      <SectionCard title={t('pages.taskView.changeOverview')} collapsible={false}>
         {change && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -116,7 +119,7 @@ export function ChangeOverviewSidebar({
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', margin: '0 0 8px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{change.title}</p>
             {(change.why || change.what) && (
               <p style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', margin: '0 0 8px', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                {[change.why && `Perché: ${change.why}`, change.what && `Cosa: ${change.what}`].filter(Boolean).join(' · ')}
+                {[change.why && t('changeTasks.whyLine', { why: change.why }), change.what && t('changeTasks.whatLine', { what: change.what })].filter(Boolean).join(' · ')}
               </p>
             )}
             <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12 }}>
@@ -125,7 +128,7 @@ export function ChangeOverviewSidebar({
             </div>
 
             <div style={{ fontSize: 'var(--font-size-label)', marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', marginBottom: 6 }}>CI Affected</div>
+              <div style={{ fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', marginBottom: 6 }}>{t('components.affectedCI.title')}</div>
               {allAffected.map((a) => {
                 const isCurrent = a.ci.id === currentCIId
                 return (
@@ -173,7 +176,7 @@ export function ChangeOverviewSidebar({
             )}
 
             <Link to={`/changes/${changeId}`} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', textDecoration: 'none', fontWeight: 500 }}>
-              Vedi change completo →
+              {t('changeTasks.viewFullChange')}
             </Link>
           </>
         )}

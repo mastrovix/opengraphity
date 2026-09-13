@@ -162,7 +162,7 @@ export const topologyResolvers = {
           // (`load_balancer`), che non corrisponde a nessun nodo — filtro muto
           // e topologia vuota senza spiegazione.
           ciLabels: args.types && args.types.length > 0
-            ? await ciLabelsForTypeNames(ctx.tenantId, args.types, 'topology(types:)')
+            ? await ciLabelsForTypeNames(ctx.tenantId, args.types, 'topology(types:)', 'topology')
             : CI_LABELS,
           incidentTerminal,
           changeTerminal,

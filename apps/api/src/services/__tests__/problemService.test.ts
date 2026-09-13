@@ -134,7 +134,7 @@ describe('createProblem — priorità Impatto×Urgenza', () => {
   // che dice come passarli.
   it('impact senza urgency è un rifiuto: metà del dato non passa più in silenzio', async () => {
     await expect(createProblem({ title: 'P', impact: 'low', priority: 'critical' }, ctx))
-      .rejects.toThrow(/Impatto e urgenza si passano insieme/)
+      .rejects.toThrow(/Impact and urgency go together/)
     expect(runQuery).not.toHaveBeenCalled()
   })
 
@@ -271,7 +271,7 @@ describe('publishProblemTransition', () => {
    * pubblicati DUE con lo stesso payload: il tipo **stabile**
    * `problem.step_entered` (che una rinomina del passo non tocca) e l'**alias**
    * storico `problem.in_progress`, mantenuto perché a lui sono agganciate le
-   * regole di notifica di fabbrica e quelle già scritte dai tenant. Il nome del
+   * regole di notifica factory e quelle già scritte dai tenant. Il nome del
    * passo, con etichetta, scopo e categoria, è nel payload.
    */
   it('pubblica il tipo stabile E l\'alias col nome del passo, con i fatti del passo nel payload', async () => {

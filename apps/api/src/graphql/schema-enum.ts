@@ -43,13 +43,29 @@ export function enumTypeSDL(): string {
     «import_severity», i cui 28 valori sono chiavi di riconoscimento dei dati in
     arrivo, non voci di menu.
     """
-    valueLabels: [EnumValueLabel!]!
+    valueLabels(language: String): [EnumValueLabel!]!
   }
 
-  """Un valore del vocabolario e l'etichetta con cui si legge a schermo."""
+  """
+  Un valore del vocabolario e come si legge a schermo.
+
+  «label» e' l'etichetta nella lingua CHIESTA e c'e' sempre, col ripiego
+  dichiarato: lingua chiesta → italiano → il valore con le iniziali maiuscole.
+  Chi legge non deve ripiegare da se'.
+
+  «labels» porta le lingue in cui l'etichetta e' davvero scritta, e serve
+  all'editor del Dizionario, che mostra un campo per lingua. Una lingua assente
+  significa «non scritta», non «vuota».
+  """
   type EnumValueLabel {
     value: String!
     label: String!
+    labels: [LocalizedLabel!]!
+  }
+
+  type LocalizedLabel {
+    language: String!
+    label:    String!
   }
 
   input CreateEnumTypeInput {
@@ -85,9 +101,11 @@ export function enumTypeSDL(): string {
     defaultValue: String
   }
 
+  """Un'etichetta, per un valore e per UNA lingua. Un valore con due lingue manda due voci."""
   input EnumValueLabelInput {
-    value: String!
-    label: String!
+    value:    String!
+    language: String!
+    label:    String!
   }
 
   """Un valore che si sta togliendo (from) e il valore nuovo su cui riscrivere i record che lo usano (to, deve essere fra i valori nuovi)."""

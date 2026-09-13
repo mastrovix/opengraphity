@@ -119,6 +119,7 @@ function ValueInput({
   fieldCfg: FieldConfig | undefined
   onChange: (partial: Partial<FilterRule>) => void
 }) {
+  const { t } = useTranslation()
   if (!fieldCfg || NO_VALUE_OPS.has(rule.operator)) return null
 
   const type = fieldCfg.type
@@ -191,7 +192,7 @@ function ValueInput({
         onChange={(e) => onChange({ value: e.target.value })}
         style={{ ...SEL, minWidth: 140 }}
       >
-        <option value="">Seleziona…</option>
+        <option value="">{t('common.select')}</option>
         {(fieldCfg.options ?? []).map((opt) => (
           <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
@@ -215,7 +216,7 @@ function ValueInput({
       type="text"
       value={typeof rule.value === 'string' ? rule.value : ''}
       onChange={(e) => onChange({ value: e.target.value })}
-      placeholder="Valore…"
+      placeholder={t('filter.valuePlaceholderText')}
       style={{ ...INP, minWidth: 160 }}
     />
   )

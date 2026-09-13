@@ -75,7 +75,7 @@ describe('nome di tipo — sintassi', () => {
   it('senza niente da suggerire il messaggio si limita alla regola', () => {
     expect(suggestCITypeName('///')).toBeNull()
     const err = refusal(() => assertCITypeName('///', emptyReservedNames()))
-    expect(err.message).not.toContain('Scrivi per esempio')
+    expect(err.message).not.toContain('Write «')
     expect(err.message).toContain(CI_TYPE_NAME_RE.source)
   })
 })
@@ -97,7 +97,7 @@ describe('nome di tipo — collisioni con i tipi già nello schema', () => {
       expect(err.rule).toBe('typeNameTaken')
       expect(err.message).toContain('spedito col prodotto')
       // Il punto verificato: GraphQL FONDE i tipi omonimi, non lancia.
-      expect(err.message).toContain('FONDE in silenzio')
+      expect(err.message).toContain('MERGES them silently')
       expect(err.message).toContain(`«${n}_custom»`)
     })
 
@@ -127,15 +127,15 @@ describe('nome di tipo — collisioni con i tipi già nello schema', () => {
     })
     const err = refusal(() => assertCITypeName('incident', onlyQuery))
     expect(err.rule).toBe('typeNameTaken')
-    expect(err.message).toContain('la query «incidents»')
-    expect(err.message).toContain('non si assemblerebbe')
+    expect(err.message).toContain('the query «incidents»')
+    expect(err.message).toContain('would not assemble')
     expect(r.types.has('certificates')).toBe(true)
   })
 
   it('rifiuta la collisione sulla MUTATION generata', () => {
     const onlyMutation = { ...emptyReservedNames(), mutationFields: new Map([['createserver', 'createServer è una mutation dello schema di base']]) }
     const err = refusal(() => assertCITypeName('server', onlyMutation))
-    expect(err.message).toContain('la mutation «createServer»')
+    expect(err.message).toContain('the mutation «createServer»')
   })
 
   it('un nome libero passa anche con tutti i tipi spediti in elenco', () => {
@@ -168,7 +168,7 @@ describe('nome di campo — sintassi camelCase', () => {
   it('il rifiuto del trattino basso spiega PERCHÉ (la stessa proprietà Neo4j)', () => {
     const err = refusal(() => assertCIFieldName('cost_center'))
     expect(toSnakeCase('costCenter')).toBe('cost_center')
-    expect(err.message).toContain('stessa proprietà')
+    expect(err.message).toContain('the same Neo4j property')
   })
 })
 
@@ -179,7 +179,7 @@ describe('nome di campo — proprietà gestite dal prodotto', () => {
     const err = refusal(() => assertCIFieldName('tenantId', { typeLabel: 'Load Balancer' }))
     expect(err.rule).toBe('fieldNameReservedProperty')
     expect(err.message).toContain('tenant_id')
-    expect(err.message).toContain('il CI nascerebbe nel cliente scelto dal chiamante')
+    expect(err.message).toContain('the CI would be born in the tenant chosen by the caller')
     expect(err.message).toContain('Load Balancer')
   })
 
@@ -219,7 +219,7 @@ describe('nome di campo — campi base e doppioni', () => {
       expect(BASE_TYPE_FIELDS.has(n) || BASE_INPUT_FIELDS.has(n)).toBe(true)
       const err = refusal(() => assertCIFieldName(n))
       expect(err.rule).toBe('fieldNameBase')
-      expect(err.message).toContain('esiste già su ogni CI')
+      expect(err.message).toContain('already exists on every CI')
     })
 
   it('rifiuta un campo già presente sul tipo, anche con maiuscole diverse', () => {
@@ -232,7 +232,7 @@ describe('nome di campo — campi base e doppioni', () => {
   it('ogni suggerimento è a sua volta un nome accettabile', () => {
     for (const bad of ['tenantId', 'nameKey', 'name', 'status']) {
       const err = refusal(() => assertCIFieldName(bad))
-      const m = /«([^»]+)»\./.exec(err.message.slice(err.message.indexOf('Scrivi per esempio')))
+      const m = /«([^»]+)»\./.exec(err.message.slice(err.message.indexOf('Write «')))
       if (!m) continue
       expect(assertCIFieldName(m[1]!)).toBe(m[1])
     }
@@ -256,9 +256,9 @@ describe('assertGeneratableNames — la rete sotto generateSDL', () => {
   it('un tipo del cliente omonimo di uno base: rifiutato, e il messaggio nomina il tipo', () => {
     const err = refusal(() => assertGeneratableNames([type('server', ['os']), type('server', ['reparto'], 'Server del reparto')]))
     expect(err.rule).toBe('typeNameTaken')
-    expect(err.message).toContain('non si può generare')
+    expect(err.message).toContain('cannot be generated')
     expect(err.message).toContain('Server del reparto')
-    expect(err.message).toContain('eliminalo o rinominalo')
+    expect(err.message).toContain('delete it or rename it')
   })
 
   it('un nome non identificatore: rifiutato prima di arrivare all\'SDL', () => {
@@ -289,7 +289,7 @@ describe('assertGeneratableNames — la rete sotto generateSDL', () => {
     // nomi, e quella che fa fallire il merge di `Query`.
     const err = refusal(() => assertGeneratableNames([type('bus'), type('buse')]))
     expect(err.rule).toBe('typeNameTaken')
-    expect(err.message).toContain('la query «buses»')
+    expect(err.message).toContain('the query «buses»')
   })
 })
 

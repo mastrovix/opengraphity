@@ -101,24 +101,24 @@ describe('createChangeRFC', () => {
   it('rifiuta un change senza CI impattati', async () => {
     await expect(
       createChangeRFC({ title: 'Upgrade DB', affectedCIIds: [] }, ctx),
-    ).rejects.toThrow('Un change deve avere almeno un CI impattato')
+    ).rejects.toThrow('A change must have at least one impacted CI')
     expect(workflowEngine.createInstance).not.toHaveBeenCalled()
   })
 
   it('rifiuta un change senza title', async () => {
     await expect(
       createChangeRFC({ title: '  ', affectedCIIds: ['ci-1'] }, ctx),
-    ).rejects.toThrow('title è obbligatorio')
+    ).rejects.toThrow('title is required')
     expect(workflowEngine.createInstance).not.toHaveBeenCalled()
   })
 
   it('rifiuta un change senza WHY o senza WHAT', async () => {
     await expect(
       createChangeRFC({ title: 'X', why: '  ', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx),
-    ).rejects.toThrow(/Perché.*WHY|WHY/)
+    ).rejects.toThrow(/why/i)
     await expect(
       createChangeRFC({ title: 'X', why: 'perché', what: '  ', affectedCIIds: ['ci-1'] }, ctx),
-    ).rejects.toThrow(/Cosa.*WHAT|WHAT/)
+    ).rejects.toThrow(/what/i)
     expect(workflowEngine.createInstance).not.toHaveBeenCalled()
   })
 
@@ -131,7 +131,7 @@ describe('createChangeRFC', () => {
     })
     await expect(
       createChangeRFC({ title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1', 'ci-2'] }, ctx),
-    ).rejects.toThrow('CI DB Prod manca di Owner Group o Support Group')
+    ).rejects.toThrow('CI DB Prod has no Owner Group or Support Group')
     expect(workflowEngine.createInstance).not.toHaveBeenCalled()
   })
 
@@ -141,7 +141,7 @@ describe('createChangeRFC', () => {
     })
     await expect(
       createChangeRFC({ title: 'Upgrade', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx),
-    ).rejects.toThrow('CI App Portale manca di Owner Group o Support Group')
+    ).rejects.toThrow('CI App Portale has no Owner Group or Support Group')
   })
 
   it('crea il change: id + code progressivo, tasks, workflow instance e audit', async () => {

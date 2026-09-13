@@ -19,7 +19,7 @@ import { parseArgs }  from 'node:util'
 import { getSession, initSchema, listMigrationStatus, runMigrations } from '@opengraphity/neo4j'
 import { MIGRATIONS } from './migrations/index.js'
 import { SHARED_TENANT_ID } from './migrations/20260918_1910_provision_tenant_data.js'
-import { tenantProvisioningGaps } from '../lib/provisionTenantData.js'
+import { tenantProvisioningGaps, formatGap, type ProvisioningGap } from '../lib/provisionTenantData.js'
 import { runScript }  from './lib/runScript.js'
 
 const { values } = parseArgs({
@@ -76,7 +76,7 @@ async function printIncompleteTenants(session: Parameters<typeof tenantProvision
     WHERE t.id IS NOT NULL AND t.id <> $shared
     RETURN t.id AS id ORDER BY t.id
   `, { shared: SHARED_TENANT_ID })
-  const incomplete: Array<[string, string[]]> = []
+  const incomplete: Array<[string, ProvisioningGap[]]> = []
   for (const record of r.records) {
     const tenantId = String(record.get('id'))
     const gaps = await tenantProvisioningGaps(session, tenantId)
@@ -87,6 +87,7 @@ async function printIncompleteTenants(session: Parameters<typeof tenantProvision
     return
   }
   console.log(`\n${incomplete.length} tenant INCOMPLETI su ${r.records.length}:`)
-  for (const [tenantId, gaps] of incomplete) console.log(`  ${tenantId}: ${gaps.join(' · ')}`)
+  // `formatGap`: la resa italiana sta qui, non nella funzione che trova i buchi.
+  for (const [tenantId, gaps] of incomplete) console.log(`  ${tenantId}: ${gaps.map(formatGap).join(' · ')}`)
   console.log(`  → li completa la migrazione 20260918_1910_provision_tenant_data (idempotente, additiva).`)
 }

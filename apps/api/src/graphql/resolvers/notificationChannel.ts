@@ -1,4 +1,4 @@
-import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../lib/errors.js'
 import { randomUUID } from 'crypto'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
@@ -7,7 +7,7 @@ import { ValidationError } from '../../lib/errors.js'
 
 const PLATFORMS = ['slack', 'teams', 'email'] as const
 function assertPlatform(p: string): void {
-  if (!(PLATFORMS as readonly string[]).includes(p)) throw new ValidationError(`platform "${p}" non supportata (ammesse: ${PLATFORMS.join(', ')})`)
+  if (!(PLATFORMS as readonly string[]).includes(p)) throw new ValidationError(`platform "${p}" is not supported (allowed: ${PLATFORMS.join(', ')})`, { key: 'errors.channel.platform', params: { platform: p, allowed: PLATFORMS.join(', ') } })
 }
 
 function mapChannel(n: Record<string, unknown>) {
@@ -86,7 +86,7 @@ async function updateNotificationChannel(
         },
       ),
     )
-    if (!result.records.length) throw new GraphQLError('NotificationChannel non trovato')
+    if (!result.records.length) throw new NotFoundError('NotificationChannel')
     return mapChannel(result.records[0]!.get('n').properties as Record<string, unknown>)
   }, true)
 }
@@ -111,7 +111,7 @@ async function testNotificationChannel(_: unknown, { id }: { id: string }, ctx: 
         { id, tenantId: ctx.tenantId },
       ),
     )
-    if (!result.records.length) throw new GraphQLError('NotificationChannel non trovato')
+    if (!result.records.length) throw new NotFoundError('NotificationChannel')
     const ch = mapChannel(result.records[0]!.get('n').properties as Record<string, unknown>)
     // The notifications package re-checks too (UnsafeUrlError); checking here
     // first surfaces a proper ValidationError to the caller.
@@ -129,7 +129,7 @@ async function linkSlackAccount(_: unknown, { slackId }: { slackId: string }, ct
         { userId: ctx.userId, tenantId: ctx.tenantId, slackId },
       ),
     )
-    if (!result.records.length) throw new GraphQLError('User non trovato')
+    if (!result.records.length) throw new NotFoundError('User')
     const u = result.records[0]!.get('u').properties as Record<string, unknown>
     return {
       id:       u['id']        as string,

@@ -5,7 +5,7 @@
  * index. Truth-telling contract: `ready: false` when the embedding has not
  * been computed yet (async pipeline) — never conflated with "no results".
  */
-import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../lib/errors.js'
 import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { vectorIndexName } from '../../services/embeddings.js'
@@ -25,7 +25,7 @@ async function loadEmbedding(
       MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
       RETURN i.embedding AS embedding
     `, { incidentId, tenantId })
-    if (!row) throw new GraphQLError('Incident non trovato', { extensions: { code: 'NOT_FOUND' } })
+    if (!row) throw new NotFoundError('Incident')
     return row.embedding
   } finally {
     await session.close()

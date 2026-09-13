@@ -46,24 +46,24 @@ beforeEach(() => {
 
 describe('assertQuestionUsable — il testo e le etichette', () => {
   it('un testo vuoto è rifiutato: è ciò che l\'operatore legge nel task', async () => {
-    await expect(crea({ text: '   ' })).rejects.toThrow(/testo della domanda non puo essere vuoto/i)
+    await expect(crea({ text: '   ' })).rejects.toThrow(/question text cannot be empty/i)
   })
 
   it('un\'opzione SENZA ETICHETTA è rifiutata, e il messaggio dice cosa si vedrebbe', async () => {
     const err = await crea({ options: [{ label: 'No', score: 3, sortOrder: 0 }, { label: '  ', score: 1, sortOrder: 1 }] })
       .then(() => null, (e: Error) => e)
     expect(err).not.toBeNull()
-    expect(err!.message).toMatch(/senza testo/)
-    expect(err!.message).toMatch(/voce bianca/)
+    expect(err!.message).toMatch(/has no text|have no text/)
+    expect(err!.message).toMatch(/blank entry/)
   })
 
   it('due opzioni con lo stesso testo sono rifiutate: il punteggio diventa inspiegabile', async () => {
     await expect(crea({ options: [{ label: 'No', score: 1, sortOrder: 0 }, { label: 'No', score: 3, sortOrder: 1 }] }))
-      .rejects.toThrow(/ripetono "No"/)
+      .rejects.toThrow(/repeat "No"/)
   })
 
   it('senza opzioni è rifiutata', async () => {
-    await expect(crea({ options: [] })).rejects.toThrow(/almeno una opzione/)
+    await expect(crea({ options: [] })).rejects.toThrow(/at least one option/)
   })
 })
 
@@ -72,29 +72,29 @@ describe('assertQuestionUsable — i punteggi (regola di dominio)', () => {
     const err = await crea({ options: [{ label: 'Sì', score: 0, sortOrder: 0 }, { label: 'No', score: 3, sortOrder: 1 }] })
       .then(() => null, (e: Error) => e)
     expect(err).not.toBeNull()
-    expect(err!.message).toMatch(/maggiore o uguale a 1/)
+    expect(err!.message).toMatch(/must be an integer of 1 or more/)
     // Il messaggio dice cosa fare, non solo cosa è vietato.
-    expect(err!.message).toMatch(/il punteggio piu basso \(1\), non zero/)
+    expect(err!.message).toMatch(/the lowest score \(1\), not zero/)
   })
 
   it('nemmeno un punteggio negativo o frazionario', async () => {
     await expect(crea({ options: [{ label: 'a', score: -2, sortOrder: 0 }, { label: 'b', score: 3, sortOrder: 1 }] }))
-      .rejects.toThrow(/maggiore o uguale a 1/)
+      .rejects.toThrow(/must be an integer of 1 or more/)
     await expect(crea({ options: [{ label: 'a', score: 1.5, sortOrder: 0 }, { label: 'b', score: 3, sortOrder: 1 }] }))
-      .rejects.toThrow(/intero/)
+      .rejects.toThrow(/integer/)
   })
 
   it('se TUTTE valgono lo stesso, la domanda non misura niente', async () => {
     const err = await crea({ options: [{ label: 'a', score: 2, sortOrder: 0 }, { label: 'b', score: 2, sortOrder: 1 }] })
       .then(() => null, (e: Error) => e)
     expect(err).not.toBeNull()
-    expect(err!.message).toMatch(/Tutte le opzioni valgono 2/)
-    expect(err!.message).toMatch(/rispondere non cambierebbe il rischio/)
+    expect(err!.message).toMatch(/Every option is worth 2/)
+    expect(err!.message).toMatch(/answering would not change the risk/)
   })
 
   it('una sola opzione ricade nella stessa regola: la risposta è forzata', async () => {
     await expect(crea({ options: [{ label: 'Confermo', score: 1, sortOrder: 0 }] }))
-      .rejects.toThrow(/rispondere non cambierebbe il rischio/)
+      .rejects.toThrow(/answering would not change the risk/)
   })
 
   it('punteggi validi e diversi: passa', async () => {
@@ -105,7 +105,7 @@ describe('assertQuestionUsable — i punteggi (regola di dominio)', () => {
     // Era il buco: `updateAssessmentQuestion` non guardava le opzioni affatto.
     await expect(updateAssessmentQuestion(null, {
       id: 'q1', input: { options: [{ label: 'x', score: 0, sortOrder: 0 }, { label: 'y', score: 2, sortOrder: 1 }] },
-    } as never, ctx)).rejects.toThrow(/maggiore o uguale a 1/)
+    } as never, ctx)).rejects.toThrow(/must be an integer of 1 or more/)
   })
 })
 

@@ -200,7 +200,7 @@ function VisibilityRuleForm({ form, fields, isEnumTrigger, triggerField, onChang
           <label style={labelS}>{t('fieldRules.visibility.triggerValue')}</label>
           {isEnumTrigger && triggerField?.enumValues.length ? (
             <Select style={selectS} value={form.triggerValue} onChange={(e) => onChange({ triggerValue: e.target.value })}>
-              <option value="">— scegli —</option>
+              <option value="">{t('pages.taskView.choose')}</option>
               {triggerField.enumValues.map((v) => <option key={v} value={v}>{v}</option>)}
             </Select>
           ) : (

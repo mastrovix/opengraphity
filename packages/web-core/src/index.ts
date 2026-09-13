@@ -16,6 +16,8 @@ export {
   createApolloClient,
   createErrorLink,
   createAuthLink,
+  createI18nLink,
+  type TraduciErrore,
   createDeduper,
   DEFAULT_DEDUPE_MS,
   NETWORK_DEDUPE_KEY,

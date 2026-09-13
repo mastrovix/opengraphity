@@ -411,7 +411,7 @@ export function DomainMatricesPage() {
         <PageTitle icon={<Table2 size={22} color="var(--color-icon-accent)" />}>
           {t('pages.domainMatrices.title')}
         </PageTitle>
-        <p style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, marginTop: 4, marginBottom: 0 }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
           {t('pages.domainMatrices.subtitle')}
         </p>
       </div>

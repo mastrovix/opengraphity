@@ -391,7 +391,7 @@ export function IncidentDetailPage() {
 
       {incident.major && (
         <div role="alert" style={{ background: 'var(--color-danger)', color: colors.white, padding: '10px 16px', borderRadius: 8, marginBottom: 12, fontWeight: 700, letterSpacing: '0.03em', display: 'flex', alignItems: 'center', gap: 8 }}>
-          ⚠ MAJOR INCIDENT
+          {t('pages.incidentDetail.major')}
         </div>
       )}
 
@@ -418,7 +418,7 @@ export function IncidentDetailPage() {
             setEditOpen(true)
           }}
         >
-          Modifica
+          {t('common.edit')}
         </Button>
         <Button
           variant="secondary"
@@ -440,7 +440,7 @@ export function IncidentDetailPage() {
             icon={kbDraftLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
             onClick={() => void createKbDraft({ variables: { incidentId: incident.id } })}
           >
-            Bozza articolo KB
+            {t('pages.incidentDetail.kbDraft')}
           </Button>
         )}
         <Button
@@ -458,7 +458,7 @@ export function IncidentDetailPage() {
       <Modal
         open={editOpen}
         onClose={() => setEditOpen(false)}
-        title="Modifica incident"
+        title={t('pages.incidentDetail.editTitle')}
         as="form"
         onSubmit={(e) => {
           e.preventDefault()
@@ -471,29 +471,29 @@ export function IncidentDetailPage() {
         }}
         footer={
           <>
-            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>Annulla</Button>
-            <Button type="submit" disabled={savingEdit || editForm.title.trim().length === 0}>{savingEdit ? 'Salvataggio…' : 'Salva'}</Button>
+            <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="submit" disabled={savingEdit || editForm.title.trim().length === 0}>{savingEdit ? t('common.saving') : t('common.save')}</Button>
           </>
         }
       >
         <div style={{ marginBottom: 14 }}>
-          <FieldLabel htmlFor={editIds.title}>Titolo *</FieldLabel>
+          <FieldLabel htmlFor={editIds.title}>{t('pages.serviceRequestDetail.titleRequired')}</FieldLabel>
           {/* eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: primo campo del modal di modifica aperto dall'utente */}
           <Input id={editIds.title} value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} required autoFocus />
         </div>
         <div style={{ marginBottom: 14 }}>
-          <FieldLabel htmlFor={editIds.description}>Descrizione</FieldLabel>
+          <FieldLabel htmlFor={editIds.description}>{t('common.description')}</FieldLabel>
           <Textarea id={editIds.description} value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={4} />
         </div>
         <div className="og-pair" style={{ alignItems: 'end' }}>
           <div>
-            <FieldLabel htmlFor={editIds.impact}>Impatto</FieldLabel>
+            <FieldLabel htmlFor={editIds.impact}>{t('detail.impact')}</FieldLabel>
             <Select id={editIds.impact} value={editForm.impact} onChange={(e) => setEditForm({ ...editForm, impact: e.target.value })}>
               {(matrix?.impacts ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
             </Select>
           </div>
           <div>
-            <FieldLabel htmlFor={editIds.urgency}>Urgenza</FieldLabel>
+            <FieldLabel htmlFor={editIds.urgency}>{t('detail.urgency')}</FieldLabel>
             <Select id={editIds.urgency} value={editForm.urgency} onChange={(e) => setEditForm({ ...editForm, urgency: e.target.value })}>
               {(matrix?.urgencies ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
             </Select>
@@ -503,11 +503,11 @@ export function IncidentDetailPage() {
           {/* Dalla matrice del cliente, non da una copia nel web (revisione ·
               C·N-3): una coppia che la matrice non copre lo dice, invece di
               mostrare una priorità che il server poi rifiuta. */}
-          Priorità risultante: <strong>{
+          {t('pages.incidentDetail.derivedPriority')} <strong>{
             (() => {
               const p = derivePriority(matrix, editForm.impact, editForm.urgency)
               return p === null
-                ? 'non coperta dalla matrice — completala in Impostazioni → Matrici di dominio'
+                ? t('pages.domainMatrices.notCovered')
                 : `${priorityCode(matrix?.priorities ?? [], p)} — ${p}`
             })()
           }</strong>
@@ -688,7 +688,7 @@ export function IncidentDetailPage() {
 
           {/* Ticket collegati (sezione unica, stile change) */}
           <UnifiedLinkedTickets
-            title="Ticket collegati"
+            title={t('pages.changeDetail.linkedTickets')}
             excludeId={incident.id}
             types={[
               {
@@ -794,8 +794,8 @@ export function IncidentDetailPage() {
         onClose={() => { setIsTransitionDialogOpen(false); setTransitionNotes(''); setNotesError('') }}
         title={
           pendingTransition?.inputField === 'rootCause'
-            ? 'Root Cause Analysis'
-            : `Transizione → ${pendingTransition?.toStep ?? ''}`
+            ? t('pages.incidents.rootCauseAnalysis')
+            : t('pages.incidents.transitionTo', { step: pendingTransition?.toStep ?? '' })
         }
         width={480}
         footer={
@@ -805,7 +805,7 @@ export function IncidentDetailPage() {
               onClick={() => { setIsTransitionDialogOpen(false); setTransitionNotes(''); setNotesError('') }}
               style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500 }}
             >
-              Annulla
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -836,7 +836,7 @@ export function IncidentDetailPage() {
               }}
               style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)', color: transitionNotes.trim().length >= 10 ? colors.white : 'var(--text-muted)' }}
             >
-              {transitioning ? 'Esecuzione...' : 'Conferma'}
+              {transitioning ? t('pages.incidentDetail.running') : t('common.confirm')}
             </button>
           </>
         }
@@ -845,8 +845,8 @@ export function IncidentDetailPage() {
           <>
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', marginBottom: 16, marginTop: 0 }}>
               {pendingTransition.inputField === 'rootCause'
-                ? 'Descrivi la causa radice prima di risolvere (minimo 10 caratteri).'
-                : 'Aggiungi una nota per questa transizione (minimo 10 caratteri).'}
+                ? t('pages.incidentDetail.rootCauseHint')
+                : t('pages.incidentDetail.transitionNoteHint')}
             </p>
             <button
               type="button"
@@ -860,12 +860,12 @@ export function IncidentDetailPage() {
               }}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 8, padding: '5px 12px', borderRadius: 7, border: '1px solid var(--color-brand)', background: 'transparent', color: 'var(--color-brand)', fontSize: 'var(--font-size-label)', fontWeight: 500, cursor: draftLoading ? 'wait' : 'pointer' }}
             >
-              <Sparkles size={12} /> {draftLoading ? 'Genero bozza dalle attività…' : 'Bozza AI dalle attività'}
+              <Sparkles size={12} /> {draftLoading ? t('pages.incidentDetail.aiDraftRunning') : t('pages.incidentDetail.aiDraft')}
             </button>
             <Textarea
               value={transitionNotes}
               onChange={(e) => { setTransitionNotes(e.target.value); setNotesError('') }}
-              placeholder={pendingTransition.inputField === 'rootCause' ? 'Es: Memory leak in payment-service v2.3.1...' : 'Note sulla transizione...'}
+              placeholder={t(pendingTransition.inputField === 'rootCause' ? 'pages.incidentDetail.rootCausePlaceholder' : 'pages.problemDetail.transitionNotes')}
               rows={4}
               style={{ resize: 'none', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)' }}
               // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: textarea del dialogo di transizione aperto dall'utente

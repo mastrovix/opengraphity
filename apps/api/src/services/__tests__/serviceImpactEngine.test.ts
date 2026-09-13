@@ -63,7 +63,7 @@ vi.mock('../../lib/ciMetamodelForTenant.js', () => ({
 
 vi.mock('../../lib/workflowHelpers.js', () => ({
   // Ondata 4 · A4-1: i passi della finestra di change vengono dallo SCOPO.
-  // Il tenant di prova ha i nomi di fabbrica con gli scopi della migrazione.
+  // Il tenant di prova ha i nomi factory con gli scopi della migrazione.
   getStepNamesByPurpose: vi.fn(async (_s: unknown, _t: unknown, _e: unknown, purposes: readonly string[]) =>
     purposes.includes('implementation') ? ['deployment'] : ['scheduled']),
 }))
@@ -688,13 +688,17 @@ describe('limite di piano sulle mappe (max_service_maps)', () => {
   it('limite raggiunto → BAD_USER_INPUT con piano, limite e mappe esistenti; nessuna costruzione', async () => {
     onCypher([[PLAN_RE, planRow({ plan: 'starter', maxServiceMaps: 5, maps: 5 })]])
     await expect(create()).rejects.toMatchObject({
-      message: 'piano starter: massimo 5 mappe di servizio, ne esistono già 5',
-      extensions: { code: 'BAD_USER_INPUT' },
+      message: 'plan starter: at most 5 service maps, 5 already exist',
+      // La CHIAVE è il contratto verso il client: il messaggio è per i log.
+      extensions: {
+        code: 'BAD_USER_INPUT',
+        i18n: { key: 'errors.serviceMap.planLimit', params: { plan: 'starter', max: 5, existing: 5 } },
+      },
     })
     expect(callMatching(/REALIZES/)).toBeUndefined()
     // anche oltre il limite (creazioni simultanee sull'ultimo posto)
     onCypher([[PLAN_RE, planRow({ plan: 'pro', maxServiceMaps: 50, maps: 51 })]])
-    await expect(create()).rejects.toThrow('piano pro: massimo 50 mappe di servizio, ne esistono già 51')
+    await expect(create()).rejects.toThrow('plan pro: at most 50 service maps, 51 already exist')
   })
 
   it('sotto il limite (ultima mappa disponibile) → la creazione procede', async () => {

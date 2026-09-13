@@ -105,7 +105,7 @@ export function KBListPage() {
             to="/tickets/new"
             style={{ color: colors.brand, fontWeight: 500, fontSize: 10 }}
           >
-            + Apri un ticket
+            {t('kb.openTicket')}
           </Link>
         </div>
       ) : (

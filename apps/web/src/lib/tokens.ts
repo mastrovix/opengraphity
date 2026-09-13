@@ -190,7 +190,7 @@ const ERROR_STYLE = { bg: 'var(--color-danger)', color: 'var(--color-white)' }
 export function lookupOrError<T>(map: Record<string, T>, key: string, mapName: string, errorFallback: T): T {
   const val = map[key]
   if (val === undefined) {
-    console.error(`[${mapName}] valore sconosciuto: "${key}"`)
+    console.error(`[${mapName}] unknown value: "${key}"`)
     return errorFallback
   }
   return val

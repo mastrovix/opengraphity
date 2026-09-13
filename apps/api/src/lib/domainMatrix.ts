@@ -250,9 +250,13 @@ export async function resolveDomainMatrix(
   const out = matrix.entries[key]
   if (out === undefined) {
     throw new ValidationError(
-      `Matrice "${kind}" del cliente ${tenantId}: nessun valore per ${spec.inputs.map((i, n) => `${i}="${values[n]}"`).join(', ')}. ` +
-      `Completa la matrice in Impostazioni → Matrici di dominio` +
-      (matrix.isDefault ? ' (ora è quella di fabbrica: è possibile che tu abbia rinominato un valore del vocabolario senza aggiornarla).' : '.'),
+      `Matrix "${kind}" of tenant ${tenantId}: no value for ${spec.inputs.map((i, n) => `${i}="${values[n]}"`).join(', ')}. `
+      + `Complete the matrix in Settings → Domain matrices`
+      + (matrix.isDefault ? ' (it is currently the factory one: you may have renamed a dictionary value without updating it).' : '.'),
+      {
+        key: matrix.isDefault ? 'errors.matrix.noValueFactory' : 'errors.matrix.noValue',
+        params: { matrix: kind, combination: spec.inputs.map((i, n) => `${i}="${values[n]}"`).join(', ') },
+      },
     )
   }
   return out
@@ -273,10 +277,10 @@ export async function resolveDomainMatrix(
 export async function assertDomainValue(tenantId: string, vocabulary: string, value: unknown): Promise<string> {
   const allowed = await domainVocabulary(tenantId, vocabulary)
   if (typeof value !== 'string' || value === '') {
-    throw new ValidationError(`${vocabulary}: valore assente o non testuale (${JSON.stringify(value ?? null)}). Ammessi: ${allowed.join(', ')}.`)
+    throw new ValidationError(`${vocabulary}: value missing or not a string (${JSON.stringify(value ?? null)}). Allowed: ${allowed.join(', ')}.`, { key: 'errors.vocabulary.missingValue', params: { vocabulary, allowed: allowed.join(', ') } })
   }
   if (!allowed.includes(value)) {
-    throw new ValidationError(`${vocabulary}: "${value}" non è nel vocabolario di questo cliente. Ammessi: ${allowed.join(', ')}.`)
+    throw new ValidationError(`${vocabulary}: "${value}" is not in the dictionary of this tenant. Allowed: ${allowed.join(', ')}.`, { key: 'errors.vocabulary.outOfVocabulary', params: { vocabulary, value, allowed: allowed.join(', ') } })
   }
   return value
 }

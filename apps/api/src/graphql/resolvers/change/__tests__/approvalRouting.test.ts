@@ -28,7 +28,7 @@ vi.mock('../../../../lib/domainMatrix.js', () => import('../../../../lib/__tests
 // Rimedio 3: le soglie delle fasce di rischio sono dato del cliente, quindi
 // `deriveChangePriority` legge il tenant anche solo per sapere che fascia è un
 // punteggio. Questo test misura la rotta d'approvazione: il doppio risponde con
-// le soglie di fabbrica senza grafo.
+// le soglie factory senza grafo.
 vi.mock('../../../../lib/riskBands.js', () => import('../../../../lib/__tests__/riskBandsFake.js'))
 
 vi.mock('../../../../lib/workflowHelpers.js', () => ({

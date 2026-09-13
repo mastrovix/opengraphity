@@ -102,11 +102,11 @@ describe('resolveDomainMatrix — mai un default silenzioso', () => {
   it('una cella mancante è un errore che nomina matrice, combinazione e la strada', async () => {
     reads([])
     const err = await resolveDomainMatrix('c-one', 'priority', 'alto', 'urgente').then(() => null, (e: unknown) => e)
-    expect(String((err as Error).message)).toMatch(/Matrice "priority"/)
+    expect(String((err as Error).message)).toMatch(/Matrix "priority"/)
     expect(String((err as Error).message)).toMatch(/impact="alto", urgency="urgente"/)
-    expect(String((err as Error).message)).toMatch(/Matrici di dominio/)
-    // e dice che la matrice è ancora quella di fabbrica: è l'indizio vero
-    expect(String((err as Error).message)).toMatch(/di fabbrica/)
+    expect(String((err as Error).message)).toMatch(/Domain matrices/)
+    // e dice che la matrice è ancora quella factory: è l'indizio vero
+    expect(String((err as Error).message)).toMatch(/factory/)
   })
 
   it('il numero di valori deve corrispondere alle dimensioni', async () => {
@@ -125,7 +125,7 @@ describe('resolveDomainMatrix — mai un default silenzioso', () => {
     reads([])
     expect(await resolveDomainMatrix('c-one', 'service_impact', 'office_productivity')).toBe('medium')
     reads([])
-    await expect(resolveDomainMatrix('c-one', 'service_impact', 'critical')).rejects.toThrow(/nessun valore per service_criticality="critical"/)
+    await expect(resolveDomainMatrix('c-one', 'service_impact', 'critical')).rejects.toThrow(/no value for service_criticality="critical"/)
   })
 })
 
@@ -133,7 +133,7 @@ describe('assertDomainValue — il punto unico', () => {
   it('il vocabolario del cliente vince su quello di sistema', async () => {
     loadTenantEnumOverrides.mockResolvedValue(new Map([['severity', { id: 'e1', name: 'severity', values: ['p1', 'p2'] }]]))
     expect(await assertDomainValue('c-one', 'severity', 'p1')).toBe('p1')
-    await expect(assertDomainValue('c-one', 'severity', 'critical')).rejects.toThrow(/"critical" non è nel vocabolario di questo cliente. Ammessi: p1, p2/)
+    await expect(assertDomainValue('c-one', 'severity', 'critical')).rejects.toThrow(/"critical" is not in the dictionary of this tenant. Allowed: p1, p2/)
   })
 
   it('senza vocabolario proprio usa quello di sistema', async () => {
@@ -143,7 +143,7 @@ describe('assertDomainValue — il punto unico', () => {
 
   it('un valore assente non passa (chi lo accetta deve dirlo prima)', async () => {
     reads([{ values: ['high'] }])
-    await expect(assertDomainValue('c-one', 'severity', null)).rejects.toThrow(/valore assente o non testuale/)
+    await expect(assertDomainValue('c-one', 'severity', null)).rejects.toThrow(/value missing or not a string/)
   })
 
   it('un vocabolario che non esiste da nessuna parte è un errore, non un elenco vuoto', async () => {

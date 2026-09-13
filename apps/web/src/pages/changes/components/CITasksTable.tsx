@@ -68,7 +68,7 @@ function CIExpandedRow({ a }: { a: AffectedCI }) {
       )}
 
       <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', marginBottom: 6 }}>Task</div>
+        <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', marginBottom: 6 }}>{t('changeTasks.tasks')}</div>
         {a.assessmentOwner && (
           <TaskStatusRow label={t('changeTasks.functional')} code={a.assessmentOwner.code} status={a.assessmentOwner.status ?? null}
             actor={a.assessmentOwner.completedBy?.name} date={a.assessmentOwner.completedAt}
@@ -180,11 +180,11 @@ export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = tru
               )}</span>
               <span style={{ width: 130 }}>
                 {done
-                  ? <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-success)', textTransform: 'uppercase' }}>COMPLETED</span>
-                  : <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-trigger-sla-breach)', textTransform: 'uppercase' }}>NOT YET COMPLETED</span>
+                  ? <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-success)', textTransform: 'uppercase' }}>{t('changeTasks.completed')}</span>
+                  : <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-trigger-sla-breach)', textTransform: 'uppercase' }}>{t('changeTasks.notCompleted')}</span>
                 }
               </span>
-              <span style={{ width: 90 }}>{tid && <Link to={`/tasks/${tid}`} style={{ padding: '3px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, backgroundColor: 'var(--color-brand)', color: colors.white, textDecoration: 'none' }}>Apri task</Link>}</span>
+              <span style={{ width: 90 }}>{tid && <Link to={`/tasks/${tid}`} style={{ padding: '3px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, backgroundColor: 'var(--color-brand)', color: colors.white, textDecoration: 'none' }}>{t('changeTasks.openTask')}</Link>}</span>
             </div>
             {isOpen && <div style={{ paddingLeft: 28 }}><CIExpandedRow a={a} /></div>}
           </div>

@@ -44,30 +44,32 @@ function assertQuestionUsable(
   options: readonly OptionInput[] | null | undefined,
 ): void {
   if (text !== null && text !== undefined && text.trim() === '') {
-    throw new ValidationError('Il testo della domanda non puo essere vuoto: e cio che l\'operatore legge nel task.')
+    throw new ValidationError('The question text cannot be empty: it is what the operator reads in the task.', { key: 'errors.question.textEmpty' })
   }
   if (options === null || options === undefined) return
-  if (options.length === 0) throw new ValidationError('Una domanda deve avere almeno una opzione')
+  if (options.length === 0) throw new ValidationError('A question must have at least one option', { key: 'errors.question.noOptions' })
 
   const vuote = options.filter((o) => typeof o.label !== 'string' || o.label.trim() === '')
   if (vuote.length) {
     throw new ValidationError(
-      `${vuote.length === 1 ? "Un'opzione di risposta e senza testo" : `${String(vuote.length)} opzioni di risposta sono senza testo`}: ` +
-      `nella tendina del task si vedrebbe una voce bianca, e chi la scegliesse non saprebbe cosa ha scelto. ` +
-      `Dai un'etichetta a ogni opzione, oppure togli le righe che non servono.`,
+      `${vuote.length === 1 ? 'One answer option has no text' : `${String(vuote.length)} answer options have no text`}: `
+      + `the task dropdown would show a blank entry, and whoever picked it would not know what they chose. `
+      + `Give every option a label, or remove the rows you do not need.`,
+      { key: 'errors.question.optionsWithoutText', params: { count: vuote.length } },
     )
   }
   const visti = new Set<string>()
   const doppie = options.map((o) => o.label.trim()).filter((l) => (visti.has(l) ? true : (visti.add(l), false)))
   if (doppie.length) {
     throw new ValidationError(
-      `Le opzioni ripetono ${[...new Set(doppie)].map((l) => `"${l}"`).join(', ')}: due risposte con lo stesso testo ` +
-      `e punteggi diversi rendono il punteggio di rischio non spiegabile.`,
+      `The options repeat ${[...new Set(doppie)].map((l) => `"${l}"`).join(', ')}: two answers with the same text `
+      + `and different scores make the risk score impossible to explain.`,
+      { key: 'errors.question.duplicateOptions', params: { options: [...new Set(doppie)].join(', ') } },
     )
   }
   const nonNumeriche = options.filter((o) => typeof o.score !== 'number' || !Number.isFinite(o.score))
   if (nonNumeriche.length) {
-    throw new ValidationError('Ogni opzione deve avere un punteggio numerico: alimenta il rischio della change.')
+    throw new ValidationError('Every option must have a numeric score: it feeds the change risk.', { key: 'errors.question.scoreRequired' })
   }
 
   // ── I PUNTEGGI (regola di dominio, terza revisione) ───────────────────────
@@ -87,16 +89,18 @@ function assertQuestionUsable(
   const sottoUno = options.filter((o) => !Number.isInteger(o.score) || o.score < 1)
   if (sottoUno.length) {
     throw new ValidationError(
-      `${sottoUno.map((o) => `"${o.label.trim()}"`).join(', ')}: il punteggio deve essere un intero maggiore o ` +
-      `uguale a 1. Una risposta che vale 0 non sposta il rischio della change, quindi la domanda non serve a ` +
-      `niente: dai alla risposta meno rischiosa il punteggio piu basso (1), non zero.`,
+      `${sottoUno.map((o) => `"${o.label.trim()}"`).join(', ')}: the score must be an integer of 1 or more. `
+      + `An answer worth 0 does not move the risk of the change, so the question measures nothing: `
+      + `give the least risky answer the lowest score (1), not zero.`,
+      { key: 'errors.question.scoreBelowOne', params: { options: sottoUno.map((o) => o.label.trim()).join(', ') } },
     )
   }
   const distinti = new Set(options.map((o) => o.score))
   if (distinti.size === 1) {
     throw new ValidationError(
-      `Tutte le opzioni valgono ${String([...distinti][0])}: rispondere non cambierebbe il rischio della change, ` +
-      `quindi la domanda non misura niente. Dai punteggi diversi alle risposte, dal meno al piu rischioso.`,
+      `Every option is worth ${String([...distinti][0])}: answering would not change the risk of the change, `
+      + `so the question measures nothing. Give the answers different scores, from the least to the most risky.`,
+      { key: 'errors.question.allSameScore', params: { score: String([...distinti][0]) } },
     )
   }
 }
@@ -108,7 +112,7 @@ export async function createAssessmentQuestion(
 ) {
   const { text, category, isCore, options } = args.input
   if (category !== 'functional' && category !== 'technical') {
-    throw new ValidationError('category deve essere "functional" o "technical"')
+    throw new ValidationError('category must be "functional" or "technical"', { key: 'errors.question.category' })
   }
   assertQuestionUsable(text, options)
   const id = uuidv4()
@@ -160,7 +164,7 @@ export async function updateAssessmentQuestion(
   const { id } = args
   const { text, category, isCore, isActive, options } = args.input
   if (category && category !== 'functional' && category !== 'technical') {
-    throw new ValidationError('category deve essere "functional" o "technical"')
+    throw new ValidationError('category must be "functional" or "technical"', { key: 'errors.question.category' })
   }
   assertQuestionUsable(text, options)
   return withSession(async (session) => {

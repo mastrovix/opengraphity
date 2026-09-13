@@ -21,8 +21,8 @@ vi.mock('@opengraphity/scripting', () => ({ runScript: vi.fn() }))
 // D-12: lo script di trasformazione è del cliente e passa dal limite di piano
 // (`Tenant.scripting_enabled`). Qui la lettura del tenant è simulata: il suo
 // contratto è pinnato da lib/__tests__/scriptingPlan.test.ts.
-const assertScriptingEnabled = vi.fn<(tenantId: string, what: string) => Promise<void>>(async () => {})
-vi.mock('../../lib/scriptingPlan.js', () => ({ assertScriptingEnabled: (t: string, w: string) => assertScriptingEnabled(t, w) }))
+const assertScriptingEnabled = vi.fn<(tenantId: string, what: string, whatKey?: string) => Promise<void>>(async () => {})
+vi.mock('../../lib/scriptingPlan.js', () => ({ assertScriptingEnabled: (t: string, w: string, k?: string) => assertScriptingEnabled(t, w, k) }))
 // Redis in memoria: lo script Lua INCR+EXPIRE conta per chiave; il suffisso
 // `:<minuto>` viene ignorato così un test a cavallo di due minuti non si azzera.
 const rateCounts = new Map<string, number>()
@@ -345,7 +345,7 @@ describe('fail-loud payload/config handling', () => {
     const res = await post('hook-1', { body: { summary: 'Da trasformare' } })
     expect(res.status).toBe(400)
     expect((await err(res)).message).toMatch(/non include gli script/)
-    expect(assertScriptingEnabled).toHaveBeenCalledWith('tenant-1', 'script di trasformazione del webhook hook-1')
+    expect(assertScriptingEnabled).toHaveBeenCalledWith('tenant-1', 'transform script of webhook hook-1', 'errors.scripting.what.webhook')
     expect(runScript).not.toHaveBeenCalled()
     expect(createIncident).not.toHaveBeenCalled()
   })
@@ -428,14 +428,14 @@ describe('fail-loud payload/config handling', () => {
 
   it('service ValidationError → 400 with the service message', async () => {
     const { ValidationError } = await import('../../lib/errors.js')
-    vi.mocked(createIncident).mockRejectedValueOnce(new ValidationError('Un incident deve avere almeno un CI impattato'))
+    vi.mocked(createIncident).mockRejectedValueOnce(new ValidationError('An incident must have at least one impacted CI'))
     const res = await post('hook-1')
     expect(res.status).toBe(400)
-    expect((await err(res)).message).toMatch(/CI impattato/)
+    expect((await err(res)).message).toMatch(/impacted CI/)
     // nessuna statistica di ricezione: l'unica scrittura è il motivo del rifiuto sul webhook
     expect(runQuery).toHaveBeenCalledTimes(1)
     expect(vi.mocked(runQuery).mock.calls[0]![1]).toMatch(/SET w\.last_error = \$message/)
-    expect(vi.mocked(runQuery).mock.calls[0]![2]).toMatchObject({ hookId: 'hook-1', tenantId: 'tenant-1', message: expect.stringMatching(/CI impattato/) })
+    expect(vi.mocked(runQuery).mock.calls[0]![2]).toMatchObject({ hookId: 'hook-1', tenantId: 'tenant-1', message: expect.stringMatching(/impacted CI/) })
   })
 
   it('unexpected error → 500 with a generic body; details only in the log', async () => {

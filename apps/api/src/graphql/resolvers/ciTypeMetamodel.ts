@@ -8,7 +8,7 @@ import { CHAIN_FAMILIES, chainFamiliesToJSON } from '../../lib/chainCalculator.j
 import { assertRelationshipTypeName, defaultServiceRoleOf } from '../../lib/ciMetamodelForTenant.js'
 import { describeCITypeUsage, loadCITypeUsage, type CITypeUsage } from '../../lib/ciTypeUsage.js'
 import { SETTABLE_SERVICE_NODE_ROLES } from '../../lib/serviceVocabularies.js'
-import { ValidationError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import {
   SYSTEM_TENANT, enumScopeClause, loadTenantEnumOverrides, applyEnumOverrides, assertEnumLinkable,
 } from '../../lib/enumScope.js'
@@ -81,10 +81,15 @@ const CONSEQUENCE: Record<TypeAction, string> = {
 function assertCIFieldType(value: unknown, what: string): string {
   if (isCIFieldType(value)) return value
   throw new GraphQLError(
-    `${what}: tipo di campo "${String(value)}" sconosciuto. Ammessi: ${CI_FIELD_TYPES.join(', ')}. ` +
-    `Un tipo che il generatore non sa tradurre fa degradare lo schema GraphQL di questo cliente: ` +
-    `tutti i suoi tipi CI spariscono dall'API finché il campo non viene corretto.`,
-    { extensions: { code: 'BAD_USER_INPUT', fieldType: value, allowedFieldTypes: [...CI_FIELD_TYPES] } },
+    `${what}: unknown field type "${String(value)}". Allowed: ${CI_FIELD_TYPES.join(', ')}. `
+    + `A type the generator cannot translate degrades this tenant's GraphQL schema: `
+    + `all of its CI types disappear from the API until the field is fixed.`,
+    {
+      extensions: {
+        code: 'BAD_USER_INPUT', fieldType: value, allowedFieldTypes: [...CI_FIELD_TYPES],
+        i18n: { key: 'errors.ciType.unknownFieldType', params: { what, fieldType: String(value), allowed: CI_FIELD_TYPES.join(', ') } },
+      },
+    },
   )
 }
 
@@ -93,9 +98,9 @@ function assertRelationDirection(value: unknown, what: string): string {
   const allowed = ['outgoing', 'incoming']
   if (typeof value === 'string' && allowed.includes(value)) return value
   throw new GraphQLError(
-    `${what}: direzione "${String(value)}" sconosciuta. Ammesse: ${allowed.join(', ')}. ` +
-    `Una direzione inventata non viene percorsa da nessuno: la relazione resterebbe nel disegnatore e inerte.`,
-    { extensions: { code: 'BAD_USER_INPUT' } },
+    `${what}: unknown direction "${String(value)}". Allowed: ${allowed.join(', ')}. `
+    + `An invented direction is walked by nobody: the relationship would sit in the designer, inert.`,
+    { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.unknownDirection', params: { what, direction: String(value), allowed: allowed.join(', ') } } } },
   )
 }
 
@@ -119,7 +124,7 @@ async function assertRelationTargetType(
 ): Promise<string> {
   const name = typeof value === 'string' ? value.trim() : ''
   if (name === '') {
-    throw new GraphQLError(`${what}: il tipo di arrivo è obbligatorio.`, { extensions: { code: 'BAD_USER_INPUT' } })
+    throw new GraphQLError(`${what}: the target type is required.`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.targetRequired', params: { what } } } })
   }
   // Una lettura sola: l'elenco serve sia a decidere sia a dirlo nel messaggio,
   // e un rifiuto che non elenca le alternative non aiuta nessuno a rimediare.
@@ -134,9 +139,9 @@ async function assertRelationTargetType(
   const names = (r.records[0]?.get('names') ?? []) as string[]
   if (names.includes(name)) return name
   throw new GraphQLError(
-    `${what}: il tipo "${name}" non esiste fra i tipi di questo cliente. ` +
-    `Disponibili: ${[...names].sort().join(', ')}.`,
-    { extensions: { code: 'BAD_USER_INPUT' } },
+    `${what}: type "${name}" does not exist among the types of this tenant. `
+    + `Available: ${[...names].sort().join(', ')}.`,
+    { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.notAmongTypes', params: { what, name, available: [...names].sort().join(', ') } } } },
   )
 }
 
@@ -153,11 +158,16 @@ async function assertCITypeQuotaAvailable(session: Session, tenantId: string): P
   const current = toNumber(r.records[0]?.get('n'))
   if (current < max) return
   throw new GraphQLError(
-    `Questo cliente ha già ${String(current)} tipi CI, che è il massimo. Ogni tipo entra nello schema GraphQL, ` +
-    `che viene ricostruito a ogni modifica del metamodello in ogni processo: oltre un certo numero il costo lo ` +
-    `pagano anche gli altri clienti. Elimina un tipo che non usi, oppure alza il limite ` +
-    `(MAX_CI_TYPES_PER_TENANT) sapendo cosa costa.`,
-    { extensions: { code: 'BAD_USER_INPUT', current, max } },
+    `This tenant already has ${String(current)} CI types, which is the maximum. Every type enters the GraphQL schema, `
+    + `which is rebuilt on every metamodel change in every process: beyond a certain number the cost is `
+    + `paid by the other tenants too. Delete a type you do not use, or raise the limit `
+    + `(MAX_CI_TYPES_PER_TENANT) knowing what it costs.`,
+    {
+      extensions: {
+        code: 'BAD_USER_INPUT', current, max,
+        i18n: { key: 'errors.ciType.tooMany', params: { current, max } },
+      },
+    },
   )
 }
 
@@ -172,12 +182,12 @@ async function assertTenantOwnedType(
       { typeId, tenantId },
     ),
   )
-  if (!r.records.length) throw new GraphQLError('CIType non trovato')
+  if (!r.records.length) throw new NotFoundError('CIType')
   const scope = r.records[0]!.get('scope') as string | null
   const name  = r.records[0]!.get('name')  as string
   const label = (r.records[0]!.get('label') as string | null) ?? name
   if (scope === 'tenant') return { name, label }
-  throw new ValidationError(`Il tipo "${label}" (${name}) è spedito col prodotto: è un solo tipo per tutti i clienti. ${CONSEQUENCE[action]}`)
+  throw new ValidationError(`Type "${label}" (${name}) ships with the product: it is one type for every tenant. ${CONSEQUENCE[action]}`, { key: 'errors.ciType.shipped', params: { label, name, consequence: CONSEQUENCE[action] } })
 }
 
 /**
@@ -215,8 +225,9 @@ function assertWrote(result: unknown, what: string): void {
     (c.relationshipsCreated ?? 0) + (c.relationshipsDeleted ?? 0)
   if (written > 0) return
   throw new ValidationError(
-    `${what}: non è stato scritto niente, e nessuna modifica è stata salvata. ` +
-    `L'elemento non esiste più, oppure il tipo è spedito col prodotto — un solo nodo per tutti i clienti, in sola lettura.`,
+    `${what}: nothing was written, and no change was saved. `
+    + `Either the item no longer exists, or the type ships with the product — one node for every tenant, read-only.`,
+    { key: 'errors.ciType.nothingWritten', params: { what } },
   )
 }
 
@@ -238,7 +249,7 @@ async function assertNoDuplicateRelationName(
     `, { typeId, tenantId, name }),
   )
   if (dup.records.length) {
-    throw new ValidationError(`Il tipo ha già una relazione «${String(name)}»: i nomi delle relazioni di un tipo sono unici.`)
+    throw new ValidationError(`The type already has a relationship "${String(name)}": relationship names are unique within a type.`, { key: 'errors.ciType.relationExists', params: { name: String(name) } })
   }
 }
 
@@ -306,7 +317,7 @@ async function assertEnumTypeLinkable(session: Session, enumTypeId: string, fiel
     ),
   )
   if (!r.records.length) {
-    throw new ValidationError(`Il vocabolario ${enumTypeId} non esiste: il campo "${fieldName}" non può essere agganciato.`)
+    throw new ValidationError(`Dictionary ${enumTypeId} does not exist: field "${fieldName}" cannot be attached to it.`, { key: 'errors.ciType.enumMissing', params: { enumTypeId, fieldName } })
   }
   const rec = r.records[0]!
   assertEnumLinkable(
@@ -429,7 +440,7 @@ export async function fetchCITypeById(id: string, tenantId: string) {
           collect(DISTINCT sr) AS systemRels
       `, { id, tenantId }),
     )
-    if (!r.records.length) throw new GraphQLError('CIType non trovato')
+    if (!r.records.length) throw new NotFoundError('CIType')
     const overrides = await loadTenantEnumOverrides(session, tenantId)
     const rec = r.records[0]
     return mapCITypeNode(
@@ -465,12 +476,12 @@ export function requireAdmin(ctx: GraphQLContext) {
 export function assertChainFamilies(value: string[] | undefined): string | null {
   if (value === undefined) return null
   if (!Array.isArray(value)) {
-    throw new GraphQLError(`chainFamilies deve essere una lista di famiglie (${CHAIN_FAMILIES.join(', ')}). Ricevuto: ${JSON.stringify(value)}`, { extensions: { code: 'BAD_USER_INPUT' } })
+    throw new GraphQLError(`chainFamilies must be a list of families (${CHAIN_FAMILIES.join(', ')}). Got: ${JSON.stringify(value)}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.chainFamiliesList', params: { allowed: CHAIN_FAMILIES.join(', '), got: JSON.stringify(value) } } } })
   }
   const seen = new Set<string>()
   for (const f of value) {
     if (typeof f !== 'string' || !(CHAIN_FAMILIES as readonly string[]).includes(f)) {
-      throw new GraphQLError(`chainFamilies: ${JSON.stringify(f)} non è una famiglia di catena valida (${CHAIN_FAMILIES.join(', ')})`, { extensions: { code: 'BAD_USER_INPUT' } })
+      throw new GraphQLError(`chainFamilies: ${JSON.stringify(f)} is not a valid chain family (${CHAIN_FAMILIES.join(', ')})`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.chainFamilyUnknown', params: { got: JSON.stringify(f), allowed: CHAIN_FAMILIES.join(', ') } } } })
     }
     if (seen.has(f)) {
       throw new GraphQLError(`chainFamilies: ${f} compare due volte`, { extensions: { code: 'BAD_USER_INPUT' } })
@@ -607,7 +618,7 @@ export function buildBaseCITypeResolver() {
           { tenantId: ctx.tenantId },
         ),
       )
-      if (!r.records.length) throw new GraphQLError('__base__ non trovato')
+      if (!r.records.length) throw new NotFoundError('__base__')
       const overrides = await loadTenantEnumOverrides(session, ctx.tenantId)
       const rec = r.records[0]
       return mapCITypeNode(
@@ -632,9 +643,9 @@ export function assertServiceRoleInput(value: string | null | undefined): string
   if (value === undefined || value === null) return value
   if (!(SETTABLE_SERVICE_NODE_ROLES as readonly string[]).includes(value)) {
     throw new GraphQLError(
-      `serviceRole: ${JSON.stringify(value)} non è un ruolo valido (${SETTABLE_SERVICE_NODE_ROLES.join(', ')}). ` +
-      `Il ruolo \`entry\` non si dichiara: nella mappa lo prende sempre il livello 1.`,
-      { extensions: { code: 'BAD_USER_INPUT' } },
+      `serviceRole: ${JSON.stringify(value)} is not a valid role (${SETTABLE_SERVICE_NODE_ROLES.join(', ')}). `
+      + `The \`entry\` role is not declared: in the map it always goes to level 1.`,
+      { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.serviceRoleUnknown', params: { got: JSON.stringify(value), allowed: SETTABLE_SERVICE_NODE_ROLES.join(', ') } } } },
     )
   }
   return value
@@ -654,23 +665,37 @@ async function assertCITypeNotInUse(
   const neo4jLabel = toPascalCase(type.name)
   const usage: CITypeUsage = await loadCITypeUsage(session, tenantId, typeId, type.name, neo4jLabel)
   const refs = describeCITypeUsage(usage)
+  /*
+    Il MESSAGGIO e per i log e per chi chiama l'API: inglese, e composto qui.
+    La FRASE per la persona no — e una chiave, e le quattro combinazioni
+    (elimina/disattiva × con o senza altri riferimenti) sono quattro chiavi
+    dichiarate, non pezzi di prosa incollati e passati come parametri: un
+    parametro che contiene una frase e prosa travestita da dato, e resta nella
+    lingua di chi l'ha scritta.
+  */
   const what = action === 'delete'
-    ? `Il tipo "${type.label}" (${type.name}) non è stato eliminato`
-    : `Il tipo "${type.label}" (${type.name}) non è stato disattivato`
+    ? `Type "${type.label}" (${type.name}) was not deleted`
+    : `Type "${type.label}" (${type.name}) was not deactivated`
   const consequence = action === 'delete'
-    ? `i loro dati e le loro relazioni resterebbero nel grafo senza comparire più da nessuna parte (liste, impatto, mappe dei servizi, ricerca): una perdita silenziosa.`
-    : `un tipo disattivato sparisce dalle letture come se fosse cancellato, quindi quei CI non comparirebbero più da nessuna parte.`
+    ? `their data and their relationships would stay in the graph without appearing anywhere any more (lists, impact, service maps, search): a silent loss.`
+    : `a deactivated type disappears from reads as if it were deleted, so those CIs would not appear anywhere any more.`
+  const suffisso = action === 'delete' ? 'Delete' : 'Deactivate'
 
   if (usage.cis > 0) {
     throw new ValidationError(
-      `${what}: ci sono ancora ${String(usage.cis)} CI di tipo ${neo4jLabel} in questo cliente, e ${consequence} ` +
-      `Sposta o elimina prima quei CI.` + (refs ? ` Il tipo è citato anche da: ${refs}.` : ''),
+      `${what}: there are still ${String(usage.cis)} CIs of type ${neo4jLabel} in this tenant, and ${consequence} `
+      + `Move or delete those CIs first.` + (refs ? ` The type is also referenced by: ${refs}.` : ''),
+      {
+        key: `errors.ciType.inUse${suffisso}${refs ? 'WithRefs' : ''}`,
+        params: { label: type.label, name: type.name, count: usage.cis, type: neo4jLabel, refs },
+      },
     )
   }
   if (refs) {
     throw new ValidationError(
-      `${what}: nessun CI di questo tipo, ma il tipo è ancora citato da ${refs}. ` +
-      `Quei riferimenti sono per NOME: resterebbero appesi a un tipo che non esiste più. Togli prima i riferimenti.`,
+      `${what}: no CI of this type, but the type is still referenced by ${refs}. `
+      + `Those references are BY NAME: they would hang off a type that no longer exists. Remove the references first.`,
+      { key: `errors.ciType.onlyRefs${suffisso}`, params: { label: type.label, name: type.name, refs } },
     )
   }
 }
@@ -778,7 +803,7 @@ export function buildMetamodelMutations() {
       // questo controllo il no-op del chiamante diventerebbe un errore che
       // accusa il tipo di essere spedito col prodotto.
       if (!Object.keys(updates).length) {
-        throw new ValidationError('updateCIType: nessun campo da modificare nella richiesta.')
+        throw new ValidationError('updateCIType: no field to change in the request.', { key: 'errors.nothingToUpdate' })
       }
 
       await withSession(async session => {
@@ -849,8 +874,8 @@ export function buildMetamodelMutations() {
       assertCIFieldType(input['fieldType'], `addCIField(${typeId}).fieldType`)
 
       if (input['fieldType'] === 'enum' && !enumTypeId) {
-        throw new GraphQLError('enumTypeId obbligatorio per campi di tipo enum', {
-          extensions: { code: 'BAD_USER_INPUT' },
+        throw new GraphQLError('enumTypeId is required for enum fields', {
+          extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.enumIdRequired' } },
         })
       }
 
@@ -930,9 +955,10 @@ export function buildMetamodelMutations() {
         // Zero righe qui vuol dire una cosa sola: la guardia ha morso, cioè un
         // altro «Salva» ha vinto la corsa fra il controllo e la scrittura.
         if (!wrote.records.length) {
-          throw new GraphQLError(`Il tipo ha già un campo «${String(input['name'])}»`, {
-            extensions: { code: 'BAD_USER_INPUT' },
-          })
+          throw new ValidationError(
+            `The type already has a field «${String(input['name'])}»`,
+            { key: 'errors.metamodelName.duplicateFieldRace', params: { name: String(input['name']) } },
+          )
         }
       }, true)
 
@@ -986,8 +1012,8 @@ export function buildMetamodelMutations() {
           `, { typeId, fieldId, tenantId: ctx.tenantId }),
         )
         if (!existing.records.length) {
-          throw new GraphQLError(`Campo ${fieldId} non trovato sul tipo ${typeId} di questo cliente`, {
-            extensions: { code: 'NOT_FOUND' },
+          throw new GraphQLError(`Field ${fieldId} not found on type ${typeId} of this tenant`, {
+            extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.ciType.fieldNotOnType', params: { field: fieldId, type: typeId } } },
           })
         }
         const fieldName = existing.records[0]!.get('name') as string
@@ -1074,8 +1100,9 @@ export function buildMetamodelMutations() {
         )
         if (!r.records.length) {
           throw new ValidationError(
-            `Il campo ${args.fieldId} non è un campo tuo su questo tipo: non è stato eliminato. ` +
-            `I campi spediti col prodotto sono in sola lettura.`,
+            `Field ${args.fieldId} is not a field of yours on this type: it was not deleted. `
+            + `The fields that ship with the product are read-only.`,
+            { key: 'errors.ciType.fieldNotYours', params: { field: args.fieldId } },
           )
         }
       }, true)

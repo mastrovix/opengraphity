@@ -156,8 +156,9 @@ export async function initialCIStatus(tenantId: string): Promise<string> {
   const first = values[0]
   if (first === undefined) {
     throw new ValidationError(
-      `Il vocabolario "${CI_STATUS_VOCABULARY}" di questo cliente è vuoto: non c'è uno stato con cui creare un CI. ` +
-      `Aggiungi almeno un valore nel Dizionario.`,
+      `The "${CI_STATUS_VOCABULARY}" dictionary of this tenant is empty: there is no state to create a CI with. `
+      + `Add at least one value in the Dictionary.`,
+      { key: 'errors.ciLifecycle.emptyVocabulary', params: { vocabulary: CI_STATUS_VOCABULARY } },
     )
   }
 
@@ -165,9 +166,10 @@ export async function initialCIStatus(tenantId: string): Promise<string> {
   if (declared != null) {
     if (!values.includes(declared)) {
       throw new ValidationError(
-        `Il vocabolario "${CI_STATUS_VOCABULARY}" di questo cliente dichiara "${declared}" come stato iniziale, ` +
-        `ma quel valore non è (più) fra i suoi (${values.join(', ')}): un CI nuovo nascerebbe con uno stato che il ` +
-        `Dizionario non ha. Scegli lo stato iniziale fra i valori attuali.`,
+        `The "${CI_STATUS_VOCABULARY}" dictionary of this tenant declares "${declared}" as the initial state, `
+        + `but that value is not (any more) among its own (${values.join(', ')}): a new CI would be born with a state `
+        + `the Dictionary does not have. Choose the initial state among the current values.`,
+        { key: 'errors.ciLifecycle.staleInitialState', params: { vocabulary: CI_STATUS_VOCABULARY, declared, values: values.join(', ') } },
       )
     }
     return declared

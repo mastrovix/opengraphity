@@ -70,7 +70,7 @@ function parseFilters(raw: string | null): FilterGroup | null {
   if (!raw) return null
   try { return JSON.parse(raw) as FilterGroup }
   catch (e) {
-    console.warn('[useListQueryState] parametro "filters" non valido nella URL, ignorato', e)
+    console.warn('[useListQueryState] invalid "filters" parameter in the URL, ignored', e)
     return null
   }
 }

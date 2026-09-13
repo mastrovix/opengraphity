@@ -57,7 +57,7 @@ describe('assertScriptingEnabled', () => {
     expect(err).toBeInstanceOf(GraphQLError)
     expect((err as GraphQLError).extensions['code']).toBe('BAD_USER_INPUT')
     expect((err as GraphQLError).message).toContain('server.rack.validation_script')
-    expect((err as GraphQLError).message).toContain('il piano "starter" del tenant t1 non include gli script')
+    expect((err as GraphQLError).message).toContain('the "starter" plan of tenant t1 does not include scripts')
   })
 
   it('tenant senza nodo :Tenant → errore che nomina la migrazione', async () => {

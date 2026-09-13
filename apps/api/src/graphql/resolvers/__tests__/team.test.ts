@@ -157,7 +157,7 @@ describe('policy di ruolo sui campi root del team resolver', () => {
   })
 
   it('ruolo sconosciuto → Forbidden esplicito, nessun downgrade a viewer', () => {
-    expect(() => authorize('Mutation', 'assignCIOwner', 'superuser')).toThrow(/Ruolo sconosciuto/)
+    expect(() => authorize('Mutation', 'assignCIOwner', 'superuser')).toThrow(/Unknown role/)
   })
 })
 

@@ -106,7 +106,7 @@ describe('lo schema sicuro quando quello del tenant non si assembla', () => {
     // valida i nomi prima di interpolarli (A5-1), quindi qui non arriva più un
     // errore di sintassi GraphQL crudo che non dice di chi è la colpa.
     expect(state.reason).toMatch(/«2fa»/)
-    expect(state.reason).toMatch(/eliminalo o rinominalo/i)
+    expect(state.reason).toMatch(/delete it or rename it/i)
     // RINEGOZIATO (revisione delle otto ondate · A·2.3): il degrado era del
     // CLIENTE INTERO — si scartavano tutti i suoi tipi, quindi un campo
     // sbagliato su un tipo che nessuno usa faceva sparire dall'API anche i tipi
@@ -123,7 +123,7 @@ describe('lo schema sicuro quando quello del tenant non si assembla', () => {
     loadMetamodel.mockResolvedValue([ciType('2fa'), ciType('sede'), ciType('armadio')])
     const state = await getSchemaState('c-one')
     expect(state.degraded).toBe(true)
-    expect(state.reason).toMatch(/tipo "2fa"/)
+    expect(state.reason).toMatch(/type "2fa"/)
     expect(state.reason).not.toMatch(/sede|armadio/)
     expect(state.schema.getType('Sede')).toBeDefined()
     expect(state.schema.getType('Armadio')).toBeDefined()

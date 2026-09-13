@@ -13,6 +13,7 @@ import { RoleBadge } from '@/components/ui/badges'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { GET_USER, GET_TEAMS } from '@/graphql/queries'
 import { colors, palette } from '@/lib/tokens'
+import { formatDate } from '@/lib/datetime'
 
 const UPDATE_USER_TEAMS = gql`
   mutation UpdateUserTeams($userId: ID!, $teamIds: [ID!]!) {
@@ -62,7 +63,7 @@ export function UserDetailPage() {
   const availableTeams = allTeams.filter(team => !userTeamIds.includes(team.id))
 
   if (loading && !user) {
-    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Caricamento...</div>
+    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
   }
 
   if (error && !data) {
@@ -74,7 +75,7 @@ export function UserDetailPage() {
   }
 
   if (!user) {
-    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Utente non trovato.</div>
+    return <div style={{ padding: '32px 40px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('pages.userDetail.notFound')}</div>
   }
 
   return (
@@ -93,24 +94,24 @@ export function UserDetailPage() {
 
       {/* Body */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <SectionCard title="Informazioni" defaultOpen>
+        <SectionCard title={t('pages.userDetail.info')} defaultOpen>
           <div className="og-pair">
             <DetailField label="ID" value={user.id} mono />
-            <DetailField label="Code" value={user.code} />
-            <DetailField label="Nome" value={user.firstName} />
-            <DetailField label="Cognome" value={user.lastName} />
-            <DetailField label="Email" value={user.email} />
-            <DetailField label="Ruolo" value={<RoleBadge role={user.role} />} />
-            <DetailField label="Tenant ID" value={user.tenantId} mono />
-            <DetailField label="Slack ID" value={user.slackId} mono />
-            <DetailField label="Creato il" value={user.createdAt ? new Date(user.createdAt).toLocaleDateString('it-IT') : null} />
+            <DetailField label={t('pages.userDetail.code')} value={user.code} />
+            <DetailField label={t('pages.userDetail.firstName')} value={user.firstName} />
+            <DetailField label={t('pages.userDetail.lastName')} value={user.lastName} />
+            <DetailField label={t('pages.users.email')} value={user.email} />
+            <DetailField label={t('pages.users.role')} value={<RoleBadge role={user.role} />} />
+            <DetailField label={t('pages.userDetail.tenantId')} value={user.tenantId} mono />
+            <DetailField label={t('pages.userDetail.slackId')} value={user.slackId} mono />
+            <DetailField label={t('detail.createdAt')} value={user.createdAt ? formatDate(user.createdAt) : null} />
           </div>
         </SectionCard>
 
         <SectionCard title={`Team (${user.teams.length})`} defaultOpen>
             {/* Current teams */}
             {user.teams.length === 0 ? (
-              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 12px' }}>Nessun team assegnato</p>
+              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 12px' }}>{t('pages.userDetail.noTeams')}</p>
             ) : (
               <div style={{ marginBottom: 12 }}>
                 {user.teams.map((team, i) => (
@@ -134,7 +135,7 @@ export function UserDetailPage() {
                     <button type="button"
                       onClick={() => void updateTeams({ variables: { userId: user.id, teamIds: userTeamIds.filter(tid => tid !== team.id) } })}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 4 }}
-                      title="Rimuovi dal team"
+                      title={t('pages.userDetail.removeFromTeam')}
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-bg)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
                     >
@@ -151,16 +152,16 @@ export function UserDetailPage() {
                 onClick={() => setShowAddTeam(true)}
                 style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}
               >
-                <Plus size={14} /> Aggiungi a un team
+                <Plus size={14} /> {t('pages.users.addToTeam')}
               </button>
             ) : (
               <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 8 }}>
                 <div style={{ padding: '6px 12px', background: 'var(--color-slate-bg)', borderBottom: '1px solid var(--border)', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate)', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>Team disponibili</span>
-                  <button type="button" onClick={() => setShowAddTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>Chiudi</button>
+                  <span>{t('pages.userDetail.availableTeams')}</span>
+                  <button type="button" onClick={() => setShowAddTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('common.close')}</button>
                 </div>
                 {availableTeams.length === 0 ? (
-                  <div style={{ padding: '12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>Nessun altro team disponibile</div>
+                  <div style={{ padding: '12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>{t('pages.userDetail.noOtherTeams')}</div>
                 ) : availableTeams.map((team, i) => (
                   <button
                     type="button"

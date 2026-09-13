@@ -140,9 +140,9 @@ export function TaskViewPage() {
     else if (kind === 'review') void reopenRev({ variables: { id, reason } })
   }
 
-  if (taskLoading && !task) return <PageContainer><p>Caricamento...</p></PageContainer>
+  if (taskLoading && !task) return <PageContainer><p>{t('common.loading')}</p></PageContainer>
   if (taskError && !taskData) return <PageContainer><QueryError message={taskError.message} onRetry={() => void refetchTask()} /></PageContainer>
-  if (!task) return <PageContainer><p>Task non trovato</p></PageContainer>
+  if (!task) return <PageContainer><p>{t('pages.taskView.notFound')}</p></PageContainer>
 
   const assessTask = task.kind === 'assessment'
     ? (ciAffected?.assessmentOwner?.id === id ? ciAffected.assessmentOwner : ciAffected?.assessmentSupport?.id === id ? ciAffected.assessmentSupport : null)
@@ -189,29 +189,29 @@ export function TaskViewPage() {
   // Assignee row (assessment + deploy-plan)
   const assignable = (() => {
     if (task.kind !== 'assessment' && task.kind !== 'deploy-plan') return null
-    const t = task.kind === 'assessment' ? assessTask : planTask
-    if (!t) return null
-    const teamId = t.assignedTeam?.id ?? null
+    const tsk = task.kind === 'assessment' ? assessTask : planTask
+    if (!tsk) return null
+    const teamId = tsk.assignedTeam?.id ?? null
     const teamUsers = getTeamUsers(teamId)
-    const canAssign = canEdit && t.status !== TASK_STATUS.COMPLETED
+    const canAssign = canEdit && tsk.status !== TASK_STATUS.COMPLETED
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, padding: '10px 14px', background: 'var(--color-slate-bg)', borderRadius: 8, border: `1px solid ${colors.border}` }}>
         <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>
-          Team: {t.assignedTeam?.name ?? '—'}
+          {t('sidebar.teams')}: {tsk.assignedTeam?.name ?? '—'}
         </span>
-        <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginLeft: 12 }}>Assegnato a</span>
+        <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginLeft: 12 }}>{t('pages.taskView.assignedTo')}</span>
         <select
           disabled={!canAssign}
-          value={t.assignee?.id ?? ''}
+          value={tsk.assignee?.id ?? ''}
           onChange={(e) => {
             if (e.target.value && currentUserId) {
               const assign = task.kind === 'deploy-plan' ? assignPlanUser : assignUser
-              void assign({ variables: { taskId: t.id, userId: e.target.value } })
+              void assign({ variables: { taskId: tsk.id, userId: e.target.value } })
             }
           }}
           style={{ ...inputStyle, flex: 1, maxWidth: 250 }}
         >
-          <option value="">— Non assegnato —</option>
+          <option value="">{t('pages.taskView.unassigned')}</option>
           {teamUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
       </div>
@@ -247,7 +247,7 @@ export function TaskViewPage() {
                   fontSize: 'var(--font-size-body)',
                 }}
               >
-                <RotateCcw size={14} /> Riapri task
+                <RotateCcw size={14} /> {t('changeTasks.reopenTask')}
               </button>
             )}
           </div>

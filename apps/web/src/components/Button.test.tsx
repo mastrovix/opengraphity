@@ -78,7 +78,7 @@ describe('Button', () => {
   it('icon senza nome accessibile → console.error in dev (fail-visible, non silenzioso)', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     render(<Button variant="icon" icon={<svg />} />)
-    expect(err).toHaveBeenCalledWith('[Button] variant="icon" richiede aria-label o title (nome accessibile)')
+    expect(err).toHaveBeenCalledWith('[Button] variant="icon" needs aria-label or title (an accessible name)')
   })
 
   it('inoltra aria-expanded / aria-pressed e l\'icona precede il testo', () => {

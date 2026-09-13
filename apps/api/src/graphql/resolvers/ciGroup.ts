@@ -44,7 +44,7 @@ export async function criteriaTypesToLabels(tenantId: string, csv: string | null
     .split(',')
     .map(t => t.trim())
     .filter(Boolean)
-  const labels = await ciLabelsForTypeNames(tenantId, requested, 'criteri del gruppo dinamico (criteriaCiTypes)')
+  const labels = await ciLabelsForTypeNames(tenantId, requested, 'dynamic group criteria (criteriaCiTypes)', 'groupCriteria')
   return labels.filter(l => l !== GROUP_LABEL)
 }
 

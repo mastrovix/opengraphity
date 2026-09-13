@@ -39,10 +39,10 @@ export function CreateTypeDialog({
   const nameError = form.name ? checkCITypeName(form.name, existingTypes) : null
 
   return (
-    <Modal open={open} onClose={onClose} title="Nuovo tipo CI" width={440}
+    <Modal open={open} onClose={onClose} title={t('citypeDesigner.newCIType')} width={440}
       footer={
         <>
-          <button type="button" style={btnSecondary} onClick={onClose}>Annulla</button>
+          <button type="button" style={btnSecondary} onClick={onClose}>{t('common.cancel')}</button>
           <button type="button" style={{ ...btnPrimary, opacity: saving || !!nameError ? 0.6 : 1 }} disabled={saving || !!nameError}
             onClick={async () => {
               if (!form.name || !form.label) { toast.error(t('toast.citype.nameLabelRequired')); return }
@@ -51,12 +51,12 @@ export function CreateTypeDialog({
               // onSave rigetta su errore (toast già mostrato): il dialog resta aperto.
               try { await onSave(form); onClose() } catch { /* errore già notificato */ } finally { setSaving(false) }
             }}>
-            {saving ? 'Creazione…' : 'Crea tipo'}
+            {saving ? t('common.creating') : t('citypeDesigner.createType')}
           </button>
         </>
       }>
-      <FormField label="name (slug, snake_case) *" htmlFor={`${id}-name`}>
-        <Input id={`${id}-name`} style={inputS} value={form.name} placeholder="es. load_balancer"
+      <FormField label={t('citypeDesigner.field.slugNameSnake')} htmlFor={`${id}-name`}>
+        <Input id={`${id}-name`} style={inputS} value={form.name} placeholder={t('citypeDesigner.field.slugNamePlaceholder')}
           aria-invalid={nameError ? true : undefined}
           aria-describedby={nameError ? `${id}-name-error` : undefined}
           onChange={(e) => set('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
@@ -66,12 +66,12 @@ export function CreateTypeDialog({
           </p>
         )}
       </FormField>
-      <FormField label="label (nome visualizzato) *" htmlFor={`${id}-label`}>
-        <Input id={`${id}-label`} style={inputS} value={form.label} placeholder="es. Load Balancer"
+      <FormField label={t('citypeDesigner.field.displayLabel')} htmlFor={`${id}-label`}>
+        <Input id={`${id}-label`} style={inputS} value={form.label} placeholder={t('citypeDesigner.labelPlaceholder')}
           onChange={(e) => set('label', e.target.value)} />
       </FormField>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, marginBottom: 14 }}>
-        <FormField label="Icona" htmlFor={`${id}-icon`}>
+        <FormField label={t('citypeDesigner.icon')} htmlFor={`${id}-icon`}>
           <Select id={`${id}-icon`} style={selectS} value={form.icon} onChange={(e) => set('icon', e.target.value)}>
             {ICONS.map((i) => <option key={i} value={i}>{i}</option>)}
           </Select>
@@ -80,7 +80,7 @@ export function CreateTypeDialog({
           <CIIcon icon={form.icon} size={24} color={form.color} />
         </div>
       </div>
-      <FormField label="Colore" htmlFor={`${id}-color`}>
+      <FormField label={t('citypeDesigner.color')} htmlFor={`${id}-color`}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input id={`${id}-color`} type="color" value={form.color} onChange={(e) => set('color', e.target.value)}
             style={{ width: 36, height: 36, border: 'none', borderRadius: 4, cursor: 'pointer', padding: 0 }} />

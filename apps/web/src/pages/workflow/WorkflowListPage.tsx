@@ -12,6 +12,7 @@ import { GET_WORKFLOW_LIST, GET_TENANT_PROVISIONING_GAPS } from '@/graphql/queri
 import { PROVISION_TENANT_DATA } from '@/graphql/mutations'
 import { lookupOrError, colors, palette } from '@/lib/tokens'
 import { Pill } from '@/components/ui/Pill'
+import { gapText, type GapData } from '@/lib/configurationIssueText'
 
 interface WorkflowDef {
   id:             string
@@ -33,7 +34,7 @@ const ENTITY_META: Record<string, { label: string; Icon: typeof AlertCircle; col
 const ENTITY_ORDER = ['incident', 'change', 'problem', 'service_request', 'kb_article']
 
 export function WorkflowListPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const { data, loading } = useQuery<{ workflowDefinitions: WorkflowDef[] }>(GET_WORKFLOW_LIST)
 
@@ -46,17 +47,23 @@ export function WorkflowListPage() {
    * `provisionTenantData` è idempotente e non sovrascrive le definizioni che
    * già ci sono.
    */
-  const { data: gapsData, refetch: refetchGaps } = useQuery<{ tenantProvisioningGaps: string[] }>(
+  const { data: gapsData, refetch: refetchGaps } = useQuery<{ tenantProvisioningGaps: GapData[] }>(
     GET_TENANT_PROVISIONING_GAPS, { fetchPolicy: 'cache-and-network' },
   )
+  /*
+    I buchi arrivano come CHIAVI, non come frasi: l'API non sa in che lingua
+    guarda chi legge. Qui si risolvono, e la stessa funzione la usa il banner in
+    cima alla pagina — una sorgente sola per la stessa frase.
+  */
   const gaps = gapsData?.tenantProvisioningGaps ?? []
+  const gapLine = (g: GapData) => gapText(t, (k, p) => i18n.exists(k, p), g)
   const [provision, { loading: provisioning }] = useMutation(PROVISION_TENANT_DATA, {
     refetchQueries: [GET_WORKFLOW_LIST],
     onCompleted: (d: unknown) => {
-      const r = (d as { provisionTenantData: { remainingGaps: string[] } }).provisionTenantData
+      const r = (d as { provisionTenantData: { remainingGaps: GapData[] } }).provisionTenantData
       void refetchGaps()
       if (r.remainingGaps.length === 0) toast.success(t('pages.workflow.provisionDone'))
-      else toast.warning(t('pages.workflow.provisionPartial', { gaps: r.remainingGaps.join('; ') }))
+      else toast.warning(t('pages.workflow.provisionPartial', { gaps: r.remainingGaps.map(gapLine).join('; ') }))
     },
     onError: (e) => toast.error(e.message),
   })
@@ -105,7 +112,7 @@ export function WorkflowListPage() {
           <AlertCircle size={16} aria-hidden="true" style={{ marginTop: 2, color: 'var(--color-danger-text)' }} />
           <div style={{ flex: 1, fontSize: 'var(--font-size-body)' }}>
             <strong>{t('pages.workflow.incompleteTitle')}</strong>
-            <div style={{ color: 'var(--color-slate-dark)', marginTop: 2 }}>{gaps.join('; ')}</div>
+            <div style={{ color: 'var(--color-slate-dark)', marginTop: 2 }}>{gaps.map(gapLine).join('; ')}</div>
           </div>
           <Button onClick={() => void provision()} disabled={provisioning}>
             {t('pages.workflow.provisionButton')}
@@ -126,7 +133,7 @@ export function WorkflowListPage() {
       ) : defs.length === 0 ? (
         <EmptyState
           icon={<Route size={32} color="var(--color-slate-light)" />}
-          title={t('pages.workflow.noResults', 'Nessun workflow trovato')}
+          title={t('pages.workflow.noResults')}
         />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(columnKeys.length, 4)}, 1fr)`, gap: 24 }}>
@@ -185,7 +192,7 @@ export function WorkflowListPage() {
                             </Pill>
                           ) : (
                             <Pill bg={palette.success.tint} color={palette.success.strong} radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
-                              Default
+                              {t('pages.workflow.defaultBadge')}
                             </Pill>
                           )}
                         </div>
@@ -193,7 +200,7 @@ export function WorkflowListPage() {
 
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Pill bg={def.active ? 'var(--color-brand-light)' : 'var(--color-slate-bg)'} color={def.active ? 'var(--color-brand)' : 'var(--color-slate-light)'} radius={100} style={{ fontSize: 11, border: def.active ? '1px solid var(--color-teal-border)' : '1px solid var(--color-border)' }}>
-                          {def.active ? 'Attivo' : 'Inattivo'}
+                          {t(def.active ? 'common.active' : 'common.inactive')}
                         </Pill>
                         <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>v{def.version}</span>
                       </div>

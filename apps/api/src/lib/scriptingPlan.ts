@@ -87,12 +87,21 @@ export async function getScriptingPlan(tenantId: string, nowMs: number = Date.no
  * webhook): il messaggio arriva all'amministratore, quindi dice cosa
  * rimuovere o quale piano serve.
  */
-export async function assertScriptingEnabled(tenantId: string, what: string): Promise<void> {
+/**
+ * `whatKey` e la chiave del pezzo di frase che dice DI CHE SCRIPT si parla: lo
+ * sa il chiamante, non questa funzione. Era una stringa di prosa (italiana),
+ * incollata nel messaggio e passata al client come parametro — e restava
+ * italiana in un'interfaccia inglese.
+ */
+export async function assertScriptingEnabled(
+  tenantId: string, what: string, whatKey: string, whatParams: Record<string, string> = {},
+): Promise<void> {
   const { plan, enabled } = await getScriptingPlan(tenantId)
   if (!enabled) {
     throw new ValidationError(
-      `${what}: il piano "${plan}" del tenant ${tenantId} non include gli script (scripting_enabled = false). ` +
-      `Rimuovi lo script dalla configurazione oppure passa a un piano che li include.`,
+      `${what}: the "${plan}" plan of tenant ${tenantId} does not include scripts (scripting_enabled = false). `
+      + `Remove the script from the configuration, or move to a plan that includes them.`,
+      { key: 'errors.scripting.planExcludesScripts', params: { whatKey, plan, ...whatParams } },
     )
   }
 }

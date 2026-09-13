@@ -426,7 +426,7 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
     await user.click(screen.getByRole('button', { name: '+ Add filter' }))
     // l'ultimo combobox è il campo della regola appena aggiunta (il primo è il filtro Sorgente)
     await user.selectOptions(screen.getAllByRole('combobox').at(-1)!, 'title')
-    await user.type(screen.getByPlaceholderText('Valore…'), 'Disk')
+    await user.type(screen.getByPlaceholderText('Value…'), 'Disk')
     await user.click(screen.getByRole('button', { name: 'Apply' }))
     expect(await screen.findByText('1 of 3 on this page matches the advanced filter')).toBeInTheDocument()
     expect(screen.queryByText('3 alarms')).not.toBeInTheDocument()

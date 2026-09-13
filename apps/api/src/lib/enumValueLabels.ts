@@ -33,13 +33,42 @@
  *   di monitoraggio, non voci di menu. Nessuno le sceglie da una tendina.
  */
 
-/** La mappa valore → etichetta, come sta sul nodo. */
-export type EnumValueLabels = Readonly<Record<string, string>>
+/**
+ * Le lingue del prodotto, nell'ordine in cui si ripiega. Sono quelle dichiarate
+ * in `apps/web/src/i18n/i18n.ts`: aggiungerne una e' un atto deliberato, non
+ * una configurazione.
+ *
+ * Questo e' un ELENCO, non una scelta: sono i file di traduzione spediti nel
+ * bundle, e aggiungerne uno e' scrivere codice. QUALE di queste sia la lingua
+ * predefinita e' configurazione del cliente, e sta altrove
+ * (`lib/tenantLanguage.ts`): qui non c'e' — e non deve tornarci — nessuna
+ * costante che dica «la lingua del prodotto e' questa».
+ *
+ * L'ordine conta solo come ultima istanza: la prima e' quella che si mostra a
+ * un cliente che non ha ancora configurato niente, e la diagnostica gli dice
+ * di configurarla.
+ */
+export const LINGUE = ['en', 'it'] as const
+export type Lingua = typeof LINGUE[number]
 
-/** Una voce pronta per l'interfaccia: l'etichetta c'e SEMPRE, chi legge non ripiega. */
+/**
+ * La mappa come sta sul nodo: valore → lingua → etichetta.
+ *
+ * Il valore resta la chiave PRIMARIA (non la lingua) perche' le operazioni che
+ * contano sono sul valore: rinominarlo sposta la chiave, toglierlo la scarta.
+ * Con la lingua in cima ogni rinomina avrebbe dovuto attraversare N mappe.
+ */
+export type EnumValueLabels = Readonly<Record<string, Readonly<Partial<Record<Lingua, string>>>>>
+
+/**
+ * Una voce pronta per l'interfaccia. `label` c'e SEMPRE — e' l'etichetta nella
+ * lingua CHIESTA, o il ripiego — quindi chi legge non ripiega da se;
+ * `labels` porta le lingue davvero scritte, per l'editor del Dizionario.
+ */
 export interface EnumValueLabelEntry {
   value: string
   label: string
+  labels: { language: Lingua; label: string }[]
 }
 
 /**
@@ -68,21 +97,68 @@ export function parseValueLabels(raw: unknown): { labels: EnumValueLabels; error
     return { labels: {}, error: `value_labels non e JSON valido: ${e instanceof Error ? e.message : String(e)}` }
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { labels: {}, error: 'value_labels non e un oggetto valore → etichetta' }
+    return { labels: {}, error: 'value_labels non e un oggetto valore → etichette' }
   }
-  const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-    if (typeof v === 'string' && v.trim() !== '') out[k] = v
+  const out: Record<string, Partial<Record<Lingua, string>>> = {}
+  for (const [valore, v] of Object.entries(parsed as Record<string, unknown>)) {
+    /*
+      Si accettano DUE forme, e non e indulgenza: la prima versione di questa
+      mappa era `{valore: "etichetta"}`, una lingua sola. La migrazione 1730 la
+      converte, ma un tenant che non l'ha ancora ricevuta non deve perdere le
+      etichette nel frattempo — e una stringa li significa «italiano», che e
+      cio che quella versione scriveva. Resta l'italiano anche ora che la lingua
+      del prodotto e l'inglese: e un fatto su un dato scritto allora, non un
+      default da aggiornare.
+    */
+    if (typeof v === 'string') {
+      if (v.trim() !== '') out[valore] = { it: v }
+      continue
+    }
+    if (v === null || typeof v !== 'object' || Array.isArray(v)) continue
+    const per: Partial<Record<Lingua, string>> = {}
+    for (const [lingua, etichetta] of Object.entries(v as Record<string, unknown>)) {
+      if (!(LINGUE as readonly string[]).includes(lingua)) continue
+      if (typeof etichetta === 'string' && etichetta.trim() !== '') per[lingua as Lingua] = etichetta
+    }
+    if (Object.keys(per).length > 0) out[valore] = per
   }
   return { labels: out, error: null }
 }
 
 /**
- * Le voci per l'interfaccia, NELL'ORDINE DEI VALORI e sempre complete: chi
- * legge non deve sapere che l'etichetta puo mancare.
+ * L'etichetta nella lingua chiesta, col ripiego DICHIARATO DA CHI CHIAMA: la
+ * lingua chiesta → il `ripiego` → il valore con le iniziali maiuscole.
+ *
+ * Il ripiego e un parametro e non una costante perche e la lingua predefinita
+ * DEL CLIENTE, che e configurazione (`lib/tenantLanguage.ts`). Prima era
+ * `LINGUA_PREDEFINITA = 'it'` qui dentro: un'installazione per un cliente
+ * irlandese leggeva le etichette a meta in italiano, e non c'era modo di
+ * cambiarlo se non ricompilando.
+ *
+ * Ripiegare su un'altra lingua resta meglio che mostrare il nome interno del
+ * valore: un'etichetta scritta in una lingua sola si legge comunque.
  */
-export function valueLabelEntries(values: readonly string[], labels: EnumValueLabels): EnumValueLabelEntry[] {
-  return values.map((v) => ({ value: v, label: labels[v] ?? titleCase(v) }))
+export function labelFor(valore: string, labels: EnumValueLabels, lingua: Lingua, ripiego: Lingua): string {
+  const per = labels[valore]
+  return per?.[lingua] ?? per?.[ripiego] ?? titleCase(valore)
+}
+
+/**
+ * Le voci per l'interfaccia, NELL'ORDINE DEI VALORI. `label` e nella lingua
+ * chiesta e c'e sempre; `labels` sono le lingue davvero scritte, che servono
+ * all'editor del Dizionario per mostrare due campi invece di uno.
+ */
+export function valueLabelEntries(
+  values: readonly string[], labels: EnumValueLabels, lingua: Lingua, ripiego: Lingua,
+): EnumValueLabelEntry[] {
+  return values.map((v) => ({
+    value: v,
+    label: labelFor(v, labels, lingua, ripiego),
+    labels: LINGUE.flatMap((l) => {
+      const e = labels[v]?.[l]
+      return e ? [{ language: l, label: e }] : []
+    }),
+  }))
 }
 
 /** Etichette ripulite: si tengono solo quelle dei valori che esistono ancora. */
@@ -92,14 +168,13 @@ export function pruneValueLabels(labels: EnumValueLabels, values: readonly strin
 }
 
 /**
- * L'etichetta segue il valore quando viene RINOMINATO. Senza questo, rinominare
- * `high` in `alta` lascerebbe «Alta» appesa a una chiave che non esiste piu, e
- * il valore nuovo comparirebbe a schermo come «Alta» (title-case del valore)
- * per caso — o come «Elevato» mai piu, se l'etichetta era quella.
+ * L'etichetta segue il valore quando viene RINOMINATO, in TUTTE le lingue.
+ * Senza questo, rinominare `high` in `alta` lascerebbe le etichette appese a
+ * una chiave che non esiste piu.
  */
 export function renameValueLabel(labels: EnumValueLabels, from: string, to: string): EnumValueLabels {
   if (!(from in labels)) return labels
-  const out: Record<string, string> = { ...labels }
+  const out: Record<string, Partial<Record<Lingua, string>>> = { ...labels }
   out[to] = out[from]!
   delete out[from]
   return out

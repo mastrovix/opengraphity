@@ -131,7 +131,7 @@ export function buildBaseSDL(): string {
     "migrate --status": un tenant incompleto restava incompleto finché qualcuno
     non apriva un ticket e vedeva l'errore.
     """
-    tenantProvisioningGaps: [String!]!
+    tenantProvisioningGaps: [ProvisioningGap!]!
     incidentWorkflow(incidentId: ID!): WorkflowInstance
     incidentWorkflowHistory(incidentId: ID!): [WorkflowStepExecution!]!
     incidentAvailableTransitions(incidentId: ID!): [WorkflowTransition!]!
@@ -223,11 +223,46 @@ export function buildBaseSDL(): string {
     syncStats(sourceId: ID): SyncStats!
     availableConnectors: [ConnectorInfo!]!
     syncChangeHistory(ciId: ID!, limit: Int, offset: Int): SyncChangeRecordsResult!
+
+    """
+    Le lingue del prodotto e quella predefinita di QUESTO cliente. Aperta a
+    tutti: il client la chiede all'avvio per sapere in che lingua mostrarsi a
+    chi non ha ancora scelto.
+    """
+    tenantLanguageSettings: TenantLanguageSettings!
+  }
+
+  """
+  In che lingua si legge questo cliente.
+
+  La scelta e configurazione — un'azienda italiana la vuole italiana, la stessa
+  installazione per un cliente irlandese la vuole inglese — e prima era una
+  costante nel codice: cambiarla voleva dire ricompilare. L'elenco invece resta
+  codice: sono i file di traduzione spediti nel bundle.
+  """
+  type TenantLanguageSettings {
+    """Le lingue in cui il prodotto e tradotto. Non configurabili: aggiungerne una e scrivere un file."""
+    available:       [String!]!
+    """
+    La lingua predefinita del cliente: quella che legge chi non ha scelto, e il
+    ripiego di un'etichetta scritta in una lingua sola. \`null\` = non
+    configurata, che e diverso da «configurata sulla prima»: il primo caso la
+    diagnostica lo dice all'admin.
+    """
+    defaultLanguage: String
+    """La lingua che si usa finche non se ne configura una. Sempre una di \`available\`."""
+    fallback:        String!
   }
 
 
   type Mutation {
     # Auth
+
+    """
+    Configura la lingua predefinita del cliente (admin). Rifiuta una lingua in
+    cui il prodotto non e tradotto, invece di ripiegare in silenzio su un'altra.
+    """
+    setTenantDefaultLanguage(language: String!): TenantLanguageSettings!
 
     # Incidents
     createIncident(input: CreateIncidentInput!): Incident!

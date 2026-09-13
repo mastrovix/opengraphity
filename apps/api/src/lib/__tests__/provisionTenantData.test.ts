@@ -30,7 +30,7 @@ vi.mock('../domainMatrixSeed.js', () => ({
   seedDomainMatrices: vi.fn(async () => ['priority', 'change_priority']),
 }))
 
-const { provisionTenantData, tenantProvisioningGaps, REQUIRED_WORKFLOW_ENTITY_TYPES } = await import('../provisionTenantData.js')
+const { provisionTenantData, tenantProvisioningGaps, formatGap, REQUIRED_WORKFLOW_ENTITY_TYPES } = await import('../provisionTenantData.js')
 
 interface Row { get: (k: string) => unknown }
 function session(rows: Row[] = []) {
@@ -90,7 +90,7 @@ describe('tenantProvisioningGaps — dire cosa manca, invece di scoprirlo al pri
   it('lo stato di c-two prima dell\'ondata 8: dashboard e regole sì, workflow nessuno', async () => {
     const s = session([row({ ...completo, entityTypes: [] })])
     await expect(tenantProvisioningGaps(s as never, 'c-two')).resolves.toEqual([
-      'nessun workflow attivo per: incident, problem, kb_article, change, service_request',
+      { kind: 'no_workflows', params: { entityTypes: 'incident, problem, kb_article, change, service_request' } },
     ])
   })
 
@@ -98,12 +98,12 @@ describe('tenantProvisioningGaps — dire cosa manca, invece di scoprirlo al pri
     const s = session([row({ dashboards: 0, rules: 0, matrices: 0, questions: 0, teams: 0, changeManagers: 0, entityTypes: ['incident'] })])
     const out = await tenantProvisioningGaps(s as never, 'nuovo')
     expect(out).toEqual([
-      'nessuna dashboard',
-      'nessuna regola di notifica',
-      'nessuna matrice di dominio',
-      'nessun workflow attivo per: problem, kb_article, change, service_request',
-      'nessuna domanda di assessment: nessuna change potrebbe superare la fase di assessment (Domande Assessment)',
-      'nessun team: senza team i CI non hanno Owner/Support Group e nessuna change si crea (Team e Utenti)',
+      { kind: 'no_dashboard' },
+      { kind: 'no_notification_rules' },
+      { kind: 'no_domain_matrices' },
+      { kind: 'no_workflows', params: { entityTypes: 'problem, kb_article, change, service_request' } },
+      { kind: 'no_assessment_questions' },
+      { kind: 'no_teams' },
     ])
   })
 
@@ -111,20 +111,46 @@ describe('tenantProvisioningGaps — dire cosa manca, invece di scoprirlo al pri
     // Esattamente ciò che ho trovato aprendo un tenant creato con onboard-tenant.
     const s = session([row({ dashboards: 1, rules: 35, matrices: 6, questions: 0, teams: 0, changeManagers: 0, entityTypes: [...REQUIRED_WORKFLOW_ENTITY_TYPES] })])
     const out = await tenantProvisioningGaps(s as never, 'c-test')
-    expect(out).toHaveLength(2)
-    expect(out[0]).toMatch(/nessuna domanda di assessment/)
-    expect(out[1]).toMatch(/nessun team/)
+    expect(out.map((g) => g.kind)).toEqual(['no_assessment_questions', 'no_teams'])
   })
 
   it('con i team ma senza Change Manager designato, lo dice: le change non si approvano', async () => {
     const s = session([row({ ...completo, changeManagers: 0, entityTypes: [...REQUIRED_WORKFLOW_ENTITY_TYPES] })])
     await expect(tenantProvisioningGaps(s as never, 'c-test')).resolves.toEqual([
-      'nessun team designato Change Manager: le change normal ed emergency non possono entrare in approvazione (Team e Utenti)',
+      { kind: 'no_change_manager' },
     ])
   })
 
   it('nessuna riga = il tenant non esiste, e lo dice', async () => {
     const s = session([])
-    await expect(tenantProvisioningGaps(s as never, 'fantasma')).resolves.toEqual(['nessuna riga: il tenant non esiste'])
+    await expect(tenantProvisioningGaps(s as never, 'fantasma')).resolves.toEqual([{ kind: 'tenant_missing' }])
+  })
+})
+
+/**
+ * La resa per la CLI e per i log.
+ *
+ * Un buco e un DATO: `kind` piu i soli parametri da interpolare. Chi ha una
+ * lingua sola — `migrate --status`, i log, le metriche — la rende qui, e chi ha
+ * un utente davanti (il client) usa le sue chiavi. Questo test sta a guardia
+ * dell'unico modo di sbagliare che resta: aggiungere una `kind` e dimenticare
+ * la riga qui, che TypeScript prende solo se lo `switch` resta esaustivo.
+ */
+describe('formatGap — una lingua sola, e dove una lingua sola va bene', () => {
+  const KINDS = [
+    'tenant_missing', 'no_dashboard', 'no_notification_rules', 'no_domain_matrices',
+    'no_workflows', 'no_assessment_questions', 'no_teams', 'no_change_manager',
+  ] as const
+
+  it('ogni buco ha una resa, e nessuna e vuota', () => {
+    for (const kind of KINDS) {
+      const testo = formatGap({ kind, params: { entityTypes: 'incident' } })
+      expect(testo, kind).toBeTruthy()
+      expect(testo.trim(), kind).not.toBe('')
+    }
+  })
+
+  it('i parametri finiscono nella frase', () => {
+    expect(formatGap({ kind: 'no_workflows', params: { entityTypes: 'incident, change' } })).toContain('incident, change')
   })
 })

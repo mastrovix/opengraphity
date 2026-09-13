@@ -89,6 +89,8 @@ export async function ciLabelsForTypeNames(
   tenantId: string,
   typeNames: readonly string[],
   what: string,
+  /** Dove: il pezzo di frase che dice in quale campo si è trovato il nome ignoto (chiave i18n). */
+  where: 'topology' | 'problemRules' | 'incidentRules' | 'groupCriteria',
 ): Promise<string[]> {
   const map = await nameToLabel(tenantId)
   const out: string[] = []
@@ -98,7 +100,8 @@ export async function ciLabelsForTypeNames(
     const label = map.get(name)
     if (!label) {
       throw new ValidationError(
-        `${what}: "${raw}" non è un tipo di CI di questo cliente (ammessi: ${[...map.keys()].sort().join(', ')})`,
+        `${what}: "${raw}" is not a CI type of this tenant (allowed: ${[...map.keys()].sort().join(', ')})`,
+        { key: 'errors.ciType.unknownWithWhat', params: { whatKey: `errors.ciType.where.${where}`, type: raw, allowed: [...map.keys()].sort().join(', ') } },
       )
     }
     if (!out.includes(label)) out.push(label)

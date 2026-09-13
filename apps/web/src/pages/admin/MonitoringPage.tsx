@@ -226,7 +226,7 @@ export function MonitoringPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                <th style={{ textAlign: 'left', padding: '6px 12px 6px 0', color: colors.slate, fontWeight: 600 }}>Queue</th>
+                <th style={{ textAlign: 'left', padding: '6px 12px 6px 0', color: colors.slate, fontWeight: 600 }}>{t('pages.monitoring.queues.queue')}</th>
                 <th style={{ textAlign: 'right', padding: '6px 12px', color: colors.brand, fontWeight: 600 }}>{t('pages.monitoring.queues.waiting')}</th>
                 <th style={{ textAlign: 'right', padding: '6px 12px', color: palette.success.base, fontWeight: 600 }}>{t('pages.monitoring.queues.active')}</th>
                 <th style={{ textAlign: 'right', padding: '6px 12px', color: colors.slate, fontWeight: 600 }}>{t('pages.monitoring.queues.completed')}</th>
@@ -354,7 +354,7 @@ export function MonitoringPage() {
                 </table>
               </div>
               ) : (
-                <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight }}>No recent traces</div>
+                <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight }}>{t('pages.monitoring.noTraces')}</div>
               )}
             </>
           ) : (

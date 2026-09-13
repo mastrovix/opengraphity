@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { colors } from '@/lib/tokens'
 /**
  * Pure stepper-dots visualisation of the workflow progress.
@@ -6,6 +7,7 @@ export function PhaseChipBar({ current, steps }: {
   current: string
   steps: Array<{ name: string; label: string; isTerminal: boolean }>
 }) {
+  const { t } = useTranslation()
   if (steps.length === 0) return null
   const curIdx = steps.findIndex((s) => s.name === current)
   const terminal = steps.find((s) => s.name === current)?.isTerminal ?? false
@@ -17,7 +19,7 @@ export function PhaseChipBar({ current, steps }: {
         const isLast = i === steps.length - 1
         const labelColor = isCur ? 'var(--color-brand)' : isPast ? 'var(--color-slate-dark)' : 'var(--color-slate-light)'
         const lineColor = isPast ? 'var(--color-brand)' : colors.border
-        const statusText = isPast ? 'completato' : isCur ? 'corrente' : 'in sospeso'
+        const statusText = t(isPast ? 'changeTasks.dot.completed' : isCur ? 'changeTasks.phase.current' : 'changeTasks.phase.pending')
         return (
           <div key={p.name} title={`${p.label} — ${statusText}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
             {!isLast && (

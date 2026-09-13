@@ -121,7 +121,7 @@ export async function createIncident(
 
   // ITIL: an incident must record the impacted CI(s) — required, not optional.
   if (!input.affectedCIIds || input.affectedCIIds.length === 0) {
-    throw new ValidationError('Un incident deve avere almeno un CI impattato')
+    throw new ValidationError('An incident must have at least one impacted CI', { key: 'errors.incident.needsCI' })
   }
 
   // ITIL: Priority = f(Impact, Urgency). La priorità derivata si salva nel
@@ -212,7 +212,8 @@ export async function createIncident(
       logger.error({ incidentId: id, tenantId: ctx.tenantId, missing, number: created.number },
         '[incidentService] CI impattati non collegabili: incident annullato (violerebbe l\'invariante «almeno un CI impattato»)')
       throw new ValidationError(
-        `Incident non creato: ${missing.length} dei ${affectedCIIds.length} CI impattati non esistono in questo cliente o non sono Configuration Item (${missing.join(', ')})`,
+        `Incident not created: ${missing.length} of the ${affectedCIIds.length} impacted CIs do not exist in this tenant, or are not Configuration Items (${missing.join(', ')})`,
+        { key: 'errors.incident.ciMissing', params: { missing: missing.length, total: affectedCIIds.length, ids: missing.join(', ') } },
       )
     }
   }
@@ -313,7 +314,7 @@ export async function assignIncidentToTeam(
   teamId: string,
   ctx: ServiceCtx,
 ) {
-  if (!teamId?.trim()) throw new ValidationError('teamId è obbligatorio')
+  if (!teamId?.trim()) throw new ValidationError('teamId is required', { key: 'errors.assignment.teamRequired' })
   const now = new Date().toISOString()
 
   return withSession(async (session) => {

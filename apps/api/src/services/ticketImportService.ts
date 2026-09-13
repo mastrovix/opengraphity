@@ -266,8 +266,8 @@ export async function importIncidents(
   opts: ImportOptions = {},
 ): Promise<ImportResult> {
   const dryRun = opts.dryRun ?? false
-  if (!ctx.tenantId) throw new ValidationError('tenantId è obbligatorio')
-  if (!Array.isArray(rows)) throw new ValidationError('rows deve essere un array')
+  if (!ctx.tenantId) throw new ValidationError('tenantId is required', { key: 'errors.import.tenantRequired' })
+  if (!Array.isArray(rows)) throw new ValidationError('rows must be an array', { key: 'errors.import.rowsArray' })
 
   const result: ImportResult = { totalRows: rows.length, created: 0, updated: 0, errors: [], warnings: [] }
   if (rows.length === 0) return result
@@ -276,11 +276,11 @@ export async function importIncidents(
     // ── Preload reference data (read-only, shared by dry-run and execute) ─────
     const steps = await getWorkflowSteps(session, ctx.tenantId, 'incident')
     if (steps.length === 0) {
-      throw new ValidationError(`Nessuna workflow definition attiva per "incident" nel tenant "${ctx.tenantId}"`)
+      throw new ValidationError(`No active workflow definition for "incident" in tenant "${ctx.tenantId}"`, { key: 'errors.import.noWorkflow' })
     }
     const initialStep = steps.find((s) => s.isInitial)
     if (!initialStep) {
-      throw new ValidationError(`Il workflow incident del tenant "${ctx.tenantId}" non ha uno step iniziale`)
+      throw new ValidationError(`The incident workflow of tenant "${ctx.tenantId}" has no initial step`, { key: 'errors.import.noInitialStep' })
     }
     const stepByLowerName = new Map(steps.map((s) => [s.name.toLowerCase(), s.name]))
 
@@ -642,8 +642,8 @@ export async function importKBArticles(
   opts: ImportOptions = {},
 ): Promise<ImportResult> {
   const dryRun = opts.dryRun ?? false
-  if (!ctx.tenantId) throw new ValidationError('tenantId è obbligatorio')
-  if (!Array.isArray(rows)) throw new ValidationError('rows deve essere un array')
+  if (!ctx.tenantId) throw new ValidationError('tenantId is required', { key: 'errors.import.tenantRequired' })
+  if (!Array.isArray(rows)) throw new ValidationError('rows must be an array', { key: 'errors.import.rowsArray' })
 
   const result: ImportResult = { totalRows: rows.length, created: 0, updated: 0, errors: [], warnings: [] }
   if (rows.length === 0) return result

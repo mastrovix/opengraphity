@@ -18,6 +18,7 @@
  *     'pending' invece di restare bloccato su record stantii.
  */
 import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../../lib/errors.js'
 import { runQuery, runQueryOne } from '../ci-utils.js'
 import { logger } from '../../../lib/logger.js'
 import { isPreApprovedChangeType, preApprovedChangeTypes } from '../../../lib/changePolicy.js'
@@ -41,7 +42,7 @@ export async function getApprovalGateState(session: Session, changeId: string, t
            count(CASE WHEN a.status <> 'approved' THEN 1 END) AS pending,
            count(CASE WHEN a.kind = 'change_manager' THEN 1 END) AS cm
   `, { changeId, tenantId })
-  if (!row) throw new GraphQLError(`Change ${changeId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+  if (!row) throw new NotFoundError('Change', changeId)
   return {
     changeType:       row.changeType ?? 'normal',
     total:            Number(row.total),
@@ -70,17 +71,22 @@ export async function assertAllApprovalsSatisfied(session: Session, changeId: st
     // esistono entrambe: il messaggio ora le nomina, come fa il ramo gemello
     // del varco cinque righe piu in la.
     throw new GraphQLError(
-      `La change e di tipo "${s.changeType}", che non e fra i tipi pre-approvati, e non ha nessun ` +
-      `requisito di approvazione: i requisiti si creano entrando in un passo di scopo «Approvazione», ` +
-      `e questa change non ci e mai passata (quando e nata, il suo tipo era pre-approvato). ` +
-      `Due uscite: rimetti "${s.changeType}" fra i tipi pre-approvati (Impostazioni -> Matrici di ` +
-      `dominio) — e le change come questa ripartono da sole; oppure riportala al passo di ` +
-      `approvazione, che i requisiti li crea entrando.`,
-      { extensions: { code: 'CONFLICT', changeType: s.changeType } },
+      `The change is of type "${s.changeType}", which is not among the pre-approved types, and it has no `
+      + `approval requirement: requirements are created when entering a step with the «Approval» purpose, `
+      + `and this change never went through one (when it was created, its type was pre-approved). `
+      + `Two ways out: put "${s.changeType}" back among the pre-approved types (Settings → Domain `
+      + `matrices) — and changes like this one resume by themselves; or bring it back to the approval `
+      + `step, which creates the requirements on entry.`,
+      {
+        extensions: {
+          code: 'CONFLICT', changeType: s.changeType,
+          i18n: { key: 'errors.approval.typeNoLongerPreApproved', params: { type: s.changeType } },
+        },
+      },
     )
   }
   if (!s.hasChangeManager) {
-    throw new GraphQLError('Manca il requisito del Change Manager: designa un team Change Manager (Team e Utenti) prima di approvare', { extensions: { code: 'CONFLICT' } })
+    throw new GraphQLError('The Change Manager requirement is missing: designate a Change Manager team (Teams and Users) before approving', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.approval.missingChangeManagerRequirement' } } })
   }
   if (s.pending > 0) {
     throw new GraphQLError(`Approvazione incompleta: ${s.pending} requisit${s.pending === 1 ? 'o' : 'i'} ancora in attesa`, { extensions: { code: 'CONFLICT' } })
@@ -104,7 +110,7 @@ export async function createChangeApprovals(session: Session, changeId: string, 
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     RETURN c.change_type AS changeType
   `, { changeId, tenantId })
-  if (!change) throw new GraphQLError(`Change ${changeId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+  if (!change) throw new NotFoundError('Change', changeId)
   if (await isPreApprovedChangeType(tenantId, change.changeType)) return
 
   const cmTeam = await runQueryOne<{ id: string }>(session, `
@@ -113,7 +119,7 @@ export async function createChangeApprovals(session: Session, changeId: string, 
   `, { tenantId })
   if (!cmTeam) {
     logger.error({ changeId, tenantId }, '[approvalGate] nessun team Change Manager designato (is_change_manager)')
-    throw new GraphQLError('Nessun team Change Manager designato: configura un team con "Change Manager" (Team e Utenti) prima di mandare la change in approvazione', { extensions: { code: 'CONFLICT' } })
+    throw new GraphQLError('No Change Manager team designated: configure a team as "Change Manager" (Teams and Users) before sending the change to approval', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.approval.noChangeManagerTeam' } } })
   }
 
   const now = new Date().toISOString()

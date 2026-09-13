@@ -138,7 +138,8 @@ export async function createProblem(
       logger.error({ problemId: id, tenantId: ctx.tenantId, missing },
         '[problemService] CI non collegati al problem: non esistono in questo cliente o non sono Configuration Item')
       throw new ValidationError(
-        `Problem creato, ma ${missing.length} dei ${input.affectedCIs.length} CI indicati non esistono in questo cliente o non sono Configuration Item (${missing.join(', ')})`,
+        `Problem created, but ${missing.length} of the ${input.affectedCIs.length} given CIs do not exist in this tenant, or are not Configuration Items (${missing.join(', ')})`,
+        { key: 'errors.problem.ciMissing', params: { missing: missing.length, total: input.affectedCIs.length, ids: missing.join(', ') } },
       )
     }
   }

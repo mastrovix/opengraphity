@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
@@ -20,6 +21,7 @@ interface Incident {
 }
 
 export function CIIncidentsCard({ ciId }: { ciId: string }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
 
@@ -89,7 +91,7 @@ export function CIIncidentsCard({ ciId }: { ciId: string }) {
       {open && (
         <div style={{ padding: '0 20px 16px' }}>
           {incidents.length === 0
-            ? <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '12px 0 0' }}>Nessun incident su questo CI.</p>
+            ? <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '12px 0 0' }}>{t('components.ciIncidents.empty')}</p>
             : (
               <>
                 {renderGroup('In corso', open_incidents)}

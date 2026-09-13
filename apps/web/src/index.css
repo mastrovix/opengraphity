@@ -445,6 +445,22 @@ tr:hover .sft-td * {
 :root { --og-split-min: 900px; }
 
 /*
+  L'ALTEZZA DELLA TESTATA DI UNA SCHEDA, uguale per tutte.
+
+  Prima la decideva il contenuto a destra: una scheda col pulsante «Salva» di
+  misura normale aveva la testata 65px, una col pulsante piccolo 49px — e su
+  «Matrici di dominio» le due misure stanno una sopra l'altra, sei schede alte
+  e due basse. L'altezza di un'intestazione non è una conseguenza del pulsante
+  che ci finisce dentro: è una misura del design system.
+
+  49px = una riga di titolo (21px) col respiro di prima (14+14). Il padding
+  verticale scende a 6px perché un pulsante di misura normale (37px) ci stia
+  dentro senza spingere: 6+37+6 = 49. Col solo titolo, `align-items: center`
+  lo tiene in mezzo e la testata resta identica a prima.
+*/
+:root { --og-card-header-h: 49px; }
+
+/*
   Due colonne, principale e laterale (2:1). Sotto la soglia diventano una:
   `minmax(0, …)` lascia stringere il contenuto, ma stringere una colonna
   laterale sotto i ~200px non la rende più piccola, la rende illeggibile.

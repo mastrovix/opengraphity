@@ -12,7 +12,7 @@
     "next": "Avanti →",
     "prev": "← Prec",
     "apply": "Applica",
-    "reset": "Reset",
+    "reset": "Ripristina",
     "no": "No",
     "of": "di",
     "description": "Descrizione",
@@ -30,7 +30,26 @@
     "label": "Etichetta",
     "order": "Ordine",
     "actions": "Azioni",
-    "all": "Tutti"
+    "all": "Tutti",
+    "saving": "Salvataggio...",
+    "new": "Nuovo",
+    "back": "Indietro",
+    "add": "Aggiungi",
+    "open": "Apri",
+    "view": "Vedi",
+    "optional": "(opzionale)",
+    "saveChanges": "Salva modifiche",
+    "showAll": "Mostra tutto",
+    "showLess": "Mostra meno",
+    "creating": "Creazione…",
+    "active": "Attivo",
+    "inactive": "Inattivo",
+    "enabled": "Attiva",
+    "disabled": "Disattiva",
+    "enable": "Attiva",
+    "disable": "Disattiva",
+    "showAllCount_one": "Mostra tutti ({{count}})",
+    "showAllCount_other": "Mostra tutti ({{count}})"
   },
   "bulk": {
     "selected_one": "{{count}} selezionato",
@@ -69,7 +88,7 @@
     "problems": "Problem",
     "requests": "Richieste",
     "reporting": "Reporting",
-    "aiAnalysis": "AI Analysis",
+    "aiAnalysis": "Analisi con l'AI",
     "slaReport": "Report SLA",
     "reportBuilder": "Report Builder",
     "analysis": "Analisi",
@@ -103,7 +122,7 @@
     "serviceCatalog": "Catalogo Servizi",
     "integrations": "Integrazioni",
     "assessmentQuestions": "Domande Assessment",
-    "whatIf": "What-if Planning",
+    "whatIf": "Analisi what-if",
     "collapse": "Comprimi sidebar",
     "expand": "Espandi sidebar",
     "mainMenu": "Menu principale",
@@ -116,9 +135,10 @@
     "eventPolicy": "Policy eventi",
     "monitoringSources": "Sorgenti",
     "ciHealth": "Salute CI",
-    "platformMonitoring": "Platform monitoring",
+    "platformMonitoring": "Monitoraggio della piattaforma",
     "services": "Servizi",
-    "domainMatrices": "Matrici di dominio"
+    "domainMatrices": "Matrici di dominio",
+    "organization": "Organizzazione"
   },
   "pages": {
     "incidents": {
@@ -162,7 +182,10 @@
         "pathNodeRoot": "CI colpito",
         "pathNodeFallback": "CI",
         "pathFooter": "Le frecce indicano la propagazione dell'impatto; le dipendenze reali vanno in senso opposto (l'applicazione dipende dal CI a monte)."
-      }
+      },
+      "requestChange": "Richiedi Change",
+      "rootCauseAnalysis": "Root Cause Analysis",
+      "transitionTo": "Transizione → {{step}}"
     },
     "changes": {
       "title": "Change",
@@ -181,6 +204,10 @@
         "title": "Allarmi silenziati in questa finestra",
         "note": "Gli allarmi ricevuti durante la finestra di rilascio non aprono incident né cambiano la salute dei CI; a fine finestra vengono rivalutati.",
         "empty": "Nessun allarme silenziato da questa change."
+      },
+      "assessment": {
+        "answersTitle": "Risposte {{role}} — {{ci}}",
+        "hiddenUntilBoth": "Le risposte saranno visibili quando entrambi gli assessment saranno completati."
       }
     },
     "problems": {
@@ -194,7 +221,9 @@
       "noResultsDesc": "Crea un nuovo problem o modifica i filtri.",
       "count_one": "{{count}} problem",
       "count_other": "{{count}} problem",
-      "notFound": "Problem non trovato."
+      "notFound": "Problem non trovato.",
+      "candidatesTitle": "Candidati Problem da incident ricorrenti",
+      "candidatesEmpty": "Nessun cluster di incident simili ricorrenti trovato (minimo 3 incident non chiusi con lo stesso pattern)."
     },
     "requests": {
       "title": "Richieste",
@@ -207,7 +236,8 @@
       "noResultsDesc": "Crea una nuova service request.",
       "count_one": "{{count}} richiesta",
       "count_other": "{{count}} richieste",
-      "notFound": "Service request non trovata."
+      "notFound": "Service request non trovata.",
+      "rejectionReason": "Motivo del rifiuto"
     },
     "cmdb": {
       "health": "Salute",
@@ -323,7 +353,13 @@
       "noMembers": "Nessun membro",
       "changeManager": "Cambia",
       "assignManager": "Assegna",
-      "removeManager": "Rimuovi manager"
+      "removeManager": "Rimuovi manager",
+      "namePlaceholder": "Es. Operazioni di rete",
+      "changeManagerTitle": "Cambia manager",
+      "assignManagerTitle": "Assegna manager",
+      "isChangeManager": "Questo team approva le change (normal/emergency)",
+      "makeChangeManager": "Designa come team Change Manager",
+      "replaceManagerConfirm": "Il manager attuale <strong>{{current}}</strong> verrà sostituito da <strong>{{next}}</strong>. Confermi?"
     },
     "users": {
       "title": "Utenti",
@@ -346,7 +382,11 @@
       "teams": "Team",
       "removeTeam": "Rimuovi {{name}}",
       "searchTeams": "Cerca team…",
-      "backToList": "Utenti"
+      "backToList": "Utenti",
+      "firstNamePlaceholder": "Mario",
+      "lastNamePlaceholder": "Rossi",
+      "addToTeam": "Aggiungi a un team",
+      "created": "Utente creato"
     },
     "logs": {
       "title": "Log",
@@ -354,8 +394,8 @@
       "message": "Messaggio",
       "source": "Sorgente",
       "timestamp": "Timestamp",
-      "refresh": "Refresh",
-      "autoRefresh": "Auto-refresh 10s",
+      "refresh": "Aggiorna",
+      "autoRefresh": "Aggiornamento automatico (10s)",
       "filterMessage": "Messaggio",
       "filterLevel": "Livello",
       "filterModule": "Modulo",
@@ -365,11 +405,15 @@
       "notJson": "Non JSON — valore grezzo"
     },
     "aiAnalysis": {
-      "title": "AI Analysis",
+      "title": "Analisi con l'AI",
       "placeholder": "Fai una domanda sui tuoi dati...",
       "noConversation": "Nessuna conversazione",
       "startQuestion": "Fai la prima domanda per iniziare.",
-      "subtitle": "Fai domande sui tuoi dati in linguaggio naturale"
+      "subtitle": "Fai domande sui tuoi dati in linguaggio naturale",
+      "errorMessage": "Errore: {{message}}",
+      "unexpectedPayload": "evento «{{event}}» con payload inatteso",
+      "invalidJson": "JSON non valido: {{message}}",
+      "noTableInAnswer": "Nessuna tabella trovata nella risposta"
     },
     "queueStats": {
       "title": "Coda Jobs",
@@ -437,7 +481,8 @@
       "colIp": "IP",
       "empty": "Nessuna voce di audit trovata",
       "details": "Dettagli — {{action}}",
-      "entries": "voci"
+      "entries": "voci",
+      "colUserEmail": "Utente (email)"
     },
     "dictionary": {
       "title": "Dizionario dei valori",
@@ -452,8 +497,8 @@
       "systemBadge": "Sistema",
       "systemNote": "Enum di sistema — puoi aggiungere valori ma non eliminare l'enum.",
       "nameLabel": "Nome (tecnico)",
-      "labelLabel": "Label",
-      "scopeLabel": "Scope",
+      "labelLabel": "Etichetta",
+      "scopeLabel": "Ambito",
       "valuesLabel": "Valori",
       "scopeShared": "Condiviso",
       "scopeItil": "ITIL",
@@ -476,7 +521,7 @@
       "customized": "Creata la tua copia di \"{{label}}\": ora modifichi questa.",
       "valueRenamed": "Valore rinominato: record, policy e matrici aggiornati insieme.",
       "defaultSet": "Valore di default aggiornato.",
-      "defaultBadge": "default",
+      "defaultBadge": "predefinito",
       "setDefaultLabel": "Usa \"{{value}}\" come valore di default",
       "renameValueLabel": "Rinomina \"{{value}}\"",
       "renameConfirmLabel": "Conferma la rinomina",
@@ -485,23 +530,45 @@
       "orderNote": "L'ordine conta: per i vocabolari di scala il primo valore è il più basso e l'ultimo il più alto (l'impatto più alto è l'ultimo). Rinominare un valore lo lascia al suo posto e aggiorna i record, la policy degli allarmi e le matrici di dominio; il default è il valore usato quando nessuno lo indica.",
       "valueCount_one": "1 valore",
       "valueCount_other": "{{count}} valori",
-      "valueLabelFor": "Etichetta del valore {{value}}"
+      "valueLabelForLanguage": "Etichetta del valore {{value}} in {{language}}",
+      "valueLabelEmpty": "non scritta"
     },
     "sync": {
-      "sourceCreated": "Sync source created",
-      "syncTriggered": "Sync triggered",
+      "sourceCreated": "Sorgente di sincronizzazione creata",
+      "syncTriggered": "Sincronizzazione avviata",
       "fileRemove": "Rimuovi",
       "modeInline": "Inline",
       "modeFile": "Carica file",
       "dropHint": "Trascina qui o",
       "browse": "Sfoglia",
       "deleteSourceTitle": "Eliminare questa sorgente di sincronizzazione?",
-      "sourceDeleted": "Sorgente eliminata"
+      "sourceDeleted": "Sorgente eliminata",
+      "schedule": "Pianifica",
+      "syncNow": "Sincronizza adesso",
+      "cronPreset": "Frequenza predefinita",
+      "customCron": "Espressione cron personalizzata",
+      "addSource": "Aggiungi una sorgente",
+      "connectorType": "Tipo di connettore",
+      "selectConnector": "Scegli un connettore...",
+      "credentials": "Credenziali",
+      "configuration": "Configurazione",
+      "conflict": {
+        "merge": "Unisci",
+        "mergeHint": "Aggiorna il CI esistente con i dati importati",
+        "distinct": "Sono diversi",
+        "distinctHint": "Crea un nuovo CI separato dai dati importati",
+        "linked": "Collega",
+        "linkedHint": "Crea un nuovo CI e collega entrambi con RELATED_TO",
+        "resolution": "Risoluzione: {{resolution}}"
+      },
+      "selectSource": "Scegli una sorgente...",
+      "pickSourceHint": "Scegli una sorgente per vedere la cronologia delle sincronizzazioni",
+      "noRuns": "Nessuna esecuzione"
     },
     "import": {
       "title": "Import dati storici",
       "intro": "Importa incident storici o articoli della knowledge base da un file CSV. Esegui prima un dry-run per validare il file, poi conferma l'import.",
-      "apiKey": "API key",
+      "apiKey": "Chiave API",
       "apiKeyPlaceholder": "Incolla una API key con permessi di scrittura",
       "apiKeyHint": "Gli endpoint di import sono autenticati con API key (header X-API-Key), non con la sessione utente. La chiave resta in memoria solo per questa sessione.",
       "apiKeyHintLink": "Crea una API key in Integrazioni",
@@ -529,7 +596,7 @@
       "errors": "Errori",
       "warnings": "Warning",
       "colRow": "Riga",
-      "colExternalId": "External ID",
+      "colExternalId": "ID esterno",
       "colMessage": "Messaggio",
       "noIssues": "Nessun errore o warning",
       "dryRunDone": "Dry-run completato senza errori",
@@ -542,7 +609,7 @@
       "import": "Importa"
     },
     "monitoring": {
-      "title": "Platform monitoring",
+      "title": "Monitoraggio della piattaforma",
       "subtitle": "Salute della piattaforma OpenGrafo: servizi, metriche e tracce",
       "health": {
         "title": "Salute del Sistema",
@@ -567,7 +634,8 @@
         "active": "Attivi",
         "completed": "Completati",
         "failed": "Falliti",
-        "delayed": "Ritardati"
+        "delayed": "Ritardati",
+        "queue": "Coda"
       },
       "neo4j": {
         "title": "Neo4j",
@@ -587,7 +655,8 @@
         "cpu": "CPU",
         "pid": "PID",
         "version": "Node.js"
-      }
+      },
+      "noTraces": "Nessuna traccia recente"
     },
     "approvals": {
       "title": "Approvazioni",
@@ -595,7 +664,26 @@
       "tabMine": "Da approvare",
       "tabAll": "Tutte",
       "noPending": "Nessuna approvazione in attesa",
-      "noApprovals": "Nessuna richiesta trovata"
+      "noApprovals": "Nessuna richiesta trovata",
+      "loadError": "Errore nel caricamento dell'articolo.",
+      "cancelRequest": "Annulla la richiesta",
+      "rejectReason": "Motivo del rifiuto (obbligatorio)...",
+      "optionalNote": "Nota facoltativa...",
+      "anyApprover": "1 approvatore sufficiente",
+      "allApprovers": "tutti gli approvatori richiesti",
+      "majorityApprovers": "maggioranza richiesta",
+      "statusPending": "In attesa",
+      "statusApproved": "Approvato",
+      "statusRejected": "Rifiutato",
+      "requestedAt": "Data richiesta",
+      "byAuthor": "di {{author}}",
+      "updatedOn": "aggiornato {{date}}",
+      "statusExpired": "Scaduto",
+      "statusCancelled": "Annullato",
+      "approvalCount": "{{done}}/{{total}} approvazioni",
+      "dueOn": "Scadenza: {{date}}",
+      "confirmApproval": "Conferma approvazione",
+      "confirmRejection": "Conferma rifiuto"
     },
     "kb": {
       "title": "Knowledge Base",
@@ -615,7 +703,9 @@
       "author": "Autore",
       "published": "Pubblicato",
       "updated": "Aggiornato",
-      "views": "Visualizzazioni"
+      "views": "Visualizzazioni",
+      "resultsFor_one": "{{count}} risultato per «{{query}}»",
+      "resultsFor_other": "{{count}} risultati per «{{query}}»"
     },
     "kbAdmin": {
       "title": "Knowledge Base Admin",
@@ -625,7 +715,32 @@
       "created": "Articolo creato",
       "updated": "Articolo aggiornato",
       "deleted": "Articolo eliminato",
-      "noArticles": "Nessun articolo"
+      "noArticles": "Nessun articolo",
+      "loadingHistory": "Caricamento della cronologia...",
+      "noVersions": "Nessuna versione precedente. Le modifiche future creeranno lo storico.",
+      "editedBy": "Modificato da",
+      "date": "Data",
+      "titlePlaceholder": "Titolo dell'articolo",
+      "categoryRequired": "Categoria *",
+      "contentRequired": "Contenuto *",
+      "articles": "Articoli della Knowledge Base",
+      "restore": "Ripristina",
+      "tags": "Tag (separati da virgola)",
+      "tagsPlaceholder": "vpn, windows, accessi",
+      "bodyPlaceholder": "Scrivi il contenuto dell'articolo...",
+      "submitForReview": "Manda in revisione",
+      "versions": "Cronologia delle versioni",
+      "filter": {
+        "onlyAnd": "La ricerca articoli supporta solo condizioni in AND",
+        "missingValue": "Valore mancante per il filtro «{{field}}»",
+        "onlyEquals": "Il filtro «{{field}}» supporta solo «uguale a»",
+        "onlyOnce": "Il filtro «{{field}}» può comparire una sola volta",
+        "titleOnlyContains": "Il filtro «Titolo» supporta solo «contiene»",
+        "unsupported": "Filtro non supportato dalla ricerca articoli: {{field}}"
+      },
+      "saveVsSubmitHint": "«Salva» aggiorna il contenuto senza cambiare stato. «Invia per revisione» salva e avvia il processo di approvazione.",
+      "colAuthor": "Autore",
+      "colUpdated": "Aggiornato"
     },
     "workflow": {
       "title": "Workflow",
@@ -633,7 +748,12 @@
       "incompleteTitle": "La configurazione di questo cliente è incompleta",
       "provisionButton": "Completa la configurazione",
       "provisionDone": "Configurazione completata: il cliente è usabile.",
-      "provisionPartial": "Configurazione creata, ma manca ancora: {{gaps}}"
+      "provisionPartial": "Configurazione creata, ma manca ancora: {{gaps}}",
+      "loading": "Caricamento workflow…",
+      "noneForTenant": "Nessun workflow trovato per questo tenant.",
+      "stepsFixedHint": "Gli step di questo workflow sono fissi. Puoi personalizzare label, azioni e condizioni.",
+      "defaultBadge": "Default",
+      "deleteTransition": "Elimina transizione"
     },
     "changeCatalog": {
       "title": "Catalogo Standard Change",
@@ -649,7 +769,7 @@
       "rollback": "Procedura Rollback",
       "created": "Standard Change creata dal catalogo",
       "backToCatalog": "Torna al catalogo",
-      "defaultWorkflow": "Default (Standard Change)",
+      "defaultWorkflow": "Predefinito (change standard)",
       "ciRequired": "CI obbligatorio",
       "ciRequiredHint": "Seleziona almeno un CI per creare la change",
       "maintenanceWindow": "Finestra di manutenzione",
@@ -731,14 +851,14 @@
       "colStatus": "Stato",
       "colActions": "Azioni",
       "colWorkflow": "Workflow",
-      "default": "Default",
+      "default": "Predefinito",
       "enabled": "Abilitata",
       "colEntries": "Voci",
       "nameRequired": "Il nome è obbligatorio",
       "nameAndCategoryRequired": "Nome e categoria sono obbligatori"
     },
     "whatIf": {
-      "title": "What-if Planning",
+      "title": "Analisi what-if",
       "subtitle": "Simula l'impatto di modifiche al grafo CMDB",
       "searchCI": "Cerca CI per nome...",
       "impact": "Analizza impatto",
@@ -747,7 +867,7 @@
       "removeDesc": "Il CI viene rimosso permanentemente dal grafo",
       "depth": "Profondità analisi",
       "analyze": "Analizza",
-      "riskScore": "Risk Score",
+      "riskScore": "Punteggio di rischio",
       "impactedCIs": "CI Impattati",
       "services": "Servizi",
       "teams": "Team",
@@ -789,7 +909,7 @@
       "slotRange": "Intervallo date",
       "searchSlots": "Cerca slot disponibili",
       "useSlot": "Usa questo slot",
-      "score": "Score",
+      "score": "Punteggio",
       "more": "+ {{count}} altre",
       "dayMon": "Lun",
       "dayTue": "Mar",
@@ -921,24 +1041,24 @@
       "add": "Aggiungi",
       "addSection": "Aggiungi {{name}}",
       "loadError": "Errore nel caricamento dati",
-      "statusCaption": "Status: {{value}}",
+      "statusCaption": "Stato: {{value}}",
       "titlePlaceholder": "Es. Incident aperti oggi",
       "widgetTypeLabel": "Tipo widget",
       "widgetType": {
-        "counter": "Counter",
-        "chartBar": "Bar Chart",
-        "chartLine": "Line",
-        "chartPie": "Pie Chart",
-        "chartDonut": "Donut",
+        "counter": "Numero",
+        "chartBar": "Barre",
+        "chartLine": "Linea",
+        "chartPie": "Torta",
+        "chartDonut": "Ciambella",
         "table": "Tabella",
-        "gauge": "Gauge",
+        "gauge": "Indicatore",
         "activeAlarms": "Allarmi attivi",
         "serviceHealth": "Salute dei servizi"
       },
       "widgetTypeDesc": {
         "counter": "Numero totale",
         "chartBar": "Distribuzione",
-        "chartLine": "Trend",
+        "chartLine": "Andamento",
         "chartPie": "Proporzioni",
         "chartDonut": "Proporzioni",
         "table": "Lista valori",
@@ -951,14 +1071,14 @@
         "incident": "Incident",
         "problem": "Problem",
         "change": "Change",
-        "serviceRequest": "Service Request",
+        "serviceRequest": "Richiesta di servizio",
         "server": "Server",
-        "application": "Application",
+        "application": "Applicazione",
         "database": "Database",
-        "certificate": "Certificate",
-        "networkDevice": "Network Device",
-        "vm": "Virtual Machine",
-        "businessApplication": "Business Application"
+        "certificate": "Certificato",
+        "networkDevice": "Dispositivo di rete",
+        "vm": "Macchina virtuale",
+        "businessApplication": "Applicazione di business"
       },
       "metricLabel": "Metrica",
       "metric": {
@@ -1085,7 +1205,11 @@
         "saved": "Fasce di rischio salvate.",
         "addBand": "Aggiungi una fascia",
         "removeBand": "Togli la fascia \"{{band}}\""
-      }
+      },
+      "notFilledIn": "da compilare nella matrice",
+      "notCovered": "non coperta dalla matrice — completala in Impostazioni → Matrici di dominio",
+      "impact": "Impatto",
+      "urgency": "Urgenza"
     },
     "reportBuilder": {
       "title": "Costruttore di report",
@@ -1102,7 +1226,415 @@
       "optionScoreFor": "Punteggio della risposta {{n}}",
       "moveOptionUp": "Sposta la risposta {{n}} più in alto",
       "moveOptionDown": "Sposta la risposta {{n}} più in basso",
-      "removeOption": "Togli la risposta {{n}}"
+      "removeOption": "Togli la risposta {{n}}",
+      "allCategories": "Tutte le categorie",
+      "empty": "Nessuna domanda",
+      "text": "Testo",
+      "categoryTitle": "Categoria della domanda",
+      "flags": "Contrassegni",
+      "ciTypeAssignments": "Assegnazioni ai tipi di CI",
+      "weight": "Peso",
+      "sortOrder": "Ordinamento",
+      "options": "Opzioni",
+      "subtitle": "Gestisci le domande usate nell'assessment delle change e la loro assegnazione ai tipi di CI.",
+      "new": "Nuova",
+      "pickOne": "Scegli una domanda, o creane una nuova",
+      "core": "Sempre presente",
+      "saveFirst": "Salva la domanda per poterla assegnare a tipi di CI specifici.",
+      "coreNote": "Questa domanda è <b>sempre presente</b>: viene assegnata da sé a tutti i tipi di CI attivi.",
+      "add": "Aggiungi"
+    },
+    "organization": {
+      "title": "Organizzazione",
+      "subtitle": "Le scelte che valgono per tutti in questa azienda.",
+      "languageTitle": "Lingua",
+      "languageDescription": "La lingua in cui si legge il prodotto per chi non ne ha scelta una dal proprio Profilo. Vale anche come ripiego per le etichette scritte in una lingua sola.",
+      "defaultLanguage": "Lingua predefinita",
+      "notConfigured": "Non configurata",
+      "saved": "Lingua dell'organizzazione aggiornata",
+      "fallbackInUse": "Nessuno l'ha ancora scelta: il prodotto si legge in {{language}}.",
+      "personalWins": "Chi ha scelto una lingua nel proprio Profilo continua a leggere quella."
+    },
+    "slaReport": {
+      "met": "Rispettati",
+      "breached": "Violati",
+      "breachRate": "Tasso di violazione",
+      "avgResolution": "Tempo medio di risoluzione",
+      "byPriority": "Per priorità",
+      "noData": "Nessun dato SLA nel periodo.",
+      "total": "Totale",
+      "compliance": "Rispetto degli obiettivi",
+      "newContract": "Nuovo contratto",
+      "party": "Responsabile",
+      "target": "Obiettivo",
+      "nameRequired": "Nome *",
+      "namePlaceholder": "Es. Ripristino rete entro 4h",
+      "partyTeam": "Team interno",
+      "partySupplier": "Fornitore esterno",
+      "supplierName": "Nome fornitore",
+      "teamName": "Team responsabile",
+      "supplierPlaceholder": "Es. Acme Cloud Srl",
+      "teamPlaceholder": "Es. Network Ops",
+      "generatedNote": "Generato il {{date}}. Il rispetto degli obiettivi OLA/UC confronta il tempo di risoluzione reale delle entità concluse nel periodo con il target del contratto.",
+      "pickTeam": "Scegli un team...",
+      "noTeams": "Questo cliente non ha ancora nessun team: creane uno in Team e Utenti.",
+      "contracts": "OLA / UC",
+      "noContracts": "Nessun OLA/UC definito. Un OLA fissa un obiettivo fra team interni; un UC lo lega a un fornitore esterno.",
+      "editContract": "Modifica il contratto OLA/UC",
+      "newContractTitle": "Nuovo contratto OLA/UC",
+      "typeOla": "OLA (team interni)",
+      "typeUc": "UC (fornitore esterno)",
+      "responseTarget": "Obiettivo di presa in carico (min)",
+      "resolveTarget": "Obiettivo di risoluzione (min)",
+      "windowDays_one": "{{count}}g",
+      "windowDays_other": "{{count}}gg",
+      "slaInWindow": "SLA nel periodo ({{window}})",
+      "attainment": "Attainment ({{window}})"
+    },
+    "changeDetail": {
+      "notFound": "Change non trovato",
+      "approval": "Approvazione",
+      "noApprovalRequirements": "Nessun requisito di approvazione. Verifica che sia designato un team <b>Change Manager</b> (Team e Utenti) e che i CI affected abbiano un owner group.",
+      "requirement": "Requisito",
+      "approvedBy": "Approvato da",
+      "approved": "Approvato",
+      "pending": "In attesa",
+      "linkedTickets": "Ticket collegati",
+      "nextSteps": "Prossimi passi",
+      "involvedCIs": "CI coinvolti",
+      "noImpactedCI": "Nessun CI impattato",
+      "noImpactedCIAtDepth": "Nessun CI impattato a profondità {{depth}}.",
+      "retry": "Riprova",
+      "depth": "Profondità",
+      "impactedCI": "CI impattato",
+      "impactedVia": "Impattato da",
+      "moveToAffected": "Sposta in CI affected",
+      "removeCITitle": "Rimuovere il CI",
+      "remove": "Rimuovi",
+      "assessmentsToReopen": "Assessment da riaprire",
+      "reopenAll": "Riapri <b>tutti</b> gli assessment",
+      "reopenSome": "Riapri <b>alcuni specifici</b>",
+      "noTasks": "Nessun task disponibile.",
+      "deleteTitle": "Elimina la change",
+      "info": "Informazioni sulla change",
+      "why": "Perché",
+      "what": "Cosa",
+      "changeOwner": "Responsabile della change",
+      "requester": "Richiedente",
+      "tasksDone": "{{done}}/{{total}} task completati",
+      "approve": "Approva",
+      "reject": "Rifiuta",
+      "removeCIConfirm": "Rimuovere <b>{{ci}}</b> dalla change? Tutti i task collegati verranno eliminati.",
+      "rejectNote": "Il rifiuto riporta la change in <b>assessment</b>, riapre i task scelti e azzera le approvazioni.",
+      "deleteConfirm": "Eliminare <b>{{code}}</b>? La change sparirà dagli elenchi e i suoi collegamenti — compreso quello creato da sé dal ticket richiedente — non si vedranno più. È una cancellazione logica.",
+      "impactError": "Errore nel calcolo dei CI impattati: {{message}}",
+      "stepInProgress": "{{step}} in corso"
+    },
+    "reportSchedule": {
+      "lastRun": "Ultima esecuzione: {{date}}",
+      "preset": {
+        "dailyAt9": "Ogni giorno alle 9:00",
+        "mondayAt9": "Ogni lunedì alle 9:00",
+        "monthlyAt9": "Il primo del mese alle 9:00",
+        "custom": "Personalizzata"
+      },
+      "back": "Indietro",
+      "title": "Impostazioni",
+      "shareWithTeams": "Condividi con i team",
+      "enable": "Abilita la schedulazione",
+      "frequency": "Frequenza",
+      "cron": "Espressione cron",
+      "slackChannel": "Canale Slack",
+      "noChannel": "Nessun canale",
+      "recipients": "Destinatari email",
+      "removeRecipient": "Rimuovi {{email}}",
+      "recipientsPlaceholder": "email@esempio.com, Invio",
+      "recipientsHint": "Premi Invio o virgola per aggiungere. (L'invio SMTP non è ancora implementato: gli indirizzi sono conservati per quando lo sarà.)",
+      "format": "Formato del report",
+      "saving": "Salvataggio...",
+      "save": "Salva le impostazioni"
+    },
+    "reports": {
+      "visibility": {
+        "label": "Visibilità",
+        "private": "Privato",
+        "groups": "Gruppi",
+        "all": "Tutti",
+        "selectedGroups": "Gruppi selezionati"
+      },
+      "emptyTitle": "Nessun report, per ora",
+      "emptyDescription": "Crea il tuo primo report personalizzato",
+      "newReport": "Nuovo report",
+      "creating": "Creazione...",
+      "create": "Crea il report",
+      "namePlaceholder": "Nome del report...",
+      "allReports": "Tutti i report",
+      "editSection": "Modifica sezione",
+      "clickRunToLoad": "Clicca «▶ Esegui» per caricare i dati",
+      "addSectionTo": "Aggiungi sezione — {{report}}",
+      "editSectionOf": "Modifica sezione: {{section}}",
+      "editSettings": "Modifica impostazioni",
+      "duplicate": "Duplica"
+    },
+    "serviceCatalogAdmin": {
+      "newItem": "Nuova voce",
+      "emptyTitle": "Nessuna voce di catalogo",
+      "emptyDescription": "Crea la prima voce che gli utenti potranno richiedere dal portale self-service.",
+      "category": "Categoria",
+      "required": "Richiesta",
+      "active": "Attiva",
+      "inactive": "Disattivata",
+      "activate": "Attiva",
+      "deactivate": "Disattiva",
+      "editTitle": "Modifica la voce di catalogo",
+      "createTitle": "Nuova voce di catalogo",
+      "namePlaceholder": "Es. Nuovo laptop",
+      "descriptionPlaceholder": "Cosa include il servizio...",
+      "categoryPlaceholder": "Es. Hardware, Accessi, Software",
+      "noApproval": "Non richiede approvazione",
+      "needsApproval": "Richiede approvazione"
+    },
+    "userDetail": {
+      "notFound": "Utente non trovato.",
+      "info": "Informazioni",
+      "code": "Codice",
+      "firstName": "Nome",
+      "lastName": "Cognome",
+      "tenantId": "ID cliente",
+      "slackId": "ID Slack",
+      "noTeams": "Nessun team assegnato",
+      "removeFromTeam": "Rimuovi dal team",
+      "availableTeams": "Team disponibili",
+      "noOtherTeams": "Nessun altro team disponibile"
+    },
+    "businessRules": {
+      "newRule": "Nuova regola",
+      "empty": "Nessuna regola configurata",
+      "namePlaceholder": "Es. Assegna priorità alta",
+      "entityType": "Tipo di entità",
+      "event": "Evento",
+      "conditionLogic": "Logica delle condizioni",
+      "conditions": "Condizioni",
+      "addCondition": "Aggiungi una condizione",
+      "addAction": "Aggiungi un'azione",
+      "editRule": "Modifica la regola",
+      "stopOnMatch": "Fermati alla prima che corrisponde"
+    },
+    "autoTriggers": {
+      "newTrigger": "Nuovo trigger",
+      "empty": "Nessun trigger configurato",
+      "namePlaceholder": "Es. Assegna da sé gli incident P1",
+      "eventType": "Tipo di evento",
+      "enabled": "Abilitato",
+      "editTrigger": "Modifica il trigger",
+      "timerDelay": "Ritardo del timer (minuti)"
+    },
+    "notifications": {
+      "test": "Prova",
+      "platform": "Piattaforma",
+      "webhookUrl": "URL del webhook",
+      "webhookUrlRequired": "URL del webhook *",
+      "slackHint": "Usa l'URL del webhook per i canali pubblici, il Channel ID se hai configurato il Bot Token.",
+      "eventsToNotify": "Eventi da notificare",
+      "addChannel": "Aggiungi un canale",
+      "editChannel": "Modifica il canale",
+      "empty": "Nessun canale configurato. Aggiungi Slack o Teams per ricevere le notifiche.",
+      "channelId": "ID del canale",
+      "channelIdProtocol": "(Bot API)",
+      "testSent": "✓ Inviato",
+      "testFailed": "✗ Errore",
+      "event": {
+        "slaBreach": "SLA Breach",
+        "escalation": "Escalation",
+        "assignedToMe": "Assegnazione a me",
+        "incidentResolved": "Risoluzione incident",
+        "changeApproved": "Change approvato",
+        "changeFailed": "Change fallito",
+        "assessmentAssigned": "Task assessment assegnato"
+      }
+    },
+    "serviceRequestDetail": {
+      "noWorkflow": "Nessun workflow associato a questa richiesta.",
+      "editTitle": "Modifica la richiesta",
+      "titleRequired": "Titolo *",
+      "noActionInStep": "Nessuna azione disponibile nello stato attuale ({{step}})."
+    },
+    "workflowStep": {
+      "editStep": "Modifica il passo",
+      "corruptedActions": "<b>Azioni del passo corrotte</b> — {{error}}. Correggi il dato salvato (enter/exit_actions del passo <code>{{step}}</code>) prima di modificarlo: il salvataggio è disabilitato per non perdere le azioni illeggibili.",
+      "tabProps": "Proprietà",
+      "tabMetadata": "Metadati",
+      "tabNotify": "Notifiche",
+      "isInitial": "Il processo parte da questo passo",
+      "isTerminal": "Il processo è chiuso quando arriva qui",
+      "editTransition": "Modifica la transizione",
+      "noneMasculine": "— nessuno —",
+      "labelPlaceholder": "Es. CAB settimanale",
+      "labelPlaceholderTimer": "Es. Attesa del timer",
+      "timerDelay": "RITARDO (minuti)",
+      "update": "Aggiorna",
+      "notifyOnEnter": "Notifica all'ingresso nel passo",
+      "deleteStep": "Elimina il passo"
+    },
+    "slaPolicies": {
+      "newPolicy": "Nuova policy",
+      "emptyTitle": "Nessuna policy SLA configurata",
+      "emptyDescription": "Crea la prima policy per definire i tempi di risposta e di risoluzione.",
+      "namePlaceholder": "Es. SLA per incident critici",
+      "timezone": "Fuso orario",
+      "editPolicy": "Modifica la policy",
+      "responseMinutes": "Tempo di presa in carico (minuti) *",
+      "resolveMinutes": "Tempo di risoluzione (minuti) *"
+    },
+    "incidentDetail": {
+      "editTitle": "Modifica l'incident",
+      "major": "⚠ INCIDENT MAJOR",
+      "kbDraft": "Bozza per la Knowledge Base",
+      "rootCausePlaceholder": "Es. perdita di memoria in payment-service v2.3.1...",
+      "derivedPriority": "Priorità risultante:",
+      "rootCauseHint": "Descrivi la causa radice prima di risolvere (minimo 10 caratteri).",
+      "transitionNoteHint": "Aggiungi una nota per questa transizione (minimo 10 caratteri).",
+      "aiDraft": "Bozza AI dalle attività",
+      "aiDraftRunning": "Genero bozza dalle attività…",
+      "running": "Esecuzione…"
+    },
+    "problemDetail": {
+      "rootCause": "Causa radice",
+      "rootCausePlaceholder": "Descrivi la causa radice del problema...",
+      "workaround": "Soluzione temporanea",
+      "workaroundPlaceholder": "Descrivi la soluzione temporanea...",
+      "transitionNotes": "Note sul passaggio...",
+      "pickGroupFirst": "Assegna prima un gruppo, poi potrai scegliere un utente.",
+      "noteRequired": "Aggiungi una nota per questo passaggio (almeno 10 caratteri).",
+      "noUserInTeam": "Nessun utente nel gruppo {{team}}."
+    },
+    "createChange": {
+      "titlePlaceholder": "Es. Aggiornamento del database di produzione a PostgreSQL 16",
+      "changeType": "Tipo di change",
+      "whatPlaceholder": "Cosa verrà cambiato, nel dettaglio?",
+      "nobody": "— Nessuno —",
+      "searchCI": "Cerca un CI per nome...",
+      "title": "Nuova change",
+      "subtitle": "Apri una richiesta per introdurre una modifica controllata ai sistemi",
+      "typesNote": "Standard: nessuna approvazione. Normal ed emergency: approvazione richiesta. Il piano di rientro si valuta nell'assessment tecnico.",
+      "whyPlaceholder": "Perché serve questa change? Motivazione, problema o obiettivo.",
+      "ciGroupsNote": "Ogni CI deve avere un Owner Group e un Support Group, altrimenti la creazione si ferma.",
+      "why": "Perché",
+      "rfcForProblem": "RFC risolutiva per il problem {{number}} — {{title}}.",
+      "rfcForIncident": "RFC risolutiva per l'incident {{number}} — {{title}}.",
+      "rfcProblemNote": "Alla creazione la change verrà collegata e il problem passerà a change requested.",
+      "rfcIncidentNote": "Alla creazione la change verrà collegata all'incident, che si risolverà automaticamente quando la change sarà completata.",
+      "affectedCIsPreloaded": "I CI impattati sono stati precaricati.",
+      "submit": "Crea Change"
+    },
+    "myTasks": {
+      "emptyTitle": "Nessun task per te",
+      "emptyDescription": "Quando una change entra in una fase che ti coinvolge, i task appariranno qui.",
+      "assignedToMe": "Assegnati a me",
+      "unassigned": "Da assegnare",
+      "count": "{{total}} task ({{mine}} assegnati a te · {{free}} da prendere in carico)",
+      "takeIt": "Prendi in carico"
+    },
+    "addCI": {
+      "title": "Aggiungi un CI alla change",
+      "typeTwoChars": "Digita almeno 2 caratteri per cercare",
+      "noCIFound": "Nessun CI trovato",
+      "alreadyAdded": "Già aggiunto",
+      "groupsRequired": "Owner Group e Support Group sono obbligatori"
+    },
+    "auditTimeline": {
+      "title": "Registro delle modifiche",
+      "empty": "Nessun evento",
+      "cat": {
+        "status": "Stato",
+        "assessment": "Assessment",
+        "assignments": "Assegnazioni",
+        "comments": "Commenti",
+        "system": "Sistema"
+      }
+    },
+    "planModal": {
+      "empty": "Nessun passo pianificato",
+      "title": "Piano di rilascio — {{ci}}"
+    },
+    "assistant": {
+      "placeholder": "Chiedi qualcosa sul tuo ambiente...",
+      "intro": "Fai una domanda sul tuo ambiente: incident, CI, impatti, change, knowledge base.",
+      "introNote": "L'assistente legge il grafo vero — non inventa.",
+      "error": "Errore: {{message}}",
+      "unknownError": "sconosciuto",
+      "streamTruncated": "Errore: la risposta si è interrotta prima del completamento.",
+      "tool": {
+        "searchIncidents": "Ricerca incident",
+        "incidentDetail": "Dettaglio incident",
+        "listIncidents": "Elenco incident",
+        "searchCIs": "Ricerca CI",
+        "impactAnalysis": "Analisi impatto",
+        "openChanges": "Change aperti",
+        "searchKB": "Ricerca KB"
+      },
+      "suggestion": {
+        "changesInFlight": "Quali change sono in corso e che CI toccano?",
+        "shutdownImpact": "Se spengo SRV-009 cosa impatto?",
+        "similarOpenIncidents": "Ci sono incident aperti simili tra loro?"
+      }
+    },
+    "taskView": {
+      "changeOverview": "Riepilogo della change",
+      "choose": "— Scegli —",
+      "assignedTo": "Assegnato a",
+      "unassigned": "— Non assegnato —",
+      "notFound": "Task non trovato"
+    },
+    "createIncident": {
+      "titlePlaceholder": "Es. Il database di produzione non è raggiungibile",
+      "descriptionPlaceholder": "Descrivi cosa sta succedendo...",
+      "title": "Nuovo incident",
+      "subtitle": "Compila i dettagli dell'incident da aprire",
+      "selectCategory": "-- Seleziona categoria --",
+      "submit": "Crea Incident"
+    },
+    "createTicket": {
+      "searchByName": "Cerca per nome...",
+      "searchTeam": "Cerca un team per nome...",
+      "derivedPriority": "Priorità (calcolata)"
+    },
+    "createProblem": {
+      "titlePlaceholder": "Es. Perdita di memoria nel servizio di autenticazione",
+      "descriptionPlaceholder": "Descrivi il problema e il suo impatto...",
+      "title": "Nuovo problem",
+      "subtitle": "Compila i dettagli del problem da aprire",
+      "submit": "Crea Problem"
+    },
+    "reportsAI": {
+      "newConversation": "Nuova conversazione",
+      "send": "Invia",
+      "sendHint": "Invio per mandare · Maiusc+Invio per andare a capo",
+      "title": "Report"
+    },
+    "createRequest": {
+      "titlePlaceholder": "Di cosa hai bisogno?",
+      "descriptionPlaceholder": "Descrivi cosa ti serve e perché...",
+      "back": "Torna alle richieste",
+      "title": "Nuova richiesta di servizio",
+      "subtitle": "Chiedi un servizio o un supporto all'IT",
+      "genericItem": "— Richiesta generica (nessuna voce di catalogo) —",
+      "needsApproval": "Questa voce richiede un'approvazione: la richiesta passerà dal flusso di approvazione."
+    },
+    "planTask": {
+      "validation": "Validazione *",
+      "validationEnd": "Fine della validazione",
+      "deployEnd": "Fine del rilascio",
+      "complete": "Completa il piano",
+      "wrongTeam": "Non sei nel team giusto",
+      "fillAll": "Compila tutti i passi prima di completare",
+      "saveFirst": "Salva le modifiche prima di completare"
+    },
+    "teamDetail": {
+      "manager": "Responsabile",
+      "changeManager": "Change Manager",
+      "searchMember": "Cerca un membro...",
+      "noMemberFound": "Nessun membro trovato"
     }
   },
   "filter": {
@@ -1125,13 +1657,15 @@
     "last7Days": "Ultimi 7 giorni",
     "last30Days": "Ultimi 30 giorni",
     "isOneOf": "È uno di",
-    "isNotOneOf": "Non è uno di"
+    "isNotOneOf": "Non è uno di",
+    "valuePlaceholderText": "Valore…"
   },
   "auth": {
     "logout": "Esci",
     "forbiddenTitle": "Accesso negato",
     "forbiddenBody": "Il tuo ruolo non consente di aprire questa pagina. Se pensi sia un errore, contatta un amministratore.",
-    "backHome": "Torna alla dashboard"
+    "backHome": "Torna alla dashboard",
+    "error": "Errore di autenticazione"
   },
   "anomaly": {
     "rules": {
@@ -1217,7 +1751,14 @@
     "stepPurpose": "Solo i passi con scopo",
     "stepCategory": "Solo i passi di categoria",
     "stepNarrowingAny": "— Qualunque passo —",
-    "stepNarrowingHint": "Senza restringimento la regola vale per ogni ingresso in un passo. Restringere per scopo o categoria, invece che per nome, è ciò che la fa sopravvivere alla rinomina di un passo."
+    "stepNarrowingHint": "Senza restringimento la regola vale per ogni ingresso in un passo. Restringere per scopo o categoria, invece che per nome, è ciò che la fa sopravvivere alla rinomina di un passo.",
+    "escalationMessage": "Messaggio di escalation",
+    "escalationMessagePlaceholder": "Incident non risolto dopo N minuti",
+    "slaWarningTarget": "Destinatario dell'avviso SLA",
+    "escalationDelay": "Ritardo dell'escalation (minuti)",
+    "escalationTarget": "Destinatario dell'escalation (un utente, o «all»)",
+    "slaThreshold": "Soglia dell'avviso SLA (%)",
+    "digestTime": "Orario del riepilogo (HH:MM)"
   },
   "workflow": {
     "addAction": "Aggiungi azione",
@@ -1298,7 +1839,7 @@
       "step_terminale": "Passo terminale",
       "step_aperto": "Passo aperto",
       "notifica_all_ingresso": "Notifica all'ingresso",
-      "chiave_titolo_i18n": "Chiave del titolo (i18n)",
+      "titleKey": "Chiave del titolo (i18n)",
       "severit": "Severità",
       "canali": "Canali",
       "destinatari": "Destinatari",
@@ -1306,7 +1847,12 @@
       "trigger": "Innesco",
       "richiede_input": "Richiede un valore",
       "campo_input": "Campo del valore",
-      "timer_ore": "Timer (ore)"
+      "timer_ore": "Timer (ore)",
+      "deleteStepTitle": "Eliminare lo step «{{step}}»?",
+      "deleteStepBody": "Verranno rimosse anche le transizioni collegate.",
+      "entityTypeUnavailable": "Tipo entità del workflow non disponibile ({{error}}): campi e valori delle condizioni non caricabili.",
+      "titleKeyPlaceholder": "es. notification.custom.step.title",
+      "inputField": "Campo di input"
     },
     "stepType": {
       "standard": "Passo",
@@ -1317,7 +1863,14 @@
     },
     "addStep": "Passo",
     "addStepDialog": "Aggiungi un passo",
-    "timerMinutesPlaceholder": "es. 60"
+    "timerMinutesPlaceholder": "es. 60",
+    "legend": {
+      "node": "Nodo / passo",
+      "manual": "Manuale",
+      "automatic": "Automatico",
+      "slaBreach": "Violazione SLA",
+      "timer": "Timer (chiusura automatica)"
+    }
   },
   "itilDesigner": {
     "title": "ITIL Type Designer",
@@ -1343,7 +1896,8 @@
       "confirmDelete": "Eliminare questa regola di relazione?",
       "selectCIType": "— Seleziona tipo CI —",
       "cancel": "Annulla",
-      "add": "Aggiungi"
+      "add": "Aggiungi",
+      "descriptionPlaceholder": "Es. Server impattati dall'incident"
     },
     "order": "Ordine",
     "enumRef": "Enum di riferimento",
@@ -1354,10 +1908,16 @@
     "customFields_one": "CAMPO PERSONALIZZATO ({{count}})",
     "customFields_other": "CAMPI PERSONALIZZATI ({{count}})",
     "noCustomFields": "Nessun campo personalizzato. Clicca \"+ Aggiungi campo\" per aggiungerne uno.",
-    "deleteFieldTitle": "Eliminare il campo?"
+    "deleteFieldTitle": "Eliminare il campo?",
+    "validationPlaceholder": "// Esempio:\nif (!input.title) throw 'Il titolo è obbligatorio'",
+    "fieldValidationPlaceholder": "// Esempio:\nif (!value || value.length < 3) throw 'Servono almeno 3 caratteri'",
+    "itilTypes": "ITIL Types",
+    "previewNote": "Anteprima del form — tutti i campi visibili.",
+    "previewNoFields": "Nessun campo. Aggiungi campi nella tab «Campi».",
+    "visibilityPlaceholder": "// Mostra solo se severity = 'critical':\nreturn input.severity === 'critical'"
   },
   "ciTypeDesigner": {
-    "chain": "Chain",
+    "chain": "Catena",
     "chainFamilies": "Famiglie Chain",
     "chainApplication": "Applicativa",
     "chainInfrastructure": "Infrastrutturale",
@@ -1411,7 +1971,11 @@
     "uploadFailed": "Caricamento fallito",
     "download": "Scarica",
     "deleted": "Allegato eliminato",
-    "confirmDelete": "Eliminare questo allegato?"
+    "confirmDelete": "Eliminare questo allegato?",
+    "addCI": "+ Aggiungi CI",
+    "affectedCIs": "CI Impattati",
+    "searchCIByName": "Cerca CI per nome (min. 2 caratteri)…",
+    "searchCIOfTypes": "Cerca CI ({{types}}) — min. 2 caratteri…"
   },
   "queryError": {
     "title": "Errore nel caricamento dei dati",
@@ -1429,8 +1993,8 @@
       "details": "Dettagli",
       "comments": "Commenti",
       "information": "Informazioni",
-      "incidentInformation": "Incident Information",
-      "problemInformation": "Problem Information"
+      "incidentInformation": "Informazioni sull'incident",
+      "problemInformation": "Informazioni sul problem"
     },
     "noDescription": "Nessuna descrizione.",
     "noCommentsYet": "Nessun commento ancora.",
@@ -1466,7 +2030,9 @@
     "takeOwnership": "Prendi in carico",
     "backToList": "Torna alla lista",
     "exportPdf": "Esporta PDF",
-    "exportPdfFailed": "Esportazione PDF fallita"
+    "exportPdfFailed": "Esportazione PDF fallita",
+    "impact": "Impatto",
+    "urgency": "Urgenza"
   },
   "search": {
     "placeholder": "Cerca ovunque... (Ctrl+K)",
@@ -1583,13 +2149,28 @@
     "triggers": {
       "deleteTitle": "Eliminare il trigger?",
       "toggleLabel": "Attiva/disattiva {{name}}",
-      "enabledLabel": "Abilitato"
+      "enabledLabel": "Abilitato",
+      "create": "Crea trigger",
+      "executions": "Esecuzioni",
+      "lastExecution": "Ultima esecuzione",
+      "filter": {
+        "entityType": "Tipo entità",
+        "eventType": "Tipo evento"
+      }
     },
     "rules": {
       "deleteTitle": "Eliminare la regola?",
       "moveUp": "Sposta su",
       "moveDown": "Sposta giù",
-      "toggleLabel": "Attiva/disattiva {{name}}"
+      "toggleLabel": "Attiva/disattiva {{name}}",
+      "active": "Attiva",
+      "create": "Crea regola",
+      "filter": {
+        "entityType": "Tipo entità",
+        "eventType": "Tipo evento"
+      },
+      "logic": "Logica",
+      "stop": "Stop"
     },
     "sla": {
       "deleteTitle": "Eliminare la policy SLA?",
@@ -1602,13 +2183,35 @@
       "anyScope": "Tutte",
       "anyTeam": "Tutti",
       "scopeHintIncident": "Severità dell’incident a cui la policy si applica.",
-      "scopeHintOther": "Priorità del ticket a cui la policy si applica."
+      "scopeHintOther": "Priorità del ticket a cui la policy si applica.",
+      "priority": "Priorità",
+      "enabled": "Abilitata",
+      "response": "Risposta",
+      "resolution": "Risoluzione",
+      "tableLabel": "SLA Policies — {{entity}}",
+      "scopePriority": "priorità {{value}}",
+      "scopeCategory": "categoria {{value}}",
+      "scopeTeam": "team {{value}}",
+      "appliesToAll": "Si applica a: tutti gli {{entity}}",
+      "appliesToSome": "Si applica a: {{entity}} con {{scope}}",
+      "previewAll": "Tutti gli {{entity}}",
+      "previewSome": "{{entity}} con {{scope}}",
+      "previewLabel": "Anteprima:",
+      "previewTimes": "risposta entro {{response}}, risoluzione entro {{resolve}}",
+      "unit": {
+        "minutes_one": "{{count}}min",
+        "minutes_other": "{{count}}min",
+        "hours_one": "{{count}}h",
+        "hours_other": "{{count}}h",
+        "days_one": "{{count}}g",
+        "days_other": "{{count}}gg"
+      }
     },
     "integrations": {
       "tabsLabel": "Sezioni integrazioni",
-      "webhookIn": "Webhook In",
-      "webhookOut": "Webhook Out",
-      "apiKeys": "API Keys",
+      "webhookIn": "Webhook in ingresso",
+      "webhookOut": "Webhook in uscita",
+      "apiKeys": "Chiavi API",
       "deleteWebhookTitle": "Eliminare il webhook?",
       "deleteApiKeyTitle": "Eliminare la API key?",
       "webhookDeleted": "Webhook eliminato",
@@ -1689,7 +2292,10 @@
     },
     "questions": {
       "deleteTitle": "Eliminare questa domanda?",
-      "deleteBody": "Non sarà possibile se esistono risposte associate."
+      "deleteBody": "Non sarà possibile se esistono risposte associate.",
+      "created": "Domanda creata",
+      "updated": "Domanda aggiornata",
+      "deleted": "Domanda eliminata"
     },
     "approvals": {
       "cancelRequestTitle": "Annullare la richiesta di approvazione?"
@@ -1724,7 +2330,369 @@
     "labelsNotObject": "Etichette: atteso un oggetto JSON",
     "ciNotFound": "CI non trovato",
     "ciNotFoundHint": "Nessun CI con id {{id}}: potrebbe essere stato eliminato.",
-    "backToCmdb": "Torna alla CMDB"
+    "backToCmdb": "Torna alla CMDB",
+    "network": "Errore di connessione al server",
+    "nothingToUpdate": "Nessun campo da aggiornare.",
+    "notFound": "{{entity}} {{id}} non trovato.",
+    "ola": {
+      "typeOneOf": "Il tipo deve essere uno di: {{allowed}}.",
+      "entityTypeOneOf": "Il tipo di entità deve essere uno di: {{allowed}}.",
+      "nameRequired": "Il nome è obbligatorio.",
+      "responseMinutes": "I minuti di presa in carico devono essere maggiori di zero.",
+      "resolveMinutes": "I minuti di risoluzione devono essere maggiori di zero.",
+      "typeImmutable": "Il tipo di contratto non si può cambiare.",
+      "supplierNameRequired": "Per un fornitore esterno serve il nome.",
+      "teamRequired": "Scegli il team responsabile: un team di questo cliente, non un nome scritto a mano.",
+      "teamUnknown": "Il team {{team}} non esiste in questo cliente."
+    },
+    "question": {
+      "textEmpty": "Il testo della domanda non può essere vuoto: è ciò che l'operatore legge nel task.",
+      "noOptions": "Una domanda deve avere almeno un'opzione.",
+      "scoreRequired": "Ogni opzione deve avere un punteggio numerico: alimenta il rischio della change.",
+      "category": "La categoria deve essere «functional» o «technical».",
+      "optionsWithoutText": "{{count}} opzioni di risposta sono senza testo: nella tendina del task si vedrebbe una voce bianca, e chi la scegliesse non saprebbe cosa ha scelto. Dai un'etichetta a ogni opzione, oppure togli le righe che non servono.",
+      "duplicateOptions": "Le opzioni ripetono {{options}}: due risposte con lo stesso testo e punteggi diversi rendono il punteggio di rischio non spiegabile.",
+      "scoreBelowOne": "{{options}}: il punteggio deve essere un intero maggiore o uguale a 1. Una risposta che vale 0 non sposta il rischio della change, quindi la domanda non misura niente: dai alla risposta meno rischiosa il punteggio più basso (1), non zero.",
+      "allSameScore": "Tutte le opzioni valgono {{score}}: rispondere non cambierebbe il rischio della change, quindi la domanda non misura niente. Dai punteggi diversi alle risposte, dal meno al più rischioso."
+    },
+    "enum": {
+      "dictionary": "{{what}}: il vocabolario «{{name}}» {{reason}}",
+      "emptyValues": "Il vocabolario «{{name}}» ha {{count}} valori vuoti: ogni valore deve avere un nome.",
+      "systemTenant": "Il cliente di sistema non personalizza i vocabolari spediti: li cambia il prodotto.",
+      "renameEmpty": "Il valore nuovo non può essere vuoto.",
+      "renameSame": "Il valore «{{value}}» si chiama già così.",
+      "noValues": "Il vocabolario «{{name}}» non può restare senza valori: nessun record potrebbe più essere creato, perché ogni valore verrebbe rifiutato come fuori vocabolario. Se non serve più cancellalo; se stai riscrivendo la scala, mandala completa.",
+      "duplicateValues": "Il vocabolario «{{name}}» ripete {{values}}: in una scala la posizione è una regola di dominio (il primo valore è il più basso, l'ultimo il più alto), e un valore ripetuto la rende ambigua.",
+      "unknownLanguage": "Lingua «{{language}}» non riconosciuta: il prodotto è tradotto in {{available}}.",
+      "alreadyYours": "Il vocabolario «{{name}}» è già tuo: modificalo direttamente, non c'è niente da personalizzare.",
+      "yoursExists": "Hai già un vocabolario «{{name}}»: è quello che vince in lettura per te. Modifica quello invece di crearne un altro.",
+      "shippedUseCustomize": "Il vocabolario «{{name}}» è spedito col prodotto: è lo stesso per tutti i clienti e non si modifica in posto. Usa «Personalizza» per averne una copia tua e modificare quella.",
+      "replacementNotRemoved": "Sostituzioni: «{{from}}» non è fra i valori che stai togliendo da «{{name}}» ({{removed}}).",
+      "replacementNothingRemoved": "Sostituzioni: «{{from}}» non è fra i valori che stai togliendo da «{{name}}», e non ne stai togliendo nessuno.",
+      "replacementNotNew": "Sostituzioni: il valore di sostituzione «{{to}}» non è fra i valori nuovi di «{{name}}» ({{values}}).",
+      "removingDefault": "Stai togliendo «{{value}}» da «{{name}}», che ne è il valore predefinito: un record nuovo nascerebbe con un valore che il vocabolario non ha. Indica su cosa riscriverlo, oppure scegli un nuovo valore predefinito nella stessa operazione.",
+      "defaultNotInValues": "Il valore predefinito «{{value}}» non è fra i valori di «{{name}}» ({{values}}).",
+      "deleteInUse": "Cancellare il tuo vocabolario «{{name}}» lo riporterebbe a quello spedito col prodotto ({{shipped}}), e questi valori tuoi sono ancora in uso: {{usages}}. Cambia prima quei record, oppure togli i valori uno per uno indicando un valore di sostituzione.",
+      "deleteInUseNoShipped": "Cancellare il tuo vocabolario «{{name}}» non lascerebbe nessun valore (non ne esiste uno spedito col prodotto), e questi valori sono ancora in uso: {{usages}}. Cambia prima quei record.",
+      "shippedRename": "Il vocabolario «{{name}}» è spedito col prodotto: è lo stesso per tutti i clienti e non si modifica in posto. Usa «Personalizza» per averne una copia tua, e rinomina i valori su quella.",
+      "renameMissing": "Il valore «{{from}}» non è fra quelli di «{{name}}» ({{values}}): non c'è niente da rinominare.",
+      "renameWouldMerge": "«{{name}}» ha già un valore «{{to}}». Rinominare «{{from}}» in «{{to}}» unirebbe due valori distinti in uno, e i record del primo diventerebbero del secondo senza che nessuno l'abbia chiesto. Se è quello che vuoi, togli «{{from}}» indicando «{{to}}» come sostituzione.",
+      "shippedReorder": "Il vocabolario «{{name}}» è spedito col prodotto: usa «Personalizza» per averne una copia tua e riordinare quella.",
+      "reorderSameSet": "Il riordino cambia solo l'ORDINE dei valori di «{{name}}», non l'insieme (mancano: {{missing}} · in più: {{extra}}). Per aggiungere o togliere un valore usa la modifica del vocabolario, per cambiargli nome la rinomina.",
+      "otherTenant": "Il vocabolario «{{name}}» appartiene a un altro cliente: non può essere agganciato al campo «{{field}}».",
+      "sharedFieldOwnDictionary": "Il campo «{{field}}» è spedito col prodotto ed è condiviso da tutti i clienti: non può essere agganciato al tuo vocabolario «{{name}}», perché i tuoi valori finirebbero anche negli altri clienti. Crea un vocabolario col nome «{{name}}» — il tuo vince in lettura solo per te.",
+      "wireVocabulary": "{{op}}: il vocabolario «{{name}}» {{reason}}",
+      "op": {
+        "changeValues": "Cambiare i valori",
+        "rename": "Rinominare «{{from}}» in «{{to}}»",
+        "reorder": "Riordinare i valori"
+      },
+      "wireReason": {
+        "event_severity": "è la severità che mandano i sistemi di monitoraggio (il prodotto normalizza gli allarmi a info, warning, critical): cambiarne i valori non cambia quello che arriva, e fa smettere di funzionare la traduzione. Quello che decidi tu è in quale severità di incident si traducono: Impostazioni → Matrici di dominio, matrice «event_severity»."
+      }
+    },
+    "ciType": {
+      "shipped": "Il tipo «{{label}}» ({{name}}) è spedito col prodotto: è un solo tipo per tutti i clienti. {{consequence}}",
+      "relationExists": "Il tipo ha già una relazione «{{name}}»: i nomi delle relazioni di un tipo sono unici.",
+      "enumMissing": "Il vocabolario {{enumTypeId}} non esiste: il campo «{{fieldName}}» non può essere agganciato.",
+      "unknown": "Il tipo di CI «{{type}}» non esiste per questo cliente. Ammessi: {{allowed}}.",
+      "nothingWritten": "{{what}}: non è stato scritto niente e nessuna modifica è stata salvata. L'elemento non esiste più, oppure il tipo è spedito col prodotto — un solo nodo per tutti i clienti, in sola lettura.",
+      "fieldNotYours": "Il campo {{field}} non è un campo tuo su questo tipo: non è stato eliminato. I campi spediti col prodotto sono in sola lettura.",
+      "unknownWithWhat": "{{what}}: «{{type}}» non è un tipo di CI di questo cliente (ammessi: {{allowed}}).",
+      "inUseDelete": "Il tipo «{{label}}» ({{name}}) non è stato eliminato: ci sono ancora {{count}} CI di tipo {{type}} in questo cliente, e i loro dati e le loro relazioni resterebbero nel grafo senza comparire più da nessuna parte (liste, impatto, mappe dei servizi, ricerca): una perdita silenziosa. Sposta o elimina prima quei CI.",
+      "inUseDeleteWithRefs": "Il tipo «{{label}}» ({{name}}) non è stato eliminato: ci sono ancora {{count}} CI di tipo {{type}} in questo cliente, e i loro dati e le loro relazioni resterebbero nel grafo senza comparire più da nessuna parte (liste, impatto, mappe dei servizi, ricerca): una perdita silenziosa. Sposta o elimina prima quei CI. Il tipo è citato anche da: {{refs}}.",
+      "inUseDeactivate": "Il tipo «{{label}}» ({{name}}) non è stato disattivato: ci sono ancora {{count}} CI di tipo {{type}} in questo cliente, e un tipo disattivato sparisce dalle letture come se fosse cancellato, quindi quei CI non comparirebbero più da nessuna parte. Sposta o elimina prima quei CI.",
+      "inUseDeactivateWithRefs": "Il tipo «{{label}}» ({{name}}) non è stato disattivato: ci sono ancora {{count}} CI di tipo {{type}} in questo cliente, e un tipo disattivato sparisce dalle letture come se fosse cancellato, quindi quei CI non comparirebbero più da nessuna parte. Sposta o elimina prima quei CI. Il tipo è citato anche da: {{refs}}.",
+      "onlyRefsDelete": "Il tipo «{{label}}» ({{name}}) non è stato eliminato: nessun CI è di questo tipo, ma il tipo è ancora citato da {{refs}}. Quei riferimenti sono per NOME: resterebbero appesi a un tipo che non esiste più. Togli prima i riferimenti.",
+      "onlyRefsDeactivate": "Il tipo «{{label}}» ({{name}}) non è stato disattivato: nessun CI è di questo tipo, ma il tipo è ancora citato da {{refs}}. Quei riferimenti sono per NOME: resterebbero appesi a un tipo che non esiste più. Togli prima i riferimenti.",
+      "where": {
+        "topology": "Nel filtro della mappa",
+        "problemRules": "Nelle regole ITIL problem → CI",
+        "incidentRules": "Nelle regole ITIL incident → CI",
+        "groupCriteria": "Nei criteri del gruppo dinamico"
+      },
+      "unknownFieldType": "{{what}}: il tipo di campo «{{fieldType}}» non esiste. Ammessi: {{allowed}}. Un tipo che il generatore non sa tradurre fa degradare lo schema GraphQL di questo cliente: tutti i suoi tipi di CI spariscono dall'API finché il campo non viene corretto.",
+      "unknownDirection": "{{what}}: la direzione «{{direction}}» non esiste. Ammesse: {{allowed}}. Una direzione inventata non viene percorsa da nessuno: la relazione resterebbe nel disegnatore, inerte.",
+      "targetRequired": "{{what}}: il tipo di arrivo è obbligatorio.",
+      "notAmongTypes": "{{what}}: il tipo «{{name}}» non esiste fra i tipi di questo cliente. Disponibili: {{available}}.",
+      "tooMany": "Questo cliente ha già {{current}} tipi di CI, che è il massimo. Ogni tipo entra nello schema GraphQL, che viene ricostruito a ogni modifica del metamodello in ogni processo: oltre un certo numero il costo lo pagano anche gli altri clienti. Elimina un tipo che non usi, oppure alza il limite sapendo cosa costa.",
+      "chainFamiliesList": "Le famiglie di catena devono essere una lista ({{allowed}}). Ricevuto: {{got}}.",
+      "chainFamilyUnknown": "{{got}} non è una famiglia di catena valida ({{allowed}}).",
+      "serviceRoleUnknown": "{{got}} non è un ruolo valido ({{allowed}}). Il ruolo «entry» non si dichiara: nella mappa lo prende sempre il livello 1.",
+      "enumIdRequired": "Per un campo di tipo «enum» serve il vocabolario.",
+      "fieldNotOnType": "Il campo {{field}} non si trova sul tipo {{type}} di questo cliente."
+    },
+    "titleRequired": "Il titolo è obbligatorio.",
+    "assignment": {
+      "groupFirst": "Assegna prima un gruppo, poi un utente di quel gruppo.",
+      "notMember": "L'utente scelto non appartiene al gruppo assegnatario.",
+      "notMemberNamed": "L'utente scelto non appartiene al gruppo assegnatario ({{team}}).",
+      "teamRequired": "Serve un team."
+    },
+    "incident": {
+      "needsCI": "Un incident deve avere almeno un CI impattato.",
+      "ciMissing": "Incident non creato: {{missing}} dei {{total}} CI impattati non esistono in questo cliente, o non sono Configuration Item ({{ids}})."
+    },
+    "change": {
+      "needsCI": "Una change deve avere almeno un CI impattato.",
+      "whyRequired": "Il campo «Perché» è obbligatorio.",
+      "whatRequired": "Il campo «Cosa» è obbligatorio.",
+      "notFoundOrDeleted": "Change non trovata, o già eliminata.",
+      "badTicketType": "Tipo di ticket non valido: {{entityType}}.",
+      "changeOrTicketNotFound": "Change o ticket non trovato.",
+      "automaticLink": "Questo collegamento è stato creato automaticamente e non si può rimuovere. Elimina la change per rimuoverlo.",
+      "linkIncidentNotFound": "Incident non trovato per il collegamento della change.",
+      "linkProblemNotFound": "Problem non trovato per il collegamento della change.",
+      "deleted": "La change è stata eliminata: non è più possibile nessuna operazione.",
+      "preApprovalFailed": "Change di tipo pre-approvato «{{type}}»: la pre-approvazione non è riuscita ({{reason}})."
+    },
+    "import": {
+      "tenantRequired": "Manca il cliente: l'importazione non sa dove scrivere.",
+      "rowsArray": "Le righe da importare devono essere una lista.",
+      "noWorkflow": "Nessun workflow attivo per gli incident: l'importazione non saprebbe in che stato metterli.",
+      "noInitialStep": "Il workflow degli incident non ha un passo iniziale: l'importazione non saprebbe da dove partire.",
+      "invalidCsv": "CSV non valido: {{reason}}",
+      "noRows": "Il CSV non ha righe di dati: serve un'intestazione e almeno una riga."
+    },
+    "authz": {
+      "noUser": "Non autorizzato: non si sa chi sei.",
+      "wrongGroup": "Non autorizzato: solo il gruppo {{group}} del CI può fare questa cosa.",
+      "reopenAdmin": "Solo un amministratore può riaprire un task.",
+      "notInTeam": "L'utente non appartiene al team assegnato.",
+      "unknownRole": "Ruolo «{{role}}» sconosciuto: nessuna operazione è consentita.",
+      "roleNotAllowed": "Il ruolo «{{role}}» non può eseguire {{operation}} (serve: {{required}}).",
+      "invalidRole": "Ruolo non valido: {{role}}."
+    },
+    "vocabulary": {
+      "missingValue": "{{vocabulary}}: manca il valore. Ammessi: {{allowed}}.",
+      "outOfVocabulary": "{{vocabulary}}: «{{value}}» non è nel Dizionario di questo cliente. Ammessi: {{allowed}}."
+    },
+    "priority": {
+      "impactUrgencyTogether": "Impatto e urgenza si passano insieme: o entrambi, o soltanto la priorità ({{field}}).",
+      "noCombination": "Nessuna combinazione di impatto e urgenza produce «{{priority}}»: completa la matrice della priorità in Impostazioni → Matrici di dominio.",
+      "noCombinationFactory": "Nessuna combinazione di impatto e urgenza produce «{{priority}}». La matrice della priorità è ancora quella di fabbrica: è possibile che tu abbia rinominato un valore del vocabolario senza aggiornarla (Impostazioni → Matrici di dominio).",
+      "cellImpactStale": "Matrice della priorità, cella «{{cell}}»: l'impatto «{{value}}» non è (più) nel Dizionario. Succede quando si rinomina un valore del vocabolario senza aggiornare la matrice: correggila in Impostazioni → Matrici di dominio.",
+      "cellUrgencyStale": "Matrice della priorità, cella «{{cell}}»: l'urgenza «{{value}}» non è (più) nel Dizionario. Succede quando si rinomina un valore del vocabolario senza aggiornare la matrice: correggila in Impostazioni → Matrici di dominio."
+    },
+    "riskBand": {
+      "atLeastOne": "Serve almeno una fascia di rischio.",
+      "duplicate": "La fascia «{{band}}» compare due volte.",
+      "threshold": "La soglia di «{{band}}» deve essere un intero maggiore o uguale a zero (ricevuto {{got}}).",
+      "notDeclared": "Le fasce di rischio di questo cliente non sono dichiarate, e il vocabolario «risk_band» ha {{count}} valori ({{bands}}) invece di tre: non c'è una divisione del punteggio da usare di fabbrica. Dichiara le soglie in Impostazioni → Matrici di dominio.",
+      "notGrowing": "Le soglie devono crescere: «{{band}}» arriva a {{upTo}}, che non è più della fascia precedente ({{previous}}). Le fasce si dichiarano dalla più bassa alla più alta.",
+      "lastMustReachMax": "L'ultima fascia («{{band}}») deve arrivare a {{max}}: altrimenti un punteggio più alto resterebbe senza fascia, e la priorità della change non si potrebbe calcolare.",
+      "stale": "Le fasce di rischio di questo cliente citano «{{band}}», che non è (più) nel vocabolario «risk_band» ({{bands}}): correggile in Impostazioni → Matrici di dominio."
+    },
+    "changePolicy": {
+      "duplicateType": "Il tipo di change «{{type}}» compare due volte fra i pre-approvati."
+    },
+    "workflow": {
+      "stepNameTaken": "Non si può creare il passo «{{name}}»: la definizione non c'è, o quel nome è già usato in questo workflow.",
+      "stepNotFound": "Il passo «{{name}}» non esiste in questa definizione.",
+      "invalidStepName": "Il nome di passo «{{name}}» non è valido: minuscole, cifre e trattini bassi, e deve iniziare con una lettera (es. «cab_settimanale»). Questo nome diventa lo stato del ticket e finisce nei filtri e nei report; il nome che vedono le persone è l'etichetta, che può essere qualunque cosa.",
+      "cannotDeleteBoundaryStep": "Il passo «{{name}}» è di tipo «{{kind}}»: i passi di apertura e di chiusura del processo non si eliminano, altrimenti il workflow non avrebbe più un inizio o una fine. Puoi rinominarlo, o cambiarne le azioni.",
+      "cannotDeleteInitialStep": "Il passo «{{name}}» è il passo iniziale del processo: eliminandolo, nessun ticket nuovo potrebbe più nascere. Marca prima un altro passo come iniziale.",
+      "actionsNotJson": "{{field}} non è JSON valido ({{reason}}).",
+      "actionsNotList": "{{field}} deve essere una lista di azioni.",
+      "badTarget": "{{field}}: «{{target}}» non è un destinatario valido. Ammessi: {{allowed}}.",
+      "targetNotApplicable": "{{field}}: «{{target}}» non si può risolvere all'ingresso in un passo. Applicabili: {{applicable}}.",
+      "badPurpose": "{{field}}: lo scopo «{{purpose}}» è fuori vocabolario. Ammessi: {{allowed}} (oppure vuoto per nessuno scopo).",
+      "badCategory": "{{field}}: la categoria «{{category}}» è fuori vocabolario. Ammesse: {{allowed}}. La categoria dice come il ticket si vede da fuori, e il prodotto la legge per decidere: «risolto» valorizza la data di risoluzione, «chiuso» è dove arriva la chiusura automatica. Il nome che vedono le persone è l'etichetta del passo, non questo.",
+      "badTrigger": "{{field}}: l'innesco «{{trigger}}» è fuori vocabolario. Ammessi: {{allowed}}.",
+      "badCondition": "{{field}}: la condizione «{{condition}}» non esiste. Il motore sa valutare solo queste: {{allowed}} (oppure vuoto per nessuna condizione). Una condizione non registrata blocca l'arco: il motore la rifiuta a ogni tentativo e il ticket non si muove più.",
+      "noApprovalPurpose": "Nel workflow delle change nessun passo avrebbe più lo scopo «Approvazione», ma i tipi di change {{types}} non sono pre-approvati: senza quel passo non esisterebbe un posto dove approvarli, e il varco delle approvazioni non avrebbe dove applicarsi. Assegna lo scopo «Approvazione» al passo in cui si approva, oppure — se per questo cliente le change non si approvano — aggiungi quei tipi ai pre-approvati (Impostazioni → Matrici di dominio).",
+      "noWindowPurpose": "Nel workflow delle change nessun passo avrebbe più uno scopo della finestra di rilascio ({{purposes}}), e su quegli scopi è indicizzato il varco delle approvazioni dal lato del passo di arrivo: senza di loro una change non approvata potrebbe entrare in produzione senza che nessuno la fermi, e gli allarmi non verrebbero più silenziati durante il rilascio. Assegna lo scopo «Programmata» o «Implementazione» al passo in cui la change va in produzione.",
+      "stepActionsNotJson": "Workflow mal configurato: {{field}} del passo «{{step}}» non è JSON valido ({{reason}}).",
+      "noApprover": "Nessun utente col ruolo «{{role}}» è configurato per approvare.",
+      "concurrentEdit": "Il workflow è stato modificato da un'altra persona (versione {{current}}, tu stavi modificando la v{{expected}}). Ricarica la pagina per non sovrascrivere le sue modifiche.",
+      "manyInitial": "Un solo passo può essere iniziale: ne hai marcati {{count}} ({{steps}}).",
+      "initialAndTerminal": "Il passo «{{name}}» è terminale: non può essere anche il passo iniziale, altrimenti ogni ticket nuovo nascerebbe già chiuso. Togli «passo terminale», oppure scegli un altro passo iniziale.",
+      "stepsNotInDefinition": "Passi non trovati, o non appartenenti a questa definizione.",
+      "stepHasInstances": "Il passo «{{name}}» non si può eliminare: {{count}} istanze di workflow si trovano ora su questo passo ({{detail}}). Spostale prima su un altro passo — eliminandolo resterebbero senza passo corrente e non potrebbero più muoversi.",
+      "stepNotInDefinition": "Il passo «{{name}}» non si trova nella definizione {{definition}}: non si può dire quante istanze lo occupano."
+    },
+    "channel": {
+      "platform": "La piattaforma «{{platform}}» non è supportata. Ammesse: {{allowed}}."
+    },
+    "ciLink": {
+      "problem": "Il CI {{ci}} non è stato collegato al problem: non esiste in questo cliente, o il suo tipo non è ammesso dalle regole ITIL.",
+      "problemTyped": "Il CI {{ci}} non è stato collegato al problem: non esiste in questo cliente, o il suo tipo non è ammesso dalle regole ITIL (ammessi: {{allowed}}).",
+      "incident": "Il CI {{ci}} non è stato collegato all'incident: non esiste in questo cliente, o il suo tipo non è ammesso dalle regole ITIL.",
+      "incidentTyped": "Il CI {{ci}} non è stato collegato all'incident: non esiste in questo cliente, o il suo tipo non è ammesso dalle regole ITIL (ammessi: {{allowed}})."
+    },
+    "automation": {
+      "transitionNeedsStep": "Azione {{item}} (transizione del workflow): manca il passo di arrivo.",
+      "noStepsAtAll": "{{what}} nomina il passo «{{step}}», ma il workflow «{{entityType}}» di questo cliente non ha nessun passo: crea la definizione del workflow prima di configurare l'automazione.",
+      "unknownStep": "{{what}} nomina il passo «{{step}}», che non esiste nel workflow «{{entityType}}» di questo cliente. Passi disponibili: {{available}}."
+    },
+    "matrix": {
+      "cellOutOfVocabulary": "Matrice «{{matrix}}», cella «{{cell}}»: «{{value}}» non è nel vocabolario «{{vocabulary}}» di questo cliente. Ammessi: {{allowed}}.",
+      "cellRepeated": "Matrice «{{matrix}}»: la cella «{{cell}}» è ripetuta.",
+      "keyOutOfVocabulary": "Matrice «{{matrix}}»: «{{value}}» non è nel vocabolario «{{vocabulary}}» di questo cliente. Ammessi: {{allowed}}.",
+      "incomplete": "La matrice «{{matrix}}» è incompleta: {{count}} combinazioni senza valore ({{examples}}). Una cella vuota diventa un errore quando serve — all'apertura di un incident, all'arrivo di un allarme — quindi si compila qui, non si scopre lì.",
+      "noValue": "La matrice «{{matrix}}» non ha un valore per {{combination}}: completala in Impostazioni → Matrici di dominio.",
+      "noValueFactory": "La matrice «{{matrix}}» non ha un valore per {{combination}}, ed è ancora quella di fabbrica: è possibile che tu abbia rinominato un valore del vocabolario senza aggiornarla (Impostazioni → Matrici di dominio).",
+      "storedValueStale": "Matrice «{{matrix}}», cella «{{cell}}»: il valore salvato «{{value}}» non è (più) nel vocabolario «{{vocabulary}}» di questo cliente. Ammessi: {{allowed}}. Succede quando si rinomina un valore senza aggiornare la matrice: correggila in Impostazioni → Matrici di dominio."
+    },
+    "filter": {
+      "invalidTypeName": "Nome di tipo non valido: «{{typeName}}».",
+      "typeNotFilterable": "Il tipo «{{typeName}}» non esiste o non si può filtrare."
+    },
+    "task": {
+      "resultOneOf": "Il risultato deve essere uno di: {{allowed}}.",
+      "notOnChange": "{{task}} per il CI {{ci}} non si trova sulla change: fase sbagliata, o task riaperto?"
+    },
+    "plan": {
+      "endBeforeStart": "{{window}}: la fine deve venire dopo l'inizio.",
+      "stepTitleRequired": "Passo {{step}}: il titolo è obbligatorio.",
+      "atLeastOneStep": "Serve almeno un passo.",
+      "oneStepFilled": "Prima di completare bisogna compilare almeno un passo."
+    },
+    "assessment": {
+      "noQuestions": "Nessuna domanda di assessment: il punteggio non si può calcolare.",
+      "noQuestionForCategory": "Nessuna domanda di assessment è assegnata al tipo di CI per la categoria chiesta."
+    },
+    "serviceMap": {
+      "planLimit": "Il piano {{plan}} arriva a {{max}} mappe di servizio, e ne esistono già {{existing}}.",
+      "noCriticality": "Il servizio «{{service}}» non ha una criticità: compila «Criticità» sull'applicazione di business per poter aprire un incident di servizio con l'impatto giusto. Ammessi: {{allowed}}."
+    },
+    "event": {
+      "orphan": "Evento orfano: collega prima un CI — un incident deve avere almeno un CI impattato."
+    },
+    "validation": {
+      "tooShort": "{{field}}: serve almeno {{min}} caratteri.",
+      "tooLong": "{{field}}: al massimo {{max}} caratteri.",
+      "cron": "Espressione cron non valida: «{{cron}}». Servono 5 campi (minuto ora giorno mese giorno-settimana).",
+      "urlProtocol": "{{field}} deve usare http o https.",
+      "url": "{{field}} non è un indirizzo valido.",
+      "email": "«{{email}}» non è un indirizzo email valido.",
+      "enum": "{{field}} deve essere uno di: {{allowed}}. Ricevuto: «{{value}}»."
+    },
+    "ci": {
+      "validationFailed": "Il CI non è valido: {{details}}",
+      "noTypeLabel": "Il CI {{id}} non ha un tipo: il dato è incompleto e non si può dire di che tipo sia.",
+      "unknownTypeOnRecord": "Non si sa di che tipo sia questo CI ({{type}}). Nessun tipo attivo di questo cliente lo dichiara: il tipo è stato cancellato o disattivato, oppure il CI è nato da una discovery con un tipo che il metamodello non ha.",
+      "missingGroups": "Il CI «{{ci}}» non ha un Owner Group o un Support Group."
+    },
+    "portal": {
+      "unclassifiedStates": "{{count}} stati dei ticket non appartengono a nessuna classe del workflow incident attivo ({{states}}): i contatori del portale non li conterebbero. Sistema i passi (iniziale / finale / categoria) nel disegnatore."
+    },
+    "sync": {
+      "unknownCIType": "Il conflitto {{id}} riguarda un tipo di CI sconosciuto: nessun CI è stato creato, perché «{{ciType}}» non è un tipo di questo cliente. Risolvilo alla radice — crea il tipo, o aggiungi un alias nelle regole di mappatura della sorgente — e rilancia la sincronizzazione: il conflitto si chiude da sé.",
+      "unresolvable": "Il conflitto {{id}} non si può risolvere: {{reason}}"
+    },
+    "ciLifecycle": {
+      "emptyVocabulary": "Il vocabolario «{{vocabulary}}» di questo cliente è vuoto: non c'è uno stato con cui creare un CI. Aggiungi almeno un valore nel Dizionario.",
+      "staleInitialState": "Il vocabolario «{{vocabulary}}» dichiara «{{declared}}» come stato iniziale, ma quel valore non è (più) fra i suoi ({{values}}): un CI nuovo nascerebbe con uno stato che il Dizionario non ha. Scegli lo stato iniziale fra i valori attuali."
+    },
+    "scripting": {
+      "planExcludesScripts": "{{what}}: il piano «{{plan}}» non include gli script. Togli lo script dalla configurazione, oppure passa a un piano che li include.",
+      "what": {
+        "field": "Lo script del campo «{{field}}»",
+        "webhook": "Lo script di trasformazione del webhook {{hook}}",
+        "action": "L'azione «esegui script» di «{{source}}»"
+      }
+    },
+    "problem": {
+      "ciMissing": "Problem creato, ma {{missing}} dei {{total}} CI indicati non esistono in questo cliente, o non sono Configuration Item ({{ids}})."
+    },
+    "itilType": {
+      "shippedField": "Il campo «{{name}}» è spedito col prodotto: è lo stesso per tutti i clienti e non si modifica, nemmeno l'etichetta, l'ordine o gli script. Aggiungi un campo tuo sul tipo.",
+      "shippedType": "Il tipo «{{name}}» è spedito col prodotto: è lo stesso per tutti i clienti e non si modifica (etichetta, icona, colore e script di validazione compresi)."
+    },
+    "widget": {
+      "entityType": "Tipo di entità non supportato: {{entityType}}.",
+      "metric": "Metrica non supportata: {{metric}}.",
+      "groupByRequired": "Per la metrica «{{metric}}» serve il campo di raggruppamento.",
+      "notNumeric": "Il campo «{{field}}» non è numerico per «{{entityType}}»: {{metric}} ammette solo {{allowed}}.",
+      "noNumericField": "Il campo «{{field}}» non è numerico per «{{entityType}}», e {{metric}} non ha nessun campo numerico da usare.",
+      "groupByNotAllowed": "Campo di raggruppamento non consentito: {{field}}.",
+      "filterNotAllowed": "Campo di filtro non consentito: {{field}}.",
+      "noData": "{{what}}: nessun valore numerico (nessuna entità corrispondente, o campo non valorizzato)."
+    },
+    "notificationRule": {
+      "badTarget": "«{{target}}» non è un destinatario valido. Ammessi: {{allowed}}.",
+      "targetNotResolvable": "«{{target}}» non si può risolvere per l'evento «{{eventType}}»: l'entità non ha quel destinatario nel momento in cui l'evento accade. Ammessi: {{allowed}}.",
+      "narrowingNotApplicable": "{{field}} vale solo per gli eventi di ingresso in un passo: «{{eventType}}» non lo è, quindi il restringimento non verrebbe applicato.",
+      "badStepPurpose": "Lo scopo del passo «{{purpose}}» è fuori vocabolario. Ammessi: {{allowed}}.",
+      "duplicate": "Esiste già una regola per «{{eventType}}»{{narrowing}}: modificala invece di crearne una seconda (con due regole identiche il dispatcher ne applicherebbe una sola, e non è detto quale).",
+      "notDeletable": "Regola non trovata, o non eliminabile."
+    },
+    "approval": {
+      "notForThisTeam": "Non sei autorizzato ad approvare per questo team.",
+      "notInApproval": "La change non è in fase di approvazione (passo «{{step}}», scopo {{purpose}}).",
+      "notInApprovalNoPurpose": "La change non è in fase di approvazione: il passo «{{step}}» non ha uno scopo dichiarato.",
+      "requirementGone": "Requisito di approvazione non trovato, o già risolto.",
+      "didNotAdvance": "Le approvazioni sono complete ma la change non è avanzata a «{{step}}»: {{reason}}",
+      "rejectNeedsNote": "Il motivo del rifiuto è obbligatorio.",
+      "rejectFailed": "Il rifiuto non è riuscito.",
+      "typeNoLongerPreApproved": "La change è di tipo «{{type}}», che non è fra i tipi pre-approvati, e non ha nessun requisito di approvazione: i requisiti si creano entrando in un passo di scopo «Approvazione», e questa change non ci è mai passata (quando è nata, il suo tipo era pre-approvato). Due uscite: rimetti «{{type}}» fra i tipi pre-approvati (Impostazioni → Matrici di dominio), e le change come questa ripartono da sole; oppure riportala al passo di approvazione, che i requisiti li crea entrando.",
+      "missingChangeManagerRequirement": "Manca il requisito del Change Manager: designa un team Change Manager (Team e Utenti) prima di approvare.",
+      "noChangeManagerTeam": "Nessun team è designato Change Manager: configurane uno (Team e Utenti) prima di mandare la change in approvazione."
+    },
+    "fieldRule": {
+      "sameField": "Il campo che innesca la regola e quello su cui agisce non possono essere lo stesso.",
+      "badAction": "L'azione deve essere «mostra» o «nascondi».",
+      "stepUnknown": "Il passo «{{step}}» non esiste nel workflow «{{entityType}}» di questo cliente, quindi la regola non si applicherebbe a nessuna transizione. Passi disponibili: {{available}}.",
+      "stepNoWorkflow": "Il passo «{{step}}» non esiste: questo cliente non ha ancora una definizione di workflow per «{{entityType}}»."
+    },
+    "link": {
+      "self": "Un ticket non si può collegare a sé stesso.",
+      "problemIncidentNotFound": "Collegamento fra problem e incident non trovato."
+    },
+    "ai": {
+      "notConfigured": "L'AI non è configurata: manca la chiave del servizio."
+    },
+    "kb": {
+      "onlyFromConcluded": "La bozza per la Knowledge Base si genera solo da incident risolti o chiusi: questo è nel passo «{{step}}». Passi conclusivi del workflow incident: {{concluded}}.",
+      "onlyFromConcludedNone": "La bozza per la Knowledge Base si genera solo da incident risolti o chiusi: questo è nel passo «{{step}}», e il workflow degli incident non ha nessun passo conclusivo dichiarato. Marca un passo come terminale, o di categoria «risolto», nel disegnatore."
+    },
+    "comment": {
+      "entityType": "Su questo tipo di entità non si può commentare: {{entityType}}."
+    },
+    "dashboard": {
+      "lastOne": "L'unica dashboard non si può eliminare."
+    },
+    "window": {
+      "noApprovalStep": "La change è di tipo «{{type}}», che non è fra i tipi pre-approvati, e nel workflow delle change nessun passo dichiara lo scopo «Approvazione»: non esiste un posto dove approvarla, quindi non può entrare nella finestra di rilascio. Assegna lo scopo «Approvazione» al passo in cui si approva, oppure aggiungi «{{type}}» ai tipi pre-approvati (Impostazioni → Matrici di dominio)."
+    },
+    "itilRelation": {
+      "duplicate": "Esiste già una relazione con questo tipo di CI."
+    },
+    "metamodelName": {
+      "typeSyntax": "«{{name}}» non va bene come nome di tipo CI: deve cominciare con una lettera minuscola e contenere solo lettere minuscole, cifre e trattini basso (regola: {{pattern}}).{{instead}} Il nome è lo slug tecnico; il nome che si legge nell'interfaccia è la label, che può contenere spazi, accenti e maiuscole.",
+      "typeTaken": "Il nome «{{name}}» è già preso: genererebbe {{what}}, che nello schema esiste già — {{owner}}. {{consequence}}. Scegli un altro nome (per esempio «{{suggestion}}»); il nome che si legge nell'interfaccia lo decidi con la label, che può restare quella che volevi.",
+      "fieldSyntax": "«{{name}}» non va bene come nome di campo {{where}}: deve cominciare con una lettera minuscola e contenere solo lettere e cifre, in camelCase (regola: {{pattern}}).{{instead}} Il trattino basso non è ammesso perché «costCenter» e «cost_center» finirebbero sulla stessa proprietà Neo4j e si sovrascriverebbero a vicenda. Il nome che si legge nell'interfaccia è la label, che può contenere spazi e accenti.",
+      "reservedProperty": "Il campo «{{name}}» {{where}} scriverebbe la proprietà «{{property}}», {{why}}: il valore mandato da chi chiama l'API sovrascriverebbe un dato di sistema.{{instead}}",
+      "baseField": "Il campo «{{name}}» esiste già su ogni CI: è uno dei campi base ({{baseFields}}). Aggiungerlo {{where}} produrrebbe un campo dichiarato due volte nello schema. Usa il campo base che c'è già, oppure dai al tuo un nome diverso.{{instead}}",
+      "duplicateField": "Il campo «{{existing}}» esiste già {{where}}: due campi con lo stesso nome non possono stare sullo stesso tipo. Modifica quello che c'è, oppure dai a questo un nome diverso.{{instead}}",
+      "notGeneratable": "Lo schema GraphQL di questo cliente non si può generare per colpa del tipo CI «{{type}}»: {{detail}} Il tipo esiste già nel metamodello: eliminalo o rinominalo.",
+      "what": {
+        "type": "il tipo GraphQL «{{generated}}»",
+        "query": "la query «{{generated}}»",
+        "mutation": "la mutation «{{generated}}»"
+      },
+      "consequence": {
+        "typeMerge": "GraphQL non rifiuta due tipi con lo stesso nome: li FONDE in silenzio, e i campi del tuo tipo finirebbero dentro quello del prodotto — senza nessun errore, da nessuna parte",
+        "queryClash": "due query con lo stesso nome e tipi diversi non si possono fondere: lo schema di questo cliente non si assemblerebbe, e finché il nome resta l'API gli risponderebbe con lo schema ridotto",
+        "mutationClash": "due mutation con lo stesso nome e tipi diversi non si possono fondere: lo schema di questo cliente non si assemblerebbe"
+      },
+      "where": {
+        "onType": "sul tipo «{{typeLabel}}»",
+        "anyType": "su qualunque tipo CI"
+      },
+      "instead": {
+        "write": " Scrivi per esempio «{{suggestion}}».",
+        "writeType": " Scrivi per esempio «{{suggestion}}». Diventerebbe il tipo GraphQL «{{graphqlType}}» e la label Neo4j «{{graphqlType}}».",
+        "pickAnother": " Scegline un altro."
+      },
+      "why": {
+        "system": "che è gestita dal prodotto",
+        "syncPrefix": "che è gestita dal prodotto (tutto ciò che comincia per «{{prefix}}» appartiene alla sincronizzazione)",
+        "tenant": "che è gestita dal prodotto — con «tenant_id» il CI nascerebbe nel cliente scelto dal chiamante"
+      },
+      "duplicateFieldRace": "Il tipo ha già un campo «{{name}}»: qualcuno ha salvato lo stesso nome un istante prima di te."
+    }
   },
   "errorBoundary": {
     "title": "Qualcosa è andato storto",
@@ -1833,7 +2801,7 @@
       "webhookCreateFailed": "Creazione webhook fallita: {{error}}",
       "outboundCreated": "Webhook outbound creato",
       "apiKeyCreateFailed": "Creazione API key fallita: {{error}}",
-      "testOk": "Test OK — status {{status}}",
+      "testOk": "Test OK — stato {{status}}",
       "testFailed": "Test fallito: {{error}}",
       "testError": "Test webhook fallito: {{error}}",
       "tokenRegenFailed": "Rigenerazione token fallita: {{error}}",
@@ -2079,9 +3047,53 @@
       "healthDegraded": "Degradato"
     },
     "widgetBody": {
-      "label": "Label",
+      "label": "Etichetta",
       "value": "Valore",
       "noData": "Nessun dato"
+    },
+    "ciChanges": {
+      "empty": "Nessuna change su questo CI."
+    },
+    "ciIncidents": {
+      "empty": "Nessun incident su questo CI."
+    },
+    "similar": {
+      "semanticScore": "Somiglianza semantica",
+      "title": "Incident simili",
+      "pending": "Analisi in corso: il prodotto sta calcolando la somiglianza di questo incident...",
+      "empty": "Nessun incident passato somiglia a questo.",
+      "kb": "Articoli suggeriti",
+      "searchError": "Errore ricerca semantica: {{message}}"
+    },
+    "linkedTickets": {
+      "empty": "Nessun ticket collegato.",
+      "automatic": "Collegamento automatico: si rimuove solo eliminando la change",
+      "unlink": "Scollega",
+      "searchPlaceholder": "Cerca {{kind}} per numero o titolo…",
+      "link": "Collega ticket"
+    },
+    "affectedCI": {
+      "title": "CI impattati",
+      "empty": "Nessun CI impattato registrato.",
+      "remove": "Rimuovi il CI"
+    },
+    "workflowTimeline": {
+      "title": "Storia del workflow",
+      "empty": "Nessuna storia del workflow."
+    },
+    "triage": {
+      "needsTitle": "Scrivi prima un titolo",
+      "hint": "Suggerimento dell'AI, basato sugli incident simili e sull'impatto dei CI",
+      "title": "Suggerimento dell'AI",
+      "apply": "Applica il suggerimento",
+      "analyzing": "Analisi in corso…",
+      "suggest": "Suggerisci triage",
+      "error": "Errore triage AI: {{message}}",
+      "confidenceHigh": "confidenza alta",
+      "confidenceMedium": "confidenza media",
+      "confidenceLow": "confidenza bassa",
+      "basedOn_one": "Basato su {{count}} incident simile, cioè {{examples}}.",
+      "basedOn_other": "Basato su {{count}} incident simili, tra cui {{examples}}."
     }
   },
   "events": {
@@ -2894,7 +3906,7 @@
         "impact": "Punteggio d'impatto",
         "cause": "Causa principale",
         "components": "Componenti",
-        "owner": "Owner",
+        "owner": "Responsabile",
         "name": "Nome",
         "type": "Tipo",
         "level": "Livello",
@@ -3043,7 +4055,7 @@
         "fields": {
           "service": "Applicazione di business",
           "criticality": "Criticità",
-          "owner": "Owner",
+          "owner": "Responsabile",
           "maxDepth": "Profondità massima",
           "relationshipTypes": "Relazioni seguite",
           "builtFrom": "Costruita",
@@ -3296,13 +4308,44 @@
     "title_one": "C'è 1 cosa da sistemare nella configurazione",
     "title_other": "Ci sono {{count}} cose da sistemare nella configurazione",
     "goFix": "Vai a sistemare",
-    "dismiss": "Nascondi fino al prossimo caricamento"
+    "dismiss": "Nascondi fino al prossimo caricamento",
+    "reasonUnavailable": "motivo non disponibile",
+    "issue": {
+      "schema_degraded": "Una parte del metamodello dei CI non è servibile dall'API, quindi quei tipi non compaiono da nessuna parte: {{reason}}",
+      "provisioning_gap": "La configurazione di questo cliente è incompleta ({{gaps}}). Senza, l'apertura di un ticket si ferma. Si rimedia dal disegnatore dei workflow, col pulsante «Completa la configurazione».",
+      "matrix_missing_cells_one": "Matrice «{{matrix}}»: 1 combinazione senza valore ({{examples}}).",
+      "matrix_missing_cells_other": "Matrice «{{matrix}}»: {{count}} combinazioni senza valore ({{examples}}).",
+      "matrix_invalid_cells_one": "Matrice «{{matrix}}»: 1 cella con un valore fuori vocabolario.",
+      "matrix_invalid_cells_other": "Matrice «{{matrix}}»: {{count}} celle con un valore fuori vocabolario.",
+      "matrix_stale_keys_one": "Matrice «{{matrix}}»: 1 chiave rimasta da una rinomina.",
+      "matrix_stale_keys_other": "Matrice «{{matrix}}»: {{count}} chiavi rimaste da una rinomina.",
+      "vocabulary_empty_one": "Il vocabolario «{{vocabularies}}» non ha nessun valore, e la matrice «{{matrix}}» ne ha bisogno: finché resta così ogni valore viene rifiutato come fuori vocabolario e non si apre più nessun ticket. Rimetti i valori nel Dizionario — **non salvare la matrice**, che è ancora buona e verrebbe svuotata.",
+      "vocabulary_empty_other": "I vocabolari {{vocabularies}} non hanno nessun valore, e la matrice «{{matrix}}» ne ha bisogno: finché resta così ogni valore viene rifiutato come fuori vocabolario e non si apre più nessun ticket. Rimetti i valori nel Dizionario — **non salvare la matrice**, che è ancora buona e verrebbe svuotata.",
+      "policy_out_of_vocabulary": "La policy degli allarmi cita stati che il tuo Dizionario non ha (più): {{details}}. Quelle liste non si applicano a nessun CI: i CI in quello stato tornano a pesare nella salute dei servizi.",
+      "vocabulary_without_semantics_one": "Questo stato del ciclo di vita non è in nessuna lista della policy degli allarmi: {{statuses}}. Per il prodotto è un CI **in servizio**: i suoi allarmi aprono incident e pesano nella salute dei servizi. Se è uno stato finale, aggiungilo a «ritirati».",
+      "vocabulary_without_semantics_other": "Questi stati del ciclo di vita non sono in nessuna lista della policy degli allarmi: {{statuses}}. Per il prodotto sono CI **in servizio**: i loro allarmi aprono incident e pesano nella salute dei servizi. Se sono stati finali, aggiungili a «ritirati».",
+      "value_labels_missing": "Questi valori non hanno un'etichetta in nessuna lingua, quindi a schermo si leggono col loro nome interno: {{details}}. **Si scrive dal Dizionario**, accanto al valore.",
+      "value_labels_partial": "Questi valori hanno l'etichetta in una lingua sola: chi usa l'altra li legge in italiano ({{languages}}). {{details}}. **Si completa dal Dizionario**.",
+      "default_language_not_set": "Nessuno ha scelto la lingua di questa organizzazione, quindi il prodotto si legge in «{{fallback}}» — la prima delle lingue disponibili ({{available}}), non una decisione. **Si sceglie da Impostazioni → Organizzazione**, e vale per chi non ha una lingua propria nel Profilo.",
+      "check_failed": "Il controllo «{{check}}» non è riuscito: {{error}}"
+    },
+    "gap": {
+      "tenant_missing": "nessuna riga: il tenant non esiste",
+      "no_dashboard": "nessuna dashboard",
+      "no_notification_rules": "nessuna regola di notifica",
+      "no_domain_matrices": "nessuna matrice di dominio",
+      "no_workflows": "nessun workflow attivo per: {{entityTypes}}",
+      "no_assessment_questions": "nessuna domanda di assessment: nessuna change potrebbe superare la fase di assessment (Domande Assessment)",
+      "no_teams": "nessun team: senza team i CI non hanno Owner/Support Group e nessuna change si crea (Team e Utenti)",
+      "no_change_manager": "nessun team designato Change Manager: le change normal ed emergency non possono entrare in approvazione (Team e Utenti)"
+    }
   },
   "forms": {
     "title": "Titolo",
     "description": "Descrizione",
     "fieldRequired": "Campo obbligatorio",
-    "selectCategory": "Seleziona una categoria"
+    "selectCategory": "Seleziona una categoria",
+    "requiredField": "{{field}} è obbligatorio"
   },
   "changeTasks": {
     "activeTasks": "Task attivi",
@@ -3313,9 +4356,299 @@
     "planning": "Pianificazione",
     "validation": "Validazione",
     "deploy": "Deploy",
-    "review": "Revisione"
+    "review": "Revisione",
+    "tasks": "Task",
+    "completed": "COMPLETATO",
+    "notCompleted": "NON ANCORA COMPLETATO",
+    "openTask": "Apri il task",
+    "reopenTask": "Riapri task",
+    "notInTeam": "Non sei nel team responsabile di questo task. Puoi sollecitare chi deve agire.",
+    "assigned": "Assegnato",
+    "nudge": "Sollecita",
+    "viewFullChange": "Vedi change completo →",
+    "deployConfirmHint": "Conferma che il deploy in produzione è stato completato.",
+    "deployConfirm": "Conferma Deploy",
+    "addStep": "Aggiungi step",
+    "savePlan": "Salva piano",
+    "completeCount": "Completa ({{done}}/{{total}})",
+    "wrongTeam": "Non sei nel team corretto per completare questa task",
+    "createdOn": "Creato il {{date}}",
+    "scheduledOn": "Schedulato — {{date}}",
+    "whyLine": "Perché: {{why}}",
+    "whatLine": "Cosa: {{what}}",
+    "dot": {
+      "notStarted": "non iniziato",
+      "inProgress": "in corso",
+      "completed": "completato",
+      "failed": "fallito"
+    },
+    "doneMark": "✓ Completato",
+    "phase": {
+      "current": "corrente",
+      "pending": "in sospeso"
+    }
   },
   "sync": {
-    "createSource": "Crea sorgente"
+    "createSource": "Crea sorgente",
+    "title": "CMDB Sync",
+    "subtitle": "Importa e sincronizza i configuration item da sorgenti esterne",
+    "addSource": "Aggiungi sorgente",
+    "noSources": "Nessuna sorgente di sincronizzazione configurata. Aggiungine una per iniziare a importare CI.",
+    "scheduleCron": "Pianificazione (cron, opzionale)",
+    "scheduleCronPlaceholder": "0 */6 * * * (ogni 6h)"
+  },
+  "languages": {
+    "it": "Italiano",
+    "en": "Inglese"
+  },
+  "reportBuilder": {
+    "graphAndFilters": "Grafo e filtri",
+    "graphHint": "Visualizza e configura le entità collegate.",
+    "connectTo": "Connetti a...",
+    "noConnection": "Nessuna connessione trovata",
+    "disconnectedNodes": "⚠ Ci sono nodi non collegati. Collega o elimina i nodi isolati prima di continuare.",
+    "hint": "Clicca <b>+ Connetti a...</b> su un nodo per aggiungere le entità collegate. Usa <star/> per marcare le entità da includere nel risultato.",
+    "nameTheSection": "Dai un nome alla sezione",
+    "nameHint": "Scegli un titolo descrittivo per questa sezione del report.",
+    "sectionTitle": "Titolo della sezione",
+    "summary": "Riepilogo",
+    "analysis": "Analisi",
+    "nodes": "Nodi",
+    "chart": "Visualizzazione",
+    "finalPreview": "Anteprima finale",
+    "noPreview": "Nessuna anteprima disponibile",
+    "loadingPreview": "Caricamento dell'anteprima...",
+    "root": "Radice",
+    "removeFromResult": "Togli dal risultato",
+    "includeInResult": "Includi nel risultato",
+    "whatToAnalyse": "Cosa vuoi analizzare?",
+    "whatToAnalyseHint": "Scegli il tipo di dato su cui costruire la sezione del report.",
+    "wizard": {
+      "what": "Cosa analizzare",
+      "graph": "Grafo e filtri",
+      "display": "Come mostrarlo",
+      "titleAndSave": "Titolo e salva"
+    },
+    "saveSection": "Salva sezione",
+    "titlePlaceholder": "Titolo…",
+    "useSuggested": "Usa: «{{title}}»",
+    "valuePlaceholder": "valore",
+    "environment": "Ambiente",
+    "next": "Avanti"
+  },
+  "reportChart": {
+    "chartType": "Tipo di visualizzazione",
+    "groupBy": "Raggruppa per",
+    "nodePlaceholder": "Nodo...",
+    "metricLabel": "Metrica",
+    "field": "Campo",
+    "topN": "Mostra i primi N",
+    "descending": "Decrescente",
+    "ascending": "Crescente",
+    "columnsToShow": "Colonne da mostrare (per nodo risultato)",
+    "livePreview": "Anteprima in tempo reale",
+    "type": {
+      "kpi": "Numero totale",
+      "pie": "Torta",
+      "donut": "Ciambella",
+      "bar": "Barre verticali",
+      "barHorizontal": "Barre orizzontali",
+      "line": "Linea",
+      "area": "Area",
+      "table": "Tabella"
+    },
+    "desc": {
+      "kpi": "Quanti elementi ci sono?",
+      "pie": "Distribuzione in percentuale",
+      "donut": "Distribuzione ad anello",
+      "bar": "Confronto tra categorie",
+      "barHorizontal": "Confronto con etichette lunghe",
+      "line": "Andamento nel tempo",
+      "area": "Andamento con riempimento",
+      "table": "Dati dettagliati in colonne"
+    },
+    "metric": {
+      "count": "Conteggio",
+      "avg": "Media",
+      "sum": "Somma",
+      "min": "Minimo",
+      "max": "Massimo"
+    },
+    "howToSee": "Come vuoi vedere i dati?",
+    "configure": "Configura la visualizzazione della sezione.",
+    "needsDateField": "⚠ Il grafico a linea ha bisogno di un campo data, e questa entità non ne ha: scegli un altro tipo di grafico.",
+    "needsColumn": "⚠ Una tabella ha bisogno di almeno una colonna: senza campi scelti il server rifiuta la sezione.",
+    "configureToPreview": "Configura il grafico per vedere l'anteprima",
+    "fieldOption": "Campo…"
+  },
+  "citypeDesigner": {
+    "relation": {
+      "addTitle": "Aggiungi una relazione fra CI",
+      "neo4jType": "Tipo di relazione Neo4j *",
+      "targetType": "Tipo di destinazione",
+      "cardinality": "Cardinalità",
+      "direction": "Direzione",
+      "empty": "Nessuna relazione fra CI configurata.",
+      "deleteAria": "Elimina relazione {{name}}",
+      "neo4jTypeShort": "tipo Neo4j"
+    },
+    "field": {
+      "required": "Obbligatorio",
+      "enumRef": "Vocabolario di riferimento *",
+      "selectEnum": "— Scegli un vocabolario —",
+      "defaultValue": "Valore predefinito",
+      "labelPlaceholder": "Etichetta del campo",
+      "technicalName": "Nome tecnico (camelCase) *",
+      "advancedScripts": "Script avanzati (validazione, visibilità, valore predefinito)",
+      "validationHint": "Variabili: <code>value</code>, <code>input</code>. Usa <code>throw</code> con un messaggio per l'errore.",
+      "validationPlaceholder": "// Esempio:\nif (!value.startsWith('http')) throw 'Indirizzo non valido'",
+      "defaultHint": "Variabili: <code>input</code>. Restituisci il valore predefinito.",
+      "slugName": "Nome tecnico (slug) *",
+      "slugNameSnake": "name (slug, snake_case) *",
+      "slugNamePlaceholder": "es. load_balancer",
+      "displayLabel": "label (nome visualizzato) *",
+      "editTitle": "Modifica campo: {{name}}",
+      "visibilityHint": "Variabili: <code>input</code>. Ritorna <code>true/false</code>.",
+      "visibilityPlaceholder": "// Mostra solo se un altro campo è valorizzato:\nreturn !!input.instanceType"
+    },
+    "baseFields": "Campi base",
+    "baseFieldsHint": "Ereditati da tutti i tipi di CI",
+    "systemFields": "CAMPI DI SISTEMA",
+    "selectAType": "Scegli un tipo per modificarlo",
+    "icon": "Icona",
+    "color": "Colore",
+    "ciTypes": "Tipi di CI",
+    "sharedByAll": "Condivisi da tutti i tipi",
+    "noCITypes": "Nessun tipo di CI",
+    "noIcon": "— nessuna —",
+    "newCIType": "Nuovo tipo di CI",
+    "labelPlaceholder": "Es. Bilanciatore di carico",
+    "subtitle": "Definisci e gestisci i tipi di Configuration Item e i loro campi.",
+    "addBaseField": "Aggiungi un campo base",
+    "deleteType": "Elimina il tipo",
+    "validationScript": "Script di validazione (facoltativo)",
+    "validationScriptHint": "Variabili: <code>input</code>. Usa <code>throw</code> con un messaggio per un errore globale.",
+    "validationScriptPlaceholder": "// Esempio: una validazione che guarda più campi\nif (input.env === 'production' && !input.owner) throw 'In produzione serve un owner'",
+    "addField": "Aggiungi un campo",
+    "addRelation": "Aggiungi una relazione",
+    "previewNote": "Anteprima del form di creazione di un CI — i campi specifici del tipo.",
+    "system": "Sistema",
+    "saveSettings": "Salva impostazioni",
+    "baseFieldLabel": "Campo base",
+    "fieldCount_one": "{{count}} campo",
+    "fieldCount_other": "{{count}} campi",
+    "fieldsNotDeletable_one": "{{count}} campo — non eliminabile",
+    "fieldsNotDeletable_other": "{{count}} campi — non eliminabili",
+    "baseFieldsHeader_one": "CAMPO BASE ({{count}}) — ereditato da __base__ — non modificabile",
+    "baseFieldsHeader_other": "CAMPI BASE ({{count}}) — ereditati da __base__ — non modificabili",
+    "specificFieldsHeader_one": "CAMPO SPECIFICO ({{count}})",
+    "specificFieldsHeader_other": "CAMPI SPECIFICI ({{count}})",
+    "noSpecificFields": "Nessun campo specifico. Clicca «Aggiungi un campo» per crearne uno.",
+    "shippedNote": "«{{type}}» è spedito col prodotto: è un solo tipo per tutti i clienti, quindi etichetta, campi e relazioni sono in sola lettura. Per un tipo con le tue etichette e i tuoi campi, creane uno tuo.",
+    "origin": {
+      "base": "un tipo CI spedito col prodotto",
+      "itil": "un tipo ITIL spedito col prodotto",
+      "tenant": "un tuo tipo CI",
+      "unknown": "un tipo CI già esistente"
+    },
+    "tab": {
+      "settings": "Impostazioni",
+      "fields": "Campi",
+      "relations": "Relazioni CI",
+      "rules": "Regole",
+      "preview": "Preview"
+    },
+    "previewNoFields": "Nessun campo specifico. Aggiungi campi nella tab «Campi».",
+    "createType": "Crea tipo"
+  },
+  "automation": {
+    "params": {
+      "notificationMessage": "Messaggio della notifica...",
+      "commentText": "Testo del commento...",
+      "generic": "Parametri...",
+      "pickField": "Scegli un campo",
+      "value": "Valore",
+      "responseMinutes": "Presa in carico (min)",
+      "resolveMinutes": "Risoluzione (min)",
+      "selectTeam": "-- Seleziona team --",
+      "selectUser": "-- Seleziona utente --",
+      "selectStep": "-- Seleziona step --",
+      "selectPriority": "-- Seleziona priorità --",
+      "selectFieldOption": "-- Campo --",
+      "selectValue": "-- Valore --",
+      "userOption": "-- Utente --",
+      "teamOption": "-- Team --",
+      "notAllowed": "non ammesso"
+    },
+    "preview": "Anteprima",
+    "columns": {
+      "entity": "Entità",
+      "event": "Evento"
+    },
+    "eventParticiple": {
+      "onCreate": "creato",
+      "onUpdate": "aggiornato",
+      "onSlaBreach": "in breach SLA",
+      "onFieldChange": "modificato",
+      "onTransition": "transizionato"
+    },
+    "eventOption": {
+      "onCreate": "creato",
+      "onUpdate": "aggiornato",
+      "onTimer": "dopo timer",
+      "onSlaBreach": "SLA violato",
+      "onFieldChange": "campo modificato",
+      "onTransition": "transizione di stato"
+    },
+    "eventFilter": {
+      "onCreate": "Creazione",
+      "onUpdate": "Aggiornamento",
+      "onTimer": "Timer",
+      "onSlaBreach": "SLA Breach",
+      "onFieldChange": "Cambio campo",
+      "onTransition": "Transizione"
+    },
+    "fieldType": {
+      "string": "testo",
+      "number": "numero",
+      "date": "data",
+      "boolean": "booleano",
+      "enum": "enum",
+      "user": "utente",
+      "team": "team"
+    },
+    "operator": {
+      "equals": "=",
+      "notEquals": "≠",
+      "contains": "contiene",
+      "greaterThan": ">",
+      "lessThan": "<",
+      "isNull": "è nullo",
+      "isNotNull": "non è nullo",
+      "after": "dopo",
+      "before": "prima"
+    },
+    "action": {
+      "setField": "Imposta campo",
+      "assignTeam": "Assegna team",
+      "assignUser": "Assegna utente",
+      "transitionWorkflow": "Transizione workflow",
+      "createNotification": "Crea notifica",
+      "createComment": "Crea commento",
+      "setPriority": "Imposta priorità",
+      "executeScript": "Esegui script",
+      "callWebhook": "Chiama webhook",
+      "setSla": "Imposta SLA"
+    },
+    "sentence": {
+      "when": "Quando un {{entity}} viene {{event}}",
+      "afterMinutes_one": "dopo {{count}} minuto",
+      "afterMinutes_other": "dopo {{count}} minuti",
+      "if": "SE {{cond}}",
+      "then": "ALLORA {{act}}",
+      "and": "E",
+      "or": "O",
+      "slaPair": "risposta:{{response}}min risoluzione:{{resolve}}min"
+    }
   }
 }

@@ -340,7 +340,7 @@ export function ProblemDetailPage() {
             })
           }}
         >
-          Elimina
+          {t('common.delete')}
         </Button>
         <WatcherBar entityType="problem" entityId={problem.id} />
       </div>
@@ -416,7 +416,7 @@ export function ProblemDetailPage() {
                   </div>
                 ) : !problem.assignedTeam ? (
                   <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                    Assegna prima un gruppo per poter scegliere un utente.
+                    {t('pages.problemDetail.pickGroupFirst')}
                   </span>
                 ) : (() => {
                   const teamUsers = users.filter((u) => u.teams?.some((tm) => tm.id === problem.assignedTeam!.id))
@@ -430,7 +430,7 @@ export function ProblemDetailPage() {
                       </Select>
                       {teamUsers.length === 0 && (
                         <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                          Nessun utente nel gruppo {problem.assignedTeam.name}.
+                          {t('pages.problemDetail.noUserInTeam', { team: problem.assignedTeam.name })}
                         </span>
                       )}
                       <button type="button" disabled={!selectedUserId || assigningUser} onClick={() => { if (!selectedUserId) return; void assignToUser({ variables: { problemId: problem.id, userId: selectedUserId } }) }} style={{ padding: '6px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}>
@@ -471,7 +471,7 @@ export function ProblemDetailPage() {
           </SectionCard>
 
           {/* Root Cause */}
-          <SectionCard title="Root Cause" collapsible defaultOpen={false}>
+          <SectionCard title={t('pages.problemDetail.rootCause')} collapsible defaultOpen={false}>
                 <Textarea
                   value={editRootCause ?? (problem.rootCause ?? '')}
                   onChange={(e) => setEditRootCause(e.target.value)}
@@ -482,14 +482,14 @@ export function ProblemDetailPage() {
                     }
                     setEditRootCause(null)
                   }}
-                  placeholder="Descrivi la causa radice del problema..."
+                  placeholder={t('pages.problemDetail.rootCausePlaceholder')}
                   rows={4}
                   style={{ padding: '8px 12px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
                 />
           </SectionCard>
 
           {/* Workaround */}
-          <SectionCard title="Workaround" collapsible defaultOpen={false}>
+          <SectionCard title={t('pages.problemDetail.workaround')} collapsible defaultOpen={false}>
                 <Textarea
                   value={editWorkaround ?? (problem.workaround ?? '')}
                   onChange={(e) => setEditWorkaround(e.target.value)}
@@ -500,7 +500,7 @@ export function ProblemDetailPage() {
                     }
                     setEditWorkaround(null)
                   }}
-                  placeholder="Descrivi il workaround temporaneo..."
+                  placeholder={t('pages.problemDetail.workaroundPlaceholder')}
                   rows={3}
                   style={{ padding: '8px 12px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }}
                 />
@@ -517,7 +517,7 @@ export function ProblemDetailPage() {
 
           {/* Ticket collegati (sezione unica, stile change) */}
           <UnifiedLinkedTickets
-            title="Ticket collegati"
+            title={t('pages.changeDetail.linkedTickets')}
             excludeId={problem.id}
             types={[
               {
@@ -585,7 +585,7 @@ export function ProblemDetailPage() {
                 onClick={() => { setIsTransitionDialogOpen(false); setTransitionNotes('') }}
                 style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', fontSize: 'var(--font-size-card-title)', fontWeight: 500 }}
               >
-                Annulla
+                {t('common.cancel')}
               </Button>
               <Button
                 disabled={transitioning || transitionNotes.trim().length < 10}
@@ -595,18 +595,18 @@ export function ProblemDetailPage() {
                 }}
                 style={{ padding: '8px 16px', borderRadius: 8, fontSize: 'var(--font-size-card-title)', fontWeight: 500, backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)', color: transitionNotes.trim().length >= 10 ? colors.white : 'var(--text-muted)' }}
               >
-                {transitioning ? 'Esecuzione...' : 'Conferma'}
+                {transitioning ? t('pages.incidentDetail.running') : t('common.confirm')}
               </Button>
             </>
           }
         >
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', marginBottom: 16, marginTop: 0 }}>
-            Aggiungi una nota per questa transizione (minimo 10 caratteri).
+            {t('pages.problemDetail.noteRequired')}
           </p>
           <Textarea
             value={transitionNotes}
             onChange={(e) => setTransitionNotes(e.target.value)}
-            placeholder="Note sulla transizione..."
+            placeholder={t('pages.problemDetail.transitionNotes')}
             rows={4}
             // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: textarea del dialogo di transizione aperto dall'utente
             autoFocus

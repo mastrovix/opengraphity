@@ -133,8 +133,8 @@ describe('approvazione della change su un workflow rinominato (A4-2)', () => {
     steps = [...CHANGE_STEPS, { name: 'approval', purpose: 'review', category: 'active', order: 6 }]
     mockGate('approval')
     const err = await caught(approveChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab' }, ctx))
-    expect(err.message).toMatch(/non è in fase di approvazione/)
-    expect(err.message).toMatch(/scopo review/)
+    expect(err.message).toMatch(/is not in the approval stage/)
+    expect(err.message).toMatch(/purpose review/)
     expect(workflowEngine.transition).not.toHaveBeenCalled()
   })
 
