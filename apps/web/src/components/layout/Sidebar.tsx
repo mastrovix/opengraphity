@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
@@ -8,8 +8,9 @@ import { useMe } from '@/hooks/useMe'
 import { isStaff } from '@/lib/roles'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { CIIcon } from '@/lib/ciIcon'
-import { C, navItemStyle, NavItem, SubItem } from './SidebarNavItems'
+import { C, NavItem, SubItem } from './SidebarNavItems'
 import { SidebarGroup, useGroupOpen } from './SidebarGroup'
+import { voceAttiva } from './menuActive'
 import { SidebarCollapseButton } from './SidebarUserMenu'
 import { colors } from '@/lib/tokens'
 
@@ -68,6 +69,7 @@ const ITSM_ITEM_DEFS = [
 const REPORTING_ITEM_DEFS = [
   { to: '/reports',        labelKey: 'sidebar.aiAnalysis',    icon: BrainCircuit },
   { to: '/reports/sla',    labelKey: 'sidebar.slaReport',     icon: Gauge        },
+  { to: '/reports/ola-uc', labelKey: 'sidebar.olaReport',     icon: Handshake    },
   { to: '/custom-reports', labelKey: 'sidebar.reportBuilder', icon: LayoutGrid   },
 ]
 
@@ -129,6 +131,13 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const { isAdmin, role } = useMe()
   const staff = isStaff(role)
   const { ciTypes } = useMetamodel()
+
+  // Una voce accesa sola, la più specifica fra TUTTE quelle del menu.
+  const attiva = voceAttiva(pathname, [
+    ...NAV_ITEM_DEFS, ...ITSM_ITEM_DEFS, ...REPORTING_ITEM_DEFS, ...ANALYSIS_ITEM_DEFS,
+    ...MONITORING_ITEM_DEFS, ...TEAMS_ITEM_DEFS, ...CONFIG_ITEM_DEFS, ...SETTINGS_ITEM_DEFS,
+    ...ADMIN_NAV_ITEM_DEFS, PROFILE_ITEM,
+  ].map((d) => d.to).concat('/cmdb', ciTypes.map((ct) => `/ci/${ct.name}`)))
 
   // Active flags derived from the location; open state re-opens on entry (E-12).
   const itsmActive      = startsWithAny(pathname, ITSM_ITEM_DEFS)
@@ -239,7 +248,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
 
         {NAV_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => {
           const label = t(labelKey)
-          const isActive = pathname === to || (to !== '/dashboard' && pathname.startsWith(to))
+          const isActive = to === attiva
           const badge = to === '/approvals' && pendingApprovalsCount > 0 ? pendingApprovalsCount : 0
           return (
             <NavItem key={to} to={to} label={label} icon={Icon} collapsed={collapsed} isActive={isActive} badge={badge} />
@@ -248,18 +257,18 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
 
         {/* ITIL Processes */}
         <SidebarGroup title={t('sidebar.itilProcesses')} icon={ListChecks} active={itsmActive} open={itsmOpen} onToggle={toggleItsm} collapsed={collapsed} collapsedTo="/incidents">
-          {ITSM_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} />)}
+          {ITSM_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />)}
         </SidebarGroup>
 
         {/* Reporting */}
         <SidebarGroup title={t('sidebar.reporting')} icon={BarChart2} active={reportingActive} open={reportingOpen} onToggle={toggleReporting} collapsed={collapsed} collapsedTo="/reports">
-          {REPORTING_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} />)}
+          {REPORTING_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />)}
         </SidebarGroup>
 
         {/* Analysis */}
         <SidebarGroup title={t('sidebar.analysis')} icon={Activity} active={analysisActive} open={analysisOpen} onToggle={toggleAnalysis} collapsed={collapsed} collapsedTo="/anomalies">
           {ANALYSIS_ITEM_DEFS.map(({ to, labelKey, icon }) => (
-            <SubItem key={to} to={to} label={t(labelKey)} icon={icon} trailing={to === '/anomalies' ? anomalyBadge : undefined} />
+            <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} trailing={to === '/anomalies' ? anomalyBadge : undefined} />
           ))}
         </SidebarGroup>
 
@@ -267,14 +276,14 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         {staff && (
           <SidebarGroup title={t('sidebar.monitoring')} icon={Radar} active={monitoringActive} open={monitoringOpen} onToggle={toggleMonitoring} collapsed={collapsed} collapsedTo="/events">
             {MONITORING_ITEM_DEFS.filter((d) => isAdmin || !d.adminOnly).map(({ to, labelKey, icon }) => (
-              <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={pathname === to || pathname.startsWith(`${to}/`)} />
+              <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />
             ))}
           </SidebarGroup>
         )}
 
         {/* CMDB */}
         <SidebarGroup title={t('sidebar.cmdb')} icon={Server} active={cmdbActive} open={cmdbOpen} onToggle={toggleCmdb} collapsed={collapsed} collapsedTo="/cmdb">
-          <SubItem to="/cmdb" end label={t('sidebar.all')} icon={Server} />
+          <SubItem to="/cmdb" label={t('sidebar.all')} icon={Server} isActive={attiva === '/cmdb'} />
           {ciTypes.map(ct => {
             const to = `/ci/${ct.name}`
             const labelKey = CI_LABEL_KEYS[ct.name]
@@ -284,7 +293,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 to={to}
                 label={labelKey ? t(labelKey) : ct.label}
                 iconNode={<CIIcon icon={ct.icon} size={12} color={C.brand} />}
-                isActive={pathname === to || pathname.startsWith(`${to}/`)}
+                isActive={to === attiva}
               />
             )
           })}
@@ -296,20 +305,20 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           label={t(PROFILE_ITEM.labelKey)}
           icon={PROFILE_ITEM.icon}
           collapsed={collapsed}
-          isActive={pathname.startsWith(PROFILE_ITEM.to)}
+          isActive={attiva === PROFILE_ITEM.to}
         />
 
         {/* Teams & Users — admin only (routes are admin(...) in main.tsx) */}
         {isAdmin && (
           <SidebarGroup title={t('sidebar.teamsUsers')} icon={Users} active={teamsActive} open={teamsOpen} onToggle={toggleTeams} collapsed={collapsed} collapsedTo="/teams">
-            {TEAMS_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} />)}
+            {TEAMS_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />)}
           </SidebarGroup>
         )}
 
         {/* Configuration — admin only (routes are admin(...) in main.tsx) */}
         {isAdmin && (
           <SidebarGroup title={t('sidebar.configuration')} icon={SlidersHorizontal} active={configActive} open={configOpen} onToggle={toggleConfig} collapsed={collapsed} collapsedTo="/workflow">
-            {CONFIG_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} />)}
+            {CONFIG_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />)}
           </SidebarGroup>
         )}
 
@@ -321,26 +330,13 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
                 {t('sidebar.admin')}
               </p>
             )}
-            {ADMIN_NAV_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => {
-              const label = t(labelKey)
-              const isActive = pathname === to || pathname.startsWith(to + '/')
-              return (
-                <NavLink
-                  key={to}
-                  to={to}
-                  title={collapsed ? label : undefined}
-                  style={navItemStyle(isActive, collapsed)}
-                  className="hover-bg"
-                >
-                  <Icon size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                  {!collapsed && label}
-                </NavLink>
-              )
-            })}
+            {ADMIN_NAV_ITEM_DEFS.map(({ to, labelKey, icon }) => (
+              <NavItem key={to} to={to} label={t(labelKey)} icon={icon} collapsed={collapsed} isActive={to === attiva} />
+            ))}
 
             {/* Settings — collapsible, dentro ADMIN */}
             <SidebarGroup title={t('sidebar.settings')} icon={Settings} active={settingsActive} open={settingsOpen} onToggle={toggleSettings} collapsed={collapsed} collapsedTo="/settings/notifications">
-              {SETTINGS_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} />)}
+              {SETTINGS_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />)}
             </SidebarGroup>
           </>
         )}

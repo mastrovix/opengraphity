@@ -117,6 +117,44 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
       breached: toNumber(r['breached']),
     }))
 
+    // ── By policy ─────────────────────────────────────────────────────────────
+    // Ogni SLA registra da quale policy è nato (`policy_id`, `policy_name`), o
+    // quale regola l'ha impostato (`set_by_rule`). Il nome si legge dalla policy
+    // viva, così una rinomina si vede; se la policy non c'è più resta quello
+    // registrato alla creazione. Gli SLA creati prima di questi campi non hanno
+    // origine: finiscono in una riga loro, non vengono attribuiti a indovinare.
+    const byPolicyRows = await runQuery<Props>(session, `
+      MATCH (e {tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
+      WHERE (e:Incident OR e:Problem OR e:ServiceRequest) AND s.started_at >= $cutoff
+      OPTIONAL MATCH (p:SLAPolicyNode {id: s.policy_id, tenant_id: $tenantId})
+      WITH s.policy_id AS policyId,
+        coalesce(p.name, s.policy_name) AS policyName,
+        s.set_by_rule AS setByRule,
+        p.entity_type AS entityType,
+        p.response_minutes AS responseMinutes,
+        p.resolve_minutes AS resolveMinutes,
+        CASE WHEN s.resolve_met = true THEN 1 ELSE 0 END AS met,
+        CASE WHEN s.breached = true AND coalesce(s.resolve_met, false) = false THEN 1 ELSE 0 END AS breached,
+        CASE WHEN s.paused_at IS NOT NULL AND s.resolved_at IS NULL AND coalesce(s.resolve_met, false) = false
+             AND coalesce(s.breached, false) = false THEN 1 ELSE 0 END AS paused
+      RETURN policyId, policyName, setByRule, entityType, responseMinutes, resolveMinutes,
+        count(*) AS total, sum(met) AS met, sum(breached) AS breached, sum(paused) AS paused
+      ORDER BY total DESC
+    `, { tenantId: ctx.tenantId, cutoff })
+
+    const byPolicy = byPolicyRows.map((r) => ({
+      policyId:        (r['policyId']   ?? null) as string | null,
+      policyName:      (r['policyName'] ?? null) as string | null,
+      setByRule:       (r['setByRule']  ?? null) as string | null,
+      entityType:      (r['entityType'] ?? null) as string | null,
+      responseMinutes: r['responseMinutes'] == null ? null : toNumber(r['responseMinutes']),
+      resolveMinutes:  r['resolveMinutes']  == null ? null : toNumber(r['resolveMinutes']),
+      total:    toNumber(r['total']),
+      met:      toNumber(r['met']),
+      breached: toNumber(r['breached']),
+      paused:   toNumber(r['paused']),
+    }))
+
     // ── Average resolution time (incidents resolved within the window) ─────────
     const avgRows = await runQuery<Props>(session, `
       MATCH (i:Incident {tenant_id: $tenantId})
@@ -175,7 +213,7 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
     return {
       generatedAt: new Date().toISOString(),
       windowDays,
-      sla: { total, met, breached, paused, openOnTrack, breachRate, avgResolutionMinutes, byPriority },
+      sla: { total, met, breached, paused, openOnTrack, breachRate, avgResolutionMinutes, byPriority, byPolicy },
       ola,
     }
   })

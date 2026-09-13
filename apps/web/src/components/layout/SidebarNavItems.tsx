@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { LucideIcon } from 'lucide-react'
 import { layoutPalette, colors } from '@/lib/tokens'
@@ -83,8 +83,9 @@ interface NavItemProps {
 export function NavItem({ to, label, icon: Icon, collapsed, isActive, badge = 0 }: NavItemProps) {
   const { t } = useTranslation()
   return (
-    <NavLink
+    <Link
       to={to}
+      aria-current={isActive ? 'page' : undefined}
       title={collapsed ? label : undefined}
       className="hover-bg"
       style={navItemStyle(isActive, collapsed)}
@@ -99,7 +100,7 @@ export function NavItem({ to, label, icon: Icon, collapsed, isActive, badge = 0 
           {badge}
         </span>
       )}
-    </NavLink>
+    </Link>
   )
 }
 
@@ -111,21 +112,23 @@ interface SubItemProps {
   icon?:     LucideIcon
   /** Custom icon node (e.g. CIIcon) when a Lucide icon is not enough. */
   iconNode?: React.ReactNode
-  end?:      boolean
-  /** Explicit active flag (default: NavLink's own matching). */
-  isActive?: boolean
+  /**
+   * Obbligatorio: lo decide `voceAttiva` guardando tutto il menu. Il confronto
+   * per prefisso di NavLink accendeva anche la voce «padre» (/reports su /reports/sla).
+   */
+  isActive:  boolean
   /** Extra node rendered at the right (badges). */
   trailing?: React.ReactNode
 }
 
-export function SubItem({ to, label, icon: Icon, iconNode, end, isActive, trailing }: SubItemProps) {
+export function SubItem({ to, label, icon: Icon, iconNode, isActive, trailing }: SubItemProps) {
   return (
-    <NavLink key={to} to={to} end={end} style={({ isActive: navActive }) => subItemStyle(isActive ?? navActive)}>
+    <Link key={to} to={to} aria-current={isActive ? 'page' : undefined} style={subItemStyle(isActive)}>
       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {iconNode ?? (Icon && <Icon size={12} aria-hidden="true" style={{ color: C.brand, flexShrink: 0 }} />)}
         {label}
       </span>
       {trailing}
-    </NavLink>
+    </Link>
   )
 }

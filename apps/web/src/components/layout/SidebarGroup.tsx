@@ -5,7 +5,7 @@
  * collapsed the group renders as a single icon link to `collapsedTo`.
  */
 import { useEffect, useId, useState, type ReactNode } from 'react'
-import { NavLink } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { ChevronDown, ChevronRight, type LucideIcon } from 'lucide-react'
 import { C, navItemStyle, parentGroupStyle } from './SidebarNavItems'
 
@@ -27,9 +27,9 @@ export function SidebarGroup({ title, icon: Icon, active, open, onToggle, collap
 
   if (collapsed) {
     return (
-      <NavLink to={collapsedTo} title={title} style={navItemStyle(active, true)} className="hover-bg">
+      <Link to={collapsedTo} title={title} style={navItemStyle(active, true)} className="hover-bg">
         <Icon size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-      </NavLink>
+      </Link>
     )
   }
 

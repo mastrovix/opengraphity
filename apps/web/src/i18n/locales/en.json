@@ -140,7 +140,8 @@
     "services": "Services",
     "domainMatrices": "Domain matrices",
     "organization": "Organization",
-    "olaContracts": "OLA / UC"
+    "olaContracts": "OLA / UC",
+    "olaReport": "OLA / UC Report"
   },
   "pages": {
     "incidents": {
@@ -1308,7 +1309,21 @@
       "windowDays_other": "{{count}}d",
       "slaInWindow": "SLA in the window ({{window}})",
       "attainment": "Attainment ({{window}})",
-      "manageContracts": "Manage contracts →"
+      "manageContracts": "Manage contracts →",
+      "managePolicies": "Manage policies →",
+      "activeContracts": "Active contracts",
+      "attainmentShort": "Attainment",
+      "byContract": "By contract",
+      "byPolicy": "By policy",
+      "evaluations": "Evaluations ({{window}})",
+      "noPolicyRecorded": "No policy recorded",
+      "policy": "Policy",
+      "setByRule": "Set by the rule «{{rule}}»",
+      "slaSection": "SLA",
+      "noPolicyRecordedHint": "These SLAs were created before the policy that produced them was recorded: their origin is not reconstructed.",
+      "targetsShort": "Targets",
+      "pausedShort": "Paused",
+      "generatedOn": "Generated on {{date}}."
     },
     "changeDetail": {
       "notFound": "Change not found",

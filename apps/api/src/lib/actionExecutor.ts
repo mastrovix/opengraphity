@@ -356,7 +356,12 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
             tier_severity:         'custom',
             tier_response_minutes: $responseMins,
             tier_resolve_minutes:  $resolveMins,
-            tier_business_hours:   false
+            tier_business_hours:   false,
+            // Non nasce da una policy ma da una regola: il report lo mostra
+            // col nome della regola, invece di confonderlo con gli SLA senza origine.
+            policy_id:             null,
+            policy_name:           null,
+            set_by_rule:           $ruleName
           })
           CREATE (e)-[:HAS_SLA]->(s)
         `, {
@@ -368,6 +373,7 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
           resolveDeadline:  resolveDeadline.toISOString(),
           responseMins,
           resolveMins,
+          ruleName:         ctx.sourceName,
         })
       }, true)
       break

@@ -75,6 +75,7 @@ import { SLAPoliciesPage } from '@/pages/admin/SLAPoliciesPage'
 import { OLAContractsPage } from '@/pages/admin/OLAContractsPage'
 import { ServiceCatalogAdminPage } from '@/pages/admin/ServiceCatalogAdminPage'
 const SLAReportPage = lazy(() => import('@/pages/reports/SLAReportPage').then(m => ({ default: m.SLAReportPage })))
+const OLAReportPage = lazy(() => import('@/pages/reports/OLAReportPage').then(m => ({ default: m.OLAReportPage })))
 import { IntegrationsPage } from '@/pages/admin/IntegrationsPage'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { PageLoader } from '@/components/PageLoader'
@@ -229,6 +230,7 @@ const router = createBrowserRouter([
       { path: 'admin/ola-uc',              element: admin(<OLAContractsPage />),            errorElement: <RouteError /> },
       { path: 'admin/service-catalog',     element: admin(<ServiceCatalogAdminPage />),     errorElement: <RouteError /> },
       { path: 'reports/sla',               element: <Suspense fallback={<PageLoader />}><SLAReportPage /></Suspense>, errorElement: <RouteError /> },
+      { path: 'reports/ola-uc',            element: <Suspense fallback={<PageLoader />}><OLAReportPage /></Suspense>, errorElement: <RouteError /> },
       { path: 'admin/integrations',        element: admin(<IntegrationsPage />),            errorElement: <RouteError /> },
       { path: 'admin/assessment-questions', element: admin(<QuestionAdminPage />),          errorElement: <RouteError /> },
       { path: 'approvals',                element: approver(<ApprovalsPage />),            errorElement: <RouteError /> },

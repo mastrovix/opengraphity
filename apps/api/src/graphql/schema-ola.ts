@@ -58,6 +58,22 @@ export function olaSDL(): string {
     breached: Int!
   }
 
+  # Rispetto degli SLA per ORIGINE: la policy da cui sono nati (policyId/policyName),
+  # la regola che li ha impostati (setByRule), o nessuna delle due per gli SLA creati
+  # prima che l'origine venisse registrata.
+  type SLAPolicyAttainmentRow {
+    policyId:        String
+    policyName:      String
+    setByRule:       String
+    entityType:      String
+    responseMinutes: Int
+    resolveMinutes:  Int
+    total:           Int!
+    met:             Int!
+    breached:        Int!
+    paused:          Int!
+  }
+
   type SLAComplianceBlock {
     total:                Int!
     met:                  Int!
@@ -67,6 +83,7 @@ export function olaSDL(): string {
     breachRate:           Float!
     avgResolutionMinutes: Float
     byPriority:           [SLAPriorityRow!]!
+    byPolicy:             [SLAPolicyAttainmentRow!]!
   }
 
   type OLAAttainmentRow {

@@ -105,9 +105,9 @@ export function OLAContractsPage() {
   const [modal, setModal] = useState<{ mode: 'create' } | { mode: 'edit'; item: OLAContract } | null>(null)
   const [form, setForm] = useState<OLAForm>(EMPTY_OLA)
 
-  // Il report legge gli stessi contratti: si rilegge anche lui, altrimenti
+  // L'OLA / UC Report legge gli stessi contratti: si rilegge anche lui, altrimenti
   // aprendolo subito dopo mostrerebbe il contratto com'era.
-  const refetchQueries = ['GetSLAReport']
+  const refetchQueries = ['GetOLAReport']
   const [createOLA, { loading: creating }] = useMutation(CREATE_OLA_CONTRACT, {
     refetchQueries,
     onCompleted: async () => { setModal(null); await refetch(); toast.success(t('toast.sla.olaCreated')) },

@@ -1,4 +1,4 @@
-import { ApolloClient, InMemoryCache, HttpLink, from, ApolloLink as ApolloLinkClass } from '@apollo/client/core'
+import { ApolloClient, InMemoryCache, HttpLink, from, ApolloLink as ApolloLinkClass, type TypePolicies } from '@apollo/client/core'
 import { setContext } from '@apollo/client/link/context'
 import { ErrorLink } from '@apollo/client/link/error'
 import { CombinedGraphQLErrors, ServerError } from '@apollo/client/errors'
@@ -35,6 +35,8 @@ export interface CreateApolloClientOptions extends ErrorLinkOptions {
   defaultOptions?: ApolloClient.DefaultOptions
   /** Come si traduce la chiave di un errore. Senza, i messaggi restano quelli del server. */
   traduciErrore?: TraduciErrore
+  /** Regole della cache per tipo (es. oggetti senza id letti da più query). */
+  typePolicies?: TypePolicies
 }
 
 export const DEFAULT_DEDUPE_MS = 5_000
@@ -263,7 +265,7 @@ export function createAuthLink(getToken: () => string | undefined): ApolloLink {
 }
 
 export function createApolloClient(opts: CreateApolloClientOptions): ApolloClient {
-  const { uri, getToken, defaultOptions, traduciErrore, ...linkOptions } = opts
+  const { uri, getToken, defaultOptions, traduciErrore, typePolicies, ...linkOptions } = opts
   if (!uri) throw new Error('createApolloClient: "uri" mancante (VITE_API_URL)')
   const httpLink = new HttpLink({ uri })
   /*
@@ -276,7 +278,7 @@ export function createApolloClient(opts: CreateApolloClientOptions): ApolloClien
     : [createErrorLink(linkOptions), createAuthLink(getToken).concat(httpLink)]
   return new ApolloClient({
     link:  from(catena),
-    cache: new InMemoryCache(),
+    cache: new InMemoryCache(typePolicies ? { typePolicies } : undefined),
     ...(defaultOptions ? { defaultOptions } : {}),
   })
 }

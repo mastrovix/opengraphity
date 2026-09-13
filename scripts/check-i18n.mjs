@@ -271,6 +271,10 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // «OLA / UC» sono due sigle ITIL: la stessa cosa nelle due lingue.
   'pages.slaReport.contracts',
   'sidebar.olaContracts',
+  // Sigle e termini del reporting SLA, uguali nelle due lingue.
+  'pages.slaReport.slaSection',
+  'pages.slaReport.policy',
+  'pages.slaReport.attainmentShort',
   /*
     PAROLE TECNICHE O D'USO STANDARD: in italiano si dicono in inglese, e
     tradurle rende il prodotto piu difficile da usare, non piu italiano.
@@ -773,6 +777,9 @@ function prosa(v) {
     const t = testo.replace(/\$\{[^}]*\}/g, ' ').trim()
     // Una chiamata di metodo (`LINGUE.flatMap(`) catturata come testo JSX e codice.
     if (/[A-Za-z_]\.[A-Za-z_]\w*\(/.test(t)) return false
+    // Un confronto o un'espressione presi fra un `>` e un `<`: `valutazioni > 0 ? (a / b) * 100 : null`.
+    // Ternario, freccia, punto e virgola e moltiplicazione non stanno in una frase a schermo.
+    if (/\?\s*[(\w'"`]|=>|;|\s\*\s/.test(t) && /[(){}]|\bnull\b|\bundefined\b/.test(t)) return false
     if (t.length < 3) return false
     if (CHIAVE.test(t)) return false
     if (ACCENTATE.test(t)) return true

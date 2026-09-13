@@ -146,3 +146,34 @@ describe('Sidebar — Monitoraggio (Event Management)', () => {
     expect(within(nav()).getByRole('button', { name: 'Settings' })).toHaveAttribute('aria-expanded', 'false')
   })
 })
+
+describe('Sidebar — una voce accesa sola', () => {
+  // Su /reports/sla si accendevano «SLA Report» e «AI Analysis» (/reports):
+  // ogni voce confrontava il percorso per prefisso. Il test prende TUTTE le
+  // voci del menu admin e, pagina per pagina, vuole accesa solo quella.
+  it('per ogni voce del menu, sulla sua pagina è accesa solo lei', async () => {
+    const { container, unmount, user } = renderSidebar('admin')
+    await within(nav()).findByRole('button', { name: 'Teams & Users' })
+    // Le voci di un gruppo chiuso non sono nel DOM: si aprono tutti.
+    for (const b of within(nav()).getAllByRole('button')) {
+      if (b.getAttribute('aria-expanded') === 'false') await user.click(b)
+    }
+    const hrefs = [...new Set(Array.from(container.querySelectorAll<HTMLAnchorElement>('nav a[href]')).map((a) => a.getAttribute('href')!))]
+    unmount()
+    expect(hrefs).toEqual(expect.arrayContaining(['/reports', '/reports/sla', '/reports/ola-uc', '/incidents', '/admin/sla-policies']))
+
+    for (const href of hrefs) {
+      const r = renderSidebar('admin', { route: href })
+      await within(nav()).findByRole('button', { name: 'Teams & Users' })
+      const accese = Array.from(r.container.querySelectorAll('a[aria-current="page"]')).map((a) => a.getAttribute('href'))
+      expect({ pagina: href, accese }).toEqual({ pagina: href, accese: [href] })
+      r.unmount()
+    }
+  })
+
+  it('una pagina interna accende la voce da cui discende, e solo quella', async () => {
+    const { container } = renderSidebar('admin', { route: '/reports/sla/qualcosa' })
+    await within(nav()).findByRole('button', { name: 'Teams & Users' })
+    expect(Array.from(container.querySelectorAll('a[aria-current="page"]')).map((a) => a.getAttribute('href'))).toEqual(['/reports/sla'])
+  })
+})

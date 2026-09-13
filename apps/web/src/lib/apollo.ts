@@ -6,6 +6,7 @@
 import { toast } from 'sonner'
 import { createApolloClient } from '@opengraphity/web-core'
 import i18n from '@/i18n/i18n'
+import { APOLLO_TYPE_POLICIES } from './apolloTypePolicies'
 import { keycloak } from './keycloak'
 import { clientLogger } from './clientLogger'
 import { refreshToken, isSessionInvalid, forceLogin } from './tokenRefresh'
@@ -25,4 +26,5 @@ export const apolloClient = createApolloClient({
     questo bundle non conosce non si nasconde — resta il messaggio del server.
   */
   traduciErrore: (key, params) => (i18n.exists(key, params) ? i18n.t(key, params) : null),
+  typePolicies: APOLLO_TYPE_POLICIES,
 })

@@ -28,7 +28,18 @@ export const GET_SLA_REPORT = gql`
       sla {
         total met breached paused openOnTrack breachRate avgResolutionMinutes
         byPriority { priority total met breached }
+        byPolicy { policyId policyName setByRule entityType responseMinutes resolveMinutes total met breached paused }
       }
+    }
+  }
+`
+
+/** Il rispetto dei contratti OLA / UC: pagina a sé (OLA / UC Report), stessa query dell'API. */
+export const GET_OLA_REPORT = gql`
+  query GetOLAReport($windowDays: Int) {
+    slaReport(windowDays: $windowDays) {
+      generatedAt
+      windowDays
       ola {
         id type name entityType partyType partyName resolveMinutes
         evaluated met breached attainmentPct

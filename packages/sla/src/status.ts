@@ -19,6 +19,15 @@ export interface SLAStatus {
   resolved_at?: string
   paused_at?: string
   paused_type?: string   // 'resolve' | 'response' | 'both' — which clock is paused
+  /**
+   * DA QUALE POLICY È NATO questo SLA. Senza, il report non poteva dire quanto
+   * è stata rispettata ciascuna policy — solo il totale e la severità. `id` è
+   * il riferimento (una policy del cliente, o quella di default del prodotto);
+   * `name` è il nome al momento della creazione, per quando la policy viene poi
+   * eliminata. Assenti sugli SLA creati prima di questo campo: non si ricostruiscono.
+   */
+  policy_id?: string
+  policy_name?: string
   tier: SLATier
 }
 
@@ -33,7 +42,8 @@ const SLA_STATUS_PROJECTION = `
       s.tier_severity as tier_severity,
       s.tier_response_minutes as tier_response_minutes,
       s.tier_resolve_minutes as tier_resolve_minutes,
-      s.tier_business_hours as tier_business_hours
+      s.tier_business_hours as tier_business_hours,
+      s.policy_id as policy_id, s.policy_name as policy_name
 `
 
 export type SLAPauseType = 'resolve' | 'response' | 'both'
@@ -67,6 +77,8 @@ function mapToSLAStatus(props: Record<string, unknown>): SLAStatus {
     resolved_at:       (props['resolved_at'] ?? undefined) as string | undefined,
     paused_at:         props['paused_at']         as string | undefined,
     paused_type:       props['paused_type']       as string | undefined,
+    policy_id:         (props['policy_id']   ?? undefined) as string | undefined,
+    policy_name:       (props['policy_name'] ?? undefined) as string | undefined,
     tier: {
       severity:         props['tier_severity']         as string,
       response_minutes: props['tier_response_minutes'] as number,
@@ -192,7 +204,9 @@ export async function createSLAStatus(params: {
       s.tier_severity         = $tierSeverity,
       s.tier_response_minutes = $tierResponseMinutes,
       s.tier_resolve_minutes  = $tierResolveMinutes,
-      s.tier_business_hours   = $tierBusinessHours
+      s.tier_business_hours   = $tierBusinessHours,
+      s.policy_id             = $policyId,
+      s.policy_name           = $policyName
     RETURN ${SLA_STATUS_PROJECTION}
   `
 
@@ -210,6 +224,8 @@ export async function createSLAStatus(params: {
       tierResponseMinutes:  tier.response_minutes,
       tierResolveMinutes:   tier.resolve_minutes,
       tierBusinessHours:    tier.business_hours,
+      policyId:             policy.id,
+      policyName:           policy.name,
     })
 
     const row = results[0]
