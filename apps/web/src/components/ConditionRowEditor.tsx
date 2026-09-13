@@ -14,6 +14,7 @@ import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n/i18n'
 import { colors } from '@/lib/tokens'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,8 +43,8 @@ const removeBtn: React.CSSProperties = {
 export function ConditionRowEditor({ condition, entityType, onChange, onRemove, layout = 'row' }: Props) {
   const { t } = useTranslation()
   const { fields: allFields, error: fieldsError } = useEntityFieldMetas(entityType)
-  const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: 'cache-first' })
-  const { data: usersData } = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: 'cache-first' })
+  const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
+  const { data: usersData } = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: METAMODEL_FETCH_POLICY })
 
   const selectedField = allFields.find(f => f.name === condition.field)
   const fieldType     = selectedField?.fieldType ?? 'string'

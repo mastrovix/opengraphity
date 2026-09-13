@@ -14,6 +14,7 @@ import { useQuery } from '@apollo/client/react'
 import { GET_BASE_CI_TYPE } from '@/graphql/queries'
 import { palette } from '@/lib/tokens'
 import { domainValueStyle } from '@/lib/domainStyle'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 interface BaseCITypeData {
   baseCIType: {
@@ -38,7 +39,7 @@ function enumOf(fields: BaseCITypeData['baseCIType'], name: string): string[] | 
 }
 
 export function useCIBaseEnums(): CIBaseEnums {
-  const { data, loading, error } = useQuery<BaseCITypeData>(GET_BASE_CI_TYPE, { fetchPolicy: 'cache-first' })
+  const { data, loading, error } = useQuery<BaseCITypeData>(GET_BASE_CI_TYPE, { fetchPolicy: METAMODEL_FETCH_POLICY })
   return useMemo(() => {
     if (loading && !data) return { statuses: [], environments: [], loading: true, error: null }
     if (error) {

@@ -34,7 +34,7 @@
 
 import { v4 as uuidv4 } from 'uuid'
 import { parseArgs } from 'node:util'
-import { getSession } from '@opengraphity/neo4j'
+import { getSession, toNumber } from '@opengraphity/neo4j'
 import { USER_ROLES, type Tenant } from '@opengraphity/types'
 import { seedSystemEnumTypes } from '../lib/seedEnumTypes.js'
 import { provisionTenantData } from '../lib/provisionTenantData.js'
@@ -264,6 +264,17 @@ async function createAdminUser(kc: KeycloakAdmin, token: string, a: Args, passwo
   // Set password only for newly created users
   if (created) {
     await kc.setPassword(token, a.slug, userId, password.value, password.temporary)
+    // MOSTRATA SUBITO, non alla fine dello script (terza revisione).
+    //
+    // `printOneTimePassword` stava dopo il provisioning di Neo4j, e quando quel
+    // passo e crollato — su un `toNumber` mancante, corretto qui sopra —
+    // l'utente admin era stato creato con una password generata che NON e mai
+    // stata mostrata: irrecuperabile, perche un nuovo giro dello script salta
+    // la creazione e lascia la password invariata. Per un cliente vero il suo
+    // primo amministratore resta chiuso fuori. Succede dal vivo, e con questo
+    // ordine non puo piu succedere: fra l'impostare e il mostrare non c'e
+    // niente che possa fallire.
+    printOneTimePassword(a.email, password)
   }
 
   // Assign role (idempotent — Keycloak ignores duplicate role assignments)
@@ -369,7 +380,12 @@ async function provisionNeo4j(a: Args): Promise<void> {
           { scope },
         ),
       )
-      const count = (res.records[0]?.get('total') as { toNumber(): number })?.toNumber() ?? 0
+      // `toNumber` condiviso e non un cast a mano: il driver di questo
+      // progetto restituisce i `count()` come NUMERI JS, non come Integer
+      // di Neo4j, quindi `.toNumber()` non esiste e l'onboarding di un
+      // cliente nuovo finiva con «✖ onboard-tenant fallito» DOPO aver creato
+      // tutto — chi lo lanciava non sapeva se il tenant fosse usabile.
+      const count = toNumber(res.records[0]?.get('total') ?? 0)
       if (count === 0) {
         console.warn(`  ⚠ Nessun CITypeDefinition scope='${scope}' trovato — esegui ${seedScript}`)
       } else {
@@ -404,7 +420,8 @@ async function main(): Promise<void> {
   console.log('\n▶ Neo4j')
   await provisionNeo4j(a)
 
-  // Riepilogo SENZA password; quella generata è stampata una sola volta sotto.
+  // Riepilogo SENZA password: quella generata e gia stata mostrata al momento
+  // in cui e stata impostata (vedi `createAdminUser`).
   console.log(`
 ╔══════════════════════════════════════════════════════╗
 ║  Tenant "${a.slug}" pronto!
@@ -415,7 +432,6 @@ async function main(): Promise<void> {
 ║  Keycloak realm: ${a.slug}
 ║  Admin login:    ${a.email}
 ╚══════════════════════════════════════════════════════╝`)
-  printOneTimePassword(a.email, password)
 }
 
 runScript('onboard-tenant', main)

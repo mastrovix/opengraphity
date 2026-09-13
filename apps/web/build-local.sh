@@ -63,6 +63,20 @@ for v in VITE_API_URL VITE_API_BASE_URL VITE_KEYCLOAK_URL VITE_KEYCLOAK_CLIENT_I
   printf '  %-28s %s\n' "$v" "${!v:-(non impostata)}"
 done
 
+# I PACCHETTI DEL WORKSPACE PRIMA (terza revisione).
+#
+# Vite risolve `@opengraphity/web-core`, `/types` e `/schema-generator` al loro
+# `dist` COMPILATO, non al sorgente: una modifica in `packages/` non arrivava
+# nel bundle, e silenziosamente. Dal vivo: ho cambiato la precedenza dello slug
+# del tenant in `web-core`, ricostruito il bundle, e il browser continuava a
+# chiedere il realm vecchio — il `dist` era di sei giorni prima. La verifica in
+# fondo a questo script non lo prende, perche controlla solo che lo slug ci sia,
+# e quello c'era.
+#
+# `--filter ...^...` costruisce le dipendenze di workspace del web, non il web.
+echo "build-local: ricostruisco i pacchetti del workspace…"
+( cd "$repo" && pnpm --filter "@opengraphity/web^..." build )
+
 ( cd "$repo" && pnpm --filter @opengraphity/web build )
 
 # ── La verifica che avrebbe fatto fallire il 18 settembre ────────────────────

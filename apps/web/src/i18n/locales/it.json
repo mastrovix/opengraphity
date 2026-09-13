@@ -1049,6 +1049,10 @@
         "import_severity": {
           "title": "Severità in ingresso dall'import",
           "description": "Come si traducono le severità scritte in un file di import dei ticket. Una severità che non si traduce mette la riga in errore: non viene più riscritta a «medium»."
+        },
+        "change_priority_initial": {
+          "title": "Priorità iniziale della change",
+          "description": "La priorità con cui nasce una change quando il suo rischio non è ancora stato valutato: dal solo tipo di change. Appena l'assessment produce un punteggio, subentra «tipo × fascia di rischio»."
         }
       },
       "missingWarning_one": "Una combinazione senza valore ({{keys}}). Finché resta vuota, quando serve — all'apertura di un incident o all'arrivo di un allarme — l'operazione si ferma e lo dice: compilala qui.",
@@ -1074,6 +1078,23 @@
         "addBand": "Aggiungi una fascia",
         "removeBand": "Togli la fascia \"{{band}}\""
       }
+    },
+    "reportBuilder": {
+      "title": "Costruttore di report",
+      "count_one": "1 report",
+      "count_other": "{{count}} report",
+      "new": "Nuovo report",
+      "execute": "Esegui",
+      "modify": "Modifica"
+    },
+    "questions": {
+      "optionLabel": "Testo della risposta",
+      "optionScore": "Punteggio",
+      "optionLabelFor": "Testo della risposta {{n}}",
+      "optionScoreFor": "Punteggio della risposta {{n}}",
+      "moveOptionUp": "Sposta la risposta {{n}} più in alto",
+      "moveOptionDown": "Sposta la risposta {{n}} più in basso",
+      "removeOption": "Togli la risposta {{n}}"
     }
   },
   "filter": {

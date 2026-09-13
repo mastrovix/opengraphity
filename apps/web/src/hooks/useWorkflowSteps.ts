@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react'
 import { useMemo } from 'react'
 import { GET_WORKFLOW_DEFINITION } from '@/graphql/queries/workflow'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 export interface WorkflowStepMeta {
   id:         string
@@ -31,7 +32,7 @@ export interface WorkflowStepMeta {
 export function useWorkflowSteps(entityType: string) {
   const { data, loading, error } = useQuery<{ workflowDefinition: { steps: WorkflowStepMeta[] } | null }>(
     GET_WORKFLOW_DEFINITION,
-    { variables: { entityType }, fetchPolicy: 'cache-first' },
+    { variables: { entityType }, fetchPolicy: METAMODEL_FETCH_POLICY },
   )
 
   return useMemo(() => {

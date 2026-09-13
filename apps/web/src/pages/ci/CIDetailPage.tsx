@@ -38,6 +38,7 @@ import { colors, palette, alpha } from '@/lib/tokens'
 // `health`, `healthSource` e `lastEventAt`): è la STESSA lista che usa il
 // generatore.
 import { BASE_TYPE_FIELDS } from '@opengraphity/schema-generator/names'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -332,7 +333,7 @@ export function CIDetailPage() {
     { variables: { id }, skip: !detailQuery || !id },
   )
 
-  const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: 'cache-first' })
+  const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const allTeams = teamsData?.teams ?? []
   // teamId null → l'API rimuove la relazione ("— non assegnato —" è un'azione reale)
   const [assignOwner] = useMutation<unknown, { ciId: string; teamId: string | null }>(ASSIGN_CI_OWNER, {
@@ -357,7 +358,7 @@ export function CIDetailPage() {
   const isGroup = typeName === 'dynamic_ci_group'
   const { data: groupMembersData, refetch: refetchGroupMembers } = useQuery<GroupMembersResult>(
     CI_GROUP_MEMBERS,
-    { variables: { groupId: id }, skip: !id || !isGroup, fetchPolicy: 'cache-and-network' },
+    { variables: { groupId: id }, skip: !id || !isGroup, fetchPolicy: METAMODEL_FETCH_POLICY },
   )
   const groupMembers = useMemo(() => groupMembersData?.ciGroupMembers.items ?? [], [groupMembersData])
   const [graphCap, setGraphCap] = useState(DEFAULT_GRAPH_MEMBER_CAP)

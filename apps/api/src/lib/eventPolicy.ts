@@ -18,7 +18,8 @@
 import { ValidationError } from './errors.js'
 import { registerMetamodelCacheClearer } from './schemaInvalidator.js'
 import {
-  CI_LIFECYCLE_DECOMMISSIONED, CI_LIFECYCLE_INACTIVE, CI_LIFECYCLE_MAINTENANCE, CI_STATUS_VOCABULARY,
+  CI_LIFECYCLE_DECOMMISSIONED, CI_LIFECYCLE_EXPIRED, CI_LIFECYCLE_INACTIVE, CI_LIFECYCLE_MAINTENANCE,
+  CI_LIFECYCLE_REVOKED, CI_STATUS_VOCABULARY,
   EVENT_GROUP_BY, EVENT_SEVERITIES, OPEN_INCIDENT_FROM,
   type EventGroupBy, type EventSeverity, type OpenIncidentFrom,
 } from './eventVocabularies.js'
@@ -155,7 +156,11 @@ export const DEFAULT_EVENT_POLICY: EventPolicy = {
   retention_days:         90,
   match_short_hostname:   false,
   ignore_lifecycle_statuses: [CI_LIFECYCLE_DECOMMISSIONED],
-  retired_statuses:       [CI_LIFECYCLE_INACTIVE, CI_LIFECYCLE_DECOMMISSIONED],
+  // `expired` e `revoked` erano nel vocabolario spedito e in NESSUNA lista:
+  // per il prodotto erano CI in servizio, e la diagnostica lo diceva a ogni
+  // cliente il primo giorno. Un certificato scaduto o revocato non e in
+  // servizio — il posto giusto e qui.
+  retired_statuses:       [CI_LIFECYCLE_INACTIVE, CI_LIFECYCLE_DECOMMISSIONED, CI_LIFECYCLE_EXPIRED, CI_LIFECYCLE_REVOKED],
   maintenance_statuses:   [CI_LIFECYCLE_MAINTENANCE],
   severity_map: {
     critical: { impact: 'high',   urgency: 'high' },
@@ -386,11 +391,22 @@ export function parseEventPolicy(raw: unknown, tenantId: string): EventPolicy {
  * non riscrive policy già complete. Solo chiavi assenti: un valore presente,
  * anche se non valido, non viene toccato (lo segnala parseEventPolicy).
  */
-export function completeEventPolicy(parsed: Record<string, unknown>): Record<string, unknown> | null {
-  const missing = (Object.keys(DEFAULT_EVENT_POLICY) as (keyof EventPolicy)[]).filter((k) => parsed[k] === undefined)
+export function completeEventPolicy(
+  parsed: Record<string, unknown>,
+  /**
+   * I valori con cui riempire. Una MIGRAZIONE deve passare i propri, congelati:
+   * il suo compito e riprodurre quello che il codice faceva NEL SUO GIORNO, e
+   * `DEFAULT_EVENT_POLICY` evolve (terza revisione: `expired` e `revoked` sono
+   * entrati fra i ritirati, e senza questo argomento la migrazione 1810
+   * avrebbe cambiato retroattivamente cio che scrive — mentre la sua ragione
+   * dichiarata e «il primo giorno non cambia niente»).
+   */
+  defaults: EventPolicy = DEFAULT_EVENT_POLICY,
+): Record<string, unknown> | null {
+  const missing = (Object.keys(defaults) as (keyof EventPolicy)[]).filter((k) => parsed[k] === undefined)
   if (missing.length === 0) return null
   const out: Record<string, unknown> = { ...parsed }
-  for (const k of missing) out[k] = structuredClone(DEFAULT_EVENT_POLICY[k])
+  for (const k of missing) out[k] = structuredClone(defaults[k])
   return out
 }
 

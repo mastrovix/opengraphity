@@ -1,6 +1,11 @@
 /**
  * I `where` DELLA DIAGNOSI CONTRO LE ROTTE VERE (terza revisione · G3).
  *
+ * NOTA: quando ho scritto questo file ho affermato che un percorso inesistente
+ * «non rende nulla». Non e vero — c'e `errorElement` sulla rotta di layout, e
+ * si vede «Pagina non trovata». Corretto girando nel browser; vedi l'ultimo
+ * test.
+ *
  * `configurationIssues` dice all'admin cosa è rotto e **dove si rimedia**, e il
  * banner fa `navigate(issue.where)`. Due dei sei tipi di diagnosi promettevano
  * `/settings/events`, che non esiste: la rotta vera è `settings/event-policy`.
@@ -73,10 +78,19 @@ describe('ogni «Vai a sistemare» porta su una rotta che esiste', () => {
     expect(declared).not.toContain('/settings/events')
   })
 
-  it('main.tsx non ha una rotta di ripiego, quindi un percorso sbagliato non rende NULLA', () => {
-    // Se un giorno si aggiunge un catch-all, questo test va riscritto: il danno
-    // di un `where` sbagliato diventerebbe una pagina «non trovata» invece del
-    // vuoto, ma resterebbe un vicolo cieco. Il test serve a non dimenticarlo.
-    expect(mainSrc).not.toMatch(/path:\s*'\*'/)
+  it('un percorso sbagliato finisce nel RIPIEGO, che e comunque un vicolo cieco', () => {
+    // CORREZIONE di quanto questo test affermava quando l'ho scritto: dicevo
+    // che `main.tsx` non ha una rotta di ripiego e che un percorso sbagliato
+    // «non rende NULLA». Falso, e l'ho scoperto girando nel browser: il
+    // ripiego c'e, ed e `errorElement: <RouteError />` sulla rotta di layout —
+    // React Router lo usa anche quando nessuna rotta figlia combacia, non solo
+    // sugli errori. Cercare `path: '*'` era guardare la porta sbagliata:
+    // l'asserzione passava e il commento diceva una cosa non vera.
+    //
+    // Il che rende il danno di un `where` sbagliato meno grave di come l'avevo
+    // raccontato — «Pagina non trovata» invece di una schermata vuota — ma non
+    // meno un vicolo cieco: l'admin non arriva dove si rimedia. Il test che
+    // conta resta quello sopra, che risolve ogni `where` contro le rotte vere.
+    expect(mainSrc).toMatch(/errorElement/)
   })
 })

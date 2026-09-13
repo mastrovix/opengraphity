@@ -133,9 +133,16 @@ export async function tenantProvisioningGaps(session: Queryable, tenantId: strin
      WITH dashboards, count(n) AS rules
      OPTIONAL MATCH (m:DomainMatrix {tenant_id: $tenantId})
      WITH dashboards, rules, count(m) AS matrices
+     OPTIONAL MATCH (aq:AssessmentQuestion {tenant_id: $tenantId})
+     WITH dashboards, rules, matrices, count(aq) AS questions
+     OPTIONAL MATCH (tm:Team {tenant_id: $tenantId})
+     WITH dashboards, rules, matrices, questions,
+          count(tm) AS teams,
+          count(CASE WHEN tm.is_change_manager = true THEN 1 END) AS changeManagers
      OPTIONAL MATCH (w:WorkflowDefinition {tenant_id: $tenantId})
      WHERE w.active = true
-     RETURN dashboards, rules, matrices, collect(DISTINCT w.entity_type) AS entityTypes`,
+     RETURN dashboards, rules, matrices, questions, teams, changeManagers,
+            collect(DISTINCT w.entity_type) AS entityTypes`,
     { tenantId },
   )
   const row = r.records[0]
@@ -147,5 +154,39 @@ export async function tenantProvisioningGaps(session: Queryable, tenantId: strin
   if (num('matrices') === 0) gaps.push('nessuna matrice di dominio')
   const missing = REQUIRED_WORKFLOW_ENTITY_TYPES.filter((t) => !entityTypes.includes(t))
   if (missing.length > 0) gaps.push(`nessun workflow attivo per: ${missing.join(', ')}`)
+
+  // ── I TEAM (terza revisione, trovato provando un tenant appena creato) ─────
+  //
+  // Questo controllo non c'era, e senza team un tenant e INUSABILE mentre il
+  // prodotto dichiarava «nessun buco». Provato dal vivo su un tenant creato
+  // cinque minuti prima:
+  //   - `createChange` rifiuta: «CI <nome> manca di Owner Group o Support
+  //     Group» — e i gruppi sono team, quindi NESSUNA change si crea;
+  //   - il dialogo «Assegna» di un incident apre una tendina col solo
+  //     segnaposto, senza dire perche;
+  //   - e senza un team designato Change Manager nessuna change entra in
+  //     approvazione (`approvalCreation` e fail-loud su quello).
+  //
+  // `provisionTenantData` NON li crea: un team contiene persone vere, e
+  // inventarne uno sarebbe un dato finto in mezzo ai dati del cliente. Qui si
+  // DICHIARA il buco, che e il mestiere di questa funzione.
+  // Le DOMANDE DI ASSESSMENT (terza revisione, provato dal vivo). Senza di
+  // esse `completeAssessmentTask` rifiuta — «Nessuna domanda di assessment
+  // assegnata al tipo di CI per la categoria richiesta» — e NESSUNA change
+  // supera l'assessment: resta lì per sempre. Il pulsante del task dice
+  // «Completa (0/0)», quindi invita a premerlo e non riesce mai.
+  //
+  // `provisionTenantData` non le semina: l'insieme di fabbrica vive dentro
+  // `scripts/seed-assessment-questions.ts` e non in un modulo riusabile.
+  // Estrarlo e la correzione migliore; finche non c'e, almeno il prodotto lo
+  // DICE, e la pagina «Domande Assessment» permette di crearle a mano.
+  if (num('questions') === 0) {
+    gaps.push('nessuna domanda di assessment: nessuna change potrebbe superare la fase di assessment (Domande Assessment)')
+  }
+  if (num('teams') === 0) {
+    gaps.push('nessun team: senza team i CI non hanno Owner/Support Group e nessuna change si crea (Team e Utenti)')
+  } else if (num('changeManagers') === 0) {
+    gaps.push('nessun team designato Change Manager: le change normal ed emergency non possono entrare in approvazione (Team e Utenti)')
+  }
   return gaps
 }

@@ -9,6 +9,7 @@ import {
   CREATE_ITIL_CI_RELATION_RULE, DELETE_ITIL_CI_RELATION_RULE,
 } from '@/graphql/mutations'
 import type { EnumTypeRef } from './shared/designerStyles'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -114,21 +115,21 @@ export function useITILTypeDesigner() {
 
   // ── Queries ─────────────────────────────────────────────────────────────────
   const { data, loading, refetch } = useQuery<{ itilTypes: ITILType[] }>(GET_ITIL_TYPES, {
-    fetchPolicy: 'cache-and-network',
+    fetchPolicy: METAMODEL_FETCH_POLICY,
   })
 
-  const { data: wfData } = useQuery<{ workflowDefinitions: { entityType: string; category: string | null; steps: { name: string }[] }[] }>(GET_WORKFLOW_LIST, { fetchPolicy: 'cache-first' })
+  const { data: wfData } = useQuery<{ workflowDefinitions: { entityType: string; category: string | null; steps: { name: string }[] }[] }>(GET_WORKFLOW_LIST, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const ITIL_WORKFLOW_STEPS: Record<string, string[]> = {}
   for (const wf of wfData?.workflowDefinitions ?? []) {
     if (!wf.category) ITIL_WORKFLOW_STEPS[wf.entityType] = wf.steps.map(s => s.name)
   }
 
   const { data: enumTypesData } = useQuery<{ enumTypes: EnumTypeOption[] }>(GET_ENUM_TYPES, {
-    fetchPolicy: 'cache-and-network',
+    fetchPolicy: METAMODEL_FETCH_POLICY,
   })
 
   const { data: ciTypesData } = useQuery<{ ciTypes: { id: string; name: string; label: string }[] }>(GET_CI_TYPES, {
-    fetchPolicy: 'cache-and-network',
+    fetchPolicy: METAMODEL_FETCH_POLICY,
   })
 
   const { data: ciRulesData, refetch: refetchRules } = useQuery<{ itilCIRelationRules: ITILCIRelationRule[] }>(
@@ -136,7 +137,7 @@ export function useITILTypeDesigner() {
     {
       variables:   { itilType: selectedTypeId ? (data?.itilTypes.find((t) => t.id === selectedTypeId)?.name ?? '') : '' },
       skip:        !selectedTypeId || activeTab !== 'relations',
-      fetchPolicy: 'cache-and-network',
+      fetchPolicy: METAMODEL_FETCH_POLICY,
     },
   )
 

@@ -25,6 +25,7 @@ import {
 import { Input, Select } from '@/components/ui/FormControls'
 import { TARGET_OPTIONS } from '@/pages/settings/NotificationRuleList'
 import { WORKFLOW_STEP_PURPOSES, WORKFLOW_STEP_CATEGORIES } from '@opengraphity/types'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 const ACCENT_COLOR = colors.brand
 
@@ -192,7 +193,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
   // cache (il designer la carica con la stessa query) → nessuna richiesta extra.
   const { data: defData, error: defError } = useQuery<{ workflowDefinitionById: { id: string; entityType: string } | null }>(
     GET_WORKFLOW_DEFINITION_BY_ID,
-    { variables: { id: definitionId }, fetchPolicy: 'cache-first' },
+    { variables: { id: definitionId }, fetchPolicy: METAMODEL_FETCH_POLICY },
   )
   const entityType = defData?.workflowDefinitionById?.entityType ?? ''
   const entityTypeError = defError

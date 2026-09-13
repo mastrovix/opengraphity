@@ -303,7 +303,10 @@ export async function assessmentQuestionCatalog(_: unknown, args: { category?: s
     const rows = await runQuery<{ questionProps: Props; weight: unknown; sortOrder: unknown }>(session, `
       MATCH (q:AssessmentQuestion {tenant_id: $tenantId, is_active: true, is_core: true})
       WHERE 1=1 ${where}
-      OPTIONAL MATCH (:CITypeDefinition {active: true, scope: 'base'})-[rel:HAS_QUESTION]->(q)
+      // Anche i tipi CI del cliente, non solo quelli spediti (terza revisione).
+      OPTIONAL MATCH (ct:CITypeDefinition)-[rel:HAS_QUESTION]->(q)
+        WHERE (ct.scope = 'base' OR (ct.scope = 'tenant' AND ct.tenant_id = $tenantId))
+          AND ct.active = true AND ct.name <> '__base__'
       WITH q, avg(rel.weight) AS weight, min(rel.sort_order) AS sortOrder
       RETURN properties(q) AS questionProps, weight, sortOrder
       ORDER BY sortOrder, q.created_at
@@ -655,7 +658,10 @@ export async function questionCITypeAssignments(_: unknown, args: { questionId: 
   return withSession(async (session) => {
     const rows = await runQuery<{ ciTypeId: string; ciTypeName: string; weight: unknown; sortOrder: unknown }>(session, `
       // tenant-ok: tipi base condivisi; la domanda è scopata
-      MATCH (ct:CITypeDefinition {active: true, scope: 'base'})-[rel:HAS_QUESTION]->(q:AssessmentQuestion {id: $questionId, tenant_id: $tenantId})
+      // Anche i tipi CI del cliente (terza revisione).
+      MATCH (ct:CITypeDefinition)-[rel:HAS_QUESTION]->(q:AssessmentQuestion {id: $questionId, tenant_id: $tenantId})
+      WHERE (ct.scope = 'base' OR (ct.scope = 'tenant' AND ct.tenant_id = $tenantId))
+          AND ct.active = true AND ct.name <> '__base__'
       RETURN ct.id AS ciTypeId, ct.name AS ciTypeName,
              rel.weight AS weight, rel.sort_order AS sortOrder
       ORDER BY ct.name

@@ -12,6 +12,7 @@ import {
   ENTITY_LABELS, EVENT_LABELS, NO_VALUE_OPERATORS, automationActionLabel, operatorLabel,
 } from '@/lib/automationOperators'
 import { Eye } from 'lucide-react'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 interface Condition { field: string; operator: string; value: string }
 interface Action { type: string; params: Record<string, string> }
@@ -29,8 +30,8 @@ interface Props {
 
 export function AutomationPreview({ entityType, eventType, conditions, conditionLogic, actions, timerMinutes }: Props) {
   const fieldLookup = useEntityFieldLookup(entityType)
-  const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: 'cache-first' })
-  const { data: usersData } = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: 'cache-first' })
+  const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
+  const { data: usersData } = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: METAMODEL_FETCH_POLICY })
 
   const teamMap = useMemo(() => new Map((teamsData?.teams ?? []).map(t => [t.id, t.name])), [teamsData])
   const userMap = useMemo(() => new Map((usersData?.users ?? []).map(u => [u.id, `${u.name} (${u.email})`])), [usersData])

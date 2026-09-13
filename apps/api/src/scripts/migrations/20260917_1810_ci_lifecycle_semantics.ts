@@ -34,7 +34,25 @@
  * amministratore a cui dirlo.
  */
 import type { Migration } from '@opengraphity/neo4j'
-import { DEFAULT_EVENT_POLICY_JSON, EVENT_POLICY_V6_KEYS, completeEventPolicy } from '../../lib/eventPolicy.js'
+import { DEFAULT_EVENT_POLICY, EVENT_POLICY_V6_KEYS, completeEventPolicy, type EventPolicy } from '../../lib/eventPolicy.js'
+
+/**
+ * LA POLICY DI QUESTO GIORNO, CONGELATA (terza revisione).
+ *
+ * Questa migrazione leggeva `DEFAULT_EVENT_POLICY`, che nel frattempo e
+ * cambiato: `expired` e `revoked` sono entrati fra i ritirati, perche erano
+ * nel vocabolario spedito e in nessuna lista, e quindi per il prodotto erano
+ * CI in servizio. Giusto per i tenant NUOVI — ma questa migrazione esiste per
+ * riprodurre cio che il codice faceva il 17 settembre, e il suo scopo
+ * dichiarato e «il primo giorno non cambia niente». Leggere una costante che
+ * evolve le avrebbe fatto cambiare comportamento a distanza.
+ */
+const POLICY_17_SET: EventPolicy = {
+  ...DEFAULT_EVENT_POLICY,
+  ignore_lifecycle_statuses: ['decommissioned'],
+  retired_statuses:          ['inactive', 'decommissioned'],
+  maintenance_statuses:      ['maintenance'],
+}
 
 function parseObject(raw: unknown, what: string): Record<string, unknown> {
   if (typeof raw !== 'string') throw new Error(`${what} is not a JSON string (got ${typeof raw}); fix it before migrating`)
@@ -64,10 +82,10 @@ export const ciLifecycleSemantics: Migration = {
       const raw = record.get('policy') as unknown
       let next: string | null
       if (raw == null || raw === '') {
-        next = DEFAULT_EVENT_POLICY_JSON
+        next = JSON.stringify(POLICY_17_SET)
         created++
       } else {
-        const full = completeEventPolicy(parseObject(raw, `Tenant ${tenantId} event_policy`))
+        const full = completeEventPolicy(parseObject(raw, `Tenant ${tenantId} event_policy`), POLICY_17_SET)
         if (full) { next = JSON.stringify(full); completed++ } else { next = null; unchanged++ }
       }
       if (next) {

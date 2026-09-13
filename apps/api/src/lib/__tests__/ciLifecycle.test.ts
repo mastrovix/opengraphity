@@ -54,7 +54,20 @@ describe('il nome del vocabolario è tutto ciò che il codice conosce', () => {
 })
 
 describe('resolveCILifecycleSemantics', () => {
-  it('i valori iniziali si comportano esattamente come le costanti di prima', async () => {
+  /**
+   * Questo test pinnava «esattamente come le costanti di prima», e per
+   * `expired`/`revoked` asseriva NESSUNA semantica. Era la promessa della
+   * migrazione 1810 — «il primo giorno non cambia niente» — e per quei due
+   * valori quella promessa era un difetto: erano nel vocabolario SPEDITO e in
+   * nessuna lista, quindi CI in servizio per il prodotto. Trovato aprendo un
+   * tenant creato cinque minuti prima, che nasceva col banner della
+   * diagnostica accesso su di loro.
+   *
+   * Ora il default li classifica fra i ritirati. Chi pinna il vecchio
+   * comportamento e la MIGRAZIONE, che ha la sua copia congelata
+   * (`POLICY_17_SET`) e il suo test: la storia resta storia.
+   */
+  it('i valori iniziali classificano tutti e sei gli stati spediti', async () => {
     getEventPolicy.mockResolvedValue(DEFAULT_EVENT_POLICY)
     const sem = await resolveCILifecycleSemantics('acme')
     // Era CI_LIFECYCLE_RETIRED = ['inactive', 'decommissioned'].
@@ -65,13 +78,19 @@ describe('resolveCILifecycleSemantics', () => {
     // Era CI_LIFECYCLE_MAINTENANCE = 'maintenance'.
     expect(isMaintenanceLifecycle('maintenance', sem)).toBe(true)
     expect(isMaintenanceLifecycle('inactive', sem)).toBe(false)
-    // I cicli di vita dei certificati NON portano semantica (come prima).
+    // Un certificato scaduto o revocato NON e in servizio: ritirato, e non in
+    // manutenzione (la manutenzione e temporanea, questi sono stati finali).
     for (const s of ['expired', 'revoked']) {
-      expect(isRetiredLifecycle(s, sem)).toBe(false)
+      expect(isRetiredLifecycle(s, sem)).toBe(true)
       expect(isMaintenanceLifecycle(s, sem)).toBe(false)
     }
-    // Il vocabolario di fabbrica è coperto per intero dal test.
+    // Nessuno stato spedito resta senza semantica: e la condizione che il
+    // banner della diagnostica verifica su ogni cliente.
     expect(CI_LIFECYCLE_STATUSES).toHaveLength(6)
+    for (const s of CI_LIFECYCLE_STATUSES) {
+      const classificato = s === 'active' || isRetiredLifecycle(s, sem) || isMaintenanceLifecycle(s, sem)
+      expect(classificato, `lo stato "${s}" non e classificato da nessuna lista`).toBe(true)
+    }
   })
 
   it('status assente → né ritirato né in manutenzione (mai un default)', async () => {
@@ -133,7 +152,7 @@ describe('lifecyclePolicyReferences (ciò che rende sicure le due liste)', () =>
   it('dice quali liste della policy citano il valore', async () => {
     const raw = JSON.stringify({
       ignore_lifecycle_statuses: ['decommissioned'],
-      retired_statuses:          ['inactive', 'decommissioned'],
+      retired_statuses:          ['inactive', 'decommissioned', 'expired', 'revoked'],
       maintenance_statuses:      ['maintenance'],
     })
     await expect(lifecyclePolicyReferences(session(raw) as never, 'acme', 'decommissioned'))

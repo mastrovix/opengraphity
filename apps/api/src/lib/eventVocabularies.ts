@@ -81,6 +81,15 @@ export type CILifecycleStatus = (typeof CI_LIFECYCLE_STATUSES)[number]
 export const CI_LIFECYCLE_DECOMMISSIONED: CILifecycleStatus = 'decommissioned'
 export const CI_LIFECYCLE_INACTIVE: CILifecycleStatus = 'inactive'
 export const CI_LIFECYCLE_MAINTENANCE: CILifecycleStatus = 'maintenance'
+/**
+ * Terza revisione: `expired` e `revoked` erano nel vocabolario SPEDITO e in
+ * nessuna lista della policy predefinita, quindi per il prodotto erano CI **in
+ * servizio** — i loro allarmi aprivano incident e pesavano nella salute dei
+ * servizi. Ogni cliente nasceva con quell'avviso nel banner della diagnostica:
+ * l'ho visto su un tenant creato cinque minuti prima.
+ */
+export const CI_LIFECYCLE_EXPIRED: CILifecycleStatus = 'expired'
+export const CI_LIFECYCLE_REVOKED: CILifecycleStatus = 'revoked'
 
 /** Origine della salute: calcolata dagli allarmi o forzata a mano (`ci.health_source`). */
 export const HEALTH_SOURCES = ['monitoring', 'manual'] as const

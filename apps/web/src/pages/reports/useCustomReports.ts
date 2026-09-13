@@ -61,7 +61,9 @@ export const btnGhost: React.CSSProperties  = { padding: '8px 14px', borderRadiu
 // ── Hook ───────────────────────────────────────────────────────────────────────
 
 export function useCustomReports() {
-  const { t: tr } = useTranslation()
+  // `t` NON si rinomina: con l'alias le sue chiavi erano invisibili a
+  // `scripts/check-i18n.mjs`, che ora segnala l'alias come errore.
+  const { t } = useTranslation()
   const confirm = useConfirm()
   const [view,           setView]           = useState<View>('list')
   const [selectedId,     setSelectedId]     = useState<string | null>(null)
@@ -125,7 +127,7 @@ export function useCustomReports() {
   const templates: ReportTemplate[]           = data?.reportTemplates ?? []
   const channels: Channel[]                   = channelsData?.notificationChannels?.filter((c: Channel) => c.platform === 'slack') ?? []
   const teams: { id: string; name: string }[] = teamsData?.teams ?? []
-  const selected: ReportTemplate | null       = templates.find((t: ReportTemplate) => t.id === selectedId) ?? null
+  const selected: ReportTemplate | null       = templates.find((tpl: ReportTemplate) => tpl.id === selectedId) ?? null
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const [createTemplate, { loading: creating }] = useMutation(CREATE_REPORT_TEMPLATE, {
@@ -179,23 +181,23 @@ export function useCustomReports() {
 
   function resetNew() { setNewName(''); setNewDesc(''); setNewVis('private'); setNewTeamIds([]) }
 
-  function openSettings(t: ReportTemplate) {
-    setSettingsName(t.name)
-    setSettingsDesc(t.description ?? '')
-    setSettingsVis(t.visibility)
-    setSettingsTeamIds(t.sharedWith.map(x => x.id))
-    setSettingsSched(t.scheduleEnabled)
-    setSettingsSchedCron(t.scheduleCron ?? '0 9 * * *')
-    setSettingsChanId(t.scheduleChannelId ?? '')
-    setSettingsRecipients(t.scheduleRecipients ?? [])
-    setSettingsFormat((t.scheduleFormat as 'pdf' | 'excel') ?? 'pdf')
+  function openSettings(tpl: ReportTemplate) {
+    setSettingsName(tpl.name)
+    setSettingsDesc(tpl.description ?? '')
+    setSettingsVis(tpl.visibility)
+    setSettingsTeamIds(tpl.sharedWith.map(x => x.id))
+    setSettingsSched(tpl.scheduleEnabled)
+    setSettingsSchedCron(tpl.scheduleCron ?? '0 9 * * *')
+    setSettingsChanId(tpl.scheduleChannelId ?? '')
+    setSettingsRecipients(tpl.scheduleRecipients ?? [])
+    setSettingsFormat((tpl.scheduleFormat as 'pdf' | 'excel') ?? 'pdf')
     setRecipientInput('')
     setMenuOpenId(null)
     setView('settings')
   }
 
-  function goToDetail(t: ReportTemplate) {
-    setSelectedId(t.id)
+  function goToDetail(tpl: ReportTemplate) {
+    setSelectedId(tpl.id)
     setSectionResults({})
     setView('detail')
     setMenuOpenId(null)
@@ -205,12 +207,12 @@ export function useCustomReports() {
    * F-07: server-side clone (template + sections + nodes + edges, one
    * transaction). The old client-side version created an EMPTY template.
    */
-  async function duplicateTemplate(t: ReportTemplate) {
+  async function duplicateTemplate(tpl: ReportTemplate) {
     setMenuOpenId(null)
-    const res = await duplicateTemplateMutation({ variables: { id: t.id } }).catch(() => null)
+    const res = await duplicateTemplateMutation({ variables: { id: tpl.id } }).catch(() => null)
     const copy = res?.data?.duplicateReportTemplate
     if (!copy) return  // errore già notificato da onError
-    toast.success(tr('toast.report.duplicated', { name: copy.name, count: copy.sections.length }))
+    toast.success(t('toast.report.duplicated', { name: copy.name, count: copy.sections.length }))
     await refetch()
   }
 
@@ -272,7 +274,7 @@ export function useCustomReports() {
         },
       })
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : tr('toast.report.saveFailed'))
+      toast.error(err instanceof Error ? err.message : t('toast.report.saveFailed'))
     }
   }
 
@@ -298,11 +300,11 @@ export function useCustomReports() {
     void confirm({ title: 'Rimuovere la sezione?', danger: true }).then((ok) => { if (ok) void removeSection({ variables: { templateId, sectionId } }) })
   }
 
-  function handleExecuteAndGoToDetail(t: ReportTemplate) {
-    setSelectedId(t.id)
+  function handleExecuteAndGoToDetail(tpl: ReportTemplate) {
+    setSelectedId(tpl.id)
     setSectionResults({})
-    runExecute({ variables: { templateId: t.id } })
-    goToDetail(t)
+    runExecute({ variables: { templateId: tpl.id } })
+    goToDetail(tpl)
   }
 
   function handleExecuteSelected() {
@@ -322,7 +324,7 @@ export function useCustomReports() {
   }
 
   return {
-    tr,
+    t,
     // View state
     view, setView,
     selected, selectedId, setSelectedId,

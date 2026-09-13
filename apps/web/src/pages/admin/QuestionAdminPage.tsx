@@ -436,24 +436,48 @@ export function QuestionAdminPage() {
                       type="text"
                       value={opt.label}
                       onChange={e => updateOption(i, { label: e.target.value })}
-                      placeholder="Label"
+                      placeholder={t('pages.questions.optionLabel')}
+                      aria-label={t('pages.questions.optionLabelFor', { n: i + 1 })}
                       style={{ ...inputStyle, flex: 2 }}
                     />
+                    {/*
+                      `min={1}`: nessuna risposta puo valere 0 (terza revisione).
+                      Il server lo rifiuta in `assertQuestionUsable`, e il campo
+                      non deve nemmeno offrirlo. `|| 1` e non `|| 0` perche un
+                      campo svuotato deve tornare al minimo valido, non a un
+                      valore che il salvataggio poi rifiuta.
+                    */}
                     <input
                       type="number"
+                      min={1}
+                      step={1}
                       value={opt.score}
-                      onChange={e => updateOption(i, { score: parseInt(e.target.value, 10) || 0 })}
-                      placeholder="Score"
+                      onChange={e => updateOption(i, { score: parseInt(e.target.value, 10) || 1 })}
+                      placeholder={t('pages.questions.optionScore')}
+                      aria-label={t('pages.questions.optionScoreFor', { n: i + 1 })}
                       style={{ ...inputStyle, width: 90 }}
                     />
-                    <button type="button" onClick={() => moveOption(i, -1)} disabled={i === 0} style={{ background: 'none', border: '1px solid var(--border)', cursor: i === 0 ? 'not-allowed' : 'pointer', padding: 6, borderRadius: 4 }}>
-                      <ChevronUp size={12} />
+                    {/*
+                      I tre comandi avevano SOLO l'icona: nessun `aria-label`,
+                      nessun `title`. Un lettore di schermo non annunciava
+                      niente — e nemmeno io, guidando il browser, capivo cosa
+                      facessero. Nel Dizionario gli stessi comandi hanno le
+                      etichette; qui mancavano.
+                    */}
+                    <button type="button" onClick={() => moveOption(i, -1)} disabled={i === 0}
+                      aria-label={t('pages.questions.moveOptionUp', { n: i + 1 })}
+                      style={{ background: 'none', border: '1px solid var(--border)', cursor: i === 0 ? 'not-allowed' : 'pointer', padding: 6, borderRadius: 4 }}>
+                      <ChevronUp size={12} aria-hidden="true" />
                     </button>
-                    <button type="button" onClick={() => moveOption(i, 1)} disabled={i === options.length - 1} style={{ background: 'none', border: '1px solid var(--border)', cursor: i === options.length - 1 ? 'not-allowed' : 'pointer', padding: 6, borderRadius: 4 }}>
-                      <ChevronDown size={12} />
+                    <button type="button" onClick={() => moveOption(i, 1)} disabled={i === options.length - 1}
+                      aria-label={t('pages.questions.moveOptionDown', { n: i + 1 })}
+                      style={{ background: 'none', border: '1px solid var(--border)', cursor: i === options.length - 1 ? 'not-allowed' : 'pointer', padding: 6, borderRadius: 4 }}>
+                      <ChevronDown size={12} aria-hidden="true" />
                     </button>
-                    <button type="button" onClick={() => removeOption(i)} style={{ background: 'none', border: `1px solid ${palette.danger.border}`, color: 'var(--color-danger)', cursor: 'pointer', padding: 6, borderRadius: 4 }}>
-                      <X size={12} />
+                    <button type="button" onClick={() => removeOption(i)}
+                      aria-label={t('pages.questions.removeOption', { n: i + 1 })}
+                      style={{ background: 'none', border: `1px solid ${palette.danger.border}`, color: 'var(--color-danger)', cursor: 'pointer', padding: 6, borderRadius: 4 }}>
+                      <X size={12} aria-hidden="true" />
                     </button>
                   </div>
                 ))}

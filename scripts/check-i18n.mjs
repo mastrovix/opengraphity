@@ -150,6 +150,17 @@ for (const file of files) {
   for (const m of src.matchAll(RE_ANY_LITERAL)) {
     if (keyExists(m[2])) usedKeys.add(m[2])
   }
+  // `t` RINOMINATO: le sue chiavi diventano invisibili a questo controllo.
+  // Terza revisione: `ReportListView.tsx` faceva `const { t: tr } = ...` perche
+  // usava `t` per i template, e cinque chiavi `pages.reportBuilder.*` mancavano
+  // da ENTRAMBE le lingue senza che nessuno se ne accorgesse — la pagina
+  // mostrava i nomi delle chiavi, e l'ho visto solo girando nel browser.
+  // Si rinomina l'ALTRA variabile, non `t`.
+  for (const m of src.matchAll(/const\s*\{\s*t\s*:\s*([A-Za-z_$][\w$]*)/g)) {
+    err(`[alias] ${r}:${lineOf(src, m.index)} \`t\` rinominato in \`${m[1]}\`: le sue chiavi `
+      + `diventano invisibili a questo controllo. Rinomina l'altra variabile e lascia \`t\` a \`t\``)
+  }
+
   for (const m of src.matchAll(RE_TOAST_LITERAL)) {
     err(`[toast] ${r}:${lineOf(src, m.index)} toast.${m[1]}() con stringa letterale: usa t('toast.<dominio>.<nome>')`)
   }
@@ -170,6 +181,53 @@ for (const k of [...defined].sort()) {
   if (!used) (STRICT ? err : warn)(`[unused] chiave definita e mai usata: ${k}`)
 }
 
+// ── (c-bis) insiemi CHIUSI dietro un prefisso dinamico ───────────────────────
+//
+// Un prefisso dinamico (`t(`pages.domainMatrices.kinds.${kind}.title`)`) viene
+// verificato sopra solo per ESISTENZA: basta che UNA chiave con quel prefisso
+// ci sia. Ma in alcuni casi l'insieme dei valori e chiuso e noto al codice, e
+// allora si puo pretendere che ci siano TUTTE.
+//
+// Terza revisione, trovato girando nel browser: la pagina «Matrici di dominio»
+// — una delle pagine centrali del programma — mostrava
+// `pages.domainMatrices.kinds.change_priority_initial.title` come testo,
+// perche quella matrice era stata aggiunta senza la sua etichetta. Stessa
+// famiglia delle quattordici chiavi `workflow.actions.*` che non esistevano
+// affatto: un prefisso dinamico che nessuno confronta con l'insieme vero.
+{
+  const leggi = (rel) => {
+    try { return fs.readFileSync(path.join(ROOT, rel), 'utf8') } catch { return '' }
+  }
+  const insiemi = [
+    {
+      nome:    'DOMAIN_MATRIX_KINDS',
+      valori:  [...leggi('apps/api/src/lib/domainMatrix.ts')
+        .match(/export const DOMAIN_MATRIX_KINDS = \{([\s\S]*?)\n\} as const/)?.[1]
+        .matchAll(/^\s{2}([a-z_]+):\s*\{/gm) ?? []].map((m) => m[1]),
+      chiavi:  (v) => [`pages.domainMatrices.kinds.${v}.title`, `pages.domainMatrices.kinds.${v}.description`],
+    },
+    {
+      nome:    'WORKFLOW_ACTION_TYPES',
+      valori:  [...(leggi('packages/workflow/src/types.ts')
+        .match(/export const WORKFLOW_ACTION_TYPES = \[([\s\S]*?)\] as const/)?.[1] ?? '')
+        .matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),
+      chiavi:  (v) => [`workflow.actions.${v}`],
+    },
+  ]
+  for (const ins of insiemi) {
+    if (ins.valori.length === 0) {
+      err(`[insieme] non riesco a leggere ${ins.nome}: il controllo delle sue chiavi non sta girando`)
+      continue
+    }
+    for (const v of ins.valori) {
+      for (const k of ins.chiavi(v)) {
+        if (!keyExists(k)) err(`[insieme] ${ins.nome} contiene "${v}" ma la chiave ${k} non esiste: `
+          + `l'interfaccia mostrerebbe il nome della chiave`)
+      }
+    }
+  }
+}
+
 // ── (d) valori italiani identici all'inglese ─────────────────────────────────
 //
 // Terza revisione. `it.json` conteneva `pages.dictionary.title = "Dictionary
@@ -184,6 +242,9 @@ for (const k of [...defined].sort()) {
 // quelli sono difetti veri (`Sync triggered`, `Heap Memory`, `Auto-refresh
 // 10s`, `External ID`): l'elenco puo solo accorciarsi.
 const IT_EN_IDENTICHE_ACCETTATE = new Set([
+  // «report» in italiano e un prestito INVARIABILE: al singolare la frase
+  // coincide con l'inglese, e non c'e una traduzione diversa da dare.
+  'pages.reportBuilder.count_one',
   'admin.integrations.apiKeys',
   'admin.integrations.columns.url',
   'admin.integrations.entityChange',
@@ -203,6 +264,9 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   'detail.sections.incidentInformation',
   'detail.sections.problemInformation',
   'detail.team',
+  // «team» e la parola che il prodotto usa in italiano (Team assegnato, Team e
+  // Utenti): «squadra» non e il termine del dominio.
+  'admin.sla.team',
   'events.aliases.kind.fqdn',
   'events.aliases.kind.hostname',
   'events.aliases.kind.ip',

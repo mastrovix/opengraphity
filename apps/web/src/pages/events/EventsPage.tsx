@@ -65,6 +65,7 @@ import { EventIncidentCell } from './eventCorrelation'
 import { EventActions } from './EventActions'
 import { StormBanner } from './StormBanner'
 import { CriticalServicesBanner } from '@/pages/monitoring/CriticalServicesBanner'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import {
   EVENT_STATUSES, EVENT_SEVERITIES, EVENT_ROW_SCALAR_FIELDS,
   type EventRow, type EventStats, type EventStatCounts, type EventStatus, type EventSeverity, type EventFilterVars, type MonitoringSourceRef, type EventPolicy,
@@ -354,7 +355,7 @@ export function EventsPage() {
   const filterFields = useMemo(() => entityFields.filter((f) => EVENT_ROW_SCALAR_FIELDS.has(f.key)), [entityFields])
 
   const { data: statsData, error: statsError, refetch: refetchStats } = useQuery<{ eventStats: EventStats }>(GET_EVENT_STATS, {
-    ...pausedWhenHidden(POLL_MS), fetchPolicy: 'cache-and-network',
+    ...pausedWhenHidden(POLL_MS), fetchPolicy: METAMODEL_FETCH_POLICY,
   })
 
   // Al cambio di variabili (filtro, pagina) `liveData` torna undefined: si
@@ -364,7 +365,7 @@ export function EventsPage() {
   // ogni 15 s: il polling di Apollo sarebbe una seconda richiesta.
   const { data: liveData, previousData, loading, error, refetch } = useQuery<{ events: { items: EventRow[]; total: number } }>(GET_EVENTS, {
     variables: { filter: toFilterVars(filter), limit: PAGE_SIZE, offset: page * PAGE_SIZE },
-    fetchPolicy: 'cache-and-network',
+    fetchPolicy: METAMODEL_FETCH_POLICY,
     ...(sliding ? {} : pausedWhenHidden(POLL_MS)),
   })
   const data = liveData ?? previousData
@@ -375,13 +376,13 @@ export function EventsPage() {
   // completa (monitoringSources) è riservata all'admin nella pagina Sorgenti.
   // Un errore è mostrato accanto al filtro: un select vuoto senza spiegazione
   // sembrerebbe "nessuna sorgente".
-  const { data: sourcesData, error: sourcesError } = useQuery<{ monitoringSourceRefs: MonitoringSourceRef[] }>(GET_MONITORING_SOURCE_REFS, { fetchPolicy: 'cache-and-network' })
+  const { data: sourcesData, error: sourcesError } = useQuery<{ monitoringSourceRefs: MonitoringSourceRef[] }>(GET_MONITORING_SOURCE_REFS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const sources = sourcesData?.monitoringSourceRefs ?? []
   const noSources = sourcesData !== undefined && sources.length === 0
 
   // Policy di correlazione: serve solo al countdown "apertura tra N s" degli
   // eventi in attesa; se non arriva il chip dice comunque "In attesa".
-  const { data: policyData } = useQuery<{ eventPolicy: EventPolicy }>(GET_EVENT_POLICY, { fetchPolicy: 'cache-first' })
+  const { data: policyData } = useQuery<{ eventPolicy: EventPolicy }>(GET_EVENT_POLICY, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const policy = policyData?.eventPolicy ?? null
 
   const onChanged = () => { if (sliding) setClock(Date.now()); void refetch(); void refetchStats() }

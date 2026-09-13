@@ -71,25 +71,55 @@ describe('provisionTenantData — tutti i pezzi, una volta sola', () => {
 })
 
 describe('tenantProvisioningGaps — dire cosa manca, invece di scoprirlo al primo ticket', () => {
+  /**
+   * Terza revisione: le lacune contano anche QUESTIONS, TEAMS e il team
+   * designato Change Manager. Il rilevatore diceva «nessun buco» su un tenant
+   * appena creato che invece non poteva fare niente — provato dal vivo:
+   * `createChange` rifiuta («CI … manca di Owner Group o Support Group», e i
+   * gruppi sono team), `completeAssessmentTask` rifiuta («nessuna domanda
+   * assegnata al tipo di CI»), e senza Change Manager nessuna change entra in
+   * approvazione. Tre muri il primo giorno, nessuno segnalato.
+   */
+  const completo = { dashboards: 1, rules: 35, matrices: 5, questions: 8, teams: 2, changeManagers: 1 }
+
   it('un tenant completo non ha lacune', async () => {
-    const s = session([row({ dashboards: 1, rules: 35, matrices: 5, entityTypes: [...REQUIRED_WORKFLOW_ENTITY_TYPES] })])
+    const s = session([row({ ...completo, entityTypes: [...REQUIRED_WORKFLOW_ENTITY_TYPES] })])
     await expect(tenantProvisioningGaps(s as never, 'c-one')).resolves.toEqual([])
   })
 
   it('lo stato di c-two prima dell\'ondata 8: dashboard e regole sì, workflow nessuno', async () => {
-    const s = session([row({ dashboards: 1, rules: 35, matrices: 5, entityTypes: [] })])
+    const s = session([row({ ...completo, entityTypes: [] })])
     await expect(tenantProvisioningGaps(s as never, 'c-two')).resolves.toEqual([
       'nessun workflow attivo per: incident, problem, kb_article, change, service_request',
     ])
   })
 
   it('elenca ogni pezzo mancante, e nomina i tipi senza workflow', async () => {
-    const s = session([row({ dashboards: 0, rules: 0, matrices: 0, entityTypes: ['incident'] })])
-    await expect(tenantProvisioningGaps(s as never, 'nuovo')).resolves.toEqual([
+    const s = session([row({ dashboards: 0, rules: 0, matrices: 0, questions: 0, teams: 0, changeManagers: 0, entityTypes: ['incident'] })])
+    const out = await tenantProvisioningGaps(s as never, 'nuovo')
+    expect(out).toEqual([
       'nessuna dashboard',
       'nessuna regola di notifica',
       'nessuna matrice di dominio',
       'nessun workflow attivo per: problem, kb_article, change, service_request',
+      'nessuna domanda di assessment: nessuna change potrebbe superare la fase di assessment (Domande Assessment)',
+      'nessun team: senza team i CI non hanno Owner/Support Group e nessuna change si crea (Team e Utenti)',
+    ])
+  })
+
+  it('lo stato di c-test appena creato: tutto seminato, ma nessun team e nessuna domanda', async () => {
+    // Esattamente ciò che ho trovato aprendo un tenant creato con onboard-tenant.
+    const s = session([row({ dashboards: 1, rules: 35, matrices: 6, questions: 0, teams: 0, changeManagers: 0, entityTypes: [...REQUIRED_WORKFLOW_ENTITY_TYPES] })])
+    const out = await tenantProvisioningGaps(s as never, 'c-test')
+    expect(out).toHaveLength(2)
+    expect(out[0]).toMatch(/nessuna domanda di assessment/)
+    expect(out[1]).toMatch(/nessun team/)
+  })
+
+  it('con i team ma senza Change Manager designato, lo dice: le change non si approvano', async () => {
+    const s = session([row({ ...completo, changeManagers: 0, entityTypes: [...REQUIRED_WORKFLOW_ENTITY_TYPES] })])
+    await expect(tenantProvisioningGaps(s as never, 'c-test')).resolves.toEqual([
+      'nessun team designato Change Manager: le change normal ed emergency non possono entrare in approvazione (Team e Utenti)',
     ])
   })
 

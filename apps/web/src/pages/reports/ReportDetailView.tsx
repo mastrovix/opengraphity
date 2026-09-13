@@ -22,7 +22,7 @@ interface ReportDetailViewProps {
   exportingExcel: boolean
   // Navigation
   setView: (v: View) => void
-  openSettings: (t: ReportTemplate) => void
+  openSettings: (tpl: ReportTemplate) => void
   // Section handlers
   handleAddSection: (input: ReportSectionInput) => void
   handleUpdateSection: (input: ReportSectionInput) => void
@@ -39,7 +39,11 @@ interface ReportDetailViewProps {
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function ReportDetailView(props: ReportDetailViewProps) {
-  const { t: tr } = useTranslation()
+  // `t` NON si rinomina: `scripts/check-i18n.mjs` cerca `t('…')`, e con
+  // l'alias `tr` le sue chiavi erano invisibili al controllo. Cinque chiavi
+  // `pages.reportBuilder.*` mancavano da entrambe le lingue e la pagina
+  // mostrava i nomi delle chiavi — trovato girando nel browser, non dai test.
+  const { t } = useTranslation()
   const {
     view, selected, editSection, sectionResults,
     execLoading, exportingPDF, exportingExcel,
@@ -101,7 +105,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
           onClick={handleExecuteSelected}
           disabled={execLoading}
           style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}
-        >{execLoading ? tr('common.loading') : `\u25B6 ${tr('pages.reportBuilder.execute')}`}</button>
+        >{execLoading ? t('common.loading') : `\u25B6 ${t('pages.reportBuilder.execute')}`}</button>
         <button type="button" onClick={() => void handleExportPDF()} disabled={exportingPDF} style={{ ...btnGhost, fontSize: 'var(--font-size-body)' }}>
           {exportingPDF ? '\u2026' : '\u2193 PDF'}
         </button>

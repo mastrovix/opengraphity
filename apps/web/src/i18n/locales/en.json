@@ -1049,6 +1049,10 @@
         "import_severity": {
           "title": "Incoming severity from the import",
           "description": "How the severities written in a ticket import file are translated. A severity that cannot be translated puts the row in error: it is no longer rewritten to «medium»."
+        },
+        "change_priority_initial": {
+          "title": "Initial change priority",
+          "description": "The priority a change is born with before its risk has been assessed: from the change type alone. Once the assessment produces a score, «type × risk band» takes over."
         }
       },
       "missingWarning_one": "One combination with no value ({{keys}}). While it stays empty, the operation that needs it — opening an incident, or an incoming alarm — stops and says so: fill it in here.",
@@ -1074,6 +1078,23 @@
         "addBand": "Add a band",
         "removeBand": "Remove the \"{{band}}\" band"
       }
+    },
+    "reportBuilder": {
+      "title": "Report Builder",
+      "count_one": "1 report",
+      "count_other": "{{count}} reports",
+      "new": "New report",
+      "execute": "Run",
+      "modify": "Edit"
+    },
+    "questions": {
+      "optionLabel": "Answer text",
+      "optionScore": "Score",
+      "optionLabelFor": "Answer {{n}} text",
+      "optionScoreFor": "Answer {{n}} score",
+      "moveOptionUp": "Move answer {{n}} up",
+      "moveOptionDown": "Move answer {{n}} down",
+      "removeOption": "Remove answer {{n}}"
     }
   },
   "filter": {

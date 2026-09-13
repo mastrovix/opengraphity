@@ -9,7 +9,7 @@
  * `domainMatrices` esisteva già e restituisce sia le celle sia i valori
  * ammessi: qui si usa quella.
  *
- * `fetchPolicy: 'cache-first'` come per gli altri metamodelli: la matrice
+ * `fetchPolicy: METAMODEL_FETCH_POLICY` come per gli altri metamodelli: la matrice
  * cambia raramente e la pagina delle Matrici di dominio la riscrive quando
  * serve.
  */
@@ -17,6 +17,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { GET_DOMAIN_MATRICES } from '@/graphql/queries'
 import type { PriorityMatrix } from '@/lib/priority'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 interface MatrixOut {
   kind:         string
@@ -36,7 +37,7 @@ export function usePriorityMatrix(): { matrix: PriorityMatrix | null; loading: b
   // da `assertDomainValue`: cioe esattamente il difetto che questo hook esiste
   // per chiudere, riaperto dalla cache. La cache serve ancora il primo
   // fotogramma, la rete lo corregge.
-  const { data, loading, error } = useQuery(GET_DOMAIN_MATRICES, { fetchPolicy: 'cache-and-network' })
+  const { data, loading, error } = useQuery(GET_DOMAIN_MATRICES, { fetchPolicy: METAMODEL_FETCH_POLICY })
 
   const matrix = useMemo<PriorityMatrix | null>(() => {
     const all = (data as { domainMatrices?: MatrixOut[] } | undefined)?.domainMatrices

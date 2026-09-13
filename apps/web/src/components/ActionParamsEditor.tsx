@@ -14,6 +14,7 @@ import { UPDATE_FIELD_ALLOWED } from '@opengraphity/types'
 import { fieldTypeLabel } from '@/lib/automationOperators'
 import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 interface Props {
   actionType: string
@@ -37,9 +38,9 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
 }
 
 export function ActionParamsEditor({ actionType, params, entityType, onChange, vocabulary = 'automation' }: Props) {
-  const { data: teamsData }    = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: 'cache-first' })
-  const { data: usersData }    = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: 'cache-first' })
-  const { data: workflowData } = useQuery<{ workflowDefinitions: { id: string; name: string; entityType: string; steps: { name: string; label: string }[] }[] }>(GET_WORKFLOW_LIST, { fetchPolicy: 'cache-first' })
+  const { data: teamsData }    = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
+  const { data: usersData }    = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: METAMODEL_FETCH_POLICY })
+  const { data: workflowData } = useQuery<{ workflowDefinitions: { id: string; name: string; entityType: string; steps: { name: string; label: string }[] }[] }>(GET_WORKFLOW_LIST, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { values: priorityValues } = useEnumValues(entityType || 'incident', 'priority')
   const { values: severityValues } = useEnumValues(entityType || 'incident', 'severity')
   const { fields: fieldMetas } = useEntityFieldMetas(entityType)

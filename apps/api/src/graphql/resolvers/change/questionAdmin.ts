@@ -25,6 +25,82 @@ async function loadQuestionWithOptions(session: ReturnType<typeof import('../ci-
   }
 }
 
+/**
+ * Una domanda di assessment usabile (terza revisione, provato dal vivo).
+ *
+ * Il resolver validava la CATEGORIA e che ci fosse almeno un'opzione, non il
+ * contenuto: `label: ''` passava. Sulla pagina del task quelle opzioni si
+ * rendono come VOCI BIANCHE nella tendina — chi le scegliesse non saprebbe
+ * cosa ha scelto — e siccome l'assessment alimenta il punteggio di rischio,
+ * e da quello la priorita della change, un'opzione senza nome e un buco nel
+ * calcolo. Trovato su un tenant di prova: tre opzioni salvate, due senza
+ * etichetta e tutte con punteggio zero.
+ *
+ * Stessa forma di `assertValuesUsable` per i vocabolari: il testo vuoto, il
+ * duplicato e il punteggio non numerico si rifiutano all'ingresso.
+ */
+function assertQuestionUsable(
+  text: string | null | undefined,
+  options: readonly OptionInput[] | null | undefined,
+): void {
+  if (text !== null && text !== undefined && text.trim() === '') {
+    throw new ValidationError('Il testo della domanda non puo essere vuoto: e cio che l\'operatore legge nel task.')
+  }
+  if (options === null || options === undefined) return
+  if (options.length === 0) throw new ValidationError('Una domanda deve avere almeno una opzione')
+
+  const vuote = options.filter((o) => typeof o.label !== 'string' || o.label.trim() === '')
+  if (vuote.length) {
+    throw new ValidationError(
+      `${vuote.length === 1 ? "Un'opzione di risposta e senza testo" : `${String(vuote.length)} opzioni di risposta sono senza testo`}: ` +
+      `nella tendina del task si vedrebbe una voce bianca, e chi la scegliesse non saprebbe cosa ha scelto. ` +
+      `Dai un'etichetta a ogni opzione, oppure togli le righe che non servono.`,
+    )
+  }
+  const visti = new Set<string>()
+  const doppie = options.map((o) => o.label.trim()).filter((l) => (visti.has(l) ? true : (visti.add(l), false)))
+  if (doppie.length) {
+    throw new ValidationError(
+      `Le opzioni ripetono ${[...new Set(doppie)].map((l) => `"${l}"`).join(', ')}: due risposte con lo stesso testo ` +
+      `e punteggi diversi rendono il punteggio di rischio non spiegabile.`,
+    )
+  }
+  const nonNumeriche = options.filter((o) => typeof o.score !== 'number' || !Number.isFinite(o.score))
+  if (nonNumeriche.length) {
+    throw new ValidationError('Ogni opzione deve avere un punteggio numerico: alimenta il rischio della change.')
+  }
+
+  // ── I PUNTEGGI (regola di dominio, terza revisione) ───────────────────────
+  //
+  // Nessuna risposta puo valere 0, e non possono valere tutte lo stesso.
+  //
+  // Lo zero era usato dai semi di fabbrica per dire «questa risposta non
+  // aggiunge rischio» — e i semi sono stati cambiati di conseguenza. La ragione
+  // di dominio e che una risposta a punteggio zero e ININFLUENTE: nel calcolo
+  // (`scoring.ts`) il punteggio entra al numeratore e il MASSIMO delle opzioni
+  // al denominatore, quindi un'opzione a zero non sposta nulla.
+  //
+  // E se TUTTE valgono lo stesso, rispondere non puo cambiare il rischio: la
+  // domanda e decorativa. E il caso che ho incontrato dal vivo — tre opzioni
+  // salvate, tutte a zero — dove il rischio della change usciva 0 e la fascia
+  // restava vuota.
+  const sottoUno = options.filter((o) => !Number.isInteger(o.score) || o.score < 1)
+  if (sottoUno.length) {
+    throw new ValidationError(
+      `${sottoUno.map((o) => `"${o.label.trim()}"`).join(', ')}: il punteggio deve essere un intero maggiore o ` +
+      `uguale a 1. Una risposta che vale 0 non sposta il rischio della change, quindi la domanda non serve a ` +
+      `niente: dai alla risposta meno rischiosa il punteggio piu basso (1), non zero.`,
+    )
+  }
+  const distinti = new Set(options.map((o) => o.score))
+  if (distinti.size === 1) {
+    throw new ValidationError(
+      `Tutte le opzioni valgono ${String([...distinti][0])}: rispondere non cambierebbe il rischio della change, ` +
+      `quindi la domanda non misura niente. Dai punteggi diversi alle risposte, dal meno al piu rischioso.`,
+    )
+  }
+}
+
 export async function createAssessmentQuestion(
   _: unknown,
   args: { input: { text: string; category: string; isCore: boolean; options: OptionInput[] } },
@@ -34,9 +110,7 @@ export async function createAssessmentQuestion(
   if (category !== 'functional' && category !== 'technical') {
     throw new ValidationError('category deve essere "functional" o "technical"')
   }
-  if (!options || options.length === 0) {
-    throw new ValidationError('Una domanda deve avere almeno una opzione')
-  }
+  assertQuestionUsable(text, options)
   const id = uuidv4()
   const now = new Date().toISOString()
   return withSession(async (session) => {
@@ -56,8 +130,18 @@ export async function createAssessmentQuestion(
     if (isCore) {
       await session.executeWrite((tx) => tx.run(`
         MATCH (q:AssessmentQuestion {id: $id, tenant_id: $tenantId})
-        // tenant-ok: tipi base condivisi di sistema
-        MATCH (ct:CITypeDefinition {active: true, scope: 'base'})
+        // «Core» vuol dire TUTTI i tipi CI attivi del cliente, non solo quelli
+        // spediti col prodotto (terza revisione, provato dal vivo). Qui c'era
+        // {active: true, scope: 'base'}: una domanda core non veniva
+        // assegnata ai tipi CI del CLIENTE, e l'interfaccia prometteva il
+        // contrario — «assegnata automaticamente a tutti i CI Type attivi».
+        // Conseguenza: una change che toccava un CI di un tipo creato dal
+        // cliente non superava MAI l'assessment
+        // («Nessuna domanda di assessment assegnata al tipo di CI»).
+        // tenant-ok: i tipi base sono condivisi, quelli del cliente sono filtrati sul suo id
+        MATCH (ct:CITypeDefinition)
+        WHERE (ct.scope = 'base' OR (ct.scope = 'tenant' AND ct.tenant_id = $tenantId))
+          AND ct.active = true AND ct.name <> '__base__'
         MERGE (ct)-[rel:HAS_QUESTION]->(q)
           ON CREATE SET rel.weight = 1, rel.sort_order = 0
       `, { id, tenantId: ctx.tenantId }))
@@ -78,6 +162,7 @@ export async function updateAssessmentQuestion(
   if (category && category !== 'functional' && category !== 'technical') {
     throw new ValidationError('category deve essere "functional" o "technical"')
   }
+  assertQuestionUsable(text, options)
   return withSession(async (session) => {
     await session.executeWrite((tx) => tx.run(`
       MATCH (q:AssessmentQuestion {id: $id, tenant_id: $tenantId})
@@ -166,12 +251,18 @@ export async function setQuestionCore(_: unknown, args: { questionId: string; is
     `, { id: args.questionId, tenantId: ctx.tenantId, isCore: args.isCore }))
 
     if (args.isCore) {
-      // Attach to all active CITypes that don't yet have the relationship
+      // A TUTTI i tipi CI attivi del cliente, non solo a quelli spediti
+      // (terza revisione). Il commento diceva «all active CITypes» e la query
+      // diceva `scope: 'base'`: e il quarto posto con la stessa cablatura —
+      // gli altri tre sono in `createAssessmentQuestion` e nelle due letture
+      // di `queries.ts`. La casella «Core» dell'interfaccia chiama questa.
       await session.executeWrite((tx) => tx.run(`
         MATCH (q:AssessmentQuestion {id: $id, tenant_id: $tenantId})
-        // tenant-ok: tipi base condivisi di sistema
-        MATCH (ct:CITypeDefinition {active: true, scope: 'base'})
-        WHERE NOT (ct)-[:HAS_QUESTION]->(q)
+        // tenant-ok: i tipi base sono condivisi, quelli del cliente filtrati sul suo id
+        MATCH (ct:CITypeDefinition)
+        WHERE (ct.scope = 'base' OR (ct.scope = 'tenant' AND ct.tenant_id = $tenantId))
+          AND ct.active = true AND ct.name <> '__base__'
+          AND NOT (ct)-[:HAS_QUESTION]->(q)
         MERGE (ct)-[rel:HAS_QUESTION]->(q)
           ON CREATE SET rel.weight = 1, rel.sort_order = 0
       `, { id: args.questionId, tenantId: ctx.tenantId }))

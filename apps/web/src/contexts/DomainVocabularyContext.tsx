@@ -27,6 +27,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { GET_ENUM_TYPES } from '@/graphql/queries'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 interface EnumTypeRow { name: string; values: string[]; isShipped: boolean }
 
@@ -45,7 +46,7 @@ export const DomainVocabularyContext = createContext<DomainVocabularies>({
 })
 
 export function DomainVocabularyProvider({ children }: { children: ReactNode }) {
-  const { data, loading, error } = useQuery<{ enumTypes: EnumTypeRow[] | null }>(GET_ENUM_TYPES, { fetchPolicy: 'cache-first' })
+  const { data, loading, error } = useQuery<{ enumTypes: EnumTypeRow[] | null }>(GET_ENUM_TYPES, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const value = useMemo<DomainVocabularies>(() => {
     // Due mappe e una precedenza sola: il vocabolario del cliente vince, e
     // quello spedito resta la seconda scelta.

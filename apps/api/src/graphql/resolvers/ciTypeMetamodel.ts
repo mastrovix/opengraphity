@@ -730,6 +730,22 @@ export function buildMetamodelMutations() {
               t.service_role     = coalesce($serviceRole, t.service_role)
           `, { name, tenantId: ctx.tenantId, id, label, icon, color, neo4jLabel, chainFamilies, serviceRole }),
         )
+
+        // LE DOMANDE CORE DELL'ASSESSMENT, anche al tipo appena nato (terza
+        // revisione). «Core» significa «tutti i tipi CI attivi», ma
+        // l'assegnazione avveniva SOLO al momento in cui la domanda veniva
+        // creata: un tipo CI nato dopo non ne aveva nessuna, e una change che
+        // toccava un suo CI non superava l'assessment. Le due meta si tengono:
+        // la domanda nuova va a tutti i tipi, il tipo nuovo prende tutte le
+        // domande core.
+        await session.executeWrite(tx =>
+          tx.run(`
+            MATCH (t:CITypeDefinition {id: $id, tenant_id: $tenantId})
+            MATCH (q:AssessmentQuestion {tenant_id: $tenantId, is_core: true, is_active: true})
+            MERGE (t)-[rel:HAS_QUESTION]->(q)
+              ON CREATE SET rel.weight = 1, rel.sort_order = 0
+          `, { id, tenantId: ctx.tenantId }),
+        )
       }, true)
 
       invalidateSchema(ctx.tenantId)

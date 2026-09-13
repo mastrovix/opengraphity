@@ -199,19 +199,35 @@ describe('ignore_lifecycle_statuses (D6.3) e la semantica del ciclo di vita (ond
   })
 
   it('la SEMANTICA è dato del cliente: retired_statuses e maintenance_statuses partono dai valori che il codice usava', () => {
-    expect(DEFAULT_EVENT_POLICY.retired_statuses).toEqual(['inactive', 'decommissioned'])
+    // Terza revisione: `expired` e `revoked` erano nel vocabolario SPEDITO e in
+    // nessuna lista, quindi per il prodotto erano CI in servizio — e ogni
+    // cliente nuovo nasceva con quell'avviso nel banner. Un certificato scaduto
+    // o revocato non e in servizio: il posto giusto e fra i ritirati.
+    expect(DEFAULT_EVENT_POLICY.retired_statuses).toEqual(['inactive', 'decommissioned', 'expired', 'revoked'])
     expect(DEFAULT_EVENT_POLICY.maintenance_statuses).toEqual(['maintenance'])
     expect(EVENT_POLICY_V6_KEYS).toEqual(['retired_statuses', 'maintenance_statuses'])
     expect(EVENT_POLICY_V6_MIGRATION).toBe('20260917_1810_ci_lifecycle_semantics')
     expect(toEventPolicyGQL(DEFAULT_EVENT_POLICY)).toMatchObject({
-      retiredStatuses: ['inactive', 'decommissioned'], maintenanceStatuses: ['maintenance'],
+      retiredStatuses: ['inactive', 'decommissioned', 'expired', 'revoked'], maintenanceStatuses: ['maintenance'],
     })
   })
 
   it('policy senza le chiavi dell\'ondata 7 → errore che indica la migrazione 1810; completeEventPolicy le aggiunge', () => {
     const { retired_statuses: _r, maintenance_statuses: _m, ...withoutV6 } = DEFAULT_EVENT_POLICY
     expect(() => parseEventPolicy(JSON.stringify(withoutV6), 'acme')).toThrow(/ — missing retired_statuses, maintenance_statuses: run the 20260917_1810_ci_lifecycle_semantics migration/)
-    expect(completeEventPolicy({ ...withoutV6 })).toEqual({ ...withoutV6, retired_statuses: ['inactive', 'decommissioned'], maintenance_statuses: ['maintenance'] })
+    // Senza argomento riempie dal default ATTUALE (che classifica anche
+    // `expired` e `revoked`, terza revisione)…
+    expect(completeEventPolicy({ ...withoutV6 })).toEqual({
+      ...withoutV6,
+      retired_statuses: ['inactive', 'decommissioned', 'expired', 'revoked'],
+      maintenance_statuses: ['maintenance'],
+    })
+    // …e con i valori CONGELATI riproduce quelli del 17 settembre, che e come
+    // la migrazione 1810 lo chiama: la storia non cambia a distanza.
+    const congelati = { ...DEFAULT_EVENT_POLICY, retired_statuses: ['inactive', 'decommissioned'] }
+    expect(completeEventPolicy({ ...withoutV6 }, congelati)).toMatchObject({
+      retired_statuses: ['inactive', 'decommissioned'],
+    })
     expect(completeEventPolicy({ ...DEFAULT_EVENT_POLICY })).toBeNull()
   })
 

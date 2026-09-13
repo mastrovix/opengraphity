@@ -99,9 +99,17 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t:AssessmentTask {id: $taskId})
       WHERE coalesce(c.deleted, false) = false
       MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
-      // tenant-ok: tipi base condivisi di sistema
-      OPTIONAL MATCH (ct:CITypeDefinition {active: true, scope: 'base'})
+      // ANCHE I TIPI CI DEL CLIENTE (terza revisione). Con scope='base' il
+      // tipo di un CI creato dal cliente non si risolveva: ciTypeId restava
+      // null, la ricerca delle domande non trovava niente e il task rifiutava
+      // con «Nessuna domanda di assessment assegnata al tipo di CI». Cioe
+      // nessuna change che toccasse un CI di un tipo del cliente superava
+      // l'assessment — provato dal vivo su un tipo «firewall».
+      // tenant-ok: i tipi base sono condivisi, quelli del cliente filtrati sul suo id
+      OPTIONAL MATCH (ct:CITypeDefinition)
         WHERE ct.neo4j_label IN labels(ci)
+          AND ct.active = true
+          AND (ct.scope = 'base' OR (ct.scope = 'tenant' AND ct.tenant_id = $tenantId))
       RETURN properties(t) AS taskProps, c.id AS changeId,
              ci.id AS ciId, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS ciLabel, ct.id AS ciTypeId,
              ci.environment AS ciEnv

@@ -63,7 +63,17 @@ describe('20260917_1810_ci_lifecycle_semantics', () => {
   it('policy assente → scritta intera dai valori iniziali; JSON corrotto → si ferma nominando il tenant', async () => {
     const s = fakeSession([{ id: 'acme', value: null }])
     await ciLifecycleSemantics.up(s as never)
-    expect(JSON.parse(s.writes[0]!.params['policy'] as string)).toEqual(DEFAULT_EVENT_POLICY)
+    // I valori CONGELATI del 17 settembre, non `DEFAULT_EVENT_POLICY`, che nel
+    // frattempo e cambiato: `expired` e `revoked` sono entrati fra i ritirati
+    // (terza revisione). Lo scopo dichiarato di questa migrazione e «il primo
+    // giorno non cambia niente»: se leggesse la costante viva, cambierebbe
+    // comportamento a distanza su ogni tenant migrato da oggi.
+    const scritta = JSON.parse(s.writes[0]!.params['policy'] as string) as Record<string, unknown>
+    expect(scritta['retired_statuses']).toEqual(['inactive', 'decommissioned'])
+    expect(scritta['maintenance_statuses']).toEqual(['maintenance'])
+    expect(scritta['ignore_lifecycle_statuses']).toEqual(['decommissioned'])
+    // Tutto il resto viene dal default e resta allineato.
+    expect(scritta).toMatchObject({ version: DEFAULT_EVENT_POLICY.version, retention_days: DEFAULT_EVENT_POLICY.retention_days })
 
     await expect(ciLifecycleSemantics.up(fakeSession([{ id: 'acme', value: '{nope' }]) as never))
       .rejects.toThrow(/Tenant acme event_policy is corrupt JSON/)

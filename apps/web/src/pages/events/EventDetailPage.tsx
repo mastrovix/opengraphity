@@ -47,6 +47,7 @@ import { EventActions } from './EventActions'
 import { CIAliasesSection } from './CIAliasesSection'
 import { EventHistorySection } from './EventHistorySection'
 import type { MonitoringEventDetail, EventPolicy } from '@/types/events'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
 
@@ -60,10 +61,10 @@ export function EventDetailPage() {
   const matchHelpId = useId()
 
   const { data, loading, error, refetch } = useQuery<{ event: MonitoringEventDetail | null }>(GET_EVENT, {
-    variables: { id }, fetchPolicy: 'cache-and-network',
+    variables: { id }, fetchPolicy: METAMODEL_FETCH_POLICY,
   })
   // Policy: dà i numeri alle frasi "in attesa" e "sotto soglia"; senza, la frase resta generica.
-  const { data: policyData } = useQuery<{ eventPolicy: EventPolicy }>(GET_EVENT_POLICY, { fetchPolicy: 'cache-first' })
+  const { data: policyData } = useQuery<{ eventPolicy: EventPolicy }>(GET_EVENT_POLICY, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const policy = policyData?.eventPolicy ?? null
 
   if (loading && !data) return <PageLoader />

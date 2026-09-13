@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { QueryError } from '@/components/QueryError'
 import { Pagination } from '@/components/ui/Pagination'
 import { alpha, colors, palette } from '@/lib/tokens'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 /**
  * Le azioni presenti nel registro di audit, con quante voci ciascuna: la
@@ -75,7 +76,7 @@ export function AuditLogPage() {
   // NON sono state riscritte — è un registro di conformità — quindi qui
   // compaiono entrambe le metà della storia e nessuna diventa introvabile.
   const actionsQuery = useQuery<{ auditActions: { action: string; count: number }[] }>(
-    GET_AUDIT_ACTIONS, { fetchPolicy: 'cache-first' },
+    GET_AUDIT_ACTIONS, { fetchPolicy: METAMODEL_FETCH_POLICY },
   )
   const actionOptions = (actionsQuery.data?.auditActions ?? [])
     .map(({ action, count }) => ({ value: action, label: `${action} (${count})` }))

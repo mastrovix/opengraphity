@@ -19,7 +19,7 @@ const QUESTIONS: QuestionSeed[] = [
     category: 'functional', weight: 4,
     options: [
       { label: 'Yes', score: 3 },
-      { label: 'No', score: 0 },
+      { label: 'No', score: 1 },
     ],
   },
   {
@@ -37,14 +37,14 @@ const QUESTIONS: QuestionSeed[] = [
     options: [
       { label: 'Yes', score: 3 },
       { label: 'Partial', score: 2 },
-      { label: 'No', score: 0 },
+      { label: 'No', score: 1 },
     ],
   },
   {
     text: 'Is a tested rollback plan available?',
     category: 'technical', weight: 5,
     options: [
-      { label: 'Yes', score: 0 },
+      { label: 'Yes', score: 1 },
       { label: 'Partial', score: 2 },
       { label: 'No', score: 3 },
     ],
@@ -55,7 +55,7 @@ const QUESTIONS: QuestionSeed[] = [
     options: [
       { label: 'Yes', score: 3 },
       { label: 'Partial / degraded', score: 2 },
-      { label: 'No', score: 0 },
+      { label: 'No', score: 1 },
     ],
   },
   {
@@ -64,7 +64,7 @@ const QUESTIONS: QuestionSeed[] = [
     options: [
       { label: 'Many', score: 3 },
       { label: 'Few', score: 1 },
-      { label: 'None', score: 0 },
+      { label: 'None', score: 1 },
     ],
   },
   {
@@ -73,7 +73,7 @@ const QUESTIONS: QuestionSeed[] = [
     options: [
       { label: 'High', score: 3 },
       { label: 'Medium', score: 2 },
-      { label: 'Low', score: 0 },
+      { label: 'Low', score: 1 },
     ],
   },
 ]
@@ -118,7 +118,11 @@ async function main() {
       // Always ensure HAS_QUESTION rel from all active base CITypeDefinitions
       await session.executeWrite((tx) => tx.run(`
         MATCH (q:AssessmentQuestion {id: $qid, tenant_id: $tenantId})
-        MATCH (ct:CITypeDefinition {active: true, scope: 'base'})
+        // Anche i tipi CI del cliente (terza revisione): «core» vuol dire
+        // tutti i tipi attivi, non solo quelli spediti col prodotto.
+        MATCH (ct:CITypeDefinition)
+        WHERE (ct.scope = 'base' OR (ct.scope = 'tenant' AND ct.tenant_id = $tenantId))
+          AND ct.active = true AND ct.name <> '__base__'
         MERGE (ct)-[rel:HAS_QUESTION]->(q)
           ON CREATE SET rel.weight = $weight, rel.sort_order = $sortOrder
           ON MATCH  SET rel.weight = $weight, rel.sort_order = $sortOrder

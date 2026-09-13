@@ -34,6 +34,7 @@ import { AMBER_BANNER } from '@/lib/eventPalette'
 import { colors } from '@/lib/tokens'
 import { servicePath } from './ServicesPage'
 import type { ServiceMapFilterVars, ServiceMapPage, ServiceMapRow } from '@/types/services'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 /** Filtro del banner: solo mappe attive, giù e critiche — tutto e tre lato server. */
 const filterFor = (criticality: readonly string[]): ServiceMapFilterVars => ({
@@ -56,7 +57,7 @@ export function CriticalServicesBanner() {
   // filtro: un servizio con una criticità aggiunta dall'admin non compariva
   // mai nel banner, in silenzio.
   const { data: critData, error: critError } =
-    useQuery<{ criticalServiceCriticalities: string[] }>(GET_CRITICAL_SERVICE_CRITICALITIES, { fetchPolicy: 'cache-first' })
+    useQuery<{ criticalServiceCriticalities: string[] }>(GET_CRITICAL_SERVICE_CRITICALITIES, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const criticalities = critData?.criticalServiceCriticalities
 
   const { data, error } = useQuery<{ serviceMaps: ServiceMapPage }>(GET_SERVICE_MAPS, {
@@ -64,7 +65,7 @@ export function CriticalServicesBanner() {
     // Finché non si sa quali criticità contano non si chiede niente: un filtro
     // vuoto vorrebbe dire «tutte», e il banner conterebbe servizi non critici.
     skip: !criticalities?.length,
-    fetchPolicy: 'cache-and-network',
+    fetchPolicy: METAMODEL_FETCH_POLICY,
     ...pausedWhenHidden(POLL_MS),
   })
 

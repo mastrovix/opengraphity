@@ -33,9 +33,38 @@ describe('requireTenantSlug', () => {
     expect(requireTenantSlug({ hostname: 'c-one.localhost', hint: 'x' })).toBe('c-one')
   })
 
-  it('override wins over the hostname; empty override is ignored', () => {
-    expect(requireTenantSlug({ hostname: 'c-one.localhost', override: 'acme', hint: 'x' })).toBe('acme')
+  /**
+   * Terza revisione: l'override NON vince piu su `*.localhost`.
+   *
+   * Vinceva sempre, e la conseguenza era che un'installazione locale
+   * multi-tenant poteva raggiungerne uno solo: il bundle e costruito una volta
+   * con `VITE_TENANT_SLUG` dentro, quindi `c-two.localhost` finiva sul realm
+   * `c-one` e Keycloak rifiutava il `redirect_uri`. Verificato in un browser
+   * vero prima della modifica.
+   */
+  it('su *.localhost decide l\'HOSTNAME, non l\'override', () => {
+    expect(requireTenantSlug({ hostname: 'c-one.localhost', override: 'acme', hint: 'x' })).toBe('c-one')
+    expect(requireTenantSlug({ hostname: 'c-test.localhost', override: 'c-one', hint: 'x' })).toBe('c-test')
+    expect(requireTenantSlug({ hostname: 'c-two.localhost:5173', override: 'c-one', hint: 'x' })).toBe('c-two')
+  })
+
+  it('fuori da *.localhost l\'override vince, ed e cosi che Tailscale funziona', () => {
+    // Su quell'host `getTenantSlug` restituirebbe «macbook-pro-di-vittorio»,
+    // che non e un tenant: senza l'override l'app era irraggiungibile.
+    expect(requireTenantSlug({ hostname: 'macbook-pro-di-vittorio.tailcf0f55.ts.net', override: 'c-one', hint: 'x' })).toBe('c-one')
+    // In produzione l'hostname nomina il tenant e l'override non c'e.
+    expect(requireTenantSlug({ hostname: 'acme.opengrafo.com', hint: 'x' })).toBe('acme')
+    // Ma se c'e, continua a vincere: comportamento invariato fuori dal locale.
+    expect(requireTenantSlug({ hostname: 'acme.opengrafo.com', override: 'altro', hint: 'x' })).toBe('altro')
+  })
+
+  it('override vuoto e ignorato', () => {
     expect(requireTenantSlug({ hostname: 'c-one.localhost', override: '', hint: 'x' })).toBe('c-one')
+    expect(requireTenantSlug({ hostname: 'acme.opengrafo.com', override: '', hint: 'x' })).toBe('acme')
+  })
+
+  it('`localhost` nudo non ha tenant: l\'override resta l\'unica via', () => {
+    expect(requireTenantSlug({ hostname: 'localhost', override: 'c-one', hint: 'x' })).toBe('c-one')
   })
 
   it('throws a readable error (with the hint) instead of guessing a tenant', () => {

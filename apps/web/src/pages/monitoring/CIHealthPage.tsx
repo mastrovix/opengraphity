@@ -59,6 +59,7 @@ import { CIHealthBadge, CI_HEALTH_ACCENT } from '@/pages/events/eventShared'
 import { servicesForCIPath } from './ServicesPage'
 import type { CIHealth, CIHealthOverview, CIHealthRow, CIHealthFilterVars } from '@/types/events'
 import { colors, palette } from '@/lib/tokens'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 const PAGE_SIZE       = 50
 const POLL_MS         = 15_000
@@ -393,7 +394,7 @@ export function CIHealthPage() {
   // di caricamento, così un click su un riquadro non la svuota.
   const { data: liveData, previousData, loading, error, refetch, networkStatus } = useQuery<{ ciHealthOverview: CIHealthOverview }>(GET_CI_HEALTH_OVERVIEW, {
     variables: { filter: toFilterVars(filter), limit: PAGE_SIZE, offset: page * PAGE_SIZE },
-    fetchPolicy: 'cache-and-network',
+    fetchPolicy: METAMODEL_FETCH_POLICY,
     ...pausedWhenHidden(POLL_MS),
     notifyOnNetworkStatusChange: true,
   })
@@ -409,7 +410,7 @@ export function CIHealthPage() {
     if (page > lastPage) setPage(lastPage)
   }, [liveTotal, page, setPage])
 
-  const { data: teamsData, error: teamsError } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: 'cache-first' })
+  const { data: teamsData, error: teamsError } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const teams = teamsData?.teams ?? []
   const typeOptions = useMemo(() => ciTypes.filter((ct) => ct.name !== '__base__'), [ciTypes])
 

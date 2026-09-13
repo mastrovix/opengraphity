@@ -500,3 +500,20 @@ Problemi ricorrenti:
   `docker compose exec grafana grafana cli admin reset-admin-password '<nuova>'`.
 - Prometheus target `DOWN` con 401: `METRICS_TOKEN` diverso tra `.env` e il
   container (ricreare `prometheus` con `up -d --force-recreate prometheus`).
+
+## Trappole di compilazione che costano tempo
+
+**`TS1005: ',' expected` a metà di una query Cypher.**
+La Cypher di questo repo vive nei template literal, e i commenti Cypher (`//`)
+finiscono dentro la stringa. Un nome scritto fra backtick in quel commento
+**chiude il template literal**, e TypeScript fallisce con un errore di sintassi
+che non nomina la causa, a righe che sembrano corrette.
+
+Nella terza revisione mi è capitato quattro volte in una sessione
+(`workflowJobWorker.ts`, `escalationConsumer.ts`, `questionAdmin.ts`,
+`assessmentMutations.ts`): ogni volta ho perso un giro a diagnosticarlo. Nei
+commenti dentro una query si scrive `scope='base'`, non `` `scope: 'base'` ``.
+
+Ho provato a scriverne un lint e l'ho cancellato: `tsc` lo prende già, quindi il
+lint non aggiungeva nulla — e la sua rilevazione non funzionava con i generici
+su più righe. Il valore stava nella diagnosi, non nel rilevamento: è questa nota.

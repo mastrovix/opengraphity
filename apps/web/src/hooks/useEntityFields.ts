@@ -13,6 +13,7 @@ import { useQuery } from '@apollo/client/react'
 import type { FieldConfig } from '@/components/FilterBuilder'
 import { GET_ITIL_TYPES, GET_CI_TYPES, GET_ENTITY_FILTER_FIELDS } from '@/graphql/queries'
 import { isITILEntity } from '@/lib/automationOperators'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 // ── Metamodel field metas (automazione) ──────────────────────────────────────
 
@@ -41,8 +42,8 @@ const VIRTUAL_RELATION_FIELDS: FieldMeta[] = [
  */
 export function useEntityFieldMetas(entityType: string, { withVirtual = true }: { withVirtual?: boolean } = {}): { fields: FieldMeta[]; error: string | null } {
   const isITIL = isITILEntity(entityType)
-  const { data: itilData, error: itilErr } = useQuery(GET_ITIL_TYPES, { skip: !isITIL || !entityType, fetchPolicy: 'cache-first' })
-  const { data: ciData,   error: ciErr   } = useQuery(GET_CI_TYPES,   { skip: isITIL  || !entityType, fetchPolicy: 'cache-first' })
+  const { data: itilData, error: itilErr } = useQuery(GET_ITIL_TYPES, { skip: !isITIL || !entityType, fetchPolicy: METAMODEL_FETCH_POLICY })
+  const { data: ciData,   error: ciErr   } = useQuery(GET_CI_TYPES,   { skip: isITIL  || !entityType, fetchPolicy: METAMODEL_FETCH_POLICY })
 
   return useMemo(() => {
     if (!entityType) return { fields: [], error: null }
@@ -111,7 +112,7 @@ function enumLabel(v: string): string {
 export function useEntityFields(typeName: string): { fields: FieldConfig[]; error: Error | null } {
   const { data, error } = useQuery<{ entityFilterFields: EntityFilterField[] }>(
     GET_ENTITY_FILTER_FIELDS,
-    { variables: { typeName }, fetchPolicy: 'cache-first' },
+    { variables: { typeName }, fetchPolicy: METAMODEL_FETCH_POLICY },
   )
 
   const rawFields = data?.entityFilterFields
