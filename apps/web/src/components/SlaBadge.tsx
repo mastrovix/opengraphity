@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Timer, CheckCircle2, AlertTriangle, PauseCircle } from 'lucide-react'
 import { colors, palette } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
+import i18n from '@/i18n/i18n'
 
 export interface SlaStatusInfo {
   startedAt:        string
@@ -14,13 +15,18 @@ export interface SlaStatusInfo {
   pausedAt?:        string | null
 }
 
+/**
+ * Durata compatta del badge: «45 min», «3 h 20 min», «1 d 23 h». Giro nel
+ * browser del 14 set 2026 (#25): i giorni erano «g» anche con l'interfaccia
+ * inglese; le unità vengono dalla lingua attiva.
+ */
 function formatDuration(ms: number): string {
   const abs  = Math.abs(ms)
   const mins = Math.floor(abs / 60_000)
-  if (mins < 60) return `${mins}m`
+  if (mins < 60) return i18n.t('time.short.minutes', { m: mins })
   const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ${mins % 60}m`
-  return `${Math.floor(hrs / 24)}g ${hrs % 24}h`
+  if (hrs < 24) return i18n.t('time.short.hoursMinutes', { h: hrs, m: mins % 60 })
+  return i18n.t('time.short.daysHours', { d: Math.floor(hrs / 24), h: hrs % 24 })
 }
 
 type SlaState = 'met' | 'breached' | 'overdue' | 'warning' | 'ontrack' | 'paused'

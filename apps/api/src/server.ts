@@ -2,6 +2,7 @@ import express, { type Application, type Request, type Response, type NextFuncti
 import cors from 'cors'
 import helmet from 'helmet'
 import compression from 'compression'
+import { compressionFilter } from './lib/compressionFilter.js'
 import { rateLimit } from 'express-rate-limit'
 import { config } from './lib/config.js'
 import { ApolloServer } from '@apollo/server'
@@ -27,6 +28,7 @@ import { reportsRouter } from './rest/reports.js'
 import { webhookInboundRouter } from './rest/webhooks-inbound.js'
 import { v1Router } from './rest/v1/index.js'
 import { logger, httpLogger, graphqlLogger } from './lib/logger.js'
+import { maskDriverError } from './lib/maskInternalErrors.js'
 import { graphqlRateLimiterPlugin } from './middleware/graphqlRateLimiter.js'
 import { metricsMiddlewareWithRpm, metricsHandler, graphqlMetricsPlugin } from './middleware/metrics.js'
 import { startGraphQLSpan, updateActiveSpanName, type GraphQLSpanHandle } from './telemetry.js'
@@ -113,10 +115,8 @@ app.use(helmet({
 app.use(compression({
   threshold: 1024,
   level:     6,
-  filter:    (req: Request, res: Response) => {
-    if (req.path === '/api/sse') return false
-    return compression.filter(req, res)
-  },
+  // Mai gli stream SSE: vedi lib/compressionFilter.ts.
+  filter:    compressionFilter,
 }))
 
 // ── Prometheus metrics ─────────────────────────────────────────────────────────
@@ -269,7 +269,7 @@ function buildApolloServer(schema: GraphQLSchema): ApolloServer<GraphQLContext> 
           operation: (error as { source?: { body?: string } })?.source?.body?.slice(0, 200),
         }, 'GraphQL error')
       }
-      return formattedError
+      return maskDriverError(formattedError, error, ({ ref, message }) => graphqlLogger.error({ ref, message }, 'Database driver error masked for the client'))
     },
     plugins: [
       !config.isProduction
@@ -374,7 +374,7 @@ async function apolloFor(tenantId: string, schema: GraphQLSchema): Promise<Tenan
     const entry: TenantApollo = { schema, server, handler }
     const previous = apolloByTenant.get(tenantId)
     apolloByTenant.set(tenantId, entry)
-    if (previous) void previous.server.stop().catch((e: unknown) => graphqlLogger.warn({ tenantId, err: String(e) }, 'Vecchia istanza Apollo non fermata'))
+    if (previous) void previous.server.stop().catch((e: unknown) => graphqlLogger.warn({ tenantId, err: String(e) }, 'Previous Apollo instance did not stop'))
     // Lo stesso limite degli schemi: un'istanza per schema in memoria.
     while (apolloByTenant.size > Math.max(1, config.graphqlSchemaCacheMax)) {
       const oldest = apolloByTenant.keys().next()
@@ -443,7 +443,7 @@ export async function startServer(): Promise<http.Server> {
     // non hanno un tenant e passano dallo schema di sistema, come prima.
     if (req.method !== 'POST') {
       const system = apolloByTenant.get('system')
-      if (!system) { next(new Error('Istanza Apollo di sistema non pronta')); return }
+      if (!system) { next(new Error('System Apollo instance not ready')); return }
       system.handler(req, res, next); return
     }
 
@@ -461,7 +461,7 @@ export async function startServer(): Promise<http.Server> {
           // Chi chiama deve poter sapere che sta parlando con lo schema sicuro
           // (senza i tipi del cliente): è un'informazione operativa, non un
           // dettaglio interno.
-          res.setHeader('X-Schema-Degraded', encodeURIComponent((state.reason ?? 'schema non assemblabile').slice(0, 200)))
+          res.setHeader('X-Schema-Degraded', encodeURIComponent((state.reason ?? 'schema cannot be assembled').slice(0, 200)))
         }
         const holder = req as unknown as Record<symbol, GraphQLContext>
         holder[CONTEXT_KEY] = ctx

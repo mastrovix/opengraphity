@@ -26,8 +26,8 @@ import { PageTitle } from '@/components/PageTitle'
 import { Button } from '@/components/Button'
 import { Select, Input } from '@/components/ui/FormControls'
 import { inputS, labelS } from '@/components/ui/styles'
-import { GET_DOMAIN_MATRICES, GET_PRE_APPROVED_CHANGE_TYPES, GET_RISK_BAND_THRESHOLDS } from '@/graphql/queries'
-import { UPDATE_DOMAIN_MATRIX, UPDATE_PRE_APPROVED_CHANGE_TYPES, UPDATE_RISK_BAND_THRESHOLDS } from '@/graphql/mutations'
+import { GET_DOMAIN_MATRICES, GET_PRE_APPROVED_CHANGE_TYPES, GET_RISK_BAND_THRESHOLDS, GET_CHANGE_ENVIRONMENT_WEIGHT } from '@/graphql/queries'
+import { UPDATE_DOMAIN_MATRIX, UPDATE_PRE_APPROVED_CHANGE_TYPES, UPDATE_RISK_BAND_THRESHOLDS, UPDATE_CHANGE_ENVIRONMENT_WEIGHT } from '@/graphql/mutations'
 import { colors } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
 
@@ -398,6 +398,60 @@ function RiskBandsCard() {
   )
 }
 
+// Giro nel browser del 14 set 2026 (#32): il peso dell'ambiente era 5 nel
+// codice, contro 1 per domanda, e ogni change in produzione risultava ad alto
+// rischio qualunque fossero le risposte.
+const MAX_ENVIRONMENT_WEIGHT = 20
+
+function EnvironmentWeightCard() {
+  const { t } = useTranslation()
+  const { data, loading, error } = useQuery<{ changeEnvironmentWeight: { weight: number; isDefault: boolean } }>(
+    GET_CHANGE_ENVIRONMENT_WEIGHT, { fetchPolicy: 'cache-and-network' },
+  )
+  const [draft, setDraft] = useState<string | null>(null)
+  const saved = data?.changeEnvironmentWeight
+  const current = draft ?? (saved ? String(saved.weight) : '')
+  const parsed = Number(current)
+  const valid = current !== '' && Number.isInteger(parsed) && parsed >= 0 && parsed <= MAX_ENVIRONMENT_WEIGHT
+  const [saveWeight, { loading: savingWeight }] = useMutation(UPDATE_CHANGE_ENVIRONMENT_WEIGHT, {
+    refetchQueries: [GET_CHANGE_ENVIRONMENT_WEIGHT],
+    onCompleted: () => { toast.success(t('pages.domainMatrices.environmentWeight.saved')); setDraft(null) },
+    onError: (e) => toast.error(e.message),
+  })
+
+  return (
+    <SectionCard title={t('pages.domainMatrices.environmentWeight.title')} defaultOpen>
+      <p style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, marginTop: 0 }}>
+        {t('pages.domainMatrices.environmentWeight.help', { max: MAX_ENVIRONMENT_WEIGHT })}
+      </p>
+      {loading && !data && <p>{t('common.loading')}</p>}
+      {error && <p style={{ color: 'var(--color-danger-text)' }}>{error.message}</p>}
+      {saved && (
+        <>
+          {saved.isDefault && (
+            <p style={{ fontSize: 'var(--font-size-label)', color: colors.slateLight, marginTop: 0 }}>
+              {t('pages.domainMatrices.environmentWeight.usingFactory')}
+            </p>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Input
+              type="number" min={0} max={MAX_ENVIRONMENT_WEIGHT} step={1}
+              value={current}
+              onChange={(ev) => setDraft(ev.target.value)}
+              style={{ width: 90 }}
+              aria-label={t('pages.domainMatrices.environmentWeight.title')}
+            />
+            <Button onClick={() => void saveWeight({ variables: { weight: parsed } })} disabled={draft === null || !valid || savingWeight}>
+              <Save size={14} /> {t('common.save')}
+            </Button>
+          </div>
+          {!valid && <p style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger-text)' }}>{t('pages.domainMatrices.environmentWeight.range', { max: MAX_ENVIRONMENT_WEIGHT })}</p>}
+        </>
+      )}
+    </SectionCard>
+  )
+}
+
 // ── Pagina ────────────────────────────────────────────────────────────────────
 
 export function DomainMatricesPage() {
@@ -420,6 +474,7 @@ export function DomainMatricesPage() {
       {error && <p style={{ color: 'var(--color-danger-text)' }}>{error.message}</p>}
       {data?.domainMatrices.map((m) => <MatrixCard key={m.kind} matrix={m} />)}
       <RiskBandsCard />
+      <EnvironmentWeightCard />
       <PreApprovedChangeTypesCard />
     </PageContainer>
   )

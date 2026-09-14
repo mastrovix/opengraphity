@@ -26,6 +26,7 @@ interface RuleHit {
   entitySubtype: string
   entityName:    string
   description:   string
+  params:        Record<string, string>
   severity:      string
 }
 
@@ -45,6 +46,16 @@ async function loadTenants(): Promise<TenantRow[]> {
   }
 }
 
+/** I parametri della frase di un risultato, come stringhe (la pagina li interpola). */
+function stringParams(raw: unknown, ruleKey: string): Record<string, string> {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(`anomaly rule ${ruleKey}: the query must return params as a map`)
+  }
+  return Object.fromEntries(Object.entries(raw as Record<string, unknown>).map(([k, v]) => [
+    k, typeof v === 'object' && v !== null && 'toNumber' in v ? String((v as { toNumber(): number }).toNumber()) : String(v),
+  ]))
+}
+
 async function runRule(rule: AnomalyRule, tenantId: string): Promise<RuleHit[]> {
   const session = getSession(undefined, 'READ')
   try {
@@ -60,6 +71,7 @@ async function runRule(rule: AnomalyRule, tenantId: string): Promise<RuleHit[]> 
       entitySubtype: (r.get('entitySubtype') as string | null) ?? '',
       entityName:    r.get('entityName')    as string,
       description:   r.get('description')   as string,
+      params:        stringParams(r.get('params'), rule.key),
       severity:      r.get('severity')      as string,
     }))
   } catch (err) {
@@ -106,13 +118,16 @@ async function upsertAnomalies(
             a.entity_subtype  = $entitySubtype,
             a.entity_name     = $entityName,
             a.description     = $description,
+            a.description_params = $params,
             a.detected_at     = $now,
             a.resolved_at     = null,
             a.tenant_id       = $tenantId
           ON MATCH SET
             a.status          = CASE WHEN a.status IN ['false_positive', 'accepted_risk'] THEN a.status ELSE 'open' END,
             a.resolved_at     = CASE WHEN a.status IN ['false_positive', 'accepted_risk'] THEN a.resolved_at ELSE null END,
+            a.title           = $title,
             a.description     = $description,
+            a.description_params = $params,
             a.severity        = $severity
           RETURN a.id AS id
         `, {
@@ -126,6 +141,7 @@ async function upsertAnomalies(
           entitySubtype: hit.entitySubtype,
           entityName:    hit.entityName,
           description:   hit.description,
+          params:        JSON.stringify(hit.params),
           now,
         }),
       )
@@ -188,13 +204,13 @@ async function sendSlackAlert(
   const blocks: unknown[] = [
     {
       type: 'header',
-      text: { type: 'plain_text', text: `🚨 Anomalie rilevate nel grafo (${totalNew} nuove)`, emoji: true },
+      text: { type: 'plain_text', text: `🚨 Anomalies found in the graph (${totalNew} new)`, emoji: true },
     },
     {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `Tenant: \`${tenantId}\`\n*Scanner anomalie* ha rilevato nuove anomalie nel grafo CMDB.`,
+        text: `Tenant: \`${tenantId}\`\n*Anomaly scanner* found new anomalies in the CMDB graph.`,
       },
     },
   ]
@@ -203,7 +219,7 @@ async function sendSlackAlert(
   for (const [ruleKey, count] of newByRule.entries()) {
     if (count > 0) {
       const rule = ANOMALY_RULES.find(r => r.key === ruleKey)
-      fields.push({ type: 'mrkdwn', text: `*${rule?.title ?? ruleKey}*\n${count} nuove anomalie` })
+      fields.push({ type: 'mrkdwn', text: `*${rule?.title ?? ruleKey}*\n${count} new anomalies` })
     }
   }
 

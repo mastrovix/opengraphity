@@ -25,6 +25,7 @@ export const GET_ME = gql`
       ...UserRef
       role
       slackId
+      emailNotifications
       teams { ...TeamRef }
     }
   }

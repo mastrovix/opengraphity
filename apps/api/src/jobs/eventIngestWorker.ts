@@ -111,7 +111,7 @@ async function clearSourceError(tenantId: string, sourceId: string): Promise<voi
  */
 export async function recordIngestFailure(data: EventIngestJobData, err: Error): Promise<void> {
   const fingerprint = fingerprintOf(data.sourceId, data.ev)
-  const message = `${INGEST_ERROR_PREFIX}${err.message} (impronta ${fingerprint}, ${data.ev.status} ${data.ev.title} su ${data.ev.resource})`.slice(0, 2000)
+  const message = `${INGEST_ERROR_PREFIX}${err.message} (fingerprint ${fingerprint}, ${data.ev.status} ${data.ev.title} on ${data.ev.resource})`.slice(0, 2000)
   const session = getSession(undefined, 'WRITE')
   try {
     const row = await runQueryOne<{ connectorKind: string | null }>(session, `

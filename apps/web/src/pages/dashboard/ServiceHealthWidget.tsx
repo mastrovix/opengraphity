@@ -51,7 +51,8 @@ export function ServiceHealthWidget({ color, large = false }: { color: string; l
 
   return (
     <div style={{ padding: large ? '20px 20px 16px' : '14px 14px 12px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
+      {/* Tessere che vanno a capo: in un widget stretto le etichette uscivano dal riquadro (giro del 14 set 2026, #4). */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8 }}>
         {TILES.map((health) => (
           <Link
             key={health}
@@ -62,7 +63,7 @@ export function ServiceHealthWidget({ color, large = false }: { color: string; l
             <div style={{ fontSize: large ? 32 : 26, fontWeight: 700, color: SERVICE_HEALTH_ACCENT[health], lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
               {counts ? counts[health] : loading ? '…' : '—'}
             </div>
-            <div style={{ fontSize: 'var(--font-size-label)', color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 4 }}>
+            <div style={{ fontSize: 'var(--font-size-label)', color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 4, overflowWrap: 'anywhere' }}>
               {t(`monitoring.services.tiles.${health}`)}
             </div>
           </Link>

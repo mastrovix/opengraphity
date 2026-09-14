@@ -217,7 +217,7 @@ describe('suggestTriage — chiamata al modello', () => {
     expect((err as GraphQLError).extensions['code']).toBe('INTERNAL_SERVER_ERROR')
 
     h.create.mockResolvedValue(modelReply(null))
-    await expect(suggestTriage(input)).rejects.toThrow('[triage] risposta senza blocco testo')
+    await expect(suggestTriage(input)).rejects.toThrow('[triage] response without a text block')
   })
 
   it('errore del provider propaga (no-fallback)', async () => {

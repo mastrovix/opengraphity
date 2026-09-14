@@ -191,11 +191,11 @@ describe('consumers of the single loader', () => {
     expect(section.edges).toHaveLength(1)
   })
 
-  it('dashboard widget of a section outside the tenant → "Sezione non trovata"', async () => {
+  it('dashboard widget of a section outside the tenant → "Report section not found"', async () => {
     const session = fakeSession(() => [])
     vi.mocked(getSession).mockReturnValue(session as never)
     const { widgetError } = await import('../../graphql/resolvers/dashboard/dashboardQueries.js')
-    expect(await widgetError({ reportSectionId: 'ghost' }, {}, { tenantId: 't', userId: 'u', userEmail: 'e', role: 'admin' } as never)).toBe('Sezione non trovata')
+    expect(await widgetError({ reportSectionId: 'ghost' }, {}, { tenantId: 't', userId: 'u', userEmail: 'e', role: 'admin' } as never)).toBe('Report section not found')
     expect(executeReportSection).not.toHaveBeenCalled()
   })
 })

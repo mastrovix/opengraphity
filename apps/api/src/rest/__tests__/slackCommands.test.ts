@@ -101,14 +101,14 @@ describe('/og incident apri', () => {
     await handleSlackCommands(slackRequest('incident apri Sito giù high'), res as unknown as Response)
     expect(createIncident).not.toHaveBeenCalled()
     expect(getSession).not.toHaveBeenCalled()
-    expect((res.body as { text: string }).text).toMatch(/CI impattato mancante/)
+    expect((res.body as { text: string }).text).toMatch(/Impacted CI missing/)
   })
 
   it('invalid severity → usage, nothing created', async () => {
     const res = fakeRes()
     await handleSlackCommands(slackRequest('incident apri Sito giù ci=web-01 urgent'), res as unknown as Response)
     expect(createIncident).not.toHaveBeenCalled()
-    expect((res.body as { text: string }).text).toMatch(/Severity mancante o non valida/)
+    expect((res.body as { text: string }).text).toMatch(/Severity missing or not valid/)
   })
 
   it('unknown CI → ephemeral error, nothing created', async () => {
@@ -117,7 +117,7 @@ describe('/og incident apri', () => {
     const res = fakeRes()
     await handleSlackCommands(slackRequest('incident apri Sito giù ci=ghost high'), res as unknown as Response)
     expect(createIncident).not.toHaveBeenCalled()
-    expect((res.body as { text: string }).text).toMatch(/"ghost" non trovato/)
+    expect((res.body as { text: string }).text).toMatch(/"ghost" not found/)
   })
 
   it('service ValidationError → ephemeral message with the service reason', async () => {

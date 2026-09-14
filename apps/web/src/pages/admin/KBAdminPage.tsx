@@ -21,7 +21,7 @@ import { styleForCategory } from '@/lib/workflowStepStyle'
 import { colors } from '@/lib/tokens'
 import { formatDate, formatDateTime } from '@/lib/datetime'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { transitionErrorText, type TransitionFailure } from '@/lib/transitionError'
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
@@ -223,19 +223,22 @@ function StatusBadge({ status, label, category }: {
 
 export function KBAdminPage() {
   const { t } = useTranslation()
-  // Le categorie sono il vocabolario «category» del cliente (lo stesso degli
-  // incident, da cui nascono le bozze). Prima venivano da `kbCategories`, che
-  // conta solo gli articoli PUBBLICATI: senza articoli pubblicati la tendina
-  // era vuota e un articolo non si poteva completare (giro del 14 set 2026).
+  // Le categorie sono il vocabolario «kb_category» del Dizionario (revisione
+  // del 14 set 2026 · F5). Nel giro del 14 settembre la tendina era stata
+  // agganciata al vocabolario `category` degli incident, perché `kbCategories`
+  // contava solo le categorie già pubblicate: la fonte era sbagliata, e le
+  // categorie KB avevano tre fonti diverse. Ora ne hanno una, la stessa della
+  // lista pubblica e del portale.
   const { entriesOf, labelOf } = useDomainVocabularies()
-  const CATEGORY_ENTRIES = entriesOf('category') ?? []
+  const CATEGORY_ENTRIES = entriesOf('kb_category') ?? []
   const { steps: kbSteps, byName: kbStepByName, initialStep: kbInitialStep } = useWorkflowSteps('kb_article')
 
   // List state
   const [page,    setPage]    = useState(0)
 
-  // Form state
-  const [showForm,     setShowForm]     = useState(false)
+  // Form state — `?new=1` (dal pulsante della Knowledge Base) apre subito il modulo.
+  const [searchParams] = useSearchParams()
+  const [showForm,     setShowForm]     = useState(() => searchParams.get('new') === '1')
   const [editId,       setEditId]       = useState<string | null>(null)
   const [editArticle,  setEditArticle]  = useState<KBArticle | null>(null)
   const [form,         setForm]         = useState<ArticleForm>(EMPTY_FORM)
@@ -393,7 +396,7 @@ export function KBAdminPage() {
     { key: 'title', label: t('common.title'), render: (v) => (
       <div style={{ fontWeight: 500, color: colors.slateDark, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(v)}</div>
     ) },
-    { key: 'category', label: t('pages.kb.category'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
+    { key: 'category', label: t('pages.kb.category'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{labelOf('kb_category', String(v)) ?? String(v)}</span> },
     { key: 'status', label: 'Status', render: (v) => {
       const status = String(v)
       const meta = kbStepByName.get(status)
@@ -468,7 +471,7 @@ export function KBAdminPage() {
                 {CATEGORY_ENTRIES.map((c) => <option key={c.value} value={c.value}>{c.label ?? c.value}</option>)}
                 {/* Una categoria che il vocabolario non ha più resta visibile, invece di sparire dal campo. */}
                 {form.category && !CATEGORY_ENTRIES.some((c) => c.value === form.category) && (
-                  <option value={form.category}>{labelOf('category', form.category) ?? form.category}</option>
+                  <option value={form.category}>{labelOf('kb_category', form.category) ?? form.category}</option>
                 )}
               </select>
             </div>

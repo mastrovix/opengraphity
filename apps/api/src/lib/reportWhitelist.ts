@@ -14,13 +14,15 @@ export interface ReportWhitelist {
 }
 
 /**
- * Fixed labels that are always reportable (ITSM core + CI base labels).
- * CI type labels from the metamodel are added dynamically per tenant.
+ * Fixed labels that are always reportable (ITSM core + SHIPPED CI type labels).
+ * CI type labels from the metamodel are added dynamically per tenant. No label
+ * without a shipped type (`NetworkDevice`/`VirtualMachine` were: revisione del
+ * 14 set 2026 · F19, pinned by lib/__tests__/staticCiLabels.test.ts).
  */
 export const STATIC_REPORT_LABELS: readonly string[] = [
   'ConfigurationItem', 'CIBase',
   'Application', 'Server', 'Database', 'DatabaseInstance', 'Certificate',
-  'NetworkDevice', 'VirtualMachine', 'BusinessApplication',
+  'BusinessApplication',
   'Incident', 'Change', 'ChangeTask', 'Problem', 'KnownError', 'ServiceRequest',
   'Team', 'User',
   'WorkflowDefinition', 'WorkflowInstance',

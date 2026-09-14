@@ -205,7 +205,7 @@ export async function deleteAssessmentQuestion(_: unknown, args: { id: string },
     const usedCount = used ? Number(used.count) : 0
     if (usedCount > 0) {
       logger.error({ questionId: args.id, usedCount }, '[questionAdmin] impossibile eliminare: in uso')
-      throw new GraphQLError('Impossibile eliminare: la domanda ha risposte associate', { extensions: { code: 'CONFLICT' } })
+      throw new GraphQLError('Cannot delete: the question has responses', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.assessment.questionHasResponses' } } })
     }
     await session.executeWrite((tx) => tx.run(`
       MATCH (q:AssessmentQuestion {id: $id, tenant_id: $tenantId})

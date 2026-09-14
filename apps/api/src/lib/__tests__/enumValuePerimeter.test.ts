@@ -43,8 +43,11 @@ const SENZA_SEDI: Record<string, { reason: string; proof: () => boolean }> = {
 }
 
 describe('il perimetro: ogni vocabolario dice dove vivono i suoi valori', () => {
+  // Un'uscita a SCALA (`environment_risk`: 0..3) non è un vocabolario: i suoi
+  // valori sono della formula e non si rinominano, quindi non hanno sedi.
   const vocabolariDelleMatrici = [...new Set(
-    Object.values(DOMAIN_MATRIX_KINDS).flatMap((spec) => [...spec.inputs, spec.output]),
+    Object.values(DOMAIN_MATRIX_KINDS).flatMap((spec) =>
+      'scale' in spec ? [...spec.inputs] : [...spec.inputs, spec.output]),
   )].sort()
 
   it('le matrici nominano dei vocabolari (se questo cade, la lettura è vuota e il resto è finto)', () => {

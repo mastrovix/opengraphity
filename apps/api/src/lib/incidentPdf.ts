@@ -4,9 +4,10 @@
  * attachment metadata. Pure pdfkit (no external assets), returns a Buffer.
  * Shared loading/rendering lives in ./pdf/ticketDossier.ts.
  */
+import { pdfText } from './pdf/texts.js'
 import { runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import {
-  DASH, fmtDate, orDash, PAGE_MARGIN, COLOR, type Doc, type PdfMeta,
+  DASH, fmtDate, orDash, PAGE_MARGIN, COLOR, type Doc, type PdfMeta, type PdfLocale,
   contentWidth, sectionHeading, keyValue, badge, createPdfBuffer,
 } from './pdf/common.js'
 import {
@@ -121,11 +122,11 @@ export async function buildIncidentPdf(data: IncidentDossier, meta: PdfMeta): Pr
   return createPdfBuffer(
     `Incident Audit Report ${data.incident.number || data.incident.id}`,
     meta,
-    (doc) => renderDossier(doc, data),
+    (doc) => renderDossier(doc, data, meta.locale),
   )
 }
 
-function renderDossier(doc: Doc, data: IncidentDossier): void {
+function renderDossier(doc: Doc, data: IncidentDossier, locale: PdfLocale): void {
   const inc = data.incident
 
   renderTicketDossier(doc, {
@@ -133,48 +134,50 @@ function renderDossier(doc: Doc, data: IncidentDossier): void {
     entityTitle: `${inc.number || inc.id} ${DASH} ${inc.title}`,
     badges: (doc, x, y) => {
       let bx = x
-      bx += badge(doc, bx, y, `SEVERITY: ${(inc.severity || 'n/d').toUpperCase()}`,
+      bx += badge(doc, bx, y, `SEVERITY: ${(inc.severity || pdfText(locale, 'notAvailable')).toUpperCase()}`,
         SEVERITY_COLORS[inc.severity?.toLowerCase() ?? ''] ?? COLOR.muted) + 6
-      bx += badge(doc, bx, y, `STATUS: ${(inc.status || 'n/d').toUpperCase()}`, COLOR.brand) + 6
+      bx += badge(doc, bx, y, `STATUS: ${(inc.status || pdfText(locale, 'notAvailable')).toUpperCase()}`, COLOR.brand) + 6
       if (data.slaStatus) {
         badge(doc, bx, y, data.slaStatus.breached ? 'SLA: BREACHED' : 'SLA: OK',
           data.slaStatus.breached ? '#dc2626' : '#16a34a')
       }
     },
     sections: [
-      slaLine(data),
-      detailsSection(data),
-      affectedCIsSection(data.affectedCIs),
-      workflowHistorySection(data.workflowHistory),
-      commentsSection(data.comments.map((c) => ({ ...c, type: null }))),
-      attachmentsSection(data.attachments),
+      slaLine(data, locale),
+      detailsSection(data, locale),
+      affectedCIsSection(data.affectedCIs, locale),
+      workflowHistorySection(data.workflowHistory, locale),
+      commentsSection(data.comments.map((c) => ({ ...c, type: null })), locale),
+      attachmentsSection(data.attachments, locale),
     ],
   })
 }
 
-function slaLine(data: IncidentDossier) {
+function slaLine(data: IncidentDossier, locale: PdfLocale) {
   return (doc: Doc): void => {
     const sla = data.slaStatus
     if (!sla) return
     doc.fontSize(8.5).font('Helvetica').fillColor(COLOR.muted).text(
-      `SLA ${DASH} risposta entro: ${fmtDate(sla.responseDeadline)} (${sla.responseMet ? 'rispettata' : 'non rispettata'})` +
-      `  |  risoluzione entro: ${fmtDate(sla.resolveDeadline)} (${sla.resolveMet ? 'rispettata' : 'non rispettata'})`,
+      pdfText(locale, 'slaLine', {
+        response: fmtDate(sla.responseDeadline, locale), responseMet: pdfText(locale, sla.responseMet ? 'met' : 'notMet'),
+        resolve: fmtDate(sla.resolveDeadline, locale), resolveMet: pdfText(locale, sla.resolveMet ? 'met' : 'notMet'),
+      }),
       PAGE_MARGIN.left, doc.y, { width: contentWidth(doc) },
     )
   }
 }
 
-function detailsSection(data: IncidentDossier) {
+function detailsSection(data: IncidentDossier, locale: PdfLocale) {
   const inc = data.incident
   return (doc: Doc): void => {
-    sectionHeading(doc, 'Dettagli')
-    keyValue(doc, 'Descrizione', orDash(inc.description))
-    keyValue(doc, 'Categoria', orDash(inc.category))
-    keyValue(doc, 'Creato il', fmtDate(inc.createdAt))
-    keyValue(doc, 'Aggiornato il', fmtDate(inc.updatedAt))
-    keyValue(doc, 'Risolto il', fmtDate(inc.resolvedAt))
+    sectionHeading(doc, pdfText(locale, 'details'))
+    keyValue(doc, pdfText(locale, 'description'), orDash(inc.description))
+    keyValue(doc, pdfText(locale, 'category'), orDash(inc.category))
+    keyValue(doc, pdfText(locale, 'createdAt'), fmtDate(inc.createdAt, locale))
+    keyValue(doc, pdfText(locale, 'updatedAt'), fmtDate(inc.updatedAt, locale))
+    keyValue(doc, pdfText(locale, 'resolvedAt'), fmtDate(inc.resolvedAt, locale))
     keyValue(doc, 'Root cause', orDash(inc.rootCause))
-    keyValue(doc, 'Assegnatario', data.assignee
+    keyValue(doc, pdfText(locale, 'assignee'), data.assignee
       ? `${data.assignee.name} <${data.assignee.email}>`
       : DASH)
     keyValue(doc, 'Team', data.team ? data.team.name : DASH)

@@ -16,6 +16,7 @@ import { TriageSuggestionCard } from '@/components/TriageSuggestionCard'
 import { colors, palette, alpha } from '@/lib/tokens'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
+import { useValueStyle } from '@/hooks/useValueStyle'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -35,19 +36,14 @@ const inputBase: React.CSSProperties = {
   fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", transition: 'border-color 150ms',
 }
 
-const SEVERITY_STYLES: Record<string, { bg: string; border: string; color: string }> = {
-  critical: { bg: 'var(--color-danger-bg)', border: 'var(--color-danger)', color: 'var(--color-trigger-sla-breach)' },
-  high:     { bg: colors.severity.high.bg, border: 'var(--color-brand)', color: 'var(--color-brand)' },
-  medium:   { bg: 'var(--color-warning-bg)', border: 'var(--color-warning)', color: palette.warning.text },
-  low:      { bg: 'var(--color-success-bg)', border: 'var(--color-success)', color: palette.success.text },
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 // v2 — category field + validation feedback
 
 export function CreateIncidentPage() {
   const { t } = useTranslation()
   const { labelOf } = useDomainVocabularies()
+  // F9: il colore della priorità derivata è quello del Dizionario.
+  const styleOf = useValueStyle()
   const navigate = useNavigate()
   const ids = { category: useId(), ciSearch: useId(), teamSearch: useId() }
 
@@ -220,9 +216,9 @@ export function CreateIncidentPage() {
             <div>
               <div style={fieldLabel}>{t('pages.createTicket.derivedPriority')}</div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 6,
-                border: `1.5px solid ${(SEVERITY_STYLES[priority]?.border ?? colors.border)}`,
-                background: SEVERITY_STYLES[priority]?.bg ?? 'var(--color-slate-bg)',
-                color: SEVERITY_STYLES[priority]?.color ?? 'var(--color-slate)', fontWeight: 600 }}>
+                border: `1.5px solid ${priority === '' ? colors.border : styleOf('priority', priority).accent}`,
+                background: priority === '' ? 'var(--color-slate-bg)' : styleOf('priority', priority).bg,
+                color: priority === '' ? 'var(--color-slate)' : styleOf('priority', priority).color, fontWeight: 600 }}>
                 <span>{priority === '' ? '—' : priorityCode(matrix?.priorities ?? [], priority)}</span>
                 <span style={{ textTransform: 'capitalize' }}>
                   {/* L'etichetta della priorità, non il valore: qui si leggeva «Medium». */}

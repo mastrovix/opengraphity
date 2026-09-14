@@ -75,8 +75,8 @@ describe('assertStepActions — campi di update_field', () => {
   })
 
   it('update_field senza campo è configurazione incompleta, non un no-op', () => {
-    expect(thrown(JSON.stringify([{ type: 'update_field', params: {} }])).message).toContain('richiede il campo da scrivere')
-    expect(thrown(JSON.stringify([{ type: 'update_field', params: { field: '  ' } }])).message).toContain('richiede il campo da scrivere')
+    expect(thrown(JSON.stringify([{ type: 'update_field', params: {} }])).message).toContain('needs the field to write')
+    expect(thrown(JSON.stringify([{ type: 'update_field', params: { field: '  ' } }])).message).toContain('needs the field to write')
   })
 
   it('le altre azioni non sono toccate da questo controllo', () => {

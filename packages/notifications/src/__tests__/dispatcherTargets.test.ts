@@ -23,6 +23,7 @@ let teamRows: Array<Record<string, unknown>> = []
 let roleRows: Array<Record<string, unknown>> = []
 let broadcastEmailRows: Array<Record<string, unknown>> = []
 
+vi.mock('../locale.js', () => ({ loadNotificationLocale: vi.fn(async () => ({ language: 'en', timeZone: 'UTC' })), invalidateNotificationLocale: vi.fn() }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => ({
     executeRead: async (fn: (tx: { run: (c: string, p: Record<string, unknown>) => Promise<unknown> }) => Promise<unknown>) =>

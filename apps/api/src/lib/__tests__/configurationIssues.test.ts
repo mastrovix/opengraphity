@@ -46,18 +46,45 @@ vi.mock('../tenantLanguage.js', () => ({
   LINGUA_DI_ULTIMA_ISTANZA: 'en',
 }))
 vi.mock('../provisionTenantData.js', () => ({ tenantProvisioningGaps: vi.fn(async () => gaps) }))
+/** Il fuso del cliente: `null` = nessuno l'ha scelto. */
+let fusoDelCliente: string | null = 'Europe/Rome'
+vi.mock('../tenantTimezone.js', () => ({ tenantTimezone: vi.fn(async () => fusoDelCliente) }))
+/** Le migrazioni pendenti (F8): di default nessuna. */
+let migrazioniPendenti: string[] = []
+vi.mock('../migrationState.js', () => ({ pendingMigrations: vi.fn(async () => migrazioniPendenti) }))
+/** Il calendario di servizio (F6): configurato, e quante policy/contratti in orario lavorativo ci sono. */
+let calendario: unknown = { days: [1, 2, 3, 4, 5], start: '08:00', end: '18:00', holidays: [] }
+let inOrarioLavorativo = 0
+vi.mock('../tenantServiceCalendar.js', () => ({
+  tenantServiceCalendar: vi.fn(async () => calendario),
+  businessHoursUsers: vi.fn(async () => inOrarioLavorativo),
+}))
 /** I team senza interno/esterno: di default nessuno, cosi i test degli altri controlli non li vedono. */
 let senzaProvenienza: { count: number; names: string[] } = { count: 0, names: [] }
 vi.mock('../teamSourcing.js', () => ({ teamsWithoutSourcing: vi.fn(async () => senzaProvenienza) }))
 /** I ticket aperti senza SLA: di default nessuno. */
 let senzaSla: { count: number; numbers: string[] } = { count: 0, numbers: [] }
 vi.mock('../ticketsWithoutSla.js', () => ({ ticketsWithoutSla: vi.fn(async () => senzaSla) }))
+/** I workflow a cui mancano ruoli dei passi (F17): di default nessuno. */
+let ruoliMancanti: Array<Record<string, unknown>> = []
+vi.mock('../workflowStepRoles.js', () => ({ workflowsMissingStepRoles: vi.fn(async () => ruoliMancanti) }))
+/** Le copie dei vocabolari rimaste indietro rispetto ai valori spediti (F20): di default nessuna. */
+let copieIndietro: Array<{ id: string; name: string; newValues: string[] }> = []
+vi.mock('../vocabularyShippedDrift.js', () => ({ vocabulariesBehindShipped: vi.fn(async () => copieIndietro) }))
+/** Le policy SLA con il preavviso non prima della scadenza (giro nel browser): di default nessuna. */
+let preavvisiScaduti: Array<{ name: string; warningMinutes: number; resolveMinutes: number }> = []
+vi.mock('../slaWarningCheck.js', () => ({ slaPoliciesWarningNotBeforeDeadline: vi.fn(async () => preavvisiScaduti) }))
 vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: vi.fn(async () => policy) }))
 vi.mock('../domainMatrix.js', async (importOriginal) => {
   const orig = await importOriginal<typeof import('../domainMatrix.js')>()
   return {
     ...orig,
     domainVocabulary: vi.fn(async (_t: string, name: string) => vocabularies[name] ?? []),
+    // Le uscite a scala (environment_risk) non sono vocabolari: la scala è del prodotto.
+    matrixOutputValues: vi.fn(async (_t: string, kind: keyof typeof orig.DOMAIN_MATRIX_KINDS) => {
+      const spec: { output: string; scale?: readonly string[] } = orig.DOMAIN_MATRIX_KINDS[kind]
+      return spec.scale ?? vocabularies[spec.output] ?? []
+    }),
     loadDomainMatrix: vi.fn(async (_t: string, kind: string) => ({ kind, entries: matrices[kind] ?? {}, isDefault: false, updatedAt: null })),
   }
 })
@@ -85,12 +112,13 @@ function healthy(): void {
   vocabularies = {
     impact: ['low'], urgency: ['low'], priority: ['low'], severity: ['low'],
     service_criticality: ['mission_critical'], event_severity: ['info'], import_severity: ['minor'],
-    change_type: ['standard'], risk_band: ['low'],
+    change_type: ['standard'], risk_band: ['low'], environment: ['production'],
     ci_status: ['active', 'dismesso'],
   }
   matrices = Object.fromEntries(Object.entries(DOMAIN_MATRIX_KINDS).map(([kind, spec]) => {
     const key = spec.inputs.map((i) => vocabularies[i]![0]!).join('|')
-    return [kind, { [key]: vocabularies[spec.output]![0]! }]
+    const scale = (spec as { scale?: readonly string[] }).scale
+    return [kind, { [key]: scale ? scale[0]! : vocabularies[spec.output]![0]! }]
   }))
   policy = { ignore_lifecycle_statuses: [], retired_statuses: ['dismesso'], maintenance_statuses: [] }
   // Ogni valore con la sua etichetta IN TUTTE LE LINGUE: lo stato in cui il
@@ -226,6 +254,98 @@ describe('configurationIssues', () => {
   it('con la lingua configurata, nessun avviso: e una scelta, non un ripiego', async () => {
     linguaDelCliente = 'it'
     expect((await configurationIssues('c-one')).find((i) => i.kind === 'default_language_not_set')).toBeUndefined()
+  })
+
+  /**
+   * Revisione del 14 set 2026 · F7: il fuso ora si sceglie da Organizzazione.
+   * Senza, ogni scadenza SLA/OLA, il digest e le date dei messaggi falliscono:
+   * e un errore, e dice dove si sistema.
+   */
+  it('nessun fuso configurato → errore che rimanda a Organizzazione', async () => {
+    fusoDelCliente = null
+    const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'timezone_not_set')
+    expect(issue).toMatchObject({ severity: 'error', where: '/settings/organization' })
+    fusoDelCliente = 'Europe/Rome'
+    expect((await configurationIssues('c-one')).find((i) => i.kind === 'timezone_not_set')).toBeUndefined()
+  })
+
+  /** Revisione del 14 set 2026 · F8: le migrazioni pendenti si dicono all'admin, con quali sono. */
+  it('migrazioni pendenti → errore con il numero e i nomi', async () => {
+    migrazioniPendenti = ['20260924_1000_x', '20260924_1010_y']
+    const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'migrations_pending')
+    expect(issue).toMatchObject({ severity: 'error', where: null, params: { count: '2', migrations: '20260924_1000_x, 20260924_1010_y' } })
+    migrazioniPendenti = []
+    expect((await configurationIssues('c-one')).find((i) => i.kind === 'migrations_pending')).toBeUndefined()
+  })
+
+  /**
+   * Revisione del 14 set 2026 · F6: senza calendario, una policy SLA o un
+   * contratto OLA in orario lavorativo non sa calcolare le scadenze. Errore
+   * solo se qualcuno lo usa.
+   */
+  it('policy o contratti in orario lavorativo senza calendario → errore; senza chi lo usa → silenzio', async () => {
+    calendario = null
+    inOrarioLavorativo = 2
+    const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'service_calendar_not_set')
+    expect(issue).toMatchObject({ severity: 'error', where: '/settings/organization', params: { count: '2' } })
+    inOrarioLavorativo = 0
+    expect((await configurationIssues('c-one')).find((i) => i.kind === 'service_calendar_not_set')).toBeUndefined()
+    calendario = { days: [1, 2, 3, 4, 5], start: '08:00', end: '18:00', holidays: [] }
+  })
+
+  /**
+   * Revisione del 14 set 2026 · F17: un workflow a cui manca la categoria o lo
+   * scopo che il codice cerca. Obbligatori → errore (un'operazione si ferma);
+   * facoltativi → avviso (un comportamento si spegne in silenzio). Una voce per
+   * workflow, con il nome, e i valori mancanti come DATI.
+   */
+  /**
+   * Revisione del 14 set 2026 · F20: il prodotto ha spedito valori nuovi in un
+   * vocabolario che il cliente ha personalizzato, e la copia non li ha. Avviso,
+   * con i nomi: si decide dal Dizionario (adottarli o tenerli fuori).
+   */
+  /**
+   * Giro nel browser del 14 set 2026: una migrazione aveva messo il preavviso
+   * a 30 minuti su tutte le policy, anche su quella da 30 minuti di risoluzione.
+   * L'avviso «SLA about to be breached» partiva alla creazione di ogni ticket.
+   * Il resolver ora lo rifiuta, ma i dati già scritti li dice la diagnostica.
+   */
+  it('policy SLA con il preavviso non prima della scadenza → errore con i nomi', async () => {
+    preavvisiScaduti = [{ name: 'Incident di rete', warningMinutes: 30, resolveMinutes: 30 }]
+    const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'sla_warning_not_before_deadline')
+    expect(issue).toEqual({
+      kind: 'sla_warning_not_before_deadline', severity: 'error', where: '/admin/sla-policies',
+      params: { count: '1', details: '«Incident di rete»: 30 / 30 min' },
+    })
+    preavvisiScaduti = []
+    expect((await configurationIssues('c-one')).find((i) => i.kind === 'sla_warning_not_before_deadline')).toBeUndefined()
+  })
+
+  it('copie dei vocabolari indietro rispetto ai valori spediti → avviso con vocabolari e valori', async () => {
+    copieIndietro = [{ id: 'c-1', name: 'priority', newValues: ['critical'] }, { id: 'c-2', name: 'environment', newValues: ['dr', 'lab'] }]
+    const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'vocabulary_behind_shipped')
+    expect(issue).toEqual({
+      kind: 'vocabulary_behind_shipped', severity: 'warning', where: '/settings/enum-designer',
+      params: { count: '2', details: '«priority»: critical · «environment»: dr, lab' },
+    })
+    copieIndietro = []
+    expect((await configurationIssues('c-one')).find((i) => i.kind === 'vocabulary_behind_shipped')).toBeUndefined()
+  })
+
+  it('workflow senza i ruoli dei passi → errore per gli obbligatori, avviso per i facoltativi', async () => {
+    ruoliMancanti = [
+      { workflow: 'Incident — Rinominato', entityType: 'incident', required: { categories: ['resolved', 'escalated'], purposes: [] }, optional: { categories: [], purposes: [] } },
+      { workflow: 'Change RFC', entityType: 'change', required: { categories: [], purposes: [] }, optional: { categories: [], purposes: ['implementation'] } },
+    ]
+    const issues = (await configurationIssues('c-one')).filter((i) => i.kind.startsWith('workflow_'))
+    expect(issues).toEqual([
+      { kind: 'workflow_step_categories_missing', severity: 'error', where: '/workflow',
+        params: { workflow: 'Incident — Rinominato', entityType: 'incident', missing: 'resolved, escalated' } },
+      { kind: 'workflow_optional_step_purposes_missing', severity: 'warning', where: '/workflow',
+        params: { workflow: 'Change RFC', entityType: 'change', missing: 'implementation' } },
+    ])
+    ruoliMancanti = []
+    expect((await configurationIssues('c-one')).filter((i) => i.kind.startsWith('workflow_'))).toEqual([])
   })
 
   /**

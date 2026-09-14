@@ -177,6 +177,6 @@ describe('il varco di prima (uscire dal passo di scopo approval) resta', () => {
 
   it('verso il passo di valutazione si rimanda a «Rigetta»', async () => {
     await expect(executeChangeTransition(null, { changeId: 'chg-1', toStep: 'valutazione' }, admin))
-      .rejects.toThrow(/Per rigettare usa "Rigetta"/)
+      .rejects.toThrow(/To reject, use "Reject"/)
   })
 })

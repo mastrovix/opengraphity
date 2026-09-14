@@ -88,7 +88,7 @@ export function UnifiedLinkedTickets({ title, types, excludeId }: { title: strin
 
       {showSearch && active && (
         <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
             {types.map((t) => (
               <button key={t.kind} type="button" onClick={() => { setActiveKind(t.kind); setTerm('') }}
                 style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 'var(--font-size-label)', fontWeight: 600, background: activeKind === t.kind ? 'var(--color-brand)' : 'transparent', color: activeKind === t.kind ? colors.white : 'var(--color-slate)' }}>

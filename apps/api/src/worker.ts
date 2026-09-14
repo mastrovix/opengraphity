@@ -45,6 +45,8 @@ import { runGracefulShutdown, type Closable } from './lib/shutdown.js'
 // derivate dal metamodello e prima non veniva mai avvisato dei cambiamenti.
 import { startMetamodelBus, stopMetamodelBus } from './lib/metamodelBus.js'
 import { logger } from './lib/logger.js'
+import { assertMigrationsAppliedAtBoot } from './lib/migrationState.js'
+import { startInAppBus, stopInAppBus } from './lib/inAppBus.js'
 import type { Worker } from 'bullmq'
 
 registerSessionTracker((durationMs, query) => {
@@ -53,7 +55,11 @@ registerSessionTracker((durationMs, query) => {
 })
 
 async function main() {
+  // Revisione del 14 set 2026 · F8: come l'API (lib/migrationState.ts).
+  await assertMigrationsAppliedAtBoot({ require: config.requireAppliedMigrations, log: logger })
   startMetamodelBus()
+  // F10: anche il worker consegna notifiche (servizi, allarmi): si salvano e si pubblicano.
+  startInAppBus()
 
   const workers: Worker[] = []
   const consumers: Closable[] = []
@@ -96,6 +102,7 @@ async function main() {
       ],
       resources: [
         { name: 'metamodel-bus',    close: () => stopMetamodelBus() },
+        { name: 'inapp-bus',        close: () => stopInAppBus() },
         { name: 'bullmq-queues',    close: () => closeAllQueues() },
         { name: 'event-connection', close: () => closeConnection() },
         { name: 'neo4j-driver',     close: () => closeDriver() },

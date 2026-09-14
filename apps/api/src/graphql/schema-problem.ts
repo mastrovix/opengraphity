@@ -45,6 +45,7 @@ export function problemSDL(): string {
     id: ID!
     text: String!
     type: String!
+    isInternal: Boolean!
     createdAt: String!
     updatedAt: String
     author: User

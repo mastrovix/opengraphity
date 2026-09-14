@@ -8,6 +8,7 @@
  * Usage: pnpm --filter @opengraphity/api seed:automation -- --tenant=<slug>
  */
 
+import { DEFAULT_SLA_WARNING_MINUTES } from '@opengraphity/types'
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import { resolveTenantArg } from './lib/scriptArgs.js'
@@ -33,7 +34,8 @@ async function main(TENANT: string) {
         MERGE (p:SLAPolicyNode {tenant_id: $tenantId, name: $name})
         ON CREATE SET p.id = $id, p.entity_type = $entityType,
           p.priority = $priority, p.category = $category, p.team_id = $teamId,
-          p.timezone = 'Europe/Rome',
+          // Nessun fuso proprio: segue quello del cliente (revisione del 14 set 2026 · F7).
+          p.warning_minutes = $warningMinutes,
           p.response_minutes = $responseMinutes, p.resolve_minutes = $resolveMinutes,
           p.business_hours = $businessHours, p.enabled = true,
           p.created_at = $now, p.updated_at = $now
@@ -42,7 +44,7 @@ async function main(TENANT: string) {
       `, {
         tenantId: TENANT, id: uuidv4(), name: p.name,
         entityType: p.entity_type, priority: p.priority, category: p.category, teamId: p.team_id,
-        responseMinutes: p.response_minutes, resolveMinutes: p.resolve_minutes,
+        responseMinutes: p.response_minutes, resolveMinutes: p.resolve_minutes, warningMinutes: DEFAULT_SLA_WARNING_MINUTES,
         businessHours: p.business_hours, now: new Date().toISOString(),
       }))
     }

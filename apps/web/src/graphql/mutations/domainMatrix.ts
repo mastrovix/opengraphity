@@ -25,6 +25,12 @@ export const UPDATE_PRE_APPROVED_CHANGE_TYPES = gql`
  * arrivare a 100: una scala con un buco lascerebbe dei punteggi senza fascia,
  * cioè un errore nel momento peggiore — l'apertura di una change.
  */
+export const UPDATE_CHANGE_ENVIRONMENT_WEIGHT = gql`
+  mutation UpdateChangeEnvironmentWeight($weight: Int!) {
+    updateChangeEnvironmentWeight(weight: $weight) { weight isDefault }
+  }
+`
+
 export const UPDATE_RISK_BAND_THRESHOLDS = gql`
   mutation UpdateRiskBandThresholds($entries: [RiskBandThresholdInput!]!) {
     updateRiskBandThresholds(entries: $entries) {
@@ -47,6 +53,18 @@ export const UPDATE_RISK_BAND_THRESHOLDS = gql`
 export const SET_TENANT_DEFAULT_LANGUAGE = gql`
   mutation SetTenantDefaultLanguage($language: String!) {
     setTenantDefaultLanguage(language: $language) { available defaultLanguage fallback }
+  }
+`
+
+export const SET_TENANT_TIMEZONE = gql`
+  mutation SetTenantTimezone($timezone: String!) {
+    setTenantTimezone(timezone: $timezone) { timezone available }
+  }
+`
+
+export const SET_TENANT_SERVICE_CALENDAR = gql`
+  mutation SetTenantServiceCalendar($calendar: ServiceCalendarInput!) {
+    setTenantServiceCalendar(calendar: $calendar) { days start end holidays }
   }
 `
 

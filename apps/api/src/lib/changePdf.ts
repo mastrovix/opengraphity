@@ -5,11 +5,12 @@
  * attachment metadata. Pure pdfkit, returns a Buffer. Shared parts live in
  * ./pdf/ticketDossier.ts.
  */
+import { pdfText } from './pdf/texts.js'
 import { runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import { ciTypeFromLabels } from './ciTypeFromLabels.js'
 import { ASSESSMENT_ROLE } from './taskStatus.js'
 import {
-  DASH, fmtDate, orDash, PAGE_MARGIN, COLOR, type Doc, type PdfMeta,
+  DASH, fmtDate, orDash, PAGE_MARGIN, COLOR, type Doc, type PdfMeta, type PdfLocale,
   ensureSpace, sectionHeading, emptyLine, drawTable, keyValue, badge, createPdfBuffer,
 } from './pdf/common.js'
 import {
@@ -200,11 +201,11 @@ export async function buildChangePdf(data: ChangeDossier, meta: PdfMeta): Promis
   return createPdfBuffer(
     `Change Audit Report ${data.change.code || data.change.id}`,
     meta,
-    (doc) => renderDossier(doc, data),
+    (doc) => renderDossier(doc, data, meta.locale),
   )
 }
 
-function renderDossier(doc: Doc, data: ChangeDossier): void {
+function renderDossier(doc: Doc, data: ChangeDossier, locale: PdfLocale): void {
   const ch = data.change
 
   renderTicketDossier(doc, {
@@ -223,41 +224,41 @@ function renderDossier(doc: Doc, data: ChangeDossier): void {
       }
     },
     sections: [
-      detailsSection(data),
-      ciTasksSection(data.affectedCIs),
-      workflowHistorySection(data.workflowHistory),
-      auditTrailSection(data.auditTrail),
-      attachmentsSection(data.attachments),
+      detailsSection(data, locale),
+      ciTasksSection(data.affectedCIs, locale),
+      workflowHistorySection(data.workflowHistory, locale),
+      auditTrailSection(data.auditTrail, locale),
+      attachmentsSection(data.attachments, locale),
     ],
   })
 }
 
-function detailsSection(data: ChangeDossier) {
+function detailsSection(data: ChangeDossier, locale: PdfLocale) {
   const ch = data.change
   return (doc: Doc): void => {
-    sectionHeading(doc, 'Dettagli')
-    keyValue(doc, 'Perché', orDash(ch.why))
-    keyValue(doc, 'Cosa', orDash(ch.what))
-    keyValue(doc, 'Richiedente', data.requester
+    sectionHeading(doc, pdfText(locale, 'details'))
+    keyValue(doc, pdfText(locale, 'why'), orDash(ch.why))
+    keyValue(doc, pdfText(locale, 'what'), orDash(ch.what))
+    keyValue(doc, pdfText(locale, 'requester'), data.requester
       ? `${data.requester.name} <${data.requester.email}>`
       : DASH)
     keyValue(doc, 'Change owner', data.changeOwner
       ? `${data.changeOwner.name} <${data.changeOwner.email}>`
       : DASH)
-    keyValue(doc, 'Approvazione', ch.approvalRoute || ch.approvalStatus
-      ? `${orDash(ch.approvalRoute)} ${DASH} ${orDash(ch.approvalStatus)} (${fmtDate(ch.approvalAt)})`
+    keyValue(doc, pdfText(locale, 'approval'), ch.approvalRoute || ch.approvalStatus
+      ? `${orDash(ch.approvalRoute)} ${DASH} ${orDash(ch.approvalStatus)} (${fmtDate(ch.approvalAt, locale)})`
       : DASH)
     keyValue(doc, 'Risk score', ch.aggregateRiskScore != null ? String(ch.aggregateRiskScore) : DASH)
-    keyValue(doc, 'Creato il', fmtDate(ch.createdAt))
-    keyValue(doc, 'Aggiornato il', fmtDate(ch.updatedAt))
+    keyValue(doc, pdfText(locale, 'createdAt'), fmtDate(ch.createdAt, locale))
+    keyValue(doc, pdfText(locale, 'updatedAt'), fmtDate(ch.updatedAt, locale))
   }
 }
 
 /** Per-CI block with the task table (assessments, plan, validation, deployment, review). */
-function ciTasksSection(cis: ChangeCIDossier[]) {
+function ciTasksSection(cis: ChangeCIDossier[], locale: PdfLocale) {
   return (doc: Doc): void => {
-    sectionHeading(doc, `CI impattati (${cis.length})`)
-    if (!cis.length) { emptyLine(doc, 'Nessun CI collegato.'); return }
+    sectionHeading(doc, pdfText(locale, 'affectedCIs', { count: cis.length }))
+    if (!cis.length) { emptyLine(doc, pdfText(locale, 'noCIs')); return }
     for (const ci of cis) {
       ensureSpace(doc, 60)
       doc.moveDown(0.3)
@@ -265,7 +266,7 @@ function ciTasksSection(cis: ChangeCIDossier[]) {
         .text(ci.name, PAGE_MARGIN.left, doc.y, { continued: true })
       doc.fontSize(8.5).font('Helvetica').fillColor(COLOR.muted)
         .text(`   ${ci.type}${ci.environment ? ` ${DASH} ${ci.environment}` : ''}` +
-          `${ci.ciPhase ? ` ${DASH} fase: ${ci.ciPhase}` : ''}` +
+          `${ci.ciPhase ? ` ${DASH} ${pdfText(locale, 'phase')}: ${ci.ciPhase}` : ''}` +
           `${ci.riskScore != null ? ` ${DASH} risk score: ${ci.riskScore}` : ''}`)
       doc.moveDown(0.2)
       doc.x = PAGE_MARGIN.left
@@ -278,27 +279,27 @@ function ciTasksSection(cis: ChangeCIDossier[]) {
           orDash(t.code),
           orDash(t.status),
           t.score != null ? `score: ${t.score}` : orDash(t.result),
-          fmtDate(t.completedAt),
+          fmtDate(t.completedAt, locale),
         ])
       }
       pushTask('Assessment Functional', ci.assessmentOwner)
       pushTask('Assessment Technical',  ci.assessmentSupport)
-      pushTask('Piano di deploy',       ci.deployPlan)
+      pushTask(pdfText(locale, 'deployPlan'), ci.deployPlan)
       pushTask('Validation',            ci.validation)
       pushTask('Deployment',            ci.deployment)
       pushTask('Review',                ci.review)
 
       if (!rows.length) {
-        emptyLine(doc, 'Nessun task per questo CI.')
+        emptyLine(doc, pdfText(locale, 'noTasksForCI'))
         doc.moveDown(0.3)
       } else {
         drawTable(doc,
           [
-            { header: 'Task',        width: 125 },
-            { header: 'Codice',      width: 95 },
+            { header: pdfText(locale, 'colTask'),      width: 125 },
+            { header: pdfText(locale, 'colCode'),      width: 95 },
             { header: 'Status',      width: 80 },
-            { header: 'Esito/Score', width: 90 },
-            { header: 'Completato',  width: 105 },
+            { header: pdfText(locale, 'colOutcome'),   width: 90 },
+            { header: pdfText(locale, 'colCompleted'), width: 105 },
           ],
           rows,
         )
@@ -307,19 +308,19 @@ function ciTasksSection(cis: ChangeCIDossier[]) {
   }
 }
 
-function auditTrailSection(entries: ChangeDossier['auditTrail']) {
+function auditTrailSection(entries: ChangeDossier['auditTrail'], locale: PdfLocale) {
   return (doc: Doc): void => {
-    sectionHeading(doc, `Audit trail (${entries.length})`)
-    if (!entries.length) { emptyLine(doc, 'Nessuna voce di audit.'); return }
+    sectionHeading(doc, pdfText(locale, 'auditTrail', { count: entries.length }))
+    if (!entries.length) { emptyLine(doc, pdfText(locale, 'noAudit')); return }
     drawTable(doc,
       [
-        { header: 'Data',      width: 95 },
-        { header: 'Azione',    width: 120 },
-        { header: 'Utente',    width: 100 },
-        { header: 'Dettaglio', width: 180 },
+        { header: pdfText(locale, 'colDate'),   width: 95 },
+        { header: pdfText(locale, 'colAction'), width: 120 },
+        { header: pdfText(locale, 'colUser'),   width: 100 },
+        { header: pdfText(locale, 'colDetail'), width: 180 },
       ],
       entries.map((e) => [
-        fmtDate(e.timestamp),
+        fmtDate(e.timestamp, locale),
         e.action.replace(/_/g, ' '),
         orDash(e.actor),
         orDash(e.detail),

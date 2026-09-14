@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { SeverityBadge, RoleBadge, RiskBadge, riskLevel, SEVERITY_STYLE, PhaseBadge, StatusLabel } from './badges'
+import { SeverityBadge, RoleBadge, RiskBadge, riskLevel, PhaseBadge, StatusLabel } from './badges'
+import { palette } from '@/lib/tokens'
 import { DomainVocabularyContext } from '@/contexts/DomainVocabularyContext'
 import { NEUTRAL_VALUE_STYLE } from '@/lib/domainStyle'
 import { enumLabel } from '@/lib/ciEnums'
@@ -18,11 +19,14 @@ function withVocabulary(
   ui: React.ReactElement,
   /** Le etichette del cliente (ondata 1): assenti per default, come su un tenant non ancora migrato. */
   labels: Readonly<Record<string, string>> = {},
+  /** I colori del Dizionario (revisione del 14 set 2026 · F9). */
+  valueColors: Readonly<Record<string, string>> = {},
 ) {
   return render(
     <DomainVocabularyContext.Provider value={{
       valuesOf:  () => values,
       labelOf:   (_n, v) => labels[v] ?? null,
+      colorOf:   (_n, v) => (valueColors[v] as never) ?? null,
       entriesOf: () => (values ? values.map((v) => ({ value: v, label: labels[v] ?? v, labels: [] })) : null),
       loading: false,
       error: null,
@@ -32,47 +36,47 @@ function withVocabulary(
   )
 }
 
+const SEVERITIES = ['critical', 'high', 'medium', 'low']
+const FACTORY_COLORS = { critical: 'danger', high: 'orange', medium: 'warning', low: 'success' } as const
+
 describe('SeverityBadge', () => {
-  it.each(Object.keys(SEVERITY_STYLE))('%s → pill con la palette dedicata', (sev) => {
-    withVocabulary(Object.keys(SEVERITY_STYLE), <SeverityBadge value={sev} />)
+  /**
+   * Revisione del 14 set 2026 · F9: il colore viene dal Dizionario del cliente
+   * (`colorOf`), non da `SEVERITY_STYLE` scritto qui. Un valore rinominato o
+   * aggiunto dal cliente col suo colore si vede col suo colore.
+   */
+  it.each(SEVERITIES)('%s → il colore che il Dizionario gli assegna', (sev) => {
+    withVocabulary(SEVERITIES, <SeverityBadge value={sev} />, {}, FACTORY_COLORS)
     const pill = screen.getByText(enumLabel(sev))
-    expect(pill).toHaveStyle({ background: SEVERITY_STYLE[sev]!.bg, color: SEVERITY_STYLE[sev]!.color, textTransform: 'uppercase' })
+    const family = palette[FACTORY_COLORS[sev as keyof typeof FACTORY_COLORS]]
+    expect(pill).toHaveStyle({ background: family.tint, color: family.text, textTransform: 'uppercase' })
     expect(consoleError).not.toHaveBeenCalled()
   })
-  it('critical e low hanno colori diversi (prima erano testo grigio identico)', () => {
-    expect(SEVERITY_STYLE['critical']).not.toEqual(SEVERITY_STYLE['low'])
+  it('un valore del cliente (p1) prende il colore che il cliente gli ha dato', () => {
+    withVocabulary(['p1', 'p2'], <SeverityBadge value="p1" />, { p1: 'Urgente' }, { p1: 'danger' })
+    expect(screen.getByText('Urgente')).toHaveStyle({ background: palette.danger.tint, color: palette.danger.text })
   })
   it('valore assente → "—"', () => {
     withVocabulary(null, <SeverityBadge value={null} />)
     expect(screen.getByText('—')).toBeInTheDocument()
   })
 
-  /**
-   * CONTRATTO RINEGOZIATO (ondata 7 · D-15). Prima questo test pretendeva che
-   * `<SeverityBadge value="blocker" />` rendesse una pastiglia **rossa piena**
-   * con `console.error`: la regola «niente fallback silenziosi» applicata a un
-   * valore che il cliente ha tutto il diritto di avere nel suo vocabolario. In
-   * una lista di incident diventavano cinquanta pastiglie rosse e cinquanta
-   * righe di errore in console, e la personalizzazione sembrava rotta.
-   *
-   * Adesso i due casi sono distinti, e sono tre righe di test invece di una.
-   */
-  it('valore NEL vocabolario del cliente senza stile assegnato → neutro e silenzioso', () => {
-    withVocabulary([...Object.keys(SEVERITY_STYLE), 'blocker'], <SeverityBadge value="blocker" />)
+  it('valore NEL vocabolario del cliente senza colore assegnato → neutro e silenzioso', () => {
+    withVocabulary([...SEVERITIES, 'blocker'], <SeverityBadge value="blocker" />, {}, FACTORY_COLORS)
     expect(screen.getByText('Blocker')).toHaveStyle({ background: NEUTRAL_VALUE_STYLE.bg, color: NEUTRAL_VALUE_STYLE.color })
     expect(consoleError).not.toHaveBeenCalled()
   })
   it('valore FUORI dal vocabolario del cliente → stile rotto (rosso) e console.error', () => {
-    withVocabulary(Object.keys(SEVERITY_STYLE), <SeverityBadge value="blocker" />)
+    withVocabulary(SEVERITIES, <SeverityBadge value="blocker" />, {}, FACTORY_COLORS)
     expect(screen.getByText('Blocker')).toHaveStyle({ background: BROKEN_BG, color: 'var(--color-white)' })
-    expect(consoleError).toHaveBeenCalledWith('[SEVERITY_STYLE/severity] "blocker" is not in the vocabulary of this tenant (critical, high, medium, low)')
+    expect(consoleError).toHaveBeenCalledWith('[severity] "blocker" is not in the vocabulary of this tenant (critical, high, medium, low)')
   })
   it('vocabolario non disponibile → neutro e console.warn (non si accusa di essere rotto ciò che non si è potuto verificare)', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     withVocabulary(null, <SeverityBadge value="blocker" />)
     expect(screen.getByText('Blocker')).toHaveStyle({ background: NEUTRAL_VALUE_STYLE.bg })
     expect(consoleError).not.toHaveBeenCalled()
-    expect(warn).toHaveBeenCalledWith('[SEVERITY_STYLE/severity] "blocker" has no style and the vocabulary of this tenant is unavailable: neutral style')
+    expect(warn).toHaveBeenCalledWith('[severity] "blocker" has no color and the vocabulary of this tenant is unavailable: neutral style')
   })
 })
 

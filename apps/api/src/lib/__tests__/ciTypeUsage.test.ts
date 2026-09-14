@@ -45,14 +45,14 @@ describe('loadCITypeUsage', () => {
       { kind: 'itil_relation_rules', count: 2 },
       { kind: 'custom_widgets', count: 1 },
     ])
-    expect(describeCITypeUsage(usage)).toBe('2 regole di relazione ITIL (Impostazioni → Relazioni ITIL); 1 widget della dashboard')
+    expect(describeCITypeUsage(usage)).toBe('ITIL relation rules (Settings → ITIL relations): 2; dashboard widgets: 1')
   })
 
   it('nessuna riga o un conteggio non numerico → errore (mai «non è usato» per difetto)', async () => {
     runQueryOne.mockResolvedValue(null)
-    await expect(loadCITypeUsage({} as never, 'c-two', 'ct-1', 'x', 'X')).rejects.toThrow(/non ha restituito righe/)
+    await expect(loadCITypeUsage({} as never, 'c-two', 'ct-1', 'x', 'X')).rejects.toThrow(/returned no rows/)
     runQueryOne.mockResolvedValue({ ...ZERO, cis: 'molti' })
-    await expect(loadCITypeUsage({} as never, 'c-two', 'ct-1', 'x', 'X')).rejects.toThrow(/non numerico/)
+    await expect(loadCITypeUsage({} as never, 'c-two', 'ct-1', 'x', 'X')).rejects.toThrow(/non-numeric count/)
   })
 
   it('i criteri di un gruppo dinamico sono un CSV: il confronto è sulla voce, non sulla sottostringa', () => {

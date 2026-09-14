@@ -25,7 +25,7 @@ export function calculateRiskScore(params: RiskScoreParams): RiskScoreResult {
   const blastScore = Math.min(params.blastRadiusCIs * 10, 40)
   if (blastScore > 0) {
     score += blastScore
-    details.push(`+${blastScore} (${params.blastRadiusCIs} CI nel blast radius)`)
+    details.push(`+${blastScore} (${params.blastRadiusCIs} CI in the blast radius)`)
   }
 
   const incidentScore = params.openIncidents * 15

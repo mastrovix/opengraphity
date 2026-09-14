@@ -18,6 +18,14 @@ import { useNotificationContext } from '@/contexts/NotificationContext'
 import { NotificationPanel } from '@/components/ui/NotificationPanel'
 import { posizioneNelMenu } from './menu'
 
+/** Dove porta il primo segmento di un indirizzo che non è a sua volta una pagina ('' = nessun link). */
+const FIRST_SEGMENT_PAGE: Readonly<Record<string, string>> = {
+  ci:       '/cmdb',
+  cis:      '/cmdb',
+  tasks:    '/my-tasks',
+  settings: '',
+}
+
 export function Breadcrumb() {
   const { t } = useTranslation()
   const { pathname } = useLocation()
@@ -84,7 +92,12 @@ export function Breadcrumb() {
   } else {
     parts.forEach((part, i) => {
       const path = '/' + parts.slice(0, i + 1).join('/')
-      crumbs.push({ key: path, label: formatSegment(part), to: path })
+      // Il primo segmento di un indirizzo fuori dal menu non sempre è una
+      // pagina: `/ci`, `/cis` e `/tasks` non esistono (la lista è la CMDB o i
+      // miei compiti), `/settings` è solo un gruppo. Prima erano link a «Page
+      // not found» (giro nel browser del 14 set 2026, BreadcrumbLinks.test.tsx).
+      const to = i === 0 && part in FIRST_SEGMENT_PAGE ? FIRST_SEGMENT_PAGE[part]! : path
+      crumbs.push({ key: path, label: formatSegment(part), to: to === '' ? null : to })
     })
   }
 

@@ -12,6 +12,7 @@ let userRows: Array<Record<string, unknown>> = []
 let channelRows: Array<Record<string, unknown>> = []
 let ruleRows: Array<Record<string, unknown>> = []
 
+vi.mock('../locale.js', () => ({ loadNotificationLocale: vi.fn(async () => ({ language: 'en', timeZone: 'UTC' })), invalidateNotificationLocale: vi.fn() }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => ({
     executeRead: async (fn: (tx: { run: (c: string, p: Record<string, unknown>) => Promise<unknown> }) => Promise<unknown>) =>
@@ -180,8 +181,8 @@ describe('NotificationDispatcher — Slack routing per tenant', () => {
     expect(url).toBe('https://hooks.slack.example/s-assigned')
     const text = init.body
     expect(text).toContain('DB down')
-    expect(text).toContain('*CI Affected:* db-01')
-    expect(text).toContain('*Assegnato a:* Mario')
+    expect(text).toContain('*Affected CI:* db-01')
+    expect(text).toContain('*Assigned to:* Mario')
     expect(sendToTenant).not.toHaveBeenCalled()
   })
 
@@ -258,15 +259,15 @@ describe('NotificationDispatcher — Slack routing per tenant', () => {
   it('sla.breached on an incident → slack channels subscribed to sla_breach with a synthetic title', async () => {
     ruleRows = [rule(['slack'])]
     channelRows = [slackChannel('s-sla', ['sla_breach']), slackChannel('s-asg', ['assigned'])]
-    await new NotificationDispatcher().process(event('sla.breached', { entity_type: 'incident', entity_id: 'inc-9', breached_at: 'x' }))
+    await new NotificationDispatcher().process(event('sla.breached', { entity_type: 'incident', entity_id: 'inc-9', breached_at: 'x', number: 'INC00000009', title: 'Rete giù' }))
     expect(fetchMock.mock.calls.map(c => c[0])).toEqual(['https://hooks.slack.example/s-sla'])
-    expect(fetchMock.mock.calls[0]![1].body).toContain('SLA breach su incident inc-9')
+    expect(fetchMock.mock.calls[0]![1].body).toContain('SLA breached on INC00000009: Rete giù')
   })
 
   it('sla.breached on a problem with a teams channel lacking webhook_url → explicit error', async () => {
     ruleRows = [rule(['teams'])]
     channelRows = [teamsChannel('t-broken', ['sla_breach'], null)]
-    await expect(new NotificationDispatcher().process(event('sla.breached', { entity_type: 'problem', entity_id: 'prb-1' })))
+    await expect(new NotificationDispatcher().process(event('sla.breached', { entity_type: 'problem', entity_id: 'prb-1', number: 'PRB00000001', title: 'Rete giù' })))
       .rejects.toThrow('Teams NotificationChannel t-broken has no webhook_url')
   })
 })
@@ -282,7 +283,9 @@ describe('NotificationDispatcher — email channel', () => {
     expect(sendEmail).not.toHaveBeenCalled()
   })
 
-  it('subject = [tenant] title: message(≤80 chars); html carries the entity link; recipients batched by 50', async () => {
+  // NT-2: oggetto e titolo sono la FRASE della chiave nella lingua del cliente
+  // (prima: «[t1] notification.incident.created.title: …»).
+  it('subject = translated title: message(≤80 chars); html carries the entity link; recipients batched by 50', async () => {
     ruleRows = [rule(['email'])]
     userRows = Array.from({ length: 120 }, (_, i) => ({ email: `u${i}@x.example` }))
     const longTitle = 'x'.repeat(200)
@@ -292,8 +295,11 @@ describe('NotificationDispatcher — email channel', () => {
     const sizes = sendEmail.mock.calls.map(c => c[0].to.length)
     expect(sizes).toEqual([50, 50, 20])
     const first = sendEmail.mock.calls[0]![0]
-    expect(first.subject.startsWith('[t1] notification.incident.created.title: ')).toBe(true)
-    expect(first.subject.length).toBe('[t1] notification.incident.created.title: '.length + 80)
+    expect(first.subject.startsWith('New incident: ')).toBe(true)
+    expect(first.subject.length).toBe('New incident: '.length + 80)
+    expect(first.subject).not.toContain('notification.')
+    expect(first.html).toContain('>New incident</h2>')
+    expect(first.html).toContain('View details')
     expect(first.html).toContain('/incidents/inc-1')
     expect(first.to[0]).toBe('u0@x.example')
   })

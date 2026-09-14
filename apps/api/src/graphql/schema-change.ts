@@ -6,6 +6,8 @@ export function changeSDL(): string {
     id:                   ID!
     tenantId:             String!
     code:                 String!
+    """Lo stesso valore di code, sotto il nome che hanno incident, problem e richieste."""
+    number:               String!
     title:                String!
     why:                  String
     what:                 String
@@ -44,6 +46,7 @@ export function changeSDL(): string {
     approvedByName: String
     approvedAt:     String
     canApprove:     Boolean!  # l'utente corrente può approvare questo requisito
+    onBehalf:       Boolean!  # vero quando l'utente approva come admin a nome di un team di cui non fa parte
   }
 
   # Riferimento leggero a un ticket collegato alla change.
@@ -168,7 +171,11 @@ export function changeSDL(): string {
     timestamp: String!
     action:    String!
     actor:     User
+    """Il dettaglio in inglese; con detailKey la frase si compone nella lingua di chi legge."""
     detail:    String
+    detailKey:    String
+    """I dati della frase, JSON."""
+    detailParams: String
   }
 
   type MyTask {

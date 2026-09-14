@@ -10,8 +10,13 @@ import { parseActions, type ActionType } from '../../lib/actionExecutor.js'
 import { ValidationError } from '../../lib/errors.js'
 import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
 import type { Session } from 'neo4j-driver'
-import { selectSLAForEntity, getTenantTimezone } from '@opengraphity/sla'
-import { SLA_ENTITY_TYPES, SLA_CATEGORY_ENTITY_TYPES } from '@opengraphity/types'
+import { selectSLAForEntity, assertRuleSLAMinutes } from '@opengraphity/sla'
+import { assertTimeZone } from '../../lib/tenantTimezone.js'
+import {
+  SLA_ENTITY_TYPES, SLA_CATEGORY_ENTITY_TYPES,
+  AUTOMATION_ENTITY_TYPES, TRIGGER_EVENT_TYPES, RULE_EVENT_TYPES, AUTOMATION_EVENT_ENTITIES, automationEventSupported,
+  type AutomationEventType, isNotificationTarget, AUTOMATION_NOTIFICATION_CHANNELS, DEFAULT_SLA_WARNING_MINUTES,
+} from '@opengraphity/types'
 
 type Props = Record<string, unknown>
 
@@ -21,9 +26,7 @@ type Props = Record<string, unknown>
 // and the rule failed only at runtime (log line only): the rule looked enabled
 // while never firing.
 
-export const AUTOMATION_ENTITY_TYPES  = ['incident', 'change', 'problem', 'service_request'] as const
-export const TRIGGER_EVENT_TYPES      = ['on_create', 'on_update', 'on_timer', 'on_sla_breach', 'on_field_change'] as const
-export const RULE_EVENT_TYPES         = ['on_create', 'on_update', 'on_transition'] as const
+export { AUTOMATION_ENTITY_TYPES, TRIGGER_EVENT_TYPES, RULE_EVENT_TYPES }
 export const CONDITION_LOGICS         = ['and', 'or'] as const
 const CONDITION_OPERATORS: readonly ConditionOperator[] = ['equals', 'not_equals', 'is_null', 'is_not_null', 'greater_than', 'less_than', 'contains']
 const ACTION_TYPES: readonly ActionType[] = ['set_field', 'assign_team', 'assign_user', 'transition_workflow', 'create_notification', 'create_comment', 'set_priority', 'execute_script', 'call_webhook', 'set_sla']
@@ -72,6 +75,21 @@ export function assertActionsJson(raw: unknown): string | null {
     }
     if (a.params != null && (typeof a.params !== 'object' || Array.isArray(a.params))) {
       throw new ValidationError(`Invalid actions: item ${i} params must be an object`)
+    }
+    if (a.type === 'set_sla') {
+      try {
+        assertRuleSLAMinutes(a.params?.['response_minutes'], a.params?.['resolve_minutes'])
+      } catch (err) {
+        throw new ValidationError(`Invalid actions: item ${i} — ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+    if (a.type === 'create_notification') {
+      const target = a.params?.['target'] ?? 'all'
+      const channel = a.params?.['channel'] ?? 'in_app'
+      if (!isNotificationTarget(target)) throw new ValidationError(`Invalid actions: item ${i} (create_notification) has unknown recipient ${JSON.stringify(target)}`)
+      if (typeof channel !== 'string' || !AUTOMATION_NOTIFICATION_CHANNELS.includes(channel)) {
+        throw new ValidationError(`Invalid actions: item ${i} (create_notification) channel must be one of: ${AUTOMATION_NOTIFICATION_CHANNELS.join(', ')}`)
+      }
     }
   })
   return raw
@@ -153,6 +171,21 @@ export async function assertStepTargets(
   }
 }
 
+/**
+ * La combinazione evento × ticket deve essere una che gira davvero
+ * (`AUTOMATION_EVENT_ENTITIES`, revisione del 14 set 2026 · AU-1): prima le
+ * pagine offrivano combinazioni che nessun codice eseguiva, e la regola restava
+ * «attiva» per sempre senza mai partire.
+ */
+export function assertEventSupported(eventType: string, entityType: string): void {
+  if (automationEventSupported(eventType, entityType)) return
+  const supported = AUTOMATION_EVENT_ENTITIES[eventType as AutomationEventType] ?? []
+  throw new ValidationError(
+    `The event "${eventType}" does not run for "${entityType}": it runs for ${supported.join(', ') || 'no ticket type'}.`,
+    { key: 'errors.automation.eventNotSupported', params: { event: eventType, entityType, supported: supported.join(', ') } },
+  )
+}
+
 /** L'`entity_type` salvato sul nodo: non è modificabile, quindi si legge da lì per validare un aggiornamento. */
 async function entityTypeOf(session: Session, label: 'AutoTrigger' | 'BusinessRule', id: string, tenantId: string): Promise<string> {
   const rows = await runQuery<{ entityType: string }>(session, `
@@ -214,10 +247,12 @@ function mapSLAPolicy(p: Props, teamName?: string | null) {
     category:        p['category']         ?? null,
     teamId:          p['team_id']          ?? null,
     teamName:        teamName              ?? null,
-    timezone:        p['timezone']         ?? 'Europe/Rome',
+    // null = eredita il fuso del cliente (revisione del 14 set 2026 · F7).
+    timezone:        p['timezone']         ?? null,
     responseMinutes: Number(p['response_minutes'] ?? 0),
     resolveMinutes:  Number(p['resolve_minutes']  ?? 0),
     businessHours:   p['business_hours']   ?? false,
+    warningMinutes:  Number(p['warning_minutes']),
     enabled:         p['enabled']          ?? true,
   }
 }
@@ -261,6 +296,7 @@ async function createAutoTrigger(_: unknown, args: { input: Props }, ctx: GraphQ
   if (eventType === 'on_timer' && (timerDelayMinutes == null || timerDelayMinutes <= 0)) {
     throw new ValidationError('An on_timer trigger requires timerDelayMinutes > 0')
   }
+  assertEventSupported(eventType, entityType)
   return withSession(async (session) => {
     await assertStepTargets(session, ctx.tenantId, entityType, { actions, conditions })
     const rows = await runQuery<{ props: Props }>(session, `
@@ -306,6 +342,9 @@ async function updateAutoTrigger(_: unknown, args: { id: string; input: Props },
     }
   }
   return withSession(async (session) => {
+    if (args.input['eventType'] !== undefined) {
+      assertEventSupported(params['eventType'] as string, await entityTypeOf(session, 'AutoTrigger', args.id, ctx.tenantId))
+    }
     if (args.input['actions'] !== undefined || args.input['conditions'] !== undefined) {
       const entityType = await entityTypeOf(session, 'AutoTrigger', args.id, ctx.tenantId)
       await assertStepTargets(session, ctx.tenantId, entityType, {
@@ -356,6 +395,7 @@ async function createBusinessRule(_: unknown, args: { input: Props }, ctx: Graph
   const now = new Date().toISOString()
   const entityType     = assertEnum('entityType', input['entityType'], AUTOMATION_ENTITY_TYPES)
   const eventType      = assertEnum('eventType', input['eventType'], RULE_EVENT_TYPES)
+  assertEventSupported(eventType, entityType)
   const conditionLogic = assertEnum('conditionLogic', input['conditionLogic'] ?? 'and', CONDITION_LOGICS)
   const conditions     = assertConditionsJson(input['conditions'])
   const actions        = assertActionsJson(input['actions'])
@@ -407,6 +447,9 @@ async function updateBusinessRule(_: unknown, args: { id: string; input: Props }
     }
   }
   return withSession(async (session) => {
+    if (args.input['eventType'] !== undefined) {
+      assertEventSupported(params['eventType'] as string, await entityTypeOf(session, 'BusinessRule', args.id, ctx.tenantId))
+    }
     if (args.input['actions'] !== undefined || args.input['conditions'] !== undefined) {
       const entityType = await entityTypeOf(session, 'BusinessRule', args.id, ctx.tenantId)
       await assertStepTargets(session, ctx.tenantId, entityType, {
@@ -504,15 +547,38 @@ function assertSLAPolicyScope(entityType: string, category: unknown): void {
   }
 }
 
+/** Il preavviso deve cadere dentro il tempo di risoluzione, altrimenti l'avviso partirebbe già scaduto. */
+function assertWarningMinutes(warning: unknown, resolve: unknown): number {
+  const w = Number(warning)
+  if (!Number.isInteger(w) || w <= 0) {
+    throw new ValidationError(`warningMinutes must be a positive whole number of minutes. Got: ${JSON.stringify(warning)}`, { key: 'errors.sla.warningMinutes' })
+  }
+  if (resolve != null && w >= Number(resolve)) {
+    throw new ValidationError(`The SLA warning (${w} min before the deadline) must be shorter than the resolution time (${String(resolve)} min)`, { key: 'errors.sla.warningLongerThanResolve', params: { warning: w, resolve: Number(resolve) } })
+  }
+  return w
+}
+
+/**
+ * Il fuso di una policy SLA: `null` quando non ne sceglie uno, e allora segue
+ * quello del cliente al momento della selezione (packages/sla/src/selector.ts).
+ * Prima si copiava il fuso del cliente nella policy, così cambiarlo dalla
+ * pagina Organizzazione non spostava nessuna scadenza. Revisione del 14 set
+ * 2026 · F7.
+ */
+function policyTimezone(value: unknown): string | null {
+  if (value == null) return null
+  if (typeof value === 'string' && value.trim() === '') return null
+  return assertTimeZone(typeof value === 'string' ? value.trim() : value)
+}
+
 async function createSLAPolicy(_: unknown, args: { input: Props }, ctx: GraphQLContext) {
   const { input } = args
+  const warningMinutes = assertWarningMinutes(input['warningMinutes'] ?? DEFAULT_SLA_WARNING_MINUTES, input['resolveMinutes'])
   const id  = uuidv4()
   const now = new Date().toISOString()
   assertSLAPolicyScope(String(input['entityType'] ?? ''), input['category'])
-  // Senza fuso scelto vale quello del cliente, non un fuso scritto nel codice.
-  const timezone = typeof input['timezone'] === 'string' && input['timezone'].trim() !== ''
-    ? input['timezone'].trim()
-    : await getTenantTimezone(ctx.tenantId)
+  const timezone = policyTimezone(input['timezone'])
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (p:SLAPolicyNode {
@@ -521,7 +587,7 @@ async function createSLAPolicy(_: unknown, args: { input: Props }, ctx: GraphQLC
         priority: $priority, category: $category, team_id: $teamId,
         timezone: $timezone,
         response_minutes: $responseMinutes, resolve_minutes: $resolveMinutes,
-        business_hours: $businessHours, enabled: true,
+        business_hours: $businessHours, warning_minutes: $warningMinutes, enabled: true,
         created_at: $now, updated_at: $now
       })
       RETURN properties(p) AS props
@@ -531,25 +597,32 @@ async function createSLAPolicy(_: unknown, args: { input: Props }, ctx: GraphQLC
       priority: input['priority'] ?? null, category: input['category'] ?? null,
       teamId: input['teamId'] ?? null, timezone,
       responseMinutes: input['responseMinutes'], resolveMinutes: input['resolveMinutes'],
-      businessHours: input['businessHours'] ?? false, now,
+      businessHours: input['businessHours'] ?? false, warningMinutes, now,
     })
     return mapSLAPolicy(rows[0]!.props)
   }, true)
 }
 
 async function updateSLAPolicy(_: unknown, args: { id: string; input: Props }, ctx: GraphQLContext) {
+  if (args.input['timezone'] !== undefined) args.input = { ...args.input, timezone: policyTimezone(args.input['timezone']) }
   if (args.input['category'] != null && args.input['category'] !== '') {
     const current = await withSession((session) => runQuery<{ entityType: string }>(session,
       'MATCH (p:SLAPolicyNode {id: $id, tenant_id: $tenantId}) RETURN p.entity_type AS entityType',
       { id: args.id, tenantId: ctx.tenantId }))
     if (current[0]) assertSLAPolicyScope(current[0].entityType, args.input['category'])
   }
+  if (args.input['warningMinutes'] !== undefined || args.input['resolveMinutes'] !== undefined) {
+    const current = await withSession((session) => runQuery<{ warning: unknown; resolve: unknown }>(session,
+      'MATCH (p:SLAPolicyNode {id: $id, tenant_id: $tenantId}) RETURN p.warning_minutes AS warning, p.resolve_minutes AS resolve',
+      { id: args.id, tenantId: ctx.tenantId }))
+    if (current[0]) assertWarningMinutes(args.input['warningMinutes'] ?? current[0].warning, args.input['resolveMinutes'] ?? current[0].resolve)
+  }
   const sets: string[] = ['p.updated_at = $now']
   const params: Props = { id: args.id, tenantId: ctx.tenantId, now: new Date().toISOString() }
   const fieldMap: Record<string, string> = {
     name: 'name', priority: 'priority', category: 'category', teamId: 'team_id',
     timezone: 'timezone', responseMinutes: 'response_minutes', resolveMinutes: 'resolve_minutes',
-    businessHours: 'business_hours', enabled: 'enabled',
+    businessHours: 'business_hours', warningMinutes: 'warning_minutes', enabled: 'enabled',
   }
   for (const [gql, neo] of Object.entries(fieldMap)) {
     if (args.input[gql] !== undefined) {

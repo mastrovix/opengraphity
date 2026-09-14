@@ -43,8 +43,9 @@ describe('formatDateTime', () => {
 })
 
 describe('formatDate', () => {
-  it('en: solo data in en-GB (gg/mm/aaaa)', () => {
-    expect(formatDate(ISO)).toBe('08/09/2026')
+  it('en: giorno, mese abbreviato e anno, come formatDateTime (#27)', () => {
+    expect(formatDate(ISO)).toMatch(/^08 Sept? 2026$/)
+    expect(formatDateTime(ISO).startsWith(formatDate(ISO))).toBe(true)
   })
   it('assente → "—", non parsabile → invariata; fmtDate è un alias', () => {
     expect(formatDate(null)).toBe('—')
@@ -54,7 +55,7 @@ describe('formatDate', () => {
   describe('in italiano', () => {
     withLanguage('it')
     it('segue il locale it-IT', () => {
-      expect(formatDate(ISO)).toBe(new Date(ISO).toLocaleDateString('it-IT'))
+      expect(formatDate(ISO)).toBe('08 set 2026')
     })
   })
 })

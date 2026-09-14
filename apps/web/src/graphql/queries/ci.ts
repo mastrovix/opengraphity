@@ -37,6 +37,16 @@ export const GET_CI_CHANGES = gql`
   }
 `
 
+/** I problem che hanno il CI fra gli impattati (F12, revisione del 14 set 2026). */
+export const GET_CI_PROBLEMS = gql`
+  query GetCIProblems($ciId: ID!) {
+    ciProblems(ciId: $ciId) {
+      id number title priority status
+      createdAt updatedAt
+    }
+  }
+`
+
 export const GET_CI_INCIDENTS = gql`
   query GetCIIncidents($ciId: ID!) {
     ciIncidents(ciId: $ciId) {

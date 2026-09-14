@@ -1,14 +1,21 @@
 import { useState, useEffect, useId } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQuery } from '@apollo/client/react'
 import type { CITypeDef, CIFieldDef } from '@/contexts/MetamodelContext'
 import { validateCI, isFieldVisible, getFieldDefault } from '@/lib/ciValidator'
 import { useCIBaseEnums } from '@/lib/ciEnums'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { GET_TEAMS } from '@/graphql/queries'
 import { colors, palette } from '@/lib/tokens'
 
 // Base (__base__) fields every CI shares — the Create input requires `name`
-// and accepts status/environment/description. They aren't in a type's own
+// and accepts status/environment/description, plus the two groups
+// (`ownerGroupId`, `supportGroupId`) for the system relations of the type. They aren't in a type's own
 // field list, so the form renders them explicitly; i valori di status e
 // environment vengono dal tipo base del metamodello (useCIBaseEnums).
+
+/** Le relazioni di sistema che l'input di creazione accetta come `<nome>Id`. */
+const GROUP_INPUT_RELATIONS: ReadonlySet<string> = new Set(['ownerGroup', 'supportGroup'])
 
 /** Attesa dopo l'ultima modifica prima di rieseguire i default_script (F-13). */
 const DEFAULTS_DEBOUNCE_MS = 300
@@ -78,6 +85,7 @@ function FieldRenderer({
   onChange: (val: unknown) => void
 }) {
   const { t } = useTranslation()
+  const { labelOf } = useDomainVocabularies()
   const hasError = Boolean(error)
   const borderColor = hasError ? 'var(--color-trigger-sla-breach)' : colors.border
 
@@ -148,7 +156,7 @@ function FieldRenderer({
             </option>
           )}
           {field.enumValues.map(opt => (
-            <option key={opt} value={opt}>{opt}</option>
+            <option key={opt} value={opt}>{(field.enumTypeName && labelOf(field.enumTypeName, opt)) || opt}</option>
           ))}
         </select>
       )
@@ -192,6 +200,22 @@ export function CIDynamicForm({
   const [visibilityMap, setVisibilityMap] = useState<Record<string, boolean>>({})
   const [submitting, setSubmitting] = useState(false)
   const baseEnums = useCIBaseEnums()
+  const { labelOf } = useDomainVocabularies()
+  // Giro nel browser del 14 set 2026 (#55): le tendine mostravano i valori
+  // interni («active», «production») mentre la modifica mostra le etichette
+  // del Dizionario; e i gruppi non si sceglievano, benché `ownerGroup` sia
+  // obbligatorio nel metamodello — il CI nasceva senza owner.
+  const baseVocabulary = (name: string) => ciType.fields.find(f => f.name === name)?.enumTypeName ?? null
+  const optionLabel = (fieldName: string, value: string) => {
+    const vocabulary = baseVocabulary(fieldName)
+    return (vocabulary && labelOf(vocabulary, value)) || value
+  }
+  // Solo le relazioni verso i team che l'input di creazione conosce
+  // (`<nome>Id`: `ownerGroupId`, `supportGroupId`, dal generatore dello schema).
+  const groupRelations = (ciType.systemRelations ?? [])
+    .filter(sr => sr.targetEntity === 'Team' && GROUP_INPUT_RELATIONS.has(sr.name))
+    .sort((a, b) => a.order - b.order)
+  const { data: teamsData, error: teamsError } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { skip: groupRelations.length === 0 })
 
   // Default script: rieseguiti a ogni modifica dei valori (con debounce), non
   // solo al mount — un default che dipende da un altro campo (es. porta in
@@ -269,6 +293,16 @@ export function CIDynamicForm({
     // Name is required by the Create input but isn't a type field
     if (!String(formValues['name'] ?? '').trim()) {
       setValidationErrors(prev => ({ ...prev, name: t('components.ciDynamicForm.nameRequired') }))
+      setSubmitting(false)
+      return
+    }
+
+    const missingGroups = groupRelations.filter(sr => sr.required && !formValues[`${sr.name}Id`])
+    if (missingGroups.length > 0) {
+      setValidationErrors(prev => ({
+        ...prev,
+        ...Object.fromEntries(missingGroups.map(sr => [`${sr.name}Id`, t('components.ciDynamicForm.fieldRequired', { field: sr.label })])),
+      }))
       setSubmitting(false)
       return
     }
@@ -362,17 +396,46 @@ export function CIDynamicForm({
           <label htmlFor={fieldId('status')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>{t('pages.cmdb.status')}</label>
           <select id={fieldId('status')} value={String(formValues['status'] ?? '')} onChange={e => handleChange('status', e.target.value)} style={inputBase}>
             <option value="">—</option>
-            {baseEnums.statuses.map(s => <option key={s} value={s}>{s}</option>)}
+            {baseEnums.statuses.map(s => <option key={s} value={s}>{optionLabel('status', s)}</option>)}
           </select>
         </div>
         <div>
           <label htmlFor={fieldId('environment')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>{t('pages.cmdb.environment')}</label>
           <select id={fieldId('environment')} value={String(formValues['environment'] ?? '')} onChange={e => handleChange('environment', e.target.value)} style={inputBase}>
             <option value="">—</option>
-            {baseEnums.environments.map(v => <option key={v} value={v}>{v}</option>)}
+            {baseEnums.environments.map(v => <option key={v} value={v}>{optionLabel('environment', v)}</option>)}
           </select>
         </div>
       </div>
+      {groupRelations.length > 0 && (
+        <div className="og-pair">
+          {groupRelations.map(sr => {
+            const key = `${sr.name}Id`
+            return (
+              <div key={sr.id}>
+                <label htmlFor={fieldId(key)} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>
+                  {sr.label}
+                  {sr.required && <span style={{ color: 'var(--color-trigger-sla-breach)', marginLeft: 2 }}>*</span>}
+                </label>
+                <select id={fieldId(key)} value={String(formValues[key] ?? '')} onChange={e => handleChange(key, e.target.value || null)} style={inputBase}>
+                  <option value="">{t('components.ciDynamicForm.selectOption')}</option>
+                  {(teamsData?.teams ?? []).map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+                </select>
+                {validationErrors[key] && (
+                  <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
+                    {validationErrors[key]}
+                  </p>
+                )}
+              </div>
+            )
+          })}
+          {teamsError && (
+            <p role="alert" style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
+              {t('components.ciDynamicForm.teamsError', { error: teamsError.message })}
+            </p>
+          )}
+        </div>
+      )}
       <div>
         <label htmlFor={fieldId('description')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>{t('common.description')}</label>
         <textarea id={fieldId('description')} value={String(formValues['description'] ?? '')} onChange={e => handleChange('description', e.target.value)} rows={2} style={{ ...inputBase, resize: 'vertical' }} />

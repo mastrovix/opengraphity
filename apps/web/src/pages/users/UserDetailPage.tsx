@@ -102,7 +102,6 @@ export function UserDetailPage() {
             <DetailField label={t('pages.userDetail.lastName')} value={user.lastName} />
             <DetailField label={t('pages.users.email')} value={user.email} />
             <DetailField label={t('pages.users.role')} value={<RoleBadge role={user.role} />} />
-            <DetailField label={t('pages.userDetail.tenantId')} value={user.tenantId} mono />
             <DetailField label={t('pages.userDetail.slackId')} value={user.slackId} mono />
             <DetailField label={t('detail.createdAt')} value={user.createdAt ? formatDate(user.createdAt) : null} />
           </div>

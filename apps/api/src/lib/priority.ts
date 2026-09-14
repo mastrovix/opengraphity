@@ -98,7 +98,7 @@ export async function invertPriority(tenantId: string, priority: unknown): Promi
     )
   })
   if (impact === undefined || urgency === undefined) {
-    throw new Error(`Matrice "priority": la cella "${chosen}" non ha due dimensioni`)
+    throw new Error(`Matrix "priority": cell "${chosen}" does not have two dimensions`)
   }
   return { impact, urgency }
 }

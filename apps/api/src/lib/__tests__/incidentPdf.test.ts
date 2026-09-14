@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { buildIncidentPdf, type IncidentDossier, type PdfMeta } from '../incidentPdf.js'
 
 const META: PdfMeta = {
+  locale: { language: 'it', timeZone: 'Europe/Rome' },
   generatedAt: '2026-07-17T10:00:00.000Z',
   generatedBy: 'test@example.com',
   tenantId:    'c-one',

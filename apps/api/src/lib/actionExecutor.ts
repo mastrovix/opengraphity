@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 import pino from 'pino'
 import { runQuery } from '@opengraphity/neo4j'
 import { publish } from '@opengraphity/events'
-import type { DomainEvent } from '@opengraphity/types'
+import { isNotificationTarget, AUTOMATION_NOTIFICATION_CHANNELS, TICKET_TEAM_ASSIGNED_EVENT, type AutomationNotificationPayload, type DomainEvent } from '@opengraphity/types'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import { ValidationError } from './errors.js'
 import { assertSafeOutboundUrl, loggableUrl } from './safeUrl.js'
@@ -136,27 +136,21 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
   const p = action.params
 
   switch (action.type) {
-    case 'set_field': {
-      const field = assertSettableField(p['field'])
-      const value = p['value']
-      await withSession(async (session) => {
-        await runQuery(session, `
-          MATCH (e {id: $entityId, tenant_id: $tenantId})
-          SET e[$field] = $value, e.updated_at = $now
-        `, { entityId: ctx.entityId, tenantId: ctx.tenantId, field, value, now })
-      }, true)
-      break
-    }
-
+    case 'set_field':
     case 'set_priority': {
-      const value = String(p['priority'] ?? p['value'] ?? '')
-      if (!value) throw new Error('set_priority: priority value is required')
-      await withSession(async (session) => {
-        await runQuery(session, `
-          MATCH (e {id: $entityId, tenant_id: $tenantId})
-          SET e.priority = $value, e.updated_at = $now
-        `, { entityId: ctx.entityId, tenantId: ctx.tenantId, value, now })
-      }, true)
+      // AU-3: la priorità e i campi della matrice passano da `writeTicketField`,
+      // che scrive la proprietà giusta per il ticket e mantiene l'invariante.
+      const field = action.type === 'set_priority' ? 'priority' : assertSettableField(p['field'])
+      const value = action.type === 'set_priority' ? String(p['priority'] ?? p['value'] ?? '') : p['value']
+      if (action.type === 'set_priority' && !value) throw new Error('set_priority: priority value is required')
+      const { writeTicketField } = await import('./ticketFieldWrite.js')
+      const written = await withSession((session) => writeTicketField(session, ctx.tenantId, ctx.entityType, ctx.entityId, field, value), true)
+      // L'aggiornamento si pubblica (webhook, notifiche); le automazioni non lo
+      // rivalutano, perché l'attore è l'automazione (consumers/automationConsumer.ts).
+      if (ctx.entityType !== 'change') {
+        const { publishTicketUpdated } = await import('./ticketUpdated.js')
+        await publishTicketUpdated({ tenantId: ctx.tenantId, userId: ctx.userId }, ctx.entityType as 'incident' | 'problem' | 'service_request', ctx.entityId, written.before, written.after)
+      }
       break
     }
 
@@ -174,6 +168,8 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
       } else if (ctx.entityType === 'problem') {
         const { setTicketTeam } = await import('../services/ticketAssignment.js')
         await withSession((session) => setTicketTeam(session, 'Problem', ctx.entityId, teamId, ctx.tenantId), true)
+        await publish({ id: uuidv4(), type: TICKET_TEAM_ASSIGNED_EVENT, tenant_id: ctx.tenantId, timestamp: now, correlation_id: uuidv4(), actor_id: ctx.userId,
+          payload: { entity_type: 'problem', entity_id: ctx.entityId, team_id: teamId } })
       } else {
         const label = TICKET_LABELS[ctx.entityType]
         if (!label) throw new Error(`assign_team: entity type "${ctx.entityType}" has no team assignment`)
@@ -197,17 +193,38 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
     case 'assign_user': {
       const userId = String(p['user_id'] ?? '')
       if (!userId) throw new Error('assign_user: user_id is required')
-      await withSession(async (session) => {
-        await runQuery(session, `
-          MATCH (e {id: $entityId, tenant_id: $tenantId})
-          OPTIONAL MATCH (e)-[old:ASSIGNED_TO]->()
-          DELETE old
-          WITH e
-          MATCH (u:User {id: $userId, tenant_id: $tenantId})
-          CREATE (e)-[:ASSIGNED_TO]->(u)
-          SET e.updated_at = $now
-        `, { entityId: ctx.entityId, tenantId: ctx.tenantId, userId, now })
-      }, true)
+      // AU-5 (revisione del 14 set 2026): prima si toglieva l'assegnatario e poi
+      // si cercava l'utente — se non esisteva nel tenant il ticket restava
+      // senza nessuno e l'azione risultava riuscita — e non valeva «prima il
+      // gruppo, poi un suo membro», la regola dell'assegnazione a mano. Ora la
+      // stessa strada: il servizio per l'incident, ticketAssignment per il
+      // problem, e per gli altri ticket la scrittura che conta le righe.
+      if (ctx.entityType === 'incident') {
+        const { assignIncidentToUser } = await import('../services/incidentService.js')
+        await assignIncidentToUser(ctx.entityId, userId, { tenantId: ctx.tenantId, userId: ctx.userId })
+      } else if (ctx.entityType === 'problem') {
+        const { assertUserInAssignedTeam, setTicketUser } = await import('../services/ticketAssignment.js')
+        await withSession(async (session) => {
+          await assertUserInAssignedTeam(session, 'Problem', ctx.entityId, userId, ctx.tenantId)
+          await setTicketUser(session, 'Problem', ctx.entityId, userId, ctx.tenantId)
+        }, true)
+      } else {
+        const label = TICKET_LABELS[ctx.entityType]
+        if (!label) throw new Error(`assign_user: entity type "${ctx.entityType}" has no assignee`)
+        await withSession(async (session) => {
+          const rows = await runQuery<{ ok: unknown }>(session, `
+            MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})
+            MATCH (u:User {id: $userId, tenant_id: $tenantId})
+            OPTIONAL MATCH (e)-[old:ASSIGNED_TO]->()
+            DELETE old
+            WITH DISTINCT e, u
+            CREATE (e)-[:ASSIGNED_TO]->(u)
+            SET e.updated_at = $now
+            RETURN 1 AS ok
+          `, { entityId: ctx.entityId, tenantId: ctx.tenantId, userId, now })
+          if (rows.length === 0) throw new Error(`assign_user: ${ctx.entityType} ${ctx.entityId} or user ${userId} not found`)
+        }, true)
+      }
       break
     }
 
@@ -262,8 +279,8 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
         // regola (`matched + error`) e nei log.
         if (!result.success) {
           throw new Error(
-            `transition_workflow: la transizione verso "${toStep}" non è avvenuta (${result.error ?? 'errore ignoto del motore'}). ` +
-            `Controlla che "${toStep}" sia ancora un passo del workflow ${ctx.entityType} e che ci sia un arco dal passo corrente.`,
+            `transition_workflow: the transition to "${toStep}" did not happen (${result.error ?? 'unknown engine error'}). ` +
+            `Check that "${toStep}" is still a step of the ${ctx.entityType} workflow and that an edge leaves the current step.`,
           )
         }
       }, true)
@@ -274,14 +291,25 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
       const message = String(p['message'] ?? '')
       if (!message.trim()) throw new Error('create_notification action requires a non-empty message')
       const channel = String(p['channel'] ?? 'in_app')
-      const event: DomainEvent<{ entity_id: string; entity_type: string; message: string; channel: string }> = {
+      if (!AUTOMATION_NOTIFICATION_CHANNELS.includes(channel)) {
+        throw new Error(`create_notification: channel "${channel}" is not supported (${AUTOMATION_NOTIFICATION_CHANNELS.join(', ')})`)
+      }
+      // A chi: un bersaglio del vocabolario delle notifiche. Un'azione scritta
+      // prima che il bersaglio esistesse vale per tutto il tenant, lo stesso
+      // default dichiarato delle regole di notifica (`all`).
+      const target = String(p['target'] ?? 'all')
+      if (!isNotificationTarget(target)) throw new Error(`create_notification: unknown recipient "${target}"`)
+      const event: DomainEvent<AutomationNotificationPayload> = {
         id:             uuidv4(),
         type:           'automation.notification',
         tenant_id:      ctx.tenantId,
         timestamp:      now,
         correlation_id: uuidv4(),
         actor_id:       ctx.userId,
-        payload: { entity_id: ctx.entityId, entity_type: ctx.entityType, message, channel },
+        // Prima questo evento non aveva nessun consumatore: l'azione «risultava»
+        // eseguita e nessuno riceveva niente (revisione del 14 set 2026 · AU-2).
+        // Lo consegna il dispatcher delle notifiche.
+        payload: { entity_id: ctx.entityId, entity_type: ctx.entityType, message, channel, target, rule: ctx.sourceName },
       }
       await publish(event)
       break
@@ -290,28 +318,16 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
     case 'create_comment': {
       const text = String(p['text'] ?? p['message'] ?? '')
       if (!text) throw new Error('create_comment: text is required')
-      // Il nodo del commento dipende dal ticket (i problem hanno ProblemComment:
-      // un Comment appeso a un problem non si vedeva). `author_label` dice CHI
-      // l'ha scritto — la regola — invece di «utente sconosciuto».
-      const commentLabel = ctx.entityType === 'problem' ? 'ProblemComment' : 'Comment'
-      const entityLabel = TICKET_LABELS[ctx.entityType]
-      if (!entityLabel) throw new Error(`create_comment: entity type "${ctx.entityType}" has no comments`)
-      await withSession(async (session) => {
-        await runQuery(session, `
-          MATCH (e:${entityLabel} {id: $entityId, tenant_id: $tenantId})
-          CREATE (c:${commentLabel} {
-            id:           randomUUID(),
-            tenant_id:    $tenantId,
-            text:         $text,
-            type:         'automation',
-            author_id:    'system',
-            author_label: $authorLabel,
-            created_at:   $now,
-            updated_at:   $now
-          })
-          CREATE (e)-[:HAS_COMMENT]->(c)
-        `, { entityId: ctx.entityId, tenantId: ctx.tenantId, text, now, authorLabel: ctx.sourceName })
-      }, true)
+      // Un modello di commento per tutti i ticket (lib/ticketComments.ts): nota
+      // interna, `author_label` dice CHI l'ha scritto — la regola — invece di
+      // «utente sconosciuto».
+      if (!TICKET_LABELS[ctx.entityType]) throw new Error(`create_comment: entity type "${ctx.entityType}" has no comments`)
+      const { writeTicketComment } = await import('./ticketComments.js')
+      const written = await withSession((session) => writeTicketComment(session, {
+        entityType: ctx.entityType, entityId: ctx.entityId, tenantId: ctx.tenantId,
+        text, authorId: 'system', authorLabel: ctx.sourceName, isInternal: true, createdAt: now,
+      }), true)
+      if (!written) throw new Error(`create_comment: ${ctx.entityType} ${ctx.entityId} not found`)
       break
     }
 
@@ -359,53 +375,15 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
     }
 
     case 'set_sla': {
-      const responseMins = Number(p['response_minutes'] ?? 0)
-      const resolveMins  = Number(p['resolve_minutes'] ?? 0)
-      if (responseMins <= 0 && resolveMins <= 0) break
-      const { calculateDeadline } = await import('@opengraphity/sla')
-      const startedAt         = new Date()
-      const responseDeadline  = calculateDeadline(startedAt, responseMins, false, 'Europe/Rome')
-      const resolveDeadline   = calculateDeadline(startedAt, resolveMins,  false, 'Europe/Rome')
-      await withSession(async (session) => {
-        await runQuery(session, `
-          MATCH (e {id: $entityId, tenant_id: $tenantId})
-          OPTIONAL MATCH (e)-[r:HAS_SLA]->(old:SLAStatus)
-          DELETE r, old
-          WITH e
-          CREATE (s:SLAStatus {
-            id:                    randomUUID(),
-            tenant_id:             $tenantId,
-            entity_id:             $entityId,
-            entity_type:           $entityType,
-            started_at:            $startedAt,
-            response_deadline:     $responseDeadline,
-            resolve_deadline:      $resolveDeadline,
-            response_met:          false,
-            resolve_met:           false,
-            breached:              false,
-            tier_severity:         'custom',
-            tier_response_minutes: $responseMins,
-            tier_resolve_minutes:  $resolveMins,
-            tier_business_hours:   false,
-            // Non nasce da una policy ma da una regola: il report lo mostra
-            // col nome della regola, invece di confonderlo con gli SLA senza origine.
-            policy_id:             null,
-            policy_name:           null,
-            set_by_rule:           $ruleName
-          })
-          CREATE (e)-[:HAS_SLA]->(s)
-        `, {
-          entityId:         ctx.entityId,
-          tenantId:         ctx.tenantId,
-          entityType:       ctx.entityType,
-          startedAt:        startedAt.toISOString(),
-          responseDeadline: responseDeadline.toISOString(),
-          resolveDeadline:  resolveDeadline.toISOString(),
-          responseMins,
-          resolveMins,
-          ruleName:         ctx.sourceName,
-        })
-      }, true)
+      // Dal motore SLA (AU-4): fuso del tenant, stato sostituito con i suoi
+      // job annullati, avviso/breach/risposta programmati.
+      const { applyRuleSLA } = await import('@opengraphity/sla')
+      await applyRuleSLA({
+        tenantId: ctx.tenantId, entityType: ctx.entityType, entityId: ctx.entityId,
+        responseMinutes: Number(p['response_minutes']), resolveMinutes: Number(p['resolve_minutes']),
+        ...(p['warning_minutes'] != null ? { warningMinutes: Number(p['warning_minutes']) } : {}),
+        ruleName: ctx.sourceName,
+      })
       break
     }
   }

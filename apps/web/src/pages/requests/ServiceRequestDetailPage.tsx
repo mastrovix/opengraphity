@@ -10,6 +10,7 @@ import { DetailField } from '@/components/ui/DetailField'
 import { Pill } from '@/components/ui/Pill'
 import { Skeleton } from '@/components/ui/skeleton'
 import { WatcherBar } from '@/components/WatcherBar'
+import { EntityCommentsSection } from '@/components/ticket/EntityCommentsSection'
 import { timeAgo, formatDate } from '@/lib/datetime'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
@@ -18,9 +19,9 @@ import { Button } from '@/components/Button'
 import { Input, Textarea, Select, FieldLabel } from '@/components/ui/FormControls'
 import { Pencil } from 'lucide-react'
 import { keycloak } from '@/lib/keycloak'
-import { colors, palette, lookupOrError } from '@/lib/tokens'
-import { GET_SERVICE_REQUEST } from '@/graphql/queries'
-import { EXECUTE_WORKFLOW_TRANSITION, UPDATE_SERVICE_REQUEST } from '@/graphql/mutations'
+import { colors } from '@/lib/tokens'
+import { GET_SERVICE_REQUEST, GET_USERS } from '@/graphql/queries'
+import { EXECUTE_WORKFLOW_TRANSITION, UPDATE_SERVICE_REQUEST, ASSIGN_SERVICE_REQUEST_TO_USER } from '@/graphql/mutations'
 import { SlaBadge, type SlaStatusInfo } from '@/components/SlaBadge'
 import { useSlaSettling } from '@/hooks/useSlaSettling'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
@@ -28,6 +29,8 @@ import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { styleForCategory } from '@/lib/workflowStepStyle'
 import { transitionErrorText, type TransitionFailure } from '@/lib/transitionError'
+import { useValueStyle } from '@/hooks/useValueStyle'
+import { withLocalizedLabel } from '@/lib/localizedLabel'
 
 interface WorkflowTransition { toStep: string; label: string; requiresInput: boolean; inputField: string | null }
 interface ServiceRequest {
@@ -41,16 +44,25 @@ interface ServiceRequest {
   slaStatus: SlaStatusInfo | null
 }
 
-const PRIORITY_COLOR: Record<string, string> = { critical: 'var(--color-danger)', high: palette.orange.base, medium: colors.warning, low: colors.success }
+/**
+ * Chi può ricevere una richiesta: i ruoli che lavorano i ticket. Lo stesso
+ * insieme che l'API applica (`DEFAULT_MUTATION_ROLES`); qui serve solo a non
+ * offrire nella tendina chi verrebbe rifiutato.
+ */
+const ASSIGNABLE_ROLES = new Set(['admin', 'operator'])
+
 
 
 export function ServiceRequestDetailPage() {
   const { t } = useTranslation()
+  // F9: il colore della priorità dal Dizionario del cliente.
+  const styleOf = useValueStyle()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const ids = { title: useId(), description: useId(), priority: useId(), dueDate: useId(), notes: useId() }
+  const ids = { title: useId(), description: useId(), priority: useId(), dueDate: useId(), notes: useId(), assignee: useId() }
   const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ serviceRequest: ServiceRequest | null }>(GET_SERVICE_REQUEST, { variables: { id }, skip: !id, fetchPolicy: 'cache-and-network' })
   const sr = data?.serviceRequest
+  const srTransitions = (sr?.availableTransitions ?? []).map(withLocalizedLabel)
   useSlaSettling(sr?.slaStatus, !!sr?.completedAt, { startPolling, stopPolling })
   // Stato e priorità come li chiama il cliente: etichetta e colore del passo
   // vengono dal workflow (categoria), la priorità dal vocabolario. Prima la
@@ -69,6 +81,15 @@ export function ServiceRequestDetailPage() {
       setTransitionModal(null); setTransitionNotes('')
       await refetch()
     },
+    onError: (e) => toast.error(e.message),
+  })
+
+  // Giro del 14 set 2026 (#41): la richiesta non si poteva assegnare.
+  const { data: usersData } = useQuery<{ users: Array<{ id: string; name: string; role: string }> }>(GET_USERS)
+  const assignable = (usersData?.users ?? []).filter((u) => ASSIGNABLE_ROLES.has(u.role))
+  const [assigneeChoice, setAssigneeChoice] = useState<string | null>(null)
+  const [assignRequest, { loading: assigning }] = useMutation(ASSIGN_SERVICE_REQUEST_TO_USER, {
+    onCompleted: async () => { setAssigneeChoice(null); await refetch(); toast.success(t('toast.request.assigned')) },
     onError: (e) => toast.error(e.message),
   })
 
@@ -97,9 +118,10 @@ export function ServiceRequestDetailPage() {
     } } })
   }
 
-  const runTransition = (instanceId: string, toStep: string, label: string, notes?: string) => {
+  const runTransition = (instanceId: string, toStep: string, notes?: string) => {
     void executeTransition({ variables: { instanceId, toStep, notes: notes?.trim() || null } })
-      .then(() => toast.success(label))
+      // Giro del 14 set 2026 (#42): il toast ripeteva il pulsante («Evadi»), non l'esito.
+      .then(() => toast.success(t('toast.transition.movedTo', { step: stepLabel(toStep) })))
       .catch(() => { /* onError handles toast */ })
   }
 
@@ -131,7 +153,7 @@ export function ServiceRequestDetailPage() {
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>{sr.title}</h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <Pill bg={stColor.bg} color={stColor.color}>{stepLabel(sr.status)}</Pill>
-            <Pill bg="transparent" color={lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', colors.slateLight)} style={{ border: `1.5px solid ${lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', colors.slateLight)}` }}>{labelOf('priority', sr.priority) ?? sr.priority}</Pill>
+            <Pill bg="transparent" color={styleOf('priority', sr.priority).color} style={{ border: `1.5px solid ${styleOf('priority', sr.priority).accent}` }}>{labelOf('priority', sr.priority) ?? sr.priority}</Pill>
             <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{timeAgo(sr.createdAt)}</span>
           </div>
         </div>
@@ -154,6 +176,9 @@ export function ServiceRequestDetailPage() {
           {/* Allegati */}
           <AttachmentsSection entityType="service_request" entityId={sr.id} />
 
+          {/* F13: le richieste non avevano commenti. */}
+          <EntityCommentsSection entityType="service_request" entityId={sr.id} />
+
           {/* Internal Chat */}
           <InternalChatPanel entityType="service_request" entityId={sr.id} currentUserId={keycloak.subject ?? ''} />
         </div>
@@ -167,13 +192,13 @@ export function ServiceRequestDetailPage() {
                 <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
                   {t('pages.serviceRequestDetail.noWorkflow')}
                 </p>
-              ) : sr.availableTransitions.length === 0 ? (
+              ) : srTransitions.length === 0 ? (
                 <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
                   {t('pages.serviceRequestDetail.noActionInStep', { step: stepLabel(sr.workflowInstance.currentStep) })}
                 </p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {sr.availableTransitions.map((tr) => (
+                  {srTransitions.map((tr) => (
                     <button
                       type="button"
                       key={tr.toStep}
@@ -183,7 +208,7 @@ export function ServiceRequestDetailPage() {
                           setTransitionNotes('')
                           setTransitionModal({ toStep: tr.toStep, label: tr.label, inputField: tr.inputField })
                         } else {
-                          runTransition(sr.workflowInstance!.id, tr.toStep, tr.label)
+                          runTransition(sr.workflowInstance!.id, tr.toStep)
                         }
                       }}
                       style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--color-brand)', background: 'var(--color-brand)', color: colors.white, cursor: transitioning ? 'default' : 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, opacity: transitioning ? 0.6 : 1, textAlign: 'left' }}
@@ -199,7 +224,29 @@ export function ServiceRequestDetailPage() {
           <SectionCard collapsible={false} defaultOpen title={t('detail.sections.details')}>
             <DetailField label="SLA" value={sr.slaStatus ? <SlaBadge sla={sr.slaStatus} /> : t('pages.serviceRequestDetail.noSla')} />
             <DetailField label={t('detail.requester')} value={sr.requestedBy?.name ?? null} />
-            <DetailField label={t('detail.assignee')} value={sr.assignee?.name ?? null} />
+            {sr.completedAt ? (
+              <DetailField label={t('detail.assignee')} value={sr.assignee?.name ?? null} />
+            ) : (() => {
+              const current = sr.assignee?.id ?? ''
+              const chosen = assigneeChoice ?? current
+              return (
+                <DetailField label={t('detail.assignee')} value={
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <Select id={ids.assignee} aria-label={t('detail.assignee')} value={chosen} onChange={(e) => setAssigneeChoice(e.target.value)}>
+                      <option value="">{t('detail.unassign')}</option>
+                      {assignable.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </Select>
+                    <Button
+                      variant="secondary"
+                      disabled={assigning || chosen === current}
+                      onClick={() => void assignRequest({ variables: { id: sr.id, userId: chosen || null } })}
+                    >
+                      {assigning ? t('detail.assigning') : t('detail.assign')}
+                    </Button>
+                  </div>
+                } />
+              )
+            })()}
             <DetailField label={t('detail.dueDate')} value={sr.dueDate ? formatDate(sr.dueDate) : null} />
             <DetailField label={t('detail.createdAt')} value={formatDate(sr.createdAt)} />
             {sr.completedAt && <DetailField label={t('detail.completedAt')} value={formatDate(sr.completedAt)} />}
@@ -257,7 +304,7 @@ export function ServiceRequestDetailPage() {
               <button
                 type="button"
                 disabled={transitioning || transitionNotes.trim().length === 0}
-                onClick={() => runTransition(sr.workflowInstance!.id, transitionModal.toStep, transitionModal.label, transitionNotes)}
+                onClick={() => runTransition(sr.workflowInstance!.id, transitionModal.toStep, transitionNotes)}
                 style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: (transitioning || transitionNotes.trim().length === 0) ? 0.6 : 1 }}
               >
                 {t('common.confirm')}

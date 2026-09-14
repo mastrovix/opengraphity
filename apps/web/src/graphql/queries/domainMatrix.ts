@@ -57,6 +57,13 @@ export const GET_RISK_BAND_THRESHOLDS = gql`
   }
 `
 
+/** Il peso dell'ambiente nel punteggio dell'assessment della change (era 5 nel codice). */
+export const GET_CHANGE_ENVIRONMENT_WEIGHT = gql`
+  query GetChangeEnvironmentWeight {
+    changeEnvironmentWeight { weight isDefault }
+  }
+`
+
 /**
  * Cosa c'è da sistemare nella configurazione di questo cliente. Il prodotto lo
  * sapeva già e lo diceva a tutti tranne che a chi può rimediare: intestazione
@@ -76,6 +83,20 @@ export const GET_CONFIGURATION_ISSUES = gql`
 export const GET_TENANT_LANGUAGE_SETTINGS = gql`
   query GetTenantLanguageSettings {
     tenantLanguageSettings { available defaultLanguage fallback }
+  }
+`
+
+/** Il fuso orario del cliente e le zone disponibili (revisione del 14 set 2026 · F7). */
+export const GET_TENANT_TIMEZONE_SETTINGS = gql`
+  query GetTenantTimezoneSettings {
+    tenantTimezoneSettings { timezone available }
+  }
+`
+
+/** Il calendario di servizio del cliente (revisione del 14 set 2026 · F6). */
+export const GET_TENANT_SERVICE_CALENDAR = gql`
+  query GetTenantServiceCalendar {
+    tenantServiceCalendar { days start end holidays }
   }
 `
 

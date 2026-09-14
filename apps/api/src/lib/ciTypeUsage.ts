@@ -39,20 +39,20 @@ export interface CITypeUsage {
 }
 
 /**
- * Come si chiama in italiano ogni riferimento. È una tabella e non una stringa
+ * Come si chiama ogni riferimento (in inglese, la lingua dei messaggi dell'API). È una tabella e non una stringa
  * costruita a caso perché il messaggio è la parte utile: dice all'admin **dove
  * andare** a togliere il riferimento.
  */
 const REFERENCE_LABELS: Readonly<Record<string, string>> = {
-  itil_relation_rules:    'regole di relazione ITIL (Impostazioni → Relazioni ITIL)',
-  assessment_questions:   'domande di assessment agganciate al tipo (Impostazioni → Domande di valutazione)',
-  dynamic_ci_groups:      'gruppi dinamici che lo elencano nei criteri',
-  field_visibility_rules: 'regole di visibilità dei campi',
-  field_requirement_rules:'regole di obbligatorietà dei campi',
-  business_rules:         'regole di dominio',
-  auto_triggers:          'automazioni',
-  custom_widgets:         'widget della dashboard',
-  report_nodes:           'nodi dei template di report',
+  itil_relation_rules:    'ITIL relation rules (Settings → ITIL relations)',
+  assessment_questions:   'assessment questions attached to the type (Settings → Assessment questions)',
+  dynamic_ci_groups:      'dynamic groups that list it in their criteria',
+  field_visibility_rules: 'field visibility rules',
+  field_requirement_rules:'field requirement rules',
+  business_rules:         'business rules',
+  auto_triggers:          'auto triggers',
+  custom_widgets:         'dashboard widgets',
+  report_nodes:           'report template nodes',
 }
 
 /**
@@ -80,7 +80,7 @@ export const CI_TYPE_USAGE_CYPHER = `
 
 function toCount(value: unknown): number {
   const n = Number(value ?? 0)
-  if (!Number.isFinite(n)) throw new Error(`ciTypeUsage: conteggio non numerico (${JSON.stringify(value)})`)
+  if (!Number.isFinite(n)) throw new Error(`ciTypeUsage: non-numeric count (${JSON.stringify(value)})`)
   return n
 }
 
@@ -89,7 +89,7 @@ export async function loadCITypeUsage(
   session: Queryable, tenantId: string, typeId: string, name: string, label: string,
 ): Promise<CITypeUsage> {
   const row = await runQueryOne<Record<string, unknown>>(session, CI_TYPE_USAGE_CYPHER, { tenantId, typeId, name, label })
-  if (!row) throw new Error(`ciTypeUsage: la lettura dei conteggi per il tipo "${name}" non ha restituito righe`)
+  if (!row) throw new Error(`ciTypeUsage: reading the counts for type "${name}" returned no rows`)
   const references = Object.keys(REFERENCE_LABELS)
     .map((kind) => ({ kind, count: toCount(row[kind]) }))
     .filter((r) => r.count > 0)
@@ -100,6 +100,6 @@ export async function loadCITypeUsage(
 export function describeCITypeUsage(usage: CITypeUsage): string {
   if (usage.references.length === 0) return ''
   return usage.references
-    .map((r) => `${String(r.count)} ${REFERENCE_LABELS[r.kind] ?? r.kind}`)
+    .map((r) => `${REFERENCE_LABELS[r.kind] ?? r.kind}: ${String(r.count)}`)
     .join('; ')
 }

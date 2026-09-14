@@ -16,6 +16,7 @@ import {
   mapCI,
 } from './mappers.js'
 import { toNumber } from '@opengraphity/neo4j'
+import { listPage } from '../../../lib/listLimit.js'
 
 type Session = ReturnType<typeof getSession>
 
@@ -118,8 +119,7 @@ async function loadAssignmentsForTasks(session: Session, taskIds: string[]): Pro
 }
 
 export async function changes(_: unknown, args: { currentStep?: string; priority?: string; limit?: number; offset?: number }, ctx: GraphQLContext) {
-  const limit  = args.limit  ?? 50
-  const offset = args.offset ?? 0
+  const { limit, offset } = listPage(args, 50)
   return withSession(async (session) => {
     const joinWF = args.currentStep
       ? 'MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {current_step: $currentStep})'
@@ -507,9 +507,11 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         rv.created_at  AS createdAt
     `, params)
 
+    // Revisione del 14 set 2026 · CH-5: l'azione era italiana per tutti. Qui
+    // resta il testo inglese dell'API; il web la compone da `kind` e `role`.
     const assessmentAction = (role: string) => role === 'owner'
-      ? 'Compila assessment Functional'
-      : 'Compila assessment Technical'
+      ? 'Fill in the Functional assessment'
+      : 'Fill in the Technical assessment'
 
     const assignedToMe: MyTaskRow[] = [
       ...assignedAssessRows.map((r) => ({
@@ -521,7 +523,7 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         ...r,
         kind:   'deploy-plan',
         role:   'support',
-        action: 'Compila piano di deploy',
+        action: 'Fill in the deploy plan',
       })),
     ]
 
@@ -535,25 +537,25 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         ...r,
         kind:   'deploy-plan',
         role:   'support',
-        action: 'Compila piano di deploy',
+        action: 'Fill in the deploy plan',
       })),
       ...valRows.map((r) => ({
         ...r,
         kind:   'validation',
         role:   'owner',
-        action: 'Esegui validation (Pass/Fail)',
+        action: 'Run the validation (Pass/Fail)',
       })),
       ...depRows.map((r) => ({
         ...r,
         kind:   'deployment',
         role:   'support',
-        action: 'Conferma il deploy',
+        action: 'Confirm the deploy',
       })),
       ...revRows.map((r) => ({
         ...r,
         kind:   'review',
         role:   'owner',
-        action: 'Conferma l\'esito (Confirmed/Rejected)',
+        action: 'Confirm the outcome (Confirmed/Rejected)',
       })),
     ]
 
@@ -628,7 +630,7 @@ export async function taskById(_: unknown, args: { id: string }, ctx: GraphQLCon
         RETURN coalesce(t.code, '') AS taskCode,
                c.id AS changeId, c.code AS changeCode, c.title AS changeTitle,
                wi.current_step AS changePhase,
-               ('Perché: ' + coalesce(c.why, '—') + ' · Cosa: ' + coalesce(c.what, '—')) AS changeDesc,
+               ('Why: ' + coalesce(c.why, '—') + ' · What: ' + coalesce(c.what, '—')) AS changeDesc,
                ci.id AS ciId, ci.name AS ciName,
                coalesce(ci.type, toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))) AS ciType,
                ci.environment AS ciEnv

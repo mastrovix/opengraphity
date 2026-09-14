@@ -49,6 +49,9 @@ export const ROUTABLE_CHANNELS_BY_EVENT: Readonly<Record<string, readonly Notifi
   // Change: solo Slack (formatSlackChange / formatSlackChangeTask)
   'change.approved':     SLACK_ONLY,
   'change.task_assigned': SLACK_ONLY,
+  // Il digest giornaliero è un'e-mail riassuntiva: nessun altro canale lo
+  // consegna (NT-8, jobs/emailDigestWorker.ts in apps/api).
+  'digest.daily':        ['email'],
 })
 
 /** Canali che il dispatcher sa instradare per `eventType`. */

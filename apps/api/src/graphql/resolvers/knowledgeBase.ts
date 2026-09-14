@@ -7,6 +7,10 @@ import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import { enqueueEmbedding } from '../../jobs/embeddingWorker.js'
 import { normalizeKbTags } from '../../services/embeddings.js'
+import { assertDomainValue } from '../../lib/domainMatrix.js'
+import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
+import { languageFor } from '../../lib/tenantLanguage.js'
+import { LINGUE, labelFor, type Lingua } from '../../lib/enumValueLabels.js'
 
 interface KBArticle {
   id:                 string
@@ -32,6 +36,8 @@ interface KBArticle {
 
 interface KBCategory {
   name:  string
+  label: string
+  color: string | null
   count: number
 }
 
@@ -80,7 +86,8 @@ const ARTICLE_RETURN = `
          a.tags              AS tags,
          a.status            AS status,
          a.author_id         AS authorId,
-         a.author_name       AS authorName,
+         // Il nome della persona, non l'e-mail salvata alla scrittura (giro del 14 set 2026, #44).
+         coalesce(COLLECT { MATCH (au:User {id: a.author_id, tenant_id: a.tenant_id}) RETURN au.name }[0], a.author_name) AS authorName,
          a.views             AS views,
          a.helpful_count     AS helpfulCount,
          a.not_helpful_count AS notHelpfulCount,
@@ -90,7 +97,7 @@ const ARTICLE_RETURN = `
          wi.id               AS workflowInstanceId,
          wi.current_step     AS currentStep,
          coalesce(a.version, 1)   AS version,
-         a.last_edited_by_name    AS lastEditedByName
+         coalesce(COLLECT { MATCH (ed:User {id: a.last_edited_by, tenant_id: a.tenant_id}) RETURN ed.name }[0], a.last_edited_by_name) AS lastEditedByName
 `
 
 // Full RETURN including the OPTIONAL MATCH for WorkflowInstance
@@ -205,22 +212,35 @@ export async function kbArticleBySlug(
   }
 }
 
+/**
+ * Le categorie della Knowledge Base: il vocabolario `kb_category` del cliente,
+ * nell'ordine dei suoi valori, con l'etichetta nella lingua chiesta, il colore
+ * del Dizionario e quanti articoli pubblicati ha ciascuna (anche zero).
+ * Revisione del 14 set 2026 · F5: prima erano le sole categorie già usate.
+ */
 export async function kbCategories(
   _: unknown,
-  __: unknown,
+  args: { language?: string | null },
   ctx: GraphQLContext,
 ): Promise<KBCategory[]> {
+  const [vocabulary, fallback] = await Promise.all([
+    loadVocabularyEntries(ctx.tenantId, 'kb_category'),
+    languageFor(ctx.tenantId),
+  ])
+  const language: Lingua = (LINGUE as readonly string[]).includes(args.language ?? '') ? args.language as Lingua : fallback
   const session = getSession(undefined, 'READ')
   try {
     const res = await session.executeRead((tx) => tx.run(`
       MATCH (a:KBArticle {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
       WHERE s.category = 'published'
       RETURN a.category AS name, count(a) AS count
-      ORDER BY count DESC
     `, { tenantId: ctx.tenantId }))
-    return res.records.map((r) => ({
-      name:  r.get('name')  as string,
-      count: toNumber(r.get('count')),
+    const counts = new Map(res.records.map((r) => [r.get('name') as string, toNumber(r.get('count'))]))
+    return vocabulary.values.map((name) => ({
+      name,
+      label: labelFor(name, vocabulary.labels, language, fallback),
+      color: vocabulary.colors[name] ?? null,
+      count: counts.get(name) ?? 0,
     }))
   } finally {
     await session.close()
@@ -234,6 +254,8 @@ export async function createKBArticle(
   args: { title: string; body: string; category: string; tags?: string[]; status?: string },
   ctx: GraphQLContext,
 ): Promise<KBArticle> {
+  // F5: la categoria è un valore del vocabolario `kb_category` del cliente.
+  await assertDomainValue(ctx.tenantId, 'kb_category', args.category)
   if (args.body.length > 50_000) {
     throw new GraphQLError('Article body exceeds 50000 characters', { extensions: { code: 'BAD_REQUEST' } })
   }
@@ -289,7 +311,7 @@ export async function createKBArticle(
              a.tags              AS tags,
              a.status            AS status,
              a.author_id         AS authorId,
-             a.author_name       AS authorName,
+             coalesce(COLLECT { MATCH (au:User {id: a.author_id, tenant_id: a.tenant_id}) RETURN au.name }[0], a.author_name) AS authorName,
              a.views             AS views,
              a.helpful_count     AS helpfulCount,
              a.not_helpful_count AS notHelpfulCount,
@@ -299,7 +321,7 @@ export async function createKBArticle(
              null                AS workflowInstanceId,
              null                AS currentStep,
              a.version           AS version,
-             a.last_edited_by_name AS lastEditedByName
+             coalesce(COLLECT { MATCH (ed:User {id: a.last_edited_by, tenant_id: a.tenant_id}) RETURN ed.name }[0], a.last_edited_by_name) AS lastEditedByName
     `, {
       id,
       tenantId:    ctx.tenantId,
@@ -340,6 +362,7 @@ export async function updateKBArticle(
   args: { id: string; title?: string; body?: string; category?: string; tags?: string[] },
   ctx: GraphQLContext,
 ): Promise<KBArticle> {
+  if (args.category !== undefined) await assertDomainValue(ctx.tenantId, 'kb_category', args.category)
   if (args.body && args.body.length > 50_000) {
     throw new GraphQLError('Article body exceeds 50000 characters', { extensions: { code: 'BAD_REQUEST' } })
   }
@@ -482,7 +505,7 @@ export async function kbArticleVersions(
              v.category       AS category,
              v.tags           AS tags,
              v.edited_by      AS editedById,
-             v.edited_by_name AS editedByName,
+             coalesce(COLLECT { MATCH (ed:User {id: v.edited_by, tenant_id: v.tenant_id}) RETURN ed.name }[0], v.edited_by_name) AS editedByName,
              v.edited_at      AS editedAt
       ORDER BY v.version DESC
     `, { articleId: args.articleId, tenantId: ctx.tenantId }))

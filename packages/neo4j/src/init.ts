@@ -128,6 +128,11 @@ const CONSTRAINTS: SchemaStatement[] = [
     label: 'Change(tenant_id, code)',
     cypher: 'CREATE CONSTRAINT change_code_unique IF NOT EXISTS FOR (n:Change) REQUIRE (n.tenant_id, n.code) IS UNIQUE',
   },
+  {
+    // F18: `number` sulle change come sugli altri ticket (stesso valore di `code`).
+    label: 'Change(tenant_id, number)',
+    cypher: 'CREATE CONSTRAINT change_number_unique IF NOT EXISTS FOR (n:Change) REQUIRE (n.tenant_id, n.number) IS UNIQUE',
+  },
   { label: 'ServiceCatalogItem.id', cypher: 'CREATE CONSTRAINT service_catalog_item_id_unique IF NOT EXISTS FOR (n:ServiceCatalogItem) REQUIRE n.id IS UNIQUE' },
   { label: 'KBArticleVersion.id', cypher: 'CREATE CONSTRAINT kb_article_version_id_unique IF NOT EXISTS FOR (n:KBArticleVersion) REQUIRE n.id IS UNIQUE' },
   { label: 'OLAContract.id', cypher: 'CREATE CONSTRAINT ola_contract_id_unique IF NOT EXISTS FOR (n:OLAContract) REQUIRE n.id IS UNIQUE' },
@@ -341,10 +346,15 @@ const INDEXES: SchemaStatement[] = [
   { label: 'SLAPolicyNode(tenant_id, entity_type)', cypher: 'CREATE INDEX sla_policy_node_tenant_type IF NOT EXISTS FOR (n:SLAPolicyNode) ON (n.tenant_id, n.entity_type)' },
   // WorkflowStep: the engine resolves steps by (definition, name) on every transition.
   { label: 'WorkflowStep(definition_id, name)', cypher: 'CREATE INDEX workflow_step_definition_name IF NOT EXISTS FOR (n:WorkflowStep) ON (n.definition_id, n.name)' },
-  // Comments: two labels coexist — `Comment` (Incident HAS_COMMENT, legacy) and
-  // `EntityComment` (generic, resolvers/comments.ts + portal). Both indexed.
-  { label: 'EntityComment(tenant_id, entity_id)', cypher: 'CREATE INDEX entity_comment_tenant_entity IF NOT EXISTS FOR (n:EntityComment) ON (n.tenant_id, n.entity_id)' },
+  // Comments: one model for every ticket, `(ticket)-[:HAS_COMMENT]->(:Comment)`
+  // (apps/api/src/lib/ticketComments.ts). `EntityComment` was retired by the
+  // migration 20260923_1030_comments_single_model: its index is no longer created.
   { label: 'Comment(tenant_id)', cypher: 'CREATE INDEX comment_tenant IF NOT EXISTS FOR (n:Comment) ON (n.tenant_id)' },
+  // Edit/delete of a single comment (resolvers/comments.ts) look it up by id.
+  { label: 'Comment(tenant_id, id)', cypher: 'CREATE INDEX comment_tenant_id IF NOT EXISTS FOR (n:Comment) ON (n.tenant_id, n.id)' },
+  // Revisione del 14 set 2026 · F10: il pannello legge le notifiche del tenant dalla più recente; la pulizia per età.
+  { label: 'InAppNotification(tenant_id, created_at)', cypher: 'CREATE INDEX inapp_notification_tenant_created IF NOT EXISTS FOR (n:InAppNotification) ON (n.tenant_id, n.created_at)' },
+  { label: 'InAppNotification(created_at)', cypher: 'CREATE INDEX inapp_notification_created IF NOT EXISTS FOR (n:InAppNotification) ON (n.created_at)' },
   // Metamodel definitions (id lookups from the dynamic CI resolvers). Le chiavi
   // naturali (tenant_id, name) sono VINCOLI di unicità (D-17, vedi CONSTRAINTS):
   // i loro indici di appoggio servono anche queste ricerche, quindi qui restano
@@ -437,8 +447,11 @@ const COUNTER_SEEDS: SchemaStatement[] = [
     WITH ch.tenant_id AS t, max(toInteger(substring(ch.code, 3))) AS mx
     MERGE (c:Counter {tenant_id: t, kind: 'change'})
     SET c.value = CASE WHEN c.value IS NULL OR c.value < mx THEN mx ELSE c.value END` },
+  // Revisione del 14 set 2026 · CH-2: questa voce cercava l'etichetta
+  // `ChangeTask`, che non esiste — i task hanno le cinque etichette dei loro tipi.
   { label: 'seed task counter', cypher: `
-    MATCH (tk:ChangeTask) WHERE tk.tenant_id IS NOT NULL AND tk.code STARTS WITH 'TASK'
+    MATCH (tk) WHERE (tk:AssessmentTask OR tk:DeployPlanTask OR tk:ValidationTest OR tk:DeploymentTask OR tk:ReviewTask)
+      AND tk.tenant_id IS NOT NULL AND tk.code STARTS WITH 'TASK'
     WITH tk.tenant_id AS t, max(toInteger(substring(tk.code, 4))) AS mx
     MERGE (c:Counter {tenant_id: t, kind: 'task'})
     SET c.value = CASE WHEN c.value IS NULL OR c.value < mx THEN mx ELSE c.value END` },

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
+import { BookOpen } from 'lucide-react'
 import { GET_KB_ARTICLES, GET_KB_CATEGORIES } from '@/graphql/queries'
 import { KBSearchBar } from '@/components/KBSearchBar'
 import { fmtDateLong } from '@/lib/format'
@@ -11,16 +12,12 @@ interface KBArticle {
   id: string; title: string; slug: string; body: string
   category: string; views: number; publishedAt: string | null
 }
-interface KBCategory { name: string; count: number }
-
-const CATEGORY_ICONS: Record<string, string> = {
-  hardware:  '🖥️',
-  software:  '💻',
-  network:   '🌐',
-  security:  '🔒',
-  email:     '📧',
-  general:   '📂',
-}
+/**
+ * Una categoria KB: un valore del vocabolario `kb_category` del Dizionario, con
+ * l'etichetta nella lingua di chi legge (revisione del 14 set 2026 · F5). Prima
+ * c'era qui una tabella di emoji per sei categorie scelte a mano.
+ */
+interface KBCategory { name: string; label: string; count: number }
 
 function excerpt(body: string, max = 200): string {
   const plain = body.replace(/[#*`[\]]/g, '').trim()
@@ -29,18 +26,23 @@ function excerpt(body: string, max = 200): string {
 
 
 export function KBListPage() {
-  const { t }                   = useTranslation()
+  const { t, i18n }             = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch]     = useState(searchParams.get('search') ?? '')
 
-  const { data: catData } = useQuery<{ kbCategories: KBCategory[] }>(GET_KB_CATEGORIES)
+  const { data: catData } = useQuery<{ kbCategories: KBCategory[] }>(GET_KB_CATEGORIES, {
+    variables: { language: i18n.resolvedLanguage ?? i18n.language },
+  })
   const { data, loading } = useQuery<{ kbArticles: { items: KBArticle[]; total: number } }>(
     GET_KB_ARTICLES,
     { variables: { search: search || undefined, pageSize: 30 }, skip: false },
   )
 
   const articles   = data?.kbArticles?.items ?? []
-  const categories = catData?.kbCategories ?? []
+  const allCategories = catData?.kbCategories ?? []
+  // Nella griglia solo le categorie con articoli pubblicati.
+  const categories = allCategories.filter((c) => c.count > 0)
+  const categoryLabel = (name: string) => allCategories.find((c) => c.name === name)?.label ?? name
 
   useEffect(() => {
     const current = searchParams.get('search') ?? ''
@@ -86,9 +88,9 @@ export function KBListPage() {
                 onMouseEnter={e => { e.currentTarget.style.borderColor = colors.brand; e.currentTarget.style.backgroundColor = colors.brandLight }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = colors.border; e.currentTarget.style.backgroundColor = palette.neutral.surface1 }}
               >
-                <span style={{ fontSize: 28 }}>{CATEGORY_ICONS[cat.name.toLowerCase()] ?? '📄'}</span>
-                <span style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark, textTransform: 'capitalize' }}>{cat.name}</span>
-                <span style={{ fontSize: 10, color: colors.slateLight }}>{cat.count} {t('kb.articles')}</span>
+                <BookOpen size={24} color={colors.brand} aria-hidden="true" />
+                <span style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark }}>{cat.label}</span>
+                <span style={{ fontSize: 10, color: colors.slateLight }}>{t('kb.articleCount', { count: cat.count })}</span>
               </button>
             ))}
           </div>
@@ -112,10 +114,10 @@ export function KBListPage() {
         <div>
           {search && (
             <div style={{ marginBottom: 16, fontSize: 10, color: colors.slate }}>
-              {articles.length} risultati per "<strong>{search}</strong>"
+              {t('kb.searchResults', { count: articles.length })} "<strong>{search}</strong>"
               {' '}
-              <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: colors.brand, cursor: 'pointer', fontSize: 10 }}>
-                Cancella
+              <button type="button" onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: colors.brand, cursor: 'pointer', fontSize: 10 }}>
+                {t('kb.clearSearch')}
               </button>
             </div>
           )}
@@ -151,9 +153,8 @@ export function KBListPage() {
                         padding:         '2px 8px',
                         borderRadius:    100,
                         fontWeight:      500,
-                        textTransform:   'capitalize',
                       }}>
-                        {article.category}
+                        {categoryLabel(article.category)}
                       </span>
                       {article.publishedAt && <span>{fmtDateLong(article.publishedAt)}</span>}
                       <span>{article.views} {t('kb.views')}</span>

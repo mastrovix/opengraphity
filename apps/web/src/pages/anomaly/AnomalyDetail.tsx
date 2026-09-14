@@ -4,7 +4,7 @@ import { X } from 'lucide-react'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { colors, alpha } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
-import { RULE_LABEL_KEYS, AnomalyStatusBadge, anomalyEntityTypeLabel } from './AnomalyPage'
+import { RULE_LABEL_KEYS, AnomalyStatusBadge, anomalyEntityTypeLabel, anomalyTitle, anomalyDescription } from './AnomalyPage'
 import { ResolutionForm } from './AnomalyModal'
 import type { Anomaly } from '@/types/anomaly'
 
@@ -54,7 +54,7 @@ export function DetailPanel({
             {RULE_LABEL_KEYS[anomaly.ruleKey] ? t(RULE_LABEL_KEYS[anomaly.ruleKey]) : anomaly.ruleKey}
           </div>
           <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark, lineHeight: 1.4 }}>
-            {anomaly.title}
+            {anomalyTitle(t, anomaly)}
           </div>
         </div>
         <button
@@ -76,7 +76,7 @@ export function DetailPanel({
       {/* Fields */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
         <Field label={t('pages.anomalies.entity')} value={`${anomaly.entityName} (${anomalyEntityTypeLabel(t, anomaly)})`} />
-        <Field label={t('common.description')} value={anomaly.description} />
+        <Field label={t('common.description')} value={anomalyDescription(t, anomaly)} />
         <Field label={t('pages.anomalies.detectedAtCol')} value={formatDateTime(anomaly.detectedAt)} />
         {anomaly.resolvedAt && (
           <Field label={t('common.resolvedAt')} value={formatDateTime(anomaly.resolvedAt)} />

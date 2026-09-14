@@ -37,7 +37,8 @@ export type RootKind = 'Query' | 'Mutation'
 export const ROLES: readonly Role[] = USER_ROLES
 
 const DEFAULT_QUERY_ROLES:    readonly Role[] = ['admin', 'operator', 'viewer']
-const DEFAULT_MUTATION_ROLES: readonly Role[] = ['admin', 'operator']
+/** Chi scrive per default: anche chi può ricevere un ticket da lavorare. */
+export const DEFAULT_MUTATION_ROLES: readonly Role[] = ['admin', 'operator']
 
 /** Configurazione del tenant: solo admin. */
 export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
@@ -68,15 +69,19 @@ export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
   'serviceRelationshipTypes',
   // Ondata 7 · A7-4: le matrici di dominio sono configurazione del tenant
   // (priorità = impatto × urgenza, criticità → impatto, …), come i vocabolari.
-  'domainMatrices', 'preApprovedChangeTypes',
+  'domainMatrices', 'preApprovedChangeTypes', 'changeEnvironmentWeight',
 ])
 
 export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   // utenti e team
-  'createUser', 'updateUserTeams', 'createTeam', 'updateTeam', 'setTeamManager', 'removeTeamManager', 'setChangeManagerTeam',
+  'createUser', 'updateUserTeams', 'createTeam', 'updateTeam', 'setTeamManager', 'removeTeamManager', 'setTeamMember', 'setChangeManagerTeam',
   // la lingua predefinita del cliente (configurazione dell'azienda, non
   // preferenza di una persona: quella sta nel Profilo e non passa da qui)
   'setTenantDefaultLanguage',
+  // il fuso orario del cliente (revisione del 14 set 2026 · F7)
+  'setTenantTimezone',
+  // il calendario di servizio (revisione del 14 set 2026 · F6)
+  'setTenantServiceCalendar',
   // definizioni di workflow
   'provisionTenantData',
   'addWorkflowStep', 'removeWorkflowStep', 'updateWorkflowStep',
@@ -101,7 +106,7 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   'createITILCIRelationRule', 'deleteITILCIRelationRule',
   'createEnumType', 'updateEnumType', 'deleteEnumType', 'customizeEnumType',
   'renameEnumValue', 'reorderEnumValues',
-  'updateDomainMatrix', 'updatePreApprovedChangeTypes', 'updateRiskBandThresholds',
+  'updateDomainMatrix', 'updatePreApprovedChangeTypes', 'updateRiskBandThresholds', 'updateChangeEnvironmentWeight',
   'createFieldVisibilityRule', 'updateFieldVisibilityRule', 'deleteFieldVisibilityRule',
   'setFieldRequirement', 'deleteFieldRequirement',
   // cataloghi e questionari
@@ -109,7 +114,16 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   'createAssessmentQuestion', 'updateAssessmentQuestion', 'deleteAssessmentQuestion',
   'assignQuestionToCIType', 'removeQuestionFromCIType', 'setQuestionCore',
   // operazioni di sistema
-  'runAnomalyScanner', 'retryQueueJob', 'updateReportSchedule', 'deleteChange',
+  // LA CANCELLAZIONE DEI TICKET — una regola sola (revisione del 14 set 2026 · F14):
+  //  - solo admin, per ogni ticket che si può cancellare;
+  //  - change: cancellazione LOGICA (l'approvazione multi-parte e l'audit sono
+  //    un registro di conformità che deve restare leggibile);
+  //  - problem: cancellazione FISICA con cascata completa (istanza, SLA,
+  //    commenti, allegati, notifiche) e job di breach annullati;
+  //  - incident e richieste: non si cancellano — si chiudono o si annullano con
+  //    il loro workflow, e la loro storia resta.
+  // Pinnata da graphql/__tests__/ticketDeletionPolicy.test.ts.
+  'runAnomalyScanner', 'retryQueueJob', 'updateReportSchedule', 'deleteChange', 'deleteProblem',
   // Event Management (alias dei CI, policy del tenant, prova di una sorgente,
   // anteprima del wizard: strumento admin come payloadKeys/sampleInboundPayload).
   // acknowledgeEvent/resolveEvent/linkEventToCI/createIncidentFromEvent/
@@ -146,7 +160,7 @@ export const VIEWER_ALLOWED_MUTATIONS: ReadonlySet<string> = new Set([
 
 /** Superficie del portale self-service: tutto il resto è negato a end_user. */
 export const END_USER_ALLOWED_QUERIES: ReadonlySet<string> = new Set([
-  'me', 'myTickets', 'myTicket', 'myTicketStats', 'serviceCatalogItems',
+  'me', 'myTickets', 'myTicket', 'myTicketStats', 'ticketCategories', 'serviceCatalogItems',
   'kbArticles', 'kbArticle', 'kbArticleBySlug', 'kbCategories',
   'fieldVisibilityRules', 'fieldRequirementRules',
   // In che lingua si legge questo cliente: la chiede il portale all'avvio,
@@ -200,7 +214,7 @@ export function applyAuthorizationPolicy<T extends { Query?: RootMap; Mutation?:
   }
   for (const name of END_USER_ALLOWED_QUERIES) if (!(name in query)) missing.push(`Query.${name}`)
   if (missing.length) {
-    throw new Error(`[authorization] la policy cita campi inesistenti: ${missing.join(', ')}`)
+    throw new Error(`[authorization] the policy names fields that do not exist: ${missing.join(', ')}`)
   }
 
   const wrap = (kind: RootKind, map: RootMap): RootMap => {

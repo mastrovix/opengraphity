@@ -21,6 +21,8 @@ export interface Me {
   /** Role stored in the DB (`admin | operator | viewer | end_user`). */
   role:    string
   slackId: string | null
+  /** Riceve le e-mail di notifica (null = nessun utente nel grafo per questa identità). */
+  emailNotifications: boolean | null
   teams:   { id: string; name: string }[]
 }
 

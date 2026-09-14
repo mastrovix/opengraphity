@@ -222,7 +222,7 @@ function resolveWidgetResult(parent: WidgetParent, ctx: GraphQLContext) {
   parent.__widgetResult ??= (async () => {
     try {
       const section = await loadReportSection(parent.reportSectionId, ctx.tenantId)
-      if (!section) return { data: null, error: 'Sezione non trovata' }
+      if (!section) return { data: null, error: 'Report section not found' }
       const result = await executeReportSection(section, ctx.tenantId)
       // Never discard the section error: an empty widget must say WHY.
       return { data: result.error ? null : result.data, error: result.error }

@@ -7,11 +7,12 @@ import { withSession, runQuery } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 import type { Props } from './ci-utils.js'
 import { toNumber } from '@opengraphity/neo4j'
+import { TICKET_CI_RELATIONSHIP } from '@opengraphity/types'
 
 async function ciIncidents(_: unknown, args: { ciId: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session,
-      `MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(n {id: $ciId})
+      `MATCH (i:Incident {tenant_id: $tenantId})-[:${TICKET_CI_RELATIONSHIP.incident}]->(n {id: $ciId})
        RETURN properties(i) AS props
        ORDER BY i.created_at DESC`,
       { ciId: args.ciId, tenantId: ctx.tenantId },
@@ -42,7 +43,7 @@ async function ciIncidents(_: unknown, args: { ciId: string }, ctx: GraphQLConte
 async function ciChanges(_: unknown, args: { ciId: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session,
-      `MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS_CI]->(n {id: $ciId})
+      `MATCH (c:Change {tenant_id: $tenantId})-[:${TICKET_CI_RELATIONSHIP.change}]->(n {id: $ciId})
        WHERE coalesce(c.deleted, false) = false
        RETURN properties(c) AS props
        ORDER BY c.created_at DESC`,
@@ -67,6 +68,30 @@ async function ciChanges(_: unknown, args: { ciId: string }, ctx: GraphQLContext
   })
 }
 
+/**
+ * I problem che hanno questo CI fra gli impattati — revisione del 14 set 2026 ·
+ * F12: il dettaglio del CI mostrava incident e change, non i problem.
+ */
+async function ciProblems(_: unknown, args: { ciId: string }, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const rows = await runQuery<{ props: Props }>(session,
+      `MATCH (p:Problem {tenant_id: $tenantId})-[:${TICKET_CI_RELATIONSHIP.problem}]->(n {id: $ciId, tenant_id: $tenantId})
+       RETURN properties(p) AS props
+       ORDER BY p.created_at DESC`,
+      { ciId: args.ciId, tenantId: ctx.tenantId },
+    )
+    return rows.map((r) => ({
+      id:        r.props['id']         as string,
+      number:    (r.props['number'] ?? '') as string,
+      title:     r.props['title']      as string,
+      priority:  (r.props['priority'] ?? null) as string | null,
+      status:    r.props['status']     as string,
+      createdAt: r.props['created_at'] as string,
+      updatedAt: r.props['updated_at'] as string,
+    }))
+  })
+}
+
 export const ciResolvers = {
-  Query: { ciIncidents, ciChanges },
+  Query: { ciIncidents, ciChanges, ciProblems },
 }

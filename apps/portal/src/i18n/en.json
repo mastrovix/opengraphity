@@ -1,7 +1,8 @@
 {
   "portal": {
     "title": "IT Portal",
-    "poweredBy": "Powered by OpenGrafo"
+    "poweredBy": "Powered by OpenGrafo",
+    "documentTitle": "IT Portal — OpenGrafo"
   },
   "nav": {
     "home": "Home",
@@ -40,13 +41,6 @@
       "low": "Low",
       "medium": "Medium",
       "high": "High"
-    },
-    "category": {
-      "hardware": "Hardware",
-      "software": "Software",
-      "access": "Access",
-      "network": "Network",
-      "other": "Other"
     },
     "fields": {
       "title": "Describe the problem in one sentence",
@@ -114,7 +108,12 @@
     "breadcrumb": "Knowledge Base",
     "notFound": "Article not found",
     "searchButton": "Search",
-    "thanksFeedback": "Thanks for your feedback!"
+    "thanksFeedback": "Thanks for your feedback!",
+    "articleCount_one": "{{count}} article",
+    "articleCount_other": "{{count}} articles",
+    "searchResults_one": "{{count}} result for",
+    "searchResults_other": "{{count}} results for",
+    "clearSearch": "Clear"
   },
   "common": {
     "loading": "Loading...",

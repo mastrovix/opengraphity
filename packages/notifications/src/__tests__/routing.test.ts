@@ -16,6 +16,7 @@ describe('canali instradabili per tipo di evento', () => {
   it('Slack/Teams solo dove esiste un formatter: incident (4 tipi) e sla.breached su entrambi, change.approved/task_assigned solo Slack', () => {
     expect(Object.keys(ROUTABLE_CHANNELS_BY_EVENT).sort()).toEqual([
       'change.approved', 'change.task_assigned',
+      'digest.daily',
       'incident.assigned', 'incident.created', 'incident.escalated', 'incident.resolved',
       'sla.breached',
     ])
@@ -24,6 +25,8 @@ describe('canali instradabili per tipo di evento', () => {
     }
     expect(routableChannels('change.approved')).toEqual(['in_app', 'email', 'slack'])
     expect(routableChannels('change.task_assigned')).toEqual(['in_app', 'email', 'slack'])
+    // NT-8: il digest è un'e-mail riassuntiva, nessun altro canale.
+    expect(routableChannels('digest.daily')).toEqual(['email'])
   })
 
   it('ogni altro tipo (allarmi, salute del CI, servizi, sync, problem, custom) → solo in_app ed email', () => {
@@ -35,7 +38,8 @@ describe('canali instradabili per tipo di evento', () => {
 
   it('ogni riga dedicata contiene i canali generici e solo canali noti; la tabella è congelata', () => {
     for (const [type, channels] of Object.entries(ROUTABLE_CHANNELS_BY_EVENT)) {
-      expect(channels, type).toEqual(expect.arrayContaining([...DEFAULT_ROUTABLE_CHANNELS]))
+      // Unica riga più stretta dei generici, dichiarata: il digest (NT-8).
+      if (type !== 'digest.daily') expect(channels, type).toEqual(expect.arrayContaining([...DEFAULT_ROUTABLE_CHANNELS]))
       for (const c of channels) expect(NOTIFICATION_CHANNELS, `${type}: ${c}`).toContain(c)
     }
     expect(Object.isFrozen(ROUTABLE_CHANNELS_BY_EVENT)).toBe(true)

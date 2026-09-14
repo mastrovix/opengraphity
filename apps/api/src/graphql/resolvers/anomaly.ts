@@ -28,6 +28,12 @@ function toStr(v: unknown): string {
   return String(v)
 }
 
+function anomalyParams(raw: unknown, id: string): Array<{ key: string; value: string }> {
+  const parsed: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`Anomaly ${id}: description_params is not a map`)
+  return Object.entries(parsed as Record<string, unknown>).map(([key, value]) => ({ key, value: String(value) }))
+}
+
 function mapAnomaly(p: Props) {
   return {
     id:               toStr(p['id']),
@@ -40,6 +46,9 @@ function mapAnomaly(p: Props) {
     entitySubtype:    toStr(p['entity_subtype']),
     entityName:       toStr(p['entity_name']),
     description:      toStr(p['description']),
+    // Null su un'anomalia registrata prima del 14 set 2026 e non più riscontrata:
+    // resta la sua frase storica. Ogni scansione riscrive quelle ancora aperte.
+    descriptionParams: p['description_params'] == null ? null : anomalyParams(p['description_params'], toStr(p['id'])),
     detectedAt:       toStr(p['detected_at']),
     resolvedAt:       p['resolved_at']        ? toStr(p['resolved_at'])        : null,
     resolutionStatus: p['resolution_status']  ? toStr(p['resolution_status'])  : null,

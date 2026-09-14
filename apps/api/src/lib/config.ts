@@ -90,6 +90,12 @@ const readers = {
   // Process profile (revisione 2 · D1.1): which work groups THIS process starts —
   // the table is lib/workerProfiles.ts. `all` = the API runs everything (as before).
   workerProfile: (): WorkerProfile => enumEnv('WORKER_PROFILE', WORKER_PROFILES, 'all'),
+  /**
+   * Revisione del 14 set 2026 · F8: `true` = il processo non parte con
+   * migrazioni pendenti. Spento per default perché la ricetta locale le lancia
+   * dentro il container dell'API (vedi lib/migrationState.ts).
+   */
+  requireAppliedMigrations: (): boolean => boolEnv('REQUIRE_APPLIED_MIGRATIONS', false),
 
   // Keycloak
   /** Internal URL for server-to-server calls (JWKS fetch, admin API). */
@@ -240,7 +246,7 @@ export function resetConfigCache(): void {
  */
 export const CONFIG_PROFILES = {
   api: [
-    'nodeEnv', 'port', 'logLevel', 'workerProfile',
+    'nodeEnv', 'port', 'logLevel', 'workerProfile', 'requireAppliedMigrations',
     'neo4jUri', 'neo4jUser', 'neo4jPassword', 'neo4jMaxPoolSize',
     'keycloakUrl', 'keycloakPublicUrls', 'keycloakAdminUser',
     'allowLegacyJwt', 'corsOrigin', 'rateLimitMax', 'graphqlIntrospection', 'graphqlSchemaCacheMax', 'maxCITypesPerTenant', 'metricsToken', 'appUrl',
@@ -250,7 +256,7 @@ export const CONFIG_PROFILES = {
   ],
   // The worker serves GET /metrics on `port` (Prometheus scrapes it like the API).
   worker: [
-    'nodeEnv', 'port', 'logLevel', 'workerProfile', 'metricsToken',
+    'nodeEnv', 'port', 'logLevel', 'workerProfile', 'metricsToken', 'requireAppliedMigrations',
     'neo4jUri', 'neo4jUser', 'neo4jPassword', 'neo4jMaxPoolSize',
     'embeddingsProvider', 'transformersCache',
   ],

@@ -12,6 +12,7 @@ import { engine, incidents } from './deps.js'
 import { MONITORING_ACTOR } from './shared.js'
 import { systemText } from '../../lib/systemText.js'
 import { loadStepFacts } from '../../lib/stepEvent.js'
+import { parseLocalizedLabels, localizedLabel } from '@opengraphity/types'
 
 const log = logger.child({ module: 'event-correlation' })
 
@@ -60,8 +61,11 @@ export async function incidentTerminalSteps(session: Session, tenantId: string):
 
 export async function incidentStepInfo(session: Session, tenantId: string): Promise<IncidentStepInfo> {
   const steps = await getWorkflowSteps(session, tenantId, 'incident')
-  const resolved = steps.find((s) => s.category === 'resolved') ?? steps.find((s) => s.name === 'resolved')
-  if (!resolved) throw new Error(`Tenant ${tenantId}: incident workflow has no step with category "resolved"`)
+  // Solo la categoria: il ripiego sul NOME `resolved` è stato tolto (revisione
+  // del 14 set 2026 · F17). La diagnostica `workflow_step_categories_missing` lo dice
+  // all'amministratore prima che un allarme ci inciampi.
+  const resolved = steps.find((s) => s.category === 'resolved')
+  if (!resolved) throw new Error(`Tenant ${tenantId}: incident workflow has no step with category "resolved" — set it on the resolved step in the workflow designer`)
   const reopenSteps = steps
     .filter((s) => !s.isInitial && !s.isTerminal && (s.category === 'active' || s.category === 'escalated'))
     .sort((a, b) => (a.stepOrder ?? Number.MAX_SAFE_INTEGER) - (b.stepOrder ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name))
@@ -100,14 +104,22 @@ export async function incidentStep(session: Session, tenantId: string, incidentI
   `, { incidentId, tenantId })
 }
 
-/** Tutti gli archi della definizione a cui appartiene l'istanza (non solo quelli dal passo corrente). */
-export async function loadDefinitionTransitions(session: Session, instanceId: string, tenantId: string): Promise<DefinitionTransition[]> {
-  return runQuery<DefinitionTransition>(session, `
+/**
+ * Tutti gli archi della definizione a cui appartiene l'istanza (non solo quelli
+ * dal passo corrente). L'etichetta del passo di arrivo è nella `language` di
+ * chi scrive il commento (giro del 14 set 2026, #22).
+ */
+export async function loadDefinitionTransitions(session: Session, instanceId: string, tenantId: string, language: string): Promise<DefinitionTransition[]> {
+  const rows = await runQuery<DefinitionTransition & { toLabels: string | null }>(session, `
     MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
     MATCH (wd:WorkflowDefinition {id: wi.definition_id, tenant_id: $tenantId})-[:HAS_STEP]->(from:WorkflowStep)
     MATCH (from)-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
-    RETURN from.name AS fromStep, to.name AS toStep, to.label AS toLabel, tr.trigger AS trigger, tr.condition AS condition
+    RETURN from.name AS fromStep, to.name AS toStep, to.label AS toLabel, to.labels AS toLabels, tr.trigger AS trigger, tr.condition AS condition
   `, { instanceId, tenantId })
+  return rows.map(({ toLabels, ...r }) => ({
+    ...r,
+    toLabel: r.toLabel == null ? null : localizedLabel(r.toLabel, parseLocalizedLabels(toLabels, `step ${r.toStep}`), language),
+  }))
 }
 
 /**

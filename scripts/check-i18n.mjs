@@ -268,11 +268,10 @@ for (const k of [...defined].sort()) {
 // quelli sono difetti veri (`Sync triggered`, `Heap Memory`, `Auto-refresh
 // 10s`, `External ID`): l'elenco puo solo accorciarsi.
 const IT_EN_IDENTICHE_ACCETTATE = new Set([
-  // I nomi dei processi ITIL restano inglesi anche in italiano (Change, Incident, Problem, Service Request).
-  'pages.approvals.entity.change',
-  'pages.approvals.entity.incident',
-  'pages.approvals.entity.problem',
-  'pages.approvals.entity.service_request',
+  // Durate compatte del badge SLA: «h» e «min» sono simboli di unita (SI),
+  // uguali nelle due lingue; i giorni invece no («d» / «gg»).
+  'time.short.minutes',
+  'time.short.hoursMinutes',
   // «OLA / UC» sono due sigle ITIL: la stessa cosa nelle due lingue.
   'pages.slaReport.contracts',
   'sidebar.olaContracts',

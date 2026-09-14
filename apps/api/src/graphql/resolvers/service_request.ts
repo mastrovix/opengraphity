@@ -19,6 +19,11 @@ type Props = Record<string, unknown>
 import { mapRequest } from '../../services/requestService.js'
 import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
 import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
+import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
+import { assertDomainValue } from '../../lib/domainMatrix.js'
+import { listPage } from '../../lib/listLimit.js'
+import { setTicketUser } from '../../services/ticketAssignment.js'
+import { DEFAULT_MUTATION_ROLES } from '../../lib/authorization.js'
 
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
@@ -29,7 +34,8 @@ async function serviceRequests(
   ctx: GraphQLContext,
   info: GraphQLResolveInfo,
 ) {
-  const { status, priority, limit = 20, offset = 0, filters } = args
+  const { status, priority, filters } = args
+  const { limit, offset } = listPage(args, 20)
   return withSession(async (session) => {
     const params: Record<string, unknown> = {
       tenantId: ctx.tenantId,
@@ -111,7 +117,15 @@ async function updateServiceRequest(
   const { id, input } = args
   const now = new Date().toISOString()
 
+  // La priorità si valida contro il Dizionario del cliente, come alla creazione
+  // (revisione del 14 set 2026 · IT-13: qui passava qualunque stringa).
+  if (input.priority != null) await assertDomainValue(ctx.tenantId, 'priority', input.priority)
+
   return withSession(async (session) => {
+    const before = await runQuery<{ props: Props }>(session,
+      'MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId}) RETURN properties(r) AS props',
+      { id, tenantId: ctx.tenantId })
+    if (!before[0]) throw new NotFoundError('ServiceRequest')
     const cypher = `
       MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
       SET r += {
@@ -135,18 +149,49 @@ async function updateServiceRequest(
     const row = rows[0]
     if (!row) throw new NotFoundError('ServiceRequest')
     void audit(ctx, 'request.updated', 'ServiceRequest', id)
+    await publishTicketUpdated(ctx, 'service_request', id, before[0].props, row.props)
     return mapRequest(row.props)
   }, true)
 }
 
-async function completeServiceRequest(
+/**
+ * Giro nel browser del 14 set 2026 (#41): una richiesta non si poteva
+ * assegnare a nessuno. Le richieste non hanno un gruppo assegnatario, quindi
+ * non vale la regola «prima il gruppo» di incident e problem: si assegna a chi
+ * può lavorare i ticket (i ruoli che scrivono per default), e una richiesta
+ * conclusa non si riassegna. `userId` null toglie l'assegnatario.
+ */
+const ASSIGNABLE_ROLES: ReadonlySet<string> = new Set(DEFAULT_MUTATION_ROLES)
+
+async function assignServiceRequestToUser(
   _: unknown,
-  args: { id: string },
+  args: { id: string; userId: string | null },
   ctx: GraphQLContext,
 ) {
-  const result = await requestService.completeRequest(args.id, ctx)
-  void audit(ctx, 'request.resolved', 'ServiceRequest', args.id)
-  return result
+  return withSession(async (session) => {
+    const check = await runQueryOne<{ completedAt: string | null; assigneeRole: string | null; assigneeFound: boolean }>(session, `
+      MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
+      OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      RETURN r.completed_at AS completedAt, u.role AS assigneeRole, u IS NOT NULL AS assigneeFound
+    `, { id: args.id, userId: args.userId, tenantId: ctx.tenantId })
+    if (!check) throw new NotFoundError('ServiceRequest', args.id)
+    if (check.completedAt) {
+      throw new ValidationError('A concluded request cannot be reassigned', { key: 'errors.request.assignConcluded' })
+    }
+    if (args.userId) {
+      if (!check.assigneeFound) throw new NotFoundError('User', args.userId)
+      if (!ASSIGNABLE_ROLES.has(check.assigneeRole ?? '')) {
+        throw new ValidationError('The selected user cannot work on requests (admin or operator role required)', { key: 'errors.request.assigneeCannotWork' })
+      }
+    }
+    await setTicketUser(session, 'ServiceRequest', args.id, args.userId, ctx.tenantId)
+    void audit(ctx, 'request.assigned', 'ServiceRequest', args.id)
+    const row = await runQueryOne<{ props: Props }>(session,
+      'MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId}) RETURN properties(r) AS props',
+      { id: args.id, tenantId: ctx.tenantId })
+    if (!row) throw new NotFoundError('ServiceRequest', args.id)
+    return mapRequest(row.props)
+  }, true)
 }
 
 // ── Field resolvers ──────────────────────────────────────────────────────────
@@ -261,7 +306,7 @@ async function updateServiceCatalogItem(
 
 export const serviceRequestResolvers = {
   Query:    { serviceRequests, serviceRequest, serviceCatalogItems },
-  Mutation: { createServiceRequest, updateServiceRequest, completeServiceRequest, createServiceCatalogItem, updateServiceCatalogItem },
+  Mutation: { createServiceRequest, updateServiceRequest, assignServiceRequestToUser, createServiceCatalogItem, updateServiceCatalogItem },
   ServiceRequest: {
     requestedBy: requestRequestedBy,
     assignee:    requestAssignee,

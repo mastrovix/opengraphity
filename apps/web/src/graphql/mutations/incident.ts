@@ -44,9 +44,9 @@ export const ASSIGN_INCIDENT_TO_USER = gql`
 `
 
 export const ADD_INCIDENT_COMMENT = gql`
-  mutation AddIncidentComment($id: ID!, $text: String!) {
-    addIncidentComment(id: $id, text: $text) {
-      id text createdAt updatedAt
+  mutation AddIncidentComment($id: ID!, $text: String!, $isInternal: Boolean) {
+    addIncidentComment(id: $id, text: $text, isInternal: $isInternal) {
+      id text isInternal createdAt updatedAt
       author { id name email }
     }
   }
@@ -84,6 +84,14 @@ export const UPDATE_INCIDENT = gql`
   }
 `
 
+export const ASSIGN_SERVICE_REQUEST_TO_USER = gql`
+  mutation AssignServiceRequestToUser($id: ID!, $userId: ID) {
+    assignServiceRequestToUser(id: $id, userId: $userId) {
+      id assignee { id name email }
+    }
+  }
+`
+
 export const UPDATE_SERVICE_REQUEST = gql`
   mutation UpdateServiceRequest($id: ID!, $input: UpdateServiceRequestInput!) {
     updateServiceRequest(id: $id, input: $input) {
@@ -92,8 +100,3 @@ export const UPDATE_SERVICE_REQUEST = gql`
   }
 `
 
-export const COMPLETE_SERVICE_REQUEST = gql`
-  mutation CompleteServiceRequest($id: ID!) {
-    completeServiceRequest(id: $id) { id status completedAt }
-  }
-`

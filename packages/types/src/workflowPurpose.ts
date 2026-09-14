@@ -53,6 +53,13 @@ export const WORKFLOW_STEP_PURPOSES = [
   'change_requested',
   /** La change del problem è in corso (era `change_in_progress`). */
   'change_in_progress',
+  /**
+   * Il problem è documentato come errore noto (KEDB): causa e workaround sono
+   * pubblicati. `knownErrors` elenca i problem che stanno in un passo con
+   * questo scopo — prima cercava il nome `known_error`, e un cliente che lo
+   * rinominava svuotava la KEDB senza un errore (revisione del 14 set 2026 · IT-1).
+   */
+  'known_error',
 ] as const
 
 export type WorkflowStepPurpose = (typeof WORKFLOW_STEP_PURPOSES)[number]
@@ -87,6 +94,7 @@ export const FACTORY_STEP_PURPOSES: Readonly<Record<string, WorkflowStepPurpose>
   under_investigation: 'investigation',
   change_requested:   'change_requested',
   change_in_progress: 'change_in_progress',
+  known_error:        'known_error',
 }
 
 // ── La CATEGORIA del passo (revisione delle otto ondate · B·N-3) ─────────────

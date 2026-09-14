@@ -1,9 +1,10 @@
 /**
- * Personal profile page (`/profile`, every role): language + Slack link.
+ * Personal profile page (`/profile`, every role): language, e-mail notifications + Slack link.
  * Replaces the two former "Profilo" pages (`/profile` language only,
  * `/settings/profile` Slack only) — E-13.
  */
 import { useState } from 'react'
+import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { gql } from '@apollo/client'
 import { UserCircle } from 'lucide-react'
@@ -15,8 +16,14 @@ import { QueryError } from '@/components/QueryError'
 import { useMe } from '@/hooks/useMe'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { RoleBadge } from '@/components/ui/badges'
+import { Toggle } from '@/components/ui/Toggle'
+import { SET_MY_EMAIL_NOTIFICATIONS } from '@/graphql/mutations'
 import { colors, palette } from '@/lib/tokens'
-import { scegliLinguaPersonale } from '@/i18n/tenantLanguage'
+import { scegliLinguaPersonale, usaLinguaDellOrganizzazione, linguaSceltaDallUtente } from '@/i18n/tenantLanguage'
+import { GET_TENANT_LANGUAGE_SETTINGS } from '@/graphql/queries'
+
+/** Valore della tendina per «usa la lingua dell'organizzazione». */
+const ORGANIZATION = 'organization'
 
 const LINK_SLACK = gql`
   mutation LinkSlack($slackId: String!) {
@@ -50,6 +57,9 @@ const label: React.CSSProperties = {
 export function ProfilePage() {
   const { t, i18n } = useTranslation()
   const { me, loading, error, refetch } = useMe()
+  const { data: langData } = useQuery<{ tenantLanguageSettings: { defaultLanguage: string | null } }>(GET_TENANT_LANGUAGE_SETTINGS, { fetchPolicy: 'cache-first' })
+  const orgLanguage = langData?.tenantLanguageSettings.defaultLanguage ?? null
+  const [personal, setPersonal] = useState(linguaSceltaDallUtente)
 
   const [slackInput, setSlackInput] = useState('')
 
@@ -60,6 +70,11 @@ export function ProfilePage() {
   })
   const [unlinkSlack, { loading: unlinking }] = useMutationWithToast(UNLINK_SLACK, {
     successMessage: t('pages.profile.slackUnlinked'),
+    refetch,
+  })
+
+  const [setEmailNotifications, { loading: savingEmail }] = useMutationWithToast<{ setMyEmailNotifications: { emailNotifications: boolean | null } }>(SET_MY_EMAIL_NOTIFICATIONS, {
+    successMessage: (d) => d.setMyEmailNotifications.emailNotifications ? t('pages.profile.emailNotificationsOn') : t('pages.profile.emailNotificationsOff'),
     refetch,
   })
 
@@ -99,9 +114,19 @@ export function ProfilePage() {
         <div style={card}>
           <h2 style={sectionTitle}>{t('pages.profile.language')}</h2>
           <p style={sectionDesc}>{t('pages.profile.languageDescription')}</p>
+          {/*
+            Giro nel browser del 14 set 2026 (#61): la scelta era sempre
+            personale (una volta toccata, l'azienda non contava più) e non
+            c'era modo di tornare alla lingua dell'organizzazione.
+          */}
           <select
-            value={i18n.language.startsWith('it') ? 'it' : 'en'}
-            onChange={(e) => { void scegliLinguaPersonale(e.target.value) }}
+            aria-label={t('pages.profile.language')}
+            value={personal ? (i18n.language.startsWith('it') ? 'it' : 'en') : ORGANIZATION}
+            onChange={(e) => {
+              const v = e.target.value
+              if (v === ORGANIZATION) { void usaLinguaDellOrganizzazione(orgLanguage).then(() => setPersonal(false)) }
+              else { void scegliLinguaPersonale(v).then(() => setPersonal(true)) }
+            }}
             style={{
               padding: '8px 12px',
               borderRadius: 6,
@@ -113,10 +138,33 @@ export function ProfilePage() {
               minWidth: 160,
             }}
           >
+            <option value={ORGANIZATION}>
+              {t('pages.profile.organizationLanguage', { language: orgLanguage ? t(orgLanguage === 'it' ? 'pages.profile.italian' : 'pages.profile.english') : t('pages.profile.notConfigured') })}
+            </option>
             <option value="en">{t('pages.profile.english')}</option>
             <option value="it">{t('pages.profile.italian')}</option>
           </select>
         </div>
+
+        {/* ── E-mail (revisione del 14 set 2026 · CO-1) ── */}
+        {me && me.emailNotifications !== null && (
+          <div style={card}>
+            <h2 style={sectionTitle}>{t('pages.profile.emailNotificationsTitle')}</h2>
+            <p style={sectionDesc}>{t('pages.profile.emailNotificationsDescription')}</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Toggle
+                checked={me.emailNotifications}
+                disabled={savingEmail}
+                labelledBy="profile-email-notifications"
+                label={t('pages.profile.emailNotificationsToggle')}
+                onChange={(enabled) => { void setEmailNotifications({ variables: { enabled } }) }}
+              />
+              <span id="profile-email-notifications" style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
+                {t('pages.profile.emailNotificationsToggle')}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* ── Slack ── */}
         <div style={card}>

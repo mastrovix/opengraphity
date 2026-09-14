@@ -320,6 +320,31 @@ async function removeTeamManager(_: unknown, args: { teamId: string }, ctx: Grap
   }, true)
 }
 
+/**
+ * Aggiunge o toglie UN membro, dal team. Giro nel browser del 14 set 2026
+ * (#48): l'unico modo era `updateUserTeams` dal dettaglio utente, che riscrive
+ * tutti i team dell'utente. Qui si tocca un arco solo, in una statement sola.
+ */
+async function setTeamMember(_: unknown, args: { teamId: string; userId: string; member: boolean }, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const row = await runQueryOne<{ props: Props }>(session, args.member ? `
+      MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      MERGE (u)-[:MEMBER_OF]->(t)
+      RETURN properties(t) AS props
+    ` : `
+      MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      OPTIONAL MATCH (u)-[m:MEMBER_OF]->(t)
+      DELETE m
+      RETURN properties(t) AS props
+    `, { teamId: args.teamId, userId: args.userId, tenantId: ctx.tenantId })
+    if (!row) throw new NotFoundError('Team or User')
+    void audit(ctx, args.member ? 'team.member_added' : 'team.member_removed', 'Team', args.teamId)
+    return mapTeam(row.props)
+  }, true)
+}
+
 async function setChangeManagerTeam(_: unknown, args: { teamId: string; value: boolean }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     // Uno solo per tenant: azzera gli altri quando si designa.
@@ -349,7 +374,7 @@ async function setChangeManagerTeam(_: unknown, args: { teamId: string; value: b
 
 export const teamResolvers = {
   Query:    { teams, team },
-  Mutation: { createTeam, updateTeam, assignCIOwner, assignCISupportGroup, setTeamManager, removeTeamManager, setChangeManagerTeam },
+  Mutation: { createTeam, updateTeam, assignCIOwner, assignCISupportGroup, setTeamManager, removeTeamManager, setTeamMember, setChangeManagerTeam },
   Team: {
     manager:      teamManager,
     members:      teamMembers,

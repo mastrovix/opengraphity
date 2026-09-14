@@ -55,6 +55,7 @@ export function buildBaseSDL(): string {
     blastRadius(id: ID!): [BlastRadiusItem!]!
     ciIncidents(ciId: ID!): [Incident!]!
     ciChanges(ciId: ID!): [Change!]!
+    ciProblems(ciId: ID!): [Problem!]!
     # Dynamic CI Group members: manual (HAS_MEMBER) or dynamic (live criteria).
     # I gruppi dinamici sono troncati lato server (MEMBERS_LIMIT): total/truncated
     # rendono il taglio visibile invece di far passare 500 per il conteggio reale.
@@ -181,7 +182,7 @@ export function buildBaseSDL(): string {
     kbArticles(search: String, category: String, status: String, page: Int, pageSize: Int): KBArticlesResult!
     kbArticle(id: ID!): KBArticle!
     kbArticleBySlug(slug: String!): KBArticle!
-    kbCategories: [KBCategory!]!
+    kbCategories(language: String): [KBCategory!]!
     kbArticleVersions(articleId: ID!): [KBArticleVersion!]!
 
     # OLA / UC + SLA reporting
@@ -190,8 +191,10 @@ export function buildBaseSDL(): string {
 
     # Portal (Self-Service)
     "\`status\` è una CLASSE di stato (open | in_progress | resolved | closed), tradotta nei nomi dei passi del workflow del tenant — mai un nome di passo (B0-3)."
-    myTickets(status: String, page: Int, pageSize: Int): MyTicketsResult!
-    myTicket(id: ID!): MyTicketDetail!
+    # language: la lingua di chi guarda, per le etichette dei passi (giro del 14 set 2026).
+    myTickets(status: String, page: Int, pageSize: Int, language: String): MyTicketsResult!
+    myTicket(id: ID!, language: String): MyTicketDetail!
+    ticketCategories(language: String): [TicketCategory!]!
     myTicketStats: MyTicketStats!
 
     # Field Rules (admin)
@@ -230,6 +233,67 @@ export function buildBaseSDL(): string {
     chi non ha ancora scelto.
     """
     tenantLanguageSettings: TenantLanguageSettings!
+
+    """Il fuso orario del cliente e le zone che il runtime conosce."""
+    tenantTimezoneSettings: TenantTimezoneSettings!
+
+    """Il calendario di servizio del cliente (null = non configurato)."""
+    tenantServiceCalendar: ServiceCalendar
+
+    """Le notifiche in-app della persona collegata, dalla più recente (F10)."""
+    myNotifications(limit: Int): [InAppNotification!]!
+  }
+
+  """
+  Una notifica del pannello, salvata (revisione del 14 set 2026 · F10): prima
+  viveva nella memoria di un processo e del browser.
+  """
+  type InAppNotification {
+    id:            ID!
+    type:          String!
+    """Chiave i18n del titolo."""
+    title:         String!
+    titleFallback: String
+    message:       String!
+    """Chiave i18n del messaggio e i suoi dati (JSON), quando il messaggio si compone nella lingua di chi legge."""
+    messageKey:    String
+    messageParams: String
+    severity:      String
+    entityId:      String
+    entityType:    String
+    timestamp:     String!
+    read:          Boolean!
+  }
+
+  """
+  L'orario lavorativo delle policy SLA e dei contratti OLA «in orario
+  lavorativo»: giorni (0 = domenica … 6 = sabato), fascia HH:MM nel fuso della
+  policy e festività YYYY-MM-DD. Prima erano le 08–18 dal lunedì al venerdì per
+  ogni cliente.
+  """
+  type ServiceCalendar {
+    days:     [Int!]!
+    start:    String!
+    end:      String!
+    holidays: [String!]!
+  }
+
+  input ServiceCalendarInput {
+    days:     [Int!]!
+    start:    String!
+    end:      String!
+    holidays: [String!]!
+  }
+
+  """
+  Il fuso orario del cliente: da qui dipendono scadenze SLA/OLA in orario
+  lavorativo, ora del digest e le date nei testi generati. Si sceglie dalla
+  pagina Organizzazione (prima solo con uno script).
+  """
+  type TenantTimezoneSettings {
+    """Zona IANA; null = non configurato, e la diagnostica lo dice come errore."""
+    timezone:  String
+    available: [String!]!
   }
 
   """
@@ -264,6 +328,19 @@ export function buildBaseSDL(): string {
     """
     setTenantDefaultLanguage(language: String!): TenantLanguageSettings!
 
+    """Configura il fuso orario del cliente (admin). Rifiuta una zona IANA sconosciuta."""
+    setTenantTimezone(timezone: String!): TenantTimezoneSettings!
+
+    """Configura il calendario di servizio del cliente (admin). Rifiuta un calendario incoerente dicendo perché."""
+    setTenantServiceCalendar(calendar: ServiceCalendarInput!): ServiceCalendar!
+
+    """Segna letta una notifica della persona collegata."""
+    markNotificationRead(id: ID!): Boolean!
+    """Segna lette tutte le notifiche della persona collegata. Ritorna quante."""
+    markAllNotificationsRead: Int!
+    """Nasconde tutte le notifiche della persona collegata dal suo pannello. Ritorna quante."""
+    dismissAllNotifications: Int!
+
     # Incidents
     createIncident(input: CreateIncidentInput!): Incident!
     setIncidentMajor(id: ID!, major: Boolean!): Incident!
@@ -271,7 +348,7 @@ export function buildBaseSDL(): string {
     resolveIncident(id: ID!, rootCause: String): Incident!
     assignIncidentToTeam(id: ID!, teamId: ID!): Incident!
     assignIncidentToUser(id: ID!, userId: ID): Incident!
-    addIncidentComment(id: ID!, text: String!): Comment!
+    addIncidentComment(id: ID!, text: String!, isInternal: Boolean): Comment!
     addAffectedCI(incidentId: ID!, ciId: ID!, relationType: String): Incident!
     removeAffectedCI(incidentId: ID!, ciId: ID!): Incident!
 
@@ -289,14 +366,14 @@ export function buildBaseSDL(): string {
     assignProblemToTeam(problemId: ID!, teamId: ID!): Problem!
     assignProblemToUser(problemId: ID!, userId: ID!): Problem!
     executeProblemTransition(problemId: ID!, toStep: String!, notes: String): Problem!
-    addProblemComment(problemId: ID!, text: String!): ProblemComment!
+    addProblemComment(problemId: ID!, text: String!, isInternal: Boolean): ProblemComment!
 
     # Service Requests
     createServiceRequest(input: CreateServiceRequestInput!): ServiceRequest!
     createServiceCatalogItem(input: CreateServiceCatalogItemInput!): ServiceCatalogItem!
     updateServiceCatalogItem(id: ID!, input: UpdateServiceCatalogItemInput!): ServiceCatalogItem!
     updateServiceRequest(id: ID!, input: UpdateServiceRequestInput!): ServiceRequest!
-    completeServiceRequest(id: ID!): ServiceRequest!
+    assignServiceRequestToUser(id: ID!, userId: ID): ServiceRequest!
 
     # CMDB
     updateCIFields(id: ID!, input: UpdateCIFieldsInput!): CIBase!
@@ -404,6 +481,8 @@ export function buildBaseSDL(): string {
 
     # Slack account linking
     linkSlackAccount(slackId: String!): User!
+    """La propria scelta di ricevere le e-mail di notifica (menzioni, osservazione, regole, digest)."""
+    setMyEmailNotifications(enabled: Boolean!): User!
 
     # Reports (AI conversations)
     askReport(question: String!, conversationId: ID): AskReportResult!
@@ -484,6 +563,15 @@ export function buildBaseSDL(): string {
     quello spedito.
     """
     customizeEnumType(id: ID!): EnumTypeDefinition!
+    """
+    Adds to YOUR copy the shipped values it has not seen yet (appended, with their shipped labels and colors),
+    and marks the current shipped list as seen.
+    """
+    adoptShippedValues(id: ID!): EnumTypeDefinition!
+    """
+    Keeps the shipped values your copy has not seen out of it, and marks the current shipped list as seen.
+    """
+    acknowledgeShippedValues(id: ID!): EnumTypeDefinition!
 
     # Approval Workflow
     createApprovalRequest(entityType: String!, entityId: String!, title: String!, description: String, approvers: [String!]!, approvalType: String, dueDate: String): ApprovalRequest!
@@ -576,6 +664,7 @@ export function buildBaseSDL(): string {
     changes:    [Change!]!
     incidents:  [Incident!]!
     problems:   [Problem!]!
+    serviceRequests: [ServiceRequest!]!
     tasks:      [SearchTaskResult!]!
     kbArticles: [KBArticle!]!
   }

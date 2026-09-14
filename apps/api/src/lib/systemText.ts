@@ -34,8 +34,8 @@ export const SYSTEM_TEXTS = {
   'change.preApproved':         { en: 'Standard: pre-approved',                               it: 'Standard: pre-approvata' },
   'change.approvalsComplete':   { en: 'Approvals complete',                                   it: 'Approvazioni complete' },
   'change.approvalRejected':    { en: 'Approval rejected: {note}',                            it: 'Approvazione rifiutata: {note}' },
-  'request.fulfilled':          { en: 'Request fulfilled',                                    it: 'Richiesta evasa' },
   'portal.reopened':            { en: 'Reopened from the portal',                             it: 'Riaperto dal portale' },
+  'notification.escalationDefault': { en: '{title}: not resolved after {minutes} minutes',      it: '{title}: non risolto dopo {minutes} minuti' },
   'approval.publicationRejected': { en: 'Publication rejected',                               it: 'Pubblicazione rifiutata' },
   'approval.requestRejected':   { en: 'Request rejected',                                     it: 'Richiesta rifiutata' },
   'approval.requested':         { en: 'Approval requested',                                   it: 'Approvazione richiesta' },
@@ -98,6 +98,40 @@ export const SYSTEM_TEXTS = {
   'service.back':               { en: 'The service "{service}" is back {health} (score {score}/100)', it: 'Il servizio "{service}" è tornato {health} (punteggio {score}/100)' },
   'service.cannotResolve':      { en: '{back}; the incident is in "{step}" and cannot be resolved automatically from this step', it: '{back}; l\'incident è in "{step}" e non può essere risolto automaticamente da questo passo' },
   'service.resolvedComment':    { en: 'Resolved automatically: {back}{via}',                    it: 'Risolto automaticamente: {back}{via}' },
+  // Note della cronologia dei servizi monitorati (giro del 14 set 2026, #60): erano italiane per tutti.
+  'serviceMap.rules.changed':      { en: 'Rules updated: {changes}',                             it: 'Regole aggiornate: {changes}' },
+  'serviceMap.rules.change':       { en: '{field} {from} → {to}',                                it: '{field} {from} → {to}' },
+  'serviceMap.rules.down_share_pct':     { en: 'down threshold',                                 it: 'soglia giù' },
+  'serviceMap.rules.degraded_share_pct': { en: 'degraded threshold',                             it: 'soglia degradato' },
+  'serviceMap.rules.min_nodes':          { en: 'minimum components',                             it: 'minimo componenti' },
+  'serviceMap.rules.unknown_nodes':      { en: 'components without health',                      it: 'componenti senza salute' },
+  'serviceMap.rules.open_incident_from': { en: 'open incident from',                             it: 'apri incident da' },
+  'serviceMap.rules.during_storm':       { en: 'during a storm',                                 it: 'durante una tempesta' },
+  'serviceMap.rules.unknown.ignore':      { en: 'ignored',                                       it: 'ignorati' },
+  'serviceMap.rules.unknown.operational': { en: 'operational',                                   it: 'operativi' },
+  'serviceMap.rules.open.never':          { en: 'never',                                         it: 'mai' },
+  'serviceMap.rules.open.down':           { en: 'down',                                          it: 'giù' },
+  'serviceMap.rules.open.degraded':       { en: 'degraded',                                      it: 'degradato' },
+  'serviceMap.rules.storm.hold':          { en: 'hold the evaluation',                           it: 'sospendi la valutazione' },
+  'serviceMap.rules.storm.evaluate':      { en: 'evaluate anyway',                               it: 'valuta comunque' },
+  'serviceMap.nodes.changedOne':   { en: '1 component updated: {names}',                         it: '1 componente aggiornato: {names}' },
+  'serviceMap.nodes.changedMany':  { en: '{count} components updated: {names}',                  it: '{count} componenti aggiornati: {names}' },
+  'serviceMap.andOthers':          { en: '{shown}, and {rest} more',                             it: '{shown}, e altri {rest}' },
+  'serviceMap.proposalApplied':    { en: 'Map updated: +{added}, −{removed}, excluded {excluded}', it: 'Mappa aggiornata: +{added}, −{removed}, esclusi {excluded}' },
+  'serviceMap.missingComponents':  { en: 'Components no longer in the CMDB: {names}',            it: 'Componenti non più presenti nella CMDB: {names}' },
+  'serviceMap.stormOne':           { en: 'Source in a storm: {sources}. Evaluation on hold: the health stays the one of the last evaluation.', it: 'Sorgente in tempesta: {sources}. Valutazione sospesa: la salute resta quella dell\'ultima valutazione.' },
+  'serviceMap.stormMany':          { en: 'Sources in a storm: {sources}. Evaluation on hold: the health stays the one of the last evaluation.', it: 'Sorgenti in tempesta: {sources}. Valutazione sospesa: la salute resta quella dell\'ultima valutazione.' },
+  'serviceMap.upstreamOne':        { en: 'Component in an upstream change window: {items}.',     it: 'Componente in finestra di change a monte: {items}.' },
+  'serviceMap.upstreamMany':       { en: 'Components in an upstream change window: {items}.',    it: 'Componenti in finestra di change a monte: {items}.' },
+  'serviceMap.upstreamItem':       { en: '{name} ({change} on {via})',                           it: '{name} ({change} su {via})' },
+  'serviceMap.sync.counts':        { en: '+{added}, −{removed}, ~{moved} moved',                 it: '+{added}, −{removed}, ~{moved} spostati' },
+  'serviceMap.sync.retiredOne':    { en: '; 1 retired component left out of the calculation',    it: '; 1 componente dismesso escluso dal calcolo' },
+  'serviceMap.sync.retiredMany':   { en: '; {count} retired components left out of the calculation', it: '; {count} componenti dismessi esclusi dal calcolo' },
+  'serviceMap.sync.manual':        { en: 'Synchronization requested by {actor}: {counts}',       it: 'Sincronizzazione richiesta da {actor}: {counts}' },
+  'serviceMap.sync.automatic':     { en: 'Automatic synchronization: {counts}',                  it: 'Sincronizzazione automatica: {counts}' },
+  'serviceMap.sync.limitUnknown':  { en: 'Synchronization skipped: the map built now goes over the cap of {cap} components ({detail}). Reduce the depth or exclude some components.', it: 'Sincronizzazione saltata: la mappa costruita adesso supera il tetto di {cap} componenti ({detail}). Riduci la profondità o escludi dei componenti.' },
+  'serviceMap.sync.limit':         { en: 'Synchronization skipped: the map built now would have {total} components and goes over the cap of {cap} components ({detail}). Reduce the depth or exclude some components.', it: 'Sincronizzazione saltata: la mappa costruita adesso avrebbe {total} componenti e supera il tetto di {cap} componenti ({detail}). Riduci la profondità o escludi dei componenti.' },
+  'serviceMap.sync.limitDetail':   { en: '{proposed} proposed, {final} after the synchronization', it: '{proposed} proposti, {final} dopo la sincronizzazione' },
 } as const satisfies Record<string, Record<Lingua, string>>
 
 export type SystemTextKey = keyof typeof SYSTEM_TEXTS
@@ -116,11 +150,20 @@ export async function systemText(tenantId: string, key: SystemTextKey, params: P
   return systemTextIn(await languageFor(tenantId), key, params)
 }
 
+/**
+ * Il locale Intl di una lingua del prodotto, come nel web: `en` da solo è la
+ * convenzione americana («Sep 14, 2026, 1:07 AM», giro nel browser del 14 set
+ * 2026 #51), che accanto alle date del resto del prodotto non si legge.
+ */
+export function intlLocaleOf(lingua: Lingua): string {
+  return lingua === 'en' ? 'en-GB' : lingua === 'it' ? 'it-IT' : lingua
+}
+
 /** Un istante nella lingua del cliente e nel fuso dato («14 Sept 2026, 00:48»). */
 export function formatInstantIn(lingua: Lingua, iso: string, timeZone: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
-  return new Intl.DateTimeFormat(lingua, { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(d)
+  return new Intl.DateTimeFormat(intlLocaleOf(lingua), { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone }).format(d)
 }
 
 /**

@@ -7,6 +7,7 @@ export const GET_ENUM_TYPES = gql`
     enumTypes(scope: $scope) {
       id name label values defaultValue isSystem isShipped scope createdAt updatedAt
       valueLabels(language: $language) { value label labels { language label } }
+      valueColors { value color }
     }
   }
 `
@@ -16,6 +17,20 @@ export const GET_ENUM_TYPE = gql`
     enumType(id: $id) {
       id name label values defaultValue isSystem isShipped scope createdAt updatedAt
       valueLabels(language: $language) { value label labels { language label } }
+      valueColors { value color }
+    }
+  }
+`
+
+/**
+ * I valori spediti dopo la copia, per ogni vocabolario del cliente (revisione
+ * del 14 set 2026 · F20). Query a parte e solo nel Dizionario: il contesto dei
+ * vocabolari, che carica GET_ENUM_TYPES su ogni pagina, non ne ha bisogno.
+ */
+export const GET_ENUM_SHIPPED_DRIFT = gql`
+  query GetEnumShippedDrift {
+    enumTypes {
+      id newShippedValues
     }
   }
 `

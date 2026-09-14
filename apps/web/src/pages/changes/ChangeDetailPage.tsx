@@ -13,6 +13,8 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { ChevronRight, FileDown, Loader2, Plus, PlusCircle, X, CheckCircle, XCircle, Trash2 } from 'lucide-react'
 import { Trans, useTranslation } from 'react-i18next'
+import { useConfirm } from '@/hooks/useConfirm'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { downloadPdf } from '@/lib/downloadPdf'
 import { PageContainer } from '@/components/PageContainer'
 import { Button } from '@/components/Button'
@@ -20,6 +22,8 @@ import { Modal } from '@/components/Modal'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { FieldLabel } from '@/components/ui/FormControls'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
+import { EntityCommentsSection } from '@/components/ticket/EntityCommentsSection'
+import { WatcherBar } from '@/components/WatcherBar'
 import { EmptyState } from '@/components/EmptyState'
 import { QueryError } from '@/components/QueryError'
 import {
@@ -51,6 +55,7 @@ import { fmtShort, fmtDate } from './components/shared'
 import { UnifiedLinkedTickets } from '@/components/UnifiedLinkedTickets'
 import { SuppressedAlarmsSection } from '@/pages/events/CorrelatedEventsSection'
 import { colors, palette } from '@/lib/tokens'
+import { withLocalizedLabel, localizedLabel } from '@/lib/localizedLabel'
 
 interface ImpactedCIRow {
   ci: { id: string; name: string; type: string | null; environment: string | null }
@@ -61,6 +66,8 @@ interface ImpactedCIRow {
 
 export function ChangeDetailPage() {
   const { t } = useTranslation()
+  const confirm = useConfirm()
+  const { labelOf: typeLabel } = useItilTypeLabels()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const changeId = id ?? ''
@@ -87,10 +94,11 @@ export function ChangeDetailPage() {
   })
   const [transitionModal, setTransitionModal] = useState<{ toStep: string; label: string; inputField: string | null } | null>(null)
   const [transitionNotes, setTransitionNotes] = useState('')
-  const runTransition = async (toStep: string, label: string, notes?: string) => {
+  const runTransition = async (toStep: string, notes?: string) => {
     try {
       await executeTransition({ variables: { changeId, toStep, notes: notes ?? null } })
-      toast.success(label)
+      // Giro del 14 set 2026 (#38): il toast ripeteva il pulsante («Avanza a Deployment»), non l'esito.
+      toast.success(t('toast.transition.movedTo', { step: wfByName.get(toStep) ? localizedLabel(wfByName.get(toStep)!) : toStep }))
     } catch { /* onError handles toast */ }
   }
 
@@ -178,7 +186,7 @@ export function ChangeDetailPage() {
   if (!change) return <PageContainer><p>{t('pages.changeDetail.notFound')}</p></PageContainer>
 
   const currentStep = change.workflowInstance?.currentStep ?? ''
-  const transitions = change.availableTransitions ?? []
+  const transitions = (change.availableTransitions ?? []).map(withLocalizedLabel)
 
   const totalTasks = affected.length * 3
   const completedTasks = affected.reduce((n, a) => n
@@ -188,12 +196,26 @@ export function ChangeDetailPage() {
 
   // Click su una transizione: apre la modale note se richiede input, altrimenti
   // esegue subito. Condiviso da ChangeInfoCard e dal box Approvazione.
-  const handleTransitionClick = (tr: { toStep: string; label: string; requiresInput?: boolean; inputField?: string | null }) => {
+  // Giro nel browser del 14 set 2026 (#35): avanzare a mano al passo di
+  // rilascio prima della finestra pianificata non avvisava (le attività di
+  // validazione e deploy invece sì). Il passo si riconosce dallo scopo.
+  const firstReleaseStart = affected
+    .flatMap((a) => (a.deployPlan?.steps ?? []).map((st) => st.releaseWindow?.start).filter((x): x is string => !!x))
+    .sort()[0] ?? null
+  const handleTransitionClick = async (tr: { toStep: string; label: string; requiresInput?: boolean; inputField?: string | null }) => {
+    if (wfPurposeOf(tr.toStep) === 'implementation' && firstReleaseStart && Date.parse(firstReleaseStart) > Date.now()) {
+      const ok = await confirm({
+        title: t('pages.changeDetail.beforeWindowTitle'),
+        body: t('pages.changeDetail.beforeWindowBody', { step: tr.label, when: fmtShort(firstReleaseStart) }),
+        confirmLabel: t('pages.changeDetail.beforeWindowConfirm'),
+      })
+      if (!ok) return
+    }
     if (tr.requiresInput) {
       setTransitionNotes('')
       setTransitionModal({ toStep: tr.toStep, label: tr.label, inputField: tr.inputField ?? null })
     } else {
-      void runTransition(tr.toStep, tr.label)
+      void runTransition(tr.toStep)
     }
   }
 
@@ -223,6 +245,8 @@ export function ChangeDetailPage() {
           >
             {t('detail.exportPdf')}
           </Button>
+          {/* F13: osservatori anche sulle change, come sugli altri ticket. */}
+          <WatcherBar entityType="change" entityId={change.id} />
           {isAdmin && (
             <Button
               variant="secondary"
@@ -296,7 +320,10 @@ export function ChangeDetailPage() {
                     <span style={{ width: 200, display: 'flex', gap: 8 }}>
                       {a.canApprove && a.teamId && (
                         <>
-                          <button type="button" disabled={approving} onClick={() => void approveApproval({ variables: { changeId, teamId: a.teamId, note: null } })}
+                          <button type="button" disabled={approving} onClick={() => void (async () => {
+                            if (a.onBehalf && !(await confirm({ title: t('pages.changeDetail.approveOnBehalfTitle'), body: t('pages.changeDetail.approveOnBehalfBody', { team: a.teamName ?? '—' }), confirmLabel: t('pages.changeDetail.approve') }))) return
+                            await approveApproval({ variables: { changeId, teamId: a.teamId, note: null } })
+                          })()}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: 'none', background: palette.success.base, color: colors.white, fontWeight: 600, fontSize: 'var(--font-size-label)', cursor: approving ? 'wait' : 'pointer' }}>
                             <CheckCircle size={14} /> {t('pages.changeDetail.approve')}
                           </button>
@@ -319,13 +346,13 @@ export function ChangeDetailPage() {
         title={t('pages.changeDetail.linkedTickets')}
         types={[
           {
-            kind: 'PROBLEM', label: 'Problem', routeBase: '/problems',
+            kind: 'PROBLEM', label: typeLabel('problem'), routeBase: '/problems',
             items: change.resolvesProblems ?? [],
             onLink: (entityId) => void linkTicket({ variables: { changeId, entityType: 'problem', entityId } }),
             onUnlink: (entityId) => void unlinkTicket({ variables: { changeId, entityType: 'problem', entityId } }),
           },
           {
-            kind: 'INCIDENT', label: 'Incident', routeBase: '/incidents',
+            kind: 'INCIDENT', label: typeLabel('incident'), routeBase: '/incidents',
             items: change.resolvesIncidents ?? [],
             onLink: (entityId) => void linkTicket({ variables: { changeId, entityType: 'incident', entityId } }),
             onUnlink: (entityId) => void unlinkTicket({ variables: { changeId, entityType: 'incident', entityId } }),
@@ -634,7 +661,7 @@ export function ChangeDetailPage() {
                 onClick={async () => {
                   const m = transitionModal
                   setTransitionModal(null)
-                  await runTransition(m.toStep, m.label, transitionNotes.trim())
+                  await runTransition(m.toStep, transitionNotes.trim())
                 }}
                 style={{ fontWeight: 600, opacity: transitionNotes.trim() ? 1 : 0.6 }}
               >
@@ -659,6 +686,8 @@ export function ChangeDetailPage() {
       )}
 
       <AttachmentsSection entityType="change" entityId={change.id} defaultOpen={false} />
+      {/* F13: le change avevano solo l'audit, nessun commento. */}
+      <EntityCommentsSection entityType="change" entityId={change.id} />
 
       <AuditTimeline audit={audit} />
 

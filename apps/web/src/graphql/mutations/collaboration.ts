@@ -37,3 +37,13 @@ export const EDIT_INTERNAL_MESSAGE = gql`
 export const DELETE_INTERNAL_MESSAGE = gql`
   mutation DeleteInternalMessage($messageId: ID!) { deleteInternalMessage(messageId: $messageId) }
 `
+
+// ── Commenti di un ticket (modello unico, revisione del 14 set 2026 · F1/F13) ─
+
+export const ADD_ENTITY_COMMENT = gql`
+  mutation AddEntityComment($entityType: String!, $entityId: String!, $body: String!, $isInternal: Boolean) {
+    addComment(entityType: $entityType, entityId: $entityId, body: $body, isInternal: $isInternal) {
+      id body isInternal authorId authorName authorEmail createdAt updatedAt
+    }
+  }
+`

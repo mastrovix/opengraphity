@@ -184,3 +184,40 @@ describe('team / setTeamManager — scoping per tenant', () => {
     expect(call[2]).toEqual({ teamId: 'team-1', userId: 'user-altrui', tenantId: 'tenant-1' })
   })
 })
+
+/**
+ * Giro nel browser del 14 set 2026 (#48): dal dettaglio del team non si
+ * aggiungevano membri (solo dal dettaglio utente, riscrivendo TUTTI i suoi
+ * team). `setTeamMember` tocca un arco solo, in una statement sola.
+ */
+describe('setTeamMember — un membro alla volta, dal team', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('aggiunge con MERGE (idempotente) e restituisce il team; audit con l\'azione giusta', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ props: { id: 'team-1', name: 'Rete', created_at: 'x' } } as never)
+    const out = await teamResolvers.Mutation.setTeamMember(null, { teamId: 'team-1', userId: 'user-9', member: true }, ctx)
+    expect(out).toMatchObject({ id: 'team-1' })
+    const [, cypher, params] = vi.mocked(runQueryOne).mock.calls[0]!
+    expect(cypher).toContain('MATCH (t:Team {id: $teamId, tenant_id: $tenantId})')
+    expect(cypher).toContain('MATCH (u:User {id: $userId, tenant_id: $tenantId})')
+    expect(cypher).toContain('MERGE (u)-[:MEMBER_OF]->(t)')
+    expect(params).toEqual({ teamId: 'team-1', userId: 'user-9', tenantId: 'tenant-1' })
+    const { audit } = await import('../../../lib/audit.js')
+    expect(audit).toHaveBeenCalledWith(ctx, 'team.member_added', 'Team', 'team-1')
+  })
+
+  it('toglie cancellando solo l\'arco MEMBER_OF fra i due', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ props: { id: 'team-1', name: 'Rete', created_at: 'x' } } as never)
+    await teamResolvers.Mutation.setTeamMember(null, { teamId: 'team-1', userId: 'user-9', member: false }, ctx)
+    const [, cypher] = vi.mocked(runQueryOne).mock.calls[0]!
+    expect(cypher).toMatch(/OPTIONAL MATCH \(u\)-\[m:MEMBER_OF\]->\(t\)\s+DELETE m/)
+    expect(cypher).not.toContain('MERGE')
+  })
+
+  it('team o utente fuori tenant → NOT_FOUND; solo admin', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue(null as never)
+    await expect(teamResolvers.Mutation.setTeamMember(null, { teamId: 'team-1', userId: 'user-x', member: true }, ctx))
+      .rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
+    expect(allowedRoles('Mutation', 'setTeamMember')).toEqual(['admin'])
+  })
+})

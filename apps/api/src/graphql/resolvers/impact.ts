@@ -154,7 +154,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
       openIncidents: openIncidentsCount,
       failedChanges,
       ongoingChanges,
-      scoreDetails: details.length > 0 ? details.join(' | ') : 'Nessun fattore di rischio rilevato',
+      scoreDetails: details.length > 0 ? details.join(' | ') : 'No risk factor found',
     },
   }
 }

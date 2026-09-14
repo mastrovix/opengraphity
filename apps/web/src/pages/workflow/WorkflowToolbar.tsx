@@ -7,16 +7,9 @@ import { useTranslation } from 'react-i18next'
 import { colors } from '@/lib/tokens'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
-import type { WorkflowDefinition, WorkflowKey } from './workflow-types'
+import type { WorkflowDefinition } from './workflow-types'
 import { ADD_WORKFLOW_STEP } from '@/graphql/mutations'
 import { Pill } from '@/components/ui/Pill'
-
-const WORKFLOW_LABELS: Record<WorkflowKey, string> = {
-  incident:  'Incident',
-  standard:  'Standard Change',
-  normal:    'Normal Change',
-  emergency: 'Emergency Change',
-}
 
 /**
  * I tipi di passo che si possono aggiungere.
@@ -46,7 +39,6 @@ const SPECIAL_STEP_TYPES = [
 
 interface WorkflowToolbarProps {
   def:              WorkflowDefinition | null
-  selectedWorkflow: WorkflowKey
   hasChanges:       boolean
   pendingCount:     number
   onSave:           () => void
@@ -55,7 +47,6 @@ interface WorkflowToolbarProps {
 
 export function WorkflowToolbar({
   def,
-  selectedWorkflow,
   hasChanges,
   pendingCount,
   onSave,
@@ -112,7 +103,10 @@ export function WorkflowToolbar({
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h1 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
-            {WORKFLOW_LABELS[selectedWorkflow]}
+            {/* Il nome del workflow del cliente. Revisione del 14 set 2026 · F16: era
+                «Incident» per gli incident e «Standard Change» per TUTTI gli altri
+                workflow, problem e service request compresi. */}
+            {def?.name ?? ''}
           </h1>
           {def && (
             <Pill bg="var(--color-brand-a08)" color={accentColor} radius={100} style={{ fontSize: 11 }}>

@@ -53,6 +53,8 @@ import { getSession, runQuery, runQueryOne, type Queryable } from '@opengraphity
 import type { ServiceHealthChangedPayload } from '@opengraphity/types'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { audit } from '../../lib/audit.js'
+import { languageFor } from '../../lib/tenantLanguage.js'
+import { systemTextIn } from '../../lib/systemText.js'
 import { logger } from '../../lib/logger.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
@@ -404,6 +406,7 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
   const startedAt = performance.now()
   const logCtx = { tenantId, mapId, trigger, jobId: input.jobId }
   try {
+    const lingua = await languageFor(tenantId)
     const session = getSession(undefined, 'WRITE')
     // `!`: il ciclo qui sotto gira sempre almeno una volta (o lancia), ma il
     // compilatore non lo sa.
@@ -426,7 +429,7 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
         // D6.4: sorgente in tempesta e regola `hold` → la valutazione è
         // sospesa. Si scrive solo la nota (e `evaluated_at`, così la passata
         // periodica non ci ritorna sopra ogni minuto).
-        healthNote = serviceHealthNote({ held: state.rules.during_storm === 'hold' && stormSources.length > 0, stormSources, upstreamWindows: upstreamWindowsOf(state.nodes) })
+        healthNote = serviceHealthNote(lingua, { held: state.rules.during_storm === 'hold' && stormSources.length > 0, stormSources, upstreamWindows: upstreamWindowsOf(state.nodes) })
         if (state.rules.during_storm === 'hold' && stormSources.length > 0) {
           held = await holdEvaluation(session, { tenantId, mapId, now, version: state.version, healthNote, stormSources, logCtx })
           if (held) break
@@ -437,7 +440,7 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
           continue
         }
         const stale = state.missing.length > 0
-        const staleNote = stale ? `Componenti non più presenti nella CMDB: ${state.missing.join(', ')}` : null
+        const staleNote = stale ? systemTextIn(lingua, 'serviceMap.missingComponents', { names: state.missing.join(', ') }) : null
         const explanation = JSON.stringify(causes)
         row = await runQueryOne<WriteRow>(session, evaluationWriteCypher(), {
           mapId, tenantId, now, stale, version: state.version, healthNote,

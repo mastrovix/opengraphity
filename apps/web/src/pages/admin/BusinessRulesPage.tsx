@@ -51,9 +51,12 @@ type RuleDraft = {
 }
 
 import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
-import { entityLabel, eventOptionKey, automationActionKey } from '@/lib/automationOperators'
+import { eventOptionKey, automationActionKey } from '@/lib/automationOperators'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { colors, palette } from '@/lib/tokens'
-const EVENT_TYPES   = ['on_create', 'on_update', 'on_transition'] as const
+import { RULE_EVENT_TYPES, automationEventSupported } from '@opengraphity/types'
+/** Dalla tabella condivisa con l'API: le pagine offrono solo le combinazioni evento × ticket che girano (AU-1). */
+const EVENT_TYPES = RULE_EVENT_TYPES
 /**
  * I DUE VALORI, scritti come li vuole l'API: minuscoli.
  *
@@ -84,11 +87,9 @@ const emptyDraft = (): RuleDraft => ({
 })
 
 /** Come nei trigger: le etichette dei filtri sono testo a schermo, quindi una funzione di `t`. */
-const ruleFilterFields = (t: TFunction): FieldConfig[] => [
-  { key: 'entityType', label: t('admin.rules.filter.entityType'), type: 'enum', options: [
-    { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' },
-    { value: 'problem', label: 'Problem' }, { value: 'service_request', label: 'Service Request' },
-  ]},
+const ruleFilterFields = (t: TFunction, labelOf: (entityType: string) => string): FieldConfig[] => [
+  { key: 'entityType', label: t('admin.rules.filter.entityType'), type: 'enum', options:
+    ENTITY_TYPES.map((et) => ({ value: et, label: labelOf(et) })) },
   { key: 'eventType', label: t('admin.rules.filter.eventType'), type: 'enum', options: [
     { value: 'on_create',     label: t('automation.eventFilter.onCreate') },
     { value: 'on_update',     label: t('automation.eventFilter.onUpdate') },
@@ -157,6 +158,7 @@ function ruleToDraft(r: BusinessRule): RuleDraft {
 
 export function BusinessRulesPage() {
   const { t } = useTranslation()
+  const { labelOf } = useItilTypeLabels()
   const confirm = useConfirm()
   const list  = useListQueryState()
   const modal = useCrudModal<BusinessRule, RuleDraft>(emptyDraft, ruleToDraft)
@@ -278,7 +280,7 @@ export function BusinessRulesPage() {
         <Button icon={<Plus size={14} aria-hidden="true" />} onClick={modal.openCreate}>{t('pages.businessRules.newRule')}</Button>
       </div>
 
-      <FilterBuilder fields={ruleFilterFields(t)} onApply={list.setFilterGroup} />
+      <FilterBuilder fields={ruleFilterFields(t, labelOf)} onApply={list.setFilterGroup} />
 
       {!loading && !rules.length && (
         <EmptyState
@@ -333,14 +335,14 @@ export function BusinessRulesPage() {
           <div className="og-pair" style={{ marginBottom: 16 }}>
             <div>
               <label htmlFor={ids.entityType} style={labelS}>{t('pages.businessRules.entityType')}</label>
-              <Select id={ids.entityType} style={selectS} value={draft.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
-                {ENTITY_TYPES.map(et => <option key={et} value={et}>{entityLabel(et)}</option>)}
+              <Select id={ids.entityType} style={selectS} value={draft.entityType} onChange={e => patch({ entityType: e.target.value, ...(automationEventSupported(draft.eventType, e.target.value) ? {} : { eventType: 'on_create' }) })} disabled={modal.isEditing}>
+                {ENTITY_TYPES.map(et => <option key={et} value={et}>{labelOf(et)}</option>)}
               </Select>
             </div>
             <div>
               <label htmlFor={ids.eventType} style={labelS}>{t('pages.businessRules.event')}</label>
               <Select id={ids.eventType} style={selectS} value={draft.eventType} onChange={e => patch({ eventType: e.target.value })}>
-                {EVENT_TYPES.map(et => <option key={et} value={et}>{t(eventOptionKey(et))}</option>)}
+                {EVENT_TYPES.filter(et => automationEventSupported(et, draft.entityType)).map(et => <option key={et} value={et}>{t(eventOptionKey(et))}</option>)}
               </Select>
             </div>
           </div>

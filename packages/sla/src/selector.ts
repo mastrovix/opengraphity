@@ -11,6 +11,7 @@ export interface SLAPolicyRecord {
   response_minutes: number
   resolve_minutes:  number
   business_hours:   boolean
+  warning_minutes:  number
 }
 
 /**
@@ -37,7 +38,8 @@ export async function selectSLAForEntity(
     const result = await session.executeRead(tx =>
       tx.run(`
         MATCH (p:SLAPolicyNode {tenant_id: $tenantId, entity_type: $entityType, enabled: true})
-        WITH p,
+        OPTIONAL MATCH (t:Tenant {id: $tenantId})
+        WITH p, t.timezone AS tenantTimezone,
           CASE
             WHEN p.priority = $priority AND p.category = $category AND p.team_id = $teamId THEN 0
             WHEN p.priority = $priority AND p.category = $category AND p.team_id IS NULL    THEN 1
@@ -47,7 +49,7 @@ export async function selectSLAForEntity(
             ELSE 99
           END AS specificity
         WHERE specificity < 99
-        RETURN p, specificity
+        RETURN p, specificity, tenantTimezone
         ORDER BY specificity ASC
         LIMIT 1
       `, {
@@ -77,8 +79,21 @@ export async function selectSLAForEntity(
     if (!Number.isFinite(resolveMinutes) || resolveMinutes <= 0) {
       throw new Error(`SLA policy "${String(props['name'])}" (${String(props['id'])}) has invalid resolve_minutes: ${String(props['resolve_minutes'])}`)
     }
-    if (!props['timezone']) {
-      throw new Error(`SLA policy "${String(props['name'])}" (${String(props['id'])}) has no timezone configured`)
+    const warningMinutes = Number(props['warning_minutes'])
+    if (!Number.isInteger(warningMinutes) || warningMinutes <= 0) {
+      throw new Error(`SLA policy "${String(props['name'])}" (${String(props['id'])}) has invalid warning_minutes: ${String(props['warning_minutes'])}`)
+    }
+    /*
+      Revisione del 14 set 2026 · F7: una policy senza fuso proprio segue il
+      fuso del cliente, che si cambia dalla pagina Organizzazione. Prima la
+      creazione ne copiava il valore, e cambiare il fuso del cliente non
+      spostava nessuna policy.
+    */
+    const ownTimezone    = typeof props['timezone'] === 'string' && props['timezone'] !== '' ? props['timezone'] : null
+    const tenantTimezone = result.records[0].get('tenantTimezone') as unknown
+    const timezone = ownTimezone ?? (typeof tenantTimezone === 'string' && tenantTimezone !== '' ? tenantTimezone : null)
+    if (!timezone) {
+      throw new Error(`SLA policy "${String(props['name'])}" (${String(props['id'])}) has no time zone of its own and tenant ${tenantId} has no time zone configured`)
     }
 
     const policy: SLAPolicyRecord = {
@@ -88,10 +103,11 @@ export async function selectSLAForEntity(
       priority:         (props['priority']         ?? null) as string | null,
       category:         (props['category']         ?? null) as string | null,
       team_id:          (props['team_id']          ?? null) as string | null,
-      timezone:         props['timezone']         as string,
+      timezone,
       response_minutes: responseMinutes,
       resolve_minutes:  resolveMinutes,
       business_hours:   (props['business_hours']  ?? false) as boolean,
+      warning_minutes:  warningMinutes,
     }
 
     // SLA policy selected

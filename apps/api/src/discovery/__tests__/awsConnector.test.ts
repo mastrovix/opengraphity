@@ -115,16 +115,16 @@ describe('awsConnector.scan — config e credenziali', () => {
   it('rifiuta resource_types sconosciuti con errore esplicito (nessuna scansione vuota)', async () => {
     respond(EMPTY)
     await expect(collect(awsConnector.scan(source({ resource_types: 'ec2, ec3' }), CREDS)))
-      .rejects.toThrow('[aws] config failed: resource_types sconosciuti: ec3 (ammessi: ec2, rds, elb, acm, lambda, ecs)')
+      .rejects.toThrow('[aws] config failed: unknown resource_types: ec3 (allowed: ec2, rds, elb, acm, lambda, ecs)')
     expect(h.send).not.toHaveBeenCalled()
   })
 
   it('rifiuta credenziali mancanti prima di istanziare qualunque client', async () => {
     respond(EMPTY)
     await expect(collect(awsConnector.scan(source({}), { access_key_id: 'AKIA' })))
-      .rejects.toThrow('[aws] credentials failed: credenziali mancanti: secret_access_key')
+      .rejects.toThrow('[aws] credentials failed: missing credentials: secret_access_key')
     await expect(collect(awsConnector.scan(source({}), { access_key_id: ' ', secret_access_key: '' })))
-      .rejects.toThrow('credenziali mancanti: access_key_id, secret_access_key')
+      .rejects.toThrow('missing credentials: access_key_id, secret_access_key')
     expect(h.clientOpts).toHaveLength(0)
   })
 
@@ -228,7 +228,7 @@ describe('awsConnector.scan — EC2', () => {
   it('include_stopped non booleano → errore esplicito (niente "yes" accettato in silenzio)', async () => {
     respond(EMPTY)
     await expect(collect(awsConnector.scan(source({ resource_types: 'ec2', include_stopped: 'yes' }), CREDS)))
-      .rejects.toThrow(/toBool: valore non booleano "yes"/)
+      .rejects.toThrow(/toBool: not a boolean value "yes"/)
   })
 
   it('un errore dell\'SDK viene rilanciato arricchito con connettore, operazione e regione', async () => {
@@ -392,7 +392,7 @@ describe('awsConnector.testConnection', () => {
   it('ko: credenziali mancanti → { ok:false } senza chiamare l\'SDK', async () => {
     respond({ DescribeRegions: {} })
     await expect(awsConnector.testConnection(source({}), {}))
-      .resolves.toEqual({ ok: false, message: 'AWS connection failed: [aws] credentials failed: credenziali mancanti: access_key_id, secret_access_key' })
+      .resolves.toEqual({ ok: false, message: 'AWS connection failed: [aws] credentials failed: missing credentials: access_key_id, secret_access_key' })
     expect(h.send).not.toHaveBeenCalled()
   })
 })

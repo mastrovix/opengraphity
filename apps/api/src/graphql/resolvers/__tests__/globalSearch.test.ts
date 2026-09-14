@@ -46,7 +46,7 @@ const globalSearch = globalSearchResolvers.Query.globalSearch
 
 const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'operator' }
 
-const EMPTY_RESULTS = { cis: [], changes: [], incidents: [], problems: [], tasks: [], kbArticles: [] }
+const EMPTY_RESULTS = { cis: [], changes: [], incidents: [], problems: [], serviceRequests: [], tasks: [], kbArticles: [] }
 
 type Row = Record<string, unknown>
 
@@ -121,12 +121,15 @@ describe('globalSearch', () => {
     expect(res.tasks).toEqual([])
   })
 
-  it('esclude i ServiceRequest dai gruppi', async () => {
+  /** Giro nel browser del 14 set 2026 (#54): le richieste erano nell'indice ma scartate. */
+  it('le ServiceRequest hanno il loro gruppo, fuori dai CI', async () => {
     primeQueries({
-      fulltext: [{ props: { id: 'sr-1', number: 'REQ0001', title: 'New laptop', status: 'open' }, labels: ['ServiceRequest'] }],
+      fulltext: [{ props: { id: 'sr-1', number: 'SR00000001', title: 'New laptop', status: 'open', priority: 'low', created_at: 'c', updated_at: 'u' }, labels: ['ServiceRequest'] }],
     })
     const res = await globalSearch(null, { query: 'laptop' }, ctx)
-    expect(res).toEqual(EMPTY_RESULTS)
+    expect(res.serviceRequests).toHaveLength(1)
+    expect(res.serviceRequests[0]).toMatchObject({ id: 'sr-1', number: 'SR00000001', title: 'New laptop' })
+    expect(res.cis).toEqual([])
   })
 
   it('clampa limit: max 20, min 1, default 5 (fetchLimit = x12)', async () => {

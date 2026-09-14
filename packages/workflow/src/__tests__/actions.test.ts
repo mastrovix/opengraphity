@@ -343,14 +343,15 @@ describe('create_entity', () => {
     expect(createEntity).not.toHaveBeenCalled()
   })
 
-  it('creates with resolved title, parent link, copied fields; then publishes <type>.created through the ctx hook', async () => {
+  // WA-2: l'evento di creazione lo pubblica il servizio che crea il ticket, non l'azione (era duplicato).
+  it('creates with resolved title, parent link, copied fields; the creation event is left to the creator', async () => {
     const createEntity = vi.fn(async () => 'prb-9')
     const publishEvent = vi.fn(async () => {})
     await runAction(action('create_entity', params), instance, ctx({ createEntity, publishEvent }))
     expect(createEntity).toHaveBeenCalledWith('problem', {
       title: 'Problem from DB down', tenant_id: 't1', parent_id: 'inc-1', parent_type: 'incident', severity: 'critical', category: 'database',
     })
-    expect(publishEvent).toHaveBeenCalledWith('problem.created', { id: 'prb-9', tenant_id: 't1', created_by: 'user-1' })
+    expect(publishEvent).not.toHaveBeenCalled()
   })
 
   it('link_to_current=false → no parent fields; publishEvent optional', async () => {

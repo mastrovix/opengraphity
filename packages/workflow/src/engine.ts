@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
+import { parseLocalizedLabels } from './labels.js'
 import type { Session, ManagedTransaction } from 'neo4j-driver'
 import pino from 'pino'
 import { toNumber as neo4jToNumber } from '@opengraphity/neo4j'
@@ -197,15 +198,15 @@ export class WorkflowEngine {
           // nessuno step iniziale» mandava a cercare la cosa sbagliata.
           if (initials > 0 && !definitionId) {
             throw new Error(
-              `Nessuna definizione di workflow "${entityType}" del tenant "${tenantId}" si applica alla categoria ` +
-              `"${category ?? '(nessuna)'}": "${defName}" è riservata alla categoria "${row.get('category') as string ?? '(nessuna)'}" e non esiste una ` +
-              `definizione senza categoria su cui ripiegare. Allinea la categoria della definizione al vocabolario, ` +
-              `oppure aggiungi una definizione base.`,
+              `No "${entityType}" workflow definition of tenant "${tenantId}" applies to category ` +
+              `"${category ?? '(none)'}": "${defName}" is reserved for category "${row.get('category') as string ?? '(none)'}" and there is no ` +
+              `definition without a category to fall back on. Align the definition's category with the dictionary, ` +
+              `or add a base definition.`,
             )
           }
           throw new Error(
-            `Workflow "${defName}" (${entityType}, tenant "${tenantId}") non ha nessuno step iniziale: ` +
-            `marca uno step come iniziale nel disegnatore.`,
+            `Workflow "${defName}" (${entityType}, tenant "${tenantId}") has no initial step: ` +
+            `mark a step as initial in the designer.`,
           )
         }
         throw new Error(`No active workflow definition for "${entityType}" in tenant "${tenantId}"`)
@@ -551,6 +552,22 @@ export class WorkflowEngine {
             status:   nextStepName,
             now,
           })
+        } else if (nextStepCategory === 'published' && label === 'KBArticle') {
+          // Un articolo che entra nel passo di pubblicazione (per categoria, non
+          // per nome) riceve la data di pubblicazione. Giro del 14 set 2026:
+          // non la scriveva nessuno, e l'articolo pubblicato diceva
+          // «Published: —». Una ripubblicazione dopo una revisione la aggiorna.
+          await tx.run(`
+            MATCH (entity:${label} {id: $entityId, tenant_id: $tenantId})
+            SET entity.status       = $status,
+                entity.published_at = $now,
+                entity.updated_at   = $now
+          `, {
+            entityId: wi['entity_id'] as string,
+            tenantId: wi['tenant_id'] as string,
+            status:   nextStepName,
+            now,
+          })
         } else {
           await tx.run(`
             MATCH (entity:${label} {id: $entityId, tenant_id: $tenantId})
@@ -707,6 +724,7 @@ export class WorkflowEngine {
         RETURN
           next.name        AS toStep,
           tr.label         AS label,
+          tr.labels        AS labels,
           tr.requires_input AS requiresInput,
           tr.input_field   AS inputField,
           tr.condition     AS condition
@@ -717,6 +735,7 @@ export class WorkflowEngine {
     return result.records.map((r) => ({
       toStep:        r.get('toStep')        as string,
       label:         r.get('label')         as string,
+      labels:        parseLocalizedLabels(r.get('labels'), `transition to ${String(r.get('toStep'))}`),
       requiresInput: r.get('requiresInput') as boolean,
       inputField:    r.get('inputField')    as string | null,
       condition:     r.get('condition')     as string | null,

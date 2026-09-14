@@ -50,9 +50,9 @@ vi.mock('../../middleware/metrics.js', () => ({
 
 const svc = await import('../eventService.js')
 const {
-  normalizePayload, fingerprintOf, nextEventState, deriveCIHealth, recomputeCIHealth, ingestEvent, matchCI, getEventPolicy, setEventPolicy, MAX_EVENTS_PER_REQUEST, stripPort, isIpLiteral, hostResource, getPath, listPayloadKeys, PAYLOAD_KEYS_MAX, PAYLOAD_MAX_DEPTH, quoteValue, parseValueMapping, sourceConfigOf, normalizeWithConfig, countTransitionsSince, payloadStatusOf, transitionsOf, MAX_TRANSITIONS, QUIET_OUTCOMES,
+  normalizePayload, fingerprintOf, nextEventState, deriveCIHealth, recomputeCIHealth, CI_HEALTH_SCALE, ingestEvent, matchCI, getEventPolicy, setEventPolicy, MAX_EVENTS_PER_REQUEST, stripPort, isIpLiteral, hostResource, getPath, listPayloadKeys, PAYLOAD_KEYS_MAX, PAYLOAD_MAX_DEPTH, quoteValue, parseValueMapping, sourceConfigOf, normalizeWithConfig, countTransitionsSince, payloadStatusOf, transitionsOf, MAX_TRANSITIONS, QUIET_OUTCOMES,
   EVENT_TRANSITIONS, prevClassOf, transitionRuleFor, PREV_CLASS_CYPHER, SEVERITY_MAX_CYPHER, TRANSITION_ACTION_CYPHER, transitionCaseCypher, residueClearCypher, transitionSetCypher, ingestMergeCypher, INGEST_WRITE_OUTCOMES, APPLIED_OUTCOME_CYPHER,
-  ciMatchCypher, ciMatchParams, shortHostnameKeys, CI_MATCH_GUARD, MATCH_CANDIDATES_MAX, CI_HEALTH_RULES, ciHealthCaseCypher,
+  ciMatchCypher, ciMatchParams, shortHostnameKeys, CI_MATCH_GUARD, MATCH_CANDIDATES_MAX, ciHealthCaseCypher,
   INGEST_HISTORY_KIND_CYPHER, LAST_PAYLOAD_STATUS_CYPHER,
 } = svc
 const { historyWriteCypher } = await import('../events/history.js')
@@ -196,7 +196,7 @@ describe('normalizePayload — alertmanager', () => {
       { index: 2, error: expect.stringMatching(/alerts\[2\]\.labels\.instance is missing/) },
       { index: 3, error: 'alerts[3] is not an object' },
     ])
-    expect(svc.rejectionSummary(batch)).toMatch(/^3 di 4 scartati: alerts\[1\]\.labels\.severity value "page"/)
+    expect(svc.rejectionSummary(batch)).toMatch(/^3 of 4 rejected: alerts\[1\]\.labels\.severity value "page"/)
     expect(svc.rejectionSummary({ total: 1, rejected: [{ index: 0, error: 'boom' }] })).toBe('boom')
     expect(svc.rejectionSummary({ total: 2, rejected: [] })).toBe('')
     expect(svc.rejectionSummary({ total: 2, rejected: [{ index: 0, error: 'x'.repeat(600) }] })).toHaveLength(500)
@@ -963,18 +963,36 @@ describe('EVENT_TRANSITIONS — tabella condivisa fra funzione pura e CASE Cyphe
 
 
 describe('deriveCIHealth', () => {
+  const FACTORY = { critical: 'down', warning: 'degraded', info: 'operational' } as const
+
   it('critical → down; solo warning → degraded; nessuno/solo info → operational', () => {
-    expect(deriveCIHealth(['warning', 'critical'])).toBe('down')
-    expect(deriveCIHealth(['info', 'warning'])).toBe('degraded')
-    expect(deriveCIHealth(['info'])).toBe('operational')
-    expect(deriveCIHealth([])).toBe('operational')
+    expect(deriveCIHealth(['warning', 'critical'], false, FACTORY)).toBe('down')
+    expect(deriveCIHealth(['info', 'warning'], false, FACTORY)).toBe('degraded')
+    expect(deriveCIHealth(['info'], false, FACTORY)).toBe('operational')
+    expect(deriveCIHealth([], false, FACTORY)).toBe('operational')
   })
 
   it('ondata 4 — un evento flapping vale degraded (instabilità), ma un firing critical vale comunque down', () => {
-    expect(deriveCIHealth([], true)).toBe('degraded')
-    expect(deriveCIHealth(['info'], true)).toBe('degraded')
-    expect(deriveCIHealth(['critical'], true)).toBe('down')
-    expect(deriveCIHealth([], false)).toBe('operational')
+    expect(deriveCIHealth([], true, FACTORY)).toBe('degraded')
+    expect(deriveCIHealth(['info'], true, FACTORY)).toBe('degraded')
+    expect(deriveCIHealth(['critical'], true, FACTORY)).toBe('down')
+  })
+
+  /**
+   * Revisione del 14 set 2026 · EV-3: severità → salute era la costante
+   * `CI_HEALTH_RULES` con `critical` e `warning` scritti nel codice, mentre la
+   * severità degli allarmi è un vocabolario del cliente. Rinominata `critical`
+   * in `p1`, un allarme `p1` lasciava il CI «operational». Ora è la matrice
+   * `ci_health` del cliente.
+   */
+  it('severità rinominate dal cliente → la salute che dice la SUA matrice', () => {
+    const renamed = { p1: 'down', p2: 'degraded', p3: 'operational' }
+    expect(deriveCIHealth(['p1'], false, renamed)).toBe('down')
+    expect(deriveCIHealth(['p2', 'p3'], false, renamed)).toBe('degraded')
+  })
+
+  it('una severità senza valore nella matrice è un errore che la nomina, non «operational»', () => {
+    expect(() => deriveCIHealth(['p1'], false, FACTORY)).toThrow(/p1/)
   })
 })
 
@@ -991,14 +1009,17 @@ describe('recomputeCIHealth', () => {
     const { cypher, params } = calls()[0]!
     // Ondata 7 · C-4: gli stati «in manutenzione» viaggiano come PARAMETRO
     // (la semantica del cliente), non come letterale nel Cypher.
-    expect(params).toEqual({ tenantId: 't1', ciId: 'ci-1', now: expect.any(String), maintenanceStatuses: ['maintenance'] })
+    // EV-3: severità → salute viaggia come parametro (la matrice `ci_health` del cliente).
+    expect(params).toEqual({ tenantId: 't1', ciId: 'ci-1', now: expect.any(String), maintenanceStatuses: ['maintenance'], healthBySeverity: { critical: 'down', warning: 'degraded', info: 'operational' } })
+    expect(cypher).not.toContain("'critical'")
+    expect(cypher).not.toContain("'warning'")
     expect(cypher).toContain('MATCH (ci:ConfigurationItem {id: $ciId, tenant_id: $tenantId})')
     expect(cypher).toContain("OPTIONAL MATCH (e:Event {tenant_id: $tenantId, status: 'firing'})-[:RAISED_ON]->(ci)")
     expect(cypher).toContain("OPTIONAL MATCH (f:Event {tenant_id: $tenantId, status: 'flapping'})-[:RAISED_ON]->(ci)")
     expect(cypher).toContain(ciHealthCaseCypher('severities', 'flapping'))
     expect(cypher).toContain("CASE WHEN healthSource = 'manual' THEN 'manual' WHEN status IN $maintenanceStatuses THEN 'maintenance' ELSE 'monitoring' END AS rule")
     expect(cypher).not.toContain("status = 'maintenance'")   // nessun valore di dominio scritto nel Cypher
-    expect(cypher).toContain("FOREACH (_ IN CASE WHEN rule = 'monitoring' THEN [1] ELSE [] END |")
+    expect(cypher).toContain("FOREACH (_ IN CASE WHEN rule = 'monitoring' AND size(unmapped) = 0 THEN [1] ELSE [] END |")
     expect(cypher).toContain("SET ci.health = derived, ci.health_source = 'monitoring', ci.last_event_at = $now, ci.updated_at = $now")
     expect(cypher).toContain('ci.health_since = CASE WHEN changed THEN $now ELSE ci.health_since END')
     expect(cypher).not.toMatch(/ci\.status\s*=/)   // il ciclo di vita non si tocca
@@ -1007,9 +1028,20 @@ describe('recomputeCIHealth', () => {
     expect(publishEvent).toHaveBeenCalledWith('ci.health_changed', 't1', 'op', { id: 'ci-1', ci_id: 'ci-1', name: 'db-01', previous_health: 'operational', new_health: 'down' }, expect.any(String))
   })
 
-  it('il CASE Cypher e deriveCIHealth nascono dalla stessa tabella: critical → down, warning o flapping → degraded, altrimenti operational', () => {
-    expect(CI_HEALTH_RULES).toEqual([{ severity: 'critical', health: 'down' }, { severity: 'warning', health: 'degraded' }])
-    expect(ciHealthCaseCypher('severities', 'flapping')).toBe("CASE WHEN 'critical' IN severities THEN 'down' WHEN 'warning' IN severities OR flapping THEN 'degraded' ELSE 'operational' END")
+  it('il CASE Cypher legge la matrice come parametro: dal peggiore al migliore della scala, flapping → degraded', () => {
+    expect(CI_HEALTH_SCALE).toEqual(['operational', 'degraded', 'down'])
+    expect(ciHealthCaseCypher('severities', 'flapping')).toBe(
+      "CASE WHEN any(s IN severities WHERE $healthBySeverity[s] = 'down') THEN 'down' "
+      + "WHEN any(s IN severities WHERE $healthBySeverity[s] = 'degraded') OR flapping THEN 'degraded' ELSE 'operational' END")
+  })
+
+  it('EV-3 — una severità firing senza valore nella matrice: nessuna scrittura e un errore che la nomina', async () => {
+    onCypher([[HEALTH_RE, row({ unmapped: ['p1'], changed: false })]])
+    await expect(recomputeCIHealth('t1', 'ci-1', 'op')).rejects.toThrow(/p1/)
+    const { cypher } = calls()[0]!
+    expect(cypher).toContain('[s IN severities WHERE $healthBySeverity[s] IS NULL] AS unmapped')
+    expect(cypher).toContain("rule = 'monitoring' AND size(unmapped) = 0")
+    expect(publishEvent).not.toHaveBeenCalled()
   })
 
   it('health_source manual → la query non scrive la salute (regola manual) e restituisce quella corrente; nessun evento pubblicato', async () => {
@@ -1037,7 +1069,7 @@ describe('recomputeCIHealth', () => {
     await expect(recomputeCIHealth('t1', 'ci-1', 'op')).resolves.toBe('degraded')
     expect(publishEvent).not.toHaveBeenCalled()
     // la condizione di cambio vive nella query: previous null conta come cambiamento
-    expect(calls()[0]!.cypher).toContain("(rule = 'monitoring' AND (previous IS NULL OR previous <> derived)) AS changed")
+    expect(calls()[0]!.cypher).toContain("(rule = 'monitoring' AND size(unmapped) = 0 AND (previous IS NULL OR previous <> derived)) AS changed")
 
     vi.clearAllMocks(); vi.mocked(getSession).mockReturnValue(session as never)
     onCypher([[HEALTH_RE, row({ previous: null, health: 'operational', changed: true })]])

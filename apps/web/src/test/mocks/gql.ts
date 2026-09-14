@@ -7,11 +7,12 @@ import type { GqlMock } from '@/test/utils'
 
 export interface MeFixture {
   id: string; name: string; email: string; role: string; slackId: string | null
+  emailNotifications: boolean | null
   teams: { id: string; name: string }[]
 }
 
 export function meFixture(role = 'admin', overrides: Partial<MeFixture> = {}): MeFixture {
-  return { id: 'u-1', name: 'Test User', email: 'test@acme.com', role, slackId: null, teams: [], ...overrides }
+  return { id: 'u-1', name: 'Test User', email: 'test@acme.com', role, slackId: null, emailNotifications: true, teams: [], ...overrides }
 }
 
 /** `me` con il ruolo dato (o `null` per utente non presente nel DB). */

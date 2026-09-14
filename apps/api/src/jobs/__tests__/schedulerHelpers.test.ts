@@ -43,16 +43,16 @@ describe('buildSlackSummary (C-09)', () => {
     expect(malformedKpi).toBe(2)
     expect(logError).toHaveBeenCalledTimes(2)
     expect(JSON.stringify(blocks)).toContain('*Open*')
-    expect(JSON.stringify(blocks)).toContain('2 sezione/i KPI non leggibili')
+    expect(JSON.stringify(blocks)).toContain('2 KPI section(s) could not be read')
   })
 })
 
 describe('email digest helpers (C-14)', () => {
   it('localHourAndDate usa il fuso del tenant', () => {
     const at = new Date('2026-09-08T06:30:00Z')
-    expect(localHourAndDate(at, 'Europe/Rome')).toEqual({ hour: 8, date: '2026-09-08' })
-    expect(localHourAndDate(at, 'UTC')).toEqual({ hour: 6, date: '2026-09-08' })
-    expect(localHourAndDate(new Date('2026-09-08T23:30:00Z'), 'Asia/Tokyo')).toEqual({ hour: 8, date: '2026-09-09' })
+    expect(localHourAndDate(at, 'Europe/Rome')).toEqual({ hour: 8, minute: 30, date: '2026-09-08' })
+    expect(localHourAndDate(at, 'UTC')).toEqual({ hour: 6, minute: 30, date: '2026-09-08' })
+    expect(localHourAndDate(new Date('2026-09-08T23:30:00Z'), 'Asia/Tokyo')).toEqual({ hour: 8, minute: 30, date: '2026-09-09' })
   })
   it('digestMarkerKey è per tenant e data locale', () => {
     expect(digestMarkerKey('t1', '2026-09-08')).toBe('digest:t1:2026-09-08')

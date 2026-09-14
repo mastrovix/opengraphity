@@ -356,6 +356,15 @@ describe('marchio di personalizzazione (contratto con i seed)', () => {
     expect(invalidateWorkflowCache).toHaveBeenCalledWith('c-two', 'incident')
   })
 
+  /** Giro del 14 set 2026 (#22): un'etichetta cambiata è del cliente, le traduzioni spedite non valgono più. */
+  it('updateWorkflowStep toglie le traduzioni solo se l\'etichetta CAMBIA', async () => {
+    results = [{ records: [makeRecord({ s: { properties: { id: 's1', name: 'assigned', label: 'L', type: 'standard' } }, entityType: 'incident' })] }]
+    await M.updateWorkflowStep(null, { definitionId: 'def-1', stepName: 'assigned', label: 'L' }, ctx)
+    const cypher = writtenCypher()
+    expect(cypher).toContain('SET s.labels       = CASE WHEN s.label = $label THEN s.labels ELSE null END')
+    expect(cypher.indexOf('s.labels')).toBeLessThan(cypher.indexOf('SET s.label        = $label'))
+  })
+
   it('saveWorkflowLayout NON marchia: la posizione sul canvas non è configurazione di processo', async () => {
     await M.saveWorkflowLayout(null, { definitionId: 'def-1', positions: [{ stepId: 's1', positionX: 1, positionY: 2 }] }, ctx)
     expect(writtenCypher()).not.toContain('customized_at')

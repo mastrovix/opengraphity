@@ -19,6 +19,8 @@ interface Props {
   data:      string
   title:     string
   error?:    string | null
+  /** L'etichetta di un valore raggruppato (Dizionario, passi del workflow): giro del 14 set 2026, #11. */
+  valueLabel?: (value: string) => string
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -52,7 +54,7 @@ function ChartError({ title, message }: { title: string; message: string }) {
 
 const REPORT_STYLE = { showValueLabels: true } as const
 
-export function ReportChartRenderer({ chartType, data, title, error }: Props) {
+export function ReportChartRenderer({ chartType, data, title, error, valueLabel }: Props) {
   const { t, i18n } = useTranslation()
   const locale = i18n.language
   if (error) return <ChartError title={t('components.reportChart.computeError')} message={error} />
@@ -66,7 +68,7 @@ export function ReportChartRenderer({ chartType, data, title, error }: Props) {
   }
 
   const echartsProps = { style: { height: 320, width: '100%' }, opts: { renderer: 'svg' as const }, theme: 'light' }
-  const points = () => toPoints(parsed as LooseChartPoint[])
+  const points = () => toPoints(parsed as LooseChartPoint[]).map((p) => (valueLabel ? { ...p, label: valueLabel(p.label) } : p))
 
   switch (chartType) {
 

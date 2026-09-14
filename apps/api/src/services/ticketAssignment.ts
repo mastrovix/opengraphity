@@ -1,6 +1,6 @@
 /**
- * Assegnazione di un ticket (incident, problem) a team e utente — logica
- * condivisa.
+ * Assegnazione di un ticket (incident, problem; per la richiesta solo
+ * l'utente, `setTicketUser`) a team e utente — logica condivisa.
  *
  * Regola ITSM (una sola, per entrambe le entità): si assegna a un utente solo
  * dopo aver assegnato il gruppo, e l'utente deve appartenere a quel gruppo.
@@ -12,7 +12,7 @@ import { NotFoundError, ValidationError } from '../lib/errors.js'
 import { runQueryOne } from '../graphql/resolvers/ci-utils.js'
 
 type Session = Parameters<typeof runQueryOne>[0]
-export type TicketLabel = 'Incident' | 'Problem'
+export type TicketLabel = 'Incident' | 'Problem' | 'ServiceRequest'
 
 /** Verifica che il ticket abbia un gruppo assegnatario e che l'utente ne faccia parte. */
 export async function assertUserInAssignedTeam(

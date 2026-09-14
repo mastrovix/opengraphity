@@ -45,6 +45,9 @@ export function workflowSDL(): string {
   type WorkflowTransition {
     toStep:        String!
     label:         String!
+    # Traduzioni dell'etichetta (giro del 14 set 2026, #22): chi mostra
+    # l'etichetta sceglie la lingua di chi guarda, altrimenti \`label\`.
+    labels:        [LocalizedLabel!]!
     requiresInput: Boolean!
     inputField:    String
     condition:     String
@@ -65,6 +68,9 @@ export function workflowSDL(): string {
     id:                  ID!
     name:                String!
     label:               String!
+    # Traduzioni dell'etichetta (giro del 14 set 2026, #22): chi mostra
+    # l'etichetta sceglie la lingua di chi guarda, altrimenti \`label\`.
+    labels:        [LocalizedLabel!]!
     type:                String!
     enterActions:        String
     exitActions:         String
@@ -98,6 +104,9 @@ export function workflowSDL(): string {
     toStepName:    String!
     trigger:       String!
     label:         String!
+    # Traduzioni dell'etichetta (giro del 14 set 2026, #22): chi mostra
+    # l'etichetta sceglie la lingua di chi guarda, altrimenti \`label\`.
+    labels:        [LocalizedLabel!]!
     requiresInput: Boolean!
     inputField:    String
     condition:     String

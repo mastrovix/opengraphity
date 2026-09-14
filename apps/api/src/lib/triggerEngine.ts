@@ -8,6 +8,7 @@ import { logger as appLogger } from './logger.js'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import { getQueue } from './bullmq.js'
 import { createAutomationCache, evaluateRules } from './automationEngine.js'
+import { parseConditions } from './conditionEvaluator.js'
 
 const WORKFLOW_JOBS_QUEUE = 'workflow-jobs'
 
@@ -67,9 +68,16 @@ export async function evaluateTriggers(
   eventType:  TriggerEventType,
   entity:     Record<string, unknown>,
   userId:     string,
-  _previousEntity?: Record<string, unknown>,
+  opts?:      { changedFields: readonly string[] },
 ): Promise<TriggerResult[]> {
-  const triggers = await loadTriggers(tenantId, entityType, eventType)
+  const loaded = await loadTriggers(tenantId, entityType, eventType)
+  // «Campo cambiato» (AU-1): il trigger è candidato solo se almeno uno dei
+  // campi che le sue condizioni nominano è fra quelli cambiati; senza
+  // condizioni, qualunque cambiamento. Le condizioni poi si valutano sul
+  // valore NUOVO, come per gli altri eventi.
+  const triggers = eventType === 'on_field_change' && opts
+    ? loaded.filter((t) => fieldsNamedBy(t.conditions).length === 0 || fieldsNamedBy(t.conditions).some((f) => opts.changedFields.includes(f)))
+    : loaded
   if (triggers.length === 0) return []
 
   const outcomes = await evaluateRules({
@@ -130,6 +138,15 @@ export async function scheduleTimerTriggers(
       removeOnComplete:   true,
     })
     log.info({ triggerId: trigger.id, entityId, delayMinutes: trigger.timer_delay_minutes }, 'Timer trigger scheduled')
+  }
+}
+
+/** I campi nominati dalle condizioni di un trigger (JSON corrotto → nessuno: lo segnala poi evaluateRules). */
+function fieldsNamedBy(conditions: string | null): string[] {
+  try {
+    return parseConditions(conditions).map((c) => c.field).filter((f): f is string => typeof f === 'string')
+  } catch {
+    return []
   }
 }
 

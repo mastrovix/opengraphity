@@ -18,6 +18,7 @@ vi.mock('@opengraphity/neo4j', () => ({
   runQueryOne: vi.fn(),
 }))
 
+vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: {
     createInstance: vi.fn().mockResolvedValue({ id: 'wi-1' }),
@@ -47,12 +48,14 @@ vi.mock('../../../lib/workflowHelpers.js', async (importOriginal) => {
   return {
     ...orig,
     getWorkflowSteps: vi.fn().mockResolvedValue([
-      { name: 'new',       label: 'Nuovo',    isInitial: true,  isTerminal: false, isOpen: true,  category: 'active',   purpose: null, stepOrder: 1 },
-      { name: 'in_carico', label: 'In carico', isInitial: false, isTerminal: false, isOpen: true,  category: 'active',   purpose: null, stepOrder: 2 },
-      { name: 'closed',    label: 'Chiuso',   isInitial: false, isTerminal: true,  isOpen: false, category: 'closed',   purpose: null, stepOrder: 3 },
+      { name: 'new',       label: 'Nuovo', labels: [],    isInitial: true,  isTerminal: false, isOpen: true,  category: 'active',   purpose: null, stepOrder: 1 },
+      { name: 'in_carico', label: 'In carico', labels: [], isInitial: false, isTerminal: false, isOpen: true,  category: 'active',   purpose: null, stepOrder: 2 },
+      { name: 'closed',    label: 'Chiuso', labels: [],   isInitial: false, isTerminal: true,  isOpen: false, category: 'closed',   purpose: null, stepOrder: 3 },
     ]),
   }
 })
+
+vi.mock('../collaboration.js', () => ({ notifyWatchers: vi.fn(), notifyMentions: vi.fn(), autoWatch: vi.fn() }))
 
 vi.mock('../../../lib/publishEvent.js', () => ({
   publishEvent: vi.fn().mockResolvedValue(undefined),
@@ -61,6 +64,7 @@ vi.mock('../../../lib/publishEvent.js', () => ({
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 const { portalResolvers } = await import('../portal.js')
+const { runQuery } = await import('@opengraphity/neo4j')
 
 const myTicket         = portalResolvers.Query.myTicket
 const addTicketComment = portalResolvers.Mutation.addTicketComment
@@ -98,7 +102,7 @@ describe('myTicket — ownership check', () => {
   it('utente che non è created_by → "Access denied" e nessun dato caricato', async () => {
     mockSession.executeRead.mockResolvedValueOnce({
       records: [makeRecord({
-        props:        { id: 'inc-1', title: 'Altrui', status: 'open', created_by: 'other-user' },
+        props:        { id: 'inc-1', number: 'INC00000001', title: 'Altrui', status: 'open', created_by: 'other-user' },
         assignedTeam: null,
       })],
     })
@@ -113,7 +117,7 @@ describe('myTicket — ownership check', () => {
     mockSession.executeRead.mockResolvedValueOnce({
       records: [makeRecord({
         props: {
-          id: 'inc-1', title: 'Stampante rotta', status: 'open', priority: 'high',
+          id: 'inc-1', number: 'INC00000001', title: 'Stampante rotta', status: 'open', severity: 'high',
           category: 'hardware', created_by: 'user-1',
           created_at: '2026-07-01T10:00:00Z', updated_at: '2026-07-02T10:00:00Z',
         },
@@ -151,7 +155,7 @@ describe('myTicket — ownership check', () => {
     mockSession.executeRead.mockResolvedValueOnce({
       records: [makeRecord({
         props: {
-          id: 'inc-2', title: 'Monitor', status: 'in_carico', priority: 'low',
+          id: 'inc-2', number: 'INC00000002', title: 'Monitor', status: 'in_carico', severity: 'low',
           category: 'hardware', created_by: 'user-1',
           created_at: '2026-07-01T10:00:00Z', updated_at: '2026-07-02T10:00:00Z',
         },
@@ -182,44 +186,27 @@ describe('addTicketComment — ownership check', () => {
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
-  it('owner → crea il commento pubblico con i dati autore', async () => {
-    mockSession.executeRead
-      .mockResolvedValueOnce({ records: [makeRecord({ createdBy: 'user-1' })] })
-      .mockResolvedValueOnce({ records: [makeRecord({ name: 'Mario Rossi', email: 'mario@test.io' })] })
-
-    const result = await addTicketComment(null, { ticketId: 'inc-1', body: 'un aggiornamento?' }, ctx)
-
-    expect(mockSession.executeWrite).toHaveBeenCalledOnce()
-    expect(result).toMatchObject({
-      body:        'un aggiornamento?',
-      isInternal:  false,
-      authorId:    'user-1',
-      authorName:  'Mario Rossi',
-      authorEmail: 'mario@test.io',
-    })
-  })
-
   /**
-   * Ondata 2 → 8: il commento nasceva SENZA `entity_type`/`entity_id`, legato
-   * all'incident solo dalla relazione `HAS_ENTITY_COMMENT`. Il lato operatore
-   * legge per proprietà (`resolvers/comments.ts`,
-   * `MATCH (c:EntityComment {tenant_id, entity_type, entity_id})`): quel
-   * commento non compariva nel ticket, quindi il cliente scriveva e nessuno
-   * leggeva. Il difetto l'ha trovato il lint `tenantOnCreate`.
+   * Revisione del 14 set 2026 · F1: il portale scriveva `EntityComment`, un
+   * modello che il dettaglio dell'incident non leggeva — il cliente scriveva e
+   * nessuno leggeva, e le risposte dello staff non arrivavano al portale. Ora
+   * il commento è lo stesso `Comment` appeso con `HAS_COMMENT` che lo staff
+   * vede, come risposta pubblica (`is_internal = false`).
    */
-  it('il commento porta entity_type/entity_id, o non lo vede il lato operatore', async () => {
-    mockSession.executeRead
-      .mockResolvedValueOnce({ records: [makeRecord({ createdBy: 'user-1' })] })
-      .mockResolvedValueOnce({ records: [makeRecord({ name: 'Mario Rossi', email: 'mario@test.io' })] })
+  it('owner → un Comment pubblico appeso all\'incident, con i dati autore', async () => {
+    mockSession.executeRead.mockResolvedValueOnce({ records: [makeRecord({ createdBy: 'user-1' })] })
+    vi.mocked(runQuery).mockResolvedValueOnce([{
+      comment: { id: 'c-1', text: 'un aggiornamento?', is_internal: false, created_at: 'a', updated_at: 'a' },
+      author:  { name: 'Mario Rossi', email: 'mario@test.io' },
+    }] as never)
 
-    await addTicketComment(null, { ticketId: 'inc-42', body: 'ciao' }, ctx)
+    const result = await addTicketComment(null, { ticketId: 'inc-42', body: 'un aggiornamento?' }, ctx)
 
-    const tx = { run: vi.fn() }
-    await (mockSession.executeWrite.mock.calls[0]![0] as (t: typeof tx) => unknown)(tx)
-    const [cypher, params] = tx.run.mock.calls[0]! as [string, Record<string, unknown>]
-    expect(cypher).toContain("entity_type:  'incident'")
-    expect(cypher).toContain('entity_id:    $ticketId')
-    expect(cypher).toContain('CREATE (i)-[:HAS_ENTITY_COMMENT]->(c)')
-    expect(params['ticketId']).toBe('inc-42')
+    const [, cypher, params] = vi.mocked(runQuery).mock.calls[0]! as [unknown, string, Record<string, unknown>]
+    expect(cypher).toContain('MATCH (e:Incident {id: $entityId, tenant_id: $tenantId})')
+    expect(cypher).toContain('CREATE (e)-[:HAS_COMMENT]->(c)')
+    expect(cypher).not.toContain('EntityComment')
+    expect(params).toMatchObject({ entityId: 'inc-42', tenantId: 'tenant-1', isInternal: false, authorId: 'user-1' })
+    expect(result).toMatchObject({ id: 'c-1', body: 'un aggiornamento?', isInternal: false, authorName: 'Mario Rossi', authorEmail: 'mario@test.io' })
   })
 })

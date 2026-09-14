@@ -117,7 +117,7 @@ async function testNotificationChannel(_: unknown, { id }: { id: string }, ctx: 
     // first surfaces a proper ValidationError to the caller.
     if (ch.webhookUrl) await assertSafeOutboundUrl(ch.webhookUrl)
     const { sendTestMessage } = await import('@opengraphity/notifications')
-    return sendTestMessage(ch)
+    return sendTestMessage(ch, ctx.tenantId)
   })
 }
 

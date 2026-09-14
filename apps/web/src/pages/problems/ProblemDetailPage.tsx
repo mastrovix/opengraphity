@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { useMe } from '@/hooks/useMe'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { PageContainer } from '@/components/PageContainer'
 import { QueryError } from '@/components/QueryError'
 import { Button } from '@/components/Button'
@@ -44,9 +46,11 @@ import { FileDown, Loader2, Trash2 } from 'lucide-react'
 import { DetailField } from '@/components/ui/DetailField'
 import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import { PhaseBadge } from '@/components/ui/badges'
-import { formatDate, timeAgo, PRIORITY_COLOR } from './ProblemCard'
-import { colors, lookupOrError } from '@/lib/tokens'
+import { formatDate, timeAgo } from './ProblemCard'
+import { colors } from '@/lib/tokens'
 import { useSlaSettling } from '@/hooks/useSlaSettling'
+import { useValueStyle } from '@/hooks/useValueStyle'
+import { withLocalizedLabel } from '@/lib/localizedLabel'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface WorkflowInstance {
@@ -87,6 +91,7 @@ interface ProblemComment {
   id:        string
   text:      string
   type:      string
+  isInternal: boolean
   createdAt: string
   author:    { id: string; name: string } | null
 }
@@ -125,6 +130,8 @@ interface User  { id: string; name: string; email: string; teams: { id: string; 
 
 export function ProblemDetailPage() {
   const { t }    = useTranslation()
+  const { labelOf: typeLabel } = useItilTypeLabels()
+  const styleOf = useValueStyle()
   const { labelOf } = useDomainVocabularies()
   const confirm  = useConfirm()
   const { id }   = useParams<{ id: string }>()
@@ -228,6 +235,8 @@ export function ProblemDetailPage() {
     onError: (err) => toast.error(err.message),
   })
 
+  const { me } = useMe()
+  const isAdmin = me?.role === 'admin'
   const [deleteProblem, { loading: deleting }] = useMutation(DELETE_PROBLEM, {
     onCompleted: () => { toast.success(t('toast.problem.deleted')); navigate('/problems') },
     onError: (err) => toast.error(err.message),
@@ -278,7 +287,9 @@ export function ProblemDetailPage() {
     }
   }
 
-  if (loading) {
+  // Solo al primo caricamento: un refetch (dopo un commento) rimetteva lo scheletro,
+  // la pagina si rimontava richiudendo le sezioni e tornava in cima (giro del 14 set 2026, #20).
+  if (loading && !data) {
     return (
       <div className="space-y-4" style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
         <Skeleton style={{ height: 32, width: 200 }} />
@@ -309,7 +320,7 @@ export function ProblemDetailPage() {
     )
   }
 
-  const manualTransitions = problem.availableTransitions
+  const manualTransitions = problem.availableTransitions.map(withLocalizedLabel)
   const historyDesc       = [...problem.workflowHistory].reverse()
 
   return (
@@ -332,7 +343,8 @@ export function ProblemDetailPage() {
         >
           {t('detail.exportPdf')}
         </Button>
-        <Button
+        {/* Solo admin, come per le change: l'API lo pretende (F3). */}
+        {isAdmin && <Button
           variant="secondary"
           disabled={deleting}
           icon={<Trash2 size={13} />}
@@ -343,7 +355,7 @@ export function ProblemDetailPage() {
           }}
         >
           {t('common.delete')}
-        </Button>
+        </Button>}
         <WatcherBar entityType="problem" entityId={problem.id} />
       </div>
 
@@ -363,7 +375,7 @@ export function ProblemDetailPage() {
                   : <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', margin: 0 }}>{t('detail.noDescription')}</p>
               } />
               <DetailField label={t('detail.priority')} value={
-                <span style={{ fontWeight: 600, color: lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)') }} title={problem.priority}>{labelOf('priority', problem.priority) ?? problem.priority}</span>
+                <span style={{ fontWeight: 600, color: styleOf('priority', problem.priority).color }} title={problem.priority}>{labelOf('priority', problem.priority) ?? problem.priority}</span>
               } />
               {/*
                 Lo SLA del problem. Mancava: il motore non lo creava (leggeva
@@ -523,19 +535,19 @@ export function ProblemDetailPage() {
             excludeId={problem.id}
             types={[
               {
-                kind: 'INCIDENT', label: 'Incident', routeBase: '/incidents',
+                kind: 'INCIDENT', label: typeLabel('incident'), routeBase: '/incidents',
                 items: problem.linkedIncidents ?? [],
                 onLink: (incidentId) => void linkIncident({ variables: { problemId: problem.id, incidentId } }),
                 onUnlink: (incidentId) => void unlinkIncident({ variables: { problemId: problem.id, incidentId } }),
               },
               {
-                kind: 'PROBLEM', label: 'Problem', routeBase: '/problems',
+                kind: 'PROBLEM', label: typeLabel('problem'), routeBase: '/problems',
                 items: problem.linkedProblems ?? [],
                 onLink: (otherId) => void linkRelated({ variables: { entityType: 'problem', entityId: problem.id, otherId } }),
                 onUnlink: (otherId) => void unlinkRelated({ variables: { entityType: 'problem', entityId: problem.id, otherId } }),
               },
               {
-                kind: 'CHANGE', label: 'Change', routeBase: '/changes',
+                kind: 'CHANGE', label: typeLabel('change'), routeBase: '/changes',
                 items: problem.linkedChanges ?? [],
                 onLink: (changeId) => void linkResolved({ variables: { changeId, entityType: 'problem', entityId: problem.id } }),
                 onUnlink: (changeId) => void unlinkResolved({ variables: { changeId, entityType: 'problem', entityId: problem.id } }),
@@ -550,7 +562,7 @@ export function ProblemDetailPage() {
           <CommentsSection
             comments={problem.comments}
             adding={addingComment}
-            onAdd={(text) => addComment({ variables: { problemId: problem.id, text } })}
+            onAdd={(text, isInternal) => addComment({ variables: { problemId: problem.id, text, isInternal } })}
           />
 
           <InternalChatPanel

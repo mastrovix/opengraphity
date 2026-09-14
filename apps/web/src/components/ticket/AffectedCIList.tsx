@@ -13,7 +13,9 @@ import { Input } from '@/components/ui/FormControls'
 import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { ciPath } from '@/lib/ciPath'
+import type { ValueColor } from '@opengraphity/types'
 import { ciStatusStyle, enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { alpha, colors } from '@/lib/tokens'
 
 export interface AffectedCIRef {
@@ -53,8 +55,8 @@ function MicroBadge({ children, bg, fg }: { children: React.ReactNode; bg?: stri
 }
 
 /** Sfondo e testo della pastiglia dello stato, dalla palette unica. */
-function statusBadgeStyle(status: string, vocabulary: readonly string[] | null): { bg: string; fg: string } {
-  const s = ciStatusStyle(status, vocabulary)
+function statusBadgeStyle(status: string, vocabulary: readonly string[] | null, color: ValueColor | null): { bg: string; fg: string } {
+  const s = ciStatusStyle(status, vocabulary, color)
   return { bg: s.bg, fg: s.color }
 }
 
@@ -73,6 +75,8 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
   const { t } = useTranslation()
   const navigate = useNavigate()
   const baseEnums = useCIBaseEnums()
+  // F9: il colore dello stato dal Dizionario del cliente.
+  const { colorOf } = useDomainVocabularies()
   const ciStatuses = baseEnums.loading || baseEnums.error ? null : baseEnums.statuses
   const [open, setOpen] = useState(defaultOpen)
   const [showSearch, setShowSearch] = useState(false)
@@ -109,7 +113,7 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
            come nella vecchia testata fatta a mano. Bordo e testo prendono
            `currentColor`, cioè il colore che la testata ha in quello stato. */
         <button type="button" onClick={toggleSearch}
-          style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid currentColor', background: 'transparent', cursor: 'pointer', color: 'inherit' }}>
+          style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 6, border: '1px solid currentColor', background: 'transparent', cursor: 'pointer', color: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>
           {showSearch ? t('common.close') : t('attachments.addCI')}
         </button>
       }
@@ -165,7 +169,7 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
                   {cis.map((ci) => (
                     <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0' }}>
                       <button type="button" onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
-                      <MicroBadge {...statusBadgeStyle(ci.status, ciStatuses)}>{enumLabel(ci.status)}</MicroBadge>
+                      <MicroBadge {...statusBadgeStyle(ci.status, ciStatuses, colorOf('ci_status', ci.status))}>{enumLabel(ci.status)}</MicroBadge>
                       <MicroBadge>{ci.environment}</MicroBadge>
                       <button type="button" onClick={() => onRemoveCI(ci.id)} title={t('components.affectedCI.remove')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}><X size={14} /></button>
                     </div>

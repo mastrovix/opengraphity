@@ -151,10 +151,19 @@ export interface ActionContext {
 
 // ── Step / Transition / Definition ────────────────────────────────────────────
 
+/**
+ * Etichette per lingua (giro nel browser del 14 set 2026, #22): `label` resta
+ * l'etichetta di base, `labels` le traduzioni di quelle SPEDITE. Il tipo e le
+ * funzioni stanno in @opengraphity/types.
+ */
+import type { LocalizedLabels } from '@opengraphity/types'
+export type { LocalizedLabels }
+
 export interface WorkflowStepDef {
   id:           string
   name:         string
   label:        string
+  labels?:      LocalizedLabels
   type:         WorkflowStepType
   enterActions: WorkflowActionConfig[]
   exitActions:  WorkflowActionConfig[]
@@ -175,6 +184,7 @@ export interface WorkflowTransitionDef {
   toStepName:    string
   trigger:       WorkflowTrigger
   label:         string
+  labels?:       LocalizedLabels
   condition:     string | null
   requiresInput: boolean
   inputField:    string | null

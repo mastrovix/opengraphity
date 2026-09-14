@@ -102,6 +102,10 @@ export const DOMAIN_VALUE_BINDINGS: Readonly<Record<string, readonly { label: st
   service_criticality: [
     { label: 'BusinessApplication', property: 'criticality' },
   ],
+  /** L'ambiente dei CI: ingresso della matrice `environment_risk` (revisione del 14 set 2026 · CH-3). */
+  environment: [
+    { label: 'ConfigurationItem', property: 'environment' },
+  ],
   event_severity: [
     { label: 'Event',             property: 'severity' },
     { label: 'Anomaly',           property: 'severity' },
@@ -154,19 +158,19 @@ export interface ConfigValueSite {
 }
 
 export const CONFIG_VALUE_SITES: readonly ConfigValueSite[] = [
-  { label: 'BusinessRule',  property: 'conditions', shape: 'conditions', where: 'le condizioni di una Business Rule' },
-  { label: 'AutoTrigger',   property: 'conditions', shape: 'conditions', where: 'le condizioni di un Trigger Automatico' },
-  { label: 'SLAPolicyNode', property: 'category',   shape: 'scalar', vocabulary: 'category',    where: 'la categoria di una Policy SLA' },
-  { label: 'DynamicCIGroup', property: 'criteria_environment', shape: 'scalar', vocabulary: 'environment', where: "l'ambiente di un gruppo CI dinamico" },
-  { label: 'StandardChangeCatalogEntry', property: 'default_priority', shape: 'scalar', vocabulary: 'priority', where: 'la priorita di una change standard di catalogo' },
-  { label: 'FieldVisibilityRule', property: 'trigger_value', shape: 'scalar', vocabularyFromField: 'trigger_field', where: 'la condizione di visibilita di un campo' },
+  { label: 'BusinessRule',  property: 'conditions', shape: 'conditions', where: 'the conditions of a Business Rule' },
+  { label: 'AutoTrigger',   property: 'conditions', shape: 'conditions', where: 'the conditions of an Auto Trigger' },
+  { label: 'SLAPolicyNode', property: 'category',   shape: 'scalar', vocabulary: 'category',    where: 'the category of an SLA Policy' },
+  { label: 'DynamicCIGroup', property: 'criteria_environment', shape: 'scalar', vocabulary: 'environment', where: 'the environment of a dynamic CI group' },
+  { label: 'StandardChangeCatalogEntry', property: 'default_priority', shape: 'scalar', vocabulary: 'priority', where: 'the priority of a standard change catalog entry' },
+  { label: 'FieldVisibilityRule', property: 'trigger_value', shape: 'scalar', vocabularyFromField: 'trigger_field', where: 'the visibility condition of a field' },
   // Il CRITICO della terza revisione (A · C1): le soglie delle fasce di
   // rischio vivono sul Tenant come `[{band, upTo}]`, dove `band` e un valore
   // del vocabolario `risk_band`. La tabella dichiarava `risk_band: []` con la
   // motivazione «i suoi valori vivono solo nelle chiavi della matrice», che
   // era falsa dal commit che ha introdotto le soglie. Dopo una rinomina,
   // `parseThresholds` lancia e NESSUNA change si crea piu.
-  { label: 'Tenant', property: 'risk_band_thresholds', shape: 'risk_bands', vocabulary: 'risk_band', where: 'le soglie delle fasce di rischio' },
+  { label: 'Tenant', property: 'risk_band_thresholds', shape: 'risk_bands', vocabulary: 'risk_band', where: 'the risk band thresholds' },
 ]
 
 /**
@@ -251,8 +255,8 @@ export async function enumValueBindings(
   // i numeri.
   const seen = new Set(out.map((b) => `${b.label}.${b.property}`))
   for (const b of DOMAIN_VALUE_BINDINGS[vocabularyName] ?? []) {
-    const label    = assertLabel(b.label, `vocabolario "${vocabularyName}": etichetta dichiarata`)
-    const property = assertFieldName(b.property, `vocabolario "${vocabularyName}": proprietà dichiarata`)
+    const label    = assertLabel(b.label, `vocabulary "${vocabularyName}": declared label`)
+    const property = assertFieldName(b.property, `vocabulary "${vocabularyName}": declared property`)
     if (seen.has(`${label}.${property}`)) continue
     seen.add(`${label}.${property}`)
     out.push({ label, property, fieldName: property, typeName: label })
@@ -302,7 +306,7 @@ async function matrixReferences(
       }
       if (spec.output === vocabularyName) {
         const hit = out.get(String(value))
-        if (hit && !hit.includes(`${kind} (cella "${key}")`)) hit.push(`${kind} (cella "${key}")`)
+        if (hit && !hit.includes(`${kind} (cell "${key}")`)) hit.push(`${kind} (cell "${key}")`)
       }
     }
   }
@@ -385,16 +389,16 @@ export function enumValueUsageMessage(vocabularyName: string, usages: readonly E
   const parts = usages.map((u) => {
     const where = [
       ...u.records.map((r) => `${String(r.count)} ${r.typeName}.${r.fieldName}`),
-      ...u.policyLists.map((l) => `la policy degli allarmi (${l})`),
-      ...u.matrices.map((m) => `la matrice ${m}`),
+      ...u.policyLists.map((l) => `the alarm policy (${l})`),
+      ...u.matrices.map((m) => `the ${m} matrix`),
       ...u.configSites,
     ]
-    return `"${u.value}" è ancora usato da ${where.join(', ')}`
+    return `"${u.value}" is still used by ${where.join(', ')}`
   })
   return (
-    `Il vocabolario "${vocabularyName}" non può perdere questi valori: ${parts.join('; ')}. ` +
-    `Cambia prima quei record, oppure indica un valore di sostituzione ` +
-    `(replacements: [{from: "…", to: "…"}]) e verranno riscritti insieme al vocabolario.`
+    `The dictionary "${vocabularyName}" cannot lose these values: ${parts.join('; ')}. ` +
+    `Change those records first, or give a replacement value ` +
+    `(replacements: [{from: "…", to: "…"}]) and they are rewritten together with the dictionary.`
   )
 }
 

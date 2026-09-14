@@ -12,7 +12,8 @@ import { EmptyState } from '@/components/EmptyState'
 import { QueryError } from '@/components/QueryError'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { Pill } from '@/components/ui/Pill'
-import { kbCategoryColor } from '@/lib/kbCategories'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { useValueStyle } from '@/hooks/useValueStyle'
 import { formatDate } from '@/lib/datetime'
 import { colors, palette } from '@/lib/tokens'
 
@@ -43,6 +44,9 @@ const RATE_ARTICLE = gql`
 export function KBArticlePage() {
   const { slug }  = useParams<{ slug: string }>()
   const { t }     = useTranslation()
+  // F5: etichetta e colore della categoria dal vocabolario `kb_category`.
+  const { labelOf } = useDomainVocabularies()
+  const styleOf = useValueStyle()
 
   const { data, loading, error, refetch } = useQuery<{ kbArticleBySlug: {
     id: string; title: string; slug: string; body: string; category: string
@@ -68,7 +72,7 @@ export function KBArticlePage() {
 
   const related = (relData?.kbArticles?.items ?? []).filter((a) => a.id !== article?.id).slice(0, 4)
 
-  if (loading) return <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', padding: 32 }}>{t('common.loading')}</div>
+  if (loading && !data) return <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', padding: 32 }}>{t('common.loading')}</div>
   // A failed request (network, 500, auth) is NOT "article not found" (F-09).
   if (error) {
     return (
@@ -88,8 +92,8 @@ export function KBArticlePage() {
         </Link>
 
         <div style={{ marginBottom: 12 }}>
-          <Pill bg={kbCategoryColor(article.category) + '20'} color={kbCategoryColor(article.category)} radius={12} style={{ fontSize: 'var(--font-size-body)', padding: '3px 10px' }}>
-            {article.category}
+          <Pill bg={styleOf('kb_category', article.category).bg} color={styleOf('kb_category', article.category).color} radius={12} style={{ fontSize: 'var(--font-size-body)', padding: '3px 10px' }}>
+            {labelOf('kb_category', article.category) ?? article.category}
           </Pill>
         </div>
 

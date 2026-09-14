@@ -14,7 +14,12 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { createInstance: vi.fn() } }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
+vi.mock('../../../lib/logger.js', () => {
+  const l = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+  return { logger: { ...l, child: () => l } }
+})
+// F5: la categoria si valida contro `kb_category`; questi test provano altro.
+vi.mock('../../../lib/domainMatrix.js', () => ({ assertDomainValue: vi.fn(async (_t: string, _v: string, value: unknown) => value) }))
 vi.mock('../../../jobs/embeddingWorker.js', () => ({ enqueueEmbedding: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../services/embeddings.js', () => ({
   normalizeKbTags: (raw: unknown) => (raw == null || raw === '' ? [] : Array.isArray(raw) ? raw.map(String) : (JSON.parse(raw as string) as unknown[]).map(String)),

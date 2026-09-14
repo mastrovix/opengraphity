@@ -156,7 +156,7 @@ async function syncLinkedIncidents(
       continue
     }
     const toStep = await targetStepByCategory(session, ctx.tenantId, 'incident', ['resolved'],
-      'risoluzione automatica dell\'incident risolto da una change chiusa')
+      'automatic resolution of an incident solved by a closed change')
     const res = await workflowEngine.transition(
       session,
       { instanceId: r.instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: await systemText(ctx.tenantId, 'change.resolvedByChange', { code: r.code }) },
@@ -211,7 +211,7 @@ async function syncLinkedProblems(
     }
 
     const toInProgress = async () => drive(await targetStepByPurpose(session, ctx.tenantId, 'problem', ['change_in_progress'],
-      'avanzamento del problem mentre la change risolutiva è in corso'))
+      'problem advance while the fixing change is in progress'))
 
     if (changeWorking.includes(changeStep)) {
       if (probRequested.includes(problemStep)) await toInProgress()
@@ -219,7 +219,7 @@ async function syncLinkedProblems(
       if (probRequested.includes(problemStep)) await toInProgress()
       if (probInProgress.includes(problemStep)) {
         await drive(await targetStepByCategory(session, ctx.tenantId, 'problem', ['resolved'],
-          'risoluzione del problem dopo la chiusura della change'))
+          'problem resolution after the change is closed'))
       }
     }
   }
@@ -246,7 +246,7 @@ export async function revertProblemAfterChangeDetached(
   if (purpose !== 'change_requested' && purpose !== 'change_in_progress') return
 
   const toStep = await targetStepByPurpose(session, ctx.tenantId, 'problem', ['investigation'],
-    'ritorno del problem in analisi dopo lo scollegamento della change')
+    'problem return to investigation after the change is unlinked')
   const res = await workflowEngine.transition(
     session,
     { instanceId: row.instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: await systemText(ctx.tenantId, 'change.resolvingDetached') },
@@ -301,7 +301,7 @@ async function walkAutoTransitions(
       if (!ok) continue
       // Sto per rientrare in uno step già attraversato in questo walk: ciclo.
       if (visited.has(tr.toStep)) {
-        throw new GraphQLError(`Workflow change mal configurato: ciclo di transizioni automatiche ${wi.step} → ${tr.toStep} (step già attraversato)`, { extensions: { code: 'CONFLICT' } })
+        throw new GraphQLError(`Change workflow misconfigured: cycle of automatic transitions ${wi.step} → ${tr.toStep} (step already walked)`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.autoTransitionCycle', params: { from: wi.step, to: tr.toStep } } } })
       }
 
       // IL VARCO DELLA FINESTRA DI RILASCIO (terza revisione * C1). Qui non

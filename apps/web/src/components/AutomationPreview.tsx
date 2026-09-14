@@ -4,13 +4,14 @@
  * Vocabolario (operatori, azioni, entità, eventi): lib/automationOperators.ts.
  */
 import { useTranslation } from 'react-i18next'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { GET_TEAMS, GET_USERS } from '@/graphql/queries'
 import { useEntityFieldLookup } from '@/hooks/useEntityFields'
-import { lookupOrError, palette } from '@/lib/tokens'
+import { palette } from '@/lib/tokens'
 import {
-  ENTITY_LABELS, NO_VALUE_OPERATORS, automationActionKey, eventParticipleKey, operatorKey,
+  NO_VALUE_OPERATORS, automationActionKey, eventParticipleKey, operatorKey,
 } from '@/lib/automationOperators'
 import { Eye } from 'lucide-react'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
@@ -31,6 +32,8 @@ interface Props {
 
 export function AutomationPreview({ entityType, eventType, conditions, conditionLogic, actions, timerMinutes }: Props) {
   const { t } = useTranslation()
+  // F16: l'etichetta del tipo ITIL del cliente, non una tabella del web.
+  const { labelOf } = useItilTypeLabels()
   const fieldLookup = useEntityFieldLookup(entityType)
   const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { data: usersData } = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: METAMODEL_FETCH_POLICY })
@@ -79,7 +82,7 @@ export function AutomationPreview({ entityType, eventType, conditions, condition
     : null
 
   // ── Compose full preview ─────────────────────────────────────────────────
-  const entityLabel = lookupOrError(ENTITY_LABELS, entityType, 'ENTITY_LABELS', `?${entityType}`)
+  const entityLabel = labelOf(entityType)
   const eventLabel  = t(eventParticipleKey(eventType))
 
   // La frase si compone di FRAMMENTI tradotti, non di pezzi cuciti in italiano:

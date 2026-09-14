@@ -89,7 +89,7 @@ export const EXECUTE_CHANGE_TRANSITION = gql`
       id
       actionErrors
       workflowInstance { id currentStep status }
-      availableTransitions { toStep label requiresInput inputField condition }
+      availableTransitions { toStep label labels { language label } requiresInput inputField condition }
     }
   }
 `

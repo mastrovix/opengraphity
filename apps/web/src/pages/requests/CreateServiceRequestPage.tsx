@@ -8,9 +8,10 @@ import { toast } from 'sonner'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
 import { GET_SERVICE_REQUESTS, GET_SERVICE_CATALOG_ADMIN } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
-import { colors, palette, lookupOrError } from '@/lib/tokens'
+import { colors, palette } from '@/lib/tokens'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
+import { useValueStyle } from '@/hooks/useValueStyle'
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
 const inputBase: React.CSSProperties = {
@@ -49,17 +50,12 @@ function focusHandlers(hasError: boolean) {
   }
 }
 
-const PRIORITY_DOT: Record<string, string> = {
-  critical: 'var(--color-trigger-sla-breach)',
-  high:     'var(--color-trigger-timer)',
-  medium:   'var(--color-brand)',
-  low:      'var(--color-slate-light)',
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function CreateServiceRequestPage() {
   const { t } = useTranslation()
+  // F9: il pallino della priorità col colore del Dizionario.
+  const styleOf = useValueStyle()
   const { labelOf } = useDomainVocabularies()
   const navigate = useNavigate()
   const ids = { catalog: useId(), title: useId(), priority: useId(), dueDate: useId(), description: useId() }
@@ -124,6 +120,9 @@ export function CreateServiceRequestPage() {
           title:       title.trim(),
           priority,
           description: description || undefined,
+          // La scadenza del modulo va all'API (giro nel browser del 14 set 2026:
+          // si raccoglieva e non si inviava).
+          dueDate:     dueDate || undefined,
           catalogItemId: catalogItemId || undefined,
           ...(decisione === 'accepted' ? { acknowledgeNoSla: true } : {}),
         },
@@ -212,7 +211,7 @@ export function CreateServiceRequestPage() {
                 Priority <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
               </label>
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: lookupOrError(PRIORITY_DOT, priority, 'PRIORITY_DOT', 'var(--color-slate-light)'), pointerEvents: 'none', zIndex: 1 }} />
+                <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: styleOf('priority', priority).accent, pointerEvents: 'none', zIndex: 1 }} />
                 <select id={ids.priority} value={priority} onChange={(e) => setPriority(e.target.value)} disabled={priorityLoading} style={{ ...selectBase, paddingLeft: 30 }} {...focusHandlers(false)}>
                   {priorityLoading
                     ? <option value="">{t('common.loading')}</option>

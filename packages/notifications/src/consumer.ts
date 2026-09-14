@@ -1,6 +1,7 @@
 import { getSession } from '@opengraphity/neo4j'
 import { sendSlackMessage, sendTeamsAdaptiveMessage } from './index.js'
-import { formatSlackIncident, formatTeamsIncident, formatSlackChange, formatSlackChangeTask, type NotificationEvent, type IncidentData, type ChangeData, type ChangeTaskPayload } from './formatters.js'
+import { formatSlackIncident, formatTeamsIncident, formatSlackChange, formatSlackChangeTask, type NotificationEvent, type IncidentData, type ChangeData, type ChangeTaskPayload, type IncidentHeadline } from './formatters.js'
+import { loadNotificationLocale } from './locale.js'
 
 interface NotificationChannelRow {
   id: string
@@ -89,16 +90,19 @@ export async function dispatchIncidentNotification(
   eventType: NotificationEvent,
   incident: IncidentData,
   platforms?: readonly ChannelPlatform[],
+  headline: IncidentHeadline = eventType,
 ): Promise<void> {
   const enriched = await enrichIncidentData(incident)
   const channels = await loadChannels(tenantId, eventType, platforms)
+  if (channels.length === 0) return
+  const locale = await loadNotificationLocale(tenantId)
   for (const ch of channels) {
     if (ch.platform === 'slack') {
-      const blocks = formatSlackIncident(eventType, enriched)
+      const blocks = formatSlackIncident(eventType, enriched, locale, headline)
       await sendSlackMessage(ch.webhookUrl, ch.channelId, blocks)
     } else if (ch.platform === 'teams') {
       if (!ch.webhookUrl) throw new Error(`[notifications] Teams channel ${ch.id} has no webhook_url configured`)
-      const card = formatTeamsIncident(eventType, enriched)
+      const card = formatTeamsIncident(eventType, enriched, locale)
       await sendTeamsAdaptiveMessage(ch.webhookUrl, card)
     }
   }
@@ -115,7 +119,9 @@ export async function dispatchChangeNotification(
       tx.run(`
         MATCH (c:Change {id: $id, tenant_id: $tenantId})
         WHERE coalesce(c.deleted, false) = false
-        OPTIONAL MATCH (c)-[:AFFECTS]->(ci:ConfigurationItem)
+        // AFFECTS_CI è la relazione delle change (revisione del 14 set 2026 ·
+        // NT-4: con AFFECTS il CI del messaggio era sempre «—»).
+        OPTIONAL MATCH (c)-[:AFFECTS_CI]->(ci)
         OPTIONAL MATCH (c)-[:ASSIGNED_TO]->(u:User)
         OPTIONAL MATCH (c)-[:ASSIGNED_TO_TEAM]->(t:Team)
         RETURN collect(DISTINCT ci.name) AS ciNames,
@@ -136,9 +142,11 @@ export async function dispatchChangeNotification(
   }
 
   const channels = await loadChannels(tenantId, 'change_approved')
+  if (channels.length === 0) return
+  const locale = await loadNotificationLocale(tenantId)
   for (const ch of channels) {
     if (ch.platform === 'slack') {
-      const blocks = formatSlackChange(enriched)
+      const blocks = formatSlackChange(enriched, locale)
       await sendSlackMessage(ch.webhookUrl, ch.channelId, blocks)
     }
   }
@@ -149,9 +157,11 @@ export async function dispatchChangeTaskNotification(
   payload: ChangeTaskPayload,
 ): Promise<void> {
   const channels = await loadChannels(tenantId, 'change_task_assigned')
+  if (channels.length === 0) return
+  const locale = await loadNotificationLocale(tenantId)
   for (const ch of channels) {
     if (ch.platform === 'slack') {
-      const blocks = formatSlackChangeTask(payload)
+      const blocks = formatSlackChangeTask(payload, locale)
       await sendSlackMessage(ch.webhookUrl, ch.channelId, blocks)
     }
   }

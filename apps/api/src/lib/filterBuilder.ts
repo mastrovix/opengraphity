@@ -21,9 +21,7 @@ export interface RelationFieldDef {
   searchProp:  string   // Property to match on, e.g. 'name'
 }
 
-function toSnakeCase(str: string): string {
-  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)
-}
+import { propertyForField } from './fieldProperty.js'
 
 /**
  * Builds a Cypher WHERE fragment from a JSON-encoded FilterGroup.
@@ -33,6 +31,9 @@ function toSnakeCase(str: string): string {
  * @param allowedFields - Field whitelist; rules with unknown fields are skipped
  * @param nodeAlias     - The Cypher node variable name (default 'n')
  * @param relationFields - Optional relation-based fields (e.g. ownerGroup, assignedTeam)
+ * @param typeName      - GraphQL type of the node: a field stored under another property
+ *                        name (`Incident.priority` → `severity`, lib/fieldProperty.ts) is
+ *                        filtered on that property
  */
 export function buildAdvancedWhere(
   filtersJson: string,
@@ -40,6 +41,7 @@ export function buildAdvancedWhere(
   allowedFields: Set<string>,
   nodeAlias = 'n',
   relationFields: Record<string, RelationFieldDef> = {},
+  typeName = '',
 ): string {
   let group: AdvFilterGroup
   try { group = JSON.parse(filtersJson) as AdvFilterGroup }
@@ -90,7 +92,7 @@ export function buildAdvancedWhere(
       continue
     }
 
-    const prop = `${nodeAlias}.${toSnakeCase(rule.field)}`
+    const prop = `${nodeAlias}.${propertyForField(typeName, rule.field)}`
 
     switch (rule.operator) {
       case 'contains':

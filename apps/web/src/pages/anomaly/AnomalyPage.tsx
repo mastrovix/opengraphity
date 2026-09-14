@@ -36,6 +36,21 @@ export function anomalyEntityTypeLabel(t: (k: string) => string, a: Pick<Anomaly
   return key ? t(key) : (a.entitySubtype ?? a.entityType)
 }
 
+/**
+ * Titolo e frase dell'anomalia nella lingua di chi guarda (giro nel browser del
+ * 14 set 2026, #57): l'API scrive testi inglesi e manda i parametri del
+ * risultato. Un'anomalia storica senza parametri mostra la frase registrata.
+ */
+export function anomalyTitle(t: (k: string) => string, a: Pick<Anomaly, 'ruleKey' | 'title'>): string {
+  const key = RULE_LABEL_KEYS[a.ruleKey]
+  return key ? t(key) : a.title
+}
+
+export function anomalyDescription(t: (k: string, o?: Record<string, string>) => string, a: Pick<Anomaly, 'ruleKey' | 'description' | 'descriptionParams'>): string {
+  if (!a.descriptionParams || !RULE_LABEL_KEYS[a.ruleKey]) return a.description
+  return t(`anomaly.hits.${a.ruleKey}`, Object.fromEntries(a.descriptionParams.map((p) => [p.key, p.value])))
+}
+
 export const RULE_LABEL_KEYS: Record<string, string> = {
   orphan_ci:             'anomaly.rules.orphan_ci',
   spof:                  'anomaly.rules.spof',
@@ -128,13 +143,11 @@ export function AnomalyPage() {
       key:      'title',
       label:    t('pages.anomalies.title_col'),
       sortable: true,
-      render: (v, row) => (
+      render: (_v, row) => (
         <div>
-          <div style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{String(v)}</div>
+          <div style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{anomalyTitle(t, row)}</div>
           <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 2 }}>
-            {row.description.length > 64
-              ? row.description.slice(0, 61) + '…'
-              : row.description}
+            {(() => { const d = anomalyDescription(t, row); return d.length > 64 ? d.slice(0, 61) + '…' : d })()}
           </div>
         </div>
       ),

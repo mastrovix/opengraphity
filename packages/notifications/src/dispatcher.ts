@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { BaseConsumer } from '@opengraphity/events'
 import type { DomainEvent, StepEnteredFacts } from '@opengraphity/types'
-import { isStepEnteredEventType, stepEnteredEntityType, legacyStepEventType } from '@opengraphity/types'
+import { isStepEnteredEventType, stepEnteredEntityType, legacyStepEventType, AUTOMATION_NOTIFICATION_EVENT, AUTOMATION_NOTIFICATION_CHANNELS, type AutomationNotificationPayload } from '@opengraphity/types'
 import { getSession } from '@opengraphity/neo4j'
 import { sseManager, InAppNotification } from './sse.js'
 import { sendTeamsAdaptiveMessage, type TeamsAdaptiveCard } from './index.js'
@@ -10,10 +10,12 @@ import {
   type ChannelPlatform,
 } from './consumer.js'
 import type { IncidentData, ChangeTaskPayload } from './formatters.js'
-import { APP_URL } from './appUrl.js'
+import { appUrl } from './appUrl.js'
 import { escapeHtml } from './escapeHtml.js'
 import { assertRoutableChannels, notificationEntityPath, unroutableChannels } from './routing.js'
 import { resolveNotificationRecipients, targetNeedsRecipients, type NotificationRecipient } from './recipients.js'
+import { formatNotificationDate, notificationText, notificationTitle, type NotificationLocale } from './texts.js'
+import { loadNotificationLocale } from './locale.js'
 
 // ── Rule model ────────────────────────────────────────────────────────────────
 
@@ -155,6 +157,16 @@ function extractEntityType(eventType: string, payload: unknown): string {
 const monitoringEvent = (type: string) => (p: Record<string, unknown>) => `${required(p, 'title', type)} — ${required(p, 'resource', type)}`
 
 const MESSAGE_BY_EVENT: Record<string, (p: Record<string, unknown>) => string> = {
+  // Giro nel browser del 14 set 2026 (#18): il corpo era «29», solo i minuti.
+  'sla.warning': (p) => {
+    const ref = `${required(p, 'number', 'sla.warning')} — ${required(p, 'title', 'sla.warning')}`
+    return p['target'] === 'response'
+      ? `${ref}: the response time has elapsed`
+      : `${ref}: ${requiredNumber(p, 'minutes_remaining', 'sla.warning')} min left before the SLA deadline`
+  },
+  'sla.breached': (p) => `${required(p, 'number', 'sla.breached')} — ${required(p, 'title', 'sla.breached')}`,
+  // Il messaggio scritto nella regola di escalation (NT-8), già risolto dall'API.
+  'incident.escalation':     (p) => required(p, 'message', 'incident.escalation'),
   'service.health_changed':  (p) => `${required(p, 'name', 'service.health_changed')} — ${required(p, 'new_health', 'service.health_changed')}`,
   'service.incident_opened': (p) => `${required(p, 'name', 'service.incident_opened')} — ${required(p, 'health', 'service.incident_opened')} (${required(p, 'incident_number', 'service.incident_opened')})`,
   'ci.health_changed':       (p) => `${required(p, 'name', 'ci.health_changed')} — ${required(p, 'new_health', 'ci.health_changed')}`,
@@ -166,7 +178,29 @@ const MESSAGE_BY_EVENT: Record<string, (p: Record<string, unknown>) => string> =
   'event.flapping':          monitoringEvent('event.flapping'),
   'event.stable':            monitoringEvent('event.stable'),
   'event.storm_started':     (p) => `${required(p, 'source_name', 'event.storm_started')} — ${requiredNumber(p, 'rate_per_minute', 'event.storm_started')}/min`,
-  'event.storm_ended':       (p) => `${required(p, 'source_name', 'event.storm_ended')} — ${requiredNumber(p, 'events', 'event.storm_ended')} allarmi in ${requiredNumber(p, 'duration_minutes', 'event.storm_ended')} min`,
+  'event.storm_ended':       (p) => `${required(p, 'source_name', 'event.storm_ended')} — ${requiredNumber(p, 'events', 'event.storm_ended')} alarms in ${requiredNumber(p, 'duration_minutes', 'event.storm_ended')} min`,
+}
+
+/**
+ * Le frasi dei messaggi che hanno parole (non solo dati): chiave e dati per il
+ * pannello, che le compone nella lingua di chi legge. Il `message` sopra resta
+ * il testo inglese per e-mail e integrazioni.
+ */
+const MESSAGE_KEY_BY_EVENT: Record<string, (p: Record<string, unknown>) => { key: string; params: Record<string, string> }> = {
+  'sla.warning': (p): { key: string; params: Record<string, string> } => {
+    const ref = { number: required(p, 'number', 'sla.warning'), title: required(p, 'title', 'sla.warning') }
+    return p['target'] === 'response'
+      ? { key: 'inApp.sla.responseElapsed', params: ref }
+      : { key: 'inApp.sla.warning', params: { ...ref, minutes: String(requiredNumber(p, 'minutes_remaining', 'sla.warning')) } }
+  },
+  'event.storm_ended': (p) => ({
+    key: 'inApp.storm.ended',
+    params: {
+      source: required(p, 'source_name', 'event.storm_ended'),
+      events: String(requiredNumber(p, 'events', 'event.storm_ended')),
+      minutes: String(requiredNumber(p, 'duration_minutes', 'event.storm_ended')),
+    },
+  }),
 }
 
 function required(p: Record<string, unknown>, field: string, eventType: string): string {
@@ -179,6 +213,13 @@ function requiredNumber(p: Record<string, unknown>, field: string, eventType: st
   const v = p[field]
   if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${eventType} payload has no numeric "${field}": the notification would have an empty body`)
   return v
+}
+
+function messageKeyOf(eventType: string, payload: unknown): { message_key?: string; message_params?: Record<string, string> } {
+  const k = MESSAGE_KEY_BY_EVENT[eventType]
+  if (!k) return {}
+  const { key, params } = k(payload as Record<string, unknown>)
+  return { message_key: key, message_params: params }
 }
 
 function extractMessage(eventType: string, payload: unknown): string {
@@ -200,11 +241,9 @@ function extractMessage(eventType: string, payload: unknown): string {
   const assignedTo = typeof p['assignedTo'] === 'string' && p['assignedTo'] !== '—' ? p['assignedTo'] as string : null
   const changeTitle= typeof p['changeTitle']=== 'string' && p['changeTitle'] ? p['changeTitle'] as string : null
   const ciName     = typeof p['ciName']     === 'string' && p['ciName'] !== '—' ? p['ciName']     as string : null
-  const minRem     = typeof p['minutes_remaining'] === 'number' ? (p['minutes_remaining'] as number) : null
   const entityType = typeof p['entity_type'] === 'string' ? p['entity_type'] as string : null
   const entityId   = typeof p['entity_id']   === 'string' ? p['entity_id']   as string : null
 
-  if (minRem !== null) return String(minRem)
   if (changeTitle)     return ciName ? `${changeTitle} — ${ciName}` : changeTitle
   if (entityType && entityId && !title) return `${entityType} ${entityId}`
 
@@ -223,16 +262,28 @@ function extractMessage(eventType: string, payload: unknown): string {
  * in-app panel uses): no link at all beats a link to a route that does not
  * exist (D3.2). Exported for tests.
  */
-export function renderNotificationEmail(notification: InAppNotification): string {
+export function renderNotificationEmail(notification: InAppNotification, locale: NotificationLocale): string {
   const path = notificationEntityPath(notification.entity_type, notification.entity_id)
   const link = path
-    ? `<a href="${escapeHtml(`${APP_URL}${path}`)}" style="color:#0EA5E9;">Vedi dettagli</a>`
+    ? `<a href="${escapeHtml(`${appUrl()}${path}`)}" style="color:#0EA5E9;">${escapeHtml(notificationText(locale, 'viewDetails'))}</a>`
     : ''
-  return `<div style="font-family:Arial,sans-serif;padding:16px;">
-          <h2 style="color:#0F172A;margin:0 0 8px;">${escapeHtml(notification.title)}</h2>
+  return `<div lang="${locale.language}" style="font-family:Arial,sans-serif;padding:16px;">
+          <h2 style="color:#0F172A;margin:0 0 8px;">${escapeHtml(emailTitle(notification, locale))}</h2>
           <p style="color:#64748B;margin:0 0 16px;">${escapeHtml(notification.message)}</p>
           ${link}
         </div>`
+}
+
+/**
+ * Il titolo che una persona legge nell'e-mail: la frase della chiave nella
+ * lingua del cliente (NT-2: prima era la chiave grezza), altrimenti il testo di
+ * ripiego della notifica (l'etichetta del passo), altrimenti il testo scritto
+ * nella regola — lo stesso ordine del pannello.
+ */
+function emailTitle(notification: InAppNotification, locale: NotificationLocale): string {
+  const translated = notificationTitle(locale, notification.title)
+  if (translated !== notification.title) return translated
+  return notification.title_fallback ?? notification.title
 }
 
 // ── Dispatcher ────────────────────────────────────────────────────────────────
@@ -243,6 +294,18 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
   }
 
   async process(event: DomainEvent<unknown>): Promise<void> {
+    // Il promemoria di un task di change a una persona precisa (CH-13).
+    if (event.type === 'change.task_reminder') {
+      this.processTaskReminder(event)
+      return
+    }
+
+    // L'azione «crea notifica» di un trigger o di una Business Rule (AU-2).
+    if (event.type === AUTOMATION_NOTIFICATION_EVENT) {
+      await this.processAutomationNotification(event)
+      return
+    }
+
     // Workflow step custom notification (embed rule in payload, no DB lookup)
     if (event.type === 'workflow.step.entered') {
       await this.processWorkflowStep(event)
@@ -278,10 +341,10 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
   private async processStepEntered(event: DomainEvent<unknown>): Promise<void> {
     const p = event.payload as Record<string, unknown>
     const entityType = stepEnteredEntityType(event.type)
-    if (!entityType) throw new Error(`${event.type}: tipo di evento di passo malformato`)
+    if (!entityType) throw new Error(`${event.type}: malformed step event type`)
     const stepName = p['step_name']
     if (typeof stepName !== 'string' || !stepName) {
-      throw new Error(`${event.type} payload has no "step_name": impossibile scegliere la regola del passo`)
+      throw new Error(`${event.type} payload has no "step_name": the step rule cannot be chosen`)
     }
     const facts: StepEnteredFacts = {
       step_id:       typeof p['step_id'] === 'string' ? p['step_id'] as string : '',
@@ -330,6 +393,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       title:       rule.titleKey,
       title_fallback: titleFallback,
       message:     extractMessage(event.type, event.payload),
+      ...messageKeyOf(event.type, event.payload),
       severity:    rule.severityOverride as InAppNotification['severity'],
       entity_id:   extractEntityId(event.payload),
       entity_type: extractEntityType(event.type, event.payload),
@@ -411,6 +475,55 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     }
   }
 
+  /**
+   * Il promemoria di un task di change (CH-13): prima la mutation scriveva un
+   * nodo che nessuno leggeva. Va solo alla persona scelta, nel pannello.
+   */
+  private processTaskReminder(event: DomainEvent<unknown>): void {
+    const p = event.payload as { recipient_user_id?: string; entity_id?: string; code?: string | null; title?: string | null }
+    if (!p?.recipient_user_id || !p.entity_id) throw new Error('change.task_reminder event without recipient_user_id/entity_id')
+    const notification: InAppNotification = {
+      id:          randomUUID(),
+      type:        'change.task_reminder',
+      title:       'notification.change.task_reminder.title',
+      message:     [p.code, p.title].filter(Boolean).join(' — '),
+      severity:    'warning',
+      entity_id:   p.entity_id,
+      entity_type: 'change',
+      timestamp:   event.timestamp,
+      read:        false,
+    }
+    sseManager.sendToUser(event.tenant_id, p.recipient_user_id, notification)
+  }
+
+  /**
+   * La notifica di un'automazione: il titolo è il nome della regola, il testo
+   * quello scritto nell'azione, i destinatari quelli del suo bersaglio.
+   */
+  private async processAutomationNotification(event: DomainEvent<unknown>): Promise<void> {
+    const p = event.payload as AutomationNotificationPayload
+    if (!p?.message || !p.entity_id || !p.entity_type) throw new Error('automation.notification event without message/entity')
+    if (!AUTOMATION_NOTIFICATION_CHANNELS.includes(p.channel)) {
+      throw new Error(`automation.notification requests unsupported channel "${p.channel}" — only ${AUTOMATION_NOTIFICATION_CHANNELS.join(', ')}`)
+    }
+    const notification: InAppNotification = {
+      id:             randomUUID(),
+      type:           AUTOMATION_NOTIFICATION_EVENT,
+      // Il nome che l'amministratore ha dato alla regola: testo, non una chiave.
+      title:          p.rule,
+      title_fallback: p.rule,
+      message:        p.message,
+      severity:       'info',
+      entity_id:      p.entity_id,
+      entity_type:    p.entity_type,
+      timestamp:      event.timestamp,
+      read:           false,
+    }
+    const recipients = await this.resolveRecipients(event, p.target, { type: p.entity_type, id: p.entity_id })
+    if (p.channel === 'in_app') this.sendInApp(event.tenant_id, notification, recipients)
+    else await this.dispatchEmail(event, notification, recipients)
+  }
+
   // ── Bersaglio della regola → destinatari (D-23) ─────────────────────────────
 
   /**
@@ -481,25 +594,28 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     if (event.type === 'sla.breached') {
       const p = event.payload as Record<string, unknown>
       if (p['entity_type'] === 'incident') {
+        const locale = await loadNotificationLocale(event.tenant_id)
         const incident: IncidentData = {
           id:       p['entity_id'] as string,
-          title:    `SLA breach su incident ${p['entity_id']}`,
+          title:    notificationText(locale, 'slaBreachOnIncident', { number: required(p, 'number', 'sla.breached'), title: required(p, 'title', 'sla.breached') }),
           severity: 'high',
           status:   'open',
           tenantId: event.tenant_id,
         }
         await dispatchIncidentNotification(event.tenant_id, 'sla_breach', incident, platforms)
       } else if (hasTeams) {
+        const locale = await loadNotificationLocale(event.tenant_id)
+        const breachedAt = typeof p['breached_at'] === 'string' ? formatNotificationDate(locale, new Date(p['breached_at'])) : '—'
         const card: TeamsAdaptiveCard = {
           type: 'AdaptiveCard',
           version: '1.4',
           body: [
-            { type: 'TextBlock', text: '🔴 SLA Violato', weight: 'Bolder', size: 'Large', wrap: true },
-            { type: 'TextBlock', text: `SLA superato per ${String(p['entity_type'])} ${String(p['entity_id'])}`, wrap: true },
+            { type: 'TextBlock', text: notificationText(locale, 'slaBreachedCard'), weight: 'Bolder', size: 'Large', wrap: true },
+            { type: 'TextBlock', text: notificationText(locale, 'slaBreachedFor', { type: String(p['entity_type']), id: `${required(p, 'number', 'sla.breached')} — ${required(p, 'title', 'sla.breached')}` }), wrap: true },
             { type: 'FactSet', facts: [
-              { title: 'Entity Type', value: String(p['entity_type'] ?? '—') },
-              { title: 'Entity ID',   value: String(p['entity_id']   ?? '—') },
-              { title: 'Breached At', value: String(p['breached_at'] ?? '—') },
+              { title: notificationText(locale, 'entityType'), value: String(p['entity_type'] ?? '—') },
+              { title: notificationText(locale, 'entityId'),   value: String(p['entity_id']   ?? '—') },
+              { title: notificationText(locale, 'breachedAt'), value: breachedAt },
             ] },
           ],
         }
@@ -541,7 +657,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       assigneeName: typeof p['assignedTo'] === 'string' && p['assignedTo'] !== '—' ? p['assignedTo'] as string : null,
       tenantId:     event.tenant_id,
     }
-    await dispatchIncidentNotification(event.tenant_id, notifType, incident, platforms)
+    await dispatchIncidentNotification(event.tenant_id, notifType, incident, platforms, event.type === 'incident.created' ? 'created' : notifType)
   }
 
   private async dispatchEmail(
@@ -562,8 +678,10 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       : await this.broadcastEmailRecipients(event.tenant_id)
     if (emails.length === 0) return
 
-    const subject = `[${event.tenant_id}] ${notification.title}: ${notification.message.slice(0, 80)}`
-    const html = renderNotificationEmail(notification)
+    const locale  = await loadNotificationLocale(event.tenant_id)
+    const title   = emailTitle(notification, locale)
+    const subject = notification.message ? `${title}: ${notification.message.slice(0, 80)}` : title
+    const html = renderNotificationEmail(notification, locale)
 
     // Batch emails (Resend limit: 50 per call)
     for (let i = 0; i < emails.length; i += 50) {

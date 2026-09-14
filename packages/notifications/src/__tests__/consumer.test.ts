@@ -13,6 +13,7 @@ let changeRows: Array<Record<string, unknown>> = []
 const sessionClose = vi.fn(async () => {})
 let sessionsOpened = 0
 
+vi.mock('../locale.js', () => ({ loadNotificationLocale: vi.fn(async () => ({ language: 'en', timeZone: 'UTC' })), invalidateNotificationLocale: vi.fn() }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => {
     sessionsOpened++
@@ -157,20 +158,20 @@ describe('dispatchIncidentNotification — Slack blocks / Teams adaptive card pe
     expect(enrich).toBeDefined()
     expect(enrich!.params).toEqual({ id: 'inc-1', tenantId: 't1' })
     const text = JSON.stringify(bodyOf(0))
-    expect(text).toContain('*CI Affected:* db-01')
-    expect(text).toContain('*Assegnato a:* Mario Rossi')
+    expect(text).toContain('*Affected CI:* db-01')
+    expect(text).toContain('*Assigned to:* Mario Rossi')
   })
 
   it('falls back to the team name when no user is assigned; "—" when neither', async () => {
     channelRows = [slackChannel('s1', ['assigned'])]
     incidentRows = [{ ciNames: [], assignedTo: null, teamName: 'DBA' }]
     await dispatchIncidentNotification('t1', 'assigned', incident)
-    expect(JSON.stringify(bodyOf(0))).toContain('*Assegnato a:* DBA')
+    expect(JSON.stringify(bodyOf(0))).toContain('*Assigned to:* DBA')
 
     fetchMock.mockClear()
     incidentRows = []
     await dispatchIncidentNotification('t1', 'assigned', incident)
-    expect(JSON.stringify(bodyOf(0))).toContain('*Assegnato a:* —')
+    expect(JSON.stringify(bodyOf(0))).toContain('*Assigned to:* —')
   })
 
   it('platforms restriction: only the listed platforms are contacted', async () => {
@@ -205,7 +206,7 @@ describe('dispatchIncidentNotification — Slack blocks / Teams adaptive card pe
 
   it('slack channel by channel_id needs SLACK_BOT_TOKEN: missing → throws before any fetch', async () => {
     channelRows = [slackChannel('s-api', ['assigned'], { webhook_url: null, channel_id: 'C123' })]
-    await expect(dispatchIncidentNotification('t1', 'assigned', incident)).rejects.toThrow('SLACK_BOT_TOKEN non configurato')
+    await expect(dispatchIncidentNotification('t1', 'assigned', incident)).rejects.toThrow('SLACK_BOT_TOKEN is not configured')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -251,8 +252,8 @@ describe('dispatchChangeNotification — Slack only, channels subscribed to chan
     expect(fetchMock.mock.calls[0]![0]).toBe('https://hooks.slack.example/s1')
     const text = JSON.stringify(bodyOf(0))
     expect(text).toContain('Upgrade DB')
-    expect(text).toContain('*CI Affected:* app-01')
-    expect(text).toContain('*Assegnato a:* Release')
+    expect(text).toContain('*Affected CI:* app-01')
+    expect(text).toContain('*Assigned to:* Release')
     expect(text).toContain('/changes/chg-1')
   })
 })

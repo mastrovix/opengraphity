@@ -10,6 +10,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 
+// Le note si compongono nella lingua del cliente: qui italiano, come le attese.
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
 // Revisione 2 · D6.2: la lettura della mappa prende `suppress_upstream_hops`
@@ -181,11 +183,11 @@ describe('validazione degli input', () => {
   })
 
   it('note leggibili: campi cambiati con etichette italiane; nessun cambiamento → BAD_USER_INPUT (una scrittura a vuoto alzerebbe la versione)', () => {
-    expect(serviceRulesChangeNote(DEFAULT_SERVICE_IMPACT_RULES, { ...DEFAULT_SERVICE_IMPACT_RULES, down_share_pct: 70, min_nodes: 2, unknown_nodes: 'ignore', open_incident_from: 'never' }))
+    expect(serviceRulesChangeNote('it', DEFAULT_SERVICE_IMPACT_RULES, { ...DEFAULT_SERVICE_IMPACT_RULES, down_share_pct: 70, min_nodes: 2, unknown_nodes: 'ignore', open_incident_from: 'never' }))
       .toBe('Regole aggiornate: soglia giù 50 → 70, minimo componenti 1 → 2, componenti senza salute operativi → ignorati, apri incident da giù → mai')
-    expect(() => serviceRulesChangeNote(DEFAULT_SERVICE_IMPACT_RULES, { ...DEFAULT_SERVICE_IMPACT_RULES })).toThrow(/rules are identical to the current ones/)
-    expect(serviceNodesChangeNote(['DB-01'])).toBe('1 componente aggiornato: DB-01')
-    expect(serviceNodesChangeNote(['A', 'B', 'C', 'D', 'E'])).toBe('5 componenti aggiornati: A, B, C, e altri 2')
+    expect(() => serviceRulesChangeNote('it', DEFAULT_SERVICE_IMPACT_RULES, { ...DEFAULT_SERVICE_IMPACT_RULES })).toThrow(/rules are identical to the current ones/)
+    expect(serviceNodesChangeNote('it', ['DB-01'])).toBe('1 componente aggiornato: DB-01')
+    expect(serviceNodesChangeNote('it', ['A', 'B', 'C', 'D', 'E'])).toBe('5 componenti aggiornati: A, B, C, e altri 2')
   })
 })
 

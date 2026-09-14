@@ -11,7 +11,7 @@ export const GET_ANOMALIES = gql`
       items {
         id ruleKey title severity status
         entityId entityType entitySubtype entityName
-        description detectedAt resolvedAt
+        description descriptionParams { key value } detectedAt resolvedAt
         resolutionStatus resolutionNote resolvedBy
       }
     }

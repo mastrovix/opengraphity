@@ -23,6 +23,7 @@ import { getInitialStepName, getStepPurpose } from '../../../lib/workflowHelpers
 import { targetStepByPurpose } from '../../../lib/workflowTargets.js'
 import { toNumber } from '@opengraphity/neo4j'
 import { systemText } from '../../../lib/systemText.js'
+import { nextSequenceValue, nextSequenceBlock } from '../../../lib/sequence.js'
 
 export type Session = ReturnType<typeof getSession>
 
@@ -55,13 +56,21 @@ export async function writeAudit(
   action: string,
   actorId: string | null,
   detail: string | null,
+  /**
+   * La frase del dettaglio come chiave e dati (revisione del 14 set 2026 ·
+   * CH-5): la timeline la compone nella lingua di chi guarda. `detail` resta il
+   * testo inglese per chi legge l'API. Prima i dettagli erano scritti in
+   * italiano e salvati così.
+   */
+  detailI18n?: { key: string; params: Record<string, string> },
 ) {
   const now = new Date().toISOString()
   await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     CREATE (e:ChangeAuditEntry {
       id: $id, tenant_id: $tenantId, timestamp: $now,
-      action: $action, detail: $detail
+      action: $action, detail: $detail,
+      detail_key: $detailKey, detail_params: $detailParams
     })
     CREATE (c)-[:HAS_AUDIT]->(e)
     WITH e, $actorId AS aid
@@ -69,36 +78,32 @@ export async function writeAudit(
     FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END |
       CREATE (e)-[:BY]->(u)
     )
-  `, { changeId, tenantId, id: uuidv4(), now, action, detail, actorId })
+  `, {
+    changeId, tenantId, id: uuidv4(), now, action, detail, actorId,
+    detailKey: detailI18n?.key ?? null, detailParams: detailI18n ? JSON.stringify(detailI18n.params) : null,
+  })
 }
 
 // ── code generators ───────────────────────────────────────────────────────────
 
-export async function nextChangeCode(session: Session, tenantId: string): Promise<string> {
-  const rows = await runQuery<{ maxNum: unknown }>(session, `
-    MATCH (c:Change {tenant_id: $tenantId})
-    WHERE c.code STARTS WITH 'CHG'
-    WITH max(toInteger(substring(c.code, 3))) AS maxNum
-    RETURN coalesce(maxNum, 0) AS maxNum
-  `, { tenantId })
-  const maxNum = toNumber(rows[0]?.maxNum)
-  return 'CHG' + String(maxNum + 1).padStart(8, '0')
+/**
+ * Codici delle change e dei task — revisione del 14 set 2026 · CH-2.
+ *
+ * Erano `max()+1` letto e poi scritto: due change create insieme leggevano lo
+ * stesso massimo e la seconda falliva sul vincolo di unicità; i codici dei task
+ * scandivano TUTTI i nodi del database senza etichetta. Ora il contatore
+ * atomico di `lib/sequence.ts`, come per incident, problem e richieste (i
+ * contatori sono stati allineati al massimo esistente dalla migrazione
+ * 20260923_1060).
+ */
+export async function nextChangeCode(session: SessionOrTx, tenantId: string): Promise<string> {
+  return 'CHG' + String(await nextSequenceValue(session, tenantId, 'change')).padStart(8, '0')
 }
 
 export async function getNextTaskCodes(session: SessionOrTx, tenantId: string, count: number): Promise<string[]> {
-  const rows = await runQuery<{ code: string }>(session, `
-    MATCH (t)
-    WHERE t.tenant_id = $tenantId AND t.code STARTS WITH 'TASK'
-    RETURN t.code AS code
-    ORDER BY t.code DESC
-    LIMIT 1
-  `, { tenantId })
-  let next = 1
-  if (rows.length > 0) {
-    const n = parseInt(rows[0]!.code.slice(4), 10)
-    if (!isNaN(n)) next = n + 1
-  }
-  return Array.from({ length: count }, (_, i) => 'TASK' + String(next + i).padStart(8, '0'))
+  if (count <= 0) return []
+  const last = await nextSequenceBlock(session, tenantId, 'task', count)
+  return Array.from({ length: count }, (_, i) => 'TASK' + String(last - count + 1 + i).padStart(8, '0'))
 }
 
 // ── sanity checks ─────────────────────────────────────────────────────────────
@@ -185,11 +190,11 @@ export async function loadChangeWorkflow(session: Session, changeId: string, ten
   `, { id: changeId, tenantId })
   if (!row) throw new NotFoundError('Change', changeId)
   if (row.deleted) throw new GraphQLError('The change was deleted: no operation is possible any more', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.deleted' } } })
-  if (!row.instanceId) throw new GraphQLError(`Change ${changeId} senza WorkflowInstance collegata`, { extensions: { code: 'CONFLICT' } })
-  if (!row.relStep) throw new GraphQLError(`Change ${changeId}: istanza di workflow senza CURRENT_STEP (ri-esegui il seed del workflow per ricollegarla)`, { extensions: { code: 'CONFLICT' } })
+  if (!row.instanceId) throw new GraphQLError(`Change ${changeId} has no linked WorkflowInstance`, { extensions: { code: 'CONFLICT' } })
+  if (!row.relStep) throw new GraphQLError(`Change ${changeId}: workflow instance without CURRENT_STEP (run the workflow seed again to relink it)`, { extensions: { code: 'CONFLICT' } })
   if (row.wiStep !== row.relStep) {
     logger.error({ changeId, wiStep: row.wiStep, relStep: row.relStep }, '[change] istanza di workflow incoerente')
-    throw new GraphQLError(`Change ${changeId}: istanza di workflow incoerente (current_step="${row.wiStep}", CURRENT_STEP="${row.relStep}")`, { extensions: { code: 'CONFLICT' } })
+    throw new GraphQLError(`Change ${changeId}: inconsistent workflow instance (current_step="${row.wiStep}", CURRENT_STEP="${row.relStep}")`, { extensions: { code: 'CONFLICT' } })
   }
   return { instanceId: row.instanceId, currentStep: row.relStep, props: row.props }
 }
@@ -231,7 +236,7 @@ export async function getInstanceId(session: Session, changeId: string, tenantId
   `, { id: changeId, tenantId })
   if (!row) throw new NotFoundError('Change', changeId)
   if (row.deleted) throw new GraphQLError('The change was deleted: no operation is possible any more', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.deleted' } } })
-  if (!row.id) throw new GraphQLError(`Change ${changeId} senza WorkflowInstance collegata`, { extensions: { code: 'CONFLICT' } })
+  if (!row.id) throw new GraphQLError(`Change ${changeId} has no linked WorkflowInstance`, { extensions: { code: 'CONFLICT' } })
   return row.id
 }
 
@@ -242,7 +247,7 @@ export async function assertInitialStep(session: Session, changeId: string, tena
   const initial = await getInitialStepName(session, tenantId, 'change')
   if (current !== initial) {
     logger.error({ changeId, current, initial }, '[change] operazione permessa solo nello step iniziale')
-    throw new GraphQLError(`Operazione permessa solo nello step iniziale: step corrente "${current}"`, { extensions: { code: 'CONFLICT' } })
+    throw new GraphQLError(`Operation allowed only in the initial step: current step "${current}"`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.onlyInInitialStep', params: { current } } } })
   }
   return props
 }
@@ -423,7 +428,7 @@ export async function afterEnterStep(session: SessionOrTx, changeId: string, ten
       const { workflowEngine } = await import('@opengraphity/workflow')
       const instanceId = await getInstanceId(session as Session, changeId, tenantId)
       const toStep = await targetStepByPurpose(session as Session, tenantId, 'change', ['scheduled'],
-        'pre-approvazione di una change standard')
+        'pre-approval of a standard change')
       const res = await workflowEngine.transition(session as Session, { instanceId, toStepName: toStep, triggeredBy: 'system', triggerType: 'automatic', notes: await systemText(tenantId, 'change.preApproved') }, { userId: 'system', entityData: {} })
       // Fail-loud: una pre-approvata ferma in approvazione senza requisiti non
       // si sbloccherebbe mai (nessun record da approvare).
@@ -441,7 +446,7 @@ export async function afterEnterStep(session: SessionOrTx, changeId: string, ten
     // fase la change entrerebbe in deployment/review "vuota" e sembrerebbe
     // completa. Meglio bloccare.
     logger.error({ changeId, stepName, hook }, '[afterEnterStep] on_enter_create hook sconosciuto')
-    throw new GraphQLError(`Workflow mal configurato: hook on_enter_create "${hook}" sconosciuto per lo step "${stepName}"`, { extensions: { code: 'CONFLICT' } })
+    throw new GraphQLError(`Workflow misconfigured: unknown on_enter_create hook "${hook}" for step "${stepName}"`, { extensions: { code: 'CONFLICT' } })
   }
   await creator(session, changeId, tenantId)
 }

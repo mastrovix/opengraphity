@@ -54,9 +54,20 @@ describe('ANOMALY_RULES', () => {
 
   it('ogni regola restituisce il contratto atteso dall\'engine', () => {
     for (const rule of ANOMALY_RULES) {
-      for (const field of ['entityId', 'entityType', 'entitySubtype', 'entityName', 'description', 'severity']) {
+      for (const field of ['entityId', 'entityType', 'entitySubtype', 'entityName', 'description', 'params', 'severity']) {
         expect(rule.cypher, `${rule.key}/${field}`).toContain(`AS ${field}`)
       }
+    }
+  })
+
+  /** Giro nel browser del 14 set 2026 (#57): «CI Senza Owner» anche con l'interfaccia inglese. */
+  it('titoli e descrizioni sono inglesi: la frase per chi guarda la compone la pagina coi params', () => {
+    const ITALIAN = /[àèéìòù]|\b(il|la|di|del|con|senza|rilevat|dipend|incidenti|nodi|raggiunge)\b/i
+    for (const rule of ANOMALY_RULES) {
+      expect(rule.title, rule.key).not.toMatch(ITALIAN)
+      expect(rule.description, rule.key).not.toMatch(ITALIAN)
+      const literals = [...rule.cypher.matchAll(/'([^']*)'/g)].map((m) => m[1]!)
+      expect(literals.filter((l) => ITALIAN.test(l)), rule.key).toEqual([])
     }
   })
 })

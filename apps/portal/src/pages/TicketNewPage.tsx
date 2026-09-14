@@ -2,23 +2,24 @@ import { useState, useEffect, useRef } from 'react'
 import { useMutation, useLazyQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import { Monitor, Code, Key, Wifi, HelpCircle, Paperclip } from 'lucide-react'
+import { Monitor, Code, Key, Wifi, HelpCircle, ShieldAlert, Tag, Paperclip } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { CREATE_TICKET } from '@/graphql/mutations'
 import { GET_KB_ARTICLES } from '@/graphql/queries'
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
 import { notifyError } from '@/lib/notify'
 import { uploadAttachment } from '@/lib/attachments'
 import { colors, palette } from '@/lib/tokens'
+import { useTicketCategories } from '@/hooks/useTicketCategories'
 
-const CATEGORIES = [
-  { key: 'hardware', icon: Monitor },
-  { key: 'software', icon: Code },
-  { key: 'access',   icon: Key },
-  { key: 'network',  icon: Wifi },
-  { key: 'other',    icon: HelpCircle },
-] as const
-
-type CategoryKey = typeof CATEGORIES[number]['key']
+/**
+ * Icone per i valori spediti del vocabolario `category`. Le categorie vengono
+ * dal Dizionario del cliente (useTicketCategories): un valore che il cliente ha
+ * aggiunto ha l'icona generica, non manca.
+ */
+const CATEGORY_ICONS: Readonly<Record<string, LucideIcon>> = {
+  hardware: Monitor, software: Code, access: Key, network: Wifi, security: ShieldAlert, other: HelpCircle,
+}
 
 const PRIORITIES = ['low', 'medium', 'high'] as const
 
@@ -28,7 +29,8 @@ export function TicketNewPage() {
   const { t }      = useTranslation()
   const navigate   = useNavigate()
 
-  const [category,    setCategory]    = useState<CategoryKey | ''>('')
+  const { categories, error: categoriesError } = useTicketCategories()
+  const [category,    setCategory]    = useState<string>('')
   const [title,       setTitle]       = useState('')
   const [description, setDescription] = useState('')
   const [priority,    setPriority]    = useState<'low' | 'medium' | 'high'>('medium')
@@ -134,8 +136,8 @@ export function TicketNewPage() {
         <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
           {t('ticket.fields.category')} *
         </label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
-          {CATEGORIES.map(({ key, icon: Icon }) => (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 10 }}>
+          {categories.map(({ name: key, label }) => { const Icon = CATEGORY_ICONS[key] ?? Tag; return (
             <button
               key={key}
               onClick={() => setCategory(key)}
@@ -154,11 +156,14 @@ export function TicketNewPage() {
             >
               <Icon size={22} style={{ color: category === key ? colors.brand : colors.slate }} />
               <span style={{ fontSize: 10, fontWeight: 500, color: category === key ? colors.brand : colors.slate }}>
-                {t(`ticket.category.${key}`)}
+                {label}
               </span>
             </button>
-          ))}
+          ) })}
         </div>
+        {categoriesError && (
+          <p role="alert" style={{ marginTop: 8, fontSize: 12, color: palette.danger.strong }}>{categoriesError.message}</p>
+        )}
       </div>
 
       {/* Title */}

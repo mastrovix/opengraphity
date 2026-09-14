@@ -14,6 +14,7 @@ export function mapChange(props: Props) {
     id:                 props['id']                  as string,
     tenantId:           props['tenant_id']           as string,
     code:               props['code']                as string,
+    number:             props['number']              as string,
     title:              props['title']               as string,
     why:                (props['why']                  ?? null) as string | null,
     what:               (props['what']                 ?? null) as string | null,
@@ -131,6 +132,8 @@ export function mapAuditEntry(props: Props) {
     timestamp: props['timestamp'] as string,
     action:    props['action']    as string,
     detail:    (props['detail']     ?? null) as string | null,
+    detailKey:    (props['detail_key']    ?? null) as string | null,
+    detailParams: (props['detail_params'] ?? null) as string | null,
     actor:     null,
   }
 }

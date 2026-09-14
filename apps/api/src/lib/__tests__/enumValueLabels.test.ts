@@ -49,12 +49,12 @@ describe('parseValueLabels', () => {
   it('JSON corrotto: si perdono le etichette e lo si DICE, ma il vocabolario resta leggibile', () => {
     const r = parseValueLabels('{nope')
     expect(r.labels).toEqual({})
-    expect(r.error).toMatch(/non e JSON valido/)
+    expect(r.error).toMatch(/is not valid JSON/)
   })
 
   it('una lista o un numero non sono una mappa valore → etichetta', () => {
-    expect(parseValueLabels('["Alta"]').error).toMatch(/non e un oggetto/)
-    expect(parseValueLabels('42').error).toMatch(/non e un oggetto/)
+    expect(parseValueLabels('["Alta"]').error).toMatch(/is not a value → label object/)
+    expect(parseValueLabels('42').error).toMatch(/is not a value → label object/)
   })
 
   it('etichette vuote o non stringa si scartano: un\'etichetta vuota non e un\'etichetta', () => {

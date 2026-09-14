@@ -219,7 +219,7 @@ describe('applyAuthorizationPolicy()', () => {
   const info = {} as never
 
   it('fallisce all\'avvio se la policy cita campi inesistenti', () => {
-    expect(() => applyAuthorizationPolicy({ Query: { me: () => 1 }, Mutation: {} })).toThrow(/campi inesistenti/)
+    expect(() => applyAuthorizationPolicy({ Query: { me: () => 1 }, Mutation: {} })).toThrow(/fields that do not exist/)
   })
 
   it('avvolge i resolver: nega prima di chiamarli, passa altrimenti', () => {

@@ -22,6 +22,17 @@ const AUDIT_CAT_KEY: Record<AuditCategory, string> = {
   comments: 'pages.auditTimeline.cat.comments', system: 'pages.auditTimeline.cat.system',
 }
 
+/**
+ * Il dettaglio di una voce: la frase della chiave nella lingua di chi guarda
+ * (CH-5), o il testo salvato per le voci scritte prima delle chiavi.
+ */
+function detailText(t: (key: string, opts?: Record<string, unknown>) => string, e: ChangeAuditEntryData): string {
+  if (!e.detailKey) return e.detail ?? ''
+  let params: Record<string, unknown> = {}
+  try { params = e.detailParams ? JSON.parse(e.detailParams) as Record<string, unknown> : {} } catch { params = {} }
+  return t(`changeAudit.${e.detailKey}`, { ...params, defaultValue: e.detail ?? '' })
+}
+
 function categorizeAction(action: string): AuditCategory {
   const a = action.toLowerCase()
   if (a.includes('phase') || a.includes('approv') || a.includes('reject') || a.includes('auto_approv') || a.includes('closed') || a.includes('advanced_to')) return 'status'
@@ -70,7 +81,7 @@ export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
                     <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 5px', borderRadius: 4, backgroundColor: `${color}15`, color }}>{e.action.replace(/_/g, ' ')}</span>
                     {e.actor && <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{e.actor.name}</span>}
                   </div>
-                  {e.detail && <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-dark)', ...(isLong && !isExp ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : {}) }}>{e.detail}</div>}
+                  {e.detail && <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-dark)', ...(isLong && !isExp ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : {}) }}>{detailText(t, e)}</div>}
                   {isLong && <button type="button" onClick={() => setExpandedIdx(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-label)', color: 'var(--color-brand)', marginTop: 2 }}>{t(isExp ? 'common.showLess' : 'common.showAll')}</button>}
                 </div>
               </div>

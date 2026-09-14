@@ -38,19 +38,17 @@ const SEV_EMOJI: Record<string, string> = {
   critical: '🔴', high: '🟠', medium: '🟡', low: '🟢',
 }
 
-const STATUS_LABEL: Record<NotificationEvent, string> = {
-  assigned:       '👤 Assegnato',
-  escalation:     '⚠️ Escalato',
-  resolved:       '✅ Risolto',
-  sla_breach:     '⏱ SLA Breach',
-  change_approved:      '✅ Change Approvata',
-  change_failed:        '❌ Change Fallita',
-  change_task_assigned: '🔵 Task assegnato',
-}
+import { appUrl } from './appUrl.js'
+import { formatNotificationDate, notificationText, type NotificationLocale, type NotificationTextKey } from './texts.js'
 
-import { APP_URL } from './appUrl.js'
+/**
+ * La riga di stato del messaggio. `headline` distingue ciò che il canale non
+ * distingue: un incident appena creato viaggia sull'abbonamento `assigned` dei
+ * canali, ma non è «Assegnato» (prima lo diceva).
+ */
+export type IncidentHeadline = NotificationEvent | 'created'
 
-export function formatSlackIncident(event: NotificationEvent, incident: IncidentData): SlackBlock[] {
+export function formatSlackIncident(event: NotificationEvent, incident: IncidentData, locale: NotificationLocale, headline: IncidentHeadline = event): SlackBlock[] {
   const emoji      = SEV_EMOJI[incident.severity] ?? '⚪'
   const ciName     = incident.ciNames?.[0] ?? '—'
   const assignedTo = incident.assigneeName ?? '—'
@@ -66,16 +64,16 @@ export function formatSlackIncident(event: NotificationEvent, incident: Incident
       text: {
         type: 'mrkdwn',
         text: [
-          `*Severity:* ${sevLabel}`,
-          `*Status:* ${incident.status ?? '—'}`,
-          `*CI Affected:* ${ciName}`,
-          `*Assegnato a:* ${assignedTo}`,
+          `*${notificationText(locale, 'severity')}:* ${sevLabel}`,
+          `*${notificationText(locale, 'status')}:* ${incident.status ?? '—'}`,
+          `*${notificationText(locale, 'ciAffected')}:* ${ciName}`,
+          `*${notificationText(locale, 'assignedTo')}:* ${assignedTo}`,
         ].join('\n'),
       },
       accessory: {
         type: 'button',
-        text: { type: 'plain_text', text: 'Apri →' },
-        url: `${APP_URL}/incidents/${incident.id}`,
+        text: { type: 'plain_text', text: notificationText(locale, 'open') },
+        url: `${appUrl()}/incidents/${incident.id}`,
         action_id: 'open_incident',
       },
     },
@@ -84,7 +82,7 @@ export function formatSlackIncident(event: NotificationEvent, incident: Incident
       elements: [
         {
           type: 'mrkdwn',
-          text: `${STATUS_LABEL[event]}  ·  ${new Date().toLocaleString('it-IT')}`,
+          text: `${notificationText(locale, headline as NotificationTextKey)}  ·  ${formatNotificationDate(locale)}`,
         },
       ],
     },
@@ -96,13 +94,13 @@ export function formatSlackIncident(event: NotificationEvent, incident: Incident
       elements: [
         {
           type: 'button',
-          text: { type: 'plain_text', text: 'Assegna a me' },
+          text: { type: 'plain_text', text: notificationText(locale, 'assignToMe') },
           action_id: 'assign_me',
           value: JSON.stringify({ action: 'assign_me', incidentId: incident.id, tenantId: incident.tenantId }),
         },
         {
           type: 'button',
-          text: { type: 'plain_text', text: 'Risolvi' },
+          text: { type: 'plain_text', text: notificationText(locale, 'resolve') },
           action_id: 'resolve',
           value: JSON.stringify({ action: 'resolve', incidentId: incident.id, tenantId: incident.tenantId }),
         },
@@ -113,7 +111,7 @@ export function formatSlackIncident(event: NotificationEvent, incident: Incident
   return blocks
 }
 
-export function formatSlackChange(change: ChangeData): SlackBlock[] {
+export function formatSlackChange(change: ChangeData, locale: NotificationLocale): SlackBlock[] {
   const ciName     = change.ciName ?? '—'
   const assignedTo = change.assigneeName ?? '—'
 
@@ -127,33 +125,33 @@ export function formatSlackChange(change: ChangeData): SlackBlock[] {
       text: {
         type: 'mrkdwn',
         text: [
-          `*Type:* ${change.type}`,
-          `*Status:* ${change.status}`,
-          `*CI Affected:* ${ciName}`,
-          `*Assegnato a:* ${assignedTo}`,
+          `*${notificationText(locale, 'type')}:* ${change.type}`,
+          `*${notificationText(locale, 'status')}:* ${change.status}`,
+          `*${notificationText(locale, 'ciAffected')}:* ${ciName}`,
+          `*${notificationText(locale, 'assignedTo')}:* ${assignedTo}`,
         ].join('\n'),
       },
       accessory: {
         type: 'button',
-        text: { type: 'plain_text', text: 'Apri →' },
-        url: `${APP_URL}/changes/${change.id}`,
+        text: { type: 'plain_text', text: notificationText(locale, 'open') },
+        url: `${appUrl()}/changes/${change.id}`,
         action_id: 'open_change',
       },
     },
     {
       type: 'context',
       elements: [
-        { type: 'mrkdwn', text: `✅ Change Approvato  ·  ${new Date().toLocaleString('it-IT')}` },
+        { type: 'mrkdwn', text: `${notificationText(locale, 'change_approved')}  ·  ${formatNotificationDate(locale)}` },
       ],
     },
   ]
 }
 
-export function formatSlackChangeTask(payload: ChangeTaskPayload): SlackBlock[] {
+export function formatSlackChangeTask(payload: ChangeTaskPayload, locale: NotificationLocale): SlackBlock[] {
   return [
     {
       type: 'header',
-      text: { type: 'plain_text', text: '📋 Nuovo task di assessment' },
+      text: { type: 'plain_text', text: notificationText(locale, 'newAssessmentTask') },
     },
     {
       type: 'section',
@@ -162,32 +160,32 @@ export function formatSlackChangeTask(payload: ChangeTaskPayload): SlackBlock[] 
         text: [
           `*Change:* ${payload.changeTitle}`,
           `*CI:* ${payload.ciName}`,
-          `*Assegnato a:* ${payload.teamName}`,
+          `*${notificationText(locale, 'assignedTo')}:* ${payload.teamName}`,
         ].join('\n'),
       },
       accessory: {
         type: 'button',
-        text: { type: 'plain_text', text: 'Apri →' },
-        url: `${APP_URL}/changes/${payload.changeId}`,
+        text: { type: 'plain_text', text: notificationText(locale, 'open') },
+        url: `${appUrl()}/changes/${payload.changeId}`,
         action_id: 'open_change',
       },
     },
     {
       type: 'context',
       elements: [
-        { type: 'mrkdwn', text: `🔵 Task assegnato  ·  ${new Date().toLocaleString('it-IT')}` },
+        { type: 'mrkdwn', text: `${notificationText(locale, 'change_task_assigned')}  ·  ${formatNotificationDate(locale)}` },
       ],
     },
   ]
 }
 
-export function formatTeamsIncident(event: NotificationEvent, incident: IncidentData): TeamsAdaptiveCard {
+export function formatTeamsIncident(event: NotificationEvent, incident: IncidentData, locale: NotificationLocale): TeamsAdaptiveCard {
   const emoji = SEV_EMOJI[incident.severity] ?? '⚪'
   const facts = [
-    { title: 'Severity', value: (incident.severity ?? '—').toUpperCase() },
-    { title: 'Status', value: incident.status ?? '—' },
-    { title: 'CI Affected', value: incident.ciNames?.join(', ') ?? '—' },
-    { title: 'Assegnato a', value: incident.assigneeName ?? '—' },
+    { title: notificationText(locale, 'severity'),   value: (incident.severity ?? '—').toUpperCase() },
+    { title: notificationText(locale, 'status'),     value: incident.status ?? '—' },
+    { title: notificationText(locale, 'ciAffected'), value: incident.ciNames?.join(', ') ?? '—' },
+    { title: notificationText(locale, 'assignedTo'), value: incident.assigneeName ?? '—' },
   ]
 
   const card: TeamsAdaptiveCard = {
@@ -203,13 +201,13 @@ export function formatTeamsIncident(event: NotificationEvent, incident: Incident
     card.actions = [
       {
         type: 'Action.OpenUrl',
-        title: 'Assegna a me',
-        url: `${APP_URL}/incidents/${incident.id}`,
+        title: notificationText(locale, 'assignToMe'),
+        url: `${appUrl()}/incidents/${incident.id}`,
       },
       {
         type: 'Action.OpenUrl',
-        title: 'Risolvi',
-        url: `${APP_URL}/incidents/${incident.id}`,
+        title: notificationText(locale, 'resolve'),
+        url: `${appUrl()}/incidents/${incident.id}`,
       },
     ]
   }

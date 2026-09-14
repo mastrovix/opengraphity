@@ -10,6 +10,8 @@ export interface Anomaly {
   entitySubtype:    string
   entityName:       string
   description:      string
+  /** Parametri della frase (null su un'anomalia storica non più riscansionata). */
+  descriptionParams: Array<{ key: string; value: string }> | null
   detectedAt:       string
   resolvedAt:       string | null
   resolutionStatus: string | null

@@ -3,6 +3,7 @@ import { getSession } from '@opengraphity/neo4j'
 import { getRedisConnection } from '@opengraphity/events'
 import { Redis } from 'ioredis'
 import { provisioningGaps } from '../lib/provisioningGauge.js'
+import { pendingMigrations } from '../lib/migrationState.js'
 
 const router: ExpressRouter = Router()
 
@@ -49,7 +50,11 @@ async function checkRedis(): Promise<'ok' | 'error'> {
 router.get('/health', async (_req, res) => {
   const [neo4j, redis] = await Promise.all([checkNeo4j(), checkRedis()])
 
-  const allOk = neo4j === 'ok' && redis === 'ok'
+  // Revisione del 14 set 2026 · F8: con migrazioni pendenti il processo gira
+  // su uno schema che non corrisponde al codice. Non è «ok», e si dice quante.
+  const pending = neo4j === 'ok' ? await pendingMigrations().catch(() => [] as string[]) : []
+
+  const allOk = neo4j === 'ok' && redis === 'ok' && pending.length === 0
 
   // Quali clienti sono incompleti (revisione delle otto ondate · D·D4). Non
   // cambia lo stato della sonda — un tenant da configurare non è un guasto del
@@ -70,6 +75,7 @@ router.get('/health', async (_req, res) => {
     timestamp: new Date().toISOString(),
     version:   '0.1.0',
     services:  { neo4j, redis },
+    ...(pending.length ? { pendingMigrations: pending.length } : {}),
     ...(incomplete.length ? { incompleteTenants: incomplete.length } : {}),
   })
 })

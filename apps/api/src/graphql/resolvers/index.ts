@@ -56,6 +56,10 @@ import { impactResolvers } from './impact.js'
 import { ciRelationshipResolvers } from './ciRelationships.js'
 import { cmdbResolvers } from './cmdb.js'
 import { tenantLanguageResolvers } from './tenantLanguage.js'
+import { tenantTimezoneResolvers } from './tenantTimezone.js'
+import { tenantServiceCalendarResolvers } from './tenantServiceCalendar.js'
+import { meResolvers } from './me.js'
+import { inboxResolvers } from './inbox.js'
 const { updateCIFields: updateCIFieldsMutation } = cmdbResolvers.Mutation
 import type { GraphQLContext } from '../../context.js'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
@@ -81,13 +85,7 @@ function mapUser(props: Record<string, unknown>) {
 }
 
 const meStub = {
-  me: (_: unknown, __: unknown, ctx: GraphQLContext) => ({
-    id:       ctx.userId,
-    tenantId: ctx.tenantId,
-    email:    ctx.userEmail,
-    name:     ctx.userEmail,
-    role:     ctx.role,
-  }),
+  me: meResolvers.Query.me,
   users: async (_: unknown, args: { sortField?: string; sortDirection?: string }, ctx: GraphQLContext) => {
     const session = getSession()
     try {
@@ -239,20 +237,20 @@ async function createUser(_: unknown, args: { input: { email: string; name: stri
 async function updateUserTeams(_: unknown, args: { userId: string; teamIds: string[] }, ctx: GraphQLContext) {
   const session = getSession(undefined, 'WRITE')
   try {
-    // Remove all existing MEMBER_OF relationships
-    await session.executeWrite(tx => tx.run(`
-      MATCH (u:User {id: $userId, tenant_id: $tenantId})-[r:MEMBER_OF]->(:Team)
-      DELETE r
-    `, { userId: args.userId, tenantId: ctx.tenantId }))
-
-    // Create new MEMBER_OF relationships
-    for (const teamId of args.teamIds) {
-      await session.executeWrite(tx => tx.run(`
+    // Una transazione sola: prima le cancellazioni e le creazioni erano
+    // scritture separate, e un errore a metà lasciava l'utente senza team.
+    await session.executeWrite(async (tx) => {
+      await tx.run(`
+        MATCH (u:User {id: $userId, tenant_id: $tenantId})-[r:MEMBER_OF]->(:Team)
+        DELETE r
+      `, { userId: args.userId, tenantId: ctx.tenantId })
+      await tx.run(`
         MATCH (u:User {id: $userId, tenant_id: $tenantId})
-        MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-        CREATE (u)-[:MEMBER_OF]->(t)
-      `, { userId: args.userId, tenantId: ctx.tenantId, teamId }))
-    }
+        UNWIND $teamIds AS teamId
+        MATCH (t:Team {id: teamId, tenant_id: $tenantId})
+        MERGE (u)-[:MEMBER_OF]->(t)
+      `, { userId: args.userId, tenantId: ctx.tenantId, teamIds: args.teamIds })
+    })
 
     // Return updated user
     const row = await runQueryOne<{ props: Record<string, unknown> }>(session, `
@@ -311,10 +309,14 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...similarityResolvers.Query,
       ...impactResolvers.Query,
       ...tenantLanguageResolvers.Query,
+      ...tenantTimezoneResolvers.Query,
+      ...tenantServiceCalendarResolvers.Query,
+      ...inboxResolvers.Query,
       auditLog,
       auditActions,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
+      ciProblems:  ciResolvers.Query.ciProblems,
       ciGroupMembers: ciGroupResolvers.Query.ciGroupMembers,
       ...meStub,
       user: userById,
@@ -339,6 +341,10 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...serviceResolvers.Mutation,
       ...similarityResolvers.Mutation,
       ...tenantLanguageResolvers.Mutation,
+      ...tenantTimezoneResolvers.Mutation,
+      ...tenantServiceCalendarResolvers.Mutation,
+      ...meResolvers.Mutation,
+      ...inboxResolvers.Mutation,
       ...notificationRuleResolvers.Mutation,
       ...syncResolvers.Mutation,
       ...enumTypeResolvers.Mutation,
@@ -394,6 +400,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     // disegnatore riceveva «Cannot return null for non-nullable field». Il test
     // `resolverWiring.test.ts` ora impedisce che ricapiti.
     WorkflowStep:       { ...workflowResolvers.WorkflowStep },
+    WorkflowTransition:    { ...workflowResolvers.WorkflowTransition },
+    WorkflowTransitionDef: { ...workflowResolvers.WorkflowTransitionDef },
     Team:               teamResolvers.Team,
     User:               { teams: userTeams },
     Problem:            {

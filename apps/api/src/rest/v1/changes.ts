@@ -299,15 +299,25 @@ router.get('/:id/status', requirePermission('changes:read'), asyncHandler(async 
     `, { id, tenantId })
     if (!row) throw new NotFoundError('Change', id)
 
-    // deployApproved: the workflow has reached (or passed) the deployment
-    // step. Computed by comparing step_order metadata on the WorkflowStep
-    // nodes — the deployment step is located via its category/name key,
-    // never by hardcoding the step sequence.
+    // deployApproved: the workflow has reached (or passed) the release step.
+    // Computed by comparing step_order metadata on the WorkflowStep nodes —
+    // the release step is the one with purpose `implementation`. It used to be
+    // looked up by category `deployment` (not a category at all) and then by
+    // the NAME `deployment`: a customer who renamed the step got
+    // `deployApproved: false` forever, silently (revisione del 14 set 2026 · F17).
     let deployApproved = false
     if (row.phase) {
       const steps = await getWorkflowSteps(session, tenantId, 'change')
       const currentStep = steps.find((s) => s.name === row.phase)
-      const deployStep  = steps.find((s) => s.category === 'deployment') ?? steps.find((s) => s.name === 'deployment')
+      const deployStep  = steps
+        .filter((s) => s.purpose === 'implementation')
+        .sort((a, b) => (a.stepOrder ?? Number.MAX_SAFE_INTEGER) - (b.stepOrder ?? Number.MAX_SAFE_INTEGER))[0]
+      if (!deployStep) {
+        throw new Error(
+          `Tenant ${tenantId}: no step of the change workflow declares the purpose "implementation", so whether the ` +
+          `deployment is approved cannot be known. Give the purpose to the release step in the workflow designer.`,
+        )
+      }
       if (currentStep?.stepOrder != null && deployStep?.stepOrder != null) {
         deployApproved = Number(currentStep.stepOrder) >= Number(deployStep.stepOrder)
       }

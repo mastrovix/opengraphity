@@ -5,7 +5,7 @@ import { gql } from '@apollo/client'
 export const CREATE_SLA_POLICY = gql`
   mutation CreateSLAPolicy($input: CreateSLAPolicyInput!) {
     createSLAPolicy(input: $input) {
-      id name entityType priority category teamId teamName timezone responseMinutes resolveMinutes businessHours enabled
+      id name entityType priority category teamId teamName timezone responseMinutes resolveMinutes businessHours warningMinutes enabled
     }
   }
 `
@@ -13,7 +13,7 @@ export const CREATE_SLA_POLICY = gql`
 export const UPDATE_SLA_POLICY = gql`
   mutation UpdateSLAPolicy($id: ID!, $input: UpdateSLAPolicyInput!) {
     updateSLAPolicy(id: $id, input: $input) {
-      id name entityType priority category teamId teamName timezone responseMinutes resolveMinutes businessHours enabled
+      id name entityType priority category teamId teamName timezone responseMinutes resolveMinutes businessHours warningMinutes enabled
     }
   }
 `

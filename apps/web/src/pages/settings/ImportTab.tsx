@@ -20,6 +20,9 @@ interface ImportIssue {
   row:        number
   externalId: string | null
   message:    string
+  /** Chiave (sotto `pages.import.issue.`) e dati del messaggio, nella lingua di chi importa. */
+  messageKey?:    string
+  messageParams?: Record<string, string>
 }
 
 interface ImportReport {
@@ -131,7 +134,9 @@ export function ImportTab() {
   const issueColumns: SimpleColumn<IssueRow>[] = [
     { key: 'row',        label: t('pages.import.colRow'),        width: '80px' },
     { key: 'externalId', label: t('pages.import.colExternalId'), width: '200px', render: v => (v as string | null) ?? '—' },
-    { key: 'message',    label: t('pages.import.colMessage') },
+    { key: 'message',    label: t('pages.import.colMessage'), render: (_v, row) => row.messageKey
+      ? t(`pages.import.issue.${row.messageKey}`, { ...row.messageParams, defaultValue: row.message })
+      : row.message },
   ]
 
   const spinner = <RefreshCw size={14} style={{ animation: 'og-import-spin 1s linear infinite' }} />

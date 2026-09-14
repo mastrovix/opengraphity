@@ -246,8 +246,10 @@ export async function runAction(
         }
       }
       const newId = await ctx.createEntity(p.entity_type, data)
+      // L'evento di creazione lo pubblica chi crea il ticket (il servizio del
+      // suo tipo, revisione del 14 set 2026 · WA-2): pubblicarlo anche qui lo
+      // duplicava, con un payload che nessun consumatore sapeva leggere.
       log.info({ entityType: p.entity_type, newId }, 'workflow-action: create_entity succeeded')
-      await ctx.publishEvent?.(`${p.entity_type}.created`, { id: newId, tenant_id: instance.tenantId, created_by: ctx.userId })
       break
     }
 

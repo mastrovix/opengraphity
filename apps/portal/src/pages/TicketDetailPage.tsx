@@ -4,6 +4,7 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, Paperclip } from 'lucide-react'
 import { GET_MY_TICKET, GET_ME } from '@/graphql/queries'
+import { useTicketCategories } from '@/hooks/useTicketCategories'
 import { ADD_TICKET_COMMENT, REOPEN_TICKET } from '@/graphql/mutations'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
 import { CommentBubble } from '@/components/CommentBubble'
@@ -18,12 +19,12 @@ interface EntityComment {
   authorId: string; authorName: string; authorEmail: string; createdAt: string
 }
 interface Attachment { id: string; filename: string; mimeType: string; sizeBytes: number; downloadUrl: string }
-interface HistoryEntry { fromStep: string; toStep: string; label: string | null; triggeredAt: string; triggeredBy: string }
+interface HistoryEntry { fromStep: string; toStep: string; fromLabel: string | null; toLabel: string | null; label: string | null; triggeredAt: string; triggeredBy: string }
 interface Ticket {
-  id: string; title: string; description: string | null; status: string
+  id: string; number: string; title: string; description: string | null; status: string
   /** Categoria ed etichetta del passo nel workflow del cliente (ondata 7 · D-15). */
   statusCategory: string | null; statusLabel: string | null
-  priority: string; category: string; createdAt: string; updatedAt: string
+  priority: string; category: string | null; createdAt: string; updatedAt: string
   assignedTeam: string | null
   comments:    EntityComment[]
   attachments: Attachment[]
@@ -38,7 +39,7 @@ function formatBytes(b: number): string {
 
 export function TicketDetailPage() {
   const { id }               = useParams<{ id: string }>()
-  const { t }                = useTranslation()
+  const { t, i18n }          = useTranslation()
   const location             = useLocation()
   const [reply, setReply]    = useState('')
   const [attachOpen, setAttachOpen] = useState(false)
@@ -46,10 +47,11 @@ export function TicketDetailPage() {
   const showCreatedMsg       = !!(location.state as { created?: boolean } | null)?.created
 
   const { data: meData }     = useQuery<{ me: { id: string } | null }>(GET_ME)
+  const { labelOf: categoryLabel } = useTicketCategories()
   // Detail page polls (comments/status from the IT team); nothing else does.
   const { data, loading, error, refetch } = useQuery<{ myTicket: Ticket }>(
     GET_MY_TICKET,
-    { variables: { id }, skip: !id, pollInterval: TICKET_POLL_INTERVAL_MS },
+    { variables: { id, language: i18n.resolvedLanguage ?? i18n.language }, skip: !id, pollInterval: TICKET_POLL_INTERVAL_MS },
   )
 
   const ticket   = data?.myTicket
@@ -149,8 +151,12 @@ export function TicketDetailPage() {
 
         {/* Info bar */}
         <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 10, color: colors.slateLight, flexWrap: 'wrap' }}>
-          <span>{t(`ticket.category.${ticket.category}`, { defaultValue: ticket.category })}</span>
+          <span style={{ fontWeight: 600 }}>{ticket.number}</span>
           <span>·</span>
+          {ticket.category && <>
+            <span>{categoryLabel(ticket.category)}</span>
+            <span>·</span>
+          </>}
           <span>{t('ticket.createdAt')}: {fmtDateTimeLong(ticket.createdAt)}</span>
           <span>·</span>
           <span>{t('ticket.updatedAt')}: {fmtRelative(ticket.updatedAt)}</span>
@@ -232,7 +238,7 @@ export function TicketDetailPage() {
             <div key={i} style={{ textAlign: 'center', padding: '6px 0', fontSize: 10, color: colors.slateLight }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <ChevronRight size={12} />
-                {h.fromStep} → {h.toStep}
+                {h.fromLabel !== null || h.fromStep !== 'start' ? `${h.fromLabel ?? h.fromStep} → ${h.toLabel ?? h.toStep}` : (h.toLabel ?? h.toStep)}
                 {' · '}
                 {fmtRelative(h.triggeredAt)}
               </span>

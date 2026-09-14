@@ -198,6 +198,15 @@ Come funziona:
 4. In deploy: `migrate.ts` (o `--init-schema`) **prima** di avviare la nuova
    versione dell'API. L'avvio dell'API non migra da solo.
 
+**Migrazioni pendenti** (revisione del 14 set 2026 · F8). L'API e i worker non
+migrano, ma **se ne accorgono**: all'avvio loggano `All migrations applied`
+oppure `N migrations pending` (livello `error`, con gli id), `GET /health`
+risponde **503** con `pendingMigrations` finché ne resta una, e la diagnostica
+dell'amministratore mostra `migrations_pending`. Con
+`REQUIRE_APPLIED_MIGRATIONS=true` l'avvio si **ferma** invece di servire con
+uno schema che non corrisponde al codice (default `false`: il deploy in due
+tempi descritto in §8 resta possibile). Lo stato è letto con una cache di 60 s.
+
 **Rollback** = nuova migrazione che inverte la precedente (mai modificare
 una migrazione applicata: verrebbe ignorata e segnalata come drift).
 
@@ -1516,6 +1525,44 @@ migrazioni introdotti da questa versione): `up -d api` prima, poi il comando,
 poi `up -d worker events-worker web`. Gli indici di questa ondata
 (`event_status_id`, `event_status_correlation` in `packages/neo4j/src/init.ts`)
 sono `IF NOT EXISTS`: il comando è idempotente.
+
+### Chiavi di configurazione controllate all'avvio
+
+`APP_URL` e `RESEND_API_KEY` sono obbligatorie in produzione **per chi le usa**:
+l'API, che costruisce i link e invia le e-mail, non parte senza
+(`validateConfig('api')` per `APP_URL`, `assertEmailConfigured()` per la chiave
+e-mail). I container `worker` e `events-worker` **non** le ricevono e non ne
+hanno bisogno: prima il pacchetto `@opengraphity/notifications` lanciava già
+all'import e, da quando i worker lo importano (elenco delle migrazioni, canale
+delle notifiche in-app), li mandava in un ciclo di riavvii. Ora il controllo è
+all'avvio dell'API e al momento dell'invio.
+
+### Notifiche in-app: archivio e canale fra i processi
+
+Le notifiche del pannello (campanella) sono **salvate** come
+`(:InAppNotification)` — lette e rimosse per persona con
+`READ_NOTIFICATION`/`DISMISSED_NOTIFICATION` — e pubblicate sul canale Redis
+`og:inapp.delivered`: ogni processo (API e worker) ascolta e le scrive ai
+propri client SSE, quindi con più repliche dell'API arrivano a tutti. Log
+all'avvio: `[inapp] listening`. Se Redis non risponde la notifica resta
+salvata e il processo la consegna ai propri client; gli altri la vedono alla
+prossima apertura del pannello. Il job di manutenzione
+`purge_inapp_notifications` (ogni notte alle 03:45) elimina quelle più vecchie
+di `INAPP_NOTIFICATION_RETENTION_DAYS` giorni (default 30; un valore non intero
+≥ 1 ferma l'avvio). Gli indici `InAppNotification(tenant_id, created_at)` e
+`(created_at)` arrivano con `migrate --init-schema`.
+
+### Lingua dei log e dei messaggi
+
+Tutto ciò che **arriva al cliente** — errori GraphQL e REST, voci di audit,
+notifiche, PDF, esiti dell'import, diagnostica — è in inglese nel codice e porta
+una chiave i18n che il client traduce nella lingua di chi legge; il guardiano
+`apps/api/src/lib/__tests__/userFacingItalian.test.ts` fallisce se una stringa
+italiana torna in quei punti. I **log** (`logger.info/warn/error`) sono per chi
+gestisce l'installazione, non per il cliente: molti sono ancora in italiano, per
+scelta dichiarata (revisione del 14 set 2026 · F21). Chi li cerca con
+un'espressione regolare cerchi i campi strutturati (`module`, `tenantId`,
+`err`), che sono stabili, non il testo del messaggio.
 
 ---
 

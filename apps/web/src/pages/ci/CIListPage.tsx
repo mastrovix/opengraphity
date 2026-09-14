@@ -191,7 +191,7 @@ export function CIListPage() {
         title={ciTypeLabel}
         subtitle={
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${total} ${ciTypeLabel.toLowerCase()}`}
+            {loading ? '—' : t('pages.ci.count', { count: total })}
           </p>
         }
         actions={

@@ -4,7 +4,7 @@ import { gql } from '@apollo/client'
 import i18n from '@/i18n/i18n'
 import { CIDetailPage } from './CIDetailPage'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
-import { GET_CI_TYPES, GET_BLAST_RADIUS, GET_CI_INCIDENTS, GET_CI_CHANGES, GET_WORKFLOW_DEFINITION, GET_CI_HEALTH, GET_CI_ALIASES, GET_EVENTS, GET_SERVICES_IMPACTED_BY_CI } from '@/graphql/queries'
+import { GET_CI_TYPES, GET_BLAST_RADIUS, GET_CI_INCIDENTS, GET_CI_PROBLEMS, GET_CI_CHANGES, GET_WORKFLOW_DEFINITION, GET_CI_HEALTH, GET_CI_ALIASES, GET_EVENTS, GET_SERVICES_IMPACTED_BY_CI } from '@/graphql/queries'
 import { SET_CI_HEALTH_OVERRIDE } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { teamsMock, meMock } from '@/test/mocks/gql'
@@ -92,6 +92,7 @@ const mocks = (health: string | null = null, role = 'operator') => [
   ciTypesMock, detailMock, teamsMock(), meMock(role, { maxUsageCount: Number.POSITIVE_INFINITY }),
   any(GET_BLAST_RADIUS, { blastRadius: [] }),
   any(GET_CI_INCIDENTS, { ciIncidents: [] }),
+  any(GET_CI_PROBLEMS, { ciProblems: [] }),
   any(GET_CI_CHANGES, { ciChanges: [] }),
   any(GET_WORKFLOW_DEFINITION, { workflowDefinition: null }),
   any(GET_ATTACHMENTS, { attachments: [] }),

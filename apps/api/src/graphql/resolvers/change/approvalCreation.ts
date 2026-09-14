@@ -111,7 +111,11 @@ export async function createChangeApprovals(session: Session, changeId: string, 
     RETURN c.change_type AS changeType
   `, { changeId, tenantId })
   if (!change) throw new NotFoundError('Change', changeId)
-  if (await isPreApprovedChangeType(tenantId, change.changeType)) return
+  if (await isPreApprovedChangeType(tenantId, change.changeType)) {
+    // Pre-approvata: nessun requisito, l'esito è già «approved».
+    await runQuery(session, `MATCH (c:Change {id: $changeId, tenant_id: $tenantId}) SET c.approval_status = 'approved'`, { changeId, tenantId })
+    return
+  }
 
   const cmTeam = await runQueryOne<{ id: string }>(session, `
     MATCH (cm:Team {tenant_id: $tenantId, is_change_manager: true})
@@ -129,6 +133,7 @@ export async function createChangeApprovals(session: Session, changeId: string, 
     OPTIONAL MATCH (c)-[:HAS_APPROVAL]->(old:ChangeApproval)
     DETACH DELETE old
     WITH DISTINCT c
+    SET c.approval_status = 'pending'
     CREATE (c)-[:HAS_APPROVAL]->(:ChangeApproval {
       id: randomUUID(), tenant_id: $tenantId, kind: 'change_manager',
       team_id: $cmTeamId, status: 'pending', created_at: $now

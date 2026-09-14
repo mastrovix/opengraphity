@@ -22,7 +22,7 @@ import { logger } from '../lib/logger.js'
 import { withSession, getSession } from '../graphql/resolvers/ci-utils.js'
 import { ValidationError } from '../lib/errors.js'
 import { getWorkflowSteps, type StepRow } from '../lib/workflowHelpers.js'
-import { assertDomainValue } from '../lib/domainMatrix.js'
+import { assertDomainValue, domainVocabulary } from '../lib/domainMatrix.js'
 import { resolveDomainValue } from '../lib/domainValue.js'
 
 type Session = ReturnType<typeof getSession>
@@ -35,7 +35,48 @@ export interface ServiceCtx {
 export interface ImportRowIssue {
   row:        number
   externalId: string | null
+  /** Il messaggio in inglese (log, API). */
   message:    string
+  /**
+   * La chiave e i dati del messaggio: il web compone la frase nella lingua di
+   * chi importa (revisione del 14 set 2026 · lingua). Prima i messaggi erano
+   * italiani per ogni cliente.
+   */
+  messageKey:    ImportIssueKey
+  messageParams: Record<string, string>
+}
+
+/** I messaggi dell'importazione, in inglese; la traduzione sta nel web (`pages.import.issue.*`). */
+const IMPORT_MESSAGES = {
+  externalIdRequired:     () => 'external_id is required',
+  externalIdDuplicate:    (p: Record<string, string>) => `external_id duplicated in the file: "${p['id']}"`,
+  titleRequired:          () => 'title is required',
+  titleTooLong:           (p: Record<string, string>) => `title is longer than ${p['max']} characters`,
+  bodyTooLong:            (p: Record<string, string>) => `body is longer than ${p['max']} characters`,
+  severityNotPrecomputed: (p: Record<string, string>) => `severity "${p['value']}" not resolved (internal error: value not precomputed)`,
+  severityUntranslatable: (p: Record<string, string>) => `severity "${p['value']}" cannot be translated: ${p['reason']} Add the value to the «Import Severity» dictionary and the cell to the matrix, or fix the file.`,
+  unknownStatusInitial:   (p: Record<string, string>) => `unknown status "${p['status']}" — using the initial step "${p['step']}"`,
+  unknownStatusDraft:     (p: Record<string, string>) => `unknown status "${p['status']}" — using "draft"`,
+  invalidDate:            (p: Record<string, string>) => `${p['field']} is not a valid ISO date: "${p['value']}"`,
+  numberDuplicate:        (p: Record<string, string>) => `number duplicated in the file: "${p['number']}"`,
+  numberInUse:            (p: Record<string, string>) => `number "${p['number']}" is already used by another incident (uniqueness violation)`,
+  assigneeNotFound:       (p: Record<string, string>) => `assignee_email "${p['email']}" not found — assignment skipped`,
+  teamNotFound:           (p: Record<string, string>) => `team_name "${p['team']}" not found — team assignment skipped`,
+  commentsInvalidJson:    () => 'comments is not valid JSON',
+  commentsNotArray:       () => 'comments must be a JSON array',
+  commentTextRequired:    (p: Record<string, string>) => `comments[${p['index']}]: text is required`,
+  commentInvalidDate:     (p: Record<string, string>) => `comments[${p['index']}]: created_at is not a valid ISO date`,
+  commentAuthorNotFound:  (p: Record<string, string>) => `comments[${p['index']}]: author_email "${p['email']}" not found`,
+  kbCategoryUnknown:      (p: Record<string, string>) => `category "${p['category']}" is not one of the KB categories in the Dictionary (${p['allowed']})`,
+  kbNoPublishedStep:      (p: Record<string, string>) => `the kb_article workflow has no "published" step — the article stays in the initial step "${p['step']}"`,
+  kbNoWorkflow:           () => 'no active workflow definition for "kb_article" — article imported without a workflow instance',
+  writeFailed:            (p: Record<string, string>) => `write failed: ${p['error']}`,
+} as const satisfies Record<string, (p: Record<string, string>) => string>
+
+export type ImportIssueKey = keyof typeof IMPORT_MESSAGES
+
+function importIssue(row: number, externalId: string | null, key: ImportIssueKey, params: Record<string, string> = {}): ImportRowIssue {
+  return { row, externalId, message: IMPORT_MESSAGES[key](params), messageKey: key, messageParams: params }
 }
 
 export interface ImportResult {
@@ -343,15 +384,15 @@ export async function importIncidents(
     rows.forEach((row, idx) => {
       const rowNum = idx + 1
       const externalId = (row['external_id'] ?? '').trim() || null
-      const fail = (message: string) => { result.errors.push({ row: rowNum, externalId, message }) }
-      const warn = (message: string) => { result.warnings.push({ row: rowNum, externalId, message }) }
+      const fail = (key: ImportIssueKey, params: Record<string, string> = {}) => { result.errors.push(importIssue(rowNum, externalId, key, params)) }
+      const warn = (key: ImportIssueKey, params: Record<string, string> = {}) => { result.warnings.push(importIssue(rowNum, externalId, key, params)) }
 
-      if (!externalId) { fail('external_id è obbligatorio'); return }
-      if (seenExternalIds.has(externalId)) { fail(`external_id duplicato nel file: "${externalId}"`); return }
+      if (!externalId) { fail('externalIdRequired'); return }
+      if (seenExternalIds.has(externalId)) { fail('externalIdDuplicate', { id: externalId }); return }
 
       const title = (row['title'] ?? '').trim()
-      if (!title) { fail('title è obbligatorio'); return }
-      if (title.length > 500) { fail('title supera i 500 caratteri'); return }
+      if (!title) { fail('titleRequired'); return }
+      if (title.length > 500) { fail('titleTooLong', { max: '500' }); return }
 
       // severity: tradotta dalla matrice `import_severity` del cliente
       // (risolta una volta per valore distinto, sopra). Non risolvibile →
@@ -361,12 +402,9 @@ export async function importIncidents(
       let severity = defaultSeverity
       if (rawSeverity) {
         const resolved = severityByRaw.get(rawSeverity.toLowerCase())
-        if (!resolved) { fail(`severity "${rawSeverity}" non risolta (errore interno: valore non pre-calcolato)`); return }
+        if (!resolved) { fail('severityNotPrecomputed', { value: rawSeverity }); return }
         if ('error' in resolved) {
-          fail(
-            `severity "${rawSeverity}" non e' traducibile: ${resolved.error} ` +
-            `Aggiungi il valore al vocabolario «Import Severity» e la cella alla matrice, oppure correggi il file.`,
-          )
+          fail('severityUntranslatable', { value: rawSeverity, reason: resolved.error })
           return
         }
         severity = resolved.severity
@@ -378,7 +416,7 @@ export async function importIncidents(
       if (rawStatus) {
         const matched = stepByLowerName.get(rawStatus.toLowerCase())
         if (matched) stepName = matched
-        else warn(`status sconosciuto "${rawStatus}" — uso lo step iniziale "${initialStep.name}"`)
+        else warn('unknownStatusInitial', { status: rawStatus, step: initialStep.name })
       }
 
       // dates: invalid → row error
@@ -388,7 +426,7 @@ export async function importIncidents(
         const raw = (row[field] ?? '').trim()
         if (!raw) { dates[field] = null; continue }
         const iso = parseIsoDate(raw)
-        if (!iso) { fail(`${field} non è una data ISO valida: "${raw}"`); dateError = true; break }
+        if (!iso) { fail('invalidDate', { field, value: raw }); dateError = true; break }
         dates[field] = iso
       }
       if (dateError) return
@@ -399,10 +437,10 @@ export async function importIncidents(
       const rawNumber = (row['number'] ?? '').trim() || null
       let number: string | null = null
       if (rawNumber) {
-        if (seenNumbers.has(rawNumber)) { fail(`number duplicato nel file: "${rawNumber}"`); return }
+        if (seenNumbers.has(rawNumber)) { fail('numberDuplicate', { number: rawNumber }); return }
         const owner = numberOwner.get(rawNumber)
         if (owner !== undefined && owner !== externalId) {
-          fail(`number "${rawNumber}" già usato da un altro incident (violazione unicità)`)
+          fail('numberInUse', { number: rawNumber })
           return
         }
         number = rawNumber
@@ -419,13 +457,13 @@ export async function importIncidents(
       let assigneeId: string | null = null
       if (assigneeEmail) {
         assigneeId = usersByEmail.get(assigneeEmail.toLowerCase()) ?? null
-        if (!assigneeId) warn(`assignee_email "${assigneeEmail}" non trovato — assegnazione saltata`)
+        if (!assigneeId) warn('assigneeNotFound', { email: assigneeEmail })
       }
       const teamName = (row['team_name'] ?? '').trim()
       let teamId: string | null = null
       if (teamName) {
         teamId = teamsByName.get(teamName.toLowerCase()) ?? null
-        if (!teamId) warn(`team_name "${teamName}" non trovato — assegnazione team saltata`)
+        if (!teamId) warn('teamNotFound', { team: teamName })
       }
 
       // comments: optional JSON array [{author_email, text, created_at}]
@@ -434,17 +472,17 @@ export async function importIncidents(
       if (rawComments) {
         let parsed: unknown
         try { parsed = JSON.parse(rawComments) }
-        catch { fail('comments non è JSON valido'); return }
-        if (!Array.isArray(parsed)) { fail('comments deve essere un array JSON'); return }
+        catch { fail('commentsInvalidJson'); return }
+        if (!Array.isArray(parsed)) { fail('commentsNotArray'); return }
         comments = []
         for (const [ci, c] of (parsed as unknown[]).entries()) {
           const obj = (c ?? {}) as { text?: unknown; author_email?: unknown; created_at?: unknown }
           const text = typeof obj.text === 'string' ? obj.text.trim() : ''
-          if (!text) { fail(`comments[${ci}]: text è obbligatorio`); return }
+          if (!text) { fail('commentTextRequired', { index: String(ci) }); return }
           let createdAt = now
           if (typeof obj.created_at === 'string' && obj.created_at.trim()) {
             const iso = parseIsoDate(obj.created_at.trim())
-            if (!iso) { fail(`comments[${ci}]: created_at non è una data ISO valida`); return }
+            if (!iso) { fail('commentInvalidDate', { index: String(ci) }); return }
             createdAt = iso
           }
           let authorEmail: string | null = null
@@ -452,7 +490,7 @@ export async function importIncidents(
           if (typeof obj.author_email === 'string' && obj.author_email.trim()) {
             authorEmail = obj.author_email.trim()
             authorId = usersByEmail.get(authorEmail.toLowerCase()) ?? null
-            if (!authorId) warn(`comments[${ci}]: author_email "${authorEmail}" non trovato`)
+            if (!authorId) warn('commentAuthorNotFound', { index: String(ci), email: authorEmail })
           }
           comments.push({ text, authorEmail, authorId, createdAt })
         }
@@ -496,10 +534,7 @@ export async function importIncidents(
         await writeIncidentRow(session, p, ctx)
         if (p.exists) result.updated++; else result.created++
       } catch (err) {
-        result.errors.push({
-          row: p.row, externalId: p.externalId,
-          message: `scrittura fallita: ${err instanceof Error ? err.message : String(err)}`,
-        })
+        result.errors.push(importIssue(p.row, p.externalId, 'writeFailed', { error: err instanceof Error ? err.message : String(err) }))
       }
     }
 
@@ -583,6 +618,7 @@ async function writeIncidentRow(session: Session, p: IncidentPlan, ctx: ServiceC
           id:                 randomUUID(),
           tenant_id:          $tenantId,
           text:               cm.text,
+          is_internal:        true,
           author_id:          cm.authorId,
           author_email:       cm.authorEmail,
           created_at:         cm.createdAt,
@@ -678,29 +714,31 @@ export async function importKBArticles(
     const takenSlugs = new Set(slugRows.map((r) => r.slug))
 
     const plans: KBPlan[] = []
+    // F5: la categoria di un articolo è un valore di `kb_category` del cliente.
+    const kbCategories = await domainVocabulary(ctx.tenantId, 'kb_category')
     const seenExternalIds = new Set<string>()
     const now = new Date().toISOString()
 
     rows.forEach((row, idx) => {
       const rowNum = idx + 1
       const externalId = (row['external_id'] ?? '').trim() || null
-      const fail = (message: string) => { result.errors.push({ row: rowNum, externalId, message }) }
-      const warn = (message: string) => { result.warnings.push({ row: rowNum, externalId, message }) }
+      const fail = (key: ImportIssueKey, params: Record<string, string> = {}) => { result.errors.push(importIssue(rowNum, externalId, key, params)) }
+      const warn = (key: ImportIssueKey, params: Record<string, string> = {}) => { result.warnings.push(importIssue(rowNum, externalId, key, params)) }
 
-      if (!externalId) { fail('external_id è obbligatorio'); return }
-      if (seenExternalIds.has(externalId)) { fail(`external_id duplicato nel file: "${externalId}"`); return }
+      if (!externalId) { fail('externalIdRequired'); return }
+      if (seenExternalIds.has(externalId)) { fail('externalIdDuplicate', { id: externalId }); return }
 
       const title = (row['title'] ?? '').trim()
-      if (!title) { fail('title è obbligatorio'); return }
+      if (!title) { fail('titleRequired'); return }
 
       const body = row['body'] ?? ''
-      if (body.length > 50_000) { fail('body supera i 50000 caratteri'); return }
+      if (body.length > 50_000) { fail('bodyTooLong', { max: '50000' }); return }
 
       // status: published/draft (case-insensitive), default draft
       const rawStatus = (row['status'] ?? '').trim().toLowerCase()
       let statusRaw: 'draft' | 'published' = 'draft'
       if (rawStatus === 'published') statusRaw = 'published'
-      else if (rawStatus && rawStatus !== 'draft') warn(`status sconosciuto "${row['status']}" — uso "draft"`)
+      else if (rawStatus && rawStatus !== 'draft') warn('unknownStatusDraft', { status: row['status'] ?? '' })
 
       const dates: Record<string, string | null> = {}
       let dateError = false
@@ -708,10 +746,16 @@ export async function importKBArticles(
         const raw = (row[field] ?? '').trim()
         if (!raw) { dates[field] = null; continue }
         const iso = parseIsoDate(raw)
-        if (!iso) { fail(`${field} non è una data ISO valida: "${raw}"`); dateError = true; break }
+        if (!iso) { fail('invalidDate', { field, value: raw }); dateError = true; break }
         dates[field] = iso
       }
       if (dateError) return
+
+      const category = (row['category'] ?? '').trim() || null
+      if (category !== null && !kbCategories.includes(category)) {
+        fail('kbCategoryUnknown', { category, allowed: kbCategories.join(', ') })
+        return
+      }
 
       const existing = existingByExternalId.get(externalId) ?? null
 
@@ -731,14 +775,14 @@ export async function importKBArticles(
         if (statusRaw === 'published') {
           if (publishedStep) stepName = publishedStep.name
           else {
-            warn(`il workflow kb_article non ha uno step "published" — l'articolo resta allo step iniziale "${initialStep!.name}"`)
+            warn('kbNoPublishedStep', { step: initialStep!.name })
             stepName = initialStep!.name
           }
         } else {
           stepName = initialStep!.name
         }
       } else {
-        warn('nessuna workflow definition attiva per "kb_article" — articolo importato senza workflow instance')
+        warn('kbNoWorkflow')
       }
 
       const tags = (row['tags'] ?? '')
@@ -760,7 +804,7 @@ export async function importKBArticles(
         title,
         slug,
         body,
-        category:   (row['category'] ?? '').trim() || null,
+        category,
         tags:       JSON.stringify(tags),
         statusRaw,
         stepName,
@@ -782,10 +826,7 @@ export async function importKBArticles(
         await writeKBRow(session, p, ctx)
         if (p.exists) result.updated++; else result.created++
       } catch (err) {
-        result.errors.push({
-          row: p.row, externalId: p.externalId,
-          message: `scrittura fallita: ${err instanceof Error ? err.message : String(err)}`,
-        })
+        result.errors.push(importIssue(p.row, p.externalId, 'writeFailed', { error: err instanceof Error ? err.message : String(err) }))
       }
     }
 

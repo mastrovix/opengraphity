@@ -1,14 +1,11 @@
-import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { nextSequenceValue } from '../lib/sequence.js'
 import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
 import { publishEvent } from '../lib/publishEvent.js'
-import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
+import { getInitialStepName } from '../lib/workflowHelpers.js'
 import { workflowEngine } from '@opengraphity/workflow'
-import { systemText } from '../lib/systemText.js'
-import { transitionErrorI18n } from '../lib/transitionError.js'
 
 type Props = Record<string, unknown>
 
@@ -99,44 +96,12 @@ export async function createRequest(
   return created
 }
 
-export async function completeRequest(id: string, ctx: ServiceCtx) {
-  const now = new Date().toISOString()
-
-  // Lo status di una SR È il suo step di workflow: si evade con una
-  // transizione dell'engine (storia, azioni di step, status sincronizzato),
-  // non scrivendo r.status a mano — che lasciava l'istanza di workflow indietro
-  // per sempre.
-  const completed = await withSession(async (session) => {
-    const wi = await runQuery<{ instanceId: string; step: string }>(session, `
-      MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-      RETURN wi.id AS instanceId, wi.current_step AS step
-    `, { id, tenantId: ctx.tenantId })
-    if (!wi[0]) throw new Error('ServiceRequest not found (or without workflow instance)')
-
-    const steps = await getWorkflowSteps(session, ctx.tenantId, 'service_request')
-    const target = steps.find((s) => s.name === 'fulfilled') ?? steps.find((s) => s.isTerminal && s.category === 'closed')
-    if (!target) throw new Error('Workflow service_request: nessuno step "fulfilled" o terminale di chiusura definito')
-
-    const res = await workflowEngine.transition(session, {
-      instanceId: wi[0].instanceId, toStepName: target.name,
-      triggeredBy: ctx.userId, triggerType: 'manual', tenantId: ctx.tenantId,
-      notes: await systemText(ctx.tenantId, 'request.fulfilled'),
-    }, { userId: ctx.userId, entityData: {} })
-    if (!res.success) {
-      const i18n = transitionErrorI18n(res)
-      throw new GraphQLError(`Cannot fulfil the request from step "${wi[0].step}": ${res.error ?? 'transition not valid'}`,
-        { extensions: i18n ? { code: 'CONFLICT', i18n } : { code: 'CONFLICT' } })
-    }
-
-    const rows = await runQuery<{ props: Props }>(session, `
-      MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
-      SET r.completed_at = $now, r.updated_at = $now
-      RETURN properties(r) as props
-    `, { id, tenantId: ctx.tenantId, now })
-    if (!rows[0]) throw new Error('ServiceRequest not found')
-    return mapRequest(rows[0].props)
-  }, true)
-
-  await publishEvent('request.completed', ctx.tenantId, ctx.userId, { id, completed_at: now }, now)
-  return completed
-}
+/*
+ * `completeRequest` non esiste più (revisione del 14 set 2026 · F2). Portava la
+ * richiesta al passo per NOME `fulfilled` — aperto, categoria `active` nel
+ * workflow di fabbrica — e scriveva a mano `completed_at`: la richiesta
+ * risultava conclusa per OLA, report e diagnostica mentre il suo SLA restava
+ * aperto. Nessuna pagina la chiamava. Una richiesta si conclude con le
+ * transizioni del suo workflow, e il motore scrive `completed_at` entrando in un
+ * passo terminale (packages/workflow/src/engine.ts).
+ */

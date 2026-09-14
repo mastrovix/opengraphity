@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Pill } from '@/components/ui/Pill'
 import { Pagination } from '@/components/ui/Pagination'
 import { Input } from '@/components/ui/FormControls'
-import { RiskBadge, riskLevel, SEVERITY_STYLE } from '@/components/ui/badges'
+import { RiskBadge, riskLevel, RISK_STYLE } from '@/components/ui/badges'
 import { GET_ALL_CIS, GET_CI_TYPES, WHAT_IF_ANALYSIS } from '@/graphql/queries'
 import { lookupOrError, lookupStyle, colors, palette } from '@/lib/tokens'
 import { buildTypeIconMap } from '@/lib/ciIconPaths'
@@ -29,7 +29,7 @@ interface WhatIfResult {
   targetCI: WhatIfCI; action: string; impactedCIs: WhatIfCI[]
   impactedServices: WhatIfCI[]; impactedTeams: WhatIfTeam[]
   totalImpacted: number; riskScore: number; hasRedundancy: boolean
-  openIncidents: number; summary: string
+  openIncidents: number
 }
 interface CIOption { id: string; name: string; type: string }
 
@@ -45,7 +45,7 @@ const ACTIONS: { key: Action; icon: typeof Zap; labelKey: string; bg: string; fg
 // Livello di impatto (critical/high/medium/low): stessa palette della severità
 // (ui/badges.tsx) — prima WhatIf aveva un quarto set di colori proprio.
 function impactBadge(level: string, label: string) {
-  const s = lookupStyle(SEVERITY_STYLE, level, 'SEVERITY_STYLE')
+  const s = lookupStyle(RISK_STYLE, level, 'RISK_STYLE')
   return badge(s.bg, s.color, label)
 }
 
@@ -337,7 +337,11 @@ export function WhatIfPage() {
                 <RiskBadge score={result.riskScore} />
               </div>
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: 0, lineHeight: 1.5 }}>
-                {result.summary}
+                {/* Giro del 14 set 2026 (#59): la frase era italiana, composta dall'API. */}
+                {t(result.action === 'remove' ? 'pages.whatIf.summaryRemove' : 'pages.whatIf.summaryImpact', {
+                  target: result.targetCI.name, cis: result.totalImpacted, services: result.impactedServices.length,
+                  teams: result.impactedTeams.length, risk: result.riskScore,
+                })}
               </p>
             </div>
 

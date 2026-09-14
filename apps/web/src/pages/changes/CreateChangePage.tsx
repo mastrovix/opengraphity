@@ -9,7 +9,16 @@ import { CREATE_CHANGE } from '@/graphql/mutations'
 import { GET_CHANGES, GET_ALL_CIS, GET_USERS, GET_PROBLEM, GET_INCIDENT } from '@/graphql/queries'
 import { colors, palette } from '@/lib/tokens'
 
-interface CIRef { id: string; name: string; type: string; environment?: string }
+interface CIRef {
+  id: string; name: string; type: string; environment?: string
+  /** `null` = il CI non ha il gruppo; assente = non letto. Senza entrambi la change è rifiutata. */
+  ownerGroup?: { id: string } | null; supportGroup?: { id: string } | null
+}
+
+/** Giro nel browser del 14 set 2026 (#29): il CI senza gruppi si scopriva solo al salvataggio. */
+function missingGroups(ci: CIRef): boolean {
+  return ci.ownerGroup === null || ci.supportGroup === null
+}
 interface UserRef { id: string; name: string; email: string }
 
 const fieldLabel: React.CSSProperties = {
@@ -73,7 +82,7 @@ export function CreateChangePage() {
   // Precompila una volta con i dati dell'entità richiedente.
   useEffect(() => {
     if (requestSource && !prefilled) {
-      setSelectedCIs((requestSource.affectedCIs ?? []).map((ci) => ({ id: ci.id, name: ci.name, type: ci.type, environment: ci.environment })))
+      setSelectedCIs((requestSource.affectedCIs ?? []).map((ci) => ({ id: ci.id, name: ci.name, type: ci.type, environment: ci.environment, ownerGroup: ci.ownerGroup, supportGroup: ci.supportGroup })))
       const label = requestSource.kind === 'problem' ? 'problem' : 'incident'
       setTitle(t('pages.createChange.resolutionTitle', { kind: label, number: requestSource.number, title: requestSource.title }))
       setPrefilled(true)
@@ -106,7 +115,8 @@ export function CreateChangePage() {
     },
   })
 
-  const canSubmit = title.trim() !== '' && why.trim() !== '' && what.trim() !== '' && selectedCIs.length > 0 && !loading
+  const ciWithoutGroups = selectedCIs.filter(missingGroups)
+  const canSubmit = title.trim() !== '' && why.trim() !== '' && what.trim() !== '' && selectedCIs.length > 0 && ciWithoutGroups.length === 0 && !loading
 
   const handleSubmit = () => {
     if (!canSubmit) return
@@ -346,20 +356,26 @@ export function CreateChangePage() {
               )}
             </div>
 
+            {ciWithoutGroups.length > 0 && (
+              <p role="alert" style={{ margin: '8px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-danger)' }}>
+                {t('pages.createChange.ciWithoutGroupsList', { names: ciWithoutGroups.map((c) => c.name).join(', ') })}
+              </p>
+            )}
             {selectedCIs.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
                 {selectedCIs.map(ci => (
                   <span
                     key={ci.id}
+                    title={missingGroups(ci) ? t('pages.createChange.ciWithoutGroups') : undefined}
                     style={{
                       display:     'inline-flex',
                       alignItems:  'center',
                       gap:         6,
                       padding:     '4px 10px',
                       borderRadius: 6,
-                      background:  'var(--color-brand-light)',
-                      border:      '1px solid var(--color-info-border)',
-                      color:       'var(--color-brand-hover)',
+                      background:  missingGroups(ci) ? 'var(--color-danger-bg)' : 'var(--color-brand-light)',
+                      border:      missingGroups(ci) ? '1px solid var(--color-danger)' : '1px solid var(--color-info-border)',
+                      color:       missingGroups(ci) ? 'var(--color-danger)' : 'var(--color-brand-hover)',
                       fontSize:    'var(--font-size-body)',
                     }}
                   >

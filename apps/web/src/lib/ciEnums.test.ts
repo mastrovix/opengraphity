@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { enumLabel, toEnumOptions, ciStatusStyle, CI_STATUS_STYLE, ciTypeLabelKey, CI_TYPE_LABEL_KEYS } from './ciEnums'
+import { enumLabel, toEnumOptions, ciStatusStyle, ciTypeLabelKey, CI_TYPE_LABEL_KEYS } from './ciEnums'
+import { palette } from './tokens'
 import { NEUTRAL_VALUE_STYLE } from './domainStyle'
 
 describe('enumLabel / toEnumOptions', () => {
@@ -23,40 +24,33 @@ describe('enumLabel / toEnumOptions', () => {
 })
 
 describe('ciStatusStyle', () => {
-  const VOCABULARY = [...Object.keys(CI_STATUS_STYLE), 'expired', 'revoked']
+  const VOCABULARY = ['active', 'inactive', 'maintenance', 'decommissioned', 'expired', 'revoked']
 
-  it('stato noto → palette', () => {
-    for (const k of Object.keys(CI_STATUS_STYLE)) expect(ciStatusStyle(k, VOCABULARY)).toBe(CI_STATUS_STYLE[k])
+  /** Revisione del 14 set 2026 · F9: il colore dello stato è quello del Dizionario (`ci_status`), non `CI_STATUS_STYLE`. */
+  it('stato con un colore nel Dizionario → quella famiglia della palette', () => {
+    expect(ciStatusStyle('maintenance', VOCABULARY, 'warning')).toMatchObject({ bg: palette.warning.tint, color: palette.warning.text })
+    expect(ciStatusStyle('active', VOCABULARY, 'success')).toMatchObject({ bg: palette.success.tint, color: palette.success.text })
   })
 
-  /**
-   * CONTRATTO RINEGOZIATO (ondata 7 · D-15). Prima questo test pretendeva che
-   * `ciStatusStyle('zombie')` tornasse lo stile «rotto» rosso con
-   * `console.error`, senza distinguere fra uno stato che il cliente ha nel suo
-   * vocabolario e uno che non c'è. Ma `expired` e `revoked` SONO nel
-   * vocabolario (49 e 19 CI dal vivo su c-one, aggiunti dall'ondata 0) e non
-   * hanno un colore assegnato: erano cinquanta pastiglie rosse e cinquanta
-   * righe di errore per una configurazione giusta.
-   */
   it('stato NEL vocabolario del cliente senza colore → neutro e silenzioso', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect(ciStatusStyle('expired', VOCABULARY)).toEqual(NEUTRAL_VALUE_STYLE)
-    expect(ciStatusStyle('revoked', VOCABULARY)).toEqual(NEUTRAL_VALUE_STYLE)
+    expect(ciStatusStyle('expired', VOCABULARY, null)).toEqual(NEUTRAL_VALUE_STYLE)
+    expect(ciStatusStyle('revoked', VOCABULARY, null)).toEqual(NEUTRAL_VALUE_STYLE)
     expect(err).not.toHaveBeenCalled()
   })
 
   it('stato FUORI dal vocabolario del cliente → stile rotto (rosso) e console.error', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect(ciStatusStyle('zombie', VOCABULARY)).toEqual({ bg: 'var(--color-danger)', color: 'var(--color-white)' })
-    expect(err).toHaveBeenCalledWith(`[CI_STATUS_STYLE] "zombie" is not in the vocabulary of this tenant (${VOCABULARY.join(', ')})`)
+    expect(ciStatusStyle('zombie', VOCABULARY, null)).toMatchObject({ bg: 'var(--color-danger)', color: 'var(--color-white)' })
+    expect(err).toHaveBeenCalledWith(`[ci_status] "zombie" is not in the vocabulary of this tenant (${VOCABULARY.join(', ')})`)
   })
 
   it('vocabolario non disponibile → neutro e console.warn', () => {
     const err  = vi.spyOn(console, 'error').mockImplementation(() => {})
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(ciStatusStyle('zombie')).toEqual(NEUTRAL_VALUE_STYLE)
+    expect(ciStatusStyle('zombie', null, null)).toEqual(NEUTRAL_VALUE_STYLE)
     expect(err).not.toHaveBeenCalled()
-    expect(warn).toHaveBeenCalledWith('[CI_STATUS_STYLE] "zombie" has no style and the vocabulary of this tenant is unavailable: neutral style')
+    expect(warn).toHaveBeenCalledWith('[ci_status] "zombie" has no color and the vocabulary of this tenant is unavailable: neutral style')
   })
 })
 

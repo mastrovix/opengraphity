@@ -36,7 +36,7 @@ vi.mock('../../lib/bullmq.js', () => ({
 
 // ── Neo4j: runQuery dispatches on the Cypher text ───────────────────────────
 
-interface TenantRow { id: string; timezone: string | null }
+interface TenantRow { id: string; timezone: string | null; digestTime?: string | null; target?: string | null; recipients?: string[] | null }
 let tenants: TenantRow[] = []
 let recipients: Record<string, Array<{ email: string }>> = {}
 const queries: Array<{ q: string; p: Record<string, unknown> }> = []
@@ -44,7 +44,7 @@ const close = vi.fn().mockResolvedValue(undefined)
 
 const runQuery = vi.fn(async (_s: unknown, q: string, p: Record<string, unknown>) => {
   queries.push({ q, p })
-  if (q.includes('MATCH (t:Tenant)')) return tenants
+  if (q.includes('MATCH (t:Tenant)')) return tenants.map((t) => ({ digestTime: '08:00', target: 'all', recipients: null, ...t }))
   if (q.includes('slaBreaches'))       return [{ openInc: 3, resolvedToday: 1, ongoingChanges: 2, slaBreaches: 0 }]
   if (q.includes('ORDER BY i.created_at')) return [{ title: 'Disk full', status: 'new', created: 'x' }]
   if (q.includes('MATCH (u:User'))     return recipients[p['t'] as string] ?? []
@@ -56,7 +56,7 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 
 const sendEmail = vi.fn()
-vi.mock('@opengraphity/notifications', () => ({ sendEmail: (...a: unknown[]) => sendEmail(...a) }))
+vi.mock('@opengraphity/notifications', () => ({ sendEmail: (...a: unknown[]) => sendEmail(...a), loadNotificationLocale: async () => ({ language: 'en', timeZone: 'UTC' }) }))
 
 vi.mock('../../lib/workflowHelpers.js', () => ({
   getOpenStepNames: vi.fn(async (_s: unknown, _t: string, entityType: string) => entityType === 'incident' ? ['new', 'in_progress'] : ['planning']),
@@ -97,9 +97,9 @@ describe('processDigestTick — fuso del tenant', () => {
     expect(sendEmail).toHaveBeenCalledWith({ to: 'a@rome.io', subject: 'Digest giornaliero', html: '<p>x</p>', text: 'x' })
   })
 
-  it('alle 12:00Z tocca a New_York (08:00 EDT): Roma (14:00) è saltata', async () => {
+  it('alle 12:00Z tocca a New_York (08:00 EDT); Roma (14:00), se non l\'aveva ancora ricevuto, lo riceve ora', async () => {
     const result = await processDigestTick(new Date('2026-09-08T12:00:00.000Z'))
-    expect(result).toEqual({ sent: ['ny'], skipped: ['rome'] })
+    expect(result).toEqual({ sent: ['rome', 'ny'], skipped: [] })
     expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'c@ny.io' }))
   })
 
@@ -162,7 +162,7 @@ describe('processDigestTick — destinatari', () => {
 
     const users = queries.filter((x) => x.q.includes('MATCH (u:User'))
     expect(users).toHaveLength(1)
-    expect(users[0]!.p).toEqual({ t: 'rome' })
+    expect(users[0]!.p).toEqual({ t: 'rome', role: null })
     expect(users[0]!.q).toContain('MATCH (u:User {tenant_id: $t})')
     expect(users[0]!.q).toMatch(/u\.role IN \['admin', 'operator', 'TENANT_ADMIN', 'OPERATOR'\]/)
     expect(users[0]!.q).toContain('coalesce(u.notifications_enabled, true) = true')
@@ -189,6 +189,7 @@ describe('processDigestTick — destinatari', () => {
     expect(digestDaily).toHaveBeenCalledWith(
       { openIncidents: 3, resolvedToday: 1, ongoingChanges: 2, slaBreaches: 0, recentEvents: ['Disk full (new)'] },
       'rome',
+      { language: 'en', timeZone: 'UTC' },
     )
   })
 
@@ -211,10 +212,10 @@ describe('processDigestTick — destinatari', () => {
 })
 
 describe('startEmailDigestWorker', () => {
-  it('registra il tick orario (UTC) con jobId fisso e un worker a concorrenza 1', async () => {
+  it('registra il tick ogni 5 minuti (UTC) con jobId fisso e un worker a concorrenza 1', async () => {
     await startEmailDigestWorker()
     expect(queueAdd).toHaveBeenCalledWith('digest-tick', {}, {
-      repeat: { pattern: '0 * * * *', tz: 'UTC' }, jobId: 'email-digest-tick', removeOnComplete: true,
+      repeat: { pattern: '*/5 * * * *', tz: 'UTC' }, jobId: 'email-digest-tick', removeOnComplete: true,
     })
     expect(processors.has(EMAIL_DIGEST_QUEUE)).toBe(true)
   })
@@ -235,5 +236,26 @@ describe('startEmailDigestWorker', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+/** NT-8 (revisione del 14 set 2026): il digest è la regola digest.daily del tenant. */
+describe('processDigestTick — la regola decide', () => {
+  it('l\'ora è quella della regola, nel fuso del tenant', async () => {
+    tenants = [{ id: 'rome', timezone: 'Europe/Rome', digestTime: '18:30' }]
+    await expect(processDigestTick(AT_ROME_8)).resolves.toEqual({ sent: [], skipped: ['rome'] })
+    await expect(processDigestTick(new Date('2026-09-08T16:30:00.000Z'))).resolves.toEqual({ sent: ['rome'], skipped: [] })
+  })
+
+  it('bersaglio per ruolo → solo quel ruolo; indirizzi espliciti → quelli', async () => {
+    tenants = [{ id: 'rome', timezone: 'Europe/Rome', target: 'role:admin' }]
+    await processDigestTick(AT_ROME_8)
+    expect(queries.find((x) => x.q.includes('MATCH (u:User'))!.p).toEqual({ t: 'rome', role: 'admin' })
+
+    vi.clearAllMocks(); redis.store.clear(); queries.length = 0
+    tenants = [{ id: 'rome', timezone: 'Europe/Rome', recipients: ['boss@rome.io'] }]
+    await processDigestTick(AT_ROME_8)
+    expect(queries.some((x) => x.q.includes('MATCH (u:User'))).toBe(false)
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'boss@rome.io' }))
   })
 })

@@ -12,7 +12,8 @@ import { useQuery } from '@apollo/client/react'
 import { GET_TEAMS, GET_WORKFLOW_LIST, GET_USERS } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { useEntityFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
-import { UPDATE_FIELD_ALLOWED } from '@opengraphity/types'
+import { UPDATE_FIELD_ALLOWED, AUTOMATION_NOTIFICATION_CHANNELS } from '@opengraphity/types'
+import { TARGET_OPTIONS, CHANNEL_LABEL_KEY } from '@/pages/settings/NotificationRuleList'
 import { fieldTypeKey } from '@/lib/automationOperators'
 import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
@@ -138,8 +139,18 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
       )
 
     case 'create_notification':
+      // A chi arriva e da dove (AU-2): prima l'azione non consegnava niente,
+      // e non si poteva dire a chi.
       return (
-        <textarea style={{ ...textareaS, flex: 1 }} placeholder={t('automation.params.notificationMessage')} value={params['message'] ?? ''} onChange={e => onChange('message', e.target.value)} />
+        <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
+          <Select style={{ ...selectS, width: 180 }} aria-label={t('automation.params.notificationTarget')} value={params['target'] ?? 'all'} onChange={e => onChange('target', e.target.value)}>
+            {TARGET_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.labelKey)}</option>)}
+          </Select>
+          <Select style={{ ...selectS, width: 140 }} aria-label={t('automation.params.notificationChannel')} value={params['channel'] ?? 'in_app'} onChange={e => onChange('channel', e.target.value)}>
+            {AUTOMATION_NOTIFICATION_CHANNELS.map(c => <option key={c} value={c}>{t(CHANNEL_LABEL_KEY[c] ?? c)}</option>)}
+          </Select>
+          <textarea style={{ ...textareaS, flex: 1, minWidth: 200 }} placeholder={t('automation.params.notificationMessage')} value={params['message'] ?? ''} onChange={e => onChange('message', e.target.value)} />
+        </div>
       )
 
     case 'create_comment':

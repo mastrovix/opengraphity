@@ -25,6 +25,8 @@ interface RuleDef {
    */
   step_purpose?:  string
   step_category?: string
+  /** Solo `digest.daily`: l'ora del digest, nel fuso del cliente (NT-8). */
+  digest_time?:   string
 }
 
 export const DEFAULT_NOTIFICATION_RULES: readonly RuleDef[] = [
@@ -40,6 +42,8 @@ export const DEFAULT_NOTIFICATION_RULES: readonly RuleDef[] = [
   // «in attesa» non c'è: l'attesa è come il ticket si vede da fuori.
   { event_type: 'incident.step_entered',        severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.incident.on_hold.title',     step_category: 'waiting' },
   { event_type: 'incident.escalated',           severity: 'error',   channels: ['in_app', 'slack'], target: 'all',      title_key: 'notification.incident.escalated.title'    },
+  // IT-24: la dichiarazione di un Major Incident prima non produceva nessun evento.
+  { event_type: 'incident.major_declared',      severity: 'error',   channels: ['in_app'],          target: 'all',      title_key: 'notification.incident.major_declared.title' },
   { event_type: 'incident.resolved',            severity: 'success', channels: ['in_app'],          target: 'all',      title_key: 'notification.incident.resolved.title'     },
   { event_type: 'incident.closed',              severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.incident.closed.title'       },
   { event_type: 'change.approved',              severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.change.approved.title'       },
@@ -77,6 +81,9 @@ export const DEFAULT_NOTIFICATION_RULES: readonly RuleDef[] = [
   // che un servizio di business è giù.
   { event_type: 'service.health_changed',       severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.service.health_changed.title' },
   { event_type: 'service.incident_opened',      severity: 'error',   channels: ['in_app'],          target: 'all',      title_key: 'notification.service.incident_opened.title' },
+  // Il digest giornaliero (NT-8): era cablato alle 08:00 per tutti i clienti;
+  // ora è questa regola, con la sua ora, i suoi destinatari e l'interruttore.
+  { event_type: 'digest.daily',                 severity: 'info',    channels: ['email'],           target: 'all',      title_key: 'notification.digest.daily.title', digest_time: '08:00' },
 ]
 
 // Ogni canale seminato dev'essere instradabile dal dispatcher per quel tipo
@@ -120,6 +127,7 @@ export async function seedNotificationRules(tenantId: string, session: Queryable
          r.target            = $target,
          r.step_purpose      = $stepPurpose,
          r.step_category     = $stepCategory,
+         r.digest_time       = $digestTime,
          r.conditions        = null,
          r.is_seed           = true,
          r.created_at        = $now,
@@ -136,6 +144,7 @@ export async function seedNotificationRules(tenantId: string, session: Queryable
         enabled:   rule.enabled ?? true,
         stepPurpose:  rule.step_purpose  ?? null,
         stepCategory: rule.step_category ?? null,
+        digestTime:   rule.digest_time   ?? null,
         now,
       },
     )

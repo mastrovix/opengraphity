@@ -206,7 +206,7 @@ describe('soglia, impatto, urgenza, testi', () => {
     vocab['service_criticality'] = [...original, 'tier_0']
     try {
       await expect(serviceImpactOf('t1', 'tier_0', { mapId: 'map-1' }))
-        .rejects.toThrow(/Matrice "service_impact".*service_criticality="tier_0"/s)
+        .rejects.toThrow(/Matrix "service_impact".*service_criticality="tier_0"/s)
     } finally {
       vocab['service_criticality'] = original
     }

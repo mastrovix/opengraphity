@@ -96,7 +96,8 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
           overflow:    'hidden',
           textOverflow:'ellipsis',
         }}>
-          {notif.message}
+          {/* CO-2: la frase si compone nella lingua di chi legge quando la notifica porta la chiave. */}
+          {notif.message_key ? t(notif.message_key, { ...notif.message_params, defaultValue: notif.message }) : notif.message}
         </div>
       </div>
 

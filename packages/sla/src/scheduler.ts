@@ -2,9 +2,10 @@ import { randomUUID } from 'crypto'
 import { Queue, Worker, Job } from 'bullmq'
 import { publish, getRedisConnection } from '@opengraphity/events'
 import type { DomainEvent, SLAWarningPayload, SLABreachedPayload } from '@opengraphity/types'
-import { markBreached, getSLAStatus } from './status.js'
+import { markBreached, getSLAStatus, ticketReference } from './status.js'
 import type { SLAStatus } from './status.js'
 import { calculateDeadline } from './policy.js'
+import type { ServiceCalendar } from './calendar.js'
 import { isEntityResolved, type OLAContractLite } from './olaBreach.js'
 
 // Redis options come from the shared parser in @opengraphity/events (D-14):
@@ -94,6 +95,8 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
   switch (job.name) {
     case 'sla.warning': {
       if (!(await statusIfStillRelevant(job, 'resolve'))) break
+      const ref = await ticketReference(tenantId, entityId)
+      if (!ref) { console.log(`[sla:scheduler] sla.warning for ${entityType} ${entityId} skipped: ticket gone`); break }
       const minutesRemaining = Math.round(
         (new Date(resolveDeadline).getTime() - Date.now()) / 60_000,
       )
@@ -101,7 +104,7 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
         ...baseEvent,
         id:      randomUUID(),
         type:    'sla.warning',
-        payload: { entity_id: entityId, entity_type: entityType, minutes_remaining: minutesRemaining },
+        payload: { entity_id: entityId, entity_type: entityType, minutes_remaining: minutesRemaining, target: 'resolve', ...ref },
       }
       await publish(event)
       console.log(`[sla:scheduler] Warning fired for ${entityType} ${entityId} (${minutesRemaining}min remaining)`)
@@ -117,11 +120,13 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
       // the consumers' per-id dedup drops the duplicate instead of escalating
       // twice (D-10).
       await markBreached(tenantId, entityId)
+      const ref = await ticketReference(tenantId, entityId)
+      if (!ref) { console.log(`[sla:scheduler] sla.breach for ${entityType} ${entityId}: ticket gone, state marked, no notification`); break }
       const event: DomainEvent<SLABreachedPayload> = {
         ...baseEvent,
         id:      `breach-${status.id}`,
         type:    'sla.breached',
-        payload: { entity_id: entityId, entity_type: entityType, breached_at: new Date().toISOString() },
+        payload: { entity_id: entityId, entity_type: entityType, breached_at: new Date().toISOString(), ...ref },
       }
       await publish(event)
       console.log(`[sla:scheduler] Breach fired for ${entityType} ${entityId}`)
@@ -131,11 +136,13 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
     case 'sla.response_breach': {
       const status = await statusIfStillRelevant(job, 'response')
       if (!status) break
+      const ref = await ticketReference(tenantId, entityId)
+      if (!ref) { console.log(`[sla:scheduler] sla.response_breach for ${entityType} ${entityId} skipped: ticket gone`); break }
       const event: DomainEvent<SLAWarningPayload> = {
         ...baseEvent,
         id:      `response-breach-${status.id}`,
         type:    'sla.warning',
-        payload: { entity_id: entityId, entity_type: entityType, minutes_remaining: 0 },
+        payload: { entity_id: entityId, entity_type: entityType, minutes_remaining: 0, target: 'response', ...ref },
       }
       await publish(event)
       console.log(`[sla:scheduler] Response breach fired for ${entityType} ${entityId}`)
@@ -236,9 +243,14 @@ async function scheduleJob(
 }
 
 export async function scheduleWarning(status: SLAStatus): Promise<void> {
-  const warningMs = new Date(status.resolve_deadline).getTime() - 30 * 60_000 - Date.now()
-  // Clamp like breach/response checks: an SLA shorter than the 30-minute
-  // warning window fires the warning immediately instead of silently never.
+  // Il preavviso è della policy (NT-8/F6): era 30 minuti fissi per tutti.
+  const lead = Number(status.tier.warning_minutes)
+  if (!Number.isInteger(lead) || lead <= 0) {
+    throw new Error(`[sla:scheduler] SLAStatus ${status.id} has no valid warning lead (tier_warning_minutes=${String(status.tier.warning_minutes)})`)
+  }
+  const warningMs = new Date(status.resolve_deadline).getTime() - lead * 60_000 - Date.now()
+  // Clamp like breach/response checks: an SLA shorter than the warning lead
+  // fires the warning immediately instead of silently never.
   await scheduleJob('sla.warning', `warning-${status.entity_id}`, {
     entityId:       status.entity_id,
     entityType:     status.entity_type,
@@ -272,14 +284,18 @@ export async function scheduleResponseCheck(status: SLAStatus): Promise<void> {
  * Each fires at created_at + the contract's resolve target; the processor
  * alerts only if the entity is still open at that point. Fire-time is the
  * guard — no cancellation on resolve is needed.
+ *
+ * `startedAt` is the entity's creation instant (revisione del 14 set 2026 ·
+ * SL-1): the deadline used to start from «now», so a delayed or retried event
+ * pushed every OLA/UC deadline forward by the queue delay.
  */
 export async function scheduleOLABreaches(
-  params: { entityId: string; entityType: string; tenantId: string; timezone: string; contracts: OLAContractLite[] },
+  params: { entityId: string; entityType: string; tenantId: string; timezone: string; contracts: OLAContractLite[]; startedAt: Date; calendar: ServiceCalendar | null },
 ): Promise<void> {
-  const { entityId, entityType, tenantId, timezone, contracts } = params
+  const { entityId, entityType, tenantId, timezone, contracts, startedAt, calendar } = params
   const now = new Date()
   for (const c of contracts) {
-    const deadline = calculateDeadline(now, c.resolve_minutes, c.business_hours, timezone)
+    const deadline = calculateDeadline(startedAt, c.resolve_minutes, c.business_hours, timezone, calendar)
     const delayMs = deadline.getTime() - now.getTime()
     await scheduleJob('ola.breach', `ola-${c.id}-${entityId}`, {
       entityId,

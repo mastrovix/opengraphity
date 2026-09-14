@@ -36,8 +36,11 @@ export async function createDashboard(
     )
     const isFirst = Math.round(Number(countResult.records[0].get('cnt'))) === 0
 
-    const created = await session.executeWrite((tx) =>
-      tx.run(
+    // Nodo, autore e condivisione in UNA transazione (giro nel browser del 14 set
+    // 2026): prima erano tre, e un errore sull'autore lasciava una dashboard
+    // senza autore. Un errore lanciato qui dentro annulla tutto.
+    const props = await session.executeWrite(async (tx) => {
+      const created = await tx.run(
         `
         CREATE (d:DashboardConfig {
           id: randomUUID(),
@@ -60,44 +63,39 @@ export async function createDashboard(
           name, description: description ?? null, role: role ?? null,
           visibility, isDefault: isFirst, isShared: isShared ?? false, now,
         },
-      ),
-    )
-    if (!created.records.length) throw new GraphQLError('Failed to create dashboard', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
+      )
+      if (!created.records.length) throw new GraphQLError('Failed to create dashboard', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
+      const createdProps = created.records[0]!.get('props') as Props
 
-    // Create CREATED_BY rel — strict: the authenticated user must exist; a
-    // dashboard silently created without its author is a data-quality hole.
-    const relResult = await session.executeWrite((tx) =>
-      tx.run(
+      // Strict: the authenticated user must exist; a dashboard silently created
+      // without its author is a data-quality hole.
+      const relResult = await tx.run(
         `
         MATCH (d:DashboardConfig {id: $dashId, tenant_id: $tenantId})
         MATCH (u:User {id: $userId, tenant_id: $tenantId})
         CREATE (d)-[:CREATED_BY]->(u)
         RETURN u.id AS uid
         `,
-        { dashId: (created.records[0].get('props') as Props)['id'] as string, userId: ctx.userId },
-      ),
-    )
-    if (!relResult.records.length) {
-      throw new GraphQLError(`Authenticated user ${ctx.userId} not found — cannot attribute the dashboard`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
-    }
-    const props = created.records[0].get('props') as Props
-    const dashId = props['id'] as string
-    void audit(ctx, 'dashboard.created', 'DashboardConfig', dashId)
+        { dashId: createdProps['id'] as string, userId: ctx.userId, tenantId: ctx.tenantId },
+      )
+      if (!relResult.records.length) {
+        throw new GraphQLError(`Authenticated user ${ctx.userId} not found — cannot attribute the dashboard`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
+      }
 
-    // Create SHARED_WITH rels
-    if (sharedWithTeamIds && sharedWithTeamIds.length > 0) {
-      await session.executeWrite((tx) =>
-        tx.run(
+      if (sharedWithTeamIds && sharedWithTeamIds.length > 0) {
+        await tx.run(
           `
           MATCH (d:DashboardConfig {id: $dashId, tenant_id: $tenantId})
           UNWIND $teamIds AS teamId
           MATCH (t:Team {id: teamId, tenant_id: $tenantId})
           MERGE (d)-[:SHARED_WITH]->(t)
           `,
-          { dashId, teamIds: sharedWithTeamIds, tenantId: ctx.tenantId },
-        ),
-      )
-    }
+          { dashId: createdProps['id'] as string, teamIds: sharedWithTeamIds, tenantId: ctx.tenantId },
+        )
+      }
+      return createdProps
+    })
+    void audit(ctx, 'dashboard.created', 'DashboardConfig', props['id'] as string)
 
     return mapDashboardConfig(props)
   } finally {
@@ -269,9 +267,8 @@ export async function cloneDashboard(_: unknown, args: { id: string; newName: st
       tx.run(
         `MATCH (src:DashboardConfig {id: $srcId, tenant_id: $tenantId})-[:HAS_WIDGET]->(w:DashboardWidget)
          MATCH (dst:DashboardConfig {id: $dstId, tenant_id: $tenantId})
-         // tenant-ok: il widget vive solo appeso alla DashboardConfig scopata sopra
          CREATE (wc:DashboardWidget {
-           id: randomUUID(), dashboard_id: $dstId,
+           id: randomUUID(), tenant_id: $tenantId, dashboard_id: $dstId,
            report_template_id: w.report_template_id,
            report_section_id:  w.report_section_id,
            col_span: w.col_span, order: w.order, created_at: $now

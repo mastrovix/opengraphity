@@ -3,6 +3,7 @@ import { mapIncident } from '../../lib/mappers.js'
 import { mapChange } from './change/mappers.js'
 import { mapProblem } from './problem.js'
 import { mapArticle, ARTICLE_RETURN_WITH_WI } from './knowledgeBase.js'
+import { mapRequest } from '../../services/requestService.js'
 import type { GraphQLContext } from '../../context.js'
 import type { Props } from './ci-utils.js'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
@@ -24,12 +25,13 @@ export interface GlobalSearchResults {
   changes:    ReturnType<typeof mapChange>[]
   incidents:  ReturnType<typeof mapIncident>[]
   problems:   ReturnType<typeof mapProblem>[]
+  serviceRequests: ReturnType<typeof mapRequest>[]
   tasks:      SearchTaskResult[]
   kbArticles: ReturnType<typeof mapArticle>[]
 }
 
 function emptyResults(): GlobalSearchResults {
-  return { cis: [], changes: [], incidents: [], problems: [], tasks: [], kbArticles: [] }
+  return { cis: [], changes: [], incidents: [], problems: [], serviceRequests: [], tasks: [], kbArticles: [] }
 }
 
 // ── constants ─────────────────────────────────────────────────────────────────
@@ -112,7 +114,8 @@ async function globalSearch(
       } else if (r.labels.includes('KBArticle')) {
         if (kbIds.length < limit) kbIds.push(r.props['id'] as string)
       } else if (r.labels.includes('ServiceRequest')) {
-        // Not part of the grouped results.
+        // Giro del 14 set 2026 (#54): erano nell'indice e venivano scartate.
+        if (res.serviceRequests.length < limit) res.serviceRequests.push(mapRequest(r.props))
       } else if (ciTextHits.length < limit) {
         r.props['type'] = ciTypeFromLabels(ctx.tenantId, r.labels)
         ciTextHits.push(mapCI(r.props))

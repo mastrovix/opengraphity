@@ -16,6 +16,7 @@
  */
 import { useState, useId } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import type { TFunction } from 'i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { Handshake, Plus } from 'lucide-react'
@@ -42,17 +43,14 @@ export interface OLAContract {
   teamName: string | null; enabled: boolean; createdAt: string
 }
 
-/** L'ambito del contratto: l'entità, o «tutte». Le etichette delle entità sono i loro nomi ITIL. */
+/**
+ * L'ambito del contratto: l'entità, o «tutte». Le etichette delle entità sono
+ * quelle dei tipi ITIL del cliente (`useItilTypeLabels`, revisione del 14 set
+ * 2026 · F16): prima erano i nomi di fabbrica scritti qui.
+ */
 export const OLA_SCOPES = ['incident', 'problem', 'change', 'service_request', 'any'] as const
-export function olaScopeLabel(scope: string, t: TFunction): string {
-  switch (scope) {
-    case 'incident':        return 'Incident'
-    case 'problem':         return 'Problem'
-    case 'change':          return 'Change'
-    case 'service_request': return 'Service Request'
-    case 'any':             return t('common.all')
-    default:                return scope
-  }
+export function olaScopeLabel(scope: string, t: TFunction, typeLabel: (entityType: string) => string): string {
+  return scope === 'any' ? t('common.all') : typeLabel(scope)
 }
 
 /** Minuti in forma breve, con le unità tradotte (le stesse delle SLA policy). */
@@ -89,6 +87,7 @@ interface Team { id: string; name: string; sourcing: string | null }
 
 export function OLAContractsPage() {
   const { t } = useTranslation()
+  const { labelOf: typeLabel } = useItilTypeLabels()
   const uid = useId()
   const ids = {
     type: `${uid}-type`, entity: `${uid}-entity`, name: `${uid}-name`, desc: `${uid}-desc`,
@@ -152,7 +151,7 @@ export function OLAContractsPage() {
       <Pill bg={v === 'uc' ? palette.purple.tint : palette.info.tint} color={v === 'uc' ? palette.purple.dark : palette.info.text}>{String(v).toUpperCase()}</Pill>
     ) },
     { key: 'name', label: t('common.name'), sortable: true, render: (v) => <span style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{String(v)}</span> },
-    { key: 'entityType', label: t('admin.sla.scopeField'), sortable: true, render: (v) => olaScopeLabel(String(v), t) },
+    { key: 'entityType', label: t('admin.sla.scopeField'), sortable: true, render: (v) => olaScopeLabel(String(v), t, typeLabel) },
     { key: 'teamName', label: t('pages.slaReport.party'), sortable: true, render: (_v, o) => o.teamName ?? o.partyName ?? '—' },
     { key: 'responseMinutes', label: t('admin.sla.response'), sortable: true, render: (v) => olaMinutes(Number(v), t) },
     { key: 'resolveMinutes', label: t('admin.sla.resolution'), sortable: true, render: (v) => olaMinutes(Number(v), t) },
@@ -214,7 +213,7 @@ export function OLAContractsPage() {
           <div>
             <FieldLabel htmlFor={ids.entity}>{t('admin.sla.scopeField')}</FieldLabel>
             <Select id={ids.entity} value={form.entityType} onChange={(e) => setForm({ ...form, entityType: e.target.value })}>
-              {OLA_SCOPES.map((v) => <option key={v} value={v}>{olaScopeLabel(v, t)}</option>)}
+              {OLA_SCOPES.map((v) => <option key={v} value={v}>{olaScopeLabel(v, t, typeLabel)}</option>)}
             </Select>
           </div>
           <div style={{ gridColumn: '1 / -1' }}>

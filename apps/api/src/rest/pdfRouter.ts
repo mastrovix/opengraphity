@@ -10,6 +10,8 @@ import { logger } from '../lib/logger.js'
 import { audit } from '../lib/audit.js'
 import { NotFoundError } from '../lib/errors.js'
 import type { PdfMeta } from '../lib/pdf/common.js'
+import { languageFor } from '../lib/tenantLanguage.js'
+import { tenantTimezone } from '../lib/tenantTimezone.js'
 import type { GraphQLContext } from '../context.js'
 
 export interface PdfRouteSpec<D> {
@@ -37,10 +39,13 @@ export function makePdfRouter<D>(spec: PdfRouteSpec<D>): ExpressRouter {
       const session = getSession(undefined, 'READ')
       try {
         const dossier = await spec.loader(session, id, tenantId)
+        const [language, timeZone] = await Promise.all([languageFor(tenantId), tenantTimezone(tenantId)])
+        if (!timeZone) throw new Error(`Tenant ${tenantId} has no time zone configured: the dates of the dossier cannot be written`)
         const pdf = await spec.builder(dossier, {
           generatedAt: new Date().toISOString(),
           generatedBy: email,
           tenantId,
+          locale: { language, timeZone },
         })
 
         const filename = `${spec.filename(dossier)}.pdf`

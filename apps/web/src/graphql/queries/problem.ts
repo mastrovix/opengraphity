@@ -25,14 +25,14 @@ export const GET_PROBLEM = gql`
       createdBy { id name }
       assignee { id name email }
       assignedTeam { id name }
-      affectedCIs { id name type status environment }
+      affectedCIs { id name type status environment ownerGroup { id } supportGroup { id } }
       workflowInstance { id currentStep status }
       linkedIncidents { id number title status removable }
       linkedProblems { id number title status removable }
       linkedChanges { id number title status removable }
-      availableTransitions { toStep label requiresInput inputField condition }
+      availableTransitions { toStep label labels { language label } requiresInput inputField condition }
       workflowHistory { id stepName enteredAt exitedAt durationMs triggeredBy triggerType notes }
-      comments { id text type createdAt authorKind authorLabel author { id name } }
+      comments { id text type isInternal createdAt authorKind authorLabel author { id name } }
     }
   }
 `

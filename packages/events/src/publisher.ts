@@ -8,7 +8,7 @@ import { getRedisConnection } from './redis.js'
  * `service-impact-consumer`: apps/api consumers/serviceImpactConsumer.ts
  * (Servizi monitorati: `ci.health_changed` → valutazione delle mappe).
  */
-export const CONSUMER_QUEUES = ['notification-service', 'sla-engine', 'escalation-consumer', 'service-impact-consumer'] as const
+export const CONSUMER_QUEUES = ['notification-service', 'sla-engine', 'escalation-consumer', 'service-impact-consumer', 'automation-consumer'] as const
 
 const JOB_OPTIONS = {
   attempts:         4,   // 1 initial + 3 retries (5s / 30s / 5min via backoffStrategy)

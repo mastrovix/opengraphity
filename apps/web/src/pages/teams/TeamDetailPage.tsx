@@ -15,12 +15,12 @@ import { EmptyState } from '@/components/EmptyState'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EnvBadge } from '@/components/Badges'
 import { Select } from '@/components/ui/FormControls'
-import { GET_TEAM } from '@/graphql/queries'
+import { GET_TEAM, GET_USERS } from '@/graphql/queries'
 import { UPDATE_TEAM } from '@/graphql/mutations'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { TEAM_TYPE_VOCABULARY } from '@/lib/teamVocabularies'
 import { TEAM_SOURCINGS, teamSourcingKey } from '@/lib/teamSourcing'
-import { SET_TEAM_MANAGER, REMOVE_TEAM_MANAGER, SET_CHANGE_MANAGER_TEAM } from '@/graphql/mutations'
+import { SET_TEAM_MANAGER, REMOVE_TEAM_MANAGER, SET_TEAM_MEMBER, SET_CHANGE_MANAGER_TEAM } from '@/graphql/mutations'
 import { ciPath } from '@/lib/ciPath'
 import { toast } from 'sonner'
 import { colors, palette, lookupStyle } from '@/lib/tokens'
@@ -50,7 +50,6 @@ interface ManagerRef {
 
 interface Team {
   id:           string
-  tenantId:     string
   name:         string
   description:  string | null
   type:         string | null
@@ -106,6 +105,9 @@ export function TeamDetailPage() {
   const [showManagerModal, setShowManagerModal] = useState(false)
   const [managerSearch, setManagerSearch] = useState('')
   const [pendingManagerUser, setPendingManagerUser] = useState<{ id: string; name: string } | null>(null)
+  // Giro del 14 set 2026 (#48): i membri si aggiungono e si tolgono dal team.
+  const [showMemberModal, setShowMemberModal] = useState(false)
+  const [memberSearch, setMemberSearch] = useState('')
 
   const { data, loading, error, refetch } = useQuery<{ team: Team | null }>(GET_TEAM, {
     variables:   { id },
@@ -133,6 +135,15 @@ export function TeamDetailPage() {
   })
   const [setChangeManager, { loading: settingCM }] = useMutation(SET_CHANGE_MANAGER_TEAM, {
     onCompleted: () => { toast.success(t('toast.team.changeManagerUpdated')); refetch() },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const { data: usersData } = useQuery<{ users: Member[] }>(GET_USERS, { skip: !showMemberModal })
+  const [setTeamMember, { loading: savingMember }] = useMutation(SET_TEAM_MEMBER, {
+    onCompleted: (_d, opts) => {
+      toast.success(t(opts?.variables?.['member'] ? 'toast.team.memberAdded' : 'toast.team.memberRemoved'))
+      refetch()
+    },
     onError: (err) => toast.error(err.message),
   })
 
@@ -177,7 +188,6 @@ export function TeamDetailPage() {
           <div className="og-pair">
             <DetailField label="ID" value={team.id} mono />
             <DetailField label={t('pages.teams.name')} value={team.name} />
-            <DetailField label={t('pages.userDetail.tenantId')} value={team.tenantId} mono />
             <DetailField label={t('pages.teams.sourcing.label')} value={
               /*
                 Si CAMBIA ma non si toglie: l'opzione «non indicato» compare
@@ -364,6 +374,9 @@ export function TeamDetailPage() {
 
         {/* Members */}
         <SectionCard title={`${t('pages.teams.members')} (${team.members.length})`} defaultOpen>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <Button variant="secondary" onClick={() => { setMemberSearch(''); setShowMemberModal(true) }}>+ {t('pages.teamDetail.addMember')}</Button>
+          </div>
           {team.members.length === 0 ? (
             <EmptyState icon={<Users size={24} color="var(--color-slate-light)" />} title={t('pages.teams.noMembers')} />
           ) : (
@@ -372,11 +385,69 @@ export function TeamDetailPage() {
                 { key: 'name',  label: t('pages.users.name'),  render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
                 { key: 'email', label: t('pages.users.email'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
                 { key: 'role',  label: t('pages.users.role'),  render: (v) => <span style={{ color: 'var(--color-slate)', textTransform: 'capitalize' }}>{String(v)}</span> },
+                { key: 'id',    label: '', width: '48px', render: (_v, m) => (
+                  <button
+                    type="button"
+                    disabled={savingMember}
+                    onClick={(e) => { e.stopPropagation(); void setTeamMember({ variables: { teamId: team.id, userId: m.id, member: false } }) }}
+                    title={t('pages.teamDetail.removeMember', { name: m.name })}
+                    aria-label={t('pages.teamDetail.removeMember', { name: m.name })}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', borderRadius: 4 }}
+                  >
+                    <X size={12} color={colors.danger} />
+                  </button>
+                ) },
               ]}
               rows={team.members}
             />
           )}
         </SectionCard>
+
+        {showMemberModal && (() => {
+          const memberIds = new Set(team.members.map((m) => m.id))
+          const q = memberSearch.trim().toLowerCase()
+          const candidates = (usersData?.users ?? [])
+            .filter((u) => !memberIds.has(u.id))
+            .filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+          return (
+            <Modal open onClose={() => setShowMemberModal(false)} title={t('pages.teamDetail.addMemberTitle', { team: team.name })} width={440}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', marginBottom: 12 }}>
+                <Search size={14} color="var(--color-slate-light)" />
+                <input
+                  // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management del dialogo di ricerca aperto dall'utente (Modal)
+                  autoFocus
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                  placeholder={t('pages.teamDetail.searchUser')}
+                  aria-label={t('pages.teamDetail.searchUser')}
+                  style={{ border: 'none', outline: 'none', flex: 1, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}
+                />
+              </div>
+              <div style={{ overflowY: 'auto', maxHeight: 'calc(70vh - 160px)' }}>
+                {!usersData ? (
+                  <div style={{ padding: 20, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>{t('common.loading')}</div>
+                ) : candidates.length === 0 ? (
+                  <div style={{ padding: 20, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>{t('pages.teamDetail.noUserToAdd')}</div>
+                ) : candidates.map((u) => (
+                  <button
+                    type="button"
+                    key={u.id}
+                    disabled={savingMember}
+                    onClick={() => void setTeamMember({ variables: { teamId: team.id, userId: u.id, member: true } })}
+                    className="hover-bg"
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '10px 4px', cursor: 'pointer', borderBottom: `1px solid ${palette.neutral.borderLight}`, ['--hover-bg' as string]: palette.info.light }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{u.name}</div>
+                      <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{u.email}</div>
+                    </div>
+                    <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>{u.role}</span>
+                  </button>
+                ))}
+              </div>
+            </Modal>
+          )
+        })()}
 
         {/* Owned CIs */}
         <SectionCard title={`CI Owned (${team.ownedCIs.length})`} defaultOpen={false}>

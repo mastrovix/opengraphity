@@ -11,6 +11,8 @@ type Props = Record<string, unknown>
 export function commentAuthorKind(comment: Props, hasUser: boolean): 'automation' | 'monitoring' | null {
   if (hasUser) return null
   if (comment['author_id'] === 'monitoring') return 'monitoring'
+  // Le automazioni scrivono come `AUTOMATION_ACTOR` (consumers/automationConsumer.ts).
+  if (comment['author_id'] === 'automation') return 'automation'
   if (typeof comment['author_label'] === 'string' && comment['author_label'] !== '') return 'automation'
   return null
 }

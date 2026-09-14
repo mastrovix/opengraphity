@@ -25,6 +25,7 @@ vi.mock('@opengraphity/neo4j', async () => {
   const actual = await vi.importActual<typeof import('@opengraphity/neo4j')>('@opengraphity/neo4j')
   return { ...actual, getSession: vi.fn() }
 })
+vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: { createInstance: vi.fn(), transition: vi.fn(), getAvailableTransitions: vi.fn(), registerCondition: vi.fn() },
 }))
@@ -92,7 +93,7 @@ function primeSession(steps: Step[], counts: Record<string, number> = {}) {
       const rows = Object.entries(counts)
         .filter(([status]) => !statuses || statuses.includes(status))
         .flatMap(([status, n]) => Array.from({ length: n }, (_v, i) => rec({
-          props: { id: `${status}-${i}`, title: 't', status, priority: 'high', category: 'other', created_at: 'c', updated_at: 'u' },
+          props: { id: `${status}-${i}`, number: `INC-${i}`, title: 't', status, severity: 'high', category: 'other', created_at: 'c', updated_at: 'u' },
           assignedTeam: null,
         })))
       return { records: rows }

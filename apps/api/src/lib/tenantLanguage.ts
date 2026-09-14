@@ -123,5 +123,9 @@ export async function setTenantDefaultLanguage(tenantId: string, lingua: string)
     await session.close()
   }
   invalidateTenantLanguageCache(tenantId)
+  // Le notifiche che escono (e-mail, Slack, Teams) tengono la loro copia: anche
+  // lei. Import differito: questo modulo è letto ovunque, il dispatcher no.
+  const { invalidateNotificationLocale } = await import('@opengraphity/notifications')
+  invalidateNotificationLocale(tenantId)
   return lingua
 }

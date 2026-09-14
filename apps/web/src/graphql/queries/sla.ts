@@ -6,7 +6,7 @@ export const GET_SLA_POLICIES = gql`
   query GetSLAPolicies($entityType: String, $filters: String, $sortField: String, $sortDirection: String) {
     slaPolicies(entityType: $entityType, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       id name entityType priority category teamId teamName
-      timezone responseMinutes resolveMinutes businessHours enabled
+      timezone responseMinutes resolveMinutes businessHours warningMinutes enabled
     }
   }
 `

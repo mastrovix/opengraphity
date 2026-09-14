@@ -114,7 +114,7 @@ export async function completeDeployPlanTask(_: unknown, args: { taskId: string 
 
     const ciName = await getCIName(session, tctx.ciId, ctx.tenantId)
     await writeAudit(session, tctx.changeId, ctx.tenantId, 'deploy_plan_completed', ctx.userId,
-      `${ciName}: piano completato (${steps.length} step)`)
+      `${ciName}: plan completed (${steps.length} steps)`, { key: 'planCompleted', params: { ci: ciName, count: String(steps.length) } })
 
     await computeAggregateRisk(session, tctx.changeId, ctx.tenantId)
     await evaluateAutoTransitions(session, tctx.changeId, ctx, afterEnterStep)

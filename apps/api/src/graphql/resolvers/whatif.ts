@@ -66,7 +66,8 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
       WITH impacted, path, length(path) AS dist
       ORDER BY dist ASC
       WITH impacted, collect(path)[0] AS bestPath, min(dist) AS distance
-      WITH impacted, distance, [n IN nodes(bestPath) | n.name] AS pathNames, labels(impacted) AS lbls
+      WITH impacted, distance, [n IN nodes(bestPath) | n.name] AS pathNames,
+           [l IN labels(impacted) WHERE l <> 'ConfigurationItem'] AS lbls
       RETURN impacted.id AS id, impacted.name AS name, lbls,
              impacted.environment AS env, impacted.status AS status,
              distance, pathNames
@@ -78,6 +79,7 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
   const impactedCIs = impactedRows.map(r => ({
     id:          r.id,
     name:        r.name,
+    // Giro del 14 set 2026 (#59): `labels()[0]` era sempre `ConfigurationItem`.
     type:        r.lbls?.[0] ?? 'Unknown',
     environment: r.env,
     status:      r.status,
@@ -114,11 +116,47 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
     } finally { await s3.close() }
   }
 
-  // ── Compute results in JS ─────────────────────────────────────────────
-  const impactedServices = impactedCIs.filter(c =>
-    c.type.toLowerCase().includes('application') || c.type.toLowerCase().includes('service'),
-  )
+  // ── Query 4: services whose map includes the target or an impacted CI ──
+  // Giro del 14 set 2026 (#59): i servizi erano i CI impattati con
+  // «application» o «service» nel nome dell'etichetta, quindi un database con
+  // un servizio dipendente (mostrato nel suo dettaglio) diceva «0 services».
+  // La sorgente è la stessa del dettaglio del CI: le mappe che lo includono.
+  type ServiceRow = { id: string; name: string; env: string | null; status: string | null; ciId: string }
+  let serviceRows: ServiceRow[] = []
+  {
+    const s4 = getSession(undefined, 'READ')
+    try {
+      serviceRows = await runQuery<ServiceRow>(s4, `
+        MATCH (m:ServiceMap {tenant_id: $tenantId})-[:INCLUDES]->(ci)
+        WHERE ci.tenant_id = $tenantId AND ci.id IN $ciIds
+        MATCH (ba {tenant_id: $tenantId})-[:HAS_SERVICE_MAP]->(m)
+        RETURN ba.id AS id, coalesce(m.name, ba.name) AS name, ba.environment AS env, ba.status AS status, ci.id AS ciId
+      `, { tenantId, ciIds: [ciId, ...impactedIds] })
+    } finally { await s4.close() }
+  }
+  const distanceOf = new Map<string, { distance: number; path: string[] }>([[ciId, { distance: 0, path: [targetName] }]])
+  for (const r of impactedRows) distanceOf.set(r.id, { distance: toNumber(r.distance), path: (r.pathNames ?? []).map(String) })
+  const closest = new Map<string, ServiceRow & { distance: number; path: string[] }>()
+  for (const row of serviceRows) {
+    const d = distanceOf.get(row.ciId)
+    if (!d) continue
+    const prev = closest.get(row.id)
+    if (!prev || d.distance < prev.distance) closest.set(row.id, { ...row, ...d })
+  }
+  const impactedServices = [...closest.values()]
+    .sort((a, b) => a.distance - b.distance || a.name.localeCompare(b.name))
+    .map((svc) => ({
+      id:          svc.id,
+      name:        svc.name,
+      type:        'BusinessApplication',
+      environment: svc.env,
+      status:      svc.status,
+      impactLevel: impactLevel(svc.distance, action),
+      impactPath:  svc.path,
+      isRedundant: false,
+    }))
 
+  // ── Compute results in JS ─────────────────────────────────────────────
   const totalImpacted = impactedCIs.length
   let riskScore = Math.min(totalImpacted * 10, 50)
   if (impactedServices.length > 0) riskScore += 20
@@ -126,10 +164,12 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
   if (action === 'remove') riskScore += 15
   riskScore = Math.min(riskScore, 100)
 
-  const actionLabel = action === 'remove' ? 'La rimozione' : "L'impatto su"
-  const summary = `${actionLabel} di ${targetName} impatta ${totalImpacted} CI, ${impactedServices.length} servizi, ${teams.length} team. Rischio: ${riskScore}/100.`
+  // Per chi legge l'API: la pagina compone la frase nella lingua dell'utente
+  // dai contatori (prima era una frase italiana composta qui).
+  const summary = `${action === 'remove' ? 'Removing' : 'An outage of'} ${targetName} impacts ${totalImpacted} CIs, ${impactedServices.length} services, ${teams.length} teams. Risk: ${riskScore}/100.`
 
-  await audit(ctx, 'whatif_analysis', 'CI', ciId, { action, totalImpacted, riskScore }).catch(() => {})
+  // `audit` registra da sé un errore di scrittura (lib/audit.ts): niente catch muto.
+  void audit(ctx, 'whatif_analysis', 'CI', ciId, { action, totalImpacted, riskScore })
   logger.info({ ciId, action, totalImpacted, riskScore, tenantId }, '[whatif] analysis complete')
 
   return {

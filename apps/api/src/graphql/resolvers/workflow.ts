@@ -42,6 +42,20 @@ import {
 export * from './workflowQueries.js'
 export * from './workflowMutations.js'
 
+/**
+ * Le traduzioni dell'etichetta le carica chi produce l'oggetto (workflowMapping,
+ * engine.getAvailableTransitions). Un produttore che se ne dimentica è un
+ * errore detto, non una lista vuota che farebbe vedere solo l'etichetta di base.
+ */
+function loadedLabels(typeName: string) {
+  return (parent: { labels?: unknown; label?: unknown }) => {
+    if (!Array.isArray(parent.labels)) {
+      throw new Error(`${typeName} "${String(parent.label)}": the producer did not load its labels`)
+    }
+    return parent.labels
+  }
+}
+
 // ── saveWorkflowLayout (kept here as it's a thin wrapper) ────────────────────
 
 async function saveWorkflowLayout(
@@ -202,7 +216,7 @@ async function removeWorkflowStep(
       .filter((r) => r.n > 0)
     const live = byStatus.reduce((acc, r) => acc + r.n, 0)
     if (live > 0) {
-      const detail = byStatus.map((r) => `${r.status ?? 'senza stato'}: ${r.n}`).join(', ')
+      const detail = byStatus.map((r) => `${r.status ?? 'no status'}: ${r.n}`).join(', ')
       throw new GraphQLError(
         `Step "${stepName}" cannot be deleted: ${live} workflow instances are on this step right now (${detail}). `
         + `Move them to another step first — deleting it would leave them without a current step, unable to transition.`,
@@ -338,7 +352,10 @@ export const workflowResolvers = {
   },
   WorkflowStep: {
     currentInstances: workflowStepCurrentInstances,
+    labels:           loadedLabels('WorkflowStep'),
   },
+  WorkflowTransition:    { labels: loadedLabels('WorkflowTransition') },
+  WorkflowTransitionDef: { labels: loadedLabels('WorkflowTransitionDef') },
   Incident: {
     workflowInstance:     incidentWorkflowInstance,
     availableTransitions: incidentAvailableTransitionsField,

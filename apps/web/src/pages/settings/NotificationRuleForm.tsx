@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { colors, fontWeight, lookupOrError, alpha, palette } from '@/lib/tokens'
-import { WORKFLOW_STEP_PURPOSES } from '@opengraphity/types'
+import { WORKFLOW_STEP_PURPOSES, NOTIFICATION_SEVERITIES } from '@opengraphity/types'
 import { SEVERITY_COLOR, CHANNEL_LABEL_KEY, STANDARD_EVENTS, TARGET_OPTIONS, routableFor, type NotificationRouting } from './NotificationRuleList'
 
 /**
@@ -44,7 +44,8 @@ export interface CreateInput {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const SEVERITY_OPTIONS = ['info', 'success', 'warning', 'error'] as const
+/** Dal vocabolario condiviso con la validazione dell'API (NT-1). */
+const SEVERITY_OPTIONS = NOTIFICATION_SEVERITIES
 
 const CUSTOM_SENTINEL = '__custom__'
 
@@ -75,11 +76,8 @@ export function NewRuleDialog({
   const [target,           setTarget]            = useState('all')
   // Escalation fields
   const [escalationDelay,   setEscalationDelay]  = useState('')
-  const [escalationTarget,  setEscalationTarget] = useState('')
   const [escalationMessage, setEscalationMessage]= useState('')
   // SLA warning fields
-  const [slaThreshold,     setSlaThreshold]      = useState('80')
-  const [slaTarget,        setSlaTarget]         = useState('all')
   // Digest fields
   const [digestTime,       setDigestTime]        = useState('08:00')
   // Restringimento della regola di passo (solo per i tipi `*.step_entered`)
@@ -89,7 +87,6 @@ export function NewRuleDialog({
   const isCustom          = eventTypeSelect === CUSTOM_SENTINEL
   const eventType         = isCustom ? customEventType.trim() : eventTypeSelect
   const isEscalation      = eventType === 'incident.escalation'
-  const isSlaWarning      = eventType === 'sla.warning'
   const isDigest          = eventType === 'digest.daily'
   // Tipo stabile di ingresso in un passo: è l'unico che accetta un
   // restringimento per scopo o categoria del passo (il server rifiuta il
@@ -176,11 +173,11 @@ export function NewRuleDialog({
 
         {isCustom && (
           <label style={labelStyle}>
-            <span style={labelTextStyle}>{t('notificationRules.eventType')} (custom)</span>
+            <span style={labelTextStyle}>{t('notificationRules.customEventType')}</span>
             <input
               value={customEventType}
               onChange={(e) => setCustomEventType(e.target.value)}
-              placeholder="es. workflow.step.entered"
+              placeholder={t('notificationRules.customEventPlaceholder')}
               style={inputStyle}
               // eslint-disable-next-line jsx-a11y/no-autofocus -- campo montato quando l'utente sceglie "evento custom": il focus segue la scelta
               autoFocus
@@ -194,7 +191,7 @@ export function NewRuleDialog({
           <input
             value={titleKey}
             onChange={(e) => setTitleKey(e.target.value)}
-            placeholder="es. notification.custom.my_event.title"
+            placeholder={t('notificationRules.titleKeyPlaceholder')}
             style={inputStyle}
           />
         </label>
@@ -271,29 +268,11 @@ export function NewRuleDialog({
           <>
             <label style={labelStyle}>
               <span style={labelTextStyle}>{t('notificationRules.escalationDelay')}</span>
-              <input type="number" min={1} value={escalationDelay} onChange={e => setEscalationDelay(e.target.value)} style={inputStyle} placeholder="es. 30" />
-            </label>
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>{t('notificationRules.escalationTarget')}</span>
-              <input value={escalationTarget} onChange={e => setEscalationTarget(e.target.value)} style={inputStyle} placeholder="all" />
+              <input type="number" min={1} value={escalationDelay} onChange={e => setEscalationDelay(e.target.value)} style={inputStyle} placeholder="30" />
             </label>
             <label style={labelStyle}>
               <span style={labelTextStyle}>{t('notificationRules.escalationMessage')}</span>
               <input value={escalationMessage} onChange={e => setEscalationMessage(e.target.value)} style={inputStyle} placeholder={t('notificationRules.escalationMessagePlaceholder')} />
-            </label>
-          </>
-        )}
-
-        {/* SLA warning conditional fields */}
-        {isSlaWarning && (
-          <>
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>{t('notificationRules.slaThreshold')}</span>
-              <input type="number" min={1} max={100} value={slaThreshold} onChange={e => setSlaThreshold(e.target.value)} style={inputStyle} placeholder="80" />
-            </label>
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>{t('notificationRules.slaWarningTarget')}</span>
-              <input value={slaTarget} onChange={e => setSlaTarget(e.target.value)} style={inputStyle} placeholder="all" />
             </label>
           </>
         )}
@@ -323,10 +302,7 @@ export function NewRuleDialog({
               stepPurpose:  isStepEntered ? stepPurpose  || undefined : undefined,
               stepCategory: isStepEntered && !stepPurpose ? stepCategory || undefined : undefined,
               escalationDelayMinutes: isEscalation && escalationDelay ? Number(escalationDelay) : undefined,
-              escalationTarget:  isEscalation ? escalationTarget || undefined : undefined,
               escalationMessage: isEscalation ? escalationMessage || undefined : undefined,
-              slaWarningThresholdPercent: isSlaWarning && slaThreshold ? Number(slaThreshold) : undefined,
-              slaWarningTarget: isSlaWarning ? slaTarget || undefined : undefined,
               digestTime: isDigest ? digestTime || undefined : undefined,
             })}
             disabled={!canSave || saving}

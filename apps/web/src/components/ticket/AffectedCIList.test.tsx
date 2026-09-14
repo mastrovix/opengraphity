@@ -12,7 +12,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen } from '@testing-library/react'
 import { AffectedCIList, type AffectedCIRef } from './AffectedCIList'
-import { CI_STATUS_STYLE } from '@/lib/ciEnums'
+import { palette } from '@/lib/tokens'
+import { DomainVocabularyContext } from '@/contexts/DomainVocabularyContext'
 import { NEUTRAL_VALUE_STYLE } from '@/lib/domainStyle'
 import { renderWithProviders } from '@/test/utils'
 import { baseCITypeMock } from '@/test/mocks/gql'
@@ -26,14 +27,20 @@ beforeEach(() => { consoleError = vi.spyOn(console, 'error').mockImplementation(
  * riguarda questo test.
  */
 const paletteErrors = (): string[] =>
-  (consoleError.mock.calls as unknown[][]).map((c) => String(c[0])).filter((m: string) => m.startsWith('[CI_STATUS_STYLE]'))
+  (consoleError.mock.calls as unknown[][]).map((c) => String(c[0])).filter((m: string) => m.startsWith('[ci_status]'))
 
 const ci = (over: Partial<AffectedCIRef>): AffectedCIRef =>
   ({ id: 'ci-1', name: 'db-01', type: 'server', status: 'active', environment: 'production', ...over })
 
 /** L'elenco vive dentro un `CollapsibleGroup` per tipo, chiuso di default: si apre. */
 async function render(cis: AffectedCIRef[], statuses?: string[]) {
+  // I colori del Dizionario (F9): `maintenance` giallo-avviso, come il seme del prodotto.
+  const vocab = {
+    valuesOf: () => null, labelOf: () => null, entriesOf: () => null, loading: false, error: null,
+    colorOf: (name: string, value: string) => (name === 'ci_status' && value === 'maintenance' ? 'warning' as const : null),
+  }
   const r = renderWithProviders(
+    <DomainVocabularyContext.Provider value={vocab}>
     <AffectedCIList
       affectedCIs={cis}
       rules={[]}
@@ -42,7 +49,8 @@ async function render(cis: AffectedCIRef[], statuses?: string[]) {
       onAddCI={vi.fn()}
       onRemoveCI={vi.fn()}
       defaultOpen
-    />,
+    />
+    </DomainVocabularyContext.Provider>,
     { mocks: [baseCITypeMock(statuses)] },
   )
   await r.user.click(await screen.findByRole('button', { name: /server/i }))
@@ -53,7 +61,7 @@ describe('AffectedCIList — pastiglia dello stato del CI', () => {
   it('stato con un colore assegnato → quel colore, ed etichetta leggibile', async () => {
     await render([ci({ status: 'maintenance' })])
     const pill = await screen.findByText('Maintenance')
-    expect(pill).toHaveStyle({ backgroundColor: CI_STATUS_STYLE['maintenance']!.bg, color: CI_STATUS_STYLE['maintenance']!.color })
+    expect(pill).toHaveStyle({ backgroundColor: palette.warning.tint, color: palette.warning.text })
     expect(paletteErrors()).toEqual([])
   })
 
@@ -68,6 +76,6 @@ describe('AffectedCIList — pastiglia dello stato del CI', () => {
     await render([ci({ status: 'zombie' })], ['active', 'inactive'])
     const pill = await screen.findByText('Zombie')
     expect(pill).toHaveStyle({ backgroundColor: 'var(--color-danger)' })
-    expect(paletteErrors()).toContain('[CI_STATUS_STYLE] "zombie" is not in the vocabulary of this tenant (active, inactive)')
+    expect(paletteErrors()).toContain('[ci_status] "zombie" is not in the vocabulary of this tenant (active, inactive)')
   })
 })

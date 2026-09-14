@@ -53,6 +53,22 @@ import { teamTypeEtichette } from './20260921_1010_team_type_etichette.js'
 import { reportSectionGroupNode } from './20260922_1000_report_section_group_node.js'
 import { concludedTicketsSla } from './20260922_1010_concluded_tickets_sla.js'
 import { shippedMetamodelLabels } from './20260922_1020_shipped_metamodel_labels.js'
+import { problemKnownErrorPurpose } from './20260923_1000_problem_known_error_purpose.js'
+import { notificationRuleSeverity } from './20260923_1010_notification_rule_severity.js'
+import { ticketOrphansCleanup } from './20260923_1020_ticket_orphans_cleanup.js'
+import { commentsSingleModel } from './20260923_1030_comments_single_model.js'
+import { majorIncidentNotificationRule } from './20260923_1040_major_incident_notification_rule.js'
+import { slaWarningMinutes } from './20260923_1050_sla_warning_minutes.js'
+import { changeTaskCounters } from './20260923_1060_change_task_counters.js'
+import { reportDashboardChildrenTenant } from './20260923_1070_report_dashboard_children_tenant.js'
+import { changeNumber } from './20260923_1080_change_number.js'
+import { slaPolicyTimezoneInherit } from './20260924_1000_sla_policy_timezone_inherit.js'
+import { environmentRiskMatrix } from './20260924_1010_environment_risk_matrix.js'
+import { valueColorsKbCategory } from './20260924_1020_value_colors_kb_category.js'
+import { serviceCalendar } from './20260924_1030_service_calendar.js'
+import { kbPublishedAt } from './20260924_1040_kb_published_at.js'
+import { changeEnvironmentWeightSeed } from './20260924_1050_change_environment_weight.js'
+import { workflowLabelsByLanguage } from './20260924_1060_workflow_labels_by_language.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -100,4 +116,20 @@ export const MIGRATIONS: readonly Migration[] = [
   reportSectionGroupNode,
   concludedTicketsSla,
   shippedMetamodelLabels,
+  problemKnownErrorPurpose,
+  notificationRuleSeverity,
+  ticketOrphansCleanup,
+  commentsSingleModel,
+  majorIncidentNotificationRule,
+  slaWarningMinutes,
+  changeTaskCounters,
+  reportDashboardChildrenTenant,
+  changeNumber,
+  slaPolicyTimezoneInherit,
+  environmentRiskMatrix,
+  valueColorsKbCategory,
+  serviceCalendar,
+  kbPublishedAt,
+  changeEnvironmentWeightSeed,
+  workflowLabelsByLanguage,
 ]

@@ -84,6 +84,14 @@ export async function approveChangeApproval(_: unknown, args: { changeId: string
     // Una transizione fallita qui NON è tollerabile: l'utente vedrebbe
     // "approvato" con la change ferma per sempre in approval.
     if (await areAllApprovalsSatisfied(session, args.changeId, ctx.tenantId)) {
+      // L'esito si scrive: prima `approval_status` restava null anche con tutti
+      // i requisiti approvati (giro nel browser del 14 set 2026), e REST, PDF,
+      // impatto e ticket collegati mostravano la change senza esito.
+      await runQueryOne(session, `
+        MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
+        SET c.approval_status = 'approved', c.updated_at = $now
+        RETURN c.id AS id
+      `, { changeId: args.changeId, tenantId: ctx.tenantId, now })
       const instanceId = await getInstanceId(session, args.changeId, ctx.tenantId)
       // Il bersaglio è il passo di SCOPO `scheduled` del tenant, non il nome
       // `scheduled`: fra i candidati si preferisce quello davvero raggiungibile
@@ -91,7 +99,7 @@ export async function approveChangeApproval(_: unknown, args: { changeId: string
       // e indica il disegnatore (prima: un CONFLICT che non spiegava niente).
       const avail = await workflowEngine.getAvailableTransitions(session, instanceId, ctx.tenantId)
       const toStep = await targetStepByPurpose(session, ctx.tenantId, 'change', ['scheduled'],
-        'avanzamento della change dopo le approvazioni complete', avail.map((t) => t.toStep))
+        'change advance after all approvals', avail.map((t) => t.toStep))
       const res = await workflowEngine.transition(session, { instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: await systemText(ctx.tenantId, 'change.approvalsComplete') }, { userId: ctx.userId ?? 'system', entityData: {} })
       if (!res.success) {
         throw new GraphQLError(`Approvals complete but the change did not move to "${toStep}": ${res.error ?? 'transition failed'}`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.approval.didNotAdvance', params: { step: toStep, reason: res.error ?? '' } } } })
@@ -108,7 +116,7 @@ export async function rejectChangeApproval(_: unknown, args: { changeId: string;
   const reopenAll = args.reopenAll ?? false
   const reopenIds = args.reopenTaskIds ?? []
   if (!reopenAll && reopenIds.length === 0) {
-    throw new GraphQLError('Seleziona quali assessment riaprire (o scegli "tutti")', { extensions: { code: 'BAD_USER_INPUT' } })
+    throw new GraphQLError('Choose which assessments to reopen (or choose "all")', { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.change.chooseAssessmentsToReopen' } } })
   }
   return withSession(async (session) => {
     const { changeType, teamName } = await assertInApproval(session, args.changeId, args.teamId, ctx.tenantId)
@@ -133,7 +141,7 @@ export async function rejectChangeApproval(_: unknown, args: { changeId: string;
       WITH c, t
       OPTIONAL MATCH (c)-[r:AFFECTS_CI]->(ci {id: t.ci_id}) SET r.risk_score = null, r.ci_phase = 'assessment'
       WITH DISTINCT c
-      SET c.aggregate_risk_score = null, c.approval_route = null, c.approval_status = null,
+      SET c.aggregate_risk_score = null, c.approval_route = null, c.approval_status = 'rejected',
           c.priority = $priority, c.updated_at = $now
       WITH c
       OPTIONAL MATCH (c)-[:HAS_APPROVAL]->(a:ChangeApproval)
@@ -145,7 +153,7 @@ export async function rejectChangeApproval(_: unknown, args: { changeId: string;
     // può averlo chiamato «valutazione»), preferendo quello raggiungibile.
     const availReject = await workflowEngine.getAvailableTransitions(session, instanceId, ctx.tenantId)
     const backStep = await targetStepByPurpose(session, ctx.tenantId, 'change', ['assessment'],
-      'rientro della change dopo un rifiuto dell\'approvazione', availReject.map((t) => t.toStep))
+      'change return after an approval rejection', availReject.map((t) => t.toStep))
     const res = await workflowEngine.transition(session, { instanceId, toStepName: backStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: await systemText(ctx.tenantId, 'change.approvalRejected', { note: args.note.trim() }) }, { userId: ctx.userId ?? 'system', entityData: {} })
     // Se fallisce, la change resta in approval con i task riaperti e senza
     // requisiti: il gate blocca l'approvazione e il rigetto è ripetibile.
@@ -180,6 +188,9 @@ export async function changeApprovals(parent: { id: string }, _: unknown, ctx: G
       approvedByName: r.approvedByName,
       approvedAt:     r.approvedAt,
       canApprove:     r.status === 'pending' && (isAdmin || r.isMember),
+      // Giro del 14 set 2026 (#34): l'admin approva anche a nome di un team di
+      // cui non fa parte; la pagina glielo dice e chiede conferma.
+      onBehalf:       r.status === 'pending' && isAdmin && !r.isMember,
     }))
   })
 }

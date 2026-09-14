@@ -40,15 +40,21 @@ import type { Session } from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
 import { getSchemaState } from './schemaCache.js'
 import { tenantProvisioningGaps, type ProvisioningGap } from './provisionTenantData.js'
-import { DOMAIN_MATRIX_KINDS, domainVocabulary, loadDomainMatrix, matrixKey, type DomainMatrixKind } from './domainMatrix.js'
+import { DOMAIN_MATRIX_KINDS, domainVocabulary, loadDomainMatrix, matrixKey, matrixOutputValues, type DomainMatrixKind } from './domainMatrix.js'
 import { CI_STATUS_VOCABULARY } from './eventVocabularies.js'
 import { LIFECYCLE_POLICY_LISTS } from './eventPolicy.js'
 import { getEventPolicy } from '../services/events/policy.js'
 import { logger } from './logger.js'
 import { LINGUE, parseValueLabels, vocabularyCarriesLabels } from './enumValueLabels.js'
 import { tenantDefaultLanguage, LINGUA_DI_ULTIMA_ISTANZA } from './tenantLanguage.js'
+import { tenantTimezone } from './tenantTimezone.js'
+import { businessHoursUsers, tenantServiceCalendar } from './tenantServiceCalendar.js'
+import { pendingMigrations } from './migrationState.js'
 import { teamsWithoutSourcing } from './teamSourcing.js'
 import { ticketsWithoutSla } from './ticketsWithoutSla.js'
+import { workflowsMissingStepRoles } from './workflowStepRoles.js'
+import { vocabulariesBehindShipped } from './vocabularyShippedDrift.js'
+import { slaPoliciesWarningNotBeforeDeadline } from './slaWarningCheck.js'
 
 const log = logger.child({ module: 'configuration-issues' })
 
@@ -65,8 +71,17 @@ export type ConfigurationIssueKind =
   | 'value_labels_missing'
   | 'value_labels_partial'
   | 'default_language_not_set'
+  | 'timezone_not_set'
+  | 'service_calendar_not_set'
+  | 'migrations_pending'
   | 'teams_without_sourcing'
   | 'tickets_without_sla'
+  | 'workflow_step_categories_missing'
+  | 'workflow_step_purposes_missing'
+  | 'workflow_optional_step_categories_missing'
+  | 'workflow_optional_step_purposes_missing'
+  | 'vocabulary_behind_shipped'
+  | 'sla_warning_not_before_deadline'
 
 export interface ConfigurationIssue {
   /** La CHIAVE del problema: il client la risolve nella sua lingua. */
@@ -89,7 +104,7 @@ export async function configurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkLanguage, checkTeamSourcing, checkTicketsWithoutSla]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -134,7 +149,7 @@ async function checkMatrices(tenantId: string): Promise<ConfigurationIssue[]> {
     const spec   = DOMAIN_MATRIX_KINDS[kind]
     const matrix = await loadDomainMatrix(tenantId, kind)
     const inputValues  = await Promise.all(spec.inputs.map((v) => domainVocabulary(tenantId, v)))
-    const outputValues = await domainVocabulary(tenantId, spec.output)
+    const outputValues = await matrixOutputValues(tenantId, kind)
 
     // UN VOCABOLARIO VUOTO non e un problema della matrice (terza revisione · M10).
     // `cartesian([])` e vuoto, quindi `wanted` e vuoto, quindi OGNI chiave
@@ -285,6 +300,94 @@ async function checkLanguage(tenantId: string): Promise<ConfigurationIssue[]> {
     kind: 'default_language_not_set', severity: 'warning', where: '/settings/organization',
     params: { fallback: LINGUA_DI_ULTIMA_ISTANZA, available: LINGUE.join(', ') },
   }]
+}
+
+/**
+ * IL FUSO NON CONFIGURATO (revisione del 14 set 2026 · F7).
+ *
+ * È un errore e non un avviso: senza fuso le scadenze SLA/OLA, il digest e le
+ * date dei messaggi falliscono, e nessun ripiego è giusto (il fuso del server
+ * non è quello del cliente). Si sceglie dalla pagina Organizzazione.
+ */
+async function checkTimezone(tenantId: string): Promise<ConfigurationIssue[]> {
+  if (await tenantTimezone(tenantId) !== null) return []
+  return [{ kind: 'timezone_not_set', severity: 'error', where: '/settings/organization', params: {} }]
+}
+
+/** Le policy SLA con il preavviso non prima della scadenza: vedi lib/slaWarningCheck.ts. */
+async function checkSlaWarnings(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const bad = await slaPoliciesWarningNotBeforeDeadline(session, tenantId)
+  if (bad.length === 0) return []
+  return [{
+    kind: 'sla_warning_not_before_deadline', severity: 'error', where: '/admin/sla-policies',
+    params: { count: String(bad.length), details: bad.map((b) => `«${b.name}»: ${b.warningMinutes} / ${b.resolveMinutes} min`).join(' · ') },
+  }]
+}
+
+/**
+ * LE COPIE DEI VOCABOLARI RIMASTE INDIETRO (revisione del 14 set 2026 · F20).
+ *
+ * Il prodotto ha aggiunto valori a un vocabolario spedito che il cliente ha
+ * personalizzato, e la copia — che per scelta non si sovrascrive — non li ha.
+ * Avviso: niente è rotto, ma il cliente non vede quello che il prodotto ha
+ * aggiunto. Si decide dal Dizionario: adottarli, o tenerli fuori.
+ */
+async function checkVocabulariesBehindShipped(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const behind = await vocabulariesBehindShipped(session, tenantId)
+  if (behind.length === 0) return []
+  return [{
+    kind: 'vocabulary_behind_shipped', severity: 'warning', where: '/settings/enum-designer',
+    params: { count: String(behind.length), details: behind.map((b) => `«${b.name}»: ${b.newValues.join(', ')}`).join(' · ') },
+  }]
+}
+
+/**
+ * I RUOLI DEI PASSI CHE MANCANO (revisione del 14 set 2026 · F17).
+ *
+ * Il codice cerca i passi per categoria e per scopo, non per nome
+ * (`lib/workflowStepRoles.ts`). Un workflow a cui manca un ruolo OBBLIGATORIO fa
+ * fermare un'operazione (errore); uno a cui manca un ruolo FACOLTATIVO spegne
+ * un comportamento senza dirlo (avviso). Una voce per workflow, gravità e tipo di ruolo;
+ * i valori mancanti sono dati, la frase la compone il client.
+ */
+async function checkWorkflowStepRoles(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const out: ConfigurationIssue[] = []
+  for (const m of await workflowsMissingStepRoles(session, tenantId)) {
+    for (const [values, kind, severity] of [
+      [m.required.categories, 'workflow_step_categories_missing', 'error'],
+      [m.required.purposes, 'workflow_step_purposes_missing', 'error'],
+      [m.optional.categories, 'workflow_optional_step_categories_missing', 'warning'],
+      [m.optional.purposes, 'workflow_optional_step_purposes_missing', 'warning'],
+    ] as const) {
+      if (values.length === 0) continue
+      out.push({ kind, severity, where: '/workflow', params: { workflow: m.workflow, entityType: m.entityType, missing: values.join(', ') } })
+    }
+  }
+  return out
+}
+
+/**
+ * LE MIGRAZIONI PENDENTI (revisione del 14 set 2026 · F8). Non riguardano un
+ * cliente ma tutti: l'admin le vede perché il sintomo — dati e schema non
+ * allineati — lo vede lui per primo. Si rimedia lanciando `migrate.js`.
+ */
+async function checkMigrations(_tenantId: string): Promise<ConfigurationIssue[]> {
+  const pending = await pendingMigrations()
+  if (pending.length === 0) return []
+  return [{ kind: 'migrations_pending', severity: 'error', where: null, params: { count: String(pending.length), migrations: pending.join(', ') } }]
+}
+
+/**
+ * IL CALENDARIO DI SERVIZIO NON CONFIGURATO (revisione del 14 set 2026 · F6).
+ *
+ * Errore solo se qualcuno lo usa: una policy SLA o un contratto OLA in orario
+ * lavorativo senza calendario non sa calcolare la scadenza, e il motore lo dice
+ * al primo ticket. Qui lo si dice prima.
+ */
+async function checkServiceCalendar(tenantId: string): Promise<ConfigurationIssue[]> {
+  const users = await businessHoursUsers(tenantId)
+  if (users === 0 || await tenantServiceCalendar(tenantId) !== null) return []
+  return [{ kind: 'service_calendar_not_set', severity: 'error', where: '/settings/organization', params: { count: String(users) } }]
 }
 
 /**

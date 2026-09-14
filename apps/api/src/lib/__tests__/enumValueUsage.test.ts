@@ -127,8 +127,8 @@ describe('enumValueUsageMessage', () => {
     const msg = enumValueUsageMessage('ci_status', [
       { value: 'decommissioned', records: [{ typeName: '__base__', fieldName: 'status', count: 12 }], policyLists: ['retired_statuses'], matrices: [], configSites: [], total: 13 },
     ])
-    expect(msg).toContain('Il vocabolario "ci_status" non può perdere questi valori')
-    expect(msg).toContain('"decommissioned" è ancora usato da 12 __base__.status, la policy degli allarmi (retired_statuses)')
+    expect(msg).toContain('The dictionary "ci_status" cannot lose these values')
+    expect(msg).toContain('"decommissioned" is still used by 12 __base__.status, the alarm policy (retired_statuses)')
     expect(msg).toContain('replacements: [{from: "…", to: "…"}]')
   })
 })
@@ -201,9 +201,9 @@ describe('il conteggio copre i vocabolari di dominio e le matrici', () => {
       [{ kind: 'priority', entries: JSON.stringify({ 'low|low': 'low', 'high|high': 'p1' }) }],
     ])
     const out = await countEnumValueUsage(s as never, 'acme', 'priority', ['p1'])
-    expect(out[0]!.matrices).toEqual(['priority (cella "high|high")'])
+    expect(out[0]!.matrices).toEqual(['priority (cell "high|high")'])
     expect(out[0]!.total).toBe(1)
-    expect(enumValueUsageMessage('priority', out)).toContain('la matrice priority (cella "high|high")')
+    expect(enumValueUsageMessage('priority', out)).toContain('the priority (cell "high|high") matrix')
   })
 
   it('una CHIAVE della matrice che cita il valore è un uso (il caso misurato dal vivo)', async () => {
@@ -220,7 +220,7 @@ describe('il conteggio copre i vocabolari di dominio e le matrici', () => {
     const out = await countEnumValueUsage(s as never, 'acme', 'impact', ['estremo'])
     expect(out[0]!.matrices).toEqual([
       'priority (chiave "estremo|low")',
-      'service_impact (cella "mission_critical")',
+      'service_impact (cell "mission_critical")',
     ])
   })
 })
@@ -316,7 +316,7 @@ describe('il perimetro della configurazione', () => {
     const s = smistante({ conditions: [REGOLA] })
     const out = await countEnumValueUsage(s as never, 'acme', 'severity', ['critical'])
     expect(out).toHaveLength(1)
-    expect(out[0]!.configSites).toEqual(['le condizioni di una Business Rule «Incident security critico → SecOps»'])
+    expect(out[0]!.configSites).toEqual(['the conditions of a Business Rule «Incident security critico → SecOps»'])
     expect(out[0]!.total).toBe(1)
     expect(enumValueUsageMessage('severity', out)).toContain('Business Rule')
   })
@@ -368,7 +368,7 @@ describe('il perimetro della configurazione', () => {
     ]) }]
     const out = await countEnumValueUsage(smistante({ thresholds }) as never, 'acme', 'risk_band', ['low'])
     expect(out).toHaveLength(1)
-    expect(out[0]!.configSites).toEqual(['le soglie delle fasce di rischio'])
+    expect(out[0]!.configSites).toEqual(['the risk band thresholds'])
 
     const s = smistante({ thresholds })
     await replaceEnumValue(s as never, 'acme', 'risk_band', 'low', 'basso')
@@ -384,7 +384,7 @@ describe('il perimetro della configurazione', () => {
     const scalar = { trigger_value: [{ value: 'hardware', field: 'category', name: 'Mostra il modello' }] }
     const conCategory = await countEnumValueUsage(smistante({ scalar }) as never, 'acme', 'category', ['hardware'])
     expect(conCategory).toHaveLength(1)
-    expect(conCategory[0]!.configSites[0]).toContain('visibilita')
+    expect(conCategory[0]!.configSites[0]).toContain('visibility')
     // Con un altro vocabolario la stessa riga non conta: `trigger_field` dice «category».
     const conAltro = await countEnumValueUsage(smistante({ scalar }) as never, 'acme', 'environment', ['hardware'])
     expect(conAltro).toEqual([])

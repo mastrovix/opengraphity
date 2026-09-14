@@ -16,6 +16,8 @@ import {
 import { audit } from './audit.js'
 import type { GraphQLContext } from '../context.js'
 import { logger } from './logger.js'
+import { parseLocalizedLabels, localizedLabel } from '@opengraphity/types'
+import { languageFor } from './tenantLanguage.js'
 
 /**
  * Etichetta, scopo, categoria e id del passo `stepName` nel workflow attivo
@@ -35,25 +37,30 @@ export async function loadStepFacts(
   session: Session, tenantId: string, entityType: string, stepName: string,
 ): Promise<StepEnteredFacts> {
   const row = await runQueryOne<{
-    stepId: string; label: string | null; purpose: string | null; category: string | null
+    stepId: string; label: string | null; labels: string | null; purpose: string | null; category: string | null
   }>(session, `
     MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
     MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep {name: $stepName})
-    RETURN s.id AS stepId, s.label AS label, s.purpose AS purpose, s.category AS category,
+    RETURN s.id AS stepId, s.label AS label, s.labels AS labels, s.purpose AS purpose, s.category AS category,
            wd.version AS version
     ORDER BY version DESC
     LIMIT 1
   `, { tenantId, entityType, stepName })
   if (!row) {
     throw new Error(
-      `Tenant ${tenantId}: il passo "${stepName}" non esiste nel workflow attivo "${entityType}" — ` +
-      `impossibile comporre l'evento di ingresso nel passo (etichetta, scopo e categoria del passo).`,
+      `Tenant ${tenantId}: step "${stepName}" does not exist in the active "${entityType}" workflow — ` +
+      `the step-entered event cannot be built (step label, purpose and category).`,
     )
   }
+  // L'etichetta nella lingua del cliente (giro del 14 set 2026, #22): la
+  // notifica si compone una volta per tutti, quindi vale la lingua predefinita
+  // dell'organizzazione, non quella di chi la leggerà.
+  const base = row.label ?? stepName
+  const stepLabel = localizedLabel(base, parseLocalizedLabels(row.labels, `step ${row.stepId}`), await languageFor(tenantId))
   return {
     step_id:       row.stepId,
     step_name:     stepName,
-    step_label:    row.label ?? stepName,
+    step_label:    stepLabel,
     step_purpose:  row.purpose ?? null,
     step_category: row.category ?? null,
   }

@@ -65,8 +65,8 @@ export const RELATIONSHIP_TYPE_MAX_LENGTH = 64
 export function assertRelationshipTypeName(value: unknown, what: string): string {
   if (typeof value !== 'string' || !RELATIONSHIP_TYPE_RE.test(value) || value.length > RELATIONSHIP_TYPE_MAX_LENGTH) {
     throw new Error(
-      `${what}: ${JSON.stringify(value)} non è un tipo di relazione valido. ` +
-      `Ammesso ${RELATIONSHIP_TYPE_RE.source} (MAIUSCOLO_CON_UNDERSCORE), al massimo ${RELATIONSHIP_TYPE_MAX_LENGTH} caratteri.`,
+      `${what}: ${JSON.stringify(value)} is not a valid relationship type. ` +
+      `Allowed ${RELATIONSHIP_TYPE_RE.source} (UPPERCASE_WITH_UNDERSCORES), at most ${RELATIONSHIP_TYPE_MAX_LENGTH} characters.`,
     )
   }
   return value
@@ -129,7 +129,7 @@ function loadRolesAndRelations(tenantId: string): Promise<TenantCIMetamodel> {
         // le relazioni dei tipi spediti sono la struttura del prodotto.
         if (t.scope !== 'tenant') continue
         for (const r of t.relations) {
-          for (const rt of splitRelationshipTypes(r.relationshipType, `CIRelationDefinition "${r.name}" del tipo "${t.name}"`)) {
+          for (const rt of splitRelationshipTypes(r.relationshipType, `CIRelationDefinition "${r.name}" of type "${t.name}"`)) {
             relationshipTypes.add(rt)
           }
         }

@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import type { TFunction } from 'i18next'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { PageContainer } from '@/components/PageContainer'
@@ -28,8 +29,8 @@ import { errorMessage } from '@/hooks/useMutationWithToast'
 interface SLAPolicy {
   id: string; name: string; entityType: string; priority: string | null
   category: string | null; teamId: string | null; teamName: string | null
-  timezone: string; responseMinutes: number; resolveMinutes: number
-  businessHours: boolean; enabled: boolean
+  timezone: string | null; responseMinutes: number; resolveMinutes: number
+  businessHours: boolean; warningMinutes: number; enabled: boolean
 }
 
 interface Team { id: string; name: string }
@@ -37,7 +38,7 @@ interface Team { id: string; name: string }
 type FormState = {
   name: string; entityType: string; priority: string; category: string
   teamId: string; responseMinutes: number; resolveMinutes: number
-  businessHours: boolean; timezone: string
+  businessHours: boolean; timezone: string; warningMinutes: number
 }
 
 const EMPTY_FORM: FormState = {
@@ -45,28 +46,26 @@ const EMPTY_FORM: FormState = {
   teamId: '', responseMinutes: 60, resolveMinutes: 480,
   // Fuso vuoto = quello del cliente: lo sceglie l'API, non una costante qui.
   businessHours: true, timezone: '',
+  // Il valore con cui nasce una policy: si cambia qui sotto (NT-8/F6).
+  warningMinutes: DEFAULT_SLA_WARNING_MINUTES,
 }
 
 const policyToForm = (p: SLAPolicy): FormState => ({
   name: p.name, entityType: p.entityType, priority: p.priority ?? '',
   category: p.category ?? '', teamId: p.teamId ?? '',
   responseMinutes: p.responseMinutes, resolveMinutes: p.resolveMinutes,
-  businessHours: p.businessHours, timezone: p.timezone,
+  businessHours: p.businessHours, timezone: p.timezone ?? '', warningMinutes: p.warningMinutes,
 })
 
-import { SLA_ENTITY_TYPES as ENTITY_TYPES, SLA_CATEGORY_ENTITY_TYPES } from '@opengraphity/types'
+import { SLA_ENTITY_TYPES as ENTITY_TYPES, SLA_CATEGORY_ENTITY_TYPES, DEFAULT_SLA_WARNING_MINUTES } from '@opengraphity/types'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
-import { lookupOrError, palette } from '@/lib/tokens'
-
-const ENTITY_LABELS: Record<string, string> = {
-  incident: 'Incident', problem: 'Problem', service_request: 'Service Request',
-}
+import { palette } from '@/lib/tokens'
 
 type VocabEntries = ReadonlyArray<{ value: string; label?: string | null }>
 // Valori e etichette dai vocabolari del cliente: prima erano tre liste scritte qui.
-const slaFilterFields = (t: TFunction, priorities: VocabEntries, categories: VocabEntries): FieldConfig[] => [
+const slaFilterFields = (t: TFunction, priorities: VocabEntries, categories: VocabEntries, labelOf: (entityType: string) => string): FieldConfig[] => [
   { key: 'entityType', label: t('admin.sla.entityType'), type: 'enum', options:
-    ENTITY_TYPES.map((et) => ({ value: et, label: ENTITY_LABELS[et] ?? et })) },
+    ENTITY_TYPES.map((et) => ({ value: et, label: labelOf(et) })) },
   { key: 'priority', label: t('admin.sla.priority'), type: 'enum', options:
     priorities.map((v) => ({ value: v.value, label: v.label ?? v.value })) },
   { key: 'category', label: t('admin.sla.category'), type: 'enum', options:
@@ -91,8 +90,6 @@ function fmtMinutes(m: number, t: TFunction): string {
   return d === Math.floor(d) ? u('days', d) : `${u('days', Math.floor(d))} ${fmtMinutes(m % 1440, t)}`
 }
 
-const entityName = (et: string) => lookupOrError(ENTITY_LABELS, et, 'ENTITY_LABELS', et)
-
 function scopeParts(priority: string | null, category: string | null, teamName: string | null, t: TFunction, label: (vocab: string, v: string) => string): string[] {
   const parts: string[] = []
   if (priority) parts.push(t('admin.sla.scopePriority', { value: label('priority', priority) }))
@@ -105,6 +102,8 @@ function scopeParts(priority: string | null, category: string | null, teamName: 
 
 export function SLAPoliciesPage() {
   const { t } = useTranslation()
+  // F16: le etichette dei tipi ITIL vengono dal metamodello del cliente.
+  const { labelOf: typeLabel } = useItilTypeLabels()
   const confirm = useConfirm()
   const list  = useListQueryState()
   const modal = useCrudModal<SLAPolicy, FormState>(EMPTY_FORM, policyToForm)
@@ -161,7 +160,7 @@ export function SLAPoliciesPage() {
       priority: form.priority || null, category: hasCategory ? (form.category || null) : null,
       teamId: form.teamId || null,
       responseMinutes: Number(form.responseMinutes), resolveMinutes: Number(form.resolveMinutes),
-      businessHours: form.businessHours, timezone: form.timezone.trim() || null,
+      businessHours: form.businessHours, timezone: form.timezone.trim() || null, warningMinutes: form.warningMinutes,
     }
     try {
       if (modal.editing) {
@@ -230,8 +229,8 @@ export function SLAPoliciesPage() {
     const team = teams.find(tm => tm.id === form.teamId)
     const scope = scopeParts(form.priority, form.category, team?.name ?? null, t, vocabLabel)
     return scope.length === 0
-      ? t('admin.sla.previewAll',  { entity: entityName(form.entityType) })
-      : t('admin.sla.previewSome', { entity: entityName(form.entityType), scope: scope.join(', ') })
+      ? t('admin.sla.previewAll',  { entity: typeLabel(form.entityType) })
+      : t('admin.sla.previewSome', { entity: typeLabel(form.entityType), scope: scope.join(', ') })
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -242,7 +241,7 @@ export function SLAPoliciesPage() {
         <div>
           <PageTitle icon={<Shield size={22} color="var(--color-icon-accent)" />}>{t('sidebar.slaPolicies')}</PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${policies.length} policy`}
+            {loading ? '—' : t('pages.slaPolicies.count', { count: policies.length })}
           </p>
         </div>
         <Button icon={<Plus size={15} aria-hidden="true" />} onClick={modal.openCreate}>{t('pages.slaPolicies.newPolicy')}</Button>
@@ -256,12 +255,12 @@ export function SLAPoliciesPage() {
         />
       )}
 
-      <FilterBuilder fields={slaFilterFields(t, [...(entriesOf('severity') ?? []), ...(entriesOf('priority') ?? [])].filter((v, i, a) => a.findIndex((x) => x.value === v.value) === i), entriesOf('category') ?? [])} onApply={list.setFilterGroup} />
+      <FilterBuilder fields={slaFilterFields(t, [...(entriesOf('severity') ?? []), ...(entriesOf('priority') ?? [])].filter((v, i, a) => a.findIndex((x) => x.value === v.value) === i), entriesOf('category') ?? [], typeLabel)} onApply={list.setFilterGroup} />
 
       {Object.entries(grouped).map(([entityType, items]) => (
         <div key={entityType} style={{ marginBottom: 28 }}>
           <h3 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 8, textTransform: 'capitalize' }}>
-            {ENTITY_LABELS[entityType]}
+            {typeLabel(entityType)}
           </h3>
           <SortableFilterTable<SLAPolicy>
             onSort={list.handleSort}
@@ -272,7 +271,7 @@ export function SLAPoliciesPage() {
             // Tutta la riga apre la modifica: non dipende piu dal vedere la colonna delle azioni.
             onRowClick={(row) => modal.openEdit(row)}
             loading={false}
-            label={t('admin.sla.tableLabel', { entity: ENTITY_LABELS[entityType] })}
+            label={t('admin.sla.tableLabel', { entity: typeLabel(entityType) })}
           />
         </div>
       ))}
@@ -302,11 +301,11 @@ export function SLAPoliciesPage() {
               <div>
                 <label htmlFor={fid('entity-type')} style={labelS}>{t('admin.sla.entityType')} *</label>
                 <Select id={fid('entity-type')} style={selectS} value={form.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
-                  {ENTITY_TYPES.map(et => <option key={et} value={et}>{ENTITY_LABELS[et]}</option>)}
+                  {ENTITY_TYPES.map(et => <option key={et} value={et}>{typeLabel(et)}</option>)}
                 </Select>
               </div>
               <div>
-                <label htmlFor={fid('priority')} style={labelS}>{t('admin.sla.scopeField')}</label>
+                <label htmlFor={fid('priority')} style={labelS}>{t(campoAmbito === 'severity' ? 'admin.sla.severity' : 'admin.sla.priority')}</label>
                 <Select id={fid('priority')} style={selectS} value={form.priority} onChange={e => patch({ priority: e.target.value })} aria-describedby={fid('scope-hint')}>
                   <option value="">{t('admin.sla.anyScope')}</option>
                   {PRIORITIES.map(p => <option key={p} value={p}>{vocabLabel(campoAmbito, p)}</option>)}
@@ -345,6 +344,12 @@ export function SLAPoliciesPage() {
                 <label htmlFor={fid('resolve-minutes')} style={labelS}>{t('pages.slaPolicies.resolveMinutes')}</label>
                 <Input id={fid('resolve-minutes')} type="number" min={1} value={form.resolveMinutes} onChange={e => patch({ resolveMinutes: Number(e.target.value) })} />
               </div>
+            </div>
+
+            <div>
+              <label htmlFor={fid('warning-minutes')} style={labelS}>{t('pages.slaPolicies.warningMinutes')}</label>
+              <Input id={fid('warning-minutes')} type="number" min={1} max={Math.max(1, form.resolveMinutes - 1)} value={form.warningMinutes} onChange={e => patch({ warningMinutes: Number(e.target.value) })} />
+              <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('pages.slaPolicies.warningMinutesHint')}</span>
             </div>
 
             <div className="og-pair" style={{ alignItems: 'end' }}>

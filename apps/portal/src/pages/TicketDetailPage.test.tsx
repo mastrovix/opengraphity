@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { TicketDetailPage } from './TicketDetailPage'
-import { GET_MY_TICKET, GET_ME } from '@/graphql/queries'
+import { GET_MY_TICKET, GET_ME, GET_TICKET_CATEGORIES } from '@/graphql/queries'
 import { ADD_TICKET_COMMENT } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 
@@ -12,7 +12,7 @@ const meMock: GqlMock = {
 }
 
 const TICKET = {
-  __typename: 'Ticket', id: 'tk-1', type: 'incident', title: 'Printer broken', description: 'It smokes', status: 'in_progress',
+  __typename: 'Ticket', id: 'tk-1', number: 'INC00000042', type: 'incident', title: 'Printer broken', description: 'It smokes', status: 'in_progress',
   // La categoria del passo (ondata 7 · D-15) è quella che dice al portale se il
   // ticket è chiuso o risolto: il nome del passo è del cliente (ondata 8 · B-22).
   statusCategory: 'active', statusLabel: null,
@@ -25,29 +25,35 @@ const TICKET = {
     { __typename: 'Attachment', id: 'at1', filename: 'foto.png', mimeType: 'image/png', sizeBytes: 2048, uploadedBy: 'me-1', uploadedAt: '2026-09-08T08:00:00Z', downloadUrl: '/api/attachments/at1' },
   ],
   history: [
-    { __typename: 'HistoryEntry', fromStep: 'new', toStep: 'in_progress', label: null, triggeredAt: '2026-09-08T08:20:00Z', triggeredBy: 'agent-1' },
+    { __typename: 'HistoryEntry', fromStep: 'new', toStep: 'in_progress', fromLabel: 'New', toLabel: 'In Progress', label: null, triggeredAt: '2026-09-08T08:20:00Z', triggeredBy: 'agent-1' },
   ],
 }
 
 const ticketMock = (data: typeof TICKET | null, opts: Partial<GqlMock> = {}): GqlMock => ({
-  request: { query: GET_MY_TICKET, variables: { id: 'tk-1' } },
+  request: { query: GET_MY_TICKET, variables: { id: 'tk-1', language: 'en' } },
   result: { data: { myTicket: data } },
   maxUsageCount: Number.POSITIVE_INFINITY,
   ...opts,
 })
 
+const categoriesMock: GqlMock = {
+  request: { query: GET_TICKET_CATEGORIES, variables: () => true },
+  result: { data: { ticketCategories: ['hardware', 'software', 'access', 'network', 'security', 'other'].map((name) => ({ __typename: 'TicketCategory', name, label: name[0]!.toUpperCase() + name.slice(1) })) } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+}
+
 const ROUTE = { route: '/tickets/tk-1', path: '/tickets/:id' }
 
 describe('TicketDetailPage', () => {
   it('loading → "Loading..." (non "not found")', () => {
-    renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, { request: { query: GET_MY_TICKET, variables: { id: 'tk-1' } }, delay: Number.POSITIVE_INFINITY }] })
+    renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, categoriesMock, { request: { query: GET_MY_TICKET, variables: { id: 'tk-1', language: 'en' } }, delay: Number.POSITIVE_INFINITY }] })
     expect(screen.getByText('Loading...')).toBeInTheDocument()
     expect(screen.queryByText(/Ticket not found/)).not.toBeInTheDocument()
   })
 
   it('errore (es. ticket di un altro utente) → banner role=alert con il messaggio e link indietro', async () => {
-    const err: GqlMock = { request: { query: GET_MY_TICKET, variables: { id: 'tk-1' } }, error: new Error('Forbidden') }
-    renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, err] })
+    const err: GqlMock = { request: { query: GET_MY_TICKET, variables: { id: 'tk-1', language: 'en' } }, error: new Error('Forbidden') }
+    renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, categoriesMock, err] })
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Unable to load the ticket: Forbidden')
     expect(screen.getByRole('link', { name: '← Back' })).toHaveAttribute('href', '/tickets')
@@ -55,20 +61,20 @@ describe('TicketDetailPage', () => {
   })
 
   it('ticket assente → "Ticket not found or not accessible." con link indietro', async () => {
-    renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, ticketMock(null)] })
+    renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, categoriesMock, ticketMock(null)] })
     expect(await screen.findByText('Ticket not found or not accessible.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '← Back' })).toHaveAttribute('href', '/tickets')
   })
 
   it('ticket caricato: titolo, stato, team, descrizione, timeline (commenti + cambi stato) e allegati', async () => {
-    const { user } = renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, ticketMock(TICKET)] })
+    const { user } = renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, categoriesMock, ticketMock(TICKET)] })
     expect(await screen.findByRole('heading', { level: 1, name: 'Printer broken' })).toBeInTheDocument()
     expect(screen.getByText('In progress')).toBeInTheDocument()
     expect(screen.getByText('Service Desk')).toBeInTheDocument()
     expect(screen.getByText('It smokes')).toBeInTheDocument()
     expect(screen.getByText('Ciao, ho un problema')).toBeInTheDocument()
     expect(screen.getByText('Ci stiamo lavorando')).toBeInTheDocument()
-    expect(screen.getByText(/new → in_progress/)).toBeInTheDocument()
+    expect(screen.getByText(/New → In Progress/)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /Attachments \(1\)/ }))
     expect(screen.getByRole('button', { name: /foto\.png/ })).toHaveTextContent('2 KB')
@@ -76,7 +82,7 @@ describe('TicketDetailPage', () => {
   })
 
   it('il messaggio "ticket creato" compare solo arrivando dalla creazione (location.state)', async () => {
-    renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, ticketMock(TICKET)] })
+    renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, categoriesMock, ticketMock(TICKET)] })
     await screen.findByRole('heading', { level: 1, name: 'Printer broken' })
     expect(screen.queryByText(/Ticket created!/)).not.toBeInTheDocument()
   })
@@ -87,7 +93,7 @@ describe('TicketDetailPage', () => {
       request: { query: ADD_TICKET_COMMENT, variables: (v) => { seen.push(v); return true } },
       result: { data: { addTicketComment: { __typename: 'EntityComment', id: 'c3', body: 'Grazie', isInternal: false, authorId: 'me-1', authorName: 'Mario Rossi', authorEmail: 'mario@acme.com', createdAt: '2026-09-08T10:00:00Z' } } },
     }
-    const { user } = renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, ticketMock(TICKET), addMock] })
+    const { user } = renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, categoriesMock, ticketMock(TICKET), addMock] })
     await screen.findByRole('heading', { level: 1, name: 'Printer broken' })
     const reply = screen.getByRole('button', { name: 'Reply' })
     expect(reply).toBeDisabled()
@@ -103,12 +109,12 @@ describe('TicketDetailPage', () => {
   // Con il vecchio confronto sui nomi di fabbrica questi due casi davano il
   // contrario: risposta offerta su un ticket chiuso, nessun banner su uno risolto.
   it('ticket chiuso → nessun form di risposta; risolto → banner con "Reopen ticket" (passi rinominati)', async () => {
-    const { unmount } = renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, ticketMock({ ...TICKET, status: 'archiviato', statusCategory: 'closed' })] })
+    const { unmount } = renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, categoriesMock, ticketMock({ ...TICKET, status: 'archiviato', statusCategory: 'closed' })] })
     await screen.findByRole('heading', { level: 1, name: 'Printer broken' })
     expect(screen.queryByPlaceholderText('Write your reply...')).not.toBeInTheDocument()
     unmount()
 
-    renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, ticketMock({ ...TICKET, status: 'sistemato', statusCategory: 'resolved' })] })
+    renderWithProviders(<TicketDetailPage />, { ...ROUTE, mocks: [meMock, categoriesMock, ticketMock({ ...TICKET, status: 'sistemato', statusCategory: 'resolved' })] })
     await screen.findByRole('heading', { level: 1, name: 'Printer broken' })
     expect(screen.getByText(/This ticket has been resolved/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reopen ticket' })).toBeInTheDocument()

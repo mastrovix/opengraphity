@@ -1,8 +1,8 @@
 import { GraphQLError } from 'graphql'
 import { NotFoundError } from '../../lib/errors.js'
-import { ValidationError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine, isWorkflowActionType, WORKFLOW_ACTION_TYPES } from '@opengraphity/workflow'
+import { parseLocalizedLabels } from '@opengraphity/types'
 import type { ActionContext } from '@opengraphity/workflow'
 import {
   NOTIFICATION_TARGETS, isTargetApplicable, applicableNotificationTargets,
@@ -188,9 +188,9 @@ export function assertStepActions(raw: string | null | undefined, label: string)
     const type = (action as { type?: unknown } | null)?.type
     if (!isWorkflowActionType(type)) {
       throw new GraphQLError(
-        `${label}[${i}]: azione di tipo ${JSON.stringify(type ?? null)} sconosciuta al motore dei workflow. ` +
-        `Ammesse: ${WORKFLOW_ACTION_TYPES.join(', ')}.`,
-        { extensions: { code: 'BAD_USER_INPUT' } },
+        `${label}[${i}]: action type ${JSON.stringify(type ?? null)} is unknown to the workflow engine. ` +
+        `Allowed: ${WORKFLOW_ACTION_TYPES.join(', ')}.`,
+        { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.unknownActionType', params: { type: String(type ?? null), allowed: WORKFLOW_ACTION_TYPES.join(', ') } } } },
       )
     }
     // `update_field` non può scrivere lo stato (B-9): la stessa allow-list che
@@ -199,7 +199,7 @@ export function assertStepActions(raw: string | null | undefined, label: string)
     if (type === 'update_field') {
       const field = (action as { params?: Record<string, unknown> }).params?.['field']
       if (field == null || String(field).trim() === '') {
-        throw new GraphQLError(`${label}[${i}]: update_field richiede il campo da scrivere (params.field).`, { extensions: { code: 'BAD_USER_INPUT' } })
+        throw new GraphQLError(`${label}[${i}]: update_field needs the field to write (params.field).`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.updateFieldNeedsField' } } })
       }
       const rejection = updateFieldRejection(String(field))
       if (rejection) {
@@ -518,8 +518,8 @@ export async function updateWorkflowStep(
   { definitionId, stepName, label, enterActions, exitActions, purpose }: { definitionId: string; stepName: string; label: string; enterActions?: string | null; exitActions?: string | null; purpose?: string | null },
   ctx: GraphQLContext,
 ) {
-  assertStepActions(enterActions, `enter_actions dello step "${stepName}"`)
-  assertStepActions(exitActions,  `exit_actions dello step "${stepName}"`)
+  assertStepActions(enterActions, `enter_actions of step "${stepName}"`)
+  assertStepActions(exitActions,  `exit_actions of step "${stepName}"`)
   const purposeValue = normalizeStepPurpose(purpose, `step "${stepName}"`)
   return withSession(async (session) => {
     const now = new Date().toISOString()
@@ -531,6 +531,8 @@ export async function updateWorkflowStep(
         : null
       const written = await tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: $stepName})
+        // Un'etichetta CAMBIATA nel disegnatore è del cliente: le traduzioni spedite non valgono più (#22).
+        SET s.labels       = CASE WHEN s.label = $label THEN s.labels ELSE null END
         SET s.label        = $label,
             s.updated_at   = $now,
             s.enter_actions = CASE WHEN $enterActions IS NOT NULL THEN $enterActions ELSE s.enter_actions END,
@@ -567,6 +569,7 @@ export async function updateWorkflowStep(
       id:           s['id']             as string,
       name:         s['name']           as string,
       label:        s['label']          as string,
+      labels:       parseLocalizedLabels(s['labels'], `step ${String(s['id'])}`),
       type:         s['type']           as string,
       enterActions: (s['enter_actions'] ?? null) as string | null,
       exitActions:  (s['exit_actions']  ?? null) as string | null,
@@ -603,6 +606,8 @@ export async function updateWorkflowTransition(
         MATCH (src:WorkflowStep)-[t:TRANSITIONS_TO {id: $transitionId}]->()
         MATCH (wd:WorkflowDefinition {id: src.definition_id, tenant_id: $tenantId})
         ${MARK_CUSTOMIZED_BUMP}
+        // Un'etichetta CAMBIATA nel disegnatore è del cliente: le traduzioni spedite non valgono più (#22).
+        SET t.labels         = CASE WHEN $label IS NULL OR t.label = $label THEN t.labels ELSE null END
         SET t.label          = coalesce($label, t.label),
             t.trigger        = coalesce($trigger, t.trigger),
             t.requires_input = $requiresInput,
@@ -672,8 +677,8 @@ export async function addWorkflowTransition(
         RETURN tr, from.name AS fromStep, to.name AS toStep, wd.entity_type AS entityType
       `, {
         definitionId, tenantId: ctx.tenantId, fromStepName, toStepName, id,
-        trigger: assertTransitionTrigger(trigger, `nuova transizione ${fromStepName} → ${toStepName}`) ?? 'manual',
-        label: label ?? 'Nuova transizione',
+        trigger: assertTransitionTrigger(trigger, `new transition ${fromStepName} → ${toStepName}`) ?? 'manual',
+        label: label ?? 'New transition',
         sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null,
         ...customizedParams(ctx),
       }),
@@ -689,6 +694,7 @@ export async function addWorkflowTransition(
       toStepName:    result.records[0].get('toStep')   as string,
       trigger:       tr['trigger']        as string,
       label:         tr['label']          as string,
+      labels:        [],
       requiresInput: false,
       inputField:    null,
       condition:     null,
@@ -780,7 +786,7 @@ export async function executeWorkflowTransition(
     // fase (task, approvazioni, rischio) che vivono in executeChangeTransition:
     // la mutation generica NON deve poter aggirarli.
     if (entityDataResult.records[0].get('entityType') === 'change') {
-      throw new GraphQLError('Le change si transizionano con executeChangeTransition (gate di approvazione e side-effect di fase)', { extensions: { code: 'CONFLICT' } })
+      throw new GraphQLError('Changes are transitioned with executeChangeTransition (approval gate and phase side effects)', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.workflow.changeUsesChangeTransition' } } })
     }
     if (entityDataResult.records[0].get('entityType') === 'service_request'
         && await requestApprovalWouldBeSkipped(session, ctx.tenantId, instanceId, toStep)) {
@@ -801,50 +807,11 @@ export async function executeWorkflowTransition(
       entityData,
 
       createEntity: async (type, data) => {
-        const label = ENTITY_LABELS[type]
-        if (!label) throw new ValidationError(`Unknown entity type: ${type}`)
-
-        // Extract relation metadata — must not be stored as node properties
-        const { parent_id, parent_type, ...nodeData } = data as Record<string, unknown>
-
-        const id = uuidv4()
-        const now = new Date().toISOString()
-        // Look up the initial workflow step name for this entity type; fall
-        // back to 'open' only if the entity has no workflow defined.
-        // No silent 'open' fallback: an entity type without a defined initial
-        // step is a misconfiguration and must fail loudly, not be created in a
-        // phantom status the workflow doesn't recognise.
-        const { getInitialStepName } = await import('../../lib/workflowHelpers.js')
-        const initialStatus = await getInitialStepName(session, ctx.tenantId, type)
-        await session.executeWrite((tx) =>
-          tx.run(
-            `CREATE (e:${label} $props) RETURN e.id AS id`,
-            { props: { id, tenant_id: ctx.tenantId, status: initialStatus, created_at: now, updated_at: now, ...nodeData } },
-          ),
-        )
-
-        // Create relation to parent entity when link_to_current was set
-        if (parent_id && parent_type) {
-          const parentLabel = ENTITY_LABELS[parent_type as string]
-          if (parentLabel) {
-            // Convention: (problem)-[:CAUSED_BY]->(incident)
-            //             (child)-[:RELATED_TO]->(parent) for other combos
-            const relType =
-              type === 'problem' && parent_type === 'incident' ? 'CAUSED_BY' : 'RELATED_TO'
-            const [childLabel, parentLabelFinal] =
-              relType === 'CAUSED_BY' ? [label, parentLabel] : [label, parentLabel]
-            await session.executeWrite((tx) =>
-              tx.run(
-                `MATCH (child:${childLabel} {id: $childId, tenant_id: $tenantId})
-                 MATCH (parent:${parentLabelFinal} {id: $parentId, tenant_id: $tenantId})
-                 MERGE (child)-[:${relType}]->(parent)`,
-                { childId: id, parentId: parent_id, tenantId: ctx.tenantId },
-              ),
-            )
-          }
-        }
-
-        return id
+        const { createEntityFromStepAction } = await import('../../lib/stepActionCreateEntity.js')
+        return createEntityFromStepAction(session, { tenantId: ctx.tenantId, userId: ctx.userId }, type, data, {
+          id:   (entityDataResult.records[0]!.get('entityData') as Record<string, unknown> | null)?.['id'] as string | undefined,
+          type: entityDataResult.records[0]!.get('entityType') as string,
+        })
       },
 
       assignTo: async (entityId, targetType, targetId) => {
@@ -853,7 +820,7 @@ export async function executeWorkflowTransition(
         await session.executeWrite((tx) =>
           tx.run(
             `MATCH (e {id: $entityId, tenant_id: $tenantId})
-             MATCH (t:${targetLabel} {id: $targetId})
+             MATCH (t:${targetLabel} {id: $targetId, tenant_id: $tenantId})
              MERGE (e)-[:${relType}]->(t)`,
             { entityId, tenantId: ctx.tenantId, targetId },
           ),
@@ -861,14 +828,10 @@ export async function executeWorkflowTransition(
       },
 
       updateField: async (entityId, field, value) => {
-        const now = new Date().toISOString()
-        await session.executeWrite((tx) =>
-          tx.run(
-            `MATCH (e {id: $entityId, tenant_id: $tenantId})
-             SET e[$field] = $value, e.updated_at = $now`,
-            { entityId, tenantId: ctx.tenantId, field, value, now },
-          ),
-        )
+        // Stessa scrittura delle automazioni (lib/ticketFieldWrite.ts, AU-3):
+        // la priorità nella proprietà giusta, l'invariante della matrice.
+        const { writeTicketField } = await import('../../lib/ticketFieldWrite.js')
+        await writeTicketField(session, ctx.tenantId, entityDataResult.records[0]!.get('entityType') as string, entityId, field, value)
       },
 
       publishEvent: async (type, payload) => {
@@ -1039,6 +1002,8 @@ export async function executeWorkflowTransition(
             id:         randomUUID(),
             tenant_id:  $tenantId,
             text:       $text,
+            // Nota di transizione: interna (lib/ticketComments.ts).
+            is_internal: true,
             author_id:  $userId,
             created_at: $now,
             updated_at: $now
@@ -1133,8 +1098,8 @@ export async function saveWorkflowChanges(
   // Azioni e scopo validati PRIMA di aprire la transazione: uno scopo fuori
   // vocabolario non entra nel grafo dal disegnatore (B4-3).
   const stepRows = (steps ?? []).map((st) => {
-    assertStepActions(st.enterActions, `enter_actions dello step "${st.stepName}"`)
-    assertStepActions(st.exitActions,  `exit_actions dello step "${st.stepName}"`)
+    assertStepActions(st.enterActions, `enter_actions of step "${st.stepName}"`)
+    assertStepActions(st.exitActions,  `exit_actions of step "${st.stepName}"`)
     const purposeValue = normalizeStepPurpose(st.purpose, `step "${st.stepName}"`)
     const category     = normalizeStepCategory(st.category, `step "${st.stepName}"`)
     return { ...st, category, purposeGiven: purposeValue !== undefined, purpose: purposeValue ?? null }
@@ -1175,6 +1140,8 @@ export async function saveWorkflowChanges(
           UNWIND $transitions AS tr
           // tenant-ok: wd già scopata sopra
           MATCH (src:WorkflowStep {definition_id: wd.id})-[t:TRANSITIONS_TO {id: tr.transitionId}]->()
+          // Un'etichetta CAMBIATA nel disegnatore è del cliente: le traduzioni spedite non valgono più (#22).
+          SET t.labels         = CASE WHEN tr.label IS NULL OR t.label = tr.label THEN t.labels ELSE null END
           SET t.label          = coalesce(tr.label, t.label),
               t.trigger        = coalesce(tr.trigger, t.trigger),
               t.requires_input = tr.requiresInput,
@@ -1219,6 +1186,8 @@ export async function saveWorkflowChanges(
         await tx.run(`
           UNWIND $steps AS st
           MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: st.stepName})
+          // Un'etichetta CAMBIATA nel disegnatore è del cliente: le traduzioni spedite non valgono più (#22).
+          SET s.labels        = CASE WHEN s.label = st.label THEN s.labels ELSE null END
           SET s.label         = st.label,
               s.enter_actions = st.enterActions,
               s.exit_actions  = st.exitActions,

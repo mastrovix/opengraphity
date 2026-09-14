@@ -2,6 +2,7 @@ import { GraphQLError } from 'graphql'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
+import { ValidationError } from '../../lib/errors.js'
 import { cache, metamodelCacheKey } from '../../lib/cache.js'
 import { calculateChain } from '../../lib/chainCalculator.js'
 import { logger } from '../../lib/logger.js'
@@ -42,11 +43,34 @@ async function allowedRelTypes(tenantId: string): Promise<Set<string>> {
   }
 }
 
-const TYPE_CONSTRAINTS: Record<string, { source: string[]; target: string[] }> = {
-  HOSTED_ON:        { source: ['DatabaseInstance'], target: ['Server'] },
-  USES_CERTIFICATE: { source: ['Application'],     target: ['Certificate'] },
-  INSTALLED_ON:     { source: ['Certificate'],      target: ['Server'] },
-  // DEPENDS_ON has no constraints — any CI to any CI
+/**
+ * La relazione è dichiarata dal metamodello fra QUESTI due tipi? O come
+ * relazione in uscita del tipo sorgente, o come relazione in entrata del tipo
+ * destinazione; `target_type` è l'etichetta dell'altro capo o `any`, e una
+ * definizione può elencare più tipi (`DEPENDS_ON|HOSTED_ON|INSTALLED_ON`).
+ *
+ * Giro nel browser del 14 set 2026 (#56): qui c'era `TYPE_CONSTRAINTS`, una
+ * tabella scritta a mano che contraddiceva il metamodello (l'applicazione
+ * dichiara «Hosted On → Server», la tabella lo ammetteva solo per le istanze
+ * di database), e `DEPENDS_ON` passava fra due CI qualunque.
+ */
+async function relationDeclared(
+  session: Parameters<typeof runQueryOne>[0], tenantId: string, relationType: string, sLabels: string[], tLabels: string[],
+): Promise<boolean> {
+  const row = await runQueryOne<{ declared: boolean }>(session, `
+    OPTIONAL MATCH (st:CITypeDefinition)-[:HAS_RELATION]->(out:CIRelationDefinition)
+      WHERE st.tenant_id IN ['system', $tenantId] AND st.neo4j_label IN $sLabels
+        AND out.direction = 'outgoing' AND $relationType IN [x IN split(out.relationship_type, '|') | trim(x)]
+        AND (out.target_type = 'any' OR out.target_type IN $tLabels)
+    WITH count(out) AS outgoing
+    OPTIONAL MATCH (tt:CITypeDefinition)-[:HAS_RELATION]->(inc:CIRelationDefinition)
+      WHERE tt.tenant_id IN ['system', $tenantId] AND tt.neo4j_label IN $tLabels
+        AND inc.direction = 'incoming' AND $relationType IN [x IN split(inc.relationship_type, '|') | trim(x)]
+        AND (inc.target_type = 'any' OR inc.target_type IN $sLabels)
+    WITH outgoing, count(inc) AS incoming
+    RETURN outgoing + incoming > 0 AS declared
+  `, { tenantId, relationType, sLabels, tLabels })
+  return row?.declared === true
 }
 
 // ── addCIRelationship ────────────────────────────────────────────────────────
@@ -81,23 +105,15 @@ async function addCIRelationship(
 
     if (!endpoints) throw new GraphQLError(`Source or target CI not found (source: ${sourceId}, target: ${targetId})`)
 
-    // 3. Type constraint validation
-    const constraint = TYPE_CONSTRAINTS[relationType]
-    if (constraint) {
-      const sourceLabels = endpoints.sLabels
-      const targetLabels = endpoints.tLabels
-      const sourceMatch = constraint.source.some(l => sourceLabels.includes(l))
-      const targetMatch = constraint.target.some(l => targetLabels.includes(l))
-      if (!sourceMatch) {
-        throw new GraphQLError(
-          `${relationType} requires source to be one of: ${constraint.source.join(', ')}`,
-        )
-      }
-      if (!targetMatch) {
-        throw new GraphQLError(
-          `${relationType} requires target to be one of: ${constraint.target.join(', ')}`,
-        )
-      }
+    // 3. The metamodel must declare this relation between these two types
+    if (!(await relationDeclared(session, tenantId, relationType, endpoints.sLabels, endpoints.tLabels))) {
+      const typeOf = (labels: string[]) => labels.find((l) => l !== 'ConfigurationItem') ?? labels[0] ?? '?'
+      const source = typeOf(endpoints.sLabels)
+      const target = typeOf(endpoints.tLabels)
+      throw new ValidationError(
+        `${relationType} from ${source} to ${target} is not declared in the metamodel`,
+        { key: 'errors.ci.relationNotDeclared', params: { relation: relationType, source, target } },
+      )
     }
 
     // 4. Cycle detection (DEPENDS_ON only)

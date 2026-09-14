@@ -98,6 +98,14 @@ export function domainMatrixSDL(): string {
     riskBandThresholds: RiskBandThresholds!
 
     """
+    Quanto pesa l'ambiente del CI (matrice \`environment_risk\`) contro le domande
+    nel punteggio di un compito di assessment. Era 5 scritto nel codice: ogni
+    change in produzione risultava ad alto rischio qualunque fossero le
+    risposte. Admin.
+    """
+    changeEnvironmentWeight: ChangeEnvironmentWeight!
+
+    """
     Cosa c'è da sistemare nella configurazione di questo cliente: schema
     degradato, buchi di configurazione, matrici incomplete, liste della policy
     che citano valori fuori vocabolario, stati del ciclo di vita senza
@@ -170,6 +178,13 @@ export function domainMatrixSDL(): string {
     isDefault:  Boolean!
   }
 
+  type ChangeEnvironmentWeight {
+    """Intero 0..20: 0 toglie l'ambiente dal punteggio, ogni domanda pesa per il suo peso."""
+    weight:    Int!
+    """Vero quando il cliente non l'ha scelto e vale quello di fabbrica (5)."""
+    isDefault: Boolean!
+  }
+
   input RiskBandThresholdInput {
     band: String!
     upTo: Int!
@@ -207,6 +222,9 @@ export function domainMatrixSDL(): string {
     cioè un errore nel momento peggiore — l'apertura di una change.
     """
     updateRiskBandThresholds(entries: [RiskBandThresholdInput!]!): RiskBandThresholds!
+
+    """Imposta il peso dell'ambiente nel punteggio dell'assessment (intero 0..20)."""
+    updateChangeEnvironmentWeight(weight: Int!): ChangeEnvironmentWeight!
   }
   `
 }

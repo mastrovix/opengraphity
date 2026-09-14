@@ -51,7 +51,7 @@ describe('createServiceRequest — campi obbligatori del tenant', () => {
     const err = await failure(createServiceRequest(undefined, { input: { title: 'T', priority: 'low', description: '  ' } }, ctx))
     expect(err.extensions['code']).toBe('VALIDATION_ERROR')
     expect(err.extensions['fields']).toEqual(['description', 'dueDate'])
-    expect(err.message).toBe('Il campo "description" è obbligatorio; Il campo "dueDate" è obbligatorio')
+    expect(err.message).toBe('Field "description" is required; Field "dueDate" is required')
     expect(createRequest).not.toHaveBeenCalled()
     // le regole sono lette per il tenant e l'entità corrente
     expect(vi.mocked(runQuery).mock.calls[0]![2]).toEqual({ tenantId: 'tenant-1', entityType: 'service_request' })

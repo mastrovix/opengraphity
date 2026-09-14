@@ -408,7 +408,13 @@ export function EventsPage() {
   }, [liveData, totalPages, page, setPage])
 
   const columns: ColumnDef<EventRow>[] = [
-    { key: 'status',   label: t('events.columns.status'),   width: '120px', sortable: true, render: (_v, row) => <EventStatusBadge status={row.status} severity={row.severity} /> },
+    { key: 'status',   label: t('events.columns.status'),   width: '120px', sortable: true, render: (_v, row) => (
+      // Giro del 14 set 2026 (#50): la presa in carico si registrava ma la riga non lo diceva.
+      <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
+        <EventStatusBadge status={row.status} severity={row.severity} />
+        {row.acknowledgedAt && <span title={formatDateTime(row.acknowledgedAt)} style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{t('events.acknowledged')}</span>}
+      </span>
+    ) },
     { key: 'severity', label: t('events.columns.severity'), width: '110px', sortable: true, render: (_v, row) => <EventSeverityBadge severity={row.severity} /> },
     {
       // Il titolo è un link al dettaglio: è lui il bersaglio da tastiera (la

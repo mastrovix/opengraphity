@@ -65,6 +65,8 @@ export interface ChangeApproval {
   approvedByName: string | null
   approvedAt: string | null
   canApprove: boolean
+  /** Vero quando l'admin approva a nome di un team di cui non fa parte (#34). */
+  onBehalf: boolean
 }
 
 export interface LinkedTicketRef {
@@ -144,6 +146,9 @@ export interface ChangeAuditEntryData {
   timestamp: string
   action:    string
   detail:    string | null
+  /** Chiave (sotto `changeAudit.`) e dati JSON della frase del dettaglio (CH-5). */
+  detailKey?:    string | null
+  detailParams?: string | null
   actor:     UserRef | null
 }
 

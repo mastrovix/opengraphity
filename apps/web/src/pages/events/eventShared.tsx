@@ -9,8 +9,9 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Pill } from '@/components/ui/Pill'
 import { lookupOrError } from '@/lib/tokens'
-import { TINT_CRITICAL, TINT_WARNING, TINT_INFO, TINT_SUCCESS, TINT_NEUTRAL, TINT_FLAPPING, TINT_BROKEN, ACCENT, type Tint } from '@/lib/eventPalette'
+import { TINT_CRITICAL, TINT_WARNING, TINT_SUCCESS, TINT_NEUTRAL, TINT_FLAPPING, TINT_BROKEN, ACCENT, type Tint } from '@/lib/eventPalette'
 import { EVENT_MATCH_REASONS, RESOURCE_KINDS, type MonitoringEvent, type CIHealth, type EventMatchReason, type ResourceKind } from '@/types/events'
+import { useValueStyle } from '@/hooks/useValueStyle'
 
 /**
  * Etichetta di `resourceKind` ("hostname" → "Hostname"): le etichette sono le
@@ -31,12 +32,11 @@ const HEALTH_STYLE: Record<string, Tint> = {
   down:        TINT_CRITICAL,
 }
 
-/** firing: rosso/ambra/blu per severità; resolved verde; suppressed grigio; flapping viola. */
-const FIRING_STYLE: Record<string, Tint> = {
-  critical: TINT_CRITICAL,
-  warning:  TINT_WARNING,
-  info:     TINT_INFO,
-}
+/*
+ * firing: il colore della severità dal Dizionario (`event_severity`, revisione
+ * del 14 set 2026 · F9: prima `FIRING_STYLE`, tre valori scritti qui);
+ * resolved verde; suppressed grigio; flapping viola.
+ */
 
 const STATUS_STYLE: Record<string, Tint> = {
   resolved:   TINT_SUCCESS,
@@ -46,8 +46,9 @@ const STATUS_STYLE: Record<string, Tint> = {
 
 export function EventStatusBadge({ status, severity }: Pick<MonitoringEvent, 'status' | 'severity'>) {
   const { t } = useTranslation()
+  const styleOf = useValueStyle()
   const s = status === 'firing'
-    ? lookupOrError(FIRING_STYLE, severity, 'EVENT_FIRING_STYLE', TINT_BROKEN)
+    ? styleOf('event_severity', severity)
     : lookupOrError(STATUS_STYLE, status, 'EVENT_STATUS_STYLE', TINT_BROKEN)
   return (
     <Pill bg={s.bg} color={s.color} style={{ ...badgeFont, textTransform: 'uppercase' }}>
@@ -58,7 +59,7 @@ export function EventStatusBadge({ status, severity }: Pick<MonitoringEvent, 'st
 
 export function EventSeverityBadge({ severity }: Pick<MonitoringEvent, 'severity'>) {
   const { t } = useTranslation()
-  const s = lookupOrError(FIRING_STYLE, severity, 'EVENT_SEVERITY_STYLE', TINT_BROKEN)
+  const s = useValueStyle()('event_severity', severity)
   return (
     <Pill bg={s.bg} color={s.color} style={{ ...badgeFont, textTransform: 'uppercase' }}>
       {t(`events.severity.${severity}`)}

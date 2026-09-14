@@ -124,7 +124,7 @@ describe('updateCIFields — il tipo dall\'etichetta, e le proprietà del prodot
   // `discovery_*`: la fuga che l'ondata 5 aveva chiuso su `ciMutations`.
   it.each(['nameKey', 'health', 'healthSource', 'chain', 'type', 'discoverySourceId'])(
     'rifiuta la proprietà del prodotto "%s" senza scrivere', (key) => {
-      expectBadInput(() => buildCIFieldUpdates({ customFields: JSON.stringify({ [key]: 'x' }) }, NOW), 'gestita dal prodotto')
+      expectBadInput(() => buildCIFieldUpdates({ customFields: JSON.stringify({ [key]: 'x' }) }, NOW), 'which the product manages')
     })
 
   it('un campo normale del cliente passa', () => {

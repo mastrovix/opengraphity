@@ -4,6 +4,7 @@
  * or services. The workflow engine (WorkflowDefinition/WorkflowStep nodes)
  * is the single source of truth.
  */
+import { parseLocalizedLabels, type LocalizedLabel } from '@opengraphity/types'
 
 import type { Session } from 'neo4j-driver'
 
@@ -37,6 +38,8 @@ export interface StepRow {
   name:       string
   /** Etichetta scelta dal cliente nel disegnatore; `null` se non l'ha messa. */
   label:      string | null
+  /** Traduzioni dell'etichetta spedita (giro del 14 set 2026, #22); vuota se il cliente l'ha scritta lui. */
+  labels:     LocalizedLabel[]
   isInitial:  boolean
   isTerminal: boolean
   isOpen:     boolean
@@ -64,6 +67,7 @@ async function loadSteps(session: Session, tenantId: string, entityType: string)
       MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
       RETURN s.name       AS name,
              s.label      AS label,
+             s.labels     AS labels,
              coalesce(s.is_initial,  s.type = 'start') AS isInitial,
              coalesce(s.is_terminal, s.type = 'end')   AS isTerminal,
              coalesce(s.is_open,     s.type <> 'end')  AS isOpen,
@@ -75,6 +79,7 @@ async function loadSteps(session: Session, tenantId: string, entityType: string)
     return res.records.map((r) => ({
       name:       r.get('name')       as string,
       label:      (r.get('label') ?? null) as string | null,
+      labels:     parseLocalizedLabels(r.get('labels'), `step ${String(r.get('name'))} (${entityType})`),
       isInitial:  Boolean(r.get('isInitial')),
       isTerminal: Boolean(r.get('isTerminal')),
       isOpen:     Boolean(r.get('isOpen')),
@@ -272,9 +277,9 @@ export async function requireStepNamesByPurpose(
   const names = await getStepNamesByPurpose(session, tenantId, entityType, purposes)
   if (names.length === 0) {
     throw new Error(
-      `${what}: nel workflow "${entityType}" del tenant ${tenantId} nessun passo dichiara lo scopo ` +
-      `[${purposes.join(', ')}]. Assegna lo scopo ai passi nel disegnatore: senza, questa regola non ha ` +
-      `su quali passi applicarsi.`,
+      `${what}: in the "${entityType}" workflow of tenant ${tenantId} no step declares the purpose ` +
+      `[${purposes.join(', ')}]. Give the purpose to the steps in the designer: without it this rule has ` +
+      `no step to apply to.`,
     )
   }
   return names

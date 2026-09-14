@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { gql } from '@apollo/client'
 import { fetchEventSource } from '@microsoft/fetch-event-source'
 import { apiUrl, authHeader } from '@/lib/apiBase'
+import { apolloClient } from '@/lib/apollo'
 import { clientLogger } from '@/lib/clientLogger'
 
 export interface InAppNotification {
@@ -15,6 +17,9 @@ export interface InAppNotification {
    */
   title_fallback?: string
   message: string
+  /** Chiave i18n del messaggio e i suoi dati: il pannello compone la frase nella lingua di chi legge (CO-2). */
+  message_key?: string
+  message_params?: Record<string, string>
   severity: 'info' | 'warning' | 'error' | 'success'
   entity_id?: string
   entity_type?: string
@@ -25,6 +30,56 @@ export interface InAppNotification {
 const MAX_NOTIFICATIONS = 50
 const RECONNECT_DELAY_MS = 5_000
 
+/*
+  Revisione del 14 set 2026 · F10: le notifiche sono salvate sul server. Il
+  pannello le carica all'avvio e a ogni riconnessione (quelle arrivate mentre
+  il canale era giù non si perdono), e «letto», «tutto letto» e «svuota» si
+  scrivono lì: prima erano la memoria del browser, e una ricarica le svuotava.
+*/
+const MY_NOTIFICATIONS = gql`
+  query MyNotifications($limit: Int) {
+    myNotifications(limit: $limit) {
+      id type title titleFallback message messageKey messageParams severity entityId entityType timestamp read
+    }
+  }
+`
+const MARK_NOTIFICATION_READ = gql`
+  mutation MarkNotificationRead($id: ID!) { markNotificationRead(id: $id) }
+`
+const MARK_ALL_NOTIFICATIONS_READ = gql`
+  mutation MarkAllNotificationsRead { markAllNotificationsRead }
+`
+const DISMISS_ALL_NOTIFICATIONS = gql`
+  mutation DismissAllNotifications { dismissAllNotifications }
+`
+
+interface SavedNotification {
+  id: string; type: string; title: string; titleFallback: string | null; message: string
+  messageKey: string | null; messageParams: string | null; severity: string | null
+  entityId: string | null; entityType: string | null; timestamp: string; read: boolean
+}
+
+function fromSaved(n: SavedNotification): InAppNotification {
+  let params: Record<string, string> | undefined
+  if (n.messageParams) {
+    try { params = JSON.parse(n.messageParams) as Record<string, string> } catch { params = undefined }
+  }
+  return {
+    id: n.id, type: n.type, title: n.title, title_fallback: n.titleFallback ?? undefined,
+    message: n.message, message_key: n.messageKey ?? undefined, message_params: params,
+    severity: (n.severity ?? 'info') as InAppNotification['severity'],
+    entity_id: n.entityId ?? undefined, entity_type: n.entityType ?? undefined,
+    timestamp: n.timestamp, read: n.read,
+  }
+}
+
+/** Una scrittura sul server che non deve bloccare il pannello, ma se fallisce si dice. */
+function persistState(mutation: typeof MARK_NOTIFICATION_READ, variables?: Record<string, unknown>): void {
+  apolloClient.mutate({ mutation, variables }).catch((err: unknown) => {
+    clientLogger.error('Notification state not saved on the server', { error: err instanceof Error ? err.message : String(err) })
+  })
+}
+
 export function useNotifications() {
   const [notifications, setNotifications] = useState<InAppNotification[]>([])
   // Truth-telling: the UI must be able to show that the realtime channel is
@@ -34,6 +89,24 @@ export function useNotifications() {
   const abortRef       = useRef<AbortController | null>(null)
   const mountedRef     = useRef(true)
   const connectedRef   = useRef(false)
+
+  const loadSaved = useCallback(async () => {
+    try {
+      const res = await apolloClient.query<{ myNotifications: SavedNotification[] }>({
+        query: MY_NOTIFICATIONS, variables: { limit: MAX_NOTIFICATIONS }, fetchPolicy: 'network-only',
+      })
+      if (!mountedRef.current) return
+      const saved = (res.data?.myNotifications ?? []).map(fromSaved)
+      setNotifications(prev => {
+        const known = new Set(saved.map(n => n.id))
+        return [...saved, ...prev.filter(n => !known.has(n.id))]
+          .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+          .slice(0, MAX_NOTIFICATIONS)
+      })
+    } catch (err) {
+      clientLogger.error('Saved notifications could not be loaded', { error: err instanceof Error ? err.message : String(err) })
+    }
+  }, [])
 
   const connect = useCallback(() => {
     if (!mountedRef.current) return
@@ -50,6 +123,7 @@ export function useNotifications() {
       async onopen(res) {
         if (res.ok) {
           if (mountedRef.current) setConnected(true)
+          void loadSaved()
           return
         }
         throw new Error(`SSE connection refused: HTTP ${res.status}`)
@@ -63,11 +137,12 @@ export function useNotifications() {
           if (raw.type === 'connected') return
           const notif: InAppNotification = { ...raw, read: false }
           setNotifications(prev => {
-            // Drop stale events — BullMQ retried old jobs have old timestamps
-            if (Date.now() - new Date(notif.timestamp).getTime() > 60_000) return prev
-            // Dedup by notification id
+            // Una notifica in ritardo non si scarta più (prima: oltre 60 s): è
+            // salvata, e il pannello la mostra al suo posto. I doppioni per id no.
             if (prev.some(n => n.id === notif.id)) return prev
-            return [notif, ...prev].slice(0, MAX_NOTIFICATIONS)
+            return [notif, ...prev]
+              .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+              .slice(0, MAX_NOTIFICATIONS)
           })
         } catch (err) {
           // A malformed frame is a server bug — log it, don't drop it silently.
@@ -92,10 +167,11 @@ export function useNotifications() {
         setTimeout(connect, RECONNECT_DELAY_MS)
       }
     })
-  }, [])
+  }, [loadSaved])
 
   useEffect(() => {
     mountedRef.current = true
+    void loadSaved()
     if (connectedRef.current) return   // StrictMode: already connected from first mount
     connectedRef.current = true
     connect()
@@ -104,18 +180,21 @@ export function useNotifications() {
       connectedRef.current = false
       abortRef.current?.abort()
     }
-  }, [connect])
+  }, [connect, loadSaved])
 
   const markAsRead = useCallback((id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+    persistState(MARK_NOTIFICATION_READ, { id })
   }, [])
 
   const markAllAsRead = useCallback(() => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+    persistState(MARK_ALL_NOTIFICATIONS_READ)
   }, [])
 
   const clearAll = useCallback(() => {
     setNotifications([])
+    persistState(DISMISS_ALL_NOTIFICATIONS)
   }, [])
 
   const unreadCount = notifications.filter(n => !n.read).length

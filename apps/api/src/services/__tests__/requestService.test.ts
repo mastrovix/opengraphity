@@ -1,5 +1,5 @@
 /**
- * requestService.createRequest / completeRequest / mapRequest — Neo4j,
+ * requestService.createRequest / mapRequest — Neo4j,
  * workflow ed eventi mockati. Pinna: numero REQ + 8 cifre dal contatore
  * atomico (kind "service_request"), stato = step iniziale del workflow,
  * istanza di workflow, REQUESTED_BY, evento request.created con tenant/attore,
@@ -36,7 +36,7 @@ vi.mock('../../lib/workflowHelpers.js', () => ({
   getWorkflowSteps:   vi.fn().mockResolvedValue([]),
 }))
 
-const { createRequest, completeRequest, mapRequest } = await import('../requestService.js')
+const { createRequest, mapRequest } = await import('../requestService.js')
 const { runQuery } = await import('@opengraphity/neo4j')
 const { workflowEngine } = await import('@opengraphity/workflow')
 const { publishEvent } = await import('../../lib/publishEvent.js')
@@ -154,53 +154,6 @@ describe('createRequest', () => {
     vi.mocked(runQuery).mockResolvedValue([])
     await expect(createRequest({ title: 'T', priority: 'low' }, ctx)).rejects.toThrow('Failed to create service request')
     expect(workflowEngine.createInstance).not.toHaveBeenCalled()
-    expect(publishEvent).not.toHaveBeenCalled()
-  })
-})
-
-// ── completeRequest ───────────────────────────────────────────────────────────
-
-describe('completeRequest', () => {
-  it('richiesta senza istanza di workflow (o inesistente nel tenant) → errore esplicito', async () => {
-    vi.mocked(runQuery).mockResolvedValue([])
-    await expect(completeRequest('sr-1', ctx)).rejects.toThrow('ServiceRequest not found (or without workflow instance)')
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
-    expect(publishEvent).not.toHaveBeenCalled()
-  })
-
-  it('senza step "fulfilled" né terminale di chiusura → errore esplicito', async () => {
-    vi.mocked(getWorkflowSteps).mockResolvedValue([{ name: 'submitted', isInitial: true, isTerminal: false, isOpen: true, category: null, stepOrder: 1 }])
-    await expect(completeRequest('sr-1', ctx)).rejects.toThrow('nessuno step "fulfilled" o terminale di chiusura definito')
-    expect(workflowEngine.transition).not.toHaveBeenCalled()
-  })
-
-  it('evade con una transizione dell\'engine verso "fulfilled", poi imposta completed_at e pubblica request.completed', async () => {
-    const done = await completeRequest('sr-1', ctx)
-    expect(workflowEngine.transition).toHaveBeenCalledWith(h.session,
-      { instanceId: 'wi-sr', toStepName: 'fulfilled', triggeredBy: 'user-1', triggerType: 'manual', tenantId: 'tenant-1', notes: 'Request fulfilled' },
-      { userId: 'user-1', entityData: {} })
-    const [[cypher, params]] = queriesWith('SET r.completed_at')
-    expect(cypher).toContain('MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})')
-    expect(cypher).not.toMatch(/SET r\.status/)
-    expect(params).toMatchObject({ id: 'sr-1', tenantId: 'tenant-1' })
-    expect(done).toMatchObject({ id: 'sr-1', status: 'fulfilled', completedAt: params['now'] })
-    expect(publishEvent).toHaveBeenCalledWith('request.completed', 'tenant-1', 'user-1', { id: 'sr-1', completed_at: params['now'] }, params['now'])
-  })
-
-  it('ricade sul primo step terminale di categoria closed se "fulfilled" non esiste', async () => {
-    vi.mocked(getWorkflowSteps).mockResolvedValue([
-      { name: 'submitted', isInitial: true,  isTerminal: false, isOpen: true,  category: null,      stepOrder: 1 },
-      { name: 'rejected',  isInitial: false, isTerminal: true,  isOpen: false, category: 'rejected', stepOrder: 2 },
-      { name: 'done',      isInitial: false, isTerminal: true,  isOpen: false, category: 'closed',   stepOrder: 3 },
-    ])
-    await completeRequest('sr-1', ctx)
-    expect(vi.mocked(workflowEngine.transition).mock.calls[0]![1]).toMatchObject({ toStepName: 'done' })
-  })
-
-  it('transizione rifiutata dall\'engine → errore con lo step corrente, nessun completed_at né evento', async () => {
-    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: false, error: 'guard fallita' } as never)
-    await expect(completeRequest('sr-1', ctx)).rejects.toThrow('Cannot fulfil the request from step "submitted": guard fallita')
-    expect(queriesWith('SET r.completed_at')).toHaveLength(0)
     expect(publishEvent).not.toHaveBeenCalled()
   })
 })

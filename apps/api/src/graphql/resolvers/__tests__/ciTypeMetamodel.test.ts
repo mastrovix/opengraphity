@@ -288,7 +288,7 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
     reset([{ records: [row({ scope, name: 'server', label: 'Server' })] }])
     const err = await mutations.deleteCIType(null, { id: 'ct-base' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
     expect(err!.message).toContain('ships with the product')
-    expect(err!.message).toContain('sparirebbe dalla CMDB di ogni cliente')
+    expect(err!.message).toContain('it would disappear from the CMDB of every tenant')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
@@ -391,8 +391,8 @@ describe('campi sui tipi spediti col prodotto (A-5)', () => {
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
     expect(err!.message).toContain('__base__')
     expect(err!.message).toContain('ships with the product')
-    expect(err!.message).toMatch(/romperebbe la pagina di dettaglio di tutti i CI/)
-    expect(err!.message).toMatch(/Crea un tuo tipo CI/)
+    expect(err!.message).toMatch(/it would break the detail page of every CI/)
+    expect(err!.message).toMatch(/Create your own CI type/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
@@ -410,7 +410,7 @@ describe('campi sui tipi spediti col prodotto (A-5)', () => {
       .then(() => null, (e: unknown) => e as GraphQLError)
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
     expect(err!.message).toContain('server')
-    expect(err!.message).toContain('togliere un campo da qui lo toglierebbe a ogni cliente')
+    expect(err!.message).toContain('removing a field here would remove it for every tenant')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
@@ -610,9 +610,9 @@ describe('le mutation sui tipi non dicono più «fatto» a zero righe (A-6)', ()
   const shippedType = (name = 'server') => ({ records: [row({ scope: 'base', name, label: name })] })
 
   it.each([
-    ['updateCIType',     { id: 'ct-1', input: { label: 'X' } },                          'sola lettura'],
-    ['addCIRelation',    { typeId: 'ct-1', input: { name: 'n', label: 'l', relationshipType: 'DEPENDS_ON', targetType: 'server', cardinality: 'many', direction: 'outgoing' } }, 'in sola lettura'],
-    ['removeCIRelation', { typeId: 'ct-1', relationId: 'r-1' },                          'in sola lettura'],
+    ['updateCIType',     { id: 'ct-1', input: { label: 'X' } },                          'read-only'],
+    ['addCIRelation',    { typeId: 'ct-1', input: { name: 'n', label: 'l', relationshipType: 'DEPENDS_ON', targetType: 'server', cardinality: 'many', direction: 'outgoing' } }, 'are read-only'],
+    ['removeCIRelation', { typeId: 'ct-1', relationId: 'r-1' },                          'are read-only'],
   ] as const)('%s su un tipo spedito → errore prima di scrivere', async (name, args) => {
     reset([shippedType()])
     const fn = mutations[name] as (p: unknown, a: unknown, c: GraphQLContext) => Promise<unknown>
@@ -655,7 +655,7 @@ describe('le mutation sui tipi non dicono più «fatto» a zero righe (A-6)', ()
       { records: [] },   // nessun summary
     ])
     await expect(mutations.updateCIType(null, { id: 'ct-1', input: { label: 'X' } }, admin))
-      .rejects.toThrow(/non ha restituito i contatori/)
+      .rejects.toThrow(/returned no write counters/)
   })
 })
 
@@ -703,9 +703,9 @@ describe('il tipo in uso non si cancella (A-8 / D-10)', () => {
     reset([tenantType()])
     usage({ cis: 3, itil_relation_rules: 2, dynamic_ci_groups: 1, report_nodes: 4 })
     const err = await mutations.deleteCIType(null, { id: 'ct-1' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toContain('2 regole di relazione ITIL')
-    expect(err!.message).toContain('1 gruppi dinamici')
-    expect(err!.message).toContain('4 nodi dei template di report')
+    expect(err!.message).toContain('ITIL relation rules (Settings → ITIL relations): 2')
+    expect(err!.message).toContain('dynamic groups that list it in their criteria: 1')
+    expect(err!.message).toContain('report template nodes: 4')
   })
 
   it('nessun CI ma riferimenti appesi → si ferma comunque, dicendo quali', async () => {
@@ -713,8 +713,8 @@ describe('il tipo in uso non si cancella (A-8 / D-10)', () => {
     usage({ custom_widgets: 1, assessment_questions: 5 })
     const err = await mutations.deleteCIType(null, { id: 'ct-1' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
     expect(err!.message).toContain('no CI of this type')
-    expect(err!.message).toContain('1 widget della dashboard')
-    expect(err!.message).toContain('5 domande di assessment')
+    expect(err!.message).toContain('dashboard widgets: 1')
+    expect(err!.message).toContain('assessment questions attached to the type (Settings → Assessment questions): 5')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
@@ -804,7 +804,7 @@ describe('addCIRelation valida il tipo di relazione (C-3)', () => {
 
   it.each(['bilancia', 'BILANCIA UNO', 'BILANCIA-1', '', 'Bilancia', 42, null])('%s → rifiutato prima di scrivere', async (bad) => {
     reset([{ records: [row({ scope: 'tenant', name: 'load_balancer', label: 'Bilanciatore' })] }])
-    await expect(mutations.addCIRelation(null, relInput(bad), admin)).rejects.toThrow(/non è un tipo di relazione valido/)
+    await expect(mutations.addCIRelation(null, relInput(bad), admin)).rejects.toThrow(/is not a valid relationship type/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 })

@@ -3,8 +3,8 @@
  *  - reopenTicket goes through workflowEngine.transition (never `SET i.status`),
  *    picking a transition the workflow actually offers from the current step;
  *  - no transition back to an open step → ValidationError;
- *  - createTicket rejects a missing/unknown priority instead of defaulting to 'medium';
- *  - mapTicket fails loud on a node missing priority/category.
+ *  - (createTicket: the priority checks moved with the creation into incidentService — portalCreateTicket.test.ts);
+ *  - mapTicket fails loud on a node missing severity/category.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
@@ -50,7 +50,7 @@ const STEPS = [
   { name: 'closed',      isInitial: false, isTerminal: true,  isOpen: false, category: 'closed',   stepOrder: 4 },
 ]
 
-const ticketProps = { id: 'inc-1', title: 'T', status: 'in_progress', priority: 'high', category: 'hardware', created_by: 'user-1', created_at: 'a', updated_at: 'b' }
+const ticketProps = { id: 'inc-1', number: 'INC00000001', title: 'T', status: 'in_progress', severity: 'high', category: 'hardware', created_by: 'user-1', created_at: 'a', updated_at: 'b' }
 
 describe('reopenTicket', () => {
   beforeEach(() => {
@@ -120,39 +120,23 @@ describe('reopenTicket', () => {
   })
 })
 
-describe('createTicket — priority fail-fast (A-19)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mockSession.executeRead.mockReset()
-    // loadEnumValues: category then priority
-    mockSession.executeRead
-      .mockResolvedValueOnce({ records: [rec({ values: ['hardware', 'software'] })] })
-      .mockResolvedValueOnce({ records: [rec({ values: ['low', 'medium', 'high'] })] })
-  })
-
-  it('unknown priority → ValidationError, nothing written', async () => {
-    const err = await portalResolvers.Mutation.createTicket(null, { title: 'T', priority: 'urgentissimo', category: 'hardware' }, ctx)
-      .then(() => null, (e: unknown) => e)
-    expect((err as GraphQLError).extensions['code']).toBe('BAD_USER_INPUT')
-    expect((err as GraphQLError).message).toMatch(/Invalid priority: urgentissimo/)
-    expect(mockSession.executeWrite).not.toHaveBeenCalled()
-  })
-
-  it('missing priority → ValidationError (no silent "medium")', async () => {
-    const err = await portalResolvers.Mutation.createTicket(null, { title: 'T', category: 'hardware' }, ctx)
-      .then(() => null, (e: unknown) => e)
-    expect((err as GraphQLError).message).toMatch(/priority is required/)
-    expect(mockSession.executeWrite).not.toHaveBeenCalled()
-  })
-})
-
 describe('mapTicket — no invented defaults (A-19)', () => {
   beforeEach(() => { vi.clearAllMocks(); mockSession.executeRead.mockReset() })
 
-  it('a node without category fails loud instead of reporting "other"', async () => {
+  // Category is optional (an incident opened from an alarm has none): null,
+  // never an invented "other" (giro nel browser del 14 set 2026).
+  it('a node without category reports null, not "other"', async () => {
+    mockSession.executeRead.mockResolvedValue({ records: [] })
     mockSession.executeRead.mockResolvedValueOnce({
       records: [rec({ props: { ...ticketProps, category: undefined }, assignedTeam: null })],
     })
-    await expect(portalResolvers.Query.myTicket(null, { id: 'inc-1' }, ctx)).rejects.toThrow(/missing required property 'category'/)
+    await expect(portalResolvers.Query.myTicket(null, { id: 'inc-1' }, ctx)).resolves.toMatchObject({ category: null })
+  })
+
+  it('a node without severity still fails loud instead of reporting "medium"', async () => {
+    mockSession.executeRead.mockResolvedValueOnce({
+      records: [rec({ props: { ...ticketProps, severity: undefined }, assignedTeam: null })],
+    })
+    await expect(portalResolvers.Query.myTicket(null, { id: 'inc-1' }, ctx)).rejects.toThrow(/missing required property 'severity'/)
   })
 })

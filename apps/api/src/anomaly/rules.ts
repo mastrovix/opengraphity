@@ -4,7 +4,14 @@
  * CI nodes use Neo4j labels; the `type` property is null — always use
  * `toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))` for entitySubtype.
  *
- * Each query MUST RETURN: entityId, entityType, entitySubtype, entityName, description, severity
+ * Each query MUST RETURN: entityId, entityType, entitySubtype, entityName, description, params, severity
+ *
+ * ## Lingua (giro nel browser del 14 set 2026, #57)
+ * Titoli e descrizioni erano frasi italiane composte qui («CI Senza Owner»,
+ * «CI con 7 dipendenti diretti»), anche per chi usa l'interfaccia inglese.
+ * Adesso `title` e `description` sono inglesi (log, Slack, integrazioni) e
+ * ogni risultato porta i suoi `params`: la pagina compone la frase nella lingua
+ * di chi guarda con le chiavi `anomaly.rules.<key>.*`.
  *
  * ## «Un CI» è `:ConfigurationItem`, non un elenco di tipi (ondata 6, A-9)
  * Le regole elencavano cinque etichette (`Application`, `Server`, `Database`,
@@ -43,9 +50,9 @@ export const ANOMALY_RULES: AnomalyRule[] = [
   // ── 1. Orphan CI ─────────────────────────────────────────────────────────────
   {
     key:         'orphan_ci',
-    title:       'CI Orfano',
+    title:       'Orphan CI',
     severity:    'medium',
-    description: 'Configuration Item senza alcuna relazione nel grafo CMDB',
+    description: 'Configuration Item with no relation in the CMDB graph',
     cypher: `
       MATCH (ci)
       ${CI_MATCH}
@@ -55,7 +62,8 @@ export const ANOMALY_RULES: AnomalyRule[] = [
         'CI'                       AS entityType,
         toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
-        'Il CI non ha relazioni con altri nodi nel grafo CMDB' AS description,
+        'The CI has no relation with other nodes of the CMDB graph' AS description,
+        {}                         AS params,
         'medium'                   AS severity
     `,
   },
@@ -66,7 +74,7 @@ export const ANOMALY_RULES: AnomalyRule[] = [
     key:         'spof',
     title:       'Single Point of Failure',
     severity:    'critical',
-    description: 'CI con ≥5 dipendenti diretti nel grafo',
+    description: 'CI with 5 or more direct dependents in the graph',
     cypher: `
       MATCH (ci)
       ${CI_MATCH}
@@ -80,7 +88,8 @@ export const ANOMALY_RULES: AnomalyRule[] = [
         'CI'                       AS entityType,
         toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
-        'CI con ' + toString(depCount) + ' dipendenti diretti — potenziale SPOF' AS description,
+        'CI with ' + toString(depCount) + ' direct dependents: potential SPOF' AS description,
+        { count: depCount }        AS params,
         'critical'                 AS severity
     `,
   },
@@ -88,9 +97,9 @@ export const ANOMALY_RULES: AnomalyRule[] = [
   // ── 3. Dependency Cycle ───────────────────────────────────────────────────────
   {
     key:         'dependency_cycle',
-    title:       'Ciclo di Dipendenza',
+    title:       'Dependency Cycle',
     severity:    'high',
-    description: 'Dipendenza circolare rilevata tra Configuration Items',
+    description: 'Circular dependency between Configuration Items',
     cypher: `
       MATCH (ci)
       ${CI_MATCH}
@@ -101,7 +110,8 @@ export const ANOMALY_RULES: AnomalyRule[] = [
         'CI'                       AS entityType,
         toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
-        'Ciclo di dipendenza di lunghezza ' + toString(cycleLen) + ' rilevato' AS description,
+        'Dependency cycle of length ' + toString(cycleLen) AS description,
+        { length: cycleLen }       AS params,
         'high'                     AS severity
     `,
   },
@@ -109,9 +119,9 @@ export const ANOMALY_RULES: AnomalyRule[] = [
   // ── 4. Missing Owner ──────────────────────────────────────────────────────────
   {
     key:         'missing_owner',
-    title:       'CI Senza Owner',
+    title:       'CI Without Owner',
     severity:    'low',
-    description: 'Configuration Item non assegnato ad alcun team',
+    description: 'Configuration Item not assigned to any team',
     cypher: `
       MATCH (ci)
       ${CI_MATCH}
@@ -121,7 +131,8 @@ export const ANOMALY_RULES: AnomalyRule[] = [
         'CI'                       AS entityType,
         toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
-        'Il CI non ha un owner o team assegnato' AS description,
+        'The CI has no owner team' AS description,
+        {}                         AS params,
         'low'                      AS severity
     `,
   },
@@ -130,9 +141,9 @@ export const ANOMALY_RULES: AnomalyRule[] = [
   // Server that DEPENDS_ON an Application (wrong direction)
   {
     key:         'unauthorized_relation',
-    title:       'Relazione Non Autorizzata',
+    title:       'Unauthorized Relation',
     severity:    'medium',
-    description: 'Server dipende da un Application — direzione non consentita',
+    description: 'A Server depends on an Application: direction not allowed',
     cypher: `
       MATCH (a:Server)-[:DEPENDS_ON]->(b:Application)
       WHERE a.tenant_id = $tenantId AND b.tenant_id = $tenantId
@@ -141,7 +152,8 @@ export const ANOMALY_RULES: AnomalyRule[] = [
         'CI'                                                          AS entityType,
         'server'                                                      AS entitySubtype,
         coalesce(a.name, a.id)                                        AS entityName,
-        'DEPENDS_ON inverso: Server → Application (' + coalesce(b.name, b.id) + ')' AS description,
+        'Reversed DEPENDS_ON: Server → Application (' + coalesce(b.name, b.id) + ')' AS description,
+        { application: coalesce(b.name, b.id) }                       AS params,
         'medium'                                                      AS severity
     `,
   },
@@ -155,9 +167,9 @@ export const ANOMALY_RULES: AnomalyRule[] = [
   // Orphans (reachable=0) are handled separately by the orphan_ci rule.
   {
     key:         'isolated_cluster',
-    title:       'Cluster Isolato',
+    title:       'Isolated Cluster',
     severity:    'medium',
-    description: 'Gruppo di CI disconnesso dal grafo principale del tenant',
+    description: 'Group of CIs cut off from the main graph of the tenant',
     cypher: `
       MATCH (ci)
       ${CI_MATCH}
@@ -182,7 +194,8 @@ export const ANOMALY_RULES: AnomalyRule[] = [
         'CI'                       AS entityType,
         toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
-        'CI in cluster isolato: raggiunge solo ' + toString(reachable) + ' altri nodi CI' AS description,
+        'CI in an isolated cluster: it reaches only ' + toString(reachable) + ' other CIs' AS description,
+        { count: reachable }       AS params,
         'medium'                   AS severity
     `,
   },
@@ -191,9 +204,9 @@ export const ANOMALY_RULES: AnomalyRule[] = [
   // CI linked to ≥5 open critical incidents
   {
     key:         'risk_concentration',
-    title:       'Concentrazione di Rischio',
+    title:       'Risk Concentration',
     severity:    'high',
-    description: 'CI con ≥5 incidenti critici aperti',
+    description: 'CI with 5 or more open critical incidents',
     cypher: `
       MATCH (ci)
       ${CI_MATCH}
@@ -206,7 +219,8 @@ export const ANOMALY_RULES: AnomalyRule[] = [
         'CI'                       AS entityType,
         toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
-        'CI con ' + toString(criticalCount) + ' incidenti critici aperti' AS description,
+        'CI with ' + toString(criticalCount) + ' open critical incidents' AS description,
+        { count: criticalCount }   AS params,
         'high'                     AS severity
     `,
   },

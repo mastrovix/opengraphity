@@ -40,11 +40,17 @@ export function formatDateTime(iso: string | null | undefined): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(currentLocale(), DATETIME)
 }
 
-/** Solo data, lingua attiva. '—' se assente. */
+const DATE: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: 'numeric' }
+
+/**
+ * "08 set 2026" (lingua attiva). '—' se assente. Lo stesso giorno-mese-anno di
+ * `formatDateTime`: giro nel browser del 14 set 2026 (#27), il dettaglio del CI
+ * diceva «14/09/2026» accanto a «14 Sept 2026, 10:05».
+ */
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(currentLocale())
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(currentLocale(), DATE)
 }
 
 /** "08/09/2026 14:05" — compatta, a larghezza fissa (tabelle, timeline audit). */

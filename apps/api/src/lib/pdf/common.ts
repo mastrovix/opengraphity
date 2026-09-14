@@ -3,29 +3,42 @@
  * problem). Pure layout/formatting helpers — no domain knowledge here.
  */
 import PDFDocument from 'pdfkit'
+import { pdfText } from './texts.js'
+
+/**
+ * Lingua e fuso del cliente in cui si scrivono le date del dossier. Il fuso era
+ * `Europe/Rome` per ogni cliente (revisione del 14 set 2026 · F7).
+ */
+export interface PdfLocale {
+  language: string
+  timeZone: string
+}
 
 export interface PdfMeta {
   generatedAt: string   // ISO
   generatedBy: string   // user email
   tenantId:    string
+  locale:      PdfLocale
 }
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
 export const DASH = '—' // —
 
-export function fmtDate(v: string | null | undefined): string {
+export function fmtDate(v: string | null | undefined, locale: PdfLocale): string {
   if (!v) return DASH
   const d = new Date(v)
   if (isNaN(d.getTime())) return String(v)
-  return d.toLocaleString('it-IT', {
+  return d.toLocaleString(locale.language === 'en' ? 'en-GB' : locale.language === 'it' ? 'it-IT' : locale.language, {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
-    timeZone: 'Europe/Rome',
+    hourCycle: 'h23',
+    timeZone: locale.timeZone,
   })
 }
 
-export function fmtDuration(ms: number | null | undefined): string {
+/** Una durata compatta; `dayUnit` è l'abbreviazione dei giorni nella lingua del dossier. */
+export function fmtDuration(ms: number | null | undefined, dayUnit = 'd'): string {
   if (ms == null) return DASH
   const totalSec = Math.round(ms / 1000)
   if (totalSec < 60) return `${totalSec}s`
@@ -34,7 +47,7 @@ export function fmtDuration(ms: number | null | undefined): string {
   const h = Math.floor(min / 60)
   if (h < 24) return `${h}h ${min % 60}m`
   const d = Math.floor(h / 24)
-  return `${d}g ${h % 24}h`
+  return `${d}${dayUnit} ${h % 24}h`
 }
 
 export function fmtBytes(bytes: number): string {
@@ -193,12 +206,12 @@ export function renderFooters(doc: Doc, meta: PdfMeta): void {
       .lineWidth(0.5).strokeColor(COLOR.border).stroke()
     doc.fontSize(7.5).font('Helvetica').fillColor(COLOR.muted)
     doc.text(
-      `Generato il ${meta.generatedAt} da ${meta.generatedBy} ${DASH} tenant ${meta.tenantId}`,
+      pdfText(meta.locale, 'footerGenerated', { at: fmtDate(meta.generatedAt, meta.locale), by: meta.generatedBy, tenant: meta.tenantId }),
       PAGE_MARGIN.left, y,
       { width: contentWidth(doc) - 80, lineBreak: false },
     )
     doc.text(
-      `Pagina ${i - range.start + 1}/${range.count}`,
+      pdfText(meta.locale, 'footerPage', { page: i - range.start + 1, pages: range.count }),
       PAGE_MARGIN.left, y,
       { width: contentWidth(doc), align: 'right', lineBreak: false },
     )

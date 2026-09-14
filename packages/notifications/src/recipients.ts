@@ -110,7 +110,7 @@ export async function resolveNotificationRecipients(
   if (!NOTIFICATION_TARGETS.includes(target)) {
     throw new Error(
       `${entity.eventType} notification rule has target "${target}", which is not one of [${NOTIFICATION_TARGETS.join(', ')}] — ` +
-      `fix the rule (Impostazioni → Regole di notifica): nobody would receive it`,
+      `fix the rule (Settings → Notification rules): nobody would receive it`,
     )
   }
   if (target === NOTIFICATION_TARGET_ALL) {

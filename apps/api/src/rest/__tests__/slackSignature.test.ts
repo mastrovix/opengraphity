@@ -97,7 +97,7 @@ describe('verifySlackSignature (via /og commands)', () => {
     const res = fakeRes()
     await handleSlackCommands(slackReq({ text: 'help', user_id: 'U1' }), asRes(res))
     expect(res.statusCode).toBe(200)
-    expect((res.body as { text: string }).text).toMatch(/Comando non riconosciuto/)
+    expect((res.body as { text: string }).text).toMatch(/Command not recognised/)
   })
 
   it('timestamp older than 5 minutes → 401 even with a correct HMAC for that timestamp', async () => {
@@ -168,14 +168,14 @@ describe('/og commands — remaining branches', () => {
     const res = fakeRes()
     await handleSlackCommands(slackReq({ text: 'problem apri x', user_id: 'U1' }), asRes(res))
     expect(res.body).toMatchObject({ response_type: 'ephemeral' })
-    expect((res.body as { text: string }).text).toMatch(/Comando non riconosciuto.*\/og incident apri/)
+    expect((res.body as { text: string }).text).toMatch(/Command not recognised.*\/og incident apri/)
     expect(getSession).not.toHaveBeenCalled()
   })
 
   it('missing title → usage, nothing created', async () => {
     const res = fakeRes()
     await handleSlackCommands(slackReq({ text: 'incident apri ci=web-01 high', user_id: 'U1' }), asRes(res))
-    expect((res.body as { text: string }).text).toMatch(/Titolo mancante/)
+    expect((res.body as { text: string }).text).toMatch(/Title missing/)
     expect(getSession).not.toHaveBeenCalled()
     expect(createIncident).not.toHaveBeenCalled()
   })
@@ -185,7 +185,7 @@ describe('/og commands — remaining branches', () => {
     vi.mocked(getSession).mockReturnValue(session as never)
     const res = fakeRes()
     await handleSlackCommands(slackReq(CMD), asRes(res))
-    expect((res.body as { text: string }).text).toMatch(/Collega il tuo account Slack/)
+    expect((res.body as { text: string }).text).toMatch(/Link your Slack account/)
     expect(createIncident).not.toHaveBeenCalled()
     expect(session.close).toHaveBeenCalled()
   })
@@ -280,7 +280,7 @@ describe('handleSlackActions', () => {
     expect(resolveIncident).not.toHaveBeenCalled()
     const posted = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body) as { response_type: string; text: string }
     expect(posted).toMatchObject({ response_type: 'ephemeral' })
-    expect(posted.text).toMatch(/Collega il tuo account Slack/)
+    expect(posted.text).toMatch(/Link your Slack account/)
   })
 
   it('service failure is logged and still acknowledged with 200 (Slack retries otherwise)', async () => {

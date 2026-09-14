@@ -1,7 +1,8 @@
 {
   "portal": {
     "title": "Portale IT",
-    "poweredBy": "Powered by OpenGrafo"
+    "poweredBy": "Powered by OpenGrafo",
+    "documentTitle": "Portale IT — OpenGrafo"
   },
   "nav": {
     "home": "Home",
@@ -40,13 +41,6 @@
       "low": "Bassa",
       "medium": "Media",
       "high": "Alta"
-    },
-    "category": {
-      "hardware": "Hardware",
-      "software": "Software",
-      "access": "Accesso",
-      "network": "Rete",
-      "other": "Altro"
     },
     "fields": {
       "title": "Descrivi il problema in una frase",
@@ -114,7 +108,12 @@
     "breadcrumb": "Knowledge Base",
     "notFound": "Articolo non trovato",
     "searchButton": "Cerca",
-    "thanksFeedback": "Grazie per il tuo feedback!"
+    "thanksFeedback": "Grazie per il tuo feedback!",
+    "articleCount_one": "{{count}} articolo",
+    "articleCount_other": "{{count}} articoli",
+    "searchResults_one": "{{count}} risultato per",
+    "searchResults_other": "{{count}} risultati per",
+    "clearSearch": "Cancella"
   },
   "common": {
     "loading": "Caricamento...",

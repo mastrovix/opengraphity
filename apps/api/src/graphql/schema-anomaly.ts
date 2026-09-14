@@ -19,12 +19,20 @@ export function anomalySDL(): string {
     entitySubtype:    String!
     entityName:       String!
     description:      String!
+    # Parametri della frase del risultato (la pagina la compone nella lingua di chi guarda).
+    # Null = anomalia registrata prima del 14 set 2026 e non più riscansionata.
+    descriptionParams: [AnomalyParam!]
     detectedAt:       String!
     resolvedAt:       String
     resolutionStatus: String
     resolutionNote:   String
     resolvedBy:       String
     tenantId:         String!
+  }
+
+  type AnomalyParam {
+    key:   String!
+    value: String!
   }
 
   type AnomaliesResult {

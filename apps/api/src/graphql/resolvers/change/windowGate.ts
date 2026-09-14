@@ -135,8 +135,8 @@ export async function assertChangeWindowGate(
       )
     case 'use_reject_mutation':
       throw new GraphQLError(
-        'Per rigettare usa "Rigetta" nella sezione Approvazione (rejectChangeApproval), che riapre gli assessment',
-        { extensions: { code: 'CONFLICT' } },
+        'To reject, use "Reject" in the Approval section (rejectChangeApproval), which reopens the assessments',
+        { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.rejectViaApproval' } } },
       )
     case 'no_approval_step':
       throw new GraphQLError(

@@ -427,7 +427,7 @@ curl -s "http://c-one.localhost/api/v1/changes/<id>/status" -H "X-API-Key: $API_
 { "data": { "code": "CHG00000042", "phase": "deployment", "approvalStatus": null, "deployApproved": true } }
 ```
 
-`deployApproved` is `true` when the current workflow step is at or past the deployment step (compared via `step_order` metadata on the workflow definition, not hardcoded step names).
+`deployApproved` is `true` when the current workflow step is at or past the release step, i.e. the step whose purpose is `implementation` (compared via `step_order` metadata on the workflow definition, not step names). A change workflow with no `implementation` step answers `500`: the question has no answer until the purpose is set in the workflow designer.
 
 ### Import (`/api/v1/import`)
 

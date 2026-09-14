@@ -11,8 +11,13 @@ import {
   LINGUE,
   parseValueLabels, valueLabelEntries, pruneValueLabels, renameValueLabel, serializeValueLabels,
 } from '../../lib/enumValueLabels.js'
+import {
+  parseValueColors, valueColorEntries, renameValueColor, pruneValueColors, serializeValueColors, assertValueColorsInput,
+  type EnumValueColors, type EnumValueColorEntry,
+} from '../../lib/enumValueColors.js'
 import { languageFor } from '../../lib/tenantLanguage.js'
 import { logger } from '../../lib/logger.js'
+import { newShippedValues, vocabulariesBehindShipped } from '../../lib/vocabularyShippedDrift.js'
 
 /**
  * Il vocabolario di questo cliente è cambiato: svuota le cache derivate e
@@ -42,6 +47,8 @@ interface EnumTypeDef {
   values:    string[]
   /** Le etichette come stanno sul nodo: valore → lingua → etichetta. Risolte dal field resolver. */
   valueLabelsRaw: EnumValueLabels
+  /** I colori per valore, nell'ordine dei valori (revisione del 14 set 2026 · F9). */
+  valueColors: EnumValueColorEntry[]
   isSystem:  boolean
   /** `tenant_id = 'system'`: spedito col prodotto, uguale per tutti i clienti. */
   isShipped: boolean
@@ -156,9 +163,9 @@ function assertValuesUsable(values: readonly string[], name: string): void {
 function assertEnumValues(vals: unknown, tenantId: unknown, name: unknown): string[] {
   if (Array.isArray(vals) && vals.every((v) => typeof v === 'string')) return vals as string[]
   throw new Error(
-    `EnumTypeDefinition ${String(tenantId)}/${String(name)}: "values" non è una lista di stringhe ` +
-    `(${typeof vals === 'string' ? 'è una stringa' : typeof vals}). ` +
-    `Esegui la migrazione 20260918_1910_provision_tenant_data, che normalizza i vocabolari scritti come stringa JSON.`,
+    `EnumTypeDefinition ${String(tenantId)}/${String(name)}: "values" is not a list of strings ` +
+    `(${typeof vals === 'string' ? 'it is a string' : typeof vals}). ` +
+    `Run the 20260918_1910_provision_tenant_data migration, which normalizes dictionaries written as a JSON string.`,
   )
 }
 
@@ -189,6 +196,13 @@ function mapEnum(r: { get: (k: string) => unknown }): EnumTypeDef {
       '[vocabolario] etichette per valore non leggibili: a schermo si legge il valore',
     )
   }
+  const { colors: colori, error: erroreColori } = parseValueColors(r.get('valueColors'))
+  if (erroreColori) {
+    logger.warn(
+      { module: 'enum-type', tenantId, name: r.get('name'), err: erroreColori },
+      '[vocabolario] colori per valore non leggibili: a schermo il valore resta neutro',
+    )
+  }
   return {
     id:        r.get('id')        as string,
     tenantId,
@@ -206,6 +220,7 @@ function mapEnum(r: { get: (k: string) => unknown }): EnumTypeDef {
       che e' l'unico posto che conosce l'argomento `language`.
     */
     valueLabelsRaw: etichette,
+    valueColors: valueColorEntries(valori, colori),
     isSystem:  r.get('isSystem')  as boolean,
     // `is_system` è un flag di protezione scritto anche sulle copie per tenant
     // (A-3): il proprietario si legge dal tenant, non da quel flag.
@@ -251,7 +266,7 @@ export async function enumTypes(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
         ORDER BY e.scope, e.name
       `, params),
     )
@@ -281,7 +296,7 @@ export async function enumType(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
       `, { id: args.id, tenantId: ctx.tenantId }),
     )
     return result.records.length ? mapEnum(result.records[0]) : null
@@ -356,6 +371,7 @@ export async function createEnumType(
       // Un vocabolario nuovo nasce senza etichette: a schermo si legge il
       // valore, e l'admin le scrive dal Dizionario quando vuole.
       valueLabelsRaw: {},
+      valueColors: [],
       defaultValue: null,
       createdAt: now, updatedAt: now,
     }
@@ -394,7 +410,7 @@ export async function customizeEnumType(
         WHERE e.tenant_id IN [$tenantId, $systemTenant]
         RETURN e.tenant_id AS tenantId, e.name AS name, e.label AS label,
                e.values AS values, e.scope AS scope, e.default_value AS defaultValue,
-               e.value_labels AS valueLabels
+               e.value_labels AS valueLabels, e.value_colors AS valueColors
       `, { id: args.id, tenantId: ctx.tenantId, systemTenant: SYSTEM_TENANT }),
     )
     if (!src.records.length) throw new NotFoundError('EnumTypeDefinition', args.id)
@@ -447,6 +463,11 @@ export async function customizeEnumType(
           // tre in inglese. Chi personalizza parte da dov'era, e cambia quel
           // che vuole.
           value_labels: $valueLabels,
+          // E i COLORI (F9), per la stessa ragione delle etichette.
+          value_colors: $valueColors,
+          // I valori spediti che la copia ha VISTO (F20): quelli spediti dopo si
+          // riconoscono e la diagnostica li segnala; quelli tolti di proposito no.
+          shipped_values_seen: $shippedValuesSeen,
           created_at: $now,
           updated_at: $now
         })
@@ -459,16 +480,18 @@ export async function customizeEnumType(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
       `, {
         id, tenantId: ctx.tenantId, name,
         label: row.get('label') as string, values,
         scope: row.get('scope') as string, now,
         defaultValue: (row.get('defaultValue') ?? null) as string | null,
         valueLabels: (row.get('valueLabels') ?? null) as string | null,
+        valueColors: (row.get('valueColors') ?? null) as string | null,
+        shippedValuesSeen: values,
       }),
     )
-    if (!created.records.length) throw new Error(`customizeEnumType("${name}"): la CREATE non ha restituito il nodo`)
+    if (!created.records.length) throw new Error(`customizeEnumType("${name}"): the CREATE returned no node`)
 
     vocabularyChanged(ctx.tenantId)
     void audit(ctx, 'enum_type.customized', 'EnumTypeDefinition', id, { name, shippedId: args.id })
@@ -500,7 +523,7 @@ export async function customizeEnumType(
  */
 export async function updateEnumType(
   _: unknown,
-  args: { id: string; input: { label?: string; values?: string[]; scope?: string; defaultValue?: string; replacements?: { from: string; to: string }[]; valueLabels?: { value: string; language: string; label: string }[] } },
+  args: { id: string; input: { label?: string; values?: string[]; scope?: string; defaultValue?: string; replacements?: { from: string; to: string }[]; valueLabels?: { value: string; language: string; label: string }[]; valueColors?: { value: string; color: string }[] } },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
   if (ctx.role !== 'admin') throw new ForbiddenError()
@@ -513,7 +536,7 @@ export async function updateEnumType(
         MATCH (e:EnumTypeDefinition {id: $id})
         WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')
         RETURN e.is_system AS isSystem, e.tenant_id AS tenantId, e.name AS name, e.values AS values,
-               e.default_value AS defaultValue, e.value_labels AS valueLabels
+               e.default_value AS defaultValue, e.value_labels AS valueLabels, e.value_colors AS valueColors
       `, { id, tenantId: ctx.tenantId }),
     )
     if (!check.records.length) throw new NotFoundError('EnumTypeDefinition', id)
@@ -565,7 +588,7 @@ export async function updateEnumType(
     const orphaned = removed.filter((v) => !replaced.has(v))
     if (orphaned.length) {
       const usages = await countEnumValueUsage(session, ctx.tenantId, name, orphaned)
-      if (usages.length) throw new ValidationError(enumValueUsageMessage(name, usages))
+      if (usages.length) throw new ValidationError(enumValueUsageMessage(name, usages), { key: 'errors.enum.valuesInUse', params: { name, usages: usages.map((u) => u.value).join(', ') } })
     }
 
     // ── IL DEFAULT SEGUE I VALORI (terza revisione · C2) ──────────────────
@@ -616,6 +639,13 @@ export async function updateEnumType(
     for (const [from, to] of replaced) etichette = renameValueLabel(etichette, from, to)
     const etichetteFinali = serializeValueLabels(pruneValueLabels(etichette, next))
 
+    // I COLORI (F9) seguono le stesse tre regole delle etichette.
+    let colori: EnumValueColors = input.valueColors
+      ? assertValueColorsInput(input.valueColors, next, name)
+      : parseValueColors(check.records[0]!.get('valueColors')).colors
+    for (const [from, to] of replaced) colori = renameValueColor(colori, from, to)
+    const coloriFinali = serializeValueColors(pruneValueColors(colori, next))
+
     if (finalDefault != null && !next.includes(finalDefault)) {
       // Chi lo legge deve sapere quali sono le sue due uscite.
       throw new ValidationError(
@@ -658,6 +688,7 @@ export async function updateEnumType(
             e.scope      = CASE WHEN $scope IS NOT NULL AND NOT e.is_system THEN $scope ELSE e.scope END,
             e.default_value = $finalDefault,
             e.value_labels = $valueLabels,
+            e.value_colors = $valueColors,
             e.updated_at = $now
         RETURN e.id        AS id,
                e.tenant_id AS tenantId,
@@ -668,7 +699,7 @@ export async function updateEnumType(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
       `, {
         id,
         tenantId: ctx.tenantId,
@@ -677,6 +708,7 @@ export async function updateEnumType(
         scope:  input.scope  ?? null,
         finalDefault,
         valueLabels: etichetteFinali,
+        valueColors: coloriFinali,
         now,
       })
     })
@@ -850,7 +882,7 @@ export async function renameEnumValue(
         MATCH (e:EnumTypeDefinition {id: $id})
         WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')
         RETURN e.tenant_id AS tenantId, e.name AS name, e.values AS values, e.default_value AS defaultValue,
-               e.value_labels AS valueLabels
+               e.value_labels AS valueLabels, e.value_colors AS valueColors
       `, { id, tenantId: ctx.tenantId }),
     )
     if (!check.records.length) throw new NotFoundError('EnumTypeDefinition', id)
@@ -895,6 +927,8 @@ export async function renameEnumValue(
     // perderebbe del tutto l'etichetta che l'admin aveva scritto.
     const { labels: etichetteCorrenti } = parseValueLabels(row.get('valueLabels'))
     const etichetteNuove = serializeValueLabels(renameValueLabel(etichetteCorrenti, from, to))
+    // E il COLORE (F9), per la stessa ragione.
+    const coloriNuovi = serializeValueColors(renameValueColor(parseValueColors(row.get('valueColors')).colors, from, to))
 
     /** Quanti record ha toccato l'ULTIMO tentativo: l'audit va dopo il commit. */
     let touchedRecords = 0
@@ -910,6 +944,7 @@ export async function renameEnumValue(
         SET e.values        = $values,
             e.default_value = CASE WHEN e.default_value = $from THEN $to ELSE e.default_value END,
             e.value_labels  = $valueLabels,
+            e.value_colors  = $valueColors,
             e.updated_at    = $now
         RETURN e.id        AS id,
                e.tenant_id AS tenantId,
@@ -920,8 +955,8 @@ export async function renameEnumValue(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels
-      `, { id, tenantId: ctx.tenantId, values: next, from, to, now, valueLabels: etichetteNuove })
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
+      `, { id, tenantId: ctx.tenantId, values: next, from, to, now, valueLabels: etichetteNuove, valueColors: coloriNuovi })
     })
     if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', id)
     vocabularyChanged(ctx.tenantId)
@@ -1003,7 +1038,7 @@ export async function reorderEnumValues(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
       `, { id, tenantId: ctx.tenantId, values, now: new Date().toISOString() }),
     )
     if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', id)
@@ -1013,6 +1048,137 @@ export async function reorderEnumValues(
   } finally {
     await session.close()
   }
+}
+
+// ── I valori spediti dopo la copia (revisione del 14 set 2026 · F20) ─────────
+
+const ENUM_RETURN = `
+  RETURN e.id AS id, e.tenant_id AS tenantId, e.name AS name, e.label AS label, e.values AS values,
+         e.is_system AS isSystem, e.scope AS scope, e.default_value AS defaultValue,
+         e.created_at AS createdAt, e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors`
+
+function stringList(value: unknown, what: string): string[] {
+  if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) {
+    throw new Error(`${what} is not a list of strings (${JSON.stringify(value)})`)
+  }
+  return value as string[]
+}
+
+/** La copia del cliente e il suo gemello spedito, già validati per le due decisioni. */
+async function loadCopyAndShipped(session: ReturnType<typeof getSession>, id: string, tenantId: string) {
+  const r = await session.executeRead((tx) => tx.run(`
+    MATCH (c:EnumTypeDefinition {id: $id})
+    WHERE c.tenant_id IN [$tenantId, 'system']
+    OPTIONAL MATCH (s:EnumTypeDefinition {tenant_id: 'system', name: c.name})
+    RETURN c.tenant_id AS owner, c.name AS name, c.values AS values, c.shipped_values_seen AS seen,
+           c.value_labels AS valueLabels, c.value_colors AS valueColors,
+           s.values AS shipped, s.value_labels AS shippedLabels, s.value_colors AS shippedColors
+  `, { id, tenantId }))
+  const row = r.records[0]
+  if (!row) throw new NotFoundError('EnumTypeDefinition', id)
+  const name = row.get('name') as string
+  if ((row.get('owner') as string) === SYSTEM_TENANT) {
+    throw new ValidationError(
+      `Dictionary "${name}" ships with the product: shipped values are adopted or declined on YOUR copy, not on the shipped dictionary.`,
+      { key: 'errors.enum.shippedValuesOnlyCopies', params: { name } },
+    )
+  }
+  if (row.get('shipped') == null) {
+    throw new ValidationError(
+      `Dictionary "${name}" is your own: there is no shipped dictionary with this name, so there are no shipped values to adopt or decline.`,
+      { key: 'errors.enum.noShippedCounterpart', params: { name } },
+    )
+  }
+  const values  = stringList(row.get('values'), `Dictionary "${name}": values`)
+  const shipped = stringList(row.get('shipped'), `Shipped dictionary "${name}": values`)
+  const rawSeen = row.get('seen')
+  const seen    = rawSeen == null ? null : stringList(rawSeen, `Dictionary "${name}": shipped_values_seen`)
+  return { row, name, values, shipped, newValues: newShippedValues(shipped, values, seen) }
+}
+
+/**
+ * Aggiunge alla copia i valori spediti che non aveva visto, IN CODA e con le
+ * etichette e i colori spediti; le etichette e i colori dei valori che il
+ * cliente ha già restano i suoi. Segna vista la lista spedita di adesso.
+ */
+export async function adoptShippedValues(_: unknown, args: { id: string }, ctx: GraphQLContext): Promise<EnumTypeDef> {
+  if (ctx.role !== 'admin') throw new ForbiddenError()
+  const session = getSession(undefined, 'WRITE')
+  try {
+    const { row, name, values, shipped, newValues } = await loadCopyAndShipped(session, args.id, ctx.tenantId)
+    const next = [...values, ...newValues]
+    assertValuesUsable(next, name)
+    const shippedLabels = parseValueLabels(row.get('shippedLabels')).labels
+    const shippedColors = parseValueColors(row.get('shippedColors')).colors
+    const labels: Record<string, EnumValueLabels[string]> = { ...parseValueLabels(row.get('valueLabels')).labels }
+    const colors: Record<string, EnumValueColors[string]> = { ...parseValueColors(row.get('valueColors')).colors }
+    for (const v of newValues) {
+      if (shippedLabels[v] !== undefined) labels[v] = shippedLabels[v]
+      if (shippedColors[v] !== undefined) colors[v] = shippedColors[v]
+    }
+    const now = new Date().toISOString()
+    const result = await session.executeWrite((tx) => tx.run(`
+      MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId})
+      SET e.values = $values,
+          e.value_labels = $valueLabels,
+          e.value_colors = $valueColors,
+          e.shipped_values_seen = $seen,
+          e.updated_at = $now
+      ${ENUM_RETURN}
+    `, {
+      id: args.id, tenantId: ctx.tenantId, values: next, seen: shipped, now,
+      valueLabels: serializeValueLabels(pruneValueLabels(labels, next)),
+      valueColors: serializeValueColors(pruneValueColors(colors, next)),
+    }))
+    if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', args.id)
+    vocabularyChanged(ctx.tenantId)
+    void audit(ctx, 'enum_type.shipped_values_adopted', 'EnumTypeDefinition', args.id, { name, values: newValues })
+    return mapEnum(result.records[0]!)
+  } finally {
+    await session.close()
+  }
+}
+
+/** Tiene fuori i valori spediti non ancora visti: la lista resta com'è, e smettono di essere segnalati. */
+export async function acknowledgeShippedValues(_: unknown, args: { id: string }, ctx: GraphQLContext): Promise<EnumTypeDef> {
+  if (ctx.role !== 'admin') throw new ForbiddenError()
+  const session = getSession(undefined, 'WRITE')
+  try {
+    const { name, shipped, newValues } = await loadCopyAndShipped(session, args.id, ctx.tenantId)
+    const now = new Date().toISOString()
+    const result = await session.executeWrite((tx) => tx.run(`
+      MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId})
+      SET e.shipped_values_seen = $seen,
+          e.updated_at = $now
+      ${ENUM_RETURN}
+    `, { id: args.id, tenantId: ctx.tenantId, seen: shipped, now }))
+    if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', args.id)
+    vocabularyChanged(ctx.tenantId)
+    void audit(ctx, 'enum_type.shipped_values_declined', 'EnumTypeDefinition', args.id, { name, values: newValues })
+    return mapEnum(result.records[0]!)
+  } finally {
+    await session.close()
+  }
+}
+
+/** Una lettura per richiesta: il Dizionario chiede il campo per ogni vocabolario. */
+const driftPerRequest = new WeakMap<GraphQLContext, Promise<Map<string, string[]>>>()
+
+async function newShippedValuesField(parent: EnumTypeDef, _args: unknown, ctx: GraphQLContext): Promise<string[]> {
+  if (parent.isShipped) return []
+  let pending = driftPerRequest.get(ctx)
+  if (!pending) {
+    pending = (async () => {
+      const session = getSession()
+      try {
+        return new Map((await vocabulariesBehindShipped(session, ctx.tenantId)).map((d) => [d.id, d.newValues]))
+      } finally {
+        await session.close()
+      }
+    })()
+    driftPerRequest.set(ctx, pending)
+  }
+  return (await pending).get(parent.id) ?? []
 }
 
 /**
@@ -1039,6 +1205,6 @@ async function enumValueLabelsField(
 
 export const enumTypeResolvers = {
   Query:    { enumTypes, enumType },
-  Mutation: { createEnumType, updateEnumType, deleteEnumType, customizeEnumType, renameEnumValue, reorderEnumValues },
-  EnumTypeDefinition: { valueLabels: enumValueLabelsField },
+  Mutation: { createEnumType, updateEnumType, deleteEnumType, customizeEnumType, renameEnumValue, reorderEnumValues, adoptShippedValues, acknowledgeShippedValues },
+  EnumTypeDefinition: { valueLabels: enumValueLabelsField, newShippedValues: newShippedValuesField },
 }

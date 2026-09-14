@@ -12,8 +12,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import { EnumDesignerPage } from './EnumDesignerPage'
-import { GET_ENUM_TYPES } from '@/graphql/queries'
-import { CUSTOMIZE_ENUM_TYPE } from '@/graphql/mutations'
+import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT } from '@/graphql/queries'
+import { ACKNOWLEDGE_SHIPPED_VALUES, ADOPT_SHIPPED_VALUES, CUSTOMIZE_ENUM_TYPE, UPDATE_ENUM_TYPE } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 
 vi.mock('sonner', () => ({
@@ -45,7 +45,7 @@ const enumType = (over: Record<string, unknown>) => {
     createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     ...over,
   }
-  return { ...base, valueLabels: base.valueLabels ?? etichette(base.values as string[]) }
+  return { ...base, valueLabels: base.valueLabels ?? etichette(base.values as string[]), valueColors: base.valueColors ?? [] }
 }
 
 const SHIPPED = enumType({})
@@ -129,5 +129,81 @@ describe('Dizionario — di chi è il vocabolario', () => {
     expect(screen.getByLabelText('Technical name')).toHaveValue('severity')
     expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Customize/ })).not.toBeInTheDocument()
+  })
+
+  /**
+   * Revisione del 14 set 2026 · F9: il colore di un valore si sceglie qui,
+   * accanto all'etichetta, da una palette chiusa. Prima era una tabella nel web.
+   */
+  it('il colore di un valore si sceglie dal Dizionario e si salva con gli altri', async () => {
+    const seen: unknown[] = []
+    const OWN_COLORED = enumType({ id: 'e-2', name: 'colore_sede', label: 'Colore sede', values: ['rosso', 'verde'], isSystem: false, isShipped: false, scope: 'cmdb',
+      valueColors: [{ __typename: 'EnumValueColor', value: 'verde', color: 'success' }] })
+    const update: GqlMock = {
+      request: { query: UPDATE_ENUM_TYPE, variables: (v) => { seen.push(v); return true } },
+      result: { data: { updateEnumType: { ...OWN_COLORED } } },
+    }
+    const { user } = renderWithProviders(<EnumDesignerPage />, {
+      mocks: [{ ...listMock([SHIPPED, OWN_COLORED]), maxUsageCount: Number.POSITIVE_INFINITY }, update],
+    })
+    await user.click(await screen.findByRole('button', { name: /Colore sede/ }))
+    expect(screen.getByLabelText('Color of value verde')).toHaveValue('success')
+    await user.selectOptions(screen.getByLabelText('Color of value rosso'), 'danger')
+    await vi.waitFor(() => expect(seen).toHaveLength(1))
+    expect(seen[0]).toEqual({ id: 'e-2', input: { valueColors: [{ value: 'rosso', color: 'danger' }, { value: 'verde', color: 'success' }] } })
+  })
+
+  it('su un vocabolario spedito il colore si vede ma non si cambia in posto', async () => {
+    const SHIPPED_COLORED = enumType({ valueColors: [{ __typename: 'EnumValueColor', value: 'high', color: 'orange' }] })
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [{ ...listMock([SHIPPED_COLORED, OWN]), maxUsageCount: Number.POSITIVE_INFINITY }] })
+    await user.click(await screen.findByRole('button', { name: /Severità/ }))
+    expect(screen.getByLabelText('Color of value high')).toBeDisabled()
+    expect(screen.getByLabelText('Color of value high')).toHaveValue('orange')
+  })
+})
+
+/**
+ * Revisione del 14 set 2026 · F20: il prodotto ha aggiunto valori a un
+ * vocabolario spedito DOPO che il cliente l'ha personalizzato. La copia non si
+ * sovrascrive, ma il Dizionario lo dice e fa decidere: aggiungerli o tenerli fuori.
+ */
+describe('Dizionario — valori spediti dopo la copia', () => {
+  const BEHIND = enumType({ id: 'e-4', name: 'priority', label: 'Priorità', values: ['low', 'high'], isSystem: false, isShipped: false, scope: 'itil' })
+  const drift = (values: string[]): GqlMock => ({
+    request: { query: GET_ENUM_SHIPPED_DRIFT },
+    result:  { data: { enumTypes: [{ __typename: 'EnumTypeDefinition', id: 'e-4', newShippedValues: values }, { __typename: 'EnumTypeDefinition', id: 'e-2', newShippedValues: [] }] } },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  })
+  const list: GqlMock = { ...listMock([BEHIND, OWN]), maxUsageCount: Number.POSITIVE_INFINITY }
+
+  it('la copia indietro mostra i valori nuovi; «Add them» li aggiunge', async () => {
+    const seen: unknown[] = []
+    const adopt: GqlMock = {
+      request: { query: ADOPT_SHIPPED_VALUES, variables: (v) => { seen.push(v); return true } },
+      result:  { data: { adoptShippedValues: { ...BEHIND, values: ['low', 'high', 'critical'], valueLabels: etichette(['low', 'high', 'critical']) } } },
+    }
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [list, drift(['critical']), adopt] })
+    await user.click(await screen.findByRole('button', { name: /Priorità/ }))
+    expect(await screen.findByText(/added values .* after you customized it: critical/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Add them' }))
+    await vi.waitFor(() => expect(seen).toEqual([{ id: 'e-4' }]))
+  })
+
+  it('«Keep my list» li tiene fuori', async () => {
+    const seen: unknown[] = []
+    const acknowledge: GqlMock = {
+      request: { query: ACKNOWLEDGE_SHIPPED_VALUES, variables: (v) => { seen.push(v); return true } },
+      result:  { data: { acknowledgeShippedValues: BEHIND } },
+    }
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [list, drift(['critical']), acknowledge] })
+    await user.click(await screen.findByRole('button', { name: /Priorità/ }))
+    await user.click(await screen.findByRole('button', { name: 'Keep my list' }))
+    await vi.waitFor(() => expect(seen).toEqual([{ id: 'e-4' }]))
+  })
+
+  it('una copia al passo non mostra niente', async () => {
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [list, drift([])] })
+    await user.click(await screen.findByRole('button', { name: /Priorità/ }))
+    expect(screen.queryByRole('button', { name: 'Add them' })).not.toBeInTheDocument()
   })
 })

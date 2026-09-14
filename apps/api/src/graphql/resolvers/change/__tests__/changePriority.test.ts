@@ -203,6 +203,6 @@ describe('riskBandOf — le soglie sono dato del cliente, non posizioni (revisio
   it('soglie che non arrivano a 100 sono un errore: un punteggio resterebbe senza fascia', async () => {
     loadTenantEnumOverrides.mockResolvedValue(vocab({ risk_band: ['bassa', 'media', 'alta'] }))
     thresholdsRaw = JSON.stringify([{ band: 'bassa', upTo: 30 }, { band: 'media', upTo: 60 }, { band: 'alta', upTo: 90 }])
-    await expect(riskBandOf('c-one', 95)).rejects.toThrow(/si fermano a 90 e un punteggio più alto non avrebbe fascia/)
+    await expect(riskBandOf('c-one', 95)).rejects.toThrow(/stop at 90 and a higher score would have no band/)
   })
 })

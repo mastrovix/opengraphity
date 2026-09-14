@@ -42,10 +42,16 @@ vi.mock('@opengraphity/neo4j', () => ({
 
 const sendSlackMessage = vi.fn()
 const sendToTenant = vi.fn()
-vi.mock('@opengraphity/notifications', () => ({
-  sendSlackMessage: (...a: unknown[]) => sendSlackMessage(...a),
-  sseManager: { sendToTenant: (...a: unknown[]) => sendToTenant(...a) },
-}))
+vi.mock('@opengraphity/notifications', async () => {
+  const texts = await import('../../../../../packages/notifications/src/texts.js')
+  return {
+    sendSlackMessage: (...a: unknown[]) => sendSlackMessage(...a),
+    sseManager: { sendToTenant: (...a: unknown[]) => sendToTenant(...a) },
+    // CO-2: il messaggio di ripiego nella lingua del cliente.
+    loadNotificationLocale: async () => ({ language: 'en', timeZone: 'UTC' }),
+    notificationText: texts.notificationText,
+  }
+})
 
 const executeReportSection = vi.fn()
 vi.mock('../../lib/reportExecutor.js', () => ({ executeReportSection: (...a: unknown[]) => executeReportSection(...a) }))
@@ -133,7 +139,11 @@ describe('report-scheduler — claim atomico', () => {
     expect(executeReportSection).toHaveBeenCalledWith(SECTION, 't1')
     expect(sendToTenant).toHaveBeenCalledWith('t1', expect.objectContaining({
       type: 'scheduled_report', entity_id: 'tpl-1', entity_type: 'ReportTemplate', severity: 'info', timestamp: NOW, read: false,
-      title: 'Report eseguito: Weekly ops',
+      // CO-2: titolo e messaggio come chiavi, e il ripiego nella lingua del cliente.
+      title: 'notification.report.executed.title',
+      message_key: 'inApp.report.executed',
+      message_params: { name: 'Weekly ops', count: expect.any(String) },
+      message: expect.stringContaining('Scheduled report "Weekly ops" ran'),
     }))
     expect(closes).toHaveBeenCalled()
   })

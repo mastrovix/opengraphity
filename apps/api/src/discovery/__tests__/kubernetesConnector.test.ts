@@ -109,7 +109,7 @@ describe('kubernetesConnector.scan — credenziali e config', () => {
 
   it('resource_types sconosciuti → errore esplicito prima di caricare la kubeconfig', async () => {
     await expect(collect(kubernetesConnector.scan(source({ resource_types: 'node, pod' }), CREDS)))
-      .rejects.toThrow('[kubernetes] config failed: resource_types sconosciuti: pod (ammessi: node, deployment, statefulset, service, ingress)')
+      .rejects.toThrow('[kubernetes] config failed: unknown resource_types: pod (allowed: node, deployment, statefulset, service, ingress)')
     expect(h.loadFromString).not.toHaveBeenCalled()
   })
 

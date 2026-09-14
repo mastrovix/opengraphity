@@ -15,9 +15,10 @@
  */
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine } from '@opengraphity/workflow'
-import { getActiveOLAContractsFor, scheduleOLABreaches } from '@opengraphity/sla'
+import { getActiveOLAContractsFor, getServiceCalendar, getTenantTimezone, scheduleOLABreaches } from '@opengraphity/sla'
 import { ValidationError } from '../lib/errors.js'
 import { logger } from '../lib/logger.js'
+import { publishEvent } from '../lib/publishEvent.js'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../lib/taskStatus.js'
 import { deriveChangePriority } from '../graphql/resolvers/change/scoring.js'
 import { assertDomainValue } from '../lib/domainMatrix.js'
@@ -48,7 +49,7 @@ export interface ChangeCreationInput {
 
 export interface ChangeCreationCtx {
   tenantId: string
-  userId:   string | null
+  userId:   string
 }
 
 export interface CreatedChange {
@@ -88,7 +89,7 @@ export async function createChangeRFC(
   }
   if (!why)  throw new ValidationError('The "why" field is required', { key: 'errors.change.whyRequired' })
   if (!what) throw new ValidationError('The "what" field is required', { key: 'errors.change.whatRequired' })
-  return withSession(async (session) => {
+  const created = await withSession(async (session) => {
     // Letture e validazioni PRIMA della transazione: se falliscono non c'è nulla da annullare.
     await assertCIHasOwnerAndSupport(session, ctx.tenantId, affectedCIIds)
     const code = await nextChangeCode(session, ctx.tenantId)
@@ -113,7 +114,8 @@ export async function createChangeRFC(
     await session.executeWrite(async (tx) => {
       await tx.run(`
       CREATE (c:Change {
-        id: $id, tenant_id: $tenantId, code: $code,
+        // F18 (revisione del 14 set 2026): number come gli altri ticket, stesso valore di code.
+        id: $id, tenant_id: $tenantId, code: $code, number: $code,
         title: $title, why: $why, what: $what,
         change_type: $changeType,
         aggregate_risk_score: null,
@@ -125,6 +127,7 @@ export async function createChangeRFC(
       OPTIONAL MATCH (req:User {id: $requesterId, tenant_id: $tenantId})
       FOREACH (_ IN CASE WHEN req IS NULL THEN [] ELSE [1] END |
         CREATE (c)-[:REQUESTED_BY]->(req)
+        MERGE (req)-[:WATCHES {watched_at: $now}]->(c)
       )
       WITH c
       OPTIONAL MATCH (owner:User {id: $ownerId, tenant_id: $tenantId})
@@ -170,7 +173,8 @@ export async function createChangeRFC(
       await workflowEngine.createInstance(tx, ctx.tenantId, id, 'change')
 
       await writeAudit(tx, id, ctx.tenantId, 'change_created', ctx.userId,
-        `Change ${code} creato con ${affectedCIIds.length} CI`)
+        `Change ${code} created with ${affectedCIIds.length} CIs`,
+        { key: 'changeCreated', params: { code, count: String(affectedCIIds.length) } })
     })
 
     // Schedule OLA/UC breach checks for this change. Changes don't get an
@@ -184,8 +188,13 @@ export async function createChangeRFC(
           entityId:   id,
           entityType: 'change',
           tenantId:   ctx.tenantId,
-          timezone:   'Europe/Rome',
+          // Il fuso del cliente, non quello italiano per tutti (revisione del
+          // 14 set 2026 · CH-1), e l'istante di creazione della change (SL-1).
+          timezone:   await getTenantTimezone(ctx.tenantId),
           contracts,
+          startedAt:  new Date(now),
+          // F6: l'orario lavorativo dei contratti è il calendario del cliente.
+          calendar:   contracts.some((c) => c.business_hours) ? await getServiceCalendar(ctx.tenantId) : null,
         })
       }
     } catch (err) {
@@ -194,4 +203,10 @@ export async function createChangeRFC(
 
     return { id, code }
   }, true)
+
+  // L'evento di creazione: prima le change non ne avevano uno, quindi nessun
+  // trigger, regola, notifica o webhook poteva reagire a una change nuova
+  // (revisione del 14 set 2026 · AU-1).
+  await publishEvent('change.created', ctx.tenantId, ctx.userId, { id: created.id, code: created.code, title, change_type: changeType }, new Date().toISOString())
+  return created
 }

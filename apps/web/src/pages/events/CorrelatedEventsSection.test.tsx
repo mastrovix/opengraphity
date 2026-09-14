@@ -22,6 +22,14 @@ function eventFixture(over: Partial<EventRow> & { id: string }): EventRow {
 }
 
 describe('MonitoringAlarmsSection (dettaglio incident)', () => {
+  /** Giro del 14 set 2026 (#51): aperto a mano da un allarme, non «automaticamente». */
+  it('incident aperto da un operatore con «Open incident» → la frase lo dice', () => {
+    const ev = { ...eventFixture({ id: 'e1', correlation: 'opened', correlationAt: '2026-09-09T08:00:00Z' }), history: [{ kind: 'incident_opened_manually', incident: { id: 'inc1' } }] }
+    renderWithProviders(<MonitoringAlarmsSection events={[ev]} incidentId="inc1" />)
+    expect(screen.getByText(/^Incident opened from a monitoring alarm by an operator on .+\.$/)).toBeInTheDocument()
+    expect(screen.queryByText(/opened automatically/)).not.toBeInTheDocument()
+  })
+
   it('con eventi: aperta, conteggio, riga "aperto dal monitoraggio", colonne e link a evento/CI', () => {
     const events = [
       eventFixture({ id: 'e2', title: 'Disk full', severity: 'warning', ci: null, count: 7, correlation: 'attached', correlationAt: '2026-09-09T08:05:00Z' }),

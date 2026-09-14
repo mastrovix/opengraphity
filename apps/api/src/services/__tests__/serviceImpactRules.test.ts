@@ -292,23 +292,23 @@ describe('D6.3: componenti dismessi', () => {
 
 describe('serviceHealthNote (D6.2 + D6.4)', () => {
   it('niente da spiegare → null', () => {
-    expect(serviceHealthNote({ held: false, stormSources: [], upstreamWindows: [] })).toBeNull()
+    expect(serviceHealthNote('it', { held: false, stormSources: [], upstreamWindows: [] })).toBeNull()
     // sorgente in tempesta ma regola `evaluate`: la valutazione non è sospesa, niente nota
-    expect(serviceHealthNote({ held: false, stormSources: ['Zabbix prod'], upstreamWindows: [] })).toBeNull()
+    expect(serviceHealthNote('it', { held: false, stormSources: ['Zabbix prod'], upstreamWindows: [] })).toBeNull()
   })
 
   it('tempesta: nomina la sorgente e dice che la valutazione è sospesa', () => {
-    expect(serviceHealthNote({ held: true, stormSources: ['Zabbix prod'], upstreamWindows: [] }))
+    expect(serviceHealthNote('it', { held: true, stormSources: ['Zabbix prod'], upstreamWindows: [] }))
       .toBe('Sorgente in tempesta: Zabbix prod. Valutazione sospesa: la salute resta quella dell\'ultima valutazione.')
-    const many = serviceHealthNote({ held: true, stormSources: ['a', 'b', 'c', 'd', 'e'], upstreamWindows: [] })!
+    const many = serviceHealthNote('it', { held: true, stormSources: ['a', 'b', 'c', 'd', 'e'], upstreamWindows: [] })!
     expect(many).toContain('Sorgenti in tempesta: a, b, c, e altri 2')
     expect(HEALTH_NOTE_MAX_ITEMS).toBe(3)
   })
 
   it('change a monte: l\'operatore legge «CHG-… su <CI a monte>»', () => {
-    expect(serviceHealthNote({ held: false, stormSources: [], upstreamWindows: [{ name: 'VM-01', changeCode: 'CHG-0042', viaName: 'SRV-01' }] }))
+    expect(serviceHealthNote('it', { held: false, stormSources: [], upstreamWindows: [{ name: 'VM-01', changeCode: 'CHG-0042', viaName: 'SRV-01' }] }))
       .toBe('Componente in finestra di change a monte: VM-01 (CHG-0042 su SRV-01).')
-    const both = serviceHealthNote({ held: true, stormSources: ['Zabbix'], upstreamWindows: [{ name: 'VM-01', changeCode: 'CHG-1', viaName: 'SRV-01' }, { name: 'VM-02', changeCode: 'CHG-1', viaName: 'SRV-01' }] })!
+    const both = serviceHealthNote('it', { held: true, stormSources: ['Zabbix'], upstreamWindows: [{ name: 'VM-01', changeCode: 'CHG-1', viaName: 'SRV-01' }, { name: 'VM-02', changeCode: 'CHG-1', viaName: 'SRV-01' }] })!
     expect(both).toContain('Sorgente in tempesta: Zabbix')
     expect(both).toContain('Componenti in finestra di change a monte: VM-01 (CHG-1 su SRV-01), VM-02 (CHG-1 su SRV-01).')
   })

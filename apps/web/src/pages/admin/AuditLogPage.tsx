@@ -3,6 +3,7 @@ import { gql } from '@apollo/client'
 import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { ShieldCheck } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
@@ -63,6 +64,7 @@ const PAGE_SIZE = 50
 
 export function AuditLogPage() {
   const { t } = useTranslation()
+  const { labelOf: typeLabel } = useItilTypeLabels()
 
   const [page, setPage]             = useState(0)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -89,8 +91,9 @@ export function AuditLogPage() {
       ? { key: 'action', label: t('pages.audit.colAction'), type: 'enum', options: actionOptions }
       : { key: 'action', label: t('pages.audit.colAction'), type: 'text' },
     { key: 'entityType', label: t('pages.audit.colEntityType'), type: 'enum', options: [
-      { value: 'Incident', label: 'Incident' }, { value: 'Change', label: 'Change' },
-      { value: 'Problem', label: 'Problem' }, { value: 'User', label: 'User' },
+      // I valori sono le etichette Neo4j dell'audit; il nome dei tipi ITIL è quello del cliente (F16).
+      { value: 'Incident', label: typeLabel('incident') }, { value: 'Change', label: typeLabel('change') },
+      { value: 'Problem', label: typeLabel('problem') }, { value: 'User', label: 'User' },
       { value: 'Team', label: 'Team' }, { value: 'AutoTrigger', label: 'Trigger' },
       { value: 'BusinessRule', label: 'Business Rule' },
     ]},
@@ -148,7 +151,7 @@ export function AuditLogPage() {
             {t('pages.audit.title')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${total} ${t('pages.audit.entries')}`}
+            {loading ? '—' : t('pages.audit.count', { count: total })}
           </p>
         </div>
       </div>

@@ -15,6 +15,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
 // dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
 // fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+// Le note si compongono nella lingua del cliente: qui italiano, come le attese.
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
 vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
 
 vi.mock('../../lib/ciLabelsForTenant.js', () => ({
@@ -230,10 +232,12 @@ describe('createProblem — numero, workflow, evento e link', () => {
     })
   })
 
-  it('valuta trigger on_create con i dati dell\'entità (fire-and-forget)', async () => {
+  // AU-1 (revisione del 14 set 2026): le automazioni non si valutano più qui
+  // dentro, ma dal consumatore di `problem.created` (consumers/automationConsumer.ts),
+  // come per ogni ticket e ogni evento.
+  it('non valuta trigger né regole in linea: li mette in moto problem.created', async () => {
     await createProblem({ title: 'P', priority: 'medium', category: 'net' }, ctx)
-    expect(evaluateTriggers).toHaveBeenCalledWith('tenant-1', 'problem', 'on_create',
-      expect.objectContaining({ title: 'P', priority: 'medium', status: 'new', category: 'net' }), 'user-1')
+    expect(evaluateTriggers).not.toHaveBeenCalled()
   })
 
   it('affectedCIs → un MERGE AFFECTS per CI, tenant-scoped; relatedIncidents → CAUSED_BY', async () => {

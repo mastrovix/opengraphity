@@ -5,6 +5,7 @@ export function portalSDL(): string {
 
   type MyTicket {
     id:           ID!
+    number:       String!
     type:         String!
     title:        String!
     description:  String
@@ -22,7 +23,8 @@ export function portalSDL(): string {
     """Etichetta del passo nel workflow del cliente; null se il passo non è (più) nel workflow — allora il portale mostra il valore grezzo."""
     statusLabel:  String
     priority:     String!
-    category:     String!
+    """Null for incidents without a category (opened from an alarm)."""
+    category:     String
     createdAt:    String!
     updatedAt:    String!
     assignedTeam: String
@@ -31,6 +33,9 @@ export function portalSDL(): string {
   type WorkflowHistoryEntry {
     fromStep:    String!
     toStep:      String!
+    """Etichette dei passi nella lingua chiesta; null se il passo non è (più) nel workflow."""
+    fromLabel:   String
+    toLabel:     String
     label:       String
     triggeredAt: String!
     triggeredBy: String!
@@ -38,6 +43,7 @@ export function portalSDL(): string {
 
   type MyTicketDetail {
     id:           ID!
+    number:       String!
     type:         String!
     title:        String!
     description:  String
@@ -55,7 +61,8 @@ export function portalSDL(): string {
     """Etichetta del passo nel workflow del cliente; null se il passo non è (più) nel workflow — allora il portale mostra il valore grezzo."""
     statusLabel:  String
     priority:     String!
-    category:     String!
+    """Null for incidents without a category (opened from an alarm)."""
+    category:     String
     createdAt:    String!
     updatedAt:    String!
     assignedTeam: String
@@ -67,6 +74,11 @@ export function portalSDL(): string {
   type MyTicketsResult {
     items: [MyTicket!]!
     total: Int!
+  }
+
+  type TicketCategory {
+    name:  String!
+    label: String!
   }
 
   type MyTicketStats {

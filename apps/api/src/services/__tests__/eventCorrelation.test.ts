@@ -182,7 +182,8 @@ const Q = {
 type DefTr = { fromStep: string; toStep: string; toLabel: string | null; trigger: string; condition: string | null }
 const SEED_TRANSITIONS: DefTr[] = INCIDENT_WORKFLOW_BASE.transitions.map((t) => ({
   fromStep: t.fromStepName, toStep: t.toStepName, trigger: t.trigger, condition: t.condition,
-  toLabel: INCIDENT_WORKFLOW_BASE.steps.find((s) => s.name === t.toStepName)?.label ?? null,
+  // Le etichette arrivano già nella lingua del commento (qui il cliente è italiano).
+  toLabel: (() => { const st = INCIDENT_WORKFLOW_BASE.steps.find((s) => s.name === t.toStepName); return st ? (st.labels?.['it'] ?? st.label) : null })(),
 }))
 const tr = (fromStep: string, toStep: string, over: Partial<DefTr> = {}): DefTr => ({ fromStep, toStep, toLabel: null, trigger: 'manual', condition: null, ...over })
 

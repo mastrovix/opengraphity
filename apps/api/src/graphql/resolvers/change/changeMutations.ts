@@ -19,6 +19,10 @@ import { change as getChange } from './queries.js'
 import { evaluateAutoTransitions, revertProblemAfterChangeDetached } from './autoTransitions.js'
 import { assertChangeWindowGate } from './windowGate.js'
 import { transitionFailed } from '../../../lib/transitionError.js'
+import { TASK_KINDS } from './taskKinds.js'
+import { NotFoundError } from '../../../lib/errors.js'
+import { publishEvent } from '../../../lib/publishEvent.js'
+import { audit } from '../../../lib/audit.js'
 import {
   writeAudit,
   getNextTaskCodes,
@@ -74,7 +78,7 @@ export async function deleteChange(_: unknown, args: { id: string }, ctx: GraphQ
       WITH c
       CREATE (c)-[:HAS_AUDIT]->(e:ChangeAuditEntry {
         id: randomUUID(), tenant_id: $tenantId, timestamp: $now,
-        action: 'change_deleted', detail: 'Eliminazione logica'
+        action: 'change_deleted', detail: 'Soft deletion', detail_key: 'softDeleted', detail_params: '{}'
       })
       WITH c, e
       OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
@@ -303,7 +307,7 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
       `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now,
            ownerCode, supportCode, planCode })
 
-      await writeAudit(tx, args.changeId, ctx.tenantId, 'ci_added', ctx.userId, `CI ${ciName} aggiunto`)
+      await writeAudit(tx, args.changeId, ctx.tenantId, 'ci_added', ctx.userId, `CI ${ciName} added`, { key: 'ciAdded', params: { ci: ciName } })
     })
 
     const row = await runQueryOne<{ ciProps: Props; ciLabel: string }>(session, `
@@ -346,7 +350,7 @@ export async function removeCIFromChange(_: unknown, args: { changeId: string; c
         SET c.updated_at = $now
       `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString() })
 
-      await writeAudit(tx, args.changeId, ctx.tenantId, 'ci_removed', ctx.userId, `CI ${ciName} rimosso`)
+      await writeAudit(tx, args.changeId, ctx.tenantId, 'ci_removed', ctx.userId, `CI ${ciName} removed`, { key: 'ciRemoved', params: { ci: ciName } })
     })
     return true
   }, true)
@@ -436,20 +440,30 @@ export async function executeChangeTransition(
 
 // ── Task Reminders ────────────────────────────────────────────────────────────
 
+/**
+ * «Invia promemoria» a chi deve completare un task della change — revisione
+ * del 14 set 2026 · CH-13.
+ *
+ * Prima scriveva un nodo `:Notification` che nessuna query leggeva e nessun
+ * pannello mostrava: il pulsante confermava un invio che non avveniva. Ora il
+ * task e il destinatario si verificano nel tenant, e il promemoria arriva come
+ * notifica in-app all'utente (evento `change.task_reminder`, consegnato dal
+ * dispatcher delle notifiche).
+ */
 export async function sendTaskReminder(_: unknown, args: { taskId: string; userId: string }, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const now = new Date().toISOString()
-    await session.executeWrite((tx) => tx.run(`
-      MATCH (u:User {id: $userId, tenant_id: $tenantId})
-      CREATE (n:Notification {
-        id: randomUUID(), tenant_id: $tenantId,
-        type: 'task_reminder', task_id: $taskId,
-        message: 'Hai un task in attesa di completamento',
-        read: false, created_at: $now
-      })
-      CREATE (n)-[:FOR_USER]->(u)
-    `, { userId: args.userId, taskId: args.taskId, tenantId: ctx.tenantId, now }))
-    logger.info({ taskId: args.taskId, targetUser: args.userId, sender: ctx.userId }, '[sendTaskReminder] notification sent')
-    return true
-  }, true)
+  const labels = Object.values(TASK_KINDS).map((k) => k.label)
+  const row = await withSession((session) => runQueryOne<{ changeId: string; code: string | null; title: string | null; userName: string | null }>(session, `
+    MATCH (c:Change {tenant_id: $tenantId})-[]->(t {id: $taskId, tenant_id: $tenantId})
+    WHERE coalesce(c.deleted, false) = false AND any(l IN labels(t) WHERE l IN $labels)
+    MATCH (u:User {id: $userId, tenant_id: $tenantId})
+    RETURN c.id AS changeId, c.code AS code, c.title AS title, u.name AS userName
+    LIMIT 1
+  `, { taskId: args.taskId, userId: args.userId, tenantId: ctx.tenantId, labels }))
+  if (!row) throw new NotFoundError('Task or user', `${args.taskId} / ${args.userId}`)
+  await publishEvent('change.task_reminder', ctx.tenantId, ctx.userId, {
+    id: row.changeId, entity_type: 'change', entity_id: row.changeId, task_id: args.taskId,
+    recipient_user_id: args.userId, code: row.code, title: row.title,
+  })
+  void audit(ctx, 'change.task_reminder_sent', 'Change', row.changeId, { taskId: args.taskId, recipient: args.userId })
+  return true
 }

@@ -116,7 +116,9 @@ function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
         style={{ flex: 1, minWidth: 0, textDecoration: 'none' }}
       >
         <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>
-          <span style={{ color: 'var(--color-slate-light)', fontWeight: 400, marginRight: 6 }}>{task.code}</span>{task.action}
+          <span style={{ color: 'var(--color-slate-light)', fontWeight: 400, marginRight: 6 }}>{task.code}</span>
+          {/* CH-5: l'azione nella lingua di chi legge, da tipo e ruolo dell'attività (l'API la dà in inglese). */}
+          {t(`pages.myTasks.actionText.${task.kind === 'assessment' ? `assessment_${task.role}` : task.kind}`, { defaultValue: task.action })}
         </div>
         <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
           <strong style={{ color: 'var(--color-slate)' }}>{task.changeCode}</strong>

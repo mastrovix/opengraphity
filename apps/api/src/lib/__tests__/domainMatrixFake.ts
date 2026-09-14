@@ -34,7 +34,15 @@ export const DOMAIN_MATRIX_KINDS = {
   change_priority:  { inputs: ['change_type', 'risk_band'], output: 'priority' },
   change_priority_initial: { inputs: ['change_type'], output: 'priority' },
   import_severity:  { inputs: ['import_severity'], output: 'severity' },
+  environment_risk: { inputs: ['environment'], output: 'environment_risk_score', scale: ['0', '1', '2', '3'] },
+  ci_health:        { inputs: ['event_severity'], output: 'ci_health', scale: ['operational', 'degraded', 'down'] },
 } as const
+
+export function matrixOutputValues(tenantId: string, kind: DomainMatrixKind): Promise<readonly string[]> {
+  const spec: { output: string; scale?: readonly string[] } = DOMAIN_MATRIX_KINDS[kind]
+  return spec.scale ? Promise.resolve(spec.scale) : domainVocabulary(tenantId, spec.output)
+}
+
 
 export type DomainMatrixKind = keyof typeof DOMAIN_MATRIX_KINDS
 export type DomainMatrixEntries = Readonly<Record<string, string>>
@@ -81,6 +89,8 @@ export const FAKE_ENTRIES: Readonly<Record<DomainMatrixKind, DomainMatrixEntries
     critical: 'critical', high: 'high', medium: 'medium', low: 'low',
     blocker: 'critical', major: 'high', minor: 'low', trivial: 'low',
   },
+  environment_risk: { production: '3', staging: '1', development: '0', testing: '0', dr: '0' },
+  ci_health: { critical: 'down', warning: 'degraded', info: 'operational' },
 }
 
 /** I vocabolari spediti che le matrici usano (`SYSTEM_ENUMS`). */
@@ -95,6 +105,9 @@ export const FAKE_VOCABULARIES: Readonly<Record<string, readonly string[]>> = {
   service_criticality: ['mission_critical', 'business_critical', 'business_operational', 'office_productivity'],
   import_severity:     Object.keys(FAKE_ENTRIES.import_severity),
   ci_status:           ['active', 'inactive', 'maintenance', 'decommissioned', 'expired', 'revoked'],
+  category:            ['hardware', 'software', 'network', 'access', 'security', 'other'],
+  environment:         ['production', 'staging', 'development', 'testing', 'dr'],
+  kb_category:         ['hardware', 'software', 'network', 'security', 'database', 'how-to', 'faq', 'general'],
 }
 
 export function loadDomainMatrix(_tenantId: string, kind: DomainMatrixKind): Promise<DomainMatrix> {
@@ -106,13 +119,14 @@ export function resolveDomainMatrix(
 ): Promise<string> {
   const spec = DOMAIN_MATRIX_KINDS[kind]
   if (values.length !== spec.inputs.length) {
-    return Promise.reject(new Error(`Matrice "${kind}": attesi ${spec.inputs.length} valori (${spec.inputs.join(', ')}), ricevuti ${values.length}`))
+    return Promise.reject(new Error(`Matrix "${kind}": ${spec.inputs.length} values expected (${spec.inputs.join(', ')}), got ${values.length}`))
   }
   const out = FAKE_ENTRIES[kind][matrixKey(...values)]
   if (out === undefined) {
     return Promise.reject(new ValidationError(
-      `Matrice "${kind}" del cliente ${tenantId}: nessun valore per ${spec.inputs.map((i, n) => `${i}="${values[n]}"`).join(', ')}. ` +
-      `Completa la matrice in Impostazioni → Matrici di dominio (ora è quella factory: è possibile che tu abbia rinominato un valore del vocabolario senza aggiornarla).`,
+      `Matrix "${kind}" of tenant ${tenantId}: no value for ${spec.inputs.map((i, n) => `${i}="${values[n]}"`).join(', ')}. ` +
+      `Complete the matrix in Settings → Domain matrices (it is currently the factory one: you may have renamed a dictionary value without updating it).`,
+      { key: 'errors.matrix.noValueFactory', params: { matrix: kind, combination: spec.inputs.map((i, n) => `${i}="${values[n]}"`).join(', ') } },
     ))
   }
   return Promise.resolve(out)
@@ -122,8 +136,8 @@ export function domainVocabulary(tenantId: string, vocabulary: string): Promise<
   const values = FAKE_VOCABULARIES[vocabulary]
   if (!values) {
     return Promise.reject(new Error(
-      `Vocabolario "${vocabulary}" inesistente (né del cliente ${tenantId} né di sistema): ` +
-      `il codice sta chiedendo un nome che il Dizionario non ha.`,
+      `Dictionary "${vocabulary}" does not exist (neither for tenant ${tenantId} nor shipped): ` +
+      `the code is asking for a name the Dictionary does not have.`,
     ))
   }
   return Promise.resolve(values)
@@ -132,10 +146,10 @@ export function domainVocabulary(tenantId: string, vocabulary: string): Promise<
 export async function assertDomainValue(tenantId: string, vocabulary: string, value: unknown): Promise<string> {
   const allowed = await domainVocabulary(tenantId, vocabulary)
   if (typeof value !== 'string' || value === '') {
-    throw new ValidationError(`${vocabulary}: value missing or not a string (${JSON.stringify(value ?? null)}). Ammessi: ${allowed.join(', ')}.`)
+    throw new ValidationError(`${vocabulary}: value missing or not a string (${JSON.stringify(value ?? null)}). Allowed: ${allowed.join(', ')}.`, { key: 'errors.vocabulary.missingValue', params: { vocabulary, allowed: allowed.join(', ') } })
   }
   if (!allowed.includes(value)) {
-    throw new ValidationError(`${vocabulary}: "${value}" is not in the dictionary of this tenant. Allowed: ${allowed.join(', ')}.`)
+    throw new ValidationError(`${vocabulary}: "${value}" is not in the dictionary of this tenant. Allowed: ${allowed.join(', ')}.`, { key: 'errors.vocabulary.outOfVocabulary', params: { vocabulary, value, allowed: allowed.join(', ') } })
   }
   return value
 }

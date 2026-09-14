@@ -4,11 +4,18 @@ import { NotFoundError } from '../../lib/errors.js'
 import { getSession } from '@opengraphity/neo4j'
 import { audit } from '../../lib/audit.js'
 import type { GraphQLContext } from '../../context.js'
+import { propertyForField } from '../../lib/fieldProperty.js'
 import { assertDashboardAccess, assertDashboardOwnerByWidget, resolveDashboardIdForWidget } from './reportAccess.js'
 
 // ── Whitelists (injection-safe) ───────────────────────────────────────────────
 
-const ENTITY_LABEL_MAP: Record<string, string> = {
+/**
+ * Entity type → Neo4j label. Only ITSM labels and SHIPPED CI types: `network_device`
+ * and `vm` pointed at labels no shipped type has, so their widgets always counted
+ * zero (revisione del 14 set 2026 · F19; pinned by lib/__tests__/staticCiLabels.test.ts,
+ * which also checks that the web panel offers exactly these entities and fields).
+ */
+export const WIDGET_ENTITY_LABELS: Record<string, string> = {
   incident:        'Incident',
   problem:         'Problem',
   change:          'Change',
@@ -17,14 +24,13 @@ const ENTITY_LABEL_MAP: Record<string, string> = {
   application:     'Application',
   database:        'Database',
   certificate:     'Certificate',
-  network_device:  'NetworkDevice',
-  vm:              'VirtualMachine',
   business_application: 'BusinessApplication',
 }
 
 // Fields allowed for groupBy / filter (per entity type)
-const ALLOWED_FIELDS: Record<string, string[]> = {
-  incident:        ['status', 'severity', 'priority', 'category', 'environment'],
+export const WIDGET_ALLOWED_FIELDS: Record<string, string[]> = {
+  // `priority` is read from `severity` (lib/fieldProperty.ts); incidents have no environment.
+  incident:        ['status', 'priority', 'impact', 'urgency', 'category'],
   problem:         ['status', 'priority', 'category'],
   change:          ['status', 'type', 'priority', 'environment'],
   service_request: ['status', 'priority', 'category'],
@@ -32,8 +38,6 @@ const ALLOWED_FIELDS: Record<string, string[]> = {
   application:     ['status', 'environment', 'category', 'type'],
   database:        ['status', 'environment', 'type'],
   certificate:     ['status', 'environment'],
-  network_device:  ['status', 'environment', 'type'],
-  vm:              ['status', 'environment'],
   // Properties are snake_case: `businessUnit` (camelCase) never matched (C-23).
   business_application: ['status', 'environment', 'criticality', 'business_unit'],
 }
@@ -52,8 +56,6 @@ export const NUMERIC_FIELDS: Record<string, string[]> = {
   application:     [],
   database:        ['size_gb'],
   certificate:     [],
-  network_device:  [],
-  vm:              ['cpu_cores', 'ram_gb'],
   business_application: [],
 }
 
@@ -127,11 +129,11 @@ interface WidgetConfig {
 
 /** Validates the (entityType, metric, groupByField) triple; throws BAD_USER_INPUT. */
 export function validateWidgetConfig(cfg: Pick<WidgetConfig, 'entityType' | 'metric' | 'groupByField' | 'filterField'>): string {
-  const neo4jLabel = ENTITY_LABEL_MAP[cfg.entityType]
+  const neo4jLabel = WIDGET_ENTITY_LABELS[cfg.entityType]
   if (!neo4jLabel) throw new GraphQLError(`Unsupported entity type: ${cfg.entityType}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.widget.entityType', params: { entityType: cfg.entityType } } } })
   if (!ALLOWED_METRICS.includes(cfg.metric)) throw new GraphQLError(`Unsupported metric: ${cfg.metric}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.widget.metric', params: { metric: cfg.metric } } } })
 
-  const allowedFields = ALLOWED_FIELDS[cfg.entityType] ?? []
+  const allowedFields = WIDGET_ALLOWED_FIELDS[cfg.entityType] ?? []
   const numericFields = NUMERIC_FIELDS[cfg.entityType] ?? []
   const isAggregate   = cfg.metric === 'avg_field' || cfg.metric === 'sum_field'
 
@@ -188,7 +190,7 @@ async function executeWidgetQuery(cfg: WidgetConfig, tenantId: string) {
   }
 
   if (cfg.filterField && cfg.filterValue != null) {
-    whereClause.push(`n.${cfg.filterField} = $filterValue`)
+    whereClause.push(`n.${propertyForField(neo4jLabel, cfg.filterField)} = $filterValue`)
     params['filterValue'] = cfg.filterValue
   }
 
@@ -207,7 +209,7 @@ async function executeWidgetQuery(cfg: WidgetConfig, tenantId: string) {
     } else if (cfg.metric === 'count_by_field') {
       if (!cfg.groupByField) throw new GraphQLError("groupByField is required for the 'count_by_field' metric", { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.widget.groupByRequired', params: { metric: 'count_by_field' } } } })
       const field = cfg.groupByField
-      cypher = `MATCH (n:${neo4jLabel}) ${whereStr} RETURN n.${field} AS label, count(n) AS value ORDER BY value DESC LIMIT 20`
+      cypher = `MATCH (n:${neo4jLabel}) ${whereStr} RETURN n.${propertyForField(neo4jLabel, field)} AS label, count(n) AS value ORDER BY value DESC LIMIT 20`
       const res = await session.executeRead((tx) => tx.run(cypher, params))
       const series = res.records.map((r) => ({
         label: (r.get('label') as string | null) ?? 'N/A',
@@ -218,14 +220,14 @@ async function executeWidgetQuery(cfg: WidgetConfig, tenantId: string) {
     } else if (cfg.metric === 'avg_field') {
       // groupByField validated numeric by validateWidgetConfig
       const field = cfg.groupByField!
-      cypher = `MATCH (n:${neo4jLabel}) ${whereStr} RETURN avg(n.${field}) AS value`
+      cypher = `MATCH (n:${neo4jLabel}) ${whereStr} RETURN avg(n.${propertyForField(neo4jLabel, field)}) AS value`
       const res = await session.executeRead((tx) => tx.run(cypher, params))
       const val = aggregateValue(res.records, `avg(${field})`)
       resultData = { value: Math.round(val * 100) / 100, label: cfg.title ?? '', series: [] }
 
     } else {
       const field = cfg.groupByField!
-      cypher = `MATCH (n:${neo4jLabel}) ${whereStr} RETURN sum(n.${field}) AS value`
+      cypher = `MATCH (n:${neo4jLabel}) ${whereStr} RETURN sum(n.${propertyForField(neo4jLabel, field)}) AS value`
       const res = await session.executeRead((tx) => tx.run(cypher, params))
       resultData = { value: aggregateValue(res.records, `sum(${field})`), label: cfg.title ?? '', series: [] }
     }

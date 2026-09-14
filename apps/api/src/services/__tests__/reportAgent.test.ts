@@ -142,10 +142,12 @@ describe('runReportAgent — tool loop', () => {
       stream: (e) => events.push(e),
     })
 
-    expect(out).toBe('Vediamo. Ci sono 3 incident.')
+    // Giro del 14 set 2026 (#52): il testo di un turno nuovo va su un paragrafo nuovo, non incollato.
+    expect(out).toBe('Vediamo. \n\nCi sono 3 incident.')
     expect(events).toEqual([
       { type: 'text', text: 'Vediamo. ' },
       { type: 'tool', description: 'conto gli incident' },
+      { type: 'text', text: '\n\n' },
       { type: 'text', text: 'Ci sono 3 incident.' },
     ])
 
@@ -170,13 +172,13 @@ describe('runReportAgent — tool loop', () => {
     expect(session.run).not.toHaveBeenCalledWith(expect.stringContaining('u.email'), expect.anything())
     const second = f.create.mock.calls[1]![0] as { messages: Anthropic.MessageParam[] }
     const toolResult = (second.messages[2]!.content as Anthropic.ToolResultBlockParam[])[0]!
-    expect(toolResult.content).toContain('Query rifiutata')
+    expect(toolResult.content).toContain('Query rejected')
   })
 
   it(`stops after ${REPORT_AI_LIMITS.maxIterations} tool calls (budget)`, async () => {
     const f = fakeClient([toolMessage('tu', SAFE_Q)]) // always asks for another query
     await expect(runReportAgent({ tenantId: 't1', messages: [{ role: 'user', content: 'q' }], client: f.client }))
-      .rejects.toThrow(new RegExp(`limite di ${REPORT_AI_LIMITS.maxIterations} query`))
+      .rejects.toThrow(new RegExp(`limit of ${REPORT_AI_LIMITS.maxIterations} queries`))
     expect(f.create).toHaveBeenCalledTimes(REPORT_AI_LIMITS.maxIterations + 1)
   })
 
@@ -185,7 +187,7 @@ describe('runReportAgent — tool loop', () => {
     big.usage.output_tokens = REPORT_AI_LIMITS.maxOutputTokens + 1
     const f = fakeClient([big])
     await expect(runReportAgent({ tenantId: 't1', messages: [{ role: 'user', content: 'q' }], client: f.client }))
-      .rejects.toThrow(/budget token/)
+      .rejects.toThrow(/token budget/)
     expect(f.create).toHaveBeenCalledTimes(1)
   })
 
@@ -199,7 +201,7 @@ describe('runReportAgent — tool loop', () => {
   it('a refusal is an error, not an empty answer', async () => {
     const f = fakeClient([textMessage('', 'refusal')])
     await expect(runReportAgent({ tenantId: 't1', messages: [{ role: 'user', content: 'q' }], client: f.client }))
-      .rejects.toThrow(/rifiutato/)
+      .rejects.toThrow(/refused the request/)
   })
 })
 

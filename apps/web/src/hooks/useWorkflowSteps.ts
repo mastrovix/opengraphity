@@ -2,11 +2,14 @@ import { useQuery } from '@apollo/client/react'
 import { useMemo } from 'react'
 import { GET_WORKFLOW_DEFINITION } from '@/graphql/queries/workflow'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { localizedLabel, type LocalizedLabel } from '@/lib/localizedLabel'
 
 export interface WorkflowStepMeta {
   id:         string
   name:       string
   label:      string
+  /** Traduzioni dell'etichetta spedita: `labelFor` sceglie la lingua attiva. */
+  labels?:    LocalizedLabel[]
   type:       string
   isInitial:  boolean
   isTerminal: boolean
@@ -32,7 +35,8 @@ export interface WorkflowStepMeta {
 export function useWorkflowSteps(entityType: string) {
   const { data, loading, error } = useQuery<{ workflowDefinition: { steps: WorkflowStepMeta[] } | null }>(
     GET_WORKFLOW_DEFINITION,
-    { variables: { entityType }, fetchPolicy: METAMODEL_FETCH_POLICY },
+    // Entità vuota = chi chiama non ha un workflow da leggere (un CI, un evento): nessuna richiesta.
+    { variables: { entityType }, fetchPolicy: METAMODEL_FETCH_POLICY, skip: !entityType },
   )
 
   return useMemo(() => {
@@ -50,7 +54,7 @@ export function useWorkflowSteps(entityType: string) {
     const isOpen = (stepName: string | null | undefined) =>
       !!stepName && openSet.has(stepName)
     const labelFor = (stepName: string | null | undefined) =>
-      (stepName && byName.get(stepName)?.label) || stepName || ''
+      (stepName && byName.get(stepName) && localizedLabel(byName.get(stepName)!)) || stepName || ''
     const categoryOf = (stepName: string | null | undefined) =>
       (stepName && byName.get(stepName)?.category) || null
     /** Lo scopo di un passo, `null` se il passo non c'è o non lo dichiara. */

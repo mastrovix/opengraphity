@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import { GET_FIELD_VISIBILITY_RULES, GET_FIELD_REQUIREMENT_RULES } from '@opengraphity/web-core'
 import { TicketNewPage } from './TicketNewPage'
 import { CREATE_TICKET } from '@/graphql/mutations'
-import { GET_KB_ARTICLES } from '@/graphql/queries'
+import { GET_KB_ARTICLES, GET_TICKET_CATEGORIES } from '@/graphql/queries'
 import { uploadAttachment } from '@/lib/attachments'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 
@@ -44,10 +44,16 @@ function createTicketMock(vars: Record<string, unknown>, seen?: unknown[]): GqlM
   }
 }
 
+const categoriesMock: GqlMock = {
+  request: { query: GET_TICKET_CATEGORIES, variables: () => true },
+  result: { data: { ticketCategories: ['hardware', 'software', 'access', 'network', 'security', 'other'].map((name) => ({ __typename: 'TicketCategory', name, label: name[0]!.toUpperCase() + name.slice(1) })) } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+}
+
 const ROUTE = { route: '/tickets/new', path: '/tickets/new' }
 
 async function fillForm(user: ReturnType<typeof renderWithProviders>['user'], opts: { priority?: string } = {}) {
-  await user.click(screen.getByRole('button', { name: 'Hardware' }))
+  await user.click(await screen.findByRole('button', { name: 'Hardware' }))
   await user.type(screen.getByPlaceholderText('Describe the problem in one sentence'), 'Printer broken')
   await user.type(screen.getByPlaceholderText(/Provide all useful details/), 'Details here')
   if (opts.priority) await user.click(screen.getByRole('radio', { name: opts.priority }))
@@ -58,7 +64,7 @@ beforeEach(() => { vi.mocked(uploadAttachment).mockClear() })
 describe('TicketNewPage', () => {
   it('chiede le regole campo per "incident" (le stesse della CreateIncidentPage web)', async () => {
     const seen = { visibility: [] as unknown[], requirement: [] as unknown[] }
-    renderWithProviders(<TicketNewPage />, { ...ROUTE, mocks: [...rulesMocks(seen), kbMock] })
+    renderWithProviders(<TicketNewPage />, { ...ROUTE, mocks: [...rulesMocks(seen), kbMock, categoriesMock] })
     await waitFor(() => expect(seen.visibility.length).toBeGreaterThan(0))
     await waitFor(() => expect(seen.requirement.length).toBeGreaterThan(0))
     expect(seen.visibility[0]).toEqual({ entityType: 'incident' })
@@ -67,10 +73,10 @@ describe('TicketNewPage', () => {
 
   it('Submit è disabilitato finché mancano categoria, titolo o descrizione', async () => {
     const seen = { visibility: [], requirement: [] }
-    const { user } = renderWithProviders(<TicketNewPage />, { ...ROUTE, mocks: [...rulesMocks(seen), kbMock] })
+    const { user } = renderWithProviders(<TicketNewPage />, { ...ROUTE, mocks: [...rulesMocks(seen), kbMock, categoriesMock] })
     const submit = screen.getByRole('button', { name: 'Submit ticket' })
     expect(submit).toBeDisabled()
-    await user.click(screen.getByRole('button', { name: 'Software' }))
+    await user.click(await screen.findByRole('button', { name: 'Software' }))
     await user.type(screen.getByPlaceholderText('Describe the problem in one sentence'), 'Titolo')
     expect(submit).toBeDisabled()
     await user.type(screen.getByPlaceholderText(/Provide all useful details/), 'Descrizione')
@@ -82,7 +88,7 @@ describe('TicketNewPage', () => {
     const created: unknown[] = []
     const { user } = renderWithProviders(<TicketNewPage />, {
       ...ROUTE,
-      mocks: [...rulesMocks(seen), kbMock, createTicketMock({ title: 'Printer broken', description: 'Details here', priority: 'high', category: 'hardware' }, created)],
+      mocks: [...rulesMocks(seen), kbMock, categoriesMock, createTicketMock({ title: 'Printer broken', description: 'Details here', priority: 'high', category: 'hardware' }, created)],
     })
     await fillForm(user, { priority: 'High' })
     await user.click(screen.getByRole('button', { name: 'Submit ticket' }))
@@ -96,7 +102,7 @@ describe('TicketNewPage', () => {
     const created: unknown[] = []
     const { user } = renderWithProviders(<TicketNewPage />, {
       ...ROUTE,
-      mocks: [...rulesMocks(seen), kbMock, createTicketMock({ title: 'Printer broken', description: 'Details here', priority: 'medium', category: 'hardware' }, created)],
+      mocks: [...rulesMocks(seen), kbMock, categoriesMock, createTicketMock({ title: 'Printer broken', description: 'Details here', priority: 'medium', category: 'hardware' }, created)],
     })
     expect(screen.getByRole('radio', { name: 'Medium' })).toBeChecked()
     await fillForm(user)
@@ -108,7 +114,7 @@ describe('TicketNewPage', () => {
     const seen = { visibility: [], requirement: [] }
     const { user } = renderWithProviders(<TicketNewPage />, {
       ...ROUTE,
-      mocks: [...rulesMocks(seen), kbMock, createTicketMock({ title: 'Printer broken', description: 'Details here', priority: 'medium', category: 'hardware' })],
+      mocks: [...rulesMocks(seen), kbMock, categoriesMock, createTicketMock({ title: 'Printer broken', description: 'Details here', priority: 'medium', category: 'hardware' })],
     })
     await fillForm(user)
     const file = new File(['hello'], 'screenshot.png', { type: 'image/png' })
@@ -127,7 +133,7 @@ describe('TicketNewPage', () => {
     const seen = { visibility: [], requirement: [] }
     const { user } = renderWithProviders(<TicketNewPage />, {
       ...ROUTE,
-      mocks: [...rulesMocks(seen), kbMock, createTicketMock({ title: 'Printer broken', description: 'Details here', priority: 'medium', category: 'hardware' })],
+      mocks: [...rulesMocks(seen), kbMock, categoriesMock, createTicketMock({ title: 'Printer broken', description: 'Details here', priority: 'medium', category: 'hardware' })],
     })
     await fillForm(user)
     await user.upload(document.querySelector('input[type="file"]') as HTMLInputElement, new File(['x'], 'big.bin'))
@@ -142,7 +148,7 @@ describe('TicketNewPage', () => {
     const created: unknown[] = []
     const { user } = renderWithProviders(<TicketNewPage />, {
       ...ROUTE,
-      mocks: [...rulesMocks(seen, { error: 'rules down' }), kbMock, createTicketMock({}, created)],
+      mocks: [categoriesMock, ...rulesMocks(seen, { error: 'rules down' }), kbMock, createTicketMock({}, created)],
     })
     await fillForm(user)
     await user.click(screen.getByRole('button', { name: 'Submit ticket' }))
@@ -155,10 +161,19 @@ describe('TicketNewPage', () => {
   it('errore della mutation → banner con il messaggio del server, resta sulla pagina', async () => {
     const seen = { visibility: [], requirement: [] }
     const err: GqlMock = { request: { query: CREATE_TICKET, variables: () => true }, result: { errors: [{ message: 'Quota exceeded' }] } }
-    const { user } = renderWithProviders(<TicketNewPage />, { ...ROUTE, mocks: [...rulesMocks(seen), kbMock, err] })
+    const { user } = renderWithProviders(<TicketNewPage />, { ...ROUTE, mocks: [...rulesMocks(seen), kbMock, categoriesMock, err] })
     await fillForm(user)
     await user.click(screen.getByRole('button', { name: 'Submit ticket' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Quota exceeded')
     expect(screen.getByTestId('location')).toHaveTextContent('/tickets/new')
   })
 })
+
+/** Giro nel browser del 14 set 2026: le categorie erano cinque scritte nel codice, senza «security». */
+describe('TicketNewPage — categorie dal Dizionario', () => {
+  it('offre i valori del vocabolario del cliente, compreso security', async () => {
+    renderWithProviders(<TicketNewPage />, { ...ROUTE, mocks: [...rulesMocks({ visibility: [], requirement: [] }), kbMock, categoriesMock] })
+    expect(await screen.findByRole('button', { name: 'Security' })).toBeInTheDocument()
+  })
+})
+

@@ -70,6 +70,8 @@ vi.mock('../../lib/workflowHelpers.js', () => ({
 }))
 
 const executeActions = vi.fn()
+const runEscalationCheck = vi.fn()
+vi.mock('../../lib/notificationEscalation.js', () => ({ runEscalationCheck: (...a: unknown[]) => runEscalationCheck(...a) }))
 vi.mock('../../lib/actionExecutor.js', () => ({
   executeActions: (...a: unknown[]) => executeActions(...a),
   parseActions:   (raw: string | null) => (raw ? JSON.parse(raw) as unknown[] : []),
@@ -182,7 +184,7 @@ describe('workflow-jobs: auto_close', () => {
     // Prima era `logger.warn` + `return`: il job risultava COMPLETATO e quel
     // ticket non si chiudeva mai, senza che nessuno lo vedesse.
     const err = await workflowProcessor(job('auto_close', data)).then(() => null, (e: unknown) => e)
-    expect((err as Error).message).toMatch(/non ha nessun passo di categoria "closed" né nessun passo terminale/)
+    expect((err as Error).message).toMatch(/has no step of category "closed" and no terminal step/)
     expect(transition).not.toHaveBeenCalled()
   })
 
@@ -301,7 +303,7 @@ describe('workflow-jobs: trigger_timer', () => {
     expect(sessions[0]!.close).toHaveBeenCalledOnce()
   })
 
-  it('tutte le azioni ok → completa; contesto di esecuzione con tenant, system, source=trigger', async () => {
+  it('tutte le azioni ok → completa; contesto di esecuzione con tenant, attore automation, source=trigger', async () => {
     runQuery.mockResolvedValueOnce([trigger]).mockResolvedValueOnce([entity]).mockResolvedValueOnce([])
     executeActions.mockResolvedValue([{ action: 'set_priority', success: true }])
 
@@ -310,7 +312,7 @@ describe('workflow-jobs: trigger_timer', () => {
     expect(executeActions).toHaveBeenCalledWith(
       [{ type: 'set_priority', params: { value: 'high' } }],
       {
-        tenantId: 't1', userId: 'system', entityId: 'inc-1', entityType: 'incident',
+        tenantId: 't1', userId: 'automation', entityId: 'inc-1', entityType: 'incident',
         entity: { id: 'inc-1', status: 'new', assigned_to: 'u-9', assigned_team: null },
         source: 'trigger', sourceName: 'Escalate stale',
       },
@@ -391,14 +393,14 @@ describe('notification-jobs', () => {
   it('timer_wait: nessun arco automatico dal passo corrente → il job rigetta nominando il passo (niente attesa infinita muta)', async () => {
     readRows = [[{ currentStep: 'in_attesa', toStep: null }]]
     await expect(notificationProcessor(job('timer_wait', { instanceId: 'wi-2', toStep: 'closed', tenantId: 't1' })))
-      .rejects.toThrow(/dal passo "in_attesa" non esce nessuna transizione con innesco "automatic" o "timer"/)
+      .rejects.toThrow(/no transition with an "automatic" or "timer" trigger leaves step "in_attesa"/)
     expect(transition).not.toHaveBeenCalled()
   })
 
   it('timer_wait: istanza scomparsa → il job rigetta; transizione fallita → il job rigetta con l\'errore del motore', async () => {
     readRows = [[]]
     await expect(notificationProcessor(job('timer_wait', { instanceId: 'wi-2', toStep: 'closed', tenantId: 't1' })))
-      .rejects.toThrow(/l'istanza wi-2 del tenant t1 non esiste più/)
+      .rejects.toThrow(/instance wi-2 of tenant t1 no longer exists/)
 
     readRows = [[{ currentStep: 'resolved', toStep: 'closed' }]]
     transition.mockResolvedValue({ success: false, error: 'no such step' })
@@ -407,10 +409,11 @@ describe('notification-jobs', () => {
     expect(sessions.every((s) => s.close.mock.calls.length === 1)).toBe(true)
   })
 
-  it('escalation_check interroga isEntityOpen con tenant su sessione READ', async () => {
-    isEntityOpen.mockResolvedValue(true)
+  // NT-8: prima questo ramo scriveva un log e basta; ora esegue il controllo vero.
+  it('escalation_check esegue il controllo dell\'escalation per incident, tenant e regola', async () => {
+    runEscalationCheck.mockResolvedValue('escalated')
     await expect(notificationProcessor(job('escalation_check', { incidentId: 'inc-1', tenantId: 't1', ruleId: 'r-1' }))).resolves.toBeUndefined()
-    expect(isEntityOpen).toHaveBeenCalledWith(expect.objectContaining({ mode: 'READ' }), 'inc-1', 't1')
+    expect(runEscalationCheck).toHaveBeenCalledWith('t1', 'inc-1', 'r-1')
   })
 
   it('job sconosciuto dovrebbe fallire — BUG: workflowJobWorker.ts:284-285 warn + completamento silenzioso', async () => {

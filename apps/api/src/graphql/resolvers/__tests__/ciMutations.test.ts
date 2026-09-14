@@ -82,11 +82,13 @@ function ciTypeWithTenantScript(): CITypeWithDefinitions {
   })
 }
 
-function fakeSession(props: Record<string, unknown> | null = null) {
-  const run = vi.fn().mockImplementation(async (cypher: string) => ({
+function fakeSession(props: Record<string, unknown> | null = null, knownTeams: readonly string[] = ['team-1', 'team-2']) {
+  const run = vi.fn().mockImplementation(async (cypher: string, params?: Record<string, unknown>) => ({
     records: cypher.includes('RETURN properties(n) AS p')
       ? (props ? [{ get: () => props }] : [])
-      : [],
+      : cypher.includes('RETURN t.id AS teamId')
+        ? (knownTeams.includes(String(params?.['teamId'])) ? [{ get: () => params?.['teamId'] }] : [])
+        : [],
   }))
   return {
     run,
@@ -310,6 +312,30 @@ describe('buildCreateMutation', () => {
     const [teamCypher, teamParams] = session.run.mock.calls[1]!
     expect(teamCypher).toContain('MATCH (n:Server {id: $id, tenant_id: $tenantId})')
     expect(teamParams).toMatchObject({ teamId: 'team-1', tenantId: 't1' })
+  })
+
+  /** Giro nel browser del 14 set 2026 (#55): il CI nasceva senza owner. */
+  it('una relazione di sistema obbligatoria mancante è un rifiuto prima della sessione, col nome del metamodello', async () => {
+    const withGroups = ciType({ systemRelations: [
+      { id: 'sr1', name: 'ownerGroup',   label: 'Owner Group',   relationshipType: 'OWNED_BY',     targetEntity: 'Team', required: true,  order: 1 },
+      { id: 'sr2', name: 'supportGroup', label: 'Support Group', relationshipType: 'SUPPORTED_BY', targetEntity: 'Team', required: false, order: 2 },
+    ] } as never)
+    const create = buildCreateMutation(withGroups, 'Server', mapCI)
+    const err = await create(undefined, { input: { name: 'srv', ipAddress: '10.0.0.1' } }, ctx).then(() => null, (e: Error) => e)
+    expect(err).toBeInstanceOf(ValidationError)
+    expect(err!.message).toContain('Owner Group: required')
+    expect(err!.message).not.toContain('Support Group')
+    expect(withSession).not.toHaveBeenCalled()
+  })
+
+  it('CI e gruppi nella stessa transazione; un gruppo che non esiste nel tenant fa fallire tutto', async () => {
+    const session = fakeSession({ id: 'ci-1', name: 'srv' }, ['team-1'])
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    const create = buildCreateMutation(ciType(), 'Server', mapCI)
+    await expect(create(undefined, { input: { name: 'srv', ipAddress: '10.0.0.1', ownerGroupId: 'team-1', supportGroupId: 'team-altrui' } }, ctx))
+      .rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
+    expect(session.executeWrite).toHaveBeenCalledTimes(1)
+    expect(session.run.mock.calls.map((c) => String(c[0])).join('\n')).toContain('MERGE (n)-[:SUPPORTED_BY]->(t)')
   })
 
   it('rejects an unsafe label at build time', () => {

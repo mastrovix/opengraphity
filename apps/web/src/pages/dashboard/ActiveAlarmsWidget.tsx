@@ -51,7 +51,8 @@ export function ActiveAlarmsWidget({ color, large = false }: { color: string; la
 
   return (
     <div style={{ padding: large ? '20px 20px 16px' : '14px 14px 12px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
+      {/* Tessere che vanno a capo: in un widget stretto le etichette uscivano dal riquadro (giro del 14 set 2026, #4). */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8 }}>
         {TILES.map(({ key, accent }) => (
           <Link
             key={key}
@@ -62,7 +63,7 @@ export function ActiveAlarmsWidget({ color, large = false }: { color: string; la
             <div style={{ fontSize: large ? 32 : 26, fontWeight: 700, color: accent, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
               {stats ? stats[key] : loading ? '…' : '—'}
             </div>
-            <div style={{ fontSize: 'var(--font-size-label)', color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 4 }}>{t(`events.stats.${key}`)}</div>
+            <div style={{ fontSize: 'var(--font-size-label)', color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 4, overflowWrap: 'anywhere' }}>{t(`events.stats.${key}`)}</div>
           </Link>
         ))}
       </div>

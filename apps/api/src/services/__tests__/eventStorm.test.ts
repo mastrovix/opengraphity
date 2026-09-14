@@ -38,6 +38,8 @@ vi.mock('../../lib/logger.js', () => {
 })
 vi.mock('../incidentService.js', () => ({ createIncident: vi.fn(), addIncidentComment: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn() }))
+const runEventPipeline = vi.fn(async () => ({ outcome: 'auto_resolved' }))
+vi.mock('../events/pipeline.js', () => ({ runEventPipeline }))
 vi.mock('../../middleware/metrics.js', () => ({ eventStormsActive: { set: vi.fn() }, incidentsAutoOpenedTotal: { inc: vi.fn() }, redisLockTimeoutsTotal: { inc: vi.fn() }, redisLockHoldSeconds: { observe: vi.fn() } }))
 
 const storm = await import('../eventStorm.js')
@@ -82,6 +84,7 @@ const Q = {
   gauge:      /WHERE w\.storm_since IS NOT NULL\s+RETURN count\(w\) AS n/,
   allStorms:  /MATCH \(w:InboundWebhook\)\s+WHERE w\.storm_since IS NOT NULL AND w\.id > \$cursor\s+RETURN properties\(w\) AS props\s+ORDER BY w\.id LIMIT toInteger\(\$limit\)/,
   list:       /MATCH \(w:InboundWebhook \{tenant_id: \$tenantId, entity_type: 'event'\}\)/,
+  clearedInStorm: /status: 'resolved'\}\)-\[:CORRELATED_INTO\]->\(i:Incident/,
 }
 
 const source = (over: Record<string, unknown> = {}) => ({ id: 'hook-1', tenant_id: 't1', name: 'Zabbix prod', entity_type: 'event', storm_since: null, storm_incident_id: null, storm_last_over_at: null, ...over })
@@ -91,7 +94,7 @@ function baseRules(src: Record<string, unknown> | null = source()): Array<[RegEx
   return [
     [Q.source, src ? { props: src } : null],
     [Q.start, { id: 'hook-1' }], [Q.ciNames, [{ name: 'db-01' }, { name: 'web-02' }]], [Q.markInc, (p?: Record<string, unknown>) => ({ id: p!['incidentId'] })], [Q.setInc, { id: 'hook-1' }], [Q.markOver, null], [Q.detachInc, null],
-    [Q.countEv, { n: 340 }], [Q.end, { id: 'hook-1' }], [Q.gauge, { n: 1 }],
+    [Q.countEv, { n: 340 }], [Q.end, { id: 'hook-1' }], [Q.gauge, { n: 1 }], [Q.clearedInStorm, []],
   ]
 }
 
@@ -561,5 +564,24 @@ describe('cache della sorgente (sourceCache.ts, TTL 10 s) e fine condizionale', 
     onCypher([...baseRules(), [Q.allStorms, [{ props: source({ ...STORMING, storm_since: minutesAgo(20), storm_last_over_at: minutesAgo(7) }) }]], [Q.end, null], [Q.gauge, { n: 0 }]])
     await expect(endCooledStorms(NOW)).resolves.toMatchObject({ evaluated: 1, ended: 0, active: 1, failed: 0 })
     expect(publishEvent).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * EV-1 (revisione del 14 set 2026): un allarme che rientrava DURANTE la
+ * tempesta aggiornava solo la salute; a fine tempesta nessuno lo rivalutava e
+ * l'incident restava aperto per sempre. Ora la fine della tempesta ripassa
+ * dalla pipeline l'ultimo allarme rientrato di ogni incident collegato.
+ */
+describe('fine tempesta — allarmi rientrati durante la tempesta', () => {
+  it('ogni incident con un allarme rientrato nella tempesta viene rivalutato una volta', async () => {
+    vi.mocked(getSession).mockReturnValue(session as never)
+    vi.mocked(getEventPolicy).mockResolvedValue(policy({ storm_cooldown_minutes: 1 }) as never)
+    onCypher([...baseRules(), [Q.allStorms, (p?: Record<string, unknown>) => (p!['cursor'] === '' ? [{ props: source({ ...STORMING, storm_last_over_at: minutesAgo(5) }) }] : [])],
+      [Q.clearedInStorm, (p?: Record<string, unknown>) => { expect(p).toMatchObject({ tenantId: 't1', sourceId: 'hook-1', since: STORMING.storm_since }); return [{ eventId: 'ev-a' }, { eventId: 'ev-b' }] }]])
+    const out = await endCooledStorms(NOW)
+    expect(out.ended).toBe(1)
+    expect(runEventPipeline).toHaveBeenCalledTimes(2)
+    expect(runEventPipeline).toHaveBeenCalledWith({ tenantId: 't1', eventId: 'ev-a', actorId: 'monitoring', mode: 'reevaluate' })
   })
 })

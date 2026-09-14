@@ -7,9 +7,7 @@ import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
 import { ValidationError } from '../lib/errors.js'
 import { validateStringLength } from '../lib/validation.js'
-import { evaluateTriggers, scheduleTimerTriggers } from '../lib/triggerEngine.js'
 import { logger } from '../lib/logger.js'
-import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { getInitialStepName } from '../lib/workflowHelpers.js'
 import { loadStepFacts } from '../lib/stepEvent.js'
@@ -178,16 +176,8 @@ export async function createProblem(
     assignedTo: '—',
   } satisfies ProblemEventPayload)
 
-  const entityData = { id, title: input.title, priority, status: initialStatus, category: input.category ?? null }
-  void evaluateTriggers(ctx.tenantId, 'problem', 'on_create', entityData, ctx.userId)
-    .then(() => evaluateBusinessRules(ctx.tenantId, 'problem', 'on_create', entityData, ctx.userId))
-    .catch((err: unknown) => {
-      logger.error({ err, problemId: id, tenantId: ctx.tenantId },
-        '[problemService] trigger/business-rule evaluation failed — automations NOT executed')
-    })
-  scheduleTimerTriggers(ctx.tenantId, 'problem', id).catch((err: unknown) => {
-    logger.error({ err, problemId: id }, '[problemService] scheduleTimerTriggers failed')
-  })
+  // Trigger, Business Rule e trigger a tempo: li mette in moto `problem.created`
+  // (consumers/automationConsumer.ts).
 
   return created
 }

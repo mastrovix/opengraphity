@@ -223,7 +223,9 @@ const router = createBrowserRouter([
       { path: 'admin/queues',              element: admin(<QueueStatsPage />),              errorElement: <RouteError /> },
       { path: 'admin/audit',              element: admin(<AuditLogPage />),                errorElement: <RouteError /> },
       { path: 'admin/monitoring',         element: admin(<Suspense fallback={<PageLoader />}><MonitoringPage /></Suspense>), errorElement: <RouteError /> },
-      { path: 'admin/knowledge-base',     element: admin(<KBAdminPage />),                 errorElement: <RouteError /> },
+      // Admin e operator, come l'API (createKBArticle/updateKBArticle): la guardia
+      // della pagina era più stretta e gli operatori non potevano scrivere articoli (#45).
+      { path: 'admin/knowledge-base',     element: approver(<KBAdminPage />),                 errorElement: <RouteError /> },
       { path: 'admin/triggers',            element: admin(<AutoTriggersPage />),            errorElement: <RouteError /> },
       { path: 'admin/business-rules',      element: admin(<BusinessRulesPage />),           errorElement: <RouteError /> },
       { path: 'admin/sla-policies',        element: admin(<SLAPoliciesPage />),             errorElement: <RouteError /> },

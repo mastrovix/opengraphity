@@ -12,6 +12,8 @@ import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { mapAssessmentTask, mapDeployPlanTask } from './mappers.js'
 import { calculateTaskScore } from './scoring.js'
+import { changeEnvironmentWeight } from '../../../lib/changeEnvironmentWeight.js'
+import { environmentRiskScore } from '../../../lib/environmentRisk.js'
 import { evaluateAutoTransitions } from './autoTransitions.js'
 import {
   writeAudit,
@@ -151,14 +153,18 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
       throw new GraphQLError(`Missing answers: ${missing.length} questions to answer before completing the task`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.assessment.missingAnswers', params: { count: missing.length } } } })
     }
 
-    // Weighted score + automatic environment factor: pure logic in scoring.ts.
+    // Weighted score + automatic environment factor: pure logic in scoring.ts;
+    // the environment's score is the tenant's `environment_risk` matrix.
+    const envScore = await environmentRiskScore(ctx.tenantId, ctx1.ciEnv)
+    const { weight: envWeight } = await changeEnvironmentWeight(ctx.tenantId)
     const score = calculateTaskScore(
       questions.map((q) => ({
         weight:   q.weight == null ? 1 : toNumber(q.weight),
         score:    answered.get(q.questionId) ?? 0,
         maxScore: toNumber(q.maxScore),
       })),
-      ctx1.ciEnv,
+      envScore,
+      envWeight,
     )
 
     const now = new Date().toISOString()
@@ -244,7 +250,7 @@ export async function assignAssessmentTaskToTeam(
 
     const ciName = await getCIName(session, tctx.ciId, ctx.tenantId)
     await writeAudit(session, tctx.changeId, ctx.tenantId, 'assessment_team_assigned', ctx.userId,
-      `${ROLE_LABEL[role]} · ${ciName}: team riassegnato`)
+      `${ROLE_LABEL[role]} · ${ciName}: team reassigned`, { key: 'teamReassigned', params: { role: ROLE_LABEL[role] ?? role, ci: ciName } })
 
     const updated = await runQueryOne<{ props: Props }>(session, `
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props
@@ -289,7 +295,8 @@ export async function assignAssessmentTaskToUser(
       MATCH (u:User {id: $id, tenant_id: $tenantId}) RETURN u.name AS name
     `, { id: args.userId, tenantId: ctx.tenantId })
     await writeAudit(session, tctx.changeId, ctx.tenantId, 'assessment_user_assigned', ctx.userId,
-      `${ROLE_LABEL[role]} · ${ciName}: assegnato a ${userRow?.name ?? args.userId}`)
+      `${ROLE_LABEL[role]} · ${ciName}: assigned to ${userRow?.name ?? args.userId}`,
+      { key: 'userAssigned', params: { role: ROLE_LABEL[role] ?? role, ci: ciName, user: userRow?.name ?? args.userId } })
 
     const updated = await runQueryOne<{ props: Props }>(session, `
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props
@@ -342,7 +349,8 @@ export async function assignDeployPlanTaskToUser(
       MATCH (u:User {id: $id, tenant_id: $tenantId}) RETURN u.name AS name
     `, { id: args.userId, tenantId: ctx.tenantId })
     await writeAudit(session, tctx.changeId, ctx.tenantId, 'deploy_plan_user_assigned', ctx.userId,
-      `Planning · ${ciName}: assegnato a ${userRow?.name ?? args.userId}`)
+      `Planning · ${ciName}: assigned to ${userRow?.name ?? args.userId}`,
+      { key: 'planUserAssigned', params: { ci: ciName, user: userRow?.name ?? args.userId } })
 
     const updated = await runQueryOne<{ props: Props }>(session, `
       MATCH (t:DeployPlanTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props

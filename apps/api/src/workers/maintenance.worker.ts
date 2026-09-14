@@ -9,6 +9,7 @@ import { config }                 from '../lib/config.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
 import { backupRunsTotal, backupLastSuccessTimestamp } from '../middleware/metrics.js'
 import { purgeResolvedEvents } from '../services/eventRetention.js'
+import { pruneInbox } from '@opengraphity/notifications'
 
 const maintenanceLogger = logger.child({ module: 'maintenance' })
 
@@ -28,6 +29,19 @@ export function readBackupRetention(env: Readonly<Record<string, string | undefi
   return n
 }
 
+/**
+ * Quanti giorni si conservano le notifiche in-app (revisione del 14 set 2026 ·
+ * F10). Default 30: il pannello mostra le ultime, e un archivio senza fine
+ * crescerebbe a ogni evento.
+ */
+export function readInAppRetentionDays(env: Readonly<Record<string, string | undefined>> = process.env): number {
+  const raw = env['INAPP_NOTIFICATION_RETENTION_DAYS']
+  if (raw === undefined || raw === '') return 30
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < 1) throw new Error(`Environment variable INAPP_NOTIFICATION_RETENTION_DAYS must be an integer >= 1 (got "${raw}")`)
+  return n
+}
+
 /** BACKUP_SKIP_KEYCLOAK=true skips the realm export knowingly (a deployment without Keycloak admin access). */
 function readSkipKeycloak(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
   const raw = env['BACKUP_SKIP_KEYCLOAK']
@@ -43,6 +57,8 @@ export const REPEATABLE_JOBS: ReadonlyArray<{ name: string; pattern: string; des
   { name: 'backup_database', pattern: '0 0 * * *',  description: 'daily at midnight' },
   // Event Management (ondata 4): eventi risolti oltre retention_days della policy del tenant.
   { name: 'purge_events',    pattern: '30 3 * * *', description: 'daily at 03:30' },
+  // Revisione del 14 set 2026 · F10: le notifiche in-app salvate si puliscono per età.
+  { name: 'purge_inapp_notifications', pattern: '45 3 * * *', description: 'daily at 03:45' },
 ]
 
 // ── Retention: keep last N archives ──────────────────────────────────────────
@@ -141,6 +157,14 @@ async function processMaintenanceJob(job: Job): Promise<void> {
       break
     }
 
+    case 'purge_inapp_notifications': {
+      const retentionDays = readInAppRetentionDays()
+      const before = new Date(Date.now() - retentionDays * 86_400_000).toISOString()
+      const deleted = await pruneInbox(before)
+      maintenanceLogger.info({ deleted, retentionDays, before }, 'In-app notifications pruned')
+      break
+    }
+
     default:
       throw new Error(`Unknown maintenance job "${job.name}"`)
   }
@@ -172,6 +196,7 @@ async function scheduleRepeatableJobs(): Promise<void> {
 export async function startMaintenanceWorker(): Promise<Worker> {
   // Fail at boot on a malformed value, not at midnight.
   const retention = readBackupRetention()
+  readInAppRetentionDays()
   readSkipKeycloak()
   await scheduleRepeatableJobs()
 

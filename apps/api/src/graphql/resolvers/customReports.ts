@@ -182,9 +182,11 @@ export async function createSectionWithNodesEdges(
 
   await write(runner, `
       MATCH (r:ReportTemplate {id: $templateId, tenant_id: $tenantId})
-      // tenant-ok: la sezione vive solo appesa al ReportTemplate scopato sopra
+      // Revisione del 14 set 2026 · F15: il tenant anche sul nodo figlio, non
+      // solo sul padre — una lettura per id non deve poterlo trovare altrove.
       CREATE (s:ReportSection {
         id:                $id,
+        tenant_id:         $tenantId,
         template_id:       $templateId,
         order:             $order,
         title:             $title,
@@ -214,6 +216,7 @@ export async function createSectionWithNodesEdges(
       MATCH (:ReportTemplate {tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection {id: $sectionId})
       CREATE (s)-[:HAS_NODE]->(n:ReportNode {
         id:             $id,
+        tenant_id:      $tenantId,
         temp_id:        $tempId,
         section_id:     $sectionId,
         entity_type:    $entityType,
@@ -351,12 +354,20 @@ const Query = {
           cnt:              (r.get('cnt') as { toNumber?: () => number } | number),
         }))
         .filter(r => r.neo4jLabel)
+        // Giro nel browser del 14 set 2026 (#12): «Connect to…» offriva ogni
+        // etichetta collegata nel grafo — `ChangeAuditEntry`, `WorkflowInstance`,
+        // i compiti dell'assessment — senza campi e col nome tecnico. Si offre
+        // solo ciò che il costruttore sa descrivere: ticket, organizzazione e
+        // tipi di CI del metamodello (getNavigableEntities).
+        .flatMap(r => {
+          const found = allEntities.find(e => e.neo4jLabel === r.neo4jLabel || e.entityType === r.neo4jLabel)
+          return found ? [{ ...r, found }] : []
+        })
         .map(r => {
           const count = typeof r.cnt === 'object' && r.cnt && 'toNumber' in r.cnt
             ? r.cnt.toNumber!()
             : Number(r.cnt)
-          const found = allEntities.find(e => e.neo4jLabel === r.neo4jLabel || e.entityType === r.neo4jLabel)
-          const base  = found ?? { entityType: r.neo4jLabel, label: r.neo4jLabel, neo4jLabel: r.neo4jLabel, fields: [], relations: [] }
+          const base  = r.found
           return {
             entityType:       base.entityType,
             label:            base.label,

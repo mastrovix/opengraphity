@@ -21,23 +21,25 @@
  * è l'unica del gruppo a fare diversamente (fieldset, sottotitolo scuro): la
  * regola è la maggioranza, non la prima pagina che si apre.
  */
-import { useId } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Building2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { GET_TENANT_LANGUAGE_SETTINGS } from '@/graphql/queries'
-import { SET_TENANT_DEFAULT_LANGUAGE } from '@/graphql/mutations'
+import { GET_TENANT_LANGUAGE_SETTINGS, GET_TENANT_TIMEZONE_SETTINGS, GET_TENANT_SERVICE_CALENDAR } from '@/graphql/queries'
+import { SET_TENANT_DEFAULT_LANGUAGE, SET_TENANT_TIMEZONE, SET_TENANT_SERVICE_CALENDAR } from '@/graphql/mutations'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { FieldLabel, Select } from '@/components/ui/FormControls'
+import { FieldLabel, Input, Select } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { QueryError } from '@/components/QueryError'
 import { colors } from '@/lib/tokens'
 import { applicaLinguaDelCliente, linguaSceltaDallUtente } from '@/i18n/tenantLanguage'
 
 interface LanguageSettings { available: string[]; defaultLanguage: string | null; fallback: string }
+interface TimezoneSettings { timezone: string | null; available: string[] }
 
 export function OrganizationPage() {
   const { t } = useTranslation()
@@ -117,6 +119,168 @@ export function OrganizationPage() {
           )}
         </div>
       </SectionCard>
+
+      <TimezoneSection />
+      <ServiceCalendarSection />
     </PageContainer>
   )
 }
+
+/**
+ * Il fuso orario del cliente (revisione del 14 set 2026 · F7). Si scriveva solo
+ * con `onboard-tenant.ts`, eppure ne dipendono le scadenze SLA/OLA, il digest e
+ * ogni data nei testi generati.
+ */
+function TimezoneSection() {
+  const { t } = useTranslation()
+  const uid = useId()
+  const { data, loading, error, refetch } = useQuery<{ tenantTimezoneSettings: TimezoneSettings }>(
+    GET_TENANT_TIMEZONE_SETTINGS, { fetchPolicy: 'cache-and-network' },
+  )
+  const [saveTimezone, { loading: saving }] = useMutation(SET_TENANT_TIMEZONE, {
+    refetchQueries: [GET_TENANT_TIMEZONE_SETTINGS],
+    onCompleted: () => { toast.success(t('pages.organization.timezoneSaved')) },
+    onError: (e) => toast.error(e.message),
+  })
+
+  const settings = data?.tenantTimezoneSettings
+  const current = settings?.timezone ?? ''
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <SectionCard collapsible={false} title={t('pages.organization.timezoneTitle')}>
+        <div style={{ padding: 16 }}>
+          <p style={{ margin: '0 0 14px', color: colors.slateLight, fontSize: 'var(--font-size-body)', lineHeight: 1.55 }}>
+            {t('pages.organization.timezoneDescription')}
+          </p>
+          {error && !data ? <QueryError message={error.message} onRetry={() => void refetch()} /> : null}
+          {!settings && loading ? <Skeleton style={{ height: 38, maxWidth: 240 }} /> : null}
+          {settings && (
+            <>
+              <FieldLabel htmlFor={`${uid}-timezone`}>{t('pages.organization.timezone')}</FieldLabel>
+              <Select
+                id={`${uid}-timezone`}
+                value={current}
+                disabled={saving}
+                onChange={(e) => { void saveTimezone({ variables: { timezone: e.target.value } }) }}
+                style={{ maxWidth: 320 }}
+              >
+                {current === '' && <option value="" disabled>{t('pages.organization.timezoneNotConfigured')}</option>}
+                {settings.available.map((z) => <option key={z} value={z}>{z}</option>)}
+              </Select>
+              <p style={{ color: current === '' ? 'var(--color-danger)' : colors.slateLight, margin: '8px 0 0', fontSize: 'var(--font-size-label)', lineHeight: 1.5 }}>
+                {current === '' ? t('pages.organization.timezoneMissing') : t('pages.organization.timezoneExisting')}
+              </p>
+            </>
+          )}
+        </div>
+      </SectionCard>
+    </div>
+  )
+}
+
+interface ServiceCalendar { days: number[]; start: string; end: string; holidays: string[] }
+
+/** L'ordine con cui si leggono i giorni: da lunedì. Il valore è quello di `Date.getDay()` (0 = domenica). */
+const WEEK = [1, 2, 3, 4, 5, 6, 0] as const
+const WEEKDAY_KEYS: Record<number, string> = {
+  0: 'pages.organization.weekday.sunday', 1: 'pages.organization.weekday.monday', 2: 'pages.organization.weekday.tuesday',
+  3: 'pages.organization.weekday.wednesday', 4: 'pages.organization.weekday.thursday', 5: 'pages.organization.weekday.friday',
+  6: 'pages.organization.weekday.saturday',
+}
+
+/**
+ * Il calendario di servizio (revisione del 14 set 2026 · F6): i giorni, la
+ * fascia oraria e le festività in cui contano le policy SLA e i contratti OLA
+ * «in orario lavorativo». Prima erano le 08–18 dal lunedì al venerdì, uguali
+ * per tutti e senza festività.
+ */
+function ServiceCalendarSection() {
+  const { t } = useTranslation()
+  const uid = useId()
+  const { data, loading, error, refetch } = useQuery<{ tenantServiceCalendar: ServiceCalendar | null }>(
+    GET_TENANT_SERVICE_CALENDAR, { fetchPolicy: 'cache-and-network' },
+  )
+  const saved = data?.tenantServiceCalendar ?? null
+  const [days, setDays] = useState<number[]>([])
+  const [start, setStart] = useState('')
+  const [end, setEnd] = useState('')
+  const [holidays, setHolidays] = useState('')
+
+  useEffect(() => {
+    if (!data) return
+    setDays(saved?.days ?? [])
+    setStart(saved?.start ?? '')
+    setEnd(saved?.end ?? '')
+    setHolidays((saved?.holidays ?? []).join(', '))
+  }, [data, saved])
+
+  const [saveCalendar, { loading: saving }] = useMutation(SET_TENANT_SERVICE_CALENDAR, {
+    refetchQueries: [GET_TENANT_SERVICE_CALENDAR],
+    onCompleted: () => { toast.success(t('pages.organization.calendarSaved')) },
+    onError: (e) => toast.error(e.message),
+  })
+
+  const toggleDay = (d: number) => setDays((cur) => (cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d]))
+  const submit = () => {
+    const list = holidays.split(/[\s,;]+/).map((h) => h.trim()).filter(Boolean)
+    void saveCalendar({ variables: { calendar: { days: [...days].sort((a, b) => a - b), start, end, holidays: list } } })
+  }
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <SectionCard collapsible={false} title={t('pages.organization.calendarTitle')}>
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <p style={{ margin: 0, color: colors.slateLight, fontSize: 'var(--font-size-body)', lineHeight: 1.55 }}>
+            {t('pages.organization.calendarDescription')}
+          </p>
+          {error && !data ? <QueryError message={error.message} onRetry={() => void refetch()} /> : null}
+          {!data && loading ? <Skeleton style={{ height: 38, maxWidth: 320 }} /> : null}
+          {data && (
+            <>
+              {saved === null && (
+                <p role="status" style={{ margin: 0, color: 'var(--color-danger)', fontSize: 'var(--font-size-label)' }}>
+                  {t('pages.organization.calendarMissing')}
+                </p>
+              )}
+              <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
+                <legend style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6 }}>
+                  {t('pages.organization.calendarDays')}
+                </legend>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  {WEEK.map((d) => (
+                    <label key={d} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)' }}>
+                      <input type="checkbox" checked={days.includes(d)} onChange={() => toggleDay(d)} />
+                      {t(WEEKDAY_KEYS[d]!)}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                <div>
+                  <FieldLabel htmlFor={`${uid}-start`}>{t('pages.organization.calendarStart')}</FieldLabel>
+                  <Input id={`${uid}-start`} type="time" value={start} onChange={(e) => setStart(e.target.value)} style={{ width: 140 }} />
+                </div>
+                <div>
+                  <FieldLabel htmlFor={`${uid}-end`}>{t('pages.organization.calendarEnd')}</FieldLabel>
+                  <Input id={`${uid}-end`} type="time" value={end} onChange={(e) => setEnd(e.target.value)} style={{ width: 140 }} />
+                </div>
+              </div>
+              <div>
+                <FieldLabel htmlFor={`${uid}-holidays`}>{t('pages.organization.calendarHolidays')}</FieldLabel>
+                <Input id={`${uid}-holidays`} value={holidays} placeholder="2026-12-25, 2026-12-26" onChange={(e) => setHolidays(e.target.value)} style={{ maxWidth: 520 }} />
+                <p style={{ color: colors.slateLight, margin: '6px 0 0', fontSize: 'var(--font-size-label)', lineHeight: 1.5 }}>
+                  {t('pages.organization.calendarHolidaysHint')}
+                </p>
+              </div>
+              <div>
+                <Button onClick={submit} disabled={saving}>{t('pages.organization.calendarSave')}</Button>
+              </div>
+            </>
+          )}
+        </div>
+      </SectionCard>
+    </div>
+  )
+}
+

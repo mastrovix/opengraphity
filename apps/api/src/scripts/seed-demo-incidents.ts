@@ -18,7 +18,7 @@
  *
  * DISTRUTTIVO per il tenant indicato: cancella TUTTI i suoi incident con
  * workflow, storia, SLA, commenti e i nodi collegati per entity_id
- * (EntityComment, Attachment, AuditEntry, Notification). Per questo:
+ * (Attachment, AuditEntry, Notification). Per questo:
  *   - tenant obbligatorio (--tenant=<slug>), nessun default;
  *   - conferma esplicita --yes-delete;
  *   - rifiutato con NODE_ENV=production.
@@ -33,7 +33,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { resolveTenantArg, requireConfirmFlag, refuseInProduction } from './lib/scriptArgs.js'
 
 /** Nodi che puntano a un incident per proprietà (entity_type/entity_id), non per relazione. */
-const ENTITY_LINKED_LABELS = ['EntityComment', 'Attachment', 'AuditEntry', 'Notification'] as const
+const ENTITY_LINKED_LABELS = ['Attachment', 'AuditEntry', 'Notification'] as const
 
 const N_CLOSED = 1000
 const N_ASSIGNED = 150

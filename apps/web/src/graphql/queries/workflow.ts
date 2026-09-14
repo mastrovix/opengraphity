@@ -25,9 +25,9 @@ export const GET_WORKFLOW_DEFINITION = gql`
   query GetWorkflowDefinition($entityType: String!) {
     workflowDefinition(entityType: $entityType) {
       id name entityType category version active
-      steps { id name label type enterActions exitActions isInitial isTerminal isOpen category purpose order }
+      steps { id name label labels { language label } type enterActions exitActions isInitial isTerminal isOpen category purpose order }
       transitions {
-        id fromStepName toStepName trigger label requiresInput inputField condition
+        id fromStepName toStepName trigger label labels { language label } requiresInput inputField condition
       }
     }
   }

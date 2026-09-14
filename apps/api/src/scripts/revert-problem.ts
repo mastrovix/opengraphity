@@ -40,7 +40,7 @@ async function main(): Promise<void> {
     }
 
     const toStep = await targetStepByPurpose(session, TENANT, 'problem', ['investigation'],
-      'ritorno del problem in analisi (revert-problem)')
+      'problem return to investigation (revert-problem)')
     const t = await workflowEngine.transition(
       session,
       { instanceId, toStepName: toStep, triggeredBy: 'system', triggerType: 'automatic', notes: 'Change risolutiva scollegata (fix retroattivo)' },

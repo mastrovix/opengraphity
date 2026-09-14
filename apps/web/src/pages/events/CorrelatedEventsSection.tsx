@@ -91,6 +91,15 @@ function openedByMonitoring(events: EventRow[]): EventRow | null {
   return opened.reduce((first, e) => (e.correlationAt! < first.correlationAt! ? e : first))
 }
 
+/**
+ * Giro nel browser del 14 set 2026 (#51): un incident aperto a mano da un
+ * allarme («Open incident») diceva «aperto automaticamente dal monitoraggio».
+ * La storia dell'allarme dice chi l'ha aperto.
+ */
+function openedManually(ev: EventRow & { history?: ReadonlyArray<{ kind: string; incident?: { id: string } | null }> }, incidentId: string | undefined): boolean {
+  return (ev.history ?? []).some((h) => h.kind === 'incident_opened_manually' && (!incidentId || h.incident?.id === incidentId))
+}
+
 /** `purged`: allarmi già eliminati dalla conservazione (Incident.correlatedEventsPurged): la timeline li cita ancora, la lista no. */
 export function MonitoringAlarmsSection({ events, purged = 0, incidentId }: { events: EventRow[]; purged?: number; incidentId?: string }) {
   const { t } = useTranslation()
@@ -101,7 +110,7 @@ export function MonitoringAlarmsSection({ events, purged = 0, incidentId }: { ev
       {opener && (
         <p style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, fontSize: 'var(--font-size-body)', color: colors.slateDark }}>
           <Radar size={14} color={colors.brand} aria-hidden="true" />
-          {t('pages.incidents.monitoringAlarms.openedByMonitoring', { when: formatDateTime(opener.correlationAt) })}
+          {t(openedManually(opener, incidentId) ? 'pages.incidents.monitoringAlarms.openedFromAlarm' : 'pages.incidents.monitoringAlarms.openedByMonitoring', { when: formatDateTime(opener.correlationAt) })}
         </p>
       )}
       {events.length === 0

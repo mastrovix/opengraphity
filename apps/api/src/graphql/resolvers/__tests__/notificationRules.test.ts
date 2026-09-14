@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
 import { ROUTABLE_CHANNELS_BY_EVENT, DEFAULT_ROUTABLE_CHANNELS } from '@opengraphity/notifications'
-import { NOTIFICATION_TARGETS, USER_ROLES } from '@opengraphity/types'
+import { NOTIFICATION_TARGETS, USER_ROLES, NOTIFICATION_SEVERITIES } from '@opengraphity/types'
 
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
@@ -183,5 +183,45 @@ describe('target — applicabilità per tipo di evento', () => {
     // lo stesso bersaglio su un evento in cui l'assegnazione esiste: nessun errore di applicabilità
     expect(isTargetApplicable('incident.assigned', 'team_owner')).toBe(true)
     expect(isTargetApplicable('change.task_assigned', 'assignee')).toBe(true)
+  })
+})
+
+/**
+ * Revisione del 14 set 2026 · NT-1: la pagina offre info/success/warning/error;
+ * l'API accettava low/medium/high/critical. Dal vivo, cambiare la severità di
+ * una regola falliva sempre. Il vocabolario ora è uno solo.
+ */
+describe('severità della regola — lo stesso vocabolario della pagina', () => {
+  it('update: ogni severità che la pagina offre si salva', async () => {
+    for (const severity of NOTIFICATION_SEVERITIES) {
+      mockSession.executeWrite.mockImplementationOnce(async () => ruleNode({ id: 'r1', event_type: 'incident.created', enabled: true, title_key: 'k', channels: ['in_app'], target: 'all', severity_override: severity }))
+      const out = await notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { severityOverride: severity } }, ctx)
+      expect(out.severityOverride).toBe(severity)
+    }
+  })
+
+  it('update e create: una priorità del ticket non è una severità → BAD_USER_INPUT, nessuna scrittura', async () => {
+    await expectBadInput(
+      notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { severityOverride: 'high' } }, ctx),
+      /severityOverride must be one of: info, success, warning, error/,
+    )
+    await expectBadInput(
+      notificationRuleResolvers.Mutation.createNotificationRule(null, { input: { titleKey: 'k', eventType: 'incident.created', channels: ['in_app'], target: 'all', severityOverride: 'critical' } }, ctx),
+      /severityOverride must be one of/,
+    )
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+})
+
+/** NT-8: i campi che nessuno leggeva sono rifiutati con il motivo; l'ora del digest è validata. */
+describe('campi speciali delle regole', () => {
+  it('escalationTarget, slaWarningTarget e slaWarningThresholdPercent non si scrivono più', async () => {
+    for (const input of [{ escalationTarget: 'all' }, { slaWarningTarget: 'all' }, { slaWarningThresholdPercent: 80 }]) {
+      await expectBadInput(notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input }, ctx), /no longer a rule field/)
+    }
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+  it('digestTime deve essere HH:MM', async () => {
+    await expectBadInput(notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { digestTime: '8' } }, ctx), /HH:MM/)
   })
 })

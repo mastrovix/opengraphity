@@ -53,19 +53,19 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
     // plausible incident.
     const severity = parts[parts.length - 1] ?? ''
     if (!(VALID_SEVERITIES as readonly string[]).includes(severity)) {
-      res.json({ response_type: 'ephemeral', text: `⚠️ Severity mancante o non valida. Usa: ${USAGE}` })
+      res.json({ response_type: 'ephemeral', text: `⚠️ Severity missing or not valid. Usage: ${USAGE}` })
       return
     }
     const words   = parts.slice(2, -1)
     const ciToken = words.find((w) => w.startsWith('ci='))
     const ciRef   = ciToken?.slice(3) ?? ''
     if (!ciRef) {
-      res.json({ response_type: 'ephemeral', text: `⚠️ CI impattato mancante (obbligatorio). Usa: ${USAGE}` })
+      res.json({ response_type: 'ephemeral', text: `⚠️ Impacted CI missing (required). Usage: ${USAGE}` })
       return
     }
     const title = words.filter((w) => w !== ciToken).join(' ')
     if (!title) {
-      res.json({ response_type: 'ephemeral', text: `⚠️ Titolo mancante. Usa: ${USAGE}` })
+      res.json({ response_type: 'ephemeral', text: `⚠️ Title missing. Usage: ${USAGE}` })
       return
     }
 
@@ -77,7 +77,7 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
         tx.run('MATCH (u:User {slack_id: $slackUserId}) RETURN u LIMIT 1', { slackUserId }), // tenant-ok: pre-auth, il tenant è quello dell'utente Slack collegato
       )
       if (!userResult.records.length) {
-        res.json({ response_type: 'ephemeral', text: '⚠️ Collega il tuo account Slack nelle impostazioni profilo.' })
+        res.json({ response_type: 'ephemeral', text: '⚠️ Link your Slack account in your profile settings.' })
         return
       }
       const u  = userResult.records[0]!.get('u').properties as Record<string, unknown>
@@ -96,7 +96,7 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
         `, { tenantId, ref: ciRef }),
       )
       if (ciResult.records.length !== 1) {
-        const reason = ciResult.records.length === 0 ? 'non trovato' : 'ambiguo (più CI con questo nome: usa l\'id)'
+        const reason = ciResult.records.length === 0 ? 'not found' : 'ambiguous (more CIs have this name: use the id)'
         res.json({ response_type: 'ephemeral', text: `⚠️ CI "${ciRef}" ${reason}.` })
         return
       }
@@ -130,11 +130,11 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
       await wsession.close()
     }
 
-    res.json({ response_type: 'in_channel', text: `✅ Incident *${created.number}* — *${title}* creato con severity *${severity}*. ID: \`${created.id}\`` })
+    res.json({ response_type: 'in_channel', text: `✅ Incident *${created.number}* — *${title}* created with severity *${severity}*. ID: \`${created.id}\`` })
     return
   }
 
-  res.json({ response_type: 'ephemeral', text: `Comando non riconosciuto. Usa: ${USAGE}` })
+  res.json({ response_type: 'ephemeral', text: `Command not recognised. Usage: ${USAGE}` })
 }
 
 export async function handleSlackActions(req: Request, res: Response): Promise<void> {
@@ -173,7 +173,7 @@ export async function handleSlackActions(req: Request, res: Response): Promise<v
           await fetch(responseUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ response_type: 'ephemeral', text: '⚠️ Collega il tuo account Slack nelle impostazioni profilo.' }),
+            body: JSON.stringify({ response_type: 'ephemeral', text: '⚠️ Link your Slack account in your profile settings.' }),
           })
         }
         res.sendStatus(200)

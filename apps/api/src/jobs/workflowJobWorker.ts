@@ -9,6 +9,8 @@ import { evaluateConditions, parseConditions } from '../lib/conditionEvaluator.j
 import { executeActions, parseActions, type ActionExecutionContext } from '../lib/actionExecutor.js'
 import { assertSafeOutboundUrl, loggableUrl } from '../lib/safeUrl.js'
 import { automaticTransitionAllowed } from '../graphql/resolvers/change/windowGate.js'
+import { loadAutomationEntity } from '../lib/automationEntity.js'
+import { AUTOMATION_ACTOR, type AutomationEntityType } from '@opengraphity/types'
 
 // ── Job data shape produced by packages/workflow/src/actions.ts ───────────────
 
@@ -115,15 +117,15 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
         let target: string
         try {
           target = await targetStepByCategory(session, tenantId, entityType, ['closed'],
-            `Chiusura automatica di ${entityType} ${entityId}`)
+            `automatic close of ${entityType} ${entityId}`)
         } catch (err) {
           const terminal = steps.find((s) => s.isTerminal)
           if (!terminal) {
             // Prima era un `warn` + `return`: il job risultava completato e
             // quel ticket non si chiudeva mai, senza che nessuno lo vedesse.
             throw new Error(
-              `[workflow-jobs] auto_close: il workflow "${entityType}" del tenant ${tenantId} non ha nessun passo ` +
-              `di categoria "closed" né nessun passo terminale: non esiste un posto dove chiudere ${entityId}. ` +
+              `[workflow-jobs] auto_close: the "${entityType}" workflow of tenant ${tenantId} has no step ` +
+              `of category "closed" and no terminal step: there is nowhere to close ${entityId}. ` +
               `(${err instanceof Error ? err.message : String(err)})`,
             )
           }
@@ -203,19 +205,12 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
         const trigger = triggerRows[0].props
 
         // 2. Load the current entity (with relationships for assigned_to check)
-        const entityRows = await runQuery<{ props: Record<string, unknown>; assignedTo: string | null; assignedTeam: string | null }>(session, `
-          MATCH (e {id: $entityId, tenant_id: $tenantId})
-          OPTIONAL MATCH (e)-[:ASSIGNED_TO]->(u)
-          OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(t)
-          RETURN properties(e) AS props, u.id AS assignedTo, t.id AS assignedTeam
-        `, { entityId, tenantId })
-
-        if (entityRows.length === 0) {
+        // Stessa lettura del consumatore degli eventi (lib/automationEntity.ts).
+        const entity = await loadAutomationEntity(session, tenantId, entityType as AutomationEntityType, entityId)
+        if (!entity) {
           logger.info({ entityId }, '[trigger_timer] entity not found — skipped')
           break
         }
-
-        const entity: Record<string, unknown> = { ...entityRows[0].props, assigned_to: entityRows[0].assignedTo, assigned_team: entityRows[0].assignedTeam }
 
         // 3. Evaluate conditions — they might no longer be true
         const conditions = parseConditions(trigger['conditions'] as string | null)
@@ -228,7 +223,7 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
         // 4. Execute actions
         const actions = parseActions(trigger['actions'] as string | null)
         const execCtx: ActionExecutionContext = {
-          tenantId, userId: 'system', entityId, entityType,
+          tenantId, userId: AUTOMATION_ACTOR, entityId, entityType,
           entity, source: 'trigger', sourceName: trigger['name'] as string,
         }
         const results = await executeActions(actions, execCtx)
@@ -265,27 +260,12 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
 async function processNotificationJob(job: Job): Promise<void> {
   switch (job.name) {
     case 'escalation_check': {
+      // Revisione del 14 set 2026 · NT-8: prima questo ramo scriveva un log e
+      // basta — la regola «escalation» si salvava e non notificava mai nessuno.
       const { incidentId, tenantId, ruleId } = job.data as { incidentId: string; tenantId: string; ruleId: string }
-      const session = getSession(undefined, 'READ')
-      try {
-        const { isEntityOpen } = await import('../lib/workflowHelpers.js')
-        const open = await isEntityOpen(session, incidentId, tenantId)
-        if (open) {
-          logger.info({ incidentId, ruleId }, '[notification-jobs] escalation_check: incident still open, escalation triggered')
-          // Escalation notification logic would call notification service here
-        } else {
-          logger.info({ incidentId }, '[notification-jobs] escalation_check: incident already resolved, skipping')
-        }
-      } finally {
-        await session.close()
-      }
-      break
-    }
-
-    case 'digest': {
-      const { ruleId } = job.data as { ruleId: string }
-      logger.info({ ruleId }, '[notification-jobs] digest: daily digest job executed')
-      // Digest aggregation + notification dispatch would happen here
+      const { runEscalationCheck } = await import('../lib/notificationEscalation.js')
+      const outcome = await runEscalationCheck(tenantId, incidentId, ruleId)
+      logger.info({ incidentId, ruleId, outcome }, '[notification-jobs] escalation_check')
       break
     }
 
@@ -316,14 +296,14 @@ async function processNotificationJob(job: Job): Promise<void> {
                  c.id AS changeId, c.change_type AS changeType
         `, { instanceId, tenantId }))
         if (fresh.records.length === 0) {
-          throw new Error(`timer_wait: l'istanza ${instanceId} del tenant ${tenantId} non esiste più o non ha un passo corrente — il timer non può concludersi`)
+          throw new Error(`timer_wait: instance ${instanceId} of tenant ${tenantId} no longer exists or has no current step — the timer cannot complete`)
         }
         const currentStep = fresh.records[0]!.get('currentStep') as string
         const toStep      = fresh.records[0]!.get('toStep') as string | null
         if (!toStep) {
           throw new Error(
-            `timer_wait: dal passo "${currentStep}" non esce nessuna transizione con innesco "automatic" o "timer", quindi l'attesa non può concludersi ` +
-            `(l'arco era previsto verso "${scheduledToStep ?? 'n/d'}" quando il timer è partito). Aggiungi l'arco nel disegnatore.`,
+            `timer_wait: no transition with an "automatic" or "timer" trigger leaves step "${currentStep}", so the wait cannot complete ` +
+            `(the edge was expected towards "${scheduledToStep ?? 'n/a'}" when the timer started). Add the edge in the designer.`,
           )
         }
         if (scheduledToStep && scheduledToStep !== toStep) {

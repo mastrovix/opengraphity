@@ -46,7 +46,7 @@ export async function workflowStepCurrentInstances(
   ctx: GraphQLContext,
 ): Promise<number> {
   if (!step.definitionId) {
-    throw new GraphQLError(`Step "${step.name}" senza definition_id: dato incompleto, impossibile contarne le istanze`, { extensions: { code: 'CONFLICT' } })
+    throw new GraphQLError(`Step "${step.name}" has no definition_id: incomplete data, its instances cannot be counted`, { extensions: { code: 'CONFLICT' } })
   }
   const counts = await loadStepInstanceCounts(ctx.tenantId, step.definitionId)
   const n = counts[step.name]
@@ -119,13 +119,7 @@ export async function incidentAvailableTransitions(
     )
     if (!wiResult.records.length) return []
     const instanceId = wiResult.records[0].get('instanceId') as string
-    const transitions = await workflowEngine.getAvailableTransitions(session, instanceId)
-    // Una richiesta che richiede approvazione non offre le transizioni che la salterebbero.
-    const allowed = []
-    for (const tr of transitions) {
-      if (!(await requestApprovalWouldBeSkipped(session, ctx.tenantId, instanceId, tr.toStep))) allowed.push(tr)
-    }
-    return allowed
+    return workflowEngine.getAvailableTransitions(session, instanceId)
   })
 }
 
@@ -382,6 +376,16 @@ export async function serviceRequestAvailableTransitionsField(
     )
     if (!wiResult.records.length) return []
     const instanceId = wiResult.records[0].get('instanceId') as string
-    return workflowEngine.getAvailableTransitions(session, instanceId)
+    // Una richiesta che richiede approvazione non offre le transizioni che la
+    // salterebbero. Revisione del 14 set 2026 · IT-23: questo filtro stava sulla
+    // query degli INCIDENT (dove cercava una richiesta e non filtrava mai), e
+    // qui — il campo che la pagina della richiesta legge — mancava: il pulsante
+    // «Prendi in carico» si vedeva e veniva rifiutato solo al clic.
+    const transitions = await workflowEngine.getAvailableTransitions(session, instanceId)
+    const allowed = []
+    for (const tr of transitions) {
+      if (!(await requestApprovalWouldBeSkipped(session, ctx.tenantId, instanceId, tr.toStep))) allowed.push(tr)
+    }
+    return allowed
   })
 }

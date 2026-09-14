@@ -47,8 +47,6 @@ export const ENTITY_TYPES = [
   { value: 'application',          labelKey: 'pages.dashboard.entity.application' },
   { value: 'database',             labelKey: 'pages.dashboard.entity.database' },
   { value: 'certificate',          labelKey: 'pages.dashboard.entity.certificate' },
-  { value: 'network_device',       labelKey: 'pages.dashboard.entity.networkDevice' },
-  { value: 'vm',                   labelKey: 'pages.dashboard.entity.vm' },
   { value: 'business_application', labelKey: 'pages.dashboard.entity.businessApplication' },
 ]
 
@@ -59,18 +57,18 @@ export const METRICS = [
   { value: 'sum_field',      labelKey: 'pages.dashboard.metric.sumField' },
 ]
 
+// Stessi campi di WIDGET_ALLOWED_FIELDS nell'API: offrire un campo che l'API rifiuta
+// dava un errore al salvataggio (revisione del 14 set 2026 · F19, apps/api/src/lib/__tests__/staticCiLabels.test.ts).
 export const ALLOWED_FIELDS: Record<string, string[]> = {
-  incident:        ['status', 'severity', 'category'],
-  problem:         ['status', 'priority', 'category'],
-  change:          ['status', 'type', 'priority', 'risk', 'impact'],
-  service_request: ['status', 'priority', 'category'],
-  server:          ['status', 'environment', 'os'],
-  application:     ['status', 'environment'],
-  database:        ['status', 'environment'],
-  certificate:     ['status', 'environment'],
-  network_device:  ['status', 'environment'],
-  vm:              ['status', 'environment'],
-  business_application: ['status', 'environment', 'criticality', 'businessUnit'],
+  incident:             ['status', 'priority', 'impact', 'urgency', 'category'],
+  problem:              ['status', 'priority', 'category'],
+  change:               ['status', 'type', 'priority', 'environment'],
+  service_request:      ['status', 'priority', 'category'],
+  server:               ['status', 'environment', 'os', 'type'],
+  application:          ['status', 'environment', 'category', 'type'],
+  database:             ['status', 'environment', 'type'],
+  certificate:          ['status', 'environment'],
+  business_application: ['status', 'environment', 'criticality', 'business_unit'],
 }
 
 export const TIME_RANGES = [
@@ -134,6 +132,11 @@ export interface FieldMeta {
   label:      string
   fieldType:  string
   enumValues: string[]
+}
+
+/** Le metriche che contano o sommano PER CAMPO: senza il campo non c'è niente da calcolare. */
+export function metricNeedsGroupBy(metric: string): boolean {
+  return metric === 'count_by_field' || metric === 'avg_field' || metric === 'sum_field'
 }
 
 export interface PreviewData {
@@ -213,7 +216,7 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const fields      = ALLOWED_FIELDS[entityType] ?? []
-  const needsGroupBy = metric === 'count_by_field' || metric === 'avg_field' || metric === 'sum_field'
+  const needsGroupBy = metricNeedsGroupBy(metric)
 
   // ── Load field metadata from type definitions ──────────────────────────────
   const isITIL = isITILEntity(entityType)
@@ -265,9 +268,14 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
   }, [entityType, metric, groupByField, filterField, filterValue, timeRange, needsGroupBy])
 
   const dataFree = DATA_FREE_WIDGET_TYPES.includes(widgetType)
+  // Giro nel browser del 14 set 2026 (#7): scegliendo «Count by field» partiva
+  // subito l'anteprima senza campo, e il server rispondeva con un errore a
+  // toast prima che si potesse scegliere il campo. L'anteprima aspetta una
+  // configurazione completa.
+  const previewComplete = !!previewVars && !(metricNeedsGroupBy(previewVars.metric) && !previewVars.groupByField)
   const { data: previewRaw, loading: previewLoading } = useQuery(GET_WIDGET_DATA_PREVIEW, {
     variables: previewVars ?? { entityType, metric },
-    skip: !previewVars || dataFree,
+    skip: !previewComplete || dataFree,
     fetchPolicy: 'cache-and-network',
   })
 

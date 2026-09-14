@@ -21,7 +21,7 @@ export const FIELD_SCOPE = `f.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']`
 function parseInlineEnumValues(raw: unknown): string[] {
   if (!raw || typeof raw !== 'string') return []
   const arr: unknown = JSON.parse(raw)
-  if (!Array.isArray(arr)) throw new Error(`enum_values non è un array JSON valido: ${raw.slice(0, 80)}`)
+  if (!Array.isArray(arr)) throw new Error(`enum_values is not a valid JSON array: ${raw.slice(0, 80)}`)
   return arr as string[]
 }
 
@@ -55,7 +55,7 @@ function toValues(raw: string[] | string | null, name: string): string[] {
   if (Array.isArray(raw)) return raw
   if (typeof raw === 'string') {
     const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) throw new Error(`Vocabolario "${name}": values non è un array`)
+    if (!Array.isArray(parsed)) throw new Error(`Dictionary "${name}": values is not an array`)
     return parsed as string[]
   }
   return []

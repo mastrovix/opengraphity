@@ -7,6 +7,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
 // dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
 // fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+// Le note si compongono nella lingua del cliente: qui italiano, come le attese.
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
 vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
 
 vi.mock('../../lib/ciLabelsForTenant.js', () => ({
@@ -207,6 +209,35 @@ describe('createIncident', () => {
       undefined,           // definitionId
       null,                // category
     )
+  })
+
+  /**
+   * Revisione del 14 set 2026 · IT-4: il portale apre l'incident da qui. Unica
+   * differenza dichiarata: l'utente finale non conosce i CI, quindi il canale
+   * `portal` può nascere senza CI; la categoria però è obbligatoria e validata
+   * contro il Dizionario (anche senza copia del cliente: IT-7).
+   */
+  it('canale portal: nasce senza CI, con created_by e canale, e pubblica incident.created', async () => {
+    await createIncident({ title: 'Stampante', severity: 'high', category: 'hardware' }, ctx, 'portal')
+    const create = vi.mocked(runQuery).mock.calls.find(c => (c[1] as string).includes('CREATE (i:Incident'))!
+    expect(create[1]).toContain('created_by:   $userId')
+    expect(create[2]).toMatchObject({ userId: 'user-1', channel: 'portal', category: 'hardware' })
+    expect(vi.mocked(runQuery).mock.calls.some(c => (c[1] as string).includes('AFFECTED_BY'))).toBe(false)
+    const event = vi.mocked(publish).mock.calls[0]![0] as { type: string }
+    expect(event.type).toBe('incident.created')
+    expect(workflowEngine.createInstance).toHaveBeenCalledOnce()
+  })
+
+  it('canale portal: categoria assente o fuori Dizionario → rifiutato prima di scrivere', async () => {
+    await expect(createIncident({ title: 'T', severity: 'high' }, ctx, 'portal')).rejects.toThrow(/category is required/)
+    await expect(createIncident({ title: 'T', severity: 'high', category: 'caffè' }, ctx, 'portal')).rejects.toThrow(/caffè/)
+    await expect(createIncident({ title: 'T', severity: 'urgentissimo', category: 'hardware' }, ctx, 'portal')).rejects.toThrow(/urgentissimo/)
+    expect(vi.mocked(runQuery).mock.calls.some(c => (c[1] as string).includes('CREATE (i:Incident'))).toBe(false)
+    expect(publish).not.toHaveBeenCalled()
+  })
+
+  it('canale agent (default): il CI resta obbligatorio', async () => {
+    await expect(createIncident({ title: 'T', severity: 'high', category: 'hardware' }, ctx)).rejects.toThrow(/at least one impacted CI/)
   })
 
   it('include tenantId e severity nell\'evento', async () => {

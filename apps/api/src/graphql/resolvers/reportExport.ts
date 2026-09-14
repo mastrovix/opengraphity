@@ -96,7 +96,7 @@ async function fetchSectionData(sections: ReportSectionDef[], tenantId: string):
     let parsed: unknown
     try { parsed = JSON.parse(r.data) }
     catch (e) {
-      return { title: r.title, chartType: r.chartType, rows: null, kpiValue: null, tableRows: null, error: `Dati sezione corrotti: ${e instanceof Error ? e.message : String(e)}` }
+      return { title: r.title, chartType: r.chartType, rows: null, kpiValue: null, tableRows: null, error: `Corrupt section data: ${e instanceof Error ? e.message : String(e)}` }
     }
     if (r.chartType === 'kpi') {
       return { title: r.title, chartType: r.chartType, rows: null, kpiValue: (parsed as { value: number } | null)?.value ?? null, tableRows: null, error: null }
@@ -131,7 +131,7 @@ async function generatePDF(templateName: string, data: SectionData[], filePath: 
     doc.moveDown(0.5)
 
     if (sec.error) {
-      doc.fontSize(10).fillColor('#dc2626').text(`ERRORE: ${sec.error}`)
+      doc.fontSize(10).fillColor('#dc2626').text(`ERROR: ${sec.error}`)
     } else if (sec.chartType === 'kpi' && sec.kpiValue !== null) {
       doc.fontSize(28).fillColor('#0f172a').text(String(sec.kpiValue), { align: 'center' })
     } else if (sec.rows) {
@@ -157,9 +157,21 @@ async function generatePDF(templateName: string, data: SectionData[], filePath: 
   })
 }
 
-async function generateExcel(templateName: string, data: SectionData[], filePath: string): Promise<void> {
-  const ExcelJS = await import('exceljs')
-  const workbook = new ExcelJS.Workbook()
+/**
+ * `exceljs` è CommonJS: in Node ESM `await import('exceljs')` mette la classe
+ * sotto `default` («ExcelJS.Workbook is not a constructor», giro nel browser del
+ * 14 set 2026). Vitest invece la espone anche in cima, per questo i test non
+ * lo vedevano: si gestiscono le due forme, e una terza è un errore.
+ */
+export function excelJsFrom(mod: { default?: typeof ExcelJS } & Partial<typeof ExcelJS>): typeof ExcelJS {
+  if (typeof mod.default?.Workbook === 'function') return mod.default
+  if (typeof mod.Workbook === 'function') return mod as typeof ExcelJS
+  throw new Error('exceljs: no Workbook export found (neither default.Workbook nor Workbook)')
+}
+
+export async function generateExcel(templateName: string, data: SectionData[], filePath: string): Promise<void> {
+  const Excel = excelJsFrom(await import('exceljs') as never)
+  const workbook = new Excel.Workbook()
   workbook.creator = 'OpenGraphity'
   workbook.created = new Date()
 
@@ -180,7 +192,7 @@ async function generateExcel(templateName: string, data: SectionData[], filePath
     sheet.getRow(1).height = 24
 
     if (sec.error) {
-      sheet.getCell('A2').value = `ERRORE: ${sec.error}`
+      sheet.getCell('A2').value = `ERROR: ${sec.error}`
       sheet.getCell('A2').font = { color: { argb: 'FFDC2626' }, bold: true }
     } else if (sec.chartType === 'kpi' && sec.kpiValue !== null) {
       sheet.getCell('A2').value = 'Valore'

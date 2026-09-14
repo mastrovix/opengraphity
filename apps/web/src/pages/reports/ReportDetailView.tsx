@@ -9,6 +9,7 @@ import {
 
 import { getReportIcon } from './reportIcons'
 import { colors } from '@/lib/tokens'
+import { useFieldValueLabel } from '@/hooks/useFieldValueLabel'
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -141,7 +142,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
               </div>
               <div style={{ padding: 16 }}>
                 {result ? (
-                  <ReportChartRenderer chartType={result.chartType} data={result.data} title={result.title} error={result.error} />
+                  <SectionChart section={sec} result={result} />
                 ) : (
                   <div style={{ textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-card-title)', padding: 24 }}>
                     {t('pages.reports.clickRunToLoad')}
@@ -155,3 +156,16 @@ export function ReportDetailView(props: ReportDetailViewProps) {
     </div>
   )
 }
+
+/**
+ * Il grafico di una sezione, coi valori raggruppati come li chiama il cliente.
+ * Il tipo del nodo di raggruppamento viene dall'etichetta Neo4j dei ticket
+ * («ServiceRequest» → `service_request`) o dal nome del tipo CI.
+ */
+function SectionChart({ section, result }: { section: ReportSection; result: SectionResult }) {
+  const node = section.nodes.find((n) => n.id === section.groupByNodeId) ?? null
+  const entity = node ? node.entityType.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase() : null
+  const valueLabel = useFieldValueLabel(entity, section.groupByField)
+  return <ReportChartRenderer chartType={result.chartType} data={result.data} title={result.title} error={result.error} valueLabel={valueLabel} />
+}
+

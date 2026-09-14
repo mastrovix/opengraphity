@@ -27,12 +27,14 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
+import type { ValueColor } from '@opengraphity/types'
 import { GET_ENUM_TYPES } from '@/graphql/queries'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 interface LocalizedLabelRow { language: string; label: string }
 interface EnumValueLabelRow { value: string; label: string; labels: LocalizedLabelRow[] }
-interface EnumTypeRow { name: string; values: string[]; isShipped: boolean; valueLabels: EnumValueLabelRow[] }
+interface EnumValueColorRow { value: string; color: ValueColor }
+interface EnumTypeRow { name: string; values: string[]; isShipped: boolean; valueLabels: EnumValueLabelRow[]; valueColors: EnumValueColorRow[] }
 
 export interface DomainVocabularies {
   /** I valori ammessi, o `null` se non si conoscono (vedi sopra: non è «vuoto»). */
@@ -50,6 +52,12 @@ export interface DomainVocabularies {
    * Un valore fuori vocabolario torna `null`: non gli si inventa un'etichetta.
    */
   labelOf: (name: string, value: string) => string | null
+  /**
+   * Il COLORE che il Dizionario assegna al valore (revisione del 14 set 2026 ·
+   * F9), o `null` se nessuno gliel'ha dato o se non lo sappiamo ancora. Lo
+   * stile lo compone `vocabularyValueStyle` (lib/domainStyle.ts).
+   */
+  colorOf: (name: string, value: string) => ValueColor | null
   /** Valore + etichetta, nell'ordine del vocabolario: per le tendine e i gruppi di bottoni. */
   entriesOf: (name: string) => readonly EnumValueLabelRow[] | null
   loading:  boolean
@@ -60,6 +68,7 @@ export interface DomainVocabularies {
 export const DomainVocabularyContext = createContext<DomainVocabularies>({
   valuesOf:  () => null,
   labelOf:   () => null,
+  colorOf:   () => null,
   entriesOf: () => null,
   loading:   false,
   error:     null,
@@ -92,6 +101,7 @@ export function DomainVocabularyProvider({ children }: { children: ReactNode }) 
       valuesOf:  (name) => riga(name)?.values ?? null,
       entriesOf: (name) => riga(name)?.valueLabels ?? null,
       labelOf:   (name, value) => riga(name)?.valueLabels.find((v) => v.value === value)?.label ?? null,
+      colorOf:   (name, value) => riga(name)?.valueColors.find((v) => v.value === value)?.color ?? null,
       loading,
       error: error ? error.message : null,
     }

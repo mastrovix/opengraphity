@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ThumbsUp, ThumbsDown } from 'lucide-react'
-import { GET_KB_ARTICLE_BY_SLUG, GET_KB_ARTICLES } from '@/graphql/queries'
+import { GET_KB_ARTICLE_BY_SLUG, GET_KB_ARTICLES, GET_KB_CATEGORIES } from '@/graphql/queries'
 import { RATE_KB_ARTICLE } from '@/graphql/mutations'
 import { fmtDateLong } from '@/lib/format'
 import { colors, palette } from '@/lib/tokens'
@@ -18,7 +18,11 @@ interface KBArticle {
 
 export function KBArticlePage() {
   const { slug }    = useParams<{ slug: string }>()
-  const { t }       = useTranslation()
+  const { t, i18n } = useTranslation()
+  // F5: l'etichetta della categoria dal Dizionario, nella lingua di chi legge.
+  const { data: catData } = useQuery<{ kbCategories: Array<{ name: string; label: string }> }>(GET_KB_CATEGORIES, {
+    variables: { language: i18n.resolvedLanguage ?? i18n.language },
+  })
   const [voted, setVoted] = useState<boolean | null>(null)
 
   const { data, loading } = useQuery<{ kbArticleBySlug: KBArticle }>(
@@ -53,7 +57,7 @@ export function KBArticlePage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: colors.slateLight, marginBottom: 20 }}>
         <Link to="/kb" style={{ color: colors.brand }}>{t('kb.breadcrumb')}</Link>
         <span>›</span>
-        <span style={{ textTransform: 'capitalize' }}>{article.category}</span>
+        <span>{catData?.kbCategories.find((c) => c.name === article.category)?.label ?? article.category}</span>
         <span>›</span>
         <span style={{ color: colors.slate, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {article.title}

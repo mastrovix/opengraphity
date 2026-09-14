@@ -3,7 +3,6 @@ import { resolvePriorityPatch } from '../../lib/priority.js'
 import { propsToFieldValues as mergedFieldValues } from '../../lib/validateRequiredFields.js'
 import { requireRole } from '../../lib/requireRole.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
-import { v4 as uuidv4 } from 'uuid'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
 import { mapUser, mapTeam, mapIncident } from '../../lib/mappers.js'
@@ -18,6 +17,11 @@ import { ciLabelsForTypeNames } from '../../lib/ciTypeNameToLabel.js'
 import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
 import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
 import { commentAuthorKind, commentAuthorLabel } from '../../lib/commentAuthor.js'
+import { writeTicketComment } from '../../lib/ticketComments.js'
+import { notifyCommentAudience } from './comments.js'
+import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
+import { publishEvent } from '../../lib/publishEvent.js'
+import { listPage } from '../../lib/listLimit.js'
 export type { IncidentEventPayload } from '../../services/incidentService.js'
 
 // ── Mapper ───────────────────────────────────────────────────────────────────
@@ -46,7 +50,8 @@ async function incidents(
   ctx: GraphQLContext,
   info: GraphQLResolveInfo,
 ) {
-  const { status, severity, limit = 50, offset = 0, filters, sortField, sortDirection } = args
+  const { status, severity, filters, sortField, sortDirection } = args
+  const { limit, offset } = listPage(args, 50)
 
   return withSession(async (session) => {
     const params: Record<string, unknown> = {
@@ -57,7 +62,7 @@ async function incidents(
       limit,
     }
     const allowedFields = getScalarFields(info.schema, 'Incident')
-    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'i') : ''
+    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'i', {}, 'Incident') : ''
     const whereClause = `
       WHERE ($status   IS NULL OR i.status   = $status)
         AND ($severity IS NULL OR i.severity = $severity)
@@ -198,6 +203,7 @@ async function updateIncident(
     })
     const row = rows[0]
     if (!row) throw new NotFoundError('Incident', id)
+    await publishTicketUpdated(ctx, 'incident', id, current.props, row.props)
     return mapIncident(row.props)
   }, true)
 }
@@ -295,40 +301,36 @@ async function removeAffectedCI(
 
 async function addIncidentComment(
   _: unknown,
-  args: { id: string; text: string },
+  args: { id: string; text: string; isInternal?: boolean | null },
   ctx: GraphQLContext,
 ) {
-  const commentId = uuidv4()
-  const now       = new Date().toISOString()
-
+  // Un modello solo (lib/ticketComments.ts). Senza scelta esplicita è una nota
+  // interna: una risposta pubblica a chi ha aperto il ticket si chiede.
+  const isInternal = args.isInternal !== false
   return withSession(async (session) => {
-    const cypher = `
-      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-      MATCH (u:User {id: $userId, tenant_id: $tenantId})
-      CREATE (c:Comment {
-        id:         $commentId,
-        tenant_id:  $tenantId,
-        text:       $text,
-        author_id:  $userId,
-        created_at: $now,
-        updated_at: $now
-      })
-      CREATE (i)-[:HAS_COMMENT]->(c)
-      RETURN properties(c) AS cProps, properties(u) AS uProps
-    `
-    const rows = await runQuery<{ cProps: Props; uProps: Props }>(session, cypher, {
-      id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, commentId, text: args.text, now,
+    const row = await writeTicketComment(session, {
+      entityType: 'incident', entityId: args.id, tenantId: ctx.tenantId,
+      text: args.text, authorId: ctx.userId, isInternal,
     })
-    const row = rows[0]
     if (!row) throw new NotFoundError('Incident', args.id)
-    return {
-      id:        row.cProps['id']         as string,
-      text:      row.cProps['text']       as string,
-      createdAt: row.cProps['created_at'] as string,
-      updatedAt: row.cProps['updated_at'] as string,
-      author:    mapUser(row.uProps),
-    }
+    void audit(ctx, 'comment.added', 'Incident', args.id, { commentId: row.comment['id'], isInternal })
+    // CO-3: stesse notifiche di ogni altro commento (osservatori, menzioni).
+    void notifyCommentAudience(ctx, 'incident', args.id, args.text)
+    return mapComment(row.comment, row.author)
   }, true)
+}
+
+function mapComment(c: Props, u: Props | null) {
+  return {
+    id:          c['id']         as string,
+    text:        c['text']       as string,
+    isInternal:  c['is_internal'] === true,
+    createdAt:   c['created_at'] as string,
+    updatedAt:   c['updated_at'] as string,
+    author:      u ? mapUser(u) : null,
+    authorKind:  commentAuthorKind(c, !!u),
+    authorLabel: commentAuthorLabel(c),
+  }
 }
 
 // ── Field resolvers ──────────────────────────────────────────────────────────
@@ -453,15 +455,7 @@ async function incidentComments(
     const rows = await runQuery<{ cProps: Props; uProps: Props | null }>(session, cypher, {
       id: parent.id, tenantId: ctx.tenantId,
     })
-    return rows.map((r) => ({
-      id:        r.cProps['id']         as string,
-      text:      r.cProps['text']       as string,
-      createdAt: r.cProps['created_at'] as string,
-      updatedAt: r.cProps['updated_at'] as string,
-      author:    r.uProps ? mapUser(r.uProps) : null,
-      authorKind:  commentAuthorKind(r.cProps, !!r.uProps),
-      authorLabel: commentAuthorLabel(r.cProps),
-    }))
+    return rows.map((r) => mapComment(r.cProps, r.uProps))
   })
 }
 
@@ -469,18 +463,34 @@ const incidentSlaStatus = ticketSlaStatusResolver('Incident')
 
 // ── Export ───────────────────────────────────────────────────────────────────
 
+/**
+ * Dichiarare (o ritirare) un Major Incident — revisione del 14 set 2026 · IT-24:
+ * prima scriveva il flag e l'audit e basta. Nessun evento, quindi nessuna
+ * regola di notifica, automazione o webhook poteva reagire proprio nel momento
+ * in cui serve di più. L'evento parte solo quando il flag cambia davvero.
+ */
 async function setIncidentMajor(_: unknown, args: { id: string; major: boolean }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin', 'operator')
-  return withSession(async (session) => {
-    const rows = await runQuery<{ props: Props }>(session, `
+  const now = new Date().toISOString()
+  const { props, changed } = await withSession(async (session) => {
+    const rows = await runQuery<{ props: Props; was: unknown }>(session, `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      WITH i, coalesce(i.major, false) AS was
       SET i.major = $major, i.updated_at = $now
-      RETURN properties(i) as props
-    `, { id: args.id, tenantId: ctx.tenantId, major: args.major, now: new Date().toISOString() })
+      RETURN properties(i) as props, was
+    `, { id: args.id, tenantId: ctx.tenantId, major: args.major, now })
     if (!rows[0]) throw new NotFoundError('Incident', args.id)
-    void audit(ctx, args.major ? 'incident.major_declared' : 'incident.major_cleared', 'Incident', args.id)
-    return mapIncident(rows[0].props)
+    return { props: rows[0].props, changed: rows[0].was !== args.major }
   }, true)
+  if (changed) {
+    const type = args.major ? 'incident.major_declared' : 'incident.major_cleared'
+    void audit(ctx, type, 'Incident', args.id)
+    await publishEvent(type, ctx.tenantId, ctx.userId, {
+      id: args.id, title: props['title'] as string, severity: props['severity'] as string, status: props['status'] as string,
+      number: (props['number'] ?? null) as string | null,
+    }, now)
+  }
+  return mapIncident(props)
 }
 
 export const incidentResolvers = {

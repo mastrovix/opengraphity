@@ -23,6 +23,18 @@ const mockSession = {
 // dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
 // fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
 vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
+vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn() }))
+// CH-2: i codici vengono dai contatori atomici; qui il contatore change parte da maxChgNum.
+let maxChgNum = 0
+let taskCounter = 0
+vi.mock('../../lib/sequence.js', () => ({
+  nextSequenceValue: vi.fn(async () => ++maxChgNum),
+  nextSequenceBlock: vi.fn(async (_s: unknown, _t: string, _k: string, count: number) => (taskCounter += count)),
+}))
+vi.mock('@opengraphity/sla', () => ({
+  getActiveOLAContractsFor: vi.fn(async () => []), scheduleOLABreaches: vi.fn(), getTenantTimezone: vi.fn(async () => 'UTC'),
+  getServiceCalendar: vi.fn(async () => ({ days: [1, 2, 3, 4, 5, 6], start: '09:00', end: '13:00', holidays: [] })),
+}))
 
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: {
@@ -73,6 +85,8 @@ function mockQueries(opts: {
   ciRows?: Array<{ id: string; name: string; ownerTeamId: string | null; supportTeamId: string | null }>
   maxChgNum?: number
 }) {
+  maxChgNum = opts.maxChgNum ?? 0
+  taskCounter = 0
   vi.mocked(runQuery).mockImplementation(async (_session: unknown, query: string) => {
     if (query.includes('OWNED_BY') && query.includes('SUPPORTED_BY')) {
       return (opts.ciRows ?? []) as never
@@ -172,6 +186,30 @@ describe('createChangeRFC', () => {
     expect(workflowEngine.createInstance).toHaveBeenCalledWith(
       mockTx, ctx.tenantId, result.id, 'change',
     )
+  })
+
+  /**
+   * Giro nel browser del 14 set 2026 (#37): chi apre un incident, un problem o
+   * una richiesta la segue da subito; chi apre una change no, e non riceveva
+   * le notifiche ai watcher. L'arco nasce nella STESSA transazione della change.
+   */
+  it('chi apre la change la segue (WATCHES nella stessa transazione)', async () => {
+    mockQueries({ ciRows: [{ id: 'ci-1', name: 'App Portale', ownerTeamId: 'team-a', supportTeamId: 'team-b' }] })
+    await createChangeRFC({ title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx)
+    const [cypher, params] = mockTx.run.mock.calls[0]! as [string, Record<string, unknown>]
+    expect(cypher).toMatch(/MERGE \(req\)-\[:WATCHES \{watched_at: \$now\}\]->\(c\)/)
+    expect(params).toMatchObject({ requesterId: 'user-1', tenantId: 'tenant-1' })
+  })
+
+  /** Revisione del 14 set 2026 · F6: un contratto OLA in orario lavorativo usa il calendario del cliente. */
+  it('i controlli OLA della change ricevono il calendario di servizio del cliente', async () => {
+    mockQueries({ ciRows: [{ id: 'ci-1', name: 'App Portale', ownerTeamId: 'team-a', supportTeamId: 'team-b' }] })
+    const sla = await import('@opengraphity/sla')
+    vi.mocked(sla.getActiveOLAContractsFor).mockResolvedValueOnce([{ id: 'ola-1', name: 'Rete', type: 'ola', resolve_minutes: 240, business_hours: true }] as never)
+    await createChangeRFC({ title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx)
+    expect(sla.scheduleOLABreaches).toHaveBeenCalledWith(expect.objectContaining({
+      calendar: { days: [1, 2, 3, 4, 5, 6], start: '09:00', end: '13:00', holidays: [] },
+    }))
   })
 
   it('rollback: executeWrite che fallisce → l\'errore propaga, nessuna scrittura osservabile', async () => {

@@ -28,9 +28,12 @@ import { formatDateTime } from '@/lib/datetime'
 // ── Constants ────────────────────────────────────────────────────────────────
 
 import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
-import { entityLabel, eventOptionKey, automationActionKey } from '@/lib/automationOperators'
+import { eventOptionKey, automationActionKey } from '@/lib/automationOperators'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { palette } from '@/lib/tokens'
-const EVENT_TYPES  = ['on_create', 'on_update', 'on_timer', 'on_sla_breach', 'on_field_change'] as const
+import { TRIGGER_EVENT_TYPES, automationEventSupported } from '@opengraphity/types'
+/** Dalla tabella condivisa con l'API: le pagine offrono solo le combinazioni evento × ticket che girano (AU-1). */
+const EVENT_TYPES = TRIGGER_EVENT_TYPES
 // Operators now handled by ConditionRowEditor component
 const ACTION_TYPES = ['set_field', 'assign_team', 'assign_user', 'transition_workflow', 'create_notification', 'create_comment', 'set_priority'] as const
 
@@ -41,11 +44,9 @@ const ACTION_TYPES = ['set_field', 'assign_team', 'assign_user', 'transition_wor
  * etichette sono testo a schermo, e una costante valutata all'import si
  * fisserebbe nella lingua attiva al caricamento del bundle.
  */
-const triggerFilterFields = (t: TFunction): FieldConfig[] => [
-  { key: 'entityType', label: t('admin.triggers.filter.entityType'), type: 'enum', options: [
-    { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' },
-    { value: 'problem', label: 'Problem' }, { value: 'service_request', label: 'Service Request' },
-  ]},
+const triggerFilterFields = (t: TFunction, labelOf: (entityType: string) => string): FieldConfig[] => [
+  { key: 'entityType', label: t('admin.triggers.filter.entityType'), type: 'enum', options:
+    ENTITY_TYPES.map((et) => ({ value: et, label: labelOf(et) })) },
   { key: 'eventType', label: t('admin.triggers.filter.eventType'), type: 'enum', options: [
     { value: 'on_create',       label: t('automation.eventFilter.onCreate') },
     { value: 'on_update',       label: t('automation.eventFilter.onUpdate') },
@@ -110,6 +111,7 @@ function triggerToForm(t: AutoTrigger): FormData {
 
 export function AutoTriggersPage() {
   const { t } = useTranslation()
+  const { labelOf } = useItilTypeLabels()
   const confirm = useConfirm()
   const list  = useListQueryState()
   const modal = useCrudModal<AutoTrigger, FormData>(emptyForm, triggerToForm)
@@ -194,13 +196,13 @@ export function AutoTriggersPage() {
         <div>
           <PageTitle icon={<Zap size={22} color="var(--color-icon-accent)" />}>{t('sidebar.autoTriggers')}</PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${triggers.length} trigger`}
+            {loading ? '—' : t('pages.autoTriggers.count', { count: triggers.length })}
           </p>
         </div>
         <Button icon={<Plus size={15} aria-hidden="true" />} onClick={modal.openCreate}>{t('pages.autoTriggers.newTrigger')}</Button>
       </div>
 
-      <FilterBuilder fields={triggerFilterFields(t)} onApply={list.setFilterGroup} />
+      <FilterBuilder fields={triggerFilterFields(t, labelOf)} onApply={list.setFilterGroup} />
 
       {!loading && triggers.length === 0 && (
         <EmptyState
@@ -244,14 +246,14 @@ export function AutoTriggersPage() {
           <div className="og-pair" style={{ marginTop: 14 }}>
             <div>
               <label htmlFor={ids.entityType} style={labelS}>{t('pages.businessRules.entityType')}</label>
-              <Select id={ids.entityType} style={selectS} value={form.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
-                {ENTITY_TYPES.map(et => <option key={et} value={et}>{entityLabel(et)}</option>)}
+              <Select id={ids.entityType} style={selectS} value={form.entityType} onChange={e => patch({ entityType: e.target.value, ...(automationEventSupported(form.eventType, e.target.value) ? {} : { eventType: 'on_create' }) })} disabled={modal.isEditing}>
+                {ENTITY_TYPES.map(et => <option key={et} value={et}>{labelOf(et)}</option>)}
               </Select>
             </div>
             <div>
               <label htmlFor={ids.eventType} style={labelS}>{t('pages.autoTriggers.eventType')}</label>
               <Select id={ids.eventType} style={selectS} value={form.eventType} onChange={e => patch({ eventType: e.target.value })}>
-                {EVENT_TYPES.map(et => <option key={et} value={et}>{t(eventOptionKey(et))}</option>)}
+                {EVENT_TYPES.filter(et => automationEventSupported(et, form.entityType)).map(et => <option key={et} value={et}>{t(eventOptionKey(et))}</option>)}
               </Select>
             </div>
           </div>

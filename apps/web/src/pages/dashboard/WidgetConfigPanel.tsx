@@ -115,6 +115,7 @@ export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Pro
               widgetType={c.widgetType} color={c.color} title={c.title}
               previewData={c.previewData} previewLoading={c.previewLoading}
               timeRange={c.timeRange}
+              entityType={c.entityType} groupByField={c.groupByField}
             />
           </Suspense>
         </div>

@@ -101,7 +101,7 @@ describe('letture — tenant + sistema', () => {
   it('values come stringa JSON → errore che nomina il nodo e la migrazione, invece di un JSON.parse silenzioso', async () => {
     fakeSession([{ records: [rec({ ...ENUM_ROW, tenantId: 'system', name: 'ci_chain', values: '["Application","Infrastructure"]' })] }])
     await expect(enumTypeResolvers.Query.enumTypes(null, {}, operator))
-      .rejects.toThrow(/system\/ci_chain: "values" non è una lista di stringhe.*20260918_1910/s)
+      .rejects.toThrow(/system\/ci_chain: "values" is not a list of strings.*20260918_1910/s)
   })
 
   it('enumTypes: WHERE (e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = \'system\')), scope opzionale include "shared"', async () => {
@@ -279,7 +279,7 @@ describe('updateEnumType', () => {
     // `valueLabels` e sempre fra i parametri: `null` quando il vocabolario non
     // ha etichette, com'e qui. Le etichette per valore sono dell'ondata 1 —
     // il valore resta quello che e, l'etichetta e come si legge a schermo.
-    expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1', label: 'Nuova', values: null, scope: null, finalDefault: null, valueLabels: null, now: expect.any(String) })
+    expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1', label: 'Nuova', values: null, scope: null, finalDefault: null, valueLabels: null, valueColors: null, now: expect.any(String) })
     expect(out.label).toBe('Nuova')
   })
 
@@ -320,7 +320,7 @@ describe('updateEnumType — valore in uso (B7-2)', () => {
     await expectCode(
       enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active'] } }, admin),
       'BAD_USER_INPUT',
-      /"decommissioned" è ancora usato da 12 __base__\.status.*replacements/s,
+      /"decommissioned" is still used by 12 __base__\.status.*replacements/s,
     )
     expect(s.executeWrite).not.toHaveBeenCalled()
   })
@@ -335,7 +335,7 @@ describe('updateEnumType — valore in uso (B7-2)', () => {
     await expectCode(
       enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active'] } }, admin),
       'BAD_USER_INPUT',
-      /la policy degli allarmi \(retired_statuses\)/,
+      /the alarm policy \(retired_statuses\)/,
     )
   })
 
@@ -440,6 +440,10 @@ describe('customizeEnumType', () => {
     expect(cypher).toContain('CREATE (e:EnumTypeDefinition {')
     expect(cypher).toContain('is_system:  false')
     expect(params).toMatchObject({ tenantId: 'tenant-1', name: 'severity', values: ['low', 'high'], scope: 'shared' })
+    // F20: la copia ricorda i valori spediti che ha visto, così quelli spediti
+    // DOPO si riconoscono (e quelli tolti di proposito non tornano a segnalare).
+    expect(cypher).toContain('shipped_values_seen: $shippedValuesSeen')
+    expect(params).toMatchObject({ shippedValuesSeen: ['low', 'high'] })
     expect(out).toMatchObject({ id: 'new-1', name: 'severity', tenantId: 'tenant-1', isShipped: false })
   })
 
@@ -914,5 +918,79 @@ describe('etichette per valore', () => {
     // fatto tornare in inglese i tre che c'erano già.
     expect(JSON.parse((params as { valueLabels: string }).valueLabels))
       .toEqual({ low: { it: 'Basso' }, medium: { it: 'Medio' }, high: { it: 'Alto' } })
+  })
+})
+
+/**
+ * Revisione del 14 set 2026 · F9: il colore di un valore era una tabella nel
+ * web (`PRIORITY_COLOR` in cinque copie, `SEVERITY_STYLE`, `CI_STATUS_STYLE`,
+ * `KB_CATEGORY_COLORS`): un valore aggiunto o rinominato dal cliente appariva
+ * grigio. Ora il colore sta nel Dizionario accanto all'etichetta, scelto da una
+ * palette chiusa di token (nessun esadecimale).
+ */
+describe('colori per valore', () => {
+  it('il vocabolario espone i colori nell\'ordine dei valori, solo per i valori che ne hanno uno', async () => {
+    fakeSession([{ records: [rec({ ...ENUM_ROW, values: ['portal', 'email'], valueColors: '{"email":"info","portal":"danger"}' })] }])
+    const out = await enumTypeResolvers.Query.enumType(null, { id: 'e-1' }, admin)
+    expect(out!.valueColors).toEqual([{ value: 'portal', color: 'danger' }, { value: 'email', color: 'info' }])
+  })
+
+  it('un value_colors corrotto non rende illeggibile il vocabolario', async () => {
+    fakeSession([{ records: [rec({ ...ENUM_ROW, valueColors: '{nope' })] }])
+    const out = await enumTypeResolvers.Query.enumType(null, { id: 'e-1' }, admin)
+    expect(out!.values).toEqual(['portal', 'email'])
+    expect(out!.valueColors).toEqual([])
+  })
+
+  it('i colori mandati SOSTITUISCONO in blocco', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueColors: '{"portal":"warning"}' })] },
+      { records: [rec({ ...ENUM_ROW })] },
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { valueColors: [{ value: 'email', color: 'success' }] } }, admin)
+    const [cypher, params] = s.txRun.mock.calls.at(-1)!
+    expect(String(cypher)).toContain('e.value_colors = $valueColors')
+    expect(JSON.parse((params as { valueColors: string }).valueColors)).toEqual({ email: 'success' })
+  })
+
+  it('un colore fuori palette o per un valore che non esiste è rifiutato prima di scrivere', async () => {
+    fakeSession([{ records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null })] }])
+    await expectCode(enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { valueColors: [{ value: 'email', color: '#ff0000' }] } }, admin), 'BAD_USER_INPUT', /#ff0000/)
+    fakeSession([{ records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null })] }])
+    await expectCode(enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { valueColors: [{ value: 'fax', color: 'info' }] } }, admin), 'BAD_USER_INPUT', /fax/)
+  })
+
+  it('RINOMINARE un valore porta con sé il suo colore', async () => {
+    const s = fakeSession([
+      { records: [rec({ tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueColors: '{"portal":"danger"}' })] },
+      { records: [] },
+      { records: [rec({ ...ENUM_ROW, values: ['sportello', 'email'] })] },
+    ])
+    await enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'portal', to: 'sportello' }, admin)
+    const [, params] = s.txRun.mock.calls.at(-1)!
+    expect(JSON.parse((params as { valueColors: string }).valueColors)).toEqual({ sportello: 'danger' })
+  })
+
+  it('TOGLIERE un valore ne scarta il colore', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueColors: '{"portal":"danger","email":"info"}' })] },
+      { records: [] },
+      { records: [rec({ ...ENUM_ROW, values: ['email'] })] },
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['email'] } }, admin)
+    const [, params] = s.txRun.mock.calls.at(-1)!
+    expect(JSON.parse((params as { valueColors: string }).valueColors)).toEqual({ email: 'info' })
+  })
+
+  it('PERSONALIZZARE un vocabolario spedito ne copia i colori', async () => {
+    const s = fakeSession([
+      { records: [rec({ tenantId: 'system', name: 'priority', label: 'Priority', values: ['low', 'high'], scope: 'shared', defaultValue: null, valueColors: '{"low":"success","high":"orange"}' })] },
+      { records: [] },
+      { records: [rec({ ...ENUM_ROW, name: 'priority', values: ['low', 'high'] })] },
+    ])
+    await enumTypeResolvers.Mutation.customizeEnumType(null, { id: 'sys-priority' }, admin)
+    const [cypher, params] = s.txRun.mock.calls.at(-1)!
+    expect(String(cypher)).toContain('value_colors: $valueColors')
+    expect(JSON.parse((params as { valueColors: string }).valueColors)).toEqual({ low: 'success', high: 'orange' })
   })
 })

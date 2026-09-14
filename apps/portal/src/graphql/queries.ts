@@ -3,10 +3,10 @@ import { gql } from '@apollo/client/core'
 // ── Portal: Tickets ───────────────────────────────────────────────────────────
 
 export const GET_MY_TICKETS = gql`
-  query MyTickets($status: String, $page: Int, $pageSize: Int) {
-    myTickets(status: $status, page: $page, pageSize: $pageSize) {
+  query MyTickets($status: String, $page: Int, $pageSize: Int, $language: String) {
+    myTickets(status: $status, page: $page, pageSize: $pageSize, language: $language) {
       items {
-        id type title status statusCategory statusLabel priority category
+        id number type title status statusCategory statusLabel priority category
         createdAt updatedAt assignedTeam
       }
       total
@@ -15,9 +15,9 @@ export const GET_MY_TICKETS = gql`
 `
 
 export const GET_MY_TICKET = gql`
-  query MyTicket($id: ID!) {
-    myTicket(id: $id) {
-      id type title description status statusCategory statusLabel priority category
+  query MyTicket($id: ID!, $language: String) {
+    myTicket(id: $id, language: $language) {
+      id number type title description status statusCategory statusLabel priority category
       createdAt updatedAt assignedTeam
       comments {
         id body isInternal authorId authorName authorEmail createdAt
@@ -26,9 +26,16 @@ export const GET_MY_TICKET = gql`
         id filename mimeType sizeBytes uploadedBy uploadedAt downloadUrl
       }
       history {
-        fromStep toStep label triggeredAt triggeredBy
+        fromStep toStep fromLabel toLabel label triggeredAt triggeredBy
       }
     }
+  }
+`
+
+/** Le categorie del ticket: il vocabolario del cliente con le sue etichette (giro del 14 set 2026). */
+export const GET_TICKET_CATEGORIES = gql`
+  query TicketCategories($language: String) {
+    ticketCategories(language: $language) { name label }
   }
 `
 
@@ -63,9 +70,9 @@ export const GET_KB_ARTICLE_BY_SLUG = gql`
 `
 
 export const GET_KB_CATEGORIES = gql`
-  query KBCategories {
-    kbCategories {
-      name count
+  query KBCategories($language: String) {
+    kbCategories(language: $language) {
+      name label count
     }
   }
 `

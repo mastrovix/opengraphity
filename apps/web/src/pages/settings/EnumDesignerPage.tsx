@@ -9,7 +9,7 @@ import { Button } from '@/components/Button'
 import { Input, Select } from '@/components/ui/FormControls'
 import { inputS, labelS, btnSecondary, btnDanger, btnPrimary as sharedBtnPrimary } from '@/components/ui/styles'
 import { toast } from 'sonner'
-import { GET_ENUM_TYPES } from '@/graphql/queries'
+import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT } from '@/graphql/queries'
 import {
   CREATE_ENUM_TYPE,
   UPDATE_ENUM_TYPE,
@@ -17,8 +17,13 @@ import {
   REORDER_ENUM_VALUES,
   DELETE_ENUM_TYPE,
   CUSTOMIZE_ENUM_TYPE,
+  ADOPT_SHIPPED_VALUES,
+  ACKNOWLEDGE_SHIPPED_VALUES,
 } from '@/graphql/mutations'
 import { colors, palette } from '@/lib/tokens'
+import { VALUE_COLORS, type ValueColor } from '@opengraphity/types'
+import { valueColorStyle } from '@/lib/domainStyle'
+import { clientLogger } from '@/lib/clientLogger'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -49,6 +54,8 @@ interface EnumType {
    * come la si legge.
    */
   valueLabels: EnumValueLabel[]
+  /** Il colore dei valori che ne hanno uno (revisione del 14 set 2026 · F9). */
+  valueColors: { value: string; color: ValueColor }[]
   /**
    * Il valore con cui si nasce quando nessuno lo indica (`null` = non
    * dichiarato). Serve a togliere una regola di dominio dalla POSIZIONE: lo
@@ -296,6 +303,32 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
     onError: (err) => toast.error(err.message),
   })
 
+  /*
+    I valori spediti DOPO la copia (revisione del 14 set 2026 · F20). La copia
+    del cliente non si sovrascrive mai: qui si dice cosa il prodotto ha
+    aggiunto, e l'amministratore decide se prenderlo o tenerlo fuori.
+  */
+  const { data: driftData, error: driftError } = useQuery<{ enumTypes: { id: string; newShippedValues: string[] }[] }>(GET_ENUM_SHIPPED_DRIFT, { skip: shipped })
+  useEffect(() => {
+    if (driftError) clientLogger.error('Dictionary: shipped values drift could not be loaded', { error: driftError.message })
+  }, [driftError])
+  const newShipped = driftData?.enumTypes.find((d) => d.id === e.id)?.newShippedValues ?? []
+  const [adoptShipped, { loading: adopting }] = useMutation(ADOPT_SHIPPED_VALUES, {
+    refetchQueries: [GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT],
+    awaitRefetchQueries: true,
+    onCompleted: (d: unknown) => {
+      setValues((d as { adoptShippedValues: EnumType }).adoptShippedValues.values)
+      toast.success(t('pages.dictionary.newShipped.adopted'))
+    },
+    onError: (err) => toast.error(err.message),
+  })
+  const [acknowledgeShipped, { loading: acknowledging }] = useMutation(ACKNOWLEDGE_SHIPPED_VALUES, {
+    refetchQueries: [GET_ENUM_SHIPPED_DRIFT],
+    awaitRefetchQueries: true,
+    onCompleted: () => toast.success(t('pages.dictionary.newShipped.kept')),
+    onError: (err) => toast.error(err.message),
+  })
+
   const setDirtyLabel = (v: string) => { setLabel(v); setDirty(true) }
   const setDirtyScope = (v: string) => { setScope(v); setDirty(true) }
 
@@ -369,6 +402,22 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
     void updateEnum({ variables: { id: e.id, input: { valueLabels: lista } } })
   }
 
+  /** Il colore salvato per un valore, o '' se non ne ha. */
+  const coloreSalvato = (v: string) => e.valueColors.find((x) => x.value === v)?.color ?? ''
+
+  /**
+   * Scrive il colore di UN valore (F9). Come per le etichette, la mutation
+   * sostituisce in blocco: si manda la lista intera, nell'ordine dei valori.
+   * «Nessun colore» toglie la voce.
+   */
+  const salvaColore = (v: string, colore: string) => {
+    const lista = values.flatMap((val) => {
+      const c = val === v ? colore : coloreSalvato(val)
+      return c === '' ? [] : [{ value: val, color: c }]
+    })
+    void updateEnum({ variables: { id: e.id, input: { valueColors: lista } } })
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Header */}
@@ -404,6 +453,29 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
         }}>
           {shipped ? t('pages.dictionary.shippedNote') : t('pages.dictionary.systemNote')}
         </p>
+      )}
+
+      {!shipped && newShipped.length > 0 && (
+        <div
+          role="status"
+          style={{
+            display: 'flex', flexDirection: 'column', gap: 10,
+            fontSize: 'var(--font-size-body)', color: palette.warning.text, background: palette.warning.bg,
+            border: `1px solid ${palette.warning.border}`, padding: '10px 14px', borderRadius: 6,
+          }}
+        >
+          <span>{t('pages.dictionary.newShipped.notice', { count: newShipped.length, values: newShipped.join(', ') })}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" style={btnPrimary} disabled={adopting || acknowledging}
+              onClick={() => { void adoptShipped({ variables: { id: e.id } }) }}>
+              {t('pages.dictionary.newShipped.adopt')}
+            </button>
+            <button type="button" style={btnSecondary} disabled={adopting || acknowledging}
+              onClick={() => { void acknowledgeShipped({ variables: { id: e.id } }) }}>
+              {t('pages.dictionary.newShipped.keep')}
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Nome (readonly) */}
@@ -531,6 +603,24 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
                       />
                     )
                   ))}
+                  {/* Il COLORE del valore (F9): una famiglia della palette, mai un esadecimale. */}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <span aria-hidden="true" style={{
+                      width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                      background: coloreSalvato(v) ? valueColorStyle(coloreSalvato(v) as ValueColor).accent : 'transparent',
+                      border: `1px solid ${palette.neutral.borderStrong}`,
+                    }} />
+                    <Select
+                      style={{ ...inputS, height: 26, width: 'auto', fontWeight: 400, ...(shipped ? readOnlyS : {}) }}
+                      value={coloreSalvato(v)}
+                      disabled={shipped || saving}
+                      onChange={(ev) => salvaColore(v, ev.target.value)}
+                      aria-label={t('pages.dictionary.valueColorLabel', { value: v })}
+                    >
+                      <option value="">{t('pages.dictionary.valueColorNone')}</option>
+                      {VALUE_COLORS.map((c) => <option key={c} value={c}>{t(`pages.dictionary.valueColors.${c}`)}</option>)}
+                    </Select>
+                  </span>
                   {e.defaultValue === v && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--font-size-table)', fontWeight: 600 }}>
                       <Star size={10} aria-hidden="true" /> {t('pages.dictionary.defaultBadge')}

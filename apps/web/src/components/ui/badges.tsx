@@ -10,12 +10,12 @@
  * vocabolario (`blocker` in `severity`) non è un difetto: prende uno stile
  * neutro e la sua etichetta. Un valore **fuori** dal vocabolario del cliente
  * sì, e resta rosso con `console.error`. La distinzione la fa
- * `lib/domainStyle.ts`, con il vocabolario letto da `useDomainVocabulary`.
+ * `lib/domainStyle.ts`, con vocabolario e colori letti da `useDomainVocabularies`.
  */
 import { useTranslation } from 'react-i18next'
 import { Pill } from '@/components/ui/Pill'
 import { lookupOrError, colors, palette } from '@/lib/tokens'
-import { domainValueStyle } from '@/lib/domainStyle'
+import { vocabularyValueStyle } from '@/lib/domainStyle'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { enumLabel } from '@/lib/ciEnums'
 import { styleForCategory } from '@/lib/workflowStepStyle'
@@ -25,24 +25,17 @@ const BROKEN = { bg: 'var(--color-danger)', color: colors.white }
 
 // ── Severità / priorità (incident, problem, change) ─────────────────────────
 
-/** Palette severità UNICA (incident, problem, anomalie, impatto what-if): niente copie locali. */
-export const SEVERITY_STYLE: Record<string, { bg: string; color: string }> = {
-  critical: { bg: palette.danger.tint, color: palette.danger.text },
-  high:     { bg: palette.orange.tint, color: palette.orange.text },
-  medium:   { bg: palette.warning.tint, color: palette.warning.text },
-  low:      { bg: palette.success.tint, color: palette.success.text },
-}
-
 /**
  * `vocabulary` = il nome del vocabolario a cui il valore appartiene. Di norma
- * `severity`; chi mostra una priorità con questa palette passa `priority`.
- * Un valore del vocabolario senza stile è neutro, uno fuori vocabolario è
- * rosso (D-15).
+ * `severity`; chi mostra una priorità passa `priority`. Il colore è quello del
+ * Dizionario del cliente (revisione del 14 set 2026 · F9): prima era
+ * `SEVERITY_STYLE`, scritto qui. Un valore del vocabolario senza colore è
+ * neutro, uno fuori vocabolario è rosso (D-15).
  */
 export function SeverityBadge({ value, vocabulary = 'severity' }: { value: string | null | undefined; vocabulary?: string }) {
-  const { valuesOf, labelOf } = useDomainVocabularies()
+  const { valuesOf, labelOf, colorOf } = useDomainVocabularies()
   if (!value) return <span style={{ color: 'var(--color-slate-light)' }}>—</span>
-  const s = domainValueStyle(SEVERITY_STYLE, value, `SEVERITY_STYLE/${vocabulary}`, valuesOf(vocabulary))
+  const s = vocabularyValueStyle(vocabulary, value, valuesOf(vocabulary), colorOf(vocabulary, value))
   // L'ETICHETTA del cliente («Critica»), e finché non la conosciamo il valore
   // con le iniziali maiuscole, come prima. Il `title` porta sempre il valore:
   // è quello che si cerca nei filtri e che si trova nei log.
@@ -83,7 +76,7 @@ export function RoleBadge({ role }: { role: string | null | undefined }) {
  * stile». (Le soglie sono l'altro mezzo punto di D-15 e vivono nel
  * `riskScore` dell'API: le rende configurabili l'agente A.)
  */
-const RISK_STYLE: Record<string, { bg: string; color: string; labelKey: string }> = {
+export const RISK_STYLE: Record<string, { bg: string; color: string; labelKey: string }> = {
   low:    { bg: palette.success.tint, color: palette.success.text, labelKey: 'risk.low' },
   medium: { bg: palette.warning.tint, color: palette.warning.text, labelKey: 'risk.medium' },
   high:   { bg: palette.danger.tint, color: palette.danger.text, labelKey: 'risk.high' },

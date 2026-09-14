@@ -417,9 +417,53 @@ async function endStorm(tenantId: string, source: Props, actorId: string, now: s
   }
   await publishEvent('event.storm_ended', tenantId, actorId, payload, now)
   void audit(monitoringContext(tenantId), 'event.storm_ended', 'InboundWebhook', sourceId, { events, durationMinutes, incidentId: state.incidentId })
+  await reevaluateResolvedDuringStorm(tenantId, sourceId, state.since, actorId)
   await refreshStormGauge()
   log.info({ tenantId, sourceId, events, durationMinutes, incidentId: state.incidentId }, 'Alert storm ended')
   return true
+}
+
+/**
+ * A fine tempesta, gli allarmi RIENTRATI durante la tempesta tornano in
+ * pipeline — revisione del 14 set 2026 · EV-1.
+ *
+ * In tempesta un allarme che rientra aggiorna solo la salute del CI: la
+ * chiusura automatica aspetta la fine (`handleResolvedEvent`). Ma se l'ultimo
+ * allarme di un incident rientrava proprio durante la tempesta, nessun payload
+ * successivo lo rivalutava: l'incident per CI aperto prima della tempesta, o
+ * l'incident di tempesta stesso, restava aperto per sempre. Qui, per ogni
+ * incident a cui un allarme rientrato nella tempesta è collegato, si rivaluta
+ * l'ultimo di quegli allarmi: la pipeline decide se l'incident si chiude
+ * (tutti gli allarmi rientrati, passi percorribili, policy con chiusura
+ * automatica) esattamente come per un rientro fuori tempesta.
+ */
+export async function reevaluateResolvedDuringStorm(tenantId: string, sourceId: string, since: string, actorId: string): Promise<number> {
+  const session = getSession()
+  let eventIds: string[]
+  try {
+    const rows = await runQuery<{ eventId: string }>(session, `
+      MATCH (e:Event {tenant_id: $tenantId, source_id: $sourceId, status: 'resolved'})-[:CORRELATED_INTO]->(i:Incident {tenant_id: $tenantId})
+      WHERE e.resolved_at >= $since
+      WITH i, e ORDER BY e.resolved_at DESC
+      WITH i, head(collect(e.id)) AS eventId
+      RETURN eventId
+    `, { tenantId, sourceId, since })
+    eventIds = rows.map((r) => r.eventId)
+  } finally { await session.close() }
+  if (eventIds.length === 0) return 0
+  const { runEventPipeline } = await import('./pipeline.js')
+  let failed = 0
+  for (const eventId of eventIds) {
+    try {
+      await runEventPipeline({ tenantId, eventId, actorId, mode: 'reevaluate' })
+    } catch (err) {
+      failed++
+      log.error({ err, tenantId, sourceId, eventId }, 'Re-evaluation of an alarm cleared during the storm failed')
+    }
+  }
+  log.info({ tenantId, sourceId, count: eventIds.length, failed }, 'Alarms cleared during the storm re-evaluated for auto-resolve')
+  if (failed > 0) throw new Error(`reevaluateResolvedDuringStorm: ${failed}/${eventIds.length} alarms cleared during the storm of source ${sourceId} failed re-evaluation (see logs)`)
+  return eventIds.length
 }
 
 // ── All'ingest ───────────────────────────────────────────────────────────────

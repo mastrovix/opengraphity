@@ -70,7 +70,7 @@ async function loadPreApprovedChangeTypes(tenantId: string): Promise<readonly st
       const r = await session.executeRead((tx) =>
         tx.run(`MATCH (t:Tenant {id: $tenantId}) RETURN t.pre_approved_change_types AS types`, { tenantId }),
       )
-      if (!r.records.length) throw new Error(`Tenant ${tenantId} inesistente: non si può stabilire quali change sono pre-approvate`)
+      if (!r.records.length) throw new Error(`Tenant ${tenantId} does not exist: the pre-approved change types cannot be determined`)
       const raw = r.records[0].get('types')
       if (raw == null) {
         log.info(
@@ -81,7 +81,7 @@ async function loadPreApprovedChangeTypes(tenantId: string): Promise<readonly st
         return DEFAULT_PRE_APPROVED_CHANGE_TYPES
       }
       if (!Array.isArray(raw) || raw.some((v) => typeof v !== 'string')) {
-        throw new Error(`Tenant ${tenantId}: pre_approved_change_types non è una lista di stringhe (${JSON.stringify(raw)})`)
+        throw new Error(`Tenant ${tenantId}: pre_approved_change_types is not a list of strings (${JSON.stringify(raw)})`)
       }
       return raw as string[]
     } finally {

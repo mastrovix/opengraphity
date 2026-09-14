@@ -51,13 +51,13 @@ beforeEach(async () => {
 })
 
 describe('publish — fan-out to every consumer queue', () => {
-  it('opens one Queue per consumer (notification-service, sla-engine, escalation-consumer, service-impact-consumer) on the shared Redis options', async () => {
+  it('opens one Queue per consumer (notification-service, sla-engine, escalation-consumer, service-impact-consumer, automation-consumer) on the shared Redis options', async () => {
     await publish(event())
-    expect(fake.instances.map(q => q.name)).toEqual(['notification-service', 'sla-engine', 'escalation-consumer', 'service-impact-consumer'])
+    expect(fake.instances.map(q => q.name)).toEqual(['notification-service', 'sla-engine', 'escalation-consumer', 'service-impact-consumer', 'automation-consumer'])
     for (const q of fake.instances) {
       expect(q.opts).toEqual({ connection: { host: 'redis.test', port: 6390 } })
     }
-    expect(openQueueCount()).toBe(4)
+    expect(openQueueCount()).toBe(5)
   })
 
   it('adds the SAME event to each queue, job name = event type, retry policy attached, no explicit jobId (dedup is consumer-side by event.id)', async () => {
@@ -77,9 +77,9 @@ describe('publish — fan-out to every consumer queue', () => {
   it('reuses the queues across publishes (no reconnect per event)', async () => {
     await publish(event())
     await publish(event('incident.resolved'))
-    expect(fake.instances).toHaveLength(4)
+    expect(fake.instances).toHaveLength(5)
     expect(byName('sla-engine')[0]!.add).toHaveBeenCalledTimes(2)
-    expect(openQueueCount()).toBe(4)
+    expect(openQueueCount()).toBe(5)
   })
 
   it('one queue failing → publish REJECTS with that error (no silent partial success); the other queues were still attempted (Promise.all)', async () => {
@@ -99,11 +99,11 @@ describe('publish — fan-out to every consumer queue', () => {
     expect(openQueueCount()).toBe(0)
 
     await publish(event())
-    expect(fake.instances).toHaveLength(8)
-    const second = fake.instances.slice(4)
+    expect(fake.instances).toHaveLength(10)
+    const second = fake.instances.slice(5)
     expect(second.every(q => !first.includes(q))).toBe(true)
     for (const q of first) expect(q.add).toHaveBeenCalledTimes(1)   // not reused
     for (const q of second) expect(q.add).toHaveBeenCalledTimes(1)
-    expect(openQueueCount()).toBe(4)
+    expect(openQueueCount()).toBe(5)
   })
 })

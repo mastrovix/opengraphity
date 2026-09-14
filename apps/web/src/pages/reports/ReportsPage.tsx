@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
-import { keycloak } from '@/lib/keycloak'
+import { apiUrl, authHeader } from '@/lib/apiBase'
 import { timeAgo } from '@/lib/datetime'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -122,15 +122,15 @@ export default function ReportsPage() {
     const abort = new AbortController()
     abortRef.current = abort
 
-    const apiUrl = import.meta.env['VITE_API_BASE_URL'] ?? ''
-    const token = keycloak.token ?? ''
-
     try {
-      const res = await fetch(`${apiUrl}/api/report/stream`, {
+      // La base comune (apiUrl) e il token (authHeader): prima una variabile di
+      // build puntata sul cliente del bundle faceva rifiutare il token su ogni
+      // altro cliente (giro nel browser del 14 set 2026).
+      const res = await fetch(apiUrl('/api/report/stream'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: token ? `Bearer ${token}` : '',
+          ...authHeader(),
         },
         body: JSON.stringify({ question, conversationId: activeId }),
         signal: abort.signal,

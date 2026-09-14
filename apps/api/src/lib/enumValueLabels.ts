@@ -91,13 +91,13 @@ export function titleCase(value: string): string {
  */
 export function parseValueLabels(raw: unknown): { labels: EnumValueLabels; error: string | null } {
   if (raw == null || raw === '') return { labels: {}, error: null }
-  if (typeof raw !== 'string') return { labels: {}, error: `value_labels non e una stringa (${typeof raw})` }
+  if (typeof raw !== 'string') return { labels: {}, error: `value_labels is not a string (${typeof raw})` }
   let parsed: unknown
   try { parsed = JSON.parse(raw) } catch (e) {
-    return { labels: {}, error: `value_labels non e JSON valido: ${e instanceof Error ? e.message : String(e)}` }
+    return { labels: {}, error: `value_labels is not valid JSON: ${e instanceof Error ? e.message : String(e)}` }
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { labels: {}, error: 'value_labels non e un oggetto valore → etichette' }
+    return { labels: {}, error: 'value_labels is not a value → label object' }
   }
   const out: Record<string, Partial<Record<Lingua, string>>> = {}
   for (const [valore, v] of Object.entries(parsed as Record<string, unknown>)) {

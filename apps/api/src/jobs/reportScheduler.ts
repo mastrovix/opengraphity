@@ -16,7 +16,7 @@ import { randomUUID } from 'crypto'
 import type { Worker, Job } from 'bullmq'
 import { CronExpressionParser } from 'cron-parser'
 import { getSession } from '@opengraphity/neo4j'
-import { sendSlackMessage, sseManager } from '@opengraphity/notifications'
+import { sendSlackMessage, sseManager, loadNotificationLocale, notificationText } from '@opengraphity/notifications'
 import { executeReportSection } from '../lib/reportExecutor.js'
 import { loadTemplateSections } from '../lib/reportTemplates.js'
 import { logger } from '../lib/logger.js'
@@ -175,7 +175,7 @@ export function buildSlackSummary(templateName: string, templateId: string, resu
     })
   }
   if (malformedKpi > 0) {
-    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `⚠ ${malformedKpi} sezione/i KPI non leggibili — vedi log API` }] })
+    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `⚠ ${malformedKpi} KPI section(s) could not be read — see the API log` }] })
   }
   blocks.push({ type: 'divider' })
   return { blocks, malformedKpi }
@@ -207,11 +207,17 @@ async function reportSchedulerProcessor(_job: Job) {
       )
 
       // ── SSE in-app notification (always) ────────────────────────────────────
+      // CO-2: titolo e messaggio come chiavi (il pannello li traduce) e, per
+      // chi non ha la chiave, nella lingua del cliente. Erano in italiano fisso.
+      const locale = await loadNotificationLocale(tpl.tenantId)
+      const reportParams = { name: tpl.name, count: String(results.length) }
       sseManager.sendToTenant(tpl.tenantId, {
         id:          randomUUID(),
         type:        'scheduled_report',
-        title:       `Report eseguito: ${tpl.name}`,
-        message:     `Il report schedulato "${tpl.name}" è stato eseguito (${results.length} sezione/i).`,
+        title:       'notification.report.executed.title',
+        message:     notificationText(locale, 'reportExecuted', reportParams),
+        message_key: 'inApp.report.executed',
+        message_params: reportParams,
         severity:    'info',
         entity_id:   tpl.id,
         entity_type: 'ReportTemplate',

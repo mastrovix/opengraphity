@@ -80,12 +80,15 @@ const TEAM_ONLY_EVENTS: ReadonlySet<string> = new Set([
  */
 const TICKET_CREATED_EVENTS: ReadonlySet<string> = new Set(['incident.created', 'problem.created'])
 
+/** Riepiloghi del tenant: nessuna entità, quindi nessun assegnatario né team (NT-8). */
+const TENANT_SUMMARY_EVENTS: ReadonlySet<string> = new Set(['digest.daily'])
+
 /** I bersagli che non dipendono dall'entità dell'evento: sempre applicabili. */
 const ENTITY_FREE_TARGETS: readonly string[] = [NOTIFICATION_TARGET_ALL, ...NOTIFICATION_ROLE_TARGETS]
 
 /** I bersagli che hanno senso per questo tipo di evento, nell'ordine dell'interfaccia. */
 export function applicableNotificationTargets(eventType: string): readonly string[] {
-  if (NO_ASSIGNMENT_EVENTS.has(eventType) || TICKET_CREATED_EVENTS.has(eventType)) return ENTITY_FREE_TARGETS
+  if (NO_ASSIGNMENT_EVENTS.has(eventType) || TICKET_CREATED_EVENTS.has(eventType) || TENANT_SUMMARY_EVENTS.has(eventType)) return ENTITY_FREE_TARGETS
   if (TEAM_ONLY_EVENTS.has(eventType)) return [NOTIFICATION_TARGET_ALL, NOTIFICATION_TARGET_TEAM, ...NOTIFICATION_ROLE_TARGETS]
   return NOTIFICATION_TARGETS
 }

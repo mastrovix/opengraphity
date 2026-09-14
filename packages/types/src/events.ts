@@ -238,11 +238,18 @@ export interface SLAWarningPayload {
   entity_id: string
   entity_type: string
   minutes_remaining: number
+  /** `resolve`: preavviso della risoluzione; `response`: la presa in carico è scaduta. */
+  target: 'resolve' | 'response'
+  /** Numero e titolo del ticket: il corpo della notifica dice di quale si tratta. */
+  number: string
+  title: string
 }
 
 export interface SLABreachedPayload {
   entity_id: string
   entity_type: string
+  number: string
+  title: string
   breached_at: string
 }
 
@@ -321,6 +328,35 @@ export interface StepEnteredFacts {
  */
 export const WORKFLOW_STEP_ENTERED_EVENT = 'workflow.step_entered'
 
+/**
+ * Un ticket assegnato a un gruppo (revisione del 14 set 2026 · SL-10): la
+ * policy SLA che dipende dal team si sceglieva solo alla creazione, quando il
+ * team non c'è quasi mai. Il motore SLA riconsidera la policy qui.
+ */
+export const TICKET_TEAM_ASSIGNED_EVENT = 'ticket.team_assigned'
+
+/**
+ * La relazione ticket → CI impattato, per tipo di ticket — revisione del 14 set
+ * 2026 · F12. I tre nomi sono storici e restano (rinominarli vuol dire
+ * riscrivere dati e ogni query degli allarmi, dei servizi e dei report); qui
+ * sono in un posto solo, così chi legge «i ticket di un CI» non ne dimentica
+ * uno — il dettaglio del CI mostrava incident e change, ma non i problem.
+ */
+export const TICKET_CI_RELATIONSHIP = {
+  incident: 'AFFECTED_BY',
+  problem:  'AFFECTS',
+  change:   'AFFECTS_CI',
+} as const
+
+/** Tutte e tre, per un pattern Cypher `-[:A|B|C]->`. */
+export const TICKET_CI_RELATIONSHIPS_PATTERN = Object.values(TICKET_CI_RELATIONSHIP).join('|')
+
+export interface TicketTeamAssignedPayload {
+  entity_type: 'incident' | 'problem' | 'service_request' | 'change'
+  entity_id:   string
+  team_id:     string
+}
+
 export interface WorkflowStepEnteredPayload {
   entity_type:  string
   entity_id:    string
@@ -342,6 +378,15 @@ export interface WorkflowStepEnteredPayload {
  * applicava mai (giro del 14 set 2026).
  */
 export const SLA_ENTITY_TYPES = ['incident', 'problem', 'service_request'] as const
+
+/**
+ * Il preavviso SLA di fabbrica: quanti minuti prima della scadenza di
+ * risoluzione parte `sla.warning`. Era una costante nello scheduler, uguale per
+ * tutti; ora è un campo della policy (revisione del 14 set 2026 · NT-8/F6) e
+ * questo è solo il valore con cui nascono le policy e con cui la migrazione ha
+ * valorizzato quelle esistenti.
+ */
+export const DEFAULT_SLA_WARNING_MINUTES = 30
 export type SlaEntityType = typeof SLA_ENTITY_TYPES[number]
 
 /** I tipi che hanno una categoria da cui una policy SLA può dipendere. */

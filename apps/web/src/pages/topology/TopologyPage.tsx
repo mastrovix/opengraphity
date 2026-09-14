@@ -8,6 +8,7 @@ import { fontFamily, alpha, colors, palette } from '@/lib/tokens'
 import { pausedWhenHidden } from '@/lib/polling'
 import { Pill } from '@/components/ui/Pill'
 import { ciStatusStyle, enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import TopologyGraph, { TopologyLegend, type TopologyNode } from '@/components/topology/TopologyGraph'
 import { CIHealthBadge } from '@/pages/events/eventShared'
 import type { CIHealth } from '@/types/events'
@@ -291,9 +292,10 @@ export function TopologyPage() {
                 fontFamily,
                 textAlign: 'center',
               }}>
+                {/* Giro del 14 set 2026 (#58): «0 nodes · 0 relationships» senza dire cosa fare. */}
                 {loading
                   ? t('pages.topology.loading')
-                  : t('pages.topology.emptyHint')}
+                  : focusNodeId ? t('pages.topology.noRelations') : t('pages.topology.chooseCIHint')}
               </div>
             </div>
           )}
@@ -338,7 +340,7 @@ export function TopologyPage() {
           )}
 
           {/* Stats bar */}
-          <div style={{
+          {nodes.length > 0 && <div style={{
             position:    'absolute', bottom: 16, right: selectedNode ? 316 : 16,
             background:  alpha.white92, backdropFilter: 'blur(4px)',
             border:      '1px solid var(--color-border)', borderRadius: 6,
@@ -357,7 +359,7 @@ export function TopologyPage() {
             {totalChange   > 0 && <span style={{ color: palette.purple.light, marginLeft: 8 }}>{t('pages.topology.changesInProgress', { count: totalChange })}</span>}
             {highlightHealth && totalDown     > 0 && <span style={{ color: palette.danger.dark, marginLeft: 8 }}>{t('components.topologyGraph.healthDown')}: {totalDown}</span>}
             {highlightHealth && totalDegraded > 0 && <span style={{ color: palette.warning.dark, marginLeft: 8 }}>{t('components.topologyGraph.healthDegraded')}: {totalDegraded}</span>}
-          </div>
+          </div>}
         </div>
 
         {/* ── Detail panel ─────────────────────────────────────────────── */}
@@ -659,11 +661,12 @@ function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxPro
 }
 
 /**
- * Stato CI colorato: palette unica in lib/ciEnums (CI_STATUS_STYLE). `statuses`
+ * Stato CI colorato col colore del Dizionario (`ci_status`, F9). `statuses`
  * è il vocabolario `ci_status` del cliente (ondata 7 · D-15): uno stato suo
  * senza colore assegnato è neutro, uno fuori vocabolario resta rosso.
  */
 function StatusBadge({ status, statuses }: { status: string; statuses: readonly string[] | null }) {
-  const s = ciStatusStyle(status, statuses)
+  const { colorOf } = useDomainVocabularies()
+  const s = ciStatusStyle(status, statuses, colorOf('ci_status', status))
   return <Pill bg={s.bg} color={s.color} radius={10} style={{ fontSize: 'var(--font-size-body)' }}>{status}</Pill>
 }

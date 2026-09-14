@@ -84,10 +84,13 @@ export const automationSchema = `
     category: String
     teamId: String
     teamName: String
-    timezone: String!
+    """Fuso proprio della policy; null = segue il fuso del cliente (pagina Organizzazione)."""
+    timezone: String
     responseMinutes: Int!
     resolveMinutes: Int!
     businessHours: Boolean!
+    """Minuti prima della scadenza di risoluzione in cui parte l'avviso SLA."""
+    warningMinutes: Int!
     enabled: Boolean!
   }
 
@@ -101,6 +104,7 @@ export const automationSchema = `
     responseMinutes: Int!
     resolveMinutes: Int!
     businessHours: Boolean
+    warningMinutes: Int
   }
 
   input UpdateSLAPolicyInput {
@@ -112,6 +116,7 @@ export const automationSchema = `
     responseMinutes: Int
     resolveMinutes: Int
     businessHours: Boolean
+    warningMinutes: Int
     enabled: Boolean
   }
 

@@ -36,6 +36,7 @@ beforeEach(() => {
   vi.mocked(runQueryOne).mockImplementation((async (_s: unknown, cypher: string) => {
     if (cypher.includes('RETURN labels(s) AS sLabels')) return { sLabels: ['Application'], tLabels: ['Server'] }
     if (cypher.includes('hasCycle')) return { hasCycle: false }
+    if (cypher.includes('AS declared')) return { declared: true }
     return { deleted: true }
   }) as never)
 })
@@ -56,5 +57,32 @@ describe('addCIRelationship / removeCIRelationship: notifica ai servizi monitora
     await expect(ciRelationshipResolvers.Mutation.addCIRelationship(null, { sourceId: 'a', targetId: 'b', relationType: 'MANGIA' }, ctx)).rejects.toThrow(/Invalid relation type/)
     expect(notifyCIGraphChanged).not.toHaveBeenCalled()
     expect(session.executeWrite).not.toHaveBeenCalled()
+  })
+
+  /** Giro nel browser del 14 set 2026 (#56): la tabella a mano contraddiceva il metamodello. */
+  it('una relazione non dichiarata dal metamodello fra i due tipi è rifiutata col suo nome, senza scrittura', async () => {
+    vi.mocked(runQueryOne).mockImplementation((async (_s: unknown, cypher: string, params: Record<string, unknown>) => {
+      if (cypher.includes('RETURN labels(s) AS sLabels')) return { sLabels: ['ConfigurationItem', 'Certificate'], tLabels: ['ConfigurationItem', 'Application'] }
+      if (cypher.includes('AS declared')) {
+        expect(params).toMatchObject({ relationType: 'HOSTED_ON', tenantId: 't1' })
+        return { declared: false }
+      }
+      return null
+    }) as never)
+    const err = await ciRelationshipResolvers.Mutation.addCIRelationship(null, { sourceId: 'c', targetId: 'a', relationType: 'HOSTED_ON' }, ctx).then(() => null, (e: Error & { extensions?: Record<string, unknown> }) => e)
+    expect(err?.message).toBe('HOSTED_ON from Certificate to Application is not declared in the metamodel')
+    expect(err?.extensions?.['i18n']).toMatchObject({ key: 'errors.ci.relationNotDeclared' })
+    expect(session.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('la dichiarazione si cerca in uscita dal tipo sorgente E in entrata sul tipo destinazione, tipi multipli compresi', async () => {
+    await ciRelationshipResolvers.Mutation.addCIRelationship(null, { sourceId: 'app-3', targetId: 'srv-9', relationType: 'DEPENDS_ON' }, ctx)
+    const cypher = String(vi.mocked(runQueryOne).mock.calls.find((c) => String(c[1]).includes('AS declared'))![1])
+    expect(cypher).toContain("out.direction = 'outgoing'")
+    expect(cypher).toContain("inc.direction = 'incoming'")
+    expect(cypher).toContain("split(out.relationship_type, '|')")
+    // Visto dal vivo: `RETURN outgoing + count(inc)` è rifiutato da Neo4j
+    // (aggregazione mescolata a una chiave di raggruppamento implicita).
+    expect(cypher).toMatch(/WITH outgoing, count\(inc\) AS incoming\s+RETURN outgoing \+ incoming > 0 AS declared/)
   })
 })

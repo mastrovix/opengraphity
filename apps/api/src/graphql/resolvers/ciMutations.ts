@@ -145,6 +145,22 @@ export async function validateCIInput(
   }
 }
 
+/**
+ * Le relazioni di sistema che il metamodello dichiara obbligatorie (oggi
+ * `ownerGroup`) si scrivono alla creazione con `<nome>Id`. Giro nel browser del
+ * 14 set 2026 (#55): `ownerGroup` era «required» ma il modulo non lo chiedeva
+ * e l'API non lo controllava, quindi il CI nasceva senza owner e le change su
+ * di lui fallivano dopo.
+ */
+export function assertRequiredSystemRelations(ciType: CITypeWithDefinitions, input: Record<string, unknown>): void {
+  const missing = (ciType.systemRelations ?? [])
+    .filter((sr) => sr.required && !input[`${sr.name}Id`])
+    .map((sr) => sr.label || sr.name)
+  if (missing.length === 0) return
+  const details = missing.map((m) => `${m}: required`).join('; ')
+  throw new ValidationError(`CI validation failed: ${details}`, { key: 'errors.ci.validationFailed', params: { details } })
+}
+
 // ── Mutations ────────────────────────────────────────────────────────────────
 
 export function buildCreateMutation(
@@ -155,6 +171,7 @@ export function buildCreateMutation(
   validateLabel(neo4jLabel)
   return async (_: unknown, args: { input: Record<string, unknown> }, ctx: GraphQLContext) => {
     const { input } = args
+    assertRequiredSystemRelations(ciType, input)
     await validateCIInput(ciType, input, ctx.tenantId)
 
     return withSession(async (session) => {
@@ -193,28 +210,26 @@ export function buildCreateMutation(
       // Every CI carries :ConfigurationItem plus its type label, like the
       // ones created by discovery/resolveConflict (B-08): queries and the
       // ci_id_unique/ci_tenant_id constraints on :ConfigurationItem see them.
-      const result = await session.executeWrite(tx =>
-        tx.run(`CREATE (n:ConfigurationItem:${neo4jLabel} $props) RETURN properties(n) AS p`, { props }),
-      )
-
-      if (input['ownerGroupId']) {
-        await session.executeWrite(tx =>
-          tx.run(
+      //
+      // Giro nel browser del 14 set 2026 (#55): il CI e i suoi gruppi nascono
+      // nella STESSA transazione, e un gruppo che non esiste nel tenant è un
+      // errore. Prima erano scritture separate con un MATCH che, senza team,
+      // non creava niente in silenzio: il CI nasceva senza owner.
+      const result = await session.executeWrite(async (tx) => {
+        const created = await tx.run(`CREATE (n:ConfigurationItem:${neo4jLabel} $props) RETURN properties(n) AS p`, { props })
+        for (const [key, rel] of [['ownerGroupId', 'OWNED_BY'], ['supportGroupId', 'SUPPORTED_BY']] as const) {
+          const teamId = input[key]
+          if (!teamId) continue
+          const linked = await tx.run(
             `MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId}) MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-             MERGE (n)-[:OWNED_BY]->(t)`,
-            { id, teamId: input['ownerGroupId'], tenantId: ctx.tenantId },
-          ),
-        )
-      }
-      if (input['supportGroupId']) {
-        await session.executeWrite(tx =>
-          tx.run(
-            `MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId}) MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-             MERGE (n)-[:SUPPORTED_BY]->(t)`,
-            { id, teamId: input['supportGroupId'], tenantId: ctx.tenantId },
-          ),
-        )
-      }
+             MERGE (n)-[:${rel}]->(t)
+             RETURN t.id AS teamId`,
+            { id, teamId, tenantId: ctx.tenantId },
+          )
+          if (!linked.records.length) throw new NotFoundError('Team', String(teamId))
+        }
+        return created
+      })
 
       // Calculate chain based on chain_families of CI type and upstream
       // dependencies. A failure must surface: a CI with no chain silently

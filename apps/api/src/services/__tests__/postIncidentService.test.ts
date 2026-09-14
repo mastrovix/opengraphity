@@ -41,6 +41,8 @@ vi.mock('../../lib/statusStepNames.js', () => ({
   statusNamesForClasses: vi.fn(async () => ['archiviato']),
   concludedStatusNames:  vi.fn(async () => ['sistemato', 'archiviato']),
 }))
+// F5: la categoria della bozza KB è uno dei valori del vocabolario `kb_category` del cliente.
+vi.mock('../../lib/domainMatrix.js', () => ({ domainVocabulary: vi.fn(async () => ['database', 'network', 'faq']) }))
 vi.mock('../../lib/logger.js', () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
@@ -126,9 +128,9 @@ describe('draftResolutionNotes', () => {
 
   it('bozza vuota o assente → errore esplicito; refusal → INTERNAL_SERVER_ERROR', async () => {
     h.create.mockResolvedValue(modelReply('   '))
-    await expect(draftResolutionNotes(TENANT, 'inc-1')).rejects.toThrow('[post-incident] bozza vuota dal modello')
+    await expect(draftResolutionNotes(TENANT, 'inc-1')).rejects.toThrow('[post-incident] empty draft from the model')
     h.create.mockResolvedValue(modelReply(null))
-    await expect(draftResolutionNotes(TENANT, 'inc-1')).rejects.toThrow('[post-incident] bozza vuota dal modello')
+    await expect(draftResolutionNotes(TENANT, 'inc-1')).rejects.toThrow('[post-incident] empty draft from the model')
     h.create.mockResolvedValue(modelReply('x', 'refusal'))
     await graphqlFailure(draftResolutionNotes(TENANT, 'inc-1'), 'INTERNAL_SERVER_ERROR')
   })
@@ -167,6 +169,8 @@ describe('draftKbContent', () => {
     await expect(draftKbContent(TENANT, 'inc-1')).resolves.toEqual(KB)
     const params = h.create.mock.calls[0]![0]
     expect(params).toMatchObject({ max_tokens: 3000, output_config: { effort: 'low', format: { type: 'json_schema', schema: { required: ['title', 'body', 'category', 'tags'] } } } })
+    // Revisione del 14 set 2026 · F5: il modello sceglie fra le categorie KB del cliente, non inventa una parola.
+    expect(params).toMatchObject({ output_config: { format: { schema: { properties: { category: { type: 'string', enum: ['database', 'network', 'faq'] } } } } } })
     expect(userContent()).toMatchObject({ titolo: 'DB down', categoria_incident: 'database', ci_coinvolti: ['db-01'] })
   })
 
@@ -174,7 +178,7 @@ describe('draftKbContent', () => {
     h.create.mockResolvedValue(modelReply('{"title": '))
     await expect(draftKbContent(TENANT, 'inc-1')).rejects.toThrow(SyntaxError)
     h.create.mockResolvedValue(modelReply(null))
-    await expect(draftKbContent(TENANT, 'inc-1')).rejects.toThrow('[post-incident] risposta senza testo')
+    await expect(draftKbContent(TENANT, 'inc-1')).rejects.toThrow('[post-incident] response without text')
     h.create.mockResolvedValue(modelReply('{}', 'refusal'))
     await graphqlFailure(draftKbContent(TENANT, 'inc-1'), 'INTERNAL_SERVER_ERROR')
   })
@@ -259,6 +263,6 @@ describe('problemCandidates', () => {
     h.create.mockResolvedValue(modelReply('nope'))
     await expect(problemCandidates(TENANT)).rejects.toThrow(SyntaxError)
     h.create.mockResolvedValue(modelReply(null))
-    await expect(problemCandidates(TENANT)).rejects.toThrow('[post-incident] risposta senza testo')
+    await expect(problemCandidates(TENANT)).rejects.toThrow('[post-incident] response without text')
   })
 })

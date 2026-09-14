@@ -129,10 +129,13 @@ describe('areAllApprovalsSatisfied (auto-advance)', () => {
 })
 
 describe('createChangeApprovals', () => {
-  it('standard: nessuna scrittura', async () => {
+  it('standard: nessun requisito, solo l\'esito «approved» (giro nel browser del 14 set 2026)', async () => {
     mockedOne.mockResolvedValueOnce({ changeType: 'standard' })
     await createChangeApprovals(session, 'chg', 't1')
-    expect(mockedMany).not.toHaveBeenCalled()
+    expect(mockedMany).toHaveBeenCalledTimes(1)
+    const cypher = String(mockedMany.mock.calls[0]![1])
+    expect(cypher).toContain("c.approval_status = 'approved'")
+    expect(cypher).not.toContain('ChangeApproval')
   })
   it('senza team Change Manager → CONFLICT e nessuna scrittura (niente gate parziale)', async () => {
     mockedOne

@@ -41,21 +41,21 @@ type TypeAction = 'add' | 'remove' | 'update' | 'addRelation' | 'removeRelation'
 
 const CONSEQUENCE: Record<TypeAction, string> = {
   add:
-    'Aggiungere un campo qui lo farebbe comparire nella CMDB di ogni cliente, e siccome lo schema non lo dichiara ' +
-    'romperebbe la pagina di dettaglio di tutti i CI. Crea un tuo tipo CI e mettici il campo, oppure usa un campo già spedito.',
+    'Adding a field here would make it appear in the CMDB of every tenant, and since the schema does not declare it ' +
+    'it would break the detail page of every CI. Create your own CI type and put the field there, or use a shipped field.',
   remove:
-    'I suoi campi sono in sola lettura: togliere un campo da qui lo toglierebbe a ogni cliente. ' +
-    'Si possono eliminare solo i campi dei tuoi tipi.',
+    'Its fields are read-only: removing a field here would remove it for every tenant. ' +
+    'Only the fields of your own types can be deleted.',
   update:
-    'Etichetta, icona, colore, script e famiglie di catena sono in sola lettura: cambiarli qui li cambierebbe a ogni ' +
-    'cliente. Per un tipo con le tue etichette, creane uno tuo.',
+    'Label, icon, colour, scripts and chain families are read-only: changing them here would change them for every ' +
+    'tenant. For a type with your own labels, create your own.',
   addRelation:
-    'Le sue relazioni sono in sola lettura: aggiungerne una qui la aggiungerebbe a ogni cliente. ' +
-    'Le relazioni si definiscono sui tuoi tipi.',
+    'Its relations are read-only: adding one here would add it for every tenant. ' +
+    'Relations are defined on your own types.',
   removeRelation:
-    'Le sue relazioni sono in sola lettura: togliere una relazione da qui la toglierebbe a ogni cliente.',
+    'Its relations are read-only: removing a relation here would remove it for every tenant.',
   delete:
-    'Non si elimina: sparirebbe dalla CMDB di ogni cliente. Puoi solo non usarlo.',
+    'It cannot be deleted: it would disappear from the CMDB of every tenant. You can only not use it.',
 }
 
 /**
@@ -109,8 +109,8 @@ function assertRelationCardinality(value: unknown, what: string): string {
   const allowed = ['one', 'many']
   if (typeof value === 'string' && allowed.includes(value)) return value
   throw new GraphQLError(
-    `${what}: cardinalità "${String(value)}" sconosciuta. Ammesse: ${allowed.join(', ')}.`,
-    { extensions: { code: 'BAD_USER_INPUT' } },
+    `${what}: unknown cardinality "${String(value)}". Allowed: ${allowed.join(', ')}.`,
+    { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.unknownCardinality', params: { value: String(value), allowed: allowed.join(', ') } } } },
   )
 }
 
@@ -187,7 +187,7 @@ async function assertTenantOwnedType(
   const name  = r.records[0]!.get('name')  as string
   const label = (r.records[0]!.get('label') as string | null) ?? name
   if (scope === 'tenant') return { name, label }
-  throw new ValidationError(`Type "${label}" (${name}) ships with the product: it is one type for every tenant. ${CONSEQUENCE[action]}`, { key: 'errors.ciType.shipped', params: { label, name, consequence: CONSEQUENCE[action] } })
+  throw new ValidationError(`Type "${label}" (${name}) ships with the product: it is one type for every tenant. ${CONSEQUENCE[action]}`, { key: 'errors.ciType.shipped', params: { label, name, consequenceKey: `errors.ciType.consequence.${action}` } })
 }
 
 /**
@@ -213,7 +213,7 @@ type Updates = { propertiesSet?: number; nodesCreated?: number; nodesDeleted?: n
 function updatesOf(result: unknown, what: string): Updates {
   const counters = (result as { summary?: { counters?: { updates?: () => Updates } } }).summary?.counters
   if (typeof counters?.updates !== 'function') {
-    throw new Error(`${what}: il driver Neo4j non ha restituito i contatori della scrittura, non si può sapere se ha scritto.`)
+    throw new Error(`${what}: the Neo4j driver returned no write counters, so whether it wrote cannot be known.`)
   }
   return counters.updates()
 }
@@ -331,7 +331,7 @@ export type CIFieldRow = { f: { properties: Props } | null; enumId: string | nul
 
 function parseEnumValues(raw: string[] | string | null | undefined): string[] {
   if (Array.isArray(raw)) return raw
-  if (typeof raw === 'string') { const parsed: unknown = JSON.parse(raw); if (!Array.isArray(parsed)) throw new Error(`enum_values non è un array JSON valido: ${raw.slice(0, 80)}`); return parsed as string[] }
+  if (typeof raw === 'string') { const parsed: unknown = JSON.parse(raw); if (!Array.isArray(parsed)) throw new Error(`enum_values is not a valid JSON array: ${raw.slice(0, 80)}`); return parsed as string[] }
   return []
 }
 
@@ -458,8 +458,8 @@ export async function fetchCITypeById(id: string, tenantId: string) {
 
 export function requireAdmin(ctx: GraphQLContext) {
   if (ctx.role !== 'admin') {
-    throw new GraphQLError('Accesso negato: richiesto ruolo admin', {
-      extensions: { code: 'FORBIDDEN' },
+    throw new GraphQLError('Access denied: the admin role is required', {
+      extensions: { code: 'FORBIDDEN', i18n: { key: 'errors.forbiddenAdmin' } },
     })
   }
 }

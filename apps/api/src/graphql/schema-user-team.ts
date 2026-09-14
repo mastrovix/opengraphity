@@ -12,6 +12,8 @@ export function userTeamSDL(): string {
     lastName: String
     role: String!
     slackId: String
+    """La persona riceve le e-mail di notifica (dal Profilo). null = nessun utente nel grafo per questa identità."""
+    emailNotifications: Boolean
     createdAt: String
     teams: [Team!]!
   }
@@ -46,6 +48,8 @@ export function userTeamSDL(): string {
     updateUserTeams(userId: ID!, teamIds: [ID!]!): User!
     setTeamManager(teamId: ID!, userId: ID!): Team!
     removeTeamManager(teamId: ID!): Team!
+    # Aggiunge (member: true) o toglie un membro dal team, senza toccare gli altri team dell'utente.
+    setTeamMember(teamId: ID!, userId: ID!, member: Boolean!): Team!
     # Designa (o rimuove) il team come "Change Manager". Uno solo per tenant.
     setChangeManagerTeam(teamId: ID!, value: Boolean!): Team!
   }

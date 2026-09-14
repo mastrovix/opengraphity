@@ -71,7 +71,11 @@ vi.stubEnv('ATTACHMENT_DIR', '/var/lib/opengraphity/attachments')
 vi.stubEnv('BACKUP_SKIP_KEYCLOAK', 'true')
 resetConfigCache()
 
-const { startMaintenanceWorker, MAINTENANCE_QUEUE, readBackupRetention, REPEATABLE_JOBS } = await import('../maintenance.worker.js')
+// F10: la pulizia delle notifiche in-app delega all'archivio del pacchetto.
+const pruneInbox = vi.fn(async (_before: string) => 7)
+vi.mock('@opengraphity/notifications', () => ({ pruneInbox: (b: string) => pruneInbox(b) }))
+
+const { startMaintenanceWorker, MAINTENANCE_QUEUE, readBackupRetention, readInAppRetentionDays, REPEATABLE_JOBS } = await import('../maintenance.worker.js')
 
 const BACKUP_DIR = '/var/backups/opengraphity'
 const ARCHIVE    = `${BACKUP_DIR}/backup_new.tar.gz`
@@ -126,10 +130,10 @@ describe('startMaintenanceWorker', () => {
   it('ondata 4: registra anche purge_events alle 03:30 e rimuove le sue copie stantie', async () => {
     queue.getRepeatableJobs.mockResolvedValue([{ name: 'purge_events', key: 'stale-purge' }, { name: 'backup_database', key: 'stale-backup' }])
     await startMaintenanceWorker()
-    expect(REPEATABLE_JOBS.map((j) => [j.name, j.pattern])).toEqual([['backup_database', '0 0 * * *'], ['purge_events', '30 3 * * *']])
+    expect(REPEATABLE_JOBS.map((j) => [j.name, j.pattern])).toEqual([['backup_database', '0 0 * * *'], ['purge_events', '30 3 * * *'], ['purge_inapp_notifications', '45 3 * * *']])
     expect(queue.removeRepeatableByKey.mock.calls.map((c) => c[0]).sort()).toEqual(['stale-backup', 'stale-purge'])
     expect(queue.add).toHaveBeenCalledWith('purge_events', {}, { repeat: { pattern: '30 3 * * *' } })
-    expect(queue.add).toHaveBeenCalledTimes(2)
+    expect(queue.add).toHaveBeenCalledTimes(3)
   })
 
   it('registrazione del repeatable che fallisce → errore di startup, nessun worker creato', async () => {
@@ -235,3 +239,22 @@ describe('job sconosciuto', () => {
   })
 
 })
+
+/** Revisione del 14 set 2026 · F10: le notifiche in-app salvate si puliscono per età. */
+describe('job purge_inapp_notifications', () => {
+  it('cancella le notifiche più vecchie della conservazione (default 30 giorni)', async () => {
+    const before = Date.now()
+    await expect(processor(job('purge_inapp_notifications'))).resolves.toBeUndefined()
+    const cutoff = Date.parse(pruneInbox.mock.calls[0]![0])
+    expect(before - cutoff).toBeGreaterThanOrEqual(30 * 86_400_000 - 1000)
+    expect(before - cutoff).toBeLessThan(31 * 86_400_000)
+    expect(logInfo).toHaveBeenCalledWith(expect.objectContaining({ deleted: 7, retentionDays: 30 }), 'In-app notifications pruned')
+  })
+
+  it('INAPP_NOTIFICATION_RETENTION_DAYS: intero >= 1, altrimenti errore di configurazione', () => {
+    expect(readInAppRetentionDays({})).toBe(30)
+    expect(readInAppRetentionDays({ INAPP_NOTIFICATION_RETENTION_DAYS: '90' })).toBe(90)
+    expect(() => readInAppRetentionDays({ INAPP_NOTIFICATION_RETENTION_DAYS: '0' })).toThrow(/INAPP_NOTIFICATION_RETENTION_DAYS/)
+  })
+})
+

@@ -203,7 +203,7 @@ async function resolveAgainstIncident(session: Session, tenantId: string, ev: Ev
   // intermedi percorribili trovati nella definizione; null se non esistono.
   const path = transitions.some((t) => t.toStep === info.resolvedStep)
     ? []
-    : findAutoResolvePath(await loadDefinitionTransitions(session, linked.instanceId, tenantId), linked.step, info.resolvedStep)
+    : findAutoResolvePath(await loadDefinitionTransitions(session, linked.instanceId, tenantId, lingua), linked.step, info.resolvedStep)
 
   let outcome: ResolveOutcome
   let historyNote: string | null

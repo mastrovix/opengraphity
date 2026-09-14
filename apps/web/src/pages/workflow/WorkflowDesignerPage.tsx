@@ -11,7 +11,7 @@ import { WorkflowCanvas } from './WorkflowCanvas'
 import { WorkflowToolbar } from './WorkflowToolbar'
 import { WorkflowStepPanel } from './WorkflowStepPanel'
 import { WorkflowTransitionPanel } from './WorkflowTransitionPanel'
-import { useWorkflowDesigner, defToWorkflowKey } from './useWorkflowDesigner'
+import { useWorkflowDesigner } from './useWorkflowDesigner'
 import { palette } from '@/lib/tokens'
 
 export function WorkflowDesignerPage() {
@@ -24,7 +24,6 @@ export function WorkflowDesignerPage() {
   )
 
   const def              = data?.workflowDefinitionById ?? null
-  const selectedWorkflow = defToWorkflowKey(def)
 
   const {
     nodes,
@@ -145,7 +144,6 @@ export function WorkflowDesignerPage() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <WorkflowToolbar
         def={def}
-        selectedWorkflow={selectedWorkflow}
         hasChanges={hasChanges}
         pendingCount={pendingChanges.length + pendingStepChanges.length}
         onSave={handleSave}

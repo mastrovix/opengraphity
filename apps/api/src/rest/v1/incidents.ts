@@ -117,17 +117,23 @@ router.post('/:id/comments', requirePermission('incidents:write'), asyncHandler(
   const text = requiredString(body, 'text').trim()
   const id   = req.params['id']!
   const key  = apiKeyOf(req)
+  // Nota interna salvo richiesta esplicita: un'integrazione che vuole
+  // rispondere a chi ha aperto il ticket lo dice (lib/ticketComments.ts).
+  if (body['isInternal'] !== undefined && typeof body['isInternal'] !== 'boolean') {
+    throw new ValidationError('isInternal must be a boolean', { key: 'errors.comment.isInternalBoolean' })
+  }
+  const isInternal = body['isInternal'] !== false
 
   // Author is the API key (not a User node), so the GraphQL addIncidentComment
   // (which joins the User) is not reusable here.
   const rows = await withSession((session) => runQuery<{ id: string }>(session, `
     MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
-    CREATE (c:Comment {id: randomUUID(), tenant_id: $tenantId, text: $text, author_id: $authorId, created_at: $now, updated_at: $now})
+    CREATE (c:Comment {id: randomUUID(), tenant_id: $tenantId, text: $text, is_internal: $isInternal, author_id: $authorId, created_at: $now, updated_at: $now})
     CREATE (i)-[:HAS_COMMENT]->(c)
     RETURN c.id AS id
-  `, { incidentId: id, tenantId: key.tenantId, text, authorId: key.keyId, now: new Date().toISOString() }), true)
+  `, { incidentId: id, tenantId: key.tenantId, text, isInternal, authorId: key.keyId, now: new Date().toISOString() }), true)
   if (!rows[0]) throw new NotFoundError('Incident', id)
-  res.status(201).json({ data: { id: rows[0].id, text } })
+  res.status(201).json({ data: { id: rows[0].id, text, isInternal } })
 }))
 
 export { router as incidentsRouter }

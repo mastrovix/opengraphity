@@ -20,6 +20,7 @@ import {
   UPDATE_REPORT_SCHEDULE,
 } from '@/graphql/mutations'
 import { toast } from 'sonner'
+import { downloadFile } from '@/lib/downloadPdf'
 import type { ReportSectionInput } from '@/components/ReportSectionBuilder'
 import { colors, palette } from '@/lib/tokens'
 
@@ -168,22 +169,29 @@ export function useCustomReports() {
   })
   const [updateReportSchedule] = useMutation(UPDATE_REPORT_SCHEDULE)
 
-  function triggerDownload(url: string) {
-    const a = document.createElement('a')
-    a.href = url
-    a.click()
+  /**
+   * La mutation genera il file e restituisce il suo percorso `/api/reports/…`:
+   * si scarica con il token. Un link nudo non lo porta, e la scheda finiva su
+   * `{"error":"Unauthorized"}` (giro nel browser del 14 set 2026).
+   */
+  async function triggerDownload(path: string, fallbackFilename: string) {
+    try {
+      await downloadFile(path, fallbackFilename)
+    } catch (err) {
+      toast.error(t('toast.report.downloadFailed', { error: err instanceof Error ? err.message : String(err) }))
+    }
   }
 
   async function handleExportPDF() {
     if (!selectedId) return
     const res = await exportPDF({ variables: { templateId: selectedId } })
-    if (res.data?.exportReportPDF) triggerDownload(res.data.exportReportPDF)
+    if (res.data?.exportReportPDF) await triggerDownload(res.data.exportReportPDF, 'report.pdf')
   }
 
   async function handleExportExcel() {
     if (!selectedId) return
     const res = await exportExcel({ variables: { templateId: selectedId } })
-    if (res.data?.exportReportExcel) triggerDownload(res.data.exportReportExcel)
+    if (res.data?.exportReportExcel) await triggerDownload(res.data.exportReportExcel, 'report.xlsx')
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────

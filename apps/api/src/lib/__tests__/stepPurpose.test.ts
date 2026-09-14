@@ -79,8 +79,8 @@ describe('requireStepNamesByPurpose — fail-loud', () => {
       sessionOf(CLIENTE), 'c-one', 'change', ['validation'], 'soppressione degli allarmi durante il rilascio',
     ).then(() => null, (e: unknown) => e)
     expect(String((err as Error).message)).toMatch(/soppressione degli allarmi durante il rilascio/)
-    expect(String((err as Error).message)).toMatch(/nessun passo dichiara lo scopo \[validation\]/)
-    expect(String((err as Error).message)).toMatch(/disegnatore/)
+    expect(String((err as Error).message)).toMatch(/no step declares the purpose \[validation\]/)
+    expect(String((err as Error).message)).toMatch(/designer/)
   })
 
   it('almeno un passo → la lista, senza errori', async () => {

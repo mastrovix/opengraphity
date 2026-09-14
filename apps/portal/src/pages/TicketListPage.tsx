@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { PlusCircle } from 'lucide-react'
 import { GET_MY_TICKETS } from '@/graphql/queries'
+import { useTicketCategories } from '@/hooks/useTicketCategories'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
 import { TICKET_POLL_INTERVAL_MS } from '@/lib/apollo'
 import { fmtDate } from '@/lib/format'
@@ -35,21 +36,23 @@ const PRIORITY_COLORS: Record<string, string> = {
 }
 
 interface Ticket {
-  id: string; title: string; status: string; priority: string
+  id: string; number: string
+  title: string; status: string; priority: string
   /** Categoria ed etichetta del passo nel workflow del cliente (ondata 7 · D-15). */
   statusCategory: string | null; statusLabel: string | null
-  category: string; createdAt: string; updatedAt: string; assignedTeam: string | null
+  category: string | null; createdAt: string; updatedAt: string; assignedTeam: string | null
 }
 
 export function TicketListPage() {
-  const { t }                     = useTranslation()
+  const { t, i18n }               = useTranslation()
+  const { labelOf: categoryLabel } = useTicketCategories()
   const [filter, setFilter]       = useState<FilterKey>('all')
   const [page, setPage]           = useState(1)
 
   // The list polls for status changes made by the IT team; nothing else does.
   const { data, loading, error } = useQuery<{ myTickets: { items: Ticket[]; total: number } }>(
     GET_MY_TICKETS,
-    { variables: { status: FILTER_CLASS[filter], page, pageSize: PAGE_SIZE }, pollInterval: TICKET_POLL_INTERVAL_MS },
+    { variables: { status: FILTER_CLASS[filter], page, pageSize: PAGE_SIZE, language: i18n.resolvedLanguage ?? i18n.language }, pollInterval: TICKET_POLL_INTERVAL_MS },
   )
 
   const tickets   = data?.myTickets?.items ?? []
@@ -172,7 +175,8 @@ export function TicketListPage() {
                   {ticket.title}
                 </div>
                 <div style={{ display: 'flex', gap: 12, fontSize: 10, color: colors.slateLight, flexWrap: 'wrap' }}>
-                  <span>{t(`ticket.category.${ticket.category}`, { defaultValue: ticket.category })}</span>
+                  <span style={{ fontWeight: 600 }}>{ticket.number}</span>
+                  {ticket.category && <span>{categoryLabel(ticket.category)}</span>}
                   <span>{t('ticket.openedOn', { date: fmtDate(ticket.createdAt) })}</span>
                   <span>{t('ticket.updatedOn', { date: fmtDate(ticket.updatedAt) })}</span>
                   {ticket.assignedTeam && <span>→ {ticket.assignedTeam}</span>}

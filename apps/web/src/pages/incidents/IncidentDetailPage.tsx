@@ -1,6 +1,8 @@
 import { useId, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useConfirm } from '@/hooks/useConfirm'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { FileDown, Loader2, Sparkles, Network } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
@@ -44,6 +46,7 @@ import type { ImpactedServiceRef } from '@/types/services'
 import { colors } from '@/lib/tokens'
 import { useSlaSettling } from '@/hooks/useSlaSettling'
 import { transitionErrorText, type TransitionFailure } from '@/lib/transitionError'
+import { withLocalizedLabel } from '@/lib/localizedLabel'
 
 const RESOLUTION_DRAFT = gql`
   query ResolutionDraft($incidentId: ID!) {
@@ -133,6 +136,7 @@ interface Incident {
 interface Comment {
   id:        string
   text:      string
+  isInternal: boolean
   createdAt: string
   updatedAt: string
   author:    { id: string; name: string; email: string } | null
@@ -145,6 +149,8 @@ interface User { id: string; name: string; email: string; teams: { id: string; n
 export function IncidentDetailPage() {
   const { matrix } = usePriorityMatrix()
   const { t }    = useTranslation()
+  const confirm  = useConfirm()
+  const { labelOf: typeLabel } = useItilTypeLabels()
   const editIds  = { title: useId(), description: useId(), impact: useId(), urgency: useId(), team: useId(), user: useId() }
   const { id }   = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -350,7 +356,9 @@ export function IncidentDetailPage() {
     }
   }
 
-  if (loading) {
+  // Solo al primo caricamento: un refetch (dopo un commento) rimetteva lo scheletro,
+  // la pagina si rimontava richiudendo le sezioni e tornava in cima (giro del 14 set 2026, #20).
+  if (loading && !data) {
     return (
       <div className="space-y-4" style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
         <Skeleton style={{ height: 32, width: 200 }} />
@@ -393,7 +401,7 @@ export function IncidentDetailPage() {
     )
   }
 
-  const manualTransitions = incident.availableTransitions.filter((t) => t.toStep !== undefined)
+  const manualTransitions = incident.availableTransitions.filter((t) => t.toStep !== undefined).map(withLocalizedLabel)
   const historyDesc       = [...incident.workflowHistory].reverse()
 
   return (
@@ -433,7 +441,15 @@ export function IncidentDetailPage() {
         <Button
           variant="secondary"
           disabled={settingMajor}
-          onClick={() => void setMajor({ variables: { id: incident.id, major: !incident.major } })}
+          onClick={() => void (async () => {
+            // Giro nel browser del 14 set 2026 (#21): dichiarare un Major
+            // Incident avvisa il Change Manager e le regole di escalation;
+            // partiva al primo clic, senza conferma.
+            const ok = await confirm(incident.major
+              ? { title: t('pages.incidentDetail.revokeMajorConfirmTitle'), body: t('pages.incidentDetail.revokeMajorConfirmBody', { number: incident.number }), confirmLabel: t('pages.incidentDetail.revokeMajor') }
+              : { title: t('pages.incidentDetail.declareMajorConfirmTitle'), body: t('pages.incidentDetail.declareMajorConfirmBody', { number: incident.number }), confirmLabel: t('pages.incidentDetail.declareMajor'), danger: true })
+            if (ok) await setMajor({ variables: { id: incident.id, major: !incident.major } })
+          })()}
           style={incident.major ? { color: 'var(--color-danger)', borderColor: 'var(--color-danger)' } : undefined}
         >
           {t(incident.major ? 'pages.incidentDetail.revokeMajor' : 'pages.incidentDetail.declareMajor')}
@@ -708,19 +724,19 @@ export function IncidentDetailPage() {
             excludeId={incident.id}
             types={[
               {
-                kind: 'INCIDENT', label: 'Incident', routeBase: '/incidents',
+                kind: 'INCIDENT', label: typeLabel('incident'), routeBase: '/incidents',
                 items: incident.linkedIncidents ?? [],
                 onLink: (otherId) => void linkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } }),
                 onUnlink: (otherId) => void unlinkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } }),
               },
               {
-                kind: 'PROBLEM', label: 'Problem', routeBase: '/problems',
+                kind: 'PROBLEM', label: typeLabel('problem'), routeBase: '/problems',
                 items: incident.linkedProblems ?? [],
                 onLink: (problemId) => void linkIncProblem({ variables: { problemId, incidentId: incident.id } }),
                 onUnlink: (problemId) => void unlinkIncProblem({ variables: { problemId, incidentId: incident.id } }),
               },
               {
-                kind: 'CHANGE', label: 'Change', routeBase: '/changes',
+                kind: 'CHANGE', label: typeLabel('change'), routeBase: '/changes',
                 items: incident.linkedChanges ?? [],
                 onLink: (changeId) => void linkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } }),
                 onUnlink: (changeId) => void unlinkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } }),
@@ -779,7 +795,7 @@ export function IncidentDetailPage() {
           <CommentsSection
             comments={incident.comments}
             adding={addingComment}
-            onAdd={(text) => addComment({ variables: { id: incident.id, text } })}
+            onAdd={(text, isInternal) => addComment({ variables: { id: incident.id, text, isInternal } })}
           />
 
           {/* Internal Chat (agents only) */}

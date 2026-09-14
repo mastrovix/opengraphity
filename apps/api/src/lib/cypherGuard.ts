@@ -19,7 +19,7 @@
 export class UnsafeCypherError extends Error {
   readonly code = 'UNSAFE_CYPHER'
   constructor(message: string) {
-    super(`Query rifiutata dal guard di sicurezza: ${message}`)
+    super(`Query rejected by the security guard: ${message}`)
     this.name = 'UnsafeCypherError'
   }
 }
@@ -67,7 +67,7 @@ export function stripCypherLiterals(query: string): string {
         if (query[j] === ch) { closed = true; break }
         j++
       }
-      if (!closed) throw new UnsafeCypherError('string literal non terminato')
+      if (!closed) throw new UnsafeCypherError('unterminated string literal')
       out += ch + ch
       i = j + 1
       continue
@@ -79,14 +79,14 @@ export function stripCypherLiterals(query: string): string {
     }
     if (ch === '/' && query[i + 1] === '*') {
       const end = query.indexOf('*/', i + 2)
-      if (end === -1) throw new UnsafeCypherError('commento non terminato')
+      if (end === -1) throw new UnsafeCypherError('unterminated comment')
       out += ' '
       i = end + 2
       continue
     }
-    if (ch === '\\') throw new UnsafeCypherError('backslash fuori da una stringa')
-    if (ch === '`') throw new UnsafeCypherError('identificatori tra backtick non ammessi')
-    if (ch === ';') throw new UnsafeCypherError('una sola istruzione per query (";" non ammesso)')
+    if (ch === '\\') throw new UnsafeCypherError('backslash outside a string')
+    if (ch === '`') throw new UnsafeCypherError('backtick identifiers are not allowed')
+    if (ch === ';') throw new UnsafeCypherError('one statement per query (";" is not allowed)')
     out += ch
     i++
   }
@@ -136,17 +136,17 @@ function extractNodePatterns(text: string): NodePattern[] {
  * Cypher statement. Never mutates or executes anything.
  */
 export function assertSafeReadOnlyCypher(query: string): void {
-  if (typeof query !== 'string' || !query.trim()) throw new UnsafeCypherError('query vuota')
-  if (query.length > MAX_CYPHER_LENGTH) throw new UnsafeCypherError(`query troppo lunga (> ${MAX_CYPHER_LENGTH} caratteri)`)
+  if (typeof query !== 'string' || !query.trim()) throw new UnsafeCypherError('empty query')
+  if (query.length > MAX_CYPHER_LENGTH) throw new UnsafeCypherError(`query too long (> ${MAX_CYPHER_LENGTH} characters)`)
 
   const text = stripCypherLiterals(query)
 
   const write = WRITE_KEYWORD_RE.exec(text)
-  if (write) throw new UnsafeCypherError(`clausola non ammessa: ${write[1]!.toUpperCase()} (sono consentite solo letture)`)
-  if (DB_NAMESPACE_RE.test(text)) throw new UnsafeCypherError('procedure/funzioni db.* e dbms.* non ammesse')
-  if (APOC_RE.test(text)) throw new UnsafeCypherError('apoc.* non ammesso (eccetto apoc.text/coll/map/date)')
-  if (AUTH_RE.test(text)) throw new UnsafeCypherError('":auth" non ammesso')
-  if (INLINE_WHERE_RE.test(text)) throw new UnsafeCypherError('WHERE dentro il pattern di nodo non supportato: usa {tenant_id: $tenantId}')
+  if (write) throw new UnsafeCypherError(`clause not allowed: ${write[1]!.toUpperCase()} (only reads are allowed)`)
+  if (DB_NAMESPACE_RE.test(text)) throw new UnsafeCypherError('db.* and dbms.* procedures/functions are not allowed')
+  if (APOC_RE.test(text)) throw new UnsafeCypherError('apoc.* is not allowed (except apoc.text/coll/map/date)')
+  if (AUTH_RE.test(text)) throw new UnsafeCypherError('":auth" is not allowed')
+  if (INLINE_WHERE_RE.test(text)) throw new UnsafeCypherError('WHERE inside a node pattern is not supported: use {tenant_id: $tenantId}')
 
   CALL_RE.lastIndex = 0
   let call: RegExpExecArray | null
@@ -154,13 +154,13 @@ export function assertSafeReadOnlyCypher(query: string): void {
     const target = call[1] ?? ''
     if (target.startsWith('{')) continue                 // CALL { subquery }
     if (SAFE_PROC_RE.test(target)) continue
-    throw new UnsafeCypherError(`CALL ${target || '<procedura>'} non ammesso`)
+    throw new UnsafeCypherError(`CALL ${target || '<procedure>'} is not allowed`)
   }
 
   PARAM_RE.lastIndex = 0
   let param: RegExpExecArray | null
   while ((param = PARAM_RE.exec(text)) !== null) {
-    if (param[1] !== 'tenantId') throw new UnsafeCypherError(`parametro $${param[1]} non disponibile: l'unico parametro è $tenantId`)
+    if (param[1] !== 'tenantId') throw new UnsafeCypherError(`parameter $${param[1]} is not available: the only parameter is $tenantId`)
   }
 
   // Aliases scoped via WHERE alias.tenant_id = $tenantId — only trusted when no
@@ -170,11 +170,11 @@ export function assertSafeReadOnlyCypher(query: string): void {
   let ws: RegExpExecArray | null
   while ((ws = WHERE_TENANT_RE.exec(text)) !== null) whereScoped.add(ws[1] ?? ws[2]!)
   if (whereScoped.size > 0 && BOOLEAN_NEUTRALISER_RE.test(text.replace(IS_NOT_RE, 'IS_NOT'))) {
-    throw new UnsafeCypherError('con OR/XOR/NOT nella query il vincolo tenant deve essere inline nel pattern: (x:Label {tenant_id: $tenantId})')
+    throw new UnsafeCypherError('with OR/XOR/NOT in the query the tenant constraint must be inline in the pattern: (x:Label {tenant_id: $tenantId})')
   }
 
   const nodes = extractNodePatterns(text)
-  if (nodes.length === 0) throw new UnsafeCypherError('nessun pattern di nodo trovato: ogni query deve partire da MATCH (x:Label {tenant_id: $tenantId})')
+  if (nodes.length === 0) throw new UnsafeCypherError('no node pattern found: every query must start from MATCH (x:Label {tenant_id: $tenantId})')
 
   // Group into paths and require each one to be anchored.
   const paths: NodePattern[][] = []
@@ -191,8 +191,8 @@ export function assertSafeReadOnlyCypher(query: string): void {
     )
     if (!anchored) {
       const first = path[0]!
-      const desc = first.alias ?? (first.hasLabel ? '<senza alias>' : '()')
-      throw new UnsafeCypherError(`pattern non vincolato al tenant a partire da (${desc}): aggiungi {tenant_id: $tenantId} nel nodo o ${first.alias ?? 'x'}.tenant_id = $tenantId`)
+      const desc = first.alias ?? (first.hasLabel ? '<no alias>' : '()')
+      throw new UnsafeCypherError(`pattern not bound to the tenant starting from (${desc}): add {tenant_id: $tenantId} to the node or ${first.alias ?? 'x'}.tenant_id = $tenantId`)
     }
     for (const n of path) if (n.alias) bound.add(n.alias)
   }

@@ -1,6 +1,6 @@
 import { BaseConsumer } from '@opengraphity/events'
 import type { DomainEvent, WorkflowStepEnteredPayload } from '@opengraphity/types'
-import { WORKFLOW_STEP_ENTERED_EVENT } from '@opengraphity/types'
+import { WORKFLOW_STEP_ENTERED_EVENT, TICKET_TEAM_ASSIGNED_EVENT, type TicketTeamAssignedPayload } from '@opengraphity/types'
 import type {
   IncidentCreatedPayload,
   IncidentResolvedPayload,
@@ -12,7 +12,7 @@ import type {
 import type { SLAPolicy } from './policy.js'
 import { selectSLAForEntity } from './selector.js'
 import {
-  createSLAStatus, markResponseMet, getSLAStatus, markResolveMet, pauseSLA, resumeSLA,
+  createSLAStatus, markResponseMet, getSLAStatus, markResolveMet, pauseSLA, resumeSLA, reopenSLA, repolicySLA, getEntityPriority, type SLAStatus,
   getEntityCreatedAt, getEntityScope, type SLAPauseType,
 } from './status.js'
 import {
@@ -24,6 +24,13 @@ import {
   cancelSLAJobs,
 } from './scheduler.js'
 import { getActiveOLAContractsFor, getTenantTimezone } from './olaBreach.js'
+import { getServiceCalendar } from './calendar.js'
+
+/** L'istante di un evento; il suo timestamp se valido, altrimenti adesso. */
+function eventInstant(event: DomainEvent<unknown>): Date {
+  const d = new Date(event.timestamp)
+  return Number.isNaN(d.getTime()) ? new Date() : d
+}
 
 /**
  * La policy SLA del tenant per un'entità, o null se nessuna corrisponde.
@@ -54,11 +61,15 @@ async function resolvePolicy(
       name:        tenantPolicy.name,
       entity_type: entityType,
       timezone:    tenantPolicy.timezone,
+      // F6: l'orario lavorativo è il calendario del cliente. Si legge solo se
+      // serve: una policy 24x7 non dipende da un calendario configurato.
+      calendar:    tenantPolicy.business_hours ? await getServiceCalendar(tenantId) : null,
       tiers: [{
         severity,
         response_minutes: tenantPolicy.response_minutes,
         resolve_minutes:  tenantPolicy.resolve_minutes,
         business_hours:   tenantPolicy.business_hours,
+        warning_minutes:  tenantPolicy.warning_minutes,
       }],
     }
   }
@@ -110,6 +121,18 @@ export class SLAEngine extends BaseConsumer<unknown> {
         await this.handleSLAResume(event)
         break
 
+      // Le azioni di passo «avvia SLA» e «ferma SLA» (revisione del 14 set
+      // 2026 · WA-1): il disegnatore le offre e i seed le usano, ma
+      // `sla.<tipo>.start` e `sla.response.stop` non avevano nessun ramo qui —
+      // l'azione risultava eseguita e non cambiava niente.
+      case 'sla.resolve.start':
+      case 'sla.response.start':
+        await this.handleSLAStart(event)
+        break
+      case 'sla.response.stop':
+        await this.handleEntityResponded(event, 'sla.response.stop')
+        break
+
       case 'request.created':
         await this.handleEntityCreated(
           event as DomainEvent<RequestCreatedPayload>,
@@ -140,6 +163,10 @@ export class SLAEngine extends BaseConsumer<unknown> {
         )
         break
 
+      case TICKET_TEAM_ASSIGNED_EVENT:
+        await this.handleTeamAssigned(event as DomainEvent<TicketTeamAssignedPayload>)
+        break
+
       // Ogni transizione del motore di workflow, da qualunque cammino: prima
       // presa in carico e conclusione del ticket (vedi handleStepEntered).
       case WORKFLOW_STEP_ENTERED_EVENT:
@@ -161,31 +188,6 @@ export class SLAEngine extends BaseConsumer<unknown> {
     // I controlli OLA/UC non dipendono dallo SLA: un contratto copre il tipo di
     // ticket anche quando nessuna policy SLA gli corrisponde. Prima si
     // armavano solo dopo aver creato lo SLA (e col fuso della policy SLA).
-    const olaContracts = await this.scheduleOLAChecks(event.tenant_id, entityType, payload.id)
-
-    const severity = getSeverity(payload)
-    if (typeof severity !== 'string' || severity === '') {
-      // Senza priorità non c'è policy da scegliere: nessuno SLA, e si dice.
-      console.error(`[sla:engine] No SLA tier for ${entityType} severity="${String(severity)}" — NO SLA CREATED for ${payload.id}`)
-      return
-    }
-
-    const policy = await resolvePolicy(event.tenant_id, entityType, severity, payload.id)
-    if (!policy) {
-      // Nessuna policy del tenant copre il ticket: nessuno SLA. Non è un
-      // errore del job — è configurazione, e la diagnostica conta questi ticket.
-      console.warn(`[sla:engine] No SLA policy matches ${entityType} ${payload.id} (severity="${severity}") — NO SLA CREATED`)
-      return
-    }
-
-    const tier = policy.tiers.find((t) => t.severity === severity)
-    if (!tier) {
-      console.error(
-        `[sla:engine] No SLA tier for ${entityType} severity="${severity}" (policy "${policy.name}") — NO SLA CREATED for ${payload.id}`,
-      )
-      return
-    }
-
     // The SLA clock starts at the entity's created_at, not at consumer
     // processing time (a retried job must not push the deadlines forward).
     // The payload may carry created_at; otherwise read it from the node.
@@ -193,15 +195,45 @@ export class SLAEngine extends BaseConsumer<unknown> {
     const startedAt = typeof payloadCreatedAt === 'string' && !Number.isNaN(new Date(payloadCreatedAt).getTime())
       ? new Date(payloadCreatedAt)
       : await getEntityCreatedAt(event.tenant_id, payload.id)
+    // Stesso istante per i controlli OLA/UC (SL-1).
+    const olaContracts = await this.scheduleOLAChecks(event.tenant_id, entityType, payload.id, startedAt)
 
-    const status = await createSLAStatus({
-      tenantId:   event.tenant_id,
-      entityId:   payload.id,
-      entityType,
-      severity,
-      policy,
-      startedAt,
-    })
+    const severity = getSeverity(payload)
+    const status = await this.startSLA(event.tenant_id, entityType, payload.id, severity, startedAt)
+    if (status && olaContracts) console.log(`[sla:engine] (+${olaContracts} OLA/UC checks for ${payload.id})`)
+  }
+
+  /** Sceglie la policy, crea lo stato e programma i controlli. `null` se nessuna policy copre il ticket. */
+  private async startSLA(
+    tenantId: string,
+    entityType: 'incident' | 'change' | 'service_request' | 'problem',
+    entityId: string,
+    severity: unknown,
+    startedAt: Date,
+  ): Promise<SLAStatus | null> {
+    if (typeof severity !== 'string' || severity === '') {
+      // Senza priorità non c'è policy da scegliere: nessuno SLA, e si dice.
+      console.error(`[sla:engine] No SLA tier for ${entityType} severity="${String(severity)}" — NO SLA CREATED for ${entityId}`)
+      return null
+    }
+
+    const policy = await resolvePolicy(tenantId, entityType, severity, entityId)
+    if (!policy) {
+      // Nessuna policy del tenant copre il ticket: nessuno SLA. Non è un
+      // errore del job — è configurazione, e la diagnostica conta questi ticket.
+      console.warn(`[sla:engine] No SLA policy matches ${entityType} ${entityId} (severity="${severity}") — NO SLA CREATED`)
+      return null
+    }
+
+    const tier = policy.tiers.find((t) => t.severity === severity)
+    if (!tier) {
+      console.error(
+        `[sla:engine] No SLA tier for ${entityType} severity="${severity}" (policy "${policy.name}") — NO SLA CREATED for ${entityId}`,
+      )
+      return null
+    }
+
+    const status = await createSLAStatus({ tenantId, entityId, entityType, severity, policy, startedAt })
 
     await Promise.all([
       scheduleWarning(status),
@@ -210,10 +242,10 @@ export class SLAEngine extends BaseConsumer<unknown> {
     ])
 
     console.log(
-      `[sla:engine] SLA started for ${entityType} ${payload.id}: ` +
-        `response by ${status.response_deadline}, resolve by ${status.resolve_deadline}` +
-        (olaContracts ? ` (+${olaContracts} OLA/UC checks)` : ''),
+      `[sla:engine] SLA started for ${entityType} ${entityId}: ` +
+        `response by ${status.response_deadline}, resolve by ${status.resolve_deadline}`,
     )
+    return status
   }
 
   /**
@@ -223,7 +255,7 @@ export class SLAEngine extends BaseConsumer<unknown> {
    * dalla policy SLA. Ritorna quanti controlli ha armato.
    */
   private async scheduleOLAChecks(
-    tenantId: string, entityType: string, entityId: string,
+    tenantId: string, entityType: string, entityId: string, startedAt: Date,
   ): Promise<number> {
     const contracts = await getActiveOLAContractsFor(tenantId, entityType)
     if (contracts.length === 0) return 0
@@ -231,6 +263,8 @@ export class SLAEngine extends BaseConsumer<unknown> {
       entityId, entityType, tenantId,
       timezone:  await getTenantTimezone(tenantId),
       contracts,
+      startedAt,
+      calendar:  contracts.some((c) => c.business_hours) ? await getServiceCalendar(tenantId) : null,
     })
     return contracts.length
   }
@@ -242,9 +276,67 @@ export class SLAEngine extends BaseConsumer<unknown> {
     return id
   }
 
+  /**
+   * «Avvia SLA» all'ingresso in un passo:
+   *  - lo SLA c'è ed è in pausa → riprende (come `sla_resume`);
+   *  - lo SLA c'è e corre → niente da fare, l'orologio è già partito;
+   *  - lo SLA non c'è (nessuna policy alla creazione, per esempio perché la
+   *    policy dipende dal team e il team è arrivato dopo) → si sceglie la policy
+   *    adesso e l'orologio parte adesso.
+   */
+  private async handleSLAStart(event: DomainEvent<unknown>): Promise<void> {
+    const p = event.payload as { entity_id?: string; entity_type?: string }
+    const entityId = this.eventEntityId(event)
+    const status = await getSLAStatus(event.tenant_id, entityId)
+    if (status?.paused_at) {
+      await this.handleSLAResume(event)
+      return
+    }
+    if (status) {
+      console.log(`[sla:engine] ${event.type}: SLA already running for ${entityId} — nothing to start`)
+      return
+    }
+    const entityType = p.entity_type
+    if (entityType !== 'incident' && entityType !== 'problem' && entityType !== 'service_request') {
+      console.log(`[sla:engine] ${event.type}: ${String(entityType)} has no SLA — nothing to start`)
+      return
+    }
+    const severity = await getEntityPriority(event.tenant_id, entityType, entityId)
+    const started = new Date(event.timestamp)
+    await this.startSLA(event.tenant_id, entityType, entityId, severity, Number.isNaN(started.getTime()) ? new Date() : started)
+  }
+
+  /**
+   * SL-10: il ticket ha un gruppo — la policy più specifica può essere
+   * cambiata (una policy «per team»). Si riseleziona; se è un'altra, lo SLA in
+   * corso passa a quella, e i controlli si riprogrammano sulle scadenze nuove.
+   * Senza SLA (nessuna policy alla creazione) lo si avvia adesso.
+   */
+  private async handleTeamAssigned(event: DomainEvent<TicketTeamAssignedPayload>): Promise<void> {
+    const p = event.payload
+    if (p.entity_type !== 'incident' && p.entity_type !== 'problem' && p.entity_type !== 'service_request') return
+    const severity = await getEntityPriority(event.tenant_id, p.entity_type, p.entity_id)
+    if (typeof severity !== 'string' || severity === '') return
+    const status = await getSLAStatus(event.tenant_id, p.entity_id)
+    if (!status) {
+      await this.startSLA(event.tenant_id, p.entity_type, p.entity_id, severity, await getEntityCreatedAt(event.tenant_id, p.entity_id))
+      return
+    }
+    if (status.resolved_at || !status.policy_id) return
+    const policy = await resolvePolicy(event.tenant_id, p.entity_type, severity, p.entity_id)
+    if (!policy || policy.id === status.policy_id) return
+    const updated = await repolicySLA(event.tenant_id, p.entity_id, policy, severity)
+    if (!updated) return
+    if (!updated.paused_at) {
+      if (!updated.response_met) await scheduleResponseCheck(updated)
+      if (!updated.breached) { await scheduleWarning(updated); await scheduleBreachCheck(updated) }
+    }
+    console.log(`[sla:engine] SLA of ${p.entity_type} ${p.entity_id} moved to policy "${policy.name}" after team assignment: resolve by ${updated.resolve_deadline}`)
+  }
+
   private async handleSLAPause(event: DomainEvent<unknown>, slaType: SLAPauseType): Promise<void> {
     const entityId = this.eventEntityId(event)
-    const paused = await pauseSLA(event.tenant_id, entityId, slaType)
+    const paused = await pauseSLA(event.tenant_id, entityId, slaType, eventInstant(event))
     if (paused) {
       // Stop only the paused clock's timers — they are re-created on resume.
       await cancelSLAJobs(entityId, slaType)
@@ -254,7 +346,7 @@ export class SLAEngine extends BaseConsumer<unknown> {
 
   private async handleSLAResume(event: DomainEvent<unknown>): Promise<void> {
     const entityId = this.eventEntityId(event)
-    const resumed = await resumeSLA(event.tenant_id, entityId)
+    const resumed = await resumeSLA(event.tenant_id, entityId, eventInstant(event))
     if (!resumed) return
     const pausedType = (resumed.paused_type ?? 'both') as SLAPauseType
     // Re-schedule only the clock(s) that were paused, skipping met targets.
@@ -326,6 +418,40 @@ export class SLAEngine extends BaseConsumer<unknown> {
     }
 
     const concludes = p.step_category === 'resolved' || p.step_terminal === true
+    const enteredAt = new Date(p.entered_at)
+
+    // F4 (revisione del 14 set 2026): la pausa segue la CATEGORIA del passo,
+    // che è dato del cliente. Prima pausa e ripresa esistevano solo come azioni
+    // sui passi di attesa del seed degli incident: un problem o una richiesta
+    // fermi in un passo «in attesa» consumavano SLA come se ci si lavorasse.
+    // Entrare in un passo `waiting` ferma l'orologio; entrare in un passo aperto
+    // non di attesa lo fa ripartire. Le azioni esplicite restano e sono
+    // compatibili (pausa e ripresa sono idempotenti).
+    if (!Number.isNaN(enteredAt.getTime()) && !status.resolved_at) {
+      if (p.step_category === 'waiting' && !status.paused_at) {
+        const paused = await pauseSLA(event.tenant_id, p.entity_id, 'both', enteredAt)
+        if (paused) {
+          await cancelSLAJobs(p.entity_id, 'both')
+          console.log(`[sla:engine] SLA paused for ${p.entity_type} ${p.entity_id}: entered waiting step "${p.step_name}"`)
+        }
+      } else if (p.step_category !== 'waiting' && !concludes && status.paused_at) {
+        await this.handleSLAResume({ ...event, payload: { entity_id: p.entity_id }, timestamp: p.entered_at })
+      }
+    }
+    // SL-3: rientro da un passo concluso a uno aperto → lo SLA si riapre, con la
+    // scadenza spostata del tempo passato da risolto, e i controlli ripartono
+    // (la violazione, se c'è già stata, non si ripete).
+    if (!concludes && status.resolved_at) {
+      const at = new Date(p.entered_at)
+      if (Number.isNaN(at.getTime())) throw new Error(`[sla:engine] ${event.type}: entered_at is not a valid instant (${JSON.stringify(p.entered_at)})`)
+      const reopened = await reopenSLA(event.tenant_id, p.entity_id, at)
+      if (reopened && !reopened.breached) {
+        await scheduleWarning(reopened)
+        await scheduleBreachCheck(reopened)
+      }
+      console.log(`[sla:engine] SLA reopened for ${p.entity_type} ${p.entity_id} entering "${p.step_name}": resolve by ${reopened?.resolve_deadline ?? '?'}`)
+      return
+    }
     if (concludes && !status.resolved_at) {
       const at = new Date(p.entered_at)
       if (Number.isNaN(at.getTime())) throw new Error(`[sla:engine] ${event.type}: entered_at is not a valid instant (${JSON.stringify(p.entered_at)})`)

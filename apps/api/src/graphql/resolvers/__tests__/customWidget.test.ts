@@ -47,6 +47,22 @@ describe('validateWidgetConfig (C-23)', () => {
   })
 })
 
+describe('widget sugli incident (giro nel browser del 14 set 2026)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('raggruppare per priority legge n.severity, dove la priorità è salvata', async () => {
+    const run = vi.fn().mockResolvedValue({ records: [{ get: (k: string) => ({ label: 'medium', value: 3 } as Record<string, unknown>)[k] }] })
+    vi.mocked(getSession).mockReturnValue({ run, executeRead: vi.fn().mockImplementation((fn: (tx: { run: typeof run }) => unknown) => fn({ run })), close: vi.fn() } as never)
+    const out = await customWidgetResolvers.Query.widgetDataPreview(null, { entityType: 'incident', metric: 'count_by_field', groupByField: 'priority' }, ctx) as { series: Array<{ label: string }> }
+    expect(String(run.mock.calls[0]![0])).toContain('n.severity AS label')
+    expect(out.series[0]!.label).toBe('medium')
+  })
+
+  it('environment non è un campo degli incident', () => {
+    expect(code(() => validateWidgetConfig({ entityType: 'incident', metric: 'count_by_field', groupByField: 'environment', filterField: null }))).toBe('BAD_USER_INPUT')
+  })
+})
+
 describe('widgetDataPreview — null aggregate is an error, never 0', () => {
   beforeEach(() => vi.clearAllMocks())
 

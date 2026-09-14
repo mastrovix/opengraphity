@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Outlet } from 'react-router-dom'
@@ -11,9 +12,12 @@ interface MeData {
 }
 
 export function PortalLayout() {
-  const { t }      = useTranslation()
+  const { t, i18n } = useTranslation()
   // La lingua del cliente, come nel web: qui e la sola che decide.
   usePortalLanguage()
+  // Il titolo della scheda nella lingua attiva: era «Portale IT» scritto
+  // nell'HTML anche con l'interfaccia inglese (giro del 14 set 2026).
+  useEffect(() => { document.title = t('portal.documentTitle') }, [t, i18n.resolvedLanguage])
   const { data }   = useQuery<MeData>(GET_ME)
   const userName   = data?.me?.name ?? data?.me?.email ?? '—'
   const year       = new Date().getFullYear()

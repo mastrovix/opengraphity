@@ -15,9 +15,12 @@ vi.mock('@opengraphity/neo4j', () => ({ runQuery: (...a: unknown[]) => runQuery(
 vi.mock('@opengraphity/events', () => ({ publish: vi.fn() }))
 vi.mock('../../graphql/resolvers/ci-utils.js', () => ({ withSession: vi.fn().mockImplementation((fn: (s: unknown) => unknown) => fn({})) }))
 const assignIncidentToTeam = vi.fn(async () => ({}))
-vi.mock('../../services/incidentService.js', () => ({ assignIncidentToTeam }))
+const assignIncidentToUser = vi.fn(async () => ({}))
+vi.mock('../../services/incidentService.js', () => ({ assignIncidentToTeam, assignIncidentToUser }))
 const setTicketTeam = vi.fn(async () => ({ teamName: 'Rete' }))
-vi.mock('../../services/ticketAssignment.js', () => ({ setTicketTeam }))
+const setTicketUser = vi.fn(async () => ({ userName: 'Anna' }))
+const assertUserInAssignedTeam = vi.fn(async () => ({ teamId: 't', teamName: 'Rete' }))
+vi.mock('../../services/ticketAssignment.js', () => ({ setTicketTeam, setTicketUser, assertUserInAssignedTeam }))
 
 const { executeActions } = await import('../actionExecutor.js')
 const ctx = (entityType: string) => ({ tenantId: 't1', userId: 'system', entityId: 'x-1', entityType, entity: { id: 'x-1' }, source: 'business_rule' as const, sourceName: 'Hardware al Service Desk' })
@@ -44,6 +47,21 @@ describe('create_comment', () => {
     expect(runQuery.mock.calls[0]![2]).toMatchObject({ authorLabel: 'Hardware al Service Desk', text: 'Guasto hardware' })
     runQuery.mockClear()
     await executeActions([{ type: 'create_comment', params: { text: 'Nota' } }], ctx('problem'))
-    expect(String(runQuery.mock.calls[0]![1])).toMatch(/MATCH \(e:Problem[\s\S]*CREATE \(c:ProblemComment/)
+    // Un modello solo (revisione del 14 set 2026 · F1): anche il problem ha Comment.
+    expect(String(runQuery.mock.calls[0]![1])).toMatch(/MATCH \(e:Problem[\s\S]*CREATE \(c:Comment/)
+    expect(runQuery.mock.calls[0]![2]).toMatchObject({ isInternal: true })
+  })
+})
+
+/** AU-5 (revisione del 14 set 2026): «assegna utente» segue la regola dell'assegnazione a mano. */
+describe('assign_user', () => {
+  it('incident → il servizio (gruppo prima, poi un suo membro)', async () => {
+    await executeActions([{ type: 'assign_user', params: { user_id: 'u-9' } }], ctx('incident'))
+    expect(assignIncidentToUser).toHaveBeenCalledWith('x-1', 'u-9', { tenantId: 't1', userId: expect.any(String) })
+  })
+  it('problem → il controllo di appartenenza al gruppo prima della scrittura', async () => {
+    await executeActions([{ type: 'assign_user', params: { user_id: 'u-9' } }], ctx('problem'))
+    expect(assertUserInAssignedTeam).toHaveBeenCalledWith({}, 'Problem', 'x-1', 'u-9', 't1')
+    expect(setTicketUser).toHaveBeenCalledWith({}, 'Problem', 'x-1', 'u-9', 't1')
   })
 })

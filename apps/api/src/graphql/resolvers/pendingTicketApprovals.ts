@@ -27,7 +27,7 @@ export async function pendingTicketApprovals(
       WHERE coalesce(c.deleted, false) = false
       MATCH (t:Team {id: a.team_id, tenant_id: $tenantId})
       WHERE $isAdmin OR exists((:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(t))
-      RETURN c.id AS entityId, c.code AS number, c.title AS title, t.name AS detail, a.created_at AS requestedAt
+      RETURN c.id AS entityId, c.number AS number, c.title AS title, t.name AS detail, a.created_at AS requestedAt
       ORDER BY requestedAt DESC
     `, { tenantId: ctx.tenantId, userId: ctx.userId, isAdmin: ctx.role === 'admin' }))
     const requests = ctx.role === 'admin' || ctx.role === 'operator'

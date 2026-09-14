@@ -45,10 +45,10 @@ export const GET_CHANGE = gql`
       changeOwner { id name email }
       approvalBy { id name email }
       workflowInstance { id currentStep status }
-      availableTransitions { toStep label requiresInput inputField condition }
+      availableTransitions { toStep label labels { language label } requiresInput inputField condition }
       resolvesIncidents { id number title status severity removable }
       resolvesProblems { id number title status priority removable }
-      approvals { kind teamId teamName status approvedByName approvedAt canApprove }
+      approvals { kind teamId teamName status approvedByName approvedAt canApprove onBehalf }
       suppressedEvents { ...EventRowFields }
     }
   }
@@ -191,6 +191,8 @@ export const GET_CHANGE_AUDIT_TRAIL = gql`
       timestamp
       action
       detail
+      detailKey
+      detailParams
       actor { id name }
     }
   }

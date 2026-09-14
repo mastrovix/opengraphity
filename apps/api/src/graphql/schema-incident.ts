@@ -65,6 +65,8 @@ export function incidentSDL(): string {
   type Comment {
     id:        ID!
     text:      String!
+    """Nota di lavoro (solo staff) o risposta pubblica, visibile anche dal portale."""
+    isInternal: Boolean!
     author:    User
     """Chi l'ha scritto quando non è una persona: 'automation' (una regola) o 'monitoring'."""
     authorKind:  String

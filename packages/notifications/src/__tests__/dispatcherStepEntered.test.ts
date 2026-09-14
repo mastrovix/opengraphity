@@ -19,6 +19,7 @@ const runQueries: Array<{ cypher: string; params: Record<string, unknown> }> = [
 /** Regole per (tenant, event_type), come le trova la query del dispatcher. */
 let rulesByType: Record<string, Array<Record<string, unknown>>> = {}
 
+vi.mock('../locale.js', () => ({ loadNotificationLocale: vi.fn(async () => ({ language: 'en', timeZone: 'UTC' })), invalidateNotificationLocale: vi.fn() }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => ({
     executeRead: async (fn: (tx: { run: (c: string, p: Record<string, unknown>) => Promise<unknown> }) => Promise<unknown>) =>

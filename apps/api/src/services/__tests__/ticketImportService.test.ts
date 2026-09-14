@@ -386,4 +386,15 @@ describe('importKBArticles', () => {
     expect(result.errors).toHaveLength(1)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
+
+  /** Revisione del 14 set 2026 · F5: la categoria di un articolo importato è una categoria KB del Dizionario. */
+  it('categoria fuori dal vocabolario kb_category → riga in errore che la nomina; una valida passa', async () => {
+    const result = await importKBArticles([
+      { external_id: 'K-1', title: 'Guida', category: 'boh' },
+      { external_id: 'K-2', title: 'Guida DB', category: 'database' },
+    ], ctx)
+    expect(result.created).toBe(1)
+    expect(result.errors).toEqual([expect.objectContaining({ externalId: 'K-1', message: expect.stringContaining('boh') })])
+    expect(mergedKBParams(0)['category']).toBe('database')
+  })
 })

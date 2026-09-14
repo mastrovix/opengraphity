@@ -17,13 +17,13 @@ interface Ticket {
 interface Stats { open: number; inProgress: number; resolved: number; total: number }
 
 export function HomePage() {
-  const { t }     = useTranslation()
+  const { t, i18n } = useTranslation()
   const navigate  = useNavigate()
 
   const { data: meData }     = useQuery<{ me: { name: string; email: string } | null }>(GET_ME)
   const { data: statsData }  = useQuery<{ myTicketStats: Stats }>(GET_MY_TICKET_STATS)
   const { data: ticketData } = useQuery<{ myTickets: { items: Ticket[]; total: number } }>(
-    GET_MY_TICKETS, { variables: { pageSize: 5 } },
+    GET_MY_TICKETS, { variables: { pageSize: 5, language: i18n.resolvedLanguage ?? i18n.language } },
   )
 
   const name    = meData?.me?.name ?? meData?.me?.email ?? '…'

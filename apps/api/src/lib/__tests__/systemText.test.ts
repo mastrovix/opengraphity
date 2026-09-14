@@ -25,7 +25,8 @@ describe('systemText: i testi che il prodotto scrive nei ticket', () => {
   })
 
   it('le date nella lingua e nel fuso del cliente, non ISO', () => {
-    expect(formatInstantIn('en', '2026-09-13T11:30:11.938Z', 'Europe/Rome')).toMatch(/13 Sept 2026|Sep 13, 2026/)
-    expect(formatInstantIn('en', '2026-09-13T11:30:11.938Z', 'Europe/Rome')).toMatch(/13:30|1:30/)
+    // Giro del 14 set 2026 (#51): «Sep 14, 2026, 1:07 AM» era la convenzione americana.
+    expect(formatInstantIn('en', '2026-09-13T11:30:11.938Z', 'Europe/Rome')).toMatch(/^13 Sept? 2026, 13:30$/)
+    expect(formatInstantIn('it', '2026-09-13T11:30:11.938Z', 'Europe/Rome')).toBe('13 set 2026, 13:30')
   })
 })

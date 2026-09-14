@@ -271,7 +271,7 @@ export function CIDetailPage() {
   const [showAddRel, setShowAddRel] = useState(false)
   const [addRelForm, setAddRelForm] = useState<{
     relationType: string; direction: 'outgoing' | 'incoming'; search: string; targetCI: CIRef | null
-  }>({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null })
+  }>({ relationType: '', direction: 'outgoing', search: '', targetCI: null })
   const [deleteRel, setDeleteRel] = useState<{
     sourceId: string; targetId: string; relationType: string; name: string
   } | null>(null)
@@ -309,10 +309,28 @@ export function CIDetailPage() {
 
   // Relation types offered when adding a relation — driven by this CI type's
   // metamodel relations (e.g. HAS_MEMBER for groups), not a fixed list.
+  //
+  // Giro nel browser del 14 set 2026 (#56): una relazione del metamodello può
+  // dichiarare più tipi (`DEPENDS_ON|HOSTED_ON|INSTALLED_ON` sul server). Il
+  // modulo li offriva come UNA opzione, lo stato restava `DEPENDS_ON` e la
+  // relazione nasceva di quel tipo, nella direzione scelta a mano — spesso
+  // rovesciata. Ora ogni tipo è un'opzione e la direzione viene dalla
+  // relazione del metamodello, non da un pulsante.
   const relationTypeOptions = useMemo(() => {
-    const fromMeta = [...new Set((ciType?.relations ?? []).map(r => r.relationshipType))]
-    return fromMeta.length > 0 ? fromMeta : ['DEPENDS_ON', 'HOSTED_ON', 'USES_CERTIFICATE']
+    const seen = new Set<string>()
+    const options: { value: string; relationType: string; direction: 'outgoing' | 'incoming'; relationLabel: string }[] = []
+    for (const r of [...(ciType?.relations ?? [])].sort((a, b) => a.order - b.order)) {
+      const direction = r.direction === 'incoming' ? 'incoming' : 'outgoing'
+      for (const relationType of r.relationshipType.split('|').map(x => x.trim()).filter(Boolean)) {
+        const value = `${direction}:${relationType}`
+        if (seen.has(value)) continue
+        seen.add(value)
+        options.push({ value, relationType, direction, relationLabel: r.label })
+      }
+    }
+    return options
   }, [ciType])
+  const chosenRelation = relationTypeOptions.find(o => o.relationType === addRelForm.relationType && o.direction === addRelForm.direction) ?? relationTypeOptions[0] ?? null
 
   const detailQuery = useMemo(() => {
     if (!typeName || !ciType) return null
@@ -448,14 +466,14 @@ export function CIDetailPage() {
 
   // ── Relation handlers ──────────────────────────────────────────────────
   async function handleAddRelation() {
-    if (!addRelForm.targetCI || !ci) return
-    const sourceId = addRelForm.direction === 'outgoing' ? ci.id : addRelForm.targetCI.id
-    const targetId = addRelForm.direction === 'outgoing' ? addRelForm.targetCI.id : ci.id
+    if (!addRelForm.targetCI || !ci || !chosenRelation) return
+    const sourceId = chosenRelation.direction === 'outgoing' ? ci.id : addRelForm.targetCI.id
+    const targetId = chosenRelation.direction === 'outgoing' ? addRelForm.targetCI.id : ci.id
     try {
-      await addRelMutation({ variables: { sourceId, targetId, relationType: addRelForm.relationType } })
+      await addRelMutation({ variables: { sourceId, targetId, relationType: chosenRelation.relationType } })
       toast.success(t('pages.ci.relationAdded'))
       setShowAddRel(false)
-      setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null })
+      setAddRelForm({ relationType: '', direction: 'outgoing', search: '', targetCI: null })
       refetch()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
@@ -788,7 +806,7 @@ export function CIDetailPage() {
                     </Button>
                     <Button
                       onClick={() => void handleAddRelation()}
-                      disabled={!addRelForm.targetCI}
+                      disabled={!addRelForm.targetCI || !chosenRelation}
                       style={{ fontSize: 'var(--font-size-body)', ...(addRelForm.targetCI ? {} : { backgroundColor: palette.neutral.borderStrong }) }}
                     >
                       {t('pages.ci.addRelation')}
@@ -802,30 +820,26 @@ export function CIDetailPage() {
                       <label htmlFor={relTypeId} style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>
                         {t('pages.ci.relationType')}
                       </label>
-                      <Select
-                        id={relTypeId}
-                        value={addRelForm.relationType}
-                        onChange={e => setAddRelForm(prev => ({ ...prev, relationType: e.target.value, targetCI: null, search: '' }))}
-                        style={{ padding: '8px 10px', outline: undefined }}
-                      >
-                        {relationTypeOptions.map(rt => <option key={rt} value={rt}>{rt.replace(/_/g, ' ')}</option>)}
-                      </Select>
+                      {relationTypeOptions.length === 0 ? (
+                        <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('pages.ci.noRelationTypes')}</p>
+                      ) : (
+                        <Select
+                          id={relTypeId}
+                          value={chosenRelation?.value ?? ''}
+                          onChange={e => {
+                            const option = relationTypeOptions.find(o => o.value === e.target.value)
+                            if (option) setAddRelForm(prev => ({ ...prev, relationType: option.relationType, direction: option.direction, targetCI: null, search: '' }))
+                          }}
+                          style={{ padding: '8px 10px', outline: undefined }}
+                        >
+                          {relationTypeOptions.map(o => (
+                            <option key={o.value} value={o.value}>
+                              {t('pages.ci.relationOption', { relation: o.relationLabel, type: o.relationType.replace(/_/g, ' '), direction: t(o.direction === 'outgoing' ? 'pages.ci.dirOutgoing' : 'pages.ci.dirIncoming') })}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
                     </div>
-
-                    {/* Direction */}
-                    <fieldset style={{ border: 'none', padding: 0, margin: 0, minWidth: 0 }}>
-                      <legend style={{ display: 'block', padding: 0, fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6 }}>
-                        {t('pages.ci.direction')}
-                      </legend>
-                      <div style={{ display: 'flex', gap: 12 }}>
-                        {(['outgoing', 'incoming'] as const).map(dir => (
-                          <label key={dir} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer', color: addRelForm.direction === dir ? 'var(--color-brand)' : 'var(--color-slate)' }}>
-                            <input type="radio" name="rel-dir" checked={addRelForm.direction === dir} onChange={() => setAddRelForm(prev => ({ ...prev, direction: dir }))} />
-                            {dir === 'outgoing' ? t('pages.ci.dirOutgoing') : t('pages.ci.dirIncoming')}
-                          </label>
-                        ))}
-                      </div>
-                    </fieldset>
 
                     {/* CI search */}
                     <div style={{ position: 'relative' }}>
@@ -874,6 +888,7 @@ export function CIDetailPage() {
             )}
 
           <CIIncidentsCard ciId={ci.id} />
+          <CIIncidentsCard ciId={ci.id} kind="problem" />
           <CIChangeList ciId={ci.id} />
 
           <AttachmentsSection entityType="ci" entityId={ci.id} />

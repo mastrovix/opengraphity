@@ -8,6 +8,7 @@
  */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { useQuery } from '@apollo/client/react'
 import { Gauge } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
@@ -38,6 +39,7 @@ interface SLAReport {
 
 export function SLAReportPage() {
   const { t } = useTranslation()
+  const { labelOf: typeLabel } = useItilTypeLabels()
   const [windowDays, setWindowDays] = useState(30)
   const { data, loading, error, refetch } = useQuery<{ slaReport: SLAReport }>(GET_SLA_REPORT, {
     variables: { windowDays }, fetchPolicy: 'cache-and-network',
@@ -75,7 +77,7 @@ export function SLAReportPage() {
                 // Il perché sta nel suggerimento: nella cella occupava sei righe.
                 : <span title={t('pages.slaReport.noPolicyRecordedHint')} style={{ color: 'var(--color-slate-light)' }}>{t('pages.slaReport.noPolicyRecorded')}</span>
           ) },
-          { key: 'entityType', label: t('admin.sla.scopeField'), sortable: true, render: (v) => v ? olaScopeLabel(String(v), t) : '—' },
+          { key: 'entityType', label: t('admin.sla.scopeField'), sortable: true, render: (v) => v ? olaScopeLabel(String(v), t, typeLabel) : '—' },
           // Risposta e risoluzione in una colonna: con due, la tabella usciva dallo schermo.
           { key: 'resolveMinutes', label: t('pages.slaReport.targetsShort'), sortable: true, render: (_v, r) => (
             r.responseMinutes == null && r.resolveMinutes == null ? '—' : `${olaMinutes(r.responseMinutes, t)} / ${olaMinutes(r.resolveMinutes, t)}`

@@ -119,7 +119,7 @@ describe('WorkflowEngine', () => {
     it('definizione senza nessuno step iniziale → errore che la NOMINA (non «non esiste»)', async () => {
       const session = makeCreateSession(null, 'Incident Management')
       await expect(new WorkflowEngine().createInstance(session as never, 'c-one', 'inc-1', 'incident'))
-        .rejects.toThrow(/Workflow "Incident Management".*non ha nessuno step iniziale/s)
+        .rejects.toThrow(/Workflow "Incident Management".*has no initial step/s)
     })
 
     it('nessuna definizione attiva → il messaggio storico', async () => {
@@ -156,7 +156,7 @@ describe('WorkflowEngine', () => {
       })
       const session = { executeRead: vi.fn(), executeWrite: vi.fn(async (w: (tx: { run: typeof txRun }) => Promise<unknown>) => w({ run: txRun })) }
       await expect(new WorkflowEngine().createInstance(session as never, 'c-one', 'inc-1', 'incident', undefined, 'sicurezza'))
-        .rejects.toThrow(/si applica alla categoria "sicurezza".*riservata alla categoria "security"/s)
+        .rejects.toThrow(/applies to category "sicurezza".*reserved for category "security"/s)
     })
 
     it('categoria che non combacia con nessuna variante → l\'engine elenca le varianti esistenti (nessun ripiego muto)', async () => {
@@ -403,5 +403,28 @@ describe('WorkflowEngine — ingresso nel passo', () => {
     const session = makeWritableSession([row], 1)
     await new WorkflowEngine().transition(session as never, { ...manual, toStepName: 'fulfilled' }, actx)
     expect(session.txRun.mock.calls.map((c) => String(c[0])).join('\n')).not.toMatch(/completed_at/)
+  })
+
+  /** Giro del 14 set 2026 (#43): l'articolo pubblicato diceva «Published: —». */
+  it('un articolo KB che entra in un passo di categoria published riceve published_at, anche se il passo è rinominato', async () => {
+    const row = stateRow({
+      wi: { properties: { id: 'wi-1', tenant_id: 'c-one', entity_id: 'kb-1', entity_type: 'kb_article', definition_id: 'def-1', created_at: 'x' } },
+      nextStepName: 'online', nextStepCategory: 'published', nextStepTerminal: false,
+    })
+    const session = makeWritableSession([row], 1)
+    await new WorkflowEngine().transition(session as never, { ...manual, toStepName: 'online' }, actx)
+    const sync = session.txRun.mock.calls.find((c) => String(c[0]).includes('KBArticle'))!
+    expect(String(sync[0])).toMatch(/entity\.published_at = \$now/)
+    expect((sync[1] as Record<string, unknown>)['status']).toBe('online')
+  })
+
+  it('un passo CHIAMATO published ma di altra categoria non scrive published_at', async () => {
+    const row = stateRow({
+      wi: { properties: { id: 'wi-1', tenant_id: 'c-one', entity_id: 'kb-1', entity_type: 'kb_article', definition_id: 'def-1', created_at: 'x' } },
+      nextStepName: 'published', nextStepCategory: 'waiting', nextStepTerminal: false,
+    })
+    const session = makeWritableSession([row], 1)
+    await new WorkflowEngine().transition(session as never, { ...manual, toStepName: 'published' }, actx)
+    expect(session.txRun.mock.calls.map((c) => String(c[0])).join('\n')).not.toMatch(/published_at/)
   })
 })

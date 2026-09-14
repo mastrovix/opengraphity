@@ -12,6 +12,7 @@ vi.mock('@opengraphity/events', () => ({
   publish: (...args: unknown[]) => { callOrder.push('publish'); return publish(...(args as [])) },
 }))
 vi.mock('../status.js', () => ({
+  ticketReference: vi.fn(async () => ({ number: 'INC00000012', title: 'Rete giù' })),
   getSLAStatus: (...args: unknown[]) => getSLAStatus(...(args as [])),
   markBreached: (...args: unknown[]) => { callOrder.push('markBreached'); return markBreached(...(args as [])) },
 }))
@@ -60,6 +61,15 @@ describe('processSLAJob — defense in depth against met targets (D-01)', () => 
     expect(event.type).toBe('sla.warning')
     expect(event.payload.minutes_remaining).toBe(0)
     expect(event.id).toBe('response-breach-sla-1')
+    // Giro del 14 set 2026 (#18): il payload dice di quale ticket si tratta e cosa è scaduto.
+    expect(event.payload).toMatchObject({ target: 'response', number: 'INC00000012', title: 'Rete giù' })
+  })
+
+  it('sla.warning: il payload porta numero e titolo del ticket e il bersaglio resolve', async () => {
+    getSLAStatus.mockResolvedValue(status())
+    await processSLAJob(job('sla.warning'))
+    const event = publish.mock.calls[0]![0] as unknown as { payload: Record<string, unknown> }
+    expect(event.payload).toMatchObject({ target: 'resolve', number: 'INC00000012', title: 'Rete giù', entity_id: 'inc-1' })
   })
 
   it('sla.warning: skipped when resolve_met', async () => {

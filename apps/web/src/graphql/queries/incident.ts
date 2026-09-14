@@ -32,7 +32,7 @@ export const GET_INCIDENT = gql`
       resolvedAt
       assignee { id name email }
       assignedTeam { id name }
-      affectedCIs { id name type status environment }
+      affectedCIs { id name type status environment ownerGroup { id } supportGroup { id } }
       impactedApplications {
         distance
         via
@@ -44,18 +44,19 @@ export const GET_INCIDENT = gql`
       linkedProblems { id number title status removable }
       linkedChanges { id number title status removable }
       availableTransitions {
-        toStep label requiresInput inputField condition
+        toStep label labels { language label } requiresInput inputField condition
       }
       workflowHistory {
         id stepName enteredAt exitedAt durationMs
         triggeredBy triggerType notes
       }
       comments {
-        id text createdAt updatedAt authorKind authorLabel
+        id text isInternal createdAt updatedAt authorKind authorLabel
         author { id name email }
       }
       slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt }
-      correlatedEvents { ...EventRowFields }
+      # history: who opened the incident from the alarm (monitoring or an operator)
+      correlatedEvents { ...EventRowFields history(limit: 20) { kind incident { id } } }
       correlatedEventsPurged
       impactedServices { ...ImpactedServiceFields }
     }
@@ -85,7 +86,7 @@ export const GET_SERVICE_REQUEST = gql`
       requestedBy { id name email }
       assignee { id name email }
       workflowInstance { id currentStep status }
-      availableTransitions { toStep label requiresInput inputField }
+      availableTransitions { toStep label labels { language label } requiresInput inputField }
       slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt }
     }
   }

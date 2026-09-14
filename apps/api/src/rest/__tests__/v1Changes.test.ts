@@ -224,11 +224,16 @@ describe('POST /api/v1/changes/:id/transition', () => {
 })
 
 describe('GET /api/v1/changes/:id/status', () => {
+  // Categorie e scopi come li ha il dato vero: `deployment` NON è una categoria
+  // (WORKFLOW_STEP_CATEGORIES) ma il nome di fabbrica del passo di scopo
+  // `implementation`. Il fixture di prima usava la categoria inventata, e così
+  // nascondeva che la rotta riconosceva il passo solo dal NOME (revisione del
+  // 14 set 2026 · F17).
   const steps = [
-    { name: 'draft',      isInitial: true,  isTerminal: false, isOpen: true, category: 'draft',      stepOrder: 0 },
-    { name: 'assessment', isInitial: false, isTerminal: false, isOpen: true, category: 'assessment', stepOrder: 1 },
-    { name: 'deployment', isInitial: false, isTerminal: false, isOpen: true, category: 'deployment', stepOrder: 4 },
-    { name: 'review',     isInitial: false, isTerminal: false, isOpen: true, category: 'review',     stepOrder: 5 },
+    { name: 'draft',      isInitial: true,  isTerminal: false, isOpen: true, category: 'active', purpose: null,             stepOrder: 0 },
+    { name: 'assessment', isInitial: false, isTerminal: false, isOpen: true, category: 'active', purpose: 'assessment',     stepOrder: 1 },
+    { name: 'deployment', isInitial: false, isTerminal: false, isOpen: true, category: 'active', purpose: 'implementation', stepOrder: 4 },
+    { name: 'review',     isInitial: false, isTerminal: false, isOpen: true, category: 'active', purpose: 'review',         stepOrder: 5 },
   ]
 
   it('unknown id → 404', async () => {
@@ -249,6 +254,23 @@ describe('GET /api/v1/changes/:id/status', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ data: { code: 'CHG0001', phase, approvalStatus: 'approved', deployApproved: expected } })
     expect(getWorkflowSteps).toHaveBeenCalledWith(expect.anything(), 'tenant-1', 'change')
+  })
+
+  it('passo di rilascio RINOMINATO: si riconosce dallo scopo, non dal nome', async () => {
+    const renamed = steps.map((st) => st.name === 'deployment' ? { ...st, name: 'rilascio' } : st)
+    vi.mocked(runQueryOne).mockResolvedValueOnce({ code: 'CHG0001', approvalStatus: 'approved', phase: 'rilascio' })
+    vi.mocked(getWorkflowSteps).mockResolvedValueOnce(renamed)
+    const res = await fetch(`${base}/chg-1/status`)
+    expect(res.status).toBe(200)
+    expect((await res.json() as { data: { deployApproved: boolean } }).data.deployApproved).toBe(true)
+  })
+
+  it('nessun passo con scopo implementation: errore, non «deploy non approvato» in silenzio', async () => {
+    const withoutPurpose = steps.map((st) => st.purpose === 'implementation' ? { ...st, purpose: null } : st)
+    vi.mocked(runQueryOne).mockResolvedValueOnce({ code: 'CHG0001', approvalStatus: 'approved', phase: 'review' })
+    vi.mocked(getWorkflowSteps).mockResolvedValueOnce(withoutPurpose)
+    const res = await fetch(`${base}/chg-1/status`)
+    expect(res.status).toBe(500)
   })
 
   it('legacy change without workflow → phase null, deployApproved false, no step lookup', async () => {

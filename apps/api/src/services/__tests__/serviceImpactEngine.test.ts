@@ -19,6 +19,8 @@ import { ROLE_BY_CI_LABEL } from '../../lib/serviceVocabularies.js'
 const TENANT_ROLES: ReadonlyMap<string, 'component' | 'infrastructure' | 'certificate'> =
   new Map([...Object.entries(ROLE_BY_CI_LABEL), ['ErpSystem', 'component']] as [string, 'component' | 'infrastructure' | 'certificate'][])
 
+// Le note si compongono nella lingua del cliente: qui italiano, come le attese.
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
 // Revisione 2 · D6.2: la lettura della mappa prende `suppress_upstream_hops`

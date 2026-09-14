@@ -4,6 +4,7 @@ import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
 import { Link } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import i18n from '@/i18n/i18n'
 import { CheckSquare, Clock, CheckCircle, XCircle, ChevronDown, ChevronRight, ExternalLink, BookOpen, GitPullRequest, AlertCircle } from 'lucide-react'
 import { ListPageHeader } from '@/components/ListPageHeader'
@@ -137,13 +138,16 @@ function EntityLink({ entityType, entityId }: { entityType: string; entityId: st
   )
 }
 
-/** Il tipo del ticket come lo legge chi usa il prodotto, non il nome interno. */
-function entityTypeLabel(t: (k: string) => string, entityType: string): string {
-  const keys: Record<string, string> = {
-    change: 'pages.approvals.entity.change', incident: 'pages.approvals.entity.incident', problem: 'pages.approvals.entity.problem',
-    service_request: 'pages.approvals.entity.service_request', kb_article: 'pages.approvals.entity.kb_article',
-  }
-  return keys[entityType] ? t(keys[entityType]) : entityType
+/**
+ * Il tipo del ticket come lo legge chi usa il prodotto, non il nome interno.
+ * Per i tipi ITIL è l'etichetta del metamodello del cliente (revisione del 14
+ * set 2026 · F16): prima erano quattro traduzioni fisse, e un tipo rinominato
+ * nel designer restava col nome di fabbrica. Gli articoli KB non sono tipi ITIL.
+ */
+function useEntityTypeLabel(): (entityType: string) => string {
+  const { t } = useTranslation()
+  const { labelOf } = useItilTypeLabels()
+  return (entityType) => entityType === 'kb_article' ? t('pages.approvals.entity.kb_article') : labelOf(entityType)
 }
 
 /**
@@ -152,12 +156,13 @@ function entityTypeLabel(t: (k: string) => string, entityType: string): string {
  */
 function TicketApprovalCard({ item }: { item: PendingTicketApproval }) {
   const { t } = useTranslation()
+  const entityTypeLabel = useEntityTypeLabel()
   return (
     <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, background: colors.white, marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         <StatusBadge status="pending" />
         <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', background: colors.slateBg, padding: '2px 6px', borderRadius: 4 }}>
-          {entityTypeLabel(t, item.kind)}
+          {entityTypeLabel(item.kind)}
         </span>
         {item.detail && (
           <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
@@ -291,6 +296,7 @@ function ApprovalCard({
   showActions: boolean
 }) {
   const { t } = useTranslation()
+  const entityTypeLabel = useEntityTypeLabel()
   const confirm = useConfirm()
   const [noteOpen, setNoteOpen] = useState<'approve' | 'reject' | null>(null)
   const [note, setNote]         = useState('')
@@ -307,7 +313,7 @@ function ApprovalCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <StatusBadge status={req.status} />
             <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', background: colors.slateBg, padding: '2px 6px', borderRadius: 4 }}>
-              {entityTypeLabel(t, req.entityType)}
+              {entityTypeLabel(req.entityType)}
             </span>
             <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
               {t(req.approvalType === 'any' ? 'pages.approvals.anyApprover'
@@ -406,6 +412,7 @@ function ApprovalCard({
 
 export function ApprovalsPage() {
   const { t } = useTranslation()
+  const entityTypeLabel = useEntityTypeLabel()
   const [tab, setTab] = useState<'mine' | 'all'>('mine')
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
@@ -418,7 +425,7 @@ export function ApprovalsPage() {
       { value: 'rejected', label: t('pages.approvals.statusRejected') },
     ]},
     { key: 'entityType', label: t('pages.audit.colEntityType'), type: 'enum', options: [
-      { value: 'change', label: t('pages.approvals.entity.change') }, { value: 'kb_article', label: t('pages.approvals.entity.kb_article') },
+      { value: 'change', label: entityTypeLabel('change') }, { value: 'kb_article', label: entityTypeLabel('kb_article') },
     ]},
     { key: 'title', label: t('common.title'), type: 'text' },
     { key: 'requestedAt', label: t('pages.approvals.requestedAt'), type: 'date' },

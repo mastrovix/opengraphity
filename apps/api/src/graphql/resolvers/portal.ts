@@ -1,5 +1,4 @@
 import { GraphQLError } from 'graphql'
-import { v4 as uuidv4 } from 'uuid'
 import type { Session } from 'neo4j-driver'
 import { withSession } from './ci-utils.js'
 import { ForbiddenError, ValidationError } from '../../lib/errors.js'
@@ -12,29 +11,25 @@ import { toNumber } from '@opengraphity/neo4j'
 import { getStepNamesByClass, getWorkflowSteps, TICKET_STATUS_CLASSES, type TicketStatusClass } from '../../lib/workflowHelpers.js'
 import { systemText } from '../../lib/systemText.js'
 import { transitionErrorI18n } from '../../lib/transitionError.js'
-
-/** Load allowed values for a system enum from Neo4j (cached per request). */
-async function loadEnumValues(tenantId: string, enumName: string): Promise<Set<string>> {
-  return withSession(async (session) => {
-    const res = await session.executeRead((tx) =>
-      tx.run(`
-        MATCH (e:EnumTypeDefinition {name: $name, tenant_id: $tenantId})
-        RETURN e.values AS values
-      `, { name: enumName, tenantId }),
-    )
-    const values = res.records[0]?.get('values') as string[] | undefined
-    return new Set(values ?? [])
-  })
-}
+import * as incidentService from '../../services/incidentService.js'
+import { writeTicketComment } from '../../lib/ticketComments.js'
+import { localizedLabel } from '@opengraphity/types'
+import { languageFor } from '../../lib/tenantLanguage.js'
+import { LINGUE, labelFor, type Lingua } from '../../lib/enumValueLabels.js'
+import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
+import { notifyWatchers } from './collaboration.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Read model of a portal ticket. Every portal ticket is an Incident node
- * created by `createTicket`, which always writes priority/category, so a node
- * missing one of them is corrupt data: fail loud (GraphQL error on that field)
- * instead of inventing 'medium'/'other' and hiding it. `type` is structural
- * (the portal only exposes Incidents), not read from the node.
+ * Read model of a portal ticket. Every portal ticket is an Incident created by
+ * `incidentService.createIncident`, which always writes severity, so a node
+ * missing it is corrupt data: fail loud. Category is optional (an incident
+ * opened from an alarm has none)
+ * (GraphQL error on that field) instead of inventing 'medium'/'other'. The
+ * portal calls the priority `priority`; the incident stores it in `severity`,
+ * like every other channel. `type` is structural (the portal only exposes
+ * Incidents), not read from the node.
  */
 function requireProp(p: Record<string, unknown>, key: string): string {
   const v = p[key]
@@ -54,26 +49,36 @@ function requireProp(p: Record<string, unknown>, key: string): string {
  * Una sola lettura dei passi per richiesta, riusata per tutti i ticket
  * dell'elenco (`loadSteps` ha già la sua cache).
  */
-async function stepMeta(session: Session, tenantId: string): Promise<(status: string) => { statusCategory: string | null; statusLabel: string | null }> {
+async function stepMeta(session: Session, tenantId: string, language: Lingua): Promise<(status: string) => { statusCategory: string | null; statusLabel: string | null }> {
   const steps = await getWorkflowSteps(session, tenantId, 'incident')
   const byName = new Map(steps.map((s) => [s.name, s]))
   return (status: string) => {
     const step = byName.get(status)
     // Passo che il workflow non ha (più): `null`, non un'etichetta inventata.
     // Il portale mostra allora il valore grezzo e lo stile neutro.
-    return { statusCategory: step?.category ?? null, statusLabel: step?.label ?? null }
+    // L'etichetta nella lingua di chi guarda (giro del 14 set 2026, #22).
+    return { statusCategory: step?.category ?? null, statusLabel: step?.label != null ? localizedLabel(step.label, step.labels, language) : null }
   }
+}
+
+/** La lingua chiesta dal portale, se è una del prodotto; altrimenti quella dell'organizzazione. */
+async function requestedLanguage(tenantId: string, language: string | null | undefined): Promise<Lingua> {
+  return (LINGUE as readonly string[]).includes(language ?? '') ? language as Lingua : languageFor(tenantId)
 }
 
 function mapTicket(p: Record<string, unknown>) {
   return {
     id:           requireProp(p, 'id'),
+    // Il numero che l'operatore vede e che si cita al telefono (giro del 14 set 2026).
+    number:       requireProp(p, 'number'),
     type:         'incident',
     title:        requireProp(p, 'title'),
     description:  (p['description']  ?? null)       as string | null,
     status:       requireProp(p, 'status'),
-    priority:     requireProp(p, 'priority'),
-    category:     requireProp(p, 'category'),
+    priority:     requireProp(p, 'severity'),
+    // Facoltativa: un incident aperto da un allarme non ha categoria, e un
+    // ticket così faceva fallire tutto «My tickets» (giro nel browser del 14 set 2026).
+    category:     (typeof p['category'] === 'string' && p['category'] !== '' ? p['category'] : null) as string | null,
     createdAt:    requireProp(p, 'created_at'),
     updatedAt:    requireProp(p, 'updated_at'),
     assignedTeam: (p['assigned_team'] ?? null)      as string | null,
@@ -114,7 +119,7 @@ async function resolveStatusClass(
 
 async function myTickets(
   _: unknown,
-  { status, page = 1, pageSize = 20 }: { status?: string | null; page?: number; pageSize?: number },
+  { status, page = 1, pageSize = 20, language }: { status?: string | null; page?: number; pageSize?: number; language?: string | null },
   ctx: GraphQLContext,
 ) {
   const offset = (page - 1) * pageSize
@@ -126,7 +131,7 @@ async function myTickets(
       tx.run(`
         MATCH (i:Incident {tenant_id: $tenantId, created_by: $userId})
         WHERE ($statuses IS NULL OR i.status IN $statuses)
-        OPTIONAL MATCH (i)-[:ASSIGNED_TO]->(t:Team)
+        OPTIONAL MATCH (i)-[:ASSIGNED_TO_TEAM]->(t:Team)
         WITH i, t
         ORDER BY i.updated_at DESC
         SKIP toInteger($offset) LIMIT toInteger($limit)
@@ -143,7 +148,7 @@ async function myTickets(
     )
 
     const total = toNumber(countResult.records[0]?.get('total'))
-    const meta = await stepMeta(session, ctx.tenantId)
+    const meta = await stepMeta(session, ctx.tenantId, await requestedLanguage(ctx.tenantId, language))
     const items = result.records.map((r) => {
       const t = mapTicket(r.get('props') as Record<string, unknown>)
       return { ...t, ...meta(t.status), assignedTeam: (r.get('assignedTeam') ?? null) as string | null }
@@ -157,14 +162,15 @@ async function myTickets(
 
 async function myTicket(
   _: unknown,
-  { id }: { id: string },
+  { id, language }: { id: string; language?: string | null },
   ctx: GraphQLContext,
 ) {
+  const lingua = await requestedLanguage(ctx.tenantId, language)
   return withSession(async (session) => {
     const ticketResult = await session.executeRead((tx) =>
       tx.run(`
         MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-        OPTIONAL MATCH (i)-[:ASSIGNED_TO]->(t:Team)
+        OPTIONAL MATCH (i)-[:ASSIGNED_TO_TEAM]->(t:Team)
         RETURN properties(i) AS props, t.name AS assignedTeam
       `, { id, tenantId: ctx.tenantId }),
     )
@@ -177,18 +183,21 @@ async function myTicket(
     const mapped = mapTicket(props)
     const ticket = {
       ...mapped,
-      ...(await stepMeta(session, ctx.tenantId))(mapped.status),
+      ...(await stepMeta(session, ctx.tenantId, lingua))(mapped.status),
       assignedTeam: (ticketResult.records[0].get('assignedTeam') ?? null) as string | null,
     }
 
-    // Load public comments
+    // Le risposte pubbliche del ticket: stesso modello dei commenti dello staff
+    // (lib/ticketComments.ts). Prima il portale leggeva un modello suo, e
+    // l'utente non vedeva mai le risposte dell'operatore (F1). Le note interne
+    // restano allo staff: passa solo `is_internal = false`, esplicito.
     const commentsResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_ENTITY_COMMENT]->(c:EntityComment {is_internal: false})
+        MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_COMMENT]->(c:Comment)
+        WHERE c.is_internal = false
         OPTIONAL MATCH (u:User {id: c.author_id, tenant_id: $tenantId})
-        RETURN c.id AS id, c.body AS body, c.is_internal AS isInternal,
-               c.author_id AS authorId, c.author_name AS authorName,
-               c.author_email AS authorEmail,
+        RETURN c.id AS id, c.text AS body, c.author_id AS authorId,
+               coalesce(u.name, u.email, '') AS authorName, coalesce(u.email, '') AS authorEmail,
                c.created_at AS createdAt, c.updated_at AS updatedAt
         ORDER BY c.created_at ASC
       `, { id, tenantId: ctx.tenantId }),
@@ -199,8 +208,8 @@ async function myTicket(
       body:        r.get('body')        as string,
       isInternal:  false,
       authorId:    r.get('authorId')    as string,
-      authorName:  (r.get('authorName')  ?? '') as string,
-      authorEmail: (r.get('authorEmail') ?? '') as string,
+      authorName:  r.get('authorName')  as string,
+      authorEmail: r.get('authorEmail') as string,
       createdAt:   r.get('createdAt')   as string,
       updatedAt:   r.get('updatedAt')   as string,
     }))
@@ -236,12 +245,18 @@ async function myTicket(
         RETURN exec.from_step AS fromStep, exec.step_name AS toStep,
                exec.entered_at AS triggeredAt, exec.triggered_by AS triggeredBy
         ORDER BY exec.entered_at ASC
-      `, { id }),
+      `, { id, tenantId: ctx.tenantId }),
     )
 
+    // Nomi dei passi → etichette nella lingua di chi guarda (giro del 14 set
+    // 2026: la storia diceva «start → new»). Un passo che il workflow non ha
+    // più resta col suo nome; la prima voce non ha un passo di partenza.
+    const stepLabel = await stepMeta(session, ctx.tenantId, lingua)
     const history = historyResult.records.map((r) => ({
       fromStep:    (r.get('fromStep')    ?? 'start') as string,
       toStep:      r.get('toStep')      as string,
+      fromLabel:   r.get('fromStep') == null ? null : stepLabel(r.get('fromStep') as string).statusLabel,
+      toLabel:     stepLabel(r.get('toStep') as string).statusLabel,
       label:       null,
       triggeredAt: r.get('triggeredAt') as string,
       triggeredBy: (r.get('triggeredBy') ?? '') as string,
@@ -304,6 +319,26 @@ async function myTicketStats(
   })
 }
 
+// ── Query: ticketCategories ───────────────────────────────────────────────────
+
+/**
+ * Le categorie fra cui chi apre un ticket sceglie: il vocabolario `category`
+ * del cliente, nell'ordine e con le etichette del Dizionario. Giro nel browser
+ * del 14 set 2026: il portale ne aveva cinque scritte nel codice, e mancava
+ * «security» che il vocabolario ha.
+ */
+async function ticketCategories(_: unknown, args: { language?: string | null }, ctx: GraphQLContext) {
+  const [vocabulary, fallback, language] = await Promise.all([
+    loadVocabularyEntries(ctx.tenantId, 'category'),
+    languageFor(ctx.tenantId),
+    requestedLanguage(ctx.tenantId, args.language),
+  ])
+  if (vocabulary.values.length === 0) {
+    throw new ValidationError(`Tenant "${ctx.tenantId}": the "category" dictionary has no values, so a portal ticket cannot be opened. Add them in Settings → Dictionary.`, { key: 'errors.portal.noCategories' })
+  }
+  return vocabulary.values.map((name) => ({ name, label: labelFor(name, vocabulary.labels, language, fallback) }))
+}
+
 // ── Mutation: createTicket ────────────────────────────────────────────────────
 
 async function createTicket(
@@ -316,59 +351,34 @@ async function createTicket(
   validateStringLength(title, 'title', 1, 500)
   validateStringLength(description, 'description', 0, 10000)
 
-  // No defaults: a missing or unknown priority is a client bug, not "medium".
-  if (!priority) throw new ValidationError('priority is required')
-  if (!category) throw new ValidationError('category is required')
+  // No defaults: a missing priority is a client bug, not "medium".
+  if (!priority) throw new ValidationError('priority is required', { key: 'errors.portal.priorityRequired' })
 
-  const [allowedCategories, allowedPriorities] = await Promise.all([
-    loadEnumValues(ctx.tenantId, 'category'),
-    loadEnumValues(ctx.tenantId, 'priority'),
-  ])
-  if (allowedCategories.size > 0 && !allowedCategories.has(category)) throw new ValidationError(`Invalid category: ${category}`)
-  if (allowedPriorities.size > 0 && !allowedPriorities.has(priority)) throw new ValidationError(`Invalid priority: ${priority}`)
-
-  const id  = uuidv4()
-  const now = new Date().toISOString()
-
+  // Revisione del 14 set 2026 · IT-4: il ticket nasce dal servizio, come ogni
+  // incident — numero, workflow, `incident.created` (SLA, regole di notifica,
+  // automazioni), embedding, osservatore. Priorità e categoria sono validate
+  // lì contro il Dizionario del cliente, anche quando il cliente non ne ha una
+  // copia (prima la validazione si saltava: IT-7).
+  const created = await incidentService.createIncident(
+    { title, description, severity: priority, category },
+    { tenantId: ctx.tenantId, userId: ctx.userId },
+    'portal',
+  )
   const ticket = await withSession(async (session) => {
-    const { getInitialStepName } = await import('../../lib/workflowHelpers.js')
-    const initialStatus = await getInitialStepName(session, ctx.tenantId, 'incident')
-    const rows = await session.executeWrite((tx) =>
-      tx.run(`
-        CREATE (i:Incident {
-          id:          $id,
-          tenant_id:   $tenantId,
-          title:       $title,
-          description: $description,
-          severity:    $priority,
-          priority:    $priority,
-          status:      $status,
-          category:    $category,
-          created_by:  $userId,
-          created_at:  $now,
-          updated_at:  $now
-        })
-        RETURN properties(i) AS props
-      `, { id, tenantId: ctx.tenantId, title, description: description ?? null, priority, category, userId: ctx.userId, now, status: initialStatus }),
-    )
-    const props = rows.records[0]?.get('props') as Record<string, unknown> | undefined
-    if (!props) throw new GraphQLError('Failed to create ticket', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
+    const res = await session.executeRead((tx) => tx.run(`
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      RETURN properties(i) AS props
+    `, { id: created.id, tenantId: ctx.tenantId }))
+    const props = res.records[0]?.get('props') as Record<string, unknown> | undefined
+    if (!props) throw new Error(`Incident ${String(created.id)} vanished right after creation`)
     return mapTicket(props)
-  }, true)
+  })
 
-  // Attach workflow instance. A ticket without its workflow instance is the
-  // known "workflowInstance: null" corruption — fail the mutation instead of
-  // returning a half-created ticket. (The Incident node stays but is visibly
-  // broken via the GraphQL error, not silently missing its workflow.)
-  await withSession(async (session) => {
-    await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident')
-  }, true)
+  // Evento del canale, per chi si è abbonato ai ticket del portale (webhook in
+  // uscita): si aggiunge a `incident.created`, pubblicato dal servizio.
+  await publishEvent('portal.ticket.created', ctx.tenantId, ctx.userId, { ticketId: ticket.id, title, category, priority, userId: ctx.userId }, ticket.createdAt)
 
-  // Publish domain event + outbound webhooks — a failure here loses
-  // notifications/webhooks for the new ticket; surface it.
-  await publishEvent('portal.ticket.created', ctx.tenantId, ctx.userId, { ticketId: id, title, category, priority, userId: ctx.userId }, now)
-
-  void audit(ctx, 'portal.ticket.created', 'Incident', id)
+  void audit(ctx, 'portal.ticket.created', 'Incident', ticket.id)
 
   return ticket
 }
@@ -382,7 +392,7 @@ async function addTicketComment(
 ) {
   validateStringLength(body, 'body', 1, 10000)
 
-  return withSession(async (session) => {
+  const comment = await withSession(async (session) => {
     const check = await session.executeRead((tx) =>
       tx.run(`
         MATCH (i:Incident {id: $ticketId, tenant_id: $tenantId})
@@ -393,56 +403,29 @@ async function addTicketComment(
     if (!check.records.length) throw new ForbiddenError('Ticket not found')
     if (check.records[0].get('createdBy') !== ctx.userId) throw new ForbiddenError('Access denied')
 
-    const commentId = uuidv4()
-    const now       = new Date().toISOString()
-
-    const userResult = await session.executeRead((tx) =>
-      tx.run(`MATCH (u:User {id: $userId, tenant_id: $tenantId}) RETURN u.name AS name, u.email AS email`, { userId: ctx.userId, tenantId: ctx.tenantId }),
-    )
-    const authorName  = (userResult.records[0]?.get('name')  ?? ctx.userEmail) as string
-    const authorEmail = (userResult.records[0]?.get('email') ?? ctx.userEmail) as string
-
-    await session.executeWrite((tx) =>
-      tx.run(`
-        MATCH (i:Incident {id: $ticketId, tenant_id: $tenantId})
-        CREATE (c:EntityComment {
-          id:           $commentId,
-          tenant_id:    $tenantId,
-          // Ondata 2, trovato dal lint tenantOnCreate e chiuso nell'ondata 8:
-          // il commento dal portale nasceva SENZA entity_type/entity_id, legato
-          // all'incident solo dalla relazione. Il lato operatore legge per
-          // proprieta' (resolvers/comments.ts, MATCH (c:EntityComment
-          // {tenant_id, entity_type, entity_id})), quindi quel commento non
-          // compariva nel ticket: il cliente scriveva e nessuno lo leggeva.
-          // La relazione resta, per il portale.
-          entity_type:  'incident',
-          entity_id:    $ticketId,
-          body:         $body,
-          is_internal:  false,
-          author_id:    $authorId,
-          author_name:  $authorName,
-          author_email: $authorEmail,
-          created_at:   $now,
-          updated_at:   $now
-        })
-        CREATE (i)-[:HAS_ENTITY_COMMENT]->(c)
-        SET i.updated_at = $now
-      `, { ticketId, tenantId: ctx.tenantId, commentId, body, authorId: ctx.userId, authorName, authorEmail, now }),
-    )
-
-    void audit(ctx, 'portal.comment.added', 'Incident', ticketId)
-
+    // Un modello solo (F1): lo staff vede questo commento nel dettaglio
+    // dell'incident, e la sua risposta pubblica torna qui.
+    const row = await writeTicketComment(session, {
+      entityType: 'incident', entityId: ticketId, tenantId: ctx.tenantId,
+      text: body, authorId: ctx.userId, isInternal: false,
+    })
+    if (!row) throw new ForbiddenError('Ticket not found')
     return {
-      id:          commentId,
+      id:          row.comment['id'] as string,
       body,
       isInternal:  false,
       authorId:    ctx.userId,
-      authorName,
-      authorEmail,
-      createdAt:   now,
-      updatedAt:   now,
+      authorName:  (row.author?.['name'] ?? ctx.userEmail) as string,
+      authorEmail: (row.author?.['email'] ?? ctx.userEmail) as string,
+      createdAt:   row.comment['created_at'] as string,
+      updatedAt:   row.comment['updated_at'] as string,
     }
   }, true)
+
+  void audit(ctx, 'portal.comment.added', 'Incident', ticketId)
+  // Chi segue il ticket (lo staff che ci lavora) deve sapere che l'utente ha scritto.
+  void notifyWatchers(ctx.tenantId, 'incident', ticketId, { kind: 'text', text: comment.body.slice(0, 100) }, ctx.userId)
+  return comment
 }
 
 // ── Mutation: reopenTicket ────────────────────────────────────────────────────
@@ -533,6 +516,7 @@ export const portalResolvers = {
     myTickets,
     myTicket,
     myTicketStats,
+    ticketCategories,
   },
   Mutation: {
     createTicket,

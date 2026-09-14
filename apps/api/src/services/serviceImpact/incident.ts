@@ -175,7 +175,7 @@ export async function criticalServiceCriticalities(tenantId: string): Promise<st
   const impacts = await domainVocabulary(tenantId, 'impact')
   const highest = impacts[impacts.length - 1]
   if (highest === undefined) {
-    throw new Error(`Vocabolario "impact" del cliente ${tenantId}: vuoto, non c'è un impatto «più alto»`)
+    throw new Error(`Dictionary "impact" of tenant ${tenantId} is empty: there is no «highest» impact`)
   }
   const matrix = await loadDomainMatrix(tenantId, 'service_impact')
   return Object.keys(matrix.entries).filter((k) => matrix.entries[k] === highest)
@@ -631,11 +631,11 @@ async function resolveServiceIncident(session: Session, input: ServiceIncidentIn
   const ctx = monitoringCtx(tenantId)
   const incidentService = await incidents()
   const transitions = await (await engine()).getAvailableTransitions(session, open.instanceId, tenantId)
+  const lingua = await languageFor(tenantId)
   const path = transitions.some((t) => t.toStep === info.resolvedStep)
     ? []
-    : findAutoResolvePath(await loadDefinitionTransitions(session, open.instanceId, tenantId), open.step, info.resolvedStep)
+    : findAutoResolvePath(await loadDefinitionTransitions(session, open.instanceId, tenantId, lingua), open.step, info.resolvedStep)
 
-  const lingua = await languageFor(tenantId)
   const back = systemTextIn(lingua, 'service.back', { service: input.serviceName, health: serviceHealthLabel(lingua, health), score: impactScore })
   if (!path) {
     await incidentService.addIncidentComment(open.incidentId, ctx,

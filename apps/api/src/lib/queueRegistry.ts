@@ -63,6 +63,7 @@ export const QUEUE_REGISTRY: readonly QueueRegistryEntry[] = [
   consumerEntry('notification-service', 'itsm', 'packages/notifications dispatcher'),
   consumerEntry('sla-engine',           'itsm', 'packages/sla engine'),
   consumerEntry('escalation-consumer',  'itsm', 'consumers/escalationConsumer.ts'),
+  consumerEntry('automation-consumer',  'itsm', 'consumers/automationConsumer.ts'),
   { name: 'workflow-jobs',      group: 'itsm', retryable: true, consumer: false, owner: 'jobs/workflowJobWorker.ts' },
   { name: 'notification-jobs',  group: 'itsm', retryable: true, consumer: false, owner: 'jobs/workflowJobWorker.ts' },
   { name: 'sla-jobs',           group: 'itsm', retryable: true, consumer: false, owner: 'packages/sla scheduler' },

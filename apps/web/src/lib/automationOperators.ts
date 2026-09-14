@@ -26,10 +26,6 @@ export function isITILEntity(entityType: string): boolean {
   return ITIL_ENTITIES.has(entityType)
 }
 
-export const ENTITY_LABELS: Record<string, string> = {
-  incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'Service Request',
-}
-
 /**
  * Participi passati, perché servono UNA frase: l'anteprima compone «Quando un
  * Incident viene …». `on_timer` è «creato» di proposito — un trigger a timer
@@ -74,9 +70,6 @@ export function eventOptionKey(eventType: string): string {
   return lookupOrError(EVENT_OPTION_KEYS, eventType, 'EVENT_OPTION_KEYS', `?${eventType}`)
 }
 
-export function entityLabel(entityType: string): string {
-  return lookupOrError(ENTITY_LABELS, entityType, 'ENTITY_LABELS', `?${entityType}`)
-}
 
 export const FIELD_TYPE_KEYS: Record<string, string> = {
   string: 'automation.fieldType.string', number: 'automation.fieldType.number',

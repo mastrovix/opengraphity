@@ -176,7 +176,7 @@ function getClient(): Anthropic {
 export async function suggestTriage(input: TriageInput): Promise<TriageSuggestion> {
   const draftText = [input.title, input.description].filter(Boolean).join('\n')
   if (!draftText.trim()) {
-    throw new GraphQLError('Titolo vuoto: niente da analizzare', { extensions: { code: 'BAD_USER_INPUT' } })
+    throw new GraphQLError('Empty title: nothing to analyse', { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.triage.emptyTitle' } } })
   }
 
   const [embedding] = await getEmbedder().embed([draftText])
@@ -215,10 +215,10 @@ export async function suggestTriage(input: TriageInput): Promise<TriageSuggestio
   })
 
   if (response.stop_reason === 'refusal') {
-    throw new GraphQLError('Il modello ha rifiutato la richiesta di triage', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
+    throw new GraphQLError('The model refused the triage request', { extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.ai.modelRefused' } } })
   }
   const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
-  if (!textBlock) throw new Error('[triage] risposta senza blocco testo')
+  if (!textBlock) throw new Error('[triage] response without a text block')
 
   const parsed = JSON.parse(textBlock.text) as Omit<TriageSuggestion, 'similarUsed'>
   log.info({ ms: Date.now() - t0, severity: parsed.severity, confidence: parsed.confidence }, '[triage] suggestion generated')

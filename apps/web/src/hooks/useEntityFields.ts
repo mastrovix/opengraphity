@@ -16,6 +16,9 @@ import { GET_ITIL_TYPES, GET_CI_TYPES, GET_ENTITY_FILTER_FIELDS } from '@/graphq
 import { isITILEntity } from '@/lib/automationOperators'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { shippedLabel } from '@/lib/shippedLabel'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { localizedLabel } from '@/lib/localizedLabel'
 
 // ── Metamodel field metas (automazione) ──────────────────────────────────────
 
@@ -132,16 +135,28 @@ export function useEntityFields(typeName: string): { fields: FieldConfig[]; erro
     GET_ENTITY_FILTER_FIELDS,
     { variables: { typeName }, fetchPolicy: METAMODEL_FETCH_POLICY },
   )
+  // Giro nel browser del 14 set 2026 (#23): nello schema GraphQL severità,
+  // priorità e stato di un ticket sono stringhe, quindi il filtro offriva
+  // operatori di testo e un valore libero. Il metamodello sa quali campi hanno
+  // un vocabolario: quelli diventano una scelta, con le etichette del Dizionario;
+  // lo stato ha i passi del workflow del cliente.
+  const entity = typeName.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
+  const itil = isITILEntity(entity)
+  const { fields: metas } = useEntityFieldMetas(itil ? entity : '', { withVirtual: false })
+  const { labelOf } = useDomainVocabularies()
+  const { steps } = useWorkflowSteps(itil ? entity : '')
 
   const rawFields = data?.entityFilterFields
   if (!rawFields) return { fields: [], error: error ?? null }
 
+  const metaOf = (name: string) => metas.find((m) => m.name === name || m.name === name.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`))
   const result: FieldConfig[] = []
 
   for (const f of rawFields) {
     if (SKIP_FIELDS.has(f.name)) continue
 
-    const label = camelToLabel(f.name)
+    const meta = metaOf(f.name)
+    const label = meta?.label ?? camelToLabel(f.name)
 
     // GraphQL enum — values and labels come directly from the schema
     if (f.kind === 'ENUM') {
@@ -150,6 +165,18 @@ export function useEntityFields(typeName: string): { fields: FieldConfig[]; erro
         label,
         type:    'enum',
         options: (f.enumValues ?? []).map((v) => ({ value: v, label: enumLabel(v) })),
+      })
+      continue
+    }
+
+    if (itil && f.name === 'status' && steps.length > 0) {
+      result.push({ key: f.name, label, type: 'enum', options: steps.map((st) => ({ value: st.name, label: localizedLabel(st) })) })
+      continue
+    }
+    if (meta && meta.enumValues.length > 0) {
+      result.push({
+        key: f.name, label, type: 'enum',
+        options: meta.enumValues.map((v) => ({ value: v, label: (meta.enumTypeName && labelOf(meta.enumTypeName, v)) || v })),
       })
       continue
     }

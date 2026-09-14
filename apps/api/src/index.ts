@@ -18,6 +18,7 @@ import './workflow/conditions.js'
 import { createNotificationDispatcher } from '@opengraphity/notifications'
 import { createSLAEngine, closeScheduler } from '@opengraphity/sla'
 import { EscalationConsumer } from './consumers/escalationConsumer.js'
+import { AutomationConsumer } from './consumers/automationConsumer.js'
 import { ServiceImpactConsumer } from './consumers/serviceImpactConsumer.js'
 import { closeConnection } from '@opengraphity/events'
 import { closeDriver, registerSessionTracker } from '@opengraphity/neo4j'
@@ -49,13 +50,26 @@ import { registerAllConnectors } from './discovery/registerConnectors.js'
 import { startSyncWorker, loadScheduledSyncs } from './discovery/syncWorker.js'
 import { startMaintenanceWorker } from './workers/maintenance.worker.js'
 import { logger } from './lib/logger.js'
+import { assertMigrationsAppliedAtBoot } from './lib/migrationState.js'
+import { startInAppBus, stopInAppBus } from './lib/inAppBus.js'
+import { assertEmailConfigured } from '@opengraphity/notifications'
 import type { Worker } from 'bullmq'
 
 async function main() {
+  // Revisione del 14 set 2026 · F8: migrazioni pendenti dette all'avvio (e,
+  // con REQUIRE_APPLIED_MIGRATIONS=true, avvio fermato).
+  await assertMigrationsAppliedAtBoot({ require: config.requireAppliedMigrations, log: logger })
+  // L'API invia e-mail (menzioni, osservatori, riepilogo): senza chiave in
+  // produzione non parte. Il pacchetto non lancia più all'import, perché i
+  // worker, che non inviano, lo importano anche loro.
+  assertEmailConfigured()
+
   // Prima del server: una mutation sul metamodello servita subito dopo l'avvio
   // deve già trovare il canale aperto, altrimenti le altre repliche non
   // vengono avvisate e nessuno se ne accorge.
   startMetamodelBus()
+  // F10: consegne in-app salvate e condivise fra i processi.
+  startInAppBus()
 
   const httpServer = await startServer()
 
@@ -70,6 +84,10 @@ async function main() {
   // workflow transition, e.g. incident in_progress → escalated).
   const escalationConsumer = new EscalationConsumer()
   await escalationConsumer.start()
+
+  // Trigger e Business Rule su ogni evento che le pagine offrono (AU-1).
+  const automationConsumer = new AutomationConsumer()
+  await automationConsumer.start()
 
   // Start report scheduler (BullMQ, every 60s)
   const reportScheduler = await startReportScheduler()
@@ -148,6 +166,7 @@ async function main() {
     { name: 'notification-service', close: () => notificationDispatcher.stop() },
     { name: 'sla-engine',           close: () => slaEngine.stop() },
     { name: 'escalation-consumer',  close: () => escalationConsumer.stop() },
+    { name: 'automation-consumer',  close: () => automationConsumer.stop() },
     ...eventConsumers,
   ]
 
@@ -166,6 +185,7 @@ async function main() {
       // Code singleton (lib/bullmq), poi SLA scheduler, poi publisher (D-24, A-13), poi il driver
       resources: [
         { name: 'metamodel-bus',    close: () => stopMetamodelBus() },
+        { name: 'inapp-bus',        close: () => stopInAppBus() },
         { name: 'bullmq-queues',    close: () => closeAllQueues() },
         { name: 'sla-scheduler',    close: () => closeScheduler() },
         { name: 'event-connection', close: () => closeConnection() },

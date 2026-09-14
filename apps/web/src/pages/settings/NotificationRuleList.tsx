@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Lock, Unlock, AlertTriangle } from 'lucide-react'
-import { NOTIFICATION_TARGETS } from '@opengraphity/types'
+import { NOTIFICATION_TARGETS, NOTIFICATION_SEVERITIES } from '@opengraphity/types'
 import { colors, fontSize, fontWeight, palette } from '@/lib/tokens'
 import { Toggle as SharedToggle } from '@/components/ui/Toggle'
 
@@ -78,6 +78,7 @@ export const RULE_CATEGORIES: { key: string; events: string[] }[] = [
       // ristretta allo scopo o alla categoria del passo, e regge alla rinomina.
       'incident.step_entered',
       'incident.escalated', 'incident.resolved', 'incident.closed',
+      'incident.major_declared', 'incident.major_cleared',
     ],
   },
   {
@@ -126,7 +127,8 @@ export const RULE_CATEGORIES: { key: string; events: string[] }[] = [
 
 export const STANDARD_EVENTS = RULE_CATEGORIES.flatMap((c) => c.events)
 
-const SEVERITY_OPTIONS = ['info', 'success', 'warning', 'error'] as const
+/** Dal vocabolario condiviso con la validazione dell'API (NT-1). */
+const SEVERITY_OPTIONS = NOTIFICATION_SEVERITIES
 
 /**
  * Etichette dei destinatari. QUALI destinatari esistono lo dice il

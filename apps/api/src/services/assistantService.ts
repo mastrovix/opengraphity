@@ -267,7 +267,7 @@ function buildTools(tenantId: string) {
 
 // ── Streaming chat ───────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `Sei l'assistente operativo di OpenGrafo, una piattaforma ITSM basata su un grafo Neo4j (CMDB, incident, change, knowledge base). Rispondi nella lingua in cui ti scrive l'utente, conciso e concreto.
+const SYSTEM_PROMPT = `Sei l'assistente operativo di OpenGrafo, una piattaforma ITSM basata su un grafo Neo4j (CMDB, incident, change, knowledge base). Rispondi nella lingua in cui ti scrive l'utente, conciso e concreto: anche le frasi che scrivi prima di usare uno strumento sono in quella lingua.
 
 Regole:
 - Usa i tool per fondare OGNI risposta sui dati reali del tenant. Non inventare mai numeri di ticket, nomi di CI o stati.
@@ -315,7 +315,13 @@ export async function streamAssistantChat(
 
     for await (const messageStream of runner) {
       for await (const event of messageStream) {
-        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        if (event.type === 'content_block_start' && event.content_block.type === 'text' && fullText !== '' && !fullText.endsWith('\n')) {
+          // Giro nel browser del 14 set 2026 (#52): la frase scritta prima di
+          // uno strumento e la risposta dopo erano incollate («…clienti.**CI:»).
+          // Un nuovo blocco di testo comincia su un paragrafo nuovo.
+          fullText += '\n\n'
+          emit.text('\n\n')
+        } else if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
           fullText += event.delta.text
           emit.text(event.delta.text)
         } else if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {

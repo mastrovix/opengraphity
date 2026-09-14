@@ -19,6 +19,7 @@ import { logger } from '../lib/logger.js'
 // e non da `['closed']`/`['resolved','closed']` (ondata 8 · B-22).
 import { statusNamesForClasses, concludedStatusNames } from '../lib/statusStepNames.js'
 import { modelLanguageFor } from '../lib/systemText.js'
+import { domainVocabulary } from '../lib/domainMatrix.js'
 
 const log = logger.child({ module: 'post-incident' })
 
@@ -100,10 +101,10 @@ export async function draftResolutionNotes(tenantId: string, incidentId: string)
   })
 
   if (response.stop_reason === 'refusal') {
-    throw new GraphQLError('Il modello ha rifiutato la richiesta', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
+    throw new GraphQLError('The model refused the request', { extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.ai.modelRefused' } } })
   }
   const text = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text
-  if (!text?.trim()) throw new Error('[post-incident] bozza vuota dal modello')
+  if (!text?.trim()) throw new Error('[post-incident] empty draft from the model')
   log.info({ incidentId, ms: Date.now() - t0 }, '[post-incident] resolution draft generated')
   return text.trim()
 }
@@ -188,7 +189,7 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
     },
     required: ['candidates'],
     additionalProperties: false,
-  } as const
+  }
 
   const response = await client.messages.create({
     model: config.anthropicModel,
@@ -207,10 +208,10 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
   })
 
   if (response.stop_reason === 'refusal') {
-    throw new GraphQLError('Il modello ha rifiutato la richiesta', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
+    throw new GraphQLError('The model refused the request', { extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.ai.modelRefused' } } })
   }
   const text = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text
-  if (!text) throw new Error('[post-incident] risposta senza testo')
+  if (!text) throw new Error('[post-incident] response without text')
   const parsed = JSON.parse(text) as { candidates: Array<{ cluster_index: number; title: string; motivation: string }> }
 
   return parsed.candidates
@@ -255,12 +256,16 @@ export async function draftKbContent(tenantId: string, incidentId: string): Prom
 
   const client = getClient()
   const language = await modelLanguageFor(tenantId)
+  // F5: il modello sceglie fra le categorie KB del cliente. Prima scriveva
+  // «una parola», e l'articolo nasceva con una categoria che la pagina e il
+  // portale non conoscevano.
+  const kbCategories = [...await domainVocabulary(tenantId, 'kb_category')]
   const schema = {
     type: 'object',
     properties: {
       title: { type: 'string' },
       body: { type: 'string' },
-      category: { type: 'string' },
+      category: { type: 'string', enum: kbCategories },
       tags: { type: 'array', items: { type: 'string' } },
     },
     required: ['title', 'body', 'category', 'tags'],
@@ -274,7 +279,7 @@ export async function draftKbContent(tenantId: string, incidentId: string): Prom
     output_config: { effort: 'low', format: { type: 'json_schema', schema } },
     system: [{
       type: 'text',
-      text: `Redattore Knowledge Base ITSM. Da un incident risolto produci un articolo KB scritto interamente in ${language} (titolo, corpo e titoli delle sezioni), struttura: Sintomo, Causa, Soluzione, Verifica — con i titoli delle sezioni tradotti in ${language}. Usa SOLO l'evidenza fornita (descrizione, commenti, workflow); dove l'evidenza manca scrivi "da completare" (tradotto in ${language}) invece di inventare. body in markdown semplice. category: una parola (es. database, network, hardware, software). tags: 2-5 parole chiave.`,
+      text: `Redattore Knowledge Base ITSM. Da un incident risolto produci un articolo KB scritto interamente in ${language} (titolo, corpo e titoli delle sezioni), struttura: Sintomo, Causa, Soluzione, Verifica — con i titoli delle sezioni tradotti in ${language}. Usa SOLO l'evidenza fornita (descrizione, commenti, workflow); dove l'evidenza manca scrivi "da completare" (tradotto in ${language}) invece di inventare. body in markdown semplice. category: la categoria KB più adatta fra quelle ammesse dallo schema. tags: 2-5 parole chiave.`,
       cache_control: { type: 'ephemeral' },
     }],
     messages: [{ role: 'user', content: JSON.stringify({
@@ -285,9 +290,9 @@ export async function draftKbContent(tenantId: string, incidentId: string): Prom
   })
 
   if (response.stop_reason === 'refusal') {
-    throw new GraphQLError('Il modello ha rifiutato la richiesta', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
+    throw new GraphQLError('The model refused the request', { extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.ai.modelRefused' } } })
   }
   const text = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text
-  if (!text) throw new Error('[post-incident] risposta senza testo')
+  if (!text) throw new Error('[post-incident] response without text')
   return JSON.parse(text) as KbDraftContent
 }
