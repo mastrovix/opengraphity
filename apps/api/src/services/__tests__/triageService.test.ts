@@ -29,6 +29,8 @@ const h = vi.hoisted(() => {
   return { cfg, create, constructed, session, embed, ownEnums, overridesRun }
 })
 
+// La lingua in cui il modello scrive si legge dal cliente (lib/systemText.ts).
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
 vi.mock('../../lib/config.js', () => ({ config: h.cfg }))
 vi.mock('@anthropic-ai/sdk', () => ({
   default: class {

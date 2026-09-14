@@ -23,7 +23,7 @@ type TimeWindowInput = { start: string; end: string }
 type DeployStepInput = { title: string; validationWindow: TimeWindowInput; releaseWindow: TimeWindowInput }
 
 export function validateWindow(label: string, w: TimeWindowInput) {
-  if (!w || !w.start || !w.end) throw new ValidationError(`${label}: start e end obbligatori`)
+  if (!w || !w.start || !w.end) throw new ValidationError(`${label}: start and end are required`, { key: 'errors.plan.windowStartEndRequired', params: { window: label } })
   // Offset esplicito obbligatorio (B·1.17): una data senza Z/±hh:mm verrebbe
   // letta nel fuso del server, non del tenant; la stessa regola vale in lettura.
   assertWindowDate(w.start, `${label}.start`)
@@ -54,9 +54,9 @@ export async function saveDeployPlan(
       RETURN dp.ci_id AS ciId, c.id AS changeId, dp.status AS status, wi.current_step AS currentStep
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!tctx) throw new NotFoundError('DeployPlanTask', args.taskId)
-    if (tctx.status === TASK_STATUS.COMPLETED) throw new GraphQLError('Task già completata', { extensions: { code: 'CONFLICT' } })
+    if (tctx.status === TASK_STATUS.COMPLETED) throw new GraphQLError('Task already completed', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.task.alreadyCompleted' } } })
     const initialStepName = await getInitialStepName(session, ctx.tenantId, 'change')
-    if (tctx.currentStep !== initialStepName) throw new GraphQLError(`Piano deploy editabile solo nello step iniziale (${initialStepName})`, { extensions: { code: 'CONFLICT' } })
+    if (tctx.currentStep !== initialStepName) throw new GraphQLError(`The deploy plan can be edited only in the initial step (${initialStepName})`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.plan.editableOnlyInInitialStep', params: { step: initialStepName } } } })
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, 'support')
     if (!Array.isArray(args.steps) || args.steps.length < 1) throw new ValidationError('At least one step is required', { key: 'errors.plan.atLeastOneStep' })
     args.steps.forEach((s, i) => validateStep(i, s))
@@ -93,7 +93,7 @@ export async function completeDeployPlanTask(_: unknown, args: { taskId: string 
       RETURN dp.ci_id AS ciId, c.id AS changeId, dp.status AS status, dp.steps AS steps
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!tctx) throw new NotFoundError('DeployPlanTask', args.taskId)
-    if (tctx.status === TASK_STATUS.COMPLETED) throw new GraphQLError('Task già completata', { extensions: { code: 'CONFLICT' } })
+    if (tctx.status === TASK_STATUS.COMPLETED) throw new GraphQLError('Task already completed', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.task.alreadyCompleted' } } })
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, 'support')
 
     const steps = tctx.steps ? JSON.parse(tctx.steps) as unknown[] : []

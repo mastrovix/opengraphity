@@ -181,14 +181,16 @@ describe('WorkflowEngine', () => {
     it('errore se nessun arco verso lo step richiesto', async () => {
       const result = await new WorkflowEngine().transition(makeSession([]) as never, { ...manual, toStepName: 'nonexistent' }, actx)
       expect(result.success).toBe(false)
-      expect(result.error).toContain('non valida')
+      expect(result.error).toContain('not valid')
+      expect(result.errorI18n?.key).toBe('errors.workflow.transitionNotValid')
     })
 
     it('un trigger manuale NON può percorrere un arco riservato al sistema (timer/automatic/sla_breach)', async () => {
       const session = makeSession([stateRow({ trigger: 'timer', nextStepName: 'closed' })])
       const result = await new WorkflowEngine().transition(session as never, { ...manual, toStepName: 'closed' }, actx)
       expect(result.success).toBe(false)
-      expect(result.error).toContain('riservata al sistema')
+      expect(result.error).toContain('reserved to the system')
+      expect(result.errorI18n).toEqual({ key: 'errors.workflow.transitionSystemOnly', params: { step: expect.any(String) } })
       expect(session.executeWrite).not.toHaveBeenCalled()
     })
 
@@ -203,7 +205,8 @@ describe('WorkflowEngine', () => {
       const row = stateRow({ condition: 'rootCause != null' })
       const r1 = await engine.transition(makeSession([row]) as never, manual, actx)
       expect(r1.success).toBe(false)
-      expect(r1.error).toContain('Root cause')
+      expect(r1.error).toContain('root cause')
+      expect(r1.errorI18n?.key).toBe('errors.workflow.condition.rootCauseRequired')
       const r2 = await engine.transition(makeSession([row]) as never, { ...manual, triggerType: 'automatic' }, actx)
       expect(r2.success).toBe(false)
     })
@@ -212,7 +215,8 @@ describe('WorkflowEngine', () => {
       const session = makeSession([stateRow({ condition: 'does_not_exist' })])
       const result = await new WorkflowEngine().transition(session as never, manual, actx)
       expect(result.success).toBe(false)
-      expect(result.error).toContain('sconosciuta')
+      expect(result.error).toContain('Unknown transition condition')
+      expect(result.errorI18n).toEqual({ key: 'errors.workflow.unknownCondition', params: { condition: 'does_not_exist' } })
       expect(session.executeWrite).not.toHaveBeenCalled()
     })
 
@@ -224,6 +228,7 @@ describe('WorkflowEngine', () => {
       const result = await engine.transition(session as never, { ...manual, toStepName: 'change_requested', notes: 'n' }, actx)
       expect(result.success).toBe(false)
       expect(result.error).toBe('Collega prima una change')
+      expect(result.errorI18n).toEqual({ key: 'errors.workflow.condition.has_linked_change', params: { condition: 'has_linked_change' } })
       expect(evaluate).toHaveBeenCalledWith(session, expect.objectContaining({
         entityId: 'inc-1', tenantId: 'c-one', fromStepName: 'in_progress', toStepName: 'resolved', triggerType: 'manual', notes: 'n',
       }))
@@ -281,7 +286,8 @@ describe('WorkflowEngine', () => {
       const session = makeWritableSession([stateRow()], 0)
       const result = await new WorkflowEngine().transition(session as never, manual, actx)
       expect(result.success).toBe(false)
-      expect(result.error).toContain('concorrente')
+      expect(result.error).toContain('Concurrent transition')
+      expect(result.errorI18n).toEqual({ key: 'errors.workflow.concurrentTransition' })
       // solo la statement di avanzamento è stata tentata, nessun sync status
       expect(session.txRun).toHaveBeenCalledTimes(1)
     })
@@ -346,5 +352,56 @@ describe('WorkflowEngine', () => {
       await params({ run })
       expect((run.mock.calls[0]![1] as Record<string, unknown>)['tenantId']).toBe('c-one')
     })
+  })
+})
+
+/**
+ * L'ingresso in un passo detto a chi ascolta, e la conclusione di richieste e
+ * change. Giro del 14 set 2026: un problem risolto dalla sua change e una
+ * richiesta chiusa dal workflow non avvisavano nessuno, e il loro SLA restava
+ * aperto; la richiesta chiusa non aveva nemmeno `completed_at`.
+ */
+describe('WorkflowEngine — ingresso nel passo', () => {
+  it('ogni ascoltatore riceve il passo lasciato (iniziale o no), quello di arrivo, categoria e terminale', async () => {
+    const session = makeWritableSession([stateRow({ currentStepInitial: true, nextStepName: 'approval', nextStepCategory: 'waiting', nextStepTerminal: false })], 1)
+    const engine = new WorkflowEngine()
+    const visti: unknown[] = []
+    engine.onStepEntered(async (info) => { visti.push(info) })
+    const r = await engine.transition(session as never, { ...manual, toStepName: 'approval' }, actx)
+    expect(r.success).toBe(true)
+    expect(visti).toEqual([expect.objectContaining({
+      tenantId: 'c-one', entityType: 'incident', entityId: 'inc-1', fromStep: 'in_progress', fromInitial: true,
+      toStep: 'approval', category: 'waiting', terminal: false, actorId: 'user-1', triggerType: 'manual',
+    })])
+  })
+
+  it('un ascoltatore che fallisce non annulla la transizione: finisce in actionErrors', async () => {
+    const session = makeWritableSession([stateRow()], 1)
+    const engine = new WorkflowEngine()
+    engine.onStepEntered(async () => { throw new Error('coda giù') })
+    const r = await engine.transition(session as never, manual, actx) as unknown as { success: boolean; actionErrors?: string[] }
+    expect(r.success).toBe(true)
+    expect(r.actionErrors?.join(' ')).toMatch(/step_entered listener: coda giù/)
+  })
+
+  it('una service request che entra in un passo terminale riceve completed_at (la prima volta)', async () => {
+    const row = stateRow({
+      wi: { properties: { id: 'wi-1', tenant_id: 'c-one', entity_id: 'req-1', entity_type: 'service_request', definition_id: 'def-1', created_at: 'x' } },
+      nextStepName: 'closed', nextStepCategory: 'closed', nextStepTerminal: true,
+    })
+    const session = makeWritableSession([row], 1)
+    await new WorkflowEngine().transition(session as never, { ...manual, toStepName: 'closed' }, actx)
+    const sync = session.txRun.mock.calls.map((c) => String(c[0])).find((q) => q.includes('ServiceRequest'))
+    expect(sync).toMatch(/entity\.completed_at = coalesce\(entity\.completed_at, \$now\)/)
+  })
+
+  it('un passo NON terminale non tocca completed_at', async () => {
+    const row = stateRow({
+      wi: { properties: { id: 'wi-1', tenant_id: 'c-one', entity_id: 'req-1', entity_type: 'service_request', definition_id: 'def-1', created_at: 'x' } },
+      nextStepName: 'fulfilled', nextStepCategory: 'active', nextStepTerminal: false,
+    })
+    const session = makeWritableSession([row], 1)
+    await new WorkflowEngine().transition(session as never, { ...manual, toStepName: 'fulfilled' }, actx)
+    expect(session.txRun.mock.calls.map((c) => String(c[0])).join('\n')).not.toMatch(/completed_at/)
   })
 })

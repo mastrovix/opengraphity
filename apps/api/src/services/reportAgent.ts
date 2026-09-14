@@ -142,7 +142,7 @@ REGOLE:
   RETURN s.name. Poi usa questi nomi per cercare StepExecution entered_at.
 - Le date sono in formato ISO string
 - Puoi eseguire più query per rispondere
-- Rispondi in italiano
+- Rispondi nella lingua della domanda
 - Usa tabelle markdown quando i dati sono tabulari
 - Sii conciso e diretto, senza introduzioni verbose
 - Mostra sempre i dati concreti, non generalizzare`

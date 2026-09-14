@@ -109,7 +109,7 @@ describe('assertAllApprovalsSatisfied (gate condiviso da approve + executeChange
   })
   it('CONFLICT con requisiti pendenti (conteggio nel messaggio)', async () => {
     mockedOne.mockResolvedValueOnce(gateRow({ total: 3, pending: 2 }))
-    await expectCode(assertAllApprovalsSatisfied(session, 'chg', 't1'), 'CONFLICT', '2 requisiti')
+    await expectCode(assertAllApprovalsSatisfied(session, 'chg', 't1'), 'CONFLICT', '2 requirement(s) still pending')
   })
   it('passa quando tutti approvati e CM presente', async () => {
     mockedOne.mockResolvedValueOnce(gateRow({ total: 3, pending: 0, cm: 1 }))

@@ -238,12 +238,19 @@ export interface TransitionInput {
   tenantId?:   string
 }
 
+/** Frase dell'errore per chi lo mostra: chiave i18n del web e parametri. */
+export interface TransitionErrorI18n {
+  key:     string
+  params?: Record<string, string>
+}
+
 export interface TransitionResult {
   success:    boolean
   instance:   WorkflowInstance
   execution:  WorkflowStepExecution
   actionsRun: WorkflowActionType[]
   error?:     string
+  errorI18n?: TransitionErrorI18n
   /**
    * Errors from step actions (sla_start, publish_event, timer scheduling, …)
    * that failed AFTER the transition was persisted. The transition itself
@@ -252,3 +259,32 @@ export interface TransitionResult {
    */
   actionErrors?: string[]
 }
+
+
+/**
+ * L'ingresso di un'istanza in un passo, detto a chi ascolta DOPO che la
+ * transizione è persistita (`WorkflowEngine.onStepEntered`).
+ *
+ * Esiste perché il motore è l'unico punto da cui passa OGNI transizione —
+ * manuale, automatica, da change, da regola, da timer — mentre gli eventi di
+ * dominio li pubblicavano solo alcuni cammini: un problem risolto dalla sua
+ * change o una richiesta chiusa dal workflow non avvisavano nessuno, e il loro
+ * SLA restava aperto per sempre (giro del 14 set 2026).
+ */
+export interface StepEnteredInfo {
+  tenantId:    string
+  instanceId:  string
+  entityType:  string
+  entityId:    string
+  fromStep:    string
+  /** Il passo lasciato era quello iniziale: la prima presa in carico. */
+  fromInitial: boolean
+  toStep:      string
+  category:    string | null
+  terminal:    boolean
+  enteredAt:   string
+  actorId:     string
+  triggerType: string
+}
+
+export type StepEnteredListener = (info: StepEnteredInfo) => Promise<void>

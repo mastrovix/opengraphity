@@ -48,6 +48,8 @@ export function problemSDL(): string {
     createdAt: String!
     updatedAt: String
     author: User
+    authorKind: String
+    authorLabel: String
   }
 
   type ProblemsResult {

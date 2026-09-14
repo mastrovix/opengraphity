@@ -19,11 +19,13 @@ const isPreApprovedChangeType = vi.fn<() => Promise<boolean>>()
 const assertAllApprovalsSatisfied = vi.fn<() => Promise<void>>()
 const areAllApprovalsSatisfied    = vi.fn<() => Promise<boolean>>()
 const inc = vi.fn()
+const areAllAssessmentsComplete = vi.fn<() => Promise<boolean>>()
 
 vi.mock('../../../../lib/workflowHelpers.js', () => ({ getStepPurpose, getStepNamesByPurpose }))
 vi.mock('../../../../lib/changePolicy.js',    () => ({ isPreApprovedChangeType }))
 vi.mock('../approvalCreation.js',             () => ({ assertAllApprovalsSatisfied, areAllApprovalsSatisfied }))
 vi.mock('../../../../middleware/metrics.js',  () => ({ changeWindowGateBlockedTotal: { inc } }))
+vi.mock('../../../../lib/changeAssessments.js', () => ({ areAllAssessmentsComplete }))
 vi.mock('../../../../lib/logger.js', () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }) },
 }))
@@ -47,6 +49,7 @@ beforeEach(() => {
   isPreApprovedChangeType.mockResolvedValue(false)
   areAllApprovalsSatisfied.mockResolvedValue(false)
   assertAllApprovalsSatisfied.mockResolvedValue(undefined)
+  areAllAssessmentsComplete.mockResolvedValue(true)
 })
 
 describe('changeGateOutcome — la regola di dominio, senza attori', () => {
@@ -108,9 +111,9 @@ describe('il cammino MANUALE: lancia, e il ruolo è quello vero', () => {
   })
 
   it('e se i requisiti non sono soddisfatti, l\'errore del controllo arriva a chi ha premuto', async () => {
-    assertAllApprovalsSatisfied.mockRejectedValue(new Error('Approvazione incompleta: 2 requisiti ancora in attesa'))
+    assertAllApprovalsSatisfied.mockRejectedValue(new Error('Approval incomplete: 2 requirement(s) still pending'))
     await expect(assertChangeWindowGate(session, ctx('admin'), input('assessment', 'scheduled')))
-      .rejects.toThrow(/Approvazione incompleta/)
+      .rejects.toThrow(/Approval incomplete/)
   })
 
   it('senza nessun passo di approvazione il messaggio nomina LE DUE uscite', async () => {
@@ -189,5 +192,33 @@ describe('i cammini AUTOMATICI: rifiutano, non lanciano', () => {
     expect(err).not.toBeNull()
     expect(err!.message).toMatch(/would enter the release window/)
     expect(err!.message).toMatch(/remove this action from the rule/)
+  })
+})
+
+/**
+ * Giro del 14 set 2026: CHG00000003 (standard) è uscita dall'analisi con il
+ * piano di deploy vuoto, da un arco `assessment → scheduled` automatico senza
+ * condizione. Dopo l'analisi il piano non si modifica più: la change restava
+ * ferma per sempre.
+ */
+describe('uscire dall\'analisi chiede valutazioni e piano completi, per ogni tipo', () => {
+  it.each([['normal', false], ['standard', true]])('tipo %s (pre-approvato: %s) con piano aperto → needs_assessments', async (tipo, preApprovato) => {
+    isPreApprovedChangeType.mockResolvedValue(preApprovato)
+    areAllAssessmentsComplete.mockResolvedValue(false)
+    await expect(changeGateOutcome(session, input('assessment', 'scheduled', tipo))).resolves.toEqual({ kind: 'needs_assessments' })
+    await expect(changeGateOutcome(session, input('assessment', 'approval', tipo))).resolves.toEqual({ kind: 'needs_assessments' })
+  })
+
+  it('il cammino automatico rifiuta, quello manuale lancia con la sua chiave', async () => {
+    isPreApprovedChangeType.mockResolvedValue(true)
+    areAllAssessmentsComplete.mockResolvedValue(false)
+    await expect(automaticTransitionAllowed(session, input('assessment', 'scheduled', 'standard'), 'auto_transition')).resolves.toBe(false)
+    await expect(assertChangeWindowGate(session, { role: 'admin' } as never, input('assessment', 'scheduled', 'standard')))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.change.assessmentsIncomplete' } } })
+  })
+
+  it('con tutto completato la pre-approvata esce libera', async () => {
+    isPreApprovedChangeType.mockResolvedValue(true)
+    await expect(changeGateOutcome(session, input('assessment', 'scheduled', 'standard'))).resolves.toEqual({ kind: 'open' })
   })
 })

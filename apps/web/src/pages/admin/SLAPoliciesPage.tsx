@@ -43,7 +43,8 @@ type FormState = {
 const EMPTY_FORM: FormState = {
   name: '', entityType: 'incident', priority: '', category: '',
   teamId: '', responseMinutes: 60, resolveMinutes: 480,
-  businessHours: true, timezone: 'Europe/Rome',
+  // Fuso vuoto = quello del cliente: lo sceglie l'API, non una costante qui.
+  businessHours: true, timezone: '',
 }
 
 const policyToForm = (p: SLAPolicy): FormState => ({
@@ -53,27 +54,23 @@ const policyToForm = (p: SLAPolicy): FormState => ({
   businessHours: p.businessHours, timezone: p.timezone,
 })
 
-import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
+import { SLA_ENTITY_TYPES as ENTITY_TYPES, SLA_CATEGORY_ENTITY_TYPES } from '@opengraphity/types'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { lookupOrError, palette } from '@/lib/tokens'
 
 const ENTITY_LABELS: Record<string, string> = {
-  incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'Service Request',
+  incident: 'Incident', problem: 'Problem', service_request: 'Service Request',
 }
 
-const slaFilterFields = (t: TFunction): FieldConfig[] => [
-  { key: 'entityType', label: t('admin.sla.entityType'), type: 'enum', options: [
-    { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' },
-    { value: 'problem', label: 'Problem' }, { value: 'service_request', label: 'Service Request' },
-  ]},
-  { key: 'priority', label: t('admin.sla.priority'), type: 'enum', options: [
-    { value: 'critical', label: 'Critical' }, { value: 'high', label: 'High' },
-    { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' },
-  ]},
-  { key: 'category', label: t('admin.sla.category'), type: 'enum', options: [
-    { value: 'hardware', label: 'Hardware' }, { value: 'software', label: 'Software' },
-    { value: 'network', label: 'Network' }, { value: 'access', label: 'Access' },
-    { value: 'security', label: 'Security' }, { value: 'other', label: 'Other' },
-  ]},
+type VocabEntries = ReadonlyArray<{ value: string; label?: string | null }>
+// Valori e etichette dai vocabolari del cliente: prima erano tre liste scritte qui.
+const slaFilterFields = (t: TFunction, priorities: VocabEntries, categories: VocabEntries): FieldConfig[] => [
+  { key: 'entityType', label: t('admin.sla.entityType'), type: 'enum', options:
+    ENTITY_TYPES.map((et) => ({ value: et, label: ENTITY_LABELS[et] ?? et })) },
+  { key: 'priority', label: t('admin.sla.priority'), type: 'enum', options:
+    priorities.map((v) => ({ value: v.value, label: v.label ?? v.value })) },
+  { key: 'category', label: t('admin.sla.category'), type: 'enum', options:
+    categories.map((v) => ({ value: v.value, label: v.label ?? v.value })) },
   { key: 'enabled', label: t('admin.sla.enabled'), type: 'enum', options: [
     { value: 'true', label: t('common.yes') }, { value: 'false', label: t('common.no') },
   ]},
@@ -96,10 +93,10 @@ function fmtMinutes(m: number, t: TFunction): string {
 
 const entityName = (et: string) => lookupOrError(ENTITY_LABELS, et, 'ENTITY_LABELS', et)
 
-function scopeParts(priority: string | null, category: string | null, teamName: string | null, t: TFunction): string[] {
+function scopeParts(priority: string | null, category: string | null, teamName: string | null, t: TFunction, label: (vocab: string, v: string) => string): string[] {
   const parts: string[] = []
-  if (priority) parts.push(t('admin.sla.scopePriority', { value: priority }))
-  if (category) parts.push(t('admin.sla.scopeCategory', { value: category }))
+  if (priority) parts.push(t('admin.sla.scopePriority', { value: label('priority', priority) }))
+  if (category) parts.push(t('admin.sla.scopeCategory', { value: label('category', category) }))
   if (teamName) parts.push(t('admin.sla.scopeTeam',     { value: teamName }))
   return parts
 }
@@ -128,6 +125,11 @@ export function SLAPoliciesPage() {
   const campoAmbito = form.entityType === 'incident' ? 'severity' : 'priority'
   const { values: PRIORITIES } = useEnumValues(form.entityType, campoAmbito)
   const { values: CATEGORIES } = useEnumValues(form.entityType, 'category')
+  // La categoria vale solo per i ticket che ne hanno una: per gli altri il
+  // motore non la vede, e l'API rifiuta la policy.
+  const hasCategory = (SLA_CATEGORY_ENTITY_TYPES as readonly string[]).includes(form.entityType)
+  const { entriesOf, labelOf } = useDomainVocabularies()
+  const vocabLabel = (vocab: string, v: string) => labelOf(vocab, v) ?? labelOf('severity', v) ?? v
 
   const { data, loading, refetch } = useQuery<{ slaPolicies: SLAPolicy[] }>(GET_SLA_POLICIES, { variables: list.variables })
   const { data: teamsData }           = useQuery<{ teams: Team[] }>(GET_TEAMS)
@@ -156,10 +158,10 @@ export function SLAPoliciesPage() {
     if (!form.name.trim()) { toast.error(t('toast.sla.nameRequired')); return }
     const common = {
       name: form.name.trim(),
-      priority: form.priority || null, category: form.category || null,
+      priority: form.priority || null, category: hasCategory ? (form.category || null) : null,
       teamId: form.teamId || null,
       responseMinutes: Number(form.responseMinutes), resolveMinutes: Number(form.resolveMinutes),
-      businessHours: form.businessHours, timezone: form.timezone,
+      businessHours: form.businessHours, timezone: form.timezone.trim() || null,
     }
     try {
       if (modal.editing) {
@@ -202,7 +204,7 @@ export function SLAPoliciesPage() {
       <span style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{String(v)}</span>
     ) },
     { key: 'priority', label: t('admin.sla.appliesToColumn'), sortable: false, render: (_v, row) => {
-      const scope = scopeParts(row.priority, row.category, row.teamName, t)
+      const scope = scopeParts(row.priority, row.category, row.teamName, t, vocabLabel)
       return (
         <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>
           {scope.length === 0 ? t('common.all') : scope.join(', ')}
@@ -226,7 +228,7 @@ export function SLAPoliciesPage() {
   // ── Preview text for modal form ───────────────────────────────────────────
   function formPreview(): string {
     const team = teams.find(tm => tm.id === form.teamId)
-    const scope = scopeParts(form.priority, form.category, team?.name ?? null, t)
+    const scope = scopeParts(form.priority, form.category, team?.name ?? null, t, vocabLabel)
     return scope.length === 0
       ? t('admin.sla.previewAll',  { entity: entityName(form.entityType) })
       : t('admin.sla.previewSome', { entity: entityName(form.entityType), scope: scope.join(', ') })
@@ -254,7 +256,7 @@ export function SLAPoliciesPage() {
         />
       )}
 
-      <FilterBuilder fields={slaFilterFields(t)} onApply={list.setFilterGroup} />
+      <FilterBuilder fields={slaFilterFields(t, [...(entriesOf('severity') ?? []), ...(entriesOf('priority') ?? [])].filter((v, i, a) => a.findIndex((x) => x.value === v.value) === i), entriesOf('category') ?? [])} onApply={list.setFilterGroup} />
 
       {Object.entries(grouped).map(([entityType, items]) => (
         <div key={entityType} style={{ marginBottom: 28 }}>
@@ -307,7 +309,7 @@ export function SLAPoliciesPage() {
                 <label htmlFor={fid('priority')} style={labelS}>{t('admin.sla.scopeField')}</label>
                 <Select id={fid('priority')} style={selectS} value={form.priority} onChange={e => patch({ priority: e.target.value })} aria-describedby={fid('scope-hint')}>
                   <option value="">{t('admin.sla.anyScope')}</option>
-                  {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                  {PRIORITIES.map(p => <option key={p} value={p}>{vocabLabel(campoAmbito, p)}</option>)}
                 </Select>
                 <p id={fid('scope-hint')} style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>
                   {t(form.entityType === 'incident' ? 'admin.sla.scopeHintIncident' : 'admin.sla.scopeHintOther')}
@@ -316,13 +318,15 @@ export function SLAPoliciesPage() {
             </div>
 
             <div className="og-pair">
-              <div>
-                <label htmlFor={fid('category')} style={labelS}>{t('admin.sla.category')}</label>
-                <Select id={fid('category')} style={selectS} value={form.category} onChange={e => patch({ category: e.target.value })}>
-                  <option value="">{t('admin.sla.anyScope')}</option>
-                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </Select>
-              </div>
+              {hasCategory && (
+                <div>
+                  <label htmlFor={fid('category')} style={labelS}>{t('admin.sla.category')}</label>
+                  <Select id={fid('category')} style={selectS} value={form.category} onChange={e => patch({ category: e.target.value })}>
+                    <option value="">{t('admin.sla.anyScope')}</option>
+                    {CATEGORIES.map(c => <option key={c} value={c}>{vocabLabel('category', c)}</option>)}
+                  </Select>
+                </div>
+              )}
               <div>
                 <label htmlFor={fid('team')} style={labelS}>{t('admin.sla.team')}</label>
                 <Select id={fid('team')} style={selectS} value={form.teamId} onChange={e => patch({ teamId: e.target.value })}>
@@ -346,7 +350,7 @@ export function SLAPoliciesPage() {
             <div className="og-pair" style={{ alignItems: 'end' }}>
               <div>
                 <label htmlFor={fid('timezone')} style={labelS}>{t('pages.slaPolicies.timezone')}</label>
-                <Input id={fid('timezone')} value={form.timezone} onChange={e => patch({ timezone: e.target.value })} />
+                <Input id={fid('timezone')} value={form.timezone} placeholder={t('admin.sla.timezoneTenantDefault')} onChange={e => patch({ timezone: e.target.value })} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 2 }}>
                 <Toggle checked={form.businessHours} onChange={v => patch({ businessHours: v })} label={t('admin.sla.businessHoursLabel')} />

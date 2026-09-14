@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { AlertCircle, GitPullRequest, Users, User, Box } from 'lucide-react'
+import { AlertCircle, GitPullRequest, Users, User, Box, Bug, ClipboardList } from 'lucide-react'
 import type { Node } from '@xyflow/react'
 import type { NavigableEntity } from './ReportFlowNodes'
 import { colors, palette } from '@/lib/tokens'
@@ -20,20 +20,21 @@ function getEntityIcon(entityType: string, size = 24): React.ReactNode {
   switch (entityType) {
     case 'Incident': return <AlertCircle    size={size} color="var(--color-danger)" />
     case 'Change':   return <GitPullRequest  size={size} color={colors.brand} />
+    case 'Problem':  return <Bug             size={size} color="var(--color-warning)" />
+    case 'ServiceRequest': return <ClipboardList size={size} color={colors.brand} />
     case 'Team':     return <Users           size={size} color={palette.purple.light} />
     case 'User':     return <User            size={size} color={colors.success} />
     default:         return <Box             size={size} color="var(--color-brand)" />
   }
 }
 
-const ITSM_TYPES = ['Incident', 'Change']
-const ORG_TYPES  = ['Team', 'User']
-
 export function ReportQueryBuilder({ entities, nodes, nodeDataMap, onSelectRoot }: Props) {
   const { t } = useTranslation()
-  const itsmEntities = entities.filter(e => ITSM_TYPES.includes(e.entityType))
-  const orgEntities  = entities.filter(e => ORG_TYPES.includes(e.entityType))
-  const ciEntities   = entities.filter(e => !ITSM_TYPES.includes(e.entityType) && !ORG_TYPES.includes(e.entityType))
+  // Il gruppo lo dice l'API (`navigableGraph`): una lista qui restava a
+  // Incident e Change quando il catalogo ha imparato Problem e Service Request.
+  const itsmEntities = entities.filter(e => e.group === 'itsm')
+  const orgEntities  = entities.filter(e => e.group === 'organization')
+  const ciEntities   = entities.filter(e => e.group === 'cmdb')
 
   const renderGroup = (groupLabel: string, items: NavigableEntity[]) => {
     if (!items.length) return null

@@ -89,7 +89,7 @@ export async function assertAllApprovalsSatisfied(session: Session, changeId: st
     throw new GraphQLError('The Change Manager requirement is missing: designate a Change Manager team (Teams and Users) before approving', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.approval.missingChangeManagerRequirement' } } })
   }
   if (s.pending > 0) {
-    throw new GraphQLError(`Approvazione incompleta: ${s.pending} requisit${s.pending === 1 ? 'o' : 'i'} ancora in attesa`, { extensions: { code: 'CONFLICT' } })
+    throw new GraphQLError(`Approval incomplete: ${s.pending} requirement(s) still pending`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.approval.incomplete', params: { count: s.pending } } } })
   }
 }
 

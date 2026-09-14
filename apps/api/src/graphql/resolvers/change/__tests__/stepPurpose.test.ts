@@ -45,6 +45,8 @@ const session = {
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+// I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
+vi.mock('../../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
 vi.mock('../../ci-utils.js', () => ({
   withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn(session)),
   runQuery:    vi.fn(),
@@ -112,7 +114,7 @@ describe('approvazione della change su un workflow rinominato (A4-2)', () => {
     await approveChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab' }, ctx)
     expect(workflowEngine.transition).toHaveBeenCalledWith(
       session,
-      expect.objectContaining({ instanceId: 'wi-1', toStepName: 'in_calendario', notes: 'Approvazioni complete' }),
+      expect.objectContaining({ instanceId: 'wi-1', toStepName: 'in_calendario', notes: 'Approvals complete' }),
       expect.anything(),
     )
     expect(afterEnterStep).toHaveBeenCalledWith(session, 'chg-1', 't1', 'in_calendario')

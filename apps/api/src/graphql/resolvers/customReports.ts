@@ -3,9 +3,8 @@ import { getSession } from '@opengraphity/neo4j'
 import type { Session, ManagedTransaction } from 'neo4j-driver'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
-import { NotFoundError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { getNavigableEntities, getNavigableRelations } from '../../lib/navigableGraph.js'
-import type { NavigableEntity } from '../../lib/navigableGraph.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
 import { validateReportSection, type ReportSectionDef } from '../../lib/reportQueryBuilder.js'
 import { loadTemplateSections } from '../../lib/reportTemplates.js'
@@ -167,6 +166,20 @@ export async function createSectionWithNodesEdges(
   // stored, otherwise the scheduler/dashboards would execute it without a user.
   validateReportSection(sectionInputToDef(input, sectionId, order), await getReportWhitelist(tenantId))
 
+  // Ogni nodo riceve qui il suo id definitivo; l'id che manda il client resta
+  // come `temp_id`. Il nodo del raggruppamento va tradotto nello STESSO id: il
+  // loader restituisce i nodi con l'id definitivo, e una sezione che ricordava
+  // quello del client («node_…») si rompeva al primo Run — anche appena creata.
+  const nodeIds = new Map(input.nodes.map((n) => [n.id, uuidv4()] as const))
+  let groupByNodeId: string | null = null
+  if (input.groupByNodeId) {
+    const mapped = nodeIds.get(input.groupByNodeId)
+    if (!mapped) {
+      throw new ValidationError(`groupByNodeId ${JSON.stringify(input.groupByNodeId)} is not one of the section nodes`)
+    }
+    groupByNodeId = mapped
+  }
+
   await write(runner, `
       MATCH (r:ReportTemplate {id: $templateId, tenant_id: $tenantId})
       // tenant-ok: la sezione vive solo appesa al ReportTemplate scopato sopra
@@ -187,7 +200,7 @@ export async function createSectionWithNodesEdges(
     `, {
       id: sectionId, templateId, tenantId, order,
       title: input.title, chartType: input.chartType,
-      groupByNodeId: input.groupByNodeId ?? null,
+      groupByNodeId,
       groupByField:  input.groupByField ?? null,
       metric: input.metric,
       metricField: input.metricField ?? null,
@@ -196,7 +209,7 @@ export async function createSectionWithNodesEdges(
 
   // Create nodes
   for (const node of input.nodes) {
-    const nodeId = uuidv4()
+    const nodeId = nodeIds.get(node.id)!
     await write(runner, `
       MATCH (:ReportTemplate {tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection {id: $sectionId})
       CREATE (s)-[:HAS_NODE]->(n:ReportNode {
@@ -329,12 +342,6 @@ const Query = {
       )
 
       const allEntities = navigableEntities
-      const allFixed: NavigableEntity[] = [
-        { entityType: 'Incident', label: 'Incident', neo4jLabel: 'Incident', fields: [], relations: [] },
-        { entityType: 'Change',   label: 'Change',   neo4jLabel: 'Change',   fields: [], relations: [] },
-        { entityType: 'Team',     label: 'Team',     neo4jLabel: 'Team',     fields: [], relations: [] },
-        { entityType: 'User',     label: 'User',     neo4jLabel: 'User',     fields: [], relations: [] },
-      ]
 
       return result.records
         .map(r => ({
@@ -349,8 +356,7 @@ const Query = {
             ? r.cnt.toNumber!()
             : Number(r.cnt)
           const found = allEntities.find(e => e.neo4jLabel === r.neo4jLabel || e.entityType === r.neo4jLabel)
-          const fixed = allFixed.find(e => e.neo4jLabel === r.neo4jLabel || e.entityType === r.neo4jLabel)
-          const base  = found ?? fixed ?? { entityType: r.neo4jLabel, label: r.neo4jLabel, neo4jLabel: r.neo4jLabel, fields: [], relations: [] }
+          const base  = found ?? { entityType: r.neo4jLabel, label: r.neo4jLabel, neo4jLabel: r.neo4jLabel, fields: [], relations: [] }
           return {
             entityType:       base.entityType,
             label:            base.label,

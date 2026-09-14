@@ -17,6 +17,9 @@ export interface TicketComment {
   text:      string
   createdAt: string
   author?:   { id: string; name: string } | null
+  /** Chi l'ha scritto quando non è una persona: una regola ('automation') o il monitoraggio. */
+  authorKind?:  string | null
+  authorLabel?: string | null
 }
 
 interface Props {
@@ -49,11 +52,14 @@ export function CommentsSection({ comments, onAdd, adding, defaultOpen = false }
               <div key={c.id}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0' }}>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: 'var(--color-brand-light)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--font-size-body)', fontWeight: 700, flexShrink: 0 }}>
-                    {initials(c.author?.name)}
+                    {initials(c.author?.name ?? (c.authorKind === 'monitoring' ? t('detail.commentByMonitoring') : c.authorLabel ?? undefined))}
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4 }}>
-                      <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--text-primary)' }}>{c.author?.name ?? t('detail.unknownUser')}</span>
+                      <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--text-primary)' }}>{c.author?.name
+                        ?? (c.authorKind === 'monitoring' ? t('detail.commentByMonitoring')
+                          : c.authorKind === 'automation' ? t('detail.commentByAutomation', { name: c.authorLabel ?? '' })
+                          : t('detail.unknownUser'))}</span>
                       <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
                     </div>
                     <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}><MentionText text={c.text} /></p>

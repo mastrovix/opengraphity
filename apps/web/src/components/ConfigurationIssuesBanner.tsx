@@ -55,6 +55,10 @@ export function ConfigurationIssuesBanner() {
   const { data, error } = useQuery<{ configurationIssues: IssueData[] }>(GET_CONFIGURATION_ISSUES, {
     skip: !isAdmin,
     fetchPolicy: 'cache-and-network',
+    // La diagnostica cambia anche per fatti che non passano da questa pagina
+    // (un ticket risolto da un allarme): senza rilettura il banner elencava
+    // ancora un incident già risolto.
+    pollInterval: 60_000,
   })
 
   // Un errore qui non deve rompere la pagina: se la diagnostica non risponde,

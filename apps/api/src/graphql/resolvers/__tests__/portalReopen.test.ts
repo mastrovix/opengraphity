@@ -16,6 +16,8 @@ const mockSession = {
   close:        vi.fn().mockResolvedValue(undefined),
 }
 
+// I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
+vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: {
@@ -97,9 +99,9 @@ describe('reopenTicket', () => {
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValueOnce([
       { toStep: 'in_progress', label: 'Riapri', requiresInput: false, inputField: null, condition: null },
     ])
-    vi.mocked(workflowEngine.transition).mockResolvedValueOnce({ success: false, error: 'Transizione concorrente' } as never)
+    vi.mocked(workflowEngine.transition).mockResolvedValueOnce({ success: false, error: 'Concurrent transition' } as never)
 
-    await expect(portalResolvers.Mutation.reopenTicket(null, { ticketId: 'inc-1' }, ctx)).rejects.toThrow(/Transizione concorrente/)
+    await expect(portalResolvers.Mutation.reopenTicket(null, { ticketId: 'inc-1' }, ctx)).rejects.toThrow(/Concurrent transition/)
   })
 
   it('ticket without workflow instance → ValidationError (never a bare status write)', async () => {

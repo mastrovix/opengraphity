@@ -256,9 +256,9 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     // The label text (which may contain anything) is UI-only, never in Cypher.
     expect(query).not.toContain('RETURN 1')
     expect(columns).toEqual([
-      { alias: 'c0', name: 'Incidenti_aperti_title' },
-      { alias: 'c1', name: 'Incidenti_aperti_createdAt' },
-      { alias: 'c2', name: 'Team)_RETURN_1_//_name' },
+      { alias: 'c0', name: 'Incidenti_aperti_title', source: { neo4jLabel: 'Incident', field: 'title' } },
+      { alias: 'c1', name: 'Incidenti_aperti_createdAt', source: { neo4jLabel: 'Incident', field: 'createdAt' } },
+      { alias: 'c2', name: 'Team)_RETURN_1_//_name', source: { neo4jLabel: 'Team', field: 'name' } },
     ])
   })
 

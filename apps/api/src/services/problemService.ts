@@ -116,7 +116,10 @@ export async function createProblem(
       MATCH (p:Problem {id: $id, tenant_id: $tenantId})
       MATCH (u:User {id: $userId, tenant_id: $tenantId})
       MERGE (p)-[:CREATED_BY]->(u)
-    `, { id, tenantId: ctx.tenantId, userId: ctx.userId })
+      // Chi apre il ticket lo segue, come per gli incident (prima «Watch 0»).
+      MERGE (u)-[w:WATCHES]->(p)
+        ON CREATE SET w.watched_at = $now
+    `, { id, tenantId: ctx.tenantId, userId: ctx.userId, now })
     return rows[0].props
   }, true)
 

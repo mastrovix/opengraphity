@@ -20,6 +20,9 @@ import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { styleForCategory } from '@/lib/workflowStepStyle'
 import { colors } from '@/lib/tokens'
 import { formatDate, formatDateTime } from '@/lib/datetime'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { Link } from 'react-router-dom'
+import { transitionErrorText, type TransitionFailure } from '@/lib/transitionError'
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 
@@ -60,12 +63,11 @@ const DELETE_ARTICLE = gql`
 const EXECUTE_TRANSITION = gql`
   mutation KBTransition($instanceId: ID!, $toStep: String!, $notes: String) {
     executeWorkflowTransition(instanceId: $instanceId, toStep: $toStep, notes: $notes) {
-      success error
+      success error errorKey errorParams { name value }
     }
   }
 `
 
-const GET_KB_CATEGORIES = gql`query KBAdminCategories { kbCategories { name } }`
 
 const GET_KB_VERSIONS = gql`
   query KBArticleVersions($articleId: ID!) {
@@ -191,8 +193,8 @@ function kbFilterFromGroup(group: FilterGroup | null, t: TFunction): KBListFilte
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-// KB categories loaded dynamically via kbCategories query inside component
-const EMPTY_FORM: ArticleForm = { title: '', body: '', category: 'how-to', tags: '' }
+// Nessuna categoria preselezionata: la sceglie chi scrive, dal vocabolario.
+const EMPTY_FORM: ArticleForm = { title: '', body: '', category: '', tags: '' }
 const PAGE_SIZE = 20
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -221,8 +223,12 @@ function StatusBadge({ status, label, category }: {
 
 export function KBAdminPage() {
   const { t } = useTranslation()
-  const { data: catData } = useQuery<{ kbCategories: { name: string }[] }>(GET_KB_CATEGORIES, { fetchPolicy: 'cache-first' })
-  const CATEGORIES = (catData?.kbCategories ?? []).map(c => c.name)
+  // Le categorie sono il vocabolario «category» del cliente (lo stesso degli
+  // incident, da cui nascono le bozze). Prima venivano da `kbCategories`, che
+  // conta solo gli articoli PUBBLICATI: senza articoli pubblicati la tendina
+  // era vuota e un articolo non si poteva completare (giro del 14 set 2026).
+  const { entriesOf, labelOf } = useDomainVocabularies()
+  const CATEGORY_ENTRIES = entriesOf('category') ?? []
   const { steps: kbSteps, byName: kbStepByName, initialStep: kbInitialStep } = useWorkflowSteps('kb_article')
 
   // List state
@@ -246,7 +252,7 @@ export function KBAdminPage() {
     { key: 'status', label: t('common.status'), type: 'enum',
       options: kbSteps.map((s) => ({ value: s.name, label: s.label || s.name })) },
     { key: 'category', label: t('pages.kb.category'), type: 'enum',
-      options: CATEGORIES.map((c) => ({ value: c, label: c })) },
+      options: CATEGORY_ENTRIES.map((c) => ({ value: c.value, label: c.label ?? c.value })) },
     { key: 'title', label: t('common.title'), type: 'text' },
   ]
   function applyListFilter(group: FilterGroup | null) {
@@ -286,9 +292,12 @@ export function KBAdminPage() {
           void execTransition({
             variables: { instanceId: d.createKBArticle.workflowInstanceId, toStep: forwardFromInitial },
           }).then((res) => {
-            if (res.data?.executeWorkflowTransition.success) {
+            const r = res.data?.executeWorkflowTransition
+            if (r?.success) {
               toast.success(t('toast.kb.sentForReview'))
               void refetch()
+            } else if (r) {
+              toast.error(transitionErrorText(r, t('toast.kb.sendForReviewFailed')))
             }
           })
         }
@@ -309,10 +318,13 @@ export function KBAdminPage() {
           .map((s) => s.name)[0]
         if (wi && forwardFromInitial) {
           void execTransition({ variables: { instanceId: wi, toStep: forwardFromInitial } }).then((res) => {
-            if (res.data?.executeWorkflowTransition.success) {
+            const r = res.data?.executeWorkflowTransition
+            if (r?.success) {
               toast.success(t('toast.kb.sentForReview'))
               closeForm()
               void refetch()
+            } else if (r) {
+              toast.error(transitionErrorText(r, t('toast.kb.sendForReviewFailed')))
             }
           })
         } else {
@@ -332,7 +344,7 @@ export function KBAdminPage() {
     onError: (e: { message: string }) => toast.error(e.message),
   })
 
-  const [execTransition, { loading: transitioning }] = useMutation<{ executeWorkflowTransition: { success: boolean; error: string | null } }>(EXECUTE_TRANSITION, {
+  const [execTransition, { loading: transitioning }] = useMutation<{ executeWorkflowTransition: TransitionFailure & { success: boolean } }>(EXECUTE_TRANSITION, {
     onError: (e: { message: string }) => toast.error(e.message),
   })
 
@@ -352,6 +364,7 @@ export function KBAdminPage() {
   function handleSave() {
     const tags = form.tags.split(',').map((s) => s.trim()).filter(Boolean)
     if (!form.title.trim() || !form.body.trim()) { toast.error(t('toast.kb.titleBodyRequired')); return }
+    if (!form.category) { toast.error(t('toast.kb.categoryRequired')); return }
     publishingRef.current = false
     if (editId) {
       void updateArticle({ variables: { id: editId, title: form.title, body: form.body, category: form.category, tags } })
@@ -364,6 +377,7 @@ export function KBAdminPage() {
     if (!editId) return  // only available when editing an existing draft
     const tags = form.tags.split(',').map((s) => s.trim()).filter(Boolean)
     if (!form.title.trim() || !form.body.trim()) { toast.error(t('toast.kb.titleBodyRequiredPublish')); return }
+    if (!form.category) { toast.error(t('toast.kb.categoryRequired')); return }
     publishingRef.current = true
     void updateArticle({ variables: { id: editId, title: form.title, body: form.body, category: form.category, tags } })
   }
@@ -450,7 +464,12 @@ export function KBAdminPage() {
             <div>
               <label htmlFor={ids.category} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('pages.kbAdmin.categoryRequired')}</label>
               <select id={ids.category} value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} style={inputStyle}>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                <option value="" disabled>{t('pages.kbAdmin.chooseCategory')}</option>
+                {CATEGORY_ENTRIES.map((c) => <option key={c.value} value={c.value}>{c.label ?? c.value}</option>)}
+                {/* Una categoria che il vocabolario non ha più resta visibile, invece di sparire dal campo. */}
+                {form.category && !CATEGORY_ENTRIES.some((c) => c.value === form.category) && (
+                  <option value={form.category}>{labelOf('category', form.category) ?? form.category}</option>
+                )}
               </select>
             </div>
             <div>
@@ -481,6 +500,13 @@ export function KBAdminPage() {
             >
               {creating || updating ? t('common.loading') : t('common.save')}
             </button>
+
+            {/* In revisione: la pubblicazione si approva nella pagina Approvazioni. Prima qui non c'era nessuna indicazione. */}
+            {editId && editArticle && editArticle.status !== kbInitialStep?.name && kbStepByName.get(editArticle.status)?.category !== 'published' && (
+              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+                {t('pages.kbAdmin.awaitingApproval')} <Link to="/approvals" style={{ color: 'var(--color-brand)' }}>{t('pages.kbAdmin.openApprovals')}</Link>
+              </span>
+            )}
 
             {/* Publish — only when editing an existing draft */}
             {editId && editArticle?.status === kbInitialStep?.name && (

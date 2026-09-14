@@ -4,6 +4,7 @@
  *   executeChangeTransition, sendTaskReminder.
  */
 import { GraphQLError } from 'graphql'
+import { systemText } from '../../../lib/systemText.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import type { ActionContext } from '@opengraphity/workflow'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../../../lib/taskStatus.js'
@@ -17,6 +18,7 @@ import { createChangeRFC } from '../../../services/changeCreationService.js'
 import { change as getChange } from './queries.js'
 import { evaluateAutoTransitions, revertProblemAfterChangeDetached } from './autoTransitions.js'
 import { assertChangeWindowGate } from './windowGate.js'
+import { transitionFailed } from '../../../lib/transitionError.js'
 import {
   writeAudit,
   getNextTaskCodes,
@@ -248,7 +250,7 @@ async function linkChangeToRequestingProblem(
     }
     const res = await workflowEngine.transition(
       session,
-      { instanceId, toStepName: toStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: `RFC ${changeCode} creata` },
+      { instanceId, toStepName: toStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: await systemText(ctx.tenantId, 'change.rfcCreated', { code: changeCode }) },
       { userId: ctx.userId, entityData: {} } as ActionContext,
     )
     if (!res.success) {
@@ -413,7 +415,7 @@ export async function executeChangeTransition(
       notes:       args.notes,
       tenantId:    ctx.tenantId,
     }, actionCtx)
-    if (!result.success) throw new GraphQLError(result.error ?? 'Transizione fallita', { extensions: { code: 'CONFLICT' } })
+    if (!result.success) throw transitionFailed(result, 'Transition failed')
     if (result.actionErrors?.length) {
       logger.error({ changeId: args.changeId, actionErrors: result.actionErrors },
         '[change] transition persisted but step actions failed')

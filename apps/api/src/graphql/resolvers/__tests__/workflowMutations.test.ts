@@ -147,7 +147,7 @@ describe('executeWorkflowTransition — tenant isolation guard', () => {
       },
       expect.any(Object),
     )
-    expect(result).toEqual({ success: true, error: null, instance: { id: 'wi-1' }, actionErrors: null })
+    expect(result).toEqual({ success: true, error: null, errorKey: null, errorParams: null, instance: { id: 'wi-1' }, actionErrors: null })
   })
 
   it('istanza valida → valida i required fields con il tenant del contesto', async () => {
@@ -235,5 +235,18 @@ describe('azioni dei passi: vocabolario imposto alla scrittura', () => {
       enterActions: JSON.stringify([{ type: 'publish_event', params: { event: 'incident.security_review' } }]),
     }, ctx)
     expect(mockSession.executeWrite).toHaveBeenCalledOnce()
+  })
+})
+
+describe('executeWorkflowTransition — la frase di un rifiuto', () => {
+  it('la chiave e i parametri del motore arrivano al client insieme al messaggio', async () => {
+    const { transitionErrorFields } = await import('../../../lib/transitionError.js')
+    expect(transitionErrorFields({ error: 'Transition to "closed" is not valid from the current step', errorI18n: { key: 'errors.workflow.transitionNotValid', params: { step: 'closed' } } }))
+      .toEqual({
+        error: 'Transition to "closed" is not valid from the current step',
+        errorKey: 'errors.workflow.transitionNotValid',
+        errorParams: [{ name: 'step', value: 'closed' }],
+      })
+    expect(transitionErrorFields({ error: 'boom' })).toEqual({ error: 'boom', errorKey: null, errorParams: null })
   })
 })

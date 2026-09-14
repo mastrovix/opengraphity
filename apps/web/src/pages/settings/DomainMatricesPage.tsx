@@ -29,6 +29,7 @@ import { inputS, labelS } from '@/components/ui/styles'
 import { GET_DOMAIN_MATRICES, GET_PRE_APPROVED_CHANGE_TYPES, GET_RISK_BAND_THRESHOLDS } from '@/graphql/queries'
 import { UPDATE_DOMAIN_MATRIX, UPDATE_PRE_APPROVED_CHANGE_TYPES, UPDATE_RISK_BAND_THRESHOLDS } from '@/graphql/mutations'
 import { colors } from '@/lib/tokens'
+import { formatDateTime } from '@/lib/datetime'
 
 // ── Tipi ──────────────────────────────────────────────────────────────────────
 
@@ -147,7 +148,7 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
         {' · '}
         {matrix.isDefault
           ? t('pages.domainMatrices.factory')
-          : t('pages.domainMatrices.editedAt', { at: matrix.updatedAt ?? '—' })}
+          : t('pages.domainMatrices.editedAt', { at: matrix.updatedAt ? formatDateTime(matrix.updatedAt) : '—' })}
       </p>
 
       {missingNow.length > 0 && (

@@ -18,6 +18,7 @@ import { loadStepFacts } from '../lib/stepEvent.js'
 import { stepEnteredEventType, legacyStepEventType } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 import { assertUserInAssignedTeam, setTicketTeam, setTicketUser } from './ticketAssignment.js'
+import { systemText } from '../lib/systemText.js'
 
 export interface IncidentEventPayload {
   id: string; title: string; severity: string; status: string
@@ -325,7 +326,7 @@ export async function assignIncidentToTeam(
 
   return withSession(async (session) => {
     const { teamName } = await setTicketTeam(session, 'Incident', id, teamId, ctx.tenantId)
-    const transitionNotes = `Riassegnato al team ${teamName}`
+    const transitionNotes = await systemText(ctx.tenantId, 'incident.reassignedTeam', { team: teamName })
 
     const wiResult = await session.executeRead((tx) => tx.run(`
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
@@ -428,6 +429,8 @@ export async function assignIncidentToUser(
       // una persona a un incident già avviato non deve far scattare una
       // transizione arbitraria (transitions[0] potrebbe essere "resolved").
       // Da qualunque altro step si registra soltanto l'assegnazione (sotto).
+      const reassignedNote = await systemText(ctx.tenantId, 'incident.reassignedUser', { user: userName })
+      const assignedNote = await systemText(ctx.tenantId, 'incident.assignedUser', { user: userName })
       const transitions = currentStep === initialStep
         ? await workflowEngine.getAvailableTransitions(session, instanceId)
         : []
@@ -435,7 +438,7 @@ export async function assignIncidentToUser(
       if (currentStep === initialStep && next) {
         await workflowEngine.transition(
           session,
-          { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: `Assegnato a ${userName}` },
+          { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: assignedNote },
           { userId: ctx.userId, entityData: {} },
         )
       } else {
@@ -453,9 +456,9 @@ export async function assignIncidentToUser(
             trigger_type: 'manual',
             notes:        $notes
           })
-        `, { incidentId: id, tenantId: ctx.tenantId, now, userId: ctx.userId, notes: `Riassegnato a ${userName}` }))
+        `, { incidentId: id, tenantId: ctx.tenantId, now, userId: ctx.userId, notes: reassignedNote }))
       }
-      await createTransitionComment(session, id, ctx.tenantId, ctx.userId, `Assegnato a ${userName}`)
+      await createTransitionComment(session, id, ctx.tenantId, ctx.userId, assignedNote)
     }
 
     const r = await session.executeRead((tx) => tx.run(

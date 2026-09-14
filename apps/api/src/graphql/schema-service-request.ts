@@ -20,6 +20,7 @@ export function serviceRequestSDL(): string {
     availableTransitions: [WorkflowTransition!]!
     requestedBy: User
     assignee: User
+    slaStatus: SLAStatusInfo
   }
 
   type ServiceCatalogItem {

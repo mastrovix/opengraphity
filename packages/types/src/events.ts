@@ -309,3 +309,40 @@ export interface StepEnteredFacts {
   step_purpose:  string | null
   step_category: string | null
 }
+
+
+/**
+ * L'ingresso di un ticket in un passo, pubblicato per OGNI transizione del
+ * motore di workflow (manuale, automatica, da change, da regola, da timer).
+ *
+ * Non è per le notifiche (quelle hanno `<entità>.step_entered` e gli alias):
+ * è il fatto che serve a chi deve sapere che un ticket è stato preso in carico
+ * o è concluso, qualunque cammino l'abbia portato lì — lo SLA prima di tutti.
+ */
+export const WORKFLOW_STEP_ENTERED_EVENT = 'workflow.step_entered'
+
+export interface WorkflowStepEnteredPayload {
+  entity_type:  string
+  entity_id:    string
+  from_step:    string
+  /** Il passo lasciato era l'iniziale: la prima presa in carico. */
+  from_initial: boolean
+  step_name:    string
+  step_category: string | null
+  step_terminal: boolean
+  entered_at:   string
+  trigger_type: string
+}
+
+
+/**
+ * I tipi di ticket che hanno uno SLA: quelli per cui il motore SLA crea e
+ * chiude l'orologio. La change NON c'è: la pagina SLA Policies la offriva, ma
+ * nessun evento di change arriva al motore, e una policy per le change non si
+ * applicava mai (giro del 14 set 2026).
+ */
+export const SLA_ENTITY_TYPES = ['incident', 'problem', 'service_request'] as const
+export type SlaEntityType = typeof SLA_ENTITY_TYPES[number]
+
+/** I tipi che hanno una categoria da cui una policy SLA può dipendere. */
+export const SLA_CATEGORY_ENTITY_TYPES: readonly SlaEntityType[] = ['incident']

@@ -1,3 +1,4 @@
+import { GraphQLError } from 'graphql'
 import { v4 as uuidv4 } from 'uuid'
 import { nextSequenceValue } from '../lib/sequence.js'
 import { runQuery } from '@opengraphity/neo4j'
@@ -6,6 +7,8 @@ import type { ServiceCtx } from './incidentService.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
 import { workflowEngine } from '@opengraphity/workflow'
+import { systemText } from '../lib/systemText.js'
+import { transitionErrorI18n } from '../lib/transitionError.js'
 
 type Props = Record<string, unknown>
 
@@ -81,8 +84,11 @@ export async function createRequest(
       OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
       FOREACH (_ IN CASE WHEN u IS NOT NULL THEN [1] ELSE [] END |
         MERGE (r)-[:REQUESTED_BY]->(u)
+        // Chi apre la richiesta la segue, come per gli incident.
+        MERGE (u)-[w:WATCHES]->(r)
+          ON CREATE SET w.watched_at = $now
       )
-    `, { id, tenantId: ctx.tenantId, userId: ctx.userId })
+    `, { id, tenantId: ctx.tenantId, userId: ctx.userId, now })
 
     await workflowEngine.createInstance(session, ctx.tenantId, id, 'service_request')
 
@@ -114,9 +120,13 @@ export async function completeRequest(id: string, ctx: ServiceCtx) {
     const res = await workflowEngine.transition(session, {
       instanceId: wi[0].instanceId, toStepName: target.name,
       triggeredBy: ctx.userId, triggerType: 'manual', tenantId: ctx.tenantId,
-      notes: 'Richiesta evasa',
+      notes: await systemText(ctx.tenantId, 'request.fulfilled'),
     }, { userId: ctx.userId, entityData: {} })
-    if (!res.success) throw new Error(`Impossibile evadere la richiesta dallo step "${wi[0].step}": ${res.error ?? 'transizione non valida'}`)
+    if (!res.success) {
+      const i18n = transitionErrorI18n(res)
+      throw new GraphQLError(`Cannot fulfil the request from step "${wi[0].step}": ${res.error ?? 'transition not valid'}`,
+        { extensions: i18n ? { code: 'CONFLICT', i18n } : { code: 'CONFLICT' } })
+    }
 
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})

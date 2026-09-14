@@ -4,6 +4,7 @@ import {
   assertFieldName, assertSortDir,
 } from './cypherIdentifiers.js'
 import type { ReportWhitelist } from './reportWhitelist.js'
+import type { ReportValueSource } from './reportValueLabels.js'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -54,12 +55,16 @@ interface FilterClause {
 export interface ReportColumn {
   alias: string
   name:  string
+  /** Da dove viene il valore, per leggerlo con la sua etichetta (`reportValueLabels`). */
+  source: ReportValueSource | null
 }
 
 export interface BuiltReportQuery {
   query:   string
   params:  Record<string, unknown>
   columns: ReportColumn[]
+  /** Il campo del raggruppamento dei grafici a categorie; `null` per kpi, serie e tabelle. */
+  groupSource: ReportValueSource | null
 }
 
 /**
@@ -323,6 +328,7 @@ export function buildReportQuery(
 
   let returnClause: string
   const columns: ReportColumn[] = []
+  let groupSource: ReportValueSource | null = null
 
   switch (chartType) {
     case 'kpi':
@@ -336,6 +342,7 @@ export function buildReportQuery(
     case 'top_n': {
       // top_n is a ranked bar: same { label, value } contract, limited + sorted.
       const field = groupField ?? 'status'
+      groupSource = { neo4jLabel: groupNode.neo4jLabel, field: groupByField ?? 'status' }
       returnClause = [
         `RETURN ${groupVar}.${field} AS label, count(${rootVar}) AS value`,
         `ORDER BY value ${sortDirVal}`,
@@ -361,7 +368,7 @@ export function buildReportQuery(
         for (const sf of (rn.selectedFields ?? [])) {
           const snakeSf = assertFieldName(toSnakeCase(sf), `node ${rn.id} selectedFields`)
           const alias   = `c${columns.length}`
-          columns.push({ alias, name: tableColumnName(rn, sf) })
+          columns.push({ alias, name: tableColumnName(rn, sf), source: { neo4jLabel: rn.neo4jLabel, field: sf } })
           cols.push(`${rv}.${snakeSf} AS ${alias}`)
         }
       }
@@ -381,5 +388,5 @@ export function buildReportQuery(
   }
 
   const query = [...matchLines, returnClause].join('\n')
-  return { query, params, columns }
+  return { query, params, columns, groupSource }
 }

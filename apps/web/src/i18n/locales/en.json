@@ -699,7 +699,18 @@
       "dueOn": "Due: {{date}}",
       "confirmApproval": "Confirm approval",
       "confirmRejection": "Confirm rejection",
-      "articlePreview": "Article preview"
+      "articlePreview": "Article preview",
+      "openTicket": "Open the ticket",
+      "forTeam": "for team {{value}}",
+      "inStep": "step: {{value}}",
+      "decideInTicket": "You approve or reject it in the ticket page.",
+      "entity": {
+        "change": "Change",
+        "incident": "Incident",
+        "problem": "Problem",
+        "service_request": "Service Request",
+        "kb_article": "KB article"
+      }
     },
     "kb": {
       "title": "Knowledge Base",
@@ -761,7 +772,10 @@
       "colUpdated": "Updated",
       "articleCount_one": "{{count}} article",
       "articleCount_other": "{{count}} articles",
-      "charCount": "{{used}} / {{max}} characters"
+      "charCount": "{{used}} / {{max}} characters",
+      "chooseCategory": "Choose a category",
+      "awaitingApproval": "Waiting for approval before publication:",
+      "openApprovals": "open Approvals"
     },
     "workflow": {
       "title": "Workflow",
@@ -1014,6 +1028,12 @@
         "intro": "Verify the CI in the pre-production environment and record the outcome.",
         "pass": "Pass",
         "fail": "Fail"
+      },
+      "beforeWindow": {
+        "title": "Before the planned window",
+        "validation": "The planned validation window starts on {{when}}. Record the outcome now?",
+        "deployment": "The planned release window starts on {{when}}. Confirm the deployment now?",
+        "confirm": "Yes, complete now"
       }
     },
     "dashboard": {
@@ -1160,7 +1180,7 @@
       "preview": "Preview",
       "total": "Total:",
       "categories": "Categories:",
-      "previewHint": "The preview updates automatically while you configure the widget (600ms debounce).",
+      "previewHint": "The preview updates automatically while you configure the widget.",
       "activeAlarmsHint": "This widget shows the live counters of the alarm console: no entity or metric to configure.",
       "activeAlarmsStaffOnly": "The alarm console is reserved to staff (administrators, operators and viewers).",
       "serviceHealthStaffOnly": "The Services page is reserved to staff (administrators, operators and viewers).",
@@ -1499,7 +1519,8 @@
       "noWorkflow": "No workflow attached to this request.",
       "editTitle": "Edit the request",
       "titleRequired": "Title *",
-      "noActionInStep": "No action available in the current status ({{step}})."
+      "noActionInStep": "No action available in the current status ({{step}}).",
+      "noSla": "No SLA"
     },
     "workflowStep": {
       "editStep": "Edit the step",
@@ -1954,6 +1975,9 @@
       "automatic": "Automatic",
       "slaBreach": "SLA breach",
       "timer": "Timer (auto-close)"
+    },
+    "actionParams": {
+      "approvalTitleExample": "Publication: {title}"
     }
   },
   "itilDesigner": {
@@ -2117,7 +2141,12 @@
     "exportPdf": "Export PDF",
     "exportPdfFailed": "PDF export failed",
     "impact": "Impact",
-    "urgency": "Urgency"
+    "urgency": "Urgency",
+    "assignUser": "Assign",
+    "chooseUserToAssign": "Choose a member of the team to assign the incident.",
+    "noTeamMembers": "The team has no members: add them in Teams.",
+    "commentByMonitoring": "Monitoring",
+    "commentByAutomation": "Automation: {{name}}"
   },
   "search": {
     "placeholder": "Search everywhere... (Ctrl+K)",
@@ -2175,6 +2204,25 @@
     "incident": {
       "on_hold": {
         "title": "Incident on hold"
+      }
+    },
+    "approval": {
+      "requested": {
+        "title": "Approval requested"
+      },
+      "approved": {
+        "title": "Request approved"
+      },
+      "rejected": {
+        "title": "Request rejected"
+      }
+    },
+    "kb": {
+      "published": {
+        "title": "Article published"
+      },
+      "publication_rejected": {
+        "title": "Publication rejected"
       }
     }
   },
@@ -2292,7 +2340,8 @@
       "businessHours": "Business hours",
       "appliesToColumn": "Applies to",
       "previewBusinessHours": "(business hours)",
-      "preview247": "(24/7)"
+      "preview247": "(24/7)",
+      "timezoneTenantDefault": "Empty: the organization's time zone"
     },
     "integrations": {
       "tabsLabel": "Integration sections",
@@ -2426,7 +2475,9 @@
     "notFound": "{{entity}} {{id}} not found.",
     "sla": {
       "acknowledgeStaffOnly": "Only staff can create a ticket without SLA: the portal does not decide the SLA configuration.",
-      "priorityRequired": "The priority is required to find the SLA policy."
+      "priorityRequired": "The priority is required to find the SLA policy.",
+      "entityTypeWithoutSla": "SLA policies apply to {{allowed}}: «{{type}}» has no SLA.",
+      "categoryNotApplicable": "A {{type}} has no category: its SLA policy cannot depend on one."
     },
     "ola": {
       "typeOneOf": "The type must be one of: {{allowed}}.",
@@ -2540,7 +2591,8 @@
       "linkIncidentNotFound": "Incident not found for the change link.",
       "linkProblemNotFound": "Problem not found for the change link.",
       "deleted": "The change was deleted: no operation is possible any more.",
-      "preApprovalFailed": "Pre-approved change type \"{{type}}\": the pre-approval failed ({{reason}})."
+      "preApprovalFailed": "Pre-approved change type \"{{type}}\": the pre-approval failed ({{reason}}).",
+      "assessmentsIncomplete": "The change cannot leave the assessment: complete every assessment task and the deploy plan first (after the assessment the plan can no longer be edited)."
     },
     "import": {
       "tenantRequired": "The tenant is missing: the import does not know where to write.",
@@ -2605,7 +2657,18 @@
       "initialAndTerminal": "Step \"{{name}}\" is terminal: it cannot also be the initial step, or every new ticket would be born already closed. Clear «terminal step», or pick another initial step.",
       "stepsNotInDefinition": "Steps not found, or not part of this definition.",
       "stepHasInstances": "Step \"{{name}}\" cannot be deleted: {{count}} workflow instances are on this step right now ({{detail}}). Move them to another step first — deleting it would leave them without a current step, unable to move.",
-      "stepNotInDefinition": "Step \"{{name}}\" is not in definition {{definition}}: the number of instances on it cannot be told."
+      "stepNotInDefinition": "Step \"{{name}}\" is not in definition {{definition}}: the number of instances on it cannot be told.",
+      "transitionNotValid": "The move to \"{{step}}\" is not available from the current step: reload the page, the ticket may have moved in the meantime.",
+      "transitionSystemOnly": "The move to \"{{step}}\" is performed by the system and cannot be run by hand.",
+      "unknownCondition": "The workflow uses the condition \"{{condition}}\", which does not exist: fix the transition in the workflow designer.",
+      "concurrentTransition": "Someone else moved this ticket in the meantime: reload the page and try again.",
+      "condition": {
+        "rootCauseRequired": "A root cause is required for this transition.",
+        "has_linked_change": "Link a change first, then request the change.",
+        "all_assessments_complete": "The assessments are not complete yet for every CI.",
+        "all_deployments_complete": "Validation or deployment is not complete yet for every CI.",
+        "all_reviews_confirmed": "The reviews are not confirmed yet for every CI."
+      }
     },
     "channel": {
       "platform": "Platform \"{{platform}}\" is not supported. Allowed: {{allowed}}."
@@ -2636,17 +2699,23 @@
     },
     "task": {
       "resultOneOf": "The result must be one of: {{allowed}}.",
-      "notOnChange": "{{task}} for CI {{ci}} is not on the change: wrong phase, or task reopened?"
+      "notOnChange": "{{task}} for CI {{ci}} is not on the change: wrong phase, or task reopened?",
+      "alreadyCompleted": "This task is already completed."
     },
     "plan": {
       "endBeforeStart": "{{window}}: the end must come after the start.",
       "stepTitleRequired": "Step {{step}}: the title is required.",
       "atLeastOneStep": "At least one step is required.",
-      "oneStepFilled": "At least one step must be filled in before completing."
+      "oneStepFilled": "At least one step must be filled in before completing.",
+      "windowStartEndRequired": "{{window}}: start and end are required.",
+      "editableOnlyInInitialStep": "The deploy plan can be edited only while the change is in its initial step (\"{{step}}\")."
     },
     "assessment": {
       "noQuestions": "No assessment question: the score cannot be computed.",
-      "noQuestionForCategory": "No assessment question is assigned to the CI type for the requested category."
+      "noQuestionForCategory": "No assessment question is assigned to the CI type for the requested category.",
+      "answersLocked": "This task is already completed: the answers can no longer be changed.",
+      "missingAnswers_one": "{{count}} question is still unanswered: answer it before completing the task.",
+      "missingAnswers_other": "{{count}} questions are still unanswered: answer them before completing the task."
     },
     "serviceMap": {
       "planLimit": "Plan {{plan}} allows at most {{max}} service maps, and {{existing}} already exist.",
@@ -2724,7 +2793,9 @@
       "rejectFailed": "The rejection failed.",
       "typeNoLongerPreApproved": "The change is of type \"{{type}}\", which is not among the pre-approved types, and it has no approval requirement: requirements are created when entering a step with the «Approval» purpose, and this change never went through one (when it was created, its type was pre-approved). Two ways out: put \"{{type}}\" back among the pre-approved types (Settings → Domain matrices), and changes like this one resume by themselves; or bring it back to the approval step, which creates the requirements on entry.",
       "missingChangeManagerRequirement": "The Change Manager requirement is missing: designate a Change Manager team (Teams and Users) before approving.",
-      "noChangeManagerTeam": "No team is designated Change Manager: configure one (Teams and Users) before sending the change to approval."
+      "noChangeManagerTeam": "No team is designated Change Manager: configure one (Teams and Users) before sending the change to approval.",
+      "incomplete_one": "The approval is incomplete: {{count}} requirement is still pending.",
+      "incomplete_other": "The approval is incomplete: {{count}} requirements are still pending."
     },
     "fieldRule": {
       "sameField": "The field that triggers the rule and the field it acts on cannot be the same.",
@@ -2792,6 +2863,9 @@
     "team": {
       "nameEmpty": "The team name cannot be empty",
       "sourcingRequired": "A team must say whether it is internal or external."
+    },
+    "request": {
+      "approvalRequired": "This request needs an approval: send it to approval first."
     }
   },
   "errorBoundary": {
@@ -2891,7 +2965,9 @@
       "sentForReview": "Article sent for review",
       "reviewStepNotFound": "WorkflowInstance or review step not found",
       "titleBodyRequired": "Title and body are required",
-      "titleBodyRequiredPublish": "Title and body are required before publishing"
+      "titleBodyRequiredPublish": "Title and body are required before publishing",
+      "categoryRequired": "Choose a category for the article.",
+      "sendForReviewFailed": "The article was saved but could not be sent for review."
     },
     "queue": {
       "retryQueued": "Job queued for retry"
@@ -3035,7 +3111,9 @@
       "aiDraftFailed": "AI draft failed: {{error}}",
       "aiDraftNoResponse": "AI draft failed: no response",
       "matrixUnavailable": "Domain matrices are unreachable ({{error}}): impact, urgency and priority come from there, so the ticket cannot be created right now.",
-      "matrixIncomplete": "The priority matrix does not cover the selected combination: complete it in Settings → Domain matrices, or pick another pair."
+      "matrixIncomplete": "The priority matrix does not cover the selected combination: complete it in Settings → Domain matrices, or pick another pair.",
+      "assignedToUser": "Incident assigned to {{name}}",
+      "kbDraftOpen": "Open drafts"
     },
     "problem": {
       "created": "Problem created",
@@ -3505,7 +3583,8 @@
         "skipped_lifecycle": "CI {{name}} is in status “{{status}}”, one of those the policy ignores: no incident opened and CI health unchanged. To resume the evaluation change the CI status, or remove the status from “Lifecycle statuses to ignore” in the event policy.",
         "skipped_lifecycleNoStatus": "CI {{name}} is in a lifecycle status the policy ignores, but the status is not recorded on the CI: no incident opened and health unchanged.",
         "skipped_lifecycleNoCI": "The alarm's CI is in a lifecycle status the policy ignores: no incident opened and no health change.",
-        "pending": "Waiting for re-evaluation: correlation resumes on the next automatic pass, within five minutes."
+        "pending": "Waiting for re-evaluation: correlation resumes on the next automatic pass, within five minutes.",
+        "openedManually": "Incident {{number}} opened by an operator on {{when}}."
       },
       "short": {
         "opened": "incident opened",
@@ -4265,7 +4344,8 @@
         "noResult": "createServiceMap did not return the map",
         "draft": "Create as a draft",
         "draftHint": "A draft map is not evaluated: check it, then activate it from the detail page.",
-        "relationshipsError": "Could not load relationship types: {{error}}"
+        "relationshipsError": "Could not load relationship types: {{error}}",
+        "realizesHint": "The map starts from the applications the service realizes: in the CMDB the service needs a REALIZES relationship towards each application, otherwise the map is created empty."
       },
       "ciSection": {
         "title": "Services depending on this CI",
@@ -4797,7 +4877,7 @@
       "setSla": "Set SLA"
     },
     "sentence": {
-      "when": "When a {{entity}} is {{event}}",
+      "when": "When a ticket of type {{entity}} is {{event}}",
       "afterMinutes_one": "after {{count}} minute",
       "afterMinutes_other": "after {{count}} minutes",
       "if": "IF {{cond}}",
@@ -4805,6 +4885,41 @@
       "and": "AND",
       "or": "OR",
       "slaPair": "response:{{response}}min resolution:{{resolve}}min"
+    }
+  },
+  "metamodel": {
+    "shipped": {
+      "field": {
+        "title": "Title",
+        "description": "Description",
+        "status": "Status",
+        "severity": "Severity",
+        "category": "Category",
+        "created_at": "Created at",
+        "updated_at": "Updated at",
+        "resolved_at": "Resolved at",
+        "impact": "Impact",
+        "urgency": "Urgency",
+        "priority": "Priority",
+        "type": "Type",
+        "risk": "Risk",
+        "scheduled_start": "Scheduled start",
+        "scheduled_end": "Scheduled end",
+        "name": "Name",
+        "environment": "Environment",
+        "notes": "Notes",
+        "createdAt": "Created at",
+        "updatedAt": "Updated at",
+        "certificateType": "Type",
+        "expiresAt": "Expires at",
+        "port": "Port",
+        "serialNumber": "Serial number",
+        "version": "Version"
+      },
+      "relation": {
+        "dependencies": "Dependencies",
+        "dependents": "Dependents"
+      }
     }
   }
 }

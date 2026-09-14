@@ -10,6 +10,8 @@ import { logger } from '../../lib/logger.js'
 import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
 import { engine, incidents } from './deps.js'
 import { MONITORING_ACTOR } from './shared.js'
+import { systemText } from '../../lib/systemText.js'
+import { loadStepFacts } from '../../lib/stepEvent.js'
 
 const log = logger.child({ module: 'event-correlation' })
 
@@ -128,7 +130,10 @@ export async function runMonitoringTransition(session: Session, tenantId: string
   if (res.actionErrors?.length) log.error({ tenantId, incidentId, toStep, actionErrors: res.actionErrors }, `Incident moved to "${toStep}" by monitoring but step actions failed`)
   const ctx = { tenantId, userId: MONITORING_ACTOR }
   const incidentService = await incidents()
-  if (comment) await incidentService.addIncidentComment(incidentId, ctx, `Workflow: ${toStep} — ${notes}`)
+  if (comment) {
+    const stepLabel = (await loadStepFacts(session, tenantId, 'incident', toStep)).step_label
+    await incidentService.addIncidentComment(incidentId, ctx, await systemText(tenantId, 'workflow.transitionCommentNotes', { step: stepLabel, notes }))
+  }
   await incidentService.publishIncidentTransition(incidentId, toStep, ctx)
 }
 

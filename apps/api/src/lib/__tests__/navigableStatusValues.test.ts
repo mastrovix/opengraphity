@@ -1,27 +1,37 @@
 /**
+ * Il catalogo delle entità dei report (`navigableGraph`).
+ *
  * Personalizzazioni, ondata 8 — A8-4 (B-11, parziale): i valori dello STATO
- * offerti dal costruttore di report sono i PASSI del workflow del cliente.
+ * offerti dal costruttore di report sono i PASSI del workflow del cliente, non
+ * una lista di fabbrica (`open` non è un passo di nessun workflow).
  *
- * `navigableGraph` aveva due liste fisse: per gli incident `open, assigned,
- * in_progress, resolved, closed` (dove `open` non è un passo di nessun
- * workflow) e per le change `draft, pending_approval, approved, in_progress,
- * completed, failed, cancelled` (di cui solo un paio esistono). Risultato: un
- * filtro di report sullo stato offriva valori che il grafo non contiene e non
- * offriva quelli veri — né i passi aggiunti dal cliente.
- *
- * Nessun ripiego sulla lista factory: senza workflow la tendina resta
- * vuota e il costruttore mostra un campo di testo libero, invece di suggerire
- * stati inesistenti.
+ * Giro nel browser del 14 set 2026: i ticket vengono dal METAMODELLO ITIL del
+ * tenant — tutti e quattro, con i loro campi e vocabolari — e le relazioni
+ * sono quelle che i servizi scrivono davvero (`AFFECTED_BY`, `AFFECTS_CI`).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const session = { close: vi.fn().mockResolvedValue(undefined), executeRead: vi.fn() }
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(() => session) }))
-vi.mock('@opengraphity/schema-generator', () => ({ toPascalCase: (s: string) => s }))
+vi.mock('@opengraphity/schema-generator', () => ({ toPascalCase: (s: string) => s.replace(/(^|_)(\w)/g, (_m, _u, c: string) => c.toUpperCase()) }))
 vi.mock('../logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
+vi.mock('../enumScope.js', () => ({
+  enumScopeClause: () => '',
+  loadTenantEnumOverrides: vi.fn().mockResolvedValue(new Map()),
+  applyEnumOverrides: <T>(rows: T[]) => rows,
+}))
 
 const steps = vi.fn<(s: unknown, t: string, e: string) => Promise<Array<{ name: string; stepOrder: number | null }>>>()
 vi.mock('../workflowHelpers.js', () => ({ getWorkflowSteps: (s: unknown, t: string, e: string) => steps(s, t, e) }))
+
+const field = (name: string, extra: Record<string, unknown> = {}) => ({ name, label: name, fieldType: 'string', enumValues: [], enumTypeName: null, ...extra })
+const ITIL = [
+  { name: 'incident', label: 'Incident', neo4jLabel: 'Incident', fields: [field('title'), field('status', { fieldType: 'enum', enumValues: ['new', 'open'] }), field('category', { fieldType: 'enum', enumValues: ['network'], enumTypeName: 'category' })] },
+  { name: 'change', label: 'Change', neo4jLabel: 'Change', fields: [field('status', { fieldType: 'enum' })] },
+  { name: 'problem', label: 'Problem', neo4jLabel: 'Problem', fields: [field('priority', { fieldType: 'enum', enumValues: ['high'], enumTypeName: 'priority' })] },
+  { name: 'service_request', label: 'Service Request', neo4jLabel: 'ServiceRequest', fields: [field('title')] },
+]
+vi.mock('../itilTypes.js', () => ({ loadITILTypes: vi.fn(async () => ITIL) }))
 
 const { getNavigableEntities } = await import('../navigableGraph.js')
 const { logger } = await import('../logger.js')
@@ -36,51 +46,63 @@ const STEPS: Record<string, Array<{ name: string; stepOrder: number | null }>> =
   change: [{ name: 'valutazione', stepOrder: 1 }, { name: 'archiviata', stepOrder: 5 }],
 }
 
+type Entities = Array<{ entityType: string; group: string; fields: Array<{ name: string; enumValues: string[]; enumTypeName: string | null }>; relations: Array<{ relationshipType: string; targetNeo4jLabel: string }> }>
+const load = async (tenant: string) => await getNavigableEntities(tenant) as never as Entities
+const statusOf = (entities: Entities, entityType: string) =>
+  entities.find((e) => e.entityType === entityType)!.fields.find((f) => f.name === 'status')!.enumValues
+
 beforeEach(() => {
   vi.clearAllMocks()
-  // nessun tipo CI dal metamodello: interessano le entità fisse
+  // nessun tipo CI dal metamodello: interessano i ticket
   session.executeRead.mockResolvedValue({ records: [] })
   steps.mockImplementation(async (_s, _t, entityType) => STEPS[entityType] ?? [])
 })
 
-const statusOf = (entities: Array<{ entityType: string; fields: Array<{ name: string; enumValues: string[] }> }>, entityType: string) =>
-  entities.find((e) => e.entityType === entityType)!.fields.find((f) => f.name === 'status')!.enumValues
+describe('getNavigableEntities — i ticket dal metamodello ITIL', () => {
+  it('tutti e quattro i ticket, nel gruppo itsm, con i campi del metamodello e il loro vocabolario', async () => {
+    const entities = await load('c-two')
+    expect(entities.filter((e) => e.group === 'itsm').map((e) => e.entityType)).toEqual(['Incident', 'Change', 'Problem', 'ServiceRequest'])
+    const incident = entities.find((e) => e.entityType === 'Incident')!
+    expect(incident.fields.map((f) => f.name)).toEqual(['title', 'status', 'category'])
+    expect(incident.fields.find((f) => f.name === 'category')!.enumTypeName).toBe('category')
+    expect(entities.filter((e) => e.group === 'organization').map((e) => e.entityType)).toEqual(['Team', 'User'])
+  })
+
+  it('le relazioni sono quelle che i servizi scrivono: AFFECTED_BY per gli incident, AFFECTS_CI per le change', async () => {
+    const entities = await load('c-two')
+    const rels = (t: string) => entities.find((e) => e.entityType === t)!.relations.map((r) => r.relationshipType)
+    expect(rels('Incident')).toContain('AFFECTED_BY')
+    expect(rels('Incident')).not.toContain('AFFECTS')
+    expect(rels('Change')).toContain('AFFECTS_CI')
+    expect(rels('Problem')).toEqual(expect.arrayContaining(['AFFECTS', 'CAUSED_BY', 'RESOLVED_BY']))
+  })
+})
 
 describe('getNavigableEntities — lo stato viene dal workflow del tenant', () => {
   it('Incident e Change offrono i passi del cliente, in ordine di flusso', async () => {
-    const entities = await getNavigableEntities('c-two') as never as Array<{ entityType: string; fields: Array<{ name: string; enumValues: string[] }> }>
+    const entities = await load('c-two')
     expect(statusOf(entities, 'Incident')).toEqual(['nuovo', 'sistemato', 'archiviato', 'su_misura'])
     expect(statusOf(entities, 'Change')).toEqual(['valutazione', 'archiviata'])
     expect(steps).toHaveBeenCalledWith(session, 'c-two', 'incident')
     expect(steps).toHaveBeenCalledWith(session, 'c-two', 'change')
   })
 
-  it('i valori factory non compaiono più: `open` non è un passo di nessun workflow', async () => {
-    const entities = await getNavigableEntities('c-two') as never as Array<{ entityType: string; fields: Array<{ name: string; enumValues: string[] }> }>
-    expect(statusOf(entities, 'Incident')).not.toContain('open')
-    expect(statusOf(entities, 'Change')).not.toContain('pending_approval')
+  it('i valori del metamodello non compaiono: `open` non è un passo di nessun workflow', async () => {
+    expect(statusOf(await load('c-two'), 'Incident')).not.toContain('open')
   })
 
   // c-one ha DUE definizioni incident attive (base e «Security»): l'unione dei
-  // passi ripete i nomi in comune, e una tendina con «resolved» due volte è
-  // peggio di una lista fissa. Trovato dal vivo.
+  // passi ripete i nomi in comune. Trovato dal vivo.
   it('due definizioni attive della stessa entità → nomi senza ripetizioni', async () => {
     steps.mockImplementation(async (_s, _t, entityType) => entityType === 'incident'
       ? [...STEPS['incident']!, { name: 'nuovo', stepOrder: 1 }, { name: 'sistemato', stepOrder: 5 }, { name: 'revisione_sicurezza', stepOrder: 2 }]
       : STEPS[entityType] ?? [])
-    const entities = await getNavigableEntities('c-one') as never as Array<{ entityType: string; fields: Array<{ name: string; enumValues: string[] }> }>
-    expect(statusOf(entities, 'Incident')).toEqual(['nuovo', 'revisione_sicurezza', 'sistemato', 'archiviato', 'su_misura'])
-  })
-
-  it('entità senza workflow (Team, User, ChangeTask) non vengono toccate', async () => {
-    const entities = await getNavigableEntities('c-two') as never as Array<{ entityType: string; fields: Array<{ name: string; enumValues: string[] }> }>
-    expect(statusOf(entities, 'ChangeTask')).toEqual(['pending', 'in_progress', 'completed', 'failed', 'skipped', 'rejected'])
-    expect(steps).toHaveBeenCalledTimes(2)
+    expect(statusOf(await load('c-one'), 'Incident')).toEqual(['nuovo', 'revisione_sicurezza', 'sistemato', 'archiviato', 'su_misura'])
   })
 
   it('tenant senza workflow → tendina vuota (testo libero) e un warn, non la lista factory', async () => {
     steps.mockResolvedValue([])
-    const entities = await getNavigableEntities('c-three') as never as Array<{ entityType: string; fields: Array<{ name: string; enumValues: string[] }> }>
+    const entities = await load('c-three')
     expect(statusOf(entities, 'Incident')).toEqual([])
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'c-three', entityType: 'Incident' }),

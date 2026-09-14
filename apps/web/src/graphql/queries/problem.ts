@@ -32,7 +32,7 @@ export const GET_PROBLEM = gql`
       linkedChanges { id number title status removable }
       availableTransitions { toStep label requiresInput inputField condition }
       workflowHistory { id stepName enteredAt exitedAt durationMs triggeredBy triggerType notes }
-      comments { id text type createdAt author { id name } }
+      comments { id text type createdAt authorKind authorLabel author { id name } }
     }
   }
 `

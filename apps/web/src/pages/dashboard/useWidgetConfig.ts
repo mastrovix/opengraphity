@@ -8,6 +8,7 @@ import { CREATE_CUSTOM_WIDGET, UPDATE_CUSTOM_WIDGET } from '@/graphql/mutations'
 import { GET_WIDGET_DATA_PREVIEW, GET_ITIL_TYPES, GET_CI_TYPES } from '@/graphql/queries'
 import type { CustomWidgetData } from './CustomWidgetCard'
 import { cssVar } from '@/lib/charts/cssVar'
+import { shippedLabel } from '@/lib/shippedLabel'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 // Le etichette visibili sono chiavi i18n (`labelKey`, `descKey`, `subKey`,
@@ -230,14 +231,14 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
       const typeDef = itilTypes.find(t => t.name === entityType)
       if (typeDef) {
         for (const f of typeDef.fields) {
-          map[f.name] = { name: f.name, label: f.label || f.name, fieldType: f.fieldType, enumValues: f.enumValues ?? [] }
+          map[f.name] = { name: f.name, label: shippedLabel('field', f.name, f.label), fieldType: f.fieldType, enumValues: f.enumValues ?? [] }
         }
       }
     } else if (!isITIL && ciTypes) {
       const typeDef = ciTypes.find(t => t.name === entityType)
       if (typeDef) {
         for (const f of typeDef.fields) {
-          map[f.name] = { name: f.name, label: f.label || f.name, fieldType: f.fieldType, enumValues: f.enumValues ?? [] }
+          map[f.name] = { name: f.name, label: shippedLabel('field', f.name, f.label), fieldType: f.fieldType, enumValues: f.enumValues ?? [] }
         }
       }
     }

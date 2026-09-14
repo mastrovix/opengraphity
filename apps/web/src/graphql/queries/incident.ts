@@ -51,7 +51,7 @@ export const GET_INCIDENT = gql`
         triggeredBy triggerType notes
       }
       comments {
-        id text createdAt updatedAt
+        id text createdAt updatedAt authorKind authorLabel
         author { id name email }
       }
       slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt }
@@ -86,6 +86,7 @@ export const GET_SERVICE_REQUEST = gql`
       assignee { id name email }
       workflowInstance { id currentStep status }
       availableTransitions { toStep label requiresInput inputField }
+      slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt }
     }
   }
 `

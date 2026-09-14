@@ -18,6 +18,7 @@ import { logger } from '../lib/logger.js'
 // I passi conclusivi (risolti/terminali) vengono dal workflow di QUESTO cliente
 // e non da `['closed']`/`['resolved','closed']` (ondata 8 · B-22).
 import { statusNamesForClasses, concludedStatusNames } from '../lib/statusStepNames.js'
+import { modelLanguageFor } from '../lib/systemText.js'
 
 const log = logger.child({ module: 'post-incident' })
 
@@ -78,6 +79,7 @@ async function loadIncidentContext(tenantId: string, incidentId: string): Promis
 export async function draftResolutionNotes(tenantId: string, incidentId: string): Promise<string> {
   const ctx = await loadIncidentContext(tenantId, incidentId)
   const client = getClient()
+  const language = await modelLanguageFor(tenantId)
   const t0 = Date.now()
 
   const response = await client.messages.create({
@@ -87,7 +89,7 @@ export async function draftResolutionNotes(tenantId: string, incidentId: string)
     output_config: { effort: 'low' },
     system: [{
       type: 'text',
-      text: `Scrivi note di risoluzione per incident ITSM, in italiano. Ricevi i dati reali dell'incident (titolo, descrizione, commenti degli operatori, passaggi di workflow, CI coinvolti). Produci SOLO il testo delle note: 3-6 frasi concrete che descrivono causa, intervento effettuato e verifica — basate esclusivamente sull'evidenza fornita. Se l'evidenza non chiarisce la causa o l'intervento, scrivilo esplicitamente ("causa non documentata nei commenti") invece di inventare. Niente preamboli, niente markdown.`,
+      text: `Scrivi note di risoluzione per incident ITSM. Scrivi il testo in ${language}. Ricevi i dati reali dell'incident (titolo, descrizione, commenti degli operatori, passaggi di workflow, CI coinvolti). Produci SOLO il testo delle note: 3-6 frasi concrete che descrivono causa, intervento effettuato e verifica — basate esclusivamente sull'evidenza fornita. Se l'evidenza non chiarisce la causa o l'intervento, scrivilo esplicitamente ("causa non documentata nei commenti") invece di inventare. Niente preamboli, niente markdown.`,
       cache_control: { type: 'ephemeral' },
     }],
     messages: [{ role: 'user', content: JSON.stringify({
@@ -166,6 +168,7 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
 
   // Claude names each cluster and motivates the Problem candidate
   const client = getClient()
+  const language = await modelLanguageFor(tenantId)
   const schema = {
     type: 'object',
     properties: {
@@ -194,7 +197,7 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
     output_config: { effort: 'low', format: { type: 'json_schema', schema } },
     system: [{
       type: 'text',
-      text: `Analista ITSM. Ricevi cluster di incident semanticamente simili (non chiusi). Per ogni cluster proponi un candidato Problem: un titolo sintetico della probabile causa radice comune e una motivazione (2-3 frasi, in italiano) fondata SOLO sui titoli/dati forniti. Se un cluster sembra composto da ticket di test o senza pattern reale, dillo apertamente nella motivazione.`,
+      text: `Analista ITSM. Ricevi cluster di incident semanticamente simili (non chiusi). Per ogni cluster proponi un candidato Problem: un titolo sintetico della probabile causa radice comune e una motivazione (2-3 frasi, scritta in ${language}) fondata SOLO sui titoli/dati forniti. Se un cluster sembra composto da ticket di test o senza pattern reale, dillo apertamente nella motivazione.`,
       cache_control: { type: 'ephemeral' },
     }],
     messages: [{ role: 'user', content: JSON.stringify(
@@ -251,6 +254,7 @@ export async function draftKbContent(tenantId: string, incidentId: string): Prom
   }
 
   const client = getClient()
+  const language = await modelLanguageFor(tenantId)
   const schema = {
     type: 'object',
     properties: {
@@ -270,7 +274,7 @@ export async function draftKbContent(tenantId: string, incidentId: string): Prom
     output_config: { effort: 'low', format: { type: 'json_schema', schema } },
     system: [{
       type: 'text',
-      text: `Redattore Knowledge Base ITSM. Da un incident risolto produci un articolo KB in italiano, struttura: Sintomo, Causa, Soluzione, Verifica. Usa SOLO l'evidenza fornita (descrizione, commenti, workflow); dove l'evidenza manca scrivi "da completare" invece di inventare. body in markdown semplice. category: una parola (es. database, network, hardware, software). tags: 2-5 parole chiave.`,
+      text: `Redattore Knowledge Base ITSM. Da un incident risolto produci un articolo KB scritto interamente in ${language} (titolo, corpo e titoli delle sezioni), struttura: Sintomo, Causa, Soluzione, Verifica — con i titoli delle sezioni tradotti in ${language}. Usa SOLO l'evidenza fornita (descrizione, commenti, workflow); dove l'evidenza manca scrivi "da completare" (tradotto in ${language}) invece di inventare. body in markdown semplice. category: una parola (es. database, network, hardware, software). tags: 2-5 parole chiave.`,
       cache_control: { type: 'ephemeral' },
     }],
     messages: [{ role: 'user', content: JSON.stringify({

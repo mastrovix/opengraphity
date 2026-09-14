@@ -63,6 +63,11 @@ export interface Action {
   params: Record<string, unknown>
 }
 
+/** Le etichette dei ticket su cui un'azione può scrivere: allowlist, finisce nel Cypher. */
+const TICKET_LABELS: Record<string, 'Incident' | 'Problem' | 'Change' | 'ServiceRequest'> = {
+  incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'ServiceRequest',
+}
+
 export interface ActionExecutionContext {
   tenantId:   string
   userId:     string
@@ -158,17 +163,34 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
     case 'assign_team': {
       const teamId = String(p['team_id'] ?? '')
       if (!teamId) throw new Error('assign_team: team_id is required')
-      await withSession(async (session) => {
-        await runQuery(session, `
-          MATCH (e {id: $entityId, tenant_id: $tenantId})
-          OPTIONAL MATCH (e)-[old:ASSIGNED_TO_TEAM]->()
-          DELETE old
-          WITH e
-          MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-          CREATE (e)-[:ASSIGNED_TO_TEAM]->(t)
-          SET e.updated_at = $now
-        `, { entityId: ctx.entityId, tenantId: ctx.tenantId, teamId, now })
-      }, true)
+      // Come l'assegnazione fatta a mano: per un incident passa dal servizio,
+      // che fa avanzare il workflow dal passo iniziale, scrive la nota e
+      // pubblica l'evento. Prima una regola scriveva solo la relazione, e
+      // l'incident restava «Nuovo» con il team già assegnato (giro del 14 set
+      // 2026). Per gli altri ticket: la stessa scrittura, con l'etichetta giusta.
+      if (ctx.entityType === 'incident') {
+        const { assignIncidentToTeam } = await import('../services/incidentService.js')
+        await assignIncidentToTeam(ctx.entityId, teamId, { tenantId: ctx.tenantId, userId: ctx.userId })
+      } else if (ctx.entityType === 'problem') {
+        const { setTicketTeam } = await import('../services/ticketAssignment.js')
+        await withSession((session) => setTicketTeam(session, 'Problem', ctx.entityId, teamId, ctx.tenantId), true)
+      } else {
+        const label = TICKET_LABELS[ctx.entityType]
+        if (!label) throw new Error(`assign_team: entity type "${ctx.entityType}" has no team assignment`)
+        await withSession(async (session) => {
+          const rows = await runQuery<{ ok: unknown }>(session, `
+            MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})
+            MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+            OPTIONAL MATCH (e)-[old:ASSIGNED_TO_TEAM]->()
+            DELETE old
+            WITH DISTINCT e, t
+            CREATE (e)-[:ASSIGNED_TO_TEAM]->(t)
+            SET e.updated_at = $now
+            RETURN 1 AS ok
+          `, { entityId: ctx.entityId, tenantId: ctx.tenantId, teamId, now })
+          if (rows.length === 0) throw new Error(`assign_team: ${ctx.entityType} ${ctx.entityId} or team ${teamId} not found`)
+        }, true)
+      }
       break
     }
 
@@ -268,19 +290,27 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
     case 'create_comment': {
       const text = String(p['text'] ?? p['message'] ?? '')
       if (!text) throw new Error('create_comment: text is required')
+      // Il nodo del commento dipende dal ticket (i problem hanno ProblemComment:
+      // un Comment appeso a un problem non si vedeva). `author_label` dice CHI
+      // l'ha scritto — la regola — invece di «utente sconosciuto».
+      const commentLabel = ctx.entityType === 'problem' ? 'ProblemComment' : 'Comment'
+      const entityLabel = TICKET_LABELS[ctx.entityType]
+      if (!entityLabel) throw new Error(`create_comment: entity type "${ctx.entityType}" has no comments`)
       await withSession(async (session) => {
         await runQuery(session, `
-          MATCH (e {id: $entityId, tenant_id: $tenantId})
-          CREATE (c:Comment {
-            id:         randomUUID(),
-            tenant_id:  $tenantId,
-            text:       $text,
-            author_id:  'system',
-            created_at: $now,
-            updated_at: $now
+          MATCH (e:${entityLabel} {id: $entityId, tenant_id: $tenantId})
+          CREATE (c:${commentLabel} {
+            id:           randomUUID(),
+            tenant_id:    $tenantId,
+            text:         $text,
+            type:         'automation',
+            author_id:    'system',
+            author_label: $authorLabel,
+            created_at:   $now,
+            updated_at:   $now
           })
           CREATE (e)-[:HAS_COMMENT]->(c)
-        `, { entityId: ctx.entityId, tenantId: ctx.tenantId, text, now })
+        `, { entityId: ctx.entityId, tenantId: ctx.tenantId, text, now, authorLabel: ctx.sourceName })
       }, true)
       break
     }

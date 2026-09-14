@@ -30,6 +30,11 @@ import { GraphQLError } from 'graphql'
 // Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
 // dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
 // fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+// I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
+// L'etichetta del passo nel commento di una transizione del monitoraggio: qui il nome stesso.
+vi.mock('../../lib/stepEvent.js', async (orig) => ({ ...(await orig<typeof import('../../lib/stepEvent.js')>()), loadStepFacts: vi.fn(async (_s: unknown, _t: string, _e: string, step: string) => ({ step_id: step, step_name: step, step_label: step, step_purpose: null, step_category: null })) }))
+vi.mock('@opengraphity/sla', () => ({ getTenantTimezone: vi.fn(async () => 'Europe/Rome') }))
 vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
 
 vi.mock('@opengraphity/neo4j', () => ({
@@ -858,8 +863,8 @@ describe('chiusura automatica', () => {
     expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
 
     // singolare, senza codice della change (change eliminata): frase al singolare senza "da …"
-    expect(suppressedSummary(1, [])).toBe('1 allarme di monitoraggio silenziato resta in finestra di change: non tengono aperto l\'incident; a fine finestra vengono rivalutati e, se ancora accesi, lo riaprono')
-    expect(suppressedSummary(0, ['CHG-1'])).toBeNull()
+    expect(suppressedSummary('en', 1, [])).toBe('1 monitoring alarm silenced is still in the change window: it does not keep the incident open; at the end of the window it is re-evaluated and, if still firing, reopens it')
+    expect(suppressedSummary('en', 0, ['CHG-1'])).toBeNull()
     expect(STILL_FIRING_STATUSES).toEqual(['firing', 'flapping'])
   })
 
@@ -993,8 +998,8 @@ describe('chiusura automatica', () => {
     onCypher([...baseRules({ status: 'resolved' }), [Q.linked, linkedRow({ step: 'new' })], [Q.defTr, SEED_TRANSITIONS]])
     vi.mocked(workflowEngine.transition)
       .mockResolvedValueOnce({ success: true } as never)
-      .mockResolvedValueOnce({ success: false, error: 'Transizione concorrente' } as never)
-    await expect(runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).rejects.toThrow(/Incident inc-1: auto-resolve transition to "in_progress" failed: Transizione concorrente/)
+      .mockResolvedValueOnce({ success: false, error: 'Concurrent transition' } as never)
+    await expect(runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).rejects.toThrow(/Incident inc-1: auto-resolve transition to "in_progress" failed: Concurrent transition/)
     expect(workflowEngine.transition).toHaveBeenCalledTimes(2)
     // il primo passo (assigned) è persistito e ha i suoi side effect; il secondo no; nessun commento (arriva solo con la risoluzione)
     expect(vi.mocked(incidentService.publishIncidentTransition).mock.calls).toEqual([['inc-1', 'assigned', MON]])

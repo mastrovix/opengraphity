@@ -22,6 +22,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 // Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
 // dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
 // fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+// I testi scritti nei ticket si risolvono nella lingua del cliente (lib/systemText.ts): qui italiano.
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
+vi.mock('@opengraphity/sla', () => ({ getTenantTimezone: vi.fn(async () => 'Europe/Rome') }))
 vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))

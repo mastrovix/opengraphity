@@ -84,7 +84,7 @@ function CITable({ items, onRowClick, emptyMsg }: { items: CIRef[]; onRowClick: 
   const columns: SimpleColumn<CIRef>[] = [
     { key: 'name',        label: t('pages.cmdb.name'),        render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
     { key: 'type',        label: t('pages.teams.type'),       render: (v) => <span style={{ color: 'var(--color-slate)', textTransform: 'capitalize' }}>{String(v).replace(/_/g, ' ')}</span> },
-    { key: 'environment', label: t('pages.cmdb.environment'), render: (v) => <EnvBadge environment={String(v)} /> },
+    { key: 'environment', label: t('pages.cmdb.environment'), render: (v) => <EnvBadge environment={v as string | null} /> },
     { key: 'status',      label: t('pages.cmdb.status'),      render: (v) => <StatusBadge value={String(v)} /> },
   ]
   return (

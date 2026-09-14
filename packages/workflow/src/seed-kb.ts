@@ -25,7 +25,7 @@ export const KB_ARTICLE_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId
         {
           type:   'create_approval_request',
           params: {
-            title_template: 'Pubblicazione: {title}',
+            title_template: 'Publication: {title}',
             approver_role:  'admin',
             approval_type:  'any',
           },

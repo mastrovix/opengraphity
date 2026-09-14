@@ -66,6 +66,10 @@ export function incidentSDL(): string {
     id:        ID!
     text:      String!
     author:    User
+    """Chi l'ha scritto quando non è una persona: 'automation' (una regola) o 'monitoring'."""
+    authorKind:  String
+    """Il nome dell'automazione che l'ha scritto."""
+    authorLabel: String
     createdAt: String!
     updatedAt: String!
   }

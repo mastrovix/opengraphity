@@ -8,6 +8,8 @@ import type { GraphQLContext } from '../../context.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
+import { pendingTicketApprovals } from './pendingTicketApprovals.js'
+import { systemText } from '../../lib/systemText.js'
 
 interface ApprovalRequest {
   id:             string
@@ -241,7 +243,9 @@ export async function createApprovalRequest(
       sseManager.sendToUser(ctx.tenantId, approverId, {
         id:          uuidv4(),
         type:        'approval.requested',
-        title:       'Approvazione richiesta',
+        // Il titolo è una chiave del web; il ripiego nella lingua del cliente.
+        title:          'notification.approval.requested.title',
+        title_fallback: await systemText(ctx.tenantId, 'approval.requested'),
         message:     args.title,
         severity:    'info',
         entity_id:   id,
@@ -379,8 +383,9 @@ export async function approveRequest(
         sseManager.sendToUser(ctx.tenantId, requestedBy, {
           id:          uuidv4(),
           type:        'kb.published',
-          title:       'Articolo pubblicato',
-          message:     'Il tuo articolo è stato approvato e pubblicato',
+          title:          'notification.kb.published.title',
+          title_fallback: await systemText(ctx.tenantId, 'approval.kbPublished'),
+          message:     await systemText(ctx.tenantId, 'approval.kbPublishedMessage'),
           severity:    'success',
           entity_id:   entityId,
           entity_type: 'KBArticle',
@@ -391,8 +396,9 @@ export async function approveRequest(
         sseManager.sendToUser(ctx.tenantId, requestedBy, {
           id:          uuidv4(),
           type:        'approval.approved',
-          title:       'Richiesta approvata',
-          message:     `La richiesta è stata approvata`,
+          title:          'notification.approval.approved.title',
+          title_fallback: await systemText(ctx.tenantId, 'approval.approved'),
+          message:     await systemText(ctx.tenantId, 'approval.approvedMessage'),
           severity:    'success',
           entity_id:   args.id,
           entity_type: 'ApprovalRequest',
@@ -493,7 +499,8 @@ export async function rejectRequest(
     sseManager.sendToUser(ctx.tenantId, requestedBy, {
       id:          uuidv4(),
       type:        entityType === 'kb_article' ? 'kb.publication_rejected' : 'approval.rejected',
-      title:       entityType === 'kb_article' ? 'Pubblicazione rifiutata' : 'Richiesta rifiutata',
+      title:          entityType === 'kb_article' ? 'notification.kb.publication_rejected.title' : 'notification.approval.rejected.title',
+      title_fallback: await systemText(ctx.tenantId, entityType === 'kb_article' ? 'approval.publicationRejected' : 'approval.requestRejected'),
       message:     args.note,
       severity:    'error',
       entity_id:   entityType === 'kb_article' ? entityId : args.id,
@@ -569,6 +576,7 @@ export const approvalResolvers = {
   Query: {
     approvalRequests,
     myPendingApprovals,
+    pendingTicketApprovals,
   },
   Mutation: {
     createApprovalRequest,

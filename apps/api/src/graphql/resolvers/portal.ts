@@ -10,6 +10,8 @@ import { validateStringLength } from '../../lib/validation.js'
 import type { GraphQLContext } from '../../context.js'
 import { toNumber } from '@opengraphity/neo4j'
 import { getStepNamesByClass, getWorkflowSteps, TICKET_STATUS_CLASSES, type TicketStatusClass } from '../../lib/workflowHelpers.js'
+import { systemText } from '../../lib/systemText.js'
+import { transitionErrorI18n } from '../../lib/transitionError.js'
 
 /** Load allowed values for a system enum from Neo4j (cached per request). */
 async function loadEnumValues(tenantId: string, enumName: string): Promise<Set<string>> {
@@ -503,11 +505,11 @@ async function reopenTicket(
 
     const result = await workflowEngine.transition(
       session,
-      { instanceId, toStepName: reopenTo.name, triggeredBy: ctx.userId, triggerType: 'manual', notes: 'Riaperto dal portale', tenantId: ctx.tenantId },
+      { instanceId, toStepName: reopenTo.name, triggeredBy: ctx.userId, triggerType: 'manual', notes: await systemText(ctx.tenantId, 'portal.reopened'), tenantId: ctx.tenantId },
       { userId: ctx.userId, entityData: {} },
     )
     if (!result.success) {
-      throw new ValidationError(`Reopen failed: ${result.error ?? 'transition rejected by the workflow'}`)
+      throw new ValidationError(`Reopen failed: ${result.error ?? 'transition rejected by the workflow'}`, transitionErrorI18n(result))
     }
 
     void audit(ctx, 'portal.ticket.reopened', 'Incident', ticketId, { fromStep: status, toStep: reopenTo.name })

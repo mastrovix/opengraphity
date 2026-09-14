@@ -39,6 +39,7 @@ import { colors, palette, alpha } from '@/lib/tokens'
 // generatore.
 import { BASE_TYPE_FIELDS } from '@opengraphity/schema-generator/names'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -216,21 +217,24 @@ function CIGroupMembersCard({ groupId }: { groupId: string }) {
 
 // ── EditField ─────────────────────────────────────────────────────────────
 
-function EditField({ label, value, onChange, enumValues, multiline }: {
+function EditField({ label, value, onChange, enumValues, enumTypeName, multiline }: {
   label: string
   value: string
   onChange: (v: string) => void
   enumValues?: string[]
+  /** Vocabolario dei valori: le opzioni mostrano la sua etichetta, non il valore interno. */
+  enumTypeName?: string | null
   multiline?: boolean
 }) {
   const id = useId()
+  const { labelOf } = useDomainVocabularies()
   return (
     <div>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       {enumValues && enumValues.length > 0 ? (
         <Select id={id} value={value} onChange={e => onChange(e.target.value)}>
           <option value="">—</option>
-          {enumValues.map(v => <option key={v} value={v}>{v}</option>)}
+          {enumValues.map(v => <option key={v} value={v}>{(enumTypeName && labelOf(enumTypeName, v)) || v}</option>)}
         </Select>
       ) : multiline ? (
         <Textarea id={id} value={value} onChange={e => onChange(e.target.value)} rows={3} />
@@ -248,6 +252,7 @@ export function CIDetailPage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { getCIType, loading: metamodelLoading, error: metamodelError } = useMetamodel()
+  const { labelOf } = useDomainVocabularies()
 
   const ciType = typeName ? getCIType(typeName) : undefined
 
@@ -546,9 +551,11 @@ export function CIDetailPage() {
                   <EditField label={t('pages.cmdb.name')} value={editDraft['name'] ?? ''} onChange={v => setEditDraft(d => ({ ...d, name: v }))} />
                   <EditField label={t('pages.cmdb.status')} value={editDraft['status'] ?? ''}
                     enumValues={ciType.fields.find(f => f.name === 'status')?.enumValues}
+                    enumTypeName={ciType.fields.find(f => f.name === 'status')?.enumTypeName}
                     onChange={v => setEditDraft(d => ({ ...d, status: v }))} />
                   <EditField label={t('pages.cmdb.environment')} value={editDraft['environment'] ?? ''}
                     enumValues={ciType.fields.find(f => f.name === 'environment')?.enumValues}
+                    enumTypeName={ciType.fields.find(f => f.name === 'environment')?.enumTypeName}
                     onChange={v => setEditDraft(d => ({ ...d, environment: v }))} />
 
                   {/* Editable specific fields */}
@@ -558,6 +565,7 @@ export function CIDetailPage() {
                       label={f.label}
                       value={editDraft[f.name] ?? ''}
                       enumValues={f.enumValues.length > 0 ? f.enumValues : undefined}
+                      enumTypeName={f.enumTypeName}
                       onChange={v => setEditDraft(d => ({ ...d, [f.name]: v }))}
                     />
                   ))}
@@ -586,7 +594,7 @@ export function CIDetailPage() {
                   <DetailField label={t('pages.cmdb.name')} value={ci.name} />
                   <DetailField label={t('pages.cmdb.type')} value={ciType.label} />
                   <DetailField label={t('pages.cmdb.status')} value={ci.status ? <StatusBadge value={ci.status} /> : null} />
-                  <DetailField label={t('pages.cmdb.environment')} value={ci.environment ?? null} />
+                  <DetailField label={t('pages.cmdb.environment')} value={ci.environment ? (labelOf('environment', ci.environment) ?? ci.environment) : null} />
                   <DetailField label={t('pages.cmdb.createdAt')} value={formatDate(ci.createdAt)} />
                   <DetailField label={t('detail.updatedAt')} value={ci.updatedAt ? formatDate(ci.updatedAt) : null} />
                   <DetailField label={t('pages.cmdb.ownerGroup')} value={
@@ -615,7 +623,11 @@ export function CIDetailPage() {
                     <DetailField
                       key={f.name}
                       label={f.label}
-                      value={ci[f.name] !== null && ci[f.name] !== undefined ? String(ci[f.name]) : null}
+                      // Un valore di vocabolario si legge con la sua etichetta
+                      // («Business critical»), non col nome interno (business_critical).
+                      value={ci[f.name] !== null && ci[f.name] !== undefined
+                        ? ((f.enumTypeName && labelOf(f.enumTypeName, String(ci[f.name]))) || String(ci[f.name]))
+                        : null}
                     />
                   ))}
                 </div>

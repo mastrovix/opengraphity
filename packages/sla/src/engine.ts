@@ -1,5 +1,6 @@
 import { BaseConsumer } from '@opengraphity/events'
-import type { DomainEvent } from '@opengraphity/types'
+import type { DomainEvent, WorkflowStepEnteredPayload } from '@opengraphity/types'
+import { WORKFLOW_STEP_ENTERED_EVENT } from '@opengraphity/types'
 import type {
   IncidentCreatedPayload,
   IncidentResolvedPayload,
@@ -137,6 +138,12 @@ export class SLAEngine extends BaseConsumer<unknown> {
           event as DomainEvent<ProblemResolvedPayload>,
           'problem',
         )
+        break
+
+      // Ogni transizione del motore di workflow, da qualunque cammino: prima
+      // presa in carico e conclusione del ticket (vedi handleStepEntered).
+      case WORKFLOW_STEP_ENTERED_EVENT:
+        await this.handleStepEntered(event as DomainEvent<WorkflowStepEnteredPayload>)
         break
 
       default:
@@ -289,6 +296,48 @@ export class SLAEngine extends BaseConsumer<unknown> {
     return d
   }
 
+  /**
+   * L'ingresso di un ticket in un passo, per OGNI cammino (manuale, automatico,
+   * da change, da regola, da timer).
+   *
+   *  - Lasciare il passo iniziale è la prima presa in carico: la risposta è data.
+   *  - Entrare in un passo di categoria `resolved`, o terminale, conclude il
+   *    ticket: lo SLA si chiude, rispettato o no, all'istante dell'ingresso.
+   *
+   * Prima la risposta la segnava solo `incident.assigned` e la chiusura solo
+   * `incident.resolved` / `problem.resolved` / `request.completed`, che molti
+   * cammini non pubblicano: un problem risolto dalla sua change e una
+   * richiesta chiusa dal workflow restavano con lo SLA aperto per sempre, e la
+   * violazione sarebbe scattata su un ticket concluso (giro del 14 set 2026).
+   * Idempotente: una risposta o una conclusione già registrata non si riscrive
+   * (un «chiuso» dopo un «risolto» non sposta la data né l'esito).
+   */
+  private async handleStepEntered(event: DomainEvent<WorkflowStepEnteredPayload>): Promise<void> {
+    const p = event.payload
+    if (!['incident', 'problem', 'service_request'].includes(p.entity_type)) return
+    if (!p.entity_id) throw new Error(`[sla:engine] ${event.type} payload has no entity_id`)
+    const status = await getSLAStatus(event.tenant_id, p.entity_id)
+    if (!status) return
+
+    if (p.from_initial && !status.response_met) {
+      await markResponseMet(event.tenant_id, p.entity_id)
+      await cancelSLAJobs(p.entity_id, 'response')
+      console.log(`[sla:engine] Response met for ${p.entity_type} ${p.entity_id} (left the initial step "${p.from_step}")`)
+    }
+
+    const concludes = p.step_category === 'resolved' || p.step_terminal === true
+    if (concludes && !status.resolved_at) {
+      const at = new Date(p.entered_at)
+      if (Number.isNaN(at.getTime())) throw new Error(`[sla:engine] ${event.type}: entered_at is not a valid instant (${JSON.stringify(p.entered_at)})`)
+      const updated = await markResolveMet(event.tenant_id, p.entity_id, at)
+      await cancelSLAJobs(p.entity_id)
+      console.log(
+        `[sla:engine] SLA closed for ${p.entity_type} ${p.entity_id} entering "${p.step_name}": ` +
+          (updated?.resolve_met ? 'resolved within target' : 'resolved AFTER target (breached)'),
+      )
+    }
+  }
+
   private async handleEntityResolved(
     event: DomainEvent<{ id?: string; entity_id?: string }>,
     entityType: string,
@@ -302,7 +351,11 @@ export class SLAEngine extends BaseConsumer<unknown> {
     }
     const existing = await getSLAStatus(event.tenant_id, id)
 
-    if (existing) {
+    if (existing?.resolved_at) {
+      // Già concluso (ad esempio da workflow.step_entered): la prima
+      // conclusione vince, un secondo evento non sposta data ed esito.
+      console.log(`[sla:engine] SLA of ${entityType} ${id} already closed at ${existing.resolved_at} — ${event.type} ignored`)
+    } else if (existing) {
       const updated = await markResolveMet(event.tenant_id, id, this.resolvedInstant(event))
       await cancelSLAJobs(id)
       console.log(

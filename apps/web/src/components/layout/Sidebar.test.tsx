@@ -9,12 +9,13 @@ import { meMock, anomalyStatsMock, anomalyStatsErrorMock } from '@/test/mocks/gq
 const MY_PENDING_APPROVALS_COUNT = gql`
   query MyPendingApprovalsCount {
     myPendingApprovals { id }
+    pendingTicketApprovals { kind entityId }
   }
 `
 function pendingMock(n = 0): GqlMock {
   return {
     request: { query: MY_PENDING_APPROVALS_COUNT },
-    result: { data: { myPendingApprovals: Array.from({ length: n }, (_, i) => ({ __typename: 'ApprovalRequest', id: `a${i}` })) } },
+    result: { data: { myPendingApprovals: Array.from({ length: n }, (_, i) => ({ __typename: 'ApprovalRequest', id: `a${i}` })), pendingTicketApprovals: [] } },
     maxUsageCount: Number.POSITIVE_INFINITY,
   }
 }

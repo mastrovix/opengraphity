@@ -42,7 +42,7 @@ export async function submitAssessmentResponse(
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!task) throw new NotFoundError('AssessmentTask', args.taskId)
     if (task.props['status'] === TASK_STATUS.COMPLETED) {
-      throw new GraphQLError('Task già completata, impossibile modificare le risposte', { extensions: { code: 'CONFLICT' } })
+      throw new GraphQLError('Task already completed: the answers can no longer be changed', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.assessment.answersLocked' } } })
     }
     const role = task.props['responder_role'] === ASSESSMENT_ROLE.SUPPORT ? ASSESSMENT_ROLE.SUPPORT : ASSESSMENT_ROLE.OWNER
     await assertUserInCITeam(session, task.props['ci_id'] as string, ctx.tenantId, ctx, role)
@@ -116,7 +116,7 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
              ci.environment AS ciEnv
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!ctx1) throw new NotFoundError('AssessmentTask', args.taskId)
-    if (ctx1.taskProps['status'] === TASK_STATUS.COMPLETED) throw new GraphQLError('Task già completata', { extensions: { code: 'CONFLICT' } })
+    if (ctx1.taskProps['status'] === TASK_STATUS.COMPLETED) throw new GraphQLError('Task already completed', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.task.alreadyCompleted' } } })
 
     const role = ctx1.taskProps['responder_role'] === ASSESSMENT_ROLE.SUPPORT ? ASSESSMENT_ROLE.SUPPORT : ASSESSMENT_ROLE.OWNER
     await assertUserInCITeam(session, ctx1.ciId, ctx.tenantId, ctx, role)
@@ -148,7 +148,7 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
 
     const missing = questions.filter(q => !answered.has(q.questionId))
     if (missing.length > 0) {
-      throw new GraphQLError(`Risposte mancanti: ${missing.length} domande da completare prima di chiudere la task`, { extensions: { code: 'CONFLICT' } })
+      throw new GraphQLError(`Missing answers: ${missing.length} questions to answer before completing the task`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.assessment.missingAnswers', params: { count: missing.length } } } })
     }
 
     // Weighted score + automatic environment factor: pure logic in scoring.ts.

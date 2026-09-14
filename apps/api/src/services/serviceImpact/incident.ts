@@ -76,6 +76,9 @@ import { engine, incidents } from '../events/deps.js'
 import { incidentStepInfo, loadDefinitionTransitions, reopenIncident, runMonitoringTransition, type IncidentStepInfo, type OpenIncidentRow } from '../events/incidentWorkflow.js'
 import { findAutoResolvePath } from '../events/autoResolve.js'
 import { causeIdsOf, sameCauseIds, type StoredCause } from './history.js'
+import { systemTextIn } from '../../lib/systemText.js'
+import { languageFor } from '../../lib/tenantLanguage.js'
+import type { Lingua } from '../../lib/enumValueLabels.js'
 
 const log = logger.child({ module: 'service-impact' })
 
@@ -88,13 +91,13 @@ export function serviceIncidentLockKey(tenantId: string, mapId: string): string 
 
 // ── Vocabolari espliciti ─────────────────────────────────────────────────────
 
-/** Salute del servizio in italiano, per titoli e commenti (nessuna stringa inventata a runtime). */
-export const SERVICE_HEALTH_LABEL_IT: Readonly<Record<ServiceHealth, string>> = {
-  down:        'non disponibile',
-  degraded:    'degradato',
-  maintenance: 'in manutenzione',
-  operational: 'operativo',
-  unknown:     'sconosciuto',
+/**
+ * La salute del servizio a parole, nella lingua del cliente, per titoli e
+ * commenti. Era una tabella in italiano: un cliente con il prodotto in
+ * inglese leggeva «Servizio X: degradato» (giro del 14 set 2026).
+ */
+export function serviceHealthLabel(lingua: Lingua, health: ServiceHealth): string {
+  return systemTextIn(lingua, `service.health.${health}`)
 }
 
 /** Gravità delle sole salute che aprono un incident: la soglia `open_incident_from` si confronta qui. */
@@ -199,18 +202,24 @@ export async function serviceUrgencyOf(tenantId: string, health: ServiceHealth):
 
 // ── Testi ────────────────────────────────────────────────────────────────────
 
-export function serviceIncidentTitle(serviceName: string, health: ServiceHealth): string {
-  return `Servizio ${serviceName}: ${SERVICE_HEALTH_LABEL_IT[health]}`
+export function serviceIncidentTitle(lingua: Lingua, serviceName: string, health: ServiceHealth): string {
+  return systemTextIn(lingua, 'service.title', { service: serviceName, health: serviceHealthLabel(lingua, health) })
 }
 
 /** Una causa in una riga: nome del CI, salute, percorso dal CI malato al livello 1. */
-export function causeLine(c: StoredCause): string {
+export function causeLine(lingua: Lingua, c: StoredCause): string {
   const path = c.path.map((p) => p.name).join(' → ')
-  return `- ${c.ci.name} (${SERVICE_HEALTH_LABEL_IT[c.health]})${c.critical ? ', critico' : ''}${path ? ` — percorso: ${path}` : ''}`
+  return systemTextIn(lingua, 'service.cause', {
+    ci: c.ci.name, health: serviceHealthLabel(lingua, c.health),
+    critical: c.critical ? systemTextIn(lingua, 'service.causeCritical') : '',
+    path: path ? systemTextIn(lingua, 'service.causePath', { path }) : '',
+  })
 }
 
 /** Riga introduttiva dell'elenco degli incident tecnici già aperti sui componenti (ondata 4). */
-export const TECHNICAL_INCIDENTS_HEADING = 'Incident tecnici già aperti sui componenti:'
+export function technicalIncidentsHeading(lingua: Lingua): string {
+  return systemTextIn(lingua, 'service.technicalHeading')
+}
 
 /**
  * Descrizione dell'incident del servizio. `technical` (ondata 4) sono gli
@@ -219,15 +228,15 @@ export const TECHNICAL_INCIDENTS_HEADING = 'Incident tecnici già aperti sui com
  * più (mai un «nessuno» da leggere).
  */
 export function serviceIncidentDescription(
-  serviceName: string, health: ServiceHealth, impactScore: number, causes: readonly StoredCause[],
+  lingua: Lingua, serviceName: string, health: ServiceHealth, impactScore: number, causes: readonly StoredCause[],
   technical: readonly TechnicalIncidentRef[] = [],
 ): string {
   return [
-    `Il servizio "${serviceName}" è ${SERVICE_HEALTH_LABEL_IT[health]} secondo la mappa dei componenti.`,
-    `Punteggio d'impatto: ${impactScore}/100.`,
-    `Componenti che pesano (${causes.length}):`,
-    ...causes.map(causeLine),
-    ...(technical.length ? [TECHNICAL_INCIDENTS_HEADING, ...technical.map((t) => `- ${t.number} ${t.title}`)] : []),
+    systemTextIn(lingua, 'service.descriptionHead', { service: serviceName, health: serviceHealthLabel(lingua, health) }),
+    systemTextIn(lingua, 'service.descriptionScore', { score: impactScore }),
+    systemTextIn(lingua, 'service.descriptionCauses', { count: causes.length }),
+    ...causes.map((c) => causeLine(lingua, c)),
+    ...(technical.length ? [technicalIncidentsHeading(lingua), ...technical.map((t) => `- ${t.number} ${t.title}`)] : []),
   ].join('\n')
 }
 
@@ -413,6 +422,7 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
   const info = await incidentStepInfo(session, tenantId)
   const open = await findServiceIncident(session, tenantId, mapId, info)
   const causeIds = causeIdsOf(input.causes)
+  const lingua = await languageFor(tenantId)
   const done = (outcome: ServiceIncidentOutcome): ServiceIncidentResult =>
     ({ outcome, incidentId: open?.incidentId ?? null, incidentNumber: open?.number ?? null })
 
@@ -422,7 +432,7 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
     if (!open) return done('none')
     if (open.maintenanceNotedAt) return done('none')
     await (await incidents()).addIncidentComment(open.incidentId, monitoringCtx(tenantId),
-      `Servizio in manutenzione: la valutazione resta sospesa (una change in finestra riguarda un componente critico di "${input.serviceName}")`)
+      systemTextIn(lingua, 'service.maintenance', { service: input.serviceName }))
     await linkServiceIncident(session, tenantId, mapId, open.incidentId, open.causeIds, { maintenanceNoted: true, keptOpenNoted: open.keptOpenNotedAt !== null }, input.now)
     log.info({ ...logCtx, incidentId: open.incidentId }, 'Service in maintenance: open incident annotated once')
     return done('maintenance')
@@ -442,9 +452,9 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
         return done('inactive')
       }
       await reopenIncident(session, tenantId, open, info,
-        `Il servizio "${input.serviceName}" è di nuovo ${SERVICE_HEALTH_LABEL_IT[health]} (punteggio ${input.impactScore}/100)`)
+        systemTextIn(lingua, 'service.reopenNote', { service: input.serviceName, health: serviceHealthLabel(lingua, health), score: input.impactScore }))
       await (await incidents()).addIncidentComment(open.incidentId, monitoringCtx(tenantId),
-        `Riaperto dal monitoraggio: ${serviceIncidentDescription(input.serviceName, health, input.impactScore, input.causes)}`)
+        systemTextIn(lingua, 'service.reopenComment', { description: serviceIncidentDescription(lingua, input.serviceName, health, input.impactScore, input.causes) }))
       await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIds, NO_NOTES, input.now)
       // Una riapertura conta come apertura (metrics.ts): il servizio è di nuovo fuori servizio.
       serviceIncidentsOpenedTotal.inc({})
@@ -462,7 +472,10 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
     // e il job ritenta, il confronto è già allineato e non nasce un doppione.
     await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIds, NO_NOTES, input.now)
     await (await incidents()).addIncidentComment(open.incidentId, monitoringCtx(tenantId),
-      `Causa aggiornata: il servizio è ${SERVICE_HEALTH_LABEL_IT[health]} (punteggio ${input.impactScore}/100). Componenti che pesano (${input.causes.length}):\n${input.causes.map(causeLine).join('\n')}`)
+      systemTextIn(lingua, 'service.causesUpdated', {
+        health: serviceHealthLabel(lingua, health), score: input.impactScore, count: input.causes.length,
+        causes: input.causes.map((c) => causeLine(lingua, c)).join('\n'),
+      }))
     log.info({ ...logCtx, incidentId: open.incidentId, causes: causeIds }, 'Service incident causes changed: one comment written')
     return done('updated')
   }
@@ -488,14 +501,10 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
  * Perché l'incident resta aperto pur non raggiungendo più la soglia. Testi
  * espliciti per i tre casi, nessuna frase inventata a runtime.
  */
-export function keptOpenReason(health: ServiceHealth, openFrom: ServiceOpenIncidentFrom, serviceName: string): string {
-  if (openFrom === 'never') {
-    return `La regola del servizio "${serviceName}" è passata a "mai aprire incident": questo incident resta aperto, va chiuso a mano.`
-  }
-  if (health === 'unknown') {
-    return `Il servizio "${serviceName}" è di stato sconosciuto (nessun componente con una salute nota): l'incident resta aperto.`
-  }
-  return `Il servizio "${serviceName}" è ${SERVICE_HEALTH_LABEL_IT[health]}, sotto la soglia di apertura ("${openFrom}"): l'incident resta aperto.`
+export function keptOpenReason(lingua: Lingua, health: ServiceHealth, openFrom: ServiceOpenIncidentFrom, serviceName: string): string {
+  if (openFrom === 'never') return systemTextIn(lingua, 'service.keptOpenNever', { service: serviceName })
+  if (health === 'unknown') return systemTextIn(lingua, 'service.keptOpenUnknown', { service: serviceName })
+  return systemTextIn(lingua, 'service.keptOpenBelow', { service: serviceName, health: serviceHealthLabel(lingua, health), threshold: openFrom })
 }
 
 /**
@@ -508,7 +517,7 @@ async function keepServiceIncidentOpen(session: Session, input: ServiceIncidentI
   const result: ServiceIncidentResult = { outcome: 'kept_open', incidentId: open.incidentId, incidentNumber: open.number }
   if (open.keptOpenNotedAt) return { ...result, outcome: 'none' }
   await linkServiceIncident(session, tenantId, mapId, open.incidentId, open.causeIds, { maintenanceNoted: false, keptOpenNoted: true }, input.now)
-  await (await incidents()).addIncidentComment(open.incidentId, monitoringCtx(tenantId), keptOpenReason(health, openFrom, input.serviceName))
+  await (await incidents()).addIncidentComment(open.incidentId, monitoringCtx(tenantId), keptOpenReason(await languageFor(input.tenantId), health, openFrom, input.serviceName))
   log.info({ tenantId, mapId, jobId: input.jobId, incidentId: open.incidentId, health, openIncidentFrom: openFrom }, 'Service is below the opening threshold but not operational: its incident is kept open (noted once)')
   return result
 }
@@ -569,13 +578,14 @@ async function openServiceIncident(session: Session, input: ServiceIncidentInput
   }
 
   if (!incident) {
+    const lingua = await languageFor(tenantId)
     impact  = await serviceImpactOf(tenantId, input.criticality, { mapId, serviceName: input.serviceName })
     urgency = await serviceUrgencyOf(tenantId, health)
     severity = await derivePriority(tenantId, impact, urgency)
     technical = await findTechnicalIncidents(session, tenantId, causeIds, info)
     incident = await (await incidents()).createIncident({
-      title:         serviceIncidentTitle(input.serviceName, health),
-      description:   serviceIncidentDescription(input.serviceName, health, impactScore, input.causes, technical),
+      title:         serviceIncidentTitle(lingua, input.serviceName, health),
+      description:   serviceIncidentDescription(lingua, input.serviceName, health, impactScore, input.causes, technical),
       severity,
       impact,
       urgency,
@@ -604,8 +614,8 @@ async function openServiceIncident(session: Session, input: ServiceIncidentInput
 }
 
 /** Causa della risoluzione, costruita dalla salute VERA (mai «tornato operativo» se non lo è: I1). */
-export function serviceResolveCause(health: ServiceHealth): string {
-  return `Servizio tornato ${SERVICE_HEALTH_LABEL_IT[health]}`
+export function serviceResolveCause(lingua: Lingua, health: ServiceHealth): string {
+  return systemTextIn(lingua, 'service.resolveCause', { health: serviceHealthLabel(lingua, health) })
 }
 
 /**
@@ -625,10 +635,11 @@ async function resolveServiceIncident(session: Session, input: ServiceIncidentIn
     ? []
     : findAutoResolvePath(await loadDefinitionTransitions(session, open.instanceId, tenantId), open.step, info.resolvedStep)
 
-  const back = `Il servizio "${input.serviceName}" è tornato ${SERVICE_HEALTH_LABEL_IT[health]} (punteggio ${impactScore}/100)`
+  const lingua = await languageFor(tenantId)
+  const back = systemTextIn(lingua, 'service.back', { service: input.serviceName, health: serviceHealthLabel(lingua, health), score: impactScore })
   if (!path) {
     await incidentService.addIncidentComment(open.incidentId, ctx,
-      `${back}; l'incident è in "${open.step}" e non può essere risolto automaticamente da questo passo`)
+      systemTextIn(lingua, 'service.cannotResolve', { back, step: open.step }))
     await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIdsOf(input.causes), NO_NOTES, input.now)
     log.info({ tenantId, mapId, jobId: input.jobId, incidentId: open.incidentId, step: open.step }, 'Service is back but its incident cannot be auto-resolved from this step')
     return { outcome: 'resolve_skipped', incidentId: open.incidentId, incidentNumber: open.number }
@@ -636,13 +647,13 @@ async function resolveServiceIncident(session: Session, input: ServiceIncidentIn
 
   for (const hop of path) {
     await runMonitoringTransition(session, tenantId, open.incidentId, open.instanceId, hop.toStep, hop.trigger,
-      `Chiusura automatica dal monitoraggio: passaggio a ${hop.toLabel ?? hop.toStep}`, 'service auto-resolve', false)
+      systemTextIn(lingua, 'autoResolve.hop', { step: hop.toLabel ?? hop.toStep }), 'service auto-resolve', false)
   }
   // La transizione "Risolvi" richiede la causa (rootCause = notes), costruita
   // dalla salute vera.
-  await incidentService.resolveIncident(open.incidentId, ctx, serviceResolveCause(health))
-  const via = path.length ? ` — passando per ${path.map((h) => h.toLabel ?? h.toStep).join(', ')}` : ''
-  await incidentService.addIncidentComment(open.incidentId, ctx, `Risolto automaticamente: ${back}${via}`)
+  await incidentService.resolveIncident(open.incidentId, ctx, serviceResolveCause(lingua, health))
+  const via = path.length ? systemTextIn(lingua, 'autoResolve.via', { steps: path.map((h) => h.toLabel ?? h.toStep).join(', ') }) : ''
+  await incidentService.addIncidentComment(open.incidentId, ctx, systemTextIn(lingua, 'service.resolvedComment', { back, via }))
   await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIdsOf(input.causes), NO_NOTES, input.now)
   // L'incident del servizio è chiuso: il marcatore d'idempotenza non serve più
   // (una ricaduta deve poter aprire, o riaprire, senza inciampare in un id vecchio).

@@ -4,12 +4,13 @@ import { Handle, Position, BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from
 import type { EdgeProps } from '@xyflow/react'
 import { Star, X } from 'lucide-react'
 import { fontFamily, colors, palette } from '@/lib/tokens'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
-export interface NavigableField    { name: string; label: string; fieldType: string; enumValues: string[] }
+export interface NavigableField    { name: string; label: string; fieldType: string; enumValues: string[]; enumTypeName?: string | null }
 export interface NavigableRelation { relationshipType: string; direction: string; label: string; targetEntityType: string; targetLabel: string; targetNeo4jLabel: string }
-export interface NavigableEntity   { entityType: string; label: string; neo4jLabel: string; icon?: string; color?: string; fields: NavigableField[]; relations: NavigableRelation[] }
+export interface NavigableEntity   { entityType: string; label: string; neo4jLabel: string; group?: 'itsm' | 'organization' | 'cmdb'; icon?: string; color?: string; fields: NavigableField[]; relations: NavigableRelation[] }
 export interface ReachableEntity   { entityType: string; label: string; neo4jLabel: string; relationshipType: string; direction: string; count: number; fields: NavigableField[] }
 
 export interface FilterState { field: string; operator: string; value: string }
@@ -39,6 +40,7 @@ export interface NodeData {
 // rirenderizzano a ogni keystroke nei filtri.
 export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: string; data: NodeData }) {
   const { t } = useTranslation()
+  const { labelOf } = useDomainVocabularies()
   const d = data
 
   return (
@@ -114,9 +116,12 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
                     style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', border: `1px solid ${colors.border}`, borderRadius: 4, flex: 1 }}
                   >
                     <option value="">{t('automation.params.selectValue')}</option>
-                    {((d.fields as NavigableField[]).find(fld => fld.name === f.field)?.enumValues ?? []).map(v => (
-                      <option key={v} value={v}>{v}</option>
-                    ))}
+                    {(() => {
+                      const fld = (d.fields as NavigableField[]).find(x => x.name === f.field)
+                      return (fld?.enumValues ?? []).map(v => (
+                        <option key={v} value={v}>{(fld?.enumTypeName ? labelOf(fld.enumTypeName, v) : null) ?? v}</option>
+                      ))
+                    })()}
                   </select>
                 ) : (
                   <input

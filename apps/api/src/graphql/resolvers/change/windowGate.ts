@@ -39,6 +39,7 @@ import { requireRole } from '../../../lib/requireRole.js'
 import { isPreApprovedChangeType } from '../../../lib/changePolicy.js'
 import { getStepPurpose, getStepNamesByPurpose } from '../../../lib/workflowHelpers.js'
 import { assertAllApprovalsSatisfied, areAllApprovalsSatisfied } from './approvalCreation.js'
+import { areAllAssessmentsComplete } from '../../../lib/changeAssessments.js'
 import { changeWindowGateBlockedTotal } from '../../../middleware/metrics.js'
 import type { GraphQLContext } from '../../../context.js'
 
@@ -65,9 +66,17 @@ export interface ChangeGateInput {
  *  - `needs_approvals`     → il varco è in gioco: servono i requisiti soddisfatti.
  *  - `no_approval_step`    → il varco è in gioco e il cliente non ha NESSUN passo
  *                            di scopo `approval`: non esiste un posto dove approvare.
+ *  - `needs_assessments`   → si esce dall'analisi con valutazioni o piano di
+ *                            deploy ancora aperti. Vale per OGNI tipo, anche
+ *                            pre-approvato: dopo l'analisi il piano non si
+ *                            modifica più, e una change uscita senza piano
+ *                            restava ferma per sempre (giro del 14 set 2026:
+ *                            CHG00000003, standard, da un arco
+ *                            `assessment → scheduled` automatico e senza condizione).
  */
 export type ChangeGateOutcome =
   | { kind: 'open' }
+  | { kind: 'needs_assessments' }
   | { kind: 'use_reject_mutation' }
   | { kind: 'needs_approvals' }
   | { kind: 'no_approval_step' }
@@ -83,6 +92,13 @@ export async function changeGateOutcome(session: Session, input: ChangeGateInput
     getStepPurpose(session, input.tenantId, 'change', input.currentStep),
     getStepPurpose(session, input.tenantId, 'change', input.toStep),
   ])
+
+  // Uscire dall'analisi (verso qualunque passo, per qualunque tipo) chiede
+  // valutazioni e piano completi. Il ritorno all'analisi resta libero.
+  if (currentPurpose === 'assessment' && targetPurpose !== 'assessment'
+      && !(await areAllAssessmentsComplete(session, input.changeId, input.tenantId))) {
+    return { kind: 'needs_assessments' }
+  }
 
   const entersWindow = targetPurpose != null && (CHANGE_WINDOW_PURPOSES as readonly string[]).includes(targetPurpose)
   const leavesApproval = currentPurpose === 'approval' && targetPurpose !== 'approval'
@@ -111,6 +127,12 @@ export async function assertChangeWindowGate(
   switch (outcome.kind) {
     case 'open':
       return
+    case 'needs_assessments':
+      throw new GraphQLError(
+        'The change cannot leave the assessment: complete every assessment task and the deploy plan first '
+        + '(after the assessment the plan can no longer be edited).',
+        { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.assessmentsIncomplete' } } },
+      )
     case 'use_reject_mutation':
       throw new GraphQLError(
         'Per rigettare usa "Rigetta" nella sezione Approvazione (rejectChangeApproval), che riapre gli assessment',
@@ -173,7 +195,9 @@ export async function automaticTransitionAllowed(
       changeId: input.changeId, changeType: input.changeType,
       from: input.currentStep, to: input.toStep, reason: outcome.kind, path,
     },
-    '[change-gate] transizione automatica rifiutata: la change entrerebbe nella finestra di rilascio senza approvazioni',
+    outcome.kind === 'needs_assessments'
+      ? '[change-gate] transizione automatica rifiutata: la change uscirebbe dall\'analisi con valutazioni o piano di deploy aperti'
+      : '[change-gate] transizione automatica rifiutata: la change entrerebbe nella finestra di rilascio senza approvazioni',
   )
   return false
 }
@@ -192,6 +216,14 @@ export async function assertAutomaticTransitionAllowed(
   session: Session, input: ChangeGateInput, path: GatePath,
 ): Promise<void> {
   if (await automaticTransitionAllowed(session, input, path)) return
+  const outcome = await changeGateOutcome(session, input)
+  if (outcome.kind === 'needs_assessments') {
+    throw new Error(
+      `Change "${input.changeId}" (type "${input.changeType}") cannot move from "${input.currentStep}" to `
+      + `"${input.toStep}": its assessment tasks or deploy plan are not complete yet. Remove this action from the `
+      + `rule, or let it run only after the assessment.`,
+    )
+  }
   throw new Error(
     `Change "${input.changeId}" (type "${input.changeType}") cannot move from "${input.currentStep}" to `
     + `"${input.toStep}": it would enter the release window without its approvals being satisfied. `

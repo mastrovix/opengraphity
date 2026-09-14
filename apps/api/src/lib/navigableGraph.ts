@@ -3,12 +3,16 @@ import type { Session } from 'neo4j-driver'
 import { toPascalCase } from '@opengraphity/schema-generator'
 import { getWorkflowSteps } from './workflowHelpers.js'
 import { logger } from './logger.js'
+import { enumScopeClause, loadTenantEnumOverrides, applyEnumOverrides } from './enumScope.js'
+import { loadITILTypes } from './itilTypes.js'
 
 export interface NavigableField {
   name:       string
   label:      string
   fieldType:  string
   enumValues: string[]
+  /** Il vocabolario del campo (`USES_ENUM`), per leggere i valori con la loro etichetta. */
+  enumTypeName: string | null
 }
 
 export interface NavigableRelation {
@@ -20,57 +24,29 @@ export interface NavigableRelation {
   targetNeo4jLabel:  string
 }
 
+/** Dove sta un'entità nel costruttore: lo dice l'API, il web non tiene la sua lista. */
+export type NavigableGroup = 'itsm' | 'organization' | 'cmdb'
+
 export interface NavigableEntity {
   entityType:  string
   label:       string
   neo4jLabel:  string
+  group:       NavigableGroup
   fields:      NavigableField[]
   relations:   NavigableRelation[]
 }
 
-// ── Fixed entities (not from metamodel) ──────────────────────────────────────
+// ── Organizzazione (non dal metamodello) ─────────────────────────────────────
 
-const FIXED_ENTITIES: NavigableEntity[] = [
-  {
-    entityType: 'Incident',
-    label:      'Incident',
-    neo4jLabel: 'Incident',
-    fields: [
-      { name: 'title',       label: 'Title',        fieldType: 'text',   enumValues: [] },
-      { name: 'severity',    label: 'Severity',     fieldType: 'enum',   enumValues: ['critical', 'high', 'medium', 'low'] },
-      // `enumValues` vuoto qui e riempito per tenant da `withWorkflowStatuses`
-      // (ondata 8 · B-11): i valori dello stato sono i PASSI del workflow di
-      // questo cliente. La lista fissa offriva `open`, che nessun workflow
-      // produce, e non offriva i passi veri (`new`, `security_review`, o
-      // qualunque cosa il cliente abbia aggiunto): un filtro di report sullo
-      // stato non poteva selezionare niente di esistente.
-      { name: 'status',      label: 'Status',       fieldType: 'enum',   enumValues: [] },
-      { name: 'created_at',  label: 'Created At',   fieldType: 'date',   enumValues: [] },
-      { name: 'resolved_at', label: 'Resolved At',  fieldType: 'date',   enumValues: [] },
-    ],
-    relations: [],
-  },
-  {
-    entityType: 'Change',
-    label:      'Change',
-    neo4jLabel: 'Change',
-    fields: [
-      { name: 'title',           label: 'Title',           fieldType: 'text', enumValues: [] },
-      { name: 'type',            label: 'Type',            fieldType: 'enum', enumValues: ['standard', 'normal', 'emergency'] },
-      { name: 'priority',        label: 'Priority',        fieldType: 'enum', enumValues: ['low', 'medium', 'high', 'critical'] },
-      // Come sopra: i passi della definizione change di questo cliente.
-      { name: 'status',          label: 'Status',          fieldType: 'enum', enumValues: [] },
-      { name: 'scheduled_start', label: 'Scheduled Start', fieldType: 'date', enumValues: [] },
-    ],
-    relations: [],
-  },
+const ORGANIZATION_ENTITIES: NavigableEntity[] = [
   {
     entityType: 'Team',
     label:      'Team',
     neo4jLabel: 'Team',
+    group:      'organization',
     fields: [
-      { name: 'name', label: 'Name', fieldType: 'text', enumValues: [] },
-      { name: 'type', label: 'Type', fieldType: 'text', enumValues: [] },
+      { name: 'name', label: 'Name', fieldType: 'string', enumValues: [], enumTypeName: null },
+      { name: 'type', label: 'Type', fieldType: 'string', enumValues: [], enumTypeName: null },
     ],
     relations: [],
   },
@@ -78,154 +54,90 @@ const FIXED_ENTITIES: NavigableEntity[] = [
     entityType: 'User',
     label:      'User',
     neo4jLabel: 'User',
+    group:      'organization',
     fields: [
-      { name: 'name',  label: 'Name',  fieldType: 'text', enumValues: [] },
-      { name: 'email', label: 'Email', fieldType: 'text', enumValues: [] },
-      { name: 'role',  label: 'Role',  fieldType: 'enum', enumValues: ['admin', 'operator', 'viewer'] },
+      { name: 'name',  label: 'Name',  fieldType: 'string', enumValues: [], enumTypeName: null },
+      { name: 'email', label: 'Email', fieldType: 'string', enumValues: [], enumTypeName: null },
+      { name: 'role',  label: 'Role',  fieldType: 'string', enumValues: [], enumTypeName: null },
     ],
     relations: [],
   },
-  {
-    entityType: 'ChangeTask',
-    label:      'Change Task',
-    neo4jLabel: 'ChangeTask',
-    fields: [
-      { name: 'task_type',         label: 'Tipo task',            fieldType: 'enum',    enumValues: ['assessment', 'deploy', 'validation'] },
-      { name: 'title',             label: 'Titolo',               fieldType: 'string',  enumValues: [] },
-      { name: 'status',            label: 'Stato',                fieldType: 'enum',    enumValues: ['pending', 'in_progress', 'completed', 'failed', 'skipped', 'rejected'] },
-      { name: 'order',             label: 'Ordine',               fieldType: 'number',  enumValues: [] },
-      { name: 'risk_level',        label: 'Livello rischio',      fieldType: 'enum',    enumValues: ['low', 'medium', 'high', 'critical'] },
-      { name: 'notes',             label: 'Note',                 fieldType: 'string',  enumValues: [] },
-      { name: 'has_validation',    label: 'Ha validazione',       fieldType: 'boolean', enumValues: [] },
-      { name: 'validation_status', label: 'Stato validazione',    fieldType: 'enum',    enumValues: ['pending', 'passed', 'failed'] },
-      { name: 'scheduled_start',   label: 'Inizio pianificato',   fieldType: 'date',    enumValues: [] },
-      { name: 'scheduled_end',     label: 'Fine pianificata',     fieldType: 'date',    enumValues: [] },
-      { name: 'created_at',        label: 'Creato il',            fieldType: 'date',    enumValues: [] },
-    ],
-    relations: [
-      {
-        relationshipType: 'HAS_CHANGE_TASK',
-        direction:        'incoming',
-        label:            'Change',
-        targetEntityType: 'Change',
-        targetLabel:      'Change',
-        targetNeo4jLabel: 'Change',
-      },
-      {
-        relationshipType: 'ASSESSES',
-        direction:        'outgoing',
-        label:            'CI Valutato',
-        targetEntityType: 'any',
-        targetLabel:      'CI',
-        targetNeo4jLabel: 'any',
-      },
-    ],
-  },
 ]
 
-// ── Fixed relations ──────────────────────────────────────────────────────────
+// ── Relazioni dei ticket ──────────────────────────────────────────────────────
 
-const FIXED_RELATIONS: Array<NavigableRelation & { sourceEntityType: string }> = [
-  {
-    sourceEntityType: 'Incident',
-    relationshipType: 'AFFECTS',
-    direction:        'outgoing',
-    label:            'Affects CI',
-    targetEntityType: 'CI',
-    targetLabel:      'CI',
-    targetNeo4jLabel: 'CIBase',
-  },
-  {
-    sourceEntityType: 'Incident',
-    relationshipType: 'ASSIGNED_TO_TEAM',
-    direction:        'outgoing',
-    label:            'Assigned to Team',
-    targetEntityType: 'Team',
-    targetLabel:      'Team',
-    targetNeo4jLabel: 'Team',
-  },
-  {
-    sourceEntityType: 'Incident',
-    relationshipType: 'ASSIGNED_TO',
-    direction:        'outgoing',
-    label:            'Assigned to User',
-    targetEntityType: 'User',
-    targetLabel:      'User',
-    targetNeo4jLabel: 'User',
-  },
-  {
-    sourceEntityType: 'Change',
-    relationshipType: 'AFFECTS',
-    direction:        'outgoing',
-    label:            'Affects CI',
-    targetEntityType: 'CI',
-    targetLabel:      'CI',
-    targetNeo4jLabel: 'CIBase',
-  },
-  {
-    sourceEntityType: 'Change',
-    relationshipType: 'ASSIGNED_TO_TEAM',
-    direction:        'outgoing',
-    label:            'Assigned to Team',
-    targetEntityType: 'Team',
-    targetLabel:      'Team',
-    targetNeo4jLabel: 'Team',
-  },
-  {
-    sourceEntityType: 'Team',
-    relationshipType: 'MEMBER_OF',
-    direction:        'incoming',
-    label:            'Member',
-    targetEntityType: 'User',
-    targetLabel:      'User',
-    targetNeo4jLabel: 'User',
-  },
-  {
-    sourceEntityType: 'Change',
-    relationshipType: 'HAS_CHANGE_TASK',
-    direction:        'outgoing',
-    label:            'Change Task',
-    targetEntityType: 'ChangeTask',
-    targetLabel:      'Change Task',
-    targetNeo4jLabel: 'ChangeTask',
-  },
+/**
+ * Le relazioni che i servizi SCRIVONO davvero (verificate sul grafo di c-test
+ * il 14 set 2026). Prima la lista diceva `Incident -AFFECTS->` e
+ * `Change -AFFECTS->`, mentre gli incident scrivono `AFFECTED_BY` e le change
+ * `AFFECTS_CI`: un report «incident per CI» tornava sempre vuoto.
+ */
+const TICKET_RELATIONS: Array<NavigableRelation & { sourceEntityType: string }> = [
+  { sourceEntityType: 'Incident', relationshipType: 'AFFECTED_BY', direction: 'outgoing', label: 'Affected CI', targetEntityType: 'CI', targetLabel: 'CI', targetNeo4jLabel: 'ConfigurationItem' },
+  { sourceEntityType: 'Incident', relationshipType: 'ASSIGNED_TO_TEAM', direction: 'outgoing', label: 'Assigned team', targetEntityType: 'Team', targetLabel: 'Team', targetNeo4jLabel: 'Team' },
+  { sourceEntityType: 'Incident', relationshipType: 'ASSIGNED_TO', direction: 'outgoing', label: 'Assigned user', targetEntityType: 'User', targetLabel: 'User', targetNeo4jLabel: 'User' },
+  { sourceEntityType: 'Incident', relationshipType: 'RESOLVED_BY', direction: 'outgoing', label: 'Resolved by change', targetEntityType: 'Change', targetLabel: 'Change', targetNeo4jLabel: 'Change' },
+  { sourceEntityType: 'Problem', relationshipType: 'AFFECTS', direction: 'outgoing', label: 'Affected CI', targetEntityType: 'CI', targetLabel: 'CI', targetNeo4jLabel: 'ConfigurationItem' },
+  { sourceEntityType: 'Problem', relationshipType: 'ASSIGNED_TO_TEAM', direction: 'outgoing', label: 'Assigned team', targetEntityType: 'Team', targetLabel: 'Team', targetNeo4jLabel: 'Team' },
+  { sourceEntityType: 'Problem', relationshipType: 'ASSIGNED_TO', direction: 'outgoing', label: 'Assigned user', targetEntityType: 'User', targetLabel: 'User', targetNeo4jLabel: 'User' },
+  { sourceEntityType: 'Problem', relationshipType: 'CAUSED_BY', direction: 'outgoing', label: 'Related incident', targetEntityType: 'Incident', targetLabel: 'Incident', targetNeo4jLabel: 'Incident' },
+  { sourceEntityType: 'Problem', relationshipType: 'RESOLVED_BY', direction: 'outgoing', label: 'Resolved by change', targetEntityType: 'Change', targetLabel: 'Change', targetNeo4jLabel: 'Change' },
+  { sourceEntityType: 'Change', relationshipType: 'AFFECTS_CI', direction: 'outgoing', label: 'Affected CI', targetEntityType: 'CI', targetLabel: 'CI', targetNeo4jLabel: 'ConfigurationItem' },
+  { sourceEntityType: 'Change', relationshipType: 'REQUESTED_BY', direction: 'outgoing', label: 'Requested by', targetEntityType: 'User', targetLabel: 'User', targetNeo4jLabel: 'User' },
+  { sourceEntityType: 'Change', relationshipType: 'OWNED_BY', direction: 'outgoing', label: 'Owner', targetEntityType: 'User', targetLabel: 'User', targetNeo4jLabel: 'User' },
+  { sourceEntityType: 'ServiceRequest', relationshipType: 'REQUESTED_BY', direction: 'outgoing', label: 'Requested by', targetEntityType: 'User', targetLabel: 'User', targetNeo4jLabel: 'User' },
+  { sourceEntityType: 'ServiceRequest', relationshipType: 'ASSIGNED_TO', direction: 'outgoing', label: 'Assigned user', targetEntityType: 'User', targetLabel: 'User', targetNeo4jLabel: 'User' },
+  { sourceEntityType: 'Team', relationshipType: 'MEMBER_OF', direction: 'incoming', label: 'Member', targetEntityType: 'User', targetLabel: 'User', targetNeo4jLabel: 'User' },
 ]
+
+const relationsOf = (entityType: string): NavigableRelation[] =>
+  TICKET_RELATIONS
+    .filter((r) => r.sourceEntityType === entityType)
+    .map(({ sourceEntityType: _src, ...rest }) => rest)
 
 // ── Main exports ──────────────────────────────────────────────────────────────
 
 export async function getNavigableEntities(tenantId: string): Promise<NavigableEntity[]> {
   const session = getSession(undefined, 'READ')
   try {
+    const overrides = await loadTenantEnumOverrides(session, tenantId)
     const result = await session.executeRead(tx =>
       tx.run(`
         MATCH (t:CITypeDefinition)
         WHERE t.active = true
+          AND t.scope <> 'itil'
           AND (t.scope = 'base' OR t.tenant_id = $tenantId)
           AND t.name <> '__base__'
         OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
+        OPTIONAL MATCH (f)-[:USES_ENUM]->(en:EnumTypeDefinition)
+          ${enumScopeClause('en')}
         OPTIONAL MATCH (t)-[:HAS_RELATION]->(r:CIRelationDefinition)
         OPTIONAL MATCH (t)-[:HAS_SYSTEM_RELATION]->(sr:CISystemRelationDefinition)
         RETURN t,
-          collect(DISTINCT f)  AS fields,
+          collect(DISTINCT {f: f, enumId: en.id, enumName: en.name, enumValues: en.values}) AS fields,
           collect(DISTINCT r)  AS relations,
           collect(DISTINCT sr) AS systemRelations
         ORDER BY t.name
       `, { tenantId }),
     )
 
+    type FieldRow = { f: { properties: Record<string, unknown> } | null; enumId: string | null; enumName: string | null; enumValues: string[] | string | null }
     const ciEntities: NavigableEntity[] = result.records.map(record => {
       const t = record.get('t').properties as Record<string, unknown>
 
-      const fields: NavigableField[] = (record.get('fields') as Array<{ properties: Record<string, unknown> }>)
-        .filter(f => f && f.properties)
-        .map(f => ({
-          name:       f.properties['name'] as string,
-          label:      f.properties['label'] as string,
-          fieldType:  f.properties['field_type'] as string,
-          enumValues: f.properties['enum_values']
-            ? JSON.parse(f.properties['enum_values'] as string) as string[]
-            : [],
-        }))
+      const fields: NavigableField[] = applyEnumOverrides(
+        (record.get('fields') as FieldRow[]).filter(row => row.f && row.f.properties),
+        overrides,
+      ).map(row => {
+        const props = row.f!.properties
+        return {
+          name:         props['name'] as string,
+          label:        props['label'] as string,
+          fieldType:    props['field_type'] as string,
+          enumValues:   row.enumName ? enumValuesOf(row.enumValues) : enumValuesOf(props['enum_values'] as string | null),
+          enumTypeName: row.enumName ?? null,
+        }
+      })
 
       const relations: NavigableRelation[] = [
         ...(record.get('relations') as Array<{ properties: Record<string, unknown> }>)
@@ -255,51 +167,73 @@ export async function getNavigableEntities(tenantId: string): Promise<NavigableE
         entityType,
         label:      t['label'] as string,
         neo4jLabel: (t['neo4j_label'] as string | null) ?? toPascalCase(entityType),
+        group:      'cmdb' as const,
         fields,
         relations,
       }
     })
 
-    return [...ciEntities, ...await withWorkflowStatuses(session, tenantId)]
+    return [...await ticketEntities(session, tenantId), ...ORGANIZATION_ENTITIES.map(withRelations), ...ciEntities]
   } finally {
     await session.close()
   }
 }
 
-/**
- * Le entità fisse con il campo `status` riempito dai PASSI del workflow di
- * questo cliente (ondata 8 · B-11). `STATUS_FROM_WORKFLOW` dice quale
- * `entity_type` di workflow corrisponde a quale entità navigabile.
- *
- * Nessun ripiego sulla lista di fabbrica: se il cliente non ha un workflow per
- * quell'entità, `enumValues` resta vuoto e il costruttore di report offre un
- * campo di testo libero (`ConditionRowEditor`) invece di una tendina di valori
- * che non esistono nel suo grafo.
- */
-const STATUS_FROM_WORKFLOW: Record<string, string> = { Incident: 'incident', Change: 'change' }
+function enumValuesOf(raw: string[] | string | null | undefined): string[] {
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string' && raw !== '') {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) throw new Error(`enum values are not a JSON array: ${raw.slice(0, 80)}`)
+    return parsed as string[]
+  }
+  return []
+}
 
-async function withWorkflowStatuses(session: Session, tenantId: string): Promise<NavigableEntity[]> {
+const withRelations = (e: NavigableEntity): NavigableEntity => ({ ...e, relations: relationsOf(e.entityType) })
+
+/**
+ * I ticket (Incident, Problem, Change, Service Request) con i campi del
+ * METAMODELLO ITIL del tenant — quelli che il cliente vede e aggiunge nel
+ * disegnatore — invece di una lista scritta qui. Prima c'erano solo Incident
+ * (5 campi) e Change: niente problem né richieste, niente categoria, impatto
+ * o priorità.
+ *
+ * Il campo `status` prende i PASSI del workflow di questo cliente (ondata 8 ·
+ * B-11). Nessun ripiego sulla lista di fabbrica: se il cliente non ha un
+ * workflow per quell'entità, `enumValues` resta vuoto e il costruttore offre
+ * un campo di testo libero invece di valori che non esistono nel suo grafo.
+ */
+async function ticketEntities(session: Session, tenantId: string): Promise<NavigableEntity[]> {
+  const types = await loadITILTypes(session, tenantId)
   const out: NavigableEntity[] = []
-  for (const entity of FIXED_ENTITIES) {
-    const workflowEntityType = STATUS_FROM_WORKFLOW[entity.entityType]
-    if (!workflowEntityType) { out.push(entity); continue }
-    const steps = await getWorkflowSteps(session, tenantId, workflowEntityType)
+  for (const type of types) {
+    const neo4jLabel = type.neo4jLabel ?? toPascalCase(type.name)
+    const steps = await getWorkflowSteps(session, tenantId, type.name)
     // Senza ripetizioni: un tenant con due definizioni attive della stessa
     // entità (c-one ne ha due per gli incident, base e «Security») contribuisce
-    // con l'unione dei passi, e i nomi in comune arrivano due volte — una
-    // tendina con «resolved» ripetuto due volte è peggio di una lista fissa.
-    const names = [...new Set(
+    // con l'unione dei passi, e i nomi in comune arrivano due volte.
+    const stepNames = [...new Set(
       steps
         .slice()
         .sort((a, b) => (a.stepOrder ?? 999) - (b.stepOrder ?? 999) || a.name.localeCompare(b.name))
         .map((s) => s.name),
     )]
-    if (names.length === 0) {
-      logger.warn({ module: 'navigable-graph', tenantId, entityType: entity.entityType }, 'Nessun passo di workflow: il filtro di stato dei report non offrirà valori')
+    if (stepNames.length === 0) {
+      logger.warn({ module: 'navigable-graph', tenantId, entityType: neo4jLabel }, 'Nessun passo di workflow: il filtro di stato dei report non offrirà valori')
     }
     out.push({
-      ...entity,
-      fields: entity.fields.map((f) => (f.name === 'status' ? { ...f, enumValues: names } : f)),
+      entityType: neo4jLabel,
+      label:      type.label,
+      neo4jLabel,
+      group:      'itsm',
+      fields: type.fields.map((f) => ({
+        name:         f.name as string,
+        label:        f.label as string,
+        fieldType:    f.fieldType as string,
+        enumValues:   f.name === 'status' ? stepNames : (f.enumValues as string[]),
+        enumTypeName: f.name === 'status' ? null : (f.enumTypeName as string | null),
+      })),
+      relations: relationsOf(neo4jLabel),
     })
   }
   return out
@@ -311,9 +245,7 @@ export async function getNavigableRelations(
   tenantId: string,
 ): Promise<NavigableRelation[]> {
   // Fixed entities
-  const fixedRels = FIXED_RELATIONS
-    .filter(r => r.sourceEntityType === entityType)
-    .map(({ sourceEntityType: _src, ...rest }) => rest)
+  const fixedRels = relationsOf(entityType)
 
   if (fixedRels.length > 0) return fixedRels
 

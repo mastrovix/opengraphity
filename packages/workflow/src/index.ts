@@ -1,4 +1,4 @@
-export { WorkflowEngine, workflowEngine, ENTITY_LABELS } from './engine.js'
+export { WorkflowEngine, workflowEngine, ENTITY_LABELS, conditionFailureKey } from './engine.js'
 export {
   seedWorkflowDefinition, CustomizedWorkflowError, computeSeedDiff, formatSeedDiff, seedDiffIsEmpty,
   type SeedableWorkflow, type SeedResult, type SeedOptions, type SeedDiff, type SeedSkipReason,

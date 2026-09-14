@@ -248,7 +248,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
     case 'create_approval_request':
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
-          {text('title_template', 'title_template', 'Pubblicazione: {title}')}
+          {text('title_template', 'title_template', t('workflow.actionParams.approvalTitleExample'))}
           {choice('approver_role', 'approver_role', [{ value: 'admin' }, { value: 'manager' }], 'admin')}
           {choice('approval_type', 'approval_type', [
             { value: 'any', label: 'any (1 approver sufficient)' },

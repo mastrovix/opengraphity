@@ -15,6 +15,8 @@ const h = vi.hoisted(() => ({
   session: { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn() },
 }))
 
+// I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession:  vi.fn(),
   runQuery:    vi.fn(),
@@ -175,7 +177,7 @@ describe('completeRequest', () => {
   it('evade con una transizione dell\'engine verso "fulfilled", poi imposta completed_at e pubblica request.completed', async () => {
     const done = await completeRequest('sr-1', ctx)
     expect(workflowEngine.transition).toHaveBeenCalledWith(h.session,
-      { instanceId: 'wi-sr', toStepName: 'fulfilled', triggeredBy: 'user-1', triggerType: 'manual', tenantId: 'tenant-1', notes: 'Richiesta evasa' },
+      { instanceId: 'wi-sr', toStepName: 'fulfilled', triggeredBy: 'user-1', triggerType: 'manual', tenantId: 'tenant-1', notes: 'Request fulfilled' },
       { userId: 'user-1', entityData: {} })
     const [[cypher, params]] = queriesWith('SET r.completed_at')
     expect(cypher).toContain('MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})')
@@ -197,7 +199,7 @@ describe('completeRequest', () => {
 
   it('transizione rifiutata dall\'engine → errore con lo step corrente, nessun completed_at né evento', async () => {
     vi.mocked(workflowEngine.transition).mockResolvedValue({ success: false, error: 'guard fallita' } as never)
-    await expect(completeRequest('sr-1', ctx)).rejects.toThrow('Impossibile evadere la richiesta dallo step "submitted": guard fallita')
+    await expect(completeRequest('sr-1', ctx)).rejects.toThrow('Cannot fulfil the request from step "submitted": guard fallita')
     expect(queriesWith('SET r.completed_at')).toHaveLength(0)
     expect(publishEvent).not.toHaveBeenCalled()
   })

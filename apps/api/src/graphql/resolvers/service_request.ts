@@ -18,6 +18,7 @@ type Props = Record<string, unknown>
 // requiresApproval: dichiarati nello schema ma sempre null in lettura).
 import { mapRequest } from '../../services/requestService.js'
 import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
+import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
 
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
@@ -264,5 +265,6 @@ export const serviceRequestResolvers = {
   ServiceRequest: {
     requestedBy: requestRequestedBy,
     assignee:    requestAssignee,
+    slaStatus:   ticketSlaStatusResolver('ServiceRequest'),
   },
 }

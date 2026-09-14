@@ -129,6 +129,8 @@ export function CreateServiceMapDialog({ open, onClose, onCreated }: Props) {
           </Select>
           {error && <p role="alert" style={{ ...hint, color: colors.danger }}>{t('monitoring.services.create.candidatesError', { error: error.message })}</p>}
           {!error && data && candidates.length === 0 && <p role="status" style={hint}>{t('monitoring.services.create.candidatesEmpty')}</p>}
+          {/* La mappa parte dalle applicazioni che il servizio REALIZZA: senza quella relazione nasce vuota, e prima lo si scopriva solo dopo. */}
+          <p style={hint}>{t('monitoring.services.create.realizesHint')}</p>
         </div>
         <div>
           <FieldLabel htmlFor={ids.depth}>{t('monitoring.services.create.depth')}</FieldLabel>

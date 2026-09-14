@@ -114,7 +114,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   const getNodeFields = useCallback((neo4jLabel: string): NavigableField[] => {
     const entity     = entities.find(e => e.neo4jLabel === neo4jLabel)
     const typeFields = entity?.fields ?? []
-    const isCIEntity = !['Incident', 'Change', 'Team', 'User'].includes(entity?.entityType ?? '')
+    const isCIEntity = entity?.group === 'cmdb'
     if (!isCIEntity) return typeFields
     const baseFields: NavigableField[] = [
       { name: 'name',        label: t('common.name'),        fieldType: 'string', enumValues: [] },

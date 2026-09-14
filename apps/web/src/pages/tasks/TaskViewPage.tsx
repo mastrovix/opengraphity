@@ -53,6 +53,9 @@ import { TeamGatePanel } from './components/TeamGatePanel'
 import { KIND_TITLE_KEY, inputStyle } from './components/shared'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { colors, palette } from '@/lib/tokens'
+import { plannedWindowStart, beforePlannedWindow } from './components/plannedWindow'
+import { useConfirm } from '@/hooks/useConfirm'
+import { formatDateTime } from '@/lib/datetime'
 
 interface TaskDetail {
   id: string; code: string; kind: string
@@ -117,6 +120,18 @@ export function TaskViewPage() {
   const [reopenVal]        = useMutation(REOPEN_VALIDATION,    { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => toast.error(e.message) })
   const [reopenDep]        = useMutation(REOPEN_DEPLOYMENT,    { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => toast.error(e.message) })
   const [reopenRev]        = useMutation(REOPEN_REVIEW,        { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => toast.error(e.message) })
+
+  // Completare prima della finestra pianificata si può, ma lo si conferma.
+  const confirm = useConfirm()
+  const confirmBeforeWindow = async (kind: 'validation' | 'deployment'): Promise<boolean> => {
+    const start = plannedWindowStart(ciAffected?.deployPlan?.steps, kind)
+    if (!beforePlannedWindow(start)) return true
+    return confirm({
+      title: t('pages.tasks.beforeWindow.title'),
+      body:  t(kind === 'validation' ? 'pages.tasks.beforeWindow.validation' : 'pages.tasks.beforeWindow.deployment', { when: formatDateTime(start) }),
+      confirmLabel: t('pages.tasks.beforeWindow.confirm'),
+    })
+  }
 
   const [showReopenModal, setShowReopenModal] = useState(false)
 
@@ -297,14 +312,14 @@ export function TaskViewPage() {
           {task.kind === 'validation' && (
             <ValidationTaskForm
               canEdit={canEdit}
-              onComplete={(result) => void completeVal({ variables: { changeId: task.changeId, ciId: task.ciId, result } })}
+              onComplete={(result) => void confirmBeforeWindow('validation').then((ok) => { if (ok) void completeVal({ variables: { changeId: task.changeId, ciId: task.ciId, result } }) })}
             />
           )}
 
           {task.kind === 'deployment' && (
             <DeploymentTaskForm
               canEdit={canEdit}
-              onComplete={() => void completeDep({ variables: { changeId: task.changeId, ciId: task.ciId } })}
+              onComplete={() => void confirmBeforeWindow('deployment').then((ok) => { if (ok) void completeDep({ variables: { changeId: task.changeId, ciId: task.ciId } }) })}
             />
           )}
 

@@ -41,6 +41,8 @@ const workflow = vi.hoisted(() => ({ getAvailableTransitions: vi.fn().mockResolv
 // Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
 // dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
 // fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+// I testi scritti nei ticket si risolvono nella lingua del cliente (lib/systemText.ts): qui italiano.
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
 vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
@@ -78,9 +80,9 @@ const { reopenIncident, runMonitoringTransition, loadDefinitionTransitions } = a
 const { GROUP_LOCK_OPTS } = await import('../events/grouping.js')
 const {
   reconcileServiceIncident, serviceIncidentLockKey, meetsServiceOpenThreshold, serviceImpactOf, serviceUrgencyOf,
-  serviceIncidentTitle, serviceIncidentDescription, SERVICE_INCIDENT_LOCK_OPTS, SERVICE_HEALTH_LABEL_IT,
+  serviceIncidentTitle, serviceIncidentDescription, SERVICE_INCIDENT_LOCK_OPTS, serviceHealthLabel,
   FIND_SERVICE_INCIDENT_CYPHER, LINK_SERVICE_INCIDENT_CYPHER,
-  FIND_TECHNICAL_INCIDENTS_CYPHER, SERVICE_MAX_TECHNICAL_INCIDENTS, TECHNICAL_INCIDENTS_HEADING,
+  FIND_TECHNICAL_INCIDENTS_CYPHER, SERVICE_MAX_TECHNICAL_INCIDENTS, technicalIncidentsHeading,
   keptOpenReason, serviceResolveCause, serviceIncidentOpenedKey, SERVICE_INCIDENT_OPENED_TTL_SECONDS,
 } = await import('../serviceImpact/incident.js')
 const { DEFAULT_SERVICE_IMPACT_RULES, SERVICE_HEALTHS } = await import('../../lib/serviceVocabularies.js')
@@ -217,10 +219,10 @@ describe('soglia, impatto, urgenza, testi', () => {
   })
 
   it('titolo e descrizione in italiano, con punteggio, cause e percorso', () => {
-    expect(serviceIncidentTitle('Enterprise Billing', 'down')).toBe('Servizio Enterprise Billing: non disponibile')
-    expect(serviceIncidentTitle('Enterprise Billing', 'degraded')).toBe('Servizio Enterprise Billing: degradato')
-    expect(SERVICE_HEALTH_LABEL_IT['maintenance']).toBe('in manutenzione')
-    const d = serviceIncidentDescription('Enterprise Billing', 'down', 62, [cause('db-01', { critical: true })])
+    expect(serviceIncidentTitle('it', 'Enterprise Billing', 'down')).toBe('Servizio Enterprise Billing: non disponibile')
+    expect(serviceIncidentTitle('it', 'Enterprise Billing', 'degraded')).toBe('Servizio Enterprise Billing: degradato')
+    expect(serviceHealthLabel('it', 'maintenance')).toBe('in manutenzione')
+    const d = serviceIncidentDescription('it', 'Enterprise Billing', 'down', 62, [cause('db-01', { critical: true })])
     expect(d).toContain('Il servizio "Enterprise Billing" è non disponibile')
     expect(d).toContain("Punteggio d'impatto: 62/100.")
     expect(d).toContain('Componenti che pesano (1):')
@@ -534,16 +536,16 @@ describe('sotto soglia ma non operativo: l\'incident resta aperto (I1)', () => {
     const r = await reconcileServiceIncident(input({ health: 'operational', impactScore: 0, causes: [] }))
     expect(r.outcome).toBe('resolved')
     expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', { tenantId: 't1', userId: 'monitoring' }, 'Servizio tornato operativo')
-    expect(serviceResolveCause('operational')).toBe('Servizio tornato operativo')
-    expect(serviceResolveCause('degraded')).toBe('Servizio tornato degradato')
+    expect(serviceResolveCause('it', 'operational')).toBe('Servizio tornato operativo')
+    expect(serviceResolveCause('it', 'degraded')).toBe('Servizio tornato degradato')
     // e il marcatore d'idempotenza dell'apertura viene ripulito
     expect(fakeRedis.del).toHaveBeenCalledWith('og:services:incident:opened:t1:map-1')
   })
 
   it('keptOpenReason: i tre testi, senza frasi inventate', () => {
-    expect(keptOpenReason('degraded', 'down', 'X')).toContain('sotto la soglia di apertura ("down")')
-    expect(keptOpenReason('unknown', 'down', 'X')).toContain('stato sconosciuto')
-    expect(keptOpenReason('down', 'never', 'X')).toContain('"mai aprire incident"')
+    expect(keptOpenReason('it', 'degraded', 'down', 'X')).toContain('sotto la soglia di apertura ("down")')
+    expect(keptOpenReason('it', 'unknown', 'down', 'X')).toContain('stato sconosciuto')
+    expect(keptOpenReason('it', 'down', 'never', 'X')).toContain('"mai aprire incident"')
   })
 })
 
@@ -653,7 +655,7 @@ describe('incident tecnici già aperti sui componenti', () => {
     expect(SERVICE_MAX_TECHNICAL_INCIDENTS).toBe(10)
 
     const description = incidentService.createIncident.mock.calls[0]![0].description as string
-    expect(description).toContain(TECHNICAL_INCIDENTS_HEADING)
+    expect(description).toContain(technicalIncidentsHeading('it'))
     expect(description).toContain('- INC00000011 DB-01 non raggiungibile')
     expect(description).toContain('- INC00000012 CACHE-02 in errore')
     // additiva: l'incident del servizio si apre comunque, nulla viene soppresso
@@ -666,7 +668,7 @@ describe('incident tecnici già aperti sui componenti', () => {
     onCypher([[FIND_RE, null], [LINK_RE, { at: NOW }]])
     await reconcileServiceIncident(input())
     const description = incidentService.createIncident.mock.calls[0]![0].description as string
-    expect(description).not.toContain(TECHNICAL_INCIDENTS_HEADING)
+    expect(description).not.toContain(technicalIncidentsHeading('it'))
     expect(description.trimEnd().endsWith('- DB-01 (non disponibile) — percorso: DB-01 → API-03')).toBe(true)
   })
 
@@ -682,9 +684,9 @@ describe('incident tecnici già aperti sui componenti', () => {
   })
 
   it('serviceIncidentDescription: l\'elenco è in coda ai componenti e senza incident non compare', () => {
-    const withTech = serviceIncidentDescription('Enterprise Billing', 'down', 62, [cause('db-01')], tech)
-    expect(withTech.split('\n').slice(-3)).toEqual([TECHNICAL_INCIDENTS_HEADING, '- INC00000011 DB-01 non raggiungibile', '- INC00000012 CACHE-02 in errore'])
-    expect(serviceIncidentDescription('Enterprise Billing', 'down', 62, [cause('db-01')])).not.toContain(TECHNICAL_INCIDENTS_HEADING)
-    expect(serviceIncidentDescription('Enterprise Billing', 'down', 62, [cause('db-01')], [])).not.toContain(TECHNICAL_INCIDENTS_HEADING)
+    const withTech = serviceIncidentDescription('it', 'Enterprise Billing', 'down', 62, [cause('db-01')], tech)
+    expect(withTech.split('\n').slice(-3)).toEqual([technicalIncidentsHeading('it'), '- INC00000011 DB-01 non raggiungibile', '- INC00000012 CACHE-02 in errore'])
+    expect(serviceIncidentDescription('it', 'Enterprise Billing', 'down', 62, [cause('db-01')])).not.toContain(technicalIncidentsHeading('it'))
+    expect(serviceIncidentDescription('it', 'Enterprise Billing', 'down', 62, [cause('db-01')], [])).not.toContain(technicalIncidentsHeading('it'))
   })
 })

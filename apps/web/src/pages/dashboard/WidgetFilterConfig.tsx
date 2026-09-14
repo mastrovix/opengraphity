@@ -6,6 +6,7 @@ import {
   FIELD_TYPE_LABEL_KEYS,
 } from './useWidgetConfig'
 import { colors, palette } from '@/lib/tokens'
+import { useMetamodel } from '@/contexts/MetamodelContext'
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,11 @@ export function WidgetFilterConfig({
   fields, needsGroupBy,
   fieldMetaMap, selectedFilterMeta,
 }: WidgetFilterConfigProps) {
+  // Solo i tipi di CI che il cliente ha davvero: la lista fissa offriva
+  // «Network Device» e «Virtual Machine» a un tenant che non li aveva.
+  const { ciTypes } = useMetamodel()
+  const ITSM = new Set(['incident', 'problem', 'change', 'service_request'])
+  const availableEntityTypes = ENTITY_TYPES.filter((e) => ITSM.has(e.value) || ciTypes.some((ct) => ct.name === e.value))
   const { t } = useTranslation()
   const id = useId()
   const ids = {
@@ -77,7 +83,7 @@ export function WidgetFilterConfig({
       <div>
         <label htmlFor={ids.entity} style={labelStyle}>{t('pages.dashboard.entityLabel')}</label>
         <select id={ids.entity} value={entityType} onChange={(e) => onEntityChange(e.target.value)} style={selectStyle}>
-          {ENTITY_TYPES.map((e) => <option key={e.value} value={e.value}>{t(e.labelKey)}</option>)}
+          {availableEntityTypes.map((e) => <option key={e.value} value={e.value}>{t(e.labelKey)}</option>)}
         </select>
       </div>
 

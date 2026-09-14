@@ -3,6 +3,7 @@ import { workflowEngine } from '@opengraphity/workflow'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { loadTransitionRows, mapWorkflowDefinition } from './workflowMapping.js'
+import { requestApprovalWouldBeSkipped } from '../../lib/requestApproval.js'
 
 // ── WorkflowStep.currentInstances ─────────────────────────────────────────────
 
@@ -118,7 +119,13 @@ export async function incidentAvailableTransitions(
     )
     if (!wiResult.records.length) return []
     const instanceId = wiResult.records[0].get('instanceId') as string
-    return workflowEngine.getAvailableTransitions(session, instanceId)
+    const transitions = await workflowEngine.getAvailableTransitions(session, instanceId)
+    // Una richiesta che richiede approvazione non offre le transizioni che la salterebbero.
+    const allowed = []
+    for (const tr of transitions) {
+      if (!(await requestApprovalWouldBeSkipped(session, ctx.tenantId, instanceId, tr.toStep))) allowed.push(tr)
+    }
+    return allowed
   })
 }
 

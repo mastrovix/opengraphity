@@ -10,7 +10,7 @@ vi.mock('../../../lib/triggerEngine.js', () => ({ invalidateTriggerCache: vi.fn(
 vi.mock('../../../lib/rulesEngine.js', () => ({ invalidateRulesCache: vi.fn() }))
 vi.mock('../../../lib/filterBuilder.js', () => ({ buildAdvancedWhere: vi.fn() }))
 const selectSLAForEntity = vi.fn(async (..._a: unknown[]) => null as null | { id: string; name: string })
-vi.mock('@opengraphity/sla', () => ({ selectSLAForEntity }))
+vi.mock('@opengraphity/sla', () => ({ selectSLAForEntity, getTenantTimezone: vi.fn(async () => 'Europe/Rome') }))
 
 // Ondata 8 · B-18: i bersagli di passo si validano contro i passi VERI del
 // tenant. Il nucleo (`getWorkflowSteps`) è mockato: qui si prova la porta di
@@ -149,5 +149,24 @@ describe('slaCoverage', () => {
   it('tipo sconosciuto o priorità vuota → rifiuto, non «nessuna policy»', async () => {
     await expect(automationResolvers.Query.slaCoverage(null, { entityType: 'ticket', priority: 'low' }, ctx)).rejects.toThrow(/Invalid entityType/)
     await expect(automationResolvers.Query.slaCoverage(null, { entityType: 'incident', priority: ' ' }, ctx)).rejects.toThrow(/priority is required/)
+  })
+})
+
+/**
+ * Policy SLA che il motore non potrebbe mai applicare. Giro del 14 set 2026:
+ * la pagina offriva «Change» e la categoria per ogni tipo; il motore non
+ * gestisce le change, e problem e richieste non hanno categoria.
+ */
+describe('createSLAPolicy — solo policy applicabili', () => {
+  const ctx = { tenantId: 't1' } as never
+  it('una policy per le change è rifiutata con la sua chiave', async () => {
+    await expect(automationResolvers.Mutation.createSLAPolicy(null, { input: { name: 'x', entityType: 'change', responseMinutes: 60, resolveMinutes: 120 } }, ctx))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.sla.entityTypeWithoutSla' } } })
+  })
+  it('una categoria su problem o service request è rifiutata', async () => {
+    for (const entityType of ['problem', 'service_request']) {
+      await expect(automationResolvers.Mutation.createSLAPolicy(null, { input: { name: 'x', entityType, category: 'network', responseMinutes: 60, resolveMinutes: 120 } }, ctx))
+        .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.sla.categoryNotApplicable' } } })
+    }
   })
 })

@@ -123,9 +123,9 @@ describe('il varco vale anche quando il passo di partenza non ha scopo', () => {
   })
 
   it('vale anche entrando nella finestra APERTA (implementation), non solo in quella programmata', async () => {
-    assertAllApprovalsSatisfied.mockImplementation(async () => { throw new Error('Approvazione incompleta: 2 requisiti ancora in attesa') })
+    assertAllApprovalsSatisfied.mockImplementation(async () => { throw new Error('Approval incomplete: 2 requirement(s) still pending') })
     await expect(executeChangeTransition(null, { changeId: 'chg-1', toStep: 'rilascio' }, admin))
-      .rejects.toThrow(/Approvazione incompleta/)
+      .rejects.toThrow(/Approval incomplete/)
   })
 
   it('approvazioni soddisfatte → la transizione passa', async () => {

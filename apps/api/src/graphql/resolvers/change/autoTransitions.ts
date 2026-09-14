@@ -12,6 +12,7 @@ import { stepNamesByCategory, stepNamesByPurposeOrdered, targetStepByCategory, t
 // Side-effect: registra le condizioni ITSM (all_assessments_complete, …)
 // sull'engine. Il walker le valuta dal registro, come fa l'engine stesso.
 import '../../../workflow/conditions.js'
+import { systemText } from '../../../lib/systemText.js'
 
 type Session2 = Parameters<typeof runQuery>[0]
 export type AfterEnterStep = (session: Session2, changeId: string, tenantId: string, stepName: string) => Promise<void>
@@ -158,7 +159,7 @@ async function syncLinkedIncidents(
       'risoluzione automatica dell\'incident risolto da una change chiusa')
     const res = await workflowEngine.transition(
       session,
-      { instanceId: r.instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: `Risolto dalla change ${r.code}` },
+      { instanceId: r.instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: await systemText(ctx.tenantId, 'change.resolvedByChange', { code: r.code }) },
       { userId: ctx.userId ?? 'system', entityData: {} },
     )
     if (!res.success) logger.warn({ changeId, instanceId: r.instanceId, toStep, error: res.error }, '[syncLinkedIncidents] auto-resolve incident non riuscito')
@@ -202,7 +203,7 @@ async function syncLinkedProblems(
     const drive = async (toStep: string): Promise<void> => {
       const res = await workflowEngine.transition(
         session,
-        { instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: `Change in stato "${changeStep}"` },
+        { instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: await systemText(ctx.tenantId, 'change.changeInStep', { step: changeStep }) },
         { userId: ctx.userId ?? 'system', entityData: {} },
       )
       if (res.success) problemStep = toStep
@@ -248,7 +249,7 @@ export async function revertProblemAfterChangeDetached(
     'ritorno del problem in analisi dopo lo scollegamento della change')
   const res = await workflowEngine.transition(
     session,
-    { instanceId: row.instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: 'Change risolutiva scollegata' },
+    { instanceId: row.instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: await systemText(ctx.tenantId, 'change.resolvingDetached') },
     { userId: ctx.userId ?? 'system', entityData: {} },
   )
   if (!res.success) logger.warn({ problemId, from: row.step, toStep, error: res.error }, '[revertProblemAfterChangeDetached] transizione non riuscita')

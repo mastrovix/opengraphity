@@ -46,6 +46,7 @@ import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import { PhaseBadge } from '@/components/ui/badges'
 import { formatDate, timeAgo, PRIORITY_COLOR } from './ProblemCard'
 import { colors, lookupOrError } from '@/lib/tokens'
+import { useSlaSettling } from '@/hooks/useSlaSettling'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface WorkflowInstance {
@@ -147,7 +148,7 @@ export function ProblemDetailPage() {
 
   const [exportingPdf, setExportingPdf] = useState(false)
 
-  const { data, loading, error, refetch } = useQuery<{ problem: Problem | null }>(GET_PROBLEM, { variables: { id }, skip: !id })
+  const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ problem: Problem | null }>(GET_PROBLEM, { variables: { id }, skip: !id })
   const { data: usersData }        = useQuery<{ users: User[] }>(GET_USERS)
   const { data: teamsData }        = useQuery<{ teams: Team[] }>(GET_TEAMS)
 
@@ -237,6 +238,7 @@ export function ProblemDetailPage() {
   const { purposeOf: wfPurposeOf, categoryOf: wfCategoryOf, labelFor: wfLabelFor } = useWorkflowSteps('problem')
 
   const problem         = data?.problem
+  useSlaSettling(problem?.slaStatus, !!problem?.resolvedAt, { startPolling, stopPolling })
   const users           = usersData?.users ?? []
   const teams           = teamsData?.teams ?? []
   const ciRules         = ciRulesData?.itilCIRelationRules ?? []
@@ -577,7 +579,7 @@ export function ProblemDetailPage() {
         <Modal
           open
           onClose={() => { setIsTransitionDialogOpen(false); setTransitionNotes('') }}
-          title={t('pages.incidents.transitionTo', { step: pendingTransition.toStep.replace(/_/g, ' ') })}
+          title={t('pages.incidents.transitionTo', { step: wfLabelFor(pendingTransition.toStep) })}
           footer={
             <>
               <Button

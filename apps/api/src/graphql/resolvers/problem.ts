@@ -19,6 +19,9 @@ import { validateRequiredFields, propsToFieldValues } from '../../lib/validateRe
 import { resolvePriorityPatch } from '../../lib/priority.js'
 import { assertUserInAssignedTeam, setTicketTeam, setTicketUser } from '../../services/ticketAssignment.js'
 import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
+import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
+import { commentAuthorKind, commentAuthorLabel } from '../../lib/commentAuthor.js'
+import { transitionFailed } from '../../lib/transitionError.js'
 
 type Props = Record<string, unknown>
 
@@ -60,6 +63,8 @@ function mapProblemComment(props: Props, authorProps: Props | null) {
     createdAt: props['created_at'] as string,
     updatedAt: (props['updated_at'] ?? null) as string | null,
     author:    authorProps ? mapUser(authorProps) : null,
+    authorKind:  commentAuthorKind(props, !!authorProps),
+    authorLabel: commentAuthorLabel(props),
   }
 }
 
@@ -412,7 +417,7 @@ async function executeProblemTransition(
     )
 
     if (!result.success) {
-      throw new GraphQLError(result.error ?? 'Transizione fallita')
+      throw transitionFailed(result, 'Transition failed')
     }
     if (result.actionErrors?.length) {
       logger.error({ problemId: args.problemId, actionErrors: result.actionErrors },
@@ -633,34 +638,7 @@ async function problemCreatedBy(
   })
 }
 
-/**
- * Lo SLA del problem, letto dal nodo che il motore collega con `HAS_SLA`.
- * Stessa forma di `Incident.slaStatus`: una sola `SLAStatusInfo` per tutte le
- * entità che hanno un orologio.
- */
-async function problemSlaStatus(
-  parent: { id: string },
-  _: unknown,
-  ctx: GraphQLContext,
-) {
-  return withSession(async (session) => {
-    const result = await session.executeRead((tx) => tx.run(`
-      MATCH (p:Problem {id: $id, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-      RETURN s ORDER BY s.started_at DESC LIMIT 1
-    `, { id: parent.id, tenantId: ctx.tenantId }))
-    if (!result.records.length) return null
-    const s = result.records[0]!.get('s').properties as Props
-    return {
-      startedAt:        s['started_at'],
-      responseDeadline: s['response_deadline'],
-      resolveDeadline:  s['resolve_deadline'],
-      responseMet:      Boolean(s['response_met']),
-      resolveMet:       Boolean(s['resolve_met']),
-      breached:         Boolean(s['breached']),
-      pausedAt:         (s['paused_at'] ?? null) as string | null,
-    }
-  })
-}
+const problemSlaStatus = ticketSlaStatusResolver('Problem')
 
 // ── Export ───────────────────────────────────────────────────────────────────
 

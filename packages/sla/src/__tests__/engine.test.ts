@@ -247,3 +247,58 @@ describe('SLAEngine — senza una policy del tenant, nessuno SLA', () => {
     }))
   })
 })
+
+/**
+ * Presa in carico e conclusione da QUALUNQUE cammino del workflow.
+ * Giro del 14 set 2026: PRB00000004 risolto dalla sua change e REQ00000002
+ * chiusa dal workflow restavano con lo SLA aperto per sempre.
+ */
+describe('SLAEngine — workflow.step_entered', () => {
+  const step = (over: Record<string, unknown>) => event('workflow.step_entered', {
+    entity_type: 'problem', entity_id: 'prb-1', from_step: 'new', from_initial: false,
+    step_name: 'under_investigation', step_category: 'active', step_terminal: false,
+    entered_at: '2026-05-01T11:00:00.000Z', trigger_type: 'automatic', ...over,
+  })
+
+  it('lasciare il passo iniziale segna la risposta e spegne solo il timer di risposta', async () => {
+    getSLAStatus.mockResolvedValue({ ...baseStatus, entity_id: 'prb-1', response_met: false })
+    await new SLAEngine().process(step({ from_initial: true }))
+    expect(markResponseMet).toHaveBeenCalledWith('t1', 'prb-1')
+    expect(cancelSLAJobs).toHaveBeenCalledWith('prb-1', 'response')
+    expect(markResolveMet).not.toHaveBeenCalled()
+  })
+
+  it('un problem che entra in un passo «resolved» (anche da una change) chiude lo SLA all\'istante dell\'ingresso', async () => {
+    getSLAStatus.mockResolvedValue({ ...baseStatus, entity_id: 'prb-1', response_met: true })
+    await new SLAEngine().process(step({ step_name: 'resolved', step_category: 'resolved', step_terminal: true }))
+    expect(markResolveMet).toHaveBeenCalledWith('t1', 'prb-1', new Date('2026-05-01T11:00:00.000Z'))
+    expect(cancelSLAJobs).toHaveBeenCalledWith('prb-1')
+  })
+
+  it('una richiesta che entra in un passo terminale di categoria «closed» chiude lo SLA', async () => {
+    getSLAStatus.mockResolvedValue({ ...baseStatus, entity_id: 'req-1', entity_type: 'service_request', response_met: true })
+    await new SLAEngine().process(step({ entity_type: 'service_request', entity_id: 'req-1', step_name: 'closed', step_category: 'closed', step_terminal: true }))
+    expect(markResolveMet).toHaveBeenCalledWith('t1', 'req-1', new Date('2026-05-01T11:00:00.000Z'))
+  })
+
+  it('idempotente: uno SLA già concluso non si riscrive (un «chiuso» dopo il «risolto»)', async () => {
+    getSLAStatus.mockResolvedValue({ ...baseStatus, entity_id: 'prb-1', response_met: true, resolved_at: '2026-05-01T10:30:00.000Z' })
+    await new SLAEngine().process(step({ from_initial: true, step_name: 'closed', step_category: 'closed', step_terminal: true }))
+    expect(markResponseMet).not.toHaveBeenCalled()
+    expect(markResolveMet).not.toHaveBeenCalled()
+  })
+
+  it('anche incident.resolved, se lo SLA è già concluso, non sposta data ed esito', async () => {
+    getSLAStatus.mockResolvedValue({ ...baseStatus, resolved_at: '2026-05-01T10:30:00.000Z' })
+    await new SLAEngine().process(event('incident.resolved', { entity_id: 'inc-1', resolved_at: '2026-05-02T10:00:00.000Z' }))
+    expect(markResolveMet).not.toHaveBeenCalled()
+  })
+
+  it('ticket senza SLA o di un tipo senza SLA: niente', async () => {
+    getSLAStatus.mockResolvedValue(null)
+    await new SLAEngine().process(step({ from_initial: true, step_category: 'resolved' }))
+    await new SLAEngine().process(step({ entity_type: 'change', from_initial: true, step_category: 'closed', step_terminal: true }))
+    expect(markResponseMet).not.toHaveBeenCalled()
+    expect(markResolveMet).not.toHaveBeenCalled()
+  })
+})

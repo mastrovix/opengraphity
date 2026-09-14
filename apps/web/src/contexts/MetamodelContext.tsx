@@ -1,6 +1,8 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useQuery } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { GET_CI_TYPES } from '../graphql/queries'
+import { shippedLabel } from '@/lib/shippedLabel'
 
 export interface CIFieldDef {
   id: string
@@ -9,6 +11,8 @@ export interface CIFieldDef {
   fieldType: string
   required: boolean
   enumValues: string[]
+  /** Il vocabolario da cui vengono i valori (per le etichette), se il campo ne usa uno. */
+  enumTypeName?: string | null
   order: number
   isSystem: boolean
   validationScript: string | null
@@ -77,7 +81,16 @@ const MetamodelContext = createContext<MetamodelContextType>({
 
 export function MetamodelProvider({ children }: { children: ReactNode }) {
   const { data, loading, error } = useQuery<{ ciTypes: CITypeDef[] }>(GET_CI_TYPES)
-  const ciTypes: CITypeDef[] = data?.ciTypes ?? []
+  const { i18n } = useTranslation()
+  // Le etichette spedite nella lingua di chi guarda (`shippedLabel`): chi legge
+  // il metamodello da qui (CMDB, dettaglio CI, filtri) le riceve già tradotte;
+  // i disegnatori leggono il nodo com'è, perché è quello che si modifica.
+  const ciTypes: CITypeDef[] = useMemo(() => (data?.ciTypes ?? []).map((ct) => ({
+    ...ct,
+    fields:    ct.fields.map((f) => ({ ...f, label: shippedLabel('field', f.name, f.label) })),
+    relations: ct.relations.map((r) => ({ ...r, label: shippedLabel('relation', r.name, r.label) })),
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- la lingua cambia le etichette
+  })), [data, i18n.language])
 
   return (
     <MetamodelContext.Provider value={{

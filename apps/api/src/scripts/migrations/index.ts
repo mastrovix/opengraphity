@@ -50,6 +50,9 @@ import { enumValueLabelsIdentiche } from './20260920_1740_enum_value_labels_iden
 import { tenantDefaultLanguage } from './20260920_1750_tenant_default_language.js'
 import { teamTypeVocabolario } from './20260921_1000_team_type_vocabolario.js'
 import { teamTypeEtichette } from './20260921_1010_team_type_etichette.js'
+import { reportSectionGroupNode } from './20260922_1000_report_section_group_node.js'
+import { concludedTicketsSla } from './20260922_1010_concluded_tickets_sla.js'
+import { shippedMetamodelLabels } from './20260922_1020_shipped_metamodel_labels.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -94,4 +97,7 @@ export const MIGRATIONS: readonly Migration[] = [
   tenantDefaultLanguage,
   teamTypeVocabolario,
   teamTypeEtichette,
+  reportSectionGroupNode,
+  concludedTicketsSla,
+  shippedMetamodelLabels,
 ]

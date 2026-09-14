@@ -10,7 +10,8 @@ import { parseActions, type ActionType } from '../../lib/actionExecutor.js'
 import { ValidationError } from '../../lib/errors.js'
 import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
 import type { Session } from 'neo4j-driver'
-import { selectSLAForEntity } from '@opengraphity/sla'
+import { selectSLAForEntity, getTenantTimezone } from '@opengraphity/sla'
+import { SLA_ENTITY_TYPES, SLA_CATEGORY_ENTITY_TYPES } from '@opengraphity/types'
 
 type Props = Record<string, unknown>
 
@@ -482,10 +483,36 @@ async function slaPolicies(_: unknown, args: { entityType?: string; filters?: st
   })
 }
 
+/**
+ * Una policy SLA si scrive solo se il motore la può applicare: per un tipo che
+ * ha uno SLA, e con la categoria solo dove il ticket ne ha una. Prima si
+ * potevano salvare policy per le change e policy «Problem, categoria network»:
+ * accettate, mostrate, mai applicate.
+ */
+function assertSLAPolicyScope(entityType: string, category: unknown): void {
+  if (!(SLA_ENTITY_TYPES as readonly string[]).includes(entityType)) {
+    throw new ValidationError(
+      `SLA policies apply to ${SLA_ENTITY_TYPES.join(', ')}: "${entityType}" has no SLA`,
+      { key: 'errors.sla.entityTypeWithoutSla', params: { type: entityType, allowed: SLA_ENTITY_TYPES.join(', ') } },
+    )
+  }
+  if (category != null && category !== '' && !(SLA_CATEGORY_ENTITY_TYPES as readonly string[]).includes(entityType)) {
+    throw new ValidationError(
+      `A ${entityType} has no category: an SLA policy for it cannot depend on one`,
+      { key: 'errors.sla.categoryNotApplicable', params: { type: entityType } },
+    )
+  }
+}
+
 async function createSLAPolicy(_: unknown, args: { input: Props }, ctx: GraphQLContext) {
   const { input } = args
   const id  = uuidv4()
   const now = new Date().toISOString()
+  assertSLAPolicyScope(String(input['entityType'] ?? ''), input['category'])
+  // Senza fuso scelto vale quello del cliente, non un fuso scritto nel codice.
+  const timezone = typeof input['timezone'] === 'string' && input['timezone'].trim() !== ''
+    ? input['timezone'].trim()
+    : await getTenantTimezone(ctx.tenantId)
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (p:SLAPolicyNode {
@@ -502,7 +529,7 @@ async function createSLAPolicy(_: unknown, args: { input: Props }, ctx: GraphQLC
       id, tenantId: ctx.tenantId,
       name: input['name'], entityType: input['entityType'],
       priority: input['priority'] ?? null, category: input['category'] ?? null,
-      teamId: input['teamId'] ?? null, timezone: input['timezone'] ?? 'Europe/Rome',
+      teamId: input['teamId'] ?? null, timezone,
       responseMinutes: input['responseMinutes'], resolveMinutes: input['resolveMinutes'],
       businessHours: input['businessHours'] ?? false, now,
     })
@@ -511,6 +538,12 @@ async function createSLAPolicy(_: unknown, args: { input: Props }, ctx: GraphQLC
 }
 
 async function updateSLAPolicy(_: unknown, args: { id: string; input: Props }, ctx: GraphQLContext) {
+  if (args.input['category'] != null && args.input['category'] !== '') {
+    const current = await withSession((session) => runQuery<{ entityType: string }>(session,
+      'MATCH (p:SLAPolicyNode {id: $id, tenant_id: $tenantId}) RETURN p.entity_type AS entityType',
+      { id: args.id, tenantId: ctx.tenantId }))
+    if (current[0]) assertSLAPolicyScope(current[0].entityType, args.input['category'])
+  }
   const sets: string[] = ['p.updated_at = $now']
   const params: Props = { id: args.id, tenantId: ctx.tenantId, now: new Date().toISOString() }
   const fieldMap: Record<string, string> = {

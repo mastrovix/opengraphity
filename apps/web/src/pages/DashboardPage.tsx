@@ -511,7 +511,7 @@ export function DashboardPage() {
               dashboardId={activeDashboardId}
               widget={editingWidget}
               onClose={() => setShowWidgetConfig(false)}
-              onSaved={handleWidgetSaved}
+              onSaved={(saved) => { handleWidgetSaved(saved); setShowWidgetConfig(false) }}
             />
           </Suspense>
         )}
@@ -556,7 +556,7 @@ export function DashboardPage() {
             dashboardId={activeDashboardId}
             widget={editingWidget}
             onClose={() => setShowWidgetConfig(false)}
-            onSaved={handleWidgetSaved}
+            onSaved={(saved) => { handleWidgetSaved(saved); setShowWidgetConfig(false) }}
           />
         </Suspense>
       )}

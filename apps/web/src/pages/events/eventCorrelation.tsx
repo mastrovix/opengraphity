@@ -211,11 +211,15 @@ function lifecycleSentence(t: TFunction, ev: Pick<CorrelationEvent, 'ci'>): stri
  * La frase del dettaglio: cosa ha fatto la policy con l'evento. Con la policy
  * a disposizione le frasi "in attesa" e "sotto soglia" dicono anche i numeri.
  */
-export function correlationSentence(t: TFunction, ev: CorrelationEvent, policy: CorrelationPolicy | null | undefined): string {
+export function correlationSentence(
+  t: TFunction, ev: CorrelationEvent, policy: CorrelationPolicy | null | undefined,
+  /** L'incident l'ha aperto un operatore con «Open incident»: la frase non dice «automaticamente». */
+  openedManually = false,
+): string {
   const when   = formatDateTime(ev.correlationAt)
   const number = ev.incident?.number ?? '—'
   switch (ev.correlation) {
-    case 'opened':        return t('events.correlation.text.opened', { number, when })
+    case 'opened':        return t(openedManually ? 'events.correlation.text.openedManually' : 'events.correlation.text.opened', { number, when })
     case 'attached':      return t('events.correlation.text.attached', { number, when })
     case 'reopened':      return t('events.correlation.text.reopened', { number, when })
     case 'auto_resolved': return t('events.correlation.text.auto_resolved', { number, when })

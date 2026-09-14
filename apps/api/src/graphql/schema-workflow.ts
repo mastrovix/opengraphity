@@ -24,9 +24,18 @@ export function workflowSDL(): string {
     updatedAt:   String!
   }
 
+  type TransitionErrorParam {
+    name:  String!
+    value: String!
+  }
+
   type TransitionResult {
     success:  Boolean!
     error:    String
+    # Chiave i18n della frase (sotto errors.) e i suoi parametri: il client
+    # compone il messaggio nella lingua di chi guarda; \`error\` resta per i log.
+    errorKey:    String
+    errorParams: [TransitionErrorParam!]
     instance: WorkflowInstance
     # Side-effect actions (SLA start, events, timers, …) that FAILED after the
     # transition was persisted. Non-empty = the step is not fully applied.

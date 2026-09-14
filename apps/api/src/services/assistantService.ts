@@ -267,7 +267,7 @@ function buildTools(tenantId: string) {
 
 // ── Streaming chat ───────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `Sei l'assistente operativo di OpenGrafo, una piattaforma ITSM basata su un grafo Neo4j (CMDB, incident, change, knowledge base). Rispondi in italiano, conciso e concreto.
+const SYSTEM_PROMPT = `Sei l'assistente operativo di OpenGrafo, una piattaforma ITSM basata su un grafo Neo4j (CMDB, incident, change, knowledge base). Rispondi nella lingua in cui ti scrive l'utente, conciso e concreto.
 
 Regole:
 - Usa i tool per fondare OGNI risposta sui dati reali del tenant. Non inventare mai numeri di ticket, nomi di CI o stati.

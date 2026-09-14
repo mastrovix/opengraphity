@@ -16,6 +16,8 @@ import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { ciLabelsForTypeNames } from '../../lib/ciTypeNameToLabel.js'
 import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
+import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
+import { commentAuthorKind, commentAuthorLabel } from '../../lib/commentAuthor.js'
 export type { IncidentEventPayload } from '../../services/incidentService.js'
 
 // ── Mapper ───────────────────────────────────────────────────────────────────
@@ -457,33 +459,13 @@ async function incidentComments(
       createdAt: r.cProps['created_at'] as string,
       updatedAt: r.cProps['updated_at'] as string,
       author:    r.uProps ? mapUser(r.uProps) : null,
+      authorKind:  commentAuthorKind(r.cProps, !!r.uProps),
+      authorLabel: commentAuthorLabel(r.cProps),
     }))
   })
 }
 
-async function incidentSlaStatus(
-  parent: { id: string; tenantId: string },
-  _: unknown,
-  ctx: GraphQLContext,
-) {
-  return withSession(async (session) => {
-    const result = await session.executeRead((tx) => tx.run(`
-      MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-      RETURN s ORDER BY s.started_at DESC LIMIT 1
-    `, { id: parent.id, tenantId: ctx.tenantId }))
-    if (!result.records.length) return null
-    const s = result.records[0]!.get('s').properties as Props
-    return {
-      startedAt:        s['started_at'],
-      responseDeadline: s['response_deadline'],
-      resolveDeadline:  s['resolve_deadline'],
-      responseMet:      Boolean(s['response_met']),
-      resolveMet:       Boolean(s['resolve_met']),
-      breached:         Boolean(s['breached']),
-      pausedAt:         (s['paused_at'] ?? null) as string | null,
-    }
-  })
-}
+const incidentSlaStatus = ticketSlaStatusResolver('Incident')
 
 // ── Export ───────────────────────────────────────────────────────────────────
 

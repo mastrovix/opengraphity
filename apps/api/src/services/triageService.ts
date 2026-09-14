@@ -18,6 +18,7 @@ import { getSession, runQuery } from '@opengraphity/neo4j'
 import { getEmbedder, vectorIndexName } from './embeddings.js'
 import { logger } from '../lib/logger.js'
 import { enumScopeClause, loadTenantEnumOverrides, applyEnumOverride } from '../lib/enumScope.js'
+import { modelLanguageFor } from '../lib/systemText.js'
 
 const log = logger.child({ module: 'triage' })
 
@@ -138,7 +139,7 @@ async function loadCIImpact(tenantId: string, ciIds: string[]): Promise<CIImpact
 
 const SYSTEM_PROMPT = `Sei l'assistente di triage di OpenGrafo, una piattaforma ITSM. Ricevi la bozza di un incident (titolo, descrizione), gli incident storici semanticamente simili con il loro triage effettivo, e l'impatto infrastrutturale dei Configuration Item coinvolti (dipendenti diretti e Business Capability raggiungibili nel grafo).
 
-Suggerisci severity, categoria e team di assegnazione motivando in modo conciso e concreto (2-4 frasi, in italiano). Regole:
+Suggerisci severity, categoria e team di assegnazione motivando in modo conciso e concreto (2-4 frasi, nella lingua indicata in fondo). Regole:
 - Basa il suggerimento sull'evidenza fornita: triage degli incident simili e impatto dei CI. Non inventare fatti.
 - Un CI con molti dipendenti o vicino a una Business Capability alza la severity.
 - Se gli incident simili sono pochi o poco simili (score < 0.5), abbassa la confidence.
@@ -205,7 +206,11 @@ export async function suggestTriage(input: TriageInput): Promise<TriageSuggestio
       effort: 'low',
       format: { type: 'json_schema', schema: suggestionSchema(severities, categories) },
     },
-    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+    system: [
+      { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+      // La motivazione la legge l'operatore: nella lingua del cliente.
+      { type: 'text', text: `Write the reasoning in ${await modelLanguageFor(input.tenantId)}.` },
+    ],
     messages: [{ role: 'user', content: JSON.stringify(context, null, 1) }],
   })
 

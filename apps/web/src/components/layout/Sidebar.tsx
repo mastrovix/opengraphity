@@ -18,6 +18,7 @@ import { colors } from '@/lib/tokens'
 const MY_PENDING_APPROVALS_COUNT = gql`
   query MyPendingApprovalsCount {
     myPendingApprovals { id }
+    pendingTicketApprovals { kind entityId }
   }
 `
 
@@ -87,11 +88,13 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   )
   const anomalyCritical = anomalyStatsData?.anomalyStats?.critical ?? 0
 
-  const { data: pendingApprovalsData } = useQuery<{ myPendingApprovals: { id: string }[] }>(
+  // Il badge conta tutto quello che la pagina Approvazioni elenca: le richieste
+  // generiche e le approvazioni che si decidono nel ticket (change, richieste).
+  const { data: pendingApprovalsData } = useQuery<{ myPendingApprovals: { id: string }[]; pendingTicketApprovals: { kind: string; entityId: string }[] }>(
     MY_PENDING_APPROVALS_COUNT,
     { pollInterval: 60_000, fetchPolicy: 'cache-and-network' },
   )
-  const pendingApprovalsCount = pendingApprovalsData?.myPendingApprovals?.length ?? 0
+  const pendingApprovalsCount = (pendingApprovalsData?.myPendingApprovals?.length ?? 0) + (pendingApprovalsData?.pendingTicketApprovals?.length ?? 0)
 
   const anomalyBadge = (anomalyCritical > 0 || anomalyError) ? (
     <span

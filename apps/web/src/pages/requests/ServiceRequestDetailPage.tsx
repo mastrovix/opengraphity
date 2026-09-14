@@ -21,6 +21,13 @@ import { keycloak } from '@/lib/keycloak'
 import { colors, palette, lookupOrError } from '@/lib/tokens'
 import { GET_SERVICE_REQUEST } from '@/graphql/queries'
 import { EXECUTE_WORKFLOW_TRANSITION, UPDATE_SERVICE_REQUEST } from '@/graphql/mutations'
+import { SlaBadge, type SlaStatusInfo } from '@/components/SlaBadge'
+import { useSlaSettling } from '@/hooks/useSlaSettling'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { useEnumValues } from '@/hooks/useEnumValues'
+import { styleForCategory } from '@/lib/workflowStepStyle'
+import { transitionErrorText, type TransitionFailure } from '@/lib/transitionError'
 
 interface WorkflowTransition { toStep: string; label: string; requiresInput: boolean; inputField: string | null }
 interface ServiceRequest {
@@ -31,15 +38,10 @@ interface ServiceRequest {
   assignee: { id: string; name: string; email: string } | null
   workflowInstance: { id: string; currentStep: string; status: string } | null
   availableTransitions: WorkflowTransition[]
+  slaStatus: SlaStatusInfo | null
 }
 
 const PRIORITY_COLOR: Record<string, string> = { critical: 'var(--color-danger)', high: palette.orange.base, medium: colors.warning, low: colors.success }
-const STATUS_COLOR: Record<string, { bg: string; fg: string }> = {
-  open:        { bg: palette.info.tint, fg: palette.info.text },
-  in_progress: { bg: palette.warning.tint, fg: palette.warning.strong },
-  completed:   { bg: palette.success.tint, fg: palette.success.strong },
-  cancelled:   { bg: 'var(--color-border-light)', fg: colors.slate },
-}
 
 
 export function ServiceRequestDetailPage() {
@@ -47,15 +49,23 @@ export function ServiceRequestDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const ids = { title: useId(), description: useId(), priority: useId(), dueDate: useId(), notes: useId() }
-  const { data, loading, error, refetch } = useQuery<{ serviceRequest: ServiceRequest | null }>(GET_SERVICE_REQUEST, { variables: { id }, skip: !id, fetchPolicy: 'cache-and-network' })
+  const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ serviceRequest: ServiceRequest | null }>(GET_SERVICE_REQUEST, { variables: { id }, skip: !id, fetchPolicy: 'cache-and-network' })
   const sr = data?.serviceRequest
+  useSlaSettling(sr?.slaStatus, !!sr?.completedAt, { startPolling, stopPolling })
+  // Stato e priorità come li chiama il cliente: etichetta e colore del passo
+  // vengono dal workflow (categoria), la priorità dal vocabolario. Prima la
+  // pagina mostrava «submitted», «approval», «high» e cercava il colore in una
+  // tabella di nomi che nessun passo del workflow aveva.
+  const { labelFor: stepLabel, categoryOf: stepCategory } = useWorkflowSteps('service_request')
+  const { labelOf } = useDomainVocabularies()
+  const { values: priorityValues } = useEnumValues('service_request', 'priority')
 
   const [transitionModal, setTransitionModal] = useState<{ toStep: string; label: string; inputField: string | null } | null>(null)
   const [transitionNotes, setTransitionNotes] = useState('')
-  const [executeTransition, { loading: transitioning }] = useMutation<{ executeWorkflowTransition?: { success: boolean; error: string | null } }>(EXECUTE_WORKFLOW_TRANSITION, {
+  const [executeTransition, { loading: transitioning }] = useMutation<{ executeWorkflowTransition?: TransitionFailure & { success: boolean } }>(EXECUTE_WORKFLOW_TRANSITION, {
     onCompleted: async (res) => {
       const r = res.executeWorkflowTransition
-      if (r && !r.success) { toast.error(r.error ?? t('toast.request.transitionFailed')); return }
+      if (r && !r.success) { toast.error(transitionErrorText(r, t('toast.request.transitionFailed'))); return }
       setTransitionModal(null); setTransitionNotes('')
       await refetch()
     },
@@ -102,7 +112,7 @@ export function ServiceRequestDetailPage() {
     </PageContainer>
   )
 
-  const stColor = lookupOrError(STATUS_COLOR, sr.status, 'STATUS_COLOR', { bg: 'var(--color-border-light)', fg: colors.slate })
+  const stColor = styleForCategory(stepCategory(sr.status))
 
   return (
     <PageContainer>
@@ -120,8 +130,8 @@ export function ServiceRequestDetailPage() {
         <div>
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>{sr.title}</h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <Pill bg={stColor.bg} color={stColor.fg}>{sr.status}</Pill>
-            <Pill bg="transparent" color={lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', colors.slateLight)} style={{ border: `1.5px solid ${lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', colors.slateLight)}` }}>{sr.priority}</Pill>
+            <Pill bg={stColor.bg} color={stColor.color}>{stepLabel(sr.status)}</Pill>
+            <Pill bg="transparent" color={lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', colors.slateLight)} style={{ border: `1.5px solid ${lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', colors.slateLight)}` }}>{labelOf('priority', sr.priority) ?? sr.priority}</Pill>
             <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{timeAgo(sr.createdAt)}</span>
           </div>
         </div>
@@ -159,7 +169,7 @@ export function ServiceRequestDetailPage() {
                 </p>
               ) : sr.availableTransitions.length === 0 ? (
                 <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
-                  {t('pages.serviceRequestDetail.noActionInStep', { step: sr.workflowInstance.currentStep })}
+                  {t('pages.serviceRequestDetail.noActionInStep', { step: stepLabel(sr.workflowInstance.currentStep) })}
                 </p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -187,6 +197,7 @@ export function ServiceRequestDetailPage() {
           </div>
 
           <SectionCard collapsible={false} defaultOpen title={t('detail.sections.details')}>
+            <DetailField label="SLA" value={sr.slaStatus ? <SlaBadge sla={sr.slaStatus} /> : t('pages.serviceRequestDetail.noSla')} />
             <DetailField label={t('detail.requester')} value={sr.requestedBy?.name ?? null} />
             <DetailField label={t('detail.assignee')} value={sr.assignee?.name ?? null} />
             <DetailField label={t('detail.dueDate')} value={sr.dueDate ? formatDate(sr.dueDate) : null} />
@@ -223,10 +234,7 @@ export function ServiceRequestDetailPage() {
           <div>
             <FieldLabel htmlFor={ids.priority}>{t('detail.priority')}</FieldLabel>
             <Select id={ids.priority} value={editForm.priority} onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}>
-              <option value="critical">critical</option>
-              <option value="high">high</option>
-              <option value="medium">medium</option>
-              <option value="low">low</option>
+              {priorityValues.map((v) => <option key={v} value={v}>{labelOf('priority', v) ?? v}</option>)}
             </Select>
           </div>
           <div>

@@ -40,6 +40,9 @@ import { incidentStepInfo, loadDefinitionTransitions, runMonitoringTransition, t
 import { GROUP_LOCK_OPTS, groupIdOf, groupLockKey, type EventCorrelatedPayload } from './grouping.js'
 import type { StormState } from './storm.js'
 import type { EventRecord, PipelineMode, PipelineOutcome, PipelineResult } from './types.js'
+import { systemTextIn } from '../../lib/systemText.js'
+import { languageFor } from '../../lib/tenantLanguage.js'
+import type { Lingua } from '../../lib/enumValueLabels.js'
 
 const log = logger.child({ module: 'event-correlation' })
 
@@ -174,11 +177,12 @@ async function resolveAgainstIncidents(session: Session, tenantId: string, ev: E
 }
 
 /** Frase "N allarmi silenziati da CHG-…" (1.18); null se nessun allarme è silenziato. */
-export function suppressedSummary(suppressed: number, changeCodes: readonly string[]): string | null {
+export function suppressedSummary(lingua: Lingua, suppressed: number, changeCodes: readonly string[]): string | null {
   if (suppressed <= 0) return null
-  const by = changeCodes.length ? ` da ${changeCodes.join(', ')}` : ''
-  const head = suppressed === 1 ? `1 allarme di monitoraggio silenziato${by} resta` : `${suppressed} allarmi di monitoraggio silenziati${by} restano`
-  return `${head} in finestra di change: non tengono aperto l'incident; a fine finestra vengono rivalutati e, se ancora accesi, lo riaprono`
+  const by = changeCodes.length ? systemTextIn(lingua, 'autoResolve.suppressedBy', { changes: changeCodes.join(', ') }) : ''
+  return suppressed === 1
+    ? systemTextIn(lingua, 'autoResolve.suppressedOne', { by })
+    : systemTextIn(lingua, 'autoResolve.suppressedOther', { count: suppressed, by })
 }
 
 async function resolveAgainstIncident(session: Session, tenantId: string, ev: EventRecord, linked: LinkedIncident, info: { resolvedStep: string }, actorId: string, now: string,
@@ -191,7 +195,8 @@ async function resolveAgainstIncident(session: Session, tenantId: string, ev: Ev
   const title = toStr(ev.props['title'])
   const transitions = await (await engine()).getAvailableTransitions(session, linked.instanceId, tenantId)
   const incidentService = await incidents()
-  const suppressedNote = suppressedSummary(toNumber(linked.suppressed), Array.isArray(linked.suppressingChanges) ? linked.suppressingChanges.map(toStr).filter(Boolean) : [])
+  const lingua = await languageFor(tenantId)
+  const suppressedNote = suppressedSummary(lingua, toNumber(linked.suppressed), Array.isArray(linked.suppressingChanges) ? linked.suppressingChanges.map(toStr).filter(Boolean) : [])
 
   // Cammino verso resolved: [] se "Risolvi" è già disponibile dal passo
   // corrente; altrimenti (es. incident nato in "new" dal monitoraggio) i passi
@@ -212,25 +217,26 @@ async function resolveAgainstIncident(session: Session, tenantId: string, ev: Ev
     // fatti restano (ciascuno è atomico e coerente), il job ritenta.
     for (const hop of path) {
       await runMonitoringTransition(session, tenantId, linked.incidentId, linked.instanceId, hop.toStep, hop.trigger,
-        `Chiusura automatica dal monitoraggio: passaggio a ${hop.toLabel ?? hop.toStep}`, 'auto-resolve', false)
+        systemTextIn(lingua, 'autoResolve.hop', { step: hop.toLabel ?? hop.toStep }), 'auto-resolve', false)
     }
     // La transizione "Risolvi" richiede la causa (rootCause = notes).
-    await incidentService.resolveIncident(linked.incidentId, ctx, `Allarme di monitoraggio rientrato: ${title}`)
-    const via = path.length ? ` — passando per ${path.map((h) => h.toLabel ?? h.toStep).join(', ')}` : ''
+    await incidentService.resolveIncident(linked.incidentId, ctx, systemTextIn(lingua, 'autoResolve.cause', { title }))
+    const steps = path.map((h) => h.toLabel ?? h.toStep).join(', ')
+    const via = path.length ? systemTextIn(lingua, 'autoResolve.via', { steps }) : ''
     // Il commento sui silenziati (1.18) precede quello di chiusura: una volta per risoluzione.
     if (suppressedNote) await incidentService.addIncidentComment(linked.incidentId, ctx, suppressedNote)
-    await incidentService.addIncidentComment(linked.incidentId, ctx, `Risolto automaticamente: tutti gli allarmi di monitoraggio correlati sono rientrati (ultimo: ${title})${via}`)
+    await incidentService.addIncidentComment(linked.incidentId, ctx, systemTextIn(lingua, 'autoResolve.resolvedComment', { title, via }))
     incidentsAutoResolvedTotal.inc({})
     outcome = 'auto_resolved'
-    historyNote = path.length ? `passando per ${path.map((h) => h.toLabel ?? h.toStep).join(', ')}` : null
+    historyNote = path.length ? systemTextIn(lingua, 'autoResolve.historyVia', { steps }) : null
   } else {
     // Nessun cammino percorribile (archi solo con condizioni di dominio, o
     // più lungo di AUTO_RESOLVE_MAX_HOPS): si lascia traccia senza forzare.
     if (suppressedNote) await incidentService.addIncidentComment(linked.incidentId, ctx, suppressedNote)
     await incidentService.addIncidentComment(linked.incidentId, ctx,
-      `Tutti gli allarmi di monitoraggio correlati sono rientrati (ultimo: ${title}); l'incident è in "${linked.step}" e non può essere risolto automaticamente da questo passo`)
+      systemTextIn(lingua, 'autoResolve.cannotResolve', { title, step: linked.step }))
     outcome = 'auto_resolve_skipped'
-    historyNote = `l'incident è in "${linked.step}" e non può essere risolto automaticamente da questo passo`
+    historyNote = systemTextIn(lingua, 'autoResolve.historyCannot', { step: linked.step })
   }
   // Cronologia dell'allarme (history.ts): l'esito con l'incident e il cammino percorso (o il motivo), nella stessa sessione; un errore fa fallire il passo (il job ritenta).
   await appendEventHistory(session, tenantId, eventId, { kind: outcome, incidentId: linked.incidentId, note: historyNote }, now)

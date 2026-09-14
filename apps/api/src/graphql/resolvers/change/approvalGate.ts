@@ -28,6 +28,8 @@ import { afterEnterStep, getInstanceId, writeAudit } from './helpers.js'
 import { areAllApprovalsSatisfied } from './approvalCreation.js'
 import { targetStepByPurpose } from '../../../lib/workflowTargets.js'
 import { deriveChangePriority } from './scoring.js'
+import { systemText } from '../../../lib/systemText.js'
+import { transitionErrorI18n } from '../../../lib/transitionError.js'
 
 type Session = Parameters<typeof runQueryOne>[0]
 
@@ -90,7 +92,7 @@ export async function approveChangeApproval(_: unknown, args: { changeId: string
       const avail = await workflowEngine.getAvailableTransitions(session, instanceId, ctx.tenantId)
       const toStep = await targetStepByPurpose(session, ctx.tenantId, 'change', ['scheduled'],
         'avanzamento della change dopo le approvazioni complete', avail.map((t) => t.toStep))
-      const res = await workflowEngine.transition(session, { instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: 'Approvazioni complete' }, { userId: ctx.userId ?? 'system', entityData: {} })
+      const res = await workflowEngine.transition(session, { instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: await systemText(ctx.tenantId, 'change.approvalsComplete') }, { userId: ctx.userId ?? 'system', entityData: {} })
       if (!res.success) {
         throw new GraphQLError(`Approvals complete but the change did not move to "${toStep}": ${res.error ?? 'transition failed'}`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.approval.didNotAdvance', params: { step: toStep, reason: res.error ?? '' } } } })
       }
@@ -144,10 +146,10 @@ export async function rejectChangeApproval(_: unknown, args: { changeId: string;
     const availReject = await workflowEngine.getAvailableTransitions(session, instanceId, ctx.tenantId)
     const backStep = await targetStepByPurpose(session, ctx.tenantId, 'change', ['assessment'],
       'rientro della change dopo un rifiuto dell\'approvazione', availReject.map((t) => t.toStep))
-    const res = await workflowEngine.transition(session, { instanceId, toStepName: backStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: `Approvazione rifiutata: ${args.note.trim()}` }, { userId: ctx.userId ?? 'system', entityData: {} })
+    const res = await workflowEngine.transition(session, { instanceId, toStepName: backStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: await systemText(ctx.tenantId, 'change.approvalRejected', { note: args.note.trim() }) }, { userId: ctx.userId ?? 'system', entityData: {} })
     // Se fallisce, la change resta in approval con i task riaperti e senza
     // requisiti: il gate blocca l'approvazione e il rigetto è ripetibile.
-    if (!res.success) throw new GraphQLError(res.error ?? 'Rejection failed', { extensions: { code: 'CONFLICT', i18n: res.error ? undefined : { key: 'errors.approval.rejectFailed' } } })
+    if (!res.success) throw new GraphQLError(res.error ?? 'Rejection failed', { extensions: { code: 'CONFLICT', i18n: transitionErrorI18n(res) ?? { key: 'errors.approval.rejectFailed' } } })
     await writeAudit(session, args.changeId, ctx.tenantId, 'change_rejected', ctx.userId, `${teamName}: ${args.note.trim()}`)
     await afterEnterStep(session, args.changeId, ctx.tenantId, backStep)
     return getChange(null, { id: args.changeId }, ctx)

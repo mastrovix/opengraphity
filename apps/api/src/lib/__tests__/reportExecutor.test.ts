@@ -12,6 +12,15 @@ vi.mock('../reportWhitelist.js', () => ({
   }),
 }))
 
+// Le etichette dei valori hanno il loro test (reportValueLabels.test.ts): qui
+// basta sapere che l'esecutore chiede le sorgenti giuste e usa la risposta.
+const labeler = vi.fn((_source: unknown, value: unknown) => value)
+const loadReportValueLabeler = vi.fn(async () => labeler)
+vi.mock('../reportValueLabels.js', () => ({
+  identityLabeler: (_s: unknown, v: unknown) => v,
+  loadReportValueLabeler: (...args: unknown[]) => loadReportValueLabeler(...(args as [])),
+}))
+
 const { mapSectionRecords, executeReportSection } = await import('../reportExecutor.js')
 const { CHART_TYPES } = await import('../reportQueryBuilder.js')
 const { getSession } = await import('@opengraphity/neo4j')
@@ -105,6 +114,16 @@ describe('executeReportSection', () => {
     const res = await executeReportSection(sec, 't1')
     expect(res.error).toBeNull()
     expect(JSON.parse(res.data)).toEqual({ columns: ['Incident_title'], rows: [['DB down']] })
+  })
+
+  it('i valori passano dalle etichette: raggruppamento e colonne con la loro sorgente', async () => {
+    sessionReturning([{ label: 'critical', value: int(2) }])
+    labeler.mockImplementation((source, value) => (source && value === 'critical' ? 'Critica' : value))
+    const res = await executeReportSection(section({ chartType: 'bar', groupByField: 'severity' }), 't1')
+    expect(res.error).toBeNull()
+    expect(JSON.parse(res.data)).toEqual([{ name: 'Critica', value: 2 }])
+    expect(loadReportValueLabeler).toHaveBeenCalledWith(expect.anything(), 't1', [{ neo4jLabel: 'Incident', field: 'severity' }])
+    labeler.mockImplementation((_s, v) => v)
   })
 
   it('unsupported chartType surfaces as the section error', async () => {

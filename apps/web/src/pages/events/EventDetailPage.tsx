@@ -115,7 +115,7 @@ export function EventDetailPage() {
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
               <GitBranch size={16} color={colors.slateLight} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
               <p data-testid="correlation-sentence" style={{ margin: 0, fontSize: 'var(--font-size-body)', color: colors.slateDark, lineHeight: 1.6 }}>
-                {correlationSentence(t, ev, policy)}
+                {correlationSentence(t, ev, policy, (ev.history ?? []).some((h) => h.kind === 'incident_opened_manually' && h.incident?.id === ev.incident?.id))}
               </p>
             </div>
             {ev.suppressedBy && (

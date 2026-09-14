@@ -1,6 +1,7 @@
 import { getSession, toNumber } from '@opengraphity/neo4j'
 import { buildReportQuery, assertChartType, type ChartType, type ReportSectionDef } from './reportQueryBuilder.js'
 import { getReportWhitelist } from './reportWhitelist.js'
+import { identityLabeler, loadReportValueLabeler, type ReportValueLabeler, type ReportValueSource } from './reportValueLabels.js'
 
 export interface ReportSectionResult {
   sectionId: string
@@ -22,7 +23,8 @@ export function mapSectionRecords(
   chartType: ChartType,
   section: Pick<ReportSectionDef, 'title'>,
   records: Array<{ get: (k: string) => unknown }>,
-  columns: Array<{ alias: string; name: string }>,
+  columns: Array<{ alias: string; name: string; source?: ReportValueSource | null }>,
+  labels: { group: ReportValueSource | null; labeler: ReportValueLabeler } = { group: null, labeler: identityLabeler },
 ): ExecutedData {
   switch (chartType) {
     case 'kpi': {
@@ -41,7 +43,7 @@ export function mapSectionRecords(
     case 'bar_horizontal':
     case 'top_n': {
       const data = records.map(r => ({
-        name:  r.get('label') ?? '(none)',
+        name:  labels.labeler(labels.group, r.get('label')) ?? '(none)',
         value: toNumber(r.get('value')),
       }))
       return { data, total: data.length }
@@ -62,7 +64,7 @@ export function mapSectionRecords(
       // result is a config/query mismatch: let it throw into the section
       // error instead of rendering null cells the user cannot distinguish
       // from real empty values.
-      const rows = records.map(r => columns.map(col => r.get(col.alias) ?? null))
+      const rows = records.map(r => columns.map(col => labels.labeler(col.source ?? null, r.get(col.alias)) ?? null))
       return { data: { columns: columns.map(c => c.name), rows }, total: records.length }
     }
 
@@ -82,14 +84,15 @@ export async function executeReportSection(
     // (GraphQL, dashboard widgets, scheduler, export) goes through here, so a
     // section persisted with a rogue label/field never reaches Neo4j.
     const whitelist = await getReportWhitelist(tenantId)
-    const { query, params, columns } = buildReportQuery(section, tenantId, whitelist)
+    const { query, params, columns, groupSource } = buildReportQuery(section, tenantId, whitelist)
     const chartType = assertChartType(section.chartType, `section ${JSON.stringify(section.id)}`)
 
     const session = getSession(undefined, 'READ')
     let executed: ExecutedData
     try {
       const result = await session.executeRead(tx => tx.run(query, params))
-      executed = mapSectionRecords(chartType, section, result.records, columns)
+      const labeler = await loadReportValueLabeler(session, tenantId, [groupSource, ...columns.map(c => c.source)])
+      executed = mapSectionRecords(chartType, section, result.records, columns, { group: groupSource, labeler })
     } finally {
       await session.close()
     }

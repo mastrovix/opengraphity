@@ -42,6 +42,8 @@ import { ImpactedServicesSection } from './ImpactedServicesSection'
 import type { EventRow } from '@/types/events'
 import type { ImpactedServiceRef } from '@/types/services'
 import { colors } from '@/lib/tokens'
+import { useSlaSettling } from '@/hooks/useSlaSettling'
+import { transitionErrorText, type TransitionFailure } from '@/lib/transitionError'
 
 const RESOLUTION_DRAFT = gql`
   query ResolutionDraft($incidentId: ID!) {
@@ -160,14 +162,19 @@ export function IncidentDetailPage() {
   const [exportingPdf, setExportingPdf] = useState(false)
   const [genResolutionDraft, { loading: draftLoading }] = useLazyQuery<{ resolutionDraft: { draft: string } }>(RESOLUTION_DRAFT, { fetchPolicy: 'network-only' })
   const [createKbDraft, { loading: kbDraftLoading }] = useMutation<{ createKbDraftFromIncident: { id: string; slug: string; title: string } }>(CREATE_KB_DRAFT, {
-    onCompleted: (d) => toast.success(t('toast.incident.kbDraftCreated', { title: d.createKbDraftFromIncident.title })),
+    // La bozza nasce in pochi secondi di generazione: il messaggio resta abbastanza
+    // da essere letto e porta dove la bozza si completa (prima spariva e basta).
+    onCompleted: (d) => toast.success(t('toast.incident.kbDraftCreated', { title: d.createKbDraftFromIncident.title }), {
+      duration: 12_000,
+      action: { label: t('toast.incident.kbDraftOpen'), onClick: () => navigate('/admin/knowledge-base') },
+    }),
     onError: (err) => toast.error(t('toast.incident.kbDraftFailed', { error: err.message })),
   })
 
   const [ciSearch,      setCiSearch]      = useState('')
   const [timelineOpen, setTimelineOpen] = useState(true)
 
-  const { data, loading, error, refetch } = useQuery<{ incident: Incident | null }>(
+  const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ incident: Incident | null }>(
     GET_INCIDENT,
     { variables: { id }, skip: !id },
   )
@@ -198,18 +205,18 @@ export function IncidentDetailPage() {
   })
 
   const [execTransition, { loading: transitioning }] = useMutation<{
-    executeWorkflowTransition: { success: boolean; error: string | null; instance: { currentStep: string } }
+    executeWorkflowTransition: TransitionFailure & { success: boolean; instance: { currentStep: string } }
   }>(EXECUTE_WORKFLOW_TRANSITION, {
     onCompleted: (res) => {
       const r = res.executeWorkflowTransition
       if (r.success) {
-        toast.success(t('toast.incident.transitionCompletedTo', { step: r.instance.currentStep }))
+        toast.success(t('toast.incident.transitionCompletedTo', { step: incidentStepLabel(r.instance.currentStep) }))
         setIsTransitionDialogOpen(false)
         setPendingTransition(null)
         setTransitionNotes('')
         void refetch()
       } else {
-        toast.error(r.error ?? t('toast.incident.transitionFailed'))
+        toast.error(transitionErrorText(r, t('toast.incident.transitionFailed')))
       }
     },
     onError: (err) => toast.error(err.message),
@@ -254,7 +261,9 @@ export function IncidentDetailPage() {
     onCompleted: (_data, opts) => {
       const userId = (opts?.variables as { userId?: string | null } | undefined)?.userId
       if (userId) {
-        toast.success(t('toast.incident.takenOver'))
+        // «Preso in carico» era vero solo per chi assegnava a sé stesso.
+        const name = users.find((u) => u.id === userId)?.name ?? ''
+        toast.success(t('toast.incident.assignedToUser', { name }))
         setAwaitingUserAssign(false)
         setSelectedUserId('')
         void refetch()
@@ -284,6 +293,7 @@ export function IncidentDetailPage() {
   })
 
   const incident  = data?.incident
+  useSlaSettling(incident?.slaStatus, !!incident?.resolvedAt, { startPolling, stopPolling })
   const users     = usersData?.users ?? []
   const teams     = teamsData?.teams ?? []
   const ciResults = ciSearchData?.allCIs?.items ?? []
@@ -659,6 +669,12 @@ export function IncidentDetailPage() {
                         <option value="">{t('detail.selectUser')}</option>
                         {teamUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </Select>
+                      {/* Il pulsante assegna la persona scelta: si accende solo dopo la scelta, e lo dice. */}
+                      {!selectedUserId && (
+                        <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--text-muted)' }}>
+                          {teamUsers.length === 0 ? t('detail.noTeamMembers') : t('detail.chooseUserToAssign')}
+                        </span>
+                      )}
                       <button
                         type="button"
                         disabled={!selectedUserId || !selectedUserId.trim() || assigningUser}
@@ -668,7 +684,7 @@ export function IncidentDetailPage() {
                         }}
                         style={{ padding: '7px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}
                       >
-                        {assigningUser ? t('detail.assigning') : t('detail.takeOwnership')}
+                        {assigningUser ? t('detail.assigning') : t('detail.assignUser')}
                       </button>
                     </div>
                   )
@@ -795,7 +811,7 @@ export function IncidentDetailPage() {
         title={
           pendingTransition?.inputField === 'rootCause'
             ? t('pages.incidents.rootCauseAnalysis')
-            : t('pages.incidents.transitionTo', { step: pendingTransition?.toStep ?? '' })
+            : t('pages.incidents.transitionTo', { step: incidentStepLabel(pendingTransition?.toStep ?? '') })
         }
         width={480}
         footer={
@@ -828,7 +844,7 @@ export function IncidentDetailPage() {
                       setTransitionNotes('')
                       void refetch()
                     } else {
-                      toast.error(data.executeWorkflowTransition.error ?? t('toast.incident.transitionError'))
+                      toast.error(transitionErrorText(data.executeWorkflowTransition, t('toast.incident.transitionError')))
                     }
                   },
                   onError: (err) => toast.error(err.message),

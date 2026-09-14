@@ -62,6 +62,8 @@ export function reportSDL(): string {
     entityType: String!
     label: String!
     neo4jLabel: String!
+    # itsm | organization | cmdb: dove il costruttore la mostra
+    group: String!
     fields: [NavigableField!]!
     relations: [NavigableRelation!]!
   }
@@ -71,6 +73,7 @@ export function reportSDL(): string {
     label: String!
     fieldType: String!
     enumValues: [String!]!
+    enumTypeName: String
   }
 
   type NavigableRelation {

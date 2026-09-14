@@ -75,7 +75,7 @@ export function CMDBPage() {
       label:    t('pages.cmdb.environment'),
       width:    '140px',
       sortable: true,
-      render:   (v) => <EnvBadge environment={String(v)} />,
+      render:   (v) => <EnvBadge environment={v as string | null} />,
     },
     {
       key:      'health',

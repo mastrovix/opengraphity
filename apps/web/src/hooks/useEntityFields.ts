@@ -15,6 +15,7 @@ import type { FieldConfig } from '@/components/FilterBuilder'
 import { GET_ITIL_TYPES, GET_CI_TYPES, GET_ENTITY_FILTER_FIELDS } from '@/graphql/queries'
 import { isITILEntity } from '@/lib/automationOperators'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { shippedLabel } from '@/lib/shippedLabel'
 
 // ── Metamodel field metas (automazione) ──────────────────────────────────────
 
@@ -72,7 +73,7 @@ export function useEntityFieldMetas(entityType: string, { withVirtual = true }: 
     const typeDef = types.find(t => t.name === entityType)
     if (!typeDef) return { fields: [], error: `entity type "${entityType}" is not in the metamodel` }
     const fields: FieldMeta[] = typeDef.fields.map(f => ({
-      name: f.name, label: f.label || f.name, fieldType: f.fieldType, enumValues: f.enumValues ?? [],
+      name: f.name, label: shippedLabel('field', f.name, f.label), fieldType: f.fieldType, enumValues: f.enumValues ?? [],
       enumTypeName: f.enumTypeName ?? null,
     }))
     if (withVirtual) {

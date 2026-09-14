@@ -23,7 +23,10 @@ import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
 import { invalidateWorkflowCache } from '../../lib/workflowHelpers.js'
-import { auditStepEntered } from '../../lib/stepEvent.js'
+import { auditStepEntered, loadStepFacts } from '../../lib/stepEvent.js'
+import { systemText } from '../../lib/systemText.js'
+import { requestApprovalWouldBeSkipped } from '../../lib/requestApproval.js'
+import { transitionErrorFields } from '../../lib/transitionError.js'
 
 // Safe label map — prevents Cypher injection when creating entities dynamically
 const ENTITY_LABELS: Record<string, string> = {
@@ -779,6 +782,13 @@ export async function executeWorkflowTransition(
     if (entityDataResult.records[0].get('entityType') === 'change') {
       throw new GraphQLError('Le change si transizionano con executeChangeTransition (gate di approvazione e side-effect di fase)', { extensions: { code: 'CONFLICT' } })
     }
+    if (entityDataResult.records[0].get('entityType') === 'service_request'
+        && await requestApprovalWouldBeSkipped(session, ctx.tenantId, instanceId, toStep)) {
+      throw new GraphQLError(
+        'This request needs an approval: send it to approval first',
+        { extensions: { code: 'CONFLICT', i18n: { key: 'errors.request.approvalRequired' } } },
+      )
+    }
     const entityData: Record<string, unknown> = {
       ...((entityDataResult.records[0].get('entityData') as Record<string, unknown> | null) ?? {}),
       assigned_to:   entityDataResult.records[0].get('assigned_to') ?? null,
@@ -928,7 +938,8 @@ export async function executeWorkflowTransition(
           sseManager.sendToUser(ctx.tenantId, approverId, {
             id:          uuidv4(),
             type:        'approval.requested',
-            title:       'Approvazione richiesta',
+            title:          'notification.approval.requested.title',
+            title_fallback: await systemText(ctx.tenantId, 'approval.requested'),
             message:     title,
             severity:    'info',
             entity_id:   approvalId,
@@ -1016,7 +1027,11 @@ export async function executeWorkflowTransition(
         const incidentId = r.get('id') as string
 
         // Add automatic comment for every incident workflow transition
-        const commentText = notes ? `Workflow: ${toStep} — ${notes}` : `Workflow: ${toStep}`
+        // Il nome del passo nella sua etichetta, e il testo nella lingua del cliente.
+        const stepLabel = (await loadStepFacts(session, tenantId, 'incident', toStep)).step_label
+        const commentText = notes
+          ? await systemText(tenantId, 'workflow.transitionCommentNotes', { step: stepLabel, notes })
+          : await systemText(tenantId, 'workflow.transitionComment', { step: stepLabel })
         const now = new Date().toISOString()
         await session.executeWrite((tx) => tx.run(`
           MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
@@ -1075,7 +1090,7 @@ export async function executeWorkflowTransition(
 
     return {
       success:      result.success,
-      error:        result.error ?? null,
+      ...transitionErrorFields(result),
       instance:     result.instance ?? null,
       actionErrors: allActionErrors.length > 0 ? allActionErrors : null,
     }

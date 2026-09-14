@@ -7,9 +7,11 @@ import type {
   WorkflowActionConfig,
   TransitionInput,
   TransitionResult,
+  TransitionErrorI18n,
   ActionContext,
   ConditionContext,
   ConditionEvaluator,
+  StepEnteredListener,
 } from './types.js'
 import { WORKFLOW_ACTION_TYPES, isWorkflowActionType } from './types.js'
 import { runAction } from './actions.js'
@@ -37,28 +39,57 @@ export const ENTITY_LABELS: Record<string, string> = {
 // Neo4j Integer (o numero nativo) → number: helper unico di @opengraphity/neo4j (D-22).
 const toNumber = neo4jToNumber
 
-function fail(error: string): TransitionResult {
-  return { success: false, error } as unknown as TransitionResult
+function fail(error: string, errorI18n?: TransitionErrorI18n): TransitionResult {
+  return { success: false, error, ...(errorI18n ? { errorI18n } : {}) } as unknown as TransitionResult
 }
 
 interface RegisteredCondition {
   evaluate:       ConditionEvaluator
   failureMessage: string
+  failureKey:     string
 }
+
+/**
+ * Chiave della frase mostrata quando la condizione `name` non è soddisfatta.
+ * Il messaggio registrato resta per i log; chi mostra l'errore a una persona
+ * usa la chiave, e se la chiave non esiste nella lingua ricade sul messaggio.
+ */
+export function conditionFailureKey(name: string): string {
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) {
+    throw new Error(`Transition condition "${name}" has no i18n key of its own: pass failureKey to registerCondition`)
+  }
+  return `errors.workflow.condition.${name}`
+}
+
+class ConcurrentTransitionError extends Error {}
 
 export class WorkflowEngine {
   private readonly conditions = new Map<string, RegisteredCondition>()
+  private readonly stepEnteredListeners: StepEnteredListener[] = []
+
+  /**
+   * Chi ascolta l'ingresso in un passo (vedi `StepEnteredInfo`). Chiamato dopo
+   * che la transizione è persistita e dopo le azioni del passo; un ascoltatore
+   * che fallisce non annulla la transizione ma finisce in `actionErrors`.
+   */
+  onStepEntered(listener: StepEnteredListener): void {
+    this.stepEnteredListeners.push(listener)
+  }
 
   constructor() {
     // Unica condizione built-in: dipende solo dall'input (le note), non dal dominio.
-    this.registerCondition('rootCause != null', async (_s, c) => !!c.notes?.trim(), 'Root cause obbligatoria per questa transizione')
+    this.registerCondition('rootCause != null', async (_s, c) => !!c.notes?.trim(), 'A root cause is required for this transition', 'errors.workflow.condition.rootCauseRequired')
   }
 
   // ── Registro condizioni ────────────────────────────────────────────────────
 
   /** Registra (o sostituisce) l'evaluator di una condizione di transizione. */
-  registerCondition(name: string, evaluate: ConditionEvaluator, failureMessage?: string): void {
-    this.conditions.set(name, { evaluate, failureMessage: failureMessage ?? `Condizione "${name}" non soddisfatta` })
+  registerCondition(name: string, evaluate: ConditionEvaluator, failureMessage?: string, failureKey?: string): void {
+    this.conditions.set(name, {
+      evaluate,
+      failureMessage: failureMessage ?? `Transition condition "${name}" is not satisfied`,
+      failureKey:     failureKey ?? conditionFailureKey(name),
+    })
   }
 
   hasCondition(name: string): boolean {
@@ -68,7 +99,7 @@ export class WorkflowEngine {
   /** Valuta una condizione registrata; lancia se sconosciuta (workflow mal configurato). */
   async evaluateCondition(session: Session, name: string, ctx: ConditionContext): Promise<boolean> {
     const reg = this.conditions.get(name)
-    if (!reg) throw new Error(`Condizione di transizione sconosciuta: "${name}" — registrala con registerCondition o correggi il workflow`)
+    if (!reg) throw new Error(`Unknown transition condition "${name}": register it with registerCondition or fix the workflow`)
     return reg.evaluate(session, ctx)
   }
 
@@ -301,6 +332,7 @@ export class WorkflowEngine {
             currentStep.id           AS currentStepId,
             currentStep.name         AS currentStepName,
             currentStep.exit_actions AS exitActions,
+            coalesce(currentStep.is_initial, currentStep.type = 'start') AS currentStepInitial,
             nextStep.id                   AS nextStepId,
             nextStep.name                 AS nextStepName,
             nextStep.type                 AS nextStepType,
@@ -318,13 +350,15 @@ export class WorkflowEngine {
       )
 
       if (stateResult.records.length === 0) {
-        return fail(`Transizione verso "${input.toStepName}" non valida dallo step corrente`)
+        return fail(`Transition to "${input.toStepName}" is not valid from the current step`,
+          { key: 'errors.workflow.transitionNotValid', params: { step: input.toStepName } })
       }
 
       const rec               = stateResult.records[0]
       const wi                = rec.get('wi').properties as Record<string, unknown>
       const currentStepId     = rec.get('currentStepId')      as string
       const currentStepName   = rec.get('currentStepName')    as string
+      const currentStepInitial = Boolean(rec.get('currentStepInitial'))
       const nextStepId        = rec.get('nextStepId')         as string
       const nextStepName      = rec.get('nextStepName')       as string
       const nextStepType      = rec.get('nextStepType')       as string
@@ -357,14 +391,16 @@ export class WorkflowEngine {
 
       // 2. Trigger: un utente non può percorrere archi riservati al sistema.
       if (input.triggerType === 'manual' && trigger !== 'manual') {
-        return fail(`Transizione verso "${input.toStepName}" riservata al sistema (trigger "${trigger ?? 'n/d'}"), non eseguibile manualmente`)
+        return fail(`Transition to "${input.toStepName}" is reserved to the system (trigger "${trigger ?? 'none'}") and cannot be run manually`,
+          { key: 'errors.workflow.transitionSystemOnly', params: { step: input.toStepName } })
       }
 
       // 3. Condizione dell'arco, valutata per OGNI trigger tramite il registro.
       if (condition) {
         const reg = this.conditions.get(condition)
         if (!reg) {
-          return fail(`Condizione di transizione sconosciuta: "${condition}" — registrala con registerCondition o correggi il workflow`)
+          return fail(`Unknown transition condition "${condition}": register it with registerCondition or fix the workflow`,
+            { key: 'errors.workflow.unknownCondition', params: { condition } })
         }
         const condCtx: ConditionContext = {
           instanceId:   input.instanceId,
@@ -378,13 +414,13 @@ export class WorkflowEngine {
           entityData:   context.entityData,
         }
         const ok = await reg.evaluate(session, condCtx)
-        if (!ok) return fail(reg.failureMessage)
+        if (!ok) return fail(reg.failureMessage, { key: reg.failureKey, params: { condition } })
       }
 
       const entityType = wi['entity_type'] as string
       const label = ENTITY_LABELS[entityType]
       if (!label) {
-        return fail(`entity_type "${entityType}" non ammesso per il sync dello status (aggiungilo a ENTITY_LABELS)`)
+        return fail(`entity_type "${entityType}" is not allowed for status sync (add it to ENTITY_LABELS)`)
       }
 
       // 4. Durata step corrente
@@ -476,7 +512,7 @@ export class WorkflowEngine {
           notes:        input.notes ?? null,
         })
         if (res.records.length === 0) {
-          throw new Error(`Transizione concorrente: lo step corrente di ${input.instanceId} non è più "${currentStepName}". Ricarica e riprova.`)
+          throw new ConcurrentTransitionError(`Concurrent transition: the current step of ${input.instanceId} is no longer "${currentStepName}". Reload and try again.`)
         }
 
         // Sync dello status sull'entità — stessa transazione, label esplicita.
@@ -496,6 +532,23 @@ export class WorkflowEngine {
             tenantId:  wi['tenant_id'] as string,
             status:    nextStepName,
             rootCause: input.notes ?? null,
+            now,
+          })
+        } else if (nextStepTerminal && (label === 'ServiceRequest' || label === 'Change')) {
+          // Una richiesta o una change che arriva a un passo terminale è
+          // CONCLUSA: `completed_at` è la data che leggono OLA/UC, report e
+          // diagnostica. Prima la scriveva solo `completeRequest`, che il
+          // workflow non chiama: una richiesta chiusa dal suo workflow restava
+          // «aperta» per sempre. `coalesce`: la prima conclusione vince.
+          await tx.run(`
+            MATCH (entity:${label} {id: $entityId, tenant_id: $tenantId})
+            SET entity.status       = $status,
+                entity.completed_at = coalesce(entity.completed_at, $now),
+                entity.updated_at   = $now
+          `, {
+            entityId: wi['entity_id'] as string,
+            tenantId: wi['tenant_id'] as string,
+            status:   nextStepName,
             now,
           })
         } else {
@@ -589,6 +642,29 @@ export class WorkflowEngine {
         }
       }
 
+      for (const listener of this.stepEnteredListeners) {
+        try {
+          await listener({
+            tenantId:    wi['tenant_id'] as string,
+            instanceId:  input.instanceId,
+            entityType,
+            entityId:    wi['entity_id'] as string,
+            fromStep:    currentStepName,
+            fromInitial: currentStepInitial,
+            toStep:      nextStepName,
+            category:    nextStepCategory,
+            terminal:    nextStepTerminal,
+            enteredAt:   now,
+            actorId:     context.userId,
+            triggerType: input.triggerType,
+          })
+        } catch (e) {
+          const msg = `step_entered listener: ${e instanceof Error ? e.message : String(e)}`
+          workflowLogger.error({ err: e, instanceId: input.instanceId, stepName: nextStepName }, `[workflow-engine] ${msg}`)
+          actionErrors.push(msg)
+        }
+      }
+
       if (nextStepType === 'sub_workflow') {
         const msg = `sub_workflow step "${nextStepName}" is not implemented — no sub-workflow was created${subWorkflowId ? ` (definitionId ${subWorkflowId})` : ' and no subWorkflowId is configured'}`
         workflowLogger.error({ instanceId: input.instanceId, subWorkflowId }, `[workflow-engine] ${msg}`)
@@ -615,6 +691,7 @@ export class WorkflowEngine {
       } as unknown as TransitionResult
 
     } catch (error: unknown) {
+      if (error instanceof ConcurrentTransitionError) return fail(error.message, { key: 'errors.workflow.concurrentTransition' })
       return fail(error instanceof Error ? error.message : String(error))
     }
   }

@@ -20,11 +20,14 @@ import type { GraphQLContext } from '../../../../context.js'
 // L'engine è mockato, ma le condizioni ITSM sono quelle vere (workflow/
 // conditions.ts): evaluateCondition delega al registro reale così i test
 // esercitano le query di condizione.
+// I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
+vi.mock('../../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: {
     createInstance:    vi.fn().mockResolvedValue({ id: 'wi-1' }),
     transition:        vi.fn().mockResolvedValue({ success: true }),
     registerCondition: vi.fn(),
+    onStepEntered:     vi.fn(),
     hasCondition:      vi.fn(),
     evaluateCondition: vi.fn(async (session: unknown, name: string, ctx: unknown) => {
       const { CHANGE_CONDITIONS } = await import('../../../../workflow/conditions.js')
