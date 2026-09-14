@@ -143,7 +143,11 @@ export const DOMAIN_VALUE_BINDINGS: Readonly<Record<string, readonly { label: st
  * la regola «Incident security critico → SecOps» non scattava mai piu perche
  * `evaluateConditions` restituiva `false`. Nessun errore, nessun log.
  */
-export type ConfigSiteShape = 'scalar' | 'conditions' | 'risk_bands'
+/**
+ * `object_list`: una lista JSON di oggetti dove il campo `listKey` porta il
+ * valore (`risk_band_thresholds` → `band`, `portal_severity_options` → `value`).
+ */
+export type ConfigSiteShape = 'scalar' | 'conditions' | 'object_list'
 
 export interface ConfigValueSite {
   label:    string
@@ -153,6 +157,8 @@ export interface ConfigValueSite {
   vocabulary?: string
   /** Oppure la proprieta che NOMINA il campo, e quindi il vocabolario (FieldVisibilityRule). */
   vocabularyFromField?: string
+  /** Per `object_list`: il campo di ogni oggetto che porta il valore. */
+  listKey?: string
   /** Come si chiama nel messaggio all'amministratore. */
   where: string
 }
@@ -170,7 +176,14 @@ export const CONFIG_VALUE_SITES: readonly ConfigValueSite[] = [
   // motivazione «i suoi valori vivono solo nelle chiavi della matrice», che
   // era falsa dal commit che ha introdotto le soglie. Dopo una rinomina,
   // `parseThresholds` lancia e NESSUNA change si crea piu.
-  { label: 'Tenant', property: 'risk_band_thresholds', shape: 'risk_bands', vocabulary: 'risk_band', where: 'the risk band thresholds' },
+  { label: 'Tenant', property: 'risk_band_thresholds', shape: 'object_list', listKey: 'band', vocabulary: 'risk_band', where: 'the risk band thresholds' },
+  // Verifica «Cosa resta cablato», ondate 1 e 2: le scelte dell'amministratore
+  // che nominano valori del Dizionario. Senza queste righe, rinominare una
+  // severità o una priorità avrebbe lasciato il portale con un valore che il
+  // servizio rifiuta, o una voce del catalogo da cui non nasce più nessuna richiesta.
+  { label: 'Tenant', property: 'portal_severity_options', shape: 'object_list', listKey: 'value', vocabulary: 'severity', where: 'the severities offered in the self-service portal' },
+  { label: 'ServiceCatalogItem', property: 'priority', shape: 'scalar', vocabulary: 'priority', where: 'the priority of a service catalog item' },
+  { label: 'ServiceCatalogItem', property: 'category', shape: 'scalar', vocabulary: 'category', where: 'the category of a service catalog item' },
 ]
 
 /**
@@ -600,12 +613,13 @@ async function configReferences(
       continue
     }
 
-    // `risk_bands`: [{band, upTo}] sul Tenant.
+    // `object_list`: [{<listKey>: valore, …}] (le soglie delle fasce, le severità del portale).
     if (site.vocabulary !== vocabularyName) continue
     const rows = await run(q, `${match} RETURN n.${site.property} AS raw`, { tenantId })
     for (const row of rows) {
-      for (const band of parseRiskBandNames(row['raw'])) {
-        if (wanted.has(band)) add(band, site.where)
+      for (const item of parseObjectList(row['raw'], site.listKey!)) {
+        const value = item[site.listKey!] as string
+        if (wanted.has(value)) add(value, site.where)
       }
     }
   }
@@ -672,9 +686,10 @@ async function replaceInConfig(
     if (site.vocabulary !== vocabularyName) continue
     const rows = await runWrite(tx, `${match} RETURN n.${site.property} AS raw`, { tenantId })
     for (const row of rows) {
-      const parsed = parseRiskBandList(row['raw'])
-      if (!parsed.some((b) => b.band === from)) continue
-      const next = parsed.map((b) => (b.band === from ? { ...b, band: to } : b))
+      const key = site.listKey!
+      const parsed = parseObjectList(row['raw'], key)
+      if (!parsed.some((b) => b[key] === from)) continue
+      const next = parsed.map((b) => (b[key] === from ? { ...b, [key]: to } : b))
       await runWrite(tx, `
         ${match}
         SET n.${site.property} = $raw
@@ -706,17 +721,14 @@ function parseConditionList(raw: unknown): ParsedCondition[] {
   return out
 }
 
-function parseRiskBandList(raw: unknown): { band: string; [k: string]: unknown }[] {
+/** Una lista JSON di oggetti con il valore in `key`, saltando le voci che non hanno la forma attesa. */
+function parseObjectList(raw: unknown, key: string): Record<string, unknown>[] {
   if (raw == null) return []
   let parsed: unknown
   try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return [] }
   if (!Array.isArray(parsed)) return []
-  return parsed.filter((b): b is { band: string } =>
-    b != null && typeof b === 'object' && typeof (b as Record<string, unknown>)['band'] === 'string')
-}
-
-function parseRiskBandNames(raw: unknown): string[] {
-  return parseRiskBandList(raw).map((b) => b.band)
+  return parsed.filter((b): b is Record<string, unknown> =>
+    b != null && typeof b === 'object' && typeof (b as Record<string, unknown>)[key] === 'string')
 }
 
 async function run(q: Session | ManagedTransaction, cypher: string, params: Record<string, unknown>): Promise<Row[]> {

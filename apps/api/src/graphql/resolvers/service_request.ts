@@ -98,13 +98,16 @@ async function createServiceRequest(
     // mandava `medium` scritto nel codice). Un operatore può indicarne
     // un'altra; l'utente del portale no — la priorità la decide la voce.
     let requiresApproval = false
+    let category: string | null = null
     let priority = args.input.priority ?? null
     if (args.input.catalogItemId) {
-      const item = await runQueryOne<{ requiresApproval: boolean; priority: string | null; name: string }>(session,
-        'MATCH (ci:ServiceCatalogItem {id: $id, tenant_id: $tenantId}) RETURN ci.requires_approval AS requiresApproval, ci.priority AS priority, ci.name AS name',
+      const item = await runQueryOne<{ requiresApproval: boolean; priority: string | null; name: string; category: string | null }>(session,
+        'MATCH (ci:ServiceCatalogItem {id: $id, tenant_id: $tenantId}) RETURN ci.requires_approval AS requiresApproval, ci.priority AS priority, ci.name AS name, ci.category AS category',
         { id: args.input.catalogItemId, tenantId: ctx.tenantId })
       if (!item) throw new NotFoundError('ServiceCatalogItem', args.input.catalogItemId)
       requiresApproval = item.requiresApproval ?? false
+      // La categoria della richiesta è quella della voce (ondata 2): le policy SLA per categoria la usano.
+      category = item.category ?? null
       if (ctx.role === 'end_user' && priority !== null && priority !== item.priority) {
         throw new ValidationError(
           'The priority of a request from the catalog is set by the catalog item, not by the requester.',
@@ -126,7 +129,7 @@ async function createServiceRequest(
     }
     await assertDomainValue(ctx.tenantId, 'priority', priority)
     assertMayAcknowledgeNoSla(ctx, args.input.acknowledgeNoSla)
-    const result = await requestService.createRequest({ ...args.input, priority, requiresApproval }, ctx)
+    const result = await requestService.createRequest({ ...args.input, priority, requiresApproval, ...(category ? { category } : {}) }, ctx)
     void audit(ctx, 'request.created', 'ServiceRequest', result.id as string)
     return result
   })
@@ -261,6 +264,7 @@ function mapCatalogItem(props: Props) {
     name:             props['name'] as string,
     description:      (props['description'] ?? null) as string | null,
     category:         (props['category'] ?? null) as string | null,
+    legacyCategory:   (props['legacy_category'] ?? null) as string | null,
     requiresApproval: (props['requires_approval'] ?? false) as boolean,
     priority:         (props['priority'] ?? null) as string | null,
     active:           (props['active'] ?? true) as boolean,
@@ -282,6 +286,8 @@ async function serviceCatalogItems(_: unknown, args: { activeOnly?: boolean }, c
 async function createServiceCatalogItem(_: unknown, args: { input: { name: string; description?: string; category?: string; requiresApproval?: boolean; priority: string } }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
   const priority = await assertDomainValue(ctx.tenantId, 'priority', args.input.priority)
+  // La categoria è un valore del Dizionario (ondata 2), non più testo libero: la eredita la richiesta.
+  const category = args.input.category == null || args.input.category === '' ? null : await assertDomainValue(ctx.tenantId, 'category', args.input.category)
   const id = uuidv4(); const now = new Date().toISOString()
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session, `
@@ -291,7 +297,7 @@ async function createServiceCatalogItem(_: unknown, args: { input: { name: strin
       })
       RETURN properties(ci) AS props
     `, { id, tenantId: ctx.tenantId, name: args.input.name, description: args.input.description ?? null,
-         category: args.input.category ?? null, requiresApproval: args.input.requiresApproval ?? false, priority, now })
+         category, requiresApproval: args.input.requiresApproval ?? false, priority, now })
     void audit(ctx, 'service_catalog_item.created', 'ServiceCatalogItem', id)
     return mapCatalogItem(rows[0]!.props)
   }, true)
@@ -309,7 +315,11 @@ async function updateServiceCatalogItem(
   const sets: Record<string, unknown> = {}
   if (input.name !== undefined)             sets['name']              = input.name
   if (input.description !== undefined)      sets['description']       = input.description
-  if (input.category !== undefined)         sets['category']          = input.category
+  if (input.category !== undefined) {
+    sets['category'] = input.category == null || input.category === '' ? null : await assertDomainValue(ctx.tenantId, 'category', input.category)
+    // Scegliere una categoria del Dizionario chiude la vecchia scritta a mano.
+    sets['legacy_category'] = null
+  }
   if (input.requiresApproval !== undefined) sets['requires_approval'] = input.requiresApproval
   if (input.active !== undefined)           sets['active']            = input.active
   // La priorità si cambia, non si toglie: senza, dalla voce non nasce nessuna richiesta.

@@ -31,7 +31,7 @@ export function mapRequest(props: Props) {
 }
 
 export async function createRequest(
-  input: { title: string; description?: string; priority: string; dueDate?: string; catalogItemId?: string; requiresApproval?: boolean; acknowledgeNoSla?: boolean | null },
+  input: { title: string; description?: string; priority: string; category?: string | null; dueDate?: string; catalogItemId?: string; requiresApproval?: boolean; acknowledgeNoSla?: boolean | null },
   ctx: ServiceCtx,
 ) {
   const id  = uuidv4()
@@ -53,6 +53,7 @@ export async function createRequest(
         description:       $description,
         status:            $status,
         priority:          $priority,
+        category:          $category,
         due_date:          $dueDate,
         catalog_item_id:   $catalogItemId,
         requires_approval: $requiresApproval,
@@ -68,6 +69,8 @@ export async function createRequest(
       id, tenantId: ctx.tenantId, number, status: initialStatus,
       title: input.title, description: input.description ?? null,
       priority: input.priority, dueDate: input.dueDate ?? null,
+      // La categoria arriva dalla voce del catalogo (verifica «Cosa resta cablato», ondata 2): serve alle policy SLA per categoria.
+      category: input.category ?? null,
       catalogItemId: input.catalogItemId ?? null,
       requiresApproval: input.requiresApproval ?? false,
       now,

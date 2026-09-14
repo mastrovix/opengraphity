@@ -15,6 +15,12 @@ export function olaSDL(): string {
     responseMinutes: Int!
     resolveMinutes:  Int!
     businessHours:   Boolean!
+    # Il calendario di servizio con cui conta (null = 24×7), e il suo nome.
+    calendarId:      ID
+    calendarName:    String
+    # L'obiettivo di conformità e la soglia d'attenzione, in percentuale.
+    complianceTarget:  Float
+    complianceWarning: Float
     partyType:       String    # team (sourcing internal) | supplier (sourcing external)
     # Legacy: il nome del fornitore scritto a mano. Oggi il responsabile e sempre un team (teamId/teamName).
     partyName:       String
@@ -31,7 +37,10 @@ export function olaSDL(): string {
     entityType:      String!
     responseMinutes: Int!
     resolveMinutes:  Int!
-    businessHours:   Boolean
+    # Il calendario di servizio; null o assente = 24×7.
+    calendarId:      ID
+    complianceTarget:  Float!
+    complianceWarning: Float!
     # team → un team con sourcing internal; supplier → un team con sourcing external
     partyType:       String
     teamId:          String
@@ -43,7 +52,10 @@ export function olaSDL(): string {
     entityType:      String
     responseMinutes: Int
     resolveMinutes:  Int
-    businessHours:   Boolean
+    # Il calendario di servizio; null = 24×7, assente = invariato.
+    calendarId:      ID
+    complianceTarget:  Float
+    complianceWarning: Float
     partyType:       String
     teamId:          String
     enabled:         Boolean
@@ -68,6 +80,9 @@ export function olaSDL(): string {
     entityType:      String
     responseMinutes: Int
     resolveMinutes:  Int
+    # L'obiettivo della policy (null per SLA senza policy): colora la percentuale di rispetto.
+    complianceTarget:  Float
+    complianceWarning: Float
     total:           Int!
     met:             Int!
     breached:        Int!
@@ -98,6 +113,8 @@ export function olaSDL(): string {
     met:            Int!
     breached:       Int!
     attainmentPct:  Float
+    complianceTarget:  Float
+    complianceWarning: Float
   }
 
   type SLAReport {

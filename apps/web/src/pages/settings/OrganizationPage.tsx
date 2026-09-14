@@ -26,13 +26,15 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Building2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { GET_TENANT_LANGUAGE_SETTINGS, GET_TENANT_TIMEZONE_SETTINGS, GET_TENANT_SERVICE_CALENDAR, GET_PORTAL_SEVERITY_OPTIONS } from '@/graphql/queries'
-import { SET_TENANT_DEFAULT_LANGUAGE, SET_TENANT_TIMEZONE, SET_TENANT_SERVICE_CALENDAR, SET_PORTAL_SEVERITY_OPTIONS } from '@/graphql/mutations'
+import { GET_TENANT_LANGUAGE_SETTINGS, GET_TENANT_TIMEZONE_SETTINGS, GET_SERVICE_CALENDARS, GET_PORTAL_SEVERITY_OPTIONS, GET_TENANT_INAPP_RETENTION } from '@/graphql/queries'
+import { SET_TENANT_DEFAULT_LANGUAGE, SET_TENANT_TIMEZONE, CREATE_SERVICE_CALENDAR, UPDATE_SERVICE_CALENDAR, DELETE_SERVICE_CALENDAR, SET_PORTAL_SEVERITY_OPTIONS, SET_TENANT_INAPP_RETENTION } from '@/graphql/mutations'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { FieldLabel, Input, Select } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
+import { Modal } from '@/components/Modal'
+import { useConfirm } from '@/hooks/useConfirm'
 import { Skeleton } from '@/components/ui/skeleton'
 import { QueryError } from '@/components/QueryError'
 import { colors } from '@/lib/tokens'
@@ -123,7 +125,8 @@ export function OrganizationPage() {
       </SectionCard>
 
       <TimezoneSection />
-      <ServiceCalendarSection />
+      <ServiceCalendarsSection />
+      <InAppRetentionSection />
       <PortalSeveritySection languages={impostazioni?.available ?? null} />
     </PageContainer>
   )
@@ -182,7 +185,11 @@ function TimezoneSection() {
   )
 }
 
-interface ServiceCalendar { days: number[]; start: string; end: string; holidays: string[] }
+interface ServiceCalendar {
+  id: string; name: string; days: number[]; start: string; end: string; holidays: string[]
+  usedBySlaPolicies: string[]; usedByOlaContracts: string[]
+}
+interface CalendarDraft { name: string; days: number[]; start: string; end: string; holidays: string }
 
 /** L'ordine con cui si leggono i giorni: da lunedì. Il valore è quello di `Date.getDay()` (0 = domenica). */
 const WEEK = [1, 2, 3, 4, 5, 6, 0] as const
@@ -191,102 +198,173 @@ const WEEKDAY_KEYS: Record<number, string> = {
   3: 'pages.organization.weekday.wednesday', 4: 'pages.organization.weekday.thursday', 5: 'pages.organization.weekday.friday',
   6: 'pages.organization.weekday.saturday',
 }
+const WEEKDAY_SHORT_KEYS: Record<number, string> = {
+  0: 'pages.organization.weekdayShort.sunday', 1: 'pages.organization.weekdayShort.monday', 2: 'pages.organization.weekdayShort.tuesday',
+  3: 'pages.organization.weekdayShort.wednesday', 4: 'pages.organization.weekdayShort.thursday', 5: 'pages.organization.weekdayShort.friday',
+  6: 'pages.organization.weekdayShort.saturday',
+}
+const EMPTY_CALENDAR: CalendarDraft = { name: '', days: [], start: '', end: '', holidays: '' }
 
 /**
- * Il calendario di servizio (revisione del 14 set 2026 · F6): i giorni, la
- * fascia oraria e le festività in cui contano le policy SLA e i contratti OLA
- * «in orario lavorativo». Prima erano le 08–18 dal lunedì al venerdì, uguali
- * per tutti e senza festività.
+ * I CALENDARI DI SERVIZIO CON NOME (verifica «Cosa resta cablato», ondata 2).
+ *
+ * Prima c'era un solo calendario per organizzazione (revisione del 14 set 2026 ·
+ * F6): una policy SLA o un contratto OLA poteva scegliere solo fra 24×7 e
+ * quello. Un team di turno o un fornitore con orari suoi non si modellava. Ora
+ * si creano quanti calendari servono, e ognuno dice chi lo usa; uno in uso non
+ * si elimina.
  */
-function ServiceCalendarSection() {
+function ServiceCalendarsSection() {
   const { t } = useTranslation()
   const uid = useId()
-  const { data, loading, error, refetch } = useQuery<{ tenantServiceCalendar: ServiceCalendar | null }>(
-    GET_TENANT_SERVICE_CALENDAR, { fetchPolicy: 'cache-and-network' },
+  const confirm = useConfirm()
+  const { data, loading, error, refetch } = useQuery<{ serviceCalendars: ServiceCalendar[] }>(
+    GET_SERVICE_CALENDARS, { fetchPolicy: 'cache-and-network' },
   )
-  const saved = data?.tenantServiceCalendar ?? null
-  const [days, setDays] = useState<number[]>([])
-  const [start, setStart] = useState('')
-  const [end, setEnd] = useState('')
-  const [holidays, setHolidays] = useState('')
+  const calendars = data?.serviceCalendars ?? []
+  const [editing, setEditing] = useState<ServiceCalendar | null>(null)
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState<CalendarDraft>(EMPTY_CALENDAR)
+  const patchDraft = (p: Partial<CalendarDraft>) => setDraft((cur) => ({ ...cur, ...p }))
 
-  useEffect(() => {
-    if (!data) return
-    setDays(saved?.days ?? [])
-    setStart(saved?.start ?? '')
-    setEnd(saved?.end ?? '')
-    setHolidays((saved?.holidays ?? []).join(', '))
-  }, [data, saved])
-
-  const [saveCalendar, { loading: saving }] = useMutation(SET_TENANT_SERVICE_CALENDAR, {
-    refetchQueries: [GET_TENANT_SERVICE_CALENDAR],
-    onCompleted: () => { toast.success(t('pages.organization.calendarSaved')) },
-    onError: (e) => toast.error(e.message),
+  const after = { refetchQueries: [GET_SERVICE_CALENDARS], onError: (e: Error) => toast.error(e.message) }
+  const [createCalendar, { loading: creating }] = useMutation(CREATE_SERVICE_CALENDAR, {
+    ...after, onCompleted: () => { toast.success(t('pages.organization.calendarCreated')); setOpen(false) },
+  })
+  const [updateCalendar, { loading: updating }] = useMutation(UPDATE_SERVICE_CALENDAR, {
+    ...after, onCompleted: () => { toast.success(t('pages.organization.calendarSaved')); setOpen(false) },
+  })
+  const [deleteCalendar] = useMutation(DELETE_SERVICE_CALENDAR, {
+    ...after, onCompleted: () => { toast.success(t('pages.organization.calendarDeleted')) },
   })
 
-  const toggleDay = (d: number) => setDays((cur) => (cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d]))
-  const submit = () => {
-    const list = holidays.split(/[\s,;]+/).map((h) => h.trim()).filter(Boolean)
-    void saveCalendar({ variables: { calendar: { days: [...days].sort((a, b) => a - b), start, end, holidays: list } } })
+  const openNew = () => { setEditing(null); setDraft(EMPTY_CALENDAR); setOpen(true) }
+  const openEdit = (c: ServiceCalendar) => {
+    setEditing(c)
+    setDraft({ name: c.name, days: c.days, start: c.start, end: c.end, holidays: c.holidays.join(', ') })
+    setOpen(true)
   }
+  const toggleDay = (d: number) => patchDraft({ days: draft.days.includes(d) ? draft.days.filter((x) => x !== d) : [...draft.days, d] })
+  const submit = () => {
+    const calendar = {
+      days: [...draft.days].sort((a, b) => a - b), start: draft.start, end: draft.end,
+      holidays: draft.holidays.split(/[\s,;]+/).map((h) => h.trim()).filter(Boolean),
+    }
+    if (editing) void updateCalendar({ variables: { id: editing.id, name: draft.name.trim(), calendar } })
+    else void createCalendar({ variables: { name: draft.name.trim(), calendar } })
+  }
+  const remove = async (c: ServiceCalendar) => {
+    const ok = await confirm({ title: t('pages.organization.calendarDeleteTitle'), body: c.name, danger: true })
+    if (ok) void deleteCalendar({ variables: { id: c.id } })
+  }
+
+  const usedBy = (c: ServiceCalendar) => [...c.usedBySlaPolicies, ...c.usedByOlaContracts]
+  const canSave = draft.name.trim() !== '' && draft.days.length > 0 && draft.start !== '' && draft.end !== ''
 
   return (
     <div style={{ marginTop: 16 }}>
-      <SectionCard collapsible={false} title={t('pages.organization.calendarTitle')}>
+      <SectionCard collapsible={false} title={t('pages.organization.calendarsTitle')}>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
           <p style={{ margin: 0, color: colors.slateLight, fontSize: 'var(--font-size-body)', lineHeight: 1.55 }}>
-            {t('pages.organization.calendarDescription')}
+            {t('pages.organization.calendarsDescription')}
           </p>
           {error && !data ? <QueryError message={error.message} onRetry={() => void refetch()} /> : null}
-          {!data && loading ? <Skeleton style={{ height: 38, maxWidth: 320 }} /> : null}
-          {data && (
-            <>
-              {saved === null && (
-                <p role="status" style={{ margin: 0, color: 'var(--color-danger)', fontSize: 'var(--font-size-label)' }}>
-                  {t('pages.organization.calendarMissing')}
-                </p>
-              )}
-              <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
-                <legend style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6 }}>
-                  {t('pages.organization.calendarDays')}
-                </legend>
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  {WEEK.map((d) => (
-                    <label key={d} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)' }}>
-                      <input type="checkbox" checked={days.includes(d)} onChange={() => toggleDay(d)} />
-                      {t(WEEKDAY_KEYS[d]!)}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                <div>
-                  <FieldLabel htmlFor={`${uid}-start`}>{t('pages.organization.calendarStart')}</FieldLabel>
-                  <Input id={`${uid}-start`} type="time" value={start} onChange={(e) => setStart(e.target.value)} style={{ width: 140 }} />
-                </div>
-                <div>
-                  <FieldLabel htmlFor={`${uid}-end`}>{t('pages.organization.calendarEnd')}</FieldLabel>
-                  <Input id={`${uid}-end`} type="time" value={end} onChange={(e) => setEnd(e.target.value)} style={{ width: 140 }} />
-                </div>
-              </div>
-              <div>
-                <FieldLabel htmlFor={`${uid}-holidays`}>{t('pages.organization.calendarHolidays')}</FieldLabel>
-                <Input id={`${uid}-holidays`} value={holidays} placeholder="2026-12-25, 2026-12-26" onChange={(e) => setHolidays(e.target.value)} style={{ maxWidth: 520 }} />
-                <p style={{ color: colors.slateLight, margin: '6px 0 0', fontSize: 'var(--font-size-label)', lineHeight: 1.5 }}>
-                  {t('pages.organization.calendarHolidaysHint')}
-                </p>
-              </div>
-              <div>
-                <Button onClick={submit} disabled={saving}>{t('pages.organization.calendarSave')}</Button>
-              </div>
-            </>
+          {!data && loading ? <Skeleton style={{ height: 80, maxWidth: 640 }} /> : null}
+          {data && calendars.length === 0 && (
+            <p role="status" style={{ margin: 0, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)' }}>
+              {t('pages.organization.calendarsEmpty')}
+            </p>
           )}
+          {calendars.length > 0 && (
+            <ul aria-label={t('pages.organization.calendarsTitle')} style={{ listStyle: 'none', margin: 0, padding: 0, border: '1px solid var(--color-border)', borderRadius: 8 }}>
+              {calendars.map((c, i) => (
+                <li key={c.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 14px', borderTop: i === 0 ? 'none' : '1px solid var(--color-border)' }}>
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontWeight: 600, color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)' }}>{c.name}</span>
+                    <span style={{ color: 'var(--color-slate)', fontSize: 'var(--font-size-label)' }}>
+                      {WEEK.filter((d) => c.days.includes(d)).map((d) => t(WEEKDAY_SHORT_KEYS[d]!)).join(' ')}
+                      {' · '}{c.start}–{c.end}
+                      {c.holidays.length > 0 && <>{' · '}{t('pages.organization.calendarHolidayCount', { count: c.holidays.length })}</>}
+                    </span>
+                    <span style={{ color: usedBy(c).length ? 'var(--color-slate)' : colors.slateLight, fontSize: 'var(--font-size-label)', lineHeight: 1.5 }}>
+                      {usedBy(c).length
+                        ? t('pages.organization.calendarUsedByList', { users: usedBy(c).join(', ') })
+                        : t('pages.organization.calendarUnused')}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <Button variant="ghost" onClick={() => openEdit(c)}>{t('common.edit')}</Button>
+                    <Button variant="secondary" size="xs" onClick={() => void remove(c)} disabled={usedBy(c).length > 0} title={usedBy(c).length > 0 ? t('pages.organization.calendarInUse') : undefined}>
+                      {t('common.delete')}
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div>
+            <Button onClick={openNew}>{t('pages.organization.calendarNew')}</Button>
+          </div>
         </div>
       </SectionCard>
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={t(editing ? 'pages.organization.calendarEditTitle' : 'pages.organization.calendarNewTitle')}
+        width={560}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
+            <Button onClick={submit} disabled={!canSave || creating || updating}>{t('pages.organization.calendarSave')}</Button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <FieldLabel htmlFor={`${uid}-name`}>{t('pages.organization.calendarName')}</FieldLabel>
+            <Input id={`${uid}-name`} value={draft.name} maxLength={80} placeholder={t('pages.organization.calendarNamePlaceholder')} onChange={(e) => patchDraft({ name: e.target.value })} />
+          </div>
+          <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
+            <legend style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6 }}>
+              {t('pages.organization.calendarDays')}
+            </legend>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {WEEK.map((d) => (
+                <label key={d} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)' }}>
+                  <input type="checkbox" checked={draft.days.includes(d)} onChange={() => toggleDay(d)} />
+                  {t(WEEKDAY_KEYS[d]!)}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <div>
+              <FieldLabel htmlFor={`${uid}-start`}>{t('pages.organization.calendarStart')}</FieldLabel>
+              <Input id={`${uid}-start`} type="time" value={draft.start} onChange={(e) => patchDraft({ start: e.target.value })} style={{ width: 140 }} />
+            </div>
+            <div>
+              <FieldLabel htmlFor={`${uid}-end`}>{t('pages.organization.calendarEnd')}</FieldLabel>
+              <Input id={`${uid}-end`} type="time" value={draft.end} onChange={(e) => patchDraft({ end: e.target.value })} style={{ width: 140 }} />
+            </div>
+          </div>
+          <div>
+            <FieldLabel htmlFor={`${uid}-holidays`}>{t('pages.organization.calendarHolidays')}</FieldLabel>
+            <Input id={`${uid}-holidays`} value={draft.holidays} placeholder="2026-12-25, 2026-12-26" onChange={(e) => patchDraft({ holidays: e.target.value })} />
+            <p style={{ color: colors.slateLight, margin: '6px 0 0', fontSize: 'var(--font-size-label)', lineHeight: 1.5 }}>
+              {t('pages.organization.calendarHolidaysHint')}
+            </p>
+          </div>
+          {editing && usedBy(editing).length > 0 && (
+            <p style={{ margin: 0, color: colors.slateLight, fontSize: 'var(--font-size-label)', lineHeight: 1.5 }}>
+              {t('pages.organization.calendarEditUsedBy', { users: usedBy(editing).join(', ') })}
+            </p>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }
-
 
 interface PortalSeverityOption { value: string; labels: { language: string; label: string }[] }
 interface PortalSeverityDraft { offered: boolean; labels: Record<string, string> }
@@ -410,6 +488,66 @@ function PortalSeveritySection({ languages }: { languages: readonly string[] | n
               <div>
                 <Button onClick={submit} disabled={saving || offeredCount === 0}>{t('pages.organization.portalSeveritiesSave')}</Button>
               </div>
+            </>
+          )}
+        </div>
+      </SectionCard>
+    </div>
+  )
+}
+
+/**
+ * PER QUANTI GIORNI SI CONSERVANO LE NOTIFICHE DELLA CAMPANELLA (verifica «Cosa
+ * resta cablato», ondata 2). Era una variabile d'ambiente uguale per tutti i
+ * clienti; ora la sceglie ogni organizzazione, come fa già per gli allarmi
+ * nella Policy eventi.
+ */
+function InAppRetentionSection() {
+  const { t } = useTranslation()
+  const uid = useId()
+  const { data, loading, error, refetch } = useQuery<{ tenantInAppRetentionDays: number | null }>(
+    GET_TENANT_INAPP_RETENTION, { fetchPolicy: 'cache-and-network' },
+  )
+  const saved = data?.tenantInAppRetentionDays ?? null
+  const [days, setDays] = useState('')
+  useEffect(() => { if (data) setDays(saved === null ? '' : String(saved)) }, [data, saved])
+
+  const [save, { loading: saving }] = useMutation(SET_TENANT_INAPP_RETENTION, {
+    refetchQueries: [GET_TENANT_INAPP_RETENTION],
+    onCompleted: () => { toast.success(t('pages.organization.inAppRetentionSaved')) },
+    onError: (e) => toast.error(e.message),
+  })
+  const value = Number(days)
+  const valid = days.trim() !== '' && Number.isInteger(value) && value >= 1 && value <= 3650
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <SectionCard collapsible={false} title={t('pages.organization.inAppRetentionTitle')}>
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <p style={{ margin: 0, color: colors.slateLight, fontSize: 'var(--font-size-body)', lineHeight: 1.55 }}>
+            {t('pages.organization.inAppRetentionDescription')}
+          </p>
+          {error && !data ? <QueryError message={error.message} onRetry={() => void refetch()} /> : null}
+          {!data && loading ? <Skeleton style={{ height: 38, maxWidth: 240 }} /> : null}
+          {data && (
+            <>
+              {saved === null && (
+                <p role="status" style={{ margin: 0, color: 'var(--color-danger)', fontSize: 'var(--font-size-label)' }}>
+                  {t('pages.organization.inAppRetentionMissing')}
+                </p>
+              )}
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <div>
+                  <FieldLabel htmlFor={`${uid}-days`}>{t('pages.organization.inAppRetentionDays')}</FieldLabel>
+                  <Input id={`${uid}-days`} type="number" min={1} max={3650} value={days} onChange={(e) => setDays(e.target.value)} style={{ width: 140 }} />
+                </div>
+                <Button onClick={() => void save({ variables: { days: value } })} disabled={saving || !valid || value === saved}>
+                  {t('pages.organization.inAppRetentionSave')}
+                </Button>
+              </div>
+              <p style={{ color: colors.slateLight, margin: 0, fontSize: 'var(--font-size-label)', lineHeight: 1.5 }}>
+                {t('pages.organization.inAppRetentionHint')}
+              </p>
             </>
           )}
         </div>

@@ -23,8 +23,8 @@ import {
   scheduleOLABreaches,
   cancelSLAJobs,
 } from './scheduler.js'
-import { getActiveOLAContractsFor, getTenantTimezone } from './olaBreach.js'
-import { getServiceCalendar } from './calendar.js'
+import { getActiveOLAContractsFor, getTenantTimezone, withContractCalendars } from './olaBreach.js'
+import { calendarFor } from './calendar.js'
 
 /** L'istante di un evento; il suo timestamp se valido, altrimenti adesso. */
 function eventInstant(event: DomainEvent<unknown>): Date {
@@ -61,9 +61,9 @@ async function resolvePolicy(
       name:        tenantPolicy.name,
       entity_type: entityType,
       timezone:    tenantPolicy.timezone,
-      // F6: l'orario lavorativo è il calendario del cliente. Si legge solo se
-      // serve: una policy 24x7 non dipende da un calendario configurato.
-      calendar:    tenantPolicy.business_hours ? await getServiceCalendar(tenantId) : null,
+      // L'orario di servizio è il calendario scelto dalla policy (ondata 2).
+      // Si legge solo se serve: una policy 24x7 non dipende da un calendario.
+      calendar:    await calendarFor(tenantId, { name: tenantPolicy.name, businessHours: tenantPolicy.business_hours, calendarId: tenantPolicy.calendar_id }),
       tiers: [{
         severity,
         response_minutes: tenantPolicy.response_minutes,
@@ -262,9 +262,9 @@ export class SLAEngine extends BaseConsumer<unknown> {
     await scheduleOLABreaches({
       entityId, entityType, tenantId,
       timezone:  await getTenantTimezone(tenantId),
-      contracts,
+      // Ogni contratto conta con il SUO calendario (ondata 2).
+      contracts: await withContractCalendars(tenantId, contracts),
       startedAt,
-      calendar:  contracts.some((c) => c.business_hours) ? await getServiceCalendar(tenantId) : null,
     })
     return contracts.length
   }

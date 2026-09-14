@@ -23,7 +23,10 @@ interface CatalogItem {
   id: string
   name: string
   description: string | null
+  /** Un valore del vocabolario `category`, o null. */
   category: string | null
+  /** La categoria scritta a mano prima del Dizionario, non convertita: da sostituire. */
+  legacyCategory: string | null
   requiresApproval: boolean
   /** La priorità con cui nascono le richieste da questa voce (vocabolario `priority`); null = voce vecchia da sistemare. */
   priority: string | null
@@ -50,6 +53,8 @@ export function ServiceCatalogAdminPage() {
   const ids = { name: `${uid}-name`, description: `${uid}-description`, category: `${uid}-category`, approval: `${uid}-approval`, priority: `${uid}-priority` }
   const { entriesOf } = useDomainVocabularies()
   const priorities = entriesOf('priority') ?? []
+  const categories = entriesOf('category') ?? []
+  const { labelOf } = useDomainVocabularies()
 
   const [createItem, { loading: creating }] = useMutation(CREATE_SERVICE_CATALOG_ITEM, {
     onCompleted: async () => { modal.close(); await refetch(); toast.success(t('toast.catalog.created')) },
@@ -65,7 +70,7 @@ export function ServiceCatalogAdminPage() {
     const input = {
       name: form.name.trim(),
       description: form.description.trim() || null,
-      category: form.category.trim() || null,
+      category: form.category || null,
       requiresApproval: form.requiresApproval,
       priority: form.priority,
     }
@@ -115,7 +120,13 @@ export function ServiceCatalogAdminPage() {
                     <div style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{it.name}</div>
                     {it.description && <div style={{ color: 'var(--color-slate-light)', fontSize: 12, marginTop: 2 }}>{it.description}</div>}
                   </td>
-                  <td style={{ padding: '10px 14px', color: 'var(--color-slate)' }}>{it.category ?? '—'}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--color-slate)' }}>
+                    {it.category
+                      ? (labelOf('category', it.category) ?? it.category)
+                      : it.legacyCategory
+                        ? <span title={t('pages.serviceCatalogAdmin.legacyCategoryHint')} style={{ color: 'var(--color-danger)', fontSize: 'var(--font-size-label)' }}>{t('pages.serviceCatalogAdmin.legacyCategory', { text: it.legacyCategory })}</span>
+                        : '—'}
+                  </td>
                   <td style={{ padding: '10px 14px' }}>
                     {it.priority
                       ? <SeverityBadge value={it.priority} vocabulary="priority" />
@@ -178,7 +189,15 @@ export function ServiceCatalogAdminPage() {
         </div>
         <div style={{ marginBottom: 14 }}>
           <FieldLabel htmlFor={ids.category}>{t('pages.serviceCatalogAdmin.category')}</FieldLabel>
-          <Input id={ids.category} value={form.category} onChange={(e) => patch({ category: e.target.value })} placeholder={t('pages.serviceCatalogAdmin.categoryPlaceholder')} />
+          <Select id={ids.category} value={form.category} onChange={(e) => patch({ category: e.target.value })}>
+            <option value="">{t('pages.serviceCatalogAdmin.noCategory')}</option>
+            {categories.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </Select>
+          <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: modal.editing?.legacyCategory ? 'var(--color-danger)' : 'var(--color-slate-light)', lineHeight: 1.5 }}>
+            {modal.editing?.legacyCategory
+              ? t('pages.serviceCatalogAdmin.legacyCategoryEdit', { text: modal.editing.legacyCategory })
+              : t('pages.serviceCatalogAdmin.categoryHint')}
+          </p>
         </div>
         <div style={{ marginBottom: 14 }}>
           <FieldLabel htmlFor={ids.priority}>{t('pages.serviceCatalogAdmin.priorityRequired')}</FieldLabel>

@@ -86,7 +86,7 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   // il fuso orario del cliente (revisione del 14 set 2026 · F7)
   'setTenantTimezone',
   // il calendario di servizio (revisione del 14 set 2026 · F6)
-  'setTenantServiceCalendar', 'setPortalSeverityOptions',
+  'createServiceCalendar', 'updateServiceCalendar', 'deleteServiceCalendar', 'setPortalSeverityOptions', 'setTenantInAppRetentionDays',
   // definizioni di workflow
   'provisionTenantData',
   'addWorkflowStep', 'removeWorkflowStep', 'updateWorkflowStep',

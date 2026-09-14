@@ -163,10 +163,18 @@ describe('createSLAPolicy — solo policy applicabili', () => {
     await expect(automationResolvers.Mutation.createSLAPolicy(null, { input: { name: 'x', entityType: 'change', responseMinutes: 60, resolveMinutes: 120 } }, ctx))
       .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.sla.entityTypeWithoutSla' } } })
   })
-  it('una categoria su problem o service request è rifiutata', async () => {
+  // Ondata 2 della verifica «Cosa resta cablato»: problem e richieste hanno una categoria anche per lo SLA.
+  it('una categoria su problem o service request è accettata: arriva al controllo successivo', async () => {
     for (const entityType of ['problem', 'service_request']) {
       await expect(automationResolvers.Mutation.createSLAPolicy(null, { input: { name: 'x', entityType, category: 'network', responseMinutes: 60, resolveMinutes: 120 } }, ctx))
-        .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.sla.categoryNotApplicable' } } })
+        .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.compliance.target' } } })
     }
+  })
+
+  it('una policy senza obiettivo di conformità, o con la soglia sopra l\'obiettivo, è rifiutata', async () => {
+    await expect(automationResolvers.Mutation.createSLAPolicy(null, { input: { name: 'x', entityType: 'incident', responseMinutes: 60, resolveMinutes: 120 } }, ctx))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.compliance.target' } } })
+    await expect(automationResolvers.Mutation.createSLAPolicy(null, { input: { name: 'x', entityType: 'incident', responseMinutes: 60, resolveMinutes: 120, complianceTarget: 90, complianceWarning: 95 } }, ctx))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.compliance.warning' } } })
   })
 })

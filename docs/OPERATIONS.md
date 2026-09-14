@@ -1547,9 +1547,12 @@ propri client SSE, quindi con più repliche dell'API arrivano a tutti. Log
 all'avvio: `[inapp] listening`. Se Redis non risponde la notifica resta
 salvata e il processo la consegna ai propri client; gli altri la vedono alla
 prossima apertura del pannello. Il job di manutenzione
-`purge_inapp_notifications` (ogni notte alle 03:45) elimina quelle più vecchie
-di `INAPP_NOTIFICATION_RETENTION_DAYS` giorni (default 30; un valore non intero
-≥ 1 ferma l'avvio). Gli indici `InAppNotification(tenant_id, created_at)` e
+`purge_inapp_notifications` (ogni notte alle 03:45) elimina, organizzazione per
+organizzazione, quelle più vecchie dei giorni scelti nella pagina Organizzazione
+(`Tenant.inapp_notification_retention_days`). Un'organizzazione che non li ha
+scelti viene saltata con un avviso nel log e segnalata dalla diagnostica. La
+vecchia variabile `INAPP_NOTIFICATION_RETENTION_DAYS` non è più letta: la
+migrazione `20260925_1100` ne ha copiato il valore su ogni organizzazione. Gli indici `InAppNotification(tenant_id, created_at)` e
 `(created_at)` arrivano con `migrate --init-schema`.
 
 ### Lingua dei log e dei messaggi

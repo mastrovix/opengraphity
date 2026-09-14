@@ -17,7 +17,7 @@ vi.mock('@opengraphity/sla', () => ({ selectSLAForEntity: vi.fn(), getTenantTime
 
 const { automationResolvers } = await import('../automation.js')
 const ctx = { tenantId: 't1', userId: 'u1', role: 'admin' } as never
-const input = { name: 'P', entityType: 'incident', responseMinutes: 60, resolveMinutes: 240 }
+const input = { name: 'P', entityType: 'incident', responseMinutes: 60, resolveMinutes: 240, complianceTarget: 95, complianceWarning: 80 }
 
 describe('SLA policy — fuso', () => {
   beforeEach(() => { vi.clearAllMocks() })

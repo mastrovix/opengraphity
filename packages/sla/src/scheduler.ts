@@ -5,8 +5,7 @@ import type { DomainEvent, SLAWarningPayload, SLABreachedPayload } from '@opengr
 import { markBreached, getSLAStatus, ticketReference } from './status.js'
 import type { SLAStatus } from './status.js'
 import { calculateDeadline } from './policy.js'
-import type { ServiceCalendar } from './calendar.js'
-import { isEntityResolved, type OLAContractLite } from './olaBreach.js'
+import { isEntityResolved, type OLAContractWithCalendar } from './olaBreach.js'
 
 // Redis options come from the shared parser in @opengraphity/events (D-14):
 // same REDIS_URL / REDIS_PASSWORD rules as the event queues, so the SLA timers
@@ -290,12 +289,12 @@ export async function scheduleResponseCheck(status: SLAStatus): Promise<void> {
  * pushed every OLA/UC deadline forward by the queue delay.
  */
 export async function scheduleOLABreaches(
-  params: { entityId: string; entityType: string; tenantId: string; timezone: string; contracts: OLAContractLite[]; startedAt: Date; calendar: ServiceCalendar | null },
+  params: { entityId: string; entityType: string; tenantId: string; timezone: string; contracts: OLAContractWithCalendar[]; startedAt: Date },
 ): Promise<void> {
-  const { entityId, entityType, tenantId, timezone, contracts, startedAt, calendar } = params
+  const { entityId, entityType, tenantId, timezone, contracts, startedAt } = params
   const now = new Date()
   for (const c of contracts) {
-    const deadline = calculateDeadline(startedAt, c.resolve_minutes, c.business_hours, timezone, calendar)
+    const deadline = calculateDeadline(startedAt, c.resolve_minutes, c.business_hours, timezone, c.calendar)
     const delayMs = deadline.getTime() - now.getTime()
     await scheduleJob('ola.breach', `ola-${c.id}-${entityId}`, {
       entityId,

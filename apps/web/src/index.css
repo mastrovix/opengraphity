@@ -347,13 +347,19 @@
 .sft-td,
 .sft-td * {
   font-size: var(--font-size-table) !important;
-  color: #0f172a !important;
 }
 
-/* Hover: nessun cambio colore testo */
+/*
+  Il testo delle celle e sempre dello stesso colore, TRANNE un valore che
+  porta un giudizio (`data-tone`): la percentuale di rispetto colorata contro
+  l'obiettivo del contratto. Senza l'eccezione la regola cancellava quel colore
+  in silenzio, e un 96% sotto un obiettivo del 99,5% restava nero come un 100%.
+*/
+.sft-td,
+.sft-td *:not([data-tone]),
 tr:hover .sft-td,
-tr:hover .sft-td * {
-  color: #0f172a !important;
+tr:hover .sft-td *:not([data-tone]) {
+  color: var(--text-primary) !important;
 }
 
 /*

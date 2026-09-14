@@ -136,6 +136,7 @@ const CONSTRAINTS: SchemaStatement[] = [
   { label: 'ServiceCatalogItem.id', cypher: 'CREATE CONSTRAINT service_catalog_item_id_unique IF NOT EXISTS FOR (n:ServiceCatalogItem) REQUIRE n.id IS UNIQUE' },
   { label: 'KBArticleVersion.id', cypher: 'CREATE CONSTRAINT kb_article_version_id_unique IF NOT EXISTS FOR (n:KBArticleVersion) REQUIRE n.id IS UNIQUE' },
   { label: 'OLAContract.id', cypher: 'CREATE CONSTRAINT ola_contract_id_unique IF NOT EXISTS FOR (n:OLAContract) REQUIRE n.id IS UNIQUE' },
+  { label: 'ServiceCalendar.id', cypher: 'CREATE CONSTRAINT service_calendar_id_unique IF NOT EXISTS FOR (n:ServiceCalendar) REQUIRE n.id IS UNIQUE' },
   {
     label: 'Counter(tenant_id, kind)',
     cypher: 'CREATE CONSTRAINT counter_key_unique IF NOT EXISTS FOR (n:Counter) REQUIRE (n.tenant_id, n.kind) IS UNIQUE',
@@ -344,6 +345,8 @@ const INDEXES: SchemaStatement[] = [
   { label: 'NotificationRule(tenant_id, event_type)', cypher: 'CREATE INDEX notification_rule_tenant_event IF NOT EXISTS FOR (n:NotificationRule) ON (n.tenant_id, n.event_type)' },
   // SLAPolicyNode: sla/selector.ts picks the policy for every created entity.
   { label: 'SLAPolicyNode(tenant_id, entity_type)', cypher: 'CREATE INDEX sla_policy_node_tenant_type IF NOT EXISTS FOR (n:SLAPolicyNode) ON (n.tenant_id, n.entity_type)' },
+  // ServiceCalendar: i calendari con nome di un cliente (verifica «Cosa resta cablato», ondata 2).
+  { label: 'ServiceCalendar(tenant_id)', cypher: 'CREATE INDEX service_calendar_tenant IF NOT EXISTS FOR (n:ServiceCalendar) ON (n.tenant_id)' },
   // WorkflowStep: the engine resolves steps by (definition, name) on every transition.
   { label: 'WorkflowStep(definition_id, name)', cypher: 'CREATE INDEX workflow_step_definition_name IF NOT EXISTS FOR (n:WorkflowStep) ON (n.definition_id, n.name)' },
   // Comments: one model for every ticket, `(ticket)-[:HAS_COMMENT]->(:Comment)`

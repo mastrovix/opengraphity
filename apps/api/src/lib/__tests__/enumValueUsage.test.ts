@@ -277,6 +277,7 @@ describe('il perimetro della configurazione', () => {
     conditions?: Row[]      // righe di BusinessRule (l'unica sede a condizioni della scena)
     scalar?: Record<string, Row[]>   // righe per PROPRIETA, cosi ogni sede ha le sue
     thresholds?: Row[]      // righe del Tenant
+    portal?: Row[]          // righe del Tenant: le severità offerte nel portale
   }
 
   function smistante(scena: Scena) {
@@ -292,6 +293,7 @@ describe('il perimetro della configurazione', () => {
         return { records: (cypher.includes(':BusinessRule') ? (scena.conditions ?? []) : []).map(rec) }
       }
       if (cypher.includes('risk_band_thresholds AS raw')) return { records: (scena.thresholds ?? []).map(rec) }
+      if (cypher.includes('portal_severity_options AS raw')) return { records: (scena.portal ?? []).map(rec) }
       const scal = /RETURN n\.([a-z_]+) AS value/.exec(cypher)
       if (scal) return { records: (scena.scalar?.[scal[1]!] ?? []).map(rec) }
       return { records: [] }
@@ -376,6 +378,23 @@ describe('il perimetro della configurazione', () => {
     expect(w, 'le soglie non sono state riscritte: e il critico della terza revisione').toBeDefined()
     expect(JSON.parse(String(w!.params['raw']))).toEqual([
       { band: 'basso', upTo: 30 }, { band: 'medium', upTo: 60 }, { band: 'high', upTo: 100 },
+    ])
+  })
+
+  /** Verifica «Cosa resta cablato», ondata 1: le severità offerte nel portale. */
+  it('le severità offerte nel portale contano come uso, e la rinomina le riscrive con le etichette', async () => {
+    const portal = [{ raw: JSON.stringify([
+      { value: 'critical', labels: { en: 'It stops my work' } }, { value: 'low', labels: {} },
+    ]) }]
+    const out = await countEnumValueUsage(smistante({ portal }) as never, 'acme', 'severity', ['critical'])
+    expect(out[0]!.configSites).toEqual(['the severities offered in the self-service portal'])
+
+    const s = smistante({ portal })
+    await replaceEnumValue(s as never, 'acme', 'severity', 'critical', 'p1')
+    const w = s.scritture.find((c) => c.cypher.includes('SET n.portal_severity_options'))
+    expect(w, 'le severità del portale non sono state riscritte').toBeDefined()
+    expect(JSON.parse(String(w!.params['raw']))).toEqual([
+      { value: 'p1', labels: { en: 'It stops my work' } }, { value: 'low', labels: {} },
     ])
   })
 

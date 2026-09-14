@@ -21,7 +21,7 @@ import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
 import {
-  DOMAIN_MATRIX_KINDS, domainVocabulary, isDomainMatrixKind, matrixOutputValues,
+  DOMAIN_MATRIX_KINDS, domainVocabulary, isDomainMatrixKind, matrixInputValues, matrixOutputValues,
   loadDomainMatrix, matrixKey, type DomainMatrixKind,
 } from '../../lib/domainMatrix.js'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
@@ -58,7 +58,7 @@ export function cartesianKeys(inputValues: readonly (readonly string[])[]): stri
 
 async function readMatrix(tenantId: string, kind: DomainMatrixKind): Promise<DomainMatrixOut> {
   const spec = DOMAIN_MATRIX_KINDS[kind]
-  const inputValues  = await Promise.all(spec.inputs.map((v) => domainVocabulary(tenantId, v)))
+  const inputValues  = await matrixInputValues(tenantId, kind)
   const outputValues = await matrixOutputValues(tenantId, kind)
   const matrix = await loadDomainMatrix(tenantId, kind)
 
@@ -117,7 +117,7 @@ async function updateDomainMatrix(
   }
   const kind = args.kind
   const spec = DOMAIN_MATRIX_KINDS[kind]
-  const inputValues  = await Promise.all(spec.inputs.map((v) => domainVocabulary(ctx.tenantId, v)))
+  const inputValues  = await matrixInputValues(ctx.tenantId, kind)
   const outputValues = await matrixOutputValues(ctx.tenantId, kind)
 
   const entries: Record<string, string> = {}

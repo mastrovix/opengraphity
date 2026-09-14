@@ -33,7 +33,9 @@ vi.mock('../../lib/sequence.js', () => ({
 }))
 vi.mock('@opengraphity/sla', () => ({
   getActiveOLAContractsFor: vi.fn(async () => []), scheduleOLABreaches: vi.fn(), getTenantTimezone: vi.fn(async () => 'UTC'),
-  getServiceCalendar: vi.fn(async () => ({ days: [1, 2, 3, 4, 5, 6], start: '09:00', end: '13:00', holidays: [] })),
+  // Ondata 2: ogni contratto conta col SUO calendario.
+  withContractCalendars: vi.fn(async (_t: string, contracts: Array<{ business_hours: boolean }>) =>
+    contracts.map((c) => ({ ...c, calendar: c.business_hours ? { days: [1, 2, 3, 4, 5, 6], start: '09:00', end: '13:00', holidays: [] } : null }))),
 }))
 
 vi.mock('@opengraphity/workflow', () => ({
@@ -210,14 +212,19 @@ describe('createChangeRFC', () => {
   })
 
   /** Revisione del 14 set 2026 · F6: un contratto OLA in orario lavorativo usa il calendario del cliente. */
-  it('i controlli OLA della change ricevono il calendario di servizio del cliente', async () => {
+  it('i controlli OLA della change contano ciascuno col calendario del SUO contratto', async () => {
     mockQueries({ ciRows: [{ id: 'ci-1', name: 'App Portale', ownerTeamId: 'team-a', supportTeamId: 'team-b' }] })
     const sla = await import('@opengraphity/sla')
-    vi.mocked(sla.getActiveOLAContractsFor).mockResolvedValueOnce([{ id: 'ola-1', name: 'Rete', type: 'ola', resolve_minutes: 240, business_hours: true }] as never)
+    vi.mocked(sla.getActiveOLAContractsFor).mockResolvedValueOnce([
+      { id: 'ola-1', name: 'Rete', type: 'ola', resolve_minutes: 240, business_hours: true, calendar_id: 'cal-1' },
+      { id: 'uc-1', name: 'Fornitore 24x7', type: 'uc', resolve_minutes: 60, business_hours: false, calendar_id: null },
+    ] as never)
     await createChangeRFC({ changeType: 'normal', title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx)
-    expect(sla.scheduleOLABreaches).toHaveBeenCalledWith(expect.objectContaining({
-      calendar: { days: [1, 2, 3, 4, 5, 6], start: '09:00', end: '13:00', holidays: [] },
-    }))
+    const params = vi.mocked(sla.scheduleOLABreaches).mock.calls[0]![0] as { contracts: Array<{ id: string; calendar: unknown }> }
+    expect(params.contracts.map((c) => [c.id, c.calendar])).toEqual([
+      ['ola-1', { days: [1, 2, 3, 4, 5, 6], start: '09:00', end: '13:00', holidays: [] }],
+      ['uc-1', null],
+    ])
   })
 
   it('rollback: executeWrite che fallisce → l\'errore propaga, nessuna scrittura osservabile', async () => {

@@ -93,12 +93,6 @@ export const GET_TENANT_TIMEZONE_SETTINGS = gql`
   }
 `
 
-/** Il calendario di servizio del cliente (revisione del 14 set 2026 · F6). */
-export const GET_TENANT_SERVICE_CALENDAR = gql`
-  query GetTenantServiceCalendar {
-    tenantServiceCalendar { days start end holidays }
-  }
-`
 
 /** Cosa manca a questo cliente per essere usabile (lista vuota = completo). */
 export const GET_TENANT_PROVISIONING_GAPS = gql`
@@ -111,5 +105,12 @@ export const GET_TENANT_PROVISIONING_GAPS = gql`
 export const GET_PORTAL_SEVERITY_OPTIONS = gql`
   query GetPortalSeverityOptions {
     portalSeverityOptions { value labels { language label } }
+  }
+`
+
+/** Per quanti giorni si conservano le notifiche della campanella (null = non scelto). */
+export const GET_TENANT_INAPP_RETENTION = gql`
+  query GetTenantInAppRetention {
+    tenantInAppRetentionDays
   }
 `

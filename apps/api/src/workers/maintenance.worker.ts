@@ -10,6 +10,7 @@ import { createWorker, getQueue } from '../lib/bullmq.js'
 import { backupRunsTotal, backupLastSuccessTimestamp } from '../middleware/metrics.js'
 import { purgeResolvedEvents } from '../services/eventRetention.js'
 import { pruneInbox } from '@opengraphity/notifications'
+import { inAppRetentionByTenant } from '../lib/tenantInAppRetention.js'
 
 const maintenanceLogger = logger.child({ module: 'maintenance' })
 
@@ -26,19 +27,6 @@ export function readBackupRetention(env: Readonly<Record<string, string | undefi
   if (raw === undefined || raw === '') return 14
   const n = Number(raw)
   if (!Number.isInteger(n) || n < 1) throw new Error(`Environment variable BACKUP_RETENTION must be an integer >= 1 (got "${raw}")`)
-  return n
-}
-
-/**
- * Quanti giorni si conservano le notifiche in-app (revisione del 14 set 2026 ·
- * F10). Default 30: il pannello mostra le ultime, e un archivio senza fine
- * crescerebbe a ogni evento.
- */
-export function readInAppRetentionDays(env: Readonly<Record<string, string | undefined>> = process.env): number {
-  const raw = env['INAPP_NOTIFICATION_RETENTION_DAYS']
-  if (raw === undefined || raw === '') return 30
-  const n = Number(raw)
-  if (!Number.isInteger(n) || n < 1) throw new Error(`Environment variable INAPP_NOTIFICATION_RETENTION_DAYS must be an integer >= 1 (got "${raw}")`)
   return n
 }
 
@@ -158,10 +146,18 @@ async function processMaintenanceJob(job: Job): Promise<void> {
     }
 
     case 'purge_inapp_notifications': {
-      const retentionDays = readInAppRetentionDays()
-      const before = new Date(Date.now() - retentionDays * 86_400_000).toISOString()
-      const deleted = await pruneInbox(before)
-      maintenanceLogger.info({ deleted, retentionDays, before }, 'In-app notifications pruned')
+      // La durata è di ogni organizzazione (verifica «Cosa resta cablato»,
+      // ondata 2). Chi non l'ha scelta viene saltato e lo si dice: cancellare
+      // con una durata che nessuno ha deciso non è un ripiego accettabile.
+      for (const { tenantId, days } of await inAppRetentionByTenant()) {
+        if (days === null) {
+          maintenanceLogger.warn({ tenantId }, 'In-app notifications NOT pruned: the organization has not chosen how long to keep them (Settings → Organization)')
+          continue
+        }
+        const before = new Date(Date.now() - days * 86_400_000).toISOString()
+        const deleted = await pruneInbox(tenantId, before)
+        maintenanceLogger.info({ tenantId, deleted, retentionDays: days, before }, 'In-app notifications pruned')
+      }
       break
     }
 
@@ -196,7 +192,6 @@ async function scheduleRepeatableJobs(): Promise<void> {
 export async function startMaintenanceWorker(): Promise<Worker> {
   // Fail at boot on a malformed value, not at midnight.
   const retention = readBackupRetention()
-  readInAppRetentionDays()
   readSkipKeycloak()
   await scheduleRepeatableJobs()
 

@@ -11,6 +11,8 @@ export interface SLAPolicyRecord {
   response_minutes: number
   resolve_minutes:  number
   business_hours:   boolean
+  /** Il calendario con cui conta l'orario di servizio; null quando conta 24×7. */
+  calendar_id:      string | null
   warning_minutes:  number
 }
 
@@ -107,6 +109,7 @@ export async function selectSLAForEntity(
       response_minutes: responseMinutes,
       resolve_minutes:  resolveMinutes,
       business_hours:   (props['business_hours']  ?? false) as boolean,
+      calendar_id:      typeof props['calendar_id'] === 'string' && props['calendar_id'] !== '' ? props['calendar_id'] : null,
       warning_minutes:  warningMinutes,
     }
 

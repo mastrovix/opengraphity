@@ -62,12 +62,6 @@ export const SET_TENANT_TIMEZONE = gql`
   }
 `
 
-export const SET_TENANT_SERVICE_CALENDAR = gql`
-  mutation SetTenantServiceCalendar($calendar: ServiceCalendarInput!) {
-    setTenantServiceCalendar(calendar: $calendar) { days start end holidays }
-  }
-`
-
 export const PROVISION_TENANT_DATA = gql`
   mutation ProvisionTenantData {
     provisionTenantData {
@@ -80,5 +74,11 @@ export const PROVISION_TENANT_DATA = gql`
 export const SET_PORTAL_SEVERITY_OPTIONS = gql`
   mutation SetPortalSeverityOptions($options: [PortalSeverityOptionInput!]!) {
     setPortalSeverityOptions(options: $options) { value labels { language label } }
+  }
+`
+
+export const SET_TENANT_INAPP_RETENTION = gql`
+  mutation SetTenantInAppRetention($days: Int!) {
+    setTenantInAppRetentionDays(days: $days)
   }
 `

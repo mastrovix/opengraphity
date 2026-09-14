@@ -45,9 +45,13 @@ const SENZA_SEDI: Record<string, { reason: string; proof: () => boolean }> = {
 describe('il perimetro: ogni vocabolario dice dove vivono i suoi valori', () => {
   // Un'uscita a SCALA (`environment_risk`: 0..3) non è un vocabolario: i suoi
   // valori sono della formula e non si rinominano, quindi non hanno sedi.
+  // Lo stesso per un INGRESSO a scala (`service_urgency`: la salute del servizio).
   const vocabolariDelleMatrici = [...new Set(
-    Object.values(DOMAIN_MATRIX_KINDS).flatMap((spec) =>
-      'scale' in spec ? [...spec.inputs] : [...spec.inputs, spec.output]),
+    Object.values(DOMAIN_MATRIX_KINDS).flatMap((spec) => {
+      const scaled = 'inputScales' in spec ? Object.keys(spec.inputScales) : []
+      const inputs = spec.inputs.filter((i: string) => !scaled.includes(i))
+      return 'scale' in spec ? [...inputs] : [...inputs, spec.output]
+    }),
   )].sort()
 
   it('le matrici nominano dei vocabolari (se questo cade, la lettura è vuota e il resto è finto)', () => {
@@ -118,6 +122,10 @@ describe('le sedi di configurazione trovate dal vivo restano coperte', () => {
     ['StandardChangeCatalogEntry', 'default_priority'],
     ['FieldVisibilityRule', 'trigger_value'],
     ['Tenant', 'risk_band_thresholds'],
+    // Verifica «Cosa resta cablato», ondate 1 e 2: le nuove scelte dell'amministratore.
+    ['Tenant', 'portal_severity_options'],
+    ['ServiceCatalogItem', 'priority'],
+    ['ServiceCatalogItem', 'category'],
   ]
 
   it.each(ATTESE)('%s.%s è nel perimetro', (label, property) => {

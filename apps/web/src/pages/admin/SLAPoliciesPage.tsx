@@ -23,6 +23,7 @@ import { useListQueryState } from '@/hooks/useListQueryState'
 import { useCrudModal } from '@/hooks/useCrudModal'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
+import { ALWAYS_ON, ComplianceFields, TimeCountingField, calendarChoiceOf, calendarIdFor, complianceValid, useServiceCalendars } from '@/components/sla/ServiceTargetFields'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,7 +31,9 @@ interface SLAPolicy {
   id: string; name: string; entityType: string; priority: string | null
   category: string | null; teamId: string | null; teamName: string | null
   timezone: string | null; responseMinutes: number; resolveMinutes: number
-  businessHours: boolean; warningMinutes: number; enabled: boolean
+  businessHours: boolean; calendarId: string | null; calendarName: string | null
+  complianceTarget: number | null; complianceWarning: number | null
+  warningMinutes: number; enabled: boolean
 }
 
 interface Team { id: string; name: string }
@@ -38,14 +41,17 @@ interface Team { id: string; name: string }
 type FormState = {
   name: string; entityType: string; priority: string; category: string
   teamId: string; responseMinutes: number; resolveMinutes: number
-  businessHours: boolean; timezone: string; warningMinutes: number
+  /** `''` nessuna scelta, `24x7`, o l'id di un calendario (components/sla/ServiceTargetFields). */
+  calendarChoice: string; timezone: string; warningMinutes: number
+  complianceTarget: string; complianceWarning: string
 }
 
 const EMPTY_FORM: FormState = {
   name: '', entityType: 'incident', priority: '', category: '',
   teamId: '', responseMinutes: 60, resolveMinutes: 480,
   // Fuso vuoto = quello del cliente: lo sceglie l'API, non una costante qui.
-  businessHours: true, timezone: '',
+  // Come conta il tempo e l'obiettivo di conformità si scelgono: nessun valore di partenza (ondata 2).
+  calendarChoice: '', timezone: '', complianceTarget: '', complianceWarning: '',
   // Il valore con cui nasce una policy: si cambia qui sotto (NT-8/F6).
   warningMinutes: DEFAULT_SLA_WARNING_MINUTES,
 }
@@ -54,7 +60,9 @@ const policyToForm = (p: SLAPolicy): FormState => ({
   name: p.name, entityType: p.entityType, priority: p.priority ?? '',
   category: p.category ?? '', teamId: p.teamId ?? '',
   responseMinutes: p.responseMinutes, resolveMinutes: p.resolveMinutes,
-  businessHours: p.businessHours, timezone: p.timezone ?? '', warningMinutes: p.warningMinutes,
+  calendarChoice: calendarChoiceOf(p.calendarId, p.businessHours), timezone: p.timezone ?? '', warningMinutes: p.warningMinutes,
+  complianceTarget: p.complianceTarget == null ? '' : String(p.complianceTarget),
+  complianceWarning: p.complianceWarning == null ? '' : String(p.complianceWarning),
 })
 
 import { SLA_ENTITY_TYPES as ENTITY_TYPES, SLA_CATEGORY_ENTITY_TYPES, DEFAULT_SLA_WARNING_MINUTES } from '@opengraphity/types'
@@ -132,6 +140,7 @@ export function SLAPoliciesPage() {
 
   const { data, loading, refetch } = useQuery<{ slaPolicies: SLAPolicy[] }>(GET_SLA_POLICIES, { variables: list.variables })
   const { data: teamsData }           = useQuery<{ teams: Team[] }>(GET_TEAMS)
+  const { calendars }                 = useServiceCalendars()
   const policies: SLAPolicy[]        = data?.slaPolicies ?? []
   const teams: Team[]                 = teamsData?.teams ?? []
 
@@ -155,12 +164,15 @@ export function SLAPoliciesPage() {
 
   async function handleSave() {
     if (!form.name.trim()) { toast.error(t('toast.sla.nameRequired')); return }
+    if (form.calendarChoice === '') { toast.error(t('serviceTargets.timeCountingRequired')); return }
+    if (!complianceValid(form.complianceTarget, form.complianceWarning)) { toast.error(t('serviceTargets.complianceInvalid')); return }
     const common = {
       name: form.name.trim(),
       priority: form.priority || null, category: hasCategory ? (form.category || null) : null,
       teamId: form.teamId || null,
       responseMinutes: Number(form.responseMinutes), resolveMinutes: Number(form.resolveMinutes),
-      businessHours: form.businessHours, timezone: form.timezone.trim() || null, warningMinutes: form.warningMinutes,
+      calendarId: calendarIdFor(form.calendarChoice), timezone: form.timezone.trim() || null, warningMinutes: form.warningMinutes,
+      complianceTarget: Number(form.complianceTarget), complianceWarning: Number(form.complianceWarning),
     }
     try {
       if (modal.editing) {
@@ -212,7 +224,14 @@ export function SLAPoliciesPage() {
     } },
     { key: 'responseMinutes', label: t('admin.sla.response'), sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v), t)}</span> },
     { key: 'resolveMinutes', label: t('admin.sla.resolution'), sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{fmtMinutes(Number(v), t)}</span> },
-    { key: 'businessHours', label: t('admin.sla.businessHours'), sortable: true, width: '110px', render: (v) => <Pill bg={v ? palette.success.tint : 'var(--color-border-light)'} color={v ? palette.success.text : 'var(--color-slate)'} radius={10}>{v ? t('common.yes') : t('common.no')}</Pill> },
+    { key: 'businessHours', label: t('serviceTargets.timeCounting'), sortable: true, width: '150px', render: (_v, row) => (
+      row.businessHours
+        ? <Pill bg={row.calendarName ? palette.success.tint : palette.danger.tint} color={row.calendarName ? palette.success.text : palette.danger.text} radius={10}>{row.calendarName ?? t('serviceTargets.noCalendar')}</Pill>
+        : <Pill bg="var(--color-border-light)" color="var(--color-slate)" radius={10}>{t('serviceTargets.alwaysOn')}</Pill>
+    ) },
+    { key: 'complianceTarget', label: t('serviceTargets.targetColumn'), sortable: false, width: '100px', render: (_v, row) => (
+      <span style={{ color: 'var(--color-slate)' }}>{row.complianceTarget == null ? '—' : `${row.complianceTarget}%`}</span>
+    ) },
     { key: 'enabled', label: t('admin.rules.active'), sortable: true, render: (_v, row) => (
       <Toggle checked={row.enabled} onChange={() => void handleToggle(row)} label={t('admin.sla.toggleLabel', { name: row.name })} />
     ) },
@@ -352,21 +371,20 @@ export function SLAPoliciesPage() {
               <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('pages.slaPolicies.warningMinutesHint')}</span>
             </div>
 
-            <div className="og-pair" style={{ alignItems: 'end' }}>
+            <div className="og-pair" style={{ alignItems: 'start' }}>
+              <TimeCountingField id={fid('time-counting')} value={form.calendarChoice} onChange={(v) => patch({ calendarChoice: v })} />
               <div>
                 <label htmlFor={fid('timezone')} style={labelS}>{t('pages.slaPolicies.timezone')}</label>
                 <Input id={fid('timezone')} value={form.timezone} placeholder={t('admin.sla.timezoneTenantDefault')} onChange={e => patch({ timezone: e.target.value })} />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 2 }}>
-                <Toggle checked={form.businessHours} onChange={v => patch({ businessHours: v })} label={t('admin.sla.businessHoursLabel')} />
-                <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{t('admin.sla.businessHoursLabel')}</span>
-              </div>
             </div>
+
+            <ComplianceFields idPrefix={fid('compliance')} target={form.complianceTarget} warning={form.complianceWarning} onChange={patch} />
 
             {/* Preview */}
             <div style={{ background: palette.info.light, border: `1px solid ${palette.info.border}`, borderRadius: 8, padding: '10px 14px', fontSize: 'var(--font-size-body)', color: 'var(--accent-hover)' }}>
               <strong>{t('admin.sla.previewLabel')}</strong> {formPreview()} — {t('admin.sla.previewTimes', { response: fmtMinutes(form.responseMinutes, t), resolve: fmtMinutes(form.resolveMinutes, t) })}
-              {' '}{t(form.businessHours ? 'admin.sla.previewBusinessHours' : 'admin.sla.preview247')}
+              {form.calendarChoice !== '' && <>{' '}{form.calendarChoice === ALWAYS_ON ? t('admin.sla.preview247') : t('serviceTargets.previewCalendar', { name: calendars.find((c) => c.id === form.calendarChoice)?.name ?? '' })}</>}
             </div>
           </div>
       </Modal>

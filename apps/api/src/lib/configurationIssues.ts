@@ -39,10 +39,11 @@
 import type { Session } from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
 import { PORTAL_SEVERITY_VOCABULARY, portalSeverityOptions } from './portalSeverityOptions.js'
-import { catalogItemsWithoutPriority } from './catalogItemPriority.js'
+import { catalogItemsWithLegacyCategory, catalogItemsWithoutPriority } from './catalogItemPriority.js'
+import { tenantInAppRetentionDays } from './tenantInAppRetention.js'
 import { getSchemaState } from './schemaCache.js'
 import { tenantProvisioningGaps, type ProvisioningGap } from './provisionTenantData.js'
-import { DOMAIN_MATRIX_KINDS, domainVocabulary, loadDomainMatrix, matrixKey, matrixOutputValues, type DomainMatrixKind } from './domainMatrix.js'
+import { DOMAIN_MATRIX_KINDS, domainVocabulary, loadDomainMatrix, matrixInputValues, matrixKey, matrixOutputValues, type DomainMatrixKind } from './domainMatrix.js'
 import { CI_STATUS_VOCABULARY } from './eventVocabularies.js'
 import { LIFECYCLE_POLICY_LISTS } from './eventPolicy.js'
 import { getEventPolicy } from '../services/events/policy.js'
@@ -50,7 +51,7 @@ import { logger } from './logger.js'
 import { LINGUE, parseValueLabels, vocabularyCarriesLabels } from './enumValueLabels.js'
 import { tenantDefaultLanguage, LINGUA_DI_ULTIMA_ISTANZA } from './tenantLanguage.js'
 import { tenantTimezone } from './tenantTimezone.js'
-import { businessHoursUsers, tenantServiceCalendar } from './tenantServiceCalendar.js'
+import { businessHoursWithoutCalendar } from './serviceCalendars.js'
 import { pendingMigrations } from './migrationState.js'
 import { teamsWithoutSourcing } from './teamSourcing.js'
 import { ticketsWithoutSla } from './ticketsWithoutSla.js'
@@ -78,6 +79,8 @@ export type ConfigurationIssueKind =
   | 'portal_severities_not_set'
   | 'portal_severities_stale'
   | 'catalog_items_without_priority'
+  | 'inapp_retention_not_set'
+  | 'catalog_items_legacy_category'
   | 'migrations_pending'
   | 'teams_without_sourcing'
   | 'tickets_without_sla'
@@ -109,7 +112,7 @@ export async function configurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -153,7 +156,7 @@ async function checkMatrices(tenantId: string): Promise<ConfigurationIssue[]> {
   for (const kind of Object.keys(DOMAIN_MATRIX_KINDS) as DomainMatrixKind[]) {
     const spec   = DOMAIN_MATRIX_KINDS[kind]
     const matrix = await loadDomainMatrix(tenantId, kind)
-    const inputValues  = await Promise.all(spec.inputs.map((v) => domainVocabulary(tenantId, v)))
+    const inputValues  = await matrixInputValues(tenantId, kind)
     const outputValues = await matrixOutputValues(tenantId, kind)
 
     // UN VOCABOLARIO VUOTO non e un problema della matrice (terza revisione · M10).
@@ -383,16 +386,17 @@ async function checkMigrations(_tenantId: string): Promise<ConfigurationIssue[]>
 }
 
 /**
- * IL CALENDARIO DI SERVIZIO NON CONFIGURATO (revisione del 14 set 2026 · F6).
+ * ORARIO DI SERVIZIO SENZA CALENDARIO (revisione del 14 set 2026 · F6, ondata 2
+ * della verifica «Cosa resta cablato»).
  *
- * Errore solo se qualcuno lo usa: una policy SLA o un contratto OLA in orario
- * lavorativo senza calendario non sa calcolare la scadenza, e il motore lo dice
- * al primo ticket. Qui lo si dice prima.
+ * Una policy SLA o un contratto OLA/UC che conta l'orario di servizio senza un
+ * calendario valido (nessuno scelto, o uno eliminato) non sa calcolare la
+ * scadenza, e il motore lo dice al primo ticket. Qui lo si dice prima, con i nomi.
  */
 async function checkServiceCalendar(tenantId: string): Promise<ConfigurationIssue[]> {
-  const users = await businessHoursUsers(tenantId)
-  if (users === 0 || await tenantServiceCalendar(tenantId) !== null) return []
-  return [{ kind: 'service_calendar_not_set', severity: 'error', where: '/settings/organization', params: { count: String(users) } }]
+  const names = await businessHoursWithoutCalendar(tenantId)
+  if (names.length === 0) return []
+  return [{ kind: 'service_calendar_not_set', severity: 'error', where: '/admin/sla-policies', params: { count: String(names.length), names: names.join(', ') } }]
 }
 
 /**
@@ -409,6 +413,27 @@ async function checkPortalSeverities(tenantId: string): Promise<ConfigurationIss
   const stale = options.filter((o) => !vocabulary.includes(o.value)).map((o) => o.value)
   if (stale.length === 0) return []
   return [{ kind: 'portal_severities_stale', severity: 'error', where: '/settings/organization', params: { values: stale.join(', ') } }]
+}
+
+/**
+ * VOCI DEL CATALOGO CON LA CATEGORIA SCRITTA A MANO (ondata 2): la conversione
+ * al Dizionario non ha trovato un valore corrispondente. Avviso: le richieste
+ * nascono senza categoria e le policy SLA per categoria non le vedono.
+ */
+async function checkCatalogItemCategories(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const items = await catalogItemsWithLegacyCategory(session, tenantId)
+  if (items.length === 0) return []
+  return [{ kind: 'catalog_items_legacy_category', severity: 'warning', where: '/admin/service-catalog', params: { count: String(items.length), items: items.map((i) => `${i.name} («${i.legacy}»)`).join(', ') } }]
+}
+
+/**
+ * LA CONSERVAZIONE DELLE NOTIFICHE NON SCELTA (ondata 2): la pulizia notturna
+ * salta questa organizzazione, e le notifiche crescono senza limite. Un avviso:
+ * niente è rotto oggi.
+ */
+async function checkInAppRetention(tenantId: string): Promise<ConfigurationIssue[]> {
+  if (await tenantInAppRetentionDays(tenantId) !== null) return []
+  return [{ kind: 'inapp_retention_not_set', severity: 'warning', where: '/settings/organization', params: {} }]
 }
 
 /**

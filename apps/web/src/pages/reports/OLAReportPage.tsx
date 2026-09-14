@@ -24,12 +24,13 @@ import { GET_OLA_REPORT, GET_OLA_CONTRACTS } from '@/graphql/queries'
 import { formatDateTime } from '@/lib/datetime'
 import { palette } from '@/lib/tokens'
 import { olaScopeLabel, olaMinutes, type OLAContract } from '@/pages/admin/OLAContractsPage'
-import { ReportHeader, ReportSubheading, PctCell, pctColor } from './reportWindow'
+import { ReportHeader, ReportSubheading, PctCell } from './reportWindow'
 
 interface OLARow {
   id: string; type: string; name: string; entityType: string; partyType: string | null
   partyName: string | null; resolveMinutes: number; evaluated: number; met: number
   breached: number; attainmentPct: number | null
+  complianceTarget: number | null; complianceWarning: number | null
 }
 interface OLAReport { generatedAt: string; windowDays: number; ola: OLARow[] }
 
@@ -84,7 +85,7 @@ export function OLAReportPage() {
             const pct = att?.attainmentPct ?? null
             return (
               <span style={{ opacity: o.enabled ? 1 : 0.55 }}>
-                {pct == null ? <span style={{ color: 'var(--color-slate-light)' }}>{t('components.widgetBody.noData')}</span> : <PctCell pct={pct} />}
+                {pct == null ? <span style={{ color: 'var(--color-slate-light)' }}>{t('components.widgetBody.noData')}</span> : <PctCell pct={pct} target={att?.complianceTarget ?? null} warning={att?.complianceWarning ?? null} />}
                 {att && att.evaluated > 0 && (
                   <span style={{ color: 'var(--color-slate-light)', marginLeft: 6, fontSize: 'var(--font-size-label)' }}>({att.met}/{att.evaluated})</span>
                 )}
@@ -100,7 +101,7 @@ export function OLAReportPage() {
               <StatTile label={t('pages.slaReport.evaluations', { window: finestra })} value={String(valutazioni)} />
               <StatTile label={t('pages.slaReport.met')} value={String(olaMet)} accent={palette.success.text} />
               <StatTile label={t('pages.slaReport.breached')} value={String(olaBreached)} accent={palette.danger.text} />
-              <StatTile label={t('pages.slaReport.attainmentShort')} value={olaPct == null ? '—' : `${olaPct.toFixed(1)}%`} accent={pctColor(olaPct)} />
+              <StatTile label={t('pages.slaReport.attainmentShort')} value={olaPct == null ? '—' : `${olaPct.toFixed(1)}%`} />
             </StatTileGrid>
 
             <ReportSubheading>{t('pages.slaReport.byContract')}</ReportSubheading>

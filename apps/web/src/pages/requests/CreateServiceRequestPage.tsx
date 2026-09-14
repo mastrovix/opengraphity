@@ -175,7 +175,7 @@ export function CreateServiceRequestPage() {
             >
               <option value="">{t('pages.createRequest.genericItem')}</option>
               {catalogItems.map((it) => (
-                <option key={it.id} value={it.id}>{it.category ? `${it.category} · ` : ''}{it.name}</option>
+                <option key={it.id} value={it.id}>{it.category ? `${labelOf('category', it.category) ?? it.category} · ` : ''}{it.name}</option>
               ))}
             </select>
             {selectedItem?.requiresApproval && (

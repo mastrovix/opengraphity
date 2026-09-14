@@ -14,11 +14,20 @@ import { colors, palette } from '@/lib/tokens'
 
 export const REPORT_WINDOWS = [7, 30, 90] as const
 
-/** Verde da 95 %, giallo da 80 %, rosso sotto; grigio se non c'è niente da misurare. */
-export function pctColor(pct: number | null): string {
-  if (pct == null) return 'var(--color-slate-light)'
-  if (pct >= 95) return palette.success.text
-  if (pct >= 80) return palette.warning.text
+/**
+ * Il colore di una percentuale di rispetto rispetto al SUO obiettivo (verifica
+ * «Cosa resta cablato», ondata 2): verde dall'obiettivo, giallo dalla soglia
+ * d'attenzione, rosso sotto. Erano 95 e 80 per tutti: un contratto al 99,5%
+ * risultava verde al 96%.
+ *
+ * Senza obiettivo (uno SLA impostato da una regola, i totali della pagina, le
+ * righe per priorità che mescolano policy diverse) la percentuale resta neutra:
+ * un obiettivo inventato sarebbe la stessa soglia fissa con un altro nome.
+ */
+export function pctColor(pct: number | null, objective?: { target: number | null; warning: number | null }): string {
+  if (pct == null || objective?.target == null || objective.warning == null) return 'var(--color-slate)'
+  if (pct >= objective.target) return palette.success.text
+  if (pct >= objective.warning) return palette.warning.text
   return palette.danger.text
 }
 
@@ -28,8 +37,14 @@ export function compliance(met: number, breached: number): number | null {
   return concluso > 0 ? (met / concluso) * 100 : null
 }
 
-export function PctCell({ pct }: { pct: number | null }) {
-  return <span style={{ fontWeight: 600, color: pctColor(pct) }}>{pct == null ? '—' : `${pct.toFixed(0)}%`}</span>
+export function PctCell({ pct, target = null, warning = null }: { pct: number | null; target?: number | null; warning?: number | null }) {
+  const { t } = useTranslation()
+  const text = pct == null ? '—' : `${pct.toFixed(pct >= 99 && pct < 100 ? 1 : 0)}%`
+  return (
+    <span data-tone style={{ fontWeight: 600, color: pctColor(pct, { target, warning }) }} title={target != null ? t('pages.slaReport.objectiveHint', { target, warning }) : t('pages.slaReport.noObjectiveHint')}>
+      {text}
+    </span>
+  )
 }
 
 /** Il selettore della finestra (7 / 30 / 90 giorni). */

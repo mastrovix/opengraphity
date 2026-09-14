@@ -72,10 +72,13 @@ vi.stubEnv('BACKUP_SKIP_KEYCLOAK', 'true')
 resetConfigCache()
 
 // F10: la pulizia delle notifiche in-app delega all'archivio del pacchetto.
-const pruneInbox = vi.fn(async (_before: string) => 7)
-vi.mock('@opengraphity/notifications', () => ({ pruneInbox: (b: string) => pruneInbox(b) }))
+const pruneInbox = vi.fn(async (_tenantId: string, _before: string) => 7)
+vi.mock('@opengraphity/notifications', () => ({ pruneInbox: (t: string, b: string) => pruneInbox(t, b) }))
+// Verifica «Cosa resta cablato», ondata 2: la durata è di ogni organizzazione.
+const retentionByTenant = vi.fn(async () => [{ tenantId: 'c-one', days: 30 }, { tenantId: 'c-two', days: 90 }, { tenantId: 'c-new', days: null as number | null }])
+vi.mock('../../lib/tenantInAppRetention.js', () => ({ inAppRetentionByTenant: () => retentionByTenant() }))
 
-const { startMaintenanceWorker, MAINTENANCE_QUEUE, readBackupRetention, readInAppRetentionDays, REPEATABLE_JOBS } = await import('../maintenance.worker.js')
+const { startMaintenanceWorker, MAINTENANCE_QUEUE, readBackupRetention, REPEATABLE_JOBS } = await import('../maintenance.worker.js')
 
 const BACKUP_DIR = '/var/backups/opengraphity'
 const ARCHIVE    = `${BACKUP_DIR}/backup_new.tar.gz`
@@ -240,21 +243,19 @@ describe('job sconosciuto', () => {
 
 })
 
-/** Revisione del 14 set 2026 · F10: le notifiche in-app salvate si puliscono per età. */
+/** Revisione del 14 set 2026 · F10, e ondata 2 della verifica «Cosa resta cablato»: la durata la sceglie ogni organizzazione. */
 describe('job purge_inapp_notifications', () => {
-  it('cancella le notifiche più vecchie della conservazione (default 30 giorni)', async () => {
+  it('pulisce ogni organizzazione con la SUA durata, e salta dicendolo chi non l\'ha scelta', async () => {
     const before = Date.now()
     await expect(processor(job('purge_inapp_notifications'))).resolves.toBeUndefined()
-    const cutoff = Date.parse(pruneInbox.mock.calls[0]![0])
-    expect(before - cutoff).toBeGreaterThanOrEqual(30 * 86_400_000 - 1000)
-    expect(before - cutoff).toBeLessThan(31 * 86_400_000)
-    expect(logInfo).toHaveBeenCalledWith(expect.objectContaining({ deleted: 7, retentionDays: 30 }), 'In-app notifications pruned')
-  })
-
-  it('INAPP_NOTIFICATION_RETENTION_DAYS: intero >= 1, altrimenti errore di configurazione', () => {
-    expect(readInAppRetentionDays({})).toBe(30)
-    expect(readInAppRetentionDays({ INAPP_NOTIFICATION_RETENTION_DAYS: '90' })).toBe(90)
-    expect(() => readInAppRetentionDays({ INAPP_NOTIFICATION_RETENTION_DAYS: '0' })).toThrow(/INAPP_NOTIFICATION_RETENTION_DAYS/)
+    expect(pruneInbox.mock.calls.map((c) => c[0])).toEqual(['c-one', 'c-two'])
+    const cutoffOne = Date.parse(pruneInbox.mock.calls[0]![1])
+    const cutoffTwo = Date.parse(pruneInbox.mock.calls[1]![1])
+    expect(before - cutoffOne).toBeGreaterThanOrEqual(30 * 86_400_000 - 1000)
+    expect(before - cutoffOne).toBeLessThan(31 * 86_400_000)
+    expect(before - cutoffTwo).toBeGreaterThanOrEqual(90 * 86_400_000 - 1000)
+    expect(logInfo).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'c-two', deleted: 7, retentionDays: 90 }), 'In-app notifications pruned')
+    expect(logWarn).toHaveBeenCalledWith({ tenantId: 'c-new' }, expect.stringMatching(/NOT pruned.*Settings → Organization/))
   })
 })
 

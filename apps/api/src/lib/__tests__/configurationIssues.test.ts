@@ -52,13 +52,9 @@ vi.mock('../tenantTimezone.js', () => ({ tenantTimezone: vi.fn(async () => fusoD
 /** Le migrazioni pendenti (F8): di default nessuna. */
 let migrazioniPendenti: string[] = []
 vi.mock('../migrationState.js', () => ({ pendingMigrations: vi.fn(async () => migrazioniPendenti) }))
-/** Il calendario di servizio (F6): configurato, e quante policy/contratti in orario lavorativo ci sono. */
-let calendario: unknown = { days: [1, 2, 3, 4, 5], start: '08:00', end: '18:00', holidays: [] }
-let inOrarioLavorativo = 0
-vi.mock('../tenantServiceCalendar.js', () => ({
-  tenantServiceCalendar: vi.fn(async () => calendario),
-  businessHoursUsers: vi.fn(async () => inOrarioLavorativo),
-}))
+/** Policy e contratti in orario di servizio senza un calendario valido (ondata 2): di default nessuno. */
+let senzaCalendario: string[] = []
+vi.mock('../serviceCalendars.js', () => ({ businessHoursWithoutCalendar: vi.fn(async () => senzaCalendario) }))
 /** I team senza interno/esterno: di default nessuno, cosi i test degli altri controlli non li vedono. */
 let senzaProvenienza: { count: number; names: string[] } = { count: 0, names: [] }
 vi.mock('../teamSourcing.js', () => ({ teamsWithoutSourcing: vi.fn(async () => senzaProvenienza) }))
@@ -79,8 +75,11 @@ vi.mock('../portalSeverityOptions.js', () => ({
   PORTAL_SEVERITY_VOCABULARY: 'severity',
   portalSeverityOptions: vi.fn(async () => severitaDelPortale),
 }))
+let giorniNotifiche: number | null = 30
+vi.mock('../tenantInAppRetention.js', () => ({ tenantInAppRetentionDays: vi.fn(async () => giorniNotifiche) }))
 let vociSenzaPriorita: string[] = []
-vi.mock('../catalogItemPriority.js', () => ({ catalogItemsWithoutPriority: vi.fn(async () => vociSenzaPriorita) }))
+let vociCategoriaVecchia: Array<{ name: string; legacy: string }> = []
+vi.mock('../catalogItemPriority.js', () => ({ catalogItemsWithoutPriority: vi.fn(async () => vociSenzaPriorita), catalogItemsWithLegacyCategory: vi.fn(async () => vociCategoriaVecchia) }))
 vi.mock('../slaWarningCheck.js', () => ({ slaPoliciesWarningNotBeforeDeadline: vi.fn(async () => preavvisiScaduti) }))
 vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: vi.fn(async () => policy) }))
 vi.mock('../domainMatrix.js', async (importOriginal) => {
@@ -88,6 +87,11 @@ vi.mock('../domainMatrix.js', async (importOriginal) => {
   return {
     ...orig,
     domainVocabulary: vi.fn(async (_t: string, name: string) => vocabularies[name] ?? []),
+    // Le dimensioni d'ingresso a scala del prodotto (service_urgency) non sono vocabolari.
+    matrixInputValues: vi.fn(async (_t: string, kind: keyof typeof orig.DOMAIN_MATRIX_KINDS) => {
+      const spec: { inputs: readonly string[]; inputScales?: Record<string, readonly string[]> } = orig.DOMAIN_MATRIX_KINDS[kind]
+      return spec.inputs.map((i) => spec.inputScales?.[i] ?? vocabularies[i] ?? [])
+    }),
     // Le uscite a scala (environment_risk) non sono vocabolari: la scala è del prodotto.
     matrixOutputValues: vi.fn(async (_t: string, kind: keyof typeof orig.DOMAIN_MATRIX_KINDS) => {
       const spec: { output: string; scale?: readonly string[] } = orig.DOMAIN_MATRIX_KINDS[kind]
@@ -118,6 +122,8 @@ function healthy(): void {
   linguaDelCliente = 'it'
   severitaDelPortale = [{ value: 'low', labels: {} }]
   vociSenzaPriorita = []
+  vociCategoriaVecchia = []
+  giorniNotifiche = 30
   gaps = []
   vocabularies = {
     impact: ['low'], urgency: ['low'], priority: ['low'], severity: ['low'],
@@ -126,9 +132,16 @@ function healthy(): void {
     ci_status: ['active', 'dismesso'],
   }
   matrices = Object.fromEntries(Object.entries(DOMAIN_MATRIX_KINDS).map(([kind, spec]) => {
-    const key = spec.inputs.map((i) => vocabularies[i]![0]!).join('|')
+    // Una dimensione a scala del prodotto (service_urgency) va coperta tutta: i
+    // suoi valori non si riducono a uno come i vocabolari del test.
+    const scales = (spec as { inputScales?: Record<string, readonly string[]> }).inputScales
     const scale = (spec as { scale?: readonly string[] }).scale
-    return [kind, { [key]: scale ? scale[0]! : vocabularies[spec.output]![0]! }]
+    const out = scale ? scale[0]! : vocabularies[spec.output]![0]!
+    const keys = spec.inputs.reduce<string[]>((acc, i) => {
+      const values = scales?.[i] ?? [vocabularies[i]![0]!]
+      return acc.flatMap((prefix) => values.map((v) => (prefix ? `${prefix}|${v}` : v)))
+    }, [''])
+    return [kind, Object.fromEntries(keys.map((k) => [k, out]))]
   }))
   policy = { ignore_lifecycle_statuses: [], retired_statuses: ['dismesso'], maintenance_statuses: [] }
   // Ogni valore con la sua etichetta IN TUTTE LE LINGUE: lo stato in cui il
@@ -146,6 +159,20 @@ beforeEach(() => { healthy() })
 describe('configurationIssues', () => {
   it('niente da sistemare → lista vuota (un banner che compare sempre diventa invisibile)', async () => {
     expect(await configurationIssues('c-one')).toEqual([])
+  })
+
+  it('conservazione delle notifiche non scelta → avviso, si rimedia in Organizzazione', async () => {
+    giorniNotifiche = null
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'inapp_retention_not_set', severity: 'warning', where: '/settings/organization', params: {} },
+    ])
+  })
+
+  it('voci del catalogo con una categoria scritta a mano non convertita → avviso che le nomina col testo di prima', async () => {
+    vociCategoriaVecchia = [{ name: 'Badge', legacy: 'Sicurezza fisica' }]
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'catalog_items_legacy_category', severity: 'warning', where: '/admin/service-catalog', params: { count: '1', items: 'Badge («Sicurezza fisica»)' } },
+    ])
   })
 
   it('voci attive del catalogo senza priorità → errore che le nomina, si rimedia nel catalogo', async () => {
@@ -314,14 +341,12 @@ describe('configurationIssues', () => {
    * contratto OLA in orario lavorativo non sa calcolare le scadenze. Errore
    * solo se qualcuno lo usa.
    */
-  it('policy o contratti in orario lavorativo senza calendario → errore; senza chi lo usa → silenzio', async () => {
-    calendario = null
-    inOrarioLavorativo = 2
+  it('policy o contratti in orario di servizio senza calendario valido → errore con i nomi; nessuno → silenzio', async () => {
+    senzaCalendario = ['Incident di rete', 'OLA Rete']
     const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'service_calendar_not_set')
-    expect(issue).toMatchObject({ severity: 'error', where: '/settings/organization', params: { count: '2' } })
-    inOrarioLavorativo = 0
+    expect(issue).toMatchObject({ severity: 'error', where: '/admin/sla-policies', params: { count: '2', names: 'Incident di rete, OLA Rete' } })
+    senzaCalendario = []
     expect((await configurationIssues('c-one')).find((i) => i.kind === 'service_calendar_not_set')).toBeUndefined()
-    calendario = { days: [1, 2, 3, 4, 5], start: '08:00', end: '18:00', holidays: [] }
   })
 
   /**

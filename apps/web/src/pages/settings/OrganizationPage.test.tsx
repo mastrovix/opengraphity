@@ -3,10 +3,10 @@
  * Organizzazione, accanto alla lingua. Prima si scriveva solo con uno script.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { toast } from 'sonner'
-import { GET_TENANT_LANGUAGE_SETTINGS, GET_TENANT_TIMEZONE_SETTINGS, GET_TENANT_SERVICE_CALENDAR, GET_PORTAL_SEVERITY_OPTIONS } from '@/graphql/queries'
-import { SET_TENANT_TIMEZONE, SET_TENANT_SERVICE_CALENDAR, SET_PORTAL_SEVERITY_OPTIONS } from '@/graphql/mutations'
+import { GET_TENANT_LANGUAGE_SETTINGS, GET_TENANT_TIMEZONE_SETTINGS, GET_SERVICE_CALENDARS, GET_PORTAL_SEVERITY_OPTIONS, GET_TENANT_INAPP_RETENTION } from '@/graphql/queries'
+import { SET_TENANT_TIMEZONE, CREATE_SERVICE_CALENDAR, SET_PORTAL_SEVERITY_OPTIONS, SET_TENANT_INAPP_RETENTION } from '@/graphql/mutations'
 import { DomainVocabularyContext } from '@/contexts/DomainVocabularyContext'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { OrganizationPage } from './OrganizationPage'
@@ -28,12 +28,13 @@ const zones = (timezone: string | null): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
-const calendar = (value: unknown): GqlMock => ({
-  request: { query: GET_TENANT_SERVICE_CALENDAR },
-  result: { data: { tenantServiceCalendar: value === null ? null : { __typename: 'ServiceCalendar', ...(value as object) } } },
+type Calendar = { id: string; name: string; days: number[]; start: string; end: string; holidays: string[]; usedBySlaPolicies: string[]; usedByOlaContracts: string[] }
+const calendar = (list: Calendar[]): GqlMock => ({
+  request: { query: GET_SERVICE_CALENDARS },
+  result: { data: { serviceCalendars: list.map((c) => ({ __typename: 'ServiceCalendar', ...c })) } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
-const FACTORY = { days: [1, 2, 3, 4, 5], start: '08:00', end: '18:00', holidays: [] as string[] }
+const FACTORY: Calendar[] = [{ id: 'cal-1', name: 'Service hours', days: [1, 2, 3, 4, 5], start: '08:00', end: '18:00', holidays: [], usedBySlaPolicies: ['Incident di rete'], usedByOlaContracts: [] }]
 
 type Option = { value: string; labels: { language: string; label: string }[] }
 const portalOptions = (options: Option[] | null): GqlMock => ({
@@ -69,36 +70,40 @@ describe('OrganizationPage — fuso orario', () => {
 })
 
 /**
- * Revisione del 14 set 2026 · F6: l'orario lavorativo delle policy SLA e dei
- * contratti OLA era 08–18, lunedì–venerdì, senza festività, per tutti. Ora si
- * sceglie qui.
+ * Revisione del 14 set 2026 · F6 e verifica «Cosa resta cablato», ondata 2:
+ * l'orario lavorativo era 08–18 lun–ven per tutti, poi un calendario per
+ * organizzazione; ora calendari con nome, scelti da policy e contratti.
  */
-describe('OrganizationPage — calendario di servizio', () => {
-  it('mostra il calendario, e salva giorni, fascia e festività', async () => {
-    const seen: unknown[] = []
-    const save: GqlMock = {
-      request: { query: SET_TENANT_SERVICE_CALENDAR, variables: (v) => { seen.push(v); return true } },
-      result: (v) => ({ data: { setTenantServiceCalendar: { __typename: 'ServiceCalendar', ...(v as { calendar: object }).calendar } } }),
-    }
-    const { user } = renderWithProviders(<OrganizationPage />, { route: '/settings/organization', mocks: [language, zones('Europe/Rome'), calendar(FACTORY), portalOptions(null), save] })
-
-    const saturday = await screen.findByRole('checkbox', { name: 'Saturday' })
-    expect(saturday).not.toBeChecked()
-    expect(screen.getByRole('checkbox', { name: 'Monday' })).toBeChecked()
-    await user.click(saturday)
-    await user.clear(screen.getByLabelText('Business hours end'))
-    await user.type(screen.getByLabelText('Business hours end'), '17:00')
-    await user.type(screen.getByLabelText('Holidays'), '2026-12-25, 2026-12-26')
-    await user.click(screen.getByRole('button', { name: 'Save calendar' }))
-
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Service calendar updated'))
-    expect(seen).toEqual([{ calendar: { days: [1, 2, 3, 4, 5, 6], start: '08:00', end: '17:00', holidays: ['2026-12-25', '2026-12-26'] } }])
+describe('OrganizationPage — calendari di servizio', () => {
+  it('elenca i calendari con chi li usa; uno in uso non si può eliminare', async () => {
+    renderWithProviders(<OrganizationPage />, { route: '/settings/organization', mocks: [language, zones('Europe/Rome'), calendar(FACTORY), portalOptions(null)] })
+    const row = (await screen.findByText('Service hours')).closest('li')!
+    expect(row).toHaveTextContent('Mon Tue Wed Thu Fri · 08:00–18:00')
+    expect(row).toHaveTextContent('Used by: Incident di rete')
+    expect(within(row).getByRole('button', { name: 'Delete' })).toBeDisabled()
   })
 
-  it('senza calendario lo dice, e le caselle partono vuote', async () => {
-    renderWithProviders(<OrganizationPage />, { route: '/settings/organization', mocks: [language, zones('Europe/Rome'), calendar(null)] })
-    expect(await screen.findByText(/No service calendar has been chosen/)).toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: 'Monday' })).not.toBeChecked()
+  it('crea un calendario con nome, giorni, fascia e festività', async () => {
+    const seen: unknown[] = []
+    const create: GqlMock = {
+      request: { query: CREATE_SERVICE_CALENDAR, variables: (v) => { seen.push(v); return true } },
+      result: { data: { createServiceCalendar: { __typename: 'ServiceCalendar', id: 'cal-2', name: 'Turno NOC', days: [1, 2, 3, 4, 5, 6], start: '07:00', end: '22:00', holidays: ['2026-12-25'], usedBySlaPolicies: [], usedByOlaContracts: [] } } },
+    }
+    const { user } = renderWithProviders(<OrganizationPage />, { route: '/settings/organization', mocks: [language, zones('Europe/Rome'), calendar([]), portalOptions(null), create] })
+
+    expect(await screen.findByText(/No service calendar yet/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'New calendar' }))
+    const save = screen.getByRole('button', { name: 'Save calendar' })
+    expect(save).toBeDisabled()
+    await user.type(screen.getByLabelText('Name'), 'Turno NOC')
+    for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']) await user.click(screen.getByRole('checkbox', { name: day }))
+    await user.type(screen.getByLabelText('Business hours start'), '07:00')
+    await user.type(screen.getByLabelText('Business hours end'), '22:00')
+    await user.type(screen.getByLabelText('Holidays'), '2026-12-25')
+    await user.click(save)
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Service calendar created'))
+    expect(seen).toEqual([{ name: 'Turno NOC', calendar: { days: [1, 2, 3, 4, 5, 6], start: '07:00', end: '22:00', holidays: ['2026-12-25'] } }])
   })
 })
 
@@ -158,5 +163,30 @@ describe('OrganizationPage — severità del portale', () => {
     })
     expect(await screen.findByText(/No severity has been chosen for the portal/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save portal severities' })).toBeDisabled()
+  })
+})
+
+/** Verifica «Cosa resta cablato», ondata 2: la conservazione delle notifiche era una variabile d'ambiente per tutti. */
+describe('OrganizationPage — notifiche della campanella', () => {
+  const retention = (days: number | null): GqlMock => ({
+    request: { query: GET_TENANT_INAPP_RETENTION }, result: { data: { tenantInAppRetentionDays: days } }, maxUsageCount: Number.POSITIVE_INFINITY,
+  })
+
+  it('mostra i giorni scelti e salva quelli nuovi', async () => {
+    const seen: unknown[] = []
+    const save: GqlMock = { request: { query: SET_TENANT_INAPP_RETENTION, variables: (v) => { seen.push(v); return true } }, result: { data: { setTenantInAppRetentionDays: 90 } } }
+    const { user } = renderWithProviders(<OrganizationPage />, { route: '/settings/organization', mocks: [language, zones('Europe/Rome'), calendar(FACTORY), portalOptions(null), retention(30), save] })
+    const input = await screen.findByLabelText('Keep for (days)')
+    await waitFor(() => expect(input).toHaveValue(30))
+    await user.clear(input)
+    await user.type(input, '90')
+    await user.click(screen.getAllByRole('button', { name: 'Save' }).find((b) => b.closest('section, div')?.textContent?.includes('Keep for'))!)
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Notification retention updated'))
+    expect(seen).toEqual([{ days: 90 }])
+  })
+
+  it('senza una durata scelta lo dice', async () => {
+    renderWithProviders(<OrganizationPage />, { route: '/settings/organization', mocks: [language, zones('Europe/Rome'), calendar(FACTORY), portalOptions(null), retention(null)] })
+    expect(await screen.findByText(/No duration has been chosen/)).toBeInTheDocument()
   })
 })

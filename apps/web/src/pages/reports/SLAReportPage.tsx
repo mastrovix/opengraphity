@@ -20,12 +20,14 @@ import { GET_SLA_REPORT } from '@/graphql/queries'
 import { formatDateTime } from '@/lib/datetime'
 import { palette } from '@/lib/tokens'
 import { olaScopeLabel, olaMinutes } from '@/pages/admin/OLAContractsPage'
-import { ReportHeader, ReportSubheading, PctCell, pctColor, compliance } from './reportWindow'
+import { ReportHeader, ReportSubheading, PctCell, compliance } from './reportWindow'
 
 interface SLAPriorityRow { priority: string; total: number; met: number; breached: number }
 interface SLAPolicyRow {
   policyId: string | null; policyName: string | null; setByRule: string | null
   entityType: string | null; responseMinutes: number | null; resolveMinutes: number | null
+  /** L'obiettivo della policy (ondata 2); null per SLA senza policy. */
+  complianceTarget: number | null; complianceWarning: number | null
   total: number; met: number; breached: number; paused: number
 }
 interface SLAReport {
@@ -86,7 +88,8 @@ export function SLAReportPage() {
           { key: 'met', label: t('pages.slaReport.met'), sortable: true, render: (v) => <span style={{ color: palette.success.text }}>{String(v)}</span> },
           { key: 'breached', label: t('pages.slaReport.breached'), sortable: true, render: (v) => <span style={{ color: palette.danger.text }}>{String(v)}</span> },
           { key: 'paused', label: t('pages.slaReport.pausedShort'), sortable: true },
-          { key: 'id', label: t('pages.slaReport.compliance'), sortable: false, render: (_v, r) => <PctCell pct={compliance(r.met, r.breached)} /> },
+          { key: 'complianceTarget', label: t('serviceTargets.targetColumn'), sortable: true, render: (v) => v == null ? '—' : `${String(v)}%` },
+          { key: 'id', label: t('pages.slaReport.compliance'), sortable: false, render: (_v, r) => <PctCell pct={compliance(r.met, r.breached)} target={r.complianceTarget} warning={r.complianceWarning} /> },
         ]
         const policyRows = report.sla.byPolicy.map((r, i) => ({ ...r, id: r.policyId ?? `${r.setByRule ?? 'none'}-${i}` }))
 
@@ -106,7 +109,7 @@ export function SLAReportPage() {
               <StatTile label={t('pages.slaReport.met')} value={String(report.sla.met)} accent={palette.success.text} />
               <StatTile label={t('pages.slaReport.breached')} value={String(report.sla.breached)} accent={palette.danger.text} />
               <StatTile label={t('sla.paused')} value={String(report.sla.paused)} accent={palette.purple.dark} />
-              <StatTile label={t('pages.slaReport.breachRate')} value={`${report.sla.breachRate.toFixed(1)}%`} accent={pctColor(100 - report.sla.breachRate)} />
+              <StatTile label={t('pages.slaReport.breachRate')} value={`${report.sla.breachRate.toFixed(1)}%`} />
               <StatTile label={t('pages.slaReport.avgResolution')} value={olaMinutes(report.sla.avgResolutionMinutes, t)} />
             </StatTileGrid>
 

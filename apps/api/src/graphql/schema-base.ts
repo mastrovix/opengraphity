@@ -241,8 +241,10 @@ export function buildBaseSDL(): string {
     """Il fuso orario del cliente e le zone che il runtime conosce."""
     tenantTimezoneSettings: TenantTimezoneSettings!
 
-    """Il calendario di servizio del cliente (null = non configurato)."""
-    tenantServiceCalendar: ServiceCalendar
+    """I calendari di servizio con nome: ogni policy SLA e ogni contratto OLA/UC in orario di servizio ne sceglie uno."""
+    serviceCalendars: [ServiceCalendar!]!
+    "Quanti giorni si conservano le notifiche della campanella (null = non scelto: la pulizia salta questa organizzazione)."
+    tenantInAppRetentionDays: Int
 
     """Le notifiche in-app della persona collegata, dalla più recente (F10)."""
     myNotifications(limit: Int): [InAppNotification!]!
@@ -276,10 +278,16 @@ export function buildBaseSDL(): string {
   ogni cliente.
   """
   type ServiceCalendar {
+    id:       ID!
+    name:     String!
     days:     [Int!]!
     start:    String!
     end:      String!
     holidays: [String!]!
+    """I nomi delle policy SLA che contano con questo calendario."""
+    usedBySlaPolicies:  [String!]!
+    """I nomi dei contratti OLA/UC che contano con questo calendario."""
+    usedByOlaContracts: [String!]!
   }
 
   input ServiceCalendarInput {
@@ -335,8 +343,14 @@ export function buildBaseSDL(): string {
     """Configura il fuso orario del cliente (admin). Rifiuta una zona IANA sconosciuta."""
     setTenantTimezone(timezone: String!): TenantTimezoneSettings!
 
-    """Configura il calendario di servizio del cliente (admin). Rifiuta un calendario incoerente dicendo perché."""
-    setTenantServiceCalendar(calendar: ServiceCalendarInput!): ServiceCalendar!
+    """Crea un calendario di servizio con nome (admin). Rifiuta un calendario incoerente dicendo perché."""
+    createServiceCalendar(name: String!, calendar: ServiceCalendarInput!): ServiceCalendar!
+    """Modifica nome o orari di un calendario (admin). Gli SLA già partiti conservano le loro scadenze."""
+    updateServiceCalendar(id: ID!, name: String, calendar: ServiceCalendarInput): ServiceCalendar!
+    """Elimina un calendario (admin). Rifiutato se una policy o un contratto lo usa, con i loro nomi."""
+    deleteServiceCalendar(id: ID!): Boolean!
+    "Sceglie per quanti giorni si conservano le notifiche della campanella (admin, 1–3650)."
+    setTenantInAppRetentionDays(days: Int!): Int!
 
     """Segna letta una notifica della persona collegata."""
     markNotificationRead(id: ID!): Boolean!

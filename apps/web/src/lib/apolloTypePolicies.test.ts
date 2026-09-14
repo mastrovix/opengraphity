@@ -16,6 +16,7 @@ const sla = {
 const ola = [{
   __typename: 'OLAAttainmentRow', id: 'o1', type: 'ola', name: 'Rete', entityType: 'incident',
   partyType: 'team', partyName: null, resolveMinutes: 240, evaluated: 2, met: 1, breached: 1, attainmentPct: 50,
+  complianceTarget: 95, complianceWarning: 80,
 }]
 const base = { __typename: 'SLAReport', generatedAt: 'ora', windowDays: 30 }
 

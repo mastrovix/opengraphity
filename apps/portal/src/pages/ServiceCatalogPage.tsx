@@ -6,6 +6,7 @@ import { GET_SERVICE_CATALOG } from '@/graphql/queries'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
 import { notifyError } from '@/lib/notify'
 import { colors, palette, alpha } from '@/lib/tokens'
+import { useTicketCategories } from '@/hooks/useTicketCategories'
 
 interface CatalogItem {
   id: string
@@ -19,6 +20,8 @@ export function ServiceCatalogPage() {
   const { t }    = useTranslation()
   const navigate = useNavigate()
   const { data, loading, error } = useQuery<{ serviceCatalogItems: CatalogItem[] }>(GET_SERVICE_CATALOG)
+  // La categoria della voce è un valore del Dizionario (ondata 2): si mostra con la sua etichetta.
+  const { labelOf: categoryLabel } = useTicketCategories()
   const [openItem, setOpenItem] = useState<CatalogItem | null>(null)
   const [details, setDetails] = useState('')
 
@@ -41,7 +44,7 @@ export function ServiceCatalogPage() {
 
   const items = data?.serviceCatalogItems ?? []
   const byCategory = items.reduce<Record<string, CatalogItem[]>>((acc, it) => {
-    const c = it.category ?? t('catalog.uncategorized')
+    const c = it.category ? categoryLabel(it.category) : t('catalog.uncategorized')
     ;(acc[c] ??= []).push(it)
     return acc
   }, {})

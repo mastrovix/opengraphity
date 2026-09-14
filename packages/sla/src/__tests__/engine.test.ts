@@ -35,11 +35,13 @@ vi.mock('../scheduler.js', () => ({
   scheduleOLABreaches,
 }))
 vi.mock('../selector.js', () => ({ selectSLAForEntity }))
-vi.mock('../olaBreach.js', () => ({ getActiveOLAContractsFor, getTenantTimezone }))
-// F6: il calendario di servizio del cliente arriva alla policy e ai contratti OLA.
+// Ondata 2 della verifica «Cosa resta cablato»: ogni policy e ogni contratto conta col SUO calendario.
 const CALENDARIO = { days: [1, 2, 3, 4, 5, 6], start: '09:00', end: '13:00', holidays: ['2026-12-25'] }
-const getServiceCalendar = vi.fn(async (_t: string) => CALENDARIO as unknown)
-vi.mock('../calendar.js', () => ({ getServiceCalendar }))
+const calendarFor = vi.fn(async (_t: string, owner: { businessHours: boolean; calendarId: string | null }) => (owner.businessHours ? CALENDARIO : null) as unknown)
+const withContractCalendars = vi.fn(async (_t: string, contracts: Array<{ business_hours: boolean }>) =>
+  contracts.map((c) => ({ ...c, calendar: c.business_hours ? CALENDARIO : null })))
+vi.mock('../olaBreach.js', () => ({ getActiveOLAContractsFor, getTenantTimezone, withContractCalendars }))
+vi.mock('../calendar.js', () => ({ calendarFor }))
 
 const { SLAEngine } = await import('../engine.js')
 
@@ -208,7 +210,7 @@ describe('SLAEngine — l\'ambito della policy (categoria e team) arriva al sele
     getEntityCreatedAt.mockResolvedValue(new Date('2026-05-01T09:00:00.000Z'))
     selectSLAForEntity.mockResolvedValue({
       id: 'pol-1', name: 'Incident di rete', timezone: 'Europe/Rome',
-      response_minutes: 7, resolve_minutes: 30, business_hours: true,
+      response_minutes: 7, resolve_minutes: 30, business_hours: true, calendar_id: 'cal-rete',
     })
     const engine = new SLAEngine()
     await engine.process(event('incident.created', { id: 'inc-11', title: 'x', severity: 'medium', affected_ci_ids: [] }))
@@ -217,9 +219,9 @@ describe('SLAEngine — l\'ambito della policy (categoria e team) arriva al sele
     expect(params.policy.tiers[0]!.response_minutes).toBe(7)
     expect(params.policy.tiers[0]!.resolve_minutes).toBe(30)
     expect(params.policy.tiers[0]!.severity).toBe('medium')
-    // Revisione del 14 set 2026 · F6: l'orario lavorativo è il calendario del cliente.
+    // L'orario di servizio è il calendario scelto dalla policy (ondata 2).
     expect((params.policy as unknown as { calendar: unknown }).calendar).toEqual(CALENDARIO)
-    expect(getServiceCalendar).toHaveBeenCalledWith('t1')
+    expect(calendarFor).toHaveBeenCalledWith('t1', { name: 'Incident di rete', businessHours: true, calendarId: 'cal-rete' })
   })
 })
 
@@ -247,7 +249,7 @@ describe('SLAEngine — senza una policy del tenant, nessuno SLA', () => {
   it('i controlli OLA/UC si armano anche senza SLA, col fuso del tenant', async () => {
     selectSLAForEntity.mockResolvedValue(null)
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const contratto = { id: 'ola-1', name: 'Rete', type: 'ola', resolve_minutes: 240, business_hours: true }
+    const contratto = { id: 'ola-1', name: 'Rete', type: 'ola', resolve_minutes: 240, business_hours: true, calendar_id: 'cal-rete' }
     getActiveOLAContractsFor.mockResolvedValue([contratto])
     getTenantTimezone.mockResolvedValue('America/New_York')
     const engine = new SLAEngine()
@@ -255,7 +257,7 @@ describe('SLAEngine — senza una policy del tenant, nessuno SLA', () => {
     expect(createSLAStatus).not.toHaveBeenCalled()
     expect(getTenantTimezone).toHaveBeenCalledWith('t1')
     expect(scheduleOLABreaches).toHaveBeenCalledWith(expect.objectContaining({
-      entityId: 'inc-21', tenantId: 't1', timezone: 'America/New_York', contracts: [contratto], calendar: CALENDARIO,
+      entityId: 'inc-21', tenantId: 't1', timezone: 'America/New_York', contracts: [{ ...contratto, calendar: CALENDARIO }],
     }))
   })
 })

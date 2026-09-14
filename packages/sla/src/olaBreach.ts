@@ -1,4 +1,5 @@
 import { getSession, toNumber } from '@opengraphity/neo4j'
+import { calendarFor, type ServiceCalendar } from './calendar.js'
 
 export interface OLAContractLite {
   id: string
@@ -6,6 +7,21 @@ export interface OLAContractLite {
   type: string            // ola | uc
   resolve_minutes: number
   business_hours: boolean
+  /** Il calendario con cui conta l'orario di servizio; null quando conta 24×7. */
+  calendar_id: string | null
+}
+
+/** Un contratto con il suo calendario già letto: quello che serve a calcolare la scadenza. */
+export interface OLAContractWithCalendar extends OLAContractLite {
+  calendar: ServiceCalendar | null
+}
+
+/** Legge il calendario di ogni contratto (ondata 2: ciascuno il suo). Un contratto in orario di servizio senza calendario lancia. */
+export async function withContractCalendars(tenantId: string, contracts: readonly OLAContractLite[]): Promise<OLAContractWithCalendar[]> {
+  return Promise.all(contracts.map(async (c) => ({
+    ...c,
+    calendar: await calendarFor(tenantId, { name: c.name, businessHours: c.business_hours, calendarId: c.calendar_id }),
+  })))
 }
 
 // Resolution timestamp per entity type — an entity with this field set is
@@ -29,7 +45,8 @@ export async function getActiveOLAContractsFor(tenantId: string, entityType: str
         MATCH (o:OLAContract {tenant_id: $tenantId})
         WHERE coalesce(o.enabled, true) = true AND (o.entity_type = $entityType OR o.entity_type = 'any')
         RETURN o.id AS id, o.name AS name, o.type AS type,
-               o.resolve_minutes AS resolveMinutes, coalesce(o.business_hours, false) AS businessHours
+               o.resolve_minutes AS resolveMinutes, coalesce(o.business_hours, false) AS businessHours,
+               o.calendar_id AS calendarId
       `, { tenantId, entityType }),
     )
     return res.records.map((r) => ({
@@ -38,6 +55,7 @@ export async function getActiveOLAContractsFor(tenantId: string, entityType: str
       type:            r.get('type') as string,
       resolve_minutes: toNumber(r.get('resolveMinutes')),
       business_hours:  r.get('businessHours') as boolean,
+      calendar_id:     (r.get('calendarId') as string | null) ?? null,
     }))
   } finally {
     await session.close()

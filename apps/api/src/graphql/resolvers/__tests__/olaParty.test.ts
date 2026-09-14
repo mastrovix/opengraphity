@@ -45,6 +45,8 @@ const props = (over: Record<string, unknown> = {}) => ({
 const INPUT = {
   type: 'ola', name: 'Rete entro 4h', entityType: 'incident',
   responseMinutes: 60, resolveMinutes: 240,
+  // Ondata 2: l'obiettivo di conformità è obbligatorio; nessun calendario = 24×7.
+  complianceTarget: 95, complianceWarning: 80,
 }
 
 beforeEach(() => { cypher.length = 0; righe = [{ props: props(), teamName: 'NOC' }]; unaRiga = null; coda = [] })

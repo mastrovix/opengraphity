@@ -39,3 +39,17 @@ describe('calendario di servizio', () => {
     expect(() => parseServiceCalendar(raw)).toThrow(message)
   })
 })
+
+/** Verifica «Cosa resta cablato», ondata 2: il calendario è quello scelto da ogni policy o contratto. */
+describe('calendarFor', () => {
+  it('24×7 non legge nessun calendario', async () => {
+    const { calendarFor } = await import('../calendar.js')
+    expect(await calendarFor('t1', { name: 'P1 incident', businessHours: false, calendarId: null })).toBeNull()
+  })
+
+  it('orario di servizio senza calendario scelto → errore che nomina chi lo porta', async () => {
+    const { calendarFor } = await import('../calendar.js')
+    await expect(calendarFor('t1', { name: 'Rete', businessHours: true, calendarId: null }))
+      .rejects.toThrow(/"Rete" counts service hours but has no service calendar/)
+  })
+})

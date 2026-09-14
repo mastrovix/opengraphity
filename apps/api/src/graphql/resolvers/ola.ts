@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
+import { assertComplianceObjective, calendarChoice, calendarNameOf } from '../../lib/serviceTargets.js'
 import { runQuery, runQueryOne, toNumber, type Queryable } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
@@ -34,6 +35,9 @@ function mapOLA(p: Props, teamName: string | null) {
     responseMinutes: toNumber(p['response_minutes']),
     resolveMinutes:  toNumber(p['resolve_minutes']),
     businessHours:   (p['business_hours']  ?? false) as boolean,
+    calendarId:      (p['calendar_id']     ?? null) as string | null,
+    complianceTarget:  p['compliance_target']  == null ? null : Number(p['compliance_target']),
+    complianceWarning: p['compliance_warning'] == null ? null : Number(p['compliance_warning']),
     partyType:       (p['party_type']      ?? null) as string | null,
     partyName:       (p['party_name']      ?? null) as string | null,
     teamId:          (p['team_id']         ?? null) as string | null,
@@ -133,11 +137,12 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
         p.entity_type AS entityType,
         p.response_minutes AS responseMinutes,
         p.resolve_minutes AS resolveMinutes,
+        p.compliance_target AS complianceTarget, p.compliance_warning AS complianceWarning,
         CASE WHEN s.resolve_met = true THEN 1 ELSE 0 END AS met,
         CASE WHEN s.breached = true AND coalesce(s.resolve_met, false) = false THEN 1 ELSE 0 END AS breached,
         CASE WHEN s.paused_at IS NOT NULL AND s.resolved_at IS NULL AND coalesce(s.resolve_met, false) = false
              AND coalesce(s.breached, false) = false THEN 1 ELSE 0 END AS paused
-      RETURN policyId, policyName, setByRule, entityType, responseMinutes, resolveMinutes,
+      RETURN policyId, policyName, setByRule, entityType, responseMinutes, resolveMinutes, complianceTarget, complianceWarning,
         count(*) AS total, sum(met) AS met, sum(breached) AS breached, sum(paused) AS paused
       ORDER BY total DESC
     `, { tenantId: ctx.tenantId, cutoff })
@@ -149,6 +154,8 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
       entityType:      (r['entityType'] ?? null) as string | null,
       responseMinutes: r['responseMinutes'] == null ? null : toNumber(r['responseMinutes']),
       resolveMinutes:  r['resolveMinutes']  == null ? null : toNumber(r['resolveMinutes']),
+      complianceTarget:  r['complianceTarget']  == null ? null : Number(r['complianceTarget']),
+      complianceWarning: r['complianceWarning'] == null ? null : Number(r['complianceWarning']),
       total:    toNumber(r['total']),
       met:      toNumber(r['met']),
       breached: toNumber(r['breached']),
@@ -207,6 +214,8 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
         met:            cMet,
         breached:       cBreached,
         attainmentPct:  evaluated > 0 ? (cMet / evaluated) * 100 : null,
+        complianceTarget:  o['compliance_target']  == null ? null : Number(o['compliance_target']),
+        complianceWarning: o['compliance_warning'] == null ? null : Number(o['compliance_warning']),
       })
     }
 
@@ -223,7 +232,8 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
 
 interface OLAInput {
   type?: string; name?: string; description?: string; entityType?: string
-  responseMinutes?: number; resolveMinutes?: number; businessHours?: boolean
+  responseMinutes?: number; resolveMinutes?: number; calendarId?: string | null
+  complianceTarget?: number; complianceWarning?: number
   partyType?: string; teamId?: string; enabled?: boolean
 }
 
@@ -298,6 +308,8 @@ export async function createOLAContract(_: unknown, args: { input: OLAInput }, c
   if (!input.responseMinutes || input.responseMinutes <= 0) throw new ValidationError('responseMinutes must be > 0', { key: 'errors.ola.responseMinutes' })
   if (!input.resolveMinutes || input.resolveMinutes <= 0) throw new ValidationError('resolveMinutes must be > 0', { key: 'errors.ola.resolveMinutes' })
 
+  const objective = assertComplianceObjective(input.complianceTarget, input.complianceWarning)
+  const calendar = await calendarChoice(ctx.tenantId, input.calendarId)
   const id = uuidv4(); const now = new Date().toISOString()
   return withSession(async (session) => {
     await assertResponsabile(session, ctx.tenantId, input.partyType ?? 'team', input.teamId)
@@ -305,7 +317,8 @@ export async function createOLAContract(_: unknown, args: { input: OLAInput }, c
       CREATE (o:OLAContract {
         id: $id, tenant_id: $tenantId, type: $type, name: $name, description: $description,
         entity_type: $entityType, response_minutes: $responseMinutes, resolve_minutes: $resolveMinutes,
-        business_hours: $businessHours, party_type: $partyType, party_name: $partyName,
+        business_hours: $businessHours, calendar_id: $calendarId, party_type: $partyType, party_name: $partyName,
+        compliance_target: $complianceTarget, compliance_warning: $complianceWarning,
         team_id: $teamId, enabled: true, created_at: $now
       })
       WITH o
@@ -315,7 +328,8 @@ export async function createOLAContract(_: unknown, args: { input: OLAInput }, c
       id, tenantId: ctx.tenantId, type: input.type, name,
       description: input.description ?? null, entityType: input.entityType,
       responseMinutes: input.responseMinutes, resolveMinutes: input.resolveMinutes,
-      businessHours: input.businessHours ?? false, partyType: input.partyType ?? null,
+      businessHours: calendar.business_hours, calendarId: calendar.calendar_id, partyType: input.partyType ?? null,
+      complianceTarget: objective.target, complianceWarning: objective.warning,
       // Il responsabile è sempre un team, citato per id: nessun nome copiato
       // sul contratto (lo risolve `teamName` alla lettura).
       partyName: null,
@@ -339,7 +353,15 @@ export async function updateOLAContract(_: unknown, args: { id: string; input: O
   if (input.entityType !== undefined)      sets['entity_type']      = input.entityType
   if (input.responseMinutes !== undefined) sets['response_minutes'] = input.responseMinutes
   if (input.resolveMinutes !== undefined)  sets['resolve_minutes']  = input.resolveMinutes
-  if (input.businessHours !== undefined)   sets['business_hours']   = input.businessHours
+  if (input.calendarId !== undefined) Object.assign(sets, await calendarChoice(ctx.tenantId, input.calendarId))
+  if (input.complianceTarget !== undefined || input.complianceWarning !== undefined) {
+    const current = await withSession((session) => runQueryOne<{ target: unknown; warning: unknown }>(session,
+      'MATCH (o:OLAContract {id: $id, tenant_id: $tenantId}) RETURN o.compliance_target AS target, o.compliance_warning AS warning',
+      { id: args.id, tenantId: ctx.tenantId }))
+    const objective = assertComplianceObjective(input.complianceTarget ?? current?.target, input.complianceWarning ?? current?.warning)
+    sets['compliance_target'] = objective.target
+    sets['compliance_warning'] = objective.warning
+  }
   if (input.partyType !== undefined)       sets['party_type']       = input.partyType
   if (input.teamId !== undefined)          sets['team_id']          = input.teamId
   if (input.enabled !== undefined)         sets['enabled']          = input.enabled
@@ -378,7 +400,13 @@ export async function updateOLAContract(_: unknown, args: { id: string; input: O
   }, true)
 }
 
+/** Il nome del calendario del contratto (ondata 2), letto dal calendario vivo. */
+async function olaContractCalendarName(parent: { calendarId: string | null }, _: unknown, ctx: GraphQLContext) {
+  return calendarNameOf(ctx.tenantId, parent.calendarId)
+}
+
 export const olaResolvers = {
   Query:    { olaContracts, slaReport },
   Mutation: { createOLAContract, updateOLAContract },
+  OLAContract: { calendarName: olaContractCalendarName },
 }

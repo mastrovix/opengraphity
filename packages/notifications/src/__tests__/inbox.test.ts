@@ -98,7 +98,9 @@ describe('archivio delle notifiche', () => {
     expect(String(run.mock.calls[1]![0])).toContain('READ_NOTIFICATION')
     await dismissInbox('t1', 'u1')
     expect(String(run.mock.calls[2]![0])).toContain('MERGE (u)-[:DISMISSED_NOTIFICATION]->(n)')
-    await pruneInbox('2026-08-15T00:00:00.000Z')
+    await pruneInbox('t1', '2026-08-15T00:00:00.000Z')
     expect(String(run.mock.calls[3]![0])).toContain('n.created_at < $before')
+    // Per organizzazione: la durata è sua (verifica «Cosa resta cablato», ondata 2).
+    expect(String(run.mock.calls[3]![0])).toContain('InAppNotification {tenant_id: $tenantId}')
   })
 })

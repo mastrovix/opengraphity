@@ -92,7 +92,25 @@ export const DOMAIN_MATRIX_KINDS = {
    * allarmi è un vocabolario del cliente.
    */
   ci_health:        { inputs: ['event_severity'], output: 'ci_health', scale: ['operational', 'degraded', 'down'] },
+  /**
+   * Salute del servizio → urgenza dell'incident aperto dai Servizi monitorati
+   * (verifica «Cosa resta cablato», ondata 2). L'INGRESSO non è un vocabolario
+   * ma una scala del prodotto (`inputScales`): la salute la calcola la mappa,
+   * e solo «giù» e «degradato» aprono un incident. Prima era `URGENCY_BY_HEALTH`
+   * scritto nel codice (down → high, degraded → medium).
+   */
+  service_urgency:  { inputs: ['service_health'], output: 'urgency', inputScales: { service_health: ['degraded', 'down'] } },
 } as const
+
+/**
+ * I valori ammessi per ogni dimensione d'ingresso, nell'ordine di `inputs`: la
+ * scala del prodotto quando la dimensione ne ha una (`inputScales`), altrimenti
+ * il vocabolario del cliente.
+ */
+export function matrixInputValues(tenantId: string, kind: DomainMatrixKind): Promise<readonly (readonly string[])[]> {
+  const spec: { inputs: readonly string[]; inputScales?: Readonly<Record<string, readonly string[]>> } = DOMAIN_MATRIX_KINDS[kind]
+  return Promise.all(spec.inputs.map((input) => spec.inputScales?.[input] ?? domainVocabulary(tenantId, input)))
+}
 
 /** I valori ammessi in uscita da una matrice: la sua scala, o il vocabolario del cliente. */
 export function matrixOutputValues(tenantId: string, kind: DomainMatrixKind): Promise<readonly string[]> {
@@ -192,6 +210,10 @@ export const DOMAIN_MATRIX_SEEDS: Readonly<Record<DomainMatrixKind, DomainMatrix
   /** Trascritto da `CI_HEALTH_RULES` (services/events/ciHealth.ts): critical → down, warning → degraded. */
   ci_health: {
     critical: 'down', warning: 'degraded', info: 'operational',
+  },
+  /** Trascritto da `URGENCY_BY_HEALTH` (services/serviceImpact/incident.ts): down → high, degraded → medium. */
+  service_urgency: {
+    down: 'high', degraded: 'medium',
   },
 }
 

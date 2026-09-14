@@ -182,22 +182,16 @@ export async function criticalServiceCriticalities(tenantId: string): Promise<st
 }
 
 /**
- * Urgenza dell'incident dalla salute del servizio. La salute NON è un
- * vocabolario del cliente (`SERVICE_HEALTHS` è un concetto del prodotto: la
- * mappa la calcola), quindi questa tabella resta nel codice — e non esiste
- * una matrice `service_urgency` nel vocabolario chiuso di
- * `DOMAIN_MATRIX_KINDS`. Limite dichiarato nel rapporto dell'ondata 7.
- *
- * Ciò che l'ondata 7 sistema è il lato d'**uscita**: i due valori sono del
- * vocabolario `urgency` del cliente e vengono validati, così chi lo rinomina
- * ottiene un errore che lo dice invece di un'urgenza fantasma sull'incident.
+ * Urgenza dell'incident dalla salute del servizio: la matrice di dominio
+ * `service_urgency` del cliente (verifica «Cosa resta cablato», ondata 2).
+ * Prima era una tabella nel codice (down → high, degraded → medium), dichiarata
+ * come limite nell'ondata 7. Una cella vuota ferma l'apertura e lo dice.
  */
-export const URGENCY_BY_HEALTH: Readonly<Partial<Record<ServiceHealth, string>>> = { down: 'high', degraded: 'medium' }
-
 export async function serviceUrgencyOf(tenantId: string, health: ServiceHealth): Promise<string> {
-  const urgency = URGENCY_BY_HEALTH[health]
-  if (!urgency) throw new Error(`Service health "${health}" has no incident urgency: only down and degraded open an incident`)
-  return assertDomainValue(tenantId, 'urgency', urgency)
+  if (health !== 'down' && health !== 'degraded') {
+    throw new Error(`Service health "${health}" has no incident urgency: only down and degraded open an incident`)
+  }
+  return resolveDomainValue(tenantId, 'service_urgency', health)
 }
 
 // ── Testi ────────────────────────────────────────────────────────────────────

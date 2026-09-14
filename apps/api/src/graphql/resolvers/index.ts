@@ -57,7 +57,7 @@ import { ciRelationshipResolvers } from './ciRelationships.js'
 import { cmdbResolvers } from './cmdb.js'
 import { tenantLanguageResolvers } from './tenantLanguage.js'
 import { tenantTimezoneResolvers } from './tenantTimezone.js'
-import { tenantServiceCalendarResolvers } from './tenantServiceCalendar.js'
+import { organizationSettingsResolvers } from './organizationSettings.js'
 import { meResolvers } from './me.js'
 import { inboxResolvers } from './inbox.js'
 const { updateCIFields: updateCIFieldsMutation } = cmdbResolvers.Mutation
@@ -310,7 +310,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...impactResolvers.Query,
       ...tenantLanguageResolvers.Query,
       ...tenantTimezoneResolvers.Query,
-      ...tenantServiceCalendarResolvers.Query,
+      ...organizationSettingsResolvers.Query,
       ...inboxResolvers.Query,
       auditLog,
       auditActions,
@@ -342,7 +342,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...similarityResolvers.Mutation,
       ...tenantLanguageResolvers.Mutation,
       ...tenantTimezoneResolvers.Mutation,
-      ...tenantServiceCalendarResolvers.Mutation,
+      ...organizationSettingsResolvers.Mutation,
       ...meResolvers.Mutation,
       ...inboxResolvers.Mutation,
       ...notificationRuleResolvers.Mutation,
@@ -415,6 +415,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...serviceRequestResolvers.ServiceRequest,
       ...workflowResolvers.ServiceRequest,
     },
+    SLAPolicyNode:      automationResolvers.SLAPolicyNode,  // il nome del calendario (ondata 2)
+    OLAContract:        olaResolvers.OLAContract,           // il nome del calendario (ondata 2)
     Event:              eventResolvers.Event,
     EventHistoryEntry:  eventResolvers.EventHistoryEntry,   // cronologia dell'allarme (Event Management)
     ServiceMap:         serviceResolvers.ServiceMap,        // servizi monitorati: nodes/edges/history sono field resolver

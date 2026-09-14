@@ -1287,6 +1287,10 @@
         "ci_health": {
           "title": "Alarm severity → CI health",
           "description": "The health a firing alarm gives its CI: operational, degraded or down. Among several firing alarms the worst health wins; a flapping alarm always counts as degraded. A severity with no value stops the health update and says so."
+        },
+        "service_urgency": {
+          "title": "Service health → incident urgency",
+          "description": "The urgency of the incident that Monitored services open when a service goes down or degraded. Together with the impact from the application criticality it gives the priority. A health with no value stops the incident from opening and says so."
         }
       },
       "missingWarning_one": "One combination with no value ({{keys}}). While it stays empty, the operation that needs it — opening an incident, or an incoming alarm — stops and says so: fill it in here.",
@@ -1374,9 +1378,6 @@
       "timezoneSaved": "Organization time zone updated",
       "timezoneMissing": "No time zone has been chosen: SLA deadlines, the digest and message dates cannot be computed until you choose one.",
       "timezoneExisting": "SLAs already running keep the deadlines computed when they started. SLA policies without a time zone of their own follow this one.",
-      "calendarTitle": "Service calendar",
-      "calendarDescription": "The days, hours and holidays in which SLA policies and OLA contracts set to business hours count time. SLAs already running keep the deadlines computed when they started.",
-      "calendarMissing": "No service calendar has been chosen: SLA policies and OLA contracts set to business hours cannot compute their deadlines until you save one.",
       "calendarDays": "Working days",
       "calendarStart": "Business hours start",
       "calendarEnd": "Business hours end",
@@ -1384,6 +1385,13 @@
       "calendarHolidaysHint": "Dates in YYYY-MM-DD format, separated by commas. They are not working days.",
       "calendarSave": "Save calendar",
       "calendarSaved": "Service calendar updated",
+      "inAppRetentionTitle": "Bell notifications",
+      "inAppRetentionDescription": "How long the notifications in the bell are kept. Every night the older ones are deleted.",
+      "inAppRetentionMissing": "No duration has been chosen: notifications are never deleted until you save one.",
+      "inAppRetentionDays": "Keep for (days)",
+      "inAppRetentionSave": "Save",
+      "inAppRetentionHint": "A whole number of days between 1 and 3650.",
+      "inAppRetentionSaved": "Notification retention updated",
       "portalSeveritiesTitle": "Self-service portal severities",
       "portalSeveritiesDescription": "The severities an end user can choose when opening a ticket from the portal, and the words they read. Only the values ticked here are offered, in the order of the Dictionary.",
       "portalSeveritiesMissing": "No severity has been chosen for the portal: end users cannot open a ticket there until you save at least one.",
@@ -1403,7 +1411,33 @@
         "friday": "Friday",
         "saturday": "Saturday",
         "sunday": "Sunday"
-      }
+      },
+      "calendarsTitle": "Service calendars",
+      "calendarsDescription": "The days, hours and holidays in which SLA policies and OLA/UC contracts count time. Create one for each schedule you need — office hours, an on-call team, a supplier — and choose it in each policy or contract. SLAs already running keep the deadlines computed when they started.",
+      "calendarsEmpty": "No service calendar yet: policies and contracts can only count 24×7 until you create one.",
+      "calendarUnused": "Not used",
+      "calendarInUse": "Used by a policy or contract: choose another calendar for them first",
+      "calendarHolidayCount_one": "{{count}} holiday",
+      "calendarHolidayCount_other": "{{count}} holidays",
+      "calendarNew": "New calendar",
+      "calendarNewTitle": "New service calendar",
+      "calendarEditTitle": "Edit service calendar",
+      "calendarName": "Name",
+      "calendarNamePlaceholder": "E.g. Office hours, On-call team, Supplier X",
+      "calendarEditUsedBy": "Changes apply to new SLAs of: {{users}}.",
+      "calendarCreated": "Service calendar created",
+      "calendarDeleted": "Service calendar deleted",
+      "calendarDeleteTitle": "Delete this service calendar?",
+      "weekdayShort": {
+        "monday": "Mon",
+        "tuesday": "Tue",
+        "wednesday": "Wed",
+        "thursday": "Thu",
+        "friday": "Fri",
+        "saturday": "Sat",
+        "sunday": "Sun"
+      },
+      "calendarUsedByList": "Used by: {{users}}"
     },
     "slaReport": {
       "met": "Met",
@@ -1452,7 +1486,9 @@
       "noPolicyRecordedHint": "These SLAs were created before the policy that produced them was recorded: their origin is not reconstructed.",
       "targetsShort": "Targets",
       "pausedShort": "Paused",
-      "generatedOn": "Generated on {{date}}."
+      "generatedOn": "Generated on {{date}}.",
+      "objectiveHint": "Green from {{target}}%, yellow from {{warning}}%, red below",
+      "noObjectiveHint": "No compliance target: no colour"
     },
     "changeDetail": {
       "notFound": "Change not found",
@@ -1564,14 +1600,18 @@
       "createTitle": "New catalog item",
       "namePlaceholder": "E.g. New laptop",
       "descriptionPlaceholder": "What the service includes...",
-      "categoryPlaceholder": "E.g. Hardware, Access, Software",
       "noApproval": "No approval needed",
       "needsApproval": "Approval required",
       "priority": "Priority",
       "priorityRequired": "Priority *",
       "priorityPlaceholder": "— Choose the priority —",
       "priorityHint": "Requests opened from this item, also from the portal, start with this priority. The requester does not choose it.",
-      "priorityMissing": "No priority: requests cannot be opened"
+      "priorityMissing": "No priority: requests cannot be opened",
+      "noCategory": "— No category —",
+      "categoryHint": "A category of the Dictionary. Requests from this item inherit it, and SLA policies by category apply to them.",
+      "legacyCategory": "«{{text}}»: choose a category",
+      "legacyCategoryHint": "Written by hand before categories came from the Dictionary, and not matching any value.",
+      "legacyCategoryEdit": "It was «{{text}}», which matches no category of the Dictionary: choose one."
     },
     "userDetail": {
       "notFound": "User not found.",
@@ -3208,7 +3248,8 @@
         "time_format": "«{{value}}» is not a time in HH:MM format.",
         "end_before_start": "Business hours end ({{end}}) must come after the start ({{start}}).",
         "holidays": "Holidays must be dates in YYYY-MM-DD format."
-      }
+      },
+      "inAppRetention": "Notifications are kept for a whole number of days between {{min}} and {{max}}."
     },
     "list": {
       "limit": "A list can show between 1 and {{max}} rows (asked: {{got}}).",
@@ -3231,6 +3272,16 @@
       "catalogItemWithoutPriority": "The catalog item «{{item}}» has no priority, so a request cannot be opened from it. An administrator sets it in Admin → Service catalog.",
       "priorityRequired": "Choose the priority of the request.",
       "catalogItemPriorityRequired": "A catalog item must have a priority."
+    },
+    "serviceCalendar": {
+      "name": "A service calendar needs a name of at most {{max}} characters.",
+      "duplicateName": "A service calendar named «{{name}}» already exists.",
+      "inUse": "The service calendar «{{name}}» is used by {{users}}: choose another calendar for them first.",
+      "unknown": "The chosen service calendar no longer exists: choose another one."
+    },
+    "compliance": {
+      "target": "The compliance target must be a percentage above 0 and at most 100.",
+      "warning": "The attention threshold must be a percentage above 0 and below the target ({{target}}%)."
     }
   },
   "errorBoundary": {
@@ -4904,10 +4955,12 @@
       "tickets_without_sla_one": "{{count}} open ticket has **no SLA**: no SLA policy covers it ({{tickets}}{{more}}). There is no built-in SLA to fall back on — **add or widen a policy in Admin → SLA Policies**; tickets created from then on get their SLA.",
       "tickets_without_sla_other": "{{count}} open tickets have **no SLA**: no SLA policy covers them ({{tickets}}{{more}}). There is no built-in SLA to fall back on — **add or widen a policy in Admin → SLA Policies**; tickets created from then on get their SLA.",
       "timezone_not_set": "This organization has no time zone, so SLA deadlines, the daily digest and the dates in messages cannot be computed. **You choose it in Settings → Organization**.",
-      "service_calendar_not_set": "{{count}} SLA policies or OLA contracts count business hours, but this organization has no service calendar: their deadlines cannot be computed. **You set it in Settings → Organization**.",
+      "service_calendar_not_set": "{{count}} SLA policies or OLA/UC contracts count service hours without a valid service calendar ({{names}}): their deadlines cannot be computed. **You choose the calendar in Admin → SLA Policies and OLA / UC**.",
       "portal_severities_not_set": "The self-service portal has no severities to offer, so end users cannot open a ticket. **You choose them in Settings → Organization**.",
       "portal_severities_stale": "The self-service portal offers {{values}}, which the severity dictionary no longer has: opening a ticket there fails. **You fix the choice in Settings → Organization**.",
       "catalog_items_without_priority": "{{count}} active catalog items have no priority ({{items}}): requests cannot be opened from them, also from the portal. **You set it in Admin → Service catalog**.",
+      "catalog_items_legacy_category": "{{count}} catalog items still have a category written by hand that matches no category of the Dictionary ({{items}}): their requests start without a category, and SLA policies by category do not see them. **You choose it in Admin → Service catalog**.",
+      "inapp_retention_not_set": "This organization has not chosen how long bell notifications are kept: the nightly clean-up skips it and they are never deleted. **You choose it in Settings → Organization**.",
       "migrations_pending": "{{count}} database migrations have not been applied ({{migrations}}): the product is running with data that does not match its code. **Whoever manages the installation runs migrate.js**.",
       "workflow_step_categories_missing": "The «{{workflow}}» workflow ({{entityType}}) has no step with these categories: {{missing}}. The product finds steps by category, not by name, so the operations that need them stop with an error. **Set the category on the step in the workflow designer**.",
       "workflow_step_purposes_missing": "The «{{workflow}}» workflow ({{entityType}}) has no step with these purposes: {{missing}}. The product finds steps by purpose, not by name, so the operations that need them stop with an error. **Set the purpose on the step in the workflow designer**.",
@@ -5346,5 +5399,21 @@
     "ciRemoved": "CI {{ci}} removed",
     "changeCreated": "Change {{code}} created with {{count}} CIs",
     "softDeleted": "Soft deletion"
+  },
+  "serviceTargets": {
+    "timeCounting": "Time counts",
+    "chooseTimeCounting": "— Choose how time counts —",
+    "alwaysOn": "24×7",
+    "calendarOption": "Calendar: {{name}}",
+    "timeCountingHint": "24×7 counts every minute; a calendar counts only its service hours.",
+    "manageCalendars": "Manage calendars",
+    "noCalendar": "No calendar",
+    "targetColumn": "Target",
+    "complianceTarget": "Compliance target (%)",
+    "complianceWarning": "Attention threshold (%)",
+    "complianceHint": "In the report the attainment is green from the target, yellow from the threshold, red below. For example 99.5 and 97.",
+    "timeCountingRequired": "Choose how time counts: 24×7 or a service calendar.",
+    "complianceInvalid": "The compliance target must be a percentage up to 100, and the attention threshold a lower one.",
+    "previewCalendar": "(service hours of «{{name}}»)"
   }
 }

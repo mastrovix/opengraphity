@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
+import { assertComplianceObjective, calendarChoice, calendarNameOf } from '../../lib/serviceTargets.js'
 import { withSession } from './ci-utils.js'
 import { runQuery } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
@@ -252,6 +253,9 @@ function mapSLAPolicy(p: Props, teamName?: string | null) {
     responseMinutes: Number(p['response_minutes'] ?? 0),
     resolveMinutes:  Number(p['resolve_minutes']  ?? 0),
     businessHours:   p['business_hours']   ?? false,
+    calendarId:      (p['calendar_id']      ?? null) as string | null,
+    complianceTarget:  p['compliance_target']  == null ? null : Number(p['compliance_target']),
+    complianceWarning: p['compliance_warning'] == null ? null : Number(p['compliance_warning']),
     warningMinutes:  Number(p['warning_minutes']),
     enabled:         p['enabled']          ?? true,
   }
@@ -579,6 +583,8 @@ async function createSLAPolicy(_: unknown, args: { input: Props }, ctx: GraphQLC
   const now = new Date().toISOString()
   assertSLAPolicyScope(String(input['entityType'] ?? ''), input['category'])
   const timezone = policyTimezone(input['timezone'])
+  const objective = assertComplianceObjective(input['complianceTarget'], input['complianceWarning'])
+  const calendar = await calendarChoice(ctx.tenantId, input['calendarId'])
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (p:SLAPolicyNode {
@@ -587,7 +593,8 @@ async function createSLAPolicy(_: unknown, args: { input: Props }, ctx: GraphQLC
         priority: $priority, category: $category, team_id: $teamId,
         timezone: $timezone,
         response_minutes: $responseMinutes, resolve_minutes: $resolveMinutes,
-        business_hours: $businessHours, warning_minutes: $warningMinutes, enabled: true,
+        business_hours: $businessHours, calendar_id: $calendarId, warning_minutes: $warningMinutes, enabled: true,
+        compliance_target: $complianceTarget, compliance_warning: $complianceWarning,
         created_at: $now, updated_at: $now
       })
       RETURN properties(p) AS props
@@ -597,7 +604,8 @@ async function createSLAPolicy(_: unknown, args: { input: Props }, ctx: GraphQLC
       priority: input['priority'] ?? null, category: input['category'] ?? null,
       teamId: input['teamId'] ?? null, timezone,
       responseMinutes: input['responseMinutes'], resolveMinutes: input['resolveMinutes'],
-      businessHours: input['businessHours'] ?? false, warningMinutes, now,
+      businessHours: calendar.business_hours, calendarId: calendar.calendar_id, warningMinutes, now,
+      complianceTarget: objective.target, complianceWarning: objective.warning,
     })
     return mapSLAPolicy(rows[0]!.props)
   }, true)
@@ -619,10 +627,27 @@ async function updateSLAPolicy(_: unknown, args: { id: string; input: Props }, c
   }
   const sets: string[] = ['p.updated_at = $now']
   const params: Props = { id: args.id, tenantId: ctx.tenantId, now: new Date().toISOString() }
+  // Calendario: `null` esplicito = 24×7, assente = invariato (ondata 2).
+  if (args.input['calendarId'] !== undefined) {
+    const calendar = await calendarChoice(ctx.tenantId, args.input['calendarId'])
+    sets.push('p.calendar_id = $calendarIdValue', 'p.business_hours = $businessHoursValue')
+    params['calendarIdValue'] = calendar.calendar_id
+    params['businessHoursValue'] = calendar.business_hours
+  }
+  // Obiettivo e soglia si validano sullo stato FINALE: se ne arriva uno solo, l'altro è quello salvato.
+  if (args.input['complianceTarget'] !== undefined || args.input['complianceWarning'] !== undefined) {
+    const current = await withSession((session) => runQuery<{ target: unknown; warning: unknown }>(session,
+      'MATCH (p:SLAPolicyNode {id: $id, tenant_id: $tenantId}) RETURN p.compliance_target AS target, p.compliance_warning AS warning',
+      { id: args.id, tenantId: ctx.tenantId }))
+    const objective = assertComplianceObjective(args.input['complianceTarget'] ?? current[0]?.target, args.input['complianceWarning'] ?? current[0]?.warning)
+    sets.push('p.compliance_target = $complianceTargetValue', 'p.compliance_warning = $complianceWarningValue')
+    params['complianceTargetValue'] = objective.target
+    params['complianceWarningValue'] = objective.warning
+  }
   const fieldMap: Record<string, string> = {
     name: 'name', priority: 'priority', category: 'category', teamId: 'team_id',
     timezone: 'timezone', responseMinutes: 'response_minutes', resolveMinutes: 'resolve_minutes',
-    businessHours: 'business_hours', warningMinutes: 'warning_minutes', enabled: 'enabled',
+    warningMinutes: 'warning_minutes', enabled: 'enabled',
   }
   for (const [gql, neo] of Object.entries(fieldMap)) {
     if (args.input[gql] !== undefined) {
@@ -649,6 +674,11 @@ async function deleteSLAPolicy(_: unknown, args: { id: string }, ctx: GraphQLCon
 
 // ── Export ────────────────────────────────────────────────────────────────────
 
+/** Il nome del calendario della policy (ondata 2): letto dal calendario vivo, così una rinomina si vede. */
+async function slaPolicyCalendarName(parent: { calendarId: string | null }, _: unknown, ctx: GraphQLContext) {
+  return calendarNameOf(ctx.tenantId, parent.calendarId)
+}
+
 export const automationResolvers = {
   Query: {
     autoTriggers,
@@ -668,4 +698,5 @@ export const automationResolvers = {
     updateSLAPolicy,
     deleteSLAPolicy,
   },
+  SLAPolicyNode: { calendarName: slaPolicyCalendarName },
 }

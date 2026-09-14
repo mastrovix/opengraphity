@@ -118,6 +118,13 @@ describe('createServiceRequest — priorità dalla voce del catalogo', () => {
     expect(createRequest).not.toHaveBeenCalled()
   })
 
+  // Ondata 2: la categoria della richiesta è quella della voce, per le policy SLA per categoria.
+  it('la richiesta eredita la categoria della voce', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'high', name: 'Sblocco account', category: 'access' })
+    await createServiceRequest(undefined, { input: { title: 'Sblocco', catalogItemId: 'cat-1' } }, endUser)
+    expect(vi.mocked(createRequest).mock.calls[0]![0]).toMatchObject({ priority: 'high', category: 'access' })
+  })
+
   it('un operatore può indicarne un\'altra', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'low', name: 'Nuovo laptop' })
     await createServiceRequest(undefined, { input: { title: 'Laptop', priority: 'high', catalogItemId: 'cat-1' } }, ctx)

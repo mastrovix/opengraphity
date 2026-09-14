@@ -88,7 +88,15 @@ export const automationSchema = `
     timezone: String
     responseMinutes: Int!
     resolveMinutes: Int!
+    """Vero quando conta l'orario di servizio del calendario scelto; falso = 24×7."""
     businessHours: Boolean!
+    """Il calendario di servizio con cui conta; null = 24×7."""
+    calendarId: ID
+    calendarName: String
+    """L'obiettivo di conformità in percentuale (es. 99.5): sopra, il report è verde."""
+    complianceTarget: Float
+    """La soglia d'attenzione in percentuale: fra questa e l'obiettivo, giallo; sotto, rosso."""
+    complianceWarning: Float
     """Minuti prima della scadenza di risoluzione in cui parte l'avviso SLA."""
     warningMinutes: Int!
     enabled: Boolean!
@@ -103,7 +111,10 @@ export const automationSchema = `
     timezone: String
     responseMinutes: Int!
     resolveMinutes: Int!
-    businessHours: Boolean
+    """Il calendario di servizio; null o assente = 24×7."""
+    calendarId: ID
+    complianceTarget: Float!
+    complianceWarning: Float!
     warningMinutes: Int
   }
 
@@ -115,7 +126,10 @@ export const automationSchema = `
     timezone: String
     responseMinutes: Int
     resolveMinutes: Int
-    businessHours: Boolean
+    """Il calendario di servizio; null = 24×7, assente = invariato."""
+    calendarId: ID
+    complianceTarget: Float
+    complianceWarning: Float
     warningMinutes: Int
     enabled: Boolean
   }

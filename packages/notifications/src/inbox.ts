@@ -124,16 +124,20 @@ export function dismissInbox(tenantId: string, userId: string): Promise<number> 
   `, { tenantId, userId })
 }
 
-/** Cancella le notifiche create prima di `before` (ISO), a lotti. Ritorna quante. */
-export async function pruneInbox(before: string, batch = 1000): Promise<number> {
+/**
+ * Cancella le notifiche di UN cliente create prima di `before` (ISO), a lotti.
+ * Ritorna quante. Per cliente perché la durata è sua (verifica «Cosa resta
+ * cablato», ondata 2): prima era una sola per tutta la piattaforma.
+ */
+export async function pruneInbox(tenantId: string, before: string, batch = 1000): Promise<number> {
   let total = 0
   for (;;) {
     const n = await countWrite(`
-      MATCH (n:InAppNotification) WHERE n.created_at < $before
+      MATCH (n:InAppNotification {tenant_id: $tenantId}) WHERE n.created_at < $before
       WITH n LIMIT toInteger($batch)
       DETACH DELETE n
       RETURN count(*) AS n
-    `, { before, batch })
+    `, { tenantId, before, batch })
     total += n
     if (n < batch) return total
   }

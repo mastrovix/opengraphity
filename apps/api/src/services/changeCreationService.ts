@@ -15,7 +15,7 @@
  */
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine } from '@opengraphity/workflow'
-import { getActiveOLAContractsFor, getServiceCalendar, getTenantTimezone, scheduleOLABreaches } from '@opengraphity/sla'
+import { getActiveOLAContractsFor, withContractCalendars, getTenantTimezone, scheduleOLABreaches } from '@opengraphity/sla'
 import { ValidationError } from '../lib/errors.js'
 import { logger } from '../lib/logger.js'
 import { publishEvent } from '../lib/publishEvent.js'
@@ -184,10 +184,9 @@ export async function createChangeRFC(
           // Il fuso del cliente, non quello italiano per tutti (revisione del
           // 14 set 2026 · CH-1), e l'istante di creazione della change (SL-1).
           timezone:   await getTenantTimezone(ctx.tenantId),
-          contracts,
+          // Ogni contratto conta con il SUO calendario (verifica «Cosa resta cablato», ondata 2).
+          contracts:  await withContractCalendars(ctx.tenantId, contracts),
           startedAt:  new Date(now),
-          // F6: l'orario lavorativo dei contratti è il calendario del cliente.
-          calendar:   contracts.some((c) => c.business_hours) ? await getServiceCalendar(ctx.tenantId) : null,
         })
       }
     } catch (err) {

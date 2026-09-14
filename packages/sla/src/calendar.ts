@@ -1,11 +1,12 @@
 /**
- * IL CALENDARIO DI SERVIZIO DEL CLIENTE (revisione del 14 set 2026 · F6).
+ * I CALENDARI DI SERVIZIO DEL CLIENTE (revisione del 14 set 2026 · F6, e
+ * verifica «Cosa resta cablato», ondata 2).
  *
  * Le policy SLA e i contratti OLA «in orario lavorativo» contavano i minuti fra
  * le 08:00 e le 18:00, dal lunedì al venerdì, senza festività, per ogni
- * cliente: tre costanti in policy.ts. Ora l'orario è `Tenant.service_calendar`,
- * che il cliente sceglie dalla pagina Organizzazione: i giorni lavorativi, la
- * fascia oraria e le festività.
+ * cliente: tre costanti in policy.ts. Poi un calendario per cliente; ora
+ * calendari con nome (`ServiceCalendar`), scelti da ogni policy e contratto:
+ * i giorni lavorativi, la fascia oraria e le festività.
  *
  * Fail-loud: una policy in orario lavorativo senza calendario non ripiega sulle
  * 08–18 (sarebbe la costante di prima con un altro nome), e la diagnostica lo
@@ -76,17 +77,45 @@ export function parseServiceCalendar(raw: unknown): ServiceCalendar {
   }
 }
 
-/** Il calendario del cliente, o `null` se non l'ha configurato. Un valore corrotto lancia. */
-export async function getServiceCalendar(tenantId: string): Promise<ServiceCalendar | null> {
+/**
+ * UN CALENDARIO CON NOME (verifica «Cosa resta cablato», ondata 2). Erano uno
+ * per cliente (`Tenant.service_calendar`); ora sono nodi `ServiceCalendar` e
+ * ogni policy SLA e ogni contratto OLA/UC sceglie il suo (`calendar_id`), o
+ * nessuno per contare 24×7. Un id che non trova il calendario lancia: una
+ * policy che punta a un calendario sparito non ripiega sulle 24 ore.
+ */
+export async function getServiceCalendarById(tenantId: string, calendarId: string): Promise<ServiceCalendar> {
   const session = getSession(undefined, 'READ')
   try {
     const res = await session.executeRead((tx) =>
-      tx.run('MATCH (t:Tenant {id: $tenantId}) RETURN t.service_calendar AS calendar', { tenantId }),
+      tx.run(`
+        MATCH (c:ServiceCalendar {id: $calendarId, tenant_id: $tenantId})
+        RETURN c.days AS days, c.start AS start, c.end AS end, c.holidays AS holidays
+      `, { tenantId, calendarId }),
     )
-    const raw = res.records[0]?.get('calendar') as unknown
-    if (raw == null || raw === '') return null
-    return parseServiceCalendar(raw)
+    const row = res.records[0]
+    if (!row) throw new Error(`Service calendar ${calendarId} does not exist for tenant ${tenantId}: the SLA policy or OLA/UC contract that points to it cannot compute business-hours deadlines`)
+    return parseServiceCalendar({
+      days: (row.get('days') as unknown[] | null)?.map((d) => Number(d)) ?? [],
+      start: row.get('start'), end: row.get('end'),
+      holidays: row.get('holidays') ?? [],
+    })
   } finally {
     await session.close()
   }
+}
+
+/**
+ * Il calendario con cui conta un obiettivo: nessuno se conta 24×7, quello
+ * scelto se conta l'orario di servizio. «Orario di servizio» senza calendario è
+ * una configurazione incompleta e lancia nominando chi la porta.
+ */
+export async function calendarFor(
+  tenantId: string, owner: { name: string; businessHours: boolean; calendarId: string | null },
+): Promise<ServiceCalendar | null> {
+  if (!owner.businessHours) return null
+  if (!owner.calendarId) {
+    throw new Error(`"${owner.name}" counts service hours but has no service calendar: choose one in its settings (tenant ${tenantId})`)
+  }
+  return getServiceCalendarById(tenantId, owner.calendarId)
 }

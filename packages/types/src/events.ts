@@ -389,5 +389,10 @@ export const SLA_ENTITY_TYPES = ['incident', 'problem', 'service_request'] as co
 export const DEFAULT_SLA_WARNING_MINUTES = 30
 export type SlaEntityType = typeof SLA_ENTITY_TYPES[number]
 
-/** I tipi che hanno una categoria da cui una policy SLA può dipendere. */
-export const SLA_CATEGORY_ENTITY_TYPES: readonly SlaEntityType[] = ['incident']
+/**
+ * I tipi che hanno una categoria da cui una policy SLA può dipendere. Erano i
+ * soli incident; ora anche problem (categoria del Dizionario) e richieste di
+ * servizio (la categoria della voce del catalogo da cui nascono) — verifica
+ * «Cosa resta cablato», ondata 2.
+ */
+export const SLA_CATEGORY_ENTITY_TYPES: readonly SlaEntityType[] = ['incident', 'problem', 'service_request']

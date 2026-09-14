@@ -36,7 +36,13 @@ export const DOMAIN_MATRIX_KINDS = {
   import_severity:  { inputs: ['import_severity'], output: 'severity' },
   environment_risk: { inputs: ['environment'], output: 'environment_risk_score', scale: ['0', '1', '2', '3'] },
   ci_health:        { inputs: ['event_severity'], output: 'ci_health', scale: ['operational', 'degraded', 'down'] },
+  service_urgency:  { inputs: ['service_health'], output: 'urgency', inputScales: { service_health: ['degraded', 'down'] } },
 } as const
+
+export function matrixInputValues(tenantId: string, kind: DomainMatrixKind): Promise<readonly (readonly string[])[]> {
+  const spec: { inputs: readonly string[]; inputScales?: Readonly<Record<string, readonly string[]>> } = DOMAIN_MATRIX_KINDS[kind]
+  return Promise.all(spec.inputs.map((input) => spec.inputScales?.[input] ?? domainVocabulary(tenantId, input)))
+}
 
 export function matrixOutputValues(tenantId: string, kind: DomainMatrixKind): Promise<readonly string[]> {
   const spec: { output: string; scale?: readonly string[] } = DOMAIN_MATRIX_KINDS[kind]
@@ -91,6 +97,7 @@ export const FAKE_ENTRIES: Readonly<Record<DomainMatrixKind, DomainMatrixEntries
   },
   environment_risk: { production: '3', staging: '1', development: '0', testing: '0', dr: '0' },
   ci_health: { critical: 'down', warning: 'degraded', info: 'operational' },
+  service_urgency: { down: 'high', degraded: 'medium' },
 }
 
 /** I vocabolari spediti che le matrici usano (`SYSTEM_ENUMS`). */

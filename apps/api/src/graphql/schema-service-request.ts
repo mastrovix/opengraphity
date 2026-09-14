@@ -27,7 +27,10 @@ export function serviceRequestSDL(): string {
     id: ID!
     name: String!
     description: String
+    """Un valore del vocabolario \`category\`: la eredita la richiesta, e la usano le policy SLA per categoria."""
     category: String
+    """La categoria scritta a mano prima del Dizionario, quando non corrispondeva a nessun valore: da sostituire scegliendone una."""
+    legacyCategory: String
     requiresApproval: Boolean!
     """
     La priorità (vocabolario \`priority\`) con cui nascono le richieste aperte da

@@ -13,3 +13,17 @@ export async function catalogItemsWithoutPriority(session: Session, tenantId: st
   `, { tenantId }))
   return r.records.map((rec) => rec.get('name') as string)
 }
+
+/**
+ * Le voci attive con una categoria scritta a mano che non corrispondeva a
+ * nessun valore del Dizionario (ondata 2): la loro categoria è vuota finché
+ * l'amministratore non ne sceglie una, e le richieste nascono senza.
+ */
+export async function catalogItemsWithLegacyCategory(session: Session, tenantId: string): Promise<Array<{ name: string; legacy: string }>> {
+  const r = await session.executeRead((tx) => tx.run(`
+    MATCH (ci:ServiceCatalogItem {tenant_id: $tenantId})
+    WHERE coalesce(ci.active, true) = true AND ci.legacy_category IS NOT NULL
+    RETURN ci.name AS name, ci.legacy_category AS legacy ORDER BY name
+  `, { tenantId }))
+  return r.records.map((rec) => ({ name: rec.get('name') as string, legacy: rec.get('legacy') as string }))
+}

@@ -1287,6 +1287,10 @@
         "ci_health": {
           "title": "Severità dell'allarme → salute del CI",
           "description": "La salute che un allarme firing dà al suo CI: operational, degraded o down. Fra più allarmi firing vince la salute peggiore; un allarme flapping vale sempre degraded. Una severità senza valore ferma l'aggiornamento della salute e lo dice."
+        },
+        "service_urgency": {
+          "title": "Salute del servizio → urgenza dell’incident",
+          "description": "L’urgenza dell’incident che i Servizi monitorati aprono quando un servizio va giù o degradato. Insieme all’impatto dalla criticità dell’applicazione dà la priorità. Una salute senza valore ferma l’apertura dell’incident e lo dice."
         }
       },
       "missingWarning_one": "Una combinazione senza valore ({{keys}}). Finché resta vuota, quando serve — all'apertura di un incident o all'arrivo di un allarme — l'operazione si ferma e lo dice: compilala qui.",
@@ -1374,9 +1378,6 @@
       "timezoneSaved": "Fuso orario dell'organizzazione aggiornato",
       "timezoneMissing": "Nessuno ha scelto un fuso: scadenze SLA, digest e date dei messaggi non si possono calcolare finché non se ne sceglie uno.",
       "timezoneExisting": "Gli SLA già partiti conservano le scadenze calcolate alla partenza. Le policy SLA senza un fuso proprio seguono questo.",
-      "calendarTitle": "Calendario di servizio",
-      "calendarDescription": "I giorni, gli orari e le festività in cui le policy SLA e i contratti OLA in orario lavorativo contano il tempo. Gli SLA già partiti conservano le scadenze calcolate alla partenza.",
-      "calendarMissing": "Nessuno ha scelto un calendario di servizio: le policy SLA e i contratti OLA in orario lavorativo non possono calcolare le scadenze finché non se ne salva uno.",
       "calendarDays": "Giorni lavorativi",
       "calendarStart": "Inizio orario lavorativo",
       "calendarEnd": "Fine orario lavorativo",
@@ -1384,6 +1385,13 @@
       "calendarHolidaysHint": "Date nel formato YYYY-MM-DD, separate da virgole. Non sono giorni lavorativi.",
       "calendarSave": "Salva calendario",
       "calendarSaved": "Calendario di servizio aggiornato",
+      "inAppRetentionTitle": "Notifiche della campanella",
+      "inAppRetentionDescription": "Per quanto tempo si conservano le notifiche della campanella. Ogni notte si cancellano quelle più vecchie.",
+      "inAppRetentionMissing": "Nessuna durata scelta: le notifiche non vengono mai cancellate finché non ne salvi una.",
+      "inAppRetentionDays": "Conserva per (giorni)",
+      "inAppRetentionSave": "Salva",
+      "inAppRetentionHint": "Un numero intero di giorni fra 1 e 3650.",
+      "inAppRetentionSaved": "Conservazione delle notifiche aggiornata",
       "portalSeveritiesTitle": "Severità del portale self-service",
       "portalSeveritiesDescription": "Le severità che un utente finale può scegliere quando apre un ticket dal portale, e le parole che legge. Si offrono solo i valori spuntati qui, nell’ordine del Dizionario.",
       "portalSeveritiesMissing": "Nessuna severità è stata scelta per il portale: gli utenti finali non possono aprire un ticket finché non ne salvi almeno una.",
@@ -1403,7 +1411,33 @@
         "friday": "Venerdì",
         "saturday": "Sabato",
         "sunday": "Domenica"
-      }
+      },
+      "calendarsTitle": "Calendari di servizio",
+      "calendarsDescription": "I giorni, gli orari e le festività in cui le policy SLA e i contratti OLA/UC contano il tempo. Creane uno per ogni orario che ti serve — ufficio, team di turno, un fornitore — e sceglilo in ogni policy o contratto. Gli SLA già partiti conservano le scadenze calcolate alla partenza.",
+      "calendarsEmpty": "Nessun calendario di servizio: finché non ne crei uno, policy e contratti possono contare solo 24×7.",
+      "calendarUnused": "Non usato",
+      "calendarInUse": "Usato da una policy o da un contratto: scegli prima un altro calendario per loro",
+      "calendarHolidayCount_one": "{{count}} festività",
+      "calendarHolidayCount_other": "{{count}} festività",
+      "calendarNew": "Nuovo calendario",
+      "calendarNewTitle": "Nuovo calendario di servizio",
+      "calendarEditTitle": "Modifica calendario di servizio",
+      "calendarName": "Nome",
+      "calendarNamePlaceholder": "Es. Orario d’ufficio, Team di turno, Fornitore X",
+      "calendarEditUsedBy": "Le modifiche valgono per i nuovi SLA di: {{users}}.",
+      "calendarCreated": "Calendario di servizio creato",
+      "calendarDeleted": "Calendario di servizio eliminato",
+      "calendarDeleteTitle": "Eliminare questo calendario di servizio?",
+      "weekdayShort": {
+        "monday": "Lun",
+        "tuesday": "Mar",
+        "wednesday": "Mer",
+        "thursday": "Gio",
+        "friday": "Ven",
+        "saturday": "Sab",
+        "sunday": "Dom"
+      },
+      "calendarUsedByList": "Usato da: {{users}}"
     },
     "slaReport": {
       "met": "Rispettati",
@@ -1452,7 +1486,9 @@
       "noPolicyRecordedHint": "Questi SLA sono stati creati prima che si registrasse la policy da cui nascono: l'origine non viene ricostruita.",
       "targetsShort": "Obiettivi",
       "pausedShort": "In pausa",
-      "generatedOn": "Generato il {{date}}."
+      "generatedOn": "Generato il {{date}}.",
+      "objectiveHint": "Verde da {{target}}%, giallo da {{warning}}%, rosso sotto",
+      "noObjectiveHint": "Nessun obiettivo di conformità: nessun colore"
     },
     "changeDetail": {
       "notFound": "Change non trovato",
@@ -1564,14 +1600,18 @@
       "createTitle": "Nuova voce di catalogo",
       "namePlaceholder": "Es. Nuovo laptop",
       "descriptionPlaceholder": "Cosa include il servizio...",
-      "categoryPlaceholder": "Es. Hardware, Accessi, Software",
       "noApproval": "Non richiede approvazione",
       "needsApproval": "Richiede approvazione",
       "priority": "Priorità",
       "priorityRequired": "Priorità *",
       "priorityPlaceholder": "— Scegli la priorità —",
       "priorityHint": "Le richieste aperte da questa voce, anche dal portale, nascono con questa priorità. Chi le apre non la sceglie.",
-      "priorityMissing": "Senza priorità: non si aprono richieste"
+      "priorityMissing": "Senza priorità: non si aprono richieste",
+      "noCategory": "— Nessuna categoria —",
+      "categoryHint": "Una categoria del Dizionario. Le richieste da questa voce la ereditano, e valgono per loro le policy SLA per categoria.",
+      "legacyCategory": "«{{text}}»: scegli una categoria",
+      "legacyCategoryHint": "Scritta a mano prima che le categorie venissero dal Dizionario, e non corrisponde a nessun valore.",
+      "legacyCategoryEdit": "Era «{{text}}», che non corrisponde a nessuna categoria del Dizionario: scegline una."
     },
     "userDetail": {
       "notFound": "Utente non trovato.",
@@ -3208,7 +3248,8 @@
         "time_format": "«{{value}}» non è un orario nel formato HH:MM.",
         "end_before_start": "La fine dell'orario lavorativo ({{end}}) deve venire dopo l'inizio ({{start}}).",
         "holidays": "Le festività devono essere date nel formato YYYY-MM-DD."
-      }
+      },
+      "inAppRetention": "Le notifiche si conservano per un numero intero di giorni fra {{min}} e {{max}}."
     },
     "list": {
       "limit": "Una lista può mostrare fra 1 e {{max}} righe (richieste: {{got}}).",
@@ -3231,6 +3272,16 @@
       "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Admin → Catalogo servizi.",
       "priorityRequired": "Scegli la priorità della richiesta.",
       "catalogItemPriorityRequired": "Una voce del catalogo deve avere una priorità."
+    },
+    "serviceCalendar": {
+      "name": "Un calendario di servizio deve avere un nome di al massimo {{max}} caratteri.",
+      "duplicateName": "Esiste già un calendario di servizio chiamato «{{name}}».",
+      "inUse": "Il calendario di servizio «{{name}}» è usato da {{users}}: scegli prima un altro calendario per loro.",
+      "unknown": "Il calendario di servizio scelto non esiste più: scegline un altro."
+    },
+    "compliance": {
+      "target": "L’obiettivo di conformità deve essere una percentuale sopra 0 e al massimo 100.",
+      "warning": "La soglia d’attenzione deve essere una percentuale sopra 0 e sotto l’obiettivo ({{target}}%)."
     }
   },
   "errorBoundary": {
@@ -4904,10 +4955,12 @@
       "tickets_without_sla_one": "{{count}} ticket aperto è **senza SLA**: nessuna policy SLA lo copre ({{tickets}}{{more}}). Non c'è uno SLA di fabbrica a cui ricadere — **aggiungi o allarga una policy in Admin → SLA Policies**; i ticket creati da quel momento ricevono il loro SLA.",
       "tickets_without_sla_other": "{{count}} ticket aperti sono **senza SLA**: nessuna policy SLA li copre ({{tickets}}{{more}}). Non c'è uno SLA di fabbrica a cui ricadere — **aggiungi o allarga una policy in Admin → SLA Policies**; i ticket creati da quel momento ricevono il loro SLA.",
       "timezone_not_set": "Questa organizzazione non ha un fuso orario, quindi scadenze SLA, digest giornaliero e date dei messaggi non si possono calcolare. **Si sceglie da Impostazioni → Organizzazione**.",
-      "service_calendar_not_set": "{{count}} policy SLA o contratti OLA contano l'orario lavorativo, ma questa organizzazione non ha un calendario di servizio: le loro scadenze non si possono calcolare. **Si imposta da Impostazioni → Organizzazione**.",
+      "service_calendar_not_set": "{{count}} policy SLA o contratti OLA/UC contano l’orario di servizio senza un calendario valido ({{names}}): le loro scadenze non si possono calcolare. **Il calendario si sceglie da Admin → SLA Policies e OLA / UC**.",
       "portal_severities_not_set": "Il portale self-service non ha severità da offrire, quindi gli utenti finali non possono aprire un ticket. **Si scelgono da Impostazioni → Organizzazione**.",
       "portal_severities_stale": "Il portale self-service offre {{values}}, che il vocabolario delle severità non ha più: aprire un ticket lì fallisce. **Si corregge la scelta da Impostazioni → Organizzazione**.",
       "catalog_items_without_priority": "{{count}} voci attive del catalogo non hanno una priorità ({{items}}): da quelle non si aprono richieste, nemmeno dal portale. **Si imposta da Admin → Catalogo servizi**.",
+      "catalog_items_legacy_category": "{{count}} voci del catalogo hanno ancora una categoria scritta a mano che non corrisponde a nessuna categoria del Dizionario ({{items}}): le loro richieste nascono senza categoria, e le policy SLA per categoria non le vedono. **Si sceglie da Admin → Catalogo servizi**.",
+      "inapp_retention_not_set": "Questa organizzazione non ha scelto per quanto conservare le notifiche della campanella: la pulizia notturna la salta e non vengono mai cancellate. **Si sceglie da Impostazioni → Organizzazione**.",
       "migrations_pending": "{{count}} migrazioni del database non sono state applicate ({{migrations}}): il prodotto gira con dati che non corrispondono al suo codice. **Chi gestisce l'installazione lancia migrate.js**.",
       "workflow_step_categories_missing": "Il workflow «{{workflow}}» ({{entityType}}) non ha nessun passo con queste categorie: {{missing}}. Il prodotto riconosce i passi dalla categoria, non dal nome, quindi le operazioni che ne hanno bisogno si fermano con un errore. **Imposta la categoria sul passo nel designer del workflow**.",
       "workflow_step_purposes_missing": "Il workflow «{{workflow}}» ({{entityType}}) non ha nessun passo con questi scopi: {{missing}}. Il prodotto riconosce i passi dallo scopo, non dal nome, quindi le operazioni che ne hanno bisogno si fermano con un errore. **Imposta lo scopo sul passo nel designer del workflow**.",
@@ -5346,5 +5399,21 @@
     "ciRemoved": "CI {{ci}} rimosso",
     "changeCreated": "Change {{code}} creata con {{count}} CI",
     "softDeleted": "Eliminazione logica"
+  },
+  "serviceTargets": {
+    "timeCounting": "Il tempo conta",
+    "chooseTimeCounting": "— Scegli come conta il tempo —",
+    "alwaysOn": "24×7",
+    "calendarOption": "Calendario: {{name}}",
+    "timeCountingHint": "24×7 conta ogni minuto; un calendario conta solo il suo orario di servizio.",
+    "manageCalendars": "Gestisci i calendari",
+    "noCalendar": "Nessun calendario",
+    "targetColumn": "Obiettivo",
+    "complianceTarget": "Obiettivo di conformità (%)",
+    "complianceWarning": "Soglia d’attenzione (%)",
+    "complianceHint": "Nel report il rispetto è verde dall’obiettivo, giallo dalla soglia, rosso sotto. Per esempio 99,5 e 97.",
+    "timeCountingRequired": "Scegli come conta il tempo: 24×7 o un calendario di servizio.",
+    "complianceInvalid": "L’obiettivo di conformità deve essere una percentuale fino a 100, e la soglia d’attenzione una più bassa.",
+    "previewCalendar": "(orario di servizio di «{{name}}»)"
   }
 }

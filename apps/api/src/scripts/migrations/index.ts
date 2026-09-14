@@ -73,6 +73,11 @@ import { riskBandColors } from './20260925_1000_risk_band_colors.js'
 import { serviceExclusionReasonCode } from './20260925_1010_service_exclusion_reason_code.js'
 import { portalSeverityOptionsSeed } from './20260925_1020_portal_severity_options.js'
 import { catalogItemPriority } from './20260925_1030_catalog_item_priority.js'
+import { inAppRetentionPerTenant } from './20260925_1100_inapp_retention_per_tenant.js'
+import { serviceUrgencyMatrix } from './20260925_1110_service_urgency_matrix.js'
+import { catalogItemCategoryVocabulary } from './20260925_1120_catalog_item_category_vocabulary.js'
+import { namedServiceCalendars } from './20260925_1130_named_service_calendars.js'
+import { complianceObjectives } from './20260925_1140_compliance_objectives.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -140,4 +145,9 @@ export const MIGRATIONS: readonly Migration[] = [
   serviceExclusionReasonCode,
   portalSeverityOptionsSeed,
   catalogItemPriority,
+  inAppRetentionPerTenant,
+  serviceUrgencyMatrix,
+  catalogItemCategoryVocabulary,
+  namedServiceCalendars,
+  complianceObjectives,
 ]
