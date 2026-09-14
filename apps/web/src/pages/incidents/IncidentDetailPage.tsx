@@ -1,4 +1,7 @@
 import { useId, useState } from 'react'
+import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
+import type { CustomFieldValueView } from '@/components/ticket/customFields/customFields'
+import { useMe } from '@/hooks/useMe'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -100,6 +103,7 @@ interface ImpactedApp { distance: number; via: string | null; ci: CIRef; path: I
 interface Team { id: string; name: string }
 
 interface Incident {
+  customFields:         CustomFieldValueView[]
   id:                   string
   number:               string
   title:                string
@@ -180,6 +184,9 @@ export function IncidentDetailPage() {
   const [ciSearch,      setCiSearch]      = useState('')
   const [timelineOpen, setTimelineOpen] = useState(true)
 
+  const { role: myRole } = useMe()
+  // Chi legge e basta non modifica: la stessa regola dell'API (viewer).
+  const canEditCustomFields = myRole === 'admin' || myRole === 'operator'
   const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ incident: Incident | null }>(
     GET_INCIDENT,
     { variables: { id }, skip: !id },
@@ -707,6 +714,9 @@ export function IncidentDetailPage() {
                 })()}
             </div>
           </SectionCard>
+
+          {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
+          <CustomFieldsCard entityType="incident" ticketId={incident.id} fields={incident.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
 
           {/* CI Impattati */}
           <AffectedCIList

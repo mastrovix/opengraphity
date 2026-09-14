@@ -17,6 +17,8 @@ import { colors, palette, alpha } from '@/lib/tokens'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
 import { useValueStyle } from '@/hooks/useValueStyle'
+import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
+import { customFieldsInput, missingCustomFields, useTicketCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -70,7 +72,10 @@ export function CreateIncidentPage() {
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
-  const formValues = { title, severity: priority, category, description }
+  // Campi personalizzati del cliente (verifica «Cosa resta cablato», ondata 4).
+  const { defs: customDefs } = useTicketCustomFieldDefs('incident')
+  const [customValues, setCustomValues] = useState<Record<string, string>>({})
+  const formValues = { title, severity: priority, category, description, ...customValues }
   const { rules: fieldRules, error: fieldRulesError } = useFormFieldRules('incident', null, formValues)
   const { values: categoryValues, loading: categoryLoading } = useEnumValues('incident', 'category')
 
@@ -397,6 +402,21 @@ export function CreateIncidentPage() {
             )}
           </div>
 
+          {/* CAMPI DEL CLIENTE */}
+          {customDefs.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <CustomFieldsForm
+                defs={customDefs}
+                values={customValues}
+                rules={fieldRules}
+                errors={fieldErrors}
+                onChange={(name, value) => { setCustomValues((v) => ({ ...v, [name]: value })); setFieldErrors((p) => { const n = { ...p }; delete n[name]; return n }) }}
+                inputStyle={inputBase}
+                labelStyle={fieldLabel}
+              />
+            </div>
+          )}
+
           {/* Footer */}
           <div style={{ borderTop: `1px solid ${palette.neutral.borderLight}`, marginTop: 8, paddingTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <button
@@ -433,7 +453,7 @@ export function CreateIncidentPage() {
                 if (!title.trim()) errs['title'] = t('forms.fieldRequired')
                 if (!category) errs['category'] = t('forms.selectCategory')
                 if (!description.trim()) errs['description'] = t('forms.fieldRequired')
-                const missing = validateFormFields(fieldRules, formValues)
+                const missing = [...validateFormFields(fieldRules, formValues), ...missingCustomFields(customDefs, customValues, fieldRules)]
                 missing.forEach((f) => { if (!errs[f]) errs[f] = t('forms.fieldRequired') })
                 if (Object.keys(errs).length > 0) {
                   setFieldErrors(errs)
@@ -459,6 +479,7 @@ export function CreateIncidentPage() {
                         category: category || undefined,
                         description: description.trim() || undefined,
                         affectedCIIds: selectedCIs.map(ci => ci.id),
+                        customFields: customFieldsInput(customDefs, customValues),
                         ...(decisione === 'accepted' ? { acknowledgeNoSla: true } : {}),
                       },
                     },

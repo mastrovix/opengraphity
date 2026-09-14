@@ -11,6 +11,9 @@
  */
 import { GraphQLObjectType, getNamedType, isEnumType, isListType, isNonNullType, isScalarType, type GraphQLResolveInfo, type GraphQLOutputType } from 'graphql'
 import { ValidationError } from '../../lib/errors.js'
+import type { TicketCustomFieldEntityType } from '@opengraphity/types'
+import type { GraphQLContext } from '../../context.js'
+import { requestCustomFieldDefs } from './ticketCustomFields.js'
 
 export interface EntityFilterField {
   name:       string
@@ -40,9 +43,25 @@ export function entityFilterFieldsFromSchema(schema: GraphQLResolveInfo['schema'
   return out
 }
 
+/** I tipi GraphQL dei ticket che hanno campi del cliente (ondata 4). */
+const CUSTOM_FIELD_TYPES: Readonly<Record<string, TicketCustomFieldEntityType>> = {
+  Incident: 'incident', Problem: 'problem', Change: 'change', ServiceRequest: 'service_request',
+}
+
 export const entityFilterFieldsResolvers = {
   Query: {
-    entityFilterFields: (_: unknown, args: { typeName: string }, _ctx: unknown, info: GraphQLResolveInfo) =>
-      entityFilterFieldsFromSchema(info.schema, args.typeName),
+    entityFilterFields: async (_: unknown, args: { typeName: string }, ctx: GraphQLContext, info: GraphQLResolveInfo) => {
+      const fields = entityFilterFieldsFromSchema(info.schema, args.typeName)
+      const entityType = CUSTOM_FIELD_TYPES[args.typeName]
+      if (!entityType) return fields
+      // I campi del cliente non sono nello schema (i tipi dei ticket sono di
+      // base): si aggiungono dal metamodello, con i valori del loro vocabolario.
+      const custom = (await requestCustomFieldDefs(ctx, entityType))
+        .filter((d) => !fields.some((f) => f.name === d.name))
+        .map((d): EntityFilterField => d.fieldType === 'enum'
+          ? { name: d.name, kind: 'ENUM', scalarName: null, enumValues: d.enumValues }
+          : { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null })
+      return [...fields, ...custom]
+    },
   },
 }

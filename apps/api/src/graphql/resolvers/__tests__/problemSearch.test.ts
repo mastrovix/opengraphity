@@ -13,6 +13,8 @@ import type { GraphQLContext } from '../../../context.js'
 
 const queries: { cypher: string; params: Record<string, unknown> }[] = []
 
+// I campi del cliente hanno i loro test (ticketCustomFields.test.ts): qui il tipo non ne ha.
+vi.mock('../../../lib/ticketCustomFields.js', async (importOriginal) => ({ ...(await importOriginal<object>()), customFieldDefs: vi.fn(async () => []) }))
 vi.mock('@opengraphity/neo4j', () => ({
   runQuery: vi.fn(async (_s: unknown, cypher: string, params: Record<string, unknown>) => {
     queries.push({ cypher, params })

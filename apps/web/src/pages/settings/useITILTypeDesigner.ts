@@ -27,6 +27,8 @@ export interface ITILField {
   validationScript: string | null
   visibilityScript: string | null
   defaultScript:    string | null
+  /** Il portale offre il campo all'utente finale (ondata 4). */
+  visibleToEndUser?: boolean
 }
 
 export interface ITILType {
@@ -63,10 +65,11 @@ export interface FieldFormState {
   validationScript: string
   visibilityScript: string
   defaultScript:    string
+  visibleToEndUser: boolean
 }
 
 export function emptyForm(order: number): FieldFormState {
-  return { name: '', label: '', fieldType: 'string', required: false, order, enumTypeId: null, validationScript: '', visibilityScript: '', defaultScript: '' }
+  return { name: '', label: '', fieldType: 'string', required: false, order, enumTypeId: null, validationScript: '', visibilityScript: '', defaultScript: '', visibleToEndUser: false }
 }
 
 export function fieldToForm(f: ITILField): FieldFormState {
@@ -80,6 +83,7 @@ export function fieldToForm(f: ITILField): FieldFormState {
     validationScript: f.validationScript ?? '',
     visibilityScript: f.visibilityScript ?? '',
     defaultScript:    f.defaultScript    ?? '',
+    visibleToEndUser: f.visibleToEndUser === true,
   }
 }
 
@@ -234,6 +238,7 @@ export function useITILTypeDesigner() {
         validationScript: form.validationScript || null,
         visibilityScript: form.visibilityScript || null,
         defaultScript:    form.defaultScript    || null,
+        visibleToEndUser: form.visibleToEndUser,
       },
     }
     if (fieldId) {

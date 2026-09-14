@@ -29,6 +29,8 @@ interface Ticket {
   comments:    EntityComment[]
   attachments: Attachment[]
   history:     HistoryEntry[]
+  /** I campi del cliente offerti nel portale (ondata 4). */
+  customFields: { name: string; label: string; fieldType: string; value: string | null; valueLabel: string | null }[]
 }
 
 function formatBytes(b: number): string {
@@ -217,6 +219,20 @@ export function TicketDetailPage() {
         }}>
           {ticket.description}
         </div>
+      )}
+
+      {/* Campi del cliente (ondata 4): quelli che l'amministratore offre nel portale */}
+      {(ticket.customFields ?? []).length > 0 && (
+        <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px 20px', margin: 0, padding: 16, border: `1px solid ${colors.border}`, borderRadius: 8 }}>
+          {ticket.customFields.map((f) => (
+            <div key={f.name} style={{ minWidth: 0 }}>
+              <dt style={{ fontSize: 10, fontWeight: 600, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{f.label}</dt>
+              <dd style={{ margin: 0, fontSize: 13, color: f.value ? colors.slateDark : colors.slateLight, overflowWrap: 'anywhere' }}>
+                {f.value == null ? '—' : f.fieldType === 'boolean' ? t(f.value === 'true' ? 'common.yes' : 'common.no') : (f.valueLabel ?? f.value)}
+              </dd>
+            </div>
+          ))}
+        </dl>
       )}
 
       {/* Timeline */}

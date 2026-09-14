@@ -1,4 +1,7 @@
 import { useId, useState } from 'react'
+import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
+import type { CustomFieldValueView } from '@/components/ticket/customFields/customFields'
+import { useMe } from '@/hooks/useMe'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -34,6 +37,7 @@ import { withLocalizedLabel } from '@/lib/localizedLabel'
 
 interface WorkflowTransition { toStep: string; label: string; requiresInput: boolean; inputField: string | null }
 interface ServiceRequest {
+  customFields: CustomFieldValueView[]
   id: string; title: string; description: string | null
   status: string; priority: string; dueDate: string | null
   createdAt: string; updatedAt: string; completedAt: string | null
@@ -60,6 +64,8 @@ export function ServiceRequestDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const ids = { title: useId(), description: useId(), priority: useId(), dueDate: useId(), notes: useId(), assignee: useId() }
+  const { role: myRole } = useMe()
+  const canEditCustomFields = myRole === 'admin' || myRole === 'operator'
   const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ serviceRequest: ServiceRequest | null }>(GET_SERVICE_REQUEST, { variables: { id }, skip: !id, fetchPolicy: 'cache-and-network' })
   const sr = data?.serviceRequest
   const srTransitions = (sr?.availableTransitions ?? []).map(withLocalizedLabel)
@@ -171,6 +177,11 @@ export function ServiceRequestDetailPage() {
             <SectionCard collapsible={false} defaultOpen title={t('detail.sections.description')}>
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', lineHeight: 1.6, margin: 0 }}>{sr.description || t('detail.noDescription')}</p>
             </SectionCard>
+          </div>
+
+          {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
+          <div style={{ marginBottom: 16 }}>
+            <CustomFieldsCard entityType="service_request" ticketId={sr.id} fields={sr.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
           </div>
 
           {/* Allegati */}

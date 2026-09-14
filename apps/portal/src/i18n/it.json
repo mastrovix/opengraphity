@@ -118,7 +118,9 @@
     "cancel": "Annulla",
     "save": "Salva",
     "back": "← Indietro",
-    "required": "Campo obbligatorio"
+    "required": "Campo obbligatorio",
+    "yes": "Sì",
+    "no": "No"
   },
   "catalog": {
     "title": "Catalogo servizi",
@@ -154,5 +156,8 @@
   },
   "auth": {
     "bootstrapError": "Errore di autenticazione"
+  },
+  "customFields": {
+    "choose": "— Scegli —"
   }
 }

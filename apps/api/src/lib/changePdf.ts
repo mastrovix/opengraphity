@@ -16,7 +16,7 @@ import {
 import {
   loadTicketDossier, renderTicketDossier, userRef,
   workflowHistorySection, attachmentsSection,
-  type Props, type UserRef, type WorkflowHistoryEntry, type AttachmentEntry,
+  type Props, type UserRef, type WorkflowHistoryEntry, type AttachmentEntry, type CustomFieldLine, customFieldsSection,
 } from './pdf/ticketDossier.js'
 
 export type { PdfMeta }
@@ -71,6 +71,7 @@ export interface ChangeDossier {
     actor:     string | null
   }>
   attachments: AttachmentEntry[]
+  customFields:    CustomFieldLine[]
 }
 
 // ── Data loading (tenant-scoped Cypher) ───────────────────────────────────────
@@ -189,6 +190,7 @@ export async function loadChangeDossier(
       actor:     r.uProps ? ((r.uProps['name'] ?? r.uProps['email'] ?? null) as string | null) : null,
     })),
     attachments: common.attachments,
+    customFields:    common.customFields,
   }
 }
 
@@ -225,6 +227,7 @@ function renderDossier(doc: Doc, data: ChangeDossier, locale: PdfLocale): void {
     },
     sections: [
       detailsSection(data, locale),
+      customFieldsSection(data.customFields, locale),
       ciTasksSection(data.affectedCIs, locale),
       workflowHistorySection(data.workflowHistory, locale),
       auditTrailSection(data.auditTrail, locale),

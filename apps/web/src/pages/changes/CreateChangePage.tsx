@@ -1,4 +1,6 @@
 import { useId, useState, useEffect } from 'react'
+import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
+import { customFieldsInput, missingCustomFields, useTicketCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -89,6 +91,10 @@ export function CreateChangePage() {
   const [ciSearch, setCiSearch]       = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
   const [backendError, setBackendError] = useState<string | null>(null)
+  // Campi personalizzati del cliente (verifica «Cosa resta cablato», ondata 4).
+  const { defs: customDefs } = useTicketCustomFieldDefs('change')
+  const [customValues, setCustomValues] = useState<Record<string, string>>({})
+  const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
 
   // Precompila una volta con i dati dell'entità richiedente.
   useEffect(() => {
@@ -132,6 +138,11 @@ export function CreateChangePage() {
   const handleSubmit = () => {
     if (!canSubmit) return
     setBackendError(null)
+    const missing = missingCustomFields(customDefs, customValues)
+    if (missing.length > 0) {
+      setCustomErrors(Object.fromEntries(missing.map((m) => [m, t('forms.fieldRequired')])))
+      return
+    }
     void createChange({
       variables: {
         input: {
@@ -141,6 +152,7 @@ export function CreateChangePage() {
           changeOwner:   ownerId || null,
           affectedCIIds: selectedCIs.map(ci => ci.id),
           changeType,
+          customFields:  customFieldsInput(customDefs, customValues),
           ...(problemId ? { problemId } : {}),
           ...(incidentId ? { incidentId } : {}),
         },
@@ -433,6 +445,20 @@ export function CreateChangePage() {
               {t('pages.createChange.ciGroupsNote')}
             </p>
           </div>
+
+          {/* CAMPI DEL CLIENTE */}
+          {customDefs.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <CustomFieldsForm
+                defs={customDefs}
+                values={customValues}
+                errors={customErrors}
+                onChange={(name, value) => { setCustomValues((v) => ({ ...v, [name]: value })); setCustomErrors((p) => { const n = { ...p }; delete n[name]; return n }) }}
+                inputStyle={inputBase}
+                labelStyle={fieldLabel}
+              />
+            </div>
+          )}
 
           {/* Backend error banner */}
           {backendError && (

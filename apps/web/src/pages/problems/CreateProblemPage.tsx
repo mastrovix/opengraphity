@@ -13,6 +13,8 @@ import { colors, palette, alpha } from '@/lib/tokens'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
 import { useValueStyle } from '@/hooks/useValueStyle'
+import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
+import { customFieldsInput, missingCustomFields, useTicketCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -55,6 +57,10 @@ export function CreateProblemPage() {
   const [teamDropdownOpen, setTeamDropdownOpen] = useState(false)
   const [ciSearch,    setCiSearch]    = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
+  // Campi personalizzati del cliente (verifica «Cosa resta cablato», ondata 4).
+  const { defs: customDefs } = useTicketCustomFieldDefs('problem')
+  const [customValues, setCustomValues] = useState<Record<string, string>>({})
+  const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
 
   const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { ciType: string }[] }>(
     GET_ITIL_CI_RELATION_RULES,
@@ -105,6 +111,11 @@ export function CreateProblemPage() {
       toast.error(t('toast.incident.matrixIncomplete'))
       return
     }
+    const missing = missingCustomFields(customDefs, customValues)
+    if (missing.length > 0) {
+      setCustomErrors(Object.fromEntries(missing.map((m) => [m, t('forms.fieldRequired')])))
+      return
+    }
     // Prima di creare: una policy SLA copre questo problem? Se no, chi lo crea
     // lo sa adesso e decide (useSlaCoverageCheck).
     setCheckingSla(true)
@@ -123,6 +134,7 @@ export function CreateProblemPage() {
             urgency,
             description:     description.trim() || undefined,
             affectedCIs:     selectedCIs.map(ci => ci.id),
+            customFields:    customFieldsInput(customDefs, customValues),
             ...(decisione === 'accepted' ? { acknowledgeNoSla: true } : {}),
           },
         },
@@ -347,6 +359,20 @@ export function CreateProblemPage() {
               </div>
             )}
           </div>
+
+          {/* CAMPI DEL CLIENTE */}
+          {customDefs.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <CustomFieldsForm
+                defs={customDefs}
+                values={customValues}
+                errors={customErrors}
+                onChange={(name, value) => { setCustomValues((v) => ({ ...v, [name]: value })); setCustomErrors((p) => { const n = { ...p }; delete n[name]; return n }) }}
+                inputStyle={inputBase}
+                labelStyle={fieldLabel}
+              />
+            </div>
+          )}
 
           {/* Footer */}
           <div style={{ borderTop: `1px solid ${palette.neutral.borderLight}`, marginTop: 8, paddingTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

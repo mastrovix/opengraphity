@@ -1,4 +1,5 @@
 import { mapCI } from '../ci-utils.js'
+import { withTicketProps } from '../../../lib/ticketProps.js'
 import { mapUser, mapTeam } from '../../../lib/mappers.js'
 import { toNumber } from '@opengraphity/neo4j'
 import { parseDeploySteps } from '../../../lib/deployWindows.js'
@@ -10,7 +11,7 @@ export { mapCI, mapUser, mapTeam }
 export function mapChange(props: Props) {
   const aggregateRiskScore = props['aggregate_risk_score'] != null ? toNumber(props['aggregate_risk_score']) : null
   const changeType = (props['change_type'] ?? 'normal') as string
-  return {
+  return withTicketProps({
     id:                 props['id']                  as string,
     tenantId:           props['tenant_id']           as string,
     code:               props['code']                as string,
@@ -39,7 +40,7 @@ export function mapChange(props: Props) {
     requester:   null,
     changeOwner: null,
     approvalBy:  null,
-  }
+  }, props)
 }
 
 export function mapAssessmentTask(props: Props) {

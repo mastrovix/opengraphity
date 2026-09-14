@@ -31,6 +31,7 @@ function minimalDossier(): IncidentDossier {
     workflowHistory: [],
     comments:        [],
     attachments:     [],
+    customFields:    [],
   }
 }
 
@@ -79,6 +80,7 @@ function fullDossier(): IncidentDossier {
       },
       { author: null, createdAt: null, text: 'Comment from a deleted user.' },
     ],
+    customFields: [{ label: 'Esito', value: 'successful' }, { label: 'Centro di costo', value: null }],
     attachments: [
       { filename: 'postmortem.pdf',   sizeBytes: 2_345_678, uploadedBy: 'Mario Rossi', uploadedAt: '2026-07-02T10:00:00.000Z' },
       { filename: 'disk-metrics.png', sizeBytes: 45_120,    uploadedBy: null,          uploadedAt: null },

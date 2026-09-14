@@ -12,6 +12,8 @@ import { uploadAttachment } from '@/lib/attachments'
 import { colors, palette } from '@/lib/tokens'
 import { useTicketCategories } from '@/hooks/useTicketCategories'
 import { usePortalSeverityChoices } from '@/hooks/usePortalSeverityChoices'
+import { usePortalCustomFields, portalCustomFieldsInput, portalMissingCustomFields } from '@/hooks/usePortalCustomFields'
+import { PortalCustomFields } from '@/components/PortalCustomFields'
 
 /**
  * Icone per i valori spediti del vocabolario `category`. Le categorie vengono
@@ -41,6 +43,9 @@ export function TicketNewPage() {
   const fileInputRef                  = useRef<HTMLInputElement>(null)
   const debounceRef                   = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  // I campi del cliente offerti nel portale (verifica «Cosa resta cablato», ondata 4).
+  const { fields: customFields } = usePortalCustomFields('incident')
+  const [customValues, setCustomValues] = useState<Record<string, string>>({})
 
   // The mutation creates an Incident (and attachments are uploaded with
   // entityType 'incident'), so the admin-configured field rules that apply
@@ -110,7 +115,7 @@ export function TicketNewPage() {
       notifyError(t('ticket.rulesError', { message: rulesError.message }))
       return
     }
-    const missing = validateFormFields(ticketFieldRules, ticketFormValues)
+    const missing = [...validateFormFields(ticketFieldRules, ticketFormValues), ...portalMissingCustomFields(customFields, customValues)]
     if (missing.length > 0) {
       const errs: Record<string, string> = {}
       missing.forEach((f) => { errs[f] = t('common.required') })
@@ -118,7 +123,7 @@ export function TicketNewPage() {
       return
     }
     setFieldErrors({})
-    void createTicket({ variables: { title: title.trim(), description: description.trim() || undefined, priority, category } })
+    void createTicket({ variables: { title: title.trim(), description: description.trim() || undefined, priority, category, customFields: portalCustomFieldsInput(customFields, customValues) } })
   }
 
   return (
@@ -128,7 +133,7 @@ export function TicketNewPage() {
       </h1>
       {Object.keys(fieldErrors).length > 0 && (
         <div role="alert" style={{ background: palette.danger.bg, border: `1px solid ${palette.danger.border}`, color: palette.danger.strong, padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
-          {t('common.required')}: {Object.keys(fieldErrors).join(', ')}
+          {t('common.required')}: {Object.keys(fieldErrors).map((k) => customFields.find((f) => f.name === k)?.label ?? k).join(', ')}
         </div>
       )}
 
@@ -235,6 +240,20 @@ export function TicketNewPage() {
           onBlur={e  => { e.currentTarget.style.borderColor = colors.border }}
         />
       </div>
+
+      {/* Campi del cliente */}
+      {customFields.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <PortalCustomFields
+            fields={customFields}
+            values={customValues}
+            errors={fieldErrors}
+            onChange={(name, value) => { setCustomValues((v) => ({ ...v, [name]: value })); setFieldErrors((p) => { const n = { ...p }; delete n[name]; return n }) }}
+            labelStyle={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}
+            inputStyle={{ width: '100%', padding: '10px 12px', border: `1.5px solid ${colors.border}`, borderRadius: 8, fontSize: 10, outline: 'none', background: colors.white, boxSizing: 'border-box' }}
+          />
+        </div>
+      )}
 
       {/* Priority */}
       <div style={{ marginBottom: 24 }}>

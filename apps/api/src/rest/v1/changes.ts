@@ -25,6 +25,7 @@ import { createChangeRFC } from '../../services/changeCreationService.js'
 import { executeChangeTransition } from '../../graphql/resolvers/change/changeMutations.js'
 import { asyncHandler } from '../errorHandler.js'
 import { apiCtx, apiKeyOf, optionalString, parsePagination, requiredString } from '../apiContext.js'
+import { customFieldDefs, parseRestCustomFields, restCustomFieldValues, type CustomFieldDef } from '../../lib/ticketCustomFields.js'
 
 const router: ExpressRouter = Router()
 
@@ -37,7 +38,7 @@ function mapUserLite(p: Props | null | undefined) {
   return { id: p['id'], name: p['name'] ?? null, email: p['email'] ?? null }
 }
 
-function mapChange(props: Props, phase: string | null, requester: Props | null, changeOwner: Props | null) {
+function mapChange(props: Props, phase: string | null, requester: Props | null, changeOwner: Props | null, defs: readonly CustomFieldDef[]) {
   return {
     id:                 props['id'],
     code:               props['code'] ?? null,
@@ -52,6 +53,8 @@ function mapChange(props: Props, phase: string | null, requester: Props | null, 
     approvalStatus:     props['approval_status'] ?? null,
     createdAt:          props['created_at'],
     updatedAt:          props['updated_at'],
+    // I campi del cliente (ondata 4), come oggetto {nome: valore}.
+    customFields:       restCustomFieldValues(defs, props),
   }
 }
 
@@ -147,6 +150,7 @@ router.get('/', requirePermission('changes:read'), asyncHandler(async (req: Requ
       RETURN count(c) AS total
     `, params)
 
+    const defs = await customFieldDefs(session, apiKeyOf(req).tenantId, 'change')
     const rows = await runQuery<ChangeRow>(session, `
       MATCH (c:Change {tenant_id: $tenantId})
       WHERE coalesce(c.deleted, false) = false
@@ -160,7 +164,7 @@ router.get('/', requirePermission('changes:read'), asyncHandler(async (req: Requ
     `, params)
 
     res.json({
-      data: rows.map((r) => mapChange(r.props, r.phase, r.requester, r.changeOwner)),
+      data: rows.map((r) => mapChange(r.props, r.phase, r.requester, r.changeOwner, defs)),
       meta: { page, limit, total: Number(countRow?.total ?? 0) },
     })
   })
@@ -175,7 +179,8 @@ router.get('/:id', requirePermission('changes:read'), asyncHandler(async (req: R
     const row = await loadChangeRow(session, id, tenantId)
     if (!row) throw new NotFoundError('Change', id)
     const affectedCIs = await loadAffectedCIs(session, id, tenantId)
-    res.json({ data: { ...mapChange(row.props, row.phase, row.requester, row.changeOwner), affectedCIs } })
+    const defs = await customFieldDefs(session, tenantId, 'change')
+    res.json({ data: { ...mapChange(row.props, row.phase, row.requester, row.changeOwner, defs), affectedCIs } })
   })
 }))
 
@@ -195,7 +200,7 @@ router.post('/', requirePermission('changes:write'), asyncHandler(async (req: Re
 
   const ctx = apiCtx(req)
   const { id, code } = await createChangeRFC(
-    { title, why, what, changeOwner, changeType, affectedCIIds: affectedCIIds as string[] },
+    { title, why, what, changeOwner, changeType, affectedCIIds: affectedCIIds as string[], customFields: parseRestCustomFields(body) },
     { tenantId: ctx.tenantId, userId: ctx.userId },
   )
   await audit(ctx, 'change_created', 'change', id, { code, title, affectedCIIds })
@@ -204,7 +209,8 @@ router.post('/', requirePermission('changes:write'), asyncHandler(async (req: Re
     const row = await loadChangeRow(session, id, ctx.tenantId)
     if (!row) throw new Error(`Change ${id} not readable right after creation`)
     const affectedCIs = await loadAffectedCIs(session, id, ctx.tenantId)
-    res.status(201).json({ data: { ...mapChange(row.props, row.phase, row.requester, row.changeOwner), affectedCIs } })
+    const defs = await customFieldDefs(session, ctx.tenantId, 'change')
+    res.status(201).json({ data: { ...mapChange(row.props, row.phase, row.requester, row.changeOwner, defs), affectedCIs } })
   })
 }))
 
@@ -282,7 +288,7 @@ router.post('/:id/transition', requirePermission('changes:write'), asyncHandler(
   await withSession(async (session) => {
     const row = await loadChangeRow(session, changeId, ctx.tenantId)
     if (!row) throw new NotFoundError('Change', changeId)
-    res.json({ data: mapChange(row.props, row.phase, row.requester, row.changeOwner) })
+    res.json({ data: mapChange(row.props, row.phase, row.requester, row.changeOwner, await customFieldDefs(session, ctx.tenantId, 'change')) })
   })
 }))
 

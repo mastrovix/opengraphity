@@ -63,6 +63,7 @@ export const PDF_TEXTS = {
   unknownUser:        { en: 'Unknown user', it: 'Utente sconosciuto' },
   attachments:        { en: 'Attachments ({count})', it: 'Allegati ({count})' },
   noAttachments:      { en: 'No attachments.', it: 'Nessun allegato.' },
+  customFields:       { en: 'Additional fields', it: 'Campi aggiuntivi' },
   relatedIncidents:   { en: 'Related incidents ({count})', it: 'Incident correlati ({count})' },
   noRelatedIncidents: { en: 'No related incident.', it: 'Nessun incident correlato.' },
   relatedChanges:     { en: 'Related changes ({count})', it: 'Change correlate ({count})' },

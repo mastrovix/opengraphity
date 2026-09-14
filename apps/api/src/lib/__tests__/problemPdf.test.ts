@@ -34,6 +34,7 @@ function minimalDossier(): ProblemDossier {
     workflowHistory:  [],
     comments:         [],
     attachments:      [],
+    customFields:     [],
   }
 }
 
@@ -81,6 +82,7 @@ function fullDossier(): ProblemDossier {
       },
       { author: null, type: 'system', createdAt: null, text: 'Automatic note from workflow engine.' },
     ],
+    customFields: [{ label: 'Esito', value: 'successful' }, { label: 'Centro di costo', value: null }],
     attachments: [
       { filename: 'pool-metrics.png', sizeBytes: 345_678, uploadedBy: 'Mario Rossi', uploadedAt: '2026-06-03T10:00:00.000Z' },
       { filename: 'rca-draft.docx',   sizeBytes: 45_120,  uploadedBy: null,          uploadedAt: null },

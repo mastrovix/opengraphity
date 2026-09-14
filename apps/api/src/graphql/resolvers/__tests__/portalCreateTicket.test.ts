@@ -46,7 +46,8 @@ describe('createTicket', () => {
   it('nasce dal servizio con il canale portal: priorità nella severità, categoria, utente del contesto', async () => {
     const out = await portalResolvers.Mutation.createTicket(null, { title: 'Stampante rotta', priority: 'high', category: 'hardware' }, ctx)
     expect(incidentService.createIncident).toHaveBeenCalledWith(
-      { title: 'Stampante rotta', description: undefined, severity: 'high', category: 'hardware' },
+      // I campi del cliente passano sempre dal controllo, anche se il client non li manda (ondata 4).
+      { title: 'Stampante rotta', description: undefined, severity: 'high', category: 'hardware', customFields: [] },
       { tenantId: 'tenant-1', userId: 'user-1' },
       'portal',
     )

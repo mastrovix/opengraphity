@@ -24,6 +24,7 @@ import { ValidationError } from '../lib/errors.js'
 import { getWorkflowSteps, type StepRow } from '../lib/workflowHelpers.js'
 import { domainVocabulary } from '../lib/domainMatrix.js'
 import { resolveDomainValue } from '../lib/domainValue.js'
+import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
 
 type Session = ReturnType<typeof getSession>
 
@@ -71,6 +72,7 @@ const IMPORT_MESSAGES = {
   kbCategoryUnknown:      (p: Record<string, string>) => `category "${p['category']}" is not one of the KB categories in the Dictionary (${p['allowed']})`,
   kbNoPublishedStep:      (p: Record<string, string>) => `the kb_article workflow has no "published" step — the article stays in the initial step "${p['step']}"`,
   kbNoWorkflow:           () => 'no active workflow definition for "kb_article" — article imported without a workflow instance',
+  customFieldInvalid:     (p: Record<string, string>) => `custom field column "${p['field']}": ${p['error']}`,
   writeFailed:            (p: Record<string, string>) => `write failed: ${p['error']}`,
 } as const satisfies Record<string, (p: Record<string, string>) => string>
 
@@ -285,6 +287,10 @@ interface IncidentPlan {
   assigneeId:    string | null
   teamId:        string | null
   comments:      IncidentComment[] | null  // null = column absent, leave untouched
+  /** Le colonne dei campi del cliente presenti nel file (ondata 4), prima della validazione. */
+  customInputs:  CustomFieldInput[]
+  /** Le proprietà da scrivere, dopo la validazione. */
+  customProps:   Record<string, unknown>
 }
 
 interface ExistingNode {
@@ -365,6 +371,11 @@ export async function importIncidents(
     // Severità: un passaggio solo per valore distinto, PRIMA del ciclo per
     // riga (il ciclo e' sincrono, e la matrice e' una lettura).
     const severityByRaw  = await resolveImportSeverities(ctx.tenantId, rows)
+
+    // Campi del cliente (ondata 4): una colonna per campo, col nome del campo.
+    const customDefs = await customFieldDefs(session, ctx.tenantId, 'incident')
+    const csvColumns = new Set(rows.flatMap((r) => Object.keys(r)))
+    const customColumns = customDefs.filter((d) => csvColumns.has(d.name))
 
     // ── Per-row validation → plan ─────────────────────────────────────────────
     const plans: IncidentPlan[] = []
@@ -505,8 +516,30 @@ export async function importIncidents(
         assigneeId,
         teamId,
         comments,
+        // Una cella vuota non cancella: nello storico importato «vuoto» vuol dire «non c'era».
+        customInputs: customColumns.filter((d) => (row[d.name] ?? '').trim() !== '').map((d) => ({ name: d.name, value: (row[d.name] ?? '').trim() })),
+        customProps:  {},
       })
     })
+
+    // I campi del cliente si validano come dalla pagina (tipo, vocabolario,
+    // script), una riga alla volta: una cella sbagliata mette in errore la sua
+    // riga. L'obbligo NON vale nell'import: lo storico di un altro strumento
+    // non ha i campi nati dopo.
+    for (let i = plans.length - 1; i >= 0; i--) {
+      const plan = plans[i]!
+      if (plan.customInputs.length === 0) continue
+      // Colonna per colonna, così l'errore nomina la colonna sbagliata.
+      for (const input of plan.customInputs) {
+        try {
+          Object.assign(plan.customProps, await resolveCustomFieldWrites(ctx.tenantId, 'incident', customDefs, [input], { current: {} }))
+        } catch (err) {
+          result.errors.push(importIssue(plan.row, plan.externalId, 'customFieldInvalid', { field: input.name, error: err instanceof Error ? err.message : String(err) }))
+          plans.splice(i, 1)
+          break
+        }
+      }
+    }
 
     // ── Dry-run: report what would happen, zero writes ────────────────────────
     if (dryRun) {
@@ -558,6 +591,7 @@ async function writeIncidentRow(session: Session, p: IncidentPlan, ctx: ServiceC
           i.created_at  = coalesce($createdAt, i.created_at),
           i.updated_at  = $updatedAt,
           i.resolved_at = $resolvedAt
+      SET i += $customProps
     `, {
       tenantId:     ctx.tenantId,
       externalId:   p.externalId,
@@ -571,6 +605,7 @@ async function writeIncidentRow(session: Session, p: IncidentPlan, ctx: ServiceC
       createdAt:    p.createdAt,
       updatedAt:    p.updatedAt,
       resolvedAt:   p.resolvedAt,
+      customProps:  p.customProps,
     })
 
     const entityId = p.existingId ?? newId

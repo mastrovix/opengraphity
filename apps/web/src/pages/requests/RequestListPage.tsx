@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
@@ -19,6 +20,7 @@ import { exportToCsv } from '@/lib/csvExport'
 import { formatDate } from '@/lib/datetime'
 
 interface ServiceRequest {
+  customFields?: { name: string; value: string | null }[]
   id:        string
   number:    string
   title:     string
@@ -36,7 +38,9 @@ export function RequestListPage() {
 
   const { fields: filterFields } = useEntityFields('ServiceRequest')
 
-  const columns: ColumnDef<ServiceRequest>[] = [
+  // Campi del cliente (verifica «Cosa resta cablato», ondata 4): una colonna per campo.
+  const customColumns = useCustomFieldColumns<ServiceRequest>('service_request')
+  const baseColumns: ColumnDef<ServiceRequest>[] = [
     { key: 'number',   label: 'Number',                               width: '120px', sortable: true },
     { key: 'title',    label: t('pages.requests.title_col'), sortable: true },
     {
@@ -65,6 +69,8 @@ export function RequestListPage() {
       ),
     },
   ]
+  const columns = [...baseColumns, ...customColumns]
+
 
   const filtersJson = filterGroup ? JSON.stringify(filterGroup) : undefined
 
@@ -102,7 +108,7 @@ export function RequestListPage() {
           />
         </div>
         <ExportCsvButton
-          onExport={async () => { exportToCsv('service-requests', columns, items) }}
+          onExport={async () => { exportToCsv('service-requests', columns, withCustomFieldCells(items)) }}
         />
       </div>
 
@@ -112,7 +118,7 @@ export function RequestListPage() {
         <>
           <SortableFilterTable<ServiceRequest>
             columns={columns}
-            data={items}
+            data={withCustomFieldCells(items)}
             loading={loading}
             onSort={handleSort}
             sortField={sortField}

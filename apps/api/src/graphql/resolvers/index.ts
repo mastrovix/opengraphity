@@ -4,6 +4,7 @@ import { applyAuthorizationPolicy } from '../../lib/authorization.js'
 import { config } from '../../lib/config.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { mergeResolvers } from '@graphql-tools/merge'
+import { ticketCustomFieldResolvers } from './ticketCustomFields.js'
 import type { IResolvers } from '@graphql-tools/utils'
 import { incidentResolvers } from './incident.js'
 import { problemResolvers } from './problem.js'
@@ -363,6 +364,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...collaborationResolvers.Mutation,
       ...queueStatsResolvers.Mutation,
       ...ciRelationshipResolvers.Mutation,
+      ...ticketCustomFieldResolvers.Mutation,
       createUser,
       updateUserTeams,
     },
@@ -374,8 +376,10 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       linkedIncidents: incidentRelatedIncidents,
       linkedProblems:  incidentRelatedProblems,
       linkedChanges:   incidentRelatedChanges,
+      ...ticketCustomFieldResolvers.Incident,
     },
     Change: {
+      ...ticketCustomFieldResolvers.Change,
       ...workflowResolvers.Change,
       ...changeResolvers.Change,
       ...eventResolvers.Change,     // suppressedEvents (Event Management)
@@ -409,12 +413,16 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       linkedIncidents: problemLinkedIncidents,
       linkedProblems:  problemRelatedProblems,
       linkedChanges:   problemLinkedChanges,
+      ...ticketCustomFieldResolvers.Problem,
     },
     ProblemComment:     {},
     ServiceRequest:     {
       ...serviceRequestResolvers.ServiceRequest,
       ...workflowResolvers.ServiceRequest,
+      ...ticketCustomFieldResolvers.ServiceRequest,
     },
+    CIFieldDef:         ticketCustomFieldResolvers.CIFieldDef,
+    CustomFieldValue:   ticketCustomFieldResolvers.CustomFieldValue,
     SLAPolicyNode:      automationResolvers.SLAPolicyNode,  // il nome del calendario (ondata 2)
     OLAContract:        olaResolvers.OLAContract,           // il nome del calendario (ondata 2)
     Event:              eventResolvers.Event,

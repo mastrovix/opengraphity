@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import { GET_FIELD_VISIBILITY_RULES, GET_FIELD_REQUIREMENT_RULES } from '@opengraphity/web-core'
 import { TicketNewPage } from './TicketNewPage'
 import { CREATE_TICKET } from '@/graphql/mutations'
-import { GET_KB_ARTICLES, GET_TICKET_CATEGORIES, GET_PORTAL_SEVERITY_CHOICES } from '@/graphql/queries'
+import { GET_KB_ARTICLES, GET_TICKET_CATEGORIES, GET_PORTAL_SEVERITY_CHOICES, GET_PORTAL_CUSTOM_FIELDS } from '@/graphql/queries'
 import { uploadAttachment } from '@/lib/attachments'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 
@@ -36,7 +36,8 @@ const kbMock: GqlMock = {
 
 function createTicketMock(vars: Record<string, unknown>, seen?: unknown[]): GqlMock {
   return {
-    request: { query: CREATE_TICKET, variables: (v) => { seen?.push(v); return JSON.stringify(v) === JSON.stringify(vars) } },
+    // Ondata 4: i campi del cliente viaggiano sempre (lista vuota se il cliente non ne offre).
+    request: { query: CREATE_TICKET, variables: (v) => { seen?.push(v); return JSON.stringify(v) === JSON.stringify({ ...vars, customFields: vars['customFields'] ?? [] }) } },
     result: { data: { createTicket: {
       __typename: 'Ticket', id: 'tk-1', type: 'incident', title: vars['title'], description: vars['description'] ?? null,
       status: 'new', priority: vars['priority'], priorityLabel: String(vars['priority']), priorityColor: null, category: vars['category'], createdAt: '2026-09-08T10:00:00Z', updatedAt: '2026-09-08T10:00:00Z', assignedTeam: null,
@@ -109,8 +110,36 @@ describe('TicketNewPage', () => {
     await fillForm(user, { priority: 'It stops my work' })
     await user.click(screen.getByRole('button', { name: 'Submit ticket' }))
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/tickets/tk-1'))
-    expect(created).toContainEqual({ title: 'Printer broken', description: 'Details here', priority: 'blocker', category: 'hardware' })
+    expect(created).toContainEqual({ title: 'Printer broken', description: 'Details here', priority: 'blocker', category: 'hardware', customFields: [] })
     expect(uploadAttachment).not.toHaveBeenCalled()
+  })
+
+  // Verifica «Cosa resta cablato», ondata 4: i campi che l'amministratore offre nel portale.
+  it('i campi del cliente offerti nel portale: obbligatori controllati, valori mandati con le etichette del Dizionario', async () => {
+    const seen = { visibility: [], requirement: [] }
+    const created: unknown[] = []
+    const customMock: GqlMock = {
+      request: { query: GET_PORTAL_CUSTOM_FIELDS, variables: () => true },
+      result: { data: { portalCustomFields: [
+        { __typename: 'CustomFieldValue', name: 'site', label: 'Sede', fieldType: 'enum', required: true, options: [{ __typename: 'CustomFieldOption', value: 'mi', label: 'Milano' }, { __typename: 'CustomFieldOption', value: 'rm', label: 'Roma' }] },
+        { __typename: 'CustomFieldValue', name: 'phone', label: 'Telefono', fieldType: 'string', required: false, options: [] },
+      ] } },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+    }
+    const { user } = renderWithProviders(<TicketNewPage />, {
+      ...ROUTE,
+      mocks: [...rulesMocks(seen), kbMock, categoriesMock, severityMock, customMock,
+        createTicketMock({ title: 'Printer broken', description: 'Details here', priority: 'blocker', category: 'hardware', customFields: [{ name: 'site', value: 'rm' }, { name: 'phone', value: null }] }, created)],
+    })
+    await fillForm(user, { priority: 'It stops my work' })
+    const site = await screen.findByLabelText('Sede *')
+    await user.click(screen.getByRole('button', { name: 'Submit ticket' }))
+    await waitFor(() => expect(screen.getAllByRole('alert').some((a) => a.textContent?.includes('Sede'))).toBe(true))
+    expect(created).toEqual([])
+    await user.selectOptions(site, 'Roma')
+    await user.click(screen.getByRole('button', { name: 'Submit ticket' }))
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/tickets/tk-1'))
+    expect(created).toContainEqual({ title: 'Printer broken', description: 'Details here', priority: 'blocker', category: 'hardware', customFields: [{ name: 'site', value: 'rm' }, { name: 'phone', value: null }] })
   })
 
   // Verifica «Cosa resta cablato», ondata 1: prima tre valori fissi con «medium» già scelto.

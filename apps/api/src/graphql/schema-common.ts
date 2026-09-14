@@ -66,6 +66,8 @@ export function cmdbSDL(): string {
     validationScript: String
     visibilityScript: String
     defaultScript: String
+    # Solo per i campi dei ticket: il portale lo offre all'utente finale.
+    visibleToEndUser: Boolean!
     isSystem: Boolean!
     enumTypeId:   ID
     enumTypeName: String
@@ -103,6 +105,8 @@ export function cmdbSDL(): string {
     validationScript: String
     visibilityScript: String
     defaultScript:    String
+    # Il portale offre il campo all'utente finale (default no).
+    visibleToEndUser: Boolean
   }
 
   input UpdateITILTypeInput {

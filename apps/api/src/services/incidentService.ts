@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
+import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
 import { nextSequenceValue } from '../lib/sequence.js'
 import { resolveNewTicketPriority } from '../lib/priority.js'
 import { workflowEngine } from '@opengraphity/workflow'
@@ -130,7 +131,7 @@ function requirePayload(payload: IncidentEventPayload | null, id: string): Incid
 export type IncidentChannel = 'agent' | 'portal'
 
 export async function createIncident(
-  input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[]; acknowledgeNoSla?: boolean | null },
+  input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[]; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null },
   ctx: ServiceCtx,
   channel: IncidentChannel = 'agent',
 ) {
@@ -160,6 +161,14 @@ export async function createIncident(
   const severity = resolved.severity
   const impact   = resolved.impact
   const urgency  = resolved.urgency
+
+  // Campi personalizzati (ondata 4). Solo i canali che li conoscono li mandano
+  // (pagine, portale, REST, import): lì valgono tipo, vocabolario, obbligo e
+  // script. Monitoraggio, servizi e Slack non conoscono i campi del cliente e
+  // non mandano la chiave — un campo obbligatorio non deve fermare un allarme,
+  // come già non lo fermano le regole di obbligatorietà.
+  const customProps = input.customFields == null ? {} : await withSession(async (session) =>
+    resolveCustomFieldWrites(ctx.tenantId, 'incident', await customFieldDefs(session, ctx.tenantId, 'incident'), input.customFields, { current: null, endUser: channel === 'portal' }))
 
   const id  = uuidv4()
   const now = new Date().toISOString()
@@ -192,6 +201,7 @@ export async function createIncident(
         sla_absence_acknowledged_at: $ackAt,
         sla_absence_acknowledged_by: $ackBy
       })
+      SET i += $customProps
       RETURN properties(i) as props
     `, {
       id, tenantId: ctx.tenantId, number,
@@ -202,6 +212,7 @@ export async function createIncident(
       userId: ctx.userId, channel,
       ackAt: input.acknowledgeNoSla === true ? now : null,
       ackBy: input.acknowledgeNoSla === true ? ctx.userId : null,
+      customProps,
     })
     if (!rows[0]) throw new ValidationError('Failed to create incident')
     return mapIncident(rows[0].props)

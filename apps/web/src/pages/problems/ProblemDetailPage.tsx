@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
+import type { CustomFieldValueView } from '@/components/ticket/customFields/customFields'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { useMe } from '@/hooks/useMe'
@@ -97,6 +99,7 @@ interface ProblemComment {
 }
 
 interface Problem {
+  customFields: CustomFieldValueView[]
   id:                   string
   number:               string
   title:                string
@@ -155,6 +158,8 @@ export function ProblemDetailPage() {
 
   const [exportingPdf, setExportingPdf] = useState(false)
 
+  const { role: myRole } = useMe()
+  const canEditCustomFields = myRole === 'admin' || myRole === 'operator'
   const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ problem: Problem | null }>(GET_PROBLEM, { variables: { id }, skip: !id })
   const { data: usersData }        = useQuery<{ users: User[] }>(GET_USERS)
   const { data: teamsData }        = useQuery<{ teams: Team[] }>(GET_TEAMS)
@@ -483,6 +488,9 @@ export function ProblemDetailPage() {
               {problem.resolvedAt && <DetailField label={t('detail.resolvedAt')} value={formatDate(problem.resolvedAt)} />}
             </div>
           </SectionCard>
+
+          {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
+          <CustomFieldsCard entityType="problem" ticketId={problem.id} fields={problem.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
 
           {/* Root Cause */}
           <SectionCard title={t('pages.problemDetail.rootCause')} collapsible defaultOpen={false}>

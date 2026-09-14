@@ -1,4 +1,5 @@
 import { gql } from '@apollo/client'
+import { CUSTOM_FIELD_VALUE_FIELDS } from '../fragments'
 
 export const GET_PROBLEMS = gql`
   query GetProblems($limit: Int, $offset: Int, $status: String, $priority: String, $search: String, $filters: String, $sortField: String, $sortDirection: String) {
@@ -10,6 +11,7 @@ export const GET_PROBLEMS = gql`
         assignee { id name }
         assignedTeam { id name }
         affectedCIs { id name type }
+        customFields { name value }
       }
     }
   }
@@ -33,6 +35,8 @@ export const GET_PROBLEM = gql`
       availableTransitions { toStep label labels { language label } requiresInput inputField condition }
       workflowHistory { id stepName enteredAt exitedAt durationMs triggeredBy triggerType notes }
       comments { id text type isInternal createdAt authorKind authorLabel author { id name } }
+      customFields { ...CustomFieldValueFields }
     }
   }
+  ${CUSTOM_FIELD_VALUE_FIELDS}
 `

@@ -15,7 +15,7 @@ import {
 import {
   loadTicketDossier, renderTicketDossier, userRef,
   affectedCIsSection, workflowHistorySection, commentsSection, attachmentsSection,
-  type Props, type UserRef, type AffectedCI, type WorkflowHistoryEntry, type AttachmentEntry,
+  type Props, type UserRef, type AffectedCI, type WorkflowHistoryEntry, type AttachmentEntry, type CustomFieldLine, customFieldsSection,
 } from './pdf/ticketDossier.js'
 
 export type { PdfMeta }
@@ -49,6 +49,7 @@ export interface ProblemDossier {
   workflowHistory:  WorkflowHistoryEntry[]
   comments:         Array<{ author: string | null; type: string; createdAt: string | null; text: string }>
   attachments:      AttachmentEntry[]
+  customFields:    CustomFieldLine[]
 }
 
 // ── Data loading (tenant-scoped Cypher) ───────────────────────────────────────
@@ -121,6 +122,7 @@ export async function loadProblemDossier(
     workflowHistory: common.workflowHistory,
     comments:        common.comments.map((c) => ({ ...c, type: c.type ?? 'manual' })),
     attachments:     common.attachments,
+    customFields:    common.customFields,
   }
 }
 
@@ -149,6 +151,7 @@ function renderDossier(doc: Doc, data: ProblemDossier, locale: PdfLocale): void 
     },
     sections: [
       detailsSection(data, locale),
+      customFieldsSection(data.customFields, locale),
       affectedCIsSection(data.affectedCIs, locale),
       relatedIncidentsSection(data.relatedIncidents, locale),
       relatedChangesSection(data.relatedChanges, locale),

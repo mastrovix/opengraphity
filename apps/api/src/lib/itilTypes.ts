@@ -41,6 +41,8 @@ export function mapITILField(f: Props, enumRef?: { id: string; name: string; val
     isSystem:         f['is_system']          ?? false,
     enumTypeId:       enumRef?.id ?? null,
     enumTypeName:     enumRef?.name ?? null,
+    // Ondata 4: il portale offre all'utente finale solo i campi marcati.
+    visibleToEndUser: f['visible_to_end_user'] === true,
   }
 }
 

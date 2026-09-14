@@ -83,6 +83,8 @@ export function portalSDL(): string {
     comments:     [EntityComment!]!
     attachments:  [Attachment!]!
     history:      [WorkflowHistoryEntry!]!
+    "I campi del cliente offerti all'utente finale, con i valori (ondata 4)."
+    customFields: [CustomFieldValue!]!
   }
 
   type MyTicketsResult {

@@ -8,6 +8,7 @@
  * (e.g. which modal is open inside a row).
  */
 import { useId, useState } from 'react'
+import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
@@ -275,6 +276,11 @@ export function ChangeDetailPage() {
         stepLabel={wfByName.get(currentStep)?.label ?? currentStep}
         onTransitionClick={handleTransitionClick}
       />
+
+      {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
+      <div style={{ marginBottom: 16 }}>
+        <CustomFieldsCard entityType="change" ticketId={change.id} fields={change.customFields ?? []} canEdit={meData?.me?.role === 'admin' || meData?.me?.role === 'operator'} onSaved={() => void refetchAll()} />
+      </div>
 
       {/* Approvazione multi-parte: Change Manager + un owner group per CI affected.
           Tabellare; aperto durante approval, collassato dopo. */}

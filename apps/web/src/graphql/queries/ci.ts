@@ -111,6 +111,7 @@ export const GET_ITIL_TYPES = gql`
         required enumValues order isSystem
         enumTypeId enumTypeName
         validationScript visibilityScript defaultScript
+        visibleToEndUser
       }
     }
   }

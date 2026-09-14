@@ -1,4 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
+import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
+import { withTicketProps } from '../lib/ticketProps.js'
 import { nextSequenceValue } from '../lib/sequence.js'
 import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
@@ -11,7 +13,7 @@ type Props = Record<string, unknown>
 
 /** Unico mapper ServiceRequest (il resolver ne aveva una copia che perdeva catalogItemId/requiresApproval). */
 export function mapRequest(props: Props) {
-  return {
+  return withTicketProps({
     id:          props['id']           as string,
     number:      (props['number'] ?? '') as string,
     tenantId:    props['tenant_id']    as string,
@@ -27,13 +29,17 @@ export function mapRequest(props: Props) {
     updatedAt:   props['updated_at']   as string,
     requestedBy: null,
     assignee:    null,
-  }
+  }, props)
 }
 
 export async function createRequest(
-  input: { title: string; description?: string; priority: string; category?: string | null; dueDate?: string; catalogItemId?: string; requiresApproval?: boolean; acknowledgeNoSla?: boolean | null },
+  input: { title: string; description?: string; priority: string; category?: string | null; dueDate?: string; catalogItemId?: string; requiresApproval?: boolean; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null },
   ctx: ServiceCtx,
+  channel: 'agent' | 'portal' = 'agent',
 ) {
+  // Campi personalizzati (ondata 4): solo dai canali che li mandano (vedi createIncident).
+  const customProps = input.customFields == null ? {} : await withSession(async (session) =>
+    resolveCustomFieldWrites(ctx.tenantId, 'service_request', await customFieldDefs(session, ctx.tenantId, 'service_request'), input.customFields, { current: null, endUser: channel === 'portal' }))
   const id  = uuidv4()
   const now = new Date().toISOString()
 
@@ -64,6 +70,7 @@ export async function createRequest(
         sla_absence_acknowledged_at: $ackAt,
         sla_absence_acknowledged_by: $ackBy
       })
+      SET r += $customProps
       RETURN properties(r) as props
     `, {
       id, tenantId: ctx.tenantId, number, status: initialStatus,
@@ -76,6 +83,7 @@ export async function createRequest(
       now,
       ackAt: input.acknowledgeNoSla === true ? now : null,
       ackBy: input.acknowledgeNoSla === true ? ctx.userId : null,
+      customProps,
     })
     if (!rows[0]) throw new Error('Failed to create service request')
 

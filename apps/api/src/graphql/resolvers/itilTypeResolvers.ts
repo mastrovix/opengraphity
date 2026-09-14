@@ -31,6 +31,7 @@ import {
   assertEnumLinkable,
 } from '../../lib/enumScope.js'
 import { FIELD_SCOPE, mapFieldRows, mapITILField, loadITILTypes } from '../../lib/itilTypes.js'
+import { assertCustomFieldName } from '../../lib/customFieldName.js'
 
 type Props = Record<string, unknown>
 
@@ -287,6 +288,15 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
         : Array.isArray(input['enumValues']) ? JSON.stringify(input['enumValues']) : null
 
       await withSession(async session => {
+        // Ondata 4: il nome diventa la proprietà sul ticket, quindi non può
+        // essere un campo del prodotto né un dato che i ticket portano già.
+        const typeRow = await session.executeRead(tx => tx.run(
+          `MATCH (t:CITypeDefinition {id: $typeId}) WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}'] RETURN t.name AS name`,
+          { typeId, tenantId: ctx.tenantId },
+        ))
+        const typeName = typeRow.records[0]?.get('name') as string | undefined
+        if (typeName) await assertCustomFieldName(session, ctx.tenantId, typeName, String(input['name'] ?? ''))
+
         // Il campo nuovo è del TENANT (`tenant_id`, `is_system: false`) anche
         // su un tipo condiviso: quindi può essere agganciato al vocabolario del
         // tenant. Quello di un altro cliente no, e `assertEnumLinkable` lo dice.
@@ -321,6 +331,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
               validation_script: $validationScript,
               visibility_script: $visibilityScript,
               default_script:    $defaultScript,
+              visible_to_end_user: $visibleToEndUser,
               created_at:        $now
             })
             CREATE (t)-[:HAS_FIELD]->(f)
@@ -346,6 +357,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
             validationScript: (input['validationScript'] as string | null | undefined) ?? null,
             visibilityScript: (input['visibilityScript'] as string | null | undefined) ?? null,
             defaultScript:    (input['defaultScript']    as string | null | undefined) ?? null,
+            visibleToEndUser: input['visibleToEndUser'] === true,
             tenantId:         ctx.tenantId,
             now:              new Date().toISOString(),
           }),
@@ -387,6 +399,20 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
         // intero, non solo su name/field_type/required.
         const field = await assertFieldWritable(session, typeId, fieldId, ctx.tenantId)
         await assertEnumTypeLinkable(session, enumTypeId, field, ctx.tenantId)
+        // Ondata 4: nome e tipo sono la proprietà e la forma dei valori già
+        // scritti sui ticket — come per i campi dei CI, non si cambiano in posto.
+        const stored = await session.executeRead(tx => tx.run(
+          'MATCH (f:CIFieldDefinition {id: $fieldId, tenant_id: $tenantId}) RETURN f.name AS name, f.field_type AS fieldType',
+          { fieldId, tenantId: ctx.tenantId },
+        ))
+        const storedName = stored.records[0]?.get('name') as string | undefined
+        const storedType = stored.records[0]?.get('fieldType') as string | undefined
+        if ((input['name'] != null && input['name'] !== storedName) || (input['fieldType'] != null && input['fieldType'] !== storedType)) {
+          throw new ValidationError(
+            `The name and the type of field "${storedName ?? ''}" cannot change: tickets already store values under them. Remove the field and add a new one.`,
+            { key: 'errors.customField.nameTypeFixed', params: { name: storedName ?? '' } },
+          )
+        }
 
         await session.executeWrite(tx =>
           tx.run(`
@@ -400,7 +426,8 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
                 f.order             = $order,
                 f.validation_script = $validationScript,
                 f.visibility_script = $visibilityScript,
-                f.default_script    = $defaultScript
+                f.default_script    = $defaultScript,
+                f.visible_to_end_user = $visibleToEndUser
             WITH f
             // Remove any existing USES_ENUM relation first (clean slate for enum reference)
             // Qui non si LEGGE il vocabolario: si stacca il legame vecchio del
@@ -431,6 +458,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
             validationScript: (input['validationScript'] as string | null | undefined) ?? null,
             visibilityScript: (input['visibilityScript'] as string | null | undefined) ?? null,
             defaultScript:    (input['defaultScript']    as string | null | undefined) ?? null,
+            visibleToEndUser: input['visibleToEndUser'] === true,
           }),
         )
       }, true)

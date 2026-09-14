@@ -141,3 +141,10 @@ export const DOMAIN_MATRIX_FIELDS = gql`
     cells { key inputs value }
   }
 `
+
+/** I campi personalizzati di un ticket (verifica «Cosa resta cablato», ondata 4). */
+export const CUSTOM_FIELD_VALUE_FIELDS = gql`
+  fragment CustomFieldValueFields on CustomFieldValue {
+    name label fieldType value enumValues enumTypeName required visibleToEndUser
+  }
+`

@@ -12,6 +12,8 @@ import { colors, palette } from '@/lib/tokens'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
 import { useValueStyle } from '@/hooks/useValueStyle'
+import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
+import { customFieldsInput, missingCustomFields, useTicketCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
 const inputBase: React.CSSProperties = {
@@ -94,11 +96,20 @@ export function CreateServiceRequestPage() {
 
   const checkSlaCoverage = useSlaCoverageCheck()
   const [checkingSla, setCheckingSla] = useState(false)
+  // Campi personalizzati del cliente (verifica «Cosa resta cablato», ondata 4).
+  const { defs: customDefs } = useTicketCustomFieldDefs('service_request')
+  const [customValues, setCustomValues] = useState<Record<string, string>>({})
+  const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitted(true)
     if (!title.trim() || !priority || loading || checkingSla) return
+    const missing = missingCustomFields(customDefs, customValues)
+    if (missing.length > 0) {
+      setCustomErrors(Object.fromEntries(missing.map((m) => [m, t('forms.fieldRequired')])))
+      return
+    }
     // Prima di creare: una policy SLA copre questa richiesta? Se no, chi la
     // crea lo sa adesso e decide (useSlaCoverageCheck).
     setCheckingSla(true)
@@ -126,6 +137,7 @@ export function CreateServiceRequestPage() {
           // si raccoglieva e non si inviava).
           dueDate:     dueDate || undefined,
           catalogItemId: catalogItemId || undefined,
+          customFields: customFieldsInput(customDefs, customValues),
           ...(decisione === 'accepted' ? { acknowledgeNoSla: true } : {}),
         },
       },
@@ -260,6 +272,21 @@ export function CreateServiceRequestPage() {
               {...focusHandlers(false)}
             />
           </div>
+
+          {/* Campi del cliente */}
+          {customDefs.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <CustomFieldsForm
+                defs={customDefs}
+                values={customValues}
+                errors={customErrors}
+                gap={24}
+                onChange={(name, value) => { setCustomValues((v) => ({ ...v, [name]: value })); setCustomErrors((p) => { const n = { ...p }; delete n[name]; return n }) }}
+                inputStyle={inputBase}
+                labelStyle={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}
+              />
+            </div>
+          )}
 
           {/* Footer */}
           <div style={{ borderTop: `1px solid ${palette.neutral.borderLight}`, marginTop: 32, paddingTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>

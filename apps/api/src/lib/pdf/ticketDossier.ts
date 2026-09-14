@@ -7,6 +7,8 @@
  * stay in the per-entity builder and are plugged in as sections.
  */
 import { pdfText } from './texts.js'
+import type { Session } from 'neo4j-driver'
+import { customFieldDefs } from '../ticketCustomFields.js'
 import { runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import { NotFoundError } from '../errors.js'
 import { ciTypeFromLabels } from '../ciTypeFromLabels.js'
@@ -14,7 +16,7 @@ import {
   DASH, fmtDate, fmtDuration, fmtBytes, orDash, type PdfLocale,
   PAGE_MARGIN, COLOR, type Doc,
   contentWidth, ensureSpace, sectionHeading, emptyLine,
-  drawTable, docHeader,
+  drawTable, docHeader, keyValue,
 } from './common.js'
 
 export type Props = Record<string, unknown>
@@ -85,7 +87,11 @@ export interface TicketDossierCommon {
   workflowHistory: WorkflowHistoryEntry[]
   comments:        CommentEntry[]
   attachments:     AttachmentEntry[]
+  /** I campi personalizzati del cliente (ondata 4), con l'etichetta che il cliente ha scritto. */
+  customFields:    CustomFieldLine[]
 }
+
+export interface CustomFieldLine { label: string; value: string | null }
 
 /**
  * Loads the parts every ticket dossier shares: the ticket itself with its
@@ -148,7 +154,13 @@ export async function loadTicketDossier(
     ORDER BY a.uploaded_at DESC
   `, { id, tenantId, entityType: spec.entityType })
 
+  // I campi del cliente, nell'ordine del designer: anche vuoti, perché il
+  // dossier è un rendiconto e «non compilato» è un'informazione.
+  const customFields = (await customFieldDefs(session as Session, tenantId, spec.entityType))
+    .map((d) => ({ label: d.label, value: base.props[d.name] == null || base.props[d.name] === '' ? null : String(base.props[d.name]) }))
+
   return {
+    customFields,
     props:    base.props,
     assignee: userRef(base.uProps),
     team:     base.tProps ? { name: (base.tProps['name'] ?? '') as string } : null,
@@ -201,6 +213,15 @@ export interface TicketRenderSpec {
   /** Draws the badge row starting at (x, y); the cursor is repositioned below afterwards. */
   badges?:     (doc: Doc, x: number, y: number) => void
   sections:    Section[]
+}
+
+/** I campi del cliente; nessuna sezione se il tipo non ne ha. */
+export function customFieldsSection(fields: CustomFieldLine[], locale: PdfLocale): Section {
+  return (doc) => {
+    if (fields.length === 0) return
+    sectionHeading(doc, pdfText(locale, 'customFields'))
+    for (const f of fields) keyValue(doc, f.label, orDash(f.value))
+  }
 }
 
 /** Header + badges, then every section in order. */

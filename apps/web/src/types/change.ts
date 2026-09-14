@@ -35,6 +35,8 @@ export interface WorkflowInstanceData {
 // ── Change ────────────────────────────────────────────────────────────────────
 
 export interface ChangeData {
+  /** Campi del cliente (ondata 4). */
+  customFields?: import('@/components/ticket/customFields/customFields').CustomFieldValueView[]
   id: string; tenantId?: string; code: string; title: string
   why?:               string | null
   what?:              string | null

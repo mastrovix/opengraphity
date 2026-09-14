@@ -4,6 +4,7 @@
  *   executeChangeTransition, sendTaskReminder.
  */
 import { GraphQLError } from 'graphql'
+import type { CustomFieldInput } from '../../../lib/ticketCustomFields.js'
 import { systemText } from '../../../lib/systemText.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import type { ActionContext } from '@opengraphity/workflow'
@@ -37,7 +38,7 @@ import {
 
 export async function createChange(
   _: unknown,
-  args: { input: { title: string; why: string; what: string; changeOwner?: string | null; affectedCIIds: string[]; changeType?: string | null; problemId?: string | null; incidentId?: string | null } },
+  args: { input: { title: string; why: string; what: string; changeOwner?: string | null; affectedCIIds: string[]; changeType?: string | null; problemId?: string | null; incidentId?: string | null; customFields?: CustomFieldInput[] | null } },
   ctx: GraphQLContext,
 ) {
   // Thin wrapper: the whole RFC bootstrap (validation, CHG code, tasks,

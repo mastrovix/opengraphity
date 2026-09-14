@@ -19,6 +19,8 @@ import { mapIncident } from '../../lib/mappers.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { asyncHandler } from '../errorHandler.js'
 import { apiCtx, apiKeyOf, optionalBodyString, optionalString, parsePagination, requiredString } from '../apiContext.js'
+import { customFieldDefs, parseRestCustomFields, restCustomFieldValues } from '../../lib/ticketCustomFields.js'
+import { ticketCustomFieldResolvers } from '../../graphql/resolvers/ticketCustomFields.js'
 
 const router: ExpressRouter = Router()
 
@@ -40,7 +42,7 @@ router.get('/', requirePermission('incidents:read'), asyncHandler(async (req: Re
   if (severity) { filters.push('i.severity = $severity'); params['severity'] = severity }
   const where = filters.length > 0 ? `AND ${filters.join(' AND ')}` : ''
 
-  const { rows, total } = await withSession(async (session) => {
+  const { rows, total, defs } = await withSession(async (session) => {
     const countRow = await runQueryOne<{ total: unknown }>(session,
       `MATCH (i:Incident {tenant_id: $tenantId}) WHERE true ${where} RETURN count(i) AS total`, params)
     const rows = await runQuery<{ props: Props }>(session, `
@@ -48,21 +50,26 @@ router.get('/', requirePermission('incidents:read'), asyncHandler(async (req: Re
       RETURN properties(i) AS props
       ORDER BY i.created_at DESC SKIP toInteger($offset) LIMIT toInteger($limit)
     `, params)
-    return { rows, total: Number(countRow?.total ?? 0) }
+    const defs = await customFieldDefs(session, apiKeyOf(req).tenantId, 'incident')
+    return { rows, total: Number(countRow?.total ?? 0), defs }
   })
 
-  res.json({ data: rows.map(r => mapIncident(r.props)), meta: { page, limit, total } })
+  res.json({ data: rows.map(r => ({ ...mapIncident(r.props), customFields: restCustomFieldValues(defs, r.props) })), meta: { page, limit, total } })
 }))
 
 // GET /api/v1/incidents/:id
 router.get('/:id', requirePermission('incidents:read'), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params['id']!
-  const row = await withSession((session) => runQueryOne<{ props: Props }>(session, `
-    MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-    RETURN properties(i) AS props
-  `, { id, tenantId: apiKeyOf(req).tenantId }))
+  const tenantId = apiKeyOf(req).tenantId
+  const { row, defs } = await withSession(async (session) => ({
+    row: await runQueryOne<{ props: Props }>(session, `
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      RETURN properties(i) AS props
+    `, { id, tenantId }),
+    defs: await customFieldDefs(session, tenantId, 'incident'),
+  }))
   if (!row) throw new NotFoundError('Incident', id)
-  res.json({ data: mapIncident(row.props) })
+  res.json({ data: { ...mapIncident(row.props), customFields: restCustomFieldValues(defs, row.props) } })
 }))
 
 // POST /api/v1/incidents
@@ -82,7 +89,7 @@ router.post('/', requirePermission('incidents:write'), asyncHandler(async (req: 
   // incidentService validates the rest (impact+urgency or severity, ≥1 CI).
   const ctx = apiCtx(req)
   const result = await incidentService.createIncident(
-    { title, description, severity, impact, urgency, category, affectedCIIds: affectedCIIds as string[] | undefined },
+    { title, description, severity, impact, urgency, category, affectedCIIds: affectedCIIds as string[] | undefined, customFields: parseRestCustomFields(body) },
     { tenantId: ctx.tenantId, userId: ctx.userId },
   )
   res.status(201).json({ data: result })
@@ -94,9 +101,9 @@ router.patch('/:id', requirePermission('incidents:write'), asyncHandler(async (r
   if (body['status'] !== undefined) {
     throw new ValidationError('status cannot be set directly: use a workflow transition')
   }
-  const unknown = Object.keys(body).filter((k) => !(PATCHABLE_FIELDS as readonly string[]).includes(k))
+  const unknown = Object.keys(body).filter((k) => k !== 'customFields' && !(PATCHABLE_FIELDS as readonly string[]).includes(k))
   if (unknown.length > 0) {
-    throw new ValidationError(`Unknown field(s): ${unknown.join(', ')} — allowed: ${PATCHABLE_FIELDS.join(', ')}`)
+    throw new ValidationError(`Unknown field(s): ${unknown.join(', ')} — allowed: ${PATCHABLE_FIELDS.join(', ')}, customFields`)
   }
 
   const input: Partial<Record<PatchableField, string>> = {}
@@ -104,11 +111,25 @@ router.patch('/:id', requirePermission('incidents:write'), asyncHandler(async (r
     const v = optionalBodyString(body, field)
     if (v !== undefined) input[field] = v
   }
-  if (Object.keys(input).length === 0) throw new ValidationError('No patchable field provided')
+  const customFields = parseRestCustomFields(body)
+  if (Object.keys(input).length === 0 && customFields === undefined) throw new ValidationError('No patchable field provided')
 
-  // Same resolver as the UI: required-field rules + Impact×Urgency coherence.
-  const updated = await incidentResolvers.Mutation.updateIncident(null, { id: req.params['id']!, input }, apiCtx(req))
-  res.json({ data: updated })
+  // Same resolvers as the UI: required-field rules, Impact×Urgency coherence,
+  // and the customer's fields validated like the detail page (ondata 4).
+  const id  = req.params['id']!
+  const ctx = apiCtx(req)
+  const updated = Object.keys(input).length > 0 ? await incidentResolvers.Mutation.updateIncident(null, { id, input }, ctx) : null
+  if (customFields === undefined) {
+    res.json({ data: updated })
+    return
+  }
+  await ticketCustomFieldResolvers.Mutation.setTicketCustomFields(null, { entityType: 'incident', id, values: customFields }, ctx)
+  const { row, defs } = await withSession(async (session) => ({
+    row: await runQueryOne<{ props: Props }>(session, 'MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props', { id, tenantId: ctx.tenantId }),
+    defs: await customFieldDefs(session, ctx.tenantId, 'incident'),
+  }))
+  if (!row) throw new NotFoundError('Incident', id)
+  res.json({ data: { ...mapIncident(row.props), customFields: restCustomFieldValues(defs, row.props) } })
 }))
 
 // POST /api/v1/incidents/:id/comments

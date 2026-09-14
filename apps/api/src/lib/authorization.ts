@@ -175,6 +175,8 @@ export const END_USER_ALLOWED_QUERIES: ReadonlySet<string> = new Set([
   'tenantLanguageSettings',
   // Le severità da scegliere aprendo un ticket (verifica «Cosa resta cablato», ondata 1).
   'portalSeverityChoices',
+  // I campi del cliente offerti all'utente finale (ondata 4): solo quelli marcati.
+  'portalCustomFields',
 ])
 export const END_USER_ALLOWED_MUTATIONS: ReadonlySet<string> = new Set([
   'createTicket', 'addTicketComment', 'reopenTicket', 'createServiceRequest', 'rateKBArticle',

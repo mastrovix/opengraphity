@@ -28,6 +28,7 @@ export const GET_MY_TICKET = gql`
       history {
         fromStep toStep fromLabel toLabel label triggeredAt triggeredBy
       }
+      customFields { name label fieldType value valueLabel(language: $language) }
     }
   }
 `
@@ -114,5 +115,15 @@ export const GET_SERVICE_CATALOG = gql`
 export const GET_TENANT_LANGUAGE_SETTINGS = gql`
   query GetTenantLanguageSettings {
     tenantLanguageSettings { available defaultLanguage fallback }
+  }
+`
+
+/** I campi del cliente offerti all'utente finale aprendo un incident o una richiesta (verifica «Cosa resta cablato», ondata 4). */
+export const GET_PORTAL_CUSTOM_FIELDS = gql`
+  query PortalCustomFields($entityType: String!, $language: String) {
+    portalCustomFields(entityType: $entityType) {
+      name label fieldType required
+      options(language: $language) { value label }
+    }
   }
 `

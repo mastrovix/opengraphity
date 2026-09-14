@@ -20,6 +20,7 @@ import { monitoringSDL } from './schema-monitoring.js'
 import { approvalSDL } from './schema-approval.js'
 import { attachmentsSDL } from './schema-attachments.js'
 import { commentsSDL } from './schema-comments.js'
+import { customFieldsSDL } from './schema-customFields.js'
 import { knowledgeBaseSDL } from './schema-kb.js'
 import { portalSDL } from './schema-portal.js'
 import { fieldRulesSDL } from './schema-fieldRules.js'
@@ -197,6 +198,8 @@ export function buildBaseSDL(): string {
     ticketCategories(language: String): [TicketCategory!]!
     "Le severità che l'utente finale sceglie nel portale, nella lingua chiesta (verifica «Cosa resta cablato», ondata 1)."
     portalSeverityChoices(language: String): [PortalSeverityChoice!]!
+    "I campi personalizzati offerti all'utente finale per incident o service_request (ondata 4)."
+    portalCustomFields(entityType: String!): [CustomFieldValue!]!
     "La scelta dell'amministratore com'è salvata; null = non ancora dichiarata."
     portalSeverityOptions: [PortalSeverityOption!]
     myTicketStats: MyTicketStats!
@@ -636,7 +639,7 @@ export function buildBaseSDL(): string {
     deleteFieldRequirement(id: ID!): Boolean!
 
     # Portal (Self-Service)
-    createTicket(title: String!, description: String, priority: String, category: String!): MyTicket!
+    createTicket(title: String!, description: String, priority: String, category: String!, customFields: [CustomFieldInput!]): MyTicket!
     addTicketComment(ticketId: ID!, body: String!): EntityComment!
     reopenTicket(ticketId: ID!): MyTicket!
     "Quali severità del vocabolario offrire nel portale e con che parole (admin)."
@@ -673,6 +676,7 @@ export function buildBaseSDL(): string {
   ${approvalSDL()}
   ${attachmentsSDL()}
   ${commentsSDL()}
+  ${customFieldsSDL()}
 
   type EntityFilterField {
     name:       String!

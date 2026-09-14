@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
+import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
 import { nextSequenceValue } from '../lib/sequence.js'
 import { resolveNewTicketPriority } from '../lib/priority.js'
 import { workflowEngine } from '@opengraphity/workflow'
@@ -59,7 +60,7 @@ function requireProblemPayload<T>(payload: T | null, id: string): T {
 // ── Public service operations ─────────────────────────────────────────────────
 
 export async function createProblem(
-  input: { title: string; description?: string; priority?: string; impact?: string; urgency?: string; category?: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string; acknowledgeNoSla?: boolean | null },
+  input: { title: string; description?: string; priority?: string; impact?: string; urgency?: string; category?: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null },
   ctx: ServiceCtx,
 ) {
   validateStringLength(input.title, 'title', 1, 500)
@@ -70,6 +71,9 @@ export async function createProblem(
   const priority = resolved.severity
   const impact   = resolved.impact
   const urgency  = resolved.urgency
+  // Campi personalizzati (ondata 4): solo dai canali che li mandano (vedi createIncident).
+  const customProps = input.customFields == null ? {} : await withSession(async (session) =>
+    resolveCustomFieldWrites(ctx.tenantId, 'problem', await customFieldDefs(session, ctx.tenantId, 'problem'), input.customFields, { current: null }))
   const id  = uuidv4()
   const now = new Date().toISOString()
 
@@ -97,6 +101,7 @@ export async function createProblem(
         sla_absence_acknowledged_at: $ackAt,
         sla_absence_acknowledged_by: $ackBy
       })
+      SET p += $customProps
       RETURN properties(p) as props
     `, {
       id, tenantId: ctx.tenantId, number,
@@ -106,6 +111,7 @@ export async function createProblem(
       status: initialStatus, now,
       ackAt: input.acknowledgeNoSla === true ? now : null,
       ackBy: input.acknowledgeNoSla === true ? ctx.userId : null,
+      customProps,
     })
     if (!rows[0]) throw new Error('Failed to create problem')
     // Autore (Problem.createdBy): prima nessuno scriveva CREATED_BY e il campo

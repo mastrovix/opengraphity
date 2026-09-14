@@ -15,10 +15,12 @@ import { colors } from '@/lib/tokens'
 // ── FieldEditor (inline) ──────────────────────────────────────────────────────
 
 function FieldEditor({
-  field, isSystem, onSave, onCancel, enumTypesData,
+  field, isSystem, onSave, onCancel, enumTypesData, offerEndUser = false,
 }: {
   field:         FieldFormState
   isSystem:      boolean
+  /** Il tipo si apre dal portale (incident, service_request): il campo si può offrire all'utente finale. */
+  offerEndUser?: boolean
   onSave:        (f: FieldFormState) => void
   onCancel:      () => void
   enumTypesData: { enumTypes: EnumTypeRef[] } | undefined
@@ -61,7 +63,8 @@ function FieldEditor({
           <Select
             style={{ ...selectS, background: isSystem ? colors.slateBg : colors.white }}
             value={form.fieldType}
-            disabled={isSystem}
+            // Il tipo di un campo esistente non cambia: i valori sono già sui ticket (ondata 4).
+            disabled={isSystem || !!field.name}
             onChange={(e) => { set('fieldType', e.target.value); if (e.target.value !== 'enum') set('enumTypeId', null) }}
           >
             {FIELD_TYPES.map((ft) => (
@@ -85,6 +88,17 @@ function FieldEditor({
           </label>
         </div>
       </div>
+
+      {/* Ondata 4: il portale offre all'utente finale solo i campi marcati. */}
+      {offerEndUser && !isSystem && (
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={form.visibleToEndUser} onChange={(e) => set('visibleToEndUser', e.target.checked)} />
+            {t('itilDesigner.visibleToEndUser')}
+          </label>
+          <p style={{ margin: '4px 0 0 22px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-table)' }}>{t('itilDesigner.visibleToEndUserHint')}</p>
+        </div>
+      )}
 
       {/* enum dropdown */}
       {form.fieldType === 'enum' && (
@@ -177,13 +191,16 @@ export interface ITILTypeFieldsProps {
   onSaveField:      (typeId: string, fieldId: string | null, form: FieldFormState) => void
   onDeleteField:    (typeId: string, fieldId: string) => void
   enumTypesData:    { enumTypes: EnumTypeOption[] } | undefined
+  /** Il nome del tipo ITIL: incident e service_request si aprono anche dal portale. */
+  typeName?:        string
 }
 
 export function ITILTypeFields({
   typeId, fields, editingFieldId, setEditingFieldId,
   addingField, setAddingField, onSaveField, onDeleteField,
-  enumTypesData,
+  enumTypesData, typeName,
 }: ITILTypeFieldsProps) {
+  const offerEndUser = typeName === 'incident' || typeName === 'service_request'
   const { t } = useTranslation()
   const systemFields = fields.filter((f) => f.isSystem).sort((a, b) => a.order - b.order)
   const customFields = fields.filter((f) => !f.isSystem).sort((a, b) => a.order - b.order)
@@ -195,6 +212,7 @@ export function ITILTypeFields({
         <FieldEditor
           field={emptyForm(fields.length + 1)}
           isSystem={false}
+          offerEndUser={offerEndUser}
           onSave={(form) => onSaveField(typeId, null, form)}
           onCancel={() => setAddingField(false)}
           enumTypesData={enumTypesData}
@@ -251,6 +269,7 @@ export function ITILTypeFields({
               key={f.id}
               field={fieldToForm(f)}
               isSystem={false}
+              offerEndUser={offerEndUser}
               onSave={(form) => onSaveField(typeId, f.id, form)}
               onCancel={() => setEditingFieldId(null)}
               enumTypesData={enumTypesData}

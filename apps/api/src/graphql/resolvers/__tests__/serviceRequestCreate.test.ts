@@ -81,7 +81,7 @@ describe('createServiceRequest — item di catalogo', () => {
   it('item trovato → requiresApproval ereditato dal catalogo (true), passato al service con l\'input', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: true })
     const result = await createServiceRequest(undefined, { input: { title: 'VPN', priority: 'high', catalogItemId: 'cat-1' } }, ctx)
-    expect(createRequest).toHaveBeenCalledWith({ title: 'VPN', priority: 'high', catalogItemId: 'cat-1', requiresApproval: true }, ctx)
+    expect(createRequest).toHaveBeenCalledWith({ title: 'VPN', priority: 'high', catalogItemId: 'cat-1', requiresApproval: true, customFields: undefined }, ctx, 'agent')
     expect(result).toEqual({ id: 'sr-1', title: 'T' })
   })
 
@@ -142,5 +142,15 @@ describe('createServiceRequest — priorità dalla voce del catalogo', () => {
     expect((await failure(createServiceRequest(undefined, { input: { title: 'X' } }, ctx))).message).toMatch(/priority is required/)
     expect((await failure(createServiceRequest(undefined, { input: { title: 'X', priority: 'urgentissima' } }, ctx))).message).toMatch(/urgentissima/)
     expect(createRequest).not.toHaveBeenCalled()
+  })
+})
+
+// Ondata 4: dal portale i campi del cliente passano sempre dal controllo.
+describe('createServiceRequest — campi personalizzati', () => {
+  it('dal portale senza campi → il servizio riceve una lista vuota e il canale portal; da operatore resta assente', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'high', name: 'Sblocco account' })
+    await createServiceRequest(undefined, { input: { title: 'Sblocco', catalogItemId: 'cat-1' } }, { ...ctx, role: 'end_user' })
+    expect(vi.mocked(createRequest).mock.calls[0]![0]).toMatchObject({ customFields: [] })
+    expect(vi.mocked(createRequest).mock.calls[0]![2]).toBe('portal')
   })
 })

@@ -10,6 +10,7 @@ import express from 'express'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
+vi.mock('../../lib/ticketCustomFields.js', async (importOriginal) => ({ ...(await importOriginal<object>()), customFieldDefs: vi.fn(async () => []) }))
 vi.mock('../../lib/logger.js', () => ({
   logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }))

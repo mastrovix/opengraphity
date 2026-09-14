@@ -118,7 +118,9 @@
     "cancel": "Cancel",
     "save": "Save",
     "back": "← Back",
-    "required": "Required field"
+    "required": "Required field",
+    "yes": "Yes",
+    "no": "No"
   },
   "catalog": {
     "title": "Service catalog",
@@ -154,5 +156,8 @@
   },
   "auth": {
     "bootstrapError": "Authentication error"
+  },
+  "customFields": {
+    "choose": "— Choose —"
   }
 }

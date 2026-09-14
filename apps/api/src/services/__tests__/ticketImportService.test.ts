@@ -68,6 +68,13 @@ vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
   getSession: vi.fn(),
 }))
 
+// Ondata 4: i campi del cliente dell'incident, per le colonne omonime del file.
+let customDefs: Array<Record<string, unknown>> = []
+vi.mock('../../lib/ticketCustomFields.js', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  customFieldDefs: vi.fn(async () => customDefs),
+}))
+
 vi.mock('../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
@@ -189,6 +196,26 @@ describe('importIncidents', () => {
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0]).toMatchObject({ row: 1, externalId: 'A-1', messageKey: 'severityRequired' })
     expect(mergedIncidentParams(0)['severity']).toBe('medium')
+  })
+
+  // Verifica «Cosa resta cablato», ondata 4: una colonna per campo del cliente.
+  it('colonne dei campi del cliente: valore convertito e scritto; valore fuori vocabolario → riga in errore che nomina la colonna', async () => {
+    customDefs = [
+      { name: 'site', label: 'Sede', fieldType: 'enum', required: true, enumValues: ['mi', 'rm'], enumTypeName: 'site', validationScript: null, visibleToEndUser: false, order: 1 },
+      { name: 'effort', label: 'Ore', fieldType: 'number', required: false, enumValues: [], enumTypeName: null, validationScript: null, visibleToEndUser: false, order: 2 },
+    ]
+    const result = await importIncidents([
+      { external_id: 'A-1', title: 'T1', severity: 'P1', site: 'rm', effort: '2.5' },
+      { external_id: 'A-2', title: 'T2', severity: 'P1', site: 'napoli' },
+      // Storico senza il campo: l'obbligo non vale nell'import, e la cella vuota non tocca il campo.
+      { external_id: 'A-3', title: 'T3', severity: 'P1', site: '' },
+    ], ctx)
+    customDefs = []
+    expect(result.created).toBe(2)
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]).toMatchObject({ row: 2, externalId: 'A-2', messageKey: 'customFieldInvalid', messageParams: expect.objectContaining({ field: 'site' }) })
+    expect(mergedIncidentParams(0)['customProps']).toEqual({ site: 'rm', effort: 2.5 })
+    expect(mergedIncidentParams(1)['customProps']).toEqual({})
   })
 
   it('mappa status case-insensitive sugli step del workflow; sconosciuto → warning + step iniziale', async () => {

@@ -1,5 +1,5 @@
 import { gql } from '@apollo/client'
-import { EVENT_ROW_FIELDS } from '../fragments'
+import { EVENT_ROW_FIELDS, CUSTOM_FIELD_VALUE_FIELDS } from '../fragments'
 
 export const GET_CHANGES = gql`
   query GetChanges($currentStep: String, $priority: String, $limit: Int, $offset: Int) {
@@ -19,6 +19,7 @@ export const GET_CHANGES = gql`
         requester { id name email }
         changeOwner { id name email }
         workflowInstance { id currentStep status }
+        customFields { name value }
       }
     }
   }
@@ -50,9 +51,11 @@ export const GET_CHANGE = gql`
       resolvesProblems { id number title status priority removable }
       approvals { kind teamId teamName status approvedByName approvedAt canApprove onBehalf }
       suppressedEvents { ...EventRowFields }
+      customFields { ...CustomFieldValueFields }
     }
   }
   ${EVENT_ROW_FIELDS}
+  ${CUSTOM_FIELD_VALUE_FIELDS}
 `
 
 export const GET_CHANGE_AFFECTED_CIS = gql`

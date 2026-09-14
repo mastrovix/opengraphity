@@ -575,7 +575,11 @@
         "keep": "Tieni la mia lista",
         "adopted": "Valori spediti aggiunti alla tua copia",
         "kept": "La tua lista resta com'è"
-      }
+      },
+      "valuesPlaceholder": "riuscita\nfallita",
+      "valuesHint_one": "Uno per riga (o separati da virgole): {{count}} valore. Etichette e colori si impostano dopo averlo creato.",
+      "valuesHint_other": "Uno per riga (o separati da virgole): {{count}} valori. Etichette e colori si impostano dopo averlo creato.",
+      "valuesRequired": "Scrivi almeno un valore: un dizionario senza valori non può essere usato da nessun campo."
     },
     "sync": {
       "sourceCreated": "Sorgente di sincronizzazione creata",
@@ -675,7 +679,8 @@
         "kbCategoryUnknown": "la categoria «{{category}}» non è fra le categorie KB del Dizionario ({{allowed}})",
         "kbNoPublishedStep": "il workflow kb_article non ha un passo «published» — l'articolo resta in «{{step}}»",
         "kbNoWorkflow": "nessun workflow kb_article attivo — articolo importato senza istanza di workflow",
-        "writeFailed": "scrittura fallita: {{error}}"
+        "writeFailed": "scrittura fallita: {{error}}",
+        "customFieldInvalid": "colonna «{{field}}»: {{error}}"
       }
     },
     "monitoring": {
@@ -2259,7 +2264,9 @@
     "previewNote": "Anteprima del form — tutti i campi visibili.",
     "previewNoFields": "Nessun campo. Aggiungi campi nella tab «Campi».",
     "visibilityPlaceholder": "// Mostra solo se severity = 'critical':\nreturn input.severity === 'critical'",
-    "defaultPlaceholder": "// Esempio:\nreturn input.priority === 'critical' ? 'immediata' : 'normale'"
+    "defaultPlaceholder": "// Esempio:\nreturn input.priority === 'critical' ? 'immediata' : 'normale'",
+    "visibleToEndUser": "Offrilo nel portale",
+    "visibleToEndUserHint": "Gli utenti finali vedono questo campo e lo compilano quando aprono un ticket dal portale. Lascialo spento per i campi interni."
   },
   "ciTypeDesigner": {
     "chain": "Catena",
@@ -3347,6 +3354,19 @@
       "notNumber": "{{where}}: «{{field}}» è un numero, «{{value}}» no.",
       "notBoolean": "{{where}}: «{{field}}» è sì o no.",
       "notDate": "{{where}}: «{{field}}» è una data, «{{value}}» no."
+    },
+    "customField": {
+      "unknown": "«{{field}}» non è un campo di questo tipo di ticket: forse è stato tolto. Ricarica la pagina.",
+      "notForEndUser": "Il campo «{{field}}» non è offerto nel portale.",
+      "duplicate": "Il campo «{{field}}» è stato mandato due volte.",
+      "required": "Questi campi sono obbligatori: {{fields}}.",
+      "script": "«{{field}}»: {{error}}",
+      "entityType": "«{{entityType}}» non ha campi aggiuntivi.",
+      "restShape": "customFields deve essere un oggetto {nomeCampo: valore} con valori di testo, numero, sì/no o null.",
+      "nameFormat": "Il nome del campo «{{name}}» deve usare lettere minuscole, cifre e trattino basso, da 2 a 40 caratteri, iniziando con una lettera.",
+      "nameTaken": "«{{name}}» è già un campo di questo tipo di ticket nel prodotto: scegli un altro nome.",
+      "nameInData": "Alcuni ticket portano già un valore chiamato «{{name}}»: scegli un altro nome, così il tuo campo non mostra dati vecchi.",
+      "nameTypeFixed": "Il nome e il tipo del campo «{{name}}» non si possono cambiare, perché i ticket hanno già valori salvati con quel nome. Togli il campo e aggiungine uno nuovo."
     }
   },
   "errorBoundary": {
@@ -5483,5 +5503,11 @@
     "timeCountingRequired": "Scegli come conta il tempo: 24×7 o un calendario di servizio.",
     "complianceInvalid": "L’obiettivo di conformità deve essere una percentuale fino a 100, e la soglia d’attenzione una più bassa.",
     "previewCalendar": "(orario di servizio di «{{name}}»)"
+  },
+  "customFields": {
+    "title": "Campi aggiuntivi",
+    "edit": "Modifica",
+    "saved": "Campi salvati",
+    "chooseValue": "— Scegli —"
   }
 }

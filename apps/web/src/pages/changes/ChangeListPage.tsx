@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -20,6 +21,7 @@ import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { formatDate } from '@/lib/datetime'
 
 interface ChangeRow {
+  customFields?: { name: string; value: string | null }[]
   id:                 string
   code:               string
   title:              string
@@ -94,7 +96,9 @@ export function ChangeListPage() {
   const total = data?.changes?.total ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
-  const columns: ColumnDef<ChangeRow>[] = [
+  // Campi del cliente (verifica «Cosa resta cablato», ondata 4): una colonna per campo.
+  const customColumns = useCustomFieldColumns<ChangeRow>('change')
+  const baseColumns: ColumnDef<ChangeRow>[] = [
     {
       key:      'code',
       label:    t('pages.changes.code'),
@@ -151,6 +155,8 @@ export function ChangeListPage() {
       ),
     },
   ]
+  const columns = [...baseColumns, ...customColumns]
+
 
   return (
     <PageContainer>
@@ -190,6 +196,7 @@ export function ChangeListPage() {
               requester: r.requester?.name ?? '',
               risk:      r.aggregateRiskScore,
               createdAt: r.createdAt,
+              ...Object.fromEntries((r.customFields ?? []).map((f) => [`cf:${f.name}`, f.value])),
             }))
             exportToCsv('changes', [
               { key: 'code',      label: t('pages.changes.code') },
@@ -198,7 +205,8 @@ export function ChangeListPage() {
               { key: 'requester', label: t('pages.changes.requester') },
               { key: 'risk',      label: t('pages.changes.risk') },
               { key: 'createdAt', label: t('pages.changes.createdAt') },
-            ], rows)
+              ...customColumns.map((c) => ({ key: c.key as string, label: c.label })),
+            ] as { key: keyof (typeof rows)[number]; label: string }[], rows)
           }}
         />
       </div>
@@ -209,7 +217,7 @@ export function ChangeListPage() {
         <>
           <SortableFilterTable<ChangeRow>
             columns={columns}
-            data={items}
+            data={withCustomFieldCells(items)}
             loading={loading}
             emptyComponent={<EmptyState icon={<GitPullRequest size={32} />} title={t('pages.changes.noResults')} description={t('pages.changes.noResultsDesc')} />}
             onRowClick={(row) => navigate(`/changes/${row.id}`)}

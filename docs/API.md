@@ -192,6 +192,16 @@ Notification links: the in-app panel and the "Vedi dettagli" link of the notific
 | `addIncidentComment(id, text)` | Add a comment |
 | `addAffectedCI / removeAffectedCI` | Link/unlink CIs |
 
+### Custom fields (incident, problem, change, service request)
+
+The fields a tenant adds in the ITIL designer are real fields of the ticket. `Incident`, `Problem`, `Change` and `ServiceRequest` expose `customFields: [CustomFieldValue!]!` (`name`, `label`, `fieldType`, `value` as text or null, `enumValues`, `enumTypeName`, `required`, `visibleToEndUser`, `options(language)`, `valueLabel(language)`). The create inputs (`CreateIncidentInput`, `CreateProblemInput`, `CreateChangeInput`, `CreateServiceRequestInput`) accept `customFields: [CustomFieldInput!]` (`{ name, value }`, null or empty clears).
+
+| Mutation | Description |
+|----------|-------------|
+| `setTicketCustomFields(entityType, id, values)` | Write custom fields from the ticket detail: publishes `ticket.updated` and writes `ticket.custom_fields_updated` in the Audit Log when something changed |
+
+Every channel validates the same way: the field must exist for the ticket type, the value must fit its type (`number`, `boolean` as `true`/`false`, `date` as ISO) and its vocabulary, a `required` field needs a value (on creation, or when it is cleared), and the field's validation script runs. Channels that do not know the customer's fields (monitoring, service maps, Slack, workflow step actions) create tickets without them, like the field requirement rules. From the portal only the fields marked **visible to end users** are offered (`portalCustomFields(entityType)`), accepted, and returned. A field's name is its property on the ticket: it cannot reuse a field of the product or a property the tenant's tickets already carry, and name and type cannot change after creation. Custom fields are filterable in the lists (`entityFilterFields`), shown as list columns, in the PDF dossiers under «Additional fields», and settable by step deadlines and `update_field`.
+
 ### Changes
 
 | Mutation | Description |
@@ -281,7 +291,7 @@ retention).
 
 ## REST API v1
 
-All `/api/v1/*` routes authenticate with an API key (created via the `createApiKey` GraphQL mutation) sent in the `X-API-Key` header. Responses are JSON: `{ "data": ... }` on success (lists add `"meta": { page, limit, total }`), `{ "error": { "code", "message" } }` on failure. Requests are rate-limited per key.
+All `/api/v1/*` routes authenticate with an API key (created via the `createApiKey` GraphQL mutation) sent in the `X-API-Key` header. Responses are JSON: `{ "data": ... }` on success (lists add `"meta": { page, limit, total }`), `{ "error": { "code", "message" } }` on failure. Requests are rate-limited per key. The ticket routes carry the tenant's custom fields as an object `customFields: { fieldName: value }` in responses, and accept it in `POST` (incidents, problems, changes) and in `PATCH /api/v1/incidents/:id`; a value must be a string, a number, a boolean or null.
 
 ```http
 GET /api/v1/changes HTTP/1.1
@@ -442,7 +452,7 @@ Historical data importer for migrations from other ITSM tools. Both endpoints ac
 
 Idempotency: each row's `external_id` is stored as `import_external_id` on the node; re-running the same CSV updates the existing records (`updated`) instead of duplicating them.
 
-**Incident CSV columns** — `external_id` (required, idempotency key), `title` (required), `description`, `severity` (translated by the tenant's `import_severity` domain matrix — Settings → Domain matrices, seeded with 25 synonyms and editable; a value the matrix cannot resolve puts the **row in error**, it is never rewritten to `medium`; an empty cell uses the declared default `medium`, which is itself validated against the tenant's severity vocabulary), `status` (matched case-insensitively against the tenant's incident workflow step names; unknown → warning + initial step), `number` (optional: preserved; collision with another incident → row error; generated progressively as `INC…` when absent), `created_at`/`updated_at`/`resolved_at` (ISO; invalid → row error), `assignee_email` (unknown user → warning, row still imported), `team_name` (unknown team → warning), `comments` (JSON array `[{author_email, text, created_at}]`).
+**Incident CSV columns** — `external_id` (required, idempotency key), `title` (required), `description`, `severity` (translated by the tenant's `import_severity` domain matrix — Settings → Domain matrices, seeded with 25 synonyms and editable; a value the matrix cannot resolve puts the **row in error**, it is never rewritten to `medium`; an empty cell is a row error too), `status` (matched case-insensitively against the tenant's incident workflow step names; unknown → warning + initial step), `number` (optional: preserved; collision with another incident → row error; generated progressively as `INC…` when absent), `created_at`/`updated_at`/`resolved_at` (ISO; invalid → row error), `assignee_email` (unknown user → warning, row still imported), `team_name` (unknown team → warning), `comments` (JSON array `[{author_email, text, created_at}]`), and one column per **custom field**, named like the field: the value is checked like everywhere else (type, vocabulary, validation script) and a wrong value puts the row in error; an empty cell leaves the field untouched, and the required flag does not apply to imported history.
 
 **KB article CSV columns** — `external_id` (required), `title` (required), `body` (markdown), `category`, `tags` (separated by `;`), `status` (`published`/`draft`, default `draft`), `author_name`, `created_at`, `published_at`. The slug is generated from the title and deduplicated with `-2`, `-3`, … suffixes; on update the existing slug is kept.
 

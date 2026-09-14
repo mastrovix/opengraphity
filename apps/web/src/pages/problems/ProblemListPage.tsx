@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useQuery, useLazyQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useNavigate } from 'react-router-dom'
@@ -40,6 +41,7 @@ interface Candidate {
 }
 
 interface Problem {
+  customFields?: { name: string; value: string | null }[]
   id:        string
   number:    string
   title:     string
@@ -54,7 +56,9 @@ export function ProblemListPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
 
-  const columns: ColumnDef<Problem>[] = [
+  // Campi del cliente (verifica «Cosa resta cablato», ondata 4): una colonna per campo.
+  const customColumns = useCustomFieldColumns<Problem>('problem')
+  const baseColumns: ColumnDef<Problem>[] = [
     { key: 'number',   label: 'Number',                               width: '120px', sortable: true },
     { key: 'title',    label: t('pages.problems.title_col'), sortable: true },
     {
@@ -83,6 +87,8 @@ export function ProblemListPage() {
       ),
     },
   ]
+  const columns = [...baseColumns, ...customColumns]
+
 
   const { fields: filterFields } = useEntityFields('Problem')
   const [page, setPage] = useState(0)
@@ -178,7 +184,7 @@ export function ProblemListPage() {
               variables: { limit: 10000, offset: 0, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
               fetchPolicy: 'network-only',
             })
-            exportToCsv('problems', columns, res.data?.problems?.items ?? [])
+            exportToCsv('problems', columns, withCustomFieldCells(res.data?.problems?.items ?? []))
           }}
         />
       </div>
@@ -189,7 +195,7 @@ export function ProblemListPage() {
         <>
           <SortableFilterTable<Problem>
             columns={columns}
-            data={items}
+            data={withCustomFieldCells(items)}
             loading={loading}
             emptyComponent={<EmptyState icon={<Search size={32} />} title={t('pages.problems.noResults')} description={t('pages.problems.noResultsDesc')} />}
             onRowClick={(row) => navigate(`/problems/${row.id}`)}

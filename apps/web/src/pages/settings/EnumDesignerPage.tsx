@@ -95,6 +95,11 @@ function CreateEnumDialog({
   const [name, setName]   = useState('')
   const [label, setLabel] = useState('')
   const [scope, setScope] = useState<'shared' | 'itil' | 'cmdb'>('shared')
+  // I valori si danno alla creazione: un vocabolario senza valori non esiste
+  // (l'API lo rifiuta). Il dialogo mandava una lista vuota, quindi nessun
+  // vocabolario si poteva creare dall'interfaccia (ondata 4, trovato dal vivo).
+  const [valuesText, setValuesText] = useState('')
+  const values = [...new Set(valuesText.split(/[\n,]/).map((v) => v.trim()).filter(Boolean))]
 
   const [createEnum, { loading }] = useMutation(CREATE_ENUM_TYPE, {
     refetchQueries: [GET_ENUM_TYPES],
@@ -112,7 +117,11 @@ function CreateEnumDialog({
       toast.error(t('pages.dictionary.invalidName'))
       return
     }
-    void createEnum({ variables: { input: { name, label, values: [], scope } } })
+    if (values.length === 0) {
+      toast.error(t('pages.dictionary.valuesRequired'))
+      return
+    }
+    void createEnum({ variables: { input: { name, label, values, scope } } })
   }
 
   return (
@@ -170,6 +179,17 @@ function CreateEnumDialog({
               <option value="itil">{t('pages.dictionary.scopeItil')}</option>
               <option value="cmdb">{t('pages.dictionary.scopeCmdb')}</option>
             </Select>
+          </div>
+          <div>
+            <label htmlFor="enum-values" style={labelS}>{t('pages.dictionary.valuesLabel')}</label>
+            <textarea
+              id="enum-values"
+              style={{ ...inputS, minHeight: 90, resize: 'vertical', fontFamily: 'inherit' }}
+              value={valuesText}
+              onChange={(e) => setValuesText(e.target.value)}
+              placeholder={t('pages.dictionary.valuesPlaceholder')}
+            />
+            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('pages.dictionary.valuesHint', { count: values.length })}</span>
           </div>
         </div>
     </Modal>

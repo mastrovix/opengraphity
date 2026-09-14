@@ -1,4 +1,6 @@
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
+import { requestCustomFieldDefs } from './ticketCustomFields.js'
+import { customFieldValueMap, type CustomFieldInput } from '../../lib/ticketCustomFields.js'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLResolveInfo } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
@@ -44,7 +46,8 @@ async function serviceRequests(
       offset,
       limit,
     }
-    const allowedFields = getScalarFields(info.schema, 'ServiceRequest')
+    // I campi del cliente si filtrano come quelli del prodotto (ondata 4).
+    const allowedFields = new Set([...getScalarFields(info.schema, 'ServiceRequest'), ...(await requestCustomFieldDefs(ctx, 'service_request')).map((d) => d.name)])
     const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'r') : ''
     const sortMap: Record<string, string> = { title: 'r.title', status: 'r.status', priority: 'r.priority', createdAt: 'r.created_at' }
     const orderBy = sortMap[args.sortField ?? ''] ?? 'r.created_at'
@@ -84,13 +87,14 @@ async function serviceRequest(
 
 async function createServiceRequest(
   _: unknown,
-  args: { input: { title: string; description?: string; priority?: string | null; dueDate?: string; catalogItemId?: string; acknowledgeNoSla?: boolean | null } },
+  args: { input: { title: string; description?: string; priority?: string | null; dueDate?: string; catalogItemId?: string; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
     await validateRequiredFields(session, {
       entityType:  'service_request',
-      fieldValues: args.input as Record<string, unknown>,
+      // Le regole di obbligatorietà valgono anche sui campi del cliente (ondata 4).
+      fieldValues: { ...(args.input as Record<string, unknown>), ...customFieldValueMap(args.input.customFields) },
       tenantId:    ctx.tenantId,
     })
     // A request opened from a catalog item inherits its approval requirement
@@ -129,7 +133,10 @@ async function createServiceRequest(
     }
     await assertDomainValue(ctx.tenantId, 'priority', priority)
     assertMayAcknowledgeNoSla(ctx, args.input.acknowledgeNoSla)
-    const result = await requestService.createRequest({ ...args.input, priority, requiresApproval, ...(category ? { category } : {}) }, ctx)
+    // Dal portale i campi del cliente passano sempre dal controllo (ondata 4): un
+    // campo obbligatorio offerto all'utente finale va compilato.
+    const customFields = ctx.role === 'end_user' ? (args.input.customFields ?? []) : args.input.customFields
+    const result = await requestService.createRequest({ ...args.input, customFields, priority, requiresApproval, ...(category ? { category } : {}) }, ctx, ctx.role === 'end_user' ? 'portal' : 'agent')
     void audit(ctx, 'request.created', 'ServiceRequest', result.id as string)
     return result
   })

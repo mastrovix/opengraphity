@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -34,6 +35,7 @@ interface Incident {
   status:    string
   createdAt: string
   slaStatus: SlaStatusInfo | null
+  customFields?: { name: string; value: string | null }[]
 }
 
 const PAGE_SIZE = 50
@@ -41,7 +43,9 @@ const PAGE_SIZE = 50
 export function IncidentListPage() {
   const { t } = useTranslation()
 
-  const columns: ColumnDef<Incident>[] = [
+  // Campi del cliente (verifica «Cosa resta cablato», ondata 4): una colonna per campo.
+  const customColumns = useCustomFieldColumns<Incident>('incident')
+  const baseColumns: ColumnDef<Incident>[] = [
     { key: 'number',   label: 'Number',                                 width: '120px', sortable: true },
     { key: 'title',    label: t('pages.incidents.title_col'),    sortable: true },
     {
@@ -77,6 +81,8 @@ export function IncidentListPage() {
       ),
     },
   ]
+  const columns = [...baseColumns, ...customColumns]
+
 
   const { fields: filterFields } = useEntityFields('Incident')
   const navigate = useNavigate()
@@ -215,7 +221,7 @@ export function IncidentListPage() {
               variables: { limit: 10000, offset: 0, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
               fetchPolicy: 'network-only',
             })
-            exportToCsv('incidents', columns, res.data?.incidents?.items ?? [])
+            exportToCsv('incidents', columns, withCustomFieldCells(res.data?.incidents?.items ?? []))
           }}
         />
       </div>
@@ -247,7 +253,7 @@ export function IncidentListPage() {
 
           <SortableFilterTable<Incident>
             columns={columns}
-            data={items}
+            data={withCustomFieldCells(items)}
             loading={loading}
             emptyComponent={<EmptyState icon={<AlertCircle size={32} />} title={t('pages.incidents.noResults')} description={t('pages.incidents.noResultsDesc')} />}
             onRowClick={(row) => navigate(`/incidents/${row.id}`)}

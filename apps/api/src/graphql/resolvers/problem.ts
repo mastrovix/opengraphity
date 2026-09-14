@@ -1,4 +1,7 @@
 import { GraphQLError } from 'graphql'
+import { requestCustomFieldDefs } from './ticketCustomFields.js'
+import { customFieldValueMap, type CustomFieldInput } from '../../lib/ticketCustomFields.js'
+import { withTicketProps } from '../../lib/ticketProps.js'
 import type { GraphQLResolveInfo } from 'graphql'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
@@ -33,7 +36,7 @@ import { listPage } from '../../lib/listLimit.js'
 type Props = Record<string, unknown>
 
 export function mapProblem(props: Props) {
-  return {
+  return withTicketProps({
     id:            props['id']            as string,
     number:        (props['number'] ?? '') as string,
     title:         props['title']         as string,
@@ -59,7 +62,7 @@ export function mapProblem(props: Props) {
     availableTransitions: [],
     workflowHistory:      [],
     comments:             [],
-  }
+  }, props)
 }
 
 function mapProblemComment(props: Props, authorProps: Props | null) {
@@ -113,7 +116,8 @@ async function problems(
       offset,
       limit,
     }
-    const allowedFields = getScalarFields(info.schema, 'Problem')
+    // I campi del cliente si filtrano come quelli del prodotto (ondata 4).
+    const allowedFields = new Set([...getScalarFields(info.schema, 'Problem'), ...(await requestCustomFieldDefs(ctx, 'problem')).map((d) => d.name)])
     const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'p') : ''
     const whereClause = `
       WHERE ($status   IS NULL OR p.status   = $status)
@@ -178,13 +182,14 @@ async function problem(
 
 async function createProblem(
   _: unknown,
-  args: { input: { title: string; description?: string; priority?: string; impact?: string; urgency?: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string; acknowledgeNoSla?: boolean | null } },
+  args: { input: { title: string; description?: string; priority?: string; impact?: string; urgency?: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string; acknowledgeNoSla?: boolean | null ; customFields?: CustomFieldInput[] | null } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
     await validateRequiredFields(session, {
       entityType:  'problem',
-      fieldValues: args.input as Record<string, unknown>,
+      // Le regole di obbligatorietà valgono anche sui campi del cliente (ondata 4).
+      fieldValues: { ...(args.input as Record<string, unknown>), ...customFieldValueMap(args.input.customFields) },
       tenantId:    ctx.tenantId,
     })
     assertMayAcknowledgeNoSla(ctx, args.input.acknowledgeNoSla)

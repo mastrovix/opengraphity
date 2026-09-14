@@ -10,6 +10,7 @@ const ITIL_TYPE_FRAGMENT = gql`
       required enumValues order isSystem
       enumTypeId enumTypeName
       validationScript visibilityScript defaultScript
+      visibleToEndUser
     }
   }
 `

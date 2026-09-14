@@ -13,7 +13,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import { EnumDesignerPage } from './EnumDesignerPage'
 import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT } from '@/graphql/queries'
-import { ACKNOWLEDGE_SHIPPED_VALUES, ADOPT_SHIPPED_VALUES, CUSTOMIZE_ENUM_TYPE, UPDATE_ENUM_TYPE } from '@/graphql/mutations'
+import { ACKNOWLEDGE_SHIPPED_VALUES, ADOPT_SHIPPED_VALUES, CUSTOMIZE_ENUM_TYPE, UPDATE_ENUM_TYPE, CREATE_ENUM_TYPE } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 
 vi.mock('sonner', () => ({
@@ -205,5 +205,37 @@ describe('Dizionario — valori spediti dopo la copia', () => {
     const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [list, drift([])] })
     await user.click(await screen.findByRole('button', { name: /Priorità/ }))
     expect(screen.queryByRole('button', { name: 'Add them' })).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * Trovato dal vivo nell'ondata 4 di «Cosa resta cablato»: il dialogo «New Enum
+ * Type» mandava `values: []`, e l'API rifiuta (giustamente) un vocabolario senza
+ * valori — quindi nessun vocabolario si poteva creare dall'interfaccia.
+ */
+describe('Dizionario — creare un vocabolario', () => {
+  it('i valori si scrivono nel dialogo e arrivano all\'API, senza doppioni né righe vuote', async () => {
+    const sent: unknown[] = []
+    const createMock: GqlMock = {
+      request: { query: CREATE_ENUM_TYPE, variables: (v) => { sent.push(v); return true } },
+      result: { data: { createEnumType: enumType({ id: 'e-9', name: 'change_outcome', label: 'Change outcome', values: ['successful', 'failed'], isSystem: false, isShipped: false }) } },
+    }
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: mocks([createMock]) })
+    await user.click(await screen.findByRole('button', { name: /New Enum Type/ }))
+    await user.type(screen.getByLabelText(/Name/), 'change_outcome')
+    await user.type(screen.getByLabelText(/^Label/), 'Change outcome')
+    await user.type(screen.getByLabelText('Values'), 'successful{enter}failed,  successful{enter}{enter}')
+    await user.click(screen.getByRole('button', { name: /Create/ }))
+    await vi.waitFor(() => expect(sent).toEqual([{ input: { name: 'change_outcome', label: 'Change outcome', values: ['successful', 'failed'], scope: 'shared' } }]))
+  })
+
+  it('senza valori non parte: lo dice', async () => {
+    const { toast } = await import('sonner')
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: mocks() })
+    await user.click(await screen.findByRole('button', { name: /New Enum Type/ }))
+    await user.type(screen.getByLabelText(/Name/), 'change_outcome')
+    await user.type(screen.getByLabelText(/^Label/), 'Change outcome')
+    await user.click(screen.getByRole('button', { name: /Create/ }))
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('at least one value'))
   })
 })

@@ -1,5 +1,5 @@
 import { gql } from '@apollo/client'
-import { EVENT_ROW_FIELDS, IMPACTED_SERVICE_FIELDS } from '../fragments'
+import { EVENT_ROW_FIELDS, IMPACTED_SERVICE_FIELDS, CUSTOM_FIELD_VALUE_FIELDS } from '../fragments'
 
 export const GET_INCIDENTS = gql`
   query GetIncidents($status: String, $severity: String, $limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
@@ -7,6 +7,7 @@ export const GET_INCIDENTS = gql`
       total
       items {
         id number title severity status createdAt
+        customFields { name value }
         slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
       }
     }
@@ -59,10 +60,12 @@ export const GET_INCIDENT = gql`
       correlatedEvents { ...EventRowFields history(limit: 20) { kind incident { id } } }
       correlatedEventsPurged
       impactedServices { ...ImpactedServiceFields }
+      customFields { ...CustomFieldValueFields }
     }
   }
   ${EVENT_ROW_FIELDS}
   ${IMPACTED_SERVICE_FIELDS}
+  ${CUSTOM_FIELD_VALUE_FIELDS}
 `
 
 export const GET_SERVICE_REQUESTS = gql`
@@ -74,6 +77,7 @@ export const GET_SERVICE_REQUESTS = gql`
       priority
       status
       createdAt
+      customFields { name value }
     }
   }
 `
@@ -88,8 +92,10 @@ export const GET_SERVICE_REQUEST = gql`
       workflowInstance { id currentStep status }
       availableTransitions { toStep label labels { language label } requiresInput inputField }
       slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
+      customFields { ...CustomFieldValueFields }
     }
   }
+  ${CUSTOM_FIELD_VALUE_FIELDS}
 `
 
 /** Campi filtrabili di un tipo (scalari/enum): sostituisce l'introspezione `__type`, spenta in produzione. */

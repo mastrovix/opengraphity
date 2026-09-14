@@ -14,6 +14,7 @@
  * lets them bubble up as-is, the REST route translates them into HTTP 400.
  */
 import { v4 as uuidv4 } from 'uuid'
+import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { getActiveOLAContractsFor, withContractCalendars, getTenantTimezone, scheduleOLABreaches } from '@opengraphity/sla'
 import { ValidationError } from '../lib/errors.js'
@@ -37,6 +38,8 @@ export interface ChangeCreationInput {
   changeOwner?:  string | null
   affectedCIIds: string[]
   changeType?:   string | null   // un valore del vocabolario `change_type` del cliente — obbligatorio
+  /** Campi personalizzati (ondata 4): assenti dai canali che non li conoscono (azione di passo). */
+  customFields?: CustomFieldInput[] | null
 }
 
 export interface ChangeCreationCtx {
@@ -82,6 +85,8 @@ export async function createChangeRFC(
   }
   if (!why)  throw new ValidationError('The "why" field is required', { key: 'errors.change.whyRequired' })
   if (!what) throw new ValidationError('The "what" field is required', { key: 'errors.change.whatRequired' })
+  const customProps = input.customFields == null ? {} : await withSession(async (session) =>
+    resolveCustomFieldWrites(ctx.tenantId, 'change', await customFieldDefs(session, ctx.tenantId, 'change'), input.customFields, { current: null }))
   const created = await withSession(async (session) => {
     // Letture e validazioni PRIMA della transazione: se falliscono non c'è nulla da annullare.
     await assertCIHasOwnerAndSupport(session, ctx.tenantId, affectedCIIds)
@@ -116,6 +121,7 @@ export async function createChangeRFC(
         approval_route: null, approval_status: null,
         created_at: $now, updated_at: $now
       })
+      SET c += $customProps
       WITH c
       OPTIONAL MATCH (req:User {id: $requesterId, tenant_id: $tenantId})
       FOREACH (_ IN CASE WHEN req IS NULL THEN [] ELSE [1] END |
@@ -161,6 +167,7 @@ export async function createChangeRFC(
         ciTasks,
         tenantId: ctx.tenantId,
         now,
+        customProps,
       })
 
       await workflowEngine.createInstance(tx, ctx.tenantId, id, 'change')

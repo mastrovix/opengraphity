@@ -7,6 +7,8 @@ import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
 import { notifyError } from '@/lib/notify'
 import { colors, palette, alpha } from '@/lib/tokens'
 import { useTicketCategories } from '@/hooks/useTicketCategories'
+import { usePortalCustomFields, portalCustomFieldsInput, portalMissingCustomFields } from '@/hooks/usePortalCustomFields'
+import { PortalCustomFields } from '@/components/PortalCustomFields'
 
 interface CatalogItem {
   id: string
@@ -24,6 +26,10 @@ export function ServiceCatalogPage() {
   const { labelOf: categoryLabel } = useTicketCategories()
   const [openItem, setOpenItem] = useState<CatalogItem | null>(null)
   const [details, setDetails] = useState('')
+  // I campi del cliente offerti nel portale per le richieste (ondata 4).
+  const { fields: customFields } = usePortalCustomFields('service_request')
+  const [customValues, setCustomValues] = useState<Record<string, string>>({})
+  const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
 
   const [createRequest, { loading: submitting }] = useMutation<{ createServiceRequest: { id: string; number: string } }>(
     CREATE_SERVICE_REQUEST,
@@ -51,7 +57,13 @@ export function ServiceCatalogPage() {
 
   function submit() {
     if (!openItem) return
+    const missing = portalMissingCustomFields(customFields, customValues)
+    if (missing.length > 0) {
+      setCustomErrors(Object.fromEntries(missing.map((m) => [m, t('common.required')])))
+      return
+    }
     void createRequest({ variables: { input: {
+      customFields: portalCustomFieldsInput(customFields, customValues),
       title: openItem.name,
       description: details.trim() || null,
       // Nessuna priorità: la decide la voce del catalogo (verifica «Cosa resta cablato», ondata 1).
@@ -71,7 +83,7 @@ export function ServiceCatalogPage() {
           <h2 style={{ fontSize: 13, fontWeight: 700, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>{cat}</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
             {list.map(it => (
-              <button key={it.id} onClick={() => { setOpenItem(it); setDetails('') }}
+              <button key={it.id} onClick={() => { setOpenItem(it); setDetails(''); setCustomValues({}); setCustomErrors({}) }}
                 style={{ textAlign: 'left', background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 10, padding: 16, cursor: 'pointer' }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: colors.slateDark, marginBottom: 4 }}>{it.name}</div>
                 {it.description && <div style={{ fontSize: 12, color: colors.slate, lineHeight: 1.5 }}>{it.description}</div>}
@@ -92,6 +104,16 @@ export function ServiceCatalogPage() {
             <textarea value={details} onChange={e => setDetails(e.target.value)} rows={4}
               placeholder={t('catalog.detailsPlaceholder')}
               style={{ width: '100%', border: `1px solid ${colors.border}`, borderRadius: 8, padding: 10, fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }} />
+            {customFields.length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <PortalCustomFields
+                  fields={customFields} values={customValues} errors={customErrors} gap={12}
+                  onChange={(name, value) => { setCustomValues((v) => ({ ...v, [name]: value })); setCustomErrors((p) => { const n = { ...p }; delete n[name]; return n }) }}
+                  labelStyle={{ fontSize: 12, fontWeight: 600, color: palette.neutral.textStrong, display: 'block', marginBottom: 6 }}
+                  inputStyle={{ width: '100%', border: `1px solid ${colors.border}`, borderRadius: 8, padding: 10, fontSize: 13, boxSizing: 'border-box', background: colors.white }}
+                />
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
               <button onClick={() => setOpenItem(null)} style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 13 }}>{t('common.cancel')}</button>
               <button onClick={submit} disabled={submitting} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: colors.brand, color: colors.white, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: submitting ? 0.6 : 1 }}>

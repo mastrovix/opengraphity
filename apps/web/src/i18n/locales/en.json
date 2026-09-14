@@ -575,7 +575,11 @@
         "keep": "Keep my list",
         "adopted": "Shipped values added to your copy",
         "kept": "Your list stays as it is"
-      }
+      },
+      "valuesPlaceholder": "successful\nfailed",
+      "valuesHint_one": "One per line (or separated by commas): {{count}} value. Labels and colours are set after creating it.",
+      "valuesHint_other": "One per line (or separated by commas): {{count}} values. Labels and colours are set after creating it.",
+      "valuesRequired": "Write at least one value: a dictionary without values cannot be used by any field."
     },
     "sync": {
       "sourceCreated": "Sync source created",
@@ -675,7 +679,8 @@
         "kbCategoryUnknown": "category «{{category}}» is not one of the KB categories in the Dictionary ({{allowed}})",
         "kbNoPublishedStep": "the kb_article workflow has no «published» step — the article stays in «{{step}}»",
         "kbNoWorkflow": "no active kb_article workflow — article imported without a workflow instance",
-        "writeFailed": "write failed: {{error}}"
+        "writeFailed": "write failed: {{error}}",
+        "customFieldInvalid": "column «{{field}}»: {{error}}"
       }
     },
     "monitoring": {
@@ -2259,7 +2264,9 @@
     "previewNote": "Form preview — every field visible.",
     "previewNoFields": "No field. Add fields in the \"Fields\" tab.",
     "visibilityPlaceholder": "// Show only when severity = 'critical':\nreturn input.severity === 'critical'",
-    "defaultPlaceholder": "// Example:\nreturn input.priority === 'critical' ? 'immediate' : 'normal'"
+    "defaultPlaceholder": "// Example:\nreturn input.priority === 'critical' ? 'immediate' : 'normal'",
+    "visibleToEndUser": "Offer it in the portal",
+    "visibleToEndUserHint": "End users see this field and fill it in when they open a ticket from the portal. Leave it off for internal fields."
   },
   "ciTypeDesigner": {
     "chain": "Chain",
@@ -3347,6 +3354,19 @@
       "notNumber": "{{where}}: «{{field}}» is a number, «{{value}}» is not.",
       "notBoolean": "{{where}}: «{{field}}» is yes or no.",
       "notDate": "{{where}}: «{{field}}» is a date, «{{value}}» is not."
+    },
+    "customField": {
+      "unknown": "«{{field}}» is not a field of this kind of ticket: it may have been removed. Reload the page.",
+      "notForEndUser": "The field «{{field}}» is not offered in the portal.",
+      "duplicate": "The field «{{field}}» was sent twice.",
+      "required": "These fields are required: {{fields}}.",
+      "script": "«{{field}}»: {{error}}",
+      "entityType": "«{{entityType}}» has no additional fields.",
+      "restShape": "customFields must be an object {fieldName: value} with text, number, yes/no or null values.",
+      "nameFormat": "The field name «{{name}}» must use lowercase letters, digits and underscores, 2 to 40 characters, starting with a letter.",
+      "nameTaken": "«{{name}}» is already a field of this kind of ticket in the product: choose another name.",
+      "nameInData": "Some tickets already carry a value called «{{name}}»: choose another name, so your field does not show old data.",
+      "nameTypeFixed": "The name and the type of the field «{{name}}» cannot change, because tickets already store values under them. Remove the field and add a new one."
     }
   },
   "errorBoundary": {
@@ -5483,5 +5503,11 @@
     "timeCountingRequired": "Choose how time counts: 24×7 or a service calendar.",
     "complianceInvalid": "The compliance target must be a percentage up to 100, and the attention threshold a lower one.",
     "previewCalendar": "(service hours of «{{name}}»)"
+  },
+  "customFields": {
+    "title": "Additional fields",
+    "edit": "Edit",
+    "saved": "Fields saved",
+    "chooseValue": "— Choose —"
   }
 }

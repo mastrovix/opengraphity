@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import { customFieldDefs, customFieldValues, type CustomFieldInput } from '../../lib/ticketCustomFields.js'
 import type { Session } from 'neo4j-driver'
 import { withSession } from './ci-utils.js'
 import { ForbiddenError, ValidationError } from '../../lib/errors.js'
@@ -289,8 +290,24 @@ async function myTicket(
       triggeredBy: (r.get('triggeredBy') ?? '') as string,
     }))
 
-    return { ...ticket, comments, attachments, history }
+    // I campi del cliente che l'amministratore offre all'utente finale (ondata 4).
+    const customFields = customFieldValues(await customFieldDefs(session, ctx.tenantId, 'incident'), props, { onlyVisibleToEndUser: true })
+
+    return { ...ticket, comments, attachments, history, customFields }
   })
+}
+
+// ── Query: portalCustomFields ────────────────────────────────────────────────
+
+/**
+ * I campi personalizzati che il portale offre aprendo un incident o una
+ * richiesta: solo quelli marcati «visibile all'utente finale» (ondata 4).
+ */
+async function portalCustomFields(_: unknown, { entityType }: { entityType: string }, ctx: GraphQLContext) {
+  if (entityType !== 'incident' && entityType !== 'service_request') {
+    throw new ValidationError(`The portal opens incidents and service requests, not "${entityType}".`, { key: 'errors.customField.entityType', params: { entityType } })
+  }
+  return withSession(async (session) => customFieldValues(await customFieldDefs(session, ctx.tenantId, entityType), {}, { onlyVisibleToEndUser: true }))
 }
 
 // ── Query: myTicketStats ──────────────────────────────────────────────────────
@@ -391,8 +408,8 @@ async function ticketCategories(_: unknown, args: { language?: string | null }, 
 
 async function createTicket(
   _: unknown,
-  { title, description, priority, category }: {
-    title: string; description?: string; priority?: string | null; category: string
+  { title, description, priority, category, customFields }: {
+    title: string; description?: string; priority?: string | null; category: string; customFields?: CustomFieldInput[] | null
   },
   ctx: GraphQLContext,
 ) {
@@ -419,7 +436,9 @@ async function createTicket(
   // lì contro il Dizionario del cliente, anche quando il cliente non ne ha una
   // copia (prima la validazione si saltava: IT-7).
   const created = await incidentService.createIncident(
-    { title, description, severity: priority, category },
+    // I campi del cliente passano sempre dal controllo: un campo obbligatorio
+    // offerto all'utente finale va compilato anche se il client non lo manda.
+    { title, description, severity: priority, category, customFields: customFields ?? [] },
     { tenantId: ctx.tenantId, userId: ctx.userId },
     'portal',
   )
@@ -576,6 +595,7 @@ export const portalResolvers = {
   Query: {
     myTickets,
     myTicket,
+    portalCustomFields,
     myTicketStats,
     ticketCategories,
     portalSeverityChoices: portalSeverityChoicesQuery,

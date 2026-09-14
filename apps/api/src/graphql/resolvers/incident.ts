@@ -1,4 +1,6 @@
 import type { GraphQLResolveInfo } from 'graphql'
+import { requestCustomFieldDefs } from './ticketCustomFields.js'
+import { customFieldValueMap, type CustomFieldInput } from '../../lib/ticketCustomFields.js'
 import { resolvePriorityPatch } from '../../lib/priority.js'
 import { propsToFieldValues as mergedFieldValues } from '../../lib/validateRequiredFields.js'
 import { requireRole } from '../../lib/requireRole.js'
@@ -61,7 +63,8 @@ async function incidents(
       offset,
       limit,
     }
-    const allowedFields = getScalarFields(info.schema, 'Incident')
+    // I campi del cliente si filtrano come quelli del prodotto (ondata 4).
+    const allowedFields = new Set([...getScalarFields(info.schema, 'Incident'), ...(await requestCustomFieldDefs(ctx, 'incident')).map((d) => d.name)])
     const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'i', {}, 'Incident') : ''
     const whereClause = `
       WHERE ($status   IS NULL OR i.status   = $status)
@@ -129,13 +132,14 @@ async function incident(
 
 async function createIncident(
   _: unknown,
-  args: { input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[]; acknowledgeNoSla?: boolean | null } },
+  args: { input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[]; acknowledgeNoSla?: boolean | null ; customFields?: CustomFieldInput[] | null } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
     await validateRequiredFields(session, {
       entityType:  'incident',
-      fieldValues: args.input as Record<string, unknown>,
+      // Le regole di obbligatorietà valgono anche sui campi del cliente (ondata 4).
+      fieldValues: { ...(args.input as Record<string, unknown>), ...customFieldValueMap(args.input.customFields) },
       tenantId:    ctx.tenantId,
     })
     assertMayAcknowledgeNoSla(ctx, args.input.acknowledgeNoSla)

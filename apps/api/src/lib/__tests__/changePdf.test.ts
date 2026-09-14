@@ -29,6 +29,7 @@ function minimalDossier(): ChangeDossier {
     workflowHistory: [],
     auditTrail:      [],
     attachments:     [],
+    customFields:    [],
   }
 }
 
@@ -94,6 +95,7 @@ function fullDossier(): ChangeDossier {
       { timestamp: '2026-07-05T14:00:00.000Z', action: 'change_approved',  detail: 'CAB approval, quorum 5/5',   actor: 'Anna Bianchi' },
       { timestamp: '2026-07-06T09:00:00.000Z', action: 'phase_transition', detail: 'cab -> deployment',          actor: null },
     ],
+    customFields: [{ label: 'Esito', value: 'successful' }, { label: 'Centro di costo', value: null }],
     attachments: [
       { filename: 'rollback-plan.pdf', sizeBytes: 1_234_567, uploadedBy: 'Mario Rossi', uploadedAt: '2026-07-03T10:00:00.000Z' },
       { filename: 'cab-minutes.docx',  sizeBytes: 45_120,    uploadedBy: null,          uploadedAt: null },
