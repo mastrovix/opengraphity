@@ -22,17 +22,17 @@
     "test:watch": "vitest"
   },
   "peerDependencies": {
-    "@apollo/client": "^4.1.6",
+    "@apollo/client": "^4.2.12",
     "graphql": "^16.13.1",
-    "keycloak-js": "^26.2.3",
-    "react": "^19.2.4"
+    "keycloak-js": "^26.2.4",
+    "react": "^19.3.0"
   },
   "devDependencies": {
-    "@apollo/client": "^4.1.6",
-    "@types/react": "^19.2.14",
+    "@apollo/client": "^4.2.12",
+    "@types/react": "^19.3.0",
     "graphql": "^16.13.1",
-    "keycloak-js": "^26.2.3",
-    "react": "^19.2.4",
+    "keycloak-js": "^26.2.4",
+    "react": "^19.3.0",
     "typescript": "~5.9.3",
     "vitest": "catalog:"
   }
