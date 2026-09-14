@@ -9,5 +9,5 @@ packages:
 catalog:
   '@vitest/coverage-v8': ^4.1.0
   bullmq: ^5.71.0
-  ioredis: ^5.10.0
+  ioredis: ^6.0.0
   vitest: ^4.1.0
