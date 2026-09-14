@@ -25,6 +25,8 @@ export interface NamedServiceCalendar extends ServiceCalendar {
   /** Chi lo usa: i nomi delle policy SLA e dei contratti OLA/UC che lo scelgono. */
   usedBySlaPolicies:  string[]
   usedByOlaContracts: string[]
+  /** Le scadenze dei passi di workflow che contano con questo calendario («Workflow · Passo»). */
+  usedByWorkflowSteps: string[]
 }
 
 function toCalendar(input: unknown): ServiceCalendar {
@@ -54,8 +56,10 @@ const READ_CYPHER = `
   OPTIONAL MATCH (p:SLAPolicyNode {tenant_id: $tenantId, calendar_id: c.id})
   WITH c, collect(DISTINCT p.name) AS policies
   OPTIONAL MATCH (o:OLAContract {tenant_id: $tenantId, calendar_id: c.id})
+  WITH c, policies, collect(DISTINCT o.name) AS contracts
+  OPTIONAL MATCH (wd:WorkflowDefinition {tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {deadline_calendar_id: c.id})
   RETURN c.id AS id, c.name AS name, c.days AS days, c.start AS start, c.end AS end, c.holidays AS holidays,
-         policies, collect(DISTINCT o.name) AS contracts
+         policies, contracts, collect(DISTINCT wd.name + ' · ' + coalesce(s.label, s.name)) AS steps
   ORDER BY toLower(c.name)
 `
 
@@ -67,6 +71,7 @@ function mapRow(r: Record<string, unknown>): NamedServiceCalendar {
     id: r['id'] as string, name: r['name'] as string, ...calendar,
     usedBySlaPolicies:  ((r['policies'] ?? []) as string[]).filter(Boolean).sort(),
     usedByOlaContracts: ((r['contracts'] ?? []) as string[]).filter(Boolean).sort(),
+    usedByWorkflowSteps: ((r['steps'] ?? []) as string[]).filter(Boolean).sort(),
   }
 }
 
@@ -106,7 +111,7 @@ export async function createServiceCalendar(tenantId: string, input: { name: unk
   } finally {
     await session.close()
   }
-  return { id, name, ...calendar, usedBySlaPolicies: [], usedByOlaContracts: [] }
+  return { id, name, ...calendar, usedBySlaPolicies: [], usedByOlaContracts: [], usedByWorkflowSteps: [] }
 }
 
 export async function updateServiceCalendar(tenantId: string, id: string, input: { name?: unknown; calendar?: unknown }): Promise<NamedServiceCalendar> {
@@ -136,7 +141,7 @@ export async function updateServiceCalendar(tenantId: string, id: string, input:
 export async function deleteServiceCalendar(tenantId: string, id: string): Promise<void> {
   const current = (await serviceCalendars(tenantId)).find((c) => c.id === id)
   if (!current) throw new NotFoundError('ServiceCalendar', id)
-  const users = [...current.usedBySlaPolicies, ...current.usedByOlaContracts]
+  const users = [...current.usedBySlaPolicies, ...current.usedByOlaContracts, ...current.usedByWorkflowSteps]
   if (users.length > 0) {
     throw new ValidationError(
       `The service calendar "${current.name}" is used by ${users.join(', ')}: choose another calendar for them first.`,

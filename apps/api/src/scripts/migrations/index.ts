@@ -78,6 +78,7 @@ import { serviceUrgencyMatrix } from './20260925_1110_service_urgency_matrix.js'
 import { catalogItemCategoryVocabulary } from './20260925_1120_catalog_item_category_vocabulary.js'
 import { namedServiceCalendars } from './20260925_1130_named_service_calendars.js'
 import { complianceObjectives } from './20260925_1140_compliance_objectives.js'
+import { stepDeadlines } from './20260925_1200_step_deadlines.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -150,4 +151,5 @@ export const MIGRATIONS: readonly Migration[] = [
   catalogItemCategoryVocabulary,
   namedServiceCalendars,
   complianceObjectives,
+  stepDeadlines,
 ]

@@ -44,7 +44,7 @@ import { changeWindowGateBlockedTotal } from '../../../middleware/metrics.js'
 import type { GraphQLContext } from '../../../context.js'
 
 /** Chi sta attraversando il varco: serve solo per l'etichetta del contatore e del log. */
-export type GatePath = 'auto_transition' | 'timer_job' | 'rule_action' | 'sla_breach'
+export type GatePath = 'auto_transition' | 'timer_job' | 'rule_action' | 'sla_breach' | 'step_deadline'
 
 export interface ChangeGateInput {
   tenantId:   string

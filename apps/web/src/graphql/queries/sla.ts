@@ -62,6 +62,6 @@ export const GET_SLA_COVERAGE = gql`
 /** I calendari di servizio con nome (verifica «Cosa resta cablato», ondata 2). */
 export const GET_SERVICE_CALENDARS = gql`
   query GetServiceCalendars {
-    serviceCalendars { id name days start end holidays usedBySlaPolicies usedByOlaContracts }
+    serviceCalendars { id name days start end holidays usedBySlaPolicies usedByOlaContracts usedByWorkflowSteps }
   }
 `

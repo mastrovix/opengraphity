@@ -86,6 +86,9 @@ export function workflowSDL(): string {
     # Vocabolario chiuso (WORKFLOW_STEP_PURPOSES); null = non dichiarato, ed è
     # legittimo: nessuno scopo viene indovinato dal nome.
     purpose:             String
+    # La SCADENZA del passo (JSON: after, unit, calendar_id, to_step, set_fields):
+    # dopo quanto tempo nel passo il ticket si sposta da solo, e dove. null = nessuna.
+    deadline:            String
     order:               Int!
     # Quante istanze di workflow si trovano ORA su questo step. Finché è > 0 lo
     # step non si può eliminare: le istanze resterebbero senza step corrente
@@ -165,6 +168,8 @@ export function workflowSDL(): string {
     # Stringa vuota = TOLTO: un passo senza scopo è legittimo, e il
     # disegnatore deve poterlo riportare a «nessuno».
     purpose:      String
+    # La scadenza del passo (JSON). Assente/null = invariata; stringa vuota = tolta.
+    deadline:     String
   }
 
   """

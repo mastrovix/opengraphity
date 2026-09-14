@@ -1,15 +1,14 @@
 import type { Worker, Job } from 'bullmq'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
-import * as incidentService from '../services/incidentService.js'
 import { logger } from '../lib/logger.js'
-import { ValidationError } from '../lib/errors.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
 import { evaluateConditions, parseConditions } from '../lib/conditionEvaluator.js'
 import { executeActions, parseActions, type ActionExecutionContext } from '../lib/actionExecutor.js'
 import { assertSafeOutboundUrl, loggableUrl } from '../lib/safeUrl.js'
 import { automaticTransitionAllowed } from '../graphql/resolvers/change/windowGate.js'
 import { loadAutomationEntity } from '../lib/automationEntity.js'
+import { runStepDeadlineSweep } from '../lib/stepDeadlines.js'
 import { AUTOMATION_ACTOR, type AutomationEntityType } from '@opengraphity/types'
 
 // ── Job data shape produced by packages/workflow/src/actions.ts ───────────────
@@ -36,121 +35,31 @@ interface WebhookRetryData {
 
 // SSRF protection: shared assertSafeOutboundUrl (lib/safeUrl.ts → @opengraphity/events).
 
-// ── auto_close dispatch per entity type (A-12) ────────────────────────────────
-
-/**
- * Publishes the domain "closed" event for the entity after its workflow
- * transition. Only incidents have a closing service today: for every other
- * entity type the job fails with an explicit ValidationError instead of
- * publishing `incident.closed` for a problem/change (which is what happened
- * before — wrong event, wrong payload loader).
- */
-async function publishAutoClose(entityType: string, entityId: string, tenantId: string): Promise<void> {
-  switch (entityType) {
-    case 'incident':
-      await incidentService.closeIncident(entityId, { tenantId, userId: 'system' })
-      return
-    case 'problem':
-    case 'change':
-    case 'service_request':
-      throw new ValidationError(
-        `[workflow-jobs] auto_close is not implemented for entity type "${entityType}" (entity ${entityId}): ` +
-        'no closing service exists for it — only incidentService.closeIncident. Remove the schedule_job(auto_close) ' +
-        'action from that workflow or implement the service.',
-      )
-    default:
-      throw new ValidationError(`[workflow-jobs] auto_close: unknown entity type "${entityType}" (entity ${entityId})`)
-  }
-}
-
-const AUTO_CLOSE_SUPPORTED = new Set(['incident'])
-
 // ── Processor ─────────────────────────────────────────────────────────────────
 
 async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
-  const { entityId, tenantId, instanceId } = job.data
-  logger.info({ jobName: job.name, entityId, tenantId }, '[workflow-jobs] processing')
+  const { entityId, tenantId } = job.data
+  // La passata delle scadenze gira ogni minuto: il suo log è il riepilogo, non questa riga.
+  if (job.name !== STEP_DEADLINES_JOB) logger.info({ jobName: job.name, entityId, tenantId }, '[workflow-jobs] processing')
 
   switch (job.name) {
-    case 'auto_close': {
-      // 1. Transizione workflow → terminal step 'closed-like' in Neo4j
-      let entityType: string
-      const session = getSession(undefined, 'WRITE')
-      try {
-        const { getWorkflowSteps } = await import('../lib/workflowHelpers.js')
-        const { targetStepByCategory } = await import('../lib/workflowTargets.js')
-        // The job is scheduled from an entity-specific step, so we resolve the
-        // workflow's entity_type via the instance, then pick the step marked
-        // as closure (category='closed' preferred, else first terminal).
-        const wiRes = await session.executeRead((tx) => tx.run(`
-          MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
-          RETURN wi.entity_type AS entityType
-        `, { instanceId, tenantId }))
-        const found = wiRes.records[0]?.get('entityType') as string | undefined
-        if (!found) {
-          logger.warn({ instanceId, entityId }, '[workflow-jobs] auto_close: workflow instance not found')
-          return
-        }
-        entityType = found
-
-        // Dispatch check BEFORE the transition: failing after it would leave
-        // the entity closed with no event, and every retry would then fail
-        // on the (already done) transition.
-        if (!AUTO_CLOSE_SUPPORTED.has(entityType)) {
-          await publishAutoClose(entityType, entityId, tenantId)  // throws ValidationError
-        }
-
-        // Revisione delle otto ondate · B·N-4. Era
-        // `steps.find(category === 'closed') ?? steps.find(isTerminal)` su una
-        // lista SENZA ordine: aggiunto dal disegnatore un secondo passo
-        // terminale di categoria `closed` («Annullato», «Respinto» — l'esempio
-        // stesso della documentazione), la scelta cadeva su quello, 5 letture
-        // su 5, e gli incident si auto-chiudevano come annullati.
-        //
-        // Adesso l'ordine è nel nucleo (`step_order`, poi il nome) e la scelta
-        // passa da `targetStepByCategory`, che ordina e dice cosa manca. Un
-        // workflow senza passi di categoria `closed` ma con un terminale resta
-        // servito — da quel terminale — perché era il comportamento di prima e
-        // togliere la chiusura automatica a quei tenant non è un rimedio; ma
-        // ora lo si DICE, invece di scegliere in silenzio.
-        const steps  = await getWorkflowSteps(session, tenantId, entityType)
-        let target: string
-        try {
-          target = await targetStepByCategory(session, tenantId, entityType, ['closed'],
-            `automatic close of ${entityType} ${entityId}`)
-        } catch (err) {
-          const terminal = steps.find((s) => s.isTerminal)
-          if (!terminal) {
-            // Prima era un `warn` + `return`: il job risultava completato e
-            // quel ticket non si chiudeva mai, senza che nessuno lo vedesse.
-            throw new Error(
-              `[workflow-jobs] auto_close: the "${entityType}" workflow of tenant ${tenantId} has no step ` +
-              `of category "closed" and no terminal step: there is nowhere to close ${entityId}. ` +
-              `(${err instanceof Error ? err.message : String(err)})`,
-            )
-          }
-          logger.warn({ entityType, entityId, tenantId, chosen: terminal.name },
-            '[workflow-jobs] auto_close: nessun passo di categoria "closed"; si usa il passo terminale — ' +
-            'assegna la categoria «chiuso» al passo di chiusura nel disegnatore')
-          target = terminal.name
-        }
-        const result = await workflowEngine.transition(
-          session,
-          { instanceId, toStepName: target, triggeredBy: 'system', triggerType: 'automatic' },
-          { userId: 'system', entityData: {} },
-        )
-        if (!result.success) {
-          // Throw → the job fails and BullMQ retries; a silent return would
-          // mark it completed and the incident would never auto-close.
-          throw new Error(`[workflow-jobs] auto_close transition failed for ${entityId}: ${result.error ?? 'unknown error'}`)
-        }
-      } finally {
-        await session.close()
+    case STEP_DEADLINES_JOB: {
+      // Verifica «Cosa resta cablato», ondata 3: le scadenze dei passi. La
+      // passata cerca i ticket fermi oltre la scadenza del loro passo e li
+      // sposta; l'esito resta sull'esecuzione del passo (lib/stepDeadlines.ts).
+      const summary = await runStepDeadlineSweep()
+      if (summary.moved + summary.refused + summary.failed > 0) {
+        logger.info(summary, '[workflow-jobs] step deadlines')
       }
+      break
+    }
 
-      // 2. Pubblica evento domain <entity>.closed (notifiche, audit)
-      await publishAutoClose(entityType, entityId, tenantId)
-      logger.info({ entityId, entityType }, '[workflow-jobs] auto_close completed')
+    case 'auto_close': {
+      // I job `auto_close` messi in coda PRIMA dell'ondata 3 (72 ore di
+      // ritardo) arrivano ancora per qualche giorno dopo l'aggiornamento. Non
+      // c'è niente da fare: lo stesso ticket lo chiude la scadenza del passo
+      // «resolved», nata dalla migrazione 20260925_1200 con la stessa durata.
+      logger.info({ entityId, tenantId }, '[workflow-jobs] auto_close di prima dell\'ondata 3: lo fa la scadenza del passo, il job non fa nulla')
       break
     }
 
@@ -348,6 +257,9 @@ async function processNotificationJob(job: Job): Promise<void> {
 
 export const NOTIFICATION_JOBS_QUEUE = 'notification-jobs'
 export const WORKFLOW_JOBS_QUEUE     = 'workflow-jobs'
+/** Il job ripetuto delle scadenze dei passi, ogni minuto. */
+export const STEP_DEADLINES_JOB      = 'step_deadlines'
+export const STEP_DEADLINES_EVERY_MS = 60_000
 
 export function startNotificationJobWorker(): Worker {
   getQueue(NOTIFICATION_JOBS_QUEUE)  // register the producer singleton (metrics + scheduleEscalationCheck)
@@ -368,6 +280,19 @@ export async function scheduleEscalationCheck(incidentId: string, tenantId: stri
 }
 
 // ── Worker ────────────────────────────────────────────────────────────────────
+
+/**
+ * La passata delle scadenze, ripetuta ogni minuto. `jobId` fisso: ogni replica
+ * la registra all'avvio, e BullMQ ne tiene una sola.
+ */
+export async function scheduleStepDeadlineSweep(): Promise<void> {
+  await getQueue(WORKFLOW_JOBS_QUEUE).add(
+    STEP_DEADLINES_JOB,
+    { instanceId: '', entityId: '', tenantId: '', job: STEP_DEADLINES_JOB },
+    { repeat: { every: STEP_DEADLINES_EVERY_MS }, jobId: 'workflow-step-deadlines', removeOnComplete: true, removeOnFail: 100 },
+  )
+  logger.info({ everyMs: STEP_DEADLINES_EVERY_MS }, '[workflow-jobs] step deadlines sweep scheduled')
+}
 
 export function startWorkflowJobWorker(): Worker<WorkflowJobData> {
   getQueue(WORKFLOW_JOBS_QUEUE)  // producer singleton (packages/workflow actions + triggerEngine timers)

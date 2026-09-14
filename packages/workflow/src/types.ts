@@ -48,8 +48,6 @@ export const WORKFLOW_ACTION_TYPES = [
   'sla_resume',
   'notify',
   'publish_event',
-  'schedule_job',
-  'cancel_job',
   'notify_rule',
   'create_entity',
   'assign_to',
@@ -88,12 +86,12 @@ export interface UpdateFieldParams {
 }
 
 /**
- * L'allow-list dei campi di `update_field` sta in `@opengraphity/types`
- * (`workflowFields.ts`) perché la leggono anche l'API in scrittura e il
+ * I campi riservati di `update_field` stanno in `@opengraphity/types`
+ * (`workflowFields.ts`) perché li leggono anche l'API in scrittura e il
  * **disegnatore** — e il web non dipende da questo pacchetto. Qui si
  * ri-esporta per i chiamanti del motore: una definizione sola.
  */
-export { UPDATE_FIELD_ALLOWED, UPDATE_FIELD_ENGINE_OWNED, updateFieldRejection } from '@opengraphity/types'
+export { stepFieldRejection, isStepFieldWritable } from '@opengraphity/types'
 
 export interface CallWebhookParams {
   url:               string

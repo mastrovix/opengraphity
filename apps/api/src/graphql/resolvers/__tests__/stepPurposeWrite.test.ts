@@ -58,6 +58,9 @@ vi.mock('../../../lib/logger.js', () => ({
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/validateRequiredFields.js', () => ({ validateRequiredFields: vi.fn().mockResolvedValue(undefined) }))
+// Le scadenze dei passi (ondata 3) hanno i loro test (stepDeadlines.test.ts): qui la
+// lettura del loro controllo sposterebbe i risultati in coda di questo doppio.
+vi.mock('../../../lib/stepDeadlineWrite.js', async (importOriginal) => ({ ...(await importOriginal<object>()), assertDefinitionDeadlines: vi.fn(async () => {}) }))
 vi.mock('../../../lib/workflowHelpers.js', () => ({ invalidateWorkflowCache: vi.fn() }))
 
 const { normalizeStepPurpose, updateWorkflowStep, saveWorkflowChanges } = await import('../workflowMutations.js')

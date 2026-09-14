@@ -27,7 +27,7 @@ describe('calendari di servizio con nome', () => {
     runQueryOne.mockResolvedValueOnce(null) // nessun omonimo
     runQuery.mockResolvedValueOnce([])
     const out = await createServiceCalendar('t1', { name: '  Turno NOC  ', calendar: WEEK })
-    expect(out).toMatchObject({ name: 'Turno NOC', days: [1, 2, 3, 4, 5], start: '08:00', end: '18:00', usedBySlaPolicies: [], usedByOlaContracts: [] })
+    expect(out).toMatchObject({ name: 'Turno NOC', days: [1, 2, 3, 4, 5], start: '08:00', end: '18:00', usedBySlaPolicies: [], usedByOlaContracts: [], usedByWorkflowSteps: [] })
     const [, cypher, params] = runQuery.mock.calls[0] as [unknown, string, Record<string, unknown>]
     expect(cypher).toContain('CREATE (c:ServiceCalendar')
     expect(params).toMatchObject({ tenantId: 't1', name: 'Turno NOC', days: [1, 2, 3, 4, 5] })

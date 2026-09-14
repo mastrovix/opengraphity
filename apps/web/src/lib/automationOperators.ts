@@ -9,7 +9,7 @@
  *     assign_team, …`.
  *  2. Azioni degli step di workflow (`packages/workflow/src/actions.ts`,
  *     `types.ts`): operatori `eq | ne | gt | lt | gte | lte | in | not_in |
- *     contains | is_null | is_not_null`; azioni `sla_start, schedule_job, …`.
+ *     contains | is_null | is_not_null`; azioni `sla_start, update_field, …`.
  *
  * Il formato SALVATO nel DB non cambia (nessuna migrazione): l'UI condivisa
  * parla il vocabolario 1 e, per gli step di workflow, un adapter esplicito
@@ -188,7 +188,7 @@ export function automationActionKey(type: string): string {
 
 /** Tipi selezionabili nel pannello step (notify_rule ha una sua tab dedicata). */
 export const WORKFLOW_STEP_ACTION_TYPES = [
-  'sla_start', 'sla_stop', 'schedule_job', 'cancel_job',
+  'sla_start', 'sla_stop',
   'create_entity', 'assign_to', 'update_field', 'call_webhook', 'create_approval_request',
 ] as const
 

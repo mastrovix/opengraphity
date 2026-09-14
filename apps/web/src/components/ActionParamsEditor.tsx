@@ -12,7 +12,7 @@ import { useQuery } from '@apollo/client/react'
 import { GET_TEAMS, GET_WORKFLOW_LIST, GET_USERS } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { useEntityFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
-import { UPDATE_FIELD_ALLOWED, AUTOMATION_NOTIFICATION_CHANNELS } from '@opengraphity/types'
+import { isStepFieldWritable, AUTOMATION_NOTIFICATION_CHANNELS } from '@opengraphity/types'
 import { TARGET_OPTIONS, CHANNEL_LABEL_KEY } from '@/pages/settings/NotificationRuleList'
 import { fieldTypeKey } from '@/lib/automationOperators'
 import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
@@ -59,9 +59,11 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
     .filter((s, i, arr) => arr.findIndex(x => x.name === s.name) === i)
 
   const selectedFieldMeta = fieldMetas.find(f => f.name === params['field'])
-  // `update_field` (vocabolario workflow_step) scrive solo questi campi: la
-  // stessa allow-list che il motore applica a runtime e l'API in scrittura.
-  const updatableFields = fieldMetas.filter(f => (UPDATE_FIELD_ALLOWED as readonly string[]).includes(f.name))
+  // `update_field` (vocabolario workflow_step) scrive ogni campo del
+  // metamodello che non è riservato (ondata 3 di «Cosa resta cablato»): le
+  // stesse riserve che il motore applica a runtime e l'API in scrittura. Le
+  // relazioni (utente, team) si assegnano con `assign_to`.
+  const updatableFields = fieldMetas.filter(f => isStepFieldWritable(f.name, entityType) && f.fieldType !== 'user' && f.fieldType !== 'team')
 
   const text = (key: string, label: string, placeholder = '', type = 'text') => (
     <Labeled key={key} label={label}>
@@ -189,17 +191,6 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
     case 'sla_stop':
       return choice('sla_type', 'sla_type', [{ value: 'response' }, { value: 'resolve' }], 'response')
 
-    case 'schedule_job':
-      return (
-        <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
-          {text('job', 'job', 'auto_close')}
-          {text('delay_hours', 'delay_hours', '0', 'number')}
-        </div>
-      )
-
-    case 'cancel_job':
-      return text('job', 'job', 'auto_close')
-
     case 'create_entity':
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
@@ -237,20 +228,19 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
       )
     }
 
-    case 'update_field':
+    case 'update_field': {
+      const updateMeta = updatableFields.find(f => f.name === params['field'])
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
           <Labeled label="field">
             {/*
-              Solo i campi che `update_field` sa davvero scrivere
-              (UPDATE_FIELD_ALLOWED, vocabolario unico in @opengraphity/types).
-              Prima la tendina offriva TUTTI i campi dell'entità — compreso
-              `status`, che il motore dei workflow scrive da sé: configurarlo
-              qui faceva divergere lo stato del ticket dal passo del processo,
-              e ogni altro campo fuori lista falliva a runtime con l'azione già
-              salvata (B-9).
+              Ogni campo del metamodello che un passo può scrivere (riserve in
+              @opengraphity/types, ondata 3). `status` e gli altri campi del
+              motore restano fuori: configurarli qui faceva divergere lo stato
+              del ticket dal passo del processo (B-9).
             */}
-            <Select style={selectS} value={params['field'] ?? 'severity'} onChange={e => onChange('field', e.target.value)}>
+            <Select style={selectS} value={params['field'] ?? ''} onChange={e => { onChange('field', e.target.value); onChange('value', '') }}>
+              <option value="">{t('automation.params.pickField')}</option>
               {updatableFields.map(f => (
                 <option key={f.name} value={f.name}>{f.label} ({t(fieldTypeKey(f.fieldType))})</option>
               ))}
@@ -260,10 +250,21 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
               )}
             </Select>
           </Labeled>
-          {/* Testo libero: il valore può essere un template ({field}), non solo un enum */}
-          {text('value', 'value', 'critical or {field}')}
+          {/* Un campo di vocabolario sceglie fra i SUOI valori, con le etichette del
+              Dizionario; gli altri accettano anche un segnaposto ({title}). */}
+          {updateMeta?.fieldType === 'enum' && updateMeta.enumValues.length > 0 ? (
+            <Labeled label="value">
+              <Select style={selectS} value={params['value'] ?? ''} onChange={e => onChange('value', e.target.value)}>
+                <option value="">{t('automation.params.selectValue')}</option>
+                {updateMeta.enumValues.map(v => (
+                  <option key={v} value={v} title={v}>{(updateMeta.enumTypeName ? labelOf(updateMeta.enumTypeName, v) : null) ?? v}</option>
+                ))}
+              </Select>
+            </Labeled>
+          ) : text('value', 'value', '{title}')}
         </div>
       )
+    }
 
     case 'create_approval_request':
       return (

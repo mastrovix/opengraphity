@@ -39,7 +39,7 @@ registerSessionTracker((durationMs, query) => {
 })
 import { startReportScheduler } from './jobs/reportScheduler.js'
 import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
-import { startWorkflowJobWorker, startNotificationJobWorker } from './jobs/workflowJobWorker.js'
+import { startWorkflowJobWorker, startNotificationJobWorker, scheduleStepDeadlineSweep } from './jobs/workflowJobWorker.js'
 import { startWebhookDeliveryWorker } from './jobs/webhookDeliveryWorker.js'
 import { startEventIngestWorker } from './jobs/eventIngestWorker.js'
 import { startEventCorrelateWorker, startEventMaintenanceWorker } from './jobs/eventCorrelateWorker.js'
@@ -95,8 +95,9 @@ async function main() {
   // Start anomaly scanner (BullMQ, every 1h)
   const anomalyWorker = await startAnomalyScanner()
 
-  // Start workflow job worker (BullMQ, processes auto_close and other scheduled jobs)
+  // Start workflow job worker (BullMQ: step deadlines, webhook retries, timed triggers)
   const workflowWorker = startWorkflowJobWorker()
+  await scheduleStepDeadlineSweep()
 
   // Start notification job worker (escalation_check, digest, timer_wait)
   const notificationWorker = startNotificationJobWorker()

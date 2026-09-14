@@ -25,6 +25,7 @@ import {
 import { Input, Select } from '@/components/ui/FormControls'
 import { TARGET_OPTIONS } from '@/pages/settings/NotificationRuleList'
 import { WORKFLOW_STEP_PURPOSES, WORKFLOW_STEP_CATEGORIES } from '@opengraphity/types'
+import { StepDeadlineEditor, deadlineFromDraft, draftFromDeadline, draftProblem, type DeadlineTarget } from './StepDeadlineEditor'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 const ACCENT_COLOR = colors.brand
@@ -159,6 +160,8 @@ interface StepPanelProps {
     isOpen?:      boolean
     category?:    string | null
     purpose?:     string | null
+    /** La scadenza del passo (JSON), `''` = nessuna. */
+    deadline?:    string | null
   }) => void
 }
 
@@ -192,7 +195,11 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
   // Tipo entità del workflow (incident/problem/change/…): serve agli editor
   // condivisi per leggere i campi dal metamodello. La definizione è già in
   // cache (il designer la carica con la stessa query) → nessuna richiesta extra.
-  const { data: defData, error: defError } = useQuery<{ workflowDefinitionById: { id: string; entityType: string } | null }>(
+  const { data: defData, error: defError } = useQuery<{ workflowDefinitionById: {
+    id: string; entityType: string
+    steps?: { name: string; label: string; purpose: string | null }[]
+    transitions?: { fromStepName: string; toStepName: string }[]
+  } | null }>(
     GET_WORKFLOW_DEFINITION_BY_ID,
     { variables: { id: definitionId }, fetchPolicy: METAMODEL_FETCH_POLICY },
   )
@@ -201,7 +208,18 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
     ? defError.message
     : (defData && !defData.workflowDefinitionById ? `workflow definition "${definitionId}" not found` : null)
 
-  const [activeTab, setActiveTab] = useState<'props' | 'notify' | 'metadata'>('props')
+  const [activeTab, setActiveTab] = useState<'props' | 'notify' | 'metadata' | 'deadline'>('props')
+
+  // La SCADENZA del passo (ondata 3). I passi di arrivo possibili sono quelli
+  // raggiungibili con un arco da qui: una scadenza segue un arco.
+  const initialDeadline = useMemo(() => draftFromDeadline(step.deadline), [step.deadline])
+  const [deadlineDraft, setDeadlineDraft] = useState(initialDeadline.draft)
+  const deadlineTargets: DeadlineTarget[] = useMemo(() => {
+    const def = defData?.workflowDefinitionById
+    const byName = new Map((def?.steps ?? []).map((st) => [st.name, st]))
+    const names = [...new Set((def?.transitions ?? []).filter((tr) => tr.fromStepName === step.name).map((tr) => tr.toStepName))]
+    return names.filter((n) => n !== step.name).map((n) => ({ name: n, label: byName.get(n)?.label || n, purpose: byName.get(n)?.purpose ?? null }))
+  }, [defData, step.name])
   const [label, setLabel]         = useState(step.label)
   const [isInitial,  setIsInitial]  = useState(Boolean(step.isInitial))
   const [isTerminal, setIsTerminal] = useState(Boolean(step.isTerminal))
@@ -282,7 +300,11 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
     || isOpen     !== (step.isOpen ?? !step.isTerminal)
     || category   !== (step.category ?? '')
     || purpose    !== (step.purpose  ?? '')
-  const propsUnchanged      = label === step.label && !enterActionsChanged && !exitActionsChanged && !metadataChanged
+  const deadlineProblem     = draftProblem(deadlineDraft, deadlineTargets, entityType, purpose || null)
+  const deadlineValue       = deadlineProblem ? null : deadlineFromDraft(deadlineDraft)
+  const deadlineChanged     = initialDeadline.error === null
+    && JSON.stringify(deadlineDraft) !== JSON.stringify(initialDeadline.draft)
+  const propsUnchanged      = label === step.label && !enterActionsChanged && !exitActionsChanged && !metadataChanged && !deadlineChanged
   const notifyUnchanged     = notifyEnabled === !!existingNR
     && notifyTitleKey === (existingNR?.params.title_key  ?? '')
     && notifySeverity === (existingNR?.params.severity   ?? 'info')
@@ -291,7 +313,10 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
   // Iniziale + terminale insieme = ogni nuovo ticket nasce già chiuso: il
   // server lo rifiuta (saveWorkflowChanges), qui si dice prima di provarci.
   const initialOnTerminal = isInitial && isTerminal
-  const saveDisabled = actionsParseError !== null || initialOnTerminal || (propsUnchanged && notifyUnchanged)
+  // Una scadenza illeggibile nel grafo blocca il Salva come le azioni corrotte:
+  // riscriverla la perderebbe. Una bozza incompleta lo blocca finché non è completa.
+  const saveDisabled = actionsParseError !== null || initialOnTerminal || initialDeadline.error !== null
+    || (deadlineChanged && deadlineProblem !== null) || (propsUnchanged && notifyUnchanged)
 
   // Perché «Elimina step» non si può offrire. Si guarda il DATO salvato, non le
   // spunte del pannello: togliere la spunta «Step iniziale» senza salvare non
@@ -314,14 +339,18 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
     // Lo scopo viaggia come stringa: '' dice al server «togli lo scopo»
     // (null vorrebbe dire «non l'ho mandato» e lo lascerebbe com'è).
     const purposeValue = purpose.trim()
+    // La scadenza viaggia solo se è cambiata: assente = il server la lascia com'è.
+    const deadline = deadlineChanged ? (deadlineValue ?? '') : undefined
     onSaveLocally?.({
       stepName: step.name, label, enterActions, exitActions,
       isInitial, isTerminal, isOpen, category: categoryValue, purpose: purposeValue,
+      ...(deadline !== undefined ? { deadline } : {}),
     })
     onSaved({
       label, enterActions, exitActions,
       isInitial, isTerminal, isOpen, category: categoryValue,
       purpose: purposeValue === '' ? null : purposeValue,
+      ...(deadline !== undefined ? { deadline: deadline === '' ? null : deadline } : {}),
     })
   }
 
@@ -340,7 +369,8 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
   }
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
-    padding:           '6px 14px',
+    padding:           '6px 8px',
+    whiteSpace:        'nowrap' as const,
     fontSize:          12,
     fontWeight:        active ? 700 : 400,
     color:             active ? ACCENT_COLOR : 'var(--color-slate-light)',
@@ -529,11 +559,27 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
       )}
 
       {/* Tabs */}
-      <div role="tablist" style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', marginBottom: 4 }}>
+      <div role="tablist" style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', marginBottom: 4, overflowX: 'auto' }}>
         <button type="button" role="tab" aria-selected={activeTab === 'props'}    style={tabStyle(activeTab === 'props')}    onClick={() => setActiveTab('props')}>{t('pages.workflowStep.tabProps')}</button>
         <button type="button" role="tab" aria-selected={activeTab === 'metadata'} style={tabStyle(activeTab === 'metadata')} onClick={() => setActiveTab('metadata')}>{t('pages.workflowStep.tabMetadata')}</button>
         <button type="button" role="tab" aria-selected={activeTab === 'notify'}   style={tabStyle(activeTab === 'notify')}   onClick={() => setActiveTab('notify')}>{t('pages.workflowStep.tabNotify')}</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'deadline'} style={tabStyle(activeTab === 'deadline')} onClick={() => setActiveTab('deadline')}>{t('pages.workflowStep.tabDeadline')}</button>
       </div>
+
+      {activeTab === 'deadline' && (initialDeadline.error ? (
+        <div role="alert" style={{ padding: '8px 10px', borderRadius: 6, background: 'var(--color-danger-bg)', border: '1px solid var(--color-danger)', color: 'var(--color-danger)', fontSize: 'var(--font-size-label)', lineHeight: 1.4 }}>
+          {t('workflow.deadline.corrupted', { error: initialDeadline.error })}
+        </div>
+      ) : (
+        <StepDeadlineEditor
+          stepLabel={label || step.name}
+          entityType={entityType}
+          sourcePurpose={purpose || null}
+          targets={deadlineTargets}
+          draft={deadlineDraft}
+          onChange={setDeadlineDraft}
+        />
+      ))}
 
       {activeTab === 'metadata' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '8px 0' }}>

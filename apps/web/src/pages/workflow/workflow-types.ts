@@ -21,6 +21,8 @@ export interface WFStep {
    * passo rinominato continua a funzionare. `null` = nessuno scopo, legittimo.
    */
   purpose?:     string | null
+  /** La SCADENZA del passo (JSON di `StepDeadline`); null = nessuna. */
+  deadline?:    string | null
   /**
    * Istanze di workflow ferme ORA su questo step. > 0 ⇒ eliminarlo lascerebbe
    * quei ticket senza step corrente: il pannello spegne «Elimina step» e dice

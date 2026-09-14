@@ -291,39 +291,17 @@ describe('notify / publish_event / sla_*', () => {
   })
 })
 
-// ── Scheduled jobs ───────────────────────────────────────────────────────────
+// ── Azioni ritirate ──────────────────────────────────────────────────────────
 
-describe('schedule_job / cancel_job', () => {
-  it('schedule_job → workflow-jobs queue, deterministic jobId <job>_<entityId>, delay_hours → ms, queue closed', async () => {
-    await runAction(action('schedule_job', { job: 'auto_close', delay_hours: '48' }), instance, ctx())
-    const q = fake.queues[0]!
-    expect(q.name).toBe('workflow-jobs')
-    expect(q.opts).toEqual({ connection: { host: 'redis.test', port: 6379 } })
-    expect(q.add).toHaveBeenCalledWith(
-      'auto_close',
-      { instanceId: 'wi-1', entityId: 'inc-1', tenantId: 't1', job: 'auto_close' },
-      { delay: 48 * 60 * 60 * 1000, jobId: 'auto_close_inc-1', removeOnComplete: true },
-    )
-    expect(q.close).toHaveBeenCalledTimes(1)
-  })
-
-  it('schedule_job without delay → delay 0; missing job → error', async () => {
-    await runAction(action('schedule_job', { job: 'ping' }), instance, ctx())
-    expect((fake.queues[0]!.add.mock.calls[0]![2] as { delay: number }).delay).toBe(0)
-    await expect(runAction(action('schedule_job'), instance, ctx())).rejects.toThrow('schedule_job: missing required param "job"')
-  })
-
-  it('cancel_job removes the job with that id when present, no-op when absent; missing job → error', async () => {
-    const remove = vi.fn(async () => {})
-    fake.state.existingJob = { remove }
-    await runAction(action('cancel_job', { job: 'auto_close' }), instance, ctx())
-    expect(fake.queues[0]!.getJob).toHaveBeenCalledWith('auto_close_inc-1')
-    expect(remove).toHaveBeenCalledTimes(1)
-    expect(fake.queues[0]!.close).toHaveBeenCalledTimes(1)
-
-    fake.state.existingJob = null
-    await expect(runAction(action('cancel_job', { job: 'auto_close' }), instance, ctx())).resolves.toBeUndefined()
-    await expect(runAction(action('cancel_job'), instance, ctx())).rejects.toThrow('cancel_job: missing required param "job"')
+// Verifica «Cosa resta cablato», ondata 3: la chiusura automatica è la scadenza
+// del passo, e `schedule_job`/`cancel_job` non esistono più. Un dato che le
+// porta ancora è configurazione corrotta, e il motore la nomina.
+describe('schedule_job / cancel_job ritirate', () => {
+  it('non sono più azioni del motore', async () => {
+    for (const type of ['schedule_job', 'cancel_job']) {
+      await expect(runAction(action(type as never, { job: 'auto_close' }), instance, ctx())).rejects.toThrow(`Unknown workflow action type: ${type}`)
+    }
+    expect(fake.queues).toEqual([])
   })
 })
 
@@ -382,27 +360,35 @@ describe('assign_to', () => {
 })
 
 describe('update_field', () => {
-  it('without callback → error; field outside the allowlist → error naming the list', async () => {
+  it('without callback → error; a reserved field → error with the reason, the callback is not called', async () => {
     await expect(runAction(action('update_field', { field: 'severity', value: 'low' }), instance, ctx())).rejects.toThrow('update_field: updateField callback not provided')
     const updateField = vi.fn(async () => {})
     await expect(runAction(action('update_field', { field: 'tenant_id', value: 'evil' }), instance, ctx({ updateField })))
-      .rejects.toThrow('il campo "tenant_id" non è fra quelli che update_field può scrivere (severity, priority, description, category)')
+      .rejects.toThrow('The field "tenant_id" identifies or traces the ticket and cannot be set by a step.')
     expect(updateField).not.toHaveBeenCalled()
   })
 
-  // Ondata 8 · B-9: `status` era nell'allow-list, e il pannello del disegnatore
+  // Ondata 8 · B-9: `status` era scrivibile, e il pannello del disegnatore
   // offriva `update_field` con tutti i campi dell'entità. Scriverlo da qui
   // scavalca il motore: `entity.status` e `WorkflowInstance.current_step`
   // divergono, il ticket si mostra chiuso mentre il processo è aperto.
   it('status (e gli altri campi del motore) non sono scrivibili: il rifiuto indica la transizione', async () => {
     const updateField = vi.fn(async () => {})
-    for (const field of ['status', 'workflow_step', 'workflow_instance_id']) {
+    for (const field of ['status', 'workflow_step', 'workflow_instance_id', 'resolved_at']) {
       const err = await runAction(action('update_field', { field, value: 'closed' }), instance, ctx({ updateField }))
         .then(() => null, (e: unknown) => e as Error)
-      expect(err?.message, field).toContain(`il campo "${field}" lo scrive il motore dei workflow`)
-      expect(err?.message, field).toContain('usa una transizione')
+      expect(err?.message, field).toContain(`The field "${field}" is written by the workflow engine`)
+      expect(err?.message, field).toContain('use a transition')
     }
     expect(updateField).not.toHaveBeenCalled()
+  })
+
+  // Ondata 3: «ogni campo non riservato». Un campo del cliente arriva al callback,
+  // che è chi conosce il metamodello e il vocabolario.
+  it('a customer field passes to the callback', async () => {
+    const updateField = vi.fn(async () => {})
+    await runAction(action('update_field', { field: 'outcome', value: 'successful' }), instance, ctx({ updateField }))
+    expect(updateField).toHaveBeenCalledWith('inc-1', 'outcome', 'successful')
   })
 
   it('string values are templates, non-strings pass through; publishes <entityType>.updated', async () => {

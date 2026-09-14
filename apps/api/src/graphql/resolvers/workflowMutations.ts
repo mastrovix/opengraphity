@@ -10,7 +10,7 @@ import {
   WORKFLOW_STEP_CATEGORIES, isWorkflowStepCategory,
   WORKFLOW_TRANSITION_TRIGGERS, isWorkflowTransitionTrigger,
   WORKFLOW_TRANSITION_CONDITIONS, isWorkflowTransitionCondition,
-  UPDATE_FIELD_ALLOWED, updateFieldRejection,
+  stepFieldRejection,
   CHANGE_WINDOW_PURPOSES,
 } from '@opengraphity/types'
 import { publish } from '@opengraphity/events'
@@ -27,6 +27,8 @@ import { auditStepEntered, loadStepFacts } from '../../lib/stepEvent.js'
 import { systemText } from '../../lib/systemText.js'
 import { requestApprovalWouldBeSkipped } from '../../lib/requestApproval.js'
 import { transitionErrorFields } from '../../lib/transitionError.js'
+import { assertStepFieldValue, stepFieldMetas } from '../../lib/stepFieldWrites.js'
+import { assertDeadlineFields, assertDefinitionDeadlines, normalizeStepDeadlineInput } from '../../lib/stepDeadlineWrite.js'
 
 // Safe label map — prevents Cypher injection when creating entities dynamically
 const ENTITY_LABELS: Record<string, string> = {
@@ -193,18 +195,20 @@ export function assertStepActions(raw: string | null | undefined, label: string)
         { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.unknownActionType', params: { type: String(type ?? null), allowed: WORKFLOW_ACTION_TYPES.join(', ') } } } },
       )
     }
-    // `update_field` non può scrivere lo stato (B-9): la stessa allow-list che
-    // il motore applica a runtime, applicata qui — così il rifiuto arriva
-    // all'amministratore nel disegnatore e non dentro un log a ticket rotto.
+    // `update_field` non può scrivere lo stato (B-9) né identità e traccia: le
+    // stesse riserve che il motore applica a runtime, applicate qui — così il
+    // rifiuto arriva all'amministratore nel disegnatore e non dentro un log a
+    // ticket rotto. Il resto (campo del metamodello, valore del vocabolario,
+    // campi derivati del tipo) lo verifica `assertStepActionFields`.
     if (type === 'update_field') {
       const field = (action as { params?: Record<string, unknown> }).params?.['field']
       if (field == null || String(field).trim() === '') {
         throw new GraphQLError(`${label}[${i}]: update_field needs the field to write (params.field).`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.updateFieldNeedsField' } } })
       }
-      const rejection = updateFieldRejection(String(field))
+      const rejection = stepFieldRejection(String(field), '')
       if (rejection) {
-        throw new GraphQLError(`${label}[${i}]: ${rejection}`, {
-          extensions: { code: 'BAD_USER_INPUT', field: String(field), allowedFields: [...UPDATE_FIELD_ALLOWED] },
+        throw new GraphQLError(`${label}[${i}]: ${rejection.message}`, {
+          extensions: { code: 'BAD_USER_INPUT', field: String(field), i18n: { key: `errors.stepField.${rejection.reason}`, params: { where: `${label}[${i}]`, field: String(field), entityType: '' } } },
         })
       }
     }
@@ -237,6 +241,41 @@ export function assertStepActions(raw: string | null | undefined, label: string)
       }
     }
   })
+}
+
+/**
+ * I campi di `update_field` contro il metamodello del cliente (verifica «Cosa
+ * resta cablato», ondata 3: «ogni campo non riservato»). Il campo deve essere
+ * del tipo di ticket del workflow e il valore del suo vocabolario; un valore con
+ * un segnaposto (`{title}`) si risolve a runtime e lì si valida di nuovo.
+ */
+export async function assertStepActionFields(
+  session: import('neo4j-driver').Session, tenantId: string, entityType: string, raw: string | null | undefined, label: string,
+): Promise<void> {
+  if (raw == null) return
+  const actions = JSON.parse(raw) as Array<{ type?: string; params?: Record<string, unknown> }>
+  const updates = actions.map((a, i) => ({ a, i })).filter(({ a }) => a.type === 'update_field')
+  if (updates.length === 0) return
+  const metas = await stepFieldMetas(session, tenantId, entityType)
+  for (const { a, i } of updates) {
+    assertStepFieldValue(metas, entityType, String(a.params?.['field'] ?? ''), a.params?.['value'], `${label}[${i}]`, { allowTemplate: true })
+  }
+}
+
+/** Vero se le azioni (già validate nella forma) contengono un `update_field`. */
+function hasUpdateField(raw: string | null | undefined): boolean {
+  return raw != null && raw.includes('update_field')
+}
+
+/** Il tipo di ticket di una definizione, o NotFound. */
+async function definitionEntityType(session: import('neo4j-driver').Session, tenantId: string, definitionId: string): Promise<string> {
+  const res = await session.executeRead((tx) => tx.run(
+    'MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId}) RETURN wd.entity_type AS entityType',
+    { definitionId, tenantId },
+  ))
+  const entityType = res.records[0]?.get('entityType') as string | undefined
+  if (!entityType) throw new NotFoundError('WorkflowDefinition', definitionId)
+  return entityType
 }
 
 // ── Scopo del passo in scrittura (ondata 4, B4-3) ─────────────────────────────
@@ -531,6 +570,11 @@ export async function updateWorkflowStep(
   assertStepActions(exitActions,  `exit_actions of step "${stepName}"`)
   const purposeValue = normalizeStepPurpose(purpose, `step "${stepName}"`)
   return withSession(async (session) => {
+    if (hasUpdateField(enterActions) || hasUpdateField(exitActions)) {
+      const entityType = await definitionEntityType(session, ctx.tenantId, definitionId)
+      await assertStepActionFields(session, ctx.tenantId, entityType, enterActions, `enter_actions of step "${stepName}"`)
+      await assertStepActionFields(session, ctx.tenantId, entityType, exitActions,  `exit_actions of step "${stepName}"`)
+    }
     const now = new Date().toISOString()
     const result = await session.executeWrite(async (tx) => {
       // Quanti passi di finestra c'erano PRIMA: si rifiuta di togliere
@@ -568,6 +612,8 @@ export async function updateWorkflowStep(
       if (purposeValue !== undefined) {
         await assertApprovalPurposeSurvives(tx, ctx.tenantId, definitionId)
         assertWindowPurposeSurvives(windowBefore, await countWindowPurposeSteps(tx, ctx.tenantId, definitionId))
+        // Uno scopo nuovo può rendere protetto il passo di arrivo di una scadenza.
+        await assertDefinitionDeadlines(tx, ctx.tenantId, definitionId)
       }
       return written
     })
@@ -721,8 +767,8 @@ export async function removeWorkflowTransition(
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
-    const result = await session.executeWrite((tx) =>
-      tx.run(`
+    const result = await session.executeWrite(async (tx) => {
+      const removed = await tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
         // tenant-ok: step della definizione appena scopata
         MATCH (:WorkflowStep {definition_id: $definitionId})-[tr:TRANSITIONS_TO {id: $transitionId}]->()
@@ -730,8 +776,11 @@ export async function removeWorkflowTransition(
         WITH wd, tr, tr.id AS deletedId
         DELETE tr
         RETURN deletedId, wd.entity_type AS entityType
-      `, { definitionId, tenantId: ctx.tenantId, transitionId, ...customizedParams(ctx) }),
-    )
+      `, { definitionId, tenantId: ctx.tenantId, transitionId, ...customizedParams(ctx) })
+      // Un arco usato da una scadenza non si toglie: la scadenza resterebbe senza strada.
+      await assertDefinitionDeadlines(tx, ctx.tenantId, definitionId)
+      return removed
+    })
     if (!result.records.length) return false
     invalidateWorkflowCache(ctx.tenantId, result.records[0].get('entityType') as string)
     return true
@@ -838,9 +887,13 @@ export async function executeWorkflowTransition(
 
       updateField: async (entityId, field, value) => {
         // Stessa scrittura delle automazioni (lib/ticketFieldWrite.ts, AU-3):
-        // la priorità nella proprietà giusta, l'invariante della matrice.
+        // la priorità nella proprietà giusta, l'invariante della matrice. Prima
+        // il campo e il valore contro il metamodello di ADESSO (ondata 3).
+        const entityType = entityDataResult.records[0]!.get('entityType') as string
+        const metas = await stepFieldMetas(session, ctx.tenantId, entityType)
+        const checked = assertStepFieldValue(metas, entityType, field, value, `update_field of step "${toStep}"`, { allowTemplate: false })
         const { writeTicketField } = await import('../../lib/ticketFieldWrite.js')
-        await writeTicketField(session, ctx.tenantId, entityDataResult.records[0]!.get('entityType') as string, entityId, field, value)
+        await writeTicketField(session, ctx.tenantId, entityType, entityId, field, checked)
       },
 
       publishEvent: async (type, payload) => {
@@ -1095,6 +1148,8 @@ export async function saveWorkflowChanges(
       isOpen?:      boolean | null
       category?:    string | null
       purpose?:     string | null
+      /** La scadenza del passo (JSON): assente/null = invariata, '' = tolta. */
+      deadline?:    string | null
     }> | null
     /** Optimistic lock: versione letta dal client. Null = nessun controllo. */
     expectedVersion?: number | null
@@ -1111,7 +1166,13 @@ export async function saveWorkflowChanges(
     assertStepActions(st.exitActions,  `exit_actions of step "${st.stepName}"`)
     const purposeValue = normalizeStepPurpose(st.purpose, `step "${st.stepName}"`)
     const category     = normalizeStepCategory(st.category, `step "${st.stepName}"`)
-    return { ...st, category, purposeGiven: purposeValue !== undefined, purpose: purposeValue ?? null }
+    const deadline     = normalizeStepDeadlineInput(st.deadline, `deadline of step "${st.stepName}"`)
+    return {
+      ...st, category, purposeGiven: purposeValue !== undefined, purpose: purposeValue ?? null,
+      deadlineGiven: deadline.given, parsedDeadline: deadline.deadline,
+      deadline: deadline.deadline ? JSON.stringify(deadline.deadline) : null,
+      deadlineCalendarId: deadline.deadline?.calendar_id ?? null,
+    }
   })
   // Innesco e condizione di ogni arco, prima della transazione (revisione · B·M-4).
   const transitionRows = transitions.map((tr) => ({
@@ -1120,6 +1181,16 @@ export async function saveWorkflowChanges(
     condition: assertTransitionCondition(tr.condition, `transizione ${tr.transitionId}`),
   }))
   return withSession(async (session) => {
+    // Campi di `update_field` e delle scadenze contro il metamodello: servono
+    // letture che non stanno dentro la transazione di scrittura.
+    if (stepRows.some((st) => hasUpdateField(st.enterActions) || hasUpdateField(st.exitActions) || (st.parsedDeadline?.set_fields.length ?? 0) > 0)) {
+      const entityType = await definitionEntityType(session, ctx.tenantId, definitionId)
+      for (const st of stepRows) {
+        await assertStepActionFields(session, ctx.tenantId, entityType, st.enterActions, `enter_actions of step "${st.stepName}"`)
+        await assertStepActionFields(session, ctx.tenantId, entityType, st.exitActions,  `exit_actions of step "${st.stepName}"`)
+        if (st.parsedDeadline) await assertDeadlineFields(session, ctx.tenantId, entityType, st.parsedDeadline, `deadline of step "${st.label || st.stepName}"`)
+      }
+    }
     // Tutto in UNA transazione: controllo di versione, aggiornamenti e
     // incremento. Prima erano write separate senza confronto di versione →
     // last-writer-wins silenzioso tra due designer aperti sullo stesso workflow.
@@ -1206,8 +1277,11 @@ export async function saveWorkflowChanges(
               s.category      = coalesce(st.category,   s.category),
               // NON coalesce: lo scopo si deve poter TOGLIERE (purpose = null
               // con purposeGiven = true). Un coalesce lo renderebbe definitivo.
-              s.purpose       = CASE WHEN st.purposeGiven THEN st.purpose ELSE s.purpose END
-        `, { definitionId, tenantId: ctx.tenantId, steps: stepRows })
+              s.purpose       = CASE WHEN st.purposeGiven THEN st.purpose ELSE s.purpose END,
+              // Come lo scopo: la scadenza si deve poter TOGLIERE.
+              s.deadline      = CASE WHEN st.deadlineGiven THEN st.deadline ELSE s.deadline END,
+              s.deadline_calendar_id = CASE WHEN st.deadlineGiven THEN st.deadlineCalendarId ELSE s.deadline_calendar_id END
+        `, { definitionId, tenantId: ctx.tenantId, steps: stepRows.map(({ parsedDeadline: _p, ...row }) => row) })
 
         // Se una delle modifiche ha TOCCATO lo scopo, il workflow delle change
         // deve conservare un posto dove approvare (revisione · B·N-1) e almeno
@@ -1242,6 +1316,12 @@ export async function saveWorkflowChanges(
           SET s.position_x = pos.positionX,
               s.position_y = pos.positionY
         `, { definitionId, tenantId: ctx.tenantId, positions })
+      }
+      // Le scadenze contro il workflow come risulta da QUESTE modifiche: uno
+      // scopo nuovo o una scadenza appena scritta (ondata 3). Gli archi qui
+      // cambiano solo innesco ed etichetta, che a una scadenza non tolgono strada.
+      if (stepRows.some((st) => st.purposeGiven || st.deadlineGiven)) {
+        await assertDefinitionDeadlines(tx, ctx.tenantId, definitionId)
       }
       // Increment version (dopo il check, nella stessa tx)
       const wdResult = await tx.run(`

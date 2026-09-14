@@ -58,6 +58,7 @@ import { ticketsWithoutSla } from './ticketsWithoutSla.js'
 import { workflowsMissingStepRoles } from './workflowStepRoles.js'
 import { vocabulariesBehindShipped } from './vocabularyShippedDrift.js'
 import { slaPoliciesWarningNotBeforeDeadline } from './slaWarningCheck.js'
+import { blockedStepDeadlines } from './stepDeadlineBlocked.js'
 
 const log = logger.child({ module: 'configuration-issues' })
 
@@ -90,6 +91,7 @@ export type ConfigurationIssueKind =
   | 'workflow_optional_step_purposes_missing'
   | 'vocabulary_behind_shipped'
   | 'sla_warning_not_before_deadline'
+  | 'step_deadlines_blocked'
 
 export interface ConfigurationIssue {
   /** La CHIAVE del problema: il client la risolve nella sua lingua. */
@@ -112,7 +114,7 @@ export async function configurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -525,4 +527,20 @@ async function checkLifecyclePolicy(tenantId: string): Promise<ConfigurationIssu
 
 function cartesian(lists: readonly (readonly string[])[]): string[][] {
   return lists.reduce<string[][]>((acc, list) => acc.flatMap((prefix) => list.map((v) => [...prefix, v])), [[]])
+}
+
+/**
+ * LE SCADENZE DEI PASSI CHE NON RIESCONO A SPOSTARE UN TICKET (ondata 3). Il
+ * varco delle approvazioni le ha rifiutate, o il workflow è cambiato e non
+ * hanno più strada: il ticket resta nel passo e la scadenza si riprova ogni
+ * ora. I numeri, perché chi guarda possa aprirli.
+ */
+async function checkStepDeadlines(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const blocked = await blockedStepDeadlines(session, tenantId)
+  if (blocked.length === 0) return []
+  const shown = blocked.slice(0, 10).map((b) => `${b.number} (${b.step})`).join(', ')
+  return [{
+    kind: 'step_deadlines_blocked', severity: blocked.some((b) => b.outcome === 'failed') ? 'error' : 'warning', where: '/workflow',
+    params: { count: String(blocked.length), tickets: blocked.length > 10 ? `${shown}, …` : shown },
+  }]
 }

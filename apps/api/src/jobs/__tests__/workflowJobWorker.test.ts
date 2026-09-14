@@ -1,7 +1,6 @@
 /**
  * workflow-jobs / notification-jobs processors (jobs/workflowJobWorker.ts):
- *  - auto_close dispatches per entity type: incident → incidentService.closeIncident
- *    with the tenant; problem/change/… → ValidationError BEFORE the transition;
+ *  - step_deadlines runs the step-deadline sweep (the old auto_close is a no-op);
  *  - webhook_retry goes through the SSRF guard (private/loopback → throw, no fetch);
  *  - trigger_timer: a failed action fails the job (no "green job, zero actions");
  *  - timer_wait: a failed transition fails the job.
@@ -69,6 +68,9 @@ vi.mock('../../lib/workflowHelpers.js', () => ({
   isEntityOpen:     (...a: unknown[]) => isEntityOpen(...a),
 }))
 
+const runStepDeadlineSweep = vi.fn()
+vi.mock('../../lib/stepDeadlines.js', () => ({ runStepDeadlineSweep: (...a: unknown[]) => runStepDeadlineSweep(...a) }))
+
 const executeActions = vi.fn()
 const runEscalationCheck = vi.fn()
 vi.mock('../../lib/notificationEscalation.js', () => ({ runEscalationCheck: (...a: unknown[]) => runEscalationCheck(...a) }))
@@ -93,7 +95,7 @@ const fetchMock = vi.fn()
 vi.stubGlobal('fetch', fetchMock)
 afterAll(() => { vi.unstubAllGlobals() })
 
-const { startWorkflowJobWorker, startNotificationJobWorker, scheduleEscalationCheck, WORKFLOW_JOBS_QUEUE, NOTIFICATION_JOBS_QUEUE } = await import('../workflowJobWorker.js')
+const { startWorkflowJobWorker, startNotificationJobWorker, scheduleEscalationCheck, scheduleStepDeadlineSweep, WORKFLOW_JOBS_QUEUE, NOTIFICATION_JOBS_QUEUE, STEP_DEADLINES_JOB } = await import('../workflowJobWorker.js')
 const { ValidationError } = await import('../../lib/errors.js')
 
 startWorkflowJobWorker()
@@ -120,118 +122,35 @@ beforeEach(() => {
   evaluateConditions.mockReturnValue(true)
 })
 
-// ── auto_close ───────────────────────────────────────────────────────────────
+// ── scadenze dei passi ───────────────────────────────────────────────────────
 
-describe('workflow-jobs: auto_close', () => {
-  const data = { instanceId: 'wi-1', entityId: 'inc-1', tenantId: 't1', job: 'auto_close' }
-
-  it('incident → transizione allo step category=closed e closeIncident con il tenant', async () => {
-    readRows = [[{ entityType: 'incident' }]]
-
-    await expect(workflowProcessor(job('auto_close', data))).resolves.toBeUndefined()
-
-    const session = sessions[0]!
-    expect(session.mode).toBe('WRITE')
-    expect(session.reads[0]!.p).toEqual({ instanceId: 'wi-1', tenantId: 't1' })
-    expect(session.reads[0]!.q).toContain('WorkflowInstance {id: $instanceId, tenant_id: $tenantId}')
-    expect(getWorkflowSteps).toHaveBeenCalledWith(session, 't1', 'incident')
-    expect(transition).toHaveBeenCalledWith(
-      session,
-      { instanceId: 'wi-1', toStepName: 'closed', triggeredBy: 'system', triggerType: 'automatic' },
-      { userId: 'system', entityData: {} },
-    )
-    expect(closeIncident).toHaveBeenCalledWith('inc-1', { tenantId: 't1', userId: 'system' })
-    expect(session.close).toHaveBeenCalledOnce()
-  })
-
-  it('senza step category=closed usa il primo terminale', async () => {
-    readRows = [[{ entityType: 'incident' }]]
-    getWorkflowSteps.mockResolvedValue(STEPS.filter((s) => s.name !== 'closed'))
-
-    await workflowProcessor(job('auto_close', data))
-
-    expect(transition).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ toStepName: 'cancelled' }), expect.anything())
-  })
-
-  /**
-   * Revisione delle otto ondate · B·N-4. Era
-   * `steps.find(s => s.category === 'closed')` su una lista senza ordine:
-   * aggiunto dal disegnatore un secondo passo terminale di categoria `closed`
-   * («Annullato» — l'esempio stesso della docstring di `statusStepNames.ts`),
-   * la scelta cadeva su quello, 5 letture su 5. Gli incident si
-   * auto-chiudevano come annullati, in silenzio.
-   */
-  it('due passi di categoria «closed» → vince quello con lo step_order più basso, non quello che il DB dà per primo', async () => {
-    readRows = [[{ entityType: 'incident' }]]
-    getWorkflowSteps.mockResolvedValue([
-      // L'ordine in cui arrivano è quello «sbagliato»: il passo aggiunto dal
-      // cliente per primo. Deve vincere comunque `closed`, che ha ordine 7.
-      { name: 'annullato', isInitial: false, isTerminal: true, isOpen: false, category: 'closed', stepOrder: 20 },
-      ...STEPS,
-    ])
-
-    await workflowProcessor(job('auto_close', data))
-
-    expect(transition).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ toStepName: 'closed' }), expect.anything())
-  })
-
-  it('nessun passo «closed» e nessun terminale → il job FALLISCE invece di completarsi in silenzio', async () => {
-    readRows = [[{ entityType: 'incident' }]]
-    getWorkflowSteps.mockResolvedValue([
-      { name: 'aperto', isInitial: true, isTerminal: false, isOpen: true, category: 'active', stepOrder: 1 },
-    ])
-
-    // Prima era `logger.warn` + `return`: il job risultava COMPLETATO e quel
-    // ticket non si chiudeva mai, senza che nessuno lo vedesse.
-    const err = await workflowProcessor(job('auto_close', data)).then(() => null, (e: unknown) => e)
-    expect((err as Error).message).toMatch(/has no step of category "closed" and no terminal step/)
+// Verifica «Cosa resta cablato», ondata 3: la chiusura automatica è la scadenza
+// del passo. Il job `auto_close` non esiste più; quelli già in coda prima
+// dell'aggiornamento arrivano e non fanno nulla, perché lo stesso ticket lo
+// sposta la passata.
+describe('workflow-jobs: scadenze dei passi', () => {
+  it('step_deadlines → una passata, con il riepilogo nel log se ha fatto qualcosa', async () => {
+    runStepDeadlineSweep.mockResolvedValue({ candidates: 3, moved: 1, refused: 0, failed: 0, notDue: 2 })
+    await expect(workflowProcessor(job(STEP_DEADLINES_JOB, { instanceId: '', entityId: '', tenantId: '', job: STEP_DEADLINES_JOB }))).resolves.toBeUndefined()
+    expect(runStepDeadlineSweep).toHaveBeenCalledOnce()
     expect(transition).not.toHaveBeenCalled()
   })
 
-  it('problem → ValidationError propagata PRIMA della transizione, closeIncident mai chiamato', async () => {
-    readRows = [[{ entityType: 'problem' }]]
+  it('la passata si registra ripetuta ogni minuto, con un id fisso', async () => {
+    await scheduleStepDeadlineSweep()
+    expect(queueAdd).toHaveBeenCalledWith(STEP_DEADLINES_JOB, expect.anything(), expect.objectContaining({ repeat: { every: 60_000 }, jobId: 'workflow-step-deadlines' }))
+  })
 
-    const err = await workflowProcessor(job('auto_close', { ...data, entityId: 'prb-1' })).then(() => null, (e: unknown) => e)
-
-    expect(err).toBeInstanceOf(ValidationError)
-    expect((err as Error).message).toMatch(/auto_close is not implemented for entity type "problem" \(entity prb-1\)/)
+  it('un auto_close di prima dell\'ondata 3 non transisce e non chiude niente', async () => {
+    await expect(workflowProcessor(job('auto_close', { instanceId: 'wi-1', entityId: 'inc-1', tenantId: 't1', job: 'auto_close' }))).resolves.toBeUndefined()
     expect(transition).not.toHaveBeenCalled()
     expect(closeIncident).not.toHaveBeenCalled()
-    expect(sessions[0]!.close).toHaveBeenCalledOnce()
+    expect(runStepDeadlineSweep).not.toHaveBeenCalled()
   })
 
-  it.each(['change', 'service_request'])('%s → ValidationError (nessun servizio di chiusura)', async (entityType) => {
-    readRows = [[{ entityType }]]
-    await expect(workflowProcessor(job('auto_close', data))).rejects.toBeInstanceOf(ValidationError)
-    expect(transition).not.toHaveBeenCalled()
-  })
-
-  it('entity_type sconosciuto → ValidationError "unknown entity type"', async () => {
-    readRows = [[{ entityType: 'widget' }]]
-    await expect(workflowProcessor(job('auto_close', data))).rejects.toThrow(/unknown entity type "widget"/)
-    expect(transition).not.toHaveBeenCalled()
-  })
-
-  it('transizione fallita (success:false) → il job rigetta con l\'errore del motore', async () => {
-    readRows = [[{ entityType: 'incident' }]]
-    transition.mockResolvedValue({ success: false, error: 'guard failed' })
-
-    await expect(workflowProcessor(job('auto_close', data))).rejects.toThrow(/auto_close transition failed for inc-1: guard failed/)
-    expect(closeIncident).not.toHaveBeenCalled()
-  })
-
-  it('closeIncident che fallisce → il job rigetta (l\'evento closed non viene perso in silenzio)', async () => {
-    readRows = [[{ entityType: 'incident' }]]
-    closeIncident.mockRejectedValue(new Error('publish failed'))
-    await expect(workflowProcessor(job('auto_close', data))).rejects.toThrow('publish failed')
-  })
-
-  it('istanza workflow non trovata → no-op loggato (warn), nessuna transizione', async () => {
-    readRows = [[]]
-    await expect(workflowProcessor(job('auto_close', data))).resolves.toBeUndefined()
-    expect(logWarn).toHaveBeenCalledWith(expect.objectContaining({ instanceId: 'wi-1' }), expect.stringContaining('workflow instance not found'))
-    expect(transition).not.toHaveBeenCalled()
-    expect(closeIncident).not.toHaveBeenCalled()
+  it('una passata che lancia fa fallire il job, invece di sparire', async () => {
+    runStepDeadlineSweep.mockRejectedValue(new Error('neo4j giù'))
+    await expect(workflowProcessor(job(STEP_DEADLINES_JOB, { instanceId: '', entityId: '', tenantId: '', job: STEP_DEADLINES_JOB }))).rejects.toThrow('neo4j giù')
   })
 })
 

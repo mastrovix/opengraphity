@@ -44,13 +44,13 @@ export const UPDATE_OLA_CONTRACT = gql`
 
 export const CREATE_SERVICE_CALENDAR = gql`
   mutation CreateServiceCalendar($name: String!, $calendar: ServiceCalendarInput!) {
-    createServiceCalendar(name: $name, calendar: $calendar) { id name days start end holidays usedBySlaPolicies usedByOlaContracts }
+    createServiceCalendar(name: $name, calendar: $calendar) { id name days start end holidays usedBySlaPolicies usedByOlaContracts usedByWorkflowSteps }
   }
 `
 
 export const UPDATE_SERVICE_CALENDAR = gql`
   mutation UpdateServiceCalendar($id: ID!, $name: String, $calendar: ServiceCalendarInput) {
-    updateServiceCalendar(id: $id, name: $name, calendar: $calendar) { id name days start end holidays usedBySlaPolicies usedByOlaContracts }
+    updateServiceCalendar(id: $id, name: $name, calendar: $calendar) { id name days start end holidays usedBySlaPolicies usedByOlaContracts usedByWorkflowSteps }
   }
 `
 

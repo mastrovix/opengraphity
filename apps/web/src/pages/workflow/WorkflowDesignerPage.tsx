@@ -125,7 +125,9 @@ export function WorkflowDesignerPage() {
         // Le modifiche locali restano in coda: sta all'utente ricaricare (perdendole)
         // o confrontarle; non sovrascriviamo mai il lavoro dell'altro utente.
         toast.error(t('toast.workflow.saveConflict'), { duration: 10_000 })
-      } else {
+      } else if (!CombinedGraphQLErrors.is(e)) {
+        // Un errore GraphQL lo mostra già il link di Apollo (lib/apollo.ts),
+        // nella lingua di chi guarda: ripeterlo qui dava due avvisi identici.
         toast.error(e instanceof Error ? e.message : String(e))
       }
       return

@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import { assertDefinitionDeadlines } from '../../lib/stepDeadlineWrite.js'
 import { ValidationError } from '../../lib/errors.js'
 import { randomUUID } from 'crypto'
 import { withSession } from './ci-utils.js'
@@ -250,6 +251,9 @@ async function removeWorkflowStep(
         SET wd.version = wd.version + 1, wd.updated_at = $now
         ${MARK_CUSTOMIZED}
       `, { definitionId, tenantId: ctx.tenantId, stepName, now: new Date().toISOString(), ...customizedParams(ctx) })
+      // Un passo che è l'arrivo di una scadenza non si elimina: la scadenza
+      // resterebbe senza strada (verifica «Cosa resta cablato», ondata 3).
+      await assertDefinitionDeadlines(tx, ctx.tenantId, definitionId)
       if (elsewhere > 0) return { deleted: 0, fields: [] as string[] }
       const rules = await tx.run(`
         MATCH (r:FieldRequirementRule {tenant_id: $tenantId, entity_type: $entityType, workflow_step: $stepName})

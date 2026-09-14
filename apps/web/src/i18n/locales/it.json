@@ -1697,7 +1697,8 @@
       "timerDelay": "RITARDO (minuti)",
       "update": "Aggiorna",
       "notifyOnEnter": "Notifica all'ingresso nel passo",
-      "deleteStep": "Elimina il passo"
+      "deleteStep": "Elimina il passo",
+      "tabDeadline": "Scadenza"
     },
     "slaPolicies": {
       "newPolicy": "Nuova policy",
@@ -2073,8 +2074,6 @@
       "sla_resume": "Riprendi SLA",
       "notify": "Notifica",
       "publish_event": "Pubblica evento",
-      "schedule_job": "Programma lavoro",
-      "cancel_job": "Annulla lavoro",
       "notify_rule": "Applica regola di notifica",
       "create_entity": "Crea entita",
       "assign_to": "Assegna a",
@@ -2176,6 +2175,45 @@
     },
     "actionParams": {
       "approvalTitleExample": "Pubblicazione: {title}"
+    },
+    "deadline": {
+      "intro": "Per quanto tempo un ticket può restare in questo passo. Allo scadere il ticket si sposta da solo lungo uno degli archi che escono dal passo, e i campi che scegli vengono impostati.",
+      "enable": "Scadenza su questo passo",
+      "after": "Dopo",
+      "amount": "Quanti",
+      "unit": "Unità",
+      "units": {
+        "hours": "ore",
+        "days": "giorni"
+      },
+      "unitsCount": {
+        "hours_one": "ora",
+        "hours_other": "ore",
+        "days_one": "giorno",
+        "days_other": "giorni"
+      },
+      "serviceDayHint": "Con un calendario un giorno è una giornata di servizio intera (dall'inizio alla fine del suo orario), non 24 ore.",
+      "moveTo": "Sposta il ticket in",
+      "chooseStep": "— Scegli il passo —",
+      "noArcs": "Da «{{step}}» non esce nessun arco: disegna l'arco verso il passo in cui il ticket deve andare, poi torna qui.",
+      "protectedOption": "{{step}} — richiede le approvazioni",
+      "setFields": "E imposta",
+      "field": "Campo",
+      "value": "Valore",
+      "chooseField": "— Scegli il campo —",
+      "chooseValue": "— Scegli il valore —",
+      "removeField": "Togli il campo",
+      "addField": "Aggiungi un campo",
+      "problemAfter": "Scrivi dopo quanto: un numero intero, almeno 1.",
+      "problemSource": "Qui una change viene approvata, e per uscirne servono le approvazioni: una scadenza non può farlo.",
+      "problemTarget": "Scegli il passo in cui il ticket si sposta.",
+      "problemProtected": "Quel passo è protetto dalle approvazioni: dietro una scadenza non c'è nessuno, quindi non può portarci una change.",
+      "problemFields": "Ogni campo da impostare ha bisogno di un valore.",
+      "problemDuplicate": "Lo stesso campo è impostato due volte.",
+      "summary": "Dopo {{amount}} {{unit}} in «{{step}}», contati 24×7, il ticket passa a «{{target}}».",
+      "summaryCalendar": "Dopo {{amount}} {{unit}} in «{{step}}», contati con il calendario «{{calendar}}», il ticket passa a «{{target}}».",
+      "summaryFields": "Imposta anche {{fields}}.",
+      "corrupted": "La scadenza salvata di questo passo non si riesce a leggere ({{error}}). Il salvataggio è spento per non perderla: correggi prima il dato salvato."
     }
   },
   "itilDesigner": {
@@ -3282,6 +3320,33 @@
     "compliance": {
       "target": "L’obiettivo di conformità deve essere una percentuale sopra 0 e al massimo 100.",
       "warning": "La soglia d’attenzione deve essere una percentuale sopra 0 e sotto l’obiettivo ({{target}}%)."
+    },
+    "stepDeadline": {
+      "not_object": "{{where}}: la scadenza non ha la forma attesa.",
+      "invalid_json": "{{where}}: la scadenza salvata non si riesce a leggere.",
+      "after": "{{where}}: scrivi dopo quanto, un numero intero da 1 a {{max}} {{unit}}.",
+      "unit": "{{where}}: l'unità deve essere ore o giorni.",
+      "calendar": "{{where}}: scegli un calendario, oppure 24×7.",
+      "to_step": "{{where}}: scegli il passo in cui il ticket si sposta.",
+      "set_fields": "{{where}}: ogni campo da impostare ha bisogno di un campo e di un valore.",
+      "duplicate_field": "{{where}}: il campo «{{field}}» è impostato due volte.",
+      "sameStep": "La scadenza di «{{step}}» sposta il ticket nel passo in cui si trova già: scegli un altro passo.",
+      "noArc": "La scadenza di «{{step}}» sposta il ticket in «{{target}}», ma nessun arco ci arriva: disegna l'arco, oppure tienilo — un arco usato da una scadenza non si può togliere.",
+      "protectedTarget": "La scadenza di «{{step}}» porterebbe la change in «{{target}}», che è protetto dalle approvazioni (scopo «{{purpose}}»): dietro una scadenza non c'è nessuno, quindi non può. Portala avanti con le approvazioni.",
+      "protectedSource": "«{{step}}» è dove la change viene approvata, e per uscirne servono le approvazioni: una scadenza non può farlo.",
+      "calendarMissing": "La scadenza di «{{step}}» conta con un calendario di servizio che non esiste più: scegli un calendario, oppure 24×7."
+    },
+    "stepField": {
+      "engine_owned": "{{where}}: il campo «{{field}}» lo scrive il motore dei workflow. Sposta il ticket con un arco del workflow.",
+      "identity": "{{where}}: il campo «{{field}}» identifica o traccia il ticket e un passo non può impostarlo.",
+      "derived": "{{where}}: il campo «{{field}}» lo calcola il prodotto per questo tipo di ticket, e un passo non può impostarlo.",
+      "notInMetamodel": "{{where}}: «{{field}}» non è un campo di questo tipo di ticket. Aggiungilo nel designer ITIL, oppure scegli un altro campo.",
+      "relation": "{{where}}: «{{field}}» si assegna, non si scrive: usa l'azione «Assegna a».",
+      "valueRequired": "{{where}}: il campo «{{field}}» ha bisogno di un valore.",
+      "valueNotInVocabulary": "{{where}}: «{{value}}» non è un valore di «{{field}}» (ammessi: {{allowed}}).",
+      "notNumber": "{{where}}: «{{field}}» è un numero, «{{value}}» no.",
+      "notBoolean": "{{where}}: «{{field}}» è sì o no.",
+      "notDate": "{{where}}: «{{field}}» è una data, «{{value}}» no."
     }
   },
   "errorBoundary": {
@@ -3687,7 +3752,8 @@
     },
     "workflowTimeline": {
       "title": "Storia del workflow",
-      "empty": "Nessuna storia del workflow."
+      "empty": "Nessuna storia del workflow.",
+      "movedByDeadline": "Spostato dalla scadenza del passo"
     },
     "triage": {
       "needsTitle": "Scrivi prima un titolo",
@@ -4969,7 +5035,9 @@
       "vocabulary_behind_shipped_one": "Il prodotto ha aggiunto valori a un vocabolario che hai personalizzato, e la tua copia non li ha: {{details}}. La tua copia non viene mai sovrascritta — **decidi dal Dizionario**: aggiungerli, o tenere la tua lista.",
       "vocabulary_behind_shipped_other": "Il prodotto ha aggiunto valori a {{count}} vocabolari che hai personalizzato, e le tue copie non li hanno: {{details}}. Le tue copie non vengono mai sovrascritte — **decidi dal Dizionario**: aggiungerli, o tenere le tue liste.",
       "sla_warning_not_before_deadline_one": "Una policy SLA manda l'avviso appena il ticket viene creato, perché il preavviso non è più breve del tempo di risoluzione (preavviso / risoluzione): {{details}}. **Accorcia il preavviso in Admin → SLA Policies**.",
-      "sla_warning_not_before_deadline_other": "{{count}} policy SLA mandano l'avviso appena il ticket viene creato, perché il preavviso non è più breve del tempo di risoluzione (preavviso / risoluzione): {{details}}. **Accorcia i preavvisi in Admin → SLA Policies**."
+      "sla_warning_not_before_deadline_other": "{{count}} policy SLA mandano l'avviso appena il ticket viene creato, perché il preavviso non è più breve del tempo di risoluzione (preavviso / risoluzione): {{details}}. **Accorcia i preavvisi in Admin → SLA Policies**.",
+      "step_deadlines_blocked_one": "{{count}} ticket è ancora in un passo la cui scadenza non è riuscita a spostarlo ({{tickets}}): le approvazioni l'hanno rifiutata, oppure il workflow è cambiato e la scadenza non ha più strada. Si riprova ogni ora. **Controlla la scadenza del passo nel disegnatore dei workflow**.",
+      "step_deadlines_blocked_other": "{{count}} ticket sono ancora in un passo la cui scadenza non è riuscita a spostarli ({{tickets}}): le approvazioni l'hanno rifiutata, oppure il workflow è cambiato e la scadenza non ha più strada. Si riprova ogni ora. **Controlla le scadenze dei passi nel disegnatore dei workflow**."
     },
     "gap": {
       "tenant_missing": "nessuna riga: il tenant non esiste",

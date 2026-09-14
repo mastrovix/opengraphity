@@ -187,7 +187,7 @@ function TimezoneSection() {
 
 interface ServiceCalendar {
   id: string; name: string; days: number[]; start: string; end: string; holidays: string[]
-  usedBySlaPolicies: string[]; usedByOlaContracts: string[]
+  usedBySlaPolicies: string[]; usedByOlaContracts: string[]; usedByWorkflowSteps: string[]
 }
 interface CalendarDraft { name: string; days: number[]; start: string; end: string; holidays: string }
 
@@ -258,7 +258,7 @@ function ServiceCalendarsSection() {
     if (ok) void deleteCalendar({ variables: { id: c.id } })
   }
 
-  const usedBy = (c: ServiceCalendar) => [...c.usedBySlaPolicies, ...c.usedByOlaContracts]
+  const usedBy = (c: ServiceCalendar) => [...c.usedBySlaPolicies, ...c.usedByOlaContracts, ...c.usedByWorkflowSteps]
   const canSave = draft.name.trim() !== '' && draft.days.length > 0 && draft.start !== '' && draft.end !== ''
 
   return (

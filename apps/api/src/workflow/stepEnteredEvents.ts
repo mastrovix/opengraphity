@@ -29,6 +29,16 @@ export function registerStepEnteredEvents(): void {
       trigger_type:  info.triggerType,
     }
     await publishEvent(WORKFLOW_STEP_ENTERED_EVENT, info.tenantId, info.actorId, payload, info.enteredAt)
+
+    // `incident.closed` (la regola di notifica «Incident chiuso») lo pubblicava
+    // solo il job `auto_close`, cioè solo la chiusura automatica di fabbrica.
+    // Ora si chiude con una scadenza qualunque o con un arco del cliente: lo
+    // dice l'ingresso nel passo di categoria «closed», da qualunque cammino
+    // (verifica «Cosa resta cablato», ondata 3).
+    if (info.entityType === 'incident' && info.category === 'closed') {
+      const { closeIncident } = await import('../services/incidentService.js')
+      await closeIncident(info.entityId, { tenantId: info.tenantId, userId: info.actorId })
+    }
   })
 }
 

@@ -5,7 +5,13 @@ import { colors, palette } from '@/lib/tokens'
 // ── Panel styles ──────────────────────────────────────────────────────────────
 
 export const panelStyle: React.CSSProperties = {
-  width:           300,
+  // 360: quattro schede (Proprietà, Metadati, Notifiche, Scadenza) e l'editor
+  // della scadenza con i campi da impostare stanno senza tagli.
+  width:           360,
+  maxWidth:        'calc(100vw - 48px)',
+  // Il pannello galleggia sul disegno: se il contenuto è lungo scorre dentro, non esce dallo schermo.
+  maxHeight:       'calc(100vh - 220px)',
+  overflowY:       'auto',
   backgroundColor: colors.white,
   border:          '1px solid var(--color-border)',
   borderRadius:    10,
@@ -74,30 +80,6 @@ export function actionLabel(t: (key: string) => string, type: string, params?: R
     return base
   }
 
-  if (type === 'schedule_job') {
-    const job   = params?.['job']         as string | undefined
-    const hours = params?.['delay_hours'] as number | string | undefined
-    if (job) {
-      const raw      = t(`workflow.actions.${job}`)
-      const display  = raw !== `workflow.actions.${job}` ? raw : job
-      const verb     = base.split(' ')[0]
-      return hours
-        ? `${verb} ${display} ${t('workflow.actions.after')} ${hours}h`
-        : `${verb} ${display}`
-    }
-    return base
-  }
-
-  if (type === 'cancel_job') {
-    const job = params?.['job'] as string | undefined
-    if (job) {
-      const raw     = t(`workflow.actions.${job}`)
-      const display = raw !== `workflow.actions.${job}` ? raw : job
-      return `${base.split(' ')[0]} ${display}`
-    }
-    return base
-  }
-
   if (type === 'create_entity') {
     const et = params?.['entity_type'] as string | undefined
     return et ? `${base}: ${et}` : base
@@ -129,8 +111,6 @@ export function actionLabel(t: (key: string) => string, type: string, params?: R
 export function paramsToRaw(type: string, params?: Record<string, unknown>): Record<string, string> {
   if (!params) return {}
   if (type === 'sla_start' || type === 'sla_stop') return { sla_type: String(params['sla_type'] ?? 'response') }
-  if (type === 'schedule_job') return { job: String(params['job'] ?? ''), delay_hours: String(params['delay_hours'] ?? '') }
-  if (type === 'cancel_job')   return { job: String(params['job'] ?? '') }
   if (type === 'create_entity') return {
     entity_type:     String(params['entity_type']     ?? 'incident'),
     title_template:  String(params['title_template']  ?? ''),
@@ -143,7 +123,7 @@ export function paramsToRaw(type: string, params?: Record<string, unknown>): Rec
     target_name: String(params['target_name'] ?? ''),
   }
   if (type === 'update_field') return {
-    field: String(params['field'] ?? 'severity'),
+    field: String(params['field'] ?? ''),
     value: String(params['value'] ?? ''),
   }
   if (type === 'call_webhook') return {
@@ -163,12 +143,6 @@ export function buildActionParams(type: string, raw: Record<string, string>): Re
   if (type === 'sla_start' || type === 'sla_stop') {
     return { sla_type: raw['sla_type'] ?? 'response' }
   }
-  if (type === 'schedule_job') {
-    return { job: raw['job'] ?? '', delay_hours: raw['delay_hours'] ? Number(raw['delay_hours']) : 0 }
-  }
-  if (type === 'cancel_job') {
-    return { job: raw['job'] ?? '' }
-  }
   if (type === 'create_entity') {
     const copyFields = raw['copy_fields'] ? raw['copy_fields'].split(',').map((s) => s.trim()).filter(Boolean) : []
     return {
@@ -186,7 +160,7 @@ export function buildActionParams(type: string, raw: Record<string, string>): Re
     }
   }
   if (type === 'update_field') {
-    return { field: raw['field'] ?? 'severity', value: raw['value'] ?? '' }
+    return { field: raw['field'] ?? '', value: raw['value'] ?? '' }
   }
   if (type === 'call_webhook') {
     return {

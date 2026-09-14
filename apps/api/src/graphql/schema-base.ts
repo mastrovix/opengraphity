@@ -288,6 +288,8 @@ export function buildBaseSDL(): string {
     usedBySlaPolicies:  [String!]!
     """I nomi dei contratti OLA/UC che contano con questo calendario."""
     usedByOlaContracts: [String!]!
+    """Le scadenze dei passi di workflow che contano con questo calendario («Workflow · Passo»)."""
+    usedByWorkflowSteps: [String!]!
   }
 
   input ServiceCalendarInput {

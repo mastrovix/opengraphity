@@ -1697,7 +1697,8 @@
       "timerDelay": "DELAY (minutes)",
       "update": "Update",
       "notifyOnEnter": "Notify when the step is entered",
-      "deleteStep": "Delete the step"
+      "deleteStep": "Delete the step",
+      "tabDeadline": "Deadline"
     },
     "slaPolicies": {
       "newPolicy": "New policy",
@@ -2073,8 +2074,6 @@
       "sla_resume": "Resume SLA",
       "notify": "Notify",
       "publish_event": "Publish event",
-      "schedule_job": "Schedule job",
-      "cancel_job": "Cancel job",
       "notify_rule": "Apply notification rule",
       "create_entity": "Create entity",
       "assign_to": "Assign to",
@@ -2176,6 +2175,45 @@
     },
     "actionParams": {
       "approvalTitleExample": "Publication: {title}"
+    },
+    "deadline": {
+      "intro": "How long a ticket can stay in this step. When the time is up the ticket moves on its own along one of the arcs that leave the step, and the fields you choose are set.",
+      "enable": "Deadline on this step",
+      "after": "After",
+      "amount": "How many",
+      "unit": "Unit",
+      "units": {
+        "hours": "hours",
+        "days": "days"
+      },
+      "unitsCount": {
+        "hours_one": "hour",
+        "hours_other": "hours",
+        "days_one": "day",
+        "days_other": "days"
+      },
+      "serviceDayHint": "With a calendar a day is a full service day (from the start to the end of its hours), not 24 hours.",
+      "moveTo": "Move the ticket to",
+      "chooseStep": "— Choose the step —",
+      "noArcs": "No arc leaves «{{step}}»: draw the arc to the step the ticket should move to, then come back here.",
+      "protectedOption": "{{step}} — needs the approvals",
+      "setFields": "And set",
+      "field": "Field",
+      "value": "Value",
+      "chooseField": "— Choose the field —",
+      "chooseValue": "— Choose the value —",
+      "removeField": "Remove the field",
+      "addField": "Add a field",
+      "problemAfter": "Write how long: a whole number of at least 1.",
+      "problemSource": "This is where a change is approved, and leaving it needs the approvals: a deadline cannot do it.",
+      "problemTarget": "Choose the step the ticket moves to.",
+      "problemProtected": "That step is protected by the approvals: a deadline has no person behind it, so it cannot bring a change there.",
+      "problemFields": "Every field to set needs a value.",
+      "problemDuplicate": "The same field is set twice.",
+      "summary": "After {{amount}} {{unit}} in «{{step}}», counted 24×7, the ticket moves to «{{target}}».",
+      "summaryCalendar": "After {{amount}} {{unit}} in «{{step}}», counted with the «{{calendar}}» calendar, the ticket moves to «{{target}}».",
+      "summaryFields": "It also sets {{fields}}.",
+      "corrupted": "The stored deadline of this step cannot be read ({{error}}). Saving is disabled so it is not lost: fix the stored data first."
     }
   },
   "itilDesigner": {
@@ -3282,6 +3320,33 @@
     "compliance": {
       "target": "The compliance target must be a percentage above 0 and at most 100.",
       "warning": "The attention threshold must be a percentage above 0 and below the target ({{target}}%)."
+    },
+    "stepDeadline": {
+      "not_object": "{{where}}: the deadline is not in the expected form.",
+      "invalid_json": "{{where}}: the stored deadline cannot be read.",
+      "after": "{{where}}: write how long, a whole number from 1 to {{max}} {{unit}}.",
+      "unit": "{{where}}: the unit must be hours or days.",
+      "calendar": "{{where}}: choose a calendar, or 24×7.",
+      "to_step": "{{where}}: choose the step the ticket moves to.",
+      "set_fields": "{{where}}: every field to set needs a field and a value.",
+      "duplicate_field": "{{where}}: the field «{{field}}» is set twice.",
+      "sameStep": "The deadline of «{{step}}» moves the ticket to the step it is already in: choose another step.",
+      "noArc": "The deadline of «{{step}}» moves the ticket to «{{target}}», but no arc goes there: draw the arc, or keep it — a deadline that uses it cannot lose it.",
+      "protectedTarget": "The deadline of «{{step}}» would bring the change to «{{target}}», which is protected by the approvals (purpose «{{purpose}}»): a deadline has no person behind it, so it cannot. Move it with the approval flow.",
+      "protectedSource": "«{{step}}» is where the change is approved, and leaving it needs the approvals: a deadline cannot do it.",
+      "calendarMissing": "The deadline of «{{step}}» counts with a service calendar that no longer exists: choose a calendar, or 24×7."
+    },
+    "stepField": {
+      "engine_owned": "{{where}}: the field «{{field}}» is written by the workflow engine. Move the ticket with an arc of the workflow instead.",
+      "identity": "{{where}}: the field «{{field}}» identifies or traces the ticket and cannot be set by a step.",
+      "derived": "{{where}}: the field «{{field}}» is calculated by the product for this kind of ticket and cannot be set by a step.",
+      "notInMetamodel": "{{where}}: «{{field}}» is not a field of this kind of ticket. Add it in the ITIL designer, or choose another field.",
+      "relation": "{{where}}: «{{field}}» is assigned, not written: use the «Assign to» action.",
+      "valueRequired": "{{where}}: the field «{{field}}» needs a value.",
+      "valueNotInVocabulary": "{{where}}: «{{value}}» is not a value of «{{field}}» (allowed: {{allowed}}).",
+      "notNumber": "{{where}}: «{{field}}» is a number, «{{value}}» is not.",
+      "notBoolean": "{{where}}: «{{field}}» is yes or no.",
+      "notDate": "{{where}}: «{{field}}» is a date, «{{value}}» is not."
     }
   },
   "errorBoundary": {
@@ -3687,7 +3752,8 @@
     },
     "workflowTimeline": {
       "title": "Workflow history",
-      "empty": "No workflow history."
+      "empty": "No workflow history.",
+      "movedByDeadline": "Moved by the step deadline"
     },
     "triage": {
       "needsTitle": "Write a title first",
@@ -4969,7 +5035,9 @@
       "vocabulary_behind_shipped_one": "The product added values to a dictionary you customized, and your copy does not have them: {{details}}. Your copy is never overwritten — **decide in the Dictionary**: add them, or keep your list.",
       "vocabulary_behind_shipped_other": "The product added values to {{count}} dictionaries you customized, and your copies do not have them: {{details}}. Your copies are never overwritten — **decide in the Dictionary**: add them, or keep your lists.",
       "sla_warning_not_before_deadline_one": "An SLA policy sends its warning when the ticket is created, because the warning is not shorter than the resolution time (warning / resolution): {{details}}. **Shorten the warning in Admin → SLA Policies**.",
-      "sla_warning_not_before_deadline_other": "{{count}} SLA policies send their warning when the ticket is created, because the warning is not shorter than the resolution time (warning / resolution): {{details}}. **Shorten the warnings in Admin → SLA Policies**."
+      "sla_warning_not_before_deadline_other": "{{count}} SLA policies send their warning when the ticket is created, because the warning is not shorter than the resolution time (warning / resolution): {{details}}. **Shorten the warnings in Admin → SLA Policies**.",
+      "step_deadlines_blocked_one": "{{count}} ticket is still in a step whose deadline could not move it ({{tickets}}): the approvals refused it, or the workflow changed and the deadline has nowhere to go. It is retried every hour. **Check the step deadline in the workflow designer**.",
+      "step_deadlines_blocked_other": "{{count}} tickets are still in a step whose deadline could not move them ({{tickets}}): the approvals refused it, or the workflow changed and the deadline has nowhere to go. It is retried every hour. **Check the step deadlines in the workflow designer**."
     },
     "gap": {
       "tenant_missing": "no row: the tenant does not exist",

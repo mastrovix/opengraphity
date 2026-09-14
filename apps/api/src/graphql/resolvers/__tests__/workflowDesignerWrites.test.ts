@@ -66,6 +66,9 @@ const fakeLog = () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi
 vi.mock('../../../lib/logger.js', () => ({ logger: fakeLog(), workflowLogger: fakeLog() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/validateRequiredFields.js', () => ({ validateRequiredFields: vi.fn().mockResolvedValue(undefined) }))
+// Le scadenze dei passi (ondata 3) hanno i loro test (stepDeadlines.test.ts): qui la
+// lettura del loro controllo sposterebbe i risultati in coda di questo doppio.
+vi.mock('../../../lib/stepDeadlineWrite.js', async (importOriginal) => ({ ...(await importOriginal<object>()), assertDefinitionDeadlines: vi.fn(async () => {}) }))
 vi.mock('../../../lib/workflowHelpers.js', () => ({ invalidateWorkflowCache: vi.fn() }))
 // I tipi di change pre-approvati: li legge la guardia che impedisce di lasciare
 // il workflow delle change senza un posto dove approvare (revisione · B·N-1).

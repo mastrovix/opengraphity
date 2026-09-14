@@ -14,7 +14,7 @@ import type {
   CallWebhookParams,
   CreateApprovalRequestParams,
 } from './types.js'
-import { updateFieldRejection } from '@opengraphity/types'
+import { stepFieldRejection } from '@opengraphity/types'
 
 const log = pino({ level: process.env['LOG_LEVEL'] ?? 'info' }).child({ module: 'workflow:actions' })
 
@@ -195,32 +195,6 @@ export async function runAction(
       // handled separately via publishNotifyRuleActions in the GraphQL resolver
       break
 
-    // ── Scheduled jobs ─────────────────────────────────────────────────────────
-
-    case 'schedule_job': {
-      if (!action.params['job']) throw new Error('schedule_job: missing required param "job"')
-      const jobName = String(action.params['job'])
-      const delayMs = parseInt(String(action.params['delay_hours'] ?? '0'), 10) * 60 * 60 * 1000
-      const queue   = new Queue('workflow-jobs', { connection: redisConnection })
-      await queue.add(
-        jobName,
-        { instanceId: instance.id, entityId: instance.entityId, tenantId: instance.tenantId, job: jobName },
-        { delay: delayMs, jobId: `${jobName}_${instance.entityId}`, removeOnComplete: true },
-      )
-      await queue.close()
-      break
-    }
-
-    case 'cancel_job': {
-      if (!action.params['job']) throw new Error('cancel_job: missing required param "job"')
-      const jobName = String(action.params['job'])
-      const queue   = new Queue('workflow-jobs', { connection: redisConnection })
-      const job     = await queue.getJob(`${jobName}_${instance.entityId}`)
-      if (job) await job.remove()
-      await queue.close()
-      break
-    }
-
     // ── New: create_entity ─────────────────────────────────────────────────────
 
     case 'create_entity': {
@@ -282,12 +256,13 @@ export async function runAction(
         throw new Error('update_field: updateField callback not provided by the calling context')
       }
       const p = action.params as unknown as UpdateFieldParams
-      // Allow-list e messaggi in types.ts: la stessa regola vale a runtime,
-      // in scrittura (`assertStepActions`) e nel disegnatore. `status` non è
-      // più scrivibile (B-9): lo scrive il motore, e scavalcarlo faceva
-      // divergere il ticket dal suo processo.
-      const rejection = updateFieldRejection(p.field)
-      if (rejection) throw new Error(rejection)
+      // Campi riservati in @opengraphity/types: la stessa regola vale a
+      // runtime, in scrittura (`assertStepActions`) e nel disegnatore. `status`
+      // non è scrivibile (B-9): lo scrive il motore, e scavalcarlo faceva
+      // divergere il ticket dal suo processo. L'esistenza del campo nel
+      // metamodello e il vocabolario li verifica chi scrive (`ctx.updateField`).
+      const rejection = stepFieldRejection(p.field, instance.entityType)
+      if (rejection) throw new Error(rejection.message)
       const resolved = typeof p.value === 'string' ? resolveTemplate(p.value, buildTemplateCtx(instance, ctx.entityData)) : p.value
       await ctx.updateField(instance.entityId, p.field, resolved)
       await ctx.publishEvent?.(`${instance.entityType}.updated`, {

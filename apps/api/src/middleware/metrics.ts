@@ -280,6 +280,13 @@ export const workflowPurposeMissingTotal = createCounter('workflow_step_purpose_
  * dentro la finestra di rilascio scavalcando l'approvazione: e una
  * configurazione da correggere, non un guasto del prodotto.
  */
+/**
+ * Le scadenze dei passi di workflow (verifica «Cosa resta cablato», ondata 3):
+ * quante hanno spostato un ticket, quante il varco ha rifiutato e quante non
+ * sono riuscite, per ragione. Un `failed` è configurazione da correggere.
+ */
+export const stepDeadlineOutcomesTotal = createCounter('workflow_step_deadline_outcomes_total', 'Workflow step deadlines that came due, by outcome (moved, refused, failed) and reason', ['outcome', 'reason'])
+
 export const changeWindowGateBlockedTotal = createCounter('change_window_gate_blocked_total', 'Automatic workflow transitions refused because the change would enter the release window without satisfied approvals, by path and reason', ['path', 'reason'])
 
 /**
@@ -422,6 +429,7 @@ export const EVENT_MANAGEMENT_METRICS = [
   eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsAmbiguousTotal, eventsSuppressedTotal, eventsFlappingTotal,
   workflowPurposeMissingTotal,
   changeWindowGateBlockedTotal,
+  stepDeadlineOutcomesTotal,
   tenantProvisioningGapsGauge,
   incidentsAutoOpenedTotal, incidentsAutoResolvedTotal, incidentsReopenedTotal, eventsPurgedTotal,
   eventsOutOfOrderTotal, eventsIngestFailedTotal, eventsRejectedTotal, eventsResolvedUnknownTotal, eventStormsActive, webhookRateLimitedTotal,

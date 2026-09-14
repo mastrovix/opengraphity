@@ -28,13 +28,13 @@ const zones = (timezone: string | null): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
-type Calendar = { id: string; name: string; days: number[]; start: string; end: string; holidays: string[]; usedBySlaPolicies: string[]; usedByOlaContracts: string[] }
+type Calendar = { id: string; name: string; days: number[]; start: string; end: string; holidays: string[]; usedBySlaPolicies: string[]; usedByOlaContracts: string[]; usedByWorkflowSteps: string[] }
 const calendar = (list: Calendar[]): GqlMock => ({
   request: { query: GET_SERVICE_CALENDARS },
   result: { data: { serviceCalendars: list.map((c) => ({ __typename: 'ServiceCalendar', ...c })) } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
-const FACTORY: Calendar[] = [{ id: 'cal-1', name: 'Service hours', days: [1, 2, 3, 4, 5], start: '08:00', end: '18:00', holidays: [], usedBySlaPolicies: ['Incident di rete'], usedByOlaContracts: [] }]
+const FACTORY: Calendar[] = [{ id: 'cal-1', name: 'Service hours', days: [1, 2, 3, 4, 5], start: '08:00', end: '18:00', holidays: [], usedBySlaPolicies: ['Incident di rete'], usedByOlaContracts: [], usedByWorkflowSteps: [] }]
 
 type Option = { value: string; labels: { language: string; label: string }[] }
 const portalOptions = (options: Option[] | null): GqlMock => ({
@@ -87,7 +87,7 @@ describe('OrganizationPage — calendari di servizio', () => {
     const seen: unknown[] = []
     const create: GqlMock = {
       request: { query: CREATE_SERVICE_CALENDAR, variables: (v) => { seen.push(v); return true } },
-      result: { data: { createServiceCalendar: { __typename: 'ServiceCalendar', id: 'cal-2', name: 'Turno NOC', days: [1, 2, 3, 4, 5, 6], start: '07:00', end: '22:00', holidays: ['2026-12-25'], usedBySlaPolicies: [], usedByOlaContracts: [] } } },
+      result: { data: { createServiceCalendar: { __typename: 'ServiceCalendar', id: 'cal-2', name: 'Turno NOC', days: [1, 2, 3, 4, 5, 6], start: '07:00', end: '22:00', holidays: ['2026-12-25'], usedBySlaPolicies: [], usedByOlaContracts: [], usedByWorkflowSteps: [] } } },
     }
     const { user } = renderWithProviders(<OrganizationPage />, { route: '/settings/organization', mocks: [language, zones('Europe/Rome'), calendar([]), portalOptions(null), create] })
 

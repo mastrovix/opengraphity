@@ -1,5 +1,16 @@
 import type { WorkflowDefinition } from './types.js'
 import { seedWorkflowDefinition, type SeedOptions } from './seed-common.js'
+import type { StepDeadline } from '@opengraphity/types'
+
+/**
+ * La chiusura automatica di fabbrica degli incident risolti: 72 ore di
+ * orologio nel passo «resolved», poi il ticket va a «closed». Era l'azione
+ * `schedule_job(auto_close)`; ora è la scadenza del passo, modificabile dal
+ * disegnatore come ogni altra (verifica «Cosa resta cablato», ondata 3).
+ */
+export const INCIDENT_AUTO_CLOSE_DEADLINE = JSON.stringify({
+  after: 72, unit: 'hours', calendar_id: null, to_step: 'closed', set_fields: [],
+} satisfies StepDeadline)
 
 export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'> = {
   name:       'Incident Management',
@@ -68,12 +79,11 @@ export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'>
       type:  'standard',
       enterActions: [
         { type: 'sla_stop',     params: { sla_type: 'resolve' } },
-        { type: 'schedule_job', params: { job: 'auto_close', delay_hours: '72' } },
       ],
-      exitActions: [
-        { type: 'cancel_job', params: { job: 'auto_close' } },
-      ],
-      metadata:     { step_order: 7, is_initial: false, is_terminal: true, is_open: false, category: 'resolved' },
+      exitActions: [],
+      // La chiusura automatica è una scadenza come le altre (ondata 3): 72 ore
+      // di orologio, poi l'arco «Close automatically».
+      metadata:     { step_order: 7, is_initial: false, is_terminal: true, is_open: false, category: 'resolved', deadline: INCIDENT_AUTO_CLOSE_DEADLINE },
     },
     {
       id:    'step-closed',
@@ -214,7 +224,7 @@ export const INCIDENT_SECURITY_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenant
     { id: 'step-in_progress',     name: 'in_progress',     label: 'In Progress', labels: { it: 'In Lavorazione' },  type: 'standard', enterActions: [{ type: 'sla_stop', params: { sla_type: 'response' } }, { type: 'sla_start', params: { sla_type: 'resolve' } }], exitActions: [], metadata: { step_order: 4, is_initial: false, is_terminal: false, is_open: true,  category: 'active' } },
     { id: 'step-pending',         name: 'pending',         label: 'On Hold', labels: { it: 'In Attesa' },       type: 'standard', enterActions: [{ type: 'sla_pause', params: { sla_type: 'resolve' } }], exitActions: [{ type: 'sla_resume', params: { sla_type: 'resolve' } }], metadata: { step_order: 5, is_initial: false, is_terminal: false, is_open: true,  category: 'waiting' } },
     { id: 'step-escalated',       name: 'escalated',       label: 'Escalated', labels: { it: 'Escalato' },        type: 'standard', enterActions: [], exitActions: [], metadata: { step_order: 6, is_initial: false, is_terminal: false, is_open: true,  category: 'escalated' } },
-    { id: 'step-resolved',        name: 'resolved',        label: 'Resolved', labels: { it: 'Risolto' },         type: 'standard', enterActions: [{ type: 'sla_stop', params: { sla_type: 'resolve' } }, { type: 'schedule_job', params: { job: 'auto_close', delay_hours: '72' } }], exitActions: [{ type: 'cancel_job', params: { job: 'auto_close' } }], metadata: { step_order: 7, is_initial: false, is_terminal: true,  is_open: false, category: 'resolved' } },
+    { id: 'step-resolved',        name: 'resolved',        label: 'Resolved', labels: { it: 'Risolto' },         type: 'standard', enterActions: [{ type: 'sla_stop', params: { sla_type: 'resolve' } }], exitActions: [], metadata: { step_order: 7, is_initial: false, is_terminal: true,  is_open: false, category: 'resolved', deadline: INCIDENT_AUTO_CLOSE_DEADLINE } },
     { id: 'step-closed',          name: 'closed',          label: 'Closed', labels: { it: 'Chiuso' },          type: 'end',      enterActions: [], exitActions: [], metadata: { step_order: 8, is_initial: false, is_terminal: true,  is_open: false, category: 'closed' } },
   ],
   transitions: [

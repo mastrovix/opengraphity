@@ -82,6 +82,7 @@ export function mapWorkflowStep(s: Props) {
     // lo legge e lo scrive; `null` = il cliente non l'ha dichiarato, e non si
     // indovina dal nome.
     purpose:           (s['purpose'] ?? null) as string | null,
+    deadline:          (s['deadline'] ?? null) as string | null,
     order:             s['step_order'] != null ? Number(s['step_order']) : 999,
     // Designer layout: written by saveWorkflowChanges.positions, read back
     // here so the canvas does not fall back to the default layout.
