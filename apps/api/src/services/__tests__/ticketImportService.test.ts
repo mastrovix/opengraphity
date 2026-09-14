@@ -178,16 +178,23 @@ describe('importIncidents', () => {
     expect(mergedIncidentParams(0)['severity']).toBe('critical')
   })
 
-  it('senza colonna severity la riga nasce col default dichiarato, non con un valore inventato', async () => {
-    const result = await importIncidents([{ external_id: 'A-1', title: 'T1' }], ctx)
-    expect(result.errors).toHaveLength(0)
+  // Verifica «Cosa resta cablato», ondata 1: senza severità non c'è più il
+  // default `medium`, che né il file né il cliente avevano scelto.
+  it('senza severity la riga è IN ERRORE, non nasce con un valore scelto dal codice', async () => {
+    const result = await importIncidents([
+      { external_id: 'A-1', title: 'T1' },
+      { external_id: 'A-2', title: 'T2', severity: 'med' },
+    ], ctx)
+    expect(result.created).toBe(1)
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]).toMatchObject({ row: 1, externalId: 'A-1', messageKey: 'severityRequired' })
     expect(mergedIncidentParams(0)['severity']).toBe('medium')
   })
 
   it('mappa status case-insensitive sugli step del workflow; sconosciuto → warning + step iniziale', async () => {
     const result = await importIncidents([
-      { external_id: 'A-1', title: 'T1', status: 'IN_PROGRESS' },
-      { external_id: 'A-2', title: 'T2', status: 'inesistente' },
+      { external_id: 'A-1', title: 'T1', status: 'IN_PROGRESS', severity: 'med' },
+      { external_id: 'A-2', title: 'T2', status: 'inesistente', severity: 'med' },
     ], ctx)
 
     expect(result.warnings).toHaveLength(1)
@@ -198,10 +205,10 @@ describe('importIncidents', () => {
 
   it('errore di riga su external_id mancante, title mancante e data invalida — le righe valide procedono', async () => {
     const result = await importIncidents([
-      { external_id: '',    title: 'T1' },
-      { external_id: 'A-2', title: ''   },
-      { external_id: 'A-3', title: 'T3', created_at: 'non-una-data' },
-      { external_id: 'A-4', title: 'T4', created_at: '2024-01-01T10:00:00Z' },
+      { external_id: '',    title: 'T1', severity: 'med' },
+      { external_id: 'A-2', title: '', severity: 'med' },
+      { external_id: 'A-3', title: 'T3', created_at: 'non-una-data', severity: 'med' },
+      { external_id: 'A-4', title: 'T4', created_at: '2024-01-01T10:00:00Z', severity: 'med' },
     ], ctx)
 
     expect(result.totalRows).toBe(4)
@@ -218,7 +225,7 @@ describe('importIncidents', () => {
   it('idempotenza: secondo run sullo stesso external_id → updated, non created', async () => {
     mockReads({ existing: [{ id: 'inc-1', externalId: 'A-1', number: 'INC00000001' }] })
 
-    const result = await importIncidents([{ external_id: 'A-1', title: 'T1 aggiornato' }], ctx)
+    const result = await importIncidents([{ external_id: 'A-1', title: 'T1 aggiornato', severity: 'med' }], ctx)
 
     expect(result.created).toBe(0)
     expect(result.updated).toBe(1)
@@ -234,9 +241,9 @@ describe('importIncidents', () => {
     mockReads({ existing: [{ id: 'inc-1', externalId: 'A-1', number: null }] })
 
     const result = await importIncidents([
-      { external_id: 'A-1', title: 'Esistente' },
+      { external_id: 'A-1', title: 'Esistente', severity: 'med' },
       { external_id: 'A-2', title: 'Nuovo', severity: 'boh' },
-      { external_id: '',    title: 'Invalida' },
+      { external_id: '',    title: 'Invalida', severity: 'med' },
     ], ctx, { dryRun: true })
 
     // Ondata 7: `severity: 'boh'` non e' piu' un avviso con ripiego a `medium`
@@ -254,7 +261,7 @@ describe('importIncidents', () => {
     mockReads({ numbers: [{ number: 'INC00000042', externalId: 'ALTRO' }] })
 
     const result = await importIncidents([
-      { external_id: 'A-1', title: 'T1', number: 'INC00000042' },
+      { external_id: 'A-1', title: 'T1', number: 'INC00000042', severity: 'med' },
     ], ctx)
 
     expect(result.created).toBe(0)
@@ -267,8 +274,8 @@ describe('importIncidents', () => {
     mockReads({ numbers: [{ number: 'INC90000001', externalId: 'A-1' }], maxNum: 7, existing: [{ id: 'inc-1', externalId: 'A-1', number: 'INC90000001' }] })
 
     const result = await importIncidents([
-      { external_id: 'A-1', title: 'T1', number: 'INC90000001' },
-      { external_id: 'A-2', title: 'T2' },
+      { external_id: 'A-1', title: 'T1', number: 'INC90000001', severity: 'med' },
+      { external_id: 'A-2', title: 'T2', severity: 'med' },
     ], ctx)
 
     expect(result.errors).toHaveLength(0)
@@ -278,8 +285,8 @@ describe('importIncidents', () => {
 
   it('external_id duplicato nel file → errore sulla seconda riga', async () => {
     const result = await importIncidents([
-      { external_id: 'A-1', title: 'T1' },
-      { external_id: 'A-1', title: 'T2' },
+      { external_id: 'A-1', title: 'T1', severity: 'med' },
+      { external_id: 'A-1', title: 'T2', severity: 'med' },
     ], ctx)
     expect(result.created).toBe(1)
     expect(result.errors).toHaveLength(1)
@@ -290,8 +297,8 @@ describe('importIncidents', () => {
     mockReads({ users: [{ email: 'mario@acme.it', id: 'u-1' }], teams: [{ name: 'platform', id: 't-1' }] })
 
     const result = await importIncidents([
-      { external_id: 'A-1', title: 'T1', assignee_email: 'Mario@Acme.it', team_name: 'Platform' },
-      { external_id: 'A-2', title: 'T2', assignee_email: 'ghost@acme.it', team_name: 'Nessuno' },
+      { external_id: 'A-1', title: 'T1', assignee_email: 'Mario@Acme.it', team_name: 'Platform', severity: 'med' },
+      { external_id: 'A-2', title: 'T2', assignee_email: 'ghost@acme.it', team_name: 'Nessuno', severity: 'med' },
     ], ctx)
 
     expect(result.created).toBe(2)
@@ -308,8 +315,8 @@ describe('importIncidents', () => {
     mockReads({ users: [{ email: 'mario@acme.it', id: 'u-1' }] })
 
     const result = await importIncidents([
-      { external_id: 'A-1', title: 'T1', comments: 'non-json' },
-      { external_id: 'A-2', title: 'T2', comments: '[{"author_email":"mario@acme.it","text":"ok","created_at":"2024-02-01T08:00:00Z"}]' },
+      { external_id: 'A-1', title: 'T1', comments: 'non-json', severity: 'med' },
+      { external_id: 'A-2', title: 'T2', comments: '[{"author_email":"mario@acme.it","text":"ok","created_at":"2024-02-01T08:00:00Z"}]', severity: 'med' },
     ], ctx)
 
     expect(result.errors).toHaveLength(1)
@@ -321,7 +328,7 @@ describe('importIncidents', () => {
   })
 
   it('crea la workflow instance e la porta allo step mappato dentro la stessa tx', async () => {
-    await importIncidents([{ external_id: 'A-1', title: 'T1', status: 'resolved' }], ctx)
+    await importIncidents([{ external_id: 'A-1', title: 'T1', status: 'resolved', severity: 'med' }], ctx)
 
     expect(mockSession.executeWrite).toHaveBeenCalledTimes(1)
     expect(workflowEngine.createInstance).toHaveBeenCalledWith(mockTx, ctx.tenantId, expect.any(String), 'incident')
@@ -344,8 +351,8 @@ describe('importKBArticles', () => {
     mockReads({ slugs: ['reset-password'] })
 
     const result = await importKBArticles([
-      { external_id: 'K-1', title: 'Reset Password' },
-      { external_id: 'K-2', title: 'Reset password', status: 'strano' },
+      { external_id: 'K-1', title: 'Reset Password', severity: 'med' },
+      { external_id: 'K-2', title: 'Reset password', status: 'strano', severity: 'med' },
     ], ctx)
 
     expect(result.created).toBe(2)
@@ -357,7 +364,7 @@ describe('importKBArticles', () => {
 
   it('status published → step con category published; tags separati da ;', async () => {
     await importKBArticles([
-      { external_id: 'K-1', title: 'Guida VPN', status: 'Published', tags: 'vpn; rete ;', published_at: '2024-06-01T00:00:00Z' },
+      { external_id: 'K-1', title: 'Guida VPN', status: 'Published', tags: 'vpn; rete ;', published_at: '2024-06-01T00:00:00Z', severity: 'med' },
     ], ctx)
 
     const params = mergedKBParams(0)
@@ -369,7 +376,7 @@ describe('importKBArticles', () => {
   it('idempotenza: articolo esistente → updated e slug esistente conservato', async () => {
     mockReads({ kbExisting: [{ id: 'kb-1', externalId: 'K-1' }] })
 
-    const result = await importKBArticles([{ external_id: 'K-1', title: 'Guida aggiornata' }], ctx)
+    const result = await importKBArticles([{ external_id: 'K-1', title: 'Guida aggiornata', severity: 'med' }], ctx)
 
     expect(result.created).toBe(0)
     expect(result.updated).toBe(1)
@@ -378,8 +385,8 @@ describe('importKBArticles', () => {
 
   it('dry-run: nessuna scrittura', async () => {
     const result = await importKBArticles([
-      { external_id: 'K-1', title: 'Guida' },
-      { external_id: '',    title: 'Senza id' },
+      { external_id: 'K-1', title: 'Guida', severity: 'med' },
+      { external_id: '',    title: 'Senza id', severity: 'med' },
     ], ctx, { dryRun: true })
 
     expect(result).toMatchObject({ totalRows: 2, created: 1, updated: 0 })
@@ -390,8 +397,8 @@ describe('importKBArticles', () => {
   /** Revisione del 14 set 2026 · F5: la categoria di un articolo importato è una categoria KB del Dizionario. */
   it('categoria fuori dal vocabolario kb_category → riga in errore che la nomina; una valida passa', async () => {
     const result = await importKBArticles([
-      { external_id: 'K-1', title: 'Guida', category: 'boh' },
-      { external_id: 'K-2', title: 'Guida DB', category: 'database' },
+      { external_id: 'K-1', title: 'Guida', category: 'boh', severity: 'med' },
+      { external_id: 'K-2', title: 'Guida DB', category: 'database', severity: 'med' },
     ], ctx)
     expect(result.created).toBe(1)
     expect(result.errors).toEqual([expect.objectContaining({ externalId: 'K-1', message: expect.stringContaining('boh') })])

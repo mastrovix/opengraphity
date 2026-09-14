@@ -356,7 +356,7 @@ Tasks that have not been created yet (e.g. validation/deployment before the depl
 
 #### `POST /api/v1/changes`
 
-Body: `title` (required), `description`, `changeOwner` (required, user id), `affectedCIIds` (required, non-empty array of CI ids). Every CI must have an Owner Group and a Support Group — otherwise `400` with the offending CI in the message.
+Body: `title` (required), `why` (required), `what` (required), `changeOwner` (required, user id), `changeType` (required: a value of the tenant's `change_type` vocabulary — there is no default type), `affectedCIIds` (required, non-empty array of CI ids). Every CI must have an Owner Group and a Support Group — otherwise `400` with the offending CI in the message.
 
 ```bash
 curl -s -X POST "http://c-one.localhost/api/v1/changes" \
@@ -364,8 +364,10 @@ curl -s -X POST "http://c-one.localhost/api/v1/changes" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Upgrade DB cluster",
-    "description": "Minor version upgrade",
+    "why": "The current minor version is end of life",
+    "what": "Minor version upgrade of the cluster",
     "changeOwner": "<user-id>",
+    "changeType": "normal",
     "affectedCIIds": ["<ci-id-1>", "<ci-id-2>"]
   }'
 ```
@@ -373,7 +375,7 @@ curl -s -X POST "http://c-one.localhost/api/v1/changes" \
 Returns `201` with the same shape as `GET /api/v1/changes/:id`. Validation failures return `400`:
 
 ```json
-{ "error": { "code": "VALIDATION_ERROR", "message": "CI DB Prod manca di Owner Group o Support Group" } }
+{ "error": { "code": "VALIDATION_ERROR", "message": "CI DB Prod has no Owner Group or Support Group" } }
 ```
 
 #### `GET /api/v1/changes/:id/tasks`

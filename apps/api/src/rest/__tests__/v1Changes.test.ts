@@ -139,13 +139,15 @@ describe('GET /api/v1/changes/:id', () => {
 })
 
 describe('POST /api/v1/changes', () => {
-  const valid = { title: 'Upgrade DB', why: 'EOL', what: 'pg16', changeOwner: 'u-own', affectedCIIds: ['ci-1'] }
+  const valid = { title: 'Upgrade DB', why: 'EOL', what: 'pg16', changeOwner: 'u-own', changeType: 'normal', affectedCIIds: ['ci-1'] }
 
   it.each([
     [{ ...valid, title: undefined }, /title is required/],
     [{ ...valid, why: '' }, /why is required/],
     [{ ...valid, what: 1 }, /what is required/],
     [{ ...valid, changeOwner: undefined }, /changeOwner is required/],
+    // Verifica «Cosa resta cablato», ondata 1: il tipo non ha più un default.
+    [{ ...valid, changeType: undefined }, /changeType is required/],
     [{ ...valid, affectedCIIds: [] }, /affectedCIIds must be a non-empty array/],
     [{ ...valid, affectedCIIds: ['ci-1', 2] }, /affectedCIIds must be a non-empty array/],
     [{ ...valid, affectedCIIds: 'ci-1' }, /affectedCIIds must be a non-empty array/],

@@ -69,6 +69,10 @@ import { serviceCalendar } from './20260924_1030_service_calendar.js'
 import { kbPublishedAt } from './20260924_1040_kb_published_at.js'
 import { changeEnvironmentWeightSeed } from './20260924_1050_change_environment_weight.js'
 import { workflowLabelsByLanguage } from './20260924_1060_workflow_labels_by_language.js'
+import { riskBandColors } from './20260925_1000_risk_band_colors.js'
+import { serviceExclusionReasonCode } from './20260925_1010_service_exclusion_reason_code.js'
+import { portalSeverityOptionsSeed } from './20260925_1020_portal_severity_options.js'
+import { catalogItemPriority } from './20260925_1030_catalog_item_priority.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -132,4 +136,8 @@ export const MIGRATIONS: readonly Migration[] = [
   kbPublishedAt,
   changeEnvironmentWeightSeed,
   workflowLabelsByLanguage,
+  riskBandColors,
+  serviceExclusionReasonCode,
+  portalSeverityOptionsSeed,
+  catalogItemPriority,
 ]

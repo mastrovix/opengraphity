@@ -3,6 +3,7 @@
  * problem). Pure layout/formatting helpers — no domain knowledge here.
  */
 import PDFDocument from 'pdfkit'
+import type { ValueColor } from '@opengraphity/types'
 import { pdfText } from './texts.js'
 
 /**
@@ -70,6 +71,28 @@ export const COLOR = {
   muted:  '#94a3b8',
   border: '#e2e8f0',
   headBg: '#f1f5f9',
+}
+
+/**
+ * I colori del Dizionario (`ValueColor`) resi nel PDF. Le pastiglie per valore
+ * (severità, priorità) prendevano un esadecimale da una tabella per valore di
+ * fabbrica in ogni PDF: un valore del cliente usciva grigio, e un colore scelto
+ * nel Dizionario non contava (verifica «Cosa resta cablato», ondata 1). Questa è
+ * la sola traduzione colore → inchiostro dei PDF.
+ */
+export const VALUE_COLOR_INK: Readonly<Record<ValueColor, string>> = {
+  neutral: COLOR.muted,
+  success: '#16a34a',
+  info:    '#2563eb',
+  purple:  '#7c3aed',
+  warning: '#d97706',
+  orange:  '#ea580c',
+  danger:  '#dc2626',
+}
+
+/** L'inchiostro del colore di un valore; un valore senza colore nel Dizionario è neutro, come nel web. */
+export function valueColorInk(color: ValueColor | null): string {
+  return VALUE_COLOR_INK[color ?? 'neutral']
 }
 
 export type Doc = InstanceType<typeof PDFDocument>

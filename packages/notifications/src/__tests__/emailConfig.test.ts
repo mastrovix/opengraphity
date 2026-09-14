@@ -15,10 +15,11 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-async function freshEmailModule(env: { NODE_ENV?: string; RESEND_API_KEY?: string }) {
+async function freshEmailModule(env: { NODE_ENV?: string; RESEND_API_KEY?: string; EMAIL_FROM?: string }) {
   vi.resetModules()
   vi.stubEnv('NODE_ENV', env.NODE_ENV ?? 'test')
   vi.stubEnv('RESEND_API_KEY', env.RESEND_API_KEY ?? '')
+  vi.stubEnv('EMAIL_FROM', env.EMAIL_FROM ?? '')
   return import('../email.js')
 }
 
@@ -50,5 +51,18 @@ describe('email: la chiave mancante in produzione', () => {
     await expect(m.sendEmail({ to: 'a@example.com', subject: 's', html: 'h' })).resolves.toBeUndefined()
     expect(log).toHaveBeenCalledWith(expect.stringContaining('[email:mock]'))
     warn.mockRestore(); log.mockRestore()
+  })
+})
+
+/** Verifica «Cosa resta cablato», ondata 1: il mittente non ricade più in silenzio su un indirizzo di prova. */
+describe('email: il mittente mancante in produzione', () => {
+  it('assertEmailConfigured lancia in produzione senza EMAIL_FROM, anche con la chiave', async () => {
+    const m = await freshEmailModule({ NODE_ENV: 'production', RESEND_API_KEY: 're_test' })
+    expect(() => m.assertEmailConfigured()).toThrow(/EMAIL_FROM is not set in production/)
+  })
+
+  it('con chiave e mittente in produzione non lancia', async () => {
+    const m = await freshEmailModule({ NODE_ENV: 'production', RESEND_API_KEY: 're_test', EMAIL_FROM: 'Acme IT <it@acme.example>' })
+    expect(() => m.assertEmailConfigured()).not.toThrow()
   })
 })

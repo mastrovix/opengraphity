@@ -106,3 +106,10 @@ export const GET_TENANT_PROVISIONING_GAPS = gql`
     tenantProvisioningGaps { kind params { name value } }
   }
 `
+
+/** Le severità offerte nel portale self-service, come le ha salvate l'amministratore (null = non dichiarate). */
+export const GET_PORTAL_SEVERITY_OPTIONS = gql`
+  query GetPortalSeverityOptions {
+    portalSeverityOptions { value labels { language label } }
+  }
+`

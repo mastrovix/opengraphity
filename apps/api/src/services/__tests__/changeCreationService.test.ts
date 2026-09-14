@@ -112,26 +112,34 @@ describe('createChangeRFC', () => {
     )
   })
 
+  // Verifica «Cosa resta cablato», ondata 1: nessun tipo di ripiego.
+  it('rifiuta un change senza tipo, prima di toccare il grafo', async () => {
+    await expect(
+      createChangeRFC({ title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx),
+    ).rejects.toThrow(/changeType is required/)
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
   it('rifiuta un change senza CI impattati', async () => {
     await expect(
-      createChangeRFC({ title: 'Upgrade DB', affectedCIIds: [] }, ctx),
+      createChangeRFC({ changeType: 'normal', title: 'Upgrade DB', affectedCIIds: [] }, ctx),
     ).rejects.toThrow('A change must have at least one impacted CI')
     expect(workflowEngine.createInstance).not.toHaveBeenCalled()
   })
 
   it('rifiuta un change senza title', async () => {
     await expect(
-      createChangeRFC({ title: '  ', affectedCIIds: ['ci-1'] }, ctx),
+      createChangeRFC({ changeType: 'normal', title: '  ', affectedCIIds: ['ci-1'] }, ctx),
     ).rejects.toThrow('title is required')
     expect(workflowEngine.createInstance).not.toHaveBeenCalled()
   })
 
   it('rifiuta un change senza WHY o senza WHAT', async () => {
     await expect(
-      createChangeRFC({ title: 'X', why: '  ', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx),
+      createChangeRFC({ changeType: 'normal', title: 'X', why: '  ', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx),
     ).rejects.toThrow(/why/i)
     await expect(
-      createChangeRFC({ title: 'X', why: 'perché', what: '  ', affectedCIIds: ['ci-1'] }, ctx),
+      createChangeRFC({ changeType: 'normal', title: 'X', why: 'perché', what: '  ', affectedCIIds: ['ci-1'] }, ctx),
     ).rejects.toThrow(/what/i)
     expect(workflowEngine.createInstance).not.toHaveBeenCalled()
   })
@@ -144,7 +152,7 @@ describe('createChangeRFC', () => {
       ],
     })
     await expect(
-      createChangeRFC({ title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1', 'ci-2'] }, ctx),
+      createChangeRFC({ changeType: 'normal', title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1', 'ci-2'] }, ctx),
     ).rejects.toThrow('CI DB Prod has no Owner Group or Support Group')
     expect(workflowEngine.createInstance).not.toHaveBeenCalled()
   })
@@ -154,7 +162,7 @@ describe('createChangeRFC', () => {
       ciRows: [{ id: 'ci-1', name: 'App Portale', ownerTeamId: 'team-a', supportTeamId: null }],
     })
     await expect(
-      createChangeRFC({ title: 'Upgrade', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx),
+      createChangeRFC({ changeType: 'normal', title: 'Upgrade', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx),
     ).rejects.toThrow('CI App Portale has no Owner Group or Support Group')
   })
 
@@ -165,7 +173,7 @@ describe('createChangeRFC', () => {
     })
 
     const result = await createChangeRFC(
-      { title: 'Upgrade DB', why: 'perché', what: 'cosa', changeOwner: 'user-9', affectedCIIds: ['ci-1'] },
+      { changeType: 'normal', title: 'Upgrade DB', why: 'perché', what: 'cosa', changeOwner: 'user-9', affectedCIIds: ['ci-1'] },
       ctx,
     )
 
@@ -195,7 +203,7 @@ describe('createChangeRFC', () => {
    */
   it('chi apre la change la segue (WATCHES nella stessa transazione)', async () => {
     mockQueries({ ciRows: [{ id: 'ci-1', name: 'App Portale', ownerTeamId: 'team-a', supportTeamId: 'team-b' }] })
-    await createChangeRFC({ title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx)
+    await createChangeRFC({ changeType: 'normal', title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx)
     const [cypher, params] = mockTx.run.mock.calls[0]! as [string, Record<string, unknown>]
     expect(cypher).toMatch(/MERGE \(req\)-\[:WATCHES \{watched_at: \$now\}\]->\(c\)/)
     expect(params).toMatchObject({ requesterId: 'user-1', tenantId: 'tenant-1' })
@@ -206,7 +214,7 @@ describe('createChangeRFC', () => {
     mockQueries({ ciRows: [{ id: 'ci-1', name: 'App Portale', ownerTeamId: 'team-a', supportTeamId: 'team-b' }] })
     const sla = await import('@opengraphity/sla')
     vi.mocked(sla.getActiveOLAContractsFor).mockResolvedValueOnce([{ id: 'ola-1', name: 'Rete', type: 'ola', resolve_minutes: 240, business_hours: true }] as never)
-    await createChangeRFC({ title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx)
+    await createChangeRFC({ changeType: 'normal', title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx)
     expect(sla.scheduleOLABreaches).toHaveBeenCalledWith(expect.objectContaining({
       calendar: { days: [1, 2, 3, 4, 5, 6], start: '09:00', end: '13:00', holidays: [] },
     }))
@@ -220,7 +228,7 @@ describe('createChangeRFC', () => {
     mockSession.executeWrite.mockRejectedValue(new Error('Neo.TransientError.Transaction.DeadlockDetected'))
 
     await expect(
-      createChangeRFC({ title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx),
+      createChangeRFC({ changeType: 'normal', title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx),
     ).rejects.toThrow('DeadlockDetected')
 
     // UNICA executeWrite = unica unità di commit: fallita quella, non esistono
@@ -237,7 +245,7 @@ describe('createChangeRFC', () => {
     mockTx.run.mockRejectedValueOnce(new Error('constraint violation'))
 
     await expect(
-      createChangeRFC({ title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx),
+      createChangeRFC({ changeType: 'normal', title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx),
     ).rejects.toThrow('constraint violation')
 
     // dentro la stessa tx nulla prosegue dopo la statement fallita:
@@ -252,7 +260,7 @@ describe('createChangeRFC', () => {
       maxChgNum: 7,
     })
 
-    const result = await createChangeRFC({ title: 'Upgrade', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx)
+    const result = await createChangeRFC({ changeType: 'normal', title: 'Upgrade', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx)
 
     expect(result.code).toMatch(/^CHG\d{8}$/)
     expect(result.code).toBe('CHG00000008')
@@ -266,7 +274,7 @@ describe('createChangeRFC', () => {
       ],
     })
 
-    await createChangeRFC({ title: 'Multi CI', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1', 'ci-2'] }, ctx)
+    await createChangeRFC({ changeType: 'normal', title: 'Multi CI', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1', 'ci-2'] }, ctx)
 
     // La prima tx.run dentro l'unica executeWrite è la CREATE: ispeziona i parametri
     const params = mockTx.run.mock.calls[0]![1] as { ciTasks: Array<{ ciId: string; ownerCode: string; supportCode: string; planCode: string }> }

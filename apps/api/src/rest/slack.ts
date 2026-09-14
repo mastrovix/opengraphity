@@ -5,9 +5,18 @@ import { getSession } from '@opengraphity/neo4j'
 import { GraphQLError } from 'graphql'
 import { logger } from '../lib/logger.js'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
+import { domainVocabulary } from '../lib/domainMatrix.js'
 
-const VALID_SEVERITIES = ['critical', 'high', 'medium', 'low'] as const
-const USAGE = '`/og incident apri <titolo> ci=<id-o-nome-CI> <' + VALID_SEVERITIES.join('|') + '>`'
+/**
+ * La sintassi del comando. Le severità sono quelle del vocabolario `severity`
+ * DEL CLIENTE, e si elencano quando il tenant è noto; la parola chiave è
+ * inglese per tutti. Prima: `apri` e `critical|high|medium|low` scritti qui,
+ * quindi una severità aggiunta o rinominata dal cliente veniva rifiutata da
+ * Slack (verifica «Cosa resta cablato», ondata 1).
+ */
+function usage(severities?: readonly string[]): string {
+  return '`/og incident open <title> ci=<CI id or name> <' + (severities ? severities.join('|') : 'severity') + '>`'
+}
 
 function verifySlackSignature(req: Request): boolean {
   const signingSecret = config.slackSigningSecret
@@ -46,26 +55,22 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
   const slackUserId = params.get('user_id') ?? ''
   const parts = text.trim().split(/\s+/)
 
-  if (parts[0] === 'incident' && parts[1] === 'apri') {
+  if (parts[0] === 'incident' && parts[1] === 'open') {
     // Strict command parsing: no defaulted severity, no fabricated title, no
     // incident without its impacted CI (ITIL: mandatory, enforced by
     // incidentService) — a malformed command gets the usage back, not a
     // plausible incident.
-    const severity = parts[parts.length - 1] ?? ''
-    if (!(VALID_SEVERITIES as readonly string[]).includes(severity)) {
-      res.json({ response_type: 'ephemeral', text: `⚠️ Severity missing or not valid. Usage: ${USAGE}` })
-      return
-    }
+    const severity = parts.length > 2 ? (parts[parts.length - 1] ?? '') : ''
     const words   = parts.slice(2, -1)
     const ciToken = words.find((w) => w.startsWith('ci='))
     const ciRef   = ciToken?.slice(3) ?? ''
     if (!ciRef) {
-      res.json({ response_type: 'ephemeral', text: `⚠️ Impacted CI missing (required). Usage: ${USAGE}` })
+      res.json({ response_type: 'ephemeral', text: `⚠️ Impacted CI missing (required). Usage: ${usage()}` })
       return
     }
     const title = words.filter((w) => w !== ciToken).join(' ')
     if (!title) {
-      res.json({ response_type: 'ephemeral', text: `⚠️ Title missing. Usage: ${USAGE}` })
+      res.json({ response_type: 'ephemeral', text: `⚠️ Title missing. Usage: ${usage()}` })
       return
     }
 
@@ -83,6 +88,13 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
       const u  = userResult.records[0]!.get('u').properties as Record<string, unknown>
       tenantId = u['tenant_id'] as string
       userId   = u['id']        as string
+
+      // La severità è un valore del vocabolario del cliente.
+      const severities = await domainVocabulary(tenantId, 'severity')
+      if (!severities.includes(severity)) {
+        res.json({ response_type: 'ephemeral', text: `⚠️ Severity missing or not valid. Usage: ${usage(severities)}` })
+        return
+      }
 
       // Resolve the CI by id or (case-insensitive) exact name, tenant-scoped.
       // Etichette dal metamodello del tenant: con la lista fissa un CI di un
@@ -134,7 +146,7 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
     return
   }
 
-  res.json({ response_type: 'ephemeral', text: `Command not recognised. Usage: ${USAGE}` })
+  res.json({ response_type: 'ephemeral', text: `Command not recognised. Usage: ${usage()}` })
 }
 
 export async function handleSlackActions(req: Request, res: Response): Promise<void> {

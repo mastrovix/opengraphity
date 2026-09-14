@@ -21,7 +21,7 @@ export const GET_PROBLEM = gql`
       id number title description priority status
       rootCause workaround affectedUsers
       createdAt updatedAt resolvedAt
-      slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt }
+      slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
       createdBy { id name }
       assignee { id name email }
       assignedTeam { id name }

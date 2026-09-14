@@ -84,6 +84,7 @@ import type { UserRole } from '@/hooks/useMe'
 import { STAFF_ROLES } from '@/lib/roles'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
 import { DomainVocabularyProvider } from '@/contexts/DomainVocabularyContext'
+import { RiskBandProvider } from '@/contexts/RiskBandContext'
 import { NotificationProvider } from '@/contexts/NotificationContext'
 import { initKeycloak, keycloak } from '@/lib/keycloak'
 import { startTokenRefreshLoop } from '@/lib/tokenRefresh'
@@ -263,10 +264,13 @@ initKeycloak().then((authenticated) => {
           <MetamodelProvider>
             {/* Ondata 7 · D-15: i vocabolari del cliente, UNA query, per le palette per valore. */}
             <DomainVocabularyProvider>
-              <NotificationProvider>
-                <RouterProvider router={router} />
-                <Toaster richColors position="top-right" />
-              </NotificationProvider>
+              {/* Le fasce di rischio del cliente (soglie da Matrici di dominio), UNA query, per i badge del rischio. */}
+              <RiskBandProvider>
+                <NotificationProvider>
+                  <RouterProvider router={router} />
+                  <Toaster richColors position="top-right" />
+                </NotificationProvider>
+              </RiskBandProvider>
             </DomainVocabularyProvider>
           </MetamodelProvider>
         </ApolloProvider>

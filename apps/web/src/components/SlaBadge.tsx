@@ -13,6 +13,8 @@ export interface SlaStatusInfo {
   resolveMet:       boolean
   breached:         boolean
   pausedAt?:        string | null
+  /** Minuti di preavviso della policy (gli stessi dell'avviso inviato dallo scheduler). */
+  warningMinutes:   number
 }
 
 /**
@@ -43,7 +45,9 @@ const STATE_STYLE: Record<SlaState, { bg: string; fg: string }> = {
 /**
  * SLA pill for lists and detail pages. States:
  * met (resolve met) · breached (marked by scheduler) · overdue (deadline past)
- * · warning (<25% of window or <30min left) · ontrack.
+ * · warning (meno dei minuti di preavviso della POLICY: gli stessi dell'avviso
+ *   inviato — prima era una soglia del badge, 25% della finestra o 30 minuti,
+ *   che non concordava con la notifica) · ontrack.
  * Re-renders every 30s so the countdown stays live.
  */
 export function SlaBadge({ sla, compact = false }: { sla: SlaStatusInfo | null | undefined; compact?: boolean }) {
@@ -76,14 +80,12 @@ export function SlaBadge({ sla, compact = false }: { sla: SlaStatusInfo | null |
   } else {
     // Next deadline: response first, then resolve
     const deadline  = sla.responseMet ? Date.parse(sla.resolveDeadline) : Date.parse(sla.responseDeadline)
-    const started   = Date.parse(sla.startedAt)
     const remaining = deadline - now
     if (remaining < 0) {
       state = 'overdue'
       label = t('sla.overdueBy', { time: formatDuration(remaining) })
     } else {
-      const window = deadline - started
-      state = remaining < Math.max(window * 0.25, 0) || remaining < 30 * 60_000 ? 'warning' : 'ontrack'
+      state = remaining <= sla.warningMinutes * 60_000 ? 'warning' : 'ontrack'
       label = t('sla.remaining', { time: formatDuration(remaining) })
     }
   }

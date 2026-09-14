@@ -657,6 +657,7 @@
         "titleRequired": "title è obbligatorio",
         "titleTooLong": "title supera i {{max}} caratteri",
         "bodyTooLong": "body supera i {{max}} caratteri",
+        "severityRequired": "la severità è obbligatoria (il valore si traduce con la matrice «Import Severity»)",
         "severityNotPrecomputed": "severity «{{value}}» non risolta (errore interno)",
         "severityUntranslatable": "severity «{{value}}» non si può tradurre: aggiungila al vocabolario «Import Severity» e alla matrice, oppure correggi il file. ({{reason}})",
         "unknownStatusInitial": "status sconosciuto «{{status}}» — si usa il passo iniziale «{{step}}»",
@@ -1383,6 +1384,17 @@
       "calendarHolidaysHint": "Date nel formato YYYY-MM-DD, separate da virgole. Non sono giorni lavorativi.",
       "calendarSave": "Salva calendario",
       "calendarSaved": "Calendario di servizio aggiornato",
+      "portalSeveritiesTitle": "Severità del portale self-service",
+      "portalSeveritiesDescription": "Le severità che un utente finale può scegliere quando apre un ticket dal portale, e le parole che legge. Si offrono solo i valori spuntati qui, nell’ordine del Dizionario.",
+      "portalSeveritiesMissing": "Nessuna severità è stata scelta per il portale: gli utenti finali non possono aprire un ticket finché non ne salvi almeno una.",
+      "portalSeveritiesValue": "Severità",
+      "portalSeveritiesOffered": "Nel portale",
+      "portalSeveritiesLabelIn": "Etichetta ({{language}})",
+      "portalSeveritiesOfferValue": "Offri {{value}} nel portale",
+      "portalSeveritiesLabelFor": "Etichetta di {{value}} in {{language}}",
+      "portalSeveritiesHint": "Un’etichetta lasciata vuota usa quella del Dizionario, mostrata in grigio nel campo.",
+      "portalSeveritiesSave": "Salva le severità del portale",
+      "portalSeveritiesSaved": "Severità del portale aggiornate",
       "weekday": {
         "monday": "Lunedì",
         "tuesday": "Martedì",
@@ -1554,7 +1566,12 @@
       "descriptionPlaceholder": "Cosa include il servizio...",
       "categoryPlaceholder": "Es. Hardware, Accessi, Software",
       "noApproval": "Non richiede approvazione",
-      "needsApproval": "Richiede approvazione"
+      "needsApproval": "Richiede approvazione",
+      "priority": "Priorità",
+      "priorityRequired": "Priorità *",
+      "priorityPlaceholder": "— Scegli la priorità —",
+      "priorityHint": "Le richieste aperte da questa voce, anche dal portale, nascono con questa priorità. Chi le apre non la sceglie.",
+      "priorityMissing": "Senza priorità: non si aprono richieste"
     },
     "userDetail": {
       "notFound": "Utente non trovato.",
@@ -1693,7 +1710,9 @@
       "searchCI": "Cerca un CI per nome...",
       "title": "Nuova change",
       "subtitle": "Apri una richiesta per introdurre una modifica controllata ai sistemi",
-      "typesNote": "Standard: nessuna approvazione. Normal ed emergency: approvazione richiesta. Il piano di rientro si valuta nell'assessment tecnico.",
+      "typesNotePreApproved": "{{types}}: pre-approvati, senza approvazione. Gli altri tipi passano dall'approvazione. Il piano di rientro si valuta nell'assessment tecnico.",
+      "typesNoteAllApproved": "Tutti i tipi passano dall'approvazione. Il piano di rientro si valuta nell'assessment tecnico.",
+      "noChangeTypes": "Nessun tipo di change definito: aggiungi i valori del vocabolario change_type nel Dizionario.",
       "whyPlaceholder": "Perché serve questa change? Motivazione, problema o obiettivo.",
       "ciGroupsNote": "Ogni CI deve avere un Owner Group e un Support Group, altrimenti la creazione si ferma.",
       "why": "Perché",
@@ -1704,7 +1723,6 @@
       "affectedCIsPreloaded": "I CI impattati sono stati precaricati.",
       "submit": "Crea Change",
       "resolutionTitle": "Risoluzione {{kind}} {{number}}: {{title}}",
-      "typeStandard": "Standard (pre-approvato)",
       "what": "Cosa",
       "ciWithoutGroups": "Questo CI non ha Owner Group o Support Group: la change sarebbe rifiutata.",
       "ciWithoutGroupsList": "Questi CI non hanno Owner Group o Support Group, e su di loro non si apre una change: {{names}}. Imposta i gruppi sul CI o toglilo."
@@ -1835,7 +1853,8 @@
       "needsApproval": "Questa voce richiede un'approvazione: la richiesta passerà dal flusso di approvazione.",
       "catalogItem": "Voce di catalogo",
       "recommended": "(consigliata)",
-      "submit": "Crea la richiesta"
+      "submit": "Crea la richiesta",
+      "priorityPlaceholder": "— Scegli la priorità —"
     },
     "planTask": {
       "validation": "Validazione *",
@@ -2869,7 +2888,8 @@
       "autoTransitionCycle": "Il workflow delle change ha un ciclo di transizioni automatiche ({{from}} → {{to}}): correggilo nel disegnatore.",
       "chooseAssessmentsToReopen": "Scegli quali assessment riaprire, oppure «tutti».",
       "onlyInInitialStep": "Si può fare solo nel passo iniziale; la change è in «{{current}}».",
-      "rejectViaApproval": "Per rigettare la change usa «Rigetta» nella sezione Approvazione: riapre gli assessment."
+      "rejectViaApproval": "Per rigettare la change usa «Rigetta» nella sezione Approvazione: riapre gli assessment.",
+      "typeRequired": "Il tipo di change è obbligatorio: scegli un valore del vocabolario change_type."
     },
     "import": {
       "tenantRequired": "Manca il cliente: l'importazione non sa dove scrivere.",
@@ -2948,7 +2968,8 @@
       },
       "changeUsesChangeTransition": "Una change si muove con le sue transizioni (con i controlli di approvazione), non con questa generica.",
       "unknownActionType": "Il tipo di azione «{{type}}» non esiste. Disponibili: {{allowed}}.",
-      "updateFieldNeedsField": "L'azione «aggiorna campo» richiede il campo da scrivere."
+      "updateFieldNeedsField": "L'azione «aggiorna campo» richiede il campo da scrivere.",
+      "createChangeNeedsType": "{{field}}: un’azione che crea una change deve indicarne il tipo."
     },
     "channel": {
       "platform": "La piattaforma «{{platform}}» non è supportata. Ammesse: {{allowed}}."
@@ -3032,7 +3053,15 @@
       "unclassifiedStates": "{{count}} stati dei ticket non appartengono a nessuna classe del workflow incident attivo ({{states}}): i contatori del portale non li conterebbero. Sistema i passi (iniziale / finale / categoria) nel disegnatore.",
       "categoryRequired": "Scegli una categoria per la richiesta.",
       "priorityRequired": "Scegli una priorità per la richiesta.",
-      "noCategories": "Il vocabolario delle categorie dei ticket non ha valori: aggiungili in Impostazioni → Dizionario."
+      "noCategories": "Il vocabolario delle categorie dei ticket non ha valori: aggiungili in Impostazioni → Dizionario.",
+      "severityNotConfigured": "Le severità offerte nel portale non sono configurate, quindi non si può aprire un ticket. Un amministratore le sceglie da Impostazioni → Organizzazione.",
+      "severityStale": "Il portale offre {{values}}, che il vocabolario delle severità non ha più ({{allowed}}). Un amministratore corregge la scelta da Impostazioni → Organizzazione.",
+      "severityAtLeastOne": "Scegli almeno una severità per il portale: senza, nessuno può aprire un ticket.",
+      "severityUnknown": "«{{value}}» non è un valore del vocabolario delle severità ({{allowed}}).",
+      "severityDuplicate": "«{{value}}» compare due volte.",
+      "severityLanguage": "Lingua sconosciuta «{{language}}».",
+      "severityLabelTooLong": "L'etichetta di «{{value}}» supera i {{max}} caratteri.",
+      "severityNotOffered": "Questa severità non è offerta nel portale. Scegli fra: {{allowed}}."
     },
     "sync": {
       "unknownCIType": "Il conflitto {{id}} riguarda un tipo di CI sconosciuto: nessun CI è stato creato, perché «{{ciType}}» non è un tipo di questo cliente. Risolvilo alla radice — crea il tipo, o aggiungi un alias nelle regole di mappatura della sorgente — e rilancia la sincronizzazione: il conflitto si chiude da sé.",
@@ -3196,7 +3225,13 @@
     "environmentWeight": {
       "range": "Il peso dell'ambiente deve essere un intero fra 0 e {{max}} (ricevuto {{got}})."
     },
-    "internalDatabase": "Errore interno del database (riferimento {{ref}}). Segnalalo all'amministratore: i dettagli sono nel log dell'API."
+    "internalDatabase": "Errore interno del database (riferimento {{ref}}). Segnalalo all'amministratore: i dettagli sono nel log dell'API.",
+    "serviceRequest": {
+      "priorityFromCatalog": "La priorità di una richiesta dal catalogo la decide la voce del catalogo.",
+      "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Admin → Catalogo servizi.",
+      "priorityRequired": "Scegli la priorità della richiesta.",
+      "catalogItemPriorityRequired": "Una voce del catalogo deve avere una priorità."
+    }
   },
   "errorBoundary": {
     "title": "Qualcosa è andato storto",
@@ -3207,11 +3242,6 @@
     "operator": "Operatore",
     "viewer": "Visualizzatore",
     "end_user": "Utente finale"
-  },
-  "risk": {
-    "low": "BASSO",
-    "medium": "MEDIO",
-    "high": "ALTO"
   },
   "taskStatus": {
     "toBeCompleted": "DA COMPLETARE"
@@ -4875,6 +4905,9 @@
       "tickets_without_sla_other": "{{count}} ticket aperti sono **senza SLA**: nessuna policy SLA li copre ({{tickets}}{{more}}). Non c'è uno SLA di fabbrica a cui ricadere — **aggiungi o allarga una policy in Admin → SLA Policies**; i ticket creati da quel momento ricevono il loro SLA.",
       "timezone_not_set": "Questa organizzazione non ha un fuso orario, quindi scadenze SLA, digest giornaliero e date dei messaggi non si possono calcolare. **Si sceglie da Impostazioni → Organizzazione**.",
       "service_calendar_not_set": "{{count}} policy SLA o contratti OLA contano l'orario lavorativo, ma questa organizzazione non ha un calendario di servizio: le loro scadenze non si possono calcolare. **Si imposta da Impostazioni → Organizzazione**.",
+      "portal_severities_not_set": "Il portale self-service non ha severità da offrire, quindi gli utenti finali non possono aprire un ticket. **Si scelgono da Impostazioni → Organizzazione**.",
+      "portal_severities_stale": "Il portale self-service offre {{values}}, che il vocabolario delle severità non ha più: aprire un ticket lì fallisce. **Si corregge la scelta da Impostazioni → Organizzazione**.",
+      "catalog_items_without_priority": "{{count}} voci attive del catalogo non hanno una priorità ({{items}}): da quelle non si aprono richieste, nemmeno dal portale. **Si imposta da Admin → Catalogo servizi**.",
       "migrations_pending": "{{count}} migrazioni del database non sono state applicate ({{migrations}}): il prodotto gira con dati che non corrispondono al suo codice. **Chi gestisce l'installazione lancia migrate.js**.",
       "workflow_step_categories_missing": "Il workflow «{{workflow}}» ({{entityType}}) non ha nessun passo con queste categorie: {{missing}}. Il prodotto riconosce i passi dalla categoria, non dal nome, quindi le operazioni che ne hanno bisogno si fermano con un errore. **Imposta la categoria sul passo nel designer del workflow**.",
       "workflow_step_purposes_missing": "Il workflow «{{workflow}}» ({{entityType}}) non ha nessun passo con questi scopi: {{missing}}. Il prodotto riconosce i passi dallo scopo, non dal nome, quindi le operazioni che ne hanno bisogno si fermano con un errore. **Imposta lo scopo sul passo nel designer del workflow**.",
@@ -5173,7 +5206,8 @@
       "teamOption": "-- Team --",
       "notAllowed": "non ammesso",
       "notificationTarget": "Chi la riceve",
-      "notificationChannel": "Dove arriva"
+      "notificationChannel": "Dove arriva",
+      "selectChangeType": "— Tipo di change —"
     },
     "preview": "Anteprima",
     "columns": {

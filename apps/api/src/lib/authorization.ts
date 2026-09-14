@@ -69,7 +69,12 @@ export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
   'serviceRelationshipTypes',
   // Ondata 7 · A7-4: le matrici di dominio sono configurazione del tenant
   // (priorità = impatto × urgenza, criticità → impatto, …), come i vocabolari.
-  'domainMatrices', 'preApprovedChangeTypes', 'changeEnvironmentWeight',
+  // `preApprovedChangeTypes` NO: la creazione di una change (operatori) dice
+  // quali tipi saltano l'approvazione, e lo legge da lì (verifica «Cosa resta
+  // cablato», ondata 1). La scrittura resta admin.
+  'domainMatrices', 'changeEnvironmentWeight',
+  // La scelta delle severità del portale com'è salvata: configurazione.
+  'portalSeverityOptions',
 ])
 
 export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
@@ -81,7 +86,7 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   // il fuso orario del cliente (revisione del 14 set 2026 · F7)
   'setTenantTimezone',
   // il calendario di servizio (revisione del 14 set 2026 · F6)
-  'setTenantServiceCalendar',
+  'setTenantServiceCalendar', 'setPortalSeverityOptions',
   // definizioni di workflow
   'provisionTenantData',
   'addWorkflowStep', 'removeWorkflowStep', 'updateWorkflowStep',
@@ -168,6 +173,8 @@ export const END_USER_ALLOWED_QUERIES: ReadonlySet<string> = new Set([
   // ha scelto l'azienda — e negarla lascerebbe il portale nella lingua
   // sbagliata per l'unico ruolo che non puo cambiarla da nessuna parte.
   'tenantLanguageSettings',
+  // Le severità da scegliere aprendo un ticket (verifica «Cosa resta cablato», ondata 1).
+  'portalSeverityChoices',
 ])
 export const END_USER_ALLOWED_MUTATIONS: ReadonlySet<string> = new Set([
   'createTicket', 'addTicketComment', 'reopenTicket', 'createServiceRequest', 'rateKBArticle',

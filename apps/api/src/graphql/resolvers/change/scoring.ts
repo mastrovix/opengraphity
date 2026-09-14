@@ -11,6 +11,7 @@
  * d'ambiente, punteggio della domanda, rischio del CI, rotta d'approvazione —
  * restano sincrone e senza dipendenze.
  */
+import { riskBandOf } from '../../../lib/riskBands.js'
 import { ValidationError } from '../../../lib/errors.js'
 import { assertDomainValue } from '../../../lib/domainMatrix.js'
 import { resolveDomainValue } from '../../../lib/domainValue.js'
@@ -84,16 +85,15 @@ export function calculateCIRiskScore(ownerScore: number, supportScore: number): 
 }
 
 /**
- * approval_route of a Change from its aggregate risk score
- * (the MAX across the per-CI risk scores):
- *   ≤ 30 → 'low'  (frontend: Auto-approve)
- *   ≤ 60 → 'medium' (frontend: Change Manager)
- *   > 60 → 'high' (frontend: CAB)
+ * approval_route di una change: la **fascia di rischio del cliente** del
+ * punteggio aggregato (il MASSIMO dei punteggi per CI). Prima erano tre rotte
+ * fisse (≤30 low, ≤60 medium, oltre high) mentre la fascia — e quindi la
+ * priorità — seguiva le soglie di Matrici di dominio: con soglie 20/50 la
+ * stessa change aveva priorità «alta» e rotta «medium» (verifica «Cosa resta
+ * cablato», ondata 1). Con quattro fasce le rotte sono quattro.
  */
-export function determineApprovalRoute(aggregateScore: number): 'low' | 'medium' | 'high' {
-  return aggregateScore <= 30 ? 'low' :
-         aggregateScore <= 60 ? 'medium' :
-                                'high'
+export async function determineApprovalRoute(tenantId: string, aggregateScore: number): Promise<string> {
+  return riskBandOf(tenantId, aggregateScore)
 }
 
 /**
@@ -119,7 +119,6 @@ export function determineApprovalRoute(aggregateScore: number): 'low' | 'medium'
  * fascia era irraggiungibile. Ora sono dato del cliente: `lib/riskBands.ts`.
  */
 export { riskBandOf } from '../../../lib/riskBands.js'
-import { riskBandOf } from '../../../lib/riskBands.js'
 
 /**
  * Priorità della Change = **tipo × fascia di rischio** (decisione del

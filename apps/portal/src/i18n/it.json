@@ -37,11 +37,6 @@
       "resolved": "Risolto",
       "closed": "Chiuso"
     },
-    "priority": {
-      "low": "Bassa",
-      "medium": "Media",
-      "high": "Alta"
-    },
     "fields": {
       "title": "Descrivi il problema in una frase",
       "description": "Fornisci tutti i dettagli utili: cosa stavi facendo, quale errore hai visto, da quando si verifica...",
@@ -147,7 +142,15 @@
     "network": "Errore di connessione al server",
     "sessionExpired": "Sessione scaduta — nuovo accesso necessario",
     "authRestored": "Connessione al server di autenticazione ripristinata",
-    "authUnreachable": "Server di autenticazione non raggiungibile — nuovo tentativo tra {{seconds}}s"
+    "authUnreachable": "Server di autenticazione non raggiungibile — nuovo tentativo tra {{seconds}}s",
+    "portal": {
+      "severityNotConfigured": "Le severità offerte nel portale non sono configurate, quindi non si può aprire un ticket. Un amministratore le sceglie da Impostazioni → Organizzazione.",
+      "severityStale": "Il portale offre {{values}}, che il vocabolario delle severità non ha più ({{allowed}}). Un amministratore corregge la scelta da Impostazioni → Organizzazione.",
+      "severityNotOffered": "Questa severità non è offerta nel portale. Scegli fra: {{allowed}}."
+    },
+    "serviceRequest": {
+      "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Admin → Catalogo servizi."
+    }
   },
   "auth": {
     "bootstrapError": "Errore di autenticazione"

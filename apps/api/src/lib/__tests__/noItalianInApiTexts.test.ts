@@ -48,7 +48,7 @@ function files(dir: string, out: string[] = []): string[] {
 }
 
 /** Parole che in una frase inglese non compaiono ("non-empty" non conta: è inglese). */
-const ITALIANO = /[àèéìòù]|\b(il|lo|gli|della|dello|delle|dalla|dal|nel|nella|resta|risolto|riaperto|allarme|allarmi|servizio|tempesta|chiusura|approvazione|richiesta|riassegnato|assegnato|creata|tornato|sorgente|impatta|rischio|dipendenti|nuove|nuova|nuovo|senza|rilevat\w*|errore|utente|articolo|passo|passi|valore|valori|trovat\w*|nessun\w*|componenti|aggiornat\w|regole|sincronizzazione|mappa|salute|valutazione|cliente|soglia|mai)\b|\bnon\b(?!-)/i
+const ITALIANO = /[àèéìòù]|\b(il|lo|gli|della|dello|delle|dalla|dal|nel|nella|resta|risolto|riaperto|allarme|allarmi|servizio|tempesta|chiusura|approvazione|richiesta|riassegnato|assegnato|creata|tornato|sorgente|impatta|rischio|dipendenti|nuove|nuova|nuovo|senza|rilevat\w*|errore|utente|articolo|passo|passi|valore|valori|trovat\w*|nessun\w*|componenti|aggiornat\w|regole|sincronizzazione|mappa|salute|valutazione|cliente|soglia|mai|apert[oiae]|fallit[oiae]|in corso|esclus[oiae]|a mano|ancora|questo|questa|sono|viene|vengono)\b|\bnon\b(?!-)/i
 const LOG_CALL = /\b(logger|log|console|\w+Logger)\.(debug|info|warn|error|fatal|trace|log)\(/
 
 /** Commenti via, lasciando le righe al loro posto (così i numeri di riga restano giusti). */

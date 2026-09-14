@@ -38,6 +38,8 @@
  */
 import type { Session } from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
+import { PORTAL_SEVERITY_VOCABULARY, portalSeverityOptions } from './portalSeverityOptions.js'
+import { catalogItemsWithoutPriority } from './catalogItemPriority.js'
 import { getSchemaState } from './schemaCache.js'
 import { tenantProvisioningGaps, type ProvisioningGap } from './provisionTenantData.js'
 import { DOMAIN_MATRIX_KINDS, domainVocabulary, loadDomainMatrix, matrixKey, matrixOutputValues, type DomainMatrixKind } from './domainMatrix.js'
@@ -73,6 +75,9 @@ export type ConfigurationIssueKind =
   | 'default_language_not_set'
   | 'timezone_not_set'
   | 'service_calendar_not_set'
+  | 'portal_severities_not_set'
+  | 'portal_severities_stale'
+  | 'catalog_items_without_priority'
   | 'migrations_pending'
   | 'teams_without_sourcing'
   | 'tickets_without_sla'
@@ -104,7 +109,7 @@ export async function configurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -388,6 +393,33 @@ async function checkServiceCalendar(tenantId: string): Promise<ConfigurationIssu
   const users = await businessHoursUsers(tenantId)
   if (users === 0 || await tenantServiceCalendar(tenantId) !== null) return []
   return [{ kind: 'service_calendar_not_set', severity: 'error', where: '/settings/organization', params: { count: String(users) } }]
+}
+
+/**
+ * LE SEVERITÀ DEL PORTALE (verifica «Cosa resta cablato», ondata 1). Non
+ * dichiarate, o con un valore che il Dizionario non ha più: dal portale non si
+ * apre nessun ticket, ed è un errore — gli utenti finali lo scoprono per primi.
+ */
+async function checkPortalSeverities(tenantId: string): Promise<ConfigurationIssue[]> {
+  const options = await portalSeverityOptions(tenantId)
+  if (options === null || options.length === 0) {
+    return [{ kind: 'portal_severities_not_set', severity: 'error', where: '/settings/organization', params: {} }]
+  }
+  const vocabulary = await domainVocabulary(tenantId, PORTAL_SEVERITY_VOCABULARY)
+  const stale = options.filter((o) => !vocabulary.includes(o.value)).map((o) => o.value)
+  if (stale.length === 0) return []
+  return [{ kind: 'portal_severities_stale', severity: 'error', where: '/settings/organization', params: { values: stale.join(', ') } }]
+}
+
+/**
+ * VOCI DEL CATALOGO SENZA PRIORITÀ (verifica «Cosa resta cablato», ondata 1):
+ * la priorità delle richieste la decide la voce, e da una voce attiva che non
+ * ne ha nessuna il portale non apre richieste.
+ */
+async function checkCatalogItemPriorities(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const names = await catalogItemsWithoutPriority(session, tenantId)
+  if (names.length === 0) return []
+  return [{ kind: 'catalog_items_without_priority', severity: 'error', where: '/admin/service-catalog', params: { count: String(names.length), items: names.join(', ') } }]
 }
 
 /**

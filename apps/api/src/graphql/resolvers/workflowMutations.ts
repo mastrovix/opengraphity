@@ -208,6 +208,15 @@ export function assertStepActions(raw: string | null | undefined, label: string)
         })
       }
     }
+    // Una change nasce solo con un tipo del vocabolario del cliente: nessun
+    // default (verifica «Cosa resta cablato», ondata 1). Il valore lo valida il
+    // servizio quando l'azione gira; qui si rifiuta l'azione che non lo dice.
+    if (type === 'create_entity') {
+      const params = (action as { params?: Record<string, unknown> }).params ?? {}
+      if (params['entity_type'] === 'change' && (params['change_type'] == null || String(params['change_type']).trim() === '')) {
+        throw new GraphQLError(`${label}[${i}]: create_entity of a change needs the change type (params.change_type).`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.createChangeNeedsType', params: { field: `${label}[${i}]` } } } })
+      }
+    }
     if (type === 'notify_rule') {
       const target = (action as { params?: Record<string, unknown> }).params?.['target']
       if (target != null && target !== '') {

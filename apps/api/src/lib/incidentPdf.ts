@@ -4,10 +4,12 @@
  * attachment metadata. Pure pdfkit (no external assets), returns a Buffer.
  * Shared loading/rendering lives in ./pdf/ticketDossier.ts.
  */
+import type { ValueColor } from '@opengraphity/types'
 import { pdfText } from './pdf/texts.js'
+import { loadVocabularyEntries } from './vocabularyEntries.js'
 import { runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import {
-  DASH, fmtDate, orDash, PAGE_MARGIN, COLOR, type Doc, type PdfMeta, type PdfLocale,
+  DASH, fmtDate, orDash, PAGE_MARGIN, COLOR, valueColorInk, type Doc, type PdfMeta, type PdfLocale,
   contentWidth, sectionHeading, keyValue, badge, createPdfBuffer,
 } from './pdf/common.js'
 import {
@@ -27,6 +29,8 @@ export interface IncidentDossier {
     title:       string
     description: string | null
     severity:    string
+    /** Il colore che il Dizionario del cliente dà alla severità, o null se non ne ha. */
+    severityColor: ValueColor | null
     status:      string
     category:    string | null
     createdAt:   string | null
@@ -86,6 +90,7 @@ export async function loadIncidentDossier(
       title:       (p['title']  ?? '') as string,
       description: (p['description'] ?? null) as string | null,
       severity:    (p['severity'] ?? '') as string,
+      severityColor: p['severity'] ? ((await loadVocabularyEntries(tenantId, 'severity')).colors[p['severity'] as string] ?? null) : null,
       status:      (p['status']   ?? '') as string,
       category:    (p['category'] ?? null) as string | null,
       createdAt:   (p['created_at']  ?? null) as string | null,
@@ -112,9 +117,6 @@ export async function loadIncidentDossier(
   }
 }
 
-const SEVERITY_COLORS: Record<string, string> = {
-  critical: '#dc2626', high: '#ea580c', medium: '#d97706', low: '#16a34a',
-}
 
 // ── Builder ───────────────────────────────────────────────────────────────────
 
@@ -135,7 +137,7 @@ function renderDossier(doc: Doc, data: IncidentDossier, locale: PdfLocale): void
     badges: (doc, x, y) => {
       let bx = x
       bx += badge(doc, bx, y, `SEVERITY: ${(inc.severity || pdfText(locale, 'notAvailable')).toUpperCase()}`,
-        SEVERITY_COLORS[inc.severity?.toLowerCase() ?? ''] ?? COLOR.muted) + 6
+        valueColorInk(inc.severityColor)) + 6
       bx += badge(doc, bx, y, `STATUS: ${(inc.status || pdfText(locale, 'notAvailable')).toUpperCase()}`, COLOR.brand) + 6
       if (data.slaStatus) {
         badge(doc, bx, y, data.slaStatus.breached ? 'SLA: BREACHED' : 'SLA: OK',

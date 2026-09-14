@@ -21,6 +21,8 @@ vi.mock('../../../services/requestService.js', () => ({
   mapRequest:    vi.fn((p: Record<string, unknown>) => p),
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+// La priorità è validata contro il vocabolario `priority` (qui quello spedito).
+vi.mock('../../../lib/domainMatrix.js', () => import('../../../lib/__tests__/domainMatrixFake.js'))
 
 const { serviceRequestResolvers } = await import('../service_request.js')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
@@ -92,5 +94,46 @@ describe('createServiceRequest — item di catalogo', () => {
     await createServiceRequest(undefined, { input: { title: 'T', priority: 'low' } }, ctx)
     expect(runQueryOne).not.toHaveBeenCalled()
     expect(vi.mocked(createRequest).mock.calls[0]![0]).toEqual({ title: 'T', priority: 'low', requiresApproval: false })
+  })
+})
+
+/**
+ * Verifica «Cosa resta cablato», ondata 1 (scelta del proprietario): la
+ * priorità di una richiesta dal catalogo la decide la voce. Il portale mandava
+ * `medium` scritto nel codice.
+ */
+describe('createServiceRequest — priorità dalla voce del catalogo', () => {
+  const endUser: GraphQLContext = { ...ctx, role: 'end_user' }
+
+  it('senza priorità nell\'input vale quella della voce', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'high', name: 'Sblocco account' })
+    await createServiceRequest(undefined, { input: { title: 'Sblocco', catalogItemId: 'cat-1' } }, endUser)
+    expect(vi.mocked(createRequest).mock.calls[0]![0]).toMatchObject({ priority: 'high' })
+  })
+
+  it('l\'utente del portale non può scegliere un\'altra priorità', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'low', name: 'Nuovo laptop' })
+    const err = await failure(createServiceRequest(undefined, { input: { title: 'Laptop', priority: 'critical', catalogItemId: 'cat-1' } }, endUser))
+    expect(err.message).toMatch(/set by the catalog item/)
+    expect(createRequest).not.toHaveBeenCalled()
+  })
+
+  it('un operatore può indicarne un\'altra', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'low', name: 'Nuovo laptop' })
+    await createServiceRequest(undefined, { input: { title: 'Laptop', priority: 'high', catalogItemId: 'cat-1' } }, ctx)
+    expect(vi.mocked(createRequest).mock.calls[0]![0]).toMatchObject({ priority: 'high' })
+  })
+
+  it('voce senza priorità → errore che la nomina e dice dove si sistema, nessuna richiesta', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: null, name: 'Vecchia voce' })
+    const err = await failure(createServiceRequest(undefined, { input: { title: 'X', catalogItemId: 'cat-9' } }, endUser))
+    expect(err.message).toMatch(/"Vecchia voce" has no priority.*Admin → Service catalog/)
+    expect(createRequest).not.toHaveBeenCalled()
+  })
+
+  it('richiesta generica senza priorità, o con un valore fuori vocabolario → rifiutata', async () => {
+    expect((await failure(createServiceRequest(undefined, { input: { title: 'X' } }, ctx))).message).toMatch(/priority is required/)
+    expect((await failure(createServiceRequest(undefined, { input: { title: 'X', priority: 'urgentissima' } }, ctx))).message).toMatch(/urgentissima/)
+    expect(createRequest).not.toHaveBeenCalled()
   })
 })

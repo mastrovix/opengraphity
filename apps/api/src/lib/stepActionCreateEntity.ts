@@ -40,7 +40,7 @@ export async function createEntityFromStepAction(
     id = (await createProblem({ title: String(title), description: text(copied['description']), priority: text(copied['priority']) ?? text(copied['severity']), category: text(copied['category']), affectedCIs: cis, relatedIncidents: sourceType === 'incident' && sourceId ? [sourceId] : [] }, ctx)).id as string
   } else if (type === 'change') {
     const { createChangeRFC } = await import('../services/changeCreationService.js')
-    id = (await createChangeRFC({ title: String(title), why: text(copied['description']) ?? String(title), what: String(title), affectedCIIds: cis }, ctx)).id
+    id = (await createChangeRFC({ title: String(title), why: text(copied['description']) ?? String(title), what: String(title), affectedCIIds: cis, changeType: text(copied['change_type']) }, ctx)).id
   } else {
     throw new ValidationError(`Step actions cannot create a ${type}`)
   }

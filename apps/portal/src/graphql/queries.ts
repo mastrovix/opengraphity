@@ -6,7 +6,7 @@ export const GET_MY_TICKETS = gql`
   query MyTickets($status: String, $page: Int, $pageSize: Int, $language: String) {
     myTickets(status: $status, page: $page, pageSize: $pageSize, language: $language) {
       items {
-        id number type title status statusCategory statusLabel priority category
+        id number type title status statusCategory statusLabel priority priorityLabel priorityColor category
         createdAt updatedAt assignedTeam
       }
       total
@@ -17,7 +17,7 @@ export const GET_MY_TICKETS = gql`
 export const GET_MY_TICKET = gql`
   query MyTicket($id: ID!, $language: String) {
     myTicket(id: $id, language: $language) {
-      id number type title description status statusCategory statusLabel priority category
+      id number type title description status statusCategory statusLabel priority priorityLabel priorityColor category
       createdAt updatedAt assignedTeam
       comments {
         id body isInternal authorId authorName authorEmail createdAt
@@ -36,6 +36,13 @@ export const GET_MY_TICKET = gql`
 export const GET_TICKET_CATEGORIES = gql`
   query TicketCategories($language: String) {
     ticketCategories(language: $language) { name label }
+  }
+`
+
+/** Le severità offerte nel portale, con le parole scelte dall'amministratore (verifica «Cosa resta cablato», ondata 1). */
+export const GET_PORTAL_SEVERITY_CHOICES = gql`
+  query PortalSeverityChoices($language: String) {
+    portalSeverityChoices(language: $language) { value label color }
   }
 `
 

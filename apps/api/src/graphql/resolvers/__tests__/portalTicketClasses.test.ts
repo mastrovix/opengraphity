@@ -26,6 +26,9 @@ vi.mock('@opengraphity/neo4j', async () => {
   return { ...actual, getSession: vi.fn() }
 })
 vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
+// Verifica «Cosa resta cablato», ondata 1: le severità offerte nel portale.
+vi.mock('../../../lib/portalSeverityOptions.js', () => import('../../../lib/__tests__/portalSeverityOptionsFake.js'))
+vi.mock('../../../lib/vocabularyEntries.js', () => ({ loadVocabularyEntries: vi.fn(async () => ({ values: ['low', 'medium', 'high', 'critical'], labels: {}, colors: {} })) }))
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: { createInstance: vi.fn(), transition: vi.fn(), getAvailableTransitions: vi.fn(), registerCondition: vi.fn() },
 }))

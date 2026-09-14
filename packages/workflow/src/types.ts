@@ -72,6 +72,8 @@ export interface CreateEntityParams {
   title_template:  string
   link_to_current: boolean
   copy_fields?:    string[]
+  /** Obbligatorio per `entity_type: 'change'`: un valore del vocabolario `change_type` del cliente. */
+  change_type?:    string
 }
 
 export interface AssignToParams {

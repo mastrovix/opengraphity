@@ -5,6 +5,7 @@
  * index. Truth-telling contract: `ready: false` when the embedding has not
  * been computed yet (async pipeline) — never conflated with "no results".
  */
+import { kbArticlePublishedCypher } from '../../lib/kbPublished.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
@@ -86,7 +87,7 @@ async function suggestedArticles(
     }>(session, `
       CALL db.index.vector.queryNodes($index, ${limit * 4 + 10}, $embedding)
       YIELD node, score
-      WHERE node.tenant_id = $tenantId AND node.status = 'published'
+      WHERE node.tenant_id = $tenantId AND ${kbArticlePublishedCypher('node')}
       RETURN node.id AS id, node.title AS title, node.slug AS slug,
              node.category AS category, score
       ORDER BY score DESC

@@ -73,6 +73,14 @@ let copieIndietro: Array<{ id: string; name: string; newValues: string[] }> = []
 vi.mock('../vocabularyShippedDrift.js', () => ({ vocabulariesBehindShipped: vi.fn(async () => copieIndietro) }))
 /** Le policy SLA con il preavviso non prima della scadenza (giro nel browser): di default nessuna. */
 let preavvisiScaduti: Array<{ name: string; warningMinutes: number; resolveMinutes: number }> = []
+// Verifica «Cosa resta cablato», ondata 1: le severità del portale dichiarate e dentro il vocabolario.
+let severitaDelPortale: { value: string; labels: Record<string, string> }[] | null = [{ value: 'low', labels: {} }]
+vi.mock('../portalSeverityOptions.js', () => ({
+  PORTAL_SEVERITY_VOCABULARY: 'severity',
+  portalSeverityOptions: vi.fn(async () => severitaDelPortale),
+}))
+let vociSenzaPriorita: string[] = []
+vi.mock('../catalogItemPriority.js', () => ({ catalogItemsWithoutPriority: vi.fn(async () => vociSenzaPriorita) }))
 vi.mock('../slaWarningCheck.js', () => ({ slaPoliciesWarningNotBeforeDeadline: vi.fn(async () => preavvisiScaduti) }))
 vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: vi.fn(async () => policy) }))
 vi.mock('../domainMatrix.js', async (importOriginal) => {
@@ -108,6 +116,8 @@ const { DOMAIN_MATRIX_KINDS } = await import('../domainMatrix.js')
 function healthy(): void {
   degraded = { degraded: false, reason: null }
   linguaDelCliente = 'it'
+  severitaDelPortale = [{ value: 'low', labels: {} }]
+  vociSenzaPriorita = []
   gaps = []
   vocabularies = {
     impact: ['low'], urgency: ['low'], priority: ['low'], severity: ['low'],
@@ -136,6 +146,27 @@ beforeEach(() => { healthy() })
 describe('configurationIssues', () => {
   it('niente da sistemare → lista vuota (un banner che compare sempre diventa invisibile)', async () => {
     expect(await configurationIssues('c-one')).toEqual([])
+  })
+
+  it('voci attive del catalogo senza priorità → errore che le nomina, si rimedia nel catalogo', async () => {
+    vociSenzaPriorita = ['Nuovo laptop', 'Sblocco account']
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'catalog_items_without_priority', severity: 'error', where: '/admin/service-catalog', params: { count: '2', items: 'Nuovo laptop, Sblocco account' } },
+    ])
+  })
+
+  it('severità del portale non dichiarate → errore, si rimedia in Organizzazione', async () => {
+    severitaDelPortale = null
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'portal_severities_not_set', severity: 'error', where: '/settings/organization', params: {} },
+    ])
+  })
+
+  it('severità del portale fuori dal vocabolario (rinominata nel Dizionario) → errore che la nomina', async () => {
+    severitaDelPortale = [{ value: 'low', labels: {} }, { value: 'urgente', labels: {} }]
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'portal_severities_stale', severity: 'error', where: '/settings/organization', params: { values: 'urgente' } },
+    ])
   })
 
   it('schema degradato → errore che riporta il motivo e dove si rimedia', async () => {

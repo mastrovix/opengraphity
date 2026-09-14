@@ -7,6 +7,7 @@
  * No-fallback: missing API key, tool failures and provider errors surface
  * as explicit SSE error events.
  */
+import { kbArticlePublishedCypher } from '../lib/kbPublished.js'
 import Anthropic from '@anthropic-ai/sdk'
 
 /** Limite chiesto dal modello: intero in [1, max]; assente/NaN/negativo → default (mai LIMIT NaN o negativo in Cypher). */
@@ -252,7 +253,7 @@ function buildTools(tenantId: string) {
       const rows = await readQuery(`
         CALL db.index.vector.queryNodes($index, 15, $embedding)
         YIELD node, score
-        WHERE node.tenant_id = $tenantId AND node.status = 'published'
+        WHERE node.tenant_id = $tenantId AND ${kbArticlePublishedCypher('node')}
         RETURN node.title AS titolo, node.category AS categoria,
                node.slug AS slug, round(score, 2) AS similarita
         ORDER BY score DESC

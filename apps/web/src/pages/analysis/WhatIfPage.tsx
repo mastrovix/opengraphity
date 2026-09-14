@@ -13,9 +13,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Pill } from '@/components/ui/Pill'
 import { Pagination } from '@/components/ui/Pagination'
 import { Input } from '@/components/ui/FormControls'
-import { RiskBadge, riskLevel, RISK_STYLE } from '@/components/ui/badges'
+import { RiskBadge, useRiskScoreStyle } from '@/components/ui/badges'
 import { GET_ALL_CIS, GET_CI_TYPES, WHAT_IF_ANALYSIS } from '@/graphql/queries'
-import { lookupOrError, lookupStyle, colors, palette } from '@/lib/tokens'
+import { lookupStyle, colors, palette } from '@/lib/tokens'
+import { NEUTRAL_VALUE_STYLE } from '@/lib/domainStyle'
 import { buildTypeIconMap } from '@/lib/ciIconPaths'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -42,19 +43,24 @@ const ACTIONS: { key: Action; icon: typeof Zap; labelKey: string; bg: string; fg
   { key: 'remove', icon: Trash2, labelKey: 'pages.whatIf.remove',  bg: palette.info.tint, fg: 'var(--color-trigger-manual)' },
 ]
 
-// Livello di impatto (critical/high/medium/low): stessa palette della severità
-// (ui/badges.tsx) — prima WhatIf aveva un quarto set di colori proprio.
-function impactBadge(level: string, label: string) {
-  const s = lookupStyle(RISK_STYLE, level, 'RISK_STYLE')
-  return badge(s.bg, s.color, label)
+/**
+ * Livello di impatto di un CI nello scenario: lo calcola il What-if dalla
+ * DISTANZA dal CI colpito (`impactLevel` in resolvers/whatif.ts), non è un
+ * valore di un vocabolario del cliente — quindi la palette resta qui. Prima
+ * passava da `RISK_STYLE`, che non aveva `critical` né `target`: i CI più
+ * vicini uscivano con la pastiglia rossa d'errore.
+ */
+const IMPACT_DISTANCE_STYLE: Record<string, { bg: string; color: string }> = {
+  target:   { bg: palette.info.tint,    color: palette.info.text },
+  critical: { bg: palette.danger.tint,  color: palette.danger.text },
+  high:     { bg: palette.orange.tint,  color: palette.orange.text },
+  medium:   { bg: palette.warning.tint, color: palette.warning.text },
+  low:      { bg: palette.success.tint, color: palette.success.text },
 }
 
-// Colore del cerchio del risk score: stesso livello di RiskBadge (soglie di
-// riskLevel(), le stesse del backend) — prima WhatIf usava 4 soglie proprie.
-const RISK_LEVEL_COLOR: Record<ReturnType<typeof riskLevel>, string> = {
-  low:    'var(--color-success)',
-  medium: 'var(--color-warning)',
-  high:   'var(--color-danger)',
+function impactBadge(level: string, label: string) {
+  const s = lookupStyle(IMPACT_DISTANCE_STYLE, level, 'IMPACT_DISTANCE_STYLE')
+  return badge(s.bg, s.color, label)
 }
 
 function badge(bg: string, fg: string, text: string) {
@@ -191,7 +197,8 @@ export function WhatIfPage() {
     )},
   ]
 
-  const scoreColor = (s: number) => lookupOrError(RISK_LEVEL_COLOR, riskLevel(s), 'RISK_LEVEL_COLOR', 'var(--color-danger)')
+  // Il cerchio del punteggio prende lo stile della FASCIA del cliente, come il badge accanto.
+  const riskScoreStyle = useRiskScoreStyle()
 
   return (
     <PageContainer>
@@ -322,10 +329,10 @@ export function WhatIfPage() {
             <div style={{
               width: 80, height: 80, borderRadius: '50%', flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: `4px solid ${scoreColor(result.riskScore)}`,
-              background: `${scoreColor(result.riskScore)}10`,
+              border: `4px solid ${(riskScoreStyle(result.riskScore) ?? NEUTRAL_VALUE_STYLE).accent}`,
+              background: (riskScoreStyle(result.riskScore) ?? NEUTRAL_VALUE_STYLE).bg,
             }}>
-              <span style={{ fontSize: 28, fontWeight: 800, color: scoreColor(result.riskScore) }}>
+              <span style={{ fontSize: 28, fontWeight: 800, color: (riskScoreStyle(result.riskScore) ?? NEUTRAL_VALUE_STYLE).color }}>
                 {result.riskScore}
               </span>
             </div>

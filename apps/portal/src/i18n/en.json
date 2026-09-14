@@ -37,11 +37,6 @@
       "resolved": "Resolved",
       "closed": "Closed"
     },
-    "priority": {
-      "low": "Low",
-      "medium": "Medium",
-      "high": "High"
-    },
     "fields": {
       "title": "Describe the problem in one sentence",
       "description": "Provide all useful details: what you were doing, what error you saw, since when it occurred...",
@@ -147,7 +142,15 @@
     "network": "Connection error",
     "sessionExpired": "Session expired — please sign in again",
     "authRestored": "Connection to the authentication server restored",
-    "authUnreachable": "Authentication server unreachable — retrying in {{seconds}}s"
+    "authUnreachable": "Authentication server unreachable — retrying in {{seconds}}s",
+    "portal": {
+      "severityNotConfigured": "The severities offered in the portal are not configured, so a ticket cannot be opened there. An administrator chooses them in Settings → Organization.",
+      "severityStale": "The portal offers {{values}}, which the severity dictionary no longer has ({{allowed}}). An administrator fixes the choice in Settings → Organization.",
+      "severityNotOffered": "This severity is not offered in the portal. Choose one of: {{allowed}}."
+    },
+    "serviceRequest": {
+      "catalogItemWithoutPriority": "The catalog item «{{item}}» has no priority, so a request cannot be opened from it. An administrator sets it in Admin → Service catalog."
+    }
   },
   "auth": {
     "bootstrapError": "Authentication error"

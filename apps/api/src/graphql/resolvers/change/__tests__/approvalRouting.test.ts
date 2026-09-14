@@ -3,8 +3,8 @@
  *
  * Backend (helpers.computeAggregateRisk → scoring.determineApprovalRoute):
  *   aggregate = MAX dei risk_score per-CI (fatto in Cypher con max())
- *   route: ≤30 → 'low' (frontend: Auto) · ≤60 → 'medium' (Change Manager)
- *          · >60 → 'high' (CAB)
+ *   route = la FASCIA di rischio del cliente per quel punteggio (soglie in
+ *   Matrici di dominio). Con le soglie di fabbrica: ≤30 low · ≤60 medium · high.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -29,7 +29,10 @@ vi.mock('../../../../lib/domainMatrix.js', () => import('../../../../lib/__tests
 // `deriveChangePriority` legge il tenant anche solo per sapere che fascia è un
 // punteggio. Questo test misura la rotta d'approvazione: il doppio risponde con
 // le soglie factory senza grafo.
-vi.mock('../../../../lib/riskBands.js', () => import('../../../../lib/__tests__/riskBandsFake.js'))
+vi.mock('../../../../lib/riskBands.js', async () => {
+  const fake = await import('../../../../lib/__tests__/riskBandsFake.js')
+  return { ...fake, riskBandOf: vi.fn(fake.riskBandOf) }
+})
 
 vi.mock('../../../../lib/workflowHelpers.js', () => ({
   getInitialStepName: vi.fn().mockResolvedValue('assessment'),
@@ -39,28 +42,26 @@ vi.mock('../../../../lib/workflowHelpers.js', () => ({
 const { determineApprovalRoute } = await import('../scoring.js')
 const { computeAggregateRisk } = await import('../helpers.js')
 const { runQueryOne } = await import('../../ci-utils.js')
+const { riskBandOf } = await import('../../../../lib/riskBands.js')
 
 describe('determineApprovalRoute', () => {
-  it('boundary bassi: 0 e 30 → low (Auto)', () => {
-    expect(determineApprovalRoute(0)).toBe('low')
-    expect(determineApprovalRoute(30)).toBe('low')
+  it('soglie di fabbrica: 0 e 30 → low, 31 e 60 → medium, 61 e 100 → high', async () => {
+    for (const [score, band] of [[0, 'low'], [30, 'low'], [31, 'medium'], [60, 'medium'], [61, 'high'], [100, 'high']] as const) {
+      expect(await determineApprovalRoute('tenant-1', score), `score ${score}`).toBe(band)
+    }
   })
 
-  it('boundary medi: 31 e 60 → medium (Change Manager)', () => {
-    expect(determineApprovalRoute(31)).toBe('medium')
-    expect(determineApprovalRoute(60)).toBe('medium')
+  it('segue le fasce del cliente: una quarta fascia è una quarta rotta', async () => {
+    vi.mocked(riskBandOf).mockResolvedValueOnce('very_high')
+    expect(await determineApprovalRoute('tenant-1', 95)).toBe('very_high')
+    expect(riskBandOf).toHaveBeenCalledWith('tenant-1', 95)
   })
 
-  it('boundary alti: 61 e 100 → high (CAB)', () => {
-    expect(determineApprovalRoute(61)).toBe('high')
-    expect(determineApprovalRoute(100)).toBe('high')
-  })
-
-  it('aggregate = MAX dei CI scores: [20, 45, 80] → route del massimo (high)', () => {
+  it('aggregate = MAX dei CI scores: [20, 45, 80] → route del massimo (high)', async () => {
     const ciScores = [20, 45, 80]
-    expect(determineApprovalRoute(Math.max(...ciScores))).toBe('high')
+    expect(await determineApprovalRoute('tenant-1', Math.max(...ciScores))).toBe('high')
     // controprova: senza il CI a 80 la route scenderebbe a medium
-    expect(determineApprovalRoute(Math.max(20, 45))).toBe('medium')
+    expect(await determineApprovalRoute('tenant-1', Math.max(20, 45))).toBe('medium')
   })
 })
 

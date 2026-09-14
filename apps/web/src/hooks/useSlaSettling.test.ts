@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { useSlaSettling, slaStillSettling, SLA_SETTLE_INTERVAL_MS, SLA_SETTLE_MAX_MS } from './useSlaSettling'
 
-const aperto = { startedAt: 'x', responseDeadline: 'x', resolveDeadline: 'x', responseMet: true, resolveMet: false, breached: false, pausedAt: '2026-09-14T00:00:00Z' }
+const aperto = { startedAt: 'x', responseDeadline: 'x', resolveDeadline: 'x', responseMet: true, resolveMet: false, breached: false, pausedAt: '2026-09-14T00:00:00Z', warningMinutes: 30 }
 
 afterEach(() => { vi.useRealTimers() })
 

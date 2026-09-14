@@ -84,7 +84,7 @@ async function serviceRequest(
 
 async function createServiceRequest(
   _: unknown,
-  args: { input: { title: string; description?: string; priority: string; dueDate?: string; catalogItemId?: string; acknowledgeNoSla?: boolean | null } },
+  args: { input: { title: string; description?: string; priority?: string | null; dueDate?: string; catalogItemId?: string; acknowledgeNoSla?: boolean | null } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -93,17 +93,40 @@ async function createServiceRequest(
       fieldValues: args.input as Record<string, unknown>,
       tenantId:    ctx.tenantId,
     })
-    // A request opened from a catalog item inherits its approval requirement.
+    // A request opened from a catalog item inherits its approval requirement
+    // and its PRIORITY (verifica «Cosa resta cablato», ondata 1: il portale
+    // mandava `medium` scritto nel codice). Un operatore può indicarne
+    // un'altra; l'utente del portale no — la priorità la decide la voce.
     let requiresApproval = false
+    let priority = args.input.priority ?? null
     if (args.input.catalogItemId) {
-      const item = await runQueryOne<{ requiresApproval: boolean }>(session,
-        'MATCH (ci:ServiceCatalogItem {id: $id, tenant_id: $tenantId}) RETURN ci.requires_approval AS requiresApproval',
+      const item = await runQueryOne<{ requiresApproval: boolean; priority: string | null; name: string }>(session,
+        'MATCH (ci:ServiceCatalogItem {id: $id, tenant_id: $tenantId}) RETURN ci.requires_approval AS requiresApproval, ci.priority AS priority, ci.name AS name',
         { id: args.input.catalogItemId, tenantId: ctx.tenantId })
       if (!item) throw new NotFoundError('ServiceCatalogItem', args.input.catalogItemId)
       requiresApproval = item.requiresApproval ?? false
+      if (ctx.role === 'end_user' && priority !== null && priority !== item.priority) {
+        throw new ValidationError(
+          'The priority of a request from the catalog is set by the catalog item, not by the requester.',
+          { key: 'errors.serviceRequest.priorityFromCatalog' },
+        )
+      }
+      if (priority === null) {
+        if (!item.priority) {
+          throw new ValidationError(
+            `The catalog item "${item.name}" has no priority, so a request cannot be opened from it. An administrator sets it in Admin → Service catalog.`,
+            { key: 'errors.serviceRequest.catalogItemWithoutPriority', params: { item: item.name } },
+          )
+        }
+        priority = item.priority
+      }
     }
+    if (priority === null || priority.trim() === '') {
+      throw new ValidationError('priority is required for a request that does not come from the catalog', { key: 'errors.serviceRequest.priorityRequired' })
+    }
+    await assertDomainValue(ctx.tenantId, 'priority', priority)
     assertMayAcknowledgeNoSla(ctx, args.input.acknowledgeNoSla)
-    const result = await requestService.createRequest({ ...args.input, requiresApproval }, ctx)
+    const result = await requestService.createRequest({ ...args.input, priority, requiresApproval }, ctx)
     void audit(ctx, 'request.created', 'ServiceRequest', result.id as string)
     return result
   })
@@ -239,6 +262,7 @@ function mapCatalogItem(props: Props) {
     description:      (props['description'] ?? null) as string | null,
     category:         (props['category'] ?? null) as string | null,
     requiresApproval: (props['requires_approval'] ?? false) as boolean,
+    priority:         (props['priority'] ?? null) as string | null,
     active:           (props['active'] ?? true) as boolean,
     createdAt:        props['created_at'] as string,
   }
@@ -255,18 +279,19 @@ async function serviceCatalogItems(_: unknown, args: { activeOnly?: boolean }, c
   })
 }
 
-async function createServiceCatalogItem(_: unknown, args: { input: { name: string; description?: string; category?: string; requiresApproval?: boolean } }, ctx: GraphQLContext) {
+async function createServiceCatalogItem(_: unknown, args: { input: { name: string; description?: string; category?: string; requiresApproval?: boolean; priority: string } }, ctx: GraphQLContext) {
   requireRole(ctx, 'admin')
+  const priority = await assertDomainValue(ctx.tenantId, 'priority', args.input.priority)
   const id = uuidv4(); const now = new Date().toISOString()
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (ci:ServiceCatalogItem {
         id: $id, tenant_id: $tenantId, name: $name, description: $description,
-        category: $category, requires_approval: $requiresApproval, active: true, created_at: $now
+        category: $category, requires_approval: $requiresApproval, priority: $priority, active: true, created_at: $now
       })
       RETURN properties(ci) AS props
     `, { id, tenantId: ctx.tenantId, name: args.input.name, description: args.input.description ?? null,
-         category: args.input.category ?? null, requiresApproval: args.input.requiresApproval ?? false, now })
+         category: args.input.category ?? null, requiresApproval: args.input.requiresApproval ?? false, priority, now })
     void audit(ctx, 'service_catalog_item.created', 'ServiceCatalogItem', id)
     return mapCatalogItem(rows[0]!.props)
   }, true)
@@ -274,7 +299,7 @@ async function createServiceCatalogItem(_: unknown, args: { input: { name: strin
 
 async function updateServiceCatalogItem(
   _: unknown,
-  args: { id: string; input: { name?: string; description?: string; category?: string; requiresApproval?: boolean; active?: boolean } },
+  args: { id: string; input: { name?: string; description?: string; category?: string; requiresApproval?: boolean; priority?: string | null; active?: boolean } },
   ctx: GraphQLContext,
 ) {
   requireRole(ctx, 'admin')
@@ -287,6 +312,13 @@ async function updateServiceCatalogItem(
   if (input.category !== undefined)         sets['category']          = input.category
   if (input.requiresApproval !== undefined) sets['requires_approval'] = input.requiresApproval
   if (input.active !== undefined)           sets['active']            = input.active
+  // La priorità si cambia, non si toglie: senza, dalla voce non nasce nessuna richiesta.
+  if (input.priority !== undefined) {
+    if (input.priority === null || input.priority.trim() === '') {
+      throw new ValidationError('A catalog item must have a priority.', { key: 'errors.serviceRequest.catalogItemPriorityRequired' })
+    }
+    sets['priority'] = await assertDomainValue(ctx.tenantId, 'priority', input.priority)
+  }
   if (Object.keys(sets).length === 0) {
     throw new ValidationError('updateServiceCatalogItem: no field to update', { key: 'errors.nothingToUpdate' })
   }

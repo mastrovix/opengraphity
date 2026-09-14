@@ -182,9 +182,9 @@ describe('riskBandOf — le soglie sono dato del cliente, non posizioni (revisio
     await expect(riskBandOf('c-one', undefined)).rejects.toThrow(/change_priority_initial/)
   })
 
-  it('le soglie factory coincidono con determineApprovalRoute (30 / 60 inclusivi)', async () => {
+  it('la rotta di approvazione è la fascia del cliente, non una scala a parte', async () => {
     for (const score of [0, 10, 30, 31, 60, 61, 90]) {
-      expect(await riskBandOf('c-one', score), `score ${score}`).toBe(determineApprovalRoute(score))
+      expect(await determineApprovalRoute('c-one', score), `score ${score}`).toBe(await riskBandOf('c-one', score))
     }
   })
 

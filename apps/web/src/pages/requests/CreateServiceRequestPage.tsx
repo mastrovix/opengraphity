@@ -61,14 +61,15 @@ export function CreateServiceRequestPage() {
   const ids = { catalog: useId(), title: useId(), priority: useId(), dueDate: useId(), description: useId() }
 
   const [title, setTitle]           = useState('')
-  const [priority, setPriority]     = useState('medium')
+  // Nessuna priorità di ripiego: la porta la voce del catalogo, o la sceglie l'operatore (verifica «Cosa resta cablato», ondata 1).
+  const [priority, setPriority]     = useState('')
   const [description, setDescription] = useState('')
   const [dueDate, setDueDate]       = useState('')
   const [catalogItemId, setCatalogItemId] = useState('')
   const { values: priorityValues, loading: priorityLoading } = useEnumValues('service_request', 'priority')
   const [submitted, setSubmitted]   = useState(false)
 
-  interface CatalogItem { id: string; name: string; description: string | null; category: string | null; requiresApproval: boolean; active: boolean }
+  interface CatalogItem { id: string; name: string; description: string | null; category: string | null; requiresApproval: boolean; priority: string | null; active: boolean }
   const { data: catalogData } = useQuery<{ serviceCatalogItems: CatalogItem[] }>(GET_SERVICE_CATALOG_ADMIN, { fetchPolicy: 'cache-and-network' })
   const catalogItems = (catalogData?.serviceCatalogItems ?? []).filter((i) => i.active)
   const selectedItem = catalogItems.find((i) => i.id === catalogItemId) ?? null
@@ -79,6 +80,7 @@ export function CreateServiceRequestPage() {
     if (item) {
       setTitle(item.name)
       if (item.description && !description.trim()) setDescription(item.description)
+      if (item.priority) setPriority(item.priority)
     }
   }
 
@@ -96,7 +98,7 @@ export function CreateServiceRequestPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitted(true)
-    if (!title.trim() || loading || checkingSla) return
+    if (!title.trim() || !priority || loading || checkingSla) return
     // Prima di creare: una policy SLA copre questa richiesta? Se no, chi la
     // crea lo sa adesso e decide (useSlaCoverageCheck).
     setCheckingSla(true)
@@ -215,9 +217,12 @@ export function CreateServiceRequestPage() {
                 <select id={ids.priority} value={priority} onChange={(e) => setPriority(e.target.value)} disabled={priorityLoading} style={{ ...selectBase, paddingLeft: 30 }} {...focusHandlers(false)}>
                   {priorityLoading
                     ? <option value="">{t('common.loading')}</option>
-                    : priorityValues.map(v => (
-                        <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>
-                      ))
+                    : <>
+                        <option value="" disabled>{t('pages.createRequest.priorityPlaceholder')}</option>
+                        {priorityValues.map(v => (
+                          <option key={v} value={v}>{labelOf('priority', v) ?? v.charAt(0).toUpperCase() + v.slice(1)}</option>
+                        ))}
+                      </>
                   }
                 </select>
               </div>

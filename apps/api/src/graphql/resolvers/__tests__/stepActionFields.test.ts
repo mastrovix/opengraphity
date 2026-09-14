@@ -19,7 +19,7 @@ import { UPDATE_FIELD_ALLOWED } from '@opengraphity/types'
 vi.mock('@opengraphity/events', () => ({ publish: vi.fn().mockResolvedValue(undefined), getRedisOptions: vi.fn(() => ({})) }))
 // Vocabolario del motore COMPLETO per la parte che serve qui: `update_field`
 // deve superare il controllo di tipo e arrivare a quello sul campo.
-const ACTIONS = ['publish_event', 'notify_rule', 'update_field', 'sla_start'] as const
+const ACTIONS = ['publish_event', 'notify_rule', 'update_field', 'sla_start', 'create_entity'] as const
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: { createInstance: vi.fn(), transition: vi.fn(), registerCondition: vi.fn(), getAvailableTransitions: vi.fn() },
   WORKFLOW_ACTION_TYPES: ACTIONS,
@@ -81,5 +81,21 @@ describe('assertStepActions — campi di update_field', () => {
 
   it('le altre azioni non sono toccate da questo controllo', () => {
     expect(() => assertStepActions(JSON.stringify([{ type: 'sla_start', params: { sla_type: 'resolve' } }]), 'x')).not.toThrow()
+  })
+})
+
+/** Verifica «Cosa resta cablato», ondata 1: una change creata da un passo non ha un tipo di ripiego. */
+describe('assertStepActions — create_entity di una change', () => {
+  const create = (params: Record<string, unknown>) => JSON.stringify([{ type: 'create_entity', params: { title_template: '{title}', link_to_current: true, ...params } }])
+
+  it('senza change_type è rifiutata nel disegnatore, non a ticket aperto', () => {
+    const err = thrown(create({ entity_type: 'change' }))
+    expect(err.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(err.message).toMatch(/needs the change type \(params\.change_type\)/)
+  })
+
+  it('con change_type, o per un altro tipo di ticket, passa', () => {
+    expect(() => assertStepActions(create({ entity_type: 'change', change_type: 'normal' }), 'enter_actions')).not.toThrow()
+    expect(() => assertStepActions(create({ entity_type: 'incident' }), 'enter_actions')).not.toThrow()
   })
 })

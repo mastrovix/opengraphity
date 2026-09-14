@@ -3,7 +3,7 @@ import { gql } from '@apollo/client/core'
 export const CREATE_TICKET = gql`
   mutation CreateTicket($title: String!, $description: String, $priority: String, $category: String!) {
     createTicket(title: $title, description: $description, priority: $priority, category: $category) {
-      id type title description status priority category createdAt updatedAt assignedTeam
+      id type title description status priority priorityLabel priorityColor category createdAt updatedAt assignedTeam
     }
   }
 `

@@ -388,7 +388,7 @@ function RiskBandsCard() {
             <Button variant="secondary" onClick={addRow}>
               <Plus size={14} /> {t('pages.domainMatrices.riskBands.addBand')}
             </Button>
-            <Button onClick={() => void saveRiskBands({ variables: { entries: current } })} disabled={!canSave}>
+            <Button onClick={() => void saveRiskBands({ variables: { entries: current.map(({ band, upTo }) => ({ band, upTo })) } })} disabled={!canSave}>
               <Save size={14} /> {t('common.save')}
             </Button>
           </div>

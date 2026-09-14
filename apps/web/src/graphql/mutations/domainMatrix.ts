@@ -76,3 +76,9 @@ export const PROVISION_TENANT_DATA = gql`
     }
   }
 `
+
+export const SET_PORTAL_SEVERITY_OPTIONS = gql`
+  mutation SetPortalSeverityOptions($options: [PortalSeverityOptionInput!]!) {
+    setPortalSeverityOptions(options: $options) { value labels { language label } }
+  }
+`

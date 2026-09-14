@@ -6,7 +6,9 @@ import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { CREATE_CHANGE } from '@/graphql/mutations'
-import { GET_CHANGES, GET_ALL_CIS, GET_USERS, GET_PROBLEM, GET_INCIDENT } from '@/graphql/queries'
+import { GET_CHANGES, GET_ALL_CIS, GET_USERS, GET_PROBLEM, GET_INCIDENT, GET_PRE_APPROVED_CHANGE_TYPES } from '@/graphql/queries'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { colors, palette } from '@/lib/tokens'
 
 interface CIRef {
@@ -73,7 +75,16 @@ export function CreateChangePage() {
   const [what, setWhat]               = useState('')
   // NB: nessun campo rollback qui — il rollback è una domanda scored
   // dell'assessment tecnico ("Is a tested rollback plan available?").
-  const [changeType, setChangeType]   = useState<'standard'|'normal'|'emergency'>('normal')
+  // Il tipo è un valore del vocabolario `change_type` DEL CLIENTE, e non ha un
+  // default: si sceglie (verifica «Cosa resta cablato», ondata 1). Prima tre
+  // bottoni fissi standard/normal/emergency con `normal` preselezionato.
+  const [changeType, setChangeType]   = useState('')
+  const { entriesOf } = useDomainVocabularies()
+  const changeTypes = entriesOf('change_type')
+  const { data: preApprovedData } = useQuery<{ preApprovedChangeTypes: { types: string[] } }>(
+    GET_PRE_APPROVED_CHANGE_TYPES, { fetchPolicy: METAMODEL_FETCH_POLICY },
+  )
+  const preApproved = preApprovedData?.preApprovedChangeTypes.types ?? null
   const [ownerId, setOwnerId]         = useState<string>('')
   const [ciSearch, setCiSearch]       = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
@@ -116,7 +127,7 @@ export function CreateChangePage() {
   })
 
   const ciWithoutGroups = selectedCIs.filter(missingGroups)
-  const canSubmit = title.trim() !== '' && why.trim() !== '' && what.trim() !== '' && selectedCIs.length > 0 && ciWithoutGroups.length === 0 && !loading
+  const canSubmit = title.trim() !== '' && why.trim() !== '' && what.trim() !== '' && changeType !== '' && selectedCIs.length > 0 && ciWithoutGroups.length === 0 && !loading
 
   const handleSubmit = () => {
     if (!canSubmit) return
@@ -207,24 +218,33 @@ export function CreateChangePage() {
 
           {/* TIPO DI CHANGE */}
           <div style={{ marginBottom: 20 }}>
-            <div style={fieldLabel}>{t('pages.createChange.changeType')}</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {(['standard','normal','emergency'] as const).map(tipo => {
-                const sel = changeType === tipo
-                const labels = { standard: t('pages.createChange.typeStandard'), normal: 'Normal', emergency: 'Emergency' }
+            <div style={fieldLabel}>{t('pages.createChange.changeType')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
+            <div role="radiogroup" aria-label={t('pages.createChange.changeType')} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {changeTypes === null && (
+                <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('common.loading')}</span>
+              )}
+              {changeTypes?.length === 0 && (
+                <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>{t('pages.createChange.noChangeTypes')}</span>
+              )}
+              {changeTypes?.map(({ value, label }) => {
+                const sel = changeType === value
                 return (
-                  <button key={tipo} type="button" onClick={() => setChangeType(tipo)}
+                  <button key={value} type="button" role="radio" aria-checked={sel} onClick={() => setChangeType(value)}
                     style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
                       border: `1.5px solid ${sel ? 'var(--color-brand)' : 'var(--color-border)'}`,
                       background: sel ? palette.info.light : 'var(--color-slate-bg)',
                       color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}>
-                    {labels[tipo]}
+                    {label}
                   </button>
                 )
               })}
             </div>
             <p style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginTop: 6 }}>
-              {t('pages.createChange.typesNote')}
+              {preApproved !== null && changeTypes !== null && preApproved.length > 0
+                ? t('pages.createChange.typesNotePreApproved', {
+                    types: preApproved.map((v) => changeTypes.find((e) => e.value === v)?.label ?? v).join(', '),
+                  })
+                : t('pages.createChange.typesNoteAllApproved')}
             </p>
           </div>
 

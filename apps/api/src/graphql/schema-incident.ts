@@ -60,6 +60,8 @@ export function incidentSDL(): string {
     resolveMet:       Boolean!
     breached:         Boolean!
     pausedAt:         String
+    """Minuti di preavviso della policy: sotto questa soglia lo SLA è «in scadenza», per l'avviso e per il badge."""
+    warningMinutes:   Int!
   }
 
   type Comment {

@@ -15,8 +15,10 @@
 import { useTranslation } from 'react-i18next'
 import { Pill } from '@/components/ui/Pill'
 import { lookupOrError, colors, palette } from '@/lib/tokens'
-import { vocabularyValueStyle } from '@/lib/domainStyle'
+import { useCallback } from 'react'
+import { vocabularyValueStyle, NEUTRAL_VALUE_STYLE, type ValueStyle } from '@/lib/domainStyle'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { useRiskBands } from '@/contexts/RiskBandContext'
 import { enumLabel } from '@/lib/ciEnums'
 import { styleForCategory } from '@/lib/workflowStepStyle'
 import { TASK_STATUS, REVIEW_RESULT } from '@/lib/taskStatus'
@@ -70,35 +72,53 @@ export function RoleBadge({ role }: { role: string | null | undefined }) {
 // ── Rischio aggregato della change ───────────────────────────────────────────
 
 /**
- * D-15, e perché questa palette NON passa da `domainValueStyle`: la chiave non
- * è un valore di dominio ma l'esito di `riskLevel(score)`, che restituisce
- * sempre una di queste tre. Non esiste il caso «valore del cliente senza
- * stile». (Le soglie sono l'altro mezzo punto di D-15 e vivono nel
- * `riskScore` dell'API: le rende configurabili l'agente A.)
+ * La FASCIA del punteggio è quella del cliente: soglie e nomi da Matrici di
+ * dominio (`useRiskBands`), etichetta e colore dal Dizionario (vocabolario
+ * `risk_band`). Prima erano tre livelli fissi (≤30 low, ≤60 medium, oltre high)
+ * con una palette propria: con soglie diverse, o quattro fasce, la priorità
+ * della change seguiva il cliente e il badge diceva altro (verifica «Cosa resta
+ * cablato», ondata 1).
+ *
+ * Finché le soglie non si conoscono (caricamento, errore) il badge mostra il
+ * solo punteggio, neutro: una fascia indovinata sarebbe la stessa scelta
+ * silenziosa di prima.
  */
-export const RISK_STYLE: Record<string, { bg: string; color: string; labelKey: string }> = {
-  low:    { bg: palette.success.tint, color: palette.success.text, labelKey: 'risk.low' },
-  medium: { bg: palette.warning.tint, color: palette.warning.text, labelKey: 'risk.medium' },
-  high:   { bg: palette.danger.tint, color: palette.danger.text, labelKey: 'risk.high' },
+/**
+ * Lo stile della fascia di un punteggio (per chi non usa la pastiglia, come il
+ * cerchio del punteggio in What-if), o `null` se le soglie non si conoscono.
+ */
+export function useRiskScoreStyle(): (score: number) => ValueStyle | null {
+  const { bandOf } = useRiskBands()
+  const { valuesOf, colorOf } = useDomainVocabularies()
+  return useCallback((score: number) => {
+    const band = bandOf(score)
+    return band === null ? null : vocabularyValueStyle(RISK_BAND_VOCABULARY, band, valuesOf(RISK_BAND_VOCABULARY), colorOf(RISK_BAND_VOCABULARY, band))
+  }, [bandOf, valuesOf, colorOf])
 }
 
-/** Stesse soglie del backend (scoring.ts): ≤30 low, ≤60 medium, >60 high. */
-export function riskLevel(score: number): 'low' | 'medium' | 'high' {
-  return score <= 30 ? 'low' : score <= 60 ? 'medium' : 'high'
-}
-
-/** `compact`: solo il numero (tabelle strette, sidebar). */
 export function RiskBadge({ score, compact = false }: { score: number | null | undefined; compact?: boolean }) {
-  const { t } = useTranslation()
+  const { bandOf } = useRiskBands()
+  const { valuesOf, labelOf, colorOf } = useDomainVocabularies()
   if (score == null) return <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-label)' }}>—</span>
-  const p = lookupOrError(RISK_STYLE, riskLevel(score), 'RISK_STYLE', { ...BROKEN, labelKey: '' })
-  const label = p.labelKey ? t(p.labelKey) : '?'
+  const band = bandOf(score)
+  if (band === null) {
+    return (
+      <Pill bg={NEUTRAL_VALUE_STYLE.bg} color={NEUTRAL_VALUE_STYLE.color} style={{ fontSize: 'var(--font-size-label)', flexShrink: 0 }}>
+        <span title={`score ${score}`}>{score}</span>
+      </Pill>
+    )
+  }
+  const s = vocabularyValueStyle(RISK_BAND_VOCABULARY, band, valuesOf(RISK_BAND_VOCABULARY), colorOf(RISK_BAND_VOCABULARY, band))
+  const label = (labelOf(RISK_BAND_VOCABULARY, band) ?? enumLabel(band)).toUpperCase()
   return (
-    <Pill bg={p.bg} color={p.color} style={{ fontSize: 'var(--font-size-label)', flexShrink: 0 }}>
+    <Pill bg={s.bg} color={s.color} style={{ fontSize: 'var(--font-size-label)', flexShrink: 0 }}>
       <span title={`${label} · score ${score}`}>{compact ? score : `${label} · ${score}`}</span>
     </Pill>
   )
 }
+
+/** Il vocabolario delle fasce di rischio (quello di `Tenant.risk_band_thresholds`). */
+export const RISK_BAND_VOCABULARY = 'risk_band'
 
 // ── Fase del workflow (per categoria dello step) ────────────────────────────
 

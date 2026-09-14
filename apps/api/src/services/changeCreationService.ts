@@ -30,21 +30,13 @@ import {
   assertCIHasOwnerAndSupport,
 } from '../graphql/resolvers/change/helpers.js'
 
-/**
- * Il tipo con cui nasce una change quando il chiamante non lo passa (la rotta
- * REST `POST /api/v1/changes` non lo chiede). È un default DICHIARATO, non un
- * ripiego: viene comunque validato contro il vocabolario del cliente, quindi
- * se lui l'ha rinominato la creazione senza tipo esplicito fallisce e lo dice.
- */
-export const DEFAULT_CHANGE_TYPE = 'normal'
-
 export interface ChangeCreationInput {
   title:         string
   why:           string          // motivazione (WHY) — obbligatorio
   what:          string          // cosa si cambia (WHAT) — obbligatorio
   changeOwner?:  string | null
   affectedCIIds: string[]
-  changeType?:   string | null   // un valore del vocabolario `change_type` del cliente (assente → DEFAULT_CHANGE_TYPE)
+  changeType?:   string | null   // un valore del vocabolario `change_type` del cliente — obbligatorio
 }
 
 export interface ChangeCreationCtx {
@@ -74,13 +66,14 @@ export async function createChangeRFC(
   // change ordinaria. Ora un tipo fuori vocabolario è un rifiuto che elenca
   // gli ammessi.
   //
-  // L'ASSENZA del tipo resta un default dichiarato (`DEFAULT_CHANGE_TYPE`):
-  // la rotta REST `POST /api/v1/changes` non lo chiede e non si rompe un
-  // contratto pubblico dentro quest'ondata. Ma il default passa comunque dalla
-  // validazione: un cliente che rinomina o toglie `normal` ottiene un errore
-  // che gli dice di passare il tipo esplicitamente, non una change con un
-  // valore che il suo Dizionario non ha.
-  const changeType = await assertDomainValue(ctx.tenantId, 'change_type', input.changeType ?? DEFAULT_CHANGE_TYPE)
+  // Il tipo è OBBLIGATORIO (verifica «Cosa resta cablato», ondata 1). Era un
+  // default dichiarato, `normal`, per chi non lo passava (REST, azione di
+  // passo): la scelta di come nasce una change non la fa il codice, e un
+  // valore di ripiego è comunque un valore che il cliente non ha scelto.
+  if (!input.changeType || input.changeType.trim() === '') {
+    throw new ValidationError('changeType is required: pass a value of the change_type vocabulary', { key: 'errors.change.typeRequired' })
+  }
+  const changeType = await assertDomainValue(ctx.tenantId, 'change_type', input.changeType)
   if (!affectedCIIds || affectedCIIds.length === 0) {
     throw new ValidationError('A change must have at least one impacted CI', { key: 'errors.change.needsCI' })
   }

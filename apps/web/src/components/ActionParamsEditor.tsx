@@ -47,7 +47,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
   const { data: usersData }    = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { data: workflowData } = useQuery<{ workflowDefinitions: { id: string; name: string; entityType: string; steps: { name: string; label: string }[] }[] }>(GET_WORKFLOW_LIST, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { values: priorityValues } = useEnumValues(entityType || 'incident', 'priority')
-  const { labelOf } = useDomainVocabularies()
+  const { labelOf, entriesOf } = useDomainVocabularies()
   const { values: severityValues } = useEnumValues(entityType || 'incident', 'severity')
   const { fields: fieldMetas } = useEntityFieldMetas(entityType)
 
@@ -204,6 +204,15 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
           {choice('entity_type', 'entity_type', [{ value: 'incident' }, { value: 'problem' }, { value: 'change' }], 'incident')}
+          {/* Una change nasce solo con un tipo del vocabolario del cliente: non c'è un default (verifica «Cosa resta cablato», ondata 1). */}
+          {params['entity_type'] === 'change' && (
+            <Labeled label="change_type">
+              <Select style={selectS} value={params['change_type'] ?? ''} onChange={e => onChange('change_type', e.target.value)}>
+                <option value="">{t('automation.params.selectChangeType')}</option>
+                {(entriesOf('change_type') ?? []).map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
+              </Select>
+            </Labeled>
+          )}
           {text('title_template', 'title_template', '{title} — escalated')}
           {choice('link_to_current', 'link_to_current', [{ value: 'true' }, { value: 'false' }], 'true')}
           {text('copy_fields', 'copy_fields (comma-sep)', 'severity,priority')}

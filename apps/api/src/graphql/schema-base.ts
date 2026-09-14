@@ -195,6 +195,10 @@ export function buildBaseSDL(): string {
     myTickets(status: String, page: Int, pageSize: Int, language: String): MyTicketsResult!
     myTicket(id: ID!, language: String): MyTicketDetail!
     ticketCategories(language: String): [TicketCategory!]!
+    "Le severità che l'utente finale sceglie nel portale, nella lingua chiesta (verifica «Cosa resta cablato», ondata 1)."
+    portalSeverityChoices(language: String): [PortalSeverityChoice!]!
+    "La scelta dell'amministratore com'è salvata; null = non ancora dichiarata."
+    portalSeverityOptions: [PortalSeverityOption!]
     myTicketStats: MyTicketStats!
 
     # Field Rules (admin)
@@ -619,6 +623,8 @@ export function buildBaseSDL(): string {
     createTicket(title: String!, description: String, priority: String, category: String!): MyTicket!
     addTicketComment(ticketId: ID!, body: String!): EntityComment!
     reopenTicket(ticketId: ID!): MyTicket!
+    "Quali severità del vocabolario offrire nel portale e con che parole (admin)."
+    setPortalSeverityOptions(options: [PortalSeverityOptionInput!]!): [PortalSeverityOption!]!
 
   }
 

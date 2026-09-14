@@ -236,6 +236,7 @@ export async function runAction(
       }
       const title = resolveTemplate(p.title_template ?? '', buildTemplateCtx(instance, ctx.entityData))
       const data: Record<string, unknown> = { title, tenant_id: instance.tenantId }
+      if (p.change_type) data['change_type'] = p.change_type
       if (p.link_to_current) {
         data['parent_id']   = instance.entityId
         data['parent_type'] = instance.entityType

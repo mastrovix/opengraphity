@@ -31,19 +31,19 @@ export function calculateRiskScore(params: RiskScoreParams): RiskScoreResult {
   const incidentScore = params.openIncidents * 15
   if (incidentScore > 0) {
     score += incidentScore
-    details.push(`+${incidentScore} (${params.openIncidents} incident aperti)`)
+    details.push(`+${incidentScore} (${params.openIncidents} open incidents)`)
   }
 
   const failedScore = params.failedChanges * 10
   if (failedScore > 0) {
     score += failedScore
-    details.push(`+${failedScore} (${params.failedChanges} change falliti)`)
+    details.push(`+${failedScore} (${params.failedChanges} failed changes)`)
   }
 
   const ongoingScore = params.ongoingChanges * 5
   if (ongoingScore > 0) {
     score += ongoingScore
-    details.push(`+${ongoingScore} (${params.ongoingChanges} change in corso)`)
+    details.push(`+${ongoingScore} (${params.ongoingChanges} ongoing changes)`)
   }
 
   const level =

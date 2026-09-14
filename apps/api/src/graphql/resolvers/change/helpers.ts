@@ -321,7 +321,7 @@ export async function computeAggregateRisk(session: SessionOrTx, changeId: strin
     RETURN max(r.risk_score) AS maxRisk, c.change_type AS changeType
   `, { changeId, tenantId })
   const maxRisk = row?.maxRisk != null ? toNumber(row.maxRisk) : 0
-  const approvalRoute = determineApprovalRoute(maxRisk)
+  const approvalRoute = await determineApprovalRoute(tenantId, maxRisk)
   // Priorità (ITIL) = tipo × rischio, ricalcolata e MEMORIZZATA quando il
   // rischio aggregato cambia.
   const priority = await deriveChangePriority(tenantId, row?.changeType, maxRisk)

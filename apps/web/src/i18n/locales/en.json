@@ -657,6 +657,7 @@
         "titleRequired": "title is required",
         "titleTooLong": "title is longer than {{max}} characters",
         "bodyTooLong": "body is longer than {{max}} characters",
+        "severityRequired": "severity is required (the value is translated with the «Import Severity» matrix)",
         "severityNotPrecomputed": "severity «{{value}}» not resolved (internal error)",
         "severityUntranslatable": "severity «{{value}}» cannot be translated: add it to the «Import Severity» dictionary and to the matrix, or fix the file. ({{reason}})",
         "unknownStatusInitial": "unknown status «{{status}}» — using the initial step «{{step}}»",
@@ -1383,6 +1384,17 @@
       "calendarHolidaysHint": "Dates in YYYY-MM-DD format, separated by commas. They are not working days.",
       "calendarSave": "Save calendar",
       "calendarSaved": "Service calendar updated",
+      "portalSeveritiesTitle": "Self-service portal severities",
+      "portalSeveritiesDescription": "The severities an end user can choose when opening a ticket from the portal, and the words they read. Only the values ticked here are offered, in the order of the Dictionary.",
+      "portalSeveritiesMissing": "No severity has been chosen for the portal: end users cannot open a ticket there until you save at least one.",
+      "portalSeveritiesValue": "Severity",
+      "portalSeveritiesOffered": "In the portal",
+      "portalSeveritiesLabelIn": "Label ({{language}})",
+      "portalSeveritiesOfferValue": "Offer {{value}} in the portal",
+      "portalSeveritiesLabelFor": "Label of {{value}} in {{language}}",
+      "portalSeveritiesHint": "A label left empty uses the Dictionary label, shown in grey in the field.",
+      "portalSeveritiesSave": "Save portal severities",
+      "portalSeveritiesSaved": "Portal severities updated",
       "weekday": {
         "monday": "Monday",
         "tuesday": "Tuesday",
@@ -1554,7 +1566,12 @@
       "descriptionPlaceholder": "What the service includes...",
       "categoryPlaceholder": "E.g. Hardware, Access, Software",
       "noApproval": "No approval needed",
-      "needsApproval": "Approval required"
+      "needsApproval": "Approval required",
+      "priority": "Priority",
+      "priorityRequired": "Priority *",
+      "priorityPlaceholder": "— Choose the priority —",
+      "priorityHint": "Requests opened from this item, also from the portal, start with this priority. The requester does not choose it.",
+      "priorityMissing": "No priority: requests cannot be opened"
     },
     "userDetail": {
       "notFound": "User not found.",
@@ -1693,7 +1710,9 @@
       "searchCI": "Search a CI by name...",
       "title": "New change",
       "subtitle": "Open a request to introduce a controlled change to the systems",
-      "typesNote": "Standard: no approval. Normal and emergency: approval required. The rollback is assessed in the technical assessment.",
+      "typesNotePreApproved": "{{types}}: pre-approved, no approval needed. The other types go through approval. The rollback is assessed in the technical assessment.",
+      "typesNoteAllApproved": "Every type goes through approval. The rollback is assessed in the technical assessment.",
+      "noChangeTypes": "No change type is defined: add the values of the change_type vocabulary in the Dictionary.",
       "whyPlaceholder": "Why is this change needed? Reason, problem or goal.",
       "ciGroupsNote": "Every CI needs an owner group and a support group, otherwise the creation stops.",
       "why": "Why",
@@ -1704,7 +1723,6 @@
       "affectedCIsPreloaded": "The affected CIs have been preloaded.",
       "submit": "Create the change",
       "resolutionTitle": "Resolution of {{kind}} {{number}}: {{title}}",
-      "typeStandard": "Standard (pre-approved)",
       "what": "What",
       "ciWithoutGroups": "This CI has no Owner Group or Support Group: the change would be refused.",
       "ciWithoutGroupsList": "These CIs have no Owner Group or Support Group, and a change cannot be opened on them: {{names}}. Set the groups on the CI or remove it."
@@ -1835,7 +1853,8 @@
       "needsApproval": "This item needs an approval: the request will go through the approval flow.",
       "catalogItem": "Catalog item",
       "recommended": "(recommended)",
-      "submit": "Create the request"
+      "submit": "Create the request",
+      "priorityPlaceholder": "— Choose the priority —"
     },
     "planTask": {
       "validation": "Validation *",
@@ -2869,7 +2888,8 @@
       "autoTransitionCycle": "The change workflow has a cycle of automatic transitions ({{from}} → {{to}}): fix it in the designer.",
       "chooseAssessmentsToReopen": "Choose which assessments to reopen, or choose «all».",
       "onlyInInitialStep": "This can be done only in the initial step; the change is in «{{current}}».",
-      "rejectViaApproval": "To reject the change, use «Reject» in the Approval section: it reopens the assessments."
+      "rejectViaApproval": "To reject the change, use «Reject» in the Approval section: it reopens the assessments.",
+      "typeRequired": "The change type is required: choose a value of the change_type vocabulary."
     },
     "import": {
       "tenantRequired": "The tenant is missing: the import does not know where to write.",
@@ -2948,7 +2968,8 @@
       },
       "changeUsesChangeTransition": "A change moves through its own transitions (with the approval checks), not this generic one.",
       "unknownActionType": "Action type «{{type}}» does not exist. Available: {{allowed}}.",
-      "updateFieldNeedsField": "The «update field» action needs the field to write."
+      "updateFieldNeedsField": "The «update field» action needs the field to write.",
+      "createChangeNeedsType": "{{field}}: an action that creates a change must say its change type."
     },
     "channel": {
       "platform": "Platform \"{{platform}}\" is not supported. Allowed: {{allowed}}."
@@ -3032,7 +3053,15 @@
       "unclassifiedStates": "{{count}} ticket states belong to no class of the active incident workflow ({{states}}): the portal counters would not count them. Fix the steps (initial / terminal / category) in the designer.",
       "categoryRequired": "Choose a category for the request.",
       "priorityRequired": "Choose a priority for the request.",
-      "noCategories": "The ticket categories dictionary has no values: add them in Settings → Dictionary."
+      "noCategories": "The ticket categories dictionary has no values: add them in Settings → Dictionary.",
+      "severityNotConfigured": "The severities offered in the portal are not configured, so a ticket cannot be opened there. An administrator chooses them in Settings → Organization.",
+      "severityStale": "The portal offers {{values}}, which the severity dictionary no longer has ({{allowed}}). An administrator fixes the choice in Settings → Organization.",
+      "severityAtLeastOne": "Choose at least one severity for the portal: without it nobody can open a ticket there.",
+      "severityUnknown": "\"{{value}}\" is not a value of the severity dictionary ({{allowed}}).",
+      "severityDuplicate": "\"{{value}}\" appears twice.",
+      "severityLanguage": "Unknown language \"{{language}}\".",
+      "severityLabelTooLong": "The label of \"{{value}}\" is longer than {{max}} characters.",
+      "severityNotOffered": "This severity is not offered in the portal. Choose one of: {{allowed}}."
     },
     "sync": {
       "unknownCIType": "Conflict {{id}} is about an unknown CI type: no CI was created, because \"{{ciType}}\" is not a type of this tenant. Fix it at the root — create the type, or add an alias in the source mapping rules — and run the sync again: the conflict closes by itself.",
@@ -3196,7 +3225,13 @@
     "environmentWeight": {
       "range": "The environment weight must be an integer between 0 and {{max}} (got {{got}})."
     },
-    "internalDatabase": "Internal database error (reference {{ref}}). Tell your administrator: the details are in the API log."
+    "internalDatabase": "Internal database error (reference {{ref}}). Tell your administrator: the details are in the API log.",
+    "serviceRequest": {
+      "priorityFromCatalog": "The priority of a request from the catalog is set by the catalog item.",
+      "catalogItemWithoutPriority": "The catalog item «{{item}}» has no priority, so a request cannot be opened from it. An administrator sets it in Admin → Service catalog.",
+      "priorityRequired": "Choose the priority of the request.",
+      "catalogItemPriorityRequired": "A catalog item must have a priority."
+    }
   },
   "errorBoundary": {
     "title": "Something went wrong",
@@ -3207,11 +3242,6 @@
     "operator": "Operator",
     "viewer": "Viewer",
     "end_user": "End user"
-  },
-  "risk": {
-    "low": "LOW",
-    "medium": "MEDIUM",
-    "high": "HIGH"
   },
   "taskStatus": {
     "toBeCompleted": "TO BE COMPLETED"
@@ -4875,6 +4905,9 @@
       "tickets_without_sla_other": "{{count}} open tickets have **no SLA**: no SLA policy covers them ({{tickets}}{{more}}). There is no built-in SLA to fall back on — **add or widen a policy in Admin → SLA Policies**; tickets created from then on get their SLA.",
       "timezone_not_set": "This organization has no time zone, so SLA deadlines, the daily digest and the dates in messages cannot be computed. **You choose it in Settings → Organization**.",
       "service_calendar_not_set": "{{count}} SLA policies or OLA contracts count business hours, but this organization has no service calendar: their deadlines cannot be computed. **You set it in Settings → Organization**.",
+      "portal_severities_not_set": "The self-service portal has no severities to offer, so end users cannot open a ticket. **You choose them in Settings → Organization**.",
+      "portal_severities_stale": "The self-service portal offers {{values}}, which the severity dictionary no longer has: opening a ticket there fails. **You fix the choice in Settings → Organization**.",
+      "catalog_items_without_priority": "{{count}} active catalog items have no priority ({{items}}): requests cannot be opened from them, also from the portal. **You set it in Admin → Service catalog**.",
       "migrations_pending": "{{count}} database migrations have not been applied ({{migrations}}): the product is running with data that does not match its code. **Whoever manages the installation runs migrate.js**.",
       "workflow_step_categories_missing": "The «{{workflow}}» workflow ({{entityType}}) has no step with these categories: {{missing}}. The product finds steps by category, not by name, so the operations that need them stop with an error. **Set the category on the step in the workflow designer**.",
       "workflow_step_purposes_missing": "The «{{workflow}}» workflow ({{entityType}}) has no step with these purposes: {{missing}}. The product finds steps by purpose, not by name, so the operations that need them stop with an error. **Set the purpose on the step in the workflow designer**.",
@@ -5173,7 +5206,8 @@
       "teamOption": "-- Team --",
       "notAllowed": "not allowed",
       "notificationTarget": "Who receives it",
-      "notificationChannel": "Where it arrives"
+      "notificationChannel": "Where it arrives",
+      "selectChangeType": "— Change type —"
     },
     "preview": "Preview",
     "columns": {

@@ -29,6 +29,12 @@ export function serviceRequestSDL(): string {
     description: String
     category: String
     requiresApproval: Boolean!
+    """
+    La priorità (vocabolario \`priority\`) con cui nascono le richieste aperte da
+    questa voce: la decide l'amministratore, non l'utente del portale. Null solo
+    per voci vecchie mai sistemate: da quelle il portale non apre richieste.
+    """
+    priority: String
     active: Boolean!
     createdAt: String!
   }
@@ -38,6 +44,7 @@ export function serviceRequestSDL(): string {
     description: String
     category: String
     requiresApproval: Boolean
+    priority: String!
   }
 
   input UpdateServiceCatalogItemInput {
@@ -45,13 +52,18 @@ export function serviceRequestSDL(): string {
     description: String
     category: String
     requiresApproval: Boolean
+    priority: String
     active: Boolean
   }
 
   input CreateServiceRequestInput {
     title: String!
     description: String
-    priority: String!
+    """
+    Obbligatoria per una richiesta generica. Da una voce del catalogo vale la
+    priorità della voce; un operatore può indicarne un'altra, l'utente del portale no.
+    """
+    priority: String
     dueDate: String
     catalogItemId: ID
     """

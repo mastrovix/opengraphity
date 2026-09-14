@@ -22,7 +22,7 @@ import { logger } from '../lib/logger.js'
 import { withSession, getSession } from '../graphql/resolvers/ci-utils.js'
 import { ValidationError } from '../lib/errors.js'
 import { getWorkflowSteps, type StepRow } from '../lib/workflowHelpers.js'
-import { assertDomainValue, domainVocabulary } from '../lib/domainMatrix.js'
+import { domainVocabulary } from '../lib/domainMatrix.js'
 import { resolveDomainValue } from '../lib/domainValue.js'
 
 type Session = ReturnType<typeof getSession>
@@ -53,6 +53,7 @@ const IMPORT_MESSAGES = {
   titleRequired:          () => 'title is required',
   titleTooLong:           (p: Record<string, string>) => `title is longer than ${p['max']} characters`,
   bodyTooLong:            (p: Record<string, string>) => `body is longer than ${p['max']} characters`,
+  severityRequired:       () => 'severity is required (the value to translate with the «Import Severity» matrix)',
   severityNotPrecomputed: (p: Record<string, string>) => `severity "${p['value']}" not resolved (internal error: value not precomputed)`,
   severityUntranslatable: (p: Record<string, string>) => `severity "${p['value']}" cannot be translated: ${p['reason']} Add the value to the «Import Severity» dictionary and the cell to the matrix, or fix the file.`,
   unknownStatusInitial:   (p: Record<string, string>) => `unknown status "${p['status']}" — using the initial step "${p['step']}"`,
@@ -197,15 +198,6 @@ async function resolveImportSeverities(
   }
   return out
 }
-
-/**
- * La severità con cui nasce una riga che non ne dichiara nessuna. È un default
- * DICHIARATO — il file non ha detto niente, non ha detto una cosa che non
- * capiamo — e passa comunque dalla validazione: se il cliente ha rinominato
- * `medium`, l'import si ferma e lo dice invece di scrivere un valore fantasma
- * su tutte le righe senza colonna.
- */
-export const DEFAULT_IMPORT_SEVERITY = 'medium'
 
 /**
  * Move an existing workflow instance to `stepName` (no-op if already there).
@@ -373,7 +365,6 @@ export async function importIncidents(
     // Severità: un passaggio solo per valore distinto, PRIMA del ciclo per
     // riga (il ciclo e' sincrono, e la matrice e' una lettura).
     const severityByRaw  = await resolveImportSeverities(ctx.tenantId, rows)
-    const defaultSeverity = await assertDomainValue(ctx.tenantId, 'severity', DEFAULT_IMPORT_SEVERITY)
 
     // ── Per-row validation → plan ─────────────────────────────────────────────
     const plans: IncidentPlan[] = []
@@ -398,17 +389,18 @@ export async function importIncidents(
       // (risolta una volta per valore distinto, sopra). Non risolvibile →
       // riga in ERRORE: mai piu' un `medium` scritto al posto di quello che
       // il file diceva.
+      // Una riga SENZA severità è in errore anche lei (verifica «Cosa resta
+      // cablato», ondata 1): prima nasceva `medium`, un valore che né il file
+      // né il cliente avevano scelto.
       const rawSeverity = (row['severity'] ?? '').trim()
-      let severity = defaultSeverity
-      if (rawSeverity) {
-        const resolved = severityByRaw.get(rawSeverity.toLowerCase())
-        if (!resolved) { fail('severityNotPrecomputed', { value: rawSeverity }); return }
-        if ('error' in resolved) {
-          fail('severityUntranslatable', { value: rawSeverity, reason: resolved.error })
-          return
-        }
-        severity = resolved.severity
+      if (!rawSeverity) { fail('severityRequired'); return }
+      const resolved = severityByRaw.get(rawSeverity.toLowerCase())
+      if (!resolved) { fail('severityNotPrecomputed', { value: rawSeverity }); return }
+      if ('error' in resolved) {
+        fail('severityUntranslatable', { value: rawSeverity, reason: resolved.error })
+        return
       }
+      const severity = resolved.severity
 
       // status: matched case-insensitively on the tenant's incident workflow steps
       const rawStatus = (row['status'] ?? '').trim()

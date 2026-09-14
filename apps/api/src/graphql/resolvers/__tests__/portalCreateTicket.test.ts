@@ -23,6 +23,9 @@ const session = {
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => Number(v ?? 0) }))
 vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
+// Verifica «Cosa resta cablato», ondata 1: le severità offerte nel portale.
+vi.mock('../../../lib/portalSeverityOptions.js', () => import('../../../lib/__tests__/portalSeverityOptionsFake.js'))
+vi.mock('../../../lib/vocabularyEntries.js', () => ({ loadVocabularyEntries: vi.fn(async () => ({ values: ['low', 'medium', 'high', 'critical'], labels: {}, colors: {} })) }))
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: { createInstance: vi.fn(), transition: vi.fn(), getAvailableTransitions: vi.fn() } }))
 vi.mock('../ci-utils.js', () => ({ withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn(session)) }))
@@ -50,7 +53,7 @@ describe('createTicket', () => {
     expect(writes).toHaveLength(0)
     expect(publishEvent).toHaveBeenCalledWith('portal.ticket.created', 'tenant-1', 'user-1', { ticketId: 'inc-1', title: 'Stampante rotta', category: 'hardware', priority: 'high', userId: 'user-1' }, 'a')
     expect(audit).toHaveBeenCalledWith(ctx, 'portal.ticket.created', 'Incident', 'inc-1')
-    expect(out).toMatchObject({ id: 'inc-1', type: 'incident', status: 'new', priority: 'high', category: 'hardware' })
+    expect(out).toMatchObject({ id: 'inc-1', type: 'incident', status: 'new', priority: 'high', priorityLabel: 'High', category: 'hardware' })
   })
 
   it('un rifiuto del servizio (valore fuori Dizionario) ferma tutto: nessun evento del portale', async () => {
@@ -58,6 +61,13 @@ describe('createTicket', () => {
     await expect(portalResolvers.Mutation.createTicket(null, { title: 'T', priority: 'high', category: 'caffè' }, ctx)).rejects.toThrow(/dictionary/)
     expect(publishEvent).not.toHaveBeenCalled()
     expect(audit).not.toHaveBeenCalled()
+  })
+
+  // Verifica «Cosa resta cablato», ondata 1: dal portale solo ciò che il portale offre.
+  it('una severità del vocabolario che l\'amministratore NON offre nel portale → rifiutata prima del servizio', async () => {
+    await expect(portalResolvers.Mutation.createTicket(null, { title: 'T', priority: 'critical', category: 'hardware' }, ctx))
+      .rejects.toThrow(/"critical" is not one of the severities offered in the portal \(low, medium, high\)/)
+    expect(incidentService.createIncident).not.toHaveBeenCalled()
   })
 
   it('titolo vuoto o priorità assente → ValidationError prima di chiamare il servizio', async () => {

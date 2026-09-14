@@ -23,6 +23,13 @@ export function portalSDL(): string {
     """Etichetta del passo nel workflow del cliente; null se il passo non è (più) nel workflow — allora il portale mostra il valore grezzo."""
     statusLabel:  String
     priority:     String!
+    """
+    La severità con le parole di chi guarda: quelle scelte dall'amministratore per
+    il portale, altrimenti l'etichetta del Dizionario.
+    """
+    priorityLabel: String!
+    """Il colore del Dizionario per la severità; null se il cliente non gliene ha dato uno (neutro)."""
+    priorityColor: String
     """Null for incidents without a category (opened from an alarm)."""
     category:     String
     createdAt:    String!
@@ -61,6 +68,13 @@ export function portalSDL(): string {
     """Etichetta del passo nel workflow del cliente; null se il passo non è (più) nel workflow — allora il portale mostra il valore grezzo."""
     statusLabel:  String
     priority:     String!
+    """
+    La severità con le parole di chi guarda: quelle scelte dall'amministratore per
+    il portale, altrimenti l'etichetta del Dizionario.
+    """
+    priorityLabel: String!
+    """Il colore del Dizionario per la severità; null se il cliente non gliene ha dato uno (neutro)."""
+    priorityColor: String
     """Null for incidents without a category (opened from an alarm)."""
     category:     String
     createdAt:    String!
@@ -79,6 +93,31 @@ export function portalSDL(): string {
   type TicketCategory {
     name:  String!
     label: String!
+  }
+
+  """Una severità offerta nel portale, già nella lingua chiesta."""
+  type PortalSeverityChoice {
+    value: String!
+    label: String!
+    """Il colore del Dizionario (ValueColor); null = neutro."""
+    color: String
+  }
+
+  """Una severità offerta nel portale, come l'ha salvata l'amministratore: le etichette scritte, lingua per lingua."""
+  type PortalSeverityOption {
+    value:  String!
+    labels: [LocalizedLabel!]!
+  }
+
+  input PortalSeverityLabelInput {
+    language: String!
+    """Vuota = vale l'etichetta del Dizionario per quella lingua."""
+    label:    String!
+  }
+
+  input PortalSeverityOptionInput {
+    value:  String!
+    labels: [PortalSeverityLabelInput!]!
   }
 
   type MyTicketStats {

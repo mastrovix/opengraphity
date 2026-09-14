@@ -26,8 +26,8 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Building2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { GET_TENANT_LANGUAGE_SETTINGS, GET_TENANT_TIMEZONE_SETTINGS, GET_TENANT_SERVICE_CALENDAR } from '@/graphql/queries'
-import { SET_TENANT_DEFAULT_LANGUAGE, SET_TENANT_TIMEZONE, SET_TENANT_SERVICE_CALENDAR } from '@/graphql/mutations'
+import { GET_TENANT_LANGUAGE_SETTINGS, GET_TENANT_TIMEZONE_SETTINGS, GET_TENANT_SERVICE_CALENDAR, GET_PORTAL_SEVERITY_OPTIONS } from '@/graphql/queries'
+import { SET_TENANT_DEFAULT_LANGUAGE, SET_TENANT_TIMEZONE, SET_TENANT_SERVICE_CALENDAR, SET_PORTAL_SEVERITY_OPTIONS } from '@/graphql/mutations'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -37,6 +37,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { QueryError } from '@/components/QueryError'
 import { colors } from '@/lib/tokens'
 import { applicaLinguaDelCliente, linguaSceltaDallUtente } from '@/i18n/tenantLanguage'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { SeverityBadge } from '@/components/ui/badges'
 
 interface LanguageSettings { available: string[]; defaultLanguage: string | null; fallback: string }
 interface TimezoneSettings { timezone: string | null; available: string[] }
@@ -122,6 +124,7 @@ export function OrganizationPage() {
 
       <TimezoneSection />
       <ServiceCalendarSection />
+      <PortalSeveritySection languages={impostazioni?.available ?? null} />
     </PageContainer>
   )
 }
@@ -284,3 +287,133 @@ function ServiceCalendarSection() {
   )
 }
 
+
+interface PortalSeverityOption { value: string; labels: { language: string; label: string }[] }
+interface PortalSeverityDraft { offered: boolean; labels: Record<string, string> }
+
+/**
+ * LE SEVERITÀ DEL PORTALE SELF-SERVICE (verifica «Cosa resta cablato», ondata
+ * 1). Il portale offriva `low / medium / high` scritti nel codice: una severità
+ * aggiunta dal cliente non si poteva scegliere, una rinominata veniva mandata
+ * comunque. Qui l'amministratore sceglie quali valori del vocabolario offrire
+ * e, se vuole, con che parole per chi apre un ticket. Una lingua lasciata vuota
+ * usa l'etichetta del Dizionario, che compare come suggerimento nel campo.
+ */
+function PortalSeveritySection({ languages }: { languages: readonly string[] | null }) {
+  const { t } = useTranslation()
+  const uid = useId()
+  const { entriesOf } = useDomainVocabularies()
+  const vocabulary = entriesOf('severity')
+  const { data, loading, error, refetch } = useQuery<{ portalSeverityOptions: PortalSeverityOption[] | null }>(
+    GET_PORTAL_SEVERITY_OPTIONS, { fetchPolicy: 'cache-and-network' },
+  )
+  const saved = data?.portalSeverityOptions ?? null
+  const [draft, setDraft] = useState<Record<string, PortalSeverityDraft>>({})
+
+  useEffect(() => {
+    if (!data || !vocabulary) return
+    const next: Record<string, PortalSeverityDraft> = {}
+    for (const entry of vocabulary) {
+      const option = saved?.find((o) => o.value === entry.value)
+      next[entry.value] = {
+        offered: option !== undefined,
+        labels: Object.fromEntries((option?.labels ?? []).map((l) => [l.language, l.label])),
+      }
+    }
+    setDraft(next)
+  }, [data, saved, vocabulary])
+
+  const [saveOptions, { loading: saving }] = useMutation(SET_PORTAL_SEVERITY_OPTIONS, {
+    refetchQueries: [GET_PORTAL_SEVERITY_OPTIONS],
+    onCompleted: () => { toast.success(t('pages.organization.portalSeveritiesSaved')) },
+    onError: (e) => toast.error(e.message),
+  })
+
+  const setOffered = (value: string, offered: boolean) =>
+    setDraft((cur) => ({ ...cur, [value]: { labels: cur[value]?.labels ?? {}, offered } }))
+  const setLabel = (value: string, language: string, label: string) =>
+    setDraft((cur) => ({ ...cur, [value]: { offered: cur[value]?.offered ?? false, labels: { ...(cur[value]?.labels ?? {}), [language]: label } } }))
+
+  const submit = () => {
+    if (!vocabulary || !languages) return
+    const options = vocabulary
+      .filter((entry) => draft[entry.value]?.offered)
+      .map((entry) => ({
+        value: entry.value,
+        labels: languages.map((language) => ({ language, label: draft[entry.value]?.labels[language] ?? '' })),
+      }))
+    void saveOptions({ variables: { options } })
+  }
+
+  const offeredCount = Object.values(draft).filter((d) => d.offered).length
+  const ready = data && vocabulary && languages
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <SectionCard collapsible={false} title={t('pages.organization.portalSeveritiesTitle')}>
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <p style={{ margin: 0, color: colors.slateLight, fontSize: 'var(--font-size-body)', lineHeight: 1.55 }}>
+            {t('pages.organization.portalSeveritiesDescription')}
+          </p>
+          {error && !data ? <QueryError message={error.message} onRetry={() => void refetch()} /> : null}
+          {!ready && loading ? <Skeleton style={{ height: 120, maxWidth: 640 }} /> : null}
+          {ready && (
+            <>
+              {saved === null && (
+                <p role="status" style={{ margin: 0, color: 'var(--color-danger)', fontSize: 'var(--font-size-label)' }}>
+                  {t('pages.organization.portalSeveritiesMissing')}
+                </p>
+              )}
+              <div role="table" aria-label={t('pages.organization.portalSeveritiesTitle')} style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflowX: 'auto' }}>
+                <div role="row" style={{ display: 'grid', gridTemplateColumns: `minmax(96px, 0.8fr) 80px repeat(${languages.length}, minmax(120px, 1.2fr))`, gap: 12, padding: '8px 12px', background: 'var(--color-slate-bg)', fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate)' }}>
+                  <span role="columnheader">{t('pages.organization.portalSeveritiesValue')}</span>
+                  <span role="columnheader">{t('pages.organization.portalSeveritiesOffered')}</span>
+                  {languages.map((language) => (
+                    <span key={language} role="columnheader">{t('pages.organization.portalSeveritiesLabelIn', { language: t(`languages.${language}`) })}</span>
+                  ))}
+                </div>
+                {vocabulary.map((entry) => {
+                  const row = draft[entry.value]
+                  const dictionaryLabel = (language: string) => entry.labels.find((l) => l.language === language)?.label ?? entry.label
+                  return (
+                    <div key={entry.value} role="row" style={{ display: 'grid', gridTemplateColumns: `minmax(96px, 0.8fr) 80px repeat(${languages.length}, minmax(120px, 1.2fr))`, gap: 12, padding: '10px 12px', alignItems: 'center', borderTop: '1px solid var(--color-border)' }}>
+                      <span role="cell"><SeverityBadge value={entry.value} /></span>
+                      <span role="cell">
+                        <input
+                          id={`${uid}-${entry.value}-offered`}
+                          type="checkbox"
+                          aria-label={t('pages.organization.portalSeveritiesOfferValue', { value: entry.label })}
+                          checked={row?.offered ?? false}
+                          onChange={(e) => setOffered(entry.value, e.target.checked)}
+                        />
+                      </span>
+                      {languages.map((language) => (
+                        <span key={language} role="cell">
+                          <Input
+                            aria-label={t('pages.organization.portalSeveritiesLabelFor', { value: entry.label, language: t(`languages.${language}`) })}
+                            value={row?.labels[language] ?? ''}
+                            placeholder={dictionaryLabel(language)}
+                            disabled={!row?.offered}
+                            maxLength={80}
+                            onChange={(e) => setLabel(entry.value, language, e.target.value)}
+                            style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }}
+                          />
+                        </span>
+                      ))}
+                    </div>
+                  )
+                })}
+              </div>
+              <p style={{ color: colors.slateLight, margin: 0, fontSize: 'var(--font-size-label)', lineHeight: 1.5 }}>
+                {t('pages.organization.portalSeveritiesHint')}
+              </p>
+              <div>
+                <Button onClick={submit} disabled={saving || offeredCount === 0}>{t('pages.organization.portalSeveritiesSave')}</Button>
+              </div>
+            </>
+          )}
+        </div>
+      </SectionCard>
+    </div>
+  )
+}

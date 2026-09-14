@@ -24,6 +24,7 @@ import type { Request, Response } from 'express'
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn() }))
 vi.mock('../../services/incidentService.js', () => ({ createIncident: vi.fn(), resolveIncident: vi.fn(), escalateIncident: vi.fn() }))
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
+vi.mock('../../lib/domainMatrix.js', () => ({ domainVocabulary: vi.fn(async () => ['critical', 'high', 'medium', 'low']) }))
 
 const { getSession } = await import('@opengraphity/neo4j')
 const { createIncident, resolveIncident, escalateIncident } = await import('../../services/incidentService.js')
@@ -90,7 +91,7 @@ afterEach(() => {
   resetConfigCache()
 })
 
-const CMD = { text: 'incident apri Sito giù ci=web-01 high', user_id: 'U123' }
+const CMD = { text: 'incident open Sito giù ci=web-01 high', user_id: 'U123' }
 
 describe('verifySlackSignature (via /og commands)', () => {
   it('valid signature at the current time passes verification', async () => {
@@ -147,7 +148,7 @@ describe('verifySlackSignature (via /og commands)', () => {
 
   it('body tampered after signing → 401', async () => {
     const req = slackReq(CMD)
-    req.body = Buffer.from(new URLSearchParams({ ...CMD, text: 'incident apri Altro ci=web-01 high' }).toString())
+    req.body = Buffer.from(new URLSearchParams({ ...CMD, text: 'incident open Altro ci=web-01 high' }).toString())
     const res = fakeRes()
     await handleSlackCommands(req, asRes(res))
     expect(res.statusCode).toBe(401)
@@ -168,13 +169,13 @@ describe('/og commands — remaining branches', () => {
     const res = fakeRes()
     await handleSlackCommands(slackReq({ text: 'problem apri x', user_id: 'U1' }), asRes(res))
     expect(res.body).toMatchObject({ response_type: 'ephemeral' })
-    expect((res.body as { text: string }).text).toMatch(/Command not recognised.*\/og incident apri/)
+    expect((res.body as { text: string }).text).toMatch(/Command not recognised.*\/og incident open/)
     expect(getSession).not.toHaveBeenCalled()
   })
 
   it('missing title → usage, nothing created', async () => {
     const res = fakeRes()
-    await handleSlackCommands(slackReq({ text: 'incident apri ci=web-01 high', user_id: 'U1' }), asRes(res))
+    await handleSlackCommands(slackReq({ text: 'incident open ci=web-01 high', user_id: 'U1' }), asRes(res))
     expect((res.body as { text: string }).text).toMatch(/Title missing/)
     expect(getSession).not.toHaveBeenCalled()
     expect(createIncident).not.toHaveBeenCalled()

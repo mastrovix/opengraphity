@@ -16,6 +16,8 @@ import { GET_SERVICE_CATALOG_ADMIN } from '@/graphql/queries'
 import { CREATE_SERVICE_CATALOG_ITEM, UPDATE_SERVICE_CATALOG_ITEM } from '@/graphql/mutations'
 import { useCrudModal } from '@/hooks/useCrudModal'
 import { palette } from '@/lib/tokens'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { SeverityBadge } from '@/components/ui/badges'
 
 interface CatalogItem {
   id: string
@@ -23,14 +25,17 @@ interface CatalogItem {
   description: string | null
   category: string | null
   requiresApproval: boolean
+  /** La priorità con cui nascono le richieste da questa voce (vocabolario `priority`); null = voce vecchia da sistemare. */
+  priority: string | null
   active: boolean
   createdAt: string
 }
 
-type FormState = { name: string; description: string; category: string; requiresApproval: boolean }
-const EMPTY_FORM: FormState = { name: '', description: '', category: '', requiresApproval: false }
+type FormState = { name: string; description: string; category: string; requiresApproval: boolean; priority: string }
+// Nessuna priorità preselezionata: la sceglie l'amministratore per ogni voce (verifica «Cosa resta cablato», ondata 1).
+const EMPTY_FORM: FormState = { name: '', description: '', category: '', requiresApproval: false, priority: '' }
 const itemToForm = (item: CatalogItem): FormState => ({
-  name: item.name, description: item.description ?? '', category: item.category ?? '', requiresApproval: item.requiresApproval,
+  name: item.name, description: item.description ?? '', category: item.category ?? '', requiresApproval: item.requiresApproval, priority: item.priority ?? '',
 })
 
 export function ServiceCatalogAdminPage() {
@@ -42,7 +47,9 @@ export function ServiceCatalogAdminPage() {
   const modal = useCrudModal<CatalogItem, FormState>(EMPTY_FORM, itemToForm)
   const { draft: form, patch } = modal
   const uid = useId()
-  const ids = { name: `${uid}-name`, description: `${uid}-description`, category: `${uid}-category`, approval: `${uid}-approval` }
+  const ids = { name: `${uid}-name`, description: `${uid}-description`, category: `${uid}-category`, approval: `${uid}-approval`, priority: `${uid}-priority` }
+  const { entriesOf } = useDomainVocabularies()
+  const priorities = entriesOf('priority') ?? []
 
   const [createItem, { loading: creating }] = useMutation(CREATE_SERVICE_CATALOG_ITEM, {
     onCompleted: async () => { modal.close(); await refetch(); toast.success(t('toast.catalog.created')) },
@@ -60,6 +67,7 @@ export function ServiceCatalogAdminPage() {
       description: form.description.trim() || null,
       category: form.category.trim() || null,
       requiresApproval: form.requiresApproval,
+      priority: form.priority,
     }
     if (!modal.open) return
     if (modal.editing) void updateItem({ variables: { id: modal.editing.id, input } })
@@ -94,6 +102,7 @@ export function ServiceCatalogAdminPage() {
               <tr style={{ textAlign: 'left' }}>
                 <th style={{ padding: '10px 14px' }}>{t('common.name')}</th>
                 <th style={{ padding: '10px 14px' }}>{t('pages.serviceCatalogAdmin.category')}</th>
+                <th style={{ padding: '10px 14px' }}>{t('pages.serviceCatalogAdmin.priority')}</th>
                 <th style={{ padding: '10px 14px' }}>{t('pages.changeDetail.approval')}</th>
                 <th style={{ padding: '10px 14px' }}>{t('common.status')}</th>
                 <th style={{ padding: '10px 14px', textAlign: 'right' }}>{t('common.actions')}</th>
@@ -107,6 +116,11 @@ export function ServiceCatalogAdminPage() {
                     {it.description && <div style={{ color: 'var(--color-slate-light)', fontSize: 12, marginTop: 2 }}>{it.description}</div>}
                   </td>
                   <td style={{ padding: '10px 14px', color: 'var(--color-slate)' }}>{it.category ?? '—'}</td>
+                  <td style={{ padding: '10px 14px' }}>
+                    {it.priority
+                      ? <SeverityBadge value={it.priority} vocabulary="priority" />
+                      : <span style={{ color: 'var(--color-danger)', fontSize: 'var(--font-size-label)' }}>{t('pages.serviceCatalogAdmin.priorityMissing')}</span>}
+                  </td>
                   <td style={{ padding: '10px 14px' }}>
                     {it.requiresApproval
                       ? <Pill bg={palette.warning.tint} color={palette.warning.strong}>{t('pages.serviceCatalogAdmin.required')}</Pill>
@@ -140,7 +154,7 @@ export function ServiceCatalogAdminPage() {
         footer={
           <>
             <Button type="button" variant="secondary" onClick={modal.close}>{t('common.cancel')}</Button>
-            <Button type="submit" disabled={saving || form.name.trim().length === 0}>
+            <Button type="submit" disabled={saving || form.name.trim().length === 0 || form.priority === ''}>
               {saving ? t('common.saving') : t('common.save')}
             </Button>
           </>
@@ -165,6 +179,16 @@ export function ServiceCatalogAdminPage() {
         <div style={{ marginBottom: 14 }}>
           <FieldLabel htmlFor={ids.category}>{t('pages.serviceCatalogAdmin.category')}</FieldLabel>
           <Input id={ids.category} value={form.category} onChange={(e) => patch({ category: e.target.value })} placeholder={t('pages.serviceCatalogAdmin.categoryPlaceholder')} />
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <FieldLabel htmlFor={ids.priority}>{t('pages.serviceCatalogAdmin.priorityRequired')}</FieldLabel>
+          <Select id={ids.priority} value={form.priority} onChange={(e) => patch({ priority: e.target.value })} required>
+            <option value="" disabled>{t('pages.serviceCatalogAdmin.priorityPlaceholder')}</option>
+            {priorities.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </Select>
+          <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', lineHeight: 1.5 }}>
+            {t('pages.serviceCatalogAdmin.priorityHint')}
+          </p>
         </div>
         <div>
           <FieldLabel htmlFor={ids.approval}>{t('pages.changeDetail.approval')}</FieldLabel>

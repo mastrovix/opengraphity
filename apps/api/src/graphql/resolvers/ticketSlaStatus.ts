@@ -6,6 +6,7 @@
  * l'aveva: la sua pagina non mostrava lo SLA nemmeno quando una policy lo
  * aveva creato (giro del 14 set 2026).
  */
+import { toNumber } from '@opengraphity/neo4j'
 import { withSession } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 
@@ -20,6 +21,12 @@ export function ticketSlaStatusResolver(label: TicketSlaLabel) {
     `, { id: parent.id, tenantId: ctx.tenantId }))
     if (!result.records.length) return null
     const s = result.records[0]!.get('s').properties as Props
+    // Il preavviso è della policy (lo scheduler lo legge da qui per l'avviso):
+    // il badge deve usare lo stesso, non una soglia sua (verifica «Cosa resta cablato», ondata 1).
+    const warningMinutes = toNumber(s['tier_warning_minutes'])
+    if (!Number.isInteger(warningMinutes) || warningMinutes <= 0) {
+      throw new Error(`SLAStatus ${String(s['id'])} of ${label} ${parent.id} has no valid warning lead (tier_warning_minutes=${String(s['tier_warning_minutes'])})`)
+    }
     return {
       startedAt:        s['started_at'],
       responseDeadline: s['response_deadline'],
@@ -28,6 +35,7 @@ export function ticketSlaStatusResolver(label: TicketSlaLabel) {
       resolveMet:       Boolean(s['resolve_met']),
       breached:         Boolean(s['breached']),
       pausedAt:         (s['paused_at'] ?? null) as string | null,
+      warningMinutes,
     }
   })
 }

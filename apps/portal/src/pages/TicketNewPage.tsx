@@ -11,6 +11,7 @@ import { notifyError } from '@/lib/notify'
 import { uploadAttachment } from '@/lib/attachments'
 import { colors, palette } from '@/lib/tokens'
 import { useTicketCategories } from '@/hooks/useTicketCategories'
+import { usePortalSeverityChoices } from '@/hooks/usePortalSeverityChoices'
 
 /**
  * Icone per i valori spediti del vocabolario `category`. Le categorie vengono
@@ -20,8 +21,6 @@ import { useTicketCategories } from '@/hooks/useTicketCategories'
 const CATEGORY_ICONS: Readonly<Record<string, LucideIcon>> = {
   hardware: Monitor, software: Code, access: Key, network: Wifi, security: ShieldAlert, other: HelpCircle,
 }
-
-const PRIORITIES = ['low', 'medium', 'high'] as const
 
 interface KBArticle { id: string; title: string; slug: string; category: string }
 
@@ -33,7 +32,9 @@ export function TicketNewPage() {
   const [category,    setCategory]    = useState<string>('')
   const [title,       setTitle]       = useState('')
   const [description, setDescription] = useState('')
-  const [priority,    setPriority]    = useState<'low' | 'medium' | 'high'>('medium')
+  // Nessuna severità preselezionata: la sceglie chi apre il ticket, fra quelle offerte dall'amministratore.
+  const { choices: severityChoices, error: severityError } = usePortalSeverityChoices()
+  const [priority,    setPriority]    = useState('')
   const [files,       setFiles]       = useState<File[]>([])
   const [uploading,   setUploading]   = useState(false)
   const [isDragging,  setIsDragging]  = useState(false)
@@ -100,7 +101,7 @@ export function TicketNewPage() {
     setFiles(prev => prev.filter((_, i) => i !== idx))
   }
 
-  const canSubmit = category !== '' && title.trim().length > 0 && description.trim().length > 0 && !loading && !uploading
+  const canSubmit = category !== '' && priority !== '' && title.trim().length > 0 && description.trim().length > 0 && !loading && !uploading
 
   function handleSubmit() {
     if (!canSubmit) return
@@ -238,23 +239,26 @@ export function TicketNewPage() {
       {/* Priority */}
       <div style={{ marginBottom: 24 }}>
         <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
-          {t('ticket.fields.priority')}
+          {t('ticket.fields.priority')} *
         </label>
-        <div style={{ display: 'flex', gap: 12 }}>
-          {PRIORITIES.map(p => (
-            <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 10, color: colors.slateDark }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          {severityChoices.map(c => (
+            <label key={c.value} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 10, color: colors.slateDark }}>
               <input
                 type="radio"
                 name="priority"
-                value={p}
-                checked={priority === p}
-                onChange={() => setPriority(p)}
+                value={c.value}
+                checked={priority === c.value}
+                onChange={() => setPriority(c.value)}
                 style={{ accentColor: colors.brand }}
               />
-              {t(`ticket.priority.${p}`)}
+              {c.label}
             </label>
           ))}
         </div>
+        {severityError && (
+          <p role="alert" style={{ marginTop: 8, fontSize: 12, color: palette.danger.strong }}>{severityError.message}</p>
+        )}
       </div>
 
       {/* File drop zone */}

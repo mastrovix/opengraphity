@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { SeverityBadge, RoleBadge, RiskBadge, riskLevel, PhaseBadge, StatusLabel } from './badges'
+import { SeverityBadge, RoleBadge, RiskBadge, PhaseBadge, StatusLabel } from './badges'
+import { RiskBandContext, bandForScore, type RiskBandThreshold } from '@/contexts/RiskBandContext'
 import { palette } from '@/lib/tokens'
 import { DomainVocabularyContext } from '@/contexts/DomainVocabularyContext'
 import { NEUTRAL_VALUE_STYLE } from '@/lib/domainStyle'
@@ -95,16 +96,52 @@ describe('RoleBadge', () => {
   })
 })
 
-describe('RiskBadge / riskLevel', () => {
-  it.each([[0, 'low'], [30, 'low'], [31, 'medium'], [60, 'medium'], [61, 'high'], [100, 'high']])('score %d → %s', (score, level) => {
-    expect(riskLevel(score)).toBe(level)
+describe('RiskBadge — fasce del cliente (verifica «Cosa resta cablato», ondata 1)', () => {
+  const FACTORY: RiskBandThreshold[] = [{ band: 'low', upTo: 30 }, { band: 'medium', upTo: 60 }, { band: 'high', upTo: 100 }]
+  const RISK_COLORS = { low: 'success', medium: 'warning', high: 'danger', critical: 'purple' } as const
+
+  function withBands(thresholds: RiskBandThreshold[] | null, ui: React.ReactElement, labels: Record<string, string> = {}) {
+    const values = thresholds ? thresholds.map((t) => t.band) : null
+    return withVocabulary(values, (
+      <RiskBandContext.Provider value={{ bandOf: (score) => (thresholds ? bandForScore(thresholds, score) : null), loading: false, error: null }}>
+        {ui}
+      </RiskBandContext.Provider>
+    ), labels, RISK_COLORS)
+  }
+
+  it.each([[0, 'low'], [30, 'low'], [31, 'medium'], [60, 'medium'], [61, 'high'], [100, 'high']])('soglie di fabbrica: score %d → %s', (score, band) => {
+    expect(bandForScore(FACTORY, score)).toBe(band)
   })
-  it('mostra "LIVELLO · score", in compact solo il numero, con tooltip', () => {
-    const { rerender } = render(<RiskBadge score={45} />)
-    expect(screen.getByText('MEDIUM · 45')).toHaveAttribute('title', 'MEDIUM · score 45')
-    rerender(<RiskBadge score={72} compact />)
+
+  it('mostra "FASCIA · score" con il colore del Dizionario, in compact solo il numero', () => {
+    const { rerender } = withBands(FACTORY, <RiskBadge score={45} />)
+    const el = screen.getByText('MEDIUM · 45')
+    expect(el).toHaveAttribute('title', 'MEDIUM · score 45')
+    expect(el.parentElement).toHaveStyle({ color: palette.warning.text })
+    rerender(
+      <DomainVocabularyContext.Provider value={{ valuesOf: () => ['low', 'medium', 'high'], labelOf: () => null, colorOf: (_n, v) => ((RISK_COLORS as Record<string, string>)[v] as never) ?? null, entriesOf: () => null, loading: false, error: null }}>
+        <RiskBandContext.Provider value={{ bandOf: (score) => bandForScore(FACTORY, score), loading: false, error: null }}>
+          <RiskBadge score={72} compact />
+        </RiskBandContext.Provider>
+      </DomainVocabularyContext.Provider>,
+    )
     expect(screen.getByText('72')).toHaveAttribute('title', 'HIGH · score 72')
   })
+
+  it('segue le soglie e le fasce del cliente: 20/50/80/100 con quattro fasce ed etichette sue', () => {
+    const custom: RiskBandThreshold[] = [{ band: 'low', upTo: 20 }, { band: 'medium', upTo: 50 }, { band: 'high', upTo: 80 }, { band: 'critical', upTo: 100 }]
+    withBands(custom, <RiskBadge score={45} />, { medium: 'Media' })
+    expect(screen.getByText('MEDIA · 45')).toBeInTheDocument()
+    withBands(custom, <RiskBadge score={90} />, { critical: 'Critica' })
+    expect(screen.getByText('CRITICA · 90').parentElement).toHaveStyle({ color: palette.purple.text })
+  })
+
+  it('soglie non note (caricamento o errore): solo il punteggio, neutro, nessuna fascia indovinata', () => {
+    withBands(null, <RiskBadge score={45} />)
+    expect(screen.getByText('45')).toHaveAttribute('title', 'score 45')
+    expect(screen.queryByText(/MEDIUM/)).not.toBeInTheDocument()
+  })
+
   it('score assente → "—"', () => {
     render(<RiskBadge score={null} />)
     expect(screen.getByText('—')).toBeInTheDocument()

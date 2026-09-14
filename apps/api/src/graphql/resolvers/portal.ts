@@ -17,6 +17,11 @@ import { localizedLabel } from '@opengraphity/types'
 import { languageFor } from '../../lib/tenantLanguage.js'
 import { LINGUE, labelFor, type Lingua } from '../../lib/enumValueLabels.js'
 import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
+import type { ValueColor } from '@opengraphity/types'
+import {
+  PORTAL_SEVERITY_VOCABULARY, portalSeverityChoices, portalSeverityOptions, setPortalSeverityOptions,
+  type PortalSeverityOption, type PortalSeverityOptionInput,
+} from '../../lib/portalSeverityOptions.js'
 import { notifyWatchers } from './collaboration.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -64,6 +69,26 @@ async function stepMeta(session: Session, tenantId: string, language: Lingua): P
 /** La lingua chiesta dal portale, se è una del prodotto; altrimenti quella dell'organizzazione. */
 async function requestedLanguage(tenantId: string, language: string | null | undefined): Promise<Lingua> {
   return (LINGUE as readonly string[]).includes(language ?? '') ? language as Lingua : languageFor(tenantId)
+}
+
+/**
+ * Etichetta e colore della severità di un ticket, nella lingua di chi guarda
+ * (verifica «Cosa resta cablato», ondata 1): le parole che l'amministratore ha
+ * scelto per il portale se il valore è una delle scelte, altrimenti
+ * l'etichetta del Dizionario; il colore è quello del Dizionario. Prima il
+ * portale colorava con una mappa `high/medium/low` scritta nella pagina.
+ */
+async function severityMeta(tenantId: string, language: Lingua): Promise<(value: string) => { priorityLabel: string; priorityColor: ValueColor | null }> {
+  const [options, vocabulary, fallback] = await Promise.all([
+    portalSeverityOptions(tenantId),
+    loadVocabularyEntries(tenantId, PORTAL_SEVERITY_VOCABULARY),
+    languageFor(tenantId),
+  ])
+  const chosen = new Map((options ?? []).map((o) => [o.value, o.labels[language]]))
+  return (value: string) => ({
+    priorityLabel: chosen.get(value) ?? labelFor(value, vocabulary.labels, language, fallback),
+    priorityColor: vocabulary.colors[value] ?? null,
+  })
 }
 
 function mapTicket(p: Record<string, unknown>) {
@@ -148,10 +173,11 @@ async function myTickets(
     )
 
     const total = toNumber(countResult.records[0]?.get('total'))
-    const meta = await stepMeta(session, ctx.tenantId, await requestedLanguage(ctx.tenantId, language))
+    const lingua = await requestedLanguage(ctx.tenantId, language)
+    const [meta, severity] = await Promise.all([stepMeta(session, ctx.tenantId, lingua), severityMeta(ctx.tenantId, lingua)])
     const items = result.records.map((r) => {
       const t = mapTicket(r.get('props') as Record<string, unknown>)
-      return { ...t, ...meta(t.status), assignedTeam: (r.get('assignedTeam') ?? null) as string | null }
+      return { ...t, ...meta(t.status), ...severity(t.priority), assignedTeam: (r.get('assignedTeam') ?? null) as string | null }
     })
 
     return { items, total }
@@ -184,6 +210,7 @@ async function myTicket(
     const ticket = {
       ...mapped,
       ...(await stepMeta(session, ctx.tenantId, lingua))(mapped.status),
+      ...(await severityMeta(ctx.tenantId, lingua))(mapped.priority),
       assignedTeam: (ticketResult.records[0].get('assignedTeam') ?? null) as string | null,
     }
 
@@ -327,6 +354,27 @@ async function myTicketStats(
  * del 14 set 2026: il portale ne aveva cinque scritte nel codice, e mancava
  * «security» che il vocabolario ha.
  */
+/** Le severità che l'utente finale può scegliere, nella sua lingua. */
+async function portalSeverityChoicesQuery(_: unknown, args: { language?: string | null }, ctx: GraphQLContext) {
+  return portalSeverityChoices(ctx.tenantId, await requestedLanguage(ctx.tenantId, args.language))
+}
+
+/** La scelta dell'amministratore, com'è salvata (null = non dichiarata). */
+async function portalSeverityOptionsQuery(_: unknown, __: unknown, ctx: GraphQLContext) {
+  const options = await portalSeverityOptions(ctx.tenantId)
+  return options === null ? null : options.map(toGraphQLOption)
+}
+
+async function setPortalSeverityOptionsMutation(_: unknown, args: { options: PortalSeverityOptionInput[] }, ctx: GraphQLContext) {
+  const saved = await setPortalSeverityOptions(ctx.tenantId, args.options)
+  void audit(ctx, 'tenant.portal_severity_options.updated', 'Tenant', ctx.tenantId, { options: saved })
+  return saved.map(toGraphQLOption)
+}
+
+function toGraphQLOption(o: PortalSeverityOption) {
+  return { value: o.value, labels: Object.entries(o.labels).map(([language, label]) => ({ language, label })) }
+}
+
 async function ticketCategories(_: unknown, args: { language?: string | null }, ctx: GraphQLContext) {
   const [vocabulary, fallback, language] = await Promise.all([
     loadVocabularyEntries(ctx.tenantId, 'category'),
@@ -353,6 +401,17 @@ async function createTicket(
 
   // No defaults: a missing priority is a client bug, not "medium".
   if (!priority) throw new ValidationError('priority is required', { key: 'errors.portal.priorityRequired' })
+  // Solo le severità che l'amministratore offre nel portale (verifica «Cosa
+  // resta cablato», ondata 1): il vocabolario intero lo valida il servizio, ma
+  // dal portale non si apre un ticket con un valore che il portale non offre.
+  const lingua = await languageFor(ctx.tenantId)
+  const choices = await portalSeverityChoices(ctx.tenantId, lingua)
+  if (!choices.some((c) => c.value === priority)) {
+    throw new ValidationError(
+      `"${priority}" is not one of the severities offered in the portal (${choices.map((c) => c.value).join(', ')}).`,
+      { key: 'errors.portal.severityNotOffered', params: { value: priority, allowed: choices.map((c) => c.label).join(', ') } },
+    )
+  }
 
   // Revisione del 14 set 2026 · IT-4: il ticket nasce dal servizio, come ogni
   // incident — numero, workflow, `incident.created` (SLA, regole di notifica,
@@ -371,7 +430,8 @@ async function createTicket(
     `, { id: created.id, tenantId: ctx.tenantId }))
     const props = res.records[0]?.get('props') as Record<string, unknown> | undefined
     if (!props) throw new Error(`Incident ${String(created.id)} vanished right after creation`)
-    return mapTicket(props)
+    const mapped = mapTicket(props)
+    return { ...mapped, ...(await severityMeta(ctx.tenantId, lingua))(mapped.priority) }
   })
 
   // Evento del canale, per chi si è abbonato ai ticket del portale (webhook in
@@ -505,7 +565,8 @@ async function reopenTicket(
     )
     const props = updated.records[0]?.get('props') as Record<string, unknown> | undefined
     if (!props) throw new Error(`Incident ${ticketId} vanished after reopen transition`)
-    return mapTicket(props)
+    const mapped = mapTicket(props)
+    return { ...mapped, ...(await severityMeta(ctx.tenantId, await languageFor(ctx.tenantId)))(mapped.priority) }
   }, true)
 }
 
@@ -517,10 +578,13 @@ export const portalResolvers = {
     myTicket,
     myTicketStats,
     ticketCategories,
+    portalSeverityChoices: portalSeverityChoicesQuery,
+    portalSeverityOptions: portalSeverityOptionsQuery,
   },
   Mutation: {
     createTicket,
     addTicketComment,
     reopenTicket,
+    setPortalSeverityOptions: setPortalSeverityOptionsMutation,
   },
 }

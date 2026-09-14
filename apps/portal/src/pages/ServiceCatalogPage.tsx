@@ -51,7 +51,7 @@ export function ServiceCatalogPage() {
     void createRequest({ variables: { input: {
       title: openItem.name,
       description: details.trim() || null,
-      priority: 'medium',
+      // Nessuna priorità: la decide la voce del catalogo (verifica «Cosa resta cablato», ondata 1).
       catalogItemId: openItem.id,
     } } })
   }

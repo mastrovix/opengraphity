@@ -4,10 +4,12 @@
  * and changes, workflow history, comments and attachment metadata.
  * Pure pdfkit, returns a Buffer. Shared parts live in ./pdf/ticketDossier.ts.
  */
+import type { ValueColor } from '@opengraphity/types'
 import { pdfText } from './pdf/texts.js'
+import { loadVocabularyEntries } from './vocabularyEntries.js'
 import { runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import {
-  DASH, fmtDate, orDash, COLOR, type Doc, type PdfMeta, type PdfLocale,
+  DASH, fmtDate, orDash, COLOR, valueColorInk, type Doc, type PdfMeta, type PdfLocale,
   sectionHeading, emptyLine, drawTable, keyValue, badge, createPdfBuffer,
 } from './pdf/common.js'
 import {
@@ -27,6 +29,8 @@ export interface ProblemDossier {
     title:         string
     description:   string | null
     priority:      string
+    /** Il colore che il Dizionario del cliente dà alla priorità, o null se non ne ha. */
+    priorityColor: ValueColor | null
     status:        string
     rootCause:     string | null
     workaround:    string | null
@@ -90,6 +94,7 @@ export async function loadProblemDossier(
       title:         (p['title']  ?? '') as string,
       description:   (p['description'] ?? null) as string | null,
       priority:      (p['priority'] ?? '') as string,
+      priorityColor: p['priority'] ? ((await loadVocabularyEntries(tenantId, 'priority')).colors[p['priority'] as string] ?? null) : null,
       status:        (p['status']   ?? '') as string,
       rootCause:     (p['root_cause'] ?? null) as string | null,
       workaround:    (p['workaround'] ?? null) as string | null,
@@ -121,9 +126,6 @@ export async function loadProblemDossier(
 
 // ── Builder ───────────────────────────────────────────────────────────────────
 
-const PRIORITY_COLORS: Record<string, string> = {
-  critical: '#dc2626', high: '#ea580c', medium: '#d97706', low: '#16a34a',
-}
 
 export async function buildProblemPdf(data: ProblemDossier, meta: PdfMeta): Promise<Buffer> {
   return createPdfBuffer(
@@ -142,8 +144,8 @@ function renderDossier(doc: Doc, data: ProblemDossier, locale: PdfLocale): void 
     badges: (doc, x, y) => {
       let bx = x
       bx += badge(doc, bx, y, `PRIORITY: ${(pr.priority || pdfText(locale, 'notAvailable')).toUpperCase()}`,
-        PRIORITY_COLORS[pr.priority?.toLowerCase() ?? ''] ?? COLOR.muted) + 6
-      badge(doc, bx, y, `STATUS: ${(pr.status || 'n/d').toUpperCase().replace(/_/g, ' ')}`, COLOR.brand)
+        valueColorInk(pr.priorityColor)) + 6
+      badge(doc, bx, y, `STATUS: ${(pr.status || pdfText(locale, 'notAvailable')).toUpperCase().replace(/_/g, ' ')}`, COLOR.brand)
     },
     sections: [
       detailsSection(data, locale),

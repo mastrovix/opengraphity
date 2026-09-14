@@ -7,7 +7,7 @@ export const GET_INCIDENTS = gql`
       total
       items {
         id number title severity status createdAt
-        slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt }
+        slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
       }
     }
   }
@@ -54,7 +54,7 @@ export const GET_INCIDENT = gql`
         id text isInternal createdAt updatedAt authorKind authorLabel
         author { id name email }
       }
-      slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt }
+      slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
       # history: who opened the incident from the alarm (monitoring or an operator)
       correlatedEvents { ...EventRowFields history(limit: 20) { kind incident { id } } }
       correlatedEventsPurged
@@ -87,7 +87,7 @@ export const GET_SERVICE_REQUEST = gql`
       assignee { id name email }
       workflowInstance { id currentStep status }
       availableTransitions { toStep label labels { language label } requiresInput inputField }
-      slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt }
+      slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
     }
   }
 `

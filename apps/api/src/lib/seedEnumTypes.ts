@@ -42,6 +42,8 @@ interface SystemEnum {
 
 /** Priorità e severità hanno la stessa scala, e quindi gli stessi colori. */
 const PRIORITY_COLORS: Readonly<Record<string, ValueColor>> = { critical: 'danger', high: 'orange', medium: 'warning', low: 'success' }
+/** I colori che il badge del rischio aveva nel web (verde, giallo, rosso) prima di leggere il Dizionario. */
+const RISK_BAND_COLORS: Readonly<Record<string, ValueColor>> = { low: 'success', medium: 'warning', high: 'danger' }
 
 export const SYSTEM_ENUMS: readonly SystemEnum[] = [
   { name: 'priority',                label: 'Priority',               values: ['low', 'medium', 'high', 'critical'],              scope: 'shared', valueColors: PRIORITY_COLORS },
@@ -76,7 +78,7 @@ export const SYSTEM_ENUMS: readonly SystemEnum[] = [
   // `Impostazioni → Matrici di dominio` li usano come tendine.
   // Il perché di ciascuno è in lib/domainMatrixSeed.ts.
   { name: 'urgency',                 label: 'Urgency',                values: ['low', 'medium', 'high'],                          scope: 'shared' },
-  { name: 'risk_band',               label: 'Risk Band',              values: ['low', 'medium', 'high'],                          scope: 'shared' },
+  { name: 'risk_band',               label: 'Risk Band',              values: ['low', 'medium', 'high'],                          scope: 'shared', valueColors: RISK_BAND_COLORS },
   { name: 'event_severity',          label: 'Event Severity',         values: [...EVENT_SEVERITIES],                              scope: 'shared',
     valueColors: { critical: 'danger', warning: 'warning', info: 'info' } },
   { name: 'service_criticality',     label: 'Service Criticality',    values: [...SERVICE_CRITICALITIES],                         scope: 'cmdb' },

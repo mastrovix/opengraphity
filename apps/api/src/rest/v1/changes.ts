@@ -187,6 +187,7 @@ router.post('/', requirePermission('changes:write'), asyncHandler(async (req: Re
   const why         = requiredString(body, 'why')
   const what        = requiredString(body, 'what')
   const changeOwner = requiredString(body, 'changeOwner')
+  const changeType  = requiredString(body, 'changeType')
   const affectedCIIds = body['affectedCIIds']
   if (!Array.isArray(affectedCIIds) || affectedCIIds.length === 0 || affectedCIIds.some((v) => typeof v !== 'string')) {
     throw new ValidationError('affectedCIIds must be a non-empty array of CI ids')
@@ -194,7 +195,7 @@ router.post('/', requirePermission('changes:write'), asyncHandler(async (req: Re
 
   const ctx = apiCtx(req)
   const { id, code } = await createChangeRFC(
-    { title, why, what, changeOwner, affectedCIIds: affectedCIIds as string[] },
+    { title, why, what, changeOwner, changeType, affectedCIIds: affectedCIIds as string[] },
     { tenantId: ctx.tenantId, userId: ctx.userId },
   )
   await audit(ctx, 'change_created', 'change', id, { code, title, affectedCIIds })

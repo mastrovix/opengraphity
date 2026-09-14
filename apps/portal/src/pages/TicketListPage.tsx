@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { valueColorStyle } from '@/lib/valueColor'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
@@ -29,15 +30,9 @@ const FILTER_CLASS: Record<FilterKey, string | null> = {
   closed:     'closed',
 }
 
-const PRIORITY_COLORS: Record<string, string> = {
-  high:   colors.danger,
-  medium: colors.warning,
-  low:    colors.success,
-}
-
 interface Ticket {
   id: string; number: string
-  title: string; status: string; priority: string
+  title: string; status: string; priority: string; priorityLabel: string; priorityColor: string | null
   /** Categoria ed etichetta del passo nel workflow del cliente (ondata 7 · D-15). */
   statusCategory: string | null; statusLabel: string | null
   category: string | null; createdAt: string; updatedAt: string; assignedTeam: string | null
@@ -165,7 +160,7 @@ export function TicketListPage() {
                 width:           4,
                 height:          40,
                 borderRadius:    4,
-                backgroundColor: PRIORITY_COLORS[ticket.priority] ?? colors.slateLight,
+                backgroundColor: valueColorStyle(ticket.priorityColor).base,
                 flexShrink:      0,
               }} />
 
@@ -191,10 +186,10 @@ export function TicketListPage() {
                   padding:         '1px 8px',
                   borderRadius:    100,
                   backgroundColor: colors.slateBg,
-                  color:           PRIORITY_COLORS[ticket.priority] ?? colors.slateLight,
+                  color:           valueColorStyle(ticket.priorityColor).text,
                   fontWeight:      600,
                 }}>
-                  {t(`ticket.priority.${ticket.priority}`, { defaultValue: ticket.priority })}
+                  {ticket.priorityLabel}
                 </span>
               </div>
             </Link>
