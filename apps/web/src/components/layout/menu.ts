@@ -70,6 +70,7 @@ export const TEAMS_ITEM_DEFS = [
   { to: '/teams', labelKey: 'sidebar.teams', icon: UsersRound },
   { to: '/users', labelKey: 'sidebar.users', icon: User },
   { to: '/roles', labelKey: 'sidebar.roles', icon: KeyRound },
+  { to: '/security/login', labelKey: 'sidebar.loginSecurity', icon: ShieldCheck },
 ]
 
 export const SETTINGS_ITEM_DEFS = [

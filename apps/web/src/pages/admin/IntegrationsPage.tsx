@@ -26,7 +26,9 @@ import { Pill } from '@/components/ui/Pill'
 import { GET_WORKFLOW_EVENT_TYPES } from '@/graphql/queries'
 import { Toggle } from '@/components/ui/Toggle'
 import { API_KEY_PERMISSIONS, INBOUND_TICKET_FIELDS } from '@opengraphity/types'
+import { SlackSection } from './SlackSection'
 import { Tabs, type TabItem } from '@/components/ui/Tabs'
+import { useSearchParams } from 'react-router-dom'
 import { useMutationWithToast, errorMessage } from '@/hooks/useMutationWithToast'
 import { useListQueryState } from '@/hooks/useListQueryState'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -64,7 +66,8 @@ const REGEN_API_KEY = gql`mutation RegenerateApiKey($id: ID!) { regenerateApiKey
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-type TabKey = 'inbound' | 'outbound' | 'apikeys'
+type TabKey = 'inbound' | 'outbound' | 'apikeys' | 'slack'
+const TAB_KEYS: readonly TabKey[] = ['inbound', 'outbound', 'apikeys', 'slack']
 type ModalKey = 'inbound' | 'outbound' | 'apikey' | 'secret'
 // `event` NON è tra le opzioni: le sorgenti di monitoraggio si creano dalla
 // procedura guidata di Monitoraggio → Sorgenti (senza JSON); qui restano
@@ -126,7 +129,11 @@ function ModalPortal({ modalType, children, onClose }: { modalType: ModalKey; ch
 export function IntegrationsPage() {
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const [tab, setTab] = useState<TabKey>('inbound')
+  // La scheda è nell'indirizzo (?tab=slack): il ritorno da Slack deve riaprire quella.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const tab: TabKey = (TAB_KEYS as readonly string[]).includes(tabParam ?? '') ? tabParam as TabKey : 'inbound'
+  const setTab = (next: TabKey) => { const p = new URLSearchParams(searchParams); p.set('tab', next); setSearchParams(p, { replace: true }) }
   const [modal, setModal] = useState<ModalKey | null>(null)
   const [secret, setSecret] = useState('')
   // Each tab owns its own sort/filter: an `entityType` filter set on "Webhook In"
@@ -141,6 +148,7 @@ export function IntegrationsPage() {
     { key: 'inbound',  label: t('admin.integrations.webhookIn') },
     { key: 'outbound', label: t('admin.integrations.webhookOut') },
     { key: 'apikeys',  label: t('admin.integrations.apiKeys') },
+    { key: 'slack',    label: t('admin.integrations.slack.tab') },
   ]
 
   const yesNo = [{ value: 'true', label: t('common.yes') }, { value: 'false', label: t('common.no') }]
@@ -389,6 +397,9 @@ export function IntegrationsPage() {
       </div>
 
       <Tabs items={TABS} value={tab} onChange={setTab} ariaLabel={t('admin.integrations.tabsLabel')} />
+
+      {/* ── TAB: Slack (ondata 8) ───────────────────────────────────────────── */}
+      {tab === 'slack' && <SlackSection />}
 
       {/* ── TAB: Webhook In ─────────────────────────────────────────────────── */}
       {tab === 'inbound' && <>

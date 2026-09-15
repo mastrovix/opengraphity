@@ -81,6 +81,8 @@ let vociSenzaPriorita: string[] = []
 let vociCategoriaVecchia: Array<{ name: string; legacy: string }> = []
 vi.mock('../catalogItemPriority.js', () => ({ catalogItemsWithoutPriority: vi.fn(async () => vociSenzaPriorita), catalogItemsWithLegacyCategory: vi.fn(async () => vociCategoriaVecchia) }))
 vi.mock('../stepDeadlineBlocked.js', () => ({ blockedStepDeadlines: vi.fn(async () => []) }))
+let canaliSlackSenzaWorkspace: string[] = []
+vi.mock('../slackChannelsWithoutWorkspace.js', () => ({ slackChannelsWithoutWorkspace: vi.fn(async () => canaliSlackSenzaWorkspace) }))
 vi.mock('../slaWarningCheck.js', () => ({ slaPoliciesWarningNotBeforeDeadline: vi.fn(async () => preavvisiScaduti) }))
 vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: vi.fn(async () => policy) }))
 vi.mock('../domainMatrix.js', async (importOriginal) => {
@@ -125,6 +127,7 @@ function healthy(): void {
   vociSenzaPriorita = []
   vociCategoriaVecchia = []
   giorniNotifiche = 30
+  canaliSlackSenzaWorkspace = []
   gaps = []
   vocabularies = {
     impact: ['low'], urgency: ['low'], priority: ['low'], severity: ['low'],
@@ -160,6 +163,13 @@ beforeEach(() => { healthy() })
 describe('configurationIssues', () => {
   it('niente da sistemare → lista vuota (un banner che compare sempre diventa invisibile)', async () => {
     expect(await configurationIssues('c-one')).toEqual([])
+  })
+
+  it('ondata 8: canali Slack col bot ma nessun workspace collegato → errore che li nomina, si rimedia in Integrazioni', async () => {
+    canaliSlackSenzaWorkspace = ['#ops', '#major']
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'slack_not_connected', severity: 'error', where: '/admin/integrations', params: { count: '2', channels: '#ops, #major' } },
+    ])
   })
 
   it('conservazione delle notifiche non scelta → avviso, si rimedia in Organizzazione', async () => {

@@ -356,8 +356,14 @@ services:
       # Optional integrations
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       REPORT_AI_MODEL: ${REPORT_AI_MODEL:-}
-      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      # Slack (ondata 8): il token di ogni organizzazione sta nel grafo, cifrato con
+      # SECRETS_ENCRYPTION_KEY. Qui solo l'app Slack DI OPENGRAFO («Aggiungi a Slack»)
+      # e l'indirizzo pubblico da cui Slack raggiunge OpenGrafo.
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-}
+      SLACK_CLIENT_ID: ${SLACK_CLIENT_ID:-}
+      SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET:-}
       SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       APP_URL: ${APP_URL:-http://localhost}
 
     volumes:
@@ -402,6 +408,8 @@ services:
       EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-local}
       TRANSFORMERS_CACHE: /data/models
       VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+      # Il token Slack delle organizzazioni si legge cifrato dal grafo (ondata 8)
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-}
       # GET /metrics of this process (scraped by prometheus as `worker:4000`)
       PORT: "4000"
       METRICS_TOKEN: ${METRICS_TOKEN:-}
@@ -452,6 +460,8 @@ services:
       TRANSFORMERS_CACHE: /data/models
       # Correlation may call the AI triage of new incidents (optional, like in the API)
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Il token Slack delle organizzazioni si legge cifrato dal grafo (ondata 8)
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-}
       # GET /metrics of this process: the pipeline metrics live where the
       # pipeline runs (scraped by prometheus as `events-worker:4000`)
       PORT: "4000"

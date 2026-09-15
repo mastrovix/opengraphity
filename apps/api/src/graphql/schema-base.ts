@@ -15,6 +15,8 @@ import { dashboardSDL } from './schema-dashboard.js'
 import { anomalySDL } from './schema-anomaly.js'
 import { organizationSDL } from './schema-organization.js'
 import { rolesSDL } from './schema-roles.js'
+import { slackSDL } from './schema-slack.js'
+import { loginSDL } from './schema-login.js'
 import { topologySDL } from './schema-topology.js'
 import { discoverySDL } from './schema-discovery.js'
 import { adminSDL } from './schema-admin.js'
@@ -668,6 +670,8 @@ export function buildBaseSDL(): string {
   ${anomalySDL()}
   ${organizationSDL()}
   ${rolesSDL()}
+  ${slackSDL()}
+  ${loginSDL()}
   ${eventsSDL()}
   ${servicesSDL()}
   ${topologySDL()}

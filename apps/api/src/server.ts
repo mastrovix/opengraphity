@@ -19,7 +19,7 @@ import { sseRouter } from './rest/sse.js'
 import { reportStreamRouter } from './rest/report-stream.js'
 import { assistantRouter } from './rest/assistant.js'
 import { clientLogRouter } from './rest/client-logs.js'
-import { handleSlackCommands, handleSlackActions } from './rest/slack.js'
+import { handleSlackCommands, handleSlackActions, handleSlackOAuthCallback } from './rest/slack.js'
 import { attachmentRouter } from './rest/attachments.js'
 import { brandRouter } from './rest/brand.js'
 import { incidentPdfRouter } from './rest/incident-pdf.js'
@@ -212,6 +212,7 @@ app.post('/api/slack/commands',
   express.raw({ type: '*/*' }),
   (req: Request, res: Response) => void handleSlackCommands(req, res),
 )
+app.get('/api/slack/oauth/callback', (req: Request, res: Response) => void handleSlackOAuthCallback(req, res))
 app.post('/api/slack/actions',
   express.raw({ type: '*/*' }),
   (req: Request, res: Response) => void handleSlackActions(req, res),

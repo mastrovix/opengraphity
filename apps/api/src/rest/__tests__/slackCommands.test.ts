@@ -20,6 +20,12 @@ import { createHmac } from 'node:crypto'
 import type { Request, Response } from 'express'
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn() }))
+// Ondata 8: il workspace T1 è collegato a tenant-1 con l'app dell'organizzazione.
+vi.mock('@opengraphity/notifications', () => ({
+  loadSlackInstallationByTeam: vi.fn(async (teamId: string) => (teamId === 'T1'
+    ? { tenantId: 'tenant-1', teamId: 'T1', teamName: 'Acme', mode: 'token', signingSecret: 'test-signing-secret', botToken: 'xoxb-1', botUserId: null, installedAt: '2026-09-15T00:00:00Z', installedByName: null }
+    : null)),
+}))
 vi.mock('../../services/incidentService.js', () => ({ createIncident: vi.fn() }))
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
 // Verifica «Cosa resta cablato», ondata 1: le severità sono il vocabolario del cliente (qui con `blocker`, un valore suo).
@@ -33,7 +39,7 @@ const SECRET = 'test-signing-secret'
 process.env['SLACK_SIGNING_SECRET'] = SECRET
 
 function slackRequest(text: string, userId = 'U123'): Request {
-  const body = new URLSearchParams({ text, user_id: userId }).toString()
+  const body = new URLSearchParams({ team_id: 'T1', text, user_id: userId }).toString()
   const ts   = String(Math.floor(Date.now() / 1000))
   const sig  = 'v0=' + createHmac('sha256', SECRET).update(`v0:${ts}:${body}`).digest('hex')
   return { body: Buffer.from(body), headers: { 'x-slack-request-timestamp': ts, 'x-slack-signature': sig } } as unknown as Request

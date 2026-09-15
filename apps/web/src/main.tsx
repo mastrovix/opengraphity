@@ -80,6 +80,7 @@ const OLAReportPage = lazy(() => import('@/pages/reports/OLAReportPage').then(m 
 import { IntegrationsPage } from '@/pages/admin/IntegrationsPage'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { PageLoader } from '@/components/PageLoader'
+import { LoginSecurityPage } from '@/pages/security/LoginSecurityPage'
 import { RolesPage } from '@/pages/roles/RolesPage'
 import { RoleEditorPage } from '@/pages/roles/RoleEditorPage'
 import { RequirePermission } from '@/components/RequirePermission'
@@ -223,6 +224,8 @@ const router = createBrowserRouter([
       guarded('roles', <RolesPage />),
       guarded('roles/new', <RoleEditorPage />),
       guarded('roles/:key', <Keyed Page={RoleEditorPage} />),
+      // Accesso e password dell'organizzazione (ondata 8)
+      guarded('security/login', <LoginSecurityPage />),
       guarded('logs', <LogsPage />),
       guarded('admin/queues', <QueueStatsPage />),
       guarded('admin/audit', <AuditLogPage />),

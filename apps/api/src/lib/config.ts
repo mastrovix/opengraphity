@@ -198,8 +198,21 @@ const readers = {
    * modello distinto).
    */
   anthropicModel:     (): string => optionalEnv('ANTHROPIC_MODEL') ?? 'claude-opus-5',
-  slackBotToken:      (): string | undefined => optionalEnv('SLACK_BOT_TOKEN'),
+  /*
+    L'app Slack DI OPENGRAFO (ondata 8): serve al collegamento con un clic
+    («Aggiungi a Slack»). Il token di ogni organizzazione NON sta qui: sta nel
+    grafo, cifrato (SlackInstallation). Senza queste tre il collegamento con un
+    clic non si offre; resta quello con il token dell'app dell'organizzazione.
+  */
+  slackClientId:      (): string | undefined => optionalEnv('SLACK_CLIENT_ID'),
+  slackClientSecret:  (): string | undefined => optionalEnv('SLACK_CLIENT_SECRET'),
   slackSigningSecret: (): string | undefined => optionalEnv('SLACK_SIGNING_SECRET'),
+  /**
+   * L'indirizzo da cui Internet raggiunge OpenGrafo (es. https://opengrafo.acme.com):
+   * Slack chiama lì i comandi, le azioni e il ritorno dell'installazione.
+   * Senza, Slack non può raggiungere OpenGrafo e la pagina Integrazioni lo dice.
+   */
+  publicBaseUrl:      (): string | undefined => optionalEnv('PUBLIC_BASE_URL')?.replace(/\/+$/, ''),
 } as const
 
 type Readers = typeof readers

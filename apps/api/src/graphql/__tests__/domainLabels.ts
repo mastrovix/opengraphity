@@ -14,7 +14,7 @@
  */
 export const DOMAIN_LABELS = [
   'Incident', 'Problem', 'Change', 'ServiceRequest', 'KBArticle',
-  'Team', 'User', 'Role',
+  'Team', 'User', 'Role', 'SlackInstallation',
   'AssessmentTask', 'DeployPlanTask', 'ValidationTest', 'DeploymentTask', 'ReviewTask', 'ChangeApproval',
   'WorkflowInstance', 'WorkflowDefinition', 'WorkflowStep', 'WorkflowStepExecution',
   'NotificationChannel', 'NotificationRule', 'OutboundWebhook', 'InboundWebhook', 'ApiKey',

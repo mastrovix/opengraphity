@@ -329,6 +329,24 @@ Verifica «Cosa resta cablato», ondata 7. Every root operation requires **at le
 
 Notification recipients `role:<key>` accept any role of the organization (rules, workflow step notifications, automations); a role that does not exist is refused on save.
 
+### Slack and company sign-in (organization)
+
+Verifica «Cosa resta cablato», ondata 8.
+
+| Operation | Permission | Description |
+|-----------|------------|-------------|
+| `slackSettings` | `config.integrations` | Connected workspace (mode `app` or `token`, team, who and when — never a secret), whether one-click install is available, whether the platform can encrypt tokens, and the addresses Slack must call (`null` without `PUBLIC_BASE_URL`) |
+| `startSlackInstall(returnTo)` | `config.integrations` | Slack authorize URL for the OpenGrafo app; the signed `state` carries organization, person and return page (which must belong to the organization) |
+| `connectSlackWithToken(botToken, signingSecret)` | `config.integrations` | Connects the organization's own Slack app: the token is tested with `auth.test` before saving; both secrets are stored encrypted (`SECRETS_ENCRYPTION_KEY`). A workspace belongs to one organization |
+| `disconnectSlack` | `config.integrations` | Removes the connection |
+| `loginSettings` | `admin.users` | Password rules and company sign-in providers of the organization's Keycloak realm |
+| `setPasswordRules(input)` | `admin.users` | Length, required characters, not username/e-mail, history, expiry, temporary lock after failed attempts (never permanent). Policy parts the page does not manage are kept |
+| `testLoginProvider(input)` | `admin.users` | Microsoft: tenant discovery + client credentials; Google: discovery + client id format; SAML: metadata import. Returns each check |
+| `saveLoginProvider(input, activate)` | `admin.users` | `activate: true` tests first and enables only if every check passes; `false` saves it turned off. The secret stays in Keycloak and is never returned. First sign-in from a provider links an existing person by e-mail and refuses anyone else (flow `opengrafo-existing-users-only`); passwords keep working |
+| `deactivateLoginProvider(kind)` / `removeLoginProvider(kind)` | `admin.users` | Turn off / remove `microsoft`, `google` or `saml` |
+
+REST: `GET /api/slack/oauth/callback` (public, verifies the signed state, redirects back to Integrations with `?slack=connected|error`). `POST /api/slack/commands` and `/api/slack/actions` recognise the organization by the workspace (`team_id`) and verify the signature with that connection's secret. `SLACK_BOT_TOKEN` no longer exists.
+
 
 ---
 

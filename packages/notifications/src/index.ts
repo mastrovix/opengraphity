@@ -1,6 +1,7 @@
 import { assertSafeOutboundUrl } from '@opengraphity/events'
 import { loadNotificationLocale } from './locale.js'
 import { notificationText } from './texts.js'
+import { slackBotToken } from './slackInstallation.js'
 
 export * from './sse.js'
 export * from './inbox.js'
@@ -13,6 +14,8 @@ export * from './recipients.js'
 export * from './texts.js'
 export * from './locale.js'
 export * from './brand.js'
+export * from './secretBox.js'
+export * from './slackInstallation.js'
 export { loadChannels, dispatchIncidentNotification, dispatchChangeNotification, dispatchChangeTaskNotification } from './consumer.js'
 
 export interface NotificationChannelData {
@@ -58,6 +61,7 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
  * `false` nobody reads.
  */
 export async function sendSlackMessage(
+  tenantId: string,
   webhookUrl: string | null,
   channelId: string | null,
   blocks: SlackBlock[],
@@ -74,8 +78,8 @@ export async function sendSlackMessage(
     return true
   }
   if (channelId) {
-    const token = process.env['SLACK_BOT_TOKEN']
-    if (!token) throw new Error('SLACK_BOT_TOKEN is not configured')
+    // Il bot del workspace dell'ORGANIZZAZIONE (ondata 8): prima un token unico della piattaforma.
+    const token = await slackBotToken(tenantId)
     const res = await fetchWithTimeout('https://slack.com/api/chat.postMessage', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -119,7 +123,7 @@ export async function sendTestMessage(channel: NotificationChannelData, tenantId
     const blocks: SlackBlock[] = [
       { type: 'section', text: { type: 'mrkdwn', text: notificationText(locale, 'testMessageSlack', { channel: channel.name }) } },
     ]
-    return sendSlackMessage(channel.webhookUrl, channel.channelId, blocks)
+    return sendSlackMessage(tenantId, channel.webhookUrl, channel.channelId, blocks)
   }
   if (channel.platform === 'teams') {
     const card: TeamsAdaptiveCard = {

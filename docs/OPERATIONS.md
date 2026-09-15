@@ -250,8 +250,8 @@ invocazioni: `apps/api/src/scripts/README.md`.
 *opt-out*: il dispatcher delle notifiche e il digest email trattano il flag
 **assente come `true`** (`coalesce(u.notifications_enabled, true)`). Gli utenti
 demo dei seed (`seed:users`, `seed:users-bulk`, email fittizie `USR-nnn@…`)
-non hanno il flag, quindi in un ambiente con `RESEND_API_KEY`/`SLACK_BOT_TOKEN`
-reali riceverebbero email e digest. Prima di collegare un provider reale a un
+non hanno il flag, quindi in un ambiente con `RESEND_API_KEY` o un workspace Slack
+collegato reali riceverebbero email e digest. Prima di collegare un provider reale a un
 ambiente con dati demo:
 
 ```cypher

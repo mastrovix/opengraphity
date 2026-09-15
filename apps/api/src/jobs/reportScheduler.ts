@@ -232,7 +232,7 @@ async function reportSchedulerProcessor(_job: Job) {
         if (webhookUrl) {
           const summary = buildSlackSummary(tpl.name, tpl.id, results)
           malformedKpi = summary.malformedKpi
-          await sendSlackMessage(webhookUrl, null, summary.blocks as import('@opengraphity/notifications').SlackBlock[])
+          await sendSlackMessage(tpl.tenantId, webhookUrl, null, summary.blocks as import('@opengraphity/notifications').SlackBlock[])
         } else {
           logger.warn({ templateId: tpl.id, channelId: tpl.scheduleChannelId }, 'report-scheduler: schedule channel not found/inactive in tenant — Slack delivery skipped')
         }

@@ -99,7 +99,7 @@ export async function dispatchIncidentNotification(
   for (const ch of channels) {
     if (ch.platform === 'slack') {
       const blocks = formatSlackIncident(eventType, enriched, locale, headline)
-      await sendSlackMessage(ch.webhookUrl, ch.channelId, blocks)
+      await sendSlackMessage(tenantId, ch.webhookUrl, ch.channelId, blocks)
     } else if (ch.platform === 'teams') {
       if (!ch.webhookUrl) throw new Error(`[notifications] Teams channel ${ch.id} has no webhook_url configured`)
       const card = formatTeamsIncident(eventType, enriched, locale)
@@ -147,7 +147,7 @@ export async function dispatchChangeNotification(
   for (const ch of channels) {
     if (ch.platform === 'slack') {
       const blocks = formatSlackChange(enriched, locale)
-      await sendSlackMessage(ch.webhookUrl, ch.channelId, blocks)
+      await sendSlackMessage(tenantId, ch.webhookUrl, ch.channelId, blocks)
     }
   }
 }
@@ -162,7 +162,7 @@ export async function dispatchChangeTaskNotification(
   for (const ch of channels) {
     if (ch.platform === 'slack') {
       const blocks = formatSlackChangeTask(payload, locale)
-      await sendSlackMessage(ch.webhookUrl, ch.channelId, blocks)
+      await sendSlackMessage(tenantId, ch.webhookUrl, ch.channelId, blocks)
     }
   }
 }

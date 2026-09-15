@@ -86,6 +86,7 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, readonly Permission[]>> 
   'roles':                         ['admin.users'],
   'roles/new':                     ['admin.users'],
   'roles/:key':                    ['admin.users'],
+  'security/login':                ['admin.users'],
   'logs':                          ['admin.audit'],
   'admin/audit':                   ['admin.audit'],
   'admin/queues':                  ['admin.system'],

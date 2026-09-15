@@ -232,6 +232,7 @@ async function sendSlackAlert(
   blocks.push({ type: 'divider' })
 
   await sendSlackMessage(
+    tenantId,
     webhookUrl,
     null,
     blocks as import('@opengraphity/notifications').SlackBlock[],

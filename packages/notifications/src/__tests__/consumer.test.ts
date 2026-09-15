@@ -44,6 +44,14 @@ vi.mock('@opengraphity/events', () => ({
   loggableUrl: (u: string) => { try { return new URL(u).host } catch { return '<invalid-url>' } },
 }))
 vi.mock('../email.js', () => ({ sendEmail: vi.fn(async () => {}) }))
+// Ondata 8: il token del bot è quello del workspace dell'organizzazione (SlackInstallation cifrata).
+const slackToken = vi.hoisted(() => ({ value: null as string | null }))
+vi.mock('../slackInstallation.js', () => ({
+  slackBotToken: vi.fn(async (tenantId: string) => {
+    if (!slackToken.value) throw new Error(`Slack is not connected for organization ${tenantId}: connect the workspace in Admin → Integrations`)
+    return slackToken.value
+  }),
+}))
 
 type FetchInit = { method: string; headers: Record<string, string>; body: string }
 const fetchMock = vi.fn<(url: string, init: FetchInit) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>>(
@@ -79,7 +87,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  delete process.env['SLACK_BOT_TOKEN']
+  slackToken.value = null
   vi.restoreAllMocks()
 })
 
@@ -204,14 +212,14 @@ describe('dispatchIncidentNotification — Slack blocks / Teams adaptive card pe
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('slack channel by channel_id needs SLACK_BOT_TOKEN: missing → throws before any fetch', async () => {
+  it('slack channel by channel_id needs the organization\'s Slack workspace: not connected → throws before any fetch', async () => {
     channelRows = [slackChannel('s-api', ['assigned'], { webhook_url: null, channel_id: 'C123' })]
-    await expect(dispatchIncidentNotification('t1', 'assigned', incident)).rejects.toThrow('SLACK_BOT_TOKEN is not configured')
+    await expect(dispatchIncidentNotification('t1', 'assigned', incident)).rejects.toThrow('Slack is not connected for organization t1')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('slack channel by channel_id with token → chat.postMessage with Bearer auth; Slack ok:false → throws', async () => {
-    process.env['SLACK_BOT_TOKEN'] = 'xoxb-test'
+  it('slack channel by channel_id with the organization\'s token → chat.postMessage with Bearer auth; Slack ok:false → throws', async () => {
+    slackToken.value = 'xoxb-test'
     channelRows = [slackChannel('s-api', ['assigned'], { webhook_url: null, channel_id: 'C123' })]
     await dispatchIncidentNotification('t1', 'assigned', incident)
     const [url, init] = fetchMock.mock.calls[0]!

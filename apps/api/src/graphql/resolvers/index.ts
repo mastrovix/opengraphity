@@ -3,6 +3,8 @@ import { requirePermission } from '../../lib/permissions.js'
 import { setUserRole as setUserRoleInGraph, tenantRoles } from '../../lib/roles.js'
 import { audit } from '../../lib/audit.js'
 import { roleResolvers } from './roles.js'
+import { slackResolvers } from './slack.js'
+import { loginResolvers } from './login.js'
 import { applyAuthorizationPolicy } from '../../lib/authorization.js'
 import { config } from '../../lib/config.js'
 import { NotFoundError } from '../../lib/errors.js'
@@ -324,6 +326,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...organizationSettingsResolvers.Query,
       ...organizationProfileResolvers.Query,
       ...roleResolvers.Query,
+      ...slackResolvers.Query,
+      ...loginResolvers.Query,
       ...inboxResolvers.Query,
       auditLog,
       auditActions,
@@ -358,6 +362,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...organizationSettingsResolvers.Mutation,
       ...organizationProfileResolvers.Mutation,
       ...roleResolvers.Mutation,
+      ...slackResolvers.Mutation,
+      ...loginResolvers.Mutation,
       ...meResolvers.Mutation,
       ...inboxResolvers.Mutation,
       ...notificationRuleResolvers.Mutation,

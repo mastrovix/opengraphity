@@ -22,6 +22,13 @@ import { createHmac } from 'node:crypto'
 import type { Request, Response } from 'express'
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn() }))
+// Ondata 8: la richiesta si riconosce dal workspace collegato dall'organizzazione.
+const slack = vi.hoisted(() => ({
+  installation: null as null | { tenantId: string; teamId: string; teamName: string; mode: 'app' | 'token'; signingSecret: string | null; botToken: string; botUserId: null; installedAt: string; installedByName: null },
+}))
+vi.mock('@opengraphity/notifications', () => ({
+  loadSlackInstallationByTeam: vi.fn(async (teamId: string) => (slack.installation && slack.installation.teamId === teamId ? slack.installation : null)),
+}))
 vi.mock('../../services/incidentService.js', () => ({ createIncident: vi.fn(), resolveIncident: vi.fn(), escalateIncident: vi.fn() }))
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
 vi.mock('../../lib/domainMatrix.js', () => ({ domainVocabulary: vi.fn(async () => ['critical', 'high', 'medium', 'low']) }))
@@ -40,7 +47,17 @@ function sign(body: string, ts: number, secret = SECRET): string {
   return 'v0=' + createHmac('sha256', secret).update(`v0:${ts}:${body}`).digest('hex')
 }
 
-function slackReq(params: Record<string, string>, opts: { ts?: number; sig?: string | null; tsHeader?: string | null } = {}): Request {
+/** Il workspace T1 è collegato a tenant-1: comandi con `team_id`, azioni con `payload.team.id`. */
+function withTeam(params: Record<string, string>): Record<string, string> {
+  if ('payload' in params) {
+    const p = JSON.parse(params['payload']!) as Record<string, unknown>
+    return { payload: JSON.stringify({ team: { id: 'T1' }, ...p }) }
+  }
+  return { team_id: 'T1', ...params }
+}
+
+function slackReq(rawParams: Record<string, string>, opts: { ts?: number; sig?: string | null; tsHeader?: string | null } = {}): Request {
+  const params = withTeam(rawParams)
   const body = new URLSearchParams(params).toString()
   const ts   = opts.ts ?? nowSec()
   const headers: Record<string, string> = {}
@@ -83,6 +100,7 @@ beforeEach(() => {
   vi.useFakeTimers({ now: NOW_MS })
   vi.stubEnv('SLACK_SIGNING_SECRET', SECRET)
   resetConfigCache()
+  slack.installation = { tenantId: 'tenant-1', teamId: 'T1', teamName: 'Acme', mode: 'app', signingSecret: null, botToken: 'xoxb-1', botUserId: null, installedAt: '2026-09-15T00:00:00Z', installedByName: null }
 })
 afterEach(() => {
   vi.useRealTimers()
@@ -148,19 +166,40 @@ describe('verifySlackSignature (via /og commands)', () => {
 
   it('body tampered after signing → 401', async () => {
     const req = slackReq(CMD)
-    req.body = Buffer.from(new URLSearchParams({ ...CMD, text: 'incident open Altro ci=web-01 high' }).toString())
+    req.body = Buffer.from(new URLSearchParams({ team_id: 'T1', ...CMD, text: 'incident open Altro ci=web-01 high' }).toString())
     const res = fakeRes()
     await handleSlackCommands(req, asRes(res))
     expect(res.statusCode).toBe(401)
   })
 
-  it('SLACK_SIGNING_SECRET not configured → 401 and an error log (never a silent pass)', async () => {
+  it('app OpenGrafo senza SLACK_SIGNING_SECRET della piattaforma → 401 e un errore nel log (mai un passaggio silenzioso)', async () => {
     vi.stubEnv('SLACK_SIGNING_SECRET', '')
     resetConfigCache()
     const res = fakeRes()
     await handleSlackCommands(slackReq(CMD), asRes(res))
     expect(res.statusCode).toBe(401)
-    expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/SLACK_SIGNING_SECRET not configured/))
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ teamId: 'T1', mode: 'app' }), expect.stringMatching(/no signing secret/))
+  })
+
+  it('ondata 8: un workspace che nessuna organizzazione ha collegato → 401, nessuna lettura', async () => {
+    slack.installation = null
+    const res = fakeRes()
+    await handleSlackCommands(slackReq(CMD), asRes(res))
+    expect(res.statusCode).toBe(401)
+    expect(getSession).not.toHaveBeenCalled()
+  })
+
+  it('ondata 8: app dell\'organizzazione (modo token) → la firma si verifica col SUO segreto, non con quello della piattaforma', async () => {
+    const ORG_SECRET = '0123456789abcdef0123456789abcdef'
+    slack.installation = { ...slack.installation!, mode: 'token', signingSecret: ORG_SECRET }
+    const help = { text: 'help', user_id: 'U1' }
+    const body = new URLSearchParams(withTeam(help)).toString()
+    const ok = fakeRes()
+    await handleSlackCommands(slackReq(help, { sig: sign(body, nowSec(), ORG_SECRET) }), asRes(ok))
+    expect(ok.statusCode).toBe(200)
+    const platform = fakeRes()
+    await handleSlackCommands(slackReq(help), asRes(platform))
+    expect(platform.statusCode).toBe(401)
   })
 })
 
@@ -181,7 +220,7 @@ describe('/og commands — remaining branches', () => {
     expect(createIncident).not.toHaveBeenCalled()
   })
 
-  it('Slack user not linked to a User → ephemeral hint, session closed', async () => {
+  it('Slack user not linked to a User (in the organization of the workspace) → ephemeral hint, session closed', async () => {
     const { session } = sessionWith([[]])
     vi.mocked(getSession).mockReturnValue(session as never)
     const res = fakeRes()

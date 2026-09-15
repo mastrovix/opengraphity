@@ -36,6 +36,7 @@
  * chiave, e i soli `params` da interpolare — e la frase la compone il client,
  * che la lingua la conosce (`configurationIssue.<kind>`).
  */
+import { slackChannelsWithoutWorkspace } from './slackChannelsWithoutWorkspace.js'
 import type { Session } from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
 import { PORTAL_SEVERITY_VOCABULARY, portalSeverityOptions } from './portalSeverityOptions.js'
@@ -92,6 +93,7 @@ export type ConfigurationIssueKind =
   | 'vocabulary_behind_shipped'
   | 'sla_warning_not_before_deadline'
   | 'step_deadlines_blocked'
+  | 'slack_not_connected'
 
 export interface ConfigurationIssue {
   /** La CHIAVE del problema: il client la risolve nella sua lingua. */
@@ -114,7 +116,7 @@ export async function configurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -426,6 +428,17 @@ async function checkCatalogItemCategories(tenantId: string, session: Session): P
   const items = await catalogItemsWithLegacyCategory(session, tenantId)
   if (items.length === 0) return []
   return [{ kind: 'catalog_items_legacy_category', severity: 'warning', where: '/admin/service-catalog', params: { count: String(items.length), items: items.map((i) => `${i.name} («${i.legacy}»)`).join(', ') } }]
+}
+
+/**
+ * CANALI SLACK SENZA SLACK COLLEGATO (ondata 8): un canale che scrive con il bot
+ * (`channel_id`, non un webhook) usa il token del workspace dell'organizzazione.
+ * Senza workspace collegato ogni notifica verso quel canale fallisce.
+ */
+async function checkSlackChannels(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const names = await slackChannelsWithoutWorkspace(session, tenantId)
+  if (names.length === 0) return []
+  return [{ kind: 'slack_not_connected', severity: 'error', where: '/admin/integrations', params: { count: String(names.length), channels: names.join(', ') } }]
 }
 
 /**

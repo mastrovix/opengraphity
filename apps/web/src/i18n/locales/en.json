@@ -143,7 +143,8 @@
     "olaContracts": "OLA / UC",
     "olaReport": "OLA / UC Report",
     "anomalyRules": "Anomaly rules",
-    "roles": "Roles"
+    "roles": "Roles",
+    "loginSecurity": "Login & passwords"
   },
   "pages": {
     "incidents": {
@@ -2146,6 +2147,81 @@
       "peopleWithRole_one": "{{count}} person has this role",
       "peopleWithRole_other": "{{count}} people have this role",
       "loadError": "Could not load the roles: {{error}}"
+    },
+    "loginSecurity": {
+      "title": "Login & passwords",
+      "subtitle": "How people sign in to your organization: password rules and sign-in with a company account. Changes apply to the next sign-in.",
+      "rules": {
+        "title": "Password rules",
+        "description": "Rules for OpenGrafo passwords of your organization. Existing passwords stay valid until they are changed.",
+        "composition": "What a password must contain",
+        "minLength": "Minimum length",
+        "uppercase": "Uppercase letters",
+        "lowercase": "Lowercase letters",
+        "digits": "Digits",
+        "special": "Symbols",
+        "notUsername": "Different from the username",
+        "notEmail": "Different from the e-mail address",
+        "lifecycle": "Change and reuse",
+        "history": "Previous passwords that cannot be reused",
+        "expireDays": "Change the password every (days)",
+        "zeroOff": "0 = no check",
+        "zeroNever": "0 = never",
+        "lockout": "Too many wrong attempts",
+        "lockoutEnabled": "Block temporarily after too many wrong attempts",
+        "lockoutFailures": "Wrong attempts before the block",
+        "lockoutMinutes": "Longest block (minutes)",
+        "lockoutTemporary": "The block is always temporary: nobody, administrators included, stays locked out for good.",
+        "outOfRange": "A value is outside its allowed range.",
+        "tooManyRequired": "The required characters do not fit in the minimum length.",
+        "saved": "Password rules saved"
+      },
+      "providers": {
+        "title": "Sign in with a company account",
+        "description": "People sign in with their Microsoft, Google or SAML company account. Passwords keep working next to it: administrators always keep their own access.",
+        "rules": "Only people who already exist in OpenGrafo can sign in this way: the company account is linked by e-mail address. Anyone else is refused, and an administrator creates them first.",
+        "kind": {
+          "microsoft": "Microsoft (Entra ID)",
+          "google": "Google Workspace",
+          "saml": "SAML"
+        },
+        "help": {
+          "microsoft": "Register an application in Microsoft Entra ID, add the return address below, create a client secret, and copy the tenant, application id and secret here.",
+          "google": "Create an OAuth client in Google Cloud for a web application, add the return address below, and copy the client id and secret here.",
+          "saml": "Give your identity provider the OpenGrafo metadata below, then paste the address of the provider's metadata here."
+        },
+        "on": "Active",
+        "off": "Off",
+        "notConfigured": "Not configured",
+        "redirectUri": "Return address to register with the provider",
+        "spMetadata": "OpenGrafo metadata for the provider",
+        "displayName": "Name on the sign-in page",
+        "tenant": "Tenant (id or domain)",
+        "clientId": "Client / application id",
+        "clientSecret": "Client secret",
+        "secretKept": "The saved secret is never shown. To activate, type it again: it is tested at that moment.",
+        "secretRequired": "Needed to test and activate the provider.",
+        "hostedDomain": "Allowed domain (optional)",
+        "metadataUrl": "Metadata address of the provider",
+        "testResult": "Test result",
+        "check": {
+          "microsoftTenant": "Microsoft recognizes the tenant",
+          "microsoftCredentials": "Microsoft accepts the application id and secret",
+          "googleReachable": "Google answers",
+          "googleClientId": "The client id has the Google format (the secret is verified at the first sign-in)",
+          "samlMetadata": "The provider metadata can be read and has a sign-in address",
+          "network": "The provider could not be reached"
+        },
+        "test": "Test",
+        "testAndActivate": "Test and activate",
+        "deactivate": "Turn off",
+        "activated": "Provider tested and activated",
+        "savedOff": "Provider saved, turned off",
+        "deactivated": "Provider turned off",
+        "removeTitle": "Remove sign-in with «{{name}}»?",
+        "removeBody": "People who signed in this way use their OpenGrafo password, if they have one.",
+        "removed": "Provider removed"
+      }
     }
   },
   "filter": {
@@ -3002,6 +3078,35 @@
         "tokenMissing": "Webhook created but the token is missing in the response",
         "keyMissing": "API key created but the key is missing in the response",
         "emptyResponse": "empty response"
+      },
+      "slack": {
+        "tab": "Slack",
+        "intro": "Connect your organization's Slack workspace: notifications go to your channels with your bot, and people open incidents with /og. Each organization connects its own workspace.",
+        "noPublicUrl": "Slack cannot reach OpenGrafo yet: the platform has no public address (PUBLIC_BASE_URL). You can connect the workspace, but commands and buttons will not arrive until it is set.",
+        "noSecretsKey": "The platform cannot store Slack tokens: SECRETS_ENCRYPTION_KEY is not set. Ask whoever manages the installation.",
+        "connectedTitle": "Connected workspace",
+        "modeApp": "OpenGrafo app",
+        "modeToken": "Your organization's Slack app",
+        "installedBy": "connected by {{who}} on {{date}}",
+        "disconnect": "Disconnect",
+        "disconnectTitle": "Disconnect the Slack workspace «{{team}}»?",
+        "disconnectBody": "Channel notifications sent with the bot stop, and /og no longer answers. Webhook channels keep working.",
+        "disconnected": "Slack disconnected",
+        "connected": "Slack connected",
+        "installFailed": "The Slack installation did not complete: {{reason}}",
+        "appTitle": "Add the OpenGrafo app",
+        "appBody": "One click: Slack asks you to approve the OpenGrafo app for your workspace, then you come back here.",
+        "addToSlack": "Add to Slack",
+        "appUnavailable": "The OpenGrafo Slack app is not configured on this platform. Use your organization's own Slack app instead.",
+        "tokenTitle": "Use your own Slack app",
+        "tokenBody": "Create an app in your Slack workspace, install it, then paste its bot token and signing secret. OpenGrafo tries the token before saving it, and stores both encrypted.",
+        "botToken": "Bot token",
+        "signingSecret": "Signing secret",
+        "testAndConnect": "Test and connect",
+        "urlsTitle": "Addresses for your Slack app",
+        "urlsBody": "In your Slack app, set the slash command /og to the first address and Interactivity to the second.",
+        "commandsUrl": "Slash command /og",
+        "actionsUrl": "Interactivity (buttons)"
       }
     },
     "questions": {
@@ -3652,6 +3757,36 @@
       "inUse": "The role still has {{count}} people: give them another role first.",
       "usedAsRecipient": "The role receives notifications from {{count}} rules, workflow steps or automations: change them first.",
       "unknownTarget": "The recipients name roles this organization does not have: {{roles}}."
+    },
+    "slack": {
+      "badState": "The Slack installation link is not valid: start again from Integrations.",
+      "stateExpired": "The Slack installation took too long: start again from Integrations.",
+      "appNotConfigured": "The OpenGrafo Slack app is not configured on this platform.",
+      "noSecretsKey": "The platform cannot store Slack tokens (SECRETS_ENCRYPTION_KEY is not set).",
+      "teamTaken": "The Slack workspace «{{team}}» is already connected to another organization.",
+      "oauthRefused": "Slack refused the installation: {{error}}.",
+      "badToken": "The bot token of a Slack app starts with xoxb-.",
+      "badSigningSecret": "The signing secret of a Slack app is 32 hexadecimal characters.",
+      "tokenRefused": "Slack did not accept the token: {{error}}.",
+      "badReturnTo": "The return page must belong to this organization."
+    },
+    "login": {
+      "rule": {
+        "minLength": "Minimum length must be between {{min}} and {{max}}.",
+        "uppercase": "Uppercase letters must be between {{min}} and {{max}}.",
+        "lowercase": "Lowercase letters must be between {{min}} and {{max}}.",
+        "digits": "Digits must be between {{min}} and {{max}}.",
+        "special": "Symbols must be between {{min}} and {{max}}.",
+        "history": "Previous passwords must be between {{min}} and {{max}}.",
+        "expireDays": "The change interval must be between {{min}} and {{max}} days.",
+        "lockoutFailures": "Wrong attempts must be between {{min}} and {{max}}.",
+        "lockoutMinutes": "The block must last between {{min}} and {{max}} minutes."
+      },
+      "ruleShape": "A password rule is missing or has the wrong type.",
+      "rulesExceedLength": "The required characters do not fit in the minimum length.",
+      "unknownProvider": "Unknown sign-in provider «{{kind}}».",
+      "missingFields": "Fill in: {{fields}}.",
+      "testFailed": "The provider did not pass the test and was not activated ({{checks}})."
     }
   },
   "errorBoundary": {
@@ -5349,7 +5484,9 @@
       "sla_warning_not_before_deadline_one": "An SLA policy sends its warning when the ticket is created, because the warning is not shorter than the resolution time (warning / resolution): {{details}}. **Shorten the warning in Admin → SLA Policies**.",
       "sla_warning_not_before_deadline_other": "{{count}} SLA policies send their warning when the ticket is created, because the warning is not shorter than the resolution time (warning / resolution): {{details}}. **Shorten the warnings in Admin → SLA Policies**.",
       "step_deadlines_blocked_one": "{{count}} ticket is still in a step whose deadline could not move it ({{tickets}}): the approvals refused it, or the workflow changed and the deadline has nowhere to go. It is retried every hour. **Check the step deadline in the workflow designer**.",
-      "step_deadlines_blocked_other": "{{count}} tickets are still in a step whose deadline could not move them ({{tickets}}): the approvals refused it, or the workflow changed and the deadline has nowhere to go. It is retried every hour. **Check the step deadlines in the workflow designer**."
+      "step_deadlines_blocked_other": "{{count}} tickets are still in a step whose deadline could not move them ({{tickets}}): the approvals refused it, or the workflow changed and the deadline has nowhere to go. It is retried every hour. **Check the step deadlines in the workflow designer**.",
+      "slack_not_connected_one": "A Slack channel sends with the bot, but this organization has not connected its Slack workspace: {{channels}}. Every notification to it fails. **Connect Slack in Admin → Integrations**.",
+      "slack_not_connected_other": "{{count}} Slack channels send with the bot, but this organization has not connected its Slack workspace: {{channels}}. Every notification to them fails. **Connect Slack in Admin → Integrations**."
     },
     "gap": {
       "tenant_missing": "no row: the tenant does not exist",

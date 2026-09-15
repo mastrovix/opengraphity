@@ -314,6 +314,9 @@ const INDEXES: SchemaStatement[] = [
   { label: 'AnomalyRuleConfig(tenant_id, rule_key) unique', cypher: 'CREATE CONSTRAINT anomaly_rule_config_unique IF NOT EXISTS FOR (c:AnomalyRuleConfig) REQUIRE (c.tenant_id, c.rule_key) IS UNIQUE' },
   // Ruoli dell'organizzazione (ondata 7 di «Nulla cablato»): una chiave per tenant.
   { label: 'Role(tenant_id, key) unique', cypher: 'CREATE CONSTRAINT role_tenant_key_unique IF NOT EXISTS FOR (r:Role) REQUIRE (r.tenant_id, r.key) IS UNIQUE' },
+  // Slack dell'organizzazione (ondata 8): uno per organizzazione, un workspace per una sola organizzazione.
+  { label: 'SlackInstallation(tenant_id) unique', cypher: 'CREATE CONSTRAINT slack_installation_tenant_unique IF NOT EXISTS FOR (s:SlackInstallation) REQUIRE s.tenant_id IS UNIQUE' },
+  { label: 'SlackInstallation(team_id) unique',   cypher: 'CREATE CONSTRAINT slack_installation_team_unique IF NOT EXISTS FOR (s:SlackInstallation) REQUIRE s.team_id IS UNIQUE' },
   // Team by id (lookup in OWNED_BY / SUPPORTED_BY joins)
   { label: 'Team(tenant_id, id)',                       cypher: 'CREATE INDEX team_id IF NOT EXISTS FOR (t:Team) ON (t.tenant_id, t.id)' },
   // SyncSource

@@ -268,6 +268,11 @@ for (const k of [...defined].sort()) {
 // quelli sono difetti veri (`Sync triggered`, `Heap Memory`, `Auto-refresh
 // 10s`, `External ID`): l'elenco puo solo accorciarsi.
 const IT_EN_IDENTICHE_ACCETTATE = new Set([
+  // Nomi di prodotti esterni (ondata 8 di «Nulla cablato»): Slack, Microsoft
+  // Entra ID e Google Workspace si chiamano così in ogni lingua.
+  'admin.integrations.slack.tab',
+  'pages.loginSecurity.providers.kind.microsoft',
+  'pages.loginSecurity.providers.kind.google',
   // Durate compatte del badge SLA: «h» e «min» sono simboli di unita (SI),
   // uguali nelle due lingue; i giorni invece no («d» / «gg»).
   'time.short.minutes',

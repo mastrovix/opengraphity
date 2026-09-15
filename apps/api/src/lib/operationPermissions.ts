@@ -225,11 +225,12 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   {
     anyOf: ['config.integrations'],
     query: ['apiKeys', 'inboundWebhooks', 'outboundWebhooks', 'syncSources', 'syncSource', 'syncRuns', 'syncConflicts', 'syncStats',
-      'availableConnectors', 'syncChangeHistory'],
+      'availableConnectors', 'syncChangeHistory', 'slackSettings'],
     mutation: ['createApiKey', 'updateApiKey', 'deleteApiKey', 'regenerateApiKey',
       'createInboundWebhook', 'updateInboundWebhook', 'deleteInboundWebhook', 'regenerateWebhookToken',
       'createOutboundWebhook', 'updateOutboundWebhook', 'deleteOutboundWebhook', 'testOutboundWebhook',
-      'createSyncSource', 'updateSyncSource', 'deleteSyncSource', 'triggerSync', 'resolveConflict', 'testSyncConnection'],
+      'createSyncSource', 'updateSyncSource', 'deleteSyncSource', 'triggerSync', 'resolveConflict', 'testSyncConnection',
+      'startSlackInstall', 'connectSlackWithToken', 'disconnectSlack'],
   },
 
   // ── Amministrazione ────────────────────────────────────────────────────────
@@ -237,6 +238,12 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
     anyOf: ['admin.users'],
     mutation: ['createUser', 'updateUserTeams', 'setUserRole', 'createTeam', 'updateTeam', 'setTeamManager', 'removeTeamManager', 'setTeamMember', 'setChangeManagerTeam',
       'createRole', 'updateRole', 'deleteRole'],
+  },
+  // Chi entra e come (ondata 8): regole delle password e login aziendale del realm dell'organizzazione.
+  {
+    anyOf: ['admin.users'],
+    query: ['loginSettings'],
+    mutation: ['setPasswordRules', 'testLoginProvider', 'saveLoginProvider', 'deactivateLoginProvider', 'removeLoginProvider'],
   },
   // I ruoli li legge chi assegna ruoli alle persone e chi indirizza notifiche «per ruolo».
   { anyOf: ['admin.users', 'config.notifications', 'config.workflow', 'config.automation'], query: ['roles'] },

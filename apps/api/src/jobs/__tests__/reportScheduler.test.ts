@@ -226,7 +226,9 @@ describe('report-scheduler — consegna Slack', () => {
     expect(channelQuery.p).toEqual({ channelId: 'ch-1', tenantId: 't1' })
     expect(channelQuery.q).toMatch(/c\.platform = 'slack' AND c\.active = true/)
     expect(sendSlackMessage).toHaveBeenCalledOnce()
-    const [url, text, blocks] = sendSlackMessage.mock.calls[0] as [string, null, unknown[]]
+    const [tenantId, url, text, blocks] = sendSlackMessage.mock.calls[0] as [string, string, null, unknown[]]
+    // Ondata 8: il messaggio parte a nome dell'organizzazione del report.
+    expect(tenantId).toBe('t1')
     expect(url).toBe('https://hooks.slack.com/services/T/B/x')
     expect(text).toBeNull()
     expect(JSON.stringify(blocks)).toContain('Weekly ops')

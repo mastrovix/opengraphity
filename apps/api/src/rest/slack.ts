@@ -6,6 +6,7 @@ import { GraphQLError } from 'graphql'
 import { logger } from '../lib/logger.js'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 import { domainVocabulary } from '../lib/domainMatrix.js'
+import { loadSlackInstallationByTeam, type SlackInstallationWithSecrets } from '@opengraphity/notifications'
 
 /**
  * La sintassi del comando. Le severità sono quelle del vocabolario `severity`
@@ -18,12 +19,31 @@ function usage(severities?: readonly string[]): string {
   return '`/og incident open <title> ci=<CI id or name> <' + (severities ? severities.join('|') : 'severity') + '>`'
 }
 
-function verifySlackSignature(req: Request): boolean {
-  const signingSecret = config.slackSigningSecret
-  if (!signingSecret) {
-    logger.error('[slack] SLACK_SIGNING_SECRET not configured — rejecting request')
-    return false
+/**
+ * DI QUALE ORGANIZZAZIONE È LA RICHIESTA (ondata 8 di «Nulla cablato»).
+ *
+ * Il workspace (`team_id`) dice l'organizzazione che lo ha collegato; la firma
+ * si verifica con il segreto di QUEL collegamento — l'app dell'organizzazione
+ * (modo `token`) o l'app OpenGrafo della piattaforma (modo `app`). Prima c'era
+ * un segreto unico e l'organizzazione si deduceva dall'utente Slack.
+ * Un workspace non collegato, o una firma sbagliata: 401, e non si legge altro.
+ */
+async function authenticateSlackRequest(req: Request, teamId: string | undefined): Promise<SlackInstallationWithSecrets | null> {
+  if (!teamId) return null
+  const installation = await loadSlackInstallationByTeam(teamId)
+  if (!installation) {
+    logger.warn({ teamId }, '[slack] request from a Slack workspace that no organization has connected')
+    return null
   }
+  const signingSecret = installation.mode === 'token' ? installation.signingSecret : config.slackSigningSecret
+  if (!signingSecret) {
+    logger.error({ teamId, mode: installation.mode }, '[slack] no signing secret for this installation — rejecting request')
+    return null
+  }
+  return verifySlackSignature(req, signingSecret) ? installation : null
+}
+
+export function verifySlackSignature(req: Request, signingSecret: string): boolean {
   const timestamp     = req.headers['x-slack-request-timestamp'] as string
   const slackSig      = req.headers['x-slack-signature'] as string
 
@@ -48,9 +68,10 @@ function parseUrlEncoded(req: Request): URLSearchParams {
 }
 
 export async function handleSlackCommands(req: Request, res: Response): Promise<void> {
-  if (!verifySlackSignature(req)) { res.status(401).json({ error: 'Unauthorized' }); return }
-
   const params     = parseUrlEncoded(req)
+  const installation = await authenticateSlackRequest(req, params.get('team_id') ?? undefined)
+  if (!installation) { res.status(401).json({ error: 'Unauthorized' }); return }
+
   const text       = params.get('text') ?? ''
   const slackUserId = params.get('user_id') ?? ''
   const parts = text.trim().split(/\s+/)
@@ -77,16 +98,16 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
     const session = getSession(undefined, 'READ')
     let tenantId: string, userId: string, ciId: string | null
     try {
-      // Resolve Slack user → tenant
+      // L'organizzazione è quella del workspace; la persona è quella con quel profilo Slack, in quell'organizzazione.
       const userResult = await session.executeRead((tx) =>
-        tx.run('MATCH (u:User {slack_id: $slackUserId}) RETURN u LIMIT 1', { slackUserId }), // tenant-ok: pre-auth, il tenant è quello dell'utente Slack collegato
+        tx.run('MATCH (u:User {slack_id: $slackUserId, tenant_id: $tenantId}) RETURN u LIMIT 1', { slackUserId, tenantId: installation.tenantId }),
       )
       if (!userResult.records.length) {
         res.json({ response_type: 'ephemeral', text: '⚠️ Link your Slack account in your profile settings.' })
         return
       }
       const u  = userResult.records[0]!.get('u').properties as Record<string, unknown>
-      tenantId = u['tenant_id'] as string
+      tenantId = installation.tenantId
       userId   = u['id']        as string
 
       // La severità è un valore del vocabolario del cliente.
@@ -151,14 +172,15 @@ export async function handleSlackCommands(req: Request, res: Response): Promise<
 
 export async function handleSlackActions(req: Request, res: Response): Promise<void> {
   try {
-    if (!verifySlackSignature(req)) { res.status(401).json({ error: 'Unauthorized' }); return }
-
     const params  = parseUrlEncoded(req)
     const payload = JSON.parse(params.get('payload') ?? '{}') as {
       actions?: Array<{ action_id: string; value: string }>
       user?: { id: string }
+      team?: { id: string }
       response_url?: string
     }
+    const installation = await authenticateSlackRequest(req, payload.team?.id)
+    if (!installation) { res.status(401).json({ error: 'Unauthorized' }); return }
 
     const action      = payload.actions?.[0]
     const slackUserId = payload.user?.id
@@ -172,11 +194,11 @@ export async function handleSlackActions(req: Request, res: Response): Promise<v
 
     const session = getSession(undefined, 'WRITE')
     try {
-      // Look up by slack_id only — tenantId derived from the user node (slack_id is unique)
+      // L'organizzazione è quella del workspace che ha firmato la richiesta.
       const userResult = await session.executeRead((tx) =>
         tx.run(
-          'MATCH (u:User {slack_id: $slackUserId}) RETURN u LIMIT 1', // tenant-ok: pre-auth, tenant derivato dall'utente Slack collegato
-          { slackUserId },
+          'MATCH (u:User {slack_id: $slackUserId, tenant_id: $tenantId}) RETURN u LIMIT 1',
+          { slackUserId, tenantId: installation.tenantId },
         ),
       )
       if (!userResult.records.length) {
@@ -193,7 +215,7 @@ export async function handleSlackActions(req: Request, res: Response): Promise<v
       }
       const u        = userResult.records[0]!.get('u').properties as Record<string, unknown>
       const userId   = u['id']        as string
-      const tenantId = u['tenant_id'] as string
+      const tenantId = installation.tenantId
       const now      = new Date().toISOString()
       if (actionType === 'assign_me') {
         await session.executeWrite((tx) =>
@@ -214,7 +236,7 @@ export async function handleSlackActions(req: Request, res: Response): Promise<v
         await fetch(responseUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: `✅ Azione *${actionType}* eseguita sull'incident \`${incidentId}\`.` }),
+          body: JSON.stringify({ text: `✅ Action *${actionType}* done on incident \`${incidentId}\`.` }),
         })
       }
     } finally {
@@ -224,5 +246,44 @@ export async function handleSlackActions(req: Request, res: Response): Promise<v
   } catch (err) {
     logger.error({ err }, 'slack actions error')
     if (!res.headersSent) res.sendStatus(200)
+  }
+}
+
+/**
+ * Ritorno da Slack dopo «Aggiungi a Slack» (ondata 8). Pubblico: lo `state`
+ * firmato dice organizzazione, persona e pagina di ritorno. La pagina di ritorno
+ * deve essere dell'organizzazione dello state, altrimenti non si reindirizza.
+ */
+export async function handleSlackOAuthCallback(req: Request, res: Response): Promise<void> {
+  const code  = typeof req.query['code'] === 'string' ? req.query['code'] : ''
+  const state = typeof req.query['state'] === 'string' ? req.query['state'] : ''
+  const denied = typeof req.query['error'] === 'string' ? req.query['error'] : ''
+  const { completeSlackOAuth, verifyInstallState } = await import('../lib/slackConnect.js')
+  const { extractTenantFromHost } = await import('../auth/resolveAuth.js')
+
+  let returnTo: URL | null = null
+  try {
+    const s = verifyInstallState(state)
+    const url = new URL(s.r)
+    if ((url.protocol === 'http:' || url.protocol === 'https:') && extractTenantFromHost(url.host) === s.t) returnTo = url
+  } catch { /* state illeggibile o scaduto: si risponde senza reindirizzare */ }
+  if (!returnTo) {
+    res.status(400).type('text/plain').send('Slack installation link is invalid or expired: start again from Integrations.')
+    return
+  }
+  const back = (params: Record<string, string>) => {
+    for (const [k, v] of Object.entries(params)) returnTo.searchParams.set(k, v)
+    res.redirect(302, returnTo.toString())
+  }
+  if (denied || !code) { back({ slack: 'error', reason: denied || 'no_code' }); return }
+  try {
+    const { state: s, installation } = await completeSlackOAuth(code, state)
+    const { audit } = await import('../lib/audit.js')
+    void audit({ tenantId: s.t, userId: s.u, userEmail: s.name, role: '', permissions: new Set() }, 'slack.connected', 'SlackInstallation', installation.teamId, { mode: 'app', team: installation.teamName })
+    back({ slack: 'connected' })
+  } catch (err) {
+    const key = (err as { extensions?: { i18n?: { key?: string } } }).extensions?.i18n?.key
+    logger.error({ err }, '[slack] OAuth installation failed')
+    back({ slack: 'error', reason: key ?? 'failed' })
   }
 }
