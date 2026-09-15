@@ -16,6 +16,7 @@ import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useValueStyle } from '@/hooks/useValueStyle'
 import { formatDate } from '@/lib/datetime'
 import { colors, palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 const GET_ARTICLE = gql`
   query KBArticleBySlug($slug: String!) {
@@ -67,7 +68,7 @@ export function KBArticlePage() {
   )
 
   const [rateArticle] = useMutation(RATE_ARTICLE, {
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
 
   const related = (relData?.kbArticles?.items ?? []).filter((a) => a.id !== article?.id).slice(0, 4)

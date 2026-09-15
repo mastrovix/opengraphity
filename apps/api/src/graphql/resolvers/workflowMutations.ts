@@ -5,7 +5,7 @@ import { workflowEngine, isWorkflowActionType, WORKFLOW_ACTION_TYPES } from '@op
 import { parseLocalizedLabels } from '@opengraphity/types'
 import type { ActionContext } from '@opengraphity/workflow'
 import {
-  NOTIFICATION_TARGETS, isTargetApplicable, applicableNotificationTargets,
+  NOTIFICATION_BASE_TARGETS, isNotificationTarget, isTargetApplicable, applicableNotificationTargets,
   WORKFLOW_STEP_PURPOSES, isWorkflowStepPurpose,
   WORKFLOW_STEP_CATEGORIES, isWorkflowStepCategory,
   WORKFLOW_TRANSITION_TRIGGERS, isWorkflowTransitionTrigger,
@@ -29,6 +29,7 @@ import { requestApprovalWouldBeSkipped } from '../../lib/requestApproval.js'
 import { transitionErrorFields } from '../../lib/transitionError.js'
 import { assertStepFieldValue, stepFieldMetas } from '../../lib/stepFieldWrites.js'
 import { assertDeadlineFields, assertDefinitionDeadlines, normalizeStepDeadlineInput } from '../../lib/stepDeadlineWrite.js'
+import { assertRolesExist, roleKeysInActions } from '../../lib/roles.js'
 
 // Safe label map — prevents Cypher injection when creating entities dynamically
 const ENTITY_LABELS: Record<string, string> = {
@@ -225,10 +226,10 @@ export function assertStepActions(raw: string | null | undefined, label: string)
       const target = (action as { params?: Record<string, unknown> }).params?.['target']
       if (target != null && target !== '') {
         const t = String(target)
-        if (!(NOTIFICATION_TARGETS as readonly string[]).includes(t)) {
+        if (!isNotificationTarget(t)) {
           throw new GraphQLError(
-            `${label}[${i}]: target "${t}" is not a valid recipient. Allowed: ${NOTIFICATION_TARGETS.join(', ')}.`,
-            { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.badTarget', params: { field: `${label}[${i}]`, target: t, allowed: NOTIFICATION_TARGETS.join(', ') } } } },
+            `${label}[${i}]: target "${t}" is not a valid recipient. Allowed: ${NOTIFICATION_BASE_TARGETS.join(', ')}, role:<role>.`,
+            { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.badTarget', params: { field: `${label}[${i}]`, target: t, allowed: [...NOTIFICATION_BASE_TARGETS, 'role:<role>'].join(', ') } } } },
           )
         }
         if (!isTargetApplicable('workflow.step.entered', t)) {
@@ -568,6 +569,7 @@ export async function updateWorkflowStep(
 ) {
   assertStepActions(enterActions, `enter_actions of step "${stepName}"`)
   assertStepActions(exitActions,  `exit_actions of step "${stepName}"`)
+  await assertRolesExist(ctx.tenantId, [...roleKeysInActions(enterActions), ...roleKeysInActions(exitActions)])
   const purposeValue = normalizeStepPurpose(purpose, `step "${stepName}"`)
   return withSession(async (session) => {
     if (hasUpdateField(enterActions) || hasUpdateField(exitActions)) {
@@ -1161,6 +1163,7 @@ export async function saveWorkflowChanges(
   // vocabolario non entra nel grafo dal disegnatore.
   // Azioni e scopo validati PRIMA di aprire la transazione: uno scopo fuori
   // vocabolario non entra nel grafo dal disegnatore (B4-3).
+  await assertRolesExist(ctx.tenantId, (steps ?? []).flatMap((st) => [...roleKeysInActions(st.enterActions), ...roleKeysInActions(st.exitActions)]))
   const stepRows = (steps ?? []).map((st) => {
     assertStepActions(st.enterActions, `enter_actions of step "${st.stepName}"`)
     assertStepActions(st.exitActions,  `exit_actions of step "${st.stepName}"`)

@@ -11,6 +11,7 @@ import { Pill } from '@/components/ui/Pill'
 import { Button } from '@/components/Button'
 import { lookupOrError, colors, palette, vendorColors } from '@/lib/tokens'
 import type { ConnectorKind } from '@/types/events'
+import { showError } from '@/lib/showError'
 
 interface ToolMeta {
   icon:  ComponentType<{ size?: number; color?: string; 'aria-hidden'?: boolean | 'true' }>
@@ -60,7 +61,7 @@ export async function copyToClipboard(text: string, successMessage: string): Pro
     toast.success(successMessage)
     return true
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    showError(e)
     return false
   }
 }

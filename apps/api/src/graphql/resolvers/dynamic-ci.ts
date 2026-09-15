@@ -10,7 +10,7 @@ import { ALLOWED_BASE_FIELDS, ALL_CIS_ALLOWED_FIELDS, ciOrderBy, buildBaseWhere,
 import { buildFieldResolvers, mapTeamProps } from './ciFieldResolvers.js'
 import { buildCreateMutation, buildUpdateMutation, buildDeleteMutation } from './ciMutations.js'
 import { mapITILField, fetchITILTypeById, buildITILTypesResolver, buildITILTypeFieldsResolver, buildITILMutations } from './itilTypeResolvers.js'
-import { requireAdmin, buildCITypesResolver, buildBaseCITypeResolver, buildMetamodelMutations } from './ciTypeMetamodel.js'
+import { requireMetamodelPermission, buildCITypesResolver, buildBaseCITypeResolver, buildMetamodelMutations } from './ciTypeMetamodel.js'
 
 type Props = Record<string, unknown>
 
@@ -158,6 +158,23 @@ function buildBlastRadiusResolver(types: CITypeWithDefinitions[]) {
 
 // ── Factory principale ────────────────────────────────────────────────────────
 
+/**
+ * I campi root generati per ogni tipo di CI: i loro nomi li sceglie il cliente,
+ * quindi la policy non li può elencare e li apre con `cmdb.read` / `cmdb.write`
+ * (lib/operationPermissions.ts). Stessi nomi di `buildDynamicCIResolvers`.
+ */
+export function dynamicCIRootFields(types: CITypeWithDefinitions[]): ReadonlySet<string> {
+  const out = new Set<string>()
+  for (const ciType of types) {
+    const typeName = toPascalCase(ciType.name)
+    const pluralName = pluralize(typeName)
+    out.add(`Query.${pluralName.charAt(0).toLowerCase() + pluralName.slice(1)}`)
+    out.add(`Query.${ciType.name}`)
+    for (const verb of ['create', 'update', 'delete']) out.add(`Mutation.${verb}${typeName}`)
+  }
+  return out
+}
+
 export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<string, unknown> {
   const Query: Record<string, unknown> = {}
   const Mutation: Record<string, unknown> = {}
@@ -276,7 +293,7 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
   Object.assign(Mutation, metamodelMutations)
 
   // ITIL Designer mutations
-  const itilMutations = buildITILMutations(requireAdmin)
+  const itilMutations = buildITILMutations(requireMetamodelPermission)
   Object.assign(Mutation, itilMutations)
 
   return {
@@ -311,4 +328,4 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
 
 // Re-export for external use
 export { mapITILField, fetchITILTypeById }
-export { requireAdmin } from './ciTypeMetamodel.js'
+export { requireMetamodelPermission } from './ciTypeMetamodel.js'

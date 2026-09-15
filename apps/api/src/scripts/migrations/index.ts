@@ -82,6 +82,8 @@ import { stepDeadlines } from './20260925_1200_step_deadlines.js'
 import { impactAnalysisWeightsSeed } from './20260926_1000_impact_analysis_weights.js'
 import { anomalyRuleConfigsSeed } from './20260926_1010_anomaly_rule_configs.js'
 import { organizationSettingsSeed } from './20260927_1000_organization_settings.js'
+import { factoryRoles } from './20260928_1000_factory_roles.js'
+import { assistantPermission } from './20260928_1010_assistant_permission.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -158,4 +160,6 @@ export const MIGRATIONS: readonly Migration[] = [
   impactAnalysisWeightsSeed,
   anomalyRuleConfigsSeed,
   organizationSettingsSeed,
+  factoryRoles,
+  assistantPermission,
 ]

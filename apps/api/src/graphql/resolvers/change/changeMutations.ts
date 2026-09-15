@@ -12,7 +12,7 @@ import { TASK_STATUS, ASSESSMENT_ROLE } from '../../../lib/taskStatus.js'
 import { withSession, runQuery, runQueryOne, getSession, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
-import { requireRole } from '../../../lib/requireRole.js'
+import { requirePermission } from '../../../lib/permissions.js'
 import { validateRequiredFields, propsToFieldValues } from '../../../lib/validateRequiredFields.js'
 import { stepNamesByPurposeOrdered } from '../../../lib/workflowTargets.js'
 import { createChangeRFC } from '../../../services/changeCreationService.js'
@@ -64,7 +64,7 @@ export async function createChange(
 export async function deleteChange(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   // Solo admin: eliminare una change (anche logicamente) rimuove dai flussi
   // approvazioni, task e collegamenti di tutto il tenant.
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'change.delete')
   const now = new Date().toISOString()
   await withSession(async (session) => {
     // Unica transazione: marca la change, chiude l'istanza di workflow (così

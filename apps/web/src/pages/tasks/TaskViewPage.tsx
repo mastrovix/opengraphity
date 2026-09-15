@@ -56,6 +56,7 @@ import { colors, palette } from '@/lib/tokens'
 import { plannedWindowStart, beforePlannedWindow } from './components/plannedWindow'
 import { useConfirm } from '@/hooks/useConfirm'
 import { formatDateTime } from '@/lib/datetime'
+import { showError } from '@/lib/showError'
 
 interface TaskDetail {
   id: string; code: string; kind: string
@@ -77,14 +78,15 @@ export function TaskViewPage() {
   const { data: affectedData, refetch: refetchAffected } = useQuery<{ changeAffectedCIs: AffectedCI[] }>(GET_CHANGE_AFFECTED_CIS, { variables: { changeId: task?.changeId ?? '' }, skip: !task, fetchPolicy: 'cache-and-network' })
   const { data: funcCat } = useQuery<{ assessmentQuestionCatalog: CatalogEntry[] }>(GET_QUESTION_CATALOG, { variables: { category: QUESTION_CATEGORY.FUNCTIONAL }, skip: !task || (task.kind !== 'assessment') })
   const { data: techCat } = useQuery<{ assessmentQuestionCatalog: CatalogEntry[] }>(GET_QUESTION_CATALOG, { variables: { category: QUESTION_CATEGORY.TECHNICAL }, skip: !task || (task.kind !== 'assessment') })
-  const { me } = useMe()
+  const { me, can } = useMe()
   const meData: { me: MeData | null } = { me }
   const { byName: changeStepByName } = useWorkflowSteps('change')
 
   const change = changeData?.change
   const allAffected = affectedData?.changeAffectedCIs ?? []
   const ciAffected = allAffected.find(a => a.ci.id === task?.ciId) ?? null
-  const isAdmin = meData?.me?.role === 'admin'
+  // Chi agisce per qualunque team (approval.override, ondata 7; prima «admin»).
+  const actsForAnyTeam = can('approval.override')
   const userTeamIds = new Set((meData?.me?.teams ?? []).map(t => t.id))
   const currentUserId = meData?.me?.id ?? null
 
@@ -105,21 +107,21 @@ export function TaskViewPage() {
     if (cid) { toast.success(t('toast.task.completed')); navigate(`/changes/${cid}`) }
   }
 
-  const [submitAnswer]     = useMutation(SUBMIT_ASSESSMENT_RESPONSE,   { onCompleted: refetchAll, onError: (e) => toast.error(e.message) })
-  const [completeAssess]   = useMutation(COMPLETE_ASSESSMENT_TASK,     { onCompleted: goToChange, onError: (e) => toast.error(e.message) })
-  const [assignUser]       = useMutation(ASSIGN_ASSESSMENT_TASK_TO_USER, { onCompleted: async () => { toast.success(t('toast.task.assignmentUpdated')); await refetchAll() }, onError: (e) => toast.error(e.message) })
-  const [assignPlanUser]   = useMutation(ASSIGN_DEPLOY_PLAN_TASK_TO_USER, { onCompleted: async () => { toast.success(t('toast.task.assignmentUpdated')); await refetchAll() }, onError: (e) => toast.error(e.message) })
-  const [savePlan]         = useMutation(SAVE_DEPLOY_PLAN,             { onCompleted: async () => { toast.success(t('toast.task.planSaved')); await refetchAll() }, onError: (e) => toast.error(e.message) })
-  const [completePlan]     = useMutation(COMPLETE_DEPLOY_PLAN_TASK,    { onCompleted: goToChange, onError: (e) => toast.error(e.message) })
-  const [completeVal]      = useMutation(COMPLETE_VALIDATION_TEST,     { onCompleted: goToChange, onError: (e) => toast.error(e.message) })
-  const [completeDep]      = useMutation(COMPLETE_DEPLOYMENT,          { onCompleted: goToChange, onError: (e) => toast.error(e.message) })
-  const [completeRev]      = useMutation(COMPLETE_REVIEW,              { onCompleted: goToChange, onError: (e) => toast.error(e.message) })
+  const [submitAnswer]     = useMutation(SUBMIT_ASSESSMENT_RESPONSE,   { onCompleted: refetchAll, onError: (e) => showError(e) })
+  const [completeAssess]   = useMutation(COMPLETE_ASSESSMENT_TASK,     { onCompleted: goToChange, onError: (e) => showError(e) })
+  const [assignUser]       = useMutation(ASSIGN_ASSESSMENT_TASK_TO_USER, { onCompleted: async () => { toast.success(t('toast.task.assignmentUpdated')); await refetchAll() }, onError: (e) => showError(e) })
+  const [assignPlanUser]   = useMutation(ASSIGN_DEPLOY_PLAN_TASK_TO_USER, { onCompleted: async () => { toast.success(t('toast.task.assignmentUpdated')); await refetchAll() }, onError: (e) => showError(e) })
+  const [savePlan]         = useMutation(SAVE_DEPLOY_PLAN,             { onCompleted: async () => { toast.success(t('toast.task.planSaved')); await refetchAll() }, onError: (e) => showError(e) })
+  const [completePlan]     = useMutation(COMPLETE_DEPLOY_PLAN_TASK,    { onCompleted: goToChange, onError: (e) => showError(e) })
+  const [completeVal]      = useMutation(COMPLETE_VALIDATION_TEST,     { onCompleted: goToChange, onError: (e) => showError(e) })
+  const [completeDep]      = useMutation(COMPLETE_DEPLOYMENT,          { onCompleted: goToChange, onError: (e) => showError(e) })
+  const [completeRev]      = useMutation(COMPLETE_REVIEW,              { onCompleted: goToChange, onError: (e) => showError(e) })
 
-  const [reopenAssess]     = useMutation(REOPEN_TASK,          { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => toast.error(e.message) })
-  const [reopenPlan]       = useMutation(REOPEN_DEPLOY_PLAN,   { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => toast.error(e.message) })
-  const [reopenVal]        = useMutation(REOPEN_VALIDATION,    { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => toast.error(e.message) })
-  const [reopenDep]        = useMutation(REOPEN_DEPLOYMENT,    { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => toast.error(e.message) })
-  const [reopenRev]        = useMutation(REOPEN_REVIEW,        { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => toast.error(e.message) })
+  const [reopenAssess]     = useMutation(REOPEN_TASK,          { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => showError(e) })
+  const [reopenPlan]       = useMutation(REOPEN_DEPLOY_PLAN,   { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => showError(e) })
+  const [reopenVal]        = useMutation(REOPEN_VALIDATION,    { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => showError(e) })
+  const [reopenDep]        = useMutation(REOPEN_DEPLOYMENT,    { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => showError(e) })
+  const [reopenRev]        = useMutation(REOPEN_REVIEW,        { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => showError(e) })
 
   // Completare prima della finestra pianificata si può, ma lo si conferma.
   const confirm = useConfirm()
@@ -172,7 +174,7 @@ export function TaskViewPage() {
 
   const ciOwnerTeamId = ciAffected?.ci.ownerGroup?.id ?? null
   const ciSupportTeamId = ciAffected?.ci.supportGroup?.id ?? null
-  const canEdit = isAdmin || (
+  const canEdit = actsForAnyTeam || (
     task.kind === 'assessment' ? (assessRole === ASSESSMENT_ROLE.OWNER ? !!ciOwnerTeamId && userTeamIds.has(ciOwnerTeamId) : !!ciSupportTeamId && userTeamIds.has(ciSupportTeamId))
     : task.kind === 'deploy-plan' ? !!ciSupportTeamId && userTeamIds.has(ciSupportTeamId)
     : task.kind === 'validation' || task.kind === 'review' ? !!ciOwnerTeamId && userTeamIds.has(ciOwnerTeamId)
@@ -250,7 +252,7 @@ export function TaskViewPage() {
             <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
               {task.code}
             </h1>
-            {isAdmin && isTaskCompleted && (
+            {actsForAnyTeam && isTaskCompleted && (
               <button
                 type="button"
                 onClick={() => setShowReopenModal(true)}

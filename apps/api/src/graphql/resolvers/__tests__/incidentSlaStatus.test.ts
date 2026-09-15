@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 // ── Session mock usato da withSession ─────────────────────────────────────────
 
@@ -50,7 +51,7 @@ const slaStatus = incidentResolvers.Incident.slaStatus
 
 // ── Test context ──────────────────────────────────────────────────────────────
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'operator', permissions: perms('operator') }
 
 const parent = { id: 'inc-1', tenantId: 'tenant-1' }
 

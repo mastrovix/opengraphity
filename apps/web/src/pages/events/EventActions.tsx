@@ -36,6 +36,7 @@ import { ACKNOWLEDGE_EVENT, RESOLVE_EVENT, LINK_EVENT_TO_CI, CREATE_INCIDENT_FRO
 import { isActiveEvent, resourceKindLabel } from './eventShared'
 import { canReevaluate, isSuppressed } from './eventCorrelation'
 import type { EventRow, MonitoringEvent } from '@/types/events'
+import { showError } from '@/lib/showError'
 
 interface CISearchRow { id: string; name: string; type: string; status: string; environment: string }
 
@@ -88,7 +89,7 @@ export function EventActions({ event, onChanged, size = 'xs', only, exclude, com
       await acknowledge({ variables: { id: event.id } })
       toast.success(t('toast.events.acknowledged'))
       onChanged?.()
-    } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
+    } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) })) }
   }
 
   async function handleReevaluate(e: MouseEvent<HTMLButtonElement>) {
@@ -99,7 +100,7 @@ export function EventActions({ event, onChanged, size = 'xs', only, exclude, com
       if (!outcome) throw new Error(t('events.actions.emptyResponse'))
       toast.success(t('toast.events.reevaluated', { outcome: t(`events.correlation.short.${outcome}`) }))
       onChanged?.()
-    } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
+    } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) })) }
   }
 
   async function handleOpenIncident(e: MouseEvent<HTMLButtonElement>) {
@@ -113,7 +114,7 @@ export function EventActions({ event, onChanged, size = 'xs', only, exclude, com
       toast.success(t('toast.events.incidentCreated', { number: inc.number }))
       onChanged?.()
       navigate(`/incidents/${inc.id}`)
-    } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
+    } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) })) }
   }
 
   if (!canAck && !canResolve && !canOpen && !canLink && !canReeval) return null
@@ -155,7 +156,7 @@ function ResolveDialog({ event, onClose, onDone }: { event: EventRow; onClose: (
       await resolve({ variables: { id: event.id, note: note.trim() || null } })
       toast.success(t('toast.events.resolved'))
       onDone()
-    } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
+    } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) })) }
   }
 
   return (
@@ -210,7 +211,7 @@ function LinkCIDialog({ event, onClose, onDone }: { event: EventRow; onClose: ()
       await link({ variables: { eventId: event.id, ciId: selected.id, createAlias } })
       toast.success(t('toast.events.linked', { ci: selected.name }))
       onDone()
-    } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
+    } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) })) }
   }
 
   return (

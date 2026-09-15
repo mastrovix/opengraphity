@@ -16,6 +16,7 @@ import { ASSIGN_ASSESSMENT_TASK_TO_USER } from '@/graphql/mutations'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '@/lib/taskStatus'
 import { formatDate } from '@/lib/datetime'
 import type { TFunction } from 'i18next'
+import { showError } from '@/lib/showError'
 
 interface MyTask {
   id:         string
@@ -180,7 +181,7 @@ export function MyTasksPage() {
 
   const [claimTask, { loading: claiming }] = useMutation(ASSIGN_ASSESSMENT_TASK_TO_USER, {
     onCompleted: async () => { toast.success(t('toast.task.claimed')); await refetch() },
-    onError:     (e) => toast.error(e.message),
+    onError:     (e) => showError(e),
   })
 
   const assignedToMe = data?.myTasks?.assignedToMe ?? []

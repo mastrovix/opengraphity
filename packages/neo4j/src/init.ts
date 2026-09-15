@@ -312,6 +312,8 @@ const INDEXES: SchemaStatement[] = [
   { label: 'Anomaly(tenant_id, rule_key)',              cypher: 'CREATE INDEX anomaly_tenant_rule IF NOT EXISTS FOR (a:Anomaly) ON (a.tenant_id, a.rule_key)' },
   // Configurazione delle regole (ondata 5 di «Nulla cablato»): una per regola per tenant.
   { label: 'AnomalyRuleConfig(tenant_id, rule_key) unique', cypher: 'CREATE CONSTRAINT anomaly_rule_config_unique IF NOT EXISTS FOR (c:AnomalyRuleConfig) REQUIRE (c.tenant_id, c.rule_key) IS UNIQUE' },
+  // Ruoli dell'organizzazione (ondata 7 di «Nulla cablato»): una chiave per tenant.
+  { label: 'Role(tenant_id, key) unique', cypher: 'CREATE CONSTRAINT role_tenant_key_unique IF NOT EXISTS FOR (r:Role) REQUIRE (r.tenant_id, r.key) IS UNIQUE' },
   // Team by id (lookup in OWNED_BY / SUPPORTED_BY joins)
   { label: 'Team(tenant_id, id)',                       cypher: 'CREATE INDEX team_id IF NOT EXISTS FOR (t:Team) ON (t.tenant_id, t.id)' },
   // SyncSource

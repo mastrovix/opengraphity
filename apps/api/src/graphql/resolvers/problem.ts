@@ -13,7 +13,7 @@ import { audit } from '../../lib/audit.js'
 import { ValidationError } from '../../lib/errors.js'
 import { auditStepEntered } from '../../lib/stepEvent.js'
 import { logger } from '../../lib/logger.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { TICKET_TEAM_ASSIGNED_EVENT } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
@@ -282,7 +282,7 @@ async function deleteProblem(
   args: { id: string },
   ctx: GraphQLContext,
 ) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'problem.delete')
   const removed = await withSession(async (session) => {
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (p:Problem {id: $id, tenant_id: $tenantId})

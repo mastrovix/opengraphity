@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../../context.js'
+import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 let row: Record<string, unknown> | null = { changeId: 'chg-1', code: 'CHG9', title: 'Patch DB', userName: 'Anna' }
 const writes: string[] = []
@@ -18,7 +19,7 @@ vi.mock('../../../../lib/audit.js', () => ({ audit: vi.fn() }))
 
 const { sendTaskReminder } = await import('../changeMutations.js')
 const { publishEvent } = await import('../../../../lib/publishEvent.js')
-const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'a@x', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'a@x', role: 'operator', permissions: perms('operator') }
 
 beforeEach(() => { vi.clearAllMocks(); writes.length = 0; row = { changeId: 'chg-1', code: 'CHG9', title: 'Patch DB', userName: 'Anna' } })
 

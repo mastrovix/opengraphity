@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import { WORKFLOW_STEP_PURPOSES } from '@opengraphity/types'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 interface Call { cypher: string; params: Record<string, unknown>; mode: 'read' | 'write' }
 const calls: Call[] = []
@@ -65,7 +66,7 @@ vi.mock('../../../lib/workflowHelpers.js', () => ({ invalidateWorkflowCache: vi.
 
 const { normalizeStepPurpose, updateWorkflowStep, saveWorkflowChanges } = await import('../workflowMutations.js')
 
-const ctx: GraphQLContext = { tenantId: 'c-two', userId: 'user-1', userEmail: 'u@test.io', role: 'admin' }
+const ctx: GraphQLContext = { tenantId: 'c-two', userId: 'user-1', userEmail: 'u@test.io', role: 'admin', permissions: perms('admin') }
 const paramsOf = (needle: string) => calls.find((c) => c.cypher.includes(needle))?.params
 const cypherOf = (needle: string) => calls.find((c) => c.cypher.includes(needle))?.cypher ?? ''
 

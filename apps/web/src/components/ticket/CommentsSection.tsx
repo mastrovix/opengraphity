@@ -55,14 +55,15 @@ interface Props {
  * stesse regole dell'API). Un commento scritto da una regola o dal monitoraggio
  * non ha un autore persona: lo tocca solo l'admin.
  */
-export function canChangeComment(c: TicketComment, me: { id: string } | null, isAdmin: boolean): boolean {
+export function canChangeComment(c: TicketComment, me: { id: string } | null, moderates: boolean): boolean {
   if (c.deletedAt) return false
-  return isAdmin || (!!me && c.author?.id === me.id)
+  return moderates || (!!me && c.author?.id === me.id)
 }
 
 export function CommentsSection({ comments, onAdd, adding, defaultOpen = false, onChanged }: Props) {
   const { t } = useTranslation()
-  const { me, isAdmin } = useMe()
+  const { me, can } = useMe()
+  const moderates = can('ticket.moderateComments')
   const confirm = useConfirm()
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
   const [updateComment, { loading: updating }] = useMutation(UPDATE_COMMENT, {
@@ -116,7 +117,7 @@ export function CommentsSection({ comments, onAdd, adding, defaultOpen = false, 
                       >
                         {c.isInternal ? t('detail.commentInternal') : t('detail.commentPublic')}
                       </span>
-                      {canChangeComment(c, me, isAdmin) && editing?.id !== c.id && (
+                      {canChangeComment(c, me, moderates) && editing?.id !== c.id && (
                         <span style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
                           <button type="button" aria-label={t('detail.editComment')} title={t('detail.editComment')} onClick={() => setEditing({ id: c.id, text: c.text })}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex' }}>

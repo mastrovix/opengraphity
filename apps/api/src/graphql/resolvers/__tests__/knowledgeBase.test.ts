@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(),
@@ -30,7 +31,7 @@ const { getSession } = await import('@opengraphity/neo4j')
 const { enqueueEmbedding } = await import('../../../jobs/embeddingWorker.js')
 const { audit } = await import('../../../lib/audit.js')
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator', permissions: perms('operator') }
 const rec = (map: Record<string, unknown>) => ({ get: (k: string) => (k in map ? map[k] : null) })
 
 const ARTICLE = {

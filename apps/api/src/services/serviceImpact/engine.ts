@@ -53,6 +53,7 @@ import { getSession, runQuery, runQueryOne, type Queryable } from '@opengraphity
 import type { ServiceHealthChangedPayload } from '@opengraphity/types'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { audit } from '../../lib/audit.js'
+import { SYSTEM_PERMISSIONS } from '../../lib/permissions.js'
 import { languageFor } from '../../lib/tenantLanguage.js'
 import { systemTextIn } from '../../lib/systemText.js'
 import { logger } from '../../lib/logger.js'
@@ -483,7 +484,7 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
         previous_health: previous, new_health: result.health, impact_score: result.impactScore,
       }
       await publishEvent('service.health_changed', tenantId, actorId, payload, now)
-      void audit(actorId === MONITORING_ACTOR ? monitoringContext(tenantId) : { tenantId, userId: actorId, userEmail: actorId, role: 'admin' }, 'service.health_changed', 'ServiceMap', mapId, {
+      void audit(actorId === MONITORING_ACTOR ? monitoringContext(tenantId) : { tenantId, userId: actorId, userEmail: actorId, role: 'admin', permissions: SYSTEM_PERMISSIONS }, 'service.health_changed', 'ServiceMap', mapId, {
         trigger, previousHealth: previous, health: result.health, impactScore: result.impactScore, causes: causes.map((c) => c.ciId), stale,
       })
       log.info({ ...logCtx, previousHealth: previous, health: result.health, impactScore: result.impactScore, causes: causes.length }, 'Service health changed')

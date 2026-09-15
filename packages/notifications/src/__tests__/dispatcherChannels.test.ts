@@ -12,6 +12,12 @@ let userRows: Array<Record<string, unknown>> = []
 let channelRows: Array<Record<string, unknown>> = []
 let ruleRows: Array<Record<string, unknown>> = []
 
+// Il marchio dell'organizzazione nelle e-mail (ondata 6): qui quello di fabbrica, senza leggere il Tenant.
+vi.mock('../brand.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../brand.js')>()
+  const { FACTORY_TENANT_BRAND } = await import('@opengraphity/types')
+  return { ...real, loadTenantBrand: vi.fn(async () => ({ ...FACTORY_TENANT_BRAND, isDefault: true })) }
+})
 vi.mock('../locale.js', () => ({ loadNotificationLocale: vi.fn(async () => ({ language: 'en', timeZone: 'UTC' })), invalidateNotificationLocale: vi.fn() }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => ({

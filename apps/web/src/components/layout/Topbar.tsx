@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useAuth } from '@/hooks/useAuth'
 import { useMe } from '@/hooks/useMe'
+import { routePermissions } from '@/lib/routePermissions'
 import { keycloak } from '@/lib/keycloak'
 import { layoutPalette as C, alpha, colors } from '@/lib/tokens'
 import { useNotificationContext } from '@/contexts/NotificationContext'
@@ -153,9 +154,9 @@ export function Topbar() {
   const { t } = useTranslation()
   const { logout } = useAuth()
   const navigate = useNavigate()
-  // Same role source as RequireRole/Sidebar (`me.role`): the "Settings" entry
-  // leads to admin-only routes, so it is only offered to admins.
-  const { isAdmin } = useMe()
+  // Same source as the route guards and the Sidebar (permissions of `me.role`):
+  // the "Settings" entry is offered only when its page opens.
+  const { can } = useMe()
   const { display, initials } = getUserInfo()
   const { unreadCount, connected: sseConnected } = useNotificationContext()
   const [panelOpen, setPanelOpen] = useState(false)
@@ -319,7 +320,7 @@ export function Topbar() {
             <DropdownMenuItem onClick={() => navigate('/profile')} style={{ fontSize: 12, padding: '10px 16px' }}>
               {t('sidebar.profile')}
             </DropdownMenuItem>
-            {isAdmin && (
+            {can(...routePermissions('/settings/notifications')) && (
               <DropdownMenuItem onClick={() => navigate('/settings/notifications')} style={{ fontSize: 12, padding: '10px 16px' }}>
                 {t('sidebar.settings')}
               </DropdownMenuItem>

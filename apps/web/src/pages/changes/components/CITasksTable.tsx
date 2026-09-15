@@ -125,9 +125,10 @@ function isCIDone(a: AffectedCI): boolean {
     && validationDone && taskDone(a.deployment) && reviewDone
 }
 
-export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = true, activeColor, activeTextColor }: {
+export function CITasksTable({ affected, actsForAnyTeam, userTeamIds, defaultOpen = true, activeColor, activeTextColor }: {
   affected: AffectedCI[]
-  isAdmin: boolean
+  /** approval.override: lavora i compiti di qualunque team. */
+  actsForAnyTeam: boolean
   userTeamIds: Set<string>
   defaultOpen?: boolean
   activeColor?: string
@@ -139,7 +140,7 @@ export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = tru
   const activeCount = affected.filter(a => !isCIDone(a)).length
 
   const findPendingTaskId = (a: AffectedCI): string | null => {
-    const inTeam = (tid: string | null) => isAdmin || (!!tid && userTeamIds.has(tid))
+    const inTeam = (tid: string | null) => actsForAnyTeam || (!!tid && userTeamIds.has(tid))
     const oOk = inTeam(a.ci.ownerGroup?.id ?? null)
     const sOk = inTeam(a.ci.supportGroup?.id ?? null)
     if (oOk && a.assessmentOwner   && a.assessmentOwner.status   !== TASK_STATUS.COMPLETED) return a.assessmentOwner.id

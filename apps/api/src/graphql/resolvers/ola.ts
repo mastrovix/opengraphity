@@ -3,7 +3,7 @@ import { assertComplianceObjective, calendarChoice, calendarNameOf } from '../..
 import { runQuery, runQueryOne, toNumber, type Queryable } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { audit } from '../../lib/audit.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import type { TeamSourcing } from '../../lib/teamSourcing.js'
@@ -299,7 +299,7 @@ async function assertResponsabile(
 }
 
 export async function createOLAContract(_: unknown, args: { input: OLAInput }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.sla')
   const { input } = args
   if (!VALID_TYPES.includes(input.type ?? '')) throw new ValidationError(`type must be one of: ${VALID_TYPES.join(', ')}`, { key: 'errors.ola.typeOneOf', params: { allowed: VALID_TYPES.join(', ') } })
   if (!VALID_ENTITY_TYPES.includes(input.entityType ?? '')) throw new ValidationError(`entityType must be one of: ${VALID_ENTITY_TYPES.join(', ')}`, { key: 'errors.ola.entityTypeOneOf', params: { allowed: VALID_ENTITY_TYPES.join(', ') } })
@@ -341,7 +341,7 @@ export async function createOLAContract(_: unknown, args: { input: OLAInput }, c
 }
 
 export async function updateOLAContract(_: unknown, args: { id: string; input: OLAInput }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.sla')
   const { input } = args
   if (input.type !== undefined) throw new ValidationError('type cannot be changed', { key: 'errors.ola.typeImmutable' })
   if (input.entityType !== undefined && !VALID_ENTITY_TYPES.includes(input.entityType)) {

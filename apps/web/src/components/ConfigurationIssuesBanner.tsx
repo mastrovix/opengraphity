@@ -48,12 +48,13 @@ function EnfasiDelMessaggio({ testo }: { testo: string }) {
 export function ConfigurationIssuesBanner() {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
-  const { me } = useMe()
+  const { can } = useMe()
   const [dismissed, setDismissed] = useState(false)
-  const isAdmin = me?.role === 'admin'
+  // La diagnostica della configurazione è della salute della piattaforma (ondata 7).
+  const mayRead = can('admin.system')
 
   const { data, error } = useQuery<{ configurationIssues: IssueData[] }>(GET_CONFIGURATION_ISSUES, {
-    skip: !isAdmin,
+    skip: !mayRead,
     fetchPolicy: 'cache-and-network',
     // La diagnostica cambia anche per fatti che non passano da questa pagina
     // (un ticket risolto da un allarme): senza rilettura il banner elencava
@@ -65,7 +66,7 @@ export function ConfigurationIssuesBanner() {
   // il banner semplicemente non c'è (e il problema vero resta nei log del
   // server, dove la diagnostica stessa lo scrive).
   const issues = error ? [] : data?.configurationIssues ?? []
-  if (!isAdmin || dismissed || issues.length === 0) return null
+  if (!mayRead || dismissed || issues.length === 0) return null
 
   const errors = issues.filter((i) => i.severity === 'error')
   const tone = errors.length > 0 ? 'error' : 'warning'

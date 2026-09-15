@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 let was = false
 vi.mock('@opengraphity/neo4j', () => ({
@@ -17,7 +18,7 @@ vi.mock('../../../lib/publishEvent.js', () => ({ publishEvent: vi.fn() }))
 
 const { incidentResolvers } = await import('../incident.js')
 const { publishEvent } = await import('../../../lib/publishEvent.js')
-const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'a@x', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'a@x', role: 'operator', permissions: perms('operator') }
 
 beforeEach(() => { vi.clearAllMocks(); was = false })
 

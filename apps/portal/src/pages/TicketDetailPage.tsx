@@ -4,6 +4,7 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, Paperclip } from 'lucide-react'
 import { GET_MY_TICKET, GET_ME } from '@/graphql/queries'
+import { usePortalAccess } from '@/hooks/usePortalAccess'
 import { useTicketCategories } from '@/hooks/useTicketCategories'
 import { ADD_TICKET_COMMENT, REOPEN_TICKET, UPDATE_COMMENT, DELETE_COMMENT } from '@/graphql/mutations'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
@@ -50,6 +51,7 @@ export function TicketDetailPage() {
   const showCreatedMsg       = !!(location.state as { created?: boolean } | null)?.created
 
   const { data: meData }     = useQuery<{ me: { id: string } | null }>(GET_ME)
+  const { canSubmit }        = usePortalAccess()
   const { labelOf: categoryLabel } = useTicketCategories()
   // Detail page polls (comments/status from the IT team); nothing else does.
   const { data, loading, error, refetch } = useQuery<{ myTicket: Ticket }>(
@@ -113,7 +115,8 @@ export function TicketDetailPage() {
   // il riquadro «risolto» su uno risolto.
   const isClosed   = ticket.statusCategory === 'closed'
   const isResolved = ticket.statusCategory === 'resolved'
-  const canReply   = !isClosed
+  // Rispondere e riaprire: il permesso `portal.submit` del ruolo (ondata 7).
+  const canReply   = !isClosed && canSubmit
 
   // Build timeline: merge comments + history entries, sorted by date
   type TimelineItem =
@@ -181,7 +184,7 @@ export function TicketDetailPage() {
       </div>
 
       {/* Resolved banner */}
-      {isResolved && (
+      {isResolved && canSubmit && (
         <div style={{
           display:         'flex',
           alignItems:      'center',

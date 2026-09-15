@@ -6,9 +6,8 @@ import { WorkflowStepPanel } from './WorkflowStepPanel'
 import type { WFStep } from './workflow-types'
 import { GET_WORKFLOW_DEFINITION_BY_ID } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
-import { teamsMock, usersMock, workflowListMock, itilTypesMock } from '@/test/mocks/gql'
-import { NOTIFICATION_TARGETS, WORKFLOW_STEP_PURPOSES, WORKFLOW_STEP_CATEGORIES } from '@opengraphity/types'
-import { TARGET_OPTIONS } from '@/pages/settings/NotificationRuleList'
+import { teamsMock, usersMock, workflowListMock, itilTypesMock, meMock, rolesMock } from '@/test/mocks/gql'
+import { NOTIFICATION_BASE_TARGETS, WORKFLOW_STEP_PURPOSES, WORKFLOW_STEP_CATEGORIES } from '@opengraphity/types'
 
 const DEF_ID = 'wf-incident'
 
@@ -27,7 +26,7 @@ function step(overrides: Partial<WFStep> = {}): WFStep {
   return { id: 's-1', name: 'new', label: 'New', type: 'start', enterActions: null, exitActions: null, isInitial: true, isTerminal: false, ...overrides }
 }
 
-const baseMocks = () => [definitionMock(), itilTypesMock(), teamsMock(), usersMock([]), workflowListMock()]
+const baseMocks = () => [definitionMock(), itilTypesMock(), teamsMock(), usersMock([]), workflowListMock(), meMock('admin', { maxUsageCount: Number.POSITIVE_INFINITY }), rolesMock([{ key: 'service_desk', name: 'Service Desk' }])]
 
 function renderPanel(s: WFStep, extra: { onSaved?: () => void; onSaveLocally?: () => void } = {}) {
   const onSaved = extra.onSaved ?? vi.fn()
@@ -165,17 +164,18 @@ describe('WorkflowStepPanel — operatore persistito non supportato', () => {
  * ogni ingresso nel passo. Qui i destinatari sono il vocabolario condiviso.
  */
 describe('WorkflowStepPanel — destinatari della notifica all\'ingresso', () => {
-  it('offre i destinatari del vocabolario condiviso, tradotti, e nessun role:manager', async () => {
+  it('offre i destinatari fissi e un «Ruolo: X» per ogni ruolo dell\'organizzazione, e nessun role:manager', async () => {
     const { user } = renderPanel(step())
     await user.click(screen.getByRole('tab', { name: 'Notifications' }))
     await user.click(screen.getByRole('switch', { name: 'Notify when the step is entered' }))
 
     // nella scheda Notifiche ci sono due tendine: Severità e Destinatari
     const select = screen.getAllByRole('combobox')[1]!
+    const roleTargets = ['role:admin', 'role:operator', 'role:viewer', 'role:end_user', 'role:service_desk']
+    await waitFor(() => expect((within(select).getAllByRole('option') as HTMLOptionElement[]).map((o) => o.value)).toEqual([...NOTIFICATION_BASE_TARGETS, ...roleTargets]))
     const options = within(select).getAllByRole('option') as HTMLOptionElement[]
-    expect(options.map((o) => o.value)).toEqual([...NOTIFICATION_TARGETS])
     expect(options.map((o) => o.value)).not.toContain('role:manager')
-    expect(options.map((o) => o.textContent)).toEqual(TARGET_OPTIONS.map(({ labelKey }) => T(labelKey)))
+    expect(options.map((o) => o.textContent).slice(-2)).toEqual([T('notificationRules.target.role', { role: 'End user' }), T('notificationRules.target.role', { role: 'Service Desk' })])
   })
 })
 

@@ -35,7 +35,7 @@ import { GraphQLError } from 'graphql'
 import { CHANGE_WINDOW_PURPOSES } from '@opengraphity/types'
 import type { Session } from 'neo4j-driver'
 import { logger } from '../../../lib/logger.js'
-import { requireRole } from '../../../lib/requireRole.js'
+import { requirePermission } from '../../../lib/permissions.js'
 import { isPreApprovedChangeType } from '../../../lib/changePolicy.js'
 import { getStepPurpose, getStepNamesByPurpose } from '../../../lib/workflowHelpers.js'
 import { assertAllApprovalsSatisfied, areAllApprovalsSatisfied } from './approvalCreation.js'
@@ -148,7 +148,7 @@ export async function assertChangeWindowGate(
         { extensions: { code: 'CONFLICT', i18n: { key: 'errors.window.noApprovalStep', params: { type: input.changeType } } } },
       )
     case 'needs_approvals':
-      requireRole(ctx, 'admin')
+      requirePermission(ctx, 'approval.override')
       await assertAllApprovalsSatisfied(session, input.changeId, input.tenantId)
       return
   }

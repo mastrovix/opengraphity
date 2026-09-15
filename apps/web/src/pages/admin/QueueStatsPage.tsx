@@ -9,6 +9,7 @@ import { GET_QUEUE_STATS, GET_QUEUE_JOBS } from '@/graphql/queries'
 import { RETRY_QUEUE_JOB } from '@/graphql/mutations'
 import { alpha, colors, fontSize, fontWeight, layoutPalette, palette } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
+import { showError } from '@/lib/showError'
 
 interface QueueJobCounts {
   waiting: number
@@ -202,7 +203,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
       void refetchJobs?.()
       onQueueRefetch()
     },
-    onError: (e) => { toast.error(e.message); setRetryingId(null) },
+    onError: (e) => { showError(e); setRetryingId(null) },
   })
 
   function handleExpand() {

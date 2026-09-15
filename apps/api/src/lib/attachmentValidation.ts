@@ -4,6 +4,7 @@
  */
 import path from 'node:path'
 import { ValidationError } from './errors.js'
+import type { Permission } from '@opengraphity/types'
 
 /**
  * entityType (client field) → Neo4j labels the target entity may carry.
@@ -34,8 +35,11 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]
 
 const LABEL_RE = /^[A-Za-z][A-Za-z0-9]*$/
 
-/** Roles that may upload. `viewer` is read-only; `end_user` attaches to its own portal tickets. */
-export const UPLOAD_ROLES: ReadonlySet<string> = new Set(['admin', 'operator', 'end_user'])
+/**
+ * Who may upload (wave 7): whoever works tickets, or submits them from the portal
+ * (attaching to their own tickets). Read-only roles have neither.
+ */
+export const UPLOAD_PERMISSIONS: readonly Permission[] = ['ticket.work', 'portal.submit']
 
 export interface AttachmentTarget {
   entityType: string

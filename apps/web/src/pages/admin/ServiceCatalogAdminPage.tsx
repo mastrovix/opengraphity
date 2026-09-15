@@ -18,6 +18,7 @@ import { useCrudModal } from '@/hooks/useCrudModal'
 import { palette } from '@/lib/tokens'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { SeverityBadge } from '@/components/ui/badges'
+import { showError } from '@/lib/showError'
 
 interface CatalogItem {
   id: string
@@ -58,11 +59,11 @@ export function ServiceCatalogAdminPage() {
 
   const [createItem, { loading: creating }] = useMutation(CREATE_SERVICE_CATALOG_ITEM, {
     onCompleted: async () => { modal.close(); await refetch(); toast.success(t('toast.catalog.created')) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const [updateItem, { loading: updating }] = useMutation(UPDATE_SERVICE_CATALOG_ITEM, {
     onCompleted: async () => { modal.close(); await refetch() },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const submit = (e: React.FormEvent) => {

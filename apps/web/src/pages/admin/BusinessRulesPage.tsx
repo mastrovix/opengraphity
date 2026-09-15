@@ -55,6 +55,7 @@ import { eventOptionKey, automationActionKey } from '@/lib/automationOperators'
 import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { colors, palette } from '@/lib/tokens'
 import { RULE_EVENT_TYPES, automationEventSupported } from '@opengraphity/types'
+import { showError } from '@/lib/showError'
 /** Dalla tabella condivisa con l'API: le pagine offrono solo le combinazioni evento × ticket che girano (AU-1). */
 const EVENT_TYPES = RULE_EVENT_TYPES
 /**
@@ -182,7 +183,7 @@ export function BusinessRulesPage() {
     // Refuse to open the editor on corrupt data: an editor silently opened
     // empty would destroy the original conditions/actions at the next save.
     try { modal.openEdit(r) }
-    catch (e) { toast.error(t('toast.rule.openFailed', { name: r.name, error: errorMessage(e) })) }
+    catch (e) { showError(e, t('toast.rule.openFailed', { name: r.name, error: errorMessage(e) })) }
   }
 
   async function handleSave() {
@@ -201,21 +202,21 @@ export function BusinessRulesPage() {
         toast.success(t('toast.rule.created'))
       }
       modal.close(); void refetch()
-    } catch (e: unknown) { toast.error(errorMessage(e)) }
+    } catch (e: unknown) { showError(e) }
   }
 
   async function handleDelete(r: BusinessRule) {
     const ok = await confirm({ title: t('admin.rules.deleteTitle'), body: r.name, danger: true })
     if (!ok) return
     try { await deleteRule({ variables: { id: r.id } }); toast.success(t('toast.rule.deleted')); void refetch() }
-    catch (e: unknown) { toast.error(errorMessage(e)) }
+    catch (e: unknown) { showError(e) }
   }
 
   async function handleToggleEnabled(r: BusinessRule) {
     try {
       await updateRule({ variables: { id: r.id, input: { enabled: !r.enabled } } })
       void refetch()
-    } catch (e: unknown) { toast.error(errorMessage(e)) }
+    } catch (e: unknown) { showError(e) }
   }
 
   async function moveRule(idx: number, dir: -1 | 1) {
@@ -224,7 +225,7 @@ export function BusinessRulesPage() {
     if (target < 0 || target >= ids.length) return
     ;[ids[idx], ids[target]] = [ids[target], ids[idx]]
     try { await reorderRules({ variables: { ruleIds: ids } }); void refetch() }
-    catch (e: unknown) { toast.error(errorMessage(e)) }
+    catch (e: unknown) { showError(e) }
   }
 
   const ruleColumns: ColumnDef<BusinessRule>[] = [

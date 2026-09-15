@@ -142,7 +142,8 @@
     "organization": "Organizzazione",
     "olaContracts": "OLA / UC",
     "olaReport": "Report OLA / UC",
-    "anomalyRules": "Regole di anomalia"
+    "anomalyRules": "Regole di anomalia",
+    "roles": "Ruoli"
   },
   "pages": {
     "incidents": {
@@ -407,7 +408,10 @@
       "lastNamePlaceholder": "Rossi",
       "addToTeam": "Aggiungi a un team",
       "created": "Utente creato",
-      "emailPlaceholder": "mario@acme.com"
+      "emailPlaceholder": "mario@acme.com",
+      "changeRole": "Ruolo",
+      "roleChanged": "Ruolo cambiato",
+      "saveRole": "Salva ruolo"
     },
     "logs": {
       "title": "Log",
@@ -1247,8 +1251,8 @@
       "categories": "Categorie:",
       "previewHint": "La preview si aggiorna automaticamente mentre configuri il widget.",
       "activeAlarmsHint": "Questo widget mostra i contatori in tempo reale della console allarmi: nessuna entità o metrica da configurare.",
-      "activeAlarmsStaffOnly": "La console allarmi è riservata allo staff (amministratori, operatori e visualizzatori).",
-      "serviceHealthStaffOnly": "La pagina Servizi è riservata allo staff (amministratori, operatori e visualizzatori).",
+      "activeAlarmsStaffOnly": "Il tuo ruolo non apre la console allarmi.",
+      "serviceHealthStaffOnly": "Il tuo ruolo non apre la pagina Servizi.",
       "unknownDataFreeWidget": "Tipo di widget senza dati sconosciuto: {{type}}",
       "serviceHealthHint": "Questo widget mostra i contatori dei servizi monitorati: nessuna entità o metrica da configurare.",
       "entityGroupItsm": "Ticket",
@@ -2103,6 +2107,45 @@
         "isolated_cluster": "Un piccolo gruppo di CI collegati fra loro ma staccati dal resto del grafo (cercato fino a 6 passi di distanza).",
         "risk_concentration": "Un CI con molti incident aperti delle severità che conti come critiche."
       }
+    },
+    "roles": {
+      "title": "Ruoli",
+      "subtitle": "Un ruolo è un nome e un insieme di permessi, e ogni persona ne ha uno. I ruoli di fabbrica si modificano ma non si cancellano.",
+      "newRole": "Nuovo ruolo",
+      "colRole": "Ruolo",
+      "colType": "Tipo",
+      "colPermissions": "Permessi",
+      "colPeople": "Persone",
+      "factory": "Di fabbrica",
+      "custom": "Personalizzato",
+      "permissionsCount": "{{selected}} su {{total}}",
+      "edit": "Modifica",
+      "duplicate": "Duplica",
+      "delete": "Elimina",
+      "deleteTitle": "Eliminare il ruolo «{{name}}»?",
+      "deleteBody": "Nessuno ha questo ruolo. L'eliminazione non si può annullare.",
+      "deleted": "Ruolo eliminato",
+      "created": "Ruolo creato",
+      "saved": "Ruolo salvato",
+      "cannotDeleteFactory": "I ruoli di fabbrica non si eliminano",
+      "cannotDeleteInUse": "Prima assegna un altro ruolo alle persone che hanno questo",
+      "backToRoles": "Torna ai ruoli",
+      "editTitle": "Modifica ruolo",
+      "newTitle": "Nuovo ruolo",
+      "copyOf": "Copia di {{name}}",
+      "name": "Nome",
+      "nameFactoryHint": "Lascia vuoto per tenere il nome del prodotto «{{name}}».",
+      "key": "Chiave",
+      "keyHint": "La usano i destinatari delle notifiche «per ruolo»; non cambia.",
+      "selectArea": "Seleziona tutta l'area",
+      "clearArea": "Svuota l'area",
+      "areaCount": "{{selected}} su {{total}}",
+      "portalOnlyHint": "Senza «Area di lavoro» il ruolo può usare solo il portale self-service.",
+      "usersAdminHint": "Almeno una persona attiva deve conservare «Persone, team e ruoli».",
+      "noPermissions": "Nessun permesso scelto: chi ha questo ruolo vede solo il proprio profilo.",
+      "peopleWithRole_one": "{{count}} persona ha questo ruolo",
+      "peopleWithRole_other": "{{count}} persone hanno questo ruolo",
+      "loadError": "Impossibile caricare i ruoli: {{error}}"
     }
   },
   "filter": {
@@ -2205,11 +2248,8 @@
       "all": "Tutti",
       "assignee": "Assegnatario",
       "teamOwner": "Team assegnato",
-      "roleAdmin": "Solo amministratori",
-      "roleOperator": "Solo operatori",
-      "roleViewer": "Solo osservatori",
-      "roleEndUser": "Solo utenti del portale",
-      "notApplicable": "{{target}} — non applicabile a questo evento"
+      "notApplicable": "{{target}} — non applicabile a questo evento",
+      "role": "Ruolo: {{role}}"
     },
     "severity": {
       "info": "Info",
@@ -3171,10 +3211,11 @@
     "authz": {
       "noUser": "Non autorizzato: non si sa chi sei.",
       "wrongGroup": "Non autorizzato: solo il gruppo {{group}} del CI può fare questa cosa.",
-      "reopenAdmin": "Solo un amministratore può riaprire un task.",
+      "reopenAdmin": "Solo chi può agire per qualunque team può riaprire un task.",
       "notInTeam": "L'utente non appartiene al team assegnato.",
+      "permissionRequired": "Il tuo ruolo non può farlo: serve uno di questi permessi: {{required}}.",
       "unknownRole": "Ruolo «{{role}}» sconosciuto: nessuna operazione è consentita.",
-      "roleNotAllowed": "Il ruolo «{{role}}» non può eseguire {{operation}} (serve: {{required}}).",
+      "roleNotAllowed": "Il ruolo «{{role}}» non può eseguire {{operation}} (serve uno di questi permessi: {{required}}).",
       "invalidRole": "Ruolo non valido: {{role}}."
     },
     "vocabulary": {
@@ -3468,7 +3509,7 @@
     "request": {
       "approvalRequired": "Questa richiesta richiede un'approvazione: inviala prima ad approvazione.",
       "assignConcluded": "Una richiesta conclusa non si riassegna.",
-      "assigneeCannotWork": "L'utente scelto non può lavorare le richieste: serve il ruolo admin o operator."
+      "assigneeCannotWork": "L'utente scelto non può ricevere ticket: il suo ruolo non ha il permesso «Ricevere ticket»."
     },
     "internalChat": {
       "notFoundOrNotYours": "Il messaggio non esiste, o non puoi eliminarlo."
@@ -3601,6 +3642,16 @@
       "logoSize": "Il logo è più grande di {{max}} MB.",
       "logoUnsafe": "Il logo SVG contiene script, gestori di eventi o collegamenti esterni: esportalo di nuovo come immagine semplice.",
       "logoType": "Il logo deve essere un'immagine PNG o SVG."
+    },
+    "role": {
+      "name": "Il nome di un ruolo va da 1 a {{max}} caratteri.",
+      "permissions": "Permessi sconosciuti: {{unknown}}.",
+      "nameTaken": "Esiste già un ruolo di nome «{{name}}».",
+      "lastUsersAdmin": "Almeno una persona attiva deve conservare il permesso di gestire persone e ruoli.",
+      "factoryNotDeletable": "Un ruolo di fabbrica si modifica ma non si cancella.",
+      "inUse": "Il ruolo ha ancora {{count}} persone: prima assegna loro un altro ruolo.",
+      "usedAsRecipient": "Il ruolo riceve notifiche da {{count}} regole, passi di workflow o automazioni: modificali prima.",
+      "unknownTarget": "I destinatari nominano ruoli che l'organizzazione non ha: {{roles}}."
     }
   },
   "errorBoundary": {
@@ -5302,6 +5353,7 @@
     },
     "gap": {
       "tenant_missing": "nessuna riga: il tenant non esiste",
+      "no_roles": "ruoli mancanti: {{roles}} (le persone con questi ruoli non possono fare niente)",
       "no_dashboard": "nessuna dashboard",
       "no_notification_rules": "nessuna regola di notifica",
       "no_domain_matrices": "nessuna matrice di dominio",
@@ -5750,5 +5802,230 @@
     "edit": "Modifica",
     "saved": "Campi salvati",
     "chooseValue": "— Scegli —"
+  },
+  "permissions": {
+    "areas": {
+      "access": "Accesso",
+      "tickets": "Ticket",
+      "knowledge": "Base di conoscenza",
+      "cmdb": "CMDB e monitoraggio",
+      "analysis": "Analisi e report",
+      "configuration": "Configurazione",
+      "administration": "Amministrazione"
+    },
+    "items": {
+      "workspace_use": {
+        "label": "Area di lavoro",
+        "description": "Entrare nell'app dello staff: ricerca, filtri, attività e approvazioni proprie, osservare un ticket. Legge i dati di riferimento (team, persone, tipi, vocabolari, workflow, calendari)."
+      },
+      "workspace_notificationsManage": {
+        "label": "Gestire le proprie notifiche",
+        "description": "Segnare lette o nascondere le proprie notifiche, scegliere se riceverle per e-mail."
+      },
+      "portal_read": {
+        "label": "Portale: vedere",
+        "description": "Nel portale: i propri ticket, il catalogo, la knowledge base."
+      },
+      "portal_submit": {
+        "label": "Portale: aprire e rispondere",
+        "description": "Aprire ticket e richieste dal portale, rispondere, riaprire, allegare file."
+      },
+      "incident_read": {
+        "label": "Incident: vedere",
+        "description": "Liste e dettagli, cronologia, incident simili, articoli suggeriti."
+      },
+      "incident_write": {
+        "label": "Incident: lavorare",
+        "description": "Aprire, modificare, assegnare, far avanzare, dichiarare major, collegare a un problem, bozza KB."
+      },
+      "incident_ai": {
+        "label": "Incident: suggerimenti AI",
+        "description": "Suggerimento di triage e bozza delle note di risoluzione."
+      },
+      "problem_read": {
+        "label": "Problem: vedere",
+        "description": "Liste, dettagli, candidati problem."
+      },
+      "problem_write": {
+        "label": "Problem: lavorare",
+        "description": "Aprire, modificare, assegnare, far avanzare, CI coinvolti."
+      },
+      "problem_delete": {
+        "label": "Problem: cancellare",
+        "description": "Cancellazione con tutto ciò che è collegato."
+      },
+      "change_read": {
+        "label": "Change: vedere",
+        "description": "Liste, dettagli, CI impattati, analisi d'impatto, audit, compiti."
+      },
+      "change_write": {
+        "label": "Change: lavorare",
+        "description": "Aprire, far avanzare, assessment, piano di deploy, validazione, review, promemoria."
+      },
+      "change_delete": {
+        "label": "Change: cancellare",
+        "description": "Cancellazione logica: il registro resta leggibile."
+      },
+      "request_read": {
+        "label": "Richieste: vedere",
+        "description": "Liste e dettagli delle service request, il catalogo."
+      },
+      "request_write": {
+        "label": "Richieste: lavorare",
+        "description": "Aprire, modificare, assegnare."
+      },
+      "ticket_work": {
+        "label": "Lavorare su qualunque ticket",
+        "description": "Commenti, allegati, collegamenti fra ticket, CI coinvolti, campi personalizzati. Modificare o cancellare i propri commenti."
+      },
+      "ticket_assignable": {
+        "label": "Ricevere ticket",
+        "description": "Comparire fra le persone a cui assegnare un ticket o un compito; ricevere le e-mail a tutti e il riepilogo giornaliero."
+      },
+      "ticket_moderateComments": {
+        "label": "Moderare i commenti",
+        "description": "Modificare o cancellare commenti, allegati e messaggi della chat interna degli altri."
+      },
+      "ticket_internalChat": {
+        "label": "Chat interna",
+        "description": "Leggere e scrivere la chat interna dei ticket."
+      },
+      "approval_decide": {
+        "label": "Approvare",
+        "description": "Chiedere, approvare e rifiutare le approvazioni dei team di cui si fa parte."
+      },
+      "approval_override": {
+        "label": "Agire per qualunque team",
+        "description": "Decidere un'approvazione senza essere nel team, lavorare e riaprire i compiti delle change di qualunque team, far avanzare una change a mano."
+      },
+      "kb_read": {
+        "label": "Knowledge base: leggere",
+        "description": "Articoli, categorie, versioni precedenti."
+      },
+      "kb_write": {
+        "label": "Knowledge base: scrivere",
+        "description": "Creare, modificare, cancellare, ripristinare una versione."
+      },
+      "kb_rate": {
+        "label": "Valutare un articolo",
+        "description": "«Utile / non utile»."
+      },
+      "cmdb_read": {
+        "label": "CMDB: vedere",
+        "description": "CI, relazioni, mappa, raggio d'impatto, incident di un CI."
+      },
+      "cmdb_write": {
+        "label": "CMDB: modificare",
+        "description": "Campi dei CI, relazioni, owner e gruppo di supporto."
+      },
+      "event_read": {
+        "label": "Allarmi: vedere",
+        "description": "Console allarmi, salute dei CI e delle capacità di business."
+      },
+      "event_work": {
+        "label": "Allarmi: gestire",
+        "description": "Prendere in carico, risolvere, collegare a un CI, aprire un incident, forzare la salute."
+      },
+      "service_read": {
+        "label": "Servizi monitorati: vedere",
+        "description": "Mappe dei servizi e servizi toccati da un CI."
+      },
+      "service_reevaluate": {
+        "label": "Servizi monitorati: ricalcolare",
+        "description": "Ricalcolare subito la salute di una mappa."
+      },
+      "analysis_read": {
+        "label": "Analisi: vedere",
+        "description": "Anomalie della CMDB, What-if."
+      },
+      "anomaly_resolve": {
+        "label": "Anomalie: chiudere",
+        "description": "Segnare un'anomalia risolta, falso positivo o rischio accettato."
+      },
+      "anomaly_scan": {
+        "label": "Anomalie: lanciare la scansione",
+        "description": "Avviare subito la scansione."
+      },
+      "report_read": {
+        "label": "Report: vedere",
+        "description": "Eseguire i report condivisi, report SLA, conversazioni AI già fatte."
+      },
+      "report_write": {
+        "label": "Report: costruire",
+        "description": "Creare e modificare modelli di report, esportare PDF ed Excel."
+      },
+      "report_schedule": {
+        "label": "Report: pianificare",
+        "description": "Invio periodico di un report per e-mail."
+      },
+      "report_ai": {
+        "label": "Report: chiedere all'AI",
+        "description": "Domande in linguaggio naturale sui dati (AI Analysis)."
+      },
+      "assistant_use": {
+        "label": "Assistente AI",
+        "description": "Fare domande in linguaggio naturale su incident, CI, change e articoli. Legge solo ciò che il ruolo può vedere."
+      },
+      "dashboard_use": {
+        "label": "Dashboard proprie",
+        "description": "Creare, modificare e condividere le proprie dashboard e i widget."
+      },
+      "dashboard_manageAll": {
+        "label": "Dashboard e report di tutti",
+        "description": "Modificare anche le dashboard e i report creati da altri."
+      },
+      "config_organization": {
+        "label": "Organizzazione",
+        "description": "Nome, marchio, lingua, fuso, calendari, numerazione, allegati, AI, severità del portale."
+      },
+      "config_metamodel": {
+        "label": "Metamodello",
+        "description": "Tipi di CI e ITIL, campi, regole di campo, Dizionario, Matrici di dominio."
+      },
+      "config_workflow": {
+        "label": "Disegnatore dei workflow",
+        "description": "Passi, archi, scadenze."
+      },
+      "config_sla": {
+        "label": "SLA, OLA e UC",
+        "description": "Policy SLA e contratti OLA/UC."
+      },
+      "config_automation": {
+        "label": "Automazioni",
+        "description": "Auto Triggers e Business Rules."
+      },
+      "config_notifications": {
+        "label": "Notifiche",
+        "description": "Canali e regole di notifica."
+      },
+      "config_catalog": {
+        "label": "Catalogo e questionari",
+        "description": "Service Catalog, domande dell'assessment delle change."
+      },
+      "config_monitoring": {
+        "label": "Monitoraggio",
+        "description": "Sorgenti degli allarmi, Policy eventi, alias dei CI, regole di anomalia."
+      },
+      "config_services": {
+        "label": "Servizi monitorati: configurare",
+        "description": "Creare e configurare le mappe dei servizi."
+      },
+      "config_integrations": {
+        "label": "Integrazioni",
+        "description": "API key, webhook, sincronizzazione della CMDB."
+      },
+      "admin_users": {
+        "label": "Persone, team e ruoli",
+        "description": "Creare persone, assegnare ruoli e team, creare e modificare ruoli."
+      },
+      "admin_audit": {
+        "label": "Audit Log e log",
+        "description": "Leggere l'Audit Log e i log applicativi."
+      },
+      "admin_system": {
+        "label": "Salute della piattaforma",
+        "description": "Code, metriche, tracce, diagnostica della configurazione."
+      }
+    }
   }
 }

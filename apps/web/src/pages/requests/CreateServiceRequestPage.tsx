@@ -14,6 +14,7 @@ import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
 import { useValueStyle } from '@/hooks/useValueStyle'
 import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
 import { customFieldsInput, missingCustomFields, useTicketCustomFieldDefs } from '@/components/ticket/customFields/customFields'
+import { showError } from '@/lib/showError'
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
 const inputBase: React.CSSProperties = {
@@ -91,7 +92,7 @@ export function CreateServiceRequestPage() {
   const [createRequest, { loading }] = useMutation(CREATE_SERVICE_REQUEST, {
     refetchQueries: [{ query: GET_SERVICE_REQUESTS }],
     onCompleted: () => { toast.success(t('toast.request.created')); navigate('/requests') },
-    onError:     (err) => toast.error(err.message),
+    onError:     (err) => showError(err),
   })
 
   const checkSlaCoverage = useSlaCoverageCheck()
@@ -121,7 +122,7 @@ export function CreateServiceRequestPage() {
         category: null, categoryLabel: null, teamId: null, teamName: null,
       })
     } catch (err) {
-      toast.error(t('toast.request.slaCoverageUnavailable', { error: err instanceof Error ? err.message : String(err) }))
+      showError(err, t('toast.request.slaCoverageUnavailable', { error: err instanceof Error ? err.message : String(err) }))
       return
     } finally {
       setCheckingSla(false)

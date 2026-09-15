@@ -9,6 +9,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const mockSession = {
   executeRead:  vi.fn(),
@@ -43,7 +44,7 @@ const { portalResolvers } = await import('../portal.js')
 const { workflowEngine } = await import('@opengraphity/workflow')
 const { getWorkflowSteps } = await import('../../../lib/workflowHelpers.js')
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@test.io', role: 'end_user' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@test.io', role: 'end_user', permissions: perms('end_user') }
 const rec = (map: Record<string, unknown>) => ({ get: (k: string) => (k in map ? map[k] : null) })
 
 const STEPS = [

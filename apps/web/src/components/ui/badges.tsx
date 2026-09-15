@@ -14,7 +14,7 @@
  */
 import { useTranslation } from 'react-i18next'
 import { Pill } from '@/components/ui/Pill'
-import { lookupOrError, colors, palette } from '@/lib/tokens'
+import { colors, palette } from '@/lib/tokens'
 import { useCallback } from 'react'
 import { vocabularyValueStyle, NEUTRAL_VALUE_STYLE, type ValueStyle } from '@/lib/domainStyle'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
@@ -23,7 +23,6 @@ import { enumLabel } from '@/lib/ciEnums'
 import { styleForCategory } from '@/lib/workflowStepStyle'
 import { TASK_STATUS, REVIEW_RESULT } from '@/lib/taskStatus'
 
-const BROKEN = { bg: 'var(--color-danger)', color: colors.white }
 
 // ── Severità / priorità (incident, problem, change) ─────────────────────────
 
@@ -50,7 +49,12 @@ export function SeverityBadge({ value, vocabulary = 'severity' }: { value: strin
 
 // ── Ruolo utente (admin / operator / viewer / end_user) ─────────────────────
 
-/** Stessi 4 ruoli accettati dall'API (`UserRole` in hooks/useMe.ts); etichette in `roles.*`. */
+/**
+ * I ruoli di fabbrica hanno colore ed etichetta propri (`roles.*`); un ruolo
+ * creato dall'organizzazione (ondata 7) ha il suo nome e il colore neutro del
+ * brand. `name` è il nome scelto dall'organizzazione, anche per un ruolo di
+ * fabbrica rinominato.
+ */
 const ROLE_STYLE: Record<string, { bg: string; color: string; labelKey: string }> = {
   admin:    { bg: 'var(--color-danger-bg)', color: 'var(--color-trigger-sla-breach)', labelKey: 'roles.admin' },
   operator: { bg: 'var(--color-info-bg)',   color: colors.brand,                          labelKey: 'roles.operator' },
@@ -58,13 +62,16 @@ const ROLE_STYLE: Record<string, { bg: string; color: string; labelKey: string }
   end_user: { bg: palette.purple.bg,                color: palette.purple.dark,                          labelKey: 'roles.end_user' },
 }
 
-export function RoleBadge({ role }: { role: string | null | undefined }) {
+const CUSTOM_ROLE_STYLE = { bg: 'var(--color-brand-light)', color: colors.brandHover }
+
+export function RoleBadge({ role, name }: { role: string | null | undefined; name?: string | null }) {
   const { t } = useTranslation()
   if (!role) return <span style={{ color: 'var(--color-slate-light)' }}>—</span>
-  const s = lookupOrError(ROLE_STYLE, role, 'ROLE_STYLE', { ...BROKEN, labelKey: '' })
+  const factory = ROLE_STYLE[role]
+  const s = factory ?? CUSTOM_ROLE_STYLE
   return (
     <Pill bg={s.bg} color={s.color} radius={4} style={{ fontSize: 'var(--font-size-body)' }}>
-      {s.labelKey ? t(s.labelKey) : role}
+      {name ?? (factory ? t(factory.labelKey) : role)}
     </Pill>
   )
 }

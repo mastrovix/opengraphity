@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 import { ValidationError } from '../../../lib/errors.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const runScript = vi.fn()
 vi.mock('@opengraphity/scripting', () => ({ runScript: (...a: unknown[]) => runScript(...a) }))
@@ -97,7 +98,7 @@ function fakeSession(props: Record<string, unknown> | null = null, knownTeams: r
   }
 }
 
-const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator' as const }
+const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') as const }
 const mapCI = (p: Record<string, unknown>) => p
 
 beforeEach(() => {

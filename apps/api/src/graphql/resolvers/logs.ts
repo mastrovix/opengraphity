@@ -1,7 +1,7 @@
 import { GraphQLError } from 'graphql'
-import { ForbiddenError } from '../../lib/errors.js'
 import type { GraphQLContext } from '../../context.js'
 import { getLogs, type LogEntry } from '../../lib/logBuffer.js'
+import { requirePermission } from '../../lib/permissions.js'
 
 type LogsArgs = {
   limit?:         number
@@ -43,9 +43,7 @@ async function logs(
   { limit = 50, offset = 0, filters, sortField, sortDirection }: LogsArgs,
   ctx: GraphQLContext,
 ) {
-  if (ctx.role !== 'admin') {
-    throw new ForbiddenError('Forbidden: logs are only accessible to admins')
-  }
+  requirePermission(ctx, 'admin.audit')
 
   let entries = getLogs() // already newest-first
 

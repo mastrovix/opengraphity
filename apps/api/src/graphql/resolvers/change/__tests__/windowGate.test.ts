@@ -12,6 +12,7 @@
  * non la lista delle chiamate.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 const getStepPurpose        = vi.fn<(s: unknown, t: string, e: string, step: string) => Promise<string | null>>()
 const getStepNamesByPurpose = vi.fn<() => Promise<string[]>>()
@@ -96,9 +97,9 @@ describe('changeGateOutcome — la regola di dominio, senza attori', () => {
 })
 
 describe('il cammino MANUALE: lancia, e il ruolo è quello vero', () => {
-  const ctx = (role: string) => ({ tenantId: 'c-two', userId: 'u1', role }) as never
+  const ctx = (role: string) => ({ tenantId: 'c-two', userId: 'u1', role, permissions: perms(role) }) as never
 
-  it('un operator non entra nella finestra: ForbiddenError da requireRole VERO', async () => {
+  it('un operator non entra nella finestra: ForbiddenError da requirePermission VERO', async () => {
     await expect(assertChangeWindowGate(session, ctx('operator'), input('assessment', 'scheduled')))
       .rejects.toThrow(/not authorized/i)
     // E si è fermato PRIMA di guardare le approvazioni: il ruolo è la prima porta.

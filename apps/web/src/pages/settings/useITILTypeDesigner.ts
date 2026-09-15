@@ -10,6 +10,7 @@ import {
 } from '@/graphql/mutations'
 import type { EnumTypeRef } from './shared/designerStyles'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { showError } from '@/lib/showError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -148,22 +149,22 @@ export function useITILTypeDesigner() {
   // ── Mutations ───────────────────────────────────────────────────────────────
   const [updateType]  = useMutation(UPDATE_ITIL_TYPE, {
     onCompleted: () => { toast.success(t('itilDesigner.saved')); setSettingsSaving(false); void refetch() },
-    onError:     (e) => { toast.error(e.message); setSettingsSaving(false) },
+    onError:     (e) => { showError(e); setSettingsSaving(false) },
   })
 
   const [createField] = useMutation(CREATE_ITIL_FIELD, {
     onCompleted: () => { toast.success(t('itilDesigner.saved')); setAddingField(false); void refetch() },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const [updateField] = useMutation(UPDATE_ITIL_FIELD, {
     onCompleted: () => { toast.success(t('itilDesigner.saved')); setEditingFieldId(null); void refetch() },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const [deleteField] = useMutation(DELETE_ITIL_FIELD, {
     onCompleted: () => { toast.success(t('itilDesigner.saved')); void refetch() },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const [createRule] = useMutation(CREATE_ITIL_CI_RELATION_RULE, {
@@ -173,12 +174,12 @@ export function useITILTypeDesigner() {
       setRelForm({ ciType: '', relationType: '', direction: 'outgoing', description: '' })
       void refetchRules()
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const [deleteRule] = useMutation(DELETE_ITIL_CI_RELATION_RULE, {
     onCompleted: () => { toast.success(t('itilDesigner.saved')); void refetchRules() },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   // ── Computed ────────────────────────────────────────────────────────────────

@@ -44,9 +44,9 @@ export function KnowledgeBasePage() {
   const { labelOf } = useDomainVocabularies()
   const styleOf = useValueStyle()
   const categoryLabel = (name: string) => labelOf('kb_category', name) ?? name
-  const { role } = useMe()
+  const { can } = useMe()
   // Giro del 14 set 2026 (#45): dalla Knowledge Base non si poteva scrivere un articolo.
-  const canWrite = role === 'admin' || role === 'operator'
+  const canWrite = can('kb.write')
   const [search,   setSearch]   = useState('')
   const [category, setCategory] = useState('')
   const [page,     setPage]     = useState(0)

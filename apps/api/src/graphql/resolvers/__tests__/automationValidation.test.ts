@@ -3,6 +3,7 @@
  * same parsers the runtime uses, plus the enums.
  */
 import { describe, it, expect, vi } from 'vitest'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', () => ({ runQuery: vi.fn(), getSession: vi.fn() }))
 vi.mock('../ci-utils.js', () => ({ withSession: vi.fn() }))
@@ -54,7 +55,7 @@ describe('assertActionsJson', () => {
 })
 
 describe('mutations: enum a scrittura', () => {
-  const ctx = { tenantId: 't', userId: 'u', role: 'admin' } as never
+  const ctx = { tenantId: 't', userId: 'u', role: 'admin', permissions: perms('admin') } as never
 
   it('createAutoTrigger rifiuta eventType/entityType fuori enum PRIMA di toccare il DB', async () => {
     await expect(automationResolvers.Mutation.createAutoTrigger(null, { input: { name: 'x', entityType: 'incident', eventType: 'on_delete' } }, ctx))

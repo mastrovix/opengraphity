@@ -2,7 +2,10 @@
   "portal": {
     "title": "IT Portal",
     "poweredBy": "Powered by OpenGrafo",
-    "documentTitle": "IT Portal — OpenGrafo"
+    "documentTitle": "IT Portal — OpenGrafo",
+    "noAccessTitle": "The portal is not available to your role",
+    "noAccessBody": "Your role does not include access to the self-service portal. Ask an administrator if you need it.",
+    "noSubmit": "Your role cannot open tickets or requests from the portal."
   },
   "nav": {
     "home": "Home",

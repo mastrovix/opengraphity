@@ -23,6 +23,12 @@ let teamRows: Array<Record<string, unknown>> = []
 let roleRows: Array<Record<string, unknown>> = []
 let broadcastEmailRows: Array<Record<string, unknown>> = []
 
+// Il marchio dell'organizzazione nelle e-mail (ondata 6): qui quello di fabbrica, senza leggere il Tenant.
+vi.mock('../brand.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../brand.js')>()
+  const { FACTORY_TENANT_BRAND } = await import('@opengraphity/types')
+  return { ...real, loadTenantBrand: vi.fn(async () => ({ ...FACTORY_TENANT_BRAND, isDefault: true })) }
+})
 vi.mock('../locale.js', () => ({ loadNotificationLocale: vi.fn(async () => ({ language: 'en', timeZone: 'UTC' })), invalidateNotificationLocale: vi.fn() }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => ({
@@ -39,7 +45,7 @@ vi.mock('@opengraphity/neo4j', () => ({
             : isRecipientQuery && cypher.includes('ASSIGNED_TO_TEAM')        ? teamRows
             : isRecipientQuery && cypher.includes('[:ASSIGNED_TO]')          ? assigneeRows
             : isRecipientQuery && cypher.includes('WHERE u.role = $role')    ? roleRows
-            : cypher.includes('u.role IN')                                   ? broadcastEmailRows
+            : cypher.includes('$permission IN r.permissions')              ? broadcastEmailRows
             : []
           return { records: rows.map((r) => ({ get: (k: string) => (k === 'r' ? { properties: r } : r[k]) })) }
         },
@@ -130,10 +136,17 @@ describe('target role:<ruolo> — solo gli utenti con quel ruolo', () => {
     expect(sendEmail).not.toHaveBeenCalled()
   })
 
-  it('un bersaglio fuori vocabolario (role:manager, ruolo che non esiste) → job fallito con i valori ammessi', async () => {
-    ruleRows = [rule({ target: 'role:manager' })]
+  it('un bersaglio malformato → job fallito con i valori ammessi', async () => {
+    ruleRows = [rule({ target: 'role:Manager!' })]
     await expect(new NotificationDispatcher().process(event('incident.created', incidentPayload)))
-      .rejects.toThrow(/target "role:manager", which is not one of \[all, assignee, team_owner, role:admin, role:operator, role:viewer, role:end_user\]/)
+      .rejects.toThrow(/target "role:Manager!", which is not one of \[all, assignee, team_owner\] nor role:<role>/)
+  })
+
+  it('un ruolo senza persone (role:manager) → job fallito che lo nomina, mai una notifica a nessuno', async () => {
+    ruleRows = [rule({ target: 'role:manager' })]
+    roleRows = []
+    await expect(new NotificationDispatcher().process(event('incident.created', incidentPayload)))
+      .rejects.toThrow(/has no user with role "manager"/)
   })
 })
 
@@ -180,7 +193,7 @@ describe('target assignee / team_owner — risolti dall\'entità', () => {
 })
 
 describe('target all — la trasmissione resta la trasmissione', () => {
-  it('in-app a tutte le connessioni del tenant, email ad admin/operator: nessuna risoluzione di destinatari', async () => {
+  it('in-app a tutte le connessioni del tenant, email a chi lavora i ticket: nessuna risoluzione di destinatari', async () => {
     const admin  = connect('u-admin')
     const viewer = connect('u-viewer')
     ruleRows = [rule({ target: 'all', channels: ['in_app', 'email'] })]

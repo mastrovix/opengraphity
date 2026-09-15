@@ -14,6 +14,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const mockSession = {
   executeRead:  vi.fn(),
@@ -45,7 +46,7 @@ const myTickets     = portalResolvers.Query.myTickets
 const myTicketStats = portalResolvers.Query.myTicketStats
 
 const ctxFor = (tenantId: string): GraphQLContext =>
-  ({ tenantId, userId: 'user-1', userEmail: 'user@test.io', role: 'end_user' })
+  ({ tenantId, userId: 'user-1', userEmail: 'user@test.io', role: 'end_user', permissions: perms('end_user') })
 
 const rec = (map: Record<string, unknown>) => ({ get: (k: string) => (k in map ? map[k] : null) })
 

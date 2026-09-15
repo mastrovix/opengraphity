@@ -9,6 +9,7 @@ import { GET_KB_ARTICLE_BY_SLUG, GET_KB_ARTICLES, GET_KB_CATEGORIES } from '@/gr
 import { RATE_KB_ARTICLE } from '@/graphql/mutations'
 import { fmtDateLong } from '@/lib/format'
 import { colors, palette } from '@/lib/tokens'
+import { usePortalAccess } from '@/hooks/usePortalAccess'
 
 interface KBArticle {
   id: string; title: string; slug: string; body: string; category: string
@@ -19,6 +20,7 @@ interface KBArticle {
 export function KBArticlePage() {
   const { slug }    = useParams<{ slug: string }>()
   const { t, i18n } = useTranslation()
+  const { canSubmit } = usePortalAccess()
   // F5: l'etichetta della categoria dal Dizionario, nella lingua di chi legge.
   const { data: catData } = useQuery<{ kbCategories: Array<{ name: string; label: string }> }>(GET_KB_CATEGORIES, {
     variables: { language: i18n.resolvedLanguage ?? i18n.language },
@@ -183,7 +185,7 @@ export function KBArticlePage() {
         <span style={{ fontSize: 10, color: palette.warning.strong, fontWeight: 500 }}>
           {t('kb.notSolved')}
         </span>
-        <Link
+        {canSubmit && <Link
           to="/tickets/new"
           style={{
             padding:         '9px 18px',
@@ -196,7 +198,7 @@ export function KBArticlePage() {
           }}
         >
           {t('kb.openTicket')}
-        </Link>
+        </Link>}
       </div>
     </div>
   )

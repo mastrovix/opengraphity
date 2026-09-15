@@ -11,6 +11,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
 import { ValidationError } from '../../../lib/errors.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const created = { id: 'inc-1', number: 'INC00000042', severity: 'high', status: 'new' }
 const props = { id: 'inc-1', number: 'INC00000001', title: 'Stampante rotta', description: null, status: 'new', severity: 'high', category: 'hardware', created_at: 'a', updated_at: 'a', created_by: 'user-1' }
@@ -38,7 +39,7 @@ const incidentService = await import('../../../services/incidentService.js')
 const { publishEvent } = await import('../../../lib/publishEvent.js')
 const { audit } = await import('../../../lib/audit.js')
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@test.io', role: 'end_user' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@test.io', role: 'end_user', permissions: perms('end_user') }
 
 beforeEach(() => { vi.clearAllMocks(); writes.length = 0 })
 

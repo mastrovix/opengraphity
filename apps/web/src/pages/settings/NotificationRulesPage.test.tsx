@@ -10,6 +10,7 @@ import { screen, within } from '@testing-library/react'
 import NotificationRulesPage from './NotificationRulesPage'
 import { GET_NOTIFICATION_RULES, GET_NOTIFICATION_ROUTING, GET_WORKFLOW_EVENT_TYPES } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
+import { meMock, rolesMock } from '@/test/mocks/gql'
 import { NOTIFICATION_TARGETS, USER_ROLES, WORKFLOW_STEP_PURPOSES } from '@opengraphity/types'
 import i18n from '@/i18n/i18n'
 
@@ -90,7 +91,7 @@ const channelsOf = (eventType: string) => within(rowOf(eventType)).getAllByRole(
 
 describe('NotificationRulesPage — canali consegnabili', () => {
   it('ogni riga offre solo i canali che il server dichiara per quel tipo', async () => {
-    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock, workflowEventTypesMock] })
+    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock, workflowEventTypesMock, meMock('admin', { maxUsageCount: Number.POSITIVE_INFINITY }), rolesMock([{ key: 'service_desk', name: 'Service Desk' }])] })
     expect((await screen.findAllByText('event.storm_started')).length).toBeGreaterThan(0)
 
     expect(channelsOf('incident.created')).toEqual(['In app', 'Email', 'Slack', 'Teams'])
@@ -99,7 +100,7 @@ describe('NotificationRulesPage — canali consegnabili', () => {
   })
 
   it('un canale salvato ma non consegnabile resta visibile, spuntato e con l\'avviso, così si può togliere', async () => {
-    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock, workflowEventTypesMock] })
+    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock, workflowEventTypesMock, meMock('admin', { maxUsageCount: Number.POSITIVE_INFINITY }), rolesMock([{ key: 'service_desk', name: 'Service Desk' }])] })
     await screen.findAllByText('service.incident_opened')
 
     const row = rowOf('service.incident_opened')
@@ -112,7 +113,7 @@ describe('NotificationRulesPage — canali consegnabili', () => {
   })
 
   it('le regole degli allarmi e dei servizi hanno la loro sezione (non «Custom»)', async () => {
-    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock, workflowEventTypesMock] })
+    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock, workflowEventTypesMock, meMock('admin', { maxUsageCount: Number.POSITIVE_INFINITY }), rolesMock([{ key: 'service_desk', name: 'Service Desk' }])] })
     await screen.findAllByText('event.storm_started')
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
     expect(headings).toEqual(['Incident', 'Change', 'Alarms and CI health', 'Monitored services'])
@@ -120,7 +121,7 @@ describe('NotificationRulesPage — canali consegnabili', () => {
   })
 
   it('nuova regola: i canali seguono il tipo scelto (incident.created → 4, event.storm_started → 2)', async () => {
-    const { user } = renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock, workflowEventTypesMock] })
+    const { user } = renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock, workflowEventTypesMock, meMock('admin', { maxUsageCount: Number.POSITIVE_INFINITY }), rolesMock([{ key: 'service_desk', name: 'Service Desk' }])] })
     await screen.findAllByText('event.storm_started')
     await user.click(screen.getByRole('button', { name: 'New rule' }))
 
@@ -151,8 +152,8 @@ describe('NotificationRulesPage — canali consegnabili', () => {
    * incident non esistono ancora assegnatario e team, quindi non si possono
    * offrire (il server rifiuterebbe la regola).
    */
-  it('i destinatari offerti sono quelli applicabili all\'evento, e i ruoli offerti sono quelli che l\'autenticazione accetta', async () => {
-    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock, workflowEventTypesMock] })
+  it('i destinatari offerti sono quelli applicabili all\'evento, e i ruoli offerti sono quelli dell\'organizzazione', async () => {
+    renderWithProviders(<NotificationRulesPage />, { mocks: [rulesMock, routingMock, workflowEventTypesMock, meMock('admin', { maxUsageCount: Number.POSITIVE_INFINITY }), rolesMock([{ key: 'service_desk', name: 'Service Desk' }])] })
     await screen.findAllByText('event.storm_started')
 
     // nella riga ci sono due tendine: gravità e destinatari (nell'ordine delle colonne)
@@ -161,12 +162,15 @@ describe('NotificationRulesPage — canali consegnabili', () => {
     expect(values).not.toContain('assignee')
     expect(values).not.toContain('team_owner')
 
-    const offeredRoles = values.filter((v) => v.startsWith('role:')).map((v) => v.slice('role:'.length))
-    expect(offeredRoles).toEqual([...USER_ROLES])
-    expect(values).not.toContain('role:manager')
+    // ondata 7: un «Ruolo: X» per ogni ruolo dell'organizzazione, anche quelli creati dall'admin
+    await vi.waitFor(() => expect(within(select).getAllByRole('option').map((o) => (o as HTMLOptionElement).value)).toContain('role:service_desk'))
+    const offered = within(select).getAllByRole('option').map((o) => (o as HTMLOptionElement).value)
+    const offeredRoles = offered.filter((v) => v.startsWith('role:')).map((v) => v.slice('role:'.length))
+    expect(offeredRoles).toEqual([...USER_ROLES, 'service_desk'])
+    expect(offered).not.toContain('role:manager')
     // ogni opzione ha un'etichetta tradotta, non il valore grezzo
     expect(within(select).getAllByRole('option').map((o) => o.textContent))
-      .toEqual(['Everyone', 'Admins only', 'Operators only', 'Viewers only', 'Portal users only'])
+      .toEqual(['Everyone', 'Role: Admin', 'Role: Operator', 'Role: Viewer', 'Role: End user', 'Role: Service Desk'])
   })
 
   it('se la tabella dei canali non arriva, la pagina mostra l\'errore invece di un elenco di canali a prescindere', async () => {

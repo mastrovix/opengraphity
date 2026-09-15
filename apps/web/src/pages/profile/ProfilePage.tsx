@@ -103,7 +103,7 @@ export function ProfilePage() {
               <span style={{ color: 'var(--color-slate)' }}>{t('pages.users.email')}</span>
               <span style={{ color: 'var(--color-slate-dark)' }}>{me.email}</span>
               <span style={{ color: 'var(--color-slate)' }}>{t('pages.users.role')}</span>
-              <span><RoleBadge role={me.role} /></span>
+              <span><RoleBadge role={me.role} name={me.roleName} /></span>
             </div>
           ) : (
             <p style={sectionDesc}>{t('pages.profile.noAccount')}</p>

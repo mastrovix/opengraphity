@@ -352,7 +352,8 @@ function HealthRowView({ row }: { row: CIHealthRow }) {
 export function CIHealthPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { isAdmin } = useMe()
+  const { can } = useMe()
+  const managesSources = can('config.monitoring')
   const { ciTypes } = useMetamodel()
   const baseEnums = useCIBaseEnums()
 
@@ -464,8 +465,8 @@ export function CIHealthPage() {
         <EmptyState
           icon={<Radar size={32} />}
           title={t('monitoring.health.empty.title')}
-          description={`${t('monitoring.health.empty.description')}${isAdmin ? '' : ` ${t('monitoring.health.empty.askAdmin')}`}`}
-          action={isAdmin ? <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => navigate('/monitoring/sources/new')}>{t('monitoring.health.empty.cta')}</Button> : undefined}
+          description={`${t('monitoring.health.empty.description')}${managesSources ? '' : ` ${t('monitoring.health.empty.askAdmin')}`}`}
+          action={managesSources ? <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => navigate('/monitoring/sources/new')}>{t('monitoring.health.empty.cta')}</Button> : undefined}
         />
       </div>
     )

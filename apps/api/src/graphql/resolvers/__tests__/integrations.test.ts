@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import { createHash } from 'node:crypto'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
@@ -42,8 +43,8 @@ const { getEventPolicy } = await import('../../../services/events/policy.js')
 const { deleteSourceAndResolveEvents } = await import('../../../services/events/cascade.js')
 const { invalidateSourceCache } = await import('../../../services/events/sourceCache.js')
 
-const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
-const operator: GraphQLContext = { tenantId: 'tenant-1', userId: 'op-1',    userEmail: 'op@test.io',  role: 'operator' }
+const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
+const operator: GraphQLContext = { tenantId: 'tenant-1', userId: 'op-1',    userEmail: 'op@test.io',  role: 'operator', permissions: perms('operator') }
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')
 
@@ -156,7 +157,7 @@ describe('createApiKey — solo l\'hash è persistito', () => {
     expect(a.key).not.toBe(b.key)
   })
 
-  it('operator → ForbiddenError (requireRole locale), nessuna query', async () => {
+  it('operator → ForbiddenError (requirePermission locale), nessuna query', async () => {
     await expectCode(integrationsResolvers.Mutation.createApiKey(null, { input: { name: 'x', permissions: [] } }, operator), 'FORBIDDEN')
     expect(runQuery).not.toHaveBeenCalled()
   })

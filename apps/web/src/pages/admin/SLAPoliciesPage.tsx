@@ -22,7 +22,6 @@ import { selectS, labelS } from '@/components/ui/styles'
 import { useListQueryState } from '@/hooks/useListQueryState'
 import { useCrudModal } from '@/hooks/useCrudModal'
 import { useConfirm } from '@/hooks/useConfirm'
-import { errorMessage } from '@/hooks/useMutationWithToast'
 import { ALWAYS_ON, ComplianceFields, TimeCountingField, calendarChoiceOf, calendarIdFor, complianceValid, useServiceCalendars } from '@/components/sla/ServiceTargetFields'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -68,6 +67,7 @@ const policyToForm = (p: SLAPolicy): FormState => ({
 import { SLA_ENTITY_TYPES as ENTITY_TYPES, SLA_CATEGORY_ENTITY_TYPES, DEFAULT_SLA_WARNING_MINUTES } from '@opengraphity/types'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 type VocabEntries = ReadonlyArray<{ value: string; label?: string | null }>
 // Valori e etichette dai vocabolari del cliente: prima erano tre liste scritte qui.
@@ -183,7 +183,7 @@ export function SLAPoliciesPage() {
         toast.success(t('toast.sla.created'))
       }
       modal.close()
-    } catch (e: unknown) { toast.error(errorMessage(e)) }
+    } catch (e: unknown) { showError(e) }
   }
 
   async function handleDelete(p: SLAPolicy) {
@@ -192,14 +192,14 @@ export function SLAPoliciesPage() {
     try {
       await deletePolicy({ variables: { id: p.id } })
       toast.success(t('toast.sla.deleted'))
-    } catch (e: unknown) { toast.error(errorMessage(e)) }
+    } catch (e: unknown) { showError(e) }
   }
 
   async function handleToggle(p: SLAPolicy) {
     try {
       await updatePolicy({ variables: { id: p.id, input: { enabled: !p.enabled } } })
       toast.success(p.enabled ? t('toast.sla.disabled') : t('toast.sla.enabled'))
-    } catch (e: unknown) { toast.error(errorMessage(e)) }
+    } catch (e: unknown) { showError(e) }
   }
 
   const policyColumns: ColumnDef<SLAPolicy>[] = [

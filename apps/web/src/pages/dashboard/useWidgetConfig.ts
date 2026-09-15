@@ -8,6 +8,7 @@ import { GET_WIDGET_DATA_PREVIEW, GET_WIDGET_CATALOG } from '@/graphql/queries'
 import type { CustomWidgetData } from './CustomWidgetCard'
 import { cssVar } from '@/lib/charts/cssVar'
 import { shippedLabel } from '@/lib/shippedLabel'
+import { showError } from '@/lib/showError'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 // Le etichette visibili sono chiavi i18n (`labelKey`, `descKey`, `subKey`,
@@ -299,7 +300,7 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
       }
       onSaved(saved)
     } catch (err: unknown) {
-      toast.error(t('toast.widget.saveFailed', { error: errorMessage(err) }))
+      showError(err, t('toast.widget.saveFailed', { error: errorMessage(err) }))
     } finally {
       setSaving(false)
     }

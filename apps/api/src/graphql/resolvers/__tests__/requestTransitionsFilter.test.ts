@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('../ci-utils.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../ci-utils.js')>()),
@@ -13,7 +14,7 @@ vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { getAvailableTransit
 vi.mock('../../../lib/requestApproval.js', () => ({ requestApprovalWouldBeSkipped: vi.fn(async (_s: unknown, _t: string, _i: string, to: string) => to === 'in_progress') }))
 
 const { serviceRequestAvailableTransitionsField } = await import('../workflowQueries.js')
-const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'a@x', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'a@x', role: 'operator', permissions: perms('operator') }
 
 describe('ServiceRequest.availableTransitions', () => {
   it('non offre le transizioni che salterebbero l\'approvazione richiesta', async () => {

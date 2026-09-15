@@ -5,6 +5,7 @@
  * proprio deve essere una zona IANA vera.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const runQuery = vi.fn()
 vi.mock('@opengraphity/neo4j', () => ({ runQuery: (...a: unknown[]) => runQuery(...a), getSession: vi.fn() }))
@@ -16,7 +17,7 @@ const getTenantTimezone = vi.fn(async () => 'Europe/Rome')
 vi.mock('@opengraphity/sla', () => ({ selectSLAForEntity: vi.fn(), getTenantTimezone, assertRuleSLAMinutes: vi.fn() }))
 
 const { automationResolvers } = await import('../automation.js')
-const ctx = { tenantId: 't1', userId: 'u1', role: 'admin' } as never
+const ctx = { tenantId: 't1', userId: 'u1', role: 'admin', permissions: perms('admin') } as never
 const input = { name: 'P', entityType: 'incident', responseMinutes: 60, resolveMinutes: 240, complianceTarget: 95, complianceWarning: 80 }
 
 describe('SLA policy — fuso', () => {

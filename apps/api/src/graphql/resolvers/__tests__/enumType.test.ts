@@ -18,6 +18,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import { int as neo4jInt } from 'neo4j-driver'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 /**
  * `toNumber` è quello VERO (non un finto): `deleteEnumType` converte il
@@ -42,8 +43,8 @@ const { getSession } = await import('@opengraphity/neo4j')
 const { registerMetamodelCacheClearer, registeredMetamodelCacheClearers } =
   await import('../../../lib/schemaInvalidator.js')
 
-const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
-const operator: GraphQLContext = { ...admin, role: 'operator' }
+const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
+const operator: GraphQLContext = { ...admin, role: 'operator', permissions: perms('operator') }
 /** `keys` serve a lib/enumValueUsage.ts, che legge le righe per chiave (B7-2). */
 const rec = (map: Record<string, unknown>) => ({ keys: Object.keys(map), get: (k: string) => (k in map ? map[k] : null) })
 /** Un `count(...)` come lo dà il driver quando i numeri sono «lossless». */

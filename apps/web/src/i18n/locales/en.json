@@ -142,7 +142,8 @@
     "organization": "Organization",
     "olaContracts": "OLA / UC",
     "olaReport": "OLA / UC Report",
-    "anomalyRules": "Anomaly rules"
+    "anomalyRules": "Anomaly rules",
+    "roles": "Roles"
   },
   "pages": {
     "incidents": {
@@ -407,7 +408,10 @@
       "lastNamePlaceholder": "Smith",
       "addToTeam": "Add to a team",
       "created": "User created",
-      "emailPlaceholder": "jane@acme.com"
+      "emailPlaceholder": "jane@acme.com",
+      "changeRole": "Role",
+      "roleChanged": "Role changed",
+      "saveRole": "Save role"
     },
     "logs": {
       "title": "Logs",
@@ -1247,8 +1251,8 @@
       "categories": "Categories:",
       "previewHint": "The preview updates automatically while you configure the widget.",
       "activeAlarmsHint": "This widget shows the live counters of the alarm console: no entity or metric to configure.",
-      "activeAlarmsStaffOnly": "The alarm console is reserved to staff (administrators, operators and viewers).",
-      "serviceHealthStaffOnly": "The Services page is reserved to staff (administrators, operators and viewers).",
+      "activeAlarmsStaffOnly": "Your role cannot open the alarm console.",
+      "serviceHealthStaffOnly": "Your role cannot open the Services page.",
       "unknownDataFreeWidget": "Unknown data-free widget type: {{type}}",
       "serviceHealthHint": "This widget shows the monitored-service counters: no entity or metric to configure.",
       "entityGroupItsm": "Tickets",
@@ -2103,6 +2107,45 @@
         "isolated_cluster": "A small group of CIs connected to each other but cut off from the rest of the graph (searched up to 6 steps away).",
         "risk_concentration": "A CI with many open incidents of the severities you count as critical."
       }
+    },
+    "roles": {
+      "title": "Roles",
+      "subtitle": "A role is a name and a set of permissions, and everyone has one. Factory roles can be changed but not deleted.",
+      "newRole": "New role",
+      "colRole": "Role",
+      "colType": "Type",
+      "colPermissions": "Permissions",
+      "colPeople": "People",
+      "factory": "Factory",
+      "custom": "Custom",
+      "permissionsCount": "{{selected}} of {{total}}",
+      "edit": "Edit",
+      "duplicate": "Duplicate",
+      "delete": "Delete",
+      "deleteTitle": "Delete the role «{{name}}»?",
+      "deleteBody": "Nobody has this role. Deleting it cannot be undone.",
+      "deleted": "Role deleted",
+      "created": "Role created",
+      "saved": "Role saved",
+      "cannotDeleteFactory": "Factory roles cannot be deleted",
+      "cannotDeleteInUse": "Give the people with this role another role first",
+      "backToRoles": "Back to roles",
+      "editTitle": "Edit role",
+      "newTitle": "New role",
+      "copyOf": "Copy of {{name}}",
+      "name": "Name",
+      "nameFactoryHint": "Leave empty to keep the product name «{{name}}».",
+      "key": "Key",
+      "keyHint": "Recipients of notifications «by role» use it; it does not change.",
+      "selectArea": "Select the whole area",
+      "clearArea": "Clear the area",
+      "areaCount": "{{selected}} of {{total}}",
+      "portalOnlyHint": "Without «Workspace» the role can only use the self-service portal.",
+      "usersAdminHint": "At least one active person must keep «People, teams and roles».",
+      "noPermissions": "No permission selected: people with this role can only see their profile.",
+      "peopleWithRole_one": "{{count}} person has this role",
+      "peopleWithRole_other": "{{count}} people have this role",
+      "loadError": "Could not load the roles: {{error}}"
     }
   },
   "filter": {
@@ -2205,11 +2248,8 @@
       "all": "Everyone",
       "assignee": "Assignee",
       "teamOwner": "Assigned team",
-      "roleAdmin": "Admins only",
-      "roleOperator": "Operators only",
-      "roleViewer": "Viewers only",
-      "roleEndUser": "Portal users only",
-      "notApplicable": "{{target}} — not applicable to this event"
+      "notApplicable": "{{target}} — not applicable to this event",
+      "role": "Role: {{role}}"
     },
     "severity": {
       "info": "Info",
@@ -3171,10 +3211,11 @@
     "authz": {
       "noUser": "Not authorized: we do not know who you are.",
       "wrongGroup": "Not authorized: only the CI's {{group}} group can do this.",
-      "reopenAdmin": "Only an administrator can reopen a task.",
+      "reopenAdmin": "Only someone who can act for any team can reopen a task.",
       "notInTeam": "The user does not belong to the assigned team.",
+      "permissionRequired": "Your role cannot do this: it needs one of these permissions: {{required}}.",
       "unknownRole": "Unknown role \"{{role}}\": no operation is allowed.",
-      "roleNotAllowed": "Role \"{{role}}\" cannot run {{operation}} (required: {{required}}).",
+      "roleNotAllowed": "Role \"{{role}}\" cannot run {{operation}} (it needs one of these permissions: {{required}}).",
       "invalidRole": "Invalid role: {{role}}."
     },
     "vocabulary": {
@@ -3468,7 +3509,7 @@
     "request": {
       "approvalRequired": "This request needs an approval: send it to approval first.",
       "assignConcluded": "A concluded request cannot be reassigned.",
-      "assigneeCannotWork": "The chosen user cannot work on requests: an admin or operator role is required."
+      "assigneeCannotWork": "The chosen user cannot receive tickets: their role lacks the \"Receive tickets\" permission."
     },
     "internalChat": {
       "notFoundOrNotYours": "The message does not exist, or it is not yours to delete."
@@ -3601,6 +3642,16 @@
       "logoSize": "The logo is larger than {{max}} MB.",
       "logoUnsafe": "The SVG logo contains scripts, event handlers or external links: export it again as a plain image.",
       "logoType": "The logo must be a PNG or SVG image."
+    },
+    "role": {
+      "name": "A role name must be 1 to {{max}} characters.",
+      "permissions": "Unknown permissions: {{unknown}}.",
+      "nameTaken": "A role named «{{name}}» already exists.",
+      "lastUsersAdmin": "At least one active person must keep the permission to manage people and roles.",
+      "factoryNotDeletable": "A factory role can be changed but not deleted.",
+      "inUse": "The role still has {{count}} people: give them another role first.",
+      "usedAsRecipient": "The role receives notifications from {{count}} rules, workflow steps or automations: change them first.",
+      "unknownTarget": "The recipients name roles this organization does not have: {{roles}}."
     }
   },
   "errorBoundary": {
@@ -5302,6 +5353,7 @@
     },
     "gap": {
       "tenant_missing": "no row: the tenant does not exist",
+      "no_roles": "missing roles: {{roles}} (the people with these roles cannot do anything)",
       "no_dashboard": "no dashboard",
       "no_notification_rules": "no notification rules",
       "no_domain_matrices": "no domain matrices",
@@ -5750,5 +5802,230 @@
     "edit": "Edit",
     "saved": "Fields saved",
     "chooseValue": "— Choose —"
+  },
+  "permissions": {
+    "areas": {
+      "access": "Access",
+      "tickets": "Tickets",
+      "knowledge": "Knowledge base",
+      "cmdb": "CMDB and monitoring",
+      "analysis": "Analysis and reports",
+      "configuration": "Configuration",
+      "administration": "Administration"
+    },
+    "items": {
+      "workspace_use": {
+        "label": "Workspace",
+        "description": "Enter the staff app: search, filters, own tasks and approvals, watching a ticket. Reads reference data (teams, people, types, dictionaries, workflows, calendars)."
+      },
+      "workspace_notificationsManage": {
+        "label": "Manage own notifications",
+        "description": "Mark own notifications as read or dismiss them, choose whether to receive them by email."
+      },
+      "portal_read": {
+        "label": "Portal: view",
+        "description": "In the portal: own tickets, the catalog, the knowledge base."
+      },
+      "portal_submit": {
+        "label": "Portal: open and reply",
+        "description": "Open tickets and requests from the portal, reply, reopen, attach files."
+      },
+      "incident_read": {
+        "label": "Incidents: view",
+        "description": "Lists and details, history, similar incidents, suggested articles."
+      },
+      "incident_write": {
+        "label": "Incidents: work",
+        "description": "Open, edit, assign, move forward, declare major, link to a problem, KB draft."
+      },
+      "incident_ai": {
+        "label": "Incidents: AI suggestions",
+        "description": "Triage suggestion and resolution notes draft."
+      },
+      "problem_read": {
+        "label": "Problems: view",
+        "description": "Lists, details, problem candidates."
+      },
+      "problem_write": {
+        "label": "Problems: work",
+        "description": "Open, edit, assign, move forward, affected CIs."
+      },
+      "problem_delete": {
+        "label": "Problems: delete",
+        "description": "Delete with everything linked to it."
+      },
+      "change_read": {
+        "label": "Changes: view",
+        "description": "Lists, details, impacted CIs, impact analysis, audit, tasks."
+      },
+      "change_write": {
+        "label": "Changes: work",
+        "description": "Open, move forward, assessment, deploy plan, validation, review, reminders."
+      },
+      "change_delete": {
+        "label": "Changes: delete",
+        "description": "Logical deletion: the record stays readable."
+      },
+      "request_read": {
+        "label": "Requests: view",
+        "description": "Service request lists and details, the catalog."
+      },
+      "request_write": {
+        "label": "Requests: work",
+        "description": "Open, edit, assign."
+      },
+      "ticket_work": {
+        "label": "Work on any ticket",
+        "description": "Comments, attachments, links between tickets, affected CIs, custom fields. Edit or delete own comments."
+      },
+      "ticket_assignable": {
+        "label": "Receive tickets",
+        "description": "Appear among the people a ticket or task can be assigned to; receive broadcast emails and the daily digest."
+      },
+      "ticket_moderateComments": {
+        "label": "Moderate comments",
+        "description": "Edit or delete other people's comments, attachments and internal chat messages."
+      },
+      "ticket_internalChat": {
+        "label": "Internal chat",
+        "description": "Read and write the internal chat of tickets."
+      },
+      "approval_decide": {
+        "label": "Approve",
+        "description": "Request, approve and reject the approvals of own teams."
+      },
+      "approval_override": {
+        "label": "Act for any team",
+        "description": "Decide an approval without being in the team, work and reopen change tasks of any team, move a change forward by hand."
+      },
+      "kb_read": {
+        "label": "Knowledge base: read",
+        "description": "Articles, categories, previous versions."
+      },
+      "kb_write": {
+        "label": "Knowledge base: write",
+        "description": "Create, edit, delete, restore a version."
+      },
+      "kb_rate": {
+        "label": "Rate an article",
+        "description": "«Helpful / not helpful»."
+      },
+      "cmdb_read": {
+        "label": "CMDB: view",
+        "description": "CIs, relations, map, blast radius, the incidents of a CI."
+      },
+      "cmdb_write": {
+        "label": "CMDB: edit",
+        "description": "CI fields, relations, owner and support group."
+      },
+      "event_read": {
+        "label": "Alarms: view",
+        "description": "Alarm console, health of CIs and business capabilities."
+      },
+      "event_work": {
+        "label": "Alarms: handle",
+        "description": "Acknowledge, resolve, link to a CI, open an incident, override health."
+      },
+      "service_read": {
+        "label": "Monitored services: view",
+        "description": "Service maps and the services a CI touches."
+      },
+      "service_reevaluate": {
+        "label": "Monitored services: recompute",
+        "description": "Recompute the health of a map now."
+      },
+      "analysis_read": {
+        "label": "Analysis: view",
+        "description": "CMDB anomalies, What-if."
+      },
+      "anomaly_resolve": {
+        "label": "Anomalies: close",
+        "description": "Mark an anomaly resolved, false positive or accepted risk."
+      },
+      "anomaly_scan": {
+        "label": "Anomalies: run the scan",
+        "description": "Start the scan now."
+      },
+      "report_read": {
+        "label": "Reports: view",
+        "description": "Run shared reports, SLA report, past AI conversations."
+      },
+      "report_write": {
+        "label": "Reports: build",
+        "description": "Create and edit report templates, export PDF and Excel."
+      },
+      "report_schedule": {
+        "label": "Reports: schedule",
+        "description": "Periodic email delivery of a report."
+      },
+      "report_ai": {
+        "label": "Reports: ask the AI",
+        "description": "Natural-language questions on the data (AI Analysis)."
+      },
+      "assistant_use": {
+        "label": "AI Assistant",
+        "description": "Ask questions in natural language about incidents, CIs, changes and articles. It only reads what the role can see."
+      },
+      "dashboard_use": {
+        "label": "Own dashboards",
+        "description": "Create, edit and share own dashboards and widgets."
+      },
+      "dashboard_manageAll": {
+        "label": "Everyone's dashboards and reports",
+        "description": "Also edit dashboards and reports created by others."
+      },
+      "config_organization": {
+        "label": "Organization",
+        "description": "Name, brand, language, time zone, calendars, numbering, attachments, AI, portal severities."
+      },
+      "config_metamodel": {
+        "label": "Metamodel",
+        "description": "CI and ITIL types, fields, field rules, Dictionary, Domain matrices."
+      },
+      "config_workflow": {
+        "label": "Workflow designer",
+        "description": "Steps, transitions, deadlines."
+      },
+      "config_sla": {
+        "label": "SLA, OLA and UC",
+        "description": "SLA policies and OLA/UC contracts."
+      },
+      "config_automation": {
+        "label": "Automations",
+        "description": "Auto Triggers and Business Rules."
+      },
+      "config_notifications": {
+        "label": "Notifications",
+        "description": "Notification channels and rules."
+      },
+      "config_catalog": {
+        "label": "Catalog and questionnaires",
+        "description": "Service Catalog, change assessment questions."
+      },
+      "config_monitoring": {
+        "label": "Monitoring",
+        "description": "Alarm sources, Event policy, CI aliases, anomaly rules."
+      },
+      "config_services": {
+        "label": "Monitored services: configure",
+        "description": "Create and configure service maps."
+      },
+      "config_integrations": {
+        "label": "Integrations",
+        "description": "API keys, webhooks, CMDB sync."
+      },
+      "admin_users": {
+        "label": "People, teams and roles",
+        "description": "Create people, assign roles and teams, create and edit roles."
+      },
+      "admin_audit": {
+        "label": "Audit Log and logs",
+        "description": "Read the Audit Log and the application logs."
+      },
+      "admin_system": {
+        "label": "Platform health",
+        "description": "Queues, metrics, traces, configuration diagnostics."
+      }
+    }
   }
 }

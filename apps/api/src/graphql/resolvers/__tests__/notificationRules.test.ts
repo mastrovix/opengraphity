@@ -21,6 +21,18 @@ vi.mock('../ci-utils.js', () => ({
 }))
 vi.mock('../../../lib/bullmq.js', () => ({ getQueue: vi.fn() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn() }))
+// I ruoli dell'organizzazione (ondata 7): i quattro di fabbrica più «service_desk», creato dall'admin.
+vi.mock('../../../lib/roles.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../lib/roles.js')>()
+  const keys = new Set(['admin', 'operator', 'viewer', 'end_user', 'service_desk'])
+  return {
+    ...real,
+    assertRolesExist: vi.fn(async (_t: string, roleKeys: readonly string[]) => {
+      const missing = roleKeys.filter((k) => !keys.has(k))
+      if (missing.length) throw new (await import('../../../lib/errors.js')).ValidationError(`Recipients name roles this organization does not have: ${missing.join(', ')}`, { key: 'errors.role.unknownTarget', params: { roles: missing.join(', ') } })
+    }),
+  }
+})
 vi.mock('@opengraphity/notifications', async (importOriginal) => {
   const orig = await importOriginal<typeof import('@opengraphity/notifications')>()
   return { ...orig, invalidateRuleCache: vi.fn() }
@@ -28,8 +40,9 @@ vi.mock('@opengraphity/notifications', async (importOriginal) => {
 
 const { notificationRuleResolvers } = await import('../notificationRules.js')
 import { isTargetApplicable } from '@opengraphity/types'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
 const ruleNode = (props: Record<string, unknown>) => ({ records: [{ get: () => ({ properties: props }) }] })
 
 async function expectBadInput(p: Promise<unknown>, pattern: RegExp) {
@@ -86,11 +99,11 @@ describe('createNotificationRule — canali non instradabili → BAD_USER_INPUT 
 })
 
 /**
- * D-23 — il destinatario viene validato in scrittura contro il vocabolario
- * condiviso (`NOTIFICATION_TARGETS`), che ha un bersaglio per ruolo VERO
- * (USER_ROLES). Prima `target` veniva scritto senza controllo e poi ignorato
- * in consegna: `role:manager` era salvabile e non avrebbe mai selezionato
- * nessuno.
+ * D-23 — il destinatario viene validato in scrittura: la forma contro il
+ * vocabolario condiviso, e un bersaglio per ruolo contro i ruoli
+ * dell'organizzazione (ondata 7). Prima `target` veniva scritto senza controllo
+ * e poi ignorato in consegna: `role:manager` era salvabile e non avrebbe mai
+ * selezionato nessuno.
  */
 describe('target — validato in scrittura contro NOTIFICATION_TARGETS', () => {
   it('il vocabolario ha un bersaglio per ogni ruolo vero e nessun role:manager', () => {
@@ -98,12 +111,19 @@ describe('target — validato in scrittura contro NOTIFICATION_TARGETS', () => {
     expect(NOTIFICATION_TARGETS).not.toContain('role:manager')
   })
 
-  it('create con role:manager → BAD_USER_INPUT con i valori ammessi, nessuna scrittura', async () => {
+  it('create con role:manager (un ruolo che l\'organizzazione non ha) → BAD_USER_INPUT, nessuna scrittura', async () => {
     await expectBadInput(
       notificationRuleResolvers.Mutation.createNotificationRule(null, { input: { titleKey: 'k', eventType: 'incident.created', channels: ['in_app'], target: 'role:manager' } }, ctx),
-      /Target "role:manager" is not a valid recipient\. Allowed: all, assignee, team_owner, role:admin/,
+      /roles this organization does not have: manager/,
     )
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('create con un bersaglio malformato → BAD_USER_INPUT con i valori ammessi', async () => {
+    await expectBadInput(
+      notificationRuleResolvers.Mutation.createNotificationRule(null, { input: { titleKey: 'k', eventType: 'incident.created', channels: ['in_app'], target: 'role:Service Desk' } }, ctx),
+      /Target "role:Service Desk" is not a valid recipient\. Allowed: all, assignee, team_owner, role:<role>/,
+    )
   })
 
   it('update con un bersaglio inventato → BAD_USER_INPUT, nessuna lettura e nessuna scrittura', async () => {

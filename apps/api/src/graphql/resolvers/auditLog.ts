@@ -1,8 +1,8 @@
-import { GraphQLError } from 'graphql'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { logger } from '../../lib/logger.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { requirePermission } from '../../lib/permissions.js'
 
 interface AuditEntry {
   id:         string
@@ -41,9 +41,7 @@ export async function auditLog(
   },
   ctx: GraphQLContext,
 ): Promise<{ items: AuditEntry[]; total: number }> {
-  if (ctx.role !== 'admin') {
-    throw new GraphQLError('Forbidden: admin role required', { extensions: { code: 'FORBIDDEN' } })
-  }
+  requirePermission(ctx, 'admin.audit')
 
   const page     = Math.max(1, args.page     ?? 1)
   const pageSize = Math.min(100, Math.max(1, args.pageSize ?? 50))
@@ -129,9 +127,7 @@ export async function auditActions(
   __: unknown,
   ctx: GraphQLContext,
 ): Promise<Array<{ action: string; count: number }>> {
-  if (ctx.role !== 'admin') {
-    throw new GraphQLError('Forbidden: admin role required', { extensions: { code: 'FORBIDDEN' } })
-  }
+  requirePermission(ctx, 'admin.audit')
   const session = getSession(undefined, 'READ')
   try {
     const res = await session.executeRead((tx) => tx.run(`

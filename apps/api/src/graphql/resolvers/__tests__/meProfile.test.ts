@@ -6,13 +6,14 @@
  * `setMyEmailNotifications` la scrive.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const runQueryOne = vi.fn()
 vi.mock('@opengraphity/neo4j', () => ({ runQueryOne: (...a: unknown[]) => runQueryOne(...a), getSession: vi.fn(() => ({ close: vi.fn(async () => {}) })) }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn() }))
 
 const { meResolvers } = await import('../me.js')
-const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'bob@azienda.it', role: 'operator' } as never
+const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'bob@azienda.it', role: 'operator', permissions: perms('operator') } as never
 
 describe('me', () => {
   beforeEach(() => { runQueryOne.mockReset() })

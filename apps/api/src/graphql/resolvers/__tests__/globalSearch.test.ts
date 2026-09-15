@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 // ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
 // `LoadBalancer` è un tipo creato dal cliente: la ricerca per id deve vederlo.
@@ -44,7 +45,7 @@ const globalSearch = globalSearchResolvers.Query.globalSearch
 
 // ── Test context ──────────────────────────────────────────────────────────────
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'operator', permissions: perms('operator') }
 
 const EMPTY_RESULTS = { cis: [], changes: [], incidents: [], problems: [], serviceRequests: [], tasks: [], kbArticles: [] }
 

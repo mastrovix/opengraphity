@@ -7,7 +7,7 @@ import { renderWithProviders, type GqlMock } from '@/test/utils'
 
 const meMock: GqlMock = {
   request: { query: GET_ME },
-  result: { data: { me: { __typename: 'User', id: 'me-1', name: 'Mario Rossi', email: 'mario@acme.com', role: 'end_user' } } },
+  result: { data: { me: { __typename: 'User', id: 'me-1', name: 'Mario Rossi', email: 'mario@acme.com', role: 'end_user', permissions: ['portal.read', 'portal.submit', 'kb.rate'] } } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 }
 

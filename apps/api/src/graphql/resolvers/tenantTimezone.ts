@@ -4,7 +4,7 @@
  * pagina Organizzazione, accanto alla lingua.
  */
 import type { GraphQLContext } from '../../context.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { audit } from '../../lib/audit.js'
 import { availableTimeZones, setTenantTimezone, tenantTimezone } from '../../lib/tenantTimezone.js'
 
@@ -17,7 +17,7 @@ async function tenantTimezoneSettings(_: unknown, __: unknown, ctx: GraphQLConte
 }
 
 async function setTenantTimezoneMutation(_: unknown, args: { timezone: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.organization')
   const timezone = await setTenantTimezone(ctx.tenantId, args.timezone)
   void audit(ctx, 'tenant.timezone.updated', 'Tenant', ctx.tenantId, { timezone })
   return settings(ctx.tenantId)

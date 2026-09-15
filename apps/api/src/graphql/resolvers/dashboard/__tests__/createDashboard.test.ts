@@ -7,6 +7,7 @@
  * una parte fallisce, non resta niente.
  */
 import { describe, expect, it, vi } from 'vitest'
+import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 const writes: Array<Array<{ cypher: string; params: Record<string, unknown> }>> = []
 let authorExists = true
@@ -34,7 +35,7 @@ vi.mock('../helpers.js', () => ({ mapDashboardConfig: (p: unknown) => p }))
 vi.mock('../../reportAccess.js', () => ({ assertDashboardAccess: vi.fn() }))
 
 const { createDashboard } = await import('../dashboardMutations.js')
-const ctx = { tenantId: 'c-test', userId: 'u-1', userEmail: 'a@x', role: 'admin' } as never
+const ctx = { tenantId: 'c-test', userId: 'u-1', userEmail: 'a@x', role: 'admin', permissions: perms('admin') } as never
 
 describe('createDashboard', () => {
   it('nodo, autore e condivisione nella STESSA transazione, con il tenant su ogni query', async () => {

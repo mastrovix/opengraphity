@@ -10,6 +10,7 @@ import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import { pendingTicketApprovals } from './pendingTicketApprovals.js'
 import { systemText } from '../../lib/systemText.js'
+import { hasPermission } from '../../lib/permissions.js'
 
 interface ApprovalRequest {
   id:             string
@@ -537,8 +538,8 @@ export async function cancelApprovalRequest(
     if (status !== 'pending') {
       throw new GraphQLError(`Cannot cancel a request with status '${status}'`, { extensions: { code: 'BAD_REQUEST' } })
     }
-    if (requestedBy !== ctx.userId && ctx.role !== 'admin') {
-      throw new GraphQLError('Only the requester or an admin can cancel', { extensions: { code: 'FORBIDDEN' } })
+    if (requestedBy !== ctx.userId && !hasPermission(ctx, 'approval.override')) {
+      throw new GraphQLError('Only the requester, or someone who can decide for any team, can cancel', { extensions: { code: 'FORBIDDEN' } })
     }
 
     const updateRes = await session.executeWrite((tx) => tx.run(`

@@ -40,6 +40,7 @@ import { colors, palette, alpha } from '@/lib/tokens'
 import { BASE_TYPE_FIELDS } from '@opengraphity/schema-generator/names'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { showError } from '@/lib/showError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -361,11 +362,11 @@ export function CIDetailPage() {
   // teamId null → l'API rimuove la relazione ("— non assegnato —" è un'azione reale)
   const [assignOwner] = useMutation<unknown, { ciId: string; teamId: string | null }>(ASSIGN_CI_OWNER, {
     onCompleted: (_d, opts) => { toast.success(t(opts?.variables?.teamId ? 'toast.ci.ownerGroupUpdated' : 'toast.ci.ownerGroupRemoved')); void refetch() },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const [assignSupport] = useMutation<unknown, { ciId: string; teamId: string | null }>(ASSIGN_CI_SUPPORT_GROUP, {
     onCompleted: (_d, opts) => { toast.success(t(opts?.variables?.teamId ? 'toast.ci.supportGroupUpdated' : 'toast.ci.supportGroupRemoved')); void refetch() },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const { data: brData } = useQuery<{
@@ -460,7 +461,7 @@ export function CIDetailPage() {
       setEditMode(false)
       refetch()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     }
   }
 
@@ -476,7 +477,7 @@ export function CIDetailPage() {
       setAddRelForm({ relationType: '', direction: 'outgoing', search: '', targetCI: null })
       refetch()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     }
   }
 
@@ -488,7 +489,7 @@ export function CIDetailPage() {
       setDeleteRel(null)
       refetch()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     }
   }
 

@@ -1,5 +1,6 @@
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
+import { hasPermission } from '../../lib/permissions.js'
 
 /**
  * Le approvazioni che aspettano l'utente FUORI dalle richieste generiche:
@@ -29,8 +30,8 @@ export async function pendingTicketApprovals(
       WHERE $isAdmin OR exists((:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(t))
       RETURN c.id AS entityId, c.number AS number, c.title AS title, t.name AS detail, a.created_at AS requestedAt
       ORDER BY requestedAt DESC
-    `, { tenantId: ctx.tenantId, userId: ctx.userId, isAdmin: ctx.role === 'admin' }))
-    const requests = ctx.role === 'admin' || ctx.role === 'operator'
+    `, { tenantId: ctx.tenantId, userId: ctx.userId, isAdmin: hasPermission(ctx, 'approval.override') }))
+    const requests = hasPermission(ctx, 'approval.decide')
       ? await session.executeRead((tx) => tx.run(`
           MATCH (r:ServiceRequest {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)-[:CURRENT_STEP]->(st:WorkflowStep {purpose: 'approval'})
           RETURN r.id AS entityId, r.number AS number, r.title AS title, coalesce(st.label, st.name) AS detail, wi.updated_at AS requestedAt

@@ -48,6 +48,7 @@ import { BrandSection } from './organization/BrandSection'
 import { TicketNumberingSection } from './organization/TicketNumberingSection'
 import { AttachmentPolicySection } from './organization/AttachmentPolicySection'
 import { AISection } from './organization/AISection'
+import { showError } from '@/lib/showError'
 
 /**
  * Le schede della pagina (verifica «Cosa resta cablato», ondata 6): con nome,
@@ -86,7 +87,7 @@ export function OrganizationPage() {
       */
       if (lingua && !linguaSceltaDallUtente()) void applicaLinguaDelCliente(lingua)
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   if (error && !data) {
@@ -184,7 +185,7 @@ function TimezoneSection() {
   const [saveTimezone, { loading: saving }] = useMutation(SET_TENANT_TIMEZONE, {
     refetchQueries: [GET_TENANT_TIMEZONE_SETTINGS],
     onCompleted: () => { toast.success(t('pages.organization.timezoneSaved')) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const settings = data?.tenantTimezoneSettings
@@ -265,7 +266,7 @@ function ServiceCalendarsSection() {
   const [draft, setDraft] = useState<CalendarDraft>(EMPTY_CALENDAR)
   const patchDraft = (p: Partial<CalendarDraft>) => setDraft((cur) => ({ ...cur, ...p }))
 
-  const after = { refetchQueries: [GET_SERVICE_CALENDARS], onError: (e: Error) => toast.error(e.message) }
+  const after = { refetchQueries: [GET_SERVICE_CALENDARS], onError: (e: Error) => showError(e) }
   const [createCalendar, { loading: creating }] = useMutation(CREATE_SERVICE_CALENDAR, {
     ...after, onCompleted: () => { toast.success(t('pages.organization.calendarCreated')); setOpen(false) },
   })
@@ -442,7 +443,7 @@ function PortalSeveritySection({ languages }: { languages: readonly string[] | n
   const [saveOptions, { loading: saving }] = useMutation(SET_PORTAL_SEVERITY_OPTIONS, {
     refetchQueries: [GET_PORTAL_SEVERITY_OPTIONS],
     onCompleted: () => { toast.success(t('pages.organization.portalSeveritiesSaved')) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const setOffered = (value: string, offered: boolean) =>
@@ -553,7 +554,7 @@ function InAppRetentionSection() {
   const [save, { loading: saving }] = useMutation(SET_TENANT_INAPP_RETENTION, {
     refetchQueries: [GET_TENANT_INAPP_RETENTION],
     onCompleted: () => { toast.success(t('pages.organization.inAppRetentionSaved')) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const value = Number(days)
   const valid = days.trim() !== '' && Number.isInteger(value) && value >= 1 && value <= 3650

@@ -18,7 +18,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import { Wand2, Plus, X, Loader2, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/Button'
 import { Input, Select, Textarea, FieldLabel } from '@/components/ui/FormControls'
@@ -36,6 +35,7 @@ import {
   suggestSeverity, suggestStatus, syncValueTable, type GenericMapping, type MapperField,
 } from './sourceConfig'
 import { hintStyle, sectionTitleStyle } from './monitoringShared'
+import { showError } from '@/lib/showError'
 
 const DEBOUNCE_MS = 300
 
@@ -100,7 +100,7 @@ export function GenericMapper({ mapping, onChange, payload, onPayloadChange, onP
       if (!res.data) throw new Error(t('monitoring.errors.emptyResponse', { operation: 'sampleInboundPayload' }))
       onPayloadChange(res.data.sampleInboundPayload)
     } catch (e) {
-      toast.error(t('monitoring.mapper.sampleFailed', { error: errorMessage(e) }))
+      showError(e, t('monitoring.mapper.sampleFailed', { error: errorMessage(e) }))
     }
   }
 

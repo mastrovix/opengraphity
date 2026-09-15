@@ -23,7 +23,7 @@ import { Input, Textarea, Select, FieldLabel } from '@/components/ui/FormControl
 import { Pencil } from 'lucide-react'
 import { keycloak } from '@/lib/keycloak'
 import { colors } from '@/lib/tokens'
-import { GET_SERVICE_REQUEST, GET_USERS } from '@/graphql/queries'
+import { GET_SERVICE_REQUEST, GET_ASSIGNABLE_USERS } from '@/graphql/queries'
 import { EXECUTE_WORKFLOW_TRANSITION, UPDATE_SERVICE_REQUEST, ASSIGN_SERVICE_REQUEST_TO_USER } from '@/graphql/mutations'
 import { SlaBadge, type SlaStatusInfo } from '@/components/SlaBadge'
 import { useSlaSettling } from '@/hooks/useSlaSettling'
@@ -34,6 +34,7 @@ import { styleForCategory } from '@/lib/workflowStepStyle'
 import { transitionErrorText, type TransitionFailure } from '@/lib/transitionError'
 import { useValueStyle } from '@/hooks/useValueStyle'
 import { withLocalizedLabel } from '@/lib/localizedLabel'
+import { showError } from '@/lib/showError'
 
 interface WorkflowTransition { toStep: string; label: string; requiresInput: boolean; inputField: string | null }
 interface ServiceRequest {
@@ -49,11 +50,11 @@ interface ServiceRequest {
 }
 
 /**
- * Chi può ricevere una richiesta: i ruoli che lavorano i ticket. Lo stesso
- * insieme che l'API applica (`DEFAULT_MUTATION_ROLES`); qui serve solo a non
+ * Chi può ricevere una richiesta: le persone il cui ruolo ha `ticket.assignable`,
+ * lo stesso permesso che l'API controlla (ondata 7); qui serve solo a non
  * offrire nella tendina chi verrebbe rifiutato.
  */
-const ASSIGNABLE_ROLES = new Set(['admin', 'operator'])
+const ASSIGNABLE_PERMISSION = 'ticket.assignable'
 
 
 
@@ -87,23 +88,23 @@ export function ServiceRequestDetailPage() {
       setTransitionModal(null); setTransitionNotes('')
       await refetch()
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   // Giro del 14 set 2026 (#41): la richiesta non si poteva assegnare.
-  const { data: usersData } = useQuery<{ users: Array<{ id: string; name: string; role: string }> }>(GET_USERS)
-  const assignable = (usersData?.users ?? []).filter((u) => ASSIGNABLE_ROLES.has(u.role))
+  const { data: usersData } = useQuery<{ users: Array<{ id: string; name: string; permissions: string[] }> }>(GET_ASSIGNABLE_USERS)
+  const assignable = (usersData?.users ?? []).filter((u) => u.permissions.includes(ASSIGNABLE_PERMISSION))
   const [assigneeChoice, setAssigneeChoice] = useState<string | null>(null)
   const [assignRequest, { loading: assigning }] = useMutation(ASSIGN_SERVICE_REQUEST_TO_USER, {
     onCompleted: async () => { setAssigneeChoice(null); await refetch(); toast.success(t('toast.request.assigned')) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const [editOpen, setEditOpen] = useState(false)
   const [editForm, setEditForm] = useState({ title: '', description: '', priority: 'medium', dueDate: '' })
   const [updateRequest, { loading: savingEdit }] = useMutation(UPDATE_SERVICE_REQUEST, {
     onCompleted: async () => { setEditOpen(false); await refetch(); toast.success(t('toast.request.updated')) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const openEdit = () => {
     if (!sr) return

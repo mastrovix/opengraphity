@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn() }))
@@ -32,7 +33,7 @@ const { validateWidgetConfig: validateWith, customWidgetResolvers } = await impo
 const validateWidgetConfig = (cfg: Parameters<typeof validateWith>[0]) => validateWith(cfg, CATALOG as never)
 const { getSession } = await import('@opengraphity/neo4j')
 
-const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator' } as never
+const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') } as never
 
 function code(fn: () => unknown): string | null {
   try { fn(); return null } catch (e) { return ((e as GraphQLError).extensions?.code as string) ?? 'THROWN' }

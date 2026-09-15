@@ -12,6 +12,7 @@ vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
   clearCILabelCache:         vi.fn(),
 }))
 import { GraphQLError } from 'graphql'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(),
@@ -65,7 +66,7 @@ describe('updateCIFields resolver', () => {
     // non portano `type`).
     vi.mocked(runQuery).mockResolvedValue([{ props: { id: 'ci-1', name: 'web-01', tenant_id: 't1' }, label: 'LoadBalancer' }] as never)
 
-    const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator' as const }
+    const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') as const }
     await cmdbResolvers.Mutation.updateCIFields(undefined, {
       id: 'ci-1', input: { name: 'web-01', customFields: JSON.stringify({ ipAddress: '10.0.0.1' }) },
     }, ctx)
@@ -81,7 +82,7 @@ describe('updateCIFields resolver', () => {
 
   it('rejects an injected key before touching the database', async () => {
     vi.mocked(runQuery).mockClear()
-    const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator' as const }
+    const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') as const }
     await expect(cmdbResolvers.Mutation.updateCIFields(undefined, {
       id: 'ci-1', input: { customFields: JSON.stringify({ 'x = 1 SET ci.tenant_id': 'evil' }) },
     }, ctx)).rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT' } })
@@ -100,7 +101,7 @@ describe('updateCIFields resolver', () => {
 describe('updateCIFields — il tipo dall\'etichetta, e le proprietà del prodotto', () => {
   const props = { id: 'ci-1', tenant_id: 't1', name: 'LB-01', status: 'active' }
   const call = (input: Record<string, unknown>) =>
-    cmdbResolvers.Mutation.updateCIFields(undefined, { id: 'ci-1', input }, { tenantId: 't1', userId: 'u', userEmail: 'u@x', role: 'operator' as const })
+    cmdbResolvers.Mutation.updateCIFields(undefined, { id: 'ci-1', input }, { tenantId: 't1', userId: 'u', userEmail: 'u@x', role: 'operator', permissions: perms('operator') as const })
 
   it('chiede l\'etichetta nella query e risolve il tipo del CLIENTE', async () => {
     vi.mocked(getSession).mockReturnValue({ close: vi.fn() } as never)

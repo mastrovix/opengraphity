@@ -12,6 +12,10 @@ import { Pill } from '@/components/ui/Pill'
 import { RoleBadge } from '@/components/ui/badges'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { GET_USER, GET_TEAMS } from '@/graphql/queries'
+import { SET_USER_ROLE } from '@/graphql/mutations'
+import { Select } from '@/components/ui/FormControls'
+import { Button } from '@/components/Button'
+import { useRoles } from '@/hooks/useRoles'
 import { colors, palette } from '@/lib/tokens'
 import { formatDate } from '@/lib/datetime'
 
@@ -36,6 +40,7 @@ interface UserData {
   lastName:  string | null
   email:     string
   role:      string
+  roleName:  string | null
   slackId:   string | null
   createdAt: string | null
   teams:     TeamRef[]
@@ -56,6 +61,10 @@ export function UserDetailPage() {
   const { data: allTeamsData } = useQuery<{ teams: { id: string; name: string; description: string | null; type: string | null }[] }>(GET_TEAMS)
 
   const [updateTeams] = useMutationWithToast(UPDATE_USER_TEAMS, { successMessage: t('toast.user.teamsUpdated'), refetch })
+  // Il ruolo della persona (ondata 7): i ruoli dell'organizzazione, mai l'ultimo che gestisce persone e ruoli (lo dice l'API).
+  const { roles, labelOf: roleLabel } = useRoles()
+  const [roleChoice, setRoleChoice] = useState<string | null>(null)
+  const [setUserRole, { loading: savingRole }] = useMutationWithToast(SET_USER_ROLE, { successMessage: t('pages.users.roleChanged'), refetch, onSuccess: () => setRoleChoice(null) })
 
   const user = data?.user
   const allTeams = allTeamsData?.teams ?? []
@@ -88,7 +97,7 @@ export function UserDetailPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <User size={22} color="var(--color-icon-accent)" />
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{user.name}</h1>
-          <RoleBadge role={user.role} />
+          <RoleBadge role={user.role} name={user.roleName} />
         </div>
       </div>
 
@@ -101,7 +110,17 @@ export function UserDetailPage() {
             <DetailField label={t('pages.userDetail.firstName')} value={user.firstName} />
             <DetailField label={t('pages.userDetail.lastName')} value={user.lastName} />
             <DetailField label={t('pages.users.email')} value={user.email} />
-            <DetailField label={t('pages.users.role')} value={<RoleBadge role={user.role} />} />
+            <DetailField label={t('pages.users.changeRole')} value={(
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <Select aria-label={t('pages.users.changeRole')} value={roleChoice ?? user.role} onChange={(e) => setRoleChoice(e.target.value)} style={{ width: 220 }}>
+                  {roles.length === 0 && <option value={user.role}>{roleLabel(user.role)}</option>}
+                  {roles.map((r) => <option key={r.key} value={r.key}>{roleLabel(r.key)}</option>)}
+                </Select>
+                {roleChoice !== null && roleChoice !== user.role && (
+                  <Button size="xs" disabled={savingRole} onClick={() => void setUserRole({ variables: { userId: user.id, role: roleChoice } })}>{t('pages.users.saveRole')}</Button>
+                )}
+              </span>
+            )} />
             <DetailField label={t('pages.userDetail.slackId')} value={user.slackId} mono />
             <DetailField label={t('detail.createdAt')} value={user.createdAt ? formatDate(user.createdAt) : null} />
           </div>

@@ -23,7 +23,7 @@ import {
   buildActionParams,
 } from './workflow-panel-helpers'
 import { Input, Select } from '@/components/ui/FormControls'
-import { TARGET_OPTIONS } from '@/pages/settings/NotificationRuleList'
+import { useTargetOptions, withCurrent } from '@/pages/settings/NotificationRuleList'
 import { WORKFLOW_STEP_PURPOSES, WORKFLOW_STEP_CATEGORIES } from '@opengraphity/types'
 import { StepDeadlineEditor, deadlineFromDraft, draftFromDeadline, draftProblem, type DeadlineTarget } from './StepDeadlineEditor'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
@@ -190,6 +190,7 @@ function draftToAction(d: ActionDraft): AnyAction {
 
 export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSaveLocally, onDelete }: StepPanelProps) {
   const { t } = useTranslation()
+  const targetOptions = useTargetOptions()
   const confirm = useConfirm()
 
   // Tipo entità del workflow (incident/problem/change/…): serve agli editor
@@ -752,8 +753,8 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
 
               <PanelField label={t('workflow.panel.destinatari')}>
                 <Select value={notifyTarget} onChange={(e) => setNotifyTarget(e.target.value)} style={inputStyle}>
-                  {TARGET_OPTIONS.map(({ value, labelKey }) => (
-                    <option key={value} value={value}>{t(labelKey)}</option>
+                  {withCurrent(targetOptions, notifyTarget).map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
                   ))}
                 </Select>
               </PanelField>

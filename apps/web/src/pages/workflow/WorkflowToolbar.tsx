@@ -10,6 +10,7 @@ import { Modal } from '@/components/Modal'
 import type { WorkflowDefinition } from './workflow-types'
 import { ADD_WORKFLOW_STEP } from '@/graphql/mutations'
 import { Pill } from '@/components/ui/Pill'
+import { showError } from '@/lib/showError'
 
 /**
  * I tipi di passo che si possono aggiungere.
@@ -67,7 +68,7 @@ export function WorkflowToolbar({
 
   const [addWorkflowStep, { loading: addingStep }] = useMutation(ADD_WORKFLOW_STEP, {
     onCompleted: () => { toast.success(t('toast.workflow.stepAdded')); setShowAddStep(false); setStepLabel(''); setTimerMins(''); onRefetch?.() },
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
 
   return (

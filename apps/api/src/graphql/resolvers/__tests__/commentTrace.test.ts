@@ -6,6 +6,7 @@
  * fisica.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 import type { GraphQLContext } from '../../../context.js'
 
 const h = vi.hoisted(() => ({ reads: [] as Array<Record<string, unknown>>, writes: [] as Array<{ q: string; p: Record<string, unknown> }> }))
@@ -27,7 +28,7 @@ vi.mock('../collaboration.js', () => ({ notifyMentions: vi.fn(), notifyWatchers:
 
 const { updateComment, deleteComment } = await import('../comments.js')
 
-const ctx = (userId: string, role: GraphQLContext['role']): GraphQLContext => ({ tenantId: 't1', userId, userEmail: `${userId}@x`, role })
+const ctx = (userId: string, role: GraphQLContext['role']): GraphQLContext => ({ tenantId: 't1', userId, userEmail: `${userId}@x`, role, permissions: perms(role) })
 const stored = (over: Record<string, unknown> = {}) => ({ authorId: 'u-author', text: 'testo di prima', deletedAt: null, isInternal: true, entityType: 'incident', entityId: 'i1', ...over })
 const codeOf = async (p: Promise<unknown>) => p.then(() => null, (e: { extensions?: { code?: string } }) => e.extensions?.code ?? 'THROWN')
 

@@ -19,6 +19,7 @@ import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
 import { useValueStyle } from '@/hooks/useValueStyle'
 import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
 import { customFieldsInput, missingCustomFields, useTicketCustomFieldDefs } from '@/components/ticket/customFields/customFields'
+import { showError } from '@/lib/showError'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -101,7 +102,7 @@ export function CreateIncidentPage() {
   const teams         = teamsData?.teams ?? []
   const filteredTeams = teams.filter(t => t.name.toLowerCase().includes(teamSearch.toLowerCase()))
   const [assignToTeam] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
-    onError: (err) => toast.error(t('toast.incident.teamAssignmentFailed', { error: err.message })),
+    onError: (err) => showError(err, t('toast.incident.teamAssignmentFailed', { error: err.message })),
   })
 
   const checkSlaCoverage = useSlaCoverageCheck()
@@ -118,7 +119,7 @@ export function CreateIncidentPage() {
       toast.success(t('toast.incident.created'))
       navigate('/incidents', { state: { refresh: true } })
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
 
@@ -434,7 +435,7 @@ export function CreateIncidentPage() {
               onClick={() => {
                 if (!canSubmit || loading || checkingSla) return
                 if (fieldRulesError) {
-                  toast.error(t('toast.incident.fieldRulesUnavailable', { error: fieldRulesError.message }))
+                  showError(fieldRulesError, t('toast.incident.fieldRulesUnavailable', { error: fieldRulesError.message }))
                   return
                 }
                 // La matrice è la sorgente di impatto, urgenza e priorità: se non
@@ -442,7 +443,7 @@ export function CreateIncidentPage() {
                 // valore — il server lo rifiuterebbe comunque, e il messaggio
                 // qui dice cosa fare.
                 if (matrixError) {
-                  toast.error(t('toast.incident.matrixUnavailable', { error: matrixError.message }))
+                  showError(matrixError, t('toast.incident.matrixUnavailable', { error: matrixError.message }))
                   return
                 }
                 if (priority === '') {
@@ -485,7 +486,7 @@ export function CreateIncidentPage() {
                     },
                   })
                 }).catch((err: unknown) => {
-                  toast.error(t('toast.incident.slaCoverageUnavailable', { error: err instanceof Error ? err.message : String(err) }))
+                  showError(err, t('toast.incident.slaCoverageUnavailable', { error: err instanceof Error ? err.message : String(err) }))
                 }).finally(() => setCheckingSla(false))
               }}
               style={{

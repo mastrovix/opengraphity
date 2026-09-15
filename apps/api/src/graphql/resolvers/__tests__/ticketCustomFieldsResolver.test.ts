@@ -5,6 +5,7 @@
  * niente non lascia traccia.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const runQueryOne = vi.fn()
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: (...a: unknown[]) => runQueryOne(...a) }))
@@ -24,7 +25,7 @@ vi.mock('../../../lib/ticketCustomFields.js', async (importOriginal) => ({
 }))
 
 const { ticketCustomFieldResolvers } = await import('../ticketCustomFields.js')
-const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@test.io', role: 'operator' } as never
+const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@test.io', role: 'operator', permissions: perms('operator') } as never
 const set = (values: { name: string; value: string | null }[], entityType = 'change') =>
   ticketCustomFieldResolvers.Mutation.setTicketCustomFields(null, { entityType, id: 'chg-1', values }, ctx)
 

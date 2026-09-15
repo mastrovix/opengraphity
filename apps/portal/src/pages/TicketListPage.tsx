@@ -10,6 +10,7 @@ import { TicketStatusBadge } from '@/components/TicketStatusBadge'
 import { TICKET_POLL_INTERVAL_MS } from '@/lib/apollo'
 import { fmtDate } from '@/lib/format'
 import { colors, palette, alpha } from '@/lib/tokens'
+import { usePortalAccess } from '@/hooks/usePortalAccess'
 
 const PAGE_SIZE = 15
 
@@ -40,6 +41,7 @@ interface Ticket {
 
 export function TicketListPage() {
   const { t, i18n }               = useTranslation()
+  const { canSubmit } = usePortalAccess()
   const { labelOf: categoryLabel } = useTicketCategories()
   const [filter, setFilter]       = useState<FilterKey>('all')
   const [page, setPage]           = useState(1)
@@ -71,7 +73,7 @@ export function TicketListPage() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ fontSize: 20, fontWeight: 600, color: colors.slateDark }}>{t('nav.tickets')}</h1>
-        <Link
+        {canSubmit && <Link
           to="/tickets/new"
           style={{
             display:         'inline-flex',
@@ -88,7 +90,7 @@ export function TicketListPage() {
         >
           <PlusCircle size={15} />
           {t('ticket.new')}
-        </Link>
+        </Link>}
       </div>
 
       {/* Filter tabs */}
@@ -128,12 +130,12 @@ export function TicketListPage() {
       ) : tickets.length === 0 ? (
         <div style={{ padding: '48px 0', textAlign: 'center', color: colors.slateLight }}>
           <p style={{ marginBottom: 16 }}>{t(`ticket.empty.${filter}`)}</p>
-          <Link
+          {canSubmit && <Link
             to="/tickets/new"
             style={{ color: colors.brand, fontWeight: 500, fontSize: 10 }}
           >
             + {t('ticket.new')}
-          </Link>
+          </Link>}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

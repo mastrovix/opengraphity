@@ -1,12 +1,13 @@
 /**
  * anomaly.ts — resolveAnomaly: resolutionStatus fuori enum → ValidationError
  * PRIMA di aprire la sessione; valido → SET scoped per tenant con resolved_by
- * dal contesto; NotFound fuori tenant; runAnomalyScanner solo admin/operator
+ * dal contesto; NotFound fuori tenant; runAnomalyScanner solo con anomaly.scan
  * e sempre sul tenant del chiamante. (Non esiste `updateAnomaly` nel resolver.)
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(),
@@ -20,8 +21,9 @@ const { getSession, runQueryOne } = await import('@opengraphity/neo4j')
 const { enqueueTenantScan } = await import('../../../anomaly/anomalyEngine.js')
 const { cache } = await import('../../../lib/cache.js')
 
-const operator: GraphQLContext = { tenantId: 'tenant-1', userId: 'op-1', userEmail: 'op@test.io', role: 'operator' }
-const viewer:   GraphQLContext = { ...operator, role: 'viewer' }
+const operator: GraphQLContext = { tenantId: 'tenant-1', userId: 'op-1', userEmail: 'op@test.io', role: 'operator', permissions: perms('operator') }
+const viewer:   GraphQLContext = { ...operator, role: 'viewer', permissions: perms('viewer') }
+const admin:    GraphQLContext = { ...operator, role: 'admin', permissions: perms('admin') }
 
 const session = { close: vi.fn().mockResolvedValue(undefined) }
 const NOTE = 'Falso positivo: host dismesso a luglio'
@@ -97,13 +99,18 @@ describe('runAnomalyScanner', () => {
     expect(enqueueTenantScan).not.toHaveBeenCalled()
   })
 
-  it('operator → accoda la scansione SOLO del proprio tenant', async () => {
-    await expect(anomalyResolvers.Mutation.runAnomalyScanner(null, null, operator)).resolves.toBe(true)
+  it('operator (senza anomaly.scan) → ForbiddenError, come dice la policy', async () => {
+    await expectCode(anomalyResolvers.Mutation.runAnomalyScanner(null, null, operator), 'FORBIDDEN')
+    expect(enqueueTenantScan).not.toHaveBeenCalled()
+  })
+
+  it('con anomaly.scan → accoda la scansione SOLO del proprio tenant', async () => {
+    await expect(anomalyResolvers.Mutation.runAnomalyScanner(null, null, admin)).resolves.toBe(true)
     expect(enqueueTenantScan).toHaveBeenCalledWith('tenant-1')
   })
 
   it('coda non disponibile → l\'errore propaga (mai false silenzioso)', async () => {
     vi.mocked(enqueueTenantScan).mockRejectedValueOnce(new Error('redis down'))
-    await expect(anomalyResolvers.Mutation.runAnomalyScanner(null, null, operator)).rejects.toThrow('redis down')
+    await expect(anomalyResolvers.Mutation.runAnomalyScanner(null, null, admin)).rejects.toThrow('redis down')
   })
 })

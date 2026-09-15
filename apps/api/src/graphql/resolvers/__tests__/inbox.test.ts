@@ -3,6 +3,7 @@
  * della persona collegata e ne scrive lo stato (letto, nascosto).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const listInbox = vi.fn(async () => [{ id: 'n-1', type: 'mention', title: 't', message: 'm', message_key: 'k', message_params: { a: 'b' }, severity: 'info', entity_id: 'e', entity_type: 'incident', timestamp: 'ts', read: false }])
 const markInboxRead = vi.fn(async () => 1)
@@ -11,7 +12,7 @@ const dismissInbox = vi.fn(async () => 9)
 vi.mock('@opengraphity/notifications', () => ({ listInbox, markInboxRead, markAllInboxRead, dismissInbox }))
 
 const { inboxResolvers } = await import('../inbox.js')
-const ctx = { tenantId: 't1', userId: 'u1', role: 'operator' } as never
+const ctx = { tenantId: 't1', userId: 'u1', role: 'operator', permissions: perms('operator') } as never
 
 describe('resolver del pannello notifiche', () => {
   beforeEach(() => { vi.clearAllMocks() })

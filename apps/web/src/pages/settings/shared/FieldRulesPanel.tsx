@@ -17,6 +17,7 @@ import {
 import { inputS, selectS, labelS, btnPrimary, btnSecondary, btnDanger } from './designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { colors, palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -84,15 +85,15 @@ function VisibilityRulesSection({ entityType, fields }: { entityType: string; fi
 
   const [createRule] = useMutation(CREATE_FIELD_VISIBILITY_RULE, {
     onCompleted: () => { void refetch(); setAdding(false); setForm(emptyVisForm(fields)); toast.success(t('fieldRules.visibility.created')) },
-    onError:     (e) => toast.error(e.message),
+    onError:     (e) => showError(e),
   })
   const [updateRule] = useMutation(UPDATE_FIELD_VISIBILITY_RULE, {
     onCompleted: () => { void refetch(); setEditingId(null); toast.success(t('fieldRules.visibility.updated')) },
-    onError:     (e) => toast.error(e.message),
+    onError:     (e) => showError(e),
   })
   const [deleteRule] = useMutation(DELETE_FIELD_VISIBILITY_RULE, {
     onCompleted: () => { void refetch(); toast.success(t('fieldRules.visibility.deleted')) },
-    onError:     (e) => toast.error(e.message),
+    onError:     (e) => showError(e),
   })
 
   const triggerField   = fields.find((f) => f.name === form.triggerField)
@@ -240,8 +241,8 @@ function RequirementRulesSection({ entityType, fields, workflowSteps }: { entity
   )
   const rules = data?.fieldRequirementRules ?? []
 
-  const [setReq]    = useMutation(SET_FIELD_REQUIREMENT,   { onCompleted: () => { void refetch() }, onError: (e) => toast.error(e.message) })
-  const [deleteReq] = useMutation(DELETE_FIELD_REQUIREMENT, { onCompleted: () => { void refetch() }, onError: (e) => toast.error(e.message) })
+  const [setReq]    = useMutation(SET_FIELD_REQUIREMENT,   { onCompleted: () => { void refetch() }, onError: (e) => showError(e) })
+  const [deleteReq] = useMutation(DELETE_FIELD_REQUIREMENT, { onCompleted: () => { void refetch() }, onError: (e) => showError(e) })
 
   // Build a lookup: "fieldName|workflowStep" → rule
   const ruleMap = new Map<string, RequirementRule>()

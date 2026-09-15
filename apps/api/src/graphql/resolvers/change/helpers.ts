@@ -25,6 +25,7 @@ import { toNumber } from '@opengraphity/neo4j'
 import { systemText } from '../../../lib/systemText.js'
 import { nextSequenceBlock } from '../../../lib/sequence.js'
 import { nextTicketNumber } from '../../../lib/ticketNumbering.js'
+import { hasPermission } from '../../../lib/permissions.js'
 
 export type Session = ReturnType<typeof getSession>
 
@@ -256,7 +257,8 @@ export async function assertInitialStep(session: Session, changeId: string, tena
 
 /**
  * Verifica che l'utente corrente sia membro dell'Owner Group o del Support Group
- * del CI. Solleva errore "Non autorizzato" altrimenti. Admin bypass.
+ * del CI. Solleva errore "Non autorizzato" altrimenti. Chi ha `approval.override`
+ * agisce per qualunque team (ondata 7: prima era «admin»).
  */
 export async function assertUserInCITeam(
   session: Session,
@@ -265,7 +267,7 @@ export async function assertUserInCITeam(
   ctx: GraphQLContext,
   role: 'owner' | 'support',
 ) {
-  if (ctx.role === 'admin') return
+  if (hasPermission(ctx, 'approval.override')) return
   if (!ctx.userId) {
     logger.error({ ciId, role }, '[authz] utente non identificato')
     throw new ForbiddenError('Not authorized: the user is not identified', { key: 'errors.authz.noUser' })
@@ -283,10 +285,11 @@ export async function assertUserInCITeam(
   }
 }
 
-export function assertAdmin(ctx: GraphQLContext) {
-  if (ctx.role !== 'admin') {
-    logger.error({ userId: ctx.userId, role: ctx.role }, '[authz] reopen tentativo non-admin')
-    throw new ForbiddenError('Only admins can reopen tasks', { key: 'errors.authz.reopenAdmin' })
+/** Riaprire un compito chiuso scavalca il team che l'ha chiuso: `approval.override` (prima «admin»). */
+export function assertMayReopenTasks(ctx: GraphQLContext) {
+  if (!hasPermission(ctx, 'approval.override')) {
+    logger.error({ userId: ctx.userId, role: ctx.role }, '[authz] reopen tentativo senza approval.override')
+    throw new ForbiddenError('Only someone who can act for any team can reopen tasks', { key: 'errors.authz.reopenAdmin' })
   }
 }
 

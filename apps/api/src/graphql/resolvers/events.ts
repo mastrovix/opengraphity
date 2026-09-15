@@ -19,8 +19,8 @@
  * Ogni query è scopata per tenant; ogni mutation scrive l'audit. Le mutation
  * amministrative (alias, policy, prova di una sorgente, anteprima) e le query
  * di configurazione (sorgenti complete, chiavi/campione del wizard) sono
- * admin-only in lib/authorization.ts e hanno un requireRole locale come
- * seconda linea. Revisione (ondata 2): guardie di stato su acknowledge/resolve/
+ * chiuse dal permesso `config.monitoring` (lib/operationPermissions.ts) e hanno
+ * un `requirePermission` locale come seconda linea. Revisione (ondata 2): guardie di stato su acknowledge/resolve/
  * createIncidentFromEvent (serializzata col lock del gruppo di correlazione),
  * alias mai ri-puntati in silenzio, `Event.source` come riferimento leggero.
  *
@@ -38,7 +38,7 @@ import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import { ciLabelForTypeName, ciTypeNamesForTenant } from '../../lib/ciTypeNameToLabel.js'
@@ -437,13 +437,13 @@ async function eventPolicy(_: unknown, __: unknown, ctx: GraphQLContext) {
 
 /** Strumento del wizard delle sorgenti: admin-only (policy centrale + seconda linea qui). */
 function sampleInboundPayload(_: unknown, args: { connectorKind: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   return JSON.stringify(samplePayloadOf(args.connectorKind), null, 2)
 }
 
 /** JSON incollato dall'amministratore → chiavi con percorso puntato (non valido, troppo grande o troppo profondo → ValidationError). */
 function payloadKeys(_: unknown, args: { payload: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   validateStringLength(args.payload, 'payload', 1, PAYLOAD_MAX_CHARS)
   let parsed: unknown
   try { parsed = JSON.parse(args.payload) }
@@ -458,7 +458,7 @@ const MONITORING_SOURCES_QUERY = `
 
 /** Sorgenti con la configurazione completa (pagina Sorgenti): admin-only. */
 async function monitoringSources(_: unknown, __: unknown, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   const session = getSession()
   try {
     const rows = await runQuery<{ props: Props }>(session, MONITORING_SOURCES_QUERY, { tenantId: ctx.tenantId })
@@ -474,7 +474,7 @@ async function monitoringSources(_: unknown, __: unknown, ctx: GraphQLContext) {
  * sorgente di monitoraggio e qui non si vede. Null se non esiste nel tenant.
  */
 async function monitoringSource(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   const session = getSession()
   try {
     const row = await runQueryOne<{ props: Props }>(session, `
@@ -683,7 +683,7 @@ function toPreview(ev: NormalizedEvent) {
 
 /** Stessa normalizzazione del webhook, nessuna scrittura: anteprima per il mappatore (strumento del wizard: admin-only). */
 async function previewInboundEvents(_: unknown, args: { input: PreviewInput }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   const { input } = args
   assertConnectorKind(input.connectorKind, 'connectorKind')
   validateStringLength(input.payload, 'payload', 1, PAYLOAD_MAX_CHARS)
@@ -717,7 +717,7 @@ export const SAMPLE_LABEL = 'sample'
  * in ora locale e senza fuso `startsAt` resterebbe vuoto.
  */
 async function sendSampleEvent(_: unknown, args: { sourceId: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   let wh: Props
   let timezone: string | null
   const read = getSession()
@@ -759,7 +759,7 @@ async function sendSampleEvent(_: unknown, args: { sourceId: string }, ctx: Grap
  * null toglie la forzatura e ricalcola dagli eventi firing.
  */
 async function setCIHealthOverride(_: unknown, args: { ciId: string; health?: string | null }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin', 'operator')
+  requirePermission(ctx, 'event.work')
   const now = new Date().toISOString()
   if (args.health != null) {
     if (!(CI_HEALTHS as readonly string[]).includes(args.health)) {
@@ -1007,7 +1007,7 @@ async function openIncidentOfEvent(eventId: string, tenantId: string): Promise<{
  * evento risolto, in sfarfallio, o già agganciato a un incident ancora aperto.
  */
 async function reevaluateEvent(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin', 'operator')
+  requirePermission(ctx, 'event.work')
   const current = await loadEvent(args.id, ctx.tenantId)
   const status = toStr(current.props['status'])
   const correlation = toStr(current.props['correlation'])
@@ -1087,7 +1087,7 @@ async function createIncidentFromEvent(_: unknown, args: { eventId: string }, ct
 }
 
 async function createCIAlias(_: unknown, args: { ciId: string; kind: string; value: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   if (!(CI_ALIAS_KINDS as readonly string[]).includes(args.kind)) {
     throw new ValidationError(`kind must be one of: ${CI_ALIAS_KINDS.join(', ')}. Got: ${JSON.stringify(args.kind)}`)
   }
@@ -1118,7 +1118,7 @@ async function createCIAlias(_: unknown, args: { ciId: string; kind: string; val
 }
 
 async function deleteCIAlias(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   const session = getSession(undefined, 'WRITE')
   try {
     const row = await runQueryOne<{ deleted: unknown }>(session, `
@@ -1141,7 +1141,7 @@ async function deleteCIAlias(_: unknown, args: { id: string }, ctx: GraphQLConte
  * ValidationError (modifica concorrente di un altro amministratore).
  */
 async function updateEventPolicy(_: unknown, args: { input: EventPolicyInputGQL }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   const current = await getEventPolicy(ctx.tenantId)
   const next = await applyEventPolicyInput(ctx.tenantId, current, args.input ?? {})
   await setEventPolicy(ctx.tenantId, next)

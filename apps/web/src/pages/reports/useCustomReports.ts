@@ -23,6 +23,7 @@ import { toast } from 'sonner'
 import { downloadFile } from '@/lib/downloadPdf'
 import type { ReportSectionInput } from '@/components/ReportSectionBuilder'
 import { colors, palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -131,7 +132,7 @@ export function useCustomReports() {
   }, [executeData])
 
   useEffect(() => {
-    if (execError) toast.error(execError.message)
+    if (execError) showError(execError)
   }, [execError])
 
   const templates: ReportTemplate[]           = data?.reportTemplates ?? []
@@ -141,7 +142,7 @@ export function useCustomReports() {
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const [createTemplate, { loading: creating }] = useMutation(CREATE_REPORT_TEMPLATE, {
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const [updateTemplate, { loading: updating }] = useMutation(UPDATE_REPORT_TEMPLATE, {
@@ -150,22 +151,22 @@ export function useCustomReports() {
 
   const [deleteTemplate] = useMutation(DELETE_REPORT_TEMPLATE, {
     onCompleted: () => { refetch(); setSelectedId(null); setView('list') },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const [duplicateTemplateMutation] = useMutation<{ duplicateReportTemplate: { id: string; name: string; sections: { id: string }[] } }>(DUPLICATE_REPORT_TEMPLATE, {
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
-  const [addSection]    = useMutation(ADD_REPORT_SECTION,    { onCompleted: () => { refetch(); setView('detail') }, onError: (e) => toast.error(e.message) })
-  const [updateSection] = useMutation(UPDATE_REPORT_SECTION, { onCompleted: () => { refetch(); setView('detail'); setEditSection(null) }, onError: (e) => toast.error(e.message) })
-  const [removeSection] = useMutation(REMOVE_REPORT_SECTION, { onCompleted: () => refetch(), onError: (e) => toast.error(e.message) })
+  const [addSection]    = useMutation(ADD_REPORT_SECTION,    { onCompleted: () => { refetch(); setView('detail') }, onError: (e) => showError(e) })
+  const [updateSection] = useMutation(UPDATE_REPORT_SECTION, { onCompleted: () => { refetch(); setView('detail'); setEditSection(null) }, onError: (e) => showError(e) })
+  const [removeSection] = useMutation(REMOVE_REPORT_SECTION, { onCompleted: () => refetch(), onError: (e) => showError(e) })
 
   const [exportPDF,   { loading: exportingPDF }]   = useMutation<{ exportReportPDF: string }>(EXPORT_REPORT_PDF, {
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
   const [exportExcel, { loading: exportingExcel }] = useMutation<{ exportReportExcel: string }>(EXPORT_REPORT_EXCEL, {
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
   const [updateReportSchedule] = useMutation(UPDATE_REPORT_SCHEDULE)
 
@@ -178,7 +179,7 @@ export function useCustomReports() {
     try {
       await downloadFile(path, fallbackFilename)
     } catch (err) {
-      toast.error(t('toast.report.downloadFailed', { error: err instanceof Error ? err.message : String(err) }))
+      showError(err, t('toast.report.downloadFailed', { error: err instanceof Error ? err.message : String(err) }))
     }
   }
 
@@ -291,7 +292,7 @@ export function useCustomReports() {
         },
       })
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : t('toast.report.saveFailed'))
+      showError(err, err instanceof Error ? err.message : t('toast.report.saveFailed'))
     }
   }
 

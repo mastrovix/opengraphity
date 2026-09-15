@@ -15,6 +15,7 @@ import {
 import type { Session } from 'neo4j-driver'
 import { toNumber } from '@opengraphity/neo4j'
 import { config } from '../../lib/config.js'
+import { requirePermission } from '../../lib/permissions.js'
 
 type Props = Record<string, unknown>
 
@@ -454,14 +455,11 @@ export async function fetchCITypeById(id: string, tenantId: string) {
   })
 }
 
-// ── requireAdmin ──────────────────────────────────────────────────────────────
+// ── requireMetamodelPermission ────────────────────────────────────────────────
 
-export function requireAdmin(ctx: GraphQLContext) {
-  if (ctx.role !== 'admin') {
-    throw new GraphQLError('Access denied: the admin role is required', {
-      extensions: { code: 'FORBIDDEN', i18n: { key: 'errors.forbiddenAdmin' } },
-    })
-  }
+/** Tipi di CI e ITIL, campi, relazioni: il permesso Metamodello (ondata 7). */
+export function requireMetamodelPermission(ctx: GraphQLContext) {
+  requirePermission(ctx, 'config.metamodel')
 }
 
 // ── assertChainFamilies ───────────────────────────────────────────────────────
@@ -709,7 +707,7 @@ export function buildMetamodelMutations() {
       args: { input: { name: string; label: string; icon?: string; color?: string; chainFamilies?: string[]; serviceRole?: string | null } },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       const { name, label, icon = 'box', color = '#0284c7' } = args.input
       const chainFamilies = assertChainFamilies(args.input.chainFamilies)
       // A-10: il ruolo nella mappa di un servizio nasce col tipo. Se non lo
@@ -782,7 +780,7 @@ export function buildMetamodelMutations() {
       args: { id: string; input: { label?: string; icon?: string; color?: string; active?: boolean; validationScript?: string; chainFamilies?: string[]; serviceRole?: string | null } },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       const updates: Props = {}
       const { label, icon, color, active, validationScript, chainFamilies } = args.input
       const serviceRole = assertServiceRoleInput(args.input.serviceRole)
@@ -831,7 +829,7 @@ export function buildMetamodelMutations() {
     },
 
     deleteCIType: async (_: unknown, args: { id: string }, ctx: GraphQLContext) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       await withSession(async session => {
         // A-6: prima il controllo esplicito era solo su `scope = 'base'`, e un
         // tipo ITIL rispondeva `true` senza eliminare niente.
@@ -861,7 +859,7 @@ export function buildMetamodelMutations() {
       args: { typeId: string; input: Record<string, unknown> },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       const { typeId, input } = args
       const fieldId    = crypto.randomUUID()
       const enumTypeId = (input['enumTypeId'] as string | null | undefined) ?? null
@@ -995,7 +993,7 @@ export function buildMetamodelMutations() {
       args: { typeId: string; fieldId: string; input: Record<string, unknown> },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       const { typeId, fieldId, input } = args
       const enumTypeId = (input['enumTypeId'] as string | null | undefined) ?? null
 
@@ -1082,7 +1080,7 @@ export function buildMetamodelMutations() {
       args: { typeId: string; fieldId: string },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       await withSession(async session => {
         // A-5: sui tipi spediti il `WHERE t.scope = 'tenant'` rendeva questa
         // mutation un no-op silenzioso — l'interfaccia diceva «fatto» e il
@@ -1115,7 +1113,7 @@ export function buildMetamodelMutations() {
       args: { typeId: string; input: Record<string, unknown> },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       const { typeId, input } = args
       const relId = crypto.randomUUID()
 
@@ -1191,7 +1189,7 @@ export function buildMetamodelMutations() {
       args: { typeId: string; relationId: string },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       await withSession(async session => {
         // A-6: idem in rimozione — la DELETE non girava e l'interfaccia diceva
         // «Relazione rimossa».

@@ -34,6 +34,7 @@ import { srOnlyStyle } from '@/lib/a11y'
 import { Pill } from '@/components/ui/Pill'
 import type { MonitoringSource, EventStats, StormSource } from '@/types/events'
 import { ToolBadge, EnabledPill, SecretBox } from './monitoringShared'
+import { showError } from '@/lib/showError'
 
 /** Polling dell'elenco e dei contatori (badge "Tempesta"), in pausa a scheda nascosta. */
 const SOURCES_POLL_MS = 15_000
@@ -99,7 +100,7 @@ export function MonitoringSourcesPage({ sampleRefetchDelayMs = SAMPLE_REFETCH_DE
       await updateSource({ variables: { id: s.id, input: { enabled } } })
       toast.success(t('toast.monitoring.sourceUpdated'))
       void refetch()
-    } catch (e) { toast.error(t('toast.events.actionFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.events.actionFailed', { error: errorMessage(e) })) }
   }
 
   async function handleDelete(s: MonitoringSource) {
@@ -114,7 +115,7 @@ export function MonitoringSourcesPage({ sampleRefetchDelayMs = SAMPLE_REFETCH_DE
         ? t('toast.monitoring.sourceDeletedWithEvents', { count: r.resolvedEvents, cis: r.affectedCIs })
         : t('toast.monitoring.sourceDeleted'))
       void refetch()
-    } catch (e) { toast.error(t('toast.events.actionFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.events.actionFailed', { error: errorMessage(e) })) }
   }
 
   async function handleRegen(s: MonitoringSource) {
@@ -126,7 +127,7 @@ export function MonitoringSourcesPage({ sampleRefetchDelayMs = SAMPLE_REFETCH_DE
       if (!token) throw new Error(t('monitoring.errors.tokenMissing', { operation: 'regenerateWebhookToken' }))
       toast.success(t('toast.monitoring.tokenRegenerated'))
       setNewToken({ name: s.name, token })
-    } catch (e) { toast.error(t('toast.events.actionFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.events.actionFailed', { error: errorMessage(e) })) }
   }
 
   async function handleSample(s: MonitoringSource) {
@@ -136,7 +137,7 @@ export function MonitoringSourcesPage({ sampleRefetchDelayMs = SAMPLE_REFETCH_DE
       // Subito il refetch non vedrebbe nulla: "Ricevuti"/"Errori" cambiano quando il job ha elaborato l'evento.
       if (sampleTimer.current) clearTimeout(sampleTimer.current)
       sampleTimer.current = setTimeout(() => { void refetch() }, sampleRefetchDelayMs)
-    } catch (e) { toast.error(t('toast.monitoring.sampleFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.monitoring.sampleFailed', { error: errorMessage(e) })) }
   }
 
   const columns: ColumnDef<MonitoringSource>[] = [

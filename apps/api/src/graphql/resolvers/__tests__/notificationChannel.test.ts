@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
@@ -37,7 +38,7 @@ vi.mock('@opengraphity/events', async (importOriginal) => {
 
 const { notificationChannelResolvers } = await import('../notificationChannel.js')
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
 const input = (webhookUrl: string, platform = 'slack') => ({ platform, name: 'Ops', webhookUrl, eventTypes: ['incident.created'] })
 
 const nodeRecord = (props: Record<string, unknown>) => ({ get: () => ({ properties: props }) })

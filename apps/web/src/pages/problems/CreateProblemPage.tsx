@@ -15,6 +15,7 @@ import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
 import { useValueStyle } from '@/hooks/useValueStyle'
 import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
 import { customFieldsInput, missingCustomFields, useTicketCustomFieldDefs } from '@/components/ticket/customFields/customFields'
+import { showError } from '@/lib/showError'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -86,7 +87,7 @@ export function CreateProblemPage() {
   const canSubmit     = title.trim().length > 0 && description.trim().length > 0
 
   const [assignToTeam] = useMutation(ASSIGN_PROBLEM_TO_TEAM, {
-    onError: (err) => toast.error(t('toast.problem.teamAssignmentFailed', { error: err.message })),
+    onError: (err) => showError(err, t('toast.problem.teamAssignmentFailed', { error: err.message })),
   })
 
   const [createProblem, { loading }] = useMutation<{ createProblem: { id: string } }>(CREATE_PROBLEM, {
@@ -98,7 +99,7 @@ export function CreateProblemPage() {
       toast.success(t('toast.problem.created'))
       navigate('/problems', { state: { refresh: true } })
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const checkSlaCoverage = useSlaCoverageCheck()
@@ -140,7 +141,7 @@ export function CreateProblemPage() {
         },
       })
     }).catch((err: unknown) => {
-      toast.error(t('toast.problem.slaCoverageUnavailable', { error: err instanceof Error ? err.message : String(err) }))
+      showError(err, t('toast.problem.slaCoverageUnavailable', { error: err instanceof Error ? err.message : String(err) }))
     }).finally(() => setCheckingSla(false))
   }
 

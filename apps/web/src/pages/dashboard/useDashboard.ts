@@ -18,6 +18,7 @@ import {
 } from '@/graphql/mutations'
 import type { PendingWidget } from './DashboardEditMode'
 import type { CustomWidgetData } from './CustomWidgetCard'
+import { showError } from '@/lib/showError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -174,7 +175,7 @@ export function useDashboard() {
       setCustomWidgets((prev) => prev.filter((w) => w.id !== widgetId))
       toast.success(t('toast.widget.removed'))
     } catch (err: unknown) {
-      toast.error(t('toast.widget.removeFailed', { error: errorMessage(err) }))
+      showError(err, t('toast.widget.removeFailed', { error: errorMessage(err) }))
     }
   }
 
@@ -192,7 +193,7 @@ export function useDashboard() {
         }).sort((a, b) => a.position - b.position),
       )
     } catch (err: unknown) {
-      toast.error(t('toast.widget.reorderFailed', { error: errorMessage(err) }))
+      showError(err, t('toast.widget.reorderFailed', { error: errorMessage(err) }))
     }
   }
 
@@ -226,7 +227,7 @@ export function useDashboard() {
     } catch (err: unknown) {
       // Atomic on the server: nothing was applied. Stay in edit mode with the
       // untouched pending layout so a retry does not duplicate anything.
-      toast.error(t('toast.dashboard.saveFailed', { error: errorMessage(err) }))
+      showError(err, t('toast.dashboard.saveFailed', { error: errorMessage(err) }))
     } finally {
       setSaving(false)
     }

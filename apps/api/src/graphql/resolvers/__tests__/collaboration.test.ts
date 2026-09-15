@@ -4,6 +4,7 @@
  * (`notifications_enabled`), cancellazione messaggi (admin qualunque, autore i propri).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
 
@@ -40,7 +41,7 @@ const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { sseManager, sendEmail } = await import('@opengraphity/notifications')
 
 const base = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'agent@test.io' }
-const asRole = (role: GraphQLContext['role']): GraphQLContext => ({ ...base, role })
+const asRole = (role: GraphQLContext['role']): GraphQLContext => ({ ...base, role, permissions: perms(role) })
 
 const MSG_PROPS = {
   id: 'm-1', tenant_id: 'tenant-1', entity_type: 'incident', entity_id: 'inc-1',
@@ -50,11 +51,11 @@ const MSG_PROPS = {
 const expectForbidden = async (p: Promise<unknown>) => {
   const err = await p.then(() => null, (e: unknown) => e)
   expect(err).toBeInstanceOf(GraphQLError)
-  expect((err as GraphQLError).message).toBe('Access denied: agents/admin only')
+  expect((err as GraphQLError).message).toMatch(/ticket\.internalChat/)
   expect((err as GraphQLError).extensions['code']).toBe('FORBIDDEN')
 }
 
-describe('requireAgent — viewer/end_user bloccati PRIMA di qualunque query', () => {
+describe('ticket.internalChat — viewer/end_user bloccati PRIMA di qualunque query', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it.each(['viewer', 'end_user'] as const)('internalMessages con ruolo %s → FORBIDDEN, nessuna query', async (role) => {

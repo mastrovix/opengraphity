@@ -24,6 +24,7 @@ import { colors, palette } from '@/lib/tokens'
 import { VALUE_COLORS, type ValueColor } from '@opengraphity/types'
 import { valueColorStyle } from '@/lib/domainStyle'
 import { clientLogger } from '@/lib/clientLogger'
+import { showError } from '@/lib/showError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -108,7 +109,7 @@ function CreateEnumDialog({
       toast.success(t('pages.dictionary.created', { label: result.label }))
       onCreated(result)
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const handleSubmit = (ev: React.FormEvent) => {
@@ -273,13 +274,13 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
   const [updateEnum, { loading: saving }] = useMutation(UPDATE_ENUM_TYPE, {
     refetchQueries: [GET_ENUM_TYPES],
     onCompleted: () => { toast.success(t('pages.dictionary.updated')); setDirty(false) },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [deleteEnum, { loading: deleting }] = useMutation(DELETE_ENUM_TYPE, {
     refetchQueries: [GET_ENUM_TYPES],
     onCompleted: () => { toast.success(t('pages.dictionary.deleted')); onDeleted() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   /**
@@ -297,19 +298,19 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
       setRenamingFrom(null); setRenameTo('')
       toast.success(t('pages.dictionary.valueRenamed'))
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [reorderValues, { loading: reordering }] = useMutation(REORDER_ENUM_VALUES, {
     refetchQueries: [GET_ENUM_TYPES],
     onCompleted: (d: unknown) => { setValues((d as { reorderEnumValues: EnumType }).reorderEnumValues.values) },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [setDefault, { loading: settingDefault }] = useMutation(UPDATE_ENUM_TYPE, {
     refetchQueries: [GET_ENUM_TYPES],
     onCompleted: () => toast.success(t('pages.dictionary.defaultSet')),
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [customizeEnum, { loading: customizing }] = useMutation(CUSTOMIZE_ENUM_TYPE, {
@@ -320,7 +321,7 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
       toast.success(t('pages.dictionary.customized', { label: copy.label }))
       onCustomized(copy)
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   /*
@@ -340,13 +341,13 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
       setValues((d as { adoptShippedValues: EnumType }).adoptShippedValues.values)
       toast.success(t('pages.dictionary.newShipped.adopted'))
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
   const [acknowledgeShipped, { loading: acknowledging }] = useMutation(ACKNOWLEDGE_SHIPPED_VALUES, {
     refetchQueries: [GET_ENUM_SHIPPED_DRIFT],
     awaitRefetchQueries: true,
     onCompleted: () => toast.success(t('pages.dictionary.newShipped.kept')),
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const setDirtyLabel = (v: string) => { setLabel(v); setDirty(true) }

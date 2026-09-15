@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import express from 'express'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { perms } from '../../lib/__tests__/testPermissions.js'
 
 vi.mock('../../lib/ticketCustomFields.js', async (importOriginal) => ({ ...(await importOriginal<object>()), customFieldDefs: vi.fn(async () => []) }))
 const setTicketCustomFields = vi.fn(async () => [])
@@ -88,7 +89,7 @@ describe('PATCH /api/v1/incidents/:id', () => {
     expect(incidentResolvers.Mutation.updateIncident).toHaveBeenCalledWith(
       null,
       { id: 'inc-1', input: { title: 'nuovo', severity: 'high' } },
-      expect.objectContaining({ tenantId: 'tenant-1', userId: 'key-1', role: 'operator' }),
+      expect.objectContaining({ tenantId: 'tenant-1', userId: 'key-1', role: 'operator', permissions: perms('operator') }),
     )
   })
 

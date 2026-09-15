@@ -26,6 +26,7 @@ import { toast } from 'sonner'
 import { colors, palette, lookupStyle } from '@/lib/tokens'
 import { formatDate } from '@/lib/datetime'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
+import { showError } from '@/lib/showError'
 
 interface Member {
   id:    string
@@ -122,20 +123,20 @@ export function TeamDetailPage() {
     // va riletta, altrimenti l'avviso in cima continua a contare il team appena sistemato.
     refetchQueries: ['GetConfigurationIssues'],
     onCompleted: () => { toast.success(t('toast.team.updated')); refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [setManager] = useMutation(SET_TEAM_MANAGER, {
     onCompleted: () => { toast.success(t('toast.team.managerUpdated')); refetch(); setShowManagerModal(false) },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
   const [removeManager] = useMutation(REMOVE_TEAM_MANAGER, {
     onCompleted: () => { toast.success(t('toast.team.managerRemoved')); refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
   const [setChangeManager, { loading: settingCM }] = useMutation(SET_CHANGE_MANAGER_TEAM, {
     onCompleted: () => { toast.success(t('toast.team.changeManagerUpdated')); refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const { data: usersData } = useQuery<{ users: Member[] }>(GET_USERS, { skip: !showMemberModal })
@@ -144,7 +145,7 @@ export function TeamDetailPage() {
       toast.success(t(opts?.variables?.['member'] ? 'toast.team.memberAdded' : 'toast.team.memberRemoved'))
       refetch()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const team = data?.team

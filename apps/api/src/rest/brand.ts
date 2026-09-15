@@ -24,12 +24,12 @@ import type { GraphQLContext } from '../context.js'
 const router: ExpressRouter = Router()
 
 function adminContext(req: Request, res: Response): GraphQLContext | null {
-  const { tenantId, userId, email, role } = req.user!
-  if (role !== 'admin') {
-    res.status(403).json({ error: 'Only an administrator can change the logo' })
+  const { tenantId, userId, email, role, permissions } = req.user!
+  if (!permissions.has('config.organization')) {
+    res.status(403).json({ error: 'Changing the logo needs the Organization permission' })
     return null
   }
-  return { tenantId, userId, userEmail: email, role: role as GraphQLContext['role'] }
+  return { tenantId, userId, userEmail: email, role: role as GraphQLContext['role'], permissions }
 }
 
 router.post('/brand/logo', authMiddleware, (req, res) => {

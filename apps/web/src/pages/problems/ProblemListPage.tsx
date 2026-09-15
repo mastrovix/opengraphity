@@ -26,6 +26,7 @@ import { colors, palette } from '@/lib/tokens'
 import { formatDate } from '@/lib/datetime'
 import { useAIFeature } from '@/hooks/useAIFeature'
 import { useAIDisabledText } from '@/components/ai/AIDisabledNotice'
+import { showError } from '@/lib/showError'
 
 const PROBLEM_CANDIDATES = gql`
   query ProblemCandidates {
@@ -137,7 +138,7 @@ export function ProblemListPage() {
               icon={<Sparkles size={13} />}
               onClick={() => {
                 void runCandidates().then((res) => {
-                  if (res.error) toast.error(t('toast.problem.analysisFailed', { error: res.error.message }))
+                  if (res.error) showError(res.error, t('toast.problem.analysisFailed', { error: res.error.message }))
                   else if (res.data) setCandidates(res.data.problemCandidates)
                   else toast.error(t('toast.problem.analysisNoResponse'))
                 })

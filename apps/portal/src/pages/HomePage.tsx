@@ -7,6 +7,7 @@ import { TicketStatusBadge } from '@/components/TicketStatusBadge'
 import { KBSearchBar } from '@/components/KBSearchBar'
 import { fmtRelative } from '@/lib/format'
 import { colors, palette, alpha } from '@/lib/tokens'
+import { usePortalAccess } from '@/hooks/usePortalAccess'
 
 interface Ticket {
   id: string; title: string; status: string; priority: string
@@ -18,6 +19,7 @@ interface Stats { open: number; inProgress: number; resolved: number; total: num
 
 export function HomePage() {
   const { t, i18n } = useTranslation()
+  const { canSubmit } = usePortalAccess()
   const navigate  = useNavigate()
 
   const { data: meData }     = useQuery<{ me: { name: string; email: string } | null }>(GET_ME)
@@ -67,7 +69,7 @@ export function HomePage() {
 
       {/* Quick action cards */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <button
+        {canSubmit && <button
           onClick={() => navigate('/tickets/new')}
           style={{
             display:         'flex',
@@ -89,7 +91,7 @@ export function HomePage() {
             <div style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark }}>{t('home.newTicket')}</div>
             <div style={{ fontSize: 10, color: colors.slate, marginTop: 4 }}>{t('home.newTicketDesc')}</div>
           </div>
-        </button>
+        </button>}
 
         <button
           onClick={() => navigate('/kb')}
@@ -126,9 +128,9 @@ export function HomePage() {
         {tickets.length === 0 ? (
           <div style={{ padding: '32px 0', textAlign: 'center', color: colors.slateLight }}>
             <p style={{ marginBottom: 8 }}>{t('home.noTickets')}</p>
-            <Link to="/tickets/new" style={{ color: colors.brand, fontWeight: 500 }}>
+            {canSubmit && <Link to="/tickets/new" style={{ color: colors.brand, fontWeight: 500 }}>
               {t('home.needHelp')}
-            </Link>
+            </Link>}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

@@ -2,28 +2,28 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ShieldOff } from 'lucide-react'
-import { useMe, type UserRole } from '@/hooks/useMe'
+import type { Permission } from '@opengraphity/types'
+import { useMe } from '@/hooks/useMe'
 import { PageLoader } from '@/components/PageLoader'
 import { QueryError } from '@/components/QueryError'
 import { colors } from '@/lib/tokens'
 
 interface Props {
-  /** Roles allowed to render `children`; anything else gets the forbidden page. */
-  roles:    readonly UserRole[]
+  /** The page opens with AT LEAST ONE of these permissions; otherwise the forbidden page. */
+  anyOf:    readonly Permission[]
   children: ReactNode
 }
 
 /**
- * Route guard driven by `me.role` (DB), the same source the pages use.
- *
- *   { path: 'admin/audit', element: <RequireRole roles={['admin']}><AuditLogPage /></RequireRole> }
+ * Route guard driven by the permissions of `me.role` (DB), the same source the
+ * pages use (wave 7 of «Nulla cablato»; it was a list of role names).
  *
  * While `me` loads it shows the shared PageLoader; if the query fails it shows
- * QueryError (no silent fallback to "allowed"); if `me` is null or the role is
- * not in `roles` it shows an "access denied" page with a link home.
+ * QueryError (no silent fallback to "allowed"); if `me` is null or the role
+ * lacks every permission it shows an "access denied" page with a link home.
  */
-export function RequireRole({ roles, children }: Props) {
-  const { me, loading, error, refetch } = useMe()
+export function RequirePermission({ anyOf, children }: Props) {
+  const { me, can, loading, error, refetch } = useMe()
 
   if (loading && !me) return <PageLoader />
   if (error) {
@@ -33,7 +33,7 @@ export function RequireRole({ roles, children }: Props) {
       </div>
     )
   }
-  if (!me || !(roles as readonly string[]).includes(me.role)) return <Forbidden />
+  if (!me || !can(...anyOf)) return <Forbidden />
 
   return <>{children}</>
 }

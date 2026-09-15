@@ -11,6 +11,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 // Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
 // dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
@@ -82,9 +83,9 @@ const { DEFAULT_SERVICE_IMPACT_RULES_JSON, SERVICE_RELATIONSHIP_TYPES } = await 
 const { forgetServiceMapJobs } = await import('../../../jobs/serviceImpactWorker.js')
 const { noteServiceMapDeletion } = await import('../../../services/events/cascade.js')
 
-const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'adm-1', userEmail: 'adm@test.io', role: 'admin' }
-const operator: GraphQLContext = { ...admin, userId: 'op-1', role: 'operator' }
-const viewer:   GraphQLContext = { ...admin, userId: 'v-1', role: 'viewer' }
+const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'adm-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
+const operator: GraphQLContext = { ...admin, userId: 'op-1', role: 'operator', permissions: perms('operator') }
+const viewer:   GraphQLContext = { ...admin, userId: 'v-1', role: 'viewer', permissions: perms('viewer') }
 const tx = { run: vi.fn() }
 // `executeRead` c'è perché la sessione vera ce l'ha: la risoluzione dei passi
 // di finestra per SCOPO (ondata 4 · A4-1) riusa la sessione del chiamante

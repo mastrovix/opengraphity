@@ -5,6 +5,7 @@
  * uno, dichiarato, e oltre si rifiuta invece di tagliare.
  */
 import { describe, it, expect, vi } from 'vitest'
+import { perms } from './testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
 vi.mock('../../graphql/resolvers/ci-utils.js', () => ({ withSession: vi.fn(async () => ({ items: [], total: 0 })) }))
@@ -25,6 +26,6 @@ describe('limite delle liste', () => {
   })
 
   it('changes rifiuta un limite oltre il massimo prima di interrogare il database', async () => {
-    await expect(changes(null, { limit: 1_000_000 }, { tenantId: 't1', userId: 'u1', role: 'operator' } as never)).rejects.toBeInstanceOf(ValidationError)
+    await expect(changes(null, { limit: 1_000_000 }, { tenantId: 't1', userId: 'u1', role: 'operator', permissions: perms('operator') } as never)).rejects.toBeInstanceOf(ValidationError)
   })
 })

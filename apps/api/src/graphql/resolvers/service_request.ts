@@ -11,7 +11,7 @@ import { getScalarFields } from '../../lib/schemaFields.js'
 import * as requestService from '../../services/requestService.js'
 import { audit } from '../../lib/audit.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { isPortalOnly, requirePermission } from '../../lib/permissions.js'
 import { v4 as uuidv4 } from 'uuid'
 
 type Props = Record<string, unknown>
@@ -25,7 +25,7 @@ import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
 import { assertDomainValue } from '../../lib/domainMatrix.js'
 import { listPage } from '../../lib/listLimit.js'
 import { setTicketUser } from '../../services/ticketAssignment.js'
-import { DEFAULT_MUTATION_ROLES } from '../../lib/authorization.js'
+import { roleHasPermission } from '../../lib/roles.js'
 
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
@@ -112,7 +112,7 @@ async function createServiceRequest(
       requiresApproval = item.requiresApproval ?? false
       // La categoria della richiesta è quella della voce (ondata 2): le policy SLA per categoria la usano.
       category = item.category ?? null
-      if (ctx.role === 'end_user' && priority !== null && priority !== item.priority) {
+      if (isPortalOnly(ctx) && priority !== null && priority !== item.priority) {
         throw new ValidationError(
           'The priority of a request from the catalog is set by the catalog item, not by the requester.',
           { key: 'errors.serviceRequest.priorityFromCatalog' },
@@ -135,8 +135,8 @@ async function createServiceRequest(
     assertMayAcknowledgeNoSla(ctx, args.input.acknowledgeNoSla)
     // Dal portale i campi del cliente passano sempre dal controllo (ondata 4): un
     // campo obbligatorio offerto all'utente finale va compilato.
-    const customFields = ctx.role === 'end_user' ? (args.input.customFields ?? []) : args.input.customFields
-    const result = await requestService.createRequest({ ...args.input, customFields, priority, requiresApproval, ...(category ? { category } : {}) }, ctx, ctx.role === 'end_user' ? 'portal' : 'agent')
+    const customFields = isPortalOnly(ctx) ? (args.input.customFields ?? []) : args.input.customFields
+    const result = await requestService.createRequest({ ...args.input, customFields, priority, requiresApproval, ...(category ? { category } : {}) }, ctx, isPortalOnly(ctx) ? 'portal' : 'agent')
     void audit(ctx, 'request.created', 'ServiceRequest', result.id as string)
     return result
   })
@@ -191,10 +191,9 @@ async function updateServiceRequest(
  * Giro nel browser del 14 set 2026 (#41): una richiesta non si poteva
  * assegnare a nessuno. Le richieste non hanno un gruppo assegnatario, quindi
  * non vale la regola «prima il gruppo» di incident e problem: si assegna a chi
- * può lavorare i ticket (i ruoli che scrivono per default), e una richiesta
- * conclusa non si riassegna. `userId` null toglie l'assegnatario.
+ * ha il permesso `ticket.assignable` (ondata 7: prima «admin o operator»), e una
+ * richiesta conclusa non si riassegna. `userId` null toglie l'assegnatario.
  */
-const ASSIGNABLE_ROLES: ReadonlySet<string> = new Set(DEFAULT_MUTATION_ROLES)
 
 async function assignServiceRequestToUser(
   _: unknown,
@@ -213,8 +212,8 @@ async function assignServiceRequestToUser(
     }
     if (args.userId) {
       if (!check.assigneeFound) throw new NotFoundError('User', args.userId)
-      if (!ASSIGNABLE_ROLES.has(check.assigneeRole ?? '')) {
-        throw new ValidationError('The selected user cannot work on requests (admin or operator role required)', { key: 'errors.request.assigneeCannotWork' })
+      if (!(await roleHasPermission(ctx.tenantId, check.assigneeRole ?? '', 'ticket.assignable'))) {
+        throw new ValidationError('The selected user cannot receive tickets: their role lacks the "receive tickets" permission', { key: 'errors.request.assigneeCannotWork' })
       }
     }
     await setTicketUser(session, 'ServiceRequest', args.id, args.userId, ctx.tenantId)
@@ -291,7 +290,7 @@ async function serviceCatalogItems(_: unknown, args: { activeOnly?: boolean }, c
 }
 
 async function createServiceCatalogItem(_: unknown, args: { input: { name: string; description?: string; category?: string; requiresApproval?: boolean; priority: string } }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.catalog')
   const priority = await assertDomainValue(ctx.tenantId, 'priority', args.input.priority)
   // La categoria è un valore del Dizionario (ondata 2), non più testo libero: la eredita la richiesta.
   const category = args.input.category == null || args.input.category === '' ? null : await assertDomainValue(ctx.tenantId, 'category', args.input.category)
@@ -315,7 +314,7 @@ async function updateServiceCatalogItem(
   args: { id: string; input: { name?: string; description?: string; category?: string; requiresApproval?: boolean; priority?: string | null; active?: boolean } },
   ctx: GraphQLContext,
 ) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.catalog')
   const { input } = args
   // Build a SET map with only the provided fields — undefined must not
   // overwrite existing values with null.

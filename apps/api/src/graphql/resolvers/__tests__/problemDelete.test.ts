@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const runs: string[] = []
 let found = true
@@ -35,8 +36,8 @@ const sla = await import('@opengraphity/sla')
 const { publishEvent } = await import('../../../lib/publishEvent.js')
 const fs = await import('node:fs/promises')
 
-const admin: GraphQLContext = { tenantId: 'tenant-1', userId: 'u1', userEmail: 'a@x', role: 'admin' }
-const operator: GraphQLContext = { ...admin, role: 'operator' }
+const admin: GraphQLContext = { tenantId: 'tenant-1', userId: 'u1', userEmail: 'a@x', role: 'admin', permissions: perms('admin') }
+const operator: GraphQLContext = { ...admin, role: 'operator', permissions: perms('operator') }
 
 beforeEach(() => { vi.clearAllMocks(); runs.length = 0; found = true })
 

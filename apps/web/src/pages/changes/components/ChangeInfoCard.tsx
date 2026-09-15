@@ -15,7 +15,7 @@ import { DescriptionField, DetailField, RiskBadge, fmtDate } from './shared'
 import { colors } from '@/lib/tokens'
 
 export function ChangeInfoCard({
-  change, currentStep, atApproval, initialStepName, isTerminal, isAdmin,
+  change, currentStep, atApproval, initialStepName, isTerminal, actsForAnyTeam,
   transitioning, totalTasks, completedTasks, transitions,
   onTransitionClick, stepLabel,
 }: {
@@ -29,7 +29,8 @@ export function ChangeInfoCard({
   atApproval: boolean
   initialStepName: string | null
   isTerminal: boolean
-  isAdmin: boolean
+  /** approval.override: fa avanzare la change a mano fuori dal passo di approvazione. */
+  actsForAnyTeam: boolean
   transitioning: boolean
   totalTasks: number
   completedTasks: number
@@ -66,7 +67,7 @@ export function ChangeInfoCard({
             <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', flexShrink: 0 }}>{t('pages.changeDetail.tasksDone', { done: completedTasks, total: totalTasks })}</span>
           </div>
         )}
-        {isAdmin && !atApproval && transitions.map((tr) => (
+        {actsForAnyTeam && !atApproval && transitions.map((tr) => (
           <button
             key={tr.toStep}
             type="button"

@@ -27,6 +27,7 @@ import { formatDate } from '@/lib/datetime'
 import { ciTypeLabelKey, toEnumOptions, useCIBaseEnums } from '@/lib/ciEnums'
 import { palette } from '@/lib/tokens'
 import { Plus } from 'lucide-react'
+import { showError } from '@/lib/showError'
 
 const PAGE_SIZE = 50
 
@@ -115,7 +116,7 @@ export function CIListPage() {
         void refetch()
         if (newId) navigate(`/ci/${typeName}/${newId}`)
       },
-      onError: (err) => toast.error(err.message),
+      onError: (err) => showError(err),
     },
   )
 

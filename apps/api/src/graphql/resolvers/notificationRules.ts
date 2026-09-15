@@ -5,7 +5,7 @@ import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { invalidateRuleCache, DEFAULT_ROUTABLE_CHANNELS, ROUTABLE_CHANNELS_BY_EVENT, routableChannels, unroutableChannels } from '@opengraphity/notifications'
 import {
-  NOTIFICATION_TARGETS, isNotificationTarget, applicableNotificationTargets, isTargetApplicable,
+  NOTIFICATION_TARGETS, NOTIFICATION_BASE_TARGETS, isNotificationTarget, notificationTargetRole, applicableNotificationTargets, isTargetApplicable,
   WORKFLOW_STEP_PURPOSES, isWorkflowStepPurpose, isStepEnteredEventType,
   NOTIFICATION_SEVERITIES, type NotificationSeverity,
 } from '@opengraphity/types'
@@ -13,6 +13,7 @@ import { SEEDED_EVENT_TYPES } from '../../lib/seedNotificationRules.js'
 import { workflowEventTypeRows } from '../../lib/stepEvent.js'
 import { validateEnum } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
+import { assertRolesExist } from '../../lib/roles.js'
 
 function mapRule(props: Record<string, unknown>, eventProduced = true) {
   const digestRecipients = props['digest_recipients']
@@ -98,11 +99,11 @@ function assertChannelsRoutable(eventType: string, channels: readonly string[]):
 function assertTargetKnown(target: string): void {
   if (!isNotificationTarget(target)) {
     throw new GraphQLError(
-      `Target "${target}" is not a valid recipient. Allowed: ${NOTIFICATION_TARGETS.join(', ')}`,
+      `Target "${target}" is not a valid recipient. Allowed: ${[...NOTIFICATION_BASE_TARGETS, 'role:<role>'].join(', ')}`,
       {
         extensions: {
-          code: 'BAD_USER_INPUT', target, allowedTargets: [...NOTIFICATION_TARGETS],
-          i18n: { key: 'errors.notificationRule.badTarget', params: { target, allowed: NOTIFICATION_TARGETS.join(', ') } },
+          code: 'BAD_USER_INPUT', target, allowedTargets: [...NOTIFICATION_BASE_TARGETS, 'role:<role>'],
+          i18n: { key: 'errors.notificationRule.badTarget', params: { target, allowed: [...NOTIFICATION_BASE_TARGETS, 'role:<role>'].join(', ') } },
         },
       },
     )
@@ -261,6 +262,7 @@ async function updateNotificationRule(
   if (input.severityOverride != null) assertSeverityKnown(input.severityOverride)
   assertSpecialFields(input)
   if (input.target != null) assertTargetKnown(input.target)
+  if (input.target != null) await assertRolesExist(ctx.tenantId, [notificationTargetRole(input.target)].filter((k): k is string => k !== null))
   return withSession(async (session) => {
     const now = new Date().toISOString()
     let stepPurpose:  string | null | undefined
@@ -358,6 +360,7 @@ async function createNotificationRule(
   assertSpecialFields(input)
   assertTargetKnown(input.target)
   assertTargetApplicable(input.eventType, input.target)
+  await assertRolesExist(ctx.tenantId, [notificationTargetRole(input.target)].filter((k): k is string => k !== null))
   const stepPurpose  = normalizeStepNarrowing(input.eventType, input.stepPurpose,  'stepPurpose')
   const stepCategory = normalizeStepNarrowing(input.eventType, input.stepCategory, 'stepCategory')
   return withSession(async (session) => {

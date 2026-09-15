@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 // ── Sessione finta che ESEGUE le callback e registra il Cypher ────────────────
 
@@ -85,7 +86,7 @@ const { workflowLogger } = await import('../../../lib/logger.js')
 const { audit } = await import('../../../lib/audit.js')
 
 const M = workflowResolvers.Mutation
-const ctx: GraphQLContext = { tenantId: 'c-two', userId: 'user-1', userEmail: 'u@test.io', role: 'admin' }
+const ctx: GraphQLContext = { tenantId: 'c-two', userId: 'user-1', userEmail: 'u@test.io', role: 'admin', permissions: perms('admin') }
 
 /** Ogni Cypher scritto in questa chiamata, concatenato. */
 const writtenCypher = () => calls.filter((c) => c.mode === 'write').map((c) => c.cypher).join('\n---\n')

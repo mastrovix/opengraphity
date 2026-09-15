@@ -4,7 +4,7 @@
  * espongono, si scrive l'Audit Log e si limita alla pagina Organizzazione.
  */
 import type { GraphQLContext } from '../../context.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { audit } from '../../lib/audit.js'
 import { config } from '../../lib/config.js'
 import { setTenantName, tenantName } from '../../lib/tenantName.js'
@@ -42,20 +42,20 @@ export const organizationProfileResolvers = {
   },
   Mutation: {
     setTenantName: async (_: unknown, args: { name: string }, ctx: GraphQLContext) => {
-      requireRole(ctx, 'admin')
+      requirePermission(ctx, 'config.organization')
       const before = await tenantName(ctx.tenantId)
       const name = await setTenantName(ctx.tenantId, args.name)
       void audit(ctx, 'tenant.name.updated', 'Tenant', ctx.tenantId, { from: before, to: name })
       return name
     },
     setTenantBrand: async (_: unknown, args: { input: { displayName: string; senderName: string; replyTo?: string | null } }, ctx: GraphQLContext) => {
-      requireRole(ctx, 'admin')
+      requirePermission(ctx, 'config.organization')
       const b = await setTenantBrandTexts(ctx.tenantId, { displayName: args.input.displayName, senderName: args.input.senderName, replyTo: args.input.replyTo ?? null })
       void audit(ctx, 'tenant.brand.updated', 'Tenant', ctx.tenantId, { displayName: b.displayName, senderName: b.senderName, replyTo: b.replyTo })
       return brandSettingsView(ctx.tenantId, b)
     },
     setTicketNumbering: async (_: unknown, args: { input: Record<'incident' | 'problem' | 'change' | 'serviceRequest', { prefix: string; digits: number }> }, ctx: GraphQLContext) => {
-      requireRole(ctx, 'admin')
+      requirePermission(ctx, 'config.organization')
       const { serviceRequest, ...rest } = args.input
       const n = await setTicketNumbering(ctx.tenantId, { ...rest, service_request: serviceRequest })
       const { isDefault: _d, ...to } = n
@@ -63,13 +63,13 @@ export const organizationProfileResolvers = {
       return numberingView(n)
     },
     setAttachmentPolicy: async (_: unknown, args: { input: { maxSizeMb: number; extensions: string[] } }, ctx: GraphQLContext) => {
-      requireRole(ctx, 'admin')
+      requirePermission(ctx, 'config.organization')
       const p = await setAttachmentPolicy(ctx.tenantId, { ...args.input })
       void audit(ctx, 'tenant.attachment_policy.updated', 'Tenant', ctx.tenantId, { maxSizeMb: p.maxSizeMb, extensions: p.extensions })
       return policyView(p)
     },
     setAISettings: async (_: unknown, args: { input: AISettings }, ctx: GraphQLContext) => {
-      requireRole(ctx, 'admin')
+      requirePermission(ctx, 'config.organization')
       const before = await aiSettings(ctx.tenantId)
       const s = await setAISettings(ctx.tenantId, { ...args.input, features: { ...args.input.features } })
       const { isDefault: _b, ...from } = before

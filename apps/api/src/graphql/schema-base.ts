@@ -14,6 +14,7 @@ import { olaSDL } from './schema-ola.js'
 import { dashboardSDL } from './schema-dashboard.js'
 import { anomalySDL } from './schema-anomaly.js'
 import { organizationSDL } from './schema-organization.js'
+import { rolesSDL } from './schema-roles.js'
 import { topologySDL } from './schema-topology.js'
 import { discoverySDL } from './schema-discovery.js'
 import { adminSDL } from './schema-admin.js'
@@ -666,6 +667,7 @@ export function buildBaseSDL(): string {
   ${dashboardSDL()}
   ${anomalySDL()}
   ${organizationSDL()}
+  ${rolesSDL()}
   ${eventsSDL()}
   ${servicesSDL()}
   ${topologySDL()}

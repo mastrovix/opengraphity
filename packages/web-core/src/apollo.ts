@@ -139,6 +139,34 @@ function retryAfterRefresh(
   })
 }
 
+/**
+ * GLI ERRORI GIÀ MOSTRATI (verifica «Cosa resta cablato», dopo l'ondata 7).
+ *
+ * Il link degli errori mostra ogni errore GraphQL e di rete, tradotto nella
+ * lingua di chi guarda. Le pagine che lo mostravano di nuovo nel loro
+ * `onError` facevano comparire due avvisi per lo stesso errore. Qui si
+ * ricordano i messaggi appena mostrati, così una pagina chiede
+ * `wasNotifiedCentrally(e)` e non ripete. Un errore GraphQL passa sempre dal
+ * link: è mostrato per costruzione.
+ */
+const recentlyNotified = new Map<string, number>()
+const NOTIFIED_MEMORY_MS = 30_000
+
+function rememberNotified(message: string): void {
+  const now = Date.now()
+  for (const [m, at] of recentlyNotified) if (now - at > NOTIFIED_MEMORY_MS) recentlyNotified.delete(m)
+  recentlyNotified.set(message, now)
+}
+
+export function wasNotifiedCentrally(error: unknown): boolean {
+  if (CombinedGraphQLErrors.is(error)) return true
+  const message = error instanceof Error ? error.message
+    : typeof error === 'object' && error !== null && 'message' in error ? String((error as { message: unknown }).message) : null
+  if (message === null) return false
+  const at = recentlyNotified.get(message)
+  return at !== undefined && Date.now() - at <= NOTIFIED_MEMORY_MS
+}
+
 export function createErrorLink(o: ErrorLinkOptions): ErrorLink {
   const logger = o.clientLogger ?? consoleLogger
   const once   = createDeduper(o.dedupeMs ?? DEFAULT_DEDUPE_MS)
@@ -163,12 +191,14 @@ export function createErrorLink(o: ErrorLinkOptions): ErrorLink {
           path:      path as unknown as Record<string, unknown> | undefined,
           operation: operation.operationName,
         })
+        rememberNotified(message)
         if (once(`gql:${message}`)) o.onGraphQLError(message, { code, path, operation: operation.operationName })
       })
       return
     }
 
     logger.error(`Network error: ${error.message}`, { operation: operation.operationName })
+    rememberNotified(error.message)
     if (once(NETWORK_DEDUPE_KEY)) o.onNetworkError(error, { operation: operation.operationName })
   })
 }

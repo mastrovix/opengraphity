@@ -1,5 +1,8 @@
 import { GraphQLError } from 'graphql'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
+import { setUserRole as setUserRoleInGraph, tenantRoles } from '../../lib/roles.js'
+import { audit } from '../../lib/audit.js'
+import { roleResolvers } from './roles.js'
 import { applyAuthorizationPolicy } from '../../lib/authorization.js'
 import { config } from '../../lib/config.js'
 import { NotFoundError } from '../../lib/errors.js'
@@ -25,7 +28,7 @@ import { ciResolvers } from './ci.js'
 import { ciGroupResolvers } from './ciGroup.js'
 import { logsResolvers } from './logs.js'
 import { dashboardResolvers } from './dashboard.js'
-import { buildDynamicCIResolvers } from './dynamic-ci.js'
+import { buildDynamicCIResolvers, dynamicCIRootFields } from './dynamic-ci.js'
 import { anomalyResolvers } from './anomaly.js'
 import { eventResolvers } from './events.js'
 import { serviceResolvers } from './services.js'
@@ -119,6 +122,16 @@ async function userById(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   }
 }
 
+/** I permessi del ruolo della persona; per chi è collegato, quelli con cui l'API lo autorizza. */
+async function userPermissions(parent: { id: string; role: string }, _: unknown, ctx: GraphQLContext): Promise<string[]> {
+  if (parent.id === ctx.userId) return [...ctx.permissions]
+  return [...((await tenantRoles(ctx.tenantId)).get(parent.role)?.permissions ?? [])]
+}
+
+async function userRoleName(parent: { role: string }, _: unknown, ctx: GraphQLContext): Promise<string | null> {
+  return (await tenantRoles(ctx.tenantId)).get(parent.role)?.name ?? null
+}
+
 async function userTeams(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
   const session = getSession()
   try {
@@ -145,9 +158,9 @@ async function userTeams(parent: { id: string }, _: unknown, ctx: GraphQLContext
 // ── createUser mutation ──────────────────────────────────────────────────────
 
 async function createUser(_: unknown, args: { input: { email: string; name: string; password: string; role: string; teamIds?: string[] } }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'admin.users')
   const { email, name, password, role, teamIds } = args.input
-  if (!['admin', 'operator', 'viewer', 'end_user'].includes(role)) {
+  if (!(await tenantRoles(ctx.tenantId)).has(role)) {
     throw new GraphQLError(`Invalid role: ${role}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.authz.invalidRole', params: { role } } } })
   }
   const tenantId = ctx.tenantId
@@ -188,26 +201,9 @@ async function createUser(_: unknown, args: { input: { email: string; name: stri
   })
   if (!pwRes.ok) throw new GraphQLError(`Keycloak set-password failed: ${pwRes.status}`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
 
-  // Assign role
-  const rolesRes = await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/roles`, { headers: { Authorization: `Bearer ${adminToken}` } })
-  if (!rolesRes.ok) throw new GraphQLError(`Keycloak roles fetch failed: ${rolesRes.status}`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
-  const allRoles = await rolesRes.json() as { id: string; name: string }[]
-  let targetRole = allRoles.find(r => r.name === role)
-  if (!targetRole) {
-    const createRoleRes = await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/roles`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ name: role }),
-    })
-    if (!createRoleRes.ok && createRoleRes.status !== 409) throw new GraphQLError(`Keycloak role creation failed: ${createRoleRes.status}`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
-    const refreshed = await (await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/roles`, { headers: { Authorization: `Bearer ${adminToken}` } })).json() as { id: string; name: string }[]
-    targetRole = refreshed.find(r => r.name === role)
-  }
-  if (!targetRole) throw new GraphQLError(`Keycloak role "${role}" not found after creation`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
-  const mapRes = await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/users/${kcUserId}/role-mappings/realm`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-    body: JSON.stringify([{ id: targetRole.id, name: targetRole.name }]),
-  })
-  if (!mapRes.ok) throw new GraphQLError(`Keycloak role mapping failed: ${mapRes.status}`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
+  // Il ruolo NON si copia in Keycloak (ondata 7): l'app lo legge solo da
+  // `User.role` e dai permessi del `:Role`, e una copia nel realm diventerebbe
+  // falsa alla prima modifica.
 
   // 3. Create in Neo4j
   const { v4: uuidv4 } = await import('uuid')
@@ -234,6 +230,19 @@ async function createUser(_: unknown, args: { input: { email: string; name: stri
   } finally { await session.close() }
 
   return { id, tenantId, email, name, role, teamId: null, createdAt: now }
+}
+
+/** Il ruolo di una persona (ondata 7): mai l'ultimo che gestisce persone e ruoli. */
+async function setUserRole(_: unknown, args: { userId: string; role: string }, ctx: GraphQLContext) {
+  const { previousRole } = await setUserRoleInGraph(ctx.tenantId, args.userId, args.role)
+  void audit(ctx, 'user.role_changed', 'User', args.userId, { previousRole, role: args.role })
+  const session = getSession(undefined, 'READ')
+  try {
+    const row = await runQueryOne<{ props: Record<string, unknown> }>(session,
+      'MATCH (u:User {id: $userId, tenant_id: $tenantId}) RETURN properties(u) AS props', { userId: args.userId, tenantId: ctx.tenantId })
+    if (!row) throw new NotFoundError('User', args.userId)
+    return mapUser(row.props)
+  } finally { await session.close() }
 }
 
 async function updateUserTeams(_: unknown, args: { userId: string; teamIds: string[] }, ctx: GraphQLContext) {
@@ -314,6 +323,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...tenantTimezoneResolvers.Query,
       ...organizationSettingsResolvers.Query,
       ...organizationProfileResolvers.Query,
+      ...roleResolvers.Query,
       ...inboxResolvers.Query,
       auditLog,
       auditActions,
@@ -347,6 +357,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...tenantTimezoneResolvers.Mutation,
       ...organizationSettingsResolvers.Mutation,
       ...organizationProfileResolvers.Mutation,
+      ...roleResolvers.Mutation,
       ...meResolvers.Mutation,
       ...inboxResolvers.Mutation,
       ...notificationRuleResolvers.Mutation,
@@ -370,6 +381,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...ticketCustomFieldResolvers.Mutation,
       createUser,
       updateUserTeams,
+      setUserRole,
     },
     Incident: {
       ...incidentResolvers.Incident,
@@ -410,7 +422,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     WorkflowTransition:    { ...workflowResolvers.WorkflowTransition },
     WorkflowTransitionDef: { ...workflowResolvers.WorkflowTransitionDef },
     Team:               teamResolvers.Team,
-    User:               { teams: userTeams },
+    User:               { teams: userTeams, permissions: userPermissions, roleName: userRoleName },
     Problem:            {
       ...problemResolvers.Problem,
       linkedIncidents: problemLinkedIncidents,
@@ -437,7 +449,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
   }
 
   const merged = mergeResolvers([dynamicCI as IResolvers, staticResolvers as IResolvers])
-  // Policy di ruolo su ogni campo root (lib/authorization.ts): unica fonte di
-  // verità per "chi può fare cosa"; i requireRole locali restano come seconda linea.
-  return applyAuthorizationPolicy(merged as Parameters<typeof applyAuthorizationPolicy>[0]) as IResolvers
+  // Policy dei permessi su ogni campo root (lib/authorization.ts): unica fonte di
+  // verità per "chi può fare cosa"; i controlli locali restano come seconda linea.
+  return applyAuthorizationPolicy(merged as Parameters<typeof applyAuthorizationPolicy>[0], { dynamicCI: dynamicCIRootFields(types) }) as IResolvers
 }

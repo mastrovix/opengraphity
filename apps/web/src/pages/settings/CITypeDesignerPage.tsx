@@ -35,6 +35,7 @@ import { useConfirm } from '@/hooks/useConfirm'
 import { colors, palette } from '@/lib/tokens'
 import { isShippedType } from '@/lib/ciTypeNames'
 import { Package } from 'lucide-react'
+import { showError } from '@/lib/showError'
 
 /**
  * I ruoli che un tipo può dichiarare per la mappa di un servizio (ondata 6 ·
@@ -107,19 +108,19 @@ export function CITypeDesignerPage() {
     setSettingsForm({ label: t.label, icon: t.icon ?? 'box', color: t.color ?? 'var(--color-brand)', validationScript: t.validationScript ?? '', chainFamilies: t.chainFamilies ?? [], serviceRole: t.serviceRole ?? '' })
   }
 
-  const [createType]    = useMutation(CREATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success(t('toast.citype.typeCreated')) }, onError: (e) => toast.error(e.message) })
-  const [updateType]    = useMutation(UPDATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success(t('toast.citype.saved')) }, onError: (e) => toast.error(e.message) })
-  const [deleteType]    = useMutation(DELETE_CI_TYPE,    { onCompleted: () => { void refetch(); setSelectedId(null); toast.success(t('toast.citype.typeDeleted')) }, onError: (e) => toast.error(e.message) })
-  const [addField]      = useMutation(ADD_CI_FIELD,      { onCompleted: () => { void refetch();     setAddingField(false); setEditingFieldId(null); toast.success(t('toast.citype.fieldAdded')) }, onError: (e) => toast.error(e.message) })
-  const [addBaseField]  = useMutation(ADD_CI_FIELD,      { onCompleted: () => { void refetchBase(); setShowBaseFieldModal(false); toast.success(t('toast.citype.baseFieldAdded')) }, onError: (e) => toast.error(e.message) })
-  const [removeField]   = useMutation(REMOVE_CI_FIELD,   { onCompleted: () => { void refetch(); toast.success(t('toast.citype.fieldRemoved')) }, onError: (e) => toast.error(e.message) })
+  const [createType]    = useMutation(CREATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success(t('toast.citype.typeCreated')) }, onError: (e) => showError(e) })
+  const [updateType]    = useMutation(UPDATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success(t('toast.citype.saved')) }, onError: (e) => showError(e) })
+  const [deleteType]    = useMutation(DELETE_CI_TYPE,    { onCompleted: () => { void refetch(); setSelectedId(null); toast.success(t('toast.citype.typeDeleted')) }, onError: (e) => showError(e) })
+  const [addField]      = useMutation(ADD_CI_FIELD,      { onCompleted: () => { void refetch();     setAddingField(false); setEditingFieldId(null); toast.success(t('toast.citype.fieldAdded')) }, onError: (e) => showError(e) })
+  const [addBaseField]  = useMutation(ADD_CI_FIELD,      { onCompleted: () => { void refetchBase(); setShowBaseFieldModal(false); toast.success(t('toast.citype.baseFieldAdded')) }, onError: (e) => showError(e) })
+  const [removeField]   = useMutation(REMOVE_CI_FIELD,   { onCompleted: () => { void refetch(); toast.success(t('toast.citype.fieldRemoved')) }, onError: (e) => showError(e) })
   // Revisione delle otto ondate · A·3.1: il pulsante «Modifica» chiamava
   // `addCIField`, che la porta sui nomi rifiutava sempre («Il campo esiste
   // già»). Ora esiste la mutation che serve.
-  const [updateField]   = useMutation(UPDATE_CI_FIELD,   { onCompleted: () => { void refetch();     setEditingFieldId(null); toast.success(t('toast.citype.fieldSaved')) }, onError: (e) => toast.error(e.message) })
-  const [updateBaseField] = useMutation(UPDATE_CI_FIELD, { onCompleted: () => { void refetchBase(); setEditingFieldId(null); toast.success(t('toast.citype.fieldSaved')) }, onError: (e) => toast.error(e.message) })
-  const [addRelation]   = useMutation(ADD_CI_RELATION,   { onCompleted: () => { void refetch(); setShowRelModal(false); toast.success(t('toast.citype.relationAdded')) }, onError: (e) => toast.error(e.message) })
-  const [removeRelation] = useMutation(REMOVE_CI_RELATION, { onCompleted: () => { void refetch(); toast.success(t('toast.citype.relationRemoved')) }, onError: (e) => toast.error(e.message) })
+  const [updateField]   = useMutation(UPDATE_CI_FIELD,   { onCompleted: () => { void refetch();     setEditingFieldId(null); toast.success(t('toast.citype.fieldSaved')) }, onError: (e) => showError(e) })
+  const [updateBaseField] = useMutation(UPDATE_CI_FIELD, { onCompleted: () => { void refetchBase(); setEditingFieldId(null); toast.success(t('toast.citype.fieldSaved')) }, onError: (e) => showError(e) })
+  const [addRelation]   = useMutation(ADD_CI_RELATION,   { onCompleted: () => { void refetch(); setShowRelModal(false); toast.success(t('toast.citype.relationAdded')) }, onError: (e) => showError(e) })
+  const [removeRelation] = useMutation(REMOVE_CI_RELATION, { onCompleted: () => { void refetch(); toast.success(t('toast.citype.relationRemoved')) }, onError: (e) => showError(e) })
 
   /**
    * `fieldId` presente = si sta MODIFICANDO un campo esistente: nome e tipo

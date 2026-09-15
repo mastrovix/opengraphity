@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import path from 'path'
 import os from 'os'
 import { GraphQLError } from 'graphql'
+import { perms } from './testPermissions.js'
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
@@ -176,7 +177,7 @@ describe('consumers of the single loader', () => {
 
     const { widgetData, widgetError } = await import('../../graphql/resolvers/dashboard/dashboardQueries.js')
     const parent = { reportSectionId: 's1' }
-    const ctx = { tenantId: 'tenant-1', userId: 'u1', userEmail: 'u@x', role: 'operator' } as never
+    const ctx = { tenantId: 'tenant-1', userId: 'u1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') } as never
 
     const data  = await widgetData(parent, {}, ctx)
     const error = await widgetError(parent, {}, ctx)
@@ -195,7 +196,7 @@ describe('consumers of the single loader', () => {
     const session = fakeSession(() => [])
     vi.mocked(getSession).mockReturnValue(session as never)
     const { widgetError } = await import('../../graphql/resolvers/dashboard/dashboardQueries.js')
-    expect(await widgetError({ reportSectionId: 'ghost' }, {}, { tenantId: 't', userId: 'u', userEmail: 'e', role: 'admin' } as never)).toBe('Report section not found')
+    expect(await widgetError({ reportSectionId: 'ghost' }, {}, { tenantId: 't', userId: 'u', userEmail: 'e', role: 'admin', permissions: perms('admin') } as never)).toBe('Report section not found')
     expect(executeReportSection).not.toHaveBeenCalled()
   })
 })

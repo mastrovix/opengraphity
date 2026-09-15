@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 // ── Session mock usato da withSession ─────────────────────────────────────────
 
@@ -76,7 +77,7 @@ const addTicketComment = portalResolvers.Mutation.addTicketComment
 
 // ── Test context ──────────────────────────────────────────────────────────────
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'end_user' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'end_user', permissions: perms('end_user') }
 
 const makeRecord = (map: Record<string, unknown>) => ({
   get: (key: string) => (key in map ? map[key] : null),

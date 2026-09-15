@@ -22,7 +22,7 @@ import { exportToCsv } from '@/lib/csvExport'
 import { applyFilterGroup } from '@/lib/filterGroup'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { useListQueryState } from '@/hooks/useListQueryState'
-import { ALL_ROLES } from '@/hooks/useMe'
+import { useRoles } from '@/hooks/useRoles'
 import { colors, palette, alpha } from '@/lib/tokens'
 import { formatDate } from '@/lib/datetime'
 
@@ -41,11 +41,8 @@ interface UserRow {
   name:      string
   email:     string
   role:      string
+  roleName:  string | null
   createdAt: string | null
-}
-
-const ROLE_LABELS: Record<string, string> = {
-  admin: 'Admin', operator: 'Operator', viewer: 'Viewer', end_user: 'End User',
 }
 
 const EMPTY_FORM = { email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] as string[] }
@@ -54,12 +51,14 @@ const REQUIRED = <span aria-hidden="true" style={{ color: 'var(--color-danger)' 
 
 export function UsersPage() {
   const { t } = useTranslation()
+  // I ruoli dell'organizzazione (ondata 7): quelli di fabbrica e quelli creati dall'admin.
+  const { roles, labelOf: roleLabel } = useRoles()
 
   const FILTER_FIELDS: FieldConfig[] = [
     { key: 'name',      label: t('pages.users.name'),      type: 'text' },
     { key: 'email',     label: t('pages.users.email'),     type: 'text' },
     { key: 'role',      label: t('pages.users.role'),      type: 'enum',
-      options: ALL_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] ?? r })) },
+      options: roles.map((r) => ({ value: r.key, label: roleLabel(r.key) })) },
     { key: 'createdAt', label: t('pages.users.createdAt'), type: 'date' },
   ]
 
@@ -71,7 +70,7 @@ export function UsersPage() {
       label:  t('pages.users.role'),
       width:  '120px',
       sortable: true,
-      render: (v) => <RoleBadge role={v as string} />,
+      render: (v, row) => <RoleBadge role={v as string} name={row.roleName} />,
     },
     {
       key:     'createdAt',
@@ -192,7 +191,7 @@ export function UsersPage() {
             <div><label style={labelS}>{t('pages.users.password')} {REQUIRED}</label><Input type="password" required value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={t('pages.users.passwordHint')} /></div>
             <div><label style={labelS}>{t('pages.users.role')} {REQUIRED}</label>
               <Select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-                {ALL_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r] ?? r}</option>)}
+                {roles.map((r) => <option key={r.key} value={r.key}>{roleLabel(r.key)}</option>)}
               </Select>
             </div>
             {/* Team — search + chips */}

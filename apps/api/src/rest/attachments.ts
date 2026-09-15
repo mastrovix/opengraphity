@@ -11,7 +11,7 @@ import { config } from '../lib/config.js'
 import { ValidationError } from '../lib/errors.js'
 import { attachmentPolicy, extensionAllowed, fileExtension, type AttachmentPolicy } from '../lib/attachmentPolicy.js'
 import {
-  UPLOAD_ROLES,
+  UPLOAD_PERMISSIONS,
   entityExistsCypher,
   resolveAttachmentPath,
   safeStoredFilename,
@@ -53,9 +53,9 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
     return
   }
 
-  const { tenantId, userId, role } = req.user!
-  if (!UPLOAD_ROLES.has(role)) {
-    res.status(403).json({ error: `Role '${role}' cannot upload attachments` })
+  const { tenantId, userId, role, permissions } = req.user!
+  if (!UPLOAD_PERMISSIONS.some((p) => permissions.has(p))) {
+    res.status(403).json({ error: `Role '${role}' cannot upload attachments (requires one of: ${UPLOAD_PERMISSIONS.join(', ')})` })
     return
   }
 

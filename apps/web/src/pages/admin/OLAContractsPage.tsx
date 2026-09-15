@@ -36,6 +36,7 @@ import { CREATE_OLA_CONTRACT, UPDATE_OLA_CONTRACT } from '@/graphql/mutations'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { palette } from '@/lib/tokens'
 import { ComplianceFields, TimeCountingField, calendarChoiceOf, calendarIdFor, complianceValid } from '@/components/sla/ServiceTargetFields'
+import { showError } from '@/lib/showError'
 
 export interface OLAContract {
   id: string; type: string; name: string; description: string | null; entityType: string
@@ -118,12 +119,12 @@ export function OLAContractsPage() {
   const [createOLA, { loading: creating }] = useMutation(CREATE_OLA_CONTRACT, {
     refetchQueries,
     onCompleted: async () => { setModal(null); await refetch(); toast.success(t('toast.sla.olaCreated')) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const [updateOLA, { loading: updating }] = useMutation(UPDATE_OLA_CONTRACT, {
     refetchQueries,
     onCompleted: async () => { setModal(null); await refetch() },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const saving = creating || updating
 

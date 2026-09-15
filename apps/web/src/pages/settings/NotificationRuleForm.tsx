@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { colors, fontWeight, lookupOrError, alpha, palette } from '@/lib/tokens'
 import { WORKFLOW_STEP_PURPOSES, NOTIFICATION_SEVERITIES } from '@opengraphity/types'
-import { SEVERITY_COLOR, CHANNEL_LABEL_KEY, STANDARD_EVENTS, TARGET_OPTIONS, routableFor, type NotificationRouting } from './NotificationRuleList'
+import { SEVERITY_COLOR, CHANNEL_LABEL_KEY, STANDARD_EVENTS, useTargetOptions, withCurrent, routableFor, type NotificationRouting } from './NotificationRuleList'
 
 /**
  * Un tipo di evento che i workflow del tenant producono davvero
@@ -67,6 +67,7 @@ export function NewRuleDialog({
   saving:  boolean
 }) {
   const { t } = useTranslation()
+  const targetOptions = useTargetOptions()
   const titleId = useId()
   const [eventTypeSelect, setEventTypeSelect]   = useState('')
   const [customEventType, setCustomEventType]   = useState('')
@@ -229,8 +230,8 @@ export function NewRuleDialog({
         <label style={labelStyle}>
           <span style={labelTextStyle}>{t('notificationRules.header.target')}</span>
           <select value={target} onChange={(e) => setTarget(e.target.value)} style={{ ...inputStyle, color: 'var(--color-slate)' }}>
-            {TARGET_OPTIONS.map(({ value, labelKey }) => (
-              <option key={value} value={value}>{t(labelKey)}</option>
+            {withCurrent(targetOptions, target).map(({ value, label }) => (
+              <option key={value} value={value}>{label}</option>
             ))}
           </select>
         </label>

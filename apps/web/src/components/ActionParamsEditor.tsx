@@ -13,7 +13,7 @@ import { GET_TEAMS, GET_WORKFLOW_LIST, GET_USERS } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { useEntityFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
 import { isStepFieldWritable, AUTOMATION_NOTIFICATION_CHANNELS } from '@opengraphity/types'
-import { TARGET_OPTIONS, CHANNEL_LABEL_KEY } from '@/pages/settings/NotificationRuleList'
+import { useTargetOptions, withCurrent, CHANNEL_LABEL_KEY } from '@/pages/settings/NotificationRuleList'
 import { fieldTypeKey } from '@/lib/automationOperators'
 import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
@@ -43,6 +43,7 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
 
 export function ActionParamsEditor({ actionType, params, entityType, onChange, vocabulary = 'automation' }: Props) {
   const { t } = useTranslation()
+  const targetOptions = useTargetOptions()
   const { data: teamsData }    = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { data: usersData }    = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { data: workflowData } = useQuery<{ workflowDefinitions: { id: string; name: string; entityType: string; steps: { name: string; label: string }[] }[] }>(GET_WORKFLOW_LIST, { fetchPolicy: METAMODEL_FETCH_POLICY })
@@ -146,7 +147,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
           <Select style={{ ...selectS, width: 180 }} aria-label={t('automation.params.notificationTarget')} value={params['target'] ?? 'all'} onChange={e => onChange('target', e.target.value)}>
-            {TARGET_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.labelKey)}</option>)}
+            {withCurrent(targetOptions, params['target'] ?? 'all').map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </Select>
           <Select style={{ ...selectS, width: 140 }} aria-label={t('automation.params.notificationChannel')} value={params['channel'] ?? 'in_app'} onChange={e => onChange('channel', e.target.value)}>
             {AUTOMATION_NOTIFICATION_CHANNELS.map(c => <option key={c} value={c}>{t(CHANNEL_LABEL_KEY[c] ?? c)}</option>)}

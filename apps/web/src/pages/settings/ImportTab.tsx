@@ -12,6 +12,7 @@ import { apiUrl } from '@/lib/apiBase'
 import { useConfirm } from '@/hooks/useConfirm'
 import { colors, palette } from '@/lib/tokens'
 import { useTicketCustomFieldDefs } from '@/components/ticket/customFields/customFields'
+import { showError } from '@/lib/showError'
 
 // ── Types (REST contract /api/v1/import/*) ────────────────────────────────────
 
@@ -139,7 +140,7 @@ export function ImportTab() {
         toast.success(t('pages.import.importDone', { created: data.created, updated: data.updated }))
       }
     } catch (err) {
-      toast.error(t('toast.import.requestFailed', { error: (err as Error).message }))
+      showError(err, t('toast.import.requestFailed', { error: (err as Error).message }))
     } finally {
       setRunning(null)
     }

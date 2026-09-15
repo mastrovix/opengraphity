@@ -32,6 +32,7 @@ import { useListQueryState } from '@/hooks/useListQueryState'
 import { useConfirm } from '@/hooks/useConfirm'
 import { sourceEndpointUrl } from '@/pages/monitoring/configSnippets'
 import { palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 // ── GraphQL ─────────────────────────────────────────────────────────────────
 // Every operation is named: `operationName` shows up in the errorLink logs and
@@ -223,14 +224,14 @@ export function IntegrationsPage() {
       const token = (res.data as { createInboundWebhook?: { token: string } } | undefined)?.createInboundWebhook?.token
       if (!token) throw new Error(t('admin.integrations.errors.tokenMissing'))
       setSecret(token); setModal('secret')
-    } catch (e) { toast.error(t('toast.integration.webhookCreateFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.webhookCreateFailed', { error: errorMessage(e) })) }
   }
 
   async function handleCreateOutbound() {
     try {
       await createOut({ variables: { input: { ...outForm } } })
       setModal(null); resetOutForm(); toast.success(t('toast.integration.outboundCreated'))
-    } catch (e) { toast.error(t('toast.integration.webhookCreateFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.webhookCreateFailed', { error: errorMessage(e) })) }
   }
 
   async function handleCreateApiKey() {
@@ -240,7 +241,7 @@ export function IntegrationsPage() {
       const key = (res.data as { createApiKey?: { key: string } } | undefined)?.createApiKey?.key
       if (!key) throw new Error(t('admin.integrations.errors.keyMissing'))
       setSecret(key); setModal('secret')
-    } catch (e) { toast.error(t('toast.integration.apiKeyCreateFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.apiKeyCreateFailed', { error: errorMessage(e) })) }
   }
 
   // Toggles: errors are toasted by useMutationWithToast with the server message.
@@ -271,7 +272,7 @@ export function IntegrationsPage() {
       if (!r) throw new Error(t('admin.integrations.errors.emptyResponse'))
       if (r.success) toast.success(t('toast.integration.testOk', { status: r.statusCode }))
       else toast.error(t('toast.integration.testFailed', { error: r.error }))
-    } catch (e) { toast.error(t('toast.integration.testError', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.testError', { error: errorMessage(e) })) }
   }
 
   async function handleRegenToken(id: string) {
@@ -280,7 +281,7 @@ export function IntegrationsPage() {
       const token = (res.data as { regenerateWebhookToken?: { token: string } } | undefined)?.regenerateWebhookToken?.token
       if (!token) throw new Error(t('monitoring.errors.tokenMissing', { operation: 'regenerateWebhookToken' }))
       setSecret(token); setModal('secret')
-    } catch (e) { toast.error(t('toast.integration.tokenRegenFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.tokenRegenFailed', { error: errorMessage(e) })) }
   }
 
   async function handleRegenApiKey(id: string) {
@@ -289,7 +290,7 @@ export function IntegrationsPage() {
       const key = (res.data as { regenerateApiKey?: { key: string } } | undefined)?.regenerateApiKey?.key
       if (!key) throw new Error(t('admin.integrations.errors.keyMissing'))
       setSecret(key); setModal('secret')
-    } catch (e) { toast.error(t('toast.integration.keyRegenFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.keyRegenFailed', { error: errorMessage(e) })) }
   }
 
   // ── Render helpers ──────────────────────────────────────────────────────────

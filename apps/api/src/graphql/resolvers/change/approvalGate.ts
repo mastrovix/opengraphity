@@ -30,12 +30,13 @@ import { targetStepByPurpose } from '../../../lib/workflowTargets.js'
 import { deriveChangePriority } from './scoring.js'
 import { systemText } from '../../../lib/systemText.js'
 import { transitionErrorI18n } from '../../../lib/transitionError.js'
+import { hasPermission } from '../../../lib/permissions.js'
 
 type Session = Parameters<typeof runQueryOne>[0]
 
-/** True quando l'utente può agire su un requisito del team: admin o membro. */
+/** Può agire su un requisito del team: chi ne è membro, o chi decide per qualunque team. */
 async function assertEligible(session: Session, teamId: string, ctx: GraphQLContext): Promise<void> {
-  if (ctx.role === 'admin') return
+  if (hasPermission(ctx, 'approval.override')) return
   const row = await runQueryOne<{ ok: boolean }>(session, `
     RETURN exists((:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(:Team {id: $teamId, tenant_id: $tenantId})) AS ok
   `, { userId: ctx.userId, tenantId: ctx.tenantId, teamId })
@@ -179,7 +180,7 @@ export async function changeApprovals(parent: { id: string }, _: unknown, ctx: G
              exists((:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(team)) AS isMember
       ORDER BY CASE a.kind WHEN 'change_manager' THEN 0 ELSE 1 END, team.name
     `, { changeId: parent.id, tenantId: ctx.tenantId, userId: ctx.userId })
-    const isAdmin = ctx.role === 'admin'
+    const isAdmin = hasPermission(ctx, 'approval.override')
     return rows.map((r) => ({
       kind:           r.kind,
       teamId:         r.teamId,

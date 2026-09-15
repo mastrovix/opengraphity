@@ -11,6 +11,7 @@ import { logger } from '../../lib/logger.js'
 import { sseManager } from '@opengraphity/notifications'
 import { GraphQLError } from 'graphql'
 import { COMMENTABLE_LABELS } from '../../lib/ticketComments.js'
+import { hasPermission, requirePermission } from '../../lib/permissions.js'
 
 type Props = Record<string, unknown>
 
@@ -35,11 +36,9 @@ async function emailRecipient(tenantId: string, userId: string): Promise<string 
   return row?.email && row.enabled ? row.email : null
 }
 
-function requireAgent(ctx: GraphQLContext): void {
-  const r = ctx.role?.toLowerCase() ?? ''
-  if (r !== 'admin' && r !== 'tenant_admin' && r !== 'operator') {
-    throw new GraphQLError('Access denied: agents/admin only', { extensions: { code: 'FORBIDDEN' } })
-  }
+/** La chat interna dei ticket: il permesso `ticket.internalChat` (ondata 7). */
+function requireInternalChat(ctx: GraphQLContext): void {
+  requirePermission(ctx, 'ticket.internalChat')
 }
 
 /**
@@ -245,7 +244,7 @@ async function internalMessages(
   args: { entityType: string; entityId: string; limit?: number; before?: string },
   ctx: GraphQLContext,
 ) {
-  requireAgent(ctx)
+  requireInternalChat(ctx)
   const limit = Math.min(args.limit ?? 50, 100)
   return withSession(async (s) => {
     const beforeFilter = args.before ? 'AND m.created_at < $before' : ''
@@ -282,7 +281,7 @@ async function sendInternalMessage(
   args: { entityType: string; entityId: string; body: string },
   ctx: GraphQLContext,
 ) {
-  requireAgent(ctx)
+  requireInternalChat(ctx)
   const id  = uuidv4()
   const now = new Date().toISOString()
   const mentions = parseMentions(args.body)
@@ -333,7 +332,7 @@ async function sendInternalMessage(
 }
 
 async function editInternalMessage(_: unknown, args: { messageId: string; body: string }, ctx: GraphQLContext) {
-  requireAgent(ctx)
+  requireInternalChat(ctx)
   const now = new Date().toISOString()
   const mentions = parseMentions(args.body)
 
@@ -350,12 +349,10 @@ async function editInternalMessage(_: unknown, args: { messageId: string; body: 
 }
 
 async function deleteInternalMessage(_: unknown, args: { messageId: string }, ctx: GraphQLContext) {
-  requireAgent(ctx)
+  requireInternalChat(ctx)
   await withSession(async (s) => {
-    // Admin can delete any, author can delete own
-    const r = ctx.role?.toLowerCase() ?? ''
-    const isAdmin = r === 'admin' || r === 'tenant_admin'
-    const authorFilter = isAdmin ? '' : 'AND m.author_id = $authorId'
+    // Chi modera i commenti cancella qualunque messaggio, gli altri solo i propri
+    const authorFilter = hasPermission(ctx, 'ticket.moderateComments') ? '' : 'AND m.author_id = $authorId'
     const rows = await runQuery<{ n: unknown }>(s, `
       MATCH (m:InternalMessage {id: $id, tenant_id: $tenantId})
       WHERE true ${authorFilter}

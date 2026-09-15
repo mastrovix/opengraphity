@@ -3,7 +3,7 @@ import { requestCustomFieldDefs } from './ticketCustomFields.js'
 import { customFieldValueMap, type CustomFieldInput } from '../../lib/ticketCustomFields.js'
 import { resolvePriorityPatch } from '../../lib/priority.js'
 import { propsToFieldValues as mergedFieldValues } from '../../lib/validateRequiredFields.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
@@ -475,7 +475,7 @@ const incidentSlaStatus = ticketSlaStatusResolver('Incident')
  * in cui serve di più. L'evento parte solo quando il flag cambia davvero.
  */
 async function setIncidentMajor(_: unknown, args: { id: string; major: boolean }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin', 'operator')
+  requirePermission(ctx, 'incident.write')
   const now = new Date().toISOString()
   const { props, changed } = await withSession(async (session) => {
     const rows = await runQuery<{ props: Props; was: unknown }>(session, `

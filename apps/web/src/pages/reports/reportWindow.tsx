@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageTitle } from '@/components/PageTitle'
 import { useMe } from '@/hooks/useMe'
+import { routePermissions } from '@/lib/routePermissions'
 import { colors, palette } from '@/lib/tokens'
 
 export const REPORT_WINDOWS = [7, 30, 90] as const
@@ -86,12 +87,12 @@ export function ReportHeader({ icon, title, manageTo, manageLabel, windowDays, o
   windowDays: number
   onWindowChange: (days: number) => void
 }) {
-  const { isAdmin } = useMe()
+  const { can } = useMe()
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
       <PageTitle icon={icon}>{title}</PageTitle>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        {isAdmin && (
+        {can(...routePermissions(manageTo)) && (
           <Link to={manageTo} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', fontWeight: 500 }}>
             {manageLabel}
           </Link>

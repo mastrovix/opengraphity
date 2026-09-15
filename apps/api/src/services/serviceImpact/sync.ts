@@ -27,6 +27,7 @@
  */
 import { getSession, runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import { audit } from '../../lib/audit.js'
+import { SYSTEM_PERMISSIONS } from '../../lib/permissions.js'
 import { systemTextIn } from '../../lib/systemText.js'
 import { languageFor } from '../../lib/tenantLanguage.js'
 import type { Lingua } from '../../lib/enumValueLabels.js'
@@ -476,7 +477,7 @@ export async function syncServiceMap(
   }
 
   log.info({ tenantId, mapId, trigger, version: result.version, added: result.added, removed: result.removed, moved: result.moved, retired: result.retired }, 'Service map synchronized with the CMDB')
-  void audit(actorId === MONITORING_ACTOR ? monitoringContext(tenantId) : { tenantId, userId: actorId, userEmail: actorId, role: 'admin' }, 'service_map.synced', 'ServiceMap', mapId, {
+  void audit(actorId === MONITORING_ACTOR ? monitoringContext(tenantId) : { tenantId, userId: actorId, userEmail: actorId, role: 'admin', permissions: SYSTEM_PERMISSIONS }, 'service_map.synced', 'ServiceMap', mapId, {
     trigger, version: result.version, added: result.added, removed: result.removed, moved: result.moved, note: result.note,
   })
   // La composizione è cambiata: la salute va ricalcolata subito (un componente

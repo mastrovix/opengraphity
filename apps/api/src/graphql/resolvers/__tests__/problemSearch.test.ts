@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const queries: { cypher: string; params: Record<string, unknown> }[] = []
 
@@ -41,7 +42,7 @@ vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn() }))
 
 const { problemResolvers } = await import('../problem.js')
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'u1', userEmail: 'u@x', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'u1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') }
 const info = { schema: {} } as never
 
 beforeEach(() => { queries.length = 0; purposeSteps = ['documented'] })

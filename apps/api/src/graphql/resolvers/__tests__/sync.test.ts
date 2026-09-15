@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
@@ -30,7 +31,7 @@ const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { encryptCredentials } = await import('@opengraphity/discovery')
 const { syncQueue } = await import('../../../discovery/syncWorker.js')
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
 
 const SOURCE_PROPS = {
   id: 's-1', tenant_id: 'tenant-1', name: 'AWS prod', connector_type: 'aws', config: '{"region":"eu-west-1"}',

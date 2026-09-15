@@ -15,6 +15,7 @@ import { Button } from '@/components/Button'
 import { apiUrl, authHeader } from '@/lib/apiBase'
 import { useConfirm } from '@/hooks/useConfirm'
 import { OrgSection, Hint, GroupLabel } from './shared'
+import { showError } from '@/lib/showError'
 
 interface BrandSettings { displayName: string; senderName: string; replyTo: string | null; logoUrl: string | null; logoMimeType: string | null; isDefault: boolean }
 
@@ -62,7 +63,7 @@ export function BrandSection() {
       toast.success(t('pages.organization.logoSaved'))
       refreshBrand()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''

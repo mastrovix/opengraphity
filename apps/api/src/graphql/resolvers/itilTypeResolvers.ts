@@ -216,14 +216,14 @@ async function assertEnumTypeLinkable(
 
 // ── buildITILMutations ────────────────────────────────────────────────────────
 
-export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) {
+export function buildITILMutations(requireMetamodelPermission: (ctx: GraphQLContext) => void) {
   return {
     updateITILType: async (
       _: unknown,
       args: { id: string; input: { label?: string; icon?: string; color?: string; validationScript?: string | null } },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       const updates: Props = {}
       const { label, icon, color, validationScript } = args.input
       if (label            !== undefined) updates['label']             = label
@@ -271,7 +271,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
       args: { typeId: string; input: Record<string, unknown> },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       const { typeId, input } = args
       const fieldId     = crypto.randomUUID()
       const enumTypeId  = (input['enumTypeId'] as string | null | undefined) ?? null
@@ -379,7 +379,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
       args: { typeId: string; fieldId: string; input: Record<string, unknown> },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       const { typeId, fieldId, input } = args
       const enumTypeId  = (input['enumTypeId'] as string | null | undefined) ?? null
 
@@ -472,7 +472,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
       args: { typeId: string; fieldId: string },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       await withSession(async session => {
         // A-4: `f.is_system` non basta — i campi custom di un altro cliente
         // hanno `is_system = false` ed erano quindi cancellabili da qui.

@@ -27,6 +27,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
@@ -43,8 +44,8 @@ const { buildITILMutations, buildITILTypesResolver, buildITILTypeFieldsResolver,
 const { withSession } = await import('../ci-utils.js')
 const { invalidateSchema } = await import('../../../lib/schemaInvalidator.js')
 
-const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
-const operator: GraphQLContext = { ...admin, role: 'operator' }
+const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
+const operator: GraphQLContext = { ...admin, role: 'operator', permissions: perms('operator') }
 
 const requireAdmin = (ctx: GraphQLContext) => {
   if (ctx.role !== 'admin') throw new GraphQLError('Accesso negato: richiesto ruolo admin', { extensions: { code: 'FORBIDDEN' } })

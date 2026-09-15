@@ -35,6 +35,7 @@ import { PresetRulesEditor } from './PresetRules'
 import { EMPTY_MAPPING, EMPTY_PRESET_RULES, RATE_LIMIT_MAX, RATE_LIMIT_MIN, buildPresetConfig, buildSourceConfig, isMappingComplete, isPresetRulesComplete, parsePresetConfig, parseRateLimit, parseSourceConfig, type GenericMapping, type PresetConnectorKind, type PresetRules, type SourceRateLimit } from './sourceConfig'
 import { sourceEndpointUrl } from './configSnippets'
 import { ToolBadge, SecretBox, hintStyle } from './monitoringShared'
+import { showError } from '@/lib/showError'
 
 export function EditSourcePage() {
   const { id } = useParams<{ id: string }>()
@@ -103,7 +104,7 @@ export function EditSourcePage() {
       void refetch()
       setNewToken(null)
       navigate('/monitoring/sources')
-    } catch (e) { toast.error(t('toast.events.actionFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.events.actionFailed', { error: errorMessage(e) })) }
   }
 
   async function handleRegen() {
@@ -116,7 +117,7 @@ export function EditSourcePage() {
       if (!token) throw new Error(t('monitoring.errors.tokenMissing', { operation: 'regenerateWebhookToken' }))
       toast.success(t('toast.monitoring.tokenRegenerated'))
       setNewToken(token)
-    } catch (e) { toast.error(t('toast.events.actionFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.events.actionFailed', { error: errorMessage(e) })) }
   }
 
   if (loading && !data) return <PageLoader />

@@ -9,6 +9,7 @@ import { Bell } from 'lucide-react'
 import { GET_TEAM_DETAIL } from '@/graphql/queries'
 import { SEND_TASK_REMINDER } from '@/graphql/mutations'
 import { colors, palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 export function TeamGatePanel({ teamId, taskId, assigneeId }: {
   teamId: string | null
@@ -21,7 +22,7 @@ export function TeamGatePanel({ teamId, taskId, assigneeId }: {
   )
   const [sendReminder, { loading: sending }] = useMutation(SEND_TASK_REMINDER, {
     onCompleted: () => toast.success(t('toast.task.reminderSent')),
-    onError:     (e) => toast.error(e.message),
+    onError:     (e) => showError(e),
   })
   const team = data?.team
   if (!team) return null

@@ -34,15 +34,20 @@ const nav = () => screen.getByRole('navigation', { name: 'Main menu' })
 describe('Sidebar — visibilità per ruolo', () => {
   it('utente non admin: nessun gruppo Teams & Users / Configuration / ADMIN', async () => {
     renderSidebar('operator')
-    // le voci comuni ci sono subito
-    expect(within(nav()).getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/dashboard')
+    // le voci arrivano coi permessi di `me` (ondata 7): nessuna voce prima di sapere cosa si apre
+    expect(await within(nav()).findByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/dashboard')
     expect(within(nav()).getByRole('button', { name: 'ITIL Processes' })).toBeInTheDocument()
     // dopo il caricamento di `me` (mock a delay 0) i gruppi admin restano assenti
     await new Promise((r) => setTimeout(r, 10))
     expect(within(nav()).queryByRole('button', { name: 'Teams & Users' })).not.toBeInTheDocument()
     expect(within(nav()).queryByRole('button', { name: 'Configuration' })).not.toBeInTheDocument()
-    expect(within(nav()).queryByText('ADMIN')).not.toBeInTheDocument()
     expect(within(nav()).queryByRole('link', { name: 'Audit Log' })).not.toBeInTheDocument()
+    expect(within(nav()).queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument()
+    // Ondata 7: la sezione ADMIN mostra le sole pagine che il ruolo apre — per
+    // l'operator la gestione della Knowledge Base (kb.write), che prima aveva la
+    // rotta aperta ma nessuna voce di menu.
+    const admin = within(nav()).getAllByRole('link').filter((l) => l.getAttribute('href')?.startsWith('/admin/') || l.getAttribute('href') === '/logs')
+    expect(admin.map((l) => l.getAttribute('href'))).toEqual(['/admin/knowledge-base'])
   })
 
   it('admin: gruppi Teams & Users, Configuration e sezione ADMIN con Settings', async () => {
@@ -64,7 +69,7 @@ describe('Sidebar — visibilità per ruolo', () => {
 describe('Sidebar — gruppi collassabili', () => {
   it('un gruppo chiuso ha aria-expanded=false; il click lo apre e mostra le voci', async () => {
     const { user } = renderSidebar('operator')
-    const itil = within(nav()).getByRole('button', { name: 'ITIL Processes' })
+    const itil = await within(nav()).findByRole('button', { name: 'ITIL Processes' })
     expect(itil).toHaveAttribute('aria-expanded', 'false')
     expect(within(nav()).queryByRole('link', { name: 'Incidents' })).not.toBeInTheDocument()
 
@@ -78,17 +83,17 @@ describe('Sidebar — gruppi collassabili', () => {
     expect(itil).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('il gruppo che contiene la route corrente parte aperto', () => {
+  it('il gruppo che contiene la route corrente parte aperto', async () => {
     renderSidebar('operator', { route: '/problems/42' })
-    const itil = within(nav()).getByRole('button', { name: 'ITIL Processes' })
+    const itil = await within(nav()).findByRole('button', { name: 'ITIL Processes' })
     expect(itil).toHaveAttribute('aria-expanded', 'true')
     expect(within(nav()).getByRole('button', { name: 'Reporting' })).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('sidebar collassata: i gruppi diventano link icona con title, il bottone di espansione ha aria-expanded=false', async () => {
     const { user, onToggle } = renderSidebar('operator', { collapsed: true })
+    expect(await within(nav()).findByTitle('ITIL Processes')).toHaveAttribute('href', '/incidents')
     expect(within(nav()).queryByRole('button', { name: 'ITIL Processes' })).not.toBeInTheDocument()
-    expect(within(nav()).getByTitle('ITIL Processes')).toHaveAttribute('href', '/incidents')
     const expand = screen.getByRole('button', { name: 'Expand sidebar' })
     expect(expand).toHaveAttribute('aria-expanded', 'false')
     await user.click(expand)
@@ -104,13 +109,13 @@ describe('Sidebar — gruppi collassabili', () => {
 describe('Sidebar — badge', () => {
   it('anomalie critiche > 0 → badge con conteggio e nome accessibile', async () => {
     const { user } = renderSidebar('operator', { mocks: [meMock('operator'), anomalyStatsMock(3), pendingMock(0)] })
-    await user.click(within(nav()).getByRole('button', { name: 'Analysis' }))
+    await user.click(await within(nav()).findByRole('button', { name: 'Analysis' }))
     expect(await screen.findByLabelText('3 critical anomalies')).toHaveTextContent('3')
   })
 
   it('errore nel caricamento anomalie → badge "!" con messaggio nel title (mai nascosto)', async () => {
     const { user } = renderSidebar('operator', { mocks: [meMock('operator'), anomalyStatsErrorMock('stats down'), pendingMock(0)] })
-    await user.click(within(nav()).getByRole('button', { name: 'Analysis' }))
+    await user.click(await within(nav()).findByRole('button', { name: 'Analysis' }))
     const badge = await screen.findByLabelText('Error loading anomalies')
     expect(badge).toHaveTextContent('!')
     expect(badge).toHaveAttribute('title', 'stats down')
@@ -123,7 +128,7 @@ describe('Sidebar — badge', () => {
 })
 
 describe('Sidebar — Monitoraggio (Event Management)', () => {
-  it('end user: nessun gruppo Monitoraggio (le rotte sono staff)', async () => {
+  it('end user: nessun gruppo Monitoraggio (nessun permesso event.read / service.read)', async () => {
     renderSidebar('end_user')
     await new Promise((r) => setTimeout(r, 10))
     expect(within(nav()).queryByRole('button', { name: 'Monitoring' })).not.toBeInTheDocument()

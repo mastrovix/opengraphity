@@ -5,7 +5,8 @@ import { getSession } from '@opengraphity/neo4j'
 import { verifyKeycloakToken, type KeycloakTokenPayload } from './keycloak.js'
 import { authLogger } from '../lib/logger.js'
 import { config } from '../lib/config.js'
-import { USER_ROLES } from '@opengraphity/types'
+import { USER_ROLES, type Permission } from '@opengraphity/types'
+import { rolePermissions, tenantRoles } from '../lib/roles.js'
 
 /**
  * Single authentication resolver shared by GraphQL (`buildContext`) and the
@@ -21,14 +22,20 @@ import { USER_ROLES } from '@opengraphity/types'
 
 // JWT_SECRET serve solo al path legacy (ALLOW_LEGACY_JWT): letto lì, fail-loud se manca.
 
+/** I ruoli di fabbrica. Un'organizzazione ne crea altri (ondata 7): la chiave di un ruolo è una stringa. */
 export const ROLES = USER_ROLES
-export type Role = (typeof ROLES)[number]
+export type Role = string
 
 export interface GraphQLContext {
   tenantId:  string
   userId:    string
   userEmail: string
   role:      Role
+  /**
+   * I permessi del ruolo, letti una volta per richiesta (ondata 7 di «Nulla
+   * cablato»). Ogni controllo di chi-può-cosa guarda qui, non il nome del ruolo.
+   */
+  permissions: ReadonlySet<Permission>
 }
 
 interface LegacyJWTPayload {
@@ -121,15 +128,20 @@ async function findUserInTenant(email: string, tenantId: string): Promise<UserRe
   }
 }
 
-function assertRole(role: unknown, userId: string, tenantId: string): Role {
-  if (typeof role !== 'string' || !(ROLES as readonly string[]).includes(role)) {
-    // Data integrity error, not an auth failure: never fall back to a default role.
+/**
+ * Il ruolo della persona e i suoi permessi. Un ruolo assente, o che
+ * l'organizzazione non ha, è un errore di integrità del dato, non un rifiuto
+ * d'accesso: mai un ruolo di ripiego.
+ */
+async function roleAndPermissions(role: unknown, userId: string, tenantId: string): Promise<{ role: Role; permissions: ReadonlySet<Permission> }> {
+  const found = typeof role === 'string' && role !== '' ? (await tenantRoles(tenantId)).get(role) : undefined
+  if (typeof role !== 'string' || !found) {
     throw new GraphQLError(
       `User ${userId} in tenant ${tenantId} has no valid role (got ${JSON.stringify(role ?? null)})`,
       { extensions: { code: 'INTERNAL_SERVER_ERROR' } },
     )
   }
-  return role as Role
+  return { role, permissions: found.permissions }
 }
 
 // ── Main entry point ─────────────────────────────────────────────────────────
@@ -173,10 +185,11 @@ export async function resolveAuth(token: string, req: express.Request): Promise<
     throw unauthorized('Invalid token')
   }
   return {
-    tenantId:  payload.tenant_id,
-    userId:    payload.user_id,
-    userEmail: payload.email,
-    role:      payload.role,
+    tenantId:    payload.tenant_id,
+    userId:      payload.user_id,
+    userEmail:   payload.email,
+    role:        payload.role,
+    permissions: await rolePermissions(payload.tenant_id, payload.role),
   }
 }
 
@@ -202,9 +215,9 @@ async function resolveKeycloak(decoded: KeycloakTokenPayload, req: express.Reque
   }
 
   return {
-    tenantId:  realm,
-    userId:    user.id,
-    userEmail: decoded.email,
-    role:      assertRole(user.role, user.id, realm),
+    tenantId:    realm,
+    userId:      user.id,
+    userEmail:   decoded.email,
+    ...(await roleAndPermissions(user.role, user.id, realm)),
   }
 }

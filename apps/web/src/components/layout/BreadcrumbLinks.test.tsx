@@ -15,7 +15,8 @@ import { Breadcrumb } from './Topbar'
 import { renderWithProviders } from '@/test/utils'
 
 const main = readFileSync(join(import.meta.dirname, '..', '..', 'main.tsx'), 'utf8')
-const ROUTES = [...new Set([...main.matchAll(/path:\s*'([^']+)'/g)].map((m) => m[1]!).filter((p) => p !== '*'))]
+// Le rotte si scrivono `{ path: '…' }` o `guarded('…', …)` (ondata 7: la guardia dei permessi).
+const ROUTES = [...new Set([...main.matchAll(/(?:path:\s*|guarded\()'([^']+)'/g)].map((m) => m[1]!).filter((p) => p !== '*'))]
 const toRegex = (route: string) => new RegExp('^/' + route.replace(/^\//, '').split('/').map((s) => (s.startsWith(':') ? '[^/]+' : s)).join('/') + '$')
 const PATTERNS = [/^\/$/, ...ROUTES.map(toRegex)]
 const sample = (route: string) => '/' + route.replace(/^\//, '').split('/').map((s) => (s.startsWith(':') ? '0e764d9c-6e20-473e-9b73-6736661dda3b' : s)).join('/')

@@ -14,6 +14,7 @@ import { SkeletonLine } from '@/components/SkeletonLoader'
 import { EmptyState } from '@/components/EmptyState'
 import { keyActivate } from '@/lib/a11y'
 import { colors } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 // ── GraphQL ────────────────────────────────────────────────────────────────
 
@@ -299,7 +300,7 @@ export default function ReportsPage() {
     try {
       await deleteConv({ variables: { id } })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      showError(err)
       return
     }
     if (activeId === id) { setActiveId(null); setLocalMessages([]) }

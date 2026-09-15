@@ -14,16 +14,16 @@ router.post('/report/stream', authMiddleware, asyncHandler(handleReportStream))
 router.use(restErrorHandler)
 
 async function handleReportStream(req: Request, res: Response): Promise<void> {
-  const { tenantId, role } = req.user!
+  const { tenantId, role, permissions } = req.user!
   const { question, conversationId: inputConvId } = req.body as {
     question?: string
     conversationId?: string | null
   }
 
   // Same policy as GraphQL askReport: the AI tool runs model-generated
-  // (guarded, read-only) Cypher — admin/operator only.
-  if (role !== 'admin' && role !== 'operator') {
-    res.status(403).json({ error: `Role '${role}' is not authorized. Required: admin, operator` })
+  // (guarded, read-only) Cypher — the report.ai permission.
+  if (!permissions.has('report.ai')) {
+    res.status(403).json({ error: `Role '${role}' is not authorized. Requires: report.ai` })
     return
   }
 

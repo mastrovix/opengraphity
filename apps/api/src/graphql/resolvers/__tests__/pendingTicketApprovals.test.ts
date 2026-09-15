@@ -5,6 +5,7 @@
  * articoli KB.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const runs: Array<{ q: string; p: Record<string, unknown> }> = []
 let righe: Record<string, Array<Record<string, unknown>>> = {}
@@ -22,7 +23,7 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 
 const { pendingTicketApprovals } = await import('../pendingTicketApprovals.js')
-const ctx = (role: string) => ({ tenantId: 't1', userId: 'u1', role }) as never
+const ctx = (role: string) => ({ tenantId: 't1', userId: 'u1', role, permissions: perms(role) }) as never
 
 beforeEach(() => { runs.length = 0; righe = {} })
 

@@ -20,6 +20,7 @@ import { LINGUE, labelFor, type Lingua } from '../../lib/enumValueLabels.js'
 import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import { languageFor } from '../../lib/tenantLanguage.js'
 import type { CustomFieldValue } from '../../lib/ticketCustomFields.js'
+import { isPortalOnly } from '../../lib/permissions.js'
 
 type Props = Record<string, unknown>
 
@@ -42,7 +43,7 @@ function customFieldsResolver(entityType: TicketCustomFieldEntityType) {
     const defs = await requestCustomFieldDefs(ctx, entityType)
     if (defs.length === 0) return []
     const props = ticketPropsOf(parent) ?? await withSession((session) => loadTicketProps(session, ctx.tenantId, entityType, parent.id)) ?? {}
-    return customFieldValues(defs, props, { onlyVisibleToEndUser: ctx.role === 'end_user' })
+    return customFieldValues(defs, props, { onlyVisibleToEndUser: isPortalOnly(ctx) })
   }
 }
 

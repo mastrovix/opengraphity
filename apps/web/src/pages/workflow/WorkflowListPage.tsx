@@ -14,6 +14,7 @@ import { PROVISION_TENANT_DATA } from '@/graphql/mutations'
 import { lookupOrError, colors, palette } from '@/lib/tokens'
 import { Pill } from '@/components/ui/Pill'
 import { gapText, type GapData } from '@/lib/configurationIssueText'
+import { showError } from '@/lib/showError'
 
 interface WorkflowDef {
   id:             string
@@ -72,7 +73,7 @@ export function WorkflowListPage() {
       if (r.remainingGaps.length === 0) toast.success(t('pages.workflow.provisionDone'))
       else toast.warning(t('pages.workflow.provisionPartial', { gaps: r.remainingGaps.map(gapLine).join('; ') }))
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const defs = data?.workflowDefinitions ?? []

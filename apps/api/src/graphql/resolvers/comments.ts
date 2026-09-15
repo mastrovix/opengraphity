@@ -7,6 +7,7 @@ import { logger } from '../../lib/logger.js'
 import { parseMentions } from '../../lib/mentionParser.js'
 import { notifyMentions, notifyWatchers, autoWatch, getEntityTitle } from './collaboration.js'
 import { COMMENTABLE_LABELS, writeTicketComment } from '../../lib/ticketComments.js'
+import { hasPermission, isPortalOnly } from '../../lib/permissions.js'
 
 interface EntityComment {
   id:          string
@@ -151,12 +152,12 @@ async function loadCommentForChange(
   const rec = loadRes.records[0]
   if (!rec) throw new NotFoundError('Comment', id)
   const authorId = rec.get('authorId') as string
-  if (authorId !== ctx.userId && ctx.role !== 'admin') {
-    throw new GraphQLError(`Only the author or an administrator can ${action} a comment`,
+  if (authorId !== ctx.userId && !hasPermission(ctx, 'ticket.moderateComments')) {
+    throw new GraphQLError(`Only the author or someone who moderates comments can ${action} a comment`,
       { extensions: { code: 'FORBIDDEN', i18n: { key: action === 'edit' ? 'errors.comment.editForbidden' : 'errors.comment.deleteForbidden' } } })
   }
   // L'utente del portale vede solo le risposte pubbliche: le sue, per costruzione.
-  if (ctx.role === 'end_user' && rec.get('isInternal') !== false) throw new NotFoundError('Comment', id)
+  if (isPortalOnly(ctx) && rec.get('isInternal') !== false) throw new NotFoundError('Comment', id)
   if (rec.get('deletedAt')) {
     throw new GraphQLError('The comment has been deleted', { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.comment.deleted' } } })
   }

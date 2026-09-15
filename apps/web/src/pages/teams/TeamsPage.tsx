@@ -25,6 +25,7 @@ import { formatDate } from '@/lib/datetime'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { TEAM_TYPE_VOCABULARY } from '@/lib/teamVocabularies'
 import { TEAM_SOURCINGS, teamSourcingKey, type TeamSourcing } from '@/lib/teamSourcing'
+import { showError } from '@/lib/showError'
 
 interface Team {
   id:          string
@@ -108,7 +109,7 @@ export function TeamsPage() {
     // va riletta, altrimenti l'avviso in cima continua a contare il team appena sistemato.
     refetchQueries: ['GetConfigurationIssues'],
     onCompleted: async () => { setCreateOpen(false); setForm({ name: '', description: '', type: '', sourcing: '' }); await refetch(); toast.success(t('toast.team.created')) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const submitTeam = (e: React.FormEvent) => {
     e.preventDefault()

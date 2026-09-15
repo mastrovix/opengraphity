@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
+import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 const session = {
   executeRead:  vi.fn(async (fn: (tx: { run: () => Promise<{ records: unknown[] }> }) => unknown) => fn({ run: async () => ({ records: [] }) })),
@@ -47,7 +48,6 @@ vi.mock('../helpers.js', () => ({
 vi.mock('../../../../services/changeCreationService.js', () => ({ createChangeRFC: vi.fn() }))
 vi.mock('../../../../lib/workflowHelpers.js', () => ({ getStepPurpose: vi.fn(async () => 'assessment') }))
 vi.mock('../../../../lib/workflowTargets.js', () => ({ stepNamesByPurposeOrdered: vi.fn(async () => []) }))
-vi.mock('../../../../lib/requireRole.js', () => ({ requireRole: vi.fn() }))
 vi.mock('../../../../lib/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
@@ -60,7 +60,7 @@ vi.mock('../../../../lib/validateRequiredFields.js', () => ({
 const { executeChangeTransition } = await import('../changeMutations.js')
 const { workflowEngine } = await import('@opengraphity/workflow')
 
-const ctx = { tenantId: 't1', userId: 'u-1', userEmail: 'op@test.io', role: 'admin' as const }
+const ctx = { tenantId: 't1', userId: 'u-1', userEmail: 'op@test.io', role: 'admin', permissions: perms('admin') as const }
 
 beforeEach(() => { vi.clearAllMocks(); validateRequiredFields.mockImplementation(async () => {}) })
 

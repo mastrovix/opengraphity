@@ -227,7 +227,8 @@ function ServiceRowView({ row }: { row: ServiceMapRow }) {
 
 export function ServicesPage() {
   const { t } = useTranslation()
-  const { isAdmin } = useMe()
+  const { can } = useMe()
+  const managesServices = can('config.services')
 
   const [searchParams, setSearchParams] = useSearchParams()
   const filter = useMemo(() => filterFromParams(searchParams), [searchParams])
@@ -318,8 +319,8 @@ export function ServicesPage() {
         <EmptyState
           icon={<Boxes size={32} />}
           title={t('monitoring.services.empty.title')}
-          description={`${t('monitoring.services.empty.description')}${isAdmin ? '' : ` ${t('monitoring.services.empty.askAdmin')}`}`}
-          action={isAdmin ? <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => setCreateOpen(true)}>{t('monitoring.services.empty.cta')}</Button> : undefined}
+          description={`${t('monitoring.services.empty.description')}${managesServices ? '' : ` ${t('monitoring.services.empty.askAdmin')}`}`}
+          action={managesServices ? <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => setCreateOpen(true)}>{t('monitoring.services.empty.cta')}</Button> : undefined}
         />
       </div>
     )
@@ -364,7 +365,7 @@ export function ServicesPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>{updatedLabel}</span>
             <Button variant="secondary" size="xs" icon={<RefreshCw size={13} aria-hidden="true" />} onClick={() => void refetch()}>{t('monitoring.services.refresh')}</Button>
-            {isAdmin && !nothingYet && (
+            {managesServices && !nothingYet && (
               <Button size="xs" icon={<Plus size={13} aria-hidden="true" />} onClick={() => setCreateOpen(true)}>{t('monitoring.services.create.title')}</Button>
             )}
           </div>
@@ -423,7 +424,7 @@ export function ServicesPage() {
         <BusinessCapabilitiesSection />
       </div>
 
-      {isAdmin && <CreateServiceMapDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => void refetch()} />}
+      {managesServices && <CreateServiceMapDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => void refetch()} />}
     </PageContainer>
   )
 }

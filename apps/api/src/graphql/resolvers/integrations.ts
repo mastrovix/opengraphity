@@ -74,7 +74,7 @@ export function validateInboundConfig(final: { entityType: unknown; connectorKin
   assertInboundTicketTargets(final.entityType, Object.keys(defaults ?? {}), 'defaultValues')
 }
 
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { randomBytes, createHash, createHmac } from 'crypto'
 import { v4 as uuidv4 } from 'uuid'
 import { withSession } from './ci-utils.js'
@@ -352,7 +352,7 @@ export function assertApiKeyPermissions(value: unknown): string[] {
 }
 
 async function createApiKey(_: unknown, args: { input: Props }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.integrations')
   const { input } = args
   const key = genApiKey()
   const id = uuidv4()
@@ -369,7 +369,7 @@ async function createApiKey(_: unknown, args: { input: Props }, ctx: GraphQLCont
 }
 
 async function updateApiKey(_: unknown, args: { id: string; input: Props }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.integrations')
   const { input } = args
   const sets: string[] = ['k.updated_at = $now']
   const params: Props = { id: args.id, t: ctx.tenantId, now: new Date().toISOString() }
@@ -383,13 +383,13 @@ async function updateApiKey(_: unknown, args: { id: string; input: Props }, ctx:
 }
 
 async function deleteApiKey(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.integrations')
   await withSession(async (s) => { await runQuery(s, `MATCH (k:ApiKey {id: $id, tenant_id: $t}) DETACH DELETE k`, { id: args.id, t: ctx.tenantId }) }, true)
   return true
 }
 
 async function regenerateApiKey(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.integrations')
   const key = genApiKey()
   return withSession(async (s) => {
     const rows = await runQuery<{ props: Props }>(s, `

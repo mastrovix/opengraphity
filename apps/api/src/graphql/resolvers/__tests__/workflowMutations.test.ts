@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 // ── Session mock usato da withSession ─────────────────────────────────────────
 
@@ -75,7 +76,7 @@ const { validateRequiredFields } = await import('../../../lib/validateRequiredFi
 
 // ── Test context ──────────────────────────────────────────────────────────────
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'operator', permissions: perms('operator') }
 
 const makeRecord = (map: Record<string, unknown>) => ({
   get: (key: string) => (key in map ? map[key] : null),
@@ -203,12 +204,14 @@ describe('azioni dei passi: vocabolario imposto alla scrittura', () => {
    */
   it('assertStepActions: il target di notify_rule è validato col vocabolario dei destinatari', () => {
     const at = (target: string) => JSON.stringify([{ type: 'notify_rule', params: { title_key: 'k', channels: ['in_app'], target } }])
-    const err = (() => { try { assertStepActions(at('role:manager'), 'enter_actions dello step "triage"') } catch (e) { return e } })()
+    const err = (() => { try { assertStepActions(at('squadra'), 'enter_actions dello step "triage"') } catch (e) { return e } })()
     expect(err).toBeInstanceOf(GraphQLError)
     expect((err as GraphQLError).extensions['code']).toBe('BAD_USER_INPUT')
     expect((err as GraphQLError).message).toContain('enter_actions dello step "triage"[0]')
-    expect((err as GraphQLError).message).toMatch(/target "role:manager" is not a valid recipient/)
-    expect((err as GraphQLError).message).toContain('role:admin')
+    expect((err as GraphQLError).message).toMatch(/target "squadra" is not a valid recipient/)
+    expect((err as GraphQLError).message).toContain('role:<role>')
+    // la forma di un ruolo si controlla qui; che il ruolo esista lo controlla la mutation (assertRolesExist)
+    expect(() => assertStepActions(at('role:Manager!'), 'enter_actions')).toThrow(/not a valid recipient/)
     // i bersagli veri passano, e un notify_rule senza target non viene validato
     expect(() => assertStepActions(at('team_owner'), 'enter_actions')).not.toThrow()
     expect(() => assertStepActions(at('role:operator'), 'enter_actions')).not.toThrow()

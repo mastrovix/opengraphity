@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import express from 'express'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { perms } from '../../lib/__tests__/testPermissions.js'
 
 vi.mock('../../lib/ticketCustomFields.js', async (importOriginal) => ({ ...(await importOriginal<object>()), customFieldDefs: vi.fn(async () => []) }))
 vi.mock('../../lib/logger.js', () => ({
@@ -169,7 +170,7 @@ describe('POST /api/v1/changes', () => {
     expect(await res.json()).toMatchObject({ data: { id: 'chg-1', code: 'CHG0001', affectedCIs: [] } })
     expect(createChangeRFC).toHaveBeenCalledWith(valid, { tenantId: 'tenant-1', userId: 'key-1' })
     expect(audit).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: 'tenant-1', userId: 'key-1', role: 'operator' }),
+      expect.objectContaining({ tenantId: 'tenant-1', userId: 'key-1', role: 'operator', permissions: perms('operator') }),
       'change_created', 'change', 'chg-1', { code: 'CHG0001', title: 'Upgrade DB', affectedCIIds: ['ci-1'] },
     )
   })
@@ -206,7 +207,7 @@ describe('POST /api/v1/changes/:id/transition', () => {
     expect(executeChangeTransition).toHaveBeenCalledWith(
       null,
       { changeId: 'chg-1', toStep: 'planning', notes: 'all assessed' },
-      expect.objectContaining({ tenantId: 'tenant-1', userId: 'key-1', role: 'operator', userEmail: 'api-key:key-1' }),
+      expect.objectContaining({ tenantId: 'tenant-1', userId: 'key-1', role: 'operator', permissions: perms('operator'), userEmail: 'api-key:key-1' }),
     )
     expect(audit).toHaveBeenCalledWith(expect.anything(), 'change_transition', 'change', 'chg-1', { toStep: 'planning', notes: 'all assessed' })
   })

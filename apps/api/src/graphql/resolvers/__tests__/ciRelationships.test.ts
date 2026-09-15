@@ -5,6 +5,7 @@
  * la mutation (la notifica non lancia mai: services/serviceImpact/sync.ts).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
 vi.mock('../../../lib/cache.js', () => ({
@@ -22,7 +23,7 @@ const { ciRelationshipResolvers } = await import('../ciRelationships.js')
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { notifyCIGraphChanged } = await import('../../../services/serviceImpact/sync.js')
 
-const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'admin' as const }
+const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'admin', permissions: perms('admin') as const }
 const txRun = vi.fn().mockResolvedValue({ records: [] })
 const session = {
   close: vi.fn().mockResolvedValue(undefined),

@@ -26,6 +26,9 @@ vi.mock('@opengraphity/workflow', () => ({
 vi.mock('../seedNotificationRules.js', () => ({
   seedNotificationRules: vi.fn(async () => ({ created: 35, skipped: 0 })),
 }))
+vi.mock('../roles.js', () => ({
+  seedFactoryRoles: vi.fn(async (_s: unknown, t: string) => { seeded.push(`roles:${t}`); return ['admin', 'operator', 'viewer', 'end_user'] }),
+}))
 vi.mock('../domainMatrixSeed.js', () => ({
   seedDomainMatrices: vi.fn(async () => ['priority', 'change_priority']),
 }))
@@ -42,16 +45,19 @@ const row = (m: Record<string, unknown>) => ({ get: (k: string) => m[k] })
 beforeEach(() => { seeded.length = 0; vi.clearAllMocks() })
 
 describe('provisionTenantData — tutti i pezzi, una volta sola', () => {
-  it('dashboard + regole + matrici + i workflow di OGNI tipo di ticket', async () => {
+  it('ruoli + dashboard + regole + matrici + i workflow di OGNI tipo di ticket', async () => {
     const s = session([row({ wasCreated: true })])
     const out = await provisionTenantData(s as never, 'c-two', { userId: 'u-1' })
 
+    // Ondata 7: i ruoli di fabbrica per primi, senza nessuno può fare niente.
+    expect(out.rolesCreated).toEqual(['admin', 'operator', 'viewer', 'end_user'])
     expect(out.dashboardCreated).toBe(true)
     expect(out.notificationRulesCreated).toBe(35)
     expect(out.matricesCreated).toEqual(['priority', 'change_priority'])
     // cinque definizioni: incident (base + security), problem, kb, change, service request
     expect(out.workflows).toHaveLength(5)
     expect(seeded).toEqual([
+      'roles:c-two',
       'incident:c-two', 'problem:c-two', 'kb:c-two',
       'Change RFC Process:c-two', 'Service Request Fulfillment:c-two',
     ])
@@ -80,7 +86,8 @@ describe('tenantProvisioningGaps — dire cosa manca, invece di scoprirlo al pri
    * assegnata al tipo di CI»), e senza Change Manager nessuna change entra in
    * approvazione. Tre muri il primo giorno, nessuno segnalato.
    */
-  const completo = { dashboards: 1, rules: 35, matrices: 5, questions: 8, teams: 2, changeManagers: 1 }
+  const ruoli = { roleKeys: ['admin', 'operator', 'viewer', 'end_user'], userRoles: ['admin'] }
+  const completo = { ...ruoli, dashboards: 1, rules: 35, matrices: 5, questions: 8, teams: 2, changeManagers: 1 }
 
   it('un tenant completo non ha lacune', async () => {
     const s = session([row({ ...completo, entityTypes: [...REQUIRED_WORKFLOW_ENTITY_TYPES] })])
@@ -95,7 +102,7 @@ describe('tenantProvisioningGaps — dire cosa manca, invece di scoprirlo al pri
   })
 
   it('elenca ogni pezzo mancante, e nomina i tipi senza workflow', async () => {
-    const s = session([row({ dashboards: 0, rules: 0, matrices: 0, questions: 0, teams: 0, changeManagers: 0, entityTypes: ['incident'] })])
+    const s = session([row({ ...ruoli, dashboards: 0, rules: 0, matrices: 0, questions: 0, teams: 0, changeManagers: 0, entityTypes: ['incident'] })])
     const out = await tenantProvisioningGaps(s as never, 'nuovo')
     expect(out).toEqual([
       { kind: 'no_dashboard' },
@@ -109,7 +116,7 @@ describe('tenantProvisioningGaps — dire cosa manca, invece di scoprirlo al pri
 
   it('lo stato di c-test appena creato: tutto seminato, ma nessun team e nessuna domanda', async () => {
     // Esattamente ciò che ho trovato aprendo un tenant creato con onboard-tenant.
-    const s = session([row({ dashboards: 1, rules: 35, matrices: 6, questions: 0, teams: 0, changeManagers: 0, entityTypes: [...REQUIRED_WORKFLOW_ENTITY_TYPES] })])
+    const s = session([row({ ...ruoli, dashboards: 1, rules: 35, matrices: 6, questions: 0, teams: 0, changeManagers: 0, entityTypes: [...REQUIRED_WORKFLOW_ENTITY_TYPES] })])
     const out = await tenantProvisioningGaps(s as never, 'c-test')
     expect(out.map((g) => g.kind)).toEqual(['no_assessment_questions', 'no_teams'])
   })
@@ -118,6 +125,13 @@ describe('tenantProvisioningGaps — dire cosa manca, invece di scoprirlo al pri
     const s = session([row({ ...completo, changeManagers: 0, entityTypes: [...REQUIRED_WORKFLOW_ENTITY_TYPES] })])
     await expect(tenantProvisioningGaps(s as never, 'c-test')).resolves.toEqual([
       { kind: 'no_change_manager' },
+    ])
+  })
+
+  it('ondata 7: un ruolo di fabbrica o un ruolo portato da una persona che manca è una lacuna', async () => {
+    const s = session([row({ ...completo, roleKeys: ['admin', 'viewer'], userRoles: ['admin', 'operator', 'service_desk'], entityTypes: [...REQUIRED_WORKFLOW_ENTITY_TYPES] })])
+    await expect(tenantProvisioningGaps(s as never, 'c-test')).resolves.toEqual([
+      { kind: 'no_roles', params: { roles: 'operator, end_user, service_desk' } },
     ])
   })
 
@@ -138,7 +152,7 @@ describe('tenantProvisioningGaps — dire cosa manca, invece di scoprirlo al pri
  */
 describe('formatGap — una lingua sola, e dove una lingua sola va bene', () => {
   const KINDS = [
-    'tenant_missing', 'no_dashboard', 'no_notification_rules', 'no_domain_matrices',
+    'tenant_missing', 'no_roles', 'no_dashboard', 'no_notification_rules', 'no_domain_matrices',
     'no_workflows', 'no_assessment_questions', 'no_teams', 'no_change_manager',
   ] as const
 

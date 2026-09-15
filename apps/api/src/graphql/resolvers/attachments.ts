@@ -2,6 +2,7 @@ import { GraphQLError } from 'graphql'
 import { getSession, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { logger } from '../../lib/logger.js'
+import { hasPermission } from '../../lib/permissions.js'
 
 interface Attachment {
   id:          string
@@ -75,8 +76,8 @@ export async function deleteAttachment(
     const uploadedBy  = loadRes.records[0].get('uploadedBy')  as string
     const storagePath = loadRes.records[0].get('storagePath') as string
 
-    if (uploadedBy !== ctx.userId && ctx.role !== 'admin') {
-      throw new GraphQLError('Only the uploader or an admin can delete attachments', { extensions: { code: 'FORBIDDEN' } })
+    if (uploadedBy !== ctx.userId && !hasPermission(ctx, 'ticket.moderateComments')) {
+      throw new GraphQLError('Only the uploader, or someone who moderates comments and attachments, can delete attachments', { extensions: { code: 'FORBIDDEN' } })
     }
 
     // Delete from Neo4j

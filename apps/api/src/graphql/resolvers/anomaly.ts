@@ -6,7 +6,7 @@ import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { cache } from '../../lib/cache.js'
 import { validateStringLength } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
 import {
   ANOMALY_RULE_SPECS, ANOMALY_SEVERITIES, anomalyRuleOptions, anomalyRuleProblem, loadAnomalyRuleConfigs,
   saveAnomalyRuleConfig, type AnomalyRuleConfig, type AnomalyRuleOptions,
@@ -284,7 +284,7 @@ export const anomalyResolvers = {
      * (Redis down) propagates as a GraphQL error: returning `false` hid it.
      */
     runAnomalyScanner: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
-      requireRole(ctx, 'admin', 'operator')
+      requirePermission(ctx, 'anomaly.scan')
       await enqueueTenantScan(ctx.tenantId)
       cache.invalidate(`anomaly-stats:${ctx.tenantId}`)
       void audit(ctx, 'anomaly.scan_triggered', 'AnomalyScanner', ctx.tenantId)

@@ -10,6 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { perms } from '../../lib/__tests__/testPermissions.js'
 
 const REPORT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'og-reports-router-test-'))
 process.env['REPORT_DIR'] = REPORT_DIR
@@ -21,7 +22,7 @@ vi.mock('../../lib/logger.js', () => ({
 vi.mock('../../middleware/auth.js', () => ({
   authMiddleware: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     const tenantId = typeof req.headers['x-test-tenant'] === 'string' ? req.headers['x-test-tenant'] : 'tenant-a'
-    req.user = { tenantId, userId: 'user-1', email: 'u@example.com', role: 'operator' }
+    req.user = { tenantId, userId: 'user-1', email: 'u@example.com', role: 'operator', permissions: perms('operator') }
     next()
   },
 }))

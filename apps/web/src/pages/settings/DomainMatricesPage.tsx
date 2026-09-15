@@ -31,6 +31,7 @@ import { UPDATE_DOMAIN_MATRIX, UPDATE_PRE_APPROVED_CHANGE_TYPES, UPDATE_RISK_BAN
 import { colors } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
 import { ImpactWeightsCard } from './ImpactWeightsCard'
+import { showError } from '@/lib/showError'
 
 // ── Tipi ──────────────────────────────────────────────────────────────────────
 
@@ -88,7 +89,7 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
   const [save, { loading }] = useMutation(UPDATE_DOMAIN_MATRIX, {
     refetchQueries: [GET_DOMAIN_MATRICES],
     onCompleted: () => { toast.success(t('pages.domainMatrices.saved')); setDraft({}) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const missingNow = matrix.cells
@@ -255,7 +256,7 @@ function PreApprovedChangeTypesCard() {
   const [savePreApproved, { loading: saving }] = useMutation(UPDATE_PRE_APPROVED_CHANGE_TYPES, {
     refetchQueries: [GET_PRE_APPROVED_CHANGE_TYPES],
     onCompleted: () => { toast.success(t('pages.domainMatrices.preApproved.saved')); setDraft(null) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const toggle = (value: string) =>
@@ -320,7 +321,7 @@ function RiskBandsCard() {
   const [saveRiskBands, { loading: savingBands }] = useMutation(UPDATE_RISK_BAND_THRESHOLDS, {
     refetchQueries: [GET_RISK_BAND_THRESHOLDS],
     onCompleted: () => { toast.success(t('pages.domainMatrices.riskBands.saved')); setDraft(null) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const setRow = (i: number, patch: Partial<RiskBandThreshold>) =>
@@ -417,7 +418,7 @@ function EnvironmentWeightCard() {
   const [saveWeight, { loading: savingWeight }] = useMutation(UPDATE_CHANGE_ENVIRONMENT_WEIGHT, {
     refetchQueries: [GET_CHANGE_ENVIRONMENT_WEIGHT],
     onCompleted: () => { toast.success(t('pages.domainMatrices.environmentWeight.saved')); setDraft(null) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   return (

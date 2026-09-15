@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const runs: { cypher: string; params: Record<string, unknown> }[] = []
 const ticketProps = {
@@ -54,7 +55,7 @@ vi.mock('../../../lib/workflowHelpers.js', async (importOriginal) => ({
 }))
 
 const { portalResolvers } = await import('../portal.js')
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@x', role: 'end_user' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@x', role: 'end_user', permissions: perms('end_user') }
 
 /** Ogni `$nome` della Cypher ha il suo parametro. */
 function expectAllParamsBound() {

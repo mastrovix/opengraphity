@@ -28,6 +28,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
@@ -48,13 +49,13 @@ vi.mock('../../../lib/schemaInvalidator.js', () => ({ invalidateSchema: vi.fn(),
 // anche su spazi e trattini nasconderebbe esattamente il difetto che la regola
 // `^[a-z][a-z0-9_]*$` esiste per impedire.
 
-const { buildMetamodelMutations, buildCITypesResolver, buildBaseCITypeResolver, fetchCITypeById, requireAdmin } = await import('../ciTypeMetamodel.js')
+const { buildMetamodelMutations, buildCITypesResolver, buildBaseCITypeResolver, fetchCITypeById, requireMetamodelPermission } = await import('../ciTypeMetamodel.js')
 const { withSession } = await import('../ci-utils.js')
 const { invalidateSchema } = await import('../../../lib/schemaInvalidator.js')
 const { runQueryOne } = await import('@opengraphity/neo4j')
 
-const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
-const operator: GraphQLContext = { ...admin, role: 'operator' }
+const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
+const operator: GraphQLContext = { ...admin, role: 'operator', permissions: perms('operator') }
 const mutations = buildMetamodelMutations()
 
 const TYPE_NODE = { properties: { id: 'ct-1', name: 'firewall', label: 'Firewall', icon: 'shield', color: '#000', active: true, scope: 'tenant', tenant_id: 'tenant-1' } }
@@ -166,12 +167,12 @@ async function expectCode(p: Promise<unknown>, code: string) {
   expect((err as GraphQLError).extensions['code']).toBe(code)
 }
 
-describe('requireAdmin — prima di qualunque sessione', () => {
+describe('requireMetamodelPermission — prima di qualunque sessione', () => {
   beforeEach(() => reset())
 
-  it('requireAdmin: operator → FORBIDDEN, admin passa', () => {
-    expect(() => requireAdmin(admin)).not.toThrow()
-    expect(() => requireAdmin(operator)).toThrow(GraphQLError)
+  it('requireMetamodelPermission: operator (senza config.metamodel) → FORBIDDEN, admin passa', () => {
+    expect(() => requireMetamodelPermission(admin)).not.toThrow()
+    expect(() => requireMetamodelPermission(operator)).toThrow(GraphQLError)
   })
 
   it.each(Object.keys(buildMetamodelMutations()))('%s con operator → FORBIDDEN senza aprire sessioni', async (name) => {

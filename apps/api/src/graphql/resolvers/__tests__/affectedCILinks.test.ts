@@ -15,6 +15,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
   ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
@@ -72,7 +73,7 @@ vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn() }))
 const { incidentResolvers } = await import('../incident.js')
 const { problemResolvers } = await import('../problem.js')
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'u1', userEmail: 'u@x', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'u1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') }
 
 beforeEach(() => { writes.length = 0; linked = 1; allowedTypes.length = 0; vi.clearAllMocks() })
 

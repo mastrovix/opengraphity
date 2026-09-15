@@ -10,6 +10,7 @@ import { GET_ATTACHMENT_POLICY } from '@/graphql/queries'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { colors } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 const GET_ATTACHMENTS = gql`
   query GetAttachments($entityType: String!, $entityId: String!) {
@@ -77,7 +78,7 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
 
   const [deleteAttachment] = useMutation(DELETE_ATTACHMENT, {
     onCompleted: () => { toast.success(t('attachments.deleted')); void refetch() },
-    onError:     (e: { message: string }) => toast.error(e.message),
+    onError:     (e: { message: string }) => showError(e),
   })
 
   async function handleUpload(files: FileList | null) {
@@ -102,7 +103,7 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
       toast.success(t('attachments.uploaded'))
       void refetch()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('attachments.uploadFailed'))
+      showError(err, err instanceof Error ? err.message : t('attachments.uploadFailed'))
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -123,7 +124,7 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
       URL.revokeObjectURL(url)
     } catch (err) {
       // The real cause (401, 404, network) must reach the user, not a generic label.
-      toast.error(t('toast.attachments.downloadFailed', { error: errorMessage(err) }))
+      showError(err, t('toast.attachments.downloadFailed', { error: errorMessage(err) }))
     }
   }
 

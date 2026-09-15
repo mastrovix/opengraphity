@@ -15,6 +15,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
+import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 // ── Passi del tenant (rinominati) ─────────────────────────────────────────────
 
@@ -79,7 +80,7 @@ const { invalidateWorkflowCache } = await import('../../../../lib/workflowHelper
 const { targetStepByPurpose, targetStepByCategory, stepNamesByCategory, stepNamesByPurposeOrdered } =
   await import('../../../../lib/workflowTargets.js')
 
-const ctx = { tenantId: 't1', userId: 'u-1', userEmail: 'op@test.io', role: 'admin' as const }
+const ctx = { tenantId: 't1', userId: 'u-1', userEmail: 'op@test.io', role: 'admin', permissions: perms('admin') as const }
 
 /** Risponde alle query di approvalGate: passo corrente, requisito, ecc. */
 function mockGate(currentStep: string) {

@@ -29,6 +29,7 @@
  */
 import { v4 as uuidv4 } from 'uuid'
 import type { Queryable } from '@opengraphity/neo4j'
+import { USER_ROLES } from '@opengraphity/types'
 import {
   seedWorkflowForTenant,
   seedProblemWorkflowForTenant,
@@ -39,11 +40,14 @@ import { CHANGE_RFC_WORKFLOW, SERVICE_REQUEST_WORKFLOW } from '../scripts/lib/wo
 import { seedNotificationRules } from './seedNotificationRules.js'
 import { seedDomainMatrices } from './domainMatrixSeed.js'
 import type { DomainMatrixKind } from './domainMatrix.js'
+import { seedFactoryRoles } from './roles.js'
 
 /** I tipi di entità che devono avere una definizione di workflow attiva. */
 export const REQUIRED_WORKFLOW_ENTITY_TYPES = ['incident', 'problem', 'kb_article', 'change', 'service_request'] as const
 
 export interface TenantProvisioningResult {
+  /** I ruoli di fabbrica creati adesso (gli altri c'erano già, e non si toccano). */
+  rolesCreated: string[]
   /** `true` se la dashboard predefinita è stata creata adesso. */
   dashboardCreated: boolean
   /** Quante regole di notifica sono nate adesso. */
@@ -92,6 +96,8 @@ export async function provisionTenantData(
   tenantId: string,
   opts: { userId?: string | null } = {},
 ): Promise<TenantProvisioningResult> {
+  // Per primi i ruoli: senza, nessuna persona del tenant può eseguire niente.
+  const rolesCreated = await seedFactoryRoles(session, tenantId)
   const dashboardCreated = await provisionDefaultDashboard(session, tenantId, opts.userId ?? null)
   const rules = await seedNotificationRules(tenantId, session)
   const matricesCreated = await seedDomainMatrices(session, tenantId)
@@ -112,6 +118,7 @@ export async function provisionTenantData(
   }
 
   return {
+    rolesCreated,
     dashboardCreated,
     notificationRulesCreated: rules.created,
     matricesCreated,
@@ -131,7 +138,7 @@ export async function provisionTenantData(
  */
 export interface ProvisioningGap {
   kind:
-    | 'tenant_missing' | 'no_dashboard' | 'no_notification_rules' | 'no_domain_matrices'
+    | 'tenant_missing' | 'no_roles' | 'no_dashboard' | 'no_notification_rules' | 'no_domain_matrices'
     | 'no_workflows' | 'no_assessment_questions' | 'no_teams' | 'no_change_manager'
   /** Solo dati per l'interpolazione: mai prosa. */
   params?: Record<string, string>
@@ -146,6 +153,7 @@ export interface ProvisioningGap {
 export function formatGap(g: ProvisioningGap): string {
   switch (g.kind) {
     case 'tenant_missing':          return 'no row: the tenant does not exist'
+    case 'no_roles':                return `missing roles: ${g.params?.['roles'] ?? ''} (the people with these roles cannot do anything)`
     case 'no_dashboard':            return 'no dashboard'
     case 'no_notification_rules':   return 'no notification rules'
     case 'no_domain_matrices':      return 'no domain matrices'
@@ -164,21 +172,25 @@ export function formatGap(g: ProvisioningGap): string {
 export async function tenantProvisioningGaps(session: Queryable, tenantId: string): Promise<ProvisioningGap[]> {
   const gaps: ProvisioningGap[] = []
   const r = await session.run(
-    `OPTIONAL MATCH (d:DashboardConfig {tenant_id: $tenantId})
-     WITH count(d) AS dashboards
+    `OPTIONAL MATCH (ro:Role {tenant_id: $tenantId})
+     WITH collect(ro.key) AS roleKeys
+     OPTIONAL MATCH (u:User {tenant_id: $tenantId})
+     WITH roleKeys, collect(DISTINCT u.role) AS userRoles
+     OPTIONAL MATCH (d:DashboardConfig {tenant_id: $tenantId})
+     WITH roleKeys, userRoles, count(d) AS dashboards
      OPTIONAL MATCH (n:NotificationRule {tenant_id: $tenantId})
-     WITH dashboards, count(n) AS rules
+     WITH roleKeys, userRoles, dashboards, count(n) AS rules
      OPTIONAL MATCH (m:DomainMatrix {tenant_id: $tenantId})
-     WITH dashboards, rules, count(m) AS matrices
+     WITH roleKeys, userRoles, dashboards, rules, count(m) AS matrices
      OPTIONAL MATCH (aq:AssessmentQuestion {tenant_id: $tenantId})
-     WITH dashboards, rules, matrices, count(aq) AS questions
+     WITH roleKeys, userRoles, dashboards, rules, matrices, count(aq) AS questions
      OPTIONAL MATCH (tm:Team {tenant_id: $tenantId})
-     WITH dashboards, rules, matrices, questions,
+     WITH roleKeys, userRoles, dashboards, rules, matrices, questions,
           count(tm) AS teams,
           count(CASE WHEN tm.is_change_manager = true THEN 1 END) AS changeManagers
      OPTIONAL MATCH (w:WorkflowDefinition {tenant_id: $tenantId})
      WHERE w.active = true
-     RETURN dashboards, rules, matrices, questions, teams, changeManagers,
+     RETURN roleKeys, userRoles, dashboards, rules, matrices, questions, teams, changeManagers,
             collect(DISTINCT w.entity_type) AS entityTypes`,
     { tenantId },
   )
@@ -186,6 +198,11 @@ export async function tenantProvisioningGaps(session: Queryable, tenantId: strin
   if (!row) return [{ kind: 'tenant_missing' }]
   const num = (key: string): number => Number(row.get(key) ?? 0)
   const entityTypes = ((row.get('entityTypes') as Array<string | null>) ?? []).filter((t): t is string => typeof t === 'string')
+  // I ruoli (ondata 7): quelli di fabbrica e quelli che le persone portano.
+  const roleKeys = new Set(((row.get('roleKeys') as unknown[]) ?? []).map(String))
+  const userRoles = ((row.get('userRoles') as unknown[]) ?? []).filter((r): r is string => typeof r === 'string')
+  const missingRoles = [...new Set([...USER_ROLES, ...userRoles])].filter((k) => !roleKeys.has(k))
+  if (missingRoles.length) gaps.push({ kind: 'no_roles', params: { roles: missingRoles.join(', ') } })
   if (num('dashboards') === 0) gaps.push({ kind: 'no_dashboard' })
   if (num('rules') === 0) gaps.push({ kind: 'no_notification_rules' })
   if (num('matrices') === 0) gaps.push({ kind: 'no_domain_matrices' })

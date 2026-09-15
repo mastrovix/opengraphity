@@ -5,7 +5,8 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { screen, within } from '@testing-library/react'
-import { GET_SERVICE_REQUEST, GET_USERS } from '@/graphql/queries'
+import { GET_SERVICE_REQUEST, GET_ASSIGNABLE_USERS } from '@/graphql/queries'
+import { FACTORY_ROLE_PERMISSIONS, type UserRole } from '@opengraphity/types'
 import { ASSIGN_SERVICE_REQUEST_TO_USER } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { ServiceRequestDetailPage } from '../ServiceRequestDetailPage'
@@ -27,9 +28,9 @@ const request = (over: Record<string, unknown> = {}) => ({
   status: 'in_progress', priority: 'high', dueDate: null, createdAt: '2026-09-14T10:00:00Z', updatedAt: '2026-09-14T10:00:00Z', completedAt: null,
   requestedBy: null, assignee: null, workflowInstance: null, availableTransitions: [], slaStatus: null, ...over,
 })
-const user = (id: string, name: string, role: string) => ({ __typename: 'User', id, name, email: `${id}@x`, role, createdAt: 'x', teams: [] })
+const user = (id: string, name: string, role: UserRole) => ({ __typename: 'User', id, name, permissions: [...FACTORY_ROLE_PERMISSIONS[role]] })
 const usersMock: GqlMock = {
-  request: { query: GET_USERS },
+  request: { query: GET_ASSIGNABLE_USERS },
   result: { data: { users: [user('u-op', 'Olga Operator', 'operator'), user('u-view', 'Vera Viewer', 'viewer'), user('u-portal', 'Paolo Portale', 'end_user')] } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 }

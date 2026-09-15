@@ -19,7 +19,7 @@ import {
   mapAssessmentTask, mapDeployPlanTask, mapValidationTest, mapDeploymentTask, mapReviewTask,
 } from './mappers.js'
 import {
-  CHANGE_NOT_DELETED, assertAdmin, writeAudit, getCIName, assertUserInCITeam, afterEnterStep, resetChangeRisk,
+  CHANGE_NOT_DELETED, assertMayReopenTasks, writeAudit, getCIName, assertUserInCITeam, afterEnterStep, resetChangeRisk,
 } from './helpers.js'
 import { evaluateAutoTransitions } from './autoTransitions.js'
 
@@ -79,9 +79,9 @@ export const TASK_KINDS: Record<TaskKind, KindDef> = {
   },
 }
 
-/** Riapre (admin) un task completato riportandolo allo stato aperto del suo tipo. */
+/** Riapre un task completato riportandolo allo stato aperto del suo tipo (`approval.override`). */
 export async function reopenTask(kind: TaskKind, taskId: string, reason: string, ctx: GraphQLContext) {
-  assertAdmin(ctx)
+  assertMayReopenTasks(ctx)
   const k = TASK_KINDS[kind]
   return withSession(async (session) => {
     const tctx = await runQueryOne<{ changeId: string; ciId: string; role: string | null }>(session, `

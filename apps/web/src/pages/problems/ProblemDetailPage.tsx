@@ -53,6 +53,7 @@ import { colors } from '@/lib/tokens'
 import { useSlaSettling } from '@/hooks/useSlaSettling'
 import { useValueStyle } from '@/hooks/useValueStyle'
 import { withLocalizedLabel } from '@/lib/localizedLabel'
+import { showError } from '@/lib/showError'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface WorkflowInstance {
@@ -158,8 +159,8 @@ export function ProblemDetailPage() {
 
   const [exportingPdf, setExportingPdf] = useState(false)
 
-  const { role: myRole } = useMe()
-  const canEditCustomFields = myRole === 'admin' || myRole === 'operator'
+  const { can } = useMe()
+  const canEditCustomFields = can('ticket.work')
   const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ problem: Problem | null }>(GET_PROBLEM, { variables: { id }, skip: !id })
   const { data: usersData }        = useQuery<{ users: User[] }>(GET_USERS)
   const { data: teamsData }        = useQuery<{ teams: Team[] }>(GET_TEAMS)
@@ -180,7 +181,7 @@ export function ProblemDetailPage() {
 
   const [updateProblem] = useMutation(UPDATE_PROBLEM, {
     onCompleted: () => { toast.success(t('toast.problem.updated')); void refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [execTransition, { loading: transitioning }] = useMutation<{ executeProblemTransition?: { actionErrors?: string[] | null } }>(EXECUTE_PROBLEM_TRANSITION, {
@@ -190,37 +191,37 @@ export function ProblemDetailPage() {
       else toast.success(t('toast.problem.transitionCompleted'))
       setIsTransitionDialogOpen(false); setPendingTransition(null); setTransitionNotes(''); void refetch()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [assignToTeam, { loading: assigningTeam }] = useMutation(ASSIGN_PROBLEM_TO_TEAM, {
     onCompleted: () => { toast.success(t('toast.problem.teamAssigned')); setSelectedTeamId(''); setShowReassign(false); void refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [assignToUser, { loading: assigningUser }] = useMutation(ASSIGN_PROBLEM_TO_USER, {
     onCompleted: () => { toast.success(t('toast.problem.userAssigned')); setSelectedUserId(''); void refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [addCI] = useMutation(ADD_CI_TO_PROBLEM, {
     onCompleted: () => { toast.success(t('toast.problem.ciAdded')); setCiSearch(''); void refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [removeCI] = useMutation(REMOVE_CI_FROM_PROBLEM, {
     onCompleted: () => { toast.success(t('toast.problem.ciRemoved')); void refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [linkIncident] = useMutation(LINK_INCIDENT_TO_PROBLEM, {
     onCompleted: () => { toast.success(t('toast.problem.incidentLinked')); void refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [unlinkIncident] = useMutation(UNLINK_INCIDENT_FROM_PROBLEM, {
     onCompleted: () => { toast.success(t('toast.problem.incidentUnlinked')); void refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   // Collegamento change: stesso percorso dell'incident (linkResolvedTicket),
@@ -228,23 +229,22 @@ export function ProblemDetailPage() {
   // filtrava le change eliminate).
   const [linkResolved] = useMutation(LINK_RESOLVED_TICKET, {
     onCompleted: () => { toast.success(t('toast.problem.changeLinked')); void refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
-  const relLinkOpts = { onError: (e: { message: string }) => toast.error(e.message), onCompleted: () => { void refetch() } }
+  const relLinkOpts = { onError: (e: { message: string }) => showError(e), onCompleted: () => { void refetch() } }
   const [linkRelated]   = useMutation(LINK_RELATED_TICKET, relLinkOpts)
   const [unlinkRelated] = useMutation(UNLINK_RELATED_TICKET, relLinkOpts)
   const [unlinkResolved] = useMutation(UNLINK_RESOLVED_TICKET, relLinkOpts)
 
   const [addComment, { loading: addingComment }] = useMutation(ADD_PROBLEM_COMMENT, {
     onCompleted: () => { toast.success(t('toast.problem.commentAdded')); void refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
-  const { me } = useMe()
-  const isAdmin = me?.role === 'admin'
+  const mayDelete = can('problem.delete')
   const [deleteProblem, { loading: deleting }] = useMutation(DELETE_PROBLEM, {
     onCompleted: () => { toast.success(t('toast.problem.deleted')); navigate('/problems') },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   // Metadata dei passi del workflow problem: serve lo SCOPO del passo di
@@ -349,7 +349,7 @@ export function ProblemDetailPage() {
           {t('detail.exportPdf')}
         </Button>
         {/* Solo admin, come per le change: l'API lo pretende (F3). */}
-        {isAdmin && <Button
+        {mayDelete && <Button
           variant="secondary"
           disabled={deleting}
           icon={<Trash2 size={13} />}

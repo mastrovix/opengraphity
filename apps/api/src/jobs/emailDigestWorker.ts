@@ -23,6 +23,7 @@
  * (a real customer on such a domain was silently never served).
  */
 import type { Worker, Job } from 'bullmq'
+import { TICKET_WORKER_PERMISSION } from '@opengraphity/types'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { loadNotificationLocale, loadTenantBrand, sendTenantEmail } from '@opengraphity/notifications'
 import { digestDaily } from '../lib/emailTemplates.js'
@@ -177,18 +178,20 @@ async function sendDigestForTenant(tenant: TenantRow): Promise<void> {
 
     const recentEvents = recent.map(r => `${r.title} (${r.status})`)
 
-    // Recipients: admin/operator users that did not opt out (A-27). A missing
+    // Recipients: people who work tickets (TICKET_WORKER_PERMISSION on their role,
+    // wave 7 — it was admin/operator) or the users with the target role, that did not opt out (A-27). A missing
     // flag means enabled — `u.notifications_enabled <> false` alone would drop
     // every user without the property (null <> false is null in Cypher).
     const users = tenant.recipients && tenant.recipients.length > 0
       ? tenant.recipients.map((email) => ({ email }))
       : await runQuery<{ email: string }>(session, `
       MATCH (u:User {tenant_id: $t})
-      WHERE (CASE WHEN $role IS NULL THEN u.role IN ['admin', 'operator', 'TENANT_ADMIN', 'OPERATOR'] ELSE u.role = $role END)
+      MATCH (r:Role {tenant_id: $t, key: u.role})
+      WHERE (CASE WHEN $role IS NULL THEN $permission IN r.permissions ELSE u.role = $role END)
         AND u.email IS NOT NULL AND u.email <> ''
         AND coalesce(u.notifications_enabled, true) = true
       RETURN u.email AS email
-    `, { t: tenantId, role: digestRole(tenant.target) })
+    `, { t: tenantId, role: digestRole(tenant.target), permission: TICKET_WORKER_PERMISSION })
 
     if (users.length === 0) {
       log.info({ tenantId }, 'Daily digest: no recipients')
@@ -216,7 +219,7 @@ async function sendDigestForTenant(tenant: TenantRow): Promise<void> {
   }
 }
 
-/** The rule's target as a user role: `all` → admin/operator (null), `role:x` → x. Anything else cannot address a digest. */
+/** The rule's target as a user role: `all` → people who work tickets (null), `role:x` → x. Anything else cannot address a digest. */
 export function digestRole(target: string | null): string | null {
   if (target == null || target === 'all') return null
   if (target.startsWith('role:')) return target.slice('role:'.length)

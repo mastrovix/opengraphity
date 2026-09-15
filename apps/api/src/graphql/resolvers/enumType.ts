@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
-import { ForbiddenError, NotFoundError, ValidationError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
 import { SYSTEM_TENANT } from '../../lib/enumScope.js'
 import { countEnumValueUsage, enumValueUsageMessage, replaceEnumValue } from '../../lib/enumValueUsage.js'
@@ -18,6 +18,7 @@ import {
 import { languageFor } from '../../lib/tenantLanguage.js'
 import { logger } from '../../lib/logger.js'
 import { newShippedValues, vocabulariesBehindShipped } from '../../lib/vocabularyShippedDrift.js'
+import { requirePermission } from '../../lib/permissions.js'
 
 /**
  * Il vocabolario di questo cliente è cambiato: svuota le cache derivate e
@@ -310,7 +311,7 @@ export async function createEnumType(
   args: { input: { name: string; label: string; values: string[]; scope: string } },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
-  if (ctx.role !== 'admin') throw new ForbiddenError()
+  requirePermission(ctx, 'config.metamodel')
   const { input } = args
   if (!input.name.match(/^[a-z][a-z0-9_]*$/)) {
     throw new ValidationError('name must be snake_case (lowercase letters, numbers, underscores)')
@@ -397,7 +398,7 @@ export async function customizeEnumType(
   args: { id: string },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
-  if (ctx.role !== 'admin') throw new ForbiddenError()
+  requirePermission(ctx, 'config.metamodel')
   if (ctx.tenantId === SYSTEM_TENANT) {
     throw new ValidationError('The system tenant does not customize the shipped dictionaries: the product changes those.', { key: 'errors.enum.systemTenant' })
   }
@@ -526,7 +527,7 @@ export async function updateEnumType(
   args: { id: string; input: { label?: string; values?: string[]; scope?: string; defaultValue?: string; replacements?: { from: string; to: string }[]; valueLabels?: { value: string; language: string; label: string }[]; valueColors?: { value: string; color: string }[] } },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
-  if (ctx.role !== 'admin') throw new ForbiddenError()
+  requirePermission(ctx, 'config.metamodel')
   const { id, input } = args
 
   const session = getSession(undefined, 'WRITE')
@@ -730,7 +731,7 @@ export async function deleteEnumType(
   args: { id: string },
   ctx: GraphQLContext,
 ): Promise<boolean> {
-  if (ctx.role !== 'admin') throw new ForbiddenError()
+  requirePermission(ctx, 'config.metamodel')
 
   const session = getSession(undefined, 'WRITE')
   try {
@@ -869,7 +870,7 @@ export async function renameEnumValue(
   args: { id: string; from: string; to: string },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
-  if (ctx.role !== 'admin') throw new ForbiddenError()
+  requirePermission(ctx, 'config.metamodel')
   const { id } = args
   const from = args.from.trim()
   const to   = args.to.trim()
@@ -985,7 +986,7 @@ export async function reorderEnumValues(
   args: { id: string; values: string[] },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
-  if (ctx.role !== 'admin') throw new ForbiddenError()
+  requirePermission(ctx, 'config.metamodel')
   const { id, values } = args
 
   const session = getSession(undefined, 'WRITE')
@@ -1102,7 +1103,7 @@ async function loadCopyAndShipped(session: ReturnType<typeof getSession>, id: st
  * cliente ha già restano i suoi. Segna vista la lista spedita di adesso.
  */
 export async function adoptShippedValues(_: unknown, args: { id: string }, ctx: GraphQLContext): Promise<EnumTypeDef> {
-  if (ctx.role !== 'admin') throw new ForbiddenError()
+  requirePermission(ctx, 'config.metamodel')
   const session = getSession(undefined, 'WRITE')
   try {
     const { row, name, values, shipped, newValues } = await loadCopyAndShipped(session, args.id, ctx.tenantId)
@@ -1141,7 +1142,7 @@ export async function adoptShippedValues(_: unknown, args: { id: string }, ctx: 
 
 /** Tiene fuori i valori spediti non ancora visti: la lista resta com'è, e smettono di essere segnalati. */
 export async function acknowledgeShippedValues(_: unknown, args: { id: string }, ctx: GraphQLContext): Promise<EnumTypeDef> {
-  if (ctx.role !== 'admin') throw new ForbiddenError()
+  requirePermission(ctx, 'config.metamodel')
   const session = getSession(undefined, 'WRITE')
   try {
     const { name, shipped, newValues } = await loadCopyAndShipped(session, args.id, ctx.tenantId)

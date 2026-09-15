@@ -22,7 +22,7 @@
 import { getSession } from '@opengraphity/neo4j'
 import {
   NOTIFICATION_TARGET_ALL, NOTIFICATION_TARGET_ASSIGNEE, NOTIFICATION_TARGET_TEAM,
-  NOTIFICATION_TARGETS, notificationTargetRole,
+  NOTIFICATION_BASE_TARGETS, isNotificationTarget, notificationTargetRole,
 } from '@opengraphity/types'
 
 export interface NotificationRecipient {
@@ -107,9 +107,9 @@ export async function resolveNotificationRecipients(
   target: string,
   entity: TargetEntity,
 ): Promise<NotificationRecipient[]> {
-  if (!NOTIFICATION_TARGETS.includes(target)) {
+  if (!isNotificationTarget(target)) {
     throw new Error(
-      `${entity.eventType} notification rule has target "${target}", which is not one of [${NOTIFICATION_TARGETS.join(', ')}] — ` +
+      `${entity.eventType} notification rule has target "${target}", which is not one of [${NOTIFICATION_BASE_TARGETS.join(', ')}] nor role:<role> — ` +
       `fix the rule (Settings → Notification rules): nobody would receive it`,
     )
   }

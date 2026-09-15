@@ -12,6 +12,7 @@ import { GET_CHANGES, GET_ALL_CIS, GET_USERS, GET_PROBLEM, GET_INCIDENT, GET_PRE
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { colors, palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 interface CIRef {
   id: string; name: string; type: string; environment?: string
@@ -128,7 +129,7 @@ export function CreateChangePage() {
     onError: (err) => {
       console.error('[createChange] error', err)
       setBackendError(err.message)
-      toast.error(err.message)
+      showError(err)
     },
   })
 

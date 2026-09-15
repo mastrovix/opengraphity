@@ -13,8 +13,9 @@
  * nome del fornitore scritto a mano non esiste più.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
-const admin = { tenantId: 't1', userId: 'u1', role: 'admin' } as never
+const admin = { tenantId: 't1', userId: 'u1', role: 'admin', permissions: perms('admin') } as never
 
 let righe: Record<string, unknown>[] = []
 let unaRiga: Record<string, unknown> | null = null

@@ -55,9 +55,9 @@ export function EventDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { role, isAdmin } = useMe()
+  const { can } = useMe()
   const { ciTypes } = useMetamodel()
-  const canAct = role === 'admin' || role === 'operator'
+  const canAct = can('event.work')
   const matchHelpId = useId()
 
   const { data, loading, error, refetch } = useQuery<{ event: MonitoringEventDetail | null }>(GET_EVENT, {
@@ -219,7 +219,7 @@ export function EventDetailPage() {
             />
           </SectionCard>
 
-          {ev.ci && <CIAliasesSection ci={ev.ci} canEdit={isAdmin} variant="card" />}
+          {ev.ci && <CIAliasesSection ci={ev.ci} canEdit={can('config.monitoring')} variant="card" />}
         </div>
       </div>
     </PageContainer>

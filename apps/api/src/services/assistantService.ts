@@ -2,13 +2,16 @@
  * Conversational assistant grounded in the tenant's graph — Claude tool use
  * over READ-ONLY typed tools (incidents, CIs, impact, changes, KB).
  *
- * Security by design: every tool is tenant-scoped and read-only; the model
- * can only see what the tenant's own resolvers would expose. No mutations.
+ * Security by design: every tool is tenant-scoped and read-only, and the
+ * model gets ONLY the tools the caller's role may read (wave 7: incidents need
+ * `incident.read`, CIs `cmdb.read`, changes `change.read`, articles `kb.read`).
+ * No mutations.
  * No-fallback: missing API key, tool failures and provider errors surface
  * as explicit SSE error events.
  */
 import { kbArticlePublishedCypher } from '../lib/kbPublished.js'
 import Anthropic from '@anthropic-ai/sdk'
+import type { Permission } from '@opengraphity/types'
 
 /** Limite chiesto dal modello: intero in [1, max]; assente/NaN/negativo → default (mai LIMIT NaN o negativo in Cypher). */
 function clampLimit(limit: unknown, def: number, max: number): number {
@@ -58,7 +61,8 @@ function j(value: unknown): string {
 /** Detto al modello quando l'organizzazione ha spento gli embedding: la ricerca per significato non c'è. */
 const SEMANTIC_SEARCH_OFF = JSON.stringify({ error: 'Semantic search is turned off for this organization (embeddings disabled). Use lista_incident or cerca_ci instead.' })
 
-function buildTools(tenantId: string) {
+function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
+  const can = (p: Permission) => permissions.has(p)
   const cercaIncident = betaTool({
     name: 'cerca_incident',
     description: 'Ricerca semantica tra gli incident del tenant (storici e aperti). Usalo per trovare incident per argomento, sintomo o testo libero. Ritorna numero, titolo, stato, severity, team e score di similarità.',
@@ -160,11 +164,11 @@ function buildTools(tenantId: string) {
         WITH ci, dipendenti_diretti, dipendenti_secondo_livello,
              collect(DISTINCT cap.name)[..5] AS business_capability
         OPTIONAL MATCH (inc:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(ci)
-        WHERE NOT inc.status IN $incidentConcluded
+        WHERE $seeIncidents AND NOT inc.status IN $incidentConcluded
         WITH ci, dipendenti_diretti, dipendenti_secondo_livello, business_capability,
              collect(DISTINCT inc.number) AS incident_aperti
         OPTIONAL MATCH (ch:Change {tenant_id: $tenantId})-[:AFFECTS]->(ci)
-        WHERE NOT ch.status IN $changeConcluded AND coalesce(ch.deleted, false) = false
+        WHERE $seeChanges AND NOT ch.status IN $changeConcluded AND coalesce(ch.deleted, false) = false
         RETURN ci.name AS nome, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS tipo, ci.environment AS ambiente,
                dipendenti_diretti, dipendenti_secondo_livello, business_capability,
                incident_aperti, collect(DISTINCT ch.number) AS change_in_corso
@@ -172,8 +176,14 @@ function buildTools(tenantId: string) {
         tenantId, labels: await ciLabelsForTenant(tenantId), key: ci_id_o_nome,
         incidentConcluded: await concludedStatusNames(tenantId, 'incident'),
         changeConcluded:   await concludedStatusNames(tenantId, 'change'),
+        seeIncidents: can('incident.read'), seeChanges: can('change.read'),
       })
-      return rows.length ? j(rows[0]) : j({ errore: `CI "${ci_id_o_nome}" non trovato — prova cerca_ci per il nome esatto` })
+      if (!rows.length) return j({ errore: `CI "${ci_id_o_nome}" non trovato — prova cerca_ci per il nome esatto` })
+      // Quello che il ruolo non vede non c'è nemmeno come «zero»: il modello non deve dire «nessun incident».
+      const row = { ...(rows[0] as Record<string, unknown>) }
+      if (!can('incident.read')) delete row['incident_aperti']
+      if (!can('change.read')) delete row['change_in_corso']
+      return j(row)
     },
   })
 
@@ -269,7 +279,12 @@ function buildTools(tenantId: string) {
     },
   })
 
-  return [cercaIncident, dettaglioIncident, listaIncident, cercaCI, analisiImpatto, changeAperti, cercaKB]
+  return [
+    ...(can('incident.read') ? [cercaIncident, dettaglioIncident, listaIncident] : []),
+    ...(can('cmdb.read') ? [cercaCI, analisiImpatto] : []),
+    ...(can('change.read') ? [changeAperti] : []),
+    ...(can('kb.read') ? [cercaKB] : []),
+  ]
 }
 
 // ── Streaming chat ───────────────────────────────────────────────────────────
@@ -283,6 +298,7 @@ Regole:
 - Se un tool non trova nulla, dillo esplicitamente — non riempire il vuoto con supposizioni.
 - Hai SOLO strumenti di lettura: non puoi creare o modificare nulla. Se l'utente chiede un'azione, spiega dove farla nella UI.
 - Per domande di impatto ("se spengo X..."), usa analisi_impatto e riassumi: dipendenti, business capability, incident/change in corso.
+- Hai solo gli strumenti dei dati che il ruolo dell'utente può vedere. Se una domanda riguarda dati per cui non hai uno strumento, dì che il suo ruolo non li vede: non dedurli e non dire che non esistono.
 - Risposte brevi: elenchi puntati dove utile, niente preamboli.`
 
 export interface AssistantMessage { role: 'user' | 'assistant'; content: string }
@@ -296,6 +312,7 @@ export interface AssistantEmitter {
 
 export async function streamAssistantChat(
   tenantId: string,
+  permissions: ReadonlySet<Permission>,
   messages: AssistantMessage[],
   emit: AssistantEmitter,
 ): Promise<void> {
@@ -319,7 +336,7 @@ export async function streamAssistantChat(
       max_tokens: 4000,
       thinking: { type: 'adaptive' },
       system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-      tools: buildTools(tenantId),
+      tools: buildTools(tenantId, permissions),
       messages: messages.map(m => ({ role: m.role, content: m.content })),
       stream: true,
       max_iterations: 8,

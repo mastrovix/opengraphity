@@ -8,11 +8,12 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import express from 'express'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { perms } from '../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
 vi.mock('../../middleware/auth.js', () => ({
   authMiddleware: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    req.user = { tenantId: 'tenant-1', userId: 'user-1', email: 'u@example.com', role: 'viewer' }
+    req.user = { tenantId: 'tenant-1', userId: 'user-1', email: 'u@example.com', role: 'viewer', permissions: perms('viewer') }
     next()
   },
 }))

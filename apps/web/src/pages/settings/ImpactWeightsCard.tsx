@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/FormControls'
 import { GET_IMPACT_ANALYSIS_WEIGHTS } from '@/graphql/queries'
 import { UPDATE_IMPACT_ANALYSIS_WEIGHTS } from '@/graphql/mutations'
 import { colors } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 const WEIGHT_KEYS = ['productionCI', 'blastRadiusCI', 'blastRadiusCap', 'openIncident', 'failedChange', 'ongoingChange'] as const
 const WINDOW_KEYS = ['recentChangesDays', 'recentIncidentsDays'] as const
@@ -48,7 +49,7 @@ export function ImpactWeightsCard() {
   const [save, { loading: saving }] = useMutation(UPDATE_IMPACT_ANALYSIS_WEIGHTS, {
     refetchQueries: [GET_IMPACT_ANALYSIS_WEIGHTS],
     onCompleted: () => { toast.success(t('pages.domainMatrices.impactWeights.saved')); setDraft(null) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const row = (key: Key, unit: string) => current && (

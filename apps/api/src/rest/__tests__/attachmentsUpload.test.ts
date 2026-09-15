@@ -6,6 +6,7 @@
  * ATTACHMENT_DIR. Neo4j and auth are mocked; the filesystem is real (scratch dir).
  */
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+import { perms } from '../../lib/__tests__/testPermissions.js'
 import express from 'express'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -22,7 +23,7 @@ vi.mock('../../lib/logger.js', () => ({
 vi.mock('../../middleware/auth.js', () => ({
   authMiddleware: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     const role = typeof req.headers['x-test-role'] === 'string' ? req.headers['x-test-role'] : 'operator'
-    req.user = { tenantId: 'tenant-1', userId: 'user-1', email: 'u@example.com', role }
+    req.user = { tenantId: 'tenant-1', userId: 'user-1', email: 'u@example.com', role, permissions: perms(role) }
     next()
   },
 }))

@@ -302,7 +302,7 @@ Verifica «Cosa resta cablato», ondata 6: settings that were code, platform env
 | `ticketNumbering` / `setTicketNumbering(input)` | Prefix (1–8 capital letters or digits, optional trailing `-`) and digits (3–12) per ticket type. New tickets only; the counter is unchanged. Overlapping prefixes, or a prefix already used by another type's numbers, are refused |
 | `attachmentPolicy` / `setAttachmentPolicy(input)` | Maximum size (≤ `ATTACHMENT_MAX_MB_CAP`) and allowed extensions (from the platform catalog). Readable by every role; checked on the file name, not the browser MIME type |
 | `aiSettings` / `setAISettings(input)` | On/off per AI feature (`triage`, `assistant`, `reportAnalysis`, `postIncident`, `kbArticles`, `embeddings`) and the problem-candidate thresholds. A feature that is off never calls the model: GraphQL answers `AI_DISABLED` with the feature name, `/api/report/stream` answers `403 {error: {code: 'AI_DISABLED'}}`, `similarIncidents`/`suggestedArticles` answer `disabled: true` |
-| `updateComment(id, body)` / `deleteComment(id)` | The author edits or deletes their own comment, an admin any. Deleting leaves a trace (`deletedAt`, `deletedByName`, empty text); the previous text goes to the Audit Log |
+| `updateComment(id, body)` / `deleteComment(id)` | The author edits or deletes their own comment; a role with `ticket.moderateComments` any. Deleting leaves a trace (`deletedAt`, `deletedByName`, empty text); the previous text goes to the Audit Log |
 
 Logo (REST, same origin as the app):
 
@@ -311,6 +311,24 @@ Logo (REST, same origin as the app):
 | `POST` | `/api/brand/logo` | admin session | `multipart/form-data` `file`: PNG or SVG up to 1 MB. SVG with scripts, event handlers or links is refused. PDFs embed only PNG logos |
 | `DELETE` | `/api/brand/logo` | admin session | Back to the name only |
 | `GET` | `/api/brand/:tenantId/logo` | none | Public on purpose (e-mail clients have no session); served with a sandboxing CSP |
+
+### Roles and permissions
+
+Verifica «Cosa resta cablato», ondata 7. Every root operation requires **at least one** permission of the caller's role; the table is `apps/api/src/lib/operationPermissions.ts`, the catalog (53 permissions in 7 areas) is `PERMISSION_CATALOG` in `@opengraphity/types`. A role is a `(:Role {tenant_id, key, name, permissions, is_factory})` node; `User.role` holds its key. The four factory roles (`admin`, `operator`, `viewer`, `end_user`) are created by `provisionTenantData` and by migration `20260928_1000_factory_roles`: they can be changed, not deleted. A refused call answers `FORBIDDEN` with `errors.authz.roleNotAllowed` and the permissions it needed. `me.permissions` lists the caller's permissions: web and portal show pages and actions from it.
+
+| Operation | Permission | Description |
+|-----------|------------|-------------|
+| `roles` | `admin.users`, `config.notifications`, `config.workflow` or `config.automation` | Roles with their permissions and how many people have each |
+| `createRole(input: {name, permissions})` | `admin.users` | The key is derived from the name and never changes. Names are unique; unknown permissions are refused |
+| `updateRole(key, input)` | `admin.users` | A factory role may keep `name: null` (translated from its key). Removing `admin.users` is refused when no active person would keep it |
+| `deleteRole(key)` | `admin.users` | Refused for factory roles, roles that people have, and roles used as notification recipients (rules, workflow steps, automations) |
+| `setUserRole(userId, role)` | `admin.users` | Refused when it would leave nobody able to manage people and roles |
+| `User.permissions`, `User.roleName` | — | The permissions and the organization's name of a person's role |
+
+`POST /api/assistant/stream` (the AI assistant) needs `assistant.use`, and the model only gets the tools for data the role can read (`incident.read`, `cmdb.read`, `change.read`, `kb.read`).
+
+Notification recipients `role:<key>` accept any role of the organization (rules, workflow step notifications, automations); a role that does not exist is refused on save.
+
 
 ---
 

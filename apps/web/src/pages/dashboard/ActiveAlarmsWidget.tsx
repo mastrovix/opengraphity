@@ -4,8 +4,8 @@
  * filtrata. Registrato nel sistema dei widget come tipo `active_alarms`
  * (WIDGET_TYPES in useWidgetConfig): entità/metrica non si configurano,
  * la sorgente dei dati è sempre la console allarmi.
- * La console è riservata allo staff (rotte `staff(...)` in main.tsx, stesso
- * predicato `isStaff`): a un end user il widget lo dice invece di linkare
+ * La console si apre col permesso `event.read` (lib/routePermissions, ondata
+ * 7): a chi non ce l'ha il widget lo dice invece di linkare
  * una pagina "accesso negato".
  */
 import { Link } from 'react-router-dom'
@@ -14,7 +14,6 @@ import { useTranslation } from 'react-i18next'
 import { Radar } from 'lucide-react'
 import { GET_EVENT_STATS } from '@/graphql/queries'
 import { useMe } from '@/hooks/useMe'
-import { isStaff } from '@/lib/roles'
 import { colors } from '@/lib/tokens'
 import { ACCENT } from '@/lib/eventPalette'
 import { pausedWhenHidden } from '@/lib/polling'
@@ -34,14 +33,14 @@ const TILES: ReadonlyArray<{ key: keyof EventStatCounts; accent: string }> = [
 
 export function ActiveAlarmsWidget({ color, large = false }: { color: string; large?: boolean }) {
   const { t } = useTranslation()
-  const { role, loading: meLoading } = useMe()
-  const staff = isStaff(role)
+  const { me, can, loading: meLoading } = useMe()
+  const staff = can('event.read')
   const { data, loading, error } = useQuery<{ eventStats: EventStats }>(GET_EVENT_STATS, { ...pausedWhenHidden(POLL_MS), fetchPolicy: 'cache-and-network', skip: !staff })
   const stats = data?.eventStats
 
   if (!staff) {
-    // Finché `me` non risponde non si sa il ruolo: nessun messaggio prematuro.
-    if (meLoading || role === null) return null
+    // Finché `me` non risponde non si sanno i permessi: nessun messaggio prematuro.
+    if (meLoading || me === null) return null
     return <p style={{ padding: 16, margin: 0, fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.dashboard.activeAlarmsStaffOnly')}</p>
   }
 

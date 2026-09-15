@@ -2,17 +2,20 @@
  * Mock GraphQL riusabili (MockedProvider). I risultati includono `__typename`
  * perché la cache Apollo 4 aggiunge sempre il campo alla query.
  */
-import { GET_ME, GET_ANOMALY_STATS, GET_TEAMS, GET_USERS, GET_WORKFLOW_LIST, GET_WORKFLOW_DEFINITION, GET_ITIL_TYPES, GET_BASE_CI_TYPE, GET_DOMAIN_MATRICES } from '@/graphql/queries'
+import { GET_ME, GET_ROLES, GET_ANOMALY_STATS, GET_TEAMS, GET_USERS, GET_WORKFLOW_LIST, GET_WORKFLOW_DEFINITION, GET_ITIL_TYPES, GET_BASE_CI_TYPE, GET_DOMAIN_MATRICES } from '@/graphql/queries'
 import type { GqlMock } from '@/test/utils'
+import { FACTORY_ROLE_PERMISSIONS, isUserRole } from '@opengraphity/types'
 
 export interface MeFixture {
-  id: string; name: string; email: string; role: string; slackId: string | null
+  id: string; name: string; email: string; role: string; roleName: string | null; permissions: string[]; slackId: string | null
   emailNotifications: boolean | null
   teams: { id: string; name: string }[]
 }
 
 export function meFixture(role = 'admin', overrides: Partial<MeFixture> = {}): MeFixture {
-  return { id: 'u-1', name: 'Test User', email: 'test@acme.com', role, slackId: null, emailNotifications: true, teams: [], ...overrides }
+  // I permessi del ruolo di fabbrica con quel nome (ondata 7); un ruolo che non esiste non ne ha.
+  const permissions = isUserRole(role) ? [...FACTORY_ROLE_PERMISSIONS[role]] : []
+  return { id: 'u-1', name: 'Test User', email: 'test@acme.com', role, roleName: null, permissions, slackId: null, emailNotifications: true, teams: [], ...overrides }
 }
 
 /** `me` con il ruolo dato (o `null` per utente non presente nel DB). */
@@ -22,6 +25,15 @@ export function meMock(role: string | null = 'admin', opts: { maxUsageCount?: nu
     teams: meFixture(role).teams.map((t) => ({ __typename: 'Team', ...t })),
   }
   return { request: { query: GET_ME }, result: { data: { me } }, maxUsageCount: opts.maxUsageCount ?? 1 }
+}
+
+/** I ruoli dell'organizzazione (ondata 7): i quattro di fabbrica, più quelli dati. */
+export function rolesMock(extra: Array<{ key: string; name: string; permissions?: string[]; userCount?: number }> = []): GqlMock {
+  const factory = (['admin', 'operator', 'viewer', 'end_user'] as const).map((key) => ({
+    __typename: 'Role', key, name: null, permissions: [...FACTORY_ROLE_PERMISSIONS[key]], isFactory: true, userCount: 1,
+  }))
+  const custom = extra.map((r) => ({ __typename: 'Role', key: r.key, name: r.name, permissions: r.permissions ?? [], isFactory: false, userCount: r.userCount ?? 0 }))
+  return { request: { query: GET_ROLES }, result: { data: { roles: [...factory, ...custom] } }, maxUsageCount: Number.POSITIVE_INFINITY }
 }
 
 export function meErrorMock(message = 'boom'): GqlMock {
@@ -53,7 +65,7 @@ export interface UserRowFixture { id: string; name: string; email: string; role:
 export function usersMock(users: UserRowFixture[], variables: Record<string, unknown> = {}): GqlMock {
   return {
     request: { query: GET_USERS, variables },
-    result: { data: { users: users.map((u) => ({ __typename: 'User', teams: [], ...u })) } },
+    result: { data: { users: users.map((u) => ({ __typename: 'User', teams: [], roleName: null, ...u })) } },
     maxUsageCount: Number.POSITIVE_INFINITY,
   }
 }

@@ -27,6 +27,7 @@ import {
   SERVICE_MAP_DEFAULT_DEPTH, SERVICE_MAP_MAX_DEPTH, SHIPPED_SERVICE_RELATIONSHIP_TYPES,
   type ServiceMapDetail, type ServiceRef,
 } from '@/types/services'
+import { showError } from '@/lib/showError'
 
 const SEARCH_DEBOUNCE = 300
 const CANDIDATES_LIMIT = 50
@@ -93,7 +94,7 @@ export function CreateServiceMapDialog({ open, onClose, onCreated }: Props) {
       onClose()
       navigate(`/monitoring/services/${map.id}`)
     } catch (err) {
-      toast.error(t('toast.services.actionFailed', { error: errorMessage(err) }))
+      showError(err, t('toast.services.actionFailed', { error: errorMessage(err) }))
     }
   }
 

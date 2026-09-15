@@ -40,6 +40,7 @@ import { PresetRulesEditor } from './PresetRules'
 import { DEFAULT_RATE_LIMIT_PER_MINUTE, EMPTY_MAPPING, EMPTY_PRESET_RULES, RATE_LIMIT_MAX, RATE_LIMIT_MIN, buildPresetConfig, buildSourceConfig, isMappingComplete, isPresetRulesComplete, parseRateLimit, type GenericMapping, type PresetRules } from './sourceConfig'
 import { configSnippet, sourceEndpointUrl, ZABBIX_FIELDS } from './configSnippets'
 import { TOOL_META, SecretBox, SnippetBox, hintStyle, sectionTitleStyle } from './monitoringShared'
+import { showError } from '@/lib/showError'
 
 const STEPS = ['tool', 'rules', 'connect', 'test'] as const
 type Step = (typeof STEPS)[number]
@@ -114,7 +115,7 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
       toast.success(t('toast.monitoring.sourceCreated'))
       setStepIdx(2)
     } catch (e) {
-      toast.error(t('monitoring.wizard.createFailed', { error: errorMessage(e) }))
+      showError(e, t('monitoring.wizard.createFailed', { error: errorMessage(e) }))
     }
   }
 
@@ -152,7 +153,7 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
       const id = created.id
       checkTimer.current = setTimeout(() => { void checkReception(id) }, sampleCheckDelayMs)
     } catch (e) {
-      toast.error(t('toast.monitoring.sampleFailed', { error: errorMessage(e) }))
+      showError(e, t('toast.monitoring.sampleFailed', { error: errorMessage(e) }))
     }
   }
 

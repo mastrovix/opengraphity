@@ -87,12 +87,14 @@ describe('RoleBadge', () => {
     expect(screen.getByText(label)).toBeInTheDocument()
     expect(consoleError).not.toHaveBeenCalled()
   })
-  it('ruolo assente → "—"; ruolo ignoto → etichetta grezza in rosso + log', () => {
+  it('ruolo assente → "—"; un ruolo creato dall\'organizzazione (ondata 7) mostra il suo nome, senza errori', () => {
     const { rerender } = render(<RoleBadge role={undefined} />)
     expect(screen.getByText('—')).toBeInTheDocument()
-    rerender(<RoleBadge role="superuser" />)
-    expect(screen.getByText('superuser')).toHaveStyle({ background: BROKEN_BG })
-    expect(consoleError).toHaveBeenCalledWith('[ROLE_STYLE] unknown value: "superuser"')
+    rerender(<RoleBadge role="service_desk" name="Service Desk" />)
+    expect(screen.getByText('Service Desk')).toBeInTheDocument()
+    rerender(<RoleBadge role="viewer" name="Sola lettura" />)
+    expect(screen.getByText('Sola lettura')).toBeInTheDocument()
+    expect(consoleError).not.toHaveBeenCalled()
   })
 })
 

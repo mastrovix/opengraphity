@@ -6,6 +6,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', async (importOriginal) => {
   const orig = await importOriginal<typeof import('@opengraphity/neo4j')>()
@@ -23,8 +24,8 @@ const { enumTypeResolvers } = await import('../enumType.js')
 const { getSession } = await import('@opengraphity/neo4j')
 const { audit } = await import('../../../lib/audit.js')
 
-const admin: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
-const operator: GraphQLContext = { ...admin, role: 'operator' }
+const admin: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
+const operator: GraphQLContext = { ...admin, role: 'operator', permissions: perms('operator') }
 const rec = (map: Record<string, unknown>) => ({ keys: Object.keys(map), get: (k: string) => (k in map ? map[k] : null) })
 
 const COPY = {
@@ -59,8 +60,8 @@ async function code(p: Promise<unknown>): Promise<string> {
 describe('adoptShippedValues', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('non admin → Forbidden senza sessione', async () => {
-    expect(await code(enumTypeResolvers.Mutation.adoptShippedValues(null, { id: 'c-1' }, operator))).toBe('FORBIDDEN')
+  it('senza il permesso Metamodello → Forbidden senza sessione', async () => {
+    expect(await code(enumTypeResolvers.Mutation.adoptShippedValues(null, { id: 'c-1' }, operator))).toBe('errors.authz.permissionRequired')
     expect(getSession).not.toHaveBeenCalled()
   })
 

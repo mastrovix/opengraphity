@@ -44,6 +44,7 @@ import { UPDATE_EVENT_POLICY } from '@/graphql/mutations'
 import { colors, palette } from '@/lib/tokens'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { EVENT_SEVERITIES, type EventPolicy, type EventSeverity } from '@/types/events'
+import { showError } from '@/lib/showError'
 
 const OPEN_FROM  = ['info', 'warning', 'critical', 'never'] as const
 const GROUP_BY   = ['ci', 'fingerprint'] as const
@@ -300,7 +301,7 @@ export function EventPolicyPage() {
       } } })
       toast.success(t('toast.events.policySaved'))
       setMapError(null)
-    } catch (err) { toast.error(t('toast.events.policySaveFailed', { error: errorMessage(err) })) }
+    } catch (err) { showError(err, t('toast.events.policySaveFailed', { error: errorMessage(err) })) }
   }
 
   // Riga di aiuto sotto ogni campo: l'effetto della scelta in parole

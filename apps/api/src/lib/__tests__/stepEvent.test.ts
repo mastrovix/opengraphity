@@ -15,6 +15,7 @@ import {
   stepEnteredEventType, legacyStepEventType, isStepEnteredEventType, stepEnteredEntityType,
 } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
+import { perms } from './testPermissions.js'
 
 const runQuery    = vi.fn()
 const runQueryOne = vi.fn()
@@ -32,7 +33,7 @@ const { loadStepFacts, workflowEventTypeRows, auditStepEntered } = await import(
 const { logger } = await import('../logger.js')
 
 const session = {} as never
-const ctx: GraphQLContext = { tenantId: 'c-two', userId: 'u1', userEmail: 'u@test.io', role: 'admin' }
+const ctx: GraphQLContext = { tenantId: 'c-two', userId: 'u1', userEmail: 'u@test.io', role: 'admin', permissions: perms('admin') }
 
 beforeEach(() => vi.clearAllMocks())
 

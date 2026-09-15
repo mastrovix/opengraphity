@@ -65,7 +65,7 @@ export function makePdfRouter<D>(spec: PdfRouteSpec<D>): ExpressRouter {
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`)
         res.send(pdf)
 
-        const ctx: GraphQLContext = { tenantId, userId, userEmail: email, role: role as GraphQLContext['role'] }
+        const ctx: GraphQLContext = { tenantId, userId, userEmail: email, role: role as GraphQLContext['role'], permissions: req.user!.permissions }
         void audit(ctx, `${kind}.pdf_exported`, spec.entity, id)
         logger.info({ id, tenantId, sizeBytes: pdf.length }, `${logTag} exported`)
       } catch (err) {

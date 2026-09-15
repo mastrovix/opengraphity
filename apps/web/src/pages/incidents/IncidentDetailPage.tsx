@@ -52,6 +52,7 @@ import { transitionErrorText, type TransitionFailure } from '@/lib/transitionErr
 import { withLocalizedLabel } from '@/lib/localizedLabel'
 import { useAIFeature } from '@/hooks/useAIFeature'
 import { useAIDisabledText } from '@/components/ai/AIDisabledNotice'
+import { showError } from '@/lib/showError'
 
 const RESOLUTION_DRAFT = gql`
   query ResolutionDraft($incidentId: ID!) {
@@ -185,7 +186,7 @@ export function IncidentDetailPage() {
       duration: 12_000,
       action: { label: t('toast.incident.kbDraftOpen'), onClick: () => navigate('/admin/knowledge-base') },
     }),
-    onError: (err) => toast.error(t('toast.incident.kbDraftFailed', { error: err.message })),
+    onError: (err) => showError(err, t('toast.incident.kbDraftFailed', { error: err.message })),
   })
 
   const [ciSearch,      setCiSearch]      = useState('')
@@ -200,7 +201,7 @@ export function IncidentDetailPage() {
   )
   // ── Ticket collegati (incident / problem / change): la ricerca vive in
   //    UnifiedLinkedTickets (query lazy per tab) ────────────────────────────
-  const linkOpts = { onError: (e: { message: string }) => toast.error(e.message), onCompleted: () => { void refetch() } }
+  const linkOpts = { onError: (e: { message: string }) => showError(e), onCompleted: () => { void refetch() } }
   const [linkRelated]    = useMutation(LINK_RELATED_TICKET, linkOpts)
   const [unlinkRelated]  = useMutation(UNLINK_RELATED_TICKET, linkOpts)
   const [linkIncProblem] = useMutation(LINK_INCIDENT_TO_PROBLEM, linkOpts)
@@ -239,13 +240,13 @@ export function IncidentDetailPage() {
         toast.error(transitionErrorText(r, t('toast.incident.transitionFailed')))
       }
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [setMajor, { loading: settingMajor }] = useMutation(SET_INCIDENT_MAJOR, {
     refetchQueries: ['GetIncident'],
     onCompleted: () => toast.success(t('toast.incident.majorUpdated')),
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const [editOpen, setEditOpen] = useState(false)
@@ -253,7 +254,7 @@ export function IncidentDetailPage() {
   const [editForm, setEditForm] = useState({ title: '', description: '', impact: 'medium', urgency: 'medium' })
   const [updateIncident, { loading: savingEdit }] = useMutation(UPDATE_INCIDENT, {
     onCompleted: () => { setEditOpen(false); toast.success(t('toast.incident.updated')) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
     refetchQueries: ['GetIncident'],
   })
 
@@ -268,13 +269,13 @@ export function IncidentDetailPage() {
         void assignToUser({ variables: { id: incidentId, userId: null } })
           .then(() => { setAwaitingUserAssign(true); void refetch() })
           // Un un-assign fallito NON è "in attesa di utente": va detto.
-          .catch((e: { message?: string }) => { toast.error(e.message ?? t('toast.incident.unassignFailed')); void refetch() })
+          .catch((e: { message?: string }) => { showError(e, e.message ?? t('toast.incident.unassignFailed')); void refetch() })
       } else {
         setAwaitingUserAssign(true)
         void refetch()
       }
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [assignToUser, { loading: assigningUser }] = useMutation(ASSIGN_INCIDENT_TO_USER, {
@@ -289,7 +290,7 @@ export function IncidentDetailPage() {
         void refetch()
       }
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [addComment, { loading: addingComment }] = useMutation(ADD_INCIDENT_COMMENT, {
@@ -297,19 +298,19 @@ export function IncidentDetailPage() {
       toast.success(t('toast.incident.commentAdded'))
       void refetch()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [addCI] = useMutation(ADD_AFFECTED_CI, {
     onCompleted: () => { toast.success(t('toast.incident.ciAdded')); setCiSearch(''); void refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const ciRules = ciRulesData?.itilCIRelationRules ?? []
 
   const [removeCI] = useMutation(REMOVE_AFFECTED_CI, {
     onCompleted: () => { toast.success(t('toast.incident.ciRemoved')); void refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const incident  = data?.incident
@@ -324,7 +325,7 @@ export function IncidentDetailPage() {
     // Guard rails come from the workflow definition: if it failed to load we
     // cannot evaluate the gates, so refuse to proceed instead of skipping them.
     if (workflowStepsError) {
-      toast.error(t('toast.incident.workflowRulesNotLoaded', { error: workflowStepsError.message }))
+      showError(workflowStepsError, t('toast.incident.workflowRulesNotLoaded', { error: workflowStepsError.message }))
       return
     }
     // Assignment gates are no longer hardcoded per step name. If the target
@@ -882,7 +883,7 @@ export function IncidentDetailPage() {
                       toast.error(transitionErrorText(data.executeWorkflowTransition, t('toast.incident.transitionError')))
                     }
                   },
-                  onError: (err) => toast.error(err.message),
+                  onError: (err) => showError(err),
                 })
               }}
               style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)', color: transitionNotes.trim().length >= 10 ? colors.white : 'var(--text-muted)' }}
@@ -905,7 +906,7 @@ export function IncidentDetailPage() {
               title={postIncidentOn === false ? postIncidentOffText : undefined}
               onClick={() => {
                 void genResolutionDraft({ variables: { incidentId: incident.id } }).then((res) => {
-                  if (res.error) toast.error(t('toast.incident.aiDraftFailed', { error: res.error.message }))
+                  if (res.error) showError(res.error, t('toast.incident.aiDraftFailed', { error: res.error.message }))
                   else if (res.data) setTransitionNotes(res.data.resolutionDraft.draft)
                   else toast.error(t('toast.incident.aiDraftNoResponse'))
                 })

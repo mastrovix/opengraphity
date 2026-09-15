@@ -19,6 +19,7 @@ import { useConfirm } from '@/hooks/useConfirm'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { formatDate, formatDateTime } from '@/lib/datetime'
+import { showError } from '@/lib/showError'
 
 const MY_PENDING = gql`
   query MyPendingApprovals {
@@ -452,15 +453,15 @@ export function ApprovalsPage() {
 
   const [approve] = useMutation(APPROVE, {
     onCompleted: () => { toast.success(t('toast.approval.approved')); void refetchMine(); void refetchAll() },
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
   const [reject] = useMutation(REJECT, {
     onCompleted: () => { toast.success(t('toast.approval.rejected')); void refetchMine(); void refetchAll() },
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
   const [cancel] = useMutation(CANCEL, {
     onCompleted: () => { toast.success(t('toast.approval.cancelled')); void refetchMine(); void refetchAll() },
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
 
   const handleApprove = (id: string, note: string) => void approve({ variables: { id, note: note || undefined } })

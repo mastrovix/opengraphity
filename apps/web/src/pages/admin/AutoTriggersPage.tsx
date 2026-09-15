@@ -32,6 +32,7 @@ import { eventOptionKey, automationActionKey } from '@/lib/automationOperators'
 import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { palette } from '@/lib/tokens'
 import { TRIGGER_EVENT_TYPES, automationEventSupported } from '@opengraphity/types'
+import { showError } from '@/lib/showError'
 /** Dalla tabella condivisa con l'API: le pagine offrono solo le combinazioni evento × ticket che girano (AU-1). */
 const EVENT_TYPES = TRIGGER_EVENT_TYPES
 // Operators now handled by ConditionRowEditor component
@@ -124,15 +125,15 @@ export function AutoTriggersPage() {
   })
   const triggers: AutoTrigger[] = data?.autoTriggers ?? []
 
-  const [createTrigger] = useMutation(CREATE_AUTO_TRIGGER, { onCompleted: () => { toast.success(t('toast.trigger.created')); void refetch(); modal.close() }, onError: (e) => toast.error(e.message) })
-  const [updateTrigger] = useMutation(UPDATE_AUTO_TRIGGER, { onCompleted: () => { toast.success(t('toast.trigger.updated')); void refetch(); modal.close() }, onError: (e) => toast.error(e.message) })
-  const [deleteTrigger] = useMutation(DELETE_AUTO_TRIGGER, { onCompleted: () => { toast.success(t('toast.trigger.deleted')); void refetch() }, onError: (e) => toast.error(e.message) })
+  const [createTrigger] = useMutation(CREATE_AUTO_TRIGGER, { onCompleted: () => { toast.success(t('toast.trigger.created')); void refetch(); modal.close() }, onError: (e) => showError(e) })
+  const [updateTrigger] = useMutation(UPDATE_AUTO_TRIGGER, { onCompleted: () => { toast.success(t('toast.trigger.updated')); void refetch(); modal.close() }, onError: (e) => showError(e) })
+  const [deleteTrigger] = useMutation(DELETE_AUTO_TRIGGER, { onCompleted: () => { toast.success(t('toast.trigger.deleted')); void refetch() }, onError: (e) => showError(e) })
 
   function openEdit(trigger: AutoTrigger) {
     // Refuse to open the editor on corrupt data: an editor silently opened
     // empty would destroy the original conditions/actions at the next save.
     try { modal.openEdit(trigger) }
-    catch (e) { toast.error(t('toast.trigger.openFailed', { name: trigger.name, error: errorMessage(e) })) }
+    catch (e) { showError(e, t('toast.trigger.openFailed', { name: trigger.name, error: errorMessage(e) })) }
   }
 
   function handleSave() {

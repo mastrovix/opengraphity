@@ -9,6 +9,7 @@ import { colors, palette, alpha } from '@/lib/tokens'
 import { useTicketCategories } from '@/hooks/useTicketCategories'
 import { usePortalCustomFields, portalCustomFieldsInput, portalMissingCustomFields } from '@/hooks/usePortalCustomFields'
 import { PortalCustomFields } from '@/components/PortalCustomFields'
+import { usePortalAccess } from '@/hooks/usePortalAccess'
 
 interface CatalogItem {
   id: string
@@ -20,6 +21,8 @@ interface CatalogItem {
 
 export function ServiceCatalogPage() {
   const { t }    = useTranslation()
+  // Aprire una richiesta: il permesso `portal.submit` del ruolo (ondata 7).
+  const { canSubmit } = usePortalAccess()
   const navigate = useNavigate()
   const { data, loading, error } = useQuery<{ serviceCatalogItems: CatalogItem[] }>(GET_SERVICE_CATALOG)
   // La categoria della voce è un valore del Dizionario (ondata 2): si mostra con la sua etichetta.
@@ -83,8 +86,8 @@ export function ServiceCatalogPage() {
           <h2 style={{ fontSize: 13, fontWeight: 700, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>{cat}</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
             {list.map(it => (
-              <button key={it.id} onClick={() => { setOpenItem(it); setDetails(''); setCustomValues({}); setCustomErrors({}) }}
-                style={{ textAlign: 'left', background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 10, padding: 16, cursor: 'pointer' }}>
+              <button key={it.id} disabled={!canSubmit} title={canSubmit ? undefined : t('portal.noSubmit')} onClick={() => { setOpenItem(it); setDetails(''); setCustomValues({}); setCustomErrors({}) }}
+                style={{ textAlign: 'left', background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 10, padding: 16, cursor: canSubmit ? 'pointer' : 'default' }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: colors.slateDark, marginBottom: 4 }}>{it.name}</div>
                 {it.description && <div style={{ fontSize: 12, color: colors.slate, lineHeight: 1.5 }}>{it.description}</div>}
                 {it.requiresApproval && <div style={{ marginTop: 8, fontSize: 11, color: palette.warning.text }}>{t('catalog.requiresApproval')}</div>}

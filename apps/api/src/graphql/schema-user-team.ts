@@ -11,6 +11,13 @@ export function userTeamSDL(): string {
     firstName: String
     lastName: String
     role: String!
+    """
+    I permessi del ruolo della persona (ondata 7 di «Nulla cablato»): le
+    interfacce mostrano pagine e azioni da qui, non dal nome del ruolo.
+    """
+    permissions: [String!]!
+    """Il nome del ruolo scelto dall'organizzazione; null per un ruolo di fabbrica mai rinominato."""
+    roleName: String
     slackId: String
     """La persona riceve le e-mail di notifica (dal Profilo). null = nessun utente nel grafo per questa identità."""
     emailNotifications: Boolean
@@ -46,6 +53,8 @@ export function userTeamSDL(): string {
   extend type Mutation {
     createUser(input: CreateUserInput!): User!
     updateUserTeams(userId: ID!, teamIds: [ID!]!): User!
+    """Il ruolo di una persona (ondata 7). Rifiutato se nessuno potrebbe più gestire persone e ruoli."""
+    setUserRole(userId: ID!, role: String!): User!
     setTeamManager(teamId: ID!, userId: ID!): Team!
     removeTeamManager(teamId: ID!): Team!
     # Aggiunge (member: true) o toglie un membro dal team, senza toccare gli altri team dell'utente.

@@ -21,6 +21,8 @@ import { DetailPanel } from './AnomalyDetail'
 import type { Anomaly, AnomalyStats, AnomalyScanStatus } from '@/types/anomaly'
 import { StatTile, StatTileGrid } from '@/components/ui/StatTile'
 import { useMe } from '@/hooks/useMe'
+import { routePermissions } from '@/lib/routePermissions'
+import { showError } from '@/lib/showError'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -143,7 +145,7 @@ function AnomalyEmptyState({ scanStatus }: { scanStatus: AnomalyScanStatus | nul
 
 export function AnomalyPage() {
   const { t } = useTranslation()
-  const { isAdmin } = useMe()
+  const { can } = useMe()
   const [selected, setSelected]         = useState<Anomaly | null>(null)
 
   const columns: ColumnDef<Anomaly>[] = [
@@ -285,7 +287,7 @@ export function AnomalyPage() {
         } catch (err) {
           if (cancelled) return
           setAwaitingScan(null)
-          toast.error(err instanceof Error ? err.message : String(err))
+          showError(err)
         }
       })()
     }, SCAN_POLL_MS)
@@ -328,7 +330,7 @@ export function AnomalyPage() {
       }
       setAwaitingScan({ baseline, startedAt: Date.now() })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      showError(err)
     }
   }
 
@@ -345,7 +347,7 @@ export function AnomalyPage() {
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {isAdmin && (
+        {can(...routePermissions('/settings/anomaly-rules')) && (
           <Link
             to="/settings/anomaly-rules"
             style={{

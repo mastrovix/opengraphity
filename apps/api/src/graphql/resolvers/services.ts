@@ -9,8 +9,9 @@
  * rivalutazione): qui restano ruolo, audit e la rilettura della mappa.
  *
  * Ogni query è scopata per tenant; ogni mutation scrive l'audit. Le
- * mutation e `serviceMapCandidates` sono admin-only in lib/authorization.ts
- * e hanno un requireRole locale come seconda linea. La lista
+ * mutation e `serviceMapCandidates` chiedono `config.services` (o
+ * `service.reevaluate`) in lib/operationPermissions.ts e hanno un
+ * `requirePermission` locale come seconda linea. La lista
  * (`serviceMaps`) calcola contatori, totale filtrato e pagina in UNA query
  * (tre CALL { } senza importazioni, pattern di ciHealthOverview); servizio,
  * owner e conteggio dei nodi sono risolti con la riga (`serviceMapRowColumns`),
@@ -23,7 +24,7 @@ import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { mapIncident, mapTeam } from '../../lib/mappers.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import { serviceRelationshipTypesForTenant } from '../../lib/ciMetamodelForTenant.js'
@@ -336,7 +337,7 @@ async function servicesImpactedByCI(_: unknown, args: { ciId: string }, ctx: Gra
 
 /** BusinessApplication senza mappa: strumento admin della creazione. */
 async function serviceMapCandidates(_: unknown, args: { search?: string | null; limit?: number | null }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const limit = Math.min(Math.max(args.limit ?? 20, 1), 100)
   const search = args.search?.trim() ? args.search.trim().toLowerCase() : null
   const session = getSession()
@@ -359,7 +360,7 @@ async function serviceMapCandidates(_: unknown, args: { search?: string | null; 
  * Nessuna scrittura.
  */
 async function serviceMapProposal(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const d = await serviceMapProposalService(ctx.tenantId, args.id)
   return {
     mapId:             d.mapId,
@@ -390,7 +391,7 @@ async function serviceMapProposal(_: unknown, args: { id: string }, ctx: GraphQL
 
 /** «Con queste impostazioni adesso»: calcolo puro sullo stato reale, nessuna scrittura. */
 async function serviceImpactPreview(_: unknown, args: { id: string; rules?: ServiceImpactRulesInput | null; nodes?: ServiceMapNodeInput[] | null }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const p = await previewServiceImpact({ tenantId: ctx.tenantId, mapId: args.id, rules: args.rules ?? null, nodes: args.nodes ?? null })
   return {
     health:            p.health,
@@ -583,7 +584,7 @@ async function serviceRelationshipTypes(_: unknown, __: unknown, ctx: GraphQLCon
 // ── Mutation ─────────────────────────────────────────────────────────────────
 
 async function createServiceMap(_: unknown, args: { serviceId: string; maxDepth?: number | null; relationshipTypes?: string[] | null; status?: string | null; autoSync?: boolean | null }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const maxDepth = args.maxDepth ?? SERVICE_MAP_DEFAULT_DEPTH
   const relationshipTypes = args.relationshipTypes ?? [...SERVICE_RELATIONSHIP_TYPES]
   const status = args.status == null ? 'active' : assertEnumInput(args.status, SERVICE_MAP_STATUSES, 'status')
@@ -598,7 +599,7 @@ async function createServiceMap(_: unknown, args: { serviceId: string; maxDepth?
 }
 
 async function reevaluateServiceMap(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'service.reevaluate')
   const r = await evaluateServiceMap({ tenantId: ctx.tenantId, mapId: args.id, trigger: 'manual', actorId: ctx.userId })
   void audit(ctx, 'service_map.reevaluated', 'ServiceMap', args.id, { previousHealth: r.previousHealth, health: r.health, impactScore: r.impactScore, changed: r.changed, stale: r.stale })
   return requireServiceMap(args.id, ctx.tenantId)
@@ -629,7 +630,7 @@ export const SET_STATUS_CYPHER = `
  * restare quella di quando è stata scritta.
  */
 async function setServiceMapStatus(_: unknown, args: { id: string; expectedVersion: number; status: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const status = assertEnumInput(args.status, SERVICE_MAP_STATUSES, 'status')
   if (!Number.isInteger(args.expectedVersion) || args.expectedVersion < 1) throw new ValidationError(`expectedVersion must be an integer >= 1. Got: ${JSON.stringify(args.expectedVersion)}`)
   const now = new Date().toISOString()
@@ -681,21 +682,21 @@ function configAudit(r: ConfigWriteResult, extra: Record<string, unknown>): Reco
 }
 
 async function updateServiceImpactRules(_: unknown, args: { id: string; expectedVersion: number; rules: ServiceImpactRulesInput }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const r = await updateServiceImpactRulesService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, rules: args.rules, actorId: ctx.userId })
   void audit(ctx, 'service_map.rules_changed', 'ServiceMap', args.id, configAudit(r, { rules: args.rules }))
   return requireServiceMap(args.id, ctx.tenantId)
 }
 
 async function updateServiceMapNodes(_: unknown, args: { id: string; expectedVersion: number; nodes: ServiceMapNodeInput[] }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const r = await updateServiceMapNodesService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, nodes: args.nodes, actorId: ctx.userId })
   void audit(ctx, 'service_map.nodes_changed', 'ServiceMap', args.id, configAudit(r, { nodes: args.nodes.map((n) => n.ciId) }))
   return requireServiceMap(args.id, ctx.tenantId)
 }
 
 async function applyServiceMapProposal(_: unknown, args: { id: string; expectedVersion: number; add: string[]; exclude: string[]; remove: string[] }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const r = await applyServiceMapProposalService({
     tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion,
     add: args.add, exclude: args.exclude, remove: args.remove, actorId: ctx.userId,
@@ -705,7 +706,7 @@ async function applyServiceMapProposal(_: unknown, args: { id: string; expectedV
 }
 
 async function removeServiceMapExclusion(_: unknown, args: { id: string; expectedVersion: number; ciId: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const r = await removeServiceMapExclusionService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, ciId: args.ciId, actorId: ctx.userId })
   void audit(ctx, 'service_map.exclusion_removed', 'ServiceMap', args.id, configAudit(r, { ciId: args.ciId }))
   return requireServiceMap(args.id, ctx.tenantId)
@@ -715,7 +716,7 @@ async function removeServiceMapExclusion(_: unknown, args: { id: string; expecte
 
 /** Interruttore «aggiorna automaticamente i componenti»: mappa viva o congelata. */
 async function setServiceMapAutoSync(_: unknown, args: { id: string; expectedVersion: number; autoSync: boolean }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const r = await setServiceMapAutoSyncService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, autoSync: args.autoSync, actorId: ctx.userId })
   void audit(ctx, 'service_map.auto_sync_changed', 'ServiceMap', args.id, configAudit(r, { autoSync: args.autoSync }))
   return requireServiceMap(args.id, ctx.tenantId)
@@ -734,7 +735,7 @@ async function setServiceMapAutoSync(_: unknown, args: { id: string; expectedVer
  * BAD_USER_INPUT, non un esito.
  */
 async function syncServiceMap(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const r = await syncServiceMapService(ctx.tenantId, args.id, 'manual', ctx.userId)
   void audit(ctx, 'service_map.synced', 'ServiceMap', args.id, {
     trigger: 'manual', version: r.version, added: r.added, removed: r.removed, moved: r.moved,
@@ -762,7 +763,7 @@ async function syncServiceMap(_: unknown, args: { id: string }, ctx: GraphQLCont
  * DELETE e per l'operatore resta un incident critico «senza motivo».
  */
 async function deleteServiceMap(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const { noteServiceMapDeletion } = await import('../../services/events/cascade.js')
   await noteServiceMapDeletion(ctx.tenantId, args.id)
   const session = getSession(undefined, 'WRITE')

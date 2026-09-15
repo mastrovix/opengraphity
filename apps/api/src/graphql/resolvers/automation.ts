@@ -18,6 +18,7 @@ import {
   AUTOMATION_ENTITY_TYPES, TRIGGER_EVENT_TYPES, RULE_EVENT_TYPES, AUTOMATION_EVENT_ENTITIES, automationEventSupported,
   type AutomationEventType, isNotificationTarget, AUTOMATION_NOTIFICATION_CHANNELS, DEFAULT_SLA_WARNING_MINUTES,
 } from '@opengraphity/types'
+import { assertRolesExist, roleKeysInActions } from '../../lib/roles.js'
 
 type Props = Record<string, unknown>
 
@@ -301,6 +302,7 @@ async function createAutoTrigger(_: unknown, args: { input: Props }, ctx: GraphQ
     throw new ValidationError('An on_timer trigger requires timerDelayMinutes > 0')
   }
   assertEventSupported(eventType, entityType)
+  await assertRolesExist(ctx.tenantId, roleKeysInActions(actions))
   return withSession(async (session) => {
     await assertStepTargets(session, ctx.tenantId, entityType, { actions, conditions })
     const rows = await runQuery<{ props: Props }>(session, `
@@ -345,6 +347,7 @@ async function updateAutoTrigger(_: unknown, args: { id: string; input: Props },
       params[gql] = validators[gql] ? validators[gql](args.input[gql]) : args.input[gql]
     }
   }
+  if (typeof params['actions'] === 'string') await assertRolesExist(ctx.tenantId, roleKeysInActions(params['actions']))
   return withSession(async (session) => {
     if (args.input['eventType'] !== undefined) {
       assertEventSupported(params['eventType'] as string, await entityTypeOf(session, 'AutoTrigger', args.id, ctx.tenantId))
@@ -403,6 +406,7 @@ async function createBusinessRule(_: unknown, args: { input: Props }, ctx: Graph
   const conditionLogic = assertEnum('conditionLogic', input['conditionLogic'] ?? 'and', CONDITION_LOGICS)
   const conditions     = assertConditionsJson(input['conditions'])
   const actions        = assertActionsJson(input['actions'])
+  await assertRolesExist(ctx.tenantId, roleKeysInActions(actions))
   return withSession(async (session) => {
     await assertStepTargets(session, ctx.tenantId, entityType, { actions, conditions })
     const rows = await runQuery<{ props: Props }>(session, `
@@ -450,6 +454,7 @@ async function updateBusinessRule(_: unknown, args: { id: string; input: Props }
       params[gql] = validators[gql] ? validators[gql](args.input[gql]) : args.input[gql]
     }
   }
+  if (typeof params['actions'] === 'string') await assertRolesExist(ctx.tenantId, roleKeysInActions(params['actions']))
   return withSession(async (session) => {
     if (args.input['eventType'] !== undefined) {
       assertEventSupported(params['eventType'] as string, await entityTypeOf(session, 'BusinessRule', args.id, ctx.tenantId))

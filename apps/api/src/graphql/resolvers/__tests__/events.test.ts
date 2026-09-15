@@ -19,6 +19,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(),
@@ -90,7 +91,7 @@ const { openIncidentFromEvent, runEventPipeline } = await import('../../../servi
 const { withRedisLock } = await import('../../../lib/redisLock.js')
 const { PAYLOAD_MAX_CHARS, SAMPLE_LABEL } = await import('../events.js')
 const { MAX_EVENTS_PER_REQUEST, PAYLOAD_MAX_DEPTH } = await import('../../../services/eventService.js')
-const { authorize } = await import('../../../lib/authorization.js')
+const { authorizeFactory: authorize } = await import('../../../lib/__tests__/factoryRoles.js')
 const { change: loadChange } = await import('../change/queries.js')
 const { publishEvent } = await import('../../../lib/publishEvent.js')
 const { audit } = await import('../../../lib/audit.js')
@@ -99,10 +100,10 @@ const { SAMPLE_PAYLOADS, GENERIC_SAMPLE_CONFIG } = await import('../../../lib/ev
 const { DEFAULT_EVENT_POLICY } = await import('../../../lib/eventPolicy.js')
 const { MATCH_REASONS } = await import('../../../lib/eventVocabularies.js')
 
-const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'adm-1', userEmail: 'adm@test.io', role: 'admin' }
+const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'adm-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
 /** Il tenant che i mapper ricevono: `ciTypeFromLabels` è per tenant (A-17). */
 const TENANT = 'tenant-1'
-const operator: GraphQLContext = { ...admin, userId: 'op-1', role: 'operator' }
+const operator: GraphQLContext = { ...admin, userId: 'op-1', role: 'operator', permissions: perms('operator') }
 const session = { close: vi.fn().mockResolvedValue(undefined) }
 
 async function expectCode(p: Promise<unknown>, code: string, pattern?: RegExp) {
@@ -814,7 +815,7 @@ describe('createCIAlias / deleteCIAlias', () => {
 
 // ── Ondata 2: configurazione senza codice ────────────────────────────────────
 
-const viewer: GraphQLContext = { ...admin, userId: 'v-1', role: 'viewer' }
+const viewer: GraphQLContext = { ...admin, userId: 'v-1', role: 'viewer', permissions: perms('viewer') }
 
 describe('sampleInboundPayload / payloadKeys', () => {
   it('sampleInboundPayload → JSON leggibile del campione del connettore; connettore sconosciuto → BAD_USER_INPUT', () => {

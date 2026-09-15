@@ -35,28 +35,29 @@
 import { v4 as uuidv4 } from 'uuid'
 import { parseArgs } from 'node:util'
 import { getSession, toNumber } from '@opengraphity/neo4j'
-import { USER_ROLES, type Tenant } from '@opengraphity/types'
+import { FACTORY_ROLE_PERMISSIONS, USERS_ADMIN_PERMISSION, USER_ROLES, type Tenant } from '@opengraphity/types'
 import { seedSystemEnumTypes } from '../lib/seedEnumTypes.js'
 import { provisionTenantData } from '../lib/provisionTenantData.js'
 import { DEFAULT_EVENT_POLICY_JSON } from '../lib/eventPolicy.js'
 import { DEFAULT_TENANT_PLAN, DEFAULT_TENANT_TIMEZONE, PLAN_SETTINGS } from '../lib/tenantPlans.js'
 import { ScriptArgError } from './lib/scriptArgs.js'
 import { runScript } from './lib/runScript.js'
-import { assignRealmRole, createKeycloakAdmin, findUserIdByEmail, keycloakConfigFromEnv, type KeycloakAdmin } from './lib/keycloakAdmin.js'
+import { createKeycloakAdmin, findUserIdByEmail, keycloakConfigFromEnv, type KeycloakAdmin } from './lib/keycloakAdmin.js'
 import { PASSWORD_STDIN_FLAG, assertNoPasswordInArgv, printOneTimePassword, resolvePassword, type ResolvedPassword } from './lib/password.js'
 
 // ── Args ──────────────────────────────────────────────────────────────────────
 
 /**
- * Ruoli del tenant: `USER_ROLES` di @opengraphity/types, importati e non
- * copiati. Sono sia i valori ammessi per `--admin-role` sia i ruoli di realm
- * creati in Keycloak, così la lista è una sola. Prima erano
- * `['admin','user','manager']`: `--admin-role manager` (opzione documentata)
- * creava un primo amministratore che al login veniva rifiutato da `assertRole`,
- * e i ruoli di realm `user`/`manager` non esistevano da nessun'altra parte
- * (D-13).
+ * Il ruolo del primo amministratore: un ruolo di fabbrica (`USER_ROLES`, gli
+ * unici che un tenant appena nato ha) che gestisce persone e ruoli
+ * (`admin.users`, ondata 7). Con un ruolo senza quel permesso l'organizzazione
+ * nascerebbe senza nessuno capace di aggiungere persone o cambiare ruoli.
+ * I ruoli NON si creano più in Keycloak: l'app li legge solo dal grafo.
+ *
+ * Storia (D-13): erano `['admin','user','manager']`, e `--admin-role manager`
+ * creava un primo amministratore che al login veniva rifiutato.
  */
-const ALLOWED_ROLES = USER_ROLES
+const ALLOWED_ROLES = USER_ROLES.filter((r) => FACTORY_ROLE_PERMISSIONS[r].includes(USERS_ADMIN_PERMISSION))
 const ALLOWED_PLANS = ['starter', 'pro', 'enterprise'] as const satisfies readonly Tenant['plan'][]
 
 interface Args {
@@ -104,7 +105,7 @@ function parseCliArgs(argv: readonly string[]): Args {
 
   const adminRole = args['admin-role']!
   if (!ALLOWED_ROLES.includes(adminRole as Args['adminRole'])) {
-    throw new ScriptArgError(`--admin-role deve essere uno di: ${ALLOWED_ROLES.join(', ')}`)
+    throw new ScriptArgError(`--admin-role deve essere un ruolo che gestisce persone e ruoli: ${ALLOWED_ROLES.join(', ')}`)
   }
   const plan = args['plan']!
   if (!ALLOWED_PLANS.includes(plan as Tenant['plan'])) {
@@ -202,45 +203,6 @@ async function createPortalClient(kc: KeycloakAdmin, token: string, a: Args): Pr
   console.log(created && id ? `  ✓ Client "opengrafo-portal" creato (id: ${id})` : `  ↩ Client "opengrafo-portal" già esistente — skip`)
 }
 
-// ── Step 3: Roles ─────────────────────────────────────────────────────────────
-
-async function createRoles(kc: KeycloakAdmin, token: string, a: Args): Promise<void> {
-  let created = 0
-  for (const name of ALLOWED_ROLES) {
-    const { created: wasCreated } = await kc.post(token, `/admin/realms/${a.slug}/roles`, { name })
-    if (wasCreated) created++
-  }
-  if (created === ALLOWED_ROLES.length) {
-    console.log(`  ✓ Ruoli creati: ${ALLOWED_ROLES.join(', ')}`)
-  } else {
-    console.log(`  ↩ Ruoli già esistenti (${ALLOWED_ROLES.length - created} skippati)`)
-  }
-}
-
-// ── Step 4: Realm role mapper ─────────────────────────────────────────────────
-
-async function addRoleMapper(kc: KeycloakAdmin, token: string, a: Args, clientId: string): Promise<void> {
-  const { created } = await kc.post(
-    token,
-    `/admin/realms/${a.slug}/clients/${clientId}/protocol-mappers/models`,
-    {
-      name:            'realm roles',
-      protocol:        'openid-connect',
-      protocolMapper:  'oidc-usermodel-realm-role-mapper',
-      consentRequired: false,
-      config: {
-        'multivalued':          'true',
-        'userinfo.token.claim': 'true',
-        'id.token.claim':       'true',
-        'access.token.claim':   'true',
-        'claim.name':           'realm_access.roles',
-        'jsonType.label':       'String',
-      },
-    },
-  )
-  console.log(created ? `  ✓ Mapper "realm roles" aggiunto al client` : `  ↩ Mapper "realm roles" già esistente — skip`)
-}
-
 // ── Step 5: Admin user ────────────────────────────────────────────────────────
 
 async function createAdminUser(kc: KeycloakAdmin, token: string, a: Args, password: ResolvedPassword): Promise<void> {
@@ -276,9 +238,6 @@ async function createAdminUser(kc: KeycloakAdmin, token: string, a: Args, passwo
     // niente che possa fallire.
     printOneTimePassword(a.email, password)
   }
-
-  // Assign role (idempotent — Keycloak ignores duplicate role assignments)
-  await assignRealmRole(kc, token, a.slug, userId, a.adminRole, false)
 
   if (created) console.log(`  ✓ Utente admin creato: ${a.email} (id: ${userId})`)
 }
@@ -362,6 +321,16 @@ async function provisionNeo4j(a: Args): Promise<void> {
     //     definizione o una matrice già presenti NON vengono riallineate al
     //     seme, perché potrebbero essere personalizzazioni del cliente.
     const provisioned = await provisionTenantData(session, slug, { userId })
+    console.log(provisioned.rolesCreated.length ? `  ✓ Ruoli di fabbrica creati: ${provisioned.rolesCreated.join(', ')}` : `  ↩ Ruoli già presenti — lasciati com'erano`)
+    // Il ruolo del primo admin deve gestire persone e ruoli anche nel DATO: su un
+    // tenant già esistente il ruolo di fabbrica può essere stato modificato.
+    const adminRoleRes = await session.executeRead((tx) => tx.run(
+      'MATCH (r:Role {tenant_id: $tenantId, key: $key}) RETURN $perm IN r.permissions AS ok',
+      { tenantId: slug, key: a.adminRole, perm: USERS_ADMIN_PERMISSION },
+    ))
+    if (adminRoleRes.records[0]?.get('ok') !== true) {
+      throw new Error(`Il ruolo "${a.adminRole}" di "${slug}" non gestisce persone e ruoli (${USERS_ADMIN_PERMISSION}): il primo amministratore non potrebbe farlo. Correggi il ruolo dalla pagina Ruoli o scegli --admin-role.`)
+    }
     console.log(provisioned.dashboardCreated ? `  ✓ DashboardConfig default creato` : `  ↩ DashboardConfig già esistente — skip`)
     console.log(`  ✓ Regole di notifica: ${provisioned.notificationRulesCreated} create`)
     console.log(`  ✓ Matrici di dominio create per ${slug}: ${provisioned.matricesCreated.length === 0 ? 'nessuna (erano già presenti)' : provisioned.matricesCreated.join(', ')}`)
@@ -411,10 +380,8 @@ async function main(): Promise<void> {
   console.log('▶ Keycloak')
   const token    = await kc.getAdminToken()
   await createRealm(kc, token, a)
-  const clientId = await createClient(kc, token, a)
+  await createClient(kc, token, a)
   await createPortalClient(kc, token, a)
-  await createRoles(kc, token, a)
-  await addRoleMapper(kc, token, a, clientId)
   await createAdminUser(kc, token, a, password)
 
   console.log('\n▶ Neo4j')

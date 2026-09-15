@@ -12,6 +12,7 @@ import { toPascalCase } from '@/lib/stringUtils'
 import { UPDATE_CI } from '@/graphql/mutations'
 import { useCIBaseEnums } from '@/lib/ciEnums'
 import { colors, palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 const PREVIEW_COUNT = gql`
   query GroupCriteriaPreview($ciTypes: [String], $environment: String, $status: String, $search: String) {
@@ -112,7 +113,7 @@ export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
       toast.success(t('pages.ci.criteriaSaved'))
       onSaved()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     } finally {
       setSaving(false)
     }

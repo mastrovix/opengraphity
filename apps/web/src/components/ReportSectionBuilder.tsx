@@ -9,7 +9,6 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Star, X, Check, ChevronLeft, ChevronRight } from 'lucide-react'
-import { toast } from 'sonner'
 import { GET_NAVIGABLE_ENTITIES, GET_REACHABLE_ENTITIES, PREVIEW_REPORT_SECTION } from '@/graphql/queries'
 import {
   nodeTypes, edgeTypes,
@@ -20,6 +19,7 @@ import { ReportQueryBuilder } from './ReportQueryBuilder'
 import { ReportChartConfig, CHART_TYPES, DATE_FIELD_NAMES } from './ReportChartConfig'
 import { useCIBaseEnums } from '@/lib/ciEnums'
 import { colors, palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -248,7 +248,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
       try {
         JSON.parse(n.filters)
       } catch (e) {
-        toast.error(t('toast.report.corruptFilters', { node: n.label, error: e instanceof Error ? e.message : String(e) }))
+        showError(e, t('toast.report.corruptFilters', { node: n.label, error: e instanceof Error ? e.message : String(e) }))
         return
       }
     }

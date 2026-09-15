@@ -3,14 +3,15 @@
  * richiesta non si poteva assegnare a nessuno, e ASSIGNEE restava «—» per
  * sempre. Le richieste non hanno un gruppo assegnatario, quindi la regola
  * «prima il gruppo» degli incident non vale; valgono queste:
- *  - si assegna a chi può lavorare i ticket (admin, operator), non a un
- *    viewer o a un utente del portale;
+ *  - si assegna a chi ha il permesso «Ricevere ticket» (ruoli di fabbrica admin,
+ *    operator), non a un viewer o a un utente del portale;
  *  - una richiesta conclusa non si riassegna;
  *  - userId null toglie l'assegnatario.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const h = vi.hoisted(() => ({ session: {} }))
 
@@ -24,6 +25,13 @@ vi.mock('../../../services/requestService.js', () => ({
 }))
 vi.mock('../../../services/ticketAssignment.js', () => ({ setTicketUser: vi.fn().mockResolvedValue({ userName: 'Ada' }) }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+// Chi riceve i ticket lo dice il ruolo dell'assegnatario (ondata 7): qui i ruoli di fabbrica.
+vi.mock('../../../lib/roles.js', async () => {
+  const { FACTORY_ROLE_PERMISSIONS, isUserRole } = await import('@opengraphity/types')
+  return {
+    roleHasPermission: vi.fn(async (_t: string, role: string, p: string) => isUserRole(role) && (FACTORY_ROLE_PERMISSIONS[role] as readonly string[]).includes(p)),
+  }
+})
 
 const { serviceRequestResolvers } = await import('../service_request.js')
 const { runQueryOne } = await import('@opengraphity/neo4j')
@@ -31,7 +39,7 @@ const { setTicketUser } = await import('../../../services/ticketAssignment.js')
 const { audit } = await import('../../../lib/audit.js')
 
 const assign = serviceRequestResolvers.Mutation.assignServiceRequestToUser
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@test.io', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@test.io', role: 'operator', permissions: perms('operator') }
 
 async function failure(promise: Promise<unknown>): Promise<GraphQLError> {
   const err = await promise.then(() => null, (e: unknown) => e)

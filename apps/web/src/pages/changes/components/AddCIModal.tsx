@@ -12,6 +12,7 @@ import { Modal } from '@/components/Modal'
 import { GET_ALL_CIS } from '@/graphql/queries'
 import { ADD_CI_TO_CHANGE } from '@/graphql/mutations'
 import { colors } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, refetchImpacted, refetchAudit }: {
   changeId: string
@@ -33,7 +34,7 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
       void refetchAudit()
       toast.success(t('toast.change.ciAdded'))
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const results = ciData?.allCIs?.items ?? []
 

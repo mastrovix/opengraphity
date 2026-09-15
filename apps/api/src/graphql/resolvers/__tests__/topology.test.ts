@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
   ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
@@ -61,7 +62,7 @@ vi.mock('../../../lib/cache.js', () => ({
 const { topologyResolvers } = await import('../topology.js')
 
 const topology = topologyResolvers.Query.topology
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@x', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') }
 
 const queryWith = (needle: string) => queries.find((q) => q.cypher.includes(needle))
 

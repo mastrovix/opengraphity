@@ -23,6 +23,7 @@ import { formatDate, formatDateTime } from '@/lib/datetime'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { Link, useSearchParams } from 'react-router-dom'
 import { transitionErrorText, type TransitionFailure } from '@/lib/transitionError'
+import { showError } from '@/lib/showError'
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 
@@ -97,7 +98,7 @@ function VersionHistory({ articleId, onRestored }: { articleId: string; onRestor
   })
   const [restore, { loading: restoring }] = useMutation<{ restoreKBArticleVersion: RestoredArticle }>(RESTORE_KB_VERSION, {
     onCompleted: (d) => { toast.success(t('toast.kb.versionRestored')); void refetch(); onRestored(d.restoreKBArticleVersion) },
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
   const versions = data?.kbArticleVersions ?? []
 
@@ -263,7 +264,7 @@ export function KBAdminPage() {
       setListFilter(kbFilterFromGroup(group, t))
       setPage(0)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     }
   }
   const { data, loading, refetch } = useQuery<{ kbArticles: { items: KBArticle[]; total: number } }>(
@@ -306,7 +307,7 @@ export function KBAdminPage() {
         }
       }
     },
-    onError: (e: { message: string }) => { publishingRef.current = false; toast.error(e.message) },
+    onError: (e: { message: string }) => { publishingRef.current = false; showError(e) },
   })
 
   const [updateArticle, { loading: updating }] = useMutation<{ updateKBArticle: KBArticle }>(UPDATE_ARTICLE, {
@@ -339,16 +340,16 @@ export function KBAdminPage() {
         void refetch()
       }
     },
-    onError: (e: { message: string }) => { publishingRef.current = false; toast.error(e.message) },
+    onError: (e: { message: string }) => { publishingRef.current = false; showError(e) },
   })
 
   const [deleteArticle] = useMutation(DELETE_ARTICLE, {
     onCompleted: () => { toast.success(t('pages.kbAdmin.deleted')); setDeleteId(null); void refetch() },
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
 
   const [execTransition, { loading: transitioning }] = useMutation<{ executeWorkflowTransition: TransitionFailure & { success: boolean } }>(EXECUTE_TRANSITION, {
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
 
   // ── Helpers ──

@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const txRun = vi.fn()
 vi.mock('@opengraphity/neo4j', () => ({
@@ -35,7 +36,7 @@ vi.mock('../../../lib/vocabularyEntries.js', () => ({ loadVocabularyEntries }))
 vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
 
 const { createKBArticle, updateKBArticle, kbCategories } = await import('../knowledgeBase.js')
-const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') }
 
 describe('categorie KB dal Dizionario', () => {
   beforeEach(() => { txRun.mockReset(); vi.clearAllMocks() })

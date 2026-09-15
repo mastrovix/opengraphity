@@ -31,6 +31,7 @@ import { colors } from '@/lib/tokens'
 import { CIHealthBadge, EventStatusBadge } from '@/pages/events/eventShared'
 import { CIAliasesSection } from '@/pages/events/CIAliasesSection'
 import { CI_HEALTHS, type CIHealthInfo, type CIHealth, type EventRow } from '@/types/events'
+import { showError } from '@/lib/showError'
 
 const RECENT_LIMIT = 5
 
@@ -38,8 +39,8 @@ const hint: React.CSSProperties = { margin: 0, fontSize: 'var(--font-size-table)
 
 export function CIHealthSection({ ciId, ciName }: { ciId: string; ciName: string }) {
   const { t } = useTranslation()
-  const { role, isAdmin } = useMe()
-  const canOverride = role === 'admin' || role === 'operator'
+  const { can } = useMe()
+  const canOverride = can('event.work')
   const overrideId = useId()
 
   const { data, loading, error, refetch } = useQuery<{ ciHealth: CIHealthInfo }>(GET_CI_HEALTH, { variables: { ciId }, fetchPolicy: 'cache-and-network' })
@@ -72,7 +73,7 @@ export function CIHealthSection({ ciId, ciName }: { ciId: string; ciName: string
       toast.success(health ? t('toast.monitoring.healthOverridden', { health: t(`events.health.${health}`) }) : t('toast.monitoring.overrideRemoved'))
       setDraft(null)
       void refetch()
-    } catch (e) { toast.error(t('toast.events.actionFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.events.actionFailed', { error: errorMessage(e) })) }
   }
 
   const consoleLink = `/events?ciId=${encodeURIComponent(ciId)}`
@@ -128,7 +129,7 @@ export function CIHealthSection({ ciId, ciName }: { ciId: string; ciName: string
         </>
       )}
 
-      <CIAliasesSection ci={{ id: ciId, name: ciName }} canEdit={isAdmin} variant="inline" />
+      <CIAliasesSection ci={{ id: ciId, name: ciName }} canEdit={can('config.monitoring')} variant="inline" />
 
       <div style={{ paddingTop: 12, borderTop: `1px solid ${colors.border}` }}>
         <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>{t('monitoring.ciHealth.recentEvents')}</div>

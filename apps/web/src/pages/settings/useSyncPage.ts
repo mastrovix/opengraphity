@@ -4,6 +4,7 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { useConfirm } from '@/hooks/useConfirm'
+import { showError } from '@/lib/showError'
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 
@@ -216,7 +217,7 @@ export function useSyncPage(): UseSyncPageReturn {
       })
       toast.success(t('pages.sync.sourceCreated'))
     } catch (err) {
-      toast.error((err as Error).message)
+      showError(err)
       throw err
     }
   }
@@ -227,7 +228,7 @@ export function useSyncPage(): UseSyncPageReturn {
       await deleteSourceMut({ variables: { id } })
       toast.success(t('pages.sync.sourceDeleted'))
     } catch (err) {
-      toast.error((err as Error).message)
+      showError(err)
     }
   }
 
@@ -236,7 +237,7 @@ export function useSyncPage(): UseSyncPageReturn {
       await triggerSyncMut({ variables: { sourceId } })
       toast.success(t('pages.sync.syncTriggered'))
     } catch (err) {
-      toast.error((err as Error).message)
+      showError(err)
     }
   }
 
@@ -247,7 +248,7 @@ export function useSyncPage(): UseSyncPageReturn {
       if (result?.ok) toast.success(result.message)
       else            toast.error(result?.message ?? t('toast.sync.connectionFailed'))
     } catch (err) {
-      toast.error((err as Error).message)
+      showError(err)
     }
   }
 
@@ -256,7 +257,7 @@ export function useSyncPage(): UseSyncPageReturn {
       await updateSourceMut({ variables: { id: sourceId, input: { scheduleCron: cron } } })
       toast.success(t('toast.sync.scheduleSaved'))
     } catch (err) {
-      toast.error((err as Error).message)
+      showError(err)
       throw err
     }
   }
@@ -284,7 +285,7 @@ export function useSyncPage(): UseSyncPageReturn {
       await resolveConflictMut({ variables: { conflictId, resolution } })
       toast.success(t('toast.sync.conflictResolved'))
     } catch (err) {
-      toast.error((err as Error).message)
+      showError(err)
     }
   }
 

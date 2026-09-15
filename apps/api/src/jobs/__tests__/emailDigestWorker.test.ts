@@ -3,7 +3,7 @@
  *  - the tick sends only to tenants whose LOCAL hour is 08:00 (tenant timezone);
  *  - idempotency marker `digest:<tenant>:<localDate>` claimed with SET NX on the
  *    shared Redis (in-memory Map here): a second tick on the same local day is skipped;
- *  - recipients: admin/operator with coalesce(notifications_enabled, true) = true;
+ *  - recipients: people who work tickets (ticket.assignable on their role) with coalesce(notifications_enabled, true) = true;
  *  - a Redis/tenant failure is aggregated and the tick REJECTS (no silent skip).
  * Pure helpers (localHourAndDate, digestMarkerKey, resolveTenantTimezone) are
  * covered in schedulerHelpers.test.ts and not repeated.
@@ -161,14 +161,15 @@ describe('processDigestTick — marker di idempotenza (SET NX)', () => {
 })
 
 describe('processDigestTick — destinatari', () => {
-  it('la Cypher filtra admin/operator con coalesce(notifications_enabled, true) = true, scopata per tenant', async () => {
+  it('la Cypher filtra chi lavora i ticket (permesso del ruolo) con coalesce(notifications_enabled, true) = true, scopata per tenant', async () => {
     await processDigestTick(AT_ROME_8)
 
     const users = queries.filter((x) => x.q.includes('MATCH (u:User'))
     expect(users).toHaveLength(1)
-    expect(users[0]!.p).toEqual({ t: 'rome', role: null })
+    expect(users[0]!.p).toEqual({ t: 'rome', role: null, permission: 'ticket.assignable' })
     expect(users[0]!.q).toContain('MATCH (u:User {tenant_id: $t})')
-    expect(users[0]!.q).toMatch(/u\.role IN \['admin', 'operator', 'TENANT_ADMIN', 'OPERATOR'\]/)
+    expect(users[0]!.q).toContain('MATCH (r:Role {tenant_id: $t, key: u.role})')
+    expect(users[0]!.q).toContain('$permission IN r.permissions')
     expect(users[0]!.q).toContain('coalesce(u.notifications_enabled, true) = true')
     expect(users[0]!.q).toMatch(/u\.email IS NOT NULL AND u\.email <> ''/)
   })
@@ -254,7 +255,7 @@ describe('processDigestTick — la regola decide', () => {
   it('bersaglio per ruolo → solo quel ruolo; indirizzi espliciti → quelli', async () => {
     tenants = [{ id: 'rome', timezone: 'Europe/Rome', target: 'role:admin' }]
     await processDigestTick(AT_ROME_8)
-    expect(queries.find((x) => x.q.includes('MATCH (u:User'))!.p).toEqual({ t: 'rome', role: 'admin' })
+    expect(queries.find((x) => x.q.includes('MATCH (u:User'))!.p).toEqual({ t: 'rome', role: 'admin', permission: 'ticket.assignable' })
 
     vi.clearAllMocks(); redis.store.clear(); queries.length = 0
     tenants = [{ id: 'rome', timezone: 'Europe/Rome', recipients: ['boss@rome.io'] }]

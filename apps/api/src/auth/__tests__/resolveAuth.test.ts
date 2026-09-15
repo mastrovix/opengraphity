@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import { resetConfigCache } from '../../lib/config.js'
 import type express from 'express'
+import { perms } from '../../lib/__tests__/testPermissions.js'
 
 // ── Mocks (declared before the dynamic import below) ─────────────────────────
 
@@ -12,6 +13,12 @@ const executeRead = vi.fn()
 const close       = vi.fn().mockResolvedValue(undefined)
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(() => ({ executeRead, close })),
+}))
+
+vi.mock('../../lib/roles.js', () => ({
+  rolePermissions: vi.fn(async (_t: string, role: string) => perms(role)),
+  // I ruoli dell'organizzazione: qui i quattro di fabbrica.
+  tenantRoles: vi.fn(async () => new Map(['admin', 'operator', 'viewer', 'end_user'].map((key) => [key, { key, name: null, permissions: perms(key), isFactory: true }]))),
 }))
 
 vi.mock('../../lib/logger.js', () => ({
@@ -77,7 +84,7 @@ describe('resolveAuth (Keycloak)', () => {
 
     const ctx = await resolveAuth('tok', makeReq({ host: 'tenant-a.localhost' }))
 
-    expect(ctx).toEqual({ tenantId: 'tenant-a', userId: 'u-1', userEmail: 'alice@acme.io', role: 'operator' })
+    expect(ctx).toEqual({ tenantId: 'tenant-a', userId: 'u-1', userEmail: 'alice@acme.io', role: 'operator', permissions: perms('operator') })
     expect(close).toHaveBeenCalled()
   })
 
@@ -182,7 +189,7 @@ describe('resolveAuth (legacy JWT)', () => {
     const jwt = (await import('jsonwebtoken')).default
     const token = jwt.sign({ tenant_id: 't', user_id: 'u', email: 'e@x', role: 'admin' }, 'test-secret')
 
-    await expect(resolveAuth(token, makeReq())).resolves.toEqual({ tenantId: 't', userId: 'u', userEmail: 'e@x', role: 'admin' })
+    await expect(resolveAuth(token, makeReq())).resolves.toEqual({ tenantId: 't', userId: 'u', userEmail: 'e@x', role: 'admin', permissions: perms('admin') })
   })
 
   it('con ALLOW_LEGACY_JWT=true un JWT con firma errata è rifiutato', async () => {

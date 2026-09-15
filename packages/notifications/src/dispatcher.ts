@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import { BaseConsumer } from '@opengraphity/events'
-import type { DomainEvent, StepEnteredFacts } from '@opengraphity/types'
+import { TICKET_WORKER_PERMISSION, type DomainEvent, type StepEnteredFacts } from '@opengraphity/types'
 import { isStepEnteredEventType, stepEnteredEntityType, legacyStepEventType, AUTOMATION_NOTIFICATION_EVENT, AUTOMATION_NOTIFICATION_CHANNELS, type AutomationNotificationPayload } from '@opengraphity/types'
 import { getSession } from '@opengraphity/neo4j'
 import { sseManager, InAppNotification } from './sse.js'
@@ -694,8 +694,9 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
   }
 
   /**
-   * Destinatari email della trasmissione (`target: 'all'`): admin/operator con
-   * un indirizzo che non hanno disattivato le notifiche.
+   * Destinatari email della trasmissione (`target: 'all'`): chi lavora i ticket
+   * (il permesso `TICKET_WORKER_PERMISSION` del suo ruolo, ondata 7; prima
+   * «admin/operator») con un indirizzo, che non ha disattivato le notifiche.
    * `notifications_enabled` è l'UNICO criterio di esclusione (assente →
    * attivo, false → escluso) — gli account dimostrativi sono marcati con
    * quello invece di essere riconosciuti dall'indirizzo (D-20).
@@ -705,12 +706,13 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     try {
       const result = await session.executeRead(tx => tx.run(
         `MATCH (u:User {tenant_id: $tenantId})
-         WHERE u.role IN ['admin', 'operator', 'TENANT_ADMIN', 'OPERATOR']
+         MATCH (r:Role {tenant_id: $tenantId, key: u.role})
+         WHERE $permission IN r.permissions
            AND u.email IS NOT NULL
            AND u.email <> ''
            AND coalesce(u.notifications_enabled, true) = true
          RETURN u.email AS email`,
-        { tenantId },
+        { tenantId, permission: TICKET_WORKER_PERMISSION },
       ))
       return result.records.map(r => r.get('email') as string).filter(Boolean)
     } finally {

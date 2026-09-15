@@ -83,6 +83,7 @@ import {
   serviceStatusLabel, serviceHealthLabel, staleMessage,
 } from './servicesShared'
 import type { ServiceMapDetail, ServiceMapNode, ImpactCause, ServiceMapStatus, ServiceMapSyncResult } from '@/types/services'
+import { showError } from '@/lib/showError'
 
 const POLL_MS = 15_000
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
@@ -120,7 +121,10 @@ export function ServiceDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { isAdmin } = useMe()
+  const { can } = useMe()
+  // Ondata 7: la configurazione della mappa è `config.services`, il ricalcolo `service.reevaluate`.
+  const managesServices = can('config.services')
+  const mayReevaluate = can('service.reevaluate')
   const confirm = useConfirm()
   const { ciTypes } = useMetamodel()
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -191,7 +195,7 @@ export function ServiceDetailPage() {
       const next = res.data?.reevaluateServiceMap
       if (!next) throw new Error(t('monitoring.services.detail.noResult', { operation: 'reevaluateServiceMap' }))
       toast.success(t('toast.services.reevaluated', { health: serviceHealthLabel(t, next.health) }))
-    } catch (e) { toast.error(t('toast.services.actionFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.services.actionFailed', { error: errorMessage(e) })) }
   }
 
   /**
@@ -214,7 +218,7 @@ export function ServiceDetailPage() {
       toast.success(out.added === 0 && out.removed === 0 && out.moved === 0
         ? t('toast.services.syncAligned')
         : t('toast.services.synced', { added: out.added, removed: out.removed, moved: out.moved }))
-    } catch (e) { toast.error(t('toast.services.actionFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.services.actionFailed', { error: errorMessage(e) })) }
   }
 
   /** Bozza → attiva, attiva → in pausa, in pausa → riattivata: un pulsante solo, con l'etichetta dello stato vero. */
@@ -225,7 +229,7 @@ export function ServiceDetailPage() {
       const next = res.data?.setServiceMapStatus
       if (!next) throw new Error(t('monitoring.services.detail.noResult', { operation: 'setServiceMapStatus' }))
       toast.success(t('toast.services.statusChanged', { status: serviceStatusLabel(t, next.status) }))
-    } catch (e) { toast.error(t('toast.services.actionFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.services.actionFailed', { error: errorMessage(e) })) }
   }
 
   async function onDelete() {
@@ -236,7 +240,7 @@ export function ServiceDetailPage() {
       await deleteMap({ variables: { id } })
       toast.success(t('toast.services.deleted'))
       navigate('/monitoring/services')
-    } catch (e) { toast.error(t('toast.services.actionFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.services.actionFailed', { error: errorMessage(e) })) }
   }
 
   return (
@@ -280,7 +284,7 @@ export function ServiceDetailPage() {
           <div role="alert" data-testid="stale-banner" data-reason={map.staleReason ?? 'none'} style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, padding: '10px 14px', borderRadius: 8, background: AMBER_BANNER.bg, border: `1px solid ${AMBER_BANNER.border}`, color: AMBER_BANNER.text, fontSize: 'var(--font-size-body)' }}>
             <AlertTriangle size={16} aria-hidden="true" style={{ flexShrink: 0 }} />
             <span>{staleMessage(t, map.staleReason)}</span>
-            {isAdmin && map.staleReason === 'over_limit' && (
+            {managesServices && map.staleReason === 'over_limit' && (
               <Button variant="secondary" size="xs" disabled={busy} icon={<GitCompareArrows size={13} aria-hidden="true" />} onClick={() => setUpdateOpen(true)}>
                 {t('monitoring.services.detail.actions.reviewComponents')}
               </Button>
@@ -290,11 +294,14 @@ export function ServiceDetailPage() {
         <p data-testid="explanation-sentence" style={{ margin: '12px 0 0', fontSize: 'var(--font-size-card-title)', color: colors.slateDark, lineHeight: 1.6 }}>
           {explanationSentence(t, map)}
         </p>
-        {isAdmin && (
+        {(managesServices || mayReevaluate) && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
+            {mayReevaluate && (
             <Button variant="secondary" size="sm" disabled={busy} icon={reevaluating ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RotateCcw size={14} aria-hidden="true" />} onClick={() => void onReevaluate()}>
               {t('monitoring.services.detail.actions.reevaluate')}
             </Button>
+            )}
+            {managesServices && (<>
             {/* Mappa viva: si sincronizza a richiesta e il diff serve solo a rivedere ed escludere; congelata: il diff è l'unico modo di far entrare i componenti nuovi. */}
             {/* C-11: su una mappa in pausa il motore rifiuta la sincronizzazione manuale: il pulsante è disabilitato e dice perché, invece di fallire ogni volta. */}
             {map.autoSync && (
@@ -318,6 +325,7 @@ export function ServiceDetailPage() {
             <Button variant="danger" size="sm" disabled={busy} icon={<Trash2 size={14} aria-hidden="true" />} onClick={() => void onDelete()}>
               {t('monitoring.services.detail.actions.delete')}
             </Button>
+            </>)}
           </div>
         )}
       </div>
@@ -348,7 +356,7 @@ export function ServiceDetailPage() {
         </SectionCard>
 
         <SectionCard title={t('monitoring.services.detail.components')} count={map.nodeCount}>
-          <ServiceComponentsTable map={map} canEdit={isAdmin} ciTypeLabel={ciTypeLabel} onReload={() => void refetch()} />
+          <ServiceComponentsTable map={map} canEdit={managesServices} ciTypeLabel={ciTypeLabel} onReload={() => void refetch()} />
         </SectionCard>
 
         {/* C-12: la scheda tiene la sola CONFIGURAZIONE; stato, valutazione, sincronizzazione e versione stanno una volta sola, in testata. */}
@@ -361,10 +369,10 @@ export function ServiceDetailPage() {
           <DetailField label={t('monitoring.services.detail.fields.builtFrom')} value={builtFromLabel(map.builtFrom, t)} />
           <DetailField label={t('monitoring.services.detail.fields.excluded')} value={t('monitoring.services.detail.fields.excludedCount', { count: map.excluded.length })} />
           <DetailField label={t('monitoring.services.detail.fields.updatedAt')} value={map.updatedAt ? `${formatDateTime(map.updatedAt)} · ${timeAgo(map.updatedAt)}` : null} />
-          {isAdmin && <ServiceAutoSyncToggle map={map} onReload={() => void refetch()} />}
+          {managesServices && <ServiceAutoSyncToggle map={map} onReload={() => void refetch()} />}
         </SectionCard>
 
-        <ServiceRulesCard map={map} canEdit={isAdmin} onReload={() => void refetch()} />
+        <ServiceRulesCard map={map} canEdit={managesServices} onReload={() => void refetch()} />
 
         <ServiceHistorySection mapId={map.id} entries={map.history} total={map.historyCount} />
 
@@ -385,7 +393,7 @@ export function ServiceDetailPage() {
         )}
       </div>
 
-      {isAdmin && <UpdateServiceMapDialog map={map} open={updateOpen} onClose={() => setUpdateOpen(false)} />}
+      {managesServices && <UpdateServiceMapDialog map={map} open={updateOpen} onClose={() => setUpdateOpen(false)} />}
     </PageContainer>
   )
 }

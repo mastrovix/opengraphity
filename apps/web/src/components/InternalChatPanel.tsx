@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Lock, SendHorizontal, Pencil, Trash2 } from 'lucide-react'
-import { toast } from 'sonner'
 import { MentionInput } from '@/components/MentionInput'
 import { MentionText } from '@/components/MentionText'
 import { GET_INTERNAL_MESSAGES } from '@/graphql/queries'
@@ -10,6 +9,7 @@ import { SEND_INTERNAL_MESSAGE, EDIT_INTERNAL_MESSAGE, DELETE_INTERNAL_MESSAGE }
 import { useConfirm } from '@/hooks/useConfirm'
 import { timeAgo } from '@/lib/datetime'
 import { colors, palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 interface Message {
   id: string
@@ -44,18 +44,18 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
   const [sendMessage, { loading: sending }] = useMutation(SEND_INTERNAL_MESSAGE, {
     onCompleted: () => { setBody(''); void refetch() },
     // Il testo NON viene svuotato su errore: l'utente può ritentare l'invio.
-    onError: (e) => toast.error(t('toast.internalChat.sendFailed', { error: e.message })),
+    onError: (e) => showError(e, t('toast.internalChat.sendFailed', { error: e.message })),
   })
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editBody, setEditBody]   = useState('')
   const [editMessage, { loading: editing }] = useMutation(EDIT_INTERNAL_MESSAGE, {
     onCompleted: () => { setEditingId(null); setEditBody(''); void refetch() },
-    onError: (e) => toast.error(t('toast.internalChat.editFailed', { error: e.message })),
+    onError: (e) => showError(e, t('toast.internalChat.editFailed', { error: e.message })),
   })
   const [deleteMessage] = useMutation(DELETE_INTERNAL_MESSAGE, {
     onCompleted: () => void refetch(),
-    onError: (e) => toast.error(t('toast.internalChat.deleteFailed', { error: e.message })),
+    onError: (e) => showError(e, t('toast.internalChat.deleteFailed', { error: e.message })),
   })
 
   const messages: Message[] = data?.internalMessages ?? []

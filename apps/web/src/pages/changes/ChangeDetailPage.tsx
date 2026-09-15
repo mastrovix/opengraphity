@@ -57,6 +57,7 @@ import { UnifiedLinkedTickets } from '@/components/UnifiedLinkedTickets'
 import { SuppressedAlarmsSection } from '@/pages/events/CorrelatedEventsSection'
 import { colors, palette } from '@/lib/tokens'
 import { withLocalizedLabel, localizedLabel } from '@/lib/localizedLabel'
+import { showError } from '@/lib/showError'
 
 interface ImpactedCIRow {
   ci: { id: string; name: string; type: string | null; environment: string | null }
@@ -78,7 +79,7 @@ export function ChangeDetailPage() {
   const { data: changeData, loading, error: changeError, refetch: refetchChange } = useQuery<{ change: ChangeData | null }>(GET_CHANGE, { variables: { id: changeId }, fetchPolicy: 'cache-and-network' })
   const { data: affectedData, refetch: refetchAffected } = useQuery<{ changeAffectedCIs: AffectedCI[] }>(GET_CHANGE_AFFECTED_CIS, { variables: { changeId }, fetchPolicy: 'cache-and-network' })
   const { data: auditData, refetch: refetchAudit } = useQuery<{ changeAuditTrail: ChangeAuditEntryData[] }>(GET_CHANGE_AUDIT_TRAIL, { variables: { changeId }, fetchPolicy: 'cache-and-network' })
-  const { me } = useMe()
+  const { me, can } = useMe()
   const meData: { me: MeData | null } = { me }
   const { steps: wfSteps, byName: wfByName, initialStep: wfInitialStep, isTerminal: wfIsTerminal, purposeOf: wfPurposeOf } = useWorkflowSteps('change')
 
@@ -91,7 +92,7 @@ export function ChangeDetailPage() {
       if (errs?.length) toast.warning(t('toast.change.transitionPartial', { count: errs.length, errors: errs.join(' · ') }), { duration: 10000 })
       await refetchAll()
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const [transitionModal, setTransitionModal] = useState<{ toStep: string; label: string; inputField: string | null } | null>(null)
   const [transitionNotes, setTransitionNotes] = useState('')
@@ -105,11 +106,11 @@ export function ChangeDetailPage() {
 
   const [approveApproval, { loading: approving }] = useMutation(APPROVE_CHANGE_APPROVAL, {
     onCompleted: async () => { toast.success(t('toast.change.approvalRecorded')); await refetchAll() },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const [rejectApproval] = useMutation(REJECT_CHANGE_APPROVAL, {
     onCompleted: async () => { toast.success(t('toast.change.approvalRejected')); await refetchAll() },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const [rejectModal, setRejectModal] = useState<{ teamId: string; teamName: string } | null>(null)
   const [rejectNote, setRejectNote] = useState('')
@@ -121,17 +122,18 @@ export function ChangeDetailPage() {
   //    l'audit trail.
   const [linkTicket] = useMutation(LINK_RESOLVED_TICKET, {
     onCompleted: async () => { toast.success(t('toast.change.ticketLinked')); await refetchAll() },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const [unlinkTicket] = useMutation(UNLINK_RESOLVED_TICKET, {
     onCompleted: async () => { toast.success(t('toast.change.ticketUnlinked')); await refetchAll() },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const change = changeData?.change
   const affected = Array.from(new Map((affectedData?.changeAffectedCIs ?? []).map(a => [a.ci.id, a])).values())
   const audit = auditData?.changeAuditTrail ?? []
-  const isAdmin = meData?.me?.role === 'admin'
+  // Chi agisce per qualunque team (approval.override, ondata 7; prima «admin»).
+  const actsForAnyTeam = can('approval.override')
   const userTeamIds = new Set((meData?.me?.teams ?? []).map(t => t.id))
 
   const [impactDepth, setImpactDepth] = useState(1)
@@ -148,7 +150,7 @@ export function ChangeDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleteChange, { loading: deleting }] = useMutation(DELETE_CHANGE, {
     onCompleted: () => { toast.success(t('toast.change.deleted')); navigate('/changes') },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const handleExportPdf = async () => {
@@ -170,7 +172,7 @@ export function ChangeDetailPage() {
       toast.success(t('toast.change.ciRemoved'))
       setConfirmRemoveCI(null)
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const [addCIFromImpacted] = useMutation(ADD_CI_TO_CHANGE, {
     onCompleted: () => {
@@ -179,7 +181,7 @@ export function ChangeDetailPage() {
       void refetchAudit()
       toast.success(t('toast.change.ciAddedToAffected'))
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   if (loading && !change) return <PageContainer><p>{t('common.loading')}</p></PageContainer>
@@ -248,7 +250,7 @@ export function ChangeDetailPage() {
           </Button>
           {/* F13: osservatori anche sulle change, come sugli altri ticket. */}
           <WatcherBar entityType="change" entityId={change.id} />
-          {isAdmin && (
+          {can('change.delete') && (
             <Button
               variant="secondary"
               disabled={deleting}
@@ -268,7 +270,7 @@ export function ChangeDetailPage() {
         atApproval={atApproval}
         initialStepName={wfInitialStep?.name ?? null}
         isTerminal={wfIsTerminal(currentStep)}
-        isAdmin={isAdmin}
+        actsForAnyTeam={actsForAnyTeam}
         transitioning={transitioning}
         totalTasks={totalTasks}
         completedTasks={completedTasks}
@@ -279,7 +281,7 @@ export function ChangeDetailPage() {
 
       {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
       <div style={{ marginBottom: 16 }}>
-        <CustomFieldsCard entityType="change" ticketId={change.id} fields={change.customFields ?? []} canEdit={meData?.me?.role === 'admin' || meData?.me?.role === 'operator'} onSaved={() => void refetchAll()} />
+        <CustomFieldsCard entityType="change" ticketId={change.id} fields={change.customFields ?? []} canEdit={can('ticket.work')} onSaved={() => void refetchAll()} />
       </div>
 
       {/* Approvazione multi-parte: Change Manager + un owner group per CI affected.
@@ -390,7 +392,7 @@ export function ChangeDetailPage() {
       <CITasksTable
         key={`tasks-${currentStep}`}
         affected={affected}
-        isAdmin={isAdmin}
+        actsForAnyTeam={actsForAnyTeam}
         userTeamIds={userTeamIds}
         defaultOpen={!atApproval}
         activeColor={atApproval ? undefined : palette.yellow.bg}

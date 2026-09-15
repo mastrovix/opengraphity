@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next'
 import { GET_ENTITY_COMMENTS } from '@/graphql/queries'
 import { ADD_ENTITY_COMMENT } from '@/graphql/mutations'
 import { CommentsSection, type TicketComment } from './CommentsSection'
+import { showError } from '@/lib/showError'
 
 interface EntityCommentRow {
   id: string; body: string; isInternal: boolean
@@ -38,7 +39,7 @@ export function EntityCommentsSection({ entityType, entityId }: { entityType: 'c
   const { data, refetch } = useQuery<{ comments: EntityCommentRow[] }>(GET_ENTITY_COMMENTS, { variables })
   const [add, { loading }] = useMutation(ADD_ENTITY_COMMENT, {
     refetchQueries: [{ query: GET_ENTITY_COMMENTS, variables }],
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
     onCompleted: () => toast.success(t('toast.comment.added')),
   })
   return (

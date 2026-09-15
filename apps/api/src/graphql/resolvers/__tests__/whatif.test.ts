@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(() => ({ close: vi.fn().mockResolvedValue(undefined) })),
@@ -19,7 +20,7 @@ vi.mock('../../../lib/workflowHelpers.js', () => ({ getTerminalStepNames: vi.fn(
 const { whatifResolvers } = await import('../whatif.js')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 
-const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') }
 
 beforeEach(() => {
   vi.clearAllMocks()

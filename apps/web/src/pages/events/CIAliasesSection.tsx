@@ -24,6 +24,7 @@ import { formatDateTime } from '@/lib/datetime'
 import { colors } from '@/lib/tokens'
 import { TINT_INFO } from '@/lib/eventPalette'
 import { CI_ALIAS_KINDS, type CIAlias, type CIAliasKind } from '@/types/events'
+import { showError } from '@/lib/showError'
 
 const hint: React.CSSProperties = { margin: 0, fontSize: 'var(--font-size-table)', color: colors.slateLight, lineHeight: 1.5 }
 const bodyMuted: React.CSSProperties = { color: colors.slateLight, fontSize: 'var(--font-size-body)', margin: 0 }
@@ -55,7 +56,7 @@ export function CIAliasesSection({ ci, canEdit, variant }: Props) {
       await deleteAlias({ variables: { id: alias.id } })
       toast.success(t('toast.events.aliasDeleted'))
       void refetch()
-    } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
+    } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) })) }
   }
 
   async function handleCreate() {
@@ -66,7 +67,7 @@ export function CIAliasesSection({ ci, canEdit, variant }: Props) {
       toast.success(t('toast.events.aliasCreated'))
       setValue('')
       void refetch()
-    } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
+    } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) })) }
   }
 
   const inline = variant === 'inline'

@@ -18,6 +18,7 @@ vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
 }))
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const mockSession = {
   executeRead:  vi.fn(),
@@ -38,9 +39,9 @@ vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undef
 const { teamResolvers } = await import('../team.js')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { withSession } = await import('../ci-utils.js')
-const { authorize, allowedRoles } = await import('../../../lib/authorization.js')
+const { authorizeFactory: authorize, allowedRoles } = await import('../../../lib/__tests__/factoryRoles.js')
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator', permissions: perms('operator') }
 
 const CI_ROW = { props: { id: 'ci-1', name: 'srv-01', status: 'active', created_at: '2026-01-01T00:00:00Z' }, label: 'Server' }
 
@@ -156,8 +157,8 @@ describe('policy di ruolo sui campi root del team resolver', () => {
     }
   })
 
-  it('ruolo sconosciuto → Forbidden esplicito, nessun downgrade a viewer', () => {
-    expect(() => authorize('Mutation', 'assignCIOwner', 'superuser')).toThrow(/Unknown role/)
+  it('un ruolo senza permessi → Forbidden, nessun downgrade a viewer', () => {
+    expect(() => authorize('Mutation', 'assignCIOwner', 'superuser')).toThrow(/cmdb\.write/)
   })
 })
 

@@ -9,7 +9,7 @@ import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
 import type { GraphQLContext } from '../../context.js'
 import type { Queryable } from '@opengraphity/neo4j'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { provisionTenantData, tenantProvisioningGaps } from '../../lib/provisionTenantData.js'
 import { mapGaps } from '../issueShape.js'
 import {
@@ -298,13 +298,13 @@ async function removeWorkflowStep(
  * sovrascritta): mancava solo la porta per chiamarla.
  */
 async function tenantProvisioningGapsQuery(_: unknown, __: unknown, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'admin.system')
   const gaps = await withSession((session) => tenantProvisioningGaps(session as unknown as Queryable, ctx.tenantId))
   return mapGaps(gaps)
 }
 
 async function provisionTenantDataMutation(_: unknown, __: unknown, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'admin.system')
   const result = await withSession((session) => provisionTenantData(session, ctx.tenantId, { userId: ctx.userId }), true)
   // I workflow nuovi cambiano i metadata dei passi che tutto il resto legge.
   invalidateWorkflowCache(ctx.tenantId)
@@ -317,6 +317,7 @@ async function provisionTenantDataMutation(_: unknown, __: unknown, ctx: GraphQL
   // proprio questa mutation.
   invalidateSchema(ctx.tenantId)
   void audit(ctx, 'tenant.provisioned', 'Tenant', ctx.tenantId, {
+    roles: result.rolesCreated,
     dashboard: result.dashboardCreated,
     notificationRules: result.notificationRulesCreated,
     matrices: result.matricesCreated,
@@ -324,6 +325,7 @@ async function provisionTenantDataMutation(_: unknown, __: unknown, ctx: GraphQL
   })
   const gaps = await withSession((session) => tenantProvisioningGaps(session as unknown as Queryable, ctx.tenantId))
   return {
+    rolesCreated:             result.rolesCreated,
     dashboardCreated:         result.dashboardCreated,
     notificationRulesCreated: result.notificationRulesCreated,
     matricesCreated:          [...result.matricesCreated],

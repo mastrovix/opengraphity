@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const h = vi.hoisted(() => ({
   session: { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn() },
@@ -29,7 +30,7 @@ const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { createRequest } = await import('../../../services/requestService.js')
 
 const createServiceRequest = serviceRequestResolvers.Mutation.createServiceRequest
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@test.io', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@test.io', role: 'operator', permissions: perms('operator') }
 
 const rule = (field_name: string, workflow_step: string | null = null) =>
   ({ r: { properties: { field_name, required: true, workflow_step } } })
@@ -103,7 +104,7 @@ describe('createServiceRequest — item di catalogo', () => {
  * `medium` scritto nel codice.
  */
 describe('createServiceRequest — priorità dalla voce del catalogo', () => {
-  const endUser: GraphQLContext = { ...ctx, role: 'end_user' }
+  const endUser: GraphQLContext = { ...ctx, role: 'end_user', permissions: perms('end_user') }
 
   it('senza priorità nell\'input vale quella della voce', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'high', name: 'Sblocco account' })
@@ -149,7 +150,7 @@ describe('createServiceRequest — priorità dalla voce del catalogo', () => {
 describe('createServiceRequest — campi personalizzati', () => {
   it('dal portale senza campi → il servizio riceve una lista vuota e il canale portal; da operatore resta assente', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'high', name: 'Sblocco account' })
-    await createServiceRequest(undefined, { input: { title: 'Sblocco', catalogItemId: 'cat-1' } }, { ...ctx, role: 'end_user' })
+    await createServiceRequest(undefined, { input: { title: 'Sblocco', catalogItemId: 'cat-1' } }, { ...ctx, role: 'end_user', permissions: perms('end_user') })
     expect(vi.mocked(createRequest).mock.calls[0]![0]).toMatchObject({ customFields: [] })
     expect(vi.mocked(createRequest).mock.calls[0]![2]).toBe('portal')
   })

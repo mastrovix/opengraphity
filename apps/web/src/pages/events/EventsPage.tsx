@@ -265,8 +265,9 @@ function toggle<T>(list: T[], v: T): T[] { return list.includes(v) ? list.filter
 export function EventsPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { role, isAdmin } = useMe()
-  const canAct = role === 'admin' || role === 'operator'
+  const { can } = useMe()
+  const canAct = can('event.work')
+  const managesSources = can('config.monitoring')
 
   // "Adesso" per la finestra "risolti 24h": avanza a ogni polling (e con
   // Aggiorna), così `since` non resta fermo all'istante del primo click.
@@ -468,13 +469,13 @@ export function EventsPage() {
       {noSources && (
         <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 14px', marginBottom: 16, background: AMBER_BANNER.bg, border: `1px solid ${AMBER_BANNER.border}`, borderRadius: 8, color: AMBER_BANNER.text, fontSize: 'var(--font-size-body)' }}>
           <Plug size={16} aria-hidden="true" />
-          <span style={{ flex: 1 }}>{t('monitoring.console.noSourcesBanner')} {!isAdmin && t('monitoring.console.noSourcesAsk')}</span>
-          {isAdmin && <Link to="/monitoring/sources/new" style={{ color: AMBER_BANNER.text, fontWeight: 600 }}>{t('monitoring.console.noSourcesCta')} →</Link>}
+          <span style={{ flex: 1 }}>{t('monitoring.console.noSourcesBanner')} {!managesSources && t('monitoring.console.noSourcesAsk')}</span>
+          {managesSources && <Link to="/monitoring/sources/new" style={{ color: AMBER_BANNER.text, fontWeight: 600 }}>{t('monitoring.console.noSourcesCta')} →</Link>}
         </div>
       )}
 
       {/* Tempesta in corso: una riga per sorgente, link all'incident di tempesta, ai suoi allarmi e alle Sorgenti. */}
-      {stats && <StormBanner sources={stats.stormSources} showSourcesLink={isAdmin} />}
+      {stats && <StormBanner sources={stats.stormSources} showSourcesLink={managesSources} />}
 
       {/* Un servizio critico è giù adesso (Servizi monitorati, ondata 3): niente banner se non ce n'è nessuno. */}
       <CriticalServicesBanner />

@@ -13,6 +13,7 @@ import { WorkflowStepPanel } from './WorkflowStepPanel'
 import { WorkflowTransitionPanel } from './WorkflowTransitionPanel'
 import { useWorkflowDesigner } from './useWorkflowDesigner'
 import { palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 export function WorkflowDesignerPage() {
   const { t } = useTranslation()
@@ -52,8 +53,8 @@ export function WorkflowDesignerPage() {
   // utente → non sovrascrivere, invitare a ricaricare) dagli altri errori.
   const [saveWorkflowChanges] = useMutation<{ saveWorkflowChanges: { id: string; name: string; version: number } }>(SAVE_WORKFLOW_CHANGES)
 
-  const [addTransition] = useMutation(ADD_WORKFLOW_TRANSITION, { onError: (e) => toast.error(e.message) })
-  const [removeTransition] = useMutation(REMOVE_WORKFLOW_TRANSITION, { onError: (e) => toast.error(e.message) })
+  const [addTransition] = useMutation(ADD_WORKFLOW_TRANSITION, { onError: (e) => showError(e) })
+  const [removeTransition] = useMutation(REMOVE_WORKFLOW_TRANSITION, { onError: (e) => showError(e) })
 
   // React Flow node ids are step ids; the create mutation takes step names.
   const idToName = useMemo(() => {
@@ -90,7 +91,7 @@ export function WorkflowDesignerPage() {
     } catch { /* onError handles toast */ }
   }, [def, removeTransition, refetch, setSelectedEdgeId, t])
 
-  const [removeStep] = useMutation(REMOVE_WORKFLOW_STEP, { onError: (e) => toast.error(e.message) })
+  const [removeStep] = useMutation(REMOVE_WORKFLOW_STEP, { onError: (e) => showError(e) })
   const handleDeleteStep = useCallback(async (stepName: string) => {
     if (!def) return
     try {
@@ -128,7 +129,7 @@ export function WorkflowDesignerPage() {
       } else if (!CombinedGraphQLErrors.is(e)) {
         // Un errore GraphQL lo mostra già il link di Apollo (lib/apollo.ts),
         // nella lingua di chi guarda: ripeterlo qui dava due avvisi identici.
-        toast.error(e instanceof Error ? e.message : String(e))
+        showError(e)
       }
       return
     }

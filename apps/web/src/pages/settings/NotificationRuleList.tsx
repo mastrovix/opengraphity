@@ -1,7 +1,9 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Lock, Unlock, AlertTriangle } from 'lucide-react'
-import { NOTIFICATION_TARGETS, NOTIFICATION_SEVERITIES } from '@opengraphity/types'
+import { NOTIFICATION_BASE_TARGETS, NOTIFICATION_SEVERITIES, notificationTargetRole, roleNotificationTarget } from '@opengraphity/types'
+import i18n from '@/i18n/i18n'
+import { useRoles } from '@/hooks/useRoles'
 import { colors, fontSize, fontWeight, palette } from '@/lib/tokens'
 import { Toggle as SharedToggle } from '@/components/ui/Toggle'
 
@@ -50,12 +52,19 @@ export function targetsFor(routing: NotificationRouting, eventType: string): str
   return routing.targetsByEventType.find((e) => e.eventType === eventType)?.targets ?? routing.defaultTargets
 }
 
-/** Le opzioni della tendina per quell'evento, più il valore salvato se non è più fra quelli applicabili. */
-export function targetOptionsFor(routing: NotificationRouting, eventType: string, current: string): { value: string; labelKey: string; applicable: boolean }[] {
+export interface TargetOption { value: string; label: string }
+
+/**
+ * Le opzioni della tendina per quell'evento, più il valore salvato se non è più
+ * fra quelli applicabili. Un destinatario «per ruolo» non dipende dall'entità
+ * dell'evento: vale sempre (`isTargetApplicable` di @opengraphity/types).
+ */
+export function targetOptionsFor(routing: NotificationRouting, eventType: string, current: string, all: readonly TargetOption[]): (TargetOption & { applicable: boolean })[] {
   const applicable = targetsFor(routing, eventType)
-  const options = TARGET_OPTIONS.filter((o) => applicable.includes(o.value)).map((o) => ({ ...o, applicable: true }))
-  if (!applicable.includes(current)) {
-    const saved = TARGET_OPTIONS.find((o) => o.value === current)
+  const ok = (value: string) => notificationTargetRole(value) !== null || applicable.includes(value)
+  const options = withCurrent(all, current).filter((o) => ok(o.value)).map((o) => ({ ...o, applicable: true }))
+  if (!ok(current)) {
+    const saved = all.find((o) => o.value === current)
     if (saved) options.unshift({ ...saved, applicable: false })
   }
   return options
@@ -132,29 +141,39 @@ const SEVERITY_OPTIONS = NOTIFICATION_SEVERITIES
 
 /**
  * Etichette dei destinatari. QUALI destinatari esistono lo dice il
- * vocabolario condiviso `NOTIFICATION_TARGETS` (@opengraphity/types): la
- * stessa lista che il resolver valida in scrittura e che il dispatcher sa
- * risolvere, con un bersaglio per ruolo derivato da `USER_ROLES`. Prima qui
- * c'era una lista scritta a mano che offriva `role:manager` — un ruolo che
- * l'autenticazione non conosce, quindi zero destinatari (D-13/D-23).
- * Un bersaglio del vocabolario senza etichetta qui è un errore al caricamento
- * del modulo (lo prende il test): mai un'opzione muta in tendina.
+ * vocabolario condiviso (@opengraphity/types): i bersagli fissi
+ * (`NOTIFICATION_BASE_TARGETS`) e un `role:<chiave>` per ogni ruolo
+ * dell'organizzazione (ondata 7: prima i soli quattro di fabbrica). Prima qui
+ * c'era una lista scritta a mano che offriva `role:manager` — un ruolo che non
+ * esisteva, quindi zero destinatari (D-13/D-23).
+ * Un bersaglio fisso senza etichetta qui è un errore al caricamento del modulo
+ * (lo prende il test): mai un'opzione muta in tendina.
  */
-const TARGET_LABEL_KEY: Record<string, string> = {
-  'all':            'notificationRules.target.all',
-  'assignee':       'notificationRules.target.assignee',
-  'team_owner':     'notificationRules.target.teamOwner',
-  'role:admin':     'notificationRules.target.roleAdmin',
-  'role:operator':  'notificationRules.target.roleOperator',
-  'role:viewer':    'notificationRules.target.roleViewer',
-  'role:end_user':  'notificationRules.target.roleEndUser',
+const BASE_TARGET_LABEL_KEY: Record<string, string> = {
+  'all':        'notificationRules.target.all',
+  'assignee':   'notificationRules.target.assignee',
+  'team_owner': 'notificationRules.target.teamOwner',
+}
+for (const value of NOTIFICATION_BASE_TARGETS) {
+  if (!BASE_TARGET_LABEL_KEY[value]) throw new Error(`BASE_TARGET_LABEL_KEY: no label for recipient "${value}" — add the key and its it/en translations before offering it`)
 }
 
-export const TARGET_OPTIONS: { value: string; labelKey: string }[] = NOTIFICATION_TARGETS.map((value) => {
-  const labelKey = TARGET_LABEL_KEY[value]
-  if (!labelKey) throw new Error(`TARGET_LABEL_KEY: no label for recipient "${value}" — add the key and its it/en translations before offering it`)
-  return { value, labelKey }
-})
+/** I destinatari da offrire: quelli fissi e «Ruolo: X» per ogni ruolo dell'organizzazione. */
+export function useTargetOptions(): TargetOption[] {
+  const { t } = useTranslation()
+  const { roles, labelOf } = useRoles()
+  return useMemo(() => [
+    ...NOTIFICATION_BASE_TARGETS.map((value) => ({ value, label: t(BASE_TARGET_LABEL_KEY[value]!) })),
+    ...roles.map((r) => ({ value: roleNotificationTarget(r.key), label: t('notificationRules.target.role', { role: labelOf(r.key) }) })),
+  ], [t, roles, labelOf])
+}
+
+/** Le opzioni con il valore salvato in coda se non c'è (un ruolo mentre i ruoli si caricano). */
+export function withCurrent(options: readonly TargetOption[], current: string | null | undefined): TargetOption[] {
+  if (!current || options.some((o) => o.value === current)) return [...options]
+  const role = notificationTargetRole(current)
+  return [...options, { value: current, label: role ? i18n.t('notificationRules.target.role', { role }) : current }]
+}
 
 const selectStyle: React.CSSProperties = {
   padding: '4px 8px', border: `1px solid ${colors.border}`, borderRadius: 4,
@@ -217,7 +236,7 @@ export function RuleRow({
   /** Canali consegnabili per `rule.eventType` (dal server). */
   routable: readonly string[]
   /** Bersagli applicabili a `rule.eventType`, col valore salvato in testa se non lo è più (dal server). */
-  targets:  readonly { value: string; labelKey: string; applicable: boolean }[]
+  targets:  readonly (TargetOption & { applicable: boolean })[]
   onUpdate: (id: string, input: UpdateInput) => void
   onDelete: (id: string) => void
 }) {
@@ -323,9 +342,9 @@ export function RuleRow({
       {/* Target */}
       <td style={{ padding: '10px 12px', width: 160 }}>
         <select value={rule.target} onChange={(e) => debounce({ target: e.target.value })} style={{ ...selectStyle, color: 'var(--color-slate)' }}>
-          {targets.map(({ value, labelKey, applicable }) => (
+          {targets.map(({ value, label, applicable }) => (
             <option key={value} value={value}>
-              {applicable ? t(labelKey) : t('notificationRules.target.notApplicable', { target: t(labelKey) })}
+              {applicable ? label : t('notificationRules.target.notApplicable', { target: label })}
             </option>
           ))}
         </select>

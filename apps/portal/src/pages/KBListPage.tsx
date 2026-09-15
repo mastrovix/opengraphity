@@ -7,6 +7,7 @@ import { GET_KB_ARTICLES, GET_KB_CATEGORIES } from '@/graphql/queries'
 import { KBSearchBar } from '@/components/KBSearchBar'
 import { fmtDateLong } from '@/lib/format'
 import { colors, palette, alpha } from '@/lib/tokens'
+import { usePortalAccess } from '@/hooks/usePortalAccess'
 
 interface KBArticle {
   id: string; title: string; slug: string; body: string
@@ -27,6 +28,7 @@ function excerpt(body: string, max = 200): string {
 
 export function KBListPage() {
   const { t, i18n }             = useTranslation()
+  const { canSubmit } = usePortalAccess()
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch]     = useState(searchParams.get('search') ?? '')
 
@@ -103,12 +105,12 @@ export function KBListPage() {
       ) : articles.length === 0 ? (
         <div style={{ padding: '48px 0', textAlign: 'center' }}>
           <p style={{ color: colors.slateLight, marginBottom: 16 }}>{t('kb.noResults')}</p>
-          <Link
+          {canSubmit && <Link
             to="/tickets/new"
             style={{ color: colors.brand, fontWeight: 500, fontSize: 10 }}
           >
             {t('kb.openTicket')}
-          </Link>
+          </Link>}
         </div>
       ) : (
         <div>
