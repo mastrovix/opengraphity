@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { assertSafeReadOnlyCypher, stripCypherLiterals, UnsafeCypherError, MAX_CYPHER_LENGTH } from '../cypherGuard.js'
+import { redactSensitiveValue, assertSafeReadOnlyCypher, stripCypherLiterals, UnsafeCypherError, MAX_CYPHER_LENGTH } from '../cypherGuard.js'
 
 function rejects(query: string, messagePart?: string) {
   let thrown: unknown
@@ -15,8 +15,8 @@ describe('assertSafeReadOnlyCypher — accepted read-only, tenant-anchored queri
     ['chained node without own tenant (path anchored)', 'MATCH (i:Incident {tenant_id: $tenantId})-[:ASSIGNED_TO_TEAM]->(t:Team) RETURN t.name, count(i) AS n ORDER BY n DESC'],
     ['WHERE-form scoping', 'MATCH (i:Incident) WHERE i.tenant_id = $tenantId AND i.severity = "critical" RETURN i.title'],
     ['WHERE-form reversed', 'MATCH (i:Incident) WHERE $tenantId = i.tenant_id RETURN i.title'],
-    ['alias reuse across MATCH', 'MATCH (i:Incident {tenant_id: $tenantId}) WITH i MATCH (i)-[:AFFECTS]->(c) RETURN c.name'],
-    ['transitively bound alias', 'MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTS]->(c) MATCH (c)-[:DEPENDS_ON]->(d) RETURN d.name'],
+    ['alias reuse across MATCH', 'MATCH (i:Incident {tenant_id: $tenantId}) WITH i MATCH (i)-[:AFFECTS]->(c:ConfigurationItem) RETURN c.name'],
+    ['transitively bound alias', 'MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTS]->(c:ConfigurationItem) MATCH (c)-[:DEPENDS_ON]->(d:ConfigurationItem) RETURN d.name'],
     ['OPTIONAL MATCH chained', 'MATCH (i:Incident {tenant_id: $tenantId}) OPTIONAL MATCH (i)-[:ASSIGNED_TO]->(u:User) RETURN i.title, u.name'],
     ['MTTR example from the system prompt', `MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: 'incident'})-[:HAS_STEP]->(s:WorkflowStep)
       WHERE coalesce(s.is_initial, s.type = 'start') OR s.category = 'resolved' OR coalesce(s.is_terminal, s.type = 'end')
@@ -24,13 +24,13 @@ describe('assertSafeReadOnlyCypher — accepted read-only, tenant-anchored queri
     ['functions and aggregates', 'MATCH (i:Incident {tenant_id: $tenantId}) RETURN date(i.created_at) AS d, count(i) AS n, collect(i.title)[0..3] AS sample ORDER BY d'],
     ['CASE / IS NOT NULL with WHERE-form', 'MATCH (i:Incident) WHERE i.tenant_id = $tenantId AND i.resolved_at IS NOT NULL RETURN CASE WHEN i.severity = "high" THEN 1 ELSE 0 END AS s'],
     ['EXISTS subquery anchored', 'MATCH (i:Incident {tenant_id: $tenantId}) WHERE EXISTS { MATCH (i)-[:AFFECTS]->(:Server) } RETURN i.title'],
-    ['CALL subquery', 'MATCH (i:Incident {tenant_id: $tenantId}) CALL { WITH i MATCH (i)-[:AFFECTS]->(c) RETURN count(c) AS nc } RETURN i.title, nc'],
+    ['CALL subquery', 'MATCH (i:Incident {tenant_id: $tenantId}) CALL { WITH i MATCH (i)-[:AFFECTS]->(c:ConfigurationItem) RETURN count(c) AS nc } RETURN i.title, nc'],
     ['apoc.text function', 'MATCH (i:Incident {tenant_id: $tenantId}) RETURN apoc.text.capitalize(i.title) AS t'],
     ['UNION both anchored', 'MATCH (i:Incident {tenant_id: $tenantId}) RETURN i.title AS t UNION MATCH (c:Change {tenant_id: $tenantId}) RETURN c.title AS t'],
     ['string containing keywords', "MATCH (i:Incident {tenant_id: $tenantId}) WHERE i.title CONTAINS 'SET DELETE CREATE' RETURN i.title"],
     ['line comment stripped', 'MATCH (i:Incident {tenant_id: $tenantId}) // comment with DELETE\nRETURN i.title'],
     ['property named like keyword', 'MATCH (c:Change {tenant_id: $tenantId}) RETURN c.scheduled_start, c.start'],
-    ['label-only anchor without alias', 'MATCH (:Incident {tenant_id: $tenantId})-[:AFFECTS]->(c) RETURN c.name'],
+    ['label-only anchor without alias', 'MATCH (:Incident {tenant_id: $tenantId})-[:AFFECTS]->(c:ConfigurationItem) RETURN c.name'],
     ['shortestPath anchored', 'MATCH (a:Server {tenant_id: $tenantId}), (b:Server {tenant_id: $tenantId}) MATCH p = shortestPath((a)-[*..5]-(b)) RETURN length(p)'],
   ]
   it.each(ok)('accepts: %s', (_name, q) => {
@@ -42,6 +42,14 @@ describe('assertSafeReadOnlyCypher — rejected queries', () => {
   const bad: Array<[string, string, string]> = [
     ['no tenant at all (C-02 PoC)', 'MATCH (u:User) RETURN u.email, u.tenant_id', 'not bound to the tenant'],
     ['unlabeled unanchored', 'MATCH (n) RETURN n LIMIT 10', 'not bound to the tenant'],
+    // Revisione totale · D-1: quello che un report non legge mai.
+    ['D-1 sensitive label', 'MATCH (w:OutboundWebhook {tenant_id: $tenantId}) RETURN w.url', 'OutboundWebhook is not readable'],
+    ['D-1 unlabeled anchored node', 'MATCH (w {tenant_id: $tenantId}) RETURN w', 'every node needs a label'],
+    ['D-1 unlabeled node reached by a relationship', 'MATCH (e:Event {tenant_id: $tenantId})-[:FROM_SOURCE]->(w) RETURN w.name', 'every node needs a label'],
+    ['D-1 negated label', 'MATCH (w:!Incident {tenant_id: $tenantId}) RETURN w', ''],
+    ['D-1 sensitive property', 'MATCH (c:ConfigurationItem {tenant_id: $tenantId}) RETURN c.secret', 'property secret'],
+    ['D-1 sensitive property in a map pattern', "MATCH (c:ConfigurationItem {tenant_id: $tenantId, token: ''}) RETURN c.name", ''],
+    ['D-1 dynamic property access', "MATCH (c:ConfigurationItem {tenant_id: $tenantId}) RETURN c['sec' + 'ret']", 'dynamic property access'],
     ['literal tenant id', "MATCH (u:User {tenant_id: 'other'}) RETURN u.email", 'not bound to the tenant'],
     ['second path unanchored (cartesian)', 'MATCH (i:Incident {tenant_id: $tenantId}), (u:User) RETURN u.email', 'not bound to the tenant'],
     ['second MATCH unanchored', 'MATCH (i:Incident {tenant_id: $tenantId}) WITH count(i) AS n MATCH (u:User) RETURN u.email, n', 'not bound to the tenant'],
@@ -78,6 +86,15 @@ describe('assertSafeReadOnlyCypher — rejected queries', () => {
     ['tenant only in comment', 'MATCH (u:User) // {tenant_id: $tenantId}\nRETURN u.email', 'not bound to the tenant'],
   ]
   it.each(bad)('rejects: %s', (_name, q, msg) => rejects(q, msg))
+})
+
+describe('redactSensitiveValue (D-1, seconda linea)', () => {
+  it('un nodo con etichetta sensibile diventa [redacted]; le chiavi sensibili spariscono ovunque', () => {
+    expect(redactSensitiveValue({ labels: ['OutboundWebhook'], properties: { secret: 's' } })).toBe('[redacted]')
+    expect(redactSensitiveValue({ labels: ['Server'], properties: { name: 'db', token: 't' } })).toEqual({ labels: ['Server'], properties: { name: 'db' } })
+    expect(redactSensitiveValue([{ headers: '{"Authorization":"x"}', title: 'ok' }])).toEqual([{ title: 'ok' }])
+    expect(redactSensitiveValue('plain')).toBe('plain')
+  })
 })
 
 describe('stripCypherLiterals', () => {

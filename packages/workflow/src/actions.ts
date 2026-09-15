@@ -23,12 +23,20 @@ const redisConnection = getRedisConnection()
 
 // ── Webhook retry job data ────────────────────────────────────────────────────
 
+/**
+ * Il job del retry NON porta gli header (revisione totale · E-11): erano in
+ * chiaro in Redis — tipicamente un `Authorization` del cliente — e con
+ * `removeOnFail: false` restavano lì per sempre. Il worker li rilegge dal passo
+ * del workflow (stepId), che è la sorgente della configurazione.
+ */
 export interface WebhookRetryJobData {
   type:     'webhook_retry'
   url:      string
   method:   string
-  headers:  Record<string, string>
   payload:  string
+  /** Il passo che ha l'azione `call_webhook`: da lì il worker rilegge gli header. */
+  stepId?:  string
+  actionIndex?: number
   attempt:  number
   tenantId: string
   entityId: string
@@ -344,8 +352,9 @@ export async function runAction(
                   type:     'webhook_retry',
                   url:      p.url,
                   method:   p.method ?? 'POST',
-                  headers:  p.headers ?? {},
                   payload:  rawPayload,
+                  ...(ctx.stepId ? { stepId: ctx.stepId } : {}),
+                  ...(typeof ctx.actionIndex === 'number' ? { actionIndex: ctx.actionIndex } : {}),
                   attempt:  1,
                   tenantId: instance.tenantId,
                   entityId: instance.entityId,
@@ -354,7 +363,8 @@ export async function runAction(
                   attempts:  3,
                   backoff: { type: 'exponential', delay: 30_000 },
                   removeOnComplete: true,
-                  removeOnFail:     false,
+                  // Sette giorni, non «per sempre»: il payload di un webhook non resta in Redis a vita (E-11).
+                  removeOnFail:     { age: 7 * 24 * 3600 },
                 },
               )
             } finally {

@@ -18,6 +18,7 @@ import { labelS } from '@/components/ui/styles'
 import { RoleBadge } from '@/components/ui/badges'
 import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
+import { Pill } from '@/components/ui/Pill'
 import { exportToCsv } from '@/lib/csvExport'
 import { applyFilterGroup } from '@/lib/filterGroup'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
@@ -42,6 +43,7 @@ interface UserRow {
   email:     string
   role:      string
   roleName:  string | null
+  active:    boolean
   createdAt: string | null
 }
 
@@ -63,7 +65,8 @@ export function UsersPage() {
   ]
 
   const COLUMNS: ColumnDef<UserRow>[] = [
-    { key: 'name',  label: t('pages.users.name'),  sortable: true },
+    { key: 'name',  label: t('pages.users.name'),  sortable: true,
+      render: (v, row) => row.active ? String(v) : <span>{String(v)} <Pill bg={palette.neutral.borderLight} color="var(--color-slate-dark)">{t('pages.users.inactive')}</Pill></span> },
     { key: 'email', label: t('pages.users.email'), sortable: true },
     {
       key:    'role',

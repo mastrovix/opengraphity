@@ -101,6 +101,19 @@ const readers = {
   /** Internal URL for server-to-server calls (JWKS fetch, admin API). */
   keycloakUrl:           (): string   => envOrThrowInProd('KEYCLOAK_URL', 'http://localhost:8080'),
   /** Public origins browsers use; tokens carry one of them as `iss`. Comma-separated. */
+  /**
+   * I client Keycloak delle app (web e portale) a cui l'API crede
+   * (revisione totale · A-7): un token del realm emesso per un altro client
+   * (account-console, un'altra applicazione federata) non è un accesso a
+   * OpenGrafo. Nel compose viene da VITE_KEYCLOAK_CLIENT_ID e
+   * VITE_KEYCLOAK_CLIENT_ID_PORTAL: una sorgente sola con i bundle.
+   */
+  keycloakAppClientIds:  (): string[] => {
+    const raw = envOrThrowInProd('KEYCLOAK_APP_CLIENT_IDS', 'opengrafo-web,opengrafo-portal')
+    const ids = raw.split(',').map((u) => u.trim()).filter((u) => u.length > 0)
+    if (ids.length === 0) throw new Error('Environment variable KEYCLOAK_APP_CLIENT_IDS is set but contains no client id')
+    return ids
+  },
   keycloakPublicUrls:    (): string[] => {
     const raw = envOrThrowInProd('KEYCLOAK_PUBLIC_URL', readers.keycloakUrl())
     const urls = raw.split(',').map((u) => u.trim()).filter((u) => u.length > 0)
@@ -146,8 +159,20 @@ const readers = {
    * cliente più ricco ne ha 13) e si alza con la variabile d'ambiente.
    */
   maxCITypesPerTenant:  (): number => intEnv('MAX_CI_TYPES_PER_TENANT', 200),
-  /** Bearer token for GET /metrics; empty → loopback/private networks only. */
-  metricsToken:         (): string | undefined => optionalEnv('METRICS_TOKEN'),
+  /**
+   * Bearer token di GET /metrics. In produzione è OBBLIGATORIO (revisione
+   * totale · A-24): senza, l'accesso era deciso dall'indirizzo del socket, e su
+   * una rete bridge di Docker qualunque container leggeva le metriche —
+   * compresa `tenant_provisioning_gaps{tenant}`, cioè l'elenco dei clienti che
+   * `/health` nasconde di proposito. Fuori produzione resta facoltativo.
+   */
+  metricsToken:         (): string | undefined => {
+    const token = optionalEnv('METRICS_TOKEN')
+    if (!token && process.env['NODE_ENV'] === 'production') {
+      throw new Error('Environment variable METRICS_TOKEN is required in production: without it /metrics is open to the whole Docker network')
+    }
+    return token
+  },
   /** Base URL of the web app used in every outbound link (emails, Slack cards). */
   appUrl:               (): string  => envOrThrowInProd('APP_URL', 'http://localhost:5173'),
 
@@ -267,7 +292,7 @@ export const CONFIG_PROFILES = {
   api: [
     'nodeEnv', 'port', 'logLevel', 'workerProfile', 'requireAppliedMigrations',
     'neo4jUri', 'neo4jUser', 'neo4jPassword', 'neo4jMaxPoolSize',
-    'keycloakUrl', 'keycloakPublicUrls', 'keycloakAdminUser',
+    'keycloakUrl', 'keycloakPublicUrls', 'keycloakAppClientIds', 'keycloakAdminUser',
     'allowLegacyJwt', 'corsOrigin', 'rateLimitMax', 'graphqlIntrospection', 'graphqlSchemaCacheMax', 'maxCITypesPerTenant', 'metricsToken', 'appUrl',
     'attachmentDir', 'backupDir', 'reportDir',
     'embeddingsProvider', 'transformersCache', 'embeddingWorkerExternal',

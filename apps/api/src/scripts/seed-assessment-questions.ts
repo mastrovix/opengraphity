@@ -105,7 +105,7 @@ async function main() {
           WITH q
           UNWIND $options AS opt
           CREATE (o:AnswerOption {
-            id: randomUUID(), label: opt.label, score: opt.score, sort_order: opt.idx
+            id: randomUUID(), tenant_id: $tenantId, label: opt.label, score: opt.score, sort_order: opt.idx
           })
           CREATE (q)-[:HAS_OPTION]->(o)
         `, {

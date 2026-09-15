@@ -189,6 +189,7 @@ async function sendDigestForTenant(tenant: TenantRow): Promise<void> {
       MATCH (r:Role {tenant_id: $t, key: u.role})
       WHERE (CASE WHEN $role IS NULL THEN $permission IN r.permissions ELSE u.role = $role END)
         AND u.email IS NOT NULL AND u.email <> ''
+        AND coalesce(u.active, true) = true
         AND coalesce(u.notifications_enabled, true) = true
       RETURN u.email AS email
     `, { t: tenantId, role: digestRole(tenant.target), permission: TICKET_WORKER_PERMISSION })

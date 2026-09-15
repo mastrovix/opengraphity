@@ -99,8 +99,14 @@ describe('kubernetesConnector.scan — credenziali e config', () => {
     expect(h.loadFromString).toHaveBeenCalledWith(KUBECONFIG)
 
     await collect(kubernetesConnector.scan(source({ namespaces: 'ns', resource_types: 'node', server_url: 'https://k8s:6443' }), { bearer_token: 'tok-1' }))
+    // Con la spunta del cliente, e solo allora, si salta la verifica.
+    await collect(kubernetesConnector.scan(source({ namespaces: 'ns', resource_types: 'node', server_url: 'https://k8s:6443', skip_tls_verify: true }), { bearer_token: 'tok-1' }))
+    expect(h.loadFromOptions).toHaveBeenLastCalledWith(expect.objectContaining({
+      clusters: [{ name: 'cluster', server: 'https://k8s:6443', skipTLSVerify: true }],
+    }))
     expect(h.loadFromOptions).toHaveBeenCalledWith({
-      clusters:       [{ name: 'cluster', server: 'https://k8s:6443', skipTLSVerify: true }],
+      // Revisione totale · D-15: il certificato si verifica, salvo scelta esplicita nella configurazione.
+      clusters:       [{ name: 'cluster', server: 'https://k8s:6443', skipTLSVerify: false }],
       users:          [{ name: 'user', token: 'tok-1' }],
       contexts:       [{ name: 'ctx', cluster: 'cluster', user: 'user' }],
       currentContext: 'ctx',
@@ -315,6 +321,7 @@ describe('kubernetesConnector metadata', () => {
       .toEqual([['kubeconfig', false], ['bearer_token', false]])
     expect(kubernetesConnector.getConfigFields()).toMatchObject([
       { name: 'server_url', required: false },
+      { name: 'skip_tls_verify', required: false },
       { name: 'resource_types', default_value: 'node, deployment, statefulset, service, ingress' },
       { name: 'namespaces', required: false },
     ])

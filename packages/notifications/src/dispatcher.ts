@@ -708,6 +708,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
         `MATCH (u:User {tenant_id: $tenantId})
          MATCH (r:Role {tenant_id: $tenantId, key: u.role})
          WHERE $permission IN r.permissions
+           AND coalesce(u.active, true) = true
            AND u.email IS NOT NULL
            AND u.email <> ''
            AND coalesce(u.notifications_enabled, true) = true

@@ -4,6 +4,8 @@ import { getSession, toNumber } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
+import { hasPermission } from '../../lib/permissions.js'
+import { kbArticlePublishedCypher } from '../../lib/kbPublished.js'
 import { logger } from '../../lib/logger.js'
 import { enqueueEmbedding } from '../../jobs/embeddingWorker.js'
 import { normalizeKbTags } from '../../services/embeddings.js'
@@ -123,6 +125,16 @@ function generateSlug(title: string): string {
 
 // ── Queries ───────────────────────────────────────────────────────────────────
 
+/**
+ * Bozze, articoli in revisione e archiviati sono di chi lavora la KB (`kb.read`).
+ * Prima `kbArticles`, `kbArticle` e `kbArticleBySlug` erano aperti a `portal.read`
+ * senza guardare lo stato: un utente del portale leggeva una bozza passando
+ * `status: "draft"` o lo slug (revisione totale · H-1, riprodotto su c-test).
+ */
+function canReadDrafts(ctx: GraphQLContext): boolean {
+  return hasPermission(ctx, 'kb.read')
+}
+
 export async function kbArticles(
   _: unknown,
   args: { search?: string; category?: string; status?: string; page?: number; pageSize?: number },
@@ -134,6 +146,8 @@ export async function kbArticles(
 
   const conditions: string[] = ['a.tenant_id = $tenantId']
   const params: Record<string, unknown> = { tenantId: ctx.tenantId, skip, limit: pageSize }
+  // Chi non lavora la KB (il portale) vede solo il pubblicato, qualunque filtro chieda (revisione totale · H-1).
+  if (!canReadDrafts(ctx)) conditions.push(kbArticlePublishedCypher('a'))
 
   if (args.status)   { conditions.push('a.status = $status');       params['status']   = args.status }
   if (args.category) { conditions.push('a.category = $category');   params['category'] = args.category }
@@ -175,7 +189,8 @@ export async function kbArticle(
   try {
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})
-      SET a.views = a.views + 1
+      ${canReadDrafts(ctx) ? '' : `WHERE ${kbArticlePublishedCypher('a')}`}
+      SET a.views = coalesce(a.views, 0) + 1
       WITH a
       ${ARTICLE_RETURN_WITH_WI}
     `, { id: args.id, tenantId: ctx.tenantId }))
@@ -198,7 +213,8 @@ export async function kbArticleBySlug(
   try {
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (a:KBArticle {slug: $slug, tenant_id: $tenantId})
-      SET a.views = a.views + 1
+      ${canReadDrafts(ctx) ? '' : `WHERE ${kbArticlePublishedCypher('a')}`}
+      SET a.views = coalesce(a.views, 0) + 1
       WITH a
       ${ARTICLE_RETURN_WITH_WI}
     `, { slug: args.slug, tenantId: ctx.tenantId }))

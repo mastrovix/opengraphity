@@ -1,3 +1,4 @@
+import { attachmentAccess, attachmentAccessCondition } from '../lib/attachmentAccess.js'
 import fs from 'fs'
 import { createWriteStream, existsSync, mkdirSync } from 'fs'
 import type { Readable } from 'stream'
@@ -12,6 +13,7 @@ import { ValidationError } from '../lib/errors.js'
 import { attachmentPolicy, extensionAllowed, fileExtension, type AttachmentPolicy } from '../lib/attachmentPolicy.js'
 import {
   UPLOAD_PERMISSIONS,
+  ATTACHMENT_ENTITY_LABELS,
   entityExistsCypher,
   resolveAttachmentPath,
   safeStoredFilename,
@@ -27,10 +29,11 @@ const ATTACHMENT_DIR = config.attachmentDir
 // verifica «Cosa resta cablato», ondata 6): prima un elenco MIME e 10 MB fissi.
 
 /** Does the (whitelisted-label) entity exist in this tenant? */
-async function entityExists(target: AttachmentTarget, tenantId: string): Promise<boolean> {
+/** L'entità esiste nel tenant E il chiamante ci arriva con quell'accesso (lib/attachmentAccess.ts). */
+async function entityReachable(target: AttachmentTarget, tenantId: string, userId: string, condition: string): Promise<boolean> {
   const session = getSession(undefined, 'READ')
   try {
-    const row = await runQueryOne<{ id: string }>(session, entityExistsCypher(target.labels), { entityId: target.entityId, tenantId })
+    const row = await runQueryOne<{ id: string }>(session, entityExistsCypher(target.labels, condition), { entityId: target.entityId, tenantId, userId })
     return row !== null
   } finally {
     await session.close()
@@ -114,6 +117,13 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
       reject(400, err instanceof ValidationError ? err.message : 'Invalid entityType/entityId (send them before the file part)')
       return
     }
+    // Revisione totale · H-3: il portale allega solo ai propri ticket, lo staff secondo i permessi del tipo.
+    const condition = attachmentAccessCondition(attachmentAccess(permissions, target.entityType, 'write'))
+    if (condition === null) {
+      fileStream.resume()
+      reject(403, `Role '${role}' cannot attach files to a ${target.entityType}`)
+      return
+    }
     if (!extensionAllowed(policy, originalName)) {
       fileStream.resume()
       reject(400, `File type '.${fileExtension(originalName) || '?'}' is not allowed. Allowed: ${policy.extensions.map((x) => '.' + x).join(', ')}`)
@@ -136,7 +146,7 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
     const t = target
     const { dir, file } = resolved
     writeDone = (async () => {
-      const exists = await entityExists(t, tenantId)
+      const exists = await entityReachable(t, tenantId, userId, condition)
       if (!exists) {
         fileStream.resume()
         reject(404, `${t.entityType} ${t.entityId} not found`)
@@ -237,17 +247,28 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
 
 router.get('/attachments/:id', authMiddleware, (req, res: Response) => {
   void (async () => {
-    const { tenantId } = req.user!
+    const { tenantId, userId, permissions } = req.user!
     const { id }       = req.params
 
     const session = getSession(undefined, 'READ')
     try {
       const result = await session.executeRead((tx) => tx.run(`
         MATCH (a:Attachment {id: $id, tenant_id: $tenantId})
-        RETURN a.storage_path AS storagePath, a.filename AS filename, a.mime_type AS mimeType
+        RETURN a.storage_path AS storagePath, a.filename AS filename, a.mime_type AS mimeType,
+               a.entity_type AS entityType, a.entity_id AS entityId
       `, { id, tenantId }))
 
       if (!result.records.length) {
+        res.status(404).json({ error: 'Attachment not found' })
+        return
+      }
+
+      // Revisione totale · H-14: si scarica solo l'allegato di un'entità che il chiamante può vedere.
+      // Un rifiuto risponde come «non trovato»: l'esistenza di un file altrui non si rivela.
+      const entityType = String(result.records[0].get('entityType') ?? '')
+      const condition = attachmentAccessCondition(attachmentAccess(permissions, entityType, 'read'))
+      const labels = ATTACHMENT_ENTITY_LABELS[entityType]
+      if (condition === null || !labels || !(await entityReachable({ entityType, entityId: String(result.records[0].get('entityId')), labels }, tenantId, userId, condition))) {
         res.status(404).json({ error: 'Attachment not found' })
         return
       }

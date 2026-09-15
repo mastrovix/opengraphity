@@ -237,7 +237,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   // ── Amministrazione ────────────────────────────────────────────────────────
   {
     anyOf: ['admin.users'],
-    mutation: ['createUser', 'updateUserTeams', 'setUserRole', 'createTeam', 'updateTeam', 'setTeamManager', 'removeTeamManager', 'setTeamMember', 'setChangeManagerTeam',
+    mutation: ['createUser', 'updateUserTeams', 'setUserRole', 'setUserActive', 'createTeam', 'updateTeam', 'setTeamManager', 'removeTeamManager', 'setTeamMember', 'setChangeManagerTeam',
       'createRole', 'updateRole', 'deleteRole'],
   },
   // Chi entra e come (ondata 8): regole delle password e login aziendale del realm dell'organizzazione.

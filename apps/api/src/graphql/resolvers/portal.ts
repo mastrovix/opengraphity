@@ -10,7 +10,7 @@ import { workflowEngine } from '@opengraphity/workflow'
 import { validateStringLength } from '../../lib/validation.js'
 import type { GraphQLContext } from '../../context.js'
 import { toNumber } from '@opengraphity/neo4j'
-import { getStepNamesByClass, getWorkflowSteps, TICKET_STATUS_CLASSES, type TicketStatusClass } from '../../lib/workflowHelpers.js'
+import { getStepNamesByClass, getWorkflowSteps, isEntityClosed, TICKET_STATUS_CLASSES, type TicketStatusClass } from '../../lib/workflowHelpers.js'
 import { systemText } from '../../lib/systemText.js'
 import { transitionErrorI18n } from '../../lib/transitionError.js'
 import * as incidentService from '../../services/incidentService.js'
@@ -226,12 +226,14 @@ async function myTicket(
         WHERE c.is_internal = false
         OPTIONAL MATCH (u:User {id: c.author_id, tenant_id: $tenantId})
         RETURN c.id AS id, c.text AS body, c.author_id AS authorId,
-               coalesce(u.name, u.email, '') AS authorName, coalesce(u.email, '') AS authorEmail,
+               // L'e-mail dello staff non esce verso il portale (revisione totale · H-37): solo la propria.
+               coalesce(u.name, '') AS authorName,
+               CASE WHEN c.author_id = $userId THEN coalesce(u.email, '') ELSE '' END AS authorEmail,
                c.created_at AS createdAt, c.updated_at AS updatedAt,
                c.edited_at AS editedAt, c.edited_by_name AS editedByName,
                c.deleted_at AS deletedAt, c.deleted_by_name AS deletedByName
         ORDER BY c.created_at ASC
-      `, { id, tenantId: ctx.tenantId }),
+      `, { id, tenantId: ctx.tenantId, userId: ctx.userId }),
     )
 
     const comments = commentsResult.records.map((r) => ({
@@ -493,6 +495,9 @@ async function addTicketComment(
 
     if (!check.records.length) throw new ForbiddenError('Ticket not found')
     if (check.records[0].get('createdBy') !== ctx.userId) throw new ForbiddenError('Access denied')
+    if (await isEntityClosed(session, ticketId, ctx.tenantId)) {
+      throw new ValidationError('The ticket is closed: open a new one', { key: 'errors.comment.ticketClosed' })
+    }
 
     // Un modello solo (F1): lo staff vede questo commento nel dettaglio
     // dell'incident, e la sua risposta pubblica torna qui.

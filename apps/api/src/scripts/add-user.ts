@@ -72,7 +72,8 @@ function parseCliArgs(argv: readonly string[]): Args {
   })
 
   const slug  = args['slug']
-  const email = args['email']
+  // Minuscola come nel realm e come la cerca l'autenticazione (revisione totale · A-3).
+  const email = args['email']?.trim().toLowerCase()
   const role  = args['role']
   if (!slug || !email || !role) {
     throw new ScriptArgError(

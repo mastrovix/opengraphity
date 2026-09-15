@@ -6,7 +6,7 @@ import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { mapAssessmentQuestion, mapAnswerOption } from './mappers.js'
 
-type OptionInput = { label: string; score: number; sortOrder: number }
+type OptionInput = { id?: string | null; label: string; score: number; sortOrder: number }
 
 async function loadQuestionWithOptions(session: ReturnType<typeof import('../ci-utils.js').getSession>, id: string, tenantId: string) {
   const q = await runQueryOne<{ props: Props }>(session, `
@@ -177,23 +177,49 @@ export async function updateAssessmentQuestion(
     `, { id, tenantId: ctx.tenantId, text: text ?? null, category: category ?? null,
          isCore: isCore ?? null, isActive: isActive ?? null }))
 
-    if (options !== undefined) {
-      await session.executeWrite((tx) => tx.run(`
-        MATCH (q:AssessmentQuestion {id: $id, tenant_id: $tenantId})-[:HAS_OPTION]->(o:AnswerOption)
-        DETACH DELETE o
-      `, { id, tenantId: ctx.tenantId }))
-      await session.executeWrite((tx) => tx.run(`
-        MATCH (q:AssessmentQuestion {id: $id, tenant_id: $tenantId})
-        UNWIND $options AS opt
-        CREATE (o:AnswerOption {
-          id: randomUUID(), tenant_id: $tenantId, label: opt.label, score: opt.score, sort_order: opt.sortOrder
-        })
-        CREATE (q)-[:HAS_OPTION]->(o)
-      `, { id, tenantId: ctx.tenantId, options }))
-    }
+    if (options !== undefined) await saveOptions(session, id, ctx.tenantId, options)
 
     return loadQuestionWithOptions(session, id, ctx.tenantId)
   }, true)
+}
+
+/**
+ * Le opzioni di una domanda, senza perdere le risposte già date
+ * (revisione totale · B-2). Prima erano cancellate e ricreate con id nuovi: le
+ * `AssessmentResponse` perdevano la relazione `SELECTED`, quindi le risposte
+ * sparivano dai task in corso e da quelli già completati (`Missing answers`).
+ * Ora: un'opzione con `id` si aggiorna, una senza si crea, e una rimossa si
+ * cancella solo se nessuno l'ha scelta — altrimenti l'operazione si rifiuta
+ * nominandola, come già fa la cancellazione della domanda.
+ */
+async function saveOptions(
+  session: Parameters<typeof runQueryOne>[0] & { executeWrite: (w: (tx: unknown) => unknown) => Promise<unknown> },
+  questionId: string, tenantId: string, options: OptionInput[],
+): Promise<void> {
+  const keptIds = options.map((o) => o.id).filter((v): v is string => typeof v === 'string' && v !== '')
+  const inUse = await runQuery<{ label: string; answers: number }>(session, `
+    MATCH (q:AssessmentQuestion {id: $questionId, tenant_id: $tenantId})-[:HAS_OPTION]->(o:AnswerOption)
+    WHERE NOT o.id IN $keptIds
+    OPTIONAL MATCH (r:AssessmentResponse)-[:SELECTED]->(o)
+    WITH o, count(r) AS answers WHERE answers > 0
+    RETURN o.label AS label, answers`, { questionId, tenantId, keptIds })
+  if (inUse.length > 0) {
+    const names = inUse.map((r) => `"${r.label}" (${String(r.answers)})`).join(', ')
+    throw new GraphQLError(
+      `These answers have already been chosen and cannot be removed: ${names}. Change their text instead, or deactivate the question.`,
+      { extensions: { code: 'CONFLICT', i18n: { key: 'errors.question.optionInUse', params: { options: names } } } },
+    )
+  }
+  await session.executeWrite((tx) => (tx as { run: (q: string, p: Record<string, unknown>) => Promise<unknown> }).run(`
+    MATCH (q:AssessmentQuestion {id: $questionId, tenant_id: $tenantId})
+    OPTIONAL MATCH (q)-[:HAS_OPTION]->(gone:AnswerOption) WHERE NOT gone.id IN $keptIds
+    DETACH DELETE gone
+    WITH DISTINCT q
+    UNWIND $options AS opt
+    // Un'opzione che esiste già conserva il suo id, e con esso le risposte date.
+    MERGE (q)-[:HAS_OPTION]->(o:AnswerOption {id: coalesce(opt.id, randomUUID()), tenant_id: $tenantId})
+    SET o.label = opt.label, o.score = opt.score, o.sort_order = opt.sortOrder
+  `, { questionId, tenantId, options, keptIds }))
 }
 
 export async function deleteAssessmentQuestion(_: unknown, args: { id: string }, ctx: GraphQLContext) {
@@ -223,7 +249,10 @@ export async function assignQuestionToCIType(
 ) {
   return withSession(async (session) => {
     await session.executeWrite((tx) => tx.run(`
+      // Revisione totale · B-10: il tipo CI deve essere di questo cliente (o spedito col prodotto),
+      // altrimenti l'id di un tipo di un altro tenant riceveva la relazione.
       MATCH (ct:CITypeDefinition {id: $ciTypeId})
+      WHERE ct.scope = 'base' OR ct.tenant_id IN [$tenantId, 'system']
       MATCH (q:AssessmentQuestion {id: $questionId, tenant_id: $tenantId})
       MERGE (ct)-[rel:HAS_QUESTION]->(q)
       SET rel.weight = $weight, rel.sort_order = $sortOrder
@@ -240,7 +269,9 @@ export async function removeQuestionFromCIType(
 ) {
   return withSession(async (session) => {
     await session.executeWrite((tx) => tx.run(`
+      // Revisione totale · B-10/A-21: il tipo CI deve essere di questo cliente.
       MATCH (ct:CITypeDefinition {id: $ciTypeId})-[rel:HAS_QUESTION]->(q:AssessmentQuestion {id: $questionId, tenant_id: $tenantId})
+      WHERE ct.scope = 'base' OR ct.tenant_id IN [$tenantId, 'system']
       DELETE rel
     `, { ciTypeId: args.ciTypeId, questionId: args.questionId, tenantId: ctx.tenantId }))
     return true

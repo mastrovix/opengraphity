@@ -27,11 +27,48 @@ interface WebhookRetryData {
   type:     'webhook_retry'
   url:      string
   method:   string
-  headers:  Record<string, string>
   payload:  string
   attempt:  number
   tenantId: string
   entityId: string
+  /** Il passo che porta l'azione `call_webhook` e la sua posizione fra le azioni del passo. */
+  stepId?:      string
+  actionIndex?: number
+  /** Job accodati prima della revisione: portavano gli header dentro il job. */
+  headers?: Record<string, string>
+}
+
+/**
+ * Gli header del webhook, riletti dal passo del workflow (revisione totale ·
+ * E-11): nel job non ci sono più, perché un token del cliente non deve stare in
+ * chiaro in Redis. Un passo o un'azione che non c'è più: nessun header, e il
+ * tentativo prosegue (l'URL e il payload sono nel job). I job vecchi, accodati
+ * prima di questa modifica, usano gli header che portano con sé.
+ */
+async function webhookRetryHeaders(d: WebhookRetryData): Promise<Record<string, string>> {
+  if (!d.stepId) return d.headers ?? {}
+  const session = getSession(undefined, 'READ')
+  try {
+    const rows = await runQuery<{ enterActions: string | null; exitActions: string | null }>(session, `
+      MATCH (s:WorkflowStep {id: $stepId, tenant_id: $tenantId})
+      RETURN s.enter_actions AS enterActions, s.exit_actions AS exitActions
+    `, { stepId: d.stepId, tenantId: d.tenantId })
+    const row = rows[0]
+    if (!row) {
+      logger.warn({ stepId: d.stepId }, '[webhook_retry] the step no longer exists: retrying without its headers')
+      return {}
+    }
+    const parse = (raw: string | null): Array<{ type?: string; params?: Record<string, unknown> }> => {
+      try { return raw ? JSON.parse(raw) as Array<{ type?: string; params?: Record<string, unknown> }> : [] } catch { return [] }
+    }
+    const actions = [...parse(row.exitActions), ...parse(row.enterActions)]
+    const action = typeof d.actionIndex === 'number' ? actions[d.actionIndex] : actions.find((a) => a.type === 'call_webhook')
+    const headers = action?.type === 'call_webhook' ? action.params?.['headers'] : undefined
+    if (headers && typeof headers === 'object' && !Array.isArray(headers)) return headers as Record<string, string>
+    return {}
+  } finally {
+    await session.close()
+  }
 }
 
 // SSRF protection: shared assertSafeOutboundUrl (lib/safeUrl.ts → @opengraphity/events).
@@ -80,12 +117,15 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
       await assertSafeOutboundUrl(d.url)
       const host = loggableUrl(d.url)
 
+      // Gli header (spesso un token del cliente) NON stanno nel job: si
+      // rileggono dal passo che ha l'azione (revisione totale · E-11).
+      const headers = await webhookRetryHeaders(d)
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 15_000)
       try {
         const res = await fetch(d.url, {
           method:  d.method,
-          headers: { 'Content-Type': 'application/json', ...d.headers },
+          headers: { 'Content-Type': 'application/json', ...headers },
           body:    d.method !== 'GET' ? d.payload : undefined,
           signal:  controller.signal,
         })

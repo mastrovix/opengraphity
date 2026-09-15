@@ -89,6 +89,9 @@ import { ticketCIExclusions } from './20260929_1010_ticket_ci_exclusions.js'
 import { officeProductivityLabel } from './20260930_1000_office_productivity_label.js'
 import { changeAuditDetailKeys } from './20260930_1010_change_audit_detail_keys.js'
 import { changeAuditDetailKeysOwnerSupport } from './20260930_1020_change_audit_detail_keys_owner_support.js'
+import { apiKeyExpiryRateLimit } from './20261001_1000_api_key_expiry_rate_limit.js'
+import { userEmailLowercase } from './20261001_1010_user_email_lowercase.js'
+import { answerOptionTenant } from './20261001_1020_answer_option_tenant.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -176,4 +179,7 @@ export const MIGRATIONS: readonly Migration[] = [
   changeAuditDetailKeysOwnerSupport,
   ticketTeamSegments,
   changeTaskTeamSegments,
+  apiKeyExpiryRateLimit,
+  userEmailLowercase,
+  answerOptionTenant,
 ]

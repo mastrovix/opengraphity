@@ -156,6 +156,18 @@ export async function isEntityInTerminalStep(session: Session, entityId: string,
   return Boolean(res.records[0].get('terminal'))
 }
 
+/**
+ * Il ticket è in un passo di categoria `closed`: la stessa nozione con cui il
+ * portale nasconde la risposta (revisione totale · H-39). Senza istanza: no.
+ */
+export async function isEntityClosed(session: Session, entityId: string, tenantId: string): Promise<boolean> {
+  const res = await session.executeRead((tx) => tx.run(`
+    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
+    RETURN s.category = 'closed' AS closed
+  `, { entityId, tenantId }))
+  return res.records[0]?.get('closed') === true
+}
+
 export async function isEntityOpen(session: Session, entityId: string, tenantId: string): Promise<boolean> {
   const terminal = await isEntityInTerminalStep(session, entityId, tenantId)
   return !terminal

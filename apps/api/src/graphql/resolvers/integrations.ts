@@ -6,6 +6,9 @@ import { invalidateSourceCache } from '../../services/eventStorm.js'
 import { DEFAULT_WEBHOOK_RATE_LIMIT_PER_MINUTE, rateLimitOf, validateRateLimitPerMinute } from '../../lib/webhookRateLimit.js'
 import { API_KEY_PERMISSIONS, isApiKeyPermission } from '@opengraphity/types'
 import { assertInboundTicketTargets } from '../../lib/inboundTicketTargets.js'
+import { assertApiKeyName, assertApiKeyRateLimit, assertExpiryInFuture, isApiKeyRateLimit, LEGACY_API_KEY_RATE_LIMIT, normalizeApiKeyExpiry } from '../../lib/apiKeyInput.js'
+import { logger } from '../../lib/logger.js'
+import { tenantTimezone } from '../../lib/tenantTimezone.js'
 
 /**
  * Un webhook di Event Management ha senso solo se il tenant ha una policy
@@ -117,10 +120,18 @@ function mapOutbound(p: Props) {
   }
 }
 
+function apiKeyRateLimitOf(p: Props): number {
+  if (isApiKeyRateLimit(p['rate_limit'])) return p['rate_limit']
+  logger.warn({ apiKeyId: p['id'], rateLimit: p['rate_limit'] }, `[integrations] API key without a valid rate_limit: showing ${String(LEGACY_API_KEY_RATE_LIMIT)}/min — run the migrations`)
+  return LEGACY_API_KEY_RATE_LIMIT
+}
+
 function mapApiKey(p: Props) {
   return {
     id: p['id'], name: p['name'], keyPrefix: p['key_prefix'], permissions: p['permissions'] ?? [],
-    rateLimit: Number(p['rate_limit'] ?? 60), enabled: p['enabled'] ?? false,
+    // Il limite è obbligatorio in scrittura; una chiave scritta prima e non
+    // ancora migrata (20261001_1000) si mostra col valore storico, detto nel log.
+    rateLimit: apiKeyRateLimitOf(p), enabled: p['enabled'] ?? false,
     lastUsedAt: p['last_used_at'] ?? null, requestCount: Number(p['request_count'] ?? 0),
     createdBy: p['created_by'] ?? null, expiresAt: p['expires_at'] ?? null, createdAt: p['created_at'],
   }
@@ -357,15 +368,23 @@ async function createApiKey(_: unknown, args: { input: Props }, ctx: GraphQLCont
   const key = genApiKey()
   const id = uuidv4()
   const now = new Date().toISOString()
+  const name = assertApiKeyName(input['name'])
   const permissions = assertApiKeyPermissions(input['permissions'])
+  const rateLimit = assertApiKeyRateLimit(input['rateLimit'])
+  const expiresAt = assertExpiryInFuture(normalizeApiKeyExpiry(input['expiresAt'], await expiryTimezone(input['expiresAt'], ctx.tenantId)))
   return withSession(async (s) => {
     await runQuery(s, `
       CREATE (k:ApiKey {id: $id, tenant_id: $t, name: $name, key_hash: $keyHash, key_prefix: $keyPrefix,
         permissions: $permissions, rate_limit: $rateLimit, enabled: true,
         request_count: 0, created_by: $createdBy, expires_at: $expiresAt, created_at: $now, updated_at: $now})
-    `, { id, t: ctx.tenantId, name: input['name'], keyHash: hash(key), keyPrefix: key.slice(0, 16), permissions, rateLimit: input['rateLimit'] ?? 60, createdBy: ctx.userId, expiresAt: input['expiresAt'] ?? null, now })
-    return { id, name: input['name'] as string, key, keyPrefix: key.slice(0, 16), permissions }
+    `, { id, t: ctx.tenantId, name, keyHash: hash(key), keyPrefix: key.slice(0, 16), permissions, rateLimit, createdBy: ctx.userId, expiresAt, now })
+    return { id, name, key, keyPrefix: key.slice(0, 16), permissions }
   }, true)
+}
+
+/** Il fuso serve solo per una data senza ora: si legge solo allora. */
+async function expiryTimezone(raw: unknown, tenantId: string): Promise<string | null> {
+  return typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.trim()) ? tenantTimezone(tenantId) : null
 }
 
 async function updateApiKey(_: unknown, args: { id: string; input: Props }, ctx: GraphQLContext) {
@@ -373,8 +392,12 @@ async function updateApiKey(_: unknown, args: { id: string; input: Props }, ctx:
   const { input } = args
   const sets: string[] = ['k.updated_at = $now']
   const params: Props = { id: args.id, t: ctx.tenantId, now: new Date().toISOString() }
+  if (input['name'] !== undefined) input['name'] = assertApiKeyName(input['name'])
   if (input['permissions'] !== undefined) input['permissions'] = assertApiKeyPermissions(input['permissions'])
+  if (input['rateLimit'] !== undefined) input['rateLimit'] = assertApiKeyRateLimit(input['rateLimit'])
+  if (input['expiresAt'] !== undefined) input['expiresAt'] = normalizeApiKeyExpiry(input['expiresAt'], await expiryTimezone(input['expiresAt'], ctx.tenantId))
   const map: Record<string, string> = { name: 'name', permissions: 'permissions', rateLimit: 'rate_limit', enabled: 'enabled', expiresAt: 'expires_at' }
+  // `expiresAt: null` è una scelta (togliere la scadenza), non un campo assente: si scrive.
   for (const [gql, neo] of Object.entries(map)) { if (input[gql] !== undefined) { sets.push(`k.${neo} = $${gql}`); params[gql] = input[gql] } }
   return withSession(async (s) => {
     const rows = await runQuery<{ props: Props }>(s, `MATCH (k:ApiKey {id: $id, tenant_id: $t}) SET ${sets.join(', ')} RETURN properties(k) AS props`, params)

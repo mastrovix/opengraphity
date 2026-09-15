@@ -212,10 +212,10 @@ async function assertNameFree(session: Queryable, tenantId: string, name: string
  */
 async function usersAdminsAfter(
   session: Queryable, tenantId: string,
-  change: { roleKey?: string; permissions?: readonly Permission[]; deletedKey?: string; movedUserId?: string; movedToRole?: string },
+  change: { roleKey?: string; permissions?: readonly Permission[]; deletedKey?: string; movedUserId?: string; movedToRole?: string; deactivatedUserId?: string },
 ): Promise<number> {
   const r = await session.run(`
-    MATCH (u:User {tenant_id: $tenantId}) WHERE coalesce(u.active, true) = true
+    MATCH (u:User {tenant_id: $tenantId}) WHERE coalesce(u.active, true) = true AND ($deactivatedUserId IS NULL OR u.id <> $deactivatedUserId)
     WITH u, CASE WHEN $movedUserId IS NOT NULL AND u.id = $movedUserId THEN $movedToRole ELSE u.role END AS roleKey
     MATCH (r:Role {tenant_id: $tenantId, key: roleKey})
     WHERE ($deletedKey IS NULL OR r.key <> $deletedKey)
@@ -225,6 +225,7 @@ async function usersAdminsAfter(
     tenantId, perm: USERS_ADMIN_PERMISSION,
     roleKey: change.roleKey ?? null, permissions: change.permissions ? [...change.permissions] : [],
     deletedKey: change.deletedKey ?? null, movedUserId: change.movedUserId ?? null, movedToRole: change.movedToRole ?? null,
+    deactivatedUserId: change.deactivatedUserId ?? null,
   })
   return Number(r.records[0]?.get('n') ?? 0)
 }
@@ -339,6 +340,41 @@ export async function setUserRole(tenantId: string, userId: string, roleKey: str
       MATCH (u:User {tenant_id: $tenantId, id: $userId}) SET u.role = $roleKey, u.updated_at = $now
     `, { tenantId, userId, roleKey, now: new Date().toISOString() })
     return { previousRole: String(row.get('previousRole') ?? '') }
+  })
+}
+
+/**
+ * Attiva o disattiva una persona nel grafo (revisione totale · M-6). Mai l'ultima
+ * persona attiva che gestisce persone e ruoli, mai sé stessi. Restituisce
+ * l'e-mail (per Keycloak) e se lo stato è cambiato davvero.
+ */
+export async function setUserActiveInGraph(
+  tenantId: string, userId: string, active: boolean, actorId: string,
+): Promise<{ email: string; name: string; changed: boolean }> {
+  if (!active && userId === actorId) {
+    throw new ValidationError('You cannot deactivate yourself', { key: 'errors.user.deactivateSelf' })
+  }
+  return writeSession(tenantId, async (tx) => {
+    const cur = await tx.run(`
+      MATCH (u:User {tenant_id: $tenantId, id: $userId})
+      RETURN u.email AS email, u.name AS name, coalesce(u.active, true) AS active
+    `, { tenantId, userId })
+    const row = cur.records[0]
+    if (!row) throw new NotFoundError('User', userId)
+    const email = String(row.get('email'))
+    const name = String(row.get('name') ?? email)
+    if ((row.get('active') === true) === active) return { email, name, changed: false }
+    if (!active && await usersAdminsAfter(tx, tenantId, { deactivatedUserId: userId }) === 0) {
+      throw lastUsersAdminError()
+    }
+    const now = new Date().toISOString()
+    await tx.run(`
+      MATCH (u:User {tenant_id: $tenantId, id: $userId})
+      SET u.active = $active, u.updated_at = $now,
+          u.deactivated_at = CASE WHEN $active THEN null ELSE $now END,
+          u.deactivated_by = CASE WHEN $active THEN null ELSE $actorId END
+    `, { tenantId, userId, active, now, actorId })
+    return { email, name, changed: true }
   })
 }
 

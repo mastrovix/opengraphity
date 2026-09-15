@@ -13,6 +13,15 @@
 //      in a WHERE (accepted only when the query has no OR/XOR/NOT that could
 //      neutralise it), or re-uses an alias already bound by an anchored path.
 //
+//   5. what the tenant's graph holds but a report must never read (revisione
+//      totale · D-1): every node pattern names its labels (or re-uses an alias
+//      that does), no label is one of SENSITIVE_LABELS, no `!`/`%` label
+//      expression, no access to a SENSITIVE_PROPERTY_KEYS property and no dynamic
+//      `x['…']` access. Before, an operator with `report.ai` (or a prompt
+//      injection in a ticket title) could read OutboundWebhook.secret/headers,
+//      Slack webhook URLs and transform scripts through the tool.
+//      `redactSensitiveValue` is the second line on the rows the query returns.
+//
 // The check is deliberately strict: a legitimate query it rejects costs the
 // model one retry; a malicious query it accepts costs a cross-tenant leak.
 
@@ -25,6 +34,19 @@ export class UnsafeCypherError extends Error {
 }
 
 export const MAX_CYPHER_LENGTH = 4000
+
+/** Nodes holding integration secrets, credentials or configuration code: never readable by a report. */
+export const SENSITIVE_LABELS: ReadonlySet<string> = new Set([
+  'OutboundWebhook', 'InboundWebhook', 'ApiKey', 'NotificationChannel', 'SlackInstallation',
+  'SyncSource', 'SyncConflict', 'SyncChangeRecord', 'MigrationLock', 'Migration', 'LoginProvider',
+])
+
+/** Property names that hold secrets on any node. */
+export const SENSITIVE_PROPERTY_KEYS: ReadonlySet<string> = new Set([
+  'secret', 'headers', 'key_hash', 'key_prefix', 'webhook_url', 'transform_script', 'token', 'password',
+  'credentials', 'encrypted_credentials', 'signing_secret', 'signing_secret_enc', 'bot_token', 'bot_token_enc',
+  'client_secret', 'embedding',
+])
 
 const WRITE_KEYWORD_RE = /(?<![\w.$])(CREATE|MERGE|SET|DELETE|DETACH|REMOVE|DROP|FOREACH|LOAD|USING|ALTER|GRANT|DENY|REVOKE|START|STOP|TERMINATE|INSTALL|IMPORT|EXPORT|SHOW|USE|ENABLE|RENAME|DEALLOCATE|ASSIGN|PERIODIC|COMMIT)(?!\w)/i
 const CALL_RE          = /(?<![\w.])CALL(?!\w)\s*([^\s]*)/gi
@@ -41,6 +63,31 @@ const INLINE_TENANT_RE = /(?<!\w)tenant_id\s*:\s*\$tenantId(?!\w)/
 const WHERE_TENANT_RE  = /(?<![\w.])([A-Za-z_][A-Za-z0-9_]*)\.tenant_id\s*=\s*\$tenantId(?!\w)|\$tenantId\s*=\s*(?<![\w.])([A-Za-z_][A-Za-z0-9_]*)\.tenant_id(?!\w)/g
 const BOOLEAN_NEUTRALISER_RE = /(?<![\w.])(OR|XOR|NOT)(?!\w)/i
 const IS_NOT_RE = /(?<![\w.])IS\s+NOT(?!\w)/gi
+
+const SENSITIVE_PROPERTY_RE = new RegExp(`(?<![\\w$])[A-Za-z_][A-Za-z0-9_]*\\s*\\.\\s*(${[...SENSITIVE_PROPERTY_KEYS].join('|')})(?!\\w)|\\{[^}]*(?<![\\w$])(${[...SENSITIVE_PROPERTY_KEYS].join('|')})\\s*:`, 'i')
+const DYNAMIC_PROPERTY_RE = /[A-Za-z0-9_)\]]\s*\[\s*(''|""|\$)/
+
+/**
+ * Seconda linea di D-1 sulle righe restituite: un nodo con un'etichetta
+ * sensibile diventa `"[redacted]"`, una chiave sensibile di una mappa o di un
+ * nodo sparisce. Ricorsiva su liste e mappe; i valori primitivi passano.
+ */
+export function redactSensitiveValue(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map(redactSensitiveValue)
+  const v = value as Record<string, unknown>
+  if (Array.isArray(v['labels']) && typeof v['properties'] === 'object' && v['properties'] !== null) {
+    if ((v['labels'] as unknown[]).some((l) => typeof l === 'string' && SENSITIVE_LABELS.has(l))) return '[redacted]'
+    return { ...v, properties: redactSensitiveValue(v['properties']) }
+  }
+  if ('toNumber' in v && typeof v['toNumber'] === 'function') return value
+  const out: Record<string, unknown> = {}
+  for (const [k, inner] of Object.entries(v)) {
+    if (SENSITIVE_PROPERTY_KEYS.has(k.toLowerCase())) continue
+    out[k] = redactSensitiveValue(inner)
+  }
+  return out
+}
 
 /** Words after which a `(` opens a pattern, not a function call. */
 const PATTERN_KEYWORDS = new Set([
@@ -107,6 +154,8 @@ function precedingToken(text: string, index: number): { word: string | null; cha
 interface NodePattern {
   alias:        string | null
   hasLabel:     boolean
+  labels:       string[]
+  labelExpr:    string
   inlineTenant: boolean
   continues:    boolean   // preceded by `-` / `>` → same path as previous node
 }
@@ -124,6 +173,8 @@ function extractNodePatterns(text: string): NodePattern[] {
     nodes.push({
       alias:        m[1] ?? null,
       hasLabel:     (m[2] ?? '').length > 0,
+      labels:       (m[2] ?? '').split(/[:|&!%\s]+/).filter(Boolean),
+      labelExpr:    m[2] ?? '',
       inlineTenant: m[3] ? INLINE_TENANT_RE.test(m[3]) : false,
       continues:    char === '-' || char === '>',
     })
@@ -196,4 +247,20 @@ export function assertSafeReadOnlyCypher(query: string): void {
     }
     for (const n of path) if (n.alias) bound.add(n.alias)
   }
+
+  // 5. What a report must never read (D-1).
+  const labeledAliases = new Set(nodes.filter((n) => n.hasLabel && n.alias).map((n) => n.alias!))
+  for (const n of nodes) {
+    if (/[!%]/.test(n.labelExpr)) throw new UnsafeCypherError('label expressions with ! or % are not allowed: name the labels')
+    const denied = n.labels.find((l) => SENSITIVE_LABELS.has(l))
+    if (denied) throw new UnsafeCypherError(`label ${denied} is not readable by reports`)
+    if (!n.hasLabel && !(n.alias && labeledAliases.has(n.alias))) {
+      throw new UnsafeCypherError(`every node needs a label: (${n.alias ?? ''}) has none — write (${n.alias ?? 'x'}:Label)`)
+    }
+  }
+  SENSITIVE_PROPERTY_RE.lastIndex = 0
+  const prop = SENSITIVE_PROPERTY_RE.exec(text)
+  if (prop) throw new UnsafeCypherError(`property ${prop[1]} is not readable by reports`)
+  if (DYNAMIC_PROPERTY_RE.test(text)) throw new UnsafeCypherError('dynamic property access x[\'…\'] is not allowed: use x.property')
+
 }

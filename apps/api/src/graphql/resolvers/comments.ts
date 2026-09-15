@@ -1,3 +1,4 @@
+import { isEntityClosed } from '../../lib/workflowHelpers.js'
 import { GraphQLError } from 'graphql'
 import { NotFoundError } from '../../lib/errors.js'
 import { getSession } from '@opengraphity/neo4j'
@@ -158,6 +159,10 @@ async function loadCommentForChange(
   }
   // L'utente del portale vede solo le risposte pubbliche: le sue, per costruzione.
   if (isPortalOnly(ctx) && rec.get('isInternal') !== false) throw new NotFoundError('Comment', id)
+  // Un ticket chiuso non si riscrive dal portale (revisione totale · H-39): lo staff non lo vedrebbe cambiare.
+  if (isPortalOnly(ctx) && await isEntityClosed(session, rec.get('entityId') as string, ctx.tenantId)) {
+    throw new GraphQLError('The ticket is closed: its conversation can no longer be changed', { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.comment.ticketClosed' } } })
+  }
   if (rec.get('deletedAt')) {
     throw new GraphQLError('The comment has been deleted', { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.comment.deleted' } } })
   }

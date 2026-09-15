@@ -170,6 +170,9 @@
     },
     "serviceRequest": {
       "catalogItemWithoutPriority": "The catalog item «{{item}}» has no priority, so a request cannot be opened from it. An administrator sets it in Admin → Service catalog."
+    },
+    "comment": {
+      "ticketClosed": "The ticket is closed: its conversation can no longer be changed. Open a new ticket."
     }
   },
   "auth": {

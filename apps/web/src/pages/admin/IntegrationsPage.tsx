@@ -244,7 +244,8 @@ export function IntegrationsPage() {
 
   async function handleCreateApiKey() {
     try {
-      const res = await createKey({ variables: { input: { ...keyForm, rateLimit: Number(keyForm.rateLimit) } } })
+      // «Scade il» vuoto = nessuna scadenza: si manda null, mai la stringa vuota (G-1).
+      const res = await createKey({ variables: { input: { ...keyForm, rateLimit: Number(keyForm.rateLimit), expiresAt: keyForm.expiresAt || null } } })
       setModal(null); resetKeyForm()
       const key = (res.data as { createApiKey?: { key: string } } | undefined)?.createApiKey?.key
       if (!key) throw new Error(t('admin.integrations.errors.keyMissing'))
@@ -525,10 +526,10 @@ export function IntegrationsPage() {
                 </div>
               </div>
               <div><label htmlFor={fid('key-rate-limit')} style={labelS}>{t('admin.integrations.form.rateLimit')}</label><Input id={fid('key-rate-limit')} style={inputS} type="number" value={keyForm.rateLimit} onChange={e => setKeyForm({ ...keyForm, rateLimit: Number(e.target.value) })} /></div>
-              <div><label htmlFor={fid('key-expires-at')} style={labelS}>{t('admin.integrations.form.expiresAt')}</label><Input id={fid('key-expires-at')} style={inputS} type="date" value={keyForm.expiresAt} onChange={e => setKeyForm({ ...keyForm, expiresAt: e.target.value })} /></div>
+              <div><label htmlFor={fid('key-expires-at')} style={labelS}>{t('admin.integrations.form.expiresAt')}</label><Input id={fid('key-expires-at')} style={inputS} type="date" aria-describedby={fid('key-expires-at-hint')} value={keyForm.expiresAt} onChange={e => setKeyForm({ ...keyForm, expiresAt: e.target.value })} /><div id={fid('key-expires-at-hint')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('admin.integrations.form.expiresAtHint')}</div></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
-                <Button onClick={() => void handleCreateApiKey()} disabled={!keyForm.name || !keyForm.permissions.length}>{t('common.create')}</Button>
+                <Button onClick={() => void handleCreateApiKey()} disabled={!keyForm.name.trim() || !keyForm.permissions.length || !Number.isInteger(keyForm.rateLimit) || keyForm.rateLimit < 1}>{t('common.create')}</Button>
               </div>
             </div>
           </ModalPortal>

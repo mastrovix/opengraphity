@@ -19,7 +19,6 @@ import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from
 import { creationStepContext } from '../lib/customFieldSteps.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { ValidationError } from '../lib/errors.js'
-import { logger } from '../lib/logger.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../lib/taskStatus.js'
 import { deriveChangePriority } from '../graphql/resolvers/change/scoring.js'

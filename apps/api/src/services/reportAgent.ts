@@ -13,7 +13,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { getSession, toNumber } from '@opengraphity/neo4j'
 import { config } from '../lib/config.js'
 import { logger } from '../lib/logger.js'
-import { assertSafeReadOnlyCypher, UnsafeCypherError } from '../lib/cypherGuard.js'
+import { assertSafeReadOnlyCypher, redactSensitiveValue, UnsafeCypherError } from '../lib/cypherGuard.js'
 
 // ── Model ─────────────────────────────────────────────────────────────────
 
@@ -112,7 +112,7 @@ export const CYPHER_TOOL: Anthropic.Tool = {
     properties: {
       query: {
         type: 'string',
-        description: 'Query Cypher valida di sola lettura. Usa $tenantId come unico parametro, es. MATCH (i:Incident {tenant_id: $tenantId}) … Non usare LIMIT > 100.',
+        description: 'Query Cypher valida di sola lettura. Usa $tenantId come unico parametro e scrivi l\'etichetta di ogni nodo, es. MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTS]->(c:ConfigurationItem) … Non usare LIMIT > 100.',
       },
       description: {
         type: 'string',
@@ -133,7 +133,8 @@ REGOLE:
 - DEVI SEMPRE usare run_cypher_query per rispondere a qualsiasi domanda sui dati. NON inventare mai dati, conteggi o nomi che non hai recuperato dal database.
 - Se non riesci a trovare i dati con una query, dillo esplicitamente e proponi una query alternativa.
 - Non rispondere MAI con dati numerici o elenchi senza averli prima recuperati con run_cypher_query.
-- Vincolo tenant OBBLIGATORIO: ogni pattern MATCH deve partire da un nodo con {tenant_id: $tenantId}, es. MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTS]->(c). Le query senza questo vincolo vengono rifiutate.
+- Vincolo tenant OBBLIGATORIO: ogni pattern MATCH deve partire da un nodo con {tenant_id: $tenantId}, es. MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTS]->(c:ConfigurationItem). Le query senza questo vincolo vengono rifiutate.
+- OGNI nodo del pattern deve avere l'etichetta scritta: (c:ConfigurationItem), mai (c) al primo uso. Non sono leggibili le etichette delle integrazioni (OutboundWebhook, InboundWebhook, ApiKey, NotificationChannel, SlackInstallation, SyncSource) né le proprietà che contengono segreti (secret, headers, token, credentials, webhook_url, key_hash, transform_script).
 - Solo letture: niente CREATE/MERGE/SET/DELETE, niente CALL di procedure, nessun parametro oltre $tenantId.
 - Non includere mai UUID nelle tabelle — usa titoli e nomi leggibili
 - Nelle tabelle usa solo colonne significative: Titolo, Tipo, Stato, Severity, CI, Team, Data
@@ -218,7 +219,7 @@ export async function runGuardedCypherTool(
     if (!(err instanceof UnsafeCypherError)) throw err
     logger.warn({ reason: err.message, query: query.slice(0, 500) }, `${logLabel}: Cypher rejected by guard`)
     budget.recordRejection(err.message)
-    return `${err.message}\nRewrite the query: read-only, every MATCH pattern must include {tenant_id: $tenantId}, the only parameter is $tenantId.`
+    return `${err.message}\nRewrite the query: read-only, every MATCH pattern must include {tenant_id: $tenantId}, every node must name its label, the only parameter is $tenantId.`
   }
 
   const querySession = getSession(undefined, 'READ')
@@ -231,7 +232,7 @@ export async function runGuardedCypherTool(
         const val = r.get(key)
         obj[key] = val !== null && typeof val === 'object' && 'toNumber' in val
           ? (val as { toNumber(): number }).toNumber()
-          : val
+          : redactSensitiveValue(val)
       })
       return obj
     })

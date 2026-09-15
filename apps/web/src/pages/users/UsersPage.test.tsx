@@ -18,7 +18,7 @@ const USERS: UserRowFixture[] = [
 function usersAnySort(users = USERS): GqlMock {
   return {
     request: { query: GET_USERS, variables: () => true },
-    result: { data: { users: users.map((u) => ({ __typename: 'User', teams: [], roleName: null, ...u })) } },
+    result: { data: { users: users.map((u) => ({ __typename: 'User', teams: [], roleName: null, active: true, ...u })) } },
     maxUsageCount: Number.POSITIVE_INFINITY,
   }
 }

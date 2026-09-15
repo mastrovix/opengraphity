@@ -226,7 +226,14 @@ export function changeSDL(): string {
     incidentId:    ID
   }
 
+  """
+  Un'opzione di risposta. Con «id» è l'opzione che esiste già (etichetta,
+  punteggio e ordine si aggiornano e le risposte date restano attaccate);
+  senza «id» è nuova. Revisione totale · B-2: prima ogni salvataggio
+  cancellava e ricreava le opzioni, e le risposte già date sparivano.
+  """
   input AnswerOptionInput {
+    id:       ID
     label:     String!
     score:     Int!
     sortOrder: Int!

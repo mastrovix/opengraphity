@@ -22,6 +22,8 @@ type K8sConfig = {
   namespaces?:     string
   server_url?:     string
   resource_types?: string
+  /** Salta la verifica del certificato dell'API server: scelta esplicita del cliente (D-15). */
+  skip_tls_verify?: boolean
 }
 
 const ALL_RESOURCE_TYPES = ['node', 'deployment', 'statefulset', 'service', 'ingress'] as const
@@ -33,7 +35,10 @@ async function makeKubeConfig(creds: Record<string, string>, cfg: K8sConfig): Pr
     kc.loadFromString(creds['kubeconfig'])
   } else if (creds['bearer_token'] && cfg.server_url) {
     kc.loadFromOptions({
-      clusters:  [{ name: 'cluster', server: cfg.server_url, skipTLSVerify: true }],
+      // Revisione totale · D-15: la verifica del certificato è la regola; si
+      // salta solo se il cliente lo chiede esplicitamente nella configurazione
+      // della sorgente (cluster con certificato interno), mai in silenzio.
+      clusters:  [{ name: 'cluster', server: cfg.server_url, skipTLSVerify: cfg.skip_tls_verify === true }],
       users:     [{ name: 'user', token: creds['bearer_token'] }],
       contexts:  [{ name: 'ctx', cluster: 'cluster', user: 'user' }],
       currentContext: 'ctx',
@@ -298,6 +303,13 @@ export const kubernetesConnector: Connector = {
         type:      'text',
         required:  false,
         help_text: 'e.g. https://my-cluster.example.com:6443 (required when using bearer_token)',
+      },
+      {
+        name:      'skip_tls_verify',
+        label:     'Do not verify the API server certificate',
+        type:      'boolean',
+        required:  false,
+        help_text: 'Only for a cluster with an internal certificate: the bearer token then travels to a server whose identity is not verified.',
       },
       resourceTypesField(ALL_RESOURCE_TYPES),
       {

@@ -210,6 +210,8 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
         const label = TICKET_LABELS[ctx.entityType]
         if (!label) throw new Error(`assign_user: entity type "${ctx.entityType}" has no assignee`)
         await withSession(async (session) => {
+          const { assertAssignablePerson } = await import('../services/ticketAssignment.js')
+          await assertAssignablePerson(session, userId, ctx.tenantId)
           const rows = await runQuery<{ ok: unknown }>(session, `
             MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})
             MATCH (u:User {id: $userId, tenant_id: $tenantId})

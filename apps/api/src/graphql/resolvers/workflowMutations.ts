@@ -887,6 +887,10 @@ export async function executeWorkflowTransition(
         // quello di prima (il ticket restava con due team). Ora sostituisce, e per
         // il team scrive anche la storia delle assegnazioni (lib/ticketTeamHistory.ts).
         const now = new Date().toISOString()
+        if (targetType !== 'team') {
+          const { assertAssignablePerson } = await import('../../services/ticketAssignment.js')
+          await assertAssignablePerson(session, targetId, ctx.tenantId)
+        }
         await session.executeWrite((tx) =>
           targetType === 'team'
             ? tx.run(

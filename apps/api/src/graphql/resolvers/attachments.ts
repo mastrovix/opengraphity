@@ -3,6 +3,8 @@ import { getSession, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { logger } from '../../lib/logger.js'
 import { hasPermission } from '../../lib/permissions.js'
+import { attachmentAccess, attachmentAccessCondition } from '../../lib/attachmentAccess.js'
+import { ATTACHMENT_ENTITY_LABELS, entityExistsCypher } from '../../lib/attachmentValidation.js'
 
 interface Attachment {
   id:          string
@@ -36,8 +38,16 @@ export async function attachments(
   args: { entityType: string; entityId: string },
   ctx: GraphQLContext,
 ): Promise<Attachment[]> {
+  const condition = attachmentAccessCondition(attachmentAccess(ctx.permissions, args.entityType, 'read'))
+  const labels = ATTACHMENT_ENTITY_LABELS[args.entityType]
+  if (condition === null || !labels) {
+    throw new GraphQLError(`You cannot see the attachments of a ${args.entityType}`, { extensions: { code: 'FORBIDDEN' } })
+  }
   const session = getSession(undefined, 'READ')
   try {
+    // Revisione totale · H-14: l'elenco solo per un'entità che il chiamante può vedere.
+    const reachable = await session.executeRead((tx) => tx.run(entityExistsCypher(labels, condition), { entityId: args.entityId, tenantId: ctx.tenantId, userId: ctx.userId }))
+    if (!reachable.records.length) return []
     const res = await session.executeRead((tx) => tx.run(`
       MATCH (a:Attachment {tenant_id: $tenantId, entity_type: $entityType, entity_id: $entityId})
       RETURN a.id           AS id,

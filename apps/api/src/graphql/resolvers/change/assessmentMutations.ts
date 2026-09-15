@@ -1,6 +1,7 @@
 /**
  * Mutations on AssessmentTask — response submission, completion, assignment.
  */
+import { assertAssignablePerson } from '../../../services/ticketAssignment.js'
 import { assignTeamCypher, TEAM_NOW_PARAM } from '../../../lib/ticketTeamHistory.js'
 import { GraphQLError } from 'graphql'
 import { NotFoundError } from '../../../lib/errors.js'
@@ -130,7 +131,9 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
 
     type QRow = { questionId: string; weight: unknown; maxScore: unknown }
     const questions = await runQuery<QRow>(session, `
+      // Il tipo CI è del cliente o spedito col prodotto (revisione totale · A-21).
       MATCH (ct:CITypeDefinition {id: $ciTypeId})-[rel:HAS_QUESTION]->(q:AssessmentQuestion {tenant_id: $tenantId, is_active: true, category: $category})
+      WHERE ct.scope = 'base' OR ct.tenant_id IN [$tenantId, 'system']
       OPTIONAL MATCH (q)-[:HAS_OPTION]->(o:AnswerOption)
       WITH q, rel.weight AS weight, max(o.score) AS maxScore
       RETURN q.id AS questionId, weight, maxScore
@@ -280,6 +283,7 @@ export async function assignAssessmentTaskToUser(
         '[assignAssessmentTaskToUser] utente non appartiene al team assegnato')
       throw new ForbiddenError('The user does not belong to the assigned team', { key: 'errors.authz.notInTeam' })
     }
+    await assertAssignablePerson(session, args.userId, ctx.tenantId)
 
     await session.executeWrite((tx) => tx.run(`
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
@@ -334,6 +338,7 @@ export async function assignDeployPlanTaskToUser(
       logger.error({ taskId: args.taskId, userId: args.userId }, '[assignDeployPlanTaskToUser] utente non appartiene al team assegnato')
       throw new ForbiddenError('The user does not belong to the assigned team', { key: 'errors.authz.notInTeam' })
     }
+    await assertAssignablePerson(session, args.userId, ctx.tenantId)
 
     await session.executeWrite((tx) => tx.run(`
       MATCH (t:DeployPlanTask {id: $taskId, tenant_id: $tenantId})

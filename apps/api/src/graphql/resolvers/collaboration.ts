@@ -173,7 +173,8 @@ async function searchUsers(_: unknown, args: { search: string; limit?: number },
   return withSession(async (s) => {
     const rows = await runQuery<{ id: string; name: string; email: string }>(s, `
       MATCH (u:User {tenant_id: $tenantId})
-      WHERE toLower(u.name) CONTAINS toLower($search) OR toLower(u.email) CONTAINS toLower($search)
+      WHERE (toLower(u.name) CONTAINS toLower($search) OR toLower(u.email) CONTAINS toLower($search))
+        AND coalesce(u.active, true) = true
       RETURN u.id AS id, u.name AS name, u.email AS email
       ORDER BY u.name LIMIT toInteger($limit)
     `, { tenantId: ctx.tenantId, search: args.search, limit })

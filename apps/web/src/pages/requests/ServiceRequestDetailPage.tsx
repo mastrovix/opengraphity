@@ -115,8 +115,9 @@ export function ServiceRequestDetailPage() {
   })
 
   // Giro del 14 set 2026 (#41): la richiesta non si poteva assegnare.
-  const { data: usersData } = useQuery<{ users: Array<{ id: string; name: string; permissions: string[] }> }>(GET_ASSIGNABLE_USERS)
-  const assignable = (usersData?.users ?? []).filter((u) => u.permissions.includes(ASSIGNABLE_PERMISSION))
+  const { data: usersData } = useQuery<{ users: Array<{ id: string; name: string; permissions: string[]; active: boolean }> }>(GET_ASSIGNABLE_USERS)
+  // Le persone disattivate non ricevono lavoro (revisione totale · M-6).
+  const assignable = (usersData?.users ?? []).filter((u) => u.active && u.permissions.includes(ASSIGNABLE_PERMISSION))
   const [assigneeChoice, setAssigneeChoice] = useState<string | null>(null)
   const [assignRequest, { loading: assigning }] = useMutation(ASSIGN_SERVICE_REQUEST_TO_USER, {
     onCompleted: async () => { setAssigneeChoice(null); await refetch(); toast.success(t('toast.request.assigned')) },

@@ -9,7 +9,7 @@ export const GET_USERS = gql`
   query GetUsers($sortField: String, $sortDirection: String) {
     users(sortField: $sortField, sortDirection: $sortDirection) {
       ...UserRef
-      role roleName createdAt
+      role roleName active createdAt
       teams { ...TeamRef }
     }
   }
@@ -22,7 +22,7 @@ export const GET_USERS = gql`
 export const GET_ASSIGNABLE_USERS = gql`
   query GetAssignableUsers {
     users(sortField: "name", sortDirection: "asc") {
-      id name permissions
+      id name permissions active
     }
   }
 `
@@ -51,7 +51,7 @@ export const GET_USER = gql`
   query GetUser($id: ID!) {
     user(id: $id) {
       ...UserRef
-      tenantId code firstName lastName role roleName slackId createdAt
+      tenantId code active firstName lastName role roleName slackId createdAt
       teams { id name type }
     }
   }

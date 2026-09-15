@@ -61,12 +61,12 @@ export function teamsMock(teams: { id: string; name: string }[] = []): GqlMock {
   }
 }
 
-export interface UserRowFixture { id: string; name: string; email: string; role: string; createdAt: string | null }
+export interface UserRowFixture { id: string; name: string; email: string; role: string; createdAt: string | null; active?: boolean }
 
 export function usersMock(users: UserRowFixture[], variables: Record<string, unknown> = {}): GqlMock {
   return {
     request: { query: GET_USERS, variables },
-    result: { data: { users: users.map((u) => ({ __typename: 'User', teams: [], roleName: null, ...u })) } },
+    result: { data: { users: users.map((u) => ({ __typename: 'User', teams: [], roleName: null, active: true, ...u })) } },
     maxUsageCount: Number.POSITIVE_INFINITY,
   }
 }

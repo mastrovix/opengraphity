@@ -1,13 +1,14 @@
 import { GraphQLError } from 'graphql'
 import { requirePermission } from '../../lib/permissions.js'
-import { setUserRole as setUserRoleInGraph, tenantRoles } from '../../lib/roles.js'
+import { setUserActiveInGraph, setUserRole as setUserRoleInGraph, tenantRoles } from '../../lib/roles.js'
+import { createRealmUser, deleteRealmUser, emailTakenError, normalizeEmail, setRealmUserEnabled } from '../../lib/tenantUsers.js'
+import { logger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
 import { roleResolvers } from './roles.js'
 import { slackResolvers } from './slack.js'
 import { loginResolvers } from './login.js'
 import { applyAuthorizationPolicy } from '../../lib/authorization.js'
-import { config } from '../../lib/config.js'
-import { NotFoundError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { mergeResolvers } from '@graphql-tools/merge'
 import { ticketCustomFieldResolvers } from './ticketCustomFields.js'
 import type { IResolvers } from '@graphql-tools/utils'
@@ -73,7 +74,7 @@ import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 
 // ── me + users stubs ──────────────────────────────────────────────────────────
 
-import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { getSession, runQuery, runQueryOne, QueryError } from '@opengraphity/neo4j'
 import { neo4jDateToISO } from '../../lib/mappers.js'
 
 function mapUser(props: Record<string, unknown>) {
@@ -83,6 +84,7 @@ function mapUser(props: Record<string, unknown>) {
     email:     props['email']      as string,
     name:      props['name']       as string,
     code:      props['name']       as string,
+    active:    props['active'] !== false,
     firstName: (props['first_name'] as string) ?? null,
     lastName:  (props['last_name']  as string) ?? null,
     role:      props['role']       as string,
@@ -139,7 +141,7 @@ async function userTeams(parent: { id: string }, _: unknown, ctx: GraphQLContext
   try {
     type Row = { props: Record<string, unknown> }
     const rows = await runQuery<Row>(session, `
-      MATCH (u:User {id: $id})-[:MEMBER_OF]->(t:Team)
+      MATCH (u:User {id: $id, tenant_id: $tenantId})-[:MEMBER_OF]->(t:Team)
       WHERE t.tenant_id = $tenantId
       RETURN properties(t) AS props
       ORDER BY t.name
@@ -159,79 +161,90 @@ async function userTeams(parent: { id: string }, _: unknown, ctx: GraphQLContext
 
 // ── createUser mutation ──────────────────────────────────────────────────────
 
+/**
+ * Una persona nuova (revisione totale · A-2, A-3): e-mail minuscola; un'e-mail
+ * già presente nel grafo o nel realm è un errore e non tocca nulla (prima un
+ * 409 di Keycloak veniva accettato: password reimpostata, nome e ruolo
+ * sovrascritti). Se il grafo rifiuta dopo che l'account è nato nel realm,
+ * l'account si toglie: nessuna persona a metà.
+ */
 async function createUser(_: unknown, args: { input: { email: string; name: string; password: string; role: string; teamIds?: string[] } }, ctx: GraphQLContext) {
   requirePermission(ctx, 'admin.users')
-  const { email, name, password, role, teamIds } = args.input
+  const { password, role, teamIds } = args.input
+  const email = normalizeEmail(args.input.email)
+  const name = (args.input.name ?? '').trim()
+  if (!name) throw new ValidationError('The person needs a name', { key: 'errors.user.nameRequired' })
   if (!(await tenantRoles(ctx.tenantId)).has(role)) {
     throw new GraphQLError(`Invalid role: ${role}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.authz.invalidRole', params: { role } } } })
   }
   const tenantId = ctx.tenantId
-  const KEYCLOAK_URL        = config.keycloakUrl
-  const KEYCLOAK_ADMIN_USER = config.keycloakAdminUser
-  const KEYCLOAK_ADMIN_PASS = config.keycloakAdminPassword   // requireEnv: throws if unset
 
-  // 1. Get Keycloak admin token
-  const tokenRes = await fetch(`${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token`, {
-    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'password', client_id: 'admin-cli', username: KEYCLOAK_ADMIN_USER, password: KEYCLOAK_ADMIN_PASS }),
-  })
-  if (!tokenRes.ok) throw new GraphQLError('Keycloak admin auth failed', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
-  const { access_token: adminToken } = await tokenRes.json() as { access_token: string }
-
-  // 2. Create user in Keycloak
-  const nameParts = name.split(' ')
-  const firstName = nameParts[0] ?? name
-  const lastName  = nameParts.slice(1).join(' ') || ''
-  const kcRes = await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/users`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-    body: JSON.stringify({ username: email, email, emailVerified: true, enabled: true, firstName, lastName }),
-  })
-  if (kcRes.status !== 201 && kcRes.status !== 409) throw new GraphQLError(`Keycloak user creation failed: ${kcRes.status}`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
-
-  // Get user ID
-  const usersRes = await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/users?email=${encodeURIComponent(email)}&exact=true`, {
-    headers: { Authorization: `Bearer ${adminToken}` },
-  })
-  const kcUsers = await usersRes.json() as { id: string }[]
-  const kcUserId = kcUsers[0]?.id
-  if (!kcUserId) throw new GraphQLError('User not found in Keycloak after creation', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
-
-  // Set password
-  const pwRes = await fetch(`${KEYCLOAK_URL}/admin/realms/${tenantId}/users/${kcUserId}/reset-password`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-    body: JSON.stringify({ type: 'password', value: password, temporary: false }),
-  })
-  if (!pwRes.ok) throw new GraphQLError(`Keycloak set-password failed: ${pwRes.status}`, { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
+  const pre = getSession(undefined, 'READ')
+  try {
+    const existing = await runQueryOne<{ id: string }>(pre, 'MATCH (u:User {tenant_id: $tenantId}) WHERE toLower(u.email) = $email RETURN u.id AS id LIMIT 1', { tenantId, email })
+    if (existing) throw emailTakenError(email)
+    if (teamIds?.length) {
+      const found = await runQueryOne<{ n: number }>(pre, 'MATCH (t:Team {tenant_id: $tenantId}) WHERE t.id IN $teamIds RETURN count(t) AS n', { tenantId, teamIds })
+      if (Number(found?.n ?? 0) !== new Set(teamIds).size) throw new NotFoundError('Team', teamIds.join(', '))
+    }
+  } finally { await pre.close() }
 
   // Il ruolo NON si copia in Keycloak (ondata 7): l'app lo legge solo da
   // `User.role` e dai permessi del `:Role`, e una copia nel realm diventerebbe
   // falsa alla prima modifica.
+  const keycloakUserId = await createRealmUser(tenantId, { email, name, password })
 
-  // 3. Create in Neo4j
   const { v4: uuidv4 } = await import('uuid')
   const id  = uuidv4()
   const now = new Date().toISOString()
   const session = getSession(undefined, 'WRITE')
   try {
-    await session.executeWrite(tx => tx.run(`
-      MERGE (u:User {email: $email, tenant_id: $tenantId})
-      ON CREATE SET u.id = $id, u.name = $name, u.role = $role, u.active = true, u.created_at = $now, u.updated_at = $now
-      ON MATCH SET u.name = $name, u.role = $role, u.updated_at = $now
-    `, { email, tenantId, id, name, role, now }))
-
-    // Assign to teams
-    if (teamIds && teamIds.length > 0) {
-      for (const teamId of teamIds) {
-        await session.executeWrite(tx => tx.run(`
-          MATCH (u:User {email: $email, tenant_id: $tenantId})
-          MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+    await session.executeWrite(async (tx) => {
+      await tx.run(`
+        CREATE (u:User {id: $id, tenant_id: $tenantId, email: $email, name: $name, role: $role, active: true, created_at: $now, updated_at: $now})
+      `, { email, tenantId, id, name, role, now })
+      if (teamIds?.length) {
+        await tx.run(`
+          MATCH (u:User {id: $id, tenant_id: $tenantId})
+          MATCH (t:Team {tenant_id: $tenantId}) WHERE t.id IN $teamIds
           MERGE (u)-[:MEMBER_OF]->(t)
-        `, { email, tenantId, teamId }))
+        `, { id, tenantId, teamIds })
       }
-    }
+    })
+  } catch (err) {
+    await deleteRealmUser(tenantId, keycloakUserId).catch((cleanupErr: unknown) => {
+      logger.error({ err: cleanupErr, tenantId, email }, '[createUser] the realm account could not be removed after the graph refused the person: remove it in Keycloak')
+    })
+    if (err instanceof QueryError && err.isConstraintViolation) throw emailTakenError(email)
+    throw err
   } finally { await session.close() }
 
-  return { id, tenantId, email, name, role, teamId: null, createdAt: now }
+  return mapUser({ id, tenant_id: tenantId, email, name, role, active: true, created_at: now })
+}
+
+/** Disattiva o riattiva una persona (revisione totale · M-6). */
+async function setUserActive(_: unknown, args: { userId: string; active: boolean }, ctx: GraphQLContext) {
+  requirePermission(ctx, 'admin.users')
+  const { userId, active } = args
+  if (active) {
+    // Riattivare: prima il realm (senza account non potrebbe entrare), poi il grafo.
+    const session = getSession()
+    let email: string
+    try {
+      const row = await runQueryOne<{ email: string }>(session, 'MATCH (u:User {id: $userId, tenant_id: $tenantId}) RETURN u.email AS email', { userId, tenantId: ctx.tenantId })
+      if (!row) throw new NotFoundError('User', userId)
+      email = row.email
+    } finally { await session.close() }
+    await setRealmUserEnabled(ctx.tenantId, email, true)
+    const { changed } = await setUserActiveInGraph(ctx.tenantId, userId, true, ctx.userId)
+    if (changed) void audit(ctx, 'user.reactivated', 'User', userId, {})
+  } else {
+    // Disattivare: prima il grafo (da lì in poi l'API la rifiuta anche con un token valido), poi il realm.
+    const { email, changed } = await setUserActiveInGraph(ctx.tenantId, userId, false, ctx.userId)
+    const realm = await setRealmUserEnabled(ctx.tenantId, email, false)
+    if (changed) void audit(ctx, 'user.deactivated', 'User', userId, { realmAccount: realm })
+  }
+  return userById(null, { id: userId }, ctx)
 }
 
 /** Il ruolo di una persona (ondata 7): mai l'ultimo che gestisce persone e ruoli. */
@@ -388,6 +401,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...ciRelationshipResolvers.Mutation,
       ...ticketCustomFieldResolvers.Mutation,
       createUser,
+      setUserActive,
       updateUserTeams,
       setUserRole,
     },

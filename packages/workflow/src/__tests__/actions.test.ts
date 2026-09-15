@@ -165,11 +165,15 @@ describe('call_webhook — public URL', () => {
     expect(q.add).toHaveBeenCalledTimes(1)
     const [name, data, opts] = q.add.mock.calls[0]! as [string, Record<string, unknown>, Record<string, unknown>]
     expect(name).toBe('webhook_retry')
+    // Revisione totale · E-11: gli header (un token del cliente) NON stanno nel
+    // job — il worker li rilegge dal passo (stepId/actionIndex) — e i job falliti
+    // non restano in Redis per sempre.
     expect(data).toEqual({
-      type: 'webhook_retry', url: PUBLIC_URL, method: 'POST', headers: { 'X-Token': 'abc' },
+      type: 'webhook_retry', url: PUBLIC_URL, method: 'POST',
       payload: RESOLVED, attempt: 1, tenantId: 't1', entityId: 'inc-1',
     })
-    expect(opts).toEqual({ attempts: 3, backoff: { type: 'exponential', delay: 30_000 }, removeOnComplete: true, removeOnFail: false })
+    expect(JSON.stringify(data)).not.toContain('X-Token')
+    expect(opts).toEqual({ attempts: 3, backoff: { type: 'exponential', delay: 30_000 }, removeOnComplete: true, removeOnFail: { age: 7 * 24 * 3600 } })
     expect(q.close).toHaveBeenCalledTimes(1)
   })
 

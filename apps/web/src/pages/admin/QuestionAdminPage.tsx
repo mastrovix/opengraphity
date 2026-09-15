@@ -203,7 +203,8 @@ export function QuestionAdminPage() {
   const handleSave = () => {
     if (!text.trim()) { toast.error(t('toast.question.textRequired')); return }
     if (options.length === 0) { toast.error(t('toast.question.optionRequired')); return }
-    const optInput = options.map(o => ({ label: o.label, score: o.score, sortOrder: o.sortOrder }))
+    // L'id delle opzioni che esistono già viaggia con la modifica: le risposte date restano (revisione totale · B-2).
+    const optInput = options.map(o => ({ ...(o.id ? { id: o.id } : {}), label: o.label, score: o.score, sortOrder: o.sortOrder }))
     if (isNew) {
       void createQuestion({ variables: { input: { text: text.trim(), category, isCore, options: optInput } } })
     } else if (selectedId) {

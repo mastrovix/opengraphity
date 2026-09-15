@@ -104,15 +104,17 @@ function hostHeaderOf(req: express.Request): string {
 
 // ── DB lookup ────────────────────────────────────────────────────────────────
 
-interface UserRecord { id: string; role: unknown }
+interface UserRecord { id: string; role: unknown; active: boolean }
 
 async function findUserInTenant(email: string, tenantId: string): Promise<UserRecord | null> {
   const session = getSession(undefined, 'READ')
   try {
     const result = await session.executeRead((tx) =>
       tx.run(
-        `MATCH (u:User {email: $email, tenant_id: $tenantId}) RETURN u.id AS id, u.role AS role`,
-        { email, tenantId },
+        // L'e-mail si scrive minuscola (Keycloak la dà minuscola): un confronto
+        // esatto sull'indice (tenant_id, email) — revisione totale · A-3.
+        `MATCH (u:User {email: $email, tenant_id: $tenantId}) RETURN u.id AS id, u.role AS role, coalesce(u.active, true) AS active`,
+        { email: email.trim().toLowerCase(), tenantId },
       ),
     )
     if (result.records.length === 0) return null
@@ -122,7 +124,7 @@ async function findUserInTenant(email: string, tenantId: string): Promise<UserRe
       throw new Error(`Multiple User nodes for ${email} in tenant ${tenantId}: uniqueness constraint missing`)
     }
     const r = result.records[0]!
-    return { id: r.get('id') as string, role: r.get('role') }
+    return { id: r.get('id') as string, role: r.get('role'), active: r.get('active') !== false }
   } finally {
     await session.close()
   }
@@ -212,6 +214,10 @@ async function resolveKeycloak(decoded: KeycloakTokenPayload, req: express.Reque
   const user = await findUserInTenant(decoded.email, realm)
   if (!user) {
     throw unauthorized('Unauthorized: user not found')
+  }
+  if (!user.active) {
+    // Disattivata (revisione totale · M-6): anche con un token ancora valido.
+    throw unauthorized('Unauthorized: user deactivated')
   }
 
   return {

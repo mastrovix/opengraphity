@@ -183,7 +183,8 @@ describe('POST /api/attachments — authorization and target', () => {
     expect(res.status).toBe(404)
     expect(await errorBody(res)).toMatch(new RegExp(`incident ${UUID} not found`))
     expect(vi.mocked(runQueryOne).mock.calls[0]![1]).toMatch(/e:Incident/)
-    expect(vi.mocked(runQueryOne).mock.calls[0]![2]).toEqual({ entityId: UUID, tenantId: 'tenant-1' })
+    // `userId` viaggia con la condizione d'accesso (revisione totale · H-3).
+    expect(vi.mocked(runQueryOne).mock.calls[0]![2]).toEqual({ entityId: UUID, tenantId: 'tenant-1', userId: 'user-1' })
     expect(fs.existsSync(path.join(UPLOAD_DIR, 'tenant-1', UUID))).toBe(false)
     expect(writes).toHaveLength(0)
   })

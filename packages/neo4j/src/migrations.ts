@@ -252,7 +252,18 @@ export async function runMigrations(
 
   await acquireLock(session, owner, now().toISOString(), lockTtlMs)
   try {
+    // Lo stato applicato si rilegge DENTRO il lock (revisione totale · E-5): due
+    // processi che partono insieme leggevano entrambi la lista dei pending prima
+    // che il primo prendesse il lock, e la seconda applicava di nuovo tutto.
+    const appliedNow = await loadApplied(session)
+    const stillPending = toRun.filter((m) => force || !appliedNow.has(m.id))
     for (const m of toRun) {
+      if (!stillPending.includes(m)) {
+        result.skipped.push(m.id)
+        log(`[migrate] ${m.id} applied by another process while waiting for the lock — skipped`)
+      }
+    }
+    for (const m of stillPending) {
       const checksum = migrationChecksum(m)
       const params   = { id: m.id, now: now().toISOString(), checksum, description: m.description }
       log(`[migrate] applying ${m.id} — ${m.description}`)

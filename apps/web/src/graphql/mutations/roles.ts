@@ -18,6 +18,13 @@ export const DELETE_ROLE = gql`
   }
 `
 
+/** Disattiva o riattiva una persona (revisione totale · M-6). */
+export const SET_USER_ACTIVE = gql`
+  mutation SetUserActive($userId: ID!, $active: Boolean!) {
+    setUserActive(userId: $userId, active: $active) { id active }
+  }
+`
+
 export const SET_USER_ROLE = gql`
   mutation SetUserRole($userId: ID!, $role: String!) {
     setUserRole(userId: $userId, role: $role) { id role roleName permissions }

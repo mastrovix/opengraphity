@@ -61,6 +61,13 @@ const ALLOWED_ROLES = USER_ROLES.filter((r) => FACTORY_ROLE_PERMISSIONS[r].inclu
 const ALLOWED_PLANS = ['starter', 'pro', 'enterprise'] as const satisfies readonly Tenant['plan'][]
 
 interface Args {
+  /**
+   * Organizzazione di produzione (revisione totale · H-46): il realm esige
+   * HTTPS e i redirect restano i suoi domini, senza i jolly `*.localhost` e
+   * senza `webOrigins: ['+']`. Senza `--production` l'onboarding è quello di
+   * sviluppo, come prima.
+   */
+  production: boolean
   slug:       string
   email:      string
   firstName:  string
@@ -90,11 +97,12 @@ function parseCliArgs(argv: readonly string[]): Args {
       'name':             { type: 'string' },
       'plan':             { type: 'string', default: DEFAULT_TENANT_PLAN },
       'timezone':         { type: 'string', default: DEFAULT_TENANT_TIMEZONE },
+      'production':       { type: 'boolean', default: false },
     },
   })
 
   const slug      = args['slug']
-  const email     = args['admin-email']
+  const email     = args['admin-email']?.trim().toLowerCase()
   const firstName = args['admin-first-name']
   const lastName  = args['admin-last-name']
   if (!slug || !email || !firstName || !lastName) {
@@ -120,6 +128,7 @@ function parseCliArgs(argv: readonly string[]): Args {
   }
 
   return {
+    production: args['production'] === true,
     slug, email, firstName, lastName,
     domain:     args['domain']!,
     adminRole:  adminRole as Args['adminRole'],
@@ -139,7 +148,8 @@ async function createRealm(kc: KeycloakAdmin, token: string, a: Args): Promise<v
   const { created } = await kc.post(token, '/admin/realms', {
     realm:       a.slug,
     enabled:     true,
-    sslRequired: 'none',
+    // Produzione: l'accesso solo via HTTPS (revisione totale · H-46).
+    sslRequired: a.production ? 'external' : 'none',
     displayName: a.slug,
   })
   console.log(created ? `  ✓ Realm "${a.slug}" creato` : `  ↩ Realm "${a.slug}" già esistente — skip`)
@@ -156,14 +166,16 @@ async function createClient(kc: KeycloakAdmin, token: string, a: Args): Promise<
       // Production
       `https://${a.slug}.${a.domain}/*`,
       ...(a.piIp ? [`https://${a.slug}.${a.piIp}.nip.io/*`] : []),
-      // Local Docker / dev — all access patterns
-      `http://${a.slug}.localhost/*`,          // nginx-dev on port 80
-      `http://${a.slug}.localhost:5173/*`,     // web container direct
-      `http://*.localhost/*`,                  // any localhost subdomain (port 80)
-      `http://*.localhost:5173/*`,             // any localhost subdomain on 5173
-      `http://*.localhost:8080/*`,             // Keycloak post-login redirects
+      // Local Docker / dev — all access patterns (mai in produzione: H-46)
+      ...(a.production ? [] : [
+        `http://${a.slug}.localhost/*`,          // nginx-dev on port 80
+        `http://${a.slug}.localhost:5173/*`,     // web container direct
+        `http://*.localhost/*`,                  // any localhost subdomain (port 80)
+        `http://*.localhost:5173/*`,             // any localhost subdomain on 5173
+        `http://*.localhost:8080/*`,             // Keycloak post-login redirects
+      ]),
     ],
-    webOrigins: ['+'],  // derive allowed origins from redirectUris
+    webOrigins: a.production ? [`https://${a.slug}.${a.domain}`] : ['+'],
   })
 
   if (created && id) {
@@ -191,14 +203,16 @@ async function createPortalClient(kc: KeycloakAdmin, token: string, a: Args): Pr
       // Production
       `https://portal.${a.slug}.${a.domain}/*`,
       ...(a.piIp ? [`https://portal.${a.slug}.${a.piIp}.nip.io/*`] : []),
-      // Local Docker / dev
-      `http://portal.${a.slug}.localhost/*`,       // nginx-dev on port 80
-      `http://portal.${a.slug}.localhost:5174/*`,  // portal container direct
-      `http://*.localhost/*`,                      // any localhost subdomain (port 80)
-      `http://*.localhost:5174/*`,                 // any localhost subdomain on 5174
-      `http://localhost:5174/*`,                   // bare localhost (VITE_TENANT_SLUG fallback)
+      // Local Docker / dev (mai in produzione: H-46)
+      ...(a.production ? [] : [
+        `http://portal.${a.slug}.localhost/*`,       // nginx-dev on port 80
+        `http://portal.${a.slug}.localhost:5174/*`,  // portal container direct
+        `http://*.localhost/*`,                      // any localhost subdomain (port 80)
+        `http://*.localhost:5174/*`,                 // any localhost subdomain on 5174
+        `http://localhost:5174/*`,                   // bare localhost (VITE_TENANT_SLUG fallback)
+      ]),
     ],
-    webOrigins: ['+'],
+    webOrigins: a.production ? [`https://portal.${a.slug}.${a.domain}`] : ['+'],
   })
   console.log(created && id ? `  ✓ Client "opengrafo-portal" creato (id: ${id})` : `  ↩ Client "opengrafo-portal" già esistente — skip`)
 }

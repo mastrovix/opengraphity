@@ -412,7 +412,8 @@
       "emailPlaceholder": "mario@acme.com",
       "changeRole": "Ruolo",
       "roleChanged": "Ruolo cambiato",
-      "saveRole": "Salva ruolo"
+      "saveRole": "Salva ruolo",
+      "inactive": "Disattivata"
     },
     "logs": {
       "title": "Log",
@@ -1801,7 +1802,15 @@
       "noTeams": "Nessun team assegnato",
       "removeFromTeam": "Rimuovi dal team",
       "availableTeams": "Team disponibili",
-      "noOtherTeams": "Nessun altro team disponibile"
+      "noOtherTeams": "Nessun altro team disponibile",
+      "deactivate": "Disattiva",
+      "reactivate": "Riattiva",
+      "deactivated": "Persona disattivata",
+      "reactivated": "Persona riattivata",
+      "deactivateTitle": "Disattivare {{name}}?",
+      "reactivateTitle": "Riattivare {{name}}?",
+      "deactivateBody": "Non potrà più accedere (le sessioni aperte si chiudono), ricevere assegnazioni o notifiche. Ticket, commenti e storico restano come sono. Potrai riattivarla in seguito.",
+      "reactivateBody": "Potrà di nuovo accedere con la sua password e ricevere assegnazioni e notifiche."
     },
     "businessRules": {
       "newRule": "Nuova regola",
@@ -3213,7 +3222,8 @@
         "secret": "Segreto",
         "permissions": "Permessi",
         "rateLimit": "Limite (richieste/min)",
-        "expiresAt": "Scadenza"
+        "expiresAt": "Scadenza",
+        "expiresAtHint": "Vuota = non scade. La chiave funziona fino alla fine del giorno scelto, nel fuso orario dell'organizzazione."
       },
       "errors": {
         "tokenMissing": "Webhook creato ma token mancante nella risposta",
@@ -3332,7 +3342,8 @@
       "optionsWithoutText": "{{count}} opzioni di risposta sono senza testo: nella tendina del task si vedrebbe una voce bianca, e chi la scegliesse non saprebbe cosa ha scelto. Dai un'etichetta a ogni opzione, oppure togli le righe che non servono.",
       "duplicateOptions": "Le opzioni ripetono {{options}}: due risposte con lo stesso testo e punteggi diversi rendono il punteggio di rischio non spiegabile.",
       "scoreBelowOne": "{{options}}: il punteggio deve essere un intero maggiore o uguale a 1. Una risposta che vale 0 non sposta il rischio della change, quindi la domanda non misura niente: dai alla risposta meno rischiosa il punteggio più basso (1), non zero.",
-      "allSameScore": "Tutte le opzioni valgono {{score}}: rispondere non cambierebbe il rischio della change, quindi la domanda non misura niente. Dai punteggi diversi alle risposte, dal meno al più rischioso."
+      "allSameScore": "Tutte le opzioni valgono {{score}}: rispondere non cambierebbe il rischio della change, quindi la domanda non misura niente. Dai punteggi diversi alle risposte, dal meno al più rischioso.",
+      "optionInUse": "Queste risposte sono già state scelte e non si possono togliere: {{options}}. Cambia il loro testo, oppure disattiva la domanda."
     },
     "enum": {
       "dictionary": "{{what}}: il vocabolario «{{name}}» {{reason}}",
@@ -3432,7 +3443,8 @@
       "groupFirst": "Assegna prima un gruppo, poi un utente di quel gruppo.",
       "notMember": "L'utente scelto non appartiene al gruppo assegnatario.",
       "notMemberNamed": "L'utente scelto non appartiene al gruppo assegnatario ({{team}}).",
-      "teamRequired": "Serve un team."
+      "teamRequired": "Serve un team.",
+      "userInactive": "La persona scelta è disattivata e non può ricevere assegnazioni."
     },
     "incident": {
       "needsCI": "Un incident deve avere almeno un CI impattato.",
@@ -3721,7 +3733,8 @@
       "editForbidden": "Solo l'autore o un amministratore può modificare un commento.",
       "deleteForbidden": "Solo l'autore o un amministratore può cancellare un commento.",
       "deleted": "Il commento è stato cancellato.",
-      "length": "Un commento deve avere da 1 a {{max}} caratteri."
+      "length": "Un commento deve avere da 1 a {{max}} caratteri.",
+      "ticketClosed": "Il ticket è chiuso: la conversazione non si può più modificare. Apri un nuovo ticket."
     },
     "dashboard": {
       "lastOne": "L'unica dashboard non si può eliminare."
@@ -3960,6 +3973,20 @@
       "unknownTicketType": "Il tipo di ticket «{{type}}» non si collega ai CI. Ammessi: {{allowed}}.",
       "unknownCIType": "Non sono tipi di CI di questo cliente: {{types}}. Ammessi: {{allowed}}.",
       "excluded": "Questi CI non si possono collegare al ticket, perché il loro tipo è escluso per {{ticketType}}: {{cis}}. Le esclusioni si impostano in Impostazioni → ITIL Type Designer."
+    },
+    "apiKey": {
+      "nameRequired": "La chiave API ha bisogno di un nome.",
+      "rateLimit": "Il limite di richieste deve essere un numero intero da {{min}} a {{max}} al minuto.",
+      "expiryFormat": "La scadenza deve essere una data, oppure vuota per una chiave che non scade.",
+      "expiryInPast": "La data di scadenza è già passata: la chiave non funzionerebbe mai.",
+      "expiryNeedsTimezone": "L'organizzazione non ha un fuso orario, quindi non si calcola la fine del giorno di scadenza. Impostalo nella pagina Organizzazione."
+    },
+    "user": {
+      "emailInvalid": "«{{email}}» non è un indirizzo e-mail.",
+      "emailExists": "Esiste già una persona con l'e-mail {{email}}: non è stato modificato nulla.",
+      "nameRequired": "La persona ha bisogno di un nome.",
+      "keycloakRefused": "Il server di accesso ha rifiutato il nuovo account: {{reason}}",
+      "deactivateSelf": "Non puoi disattivare te stesso."
     }
   },
   "errorBoundary": {

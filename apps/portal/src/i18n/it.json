@@ -170,6 +170,9 @@
     },
     "serviceRequest": {
       "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Admin → Catalogo servizi."
+    },
+    "comment": {
+      "ticketClosed": "Il ticket è chiuso: la conversazione non si può più modificare. Apri un nuovo ticket."
     }
   },
   "auth": {

@@ -8,6 +8,8 @@ export function userTeamSDL(): string {
     email: String!
     name: String!
     code: String!
+    """false = persona disattivata: non entra, non riceve assegnazioni né notifiche; storico e ticket restano."""
+    active: Boolean!
     firstName: String
     lastName: String
     role: String!
@@ -60,6 +62,8 @@ export function userTeamSDL(): string {
     updateUserTeams(userId: ID!, teamIds: [ID!]!): User!
     """Il ruolo di una persona (ondata 7). Rifiutato se nessuno potrebbe più gestire persone e ruoli."""
     setUserRole(userId: ID!, role: String!): User!
+    """Disattiva (false) o riattiva (true) una persona: account del realm spento e sessioni chiuse. Mai sé stessi né l'ultima persona che gestisce persone e ruoli."""
+    setUserActive(userId: ID!, active: Boolean!): User!
     setTeamManager(teamId: ID!, userId: ID!): Team!
     removeTeamManager(teamId: ID!): Team!
     # Aggiunge (member: true) o toglie un membro dal team, senza toccare gli altri team dell'utente.

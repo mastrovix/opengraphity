@@ -69,13 +69,13 @@ export function validateAttachmentTarget(entityType: unknown, entityId: unknown)
  * from the whitelist only (double-checked against LABEL_RE); ids/tenant go as
  * parameters `$entityId`, `$tenantId`.
  */
-export function entityExistsCypher(labels: readonly string[]): string {
+export function entityExistsCypher(labels: readonly string[], condition = 'true'): string {
   if (labels.length === 0) throw new ValidationError('entityExistsCypher: no labels')
   for (const l of labels) {
     if (!LABEL_RE.test(l)) throw new ValidationError(`entityExistsCypher: invalid label "${l}"`)
   }
   const predicate = labels.map((l) => `e:${l}`).join(' OR ')
-  return `MATCH (e {id: $entityId, tenant_id: $tenantId}) WHERE ${predicate} RETURN e.id AS id LIMIT 1`
+  return `MATCH (e {id: $entityId, tenant_id: $tenantId}) WHERE (${predicate}) AND (${condition}) RETURN e.id AS id LIMIT 1`
 }
 
 /**

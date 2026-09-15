@@ -12,7 +12,9 @@ import { Pill } from '@/components/ui/Pill'
 import { RoleBadge } from '@/components/ui/badges'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { GET_USER, GET_TEAMS } from '@/graphql/queries'
-import { SET_USER_ROLE } from '@/graphql/mutations'
+import { SET_USER_ACTIVE, SET_USER_ROLE } from '@/graphql/mutations'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { useMe } from '@/hooks/useMe'
 import { Select } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
 import { useRoles } from '@/hooks/useRoles'
@@ -36,6 +38,7 @@ interface UserData {
   tenantId:  string
   name:      string
   code:      string
+  active:    boolean
   firstName: string | null
   lastName:  string | null
   email:     string
@@ -65,6 +68,14 @@ export function UserDetailPage() {
   const { roles, labelOf: roleLabel } = useRoles()
   const [roleChoice, setRoleChoice] = useState<string | null>(null)
   const [setUserRole, { loading: savingRole }] = useMutationWithToast(SET_USER_ROLE, { successMessage: t('pages.users.roleChanged'), refetch, onSuccess: () => setRoleChoice(null) })
+
+  // Disattivare una persona (revisione totale · M-6): non entra, non riceve lavoro né notifiche; lo storico resta.
+  const { me } = useMe()
+  const [confirmActive, setConfirmActive] = useState<boolean | null>(null)
+  const [setUserActive, { loading: savingActive }] = useMutationWithToast(SET_USER_ACTIVE, {
+    successMessage: confirmActive === false ? t('pages.userDetail.deactivated') : t('pages.userDetail.reactivated'),
+    refetch, onSuccess: () => setConfirmActive(null),
+  })
 
   const user = data?.user
   const allTeams = allTeamsData?.teams ?? []
@@ -98,8 +109,25 @@ export function UserDetailPage() {
           <User size={22} color="var(--color-icon-accent)" />
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{user.name}</h1>
           <RoleBadge role={user.role} name={user.roleName} />
+          {!user.active && <Pill bg={palette.neutral.borderLight} color="var(--color-slate-dark)">{t('pages.users.inactive')}</Pill>}
+          {me?.id !== user.id && (
+            <span style={{ marginLeft: 'auto' }}>
+              <Button size="xs" variant="secondary" disabled={savingActive} onClick={() => setConfirmActive(!user.active)}>
+                {user.active ? t('pages.userDetail.deactivate') : t('pages.userDetail.reactivate')}
+              </Button>
+            </span>
+          )}
         </div>
       </div>
+      <ConfirmModal
+        open={confirmActive !== null}
+        title={confirmActive ? t('pages.userDetail.reactivateTitle', { name: user.name }) : t('pages.userDetail.deactivateTitle', { name: user.name })}
+        body={confirmActive ? t('pages.userDetail.reactivateBody') : t('pages.userDetail.deactivateBody')}
+        confirmLabel={confirmActive ? t('pages.userDetail.reactivate') : t('pages.userDetail.deactivate')}
+        loading={savingActive}
+        onConfirm={() => { if (confirmActive !== null) void setUserActive({ variables: { userId: user.id, active: confirmActive } }) }}
+        onCancel={() => setConfirmActive(null)}
+      />
 
       {/* Body */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

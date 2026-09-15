@@ -133,6 +133,9 @@ export interface WorkflowActionConfig {
 
 export interface ActionContext {
   userId:           string
+  /** Il passo che esegue l'azione e la sua posizione: servono al retry del webhook per rileggere gli header. */
+  stepId?:          string
+  actionIndex?:     number
   notes?:           string
   entityData:       Record<string, unknown>      // entity properties for template/condition eval
   isWebhookRetry?:  boolean

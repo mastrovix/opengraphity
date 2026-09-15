@@ -412,7 +412,8 @@
       "emailPlaceholder": "jane@acme.com",
       "changeRole": "Role",
       "roleChanged": "Role changed",
-      "saveRole": "Save role"
+      "saveRole": "Save role",
+      "inactive": "Deactivated"
     },
     "logs": {
       "title": "Logs",
@@ -1801,7 +1802,15 @@
       "noTeams": "No team assigned",
       "removeFromTeam": "Remove from team",
       "availableTeams": "Available teams",
-      "noOtherTeams": "No other team available"
+      "noOtherTeams": "No other team available",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate",
+      "deactivated": "Person deactivated",
+      "reactivated": "Person reactivated",
+      "deactivateTitle": "Deactivate {{name}}?",
+      "reactivateTitle": "Reactivate {{name}}?",
+      "deactivateBody": "They will no longer be able to sign in (open sessions are closed), receive assignments or notifications. Tickets, comments and history stay as they are. You can reactivate them later.",
+      "reactivateBody": "They will be able to sign in again with their password, and receive assignments and notifications."
     },
     "businessRules": {
       "newRule": "New rule",
@@ -3213,7 +3222,8 @@
         "secret": "Secret",
         "permissions": "Permissions",
         "rateLimit": "Rate limit (req/min)",
-        "expiresAt": "Expires at"
+        "expiresAt": "Expires at",
+        "expiresAtHint": "Empty = never expires. The key works until the end of the chosen day, in the organization's time zone."
       },
       "errors": {
         "tokenMissing": "Webhook created but the token is missing in the response",
@@ -3332,7 +3342,8 @@
       "optionsWithoutText": "{{count}} answer options have no text: the task dropdown would show a blank entry, and whoever picked it would not know what they chose. Give every option a label, or remove the rows you do not need.",
       "duplicateOptions": "The options repeat {{options}}: two answers with the same text and different scores make the risk score impossible to explain.",
       "scoreBelowOne": "{{options}}: the score must be an integer of 1 or more. An answer worth 0 does not move the risk of the change, so the question measures nothing: give the least risky answer the lowest score (1), not zero.",
-      "allSameScore": "Every option is worth {{score}}: answering would not change the risk of the change, so the question measures nothing. Give the answers different scores, from the least to the most risky."
+      "allSameScore": "Every option is worth {{score}}: answering would not change the risk of the change, so the question measures nothing. Give the answers different scores, from the least to the most risky.",
+      "optionInUse": "These answers have already been chosen and cannot be removed: {{options}}. Change their text instead, or deactivate the question."
     },
     "enum": {
       "dictionary": "{{what}}: dictionary \"{{name}}\" {{reason}}",
@@ -3432,7 +3443,8 @@
       "groupFirst": "Assign a group first, then a user from that group.",
       "notMember": "The chosen user does not belong to the assigned group.",
       "notMemberNamed": "The chosen user does not belong to the assigned group ({{team}}).",
-      "teamRequired": "A team is required."
+      "teamRequired": "A team is required.",
+      "userInactive": "The selected person is deactivated and cannot be assigned."
     },
     "incident": {
       "needsCI": "An incident must have at least one impacted CI.",
@@ -3721,7 +3733,8 @@
       "editForbidden": "Only the author or an administrator can edit a comment.",
       "deleteForbidden": "Only the author or an administrator can delete a comment.",
       "deleted": "The comment has been deleted.",
-      "length": "A comment must have 1 to {{max}} characters."
+      "length": "A comment must have 1 to {{max}} characters.",
+      "ticketClosed": "The ticket is closed: its conversation can no longer be changed. Open a new ticket."
     },
     "dashboard": {
       "lastOne": "The only dashboard cannot be deleted."
@@ -3960,6 +3973,20 @@
       "unknownTicketType": "The ticket type «{{type}}» is not linked to CIs. Allowed: {{allowed}}.",
       "unknownCIType": "Not CI types of this tenant: {{types}}. Allowed: {{allowed}}.",
       "excluded": "These CIs cannot be linked to this ticket, because their type is excluded for {{ticketType}}: {{cis}}. Exclusions are set in Settings → ITIL Type Designer."
+    },
+    "apiKey": {
+      "nameRequired": "The API key needs a name.",
+      "rateLimit": "The request limit must be a whole number from {{min}} to {{max}} per minute.",
+      "expiryFormat": "The expiry must be a date, or empty for a key that never expires.",
+      "expiryInPast": "The expiry date is already past: the key would never work.",
+      "expiryNeedsTimezone": "The organization has no time zone, so the end of the expiry day cannot be computed. Set it in Organization settings."
+    },
+    "user": {
+      "emailInvalid": "«{{email}}» is not an e-mail address.",
+      "emailExists": "A person with the e-mail {{email}} already exists: nothing was changed.",
+      "nameRequired": "The person needs a name.",
+      "keycloakRefused": "The login server refused the new account: {{reason}}",
+      "deactivateSelf": "You cannot deactivate yourself."
     }
   },
   "errorBoundary": {

@@ -623,9 +623,11 @@ export class WorkflowEngine {
         updatedAt:    now,
       }
 
-      for (const action of [...exitActions, ...enterActions]) {
+      // `stepId`/`actionIndex`: il retry di un webhook rilegge da lì gli header, che non viaggiano in Redis (E-11).
+      const allActions = [...exitActions, ...enterActions]
+      for (const [actionIndex, action] of allActions.entries()) {
         try {
-          await runAction(action, instance, { ...context, notes: context.notes ?? input.notes })
+          await runAction(action, instance, { ...context, notes: context.notes ?? input.notes, stepId: nextStepId, actionIndex })
           actionsRun.push(action.type)
         } catch (e) {
           const msg = `${action.type}: ${e instanceof Error ? e.message : String(e)}`
