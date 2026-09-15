@@ -18,6 +18,7 @@ interface EntityCommentRow {
   id: string; body: string; isInternal: boolean
   authorId: string; authorName: string; authorEmail: string
   createdAt: string; updatedAt: string
+  editedAt: string | null; editedByName: string | null; deletedAt: string | null; deletedByName: string | null
 }
 
 /** Chi scrive senza essere una persona: monitoraggio e automazioni hanno un attore riconoscibile. */
@@ -27,13 +28,14 @@ function toTicketComment(c: EntityCommentRow): TicketComment {
     id: c.id, text: c.body, createdAt: c.createdAt, isInternal: c.isInternal,
     author: machine ? null : { id: c.authorId, name: c.authorName || c.authorEmail },
     authorKind: machine, authorLabel: machine === 'automation' ? c.authorName : null,
+    editedAt: c.editedAt, editedByName: c.editedByName, deletedAt: c.deletedAt, deletedByName: c.deletedByName,
   }
 }
 
 export function EntityCommentsSection({ entityType, entityId }: { entityType: 'change' | 'service_request'; entityId: string }) {
   const { t } = useTranslation()
   const variables = { entityType, entityId }
-  const { data } = useQuery<{ comments: EntityCommentRow[] }>(GET_ENTITY_COMMENTS, { variables })
+  const { data, refetch } = useQuery<{ comments: EntityCommentRow[] }>(GET_ENTITY_COMMENTS, { variables })
   const [add, { loading }] = useMutation(ADD_ENTITY_COMMENT, {
     refetchQueries: [{ query: GET_ENTITY_COMMENTS, variables }],
     onError: (e) => toast.error(e.message),
@@ -43,6 +45,7 @@ export function EntityCommentsSection({ entityType, entityId }: { entityType: 'c
     <CommentsSection
       comments={(data?.comments ?? []).map(toTicketComment)}
       adding={loading}
+      onChanged={() => void refetch()}
       onAdd={(text, isInternal) => add({ variables: { ...variables, body: text, isInternal } })}
     />
   )

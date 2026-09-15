@@ -20,6 +20,7 @@ import { logger } from '../lib/logger.js'
 import { statusNamesForClasses, concludedStatusNames } from '../lib/statusStepNames.js'
 import { modelLanguageFor } from '../lib/systemText.js'
 import { domainVocabulary } from '../lib/domainMatrix.js'
+import { aiSettings, assertAIFeature } from '../lib/aiSettings.js'
 
 const log = logger.child({ module: 'post-incident' })
 
@@ -78,6 +79,7 @@ async function loadIncidentContext(tenantId: string, incidentId: string): Promis
 // ── 1. Bozza resolution notes ────────────────────────────────────────────────
 
 export async function draftResolutionNotes(tenantId: string, incidentId: string): Promise<string> {
+  await assertAIFeature(tenantId, 'postIncident')
   const ctx = await loadIncidentContext(tenantId, incidentId)
   const client = getClient()
   const language = await modelLanguageFor(tenantId)
@@ -117,10 +119,12 @@ export interface ProblemCandidate {
   incidents: Array<{ id: string; number: string | null; title: string; status: string; severity: string }>
 }
 
-const CLUSTER_THRESHOLD = 0.72
-const CLUSTER_MIN_SIZE = 3
-
 export async function problemCandidates(tenantId: string): Promise<ProblemCandidate[]> {
+  // Il raggruppamento usa gli embedding e il modello: servono entrambe le funzioni.
+  await assertAIFeature(tenantId, 'postIncident')
+  await assertAIFeature(tenantId, 'embeddings')
+  // Le soglie sono dell'organizzazione (ondata 6): prima 0,72 e 3 nel codice.
+  const { clusterMinSimilarity, clusterMinSize } = await aiSettings(tenantId)
   // Incident non CHIUSI (un incident risolto ma non chiuso è ancora un
   // candidato: il cluster serve a capire se il problema si ripete). «Chiuso» è
   // la classe di stato del workflow del cliente, non il nome `closed`.
@@ -148,9 +152,9 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
       CALL db.index.vector.queryNodes($index, 15, $embedding)
       YIELD node, score
       WHERE node.tenant_id = $tenantId AND node.id <> $selfId
-        AND NOT node.status IN $closedSteps AND score >= ${CLUSTER_THRESHOLD}
+        AND NOT node.status IN $closedSteps AND score >= $minSimilarity
       RETURN node.id AS id, score
-    `, { index, embedding: i.embedding, tenantId, selfId: i.id, closedSteps })
+    `, { index, embedding: i.embedding, tenantId, selfId: i.id, closedSteps, minSimilarity: clusterMinSimilarity })
     for (const p of peers) if (parent.has(p.id)) union(i.id, p.id)
   }
 
@@ -161,7 +165,7 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
     groups.get(root)!.push(i)
   }
   const clusters = [...groups.values()]
-    .filter(g => g.length >= CLUSTER_MIN_SIZE)
+    .filter(g => g.length >= clusterMinSize)
     .sort((a, b) => b.length - a.length)
     .slice(0, 3)
 
@@ -233,6 +237,7 @@ export interface KbDraftContent {
 }
 
 export async function draftKbContent(tenantId: string, incidentId: string): Promise<KbDraftContent> {
+  await assertAIFeature(tenantId, 'kbArticles')
   const ctx = await loadIncidentContext(tenantId, incidentId)
   const status = String(ctx.props['status'] ?? '')
   // Risolto o chiuso secondo i METADATA del passo di questo cliente: con un

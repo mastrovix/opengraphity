@@ -291,6 +291,9 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   */
   // «CMDB» e la sigla ITIL del registro dei CI: il gruppo delle entita dei widget.
   'pages.dashboard.entityGroupCmdb',
+  // «AI» e «Logo» si dicono cosi anche in italiano (ondata 6, pagina Organizzazione).
+  'pages.organization.tabs.ai',
+  'pages.organization.logoGroup',
   // «Root Cause Analysis» e il nome ITIL dell'analisi: in italiano si dice
   // cosi, e il campo del workflow si chiama `rootCause`.
   'pages.incidents.rootCauseAnalysis',

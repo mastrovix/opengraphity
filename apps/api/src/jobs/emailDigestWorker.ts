@@ -24,7 +24,7 @@
  */
 import type { Worker, Job } from 'bullmq'
 import { getSession, runQuery } from '@opengraphity/neo4j'
-import { loadNotificationLocale, sendEmail } from '@opengraphity/notifications'
+import { loadNotificationLocale, loadTenantBrand, sendTenantEmail } from '@opengraphity/notifications'
 import { digestDaily } from '../lib/emailTemplates.js'
 import { logger } from '../lib/logger.js'
 import { createWorker, getQueue, getSharedRedis } from '../lib/bullmq.js'
@@ -195,12 +195,12 @@ async function sendDigestForTenant(tenant: TenantRow): Promise<void> {
       return
     }
 
-    const tpl = digestDaily({ ...digestStats, recentEvents }, tenantId, await loadNotificationLocale(tenantId))
+    const tpl = digestDaily({ ...digestStats, recentEvents }, { tenantId, brand: await loadTenantBrand(tenantId) }, await loadNotificationLocale(tenantId))
 
     let sendFailures = 0
     for (const { email } of users) {
       try {
-        await sendEmail({ to: email, ...tpl })
+        await sendTenantEmail(tenantId, { to: email, ...tpl })
       } catch (err) {
         sendFailures++
         log.error({ err, email, tenantId }, 'Failed to send digest email')

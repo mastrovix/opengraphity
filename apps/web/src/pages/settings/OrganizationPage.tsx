@@ -22,6 +22,7 @@
  * regola è la maggioranza, non la prima pagina che si apre.
  */
 import { useEffect, useId, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Building2 } from 'lucide-react'
@@ -41,6 +42,21 @@ import { colors } from '@/lib/tokens'
 import { applicaLinguaDelCliente, linguaSceltaDallUtente } from '@/i18n/tenantLanguage'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { SeverityBadge } from '@/components/ui/badges'
+import { Tabs, type TabItem } from '@/components/ui/Tabs'
+import { OrganizationNameSection } from './organization/OrganizationNameSection'
+import { BrandSection } from './organization/BrandSection'
+import { TicketNumberingSection } from './organization/TicketNumberingSection'
+import { AttachmentPolicySection } from './organization/AttachmentPolicySection'
+import { AISection } from './organization/AISection'
+
+/**
+ * Le schede della pagina (verifica «Cosa resta cablato», ondata 6): con nome,
+ * marchio, numerazione, allegati e AI le sezioni erano troppe per una colonna
+ * sola. La scheda sta nell'indirizzo (`?tab=ai`), così un avviso «funzione
+ * spenta» in un'altra pagina porta dritto al punto giusto.
+ */
+export const ORGANIZATION_TABS = ['general', 'service', 'portal', 'tickets', 'ai'] as const
+export type OrganizationTab = (typeof ORGANIZATION_TABS)[number]
 
 interface LanguageSettings { available: string[]; defaultLanguage: string | null; fallback: string }
 interface TimezoneSettings { timezone: string | null; available: string[] }
@@ -48,6 +64,10 @@ interface TimezoneSettings { timezone: string | null; available: string[] }
 export function OrganizationPage() {
   const { t } = useTranslation()
   const uid = useId()
+  const [params, setParams] = useSearchParams()
+  const rawTab = params.get('tab')
+  const tab: OrganizationTab = (ORGANIZATION_TABS as readonly string[]).includes(rawTab ?? '') ? rawTab as OrganizationTab : 'general'
+  const tabItems: TabItem<OrganizationTab>[] = ORGANIZATION_TABS.map((key) => ({ key, label: t(`pages.organization.tabs.${key}`) }))
   const fid = (name: string) => `${uid}-${name}`
 
   const { data, loading, error, refetch } = useQuery<{ tenantLanguageSettings: LanguageSettings }>(
@@ -85,49 +105,67 @@ export function OrganizationPage() {
         </p>
       </div>
 
+      <Tabs items={tabItems} value={tab} onChange={(key) => setParams(key === 'general' ? {} : { tab: key }, { replace: true })} ariaLabel={t('pages.organization.tabsLabel')} />
+
+      {tab === 'general' && <>
+      <OrganizationNameSection />
+      <div style={{ marginTop: 16 }}>
       <SectionCard collapsible={false} title={t('pages.organization.languageTitle')}>
-        <div style={{ padding: 16 }}>
-          <p style={{ margin: '0 0 14px', color: colors.slateLight, fontSize: 'var(--font-size-body)', lineHeight: 1.55 }}>
-            {t('pages.organization.languageDescription')}
-          </p>
-
-          {!impostazioni && loading ? <Skeleton style={{ height: 38, maxWidth: 240 }} /> : null}
-
-          {impostazioni && (
-            <>
-              <FieldLabel htmlFor={fid('language')}>{t('pages.organization.defaultLanguage')}</FieldLabel>
-              <Select
-                id={fid('language')}
-                value={corrente}
-                disabled={salvando}
-                onChange={(e) => { void salva({ variables: { language: e.target.value } }) }}
-                style={{ maxWidth: 260 }}
-              >
-                {/*
-                  «Non configurata» è una voce vera, e non si può ri-scegliere:
-                  è lo stato in cui nasce un cliente, e la diagnostica in cima
-                  alla pagina lo dice. Mostrarla invece di far finta che una
-                  lingua sia stata scelta è tutto il punto della pagina.
-                */}
-                {corrente === '' && <option value="" disabled>{t('pages.organization.notConfigured')}</option>}
-                {impostazioni.available.map((l) => (
-                  <option key={l} value={l}>{t(`languages.${l}`)}</option>
-                ))}
-              </Select>
-              <p style={{ color: colors.slateLight, margin: '8px 0 0', fontSize: 'var(--font-size-label)', lineHeight: 1.5 }}>
-                {corrente === ''
-                  ? t('pages.organization.fallbackInUse', { language: t(`languages.${impostazioni.fallback}`) })
-                  : t('pages.organization.personalWins')}
-              </p>
-            </>
-          )}
-        </div>
-      </SectionCard>
-
+          <div style={{ padding: 16 }}>
+            <p style={{ margin: '0 0 14px', color: colors.slateLight, fontSize: 'var(--font-size-body)', lineHeight: 1.55 }}>
+              {t('pages.organization.languageDescription')}
+            </p>
+  
+            {!impostazioni && loading ? <Skeleton style={{ height: 38, maxWidth: 240 }} /> : null}
+  
+            {impostazioni && (
+              <>
+                <FieldLabel htmlFor={fid('language')}>{t('pages.organization.defaultLanguage')}</FieldLabel>
+                <Select
+                  id={fid('language')}
+                  value={corrente}
+                  disabled={salvando}
+                  onChange={(e) => { void salva({ variables: { language: e.target.value } }) }}
+                  style={{ maxWidth: 260 }}
+                >
+                  {/*
+                    «Non configurata» è una voce vera, e non si può ri-scegliere:
+                    è lo stato in cui nasce un cliente, e la diagnostica in cima
+                    alla pagina lo dice. Mostrarla invece di far finta che una
+                    lingua sia stata scelta è tutto il punto della pagina.
+                  */}
+                  {corrente === '' && <option value="" disabled>{t('pages.organization.notConfigured')}</option>}
+                  {impostazioni.available.map((l) => (
+                    <option key={l} value={l}>{t(`languages.${l}`)}</option>
+                  ))}
+                </Select>
+                <p style={{ color: colors.slateLight, margin: '8px 0 0', fontSize: 'var(--font-size-label)', lineHeight: 1.5 }}>
+                  {corrente === ''
+                    ? t('pages.organization.fallbackInUse', { language: t(`languages.${impostazioni.fallback}`) })
+                    : t('pages.organization.personalWins')}
+                </p>
+              </>
+            )}
+          </div>
+        </SectionCard>
+      </div>
       <TimezoneSection />
-      <ServiceCalendarsSection />
       <InAppRetentionSection />
-      <PortalSeveritySection languages={impostazioni?.available ?? null} />
+      </>}
+
+      {tab === 'service' && <ServiceCalendarsSection />}
+
+      {tab === 'portal' && <>
+        <BrandSection />
+        <PortalSeveritySection languages={impostazioni?.available ?? null} />
+      </>}
+
+      {tab === 'tickets' && <>
+        <TicketNumberingSection />
+        <AttachmentPolicySection />
+      </>}
+
+      {tab === 'ai' && <AISection />}
     </PageContainer>
   )
 }

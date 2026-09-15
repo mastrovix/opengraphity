@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useAIFeature } from '@/hooks/useAIFeature'
+import { AIDisabledNotice } from '@/components/ai/AIDisabledNotice'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
@@ -65,6 +67,7 @@ function extractCSV(content: string): string | null {
 
 export default function ReportsPage() {
   const { t } = useTranslation()
+  const reportAnalysisOn = useAIFeature('reportAnalysis')
   const { data, refetch } = useQuery<{ reportConversations: ReportConversation[] }>(GET_CONVERSATIONS)
   const [deleteConv]                  = useMutation(DELETE_CONVERSATION)
 
@@ -547,6 +550,8 @@ export default function ReportsPage() {
 
         {/* Input area */}
         <div style={{ borderTop: '1px solid var(--color-border)', padding: '12px 24px', background: colors.white }}>
+          {/* Analisi AI spenta dall'organizzazione (ondata 6 di «Nulla cablato»): lo si dice al posto della domanda. */}
+          {reportAnalysisOn === false ? <AIDisabledNotice feature="reportAnalysis" /> : <>
           {hasMessages && (
             <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
               <button type="button" onClick={handlePrint} style={exportBtnStyle}>↓ PDF</button>
@@ -589,6 +594,7 @@ export default function ReportsPage() {
             </button>
           </div>
           <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 6 }}>{t('pages.reportsAI.sendHint')}</div>
+          </>}
         </div>
       </div>
 

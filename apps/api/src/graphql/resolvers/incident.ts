@@ -18,7 +18,7 @@ import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { ciLabelsForTypeNames } from '../../lib/ciTypeNameToLabel.js'
 import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
 import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
-import { commentAuthorKind, commentAuthorLabel } from '../../lib/commentAuthor.js'
+import { commentAuthorKind, commentAuthorLabel, commentTrace } from '../../lib/commentAuthor.js'
 import { writeTicketComment } from '../../lib/ticketComments.js'
 import { notifyCommentAudience } from './comments.js'
 import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
@@ -334,6 +334,7 @@ function mapComment(c: Props, u: Props | null) {
     author:      u ? mapUser(u) : null,
     authorKind:  commentAuthorKind(c, !!u),
     authorLabel: commentAuthorLabel(c),
+    ...commentTrace(c),
   }
 }
 

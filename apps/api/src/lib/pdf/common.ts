@@ -20,7 +20,22 @@ export interface PdfMeta {
   generatedBy: string   // user email
   tenantId:    string
   locale:      PdfLocale
+  /** Il marchio dell'organizzazione in testa al documento (ondata 6 di «Nulla cablato»). */
+  brand:       PdfBrand
 }
+
+/**
+ * Nome e logo dell'organizzazione. Il logo entra nel PDF solo se è PNG: pdfkit
+ * non disegna SVG, e con un logo SVG il documento porta il nome (la pagina
+ * Organizzazione lo dice accanto al logo).
+ */
+export interface PdfBrand {
+  displayName: string
+  logoPng:     Buffer | null
+}
+
+/** Il marchio del documento in costruzione: lo legge `docHeader` senza cambiare la firma dei costruttori. */
+const docBrands = new WeakMap<object, PdfBrand>()
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
@@ -197,8 +212,14 @@ export function badge(doc: Doc, x: number, y: number, label: string, color: stri
  * large entity title. Leaves the cursor below the title, ready for badges.
  */
 export function docHeader(doc: Doc, reportTitle: string, entityTitle: string): void {
-  doc.fontSize(16).font('Helvetica-Bold').fillColor(COLOR.brand)
-    .text('OpenGrafo', PAGE_MARGIN.left, PAGE_MARGIN.top, { lineBreak: false })
+  const brand = docBrands.get(doc)
+  if (!brand) throw new Error('[pdf] docHeader outside createPdfBuffer: the brand of the document is unknown')
+  if (brand.logoPng) {
+    doc.image(brand.logoPng, PAGE_MARGIN.left, PAGE_MARGIN.top - 4, { fit: [140, 24] })
+  } else {
+    doc.fontSize(16).font('Helvetica-Bold').fillColor(COLOR.brand)
+      .text(brand.displayName, PAGE_MARGIN.left, PAGE_MARGIN.top, { lineBreak: false, width: contentWidth(doc) / 2 })
+  }
   doc.fontSize(9).font('Helvetica').fillColor(COLOR.muted)
     .text(reportTitle, PAGE_MARGIN.left, PAGE_MARGIN.top + 2,
       { width: contentWidth(doc), align: 'right' })
@@ -256,8 +277,9 @@ export function createPdfBuffer(
       size: 'A4',
       margins: PAGE_MARGIN,
       bufferPages: true,
-      info: { Title: title, Author: 'OpenGrafo', Creator: 'OpenGrafo' },
+      info: { Title: title, Author: meta.brand.displayName, Creator: 'OpenGrafo' },
     })
+    docBrands.set(doc, meta.brand)
     const chunks: Buffer[] = []
     doc.on('data', (c: Buffer) => chunks.push(c))
     doc.on('end', () => resolve(Buffer.concat(chunks)))

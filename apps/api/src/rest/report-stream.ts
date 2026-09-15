@@ -5,6 +5,7 @@ import { authMiddleware } from '../middleware/auth.js'
 import { streamReportAI } from '../services/reportAI.js'
 import { runReportConversation } from '../services/reportConversation.js'
 import { logger } from '../lib/logger.js'
+import { aiDisabledError, aiFeatureEnabled } from '../lib/aiSettings.js'
 
 const router: ExpressRouter = Router()
 
@@ -28,6 +29,11 @@ async function handleReportStream(req: Request, res: Response): Promise<void> {
 
   if (typeof question !== 'string' || !question.trim()) {
     res.status(400).json({ error: 'question is required' })
+    return
+  }
+  // Funzione spenta dall'organizzazione (ondata 6): si dice prima di aprire lo stream.
+  if (!(await aiFeatureEnabled(tenantId, 'reportAnalysis'))) {
+    res.status(403).json({ error: { code: 'AI_DISABLED', feature: 'reportAnalysis', message: aiDisabledError('reportAnalysis').message } })
     return
   }
 

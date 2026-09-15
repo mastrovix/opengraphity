@@ -22,6 +22,9 @@ vi.mock('@opengraphity/notifications', async () => {
   return {
     sseManager: { sendToUser: vi.fn(), sendToTenant: vi.fn() },
     sendEmail:  vi.fn().mockResolvedValue(undefined),
+    // Ondata 6: le e-mail partono a nome dell'organizzazione, con il suo marchio.
+    loadTenantBrand: vi.fn(async () => ({ displayName: 'ACME', senderName: 'ACME IT', replyTo: null, logo: null })),
+    sendTenantEmail: vi.fn(async (_tenantId: string, msg: unknown) => (await import('@opengraphity/notifications')).sendEmail(msg as never)),
     // CO-2: il testo di ripiego nella lingua del cliente (qui inglese).
     loadNotificationLocale: vi.fn(async () => ({ language: 'en', timeZone: 'UTC' })),
     notificationText: texts.notificationText,

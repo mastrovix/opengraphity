@@ -37,3 +37,14 @@ export const CREATE_SERVICE_REQUEST = gql`
     createServiceRequest(input: $input) { id number status }
   }
 `
+
+/** L'autore modifica o cancella la propria risposta; resta la traccia (ondata 6). */
+export const UPDATE_COMMENT = gql`
+  mutation UpdateComment($id: ID!, $body: String!) {
+    updateComment(id: $id, body: $body) { id body editedAt editedByName }
+  }
+`
+
+export const DELETE_COMMENT = gql`
+  mutation DeleteComment($id: ID!) { deleteComment(id: $id) }
+`

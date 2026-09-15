@@ -21,6 +21,7 @@ import { assistantRouter } from './rest/assistant.js'
 import { clientLogRouter } from './rest/client-logs.js'
 import { handleSlackCommands, handleSlackActions } from './rest/slack.js'
 import { attachmentRouter } from './rest/attachments.js'
+import { brandRouter } from './rest/brand.js'
 import { incidentPdfRouter } from './rest/incident-pdf.js'
 import { changePdfRouter } from './rest/change-pdf.js'
 import { problemPdfRouter } from './rest/problem-pdf.js'
@@ -240,6 +241,7 @@ app.use('/api', reportStreamRouter)
 app.use('/api', assistantRouter)
 app.use('/api', clientLogRouter)
 app.use('/api', attachmentRouter)
+app.use('/api', brandRouter)
 app.use('/api', incidentPdfRouter)
 app.use('/api', changePdfRouter)
 app.use('/api', problemPdfRouter)

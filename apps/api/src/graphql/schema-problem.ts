@@ -51,6 +51,10 @@ export function problemSDL(): string {
     author: User
     authorKind: String
     authorLabel: String
+    editedAt: String
+    editedByName: String
+    deletedAt: String
+    deletedByName: String
   }
 
   type ProblemsResult {

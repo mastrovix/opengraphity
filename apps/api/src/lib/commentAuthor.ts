@@ -20,3 +20,19 @@ export function commentAuthorKind(comment: Props, hasUser: boolean): 'automation
 export function commentAuthorLabel(comment: Props): string | null {
   return typeof comment['author_label'] === 'string' && comment['author_label'] !== '' ? comment['author_label'] : null
 }
+
+/**
+ * La traccia di un commento modificato o cancellato (verifica «Cosa resta
+ * cablato», ondata 6): si vede nel ticket, e il testo di prima sta nell'Audit
+ * Log. Il nome di chi l'ha fatto è fotografato al momento, come l'autore di un
+ * audit.
+ */
+export function commentTrace(comment: Props): { editedAt: string | null; editedByName: string | null; deletedAt: string | null; deletedByName: string | null } {
+  const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : null)
+  return {
+    editedAt:      str(comment['edited_at']),
+    editedByName:  str(comment['edited_by_name']),
+    deletedAt:     str(comment['deleted_at']),
+    deletedByName: str(comment['deleted_by_name']),
+  }
+}

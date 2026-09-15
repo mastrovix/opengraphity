@@ -10,6 +10,7 @@ import { NotFoundError } from '../../lib/errors.js'
 import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { vectorIndexName } from '../../services/embeddings.js'
+import { aiFeatureEnabled } from '../../lib/aiSettings.js'
 import { suggestTriage } from '../../services/triageService.js'
 import { draftResolutionNotes, problemCandidates as findProblemCandidates, draftKbContent } from '../../services/postIncidentService.js'
 import { createKBArticle } from './knowledgeBase.js'
@@ -39,8 +40,10 @@ async function similarIncidents(
   ctx: GraphQLContext,
 ) {
   const limit = Math.min(Math.max(args.limit ?? 5, 1), 20)
+  // Embedding spenti dall'organizzazione (ondata 6): lo si dice, non «non ancora pronto».
+  if (!(await aiFeatureEnabled(ctx.tenantId, 'embeddings'))) return { ready: false, disabled: true, items: [] }
   const embedding = await loadEmbedding(args.incidentId, ctx.tenantId)
-  if (!embedding) return { ready: false, items: [] }
+  if (!embedding) return { ready: false, disabled: false, items: [] }
 
   const session = getSession(undefined, 'READ')
   try {
@@ -65,7 +68,7 @@ async function similarIncidents(
       tenantId: ctx.tenantId,
       incidentId: args.incidentId,
     })
-    return { ready: true, items: rows.map(r => ({ ...r, score: num(r.score) })) }
+    return { ready: true, disabled: false, items: rows.map(r => ({ ...r, score: num(r.score) })) }
   } finally {
     await session.close()
   }
@@ -77,8 +80,9 @@ async function suggestedArticles(
   ctx: GraphQLContext,
 ) {
   const limit = Math.min(Math.max(args.limit ?? 3, 1), 10)
+  if (!(await aiFeatureEnabled(ctx.tenantId, 'embeddings'))) return { ready: false, disabled: true, items: [] }
   const embedding = await loadEmbedding(args.incidentId, ctx.tenantId)
-  if (!embedding) return { ready: false, items: [] }
+  if (!embedding) return { ready: false, disabled: false, items: [] }
 
   const session = getSession(undefined, 'READ')
   try {
@@ -97,7 +101,7 @@ async function suggestedArticles(
       embedding,
       tenantId: ctx.tenantId,
     })
-    return { ready: true, items: rows.map(r => ({ ...r, score: num(r.score) })) }
+    return { ready: true, disabled: false, items: rows.map(r => ({ ...r, score: num(r.score) })) }
   } finally {
     await session.close()
   }

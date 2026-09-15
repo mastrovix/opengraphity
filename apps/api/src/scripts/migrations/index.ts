@@ -81,6 +81,7 @@ import { complianceObjectives } from './20260925_1140_compliance_objectives.js'
 import { stepDeadlines } from './20260925_1200_step_deadlines.js'
 import { impactAnalysisWeightsSeed } from './20260926_1000_impact_analysis_weights.js'
 import { anomalyRuleConfigsSeed } from './20260926_1010_anomaly_rule_configs.js'
+import { organizationSettingsSeed } from './20260927_1000_organization_settings.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -156,4 +157,5 @@ export const MIGRATIONS: readonly Migration[] = [
   stepDeadlines,
   impactAnalysisWeightsSeed,
   anomalyRuleConfigsSeed,
+  organizationSettingsSeed,
 ]

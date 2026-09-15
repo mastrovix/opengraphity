@@ -15,6 +15,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
 // Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
 // tipo non contavano, in silenzio.
+// Ondata 6 di «Nulla cablato»: le funzioni AI sono dell'organizzazione; qui tutte accese.
+vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsFake.js'))
 vi.mock('../../lib/ciLabelsForTenant.js', () => ({
   ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
   ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
@@ -117,7 +119,7 @@ describe('streamAssistantChat — configurazione', () => {
     h.cfg.anthropicApiKey = undefined
     const emit = emitter()
     await streamAssistantChat(TENANT, [{ role: 'user', content: 'ciao' }], emit)
-    expect(emit.error).toHaveBeenCalledWith('Assistente AI non configurato: ANTHROPIC_API_KEY mancante')
+    expect(emit.error).toHaveBeenCalledWith('AI assistant not configured: ANTHROPIC_API_KEY is missing')
     expect(emit.done).not.toHaveBeenCalled()
     expect(h.constructed).toHaveLength(0)
     expect(h.toolRunner).not.toHaveBeenCalled()

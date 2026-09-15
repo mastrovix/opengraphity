@@ -226,7 +226,9 @@ async function myTicket(
         OPTIONAL MATCH (u:User {id: c.author_id, tenant_id: $tenantId})
         RETURN c.id AS id, c.text AS body, c.author_id AS authorId,
                coalesce(u.name, u.email, '') AS authorName, coalesce(u.email, '') AS authorEmail,
-               c.created_at AS createdAt, c.updated_at AS updatedAt
+               c.created_at AS createdAt, c.updated_at AS updatedAt,
+               c.edited_at AS editedAt, c.edited_by_name AS editedByName,
+               c.deleted_at AS deletedAt, c.deleted_by_name AS deletedByName
         ORDER BY c.created_at ASC
       `, { id, tenantId: ctx.tenantId }),
     )
@@ -240,6 +242,10 @@ async function myTicket(
       authorEmail: r.get('authorEmail') as string,
       createdAt:   r.get('createdAt')   as string,
       updatedAt:   r.get('updatedAt')   as string,
+      editedAt:      (r.get('editedAt')      ?? null) as string | null,
+      editedByName:  (r.get('editedByName')  ?? null) as string | null,
+      deletedAt:     (r.get('deletedAt')     ?? null) as string | null,
+      deletedByName: (r.get('deletedByName') ?? null) as string | null,
     }))
 
     // Load attachments — the REST upload creates Attachment nodes keyed by

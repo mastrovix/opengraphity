@@ -18,6 +18,8 @@ const h = vi.hoisted(() => {
 })
 
 // La lingua in cui il modello scrive si legge dal cliente (lib/systemText.ts).
+// Ondata 6 di «Nulla cablato»: le funzioni AI sono dell'organizzazione; qui tutte accese.
+vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsFake.js'))
 vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
 vi.mock('../../lib/config.js', () => ({ config: h.cfg }))
 vi.mock('@anthropic-ai/sdk', () => ({
@@ -223,7 +225,9 @@ describe('problemCandidates', () => {
     expect(list[1]).toContain('NOT i.status IN $closedSteps AND i.embedding IS NOT NULL')
     expect(list[2]).toEqual({ tenantId: TENANT, closedSteps: ['archiviato'] })
     const peers = calls[1]!
-    expect(peers[1]).toContain('score >= 0.72')
+    // Ondata 6 di «Nulla cablato»: la soglia è dell'organizzazione e arriva come parametro.
+    expect(peers[1]).toContain('score >= $minSimilarity')
+    expect(peers[2]).toMatchObject({ minSimilarity: 0.72 })
     expect(peers[1]).toContain('node.tenant_id = $tenantId AND node.id <> $selfId')
     expect(peers[1]).toContain('NOT node.status IN $closedSteps')
     expect(peers[2]).toMatchObject({ tenantId: TENANT, selfId: 'i1', embedding: [1], index: 'incident_embedding_test', closedSteps: ['archiviato'] })

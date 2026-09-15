@@ -290,6 +290,28 @@ retention).
 | `updateEnumType(id, input)` | Update label/values |
 | `deleteEnumType(id)` | Delete one of the tenant's own dictionaries (never a shipped one, and never one still used by a field). Deleting a customised copy puts the shipped dictionary of the same name back in play |
 
+### Organization (admin)
+
+Verifica «Cosa resta cablato», ondata 6: settings that were code, platform environment variables or command-line only.
+
+| Operation | Description |
+|-----------|-------------|
+| `tenantName` / `setTenantName(name)` | The organization name (1–120 characters) |
+| `tenantBrand` | Name shown and logo URL — readable by every role, the portal included |
+| `tenantBrandSettings` / `setTenantBrand(input)` | Name shown, sender name (the sending address stays the platform's `EMAIL_FROM`), reply-to address |
+| `ticketNumbering` / `setTicketNumbering(input)` | Prefix (1–8 capital letters or digits, optional trailing `-`) and digits (3–12) per ticket type. New tickets only; the counter is unchanged. Overlapping prefixes, or a prefix already used by another type's numbers, are refused |
+| `attachmentPolicy` / `setAttachmentPolicy(input)` | Maximum size (≤ `ATTACHMENT_MAX_MB_CAP`) and allowed extensions (from the platform catalog). Readable by every role; checked on the file name, not the browser MIME type |
+| `aiSettings` / `setAISettings(input)` | On/off per AI feature (`triage`, `assistant`, `reportAnalysis`, `postIncident`, `kbArticles`, `embeddings`) and the problem-candidate thresholds. A feature that is off never calls the model: GraphQL answers `AI_DISABLED` with the feature name, `/api/report/stream` answers `403 {error: {code: 'AI_DISABLED'}}`, `similarIncidents`/`suggestedArticles` answer `disabled: true` |
+| `updateComment(id, body)` / `deleteComment(id)` | The author edits or deletes their own comment, an admin any. Deleting leaves a trace (`deletedAt`, `deletedByName`, empty text); the previous text goes to the Audit Log |
+
+Logo (REST, same origin as the app):
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/brand/logo` | admin session | `multipart/form-data` `file`: PNG or SVG up to 1 MB. SVG with scripts, event handlers or links is refused. PDFs embed only PNG logos |
+| `DELETE` | `/api/brand/logo` | admin session | Back to the name only |
+| `GET` | `/api/brand/:tenantId/logo` | none | Public on purpose (e-mail clients have no session); served with a sandboxing CSP |
+
 ---
 
 ## REST API v1

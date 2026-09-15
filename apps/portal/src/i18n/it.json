@@ -83,7 +83,15 @@
     "noMessages": "Nessun messaggio ancora.",
     "loadError": "Impossibile caricare il ticket: {{message}}",
     "notFound": "Ticket non trovato o non accessibile.",
-    "rulesError": "Impossibile validare i campi obbligatori: {{message}}"
+    "rulesError": "Impossibile validare i campi obbligatori: {{message}}",
+    "itAgent": "Agente IT",
+    "editReply": "Modifica la tua risposta",
+    "deleteReply": "Cancella la tua risposta",
+    "deleteReplyConfirm": "Cancellare questa risposta? Resta nel ticket come «cancellata».",
+    "replyEdited": "Modificata da {{name}} · {{date}}",
+    "replyDeleted": "Risposta cancellata da {{name}} · {{date}}",
+    "cancel": "Annulla",
+    "save": "Salva"
   },
   "kb": {
     "title": "Knowledge Base",

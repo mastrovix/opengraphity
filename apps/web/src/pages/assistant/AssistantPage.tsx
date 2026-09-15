@@ -4,6 +4,8 @@
  * Truth-telling: gli errori compaiono in chat col messaggio reale; l'attività
  * dei tool è mostrata mentre avviene.
  */
+import { useAIFeature } from '@/hooks/useAIFeature'
+import { AIDisabledNotice } from '@/components/ai/AIDisabledNotice'
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Sparkles, Send, Search, Trash2 } from 'lucide-react'
@@ -42,6 +44,7 @@ const SUGGESTION_KEYS = [
 
 export function AssistantPage() {
   const { t } = useTranslation()
+  const assistantOn = useAIFeature('assistant')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -147,6 +150,10 @@ export function AssistantPage() {
           )}
         </div>
 
+        {/* Assistente spento dall'organizzazione (ondata 6 di «Nulla cablato»): lo si dice, niente chat. */}
+        {assistantOn === false && <AIDisabledNotice feature="assistant" />}
+
+        {assistantOn === true && <>
         {/* Messaggi */}
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 2px 16px' }}>
           {messages.length === 0 && !streaming && (
@@ -228,6 +235,7 @@ export function AssistantPage() {
             <Send size={14} /> {t('pages.reportsAI.send')}
           </button>
         </div>
+        </>}
       </div>
     </PageContainer>
   )

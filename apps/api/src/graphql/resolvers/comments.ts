@@ -17,6 +17,10 @@ interface EntityComment {
   authorEmail: string
   createdAt:   string
   updatedAt:   string
+  editedAt:      string | null
+  editedByName:  string | null
+  deletedAt:     string | null
+  deletedByName: string | null
 }
 
 function mapComment(r: { get: (k: string) => unknown }): EntityComment {
@@ -29,6 +33,10 @@ function mapComment(r: { get: (k: string) => unknown }): EntityComment {
     authorEmail: r.get('authorEmail') as string,
     createdAt:   r.get('createdAt')   as string,
     updatedAt:   r.get('updatedAt')   as string,
+    editedAt:      (r.get('editedAt')      ?? null) as string | null,
+    editedByName:  (r.get('editedByName')  ?? null) as string | null,
+    deletedAt:     (r.get('deletedAt')     ?? null) as string | null,
+    deletedByName: (r.get('deletedByName') ?? null) as string | null,
   }
 }
 
@@ -47,7 +55,11 @@ const RETURN_FIELDS = `
          coalesce(u.name, c.author_label, u.email, '') AS authorName,
          coalesce(u.email, '')             AS authorEmail,
          c.created_at                      AS createdAt,
-         c.updated_at                      AS updatedAt
+         c.updated_at                      AS updatedAt,
+         c.edited_at                       AS editedAt,
+         c.edited_by_name                  AS editedByName,
+         c.deleted_at                      AS deletedAt,
+         c.deleted_by_name                 AS deletedByName
 `
 
 // ── Queries ───────────────────────────────────────────────────────────────────
@@ -122,45 +134,62 @@ export async function addComment(
   }
 }
 
+/**
+ * Chi può toccare un commento (verifica «Cosa resta cablato», ondata 6):
+ * l'autore il proprio, l'admin qualunque. Prima la modifica valeva solo per
+ * l'autore e nei primi 15 minuti, la cancellazione era fisica, e nessuna
+ * pagina offriva né l'una né l'altra. Un commento cancellato non si modifica.
+ */
+async function loadCommentForChange(
+  session: ReturnType<typeof getSession>, id: string, ctx: GraphQLContext, action: 'edit' | 'delete',
+): Promise<{ entityType: string; entityId: string; text: string; isInternal: boolean }> {
+  const loadRes = await session.executeRead((tx) => tx.run(`
+    MATCH (e)-[:HAS_COMMENT]->(c:Comment {id: $id, tenant_id: $tenantId})
+    RETURN c.author_id AS authorId, c.text AS text, c.deleted_at AS deletedAt, c.is_internal AS isInternal,
+           head([k IN keys($labels) WHERE $labels[k] IN labels(e)]) AS entityType, e.id AS entityId
+  `, { id, tenantId: ctx.tenantId, labels: COMMENTABLE_LABELS }))
+  const rec = loadRes.records[0]
+  if (!rec) throw new NotFoundError('Comment', id)
+  const authorId = rec.get('authorId') as string
+  if (authorId !== ctx.userId && ctx.role !== 'admin') {
+    throw new GraphQLError(`Only the author or an administrator can ${action} a comment`,
+      { extensions: { code: 'FORBIDDEN', i18n: { key: action === 'edit' ? 'errors.comment.editForbidden' : 'errors.comment.deleteForbidden' } } })
+  }
+  // L'utente del portale vede solo le risposte pubbliche: le sue, per costruzione.
+  if (ctx.role === 'end_user' && rec.get('isInternal') !== false) throw new NotFoundError('Comment', id)
+  if (rec.get('deletedAt')) {
+    throw new GraphQLError('The comment has been deleted', { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.comment.deleted' } } })
+  }
+  return {
+    entityType: rec.get('entityType') as string, entityId: rec.get('entityId') as string,
+    text: String(rec.get('text') ?? ''), isInternal: rec.get('isInternal') === true,
+  }
+}
+
 export async function updateComment(
   _: unknown,
   args: { id: string; body: string },
   ctx: GraphQLContext,
 ): Promise<EntityComment> {
-  if (args.body.length > 10_000) {
-    throw new GraphQLError('Comment body exceeds maximum length of 10000 characters', { extensions: { code: 'BAD_REQUEST' } })
+  const body = args.body.trim()
+  if (body.length === 0 || body.length > 10_000) {
+    throw new GraphQLError('A comment must have 1–10000 characters', { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.comment.length', params: { max: 10000 } } } })
   }
 
   const session = getSession(undefined, 'WRITE')
   try {
-    const loadRes = await session.executeRead((tx) => tx.run(`
-      MATCH (c:Comment {id: $id, tenant_id: $tenantId})
-      RETURN c.author_id AS authorId, c.created_at AS createdAt
-    `, { id: args.id, tenantId: ctx.tenantId }))
-
-    if (!loadRes.records.length) {
-      throw new GraphQLError('Comment not found', { extensions: { code: 'NOT_FOUND' } })
-    }
-
-    const authorId  = loadRes.records[0].get('authorId')  as string
-    const createdAt = loadRes.records[0].get('createdAt') as string
-
-    if (authorId !== ctx.userId) {
-      throw new GraphQLError('Only the author can edit a comment', { extensions: { code: 'FORBIDDEN' } })
-    }
-
-    const ageMs = Date.now() - new Date(createdAt).getTime()
-    if (ageMs > 15 * 60 * 1000) {
-      throw new GraphQLError('Comments can only be edited within 15 minutes of creation', { extensions: { code: 'BAD_REQUEST' } })
-    }
-
+    const current = await loadCommentForChange(session, args.id, ctx, 'edit')
     const now = new Date().toISOString()
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (c:Comment {id: $id, tenant_id: $tenantId})
-      SET c.text = $body, c.updated_at = $updatedAt
+      OPTIONAL MATCH (me:User {id: $userId, tenant_id: $tenantId})
+      SET c.text = $body, c.updated_at = $now, c.edited_at = $now,
+          c.edited_by = $userId, c.edited_by_name = coalesce(me.name, me.email, $userEmail)
+      WITH c
       ${RETURN_FIELDS}
-    `, { id: args.id, tenantId: ctx.tenantId, body: args.body, updatedAt: now }))
-
+    `, { id: args.id, tenantId: ctx.tenantId, body, now, userId: ctx.userId, userEmail: ctx.userEmail }))
+    // Il testo di prima resta nell'Audit Log: la pagina mostra solo «modificato».
+    void audit(ctx, 'comment.edited', current.entityType, current.entityId, { commentId: args.id, previousText: current.text })
     return mapComment(res.records[0])
   } finally {
     await session.close()
@@ -174,29 +203,18 @@ export async function deleteComment(
 ): Promise<boolean> {
   const session = getSession(undefined, 'WRITE')
   try {
-    const loadRes = await session.executeRead((tx) => tx.run(`
-      MATCH (e)-[:HAS_COMMENT]->(c:Comment {id: $id, tenant_id: $tenantId})
-      RETURN c.author_id AS authorId, head([k IN keys($labels) WHERE $labels[k] IN labels(e)]) AS entityType, e.id AS entityId
-    `, { id: args.id, tenantId: ctx.tenantId, labels: COMMENTABLE_LABELS }))
-
-    if (!loadRes.records.length) {
-      throw new GraphQLError('Comment not found', { extensions: { code: 'NOT_FOUND' } })
-    }
-
-    const authorId  = loadRes.records[0].get('authorId')  as string
-    const entityType = loadRes.records[0].get('entityType') as string
-    const entityId   = loadRes.records[0].get('entityId')   as string
-
-    if (authorId !== ctx.userId && ctx.role !== 'admin') {
-      throw new GraphQLError('Only the author or an admin can delete a comment', { extensions: { code: 'FORBIDDEN' } })
-    }
-
+    const current = await loadCommentForChange(session, args.id, ctx, 'delete')
+    const now = new Date().toISOString()
+    // Cancellazione come TRACCIA: il commento resta al suo posto, senza testo,
+    // con chi e quando. Il testo cancellato è nell'Audit Log.
     await session.executeWrite((tx) => tx.run(`
       MATCH (c:Comment {id: $id, tenant_id: $tenantId})
-      DETACH DELETE c
-    `, { id: args.id, tenantId: ctx.tenantId }))
+      OPTIONAL MATCH (me:User {id: $userId, tenant_id: $tenantId})
+      SET c.text = '', c.updated_at = $now, c.deleted_at = $now,
+          c.deleted_by = $userId, c.deleted_by_name = coalesce(me.name, me.email, $userEmail)
+    `, { id: args.id, tenantId: ctx.tenantId, now, userId: ctx.userId, userEmail: ctx.userEmail }))
 
-    void audit(ctx, 'comment.deleted', entityType, entityId, { commentId: args.id })
+    void audit(ctx, 'comment.deleted', current.entityType, current.entityId, { commentId: args.id, deletedText: current.text })
     return true
   } finally {
     await session.close()

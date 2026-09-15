@@ -9,12 +9,18 @@
  * interna, così un testo dello staff non arriva all'utente per distrazione.
  */
 import { useState } from 'react'
+import { useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import { Pencil, Trash2 } from 'lucide-react'
+import { UPDATE_COMMENT, DELETE_COMMENT } from '@/graphql/mutations'
+import { useMe } from '@/hooks/useMe'
+import { useConfirm } from '@/hooks/useConfirm'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { Label } from '@/components/ui/label'
 import { MentionInput } from '@/components/MentionInput'
 import { MentionText } from '@/components/MentionText'
-import { timeAgo } from '@/lib/datetime'
+import { formatDateTime, timeAgo } from '@/lib/datetime'
 import { colors } from '@/lib/tokens'
 import { srOnlyStyle } from '@/lib/a11y'
 
@@ -28,6 +34,11 @@ export interface TicketComment {
   authorLabel?: string | null
   /** Nota di lavoro (solo staff) o risposta pubblica (visibile dal portale). */
   isInternal:   boolean
+  /** Traccia di modifica e cancellazione (ondata 6 di «Nulla cablato»). */
+  editedAt?:      string | null
+  editedByName?:  string | null
+  deletedAt?:     string | null
+  deletedByName?: string | null
 }
 
 interface Props {
@@ -35,10 +46,34 @@ interface Props {
   onAdd:        (text: string, isInternal: boolean) => Promise<unknown> | void
   adding:       boolean
   defaultOpen?: boolean
+  /** Dopo una modifica o una cancellazione: la pagina ricarica i commenti. */
+  onChanged?:   () => void
 }
 
-export function CommentsSection({ comments, onAdd, adding, defaultOpen = false }: Props) {
+/**
+ * Chi può toccare un commento: l'autore il proprio, l'admin qualunque (le
+ * stesse regole dell'API). Un commento scritto da una regola o dal monitoraggio
+ * non ha un autore persona: lo tocca solo l'admin.
+ */
+export function canChangeComment(c: TicketComment, me: { id: string } | null, isAdmin: boolean): boolean {
+  if (c.deletedAt) return false
+  return isAdmin || (!!me && c.author?.id === me.id)
+}
+
+export function CommentsSection({ comments, onAdd, adding, defaultOpen = false, onChanged }: Props) {
   const { t } = useTranslation()
+  const { me, isAdmin } = useMe()
+  const confirm = useConfirm()
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
+  const [updateComment, { loading: updating }] = useMutation(UPDATE_COMMENT, {
+    onCompleted: () => { toast.success(t('detail.commentEdited')); setEditing(null); onChanged?.() },
+  })
+  const [deleteComment] = useMutation(DELETE_COMMENT, {
+    onCompleted: () => { toast.success(t('detail.commentDeleted')); onChanged?.() },
+  })
+  const askDelete = async (id: string) => {
+    if (await confirm({ title: t('detail.deleteComment'), body: t('detail.deleteCommentConfirm') })) void deleteComment({ variables: { id } })
+  }
   const [text, setText] = useState('')
   const [isInternal, setIsInternal] = useState(true)
   const canSend = text.trim().length > 0 && !adding
@@ -65,7 +100,7 @@ export function CommentsSection({ comments, onAdd, adding, defaultOpen = false }
                     {initials(c.author?.name ?? (c.authorKind === 'monitoring' ? t('detail.commentByMonitoring') : c.authorLabel ?? undefined))}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--text-primary)' }}>{c.author?.name
                         ?? (c.authorKind === 'monitoring' ? t('detail.commentByMonitoring')
                           : c.authorKind === 'automation' ? t('detail.commentByAutomation', { name: c.authorLabel ?? '' })
@@ -81,8 +116,48 @@ export function CommentsSection({ comments, onAdd, adding, defaultOpen = false }
                       >
                         {c.isInternal ? t('detail.commentInternal') : t('detail.commentPublic')}
                       </span>
+                      {canChangeComment(c, me, isAdmin) && editing?.id !== c.id && (
+                        <span style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
+                          <button type="button" aria-label={t('detail.editComment')} title={t('detail.editComment')} onClick={() => setEditing({ id: c.id, text: c.text })}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex' }}>
+                            <Pencil size={13} aria-hidden="true" />
+                          </button>
+                          <button type="button" aria-label={t('detail.deleteComment')} title={t('detail.deleteComment')} onClick={() => void askDelete(c.id)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex' }}>
+                            <Trash2 size={13} aria-hidden="true" />
+                          </button>
+                        </span>
+                      )}
                     </div>
-                    <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}><MentionText text={c.text} /></p>
+                    {c.deletedAt ? (
+                      <p data-testid="comment-deleted" style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', fontStyle: 'italic', lineHeight: 1.6, margin: 0 }}>
+                        {t('detail.commentDeletedBy', { name: c.deletedByName ?? t('detail.unknownUser'), date: formatDateTime(c.deletedAt) })}
+                      </p>
+                    ) : editing?.id === c.id ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <MentionInput value={editing.text} onChange={(v) => setEditing({ id: c.id, text: v })} rows={3} placeholder={t('detail.commentPlaceholder')} />
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button type="button" disabled={updating || editing.text.trim() === ''}
+                            onClick={() => void updateComment({ variables: { id: c.id, body: editing.text.trim() } })}
+                            style={{ padding: '5px 12px', backgroundColor: 'var(--accent)', color: colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+                            {t('common.save')}
+                          </button>
+                          <button type="button" onClick={() => setEditing(null)}
+                            style={{ padding: '5px 12px', background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                            {t('common.cancel')}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}><MentionText text={c.text} /></p>
+                        {c.editedAt && (
+                          <p data-testid="comment-edited" title={formatDateTime(c.editedAt)} style={{ fontSize: 'var(--font-size-label)', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                            {t('detail.commentEditedBy', { name: c.editedByName ?? t('detail.unknownUser'), date: formatDateTime(c.editedAt) })}
+                          </p>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
                 {i < comments.length - 1 && <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: 0 }} />}

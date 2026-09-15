@@ -13,7 +13,8 @@
  * title like `<a href="https://evil">…` must render as text, not as a link.
  */
 
-import { escapeHtml as e, notificationText, type NotificationLocale } from '@opengraphity/notifications'
+import { brandedEmailHtml, escapeHtml as e, notificationText, type NotificationLocale } from '@opengraphity/notifications'
+import type { TenantBrand } from '@opengraphity/types'
 import { config } from './config.js'
 
 const BRAND     = '#0EA5E9'
@@ -36,26 +37,15 @@ function baseUrl(): string {
   return url ?? 'http://localhost:5173'
 }
 
-function layout(tenant: string, content: string): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:${BG};font-family:Arial,Helvetica,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:${BG};padding:24px 0;">
-<tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="background:${WHITE};border-radius:8px;border:1px solid #E2E8F0;overflow:hidden;">
-<!-- Header -->
-<tr><td style="background:${DARK};padding:16px 24px;">
-<span style="color:${BRAND};font-size:20px;font-weight:700;">open</span><span style="color:${WHITE};font-size:20px;font-weight:700;">grafo</span>
-<span style="color:${SLATE};font-size:12px;margin-left:12px;">${e(tenant)}</span>
-</td></tr>
-<!-- Body -->
-<tr><td style="padding:24px;">${content}</td></tr>
-<!-- Footer -->
-<tr><td style="padding:16px 24px;border-top:1px solid #E2E8F0;text-align:center;">
-<span style="font-size:11px;color:${SLATE};">Powered by OpenGrafo &copy; ${new Date().getFullYear()}</span>
-</td></tr>
-</table>
-</td></tr></table>
-</body></html>`
+/**
+ * Chi manda l'e-mail: l'organizzazione con il suo marchio (verifica «Cosa resta
+ * cablato», ondata 6). L'impaginazione è quella unica del pacchetto notifiche
+ * (`brandedEmailHtml`): logo e nome in testa, «Powered by OpenGrafo» in fondo.
+ */
+export interface EmailSender { tenantId: string; brand: TenantBrand }
+
+function layout(sender: EmailSender, locale: NotificationLocale, content: string): string {
+  return brandedEmailHtml(sender.tenantId, sender.brand, content, locale.language)
 }
 
 function btn(label: string, url: string, color = BRAND): string {
@@ -77,12 +67,12 @@ function pathOf(entityType: string): string {
 
 export function mentionNotification(
   p: { entityType: string; entityTitle: string; entityId: string; mentionerName: string; excerpt: string },
-  tenant: string, locale: NotificationLocale,
+  sender: EmailSender, locale: NotificationLocale,
 ) {
   const tx = (k: Parameters<typeof notificationText>[1], params: Record<string, string> = {}) => notificationText(locale, k, params)
   return {
-    subject: tx('emailMentionSubject', { tenant, author: p.mentionerName, entity: p.entityType, title: p.entityTitle }),
-    html: layout(tenant, `
+    subject: tx('emailMentionSubject', { tenant: sender.brand.displayName, author: p.mentionerName, entity: p.entityType, title: p.entityTitle }),
+    html: layout(sender, locale, `
       <h2 style="margin:0 0 16px;font-size:18px;color:${BRAND};">${e(tx('emailMentionHeading'))}</h2>
       <p style="font-size:14px;color:${DARK};margin:0 0 12px;">
         ${e(tx('mentionMessage', { author: p.mentionerName, entity: p.entityType, title: p.entityTitle }))}
@@ -97,12 +87,12 @@ export function mentionNotification(
 
 export function watcherNotification(
   p: { entityType: string; entityTitle: string; entityId: string; event: string },
-  tenant: string, locale: NotificationLocale,
+  sender: EmailSender, locale: NotificationLocale,
 ) {
   const tx = (k: Parameters<typeof notificationText>[1], params: Record<string, string> = {}) => notificationText(locale, k, params)
   return {
-    subject: tx('emailWatcherSubject', { tenant, entity: p.entityType, title: p.entityTitle }),
-    html: layout(tenant, `
+    subject: tx('emailWatcherSubject', { tenant: sender.brand.displayName, entity: p.entityType, title: p.entityTitle }),
+    html: layout(sender, locale, `
       <h2 style="margin:0 0 16px;font-size:18px;color:${DARK};">${e(tx('update'))}</h2>
       <p style="font-size:14px;color:${DARK};margin:0 0 16px;">
         ${e(p.event)}
@@ -117,7 +107,7 @@ export function watcherNotification(
 
 export function digestDaily(
   p: { openIncidents: number; resolvedToday: number; ongoingChanges: number; slaBreaches: number; recentEvents: string[] },
-  tenant: string, locale: NotificationLocale,
+  sender: EmailSender, locale: NotificationLocale,
 ) {
   const tx = (k: Parameters<typeof notificationText>[1], params: Record<string, string> = {}) => notificationText(locale, k, params)
   const eventsList = p.recentEvents.length > 0
@@ -130,8 +120,8 @@ export function digestDaily(
           </td>`
 
   return {
-    subject: tx('digestSubject', { tenant }),
-    html: layout(tenant, `
+    subject: tx('digestSubject', { tenant: sender.brand.displayName }),
+    html: layout(sender, locale, `
       <h2 style="margin:0 0 16px;font-size:18px;color:${DARK};">${e(tx('digestHeading'))}</h2>
       <table cellpadding="0" cellspacing="0" style="width:100%;margin-bottom:20px;">
         <tr>

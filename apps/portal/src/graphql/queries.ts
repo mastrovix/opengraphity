@@ -21,6 +21,7 @@ export const GET_MY_TICKET = gql`
       createdAt updatedAt assignedTeam
       comments {
         id body isInternal authorId authorName authorEmail createdAt
+        editedAt editedByName deletedAt deletedByName
       }
       attachments {
         id filename mimeType sizeBytes uploadedBy uploadedAt downloadUrl
@@ -126,4 +127,9 @@ export const GET_PORTAL_CUSTOM_FIELDS = gql`
       options(language: $language) { value label }
     }
   }
+`
+
+/** Nome e logo dell'organizzazione nell'intestazione (verifica «Cosa resta cablato», ondata 6). */
+export const GET_TENANT_BRAND = gql`
+  query GetTenantBrand { tenantBrand { displayName logoUrl isDefault } }
 `

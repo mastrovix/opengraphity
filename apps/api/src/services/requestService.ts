@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
 import { withTicketProps } from '../lib/ticketProps.js'
-import { nextSequenceValue } from '../lib/sequence.js'
+import { nextTicketNumber } from '../lib/ticketNumbering.js'
 import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
@@ -44,8 +44,8 @@ export async function createRequest(
   const now = new Date().toISOString()
 
   const created = await withSession(async (session) => {
-    const seq = await nextSequenceValue(session, ctx.tenantId, 'service_request')
-    const number = 'REQ' + String(seq).padStart(8, '0')
+    // Formato del cliente (verifica «Cosa resta cablato», ondata 6), contatore del prodotto.
+    const number = await nextTicketNumber(session, ctx.tenantId, 'service_request')
 
     // Real lifecycle: start at the workflow's initial step, not a phantom 'open'.
     const initialStatus = await getInitialStepName(session, ctx.tenantId, 'service_request')

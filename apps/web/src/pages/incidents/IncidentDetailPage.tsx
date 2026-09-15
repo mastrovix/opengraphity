@@ -50,6 +50,8 @@ import { colors } from '@/lib/tokens'
 import { useSlaSettling } from '@/hooks/useSlaSettling'
 import { transitionErrorText, type TransitionFailure } from '@/lib/transitionError'
 import { withLocalizedLabel } from '@/lib/localizedLabel'
+import { useAIFeature } from '@/hooks/useAIFeature'
+import { useAIDisabledText } from '@/components/ai/AIDisabledNotice'
 
 const RESOLUTION_DRAFT = gql`
   query ResolutionDraft($incidentId: ID!) {
@@ -170,6 +172,11 @@ export function IncidentDetailPage() {
   const [awaitingUserAssign, setAwaitingUserAssign]  = useState(false)
 
   const [exportingPdf, setExportingPdf] = useState(false)
+  // Funzioni AI spente dall'organizzazione (ondata 6): i bottoni restano, spenti e con il perché.
+  const postIncidentOn = useAIFeature('postIncident')
+  const kbArticlesOn = useAIFeature('kbArticles')
+  const postIncidentOffText = useAIDisabledText('postIncident')
+  const kbArticlesOffText = useAIDisabledText('kbArticles')
   const [genResolutionDraft, { loading: draftLoading }] = useLazyQuery<{ resolutionDraft: { draft: string } }>(RESOLUTION_DRAFT, { fetchPolicy: 'network-only' })
   const [createKbDraft, { loading: kbDraftLoading }] = useMutation<{ createKbDraftFromIncident: { id: string; slug: string; title: string } }>(CREATE_KB_DRAFT, {
     // La bozza nasce in pochi secondi di generazione: il messaggio resta abbastanza
@@ -469,7 +476,8 @@ export function IncidentDetailPage() {
         {(incidentStepIsTerminal(incident.status) || incidentStepCategory(incident.status) === 'resolved') && (
           <Button
             variant="secondary"
-            disabled={kbDraftLoading}
+            disabled={kbDraftLoading || kbArticlesOn !== true}
+            title={kbArticlesOn === false ? kbArticlesOffText : undefined}
             icon={kbDraftLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
             onClick={() => void createKbDraft({ variables: { incidentId: incident.id } })}
           >
@@ -805,6 +813,7 @@ export function IncidentDetailPage() {
           <CommentsSection
             comments={incident.comments}
             adding={addingComment}
+            onChanged={() => void refetch()}
             onAdd={(text, isInternal) => addComment({ variables: { id: incident.id, text, isInternal } })}
           />
 
@@ -892,7 +901,8 @@ export function IncidentDetailPage() {
             </p>
             <button
               type="button"
-              disabled={draftLoading}
+              disabled={draftLoading || postIncidentOn !== true}
+              title={postIncidentOn === false ? postIncidentOffText : undefined}
               onClick={() => {
                 void genResolutionDraft({ variables: { incidentId: incident.id } }).then((res) => {
                   if (res.error) toast.error(t('toast.incident.aiDraftFailed', { error: res.error.message }))

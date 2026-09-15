@@ -76,6 +76,12 @@ export function incidentSDL(): string {
     authorLabel: String
     createdAt: String!
     updatedAt: String!
+    """Modificato: quando e da chi (il testo di prima è nell'Audit Log)."""
+    editedAt:      String
+    editedByName:  String
+    """Cancellato: il commento resta come traccia, senza testo."""
+    deletedAt:     String
+    deletedByName: String
   }
 
   type IncidentsResult {

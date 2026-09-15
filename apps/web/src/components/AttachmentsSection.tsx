@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Paperclip, Trash2, Download, Loader2 } from 'lucide-react'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { apiUrl, authHeader } from '@/lib/apiBase'
+import { GET_ATTACHMENT_POLICY } from '@/graphql/queries'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { colors } from '@/lib/tokens'
@@ -70,6 +71,9 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
     variables: { entityType, entityId },
   })
   const attachments = data?.attachments ?? []
+  // Cosa accetta l'organizzazione (ondata 6 di «Nulla cablato»): lo si dice prima di scegliere il file.
+  const { data: policyData } = useQuery<{ attachmentPolicy: { maxSizeMb: number; extensions: string[] } }>(GET_ATTACHMENT_POLICY, { fetchPolicy: 'cache-first' })
+  const policy = policyData?.attachmentPolicy
 
   const [deleteAttachment] = useMutation(DELETE_ATTACHMENT, {
     onCompleted: () => { toast.success(t('attachments.deleted')); void refetch() },
@@ -175,9 +179,15 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
             {uploading ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Paperclip size={13} aria-hidden="true" />}
             {uploading ? t('attachments.uploading') : t('attachments.upload')}
           </button>
+          {policy && (
+            <p style={{ fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', margin: '6px 0 0' }}>
+              {t('attachments.policyHint', { size: policy.maxSizeMb, types: policy.extensions.map((e) => '.' + e).join(', ') })}
+            </p>
+          )}
           <input
             ref={fileInputRef}
             type="file"
+            accept={policy ? policy.extensions.map((e) => '.' + e).join(',') : undefined}
             multiple
             style={{ display: 'none' }}
             onChange={(e) => void handleUpload(e.target.files)}

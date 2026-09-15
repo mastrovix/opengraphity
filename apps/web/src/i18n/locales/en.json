@@ -1476,7 +1476,95 @@
         "saturday": "Sat",
         "sunday": "Sun"
       },
-      "calendarUsedByList": "Used by: {{users}}"
+      "calendarUsedByList": "Used by: {{users}}",
+      "tabsLabel": "Organization settings",
+      "tabs": {
+        "general": "General",
+        "service": "Calendars",
+        "portal": "Portal and brand",
+        "tickets": "Tickets and attachments",
+        "ai": "AI"
+      },
+      "nameTitle": "Organization name",
+      "nameDescription": "The name of your organization inside OpenGrafo. The name shown to end users and in e-mails is the brand name, in «Portal and brand».",
+      "nameLabel": "Name",
+      "nameSaved": "Organization name saved",
+      "nameInvalid": "The name must have 1 to 120 characters.",
+      "brandTitle": "Brand",
+      "brandDescription": "Logo and name shown in the self-service portal, in e-mails and in PDF documents, and who e-mails come from. «Powered by OpenGrafo» stays, small, at the bottom.",
+      "brandFactory": "Not chosen yet: the OpenGrafo brand is in use.",
+      "logoGroup": "Logo",
+      "logoPreview": "Logo preview",
+      "logoUpload": "Upload logo",
+      "logoUploading": "Uploading…",
+      "logoRemove": "Remove logo",
+      "logoRemoveConfirm": "Remove the logo? The portal, e-mails and PDFs go back to the name only.",
+      "logoRemoved": "Logo removed",
+      "logoRemoveFailed": "The logo could not be removed",
+      "logoSaved": "Logo saved",
+      "logoHintSvg": "SVG logo: shown in the portal and in e-mails. PDFs show the name, because PDF documents can only embed PNG images.",
+      "logoHintPng": "PNG logo: shown in the portal, in e-mails and in PDFs.",
+      "logoHintNone": "PNG or SVG, up to 1 MB. Without a logo the portal shows the OpenGrafo logo and e-mails show the name.",
+      "namesGroup": "Names and e-mails",
+      "displayName": "Name shown",
+      "displayNameHint": "In the portal header, e-mail header and subject, PDF header.",
+      "senderName": "Sender name",
+      "senderNameHint": "The name recipients read. The sending address stays the platform's.",
+      "replyTo": "Reply-to address",
+      "replyToHint": "Where replies go. Empty: replies go to the sending address.",
+      "replyToInvalid": "The reply-to address is not an e-mail address.",
+      "brandNameInvalid": "Names must have 1 to 80 characters, without < > or quotes.",
+      "brandSaved": "Brand saved",
+      "numberingTitle": "Ticket numbering",
+      "numberingDescription": "Prefix and number of digits of each ticket type. It applies only to new tickets: existing numbers do not change and the counter continues.",
+      "numberingType": "Type",
+      "numberingPrefix": "Prefix",
+      "numberingDigits": "Digits",
+      "numberingExample": "Example",
+      "numberingPrefixFor": "Prefix of {{type}}",
+      "numberingDigitsFor": "Digits of {{type}}",
+      "numberingHint": "A prefix cannot be the start of another type's prefix, and cannot already be used by another type's numbers.",
+      "numberingPrefixInvalid": "A prefix has 1 to 8 capital letters or digits, starts with a letter and can end with «-».",
+      "numberingDigitsInvalid": "Digits must be a whole number between 3 and 12.",
+      "numberingOverlap": "Two prefixes overlap: numbers of the two types could not be told apart.",
+      "numberingSaved": "Numbering saved: it applies to new tickets",
+      "attachmentsTitle": "Attachments",
+      "attachmentsDescription": "How large a file can be and which file types can be attached to tickets, from the web and the portal.",
+      "attachmentsMaxSize": "Maximum size",
+      "attachmentsPlatformCap": "The platform allows at most {{max}} MB.",
+      "attachmentsTypes": "Allowed file types",
+      "attachmentsTypesHint_one": "{{count}} type allowed. Types that run code when opened are never offered.",
+      "attachmentsTypesHint_other": "{{count}} types allowed. Types that run code when opened are never offered.",
+      "attachmentsSizeInvalid": "The size must be a whole number of MB between 1 and {{max}}.",
+      "attachmentsTypesRequired": "Allow at least one file type.",
+      "attachmentsSaved": "Attachment rules saved",
+      "aiTitle": "Artificial intelligence",
+      "aiDescription": "Choose which AI features your organization uses. A feature that is off sends nothing to the model: the pages that offer it say it is off.",
+      "aiPlatformMissing": "The platform has no AI model configured: no AI feature works, whatever you choose here.",
+      "aiFeatures": "Features",
+      "aiFeature": {
+        "triage": "Triage suggestions",
+        "assistant": "AI assistant",
+        "reportAnalysis": "Report analysis",
+        "postIncident": "Post-incident notes and problem candidates",
+        "kbArticles": "Knowledge base drafts",
+        "embeddings": "Similarity (embeddings)"
+      },
+      "aiFeatureHelp": {
+        "triage": "Suggests severity, category and team while an incident is being opened.",
+        "assistant": "Answers questions on tickets and the CMDB in the Assistant page.",
+        "reportAnalysis": "Answers questions on your data in AI Analysis.",
+        "postIncident": "Drafts resolution notes and groups similar incidents into problem candidates.",
+        "kbArticles": "Drafts a knowledge base article from a resolved incident.",
+        "embeddings": "Turns ticket and article texts into vectors for similar incidents and article suggestions. Off: nothing is computed, and the features that need it say so."
+      },
+      "aiClusterGroup": "Problem candidates",
+      "aiClusterSimilarity": "Minimum similarity (0.50–0.99)",
+      "aiClusterSize": "Minimum incidents per group",
+      "aiClusterHint": "Higher similarity and larger groups make fewer, more certain candidates.",
+      "aiSimilarityInvalid": "The minimum similarity must be between 0.50 and 0.99.",
+      "aiSizeInvalid": "The minimum group must be a whole number between 2 and 20.",
+      "aiSaved": "AI settings saved"
     },
     "slaReport": {
       "met": "Met",
@@ -2415,7 +2503,8 @@
     "addCI": "+ Add CI",
     "affectedCIs": "Affected CIs",
     "searchCIByName": "Search CIs by name (min. 2 characters)…",
-    "searchCIOfTypes": "Search CIs ({{types}}) — min. 2 characters…"
+    "searchCIOfTypes": "Search CIs ({{types}}) — min. 2 characters…",
+    "policyHint": "Up to {{size}} MB: {{types}}"
   },
   "queryError": {
     "title": "Failed to load data",
@@ -2485,7 +2574,14 @@
     "commentAsPublic": "Public reply — the requester sees it in the portal",
     "sendInternalNote": "Add note",
     "sendPublicReply": "Send reply",
-    "unassign": "— Nobody —"
+    "unassign": "— Nobody —",
+    "commentEdited": "Comment updated",
+    "commentDeleted": "Comment deleted",
+    "deleteComment": "Delete comment",
+    "deleteCommentConfirm": "Delete this comment? It stays in the ticket as «deleted», and its text is kept in the Audit Log.",
+    "editComment": "Edit comment",
+    "commentDeletedBy": "Comment deleted by {{name}} · {{date}}",
+    "commentEditedBy": "Edited by {{name}} · {{date}}"
   },
   "search": {
     "placeholder": "Search everywhere... (Ctrl+K)",
@@ -3307,7 +3403,8 @@
     },
     "ai": {
       "notConfigured": "The AI is not configured: the service key is missing.",
-      "modelRefused": "The AI model refused the request: try rephrasing it."
+      "modelRefused": "The AI model refused the request: try rephrasing it.",
+      "disabled": "The AI feature «{{feature}}» is turned off for this organization. An administrator can turn it on in Organization → AI."
     },
     "kb": {
       "onlyFromConcluded": "The Knowledge Base draft is generated only from resolved or closed incidents: this one is in step \"{{step}}\". Concluding steps of the incident workflow: {{concluded}}.",
@@ -3315,7 +3412,11 @@
     },
     "comment": {
       "entityType": "This entity type cannot be commented on: {{entityType}}.",
-      "isInternalBoolean": "isInternal must be true (internal work note) or false (public reply to the requester)."
+      "isInternalBoolean": "isInternal must be true (internal work note) or false (public reply to the requester).",
+      "editForbidden": "Only the author or an administrator can edit a comment.",
+      "deleteForbidden": "Only the author or an administrator can delete a comment.",
+      "deleted": "The comment has been deleted.",
+      "length": "A comment must have 1 to {{max}} characters."
     },
     "dashboard": {
       "lastOne": "The only dashboard cannot be deleted."
@@ -3382,7 +3483,8 @@
         "end_before_start": "Business hours end ({{end}}) must come after the start ({{start}}).",
         "holidays": "Holidays must be dates in YYYY-MM-DD format."
       },
-      "inAppRetention": "Notifications are kept for a whole number of days between {{min}} and {{max}}."
+      "inAppRetention": "Notifications are kept for a whole number of days between {{min}} and {{max}}.",
+      "name": "The organization name must have 1–{{max}} characters."
     },
     "list": {
       "limit": "A list can show between 1 and {{max}} rows (asked: {{got}}).",
@@ -3474,6 +3576,31 @@
       "forbiddenRequired": "Anomaly rule «{{rule}}»: declare at least one forbidden relation.",
       "unknownRule": "There is no anomaly rule «{{rule}}».",
       "invalid": "The anomaly rule is not valid."
+    },
+    "ticketNumbering": {
+      "shape": "The ticket numbering must say prefix and digits for every ticket type.",
+      "prefix": "The prefix of {{entityType}} «{{prefix}}» must have 1–8 capital letters or digits, start with a letter and can end with «-».",
+      "digits": "The digits of {{entityType}} must be a whole number between {{min}} and {{max}}.",
+      "prefixOverlap": "The prefixes of {{a}} ({{prefixA}}) and {{b}} ({{prefixB}}) overlap: numbers of the two types could not be told apart.",
+      "prefixInUse": "The prefix {{prefix}} is already used by {{other}} numbers (for example {{example}})."
+    },
+    "attachmentPolicy": {
+      "size": "The maximum attachment size must be a whole number of MB between 1 and {{max}} (the platform limit).",
+      "noExtensions": "Choose at least one allowed file type.",
+      "extension": "«.{{extension}}» is not a file type the platform accepts."
+    },
+    "aiSettings": {
+      "shape": "The AI settings must say on or off for every feature.",
+      "similarity": "The minimum similarity must be between {{min}} and {{max}}.",
+      "size": "The minimum group size must be a whole number between {{min}} and {{max}}."
+    },
+    "brand": {
+      "displayName": "The name shown must have 1–{{max}} characters, without < > \" or line breaks.",
+      "senderName": "The sender name must have 1–{{max}} characters, without < > \" or line breaks.",
+      "replyTo": "«{{value}}» is not an e-mail address.",
+      "logoSize": "The logo is larger than {{max}} MB.",
+      "logoUnsafe": "The SVG logo contains scripts, event handlers or external links: export it again as a plain image.",
+      "logoType": "The logo must be a PNG or SVG image."
     }
   },
   "errorBoundary": {
@@ -3906,6 +4033,13 @@
     },
     "ciProblems": {
       "empty": "No problem involves this CI."
+    },
+    "aiDisabled": {
+      "text": "«{{feature}}» is turned off for your organization.",
+      "adminLink": "Turn it on in Organization → AI.",
+      "askAdmin": "An administrator can turn it on.",
+      "adminShort": "«{{feature}}» is turned off: turn it on in Organization → AI.",
+      "userShort": "«{{feature}}» is turned off for your organization: an administrator can turn it on."
     }
   },
   "events": {

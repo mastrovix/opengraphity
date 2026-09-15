@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, Paperclip } from 'lucide-react'
 import { GET_MY_TICKET, GET_ME } from '@/graphql/queries'
 import { useTicketCategories } from '@/hooks/useTicketCategories'
-import { ADD_TICKET_COMMENT, REOPEN_TICKET } from '@/graphql/mutations'
+import { ADD_TICKET_COMMENT, REOPEN_TICKET, UPDATE_COMMENT, DELETE_COMMENT } from '@/graphql/mutations'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
 import { CommentBubble } from '@/components/CommentBubble'
 import { downloadAttachment } from '@/lib/attachments'
@@ -17,6 +17,7 @@ import { colors, palette } from '@/lib/tokens'
 interface EntityComment {
   id: string; body: string; isInternal: boolean
   authorId: string; authorName: string; authorEmail: string; createdAt: string
+  editedAt: string | null; editedByName: string | null; deletedAt: string | null; deletedByName: string | null
 }
 interface Attachment { id: string; filename: string; mimeType: string; sizeBytes: number; downloadUrl: string }
 interface HistoryEntry { fromStep: string; toStep: string; fromLabel: string | null; toLabel: string | null; label: string | null; triggeredAt: string; triggeredBy: string }
@@ -65,6 +66,14 @@ export function TicketDetailPage() {
     if (ticketLoaded) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [ticketLoaded, commentCount])
 
+  const [updateComment] = useMutation(UPDATE_COMMENT, {
+    onCompleted: () => void refetch(),
+    onError: (e: { message: string }) => notifyError(e.message),
+  })
+  const [deleteComment] = useMutation(DELETE_COMMENT, {
+    onCompleted: () => void refetch(),
+    onError: (e: { message: string }) => notifyError(e.message),
+  })
   const [addComment, { loading: commenting }] = useMutation(ADD_TICKET_COMMENT, {
     onCompleted: () => { setReply(''); void refetch() },
     onError: (e: { message: string }) => notifyError(e.message),
@@ -247,7 +256,12 @@ export function TicketDetailPage() {
           if (item.type === 'comment') {
             const c    = item.data
             const isOwn = c.authorId === myUserId
-            return <CommentBubble key={c.id} body={c.body} authorName={c.authorName} authorEmail={c.authorEmail} createdAt={c.createdAt} isOwn={isOwn} />
+            return (
+              <CommentBubble key={c.id} body={c.body} authorName={c.authorName} authorEmail={c.authorEmail} createdAt={c.createdAt} isOwn={isOwn}
+                editedAt={c.editedAt} editedByName={c.editedByName} deletedAt={c.deletedAt} deletedByName={c.deletedByName}
+                onEdit={(body) => updateComment({ variables: { id: c.id, body } })}
+                onDelete={() => void deleteComment({ variables: { id: c.id } })} />
+            )
           }
           const h = item.data
           return (

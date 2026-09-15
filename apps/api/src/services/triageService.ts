@@ -16,6 +16,7 @@ import { config } from '../lib/config.js'
 import { GraphQLError } from 'graphql'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { getEmbedder, vectorIndexName } from './embeddings.js'
+import { aiFeatureEnabled, assertAIFeature } from '../lib/aiSettings.js'
 import { logger } from '../lib/logger.js'
 import { enumScopeClause, loadTenantEnumOverrides, applyEnumOverride } from '../lib/enumScope.js'
 import { modelLanguageFor } from '../lib/systemText.js'
@@ -174,14 +175,19 @@ function getClient(): Anthropic {
 }
 
 export async function suggestTriage(input: TriageInput): Promise<TriageSuggestion> {
+  // Funzione spenta dall'organizzazione: nessuna chiamata al modello (ondata 6).
+  await assertAIFeature(input.tenantId, 'triage')
   const draftText = [input.title, input.description].filter(Boolean).join('\n')
   if (!draftText.trim()) {
     throw new GraphQLError('Empty title: nothing to analyse', { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.triage.emptyTitle' } } })
   }
 
-  const [embedding] = await getEmbedder().embed([draftText])
+  // Con gli embedding spenti il triage lavora senza incident simili: il testo
+  // della bozza non va al provider degli embedding.
+  const embeddingsOn = await aiFeatureEnabled(input.tenantId, 'embeddings')
+  const embedding = embeddingsOn ? (await getEmbedder().embed([draftText]))[0]! : null
   const [similar, impact, severities, categories] = await Promise.all([
-    findSimilar(input.tenantId, embedding),
+    embedding ? findSimilar(input.tenantId, embedding) : Promise.resolve([] as Awaited<ReturnType<typeof findSimilar>>),
     loadCIImpact(input.tenantId, input.ciIds),
     loadEnumValues('severity', input.tenantId),
     loadEnumValues('category', input.tenantId),

@@ -30,6 +30,8 @@ const h = vi.hoisted(() => {
 })
 
 // La lingua in cui il modello scrive si legge dal cliente (lib/systemText.ts).
+// Ondata 6 di «Nulla cablato»: le funzioni AI sono dell'organizzazione; qui tutte accese.
+vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsFake.js'))
 vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
 vi.mock('../../lib/config.js', () => ({ config: h.cfg }))
 vi.mock('@anthropic-ai/sdk', () => ({
@@ -51,6 +53,7 @@ vi.mock('../../lib/logger.js', () => ({
 }))
 
 const { suggestTriage } = await import('../triageService.js')
+const aiFake = await import('../../lib/__tests__/aiSettingsFake.js')
 const { runQuery } = await import('@opengraphity/neo4j')
 import { config } from '../../lib/config.js'
 
@@ -98,9 +101,26 @@ beforeEach(() => {
   h.embed.mockResolvedValue([[0.1, 0.2, 0.3]])
   h.create.mockResolvedValue(modelReply(JSON.stringify(SUGGESTION)))
   graph()
+  aiFake.aiResetFake()
 })
 
 describe('suggestTriage — precondizioni', () => {
+  // Ondata 6 di «Nulla cablato»: una funzione spenta dall'organizzazione non chiama il modello.
+  it('triage spento → AI_DISABLED, nessun embedding e nessuna chiamata al modello', async () => {
+    aiFake.aiOff('triage')
+    const err = await failure(suggestTriage(input))
+    expect((err as GraphQLError).extensions['code']).toBe('AI_DISABLED')
+    expect(h.embed).not.toHaveBeenCalled()
+    expect(h.create).not.toHaveBeenCalled()
+  })
+
+  it('embedding spenti → il triage lavora senza incident simili: il testo non va al provider degli embedding', async () => {
+    aiFake.aiOff('embeddings')
+    await suggestTriage(input)
+    expect(h.embed).not.toHaveBeenCalled()
+    expect(h.create).toHaveBeenCalled()
+  })
+
   it('titolo e descrizione vuoti → BAD_USER_INPUT senza embedding né query', async () => {
     const err = await failure(suggestTriage({ ...input, title: '  ', description: null }))
     expect(err).toBeInstanceOf(GraphQLError)

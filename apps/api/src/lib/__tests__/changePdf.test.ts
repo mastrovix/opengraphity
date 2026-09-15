@@ -3,6 +3,7 @@ import { buildChangePdf, type ChangeDossier, type PdfMeta } from '../changePdf.j
 
 const META: PdfMeta = {
   locale: { language: 'it', timeZone: 'Europe/Rome' },
+  brand: { displayName: 'OpenGrafo', logoPng: null },
   generatedAt: '2026-07-17T10:00:00.000Z',
   generatedBy: 'test@example.com',
   tenantId:    'c-one',

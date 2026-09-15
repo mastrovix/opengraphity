@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import { brandedFrom } from '@opengraphity/types'
 
 const EMAIL_FROM = process.env['EMAIL_FROM']
 /**
@@ -45,13 +46,18 @@ export interface EmailMessage {
   subject: string
   html: string
   from?: string
+  /** Il nome del mittente scelto dall'organizzazione (l'indirizzo resta quello della piattaforma). */
+  senderName?: string
+  /** Dove vanno le risposte, se l'organizzazione l'ha scelto. */
+  replyTo?: string | null
 }
 
 export async function sendEmail(msg: EmailMessage): Promise<void> {
   const to = Array.isArray(msg.to) ? msg.to : [msg.to]
 
   assertEmailConfigured()
-  const from = msg.from ?? EMAIL_FROM ?? DEVELOPMENT_FROM
+  const platformFrom = msg.from ?? EMAIL_FROM ?? DEVELOPMENT_FROM
+  const from = msg.senderName ? brandedFrom(platformFrom, msg.senderName) : platformFrom
   if (isMock) {
     console.log(`[email:mock] To: ${to.join(', ')} | Subject: ${msg.subject}`)
     return
@@ -63,6 +69,7 @@ export async function sendEmail(msg: EmailMessage): Promise<void> {
       to,
       subject: msg.subject,
       html: msg.html,
+      ...(msg.replyTo ? { reply_to: msg.replyTo } : {}),
     })
 
     if (error) {

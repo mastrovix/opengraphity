@@ -77,6 +77,10 @@ export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
   'anomalyRules', 'anomalyRuleOptions',
   // La scelta delle severità del portale com'è salvata: configurazione.
   'portalSeverityOptions',
+  // Ondata 6 di «Nulla cablato»: nome, marchio completo e numerazione sono
+  // configurazione. `tenantBrand`, `attachmentPolicy` e `aiSettings` NO: li
+  // leggono il portale e le pagine che caricano file o offrono l'AI.
+  'tenantName', 'tenantBrandSettings', 'ticketNumbering',
 ])
 
 export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
@@ -87,6 +91,8 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   'setTenantDefaultLanguage',
   // il fuso orario del cliente (revisione del 14 set 2026 · F7)
   'setTenantTimezone',
+  // nome, marchio, numerazione, allegati e AI dell'organizzazione (ondata 6 di «Nulla cablato»)
+  'setTenantName', 'setTenantBrand', 'setTicketNumbering', 'setAttachmentPolicy', 'setAISettings',
   // il calendario di servizio (revisione del 14 set 2026 · F6)
   'createServiceCalendar', 'updateServiceCalendar', 'deleteServiceCalendar', 'setPortalSeverityOptions', 'setTenantInAppRetentionDays',
   // definizioni di workflow
@@ -179,9 +185,14 @@ export const END_USER_ALLOWED_QUERIES: ReadonlySet<string> = new Set([
   'portalSeverityChoices',
   // I campi del cliente offerti all'utente finale (ondata 4): solo quelli marcati.
   'portalCustomFields',
+  // Nome e logo dell'organizzazione nel portale, e cosa si può allegare (ondata 6).
+  'tenantBrand', 'attachmentPolicy',
 ])
 export const END_USER_ALLOWED_MUTATIONS: ReadonlySet<string> = new Set([
   'createTicket', 'addTicketComment', 'reopenTicket', 'createServiceRequest', 'rateKBArticle',
+  // L'autore modifica o cancella la propria risposta (ondata 6 di «Nulla cablato»):
+  // il resolver lo limita ai commenti suoi e pubblici.
+  'updateComment', 'deleteComment',
 ])
 
 /** Ruoli ammessi per un campo root. Pura: usata anche dai test. */

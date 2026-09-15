@@ -83,7 +83,15 @@
     "noMessages": "No messages yet.",
     "loadError": "Unable to load the ticket: {{message}}",
     "notFound": "Ticket not found or not accessible.",
-    "rulesError": "Unable to validate required fields: {{message}}"
+    "rulesError": "Unable to validate required fields: {{message}}",
+    "itAgent": "IT agent",
+    "editReply": "Edit your reply",
+    "deleteReply": "Delete your reply",
+    "deleteReplyConfirm": "Delete this reply? It stays in the ticket as «deleted».",
+    "replyEdited": "Edited by {{name}} · {{date}}",
+    "replyDeleted": "Reply deleted by {{name}} · {{date}}",
+    "cancel": "Cancel",
+    "save": "Save"
   },
   "kb": {
     "title": "Knowledge Base",

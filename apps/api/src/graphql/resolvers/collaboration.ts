@@ -72,12 +72,12 @@ async function notifyMentions(
 
     // Send email notification for mention
     try {
-      const { sendEmail } = await import('@opengraphity/notifications')
+      const { sendTenantEmail, loadTenantBrand } = await import('@opengraphity/notifications')
       const { mentionNotification } = await import('../../lib/emailTemplates.js')
       const to = await emailRecipient(tenantId, userId)
       if (to) {
-        const tpl = mentionNotification({ entityType, entityTitle, entityId, mentionerName: authorName, excerpt: excerpt ?? '' }, tenantId, locale)
-        await sendEmail({ to, ...tpl })
+        const tpl = mentionNotification({ entityType, entityTitle, entityId, mentionerName: authorName, excerpt: excerpt ?? '' }, { tenantId, brand: await loadTenantBrand(tenantId) }, locale)
+        await sendTenantEmail(tenantId, { to, ...tpl })
       }
     } catch (err) {
       // Non-fatal for the mutation, but a systematically broken mailer must be
@@ -135,13 +135,13 @@ async function notifyWatchers(
 
     // Send email notification for watcher
     try {
-      const { sendEmail } = await import('@opengraphity/notifications')
+      const { sendTenantEmail, loadTenantBrand } = await import('@opengraphity/notifications')
       const { watcherNotification } = await import('../../lib/emailTemplates.js')
       const title = await getEntityTitle(tenantId, entityId)
       const to = await emailRecipient(tenantId, userId)
       if (to) {
-        const tpl = watcherNotification({ entityType, entityTitle: title, entityId, event: described.message }, tenantId, locale)
-        await sendEmail({ to, ...tpl })
+        const tpl = watcherNotification({ entityType, entityTitle: title, entityId, event: described.message }, { tenantId, brand: await loadTenantBrand(tenantId) }, locale)
+        await sendTenantEmail(tenantId, { to, ...tpl })
       }
     } catch (err) {
       // Per-watcher batch: keep notifying the others, but log the failure loud.

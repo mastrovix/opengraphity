@@ -24,6 +24,8 @@ import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { colors, palette } from '@/lib/tokens'
 import { formatDate } from '@/lib/datetime'
+import { useAIFeature } from '@/hooks/useAIFeature'
+import { useAIDisabledText } from '@/components/ai/AIDisabledNotice'
 
 const PROBLEM_CANDIDATES = gql`
   query ProblemCandidates {
@@ -54,6 +56,10 @@ const PAGE_SIZE = 50
 
 export function ProblemListPage() {
   const { t } = useTranslation()
+  // Il raggruppamento usa embedding e modello (ondata 6): servono le due funzioni accese.
+  const postIncidentOn = useAIFeature('postIncident')
+  const embeddingsOn = useAIFeature('embeddings')
+  const candidatesOffText = useAIDisabledText(postIncidentOn === false ? 'postIncident' : 'embeddings')
   const navigate = useNavigate()
 
   // Campi del cliente (verifica «Cosa resta cablato», ondata 4): una colonna per campo.
@@ -126,7 +132,8 @@ export function ProblemListPage() {
           <div style={{ display: 'flex', gap: 8 }}>
             <Button
               variant="secondary"
-              disabled={candidatesLoading}
+              disabled={candidatesLoading || postIncidentOn !== true || embeddingsOn !== true}
+              title={postIncidentOn === false || embeddingsOn === false ? candidatesOffText : undefined}
               icon={<Sparkles size={13} />}
               onClick={() => {
                 void runCandidates().then((res) => {

@@ -155,6 +155,12 @@ const readers = {
   attachmentDir: (): string => path.resolve(envOrThrowInProd('ATTACHMENT_DIR', './data/attachments')),
   backupDir:     (): string => path.resolve(envOrThrowInProd('BACKUP_DIR', './backups')),
   reportDir:     (): string => path.resolve(envOrThrowInProd('REPORT_DIR', './data/reports')),
+  /**
+   * Il TETTO della piattaforma per un allegato, in MB (verifica «Cosa resta
+   * cablato», ondata 6): ogni organizzazione sceglie il suo limite sotto questo
+   * valore. È dell'operatore, non del cliente: protegge disco e memoria di tutti.
+   */
+  attachmentMaxMbCap: (): number => intEnv('ATTACHMENT_MAX_MB_CAP', 100),
 
   // Discovery
   /** 32-byte hex key for connector credentials at rest; unset → discovery sources cannot be saved. */

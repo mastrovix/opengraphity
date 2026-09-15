@@ -27,7 +27,7 @@ export const GET_INTERNAL_MESSAGES = gql`
 export const GET_ENTITY_COMMENTS = gql`
   query GetEntityComments($entityType: String!, $entityId: String!) {
     comments(entityType: $entityType, entityId: $entityId) {
-      id body isInternal authorId authorName authorEmail createdAt updatedAt
+      id body isInternal authorId authorName authorEmail createdAt updatedAt editedAt editedByName deletedAt deletedByName
     }
   }
 `

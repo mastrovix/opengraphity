@@ -19,6 +19,7 @@ import { config } from '../lib/config.js'
 import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { getEmbedder, vectorIndexName } from './embeddings.js'
+import { aiDisabledError, aiFeatureEnabled } from '../lib/aiSettings.js'
 // Le etichette dei CI vengono dal metamodello del tenant (A-9): con la lista
 // fissa l'assistente non trovava i CI dei tipi creati dal cliente e rispondeva
 // «non trovato» — un buco invisibile a chi fa la domanda.
@@ -54,6 +55,9 @@ function j(value: unknown): string {
 
 // ── Tool implementations ─────────────────────────────────────────────────────
 
+/** Detto al modello quando l'organizzazione ha spento gli embedding: la ricerca per significato non c'è. */
+const SEMANTIC_SEARCH_OFF = JSON.stringify({ error: 'Semantic search is turned off for this organization (embeddings disabled). Use lista_incident or cerca_ci instead.' })
+
 function buildTools(tenantId: string) {
   const cercaIncident = betaTool({
     name: 'cerca_incident',
@@ -68,6 +72,7 @@ function buildTools(tenantId: string) {
     },
     run: async (input) => {
       const { query, limit } = input as { query: string; limit?: number }
+      if (!(await aiFeatureEnabled(tenantId, 'embeddings'))) return SEMANTIC_SEARCH_OFF
       const [embedding] = await getEmbedder().embed([query])
       const rows = await readQuery(`
         CALL db.index.vector.queryNodes($index, 30, $embedding)
@@ -249,6 +254,7 @@ function buildTools(tenantId: string) {
     },
     run: async (input) => {
       const { query } = input as { query: string }
+      if (!(await aiFeatureEnabled(tenantId, 'embeddings'))) return SEMANTIC_SEARCH_OFF
       const [embedding] = await getEmbedder().embed([query])
       const rows = await readQuery(`
         CALL db.index.vector.queryNodes($index, 15, $embedding)
@@ -294,7 +300,12 @@ export async function streamAssistantChat(
   emit: AssistantEmitter,
 ): Promise<void> {
   if (!config.anthropicApiKey) {
-    emit.error('Assistente AI non configurato: ANTHROPIC_API_KEY mancante')
+    emit.error('AI assistant not configured: ANTHROPIC_API_KEY is missing')
+    return
+  }
+  // Funzione spenta dall'organizzazione: nessuna chiamata al modello (ondata 6).
+  if (!(await aiFeatureEnabled(tenantId, 'assistant'))) {
+    emit.error(aiDisabledError('assistant').message)
     return
   }
 

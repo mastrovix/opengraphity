@@ -76,7 +76,7 @@ describe('OrganizationPage — fuso orario', () => {
  */
 describe('OrganizationPage — calendari di servizio', () => {
   it('elenca i calendari con chi li usa; uno in uso non si può eliminare', async () => {
-    renderWithProviders(<OrganizationPage />, { route: '/settings/organization', mocks: [language, zones('Europe/Rome'), calendar(FACTORY), portalOptions(null)] })
+    renderWithProviders(<OrganizationPage />, { route: '/settings/organization?tab=service', mocks: [language, zones('Europe/Rome'), calendar(FACTORY), portalOptions(null)] })
     const row = (await screen.findByText('Service hours')).closest('li')!
     expect(row).toHaveTextContent('Mon Tue Wed Thu Fri · 08:00–18:00')
     expect(row).toHaveTextContent('Used by: Incident di rete')
@@ -89,7 +89,7 @@ describe('OrganizationPage — calendari di servizio', () => {
       request: { query: CREATE_SERVICE_CALENDAR, variables: (v) => { seen.push(v); return true } },
       result: { data: { createServiceCalendar: { __typename: 'ServiceCalendar', id: 'cal-2', name: 'Turno NOC', days: [1, 2, 3, 4, 5, 6], start: '07:00', end: '22:00', holidays: ['2026-12-25'], usedBySlaPolicies: [], usedByOlaContracts: [], usedByWorkflowSteps: [] } } },
     }
-    const { user } = renderWithProviders(<OrganizationPage />, { route: '/settings/organization', mocks: [language, zones('Europe/Rome'), calendar([]), portalOptions(null), create] })
+    const { user } = renderWithProviders(<OrganizationPage />, { route: '/settings/organization?tab=service', mocks: [language, zones('Europe/Rome'), calendar([]), portalOptions(null), create] })
 
     expect(await screen.findByText(/No service calendar yet/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'New calendar' }))
@@ -136,7 +136,7 @@ describe('OrganizationPage — severità del portale', () => {
       result: { data: { setPortalSeverityOptions: [] } },
     }
     const { user } = renderWithProviders(withVocabulary(<OrganizationPage />), {
-      route: '/settings/organization',
+      route: '/settings/organization?tab=portal',
       mocks: [language, zones('Europe/Rome'), calendar(FACTORY), portalOptions([{ value: 'high', labels: [{ language: 'en', label: 'Urgent' }] }]), save],
     })
 
@@ -159,7 +159,7 @@ describe('OrganizationPage — severità del portale', () => {
 
   it('nessuna scelta salvata → lo dice, e senza valori spuntati non si salva', async () => {
     renderWithProviders(withVocabulary(<OrganizationPage />), {
-      route: '/settings/organization', mocks: [language, zones('Europe/Rome'), calendar(FACTORY), portalOptions(null)],
+      route: '/settings/organization?tab=portal', mocks: [language, zones('Europe/Rome'), calendar(FACTORY), portalOptions(null)],
     })
     expect(await screen.findByText(/No severity has been chosen for the portal/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save portal severities' })).toBeDisabled()

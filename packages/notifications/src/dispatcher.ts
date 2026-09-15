@@ -11,6 +11,7 @@ import {
 } from './consumer.js'
 import type { IncidentData, ChangeTaskPayload } from './formatters.js'
 import { appUrl } from './appUrl.js'
+import { brandedEmailHtml, loadTenantBrand } from './brand.js'
 import { escapeHtml } from './escapeHtml.js'
 import { assertRoutableChannels, notificationEntityPath, unroutableChannels } from './routing.js'
 import { resolveNotificationRecipients, targetNeedsRecipients, type NotificationRecipient } from './recipients.js'
@@ -681,12 +682,14 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     const locale  = await loadNotificationLocale(event.tenant_id)
     const title   = emailTitle(notification, locale)
     const subject = notification.message ? `${title}: ${notification.message.slice(0, 80)}` : title
-    const html = renderNotificationEmail(notification, locale)
+    // Il marchio del cliente (ondata 6 di «Nulla cablato»): logo e nome in testa, mittente e risposte suoi.
+    const brand = await loadTenantBrand(event.tenant_id)
+    const html = brandedEmailHtml(event.tenant_id, brand, renderNotificationEmail(notification, locale), locale.language)
 
     // Batch emails (Resend limit: 50 per call)
     for (let i = 0; i < emails.length; i += 50) {
       const batch = emails.slice(i, i + 50)
-      await sendEmail({ to: batch, subject, html })
+      await sendEmail({ to: batch, subject, html, senderName: brand.senderName, replyTo: brand.replyTo })
     }
   }
 

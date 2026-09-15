@@ -34,7 +34,7 @@ export const GET_PROBLEM = gql`
       linkedChanges { id number title status removable }
       availableTransitions { toStep label labels { language label } requiresInput inputField condition }
       workflowHistory { id stepName enteredAt exitedAt durationMs triggeredBy triggerType notes }
-      comments { id text type isInternal createdAt authorKind authorLabel author { id name } }
+      comments { id text type isInternal createdAt authorKind authorLabel author { id name } editedAt editedByName deletedAt deletedByName }
       customFields { ...CustomFieldValueFields }
     }
   }

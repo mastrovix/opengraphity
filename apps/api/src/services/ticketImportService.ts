@@ -27,7 +27,8 @@ import { getWorkflowSteps, type StepRow } from '../lib/workflowHelpers.js'
 import { domainVocabulary } from '../lib/domainMatrix.js'
 import { resolveDomainValue } from '../lib/domainValue.js'
 import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
-import { nextSequenceValue, raiseSequenceTo } from '../lib/sequence.js'
+import { raiseSequenceTo } from '../lib/sequence.js'
+import { nextTicketNumber, ticketNumbering } from '../lib/ticketNumbering.js'
 
 type Session = ReturnType<typeof getSession>
 
@@ -274,7 +275,7 @@ async function ensureWorkflowInstance(
 // incident. Ora i quattro tipi di ticket passano dalla stessa strada, con le
 // colonne che ciascuno ha davvero:
 //
-//   tutti:           external_id*, title*, status, number, created_at, updated_at,
+//   tutti:           external_id*, title*, status, number (senza: prefisso e cifre del cliente), created_at, updated_at,
 //                    comments, e una colonna per ogni campo del cliente
 //   incident:        severity* (matrice «Import Severity»), description, resolved_at,
 //                    assignee_email, team_name
@@ -294,8 +295,6 @@ interface VocabularyColumn { column: string; vocabulary: string; required: boole
 
 interface TicketImportSpec {
   label:          'Incident' | 'Problem' | 'Change' | 'ServiceRequest'
-  /** Il prefisso del numero e il contatore (`lib/sequence.ts`) dei ticket creati dall'app. */
-  prefix:         string
   /** La change porta il numero anche in `code`. */
   numberIsCode:   boolean
   dateColumns:    readonly string[]
@@ -311,12 +310,12 @@ interface TicketImportSpec {
 
 export const TICKET_IMPORT_SPECS: Readonly<Record<TicketImportKind, TicketImportSpec>> = {
   incident: {
-    label: 'Incident', prefix: 'INC', numberIsCode: false,
+    label: 'Incident', numberIsCode: false,
     dateColumns: ['resolved_at'], textColumns: ['description'], vocabularies: [],
     severityMatrix: true, assignable: true, integers: [],
   },
   problem: {
-    label: 'Problem', prefix: 'PRB', numberIsCode: false,
+    label: 'Problem', numberIsCode: false,
     dateColumns: ['resolved_at'], textColumns: ['description', 'workaround', 'root_cause'],
     vocabularies: [
       { column: 'priority', vocabulary: 'priority', required: true },
@@ -326,7 +325,7 @@ export const TICKET_IMPORT_SPECS: Readonly<Record<TicketImportKind, TicketImport
     severityMatrix: false, assignable: true, integers: [],
   },
   change: {
-    label: 'Change', prefix: 'CHG', numberIsCode: true,
+    label: 'Change', numberIsCode: true,
     dateColumns: ['completed_at'], textColumns: ['why', 'what'],
     vocabularies: [
       { column: 'change_type', vocabulary: 'change_type', required: true },
@@ -335,7 +334,7 @@ export const TICKET_IMPORT_SPECS: Readonly<Record<TicketImportKind, TicketImport
     severityMatrix: false, assignable: false, integers: [{ column: 'aggregate_risk_score', min: 0, max: 100 }],
   },
   service_request: {
-    label: 'ServiceRequest', prefix: 'REQ', numberIsCode: false,
+    label: 'ServiceRequest', numberIsCode: false,
     dateColumns: ['due_date', 'completed_at'], textColumns: ['description'],
     vocabularies: [{ column: 'priority', vocabulary: 'priority', required: true }],
     severityMatrix: false, assignable: true, integers: [],
@@ -676,15 +675,18 @@ export async function importTickets(
     // un numero già usato e falliva sul vincolo di unicità. Ora il contatore sale
     // almeno al numero più alto già presente o preservato dal file, e le righe
     // senza numero ne prendono uno dal contatore, come dalla pagina.
+    // Il prefisso è quello del cliente (ondata 6 di «Nulla cablato»).
+    const { prefix } = (await ticketNumbering(ctx.tenantId))[kind]
     const numericOf = (n: string | null | undefined): number => {
-      const m = n ? new RegExp(`^${spec.prefix}(\\d+)$`).exec(n) : null
-      return m ? Number(m[1]) : 0
+      if (!n || !n.startsWith(prefix)) return 0
+      const rest = n.slice(prefix.length)
+      return /^\d+$/.test(rest) ? Number(rest) : 0
     }
     const maxRow = await runQueryOne<{ maxNum: number | null }>(session, `
       MATCH (n:${spec.label} {tenant_id: $tenantId})
       WHERE n.number STARTS WITH $prefix
       RETURN max(toInteger(substring(n.number, size($prefix)))) AS maxNum
-    `, { tenantId: ctx.tenantId, prefix: spec.prefix })
+    `, { tenantId: ctx.tenantId, prefix })
     const floor = Math.max(Number(maxRow?.maxNum ?? 0), ...plans.map((p) => numericOf(p.number)))
     if (floor > 0) await raiseSequenceTo(session, ctx.tenantId, kind, floor)
 
@@ -721,7 +723,7 @@ async function writeTicketRow(session: Session, kind: TicketImportKind, p: Ticke
 
   await session.executeWrite(async (tx) => {
     // Un ticket nuovo senza numero nel file prende il prossimo del contatore.
-    const number = p.number ?? (p.exists ? null : spec.prefix + String(await nextSequenceValue(tx, ctx.tenantId, kind)).padStart(8, '0'))
+    const number = p.number ?? (p.exists ? null : await nextTicketNumber(tx, ctx.tenantId, kind))
 
     // MERGE on (tenant_id, import_external_id) → idempotent re-runs
     await tx.run(`

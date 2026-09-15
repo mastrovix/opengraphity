@@ -570,6 +570,7 @@ export function ProblemDetailPage() {
           <CommentsSection
             comments={problem.comments}
             adding={addingComment}
+            onChanged={() => void refetch()}
             onAdd={(text, isInternal) => addComment({ variables: { problemId: problem.id, text, isInternal } })}
           />
 

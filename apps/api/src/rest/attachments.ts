@@ -1,7 +1,7 @@
 import fs from 'fs'
 import { createWriteStream, existsSync, mkdirSync } from 'fs'
 import type { Readable } from 'stream'
-import { Router, type Response, type Router as ExpressRouter } from 'express'
+import { Router, type Request, type Response, type Router as ExpressRouter } from 'express'
 import { v4 as uuidv4 } from 'uuid'
 import Busboy from 'busboy'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
@@ -9,6 +9,7 @@ import { authMiddleware } from '../middleware/auth.js'
 import { logger } from '../lib/logger.js'
 import { config } from '../lib/config.js'
 import { ValidationError } from '../lib/errors.js'
+import { attachmentPolicy, extensionAllowed, fileExtension, type AttachmentPolicy } from '../lib/attachmentPolicy.js'
 import {
   UPLOAD_ROLES,
   entityExistsCypher,
@@ -22,22 +23,8 @@ const router: ExpressRouter = Router()
 
 const ATTACHMENT_DIR = config.attachmentDir
 
-const ALLOWED_MIME_TYPES = new Set([
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'text/plain',
-  'text/csv',
-  'application/zip',
-  'application/x-zip-compressed',
-])
-
-const MAX_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
+// Tipi e dimensione ammessi sono dell'organizzazione (lib/attachmentPolicy.ts,
+// verifica «Cosa resta cablato», ondata 6): prima un elenco MIME e 10 MB fissi.
 
 /** Does the (whitelisted-label) entity exist in this tenant? */
 async function entityExists(target: AttachmentTarget, tenantId: string): Promise<boolean> {
@@ -56,6 +43,10 @@ async function entityExists(target: AttachmentTarget, tenantId: string): Promise
 // stream is only opened once the target has been validated and found.
 
 router.post('/attachments', authMiddleware, (req, res) => {
+  void handleUpload(req, res)
+})
+
+async function handleUpload(req: Request, res: Response): Promise<void> {
   const contentType = req.headers['content-type'] ?? ''
   if (!contentType.includes('multipart/form-data')) {
     res.status(400).json({ error: 'Expected multipart/form-data' })
@@ -68,7 +59,16 @@ router.post('/attachments', authMiddleware, (req, res) => {
     return
   }
 
-  const busboy = Busboy({ headers: req.headers, limits: { fileSize: MAX_SIZE_BYTES, files: 1, fields: 10 } })
+  let policy: AttachmentPolicy
+  try {
+    policy = await attachmentPolicy(tenantId)
+  } catch (err) {
+    logger.error({ err, tenantId }, '[attachment] attachment policy not readable')
+    res.status(500).json({ error: 'The attachment policy of this organization cannot be read' })
+    return
+  }
+  const maxSizeBytes = policy.maxSizeMb * 1024 * 1024
+  const busboy = Busboy({ headers: req.headers, limits: { fileSize: maxSizeBytes, files: 1, fields: 10 } })
 
   let entityType    = ''
   let entityId      = ''
@@ -114,9 +114,9 @@ router.post('/attachments', authMiddleware, (req, res) => {
       reject(400, err instanceof ValidationError ? err.message : 'Invalid entityType/entityId (send them before the file part)')
       return
     }
-    if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+    if (!extensionAllowed(policy, originalName)) {
       fileStream.resume()
-      reject(400, `File type '${mimeType}' is not allowed`)
+      reject(400, `File type '.${fileExtension(originalName) || '?'}' is not allowed. Allowed: ${policy.extensions.map((x) => '.' + x).join(', ')}`)
       return
     }
 
@@ -177,7 +177,7 @@ router.post('/attachments', authMiddleware, (req, res) => {
 
       if (sizeLimitHit) {
         cleanup()
-        reject(400, `File exceeds maximum size of ${MAX_SIZE_BYTES / 1024 / 1024}MB`)
+        reject(400, `File exceeds maximum size of ${String(policy.maxSizeMb)}MB`)
         return
       }
 
@@ -231,7 +231,7 @@ router.post('/attachments', authMiddleware, (req, res) => {
   })
 
   req.pipe(busboy)
-})
+}
 
 // ── GET /api/attachments/:id ──────────────────────────────────────────────────
 

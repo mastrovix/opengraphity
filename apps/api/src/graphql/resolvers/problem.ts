@@ -25,7 +25,7 @@ import { resolvePriorityPatch } from '../../lib/priority.js'
 import { assertUserInAssignedTeam, setTicketTeam, setTicketUser } from '../../services/ticketAssignment.js'
 import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
 import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
-import { commentAuthorKind, commentAuthorLabel } from '../../lib/commentAuthor.js'
+import { commentAuthorKind, commentAuthorLabel, commentTrace } from '../../lib/commentAuthor.js'
 import { transitionFailed } from '../../lib/transitionError.js'
 import { getStepNamesByPurpose } from '../../lib/workflowHelpers.js'
 import { writeTicketComment } from '../../lib/ticketComments.js'
@@ -76,6 +76,7 @@ function mapProblemComment(props: Props, authorProps: Props | null) {
     author:    authorProps ? mapUser(authorProps) : null,
     authorKind:  commentAuthorKind(props, !!authorProps),
     authorLabel: commentAuthorLabel(props),
+    ...commentTrace(props),
   }
 }
 

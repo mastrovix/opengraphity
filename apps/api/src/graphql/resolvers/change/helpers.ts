@@ -23,7 +23,8 @@ import { getInitialStepName, getStepPurpose } from '../../../lib/workflowHelpers
 import { targetStepByPurpose } from '../../../lib/workflowTargets.js'
 import { toNumber } from '@opengraphity/neo4j'
 import { systemText } from '../../../lib/systemText.js'
-import { nextSequenceValue, nextSequenceBlock } from '../../../lib/sequence.js'
+import { nextSequenceBlock } from '../../../lib/sequence.js'
+import { nextTicketNumber } from '../../../lib/ticketNumbering.js'
 
 export type Session = ReturnType<typeof getSession>
 
@@ -97,7 +98,8 @@ export async function writeAudit(
  * 20260923_1060).
  */
 export async function nextChangeCode(session: SessionOrTx, tenantId: string): Promise<string> {
-  return 'CHG' + String(await nextSequenceValue(session, tenantId, 'change')).padStart(8, '0')
+  // Il formato è del cliente (ondata 6 di «Nulla cablato»); il contatore resta del prodotto.
+  return nextTicketNumber(session, tenantId, 'change')
 }
 
 export async function getNextTaskCodes(session: SessionOrTx, tenantId: string, count: number): Promise<string[]> {

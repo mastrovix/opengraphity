@@ -1476,7 +1476,95 @@
         "saturday": "Sab",
         "sunday": "Dom"
       },
-      "calendarUsedByList": "Usato da: {{users}}"
+      "calendarUsedByList": "Usato da: {{users}}",
+      "tabsLabel": "Impostazioni dell'organizzazione",
+      "tabs": {
+        "general": "Generale",
+        "service": "Calendari",
+        "portal": "Portale e marchio",
+        "tickets": "Ticket e allegati",
+        "ai": "AI"
+      },
+      "nameTitle": "Nome dell'organizzazione",
+      "nameDescription": "Il nome della tua organizzazione dentro OpenGrafo. Il nome mostrato agli utenti finali e nelle e-mail è quello del marchio, in «Portale e marchio».",
+      "nameLabel": "Nome",
+      "nameSaved": "Nome dell'organizzazione salvato",
+      "nameInvalid": "Il nome deve avere da 1 a 120 caratteri.",
+      "brandTitle": "Marchio",
+      "brandDescription": "Logo e nome mostrati nel portale self-service, nelle e-mail e nei documenti PDF, e da chi arrivano le e-mail. «Powered by OpenGrafo» resta, piccolo, in fondo.",
+      "brandFactory": "Non ancora scelto: è in uso il marchio OpenGrafo.",
+      "logoGroup": "Logo",
+      "logoPreview": "Anteprima del logo",
+      "logoUpload": "Carica il logo",
+      "logoUploading": "Caricamento…",
+      "logoRemove": "Togli il logo",
+      "logoRemoveConfirm": "Togliere il logo? Portale, e-mail e PDF tornano a mostrare solo il nome.",
+      "logoRemoved": "Logo tolto",
+      "logoRemoveFailed": "Non è stato possibile togliere il logo",
+      "logoSaved": "Logo salvato",
+      "logoHintSvg": "Logo SVG: si vede nel portale e nelle e-mail. I PDF mostrano il nome, perché un documento PDF può contenere solo immagini PNG.",
+      "logoHintPng": "Logo PNG: si vede nel portale, nelle e-mail e nei PDF.",
+      "logoHintNone": "PNG o SVG, fino a 1 MB. Senza logo il portale mostra quello di OpenGrafo e le e-mail il nome.",
+      "namesGroup": "Nomi ed e-mail",
+      "displayName": "Nome mostrato",
+      "displayNameHint": "Nell'intestazione del portale, in testa e nell'oggetto delle e-mail, in testa ai PDF.",
+      "senderName": "Nome del mittente",
+      "senderNameHint": "Il nome che legge chi riceve. L'indirizzo d'invio resta quello della piattaforma.",
+      "replyTo": "Indirizzo di risposta",
+      "replyToHint": "Dove arrivano le risposte. Vuoto: le risposte vanno all'indirizzo d'invio.",
+      "replyToInvalid": "L'indirizzo di risposta non è un indirizzo e-mail.",
+      "brandNameInvalid": "I nomi devono avere da 1 a 80 caratteri, senza < > o virgolette.",
+      "brandSaved": "Marchio salvato",
+      "numberingTitle": "Numerazione dei ticket",
+      "numberingDescription": "Prefisso e numero di cifre di ogni tipo di ticket. Vale solo per i ticket nuovi: i numeri esistenti non cambiano e il contatore prosegue.",
+      "numberingType": "Tipo",
+      "numberingPrefix": "Prefisso",
+      "numberingDigits": "Cifre",
+      "numberingExample": "Esempio",
+      "numberingPrefixFor": "Prefisso di {{type}}",
+      "numberingDigitsFor": "Cifre di {{type}}",
+      "numberingHint": "Un prefisso non può essere l'inizio di quello di un altro tipo, e non può essere già usato dai numeri di un altro tipo.",
+      "numberingPrefixInvalid": "Un prefisso ha da 1 a 8 lettere maiuscole o cifre, comincia con una lettera e può finire con «-».",
+      "numberingDigitsInvalid": "Le cifre devono essere un numero intero fra 3 e 12.",
+      "numberingOverlap": "Due prefissi si sovrappongono: i numeri dei due tipi non si distinguerebbero.",
+      "numberingSaved": "Numerazione salvata: vale per i ticket nuovi",
+      "attachmentsTitle": "Allegati",
+      "attachmentsDescription": "Quanto può essere grande un file e quali tipi di file si possono allegare ai ticket, dal web e dal portale.",
+      "attachmentsMaxSize": "Dimensione massima",
+      "attachmentsPlatformCap": "La piattaforma ammette al massimo {{max}} MB.",
+      "attachmentsTypes": "Tipi di file ammessi",
+      "attachmentsTypesHint_one": "{{count}} tipo ammesso. I tipi che eseguono codice quando si aprono non sono mai offerti.",
+      "attachmentsTypesHint_other": "{{count}} tipi ammessi. I tipi che eseguono codice quando si aprono non sono mai offerti.",
+      "attachmentsSizeInvalid": "La dimensione deve essere un numero intero di MB fra 1 e {{max}}.",
+      "attachmentsTypesRequired": "Ammetti almeno un tipo di file.",
+      "attachmentsSaved": "Regole degli allegati salvate",
+      "aiTitle": "Intelligenza artificiale",
+      "aiDescription": "Scegli quali funzioni AI usa la tua organizzazione. Una funzione spenta non manda niente al modello: le pagine che la offrono dicono che è spenta.",
+      "aiPlatformMissing": "La piattaforma non ha un modello AI configurato: nessuna funzione AI funziona, qualunque cosa tu scelga qui.",
+      "aiFeatures": "Funzioni",
+      "aiFeature": {
+        "triage": "Suggerimenti di triage",
+        "assistant": "Assistente AI",
+        "reportAnalysis": "Analisi dei report",
+        "postIncident": "Note post-incident e candidati problem",
+        "kbArticles": "Bozze della knowledge base",
+        "embeddings": "Somiglianze (embedding)"
+      },
+      "aiFeatureHelp": {
+        "triage": "Propone severità, categoria e team mentre si apre un incident.",
+        "assistant": "Risponde alle domande su ticket e CMDB nella pagina Assistente.",
+        "reportAnalysis": "Risponde alle domande sui tuoi dati in AI Analysis.",
+        "postIncident": "Scrive la bozza delle note di risoluzione e raggruppa gli incident simili in candidati problem.",
+        "kbArticles": "Scrive la bozza di un articolo della knowledge base da un incident risolto.",
+        "embeddings": "Trasforma i testi di ticket e articoli in vettori per gli incident simili e i suggerimenti di articoli. Spenta: non si calcola niente, e le funzioni che ne hanno bisogno lo dicono."
+      },
+      "aiClusterGroup": "Candidati problem",
+      "aiClusterSimilarity": "Somiglianza minima (0,50–0,99)",
+      "aiClusterSize": "Incident minimi per gruppo",
+      "aiClusterHint": "Una somiglianza più alta e gruppi più grandi danno meno candidati, più sicuri.",
+      "aiSimilarityInvalid": "La somiglianza minima deve essere fra 0,50 e 0,99.",
+      "aiSizeInvalid": "Il gruppo minimo deve essere un numero intero fra 2 e 20.",
+      "aiSaved": "Impostazioni AI salvate"
     },
     "slaReport": {
       "met": "Rispettati",
@@ -2415,7 +2503,8 @@
     "addCI": "+ Aggiungi CI",
     "affectedCIs": "CI Impattati",
     "searchCIByName": "Cerca CI per nome (min. 2 caratteri)…",
-    "searchCIOfTypes": "Cerca CI ({{types}}) — min. 2 caratteri…"
+    "searchCIOfTypes": "Cerca CI ({{types}}) — min. 2 caratteri…",
+    "policyHint": "Fino a {{size}} MB: {{types}}"
   },
   "queryError": {
     "title": "Errore nel caricamento dei dati",
@@ -2485,7 +2574,14 @@
     "commentAsPublic": "Risposta pubblica — la vede anche chi ha aperto il ticket, dal portale",
     "sendInternalNote": "Aggiungi nota",
     "sendPublicReply": "Invia risposta",
-    "unassign": "— Nessuno —"
+    "unassign": "— Nessuno —",
+    "commentEdited": "Commento aggiornato",
+    "commentDeleted": "Commento cancellato",
+    "deleteComment": "Cancella il commento",
+    "deleteCommentConfirm": "Cancellare questo commento? Resta nel ticket come «cancellato», e il testo resta nell'Audit Log.",
+    "editComment": "Modifica il commento",
+    "commentDeletedBy": "Commento cancellato da {{name}} · {{date}}",
+    "commentEditedBy": "Modificato da {{name}} · {{date}}"
   },
   "search": {
     "placeholder": "Cerca ovunque... (Ctrl+K)",
@@ -3307,7 +3403,8 @@
     },
     "ai": {
       "notConfigured": "L'AI non è configurata: manca la chiave del servizio.",
-      "modelRefused": "Il modello AI ha rifiutato la richiesta: prova a riformularla."
+      "modelRefused": "Il modello AI ha rifiutato la richiesta: prova a riformularla.",
+      "disabled": "La funzione AI «{{feature}}» è spenta per questa organizzazione. Un amministratore può accenderla in Organizzazione → AI."
     },
     "kb": {
       "onlyFromConcluded": "La bozza per la Knowledge Base si genera solo da incident risolti o chiusi: questo è nel passo «{{step}}». Passi conclusivi del workflow incident: {{concluded}}.",
@@ -3315,7 +3412,11 @@
     },
     "comment": {
       "entityType": "Su questo tipo di entità non si può commentare: {{entityType}}.",
-      "isInternalBoolean": "isInternal deve essere true (nota interna) o false (risposta pubblica a chi ha aperto il ticket)."
+      "isInternalBoolean": "isInternal deve essere true (nota interna) o false (risposta pubblica a chi ha aperto il ticket).",
+      "editForbidden": "Solo l'autore o un amministratore può modificare un commento.",
+      "deleteForbidden": "Solo l'autore o un amministratore può cancellare un commento.",
+      "deleted": "Il commento è stato cancellato.",
+      "length": "Un commento deve avere da 1 a {{max}} caratteri."
     },
     "dashboard": {
       "lastOne": "L'unica dashboard non si può eliminare."
@@ -3382,7 +3483,8 @@
         "end_before_start": "La fine dell'orario lavorativo ({{end}}) deve venire dopo l'inizio ({{start}}).",
         "holidays": "Le festività devono essere date nel formato YYYY-MM-DD."
       },
-      "inAppRetention": "Le notifiche si conservano per un numero intero di giorni fra {{min}} e {{max}}."
+      "inAppRetention": "Le notifiche si conservano per un numero intero di giorni fra {{min}} e {{max}}.",
+      "name": "Il nome dell'organizzazione deve avere da 1 a {{max}} caratteri."
     },
     "list": {
       "limit": "Una lista può mostrare fra 1 e {{max}} righe (richieste: {{got}}).",
@@ -3474,6 +3576,31 @@
       "forbiddenRequired": "Regola di anomalia «{{rule}}»: dichiara almeno una relazione vietata.",
       "unknownRule": "Non esiste la regola di anomalia «{{rule}}».",
       "invalid": "La regola di anomalia non è valida."
+    },
+    "ticketNumbering": {
+      "shape": "La numerazione deve dire prefisso e cifre per ogni tipo di ticket.",
+      "prefix": "Il prefisso di {{entityType}} «{{prefix}}» deve avere da 1 a 8 lettere maiuscole o cifre, cominciare con una lettera e può finire con «-».",
+      "digits": "Le cifre di {{entityType}} devono essere un numero intero fra {{min}} e {{max}}.",
+      "prefixOverlap": "I prefissi di {{a}} ({{prefixA}}) e {{b}} ({{prefixB}}) si sovrappongono: i numeri dei due tipi non si distinguerebbero.",
+      "prefixInUse": "Il prefisso {{prefix}} è già usato dai numeri di {{other}} (per esempio {{example}})."
+    },
+    "attachmentPolicy": {
+      "size": "La dimensione massima di un allegato deve essere un numero intero di MB fra 1 e {{max}} (il limite della piattaforma).",
+      "noExtensions": "Scegli almeno un tipo di file ammesso.",
+      "extension": "«.{{extension}}» non è un tipo di file che la piattaforma accetta."
+    },
+    "aiSettings": {
+      "shape": "Le impostazioni AI devono dire acceso o spento per ogni funzione.",
+      "similarity": "La somiglianza minima deve essere fra {{min}} e {{max}}.",
+      "size": "La dimensione minima del gruppo deve essere un numero intero fra {{min}} e {{max}}."
+    },
+    "brand": {
+      "displayName": "Il nome mostrato deve avere da 1 a {{max}} caratteri, senza < > \" o a capo.",
+      "senderName": "Il nome del mittente deve avere da 1 a {{max}} caratteri, senza < > \" o a capo.",
+      "replyTo": "«{{value}}» non è un indirizzo e-mail.",
+      "logoSize": "Il logo è più grande di {{max}} MB.",
+      "logoUnsafe": "Il logo SVG contiene script, gestori di eventi o collegamenti esterni: esportalo di nuovo come immagine semplice.",
+      "logoType": "Il logo deve essere un'immagine PNG o SVG."
     }
   },
   "errorBoundary": {
@@ -3906,6 +4033,13 @@
     },
     "ciProblems": {
       "empty": "Nessun problem coinvolge questo CI."
+    },
+    "aiDisabled": {
+      "text": "«{{feature}}» è spenta per la tua organizzazione.",
+      "adminLink": "Accendila in Organizzazione → AI.",
+      "askAdmin": "Un amministratore può accenderla.",
+      "adminShort": "«{{feature}}» è spenta: accendila in Organizzazione → AI.",
+      "userShort": "«{{feature}}» è spenta per la tua organizzazione: un amministratore può accenderla."
     }
   },
   "events": {

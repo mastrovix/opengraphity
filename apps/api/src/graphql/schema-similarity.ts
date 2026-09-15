@@ -26,11 +26,15 @@ export const similaritySDL = `
   """
   type SimilarIncidentsResult {
     ready: Boolean!
+    """L'organizzazione ha spento gli embedding: niente somiglianze (ondata 6)."""
+    disabled: Boolean!
     items: [SimilarIncident!]!
   }
 
   type SuggestedArticlesResult {
     ready: Boolean!
+    """L'organizzazione ha spento gli embedding: niente suggerimenti (ondata 6)."""
+    disabled: Boolean!
     items: [SuggestedArticle!]!
   }
 

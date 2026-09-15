@@ -59,6 +59,7 @@ import { cmdbResolvers } from './cmdb.js'
 import { tenantLanguageResolvers } from './tenantLanguage.js'
 import { tenantTimezoneResolvers } from './tenantTimezone.js'
 import { organizationSettingsResolvers } from './organizationSettings.js'
+import { organizationProfileResolvers } from './organizationProfile.js'
 import { meResolvers } from './me.js'
 import { inboxResolvers } from './inbox.js'
 const { updateCIFields: updateCIFieldsMutation } = cmdbResolvers.Mutation
@@ -312,6 +313,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...tenantLanguageResolvers.Query,
       ...tenantTimezoneResolvers.Query,
       ...organizationSettingsResolvers.Query,
+      ...organizationProfileResolvers.Query,
       ...inboxResolvers.Query,
       auditLog,
       auditActions,
@@ -344,6 +346,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...tenantLanguageResolvers.Mutation,
       ...tenantTimezoneResolvers.Mutation,
       ...organizationSettingsResolvers.Mutation,
+      ...organizationProfileResolvers.Mutation,
       ...meResolvers.Mutation,
       ...inboxResolvers.Mutation,
       ...notificationRuleResolvers.Mutation,

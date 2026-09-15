@@ -7,6 +7,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// Ondata 6 di «Nulla cablato»: il formato dei numeri è del cliente; qui quello di fabbrica.
+vi.mock('../../../../lib/ticketNumbering.js', () => import('../../../../lib/__tests__/ticketNumberingFake.js'))
 vi.mock('../../ci-utils.js', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), mapCI: vi.fn() }))
 vi.mock('../../../../lib/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },

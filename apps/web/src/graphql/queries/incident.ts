@@ -54,6 +54,7 @@ export const GET_INCIDENT = gql`
       comments {
         id text isInternal createdAt updatedAt authorKind authorLabel
         author { id name email }
+        editedAt editedByName deletedAt deletedByName
       }
       slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
       # history: who opened the incident from the alarm (monitoring or an operator)

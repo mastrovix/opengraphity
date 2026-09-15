@@ -12,6 +12,7 @@ export * from './routing.js'
 export * from './recipients.js'
 export * from './texts.js'
 export * from './locale.js'
+export * from './brand.js'
 export { loadChannels, dispatchIncidentNotification, dispatchChangeNotification, dispatchChangeTaskNotification } from './consumer.js'
 
 export interface NotificationChannelData {

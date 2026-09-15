@@ -56,7 +56,11 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 
 const sendEmail = vi.fn()
-vi.mock('@opengraphity/notifications', () => ({ sendEmail: (...a: unknown[]) => sendEmail(...a), loadNotificationLocale: async () => ({ language: 'en', timeZone: 'UTC' }) }))
+vi.mock('@opengraphity/notifications', () => ({
+  sendTenantEmail: (_tenantId: string, ...a: unknown[]) => sendEmail(...a),
+  loadTenantBrand: async () => ({ displayName: 'ACME', senderName: 'ACME IT', replyTo: null, logo: null }),
+  loadNotificationLocale: async () => ({ language: 'en', timeZone: 'UTC' }),
+}))
 
 vi.mock('../../lib/workflowHelpers.js', () => ({
   getOpenStepNames: vi.fn(async (_s: unknown, _t: string, entityType: string) => entityType === 'incident' ? ['new', 'in_progress'] : ['planning']),
@@ -188,7 +192,7 @@ describe('processDigestTick — destinatari', () => {
     await processDigestTick(AT_ROME_8)
     expect(digestDaily).toHaveBeenCalledWith(
       { openIncidents: 3, resolvedToday: 1, ongoingChanges: 2, slaBreaches: 0, recentEvents: ['Disk full (new)'] },
-      'rome',
+      { tenantId: 'rome', brand: expect.objectContaining({ displayName: 'ACME' }) },
       { language: 'en', timeZone: 'UTC' },
     )
   })

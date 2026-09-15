@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
-import { nextSequenceValue } from '../lib/sequence.js'
+import { nextTicketNumber } from '../lib/ticketNumbering.js'
 import { resolveNewTicketPriority } from '../lib/priority.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
@@ -174,8 +174,8 @@ export async function createIncident(
   const now = new Date().toISOString()
 
   const created = await withSession(async (session) => {
-    const seq = await nextSequenceValue(session, ctx.tenantId, 'incident')
-    const number = 'INC' + String(seq).padStart(8, '0')
+    // Formato del cliente (verifica «Cosa resta cablato», ondata 6), contatore del prodotto.
+    const number = await nextTicketNumber(session, ctx.tenantId, 'incident')
 
     const initialStatus = await getInitialStepName(session, ctx.tenantId, 'incident')
     const rows = await runQuery<{ props: Props }>(session, `
