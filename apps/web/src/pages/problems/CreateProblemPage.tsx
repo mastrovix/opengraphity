@@ -7,7 +7,8 @@ import { useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { X, Users } from 'lucide-react'
 import { toast } from 'sonner'
-import { GET_PROBLEMS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
+import { GET_PROBLEMS, GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
+import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { CREATE_PROBLEM, ASSIGN_PROBLEM_TO_TEAM } from '@/graphql/mutations'
 import { colors, palette, alpha } from '@/lib/tokens'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
@@ -63,25 +64,18 @@ export function CreateProblemPage() {
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
   const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
 
-  const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { ciType: string }[] }>(
-    GET_ITIL_CI_RELATION_RULES,
-    { variables: { itilType: 'problem' }, fetchPolicy: 'network-only' },
-  )
-
-  const ciTypesFilter = ciRulesData?.itilCIRelationRules?.length
-    ? [...new Set(ciRulesData.itilCIRelationRules.map(r => r.ciType.toLowerCase()))]
-    : undefined
+  // CM-8: i tipi di CI esclusi per questo tipo di ticket non si propongono (l'API li rifiuta comunque).
+  const { excluded: excludedCITypes } = useTicketCIExclusions('problem')
 
   const { data: ciData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
-    variables: { search: ciSearch, limit: 20, ciTypes: ciTypesFilter },
-    skip: ciSearch.length < 2 || ciRulesData === undefined,
+    variables: { search: ciSearch, limit: 20, excludeCiTypes: excludedCITypes },
+    skip: ciSearch.length < 2 || excludedCITypes === undefined,
     fetchPolicy: 'network-only',
   })
   const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
 
   const ciResults     = (ciData?.allCIs?.items ?? [])
     .filter(ci => !selectedCIs.find(s => s.id === ci.id))
-    .filter(ci => !ciTypesFilter || ciTypesFilter.includes(ci.type.toLowerCase()))
   const teams         = teamsData?.teams ?? []
   const filteredTeams = teams.filter(t => t.name.toLowerCase().includes(teamSearch.toLowerCase()))
   const canSubmit     = title.trim().length > 0 && description.trim().length > 0

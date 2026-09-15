@@ -14,6 +14,7 @@ import { getInitialStepName } from '../lib/workflowHelpers.js'
 import { loadStepFacts } from '../lib/stepEvent.js'
 import { stepEnteredEventType, legacyStepEventType, type ProblemCreatedPayload } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
+import { assertCIsLinkable } from '../lib/ticketCIExclusions.js'
 
 /**
  * Il payload degli eventi del problem. È **lo stesso tipo** che consuma il
@@ -64,6 +65,8 @@ export async function createProblem(
   ctx: ServiceCtx,
 ) {
   validateStringLength(input.title, 'title', 1, 500)
+  // CM-8: i tipi di CI esclusi per i problem, prima di scrivere.
+  await assertCIsLinkable(ctx.tenantId, 'problem', input.affectedCIs ?? [])
   // ITIL: Priority = f(Impact, Urgency). Impatto+urgenza vincono. Ondata 7
   // (C-8): valori validati contro i vocabolari del cliente e tradotti dalla
   // sua matrice `priority` — mai piu' un `medium` ricostruito in silenzio.

@@ -16,6 +16,9 @@ import { notifyCIGraphChanged, notifyCIMaintenanceChanged } from '../../services
 import { isMaintenanceLifecycle, resolveCILifecycleSemantics } from '../../lib/ciLifecycle.js'
 import { recomputeCIHealth } from '../../services/events/ciHealth.js'
 import { runValidationScript } from '../../lib/metamodelScript.js'
+import { assertGroupRemovable } from '../../lib/ciGroups.js'
+
+export { assertGroupRemovable }
 
 type Props = Record<string, unknown>
 
@@ -202,12 +205,136 @@ export function buildCreateMutation(
       // breaks impact analysis for everything downstream.
       await calculateChain(id, ctx.tenantId)
 
-      cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
-      cache.invalidate(`topology:${ctx.tenantId}`)
+      cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}:`)
+      cache.invalidate(`topology:${ctx.tenantId}:`)
       void audit(ctx, 'ci.created', 'ConfigurationItem', id)
       return mapCI(result.records[0].get('p') as Props, ciType)
     }, true)
   }
+}
+
+/** Le relazioni verso i team che gli input dei CI accettano come `<nome>Id`. */
+const GROUP_INPUTS = [
+  { input: 'ownerGroupId',   relation: 'ownerGroup',   relType: 'OWNED_BY' },
+  { input: 'supportGroupId', relation: 'supportGroup', relType: 'SUPPORTED_BY' },
+] as const
+
+/**
+ * LA scrittura della modifica di un CI (revisione del 15 set 2026 · CM-2).
+ *
+ * Prima esistevano due strade. `update<Tipo>` validava il vocabolario, gli
+ * obbligatori e gli script, aggiornava `name_key`, avvisava i Servizi
+ * monitorati sulla manutenzione e scriveva l'audit; `updateCIFields` — quella
+ * che il dettaglio del CI usa davvero — non faceva niente di tutto questo.
+ * Dal vivo accettava `status: "pizza"`, lasciava `name_key` sul nome vecchio
+ * (gli allarmi riconoscevano ancora il CI col nome di prima) e scriveva
+ * proprietà fuori dal metamodello. Adesso entrambe passano da qui.
+ *
+ * `input` è in camelCase, come gli input GraphQL del tipo; `ownerGroupId` e
+ * `supportGroupId` (CM-6) si applicano nella stessa transazione: prima lo
+ * schema li accettava e questa funzione li ignorava rispondendo «ok».
+ */
+export async function updateCIRecord(
+  session: Session,
+  ctx: GraphQLContext,
+  ciType: CITypeWithDefinitions,
+  neo4jLabel: string,
+  id: string,
+  input: Record<string, unknown>,
+): Promise<Props> {
+  validateLabel(neo4jLabel)
+
+  // Validation runs on the CI as it will be after the patch, like the
+  // browser validates the whole form: read the current properties first.
+  const existing = await session.executeRead(tx =>
+    tx.run(
+      `MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId}) RETURN properties(n) AS p`,
+      { id, tenantId: ctx.tenantId },
+    ),
+  )
+  if (!existing.records.length) throw new NotFoundError('CI')
+  const current = existing.records[0].get('p') as Props
+
+  const groupInputs = new Set<string>(GROUP_INPUTS.map((g) => g.input))
+  const merged: Record<string, unknown> = {}
+  for (const f of BASE_FIELDS) merged[f] = input[f] !== undefined ? input[f] : (current[f] ?? null)
+  for (const field of ciType.fields) {
+    merged[field.name] = input[field.name] !== undefined
+      ? input[field.name]
+      : (current[toSnakeCase(field.name)] ?? current[field.name] ?? null)
+  }
+  await validateCIInput(ciType, merged, ctx.tenantId, new Set(Object.keys(input).filter((k) => !groupInputs.has(k))))
+  for (const g of GROUP_INPUTS) {
+    if (input[g.input] === null || input[g.input] === '') assertGroupRemovable(ciType, g.relation)
+  }
+
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  for (const f of BASE_FIELDS) {
+    if (input[f] !== undefined) updates[f] = input[f]
+  }
+  if (input['name'] !== undefined) updates['name_key'] = ciNameKey(input['name'])
+  for (const field of ciType.fields) {
+    if (input[field.name] !== undefined) {
+      // A-12, come in creazione: `updated_at` e `name_key` sono già in
+      // `updates`, e un campo `tenantId` porterebbe il CI in un altro
+      // cliente con un `SET n += $updates`.
+      updates[assertWritableCIPropertyKey(toSnakeCase(field.name), field.name)] = input[field.name]
+    }
+  }
+  const result = await session.executeWrite(async (tx) => {
+    const written = await tx.run(
+      `MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId}) SET n += $updates RETURN properties(n) AS p`,
+      { id, tenantId: ctx.tenantId, updates },
+    )
+    if (!written.records.length) throw new NotFoundError('CI')
+    for (const g of GROUP_INPUTS) {
+      const teamId = input[g.input]
+      if (teamId === undefined) continue
+      await tx.run(
+        `MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId})-[old:${g.relType}]->(:Team) DELETE old`,
+        { id, tenantId: ctx.tenantId },
+      )
+      if (teamId === null || teamId === '') continue
+      const linked = await tx.run(
+        `MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId}) MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+         MERGE (n)-[:${g.relType}]->(t)
+         RETURN t.id AS teamId`,
+        { id, teamId, tenantId: ctx.tenantId },
+      )
+      if (!linked.records.length) throw new NotFoundError('Team', String(teamId))
+    }
+    return written
+  })
+  cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}:`)
+  cache.invalidate(`topology:${ctx.tenantId}:`)
+  // Servizi monitorati (revisione 2 · D6.1): il ciclo di vita
+  // `maintenance` toglie il CI dal calcolo della salute del servizio (gli
+  // allarmi non ne aggiornano più la salute), quindi entrarci o uscirne
+  // cambia la salute di ogni mappa che lo include. Senza questo gancio il
+  // cambiamento si vedeva solo alla passata periodica, fino a 15 minuti
+  // dopo. Dopo la scrittura e senza mai lanciare.
+  // Ondata 7 · C-4: «in manutenzione» è la semantica del cliente, non il
+  // valore `maintenance` di fabbrica — su un vocabolario rinominato il
+  // gancio non scattava e la mappa restava ferma fino alla passata
+  // periodica.
+  const lifecycle = await resolveCILifecycleSemantics(ctx.tenantId)
+  const wasMaintenance = isMaintenanceLifecycle(current['status'] as string | null, lifecycle)
+  const isMaintenance  = updates['status'] === undefined ? wasMaintenance : isMaintenanceLifecycle(updates['status'] as string | null, lifecycle)
+  if (wasMaintenance !== isMaintenance) {
+    // Revisione 2 · B2-14: PRIMA la salute, poi le mappe. In manutenzione
+    // il monitoraggio non scrive `ci.health` (services/events/ciHealth.ts):
+    // all'uscita il CI mostrava ancora la salute di prima della finestra
+    // finché lo strumento non rimandava un payload (fino a `repeat_interval`
+    // di distanza). Il ricalcolo la riporta a quella vera dagli allarmi
+    // ancora accesi e pubblica `ci.health_changed` se cambia; entrando in
+    // manutenzione è un no-op sul valore (regola `maintenance`), ma ripara
+    // `health_source` se manca. La notifica alle mappe viene dopo, così la
+    // valutazione del servizio legge la salute già aggiornata.
+    await recomputeCIHealth(ctx.tenantId, id, ctx.userId)
+    await notifyCIMaintenanceChanged(ctx.tenantId, [id], `ci.status:${wasMaintenance ? 'left' : 'entered'}_maintenance`)
+  }
+  void audit(ctx, 'ci.updated', 'ConfigurationItem', id)
+  return result.records[0].get('p') as Props
 }
 
 export function buildUpdateMutation(
@@ -221,80 +348,7 @@ export function buildUpdateMutation(
     args: { id: string; input: Record<string, unknown> },
     ctx: GraphQLContext,
   ) =>
-    withSession(async session => {
-      const { id, input } = args
-
-      // Validation runs on the CI as it will be after the patch, like the
-      // browser validates the whole form: read the current properties first.
-      const existing = await session.executeRead(tx =>
-        tx.run(
-          `MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId}) RETURN properties(n) AS p`,
-          { id, tenantId: ctx.tenantId },
-        ),
-      )
-      if (!existing.records.length) throw new NotFoundError('CI')
-      const current = existing.records[0].get('p') as Props
-
-      const merged: Record<string, unknown> = {}
-      for (const f of BASE_FIELDS) merged[f] = input[f] !== undefined ? input[f] : (current[f] ?? null)
-      for (const field of ciType.fields) {
-        merged[field.name] = input[field.name] !== undefined
-          ? input[field.name]
-          : (current[toSnakeCase(field.name)] ?? current[field.name] ?? null)
-      }
-      await validateCIInput(ciType, merged, ctx.tenantId, new Set(Object.keys(input)))
-
-      const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
-      for (const f of BASE_FIELDS) {
-        if (input[f] !== undefined) updates[f] = input[f]
-      }
-      if (input['name'] !== undefined) updates['name_key'] = ciNameKey(input['name'])
-      for (const field of ciType.fields) {
-        if (input[field.name] !== undefined) {
-          // A-12, come in creazione: `updated_at` e `name_key` sono già in
-          // `updates`, e un campo `tenantId` porterebbe il CI in un altro
-          // cliente con un `SET n += $updates`.
-          updates[assertWritableCIPropertyKey(toSnakeCase(field.name), field.name)] = input[field.name]
-        }
-      }
-      const result = await session.executeWrite(tx =>
-        tx.run(
-          `MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId}) SET n += $updates RETURN properties(n) AS p`,
-          { id, tenantId: ctx.tenantId, updates },
-        ),
-      )
-      if (!result.records.length) throw new NotFoundError('CI')
-      cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
-      cache.invalidate(`topology:${ctx.tenantId}`)
-      // Servizi monitorati (revisione 2 · D6.1): il ciclo di vita
-      // `maintenance` toglie il CI dal calcolo della salute del servizio (gli
-      // allarmi non ne aggiornano più la salute), quindi entrarci o uscirne
-      // cambia la salute di ogni mappa che lo include. Senza questo gancio il
-      // cambiamento si vedeva solo alla passata periodica, fino a 15 minuti
-      // dopo. Dopo la scrittura e senza mai lanciare.
-      // Ondata 7 · C-4: «in manutenzione» è la semantica del cliente, non il
-      // valore `maintenance` di fabbrica — su un vocabolario rinominato il
-      // gancio non scattava e la mappa restava ferma fino alla passata
-      // periodica.
-      const lifecycle = await resolveCILifecycleSemantics(ctx.tenantId)
-      const wasMaintenance = isMaintenanceLifecycle(current['status'] as string | null, lifecycle)
-      const isMaintenance  = updates['status'] === undefined ? wasMaintenance : isMaintenanceLifecycle(updates['status'] as string | null, lifecycle)
-      if (wasMaintenance !== isMaintenance) {
-        // Revisione 2 · B2-14: PRIMA la salute, poi le mappe. In manutenzione
-        // il monitoraggio non scrive `ci.health` (services/events/ciHealth.ts):
-        // all'uscita il CI mostrava ancora la salute di prima della finestra
-        // finché lo strumento non rimandava un payload (fino a `repeat_interval`
-        // di distanza). Il ricalcolo la riporta a quella vera dagli allarmi
-        // ancora accesi e pubblica `ci.health_changed` se cambia; entrando in
-        // manutenzione è un no-op sul valore (regola `maintenance`), ma ripara
-        // `health_source` se manca. La notifica alle mappe viene dopo, così la
-        // valutazione del servizio legge la salute già aggiornata.
-        await recomputeCIHealth(ctx.tenantId, id, ctx.userId)
-        await notifyCIMaintenanceChanged(ctx.tenantId, [id], `ci.status:${wasMaintenance ? 'left' : 'entered'}_maintenance`)
-      }
-      void audit(ctx, 'ci.updated', 'ConfigurationItem', id)
-      return mapCI(result.records[0].get('p') as Props, ciType)
-    }, true)
+    withSession(async session => mapCI(await updateCIRecord(session, ctx, ciType, neo4jLabel, args.id, args.input), ciType), true)
 }
 
 export function buildDeleteMutation(
@@ -330,6 +384,12 @@ export function buildDeleteMutation(
       // suoi allarmi non hanno più un CI da cui essere richiusi; (b) se il CI è
       // una BusinessApplication con una mappa, gli incident di servizio ancora
       // aperti vengono annotati come in `deleteServiceMap`.
+      // CM-11: un id che non esiste in questo tenant rispondeva `true`, con
+      // tanto di voce d'audit per una cancellazione mai avvenuta.
+      const found = await session.executeRead(tx =>
+        tx.run(`MATCH (n:${neo4jLabel} {id: $id, tenant_id: $tenantId}) RETURN n.id AS id`, { id: args.id, tenantId: ctx.tenantId }),
+      )
+      if (!found.records.length) throw new NotFoundError('CI', args.id)
       await noteIncidentsBeforeCIDeletion(ctx.tenantId, args.id, session)
       await session.executeWrite(tx =>
         tx.run(
@@ -341,8 +401,8 @@ export function buildDeleteMutation(
           { id: args.id, tenantId: ctx.tenantId },
         ),
       )
-      cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}`)
-      cache.invalidate(`topology:${ctx.tenantId}`)
+      cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}:`)
+      cache.invalidate(`topology:${ctx.tenantId}:`)
       // Servizi monitorati (ondata 5): il CI cancellato si è portato via le sue
       // relazioni, quindi le mappe vive che lo includevano (o che avevano un
       // componente dietro di lui) vanno risincronizzate subito. Dopo il commit

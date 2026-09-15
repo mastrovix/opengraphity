@@ -17,6 +17,7 @@ import {
 } from './mappers.js'
 import { toNumber } from '@opengraphity/neo4j'
 import { listPage } from '../../../lib/listLimit.js'
+import { serviceRelPatternForTenant } from '../../../lib/ciMetamodelForTenant.js'
 
 type Session = ReturnType<typeof getSession>
 
@@ -568,6 +569,8 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
 
 export async function changeImpactedCIs(_: unknown, args: { changeId: string; depth?: number }, ctx: GraphQLContext) {
   const depth = Math.max(1, Math.min(args.depth ?? 1, 5))
+  // CM-3: le relazioni dei servizi del tenant, non una lista scritta qui.
+  const relPattern = await serviceRelPatternForTenant(ctx.tenantId)
   return withSession(async (session) => {
     const rows = await runQuery<{
       impactedProps: Props; impactedLabel: string
@@ -576,7 +579,7 @@ export async function changeImpactedCIs(_: unknown, args: { changeId: string; de
     }>(session, `
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:AFFECTS_CI]->(affected)
       WHERE affected.tenant_id = $tenantId AND coalesce(c.deleted, false) = false
-      MATCH path = (impacted)-[:DEPENDS_ON|HOSTED_ON|USES_CERTIFICATE*1..${depth}]->(affected)
+      MATCH path = (impacted)-[:${relPattern}*1..${depth}]->(affected)
       WHERE impacted.tenant_id = $tenantId
         AND NOT (c)-[:AFFECTS_CI]->(impacted)
       WITH impacted, affected, path, length(path) AS dist

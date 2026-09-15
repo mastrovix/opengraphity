@@ -5,7 +5,11 @@ import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import { toPascalCase, CI_FIELD_TYPES, isCIFieldType } from '@opengraphity/schema-generator'
 import { assertNewCITypeName, assertNewCIFieldName, type ExistingCIType } from '../../lib/metamodelNames.js'
 import { CHAIN_FAMILIES, chainFamiliesToJSON } from '../../lib/chainCalculator.js'
-import { assertRelationshipTypeName, defaultServiceRoleOf } from '../../lib/ciMetamodelForTenant.js'
+import { assertRelationshipTypeName, defaultServiceRoleOf, splitRelationshipTypes } from '../../lib/ciMetamodelForTenant.js'
+import { assertFieldName, assertLabel } from '../../lib/cypherIdentifiers.js'
+import { toSnakeCase } from '@opengraphity/schema-generator'
+import { cache } from '../../lib/cache.js'
+import { audit } from '../../lib/audit.js'
 import { describeCITypeUsage, loadCITypeUsage, type CITypeUsage } from '../../lib/ciTypeUsage.js'
 import { SETTABLE_SERVICE_NODE_ROLES } from '../../lib/serviceVocabularies.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
@@ -116,33 +120,50 @@ function assertRelationCardinality(value: unknown, what: string): string {
 }
 
 /**
- * Il tipo di arrivo deve esistere: fra i tipi spediti col prodotto o fra quelli
- * di questo cliente. Una relazione verso un tipo inesistente non produce
- * nessun campo nello SDL — la si vede nel disegnatore e non esiste per l'API.
+ * Il tipo di arrivo di una relazione, nella forma che la legge chi crea gli
+ * archi: l'ETICHETTA Neo4j del tipo (`Server`) oppure `any`.
+ *
+ * ## Il difetto (revisione del 15 set 2026 · CM-1)
+ * Qui si accettava solo il NOME del tipo (`server`) e si rifiutava `any`, che
+ * è il valore predefinito del disegnatore; `addCIRelationship` invece confronta
+ * `target_type` con le etichette dei due CI, come fanno le relazioni spedite
+ * col prodotto. Una relazione definita dal cliente non combaciava mai: si
+ * salvava nel disegnatore e l'arco fra due CI veniva sempre rifiutato come
+ * «non dichiarato nel metamodello».
+ *
+ * Adesso si accetta il nome, l'etichetta o `any`, e si salva sempre la forma
+ * unica (etichetta o `any`). Un tipo che non esiste resta un errore che elenca
+ * i tipi: una relazione verso il nulla sarebbe inerte in silenzio.
  */
+export const ANY_TARGET_TYPE = 'any'
+
 async function assertRelationTargetType(
   session: Session, value: unknown, tenantId: string, what: string,
 ): Promise<string> {
-  const name = typeof value === 'string' ? value.trim() : ''
-  if (name === '') {
+  const given = typeof value === 'string' ? value.trim() : ''
+  if (given === '') {
     throw new GraphQLError(`${what}: the target type is required.`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.targetRequired', params: { what } } } })
   }
+  if (given === ANY_TARGET_TYPE) return ANY_TARGET_TYPE
   // Una lettura sola: l'elenco serve sia a decidere sia a dirlo nel messaggio,
   // e un rifiuto che non elenca le alternative non aiuta nessuno a rimediare.
+  // Solo i tipi CI: i tipi ITIL (incident, change…) non sono estremi di un arco fra CI.
   const r = await session.executeRead((tx) =>
     tx.run(`
       MATCH (t:CITypeDefinition)
-      WHERE (t.scope IN ['base', 'itil'] OR t.tenant_id = $tenantId)
+      WHERE (t.scope = 'base' OR (t.scope = 'tenant' AND t.tenant_id = $tenantId))
         AND t.active = true AND t.name <> '__base__'
-      RETURN collect(t.name) AS names
+      RETURN t.name AS name, t.neo4j_label AS label
     `, { tenantId }),
   )
-  const names = (r.records[0]?.get('names') ?? []) as string[]
-  if (names.includes(name)) return name
+  const types = r.records.map((rec) => ({ name: rec.get('name') as string, label: rec.get('label') as string }))
+  const hit = types.find((t) => t.name === given || t.label === given)
+  if (hit?.label) return hit.label
+  const available = [ANY_TARGET_TYPE, ...types.map((t) => t.name).sort()].join(', ')
   throw new GraphQLError(
-    `${what}: type "${name}" does not exist among the types of this tenant. `
-    + `Available: ${[...names].sort().join(', ')}.`,
-    { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.notAmongTypes', params: { what, name, available: [...names].sort().join(', ') } } } },
+    `${what}: type "${given}" does not exist among the types of this tenant. `
+    + `Available: ${available}.`,
+    { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.notAmongTypes', params: { what, name: given, available } } } },
   )
 }
 
@@ -482,7 +503,7 @@ export function assertChainFamilies(value: string[] | undefined): string | null 
       throw new GraphQLError(`chainFamilies: ${JSON.stringify(f)} is not a valid chain family (${CHAIN_FAMILIES.join(', ')})`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.chainFamilyUnknown', params: { got: JSON.stringify(f), allowed: CHAIN_FAMILIES.join(', ') } } } })
     }
     if (seen.has(f)) {
-      throw new GraphQLError(`chainFamilies: ${f} compare due volte`, { extensions: { code: 'BAD_USER_INPUT' } })
+      throw new GraphQLError(`chainFamilies: ${f} appears twice`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.chainFamilyRepeated', params: { family: f } } } })
     }
     seen.add(f)
   }
@@ -698,6 +719,52 @@ async function assertCITypeNotInUse(
   }
 }
 
+
+/**
+ * Gli archi fra CI di questo tenant che SOLO la definizione `relationId`
+ * dichiara (CM-4). Un arco dichiarato anche da un'altra definizione — dello
+ * stesso tipo o dell'altro capo, spedita o del cliente — resta valido dopo la
+ * rimozione e non conta. `null` se la definizione non c'è.
+ */
+async function countEdgesOnlyThisRelationDeclares(
+  session: Session, tenantId: string, typeId: string, relationId: string,
+): Promise<{ name: string; relationshipType: string; count: number } | null> {
+  const defRow = await session.executeRead((tx) => tx.run(`
+    MATCH (t:CITypeDefinition {id: $typeId, tenant_id: $tenantId})-[:HAS_RELATION]->(rel:CIRelationDefinition {id: $relationId})
+    RETURN t.neo4j_label AS label, rel.name AS name, rel.relationship_type AS relationshipType,
+           rel.direction AS direction, rel.target_type AS targetType
+  `, { typeId, tenantId, relationId }))
+  const d = defRow.records[0]
+  if (!d) return null
+  const label = assertLabel(d.get('label'), `removeCIRelation(${relationId}): label of the type`)
+  const outgoing = d.get('direction') === 'outgoing'
+  let count = 0
+  for (const relType of splitRelationshipTypes(String(d.get('relationshipType')), `CIRelationDefinition "${String(d.get('name'))}"`)) {
+    // `me` è il CI del tipo che dichiara, `other` l'altro capo.
+    const pattern = outgoing ? `(me)-[e:${relType}]->(other)` : `(other)-[e:${relType}]->(me)`
+    const r = await session.executeRead((tx) => tx.run(`
+      MATCH ${pattern}
+      WHERE me:${label} AND me.tenant_id = $tenantId AND other.tenant_id = $tenantId
+        AND ($target = 'any' OR $target IN labels(other))
+      WITH startNode(e) AS s, endNode(e) AS x
+      WHERE NOT EXISTS {
+        MATCH (st:CITypeDefinition)-[:HAS_RELATION]->(o:CIRelationDefinition)
+        WHERE o.id <> $relationId AND st.tenant_id IN ['system', $tenantId] AND st.neo4j_label IN labels(s)
+          AND o.direction = 'outgoing' AND $relType IN [v IN split(o.relationship_type, '|') | trim(v)]
+          AND (o.target_type = 'any' OR o.target_type IN labels(x))
+      } AND NOT EXISTS {
+        MATCH (tt:CITypeDefinition)-[:HAS_RELATION]->(o:CIRelationDefinition)
+        WHERE o.id <> $relationId AND tt.tenant_id IN ['system', $tenantId] AND tt.neo4j_label IN labels(x)
+          AND o.direction = 'incoming' AND $relType IN [v IN split(o.relationship_type, '|') | trim(v)]
+          AND (o.target_type = 'any' OR o.target_type IN labels(s))
+      }
+      RETURN count(*) AS n
+    `, { tenantId, relationId, relType, target: d.get('targetType') }))
+    count += toNumber(r.records[0]?.get('n'))
+  }
+  return { name: String(d.get('name')), relationshipType: String(d.get('relationshipType')), count }
+}
+
 // ── buildMetamodelMutations ───────────────────────────────────────────────────
 
 export function buildMetamodelMutations() {
@@ -708,7 +775,9 @@ export function buildMetamodelMutations() {
       ctx: GraphQLContext,
     ) => {
       requireMetamodelPermission(ctx)
-      const { name, label, icon = 'box', color = '#0284c7' } = args.input
+      // CM-11: niente colore scritto nel codice. Senza colore il tipo si mostra
+      // col colore neutro dell'interfaccia; il disegnatore lo manda sempre.
+      const { name, label, icon = 'box', color = null } = args.input
       const chainFamilies = assertChainFamilies(args.input.chainFamilies)
       // A-10: il ruolo nella mappa di un servizio nasce col tipo. Se non lo
       // dichiara, lo propone il prodotto dalle famiglie di catena — scritto
@@ -1017,10 +1086,17 @@ export function buildMetamodelMutations() {
         const fieldName = existing.records[0]!.get('name') as string
         const fieldType = existing.records[0]!.get('fieldType') as string
 
-        // Un campo `enum` senza vocabolario non ha valori ammessi: la
-        // validazione non avrebbe niente con cui confrontare, che è il difetto
-        // A·3.3 dall'altro capo.
-        if (fieldType === 'enum' && enumTypeId) {
+        // CM-9 (revisione del 15 set 2026): il controllo girava solo sui campi
+        // `enum`, e per gli altri il CALL qui sotto agganciava comunque il
+        // vocabolario — anche di un altro cliente. Un vocabolario si aggancia
+        // solo a un campo enum, e sempre passando dal nucleo.
+        if (enumTypeId) {
+          if (fieldType !== 'enum') {
+            throw new ValidationError(
+              `Field "${fieldName}" is of type ${fieldType}: only an enum field uses a dictionary.`,
+              { key: 'errors.ciType.dictionaryOnNonEnum', params: { field: fieldName, fieldType } },
+            )
+          }
           await assertEnumTypeLinkable(session, enumTypeId, fieldName, ctx.tenantId)
         }
 
@@ -1081,30 +1157,56 @@ export function buildMetamodelMutations() {
       ctx: GraphQLContext,
     ) => {
       requireMetamodelPermission(ctx)
+      let removed: { name: string; values: number } | null = null
       await withSession(async session => {
         // A-5: sui tipi spediti il `WHERE t.scope = 'tenant'` rendeva questa
         // mutation un no-op silenzioso — l'interfaccia diceva «fatto» e il
         // campo restava. Ora si ferma e dice perché.
         await assertTenantOwnedType(session, args.typeId, ctx.tenantId, 'remove')
-        const r = await session.executeWrite(tx =>
+        const found = await session.executeRead(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
             WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
               AND f.scope = 'tenant' AND f.tenant_id = $tenantId
-            WITH f, f.name AS name
-            DETACH DELETE f
-            RETURN name
+            RETURN f.name AS name, t.neo4j_label AS label
           `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId }),
         )
-        if (!r.records.length) {
+        if (!found.records.length) {
           throw new ValidationError(
             `Field ${args.fieldId} is not a field of yours on this type: it was not deleted. `
             + `The fields that ship with the product are read-only.`,
             { key: 'errors.ciType.fieldNotYours', params: { field: args.fieldId } },
           )
         }
+        const name  = found.records[0]!.get('name') as string
+        const label = assertLabel(found.records[0]!.get('label'), `removeCIField(${args.fieldId}): label of the type`)
+        // CM-4 (revisione del 15 set 2026): i VALORI se ne vanno col campo.
+        // Prima restavano sui CI senza nessuna definizione, e ricreando un campo
+        // con lo stesso nome ricomparivano valori scritti mesi prima. Stessa
+        // transazione della definizione, e il numero dei CI toccati nell'audit.
+        const snake = assertFieldName(toSnakeCase(name), `removeCIField(${name})`)
+        // La lettura (`mapCI`) guarda anche la chiave camelCase: si toglie anche quella.
+        const camelIsProperty = name !== snake && /^[a-z][A-Za-z0-9]*$/.test(name)
+        const r = await session.executeWrite(async tx => {
+          const cleared = await tx.run(`
+            MATCH (n:${label} {tenant_id: $tenantId})
+            WHERE n.${snake} IS NOT NULL${camelIsProperty ? ` OR n.${name} IS NOT NULL` : ''}
+            REMOVE n.${snake}${camelIsProperty ? `, n.${name}` : ''}
+            RETURN count(n) AS n
+          `, { tenantId: ctx.tenantId })
+          await tx.run(`
+            MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
+            WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
+              AND f.scope = 'tenant' AND f.tenant_id = $tenantId
+            DETACH DELETE f
+          `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId })
+          return toNumber(cleared.records[0]?.get('n'))
+        })
+        removed = { name, values: r }
+        cache.invalidate(`ci:${ctx.tenantId}:${label}:`)
       }, true)
       invalidateSchema(ctx.tenantId)
+      if (removed) void audit(ctx, 'ci_type.field_removed', 'CITypeDefinition', args.typeId, { field: (removed as { name: string }).name, valuesRemoved: (removed as { values: number }).values })
       return fetchCITypeById(args.typeId, ctx.tenantId)
     },
 
@@ -1135,7 +1237,7 @@ export function buildMetamodelMutations() {
         // percorrevano, e nessuno diceva perché.
         assertRelationDirection(input['direction'],   `addCIRelation(${typeId}).direction`)
         assertRelationCardinality(input['cardinality'], `addCIRelation(${typeId}).cardinality`)
-        await assertRelationTargetType(session, input['targetType'], ctx.tenantId, `addCIRelation(${typeId}).targetType`)
+        const targetType = await assertRelationTargetType(session, input['targetType'], ctx.tenantId, `addCIRelation(${typeId}).targetType`)
         // D-17: le relazioni non avevano NESSUN controllo di nome duplicato —
         // due omonime sullo stesso tipo e `loadMetamodel` ne scarta una in
         // silenzio, mentre il disegnatore continua a mostrarne due. Come per i
@@ -1170,7 +1272,7 @@ export function buildMetamodelMutations() {
             name:             input['name'],
             label:            input['label'],
             relationshipType,
-            targetType:       input['targetType'],
+            targetType,
             cardinality:      input['cardinality'],
             direction:        input['direction'],
             order:            input['order'] ?? 0,
@@ -1194,6 +1296,18 @@ export function buildMetamodelMutations() {
         // A-6: idem in rimozione — la DELETE non girava e l'interfaccia diceva
         // «Relazione rimossa».
         await assertTenantOwnedType(session, args.typeId, ctx.tenantId, 'removeRelation')
+        // CM-4 (revisione del 15 set 2026): gli archi che solo questa
+        // definizione dichiara restavano nel grafo invisibili — le dipendenze
+        // del CI e le mappe non li leggevano più — e non si potevano nemmeno
+        // cancellare. Come per i tipi: prima si conta, e si dice.
+        const inUse = await countEdgesOnlyThisRelationDeclares(session, ctx.tenantId, args.typeId, args.relationId)
+        if (inUse && inUse.count > 0) {
+          throw new ValidationError(
+            `Relationship "${inUse.name}" was not removed: ${String(inUse.count)} ${inUse.relationshipType} link(s) between CIs `
+            + `are declared only by it, and would stay in the graph without appearing anywhere. Remove those links first.`,
+            { key: 'errors.ciType.relationInUse', params: { name: inUse.name, relationshipType: inUse.relationshipType, count: inUse.count } },
+          )
+        }
         const r = await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_RELATION]->(rel:CIRelationDefinition {id: $relationId})

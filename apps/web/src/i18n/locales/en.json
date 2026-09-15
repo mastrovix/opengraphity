@@ -2524,22 +2524,6 @@
     "required": "Required",
     "save": "Save",
     "saved": "Changes saved",
-    "ciRelations": {
-      "addRelation": "Add relation",
-      "ciType": "CI Type",
-      "relationType": "Relation type",
-      "direction": "Direction",
-      "description": "Description",
-      "outgoing": "Outgoing (ITIL → CI)",
-      "incoming": "Incoming (CI → ITIL)",
-      "empty": "No CI relations configured. Click \"Add relation\" to add one.",
-      "suggestions": "Suggested: IMPACTS, AFFECTED_BY, MODIFIES, TARGETS, ROOT_CAUSE, DEPENDS_ON",
-      "confirmDelete": "Delete this relation rule?",
-      "selectCIType": "— Select CI type —",
-      "cancel": "Cancel",
-      "add": "Add",
-      "descriptionPlaceholder": "E.g. Servers impacted by the incident"
-    },
     "order": "Order",
     "enumRef": "Reference enum",
     "selectEnum": "— Select enum —",
@@ -2558,7 +2542,16 @@
     "visibilityPlaceholder": "// Show only when severity = 'critical':\nreturn input.severity === 'critical'",
     "defaultPlaceholder": "// Example:\nreturn input.priority === 'critical' ? 'immediate' : 'normal'",
     "visibleToEndUser": "Offer it in the portal",
-    "visibleToEndUserHint": "End users see this field and fill it in when they open a ticket from the portal. Leave it off for internal fields."
+    "visibleToEndUserHint": "End users see this field and fill it in when they open a ticket from the portal. Leave it off for internal fields.",
+    "ciExclusions": {
+      "tab": "Excluded CIs",
+      "intro": "Tick the CI types that tickets of this type must not involve. An excluded CI cannot be linked to the ticket, neither when it is created nor later, from any channel — monitoring included. With nothing ticked, every CI type is allowed.",
+      "legend": "Excluded CI types",
+      "none": "No exclusion: every CI type can be linked.",
+      "summary": "Excluded CI types: {{selected}}.",
+      "notLinked": "This ticket type is not linked to CIs.",
+      "loadError": "The exclusions could not be loaded: {{error}}"
+    }
   },
   "ciTypeDesigner": {
     "chain": "Chain",
@@ -2619,8 +2612,8 @@
     "addCI": "+ Add CI",
     "affectedCIs": "Affected CIs",
     "searchCIByName": "Search CIs by name (min. 2 characters)…",
-    "searchCIOfTypes": "Search CIs ({{types}}) — min. 2 characters…",
-    "policyHint": "Up to {{size}} MB: {{types}}"
+    "policyHint": "Up to {{size}} MB: {{types}}",
+    "searchCIExcluding": "Search CIs (excluded: {{types}}) — min. 2 characters…"
   },
   "queryError": {
     "title": "Failed to load data",
@@ -3231,7 +3224,14 @@
       "valueColorNotInValues": "«{{value}}» is not a value of «{{name}}», so it cannot have a color.",
       "shippedValuesOnlyCopies": "«{{name}}» ships with the product: shipped values are added or kept out on your copy, not on the shipped dictionary.",
       "noShippedCounterpart": "«{{name}}» is your own dictionary: there is no shipped dictionary with this name, so there are no shipped values to add or keep out.",
-      "valuesInUse": "Dictionary \"{{name}}\" cannot lose these values because they are still in use: {{usages}}. Change those records first, or give a replacement value."
+      "valuesInUse": "Dictionary \"{{name}}\" cannot lose these values because they are still in use: {{usages}}. Change those records first, or give a replacement value.",
+      "nameFormat": "The dictionary name «{{name}}» is not valid: use lowercase letters, digits and underscores.",
+      "scopeInvalid": "The dictionary scope is not valid. Allowed: {{allowed}}.",
+      "nameExists": "A dictionary named «{{name}}» already exists.",
+      "systemScope": "The scope of a product dictionary cannot be changed.",
+      "systemDelete": "A product dictionary cannot be deleted.",
+      "inUseByFields_one": "The dictionary is used by {{count}} field: detach it first.",
+      "inUseByFields_other": "The dictionary is used by {{count}} fields: detach them first."
     },
     "ciType": {
       "shipped": "Type \"{{label}}\" ({{name}}) ships with the product: it is one type for every tenant. {{consequence}}",
@@ -3249,8 +3249,6 @@
       "onlyRefsDeactivate": "Type \"{{label}}\" ({{name}}) was not deactivated: no CI is of this type, but the type is still referenced by {{refs}}. Those references are BY NAME: they would hang off a type that no longer exists. Remove the references first.",
       "where": {
         "topology": "In the map filter",
-        "problemRules": "In the ITIL problem → CI rules",
-        "incidentRules": "In the ITIL incident → CI rules",
         "groupCriteria": "In the dynamic group criteria"
       },
       "unknownFieldType": "{{what}}: field type \"{{fieldType}}\" does not exist. Allowed: {{allowed}}. A type the generator cannot translate degrades this tenant's GraphQL schema: all of its CI types disappear from the API until the field is fixed.",
@@ -3272,7 +3270,10 @@
         "addRelation": "Its relations are read-only: adding one here would add it for every tenant. Relations are defined on your own types.",
         "removeRelation": "Its relations are read-only: removing a relation here would remove it for every tenant.",
         "delete": "It cannot be deleted: it would disappear from the CMDB of every tenant. You can only not use it."
-      }
+      },
+      "chainFamilyRepeated": "The chain family {{family}} is listed twice.",
+      "dictionaryOnNonEnum": "Field «{{field}}» is of type {{fieldType}}: only a list field (enum) uses a dictionary.",
+      "relationInUse": "Relationship «{{name}}» was not removed: {{count}} {{relationshipType}} link(s) between CIs are declared only by it and would stay in the graph without appearing anywhere. Remove those links first."
     },
     "titleRequired": "The title is required.",
     "assignment": {
@@ -3390,10 +3391,9 @@
       "platform": "Platform \"{{platform}}\" is not supported. Allowed: {{allowed}}."
     },
     "ciLink": {
-      "problem": "CI {{ci}} was not linked to the problem: it does not exist in this tenant, or its type is not allowed by the ITIL rules.",
-      "problemTyped": "CI {{ci}} was not linked to the problem: it does not exist in this tenant, or its type is not allowed by the ITIL rules (allowed: {{allowed}}).",
-      "incident": "CI {{ci}} was not linked to the incident: it does not exist in this tenant, or its type is not allowed by the ITIL rules.",
-      "incidentTyped": "CI {{ci}} was not linked to the incident: it does not exist in this tenant, or its type is not allowed by the ITIL rules (allowed: {{allowed}})."
+      "problem": "CI {{ci}} was not linked to the problem: it does not exist in this tenant.",
+      "incident": "CI {{ci}} was not linked to the incident: it does not exist in this tenant.",
+      "request": "CI {{ci}} was not linked to the request: the request or the CI does not exist in this tenant."
     },
     "automation": {
       "transitionNeedsStep": "Action {{item}} (workflow transition): the destination step is missing.",
@@ -3462,7 +3462,13 @@
       "noTypeLabel": "CI {{id}} has no type: the data is incomplete and its type cannot be told.",
       "unknownTypeOnRecord": "The type of this CI cannot be told ({{type}}). No active type of this tenant declares it: the type was deleted or deactivated, or the CI came from a discovery with a type the metamodel does not have.",
       "missingGroups": "CI \"{{ci}}\" has no Owner Group or Support Group.",
-      "relationNotDeclared": "{{relation}} from {{source}} to {{target}} is not declared in the metamodel: add it to the CI type in the designer."
+      "relationNotDeclared": "{{relation}} from {{source}} to {{target}} is not declared in the metamodel: add it to the CI type in the designer.",
+      "notANumber": "{{field}}: «{{value}}» is not a number.",
+      "notABoolean": "{{field}}: «{{value}}» is not true or false.",
+      "customFieldsNotJson": "The fields of the CI are not valid JSON.",
+      "customFieldsNotObject": "The fields of the CI must be a list of name → value.",
+      "unknownField": "«{{field}}» is not a field of the type {{type}}.",
+      "requiredGroup": "{{group}} is required for CIs of type {{type}}: it can be changed, not removed."
     },
     "portal": {
       "unclassifiedStates": "{{count}} ticket states belong to no class of the active incident workflow ({{states}}): the portal counters would not count them. Fix the steps (initial / terminal / category) in the designer.",
@@ -3787,6 +3793,16 @@
       "unknownProvider": "Unknown sign-in provider «{{kind}}».",
       "missingFields": "Fill in: {{fields}}.",
       "testFailed": "The provider did not pass the test and was not activated ({{checks}})."
+    },
+    "ciRelation": {
+      "unknownType": "The relation type {{relation}} is not declared by any CI type of this tenant.",
+      "cycle": "This link would create a dependency cycle (DEPENDS_ON): the chain would come back to where it starts.",
+      "invalidFormat": "The relation type «{{relation}}» is not valid: use UPPERCASE letters, digits and underscores (e.g. DEPENDS_ON)."
+    },
+    "ticketCI": {
+      "unknownTicketType": "The ticket type «{{type}}» is not linked to CIs. Allowed: {{allowed}}.",
+      "unknownCIType": "Not CI types of this tenant: {{types}}. Allowed: {{allowed}}.",
+      "excluded": "These CIs cannot be linked to this ticket, because their type is excluded for {{ticketType}}: {{cis}}. Exclusions are set in Settings → ITIL Type Designer."
     }
   },
   "errorBoundary": {
@@ -4073,7 +4089,9 @@
       "updated": "Request updated",
       "transitionFailed": "Transition failed",
       "slaCoverageUnavailable": "Could not check whether an SLA policy covers the service request: {{error}}",
-      "assigned": "Request assigned"
+      "assigned": "Request assigned",
+      "ciAdded": "CI linked to the request",
+      "ciRemoved": "CI removed from the request"
     },
     "events": {
       "acknowledged": "Alarm acknowledged",
@@ -4226,6 +4244,9 @@
       "askAdmin": "An administrator can turn it on.",
       "adminShort": "«{{feature}}» is turned off: turn it on in Organization → AI.",
       "userShort": "«{{feature}}» is turned off for your organization: an administrator can turn it on."
+    },
+    "ciServiceRequests": {
+      "empty": "No service request concerns this CI."
     }
   },
   "events": {

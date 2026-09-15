@@ -8,6 +8,7 @@ import type { GraphQLContext } from '../../context.js'
 import type { Props } from './ci-utils.js'
 import { toNumber } from '@opengraphity/neo4j'
 import { TICKET_CI_RELATIONSHIP } from '@opengraphity/types'
+import { mapRequest } from '../../services/requestService.js'
 
 async function ciIncidents(_: unknown, args: { ciId: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
@@ -92,6 +93,19 @@ async function ciProblems(_: unknown, args: { ciId: string }, ctx: GraphQLContex
   })
 }
 
+/** Le richieste che riguardano questo CI (revisione del 15 set 2026 · CM-8). */
+async function ciServiceRequests(_: unknown, args: { ciId: string }, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const rows = await runQuery<{ props: Props }>(session,
+      `MATCH (r:ServiceRequest {tenant_id: $tenantId})-[:${TICKET_CI_RELATIONSHIP.service_request}]->(n {id: $ciId, tenant_id: $tenantId})
+       RETURN properties(r) AS props
+       ORDER BY r.created_at DESC`,
+      { ciId: args.ciId, tenantId: ctx.tenantId },
+    )
+    return rows.map((r) => mapRequest(r.props))
+  })
+}
+
 export const ciResolvers = {
-  Query: { ciIncidents, ciChanges, ciProblems },
+  Query: { ciIncidents, ciChanges, ciProblems, ciServiceRequests },
 }

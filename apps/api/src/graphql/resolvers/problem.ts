@@ -18,7 +18,7 @@ import { publishEvent } from '../../lib/publishEvent.js'
 import { TICKET_TEAM_ASSIGNED_EVENT } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
-import { ciLabelsForTypeNames } from '../../lib/ciTypeNameToLabel.js'
+import { assertCIsLinkable } from '../../lib/ticketCIExclusions.js'
 import * as problemService from '../../services/problemService.js'
 import { validateRequiredFields, propsToFieldValues } from '../../lib/validateRequiredFields.js'
 import { resolvePriorityPatch } from '../../lib/priority.js'
@@ -378,30 +378,26 @@ async function unlinkIncidentFromProblem(
 
 async function addCIToProblem(
   _: unknown,
-  args: { problemId: string; ciId: string; relationType?: string | null },
+  args: { problemId: string; ciId: string },
   ctx: GraphQLContext,
 ) {
-  const { getAllowedCILabels } = await import('./itilRelations.js')
-  const allowedTypes = await getAllowedCILabels(ctx.tenantId, 'problem')
-  const ciWhereClause = allowedTypes.length > 0
-    ? `ANY(label IN labels(ci) WHERE label IN $allowedLabels)`
-    : await ciLabelPredicateForTenant('ci', ctx.tenantId)
-  // Etichette dal metamodello, non da una PascalCase a mano (vedi incident.ts).
-  const allowedLabels = await ciLabelsForTypeNames(ctx.tenantId, allowedTypes, 'ITIL problem→CI rules', 'problemRules')
+  // CM-8: i tipi di CI esclusi per i problem non si collegano.
+  await assertCIsLinkable(ctx.tenantId, 'problem', [args.ciId])
+  const ciWhereClause = await ciLabelPredicateForTenant('ci', ctx.tenantId)
 
   return withSession(async (session) => {
-    // Righe contate (C-2): un CI che non esiste, o di un tipo che le regole
-    // ITIL non ammettono, dava un MERGE muto e una risposta di successo.
+    // Righe contate (C-2): un CI che non esiste dava un MERGE muto e una
+    // risposta di successo.
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
       WHERE ${ciWhereClause}
       MERGE (p)-[r:AFFECTS]->(ci)
-      SET p.updated_at = $now, r.relation_type = $relationType
+      SET p.updated_at = $now
       RETURN count(r) AS linked
-    `, { problemId: args.problemId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString(), allowedLabels, relationType: args.relationType ?? null }))
+    `, { problemId: args.problemId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
     if (Number(res.records[0]?.get('linked') ?? 0) === 0) {
-      throw new ValidationError(`CI ${args.ciId} not linked to the problem: it does not exist in this tenant, or its type is not allowed by the ITIL rules${allowedTypes.length > 0 ? ` (allowed: ${allowedTypes.join(', ')})` : ''}`, { key: allowedTypes.length > 0 ? 'errors.ciLink.problemTyped' : 'errors.ciLink.problem', params: { ci: args.ciId, allowed: allowedTypes.join(', ') } })
+      throw new ValidationError(`CI ${args.ciId} not linked to the problem: it does not exist in this tenant`, { key: 'errors.ciLink.problem', params: { ci: args.ciId } })
     }
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props

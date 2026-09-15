@@ -23,6 +23,8 @@ const session = {
 }
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(() => session) }))
+// CM-3: le relazioni lungo cui si propaga la catena vengono dal tenant.
+vi.mock('../ciMetamodelForTenant.js', () => ({ serviceRelPatternForTenant: vi.fn(async () => 'DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE|PROTEGGE') }))
 
 const { calculateAllChains, calculateChain } = await import('../chainCalculator.js')
 
@@ -49,5 +51,12 @@ describe('calculateChain', () => {
     expect(queries[0]).toContain('MATCH (ci {id: $ciId, tenant_id: $tenantId})')
     expect(queries[0]).toContain('OPTIONAL MATCH (td:CITypeDefinition {neo4j_label: lbl})')
     expect(queries[0]).not.toMatch(/ci:Application OR ci:Server/)
+  })
+
+  it('CM-3: la catena segue le relazioni dei servizi del tenant, comprese quelle del cliente', async () => {
+    await calculateChain('ci-1', 'tenant-1')
+    expect(queries[0]).toContain('(upstream)-[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE|PROTEGGE*1..10]->(ci)')
+    await calculateAllChains('tenant-1')
+    expect(queries.some((q) => q.includes('[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE|PROTEGGE*0..10]'))).toBe(true)
   })
 })

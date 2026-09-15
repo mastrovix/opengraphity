@@ -17,7 +17,8 @@ import { Modal } from '@/components/Modal'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SeverityBadge } from '@/components/SeverityBadge'
 
-import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
+import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS } from '@/graphql/queries'
+import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI, SET_INCIDENT_MAJOR, UPDATE_INCIDENT, LINK_RELATED_TICKET, UNLINK_RELATED_TICKET, LINK_INCIDENT_TO_PROBLEM, UNLINK_INCIDENT_FROM_PROBLEM, LINK_RESOLVED_TICKET, UNLINK_RESOLVED_TICKET } from '@/graphql/mutations'
 import { UnifiedLinkedTickets, type LinkedTicketItem } from '@/components/UnifiedLinkedTickets'
 import { Input, FieldLabel } from '@/components/ui/FormControls'
@@ -211,18 +212,12 @@ export function IncidentDetailPage() {
 
   const { data: usersData } = useQuery<{ users: User[] }>(GET_USERS)
   const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
-  const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { id: string; ciType: string; relationType: string; direction: string; description: string | null }[] }>(
-    GET_ITIL_CI_RELATION_RULES,
-    { variables: { itilType: 'incident' }, fetchPolicy: 'network-only' },
-  )
-
-  const ciTypesFilter = ciRulesData?.itilCIRelationRules?.length
-    ? [...new Set(ciRulesData.itilCIRelationRules.map(r => r.ciType.toLowerCase()))]
-    : undefined
+  // CM-8: i tipi di CI esclusi per questo tipo di ticket non si propongono (l'API li rifiuta comunque).
+  const { excluded: excludedCITypes } = useTicketCIExclusions('incident')
 
   const { data: ciSearchData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
-    variables: { search: ciSearch, limit: 20, ciTypes: ciTypesFilter },
-    skip: ciSearch.length < 2 || ciRulesData === undefined,
+    variables: { search: ciSearch, limit: 20, excludeCiTypes: excludedCITypes },
+    skip: ciSearch.length < 2 || excludedCITypes === undefined,
   })
 
   const [execTransition, { loading: transitioning }] = useMutation<{
@@ -305,8 +300,6 @@ export function IncidentDetailPage() {
     onCompleted: () => { toast.success(t('toast.incident.ciAdded')); setCiSearch(''); void refetch() },
     onError: (err) => showError(err),
   })
-
-  const ciRules = ciRulesData?.itilCIRelationRules ?? []
 
   const [removeCI] = useMutation(REMOVE_AFFECTED_CI, {
     onCompleted: () => { toast.success(t('toast.incident.ciRemoved')); void refetch() },
@@ -731,9 +724,9 @@ export function IncidentDetailPage() {
           <AffectedCIList
             affectedCIs={incident.affectedCIs}
             ciResults={ciResults}
-            rules={ciRules}
+            excludedTypes={excludedCITypes ?? []}
             onSearchChange={setCiSearch}
-            onAddCI={(ciId, relationType) => void addCI({ variables: { incidentId: incident.id, ciId, relationType } })}
+            onAddCI={(ciId) => void addCI({ variables: { incidentId: incident.id, ciId } })}
             onRemoveCI={(ciId) => void removeCI({ variables: { incidentId: incident.id, ciId } })}
           />
 

@@ -23,7 +23,19 @@ export function chainFamiliesToJSON(families: readonly string[]): string {
 /**
  * Calculate chain for a single CI based on chain_families of its type and upstream dependencies.
  */
+/**
+ * Le relazioni lungo cui la catena si propaga: quelle dei servizi del tenant
+ * (revisione del 15 set 2026 · CM-3), non `DEPENDS_ON|HOSTED_ON|USES_CERTIFICATE`
+ * scritto qui. Import dinamico: `ciMetamodelForTenant` legge `CHAIN_FAMILIES` da
+ * questo modulo.
+ */
+async function chainRelPattern(tenantId: string): Promise<string> {
+  const { serviceRelPatternForTenant } = await import('./ciMetamodelForTenant.js')
+  return serviceRelPatternForTenant(tenantId)
+}
+
 export async function calculateChain(ciId: string, tenantId: string): Promise<string> {
+  const relPattern = await chainRelPattern(tenantId)
   const session = getSession(undefined, 'WRITE')
   try {
     const result = await session.executeWrite(tx => tx.run(`
@@ -49,7 +61,7 @@ export async function calculateChain(ciId: string, tenantId: string): Promise<st
       // If ambiguous, check upstream for Application-only types
       CALL {
         WITH ci
-        OPTIONAL MATCH (upstream)-[:DEPENDS_ON|HOSTED_ON|USES_CERTIFICATE*1..10]->(ci)
+        OPTIONAL MATCH (upstream)-[:${relPattern}*1..10]->(ci)
         WHERE upstream.tenant_id = ci.tenant_id
         WITH upstream, labels(upstream) AS uLabels
         UNWIND uLabels AS uLbl
@@ -88,6 +100,7 @@ export async function calculateChain(ciId: string, tenantId: string): Promise<st
  * `CITypeDefinition`, che è la stessa sorgente del metamodello.
  */
 export async function calculateAllChains(tenantId: string): Promise<{ total: number; app: number; infra: number }> {
+  const relPattern = await chainRelPattern(tenantId)
   const session = getSession(undefined, 'WRITE')
   try {
     // Step 1: Set chain for CIs whose type has a single chain_family
@@ -115,7 +128,7 @@ export async function calculateAllChains(tenantId: string): Promise<{ total: num
     await session.executeWrite(tx => tx.run(`
       MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
       WHERE ci.chain IS NULL
-      OPTIONAL MATCH (app:Application {tenant_id: $tenantId})-[:DEPENDS_ON|HOSTED_ON|USES_CERTIFICATE*0..10]->(ci)
+      OPTIONAL MATCH (app:Application {tenant_id: $tenantId})-[:${relPattern}*0..10]->(ci)
       WITH ci, count(app) > 0 AS hasApp
       SET ci.chain = CASE WHEN hasApp THEN 'Application' ELSE 'Infrastructure' END
     `, { tenantId }))

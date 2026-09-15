@@ -84,6 +84,8 @@ import { anomalyRuleConfigsSeed } from './20260926_1010_anomaly_rule_configs.js'
 import { organizationSettingsSeed } from './20260927_1000_organization_settings.js'
 import { factoryRoles } from './20260928_1000_factory_roles.js'
 import { assistantPermission } from './20260928_1010_assistant_permission.js'
+import { ciRelationTargetLabel } from './20260929_1000_ci_relation_target_label.js'
+import { ticketCIExclusions } from './20260929_1010_ticket_ci_exclusions.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -162,4 +164,6 @@ export const MIGRATIONS: readonly Migration[] = [
   organizationSettingsSeed,
   factoryRoles,
   assistantPermission,
+  ciRelationTargetLabel,
+  ticketCIExclusions,
 ]

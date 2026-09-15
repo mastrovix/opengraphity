@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { Search } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { GET_ALL_CIS } from '@/graphql/queries'
+import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { ADD_CI_TO_CHANGE } from '@/graphql/mutations'
 import { colors } from '@/lib/tokens'
 import { showError } from '@/lib/showError'
@@ -24,8 +25,10 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
 }) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
+  // CM-8: i tipi di CI esclusi per le change non si propongono (l'API li rifiuta comunque).
+  const { excluded: excludedCITypes } = useTicketCIExclusions('change')
   const { data: ciData } = useQuery<{ allCIs: { items: Array<{ id: string; name: string; type: string | null; environment: string | null; ownerGroup: { id: string; name: string } | null; supportGroup: { id: string; name: string } | null }> } }>(
-    GET_ALL_CIS, { variables: { search, limit: 20 }, skip: search.length < 2, fetchPolicy: 'network-only' },
+    GET_ALL_CIS, { variables: { search, limit: 20, excludeCiTypes: excludedCITypes }, skip: search.length < 2 || excludedCITypes === undefined, fetchPolicy: 'network-only' },
   )
   const [addCI, { loading }] = useMutation(ADD_CI_TO_CHANGE, {
     onCompleted: () => {

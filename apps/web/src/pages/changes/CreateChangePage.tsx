@@ -10,6 +10,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { CREATE_CHANGE } from '@/graphql/mutations'
 import { GET_CHANGES, GET_ALL_CIS, GET_USERS, GET_PROBLEM, GET_INCIDENT, GET_PRE_APPROVED_CHANGE_TYPES } from '@/graphql/queries'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { colors, palette } from '@/lib/tokens'
 import { showError } from '@/lib/showError'
@@ -112,9 +113,11 @@ export function CreateChangePage() {
   })
   const users = usersData?.users ?? []
 
+  // CM-8: i tipi di CI esclusi per le change non si propongono (l'API li rifiuta comunque).
+  const { excluded: excludedCITypes } = useTicketCIExclusions('change')
   const { data: ciData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
-    variables: { search: ciSearch, limit: 20 },
-    skip: ciSearch.length < 2,
+    variables: { search: ciSearch, limit: 20, excludeCiTypes: excludedCITypes },
+    skip: ciSearch.length < 2 || excludedCITypes === undefined,
     fetchPolicy: 'network-only',
   })
   const ciResults = (ciData?.allCIs?.items ?? [])

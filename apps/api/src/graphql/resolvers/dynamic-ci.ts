@@ -11,6 +11,7 @@ import { buildFieldResolvers, mapTeamProps } from './ciFieldResolvers.js'
 import { buildCreateMutation, buildUpdateMutation, buildDeleteMutation } from './ciMutations.js'
 import { mapITILField, fetchITILTypeById, buildITILTypesResolver, buildITILTypeFieldsResolver, buildITILMutations } from './itilTypeResolvers.js'
 import { requireMetamodelPermission, buildCITypesResolver, buildBaseCITypeResolver, buildMetamodelMutations } from './ciTypeMetamodel.js'
+import { impactRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
 
 type Props = Record<string, unknown>
 
@@ -49,14 +50,45 @@ function mapCI(props: Props, ciType: CITypeWithDefinitions): Record<string, unkn
 
 // ── Query generiche ───────────────────────────────────────────────────────────
 
+/**
+ * I tipi nominati in un filtro, per nome (`business_application`) o per
+ * etichetta (`BusinessApplication`, anche in minuscolo). Un nome che non è un
+ * tipo di questo cliente è un errore che lo dice: un filtro che non riconosce
+ * un tipo e lo ignora mostrerebbe proprio i CI che si voleva togliere.
+ */
+function matchTypes(types: CITypeWithDefinitions[], names: (string | null)[] | null | undefined, what: string): Set<CITypeWithDefinitions> | null {
+  if (!names || names.length === 0) return null
+  const out = new Set<CITypeWithDefinitions>()
+  for (const raw of names) {
+    if (!raw) continue
+    const key = raw.trim().toLowerCase()
+    const hit = types.find(t => t.name.toLowerCase() === key || t.neo4jLabel.toLowerCase() === key)
+    if (!hit) {
+      throw new GraphQLError(`allCIs(${what}): "${raw}" is not a CI type of this tenant.`, {
+        extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.unknown', params: { type: raw, allowed: types.map(t => t.name).sort().join(', ') } } },
+      })
+    }
+    out.add(hit)
+  }
+  return out
+}
+
 function buildAllCIsResolver(types: CITypeWithDefinitions[]) {
   return async (
     _: unknown,
-    args: { limit?: number; offset?: number; type?: string; status?: string; environment?: string; search?: string; filters?: string },
+    args: { limit?: number; offset?: number; type?: string; status?: string; environment?: string; search?: string; filters?: string; ciTypes?: (string | null)[] | null; excludeCiTypes?: (string | null)[] | null },
     ctx: GraphQLContext,
   ) => {
     const { limit = 50, offset = 0, type, status, environment, search, filters } = args
-    const filteredTypes = type ? types.filter(t => t.name === type) : types
+    // `ciTypes` era dichiarato nello schema e ignorato qui: la ricerca dei CI
+    // da collegare a un ticket «filtrava» per tipo senza filtrare niente.
+    // `excludeCiTypes` (CM-8) toglie i tipi esclusi per il tipo di ticket.
+    const only    = matchTypes(types, args.ciTypes, 'ciTypes')
+    const without = matchTypes(types, args.excludeCiTypes, 'excludeCiTypes')
+    const filteredTypes = types
+      .filter(t => !type || t.name === type)
+      .filter(t => !only || only.has(t))
+      .filter(t => !without || !without.has(t))
     if (!filteredTypes.length) return { items: [], total: 0 }
 
     const labelFilter = filteredTypes.map(t => `n:${t.neo4jLabel}`).join(' OR ')
@@ -131,10 +163,13 @@ function buildCIByIdResolver(types: CITypeWithDefinitions[]) {
 function buildBlastRadiusResolver(types: CITypeWithDefinitions[]) {
   return async (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
     withSession(async session => {
+      // CM-3: le relazioni dell'impatto del tenant (le stesse di impact.ts),
+      // non una lista scritta qui che ignorava quelle del cliente.
+      const relPattern = await impactRelPatternForTenant(ctx.tenantId)
       const r = await session.executeRead(tx =>
         tx.run(
           `MATCH (root {id: $id, tenant_id: $tenantId})
-           MATCH path = (root)<-[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE|REALIZES|ENABLED_BY*1..5]-(impacted)
+           MATCH path = (root)<-[:${relPattern}*1..5]-(impacted)
            WHERE impacted.tenant_id = $tenantId
            WITH impacted, min(length(path)) AS distance, collect(path) AS paths
            WITH impacted, distance, [p IN paths WHERE length(p) = distance | p][0] AS shortestPath

@@ -51,7 +51,7 @@ import { knowledgeBaseResolvers } from './knowledgeBase.js'
 import { reportExportResolvers } from './reportExport.js'
 import { portalResolvers } from './portal.js'
 import { fieldRulesResolvers } from './fieldRules.js'
-import { itilRelationsResolvers } from './itilRelations.js'
+import { ticketCIExclusionResolvers } from './ticketCIExclusions.js'
 import { customWidgetResolvers } from './customWidget.js'
 import { automationResolvers } from './automation.js'
 import { integrationsResolvers } from './integrations.js'
@@ -313,7 +313,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...knowledgeBaseResolvers.Query,
       ...portalResolvers.Query,
       ...fieldRulesResolvers.Query,
-      ...itilRelationsResolvers.Query,
+      ...ticketCIExclusionResolvers.Query,
       ...customWidgetResolvers.Query,
       ...automationResolvers.Query,
       ...integrationsResolvers.Query,
@@ -334,6 +334,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
       ciProblems:  ciResolvers.Query.ciProblems,
+      ciServiceRequests: ciResolvers.Query.ciServiceRequests,
       ciGroupMembers: ciGroupResolvers.Query.ciGroupMembers,
       ...meStub,
       user: userById,
@@ -377,7 +378,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...reportExportResolvers.Mutation,
       ...portalResolvers.Mutation,
       ...fieldRulesResolvers.Mutation,
-      ...itilRelationsResolvers.Mutation,
+      ...ticketCIExclusionResolvers.Mutation,
       ...customWidgetResolvers.Mutation,
       ...automationResolvers.Mutation,
       ...integrationsResolvers.Mutation,

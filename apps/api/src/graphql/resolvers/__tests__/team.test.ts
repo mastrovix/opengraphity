@@ -35,6 +35,18 @@ vi.mock('../ci-utils.js', async (importOriginal) => {
   }
 })
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../../../lib/cache.js', () => ({ cache: { invalidate: vi.fn() } }))
+// CM-6: togliere un gruppo guarda se il TIPO del CI lo vuole obbligatorio.
+const ownerRequired = { value: false }
+vi.mock('@opengraphity/schema-generator', () => ({
+  loadMetamodel: vi.fn(async () => [{
+    name: 'server', label: 'Server', neo4jLabel: 'Server',
+    systemRelations: [
+      { name: 'ownerGroup', label: 'Owner Group', required: ownerRequired.value },
+      { name: 'supportGroup', label: 'Support Group', required: false },
+    ],
+  }]),
+}))
 
 const { teamResolvers } = await import('../team.js')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
@@ -53,7 +65,25 @@ function lastQuery(): { cypher: string; params: Record<string, unknown> } {
 describe('assignCIOwner — relazione OWNED_BY single-valued', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    ownerRequired.value = false
     vi.mocked(runQuery).mockResolvedValue([CI_ROW] as never)
+    vi.mocked(runQueryOne).mockResolvedValue({ label: 'Server' } as never)
+  })
+
+  // CM-6 (revisione del 15 set 2026): il CI restava senza owner obbligatorio.
+  it('teamId null su un gruppo che il tipo vuole obbligatorio → rifiutato, nessuna scrittura', async () => {
+    ownerRequired.value = true
+    await expect(teamResolvers.Mutation.assignCIOwner(null, { ciId: 'ci-1', teamId: null }, ctx))
+      .rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ci.requiredGroup' } } })
+    expect(runQuery).not.toHaveBeenCalled()
+  })
+
+  it('un cambio di gruppo svuota la cache delle liste e scrive l\'audit', async () => {
+    const { cache } = await import('../../../lib/cache.js')
+    const { audit } = await import('../../../lib/audit.js')
+    await teamResolvers.Mutation.assignCIOwner(null, { ciId: 'ci-1', teamId: 'team-9' }, ctx)
+    expect(cache.invalidate).toHaveBeenCalledWith('ci:tenant-1:Server:')
+    expect(audit).toHaveBeenCalledWith(ctx, 'ci.updated', 'ConfigurationItem', 'ci-1', { ownerGroupId: 'team-9' })
   })
 
   it('teamId null → rimuove la relazione: DELETE senza MERGE, nessun MATCH sul Team', async () => {
@@ -110,6 +140,7 @@ describe('assignCIOwner — relazione OWNED_BY single-valued', () => {
 
   it('CI di un altro tenant con teamId null → NotFoundError (la rimozione non è un no-op silenzioso)', async () => {
     vi.mocked(runQuery).mockResolvedValue([] as never)
+    vi.mocked(runQueryOne).mockResolvedValue(null as never)
     await expect(teamResolvers.Mutation.assignCIOwner(null, { ciId: 'ci-altrui', teamId: null }, ctx))
       .rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
   })
@@ -119,6 +150,7 @@ describe('assignCISupportGroup — stessa semantica su SUPPORTED_BY', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(runQuery).mockResolvedValue([CI_ROW] as never)
+    vi.mocked(runQueryOne).mockResolvedValue({ label: 'Server' } as never)
   })
 
   it('teamId null → DELETE su SUPPORTED_BY senza MERGE', async () => {

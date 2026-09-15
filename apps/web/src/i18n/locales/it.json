@@ -2524,22 +2524,6 @@
     "required": "Obbligatorio",
     "save": "Salva",
     "saved": "Modifiche salvate",
-    "ciRelations": {
-      "addRelation": "Aggiungi relazione",
-      "ciType": "Tipo CI",
-      "relationType": "Tipo relazione",
-      "direction": "Direzione",
-      "description": "Descrizione",
-      "outgoing": "In uscita (ITIL → CI)",
-      "incoming": "In entrata (CI → ITIL)",
-      "empty": "Nessuna relazione CI configurata. Clicca \"Aggiungi relazione\" per aggiungerne una.",
-      "suggestions": "Suggeriti: IMPACTS, AFFECTED_BY, MODIFIES, TARGETS, ROOT_CAUSE, DEPENDS_ON",
-      "confirmDelete": "Eliminare questa regola di relazione?",
-      "selectCIType": "— Seleziona tipo CI —",
-      "cancel": "Annulla",
-      "add": "Aggiungi",
-      "descriptionPlaceholder": "Es. Server impattati dall'incident"
-    },
     "order": "Ordine",
     "enumRef": "Enum di riferimento",
     "selectEnum": "— Seleziona enum —",
@@ -2558,7 +2542,16 @@
     "visibilityPlaceholder": "// Mostra solo se severity = 'critical':\nreturn input.severity === 'critical'",
     "defaultPlaceholder": "// Esempio:\nreturn input.priority === 'critical' ? 'immediata' : 'normale'",
     "visibleToEndUser": "Offrilo nel portale",
-    "visibleToEndUserHint": "Gli utenti finali vedono questo campo e lo compilano quando aprono un ticket dal portale. Lascialo spento per i campi interni."
+    "visibleToEndUserHint": "Gli utenti finali vedono questo campo e lo compilano quando aprono un ticket dal portale. Lascialo spento per i campi interni.",
+    "ciExclusions": {
+      "tab": "CI esclusi",
+      "intro": "Spunta i tipi di CI che i ticket di questo tipo non devono coinvolgere. Un CI escluso non si collega al ticket, né alla creazione né dopo, da nessun canale — monitoraggio compreso. Senza spunte, ogni tipo di CI è ammesso.",
+      "legend": "Tipi di CI esclusi",
+      "none": "Nessuna esclusione: ogni tipo di CI si può collegare.",
+      "summary": "Tipi di CI esclusi: {{selected}}.",
+      "notLinked": "Questo tipo di ticket non si collega ai CI.",
+      "loadError": "Non è stato possibile leggere le esclusioni: {{error}}"
+    }
   },
   "ciTypeDesigner": {
     "chain": "Catena",
@@ -2619,8 +2612,8 @@
     "addCI": "+ Aggiungi CI",
     "affectedCIs": "CI Impattati",
     "searchCIByName": "Cerca CI per nome (min. 2 caratteri)…",
-    "searchCIOfTypes": "Cerca CI ({{types}}) — min. 2 caratteri…",
-    "policyHint": "Fino a {{size}} MB: {{types}}"
+    "policyHint": "Fino a {{size}} MB: {{types}}",
+    "searchCIExcluding": "Cerca CI (esclusi: {{types}}) — min. 2 caratteri…"
   },
   "queryError": {
     "title": "Errore nel caricamento dei dati",
@@ -3231,7 +3224,14 @@
       "valueColorNotInValues": "«{{value}}» non è un valore di «{{name}}», quindi non può avere un colore.",
       "shippedValuesOnlyCopies": "«{{name}}» è spedito col prodotto: i valori spediti si aggiungono o si tengono fuori sulla tua copia, non sul vocabolario spedito.",
       "noShippedCounterpart": "«{{name}}» è un vocabolario tuo: non esiste un vocabolario spedito con questo nome, quindi non ci sono valori spediti da aggiungere o tenere fuori.",
-      "valuesInUse": "Il vocabolario \"{{name}}\" non può perdere questi valori perché sono ancora usati: {{usages}}. Cambia prima quei record, oppure indica un valore di sostituzione."
+      "valuesInUse": "Il vocabolario \"{{name}}\" non può perdere questi valori perché sono ancora usati: {{usages}}. Cambia prima quei record, oppure indica un valore di sostituzione.",
+      "nameFormat": "Il nome del vocabolario «{{name}}» non è valido: usa lettere minuscole, cifre e underscore.",
+      "scopeInvalid": "L'ambito del vocabolario non è valido. Ammessi: {{allowed}}.",
+      "nameExists": "Esiste già un vocabolario chiamato «{{name}}».",
+      "systemScope": "L'ambito di un vocabolario del prodotto non si cambia.",
+      "systemDelete": "Un vocabolario del prodotto non si cancella.",
+      "inUseByFields_one": "Il vocabolario è usato da {{count}} campo: staccalo prima.",
+      "inUseByFields_other": "Il vocabolario è usato da {{count}} campi: staccali prima."
     },
     "ciType": {
       "shipped": "Il tipo «{{label}}» ({{name}}) è spedito col prodotto: è un solo tipo per tutti i clienti. {{consequence}}",
@@ -3249,8 +3249,6 @@
       "onlyRefsDeactivate": "Il tipo «{{label}}» ({{name}}) non è stato disattivato: nessun CI è di questo tipo, ma il tipo è ancora citato da {{refs}}. Quei riferimenti sono per NOME: resterebbero appesi a un tipo che non esiste più. Togli prima i riferimenti.",
       "where": {
         "topology": "Nel filtro della mappa",
-        "problemRules": "Nelle regole ITIL problem → CI",
-        "incidentRules": "Nelle regole ITIL incident → CI",
         "groupCriteria": "Nei criteri del gruppo dinamico"
       },
       "unknownFieldType": "{{what}}: il tipo di campo «{{fieldType}}» non esiste. Ammessi: {{allowed}}. Un tipo che il generatore non sa tradurre fa degradare lo schema GraphQL di questo cliente: tutti i suoi tipi di CI spariscono dall'API finché il campo non viene corretto.",
@@ -3272,7 +3270,10 @@
         "addRelation": "Le sue relazioni sono in sola lettura: aggiungerne una qui la aggiungerebbe a ogni cliente. Le relazioni si definiscono sui tuoi tipi.",
         "removeRelation": "Le sue relazioni sono in sola lettura: togliere una relazione da qui la toglierebbe a ogni cliente.",
         "delete": "Non si elimina: sparirebbe dalla CMDB di ogni cliente. Puoi solo non usarlo."
-      }
+      },
+      "chainFamilyRepeated": "La famiglia di catena {{family}} compare due volte.",
+      "dictionaryOnNonEnum": "Il campo «{{field}}» è di tipo {{fieldType}}: solo un campo a elenco (enum) usa un vocabolario.",
+      "relationInUse": "La relazione «{{name}}» non è stata tolta: {{count}} collegamenti {{relationshipType}} fra CI sono dichiarati solo da lei e resterebbero nel grafo senza comparire da nessuna parte. Togli prima quei collegamenti."
     },
     "titleRequired": "Il titolo è obbligatorio.",
     "assignment": {
@@ -3390,10 +3391,9 @@
       "platform": "La piattaforma «{{platform}}» non è supportata. Ammesse: {{allowed}}."
     },
     "ciLink": {
-      "problem": "Il CI {{ci}} non è stato collegato al problem: non esiste in questo cliente, o il suo tipo non è ammesso dalle regole ITIL.",
-      "problemTyped": "Il CI {{ci}} non è stato collegato al problem: non esiste in questo cliente, o il suo tipo non è ammesso dalle regole ITIL (ammessi: {{allowed}}).",
-      "incident": "Il CI {{ci}} non è stato collegato all'incident: non esiste in questo cliente, o il suo tipo non è ammesso dalle regole ITIL.",
-      "incidentTyped": "Il CI {{ci}} non è stato collegato all'incident: non esiste in questo cliente, o il suo tipo non è ammesso dalle regole ITIL (ammessi: {{allowed}})."
+      "problem": "Il CI {{ci}} non è stato collegato al problem: non esiste in questo cliente.",
+      "incident": "Il CI {{ci}} non è stato collegato all'incident: non esiste in questo cliente.",
+      "request": "Il CI {{ci}} non è stato collegato alla richiesta: la richiesta o il CI non esistono in questo cliente."
     },
     "automation": {
       "transitionNeedsStep": "Azione {{item}} (transizione del workflow): manca il passo di arrivo.",
@@ -3462,7 +3462,13 @@
       "noTypeLabel": "Il CI {{id}} non ha un tipo: il dato è incompleto e non si può dire di che tipo sia.",
       "unknownTypeOnRecord": "Non si sa di che tipo sia questo CI ({{type}}). Nessun tipo attivo di questo cliente lo dichiara: il tipo è stato cancellato o disattivato, oppure il CI è nato da una discovery con un tipo che il metamodello non ha.",
       "missingGroups": "Il CI «{{ci}}» non ha un Owner Group o un Support Group.",
-      "relationNotDeclared": "{{relation}} da {{source}} a {{target}} non è dichiarata nel metamodello: aggiungila al tipo di CI nel designer."
+      "relationNotDeclared": "{{relation}} da {{source}} a {{target}} non è dichiarata nel metamodello: aggiungila al tipo di CI nel designer.",
+      "notANumber": "{{field}}: «{{value}}» non è un numero.",
+      "notABoolean": "{{field}}: «{{value}}» non è vero o falso.",
+      "customFieldsNotJson": "I campi del CI non sono un JSON valido.",
+      "customFieldsNotObject": "I campi del CI devono essere un elenco nome → valore.",
+      "unknownField": "«{{field}}» non è un campo del tipo {{type}}.",
+      "requiredGroup": "{{group}} è obbligatorio per i CI di tipo {{type}}: si può cambiare, non togliere."
     },
     "portal": {
       "unclassifiedStates": "{{count}} stati dei ticket non appartengono a nessuna classe del workflow incident attivo ({{states}}): i contatori del portale non li conterebbero. Sistema i passi (iniziale / finale / categoria) nel disegnatore.",
@@ -3787,6 +3793,16 @@
       "unknownProvider": "Provider di accesso sconosciuto «{{kind}}».",
       "missingFields": "Compila: {{fields}}.",
       "testFailed": "Il provider non ha superato la prova e non è stato attivato ({{checks}})."
+    },
+    "ciRelation": {
+      "unknownType": "Il tipo di relazione {{relation}} non è dichiarato da nessun tipo di CI di questo cliente.",
+      "cycle": "Questo collegamento creerebbe un ciclo di dipendenze (DEPENDS_ON): la catena tornerebbe da dove parte.",
+      "invalidFormat": "Il tipo di relazione «{{relation}}» non è valido: usa lettere MAIUSCOLE, cifre e underscore (es. DEPENDS_ON)."
+    },
+    "ticketCI": {
+      "unknownTicketType": "Il tipo di ticket «{{type}}» non si collega ai CI. Ammessi: {{allowed}}.",
+      "unknownCIType": "Non sono tipi di CI di questo cliente: {{types}}. Ammessi: {{allowed}}.",
+      "excluded": "Questi CI non si possono collegare al ticket, perché il loro tipo è escluso per {{ticketType}}: {{cis}}. Le esclusioni si impostano in Impostazioni → ITIL Type Designer."
     }
   },
   "errorBoundary": {
@@ -4073,7 +4089,9 @@
       "updated": "Richiesta aggiornata",
       "transitionFailed": "Transizione non riuscita",
       "slaCoverageUnavailable": "Non è stato possibile verificare se una policy SLA copre la service request: {{error}}",
-      "assigned": "Richiesta assegnata"
+      "assigned": "Richiesta assegnata",
+      "ciAdded": "CI collegato alla richiesta",
+      "ciRemoved": "CI tolto dalla richiesta"
     },
     "events": {
       "acknowledged": "Allarme preso in carico",
@@ -4226,6 +4244,9 @@
       "askAdmin": "Un amministratore può accenderla.",
       "adminShort": "«{{feature}}» è spenta: accendila in Organizzazione → AI.",
       "userShort": "«{{feature}}» è spenta per la tua organizzazione: un amministratore può accenderla."
+    },
+    "ciServiceRequests": {
+      "empty": "Nessuna richiesta di servizio riguarda questo CI."
     }
   },
   "events": {

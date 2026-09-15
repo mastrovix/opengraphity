@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
 // Le note si compongono nella lingua del cliente: qui italiano, come le attese.
 // Ondata 6 di «Nulla cablato»: il formato dei numeri è del cliente; qui quello di fabbrica.
+vi.mock('../../lib/ticketCIExclusions.js', () => import('../../lib/__tests__/ticketCIExclusionsFake.js'))
 vi.mock('../../lib/ticketNumbering.js', () => import('../../lib/__tests__/ticketNumberingFake.js'))
 vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
 vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))

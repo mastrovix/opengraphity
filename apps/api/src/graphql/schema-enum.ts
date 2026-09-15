@@ -69,7 +69,8 @@ export function enumTypeSDL(): string {
   Un valore del vocabolario e come si legge a schermo.
 
   «label» e' l'etichetta nella lingua CHIESTA e c'e' sempre, col ripiego
-  dichiarato: lingua chiesta → italiano → il valore con le iniziali maiuscole.
+  dichiarato: lingua chiesta → lingua predefinita del cliente → il valore con
+  le iniziali maiuscole.
   Chi legge non deve ripiegare da se'.
 
   «labels» porta le lingue in cui l'etichetta e' davvero scritta, e serve

@@ -116,15 +116,19 @@ export function cmdbSDL(): string {
     validationScript: String
   }
 
-  # ── ITIL-CI Relation Rules ───────────────────────────────────────────────────
+  # ── Tipi di CI esclusi per tipo di ticket (revisione del 15 set 2026 · CM-8) ──
 
-  type ITILCIRelationRule {
-    id:           ID!
-    itilType:     String!
-    ciType:       String!
-    relationType: String!
-    direction:    String!
-    description:  String
+  """
+  I tipi di CI che un tipo di ticket NON può coinvolgere: un CI di un tipo
+  escluso non si collega al ticket, né alla creazione né dopo, da nessuna
+  strada. Nessuna esclusione = tutti ammessi. Sostituisce le vecchie regole
+  «tipi ammessi», il cui tipo di relazione e direzione non erano usati da nessuno.
+  """
+  type TicketCIExclusions {
+    """incident | problem | change | service_request"""
+    ticketType: String!
+    """I NOMI dei tipi CI esclusi (es. certificate)."""
+    ciTypes:    [String!]!
   }
 
   input UpdateCIFieldsInput {

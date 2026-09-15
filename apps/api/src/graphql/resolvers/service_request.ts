@@ -4,7 +4,10 @@ import { customFieldValueMap, type CustomFieldInput } from '../../lib/ticketCust
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLResolveInfo } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
-import { withSession } from './ci-utils.js'
+import { withSession, mapCI, ciTypeFromLabels } from './ci-utils.js'
+import { TICKET_CI_RELATIONSHIP } from '@opengraphity/types'
+import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
+import { assertCIsLinkable } from '../../lib/ticketCIExclusions.js'
 import { mapUser } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { getScalarFields } from '../../lib/schemaFields.js'
@@ -350,12 +353,79 @@ async function updateServiceCatalogItem(
   }, true)
 }
 
+// ── CI della richiesta (revisione del 15 set 2026 · CM-8) ─────────────────────
+//
+// Le richieste non si collegavano a nessun CI («richiesta di accesso al server
+// X» non poteva dire quale server). Il collegamento è `CONCERNS_CI`, e i tipi
+// di CI esclusi per le richieste non si collegano, come per gli altri ticket.
+
+const REQUEST_CI = TICKET_CI_RELATIONSHIP.service_request
+
+async function requestAffectedCIs(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const rows = await runQuery<{ props: Props; label: string }>(session, `
+      MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})-[:${REQUEST_CI}]->(ci)
+      WHERE ci.tenant_id = $tenantId
+      RETURN properties(ci) AS props, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
+      ORDER BY ci.name
+    `, { id: parent.id, tenantId: ctx.tenantId })
+    return rows.map((r) => {
+      const t = ciTypeFromLabels(ctx.tenantId, [r.label])
+      r.props['type'] = t
+      const ci = mapCI(r.props) as Record<string, unknown>
+      ci['ciType']     = t
+      ci['__typename'] = r.label
+      return ci
+    })
+  })
+}
+
+async function addCIToServiceRequest(_: unknown, args: { requestId: string; ciId: string }, ctx: GraphQLContext) {
+  await assertCIsLinkable(ctx.tenantId, 'service_request', [args.ciId])
+  const ciPredicate = await ciLabelPredicateForTenant('ci', ctx.tenantId)
+  return withSession(async (session) => {
+    const row = await runQueryOne<{ props: Props; linked: unknown }>(session, `
+      MATCH (r:ServiceRequest {id: $requestId, tenant_id: $tenantId})
+      MATCH (ci {id: $ciId, tenant_id: $tenantId})
+      WHERE ${ciPredicate}
+      MERGE (r)-[l:${REQUEST_CI}]->(ci)
+      SET r.updated_at = $now
+      RETURN properties(r) AS props, count(l) AS linked
+    `, { requestId: args.requestId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString() })
+    // Righe CONTATE (C-2): una richiesta o un CI che non esistono in questo
+    // tenant non scrivono niente, e va detto.
+    if (!row || Number(row.linked) === 0) {
+      throw new ValidationError(`CI ${args.ciId} not linked to the request: the request or the CI does not exist in this tenant`, { key: 'errors.ciLink.request', params: { ci: args.ciId } })
+    }
+    void audit(ctx, 'request.ci_added', 'ServiceRequest', args.requestId, { ciId: args.ciId })
+    return mapRequest(row.props)
+  }, true)
+}
+
+async function removeCIFromServiceRequest(_: unknown, args: { requestId: string; ciId: string }, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const row = await runQueryOne<{ props: Props; removed: unknown }>(session, `
+      MATCH (r:ServiceRequest {id: $requestId, tenant_id: $tenantId})
+      OPTIONAL MATCH (r)-[l:${REQUEST_CI}]->(ci {id: $ciId, tenant_id: $tenantId})
+      WITH r, collect(l) AS links
+      FOREACH (x IN links | DELETE x)
+      SET r.updated_at = CASE WHEN size(links) > 0 THEN $now ELSE r.updated_at END
+      RETURN properties(r) AS props, size(links) AS removed
+    `, { requestId: args.requestId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString() })
+    if (!row) throw new NotFoundError('ServiceRequest', args.requestId)
+    if (Number(row.removed) === 0) throw new NotFoundError('CIRelationship', `${args.requestId} → ${args.ciId}`)
+    void audit(ctx, 'request.ci_removed', 'ServiceRequest', args.requestId, { ciId: args.ciId })
+    return mapRequest(row.props)
+  }, true)
+}
+
 // ── Export ───────────────────────────────────────────────────────────────────
 
 export const serviceRequestResolvers = {
   Query:    { serviceRequests, serviceRequest, serviceCatalogItems },
-  Mutation: { createServiceRequest, updateServiceRequest, assignServiceRequestToUser, createServiceCatalogItem, updateServiceCatalogItem },
+  Mutation: { createServiceRequest, updateServiceRequest, assignServiceRequestToUser, createServiceCatalogItem, updateServiceCatalogItem, addCIToServiceRequest, removeCIFromServiceRequest },
   ServiceRequest: {
+    affectedCIs: requestAffectedCIs,
     requestedBy: requestRequestedBy,
     assignee:    requestAssignee,
     slaStatus:   ticketSlaStatusResolver('ServiceRequest'),

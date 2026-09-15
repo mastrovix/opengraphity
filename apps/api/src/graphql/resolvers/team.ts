@@ -11,6 +11,10 @@ import type { GraphQLContext } from '../../context.js'
 import { mapTeam } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { audit } from '../../lib/audit.js'
+import { cache } from '../../lib/cache.js'
+import { loadMetamodel } from '@opengraphity/schema-generator'
+import { ENUM_SCOPE } from '../../lib/enumScope.js'
+import { assertGroupRemovable } from '../../lib/ciGroups.js'
 
 type Props = Record<string, unknown>
 
@@ -177,6 +181,18 @@ async function setCITeamRelation(
     // team a un CI di un tipo del cliente non trovava il nodo e rispondeva
     // «ConfigurationItem or Team» (A-9).
     const ciPredicate = await ciLabelPredicateForTenant('ci', ctx.tenantId)
+    if (args.teamId == null) {
+      // CM-6 (revisione del 15 set 2026): togliere un gruppo che il tipo del
+      // CI dichiara obbligatorio lasciava il CI senza owner, e le change su di
+      // lui fallivano dopo, lontano da chi l'aveva tolto.
+      const found = await runQueryOne<{ label: string | null }>(session, `
+        MATCH (ci {id: $ciId, tenant_id: $tenantId}) WHERE ${ciPredicate}
+        RETURN head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
+      `, { ciId: args.ciId, tenantId: ctx.tenantId })
+      if (!found) throw new NotFoundError('ConfigurationItem', args.ciId)
+      const ciType = (await loadMetamodel(ctx.tenantId, ENUM_SCOPE)).find((t) => t.neo4jLabel === found.label)
+      if (ciType) assertGroupRemovable(ciType, relType === 'OWNED_BY' ? 'ownerGroup' : 'supportGroup')
+    }
     // The relation is single-valued: drop any existing edge before setting the
     // new one, otherwise re-assigning would leave the CI with multiple owners
     // (breaks change creation, which assumes exactly one owner team).
@@ -203,6 +219,11 @@ async function setCITeamRelation(
     })
     const row = rows[0]
     if (!row) throw new NotFoundError('ConfigurationItem or Team')
+    // CM-6: le liste dei CI mostrano il gruppo (cache di 30 s) e la topologia
+    // pure; e un cambio di owner è una modifica del CI come le altre.
+    cache.invalidate(`ci:${ctx.tenantId}:${row.label}:`)
+    cache.invalidate(`topology:${ctx.tenantId}:`)
+    void audit(ctx, 'ci.updated', 'ConfigurationItem', args.ciId, { [relType === 'OWNED_BY' ? 'ownerGroupId' : 'supportGroupId']: args.teamId })
     row.props['type'] = ciTypeFromLabels(ctx.tenantId, [row.label])
     return mapCI(row.props)
   }, true)

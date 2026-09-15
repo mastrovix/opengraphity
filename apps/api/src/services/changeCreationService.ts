@@ -23,6 +23,7 @@ import { publishEvent } from '../lib/publishEvent.js'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../lib/taskStatus.js'
 import { deriveChangePriority } from '../graphql/resolvers/change/scoring.js'
 import { assertDomainValue } from '../lib/domainMatrix.js'
+import { assertCIsLinkable } from '../lib/ticketCIExclusions.js'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import {
   writeAudit,
@@ -85,6 +86,9 @@ export async function createChangeRFC(
   }
   if (!why)  throw new ValidationError('The "why" field is required', { key: 'errors.change.whyRequired' })
   if (!what) throw new ValidationError('The "what" field is required', { key: 'errors.change.whatRequired' })
+  // CM-8 (revisione del 15 set 2026): i tipi di CI esclusi per le change. Prima
+  // le regole «change» (cinque su c-one) non erano applicate da nessuna parte.
+  await assertCIsLinkable(ctx.tenantId, 'change', affectedCIIds)
   const customProps = input.customFields == null ? {} : await withSession(async (session) =>
     resolveCustomFieldWrites(ctx.tenantId, 'change', await customFieldDefs(session, ctx.tenantId, 'change'), input.customFields, { current: null }))
   const created = await withSession(async (session) => {

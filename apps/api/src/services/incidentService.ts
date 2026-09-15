@@ -19,6 +19,7 @@ import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 import { assertUserInAssignedTeam, setTicketTeam, setTicketUser } from './ticketAssignment.js'
 import { systemText } from '../lib/systemText.js'
 import { assertDomainValue } from '../lib/domainMatrix.js'
+import { assertCIsLinkable } from '../lib/ticketCIExclusions.js'
 import { transitionFailed } from '../lib/transitionError.js'
 
 export interface IncidentEventPayload {
@@ -147,6 +148,10 @@ export async function createIncident(
     if (!input.category) throw new ValidationError('category is required', { key: 'errors.portal.categoryRequired' })
     await assertDomainValue(ctx.tenantId, 'category', input.category)
   }
+  // CM-8 (revisione del 15 set 2026): i tipi di CI esclusi per gli incident, PRIMA
+  // di scrivere. Vale per ogni canale, compresi monitoraggio e servizi monitorati
+  // (scelta del proprietario): l'errore nomina i CI e dove togliere l'esclusione.
+  await assertCIsLinkable(ctx.tenantId, 'incident', input.affectedCIIds ?? [])
 
   // ITIL: Priority = f(Impact, Urgency). La priorità derivata si salva nel
   // campo `severity` (SLA/pastiglie/filtri leggono quello). Impatto+urgenza

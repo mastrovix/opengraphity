@@ -3,10 +3,9 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useConfirm } from '@/hooks/useConfirm'
-import { GET_ITIL_TYPES, GET_ENUM_TYPES, GET_CI_TYPES, GET_ITIL_CI_RELATION_RULES, GET_WORKFLOW_LIST } from '@/graphql/queries'
+import { GET_ITIL_TYPES, GET_ENUM_TYPES, GET_CI_TYPES, GET_WORKFLOW_LIST } from '@/graphql/queries'
 import {
   CREATE_ITIL_FIELD, UPDATE_ITIL_FIELD, DELETE_ITIL_FIELD, UPDATE_ITIL_TYPE,
-  CREATE_ITIL_CI_RELATION_RULE, DELETE_ITIL_CI_RELATION_RULE,
 } from '@/graphql/mutations'
 import type { EnumTypeRef } from './shared/designerStyles'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
@@ -43,18 +42,10 @@ export interface ITILType {
   fields:           ITILField[]
 }
 
-export interface ITILCIRelationRule {
-  id:           string
-  itilType:     string
-  ciType:       string
-  relationType: string
-  direction:    string
-  description:  string | null
-}
-
 export interface EnumTypeOption extends EnumTypeRef { name: string }
 
-export type Tab = 'settings' | 'fields' | 'relations' | 'rules' | 'preview'
+/** `ciExclusions`: i tipi di CI esclusi per questo tipo di ticket (revisione del 15 set 2026 · CM-8). */
+export type Tab = 'settings' | 'fields' | 'ciExclusions' | 'rules' | 'preview'
 
 export interface FieldFormState {
   name:             string
@@ -95,13 +86,6 @@ export interface SettingsFormState {
   validationScript: string
 }
 
-export interface RelFormState {
-  ciType:       string
-  relationType: string
-  direction:    string
-  description:  string
-}
-
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useITILTypeDesigner() {
@@ -115,8 +99,6 @@ export function useITILTypeDesigner() {
   const [activeTab, setActiveTab]           = useState<Tab>('settings')
   const [settingsForm, setSettingsForm]     = useState<SettingsFormState | null>(null)
   const [settingsSaving, setSettingsSaving] = useState(false)
-  const [showRelForm, setShowRelForm]       = useState(false)
-  const [relForm, setRelForm]               = useState<RelFormState>({ ciType: '', relationType: '', direction: 'outgoing', description: '' })
 
   // ── Queries ─────────────────────────────────────────────────────────────────
   const { data, loading, refetch } = useQuery<{ itilTypes: ITILType[] }>(GET_ITIL_TYPES, {
@@ -137,15 +119,6 @@ export function useITILTypeDesigner() {
     fetchPolicy: METAMODEL_FETCH_POLICY,
   })
 
-  const { data: ciRulesData, refetch: refetchRules } = useQuery<{ itilCIRelationRules: ITILCIRelationRule[] }>(
-    GET_ITIL_CI_RELATION_RULES,
-    {
-      variables:   { itilType: selectedTypeId ? (data?.itilTypes.find((t) => t.id === selectedTypeId)?.name ?? '') : '' },
-      skip:        !selectedTypeId || activeTab !== 'relations',
-      fetchPolicy: METAMODEL_FETCH_POLICY,
-    },
-  )
-
   // ── Mutations ───────────────────────────────────────────────────────────────
   const [updateType]  = useMutation(UPDATE_ITIL_TYPE, {
     onCompleted: () => { toast.success(t('itilDesigner.saved')); setSettingsSaving(false); void refetch() },
@@ -164,21 +137,6 @@ export function useITILTypeDesigner() {
 
   const [deleteField] = useMutation(DELETE_ITIL_FIELD, {
     onCompleted: () => { toast.success(t('itilDesigner.saved')); void refetch() },
-    onError: (e) => showError(e),
-  })
-
-  const [createRule] = useMutation(CREATE_ITIL_CI_RELATION_RULE, {
-    onCompleted: () => {
-      toast.success(t('itilDesigner.saved'))
-      setShowRelForm(false)
-      setRelForm({ ciType: '', relationType: '', direction: 'outgoing', description: '' })
-      void refetchRules()
-    },
-    onError: (e) => showError(e),
-  })
-
-  const [deleteRule] = useMutation(DELETE_ITIL_CI_RELATION_RULE, {
-    onCompleted: () => { toast.success(t('itilDesigner.saved')); void refetchRules() },
     onError: (e) => showError(e),
   })
 
@@ -202,7 +160,6 @@ export function useITILTypeDesigner() {
     setActiveTab('settings')
     setEditingFieldId(null)
     setAddingField(false)
-    setShowRelForm(false)
     setSettingsForm({
       label:            itilType.label,
       icon:             itilType.icon  ?? '',
@@ -260,14 +217,6 @@ export function useITILTypeDesigner() {
     setAddingField(false)
   }
 
-  const handleCreateRule = (variables: { itilType: string; ciType: string; relationType: string; direction: string; description: string | null }) => {
-    void createRule({ variables })
-  }
-
-  const handleDeleteRule = async (id: string) => {
-    if (!(await confirm({ title: t('itilDesigner.ciRelations.confirmDelete'), danger: true }))) return
-    void deleteRule({ variables: { id } })
-  }
 
   return {
     // State
@@ -280,10 +229,6 @@ export function useITILTypeDesigner() {
     settingsForm,
     setSettingsForm,
     settingsSaving,
-    showRelForm,
-    setShowRelForm,
-    relForm,
-    setRelForm,
 
     // Data
     loading,
@@ -291,7 +236,6 @@ export function useITILTypeDesigner() {
     selectedType,
     enumTypesData,
     ciTypesData,
-    ciRulesData,
     ITIL_WORKFLOW_STEPS,
     t,
 
@@ -301,8 +245,6 @@ export function useITILTypeDesigner() {
     handleSaveField,
     handleDeleteField,
     handleTabChange,
-    handleCreateRule,
-    handleDeleteRule,
   }
 }
 

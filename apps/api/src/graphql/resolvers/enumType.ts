@@ -314,12 +314,12 @@ export async function createEnumType(
   requirePermission(ctx, 'config.metamodel')
   const { input } = args
   if (!input.name.match(/^[a-z][a-z0-9_]*$/)) {
-    throw new ValidationError('name must be snake_case (lowercase letters, numbers, underscores)')
+    throw new ValidationError('name must be snake_case (lowercase letters, numbers, underscores)', { key: 'errors.enum.nameFormat', params: { name: input.name } })
   }
   assertValuesUsable(input.values, input.name)
   const VALID_SCOPES = ['itil', 'cmdb', 'shared'] as const
   if (!VALID_SCOPES.includes(input.scope as typeof VALID_SCOPES[number])) {
-    throw new ValidationError(`scope must be one of: ${VALID_SCOPES.join(', ')}`)
+    throw new ValidationError(`scope must be one of: ${VALID_SCOPES.join(', ')}`, { key: 'errors.enum.scopeInvalid', params: { allowed: VALID_SCOPES.join(', ') } })
   }
 
   const id  = uuidv4()
@@ -355,12 +355,12 @@ export async function createEnumType(
       // Corsa persa contro un altro processo: il vincolo ha parlato. Lo stesso
       // rifiuto di sempre, non un errore interno.
       if (String(err).includes('already exists') || String(err).includes('ConstraintValidationFailed')) {
-        throw new ValidationError(`An enum type named "${input.name}" already exists for this tenant`)
+        throw new ValidationError(`An enum type named "${input.name}" already exists for this tenant`, { key: 'errors.enum.nameExists', params: { name: input.name } })
       }
       throw err
     }
     if (createdId !== id) {
-      throw new ValidationError(`An enum type named "${input.name}" already exists for this tenant`)
+      throw new ValidationError(`An enum type named "${input.name}" already exists for this tenant`, { key: 'errors.enum.nameExists', params: { name: input.name } })
     }
 
     vocabularyChanged(ctx.tenantId)
@@ -556,7 +556,7 @@ export async function updateEnumType(
     }
 
     if (isSystem && input.scope) {
-      throw new ValidationError('Cannot change scope of system enum types')
+      throw new ValidationError('Cannot change scope of system enum types', { key: 'errors.enum.systemScope' })
     }
     if (input.values) {
       assertVocabularyEditable(check.records[0]!.get('name') as string, 'errors.enum.op.changeValues')
@@ -765,10 +765,10 @@ export async function deleteEnumType(
     const usageCount = toNumber(check.records[0]!.get('usageCount'))
 
     if (isSystem) {
-      throw new ValidationError('System enum types cannot be deleted')
+      throw new ValidationError('System enum types cannot be deleted', { key: 'errors.enum.systemDelete' })
     }
     if (usageCount > 0) {
-      throw new ValidationError(`Enum in use by ${usageCount} field${usageCount > 1 ? 's' : ''}`)
+      throw new ValidationError(`Enum in use by ${usageCount} field${usageCount > 1 ? 's' : ''}`, { key: 'errors.enum.inUseByFields', params: { count: usageCount } })
     }
 
     // ── Ondata 7 · B7-2: cancellare la copia del cliente NON è mai silenzioso

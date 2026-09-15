@@ -43,7 +43,7 @@ async function render(cis: AffectedCIRef[], statuses?: string[]) {
     <DomainVocabularyContext.Provider value={vocab}>
     <AffectedCIList
       affectedCIs={cis}
-      rules={[]}
+      excludedTypes={[]}
       ciResults={[]}
       onSearchChange={vi.fn()}
       onAddCI={vi.fn()}
@@ -79,3 +79,29 @@ describe('AffectedCIList — pastiglia dello stato del CI', () => {
     expect(paletteErrors()).toContain('[ci_status] "zombie" is not in the vocabulary of this tenant (active, inactive)')
   })
 })
+
+// ── Revisione del 15 set 2026 · CM-8 ──────────────────────────────────────────
+describe('AffectedCIList — i tipi di CI esclusi non si propongono', () => {
+  it('nella ricerca manca il certificato, escluso per questo tipo di ticket; il server resta', async () => {
+    const onAddCI = vi.fn()
+    const { user } = renderWithProviders(
+      <AffectedCIList
+        affectedCIs={[]}
+        excludedTypes={['certificate']}
+        ciResults={[ci({ id: 'srv-1', name: 'SRV-01', type: 'server' }), ci({ id: 'cert-1', name: 'cert-portale', type: 'certificate' })]}
+        onSearchChange={vi.fn()}
+        onAddCI={onAddCI}
+        onRemoveCI={vi.fn()}
+        defaultOpen
+      />,
+      { mocks: [baseCITypeMock()] },
+    )
+    await user.click(screen.getByRole('button', { name: /Add CI/i }))
+    expect(screen.getByPlaceholderText(/certificate/)).toBeInTheDocument()
+    expect(screen.getByText('SRV-01')).toBeInTheDocument()
+    expect(screen.queryByText('cert-portale')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '+' }))
+    expect(onAddCI).toHaveBeenCalledWith('srv-1')
+  })
+})
+

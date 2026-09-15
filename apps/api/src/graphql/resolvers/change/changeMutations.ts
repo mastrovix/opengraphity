@@ -24,6 +24,7 @@ import { TASK_KINDS } from './taskKinds.js'
 import { NotFoundError } from '../../../lib/errors.js'
 import { publishEvent } from '../../../lib/publishEvent.js'
 import { audit } from '../../../lib/audit.js'
+import { assertCIsLinkable } from '../../../lib/ticketCIExclusions.js'
 import {
   writeAudit,
   getNextTaskCodes,
@@ -271,6 +272,8 @@ async function linkChangeToRequestingProblem(
 // Le validazioni (step iniziale, owner/support del CI) e le letture (task codes,
 // nome CI) restano PRIMA della transazione.
 export async function addCIToChange(_: unknown, args: { changeId: string; ciId: string }, ctx: GraphQLContext) {
+  // CM-8: i tipi di CI esclusi per le change non si collegano.
+  await assertCIsLinkable(ctx.tenantId, 'change', [args.ciId])
   return withSession(async (session) => {
     await assertInitialStep(session, args.changeId, ctx.tenantId)
     await assertCIHasOwnerAndSupport(session, ctx.tenantId, [args.ciId])

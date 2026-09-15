@@ -126,6 +126,19 @@ export const DOMAIN_VALUE_BINDINGS: Readonly<Record<string, readonly { label: st
   risk_band: [],
   /** Nessun record: è il vocabolario del file di import, non del prodotto. */
   import_severity: [],
+  /**
+   * Revisione del 15 set 2026 · CM-7: le categorie della Knowledge Base e il
+   * tipo dei team sono validati contro il Dizionario (`assertDomainValue`) ma
+   * nessun campo del metamodello li aggancia. Senza queste due righe togliere
+   * `network` dalle categorie KB passava contando zero usi con un articolo che
+   * lo portava, e una rinomina non riscriveva gli articoli.
+   */
+  kb_category: [
+    { label: 'KBArticle', property: 'category' },
+  ],
+  team_type: [
+    { label: 'Team', property: 'type' },
+  ],
 }
 
 /**
@@ -147,7 +160,7 @@ export const DOMAIN_VALUE_BINDINGS: Readonly<Record<string, readonly { label: st
  * `object_list`: una lista JSON di oggetti dove il campo `listKey` porta il
  * valore (`risk_band_thresholds` → `band`, `portal_severity_options` → `value`).
  */
-export type ConfigSiteShape = 'scalar' | 'conditions' | 'object_list'
+export type ConfigSiteShape = 'scalar' | 'conditions' | 'object_list' | 'string_list'
 
 export interface ConfigValueSite {
   label:    string
@@ -184,6 +197,11 @@ export const CONFIG_VALUE_SITES: readonly ConfigValueSite[] = [
   { label: 'Tenant', property: 'portal_severity_options', shape: 'object_list', listKey: 'value', vocabulary: 'severity', where: 'the severities offered in the self-service portal' },
   { label: 'ServiceCatalogItem', property: 'priority', shape: 'scalar', vocabulary: 'priority', where: 'the priority of a service catalog item' },
   { label: 'ServiceCatalogItem', property: 'category', shape: 'scalar', vocabulary: 'category', where: 'the category of a service catalog item' },
+  // CM-7 (revisione del 15 set 2026): i tipi di change pre-approvati sono una
+  // lista di valori di `change_type`. Rinominare `standard` lasciava la lista
+  // sul nome vecchio, e quelle change tornavano a chiedere l'approvazione
+  // completa — il difetto che l'ondata 8 aveva chiuso.
+  { label: 'Tenant', property: 'pre_approved_change_types', shape: 'string_list', vocabulary: 'change_type', where: 'the pre-approved change types' },
 ]
 
 /**
@@ -613,8 +631,15 @@ async function configReferences(
       continue
     }
 
-    // `object_list`: [{<listKey>: valore, …}] (le soglie delle fasce, le severità del portale).
     if (site.vocabulary !== vocabularyName) continue
+    if (site.shape === 'string_list') {
+      const rows = await run(q, `${match} RETURN n.${site.property} AS raw`, { tenantId })
+      for (const row of rows) {
+        for (const value of parseStringList(row['raw'])) if (wanted.has(value)) add(value, site.where)
+      }
+      continue
+    }
+    // `object_list`: [{<listKey>: valore, …}] (le soglie delle fasce, le severità del portale).
     const rows = await run(q, `${match} RETURN n.${site.property} AS raw`, { tenantId })
     for (const row of rows) {
       for (const item of parseObjectList(row['raw'], site.listKey!)) {
@@ -684,6 +709,20 @@ async function replaceInConfig(
     }
 
     if (site.vocabulary !== vocabularyName) continue
+    if (site.shape === 'string_list') {
+      const rows = await runWrite(tx, `${match} RETURN n.${site.property} AS raw`, { tenantId })
+      for (const row of rows) {
+        const list = parseStringList(row['raw'])
+        if (!list.includes(from)) continue
+        const next = [...new Set(list.map((v) => (v === from ? to : v)))]
+        await runWrite(tx, `
+          ${match}
+          SET n.${site.property} = $list
+          RETURN count(*) AS n
+        `, { tenantId, list: next })
+      }
+      continue
+    }
     const rows = await runWrite(tx, `${match} RETURN n.${site.property} AS raw`, { tenantId })
     for (const row of rows) {
       const key = site.listKey!
@@ -719,6 +758,11 @@ function parseConditionList(raw: unknown): ParsedCondition[] {
     out.push({ field, value, raw: o })
   }
   return out
+}
+
+/** Una lista di stringhe (proprietà lista di Neo4j), saltando ciò che non è una stringa. */
+function parseStringList(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string') : []
 }
 
 /** Una lista JSON di oggetti con il valore in `key`, saltando le voci che non hanno la forma attesa. */

@@ -8,7 +8,8 @@ import { toast } from 'sonner'
 import { CREATE_INCIDENT, ASSIGN_INCIDENT_TO_TEAM } from '@/graphql/mutations'
 import { derivePriority, priorityCode, impactUrgencyFromPriority } from '@/lib/priority'
 import { usePriorityMatrix } from '@/hooks/usePriorityMatrix'
-import { GET_INCIDENTS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
+import { GET_INCIDENTS, GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
+import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { FieldWrapper } from '@/components/FieldWrapper'
@@ -80,25 +81,18 @@ export function CreateIncidentPage() {
   const { rules: fieldRules, error: fieldRulesError } = useFormFieldRules('incident', null, formValues)
   const { values: categoryValues, loading: categoryLoading } = useEnumValues('incident', 'category')
 
-  const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { ciType: string }[] }>(
-    GET_ITIL_CI_RELATION_RULES,
-    { variables: { itilType: 'incident' }, fetchPolicy: 'network-only' },
-  )
-
-  const ciTypesFilter = ciRulesData?.itilCIRelationRules?.length
-    ? [...new Set(ciRulesData.itilCIRelationRules.map(r => r.ciType.toLowerCase()))]
-    : undefined
+  // CM-8: i tipi di CI esclusi per questo tipo di ticket non si propongono (l'API li rifiuta comunque).
+  const { excluded: excludedCITypes } = useTicketCIExclusions('incident')
 
   const { data: ciData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
-    variables: { search: ciSearch, limit: 20, ciTypes: ciTypesFilter },
-    skip: ciSearch.length < 2 || ciRulesData === undefined,
+    variables: { search: ciSearch, limit: 20, excludeCiTypes: excludedCITypes },
+    skip: ciSearch.length < 2 || excludedCITypes === undefined,
     fetchPolicy: 'network-only',
   })
   const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
 
   const ciResults     = (ciData?.allCIs?.items ?? [])
     .filter(ci => !selectedCIs.find(s => s.id === ci.id))
-    .filter(ci => !ciTypesFilter || ciTypesFilter.includes(ci.type.toLowerCase()))
   const teams         = teamsData?.teams ?? []
   const filteredTeams = teams.filter(t => t.name.toLowerCase().includes(teamSearch.toLowerCase()))
   const [assignToTeam] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {

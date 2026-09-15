@@ -890,6 +890,7 @@ export function CIDetailPage() {
 
           <CIIncidentsCard ciId={ci.id} />
           <CIIncidentsCard ciId={ci.id} kind="problem" />
+          <CIIncidentsCard ciId={ci.id} kind="service_request" />
           <CIChangeList ciId={ci.id} />
 
           <AttachmentsSection entityType="ci" entityId={ci.id} />

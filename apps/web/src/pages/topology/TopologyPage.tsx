@@ -395,7 +395,7 @@ export function TopologyPage() {
             {/* Fields */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <DetailField label={t('pages.cmdb.status')}>
-                <StatusBadge status={selectedNode.status} statuses={baseEnums.loading || baseEnums.error ? null : baseEnums.statuses} />
+                {selectedNode.status ? <StatusBadge status={selectedNode.status} statuses={baseEnums.loading || baseEnums.error ? null : baseEnums.statuses} /> : '—'}
               </DetailField>
 
               {selectedNode.health && (

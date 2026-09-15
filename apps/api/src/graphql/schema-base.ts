@@ -55,12 +55,13 @@ export function buildBaseSDL(): string {
     serviceCatalogItems(activeOnly: Boolean): [ServiceCatalogItem!]!
 
     # CMDB — generic queries (typed CI queries come from dynamic schema)
-    allCIs(limit: Int, offset: Int, type: String, environment: String, status: String, search: String, ciTypes: [String], filters: String, sortField: String, sortDirection: String): AllCIsResult!
+    allCIs(limit: Int, offset: Int, type: String, environment: String, status: String, search: String, ciTypes: [String], excludeCiTypes: [String], filters: String, sortField: String, sortDirection: String): AllCIsResult!
     ciById(id: ID!): CIBase
     blastRadius(id: ID!): [BlastRadiusItem!]!
     ciIncidents(ciId: ID!): [Incident!]!
     ciChanges(ciId: ID!): [Change!]!
     ciProblems(ciId: ID!): [Problem!]!
+    ciServiceRequests(ciId: ID!): [ServiceRequest!]!
     # Dynamic CI Group members: manual (HAS_MEMBER) or dynamic (live criteria).
     # I gruppi dinamici sono troncati lato server (MEMBERS_LIMIT): total/truncated
     # rendono il taglio visibile invece di far passare 500 per il conteggio reale.
@@ -212,9 +213,8 @@ export function buildBaseSDL(): string {
     fieldVisibilityRules(entityType: String!): [FieldVisibilityRule!]!
     fieldRequirementRules(entityType: String!, workflowStep: String): [FieldRequirementRule!]!
 
-    # ITIL-CI Relation Rules
-    itilCIRelationRules(itilType: String!): [ITILCIRelationRule!]!
-    allITILCIRelationRules: [ITILCIRelationRule!]!
+    # Tipi di CI esclusi per tipo di ticket (CM-8). Senza argomento: tutti i tipi di ticket.
+    ticketCIExclusions(ticketType: String): [TicketCIExclusions!]!
 
     # What-if Planning
     whatIfAnalysis(ciId: ID!, action: String!, depth: Int): WhatIfResult!
@@ -376,7 +376,7 @@ export function buildBaseSDL(): string {
     assignIncidentToTeam(id: ID!, teamId: ID!): Incident!
     assignIncidentToUser(id: ID!, userId: ID): Incident!
     addIncidentComment(id: ID!, text: String!, isInternal: Boolean): Comment!
-    addAffectedCI(incidentId: ID!, ciId: ID!, relationType: String): Incident!
+    addAffectedCI(incidentId: ID!, ciId: ID!): Incident!
     removeAffectedCI(incidentId: ID!, ciId: ID!): Incident!
 
     # Problems
@@ -388,7 +388,7 @@ export function buildBaseSDL(): string {
     # Collega/scollega ticket dello stesso tipo (RELATED_TO). entityType: incident|problem.
     linkRelatedTicket(entityType: String!, entityId: ID!, otherId: ID!): Boolean!
     unlinkRelatedTicket(entityType: String!, entityId: ID!, otherId: ID!): Boolean!
-    addCIToProblem(problemId: ID!, ciId: ID!, relationType: String): Problem!
+    addCIToProblem(problemId: ID!, ciId: ID!): Problem!
     removeCIFromProblem(problemId: ID!, ciId: ID!): Problem!
     assignProblemToTeam(problemId: ID!, teamId: ID!): Problem!
     assignProblemToUser(problemId: ID!, userId: ID!): Problem!
@@ -397,6 +397,9 @@ export function buildBaseSDL(): string {
 
     # Service Requests
     createServiceRequest(input: CreateServiceRequestInput!): ServiceRequest!
+    """Collega un CI alla richiesta (CM-8). Rifiutato se il tipo del CI è escluso per le richieste."""
+    addCIToServiceRequest(requestId: ID!, ciId: ID!): ServiceRequest!
+    removeCIFromServiceRequest(requestId: ID!, ciId: ID!): ServiceRequest!
     createServiceCatalogItem(input: CreateServiceCatalogItemInput!): ServiceCatalogItem!
     updateServiceCatalogItem(id: ID!, input: UpdateServiceCatalogItemInput!): ServiceCatalogItem!
     updateServiceRequest(id: ID!, input: UpdateServiceRequestInput!): ServiceRequest!
@@ -549,9 +552,8 @@ export function buildBaseSDL(): string {
     updateITILField(typeId: ID!, fieldId: ID!, input: ITILFieldInput!): CITypeDefinition!
     deleteITILField(typeId: ID!, fieldId: ID!): CITypeDefinition!
 
-    # ITIL-CI Relation Rules
-    createITILCIRelationRule(itilType: String!, ciType: String!, relationType: String!, direction: String!, description: String): ITILCIRelationRule!
-    deleteITILCIRelationRule(id: ID!): Boolean!
+    # Tipi di CI esclusi per tipo di ticket (CM-8): sostituisce l'elenco intero.
+    setTicketCIExclusions(ticketType: String!, ciTypes: [String!]!): TicketCIExclusions!
 
     # Discovery / Sync
     createSyncSource(input: CreateSyncSourceInput!): SyncSource!

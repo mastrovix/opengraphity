@@ -83,10 +83,12 @@ function ciTypeWithTenantScript(): CITypeWithDefinitions {
   })
 }
 
-function fakeSession(props: Record<string, unknown> | null = null, knownTeams: readonly string[] = ['team-1', 'team-2']) {
+function fakeSession(props: Record<string, unknown> | null = null, knownTeams: readonly string[] = ['team-1', 'team-2'], ciExists = true) {
   const run = vi.fn().mockImplementation(async (cypher: string, params?: Record<string, unknown>) => ({
     records: cypher.includes('RETURN properties(n) AS p')
       ? (props ? [{ get: () => props }] : [])
+      : cypher.includes('RETURN n.id AS id')
+        ? (ciExists ? [{ get: () => 'ci-1' }] : [])
       : cypher.includes('RETURN t.id AS teamId')
         ? (knownTeams.includes(String(params?.['teamId'])) ? [{ get: () => params?.['teamId'] }] : [])
         : [],
@@ -427,7 +429,7 @@ describe('buildDeleteMutation (B7 — Event Management)', () => {
 
     await expect(del(undefined, { id: 'ci-1' }, ctx)).resolves.toBe(true)
     expect(session.executeWrite).toHaveBeenCalledTimes(1)
-    const [cypher, params] = session.run.mock.calls[0]!
+    const [cypher, params] = session.run.mock.calls.find(([c]) => String(c).includes('DETACH DELETE'))!
     expect(cypher).toContain('MATCH (n:Server {id: $id, tenant_id: $tenantId})')
     expect(cypher).toContain('OPTIONAL MATCH (a:CIAlias {tenant_id: $tenantId})-[:ALIAS_OF]->(n)')
     expect(cypher).toMatch(/DETACH DELETE a, h, m, n/)
@@ -460,7 +462,7 @@ describe('buildDeleteMutation (B7 — Event Management)', () => {
     await expect(del(undefined, { id: 'ba-1' }, ctx)).resolves.toBe(true)
     // una sola scrittura: alias, mappa, cronologia e CI nello stesso statement
     expect(session.executeWrite).toHaveBeenCalledTimes(1)
-    const [cypher, params] = session.run.mock.calls[0]!
+    const [cypher, params] = session.run.mock.calls.find(([c]) => String(c).includes('DETACH DELETE'))!
     expect(cypher).toContain('OPTIONAL MATCH (n)-[:HAS_SERVICE_MAP]->(m:ServiceMap {tenant_id: $tenantId})')
     expect(cypher).toContain('OPTIONAL MATCH (m)-[:HAS_HEALTH_HISTORY]->(h:ServiceHealthEntry {tenant_id: $tenantId})')
     expect(cypher).toMatch(/DETACH DELETE a, h, m, n/)
@@ -475,7 +477,7 @@ describe('buildDeleteMutation (B7 — Event Management)', () => {
     const session = fakeSession()
     vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
     await buildDeleteMutation('Server')(undefined, { id: 'ci-1' }, ctx)
-    const [cypher] = session.run.mock.calls[0]!
+    const [cypher] = session.run.mock.calls.find(([c]) => String(c).includes('DETACH DELETE'))!
     // nessun MATCH sulle INCLUDES: la mappa non viene toccata, perde solo la relazione
     expect(cypher).not.toContain('INCLUDES')
     expect(cypher).toContain('OPTIONAL MATCH (n)-[:HAS_SERVICE_MAP]->(m:ServiceMap {tenant_id: $tenantId})')
@@ -496,3 +498,62 @@ describe('buildDeleteMutation (B7 — Event Management)', () => {
     await expect(buildDeleteMutation('Server')(undefined, { id: 'ci-2' }, ctx)).resolves.toBe(true)
   })
 })
+
+// ── Revisione del 15 set 2026 · CM-2 / CM-6 / CM-11 ──────────────────────────
+describe('updateCIRecord — la strada unica della modifica di un CI', () => {
+  function withGroups(ownerRequired: boolean) {
+    return ciType({
+      systemRelations: [
+        { id: 'sr1', name: 'ownerGroup', label: 'Owner Group', relationshipType: 'OWNED_BY', targetEntity: 'Team', required: ownerRequired, order: 1 },
+        { id: 'sr2', name: 'supportGroup', label: 'Support Group', relationshipType: 'SUPPORTED_BY', targetEntity: 'Team', required: false, order: 2 },
+      ],
+    } as Partial<CITypeWithDefinitions>)
+  }
+
+  it('CM-6: ownerGroupId nell\'input cambia davvero il gruppo, nella stessa transazione (prima: ignorato con «ok»)', async () => {
+    const session = fakeSession({ id: 'ci-1', name: 'srv', ip_address: '10.0.0.1' })
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    await buildUpdateMutation(withGroups(true), 'Server', mapCI)(undefined, { id: 'ci-1', input: { ownerGroupId: 'team-2' } }, ctx)
+    const cyphers = session.run.mock.calls.map(([c]) => String(c))
+    expect(cyphers.some((c) => c.includes('[old:OWNED_BY]->(:Team) DELETE old'))).toBe(true)
+    expect(cyphers.some((c) => c.includes('MERGE (n)-[:OWNED_BY]->(t)'))).toBe(true)
+    expect(session.executeWrite).toHaveBeenCalledTimes(1)
+  })
+
+  it('CM-6: togliere un gruppo obbligatorio è rifiutato prima di scrivere', async () => {
+    const session = fakeSession({ id: 'ci-1', name: 'srv', ip_address: '10.0.0.1' })
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    await expect(buildUpdateMutation(withGroups(true), 'Server', mapCI)(undefined, { id: 'ci-1', input: { ownerGroupId: null } }, ctx))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.ci.requiredGroup' } } })
+    expect(session.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('CM-6: un team che non esiste nel tenant → NOT_FOUND', async () => {
+    const session = fakeSession({ id: 'ci-1', name: 'srv', ip_address: '10.0.0.1' })
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    await expect(buildUpdateMutation(withGroups(false), 'Server', mapCI)(undefined, { id: 'ci-1', input: { supportGroupId: 'team-altrui' } }, ctx))
+      .rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
+  })
+
+  it('CM-2: rinominare aggiorna name_key e scrive l\'audit', async () => {
+    const { audit } = await import('../../../lib/audit.js')
+    const session = fakeSession({ id: 'ci-1', name: 'srv', ip_address: '10.0.0.1' })
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    await buildUpdateMutation(ciType(), 'Server', mapCI)(undefined, { id: 'ci-1', input: { name: 'SRV-Nuovo' } }, ctx)
+    const write = session.run.mock.calls.find(([c]) => String(c).includes('SET n += $updates'))!
+    expect(write[1].updates).toMatchObject({ name: 'SRV-Nuovo', name_key: 'srv-nuovo' })
+    expect(audit).toHaveBeenCalledWith(ctx, 'ci.updated', 'ConfigurationItem', 'ci-1')
+  })
+})
+
+describe('buildDeleteMutation — CM-11', () => {
+  it('un id che non esiste nel tenant → NOT_FOUND, niente cancellazione, niente audit', async () => {
+    const { audit } = await import('../../../lib/audit.js')
+    const session = fakeSession(null, undefined, false)
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    await expect(buildDeleteMutation('Server')(undefined, { id: 'nope' }, ctx)).rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
+    expect(session.executeWrite).not.toHaveBeenCalled()
+    expect(audit).not.toHaveBeenCalled()
+  })
+})
+

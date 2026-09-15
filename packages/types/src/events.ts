@@ -346,9 +346,19 @@ export const TICKET_CI_RELATIONSHIP = {
   incident: 'AFFECTED_BY',
   problem:  'AFFECTS',
   change:   'AFFECTS_CI',
+  /** Revisione del 15 set 2026 · CM-8: le richieste di servizio si collegano ai CI (prima non potevano). */
+  service_request: 'CONCERNS_CI',
 } as const
 
-/** Tutte e tre, per un pattern Cypher `-[:A|B|C]->`. */
+/** I tipi di ticket che si collegano ai CI, e per cui l'amministratore può escludere dei tipi di CI. */
+export type TicketCIType = keyof typeof TICKET_CI_RELATIONSHIP
+export const TICKET_CI_TYPES = Object.keys(TICKET_CI_RELATIONSHIP) as readonly TicketCIType[]
+
+export function isTicketCIType(value: unknown): value is TicketCIType {
+  return typeof value === 'string' && (TICKET_CI_TYPES as readonly string[]).includes(value)
+}
+
+/** Tutte, per un pattern Cypher `-[:A|B|C|D]->`. */
 export const TICKET_CI_RELATIONSHIPS_PATTERN = Object.values(TICKET_CI_RELATIONSHIP).join('|')
 
 export interface TicketTeamAssignedPayload {

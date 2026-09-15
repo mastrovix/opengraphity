@@ -21,6 +21,8 @@ export function serviceRequestSDL(): string {
     requestedBy: User
     assignee: User
     slaStatus: SLAStatusInfo
+    """I CI che la richiesta riguarda (revisione del 15 set 2026 · CM-8)."""
+    affectedCIs: [CIBase!]!
   }
 
   type ServiceCatalogItem {

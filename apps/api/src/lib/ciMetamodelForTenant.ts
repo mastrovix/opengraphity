@@ -173,6 +173,17 @@ export async function suppressionRelPatternForTenant(tenantId: string): Promise<
 }
 
 /**
+ * I tipi di relazione dei servizi nella forma del pattern Cypher (`A|B|C`), per
+ * le traversate che seguono la dipendenza tecnica: catene dei CI, what-if,
+ * impatto della change, applicazioni impattate dall'incident (revisione del
+ * 15 set 2026 · CM-3). Prima ognuna aveva la sua lista scritta nel codice, tre
+ * senza `INSTALLED_ON` e nessuna con le relazioni del cliente.
+ */
+export async function serviceRelPatternForTenant(tenantId: string): Promise<string> {
+  return (await serviceRelationshipTypesForTenant(tenantId)).join('|')
+}
+
+/**
  * Le relazioni del **blast radius** (`impact.ts`): quelle delle mappe più
  * `REALIZES` e `ENABLED_BY`, che legano il servizio alle sue applicazioni e le
  * capacità di business. UNA sorgente sola per mappe, soppressione e blast

@@ -16,7 +16,8 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { GET_PROBLEM, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
+import { GET_PROBLEM, GET_USERS, GET_TEAMS, GET_ALL_CIS } from '@/graphql/queries'
+import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import {
   UPDATE_PROBLEM,
   LINK_INCIDENT_TO_PROBLEM,
@@ -165,18 +166,12 @@ export function ProblemDetailPage() {
   const { data: usersData }        = useQuery<{ users: User[] }>(GET_USERS)
   const { data: teamsData }        = useQuery<{ teams: Team[] }>(GET_TEAMS)
 
-  const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { id: string; ciType: string; relationType: string; direction: string; description: string | null }[] }>(
-    GET_ITIL_CI_RELATION_RULES,
-    { variables: { itilType: 'problem' }, fetchPolicy: 'network-only' },
-  )
-
-  const ciTypesFilter = ciRulesData?.itilCIRelationRules?.length
-    ? [...new Set(ciRulesData.itilCIRelationRules.map(r => r.ciType.toLowerCase()))]
-    : undefined
+  // CM-8: i tipi di CI esclusi per questo tipo di ticket non si propongono (l'API li rifiuta comunque).
+  const { excluded: excludedCITypes } = useTicketCIExclusions('problem')
 
   const { data: ciSearchData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
-    variables: { search: ciSearch, limit: 20, ciTypes: ciTypesFilter },
-    skip: ciSearch.length < 2 || ciRulesData === undefined,
+    variables: { search: ciSearch, limit: 20, excludeCiTypes: excludedCITypes },
+    skip: ciSearch.length < 2 || excludedCITypes === undefined,
   })
 
   const [updateProblem] = useMutation(UPDATE_PROBLEM, {
@@ -255,7 +250,6 @@ export function ProblemDetailPage() {
   useSlaSettling(problem?.slaStatus, !!problem?.resolvedAt, { startPolling, stopPolling })
   const users           = usersData?.users ?? []
   const teams           = teamsData?.teams ?? []
-  const ciRules         = ciRulesData?.itilCIRelationRules ?? []
   const ciResults       = ciSearchData?.allCIs?.items ?? []
 
   function handleTransitionClick(tr: WorkflowTransition) {
@@ -531,9 +525,9 @@ export function ProblemDetailPage() {
           <AffectedCIList
             affectedCIs={problem.affectedCIs}
             ciResults={ciResults}
-            rules={ciRules}
+            excludedTypes={excludedCITypes ?? []}
             onSearchChange={setCiSearch}
-            onAddCI={(ciId, relationType) => void addCI({ variables: { problemId: problem.id, ciId, relationType } })}
+            onAddCI={(ciId) => void addCI({ variables: { problemId: problem.id, ciId } })}
             onRemoveCI={(ciId) => void removeCI({ variables: { problemId: problem.id, ciId } })}
           />
 

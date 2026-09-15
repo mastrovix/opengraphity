@@ -12,8 +12,8 @@
  * era una perdita di dati, silenziosa, recuperabile solo ricreando un tipo con
  * lo STESSO nome (perché l'etichetta si deriva dal nome).
  *
- * Non ci sono solo i CI: il nome di un tipo è citato per stringa da regole di
- * relazione ITIL, criteri dei gruppi dinamici, regole di visibilità e di
+ * Non ci sono solo i CI: il nome di un tipo è citato per stringa dalle
+ * esclusioni per tipo di ticket, criteri dei gruppi dinamici, regole di visibilità e di
  * obbligatorietà, regole di dominio, automazioni, widget e nodi dei report;
  * e le domande di assessment sono agganciate al tipo con una relazione, che il
  * `DETACH DELETE` portava via in silenzio.
@@ -44,7 +44,7 @@ export interface CITypeUsage {
  * andare** a togliere il riferimento.
  */
 const REFERENCE_LABELS: Readonly<Record<string, string>> = {
-  itil_relation_rules:    'ITIL relation rules (Settings → ITIL relations)',
+  ticket_ci_exclusions:   'ticket types that exclude it (Settings → ITIL Type Designer)',
   assessment_questions:   'assessment questions attached to the type (Settings → Assessment questions)',
   dynamic_ci_groups:      'dynamic groups that list it in their criteria',
   field_visibility_rules: 'field visibility rules',
@@ -63,7 +63,7 @@ const REFERENCE_LABELS: Readonly<Record<string, string>> = {
 export const CI_TYPE_USAGE_CYPHER = `
   RETURN
     COUNT { MATCH (ci {tenant_id: $tenantId}) WHERE $label IN labels(ci) }                                        AS cis,
-    COUNT { MATCH (r:ITILCIRelationRule {tenant_id: $tenantId}) WHERE r.ci_type = $name }                          AS itil_relation_rules,
+    COUNT { MATCH (x:TicketCIExclusion {tenant_id: $tenantId}) WHERE x.ci_type = $name }                           AS ticket_ci_exclusions,
     COUNT { MATCH (:CITypeDefinition {id: $typeId})-[:HAS_QUESTION]->(q:AssessmentQuestion {tenant_id: $tenantId}) } AS assessment_questions,
     COUNT { MATCH (g:DynamicCIGroup {tenant_id: $tenantId})
             WHERE g.criteria_ci_types IS NOT NULL

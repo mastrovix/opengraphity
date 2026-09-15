@@ -14,6 +14,11 @@ vi.mock('@opengraphity/neo4j', () => ({
   toNumber: (v: unknown) => Number(v ?? 0),
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+// CM-3: le relazioni delle traversate vengono dal tenant.
+vi.mock('../../../lib/ciMetamodelForTenant.js', () => ({
+  serviceRelPatternForTenant: vi.fn(async () => 'DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE|PROTEGGE'),
+  impactRelPatternForTenant:  vi.fn(async () => 'DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE|PROTEGGE|REALIZES|ENABLED_BY'),
+}))
 vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
 vi.mock('../../../lib/workflowHelpers.js', () => ({ getTerminalStepNames: vi.fn().mockResolvedValue(['closed']) }))
 

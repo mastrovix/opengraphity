@@ -23,8 +23,10 @@ import { Input, Textarea, Select, FieldLabel } from '@/components/ui/FormControl
 import { Pencil } from 'lucide-react'
 import { keycloak } from '@/lib/keycloak'
 import { colors } from '@/lib/tokens'
-import { GET_SERVICE_REQUEST, GET_ASSIGNABLE_USERS } from '@/graphql/queries'
-import { EXECUTE_WORKFLOW_TRANSITION, UPDATE_SERVICE_REQUEST, ASSIGN_SERVICE_REQUEST_TO_USER } from '@/graphql/mutations'
+import { GET_SERVICE_REQUEST, GET_ASSIGNABLE_USERS, GET_ALL_CIS } from '@/graphql/queries'
+import { EXECUTE_WORKFLOW_TRANSITION, UPDATE_SERVICE_REQUEST, ASSIGN_SERVICE_REQUEST_TO_USER, ADD_CI_TO_SERVICE_REQUEST, REMOVE_CI_FROM_SERVICE_REQUEST } from '@/graphql/mutations'
+import { AffectedCIList, type AffectedCIRef } from '@/components/ticket/AffectedCIList'
+import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { SlaBadge, type SlaStatusInfo } from '@/components/SlaBadge'
 import { useSlaSettling } from '@/hooks/useSlaSettling'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
@@ -47,6 +49,8 @@ interface ServiceRequest {
   workflowInstance: { id: string; currentStep: string; status: string } | null
   availableTransitions: WorkflowTransition[]
   slaStatus: SlaStatusInfo | null
+  /** I CI che la richiesta riguarda (revisione del 15 set 2026 · CM-8). */
+  affectedCIs: AffectedCIRef[]
 }
 
 /**
@@ -88,6 +92,24 @@ export function ServiceRequestDetailPage() {
       setTransitionModal(null); setTransitionNotes('')
       await refetch()
     },
+    onError: (e) => showError(e),
+  })
+
+  // CM-8 (revisione del 15 set 2026): i CI della richiesta. Prima una richiesta
+  // non poteva dire di quale CI parlava; i tipi esclusi per le richieste non si
+  // propongono (e l'API li rifiuta comunque).
+  const [ciSearch, setCiSearch] = useState('')
+  const { excluded: excludedCITypes } = useTicketCIExclusions('service_request')
+  const { data: ciSearchData } = useQuery<{ allCIs: { items: AffectedCIRef[] } }>(GET_ALL_CIS, {
+    variables: { search: ciSearch, limit: 20, excludeCiTypes: excludedCITypes },
+    skip: ciSearch.length < 2 || excludedCITypes === undefined,
+  })
+  const [addCI] = useMutation(ADD_CI_TO_SERVICE_REQUEST, {
+    onCompleted: () => { toast.success(t('toast.request.ciAdded')); setCiSearch(''); void refetch() },
+    onError: (e) => showError(e),
+  })
+  const [removeCI] = useMutation(REMOVE_CI_FROM_SERVICE_REQUEST, {
+    onCompleted: () => { toast.success(t('toast.request.ciRemoved')); void refetch() },
     onError: (e) => showError(e),
   })
 
@@ -183,6 +205,18 @@ export function ServiceRequestDetailPage() {
           {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
           <div style={{ marginBottom: 16 }}>
             <CustomFieldsCard entityType="service_request" ticketId={sr.id} fields={sr.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
+          </div>
+
+          {/* CI della richiesta (CM-8) */}
+          <div style={{ marginBottom: 16 }}>
+            <AffectedCIList
+              affectedCIs={sr.affectedCIs ?? []}
+              ciResults={ciSearchData?.allCIs?.items ?? []}
+              excludedTypes={excludedCITypes ?? []}
+              onSearchChange={setCiSearch}
+              onAddCI={(ciId) => void addCI({ variables: { requestId: sr.id, ciId } })}
+              onRemoveCI={(ciId) => void removeCI({ variables: { requestId: sr.id, ciId } })}
+            />
           </div>
 
           {/* Allegati */}

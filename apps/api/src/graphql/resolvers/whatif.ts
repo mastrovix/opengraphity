@@ -4,6 +4,7 @@ import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import { getTerminalStepNames } from '../../lib/workflowHelpers.js'
+import { serviceRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -58,10 +59,12 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
     targetEnv = tgt.env
     targetStatus = tgt.status
 
-    // Traversal — single query, deduplicated by CI, shortest path only
+    // Traversal — single query, deduplicated by CI, shortest path only.
+    // CM-3: le relazioni dei servizi del tenant, non una lista scritta qui.
+    const relPattern = await serviceRelPatternForTenant(tenantId)
     impactedRows = await runQuery<Row>(s1, `
       MATCH (target {id: $ciId, tenant_id: $tenantId})
-      MATCH path = (impacted)-[:DEPENDS_ON|HOSTED_ON|USES_CERTIFICATE*1..${depth}]->(target)
+      MATCH path = (impacted)-[:${relPattern}*1..${depth}]->(target)
       WHERE impacted.tenant_id = $tenantId AND impacted.id <> $ciId
       WITH impacted, path, length(path) AS dist
       ORDER BY dist ASC

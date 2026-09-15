@@ -41,8 +41,8 @@ export const CREATE_PROBLEM = gql`
 `
 
 export const ADD_CI_TO_PROBLEM = gql`
-  mutation AddCIToProblem($problemId: ID!, $ciId: ID!, $relationType: String) {
-    addCIToProblem(problemId: $problemId, ciId: $ciId, relationType: $relationType) {
+  mutation AddCIToProblem($problemId: ID!, $ciId: ID!) {
+    addCIToProblem(problemId: $problemId, ciId: $ciId) {
       id affectedCIs { id name type environment status }
     }
   }

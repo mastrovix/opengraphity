@@ -24,7 +24,7 @@ vi.mock('@/components/topology/TopologyGraph', () => ({
 }))
 
 const node = (over: Partial<TopologyNode> & { id: string; name: string }): TopologyNode => ({
-  type: 'server', status: 'active', environment: 'production', ownerGroup: null, incidentCount: 0, changeCount: 0, health: null, ...over,
+  type: 'server', status: 'active', inMaintenance: false, environment: 'production', ownerGroup: null, incidentCount: 0, changeCount: 0, health: null, ...over,
 })
 const NODES: TopologyNode[] = [
   node({ id: 'ci-1', name: 'db-01', health: 'down', incidentCount: 1 }),

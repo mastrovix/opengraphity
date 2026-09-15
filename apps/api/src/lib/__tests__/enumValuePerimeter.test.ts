@@ -18,7 +18,7 @@
  * assolto `risk_band: []` comunque, e `risk_band` era il critico.
  */
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   DOMAIN_VALUE_BINDINGS, CONFIG_VALUE_SITES, CONDITION_FIELD_VOCABULARY, conditionFieldVocabulary,
@@ -166,5 +166,73 @@ describe('conditionFieldVocabulary', () => {
     // regola, non una priorità ITSM. Il campo DENTRO le condizioni invece sì.
     expect(conditionFieldVocabulary('name', 'incident')).toBeNull()
     expect(conditionFieldVocabulary('assigned_to', 'incident')).toBeNull()
+  })
+})
+
+/**
+ * OGNI VOCABOLARIO CHE IL CODICE VALIDA HA UNA SEDE (revisione del 15 set 2026 · CM-7).
+ *
+ * Il guardiano qui sopra partiva dalle matrici. Ma un vocabolario entra nel
+ * prodotto anche da `assertDomainValue`: le categorie della Knowledge Base, il
+ * tipo dei team e i tipi di change pre-approvati erano validati contro il
+ * Dizionario e fuori dal perimetro — togliere `network` dalle categorie KB passava
+ * contando zero usi con un articolo che lo portava. Qui si parte dal codice: ogni
+ * vocabolario che un sorgente valida o legge deve avere una sede, o essere
+ * dichiarato legato a un campo del metamodello (dove `USES_ENUM` lo trova da sé).
+ */
+describe('ogni vocabolario validato dal codice ha una sede', () => {
+  /**
+   * I vocabolari agganciati con `USES_ENUM` a un campo spedito col prodotto:
+   * `enumValueBindings` li trova leggendo il metamodello, senza tabella.
+   * Verificati sul grafo vivo il 15 set 2026 (incident.category, change.type,
+   * __base__.status, __base__.environment, incident.impact, incident.priority,
+   * incident.severity, business_application.criticality, incident.urgency).
+   */
+  const LEGATI_DAL_METAMODELLO = new Set([
+    'category', 'change_type', 'ci_status', 'environment', 'impact', 'priority', 'severity', 'service_criticality', 'urgency',
+  ])
+
+  const COSTANTI: Record<string, string> = {
+    CI_STATUS_VOCABULARY: 'ci_status', PORTAL_SEVERITY_VOCABULARY: 'severity', TEAM_TYPE_VOCABULARY: 'team_type',
+  }
+
+  function sorgenti(dir: string): string[] {
+    const out: string[] = []
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name)
+      if (e.isDirectory()) { if (e.name !== '__tests__' && e.name !== 'migrations') out.push(...sorgenti(p)) }
+      else if (e.name.endsWith('.ts') && !e.name.endsWith('.d.ts')) out.push(p)
+    }
+    return out
+  }
+
+  const validati = new Map<string, string[]>()
+  const RE = /\b(?:assertDomainValue|isDomainValue|domainVocabulary|domainVocabularyDefault|loadVocabularyEntries)\(\s*[^,()]+,\s*(?:'([a-z_]+)'|([A-Z_]+))/g
+  for (const file of sorgenti(SRC)) {
+    const text = readFileSync(file, 'utf8')
+    for (const m of text.matchAll(RE)) {
+      const name = m[1] ?? COSTANTI[m[2] ?? '']
+      if (!name) continue
+      validati.set(name, [...(validati.get(name) ?? []), file.slice(SRC.length + 1)])
+    }
+  }
+
+  it('la lettura trova i vocabolari (se questo cade, il guardiano è finto)', () => {
+    for (const v of ['kb_category', 'team_type', 'change_type', 'risk_band']) expect(validati.has(v), v).toBe(true)
+  })
+
+  it.each([...validati.keys()].sort())('«%s» ha una sede', (vocabolario) => {
+    const conRecord  = (DOMAIN_VALUE_BINDINGS[vocabolario]?.length ?? 0) > 0
+    const inConfig   = CONFIG_VALUE_SITES.some((s) => s.vocabulary === vocabolario)
+    const metamodello = LEGATI_DAL_METAMODELLO.has(vocabolario)
+    expect(conRecord || inConfig || metamodello,
+      `«${vocabolario}» è validato in ${(validati.get(vocabolario) ?? []).join(', ')} ma non dice dove vivono i suoi valori: `
+      + 'aggiungi la proprietà a DOMAIN_VALUE_BINDINGS o la configurazione a CONFIG_VALUE_SITES.').toBe(true)
+  })
+
+  it('le tre sedi che mancavano ci sono', () => {
+    expect(DOMAIN_VALUE_BINDINGS['kb_category']).toContainEqual({ label: 'KBArticle', property: 'category' })
+    expect(DOMAIN_VALUE_BINDINGS['team_type']).toContainEqual({ label: 'Team', property: 'type' })
+    expect(CONFIG_VALUE_SITES.find((s) => s.property === 'pre_approved_change_types')).toMatchObject({ label: 'Tenant', shape: 'string_list', vocabulary: 'change_type' })
   })
 })

@@ -66,6 +66,26 @@ const TTL = 5 * 60 * 1000  // 5 minuti
 /** Costruzioni in corso, per tenant: due richieste insieme non generano due schemi. */
 const inFlight = new Map<string, Promise<SchemaCacheEntry>>()
 
+/**
+ * La generazione del metamodello di ogni tenant, in questo processo
+ * (revisione del 15 set 2026 · CM-10). L'invalidazione la incrementa; una
+ * costruzione partita prima (metamodello già letto) al termine NON entra in
+ * cache, altrimenti il tenant resterebbe con lo schema vecchio fino al TTL di
+ * 5 minuti. Chi l'ha chiesta riceve comunque il suo schema: la richiesta
+ * successiva ne costruisce uno nuovo.
+ */
+const generation = new Map<string, number>()
+const generationOf = (tenantId: string): number => generation.get(tenantId) ?? 0
+
+function store(tenantId: string, startedAt: number, entry: SchemaCacheEntry): void {
+  if (generationOf(tenantId) !== startedAt) {
+    logger.info({ tenantId }, 'Schema costruito su un metamodello nel frattempo cambiato: non entra in cache')
+    return
+  }
+  touch(tenantId, entry)
+  evictIfNeeded()
+}
+
 function touch(tenantId: string, entry: SchemaCacheEntry): void {
   cache.delete(tenantId)
   cache.set(tenantId, entry)
@@ -99,6 +119,7 @@ function evictIfNeeded(): void {
 // Il log dice la VERITÀ: prima affermava «verrà rigenerato» anche quando in
 // cache non c'era nessuna voce per quel tenant (ed era il caso normale).
 registerSchemaInvalidator((tenantId: string) => {
+  generation.set(tenantId, generationOf(tenantId) + 1)
   const had = cache.delete(tenantId)
   inFlight.delete(tenantId)
   graphqlSchemaCacheEntries.set({}, cache.size)
@@ -136,6 +157,7 @@ export async function getSchemaState(tenantId: string): Promise<{ schema: GraphQ
 
 async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
   logger.info({ tenantId }, 'Generando schema GraphQL')
+  const startedAt = generationOf(tenantId)
 
   // IL CARICAMENTO DEL METAMODELLO STA DENTRO LA RETE (terza revisione · G5b).
   // `loadMetamodel` e `loadITILTypes` erano FUORI dal `try` che degrada, e
@@ -169,8 +191,7 @@ async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
       schema, generatedAt: Date.now(), tenantId, degraded: true,
       reason: `il metamodello del cliente non e leggibile: ${reason}`,
     }
-    touch(tenantId, entry)
-    evictIfNeeded()
+    store(tenantId, startedAt, entry)
     return entry
   }
 
@@ -186,8 +207,7 @@ async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
     registerCITypes(tenantId, ciTypes)
     graphqlSchemaBuildsTotal.inc({})
     const entry: SchemaCacheEntry = { schema, generatedAt: Date.now(), tenantId, degraded: false, reason: null }
-    touch(tenantId, entry)
-    evictIfNeeded()
+    store(tenantId, startedAt, entry)
     logger.info({ tenantId, ciTypes: ciTypes.length, itilTypes: itilTypes.length }, 'Schema generato')
     return entry
   } catch (e) {
@@ -242,8 +262,7 @@ async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
     registerCITypes(tenantId, excluded.length ? kept : ciTypes.filter((t) => t.scope !== 'tenant'))
     graphqlSchemaBuildsTotal.inc({})
     const entry: SchemaCacheEntry = { schema, generatedAt: Date.now(), tenantId, degraded: true, reason }
-    touch(tenantId, entry)
-    evictIfNeeded()
+    store(tenantId, startedAt, entry)
     return entry
   }
 }

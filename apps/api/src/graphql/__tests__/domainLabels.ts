@@ -27,7 +27,7 @@ export const DOMAIN_LABELS = [
   // il punto cieco dichiarato di D-18.
   'EnumTypeDefinition', 'CITypeDefinition',
   'CIFieldDefinition', 'CIRelationDefinition', 'CISystemRelationDefinition',
-  'FieldVisibilityRule', 'FieldRequirementRule', 'ITILCIRelationRule', 'ServiceCatalogItem', 'AssessmentQuestion',
+  'FieldVisibilityRule', 'FieldRequirementRule', 'TicketCIExclusion', 'ServiceCatalogItem', 'AssessmentQuestion',
   'Event', 'CIAlias', 'EventHistoryEntry',
   'ServiceMap', 'ServiceHealthEntry',
 ] as const

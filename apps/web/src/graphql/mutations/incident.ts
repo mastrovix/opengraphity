@@ -53,8 +53,8 @@ export const ADD_INCIDENT_COMMENT = gql`
 `
 
 export const ADD_AFFECTED_CI = gql`
-  mutation AddAffectedCI($incidentId: ID!, $ciId: ID!, $relationType: String) {
-    addAffectedCI(incidentId: $incidentId, ciId: $ciId, relationType: $relationType) {
+  mutation AddAffectedCI($incidentId: ID!, $ciId: ID!) {
+    addAffectedCI(incidentId: $incidentId, ciId: $ciId) {
       id
       affectedCIs { id name type status environment }
     }
@@ -88,6 +88,25 @@ export const ASSIGN_SERVICE_REQUEST_TO_USER = gql`
   mutation AssignServiceRequestToUser($id: ID!, $userId: ID) {
     assignServiceRequestToUser(id: $id, userId: $userId) {
       id assignee { id name email }
+    }
+  }
+`
+
+/** I CI di una richiesta (revisione del 15 set 2026 · CM-8). */
+export const ADD_CI_TO_SERVICE_REQUEST = gql`
+  mutation AddCIToServiceRequest($requestId: ID!, $ciId: ID!) {
+    addCIToServiceRequest(requestId: $requestId, ciId: $ciId) {
+      id
+      affectedCIs { id name type status environment }
+    }
+  }
+`
+
+export const REMOVE_CI_FROM_SERVICE_REQUEST = gql`
+  mutation RemoveCIFromServiceRequest($requestId: ID!, $ciId: ID!) {
+    removeCIFromServiceRequest(requestId: $requestId, ciId: $ciId) {
+      id
+      affectedCIs { id name type status environment }
     }
   }
 `

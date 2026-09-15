@@ -80,17 +80,17 @@ The Apollo Sandbox is available at `http://localhost:4000/graphql` in developmen
 | Query | Description |
 |-------|-------------|
 | `serviceRequests(status, priority, limit, offset, filters)` | List service requests |
-| `serviceRequest(id)` | Get a single service request |
+| `serviceRequest(id)` | Get a single service request, with `affectedCIs` (the CIs it concerns) |
 
 ### CMDB
 
 | Query | Description |
 |-------|-------------|
-| `allCIs(limit, offset, type, environment, status, search, ...)` | All configuration items |
+| `allCIs(limit, offset, type, environment, status, search, ciTypes, excludeCiTypes, ...)` | All configuration items. `ciTypes` keeps only those types, `excludeCiTypes` removes them (type name or label); an unknown type is an error |
 | `ciById(id)` | Single CI |
-| `blastRadius(id)` | Downstream impact of a CI |
-| `ciIncidents(ciId)` | Incidents linked to a CI |
-| `ciChanges(ciId)` | Changes linked to a CI |
+| `blastRadius(id)` | Downstream impact of a CI, along the tenant's impact relationships (the shipped ones plus those its own CI types declare) |
+| `ciIncidents(ciId)` / `ciProblems(ciId)` / `ciChanges(ciId)` / `ciServiceRequests(ciId)` | Tickets linked to a CI |
+| `ticketCIExclusions(ticketType)` | CI types that a ticket type (`incident`, `problem`, `change`, `service_request`) may not involve; without the argument, all four |
 | `ciTypes` | CI type definitions **visible to the caller's tenant**: the shared ones (`tenant_id = 'system'`, shipped with the product and read-only) plus the tenant's own. A type another customer created is never returned. See `docs/CUSTOMIZATION.md` |
 | `topology(types, environment, status, selectedCiId, maxHops)` | Topology graph data |
 
@@ -228,9 +228,15 @@ Every channel validates the same way: the field must exist for the ticket type, 
 
 | Mutation | Description |
 |----------|-------------|
-| `assignCIOwner(ciId, teamId)` | Set owning team |
-| `assignCISupportGroup(ciId, teamId)` | Set support team |
+| `assignCIOwner(ciId, teamId)` | Set owning team; `teamId: null` removes it, refused when the CI type requires it |
+| `assignCISupportGroup(ciId, teamId)` | Set support team (same rule) |
 | `createCI(input)` | Create configuration item (dynamic, per type) |
+| `update<Type>(id, input)` / `updateCIFields(id, input)` | Update a CI. Both go through the same write: dictionary values, required fields and scripts are validated, the name key used by alarm matching follows the name, `ownerGroupId`/`supportGroupId` are applied, and the change is audited. `updateCIFields.customFields` accepts only fields of the CI's type, and text values take the field's type |
+| `addCIRelationship` / `removeCIRelationship` | Link / unlink two CIs. A relationship defined in the CI type designer can be created as long as one of the two types declares it (target: a type, or `any`); removing a link does not depend on its definition and fails if the link does not exist |
+| `setTicketCIExclusions(ticketType, ciTypes)` | Replace the excluded CI types of a ticket type (`config.metamodel`). An excluded CI cannot be linked to that ticket type at creation or later, from any channel — monitoring included |
+| `addCIToServiceRequest(requestId, ciId)` / `removeCIFromServiceRequest(requestId, ciId)` | The CIs a service request concerns (`request.write`) |
+
+Removed: `itilCIRelationRules`, `allITILCIRelationRules`, `createITILCIRelationRule`, `deleteITILCIRelationRule` (the «allowed CI types» rules, replaced by the exclusions above), and the `relationType` argument of `addAffectedCI` / `addCIToProblem`. In the metamodel designer, removing a relationship still used by links between CIs, or removing a field, now respectively fails with the count or deletes the field's values from the CIs.
 
 ### Monitored services
 

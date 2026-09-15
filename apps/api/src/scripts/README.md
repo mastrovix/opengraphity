@@ -65,7 +65,6 @@ migrazioni dell'API: per fare tutto in un colpo usare
 | `seed-enum-types.ts` | Enum di sistema del tenant. | `exec tsx … --tenant <slug>` | no |
 | `seed-notification-rules.ts` | Regole di notifica di default. | `exec tsx … --slug <slug>` | no |
 | `seed-dashboards.ts` | 3 dashboard di ruolo. | `exec tsx … --tenant-id <slug>` | no |
-| `seed-itil-ci-rules.ts` | Regole di relazione ITIL↔CI. | `exec tsx … --tenant-id <slug>` | no |
 | `seed:field-rules` | Regole visibilità/obbligatorietà campi. | `seed:field-rules -- --tenant=<slug>` | no |
 | `seed:assessment-questions` | Domande di assessment change. | `seed:assessment-questions` | no |
 | `seed:automation` | SLA policy, trigger e business rule di esempio. | `seed:automation -- --tenant=<slug>` | no |

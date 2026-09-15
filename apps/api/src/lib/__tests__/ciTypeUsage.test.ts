@@ -11,7 +11,7 @@ vi.mock('@opengraphity/neo4j', () => ({ runQueryOne }))
 const { loadCITypeUsage, describeCITypeUsage, CI_TYPE_USAGE_CYPHER } = await import('../ciTypeUsage.js')
 
 const ZERO = {
-  cis: 0, itil_relation_rules: 0, assessment_questions: 0, dynamic_ci_groups: 0,
+  cis: 0, ticket_ci_exclusions: 0, assessment_questions: 0, dynamic_ci_groups: 0,
   field_visibility_rules: 0, field_requirement_rules: 0, business_rules: 0,
   auto_triggers: 0, custom_widgets: 0, report_nodes: 0,
 }
@@ -38,14 +38,14 @@ describe('loadCITypeUsage', () => {
   })
 
   it('conta i CI e SOLO i riferimenti che esistono, in ordine di dichiarazione', async () => {
-    runQueryOne.mockResolvedValue({ ...ZERO, cis: 12, itil_relation_rules: 2, custom_widgets: 1 })
+    runQueryOne.mockResolvedValue({ ...ZERO, cis: 12, ticket_ci_exclusions: 2, custom_widgets: 1 })
     const usage = await loadCITypeUsage({} as never, 'c-two', 'ct-1', 'bilanciatore', 'Bilanciatore')
     expect(usage.cis).toBe(12)
     expect(usage.references).toEqual([
-      { kind: 'itil_relation_rules', count: 2 },
+      { kind: 'ticket_ci_exclusions', count: 2 },
       { kind: 'custom_widgets', count: 1 },
     ])
-    expect(describeCITypeUsage(usage)).toBe('ITIL relation rules (Settings → ITIL relations): 2; dashboard widgets: 1')
+    expect(describeCITypeUsage(usage)).toBe('ticket types that exclude it (Settings → ITIL Type Designer): 2; dashboard widgets: 1')
   })
 
   it('nessuna riga o un conteggio non numerico → errore (mai «non è usato» per difetto)', async () => {

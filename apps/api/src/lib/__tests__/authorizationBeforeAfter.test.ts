@@ -41,6 +41,19 @@ const DECLARED: Record<string, { before: string[]; after: string[]; why: string 
   'Query.internalMessages': { before: STAFF, after: WRITERS, why: 'requireAgent already refused viewer' },
 }
 
+/**
+ * Le operazioni della fotografia che non esistono più, con il perché. La
+ * fotografia resta com'è (è la storia); queste non si confrontano, ma si
+ * pretende che siano davvero sparite dalla policy.
+ */
+const RETIRED: Record<string, string> = {
+  // Revisione del 15 set 2026 · CM-8: le regole «tipi ammessi» sono diventate esclusioni per tipo di ticket.
+  'Query.itilCIRelationRules':          'replaced by Query.ticketCIExclusions',
+  'Query.allITILCIRelationRules':       'replaced by Query.ticketCIExclusions',
+  'Mutation.createITILCIRelationRule':  'replaced by Mutation.setTicketCIExclusions',
+  'Mutation.deleteITILCIRelationRule':  'replaced by Mutation.setTicketCIExclusions',
+}
+
 describe('ruoli di fabbrica = ruoli di prima', () => {
   it('la fotografia copre tutte le operazioni di allora', () => {
     expect(Object.keys(BEFORE).length).toBe(410)
@@ -48,6 +61,10 @@ describe('ruoli di fabbrica = ruoli di prima', () => {
 
   it.each(Object.entries(BEFORE))('%s', (op, before) => {
     const [kind, field] = op.split('.') as [RootKind, string]
+    if (RETIRED[op]) {
+      expect(() => allowedRoles(kind, field), `${op} è dichiarata ritirata (${RETIRED[op]}) ma la policy la conosce ancora`).toThrow(/no permission rule/)
+      return
+    }
     const after = allowedRoles(kind, field)
     const declared = DECLARED[op]
     if (declared) {

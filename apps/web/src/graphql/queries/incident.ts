@@ -94,6 +94,7 @@ export const GET_SERVICE_REQUEST = gql`
       availableTransitions { toStep label labels { language label } requiresInput inputField }
       slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
       customFields { ...CustomFieldValueFields }
+      affectedCIs { id name type status environment }
     }
   }
   ${CUSTOM_FIELD_VALUE_FIELDS}

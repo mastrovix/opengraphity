@@ -15,7 +15,7 @@ import * as incidentService from '../../services/incidentService.js'
 import { audit } from '../../lib/audit.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
-import { ciLabelsForTypeNames } from '../../lib/ciTypeNameToLabel.js'
+import { assertCIsLinkable } from '../../lib/ticketCIExclusions.js'
 import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
 import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
 import { commentAuthorKind, commentAuthorLabel, commentTrace } from '../../lib/commentAuthor.js'
@@ -24,6 +24,7 @@ import { notifyCommentAudience } from './comments.js'
 import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { listPage } from '../../lib/listLimit.js'
+import { serviceRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
 export type { IncidentEventPayload } from '../../services/incidentService.js'
 
 // ── Mapper ───────────────────────────────────────────────────────────────────
@@ -242,34 +243,28 @@ async function assignIncidentToUser(
 
 async function addAffectedCI(
   _: unknown,
-  args: { incidentId: string; ciId: string; relationType?: string | null },
+  args: { incidentId: string; ciId: string },
   ctx: GraphQLContext,
 ) {
-  const { getAllowedCILabels } = await import('./itilRelations.js')
-  const allowedTypes = await getAllowedCILabels(ctx.tenantId, 'incident')
-  const ciWhereClause = allowedTypes.length > 0
-    ? `ANY(label IN labels(ci) WHERE label IN $allowedLabels)`
-    : await ciLabelPredicateForTenant('ci', ctx.tenantId)
-  // Le etichette delle regole ITIL vengono dal metamodello, non da una
-  // PascalCase fatta a mano: un tipo la cui etichetta non segue quella
-  // convenzione dava un `MERGE` che non scriveva niente, senza errore.
-  const allowedLabels = await ciLabelsForTypeNames(ctx.tenantId, allowedTypes, 'ITIL incident→CI rules', 'incidentRules')
+  // CM-8: i tipi di CI esclusi per gli incident non si collegano, qui come
+  // alla creazione (prima valevano solo qui, e come elenco degli ammessi).
+  await assertCIsLinkable(ctx.tenantId, 'incident', [args.ciId])
+  const ciWhereClause = await ciLabelPredicateForTenant('ci', ctx.tenantId)
 
   return withSession(async (session) => {
     // Righe CONTATE come in `createIncident` (C-2): se il CI non esiste in
-    // questo cliente, o non è un CI ammesso dalle regole ITIL, il MERGE non
-    // scrive niente — e prima la mutation rispondeva con l'incident intatto,
-    // come se il collegamento ci fosse.
+    // questo cliente il MERGE non scrive niente — e prima la mutation
+    // rispondeva con l'incident intatto, come se il collegamento ci fosse.
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
       WHERE ${ciWhereClause}
       MERGE (i)-[r:AFFECTED_BY]->(ci)
-      SET i.updated_at = $now, r.relation_type = $relationType
+      SET i.updated_at = $now
       RETURN count(r) AS linked
-    `, { incidentId: args.incidentId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString(), allowedLabels, relationType: args.relationType ?? null }))
+    `, { incidentId: args.incidentId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
     if (Number(res.records[0]?.get('linked') ?? 0) === 0) {
-      throw new ValidationError(`CI ${args.ciId} not linked to the incident: it does not exist in this tenant, or its type is not allowed by the ITIL rules${allowedTypes.length > 0 ? ` (allowed: ${allowedTypes.join(', ')})` : ''}`, { key: allowedTypes.length > 0 ? 'errors.ciLink.incidentTyped' : 'errors.ciLink.incident', params: { ci: args.ciId, allowed: allowedTypes.join(', ') } })
+      throw new ValidationError(`CI ${args.ciId} not linked to the incident: it does not exist in this tenant`, { key: 'errors.ciLink.incident', params: { ci: args.ciId } })
     }
     const r = await session.executeRead((tx) => tx.run(
       `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
@@ -413,11 +408,14 @@ async function incidentImpactedApplications(
     // il percorso più breve verso un CI colpito; `path` è la catena di CI
     // ORDINATA dal CI colpito → … → applicazione (direzione di propagazione
     // dell'impatto), pronta da disegnare come grafo lato UI.
+    // CM-3: le relazioni dei servizi del tenant (anche INSTALLED_ON,
+    // USES_CERTIFICATE e quelle del cliente), non due scritte qui.
+    const relPattern = await serviceRelPatternForTenant(ctx.tenantId)
     const cypher = `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:AFFECTED_BY]->(affected)
       WHERE affected.tenant_id = $tenantId
       MATCH (app) WHERE app.tenant_id = $tenantId AND 'Application' IN labels(app)
-      MATCH p = shortestPath( (app)-[:DEPENDS_ON|HOSTED_ON*0..5]->(affected) )
+      MATCH p = shortestPath( (app)-[:${relPattern}*0..5]->(affected) )
       WITH app, affected, p
       ORDER BY length(p) ASC
       WITH app, head(collect({affected: affected, p: p})) AS best

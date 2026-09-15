@@ -18,6 +18,9 @@ vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undef
 vi.mock('../../../lib/chainCalculator.js', () => ({ calculateChain: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) } }))
 vi.mock('../../../services/serviceImpact/sync.js', () => ({ notifyCIGraphChanged: vi.fn().mockResolvedValue(1) }))
+vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:Server)`),
+}))
 
 const { ciRelationshipResolvers } = await import('../ciRelationships.js')
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
@@ -38,7 +41,7 @@ beforeEach(() => {
     if (cypher.includes('RETURN labels(s) AS sLabels')) return { sLabels: ['Application'], tLabels: ['Server'] }
     if (cypher.includes('hasCycle')) return { hasCycle: false }
     if (cypher.includes('AS declared')) return { declared: true }
-    return { deleted: true }
+    return { deleted: 1 }
   }) as never)
 })
 
@@ -85,5 +88,22 @@ describe('addCIRelationship / removeCIRelationship: notifica ai servizi monitora
     // Visto dal vivo: `RETURN outgoing + count(inc)` è rifiutato da Neo4j
     // (aggregazione mescolata a una chiave di raggruppamento implicita).
     expect(cypher).toMatch(/WITH outgoing, count\(inc\) AS incoming\s+RETURN outgoing \+ incoming > 0 AS declared/)
+  })
+
+  // ── Revisione del 15 set 2026 · CM-4 / CM-11 ─────────────────────────────
+  it('CM-4: un arco si toglie anche se la sua definizione non c\'è più (prima «Invalid relation type», per sempre)', async () => {
+    // Nessuna definizione dichiara PROTECTS: la rimozione non le legge nemmeno.
+    expect(await ciRelationshipResolvers.Mutation.removeCIRelationship(null, { sourceId: 'fw-1', targetId: 'srv-9', relationType: 'PROTECTS' }, ctx)).toBe(true)
+    expect(runQuery).not.toHaveBeenCalled()
+    const del = vi.mocked(runQueryOne).mock.calls.find((c) => String(c[1]).includes('DELETE r'))!
+    expect(String(del[1])).toContain('a:Application OR a:Server')
+    expect(String(del[1])).toContain('b:Application OR b:Server')
+  })
+
+  it('CM-11: togliere un arco che non c\'è → NOT_FOUND, niente notifica né audit', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ deleted: 0 } as never)
+    await expect(ciRelationshipResolvers.Mutation.removeCIRelationship(null, { sourceId: 'a', targetId: 'b', relationType: 'DEPENDS_ON' }, ctx))
+      .rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
+    expect(notifyCIGraphChanged).not.toHaveBeenCalled()
   })
 })

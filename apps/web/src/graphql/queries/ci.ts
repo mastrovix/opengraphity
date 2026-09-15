@@ -1,8 +1,8 @@
 import { gql } from '@apollo/client'
 
 export const GET_ALL_CIS = gql`
-  query GetAllCIs($limit: Int, $offset: Int, $type: String, $environment: String, $status: String, $search: String, $ciTypes: [String], $filters: String, $sortField: String, $sortDirection: String) {
-    allCIs(limit: $limit, offset: $offset, type: $type, environment: $environment, status: $status, search: $search, ciTypes: $ciTypes, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
+  query GetAllCIs($limit: Int, $offset: Int, $type: String, $environment: String, $status: String, $search: String, $ciTypes: [String], $excludeCiTypes: [String], $filters: String, $sortField: String, $sortDirection: String) {
+    allCIs(limit: $limit, offset: $offset, type: $type, environment: $environment, status: $status, search: $search, ciTypes: $ciTypes, excludeCiTypes: $excludeCiTypes, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       total
       items {
         id name type status environment description createdAt health
@@ -41,6 +41,16 @@ export const GET_CI_CHANGES = gql`
 export const GET_CI_PROBLEMS = gql`
   query GetCIProblems($ciId: ID!) {
     ciProblems(ciId: $ciId) {
+      id number title priority status
+      createdAt updatedAt
+    }
+  }
+`
+
+/** Le richieste che riguardano il CI (revisione del 15 set 2026 · CM-8). */
+export const GET_CI_SERVICE_REQUESTS = gql`
+  query GetCIServiceRequests($ciId: ID!) {
+    ciServiceRequests(ciId: $ciId) {
       id number title priority status
       createdAt updatedAt
     }
@@ -117,18 +127,11 @@ export const GET_ITIL_TYPES = gql`
   }
 `
 
-export const GET_ITIL_CI_RELATION_RULES = gql`
-  query GetITILCIRelationRules($itilType: String!) {
-    itilCIRelationRules(itilType: $itilType) {
-      id itilType ciType relationType direction description
-    }
-  }
-`
-
-export const GET_ALL_ITIL_CI_RELATION_RULES = gql`
-  query GetAllITILCIRelationRules {
-    allITILCIRelationRules {
-      id itilType ciType relationType direction description
+/** I tipi di CI esclusi per un tipo di ticket (revisione del 15 set 2026 · CM-8). */
+export const GET_TICKET_CI_EXCLUSIONS = gql`
+  query GetTicketCIExclusions($ticketType: String) {
+    ticketCIExclusions(ticketType: $ticketType) {
+      ticketType ciTypes
     }
   }
 `
@@ -137,7 +140,7 @@ export const GET_TOPOLOGY = gql`
   query GetTopology($types: [String!], $environment: String, $status: String, $selectedCiId: ID, $maxHops: Int) {
     topology(types: $types, environment: $environment, status: $status, selectedCiId: $selectedCiId, maxHops: $maxHops) {
       nodes {
-        id name type status environment ownerGroup incidentCount changeCount health
+        id name type status inMaintenance environment ownerGroup incidentCount changeCount health
       }
       edges {
         source target type

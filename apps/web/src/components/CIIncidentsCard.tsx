@@ -6,7 +6,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { CountBadge } from '@/components/ui/CountBadge'
 import { SeverityBadge } from '@/components/ui/badges'
 import { TicketStatusBadge } from '@/components/StatusBadge'
-import { GET_CI_INCIDENTS, GET_CI_PROBLEMS } from '@/graphql/queries'
+import { GET_CI_INCIDENTS, GET_CI_PROBLEMS, GET_CI_SERVICE_REQUESTS } from '@/graphql/queries'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { colors, palette } from '@/lib/tokens'
 
@@ -24,11 +24,13 @@ interface Incident {
 /**
  * I ticket di un CI, per tipo. Revisione del 14 set 2026 · F12: il dettaglio
  * del CI mostrava incident e change, ma non i problem; lo stesso componente
- * ora serve entrambi (le change hanno il loro, con fase e rischio).
+ * ora serve anche le richieste (le change hanno il loro, con fase e rischio).
  */
 const KINDS = {
   incident: { query: GET_CI_INCIDENTS, field: 'ciIncidents', path: '/incidents', title: 'Incident', emptyKey: 'components.ciIncidents.empty' },
   problem:  { query: GET_CI_PROBLEMS,  field: 'ciProblems',  path: '/problems',  title: 'Problem',  emptyKey: 'components.ciProblems.empty' },
+  // Revisione del 15 set 2026 · CM-8: anche le richieste si collegano ai CI.
+  service_request: { query: GET_CI_SERVICE_REQUESTS, field: 'ciServiceRequests', path: '/requests', title: 'Service Request', emptyKey: 'components.ciServiceRequests.empty' },
 } as const
 
 export function CIIncidentsCard({ ciId, kind = 'incident' }: { ciId: string; kind?: keyof typeof KINDS }) {

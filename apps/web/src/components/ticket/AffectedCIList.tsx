@@ -1,6 +1,7 @@
 /**
- * "CI Impattati" di un ticket (incident, problem): ricerca con filtro per tipo
- * dalle regole ITIL, scelta del tipo di relazione, elenco raggruppato per tipo.
+ * "CI Impattati" di un ticket (incident, problem, richiesta): ricerca che non
+ * propone i tipi di CI esclusi per quel tipo di ticket (revisione del 15 set
+ * 2026 · CM-8), elenco raggruppato per tipo.
  * Un'unica implementazione al posto di IncidentCIList / ProblemCIList (che
  * differivano solo per una prop ignorata e per i colori dello status).
  * Lo stato di apertura/ricerca è interno: il genitore passa solo dati e azioni.
@@ -24,14 +25,6 @@ export interface AffectedCIRef {
   type:        string
   status:      string
   environment: string
-}
-
-export interface CIRelationRule {
-  id:           string
-  ciType:       string
-  relationType: string
-  direction:    string
-  description:  string | null
 }
 
 // Ondata 7 · D-15: qui c'era una quarta copia della palette degli stati CI,
@@ -62,16 +55,17 @@ function statusBadgeStyle(status: string, vocabulary: readonly string[] | null, 
 
 interface Props {
   affectedCIs:    AffectedCIRef[]
-  rules:          CIRelationRule[]
+  /** I NOMI dei tipi di CI esclusi per questo tipo di ticket: non si propongono nella ricerca. */
+  excludedTypes:  readonly string[]
   /** Risultati della ricerca (il genitore esegue la query con `search`). */
   ciResults:      AffectedCIRef[]
   onSearchChange: (value: string) => void
-  onAddCI:        (ciId: string, relationType?: string) => void
+  onAddCI:        (ciId: string) => void
   onRemoveCI:     (ciId: string) => void
   defaultOpen?:   boolean
 }
 
-export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, onAddCI, onRemoveCI, defaultOpen = false }: Props) {
+export function AffectedCIList({ affectedCIs, excludedTypes, ciResults, onSearchChange, onAddCI, onRemoveCI, defaultOpen = false }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const baseEnums = useCIBaseEnums()
@@ -81,18 +75,13 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
   const [open, setOpen] = useState(defaultOpen)
   const [showSearch, setShowSearch] = useState(false)
   const [search, setSearch] = useState('')
-  const [selectedRelType, setSelectedRelType] = useState<Record<string, string>>({})
-
-  const allowedTypes = rules.map((r) => r.ciType.toLowerCase())
-  const getRelTypes  = (ciType: string) => [...new Set(rules.filter((r) => r.ciType.toLowerCase() === ciType.toLowerCase()).map((r) => r.relationType))]
+  const excluded = new Set(excludedTypes.map((t) => t.toLowerCase()))
   const filteredResults = ciResults
     .filter((ci) => !affectedCIs.find((a) => a.id === ci.id))
-    .filter((ci) => allowedTypes.length === 0 || allowedTypes.includes(ci.type.toLowerCase()))
+    .filter((ci) => !excluded.has(ci.type.toLowerCase()))
 
   const handleAdd = (ci: AffectedCIRef) => {
-    const relTypes = getRelTypes(ci.type)
-    onAddCI(ci.id, relTypes.length > 0 ? (selectedRelType[ci.id] ?? relTypes[0]) : undefined)
-    setSelectedRelType((p) => { const n = { ...p }; delete n[ci.id]; return n })
+    onAddCI(ci.id)
     setSearch(''); onSearchChange(''); setShowSearch(false)
   }
   /** Aggiungere un CI a riquadro chiuso lo apre: il campo di ricerca sta nel corpo. */
@@ -122,13 +111,12 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
         {showSearch && (
           <div style={{ position: 'relative' }}>
             <Input type="text" value={search} onChange={(e) => { setSearch(e.target.value); onSearchChange(e.target.value) }}
-              placeholder={allowedTypes.length > 0 ? t('attachments.searchCIOfTypes', { types: allowedTypes.join(', ') }) : t('attachments.searchCIByName')}
+              placeholder={excludedTypes.length > 0 ? t('attachments.searchCIExcluding', { types: excludedTypes.join(', ') }) : t('attachments.searchCIByName')}
               // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: campo di ricerca montato dopo il click su "Aggiungi CI"
               autoFocus style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }} />
             {filteredResults.length > 0 && (
               <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, maxHeight: 240, overflowY: 'auto', backgroundColor: colors.white, boxShadow: `0 4px 12px ${alpha.black10}` }}>
                 {filteredResults.map((ci) => {
-                  const relTypes = getRelTypes(ci.type)
                   return (
                     <div key={ci.id} style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -137,17 +125,6 @@ export function AffectedCIList({ affectedCIs, rules, ciResults, onSearchChange, 
                           <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', marginLeft: 8 }}>{ci.type} · {ci.environment}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                          {relTypes.length > 1 && (
-                            <select style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)', cursor: 'pointer' }}
-                              value={selectedRelType[ci.id] ?? relTypes[0]}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => setSelectedRelType((p) => ({ ...p, [ci.id]: e.target.value }))}>
-                              {relTypes.map((rt) => <option key={rt} value={rt}>{rt}</option>)}
-                            </select>
-                          )}
-                          {relTypes.length === 1 && (
-                            <span style={{ fontSize: 'var(--font-size-table)', padding: '2px 6px', borderRadius: 4, background: 'var(--color-info-bg)', color: colors.brand, fontWeight: 500 }}>{relTypes[0]}</span>
-                          )}
                           <button type="button" onClick={() => handleAdd(ci)}
                             style={{ fontSize: 'var(--font-size-body)', padding: '4px 10px', borderRadius: 4, border: 'none', background: 'var(--accent)', color: colors.white, cursor: 'pointer', fontWeight: 500 }}>+</button>
                         </div>
