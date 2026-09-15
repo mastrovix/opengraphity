@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { TicketOLACard } from '@/components/ticket/ola/TicketOLACard'
 import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
 import type { CustomFieldValueView } from '@/components/ticket/customFields/customFields'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -484,6 +485,7 @@ export function ProblemDetailPage() {
           </SectionCard>
 
           {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
+          <TicketOLACard entityType="problem" entityId={problem.id} />
           <CustomFieldsCard entityType="problem" ticketId={problem.id} fields={problem.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
 
           {/* Root Cause */}

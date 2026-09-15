@@ -28,7 +28,7 @@ import { useQuery } from '@apollo/client/react'
 import { Trans, useTranslation } from 'react-i18next'
 import { XCircle } from 'lucide-react'
 import { GET_SERVICE_MAPS, GET_CRITICAL_SERVICE_CRITICALITIES } from '@/graphql/queries'
-import { enumLabel } from '@/lib/ciEnums'
+import { useCriticalityLabel } from '@/hooks/useCILabels'
 import { pausedWhenHidden } from '@/lib/polling'
 import { AMBER_BANNER } from '@/lib/eventPalette'
 import { colors } from '@/lib/tokens'
@@ -51,6 +51,7 @@ const linkStyle = { color: AMBER_BANNER.text, fontWeight: 600 } as const
 
 export function CriticalServicesBanner() {
   const { t } = useTranslation()
+  const criticalityLabel = useCriticalityLabel()
   // Ondata 7 (C-7): quali criticità contano lo dice il SERVER, leggendo la
   // matrice `service_impact` del cliente (le celle che portano all'impatto
   // più alto). Prima erano due valori scritti qui e mandati al server come
@@ -109,7 +110,7 @@ export function CriticalServicesBanner() {
             <li key={s.id}>
               <Trans
                 i18nKey="monitoring.services.criticalBanner.line"
-                values={{ name: s.name, criticality: enumLabel(s.criticality) }}
+                values={{ name: s.name, criticality: criticalityLabel(s.criticality) }}
                 components={{ service: <Link to={servicePath(s.id)} style={linkStyle} /> }}
               />
             </li>

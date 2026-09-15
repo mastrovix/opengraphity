@@ -5,7 +5,14 @@
     "documentTitle": "Portale IT — OpenGrafo",
     "noAccessTitle": "Il portale non è disponibile per il tuo ruolo",
     "noAccessBody": "Il tuo ruolo non comprende l'accesso al portale self-service. Chiedi a un amministratore se ti serve.",
-    "noSubmit": "Il tuo ruolo non può aprire ticket o richieste dal portale."
+    "noSubmit": "Il tuo ruolo non può aprire ticket o richieste dal portale.",
+    "language": "Lingua",
+    "languageOrganization": "Lingua dell'organizzazione",
+    "languageName": {
+      "en": "English",
+      "it": "Italiano"
+    },
+    "languageSaveFailed": "Non è stato possibile salvare la lingua: {{error}}"
   },
   "nav": {
     "home": "Home",
@@ -19,7 +26,7 @@
     "newTicket": "Apri un nuovo ticket",
     "newTicketDesc": "Segnala un problema o fai una richiesta",
     "searchKB": "Cerca nella Knowledge Base",
-    "searchKBDesc": "Trova soluzioni agli problemi più comuni",
+    "searchKBDesc": "Trova soluzioni ai problemi più comuni",
     "recentTickets": "I tuoi ticket recenti",
     "noTickets": "Non hai ticket aperti.",
     "needHelp": "Hai bisogno di assistenza?",
@@ -43,9 +50,9 @@
     "fields": {
       "title": "Descrivi il problema in una frase",
       "description": "Fornisci tutti i dettagli utili: cosa stavi facendo, quale errore hai visto, da quando si verifica...",
-      "priority": "Priorità",
       "category": "Categoria",
-      "attachments": "Allegati"
+      "attachments": "Allegati",
+      "severity": "Severità"
     },
     "filters": {
       "all": "Tutti",

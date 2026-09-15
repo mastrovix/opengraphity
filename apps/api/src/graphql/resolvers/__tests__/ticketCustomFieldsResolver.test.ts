@@ -8,6 +8,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const runQueryOne = vi.fn()
+// Le fasi del ticket leggono il grafo: qui nessuna fase nota (i campi si vedono e si modificano).
+vi.mock('../../../lib/customFieldSteps.js', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ticketStepContext: vi.fn(async () => null),
+  creationStepContext: vi.fn(async () => null),
+}))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: (...a: unknown[]) => runQueryOne(...a) }))
 vi.mock('../ci-utils.js', () => ({ withSession: vi.fn(async (fn: (s: unknown) => unknown) => fn({})) }))
 const audit = vi.fn(async () => {})

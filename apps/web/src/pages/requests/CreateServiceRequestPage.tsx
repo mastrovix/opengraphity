@@ -13,7 +13,7 @@ import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
 import { useValueStyle } from '@/hooks/useValueStyle'
 import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
-import { customFieldsInput, missingCustomFields, useTicketCustomFieldDefs } from '@/components/ticket/customFields/customFields'
+import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 import { showError } from '@/lib/showError'
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -98,7 +98,7 @@ export function CreateServiceRequestPage() {
   const checkSlaCoverage = useSlaCoverageCheck()
   const [checkingSla, setCheckingSla] = useState(false)
   // Campi personalizzati del cliente (verifica «Cosa resta cablato», ondata 4).
-  const { defs: customDefs } = useTicketCustomFieldDefs('service_request')
+  const { defs: customDefs } = useCreationCustomFieldDefs('service_request')
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
   const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
 
@@ -201,7 +201,7 @@ export function CreateServiceRequestPage() {
           {/* Title */}
           <div style={{ marginBottom: 24 }}>
             <label htmlFor={ids.title} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
-              Title <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
+              {t('pages.createRequest.titleLabel')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             <input
               id={ids.title}
@@ -223,7 +223,7 @@ export function CreateServiceRequestPage() {
             {/* Priority */}
             <div>
               <label htmlFor={ids.priority} style={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}>
-                Priority <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
+                {t('pages.createRequest.priorityLabel')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
               </label>
               <div style={{ position: 'relative' }}>
                 <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: styleOf('priority', priority).accent, pointerEvents: 'none', zIndex: 1 }} />

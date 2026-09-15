@@ -29,6 +29,9 @@ export interface ITILField {
   defaultScript:    string | null
   /** Il portale offre il campo all'utente finale (ondata 4). */
   visibleToEndUser?: boolean
+  /** In quali fasi si vede e si modifica (secondo giro UI del 15 set 2026). */
+  stepVisibility?:  { mode: string; steps: string[]; step?: string | null }
+  stepEditability?: { mode: string; steps: string[] }
 }
 
 export interface ITILType {
@@ -58,10 +61,18 @@ export interface FieldFormState {
   visibilityScript: string
   defaultScript:    string
   visibleToEndUser: boolean
+  /** always | steps | from */
+  visibilityMode:   string
+  visibilitySteps:  string[]
+  visibilityFrom:   string
+  /** visible | steps */
+  editabilityMode:  string
+  editabilitySteps: string[]
 }
 
 export function emptyForm(order: number): FieldFormState {
-  return { name: '', label: '', fieldType: 'string', required: false, order, enumTypeId: null, validationScript: '', visibilityScript: '', defaultScript: '', visibleToEndUser: false }
+  return { name: '', label: '', fieldType: 'string', required: false, order, enumTypeId: null, validationScript: '', visibilityScript: '', defaultScript: '', visibleToEndUser: false,
+    visibilityMode: 'always', visibilitySteps: [], visibilityFrom: '', editabilityMode: 'visible', editabilitySteps: [] }
 }
 
 export function fieldToForm(f: ITILField): FieldFormState {
@@ -76,6 +87,11 @@ export function fieldToForm(f: ITILField): FieldFormState {
     visibilityScript: f.visibilityScript ?? '',
     defaultScript:    f.defaultScript    ?? '',
     visibleToEndUser: f.visibleToEndUser === true,
+    visibilityMode:   f.stepVisibility?.mode ?? 'always',
+    visibilitySteps:  f.stepVisibility?.mode === 'steps' ? f.stepVisibility.steps : [],
+    visibilityFrom:   f.stepVisibility?.step ?? '',
+    editabilityMode:  f.stepEditability?.mode ?? 'visible',
+    editabilitySteps: f.stepEditability?.mode === 'steps' ? f.stepEditability.steps : [],
   }
 }
 
@@ -180,9 +196,14 @@ export function useITILTypeDesigner() {
     } } })
   }
 
-  const handleSaveField = (typeId: string, fieldId: string | null, form: FieldFormState) => {
+  const handleSaveField = (typeId: string, fieldId: string | null, form: FieldFormState, isSystem = false) => {
     if (form.fieldType === 'enum' && !form.enumTypeId) {
       toast.error(t('toast.itil.enumRequired'))
+      return
+    }
+    if ((form.visibilityMode === 'steps' && form.visibilitySteps.length === 0) || (form.visibilityMode === 'from' && !form.visibilityFrom)
+      || (form.editabilityMode === 'steps' && form.editabilitySteps.length === 0)) {
+      toast.error(t('toast.itil.stepsRequired'))
       return
     }
     const variables = {
@@ -198,6 +219,12 @@ export function useITILTypeDesigner() {
         visibilityScript: form.visibilityScript || null,
         defaultScript:    form.defaultScript    || null,
         visibleToEndUser: form.visibleToEndUser,
+        // I campi di sistema non hanno fasi: le regole valgono per i campi del cliente.
+        ...(isSystem ? {} : {
+          stepVisibility: form.visibilityMode === 'steps' ? { mode: 'steps', steps: form.visibilitySteps }
+            : form.visibilityMode === 'from' ? { mode: 'from', step: form.visibilityFrom } : { mode: 'always' },
+          stepEditability: form.editabilityMode === 'steps' ? { mode: 'steps', steps: form.editabilitySteps } : { mode: 'visible' },
+        }),
       },
     }
     if (fieldId) {

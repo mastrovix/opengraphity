@@ -2,7 +2,7 @@
  * Anomaly Detection Rules
  *
  * CI nodes use Neo4j labels; the `type` property is null — always use
- * `toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))` for entitySubtype.
+ * `[l IN labels(ci) WHERE l <> 'ConfigurationItem']` for entitySubtype (the engine maps the labels to the type name).
  *
  * Each query MUST RETURN: entityId, entityType, entitySubtype, entityName, description, params, severity
  *
@@ -64,7 +64,12 @@ const CI_MATCH = `
     AND ci.tenant_id = $tenantId
 `
 
-const SUBTYPE = `toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))`
+/**
+ * Le label del CI: il nome del tipo lo ricava il motore con `ciTypeFromLabels`
+ * (secondo giro UI del 15 set 2026 · V-3). `toLower(head(labels))` dava
+ * «businessapplication» per BusinessApplication, che non è il nome di nessun tipo.
+ */
+const SUBTYPE = `[l IN labels(ci) WHERE l <> 'ConfigurationItem']`
 
 type Builder = (s: ResolvedRuleSettings) => Omit<AnomalyRule, 'key' | 'params'> & { params?: Record<string, unknown> }
 

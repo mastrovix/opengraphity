@@ -117,6 +117,28 @@ export function olaSDL(): string {
     complianceWarning: Float
   }
 
+  """
+  Un contratto OLA/UC su un ticket (il riquadro nel dettaglio). \`applies\` false:
+  il contratto è del tipo del ticket ma non conta, e \`reason\` dice perché
+  (\`other_team\`: il ticket è di un altro team; \`created_before_contract\`:
+  il ticket è nato prima del contratto). \`state\`: \`met\`, \`breached\` o
+  \`running\`, null se non conta.
+  """
+  type TicketOLA {
+    contractId:     ID!
+    name:           String!
+    type:           String!
+    teamName:       String
+    resolveMinutes: Int!
+    calendarId:     ID
+    calendarName:   String
+    applies:        Boolean!
+    reason:         String
+    deadline:       String
+    concludedAt:    String
+    state:          String
+  }
+
   type SLAReport {
     generatedAt: String!
     windowDays:  Int!

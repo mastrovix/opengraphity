@@ -74,6 +74,8 @@ export function buildBaseSDL(): string {
     itilTypeFields(typeId: ID!): [CIFieldDef!]!
     """Quanti ticket hanno un valore nel campo personalizzato: cancellando il campo, quei valori se ne vanno con lui."""
     itilFieldValueCount(typeId: ID!, fieldId: ID!): Int!
+    """How many CIs of the type carry a value in the customer's field: the CI type designer shows it before deleting the field."""
+    ciFieldValueCount(typeId: ID!, fieldId: ID!): Int!
 
     # Teams
     teams(filters: String, sortField: String, sortDirection: String): [Team!]!
@@ -109,8 +111,9 @@ export function buildBaseSDL(): string {
     navigableEntities: [NavigableEntity!]!
     navigableRelations(entityType: String!, neo4jLabel: String!): [NavigableRelation!]!
     reachableEntities(fromNeo4jLabel: String!): [ReachableEntity!]!
-    executeReport(templateId: ID!): ReportResult!
-    previewReportSection(input: ReportSectionInput!): ReportSectionResult!
+    """\`language\`: the viewer's language for the value labels (empty = the tenant's)."""
+    executeReport(templateId: ID!, language: String): ReportResult!
+    previewReportSection(input: ReportSectionInput!, language: String): ReportSectionResult!
 
     # Dashboard
     myDashboards: [DashboardConfig!]!
@@ -153,6 +156,8 @@ export function buildBaseSDL(): string {
     # Enum Types
     enumTypes(scope: String): [EnumTypeDefinition!]!
     enumType(id: ID!): EnumTypeDefinition
+    """Cosa usa un valore del vocabolario: record, policy degli allarmi, matrici, configurazione. Si chiede prima di rinominarlo."""
+    enumValueUsage(id: ID!, value: String!): EnumValueUsage!
 
     # Queue Stats (admin only)
     queueStats: [QueueStat!]!
@@ -197,6 +202,8 @@ export function buildBaseSDL(): string {
 
     # OLA / UC + SLA reporting
     olaContracts(type: String): [OLAContract!]!
+    """Gli OLA/UC che riguardano un ticket, con scadenza e stato (le regole del report)."""
+    ticketOLAs(entityType: String!, entityId: ID!): [TicketOLA!]!
     slaReport(windowDays: Int): SLAReport!
 
     # Portal (Self-Service)
@@ -517,6 +524,8 @@ export function buildBaseSDL(): string {
     linkSlackAccount(slackId: String!): User!
     """La propria scelta di ricevere le e-mail di notifica (menzioni, osservazione, regole, digest)."""
     setMyEmailNotifications(enabled: Boolean!): User!
+    """La lingua della persona, per web e portale; null = torna a quella dell'organizzazione. Una lingua che il prodotto non ha è rifiutata."""
+    setMyLanguage(language: String): User!
 
     # Reports (AI conversations)
     askReport(question: String!, conversationId: ID): AskReportResult!
@@ -628,6 +637,8 @@ export function buildBaseSDL(): string {
     restoreKBArticleVersion(articleId: ID!, version: Int!): KBArticle!
     createOLAContract(input: CreateOLAContractInput!): OLAContract!
     updateOLAContract(id: ID!, input: UpdateOLAContractInput!): OLAContract!
+    """Cancella il contratto: i controlli già armati sui ticket aperti non avvisano più."""
+    deleteOLAContract(id: ID!): Boolean!
     deleteKBArticle(id: ID!): Boolean!
     rateKBArticle(id: ID!, helpful: Boolean!): KBArticle!
 

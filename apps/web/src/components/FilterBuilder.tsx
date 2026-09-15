@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, X, ChevronDown, ChevronRight } from 'lucide-react'
 import { alpha, colors, palette } from '@/lib/tokens'
+import { srOnlyStyle } from '@/lib/a11y'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -114,10 +115,13 @@ function ValueInput({
   rule,
   fieldCfg,
   onChange,
+  n,
 }: {
   rule:     FilterRule
   fieldCfg: FieldConfig | undefined
   onChange: (partial: Partial<FilterRule>) => void
+  /** Numero della condizione (da 1): dà il nome accessibile ai controlli. */
+  n:        number
 }) {
   const { t } = useTranslation()
   if (!fieldCfg || NO_VALUE_OPS.has(rule.operator)) return null
@@ -129,13 +133,15 @@ function ValueInput({
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
         <input
           type="date"
+          aria-label={t('filter.valueFromAria', { n })}
           value={typeof rule.value === 'string' ? rule.value : ''}
           onChange={(e) => onChange({ value: e.target.value })}
           style={INP}
         />
-        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>e</span>
+        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('filter.betweenAnd')}</span>
         <input
           type="date"
+          aria-label={t('filter.valueToAria', { n })}
           value={rule.value2 ?? ''}
           onChange={(e) => onChange({ value2: e.target.value })}
           style={INP}
@@ -154,7 +160,7 @@ function ValueInput({
       onChange({ value: next })
     }
     return (
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+      <div role="group" aria-label={t('filter.valueAria', { n })} style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         {opts.map((opt) => (
           <label
             key={opt.value}
@@ -176,7 +182,7 @@ function ValueInput({
               type="checkbox"
               checked={selected.includes(opt.value)}
               onChange={() => toggle(opt.value)}
-              style={{ display: 'none' }}
+              style={srOnlyStyle}
             />
             {opt.label}
           </label>
@@ -188,6 +194,7 @@ function ValueInput({
   if (type === 'enum') {
     return (
       <select
+        aria-label={t('filter.valueAria', { n })}
         value={typeof rule.value === 'string' ? rule.value : ''}
         onChange={(e) => onChange({ value: e.target.value })}
         style={{ ...SEL, minWidth: 140 }}
@@ -204,6 +211,7 @@ function ValueInput({
     return (
       <input
         type="date"
+        aria-label={t('filter.valueAria', { n })}
         value={typeof rule.value === 'string' ? rule.value : ''}
         onChange={(e) => onChange({ value: e.target.value })}
         style={{ ...INP, minWidth: 140 }}
@@ -214,6 +222,7 @@ function ValueInput({
   return (
     <input
       type="text"
+      aria-label={t('filter.valueAria', { n })}
       value={typeof rule.value === 'string' ? rule.value : ''}
       onChange={(e) => onChange({ value: e.target.value })}
       placeholder={t('filter.valuePlaceholderText')}
@@ -445,6 +454,7 @@ export function FilterBuilder({ fields, onApply, initialRules }: FilterBuilderPr
                   }}>
                     {/* Field selector */}
                     <select
+                      aria-label={t('filter.fieldAria', { n: idx + 1 })}
                       value={rule.field}
                       onChange={(e) => updateRule(rule.id, { field: e.target.value })}
                       style={{ ...SEL, minWidth: 140, color: rule.field ? 'var(--color-slate-dark)' : 'var(--color-slate-light)' }}
@@ -458,6 +468,7 @@ export function FilterBuilder({ fields, onApply, initialRules }: FilterBuilderPr
                     {/* Operator selector — visibile solo dopo aver scelto il campo */}
                     {rule.field && (
                       <select
+                        aria-label={t('filter.operatorAria', { n: idx + 1 })}
                         value={rule.operator}
                         onChange={(e) => updateRule(rule.id, { operator: e.target.value as FilterOperator })}
                         style={{ ...SEL, minWidth: 140 }}
@@ -475,12 +486,14 @@ export function FilterBuilder({ fields, onApply, initialRules }: FilterBuilderPr
                           rule={rule}
                           fieldCfg={fieldCfg}
                           onChange={(p) => updateRule(rule.id, p)}
+                          n={idx + 1}
                         />
                       </div>
                     )}
 
                     {/* Remove */}
                     <button type="button"
+                      aria-label={t('filter.removeAria', { n: idx + 1 })}
                       onClick={() => removeRule(rule.id)}
                       style={{
                         display:         'flex',

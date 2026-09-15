@@ -337,7 +337,7 @@ describe('evaluateServiceMap', () => {
     expect(w.cypher).toContain('m.incident_problem AS incidentProblem')
     expect(w.cypher).toContain('head([(ba:BusinessApplication {tenant_id: $tenantId})-[:HAS_SERVICE_MAP]->(m) | ba.criticality]) AS criticality')
     expect(w.cypher).toContain('m.health_since = CASE WHEN changed THEN $now ELSE m.health_since END')
-    expect(w.cypher).toContain('FOREACH (_ IN CASE WHEN changed THEN [1] ELSE [] END |')
+    expect(w.cypher).toContain("FOREACH (_ IN CASE WHEN (changed OR $hTrigger = 'created') THEN [1] ELSE [] END |")
     expect(w.cypher).toContain('FOREACH (_ IN CASE WHEN becameStale THEN [1] ELSE [] END |')
     expect(w.cypher.match(/CALL \{/g)).toHaveLength(1)   // il cap gira una volta sola
     expect(w.cypher).toContain('UNWIND CASE WHEN changed OR becameStale THEN [1] ELSE [] END AS _')
@@ -786,3 +786,12 @@ describe('findMapsIncludingCI / evaluateStaleOrOldMaps / refreshServiceGauges', 
     expect(vi.mocked(metrics.serviceMapsStale.set).mock.calls).toEqual([[{}, 0]])
   })
 })
+
+/** Secondo giro UI del 15 set 2026 · V-13: una mappa appena creata aveva «Cronologia 0». */
+describe('evaluationWriteCypher · voce di creazione', () => {
+  it('la voce della valutazione si scrive se la salute cambia OPPURE se il trigger è «created»', () => {
+    const c = evaluationWriteCypher()
+    expect(c).toContain("FOREACH (_ IN CASE WHEN (changed OR $hTrigger = 'created') THEN [1] ELSE [] END |")
+  })
+})
+

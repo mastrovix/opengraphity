@@ -48,7 +48,7 @@ interface Props {
 
 export function ServiceOpenIncidentCard({ incident, openIncidentFrom, problem }: Props) {
   const { t } = useTranslation()
-  const { byName, labelFor, error: stepsError } = useWorkflowSteps('incident')
+  const { byName, labelFor, categoryOf, error: stepsError } = useWorkflowSteps('incident')
 
   /** L'etichetta dell'app per un passo del workflow; fuori definizione → detta in chiaro. */
   const stepLabel = (value: string) =>
@@ -89,7 +89,8 @@ export function ServiceOpenIncidentCard({ incident, openIncidentFrom, problem }:
   }
 
   return (
-    <SectionCard title={t('monitoring.services.openIncident.title')} defaultOpen>
+    // Secondo giro UI · V-10: un incident risolto ma non ancora chiuso non è «aperto».
+    <SectionCard title={incident && categoryOf(incident.workflowInstance?.currentStep ?? incident.status) === 'resolved' ? t('monitoring.services.openIncident.titleResolved') : t('monitoring.services.openIncident.title')} defaultOpen>
       {body}
       {problem && (
         <p role="alert" data-testid="service-incident-problem" style={{ margin: '10px 0 0', padding: '8px 12px', borderRadius: 8, background: palette.danger.bg, border: `1px solid ${palette.danger.border}`, color: palette.danger.text, fontSize: 'var(--font-size-body)', lineHeight: 1.5 }}>

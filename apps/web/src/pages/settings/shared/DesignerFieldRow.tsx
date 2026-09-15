@@ -1,4 +1,5 @@
 import { Lock, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { btnSecondary, btnDanger } from './designerStyles'
 import { colors } from '../../../lib/tokens'
 
@@ -32,10 +33,15 @@ export function DesignerFieldRow({
   field,
   onEdit,
   onDelete,
-  editLabel = 'Edit',
-  systemFieldLabel = 'System field',
+  editLabel,
+  systemFieldLabel,
   valuesNote,
 }: DesignerFieldRowProps) {
+  // Secondo giro UI del 15 set 2026 · V-6: «required», «Edit», «System field» e
+  // «Delete <campo>» erano scritti in inglese qui, e in italiano restavano così.
+  const { t } = useTranslation()
+  const editText = editLabel ?? t('common.edit')
+  const systemText = systemFieldLabel ?? t('itilDesigner.systemField')
   return (
     <div
       style={{
@@ -46,7 +52,7 @@ export function DesignerFieldRow({
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
         {field.isSystem ? (
-          <span title={systemFieldLabel}>
+          <span title={systemText}>
             <Lock size={12} color={colors.slateLight} style={{ flexShrink: 0 }} />
           </span>
         ) : (
@@ -62,7 +68,7 @@ export function DesignerFieldRow({
           <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 1 }}>
             {field.fieldType}
             {field.required && (
-              <span style={{ marginLeft: 6, color: 'var(--color-danger)' }}>required</span>
+              <span style={{ marginLeft: 6, color: 'var(--color-danger)' }}>{t('designerFieldRow.required')}</span>
             )}
             {valuesNote !== undefined && (
               <span style={{ marginLeft: 6 }} data-testid="field-values-note">{valuesNote}</span>
@@ -74,9 +80,9 @@ export function DesignerFieldRow({
         </div>
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
-        <button type="button" style={btnSecondary} onClick={onEdit}>{editLabel}</button>
+        <button type="button" style={btnSecondary} onClick={onEdit}>{editText}</button>
         {!field.isSystem && (
-          <button type="button" style={btnDanger} onClick={onDelete} aria-label={`Delete ${field.name}`}>
+          <button type="button" style={btnDanger} onClick={onDelete} aria-label={t('designerFieldRow.deleteField', { name: field.name })}>
             <Trash2 size={12} />
           </button>
         )}

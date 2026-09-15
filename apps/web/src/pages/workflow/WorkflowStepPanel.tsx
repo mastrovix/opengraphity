@@ -26,7 +26,6 @@ import { Input, Select } from '@/components/ui/FormControls'
 import { useTargetOptions, withCurrent } from '@/pages/settings/NotificationRuleList'
 import { WORKFLOW_STEP_PURPOSES, WORKFLOW_STEP_CATEGORIES } from '@opengraphity/types'
 import { StepDeadlineEditor, deadlineFromDraft, draftFromDeadline, draftProblem, type DeadlineTarget } from './StepDeadlineEditor'
-import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 const ACCENT_COLOR = colors.brand
 
@@ -202,7 +201,12 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
     transitions?: { fromStepName: string; toStepName: string }[]
   } | null }>(
     GET_WORKFLOW_DEFINITION_BY_ID,
-    { variables: { id: definitionId }, fetchPolicy: METAMODEL_FETCH_POLICY },
+    // cache-first, non cache-and-network (secondo giro UI · V-4): rileggere dalla
+    // rete la STESSA query del disegnatore aggiornava in cache la versione della
+    // definizione sotto il disegnatore, che poi mandava come `expectedVersion`
+    // quella nuova su un grafo vecchio — e il conflitto con un'altra scheda
+    // passava inosservato. Il disegnatore ha già caricato la definizione.
+    { variables: { id: definitionId }, fetchPolicy: 'cache-first' },
   )
   const entityType = defData?.workflowDefinitionById?.entityType ?? ''
   const entityTypeError = defError
@@ -660,7 +664,13 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
       {activeTab === 'props' && (
         <>
           <PanelField label={t('workflow.panel.label')}>
-            <Input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} />
+            <Input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} aria-label={t('workflow.panel.label')} />
+            {/* V-5: cambiare l'etichetta mette da parte le traduzioni spedite; rimettendola com'era tornano. */}
+            {label !== step.label && (step.labels ?? []).length > 0 && (
+              <span data-testid="step-label-translations-hint" style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', lineHeight: 1.4 }}>
+                {t('workflow.panel.labelTranslationsHint', { translations: (step.labels ?? []).map((l) => `${l.language}: «${l.label}»`).join(', '), original: step.label })}
+              </span>
+            )}
           </PanelField>
 
           <PanelField label={t('workflow.panel.name')}>

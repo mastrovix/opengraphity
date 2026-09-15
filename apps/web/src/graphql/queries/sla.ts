@@ -65,3 +65,13 @@ export const GET_SERVICE_CALENDARS = gql`
     serviceCalendars { id name days start end holidays usedBySlaPolicies usedByOlaContracts usedByWorkflowSteps }
   }
 `
+
+/** Gli OLA/UC che riguardano un ticket, per il riquadro nel dettaglio. */
+export const GET_TICKET_OLAS = gql`
+  query GetTicketOLAs($entityType: String!, $entityId: ID!) {
+    ticketOLAs(entityType: $entityType, entityId: $entityId) {
+      contractId name type teamName resolveMinutes calendarName
+      applies reason deadline concludedAt state
+    }
+  }
+`

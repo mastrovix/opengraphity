@@ -22,7 +22,7 @@ import { PageTitle } from '@/components/PageTitle'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { Toggle } from '@/components/ui/Toggle'
 import { Button } from '@/components/Button'
-import { Select, Input } from '@/components/ui/FormControls'
+import { Select, Input, LabelledField } from '@/components/ui/FormControls'
 import { SeverityBadge } from '@/components/SeverityBadge'
 import { GET_ANOMALY_RULES, UPDATE_ANOMALY_RULE } from '@/graphql/queries'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
@@ -119,13 +119,14 @@ function Chips({ values, selected, labelOf, onChange, label }: {
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: colors.slateLight }}>
-        {label}
-      </div>
+    <LabelledField
+      label={label}
+      style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+      labelStyle={{ fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: colors.slateLight }}
+      after={hint && <div style={{ fontSize: 'var(--font-size-label)', color: colors.slateLight }}>{hint}</div>}
+    >
       {children}
-      {hint && <div style={{ fontSize: 'var(--font-size-label)', color: colors.slateLight }}>{hint}</div>}
-    </div>
+    </LabelledField>
   )
 }
 

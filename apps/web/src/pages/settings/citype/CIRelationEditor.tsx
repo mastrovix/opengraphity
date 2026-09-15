@@ -2,19 +2,16 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { Modal } from '@/components/Modal'
-import { Input, Select } from '@/components/ui/FormControls'
+import { Input, LabelledField, Select } from '@/components/ui/FormControls'
 import { inputS, selectS, labelS, btnPrimary, btnSecondary, btnDanger } from '@/components/ui/styles'
 import { useConfirm } from '@/hooks/useConfirm'
-import type { CITypeDef, CIRelationDef } from '@/contexts/MetamodelContext'
+import { useMetamodel, type CITypeDef, type CIRelationDef } from '@/contexts/MetamodelContext'
+import { srOnlyStyle } from '@/lib/a11y'
+import { shippedLabel } from '@/lib/shippedLabel'
 import { palette } from '@/lib/tokens'
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <label style={labelS}>{label}</label>
-      {children}
-    </div>
-  )
+  return <LabelledField label={label} labelStyle={labelS} style={{ marginBottom: 14 }}>{children}</LabelledField>
 }
 
 // ── RelationModal ─────────────────────────────────────────────────────────────
@@ -77,14 +74,14 @@ export function CIRelationEditor({ open, onClose, onSave, allTypes }: RelationMo
         </Field>
         <Field label={t('citypeDesigner.relation.cardinality')}>
           <Select style={selectS} value={form.cardinality} onChange={e => set('cardinality', e.target.value)}>
-            <option value="one">one</option>
-            <option value="many">many</option>
+            <option value="one">{t('citypeDesigner.relation.cardinalityOne')}</option>
+            <option value="many">{t('citypeDesigner.relation.cardinalityMany')}</option>
           </Select>
         </Field>
         <Field label={t('citypeDesigner.relation.direction')}>
           <Select style={selectS} value={form.direction} onChange={e => set('direction', e.target.value)}>
-            <option value="outgoing">outgoing</option>
-            <option value="incoming">incoming</option>
+            <option value="outgoing">{t('citypeDesigner.relation.directionOutgoing')}</option>
+            <option value="incoming">{t('citypeDesigner.relation.directionIncoming')}</option>
           </Select>
         </Field>
       </div>
@@ -107,6 +104,7 @@ interface RelationTableProps {
 
 export function CIRelationTable({ relations, onRemove, readOnly = false }: RelationTableProps) {
   const { t } = useTranslation()
+  const { getCIType } = useMetamodel()
   const confirm = useConfirm()
   const handleRemove = async (r: CIRelationDef) => {
     if (await confirm({ title: t('ciTypeDesigner.deleteRelationTitle', { name: r.name }), danger: true })) onRemove(r)
@@ -119,20 +117,21 @@ export function CIRelationTable({ relations, onRemove, readOnly = false }: Relat
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
       <thead>
         <tr>
-          {['name', 'label', t('citypeDesigner.relation.neo4jTypeShort'), 'target', 'card.', 'dir.', ''].map(h => (
-            <th key={h} style={{ textAlign: 'left', padding: '6px 8px' }}>{h}</th>
+          {[t('citypeDesigner.relation.colName'), t('common.label'), t('citypeDesigner.relation.neo4jTypeShort'), t('citypeDesigner.relation.colTarget'), t('citypeDesigner.relation.colCardinality'), t('citypeDesigner.relation.colDirection')].map(h => (
+            <th key={h} scope="col" style={{ textAlign: 'left', padding: '6px 8px' }}>{h}</th>
           ))}
+          <th scope="col" style={{ padding: '6px 8px' }}><span style={srOnlyStyle}>{t('citypeDesigner.relation.colActions')}</span></th>
         </tr>
       </thead>
       <tbody>
         {[...relations].sort((a: CIRelationDef, b: CIRelationDef) => a.order - b.order).map(r => (
           <tr key={r.id} style={{ borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
             <td style={{ padding: '8px', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 'var(--font-size-body)' }}>{r.name}</td>
-            <td style={{ padding: '8px' }}>{r.label}</td>
+            <td style={{ padding: '8px' }}>{shippedLabel('relation', r.name, r.label)}</td>
             <td style={{ padding: '8px', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", fontSize: 'var(--font-size-body)' }}>{r.relationshipType}</td>
-            <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.targetType}</td>
-            <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.cardinality}</td>
-            <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.direction}</td>
+            <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.targetType === 'any' ? t('common.any') : (getCIType(r.targetType)?.label ?? r.targetType)}</td>
+            <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.cardinality === 'one' ? t('citypeDesigner.relation.cardinalityOne') : r.cardinality === 'many' ? t('citypeDesigner.relation.cardinalityMany') : r.cardinality}</td>
+            <td style={{ padding: '8px', fontSize: 'var(--font-size-body)' }}>{r.direction === 'outgoing' ? t('citypeDesigner.relation.directionOutgoing') : r.direction === 'incoming' ? t('citypeDesigner.relation.directionIncoming') : r.direction}</td>
             <td style={{ padding: '8px' }}>
               {readOnly
                 ? <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('ciTypeDesigner.shippedRelationLabel')}</span>

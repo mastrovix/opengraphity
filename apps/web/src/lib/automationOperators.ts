@@ -106,6 +106,14 @@ const NN:  OperatorOption = { value: 'is_not_null',  labelKey: 'automation.opera
 
 export const ALL_OPERATORS: OperatorOption[] = [EQ, NE, CT, GT, LT, NUL, NN]
 
+/**
+ * «è cambiato» (secondo giro UI del 15 set 2026 · V-19): il campo è fra quelli
+ * che l'aggiornamento ha cambiato. Solo per business rule e trigger sugli
+ * aggiornamenti, e fuori da `ALL_OPERATORS` perché gli step di workflow non ce
+ * l'hanno (l'adapter `toWorkflowOperator` non saprebbe dove portarlo).
+ */
+export const CHANGED_OPERATOR = { value: 'changed', labelKey: 'automation.operator.changed' } as const
+
 export const OPERATORS_BY_FIELD_TYPE: Record<string, OperatorOption[]> = {
   enum:    [EQ, NE, NUL, NN],
   string:  [EQ, NE, CT, NUL, NN],
@@ -120,14 +128,14 @@ export function operatorsForFieldType(fieldType: string): OperatorOption[] {
   return lookupOrError(OPERATORS_BY_FIELD_TYPE, fieldType, 'OPERATORS_BY_FIELD_TYPE', ALL_OPERATORS)
 }
 
-export const OPERATOR_KEYS: Record<string, string> = Object.fromEntries(ALL_OPERATORS.map((o) => [o.value, o.labelKey]))
+export const OPERATOR_KEYS: Record<string, string> = Object.fromEntries([...ALL_OPERATORS, CHANGED_OPERATOR].map((o) => [o.value, o.labelKey]))
 
 export function operatorKey(op: string): string {
   return lookupOrError(OPERATOR_KEYS, op, 'OPERATOR_KEYS', `?${op}`)
 }
 
-/** Operatori senza valore (is_null / is_not_null). */
-export const NO_VALUE_OPERATORS: ReadonlySet<string> = new Set(['is_null', 'is_not_null'])
+/** Operatori senza valore (is_null / is_not_null / changed). */
+export const NO_VALUE_OPERATORS: ReadonlySet<string> = new Set(['is_null', 'is_not_null', CHANGED_OPERATOR.value])
 
 // ── Operatori (vocabolario 2: step di workflow) + adapter ───────────────────
 

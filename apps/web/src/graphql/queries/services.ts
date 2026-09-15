@@ -151,3 +151,13 @@ export const GET_SERVICE_RELATIONSHIP_TYPES = gql`
     serviceRelationshipTypes
   }
 `
+
+/** L'anteprima di «Crea una mappa»: i componenti con queste impostazioni, senza scrivere. */
+export const GET_SERVICE_MAP_CREATION_PREVIEW = gql`
+  query GetServiceMapCreationPreview($serviceId: ID!, $maxDepth: Int!, $relationshipTypes: [String!]!) {
+    serviceMapCreationPreview(serviceId: $serviceId, maxDepth: $maxDepth, relationshipTypes: $relationshipTypes) {
+      serviceName
+      nodes { ci { id name type } level role }
+    }
+  }
+`

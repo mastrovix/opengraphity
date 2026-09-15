@@ -91,7 +91,7 @@ export function CITypeList({
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
                 <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 100, fontWeight: 500, background: ct.active ? palette.success.tint : 'var(--color-border-light)', color: ct.active ? 'var(--color-success)' : 'var(--color-slate-light)' }}>
-                  {ct.active ? 'active' : 'inactive'}
+                  {ct.active ? t('common.active') : t('common.inactive')}
                 </span>
                 <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
                   {t('citypeDesigner.fieldCount', { count: ct.fields.length })}

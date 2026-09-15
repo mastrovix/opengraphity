@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
+import { creationStepContext } from '../lib/customFieldSteps.js'
 import { withTicketProps } from '../lib/ticketProps.js'
 import { nextTicketNumber } from '../lib/ticketNumbering.js'
 import { runQuery } from '@opengraphity/neo4j'
@@ -39,7 +40,7 @@ export async function createRequest(
 ) {
   // Campi personalizzati (ondata 4): solo dai canali che li mandano (vedi createIncident).
   const customProps = input.customFields == null ? {} : await withSession(async (session) =>
-    resolveCustomFieldWrites(ctx.tenantId, 'service_request', await customFieldDefs(session, ctx.tenantId, 'service_request'), input.customFields, { current: null, endUser: channel === 'portal' }))
+    resolveCustomFieldWrites(ctx.tenantId, 'service_request', await customFieldDefs(session, ctx.tenantId, 'service_request'), input.customFields, { current: null, endUser: channel === 'portal', stepContext: await creationStepContext(session, ctx.tenantId, 'service_request', null) }))
   const id  = uuidv4()
   const now = new Date().toISOString()
 

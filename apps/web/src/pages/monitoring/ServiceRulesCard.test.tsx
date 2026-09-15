@@ -112,7 +112,7 @@ describe('ServiceRulesCard', () => {
       rules: { downSharePct: 70, degradedSharePct: 1, minNodes: 1, unknownNodes: 'operational', openIncidentFrom: 'down', duringStorm: 'hold' },
     }]))
     // U-5: il salvataggio riuscito lo dice
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Rules saved (version 2)'))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Rules saved: the map is now at version 4'))
   })
 
   it('admin: soglia degradato sopra la soglia giù → messaggio e salvataggio bloccato', async () => {

@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import { creationStepContext, ticketStepContext } from '../../lib/customFieldSteps.js'
 import { customFieldDefs, customFieldValues, type CustomFieldInput } from '../../lib/ticketCustomFields.js'
 import type { Session } from 'neo4j-driver'
 import { withSession } from './ci-utils.js'
@@ -297,7 +298,9 @@ async function myTicket(
     }))
 
     // I campi del cliente che l'amministratore offre all'utente finale (ondata 4).
-    const customFields = customFieldValues(await customFieldDefs(session, ctx.tenantId, 'incident'), props, { onlyVisibleToEndUser: true })
+    // Solo quelli che nella fase del ticket si vedono (secondo giro UI del 15 set 2026).
+    const customFields = customFieldValues(await customFieldDefs(session, ctx.tenantId, 'incident'), props, { onlyVisibleToEndUser: true, stepContext: await ticketStepContext(session, ctx.tenantId, id) })
+      .filter((f) => f.visible)
 
     return { ...ticket, comments, attachments, history, customFields }
   })
@@ -313,7 +316,10 @@ async function portalCustomFields(_: unknown, { entityType }: { entityType: stri
   if (entityType !== 'incident' && entityType !== 'service_request') {
     throw new ValidationError(`The portal opens incidents and service requests, not "${entityType}".`, { key: 'errors.customField.entityType', params: { entityType } })
   }
-  return withSession(async (session) => customFieldValues(await customFieldDefs(session, ctx.tenantId, entityType), {}, { onlyVisibleToEndUser: true }))
+  // Solo quelli che all'apertura si vedono: la fase iniziale del workflow (secondo giro UI del 15 set 2026).
+  return withSession(async (session) => customFieldValues(await customFieldDefs(session, ctx.tenantId, entityType), {}, {
+    onlyVisibleToEndUser: true, stepContext: await creationStepContext(session, ctx.tenantId, entityType, null),
+  }).filter((f) => f.visible))
 }
 
 // ── Query: myTicketStats ──────────────────────────────────────────────────────

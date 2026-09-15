@@ -38,6 +38,12 @@ export const SYSTEM_TEXTS = {
   'notification.escalationDefault': { en: '{title}: not resolved after {minutes} minutes',      it: '{title}: non risolto dopo {minutes} minuti' },
   'approval.publicationRejected': { en: 'Publication rejected',                               it: 'Pubblicazione rifiutata' },
   'approval.requestRejected':   { en: 'Request rejected',                                     it: 'Richiesta rifiutata' },
+  // I nomi dei ruoli di fabbrica (senza nome proprio si leggono tradotti dalla chiave):
+  // un ruolo del cliente non può chiamarsi così (secondo giro UI · V-16). Uguali a `roles.*` del web.
+  'role.factory.admin':         { en: 'Admin',                                                it: 'Admin' },
+  'role.factory.operator':      { en: 'Operator',                                             it: 'Operatore' },
+  'role.factory.viewer':        { en: 'Viewer',                                               it: 'Visualizzatore' },
+  'role.factory.end_user':      { en: 'End user',                                             it: 'Utente finale' },
   'approval.requested':         { en: 'Approval requested',                                   it: 'Approvazione richiesta' },
   'approval.kbPublished':       { en: 'Article published',                                    it: 'Articolo pubblicato' },
   'approval.kbPublishedMessage': { en: 'Your article was approved and published',             it: 'Il tuo articolo è stato approvato e pubblicato' },

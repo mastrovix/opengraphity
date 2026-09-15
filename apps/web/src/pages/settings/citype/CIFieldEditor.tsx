@@ -9,7 +9,7 @@ import {
   btnPrimary, btnSecondary,
   FIELD_TYPES, enumOptionLabel,
 } from '../shared/designerStyles'
-import { Input, Select } from '@/components/ui/FormControls'
+import { Input, LabelledField, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import type { EnumTypeRef } from '../shared/designerStyles'
 import { palette } from '@/lib/tokens'
@@ -22,12 +22,7 @@ export { btnPrimary, btnSecondary, btnDanger } from '@/components/ui/styles'
 interface EnumTypeOption extends EnumTypeRef { name: string }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <label style={labelS}>{label}</label>
-      {children}
-    </div>
-  )
+  return <LabelledField label={label} labelStyle={labelS} style={{ marginBottom: 14 }}>{children}</LabelledField>
 }
 
 // ── FieldForm ─────────────────────────────────────────────────────────────────

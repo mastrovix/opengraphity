@@ -159,11 +159,13 @@ describe('PhaseBadge / StatusLabel', () => {
     expect(screen.getByText('weird')).toBeInTheDocument()
     expect(consoleError).toHaveBeenCalledWith('[workflowStepStyle] unknown category: "galactic"')
   })
-  it('StatusLabel: pending → "TO BE COMPLETED", altri stati con underscore → spazio', () => {
+  it('StatusLabel: ogni stato del task con la sua etichetta (giro UI del 15 set 2026: «COMPLETED» si leggeva grezzo)', () => {
     const { rerender } = render(<StatusLabel status="pending" />)
     expect(screen.getByText('TO BE COMPLETED')).toHaveAttribute('title', 'pending')
     rerender(<StatusLabel status="in-progress" />)
-    expect(screen.getByText('in-progress')).toHaveStyle({ color: 'var(--color-warning)' })
+    expect(screen.getByText('In progress')).toHaveStyle({ color: 'var(--color-warning)' })
+    rerender(<StatusLabel status="completed" />)
+    expect(screen.getByText('Completed')).toHaveAttribute('title', 'completed')
     rerender(<StatusLabel status={null} />)
     expect(screen.getByText('—')).toBeInTheDocument()
   })

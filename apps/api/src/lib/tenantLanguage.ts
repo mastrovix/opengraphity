@@ -51,6 +51,20 @@ export function invalidateTenantLanguageCache(tenantId?: string): void {
   else cache.delete(tenantId)
 }
 
+/**
+ * La lingua di chi guarda, come la manda il client (`language`). Vuota o assente
+ * = quella del cliente (`undefined`). Una lingua che il prodotto non ha è un
+ * errore, non un ripiego in silenzio (come le etichette del Dizionario).
+ */
+export function viewerLanguage(v: unknown): Lingua | undefined {
+  if (v == null || v === '') return undefined
+  if (isLingua(v)) return v
+  throw new ValidationError(
+    `Language "${String(v)}" not recognised: the product has ${LINGUE.join(', ')}.`,
+    { key: 'errors.enum.unknownLanguage', params: { language: String(v), available: LINGUE.join(', ') } },
+  )
+}
+
 /** Vero quando la stringa è una delle lingue del prodotto. */
 export function isLingua(v: unknown): v is Lingua {
   return typeof v === 'string' && (LINGUE as readonly string[]).includes(v)

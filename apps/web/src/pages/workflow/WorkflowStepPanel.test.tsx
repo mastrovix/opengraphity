@@ -42,6 +42,16 @@ const T = (key: string, opts?: Record<string, unknown>) => i18n.t(key, opts) as 
 const unsupportedOption = (op: string) => `?${op} (${T('conditionEditor.unsupported')})`
 
 describe('WorkflowStepPanel — proprietà', () => {
+  /** Secondo giro UI del 15 set 2026 · V-5: rinominare un passo perdeva le traduzioni senza dirlo. */
+  it('V-5: cambiando l\'etichetta di un passo tradotto il pannello dice che le traduzioni tornano rimettendola com\'era', async () => {
+    const { user } = renderPanel(step({ label: 'On Hold', labels: [{ language: 'it', label: 'In Attesa' }] }))
+    expect(screen.queryByTestId('step-label-translations-hint')).toBeNull()
+    const label = screen.getByDisplayValue('On Hold')
+    await user.type(label, ' (giro)')
+    expect(screen.getByTestId('step-label-translations-hint')).toHaveTextContent('it: «In Attesa»')
+    expect(screen.getByTestId('step-label-translations-hint')).toHaveTextContent('«On Hold»')
+  })
+
   it('mostra label, name e type dello step; Salva è disabilitato finché nulla cambia', () => {
     renderPanel(step())
     expect(screen.getByDisplayValue('New')).toBeInTheDocument()

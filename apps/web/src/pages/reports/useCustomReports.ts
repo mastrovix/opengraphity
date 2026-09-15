@@ -74,7 +74,9 @@ export const btnGhost: React.CSSProperties  = { padding: '8px 14px', borderRadiu
 export function useCustomReports() {
   // `t` NON si rinomina: con l'alias le sue chiavi erano invisibili a
   // `scripts/check-i18n.mjs`, che ora segnala l'alias come errore.
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  // V-20: le etichette dei valori seguono la lingua di chi legge il report
+  const language = i18n.resolvedLanguage ?? i18n.language
   const confirm = useConfirm()
   const [view,           setView]           = useState<View>('list')
   const [selectedId,     setSelectedId]     = useState<string | null>(null)
@@ -321,14 +323,14 @@ export function useCustomReports() {
   function handleExecuteAndGoToDetail(tpl: ReportTemplate) {
     setSelectedId(tpl.id)
     setSectionResults({})
-    runExecute({ variables: { templateId: tpl.id } })
+    runExecute({ variables: { templateId: tpl.id, language } })
     goToDetail(tpl)
   }
 
   function handleExecuteSelected() {
     if (!selected) return
     setSectionResults({})
-    runExecute({ variables: { templateId: selected.id } })
+    runExecute({ variables: { templateId: selected.id, language } })
   }
 
   function startEditSection(sec: ReportSection) {

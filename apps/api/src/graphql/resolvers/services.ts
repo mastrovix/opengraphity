@@ -37,6 +37,7 @@ import {
   type ServiceHealth, type ServiceHealthTrigger, type ServiceImpactRules, type ServiceMapStatus, type ServiceStaleReason,
 } from '../../lib/serviceVocabularies.js'
 import { createServiceMap as createServiceMapService, evaluateServiceMap, loadServiceMapState, type LoadedNode } from '../../services/serviceImpact/engine.js'
+import { buildServiceMap } from '../../services/serviceImpact/build.js'
 import { nodeContributes, nodeExcludedReason } from '../../services/serviceImpact/rules.js'
 import type { CauseCIRef, StoredCause } from '../../services/serviceImpact/history.js'
 import {
@@ -372,6 +373,28 @@ async function serviceMapCandidates(_: unknown, args: { search?: string | null; 
  * `relationshipTypes` della mappa, i CI con `EXCLUDES` non vengono riproposti.
  * Nessuna scrittura.
  */
+/**
+ * I componenti che una mappa nuova avrebbe, prima di crearla (secondo giro UI
+ * del 15 set 2026: «Crea una mappa» non mostrava niente fino alla creazione).
+ * La stessa costruzione di `createServiceMap`, senza scrivere.
+ */
+async function serviceMapCreationPreview(_: unknown, args: { serviceId: string; maxDepth: number; relationshipTypes: string[] }, ctx: GraphQLContext) {
+  requirePermission(ctx, 'config.services')
+  const session = getSession()
+  try {
+    const p = await buildServiceMap(session, ctx.tenantId, args.serviceId, args.maxDepth, args.relationshipTypes)
+    return {
+      serviceName: p.serviceName,
+      maxDepth: p.maxDepth,
+      relationshipTypes: p.relationshipTypes,
+      nodes: p.nodes.map((n) => ({
+        ci: mapCIRef(ctx.tenantId, { id: n.ciId, name: n.name, labels: n.labels, status: n.status, health: n.health }),
+        level: n.level, role: n.role, propagate: n.propagate, weight: n.weight, critical: n.critical, via: n.via,
+      })),
+    }
+  } finally { await session.close() }
+}
+
 async function serviceMapProposal(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   requirePermission(ctx, 'config.services')
   const d = await serviceMapProposalService(ctx.tenantId, args.id)
@@ -825,7 +848,7 @@ async function deleteServiceMap(_: unknown, args: { id: string }, ctx: GraphQLCo
 }
 
 export const serviceResolvers = {
-  Query: { serviceMaps, serviceMap, servicesImpactedByCI, serviceMapCandidates, serviceMapProposal, serviceImpactPreview, businessCapabilitiesHealth, serviceRelationshipTypes },
+  Query: { serviceMaps, serviceMap, servicesImpactedByCI, serviceMapCandidates, serviceMapCreationPreview, serviceMapProposal, serviceImpactPreview, businessCapabilitiesHealth, serviceRelationshipTypes },
   Mutation: {
     createServiceMap, reevaluateServiceMap, setServiceMapStatus, deleteServiceMap,
     updateServiceImpactRules, updateServiceMapNodes, applyServiceMapProposal, removeServiceMapExclusion, updateServiceMapScope,

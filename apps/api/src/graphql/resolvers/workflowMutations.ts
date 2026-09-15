@@ -30,6 +30,8 @@ import { transitionErrorFields } from '../../lib/transitionError.js'
 import { assertStepFieldValue, stepFieldMetas } from '../../lib/stepFieldWrites.js'
 import { assertDeadlineFields, assertDefinitionDeadlines, normalizeStepDeadlineInput } from '../../lib/stepDeadlineWrite.js'
 import { assertRolesExist, roleKeysInActions } from '../../lib/roles.js'
+import { labelTranslationsCypher } from '../../lib/workflowLabelTranslations.js'
+import { workflowChangeDetails, workflowSnapshot } from '../../lib/workflowAuditDetails.js'
 
 // Safe label map — prevents Cypher injection when creating entities dynamically
 const ENTITY_LABELS: Record<string, string> = {
@@ -591,7 +593,8 @@ export async function updateWorkflowStep(
       const written = await tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: $stepName})
         // Un'etichetta CAMBIATA nel disegnatore è del cliente: le traduzioni spedite non valgono più (#22).
-        SET s.labels       = CASE WHEN s.label = $label THEN s.labels ELSE null END
+        // V-5: tornando all'etichetta d'origine le traduzioni tornano (lib/workflowLabelTranslations.ts).
+        ${labelTranslationsCypher('s', '$label')}
         SET s.label        = $label,
             s.updated_at   = $now,
             s.enter_actions = CASE WHEN $enterActions IS NOT NULL THEN $enterActions ELSE s.enter_actions END,
@@ -668,7 +671,7 @@ export async function updateWorkflowTransition(
         MATCH (wd:WorkflowDefinition {id: src.definition_id, tenant_id: $tenantId})
         ${MARK_CUSTOMIZED_BUMP}
         // Un'etichetta CAMBIATA nel disegnatore è del cliente: le traduzioni spedite non valgono più (#22).
-        SET t.labels         = CASE WHEN $label IS NULL OR t.label = $label THEN t.labels ELSE null END
+        ${labelTranslationsCypher('t', 'coalesce($label, t.label)')}
         SET t.label          = coalesce($label, t.label),
             t.trigger        = coalesce($trigger, t.trigger),
             t.requires_input = $requiresInput,
@@ -1208,9 +1211,10 @@ export async function saveWorkflowChanges(
       `, { definitionId, tenantId: ctx.tenantId })
       if (!cur.records.length) throw new NotFoundError('WorkflowDefinition')
       const currentVersion = Number(cur.records[0].get('version') ?? 1)
+      const before = await workflowSnapshot(tx, ctx.tenantId, definitionId)
       if (expectedVersion != null && currentVersion !== expectedVersion) {
         throw new GraphQLError(
-          `Workflow changed by another user (version ${currentVersion}, you were editing v${expectedVersion}). Reload the page so you do not overwrite their changes.`,
+          `Workflow changed by another user (version ${currentVersion}, you were editing v${expectedVersion}): your changes were not applied. Reload the page so you do not overwrite theirs.`,
           {
             extensions: {
               code: 'CONFLICT', currentVersion, expectedVersion,
@@ -1228,7 +1232,7 @@ export async function saveWorkflowChanges(
           // tenant-ok: wd già scopata sopra
           MATCH (src:WorkflowStep {definition_id: wd.id})-[t:TRANSITIONS_TO {id: tr.transitionId}]->()
           // Un'etichetta CAMBIATA nel disegnatore è del cliente: le traduzioni spedite non valgono più (#22).
-          SET t.labels         = CASE WHEN tr.label IS NULL OR t.label = tr.label THEN t.labels ELSE null END
+          ${labelTranslationsCypher('t', 'coalesce(tr.label, t.label)')}
           SET t.label          = coalesce(tr.label, t.label),
               t.trigger        = coalesce(tr.trigger, t.trigger),
               t.requires_input = tr.requiresInput,
@@ -1274,7 +1278,7 @@ export async function saveWorkflowChanges(
           UNWIND $steps AS st
           MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {name: st.stepName})
           // Un'etichetta CAMBIATA nel disegnatore è del cliente: le traduzioni spedite non valgono più (#22).
-          SET s.labels        = CASE WHEN s.label = st.label THEN s.labels ELSE null END
+          ${labelTranslationsCypher('s', 'st.label')}
           SET s.label         = st.label,
               s.enter_actions = st.enterActions,
               s.exit_actions  = st.exitActions,
@@ -1339,11 +1343,13 @@ export async function saveWorkflowChanges(
         RETURN wd
       `, { definitionId, tenantId: ctx.tenantId, now, ...customizedParams(ctx) })
       if (!wdResult.records.length) throw new NotFoundError('WorkflowDefinition')
-      return wdResult.records[0].get('wd').properties as Record<string, unknown>
+      const saved = wdResult.records[0].get('wd').properties as Record<string, unknown>
+      const after = await workflowSnapshot(tx, ctx.tenantId, definitionId)
+      return { saved, details: workflowChangeDetails(before, after, currentVersion, Number(saved['version'])) }
     })
 
-    invalidateWorkflowCache(ctx.tenantId, wd['entity_type'] as string)
-    void audit(ctx, 'workflow.updated', 'WorkflowDefinition', definitionId)
+    invalidateWorkflowCache(ctx.tenantId, wd.saved['entity_type'] as string)
+    void audit(ctx, 'workflow.updated', 'WorkflowDefinition', definitionId, wd.details)
 
     const stepsResult = await session.executeRead((tx) =>
       tx.run(`MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep) RETURN collect(s) AS steps`,
@@ -1355,6 +1361,6 @@ export async function saveWorkflowChanges(
     // QUESTA (zona morta temporale) e la mutation falliva sempre con un
     // ReferenceError — «Salva modifiche» del disegnatore non salvava niente.
     const savedTransitions = await loadTransitionRows(session, definitionId, ctx.tenantId)
-    return mapWorkflowDefinition(wd, savedSteps, savedTransitions)
+    return mapWorkflowDefinition(wd.saved, savedSteps, savedTransitions)
   }, true)
 }

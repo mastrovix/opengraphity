@@ -21,6 +21,10 @@ import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import { languageFor } from '../../lib/tenantLanguage.js'
 import type { CustomFieldValue } from '../../lib/ticketCustomFields.js'
 import { isPortalOnly } from '../../lib/permissions.js'
+import { parseStepEditability, parseStepVisibility, ticketStepContext, type StepEditability, type StepVisibility } from '../../lib/customFieldSteps.js'
+
+const stepVisibilityView = (v: StepVisibility) => ({ mode: v.mode, steps: v.mode === 'steps' ? v.steps : [], step: v.mode === 'from' ? v.step : null })
+const stepEditabilityView = (e: StepEditability) => ({ mode: e.mode, steps: e.mode === 'steps' ? e.steps : [] })
 
 type Props = Record<string, unknown>
 
@@ -43,7 +47,10 @@ function customFieldsResolver(entityType: TicketCustomFieldEntityType) {
     const defs = await requestCustomFieldDefs(ctx, entityType)
     if (defs.length === 0) return []
     const props = ticketPropsOf(parent) ?? await withSession((session) => loadTicketProps(session, ctx.tenantId, entityType, parent.id)) ?? {}
-    return customFieldValues(defs, props, { onlyVisibleToEndUser: isPortalOnly(ctx) })
+    const stepContext = defs.some((d) => d.visibility.mode !== 'always' || d.editability.mode !== 'visible')
+      ? await withSession((session) => ticketStepContext(session, ctx.tenantId, parent.id))
+      : null
+    return customFieldValues(defs, props, { onlyVisibleToEndUser: isPortalOnly(ctx), stepContext })
   }
 }
 
@@ -61,7 +68,8 @@ async function setTicketCustomFields(
     const current = await loadTicketProps(session, ctx.tenantId, entityType, args.id)
     if (!current) throw new NotFoundError(label, args.id)
     const defs = await customFieldDefs(session, ctx.tenantId, entityType)
-    const patch = await resolveCustomFieldWrites(ctx.tenantId, entityType, defs, args.values, { current })
+    const stepContext = await ticketStepContext(session, ctx.tenantId, args.id)
+    const patch = await resolveCustomFieldWrites(ctx.tenantId, entityType, defs, args.values, { current, stepContext })
     // Le regole di obbligatorietà del cliente valgono anche togliendo un valore.
     await validateRequiredFields(session, { entityType, fieldValues: { ...current, ...patch }, tenantId: ctx.tenantId })
     const row = await runQueryOne<{ props: Props }>(session, `
@@ -78,7 +86,7 @@ async function setTicketCustomFields(
         fields: Object.fromEntries(changed.map((k) => [k, { from: current[k] ?? null, to: row.props[k] ?? null }])),
       })
     }
-    return customFieldValues(defs, row.props)
+    return customFieldValues(defs, row.props, { stepContext })
   }, true)
 }
 
@@ -115,5 +123,10 @@ export const ticketCustomFieldResolvers = {
     },
   },
   // I campi dei CI non hanno l'opzione del portale: sempre no.
-  CIFieldDef:     { visibleToEndUser: (f: { visibleToEndUser?: boolean }) => f.visibleToEndUser === true },
+  CIFieldDef:     {
+    visibleToEndUser: (f: { visibleToEndUser?: boolean }) => f.visibleToEndUser === true,
+    // I campi dei CI non hanno fasi: sempre visibili e modificabili.
+    stepVisibility:  (f: { name?: string; stepVisibilityRaw?: string | null }) => stepVisibilityView(parseStepVisibility(f.stepVisibilityRaw, `field ${f.name ?? ''}`)),
+    stepEditability: (f: { name?: string; stepEditabilityRaw?: string | null }) => stepEditabilityView(parseStepEditability(f.stepEditabilityRaw, `field ${f.name ?? ''}`)),
+  },
 }

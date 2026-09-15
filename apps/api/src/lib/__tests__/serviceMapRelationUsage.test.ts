@@ -84,4 +84,16 @@ describe('assertNoServiceMapFollows', () => {
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
     expect(err!.extensions['i18n']).toEqual({ key: 'errors.ciType.relationUsedByServiceMaps', params: { name: 'bilancia', relationshipTypes: 'BALANCES', count: 2, maps: 'CRM, Portale clienti' } })
   })
+
+  /** Secondo giro UI del 15 set 2026 · V-14: disattivando un tipo il messaggio parlava di una relazione tolta. */
+  it('V-14: disattivare o eliminare un tipo ha la sua chiave e il suo verbo', async () => {
+    TYPES.value = [firewall]
+    vi.mocked(runQuery).mockResolvedValueOnce([{ name: 'Portale clienti' }] as never)
+    const deact = await assertNoServiceMapFollows(session, 't1', { typeId: 'ct-fw' }, 'deactivateType').then(() => null, (e: { message: string; extensions: Record<string, unknown> }) => e)
+    expect(deact!.message).toContain('was not deactivated')
+    expect((deact!.extensions['i18n'] as { key: string }).key).toBe('errors.ciType.typeDeactivateUsedByServiceMaps')
+    vi.mocked(runQuery).mockResolvedValueOnce([{ name: 'Portale clienti' }] as never)
+    const del = await assertNoServiceMapFollows(session, 't1', { typeId: 'ct-fw' }, 'deleteType').then(() => null, (e: { message: string; extensions: Record<string, unknown> }) => e)
+    expect((del!.extensions['i18n'] as { key: string }).key).toBe('errors.ciType.typeDeleteUsedByServiceMaps')
+  })
 })

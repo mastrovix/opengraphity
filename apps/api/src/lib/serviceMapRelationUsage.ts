@@ -56,12 +56,22 @@ export async function serviceMapsBlockingRemoval(
 /** Rifiuta la rimozione se una mappa segue un tipo di relazione che sparirebbe. */
 export async function assertNoServiceMapFollows(
   session: Queryable, tenantId: string, without: { typeId?: string; relationId?: string },
+  /**
+   * Cosa si sta facendo: il messaggio lo dice. Secondo giro UI del 15 set 2026
+   * · V-14: disattivando un tipo si leggeva «non è stata tolta… Togli prima la
+   * relazione», la frase della rimozione di una relazione.
+   */
+  action: 'removeRelation' | 'deleteType' | 'deactivateType' = 'removeRelation',
 ): Promise<void> {
   const { lost, name, maps } = await serviceMapsBlockingRemoval(session, tenantId, without)
   if (maps.length === 0) return
+  const params = { name, relationshipTypes: lost.join(', '), count: maps.length, maps: maps.join(', ') }
+  const verb = action === 'removeRelation' ? 'was not removed' : action === 'deleteType' ? 'was not deleted' : 'was not deactivated'
+  const key = action === 'removeRelation' ? 'errors.ciType.relationUsedByServiceMaps'
+    : action === 'deleteType' ? 'errors.ciType.typeDeleteUsedByServiceMaps' : 'errors.ciType.typeDeactivateUsedByServiceMaps'
   throw new ValidationError(
-    `"${name}" was not removed: it is the only declaration of ${lost.join(', ')}, which ${maps.length} service map(s) follow (${maps.join(', ')}). `
+    `"${name}" ${verb}: it is the only declaration of ${lost.join(', ')}, which ${maps.length} service map(s) follow (${maps.join(', ')}). `
     + `Without it those maps could no longer be synchronized. Remove the relationship type from the maps first (service detail → Scope).`,
-    { key: 'errors.ciType.relationUsedByServiceMaps', params: { name, relationshipTypes: lost.join(', '), count: maps.length, maps: maps.join(', ') } },
+    { key, params },
   )
 }

@@ -111,7 +111,8 @@ export function CIListPage() {
       onCompleted: (res) => {
         const key = `create${toPascalCase(typeName ?? '')}`
         const newId = res[key]?.id
-        toast.success(t('pages.cmdb.ciCreated', { type: ciTypeLabel || 'CI' }))
+        // «Business Application creato»: il genere del tipo non si sa, quello di «CI» sì.
+        toast.success(t('pages.cmdb.ciCreated', { name: res[key]?.name ?? '', type: ciTypeLabel || typeName }))
         setShowCreate(false)
         void refetch()
         if (newId) navigate(`/ci/${typeName}/${newId}`)

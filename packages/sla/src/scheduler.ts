@@ -5,7 +5,7 @@ import type { DomainEvent, SLAWarningPayload, SLABreachedPayload } from '@opengr
 import { markBreached, getSLAStatus, ticketReference } from './status.js'
 import type { SLAStatus } from './status.js'
 import { calculateDeadline } from './policy.js'
-import { isEntityResolved, type OLAContractWithCalendar } from './olaBreach.js'
+import { isEntityResolved, olaBreachSkipReason, type OLAContractWithCalendar } from './olaBreach.js'
 
 // Redis options come from the shared parser in @opengraphity/events (D-14):
 // same REDIS_URL / REDIS_PASSWORD rules as the event queues, so the SLA timers
@@ -151,9 +151,13 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
     case 'ola.breach': {
       // OLA/UC target elapsed. Alert only if the entity is still open — a
       // resolved entity met (or already reported) its outcome; no false alarm.
-      const stillOpen = !(await isEntityResolved(job.data.tenantId, entityType, entityId))
-      if (!stillOpen) {
-        console.log(`[sla:scheduler] OLA "${job.data.contractName}" check skipped for ${entityType} ${entityId} — already resolved`)
+      // Ticket aperto, contratto attivo e ticket del team del contratto: altrimenti niente avviso.
+      // I job armati prima del contratto nel payload hanno solo il controllo «ancora aperto».
+      const skip = job.data.contractId
+        ? await olaBreachSkipReason(job.data.tenantId, entityType, entityId, job.data.contractId)
+        : ((await isEntityResolved(job.data.tenantId, entityType, entityId)) ? 'resolved' : null)
+      if (skip) {
+        console.log(`[sla:scheduler] OLA "${job.data.contractName}" check skipped for ${entityType} ${entityId} — ${skip}`)
         break
       }
       const event: DomainEvent<Record<string, unknown>> = {

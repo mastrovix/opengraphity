@@ -255,12 +255,12 @@ export function TicketNewPage() {
         </div>
       )}
 
-      {/* Priority */}
+      {/* Severità: la stessa parola della pagina Organizzazione («Severità del portale»), ed è il campo che il ticket salva */}
       <div style={{ marginBottom: 24 }}>
-        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
-          {t('ticket.fields.priority')} *
-        </label>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div id="ticket-severity-label" style={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+          {t('ticket.fields.severity')} *
+        </div>
+        <div role="radiogroup" aria-labelledby="ticket-severity-label" aria-required="true" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {severityChoices.map(c => (
             <label key={c.value} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 10, color: colors.slateDark }}>
               <input

@@ -41,6 +41,7 @@ export const AUDIT_REGISTRY_SKIPPED: Readonly<Record<string, string>> = {
   watchEntity:               'personal subscription',
   unwatchEntity:             'personal subscription',
   setMyEmailNotifications:   'personal preference',
+  setMyLanguage:             'personal preference',
   rateKBArticle:             'personal feedback vote',
   previewInboundEvents:      'dry-run, writes nothing',
   askReport:                 'question to the report assistant, writes no organization data',
@@ -77,7 +78,9 @@ const VERB = /^(create|update|delete|remove|add|set|assign|link|unlink|reorder|r
  * con gli helper di `graphql`: con due copie del pacchetto nel workspace un
  * `isObjectType` di una copia rifiuta i tipi dell'altra.
  */
-export function auditEntityType(fieldName: string, returnType: { toString(): string }): string {
+export function auditEntityType(fieldName: string, returnType: { toString(): string }, args: Record<string, unknown> = {}): string {
+  const container = containerOf(fieldName, args)
+  if (container) return container.type
   const name = String(returnType).replace(/[[\]!]/g, '')
   if (!BUILTIN_SCALARS.has(name) && /^[A-Z]/.test(name)) return name
   const noun = fieldName.replace(VERB, '')
@@ -86,8 +89,31 @@ export function auditEntityType(fieldName: string, returnType: { toString(): str
 
 const BUILTIN_SCALARS = new Set(['Boolean', 'String', 'ID', 'Int', 'Float', 'JSON', 'DateTime', 'Upload'])
 
-/** L'id dell'entità: `id` fra gli argomenti o nell'input, poi l'id restituito, poi il primo argomento `…Id`. */
-export function auditEntityId(args: Record<string, unknown>, result: unknown): string {
+/**
+ * «Aggiungi X A Y»: la voce è di Y. `addCIToChange(changeId, ciId)` restituisce
+ * un `ChangeAffectedCI` senza id, e il registro scriveva il tipo del wrapper
+ * con l'id della change (secondo giro UI del 15 set 2026). Quando il nome dice
+ * a chi si aggiunge o da chi si toglie (`add…ToChange`, `remove…FromProblem`) e c'è
+ * l'argomento `changeId`/`problemId`, l'entità è quella.
+ */
+function containerOf(fieldName: string, args: Record<string, unknown>): { type: string; id: string } | null {
+  // Solo aggiungere/togliere: `assignIncidentToTeam` o `linkEventToCI` parlano del primo, non del secondo.
+  const m = /^(?:add|remove)[A-Z][A-Za-z]*?(?:To|From)([A-Z][A-Za-z]*)$/.exec(fieldName)
+  if (!m) return null
+  const noun = m[1]!
+  // `changeId` per «…ToChange»; anche `requestId` per «…FromServiceRequest».
+  const key = Object.keys(args).find((k) => {
+    const prefix = /^(.{3,})Id$/.exec(k)?.[1]
+    return prefix !== undefined && noun.toLowerCase().endsWith(prefix.toLowerCase())
+  })
+  const id = key ? args[key] : undefined
+  return (typeof id === 'string' || typeof id === 'number') && String(id) !== '' ? { type: noun, id: String(id) } : null
+}
+
+/** L'id dell'entità: il contenitore del nome, `id` fra gli argomenti o nell'input, poi l'id restituito, poi il primo argomento `…Id`. */
+export function auditEntityId(args: Record<string, unknown>, result: unknown, fieldName = ''): string {
+  const container = containerOf(fieldName, args)
+  if (container) return container.id
   const str = (v: unknown) => (typeof v === 'string' || typeof v === 'number') && String(v) !== '' ? String(v) : null
   const input = args['input'] as Record<string, unknown> | undefined
   const fromResult = result && typeof result === 'object' ? str((result as Record<string, unknown>)['id']) : null
@@ -114,7 +140,7 @@ export function auditMutationsPlugin(): ApolloServerPlugin<GraphQLContext> {
                   return
                 }
                 if (after > before) return
-                void audit(contextValue, `mutation.${info.fieldName}`, auditEntityType(info.fieldName, info.returnType), auditEntityId(args, result), {
+                void audit(contextValue, `mutation.${info.fieldName}`, auditEntityType(info.fieldName, info.returnType, args), auditEntityId(args, result, info.fieldName), {
                   args: auditableArgs(args),
                   source: 'audit-registry',
                 })

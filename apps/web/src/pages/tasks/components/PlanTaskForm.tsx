@@ -46,7 +46,7 @@ export function PlanTaskForm({ task, steps, setSteps, dirty, setDirty, canEdit, 
       {steps.map((s, i) => (
         <div key={i} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 14, marginBottom: 10, background: 'var(--color-slate-bg)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <span style={labelStyle}>Step {i + 1}</span>
+            <span style={labelStyle}>{t('changeTasks.stepN', { n: i + 1 })}</span>
             {canEdit && !completed && (
               <button
                 type="button"

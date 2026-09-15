@@ -47,7 +47,7 @@ describe('AutomationConsumer.process', () => {
   it('change.created: regole e trigger on_create sulla change riletta dal grafo, poi i trigger a tempo', async () => {
     await new AutomationConsumer().process(ev('change.created', { id: 'c1' }))
     expect(loadAutomationEntity).toHaveBeenCalledWith(expect.anything(), 't1', 'change', 'c1')
-    expect(evaluateBusinessRules).toHaveBeenCalledWith('t1', 'change', 'on_create', { id: 'e1', status: 'new' }, 'automation')
+    expect(evaluateBusinessRules).toHaveBeenCalledWith('t1', 'change', 'on_create', { id: 'e1', status: 'new' }, 'automation', undefined)
     expect(evaluateTriggers).toHaveBeenCalledWith('t1', 'change', 'on_create', { id: 'e1', status: 'new' }, 'automation', undefined)
     expect(scheduleTimerTriggers).toHaveBeenCalledWith('t1', 'change', 'c1')
   })
@@ -58,13 +58,15 @@ describe('AutomationConsumer.process', () => {
   })
   it('workflow.step_entered: solo le regole on_transition', async () => {
     await new AutomationConsumer().process(ev('workflow.step_entered', { entity_type: 'problem', entity_id: 'p1' }))
-    expect(evaluateBusinessRules).toHaveBeenCalledWith('t1', 'problem', 'on_transition', expect.anything(), 'automation')
+    expect(evaluateBusinessRules).toHaveBeenCalledWith('t1', 'problem', 'on_transition', expect.anything(), 'automation', undefined)
     expect(evaluateTriggers).not.toHaveBeenCalled()
   })
   it('ticket.updated: on_field_change riceve i campi cambiati', async () => {
     await new AutomationConsumer().process(ev('ticket.updated', { entity_type: 'incident', entity_id: 'i1', changed_fields: ['severity'] }))
     expect(evaluateTriggers).toHaveBeenCalledWith('t1', 'incident', 'on_field_change', expect.anything(), 'automation', { changedFields: ['severity'] })
-    expect(evaluateBusinessRules).toHaveBeenCalledWith('t1', 'incident', 'on_update', expect.anything(), 'automation')
+    // V-19: le regole «aggiornato» ricevono i campi cambiati, per l'operatore «è cambiato».
+    expect(evaluateBusinessRules).toHaveBeenCalledWith('t1', 'incident', 'on_update', expect.anything(), 'automation', { changedFields: ['severity'] })
+    expect(evaluateTriggers).toHaveBeenCalledWith('t1', 'incident', 'on_update', expect.anything(), 'automation', { changedFields: ['severity'] })
   })
   it('ticket che non esiste più → niente da valutare', async () => {
     vi.mocked(loadAutomationEntity).mockResolvedValueOnce(null)

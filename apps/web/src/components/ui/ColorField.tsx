@@ -7,7 +7,7 @@
 import { useTranslation } from 'react-i18next'
 import { colorInputValue, isColorToken } from '@/lib/colorInput'
 
-export function ColorField({ id, value, onChange }: { id?: string; value: string; onChange: (hex: string) => void }) {
+export function ColorField({ id, value, onChange, label }: { id?: string; value: string; onChange: (hex: string) => void; /** Il nome accessibile quando non c'è una <label for> (secondo giro UI del 15 set 2026). */ label?: string }) {
   const { t } = useTranslation()
   const hex = colorInputValue(value)
   const token = isColorToken(value)
@@ -15,6 +15,7 @@ export function ColorField({ id, value, onChange }: { id?: string; value: string
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <input
         id={id}
+        aria-label={id ? undefined : label}
         type="color"
         value={hex ?? ''}
         onChange={(e) => onChange(e.target.value)}

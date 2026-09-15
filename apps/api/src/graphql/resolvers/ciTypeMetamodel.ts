@@ -514,6 +514,67 @@ export function assertChainFamilies(value: string[] | undefined): string | null 
   return chainFamiliesToJSON(value)
 }
 
+// ── Campi del cliente e loro valori (V-15) ───────────────────────────────────
+
+/** Quanti valori di un campo mettere nell'Audit Log quando il campo si cancella. */
+const CI_FIELD_VALUE_SAMPLE = 50
+
+/**
+ * Il campo del cliente su un suo tipo, con la label Neo4j e le chiavi sotto cui
+ * il valore può stare sul CI. Un campo spedito o di un altro tenant è un rifiuto
+ * (A-5): prima la mutation non faceva nulla dicendo «fatto».
+ */
+async function ciFieldTarget(session: Session, typeId: string, fieldId: string, tenantId: string) {
+  await assertTenantOwnedType(session, typeId, tenantId, 'remove')
+  const found = await session.executeRead(tx =>
+    tx.run(`
+      MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
+      WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
+        AND f.scope = 'tenant' AND f.tenant_id = $tenantId
+      RETURN f.name AS name, t.neo4j_label AS label
+    `, { typeId, fieldId, tenantId }),
+  )
+  if (!found.records.length) {
+    throw new ValidationError(
+      `Field ${fieldId} is not a field of yours on this type: it was not deleted. `
+      + `The fields that ship with the product are read-only.`,
+      { key: 'errors.ciType.fieldNotYours', params: { field: fieldId } },
+    )
+  }
+  const name  = found.records[0]!.get('name') as string
+  const label = assertLabel(found.records[0]!.get('label'), `removeCIField(${fieldId}): label of the type`)
+  const snake = assertFieldName(toSnakeCase(name), `removeCIField(${name})`)
+  // La lettura (`mapCI`) guarda anche la chiave camelCase.
+  const camelIsProperty = name !== snake && /^[a-z][A-Za-z0-9]*$/.test(name)
+  return { name, label, snake, camelIsProperty }
+}
+
+/** I CI del tipo che hanno un valore nel campo: quanti, e i primi valori per nome del CI. */
+async function ciFieldValues(
+  session: Session, tenantId: string, f: { label: string; snake: string; name: string; camelIsProperty: boolean },
+): Promise<{ count: number; sample: Record<string, string> }> {
+  const value = f.camelIsProperty ? `coalesce(n.${f.snake}, n.${f.name})` : `n.${f.snake}`
+  const res = await session.executeRead(tx => tx.run(`
+    MATCH (n:${f.label} {tenant_id: $tenantId})
+    WHERE ${value} IS NOT NULL
+    WITH n, toString(${value}) AS value ORDER BY n.name
+    WITH collect({name: coalesce(n.name, n.id), value: value}) AS rows
+    RETURN size(rows) AS count, rows[0..$limit] AS sample
+  `, { tenantId, limit: CI_FIELD_VALUE_SAMPLE }))
+  const rec = res.records[0]
+  const sample = (rec?.get('sample') as Array<{ name: string; value: string }> | undefined) ?? []
+  return { count: toNumber(rec?.get('count') ?? 0), sample: Object.fromEntries(sample.map((r) => [String(r.name), r.value])) }
+}
+
+/** Quanti CI hanno un valore nel campo: la conferma di cancellazione del disegnatore lo dice (V-15). */
+export async function ciFieldValueCount(_: unknown, args: { typeId: string; fieldId: string }, ctx: GraphQLContext) {
+  requireMetamodelPermission(ctx)
+  return withSession(async (session) => {
+    const target = await ciFieldTarget(session, args.typeId, args.fieldId, ctx.tenantId)
+    return (await ciFieldValues(session, ctx.tenantId, target)).count
+  })
+}
+
 // ── ciTypeDeletionImpact ─────────────────────────────────────────────────────
 
 /** La conferma del disegnatore: cosa porterebbe via la cancellazione del tipo (lib/ciTypeDeletion.ts). */
@@ -858,7 +919,7 @@ export function buildMetamodelMutations() {
           assertCITypeNotInTickets(impact, owned, 'deactivate')
           assertCITypeHasNoCIsToHide(impact, { ...owned, neo4jLabel })
           // SV-6: un tipo disattivato non dichiara più le sue relazioni.
-          await assertNoServiceMapFollows(session, ctx.tenantId, { typeId: args.id })
+          await assertNoServiceMapFollows(session, ctx.tenantId, { typeId: args.id }, 'deactivateType')
         }
         const r = await session.executeWrite(tx =>
           tx.run(
@@ -885,7 +946,7 @@ export function buildMetamodelMutations() {
         const owned = await assertTenantOwnedType(session, args.id, ctx.tenantId, 'delete')
         neo4jLabel = toPascalCase(owned.name)
         // SV-6: le relazioni del tipo spariscono con lui.
-        await assertNoServiceMapFollows(session, ctx.tenantId, { typeId: args.id })
+        await assertNoServiceMapFollows(session, ctx.tenantId, { typeId: args.id }, 'deleteType')
         // Regola del proprietario (15 set 2026): il solo impedimento è un
         // ticket che cita un CI del tipo, anche chiuso. CI, gruppi dinamici,
         // esclusioni, regole, trigger, widget e sezioni di report vanno via con
@@ -1153,36 +1214,14 @@ export function buildMetamodelMutations() {
       ctx: GraphQLContext,
     ) => {
       requireMetamodelPermission(ctx)
-      let removed: { name: string; values: number } | null = null
+      let removed: { name: string; values: number; previousValues: Record<string, string> } | null = null
       await withSession(async session => {
         // A-5: sui tipi spediti il `WHERE t.scope = 'tenant'` rendeva questa
         // mutation un no-op silenzioso — l'interfaccia diceva «fatto» e il
         // campo restava. Ora si ferma e dice perché.
-        await assertTenantOwnedType(session, args.typeId, ctx.tenantId, 'remove')
-        const found = await session.executeRead(tx =>
-          tx.run(`
-            MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
-            WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
-              AND f.scope = 'tenant' AND f.tenant_id = $tenantId
-            RETURN f.name AS name, t.neo4j_label AS label
-          `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId }),
-        )
-        if (!found.records.length) {
-          throw new ValidationError(
-            `Field ${args.fieldId} is not a field of yours on this type: it was not deleted. `
-            + `The fields that ship with the product are read-only.`,
-            { key: 'errors.ciType.fieldNotYours', params: { field: args.fieldId } },
-          )
-        }
-        const name  = found.records[0]!.get('name') as string
-        const label = assertLabel(found.records[0]!.get('label'), `removeCIField(${args.fieldId}): label of the type`)
-        // CM-4 (revisione del 15 set 2026): i VALORI se ne vanno col campo.
-        // Prima restavano sui CI senza nessuna definizione, e ricreando un campo
-        // con lo stesso nome ricomparivano valori scritti mesi prima. Stessa
-        // transazione della definizione, e il numero dei CI toccati nell'audit.
-        const snake = assertFieldName(toSnakeCase(name), `removeCIField(${name})`)
-        // La lettura (`mapCI`) guarda anche la chiave camelCase: si toglie anche quella.
-        const camelIsProperty = name !== snake && /^[a-z][A-Za-z0-9]*$/.test(name)
+        const { name, label, snake, camelIsProperty } = await ciFieldTarget(session, args.typeId, args.fieldId, ctx.tenantId)
+        // Secondo giro UI · V-15: i valori di prima nell'Audit Log, come per i campi ITIL (U-28).
+        const before = await ciFieldValues(session, ctx.tenantId, { label, snake, name, camelIsProperty })
         const r = await session.executeWrite(async tx => {
           const cleared = await tx.run(`
             MATCH (n:${label} {tenant_id: $tenantId})
@@ -1198,11 +1237,14 @@ export function buildMetamodelMutations() {
           `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId })
           return toNumber(cleared.records[0]?.get('n'))
         })
-        removed = { name, values: r }
+        removed = { name, values: r, previousValues: before.sample }
         cache.invalidate(`ci:${ctx.tenantId}:${label}:`)
       }, true)
       invalidateSchema(ctx.tenantId)
-      if (removed) void audit(ctx, 'ci_type.field_removed', 'CITypeDefinition', args.typeId, { field: (removed as { name: string }).name, valuesRemoved: (removed as { values: number }).values })
+      if (removed) {
+        const done = removed as { name: string; values: number; previousValues: Record<string, string> }
+        void audit(ctx, 'ci_type.field_removed', 'CITypeDefinition', args.typeId, { field: done.name, valuesRemoved: done.values, previousValues: done.previousValues })
+      }
       return fetchCITypeById(args.typeId, ctx.tenantId)
     },
 

@@ -40,4 +40,19 @@ describe('me', () => {
     expect(cypher).toContain('SET u.notifications_enabled = $enabled')
     expect(params).toMatchObject({ userId: 'u1', tenantId: 't1', enabled: false })
   })
+
+  /** Secondo giro UI del 15 set 2026: la lingua personale stava solo nel browser del web, il portale non la vedeva. */
+  it('setMyLanguage scrive la lingua sulla persona; null torna a quella dell\'organizzazione', async () => {
+    runQueryOne.mockResolvedValueOnce({ props: { id: 'u1', tenant_id: 't1', email: 'bob@azienda.it', role: 'operator', language: 'it' } })
+    expect(await meResolvers.Mutation.setMyLanguage(null, { language: 'it' }, ctx)).toMatchObject({ language: 'it' })
+    expect((runQueryOne.mock.calls[0] as [unknown, string, Record<string, unknown>])[2]).toMatchObject({ language: 'it' })
+    runQueryOne.mockResolvedValueOnce({ props: { id: 'u1', tenant_id: 't1', email: 'bob@azienda.it', role: 'operator' } })
+    expect(await meResolvers.Mutation.setMyLanguage(null, { language: null }, ctx)).toMatchObject({ language: null })
+    expect((runQueryOne.mock.calls[1] as [unknown, string, Record<string, unknown>])[2]).toMatchObject({ language: null })
+  })
+
+  it('setMyLanguage rifiuta una lingua che il prodotto non ha, senza scrivere', async () => {
+    await expect(meResolvers.Mutation.setMyLanguage(null, { language: 'klingon' }, ctx)).rejects.toThrow(/not recognised/)
+    expect(runQueryOne).not.toHaveBeenCalled()
+  })
 })

@@ -447,6 +447,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     CustomFieldValue:   ticketCustomFieldResolvers.CustomFieldValue,
     SLAPolicyNode:      automationResolvers.SLAPolicyNode,  // il nome del calendario (ondata 2)
     OLAContract:        olaResolvers.OLAContract,           // il nome del calendario (ondata 2)
+    TicketOLA:          olaResolvers.TicketOLA,             // il riquadro OLA/UC del ticket (secondo giro UI del 15 set 2026)
     Event:              eventResolvers.Event,
     EventHistoryEntry:  eventResolvers.EventHistoryEntry,   // cronologia dell'allarme (Event Management)
     ServiceMap:         serviceResolvers.ServiceMap,        // servizi monitorati: nodes/edges/history sono field resolver

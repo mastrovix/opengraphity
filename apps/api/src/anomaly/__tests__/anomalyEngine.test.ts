@@ -64,7 +64,7 @@ vi.mock('../ruleConfig.js', () => {
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
-const { startAnomalyScanner, getAnomalyScannerQueue, enqueueTenantScan, anomalyScannerProcessor } = await import('../anomalyEngine.js')
+const { startAnomalyScanner, getAnomalyScannerQueue, enqueueTenantScan, anomalyScannerProcessor, entitySubtypeOf } = await import('../anomalyEngine.js')
 const { Worker } = await import('bullmq')
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -148,5 +148,17 @@ describe('anomalyScannerProcessor (C-18)', () => {
     const disabled = runs.find((r) => r.p['ruleKey'] === 'missing_owner')
     expect(disabled?.p).toMatchObject({ reason: 'rule_disabled', currentEntityIds: [] })
     expect(runs.find((r) => r.p['ruleKey'] === 'orphan_ci')?.p).toMatchObject({ reason: 'not_detected' })
+  })
+})
+
+/** Secondo giro UI del 15 set 2026 · V-3: «CI Senza Owner · Portale clienti · businessapplication». */
+describe('entitySubtypeOf', () => {
+  it('le label del CI diventano il nome del tipo; una stringa resta; altro è un errore', () => {
+    expect(entitySubtypeOf('t1', ['BusinessApplication'])).toBe('business_application')
+    expect(entitySubtypeOf('t1', ['DatabaseInstance', 'ConfigurationItem'])).toBe('database_instance')
+    expect(entitySubtypeOf('t1', [])).toBe('')
+    expect(entitySubtypeOf('t1', null)).toBe('')
+    expect(entitySubtypeOf('t1', 'team')).toBe('team')
+    expect(() => entitySubtypeOf('t1', 42)).toThrow(/unreadable entitySubtype/)
   })
 })

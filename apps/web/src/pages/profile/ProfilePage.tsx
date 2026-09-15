@@ -4,7 +4,7 @@
  * `/settings/profile` Slack only) — E-13.
  */
 import { useState } from 'react'
-import { useQuery } from '@apollo/client/react'
+import { useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { gql } from '@apollo/client'
 import { UserCircle } from 'lucide-react'
@@ -17,7 +17,8 @@ import { useMe } from '@/hooks/useMe'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { RoleBadge } from '@/components/ui/badges'
 import { Toggle } from '@/components/ui/Toggle'
-import { SET_MY_EMAIL_NOTIFICATIONS } from '@/graphql/mutations'
+import { SET_MY_EMAIL_NOTIFICATIONS, SET_MY_LANGUAGE } from '@/graphql/mutations'
+import { showError } from '@/lib/showError'
 import { colors, palette } from '@/lib/tokens'
 import { scegliLinguaPersonale, usaLinguaDellOrganizzazione, linguaSceltaDallUtente } from '@/i18n/tenantLanguage'
 import { GET_TENANT_LANGUAGE_SETTINGS } from '@/graphql/queries'
@@ -60,6 +61,19 @@ export function ProfilePage() {
   const { data: langData } = useQuery<{ tenantLanguageSettings: { defaultLanguage: string | null } }>(GET_TENANT_LANGUAGE_SETTINGS, { fetchPolicy: 'cache-first' })
   const orgLanguage = langData?.tenantLanguageSettings.defaultLanguage ?? null
   const [personal, setPersonal] = useState(linguaSceltaDallUtente)
+  /*
+    Secondo giro UI del 15 set 2026: la scelta stava solo in questo browser, e il
+    portale (un'altra applicazione) non la vedeva. Ora si salva sulla persona e
+    si applica qui solo dopo che il server l'ha presa.
+  */
+  const [saveLanguage] = useMutation(SET_MY_LANGUAGE, { refetchQueries: ['GetMe'] })
+  const chooseLanguage = async (v: string) => {
+    try {
+      await saveLanguage({ variables: { language: v === ORGANIZATION ? null : v } })
+    } catch (e) { showError(e); return }
+    if (v === ORGANIZATION) { await usaLinguaDellOrganizzazione(orgLanguage); setPersonal(false) }
+    else { await scegliLinguaPersonale(v); setPersonal(true) }
+  }
 
   const [slackInput, setSlackInput] = useState('')
 
@@ -123,9 +137,7 @@ export function ProfilePage() {
             aria-label={t('pages.profile.language')}
             value={personal ? (i18n.language.startsWith('it') ? 'it' : 'en') : ORGANIZATION}
             onChange={(e) => {
-              const v = e.target.value
-              if (v === ORGANIZATION) { void usaLinguaDellOrganizzazione(orgLanguage).then(() => setPersonal(false)) }
-              else { void scegliLinguaPersonale(v).then(() => setPersonal(true)) }
+              void chooseLanguage(e.target.value)
             }}
             style={{
               padding: '8px 12px',
@@ -187,8 +199,9 @@ export function ProfilePage() {
             </div>
           ) : (
             <div>
-              <label style={label}>{t('pages.profile.slackUserId')}</label>
+              <label htmlFor="profile-slack-id" style={label}>{t('pages.profile.slackUserId')}</label>
               <Input
+                id="profile-slack-id"
                 value={slackInput}
                 onChange={(e) => setSlackInput(e.target.value)}
                 placeholder="U0123456789"

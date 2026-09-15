@@ -150,6 +150,13 @@ export function StatusLabel({ status }: { status: string | null | undefined }) {
     s === TASK_STATUS.IN_PROGRESS ? 'var(--color-warning)' :
     s === TASK_STATUS.PENDING     ? 'var(--color-danger)' :
     s === 'failed' || s === REVIEW_RESULT.REJECTED ? 'var(--color-danger)' : colors.slateLight
-  const label = s === TASK_STATUS.PENDING ? t('taskStatus.toBeCompleted') : s.replace(/_/g, ' ')
+  // Giro UI del 15 set 2026: «COMPLETED» si leggeva col valore interno anche in italiano.
+  const label =
+    s === TASK_STATUS.PENDING     ? t('taskStatus.toBeCompleted') :
+    s === TASK_STATUS.COMPLETED   ? t('taskStatus.completed') :
+    s === TASK_STATUS.IN_PROGRESS ? t('taskStatus.inProgress') :
+    s === TASK_STATUS.PLANNING    ? t('taskStatus.planning') :
+    s === 'failed'                ? t('taskStatus.failed') :
+    s.replace(/_/g, ' ')
   return <strong title={s} style={{ color, textTransform: 'uppercase' }}>{label}</strong>
 }

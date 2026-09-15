@@ -5,7 +5,7 @@ import { Layers, Layout, Plus, Trash2 } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { PageContainer } from '@/components/PageContainer'
 import { toast } from 'sonner'
-import { GET_CI_TYPES, GET_BASE_CI_TYPE, GET_ENUM_TYPES, GET_CI_TYPE_DELETION_IMPACT } from '@/graphql/queries'
+import { GET_CI_TYPES, GET_BASE_CI_TYPE, GET_ENUM_TYPES, GET_CI_TYPE_DELETION_IMPACT, GET_CI_FIELD_VALUE_COUNT } from '@/graphql/queries'
 import {
   CREATE_CI_TYPE, UPDATE_CI_TYPE, DELETE_CI_TYPE,
   ADD_CI_FIELD, UPDATE_CI_FIELD, REMOVE_CI_FIELD,
@@ -247,7 +247,7 @@ export function CITypeDesignerPage() {
                     title={shipped ? shippedNote : undefined}
                     onClick={() => updateType({ variables: { id: selected.id, input: { active: !selected.active } } })}
                     style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 100, fontSize: 'var(--font-size-body)', cursor: shipped ? 'not-allowed' : 'pointer', background: selected.active ? palette.success.tint : 'var(--color-border-light)', color: selected.active ? 'var(--color-success)' : 'var(--color-slate-light)', fontWeight: 500, ...readOnlyIf(shipped) }}>
-                    {selected.active ? '● active' : '○ inactive'}
+                    {selected.active ? `● ${t('common.active')}` : `○ ${t('common.inactive')}`}
                   </button>
                   {shipped && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-table)', background: 'var(--color-slate-bg)', color: 'var(--color-slate)', padding: '2px 8px', borderRadius: 20, fontWeight: 500 }}>
@@ -330,7 +330,7 @@ export function CITypeDesignerPage() {
                       </div>
                     </div>
                     <FormField label={t('citypeDesigner.color')}>
-                      <ColorField value={settingsForm.color} onChange={(hex) => setSettingsForm((p) => p && ({ ...p, color: hex }))} />
+                      <ColorField label={t('citypeDesigner.color')} value={settingsForm.color} onChange={(hex) => setSettingsForm((p) => p && ({ ...p, color: hex }))} />
                     </FormField>
                     {/* Chain Families */}
                     <div style={{ marginBottom: 16 }}>
@@ -486,7 +486,18 @@ export function CITypeDesignerPage() {
                               field={{ ...f, enumValues: (f as unknown as { enumValues?: string[] }).enumValues ?? [], isSystem: f.isSystem || shipped }}
                               onEdit={() => { setEditingFieldId(f.id); setAddingField(false) }}
                               onDelete={async () => {
-                                if (!(await confirm({ title: t('ciTypeDesigner.deleteFieldTitle', { name: f.name }), danger: true }))) return
+                                // Secondo giro UI · V-15: i valori se ne vanno col campo (CM-4): la conferma dice su quanti CI.
+                                let count: number
+                                try {
+                                  const res = await apollo.query<{ ciFieldValueCount: number }>({ query: GET_CI_FIELD_VALUE_COUNT, variables: { typeId: selected.id, fieldId: f.id }, fetchPolicy: 'network-only' })
+                                  if (res.data == null) throw new Error('ciFieldValueCount returned no data')
+                                  count = res.data.ciFieldValueCount
+                                } catch (e) {
+                                  showError(e, t('ciTypeDesigner.deleteFieldCountFailed', { error: errorMessage(e) }))
+                                  return
+                                }
+                                const body = count > 0 ? t('ciTypeDesigner.deleteFieldValues', { count }) : t('ciTypeDesigner.deleteFieldNoValues')
+                                if (!(await confirm({ title: t('ciTypeDesigner.deleteFieldTitle', { name: f.name }), body, danger: true }))) return
                                 void removeField({ variables: { typeId: selected.id, fieldId: f.id } })
                               }}
                               editLabel={shipped ? '' : t('common.edit')}
@@ -535,6 +546,7 @@ export function CITypeDesignerPage() {
                       label:      f.label,
                       fieldType:  f.fieldType,
                       enumValues: f.enumValues,
+                      enumTypeName: f.enumTypeName ?? null,
                     }))}
                     workflowSteps={[]}
                   />

@@ -13,6 +13,7 @@ import { UPDATE_CI } from '@/graphql/mutations'
 import { useCIBaseEnums } from '@/lib/ciEnums'
 import { colors, palette } from '@/lib/tokens'
 import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
 
 const PREVIEW_COUNT = gql`
   query GroupCriteriaPreview($ciTypes: [String], $environment: String, $status: String, $search: String) {
@@ -36,6 +37,7 @@ interface Props {
  */
 export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const { ciTypes } = useMetamodel()
   // Status/environment dal tipo base del metamodello (stessa sorgente del backend)
   const baseEnums = useCIBaseEnums()
@@ -162,14 +164,14 @@ export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
             <FieldLabel htmlFor={ids.environment}>{t('pages.cmdb.environment')}</FieldLabel>
             <Select id={ids.environment} value={environment} onChange={(e) => setEnvironment(e.target.value)}>
               <option value="">—</option>
-              {baseEnums.environments.map((v) => <option key={v} value={v}>{v}</option>)}
+              {baseEnums.environments.map((v) => <option key={v} value={v}>{ciLabels.environmentLabel(v)}</option>)}
             </Select>
           </div>
           <div>
             <FieldLabel htmlFor={ids.status}>{t('pages.cmdb.status')}</FieldLabel>
             <Select id={ids.status} value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">—</option>
-              {baseEnums.statuses.map((v) => <option key={v} value={v}>{v}</option>)}
+              {baseEnums.statuses.map((v) => <option key={v} value={v}>{ciLabels.statusLabel(v)}</option>)}
             </Select>
           </div>
           <div>

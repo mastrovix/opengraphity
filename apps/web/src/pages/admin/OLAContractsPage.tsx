@@ -32,7 +32,8 @@ import { Input, Textarea, Select, FieldLabel } from '@/components/ui/FormControl
 import { Pill } from '@/components/ui/Pill'
 import { Toggle } from '@/components/ui/Toggle'
 import { GET_OLA_CONTRACTS, GET_TEAMS } from '@/graphql/queries'
-import { CREATE_OLA_CONTRACT, UPDATE_OLA_CONTRACT } from '@/graphql/mutations'
+import { CREATE_OLA_CONTRACT, DELETE_OLA_CONTRACT, UPDATE_OLA_CONTRACT } from '@/graphql/mutations'
+import { useConfirm } from '@/hooks/useConfirm'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { palette } from '@/lib/tokens'
 import { ComplianceFields, TimeCountingField, calendarChoiceOf, calendarIdFor, complianceValid } from '@/components/sla/ServiceTargetFields'
@@ -123,10 +124,21 @@ export function OLAContractsPage() {
   })
   const [updateOLA, { loading: updating }] = useMutation(UPDATE_OLA_CONTRACT, {
     refetchQueries,
-    onCompleted: async () => { setModal(null); await refetch() },
+    onCompleted: async () => { setModal(null); await refetch(); toast.success(t('toast.sla.olaUpdated')) },
     onError: (e) => showError(e),
   })
-  const saving = creating || updating
+  const [deleteOLA, { loading: deleting }] = useMutation(DELETE_OLA_CONTRACT, {
+    refetchQueries,
+    onCompleted: async () => { setModal(null); await refetch(); toast.success(t('toast.sla.olaDeleted')) },
+    onError: (e) => showError(e),
+  })
+  const confirm = useConfirm()
+  const saving = creating || updating || deleting
+  // Giro UI del 15 set 2026: un contratto non si poteva cancellare, e disattivarlo non dava riscontro.
+  const removeContract = async (o: OLAContract) => {
+    const ok = await confirm({ title: t('pages.olaContracts.deleteTitle', { name: o.name }), body: t('pages.olaContracts.deleteBody'), danger: true, confirmLabel: t('pages.olaContracts.delete') })
+    if (ok) void deleteOLA({ variables: { id: o.id } })
+  }
 
   const openCreate = () => { setForm(EMPTY_OLA); setModal({ mode: 'create' }) }
   const openEdit = (o: OLAContract) => {
@@ -156,7 +168,10 @@ export function OLAContractsPage() {
     if (modal.mode === 'create') void createOLA({ variables: { input: { type: form.type, ...base } } })
     else void updateOLA({ variables: { id: modal.item.id, input: base } })
   }
-  const toggleEnabled = (o: OLAContract) => void updateOLA({ variables: { id: o.id, input: { enabled: !o.enabled } } })
+  const toggleEnabled = (o: OLAContract) => void updateOLA({
+    variables: { id: o.id, input: { enabled: !o.enabled } },
+    onCompleted: async () => { await refetch(); toast.success(t(o.enabled ? 'toast.sla.olaDisabled' : 'toast.sla.olaEnabled', { name: o.name })) },
+  })
 
   const contracts = data?.olaContracts ?? []
   // Solo i team col Sourcing del tipo di responsabile scelto.
@@ -221,6 +236,9 @@ export function OLAContractsPage() {
         onSubmit={submit}
         footer={
           <>
+            {modal?.mode === 'edit' && (
+              <Button type="button" variant="danger" disabled={saving} onClick={() => void removeContract(modal.item)} style={{ marginRight: 'auto' }}>{t('pages.olaContracts.delete')}</Button>
+            )}
             <Button type="button" variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
             <Button type="submit" disabled={saving || form.name.trim().length === 0}>{saving ? t('common.saving') : t('common.save')}</Button>
           </>

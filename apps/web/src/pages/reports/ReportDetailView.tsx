@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 
 import { ReportChartRenderer } from '@/components/ReportChartRenderer'
+import { CHART_TYPES } from '@/components/ReportChartConfig'
 import { ReportSectionBuilder, type ReportSectionInput } from '@/components/ReportSectionBuilder'
 import {
   type ReportTemplate, type ReportSection, type SectionResult, type View,
@@ -10,6 +11,12 @@ import {
 import { getReportIcon } from './reportIcons'
 import { colors } from '@/lib/tokens'
 import { useFieldValueLabel } from '@/hooks/useFieldValueLabel'
+
+/** Il tipo di grafico col suo nome (giro UI del 15 set 2026: si leggeva «bar»). */
+function chartTypeLabel(t: (key: string) => string, chartType: string): string {
+  const def = CHART_TYPES.find((c) => c.value === chartType)
+  return def ? t(def.labelKey) : chartType
+}
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -131,7 +138,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
               <div style={{ padding: '10px 16px', background: 'var(--color-slate-bg)', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{sec.title}</span>
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: colors.border, padding: '2px 6px', borderRadius: 4 }}>{sec.chartType}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: colors.border, padding: '2px 6px', borderRadius: 4 }}>{chartTypeLabel(t, sec.chartType)}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button type="button" onClick={() => startEditSection(sec)}

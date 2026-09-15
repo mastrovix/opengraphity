@@ -65,6 +65,13 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
   /** La mappa è cambiata mentre il dialogo era aperto: la proposta è stata riletta. */
   const [refreshed, setRefreshed] = useState(false)
   const refetchedFor = useRef<number | null>(null)
+  /**
+   * Una scrittura del dialogo è in corso. Secondo giro UI · V-12: il risultato
+   * della riammissione aggiorna la mappa in cache PRIMA che il codice dopo
+   * l'`await` possa annotare la versione come «nostra», e l'effetto qui sotto
+   * vedeva una versione nuova e diceva «La mappa è cambiata nel frattempo».
+   */
+  const ownWrite = useRef(false)
 
   const { data, loading, error, refetch } = useQuery<{ serviceMapProposal: ServiceMapProposal }>(GET_SERVICE_MAP_PROPOSAL, {
     variables: { id: map.id }, skip: !open, fetchPolicy: 'network-only',
@@ -88,7 +95,7 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
    * si riferivano a componenti che potrebbero non essere più lì.
    */
   useEffect(() => {
-    if (!open || loading || proposal === null) return
+    if (!open || loading || proposal === null || ownWrite.current) return
     if (proposal.version === map.version || refetchedFor.current === map.version) return
     refetchedFor.current = map.version
     setAdd(new Set()); setExclude(new Set()); setRemove(new Set())
@@ -126,7 +133,7 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
       // `proposal.version`: la versione da cui gli elenchi sono stati letti.
       const res = await apply({ variables: { id: map.id, expectedVersion: proposal.version, add: [...add], exclude: [...exclude], remove: [...remove] } })
       if (!res.data?.applyServiceMapProposal) throw new Error(t('monitoring.services.detail.noResult', { operation: 'applyServiceMapProposal' }))
-      toast.success(t('toast.services.mapUpdated', { added: add.size, removed: leaving, excluded: exclude.size }))
+      toast.success(t('toast.services.mapUpdated', { added: add.size, removed: leaving, count: exclude.size }))
       onClose()
     } catch (e) { setActionError(errorMessage(e)) }
   }
@@ -134,16 +141,24 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
   async function onReadmit(ciId: string, name: string) {
     if (proposal === null) return
     setActionError(null)
+    ownWrite.current = true
     try {
       const res = await readmit({ variables: { id: map.id, expectedVersion: proposal.version, ciId } })
-      if (!res.data?.removeServiceMapExclusion) throw new Error(t('monitoring.services.detail.noResult', { operation: 'removeServiceMapExclusion' }))
-      toast.success(t('toast.services.exclusionRemoved', { name }))
-      // Il CI torna proponibile: la proposta va riletta. La versione nuova è
-      // opera nostra (su una mappa viva l'API sincronizza anche subito, U-2):
-      // non è «la mappa è cambiata mentre il dialogo era aperto».
-      refetchedFor.current = res.data.removeServiceMapExclusion.version
+      const updated = res.data?.removeServiceMapExclusion
+      if (!updated) throw new Error(t('monitoring.services.detail.noResult', { operation: 'removeServiceMapExclusion' }))
+      // V-11: su una mappa viva l'API sincronizza subito (U-2): il componente è
+      // già nella mappa, non «nella prossima proposta». Se la sincronizzazione
+      // non ce l'ha portato, resta la frase di prima, che è vera.
+      const back = updated.nodes.some((n) => n.ci.id === ciId)
+      toast.success(back ? t('toast.services.exclusionRemovedBack', { name }) : t('toast.services.exclusionRemoved', { name }))
+      // La versione nuova è opera nostra: non è «la mappa è cambiata mentre il dialogo era aperto».
+      refetchedFor.current = updated.version
       await refetch()
-    } catch (e) { setActionError(errorMessage(e)) }
+    } catch (e) {
+      setActionError(errorMessage(e))
+    } finally {
+      ownWrite.current = false
+    }
   }
 
   return (
@@ -284,7 +299,7 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
 
         {proposal && (
           <p role="status" data-testid="proposal-summary" style={{ margin: 0, fontSize: 'var(--font-size-body)', fontWeight: 600, color: nothingChosen ? colors.slateLight : palette.warning.text }}>
-            {t('monitoring.services.update.summary', { add: add.size, remove: leaving, exclude: exclude.size })}
+            {t('monitoring.services.update.summary', { add: add.size, remove: leaving, count: exclude.size })}
           </p>
         )}
 

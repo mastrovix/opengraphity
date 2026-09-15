@@ -255,13 +255,13 @@ export function SyncSourcesTab({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: colors.slateDark }}>{s.name}</span>
                 <span style={{ fontSize: 'var(--font-size-table)', color: colors.slate, background: 'var(--color-border-light)', borderRadius: 4, padding: '2px 6px' }}>{s.connectorType}</span>
-                <span style={{ fontSize: 'var(--font-size-table)', color: s.enabled ? 'var(--color-success)' : colors.slate }}>{s.enabled ? 'enabled' : 'disabled'}</span>
+                <span style={{ fontSize: 'var(--font-size-table)', color: s.enabled ? 'var(--color-success)' : colors.slate }}>{s.enabled ? t('pages.sync.sourceEnabled') : t('pages.sync.sourceDisabled')}</span>
               </div>
               <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate, marginTop: 2 }}>
-                Last sync: {formatDateTime(s.lastSyncAt)}
+                {t('pages.sync.lastSync', { when: formatDateTime(s.lastSyncAt) })}
                 {s.lastSyncStatus && <> · <StatusBadge status={s.lastSyncStatus} /></>}
                 {s.lastSyncDurationMs != null && <> · {formatMs(s.lastSyncDurationMs)}</>}
-                {s.scheduleCron && <> · cron: <code style={{ fontSize: 'var(--font-size-table)' }}>{s.scheduleCron}</code></>}
+                {s.scheduleCron && <> · {t('pages.sync.cron')}: <code style={{ fontSize: 'var(--font-size-table)' }}>{s.scheduleCron}</code></>}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>

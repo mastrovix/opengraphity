@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useQuery, useMutation } from '@apollo/client/react'
+import { useApolloClient, useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
 import { Lock, LockOpen, Package, Plus, X, Save, Trash2, Tag, Copy, Pencil, ArrowUp, ArrowDown, Star, Check } from 'lucide-react'
@@ -9,7 +9,8 @@ import { Button } from '@/components/Button'
 import { Input, Select } from '@/components/ui/FormControls'
 import { inputS, labelS, btnSecondary, btnDanger, btnPrimary as sharedBtnPrimary } from '@/components/ui/styles'
 import { toast } from 'sonner'
-import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT } from '@/graphql/queries'
+import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT, GET_ENUM_VALUE_USAGE } from '@/graphql/queries'
+import { useConfirm } from '@/hooks/useConfirm'
 import { dictionaryList } from '@/lib/dictionaryList'
 import {
   CREATE_ENUM_TYPE,
@@ -25,7 +26,7 @@ import { colors, palette } from '@/lib/tokens'
 import { VALUE_COLORS, type ValueColor } from '@opengraphity/types'
 import { valueColorStyle } from '@/lib/domainStyle'
 import { clientLogger } from '@/lib/clientLogger'
-import { showError } from '@/lib/showError'
+import { errorMessage, showError } from '@/lib/showError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -378,10 +379,39 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
     void reorderValues({ variables: { id: e.id, values: next } })
   }
 
-  const confirmRename = () => {
+  /*
+    Secondo giro UI del 15 set 2026: la rinomina riscriveva ticket, matrici e
+    regole senza chiedere e senza dire quanti. Prima si conta cosa usa il
+    valore (lo stesso conteggio del rifiuto della cancellazione), poi si chiede.
+  */
+  const apollo = useApolloClient()
+  const confirm = useConfirm()
+  const confirmRename = async () => {
     const to = renameTo.trim()
-    if (!renamingFrom || to === '' || to === renamingFrom) { setRenamingFrom(null); return }
-    void renameValue({ variables: { id: e.id, from: renamingFrom, to } })
+    const from = renamingFrom
+    if (!from || to === '' || to === from) { setRenamingFrom(null); return }
+    type Usage = { total: number; policyLists: string[]; matrices: string[]; configSites: string[]; records: { typeName: string; fieldName: string; count: number }[] }
+    let usage: Usage
+    try {
+      const res = await apollo.query<{ enumValueUsage: Usage }>({ query: GET_ENUM_VALUE_USAGE, variables: { id: e.id, value: from }, fetchPolicy: 'network-only' })
+      usage = res.data!.enumValueUsage
+    } catch (err) {
+      showError(err, t('pages.dictionary.renameUsageFailed', { error: errorMessage(err) }))
+      return
+    }
+    const where = [
+      ...usage.records.map((r) => t('pages.dictionary.renameUsageRecords', { count: r.count, type: r.typeName, field: r.fieldName })),
+      // L'API dice anche la chiave o la cella («priority (chiave "high|low")»): qui basta il nome della matrice, una volta.
+      ...[...new Set(usage.matrices.map((m) => m.split(' (')[0]!))].map((m) => t('pages.dictionary.renameUsageMatrix', { name: m })),
+      ...usage.policyLists.map((l) => t('pages.dictionary.renameUsagePolicy', { list: l })),
+      ...usage.configSites,
+    ]
+    const ok = await confirm({
+      title: t('pages.dictionary.renameConfirmTitle', { from, to }),
+      body: where.length === 0 ? t('pages.dictionary.renameConfirmNothing') : t('pages.dictionary.renameConfirmUsage', { where: where.join('; ') }),
+      confirmLabel: t('pages.dictionary.renameConfirmButton'),
+    })
+    if (ok) void renameValue({ variables: { id: e.id, from, to } })
   }
 
   const handleSave = () => {
@@ -589,12 +619,12 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
                     value={renameTo}
                     onChange={(ev) => setRenameTo(ev.target.value)}
                     onKeyDown={(ev) => {
-                      if (ev.key === 'Enter') { ev.preventDefault(); confirmRename() }
+                      if (ev.key === 'Enter') { ev.preventDefault(); void confirmRename() }
                       if (ev.key === 'Escape') setRenamingFrom(null)
                     }}
                     aria-label={t('pages.dictionary.renameValueLabel', { value: v })}
                   />
-                  <button type="button" onClick={confirmRename} disabled={renaming} style={iconBtn}
+                  <button type="button" onClick={() => void confirmRename()} disabled={renaming} style={iconBtn}
                     aria-label={t('pages.dictionary.renameConfirmLabel')}>
                     <Check size={12} aria-hidden="true" />
                   </button>

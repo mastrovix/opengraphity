@@ -77,7 +77,7 @@ const labelStyle: React.CSSProperties = {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const titleInputId = useId()
   const [wizardStep,    setWizardStep]    = useState<1 | 2 | 3 | 4>(1)
   const [title,         setTitle]         = useState(initialValues?.title ?? '')
@@ -351,7 +351,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
   useEffect(() => {
     if (wizardStep !== 3 || nodes.length === 0) return
-    const timer = setTimeout(() => { runPreview({ variables: { input: buildInput() } }) }, 500)
+    const timer = setTimeout(() => { runPreview({ variables: { input: buildInput(), language: i18n.resolvedLanguage ?? i18n.language } }) }, 500)
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wizardStep, chartType, groupByNodeId, groupByField, metric, metricField, limit, sortDir, nodes.length, edges.length])

@@ -43,6 +43,9 @@ export function mapITILField(f: Props, enumRef?: { id: string; name: string; val
     enumTypeName:     enumRef?.name ?? null,
     // Ondata 4: il portale offre all'utente finale solo i campi marcati.
     visibleToEndUser: f['visible_to_end_user'] === true,
+    // Secondo giro UI del 15 set 2026: in quali fasi si vede e si modifica (lib/customFieldSteps.ts).
+    stepVisibilityRaw:  (f['step_visibility']  ?? null) as string | null,
+    stepEditabilityRaw: (f['step_editability'] ?? null) as string | null,
   }
 }
 

@@ -61,6 +61,9 @@ import { workflowsMissingStepRoles } from './workflowStepRoles.js'
 import { vocabulariesBehindShipped } from './vocabularyShippedDrift.js'
 import { slaPoliciesWarningNotBeforeDeadline } from './slaWarningCheck.js'
 import { blockedStepDeadlines } from './stepDeadlineBlocked.js'
+import { customFieldDefs } from './ticketCustomFields.js'
+import { stepsNamedBy, workflowStepNames } from './customFieldSteps.js'
+import { TICKET_CUSTOM_FIELD_ENTITY_TYPES } from '@opengraphity/types'
 
 const log = logger.child({ module: 'configuration-issues' })
 
@@ -96,6 +99,7 @@ export type ConfigurationIssueKind =
   | 'step_deadlines_blocked'
   | 'slack_not_connected'
   | 'service_incident_problem'
+  | 'custom_field_steps_missing'
 
 export interface ConfigurationIssue {
   /** La CHIAVE del problema: il client la risolve nella sua lingua. */
@@ -118,7 +122,7 @@ export async function configurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -378,6 +382,28 @@ async function checkWorkflowStepRoles(tenantId: string, session: Session): Promi
     }
   }
   return out
+}
+
+/**
+ * CAMPI CHE CITANO FASI CHE IL WORKFLOW NON HA PIÙ (secondo giro UI del 15 set
+ * 2026). Le regole di fase si validano quando si salva il campo, ma una fase si
+ * può togliere o rinominare dopo, nel disegnatore: allora il campo «da quella
+ * fase in poi» non si vede più da nessuna parte. Lo si dice qui invece di
+ * lasciarlo sparire.
+ */
+async function checkCustomFieldSteps(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const found: string[] = []
+  for (const entityType of TICKET_CUSTOM_FIELD_ENTITY_TYPES) {
+    const defs = (await customFieldDefs(session, tenantId, entityType)).filter((d) => d.visibility.mode !== 'always' || d.editability.mode !== 'visible')
+    if (defs.length === 0) continue
+    const names = await workflowStepNames(session, tenantId, entityType)
+    for (const d of defs) {
+      const missing = stepsNamedBy(d.visibility, d.editability).filter((s) => !names.includes(s))
+      if (missing.length > 0) found.push(`${d.label} (${entityType}): ${missing.join(', ')}`)
+    }
+  }
+  if (found.length === 0) return []
+  return [{ kind: 'custom_field_steps_missing', severity: 'warning', where: '/settings/itil-designer', params: { count: String(found.length), fields: found.join('; ') } }]
 }
 
 /**

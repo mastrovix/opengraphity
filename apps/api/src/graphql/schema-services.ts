@@ -244,6 +244,14 @@ export function servicesSDL(): string {
     proposedVia:   ID
   }
 
+  """I componenti che una mappa nuova avrebbe con queste impostazioni (nessuna scrittura)."""
+  type ServiceMapCreationPreview {
+    serviceName:       String!
+    maxDepth:          Int!
+    relationshipTypes: [String!]!
+    nodes:             [ServiceMapProposalNode!]!
+  }
+
   """Diff fra la mappa attuale e quella che si costruirebbe adesso dal grafo (nessuna scrittura)."""
   type ServiceMapProposal {
     mapId:             ID!
@@ -320,6 +328,8 @@ export function servicesSDL(): string {
     servicesImpactedByCI(ciId: ID!): [ServiceMap!]!
     """BusinessApplication del tenant senza mappa (candidate alla creazione), per nome. limit ≤ 100 (default 20)."""
     serviceMapCandidates(search: String, limit: Int = 20): [ServiceRef!]!
+    """L'anteprima di «Crea una mappa»: i componenti che la mappa avrebbe con questa profondità e queste relazioni. La stessa costruzione della creazione, senza scrivere."""
+    serviceMapCreationPreview(serviceId: ID!, maxDepth: Int!, relationshipTypes: [String!]!): ServiceMapCreationPreview!
     """Diff fra la mappa e il grafo di adesso (stessi maxDepth e relationshipTypes della mappa): cosa aggiungere, togliere, spostare. Non scrive nulla."""
     serviceMapProposal(id: ID!): ServiceMapProposal!
     """«Con queste impostazioni adesso»: la salute che il servizio avrebbe con le regole e/o i componenti passati (il resto resta com'è). Nessuna scrittura; un ciId non nella mappa è un errore."""

@@ -2,7 +2,7 @@ import { FieldRulesPanel } from './shared/FieldRulesPanel'
 
 export interface ITILTypeRulesProps {
   entityType:    string
-  fields:        { name: string; label: string; fieldType: string; enumValues: string[] }[]
+  fields:        { name: string; label: string; fieldType: string; enumValues: string[]; enumTypeName?: string | null }[]
   workflowSteps: string[]
 }
 

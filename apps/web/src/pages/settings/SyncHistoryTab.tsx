@@ -65,8 +65,8 @@ export function SyncHistoryTab({
                   <span style={{ color: 'var(--color-success)' }}>+{r.ciCreated}</span>
                   <span style={{ color: colors.brand }}>~{r.ciUpdated}</span>
                   <span>={r.ciUnchanged}</span>
-                  {r.ciStale > 0    && <span style={{ color: palette.warning.text }}>stale:{r.ciStale}</span>}
-                  {r.ciConflicts > 0 && <span style={{ color: 'var(--color-trigger-sla-breach)' }}>conflict:{r.ciConflicts}</span>}
+                  {r.ciStale > 0    && <span style={{ color: palette.warning.text }}>{t('pages.sync.staleCount', { n: r.ciStale })}</span>}
+                  {r.ciConflicts > 0 && <span style={{ color: 'var(--color-trigger-sla-breach)' }}>{t('pages.sync.conflictCount', { n: r.ciConflicts })}</span>}
                 </div>
               </div>
               {r.errorMessage && (

@@ -7,6 +7,21 @@ export type ConditionOperator =
   | 'is_null' | 'is_not_null'
   | 'greater_than' | 'less_than'
   | 'contains'
+  /** Il campo è fra quelli cambiati dall'aggiornamento (solo «aggiornato» / «campo cambiato»: V-19). */
+  | 'changed'
+
+/**
+ * Dove il motore mette i campi cambiati da un aggiornamento, accanto ai valori
+ * del ticket. Secondo giro UI del 15 set 2026 · V-19: una regola «aggiornato» con
+ * «Urgenza = alta» scattava a OGNI modifica del ticket finché l'urgenza restava
+ * alta; con «Urgenza è cambiato» scatta solo quando cambia davvero.
+ */
+export const CHANGED_FIELDS_KEY = '__changedFields'
+
+/** Le condizioni che usano «è cambiato» (hanno senso solo sugli eventi di aggiornamento). */
+export function usesChangedOperator(conditions: readonly Condition[]): boolean {
+  return conditions.some((c) => c.operator === 'changed')
+}
 
 export interface Condition {
   field:    string
@@ -24,6 +39,10 @@ function evalCondition(c: Condition, entity: Record<string, unknown>): boolean {
     case 'greater_than': return Number(actual) > Number(c.value)
     case 'less_than':    return Number(actual) < Number(c.value)
     case 'contains':     return typeof actual === 'string' && typeof c.value === 'string' && actual.includes(c.value)
+    case 'changed': {
+      const changed = entity[CHANGED_FIELDS_KEY]
+      return Array.isArray(changed) && changed.includes(c.field)
+    }
     default:
       // Unknown operator = corrupt/hand-edited config. Fail loud: silently
       // treating it as false (or true) inverts the rule's semantics.

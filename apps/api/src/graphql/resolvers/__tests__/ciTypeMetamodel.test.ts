@@ -129,6 +129,8 @@ function defaultResponse(cypher: string): { records: unknown[] } {
   // CM-4 bis: il campo da togliere e i valori che se ne vanno con lui.
   if (cypher.includes('RETURN f.name AS name, t.neo4j_label AS label')) return res([row({ name: 'stato', label: 'Firewall' })])
   if (cypher.includes('REMOVE n.')) return res([row({ n: VALUES_CLEARED.value })])
+  // V-15: i valori prima della cancellazione (quanti e i primi, per nome del CI).
+  if (cypher.includes('RETURN size(rows) AS count, rows[0..$limit] AS sample')) return res([row({ count: VALUES_CLEARED.value, sample: VALUES_CLEARED.value ? [{ name: 'FW-01', value: 'up' }] : [] })])
   // Il tetto al numero di tipi (revisione · A·#6): infrastruttura per questi
   // test, non la cosa che misurano — risponde sempre il router, così la coda
   // resta allineata alle scritture.
@@ -354,7 +356,7 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
     expect(params).toEqual({ id: 'ct-1', tenantId: 'tenant-1' })
     expect(invalidateSchema).toHaveBeenCalledWith('tenant-1')
     // SV-6: le relazioni del tipo spariscono con lui — prima si chiede alle mappe di servizio
-    expect(assertNoServiceMapFollows).toHaveBeenCalledWith(expect.anything(), 'tenant-1', { typeId: 'ct-1' })
+    expect(assertNoServiceMapFollows).toHaveBeenCalledWith(expect.anything(), 'tenant-1', { typeId: 'ct-1' }, 'deleteType')
   })
 
   // ── B0-1 (A-7): «Salva impostazioni» del tipo CI ──────────────────────────
@@ -1005,6 +1007,17 @@ describe('togliere una relazione o un campo non lascia dati invisibili (CM-4)', 
     expect(clear.cypher).toContain('MATCH (n:Firewall {tenant_id: $tenantId})')
     expect(clear.cypher).toContain('REMOVE n.stato')
     expect(mockSession.executeWrite).toHaveBeenCalledTimes(1)
+    // Secondo giro UI · V-15: i valori di prima nell'Audit Log, come per i campi ITIL.
+    expect(audit).toHaveBeenCalledWith(admin, 'ci_type.field_removed', 'CITypeDefinition', 'ct-1', { field: 'stato', valuesRemoved: 12, previousValues: { 'FW-01': 'up' } })
+  })
+
+  it('V-15: ciFieldValueCount conta i CI con un valore nel campo, senza scrivere', async () => {
+    reset()
+    VALUES_CLEARED.value = 7
+    const { ciFieldValueCount } = await import('../ciTypeMetamodel.js')
+    expect(await ciFieldValueCount(null, { typeId: 'ct-1', fieldId: 'f-1' }, admin)).toBe(7)
+    expect(callWith('RETURN size(rows) AS count').cypher).toContain('MATCH (n:Firewall {tenant_id: $tenantId})')
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 })
 

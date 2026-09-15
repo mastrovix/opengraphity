@@ -6,6 +6,7 @@ import { useQuery } from '@apollo/client/react'
 import { keycloak } from '@/lib/keycloak'
 import { GET_TENANT_BRAND } from '@/graphql/queries'
 import { colors, alpha } from '@/lib/tokens'
+import { PortalLanguageSelect } from './PortalLanguageSelect'
 
 interface Props {
   userName: string
@@ -167,6 +168,8 @@ export function PortalHeader({ userName }: Props) {
                   <User size={14} style={{ color: colors.slate }} />
                   {t('common.profile')}
                 </button>
+                <div style={{ height: 1, background: colors.border }} />
+                <PortalLanguageSelect />
                 <div style={{ height: 1, background: colors.border }} />
                 <button
                   onClick={logout}

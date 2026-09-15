@@ -89,7 +89,9 @@ function serverWidgetToPending(w: DashboardWidgetServer, idx: number): PendingWi
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useDashboard() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  // V-20: le etichette dei valori nei widget seguono la lingua di chi guarda
+  const language = i18n.resolvedLanguage ?? i18n.language
   const [activeDashboardId, setActiveDashboardId] = useState<string | null>(null)
   const [editMode, setEditMode]                   = useState(false)
   const [pendingWidgets, setPendingWidgets]        = useState<PendingWidget[]>([])
@@ -106,7 +108,7 @@ export function useDashboard() {
 
   const { data: dashData, loading: dashLoading, refetch: refetchDash } =
     useQuery<{ dashboard: DashboardConfig | null }>(GET_DASHBOARD, {
-      variables: { id: activeDashboardId },
+      variables: { id: activeDashboardId, language },
       skip: !activeDashboardId,
     })
 
@@ -217,7 +219,7 @@ export function useDashboard() {
           colSpan:          w.colSpan,
         }))
 
-      const result = await saveLayoutMutation({ variables: { dashboardId: activeDashboardId, widgets: layout } })
+      const result = await saveLayoutMutation({ variables: { dashboardId: activeDashboardId, widgets: layout, language } })
       const saved = result.data?.saveDashboardLayout
       if (!saved) throw new Error(t('toast.dashboard.emptyResponse'))
 

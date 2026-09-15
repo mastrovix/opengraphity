@@ -9,7 +9,7 @@
  * rules, execution counters for triggers).
  */
 import { logger as appLogger } from './logger.js'
-import { evaluateConditions, parseConditions } from './conditionEvaluator.js'
+import { CHANGED_FIELDS_KEY, evaluateConditions, parseConditions } from './conditionEvaluator.js'
 import { executeActions, parseActions, type ActionExecutionContext, type ActionResult } from './actionExecutor.js'
 import { audit } from './audit.js'
 
@@ -62,6 +62,8 @@ export interface EvaluateRulesOptions {
   userId:     string
   /** Already filtered (enabled, tenant, entity/event type) and ordered. */
   records:    AutomationRecord[]
+  /** I campi cambiati dall'aggiornamento: li legge solo l'operatore «è cambiato» (V-19), le azioni no. */
+  changedFields?: readonly string[]
   /** Runs after a record's actions (e.g. bump execution counters); an error here is reported on the record. */
   afterExecute?: (record: AutomationRecord, results: ActionResult[]) => Promise<void>
 }
@@ -82,7 +84,8 @@ export async function evaluateRules(opts: EvaluateRulesOptions): Promise<Automat
     // otherwise yield [] = "always matches"). Skip it, report it, log loud.
     let matched: boolean
     try {
-      matched = evaluateConditions(parseConditions(record.conditions), opts.entity, record.conditionLogic)
+      const conditionEntity = opts.changedFields ? { ...opts.entity, [CHANGED_FIELDS_KEY]: opts.changedFields } : opts.entity
+      matched = evaluateConditions(parseConditions(record.conditions), conditionEntity, record.conditionLogic)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       log.error({ err, kind: opts.kind, id: record.id, name: record.name, tenantId: opts.tenantId },

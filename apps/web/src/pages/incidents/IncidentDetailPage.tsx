@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { TicketOLACard } from '@/components/ticket/ola/TicketOLACard'
 import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
 import type { CustomFieldValueView } from '@/components/ticket/customFields/customFields'
 import { useMe } from '@/hooks/useMe'
@@ -527,13 +528,14 @@ export function IncidentDetailPage() {
           <div>
             <FieldLabel htmlFor={editIds.impact}>{t('detail.impact')}</FieldLabel>
             <Select id={editIds.impact} value={editForm.impact} onChange={(e) => setEditForm({ ...editForm, impact: e.target.value })}>
-              {(matrix?.impacts ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+              {/* Secondo giro UI · V-18: le etichette del Dizionario, non «low / medium / high». */}
+              {(matrix?.impacts ?? []).map((o) => <option key={o} value={o}>{labelOf('impact', o) ?? o}</option>)}
             </Select>
           </div>
           <div>
             <FieldLabel htmlFor={editIds.urgency}>{t('detail.urgency')}</FieldLabel>
             <Select id={editIds.urgency} value={editForm.urgency} onChange={(e) => setEditForm({ ...editForm, urgency: e.target.value })}>
-              {(matrix?.urgencies ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+              {(matrix?.urgencies ?? []).map((o) => <option key={o} value={o}>{labelOf('urgency', o) ?? o}</option>)}
             </Select>
           </div>
         </div>
@@ -546,7 +548,7 @@ export function IncidentDetailPage() {
               const p = derivePriority(matrix, editForm.impact, editForm.urgency)
               return p === null
                 ? t('pages.domainMatrices.notCovered')
-                : `${priorityCode(matrix?.priorities ?? [], p)} — ${p}`
+                : `${priorityCode(matrix?.priorities ?? [], p)} — ${labelOf('priority', p) ?? p}`
             })()
           }</strong>
         </p>
@@ -721,6 +723,7 @@ export function IncidentDetailPage() {
           </SectionCard>
 
           {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
+          <TicketOLACard entityType="incident" entityId={incident.id} />
           <CustomFieldsCard entityType="incident" ticketId={incident.id} fields={incident.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
 
           {/* CI Impattati */}

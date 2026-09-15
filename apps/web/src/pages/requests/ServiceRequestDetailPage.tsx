@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { TicketOLACard } from '@/components/ticket/ola/TicketOLACard'
 import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
 import type { CustomFieldValueView } from '@/components/ticket/customFields/customFields'
 import { useMe } from '@/hooks/useMe'
@@ -206,6 +207,7 @@ export function ServiceRequestDetailPage() {
 
           {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
           <div style={{ marginBottom: 16 }}>
+            <TicketOLACard entityType="service_request" entityId={sr.id} />
             <CustomFieldsCard entityType="service_request" ticketId={sr.id} fields={sr.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
           </div>
 

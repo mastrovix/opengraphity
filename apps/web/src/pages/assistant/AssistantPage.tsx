@@ -224,6 +224,7 @@ export function AssistantPage() {
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(input) } }}
             placeholder={t('pages.assistant.placeholder')}
+            aria-label={t('pages.assistant.placeholder')}
             disabled={streaming}
             style={{ flex: 1, padding: '11px 16px', borderRadius: 10, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', outline: 'none', background: colors.white }}
           />

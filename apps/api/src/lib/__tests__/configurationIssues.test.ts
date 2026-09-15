@@ -86,6 +86,10 @@ vi.mock('../slackChannelsWithoutWorkspace.js', () => ({ slackChannelsWithoutWork
 /** SV-4: le mappe il cui incident il monitoraggio non riesce a gestire; di default nessuna. */
 let mappeConProblema: Array<{ id: string; name: string }> = []
 vi.mock('../serviceIncidentProblems.js', () => ({ serviceMapsWithIncidentProblem: vi.fn(async () => mappeConProblema) }))
+// Campi dei ticket con regole di fase (secondo giro UI del 15 set 2026): uno che cita una fase sparita.
+let campiConFasi: Array<{ label: string; visibility: unknown; editability: unknown }> = []
+vi.mock('../ticketCustomFields.js', () => ({ customFieldDefs: vi.fn(async (_s: unknown, _t: string, entityType: string) => entityType === 'change' ? campiConFasi : []) }))
+vi.mock('../customFieldSteps.js', async (importOriginal) => ({ ...(await importOriginal<object>()), workflowStepNames: vi.fn(async () => ['assessment', 'review', 'closed']) }))
 vi.mock('../slaWarningCheck.js', () => ({ slaPoliciesWarningNotBeforeDeadline: vi.fn(async () => preavvisiScaduti) }))
 vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: vi.fn(async () => policy) }))
 vi.mock('../domainMatrix.js', async (importOriginal) => {
@@ -546,5 +550,20 @@ describe('checkValueLabels — una lingua sola non basta', () => {
   it('con tutte le lingue scritte, nessuno dei due avvisi', async () => {
     const issues = await configurationIssues('c-one')
     expect(issues.filter((i) => i.kind.startsWith('value_labels'))).toEqual([])
+  })
+})
+
+describe('configurationIssues — campi che citano fasi sparite', () => {
+  it('un campo «da revue in poi» su un workflow senza «revue» → avviso che lo nomina, si rimedia nel disegnatore ITIL', async () => {
+    campiConFasi = [
+      { label: 'Esito', visibility: { mode: 'from', step: 'revue' }, editability: { mode: 'visible' } },
+      { label: 'Note di chiusura', visibility: { mode: 'from', step: 'review' }, editability: { mode: 'visible' } },
+    ]
+    try {
+      const issues = await configurationIssues('t1')
+      expect(issues.filter((i) => i.kind === 'custom_field_steps_missing')).toEqual([
+        { kind: 'custom_field_steps_missing', severity: 'warning', where: '/settings/itil-designer', params: { count: '1', fields: 'Esito (change): revue' } },
+      ])
+    } finally { campiConFasi = [] }
   })
 })

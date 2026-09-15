@@ -7,6 +7,8 @@ import { requirePermission } from '../../lib/permissions.js'
 import { audit } from '../../lib/audit.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import type { TeamSourcing } from '../../lib/teamSourcing.js'
+import { calendarFor, getTenantTimezone } from '@opengraphity/sla'
+import { evaluateOLATickets, OLA_CONCLUDED_FIELD, olaConcludedTicketsCypher, olaEntityTypes, olaTicketState, type OLATimedTicket } from '../../lib/olaAttainment.js'
 
 type Props = Record<string, unknown>
 
@@ -17,13 +19,6 @@ function toNum(v: unknown): number | null {
 const VALID_TYPES = ['ola', 'uc']
 const VALID_ENTITY_TYPES = ['incident', 'problem', 'change', 'service_request', 'any']
 
-// Resolved-timestamp field per entity type — used by the attainment calc.
-const RESOLVED_FIELD: Record<string, { label: string; resolvedField: string }> = {
-  incident:        { label: 'Incident',        resolvedField: 'resolved_at' },
-  problem:         { label: 'Problem',         resolvedField: 'resolved_at' },
-  service_request: { label: 'ServiceRequest',  resolvedField: 'completed_at' },
-  change:          { label: 'Change',          resolvedField: 'completed_at' },
-}
 
 function mapOLA(p: Props, teamName: string | null) {
   return {
@@ -59,6 +54,64 @@ export async function olaContracts(_: unknown, args: { type?: string }, ctx: Gra
       ORDER BY o.type, o.name
     `, { tenantId: ctx.tenantId, type: args.type ?? null })
     return rows.map((r) => mapOLA(r.props, r.teamName))
+  })
+}
+
+// ── I contratti di un ticket ──────────────────────────────────────────────────
+
+/**
+ * Gli OLA/UC che riguardano un ticket, per il riquadro nel dettaglio (secondo
+ * giro UI del 15 set 2026: nel dettaglio gli OLA non si vedevano). Stesse
+ * regole del report e del controllo allo scatto: un contratto attivo del tipo
+ * del ticket (o `any`) vale se il ticket è del suo team (o il contratto non ha
+ * team) ed è nato dopo il contratto. Gli altri tornano con il motivo, così il
+ * riquadro può dire perché non contano invece di nasconderli.
+ */
+export async function ticketOLAs(_: unknown, args: { entityType: string; entityId: string }, ctx: GraphQLContext) {
+  const mapping = OLA_CONCLUDED_FIELD[args.entityType]
+  if (!mapping) {
+    throw new ValidationError(`"${args.entityType}" is not a ticket type with OLA/UC contracts (${Object.keys(OLA_CONCLUDED_FIELD).join(', ')})`,
+      { key: 'errors.ola.notATicketType', params: { entityType: args.entityType } })
+  }
+  return withSession(async (session) => {
+    const ticket = await runQueryOne<{ createdAt: string | null; concludedAt: string | null; teamId: string | null }>(session, `
+      MATCH (e:${mapping.label} {id: $entityId, tenant_id: $tenantId})
+      OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(t:Team {tenant_id: $tenantId})
+      RETURN e.created_at AS createdAt, e.${mapping.field} AS concludedAt, t.id AS teamId
+      LIMIT 1
+    `, { entityId: args.entityId, tenantId: ctx.tenantId })
+    if (!ticket) throw new NotFoundError(mapping.label)
+    const contracts = await runQuery<{ props: Props; teamName: string | null }>(session, `
+      MATCH (o:OLAContract {tenant_id: $tenantId})
+      WHERE coalesce(o.enabled, true) = true AND o.entity_type IN [$entityType, 'any']
+      OPTIONAL MATCH (t:Team {id: o.team_id, tenant_id: $tenantId})
+      RETURN properties(o) AS props, t.name AS teamName
+      ORDER BY o.type, o.name
+    `, { entityType: args.entityType, tenantId: ctx.tenantId })
+    if (contracts.length === 0) return []
+    const timezone = await getTenantTimezone(ctx.tenantId)
+    const out = []
+    for (const { props: o, teamName } of contracts) {
+      const teamId = (o['team_id'] ?? null) as string | null
+      const contractCreatedAt = (o['created_at'] ?? null) as string | null
+      const reason = teamId !== null && teamId !== ticket.teamId ? 'other_team'
+        : contractCreatedAt !== null && ticket.createdAt !== null && ticket.createdAt < contractCreatedAt ? 'created_before_contract'
+        : null
+      const resolveMinutes = toNumber(o['resolve_minutes'])
+      const businessHours = o['business_hours'] === true
+      let deadline: string | null = null
+      let state: string | null = null
+      if (reason === null && ticket.createdAt) {
+        const calendar = await calendarFor(ctx.tenantId, { name: o['name'] as string, businessHours, calendarId: (o['calendar_id'] ?? null) as string | null })
+        ;({ deadline, state } = olaTicketState({ createdAt: ticket.createdAt, concludedAt: ticket.concludedAt }, { resolveMinutes, businessHours, calendar }, timezone))
+      }
+      out.push({
+        contractId: o['id'] as string, name: o['name'] as string, type: o['type'] as string,
+        teamName, resolveMinutes, calendarId: (o['calendar_id'] ?? null) as string | null,
+        applies: reason === null, reason, deadline, concludedAt: ticket.concludedAt, state,
+      })
+    }
+    return out
   })
 }
 
@@ -180,27 +233,23 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
     `, { tenantId: ctx.tenantId })
 
     const ola = []
+    // V-17: ogni contratto conta i SUOI ticket (tipo, team, nati dopo il
+    // contratto) col SUO calendario — lib/olaAttainment.ts.
+    const timezone = contracts.length > 0 ? await getTenantTimezone(ctx.tenantId) : 'UTC'
     for (const row of contracts) {
       const o = row['props'] as Props
       const entityType = (o['entity_type'] as string) || 'incident'
-      const mapping = RESOLVED_FIELD[entityType === 'any' ? 'incident' : entityType]
       const resolveMinutes = toNumber(o['resolve_minutes'])
-
-      let evaluated = 0, cMet = 0, cBreached = 0
-      if (mapping) {
-        const attRows = await runQuery<Props>(session, `
-          MATCH (e:${mapping.label} {tenant_id: $tenantId})
-          WHERE e.${mapping.resolvedField} IS NOT NULL AND e.${mapping.resolvedField} >= $cutoff AND e.created_at IS NOT NULL
-          WITH duration.inSeconds(datetime(e.created_at), datetime(e.${mapping.resolvedField})).seconds AS secs
-          WITH (secs / 60.0) AS mins
-          RETURN count(*) AS evaluated,
-                 sum(CASE WHEN mins <= $resolveMinutes THEN 1 ELSE 0 END) AS met,
-                 sum(CASE WHEN mins >  $resolveMinutes THEN 1 ELSE 0 END) AS breached
-        `, { tenantId: ctx.tenantId, cutoff, resolveMinutes })
-        evaluated = toNumber(attRows[0]?.['evaluated'])
-        cMet      = toNumber(attRows[0]?.['met'])
-        cBreached = toNumber(attRows[0]?.['breached'])
+      const businessHours = o['business_hours'] === true
+      const calendar = await calendarFor(ctx.tenantId, { name: o['name'] as string, businessHours, calendarId: (o['calendar_id'] ?? null) as string | null })
+      const tickets: OLATimedTicket[] = []
+      for (const type of olaEntityTypes(entityType)) {
+        const rows = await runQuery<{ createdAt: string; concludedAt: string }>(session, olaConcludedTicketsCypher(type), {
+          tenantId: ctx.tenantId, cutoff, teamId: (o['team_id'] ?? null) as string | null, contractCreatedAt: (o['created_at'] ?? null) as string | null,
+        })
+        tickets.push(...rows)
       }
+      const { evaluated, met: cMet, breached: cBreached } = evaluateOLATickets(tickets, { resolveMinutes, businessHours, calendar }, timezone)
 
       ola.push({
         id:             o['id']            as string,
@@ -340,6 +389,26 @@ export async function createOLAContract(_: unknown, args: { input: OLAInput }, c
   }, true)
 }
 
+/**
+ * Cancella un contratto OLA/UC (secondo giro UI del 15 set 2026: si poteva solo
+ * disattivare). I controlli di breach già armati per i ticket aperti non
+ * avvisano più: allo scatto il contratto non c'è (`olaBreachSkipReason`). Il
+ * report non lo mostra più; l'Audit Log tiene com'era.
+ */
+export async function deleteOLAContract(_: unknown, args: { id: string }, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const rows = await runQuery<{ props: Props }>(session, `
+      MATCH (o:OLAContract {id: $id, tenant_id: $tenantId})
+      WITH o, properties(o) AS props
+      DETACH DELETE o
+      RETURN props
+    `, { id: args.id, tenantId: ctx.tenantId })
+    if (!rows.length) throw new NotFoundError('OLAContract')
+    void audit(ctx, 'ola_contract.deleted', 'OLAContract', args.id, { previous: rows[0]!.props })
+    return true
+  }, true)
+}
+
 export async function updateOLAContract(_: unknown, args: { id: string; input: OLAInput }, ctx: GraphQLContext) {
   requirePermission(ctx, 'config.sla')
   const { input } = args
@@ -406,7 +475,8 @@ async function olaContractCalendarName(parent: { calendarId: string | null }, _:
 }
 
 export const olaResolvers = {
-  Query:    { olaContracts, slaReport },
-  Mutation: { createOLAContract, updateOLAContract },
+  Query:    { olaContracts, slaReport, ticketOLAs },
+  Mutation: { createOLAContract, updateOLAContract, deleteOLAContract },
   OLAContract: { calendarName: olaContractCalendarName },
+  TicketOLA:   { calendarName: olaContractCalendarName },
 }

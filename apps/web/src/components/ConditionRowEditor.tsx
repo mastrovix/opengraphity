@@ -7,7 +7,7 @@
 import { useQuery } from '@apollo/client/react'
 import { GET_TEAMS, GET_USERS } from '@/graphql/queries'
 import { useEntityFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
-import { fieldTypeKey, operatorsForFieldType, NO_VALUE_OPERATORS } from '@/lib/automationOperators'
+import { fieldTypeKey, operatorsForFieldType, NO_VALUE_OPERATORS, CHANGED_OPERATOR } from '@/lib/automationOperators'
 import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { X } from 'lucide-react'
@@ -32,6 +32,8 @@ interface Props {
   onRemove:  () => void
   /** `stack`: controlli in colonna, per pannelli stretti (designer workflow). */
   layout?:    'row' | 'stack'
+  /** Offre «è cambiato» (V-19): solo per regole e trigger che scattano sugli aggiornamenti. */
+  allowChanged?: boolean
 }
 
 const removeBtn: React.CSSProperties = {
@@ -41,7 +43,7 @@ const removeBtn: React.CSSProperties = {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function ConditionRowEditor({ condition, entityType, onChange, onRemove, layout = 'row' }: Props) {
+export function ConditionRowEditor({ condition, entityType, onChange, onRemove, layout = 'row', allowChanged = false }: Props) {
   const { t } = useTranslation()
   const { fields: allFields, error: fieldsError } = useEntityFieldMetas(entityType)
   const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
@@ -50,7 +52,7 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove, 
 
   const selectedField = allFields.find(f => f.name === condition.field)
   const fieldType     = selectedField?.fieldType ?? 'string'
-  const operators     = operatorsForFieldType(fieldType)
+  const operators: { value: string; labelKey: string }[] = allowChanged ? [...operatorsForFieldType(fieldType), CHANGED_OPERATOR] : operatorsForFieldType(fieldType)
   const hideValue     = NO_VALUE_OPERATORS.has(condition.operator)
   const stack         = layout === 'stack'
 

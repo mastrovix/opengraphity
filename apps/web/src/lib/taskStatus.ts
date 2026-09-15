@@ -34,8 +34,3 @@ export const ROLE_TO_RELATION: Record<string, string> = {
   [ASSESSMENT_ROLE.OWNER]:   'OWNED_BY',
   [ASSESSMENT_ROLE.SUPPORT]: 'SUPPORTED_BY',
 }
-
-export const ROLE_LABEL: Record<string, string> = {
-  [ASSESSMENT_ROLE.OWNER]:   'Functional',
-  [ASSESSMENT_ROLE.SUPPORT]: 'Technical',
-}

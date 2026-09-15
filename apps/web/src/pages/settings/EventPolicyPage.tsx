@@ -38,13 +38,15 @@ import { Button } from '@/components/Button'
 import { Input, Select, FieldLabel } from '@/components/ui/FormControls'
 import { Toggle } from '@/components/ui/Toggle'
 import { errorMessage } from '@/hooks/useMutationWithToast'
-import { enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
+import { useCIBaseEnums } from '@/lib/ciEnums'
 import { GET_EVENT_POLICY, GET_DOMAIN_MATRICES } from '@/graphql/queries'
 import { UPDATE_EVENT_POLICY } from '@/graphql/mutations'
 import { colors, palette } from '@/lib/tokens'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { EVENT_SEVERITIES, type EventPolicy, type EventSeverity } from '@/types/events'
 import { showError } from '@/lib/showError'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { useCILabels } from '@/hooks/useCILabels'
 
 const OPEN_FROM  = ['info', 'warning', 'critical', 'never'] as const
 const GROUP_BY   = ['ci', 'fingerprint'] as const
@@ -203,6 +205,9 @@ function Group({ name, children }: { name: GroupName; children: React.ReactNode 
 
 export function EventPolicyPage() {
   const { t } = useTranslation()
+  // Etichette del Dizionario per stati del CI e livelli (secondo giro UI del 15 set 2026 · V-21)
+  const { labelOf } = useDomainVocabularies()
+  const { statusLabel } = useCILabels()
   const uid = useId()
   const fid = (name: string) => `${uid}-${name}`
 
@@ -264,7 +269,7 @@ export function EventPolicyPage() {
     const i = prioritaMatrice?.inputs.indexOf(field) ?? -1
     const valori = i >= 0 ? (prioritaMatrice?.inputValues[i] ?? []) : []
     const base = valori.length > 0 ? valori : [...DEFAULT_LEVELS]
-    const voci = base.map((v) => ({ value: v, label: enumLabel(v) }))
+    const voci = base.map((v) => ({ value: v, label: labelOf(field, v) ?? v }))
     if (current && !base.includes(current)) voci.push({ value: current, label: t('events.policy.lifecycleUnknown', { value: current }) })
     return voci
   }
@@ -358,7 +363,7 @@ export function EventPolicyPage() {
     ...LIFECYCLE_FIELDS.flatMap((k) => form[k]).filter((s, i, all) => !baseEnums.statuses.includes(s) && all.indexOf(s) === i),
   ]
   const lifecycleLabel = (value: string) =>
-    baseEnums.statuses.includes(value) ? enumLabel(value) : t('events.policy.lifecycleUnknown', { value })
+    baseEnums.statuses.includes(value) ? statusLabel(value) : t('events.policy.lifecycleUnknown', { value })
   /** Spunta/despunta uno stato ricostruendo la lista nell'ordine delle opzioni: il confronto con i valori letti resta stabile. */
   const toggleLifecycle = (key: LifecycleField, value: string, on: boolean) =>
     set(key, lifecycleOptions.filter((s) => (s === value ? on : form[key].includes(s))))

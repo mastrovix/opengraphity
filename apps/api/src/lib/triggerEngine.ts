@@ -83,6 +83,7 @@ export async function evaluateTriggers(
   const outcomes = await evaluateRules({
     kind: 'trigger',
     tenantId, entityType, entity, userId,
+    changedFields: opts?.changedFields,
     records: triggers.map((t) => ({
       id: t.id, name: t.name, conditions: t.conditions, actions: t.actions,
       conditionLogic: 'and', stopOnMatch: false,

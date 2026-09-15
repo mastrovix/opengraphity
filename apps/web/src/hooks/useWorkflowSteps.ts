@@ -1,12 +1,14 @@
 import { useQuery } from '@apollo/client/react'
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { GET_WORKFLOW_DEFINITION } from '@/graphql/queries/workflow'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
-import { localizedLabel, type LocalizedLabel } from '@/lib/localizedLabel'
+import { localizedLabel, withLocalizedLabel, type LocalizedLabel } from '@/lib/localizedLabel'
 
 export interface WorkflowStepMeta {
   id:         string
   name:       string
+  /** Già nella lingua di chi guarda (vedi `useWorkflowSteps`). */
   label:      string
   /** Traduzioni dell'etichetta spedita: `labelFor` sceglie la lingua attiva. */
   labels?:    LocalizedLabel[]
@@ -39,8 +41,18 @@ export function useWorkflowSteps(entityType: string) {
     { variables: { entityType }, fetchPolicy: METAMODEL_FETCH_POLICY, skip: !entityType },
   )
 
+  const { i18n } = useTranslation()
+  const language = i18n.resolvedLanguage ?? i18n.language
+
   return useMemo(() => {
-    const raw         = data?.workflowDefinition?.steps ?? []
+    /*
+      `label` arriva già nella lingua di chi guarda. Secondo giro UI del 15 set
+      2026 (V-7 e l'elenco delle change): `labelFor` c'era, ma venti chiamanti
+      leggevano `byName.get(step).label` — la colonna «Fase» diceva «Scheduled»
+      a chi aveva scelto l'italiano, accanto a un dettaglio che diceva
+      «Pianificata». Tradurre qui chiude il difetto per tutti.
+    */
+    const raw         = (data?.workflowDefinition?.steps ?? []).map(withLocalizedLabel)
     // Sort by step.order so the timeline reflects the workflow flow rather
     // than whatever order the DB happened to return them in.
     const steps       = [...raw].sort((a, b) => a.order - b.order)
@@ -81,5 +93,6 @@ export function useWorkflowSteps(entityType: string) {
       hasPurpose,
       stepsByPurpose,
     }
-  }, [data, loading, error])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `language` rifà le etichette quando cambia la lingua
+  }, [data, loading, error, language])
 }

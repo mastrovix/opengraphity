@@ -21,6 +21,11 @@ export function userTeamSDL(): string {
     slackId: String
     """La persona riceve le e-mail di notifica (dal Profilo). null = nessun utente nel grafo per questa identità."""
     emailNotifications: Boolean
+    """
+    La lingua scelta dalla persona (\`en\`, \`it\`); null = quella dell'organizzazione.
+    Web e portale la leggono da qui: prima stava solo nel browser del web.
+    """
+    language: String
     createdAt: String
     teams: [Team!]!
   }

@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
-import { SET_MY_EMAIL_NOTIFICATIONS } from '@/graphql/mutations'
+import { SET_MY_EMAIL_NOTIFICATIONS, SET_MY_LANGUAGE } from '@/graphql/mutations'
 import { GET_TENANT_LANGUAGE_SETTINGS } from '@/graphql/queries'
 import i18n from '@/i18n/i18n'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
@@ -43,9 +43,14 @@ describe('ProfilePage — lingua', () => {
     maxUsageCount: Number.POSITIVE_INFINITY,
   }
 
-  it('scegliere una lingua la rende personale; «lingua dell\'organizzazione» dimentica la scelta', async () => {
+  it('scegliere una lingua la salva sulla persona e la rende personale; «lingua dell\'organizzazione» la toglie', async () => {
     window.localStorage.removeItem('og.language.chosen')
-    const { user } = renderWithProviders(<ProfilePage />, { route: '/profile', mocks: [meMock('operator', { maxUsageCount: Number.POSITIVE_INFINITY }), lang] })
+    const saved: unknown[] = []
+    const save = (language: string | null): GqlMock => ({
+      request: { query: SET_MY_LANGUAGE, variables: (v) => { if (v['language'] !== language) return false; saved.push(v); return true } },
+      result: { data: { setMyLanguage: { __typename: 'User', id: 'u-1', language } } },
+    })
+    const { user } = renderWithProviders(<ProfilePage />, { route: '/profile', mocks: [meMock('operator', { maxUsageCount: Number.POSITIVE_INFINITY }), lang, save('it'), save(null)] })
     const select = await screen.findByRole('combobox', { name: 'Language' })
     await waitFor(() => expect(screen.getByRole('option', { name: "Organization's language (English)" })).toBeInTheDocument())
     expect(select).toHaveValue('organization')
@@ -54,6 +59,8 @@ describe('ProfilePage — lingua', () => {
     await user.selectOptions(screen.getByRole('combobox'), 'organization')
     await waitFor(() => expect(window.localStorage.getItem('og.language.chosen')).toBeNull())
     await waitFor(() => expect(i18n.language).toBe('en'))
+    // Secondo giro UI del 15 set 2026: la scelta va sulla persona, così la vede anche il portale.
+    expect(saved).toEqual([{ language: 'it' }, { language: null }])
   })
 })
 

@@ -48,3 +48,10 @@ export const UPDATE_COMMENT = gql`
 export const DELETE_COMMENT = gql`
   mutation DeleteComment($id: ID!) { deleteComment(id: $id) }
 `
+
+/** La lingua della persona (null = quella dell'organizzazione): la stessa del Profilo del web. */
+export const SET_MY_LANGUAGE = gql`
+  mutation SetMyLanguage($language: String) {
+    setMyLanguage(language: $language) { id language }
+  }
+`

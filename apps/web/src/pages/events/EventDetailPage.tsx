@@ -48,6 +48,7 @@ import { CIAliasesSection } from './CIAliasesSection'
 import { EventHistorySection } from './EventHistorySection'
 import type { MonitoringEventDetail, EventPolicy } from '@/types/events'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { useCILabels } from '@/hooks/useCILabels'
 
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
 
@@ -57,6 +58,7 @@ export function EventDetailPage() {
   const navigate = useNavigate()
   const { can } = useMe()
   const { ciTypes } = useMetamodel()
+  const { statusLabel } = useCILabels()
   const canAct = can('event.work')
   const matchHelpId = useId()
 
@@ -115,7 +117,7 @@ export function EventDetailPage() {
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
               <GitBranch size={16} color={colors.slateLight} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
               <p data-testid="correlation-sentence" style={{ margin: 0, fontSize: 'var(--font-size-body)', color: colors.slateDark, lineHeight: 1.6 }}>
-                {correlationSentence(t, ev, policy, (ev.history ?? []).some((h) => h.kind === 'incident_opened_manually' && h.incident?.id === ev.incident?.id))}
+                {correlationSentence(t, ev, policy, { openedManually: (ev.history ?? []).some((h) => h.kind === 'incident_opened_manually' && h.incident?.id === ev.incident?.id), statusLabel })}
               </p>
             </div>
             {ev.suppressedBy && (
@@ -184,7 +186,7 @@ export function EventDetailPage() {
                 ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <Link to={ciPath(ev.ci)} style={linkStyle}>{ev.ci.name}</Link>
                     <span style={{ color: colors.slateLight }}>{ciTypeLabel(ev.ci.type)}</span>
-                    {ev.ci.status && <Pill bg={TINT_NEUTRAL.bg} color={TINT_NEUTRAL.color} style={{ fontSize: 'var(--font-size-label)' }}>{enumLabel(ev.ci.status)}</Pill>}
+                    {ev.ci.status && <Pill bg={TINT_NEUTRAL.bg} color={TINT_NEUTRAL.color} style={{ fontSize: 'var(--font-size-label)' }}>{statusLabel(ev.ci.status)}</Pill>}
                     {ev.ci.health && <CIHealthBadge health={ev.ci.health} />}
                   </span>
                 : <EventNoCIBadge matchReason={ev.matchReason} />}

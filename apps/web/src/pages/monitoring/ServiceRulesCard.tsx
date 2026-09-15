@@ -159,7 +159,8 @@ export function ServiceRulesCard({ map, canEdit, onReload }: Props) {
       const res = await update({ variables: { id: map.id, expectedVersion: map.version, rules: form } })
       if (!res.data?.updateServiceImpactRules) throw new Error(t('monitoring.services.detail.noResult', { operation: 'updateServiceImpactRules' }))
       // Giro UI del 15 set 2026 · U-5: il salvataggio riuscito non dava nessun riscontro.
-      toast.success(t('toast.services.rulesSaved', { version: res.data.updateServiceImpactRules.rules.version }))
+      // Secondo giro UI · V-8: la versione della MAPPA (24 → 25), non quella del formato delle regole (sempre 1).
+      toast.success(t('toast.services.rulesSaved', { version: res.data.updateServiceImpactRules.version }))
     } catch (e) {
       setSaveError(errorMessage(e))
     }

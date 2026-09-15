@@ -327,7 +327,10 @@ export function evaluationWriteCypher(): string {
       SET m.health = $health, m.impact_score = toInteger($impactScore), m.explanation = $explanation, m.evaluated_at = $now,
           m.stale = stale, m.stale_reason = staleReason, m.health_if_active = $healthIfActive, m.health_note = $healthNote,
           m.health_since = CASE WHEN changed THEN $now ELSE m.health_since END
-      ${serviceHistoryWriteCypher({ when: 'changed', prefix: 'h', fields: { previousHealth: 'previous' }, cap: false })}
+      ${
+        // Secondo giro UI del 15 set 2026 · V-13: la mappa nasce già «unknown», quindi la prima
+        // valutazione non «cambiava» la salute e la voce \`created\` non veniva mai scritta.
+        serviceHistoryWriteCypher({ when: "(changed OR $hTrigger = 'created')", prefix: 'h', fields: { previousHealth: 'previous' }, cap: false })}
       ${serviceHistoryWriteCypher({ when: 'becameStale', prefix: 'st', fields: { previousHealth: 'previous' }, imports: ['previous', 'wasStale', 'changed', 'becameStale'], capWhen: 'changed OR becameStale' })}
       RETURN m.id AS id, previous, changed, wasStale, m.service_id AS serviceId, m.name AS name, m.incident_problem AS incidentProblem,
              head([(ba:BusinessApplication {tenant_id: $tenantId})-[:HAS_SERVICE_MAP]->(m) | ba.criticality]) AS criticality`

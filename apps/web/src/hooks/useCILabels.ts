@@ -8,7 +8,7 @@
  * metamodello o il vocabolario non conoscono resta com'è: è il dato vero, non
  * un'etichetta inventata (come `useFieldValueLabel`).
  */
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 
@@ -38,4 +38,16 @@ export function useCILabels(): CILabels {
       subtitle: (ci) => (ci.environment ? `${typeLabel(ci.type)} · ${environmentLabel(ci.environment)}` : typeLabel(ci.type)),
     }
   }, [getCIType, labelOf])
+}
+
+/** Il vocabolario della criticità di un servizio (BusinessApplication.criticality). */
+export const SERVICE_CRITICALITY_VOCABULARY = 'service_criticality'
+
+/**
+ * La criticità di un servizio con l'etichetta del Dizionario. Giro UI del 15
+ * set 2026: si leggeva «Business Critical», il valore umanizzato.
+ */
+export function useCriticalityLabel(): (criticality: string) => string {
+  const { labelOf } = useDomainVocabularies()
+  return useCallback((criticality: string) => labelOf(SERVICE_CRITICALITY_VOCABULARY, criticality) || criticality, [labelOf])
 }

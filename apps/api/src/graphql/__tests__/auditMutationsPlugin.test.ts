@@ -111,5 +111,13 @@ describe('registro unico delle mutation', () => {
     expect(auditEntityId({}, null)).toBe('')
     expect(auditEntityType('addAffectedCI', 'Boolean!')).toBe('AffectedCI')
     expect(auditEntityType('updateIncident', '[Incident!]!')).toBe('Incident')
+    // «…ToChange»: la voce è della change, non del wrapper restituito (secondo giro UI del 15 set 2026)
+    expect(auditEntityType('addCIToChange', 'ChangeAffectedCI!', { changeId: 'chg-1', ciId: 'ci-1' })).toBe('Change')
+    expect(auditEntityId({ changeId: 'chg-1', ciId: 'ci-1' }, { ci: {} }, 'addCIToChange')).toBe('chg-1')
+    expect(auditEntityType('removeCIFromServiceRequest', 'Boolean!', { requestId: 'r-1', ciId: 'c' })).toBe('ServiceRequest')
+    expect(auditEntityId({ requestId: 'r-1', ciId: 'c' }, true, 'removeCIFromServiceRequest')).toBe('r-1')
+    expect(auditEntityType('assignIncidentToTeam', 'Incident!', { incidentId: 'i', teamId: 't' })).toBe('Incident')
+    // senza l'argomento del contenitore resta la regola di prima
+    expect(auditEntityType('addAffectedCI', 'Boolean!', { incidentId: 'i', ciId: 'c' })).toBe('AffectedCI')
   })
 })

@@ -57,3 +57,9 @@ export const UPDATE_SERVICE_CALENDAR = gql`
 export const DELETE_SERVICE_CALENDAR = gql`
   mutation DeleteServiceCalendar($id: ID!) { deleteServiceCalendar(id: $id) }
 `
+
+export const DELETE_OLA_CONTRACT = gql`
+  mutation DeleteOLAContract($id: ID!) {
+    deleteOLAContract(id: $id)
+  }
+`

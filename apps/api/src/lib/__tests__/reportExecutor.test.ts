@@ -122,7 +122,7 @@ describe('executeReportSection', () => {
     const res = await executeReportSection(section({ chartType: 'bar', groupByField: 'severity' }), 't1')
     expect(res.error).toBeNull()
     expect(JSON.parse(res.data)).toEqual([{ name: 'Critica', value: 2 }])
-    expect(loadReportValueLabeler).toHaveBeenCalledWith(expect.anything(), 't1', [{ neo4jLabel: 'Incident', field: 'severity' }])
+    expect(loadReportValueLabeler).toHaveBeenCalledWith(expect.anything(), 't1', [{ neo4jLabel: 'Incident', field: 'severity' }], undefined)
     labeler.mockImplementation((_s, v) => v)
   })
 

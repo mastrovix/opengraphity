@@ -316,9 +316,12 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   'itilDesigner.itilTypes',
   // «CMDB Sync» nomina la CMDB e l'operazione come le chiama chi ci lavora.
   'sync.title',
-  // Sono i due nomi TECNICI dei campi, mostrati come tali: `name` e uno slug
-  // in snake_case, non una parola da tradurre.
-  'citypeDesigner.field.slugNameSnake',
+  // «OLA / UC» sono le sigle ITIL dei contratti (Operational Level Agreement,
+  // Underpinning Contract), come nel menu e nel report OLA/UC.
+  'ticketOla.title',
+  // «Change Manager» e il ruolo ITIL del team che approva le change: si
+  // chiama cosi anche in italiano (come `pages.teams.changeManager`).
+  'changeTasks.approvalKind.change_manager',
   // «SLA Breach», «Escalation», «Timer», «Stop», «enum», «SLA Policies»: sono i
   // nomi che chi ci lavora usa parlando italiano, non frasi da tradurre. Sono
   // anche i nomi dei valori salvati (`sla_breach`, `on_timer`, `stopOnMatch`).
@@ -570,6 +573,25 @@ const RE_PROP_ESPRESSIONE = new RegExp('\\b(' + PROP_VISIBILI.join('|') + ')=\\{
   dentro non ci sia altro markup: quello che si cattura e un solo nodo di testo.
 */
 const RE_TESTO_JSX = new RegExp('>([^<>{}]{4,}?)</', 'g')
+/*
+  TESTO JSX CHE FINISCE SU UN'ESPRESSIONE O SU UN TAG (secondo giro UI del 15
+  set 2026). `RE_TESTO_JSX` vuole la chiusura `</` subito dopo il testo, e cosi
+  `>Requester: <strong>{nome}</strong>` e `>Functional score: {x}` passavano:
+  25 etichette inglesi a schermo nell'interfaccia italiana, trovate nel browser
+  e non da questo guardiano. Qui il testo finisce dove comincia `{` o un tag.
+  `(?<![=-])` tiene fuori `=>` e i generici chiusi da `>=`; il codice che resta
+  (`(GET_X, {`, `const styles: Record<`) si scarta in `testoAperto`.
+*/
+const RE_TESTO_JSX_APERTO = /(?<![=\-])>([^<>{}]*[A-Za-z][^<>{}]*?)(?=\{|<[A-Za-z/])/g
+/** Un letterale scelto da una condizione e messo come figlio JSX: `>{ok ? 'enabled' : 'disabled'}<`. */
+const RE_TERNARIO_JSX = />\s*\{[^{}\n]*\?\s*'([^']*)'\s*:\s*'([^']*)'\s*\}\s*</g
+/** Il pezzo di testo di `RE_TESTO_JSX_APERTO`, ripulito; `null` se e codice. */
+function testoAperto(grezzo) {
+  const t = grezzo.trim()
+  if (/[=;"'`()\[\]?]|&&|\|\||\n/.test(t)) return null
+  if (/\b(const|return|if|let|await|async|function|export|import|type|interface|Record|Promise|Array|Partial|Pick|Omit|Set|Map|typeof|as|extends)\b/.test(t)) return null
+  return t.replace(/^[·•|,–—-]+\s*/, '').replace(/[\s:]+$/, '')
+}
 
 /** Un identificatore o un valore tecnico: non e prosa da tradurre. */
 function tecnico(v) {
@@ -677,6 +699,21 @@ function prosa(v) {
       const riga = lineOf(src, m.index)
       if (commenti.has(riga)) continue
       if (prosa(m[1])) trovati.push({ dove: `testo JSX «${m[1].trim()}»`, riga })
+    }
+    for (const m of src.matchAll(RE_TESTO_JSX_APERTO)) {
+      const riga = lineOf(src, m.index)
+      if (commenti.has(riga)) continue
+      const t = testoAperto(m[1])
+      if (t && prosa(t)) trovati.push({ dove: `testo JSX «${t}» accanto a un'espressione`, riga })
+    }
+    for (const m of src.matchAll(RE_TERNARIO_JSX)) {
+      const riga = lineOf(src, m.index)
+      if (commenti.has(riga)) continue
+      for (const v of [m[1], m[2]]) {
+        // «\uD83D\uDCCA Excel»: un'icona e il nome di un formato, non una frase.
+        if (/^(\\u[0-9A-Fa-f]{4})+\s*\S+$/.test(v)) continue
+        if (prosa(v)) trovati.push({ dove: `letterale «${v}» scelto da una condizione`, riga })
+      }
     }
     const quota = ammessi(rel)
     if (trovati.length > quota) {

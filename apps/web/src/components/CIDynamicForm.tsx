@@ -88,6 +88,9 @@ function FieldRenderer({
   const { labelOf } = useDomainVocabularies()
   const hasError = Boolean(error)
   const borderColor = hasError ? 'var(--color-trigger-sla-breach)' : colors.border
+  // L'errore si lega al controllo: un lettore di schermo lo annuncia col campo
+  // (secondo giro UI del 15 set 2026: il bordo rosso era l'unico segnale).
+  const invalid = hasError ? { 'aria-invalid': true as const, 'aria-describedby': `${id}-error` } : {}
 
   switch (field.fieldType) {
     case 'boolean':
@@ -111,6 +114,7 @@ function FieldRenderer({
         <input
           type="number"
           id={id}
+          {...invalid}
           value={value !== null && value !== undefined ? String(value) : ''}
           onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))}
           placeholder={field.label}
@@ -124,6 +128,7 @@ function FieldRenderer({
         <input
           type="date"
           id={id}
+          {...invalid}
           value={value !== null && value !== undefined ? String(value) : ''}
           onChange={e => onChange(e.target.value || null)}
           style={{ ...inputBase, borderColor }}
@@ -144,6 +149,7 @@ function FieldRenderer({
       return (
         <select
           id={id}
+          {...invalid}
           value={current}
           onChange={e => onChange(e.target.value || null)}
           style={{ ...selectBase, borderColor }}
@@ -167,6 +173,7 @@ function FieldRenderer({
         <input
           type="text"
           id={id}
+          {...invalid}
           value={value !== null && value !== undefined ? String(value) : ''}
           onChange={e => onChange(e.target.value || null)}
           placeholder={field.label}
@@ -376,12 +383,14 @@ export function CIDynamicForm({
         <input
           type="text"
           id={fieldId('name')}
+          aria-invalid={validationErrors['name'] ? true : undefined}
+          aria-describedby={validationErrors['name'] ? `${fieldId('name')}-error` : undefined}
           value={String(formValues['name'] ?? '')}
           onChange={e => handleChange('name', e.target.value)}
           style={inputBase}
         />
         {validationErrors['name'] && (
-          <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
+          <p id={`${fieldId('name')}-error`} style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
             {validationErrors['name']}
           </p>
         )}
@@ -417,12 +426,12 @@ export function CIDynamicForm({
                   {sr.label}
                   {sr.required && <span style={{ color: 'var(--color-trigger-sla-breach)', marginLeft: 2 }}>*</span>}
                 </label>
-                <select id={fieldId(key)} value={String(formValues[key] ?? '')} onChange={e => handleChange(key, e.target.value || null)} style={inputBase}>
+                <select id={fieldId(key)} aria-invalid={validationErrors[key] ? true : undefined} aria-describedby={validationErrors[key] ? `${fieldId(key)}-error` : undefined} value={String(formValues[key] ?? '')} onChange={e => handleChange(key, e.target.value || null)} style={inputBase}>
                   <option value="">{t('components.ciDynamicForm.selectOption')}</option>
                   {(teamsData?.teams ?? []).map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
                 </select>
                 {validationErrors[key] && (
-                  <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
+                  <p id={`${fieldId(key)}-error`} style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
                     {validationErrors[key]}
                   </p>
                 )}
@@ -475,7 +484,7 @@ export function CIDynamicForm({
             />
 
             {error && (
-              <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
+              <p id={`${fieldId(field.name)}-error`} style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
                 {error}
               </p>
             )}

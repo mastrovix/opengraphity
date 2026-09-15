@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
+import { creationStepContext } from '../lib/customFieldSteps.js'
 import { nextTicketNumber } from '../lib/ticketNumbering.js'
 import { resolveNewTicketPriority } from '../lib/priority.js'
 import { workflowEngine } from '@opengraphity/workflow'
@@ -203,7 +204,7 @@ export async function createIncident(
   // non mandano la chiave — un campo obbligatorio non deve fermare un allarme,
   // come già non lo fermano le regole di obbligatorietà.
   const customProps = input.customFields == null ? {} : await withSession(async (session) =>
-    resolveCustomFieldWrites(ctx.tenantId, 'incident', await customFieldDefs(session, ctx.tenantId, 'incident'), input.customFields, { current: null, endUser: channel === 'portal' }))
+    resolveCustomFieldWrites(ctx.tenantId, 'incident', await customFieldDefs(session, ctx.tenantId, 'incident'), input.customFields, { current: null, endUser: channel === 'portal', stepContext: await creationStepContext(session, ctx.tenantId, 'incident', input.category ?? null) }))
 
   const id  = uuidv4()
   const now = new Date().toISOString()

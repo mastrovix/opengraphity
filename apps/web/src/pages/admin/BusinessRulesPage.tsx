@@ -371,6 +371,7 @@ export function BusinessRulesPage() {
                 key={i}
                 condition={c}
                 entityType={draft.entityType}
+                allowChanged={draft.eventType === 'on_update'}
                 onChange={p => updateCondition(i, p)}
                 onRemove={() => removeCondition(i)}
               />

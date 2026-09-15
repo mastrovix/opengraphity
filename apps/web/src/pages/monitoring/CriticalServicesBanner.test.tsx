@@ -22,6 +22,10 @@ import { useQuery } from '@apollo/client/react'
 import { CriticalServicesBanner, CRITICAL_SERVICES_PATH } from './CriticalServicesBanner'
 import { GET_SERVICE_MAPS, GET_CRITICAL_SERVICE_CRITICALITIES } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
+import { withVocabularyLabels } from '@/test/vocabularies'
+
+/** Le etichette del Dizionario per la criticità (il web non umanizza più il valore). */
+const CRITICALITY_LABELS = { service_criticality: { business_critical: 'Business Critical', mission_critical: 'Mission Critical', high: 'High' } }
 import { COUNTS, mapRow, SERVICE } from '@/test/mocks/services'
 import type { ServiceMapPage } from '@/types/services'
 
@@ -89,7 +93,7 @@ const twentyNonCritical = Array.from({ length: 20 }, (_, i) => mapRow({
 }))
 
 const render = (mock: GqlMock, criticalities: readonly string[] = SERVER_CRITICALITIES) =>
-  renderWithProviders(<><CriticalServicesBanner /><Probe criticality={[...criticalities]} /></>, { mocks: [mock, criticalitiesMock(criticalities)] })
+  renderWithProviders(withVocabularyLabels(<><CriticalServicesBanner /><Probe criticality={[...criticalities]} /></>, CRITICALITY_LABELS), { mocks: [mock, criticalitiesMock(criticalities)] })
 
 describe('CriticalServicesBanner', () => {
   it('un servizio critico giù: banner con la riga del servizio (link) e il rimando alla lista filtrata', async () => {

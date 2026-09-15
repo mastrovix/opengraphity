@@ -29,7 +29,7 @@ export type OperationRequirement = readonly Permission[] | typeof AUTHENTICATED
 const TICKET_READ: readonly Permission[] = ['incident.read', 'problem.read', 'change.read', 'request.read']
 
 const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly string[]; mutation?: readonly string[] }> = [
-  { anyOf: AUTHENTICATED, query: ['me', 'tenantLanguageSettings', 'tenantBrand', 'attachmentPolicy'] },
+  { anyOf: AUTHENTICATED, query: ['me', 'tenantLanguageSettings', 'tenantBrand', 'attachmentPolicy'], mutation: ['setMyLanguage'] },
 
   // ── Accesso ────────────────────────────────────────────────────────────────
   // L'area di lavoro dello staff: ricerca, filtri, attività e approvazioni
@@ -45,7 +45,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
       'enumTypes', 'enumType', 'criticalServiceCriticalities', 'preApprovedChangeTypes', 'riskBandThresholds',
       'navigableEntities', 'navigableRelations', 'reachableEntities',
       'workflowDefinitions', 'workflowDefinition', 'workflowDefinitionById', 'workflowEventTypes',
-      'olaContracts', 'slaCoverage',
+      'olaContracts', 'ticketOLAs', 'slaCoverage',
     ],
     mutation: ['watchEntity', 'unwatchEntity', 'linkSlackAccount'],
   },
@@ -175,7 +175,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   },
   {
     anyOf: ['config.metamodel'],
-    query: ['domainMatrices', 'changeEnvironmentWeight', 'impactAnalysisWeights', 'ciTypeDeletionImpact', 'itilFieldValueCount'],
+    query: ['domainMatrices', 'changeEnvironmentWeight', 'impactAnalysisWeights', 'ciTypeDeletionImpact', 'itilFieldValueCount', 'ciFieldValueCount', 'enumValueUsage'],
     mutation: [
       'createCIType', 'updateCIType', 'deleteCIType', 'addCIField', 'updateCIField', 'removeCIField', 'addCIRelation', 'removeCIRelation',
       'updateITILType', 'createITILField', 'updateITILField', 'deleteITILField', 'setTicketCIExclusions',
@@ -193,7 +193,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   {
     anyOf: ['config.sla'],
     query: ['slaPolicies'],
-    mutation: ['createSLAPolicy', 'updateSLAPolicy', 'deleteSLAPolicy', 'createOLAContract', 'updateOLAContract'],
+    mutation: ['createSLAPolicy', 'updateSLAPolicy', 'deleteSLAPolicy', 'createOLAContract', 'updateOLAContract', 'deleteOLAContract'],
   },
   {
     anyOf: ['config.automation'],
@@ -219,7 +219,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   },
   {
     anyOf: ['config.services'],
-    query: ['serviceMapCandidates', 'serviceMapProposal', 'serviceImpactPreview', 'serviceRelationshipTypes'],
+    query: ['serviceMapCandidates', 'serviceMapCreationPreview', 'serviceMapProposal', 'serviceImpactPreview', 'serviceRelationshipTypes'],
     mutation: ['createServiceMap', 'setServiceMapStatus', 'deleteServiceMap', 'updateServiceImpactRules', 'updateServiceMapNodes',
       'applyServiceMapProposal', 'removeServiceMapExclusion', 'setServiceMapAutoSync', 'syncServiceMap', 'updateServiceMapScope'],
   },

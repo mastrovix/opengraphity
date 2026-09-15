@@ -1,14 +1,14 @@
-import { useId, useState, useEffect } from 'react'
+import { useId, useMemo, useState, useEffect } from 'react'
 import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
-import { customFieldsInput, missingCustomFields, useTicketCustomFieldDefs } from '@/components/ticket/customFields/customFields'
+import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useMutation, useQuery } from '@apollo/client/react'
+import { useApolloClient, useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { CREATE_CHANGE } from '@/graphql/mutations'
-import { GET_CHANGES, GET_ALL_CIS, GET_USERS, GET_PROBLEM, GET_INCIDENT, GET_PRE_APPROVED_CHANGE_TYPES } from '@/graphql/queries'
+import { GET_CHANGES, GET_ALL_CIS, GET_USERS, GET_PROBLEM, GET_INCIDENT, GET_PRE_APPROVED_CHANGE_TYPES, GET_CI_GROUPS_BY_ID } from '@/graphql/queries'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
@@ -70,11 +70,11 @@ export function CreateChangePage() {
     GET_INCIDENT, { variables: { id: incidentId }, skip: !incidentId },
   )
   // Sorgente unificata della richiesta (problem oppure incident).
-  const requestSource = problemData?.problem
+  const requestSource = useMemo(() => problemData?.problem
     ? { kind: 'problem' as const, ...problemData.problem }
     : incidentData?.incident
     ? { kind: 'incident' as const, ...incidentData.incident }
-    : null
+    : null, [problemData, incidentData])
   const [prefilled, setPrefilled] = useState(false)
 
   const [title, setTitle]             = useState('')
@@ -97,7 +97,7 @@ export function CreateChangePage() {
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
   const [backendError, setBackendError] = useState<string | null>(null)
   // Campi personalizzati del cliente (verifica «Cosa resta cablato», ondata 4).
-  const { defs: customDefs } = useTicketCustomFieldDefs('change')
+  const { defs: customDefs } = useCreationCustomFieldDefs('change')
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
   const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
 
@@ -140,6 +140,48 @@ export function CreateChangePage() {
   })
 
   const ciWithoutGroups = selectedCIs.filter(missingGroups)
+
+  /**
+   * Secondo giro UI del 15 set 2026 · V-1: i gruppi di un CI si leggevano solo
+   * quando lo si aggiungeva. Chi andava a impostarli sulla pagina del CI e
+   * tornava trovava il chip ancora rosso e «Crea» spento, finché non toglieva e
+   * riaggiungeva il CI. Si rileggono quando la finestra torna in primo piano e
+   * con «Ricontrolla».
+   */
+  const apollo = useApolloClient()
+  const [rechecking, setRechecking] = useState(false)
+  const recheckGroups = async () => {
+    const stale = selectedCIs.filter(missingGroups)
+    if (stale.length === 0) return
+    setRechecking(true)
+    try {
+      const fresh = await Promise.all(stale.map((ci) => apollo.query<{ ciById: { id: string; ownerGroup: { id: string } | null; supportGroup: { id: string } | null } | null }>({
+        query: GET_CI_GROUPS_BY_ID, variables: { id: ci.id }, fetchPolicy: 'network-only',
+      })))
+      const byId = new Map(fresh.map((r) => r.data?.ciById).filter((c): c is NonNullable<typeof c> => c != null).map((c) => [c.id, c]))
+      setSelectedCIs((prev) => prev.map((ci) => {
+        const f = byId.get(ci.id)
+        return f ? { ...ci, ownerGroup: f.ownerGroup, supportGroup: f.supportGroup } : ci
+      }))
+    } catch (e) {
+      showError(e)
+    } finally {
+      setRechecking(false)
+    }
+  }
+  useEffect(() => {
+    if (ciWithoutGroups.length === 0) return
+    // `focus` quando torna la finestra, `visibilitychange` quando torna la scheda:
+    // dal vivo il cambio di scheda non emetteva `focus`.
+    const onFocus = () => { void recheckGroups() }
+    const onVisible = () => { if (document.visibilityState === 'visible') void recheckGroups() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  })
   const canSubmit = title.trim() !== '' && why.trim() !== '' && what.trim() !== '' && changeType !== '' && selectedCIs.length > 0 && ciWithoutGroups.length === 0 && !loading
 
   const handleSubmit = () => {
@@ -398,7 +440,11 @@ export function CreateChangePage() {
 
             {ciWithoutGroups.length > 0 && (
               <p role="alert" style={{ margin: '8px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-danger)' }}>
-                {t('pages.createChange.ciWithoutGroupsList', { names: ciWithoutGroups.map((c) => c.name).join(', ') })}
+                {t('pages.createChange.ciWithoutGroupsList', { names: ciWithoutGroups.map((c) => c.name).join(', ') })}{' '}
+                <button type="button" onClick={() => void recheckGroups()} disabled={rechecking}
+                  style={{ background: 'none', border: 'none', padding: 0, color: 'var(--color-brand)', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}>
+                  {t('pages.createChange.recheckGroups')}
+                </button>
               </p>
             )}
             {selectedCIs.length > 0 && (
@@ -426,6 +472,7 @@ export function CreateChangePage() {
                     <button
                       type="button"
                       onClick={() => setSelectedCIs(p => p.filter(c => c.id !== ci.id))}
+                      aria-label={t('pages.createChange.removeCI', { name: ci.name })}
                       style={{
                         background: 'none',
                         border:     'none',

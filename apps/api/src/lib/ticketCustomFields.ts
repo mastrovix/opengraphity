@@ -23,6 +23,7 @@ import { ValidationError } from './errors.js'
 import { loadITILTypes } from './itilTypes.js'
 import { assertStepFieldValue, type StepFieldMeta } from './stepFieldWrites.js'
 import { runValidationScript } from './metamodelScript.js'
+import { fieldStepState, parseStepEditability, parseStepVisibility, type StepContext, type StepEditability, type StepVisibility } from './customFieldSteps.js'
 
 export const TICKET_LABELS: Readonly<Record<TicketCustomFieldEntityType, string>> = {
   incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'ServiceRequest',
@@ -38,6 +39,9 @@ export interface CustomFieldDef {
   validationScript: string | null
   visibleToEndUser: boolean
   order:            number
+  /** In quali fasi si vede e si modifica (lib/customFieldSteps.ts). */
+  visibility:       StepVisibility
+  editability:      StepEditability
 }
 
 /** Il valore di un campo, come lo espone l'API: sempre testo (o null), con quello che serve a mostrarlo. */
@@ -50,6 +54,9 @@ export interface CustomFieldValue {
   enumTypeName:     string | null
   required:         boolean
   visibleToEndUser: boolean
+  /** Nella fase del ticket (null = nessuna fase nota: sì). */
+  visible:          boolean
+  editable:         boolean
 }
 
 export interface CustomFieldInput { name: string; value: string | null }
@@ -72,6 +79,8 @@ export async function customFieldDefs(session: Session, tenantId: string, entity
       validationScript: (f.validationScript ?? null) as string | null,
       visibleToEndUser: f.visibleToEndUser === true,
       order: Number(f.order ?? 0),
+      visibility: parseStepVisibility((f as { stepVisibilityRaw?: unknown }).stepVisibilityRaw, `field ${String(f.name)}`),
+      editability: parseStepEditability((f as { stepEditabilityRaw?: unknown }).stepEditabilityRaw, `field ${String(f.name)}`),
     }))
     .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name))
 }
@@ -82,12 +91,16 @@ function asText(raw: unknown): string | null {
 }
 
 /** I valori del ticket per i campi del cliente; `onlyVisibleToEndUser` per il portale. */
-export function customFieldValues(defs: readonly CustomFieldDef[], props: Record<string, unknown>, opts: { onlyVisibleToEndUser?: boolean } = {}): CustomFieldValue[] {
+export function customFieldValues(
+  defs: readonly CustomFieldDef[], props: Record<string, unknown>,
+  opts: { onlyVisibleToEndUser?: boolean; stepContext?: StepContext | null } = {},
+): CustomFieldValue[] {
   return defs
     .filter((d) => !opts.onlyVisibleToEndUser || d.visibleToEndUser)
     .map((d) => ({
       name: d.name, label: d.label, fieldType: d.fieldType, value: asText(props[d.name]),
       enumValues: d.enumValues, enumTypeName: d.enumTypeName, required: d.required, visibleToEndUser: d.visibleToEndUser,
+      ...fieldStepState(d.visibility, d.editability, opts.stepContext ?? null),
     }))
 }
 
@@ -102,7 +115,11 @@ export async function resolveCustomFieldWrites(
   entityType: TicketCustomFieldEntityType,
   defs: readonly CustomFieldDef[],
   inputs: readonly CustomFieldInput[] | null | undefined,
-  opts: { current: Record<string, unknown> | null; endUser?: boolean },
+  opts: {
+    current: Record<string, unknown> | null; endUser?: boolean
+    /** La fase del ticket (in creazione: la fase iniziale). null/assente = nessuna fase nota: nessun vincolo di fase. */
+    stepContext?: StepContext | null
+  },
 ): Promise<Record<string, unknown>> {
   const list = inputs ?? []
   const byName = new Map(defs.map((d) => [d.name, d]))
@@ -120,10 +137,25 @@ export async function resolveCustomFieldWrites(
       throw new ValidationError(`The field "${def.label}" is not offered to end users.`,
         { key: 'errors.customField.notForEndUser', params: { field: def.label } })
     }
+    // In quale fase si vede e si modifica il campo (secondo giro UI del 15 set 2026).
+    const state = fieldStepState(def.visibility, def.editability, opts.stepContext ?? null)
+    const blank = input.value == null || String(input.value).trim() === ''
+    // Chi manda il modulo intero rimanda anche i campi che non può cambiare: vale solo cambiarli.
+    const unchanged = opts.current === null ? blank : asText(opts.current[def.name]) === (blank ? null : String(input.value).trim())
+    if (!state.editable && !unchanged) {
+      const step = opts.stepContext?.current ?? ''
+      throw new ValidationError(
+        state.visible
+          ? `The field "${def.label}" cannot be changed in step "${step}".`
+          : `The field "${def.label}" is not part of step "${step}".`,
+        { key: state.visible ? 'errors.customField.notEditableInStep' : 'errors.customField.notInStep', params: { field: def.label, step } },
+      )
+    }
     if (seen.has(def.name)) {
       throw new ValidationError(`The field "${def.label}" is sent twice.`, { key: 'errors.customField.duplicate', params: { field: def.label } })
     }
     seen.add(def.name)
+    if (!state.editable) continue   // rimandato uguale: niente da scrivere
     if (input.value == null || String(input.value).trim() === '') {
       out[def.name] = null
       continue
@@ -135,6 +167,8 @@ export async function resolveCustomFieldWrites(
   const creating = opts.current === null
   const missing = defs
     .filter((d) => d.required && (!opts.endUser || d.visibleToEndUser))
+    // Un campo che in questa fase non si modifica non si può pretendere: lo si chiede nella sua fase.
+    .filter((d) => fieldStepState(d.visibility, d.editability, opts.stepContext ?? null).editable)
     .filter((d) => (creating || d.name in out) && (merged[d.name] == null || merged[d.name] === ''))
   if (missing.length > 0) {
     throw new ValidationError(`Required fields without a value: ${missing.map((d) => d.label).join(', ')}.`,

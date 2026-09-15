@@ -91,7 +91,7 @@ export const GET_KB_CATEGORIES = gql`
 export const GET_ME = gql`
   query Me {
     me {
-      id name email role permissions
+      id name email role permissions language
     }
   }
 `

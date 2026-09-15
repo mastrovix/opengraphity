@@ -100,12 +100,14 @@ export class AutomationConsumer extends BaseConsumer<unknown> {
 
     for (const eventType of events) {
       if (eventType === 'on_transition' || (eventType === 'on_create') || eventType === 'on_update') {
-        const rules = await evaluateBusinessRules(event.tenant_id, work.entityType, eventType, entity, AUTOMATION_ACTOR)
+        // V-19: «è cambiato» legge i campi cambiati, che esistono solo per l'aggiornamento.
+        const rules = await evaluateBusinessRules(event.tenant_id, work.entityType, eventType, entity, AUTOMATION_ACTOR,
+          eventType === 'on_update' ? { changedFields: work.changedFields ?? [] } : undefined)
         for (const r of rules) if (r.error) log.error({ tenantId: event.tenant_id, rule: r.ruleName, entityId: work.entityId, error: r.error }, 'business rule failed')
       }
       if (eventType !== 'on_transition') {
         const triggers = await evaluateTriggers(event.tenant_id, work.entityType, eventType, entity, AUTOMATION_ACTOR,
-          eventType === 'on_field_change' ? { changedFields: work.changedFields ?? [] } : undefined)
+          eventType === 'on_field_change' || eventType === 'on_update' ? { changedFields: work.changedFields ?? [] } : undefined)
         for (const t of triggers) if (t.error) log.error({ tenantId: event.tenant_id, trigger: t.triggerName, entityId: work.entityId, error: t.error }, 'trigger failed')
       }
     }

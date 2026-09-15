@@ -36,7 +36,7 @@ const inputStyle: React.CSSProperties = {
   border: `1px solid ${colors.border}`, fontSize: 'var(--font-size-body)', background: colors.white, color: 'var(--color-slate-dark)',
 }
 
-export function CustomFieldsCard({ entityType, ticketId, fields, canEdit, onSaved }: Props) {
+export function CustomFieldsCard({ entityType, ticketId, fields: allFields, canEdit, onSaved }: Props) {
   const { t } = useTranslation()
   const { labelOf } = useDomainVocabularies()
   const [editing, setEditing] = useState(false)
@@ -46,16 +46,21 @@ export function CustomFieldsCard({ entityType, ticketId, fields, canEdit, onSave
     onCompleted: () => { toast.success(t('customFields.saved')); setEditing(false); onSaved?.() },
   })
 
+  // Secondo giro UI del 15 set 2026: nella fase del ticket un campo può non vedersi
+  // (non c'è) o vedersi in sola lettura (c'è, ma il modulo non lo offre).
+  const fields = allFields.filter((f) => f.visible !== false)
+  const editableFields = fields.filter((f) => f.editable !== false)
+  const readOnlyFields = fields.filter((f) => f.editable === false)
   if (fields.length === 0) return null
 
-  const startEdit = () => { setValues(customFieldValuesMap(fields)); setErrors({}); setEditing(true) }
+  const startEdit = () => { setValues(customFieldValuesMap(editableFields)); setErrors({}); setEditing(true) }
   const submit = () => {
-    const missing = missingCustomFields(fields, values)
+    const missing = missingCustomFields(editableFields, values)
     if (missing.length > 0) {
       setErrors(Object.fromEntries(missing.map((m) => [m, t('forms.fieldRequired')])))
       return
     }
-    void save({ variables: { entityType, id: ticketId, values: customFieldsInput(fields, values) } })
+    void save({ variables: { entityType, id: ticketId, values: customFieldsInput(editableFields, values) } })
   }
 
   return (
@@ -63,7 +68,7 @@ export function CustomFieldsCard({ entityType, ticketId, fields, canEdit, onSave
       title={t('customFields.title')}
       count={fields.filter((f) => f.value != null && f.value !== '').length}
       defaultOpen
-      headerRight={canEdit && !editing ? (
+      headerRight={canEdit && !editing && editableFields.length > 0 ? (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); startEdit() }}
@@ -78,10 +83,22 @@ export function CustomFieldsCard({ entityType, ticketId, fields, canEdit, onSave
       {editing ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <CustomFieldsForm
-            defs={fields} values={values} errors={errors} gap={14}
+            defs={editableFields} values={values} errors={errors} gap={14}
             onChange={(name, value) => { setValues((v) => ({ ...v, [name]: value })); setErrors((e) => { const n = { ...e }; delete n[name]; return n }) }}
             inputStyle={inputStyle} labelStyle={labelStyle}
           />
+          {readOnlyFields.length > 0 && (
+            <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '14px 24px', margin: 0 }}>
+              {readOnlyFields.map((f) => (
+                <div key={f.name} style={{ minWidth: 0 }}>
+                  <dt style={labelStyle}>{f.label}</dt>
+                  <dd style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', overflowWrap: 'anywhere' }}>
+                    {customFieldDisplay(f, labelOf, t)} <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>· {t('customFields.readOnlyInStep')}</span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" onClick={() => setEditing(false)} style={{ padding: '7px 14px', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, color: 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
               {t('common.cancel')}

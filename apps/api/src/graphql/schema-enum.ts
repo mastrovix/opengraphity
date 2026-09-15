@@ -1,5 +1,20 @@
 export function enumTypeSDL(): string {
   return `
+  type EnumValueRecordUsage {
+    typeName:  String!
+    fieldName: String!
+    count:     Int!
+  }
+
+  type EnumValueUsage {
+    value:       String!
+    records:     [EnumValueRecordUsage!]!
+    policyLists: [String!]!
+    matrices:    [String!]!
+    configSites: [String!]!
+    total:       Int!
+  }
+
   type EnumTypeDefinition {
     id:        ID!
     tenantId:  String!

@@ -49,6 +49,7 @@ import { Input, Select } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
 import { useMe } from '@/hooks/useMe'
 import { useMetamodel } from '@/contexts/MetamodelContext'
+import { useCILabels } from '@/hooks/useCILabels'
 import { CIIcon } from '@/lib/ciIcon'
 import { ciPath } from '@/lib/ciPath'
 import { ciTypeLabelKey, enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
@@ -282,6 +283,7 @@ function HealthRowView({ row }: { row: CIHealthRow }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { getCIType } = useMetamodel()
+  const { environmentLabel } = useCILabels()
   const ciType = getCIType(row.type)
   const typeKey = ciTypeLabelKey(row.type)
   const typeLabel = typeKey ? t(typeKey) : (ciType?.label ?? enumLabel(row.type))
@@ -304,7 +306,7 @@ function HealthRowView({ row }: { row: CIHealthRow }) {
               {row.name}
             </Link>
             <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 2 }}>
-              {typeLabel}{row.environment ? ` · ${enumLabel(row.environment)}` : ''}
+              {typeLabel}{row.environment ? ` · ${environmentLabel(row.environment)}` : ''}
             </div>
           </div>
         </div>
@@ -356,6 +358,8 @@ export function CIHealthPage() {
   const managesSources = can('config.monitoring')
   const { ciTypes } = useMetamodel()
   const baseEnums = useCIBaseEnums()
+  // Secondo giro UI del 15 set 2026 · V-21: ambienti con l'etichetta del Dizionario, non umanizzati
+  const { environmentLabel } = useCILabels()
 
   // Filtri e pagina vivono nell'URL; qui si legge e si scrive solo quello.
   const [searchParams, setSearchParams] = useSearchParams()
@@ -573,7 +577,7 @@ export function CIHealthPage() {
         </Select>
         <Select aria-label={t('monitoring.health.filters.environment')} value={filter.environment} onChange={(e) => setParams({ environment: e.target.value })} style={{ width: 170 }}>
           <option value="">{t('monitoring.health.filters.allEnvironments')}</option>
-          {baseEnums.environments.map((v) => <option key={v} value={v}>{enumLabel(v)}</option>)}
+          {baseEnums.environments.map((v) => <option key={v} value={v}>{environmentLabel(v)}</option>)}
         </Select>
         {baseEnums.error && (
           <span role="alert" style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger)' }}>

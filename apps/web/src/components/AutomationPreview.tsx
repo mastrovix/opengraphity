@@ -15,6 +15,7 @@ import {
 } from '@/lib/automationOperators'
 import { Eye } from 'lucide-react'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 
 interface Condition { field: string; operator: string; value: string }
 interface Action { type: string; params: Record<string, string> }
@@ -35,6 +36,7 @@ export function AutomationPreview({ entityType, eventType, conditions, condition
   // F16: l'etichetta del tipo ITIL del cliente, non una tabella del web.
   const { labelOf } = useItilTypeLabels()
   const fieldLookup = useEntityFieldLookup(entityType)
+  const vocab = useDomainVocabularies()
   const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { data: usersData } = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: METAMODEL_FETCH_POLICY })
 
@@ -53,6 +55,8 @@ export function AutomationPreview({ entityType, eventType, conditions, condition
         // Resolve IDs to names
         if (meta?.fieldType === 'user') val = userMap.get(c.value) ?? c.value
         if (meta?.fieldType === 'team') val = teamMap.get(c.value) ?? c.value
+        // V-19: «Urgenza = "high"» → «Urgenza = "Alta"», l'etichetta del Dizionario.
+        if (meta?.fieldType === 'enum' && meta.enumTypeName) val = vocab.labelOf(meta.enumTypeName, c.value) ?? c.value
         return `${fieldName} ${op} "${val}"`
       }).join(logic)
     : null

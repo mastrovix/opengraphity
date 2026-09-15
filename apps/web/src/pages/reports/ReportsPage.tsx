@@ -566,6 +566,7 @@ export default function ReportsPage() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={t('pages.aiAnalysis.placeholder')}
+              aria-label={t('pages.aiAnalysis.title')}
               rows={1}
               style={{
                 flex: 1, fontSize: 'var(--font-size-body)', padding: '10px 14px',

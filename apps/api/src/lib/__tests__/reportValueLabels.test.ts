@@ -5,8 +5,8 @@ vi.mock('../logger.js', () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: 
 const languageFor = vi.fn(async () => 'it')
 vi.mock('../tenantLanguage.js', () => ({ languageFor: (t: string) => languageFor(t) }))
 const getWorkflowSteps = vi.fn(async () => [
-  { name: 'in_progress', label: 'In lavorazione' },
-  { name: 'new', label: null },
+  { name: 'in_progress', label: 'In lavorazione', labels: [] },
+  { name: 'new', label: null, labels: [] },
 ])
 vi.mock('../workflowHelpers.js', () => ({ getWorkflowSteps: (...a: unknown[]) => getWorkflowSteps(...(a as [])) }))
 
@@ -36,6 +36,13 @@ function session() {
 beforeEach(() => vi.clearAllMocks())
 
 describe('loadReportValueLabeler', () => {
+  /** Secondo giro UI del 15 set 2026 · V-20: il widget in italiano diceva «Medium, Critical» (lingua del cliente). */
+  it('V-20: con la lingua di chi guarda le etichette seguono quella, non la lingua del cliente', async () => {
+    const label = await loadReportValueLabeler(session() as never, 't1', [{ neo4jLabel: 'Incident', field: 'severity' }], 'en')
+    expect(label({ neo4jLabel: 'Incident', field: 'severity' }, 'critical')).toBe('Critical')
+    expect(languageFor).not.toHaveBeenCalled()
+  })
+
   it('un vocabolario si legge con l\'etichetta nella lingua del tenant', async () => {
     const label = await loadReportValueLabeler(session() as never, 't1', [{ neo4jLabel: 'Incident', field: 'severity' }])
     expect(label({ neo4jLabel: 'Incident', field: 'severity' }, 'critical')).toBe('Critica')

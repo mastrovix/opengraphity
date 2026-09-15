@@ -17,6 +17,10 @@ export function customFieldsSDL(): string {
     enumTypeName:     String
     required:         Boolean!
     visibleToEndUser: Boolean!
+    "Si vede nella fase in cui è il ticket (all'apertura: nella fase iniziale). Chi lo mostra nasconde un campo non visibile."
+    visible:          Boolean!
+    "Si modifica nella fase in cui è il ticket: altrimenti in sola lettura, e l'API rifiuta la scrittura."
+    editable:         Boolean!
     "I valori ammessi con l'etichetta del Dizionario nella lingua chiesta (il portale non legge il Dizionario)."
     options(language: String): [CustomFieldOption!]!
     "L'etichetta del valore nella lingua chiesta; null senza valore."

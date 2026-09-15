@@ -317,7 +317,8 @@ export async function recomputeCIRiskIfReady(session: SessionOrTx, changeId: str
   `, { changeId, ciId, tenantId, risk: ciRisk })
 
   const ciName = await getCIName(session, ciId, tenantId)
-  await writeAudit(session, changeId, tenantId, 'ci_risk_computed', actorId, `${ciName}: risk ${ciRisk}`)
+  await writeAudit(session, changeId, tenantId, 'ci_risk_computed', actorId, `${ciName}: risk ${ciRisk}`,
+    { key: 'ciRisk', params: { ci: ciName, score: String(ciRisk) } })
 }
 
 export async function computeAggregateRisk(session: SessionOrTx, changeId: string, tenantId: string) {

@@ -260,7 +260,7 @@
       "ownerGroup": "Gruppo Owner",
       "createdAt": "Creato il",
       "notFound": "Tipo CI \"{{type}}\" non trovato.",
-      "ciCreated": "{{type}} creato",
+      "ciCreated": "CI «{{name}}» creato ({{type}})",
       "noResults": "Nessun configuration item trovato",
       "noResultsDesc": "Il CMDB è vuoto. Aggiungi il primo CI per iniziare.",
       "noCiOfType": "Nessun {{type}}",
@@ -589,7 +589,16 @@
       "valuesPlaceholder": "riuscita\nfallita",
       "valuesHint_one": "Uno per riga (o separati da virgole): {{count}} valore. Etichette e colori si impostano dopo averlo creato.",
       "valuesHint_other": "Uno per riga (o separati da virgole): {{count}} valori. Etichette e colori si impostano dopo averlo creato.",
-      "valuesRequired": "Scrivi almeno un valore: un dizionario senza valori non può essere usato da nessun campo."
+      "valuesRequired": "Scrivi almeno un valore: un dizionario senza valori non può essere usato da nessun campo.",
+      "renameConfirmTitle": "Rinominare «{{from}}» in «{{to}}»?",
+      "renameConfirmNothing": "Nessun record, matrice o regola usa questo valore: cambia solo il vocabolario.",
+      "renameConfirmUsage": "Tutto quello che lo usa viene riscritto insieme, in un passo solo: {{where}}.",
+      "renameUsageRecords_one": "{{count}} record di {{type}} ({{field}})",
+      "renameUsageRecords_other": "{{count}} record di {{type}} ({{field}})",
+      "renameUsageMatrix": "la matrice {{name}}",
+      "renameUsagePolicy": "la policy degli allarmi ({{list}})",
+      "renameConfirmButton": "Rinomina",
+      "renameUsageFailed": "Non è stato possibile contare cosa usa il valore: {{error}}"
     },
     "sync": {
       "sourceCreated": "Sorgente di sincronizzazione creata",
@@ -621,7 +630,35 @@
       },
       "selectSource": "Scegli una sorgente...",
       "pickSourceHint": "Scegli una sorgente per vedere la cronologia delle sincronizzazioni",
-      "noRuns": "Nessuna esecuzione"
+      "noRuns": "Nessuna esecuzione",
+      "noOpenConflicts": "Nessun conflitto aperto",
+      "noConflicts": "Nessun conflitto",
+      "lockedFields": "Campi bloccati: {{fields}}",
+      "staleCount": "non più visti: {{n}}",
+      "conflictCount": "conflitti: {{n}}",
+      "lastSync": "Ultima sincronizzazione: {{when}}",
+      "cron": "pianificazione",
+      "sourceEnabled": "attiva",
+      "sourceDisabled": "disattivata",
+      "tab": {
+        "Sources": "Sorgenti",
+        "History": "Cronologia",
+        "Conflicts": "Conflitti",
+        "Import": "Importazione"
+      },
+      "filter": {
+        "open": "Aperti",
+        "resolved": "Risolti",
+        "all": "Tutti"
+      },
+      "status": {
+        "completed": "completata",
+        "running": "in corso",
+        "failed": "fallita",
+        "queued": "in coda",
+        "open": "aperto",
+        "resolved": "risolto"
+      }
     },
     "import": {
       "title": "Import dati storici",
@@ -1595,7 +1632,7 @@
       "partySupplier": "Fornitore esterno",
       "teamName": "Team responsabile",
       "teamPlaceholder": "Es. Network Ops",
-      "generatedNote": "Generato il {{date}}. Il rispetto degli obiettivi OLA/UC confronta il tempo di risoluzione reale delle entità concluse nel periodo con il target del contratto.",
+      "generatedNote": "Generato il {{date}}. Ogni contratto OLA/UC conta solo i suoi ticket: quelli del suo ambito, assegnati al suo team e aperti dopo la nascita del contratto, conclusi nel periodo; il tempo si conta col calendario del contratto.",
       "pickTeam": "Scegli un team...",
       "noTeams": "Questo cliente non ha ancora nessun team: creane uno in Team e Utenti.",
       "contracts": "OLA / UC",
@@ -1890,11 +1927,11 @@
       "searchCI": "Cerca un CI per nome...",
       "title": "Nuova change",
       "subtitle": "Apri una richiesta per introdurre una modifica controllata ai sistemi",
-      "typesNotePreApproved": "{{types}}: pre-approvati, senza approvazione. Gli altri tipi passano dall'approvazione. Il piano di rientro si valuta nell'assessment tecnico.",
+      "typesNotePreApproved": "{{types}}: pre-approvati, saltano la catena di approvazioni ma passano comunque dall'assessment dei loro CI. Gli altri tipi passano dall'approvazione. Il piano di rientro si valuta nell'assessment tecnico.",
       "typesNoteAllApproved": "Tutti i tipi passano dall'approvazione. Il piano di rientro si valuta nell'assessment tecnico.",
       "noChangeTypes": "Nessun tipo di change definito: aggiungi i valori del vocabolario change_type nel Dizionario.",
       "whyPlaceholder": "Perché serve questa change? Motivazione, problema o obiettivo.",
-      "ciGroupsNote": "Ogni CI deve avere un Owner Group e un Support Group, altrimenti la creazione si ferma.",
+      "ciGroupsNote": "In una change ogni CI deve avere un Gruppo Owner (assessment funzionale) e un Gruppo Support (assessment tecnico), anche quando il suo tipo di CI ne rende obbligatorio uno solo: altrimenti la creazione si ferma.",
       "why": "Perché",
       "rfcForProblem": "RFC risolutiva per il problem {{number}} — {{title}}.",
       "rfcForIncident": "RFC risolutiva per l'incident {{number}} — {{title}}.",
@@ -1905,6 +1942,8 @@
       "resolutionTitle": "Risoluzione {{kind}} {{number}}: {{title}}",
       "what": "Cosa",
       "ciWithoutGroups": "Questo CI non ha Owner Group o Support Group: la change sarebbe rifiutata.",
+      "recheckGroups": "Ricontrolla",
+      "removeCI": "Togli {{name}}",
       "ciWithoutGroupsList": "Questi CI non hanno Owner Group o Support Group, e su di loro non si apre una change: {{names}}. Imposta i gruppi sul CI o toglilo."
     },
     "myTasks": {
@@ -1939,6 +1978,28 @@
         "assignments": "Assegnazioni",
         "comments": "Commenti",
         "system": "Sistema"
+      },
+      "filterLabel": "Voci da mostrare",
+      "action": {
+        "assessment_response_submitted": "risposta all'assessment",
+        "assessment_task_completed": "assessment completato",
+        "assessment_team_assigned": "team dell'assessment assegnato",
+        "assessment_user_assigned": "assessment assegnato",
+        "change_approved": "approvata",
+        "change_rejected": "respinta",
+        "change_created": "creata",
+        "change_deleted": "eliminata",
+        "ci_added": "CI aggiunto",
+        "ci_removed": "CI tolto",
+        "ci_risk_computed": "rischio del CI calcolato",
+        "deploy_plan_completed": "piano di deploy completato",
+        "deploy_plan_saved": "piano di deploy salvato",
+        "deploy_plan_user_assigned": "piano di deploy assegnato",
+        "deployment_completed": "deploy completato",
+        "review_completed": "revisione completata",
+        "validation_completed": "validazione completata",
+        "task_reopened": "task riaperto",
+        "transition": "passata a {{step}}"
       }
     },
     "planModal": {
@@ -1973,7 +2034,9 @@
       "choose": "— Scegli —",
       "assignedTo": "Assegnato a",
       "unassigned": "— Non assegnato —",
-      "notFound": "Task non trovato"
+      "notFound": "Task non trovato",
+      "weight": "Peso {{weight}}",
+      "weightHint": "Quanto conta questa risposta nel punteggio di rischio del CI"
     },
     "createIncident": {
       "titlePlaceholder": "Es. Il database di produzione non è raggiungibile",
@@ -2036,7 +2099,9 @@
       "catalogItem": "Voce di catalogo",
       "recommended": "(consigliata)",
       "submit": "Crea la richiesta",
-      "priorityPlaceholder": "— Scegli la priorità —"
+      "priorityPlaceholder": "— Scegli la priorità —",
+      "titleLabel": "Titolo",
+      "priorityLabel": "Priorità"
     },
     "planTask": {
       "validation": "Validazione *",
@@ -2063,7 +2128,10 @@
       "empty": "Ancora nessun contratto",
       "supplierTeam": "Team esterno",
       "noInternalTeams": "Nessun team con Sourcing = Internal. Lo imposti nella pagina del team, in Team.",
-      "noExternalTeams": "Nessun team con Sourcing = External. Crea il fornitore come team, con Sourcing = External, in Team."
+      "noExternalTeams": "Nessun team con Sourcing = External. Crea il fornitore come team, con Sourcing = External, in Team.",
+      "delete": "Elimina",
+      "deleteTitle": "Eliminare il contratto «{{name}}»?",
+      "deleteBody": "Sparisce dal report OLA/UC, e i controlli già in corso sui ticket aperti non avviseranno più. L'Audit Log lo conserva com'era. Per fermarlo per un po', disattivalo invece."
     },
     "anomalyRules": {
       "title": "Regole di anomalia",
@@ -2231,6 +2299,10 @@
         "removeBody": "Chi entrava così usa la sua password OpenGrafo, se ne ha una.",
         "removed": "Provider rimosso"
       }
+    },
+    "addCIModal": {
+      "owner": "Gruppo Owner: {{name}}",
+      "support": "Gruppo Support: {{name}}"
     }
   },
   "filter": {
@@ -2254,7 +2326,14 @@
     "last30Days": "Ultimi 30 giorni",
     "isOneOf": "È uno di",
     "isNotOneOf": "Non è uno di",
-    "valuePlaceholderText": "Valore…"
+    "valuePlaceholderText": "Valore…",
+    "fieldAria": "Campo della condizione {{n}}",
+    "operatorAria": "Operatore della condizione {{n}}",
+    "valueAria": "Valore della condizione {{n}}",
+    "betweenAnd": "e",
+    "valueFromAria": "Inizio della condizione {{n}}",
+    "valueToAria": "Fine della condizione {{n}}",
+    "removeAria": "Togli la condizione {{n}}"
   },
   "auth": {
     "logout": "Esci",
@@ -2436,6 +2515,7 @@
     "addStepStandardHint": "Nasce «in lavorazione» e senza scopo: apri il pannello del passo per assegnargli categoria e scopo, altrimenti le regole di dominio non lo riconoscono.",
     "panel": {
       "label": "Etichetta",
+      "labelTranslationsHint": "Con un'etichetta nuova le traduzioni spedite ({{translations}}) non valgono più; rimettendo «{{original}}» tornano.",
       "name": "Nome (tecnico)",
       "type": "Tipo",
       "enter_actions": "Azioni all'ingresso",
@@ -2522,6 +2602,10 @@
       "corrupted": "La scadenza salvata di questo passo non si riesce a leggere ({{error}}). Il salvataggio è spento per non perderla: correggi prima il dato salvato."
     }
   },
+  "designerFieldRow": {
+    "required": "obbligatorio",
+    "deleteField": "Elimina {{name}}"
+  },
   "itilDesigner": {
     "title": "ITIL Type Designer",
     "subtitle": "Configura i campi delle entità ITIL",
@@ -2565,7 +2649,19 @@
     "deleteFieldValues_one": "{{count}} ticket ha un valore in questo campo: viene cancellato insieme al campo (i valori di prima restano nell'Audit Log).",
     "deleteFieldValues_other": "{{count}} ticket hanno un valore in questo campo: vengono cancellati insieme al campo (i valori di prima restano nell'Audit Log).",
     "deleteFieldNoValues": "Nessun ticket ha un valore in questo campo.",
-    "deleteFieldCountFailed": "Non è stato possibile contare i ticket che usano il campo: {{error}}"
+    "deleteFieldCountFailed": "Non è stato possibile contare i ticket che usano il campo: {{error}}",
+    "steps": {
+      "visibilityLegend": "In quali fasi del workflow si vede il campo",
+      "always": "Sempre",
+      "onlySteps": "Solo in queste fasi",
+      "fromStep": "Da questa fase in poi",
+      "fromStepLabel": "Si vede dalla fase",
+      "editabilityLegend": "In quali fasi si modifica",
+      "whereVisible": "Dovunque si veda",
+      "creationHint": "L'apertura del ticket è la sua fase iniziale «{{step}}»: un campo che lì non si modifica non è nel modulo di apertura. Altrove un campo che si vede ma non si modifica è in sola lettura.",
+      "noWorkflow": "Questo tipo di ticket non ha un workflow: il campo si vede e si modifica sempre.",
+      "chooseAtLeastOne": "Scegli almeno una fase."
+    }
   },
   "ciTypeDesigner": {
     "chain": "Catena",
@@ -2574,6 +2670,10 @@
     "chainInfrastructure": "Infrastrutturale",
     "chainFamiliesTooltip": "A quali catene di servizio appartiene questo tipo CI",
     "deleteTypeTitle": "Eliminare il tipo \"{{label}}\"?",
+    "deleteFieldValues_one": "{{count}} CI ha un valore in questo campo: viene cancellato col campo (i valori di prima restano nell'Audit Log).",
+    "deleteFieldValues_other": "{{count}} CI hanno un valore in questo campo: vengono cancellati col campo (i valori di prima restano nell'Audit Log).",
+    "deleteFieldNoValues": "Nessun CI ha un valore in questo campo.",
+    "deleteFieldCountFailed": "Non è stato possibile contare i CI che usano questo campo ({{error}}): non è stato cancellato nulla.",
     "deleteFieldTitle": "Eliminare il campo \"{{name}}\"?",
     "deleteRelationTitle": "Eliminare la relazione \"{{name}}\"?",
     "shippedBadge": "spedito col prodotto",
@@ -3218,7 +3318,8 @@
       "teamUnknown": "Il team {{team}} non esiste in questo cliente.",
       "partyTypeOneOf": "Il responsabile deve essere uno fra: {{allowed}}.",
       "supplierTeamRequired": "Scegli il fornitore esterno: un team di questo cliente con Sourcing = External.",
-      "teamWrongSourcing": "Il team «{{team}}» è {{actual}}, ma questo responsabile vuole un team {{expected}}."
+      "teamWrongSourcing": "Il team «{{team}}» è {{actual}}, ma questo responsabile vuole un team {{expected}}.",
+      "notATicketType": "«{{entityType}}» non è un tipo di ticket con contratti OLA/UC."
     },
     "question": {
       "textEmpty": "Il testo della domanda non può essere vuoto: è ciò che l'operatore legge nel task.",
@@ -3313,7 +3414,12 @@
       "chainFamilyRepeated": "La famiglia di catena {{family}} compare due volte.",
       "dictionaryOnNonEnum": "Il campo «{{field}}» è di tipo {{fieldType}}: solo un campo a elenco (enum) usa un vocabolario.",
       "relationInUse": "La relazione «{{name}}» non è stata tolta: {{count}} collegamenti {{relationshipType}} fra CI sono dichiarati solo da lei e resterebbero nel grafo senza comparire da nessuna parte. Togli prima quei collegamenti.",
-      "relationUsedByServiceMaps": "«{{name}}» non è stata tolta: è l'unica dichiarazione di {{relationshipTypes}}, che {{count}} mappe di servizio seguono ({{maps}}). Senza, quelle mappe non si potrebbero più sincronizzare. Togli prima la relazione da quelle mappe (dettaglio del servizio → Modifica ambito).",
+      "relationUsedByServiceMaps_one": "«{{name}}» non è stata tolta: è l'unica dichiarazione di {{relationshipTypes}}, che la mappa di servizio «{{maps}}» segue. Senza, quella mappa non si potrebbe più sincronizzare. Togli prima la relazione da quella mappa (dettaglio del servizio → Modifica ambito).",
+      "relationUsedByServiceMaps_other": "«{{name}}» non è stata tolta: è l'unica dichiarazione di {{relationshipTypes}}, che {{count}} mappe di servizio seguono ({{maps}}). Senza, quelle mappe non si potrebbero più sincronizzare. Togli prima la relazione da quelle mappe (dettaglio del servizio → Modifica ambito).",
+      "typeDeactivateUsedByServiceMaps_one": "«{{name}}» non è stato disattivato: è l'unico tipo che dichiara {{relationshipTypes}}, che la mappa di servizio «{{maps}}» segue. Un tipo disattivato non dichiara più le sue relazioni, e quella mappa non si potrebbe più sincronizzare. Togli prima {{relationshipTypes}} dalla mappa (dettaglio del servizio → Modifica ambito).",
+      "typeDeactivateUsedByServiceMaps_other": "«{{name}}» non è stato disattivato: è l'unico tipo che dichiara {{relationshipTypes}}, che {{count}} mappe di servizio seguono ({{maps}}). Un tipo disattivato non dichiara più le sue relazioni, e quelle mappe non si potrebbero più sincronizzare. Togli prima {{relationshipTypes}} da quelle mappe (dettaglio del servizio → Modifica ambito).",
+      "typeDeleteUsedByServiceMaps_one": "«{{name}}» non è stato eliminato: è l'unico tipo che dichiara {{relationshipTypes}}, che la mappa di servizio «{{maps}}» segue. Togli prima {{relationshipTypes}} dalla mappa (dettaglio del servizio → Modifica ambito).",
+      "typeDeleteUsedByServiceMaps_other": "«{{name}}» non è stato eliminato: è l'unico tipo che dichiara {{relationshipTypes}}, che {{count}} mappe di servizio seguono ({{maps}}). Togli prima {{relationshipTypes}} da quelle mappe (dettaglio del servizio → Modifica ambito).",
       "inTicketsDelete": "Il tipo «{{label}}» ({{name}}) non è stato eliminato: {{cis}} suoi CI sono collegati a {{tickets}} ticket (incident, problem, change o richieste, anche chiusi). Senza il tipo quei CI sparirebbero dallo storico dei ticket.",
       "inTicketsDeactivate": "Il tipo «{{label}}» ({{name}}) non è stato disattivato: {{cis}} suoi CI sono collegati a {{tickets}} ticket (incident, problem, change o richieste, anche chiusi). Senza il tipo quei CI sparirebbero dallo storico dei ticket.",
       "hasCIsDeactivate": "Il tipo «{{label}}» ({{name}}) non è stato disattivato: ci sono ancora {{count}} CI di tipo {{type}}, e un tipo disattivato sparisce dalle letture come se fosse cancellato. Elimina invece il tipo (i suoi CI se ne vanno con lui), oppure sposta prima quei CI."
@@ -3408,7 +3514,7 @@
       "noWindowPurpose": "Nel workflow delle change nessun passo avrebbe più uno scopo della finestra di rilascio ({{purposes}}), e su quegli scopi è indicizzato il varco delle approvazioni dal lato del passo di arrivo: senza di loro una change non approvata potrebbe entrare in produzione senza che nessuno la fermi, e gli allarmi non verrebbero più silenziati durante il rilascio. Assegna lo scopo «Programmata» o «Implementazione» al passo in cui la change va in produzione.",
       "stepActionsNotJson": "Workflow mal configurato: {{field}} del passo «{{step}}» non è JSON valido ({{reason}}).",
       "noApprover": "Nessun utente col ruolo «{{role}}» è configurato per approvare.",
-      "concurrentEdit": "Il workflow è stato modificato da un'altra persona (versione {{current}}, tu stavi modificando la v{{expected}}). Ricarica la pagina per non sovrascrivere le sue modifiche.",
+      "concurrentEdit": "Il workflow è stato modificato da un'altra persona (versione {{current}}, tu stavi modificando la v{{expected}}): le tue modifiche non sono state applicate. Ricarica la pagina per non sovrascrivere le sue.",
       "manyInitial": "Un solo passo può essere iniziale: ne hai marcati {{count}} ({{steps}}).",
       "initialAndTerminal": "Il passo «{{name}}» è terminale: non può essere anche il passo iniziale, altrimenti ogni ticket nuovo nascerebbe già chiuso. Togli «passo terminale», oppure scegli un altro passo iniziale.",
       "stepsNotInDefinition": "Passi non trovati, o non appartenenti a questa definizione.",
@@ -3439,6 +3545,7 @@
       "request": "Il CI {{ci}} non è stato collegato alla richiesta: la richiesta o il CI non esistono in questo cliente."
     },
     "automation": {
+      "changedNeedsUpdate": "La condizione «è cambiato» vale solo quando il ticket viene aggiornato, non con «{{event}}»: la regola non scatterebbe mai. Scegli l'evento «aggiornato» o togli la condizione.",
       "transitionNeedsStep": "Azione {{item}} (transizione del workflow): manca il passo di arrivo.",
       "noStepsAtAll": "{{what}} nomina il passo «{{step}}», ma il workflow «{{entityType}}» di questo cliente non ha nessun passo: crea la definizione del workflow prima di configurare l'automazione.",
       "unknownStep": "{{what}} nomina il passo «{{step}}», che non esiste nel workflow «{{entityType}}» di questo cliente. Passi disponibili: {{available}}.",
@@ -3751,7 +3858,11 @@
       "nameFormat": "Il nome del campo «{{name}}» deve usare lettere minuscole, cifre e trattino basso, da 2 a 40 caratteri, iniziando con una lettera.",
       "nameTaken": "«{{name}}» è già un campo di questo tipo di ticket nel prodotto: scegli un altro nome.",
       "nameInData": "Alcuni ticket portano già un valore chiamato «{{name}}»: scegli un altro nome, così il tuo campo non mostra dati vecchi.",
-      "nameTypeFixed": "Il nome e il tipo del campo «{{name}}» non si possono cambiare, perché i ticket hanno già valori salvati con quel nome. Togli il campo e aggiungine uno nuovo."
+      "nameTypeFixed": "Il nome e il tipo del campo «{{name}}» non si possono cambiare, perché i ticket hanno già valori salvati con quel nome. Togli il campo e aggiungine uno nuovo.",
+      "stepRulesShape": "{{where}}: le regole di fase del campo non sono valide.",
+      "unknownSteps": "Campo «{{field}}»: il workflow non ha la fase {{steps}} (fasi: {{known}}).",
+      "notEditableInStep": "Il campo «{{field}}» non si modifica nella fase «{{step}}».",
+      "notInStep": "Il campo «{{field}}» non fa parte della fase «{{step}}»."
     },
     "impactWeights": {
       "shape": "I pesi dell'impatto devono essere un oggetto.",
@@ -3859,7 +3970,17 @@
     "end_user": "Utente finale"
   },
   "taskStatus": {
-    "toBeCompleted": "DA COMPLETARE"
+    "toBeCompleted": "DA COMPLETARE",
+    "completed": "Completato",
+    "inProgress": "In corso",
+    "planning": "In pianificazione",
+    "failed": "Fallito",
+    "result": {
+      "pass": "superata",
+      "fail": "non superata",
+      "confirmed": "confermata",
+      "rejected": "respinta"
+    }
   },
   "richText": {
     "bold": "Grassetto (Ctrl+B)",
@@ -3926,7 +4047,11 @@
       "enabled": "Policy abilitata",
       "disabled": "Policy disabilitata",
       "nameRequired": "Il nome è obbligatorio",
-      "olaCreated": "Contratto creato"
+      "olaCreated": "Contratto creato",
+      "olaDeleted": "Contratto eliminato",
+      "olaEnabled": "«{{name}}» attivo: conta di nuovo per i nuovi ticket",
+      "olaDisabled": "«{{name}}» disattivato: non conta più e non avvisa",
+      "olaUpdated": "Contratto salvato"
     },
     "catalog": {
       "created": "Voce creata"
@@ -3995,7 +4120,8 @@
     },
     "itil": {
       "previewNoSave": "Preview — nessun dato salvato",
-      "enumRequired": "Seleziona un enum di riferimento per i campi di tipo enum"
+      "enumRequired": "Seleziona un enum di riferimento per i campi di tipo enum",
+      "stepsRequired": "Scegli almeno una fase per dove il campo si vede e si modifica."
     },
     "citype": {
       "typeCreated": "Tipo creato",
@@ -4024,7 +4150,6 @@
       "transitionDeleted": "Transizione eliminata",
       "stepDeleted": "Step eliminato",
       "stepAdded": "Step aggiunto",
-      "saveConflict": "Workflow modificato da un altro utente: ricarica la pagina prima di salvare. Le tue modifiche non sono state applicate.",
       "saveNoResponse": "Salvataggio senza risposta dal server: ricarica la pagina per verificare lo stato del workflow.",
       "saved": "Workflow salvato — v{{version}}",
       "savedLocally": "Modifica salvata localmente"
@@ -4167,15 +4292,17 @@
       "statusChanged": "Mappa {{status}}",
       "deleted": "Mappa eliminata",
       "actionFailed": "Operazione non riuscita: {{error}}",
-      "mapUpdated": "Mappa aggiornata: +{{added}} −{{removed}}, {{excluded}} esclusi",
       "exclusionRemoved": "{{name}} riammesso: torna nella prossima proposta",
+      "exclusionRemovedBack": "{{name}} riammesso: è di nuovo nella mappa",
       "synced": "Mappa sincronizzata: +{{added}} −{{removed}} ~{{moved}}",
       "syncAligned": "Mappa già allineata al grafo: niente da aggiungere né da togliere",
       "syncSkipped": "Sincronizzazione rifiutata: {{reason}}. Non è stato cambiato nulla.",
       "syncSkippedNoReason": "il motore non ha dato un motivo",
       "componentExcluded": "{{name}} escluso: è fuori dalla mappa e non verrà più riproposto",
       "scopeChanged": "Ambito salvato (versione {{version}})",
-      "rulesSaved": "Regole salvate (versione {{version}})"
+      "rulesSaved": "Regole salvate: la mappa è ora alla versione {{version}}",
+      "mapUpdated_one": "Mappa aggiornata: +{{added}} −{{removed}}, {{count}} escluso",
+      "mapUpdated_other": "Mappa aggiornata: +{{added}} −{{removed}}, {{count}} esclusi"
     },
     "user": {
       "teamsUpdated": "Team aggiornati"
@@ -4296,6 +4423,9 @@
     },
     "ciServiceRequests": {
       "empty": "Nessuna richiesta di servizio riguarda questo CI."
+    },
+    "ciChangeList": {
+      "title": "Change"
     }
   },
   "events": {
@@ -5184,6 +5314,10 @@
         "isVia": "{{name}} è {{health}} (via {{via}})",
         "criticalSuffix": "{{text}} — componente critico",
         "sentence": "{{health}}: {{causes}}",
+        "operationalBelowMinimum_one": "{{health}}: {{count}} componente non operativo, meno dei {{min}} che servono perché le soglie si applichino. Non operativo: {{causes}}",
+        "operationalBelowMinimum_other": "{{health}}: {{count}} componenti non operativi, meno dei {{min}} che servono perché le soglie si applichino. Non operativi: {{causes}}",
+        "operationalBelowScore_one": "{{health}}: il punteggio d'impatto {{score}} è sotto la soglia «degradato» del {{degraded}}%. Non operativo: {{causes}}",
+        "operationalBelowScore_other": "{{health}}: il punteggio d'impatto {{score}} è sotto la soglia «degradato» del {{degraded}}%. Non operativi: {{causes}}",
         "operational": "Operativo: tutti i componenti che pesano sono operativi.",
         "unknown": "Sconosciuta: nessun componente ha una salute nota.",
         "maintenance": "In manutenzione: un componente critico è in finestra di change.",
@@ -5359,7 +5493,16 @@
         "draft": "Crea come bozza",
         "draftHint": "Una mappa in bozza non viene valutata: controllala e poi attivala dal dettaglio.",
         "relationshipsError": "Tipi di relazione non leggibili: {{error}}",
-        "realizesHint": "La mappa parte dalle applicazioni che il servizio realizza: nella CMDB il servizio deve avere una relazione REALIZES verso ogni applicazione, altrimenti la mappa nasce vuota."
+        "realizesHint": "La mappa parte dalle applicazioni che il servizio realizza: nella CMDB il servizio deve avere una relazione REALIZES verso ogni applicazione, altrimenti la mappa nasce vuota.",
+        "preview": "Anteprima",
+        "previewLoading": "Cerco i componenti…",
+        "previewError": "Non è stato possibile costruire l'anteprima: {{error}}",
+        "previewEmpty": "Con queste impostazioni la mappa nascerebbe vuota: il servizio non realizza alcuna applicazione (REALIZES).",
+        "previewCount_one": "La mappa avrebbe {{count}} componente:",
+        "previewCount_other": "La mappa avrebbe {{count}} componenti:",
+        "previewNode": "{{name}} · {{type}} · livello {{level}} · {{role}}",
+        "previewMore_one": "e ancora {{count}}",
+        "previewMore_other": "e altri {{count}}"
       },
       "ciSection": {
         "title": "Servizi che dipendono da questo CI",
@@ -5461,7 +5604,6 @@
         "excludeLabel": "Non proporre più {{name}}",
         "remove": "Togli",
         "removeLabel": "Togli {{name}} dalla mappa",
-        "summary": "+{{add}} −{{remove}} esclusi {{exclude}}",
         "apply": "Applica",
         "exclusionsTitle_one": "{{count}} componente escluso",
         "exclusionsTitle_other": "{{count}} componenti esclusi",
@@ -5476,10 +5618,13 @@
         "excludeIncludedLabel": "Escludi {{name}} dalla mappa",
         "autoTitle_one": "{{count}} componente incluso automaticamente",
         "autoTitle_other": "{{count}} componenti inclusi automaticamente",
-        "autoHint": "Già nella mappa: ce li ha portati la sincronizzazione. Se ne escludi uno esce dalla mappa per sempre."
+        "autoHint": "Già nella mappa: ce li ha portati la sincronizzazione. Se ne escludi uno esce dalla mappa per sempre.",
+        "summary_one": "+{{add}} −{{remove}} · {{count}} escluso",
+        "summary_other": "+{{add}} −{{remove}} · {{count}} esclusi"
       },
       "openIncident": {
         "title": "Incident aperto",
+        "titleResolved": "Incident risolto, non ancora chiuso",
         "none": "Nessun incident aperto per questo servizio.",
         "disabled": "Gli incident per questo servizio sono disattivati.",
         "step": "Passo: {{step}}",
@@ -5577,7 +5722,9 @@
       "slack_not_connected_one": "Un canale Slack scrive con il bot, ma questa organizzazione non ha collegato il suo workspace Slack: {{channels}}. Ogni notifica verso quel canale fallisce. **Collega Slack in Admin → Integrazioni**.",
       "slack_not_connected_other": "{{count}} canali Slack scrivono con il bot, ma questa organizzazione non ha collegato il suo workspace Slack: {{channels}}. Ogni notifica verso quei canali fallisce. **Collega Slack in Admin → Integrazioni**.",
       "service_incident_problem_one": "Il monitoraggio non riesce a gestire l'incident del servizio {{services}}: il servizio può essere giù senza incident. **Apri il servizio per vedere il motivo**.",
-      "service_incident_problem_other": "Il monitoraggio non riesce a gestire l'incident di {{count}} servizi ({{services}}): possono essere giù senza incident. **Apri ogni servizio per vedere il motivo**."
+      "service_incident_problem_other": "Il monitoraggio non riesce a gestire l'incident di {{count}} servizi ({{services}}): possono essere giù senza incident. **Apri ogni servizio per vedere il motivo**.",
+      "custom_field_steps_missing_one": "Un campo dei ticket cita una fase che il workflow non ha più, quindi dove dipende da quella fase non si vede: {{fields}}. **Correggi le sue fasi nell'ITIL Type Designer**.",
+      "custom_field_steps_missing_other": "{{count}} campi dei ticket citano fasi che il workflow non ha più, quindi dove dipendono da quelle fasi non si vedono: {{fields}}. **Correggi le loro fasi nell'ITIL Type Designer**."
     },
     "gap": {
       "tenant_missing": "nessuna riga: il tenant non esiste",
@@ -5664,7 +5811,25 @@
       "validation": "Validazione",
       "deploy": "Deploy",
       "review": "Review"
-    }
+    },
+    "functionalScore": "Punteggio funzionale",
+    "technicalScore": "Punteggio tecnico",
+    "riskCI": "Rischio del CI",
+    "score": "Punteggio",
+    "requester": "Richiedente",
+    "changeOwner": "Responsabile",
+    "stepN": "Passo {{n}}",
+    "stepNTitle": "Passo {{n}}: {{title}}",
+    "releaseWindow": "Finestra di deploy: {{start}} → {{end}}",
+    "approvalKind": {
+      "change_manager": "Change Manager",
+      "owner_group": "Gruppo Owner"
+    },
+    "ciTab": {
+      "affected": "CI coinvolti",
+      "impacted": "CI impattati"
+    },
+    "openTaskOf": "Apri: {{task}}"
   },
   "sync": {
     "createSource": "Crea sorgente",
@@ -5777,7 +5942,16 @@
       "direction": "Direzione",
       "empty": "Nessuna relazione fra CI configurata.",
       "deleteAria": "Elimina relazione {{name}}",
-      "neo4jTypeShort": "tipo Neo4j"
+      "neo4jTypeShort": "tipo Neo4j",
+      "cardinalityOne": "Uno",
+      "cardinalityMany": "Molti",
+      "directionOutgoing": "In uscita",
+      "directionIncoming": "In entrata",
+      "colName": "Nome tecnico",
+      "colTarget": "Destinazione",
+      "colCardinality": "Cardinalità",
+      "colDirection": "Direzione",
+      "colActions": "Azioni"
     },
     "field": {
       "required": "Obbligatorio",
@@ -5791,9 +5965,9 @@
       "validationPlaceholder": "// Esempio:\nif (!value.startsWith('http')) throw 'Indirizzo non valido'",
       "defaultHint": "Variabili: <code>input</code>. Restituisci il valore predefinito.",
       "slugName": "Nome tecnico (slug) *",
-      "slugNameSnake": "name (slug, snake_case) *",
+      "slugNameSnake": "Nome tecnico (slug, snake_case) *",
       "slugNamePlaceholder": "es. load_balancer",
-      "displayLabel": "label (nome visualizzato) *",
+      "displayLabel": "Etichetta (nome visualizzato) *",
       "editTitle": "Modifica campo: {{name}}",
       "visibilityHint": "Variabili: <code>input</code>. Ritorna <code>true/false</code>.",
       "visibilityPlaceholder": "// Mostra solo se un altro campo è valorizzato:\nreturn !!input.instanceType",
@@ -5916,6 +6090,7 @@
       "lessThan": "<",
       "isNull": "è nullo",
       "isNotNull": "non è nullo",
+      "changed": "è cambiato",
       "after": "dopo",
       "before": "prima"
     },
@@ -5969,7 +6144,25 @@
         "expiresAt": "Scadenza",
         "port": "Porta",
         "serialNumber": "Numero seriale",
-        "version": "Versione"
+        "version": "Versione",
+        "businessOwner": "Responsabile di business",
+        "criticality": "Criticità",
+        "businessUnit": "Unità di business",
+        "costCenter": "Centro di costo",
+        "userBase": "Utenti serviti",
+        "maturity": "Maturità",
+        "strategicPriority": "Priorità strategica",
+        "hierarchyLevel": "Livello gerarchico",
+        "capabilityOwner": "Responsabile della capability",
+        "criteriaNameContains": "Criterio: il nome contiene",
+        "criteriaStatus": "Criterio: stato",
+        "criteriaEnvironment": "Criterio: ambiente",
+        "criteriaCiTypes": "Criterio: tipi di CI",
+        "membershipType": "Tipo di appartenenza",
+        "vendor": "Fornitore",
+        "location": "Posizione",
+        "ipAddress": "Indirizzo IP",
+        "instanceType": "Tipo di istanza"
       },
       "relation": {
         "dependencies": "Dipendenze",
@@ -6003,11 +6196,17 @@
     "planUserAssigned": "Planning · {{ci}}: assegnato a {{user}}",
     "taskReopened": "{{task}} {{role}} · {{ci}} riaperto: {{reason}}",
     "taskCompleted": "{{task}} completato su {{ci}}",
-    "planCompleted": "{{ci}}: piano completato ({{count}} step)",
     "ciAdded": "CI {{ci}} aggiunto",
     "ciRemoved": "CI {{ci}} rimosso",
     "changeCreated": "Change {{code}} creata con {{count}} CI",
-    "softDeleted": "Eliminazione logica"
+    "softDeleted": "Eliminazione logica",
+    "responseSubmitted": "{{role}} · {{ci}}: «{{question}}» → {{answer}}",
+    "taskScored": "{{role}} · {{ci}}: punteggio {{score}}",
+    "ciRisk": "{{ci}}: rischio {{score}}",
+    "planSaved_one": "{{ci}}: {{count}} passo — {{steps}}",
+    "planSaved_other": "{{ci}}: {{count}} passi — {{steps}}",
+    "planCompleted_one": "{{ci}}: piano completato ({{count}} passo)",
+    "planCompleted_other": "{{ci}}: piano completato ({{count}} passi)"
   },
   "serviceTargets": {
     "timeCounting": "Il tempo conta",
@@ -6029,7 +6228,8 @@
     "title": "Campi aggiuntivi",
     "edit": "Modifica",
     "saved": "Campi salvati",
-    "chooseValue": "— Scegli —"
+    "chooseValue": "— Scegli —",
+    "readOnlyInStep": "non modificabile in questa fase"
   },
   "permissions": {
     "areas": {
@@ -6254,6 +6454,26 @@
         "label": "Salute della piattaforma",
         "description": "Code, metriche, tracce, diagnostica della configurazione."
       }
+    }
+  },
+  "ticketOla": {
+    "title": "OLA / UC",
+    "loadError": "Non è stato possibile leggere i contratti OLA/UC di questo ticket: {{error}}",
+    "noneCounting": "Nessun contratto OLA/UC conta per questo ticket.",
+    "target": "{{team}} · entro {{target}} · {{calendar}}",
+    "allHours": "24 ore su 24",
+    "deadline": "Scade il {{deadline}}",
+    "concluded": "Scadenza {{deadline}} · concluso il {{concluded}}",
+    "state": {
+      "met": "Rispettato",
+      "breached": "Violato",
+      "running": "In corso"
+    },
+    "notCountingTitle_one": "{{count}} contratto di questo tipo di ticket non conta:",
+    "notCountingTitle_other": "{{count}} contratti di questo tipo di ticket non contano:",
+    "reason": {
+      "other_team": "«{{name}}» è l'impegno di {{team}}, e il ticket è assegnato a un altro team.",
+      "created_before_contract": "«{{name}}» non esisteva ancora quando il ticket è stato aperto."
     }
   }
 }

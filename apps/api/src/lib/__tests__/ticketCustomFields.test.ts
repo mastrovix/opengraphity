@@ -15,7 +15,8 @@ type Def = Parameters<typeof customFieldValues>[0][number]
 
 const def = (over: Partial<Def>): Def => ({
   name: 'x', label: 'X', fieldType: 'string', required: false, enumValues: [], enumTypeName: null,
-  validationScript: null, visibleToEndUser: false, order: 1, ...over,
+  validationScript: null, visibleToEndUser: false, order: 1,
+  visibility: { mode: 'always' }, editability: { mode: 'visible' }, ...over,
 })
 const DEFS: Def[] = [
   def({ name: 'outcome', label: 'Esito', fieldType: 'enum', enumValues: ['successful', 'failed'], enumTypeName: 'change_outcome', required: true, visibleToEndUser: true }),
@@ -89,5 +90,33 @@ describe('lettura e REST', () => {
       .toEqual([{ name: 'outcome', value: 'failed' }, { name: 'effort', value: '3' }, { name: 'ok', value: 'true' }, { name: 'cost_center', value: null }])
     expect(() => parseRestCustomFields({ customFields: [] })).toThrow(/must be an object/)
     expect(() => parseRestCustomFields({ customFields: { a: { b: 1 } } })).toThrow(/must be a string/)
+  })
+})
+
+/** Secondo giro UI del 15 set 2026: in quali fasi un campo si vede e si modifica. */
+describe('resolveCustomFieldWrites — le fasi del campo', () => {
+  const steps = [{ name: 'assessment', order: 1 }, { name: 'review', order: 5 }, { name: 'closed', order: 6 }]
+  const OUTCOME = def({ name: 'outcome', label: 'Esito', fieldType: 'enum', enumValues: ['successful', 'failed'], enumTypeName: 'change_outcome', required: true,
+    visibility: { mode: 'from', step: 'review' }, editability: { mode: 'steps', steps: ['review'] } })
+
+  it('all\'apertura (fase iniziale) un campo «da review in poi» non si chiede: né obbligatorio né scrivibile', async () => {
+    const opening = { current: 'assessment', steps }
+    expect(await resolveCustomFieldWrites('t1', 'change', [OUTCOME], [{ name: 'outcome', value: null }], { current: null, stepContext: opening })).toEqual({})
+    const e = await failure(resolveCustomFieldWrites('t1', 'change', [OUTCOME], [{ name: 'outcome', value: 'successful' }], { current: null, stepContext: opening }))
+    expect(keyOf(e)).toBe('errors.customField.notInStep')
+  })
+
+  it('in review si scrive; chiuso si legge ma non si cambia (rimandarlo uguale va bene)', async () => {
+    expect(await resolveCustomFieldWrites('t1', 'change', [OUTCOME], [{ name: 'outcome', value: 'failed' }], { current: {}, stepContext: { current: 'review', steps } }))
+      .toEqual({ outcome: 'failed' })
+    const closed = { current: 'closed', steps }
+    const e = await failure(resolveCustomFieldWrites('t1', 'change', [OUTCOME], [{ name: 'outcome', value: 'successful' }], { current: { outcome: 'failed' }, stepContext: closed }))
+    expect(keyOf(e)).toBe('errors.customField.notEditableInStep')
+    expect(await resolveCustomFieldWrites('t1', 'change', [OUTCOME], [{ name: 'outcome', value: 'failed' }], { current: { outcome: 'failed' }, stepContext: closed })).toEqual({})
+  })
+
+  it('customFieldValues dice, per la fase del ticket, se il campo si vede e si modifica', () => {
+    const [v] = customFieldValues([OUTCOME], { outcome: 'failed' }, { stepContext: { current: 'closed', steps } })
+    expect(v).toMatchObject({ name: 'outcome', visible: true, editable: false })
   })
 })

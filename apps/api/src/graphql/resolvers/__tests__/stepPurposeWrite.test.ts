@@ -32,6 +32,11 @@ const mockSession = {
   close: vi.fn().mockResolvedValue(undefined),
 }
 
+// Le fotografie per l'Audit Log leggono il grafo: qui non consumano le risposte in coda delle query sotto prova.
+vi.mock('../../../lib/workflowAuditDetails.js', () => ({
+  workflowSnapshot: vi.fn().mockResolvedValue({ steps: {}, transitions: {} }),
+  workflowChangeDetails: vi.fn(() => ({})),
+}))
 vi.mock('@opengraphity/events', () => ({ publish: vi.fn().mockResolvedValue(undefined), getRedisOptions: vi.fn(() => ({})) }))
 const ACTIONS = ['publish_event', 'notify_rule'] as const
 vi.mock('@opengraphity/workflow', () => ({

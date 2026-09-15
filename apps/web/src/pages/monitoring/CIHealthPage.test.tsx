@@ -3,6 +3,7 @@ import { screen, within, waitFor } from '@testing-library/react'
 import { CIHealthPage } from './CIHealthPage'
 import { GET_CI_HEALTH_OVERVIEW, GET_BASE_CI_TYPE, GET_TEAMS } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
+import { withVocabularyLabels, type VocabularyLabels } from '@/test/vocabularies'
 import { meMock, teamsMock } from '@/test/mocks/gql'
 import type { CIHealthOverview, CIHealthRow } from '@/types/events'
 
@@ -51,8 +52,8 @@ const baseTypeMock = (): GqlMock => ({
 const baseTypeErrorMock = (): GqlMock => ({ request: { query: GET_BASE_CI_TYPE }, error: new Error('metamodel down'), maxUsageCount: Number.POSITIVE_INFINITY })
 const teamsErrorMock = (): GqlMock => ({ request: { query: GET_TEAMS, variables: {} }, error: new Error('teams down'), maxUsageCount: Number.POSITIVE_INFINITY })
 
-function renderPage(role: string, opts: { overview?: Partial<CIHealthOverview>; seen?: Vars[]; route?: string; teams?: GqlMock; baseType?: GqlMock } = {}) {
-  return renderWithProviders(<CIHealthPage />, {
+function renderPage(role: string, opts: { overview?: Partial<CIHealthOverview>; seen?: Vars[]; route?: string; teams?: GqlMock; baseType?: GqlMock; labels?: VocabularyLabels } = {}) {
+  return renderWithProviders(opts.labels ? withVocabularyLabels(<CIHealthPage />, opts.labels) : <CIHealthPage />, {
     route: opts.route ?? '/monitoring/health',
     mocks: [meMock(role), overviewMock(opts.overview, opts.seen), opts.teams ?? teamsMock([{ id: 't1', name: 'DBA' }]), opts.baseType ?? baseTypeMock()],
   })
@@ -64,6 +65,17 @@ const bodyRows = () => within(screen.getAllByRole('rowgroup')[1]!).getAllByRole(
 const location = () => screen.getByTestId('location').textContent
 
 describe('CIHealthPage', () => {
+  /** Secondo giro UI del 15 set 2026 · V-21: il filtro diceva «Production, Staging, Dr», valori umanizzati invece del Dizionario. */
+  it('ambienti del filtro e della riga con le etichette del Dizionario del cliente', async () => {
+    renderPage('operator', { labels: { environment: { production: 'Produzione', staging: 'Collaudo' } } })
+    await screen.findByRole('heading', { name: 'CI health' })
+    const select = screen.getByRole('combobox', { name: 'Environment' })
+    await waitFor(() => expect(within(select).getByRole('option', { name: 'Produzione' })).toHaveValue('production'))
+    expect(within(select).getByRole('option', { name: 'Collaudo' })).toHaveValue('staging')
+    expect(within(select).queryByRole('option', { name: 'Production' })).not.toBeInTheDocument()
+    expect(within(bodyRows()[0]!).getByText(/· Produzione/)).toBeInTheDocument()
+  })
+
   it('contatori del tenant nei quattro riquadri (impatto aggregato dal server, non dalla pagina) e righe con salute, allarmi, impatto, squadra, origine e mappa', async () => {
     renderPage('operator')
     expect(await screen.findByRole('heading', { name: 'CI health' })).toBeInTheDocument()

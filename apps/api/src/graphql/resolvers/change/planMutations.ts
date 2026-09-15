@@ -74,7 +74,8 @@ export async function saveDeployPlan(
 
     const ciName = await getCIName(session, tctx.ciId, ctx.tenantId)
     await writeAudit(session, tctx.changeId, ctx.tenantId, 'deploy_plan_saved', ctx.userId,
-      `${ciName}: ${normalized.length} step — ${normalized.map(s => `"${s.title}"`).join(', ')}`)
+      `${ciName}: ${normalized.length} step — ${normalized.map(s => `"${s.title}"`).join(', ')}`,
+      { key: 'planSaved', params: { ci: ciName, count: String(normalized.length), steps: normalized.map(s => `"${s.title}"`).join(', ') } })
 
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (dp:DeployPlanTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(dp) AS props

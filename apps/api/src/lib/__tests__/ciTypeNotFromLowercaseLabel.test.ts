@@ -33,4 +33,21 @@ describe('il tipo di un CI non si ricava abbassando le maiuscole dell\'etichetta
     }
     expect(offenders).toEqual([])
   })
+
+  /**
+   * Secondo giro UI del 15 set 2026 · V-3: lo stesso difetto viveva DENTRO il
+   * Cypher (`toLower(head(labels(ci)))`) nelle attività della change e nelle
+   * regole delle anomalie, dove il controllo qui sopra non guardava.
+   */
+  it('nessun `toLower(head(… labels(…)))` nel Cypher (i commenti non contano)', () => {
+    const offenders: string[] = []
+    for (const file of sources(SRC)) {
+      const lines = fs.readFileSync(file, 'utf8').split('\n')
+      lines.forEach((line, i) => {
+        const code = line.replace(/^\s*(\*|\/\/).*$/, '')
+        if (/toLower\(\s*head\(\s*\[?\s*\w+\s+IN\s+labels\(|toLower\(\s*head\(\s*labels\(/.test(code)) offenders.push(`${path.relative(SRC, file)}:${i + 1}`)
+      })
+    }
+    expect(offenders).toEqual([])
+  })
 })

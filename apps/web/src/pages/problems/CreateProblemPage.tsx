@@ -15,7 +15,7 @@ import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
 import { useValueStyle } from '@/hooks/useValueStyle'
 import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
-import { customFieldsInput, missingCustomFields, useTicketCustomFieldDefs } from '@/components/ticket/customFields/customFields'
+import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 import { showError } from '@/lib/showError'
 import { useCILabels } from '@/hooks/useCILabels'
 import { CIExclusionHint } from '@/components/ticket/CIExclusionHint'
@@ -43,7 +43,7 @@ export function CreateProblemPage() {
   // F9: il colore della priorità derivata è quello del Dizionario.
   const styleOf = useValueStyle()
   const navigate = useNavigate()
-  const ids = { title: useId(), description: useId(), ciSearch: useId(), teamSearch: useId() }
+  const ids = { title: useId(), description: useId(), ciSearch: useId(), teamSearch: useId(), levels: useId() }
 
   const [title,       setTitle]       = useState('')
   // Dalla matrice DEL CLIENTE, non da una copia nel web (revisione · C·N-3).
@@ -63,7 +63,7 @@ export function CreateProblemPage() {
   const [ciSearch,    setCiSearch]    = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
   // Campi personalizzati del cliente (verifica «Cosa resta cablato», ondata 4).
-  const { defs: customDefs } = useTicketCustomFieldDefs('problem')
+  const { defs: customDefs } = useCreationCustomFieldDefs('problem')
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
   const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
 
@@ -188,12 +188,13 @@ export function CreateProblemPage() {
           <div style={{ marginBottom: 20, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             {([['pages.domainMatrices.impact', 'impact', impact, setImpact, matrix?.impacts ?? []], ['pages.domainMatrices.urgency', 'urgency', urgency, setUrgency, matrix?.urgencies ?? []]] as const).map(([labelKey, vocabolario, val, setVal, options]) => (
               <div key={labelKey}>
-                <div style={fieldLabel}>{t(labelKey)} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div id={`${ids.levels}-${vocabolario}`} style={fieldLabel}>{t(labelKey)} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
+                {/* Un gruppo col nome del campo e bottoni che dicono quale è scelto (aria-pressed). */}
+                <div role="group" aria-labelledby={`${ids.levels}-${vocabolario}`} style={{ display: 'flex', gap: 6 }}>
                   {options.map(o => {
                     const sel = val === o
                     return (
-                      <button key={o} type="button" onClick={() => setVal(o)}
+                      <button key={o} type="button" aria-pressed={sel} onClick={() => setVal(o)}
                         style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
                           border: `1.5px solid ${sel ? 'var(--color-brand)' : colors.border}`,
                           background: sel ? palette.info.light : 'var(--color-slate-bg)',
@@ -301,7 +302,7 @@ export function CreateProblemPage() {
           {/* TEAM */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.teamSearch} style={fieldLabel}>
-              Team{' '}
+              {t('detail.team')}{' '}
               <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>{t('common.optional')}</span>
             </label>
 

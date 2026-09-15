@@ -9,13 +9,14 @@ import { FACTORY_ROLE_PERMISSIONS, isUserRole } from '@opengraphity/types'
 export interface MeFixture {
   id: string; name: string; email: string; role: string; roleName: string | null; permissions: string[]; slackId: string | null
   emailNotifications: boolean | null
+  language: string | null
   teams: { id: string; name: string }[]
 }
 
 export function meFixture(role = 'admin', overrides: Partial<MeFixture> = {}): MeFixture {
   // I permessi del ruolo di fabbrica con quel nome (ondata 7); un ruolo che non esiste non ne ha.
   const permissions = isUserRole(role) ? [...FACTORY_ROLE_PERMISSIONS[role]] : []
-  return { id: 'u-1', name: 'Test User', email: 'test@acme.com', role, roleName: null, permissions, slackId: null, emailNotifications: true, teams: [], ...overrides }
+  return { id: 'u-1', name: 'Test User', email: 'test@acme.com', role, roleName: null, permissions, slackId: null, emailNotifications: true, language: null, teams: [], ...overrides }
 }
 
 /** `me` con il ruolo dato (o `null` per utente non presente nel DB). */

@@ -17,6 +17,7 @@ import {
 import { inputS, selectS, labelS, btnPrimary, btnSecondary, btnDanger } from './designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { colors, palette } from '@/lib/tokens'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { showError } from '@/lib/showError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -26,6 +27,8 @@ interface FieldDef {
   label:      string
   fieldType:  string
   enumValues: string[]
+  /** Il vocabolario del campo enum: i valori si leggono con le sue etichette (secondo giro UI · V-18). */
+  enumTypeName?: string | null
 }
 
 interface VisibilityRule {
@@ -188,6 +191,7 @@ function VisibilityRuleForm({ form, fields, isEnumTrigger, triggerField, onChang
   onCancel:      () => void
 }) {
   const { t } = useTranslation()
+  const { labelOf } = useDomainVocabularies()
   return (
     <div style={{ background: palette.info.light, border: `1px solid ${palette.info.border}`, borderRadius: 8, padding: '14px 16px', marginBottom: 10 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 1fr', gap: 10, marginBottom: 10 }}>
@@ -202,7 +206,7 @@ function VisibilityRuleForm({ form, fields, isEnumTrigger, triggerField, onChang
           {isEnumTrigger && triggerField?.enumValues.length ? (
             <Select style={selectS} value={form.triggerValue} onChange={(e) => onChange({ triggerValue: e.target.value })}>
               <option value="">{t('pages.taskView.choose')}</option>
-              {triggerField.enumValues.map((v) => <option key={v} value={v}>{v}</option>)}
+              {triggerField.enumValues.map((v) => <option key={v} value={v}>{(triggerField.enumTypeName && labelOf(triggerField.enumTypeName, v)) || v}</option>)}
             </Select>
           ) : (
             <Input style={inputS} value={form.triggerValue} onChange={(e) => onChange({ triggerValue: e.target.value })} placeholder={t('fieldRules.visibility.triggerValuePlaceholder')} />

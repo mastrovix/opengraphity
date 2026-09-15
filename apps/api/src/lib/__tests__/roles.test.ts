@@ -14,7 +14,7 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 vi.mock('../schemaInvalidator.js', () => ({ invalidateSchema: vi.fn(), registerMetamodelCacheClearer: vi.fn() }))
 
-const { rolePermissions, seedFactoryRoles, clearRolesCache, roleKeyFromName, createRole, updateRole, deleteRole, setUserRole } = await import('../roles.js')
+const { rolePermissions, seedFactoryRoles, clearRolesCache, roleKeyFromName, createRole, updateRole, deleteRole, setUserRole, factoryRoleNamedLike } = await import('../roles.js')
 const { invalidateSchema } = await import('../schemaInvalidator.js')
 
 /** Una risposta Neo4j con una riga. */
@@ -79,6 +79,17 @@ describe('la chiave di un ruolo nuovo', () => {
 })
 
 describe('gestione dei ruoli', () => {
+  /** Secondo giro UI del 15 set 2026 · V-16: un ruolo personalizzato «Admin» nasceva accanto a quello di fabbrica. */
+  it('V-16: un ruolo non può chiamarsi come uno di fabbrica, in nessuna lingua; il ruolo di fabbrica può tenere il suo nome', async () => {
+    expect(await errKey(createRole('c-test', { name: 'Admin', permissions: [] }))).toBe('errors.role.nameTaken')
+    expect(await errKey(createRole('c-test', { name: ' operatore ', permissions: [] }))).toBe('errors.role.nameTaken')
+    expect(await errKey(createRole('c-test', { name: 'END USER', permissions: [] }))).toBe('errors.role.nameTaken')
+    expect(txRun).not.toHaveBeenCalled()
+    expect(factoryRoleNamedLike('Viewer', 'viewer')).toBeNull()
+    expect(factoryRoleNamedLike('Visualizzatore', 'operator')).toBe('viewer')
+    expect(factoryRoleNamedLike('Service Desk', null)).toBeNull()
+  })
+
   it('createRole: nome obbligatorio, permessi del catalogo, nome non duplicato; poi la leva del metamodello', async () => {
     expect(await errKey(createRole('c-test', { name: '  ', permissions: [] }))).toBe('errors.role.name')
     expect(await errKey(createRole('c-test', { name: 'X', permissions: ['incident.read', 'root.everything'] }))).toBe('errors.role.permissions')

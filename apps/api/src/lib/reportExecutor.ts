@@ -2,6 +2,7 @@ import { getSession, toNumber } from '@opengraphity/neo4j'
 import { buildReportQuery, assertChartType, type ChartType, type ReportSectionDef } from './reportQueryBuilder.js'
 import { getReportWhitelist } from './reportWhitelist.js'
 import { identityLabeler, loadReportValueLabeler, type ReportValueLabeler, type ReportValueSource } from './reportValueLabels.js'
+import type { Lingua } from './enumValueLabels.js'
 
 export interface ReportSectionResult {
   sectionId: string
@@ -78,6 +79,8 @@ export function mapSectionRecords(
 export async function executeReportSection(
   section: ReportSectionDef,
   tenantId: string,
+  /** La lingua di chi guarda, per le etichette dei valori (V-20); assente = quella del cliente. */
+  opts: { language?: Lingua } = {},
 ): Promise<ReportSectionResult> {
   try {
     // Whitelist is tenant-scoped (metamodel CI types) — every execution path
@@ -91,7 +94,7 @@ export async function executeReportSection(
     let executed: ExecutedData
     try {
       const result = await session.executeRead(tx => tx.run(query, params))
-      const labeler = await loadReportValueLabeler(session, tenantId, [groupSource, ...columns.map(c => c.source)])
+      const labeler = await loadReportValueLabeler(session, tenantId, [groupSource, ...columns.map(c => c.source)], opts.language)
       executed = mapSectionRecords(chartType, section, result.records, columns, { group: groupSource, labeler })
     } finally {
       await session.close()

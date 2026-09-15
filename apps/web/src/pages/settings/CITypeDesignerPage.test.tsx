@@ -14,7 +14,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { CITypeDesignerPage } from './CITypeDesignerPage'
-import { GET_CI_TYPES, GET_BASE_CI_TYPE, GET_ENUM_TYPES, GET_CI_TYPE_DELETION_IMPACT } from '@/graphql/queries'
+import { GET_CI_TYPES, GET_BASE_CI_TYPE, GET_ENUM_TYPES, GET_CI_TYPE_DELETION_IMPACT, GET_CI_FIELD_VALUE_COUNT } from '@/graphql/queries'
 import { DELETE_CI_TYPE } from '@/graphql/mutations'
 import { toast } from 'sonner'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
@@ -57,7 +57,7 @@ describe('un tipo spedito col prodotto: le azioni sono spente e il perché si le
     expect(screen.getByText(/one type for every tenant/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Save settings/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: /Delete the type/ })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '● active' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '● Active' })).toBeDisabled()
   })
 
   it('«Aggiungi campo» e «Aggiungi relazione» sono disattivati', async () => {
@@ -109,7 +109,7 @@ describe('il nome del tipo nuovo è validato prima di inviarlo (A-12)', () => {
   it('un nome libero: nessun errore e «Crea tipo» attivo', async () => {
     const r = await openCreate([SHIPPED, OWN])
     await r.user.type(screen.getByLabelText(/name \(slug/), 'firewall')
-    await r.user.type(screen.getByLabelText(/label/), 'Firewall')
+    await r.user.type(screen.getByLabelText(/Label/), 'Firewall')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Create the type/ })).toBeEnabled()
   })
@@ -233,3 +233,18 @@ describe('eliminare un tipo: la conferma dice cosa va via, e solo un ticket la b
     expect(screen.queryByTestId('ci-type-deletion-impact')).not.toBeInTheDocument()
   })
 })
+
+// ── Secondo giro UI del 15 set 2026 · V-15 ───────────────────────────────────
+describe('CITypeDesignerPage — cancellazione di un campo con valori', () => {
+  it('la conferma dice su quanti CI il valore se ne va', async () => {
+    const field = { __typename: 'CIFieldDefinition', id: 'f-porta', name: 'porta', label: 'Porta', fieldType: 'number', required: false, enumValues: [], order: 1, enumTypeName: null, isSystem: false, validationScript: null, visibilityScript: null, defaultScript: null }
+    const typed = ciType({ fields: [field] })
+    const count: GqlMock = { request: { query: GET_CI_FIELD_VALUE_COUNT, variables: { typeId: 't-own', fieldId: 'f-porta' } }, result: { data: { ciFieldValueCount: 3 } } }
+    const r = renderWithProviders(<CITypeDesignerPage />, { mocks: [...mocks([typed]), count] })
+    await r.user.click(await waitFor(() => screen.getByText('Load Balancer')))
+    await r.user.click(await screen.findByRole('tab', { name: 'Fields' }))
+    await r.user.click(await screen.findByRole('button', { name: 'Delete porta' }))
+    expect(await screen.findByText('3 CIs have a value in this field: they are deleted with the field (the previous values stay in the Audit Log).')).toBeInTheDocument()
+  })
+})
+

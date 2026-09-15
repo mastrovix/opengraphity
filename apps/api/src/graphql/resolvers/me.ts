@@ -13,6 +13,7 @@ import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
+import { viewerLanguage } from '../../lib/tenantLanguage.js'
 
 type Props = Record<string, unknown>
 
@@ -26,6 +27,7 @@ function mapMe(props: Props) {
     slackId:   (props['slack_id'] ?? null) as string | null,
     // CO-1: assente = attive, come in dispatcher, digest e collaborazione.
     emailNotifications: props['notifications_enabled'] !== false,
+    language:  (props['language'] ?? null) as string | null,
   }
 }
 
@@ -37,7 +39,7 @@ async function me(_: unknown, __: unknown, ctx: GraphQLContext) {
       RETURN properties(u) AS props
     `, { userId: ctx.userId, tenantId: ctx.tenantId })
     if (!row) {
-      return { id: ctx.userId, tenantId: ctx.tenantId, email: ctx.userEmail, name: ctx.userEmail, role: ctx.role, slackId: null, emailNotifications: null }
+      return { id: ctx.userId, tenantId: ctx.tenantId, email: ctx.userEmail, name: ctx.userEmail, role: ctx.role, slackId: null, emailNotifications: null, language: null }
     }
     // Il ruolo in vigore è quello del token, che è quello con cui l'API autorizza.
     return { ...mapMe(row.props), role: ctx.role }
@@ -63,7 +65,28 @@ async function setMyEmailNotifications(_: unknown, args: { enabled: boolean }, c
   }
 }
 
+/**
+ * La lingua della persona (secondo giro UI del 15 set 2026). Stava solo nel
+ * `localStorage` del web: il portale, un'altra applicazione, non la vedeva e
+ * restava nella lingua dell'organizzazione. Ora è sul nodo `User`.
+ */
+async function setMyLanguage(_: unknown, args: { language?: string | null }, ctx: GraphQLContext) {
+  const language = viewerLanguage(args.language) ?? null
+  const session = getSession(undefined, 'WRITE')
+  try {
+    const row = await runQueryOne<{ props: Props }>(session, `
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      SET u.language = $language
+      RETURN properties(u) AS props
+    `, { userId: ctx.userId, tenantId: ctx.tenantId, language })
+    if (!row) throw new NotFoundError('User', ctx.userId)
+    return { ...mapMe(row.props), role: ctx.role }
+  } finally {
+    await session.close()
+  }
+}
+
 export const meResolvers = {
   Query:    { me },
-  Mutation: { setMyEmailNotifications },
+  Mutation: { setMyEmailNotifications, setMyLanguage },
 }

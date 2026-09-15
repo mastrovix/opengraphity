@@ -72,8 +72,8 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
                     {ci.environment && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 4px', borderRadius: 3, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.environmentLabel(ci.environment)}</span>}
                   </div>
                   <div style={{ display: 'flex', gap: 12, marginTop: 3, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
-                    <span><span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: hasOwner ? 'var(--color-success)' : 'var(--color-danger)', marginRight: 4, verticalAlign: 'middle' }} />Owner: {ci.ownerGroup?.name ?? '—'}</span>
-                    <span><span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: hasSupport ? 'var(--color-success)' : 'var(--color-danger)', marginRight: 4, verticalAlign: 'middle' }} />Support: {ci.supportGroup?.name ?? '—'}</span>
+                    <span><span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: hasOwner ? 'var(--color-success)' : 'var(--color-danger)', marginRight: 4, verticalAlign: 'middle' }} />{t('pages.addCIModal.owner', { name: ci.ownerGroup?.name ?? '—' })}</span>
+                    <span><span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: hasSupport ? 'var(--color-success)' : 'var(--color-danger)', marginRight: 4, verticalAlign: 'middle' }} />{t('pages.addCIModal.support', { name: ci.supportGroup?.name ?? '—' })}</span>
                   </div>
                 </div>
                 {alreadyAdded ? (

@@ -219,7 +219,7 @@ describe('il conteggio copre i vocabolari di dominio e le matrici', () => {
     ])
     const out = await countEnumValueUsage(s as never, 'acme', 'impact', ['estremo'])
     expect(out[0]!.matrices).toEqual([
-      'priority (chiave "estremo|low")',
+      'priority (key "estremo|low")',
       'service_impact (cell "mission_critical")',
     ])
   })

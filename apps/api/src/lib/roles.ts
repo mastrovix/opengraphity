@@ -14,6 +14,8 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, runQuery, type Queryable } from '@opengraphity/neo4j'
 import { FACTORY_ROLE_PERMISSIONS, PERMISSIONS, USERS_ADMIN_PERMISSION, USER_ROLES, isPermission, type Permission } from '@opengraphity/types'
+import { systemTextIn, type SystemTextKey } from './systemText.js'
+import { LINGUE } from './enumValueLabels.js'
 import { ForbiddenError, NotFoundError, ValidationError } from './errors.js'
 import { invalidateSchema } from './schemaInvalidator.js'
 import { createMetamodelCache } from './metamodelCache.js'
@@ -175,7 +177,27 @@ export async function listRoles(tenantId: string): Promise<RoleView[]> {
   }
 }
 
+/**
+ * Il nome di un ruolo di fabbrica, in ogni lingua, se `name` lo ripete.
+ * Secondo giro UI del 15 set 2026 · V-16: un ruolo del cliente chiamato
+ * «Admin» nasceva senza obiezioni, e la tendina del ruolo di una persona
+ * mostrava due «Admin» indistinguibili. I ruoli di fabbrica non hanno un nome
+ * salvato (si leggono tradotti dalla chiave), quindi il controllo sul grafo
+ * non li vedeva.
+ */
+export function factoryRoleNamedLike(name: string, exceptKey: string | null): string | null {
+  const wanted = name.trim().toLocaleLowerCase()
+  for (const key of USER_ROLES) {
+    if (key === exceptKey) continue
+    const textKey = `role.factory.${key}` as SystemTextKey
+    if (key.toLocaleLowerCase() === wanted || LINGUE.some((l) => systemTextIn(l, textKey).toLocaleLowerCase() === wanted)) return key
+  }
+  return null
+}
+
 async function assertNameFree(session: Queryable, tenantId: string, name: string, exceptKey: string | null): Promise<void> {
+  const factory = factoryRoleNamedLike(name, exceptKey)
+  if (factory) throw new ValidationError(`A role named "${name}" already exists: it is the factory role "${factory}"`, { key: 'errors.role.nameTaken', params: { name } })
   const r = await session.run(`
     MATCH (r:Role {tenant_id: $tenantId}) WHERE r.name IS NOT NULL AND toLower(r.name) = toLower($name) AND ($exceptKey IS NULL OR r.key <> $exceptKey)
     RETURN r.key AS key LIMIT 1

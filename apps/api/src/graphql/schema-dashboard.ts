@@ -29,8 +29,9 @@ export function dashboardSDL(): string {
     reportSectionId: ID!
     reportTemplate: ReportTemplate
     reportSection: ReportSection
-    data: String
-    error: String
+    """\`language\`: the viewer's language for the value labels (empty = the tenant's)."""
+    data(language: String): String
+    error(language: String): String
   }
 
   # ── Custom query-based widgets ─────────────────────────────────────────────

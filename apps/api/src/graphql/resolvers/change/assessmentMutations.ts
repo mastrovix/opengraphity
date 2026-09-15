@@ -76,7 +76,9 @@ export async function submitAssessmentResponse(
     const qText    = await getQuestionText(session, args.questionId, ctx.tenantId)
     const optLabel = await getAnswerLabel(session, args.optionId, ctx.tenantId)
     await writeAudit(session, task.changeId, ctx.tenantId, 'assessment_response_submitted', ctx.userId,
-      `${ROLE_LABEL[role]} · ${ciName}: "${qText}" → ${optLabel}`)
+      `${ROLE_LABEL[role]} · ${ciName}: "${qText}" → ${optLabel}`,
+      // Secondo giro UI del 15 set 2026: la voce si legge nella lingua di chi guarda.
+      { key: 'responseSubmitted', params: { role, ci: ciName, question: qText, answer: optLabel } })
 
     const updated = await runQueryOne<{ props: Props }>(session, `
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props
@@ -187,7 +189,8 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
       `, { taskId: args.taskId, tenantId: ctx.tenantId, score, now, userId: ctx.userId })
 
       await writeAudit(tx, ctx1.changeId, ctx.tenantId, 'assessment_task_completed', ctx.userId,
-        `${ROLE_LABEL[role1]} · ${ciName1}: score ${score}`)
+        `${ROLE_LABEL[role1]} · ${ciName1}: score ${score}`,
+        { key: 'taskScored', params: { role: role1, ci: ciName1, score: String(score) } })
 
       await recomputeCIRiskIfReady(tx, ctx1.changeId, ctx1.ciId, ctx.tenantId, ctx.userId)
       await computeAggregateRisk(tx, ctx1.changeId, ctx.tenantId)

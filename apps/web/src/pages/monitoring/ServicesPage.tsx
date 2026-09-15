@@ -40,7 +40,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
 import { useMe } from '@/hooks/useMe'
-import { enumLabel } from '@/lib/ciEnums'
+import { useCriticalityLabel } from '@/hooks/useCILabels'
 import { formatDateTime, formatDuration, currentLocale } from '@/lib/datetime'
 import { pausedWhenHidden } from '@/lib/polling'
 import { GET_SERVICE_MAPS } from '@/graphql/queries'
@@ -172,6 +172,7 @@ const TD: React.CSSProperties = { padding: '10px 12px', fontSize: 'var(--font-si
 /** Riga: il clic apre il dettaglio, il bersaglio da tastiera è il Link sul nome (niente tabIndex sulla riga). */
 function ServiceRowView({ row }: { row: ServiceMapRow }) {
   const { t } = useTranslation()
+  const criticalityLabel = useCriticalityLabel()
   const navigate = useNavigate()
   // Salute fuori vocabolario → famiglia «rotta» (rossa, loggata), mai un colore plausibile.
   const fam = serviceHealthFamily(row.health)
@@ -180,7 +181,7 @@ function ServiceRowView({ row }: { row: ServiceMapRow }) {
   const sinceId = `service-${row.id}-since`
   const first = row.explanation[0]
   const ifActive = healthIfActiveNote(t, row)
-  const meta = [row.service.criticality ? enumLabel(row.service.criticality) : null].filter(Boolean).join(' · ')
+  const meta = [row.service.criticality ? criticalityLabel(row.service.criticality) : null].filter(Boolean).join(' · ')
 
   return (
     <tr onClick={() => navigate(to)} className="hover-bg" style={{ cursor: 'pointer', borderTop: '1px solid var(--border)' }}>

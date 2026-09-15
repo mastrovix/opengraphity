@@ -4,6 +4,8 @@ export interface WFStep {
   id:           string
   name:         string
   label:        string
+  /** Le traduzioni spedite dell'etichetta (secondo giro UI · V-5: il pannello avvisa prima di perderle). */
+  labels?:      { language: string; label: string }[]
   type:         'start' | 'standard' | 'end' | 'parallel_fork' | 'parallel_join' | 'timer_wait' | 'sub_workflow'
   enterActions: string | null
   exitActions:  string | null

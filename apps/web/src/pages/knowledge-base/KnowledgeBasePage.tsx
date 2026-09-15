@@ -94,6 +94,7 @@ export function KnowledgeBasePage() {
               value={inputVal}
               onChange={(e) => setInputVal(e.target.value)}
               placeholder={t('pages.kb.searchPlaceholder')}
+              aria-label={t('pages.kb.searchPlaceholder')}
               style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: 8, border: `2px solid ${colors.border}`, fontSize: 'var(--font-size-body)', boxSizing: 'border-box', outline: 'none' }}
               onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--color-brand)' }}
               onBlur={(e)  => { e.currentTarget.style.borderColor = colors.border }}

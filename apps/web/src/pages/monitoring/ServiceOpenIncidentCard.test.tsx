@@ -18,6 +18,14 @@ const render = (incident: ServiceOpenIncident | null, openIncidentFrom = 'down',
 const asIncident = (over: Record<string, unknown> = {}) => openIncident(over) as unknown as ServiceOpenIncident
 
 describe('ServiceOpenIncidentCard', () => {
+  /** Secondo giro UI del 15 set 2026 · V-10: «Incident aperto» sopra un incident già risolto. */
+  it('V-10: un incident in un passo di categoria «resolved» non è intitolato «aperto»', async () => {
+    const steps = [{ name: 'new', label: 'New' }, { name: 'resolved', label: 'Resolved', category: 'resolved' }, { name: 'closed', label: 'Closed', category: 'closed' }]
+    render(asIncident({ status: 'resolved', workflowInstance: { __typename: 'WorkflowInstance', id: 'wi-1', currentStep: 'resolved', status: 'active' } }), 'down', [workflowDefinitionMock('incident', steps)])
+    expect(await screen.findByText('Incident resolved, not yet closed')).toBeInTheDocument()
+    expect(screen.queryByText('Open incident')).toBeNull()
+  })
+
   it('C-12: stato e passo con l\'etichetta del workflow dell\'app, non «in progress» tradotto a mano', async () => {
     render(asIncident())
     expect(screen.getByText('Open incident')).toBeInTheDocument()

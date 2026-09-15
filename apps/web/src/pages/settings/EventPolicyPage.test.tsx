@@ -5,6 +5,7 @@ import { EventPolicyPage } from './EventPolicyPage'
 import { GET_EVENT_POLICY } from '@/graphql/queries'
 import { UPDATE_EVENT_POLICY } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
+import { withVocabularyLabels } from '@/test/vocabularies'
 import { baseCITypeMock, baseCITypeErrorMock } from '@/test/mocks/gql'
 
 vi.mock('sonner', () => ({
@@ -53,7 +54,7 @@ beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).
 describe('EventPolicyPage', () => {
   it('carica la policy, modifica e salva con toast di esito; dopo il salvataggio il form è allineato alla risposta (cache di GET_EVENT_POLICY)', async () => {
     const seen: Input[] = []
-    const { user } = renderWithProviders(<EventPolicyPage />, { route: '/settings/event-policy', mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
+    const { user } = renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { route: '/settings/event-policy', mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
 
     const openFrom = await screen.findByLabelText('Open incident from')
     expect(openFrom).toHaveValue('critical')
@@ -82,7 +83,7 @@ describe('EventPolicyPage', () => {
 
   it('errore del server al salvataggio → toast di errore con il messaggio', async () => {
     const failing: GqlMock = { request: { query: UPDATE_EVENT_POLICY, variables: () => true }, error: new Error('policy locked') }
-    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeMock(), policyMock(), failing] })
+    const { user } = renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), policyMock(), failing] })
     await user.selectOptions(await screen.findByLabelText('Open incident from'), 'warning')
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Policy save failed: policy locked'))
@@ -92,7 +93,7 @@ describe('EventPolicyPage', () => {
 
   it('severityMap malformata → avviso visibile (i18n), il form parte dai default e si può salvare anche senza altre modifiche (nessun fallback silenzioso)', async () => {
     const seen: Input[] = []
-    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeMock(), policyMock({ severityMap: '{"critical":{"impact":"high","urgency":"high"}}' }), updateMock(seen)] })
+    const { user } = renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), policyMock({ severityMap: '{"critical":{"impact":"high","urgency":"high"}}' }), updateMock(seen)] })
     await screen.findByLabelText('Open incident from')
     expect(screen.getByRole('alert')).toHaveTextContent('Invalid severity map (severityMap: severity "warning" is missing): defaults restored, save to fix.')
     expect(screen.getByLabelText('Critical – Impact')).toHaveValue('high')
@@ -107,7 +108,7 @@ describe('EventPolicyPage', () => {
 
 describe('EventPolicyPage — modifiche non salvate e «Mai» (revisione D·2.5)', () => {
   it('senza modifiche Salva e Ripristina sono disabilitati; una modifica accende "Modifiche non salvate"; Ripristina torna ai valori letti', async () => {
-    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeMock(), policyMock()] })
+    const { user } = renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), policyMock()] })
     const retention = await screen.findByLabelText('Retention (days)')
     expect(screen.getByRole('status')).toHaveTextContent('No changes to save')
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
@@ -123,7 +124,7 @@ describe('EventPolicyPage — modifiche non salvate e «Mai» (revisione D·2.5)
   })
 
   it('con «Mai» raggruppamento, ritardo, chiusura automatica e mappa severità sono disabilitati con la nota; tornando a una severità si riattivano', async () => {
-    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeMock(), policyMock()] })
+    const { user } = renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), policyMock()] })
     const openFrom = await screen.findByLabelText('Open incident from')
     expect(screen.getByLabelText('Group by')).toBeEnabled()
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
@@ -149,7 +150,7 @@ describe('EventPolicyPage — modifiche non salvate e «Mai» (revisione D·2.5)
 describe('EventPolicyPage — sfarfallio, tempeste, conservazione (ondata 4)', () => {
   it('i tre campi nuovi partono dalla policy, hanno l\'aiuto (0 = tempeste disattivate) e vengono salvati', async () => {
     const seen: Input[] = []
-    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
+    const { user } = renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
     const stable   = await screen.findByLabelText('Stable minutes before resuming')
     const thresh   = screen.getByLabelText('Storm threshold (new alarms per minute)')
     const cooldown = screen.getByLabelText('Minutes below threshold to end the storm')
@@ -169,7 +170,7 @@ describe('EventPolicyPage — sfarfallio, tempeste, conservazione (ondata 4)', (
   })
 
   it('i campi sono raggruppati in quattro riquadri titolati', async () => {
-    renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeMock(), policyMock()] })
+    renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), policyMock()] })
     const incidents = await screen.findByRole('group', { name: 'Incident opening and closing' })
     expect(within(incidents).getByLabelText('Open incident from')).toBeInTheDocument()
     expect(within(incidents).getByLabelText('Open delay (seconds)')).toBeInTheDocument()
@@ -187,7 +188,7 @@ describe('EventPolicyPage — sfarfallio, tempeste, conservazione (ondata 4)', (
 
   it('validazione: stabilità e cooldown ≥ 1, soglia di tempesta ≥ 0, campo vuoto segnalato; il salvataggio è bloccato', async () => {
     const seen: Input[] = []
-    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
+    const { user } = renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
     const stable = await screen.findByLabelText('Stable minutes before resuming')
     const save = screen.getByRole('button', { name: 'Save' })
 
@@ -226,7 +227,7 @@ describe('EventPolicyPage — sfarfallio, tempeste, conservazione (ondata 4)', (
 describe('EventPolicyPage — riconoscimento del CI (revisione A-2)', () => {
   it('interruttore "nome corto ↔ FQDN" nel riquadro "CI recognition": parte dalla policy (spento), ha l\'aiuto, e viene salvato', async () => {
     const seen: Input[] = []
-    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
+    const { user } = renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
     const group = await screen.findByRole('group', { name: 'CI recognition' })
     const toggle = within(group).getByRole('switch', { name: 'Match short hostname and FQDN as the same host' })
     expect(toggle).toHaveAttribute('aria-checked', 'false')
@@ -242,7 +243,7 @@ describe('EventPolicyPage — riconoscimento del CI (revisione A-2)', () => {
 
 describe('EventPolicyPage — spiegazioni (ondata 3)', () => {
   it('riquadro "Come funziona" in quattro righe e riga di aiuto sotto ogni campo', async () => {
-    renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeMock(), policyMock()] })
+    renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), policyMock()] })
     const how = await screen.findByRole('region', { name: 'How it works' })
     const items = within(how).getAllByRole('listitem')
     expect(items).toHaveLength(7)
@@ -267,7 +268,7 @@ describe('EventPolicyPage — spiegazioni (ondata 3)', () => {
 describe('EventPolicyPage — ciclo di vita del CI: stati ignorati (revisione 2, D6.3) e SEMANTICA (ondata 7 · C-4/A-14)', () => {
   it('scelta multipla dal vocabolario del metamodello, «dismesso» spuntato dalla policy, conteggio con plurale e salvataggio dei valori scelti', async () => {
     const seen: Input[] = []
-    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
+    const { user } = renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
 
     const group = await screen.findByRole('group', { name: 'Lifecycle statuses to ignore' })
     // una casella per ogni stato del metamodello, nel suo ordine
@@ -302,7 +303,7 @@ describe('EventPolicyPage — ciclo di vita del CI: stati ignorati (revisione 2,
    */
   it('le due liste della semantica partono dalla policy, hanno il loro aiuto e si salvano', async () => {
     const seen: Input[] = []
-    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
+    const { user } = renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
 
     const retired = await screen.findByRole('group', { name: 'Statuses that count as “retired”' })
     expect(within(retired).getByRole('checkbox', { name: 'Inactive' })).toBeChecked()
@@ -341,7 +342,7 @@ describe('EventPolicyPage — ciclo di vita del CI: stati ignorati (revisione 2,
 
   it('togliendo tutti gli stati il conteggio dice cosa comporta e si salva una lista vuota', async () => {
     const seen: Input[] = []
-    const { user } = renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
+    const { user } = renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeMock(), policyMock(), updateMock(seen)] })
     const group = await screen.findByRole('group', { name: 'Lifecycle statuses to ignore' })
     await user.click(within(group).getByRole('checkbox', { name: 'Decommissioned' }))
     expect(screen.getByTestId('lifecycle-selected-ignoreLifecycleStatuses')).toHaveTextContent('No status ignored: alarms are evaluated on every CI.')
@@ -351,7 +352,7 @@ describe('EventPolicyPage — ciclo di vita del CI: stati ignorati (revisione 2,
   })
 
   it('uno stato salvato che il metamodello non conosce resta spuntabile e detto in chiaro (nessuna riga muta), in tutte e tre le liste', async () => {
-    renderWithProviders(<EventPolicyPage />, {
+    renderWithProviders(withVocabularyLabels(<EventPolicyPage />), {
       mocks: [baseCITypeMock(['active', 'decommissioned']), policyMock({ ignoreLifecycleStatuses: ['decommissioned', 'retired'] }), updateMock([])],
     })
     const group = await screen.findByRole('group', { name: 'Lifecycle statuses to ignore' })
@@ -365,7 +366,7 @@ describe('EventPolicyPage — ciclo di vita del CI: stati ignorati (revisione 2,
   })
 
   it('metamodello non raggiungibile: l\'errore è visibile e restano solo gli stati già salvati', async () => {
-    renderWithProviders(<EventPolicyPage />, { mocks: [baseCITypeErrorMock(), policyMock()] })
+    renderWithProviders(withVocabularyLabels(<EventPolicyPage />), { mocks: [baseCITypeErrorMock(), policyMock()] })
     const group = await screen.findByRole('group', { name: 'Lifecycle statuses to ignore' })
     // gli stati citati dalle TRE liste della policy: decommissioned, inactive, maintenance
     expect(within(group).getAllByRole('checkbox')).toHaveLength(3)

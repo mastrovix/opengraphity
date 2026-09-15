@@ -68,6 +68,7 @@ import { formatDateTime, formatDuration, timeAgo } from '@/lib/datetime'
 import { pausedWhenHidden } from '@/lib/polling'
 import { ciPath } from '@/lib/ciPath'
 import { ciTypeLabelKey, enumLabel } from '@/lib/ciEnums'
+import { useCriticalityLabel } from '@/hooks/useCILabels'
 import { colors, lookupOrError, palette } from '@/lib/tokens'
 import { AMBER_BANNER, TINT_NEUTRAL, TINT_WARNING } from '@/lib/eventPalette'
 import { ServiceMapCanvas } from './ServiceMapCanvas'
@@ -121,6 +122,7 @@ const STATUS_ACTION: Record<ServiceMapStatus, StatusAction> = {
 export function ServiceDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { t } = useTranslation()
+  const criticalityLabel = useCriticalityLabel()
   const navigate = useNavigate()
   const { can } = useMe()
   // Ondata 7: la configurazione della mappa è `config.services`, il ricalcolo `service.reevaluate`.
@@ -364,7 +366,7 @@ export function ServiceDetailPage() {
         {/* C-12: la scheda tiene la sola CONFIGURAZIONE; stato, valutazione, sincronizzazione e versione stanno una volta sola, in testata. */}
         <SectionCard title={t('monitoring.services.detail.service')}>
           <DetailField label={t('monitoring.services.detail.fields.service')} value={map.service.name} />
-          <DetailField label={t('monitoring.services.detail.fields.criticality')} value={map.service.criticality ? enumLabel(map.service.criticality) : null} />
+          <DetailField label={t('monitoring.services.detail.fields.criticality')} value={map.service.criticality ? criticalityLabel(map.service.criticality) : null} />
           <DetailField label={t('monitoring.services.detail.fields.owner')} value={map.service.ownerGroup?.name ?? null} />
           <DetailField label={t('monitoring.services.detail.fields.maxDepth')} value={String(map.maxDepth)} />
           <DetailField label={t('monitoring.services.detail.fields.relationshipTypes')} value={map.relationshipTypes.length > 0 ? map.relationshipTypes.join(', ') : null} />

@@ -11,7 +11,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Info, KeyRound, Save } from 'lucide-react'
+import { ArrowLeft, Info, KeyRound, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PERMISSION_AREAS, PERMISSION_CATALOG, PERMISSIONS, type Permission, type PermissionArea } from '@opengraphity/types'
 import { PageContainer } from '@/components/PageContainer'
@@ -19,7 +19,8 @@ import { PageTitle } from '@/components/PageTitle'
 import { Button } from '@/components/Button'
 import { Input, FieldLabel } from '@/components/ui/FormControls'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { CREATE_ROLE, UPDATE_ROLE } from '@/graphql/mutations'
+import { CREATE_ROLE, DELETE_ROLE, UPDATE_ROLE } from '@/graphql/mutations'
+import { useConfirm } from '@/hooks/useConfirm'
 import { GET_ROLES } from '@/graphql/queries'
 import { useRoles, useRoleLabel, type RoleRow } from '@/hooks/useRoles'
 import { colors } from '@/lib/tokens'
@@ -91,7 +92,22 @@ function Editor({ role, template }: { role: RoleRow | null; template: RoleRow | 
   const [selected, setSelected] = useState<Set<Permission>>(() => new Set((source?.permissions ?? []).filter((p): p is Permission => (PERMISSIONS as readonly string[]).includes(p))))
   const [createRole, { loading: creating }] = useMutation<{ createRole: RoleRow }>(CREATE_ROLE, { refetchQueries: [GET_ROLES] })
   const [updateRole, { loading: updating }] = useMutation<{ updateRole: RoleRow }>(UPDATE_ROLE, { refetchQueries: [GET_ROLES] })
-  const busy = creating || updating
+  const [deleteRole, { loading: deleting }] = useMutation(DELETE_ROLE, { refetchQueries: [GET_ROLES] })
+  const confirm = useConfirm()
+  const busy = creating || updating || deleting
+  // Giro UI del 15 set 2026: nel dettaglio di un ruolo personalizzato non c'era
+  // modo di eliminarlo, solo un'icona nell'elenco. Stesse regole dell'elenco.
+  const deleteBlocked = !role ? null : role.isFactory ? t('pages.roles.cannotDeleteFactory') : role.userCount > 0 ? t('pages.roles.cannotDeleteInUse') : null
+  const remove = async () => {
+    if (!role) return
+    const ok = await confirm({ title: t('pages.roles.deleteTitle', { name: label(role) }), body: t('pages.roles.deleteBody'), danger: true, confirmLabel: t('pages.roles.delete') })
+    if (!ok) return
+    try {
+      await deleteRole({ variables: { key: role.key } })
+      toast.success(t('pages.roles.deleted'))
+      navigate('/roles')
+    } catch (e) { showError(e) }
+  }
   const nameRequired = !role?.isFactory
   const nameMissing = nameRequired && name.trim() === ''
   const hadUsersAdmin = role?.permissions.includes('admin.users') ?? false
@@ -158,6 +174,9 @@ function Editor({ role, template }: { role: RoleRow | null; template: RoleRow | 
       }}>
         <Button icon={<Save size={14} aria-hidden="true" />} disabled={busy || nameMissing} onClick={() => void save()}>{t('common.save')}</Button>
         <Button variant="secondary" onClick={() => navigate('/roles')}>{t('common.cancel')}</Button>
+        {role && !role.isFactory && (
+          <Button variant="danger" icon={<Trash2 size={14} aria-hidden="true" />} disabled={busy || deleteBlocked !== null} title={deleteBlocked ?? undefined} onClick={() => void remove()}>{t('pages.roles.delete')}</Button>
+        )}
         <span style={{ fontSize: 'var(--font-size-body)', color: colors.slate, fontVariantNumeric: 'tabular-nums' }}>
           {t('pages.roles.permissionsCount', { selected: selected.size, total: PERMISSIONS.length })}
         </span>

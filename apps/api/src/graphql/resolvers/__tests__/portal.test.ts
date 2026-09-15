@@ -14,6 +14,12 @@ const mockSession = {
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 // I campi del cliente hanno i loro test (ticketCustomFields.test.ts): qui il tipo non ne ha.
+// Le fasi del ticket leggono il grafo: qui nessuna fase nota (i campi si vedono e si modificano).
+vi.mock('../../../lib/customFieldSteps.js', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ticketStepContext: vi.fn(async () => null),
+  creationStepContext: vi.fn(async () => null),
+}))
 vi.mock('../../../lib/ticketCustomFields.js', async (importOriginal) => ({ ...(await importOriginal<object>()), customFieldDefs: vi.fn(async () => []) }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession:  vi.fn(),

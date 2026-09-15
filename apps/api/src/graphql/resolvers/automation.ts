@@ -6,7 +6,7 @@ import type { GraphQLContext } from '../../context.js'
 import { invalidateTriggerCache } from '../../lib/triggerEngine.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { invalidateRulesCache } from '../../lib/rulesEngine.js'
-import { parseConditions, type ConditionOperator } from '../../lib/conditionEvaluator.js'
+import { parseConditions, usesChangedOperator, type ConditionOperator } from '../../lib/conditionEvaluator.js'
 import { parseActions, type ActionType } from '../../lib/actionExecutor.js'
 import { ValidationError } from '../../lib/errors.js'
 import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
@@ -30,7 +30,20 @@ type Props = Record<string, unknown>
 
 export { AUTOMATION_ENTITY_TYPES, TRIGGER_EVENT_TYPES, RULE_EVENT_TYPES }
 export const CONDITION_LOGICS         = ['and', 'or'] as const
-const CONDITION_OPERATORS: readonly ConditionOperator[] = ['equals', 'not_equals', 'is_null', 'is_not_null', 'greater_than', 'less_than', 'contains']
+const CONDITION_OPERATORS: readonly ConditionOperator[] = ['equals', 'not_equals', 'is_null', 'is_not_null', 'greater_than', 'less_than', 'contains', 'changed']
+
+/** Gli eventi in cui «è cambiato» ha senso: su una creazione o una transizione non scatterebbe mai (V-19). */
+const CHANGED_OPERATOR_EVENTS: readonly string[] = ['on_update', 'on_field_change']
+
+export function assertChangedOperatorEvent(conditions: string | null | undefined, eventType: string): void {
+  if (!conditions) return
+  if (CHANGED_OPERATOR_EVENTS.includes(eventType)) return
+  if (!usesChangedOperator(parseConditions(conditions))) return
+  throw new ValidationError(
+    `The condition «is changed» only works when the ticket is updated (event on_update or on_field_change), not on ${eventType}: the rule would never fire.`,
+    { key: 'errors.automation.changedNeedsUpdate', params: { event: eventType } },
+  )
+}
 const ACTION_TYPES: readonly ActionType[] = ['set_field', 'assign_team', 'assign_user', 'transition_workflow', 'create_notification', 'create_comment', 'set_priority', 'execute_script', 'call_webhook', 'set_sla']
 
 function assertEnum(field: string, value: unknown, allowed: readonly string[]): string {
@@ -199,6 +212,17 @@ async function entityTypeOf(session: Session, label: 'AutoTrigger' | 'BusinessRu
   return found
 }
 
+/** Evento e condizioni salvati: servono a controllare «è cambiato» quando l'aggiornamento ne cambia uno solo. */
+async function storedEventAndConditions(session: Session, label: 'AutoTrigger' | 'BusinessRule', id: string, tenantId: string): Promise<{ eventType: string; conditions: string | null }> {
+  const rows = await runQuery<{ eventType: string; conditions: string | null }>(session, `
+    MATCH (n:${label} {id: $id, tenant_id: $tenantId})
+    RETURN n.event_type AS eventType, n.conditions AS conditions
+  `, { id, tenantId })
+  const row = rows[0]
+  if (!row) throw new ValidationError(`${label} ${id} not found`, { key: 'errors.notFound', params: { entity: label, id } })
+  return row
+}
+
 function assertTimerDelay(value: unknown): number | null {
   if (value == null) return null
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
@@ -302,6 +326,7 @@ async function createAutoTrigger(_: unknown, args: { input: Props }, ctx: GraphQ
     throw new ValidationError('An on_timer trigger requires timerDelayMinutes > 0')
   }
   assertEventSupported(eventType, entityType)
+  assertChangedOperatorEvent(conditions, eventType)
   await assertRolesExist(ctx.tenantId, roleKeysInActions(actions))
   return withSession(async (session) => {
     await assertStepTargets(session, ctx.tenantId, entityType, { actions, conditions })
@@ -351,6 +376,13 @@ async function updateAutoTrigger(_: unknown, args: { id: string; input: Props },
   return withSession(async (session) => {
     if (args.input['eventType'] !== undefined) {
       assertEventSupported(params['eventType'] as string, await entityTypeOf(session, 'AutoTrigger', args.id, ctx.tenantId))
+    }
+    if (args.input['eventType'] !== undefined || args.input['conditions'] !== undefined) {
+      const stored = await storedEventAndConditions(session, 'AutoTrigger', args.id, ctx.tenantId)
+      assertChangedOperatorEvent(
+        args.input['conditions'] !== undefined ? params['conditions'] as string | null : stored.conditions,
+        args.input['eventType'] !== undefined ? params['eventType'] as string : stored.eventType,
+      )
     }
     if (args.input['actions'] !== undefined || args.input['conditions'] !== undefined) {
       const entityType = await entityTypeOf(session, 'AutoTrigger', args.id, ctx.tenantId)
@@ -405,6 +437,7 @@ async function createBusinessRule(_: unknown, args: { input: Props }, ctx: Graph
   assertEventSupported(eventType, entityType)
   const conditionLogic = assertEnum('conditionLogic', input['conditionLogic'] ?? 'and', CONDITION_LOGICS)
   const conditions     = assertConditionsJson(input['conditions'])
+  assertChangedOperatorEvent(conditions, eventType)
   const actions        = assertActionsJson(input['actions'])
   await assertRolesExist(ctx.tenantId, roleKeysInActions(actions))
   return withSession(async (session) => {
@@ -458,6 +491,13 @@ async function updateBusinessRule(_: unknown, args: { id: string; input: Props }
   return withSession(async (session) => {
     if (args.input['eventType'] !== undefined) {
       assertEventSupported(params['eventType'] as string, await entityTypeOf(session, 'BusinessRule', args.id, ctx.tenantId))
+    }
+    if (args.input['eventType'] !== undefined || args.input['conditions'] !== undefined) {
+      const stored = await storedEventAndConditions(session, 'BusinessRule', args.id, ctx.tenantId)
+      assertChangedOperatorEvent(
+        args.input['conditions'] !== undefined ? params['conditions'] as string | null : stored.conditions,
+        args.input['eventType'] !== undefined ? params['eventType'] as string : stored.eventType,
+      )
     }
     if (args.input['actions'] !== undefined || args.input['conditions'] !== undefined) {
       const entityType = await entityTypeOf(session, 'BusinessRule', args.id, ctx.tenantId)

@@ -333,7 +333,7 @@ async function matrixReferences(
       for (const [i, vocabulary] of spec.inputs.entries()) {
         if (vocabulary !== vocabularyName) continue
         const hit = out.get(parts[i] ?? '')
-        if (hit && !hit.includes(`${kind} (chiave "${key}")`)) hit.push(`${kind} (chiave "${key}")`)
+        if (hit && !hit.includes(`${kind} (key "${key}")`)) hit.push(`${kind} (key "${key}")`)
       }
       if (spec.output === vocabularyName) {
         const hit = out.get(String(value))

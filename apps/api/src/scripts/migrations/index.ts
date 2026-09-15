@@ -86,6 +86,9 @@ import { factoryRoles } from './20260928_1000_factory_roles.js'
 import { assistantPermission } from './20260928_1010_assistant_permission.js'
 import { ciRelationTargetLabel } from './20260929_1000_ci_relation_target_label.js'
 import { ticketCIExclusions } from './20260929_1010_ticket_ci_exclusions.js'
+import { officeProductivityLabel } from './20260930_1000_office_productivity_label.js'
+import { changeAuditDetailKeys } from './20260930_1010_change_audit_detail_keys.js'
+import { changeAuditDetailKeysOwnerSupport } from './20260930_1020_change_audit_detail_keys_owner_support.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -166,4 +169,7 @@ export const MIGRATIONS: readonly Migration[] = [
   assistantPermission,
   ciRelationTargetLabel,
   ticketCIExclusions,
+  officeProductivityLabel,
+  changeAuditDetailKeys,
+  changeAuditDetailKeysOwnerSupport,
 ]

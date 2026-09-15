@@ -42,6 +42,11 @@ const mockSession = {
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+// Le fotografie per l'Audit Log leggono il grafo: qui non consumano le risposte in coda delle query sotto prova.
+vi.mock('../../../lib/workflowAuditDetails.js', () => ({
+  workflowSnapshot: vi.fn().mockResolvedValue({ steps: {}, transitions: {} }),
+  workflowChangeDetails: vi.fn(() => ({})),
+}))
 vi.mock('@opengraphity/events', () => ({ publish: vi.fn().mockResolvedValue(undefined), getRedisOptions: vi.fn(() => ({})) }))
 
 const WORKFLOW_ACTION_TYPES_MOCK = ['publish_event', 'notify_rule'] as const
@@ -365,8 +370,10 @@ describe('marchio di personalizzazione (contratto con i seed)', () => {
     results = [{ records: [makeRecord({ s: { properties: { id: 's1', name: 'assigned', label: 'L', type: 'standard' } }, entityType: 'incident' })] }]
     await M.updateWorkflowStep(null, { definitionId: 'def-1', stepName: 'assigned', label: 'L' }, ctx)
     const cypher = writtenCypher()
-    expect(cypher).toContain('SET s.labels       = CASE WHEN s.label = $label THEN s.labels ELSE null END')
-    expect(cypher.indexOf('s.labels')).toBeLessThan(cypher.indexOf('SET s.label        = $label'))
+    // Secondo giro UI · V-5: le traduzioni si mettono da parte al primo cambio e tornano con l'etichetta d'origine.
+    expect(cypher).toContain('SET s.labels = CASE WHEN s.label = $label THEN s.labels WHEN s.labels_origin_label = $label THEN s.labels_origin ELSE null END')
+    expect(cypher.indexOf('s.labels_origin_label = CASE WHEN s.label <> $label')).toBeLessThan(cypher.indexOf('SET s.labels = CASE'))
+    expect(cypher.indexOf('SET s.labels = CASE')).toBeLessThan(cypher.indexOf('SET s.label        = $label'))
   })
 
   it('saveWorkflowLayout NON marchia: la posizione sul canvas non è configurazione di processo', async () => {

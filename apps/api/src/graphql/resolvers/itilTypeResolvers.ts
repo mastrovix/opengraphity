@@ -32,6 +32,7 @@ import {
 } from '../../lib/enumScope.js'
 import { FIELD_SCOPE, mapFieldRows, mapITILField, loadITILTypes } from '../../lib/itilTypes.js'
 import { assertCustomFieldName } from '../../lib/customFieldName.js'
+import { assertStepsExist, parseStepEditability, parseStepVisibility, workflowStepNames } from '../../lib/customFieldSteps.js'
 import { removeTicketFieldValues, ticketFieldValues } from '../../lib/ticketCustomFields.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
@@ -242,6 +243,27 @@ async function assertEnumTypeLinkable(
 
 // ── buildITILMutations ────────────────────────────────────────────────────────
 
+/**
+ * Le regole di fase di un campo, pronte da salvare (secondo giro UI del 15 set
+ * 2026): validate contro le fasi dei workflow attivi del tipo di ticket, `null`
+ * per «sempre» / «dove si vede» (così un campo senza regole resta com'era).
+ * `undefined` = l'input non le porta: in modifica restano quelle salvate.
+ */
+async function stepRulesToStore(
+  session: Session, tenantId: string, typeName: string, input: Record<string, unknown>, field: string,
+): Promise<{ visibility: string | null; editability: string | null } | undefined> {
+  if (input['stepVisibility'] === undefined && input['stepEditability'] === undefined) return undefined
+  const visibility = parseStepVisibility(input['stepVisibility'] ?? null, `field ${field}`)
+  const editability = parseStepEditability(input['stepEditability'] ?? null, `field ${field}`)
+  if (visibility.mode !== 'always' || editability.mode !== 'visible') {
+    assertStepsExist(visibility, editability, await workflowStepNames(session, tenantId, typeName), field)
+  }
+  return {
+    visibility: visibility.mode === 'always' ? null : JSON.stringify(visibility),
+    editability: editability.mode === 'visible' ? null : JSON.stringify(editability),
+  }
+}
+
 export function buildITILMutations(requireMetamodelPermission: (ctx: GraphQLContext) => void) {
   return {
     updateITILType: async (
@@ -322,6 +344,7 @@ export function buildITILMutations(requireMetamodelPermission: (ctx: GraphQLCont
         ))
         const typeName = typeRow.records[0]?.get('name') as string | undefined
         if (typeName) await assertCustomFieldName(session, ctx.tenantId, typeName, String(input['name'] ?? ''))
+        const stepRules = typeName ? await stepRulesToStore(session, ctx.tenantId, typeName, input, String(input['label'] ?? input['name'] ?? '')) : undefined
 
         // Il campo nuovo è del TENANT (`tenant_id`, `is_system: false`) anche
         // su un tipo condiviso: quindi può essere agganciato al vocabolario del
@@ -358,6 +381,8 @@ export function buildITILMutations(requireMetamodelPermission: (ctx: GraphQLCont
               visibility_script: $visibilityScript,
               default_script:    $defaultScript,
               visible_to_end_user: $visibleToEndUser,
+              step_visibility:   $stepVisibility,
+              step_editability:  $stepEditability,
               created_at:        $now
             })
             CREATE (t)-[:HAS_FIELD]->(f)
@@ -384,6 +409,8 @@ export function buildITILMutations(requireMetamodelPermission: (ctx: GraphQLCont
             visibilityScript: (input['visibilityScript'] as string | null | undefined) ?? null,
             defaultScript:    (input['defaultScript']    as string | null | undefined) ?? null,
             visibleToEndUser: input['visibleToEndUser'] === true,
+            stepVisibility:   stepRules?.visibility ?? null,
+            stepEditability:  stepRules?.editability ?? null,
             tenantId:         ctx.tenantId,
             now:              new Date().toISOString(),
           }),
@@ -428,11 +455,15 @@ export function buildITILMutations(requireMetamodelPermission: (ctx: GraphQLCont
         // Ondata 4: nome e tipo sono la proprietà e la forma dei valori già
         // scritti sui ticket — come per i campi dei CI, non si cambiano in posto.
         const stored = await session.executeRead(tx => tx.run(
-          'MATCH (f:CIFieldDefinition {id: $fieldId, tenant_id: $tenantId}) RETURN f.name AS name, f.field_type AS fieldType',
-          { fieldId, tenantId: ctx.tenantId },
+          `MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId, tenant_id: $tenantId})
+           WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
+           RETURN f.name AS name, f.field_type AS fieldType, t.name AS typeName`,
+          { typeId, fieldId, tenantId: ctx.tenantId },
         ))
         const storedName = stored.records[0]?.get('name') as string | undefined
         const storedType = stored.records[0]?.get('fieldType') as string | undefined
+        const storedTypeName = stored.records[0]?.get('typeName') as string | undefined
+        const stepRules = storedTypeName ? await stepRulesToStore(session, ctx.tenantId, storedTypeName, input, String(input['label'] ?? storedName ?? '')) : undefined
         if ((input['name'] != null && input['name'] !== storedName) || (input['fieldType'] != null && input['fieldType'] !== storedType)) {
           throw new ValidationError(
             `The name and the type of field "${storedName ?? ''}" cannot change: tickets already store values under them. Remove the field and add a new one.`,
@@ -453,7 +484,9 @@ export function buildITILMutations(requireMetamodelPermission: (ctx: GraphQLCont
                 f.validation_script = $validationScript,
                 f.visibility_script = $visibilityScript,
                 f.default_script    = $defaultScript,
-                f.visible_to_end_user = $visibleToEndUser
+                f.visible_to_end_user = $visibleToEndUser,
+                f.step_visibility   = CASE WHEN $keepStepRules THEN f.step_visibility ELSE $stepVisibility END,
+                f.step_editability  = CASE WHEN $keepStepRules THEN f.step_editability ELSE $stepEditability END
             WITH f
             // Remove any existing USES_ENUM relation first (clean slate for enum reference)
             // Qui non si LEGGE il vocabolario: si stacca il legame vecchio del
@@ -485,6 +518,9 @@ export function buildITILMutations(requireMetamodelPermission: (ctx: GraphQLCont
             visibilityScript: (input['visibilityScript'] as string | null | undefined) ?? null,
             defaultScript:    (input['defaultScript']    as string | null | undefined) ?? null,
             visibleToEndUser: input['visibleToEndUser'] === true,
+            keepStepRules:    stepRules === undefined,
+            stepVisibility:   stepRules?.visibility ?? null,
+            stepEditability:  stepRules?.editability ?? null,
           }),
         )
       }, true)

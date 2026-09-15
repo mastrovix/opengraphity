@@ -1204,8 +1204,31 @@ async function enumValueLabelsField(
   return valueLabelEntries(parent.values, parent.valueLabelsRaw, lingua, predefinita)
 }
 
+/**
+ * Cosa tocca rinominare (o togliere) un valore, prima di farlo: record per tipo
+ * e campo, liste della policy degli allarmi, matrici di dominio, configurazione
+ * (secondo giro UI del 15 set 2026: la rinomina riscriveva i record senza una
+ * conferma né un conteggio). Stesso conteggio del rifiuto della cancellazione.
+ */
+export async function enumValueUsage(_: unknown, args: { id: string; value: string }, ctx: GraphQLContext) {
+  const session = getSession(undefined, 'READ')
+  try {
+    const found = await session.executeRead((tx) => tx.run(`
+      MATCH (e:EnumTypeDefinition {id: $id})
+      WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')
+      RETURN e.name AS name
+    `, { id: args.id, tenantId: ctx.tenantId }))
+    if (!found.records.length) throw new NotFoundError('EnumTypeDefinition', args.id)
+    const name = found.records[0]!.get('name') as string
+    const [usage] = await countEnumValueUsage(session, ctx.tenantId, name, [args.value])
+    return usage ?? { value: args.value, records: [], policyLists: [], matrices: [], configSites: [], total: 0 }
+  } finally {
+    await session.close()
+  }
+}
+
 export const enumTypeResolvers = {
-  Query:    { enumTypes, enumType },
+  Query:    { enumTypes, enumType, enumValueUsage },
   Mutation: { createEnumType, updateEnumType, deleteEnumType, customizeEnumType, renameEnumValue, reorderEnumValues, adoptShippedValues, acknowledgeShippedValues },
   EnumTypeDefinition: { valueLabels: enumValueLabelsField, newShippedValues: newShippedValuesField },
 }

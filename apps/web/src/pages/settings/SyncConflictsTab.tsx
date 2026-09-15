@@ -24,10 +24,10 @@ export function SyncConflictsTab({ conflicts, loading, onResolveConflict }: Sync
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {['open', 'resolved', 'all'].map(s => (
-          <button type="button" key={s} onClick={() => setFilter(s)}
+        {(['open', 'resolved', 'all'] as const).map(s => (
+          <button type="button" key={s} aria-pressed={filter === s} onClick={() => setFilter(s)}
             style={{ padding: '6px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer', background: filter === s ? colors.brand : colors.white, color: filter === s ? colors.white : palette.neutral.textMuted }}>
-            {s}
+            {t(`pages.sync.filter.${s}`)}
           </button>
         ))}
       </div>
@@ -38,7 +38,7 @@ export function SyncConflictsTab({ conflicts, loading, onResolveConflict }: Sync
         <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
           {filtered.length === 0 && (
             <div style={{ padding: 32, textAlign: 'center', color: colors.slate, fontSize: 'var(--font-size-body)' }}>
-              {filter === 'open' ? 'No open conflicts' : 'No conflicts found'}
+              {filter === 'open' ? t('pages.sync.noOpenConflicts') : t('pages.sync.noConflicts')}
             </div>
           )}
           {filtered.map((c, i) => {
@@ -53,7 +53,7 @@ export function SyncConflictsTab({ conflicts, loading, onResolveConflict }: Sync
                       <StatusBadge status={c.status} />
                     </div>
                     <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate, marginTop: 2 }}>
-                      Locked fields: {fields.join(', ') || '—'} · {formatDateTime(c.createdAt)}
+                      {t('pages.sync.lockedFields', { fields: fields.join(', ') || '—' })} · {formatDateTime(c.createdAt)}
                     </div>
                     {c.resolution && (
                       <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-success)', marginTop: 2 }}>{t('pages.sync.conflict.resolution', { resolution: c.resolution })}</div>

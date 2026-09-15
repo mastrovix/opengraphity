@@ -383,30 +383,32 @@ const Query = {
     }
   },
 
-  async executeReport(_: unknown, args: { templateId: string }, ctx: GraphQLContext) {
+  async executeReport(_: unknown, args: { templateId: string; language?: string | null }, ctx: GraphQLContext) {
+    const language = viewerLanguage(args.language)
     await withSession(s => assertReportTemplateAccess(s, args.templateId, ctx, 'read'))
     const template = await loadFullTemplate(args.templateId, ctx.tenantId)
     if (!template) throw new NotFoundError('ReportTemplate', args.templateId)
 
     const results = await Promise.all(
-      template.sections.map(sec => executeReportSection(sec, ctx.tenantId)),
+      template.sections.map(sec => executeReportSection(sec, ctx.tenantId, { language })),
     )
     return { sections: results }
   },
 
   async previewReportSection(
     _: unknown,
-    args: { input: SectionInput },
+    args: { input: SectionInput; language?: string | null },
     ctx: GraphQLContext,
   ) {
     // Identifiers are validated inside executeReportSection (buildReportQuery)
     // against the tenant whitelist; a rejected preview surfaces as section error.
-    return executeReportSection(sectionInputToDef(args.input, 'preview'), ctx.tenantId)
+    return executeReportSection(sectionInputToDef(args.input, 'preview'), ctx.tenantId, { language: viewerLanguage(args.language) })
   },
 }
 
 // ── Import Mutation from reportMutations.ts ───────────────────────────────────
 import { Mutation as ReportMutation } from './reportMutations.js'
+import { viewerLanguage } from '../../lib/tenantLanguage.js'
 
 async function updateReportSchedule(
   _: unknown,

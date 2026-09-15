@@ -161,6 +161,7 @@ export function InternalChatPanel({ entityType, entityId, currentUserId }: Props
           value={body}
           onChange={setBody}
           placeholder={t('internalChat.placeholder')}
+          label={t('internalChat.title')}
           onSubmit={handleSend}
           rows={2}
           style={{ flex: 1 }}

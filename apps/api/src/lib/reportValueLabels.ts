@@ -37,6 +37,13 @@ const sourceKey = (s: ReportValueSource) => `${s.neo4jLabel}.${snake(s.field)}`
 
 export async function loadReportValueLabeler(
   session: Session, tenantId: string, sources: ReadonlyArray<ReportValueSource | null>,
+  /**
+   * La lingua di chi guarda (secondo giro UI del 15 set 2026 · V-20): con
+   * l'interfaccia in italiano il widget «Incident per priorità» diceva
+   * «Medium, Critical», perché le etichette si mettevano nella lingua del
+   * cliente. Assente = quella del cliente (invio programmato, PDF, Excel).
+   */
+  language?: Lingua,
 ): Promise<ReportValueLabeler> {
   const wanted = sources.filter((s): s is ReportValueSource => s !== null)
   if (wanted.length === 0) return identityLabeler
@@ -70,7 +77,7 @@ export async function loadReportValueLabeler(
   }
   if (readers.size === 0) return identityLabeler
 
-  const lingua: Lingua = await languageFor(tenantId)
+  const lingua: Lingua = language ?? await languageFor(tenantId)
 
   const vocabularyNames = [...new Set([...readers.values()].flatMap((r) => (r.kind === 'vocabulary' ? [r.name] : [])))]
   const vocabularies = new Map<string, { tenant: string; labels: EnumValueLabels }>()
@@ -95,7 +102,8 @@ export async function loadReportValueLabeler(
   for (const r of readers.values()) {
     if (r.kind !== 'steps' || stepLabels.has(r.itilType)) continue
     const steps = await getWorkflowSteps(session, tenantId, r.itilType)
-    stepLabels.set(r.itilType, new Map(steps.filter((s) => s.label).map((s) => [s.name, s.label!])))
+    // V-20: il passo nella lingua di chi legge, se il passo ha la traduzione; altrimenti la sua etichetta.
+    stepLabels.set(r.itilType, new Map(steps.filter((s) => s.label).map((s) => [s.name, s.labels.find((l) => l.language === lingua)?.label || s.label!])))
   }
 
   return (source, value) => {

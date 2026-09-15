@@ -50,7 +50,7 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
       </div>
 
       <FormField label={t('citypeDesigner.color')}>
-        <ColorField value={settingsForm.color} onChange={(hex) => setSettingsForm((p) => p && ({ ...p, color: hex }))} />
+        <ColorField label={t('citypeDesigner.color')} value={settingsForm.color} onChange={(hex) => setSettingsForm((p) => p && ({ ...p, color: hex }))} />
       </FormField>
 
       <FormField label={t('citypeDesigner.validationScript')}>
@@ -58,6 +58,7 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
           <Trans i18nKey="citypeDesigner.validationScriptHint" components={{ code: <code /> }} />
         </p>
         <textarea
+          aria-label={t('citypeDesigner.validationScript')}
           style={{ ...textareaS, minHeight: 100 }}
           value={settingsForm.validationScript}
           onChange={(e) => setSettingsForm((p) => p && ({ ...p, validationScript: e.target.value }))}

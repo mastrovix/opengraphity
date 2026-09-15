@@ -15,6 +15,7 @@
  */
 import { v4 as uuidv4 } from 'uuid'
 import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
+import { creationStepContext } from '../lib/customFieldSteps.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { getActiveOLAContractsFor, withContractCalendars, getTenantTimezone, scheduleOLABreaches } from '@opengraphity/sla'
 import { ValidationError } from '../lib/errors.js'
@@ -90,7 +91,7 @@ export async function createChangeRFC(
   // le regole «change» (cinque su c-one) non erano applicate da nessuna parte.
   await assertCIsLinkable(ctx.tenantId, 'change', affectedCIIds)
   const customProps = input.customFields == null ? {} : await withSession(async (session) =>
-    resolveCustomFieldWrites(ctx.tenantId, 'change', await customFieldDefs(session, ctx.tenantId, 'change'), input.customFields, { current: null }))
+    resolveCustomFieldWrites(ctx.tenantId, 'change', await customFieldDefs(session, ctx.tenantId, 'change'), input.customFields, { current: null, stepContext: await creationStepContext(session, ctx.tenantId, 'change', null) }))
   const created = await withSession(async (session) => {
     // Letture e validazioni PRIMA della transazione: se falliscono non c'è nulla da annullare.
     await assertCIHasOwnerAndSupport(session, ctx.tenantId, affectedCIIds)

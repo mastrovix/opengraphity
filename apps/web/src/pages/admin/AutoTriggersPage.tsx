@@ -275,6 +275,7 @@ export function AutoTriggersPage() {
                 key={i}
                 condition={c}
                 entityType={form.entityType}
+                allowChanged={form.eventType === 'on_update' || form.eventType === 'on_field_change'}
                 onChange={p => setCondition(i, p)}
                 onRemove={() => removeCondition(i)}
               />

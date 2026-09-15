@@ -3,6 +3,7 @@ import type { GraphQLContext } from '../../../context.js'
 import { withSession } from '../ci-utils.js'
 import { loadReportSection, mapDashboardConfig, mapDashboardWidget, type Props } from './helpers.js'
 import { executeReportSection } from '../../../lib/reportExecutor.js'
+import { viewerLanguage } from '../../../lib/tenantLanguage.js'
 
 // ── Query resolvers ───────────────────────────────────────────────────────────
 
@@ -218,12 +219,13 @@ interface WidgetParent {
   __widgetResult?: Promise<{ data: string | null; error: string | null }>
 }
 
-function resolveWidgetResult(parent: WidgetParent, ctx: GraphQLContext) {
+function resolveWidgetResult(parent: WidgetParent, ctx: GraphQLContext, language: string | null | undefined) {
   parent.__widgetResult ??= (async () => {
     try {
       const section = await loadReportSection(parent.reportSectionId, ctx.tenantId)
       if (!section) return { data: null, error: 'Report section not found' }
-      const result = await executeReportSection(section, ctx.tenantId)
+      // V-20: le etichette dei valori nella lingua di chi guarda.
+      const result = await executeReportSection(section, ctx.tenantId, { language: viewerLanguage(language) })
       // Never discard the section error: an empty widget must say WHY.
       return { data: result.error ? null : result.data, error: result.error }
     } catch (err: unknown) {
@@ -235,18 +237,18 @@ function resolveWidgetResult(parent: WidgetParent, ctx: GraphQLContext) {
 
 export async function widgetData(
   parent: { reportSectionId: string },
-  _: unknown,
+  args: { language?: string | null },
   ctx: GraphQLContext,
 ) {
   if (!parent.reportSectionId) return null
-  return (await resolveWidgetResult(parent, ctx)).data
+  return (await resolveWidgetResult(parent, ctx, args?.language)).data
 }
 
 export async function widgetError(
   parent: { reportSectionId: string },
-  _: unknown,
+  args: { language?: string | null },
   ctx: GraphQLContext,
 ) {
   if (!parent.reportSectionId) return null
-  return (await resolveWidgetResult(parent, ctx)).error
+  return (await resolveWidgetResult(parent, ctx, args?.language)).error
 }

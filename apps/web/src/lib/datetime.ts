@@ -5,7 +5,7 @@
  * changes/shared, AuditTimeline, ServiceRequestDetailPage) con soglie e stringhe
  * diverse: lo stesso timestamp diventava "adesso" in una pagina e "ora" in
  * un'altra. Le funzioni qui sotto sono quelle usate dalle pagine ITSM; i nomi
- * storici (fmtDate/fmtShort/formatDate) restano come alias per non toccare
+ * storici (fmtDate/formatDate) restano come alias per non toccare
  * ogni call site in un colpo solo.
  *
  * Lingua: le date seguono la lingua attiva di i18next (`resolvedLanguage`,
@@ -53,15 +53,6 @@ export function formatDate(iso: string | null | undefined): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(currentLocale(), DATE)
 }
 
-/** "08/09/2026 14:05" — compatta, a larghezza fissa (tabelle, timeline audit). */
-export function formatDateShort(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
-}
-
 /**
  * Solo ora, lingua attiva. '—' se assente.
  *
@@ -99,4 +90,3 @@ export function formatDuration(ms: number): string {
 
 // Alias storici (call site delle change).
 export const fmtDate  = formatDate
-export const fmtShort = formatDateShort

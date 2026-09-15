@@ -34,3 +34,13 @@ export const GET_ENUM_SHIPPED_DRIFT = gql`
     }
   }
 `
+
+/** Cosa usa un valore: si chiede prima di rinominarlo, per dirlo nella conferma. */
+export const GET_ENUM_VALUE_USAGE = gql`
+  query GetEnumValueUsage($id: ID!, $value: String!) {
+    enumValueUsage(id: $id, value: $value) {
+      value total policyLists matrices configSites
+      records { typeName fieldName count }
+    }
+  }
+`

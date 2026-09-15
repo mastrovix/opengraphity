@@ -122,6 +122,8 @@ export const GET_ITIL_TYPES = gql`
         enumTypeId enumTypeName
         validationScript visibilityScript defaultScript
         visibleToEndUser
+        stepVisibility { mode steps step }
+        stepEditability { mode steps }
       }
     }
   }
@@ -151,6 +153,13 @@ export const GET_TOPOLOGY = gql`
   }
 `
 
+/** I gruppi di un CI, riletti quando si torna dalla pagina del CI (secondo giro UI · V-1). */
+export const GET_CI_GROUPS_BY_ID = gql`
+  query CIGroupsById($id: ID!) {
+    ciById(id: $id) { id ownerGroup { id name } supportGroup { id name } }
+  }
+`
+
 /** Solo id e tipo: serve al reindirizzamento /cis/:id → /ci/:type/:id usato dai link delle notifiche. */
 export const GET_CI_BY_ID_REF = gql`
   query CIByIdRef($id: ID!) {
@@ -166,6 +175,13 @@ export const GET_CI_TYPE_DELETION_IMPACT = gql`
       fieldRequirementRules businessRules autoTriggers customWidgets reportSections assessmentQuestionLinks
       blockingServiceMaps
     }
+  }
+`
+
+/** Quanti CI hanno un valore nel campo del cliente (secondo giro UI · V-15): la conferma di cancellazione lo dice. */
+export const GET_CI_FIELD_VALUE_COUNT = gql`
+  query CIFieldValueCount($typeId: ID!, $fieldId: ID!) {
+    ciFieldValueCount(typeId: $typeId, fieldId: $fieldId)
   }
 `
 

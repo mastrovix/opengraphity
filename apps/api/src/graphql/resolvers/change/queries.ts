@@ -625,7 +625,7 @@ export async function taskById(_: unknown, args: { id: string }, ctx: GraphQLCon
         taskCode: string
         changeId: string; changeCode: string; changeTitle: string
         changePhase: string; changeDesc: string | null
-        ciId: string; ciName: string; ciType: string; ciEnv: string | null
+        ciId: string; ciName: string; ciType: string | null; ciLabels: string[]; ciEnv: string | null
       }>(session, `
         MATCH (c:Change {tenant_id: $tenantId})-[:${rel}]->(t:${label} {id: $id})
         WHERE coalesce(c.deleted, false) = false
@@ -636,7 +636,7 @@ export async function taskById(_: unknown, args: { id: string }, ctx: GraphQLCon
                wi.current_step AS changePhase,
                ('Why: ' + coalesce(c.why, '—') + ' · What: ' + coalesce(c.what, '—')) AS changeDesc,
                ci.id AS ciId, ci.name AS ciName,
-               coalesce(ci.type, toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))) AS ciType,
+               ci.type AS ciType, labels(ci) AS ciLabels,
                ci.environment AS ciEnv
       `, { id: args.id, tenantId: ctx.tenantId })
       if (row) {
@@ -651,7 +651,8 @@ export async function taskById(_: unknown, args: { id: string }, ctx: GraphQLCon
           changeDescription: row.changeDesc ?? null,
           ciId:             row.ciId,
           ciName:           row.ciName,
-          ciType:           row.ciType,
+          // Secondo giro UI · V-3: `toLower(head(labels))` dava «businessapplication».
+          ciType:           row.ciType ?? ciTypeFromLabels(ctx.tenantId, row.ciLabels),
           ciEnv:            row.ciEnv,
         }
       }

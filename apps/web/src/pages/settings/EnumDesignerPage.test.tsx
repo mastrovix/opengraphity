@@ -10,10 +10,10 @@
  * del tenant e apre quella.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { EnumDesignerPage } from './EnumDesignerPage'
-import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT } from '@/graphql/queries'
-import { ACKNOWLEDGE_SHIPPED_VALUES, ADOPT_SHIPPED_VALUES, CUSTOMIZE_ENUM_TYPE, UPDATE_ENUM_TYPE, CREATE_ENUM_TYPE } from '@/graphql/mutations'
+import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT, GET_ENUM_VALUE_USAGE } from '@/graphql/queries'
+import { ACKNOWLEDGE_SHIPPED_VALUES, ADOPT_SHIPPED_VALUES, CUSTOMIZE_ENUM_TYPE, UPDATE_ENUM_TYPE, CREATE_ENUM_TYPE, RENAME_ENUM_VALUE } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 
 vi.mock('sonner', () => ({
@@ -237,5 +237,33 @@ describe('Dizionario — creare un vocabolario', () => {
     await user.type(screen.getByLabelText(/^Label/), 'Change outcome')
     await user.click(screen.getByRole('button', { name: /Create/ }))
     expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('at least one value'))
+  })
+})
+
+/** Secondo giro UI del 15 set 2026: la rinomina riscriveva i record senza conferma né conteggio. */
+describe('Dizionario — rinominare un valore chiede conferma dicendo cosa riscrive', () => {
+  it('conta record e matrici, chiede, e solo dopo il sì rinomina', async () => {
+    const renamed = vi.fn()
+    const usageMock: GqlMock = {
+      request: { query: GET_ENUM_VALUE_USAGE, variables: { id: 'e-2', value: 'rosso' } },
+      result: { data: { enumValueUsage: { __typename: 'EnumValueUsage', value: 'rosso', total: 13, policyLists: [], matrices: ['priority'], configSites: [],
+        records: [{ __typename: 'EnumValueRecordUsage', typeName: 'Incident', fieldName: 'urgency', count: 12 }] } } },
+    }
+    const renameMock: GqlMock = {
+      request: { query: RENAME_ENUM_VALUE, variables: { id: 'e-2', from: 'rosso', to: 'rubino' } },
+      result: () => { renamed(); return { data: { renameEnumValue: { ...OWN, values: ['rubino'], valueLabels: etichette(['rubino']) } } } },
+    }
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: mocks([usageMock, renameMock]) })
+    await user.click(await screen.findByRole('button', { name: /Colore sede/ }))
+    await user.click(screen.getByRole('button', { name: 'Rename "rosso"' }))
+    const input = screen.getByRole('textbox', { name: 'Rename "rosso"' })
+    await user.clear(input)
+    await user.type(input, 'rubino')
+    await user.click(screen.getByRole('button', { name: 'Confirm the rename' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Rename «rosso» to «rubino»?' })
+    expect(dialog).toHaveTextContent('12 Incident records (urgency); the priority matrix')
+    expect(renamed).not.toHaveBeenCalled()
+    await user.click(within(dialog).getByRole('button', { name: 'Rename' }))
+    await waitFor(() => expect(renamed).toHaveBeenCalled())
   })
 })

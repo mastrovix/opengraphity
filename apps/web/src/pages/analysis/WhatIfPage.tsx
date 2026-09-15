@@ -219,6 +219,7 @@ export function WhatIfPage() {
           <Input
             style={{ padding: '8px 12px', border: '1px solid var(--color-border)' }}
             placeholder={t('pages.whatIf.searchCI')}
+            aria-label={t('pages.whatIf.searchCI')}
             value={selectedCI ? selectedCI.name : ciSearch}
             onChange={e => { setCiSearch(e.target.value); setSelectedCI(null); setDropdownOpen(true) }}
             onFocus={() => { if (ciSearch.length >= 1) setDropdownOpen(true) }}
@@ -273,6 +274,7 @@ export function WhatIfPage() {
 
         {/* Depth */}
         <select
+          aria-label={t('pages.whatIf.depth')}
           value={depth}
           onChange={e => setDepth(Number(e.target.value))}
           style={{ width: 'auto', padding: '7px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', cursor: 'pointer' }}

@@ -1,6 +1,7 @@
 import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { colors, palette } from '@/lib/tokens'
+import { LabelledField } from '@/components/ui/FormControls'
 
 // ── Panel styles ──────────────────────────────────────────────────────────────
 
@@ -59,12 +60,13 @@ export function PanelHeader({ title, onClose }: { title: string; onClose: () => 
 
 export function PanelField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-        {label}
-      </span>
+    <LabelledField
+      label={label}
+      style={{ display: 'flex', flexDirection: 'column', gap: 4 }}
+      labelStyle={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }}
+    >
       {children}
-    </div>
+    </LabelledField>
   )
 }
 

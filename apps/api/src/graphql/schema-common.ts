@@ -93,6 +93,33 @@ export function cmdbSDL(): string {
     isSystem: Boolean!
     enumTypeId:   ID
     enumTypeName: String
+    # Solo per i campi dei ticket: in quali fasi del workflow si vede e si modifica.
+    stepVisibility:  FieldStepVisibility!
+    stepEditability: FieldStepEditability!
+  }
+
+  # Dove si vede un campo del ticket: always | steps (solo in \`steps\`) | from (da \`step\` in poi).
+  type FieldStepVisibility {
+    mode:  String!
+    steps: [String!]!
+    step:  String
+  }
+
+  # Dove si modifica: visible (dovunque si veda) | steps (solo in \`steps\`, e dove si vede).
+  type FieldStepEditability {
+    mode:  String!
+    steps: [String!]!
+  }
+
+  input FieldStepVisibilityInput {
+    mode:  String!
+    steps: [String!]
+    step:  String
+  }
+
+  input FieldStepEditabilityInput {
+    mode:  String!
+    steps: [String!]
   }
 
   type CIRelationDef {
@@ -129,6 +156,9 @@ export function cmdbSDL(): string {
     defaultScript:    String
     # Il portale offre il campo all'utente finale (default no).
     visibleToEndUser: Boolean
+    # In quali fasi si vede e si modifica (assente = come prima: invariato in modifica, «sempre» in creazione).
+    stepVisibility:  FieldStepVisibilityInput
+    stepEditability: FieldStepEditabilityInput
   }
 
   input UpdateITILTypeInput {

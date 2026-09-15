@@ -7,6 +7,7 @@
  * what they need via props and manage only their own local UI state
  * (e.g. which modal is open inside a row).
  */
+import { TicketOLACard } from '@/components/ticket/ola/TicketOLACard'
 import { useId, useState } from 'react'
 import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
 import { useParams, useNavigate } from 'react-router-dom'
@@ -52,7 +53,8 @@ import { ChangeInfoCard } from './components/ChangeInfoCard'
 import { CITasksTable } from './components/CITasksTable'
 import { AuditTimeline } from './components/AuditTimeline'
 import { AddCIModal } from './components/AddCIModal'
-import { fmtShort, fmtDate } from './components/shared'
+import { fmtDate } from './components/shared'
+import { formatDateTime } from '@/lib/datetime'
 import { UnifiedLinkedTickets } from '@/components/UnifiedLinkedTickets'
 import { SuppressedAlarmsSection } from '@/pages/events/CorrelatedEventsSection'
 import { colors, palette } from '@/lib/tokens'
@@ -211,7 +213,8 @@ export function ChangeDetailPage() {
     if (wfPurposeOf(tr.toStep) === 'implementation' && firstReleaseStart && Date.parse(firstReleaseStart) > Date.now()) {
       const ok = await confirm({
         title: t('pages.changeDetail.beforeWindowTitle'),
-        body: t('pages.changeDetail.beforeWindowBody', { step: tr.label, when: fmtShort(firstReleaseStart) }),
+        // V-7: il nome del PASSO di arrivo nella lingua di chi guarda, non l'etichetta dell'azione («Avanza a Deployment»).
+        body: t('pages.changeDetail.beforeWindowBody', { step: wfByName.get(tr.toStep) ? localizedLabel(wfByName.get(tr.toStep)!) : tr.toStep, when: formatDateTime(firstReleaseStart) }),
         confirmLabel: t('pages.changeDetail.beforeWindowConfirm'),
       })
       if (!ok) return
@@ -264,7 +267,8 @@ export function ChangeDetailPage() {
           )}
         </div>
       </div>
-      <PhaseChipBar current={currentStep} steps={wfSteps} />
+      {/* Secondo giro UI · V-7: nella lingua di chi guarda, non la sola etichetta di base. */}
+      <PhaseChipBar current={currentStep} steps={wfSteps.map(withLocalizedLabel)} />
 
       <ChangeInfoCard
         change={change}
@@ -277,12 +281,13 @@ export function ChangeDetailPage() {
         totalTasks={totalTasks}
         completedTasks={completedTasks}
         transitions={transitions}
-        stepLabel={wfByName.get(currentStep)?.label ?? currentStep}
+        stepLabel={wfByName.get(currentStep) ? localizedLabel(wfByName.get(currentStep)!) : currentStep}
         onTransitionClick={handleTransitionClick}
       />
 
       {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
       <div style={{ marginBottom: 16 }}>
+        <TicketOLACard entityType="change" entityId={change.id} />
         <CustomFieldsCard entityType="change" ticketId={change.id} fields={change.customFields ?? []} canEdit={can('ticket.work')} onSaved={() => void refetchAll()} />
       </div>
 
@@ -317,7 +322,7 @@ export function ChangeDetailPage() {
                 </div>
                 {approvals.map((a) => (
                   <div key={`${a.kind}-${a.teamId}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-body)' }}>
-                    <span style={{ width: 150, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{a.kind === 'change_manager' ? 'Change Manager' : 'Owner Group'}</span>
+                    <span style={{ width: 150, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{a.kind === 'change_manager' ? t('changeTasks.approvalKind.change_manager') : t('changeTasks.approvalKind.owner_group')}</span>
                     <span style={{ flex: 1, color: 'var(--color-slate)' }}>{a.teamName ?? '—'}</span>
                     <span style={{ width: 110 }}>
                       {a.status === 'approved'
@@ -383,8 +388,8 @@ export function ChangeDetailPage() {
             return (
               <div key={a.ci.id} style={{ display: 'flex', gap: 16, padding: '6px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-label)' }}>
                 <span style={{ width: 120, fontWeight: 500, color: 'var(--color-slate-dark)', flexShrink: 0 }}>{a.ci.name}</span>
-                {firstVal && <span style={{ color: 'var(--color-slate-light)' }}>Validation: <strong style={{ color: 'var(--color-slate)' }}>{fmtShort(firstVal)}</strong></span>}
-                {firstRel && <span style={{ color: 'var(--color-slate-light)' }}>Deploy: <strong style={{ color: 'var(--color-slate)' }}>{fmtShort(firstRel)}</strong></span>}
+                {firstVal && <span style={{ color: 'var(--color-slate-light)' }}>{t('changeTasks.validation')}: <strong style={{ color: 'var(--color-slate)' }}>{formatDateTime(firstVal)}</strong></span>}
+                {firstRel && <span style={{ color: 'var(--color-slate-light)' }}>{t('changeTasks.deploy')}: <strong style={{ color: 'var(--color-slate)' }}>{formatDateTime(firstRel)}</strong></span>}
               </div>
             )
           })}
@@ -413,7 +418,7 @@ export function ChangeDetailPage() {
                 color: active ? 'var(--color-brand)' : 'var(--color-slate-light)',
                 fontWeight: active ? 600 : 500,
               }}>
-                {tab === 'affected' ? 'CI Affected' : 'CI Impacted'}
+                {tab === 'affected' ? t('changeTasks.ciTab.affected') : t('changeTasks.ciTab.impacted')}
                 <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 8, backgroundColor: active ? 'var(--color-brand-light)' : colors.slateBg, color: active ? 'var(--color-brand)' : 'var(--color-slate-light)' }}>
                   {tab === 'affected' ? affected.length : impactedCIs.length}
                 </span>

@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
+import { creationStepContext } from '../lib/customFieldSteps.js'
 import { nextTicketNumber } from '../lib/ticketNumbering.js'
 import { resolveNewTicketPriority } from '../lib/priority.js'
 import { workflowEngine } from '@opengraphity/workflow'
@@ -76,7 +77,7 @@ export async function createProblem(
   const urgency  = resolved.urgency
   // Campi personalizzati (ondata 4): solo dai canali che li mandano (vedi createIncident).
   const customProps = input.customFields == null ? {} : await withSession(async (session) =>
-    resolveCustomFieldWrites(ctx.tenantId, 'problem', await customFieldDefs(session, ctx.tenantId, 'problem'), input.customFields, { current: null }))
+    resolveCustomFieldWrites(ctx.tenantId, 'problem', await customFieldDefs(session, ctx.tenantId, 'problem'), input.customFields, { current: null, stepContext: await creationStepContext(session, ctx.tenantId, 'problem', input.category ?? null) }))
   const id  = uuidv4()
   const now = new Date().toISOString()
 

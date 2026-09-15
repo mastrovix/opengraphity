@@ -30,6 +30,8 @@ export interface Me {
   slackId: string | null
   /** Riceve le e-mail di notifica (null = nessun utente nel grafo per questa identità). */
   emailNotifications: boolean | null
+  /** La lingua scelta dalla persona (null = quella dell'organizzazione). */
+  language: string | null
   teams:   { id: string; name: string }[]
 }
 

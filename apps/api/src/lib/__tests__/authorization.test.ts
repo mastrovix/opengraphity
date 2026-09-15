@@ -56,7 +56,8 @@ describe('policy ↔ schema', () => {
       'me', 'myTicket', 'myTicketStats', 'myTickets', 'portalCustomFields', 'portalSeverityChoices', 'serviceCatalogItems',
       'tenantBrand', 'tenantLanguageSettings', 'ticketCategories',
     ])
-    expect(m).toEqual(['addTicketComment', 'createServiceRequest', 'createTicket', 'deleteComment', 'rateKBArticle', 'reopenTicket', 'updateComment'])
+    // setMyLanguage: la lingua della persona, anche dal portale (secondo giro UI del 15 set 2026)
+    expect(m).toEqual(['addTicketComment', 'createServiceRequest', 'createTicket', 'deleteComment', 'rateKBArticle', 'reopenTicket', 'setMyLanguage', 'updateComment'])
   })
 
   it('viewer non scrive tranne le azioni personali', () => {
@@ -65,7 +66,7 @@ describe('policy ↔ schema', () => {
       'addDashboardWidget', 'cloneDashboard', 'createCustomWidget', 'createDashboard', 'deleteCustomWidget', 'deleteDashboard',
       'deleteReportConversation', 'dismissAllNotifications', 'linkSlackAccount', 'markAllNotificationsRead', 'markNotificationRead',
       'rateKBArticle', 'removeDashboardWidget', 'reorderCustomWidgets', 'reorderDashboardWidgets', 'saveDashboardLayout',
-      'setMyEmailNotifications', 'unwatchEntity', 'updateCustomWidget', 'updateDashboard', 'updateDashboardWidget', 'watchEntity',
+      'setMyEmailNotifications', 'setMyLanguage', 'unwatchEntity', 'updateCustomWidget', 'updateDashboard', 'updateDashboardWidget', 'watchEntity',
     ])
   })
 
@@ -168,6 +169,8 @@ describe('Servizi monitorati: ogni campo root di servicesSDL() ha i ruoli attesi
     // strumento della creazione (BusinessApplication senza mappa) e strumenti
     // della configurazione (ondata 2): diff con il grafo e anteprima del calcolo
     serviceMapCandidates: ADMIN, serviceMapProposal: ADMIN, serviceImpactPreview: ADMIN,
+    // secondo giro UI del 15 set 2026: l'anteprima dei componenti prima di creare la mappa
+    serviceMapCreationPreview: ADMIN,
     // ondata 6 · C-3: i tipi di relazione percorribili dal cliente, per il
     // dialogo di creazione (admin come le candidate)
     serviceRelationshipTypes: ADMIN,
@@ -205,7 +208,7 @@ describe('Servizi monitorati: ogni campo root di servicesSDL() ha i ruoli attesi
       expect(() => authorize('Mutation', f, 'operator')).toThrow(new RegExp(f))
       expect(() => authorize('Mutation', f, 'viewer')).toThrow(new RegExp(f))
     }
-    for (const f of ['serviceMapCandidates', 'serviceMapProposal', 'serviceImpactPreview', 'serviceRelationshipTypes']) {
+    for (const f of ['serviceMapCandidates', 'serviceMapCreationPreview', 'serviceMapProposal', 'serviceImpactPreview', 'serviceRelationshipTypes']) {
       expect(() => authorize('Query', f, 'operator')).toThrow(new RegExp(f))
       expect(() => authorize('Query', f, 'viewer')).toThrow(new RegExp(f))
     }

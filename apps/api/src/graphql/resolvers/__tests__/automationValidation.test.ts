@@ -23,7 +23,7 @@ vi.mock('../../../lib/workflowHelpers.js', () => ({
       : [{ name: 'nuovo' }, { name: 'in_lavorazione' }, { name: 'sistemato' }]),
 }))
 
-const { assertConditionsJson, assertActionsJson, assertStepTargets, automationResolvers } = await import('../automation.js')
+const { assertConditionsJson, assertActionsJson, assertStepTargets, automationResolvers, assertChangedOperatorEvent } = await import('../automation.js')
 const { ValidationError } = await import('../../../lib/errors.js')
 
 describe('assertConditionsJson', () => {
@@ -179,3 +179,19 @@ describe('createSLAPolicy — solo policy applicabili', () => {
       .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.compliance.warning' } } })
   })
 })
+
+/** Secondo giro UI del 15 set 2026 · V-19: una regola «aggiornato» scattava a ogni modifica finché la condizione restava vera. */
+describe('operatore «è cambiato» (V-19)', () => {
+  const changed = JSON.stringify([{ field: 'urgency', operator: 'changed' }, { field: 'urgency', operator: 'equals', value: 'high' }])
+  it('è un operatore valido', () => {
+    expect(assertConditionsJson(changed)).toBe(changed)
+  })
+  it('vale solo sugli aggiornamenti: su creazione o transizione è rifiutato, perché non scatterebbe mai', () => {
+    expect(() => assertChangedOperatorEvent(changed, 'on_update')).not.toThrow()
+    expect(() => assertChangedOperatorEvent(changed, 'on_field_change')).not.toThrow()
+    expect(() => assertChangedOperatorEvent(changed, 'on_create')).toThrow(ValidationError)
+    expect(() => assertChangedOperatorEvent(changed, 'on_transition')).toThrow(/only works when the ticket is updated/)
+    expect(() => assertChangedOperatorEvent(JSON.stringify([{ field: 'a', operator: 'equals', value: 'x' }]), 'on_create')).not.toThrow()
+  })
+})
+

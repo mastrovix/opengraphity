@@ -57,6 +57,7 @@ import { plannedWindowStart, beforePlannedWindow } from './components/plannedWin
 import { useConfirm } from '@/hooks/useConfirm'
 import { formatDateTime } from '@/lib/datetime'
 import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
 
 interface TaskDetail {
   id: string; code: string; kind: string
@@ -67,6 +68,7 @@ interface CatalogEntry { weight: number; sortOrder: number; question: QuestionDa
 
 export function TaskViewPage() {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const { taskId } = useParams<{ taskId: string }>()
   const navigate = useNavigate()
   const id = taskId ?? ''
@@ -218,6 +220,7 @@ export function TaskViewPage() {
         </span>
         <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginLeft: 12 }}>{t('pages.taskView.assignedTo')}</span>
         <select
+          aria-label={t('pages.taskView.assignedTo')}
           disabled={!canAssign}
           value={tsk.assignee?.id ?? ''}
           onChange={(e) => {
@@ -237,13 +240,15 @@ export function TaskViewPage() {
 
   return (
     <PageContainer style={{ padding: '16px 24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
+      {/* Il codice dell'attività è il titolo della pagina: il percorso finisce sul
+          tipo di attività, altrimenti «TASK…» si leggeva due volte di fila. */}
+      <nav aria-label={t('topbar.breadcrumb')} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
         <Link to={`/changes/${task.changeId}`} style={{ color: 'var(--color-brand)', textDecoration: 'none' }}>{task.changeCode}</Link>
-        <ChevronRight size={14} />
+        <ChevronRight size={14} aria-hidden="true" />
         <span style={{ color: 'var(--color-slate)' }}>{task.ciName}</span>
-        <ChevronRight size={14} />
-        <span style={{ color: 'var(--color-slate-dark)', fontWeight: 500 }}>{task.code}</span>
-      </div>
+        <ChevronRight size={14} aria-hidden="true" />
+        <span aria-current="page" style={{ color: 'var(--color-slate-dark)', fontWeight: 500 }}>{taskTitle}</span>
+      </nav>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 24, alignItems: 'start' }}>
         <div>
@@ -268,9 +273,9 @@ export function TaskViewPage() {
               </button>
             )}
           </div>
-          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 4px' }}>{taskTitle}</p>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 20px' }}>
-            {task.ciName}{task.ciType ? ` · ${task.ciType}` : ''}
+            {/* Secondo giro UI · V-2: etichette, non «application»/«business_application». */}
+            {task.ciName}{task.ciType ? ` · ${ciLabels.subtitle({ type: task.ciType, environment: task.ciEnv })}` : ''}
           </p>
 
           {assignable}

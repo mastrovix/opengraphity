@@ -6,8 +6,8 @@
  * preselezionato, e la nota nomina i tipi pre-approvati configurati.
  */
 import { describe, it, expect } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
-import { GET_USERS, GET_PRE_APPROVED_CHANGE_TYPES } from '@/graphql/queries'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { GET_USERS, GET_PRE_APPROVED_CHANGE_TYPES, GET_ALL_CIS, GET_CI_GROUPS_BY_ID, GET_TICKET_CI_EXCLUSIONS } from '@/graphql/queries'
 import { DomainVocabularyContext } from '@/contexts/DomainVocabularyContext'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { CreateChangePage } from './CreateChangePage'
@@ -53,7 +53,7 @@ describe('CreateChangePage — tipo di change', () => {
 
   it('la nota nomina i tipi pre-approvati configurati, con le etichette del cliente', async () => {
     renderWithProviders(withVocabulary(<CreateChangePage />), { route: '/changes/new', mocks: [users, preApproved(['standard', 'major'])] })
-    await waitFor(() => expect(screen.getByText(/Standard, Major: pre-approved, no approval needed/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Standard, Major: pre-approved, they skip the approval chain but still go through the assessment/)).toBeInTheDocument())
   })
 
   it('nessun tipo pre-approvato → tutti passano dall\'approvazione, e lo dice', async () => {
@@ -64,5 +64,44 @@ describe('CreateChangePage — tipo di change', () => {
   it('vocabolario vuoto → lo dice e indica dove si aggiungono i valori', async () => {
     renderWithProviders(withVocabulary(<CreateChangePage />, []), { route: '/changes/new', mocks: [users, preApproved([])] })
     expect(await screen.findByText(/No change type is defined/)).toBeInTheDocument()
+  })
+})
+
+// ── Secondo giro UI del 15 set 2026 · V-1 ────────────────────────────────────
+
+describe('CreateChangePage — CI senza gruppi (V-1)', () => {
+  it('«Ricontrolla» rilegge i gruppi del CI: il chip torna normale senza toglierlo e riaggiungerlo', async () => {
+    const ci = { __typename: 'CI', id: 'ba-1', name: 'Portale clienti', type: 'business_application', status: 'active', environment: 'production', description: null, createdAt: 'T', health: null }
+    const mocks: GqlMock[] = [
+      users, preApproved(['standard']),
+      { request: { query: GET_TICKET_CI_EXCLUSIONS, variables: { ticketType: 'change' } }, result: { data: { ticketCIExclusions: [{ __typename: 'TicketCIExclusion', ticketType: 'change', ciTypes: [] }] } }, maxUsageCount: Number.POSITIVE_INFINITY },
+      { request: { query: GET_ALL_CIS, variables: () => true }, result: { data: { allCIs: { __typename: 'AllCIsResult', total: 1, items: [{ ...ci, ownerGroup: null, supportGroup: null }] } } }, maxUsageCount: Number.POSITIVE_INFINITY },
+      { request: { query: GET_CI_GROUPS_BY_ID, variables: { id: 'ba-1' } }, result: { data: { ciById: { __typename: 'BusinessApplication', id: 'ba-1', ownerGroup: { __typename: 'Team', id: 't1', name: 'Sistemi' }, supportGroup: { __typename: 'Team', id: 't2', name: 'Service Desk' } } } } },
+    ]
+    const { user } = renderWithProviders(withVocabulary(<CreateChangePage />), { mocks, route: '/changes/new', path: '/changes/new' })
+    const search = await screen.findByPlaceholderText('Search a CI by name...')
+    fireEvent.change(search, { target: { value: 'Portale' } })
+    await user.click(await screen.findByRole('button', { name: /Portale clienti/ }))
+    const alert = await screen.findByText(/These CIs have no Owner Group or Support Group/)
+    await user.click(screen.getByRole('button', { name: 'Check again' }))
+    await waitFor(() => expect(alert).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Remove Portale clienti' })).toBeInTheDocument()
+  })
+  it('tornando sulla scheda (visibilitychange) i gruppi si rileggono da soli', async () => {
+    const ci = { __typename: 'CI', id: 'ba-1', name: 'Portale clienti', type: 'business_application', status: 'active', environment: 'production', description: null, createdAt: 'T', health: null }
+    const mocks: GqlMock[] = [
+      users, preApproved(['standard']),
+      { request: { query: GET_TICKET_CI_EXCLUSIONS, variables: { ticketType: 'change' } }, result: { data: { ticketCIExclusions: [{ __typename: 'TicketCIExclusion', ticketType: 'change', ciTypes: [] }] } }, maxUsageCount: Number.POSITIVE_INFINITY },
+      { request: { query: GET_ALL_CIS, variables: () => true }, result: { data: { allCIs: { __typename: 'AllCIsResult', total: 1, items: [{ ...ci, ownerGroup: null, supportGroup: null }] } } }, maxUsageCount: Number.POSITIVE_INFINITY },
+      { request: { query: GET_CI_GROUPS_BY_ID, variables: { id: 'ba-1' } }, result: { data: { ciById: { __typename: 'BusinessApplication', id: 'ba-1', ownerGroup: { __typename: 'Team', id: 't1', name: 'Sistemi' }, supportGroup: { __typename: 'Team', id: 't2', name: 'Service Desk' } } } } },
+    ]
+    const { user } = renderWithProviders(withVocabulary(<CreateChangePage />), { mocks, route: '/changes/new', path: '/changes/new' })
+    const search = await screen.findByPlaceholderText('Search a CI by name...')
+    fireEvent.change(search, { target: { value: 'Portale' } })
+    await user.click(await screen.findByRole('button', { name: /Portale clienti/ }))
+    const alert = await screen.findByText(/These CIs have no Owner Group or Support Group/)
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await waitFor(() => expect(alert).not.toBeInTheDocument())
   })
 })

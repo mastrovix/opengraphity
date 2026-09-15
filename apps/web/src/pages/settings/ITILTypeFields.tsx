@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { Plus, X, Check } from 'lucide-react'
 import { DesignerFieldRow } from './shared/DesignerFieldRow'
@@ -12,14 +12,94 @@ import type { ITILField, FieldFormState, EnumTypeOption } from './useITILTypeDes
 import { emptyForm, fieldToForm } from './useITILTypeDesigner'
 import { colors } from '@/lib/tokens'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { srOnlyStyle } from '@/lib/a11y'
 
 // ── FieldEditor (inline) ──────────────────────────────────────────────────────
 
+/**
+ * IN QUALI FASI SI VEDE E SI MODIFICA IL CAMPO (secondo giro UI del 15 set 2026,
+ * decisione del proprietario): su c-test la change chiedeva «Outcome» già
+ * all'apertura. L'API applica le stesse regole da ogni canale
+ * (`apps/api/src/lib/customFieldSteps.ts`).
+ */
+function StepRulesEditor({ form, set, steps, initialStep }: {
+  form: FieldFormState
+  set: (key: keyof FieldFormState, val: unknown) => void
+  steps: readonly { name: string; label: string }[]
+  initialStep: string | null
+}) {
+  const { t } = useTranslation()
+  const uid = useId()
+  if (steps.length === 0) {
+    return <p style={{ margin: '0 0 12px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-table)' }}>{t('itilDesigner.steps.noWorkflow')}</p>
+  }
+  const toggle = (key: 'visibilitySteps' | 'editabilitySteps', name: string) =>
+    set(key, form[key].includes(name) ? form[key].filter((s) => s !== name) : steps.map((s) => s.name).filter((s) => s === name || form[key].includes(s)))
+  const radio = (group: 'visibilityMode' | 'editabilityMode', value: string, label: string) => (
+    <label key={value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+      <input type="radio" name={`${uid}-${group}`} value={value} checked={form[group] === value} onChange={() => set(group, value)} />
+      {label}
+    </label>
+  )
+  const stepChecks = (key: 'visibilitySteps' | 'editabilitySteps', legend: string) => (
+    <fieldset style={{ border: 'none', margin: '6px 0 0 22px', padding: 0 }}>
+      <legend style={srOnlyStyle}>{legend}</legend>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
+        {steps.map((s) => (
+          <label key={s.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={form[key].includes(s.name)} onChange={() => toggle(key, s.name)} />
+            {s.label}
+          </label>
+        ))}
+      </div>
+      {form[key].length === 0 && <p role="alert" style={{ margin: '4px 0 0', color: 'var(--color-danger)', fontSize: 'var(--font-size-table)' }}>{t('itilDesigner.steps.chooseAtLeastOne')}</p>}
+    </fieldset>
+  )
+  const legendS: React.CSSProperties = { ...labelS, padding: 0, marginBottom: 6 }
+  return (
+    <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
+        <legend style={legendS}>{t('itilDesigner.steps.visibilityLegend')}</legend>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 18px' }}>
+          {radio('visibilityMode', 'always', t('itilDesigner.steps.always'))}
+          {radio('visibilityMode', 'steps', t('itilDesigner.steps.onlySteps'))}
+          {radio('visibilityMode', 'from', t('itilDesigner.steps.fromStep'))}
+        </div>
+        {form.visibilityMode === 'steps' && stepChecks('visibilitySteps', t('itilDesigner.steps.onlySteps'))}
+        {form.visibilityMode === 'from' && (
+          <div style={{ margin: '6px 0 0 22px', maxWidth: 260 }}>
+            <Select aria-label={t('itilDesigner.steps.fromStepLabel')} style={selectS} value={form.visibilityFrom} onChange={(e) => set('visibilityFrom', e.target.value)}>
+              <option value="">—</option>
+              {steps.map((s) => <option key={s.name} value={s.name}>{s.label}</option>)}
+            </Select>
+          </div>
+        )}
+      </fieldset>
+      <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
+        <legend style={legendS}>{t('itilDesigner.steps.editabilityLegend')}</legend>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 18px' }}>
+          {radio('editabilityMode', 'visible', t('itilDesigner.steps.whereVisible'))}
+          {radio('editabilityMode', 'steps', t('itilDesigner.steps.onlySteps'))}
+        </div>
+        {form.editabilityMode === 'steps' && stepChecks('editabilitySteps', t('itilDesigner.steps.onlySteps'))}
+      </fieldset>
+      {initialStep && (
+        <p style={{ margin: 0, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-table)' }}>
+          {t('itilDesigner.steps.creationHint', { step: steps.find((s) => s.name === initialStep)?.label ?? initialStep })}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function FieldEditor({
-  field, isSystem, onSave, onCancel, enumTypesData, offerEndUser = false,
+  field, isSystem, onSave, onCancel, enumTypesData, offerEndUser = false, workflowSteps = [], initialStep = null,
 }: {
   field:         FieldFormState
   isSystem:      boolean
+  /** Le fasi del workflow del tipo (per le regole di fase dei campi del cliente). */
+  workflowSteps?: readonly { name: string; label: string }[]
+  initialStep?:  string | null
   /** Il tipo si apre dal portale (incident, service_request): il campo si può offrire all'utente finale. */
   offerEndUser?: boolean
   onSave:        (f: FieldFormState) => void
@@ -100,6 +180,8 @@ function FieldEditor({
           <p style={{ margin: '4px 0 0 22px', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-table)' }}>{t('itilDesigner.visibleToEndUserHint')}</p>
         </div>
       )}
+
+      {!isSystem && <StepRulesEditor form={form} set={set} steps={workflowSteps} initialStep={initialStep} />}
 
       {/* enum dropdown */}
       {form.fieldType === 'enum' && (
@@ -189,7 +271,7 @@ export interface ITILTypeFieldsProps {
   setEditingFieldId: (id: string | null) => void
   addingField:      boolean
   setAddingField:   (v: boolean) => void
-  onSaveField:      (typeId: string, fieldId: string | null, form: FieldFormState) => void
+  onSaveField:      (typeId: string, fieldId: string | null, form: FieldFormState, isSystem?: boolean) => void
   onDeleteField:    (typeId: string, fieldId: string) => void
   enumTypesData:    { enumTypes: EnumTypeOption[] } | undefined
   /** Il nome del tipo ITIL: incident e service_request si aprono anche dal portale. */
@@ -210,6 +292,8 @@ export function ITILTypeFields({
     ? t('itilDesigner.statusFromWorkflow', { steps: workflow.steps.map((st) => workflow.labelFor(st.name)).join(', ') })
     : undefined
   const customFields = fields.filter((f) => !f.isSystem).sort((a, b) => a.order - b.order)
+  const stepChoices = workflow.steps.map((st) => ({ name: st.name, label: workflow.labelFor(st.name) }))
+  const initialStep = workflow.initialStep?.name ?? null
 
   return (
     <div>
@@ -219,6 +303,8 @@ export function ITILTypeFields({
           field={emptyForm(fields.length + 1)}
           isSystem={false}
           offerEndUser={offerEndUser}
+          workflowSteps={stepChoices}
+          initialStep={initialStep}
           onSave={(form) => onSaveField(typeId, null, form)}
           onCancel={() => setAddingField(false)}
           enumTypesData={enumTypesData}
@@ -237,7 +323,7 @@ export function ITILTypeFields({
                 key={f.id}
                 field={fieldToForm(f)}
                 isSystem={true}
-                onSave={(form) => onSaveField(typeId, f.id, form)}
+                onSave={(form) => onSaveField(typeId, f.id, form, true)}
                 onCancel={() => setEditingFieldId(null)}
                 enumTypesData={enumTypesData}
               />
@@ -277,6 +363,8 @@ export function ITILTypeFields({
               field={fieldToForm(f)}
               isSystem={false}
               offerEndUser={offerEndUser}
+              workflowSteps={stepChoices}
+              initialStep={initialStep}
               onSave={(form) => onSaveField(typeId, f.id, form)}
               onCancel={() => setEditingFieldId(null)}
               enumTypesData={enumTypesData}

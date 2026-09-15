@@ -6,7 +6,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SectionCard } from '@/components/ui/SectionCard'
 import type { ChangeAuditEntryData } from '@/types/change'
-import { formatDateShort } from '@/lib/datetime'
+import { formatDateTime } from '@/lib/datetime'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { colors, palette } from '@/lib/tokens'
 
 type AuditCategory = 'status' | 'assessment' | 'assignments' | 'comments' | 'system'
@@ -30,7 +31,37 @@ function detailText(t: (key: string, opts?: Record<string, unknown>) => string, 
   if (!e.detailKey) return e.detail ?? ''
   let params: Record<string, unknown> = {}
   try { params = e.detailParams ? JSON.parse(e.detailParams) as Record<string, unknown> : {} } catch { params = {} }
+  // Il ruolo dell'assessment arriva come chiave (`owner`/`support`) o, nelle voci
+  // più vecchie, già in inglese: si legge nella lingua di chi guarda. `count` è
+  // un numero per i plurali (secondo giro UI del 15 set 2026).
+  const role = ROLE_KEY[String(params['role'] ?? '')]
+  if (role) params = { ...params, role: t(role) }
+  if (typeof params['count'] === 'string' && params['count'] !== '' && !Number.isNaN(Number(params['count']))) params = { ...params, count: Number(params['count']) }
   return t(`changeAudit.${e.detailKey}`, { ...params, defaultValue: e.detail ?? '' })
+}
+
+const ROLE_KEY: Record<string, string> = {
+  owner: 'changeTasks.functional', Functional: 'changeTasks.functional',
+  support: 'changeTasks.technical', Technical: 'changeTasks.technical',
+}
+
+/*
+  L'azione di una voce nella lingua di chi guarda (giro UI del 15 set 2026: il
+  registro diceva «change approved», «deploy plan saved» anche in italiano).
+  `change_transition_<passo>` porta il nome del passo: si mostra la sua
+  etichetta del workflow. Un'azione che il web non conosce resta scritta com'è,
+  leggibile, invece di sparire.
+*/
+const TRANSITION_PREFIX = 'change_transition_'
+const KNOWN_ACTIONS = new Set([
+  'assessment_response_submitted', 'assessment_task_completed', 'assessment_team_assigned', 'assessment_user_assigned',
+  'change_approved', 'change_rejected', 'change_created', 'change_deleted', 'ci_added', 'ci_removed', 'ci_risk_computed',
+  'deploy_plan_completed', 'deploy_plan_saved', 'deploy_plan_user_assigned', 'deployment_completed', 'review_completed',
+  'validation_completed', 'task_reopened',
+])
+function actionLabel(t: (key: string, opts?: Record<string, unknown>) => string, labelFor: (step: string) => string, action: string): string {
+  if (action.startsWith(TRANSITION_PREFIX)) return t('pages.auditTimeline.action.transition', { step: labelFor(action.slice(TRANSITION_PREFIX.length)) })
+  return KNOWN_ACTIONS.has(action) ? t(`pages.auditTimeline.action.${action}`) : action.replace(/_/g, ' ')
 }
 
 function categorizeAction(action: string): AuditCategory {
@@ -44,17 +75,18 @@ function categorizeAction(action: string): AuditCategory {
 
 export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
   const { t } = useTranslation()
+  const { labelFor } = useWorkflowSteps('change')
   const [filter, setFilter] = useState<AuditCategory | 'all'>('all')
   const [showAll, setShowAll] = useState(false)
   const [expandedIdx, setExpandedIdx] = useState<Set<number>>(new Set())
   const filtered = filter === 'all' ? audit : audit.filter(e => categorizeAction(e.action) === filter)
   const visible = showAll ? filtered : filtered.slice(0, 20)
-  const fmtTS = formatDateShort
+  const fmtTS = formatDateTime
 
   return (
     <SectionCard title={t('pages.auditTimeline.title')} collapsible defaultOpen={false} count={audit.length}>
       <div style={{ marginBottom: 12 }}>
-        <select value={filter} onChange={(e) => { setFilter(e.target.value as AuditCategory | 'all'); setShowAll(false) }} style={{ padding: '5px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)' }}>
+        <select aria-label={t('pages.auditTimeline.filterLabel')} value={filter} onChange={(e) => { setFilter(e.target.value as AuditCategory | 'all'); setShowAll(false) }} style={{ padding: '5px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)' }}>
           <option value="all">{t('common.all')} ({audit.length})</option>
           {(Object.keys(AUDIT_CAT_KEY) as AuditCategory[]).map(cat => {
             const n = audit.filter(e => categorizeAction(e.action) === cat).length
@@ -78,7 +110,7 @@ export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
                 <div style={{ padding: '6px 10px', background: 'var(--color-slate-bg)', borderRadius: 6, border: '1px solid var(--color-border-light)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                     <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{fmtTS(e.timestamp)}</span>
-                    <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 5px', borderRadius: 4, backgroundColor: `${color}15`, color }}>{e.action.replace(/_/g, ' ')}</span>
+                    <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 5px', borderRadius: 4, backgroundColor: `${color}15`, color }}>{actionLabel(t, labelFor, e.action)}</span>
                     {e.actor && <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{e.actor.name}</span>}
                   </div>
                   {e.detail && <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-dark)', ...(isLong && !isExp ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : {}) }}>{detailText(t, e)}</div>}

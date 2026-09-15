@@ -125,13 +125,11 @@ export function WorkflowDesignerPage() {
       // da un altro utente». Anche le guardie del workflow rispondono CONFLICT
       // (scopo di approvazione, finestra di rilascio): quelle le mostra già il
       // link di Apollo, e aggiungere questo avviso le accompagnava con una bugia.
-      const ext = CombinedGraphQLErrors.is(e) ? e.errors[0]?.extensions : undefined
-      const versionConflict = ext?.['code'] === 'CONFLICT' && ext?.['currentVersion'] !== undefined
-      if (versionConflict) {
-        // Le modifiche locali restano in coda: sta all'utente ricaricare (perdendole)
-        // o confrontarle; non sovrascriviamo mai il lavoro dell'altro utente.
-        toast.error(t('toast.workflow.saveConflict'), { duration: 10_000 })
-      } else if (!CombinedGraphQLErrors.is(e)) {
+      // Secondo giro UI · V-4: anche il conflitto di VERSIONE lo dice già il
+      // link di Apollo, con la frase dell'API (versioni comprese e «le tue
+      // modifiche non sono state applicate»): il toast in più ripeteva la stessa
+      // cosa. Le modifiche locali restano in coda, non si sovrascrive nessuno.
+      if (!CombinedGraphQLErrors.is(e)) {
         // Un errore GraphQL lo mostra già il link di Apollo (lib/apollo.ts),
         // nella lingua di chi guarda: ripeterlo qui dava due avvisi identici.
         showError(e)

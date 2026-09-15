@@ -40,6 +40,7 @@ export const GET_ME = gql`
       permissions
       slackId
       emailNotifications
+      language
       teams { ...TeamRef }
     }
   }

@@ -48,3 +48,10 @@ export const SET_MY_EMAIL_NOTIFICATIONS = gql`
     setMyEmailNotifications(enabled: $enabled) { id emailNotifications }
   }
 `
+
+/** La lingua della persona, per web e portale (null = quella dell'organizzazione). */
+export const SET_MY_LANGUAGE = gql`
+  mutation SetMyLanguage($language: String) {
+    setMyLanguage(language: $language) { id language }
+  }
+`

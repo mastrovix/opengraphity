@@ -69,7 +69,7 @@ export async function evaluateBusinessRules(
   eventType:  RuleEventType,
   entity:     Record<string, unknown>,
   userId:     string,
-  _previousEntity?: Record<string, unknown>,
+  opts?: { changedFields?: readonly string[] },
 ): Promise<RuleResult[]> {
   const rules = await loadRules(tenantId, entityType, eventType)
   if (rules.length === 0) return []
@@ -77,6 +77,7 @@ export async function evaluateBusinessRules(
   const outcomes = await evaluateRules({
     kind: 'rule',
     tenantId, entityType, entity, userId,
+    changedFields: opts?.changedFields,
     records: rules.map((r) => ({
       id: r.id, name: r.name, conditions: r.conditions, actions: r.actions,
       conditionLogic: r.condition_logic, stopOnMatch: r.stop_on_match,

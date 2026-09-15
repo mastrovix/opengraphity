@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import { getSession } from '@opengraphity/neo4j'
 import { sendSlackMessage } from '@opengraphity/notifications'
 import { logger } from '../lib/logger.js'
+import { ciTypeFromLabels } from '../lib/ciTypeFromLabels.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
 import { buildAnomalyRule, type AnomalyRule, type ResolvedRuleSettings } from './rules.js'
 import { anomalyRuleOptions, anomalyRuleProblem, loadAnomalyRuleConfigs, type AnomalyRuleConfig, type AnomalyRuleOptions } from './ruleConfig.js'
@@ -57,6 +58,18 @@ function stringParams(raw: unknown, ruleKey: string): Record<string, string> {
   ]))
 }
 
+/**
+ * Il tipo del CI di un'anomalia: le regole restituiscono le label del nodo
+ * (V-3), il nome del tipo lo dà il metamodello. Una stringa resta com'è (una
+ * regola che non riguarda un CI).
+ */
+export function entitySubtypeOf(tenantId: string, raw: unknown): string {
+  if (raw == null) return ''
+  if (Array.isArray(raw)) return raw.length === 0 ? '' : ciTypeFromLabels(tenantId, raw as string[])
+  if (typeof raw === 'string') return raw
+  throw new Error(`anomaly rule returned an unreadable entitySubtype: ${JSON.stringify(raw)}`)
+}
+
 async function runRule(rule: AnomalyRule, tenantId: string): Promise<RuleHit[]> {
   const session = getSession(undefined, 'READ')
   try {
@@ -69,7 +82,7 @@ async function runRule(rule: AnomalyRule, tenantId: string): Promise<RuleHit[]> 
     return result.records.map(r => ({
       entityId:      r.get('entityId')      as string,
       entityType:    r.get('entityType')    as string,
-      entitySubtype: (r.get('entitySubtype') as string | null) ?? '',
+      entitySubtype: entitySubtypeOf(tenantId, r.get('entitySubtype')),
       entityName:    r.get('entityName')    as string,
       description:   r.get('description')   as string,
       params:        stringParams(r.get('params'), rule.key),

@@ -5,7 +5,14 @@
     "documentTitle": "IT Portal — OpenGrafo",
     "noAccessTitle": "The portal is not available to your role",
     "noAccessBody": "Your role does not include access to the self-service portal. Ask an administrator if you need it.",
-    "noSubmit": "Your role cannot open tickets or requests from the portal."
+    "noSubmit": "Your role cannot open tickets or requests from the portal.",
+    "language": "Language",
+    "languageOrganization": "Organization's language",
+    "languageName": {
+      "en": "English",
+      "it": "Italiano"
+    },
+    "languageSaveFailed": "The language could not be saved: {{error}}"
   },
   "nav": {
     "home": "Home",
@@ -43,9 +50,9 @@
     "fields": {
       "title": "Describe the problem in one sentence",
       "description": "Provide all useful details: what you were doing, what error you saw, since when it occurred...",
-      "priority": "Priority",
       "category": "Category",
-      "attachments": "Attachments"
+      "attachments": "Attachments",
+      "severity": "Severity"
     },
     "filters": {
       "all": "All",
