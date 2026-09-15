@@ -48,7 +48,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Boxes, RotateCcw, Pause, Play, Trash2, AlertTriangle, Focus, Info, Star, Loader2, ArrowRight, GitCompareArrows, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Boxes, RotateCcw, Pause, Play, Trash2, AlertTriangle, Focus, Info, Star, Loader2, ArrowRight, GitCompareArrows, RefreshCw, Pencil } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageLoader } from '@/components/PageLoader'
 import { QueryError } from '@/components/QueryError'
@@ -75,6 +75,7 @@ import { ServiceHistorySection } from './ServiceHistorySection'
 import { ServiceComponentsTable } from './ServiceComponentsTable'
 import { ServiceRulesCard } from './ServiceRulesCard'
 import { ServiceOpenIncidentCard } from './ServiceOpenIncidentCard'
+import { ServiceMapScopeDialog } from './ServiceMapScopeDialog'
 import { UpdateServiceMapDialog } from './UpdateServiceMapDialog'
 import { ServiceAutoSyncToggle } from './ServiceAutoSyncToggle'
 import {
@@ -131,6 +132,7 @@ export function ServiceDetailPage() {
   /** «Isola»: la mappa mostra solo la catena di questo componente. Vive qui perché il pulsante sta nel pannello del componente. */
   const [isolatedId, setIsolatedId] = useState<string | null>(null)
   const [updateOpen, setUpdateOpen] = useState(false)
+  const [scopeOpen, setScopeOpen] = useState(false)
 
   /**
    * C-8: in polling va SOLO la sonda (tre marcatori, `no-cache`), non l'intero
@@ -339,7 +341,7 @@ export function ServiceDetailPage() {
       */}
       <div>
         {/* Incident aperto dal monitoraggio per questo servizio (ondata 3): la prima cosa da sapere. */}
-        <ServiceOpenIncidentCard incident={map.openIncident} openIncidentFrom={map.rules.openIncidentFrom} />
+        <ServiceOpenIncidentCard incident={map.openIncident} openIncidentFrom={map.rules.openIncidentFrom} problem={map.incidentProblem} />
 
         <SectionCard title={t('monitoring.services.detail.why')} count={map.explanation.length} defaultOpen>
           {map.explanation.length === 0
@@ -366,6 +368,14 @@ export function ServiceDetailPage() {
           <DetailField label={t('monitoring.services.detail.fields.owner')} value={map.service.ownerGroup?.name ?? null} />
           <DetailField label={t('monitoring.services.detail.fields.maxDepth')} value={String(map.maxDepth)} />
           <DetailField label={t('monitoring.services.detail.fields.relationshipTypes')} value={map.relationshipTypes.length > 0 ? map.relationshipTypes.join(', ') : null} />
+          {/* SV-6: tipi di relazione e profondità non erano più modificabili dopo la creazione. */}
+          {managesServices && (
+            <div style={{ margin: '4px 0 8px' }}>
+              <Button variant="secondary" size="xs" disabled={busy} icon={<Pencil size={12} aria-hidden="true" />} onClick={() => setScopeOpen(true)}>
+                {t('monitoring.services.scope.open')}
+              </Button>
+            </div>
+          )}
           <DetailField label={t('monitoring.services.detail.fields.builtFrom')} value={builtFromLabel(map.builtFrom, t)} />
           <DetailField label={t('monitoring.services.detail.fields.excluded')} value={t('monitoring.services.detail.fields.excludedCount', { count: map.excluded.length })} />
           <DetailField label={t('monitoring.services.detail.fields.updatedAt')} value={map.updatedAt ? `${formatDateTime(map.updatedAt)} · ${timeAgo(map.updatedAt)}` : null} />
@@ -394,6 +404,7 @@ export function ServiceDetailPage() {
       </div>
 
       {managesServices && <UpdateServiceMapDialog map={map} open={updateOpen} onClose={() => setUpdateOpen(false)} />}
+      {managesServices && scopeOpen && <ServiceMapScopeDialog map={map} onClose={() => setScopeOpen(false)} onReload={() => void refetch()} />}
     </PageContainer>
   )
 }

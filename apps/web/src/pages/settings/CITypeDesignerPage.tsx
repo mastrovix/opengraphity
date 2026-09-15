@@ -1,11 +1,11 @@
 import { useId, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
-import { useQuery, useMutation } from '@apollo/client/react'
+import { useQuery, useMutation, useApolloClient } from '@apollo/client/react'
 import { Layers, Layout, Plus, Trash2 } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { PageContainer } from '@/components/PageContainer'
 import { toast } from 'sonner'
-import { GET_CI_TYPES, GET_BASE_CI_TYPE, GET_ENUM_TYPES } from '@/graphql/queries'
+import { GET_CI_TYPES, GET_BASE_CI_TYPE, GET_ENUM_TYPES, GET_CI_TYPE_DELETION_IMPACT } from '@/graphql/queries'
 import {
   CREATE_CI_TYPE, UPDATE_CI_TYPE, DELETE_CI_TYPE,
   ADD_CI_FIELD, UPDATE_CI_FIELD, REMOVE_CI_FIELD,
@@ -16,6 +16,8 @@ import { CIIcon } from '@/lib/ciIcon'
 import { CIDynamicForm } from '@/components/CIDynamicForm'
 import type { CITypeDef, CIFieldDef, CIRelationDef } from '@/contexts/MetamodelContext'
 import { CITypeList } from './citype/CITypeList'
+import { CITypeDeletionImpact, type CITypeDeletionImpactData } from './citype/CITypeDeletionImpact'
+import { showError, errorMessage } from '@/lib/showError'
 import { CIFieldEditor, fieldToForm } from './citype/CIFieldEditor'
 import type { FieldForm } from './citype/CIFieldEditor'
 import { CIRelationEditor, CIRelationTable } from './citype/CIRelationEditor'
@@ -35,7 +37,6 @@ import { useConfirm } from '@/hooks/useConfirm'
 import { colors, palette } from '@/lib/tokens'
 import { isShippedType } from '@/lib/ciTypeNames'
 import { Package } from 'lucide-react'
-import { showError } from '@/lib/showError'
 
 /**
  * I ruoli che un tipo può dichiarare per la mappa di un servizio (ondata 6 ·
@@ -58,6 +59,7 @@ type Tab = 'settings' | 'fields' | 'relations' | 'rules' | 'preview'
 export function CITypeDesignerPage() {
   const { t } = useTranslation()
   const confirm = useConfirm()
+  const apollo = useApolloClient()
   const { data, loading, refetch } = useQuery<{ ciTypes: CITypeDef[] }>(GET_CI_TYPES)
   const { data: baseData, refetch: refetchBase } = useQuery<{ baseCIType: CITypeDef }>(GET_BASE_CI_TYPE)
   const { data: enumData } = useQuery<{ enumTypes: EnumTypeOption[] }>(GET_ENUM_TYPES, {
@@ -256,7 +258,22 @@ export function CITypeDesignerPage() {
                   disabled={shipped}
                   title={shipped ? shippedNote : undefined}
                   onClick={async () => {
-                    if (!(await confirm({ title: t('ciTypeDesigner.deleteTypeTitle', { label: selected.label }), danger: true }))) return
+                    // Regola del 15 set 2026: blocca solo un ticket; il resto va via
+                    // col tipo, quindi la conferma lo elenca prima.
+                    let impact: CITypeDeletionImpactData
+                    try {
+                      const res = await apollo.query<{ ciTypeDeletionImpact: CITypeDeletionImpactData }>({ query: GET_CI_TYPE_DELETION_IMPACT, variables: { id: selected.id }, fetchPolicy: 'network-only' })
+                      if (!res.data) throw new Error('ciTypeDeletionImpact returned no data')
+                      impact = res.data.ciTypeDeletionImpact
+                    } catch (e) {
+                      showError(e, t('ciTypeDesigner.deleteImpact.unavailable', { error: errorMessage(e) }))
+                      return
+                    }
+                    if (impact.ticketCIs > 0) {
+                      toast.error(t('ciTypeDesigner.deleteImpact.blocked', { label: selected.label, cis: impact.ticketCIs, tickets: impact.tickets }))
+                      return
+                    }
+                    if (!(await confirm({ title: t('ciTypeDesigner.deleteTypeTitle', { label: selected.label }), body: <CITypeDeletionImpact impact={impact} t={t} />, danger: true }))) return
                     void deleteType({ variables: { id: selected.id } })
                   }}>
                   <Trash2 size={12} /> {t('citypeDesigner.deleteType')}

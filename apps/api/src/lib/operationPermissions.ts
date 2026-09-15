@@ -175,7 +175,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   },
   {
     anyOf: ['config.metamodel'],
-    query: ['domainMatrices', 'changeEnvironmentWeight', 'impactAnalysisWeights'],
+    query: ['domainMatrices', 'changeEnvironmentWeight', 'impactAnalysisWeights', 'ciTypeDeletionImpact'],
     mutation: [
       'createCIType', 'updateCIType', 'deleteCIType', 'addCIField', 'updateCIField', 'removeCIField', 'addCIRelation', 'removeCIRelation',
       'updateITILType', 'createITILField', 'updateITILField', 'deleteITILField', 'setTicketCIExclusions',
@@ -221,7 +221,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
     anyOf: ['config.services'],
     query: ['serviceMapCandidates', 'serviceMapProposal', 'serviceImpactPreview', 'serviceRelationshipTypes'],
     mutation: ['createServiceMap', 'setServiceMapStatus', 'deleteServiceMap', 'updateServiceImpactRules', 'updateServiceMapNodes',
-      'applyServiceMapProposal', 'removeServiceMapExclusion', 'setServiceMapAutoSync', 'syncServiceMap'],
+      'applyServiceMapProposal', 'removeServiceMapExclusion', 'setServiceMapAutoSync', 'syncServiceMap', 'updateServiceMapScope'],
   },
   {
     anyOf: ['config.integrations'],

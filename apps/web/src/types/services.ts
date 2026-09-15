@@ -255,6 +255,19 @@ export interface ServiceOpenIncident {
   workflowInstance: { id: string; currentStep: string; status: string } | null
 }
 
+/**
+ * Revisione del 15 set 2026 · SV-4: perché il monitoraggio non riesce a
+ * portare l'incident del servizio nello stato giusto (per esempio un tipo di
+ * CI escluso dagli incident). Un dato, non una frase: la chiave dell'errore
+ * con i parametri, e il messaggio inglese dell'API se la chiave manca.
+ */
+export interface ServiceIncidentProblem {
+  key:     string | null
+  params:  Array<{ name: string; value: string }>
+  message: string
+  since:   string
+}
+
 /** Mappa completa (query `serviceMap`): riga + configurazione, nodi, archi, regole, cronologia. */
 export interface ServiceMapDetail extends ServiceMapRow {
   /** Contatore di modifica: si rimanda come `expectedVersion` nelle mutation. */
@@ -273,6 +286,8 @@ export interface ServiceMapDetail extends ServiceMapRow {
   historyCount:      number
   /** Incident non chiuso del servizio; null se non ce n'è uno (o se le regole non ne aprono). */
   openIncident:      ServiceOpenIncident | null
+  /** SV-4: null quando l'incident del servizio è allineato. */
+  incidentProblem:   ServiceIncidentProblem | null
   /**
    * Ondata 5: mappa viva (si aggiorna da sola dal grafo) o congelata (i
    * componenti nuovi restano una proposta da accettare a mano). Default: viva.

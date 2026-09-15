@@ -68,6 +68,8 @@ export function buildBaseSDL(): string {
     ciGroupMembers(groupId: ID!): CIGroupMembersResult!
     baseCIType: CITypeDefinition!
     ciTypes: [CITypeDefinition!]!
+    """Cosa porterebbe via deleteCIType(id): i CI del tipo e i riferimenti che si tolgono con lui. ticketCIs > 0 = il tipo è in un ticket (anche chiuso) e non si cancella. Solo lettura, per la conferma del disegnatore."""
+    ciTypeDeletionImpact(id: ID!): CITypeDeletionImpact!
     itilTypes: [CITypeDefinition!]!
     itilTypeFields(typeId: ID!): [CIFieldDef!]!
 

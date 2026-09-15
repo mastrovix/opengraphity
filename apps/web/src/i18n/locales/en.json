@@ -2572,6 +2572,34 @@
       "component": "Component (software: it suffers)",
       "infrastructure": "Infrastructure (it hosts)",
       "certificate": "Certificate (informational)"
+    },
+    "deleteImpact": {
+      "intro": "Together with the type, these are deleted:",
+      "nothing": "Nothing else is deleted: the type has no CIs and nothing refers to it.",
+      "blocked": "«{{label}}» cannot be deleted: {{cis}} of its CIs are linked to {{tickets}} ticket(s), closed ones included.",
+      "unavailable": "Could not compute what the deletion would remove: {{error}}",
+      "cis_one": "{{count}} CI of this type, with its relationships",
+      "cis_other": "{{count}} CIs of this type, with their relationships",
+      "groupsDeleted_one": "{{count}} dynamic group that listed only this type",
+      "groupsDeleted_other": "{{count}} dynamic groups that listed only this type",
+      "groupsUpdated_one": "this type from the criteria of {{count}} dynamic group",
+      "groupsUpdated_other": "this type from the criteria of {{count}} dynamic groups",
+      "ticketCIExclusions_one": "{{count}} ticket-type exclusion",
+      "ticketCIExclusions_other": "{{count}} ticket-type exclusions",
+      "fieldVisibilityRules_one": "{{count}} field visibility rule",
+      "fieldVisibilityRules_other": "{{count}} field visibility rules",
+      "fieldRequirementRules_one": "{{count}} field requirement rule",
+      "fieldRequirementRules_other": "{{count}} field requirement rules",
+      "businessRules_one": "{{count}} business rule",
+      "businessRules_other": "{{count}} business rules",
+      "autoTriggers_one": "{{count}} trigger",
+      "autoTriggers_other": "{{count}} triggers",
+      "customWidgets_one": "{{count}} dashboard widget",
+      "customWidgets_other": "{{count}} dashboard widgets",
+      "reportSections_one": "{{count}} report section",
+      "reportSections_other": "{{count}} report sections",
+      "assessmentQuestionLinks_one": "the link to {{count}} assessment question (the question stays)",
+      "assessmentQuestionLinks_other": "the links to {{count}} assessment questions (the questions stay)"
     }
   },
   "fieldRules": {
@@ -3241,12 +3269,6 @@
       "nothingWritten": "{{what}}: nothing was written and no change was saved. Either the item no longer exists, or the type ships with the product — one node for every tenant, read-only.",
       "fieldNotYours": "Field {{field}} is not a field of yours on this type: it was not deleted. The fields that ship with the product are read-only.",
       "unknownWithWhat": "{{what}}: \"{{type}}\" is not a CI type of this tenant (allowed: {{allowed}}).",
-      "inUseDelete": "Type \"{{label}}\" ({{name}}) was not deleted: there are still {{count}} CIs of type {{type}} in this tenant, and their data and relationships would stay in the graph without appearing anywhere any more (lists, impact, service maps, search): a silent loss. Move or delete those CIs first.",
-      "inUseDeleteWithRefs": "Type \"{{label}}\" ({{name}}) was not deleted: there are still {{count}} CIs of type {{type}} in this tenant, and their data and relationships would stay in the graph without appearing anywhere any more (lists, impact, service maps, search): a silent loss. Move or delete those CIs first. The type is also referenced by: {{refs}}.",
-      "inUseDeactivate": "Type \"{{label}}\" ({{name}}) was not deactivated: there are still {{count}} CIs of type {{type}} in this tenant, and a deactivated type disappears from reads as if it were deleted, so those CIs would not appear anywhere any more. Move or delete those CIs first.",
-      "inUseDeactivateWithRefs": "Type \"{{label}}\" ({{name}}) was not deactivated: there are still {{count}} CIs of type {{type}} in this tenant, and a deactivated type disappears from reads as if it were deleted, so those CIs would not appear anywhere any more. Move or delete those CIs first. The type is also referenced by: {{refs}}.",
-      "onlyRefsDelete": "Type \"{{label}}\" ({{name}}) was not deleted: no CI is of this type, but the type is still referenced by {{refs}}. Those references are BY NAME: they would hang off a type that no longer exists. Remove the references first.",
-      "onlyRefsDeactivate": "Type \"{{label}}\" ({{name}}) was not deactivated: no CI is of this type, but the type is still referenced by {{refs}}. Those references are BY NAME: they would hang off a type that no longer exists. Remove the references first.",
       "where": {
         "topology": "In the map filter",
         "groupCriteria": "In the dynamic group criteria"
@@ -3273,7 +3295,11 @@
       },
       "chainFamilyRepeated": "The chain family {{family}} is listed twice.",
       "dictionaryOnNonEnum": "Field «{{field}}» is of type {{fieldType}}: only a list field (enum) uses a dictionary.",
-      "relationInUse": "Relationship «{{name}}» was not removed: {{count}} {{relationshipType}} link(s) between CIs are declared only by it and would stay in the graph without appearing anywhere. Remove those links first."
+      "relationInUse": "Relationship «{{name}}» was not removed: {{count}} {{relationshipType}} link(s) between CIs are declared only by it and would stay in the graph without appearing anywhere. Remove those links first.",
+      "relationUsedByServiceMaps": "«{{name}}» was not removed: it is the only declaration of {{relationshipTypes}}, which {{count}} service map(s) follow ({{maps}}). Without it those maps could no longer be synchronized. Remove the relationship from those maps first (service detail → Change scope).",
+      "inTicketsDelete": "Type \"{{label}}\" ({{name}}) was not deleted: {{cis}} of its CIs are linked to {{tickets}} ticket(s) (incidents, problems, changes or requests, closed ones included). Without the type those CIs would disappear from the tickets' history.",
+      "inTicketsDeactivate": "Type \"{{label}}\" ({{name}}) was not deactivated: {{cis}} of its CIs are linked to {{tickets}} ticket(s) (incidents, problems, changes or requests, closed ones included). Without the type those CIs would disappear from the tickets' history.",
+      "hasCIsDeactivate": "Type \"{{label}}\" ({{name}}) was not deactivated: there are still {{count}} CIs of type {{type}}, and a deactivated type disappears from reads as if it were deleted. Delete the type instead (its CIs go with it), or move those CIs first."
     },
     "titleRequired": "The title is required.",
     "assignment": {
@@ -4130,7 +4156,8 @@
       "syncAligned": "Map already aligned with the graph: nothing to add or remove",
       "syncSkipped": "Sync refused: {{reason}}. Nothing was changed.",
       "syncSkippedNoReason": "the engine gave no reason",
-      "componentExcluded": "{{name}} excluded: it is out of the map and will not be proposed again"
+      "componentExcluded": "{{name}} excluded: it is out of the map and will not be proposed again",
+      "scopeChanged": "Scope saved (version {{version}})"
     },
     "user": {
       "teamsUpdated": "Teams updated"
@@ -5432,7 +5459,8 @@
         "step": "Step: {{step}}",
         "noStep": "Step not available",
         "stepsUnavailable": "Workflow labels not loaded ({{error}}): status and step are the raw values.",
-        "open": "Open incident {{number}}"
+        "open": "Open incident {{number}}",
+        "problem": "The monitoring cannot bring this service's incident up to date: {{reason}} (since {{since}}). It retries at every evaluation; the incident opens as soon as the cause is removed."
       },
       "criticalBanner": {
         "title_one": "A critical service is down",
@@ -5451,6 +5479,20 @@
         "down_other": "{{count}} down",
         "degraded_one": "{{count}} degraded",
         "degraded_other": "{{count}} degraded"
+      },
+      "scope": {
+        "title": "Change scope",
+        "open": "Change scope",
+        "submit": "Save",
+        "depth": "Maximum depth",
+        "depthHint": "How many hops to follow from the applications along the chosen relationships (1–{{max}}).",
+        "relationships": "Relationships to follow",
+        "relationshipsHint": "A live map synchronizes right away with the new scope; a frozen map shows the difference in «Update map».",
+        "relationshipsRequired": "Choose at least one relationship.",
+        "notDeclared": "{{type}} — no longer declared in the metamodel: saving removes it",
+        "relationshipsError": "Could not load relationship types: {{error}}",
+        "noResult": "updateServiceMapScope did not return the map",
+        "unchanged": "Nothing changed."
       }
     },
     "opColumns": {
@@ -5507,7 +5549,9 @@
       "step_deadlines_blocked_one": "{{count}} ticket is still in a step whose deadline could not move it ({{tickets}}): the approvals refused it, or the workflow changed and the deadline has nowhere to go. It is retried every hour. **Check the step deadline in the workflow designer**.",
       "step_deadlines_blocked_other": "{{count}} tickets are still in a step whose deadline could not move them ({{tickets}}): the approvals refused it, or the workflow changed and the deadline has nowhere to go. It is retried every hour. **Check the step deadlines in the workflow designer**.",
       "slack_not_connected_one": "A Slack channel sends with the bot, but this organization has not connected its Slack workspace: {{channels}}. Every notification to it fails. **Connect Slack in Admin → Integrations**.",
-      "slack_not_connected_other": "{{count}} Slack channels send with the bot, but this organization has not connected its Slack workspace: {{channels}}. Every notification to them fails. **Connect Slack in Admin → Integrations**."
+      "slack_not_connected_other": "{{count}} Slack channels send with the bot, but this organization has not connected its Slack workspace: {{channels}}. Every notification to them fails. **Connect Slack in Admin → Integrations**.",
+      "service_incident_problem_one": "The monitoring cannot manage the incident of the service {{services}}: the service may be down without an incident. **Open the service to see why**.",
+      "service_incident_problem_other": "The monitoring cannot manage the incident of {{count}} services ({{services}}): they may be down without an incident. **Open each service to see why**."
     },
     "gap": {
       "tenant_missing": "no row: the tenant does not exist",

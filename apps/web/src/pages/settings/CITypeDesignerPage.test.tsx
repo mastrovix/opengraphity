@@ -14,7 +14,9 @@
 import { describe, it, expect, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { CITypeDesignerPage } from './CITypeDesignerPage'
-import { GET_CI_TYPES, GET_BASE_CI_TYPE, GET_ENUM_TYPES } from '@/graphql/queries'
+import { GET_CI_TYPES, GET_BASE_CI_TYPE, GET_ENUM_TYPES, GET_CI_TYPE_DELETION_IMPACT } from '@/graphql/queries'
+import { DELETE_CI_TYPE } from '@/graphql/mutations'
+import { toast } from 'sonner'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 
 vi.mock('sonner', () => ({
@@ -176,5 +178,51 @@ describe('ruolo nella mappa di un servizio (A-10)', () => {
   it('su un tipo spedito col prodotto la tendina è spenta come il resto', async () => {
     await openType('Server', [SHIPPED, OWN])
     expect(screen.getByRole('combobox', { name: /Role in a service map/ })).toBeDisabled()
+  })
+})
+
+// ── Regola del 15 set 2026: la cancellazione di un tipo ──────────────────────
+// Blocca solo un ticket che cita un CI del tipo; il resto va via col tipo,
+// quindi la conferma lo elenca PRIMA.
+
+describe('eliminare un tipo: la conferma dice cosa va via, e solo un ticket la blocca', () => {
+  const ZERO = { __typename: 'CITypeDeletionImpact', cis: 0, ticketCIs: 0, tickets: 0, ticketCIExclusions: 0, groupsUpdated: 0, groupsDeleted: 0, fieldVisibilityRules: 0, fieldRequirementRules: 0, businessRules: 0, autoTriggers: 0, customWidgets: 0, reportSections: 0, assessmentQuestionLinks: 0 }
+  const impactMock = (over: Record<string, number>): GqlMock => ({
+    request: { query: GET_CI_TYPE_DELETION_IMPACT, variables: { id: 't-own' } },
+    result: { data: { ciTypeDeletionImpact: { ...ZERO, ...over } } },
+  })
+
+  async function open(extra: GqlMock[]) {
+    const r = renderWithProviders(<CITypeDesignerPage />, { mocks: [...mocks([OWN]), ...extra] })
+    await r.user.click(await waitFor(() => screen.getByText('Load Balancer')))
+    return r
+  }
+
+  it('un tipo appena creato: la conferma elenca solo i collegamenti alle domande, e si cancella', async () => {
+    const seen: unknown[] = []
+    const del: GqlMock = { request: { query: DELETE_CI_TYPE, variables: (v) => { seen.push(v); return true } }, result: { data: { deleteCIType: true } } }
+    const r = await open([impactMock({ assessmentQuestionLinks: 2 }), del])
+    await r.user.click(screen.getByRole('button', { name: /Delete the type/ }))
+    const body = await screen.findByTestId('ci-type-deletion-impact')
+    expect(body).toHaveTextContent('Together with the type, these are deleted:')
+    expect(body).toHaveTextContent('the links to 2 assessment questions (the questions stay)')
+    await r.user.click(screen.getByRole('button', { name: /^Delete$|Confirm/ }))
+    await waitFor(() => expect(seen).toEqual([{ id: 't-own' }]))
+  })
+
+  it('CI e riferimenti: ogni voce col suo numero', async () => {
+    const r = await open([impactMock({ cis: 12, groupsDeleted: 1, businessRules: 2 })])
+    await r.user.click(screen.getByRole('button', { name: /Delete the type/ }))
+    const body = await screen.findByTestId('ci-type-deletion-impact')
+    expect(body).toHaveTextContent('12 CIs of this type, with their relationships')
+    expect(body).toHaveTextContent('1 dynamic group that listed only this type')
+    expect(body).toHaveTextContent('2 business rules')
+  })
+
+  it('in un ticket: nessuna conferma, il motivo coi numeri', async () => {
+    const r = await open([impactMock({ cis: 5, ticketCIs: 3, tickets: 4 })])
+    await r.user.click(screen.getByRole('button', { name: /Delete the type/ }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('«Load Balancer» cannot be deleted: 3 of its CIs are linked to 4 ticket(s), closed ones included.'))
+    expect(screen.queryByTestId('ci-type-deletion-impact')).not.toBeInTheDocument()
   })
 })

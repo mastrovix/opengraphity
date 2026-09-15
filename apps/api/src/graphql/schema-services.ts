@@ -187,6 +187,22 @@ export function servicesSDL(): string {
     excluded:          [ConfigurationItemRef!]!
     """L'incident non chiuso aperto dal monitoraggio per questo servizio (IMPACTS_SERVICE); null se non ce n'è. Con rules.openIncidentFrom = never non ne nascono di nuovi."""
     openIncident:      Incident
+    """Perché il monitoraggio non riesce a portare l'incident di questo servizio nello stato giusto (per esempio un tipo di CI escluso dagli incident): resta finché una riconciliazione non riesce. null quando va tutto bene."""
+    incidentProblem:   ServiceIncidentProblem
+  }
+
+  """Il motivo per cui l'ultima riconciliazione dell'incident di servizio è fallita: la chiave i18n dell'errore (sotto errors.) con i suoi parametri, e il messaggio inglese per chi non ha la chiave."""
+  type ServiceIncidentProblem {
+    key:     String
+    params:  [ServiceIncidentProblemParam!]!
+    message: String!
+    """Da quando il motivo è questo."""
+    since:   String!
+  }
+
+  type ServiceIncidentProblemParam {
+    name:  String!
+    value: String!
   }
 
   extend type Incident {
@@ -315,7 +331,7 @@ export function servicesSDL(): string {
   }
 
   extend type Mutation {
-    """Costruzione automatica dalla BusinessApplication (REALIZES → relazioni tecniche in uscita fino a maxDepth, default 4, max 8; relationshipTypes fra quelle di serviceRelationshipTypes — i quattro spediti più quelle definite dal cliente —, default i quattro spediti), status active (o draft per una bozza), valutazione immediata. Una sola mappa per servizio; oltre 500 componenti → BAD_USER_INPUT."""
+    """Costruzione automatica dalla BusinessApplication (REALIZES → relazioni tecniche in uscita fino a maxDepth, default 4, max 8; relationshipTypes fra quelle di serviceRelationshipTypes — i quattro spediti più quelle definite dal cliente —, default tutti quelli di serviceRelationshipTypes), status active (o draft per una bozza), valutazione immediata. Una sola mappa per servizio; oltre 500 componenti → BAD_USER_INPUT."""
     createServiceMap(serviceId: ID!, maxDepth: Int, relationshipTypes: [String!], status: ServiceMapStatus, autoSync: Boolean): ServiceMap!
     """Rivaluta ora (trigger manual)."""
     reevaluateServiceMap(id: ID!): ServiceMap!
@@ -327,6 +343,8 @@ export function servicesSDL(): string {
     updateServiceMapNodes(id: ID!, expectedVersion: Int!, nodes: [ServiceMapNodeInput!]!): ServiceMap!
     """Applica le scelte fatte sul diff: add = CI della proposta da includere, exclude = CI da non riproporre mai più (e da togliere, se inclusi), remove = CI inclusi (o spariti dalla CMDB) da togliere. Tutto in una transazione; poi rivaluta, tranne le mappe in pausa."""
     applyServiceMapProposal(id: ID!, expectedVersion: Int!, add: [ID!]!, exclude: [ID!]!, remove: [ID!]!): ServiceMap!
+    """Cambia i tipi di relazione seguiti e la profondità (relationshipTypes fra quelli di serviceRelationshipTypes, maxDepth 1..8), con controllo di concorrenza; voce di cronologia map_changed. Una mappa viva non in pausa si sincronizza subito con il nuovo ambito."""
+    updateServiceMapScope(id: ID!, expectedVersion: Int!, relationshipTypes: [String!]!, maxDepth: Int!): ServiceMap!
     """Riammette un CI escluso: tornerà nella prossima proposta."""
     removeServiceMapExclusion(id: ID!, expectedVersion: Int!, ciId: ID!): ServiceMap!
     """Accende o spegne l'aggiornamento automatico dei componenti (mappa viva o congelata), con controllo di concorrenza; voce di cronologia map_changed. Non rivaluta la mappa: cambia solo il modo in cui i componenti seguono la CMDB."""

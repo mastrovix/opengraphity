@@ -102,3 +102,15 @@ export const REMOVE_SERVICE_MAP_EXCLUSION = gql`
   }
   ${SERVICE_MAP_DETAIL_FIELDS}
 `
+
+/**
+ * Revisione del 15 set 2026 · SV-6: tipi di relazione e profondità di una
+ * mappa esistente (prima si fissavano alla creazione). Una mappa viva si
+ * sincronizza subito col nuovo ambito.
+ */
+export const UPDATE_SERVICE_MAP_SCOPE = gql`
+  mutation UpdateServiceMapScope($id: ID!, $expectedVersion: Int!, $relationshipTypes: [String!]!, $maxDepth: Int!) {
+    updateServiceMapScope(id: $id, expectedVersion: $expectedVersion, relationshipTypes: $relationshipTypes, maxDepth: $maxDepth) { ...ServiceMapDetailFields }
+  }
+  ${SERVICE_MAP_DETAIL_FIELDS}
+`

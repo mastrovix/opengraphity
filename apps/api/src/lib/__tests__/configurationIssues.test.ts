@@ -83,6 +83,9 @@ vi.mock('../catalogItemPriority.js', () => ({ catalogItemsWithoutPriority: vi.fn
 vi.mock('../stepDeadlineBlocked.js', () => ({ blockedStepDeadlines: vi.fn(async () => []) }))
 let canaliSlackSenzaWorkspace: string[] = []
 vi.mock('../slackChannelsWithoutWorkspace.js', () => ({ slackChannelsWithoutWorkspace: vi.fn(async () => canaliSlackSenzaWorkspace) }))
+/** SV-4: le mappe il cui incident il monitoraggio non riesce a gestire; di default nessuna. */
+let mappeConProblema: Array<{ id: string; name: string }> = []
+vi.mock('../serviceIncidentProblems.js', () => ({ serviceMapsWithIncidentProblem: vi.fn(async () => mappeConProblema) }))
 vi.mock('../slaWarningCheck.js', () => ({ slaPoliciesWarningNotBeforeDeadline: vi.fn(async () => preavvisiScaduti) }))
 vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: vi.fn(async () => policy) }))
 vi.mock('../domainMatrix.js', async (importOriginal) => {
@@ -128,6 +131,7 @@ function healthy(): void {
   vociCategoriaVecchia = []
   giorniNotifiche = 30
   canaliSlackSenzaWorkspace = []
+  mappeConProblema = []
   gaps = []
   vocabularies = {
     impact: ['low'], urgency: ['low'], priority: ['low'], severity: ['low'],
@@ -169,6 +173,17 @@ describe('configurationIssues', () => {
     canaliSlackSenzaWorkspace = ['#ops', '#major']
     expect(await configurationIssues('c-one')).toEqual([
       { kind: 'slack_not_connected', severity: 'error', where: '/admin/integrations', params: { count: '2', channels: '#ops, #major' } },
+    ])
+  })
+
+  it('SV-4: servizi il cui incident non si riesce a gestire → errore che li nomina; con uno solo si va al suo dettaglio', async () => {
+    mappeConProblema = [{ id: 'map-1', name: 'Portale clienti' }]
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'service_incident_problem', severity: 'error', where: '/monitoring/services/map-1', params: { count: '1', services: 'Portale clienti' } },
+    ])
+    mappeConProblema = [{ id: 'map-1', name: 'Billing' }, { id: 'map-2', name: 'CRM' }]
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'service_incident_problem', severity: 'error', where: '/monitoring/services', params: { count: '2', services: 'Billing, CRM' } },
     ])
   })
 

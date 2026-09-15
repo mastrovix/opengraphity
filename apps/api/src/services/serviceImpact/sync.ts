@@ -235,13 +235,13 @@ export async function notifyChangeWindowChanged(tenantId: string, changeId: stri
  * con un componente dismesso non deve produrre una voce di cronologia ogni
  * mezz'ora (stesso criterio della voce «oltre il tetto»).
  */
-export function serviceSyncNote(lingua: Lingua, trigger: ServiceMapSyncTrigger, counts: { added: number; removed: number; moved: number; retired?: number }, actorId: string): string {
+export function serviceSyncNote(lingua: Lingua, trigger: ServiceMapSyncTrigger, counts: { added: number; removed: number; moved: number; retired?: number }, actorName: string): string {
   const what = systemTextIn(lingua, 'serviceMap.sync.counts', { added: counts.added, removed: counts.removed, moved: counts.moved })
   const retired = counts.retired && counts.retired > 0
     ? systemTextIn(lingua, counts.retired === 1 ? 'serviceMap.sync.retiredOne' : 'serviceMap.sync.retiredMany', { count: counts.retired })
     : ''
   return (trigger === 'manual'
-    ? systemTextIn(lingua, 'serviceMap.sync.manual', { actor: actorId, counts: what })
+    ? systemTextIn(lingua, 'serviceMap.sync.manual', { actor: actorName, counts: what })
     : systemTextIn(lingua, 'serviceMap.sync.automatic', { counts: what })) + retired
 }
 
@@ -363,6 +363,22 @@ export function syncPlanOf(diff: ServiceMapDiff): { add: ServiceMapDiff['added']
   }
 }
 
+export const ACTOR_NAME_CYPHER = `
+  MATCH (u:User {id: $actorId, tenant_id: $tenantId})
+  RETURN coalesce(u.name, u.email) AS name`
+
+/**
+ * Il nome di chi ha chiesto la sincronizzazione, per la cronologia (SV-8: era
+ * l'UUID). Un attore che non è un utente del tenant (una API key, uno script)
+ * resta col suo id, che è la verità, e il log lo dice.
+ */
+export async function actorNameOf(session: Queryable, tenantId: string, actorId: string): Promise<string> {
+  const row = await runQueryOne<{ name: string | null }>(session, ACTOR_NAME_CYPHER, { tenantId, actorId })
+  if (row?.name) return row.name
+  log.warn({ tenantId, actorId }, 'Service map synchronization requested by an actor that is not a user of the tenant: the history shows its id')
+  return actorId
+}
+
 /**
  * Sincronizza la mappa con il grafo di adesso.
  *
@@ -428,7 +444,7 @@ export async function syncServiceMap(
       }
 
       const counts = { added: plan.add.length, removed: plan.removeIds.length, moved: plan.move.length }
-      const note = serviceSyncNote(lingua, trigger, { ...counts, retired: plan.retired }, actorId)
+      const note = serviceSyncNote(lingua, trigger, { ...counts, retired: plan.retired }, trigger === 'manual' ? await actorNameOf(tx, tenantId, actorId) : actorId)
       const row = await runQueryOne<SyncRow & { added: unknown; removed: unknown; moved: unknown }>(tx, SYNC_APPLY_CYPHER, {
         mapId, tenantId, expectedVersion: diff.version, now, actorId,
         addNodes: plan.add.map((n) => ({ ciId: n.ciId, level: n.level, role: n.role, propagate: n.propagate, weight: n.weight, critical: n.critical, via: n.via })),

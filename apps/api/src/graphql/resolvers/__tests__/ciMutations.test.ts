@@ -394,13 +394,22 @@ describe('buildUpdateMutation', () => {
 
     await update(undefined, { id: 'ci-1', input: { rack: 'R2' } }, ctx)
     await update(undefined, { id: 'ci-1', input: { status: 'active' } }, ctx)
-    await update(undefined, { id: 'ci-1', input: { status: 'decommissioned' } }, ctx)
     expect(notifyCIMaintenanceChanged).not.toHaveBeenCalled()
     expect(recomputeCIHealth).not.toHaveBeenCalled()
 
     vi.mocked(notifyCIMaintenanceChanged).mockResolvedValueOnce(0)
     const toMaintenance = await update(undefined, { id: 'ci-1', input: { status: 'maintenance' } }, ctx)
     expect(toMaintenance).toBeTruthy()
+  })
+
+  it('SV-5: entrare o uscire dal ciclo di vita «dismesso» rivaluta le mappe (non toglieva il CI dal calcolo fino alla passata periodica)', async () => {
+    const session = fakeSession({ id: 'ci-1', name: 'srv', status: 'active', ip_address: '10.0.0.1' })
+    vi.mocked(withSession).mockImplementation((fn) => fn(session as never))
+    const update = buildUpdateMutation(ciType(), 'Server', mapCI)
+    await update(undefined, { id: 'ci-1', input: { status: 'decommissioned' } }, ctx)
+    expect(notifyCIMaintenanceChanged).toHaveBeenCalledWith('t1', ['ci-1'], 'ci.status:entered_retired')
+    // la salute non si ricalcola: il monitoraggio non la congela per i dismessi
+    expect(recomputeCIHealth).not.toHaveBeenCalled()
   })
 
   it('a patch clearing a required field is rejected before the write', async () => {

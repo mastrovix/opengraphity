@@ -2,11 +2,12 @@
  * Servizi monitorati — incident del servizio (ondata 3).
  *
  * Il motore (engine.ts) chiama `reconcileServiceIncident` DOPO aver scritto la
- * salute, e solo quando la valutazione ha prodotto un cambiamento rilevante
- * (salute cambiata, oppure insieme delle cause cambiato). Qui non si valuta
- * nulla: si confronta la salute appena scritta con la soglia della mappa
- * (`rules.open_incident_from`) e si porta l'incident del servizio nello stato
- * coerente — aperto, aggiornato, riaperto o risolto.
+ * salute, a OGNI valutazione non sospesa (revisione del 15 set 2026 · SV-1:
+ * prima solo quando salute o cause cambiavano, e una riconciliazione fallita
+ * non veniva più ritentata). Per questo ogni ramo qui sotto è idempotente: si
+ * confronta lo stato (salute appena scritta, soglia della mappa
+ * `rules.open_incident_from`, incident collegato e note sulla relazione) e si
+ * scrive solo ciò che manca — aperto, aggiornato, riaperto o risolto.
  *
  * La meccanica è quella degli allarmi (services/events/): stesso lock Redis
  * (lib/redisLock.ts, TTL 30 s e attesa 5 s come il raggruppamento), stesso
@@ -37,8 +38,11 @@
  *  - **Apertura idempotente** (revisione 2 · I2): marcatore Redis
  *    `og:services:incident:opened:<tenant>:<mapId>` scritto subito dopo
  *    `createIncident`; se la relazione fallisce, al retry si ricollega
- *    quell'incident invece di crearne un secondo. `cause_ids` si scrive PRIMA
- *    del commento «Causa aggiornata», per lo stesso motivo.
+ *    quell'incident invece di crearne un secondo. Il marcatore vive SOLO fra
+ *    `createIncident` e la relazione (SV-3): scritta la relazione si cancella,
+ *    e un marcatore che punta a un incident già in un passo terminale non si
+ *    ricollega mai. `cause_ids` si scrive PRIMA del commento «Causa
+ *    aggiornata», per lo stesso motivo.
  *  - Il commento «Causa aggiornata» si scrive solo quando l'insieme delle cause
  *    cambia DAVVERO rispetto a quello riportato l'ultima volta sull'incident
  *    (`cause_ids` sulla relazione, confronto per id e non per ordine): mai un
@@ -58,6 +62,7 @@
  */
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { Session } from 'neo4j-driver'
+import { GraphQLError } from 'graphql'
 import type { ServiceIncidentOpenedPayload } from '@opengraphity/types'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { audit } from '../../lib/audit.js'
@@ -324,7 +329,8 @@ export const FIND_TECHNICAL_INCIDENTS_CYPHER = `
 /** Un incident del tenant per id: serve solo al recupero d'idempotenza (il marcatore può puntare a un incident cancellato). */
 export const FIND_INCIDENT_BY_ID_CYPHER = `
   MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
-  RETURN i.number AS number`
+  OPTIONAL MATCH (i)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
+  RETURN i.number AS number, wi.current_step AS step`
 
 export async function findTechnicalIncidents(session: Session, tenantId: string, ciIds: readonly string[], info: IncidentStepInfo): Promise<TechnicalIncidentRef[]> {
   if (ciIds.length === 0) return []
@@ -498,7 +504,7 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
 export function keptOpenReason(lingua: Lingua, health: ServiceHealth, openFrom: ServiceOpenIncidentFrom, serviceName: string): string {
   if (openFrom === 'never') return systemTextIn(lingua, 'service.keptOpenNever', { service: serviceName })
   if (health === 'unknown') return systemTextIn(lingua, 'service.keptOpenUnknown', { service: serviceName })
-  return systemTextIn(lingua, 'service.keptOpenBelow', { service: serviceName, health: serviceHealthLabel(lingua, health), threshold: openFrom })
+  return systemTextIn(lingua, 'service.keptOpenBelow', { service: serviceName, health: serviceHealthLabel(lingua, health), threshold: systemTextIn(lingua, `serviceMap.rules.open.${openFrom}`) })
 }
 
 /**
@@ -561,8 +567,14 @@ async function openServiceIncident(session: Session, input: ServiceIncidentInput
   if (orphan) {
     // L'incident esiste già (creato al giro precedente) ma non è collegato:
     // `findServiceIncident` cerca solo via IMPACTS_SERVICE e non l'ha visto.
-    const row = await runQueryOne<{ number: string | null }>(session, FIND_INCIDENT_BY_ID_CYPHER, { tenantId, incidentId: orphan })
-    if (row) {
+    // SV-3: se nel frattempo qualcuno l'ha portato in un passo terminale
+    // (chiuso a mano, anche risolto) non è più l'incident di questa apertura:
+    // ricollegarlo manderebbe «incident aperto» su un ticket che nessuno lavora.
+    const row = await runQueryOne<{ number: string | null; step: string | null }>(session, FIND_INCIDENT_BY_ID_CYPHER, { tenantId, incidentId: orphan })
+    if (row && row.step != null && info.terminalSteps.includes(row.step)) {
+      log.warn({ tenantId, mapId, incidentId: orphan, step: row.step }, 'Service incident idempotency marker points to an incident already in a terminal step: opening a new one')
+      await redis.del(key)
+    } else if (row) {
       incident = { id: orphan, number: row.number == null ? '' : toStr(row.number) }
       log.warn({ tenantId, mapId, jobId: input.jobId, incidentId: orphan }, 'Service incident was already created by a previous attempt: relinked instead of opening a second one')
     } else {
@@ -583,7 +595,10 @@ async function openServiceIncident(session: Session, input: ServiceIncidentInput
       severity,
       impact,
       urgency,
-      affectedCIIds: causeIds.slice(0, SERVICE_MAX_CAUSES),
+      // SV-4: il servizio stesso fra i CI impattati, prima delle cause — così
+      // l'incident compare nel dettaglio dell'applicazione e nei filtri per CI.
+      // Soggetto alle stesse esclusioni CI di ogni incident.
+      affectedCIIds: serviceIncidentAffectedCIs(input.serviceId, causeIds),
     }, monitoringCtx(tenantId))
     // SUBITO dopo la creazione, prima di qualunque altra scrittura che possa
     // fallire. `NX`: se un altro attore l'ha già scritto non lo si sovrascrive.
@@ -591,6 +606,10 @@ async function openServiceIncident(session: Session, input: ServiceIncidentInput
   }
 
   await linkServiceIncident(session, tenantId, mapId, incident.id, causeIds, NO_NOTES, input.now)
+  // SV-3: da qui `findServiceIncident` lo trova da sé; il marcatore non serve
+  // più, e lasciarlo vivo per un'ora faceva ricollegare un incident chiuso a
+  // mano a una ricaduta.
+  await redis.del(key)
 
   const payload: ServiceIncidentOpenedPayload = {
     id: mapId, map_id: mapId, service_id: input.serviceId, name: input.serviceName,
@@ -605,6 +624,88 @@ async function openServiceIncident(session: Session, input: ServiceIncidentInput
   log.info({ tenantId, mapId, jobId: input.jobId, incidentId: incident.id, incidentNumber: incident.number, health, impactScore, severity, causes: causeIds.length },
     'Service incident opened')
   return { outcome: 'opened', incidentId: incident.id, incidentNumber: incident.number }
+}
+
+// ── Problema d'incident (SV-4) ───────────────────────────────────────────────
+
+/**
+ * Perché il monitoraggio non riesce a portare l'incident del servizio nello
+ * stato giusto (un tipo di CI escluso dagli incident, una cella della matrice
+ * che manca, il lock occupato…). È un DATO, come la diagnostica: la chiave
+ * i18n dell'errore con i suoi parametri, e il messaggio inglese per chi non ha
+ * la chiave. La frase la compone il client.
+ */
+export interface ServiceIncidentProblem { key: string | null; params: Record<string, string>; message: string }
+
+export function serviceIncidentProblemOf(err: unknown): ServiceIncidentProblem {
+  const message = err instanceof Error ? err.message : String(err)
+  const i18n = err instanceof GraphQLError ? (err.extensions?.['i18n'] as { key?: unknown; params?: unknown } | undefined) : undefined
+  const key = typeof i18n?.key === 'string' && i18n.key !== '' ? i18n.key : null
+  const params: Record<string, string> = {}
+  if (key && i18n?.params && typeof i18n.params === 'object') {
+    for (const [k, v] of Object.entries(i18n.params as Record<string, unknown>)) params[k] = v == null ? '' : String(v)
+  }
+  return { key, params, message }
+}
+
+/** Il problema salvato sulla mappa; null se non ce n'è. Corrotto → errore che lo dice, mai un problema inventato. */
+export function parseServiceIncidentProblem(raw: unknown, mapId: string): ServiceIncidentProblem | null {
+  if (raw == null) return null
+  if (typeof raw !== 'string') throw new Error(`ServiceMap ${mapId} incident_problem is not a JSON string (got ${typeof raw})`)
+  let parsed: unknown
+  try { parsed = JSON.parse(raw) } catch (e) { throw new Error(`ServiceMap ${mapId} incident_problem is corrupt JSON: ${e instanceof Error ? e.message : String(e)}`) }
+  const p = parsed as Partial<ServiceIncidentProblem>
+  if (typeof p?.message !== 'string' || (p.key !== null && typeof p.key !== 'string') || typeof p.params !== 'object' || p.params === null) {
+    throw new Error(`ServiceMap ${mapId} incident_problem has an unexpected shape`)
+  }
+  return { key: p.key ?? null, params: p.params as Record<string, string>, message: p.message }
+}
+
+/** L'istante resta quello della PRIMA volta finché il motivo è lo stesso: «da quando» è il dato utile. */
+export const RECORD_INCIDENT_PROBLEM_CYPHER = `
+  MATCH (m:ServiceMap {id: $mapId, tenant_id: $tenantId})
+  SET m.incident_problem_at = CASE WHEN m.incident_problem = $problem THEN m.incident_problem_at ELSE $now END,
+      m.incident_problem = $problem`
+
+export const CLEAR_INCIDENT_PROBLEM_CYPHER = `
+  MATCH (m:ServiceMap {id: $mapId, tenant_id: $tenantId})
+  WHERE m.incident_problem IS NOT NULL
+  SET m.incident_problem = null, m.incident_problem_at = null`
+
+/**
+ * Scrive il motivo del fallimento sulla mappa. Non lancia: siamo dentro la
+ * gestione di un errore che deve arrivare al job così com'è; se nemmeno questa
+ * scrittura riesce lo dice il log, a livello error.
+ */
+export async function recordServiceIncidentProblem(tenantId: string, mapId: string, err: unknown, now: string): Promise<void> {
+  const problem = serviceIncidentProblemOf(err)
+  try {
+    const session = getSession(undefined, 'WRITE')
+    try {
+      await runQuery(session, RECORD_INCIDENT_PROBLEM_CYPHER, { tenantId, mapId, now, problem: JSON.stringify(problem) })
+    } finally { await session.close() }
+  } catch (writeErr) {
+    log.error({ err: writeErr, tenantId, mapId, problem }, 'Service incident problem could NOT be recorded on the map (the evaluation error still propagates)')
+  }
+}
+
+/** Toglie il motivo dopo una riconciliazione riuscita. Non lancia: la valutazione è riuscita, e la successiva ci riprova (la riga di scrittura lo riporta). */
+export async function clearServiceIncidentProblem(tenantId: string, mapId: string): Promise<void> {
+  try {
+    const session = getSession(undefined, 'WRITE')
+    try {
+      await runQuery(session, CLEAR_INCIDENT_PROBLEM_CYPHER, { tenantId, mapId })
+    } finally { await session.close() }
+    log.info({ tenantId, mapId }, 'Service incident reconciled again: the recorded problem was cleared')
+  } catch (err) {
+    log.error({ err, tenantId, mapId }, 'Service incident problem could NOT be cleared (the next evaluation retries)')
+  }
+}
+
+/** I CI impattati dell'incident di servizio: il servizio (BusinessApplication), poi le cause fino a SERVICE_MAX_CAUSES, senza doppioni. */
+export function serviceIncidentAffectedCIs(serviceId: string, causeIds: readonly string[]): string[] {
+  if (typeof serviceId !== 'string' || serviceId === '') throw new Error('serviceIncidentAffectedCIs: the map has no service_id')
+  return [serviceId, ...causeIds.filter((id) => id !== serviceId).slice(0, SERVICE_MAX_CAUSES)]
 }
 
 /** Causa della risoluzione, costruita dalla salute VERA (mai «tornato operativo» se non lo è: I1). */

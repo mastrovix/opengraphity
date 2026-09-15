@@ -108,6 +108,7 @@ export const SERVICE_MAP_DETAIL_FIELDS = gql`
     history(limit: 10) { ...ServiceHistoryFields }
     historyCount
     openIncident { id number title status workflowInstance { id currentStep status } }
+    incidentProblem { key params { name value } message since }
   }
   ${SERVICE_MAP_ROW_FIELDS}
   ${SERVICE_HISTORY_FIELDS}

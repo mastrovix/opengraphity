@@ -2572,6 +2572,34 @@
       "component": "Componente (software: soffre)",
       "infrastructure": "Infrastruttura (ospita)",
       "certificate": "Certificato (informativo)"
+    },
+    "deleteImpact": {
+      "intro": "Insieme al tipo vengono cancellati:",
+      "nothing": "Non viene cancellato nient'altro: il tipo non ha CI e niente lo cita.",
+      "blocked": "«{{label}}» non si può eliminare: {{cis}} suoi CI sono collegati a {{tickets}} ticket, anche chiusi.",
+      "unavailable": "Non è stato possibile calcolare cosa cancellerebbe l'eliminazione: {{error}}",
+      "cis_one": "{{count}} CI di questo tipo, con le sue relazioni",
+      "cis_other": "{{count}} CI di questo tipo, con le loro relazioni",
+      "groupsDeleted_one": "{{count}} gruppo dinamico che elencava solo questo tipo",
+      "groupsDeleted_other": "{{count}} gruppi dinamici che elencavano solo questo tipo",
+      "groupsUpdated_one": "questo tipo dai criteri di {{count}} gruppo dinamico",
+      "groupsUpdated_other": "questo tipo dai criteri di {{count}} gruppi dinamici",
+      "ticketCIExclusions_one": "{{count}} esclusione per tipo di ticket",
+      "ticketCIExclusions_other": "{{count}} esclusioni per tipo di ticket",
+      "fieldVisibilityRules_one": "{{count}} regola di visibilità dei campi",
+      "fieldVisibilityRules_other": "{{count}} regole di visibilità dei campi",
+      "fieldRequirementRules_one": "{{count}} regola di obbligatorietà dei campi",
+      "fieldRequirementRules_other": "{{count}} regole di obbligatorietà dei campi",
+      "businessRules_one": "{{count}} business rule",
+      "businessRules_other": "{{count}} business rule",
+      "autoTriggers_one": "{{count}} trigger",
+      "autoTriggers_other": "{{count}} trigger",
+      "customWidgets_one": "{{count}} widget della dashboard",
+      "customWidgets_other": "{{count}} widget della dashboard",
+      "reportSections_one": "{{count}} sezione di report",
+      "reportSections_other": "{{count}} sezioni di report",
+      "assessmentQuestionLinks_one": "il collegamento a {{count}} domanda di assessment (la domanda resta)",
+      "assessmentQuestionLinks_other": "i collegamenti a {{count}} domande di assessment (le domande restano)"
     }
   },
   "fieldRules": {
@@ -3241,12 +3269,6 @@
       "nothingWritten": "{{what}}: non è stato scritto niente e nessuna modifica è stata salvata. L'elemento non esiste più, oppure il tipo è spedito col prodotto — un solo nodo per tutti i clienti, in sola lettura.",
       "fieldNotYours": "Il campo {{field}} non è un campo tuo su questo tipo: non è stato eliminato. I campi spediti col prodotto sono in sola lettura.",
       "unknownWithWhat": "{{what}}: «{{type}}» non è un tipo di CI di questo cliente (ammessi: {{allowed}}).",
-      "inUseDelete": "Il tipo «{{label}}» ({{name}}) non è stato eliminato: ci sono ancora {{count}} CI di tipo {{type}} in questo cliente, e i loro dati e le loro relazioni resterebbero nel grafo senza comparire più da nessuna parte (liste, impatto, mappe dei servizi, ricerca): una perdita silenziosa. Sposta o elimina prima quei CI.",
-      "inUseDeleteWithRefs": "Il tipo «{{label}}» ({{name}}) non è stato eliminato: ci sono ancora {{count}} CI di tipo {{type}} in questo cliente, e i loro dati e le loro relazioni resterebbero nel grafo senza comparire più da nessuna parte (liste, impatto, mappe dei servizi, ricerca): una perdita silenziosa. Sposta o elimina prima quei CI. Il tipo è citato anche da: {{refs}}.",
-      "inUseDeactivate": "Il tipo «{{label}}» ({{name}}) non è stato disattivato: ci sono ancora {{count}} CI di tipo {{type}} in questo cliente, e un tipo disattivato sparisce dalle letture come se fosse cancellato, quindi quei CI non comparirebbero più da nessuna parte. Sposta o elimina prima quei CI.",
-      "inUseDeactivateWithRefs": "Il tipo «{{label}}» ({{name}}) non è stato disattivato: ci sono ancora {{count}} CI di tipo {{type}} in questo cliente, e un tipo disattivato sparisce dalle letture come se fosse cancellato, quindi quei CI non comparirebbero più da nessuna parte. Sposta o elimina prima quei CI. Il tipo è citato anche da: {{refs}}.",
-      "onlyRefsDelete": "Il tipo «{{label}}» ({{name}}) non è stato eliminato: nessun CI è di questo tipo, ma il tipo è ancora citato da {{refs}}. Quei riferimenti sono per NOME: resterebbero appesi a un tipo che non esiste più. Togli prima i riferimenti.",
-      "onlyRefsDeactivate": "Il tipo «{{label}}» ({{name}}) non è stato disattivato: nessun CI è di questo tipo, ma il tipo è ancora citato da {{refs}}. Quei riferimenti sono per NOME: resterebbero appesi a un tipo che non esiste più. Togli prima i riferimenti.",
       "where": {
         "topology": "Nel filtro della mappa",
         "groupCriteria": "Nei criteri del gruppo dinamico"
@@ -3273,7 +3295,11 @@
       },
       "chainFamilyRepeated": "La famiglia di catena {{family}} compare due volte.",
       "dictionaryOnNonEnum": "Il campo «{{field}}» è di tipo {{fieldType}}: solo un campo a elenco (enum) usa un vocabolario.",
-      "relationInUse": "La relazione «{{name}}» non è stata tolta: {{count}} collegamenti {{relationshipType}} fra CI sono dichiarati solo da lei e resterebbero nel grafo senza comparire da nessuna parte. Togli prima quei collegamenti."
+      "relationInUse": "La relazione «{{name}}» non è stata tolta: {{count}} collegamenti {{relationshipType}} fra CI sono dichiarati solo da lei e resterebbero nel grafo senza comparire da nessuna parte. Togli prima quei collegamenti.",
+      "relationUsedByServiceMaps": "«{{name}}» non è stata tolta: è l'unica dichiarazione di {{relationshipTypes}}, che {{count}} mappe di servizio seguono ({{maps}}). Senza, quelle mappe non si potrebbero più sincronizzare. Togli prima la relazione da quelle mappe (dettaglio del servizio → Modifica ambito).",
+      "inTicketsDelete": "Il tipo «{{label}}» ({{name}}) non è stato eliminato: {{cis}} suoi CI sono collegati a {{tickets}} ticket (incident, problem, change o richieste, anche chiusi). Senza il tipo quei CI sparirebbero dallo storico dei ticket.",
+      "inTicketsDeactivate": "Il tipo «{{label}}» ({{name}}) non è stato disattivato: {{cis}} suoi CI sono collegati a {{tickets}} ticket (incident, problem, change o richieste, anche chiusi). Senza il tipo quei CI sparirebbero dallo storico dei ticket.",
+      "hasCIsDeactivate": "Il tipo «{{label}}» ({{name}}) non è stato disattivato: ci sono ancora {{count}} CI di tipo {{type}}, e un tipo disattivato sparisce dalle letture come se fosse cancellato. Elimina invece il tipo (i suoi CI se ne vanno con lui), oppure sposta prima quei CI."
     },
     "titleRequired": "Il titolo è obbligatorio.",
     "assignment": {
@@ -4130,7 +4156,8 @@
       "syncAligned": "Mappa già allineata al grafo: niente da aggiungere né da togliere",
       "syncSkipped": "Sincronizzazione rifiutata: {{reason}}. Non è stato cambiato nulla.",
       "syncSkippedNoReason": "il motore non ha dato un motivo",
-      "componentExcluded": "{{name}} escluso: è fuori dalla mappa e non verrà più riproposto"
+      "componentExcluded": "{{name}} escluso: è fuori dalla mappa e non verrà più riproposto",
+      "scopeChanged": "Ambito salvato (versione {{version}})"
     },
     "user": {
       "teamsUpdated": "Team aggiornati"
@@ -5432,7 +5459,8 @@
         "step": "Passo: {{step}}",
         "noStep": "Passo non disponibile",
         "stepsUnavailable": "Etichette del workflow non caricate ({{error}}): stato e passo sono quelli grezzi.",
-        "open": "Apri l'incident {{number}}"
+        "open": "Apri l'incident {{number}}",
+        "problem": "Il monitoraggio non riesce ad allineare l'incident di questo servizio: {{reason}} (da {{since}}). Riprova a ogni valutazione; l'incident si apre appena la causa viene tolta."
       },
       "criticalBanner": {
         "title_one": "Un servizio critico è giù",
@@ -5451,6 +5479,20 @@
         "down_other": "{{count}} giù",
         "degraded_one": "{{count}} degradato",
         "degraded_other": "{{count}} degradati"
+      },
+      "scope": {
+        "title": "Modifica ambito",
+        "open": "Modifica ambito",
+        "submit": "Salva",
+        "depth": "Profondità massima",
+        "depthHint": "Quanti passi seguire dalle applicazioni lungo le relazioni scelte (1–{{max}}).",
+        "relationships": "Relazioni da seguire",
+        "relationshipsHint": "Una mappa viva si sincronizza subito con il nuovo ambito; una mappa congelata mostra la differenza in «Aggiorna mappa».",
+        "relationshipsRequired": "Scegli almeno una relazione.",
+        "notDeclared": "{{type}} — non più dichiarata nel metamodello: salvando viene tolta",
+        "relationshipsError": "Tipi di relazione non leggibili: {{error}}",
+        "noResult": "updateServiceMapScope non ha restituito la mappa",
+        "unchanged": "Nessuna modifica."
       }
     },
     "opColumns": {
@@ -5507,7 +5549,9 @@
       "step_deadlines_blocked_one": "{{count}} ticket è ancora in un passo la cui scadenza non è riuscita a spostarlo ({{tickets}}): le approvazioni l'hanno rifiutata, oppure il workflow è cambiato e la scadenza non ha più strada. Si riprova ogni ora. **Controlla la scadenza del passo nel disegnatore dei workflow**.",
       "step_deadlines_blocked_other": "{{count}} ticket sono ancora in un passo la cui scadenza non è riuscita a spostarli ({{tickets}}): le approvazioni l'hanno rifiutata, oppure il workflow è cambiato e la scadenza non ha più strada. Si riprova ogni ora. **Controlla le scadenze dei passi nel disegnatore dei workflow**.",
       "slack_not_connected_one": "Un canale Slack scrive con il bot, ma questa organizzazione non ha collegato il suo workspace Slack: {{channels}}. Ogni notifica verso quel canale fallisce. **Collega Slack in Admin → Integrazioni**.",
-      "slack_not_connected_other": "{{count}} canali Slack scrivono con il bot, ma questa organizzazione non ha collegato il suo workspace Slack: {{channels}}. Ogni notifica verso quei canali fallisce. **Collega Slack in Admin → Integrazioni**."
+      "slack_not_connected_other": "{{count}} canali Slack scrivono con il bot, ma questa organizzazione non ha collegato il suo workspace Slack: {{channels}}. Ogni notifica verso quei canali fallisce. **Collega Slack in Admin → Integrazioni**.",
+      "service_incident_problem_one": "Il monitoraggio non riesce a gestire l'incident del servizio {{services}}: il servizio può essere giù senza incident. **Apri il servizio per vedere il motivo**.",
+      "service_incident_problem_other": "Il monitoraggio non riesce a gestire l'incident di {{count}} servizi ({{services}}): possono essere giù senza incident. **Apri ogni servizio per vedere il motivo**."
     },
     "gap": {
       "tenant_missing": "nessuna riga: il tenant non esiste",

@@ -300,11 +300,18 @@ describe('syncServiceMap: pausa e modalità', () => {
   })
 
   it('mappa congelata (auto_sync false): la sincronizzazione manuale funziona lo stesso (è un\'azione esplicita)', async () => {
-    onCypher(diffCypher(stateRow({ props: { auto_sync: false } })))
+    onCypher([[/MATCH \(u:User \{id: \$actorId/, { name: 'Anna Rossi' }], ...diffCypher(stateRow({ props: { auto_sync: false } }))])
     const r = await syncServiceMap('t1', 'map-1', 'manual', 'adm-1', NOW)
     expect(r.changed).toBe(true)
-    expect(callMatching(APPLY_RE)!.params['hNote']).toBe('Sincronizzazione richiesta da adm-1: +1, −2, ~1 spostati')
+    // SV-8: nella cronologia il nome di chi l'ha chiesta, non il suo UUID
+    expect(callMatching(APPLY_RE)!.params['hNote']).toBe('Sincronizzazione richiesta da Anna Rossi: +1, −2, ~1 spostati')
     expect(callMatching(APPLY_RE)!.params['actorId']).toBe('adm-1')
+  })
+
+  it('SV-8: un attore che non è un utente del tenant (API key, script) resta col suo id, e il log lo dice', async () => {
+    onCypher([[/MATCH \(u:User \{id: \$actorId/, null], ...diffCypher(stateRow({ props: { auto_sync: false } }))])
+    await syncServiceMap('t1', 'map-1', 'manual', 'key-7', NOW)
+    expect(callMatching(APPLY_RE)!.params['hNote']).toBe('Sincronizzazione richiesta da key-7: +1, −2, ~1 spostati')
   })
 
   it('la nota distingue la sincronizzazione automatica da quella richiesta a mano', () => {

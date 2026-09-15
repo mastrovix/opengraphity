@@ -19,7 +19,7 @@
  *
  * Il dato: un nodo `(:TicketCIExclusion {tenant_id, ticket_type, ci_type})`
  * per esclusione, con `ci_type` = NOME del tipo CI (come lo citano le altre
- * configurazioni, e come lo conta `ciTypeUsage` prima di cancellare un tipo).
+ * configurazioni, e come la toglie `lib/ciTypeDeletion.ts` quando si cancella il tipo).
  */
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { loadMetamodel } from '@opengraphity/schema-generator'

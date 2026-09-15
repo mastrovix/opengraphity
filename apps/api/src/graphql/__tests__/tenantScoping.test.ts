@@ -47,7 +47,7 @@ interface Offender { file: string; line: number; text: string }
  * Un nodo la cui chiave viene INTERAMENTE da un alias già legato nella query
  * (`{instance_id: wi.id}`, `{definition_id: wd.id}`) è vincolato dal grafo, non
  * dall'input del chiamante: se `wi` è scopato, lo è anche lui. È la convenzione
- * che `lib/ciTypeUsage.ts:77-78` già annotava a mano; qui diventa la regola,
+ * che la vecchia `lib/ciTypeUsage.ts` annotava a mano; qui diventa la regola,
  * così i figli di un nodo scopato non chiedono un marcatore a testa.
  *
  * Vincolo stretto: nessun `$parametro` nella mappa (un parametro arriva dal

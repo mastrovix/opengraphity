@@ -37,6 +37,7 @@
  * che la lingua la conosce (`configurationIssue.<kind>`).
  */
 import { slackChannelsWithoutWorkspace } from './slackChannelsWithoutWorkspace.js'
+import { serviceMapsWithIncidentProblem } from './serviceIncidentProblems.js'
 import type { Session } from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
 import { PORTAL_SEVERITY_VOCABULARY, portalSeverityOptions } from './portalSeverityOptions.js'
@@ -94,6 +95,7 @@ export type ConfigurationIssueKind =
   | 'sla_warning_not_before_deadline'
   | 'step_deadlines_blocked'
   | 'slack_not_connected'
+  | 'service_incident_problem'
 
 export interface ConfigurationIssue {
   /** La CHIAVE del problema: il client la risolve nella sua lingua. */
@@ -116,7 +118,7 @@ export async function configurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -439,6 +441,24 @@ async function checkSlackChannels(tenantId: string, session: Session): Promise<C
   const names = await slackChannelsWithoutWorkspace(session, tenantId)
   if (names.length === 0) return []
   return [{ kind: 'slack_not_connected', severity: 'error', where: '/admin/integrations', params: { count: String(names.length), channels: names.join(', ') } }]
+}
+
+/**
+ * SERVIZI IL CUI INCIDENT NON SI RIESCE A GESTIRE (revisione del 15 set 2026 ·
+ * SV-4): il motore scrive sulla mappa perché l'ultima riconciliazione è
+ * fallita (tipicamente un tipo di CI escluso dagli incident) e lo toglie alla
+ * prima che riesce. Prima si leggeva solo nel log del worker, mentre il
+ * servizio restava giù senza incident. Con una mappa sola si va dritti al suo
+ * dettaglio, dove c'è il motivo.
+ */
+async function checkServiceIncidentProblems(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const maps = await serviceMapsWithIncidentProblem(session, tenantId)
+  if (maps.length === 0) return []
+  return [{
+    kind: 'service_incident_problem', severity: 'error',
+    where: maps.length === 1 ? `/monitoring/services/${maps[0]!.id}` : '/monitoring/services',
+    params: { count: String(maps.length), services: maps.map((m) => m.name).join(', ') },
+  }]
 }
 
 /**

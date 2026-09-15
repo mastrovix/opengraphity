@@ -84,7 +84,10 @@ const {
   FIND_SERVICE_INCIDENT_CYPHER, LINK_SERVICE_INCIDENT_CYPHER,
   FIND_TECHNICAL_INCIDENTS_CYPHER, SERVICE_MAX_TECHNICAL_INCIDENTS, technicalIncidentsHeading,
   keptOpenReason, serviceResolveCause, serviceIncidentOpenedKey, SERVICE_INCIDENT_OPENED_TTL_SECONDS,
+  serviceIncidentAffectedCIs, serviceIncidentProblemOf, parseServiceIncidentProblem, recordServiceIncidentProblem, clearServiceIncidentProblem,
+  RECORD_INCIDENT_PROBLEM_CYPHER, CLEAR_INCIDENT_PROBLEM_CYPHER,
 } = await import('../serviceImpact/incident.js')
+const { ValidationError } = await import('../../lib/errors.js')
 const { DEFAULT_SERVICE_IMPACT_RULES, SERVICE_HEALTHS } = await import('../../lib/serviceVocabularies.js')
 const { RedisLockTimeoutError } = await import('../../lib/redisLock.js')
 
@@ -239,7 +242,7 @@ describe('soglia, impatto, urgenza, testi', () => {
 // ── Apertura ─────────────────────────────────────────────────────────────────
 
 describe('apertura', () => {
-  it('sopra soglia e nessun incident → UN incident con priorità criticità × salute, i CI delle cause impattati, relazione IMPACTS_SERVICE, evento e audit', async () => {
+  it('sopra soglia e nessun incident → UN incident con priorità criticità × salute, il servizio e i CI delle cause impattati, relazione IMPACTS_SERVICE, evento e audit', async () => {
     onCypher([[FIND_RE, null], [LINK_RE, { at: NOW }]])
     const r = await reconcileServiceIncident(input({ causes: [cause('db-01'), cause('cache-02', { health: 'degraded' })] }))
     expect(r).toEqual({ outcome: 'opened', incidentId: 'inc-9', incidentNumber: 'INC00000099' })
@@ -247,7 +250,7 @@ describe('apertura', () => {
     expect(incidentService.createIncident).toHaveBeenCalledTimes(1)
     const [created, ctx] = incidentService.createIncident.mock.calls[0]!
     // business_critical → impatto high; down → urgenza high; matrice ITIL → critical
-    expect(created).toMatchObject({ title: 'Servizio Enterprise Billing: non disponibile', impact: 'high', urgency: 'high', severity: 'critical', affectedCIIds: ['db-01', 'cache-02'] })
+    expect(created).toMatchObject({ title: 'Servizio Enterprise Billing: non disponibile', impact: 'high', urgency: 'high', severity: 'critical', affectedCIIds: ['ba-1', 'db-01', 'cache-02'] })
     expect(created.description).toContain('- DB-01 (non disponibile)')
     expect(ctx).toEqual({ tenantId: 't1', userId: 'monitoring' })
 
@@ -331,8 +334,8 @@ describe('lock', () => {
     expect([a.outcome, b.outcome].sort()).toEqual(['none', 'opened'])
     expect(fakeRedis.set).toHaveBeenCalledWith('og:services:incident:t1:map-1', expect.any(String), 'EX', 30, 'NX')
     expect(redisStore.has('og:services:incident:t1:map-1')).toBe(false)   // lock rilasciato in entrambi i casi
-    // resta solo il marcatore d'idempotenza dell'apertura (I2)
-    expect([...redisStore.keys()]).toEqual(['og:services:incident:opened:t1:map-1'])
+    // SV-3: scritta la relazione, anche il marcatore d'idempotenza dell'apertura se ne va
+    expect([...redisStore.keys()]).toEqual([])
   })
 
   it('lock occupato oltre l\'attesa → errore ritentabile (il job riprova), nessuna scrittura', async () => {
@@ -496,7 +499,7 @@ describe('sotto soglia ma non operativo: l\'incident resta aperto (I1)', () => {
     expect(incidentService.resolveIncident).not.toHaveBeenCalled()
     expect(runMonitoringTransition).not.toHaveBeenCalled()
     expect(incidentService.addIncidentComment).toHaveBeenCalledTimes(1)
-    expect(incidentService.addIncidentComment.mock.calls[0]![2]).toBe('Il servizio "Enterprise Billing" è degradato, sotto la soglia di apertura ("down"): l\'incident resta aperto.')
+    expect(incidentService.addIncidentComment.mock.calls[0]![2]).toBe('Il servizio "Enterprise Billing" è degradato, sotto la soglia di apertura ("giù"): l\'incident resta aperto.')
     // il marcatore si scrive PRIMA del commento (al retry nessun doppione)
     expect(callMatching(LINK_RE)!.params).toMatchObject({ keptOpenNoted: true, maintenanceNoted: false })
     expect(metrics.serviceIncidentsResolvedTotal.inc).not.toHaveBeenCalled()
@@ -543,7 +546,7 @@ describe('sotto soglia ma non operativo: l\'incident resta aperto (I1)', () => {
   })
 
   it('keptOpenReason: i tre testi, senza frasi inventate', () => {
-    expect(keptOpenReason('it', 'degraded', 'down', 'X')).toContain('sotto la soglia di apertura ("down")')
+    expect(keptOpenReason('it', 'degraded', 'down', 'X')).toContain('sotto la soglia di apertura ("giù")')   // SV-8: l'etichetta, non il valore grezzo
     expect(keptOpenReason('it', 'unknown', 'down', 'X')).toContain('stato sconosciuto')
     expect(keptOpenReason('it', 'down', 'never', 'X')).toContain('"mai aprire incident"')
   })
@@ -570,6 +573,26 @@ describe('apertura idempotente (I2)', () => {
     expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ incidentId: 'inc-9' }), expect.stringContaining('relinked instead of opening a second one'))
     expect(serviceIncidentOpenedKey('t1', 'map-1')).toBe('og:services:incident:opened:t1:map-1')
     expect(SERVICE_INCIDENT_OPENED_TTL_SECONDS).toBe(3600)
+    expect(redisStore.has('og:services:incident:opened:t1:map-1')).toBe(false)   // ricollegato: il marcatore non serve più
+  })
+
+  it('SV-3: marcatore che punta a un incident già chiuso a mano → non lo si ricollega, se ne apre uno nuovo', async () => {
+    // Prima il marcatore viveva un'ora: chiuso a mano l'incident, una ricaduta
+    // lo ricollegava e mandava «incident aperto» su un ticket che nessuno lavora.
+    redisStore.set('og:services:incident:opened:t1:map-1', 'inc-closed')
+    onCypher([[FIND_RE, null], [BY_ID_RE, { number: 'INC00000001', step: 'closed' }], [LINK_RE, { at: NOW }]])
+    const r = await reconcileServiceIncident(input())
+    expect(r).toMatchObject({ outcome: 'opened', incidentId: 'inc-9' })
+    expect(incidentService.createIncident).toHaveBeenCalledTimes(1)
+    expect(callMatching(LINK_RE)!.params).toMatchObject({ incidentId: 'inc-9' })
+    expect(redisStore.has('og:services:incident:opened:t1:map-1')).toBe(false)
+  })
+
+  it('SV-3: dopo un\'apertura riuscita il marcatore non resta (una chiusura manuale non lascia un id vecchio)', async () => {
+    onCypher([[FIND_RE, null], [LINK_RE, { at: NOW }]])
+    await reconcileServiceIncident(input())
+    expect(fakeRedis.set).toHaveBeenCalledWith('og:services:incident:opened:t1:map-1', 'inc-9', 'EX', 3600, 'NX')
+    expect(redisStore.has('og:services:incident:opened:t1:map-1')).toBe(false)
   })
 
   it('marcatore che punta a un incident sparito → si riparte e se ne apre uno nuovo (mai un id inventato)', async () => {
@@ -578,6 +601,7 @@ describe('apertura idempotente (I2)', () => {
     const r = await reconcileServiceIncident(input())
     expect(r.outcome).toBe('opened')
     expect(r.incidentId).toBe('inc-9')
+    expect(callMatching(BY_ID_RE)!.cypher).toContain('wi.current_step AS step')
     expect(incidentService.createIncident).toHaveBeenCalledTimes(1)
   })
 
@@ -688,5 +712,50 @@ describe('incident tecnici già aperti sui componenti', () => {
     expect(withTech.split('\n').slice(-3)).toEqual([technicalIncidentsHeading('it'), '- INC00000011 DB-01 non raggiungibile', '- INC00000012 CACHE-02 in errore'])
     expect(serviceIncidentDescription('it', 'Enterprise Billing', 'down', 62, [cause('db-01')])).not.toContain(technicalIncidentsHeading('it'))
     expect(serviceIncidentDescription('it', 'Enterprise Billing', 'down', 62, [cause('db-01')], [])).not.toContain(technicalIncidentsHeading('it'))
+  })
+})
+
+// ── Revisione del 15 set 2026 · SV-4 ─────────────────────────────────────────
+
+describe('SV-4: CI dell\'incident e problema registrato sulla mappa', () => {
+  it('il servizio prima delle cause, senza doppioni, cause fino al tetto', () => {
+    expect(serviceIncidentAffectedCIs('ba-1', ['db-01', 'ba-1', 'cache-02'])).toEqual(['ba-1', 'db-01', 'cache-02'])
+    expect(() => serviceIncidentAffectedCIs('', ['db-01'])).toThrow(/no service_id/)
+  })
+
+  it('il motivo è un DATO: chiave i18n e parametri dell\'errore, più il messaggio; un errore senza chiave ha solo il messaggio', () => {
+    const excluded = new ValidationError('These CIs cannot be linked', { key: 'errors.ticketCI.excluded', params: { ticketType: 'incident', cis: 'App (Application)' } })
+    expect(serviceIncidentProblemOf(excluded)).toEqual({ key: 'errors.ticketCI.excluded', params: { ticketType: 'incident', cis: 'App (Application)' }, message: 'These CIs cannot be linked' })
+    expect(serviceIncidentProblemOf(new Error('lock busy'))).toEqual({ key: null, params: {}, message: 'lock busy' })
+  })
+
+  it('parse: assente → null; corrotto o di forma sbagliata → errore che lo dice', () => {
+    expect(parseServiceIncidentProblem(null, 'm')).toBeNull()
+    expect(parseServiceIncidentProblem('{"key":null,"params":{},"message":"x"}', 'm')).toEqual({ key: null, params: {}, message: 'x' })
+    expect(() => parseServiceIncidentProblem('{nope', 'm')).toThrow(/corrupt JSON/)
+    expect(() => parseServiceIncidentProblem('{"key":1}', 'm')).toThrow(/unexpected shape/)
+  })
+
+  it('registrare: l\'istante resta quello della prima volta finché il motivo è lo stesso; se la scrittura fallisce lo dice il log, senza lanciare', async () => {
+    vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([[/incident_problem_at = CASE/, []]])
+    await recordServiceIncidentProblem('t1', 'map-1', new Error('lock busy'), NOW)
+    const w = callMatching(/incident_problem_at = CASE/)!
+    expect(w.cypher).toBe(RECORD_INCIDENT_PROBLEM_CYPHER)
+    expect(w.params).toEqual({ tenantId: 't1', mapId: 'map-1', now: NOW, problem: JSON.stringify({ key: null, params: {}, message: 'lock busy' }) })
+
+    vi.mocked(runQuery).mockRejectedValueOnce(new Error('neo4j down'))
+    await expect(recordServiceIncidentProblem('t1', 'map-1', new Error('x'), NOW)).resolves.toBeUndefined()
+    expect(log.error).toHaveBeenCalledWith(expect.objectContaining({ mapId: 'map-1' }), expect.stringContaining('could NOT be recorded'))
+  })
+
+  it('togliere: solo se c\'è, e un fallimento non fa fallire la valutazione riuscita', async () => {
+    vi.mocked(getSession).mockReturnValue(session as never)
+    onCypher([[/WHERE m.incident_problem IS NOT NULL/, []]])
+    await clearServiceIncidentProblem('t1', 'map-1')
+    expect(callMatching(/WHERE m.incident_problem IS NOT NULL/)!.cypher).toBe(CLEAR_INCIDENT_PROBLEM_CYPHER)
+    vi.mocked(runQuery).mockRejectedValueOnce(new Error('neo4j down'))
+    await expect(clearServiceIncidentProblem('t1', 'map-1')).resolves.toBeUndefined()
+    expect(log.error).toHaveBeenCalledWith(expect.objectContaining({ mapId: 'map-1' }), expect.stringContaining('could NOT be cleared'))
   })
 })

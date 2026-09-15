@@ -45,6 +45,31 @@ vi.mock('../ci-utils.js', () => ({
 }))
 vi.mock('../../../lib/schemaInvalidator.js', () => ({ invalidateSchema: vi.fn(), registerMetamodelCacheClearer: vi.fn() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+// SV-6: la domanda «una mappa di servizio segue questa relazione?» ha il suo test
+// (serviceMapRelationUsage.test.ts); qui si pretende solo che venga fatta.
+// Regola del 15 set 2026: cosa blocca e cosa porta via la cancellazione di un
+// tipo è lib/ciTypeDeletion.ts (test suo); qui si pretende che il resolver lo usi.
+const DELETION = vi.hoisted(() => ({ impact: {} as Record<string, number>, deletedIds: [] as string[], error: null as Error | null }))
+vi.mock('../../../lib/ciTypeDeletion.js', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../../../lib/ciTypeDeletion.js')>()
+  const impact = () => ({ cis: 0, ticketCIs: 0, tickets: 0, ticketCIExclusions: 0, groupsUpdated: 0, groupsDeleted: 0, fieldVisibilityRules: 0, fieldRequirementRules: 0, businessRules: 0, autoTriggers: 0, customWidgets: 0, reportSections: 0, assessmentQuestionLinks: 0, ...DELETION.impact })
+  return {
+    ...orig,
+    loadCITypeDeletionImpact: vi.fn(async () => impact()),
+    deleteCITypeDependents: vi.fn(async (_tx: unknown, _t: string, type: { name: string; label: string }) => {
+      if (DELETION.error) throw DELETION.error
+      orig.assertCITypeNotInTickets(impact() as never, type, 'delete')
+      return { impact: impact(), deletedCIIds: DELETION.deletedIds }
+    }),
+  }
+})
+vi.mock('../../../services/serviceImpact/sync.js', () => ({ notifyCIGraphChanged: vi.fn(async () => 0) }))
+vi.mock('../../../lib/triggerEngine.js', () => ({ invalidateTriggerCache: vi.fn() }))
+vi.mock('../../../lib/rulesEngine.js', () => ({ invalidateRulesCache: vi.fn() }))
+const SERVICE_MAP_FOLLOWS = vi.hoisted(() => ({ error: null as Error | null }))
+vi.mock('../../../lib/serviceMapRelationUsage.js', () => ({
+  assertNoServiceMapFollows: vi.fn(async () => { if (SERVICE_MAP_FOLLOWS.error) throw SERVICE_MAP_FOLLOWS.error }),
+}))
 // `@opengraphity/schema-generator` NON è più finto: la porta sui nomi (A-12)
 // usa le sue regole vere, e finger `toPascalCase` con una versione che divide
 // anche su spazi e trattini nasconderebbe esattamente il difetto che la regola
@@ -54,6 +79,11 @@ const { buildMetamodelMutations, buildCITypesResolver, buildBaseCITypeResolver, 
 const { withSession } = await import('../ci-utils.js')
 const { invalidateSchema } = await import('../../../lib/schemaInvalidator.js')
 const { runQueryOne } = await import('@opengraphity/neo4j')
+const { assertNoServiceMapFollows } = await import('../../../lib/serviceMapRelationUsage.js')
+const { deleteCITypeDependents } = await import('../../../lib/ciTypeDeletion.js')
+const { notifyCIGraphChanged } = await import('../../../services/serviceImpact/sync.js')
+const { invalidateTriggerCache } = await import('../../../lib/triggerEngine.js')
+const { audit } = await import('../../../lib/audit.js')
 
 const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
 const operator: GraphQLContext = { ...admin, role: 'operator', permissions: perms('operator') }
@@ -148,6 +178,9 @@ function usage(over: Record<string, number> = {}): void {
 function reset(responses: Array<{ records: unknown[] }> = []) {
   vi.clearAllMocks()
   usage()
+  DELETION.impact = {}
+  DELETION.deletedIds = []
+  DELETION.error = null
   queue.splice(0, queue.length, ...responses)
   EDGES_ONLY_THIS.value = 0
   VALUES_CLEARED.value = 0
@@ -319,6 +352,8 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
     expect(cypher).toContain('DETACH DELETE t, f, rel, sr')
     expect(params).toEqual({ id: 'ct-1', tenantId: 'tenant-1' })
     expect(invalidateSchema).toHaveBeenCalledWith('tenant-1')
+    // SV-6: le relazioni del tipo spariscono con lui — prima si chiede alle mappe di servizio
+    expect(assertNoServiceMapFollows).toHaveBeenCalledWith(expect.anything(), 'tenant-1', { typeId: 'ct-1' })
   })
 
   // ── B0-1 (A-7): «Salva impostazioni» del tipo CI ──────────────────────────
@@ -698,57 +733,67 @@ describe('scope e tenantId sono esposti (A-6)', () => {
   })
 })
 
-// ── Ondata 6 · A-8 / D-10: un tipo in uso non si cancella né si disattiva ────
-// Prima `deleteCIType` faceva `DETACH DELETE` senza contare niente e
-// `active = false` aveva lo stesso effetto sulle letture: i CI restavano nel
-// grafo, con le loro relazioni, e non comparivano più da nessuna parte.
+// ── Cancellare un tipo: la regola del proprietario (15 set 2026) ─────────────
+// Prima (A-8 / D-10) bloccavano i CI e ogni riferimento per nome, domande di
+// assessment comprese — che `createCIType` collega da sé: un tipo appena nato
+// non si cancellava. Ora blocca SOLO un ticket che cita un CI del tipo; il
+// resto va via con lui.
 
-describe('il tipo in uso non si cancella (A-8 / D-10)', () => {
+describe('cancellare o disattivare un tipo CI (regola del 15 set 2026)', () => {
   const tenantType = () => ({ records: [row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })] })
 
-  it('deleteCIType con CI di quel tipo → si ferma col NUMERO, e non scrive niente', async () => {
+  it('un tipo appena creato (solo i collegamenti automatici alle domande core) si cancella', async () => {
+    reset([tenantType(), res()])
+    DELETION.impact = { assessmentQuestionLinks: 2 }
+    await expect(mutations.deleteCIType(null, { id: 'ct-1' }, admin)).resolves.toBe(true)
+    expect(deleteCITypeDependents).toHaveBeenCalledWith(expect.anything(), 'tenant-1', { id: 'ct-1', name: 'firewall', label: 'Firewall', neo4jLabel: 'Firewall' })
+    expect(audit).toHaveBeenCalledWith(admin, 'ci_type.deleted', 'CITypeDefinition', 'ct-1', expect.objectContaining({ assessmentQuestionLinks: 2 }))
+  })
+
+  it('CI del tipo in un ticket (anche chiuso) → si ferma coi numeri, niente scritto né invalidato', async () => {
     reset([tenantType()])
-    usage({ cis: 12 })
+    DELETION.impact = { cis: 12, ticketCIs: 3, tickets: 5 }
     const err = await mutations.deleteCIType(null, { id: 'ct-1' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
-    expect(err!.message).toContain('12 CIs of type Firewall')
-    expect(err!.message).toContain('was not deleted')
-    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+    expect(err!.extensions['i18n']).toEqual({ key: 'errors.ciType.inTicketsDelete', params: { label: 'Firewall', name: 'firewall', cis: 3, tickets: 5 } })
     expect(invalidateSchema).not.toHaveBeenCalled()
+    expect(notifyCIGraphChanged).not.toHaveBeenCalled()
   })
 
-  it('il messaggio elenca anche chi cita il tipo per nome (regole, gruppi, widget, report)', async () => {
-    reset([tenantType()])
-    usage({ cis: 3, ticket_ci_exclusions: 2, dynamic_ci_groups: 1, report_nodes: 4 })
-    const err = await mutations.deleteCIType(null, { id: 'ct-1' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toContain('ticket types that exclude it (Settings → ITIL Type Designer): 2')
-    expect(err!.message).toContain('dynamic groups that list it in their criteria: 1')
-    expect(err!.message).toContain('report template nodes: 4')
-  })
-
-  it('nessun CI ma riferimenti appesi → si ferma comunque, dicendo quali', async () => {
-    reset([tenantType()])
-    usage({ custom_widgets: 1, assessment_questions: 5 })
-    const err = await mutations.deleteCIType(null, { id: 'ct-1' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toContain('no CI of this type')
-    expect(err!.message).toContain('dashboard widgets: 1')
-    expect(err!.message).toContain('assessment questions attached to the type (Settings → Assessment questions): 5')
-    expect(mockSession.executeWrite).not.toHaveBeenCalled()
-  })
-
-  it('disattivare è come cancellare, per chi legge: `active: false` con CI → rifiutato', async () => {
-    reset([tenantType()])
-    usage({ cis: 7 })
-    const err = await mutations.updateCIType(null, { id: 'ct-1', input: { active: false } }, admin)
-      .then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toContain('was not deactivated')
-    expect(err!.message).toContain('7 CIs of type Firewall')
-    expect(mockSession.executeWrite).not.toHaveBeenCalled()
-  })
-
-  it('riattivare (o cambiare etichetta) non conta nessun CI: la guardia è solo sulla disattivazione', async () => {
+  it('CI senza ticket e riferimenti → vanno via col tipo; dopo: schema, trigger e regole invalidati, mappe risincronizzate', async () => {
     reset([tenantType(), res()])
-    usage({ cis: 7 })
+    DELETION.impact = { cis: 2, ticketCIExclusions: 1, businessRules: 1 }
+    DELETION.deletedIds = ['ci-1', 'ci-2']
+    await expect(mutations.deleteCIType(null, { id: 'ct-1' }, admin)).resolves.toBe(true)
+    const del = callWith('DETACH DELETE t, f, rel, sr')
+    expect(del.cypher).toContain("WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId")
+    // CI, riferimenti e tipo nella STESSA transazione
+    expect(mockSession.executeWrite).toHaveBeenCalledTimes(1)
+    expect(invalidateSchema).toHaveBeenCalledWith('tenant-1')
+    expect(invalidateTriggerCache).toHaveBeenCalledWith('tenant-1')
+    expect(notifyCIGraphChanged).toHaveBeenCalledWith('tenant-1', ['ci-1', 'ci-2'], 'ci_type.deleted')
+  })
+
+  it('disattivare: bloccano i ticket e i CI (sparirebbero dalle letture); i soli riferimenti per nome no', async () => {
+    reset([tenantType()])
+    DELETION.impact = { cis: 7, ticketCIs: 1, tickets: 1 }
+    let err = await mutations.updateCIType(null, { id: 'ct-1', input: { active: false } }, admin).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.extensions['i18n']).toMatchObject({ key: 'errors.ciType.inTicketsDeactivate' })
+
+    reset([tenantType()])
+    DELETION.impact = { cis: 7 }
+    err = await mutations.updateCIType(null, { id: 'ct-1', input: { active: false } }, admin).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.extensions['i18n']).toMatchObject({ key: 'errors.ciType.hasCIsDeactivate', params: { count: 7 } })
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+
+    reset([tenantType(), res()])
+    DELETION.impact = { customWidgets: 1, assessmentQuestionLinks: 5 }
+    await expect(mutations.updateCIType(null, { id: 'ct-1', input: { active: false } }, admin)).resolves.toBeTruthy()
+  })
+
+  it('riattivare (o cambiare etichetta) non conta nulla: la guardia è solo sulla disattivazione', async () => {
+    reset([tenantType(), res()])
+    DELETION.impact = { cis: 7, ticketCIs: 7, tickets: 2 }
     await expect(mutations.updateCIType(null, { id: 'ct-1', input: { active: true, label: 'FW' } }, admin)).resolves.toBeTruthy()
     expect(mockSession.executeWrite).toHaveBeenCalled()
   })
@@ -938,6 +983,17 @@ describe('togliere una relazione o un campo non lascia dati invisibili (CM-4)', 
     // un arco dichiarato ANCHE da un'altra definizione non conta
     expect(count.cypher).toContain('o.id <> $relationId')
     expect(count.cypher).toContain("o.direction = 'incoming'")
+  })
+
+  it('SV-6: una relazione (o un tipo) che una mappa di servizio segue non si toglie — la domanda si fa prima di scrivere', async () => {
+    const { ValidationError } = await import('../../../lib/errors.js')
+    SERVICE_MAP_FOLLOWS.error = new ValidationError('used by service maps', { key: 'errors.ciType.relationUsedByServiceMaps' })
+    try {
+      reset([{ records: [row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })] }])
+      await expect(mutations.removeCIRelation(null, { typeId: 'ct-1', relationId: 'r-1' }, admin)).rejects.toThrow('used by service maps')
+      expect(assertNoServiceMapFollows).toHaveBeenCalledWith(expect.anything(), 'tenant-1', { relationId: 'r-1' })
+      expect(mockSession.executeWrite).not.toHaveBeenCalled()
+    } finally { SERVICE_MAP_FOLLOWS.error = null }
   })
 
   it('removeCIField cancella anche i valori dai CI del tipo, nella stessa transazione', async () => {

@@ -37,7 +37,7 @@
  * pattern Cypher della soppressione — sarebbe un buco.
  */
 import { ENUM_SCOPE } from './enumScope.js'
-import { loadMetamodel } from '@opengraphity/schema-generator'
+import { loadMetamodel, type CITypeWithDefinitions } from '@opengraphity/schema-generator'
 import { createMetamodelCache } from './metamodelCache.js'
 import { CHAIN_FAMILIES } from './chainCalculator.js'
 import { logger } from './logger.js'
@@ -110,6 +110,35 @@ function metamodelOf(tenantId: string): Promise<TenantCIMetamodel> {
   return cache.get(tenantId)
 }
 
+/**
+ * I tipi di relazione percorribili dalle mappe per un insieme di tipi CI: i
+ * quattro spediti più quelli dichiarati dai tipi DEL cliente. Ordine stabile:
+ * prima i quattro spediti nel loro ordine canonico, poi quelli del cliente in
+ * ordine alfabetico — serve a rendere deterministici i filtri APOC e i pattern
+ * Cypher che ne derivano (e i test).
+ *
+ * `without` toglie dal conto una definizione di relazione o un tipo intero: è
+ * la domanda «cosa resterebbe percorribile se lo togliessi?» che si fanno la
+ * rimozione di una relazione e la cancellazione di un tipo (SV-6).
+ */
+export function traversableRelationshipTypes(
+  types: readonly CITypeWithDefinitions[], without: { typeId?: string; relationId?: string } = {},
+): string[] {
+  const extra = new Set<string>()
+  for (const t of types) {
+    // Solo i tipi DEL cliente aprono la lista delle relazioni percorribili:
+    // le relazioni dei tipi spediti sono la struttura del prodotto.
+    if (t.scope !== 'tenant' || (without.typeId !== undefined && t.id === without.typeId)) continue
+    for (const r of t.relations) {
+      if (without.relationId !== undefined && r.id === without.relationId) continue
+      for (const rt of splitRelationshipTypes(r.relationshipType, `CIRelationDefinition "${r.name}" of type "${t.name}"`)) {
+        if (!(SERVICE_RELATIONSHIP_TYPES as readonly string[]).includes(rt)) extra.add(rt)
+      }
+    }
+  }
+  return [...SERVICE_RELATIONSHIP_TYPES, ...[...extra].sort()]
+}
+
 function loadRolesAndRelations(tenantId: string): Promise<TenantCIMetamodel> {
   return loadMetamodel(tenantId, ENUM_SCOPE)
     .then((types) => {
@@ -117,33 +146,17 @@ function loadRolesAndRelations(tenantId: string): Promise<TenantCIMetamodel> {
       // un tipo (SslCertificate, VirtualMachine, Storage… — dal vivo 15
       // etichette per 9 tipi base) resterebbero senza ruolo.
       const roles = new Map<string, SettableServiceNodeRole>(Object.entries(ROLE_BY_CI_LABEL))
-      const relationshipTypes = new Set<string>(SERVICE_RELATIONSHIP_TYPES)
-
       for (const t of types) {
         if (t.neo4jLabel) {
           roles.set(t.neo4jLabel, t.serviceRole == null
             ? (ROLE_BY_CI_LABEL[t.neo4jLabel] ?? defaultServiceRoleOf(t.chainFamilies))
             : assertServiceRole(t.serviceRole, `CITypeDefinition "${t.name}".service_role`))
         }
-        // Solo i tipi DEL cliente aprono la lista delle relazioni percorribili:
-        // le relazioni dei tipi spediti sono la struttura del prodotto.
-        if (t.scope !== 'tenant') continue
-        for (const r of t.relations) {
-          for (const rt of splitRelationshipTypes(r.relationshipType, `CIRelationDefinition "${r.name}" of type "${t.name}"`)) {
-            relationshipTypes.add(rt)
-          }
-        }
       }
-
-      const extraRels = [...relationshipTypes].filter((r) => !(SERVICE_RELATIONSHIP_TYPES as readonly string[]).includes(r))
+      const relationshipTypes = traversableRelationshipTypes(types)
+      const extraRels = relationshipTypes.filter((r) => !(SERVICE_RELATIONSHIP_TYPES as readonly string[]).includes(r))
       if (extraRels.length) log.debug({ tenantId, extraRels }, 'Tipi di relazione del cliente percorribili dalle mappe')
-      // Ordine stabile: prima i quattro spediti nel loro ordine canonico, poi
-      // quelli del cliente in ordine alfabetico. Serve a rendere deterministici
-      // i filtri APOC e i pattern Cypher che ne derivano (e i test).
-      return {
-        roles,
-        relationshipTypes: [...SERVICE_RELATIONSHIP_TYPES, ...extraRels.sort()] as readonly string[],
-      }
+      return { roles, relationshipTypes }
     })
     .catch((err: unknown) => {
       log.error({ tenantId, err }, 'Metamodello dei CI non leggibile: ruoli e tipi di relazione non risolvibili')

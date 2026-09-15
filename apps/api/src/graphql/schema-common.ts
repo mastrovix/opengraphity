@@ -34,6 +34,23 @@ export function cmdbSDL(): string {
 
   # ── Metamodel types ──────────────────────────────────────────────────────────
 
+  """Il conto di una cancellazione di tipo CI (regola del 15 set 2026): il solo impedimento è ticketCIs > 0, il resto va via con il tipo."""
+  type CITypeDeletionImpact {
+    cis:                     Int!
+    ticketCIs:               Int!
+    tickets:                 Int!
+    ticketCIExclusions:      Int!
+    groupsUpdated:           Int!
+    groupsDeleted:           Int!
+    fieldVisibilityRules:    Int!
+    fieldRequirementRules:   Int!
+    businessRules:           Int!
+    autoTriggers:            Int!
+    customWidgets:           Int!
+    reportSections:          Int!
+    assessmentQuestionLinks: Int!
+  }
+
   type CITypeDefinition {
     id: ID!
     name: String!

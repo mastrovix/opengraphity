@@ -13,7 +13,7 @@ import { assertWritableCIPropertyKey } from '../../lib/cypherIdentifiers.js'
 import { ciNameKey } from '../../lib/ciNameKey.js'
 import { initialCIStatus } from '../../lib/ciLifecycle.js'
 import { notifyCIGraphChanged, notifyCIMaintenanceChanged } from '../../services/serviceImpact/sync.js'
-import { isMaintenanceLifecycle, resolveCILifecycleSemantics } from '../../lib/ciLifecycle.js'
+import { isMaintenanceLifecycle, isRetiredLifecycle, resolveCILifecycleSemantics } from '../../lib/ciLifecycle.js'
 import { recomputeCIHealth } from '../../services/events/ciHealth.js'
 import { runValidationScript } from '../../lib/metamodelScript.js'
 import { assertGroupRemovable } from '../../lib/ciGroups.js'
@@ -318,8 +318,18 @@ export async function updateCIRecord(
   // gancio non scattava e la mappa restava ferma fino alla passata
   // periodica.
   const lifecycle = await resolveCILifecycleSemantics(ctx.tenantId)
-  const wasMaintenance = isMaintenanceLifecycle(current['status'] as string | null, lifecycle)
-  const isMaintenance  = updates['status'] === undefined ? wasMaintenance : isMaintenanceLifecycle(updates['status'] as string | null, lifecycle)
+  const previousStatus = current['status'] as string | null
+  const nextStatus = updates['status'] === undefined ? previousStatus : updates['status'] as string | null
+  const wasMaintenance = isMaintenanceLifecycle(previousStatus, lifecycle)
+  const isMaintenance  = isMaintenanceLifecycle(nextStatus, lifecycle)
+  // Revisione del 15 set 2026 · SV-5: anche il ciclo di vita «dismesso» toglie
+  // il CI dal calcolo (D6.3), ma il gancio guardava solo la manutenzione — un
+  // server giù dismesso lasciava il servizio giù fino alla passata periodica.
+  const wasRetired = isRetiredLifecycle(previousStatus, lifecycle)
+  const isRetired  = isRetiredLifecycle(nextStatus, lifecycle)
+  if (wasRetired !== isRetired && wasMaintenance === isMaintenance) {
+    await notifyCIMaintenanceChanged(ctx.tenantId, [id], `ci.status:${wasRetired ? 'left' : 'entered'}_retired`)
+  }
   if (wasMaintenance !== isMaintenance) {
     // Revisione 2 · B2-14: PRIMA la salute, poi le mappe. In manutenzione
     // il monitoraggio non scrive `ci.health` (services/events/ciHealth.ts):

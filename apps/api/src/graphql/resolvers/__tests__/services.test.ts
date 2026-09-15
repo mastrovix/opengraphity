@@ -54,13 +54,14 @@ vi.mock('../../../services/serviceImpact/config.js', async (importOriginal) => (
   applyServiceMapProposal: vi.fn(),
   removeServiceMapExclusion: vi.fn(),
   setServiceMapAutoSync: vi.fn(),
+  updateServiceMapScope: vi.fn(),
 }))
 vi.mock('../../../services/serviceImpact/sync.js', () => ({ syncServiceMap: vi.fn(), notifyCIGraphChanged: vi.fn() }))
 
 // Ondata 6 · C-3: le relazioni percorse a monte sono quelle del tenant (il
 // field resolver `nodes` riusa la lettura del motore).
 vi.mock('../../../lib/ciMetamodelForTenant.js', () => ({
-  serviceRelationshipTypesForTenant: vi.fn(async () => ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE']),
+  serviceRelationshipTypesForTenant: vi.fn(async () => ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE', 'PROTECTS']),
   suppressionRelPatternForTenant:    vi.fn(async () => 'DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE'),
   serviceRolesForTenant:             vi.fn(async () => new Map()),
 }))
@@ -147,6 +148,14 @@ describe('mapServiceMap / parseStoredCauses', () => {
     expect(out.explanation).toEqual([{ ci: { id: 'db-01', name: 'DB-01', type: 'database', status: null, health: 'down' }, health: 'down', weight: 5, critical: false, path: [expect.objectContaining({ id: 'db-01' }), expect.objectContaining({ id: 'app-3', type: 'application', health: 'operational' })] }])
   })
 
+  it('SV-4: il problema d\'incident è un dato — chiave, parametri come coppie, messaggio e da quando; assente = null', () => {
+    expect(mapServiceMap(mapRow()).incidentProblem).toBeNull()
+    const problem = JSON.stringify({ key: 'errors.ticketCI.excluded', params: { ticketType: 'incident', cis: 'App (Application)' }, message: 'These CIs cannot be linked' })
+    expect(mapServiceMap(mapRow({ incident_problem: problem, incident_problem_at: 'T4' })).incidentProblem).toEqual({
+      key: 'errors.ticketCI.excluded', params: [{ name: 'ticketType', value: 'incident' }, { name: 'cis', value: 'App (Application)' }], message: 'These CIs cannot be linked', since: 'T4',
+    })
+  })
+
   it('fail-loud: servizio sparito, relationship_types/rules/explanation assenti o corrotti, salute o stato fuori vocabolario → errore, mai un valore inventato', () => {
     expect(() => mapServiceMap({ ...mapRow(), service: null })).toThrow(/ServiceMap map-1 has no BusinessApplication/)
     expect(() => mapServiceMap(mapRow({ relationship_types: undefined }))).toThrow(/has no relationship_types — run the 20260910_1080_service_maps_bootstrap migration/)
@@ -156,6 +165,9 @@ describe('mapServiceMap / parseStoredCauses', () => {
     expect(() => mapServiceMap(mapRow({ status: 'archived' }))).toThrow(/status is "archived"/)
     // ondata 5: mappa creata prima dell'interruttore → la migrazione, mai un default a runtime
     expect(() => mapServiceMap(mapRow({ auto_sync: undefined }))).toThrow(/has no auto_sync \(got undefined\) — run the 20260910_1110_service_map_auto_sync migration/)
+    // SV-4: un problema d'incident corrotto o senza istante → errore
+    expect(() => mapServiceMap(mapRow({ incident_problem: '{nope', incident_problem_at: 'T4' }))).toThrow(/incident_problem is corrupt JSON/)
+    expect(() => mapServiceMap(mapRow({ incident_problem: '{"key":null,"params":{},"message":"x"}' }))).toThrow(/incident_problem without incident_problem_at/)
     // `synced_at` invece può mancare: significa «mai sincronizzata»
     expect(mapServiceMap(mapRow({ synced_at: undefined })).syncedAt).toBeNull()
     // revisione 2: i due campi nuovi possono mancare (nessuna informazione), ma un valore fuori vocabolario è un errore
@@ -427,13 +439,13 @@ describe('serviceMapProposal / serviceImpactPreview / ServiceMap.excluded', () =
 // ── Mutation ─────────────────────────────────────────────────────────────────
 
 describe('createServiceMap', () => {
-  it('admin: default del contratto (maxDepth 4, tutte le relazioni), motore chiamato con l\'utente, audit, restituisce la mappa riletta', async () => {
+  it('admin: default del contratto (maxDepth 4, tutte le relazioni DEL CLIENTE — SV-8), motore chiamato con l\'utente, audit, restituisce la mappa riletta', async () => {
     vi.mocked(createServiceMap).mockResolvedValueOnce({ mapId: 'map-1', proposal: { serviceName: 'Enterprise Billing', maxDepth: 4, relationshipTypes: [...SERVICE_RELATIONSHIP_TYPES], nodes: [{}, {}] }, evaluation: { health: 'degraded', impactScore: 41 } } as never)
     onCypher([[MAP_RE, mapRow()]])
     const out = await serviceResolvers.Mutation.createServiceMap(null, { serviceId: 'ba-1' }, admin)
     expect(out).toMatchObject({ id: 'map-1', health: 'degraded' })
     // ondata 5: mappa VIVA per default (autoSync true), si passa false solo per congelarla subito
-    expect(createServiceMap).toHaveBeenCalledWith({ tenantId: 'tenant-1', serviceId: 'ba-1', maxDepth: 4, relationshipTypes: [...SERVICE_RELATIONSHIP_TYPES], status: 'active', autoSync: true, actorId: 'adm-1' })
+    expect(createServiceMap).toHaveBeenCalledWith({ tenantId: 'tenant-1', serviceId: 'ba-1', maxDepth: 4, relationshipTypes: [...SERVICE_RELATIONSHIP_TYPES, 'PROTECTS'], status: 'active', autoSync: true, actorId: 'adm-1' })
     expect(audit).toHaveBeenCalledWith(admin, 'service_map.created', 'ServiceMap', 'map-1', expect.objectContaining({ serviceId: 'ba-1', serviceName: 'Enterprise Billing', status: 'active', autoSync: true, nodes: 2, health: 'degraded', impactScore: 41 }))
   })
 
@@ -633,5 +645,16 @@ describe('reevaluateServiceMap / setServiceMapStatus / deleteServiceMap', () => 
     onCypher([[/DETACH DELETE m/, null]])
     await expectCode(serviceResolvers.Mutation.deleteServiceMap(null, { id: 'map-x' }, admin), 'NOT_FOUND')
     await expectCode(serviceResolvers.Mutation.deleteServiceMap(null, { id: 'map-1' }, operator), 'FORBIDDEN')
+  })
+})
+
+describe('updateServiceMapScope (SV-6)', () => {
+  it('admin: passa tipi e profondità al servizio con l\'utente, audit scope_changed, restituisce la mappa riletta', async () => {
+    vi.mocked(config.updateServiceMapScope).mockResolvedValueOnce({ mapId: 'map-1', version: 3, status: 'active', note: 'Scope updated: depth 4 → 6', evaluation: null })
+    onCypher([[MAP_RE, mapRow({ version: 3, max_depth: 6 })]])
+    const out = await serviceResolvers.Mutation.updateServiceMapScope(null, { id: 'map-1', expectedVersion: 2, relationshipTypes: ['DEPENDS_ON'], maxDepth: 6 }, admin)
+    expect(out).toMatchObject({ id: 'map-1', version: 3, maxDepth: 6 })
+    expect(config.updateServiceMapScope).toHaveBeenCalledWith({ tenantId: 'tenant-1', mapId: 'map-1', expectedVersion: 2, relationshipTypes: ['DEPENDS_ON'], maxDepth: 6, actorId: 'adm-1' })
+    expect(audit).toHaveBeenCalledWith(admin, 'service_map.scope_changed', 'ServiceMap', 'map-1', expect.objectContaining({ version: 3, relationshipTypes: ['DEPENDS_ON'], maxDepth: 6, reevaluated: false }))
   })
 })

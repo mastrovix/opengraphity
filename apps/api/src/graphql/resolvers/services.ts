@@ -32,7 +32,7 @@ import { assertDomainValue } from '../../lib/domainMatrix.js'
 import {
   NODE_WEIGHT_MIN,
   SERVICE_HEALTHS, SERVICE_HEALTH_SEVERITY_ORDER, SERVICE_HEALTH_TRIGGERS, SERVICE_HISTORY_MAX, SERVICE_MAP_DEFAULT_DEPTH, SERVICE_MAP_STATUSES,
-  SERVICE_RELATIONSHIP_TYPES, SERVICE_STALE_REASONS, parseServiceImpactRules,
+  SERVICE_STALE_REASONS, parseServiceImpactRules,
   type ServiceHealth, type ServiceHealthTrigger, type ServiceImpactRules, type ServiceMapStatus, type ServiceStaleReason,
 } from '../../lib/serviceVocabularies.js'
 import { createServiceMap as createServiceMapService, evaluateServiceMap, loadServiceMapState, type LoadedNode } from '../../services/serviceImpact/engine.js'
@@ -46,12 +46,14 @@ import {
   removeServiceMapExclusion as removeServiceMapExclusionService,
   serviceMapProposal as serviceMapProposalService,
   setServiceMapAutoSync as setServiceMapAutoSyncService,
+  updateServiceMapScope as updateServiceMapScopeService,
   updateServiceImpactRules as updateServiceImpactRulesService,
   updateServiceMapNodes as updateServiceMapNodesService,
   type ConfigWriteResult, type ServiceImpactRulesInput, type ServiceMapNodeInput,
 } from '../../services/serviceImpact/config.js'
 import { syncServiceMap as syncServiceMapService } from '../../services/serviceImpact/sync.js'
 import { incidentStepInfo } from '../../services/events/incidentWorkflow.js'
+import { parseServiceIncidentProblem } from '../../services/serviceImpact/incident.js'
 import { forgetServiceMapJobs } from '../../jobs/serviceImpactWorker.js'
 
 type Props = Record<string, unknown>
@@ -186,6 +188,7 @@ export function mapServiceMap(row: ServiceMapRow) {
     impactScore:       toNumber(p['impact_score']),
     evaluatedAt:       toStrOrNull(p['evaluated_at']),
     explanation:       parseStoredCauses(p['explanation'], `ServiceMap ${id} explanation`),
+    incidentProblem:   mapIncidentProblem(p, id),
     service: {
       id:          row.service.id,
       name:        row.service.name ?? '',
@@ -194,6 +197,15 @@ export function mapServiceMap(row: ServiceMapRow) {
     },
     nodeCount: toNumber(row.nodeCount),
   }
+}
+
+/** SV-4: il motivo per cui l'incident del servizio non è nello stato giusto; null se non ce n'è. */
+export function mapIncidentProblem(p: Props, id: string) {
+  const problem = parseServiceIncidentProblem(p['incident_problem'], id)
+  if (!problem) return null
+  const since = toStrOrNull(p['incident_problem_at'])
+  if (!since) throw new Error(`ServiceMap ${id} has incident_problem without incident_problem_at: it was not written by the service impact engine`)
+  return { key: problem.key, params: Object.entries(problem.params).map(([name, value]) => ({ name, value })), message: problem.message, since }
 }
 
 export function mapHistoryEntry(props: Props) {
@@ -586,7 +598,8 @@ async function serviceRelationshipTypes(_: unknown, __: unknown, ctx: GraphQLCon
 async function createServiceMap(_: unknown, args: { serviceId: string; maxDepth?: number | null; relationshipTypes?: string[] | null; status?: string | null; autoSync?: boolean | null }, ctx: GraphQLContext) {
   requirePermission(ctx, 'config.services')
   const maxDepth = args.maxDepth ?? SERVICE_MAP_DEFAULT_DEPTH
-  const relationshipTypes = args.relationshipTypes ?? [...SERVICE_RELATIONSHIP_TYPES]
+  // SV-8: il default sono i tipi percorribili da QUESTO cliente, come offre il dialogo.
+  const relationshipTypes = args.relationshipTypes ?? [...await serviceRelationshipTypesForTenant(ctx.tenantId)]
   const status = args.status == null ? 'active' : assertEnumInput(args.status, SERVICE_MAP_STATUSES, 'status')
   // Mappa viva per default (ondata 5): si passa `false` solo per congelarla subito.
   const autoSync = args.autoSync ?? true
@@ -705,6 +718,13 @@ async function applyServiceMapProposal(_: unknown, args: { id: string; expectedV
   return requireServiceMap(args.id, ctx.tenantId)
 }
 
+async function updateServiceMapScope(_: unknown, args: { id: string; expectedVersion: number; relationshipTypes: string[]; maxDepth: number }, ctx: GraphQLContext) {
+  requirePermission(ctx, 'config.services')
+  const r = await updateServiceMapScopeService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, relationshipTypes: args.relationshipTypes, maxDepth: args.maxDepth, actorId: ctx.userId })
+  void audit(ctx, 'service_map.scope_changed', 'ServiceMap', args.id, configAudit(r, { relationshipTypes: args.relationshipTypes, maxDepth: args.maxDepth }))
+  return requireServiceMap(args.id, ctx.tenantId)
+}
+
 async function removeServiceMapExclusion(_: unknown, args: { id: string; expectedVersion: number; ciId: string }, ctx: GraphQLContext) {
   requirePermission(ctx, 'config.services')
   const r = await removeServiceMapExclusionService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, ciId: args.ciId, actorId: ctx.userId })
@@ -790,7 +810,7 @@ export const serviceResolvers = {
   Query: { serviceMaps, serviceMap, servicesImpactedByCI, serviceMapCandidates, serviceMapProposal, serviceImpactPreview, businessCapabilitiesHealth, serviceRelationshipTypes },
   Mutation: {
     createServiceMap, reevaluateServiceMap, setServiceMapStatus, deleteServiceMap,
-    updateServiceImpactRules, updateServiceMapNodes, applyServiceMapProposal, removeServiceMapExclusion,
+    updateServiceImpactRules, updateServiceMapNodes, applyServiceMapProposal, removeServiceMapExclusion, updateServiceMapScope,
     setServiceMapAutoSync, syncServiceMap,
   },
   ServiceMap: {

@@ -268,6 +268,11 @@ for (const k of [...defined].sort()) {
 // quelli sono difetti veri (`Sync triggered`, `Heap Memory`, `Auto-refresh
 // 10s`, `External ID`): l'elenco puo solo accorciarsi.
 const IT_EN_IDENTICHE_ACCETTATE = new Set([
+  // «business rule» e «trigger» sono nomi di funzioni del prodotto e restano
+  // inglesi anche in italiano (regola delle parole tecniche); al singolare la
+  // frase del conto coincide («1 business rule», «1 trigger»).
+  'ciTypeDesigner.deleteImpact.businessRules_one',
+  'ciTypeDesigner.deleteImpact.autoTriggers_one',
   // Nomi di prodotti esterni (ondata 8 di «Nulla cablato»): Slack, Microsoft
   // Entra ID e Google Workspace si chiamano così in ogni lingua.
   'admin.integrations.slack.tab',

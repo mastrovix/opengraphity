@@ -37,7 +37,11 @@ vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
   return { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => child } }
 })
-vi.mock('../serviceImpact/incident.js', () => ({ reconcileServiceIncident: vi.fn().mockResolvedValue({ outcome: 'none', incidentId: null, incidentNumber: null }) }))
+vi.mock('../serviceImpact/incident.js', () => ({
+  reconcileServiceIncident: vi.fn().mockResolvedValue({ outcome: 'none', incidentId: null, incidentNumber: null }),
+  recordServiceIncidentProblem: vi.fn().mockResolvedValue(undefined),
+  clearServiceIncidentProblem: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('../../middleware/metrics.js', () => ({
   workflowPurposeMissingTotal: { inc: vi.fn() },
   serviceEvaluationsTotal: { inc: vi.fn() }, serviceEvaluationDurationSeconds: { observe: vi.fn() }, servicesHealth: { set: vi.fn() },
@@ -75,7 +79,7 @@ const { publishEvent } = await import('../../lib/publishEvent.js')
 const { audit } = await import('../../lib/audit.js')
 const { logger } = await import('../../lib/logger.js')
 const metrics = await import('../../middleware/metrics.js')
-const { reconcileServiceIncident } = await import('../serviceImpact/incident.js')
+const { reconcileServiceIncident, recordServiceIncidentProblem, clearServiceIncidentProblem } = await import('../serviceImpact/incident.js')
 const { buildServiceMap, proposeNodeSettings, relationshipFilterOf, ENTRY_NODES_CYPHER, EXPAND_NODES_CYPHER, CREATE_SERVICE_MAP_CYPHER, assertRelationshipTypes, assertMaxDepth } = await import('../serviceImpact/build.js')
 const { serviceHistoryWriteCypher, serviceHistoryParams } = await import('../serviceImpact/history.js')
 const { evaluateServiceMap, createServiceMap, findMapsIncludingCI, evaluateStaleOrOldMaps, refreshServiceGauges, loadServiceMapState, assertServiceMapPlanLimit, loadServiceMapCypher, SERVICE_MAP_PLAN_LIMIT_CYPHER, evaluationWriteCypher, evaluationHoldWriteCypher, stormingSourcesOf, upstreamWindowsOf, SERVICE_EVALUATION_HELD, SERVICE_STALE_EVALUATION_MINUTES, EVALUATION_VERSION_RETRIES } = await import('../serviceImpact/engine.js')
@@ -122,7 +126,7 @@ function stateRow(over: { props?: Record<string, unknown>; nodes?: Record<string
     ],
   }
 }
-const writeRow = (over: Record<string, unknown> = {}) => ({ id: 'map-1', previous: null, previousExplanation: '[]', changed: true, wasStale: false, serviceId: 'ba-1', name: 'Enterprise Billing', criticality: 'mission_critical', ...over })
+const writeRow = (over: Record<string, unknown> = {}) => ({ id: 'map-1', previous: null, changed: true, wasStale: false, serviceId: 'ba-1', name: 'Enterprise Billing', criticality: 'mission_critical', incidentProblem: null, ...over })
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -328,15 +332,16 @@ describe('evaluateServiceMap', () => {
     expect(w.cypher).toContain("coalesce(m.stale_reason = 'over_limit', false) AS overLimit")   // mai un `stale` NULL sulla mappa
     expect(w.cypher).toContain("CASE WHEN overLimit THEN 'over_limit' WHEN $stale THEN 'missing_ci' ELSE null END AS staleReason")
     expect(w.cypher).toContain('m.stale = stale, m.stale_reason = staleReason, m.health_if_active = $healthIfActive')
-    // la spiegazione PRECEDENTE (letta prima del SET) e la criticità del servizio viaggiano con la riga: le usa l'incident del servizio
-    expect(w.cypher).toContain('WITH m, m.health AS previous, m.explanation AS previousExplanation, coalesce(m.stale, false) AS wasStale')
+    // la criticità del servizio e il problema d'incident registrato viaggiano con la riga: li usa l'incident del servizio
+    expect(w.cypher).toContain('WITH m, m.health AS previous, coalesce(m.stale, false) AS wasStale')
+    expect(w.cypher).toContain('m.incident_problem AS incidentProblem')
     expect(w.cypher).toContain('head([(ba:BusinessApplication {tenant_id: $tenantId})-[:HAS_SERVICE_MAP]->(m) | ba.criticality]) AS criticality')
     expect(w.cypher).toContain('m.health_since = CASE WHEN changed THEN $now ELSE m.health_since END')
     expect(w.cypher).toContain('FOREACH (_ IN CASE WHEN changed THEN [1] ELSE [] END |')
     expect(w.cypher).toContain('FOREACH (_ IN CASE WHEN becameStale THEN [1] ELSE [] END |')
     expect(w.cypher.match(/CALL \{/g)).toHaveLength(1)   // il cap gira una volta sola
     expect(w.cypher).toContain('UNWIND CASE WHEN changed OR becameStale THEN [1] ELSE [] END AS _')
-    expect(w.cypher).toContain('RETURN m.id AS id, previous, previousExplanation, changed, wasStale, m.service_id AS serviceId, m.name AS name')
+    expect(w.cypher).toContain('RETURN m.id AS id, previous, changed, wasStale, m.service_id AS serviceId, m.name AS name')
     expect(w.params).toMatchObject({ mapId: 'map-1', tenantId: 't1', now: NOW, stale: false, version: 4, healthIfActive: null, health: 'degraded', impactScore: 41, hTrigger: 'ci_health', hHealth: 'degraded', hImpactScore: 41, hAt: NOW, stTrigger: 'map_changed', stNote: null })
     expect(JSON.parse(w.params['explanation'] as string)).toEqual(JSON.parse(w.params['hCause'] as string))
     expect(JSON.parse(w.params['explanation'] as string)[0]).toMatchObject({ ciId: 'db-01', health: 'down', weight: 5, critical: false, ci: { id: 'db-01', type: 'database', health: 'down' }, path: [{ id: 'db-01' }, { id: 'api-03', type: 'application', health: 'operational' }] })
@@ -373,26 +378,33 @@ describe('evaluateServiceMap', () => {
     expect(r.incident).toEqual({ outcome: 'none', incidentId: null, incidentNumber: null })
   })
 
-  it('salute invariata e stesse cause (anche in ordine diverso) → nessuna riconciliazione; stesse salute ma cause diverse → riconciliazione', async () => {
-    const same = JSON.stringify([{ ciId: 'cache-02' }, { ciId: 'db-01' }])
-    onCypher([[LOAD_RE, stateRow({ props: { health: 'degraded' } })], [WRITE_RE, writeRow({ previous: 'degraded', changed: false, previousExplanation: same })]])
+  it('SV-1/SV-2: salute e cause invariate → la riconciliazione gira LO STESSO (dallo stato, non dal cambiamento)', async () => {
+    // Dal vivo su c-test: una riconciliazione fallita non veniva più ritentata,
+    // e una bozza attivata a servizio già giù non apriva nulla, perché il
+    // motore riconciliava solo se salute o cause erano cambiate.
+    onCypher([[LOAD_RE, stateRow({ props: { health: 'degraded' } })], [WRITE_RE, writeRow({ previous: 'degraded', changed: false })]])
     const r = await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'periodic', now: NOW })
-    expect(reconcileServiceIncident).not.toHaveBeenCalled()
-    expect(r.incident).toBeNull()
-
-    const other = JSON.stringify([{ ciId: 'db-01' }, { ciId: 'srv-9' }])
-    onCypher([[LOAD_RE, stateRow({ props: { health: 'degraded' } })], [WRITE_RE, writeRow({ previous: 'degraded', changed: false, previousExplanation: other })]])
-    await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'periodic', now: NOW })
     expect(reconcileServiceIncident).toHaveBeenCalledTimes(1)
+    expect(r.incident).toEqual({ outcome: 'none', incidentId: null, incidentNumber: null })
   })
 
-  it('spiegazione precedente assente o corrotta → errore (non è un insieme vuoto di comodo) e metrica error', async () => {
-    onCypher([[LOAD_RE, stateRow()], [WRITE_RE, writeRow({ previousExplanation: undefined })]])
-    await expect(evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).rejects.toThrow(/explanation is not a JSON string/)
-    onCypher([[LOAD_RE, stateRow()], [WRITE_RE, writeRow({ previousExplanation: '{nope' })]])
-    await expect(evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).rejects.toThrow(/explanation is corrupt JSON/)
-    expect(metrics.serviceEvaluationsTotal.inc).toHaveBeenCalledWith({ result: 'error' })
-    expect(metrics.serviceEvaluationsTotal.inc).toHaveBeenCalledTimes(2)
+  it('SV-1: fallisce una volta, alla valutazione dopo (stessa salute, stesse cause) riprova e riesce; il motivo registrato si toglie', async () => {
+    vi.mocked(reconcileServiceIncident).mockRejectedValueOnce(new Error('These CIs cannot be linked'))
+    onCypher([[LOAD_RE, stateRow()], [WRITE_RE, writeRow()]])
+    await expect(evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })).rejects.toThrow('These CIs cannot be linked')
+    expect(recordServiceIncidentProblem).toHaveBeenCalledWith('t1', 'map-1', expect.objectContaining({ message: 'These CIs cannot be linked' }), NOW)
+
+    vi.mocked(reconcileServiceIncident).mockResolvedValueOnce({ outcome: 'opened', incidentId: 'inc-1', incidentNumber: 'INC1' })
+    onCypher([[LOAD_RE, stateRow()], [WRITE_RE, writeRow({ previous: 'degraded', changed: false, incidentProblem: '{"key":null,"params":{},"message":"x"}' })]])
+    const r = await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'periodic', now: NOW })
+    expect(r.incident).toMatchObject({ outcome: 'opened' })
+    expect(clearServiceIncidentProblem).toHaveBeenCalledWith('t1', 'map-1')
+  })
+
+  it('nessun problema registrato → nessuna scrittura per toglierlo', async () => {
+    onCypher([[LOAD_RE, stateRow()], [WRITE_RE, writeRow()]])
+    await evaluateServiceMap({ tenantId: 't1', mapId: 'map-1', trigger: 'ci_health', now: NOW })
+    expect(clearServiceIncidentProblem).not.toHaveBeenCalled()
   })
 
   it('riconciliazione fallita → l\'errore propaga (il job ritenta) e la valutazione conta solo come error', async () => {

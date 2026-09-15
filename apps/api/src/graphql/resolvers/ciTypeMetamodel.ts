@@ -1,4 +1,5 @@
 import { withSession } from './ci-utils.js'
+import { assertNoServiceMapFollows } from '../../lib/serviceMapRelationUsage.js'
 import type { GraphQLContext } from '../../context.js'
 import { GraphQLError } from 'graphql'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
@@ -10,7 +11,10 @@ import { assertFieldName, assertLabel } from '../../lib/cypherIdentifiers.js'
 import { toSnakeCase } from '@opengraphity/schema-generator'
 import { cache } from '../../lib/cache.js'
 import { audit } from '../../lib/audit.js'
-import { describeCITypeUsage, loadCITypeUsage, type CITypeUsage } from '../../lib/ciTypeUsage.js'
+import { assertCITypeHasNoCIsToHide, assertCITypeNotInTickets, deleteCITypeDependents, loadCITypeDeletionImpact } from '../../lib/ciTypeDeletion.js'
+import { invalidateTriggerCache } from '../../lib/triggerEngine.js'
+import { invalidateRulesCache } from '../../lib/rulesEngine.js'
+import { notifyCIGraphChanged } from '../../services/serviceImpact/sync.js'
 import { SETTABLE_SERVICE_NODE_ROLES } from '../../lib/serviceVocabularies.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import {
@@ -510,6 +514,17 @@ export function assertChainFamilies(value: string[] | undefined): string | null 
   return chainFamiliesToJSON(value)
 }
 
+// ── ciTypeDeletionImpact ─────────────────────────────────────────────────────
+
+/** La conferma del disegnatore: cosa porterebbe via la cancellazione del tipo (lib/ciTypeDeletion.ts). */
+export async function ciTypeDeletionImpact(_: unknown, args: { id: string }, ctx: GraphQLContext) {
+  requireMetamodelPermission(ctx)
+  return withSession(async (session) => {
+    const owned = await assertTenantOwnedType(session, args.id, ctx.tenantId, 'delete')
+    return loadCITypeDeletionImpact(session, ctx.tenantId, args.id, owned.name, toPascalCase(owned.name))
+  })
+}
+
 // ── buildCITypesResolver ──────────────────────────────────────────────────────
 
 export function buildCITypesResolver() {
@@ -669,56 +684,6 @@ export function assertServiceRoleInput(value: string | null | undefined): string
   }
   return value
 }
-
-/**
- * A-8 / D-10 — non si cancella (né si disattiva) un tipo che è ancora in uso.
- *
- * Prima `deleteCIType` faceva `DETACH DELETE` senza contare niente, e
- * `active = false` aveva lo stesso effetto sulle letture: i CI restavano nel
- * grafo e non comparivano più da nessuna parte. Qui si conta e si dice, con il
- * numero e con l'elenco di chi cita il tipo per nome.
- */
-async function assertCITypeNotInUse(
-  session: Session, tenantId: string, typeId: string, type: { name: string; label: string }, action: 'delete' | 'deactivate',
-): Promise<void> {
-  const neo4jLabel = toPascalCase(type.name)
-  const usage: CITypeUsage = await loadCITypeUsage(session, tenantId, typeId, type.name, neo4jLabel)
-  const refs = describeCITypeUsage(usage)
-  /*
-    Il MESSAGGIO e per i log e per chi chiama l'API: inglese, e composto qui.
-    La FRASE per la persona no — e una chiave, e le quattro combinazioni
-    (elimina/disattiva × con o senza altri riferimenti) sono quattro chiavi
-    dichiarate, non pezzi di prosa incollati e passati come parametri: un
-    parametro che contiene una frase e prosa travestita da dato, e resta nella
-    lingua di chi l'ha scritta.
-  */
-  const what = action === 'delete'
-    ? `Type "${type.label}" (${type.name}) was not deleted`
-    : `Type "${type.label}" (${type.name}) was not deactivated`
-  const consequence = action === 'delete'
-    ? `their data and their relationships would stay in the graph without appearing anywhere any more (lists, impact, service maps, search): a silent loss.`
-    : `a deactivated type disappears from reads as if it were deleted, so those CIs would not appear anywhere any more.`
-  const suffisso = action === 'delete' ? 'Delete' : 'Deactivate'
-
-  if (usage.cis > 0) {
-    throw new ValidationError(
-      `${what}: there are still ${String(usage.cis)} CIs of type ${neo4jLabel} in this tenant, and ${consequence} `
-      + `Move or delete those CIs first.` + (refs ? ` The type is also referenced by: ${refs}.` : ''),
-      {
-        key: `errors.ciType.inUse${suffisso}${refs ? 'WithRefs' : ''}`,
-        params: { label: type.label, name: type.name, count: usage.cis, type: neo4jLabel, refs },
-      },
-    )
-  }
-  if (refs) {
-    throw new ValidationError(
-      `${what}: no CI of this type, but the type is still referenced by ${refs}. `
-      + `Those references are BY NAME: they would hang off a type that no longer exists. Remove the references first.`,
-      { key: `errors.ciType.onlyRefs${suffisso}`, params: { label: type.label, name: type.name, refs } },
-    )
-  }
-}
-
 
 /**
  * Gli archi fra CI di questo tenant che SOLO la definizione `relationId`
@@ -881,7 +846,17 @@ export function buildMetamodelMutations() {
         const owned = await assertTenantOwnedType(session, args.id, ctx.tenantId, 'update')
         // A-8: disattivare è come cancellare, per chi legge. Non si fa mentre
         // ci sono CI di quel tipo (o riferimenti al suo nome).
-        if (active === false) await assertCITypeNotInUse(session, ctx.tenantId, args.id, owned, 'deactivate')
+        if (active === false) {
+          // Regola del proprietario (15 set 2026): blocca un ticket che cita i
+          // CI del tipo, e i CI stessi (sparirebbero dalle letture, A-8). I
+          // riferimenti per nome no: il tipo esiste ancora.
+          const neo4jLabel = toPascalCase(owned.name)
+          const impact = await loadCITypeDeletionImpact(session, ctx.tenantId, args.id, owned.name, neo4jLabel)
+          assertCITypeNotInTickets(impact, owned, 'deactivate')
+          assertCITypeHasNoCIsToHide(impact, { ...owned, neo4jLabel })
+          // SV-6: un tipo disattivato non dichiara più le sue relazioni.
+          await assertNoServiceMapFollows(session, ctx.tenantId, { typeId: args.id })
+        }
         const r = await session.executeWrite(tx =>
           tx.run(
             `MATCH (t:CITypeDefinition {id: $id})
@@ -899,31 +874,49 @@ export function buildMetamodelMutations() {
 
     deleteCIType: async (_: unknown, args: { id: string }, ctx: GraphQLContext) => {
       requireMetamodelPermission(ctx)
+      let deleted: Awaited<ReturnType<typeof deleteCITypeDependents>> | null = null
+      let neo4jLabel = ''
       await withSession(async session => {
         // A-6: prima il controllo esplicito era solo su `scope = 'base'`, e un
         // tipo ITIL rispondeva `true` senza eliminare niente.
         const owned = await assertTenantOwnedType(session, args.id, ctx.tenantId, 'delete')
-        // A-8 / D-10: prima si conta. `DETACH DELETE` porterebbe via anche le
-        // domande di assessment agganciate, e lascerebbe i CI nel grafo
-        // invisibili a tutto il prodotto.
-        await assertCITypeNotInUse(session, ctx.tenantId, args.id, owned, 'delete')
-        const r = await session.executeWrite(tx =>
-          tx.run(`
+        neo4jLabel = toPascalCase(owned.name)
+        // SV-6: le relazioni del tipo spariscono con lui.
+        await assertNoServiceMapFollows(session, ctx.tenantId, { typeId: args.id })
+        // Regola del proprietario (15 set 2026): il solo impedimento è un
+        // ticket che cita un CI del tipo, anche chiuso. CI, gruppi dinamici,
+        // esclusioni, regole, trigger, widget e sezioni di report vanno via con
+        // il tipo, nella stessa transazione (lib/ciTypeDeletion.ts). Prima
+        // bastavano le domande core dell'assessment, che `createCIType`
+        // collega da sé, per rendere un tipo appena nato non cancellabile.
+        deleted = await session.executeWrite(async tx => {
+          const out = await deleteCITypeDependents(tx, ctx.tenantId, { id: args.id, ...owned, neo4jLabel })
+          const r = await tx.run(`
             MATCH (t:CITypeDefinition {id: $id})
             WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
             OPTIONAL MATCH (t)-[:HAS_FIELD]->(f)
             OPTIONAL MATCH (t)-[:HAS_RELATION]->(rel)
             OPTIONAL MATCH (t)-[:HAS_SYSTEM_RELATION]->(sr)
             DETACH DELETE t, f, rel, sr
-          `, { id: args.id, tenantId: ctx.tenantId }),
-        )
-        assertWrote(r, `deleteCIType(${args.id})`)
+          `, { id: args.id, tenantId: ctx.tenantId })
+          assertWrote(r, `deleteCIType(${args.id})`)
+          return out
+        })
       }, true)
+      const result = deleted as Awaited<ReturnType<typeof deleteCITypeDependents>> | null
+      if (!result) throw new Error(`deleteCIType(${args.id}): the deletion did not return its outcome`)
       invalidateSchema(ctx.tenantId)
+      invalidateTriggerCache(ctx.tenantId)
+      invalidateRulesCache(ctx.tenantId)
+      cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}:`)
+      cache.invalidate(`topology:${ctx.tenantId}:`)
+      // Le mappe vive che includevano quei CI si risincronizzano (non lancia).
+      if (result.deletedCIIds.length) await notifyCIGraphChanged(ctx.tenantId, result.deletedCIIds, 'ci_type.deleted')
+      void audit(ctx, 'ci_type.deleted', 'CITypeDefinition', args.id, { ...result.impact })
       return true
     },
 
-    addCIField: async (
+        addCIField: async (
       _: unknown,
       args: { typeId: string; input: Record<string, unknown> },
       ctx: GraphQLContext,
@@ -1300,6 +1293,9 @@ export function buildMetamodelMutations() {
         // definizione dichiara restavano nel grafo invisibili — le dipendenze
         // del CI e le mappe non li leggevano più — e non si potevano nemmeno
         // cancellare. Come per i tipi: prima si conta, e si dice.
+        // SV-6 (revisione del 15 set 2026): una mappa di servizio che segue un
+        // tipo dichiarato solo da questa relazione non si sincronizzerebbe più.
+        await assertNoServiceMapFollows(session, ctx.tenantId, { relationId: args.relationId })
         const inUse = await countEdgesOnlyThisRelationDeclares(session, ctx.tenantId, args.typeId, args.relationId)
         if (inUse && inUse.count > 0) {
           throw new ValidationError(

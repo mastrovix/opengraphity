@@ -10,7 +10,7 @@ import { ALLOWED_BASE_FIELDS, ALL_CIS_ALLOWED_FIELDS, ciOrderBy, buildBaseWhere,
 import { buildFieldResolvers, mapTeamProps } from './ciFieldResolvers.js'
 import { buildCreateMutation, buildUpdateMutation, buildDeleteMutation } from './ciMutations.js'
 import { mapITILField, fetchITILTypeById, buildITILTypesResolver, buildITILTypeFieldsResolver, buildITILMutations } from './itilTypeResolvers.js'
-import { requireMetamodelPermission, buildCITypesResolver, buildBaseCITypeResolver, buildMetamodelMutations } from './ciTypeMetamodel.js'
+import { requireMetamodelPermission, buildCITypesResolver, buildBaseCITypeResolver, buildMetamodelMutations, ciTypeDeletionImpact } from './ciTypeMetamodel.js'
 import { impactRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
 
 type Props = Record<string, unknown>
@@ -319,6 +319,7 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
   Query['ciById']        = buildCIByIdResolver(types)
   Query['blastRadius']   = buildBlastRadiusResolver(types)
   Query['ciTypes']       = buildCITypesResolver()
+  Query['ciTypeDeletionImpact'] = ciTypeDeletionImpact
   Query['baseCIType']    = buildBaseCITypeResolver()
   Query['itilTypes']     = buildITILTypesResolver()
   Query['itilTypeFields'] = buildITILTypeFieldsResolver()

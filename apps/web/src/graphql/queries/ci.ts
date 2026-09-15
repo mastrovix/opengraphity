@@ -157,3 +157,13 @@ export const GET_CI_BY_ID_REF = gql`
     ciById(id: $id) { id type }
   }
 `
+
+/** Cosa porterebbe via `deleteCIType` (regola del 15 set 2026): la conferma del disegnatore lo dice prima. */
+export const GET_CI_TYPE_DELETION_IMPACT = gql`
+  query CITypeDeletionImpact($id: ID!) {
+    ciTypeDeletionImpact(id: $id) {
+      cis ticketCIs tickets ticketCIExclusions groupsUpdated groupsDeleted fieldVisibilityRules
+      fieldRequirementRules businessRules autoTriggers customWidgets reportSections assessmentQuestionLinks
+    }
+  }
+`
