@@ -225,3 +225,38 @@ export function calculateDeadline(
 
   return fromLocal(current, timezone)
 }
+
+/**
+ * I minuti (in orario di servizio, se `businessHours`) fra due istanti: il
+ * rovescio di `calculateDeadline`. Serve a sommare il tempo in cui un ticket è
+ * stato di un team (OLA come «tempo del team», secondo giro UI del 15 set 2026).
+ * `to` prima di `from` → 0. O(giorni), come `calculateDeadline`.
+ */
+export function businessMinutesBetween(
+  from: Date,
+  to: Date,
+  businessHours: boolean,
+  timezone: string,
+  calendar: ServiceCalendar | null,
+): number {
+  if (to.getTime() <= from.getTime()) return 0
+  if (!businessHours) return (to.getTime() - from.getTime()) / 60_000
+  if (!calendar) {
+    throw new Error('[sla:policy] business-hours interval without a service calendar: configure it in Settings → Organization')
+  }
+  const rule = calendarRule(calendar)
+  const end = toLocal(to, timezone)
+  let current = advanceToBusinessStart(toLocal(from, timezone), rule)
+  let minutes = 0
+  for (let guard = 0; current.day < end.day || (current.day === end.day && current.minuteOfDay < end.minuteOfDay); guard++) {
+    if (guard > 36600) throw new Error('[sla:policy] businessMinutesBetween: interval longer than a hundred years')
+    if (current.day === end.day) {
+      // L'ultimo giorno: fino a `to`, dentro la fascia.
+      if (isWorkingDay(current.day, rule)) minutes += Math.max(0, Math.min(end.minuteOfDay, rule.end) - current.minuteOfDay)
+      break
+    }
+    if (isWorkingDay(current.day, rule)) minutes += Math.max(0, rule.end - current.minuteOfDay)
+    current = nextBusinessDayStart(current.day, rule)
+  }
+  return minutes
+}

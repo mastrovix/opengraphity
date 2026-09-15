@@ -113,16 +113,20 @@ export function olaSDL(): string {
     met:            Int!
     breached:       Int!
     attainmentPct:  Float
+    # Quanti dei ticket valutati hanno tempo ricostruito dall'apertura (prima della storia delle assegnazioni).
+    inferred:       Int!
     complianceTarget:  Float
     complianceWarning: Float
   }
 
   """
-  Un contratto OLA/UC su un ticket (il riquadro nel dettaglio). \`applies\` false:
-  il contratto è del tipo del ticket ma non conta, e \`reason\` dice perché
-  (\`other_team\`: il ticket è di un altro team; \`created_before_contract\`:
-  il ticket è nato prima del contratto). \`state\`: \`met\`, \`breached\` o
-  \`running\`, null se non conta.
+  Un contratto OLA/UC su un ticket (il riquadro nel dettaglio): il tempo in cui il
+  ticket è stato del team del contratto. \`applies\` false: il contratto è del tipo
+  del ticket ma non conta, e \`reason\` dice perché (\`other_team\`: il team non
+  l'ha mai avuto; \`before_contract\`: l'ha avuto solo prima che il contratto
+  esistesse). \`state\`: \`met\`, \`breached\`, \`running\`, \`handed_off\`
+  (passato ad altri entro l'obiettivo) o \`scheduled\` (la finestra del piano non è ancora iniziata), null se non conta. \`inferred\`: parte del
+  tempo è ricostruita dall'apertura del ticket (ticket di prima della storia delle assegnazioni).
   """
   type TicketOLA {
     contractId:     ID!
@@ -137,6 +141,19 @@ export function olaSDL(): string {
     deadline:       String
     concludedAt:    String
     state:          String
+    usedMinutes:      Int!
+    remainingMinutes: Int!
+    inferred:         Boolean!
+    """Solo change: la misura del task (assessment, validation, release); null = il ticket intero."""
+    unitKind:         String
+    unitKey:          String
+    ciName:           String
+    """Assessment: owner (funzionale) o support (tecnico)."""
+    responderRole:    String
+    """Validazione e rilascio: il titolo del passo del piano."""
+    stepTitle:        String
+    """Validazione e rilascio: l'inizio della finestra, da cui il tempo corre."""
+    startsAt:         String
   }
 
   type SLAReport {

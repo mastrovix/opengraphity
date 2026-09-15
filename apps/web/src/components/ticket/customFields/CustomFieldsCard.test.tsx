@@ -10,7 +10,7 @@ import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { DomainVocabularyContext } from '@/contexts/DomainVocabularyContext'
 import { SET_TICKET_CUSTOM_FIELDS } from '@/graphql/mutations'
 import { CustomFieldsCard } from './CustomFieldsCard'
-import { customFieldDisplay, customFieldStepState, customFieldsInput, missingCustomFields, type CustomFieldValueView } from './customFields'
+import { customFieldDisplay, customFieldsInput, missingCustomFields, type CustomFieldValueView } from './customFields'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() }, Toaster: () => null }))
 
@@ -82,16 +82,6 @@ describe('CustomFieldsCard', () => {
 
 /** Secondo giro UI del 15 set 2026: in quali fasi un campo si vede e si modifica. */
 describe('i campi del cliente e le fasi del workflow', () => {
-  const steps = [{ name: 'assessment', order: 1 }, { name: 'review', order: 5 }, { name: 'closed', order: 6 }]
-  const outcome = { stepVisibility: { mode: 'from', steps: [], step: 'review' }, stepEditability: { mode: 'steps', steps: ['review'] } }
-
-  it('customFieldStepState: la stessa regola dell\'API (apertura, review, chiuso)', () => {
-    expect(customFieldStepState(outcome, { current: 'assessment', steps })).toEqual({ visible: false, editable: false })
-    expect(customFieldStepState(outcome, { current: 'review', steps })).toEqual({ visible: true, editable: true })
-    expect(customFieldStepState(outcome, { current: 'closed', steps })).toEqual({ visible: true, editable: false })
-    expect(customFieldStepState({}, { current: 'assessment', steps })).toEqual({ visible: true, editable: true })
-  })
-
   it('nel dettaglio: un campo non visibile nella fase non c\'è; uno in sola lettura si legge ma non entra nel modulo', async () => {
     const fields = [
       field({ name: 'outcome', label: 'Esito', fieldType: 'enum', enumValues: ['successful', 'failed'], enumTypeName: 'change_outcome', value: 'failed', visible: true, editable: false }),
@@ -104,5 +94,20 @@ describe('i campi del cliente e le fasi del workflow', () => {
     expect(screen.getByLabelText('Centro di costo')).toBeInTheDocument()
     expect(screen.queryByLabelText(/^Esito/)).toBeNull()
     expect(screen.getByText(/not editable in this step/)).toBeInTheDocument()
+  })
+})
+
+describe('disegnatore: le fasi di tutti i workflow del tipo', () => {
+  it('stepChoicesOf unisce le fasi per nome e dice quali stanno solo in alcuni workflow', async () => {
+    const { stepChoicesOf } = await import('@/pages/settings/ITILTypeFields')
+    const choices = stepChoicesOf([
+      { workflow: 'Incident Management', steps: [{ name: 'new', label: 'New' }, { name: 'resolved', label: 'Resolved' }] },
+      { workflow: 'Incident — Security', steps: [{ name: 'new', label: 'New' }, { name: 'security_review', label: 'Security review' }, { name: 'resolved', label: 'Resolved' }] },
+    ])
+    expect(choices).toEqual([
+      { name: 'new', label: 'New', only: null },
+      { name: 'resolved', label: 'Resolved', only: null },
+      { name: 'security_review', label: 'Security review', only: ['Incident — Security'] },
+    ])
   })
 })

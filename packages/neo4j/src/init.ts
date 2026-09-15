@@ -427,6 +427,8 @@ const INDEXES: SchemaStatement[] = [
   { label: 'ServiceMap(tenant_id, service_id)', cypher: 'CREATE INDEX service_map_tenant_service IF NOT EXISTS FOR (n:ServiceMap) ON (n.tenant_id, n.service_id)' },
   { label: 'ServiceMap(tenant_id, status)', cypher: 'CREATE INDEX service_map_tenant_status IF NOT EXISTS FOR (n:ServiceMap) ON (n.tenant_id, n.status)' },
   { label: 'ServiceHealthEntry(tenant_id, map_id, at)', cypher: 'CREATE INDEX service_health_tenant_map IF NOT EXISTS FOR (n:ServiceHealthEntry) ON (n.tenant_id, n.map_id, n.at)' },
+  // Storia delle assegnazioni ai team: il report OLA/UC filtra i tratti per team.
+  { label: 'TicketTeamSegment(tenant_id, team_id)', cypher: 'CREATE INDEX ticket_team_segment_tenant_team IF NOT EXISTS FOR (n:TicketTeamSegment) ON (n.tenant_id, n.team_id)' },
   // NOTE — vector indexes are NOT listed here on purpose: their name and
   // dimension depend on the configured embedding provider
   // (`incident_embedding_<dims>` / `kb_embedding_<dims>`, see

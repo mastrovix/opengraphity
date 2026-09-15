@@ -2,6 +2,7 @@
  * Shared action executor — used by AutoTriggers and BusinessRules.
  * Each action executes in sequence; if one fails, remaining actions are skipped.
  */
+import { assignTeamCypher, TEAM_NOW_PARAM } from './ticketTeamHistory.js'
 import { v4 as uuidv4 } from 'uuid'
 import pino from 'pino'
 import { runQuery } from '@opengraphity/neo4j'
@@ -177,13 +178,10 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
           const rows = await runQuery<{ ok: unknown }>(session, `
             MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})
             MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-            OPTIONAL MATCH (e)-[old:ASSIGNED_TO_TEAM]->()
-            DELETE old
-            WITH DISTINCT e, t
-            CREATE (e)-[:ASSIGNED_TO_TEAM]->(t)
+            ${assignTeamCypher('e', 't')}
             SET e.updated_at = $now
             RETURN 1 AS ok
-          `, { entityId: ctx.entityId, tenantId: ctx.tenantId, teamId, now })
+          `, { entityId: ctx.entityId, tenantId: ctx.tenantId, teamId, now, [TEAM_NOW_PARAM]: now })
           if (rows.length === 0) throw new Error(`assign_team: ${ctx.entityType} ${ctx.entityId} or team ${teamId} not found`)
         }, true)
       }

@@ -62,7 +62,8 @@ import { vocabulariesBehindShipped } from './vocabularyShippedDrift.js'
 import { slaPoliciesWarningNotBeforeDeadline } from './slaWarningCheck.js'
 import { blockedStepDeadlines } from './stepDeadlineBlocked.js'
 import { customFieldDefs } from './ticketCustomFields.js'
-import { stepsNamedBy, workflowStepNames } from './customFieldSteps.js'
+import { stepsNamedBy, workflowStepsByDefinition } from './customFieldSteps.js'
+import { olaContractsMeasurability } from './olaMeasurability.js'
 import { TICKET_CUSTOM_FIELD_ENTITY_TYPES } from '@opengraphity/types'
 
 const log = logger.child({ module: 'configuration-issues' })
@@ -100,6 +101,9 @@ export type ConfigurationIssueKind =
   | 'slack_not_connected'
   | 'service_incident_problem'
   | 'custom_field_steps_missing'
+  | 'custom_field_from_step_absent'
+  | 'ola_contract_without_team'
+  | 'ola_contract_unmeasurable'
 
 export interface ConfigurationIssue {
   /** La CHIAVE del problema: il client la risolve nella sua lingua. */
@@ -122,7 +126,7 @@ export async function configurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -392,18 +396,41 @@ async function checkWorkflowStepRoles(tenantId: string, session: Session): Promi
  * lasciarlo sparire.
  */
 async function checkCustomFieldSteps(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
-  const found: string[] = []
+  const missing: string[] = []
+  const absent: string[] = []
   for (const entityType of TICKET_CUSTOM_FIELD_ENTITY_TYPES) {
     const defs = (await customFieldDefs(session, tenantId, entityType)).filter((d) => d.visibility.mode !== 'always' || d.editability.mode !== 'visible')
     if (defs.length === 0) continue
-    const names = await workflowStepNames(session, tenantId, entityType)
+    const workflows = await workflowStepsByDefinition(session, tenantId, entityType)
+    const names = new Set(workflows.flatMap((w) => w.steps.map((s) => s.name)))
     for (const d of defs) {
-      const missing = stepsNamedBy(d.visibility, d.editability).filter((s) => !names.includes(s))
-      if (missing.length > 0) found.push(`${d.label} (${entityType}): ${missing.join(', ')}`)
+      const gone = stepsNamedBy(d.visibility, d.editability).filter((s) => !names.has(s))
+      if (gone.length > 0) missing.push(`${d.label} (${entityType}): ${gone.join(', ')}`)
+      // «Da X in poi» su un tipo con più workflow: dove X non c'è, il campo non si vede mai.
+      const from = d.visibility.mode === 'from' ? d.visibility.step : null
+      if (from && names.has(from)) {
+        const without = workflows.filter((w) => !w.steps.some((s) => s.name === from)).map((w) => w.workflow)
+        if (without.length > 0) absent.push(`${d.label} (${entityType}, ${from}): ${without.join(', ')}`)
+      }
     }
   }
-  if (found.length === 0) return []
-  return [{ kind: 'custom_field_steps_missing', severity: 'warning', where: '/settings/itil-designer', params: { count: String(found.length), fields: found.join('; ') } }]
+  const out: ConfigurationIssue[] = []
+  if (missing.length > 0) out.push({ kind: 'custom_field_steps_missing', severity: 'warning', where: '/settings/itil-designer', params: { count: String(missing.length), fields: missing.join('; ') } })
+  if (absent.length > 0) out.push({ kind: 'custom_field_from_step_absent', severity: 'warning', where: '/settings/itil-designer', params: { count: String(absent.length), fields: absent.join('; ') } })
+  return out
+}
+
+/**
+ * I CONTRATTI OLA/UC CHE NON MISURANO NIENTE (secondo giro UI del 15 set 2026,
+ * punto 3): senza team non avvisano mai; su ticket che nessuno assegna a un
+ * team restano a zero. Si rimedia nel contratto (team, tipo di ticket).
+ */
+async function checkOLAContracts(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const { withoutTeam, unmeasurable } = await olaContractsMeasurability(session, tenantId)
+  const out: ConfigurationIssue[] = []
+  if (withoutTeam.length > 0) out.push({ kind: 'ola_contract_without_team', severity: 'warning', where: '/admin/ola-uc', params: { count: String(withoutTeam.length), names: withoutTeam.join(', ') } })
+  if (unmeasurable.length > 0) out.push({ kind: 'ola_contract_unmeasurable', severity: 'warning', where: '/admin/ola-uc', params: { count: String(unmeasurable.length), names: unmeasurable.join(', ') } })
+  return out
 }
 
 /**

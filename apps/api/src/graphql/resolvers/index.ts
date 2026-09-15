@@ -292,6 +292,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...notificationChannelResolvers.Query,
       ...reportResolvers.Query,
       ...olaResolvers.Query,
+      ...ticketCustomFieldResolvers.Query,
       ...customReportResolvers.Query,
       ...logsResolvers.Query,
       ...dashboardResolvers.Query,

@@ -20,10 +20,8 @@ import {
   scheduleWarning,
   scheduleBreachCheck,
   scheduleResponseCheck,
-  scheduleOLABreaches,
   cancelSLAJobs,
 } from './scheduler.js'
-import { getActiveOLAContractsFor, getTenantTimezone, withContractCalendars } from './olaBreach.js'
 import { calendarFor } from './calendar.js'
 
 /** L'istante di un evento; il suo timestamp se valido, altrimenti adesso. */
@@ -185,9 +183,6 @@ export class SLAEngine extends BaseConsumer<unknown> {
   ): Promise<void> {
     const payload  = event.payload
 
-    // I controlli OLA/UC non dipendono dallo SLA: un contratto copre il tipo di
-    // ticket anche quando nessuna policy SLA gli corrisponde. Prima si
-    // armavano solo dopo aver creato lo SLA (e col fuso della policy SLA).
     // The SLA clock starts at the entity's created_at, not at consumer
     // processing time (a retried job must not push the deadlines forward).
     // The payload may carry created_at; otherwise read it from the node.
@@ -195,12 +190,11 @@ export class SLAEngine extends BaseConsumer<unknown> {
     const startedAt = typeof payloadCreatedAt === 'string' && !Number.isNaN(new Date(payloadCreatedAt).getTime())
       ? new Date(payloadCreatedAt)
       : await getEntityCreatedAt(event.tenant_id, payload.id)
-    // Stesso istante per i controlli OLA/UC (SL-1).
-    const olaContracts = await this.scheduleOLAChecks(event.tenant_id, entityType, payload.id, startedAt)
+    // I controlli OLA/UC non si armano più qui: li fa la passata ogni minuto
+    // dell'API (lib/olaSweep.ts), sul tempo in cui il ticket è del team.
 
     const severity = getSeverity(payload)
-    const status = await this.startSLA(event.tenant_id, entityType, payload.id, severity, startedAt)
-    if (status && olaContracts) console.log(`[sla:engine] (+${olaContracts} OLA/UC checks for ${payload.id})`)
+    await this.startSLA(event.tenant_id, entityType, payload.id, severity, startedAt)
   }
 
   /** Sceglie la policy, crea lo stato e programma i controlli. `null` se nessuna policy copre il ticket. */
@@ -246,27 +240,6 @@ export class SLAEngine extends BaseConsumer<unknown> {
         `response by ${status.response_deadline}, resolve by ${status.resolve_deadline}`,
     )
     return status
-  }
-
-  /**
-   * Arma un controllo per ogni contratto OLA/UC attivo sul tipo di ticket
-   * (scatta a created_at + l'obiettivo del contratto). Il fuso è quello del
-   * tenant: il contratto non ha un fuso suo e non deve prenderlo in prestito
-   * dalla policy SLA. Ritorna quanti controlli ha armato.
-   */
-  private async scheduleOLAChecks(
-    tenantId: string, entityType: string, entityId: string, startedAt: Date,
-  ): Promise<number> {
-    const contracts = await getActiveOLAContractsFor(tenantId, entityType)
-    if (contracts.length === 0) return 0
-    await scheduleOLABreaches({
-      entityId, entityType, tenantId,
-      timezone:  await getTenantTimezone(tenantId),
-      // Ogni contratto conta con il SUO calendario (ondata 2).
-      contracts: await withContractCalendars(tenantId, contracts),
-      startedAt,
-    })
-    return contracts.length
   }
 
   private eventEntityId(event: DomainEvent<unknown>): string {

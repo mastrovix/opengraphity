@@ -4,8 +4,6 @@ import { publish, getRedisConnection } from '@opengraphity/events'
 import type { DomainEvent, SLAWarningPayload, SLABreachedPayload } from '@opengraphity/types'
 import { markBreached, getSLAStatus, ticketReference } from './status.js'
 import type { SLAStatus } from './status.js'
-import { calculateDeadline } from './policy.js'
-import { isEntityResolved, olaBreachSkipReason, type OLAContractWithCalendar } from './olaBreach.js'
 
 // Redis options come from the shared parser in @opengraphity/events (D-14):
 // same REDIS_URL / REDIS_PASSWORD rules as the event queues, so the SLA timers
@@ -149,32 +147,10 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
     }
 
     case 'ola.breach': {
-      // OLA/UC target elapsed. Alert only if the entity is still open — a
-      // resolved entity met (or already reported) its outcome; no false alarm.
-      // Ticket aperto, contratto attivo e ticket del team del contratto: altrimenti niente avviso.
-      // I job armati prima del contratto nel payload hanno solo il controllo «ancora aperto».
-      const skip = job.data.contractId
-        ? await olaBreachSkipReason(job.data.tenantId, entityType, entityId, job.data.contractId)
-        : ((await isEntityResolved(job.data.tenantId, entityType, entityId)) ? 'resolved' : null)
-      if (skip) {
-        console.log(`[sla:scheduler] OLA "${job.data.contractName}" check skipped for ${entityType} ${entityId} — ${skip}`)
-        break
-      }
-      const event: DomainEvent<Record<string, unknown>> = {
-        ...baseEvent,
-        id:      randomUUID(),
-        type:    'ola.breached',
-        payload: {
-          entity_id:     entityId,
-          entity_type:   entityType,
-          contract_id:   job.data.contractId ?? null,
-          contract_name: job.data.contractName ?? null,
-          contract_type: job.data.contractType ?? null,
-          breached_at:   new Date().toISOString(),
-        },
-      }
-      await publish(event)
-      console.log(`[sla:scheduler] OLA/UC breach fired: "${job.data.contractName}" on ${entityType} ${entityId}`)
+      // Job per ticket armati prima della passata OLA dell'API (secondo giro UI
+      // del 15 set 2026): si scaricano senza avvisare. Gli avvisi li dà
+      // `apps/api/src/lib/olaSweep.ts`, sul tempo in cui il ticket è del team.
+      console.log(`[sla:scheduler] OLA job for ${entityType} ${entityId} superseded by the OLA sweep — dropped`)
       break
     }
 
@@ -283,38 +259,9 @@ export async function scheduleResponseCheck(status: SLAStatus): Promise<void> {
 }
 
 /**
- * Schedules one breach-check timer per OLA/UC contract covering the entity.
- * Each fires at created_at + the contract's resolve target; the processor
- * alerts only if the entity is still open at that point. Fire-time is the
- * guard — no cancellation on resolve is needed.
- *
- * `startedAt` is the entity's creation instant (revisione del 14 set 2026 ·
- * SL-1): the deadline used to start from «now», so a delayed or retried event
- * pushed every OLA/UC deadline forward by the queue delay.
- */
-export async function scheduleOLABreaches(
-  params: { entityId: string; entityType: string; tenantId: string; timezone: string; contracts: OLAContractWithCalendar[]; startedAt: Date },
-): Promise<void> {
-  const { entityId, entityType, tenantId, timezone, contracts, startedAt } = params
-  const now = new Date()
-  for (const c of contracts) {
-    const deadline = calculateDeadline(startedAt, c.resolve_minutes, c.business_hours, timezone, c.calendar)
-    const delayMs = deadline.getTime() - now.getTime()
-    await scheduleJob('ola.breach', `ola-${c.id}-${entityId}`, {
-      entityId,
-      entityType,
-      tenantId,
-      resolveDeadline: deadline.toISOString(),
-      contractId:      c.id,
-      contractName:    c.name,
-      contractType:    c.type,
-    }, Math.max(delayMs, 0))
-  }
-}
-
-/**
  * Rimuove i timer di breach OLA/UC di un'entità (es. change eliminata): gli
- * id sono quelli generati da scheduleOLABreaches (`ola-<contractId>-<entityId>`).
+ * id erano quelli dei vecchi controlli per ticket (`ola-<contractId>-<entityId>`):
+ * sostituiti dalla passata OLA dell'API, restano da togliere quelli già in coda.
  */
 export async function cancelOLABreaches(entityId: string, contractIds: string[]): Promise<void> {
   const queue = getQueue()

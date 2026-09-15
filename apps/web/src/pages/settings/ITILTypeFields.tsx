@@ -1,4 +1,7 @@
-import { useId, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
+import { useQuery } from '@apollo/client/react'
+import { GET_TICKET_WORKFLOW_STEPS } from '@/graphql/queries'
+import { localizedLabel, type LocalizedLabel } from '@/lib/localizedLabel'
 import { Trans, useTranslation } from 'react-i18next'
 import { Plus, X, Check } from 'lucide-react'
 import { DesignerFieldRow } from './shared/DesignerFieldRow'
@@ -16,17 +19,33 @@ import { srOnlyStyle } from '@/lib/a11y'
 
 // ── FieldEditor (inline) ──────────────────────────────────────────────────────
 
+/** Una fase offerta dal disegnatore: `only` elenca i workflow che la hanno, quando non sono tutti. */
+export interface StepChoice { name: string; label: string; only: string[] | null }
+
+/** Le fasi dei workflow del tipo, una volta per nome, nell'ordine in cui compaiono. */
+export function stepChoicesOf(groups: ReadonlyArray<{ workflow: string; steps: ReadonlyArray<{ name: string; label: string; labels?: LocalizedLabel[] }> }>): StepChoice[] {
+  const byName = new Map<string, { label: string; workflows: string[] }>()
+  for (const g of groups) {
+    for (const st of g.steps) {
+      const hit = byName.get(st.name)
+      if (hit) hit.workflows.push(g.workflow)
+      else byName.set(st.name, { label: localizedLabel({ label: st.label, labels: st.labels ?? [] }), workflows: [g.workflow] })
+    }
+  }
+  return [...byName.entries()].map(([name, v]) => ({ name, label: v.label, only: v.workflows.length < groups.length ? v.workflows : null }))
+}
+
 /**
  * IN QUALI FASI SI VEDE E SI MODIFICA IL CAMPO (secondo giro UI del 15 set 2026,
  * decisione del proprietario): su c-test la change chiedeva «Outcome» già
  * all'apertura. L'API applica le stesse regole da ogni canale
  * (`apps/api/src/lib/customFieldSteps.ts`).
  */
-function StepRulesEditor({ form, set, steps, initialStep }: {
+function StepRulesEditor({ form, set, steps }: {
   form: FieldFormState
   set: (key: keyof FieldFormState, val: unknown) => void
-  steps: readonly { name: string; label: string }[]
-  initialStep: string | null
+  /** Le fasi di TUTTI i workflow attivi del tipo; `only` = i workflow che la hanno, se non tutti. */
+  steps: readonly StepChoice[]
 }) {
   const { t } = useTranslation()
   const uid = useId()
@@ -48,7 +67,7 @@ function StepRulesEditor({ form, set, steps, initialStep }: {
         {steps.map((s) => (
           <label key={s.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
             <input type="checkbox" checked={form[key].includes(s.name)} onChange={() => toggle(key, s.name)} />
-            {s.label}
+            {s.label}{s.only && <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-table)' }}> ({t('itilDesigner.steps.onlyIn', { workflows: s.only.join(', ') })})</span>}
           </label>
         ))}
       </div>
@@ -70,7 +89,7 @@ function StepRulesEditor({ form, set, steps, initialStep }: {
           <div style={{ margin: '6px 0 0 22px', maxWidth: 260 }}>
             <Select aria-label={t('itilDesigner.steps.fromStepLabel')} style={selectS} value={form.visibilityFrom} onChange={(e) => set('visibilityFrom', e.target.value)}>
               <option value="">—</option>
-              {steps.map((s) => <option key={s.name} value={s.name}>{s.label}</option>)}
+              {steps.map((s) => <option key={s.name} value={s.name}>{s.only ? `${s.label} (${t('itilDesigner.steps.onlyIn', { workflows: s.only.join(', ') })})` : s.label}</option>)}
             </Select>
           </div>
         )}
@@ -83,23 +102,20 @@ function StepRulesEditor({ form, set, steps, initialStep }: {
         </div>
         {form.editabilityMode === 'steps' && stepChecks('editabilitySteps', t('itilDesigner.steps.onlySteps'))}
       </fieldset>
-      {initialStep && (
-        <p style={{ margin: 0, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-table)' }}>
-          {t('itilDesigner.steps.creationHint', { step: steps.find((s) => s.name === initialStep)?.label ?? initialStep })}
-        </p>
-      )}
+      <p style={{ margin: 0, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-table)' }}>
+        {t('itilDesigner.steps.creationHint')}
+      </p>
     </div>
   )
 }
 
 function FieldEditor({
-  field, isSystem, onSave, onCancel, enumTypesData, offerEndUser = false, workflowSteps = [], initialStep = null,
+  field, isSystem, onSave, onCancel, enumTypesData, offerEndUser = false, workflowSteps = [],
 }: {
   field:         FieldFormState
   isSystem:      boolean
-  /** Le fasi del workflow del tipo (per le regole di fase dei campi del cliente). */
-  workflowSteps?: readonly { name: string; label: string }[]
-  initialStep?:  string | null
+  /** Le fasi dei workflow del tipo (per le regole di fase dei campi del cliente). */
+  workflowSteps?: readonly StepChoice[]
   /** Il tipo si apre dal portale (incident, service_request): il campo si può offrire all'utente finale. */
   offerEndUser?: boolean
   onSave:        (f: FieldFormState) => void
@@ -181,7 +197,7 @@ function FieldEditor({
         </div>
       )}
 
-      {!isSystem && <StepRulesEditor form={form} set={set} steps={workflowSteps} initialStep={initialStep} />}
+      {!isSystem && <StepRulesEditor form={form} set={set} steps={workflowSteps} />}
 
       {/* enum dropdown */}
       {form.fieldType === 'enum' && (
@@ -292,8 +308,11 @@ export function ITILTypeFields({
     ? t('itilDesigner.statusFromWorkflow', { steps: workflow.steps.map((st) => workflow.labelFor(st.name)).join(', ') })
     : undefined
   const customFields = fields.filter((f) => !f.isSystem).sort((a, b) => a.order - b.order)
-  const stepChoices = workflow.steps.map((st) => ({ name: st.name, label: workflow.labelFor(st.name) }))
-  const initialStep = workflow.initialStep?.name ?? null
+  // Le fasi di tutti i workflow attivi del tipo (su c-test gli incident ne hanno due): prima solo quelle del generico.
+  const { data: stepsData } = useQuery<{ ticketWorkflowSteps: Array<{ workflow: string; steps: Array<{ name: string; label: string; labels: LocalizedLabel[] }> }> }>(
+    GET_TICKET_WORKFLOW_STEPS, { variables: { entityType: typeName ?? '' }, skip: !typeName, fetchPolicy: 'cache-and-network' },
+  )
+  const stepChoices = useMemo(() => stepChoicesOf(stepsData?.ticketWorkflowSteps ?? []), [stepsData])
 
   return (
     <div>
@@ -304,7 +323,6 @@ export function ITILTypeFields({
           isSystem={false}
           offerEndUser={offerEndUser}
           workflowSteps={stepChoices}
-          initialStep={initialStep}
           onSave={(form) => onSaveField(typeId, null, form)}
           onCancel={() => setAddingField(false)}
           enumTypesData={enumTypesData}
@@ -364,7 +382,6 @@ export function ITILTypeFields({
               isSystem={false}
               offerEndUser={offerEndUser}
               workflowSteps={stepChoices}
-              initialStep={initialStep}
               onSave={(form) => onSaveField(typeId, f.id, form)}
               onCancel={() => setEditingFieldId(null)}
               enumTypesData={enumTypesData}

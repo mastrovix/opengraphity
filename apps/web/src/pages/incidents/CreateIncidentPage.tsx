@@ -78,7 +78,7 @@ export function CreateIncidentPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   // Campi personalizzati del cliente (verifica «Cosa resta cablato», ondata 4).
-  const { defs: customDefs } = useCreationCustomFieldDefs('incident')
+  const { defs: customDefs } = useCreationCustomFieldDefs('incident', category)
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
   const formValues = { title, severity: priority, category, description, ...customValues }
   const { rules: fieldRules, error: fieldRulesError } = useFormFieldRules('incident', null, formValues)

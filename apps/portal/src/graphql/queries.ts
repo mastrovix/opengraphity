@@ -121,8 +121,8 @@ export const GET_TENANT_LANGUAGE_SETTINGS = gql`
 
 /** I campi del cliente offerti all'utente finale aprendo un incident o una richiesta (verifica «Cosa resta cablato», ondata 4). */
 export const GET_PORTAL_CUSTOM_FIELDS = gql`
-  query PortalCustomFields($entityType: String!, $language: String) {
-    portalCustomFields(entityType: $entityType) {
+  query PortalCustomFields($entityType: String!, $category: String, $language: String) {
+    portalCustomFields(entityType: $entityType, category: $category) {
       name label fieldType required
       options(language: $language) { value label }
     }

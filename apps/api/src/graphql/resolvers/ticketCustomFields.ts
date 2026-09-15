@@ -21,7 +21,7 @@ import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import { languageFor } from '../../lib/tenantLanguage.js'
 import type { CustomFieldValue } from '../../lib/ticketCustomFields.js'
 import { isPortalOnly } from '../../lib/permissions.js'
-import { parseStepEditability, parseStepVisibility, ticketStepContext, type StepEditability, type StepVisibility } from '../../lib/customFieldSteps.js'
+import { creationStepContext, parseStepEditability, parseStepVisibility, ticketStepContext, workflowStepsByDefinition, type StepEditability, type StepVisibility } from '../../lib/customFieldSteps.js'
 
 const stepVisibilityView = (v: StepVisibility) => ({ mode: v.mode, steps: v.mode === 'steps' ? v.steps : [], step: v.mode === 'from' ? v.step : null })
 const stepEditabilityView = (e: StepEditability) => ({ mode: e.mode, steps: e.mode === 'steps' ? e.steps : [] })
@@ -105,7 +105,37 @@ async function optionLabels(ctx: GraphQLContext, field: CustomFieldValue, langua
   return (value: string) => labelFor(value, labels, lingua, tenantLanguage)
 }
 
+/**
+ * Il modulo di apertura (secondo giro UI del 15 set 2026): i campi con visibile
+ * e modificabile calcolati sulla fase iniziale del workflow che il motore
+ * sceglierà per tipo E categoria. Prima web e portale leggevano il workflow
+ * generico e l'API quello della categoria: con due workflow diversi il modulo
+ * poteva offrire un campo che l'API rifiutava.
+ */
+async function ticketCreationCustomFields(_: unknown, args: { entityType: string; category?: string | null }, ctx: GraphQLContext) {
+  if (!isTicketCustomFieldEntityType(args.entityType)) {
+    throw new ValidationError(`"${args.entityType}" has no custom fields.`, { key: 'errors.customField.entityType', params: { entityType: args.entityType } })
+  }
+  const entityType = args.entityType
+  return withSession(async (session) => customFieldValues(await customFieldDefs(session, ctx.tenantId, entityType), {}, {
+    stepContext: await creationStepContext(session, ctx.tenantId, entityType, args.category ?? null),
+  }))
+}
+
+/** Le fasi di tutti i workflow attivi del tipo, per il disegnatore dei campi (etichette con le traduzioni spedite). */
+async function ticketWorkflowSteps(_: unknown, args: { entityType: string }, ctx: GraphQLContext) {
+  const groups = await withSession((session) => workflowStepsByDefinition(session, ctx.tenantId, args.entityType))
+  return groups.map((g) => ({
+    workflow: g.workflow, category: g.category,
+    steps: g.steps.map((s) => ({
+      name: s.name, label: s.label,
+      labels: s.labels ? Object.entries(JSON.parse(s.labels) as Record<string, string>).map(([language, label]) => ({ language, label })) : [],
+    })),
+  }))
+}
+
 export const ticketCustomFieldResolvers = {
+  Query:    { ticketCreationCustomFields, ticketWorkflowSteps },
   Mutation: { setTicketCustomFields },
   Incident:       { customFields: customFieldsResolver('incident') },
   Problem:        { customFields: customFieldsResolver('problem') },

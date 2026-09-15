@@ -1632,7 +1632,7 @@
       "partySupplier": "Fornitore esterno",
       "teamName": "Team responsabile",
       "teamPlaceholder": "Es. Network Ops",
-      "generatedNote": "Generato il {{date}}. Ogni contratto OLA/UC conta solo i suoi ticket: quelli del suo ambito, assegnati al suo team e aperti dopo la nascita del contratto, conclusi nel periodo; il tempo si conta col calendario del contratto.",
+      "generatedNote": "Generato il {{date}}. Ogni contratto OLA/UC misura il tempo in cui il ticket è stato del suo team: i periodi di assegnazione a quel team, contati da quando il contratto esiste fino alla conclusione del ticket, col calendario del contratto; la pausa dello SLA non lo ferma. Contano i ticket conclusi nel periodo.",
       "pickTeam": "Scegli un team...",
       "noTeams": "Questo cliente non ha ancora nessun team: creane uno in Team e Utenti.",
       "contracts": "OLA / UC",
@@ -1663,7 +1663,9 @@
       "pausedShort": "In pausa",
       "generatedOn": "Generato il {{date}}.",
       "objectiveHint": "Verde da {{target}}%, giallo da {{warning}}%, rosso sotto",
-      "noObjectiveHint": "Nessun obiettivo di conformità: nessun colore"
+      "noObjectiveHint": "Nessun obiettivo di conformità: nessun colore",
+      "inferredNote_one": "{{count}} valutazione è contata dall'apertura del ticket: il ticket è più vecchio della storia delle assegnazioni.",
+      "inferredNote_other": "{{count}} valutazioni sono contate dall'apertura del ticket: quei ticket sono più vecchi della storia delle assegnazioni."
     },
     "changeDetail": {
       "notFound": "Change non trovato",
@@ -2658,9 +2660,10 @@
       "fromStepLabel": "Si vede dalla fase",
       "editabilityLegend": "In quali fasi si modifica",
       "whereVisible": "Dovunque si veda",
-      "creationHint": "L'apertura del ticket è la sua fase iniziale «{{step}}»: un campo che lì non si modifica non è nel modulo di apertura. Altrove un campo che si vede ma non si modifica è in sola lettura.",
+      "creationHint": "L'apertura del ticket è la fase iniziale del suo workflow: un campo che lì non si modifica non è nel modulo di apertura. «Da questa fase in poi» vuol dire da quando il ticket entra in quella fase, anche se poi torna indietro. Altrove un campo che si vede ma non si modifica è in sola lettura.",
       "noWorkflow": "Questo tipo di ticket non ha un workflow: il campo si vede e si modifica sempre.",
-      "chooseAtLeastOne": "Scegli almeno una fase."
+      "chooseAtLeastOne": "Scegli almeno una fase.",
+      "onlyIn": "solo {{workflows}}"
     }
   },
   "ciTypeDesigner": {
@@ -5724,7 +5727,13 @@
       "service_incident_problem_one": "Il monitoraggio non riesce a gestire l'incident del servizio {{services}}: il servizio può essere giù senza incident. **Apri il servizio per vedere il motivo**.",
       "service_incident_problem_other": "Il monitoraggio non riesce a gestire l'incident di {{count}} servizi ({{services}}): possono essere giù senza incident. **Apri ogni servizio per vedere il motivo**.",
       "custom_field_steps_missing_one": "Un campo dei ticket cita una fase che il workflow non ha più, quindi dove dipende da quella fase non si vede: {{fields}}. **Correggi le sue fasi nell'ITIL Type Designer**.",
-      "custom_field_steps_missing_other": "{{count}} campi dei ticket citano fasi che il workflow non ha più, quindi dove dipendono da quelle fasi non si vedono: {{fields}}. **Correggi le loro fasi nell'ITIL Type Designer**."
+      "custom_field_steps_missing_other": "{{count}} campi dei ticket citano fasi che il workflow non ha più, quindi dove dipendono da quelle fasi non si vedono: {{fields}}. **Correggi le loro fasi nell'ITIL Type Designer**.",
+      "custom_field_from_step_absent_one": "Un campo dei ticket si vede «da una fase in poi», ma un workflow del suo tipo non ha quella fase: su quei ticket non si vede mai ({{fields}}). **Scegli altre fasi nell'ITIL Type Designer, o aggiungi la fase a quel workflow**.",
+      "custom_field_from_step_absent_other": "{{count}} campi dei ticket si vedono «da una fase in poi», ma alcuni workflow del loro tipo non hanno quella fase: su quei ticket non si vedono mai ({{fields}}). **Scegli altre fasi nell'ITIL Type Designer, o aggiungi le fasi a quei workflow**.",
+      "ola_contract_without_team_one": "Un contratto OLA/UC attivo non ha un team ({{names}}): non avvisa mai, e il report lo conta dall'apertura del ticket per qualunque team. **Scegli il suo team in Admin → OLA / UC**.",
+      "ola_contract_without_team_other": "{{count}} contratti OLA/UC attivi non hanno un team ({{names}}): non avvisano mai, e il report li conta dall'apertura del ticket per qualunque team. **Scegli il loro team in Admin → OLA / UC**.",
+      "ola_contract_unmeasurable_one": "Un contratto OLA/UC misura il tempo in cui il ticket è del suo team, ma nessun ticket del suo tipo è mai stato assegnato a un team ({{names}}): resta a zero. **Cambia il tipo di ticket in Admin → OLA / UC, o assegna quei ticket a un team**.",
+      "ola_contract_unmeasurable_other": "{{count}} contratti OLA/UC misurano il tempo in cui il ticket è del loro team, ma nessun ticket del loro tipo è mai stato assegnato a un team ({{names}}): restano a zero. **Cambia il tipo di ticket in Admin → OLA / UC, o assegna quei ticket a un team**."
     },
     "gap": {
       "tenant_missing": "nessuna riga: il tenant non esiste",
@@ -6462,18 +6471,25 @@
     "noneCounting": "Nessun contratto OLA/UC conta per questo ticket.",
     "target": "{{team}} · entro {{target}} · {{calendar}}",
     "allHours": "24 ore su 24",
-    "deadline": "Scade il {{deadline}}",
-    "concluded": "Scadenza {{deadline}} · concluso il {{concluded}}",
     "state": {
       "met": "Rispettato",
       "breached": "Violato",
-      "running": "In corso"
+      "running": "In corso",
+      "handed_off": "Passato ad altri",
+      "scheduled": "Pianificato"
     },
     "notCountingTitle_one": "{{count}} contratto di questo tipo di ticket non conta:",
     "notCountingTitle_other": "{{count}} contratti di questo tipo di ticket non contano:",
     "reason": {
-      "other_team": "«{{name}}» è l'impegno di {{team}}, e il ticket è assegnato a un altro team.",
-      "created_before_contract": "«{{name}}» non esisteva ancora quando il ticket è stato aperto."
-    }
+      "other_team": "«{{name}}» è l'impegno di {{team}}, e il ticket non è mai stato di quel team.",
+      "before_contract": "«{{name}}» è l'impegno di {{team}}, che ha avuto il ticket solo prima che il contratto esistesse."
+    },
+    "used": "Tempo del team {{used}} su {{target}}",
+    "usedRunning": "{{used}} · scade il {{deadline}} se il team lo tiene",
+    "usedConcluded": "{{used}} · concluso il {{concluded}}",
+    "usedHandedOff": "{{used}} · ora è di un altro team: il tempo si ferma finché non torna",
+    "inferred": "Contato dall'apertura del ticket: il ticket è più vecchio della storia delle assegnazioni.",
+    "usedScheduled": "Il tempo del team parte il {{start}}, all'apertura della finestra del piano · scade il {{deadline}}",
+    "inferredTask": "Contato dalla nascita del task: il task è più vecchio della storia delle assegnazioni."
   }
 }

@@ -3,6 +3,7 @@
  *   createChange, addCIToChange, removeCIFromChange,
  *   executeChangeTransition, sendTaskReminder.
  */
+import { firstTeamCypher } from '../../../lib/ticketTeamHistory.js'
 import { ciTypeFromLabels } from '../../../lib/ciTypeFromLabels.js'
 import { GraphQLError } from 'graphql'
 import type { CustomFieldInput } from '../../../lib/ticketCustomFields.js'
@@ -294,20 +295,20 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
           ownerT.ci_id = $ciId, ownerT.responder_role = '${ASSESSMENT_ROLE.OWNER}',
           ownerT.status = '${TASK_STATUS.PENDING}', ownerT.score = null, ownerT.created_at = $now
       MERGE (c)-[:HAS_ASSESSMENT]->(ownerT)
-      MERGE (ownerT)-[:ASSIGNED_TO_TEAM]->(ownerTeam)
+      ${firstTeamCypher('ownerT', 'ownerTeam', '$now')}
       MERGE (supportT:AssessmentTask {change_key: $changeId + '-' + $ciId + '-support'})
         ON CREATE SET supportT.id = randomUUID(), supportT.code = $supportCode, supportT.tenant_id = $tenantId,
           supportT.ci_id = $ciId, supportT.responder_role = '${ASSESSMENT_ROLE.SUPPORT}',
           supportT.status = '${TASK_STATUS.PENDING}', supportT.score = null, supportT.created_at = $now
       MERGE (c)-[:HAS_ASSESSMENT]->(supportT)
-      MERGE (supportT)-[:ASSIGNED_TO_TEAM]->(supportTeam)
+      ${firstTeamCypher('supportT', 'supportTeam', '$now')}
       MERGE (dp:DeployPlanTask {change_key: $changeId + '-' + $ciId + '-deployplan'})
         ON CREATE SET dp.id = randomUUID(), dp.code = $planCode, dp.tenant_id = $tenantId,
           dp.ci_id = $ciId, dp.status = '${TASK_STATUS.PENDING}',
           dp.steps = '[]',
           dp.created_at = $now
       MERGE (c)-[:HAS_DEPLOY_PLAN]->(dp)
-      MERGE (dp)-[:ASSIGNED_TO_TEAM]->(supportTeam)
+      ${firstTeamCypher('dp', 'supportTeam', '$now')}
       SET c.updated_at = $now
       `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now,
            ownerCode, supportCode, planCode })

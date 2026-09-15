@@ -215,7 +215,7 @@ export function buildBaseSDL(): string {
     "Le severità che l'utente finale sceglie nel portale, nella lingua chiesta (verifica «Cosa resta cablato», ondata 1)."
     portalSeverityChoices(language: String): [PortalSeverityChoice!]!
     "I campi personalizzati offerti all'utente finale per incident o service_request (ondata 4)."
-    portalCustomFields(entityType: String!): [CustomFieldValue!]!
+    portalCustomFields(entityType: String!, category: String): [CustomFieldValue!]!
     "La scelta dell'amministratore com'è salvata; null = non ancora dichiarata."
     portalSeverityOptions: [PortalSeverityOption!]
     myTicketStats: MyTicketStats!

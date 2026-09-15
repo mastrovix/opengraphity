@@ -31,6 +31,7 @@ import { assertStepFieldValue, stepFieldMetas } from '../../lib/stepFieldWrites.
 import { assertDeadlineFields, assertDefinitionDeadlines, normalizeStepDeadlineInput } from '../../lib/stepDeadlineWrite.js'
 import { assertRolesExist, roleKeysInActions } from '../../lib/roles.js'
 import { labelTranslationsCypher } from '../../lib/workflowLabelTranslations.js'
+import { assignTeamCypher, TEAM_NOW_PARAM } from '../../lib/ticketTeamHistory.js'
 import { workflowChangeDetails, workflowSnapshot } from '../../lib/workflowAuditDetails.js'
 
 // Safe label map — prevents Cypher injection when creating entities dynamically
@@ -882,15 +883,29 @@ export async function executeWorkflowTransition(
       },
 
       assignTo: async (entityId, targetType, targetId) => {
-        const relType = targetType === 'team' ? 'ASSIGNED_TO_TEAM' : 'ASSIGNED_TO'
-        const targetLabel = targetType === 'team' ? 'Team' : 'User'
+        // Secondo giro UI del 15 set 2026: per il team era un MERGE senza togliere
+        // quello di prima (il ticket restava con due team). Ora sostituisce, e per
+        // il team scrive anche la storia delle assegnazioni (lib/ticketTeamHistory.ts).
+        const now = new Date().toISOString()
         await session.executeWrite((tx) =>
-          tx.run(
-            `MATCH (e {id: $entityId, tenant_id: $tenantId})
-             MATCH (t:${targetLabel} {id: $targetId, tenant_id: $tenantId})
-             MERGE (e)-[:${relType}]->(t)`,
-            { entityId, tenantId: ctx.tenantId, targetId },
-          ),
+          targetType === 'team'
+            ? tx.run(
+              `MATCH (e {id: $entityId, tenant_id: $tenantId})
+               MATCH (t:Team {id: $targetId, tenant_id: $tenantId})
+               ${assignTeamCypher('e', 't')}
+               SET e.updated_at = $now`,
+              { entityId, tenantId: ctx.tenantId, targetId, now, [TEAM_NOW_PARAM]: now },
+            )
+            : tx.run(
+              `MATCH (e {id: $entityId, tenant_id: $tenantId})
+               MATCH (u:User {id: $targetId, tenant_id: $tenantId})
+               OPTIONAL MATCH (e)-[old:ASSIGNED_TO]->(:User)
+               DELETE old
+               WITH DISTINCT e, u
+               MERGE (e)-[:ASSIGNED_TO]->(u)
+               SET e.updated_at = $now`,
+              { entityId, tenantId: ctx.tenantId, targetId, now },
+            ),
         )
       },
 

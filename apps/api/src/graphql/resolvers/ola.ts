@@ -8,7 +8,8 @@ import { audit } from '../../lib/audit.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import type { TeamSourcing } from '../../lib/teamSourcing.js'
 import { calendarFor, getTenantTimezone } from '@opengraphity/sla'
-import { evaluateOLATickets, OLA_CONCLUDED_FIELD, olaConcludedTicketsCypher, olaEntityTypes, olaTicketState, type OLATimedTicket } from '../../lib/olaAttainment.js'
+import { evaluateOLATeamTickets, OLA_CONCLUDED_FIELD, olaConcludedTicketsCypher, olaEntityTypes, olaTeamMeasure, olaTicketFactsCypher, type OLATeamMeasure, type OLATicketFacts } from '../../lib/olaAttainment.js'
+import { loadChangeUnits, type OLAChangeUnit } from '../../lib/olaChangeUnits.js'
 
 type Props = Record<string, unknown>
 
@@ -66,6 +67,9 @@ export async function olaContracts(_: unknown, args: { type?: string }, ctx: Gra
  * del ticket (o `any`) vale se il ticket è del suo team (o il contratto non ha
  * team) ed è nato dopo il contratto. Gli altri tornano con il motivo, così il
  * riquadro può dire perché non contano invece di nasconderli.
+ *
+ * Una change non ha un team: un contratto torna una volta per ogni misura dei
+ * suoi task che conta (`olaChangeUnits.ts`), con `unitKind` e il CI.
  */
 export async function ticketOLAs(_: unknown, args: { entityType: string; entityId: string }, ctx: GraphQLContext) {
   const mapping = OLA_CONCLUDED_FIELD[args.entityType]
@@ -74,13 +78,15 @@ export async function ticketOLAs(_: unknown, args: { entityType: string; entityI
       { key: 'errors.ola.notATicketType', params: { entityType: args.entityType } })
   }
   return withSession(async (session) => {
-    const ticket = await runQueryOne<{ createdAt: string | null; concludedAt: string | null; teamId: string | null }>(session, `
-      MATCH (e:${mapping.label} {id: $entityId, tenant_id: $tenantId})
-      OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(t:Team {tenant_id: $tenantId})
-      RETURN e.created_at AS createdAt, e.${mapping.field} AS concludedAt, t.id AS teamId
-      LIMIT 1
-    `, { entityId: args.entityId, tenantId: ctx.tenantId })
-    if (!ticket) throw new NotFoundError(mapping.label)
+    const isChange = args.entityType === 'change'
+    const ticket = isChange ? null : await runQueryOne<OLATicketFacts>(session, olaTicketFactsCypher(args.entityType), { entityId: args.entityId, tenantId: ctx.tenantId })
+    const units: OLAChangeUnit[] = isChange ? await loadChangeUnits(session, ctx.tenantId, { by: 'change', changeId: args.entityId }) : []
+    if (isChange) {
+      const exists = await runQueryOne(session, 'MATCH (c:Change {id: $entityId, tenant_id: $tenantId}) RETURN c.id AS id', { entityId: args.entityId, tenantId: ctx.tenantId })
+      if (!exists) throw new NotFoundError(mapping.label)
+    } else if (!ticket) {
+      throw new NotFoundError(mapping.label)
+    }
     const contracts = await runQuery<{ props: Props; teamName: string | null }>(session, `
       MATCH (o:OLAContract {tenant_id: $tenantId})
       WHERE coalesce(o.enabled, true) = true AND o.entity_type IN [$entityType, 'any']
@@ -92,24 +98,31 @@ export async function ticketOLAs(_: unknown, args: { entityType: string; entityI
     const timezone = await getTenantTimezone(ctx.tenantId)
     const out = []
     for (const { props: o, teamName } of contracts) {
-      const teamId = (o['team_id'] ?? null) as string | null
-      const contractCreatedAt = (o['created_at'] ?? null) as string | null
-      const reason = teamId !== null && teamId !== ticket.teamId ? 'other_team'
-        : contractCreatedAt !== null && ticket.createdAt !== null && ticket.createdAt < contractCreatedAt ? 'created_before_contract'
-        : null
       const resolveMinutes = toNumber(o['resolve_minutes'])
       const businessHours = o['business_hours'] === true
-      let deadline: string | null = null
-      let state: string | null = null
-      if (reason === null && ticket.createdAt) {
-        const calendar = await calendarFor(ctx.tenantId, { name: o['name'] as string, businessHours, calendarId: (o['calendar_id'] ?? null) as string | null })
-        ;({ deadline, state } = olaTicketState({ createdAt: ticket.createdAt, concludedAt: ticket.concludedAt }, { resolveMinutes, businessHours, calendar }, timezone))
-      }
-      out.push({
+      const calendar = await calendarFor(ctx.tenantId, { name: o['name'] as string, businessHours, calendarId: (o['calendar_id'] ?? null) as string | null })
+      const rule = { teamId: (o['team_id'] ?? null) as string | null, createdAt: (o['created_at'] ?? null) as string | null, resolveMinutes, businessHours, calendar }
+      const row = (m: OLATeamMeasure, facts: OLATicketFacts, unit: OLAChangeUnit | null) => ({
         contractId: o['id'] as string, name: o['name'] as string, type: o['type'] as string,
         teamName, resolveMinutes, calendarId: (o['calendar_id'] ?? null) as string | null,
-        applies: reason === null, reason, deadline, concludedAt: ticket.concludedAt, state,
+        applies: m.applies, reason: m.reason, deadline: m.deadline, concludedAt: facts.concludedAt, state: m.state,
+        usedMinutes: m.usedMinutes, remainingMinutes: m.remainingMinutes, inferred: m.inferred,
+        unitKind: unit?.kind ?? null, unitKey: unit?.key ?? null, ciName: unit?.ciName ?? null,
+        responderRole: unit?.responderRole ?? null, stepTitle: unit?.stepTitle ?? null, startsAt: facts.startsAt ?? null,
       })
+      if (ticket) {
+        out.push(row(olaTeamMeasure(ticket, rule, timezone), ticket, null))
+        continue
+      }
+      const measured = units.map((u) => ({ u, m: olaTeamMeasure(u, rule, timezone) }))
+      const counting = measured.filter((x) => x.m.applies)
+      if (counting.length > 0) {
+        for (const { u, m } of counting) out.push(row(m, u, u))
+        continue
+      }
+      // Nessuna misura del team: una riga sola che dice perché.
+      const reason = measured.some((x) => x.m.reason === 'before_contract') ? 'before_contract' : 'other_team'
+      out.push({ ...row({ applies: false, reason, usedMinutes: 0, remainingMinutes: resolveMinutes, state: null, deadline: null, inferred: false }, { createdAt: '', concludedAt: null, currentTeamId: null, segments: [] }, null) })
     }
     return out
   })
@@ -233,8 +246,8 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
     `, { tenantId: ctx.tenantId })
 
     const ola = []
-    // V-17: ogni contratto conta i SUOI ticket (tipo, team, nati dopo il
-    // contratto) col SUO calendario — lib/olaAttainment.ts.
+    // Ogni contratto misura il tempo in cui il ticket è stato del SUO team, col
+    // SUO calendario: la regola è una sola, in lib/olaAttainment.ts.
     const timezone = contracts.length > 0 ? await getTenantTimezone(ctx.tenantId) : 'UTC'
     for (const row of contracts) {
       const o = row['props'] as Props
@@ -242,14 +255,19 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
       const resolveMinutes = toNumber(o['resolve_minutes'])
       const businessHours = o['business_hours'] === true
       const calendar = await calendarFor(ctx.tenantId, { name: o['name'] as string, businessHours, calendarId: (o['calendar_id'] ?? null) as string | null })
-      const tickets: OLATimedTicket[] = []
+      const tickets: OLATicketFacts[] = []
       for (const type of olaEntityTypes(entityType)) {
-        const rows = await runQuery<{ createdAt: string; concludedAt: string }>(session, olaConcludedTicketsCypher(type), {
-          tenantId: ctx.tenantId, cutoff, teamId: (o['team_id'] ?? null) as string | null, contractCreatedAt: (o['created_at'] ?? null) as string | null,
-        })
-        tickets.push(...rows)
+        const teamId = (o['team_id'] ?? null) as string | null
+        // Una change si misura sui suoi task: una valutazione per misura (olaChangeUnits.ts).
+        if (type === 'change') {
+          tickets.push(...await loadChangeUnits(session, ctx.tenantId, { by: 'concluded', cutoff, teamId }))
+          continue
+        }
+        tickets.push(...await runQuery<OLATicketFacts>(session, olaConcludedTicketsCypher(type), { tenantId: ctx.tenantId, cutoff, teamId }))
       }
-      const { evaluated, met: cMet, breached: cBreached } = evaluateOLATickets(tickets, { resolveMinutes, businessHours, calendar }, timezone)
+      const { evaluated, met: cMet, breached: cBreached, inferred } = evaluateOLATeamTickets(tickets, {
+        teamId: (o['team_id'] ?? null) as string | null, createdAt: (o['created_at'] ?? null) as string | null, resolveMinutes, businessHours, calendar,
+      }, timezone)
 
       ola.push({
         id:             o['id']            as string,
@@ -263,6 +281,7 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
         met:            cMet,
         breached:       cBreached,
         attainmentPct:  evaluated > 0 ? (cMet / evaluated) * 100 : null,
+        inferred,
         complianceTarget:  o['compliance_target']  == null ? null : Number(o['compliance_target']),
         complianceWarning: o['compliance_warning'] == null ? null : Number(o['compliance_warning']),
       })

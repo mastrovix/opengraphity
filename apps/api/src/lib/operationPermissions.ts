@@ -45,7 +45,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
       'enumTypes', 'enumType', 'criticalServiceCriticalities', 'preApprovedChangeTypes', 'riskBandThresholds',
       'navigableEntities', 'navigableRelations', 'reachableEntities',
       'workflowDefinitions', 'workflowDefinition', 'workflowDefinitionById', 'workflowEventTypes',
-      'olaContracts', 'ticketOLAs', 'slaCoverage',
+      'olaContracts', 'ticketOLAs', 'slaCoverage', 'ticketCreationCustomFields',
     ],
     mutation: ['watchEntity', 'unwatchEntity', 'linkSlackAccount'],
   },
@@ -175,7 +175,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   },
   {
     anyOf: ['config.metamodel'],
-    query: ['domainMatrices', 'changeEnvironmentWeight', 'impactAnalysisWeights', 'ciTypeDeletionImpact', 'itilFieldValueCount', 'ciFieldValueCount', 'enumValueUsage'],
+    query: ['domainMatrices', 'changeEnvironmentWeight', 'impactAnalysisWeights', 'ciTypeDeletionImpact', 'itilFieldValueCount', 'ciFieldValueCount', 'enumValueUsage', 'ticketWorkflowSteps'],
     mutation: [
       'createCIType', 'updateCIType', 'deleteCIType', 'addCIField', 'updateCIField', 'removeCIField', 'addCIRelation', 'removeCIRelation',
       'updateITILType', 'createITILField', 'updateITILField', 'deleteITILField', 'setTicketCIExclusions',

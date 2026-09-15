@@ -12,12 +12,19 @@ export interface PortalCustomField {
   options: { value: string; label: string }[]
 }
 
-export function usePortalCustomFields(entityType: 'incident' | 'service_request') {
+/**
+ * `category`: la categoria scelta nel modulo. I campi offerti sono quelli che si
+ * modificano nella fase iniziale del workflow di quella categoria, la stessa
+ * regola con cui l'API poi li accetta (secondo giro UI del 15 set 2026).
+ */
+export function usePortalCustomFields(entityType: 'incident' | 'service_request', category: string | null = null) {
   const { i18n } = useTranslation()
-  const { data, loading, error } = useQuery<{ portalCustomFields: PortalCustomField[] }>(GET_PORTAL_CUSTOM_FIELDS, {
-    variables: { entityType, language: i18n.resolvedLanguage ?? i18n.language },
+  const { data, loading, error, previousData } = useQuery<{ portalCustomFields: PortalCustomField[] }>(GET_PORTAL_CUSTOM_FIELDS, {
+    variables: { entityType, category: category || null, language: i18n.resolvedLanguage ?? i18n.language },
   })
-  return { fields: data?.portalCustomFields ?? [], loading, error }
+  // Mentre la categoria cambia, il modulo tiene i campi di prima invece di svuotarsi.
+  const shown = data ?? previousData
+  return { fields: shown?.portalCustomFields ?? [], loading, error }
 }
 
 /** Da `{nome: valore}` a quello che l'API vuole: tutti i campi offerti, il vuoto come null. */

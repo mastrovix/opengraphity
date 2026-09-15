@@ -312,13 +312,13 @@ async function myTicket(
  * I campi personalizzati che il portale offre aprendo un incident o una
  * richiesta: solo quelli marcati «visibile all'utente finale» (ondata 4).
  */
-async function portalCustomFields(_: unknown, { entityType }: { entityType: string }, ctx: GraphQLContext) {
+async function portalCustomFields(_: unknown, { entityType, category }: { entityType: string; category?: string | null }, ctx: GraphQLContext) {
   if (entityType !== 'incident' && entityType !== 'service_request') {
     throw new ValidationError(`The portal opens incidents and service requests, not "${entityType}".`, { key: 'errors.customField.entityType', params: { entityType } })
   }
   // Solo quelli che all'apertura si vedono: la fase iniziale del workflow (secondo giro UI del 15 set 2026).
   return withSession(async (session) => customFieldValues(await customFieldDefs(session, ctx.tenantId, entityType), {}, {
-    onlyVisibleToEndUser: true, stepContext: await creationStepContext(session, ctx.tenantId, entityType, null),
+    onlyVisibleToEndUser: true, stepContext: await creationStepContext(session, ctx.tenantId, entityType, category ?? null),
   }).filter((f) => f.visible))
 }
 

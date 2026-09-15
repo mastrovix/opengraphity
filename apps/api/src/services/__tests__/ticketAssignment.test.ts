@@ -83,9 +83,11 @@ describe('setTicketTeam', () => {
     const { cypher, params } = lastQuery()
     expect(cypher).toContain('MATCH (e:Problem {id: $id, tenant_id: $tenantId})')
     expect(cypher).toContain('MATCH (t:Team {id: $teamId, tenant_id: $tenantId})')
-    expect(cypher).toContain('OPTIONAL MATCH (e)-[old:ASSIGNED_TO_TEAM]->()')
-    expect(cypher).toContain('DELETE old')
+    // Il frammento unico (lib/ticketTeamHistory.ts): sostituisce il team e scrive la storia delle assegnazioni.
+    expect(cypher).toContain('DELETE __oldTeam')
     expect(cypher).toContain('CREATE (e)-[:ASSIGNED_TO_TEAM]->(t)')
+    expect(cypher).toContain('TicketTeamSegment')
+    expect(params['__teamNow']).toBe(params['now'])
     expect(cypher).toContain('SET e.updated_at = $now')
     expect(params).toMatchObject({ id: 'prb-1', teamId: 'team-2', tenantId: 't-1' })
     expect(params['now']).toMatch(/^\d{4}-\d{2}-\d{2}T/)

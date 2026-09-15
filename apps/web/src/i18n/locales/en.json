@@ -1632,7 +1632,7 @@
       "partySupplier": "External supplier",
       "teamName": "Responsible team",
       "teamPlaceholder": "E.g. Network Ops",
-      "generatedNote": "Generated on {{date}}. Each OLA/UC contract counts only its own tickets: those of its scope, assigned to its team and opened after the contract was created, closed in the period; the time is counted with the contract's calendar.",
+      "generatedNote": "Generated on {{date}}. Each OLA/UC contract measures the time its team had the ticket: the assignment periods to that team, counted from when the contract exists until the ticket was concluded, on the contract's calendar; the SLA pause does not stop it. Only tickets concluded in the period count.",
       "pickTeam": "Choose a team...",
       "noTeams": "This tenant has no team yet: create one in Teams and Users.",
       "contracts": "OLA / UC",
@@ -1663,7 +1663,9 @@
       "pausedShort": "Paused",
       "generatedOn": "Generated on {{date}}.",
       "objectiveHint": "Green from {{target}}%, yellow from {{warning}}%, red below",
-      "noObjectiveHint": "No compliance target: no colour"
+      "noObjectiveHint": "No compliance target: no colour",
+      "inferredNote_one": "{{count}} evaluation is counted from when the ticket was opened: the ticket is older than the assignment history.",
+      "inferredNote_other": "{{count}} evaluations are counted from when the ticket was opened: those tickets are older than the assignment history."
     },
     "changeDetail": {
       "notFound": "Change not found",
@@ -2658,9 +2660,10 @@
       "fromStepLabel": "Shown from step",
       "editabilityLegend": "In which steps it can be changed",
       "whereVisible": "Wherever it is shown",
-      "creationHint": "Opening a ticket is its initial step «{{step}}»: a field that cannot be changed there is not in the opening form. Elsewhere a shown but not editable field is read-only.",
+      "creationHint": "Opening a ticket is the initial step of its workflow: a field that cannot be changed there is not in the opening form. «From this step on» means from the moment the ticket enters that step, even if it then goes back. Elsewhere a shown but not editable field is read-only.",
       "noWorkflow": "This ticket type has no workflow: the field is always shown and editable.",
-      "chooseAtLeastOne": "Choose at least one step."
+      "chooseAtLeastOne": "Choose at least one step.",
+      "onlyIn": "only {{workflows}}"
     }
   },
   "ciTypeDesigner": {
@@ -5724,7 +5727,13 @@
       "service_incident_problem_one": "The monitoring cannot manage the incident of the service {{services}}: the service may be down without an incident. **Open the service to see why**.",
       "service_incident_problem_other": "The monitoring cannot manage the incident of {{count}} services ({{services}}): they may be down without an incident. **Open each service to see why**.",
       "custom_field_steps_missing_one": "A ticket field names a workflow step that no longer exists, so where it depends on that step it is not shown: {{fields}}. **Fix its steps in the ITIL Type Designer**.",
-      "custom_field_steps_missing_other": "{{count}} ticket fields name workflow steps that no longer exist, so where they depend on those steps they are not shown: {{fields}}. **Fix their steps in the ITIL Type Designer**."
+      "custom_field_steps_missing_other": "{{count}} ticket fields name workflow steps that no longer exist, so where they depend on those steps they are not shown: {{fields}}. **Fix their steps in the ITIL Type Designer**.",
+      "custom_field_from_step_absent_one": "A ticket field is shown «from a step on», but one workflow of its type does not have that step: on those tickets it is never shown ({{fields}}). **Choose other steps in the ITIL Type Designer, or add the step to that workflow**.",
+      "custom_field_from_step_absent_other": "{{count}} ticket fields are shown «from a step on», but some workflows of their type do not have that step: on those tickets they are never shown ({{fields}}). **Choose other steps in the ITIL Type Designer, or add the steps to those workflows**.",
+      "ola_contract_without_team_one": "An active OLA/UC contract has no team ({{names}}): it never alerts, and the report counts it from ticket opening for any team. **Choose its team in Admin → OLA / UC**.",
+      "ola_contract_without_team_other": "{{count}} active OLA/UC contracts have no team ({{names}}): they never alert, and the report counts them from ticket opening for any team. **Choose their team in Admin → OLA / UC**.",
+      "ola_contract_unmeasurable_one": "An OLA/UC contract measures the time its team has the ticket, but no ticket of its type has ever been assigned to a team ({{names}}): it stays at zero. **Change its ticket type in Admin → OLA / UC, or assign those tickets to a team**.",
+      "ola_contract_unmeasurable_other": "{{count}} OLA/UC contracts measure the time their team has the ticket, but no ticket of their type has ever been assigned to a team ({{names}}): they stay at zero. **Change their ticket type in Admin → OLA / UC, or assign those tickets to a team**."
     },
     "gap": {
       "tenant_missing": "no row: the tenant does not exist",
@@ -6462,18 +6471,25 @@
     "noneCounting": "No OLA/UC contract counts for this ticket.",
     "target": "{{team}} · within {{target}} · {{calendar}}",
     "allHours": "24×7",
-    "deadline": "Due {{deadline}}",
-    "concluded": "Due {{deadline}} · concluded {{concluded}}",
     "state": {
       "met": "Met",
       "breached": "Breached",
-      "running": "Running"
+      "running": "Running",
+      "handed_off": "Handed off",
+      "scheduled": "Scheduled"
     },
     "notCountingTitle_one": "{{count}} contract of this ticket type does not count:",
     "notCountingTitle_other": "{{count}} contracts of this ticket type do not count:",
     "reason": {
-      "other_team": "«{{name}}» is the commitment of {{team}}, and the ticket is assigned to another team.",
-      "created_before_contract": "«{{name}}» did not exist yet when the ticket was opened."
-    }
+      "other_team": "«{{name}}» is the commitment of {{team}}, and the ticket has never been with that team.",
+      "before_contract": "«{{name}}» is the commitment of {{team}}, which had the ticket only before the contract existed."
+    },
+    "used": "Team time {{used}} of {{target}}",
+    "usedRunning": "{{used}} · due {{deadline}} if the team keeps it",
+    "usedConcluded": "{{used}} · concluded {{concluded}}",
+    "usedHandedOff": "{{used}} · now with another team: the time stops until it comes back",
+    "inferred": "Counted from when the ticket was opened: the ticket is older than the assignment history.",
+    "usedScheduled": "The team time starts {{start}}, when the plan's window opens · due {{deadline}}",
+    "inferredTask": "Counted from when the task was created: the task is older than the assignment history."
   }
 }

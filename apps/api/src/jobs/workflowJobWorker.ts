@@ -9,6 +9,7 @@ import { assertSafeOutboundUrl, loggableUrl } from '../lib/safeUrl.js'
 import { automaticTransitionAllowed } from '../graphql/resolvers/change/windowGate.js'
 import { loadAutomationEntity } from '../lib/automationEntity.js'
 import { runStepDeadlineSweep } from '../lib/stepDeadlines.js'
+import { runOLASweep } from '../lib/olaSweep.js'
 import { AUTOMATION_ACTOR, type AutomationEntityType } from '@opengraphity/types'
 
 // ── Job data shape produced by packages/workflow/src/actions.ts ───────────────
@@ -40,7 +41,7 @@ interface WebhookRetryData {
 async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
   const { entityId, tenantId } = job.data
   // La passata delle scadenze gira ogni minuto: il suo log è il riepilogo, non questa riga.
-  if (job.name !== STEP_DEADLINES_JOB) logger.info({ jobName: job.name, entityId, tenantId }, '[workflow-jobs] processing')
+  if (job.name !== STEP_DEADLINES_JOB && job.name !== OLA_SWEEP_JOB) logger.info({ jobName: job.name, entityId, tenantId }, '[workflow-jobs] processing')
 
   switch (job.name) {
     case STEP_DEADLINES_JOB: {
@@ -51,6 +52,14 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
       if (summary.moved + summary.refused + summary.failed > 0) {
         logger.info(summary, '[workflow-jobs] step deadlines')
       }
+      break
+    }
+
+    case OLA_SWEEP_JOB: {
+      // Secondo giro UI del 15 set 2026: gli avvisi OLA/UC sul tempo del team (lib/olaSweep.ts).
+      const summary = await runOLASweep()
+      if (summary.alerted + summary.failed > 0) logger.info(summary, '[workflow-jobs] OLA sweep')
+      if (summary.failed > 0) throw new Error(`OLA sweep: ${summary.failed} contract(s) could not be evaluated (see the log)`)
       break
     }
 
@@ -260,6 +269,8 @@ export const WORKFLOW_JOBS_QUEUE     = 'workflow-jobs'
 /** Il job ripetuto delle scadenze dei passi, ogni minuto. */
 export const STEP_DEADLINES_JOB      = 'step_deadlines'
 export const STEP_DEADLINES_EVERY_MS = 60_000
+export const OLA_SWEEP_JOB = 'ola_sweep'
+export const OLA_SWEEP_EVERY_MS = 60_000
 
 export function startNotificationJobWorker(): Worker {
   getQueue(NOTIFICATION_JOBS_QUEUE)  // register the producer singleton (metrics + scheduleEscalationCheck)
@@ -292,6 +303,16 @@ export async function scheduleStepDeadlineSweep(): Promise<void> {
     { repeat: { every: STEP_DEADLINES_EVERY_MS }, jobId: 'workflow-step-deadlines', removeOnComplete: true, removeOnFail: 100 },
   )
   logger.info({ everyMs: STEP_DEADLINES_EVERY_MS }, '[workflow-jobs] step deadlines sweep scheduled')
+}
+
+/** La passata OLA/UC, ogni minuto: stesso schema di quella delle scadenze. */
+export async function scheduleOLASweep(): Promise<void> {
+  await getQueue(WORKFLOW_JOBS_QUEUE).add(
+    OLA_SWEEP_JOB,
+    { instanceId: '', entityId: '', tenantId: '', job: OLA_SWEEP_JOB },
+    { repeat: { every: OLA_SWEEP_EVERY_MS }, jobId: 'workflow-ola-sweep', removeOnComplete: true, removeOnFail: 100 },
+  )
+  logger.info({ everyMs: OLA_SWEEP_EVERY_MS }, '[workflow-jobs] OLA sweep scheduled')
 }
 
 export function startWorkflowJobWorker(): Worker<WorkflowJobData> {

@@ -89,7 +89,13 @@ vi.mock('../serviceIncidentProblems.js', () => ({ serviceMapsWithIncidentProblem
 // Campi dei ticket con regole di fase (secondo giro UI del 15 set 2026): uno che cita una fase sparita.
 let campiConFasi: Array<{ label: string; visibility: unknown; editability: unknown }> = []
 vi.mock('../ticketCustomFields.js', () => ({ customFieldDefs: vi.fn(async (_s: unknown, _t: string, entityType: string) => entityType === 'change' ? campiConFasi : []) }))
-vi.mock('../customFieldSteps.js', async (importOriginal) => ({ ...(await importOriginal<object>()), workflowStepNames: vi.fn(async () => ['assessment', 'review', 'closed']) }))
+vi.mock('../customFieldSteps.js', async (importOriginal) => ({ ...(await importOriginal<object>()), workflowStepsByDefinition: vi.fn(async () => [
+  { workflow: 'Change RFC Process', category: null, steps: [{ name: 'assessment' }, { name: 'review' }, { name: 'closed' }] },
+  { workflow: 'Change Emergency', category: 'emergency', steps: [{ name: 'assessment' }, { name: 'closed' }] },
+]) }))
+// Contratti OLA/UC (secondo giro UI del 15 set 2026, punto 3): di default tutti misurabili.
+let misurabilitaOLA: { withoutTeam: string[]; unmeasurable: string[] } = { withoutTeam: [], unmeasurable: [] }
+vi.mock('../olaMeasurability.js', () => ({ olaContractsMeasurability: vi.fn(async () => misurabilitaOLA) }))
 vi.mock('../slaWarningCheck.js', () => ({ slaPoliciesWarningNotBeforeDeadline: vi.fn(async () => preavvisiScaduti) }))
 vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: vi.fn(async () => policy) }))
 vi.mock('../domainMatrix.js', async (importOriginal) => {
@@ -564,6 +570,23 @@ describe('configurationIssues — campi che citano fasi sparite', () => {
       expect(issues.filter((i) => i.kind === 'custom_field_steps_missing')).toEqual([
         { kind: 'custom_field_steps_missing', severity: 'warning', where: '/settings/itil-designer', params: { count: '1', fields: 'Esito (change): revue' } },
       ])
+      // «da review in poi» e il workflow d'emergenza non ha review: lì il campo non si vede mai
+      expect(issues.filter((i) => i.kind === 'custom_field_from_step_absent')).toEqual([
+        { kind: 'custom_field_from_step_absent', severity: 'warning', where: '/settings/itil-designer', params: { count: '1', fields: 'Note di chiusura (change, review): Change Emergency' } },
+      ])
     } finally { campiConFasi = [] }
+  })
+})
+
+describe('configurationIssues — contratti OLA/UC che non misurano niente', () => {
+  it('senza team e su ticket che nessuno assegna a un team → due avvisi con i nomi, si rimedia nei contratti', async () => {
+    misurabilitaOLA = { withoutTeam: ['Vecchio contratto'], unmeasurable: ['Service Desk evade le richieste entro 1 giorno (service_request)'] }
+    try {
+      const issues = await configurationIssues('t1')
+      expect(issues.filter((i) => i.kind.startsWith('ola_contract'))).toEqual([
+        { kind: 'ola_contract_without_team', severity: 'warning', where: '/admin/ola-uc', params: { count: '1', names: 'Vecchio contratto' } },
+        { kind: 'ola_contract_unmeasurable', severity: 'warning', where: '/admin/ola-uc', params: { count: '1', names: 'Service Desk evade le richieste entro 1 giorno (service_request)' } },
+      ])
+    } finally { misurabilitaOLA = { withoutTeam: [], unmeasurable: [] } }
   })
 })

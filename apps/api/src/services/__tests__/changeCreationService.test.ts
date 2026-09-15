@@ -35,10 +35,7 @@ vi.mock('../../lib/sequence.js', () => ({
   nextSequenceBlock: vi.fn(async (_s: unknown, _t: string, _k: string, count: number) => (taskCounter += count)),
 }))
 vi.mock('@opengraphity/sla', () => ({
-  getActiveOLAContractsFor: vi.fn(async () => []), scheduleOLABreaches: vi.fn(), getTenantTimezone: vi.fn(async () => 'UTC'),
-  // Ondata 2: ogni contratto conta col SUO calendario.
-  withContractCalendars: vi.fn(async (_t: string, contracts: Array<{ business_hours: boolean }>) =>
-    contracts.map((c) => ({ ...c, calendar: c.business_hours ? { days: [1, 2, 3, 4, 5, 6], start: '09:00', end: '13:00', holidays: [] } : null }))),
+  getActiveOLAContractsFor: vi.fn(async () => []), getTenantTimezone: vi.fn(async () => 'UTC'),
 }))
 
 vi.mock('@opengraphity/workflow', () => ({
@@ -214,20 +211,12 @@ describe('createChangeRFC', () => {
     expect(params).toMatchObject({ requesterId: 'user-1', tenantId: 'tenant-1' })
   })
 
-  /** Revisione del 14 set 2026 · F6: un contratto OLA in orario lavorativo usa il calendario del cliente. */
-  it('i controlli OLA della change contano ciascuno col calendario del SUO contratto', async () => {
+  /** Secondo giro UI del 15 set 2026, punto 3: gli OLA/UC li controlla la passata dell'API sul tempo del team. */
+  it('la creazione di una change non arma controlli OLA/UC', async () => {
     mockQueries({ ciRows: [{ id: 'ci-1', name: 'App Portale', ownerTeamId: 'team-a', supportTeamId: 'team-b' }] })
     const sla = await import('@opengraphity/sla')
-    vi.mocked(sla.getActiveOLAContractsFor).mockResolvedValueOnce([
-      { id: 'ola-1', name: 'Rete', type: 'ola', resolve_minutes: 240, business_hours: true, calendar_id: 'cal-1' },
-      { id: 'uc-1', name: 'Fornitore 24x7', type: 'uc', resolve_minutes: 60, business_hours: false, calendar_id: null },
-    ] as never)
     await createChangeRFC({ changeType: 'normal', title: 'Upgrade DB', why: 'perché', what: 'cosa', affectedCIIds: ['ci-1'] }, ctx)
-    const params = vi.mocked(sla.scheduleOLABreaches).mock.calls[0]![0] as { contracts: Array<{ id: string; calendar: unknown }> }
-    expect(params.contracts.map((c) => [c.id, c.calendar])).toEqual([
-      ['ola-1', { days: [1, 2, 3, 4, 5, 6], start: '09:00', end: '13:00', holidays: [] }],
-      ['uc-1', null],
-    ])
+    expect(sla.getActiveOLAContractsFor).not.toHaveBeenCalled()
   })
 
   it('rollback: executeWrite che fallisce → l\'errore propaga, nessuna scrittura osservabile', async () => {

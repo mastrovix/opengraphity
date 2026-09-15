@@ -1,6 +1,7 @@
 /**
  * Mutations on AssessmentTask — response submission, completion, assignment.
  */
+import { assignTeamCypher, TEAM_NOW_PARAM } from '../../../lib/ticketTeamHistory.js'
 import { GraphQLError } from 'graphql'
 import { NotFoundError } from '../../../lib/errors.js'
 import { ForbiddenError } from '../../../lib/errors.js'
@@ -238,18 +239,14 @@ export async function assignAssessmentTaskToTeam(
     await session.executeWrite((tx) => tx.run(`
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
       MATCH (tm:Team {id: $teamId, tenant_id: $tenantId})
-      OPTIONAL MATCH (t)-[oldRel:ASSIGNED_TO_TEAM]->(:Team)
-      DELETE oldRel
-      WITH t, tm
-      CREATE (t)-[:ASSIGNED_TO_TEAM]->(tm)
-      WITH t
+      ${assignTeamCypher('t', 'tm')}
       OPTIONAL MATCH (t)-[userRel:ASSIGNED_TO]->(u:User)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(newTm:Team)<-[:MEMBER_OF]-(u)
       WITH userRel, newTm
       FOREACH (_ IN CASE WHEN userRel IS NOT NULL AND newTm IS NULL THEN [1] ELSE [] END |
         DELETE userRel
       )
-    `, { taskId: args.taskId, teamId: args.teamId, tenantId: ctx.tenantId }))
+    `, { taskId: args.taskId, teamId: args.teamId, tenantId: ctx.tenantId, [TEAM_NOW_PARAM]: new Date().toISOString() }))
 
     const ciName = await getCIName(session, tctx.ciId, ctx.tenantId)
     await writeAudit(session, tctx.changeId, ctx.tenantId, 'assessment_team_assigned', ctx.userId,

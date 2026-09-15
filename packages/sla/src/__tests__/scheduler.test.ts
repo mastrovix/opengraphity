@@ -16,8 +16,7 @@ vi.mock('../status.js', () => ({
   getSLAStatus: (...args: unknown[]) => getSLAStatus(...(args as [])),
   markBreached: (...args: unknown[]) => { callOrder.push('markBreached'); return markBreached(...(args as [])) },
 }))
-const olaBreachSkipReason = vi.fn(async (): Promise<string | null> => null)
-vi.mock('../olaBreach.js', () => ({ isEntityResolved: vi.fn(async () => false), olaBreachSkipReason: (...a: unknown[]) => olaBreachSkipReason(...(a as [])) }))
+vi.mock('../olaBreach.js', () => ({ isEntityResolved: vi.fn(async () => false) }))
 
 const { processSLAJob } = await import('../scheduler.js')
 
@@ -133,22 +132,8 @@ describe('processSLAJob — sla.breach ordering and idempotency (D-10)', () => {
 })
 
 describe('processSLAJob — ola.breach (secondo giro UI del 15 set 2026)', () => {
-  const olaJob = (): Job => ({
-    name: 'ola.breach', id: 'ola-c1-inc-1',
-    data: { entityId: 'inc-1', entityType: 'incident', tenantId: 't1', resolveDeadline: new Date().toISOString(), contractId: 'c1', contractName: 'Rete entro 4h', contractType: 'ola' },
-  }) as unknown as Job
-
-  it('avvisa quando il ticket è aperto e del team del contratto', async () => {
-    olaBreachSkipReason.mockResolvedValueOnce(null)
-    await processSLAJob(olaJob())
-    expect(olaBreachSkipReason).toHaveBeenCalledWith('t1', 'incident', 'inc-1', 'c1')
-    expect(publish).toHaveBeenCalledTimes(1)
-    expect((publish.mock.calls[0]![0] as unknown as { type: string }).type).toBe('ola.breached')
-  })
-
-  it.each(['other_team', 'resolved', 'contract_disabled', 'contract_gone'])('non avvisa quando il controllo dice %s', async (reason) => {
-    olaBreachSkipReason.mockResolvedValueOnce(reason)
-    await processSLAJob(olaJob())
+  it('i job per ticket di prima si scaricano senza avvisare: gli avvisi li dà la passata OLA dell\'API', async () => {
+    await processSLAJob({ name: 'ola.breach', id: 'ola-c1-inc-1', data: { entityId: 'inc-1', entityType: 'incident', tenantId: 't1', resolveDeadline: new Date().toISOString(), contractId: 'c1' } } as unknown as Job)
     expect(publish).not.toHaveBeenCalled()
   })
 })

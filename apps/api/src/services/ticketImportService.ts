@@ -16,6 +16,7 @@
  * Rows are fully validated before any write; in execute mode invalid rows are
  * skipped (reported in `errors`) while valid rows proceed.
  */
+import { assignTeamCypher, TEAM_NOW_PARAM } from '../lib/ticketTeamHistory.js'
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine } from '@opengraphity/workflow'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
@@ -767,12 +768,10 @@ async function writeTicketRow(session: Session, kind: TicketImportKind, p: Ticke
     if (p.teamId) {
       await tx.run(`
         MATCH (n:${label} {tenant_id: $tenantId, import_external_id: $externalId})
-        OPTIONAL MATCH (n)-[old:ASSIGNED_TO_TEAM]->()
-        DELETE old
-        WITH DISTINCT n
         MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-        MERGE (n)-[:ASSIGNED_TO_TEAM]->(t)
-      `, { tenantId: ctx.tenantId, externalId: p.externalId, teamId: p.teamId })
+        // Un ticket storico: da quando il team l'avesse non si sa, il tratto parte dall'apertura (ricostruito).
+        ${assignTeamCypher('n', 't', { startedAt: 'coalesce(n.created_at, $__teamNow)', inferred: true })}
+      `, { tenantId: ctx.tenantId, externalId: p.externalId, teamId: p.teamId, [TEAM_NOW_PARAM]: new Date().toISOString() })
     }
 
     // Comments: same node shape as the ticket comments, plus import_external_id

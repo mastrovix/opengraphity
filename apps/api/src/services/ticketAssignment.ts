@@ -10,6 +10,7 @@
  */
 import { NotFoundError, ValidationError } from '../lib/errors.js'
 import { runQueryOne } from '../graphql/resolvers/ci-utils.js'
+import { assignTeamCypher, TEAM_NOW_PARAM } from '../lib/ticketTeamHistory.js'
 
 type Session = Parameters<typeof runQueryOne>[0]
 export type TicketLabel = 'Incident' | 'Problem' | 'ServiceRequest'
@@ -32,16 +33,14 @@ export async function assertUserInAssignedTeam(
 
 /** Sostituisce il gruppo assegnatario; NOT_FOUND se ticket o team non esistono nel tenant. */
 export async function setTicketTeam(session: Session, label: TicketLabel, id: string, teamId: string, tenantId: string): Promise<{ teamName: string }> {
+  const now = new Date().toISOString()
   const row = await runQueryOne<{ teamName: string }>(session, `
     MATCH (e:${label} {id: $id, tenant_id: $tenantId})
     MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-    OPTIONAL MATCH (e)-[old:ASSIGNED_TO_TEAM]->()
-    DELETE old
-    WITH DISTINCT e, t
-    CREATE (e)-[:ASSIGNED_TO_TEAM]->(t)
+    ${assignTeamCypher('e', 't')}
     SET e.updated_at = $now
     RETURN t.name AS teamName
-  `, { id, teamId, tenantId, now: new Date().toISOString() })
+  `, { id, teamId, tenantId, now, [TEAM_NOW_PARAM]: now })
   if (!row) throw new NotFoundError(`${label} o Team`, `${id} / ${teamId}`)
   return { teamName: row.teamName }
 }

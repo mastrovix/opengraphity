@@ -1,4 +1,5 @@
 import { gql } from '@apollo/client'
+import { CUSTOM_FIELD_VALUE_FIELDS } from '../fragments'
 
 export const GET_ALL_CIS = gql`
   query GetAllCIs($limit: Int, $offset: Int, $type: String, $environment: String, $status: String, $search: String, $ciTypes: [String], $excludeCiTypes: [String], $filters: String, $sortField: String, $sortDirection: String) {
@@ -189,5 +190,23 @@ export const GET_CI_FIELD_VALUE_COUNT = gql`
 export const GET_ITIL_FIELD_VALUE_COUNT = gql`
   query ITILFieldValueCount($typeId: ID!, $fieldId: ID!) {
     itilFieldValueCount(typeId: $typeId, fieldId: $fieldId)
+  }
+`
+
+/** I campi del modulo di apertura per tipo e categoria (visible/editable della fase iniziale). */
+export const GET_TICKET_CREATION_CUSTOM_FIELDS = gql`
+  ${CUSTOM_FIELD_VALUE_FIELDS}
+  query GetTicketCreationCustomFields($entityType: String!, $category: String) {
+    ticketCreationCustomFields(entityType: $entityType, category: $category) { ...CustomFieldValueFields }
+  }
+`
+
+/** Le fasi di tutti i workflow attivi di un tipo di ticket, per il disegnatore dei campi. */
+export const GET_TICKET_WORKFLOW_STEPS = gql`
+  query GetTicketWorkflowSteps($entityType: String!) {
+    ticketWorkflowSteps(entityType: $entityType) {
+      workflow category
+      steps { name label labels { language label } }
+    }
   }
 `

@@ -48,6 +48,26 @@ export function customFieldsSDL(): string {
   extend input CreateChangeInput         { customFields: [CustomFieldInput!] }
   extend input CreateServiceRequestInput { customFields: [CustomFieldInput!] }
 
+  "Le fasi di un workflow attivo di un tipo di ticket, per il disegnatore dei campi."
+  type TicketWorkflowSteps {
+    workflow: String!
+    category: String
+    steps:    [TicketWorkflowStep!]!
+  }
+
+  type TicketWorkflowStep {
+    name:   String!
+    label:  String!
+    labels: [LocalizedLabel!]!
+  }
+
+  extend type Query {
+    "I campi personalizzati del modulo di apertura: quelli che si modificano nella fase iniziale del workflow scelto per tipo e categoria (visible/editable dell'apertura)."
+    ticketCreationCustomFields(entityType: String!, category: String): [CustomFieldValue!]!
+    "Le fasi di ogni workflow attivo del tipo di ticket, raggruppate per workflow (il disegnatore dei campi le offre tutte)."
+    ticketWorkflowSteps(entityType: String!): [TicketWorkflowSteps!]!
+  }
+
   extend type Mutation {
     "Scrive i campi personalizzati di un ticket (incident, problem, change, service_request)."
     setTicketCustomFields(entityType: String!, id: ID!, values: [CustomFieldInput!]!): [CustomFieldValue!]!

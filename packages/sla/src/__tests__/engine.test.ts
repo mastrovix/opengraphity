@@ -27,20 +27,16 @@ vi.mock('../status.js', () => ({
   markResponseMet, markResolveMet, getSLAStatus, createSLAStatus, getEntityCreatedAt, getEntityScope, getEntityPriority,
   pauseSLA, resumeSLA, reopenSLA, repolicySLA,
 }))
-const scheduleOLABreaches = vi.fn(async (_p: unknown) => {})
 const getActiveOLAContractsFor = vi.fn(async (_t: string, _e: string) => [] as unknown[])
 const getTenantTimezone = vi.fn(async (_t: string) => 'Europe/Rome')
 vi.mock('../scheduler.js', () => ({
   initScheduler: vi.fn(), cancelSLAJobs, scheduleWarning, scheduleBreachCheck, scheduleResponseCheck,
-  scheduleOLABreaches,
 }))
 vi.mock('../selector.js', () => ({ selectSLAForEntity }))
 // Ondata 2 della verifica «Cosa resta cablato»: ogni policy e ogni contratto conta col SUO calendario.
 const CALENDARIO = { days: [1, 2, 3, 4, 5, 6], start: '09:00', end: '13:00', holidays: ['2026-12-25'] }
 const calendarFor = vi.fn(async (_t: string, owner: { businessHours: boolean; calendarId: string | null }) => (owner.businessHours ? CALENDARIO : null) as unknown)
-const withContractCalendars = vi.fn(async (_t: string, contracts: Array<{ business_hours: boolean }>) =>
-  contracts.map((c) => ({ ...c, calendar: c.business_hours ? CALENDARIO : null })))
-vi.mock('../olaBreach.js', () => ({ getActiveOLAContractsFor, getTenantTimezone, withContractCalendars }))
+vi.mock('../olaBreach.js', () => ({ getActiveOLAContractsFor, getTenantTimezone }))
 vi.mock('../calendar.js', () => ({ calendarFor }))
 
 const { SLAEngine } = await import('../engine.js')
@@ -246,19 +242,12 @@ describe('SLAEngine — senza una policy del tenant, nessuno SLA', () => {
     expect(avvisi.join(' ')).toMatch(/No SLA policy matches incident inc-20/)
   })
 
-  it('i controlli OLA/UC si armano anche senza SLA, col fuso del tenant', async () => {
+  it('i controlli OLA/UC non si armano più alla creazione: li fa la passata dell\'API sul tempo del team', async () => {
     selectSLAForEntity.mockResolvedValue(null)
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const contratto = { id: 'ola-1', name: 'Rete', type: 'ola', resolve_minutes: 240, business_hours: true, calendar_id: 'cal-rete' }
-    getActiveOLAContractsFor.mockResolvedValue([contratto])
-    getTenantTimezone.mockResolvedValue('America/New_York')
-    const engine = new SLAEngine()
-    await engine.process(event('incident.created', { id: 'inc-21', title: 'x', severity: 'medium', affected_ci_ids: [] }))
-    expect(createSLAStatus).not.toHaveBeenCalled()
-    expect(getTenantTimezone).toHaveBeenCalledWith('t1')
-    expect(scheduleOLABreaches).toHaveBeenCalledWith(expect.objectContaining({
-      entityId: 'inc-21', tenantId: 't1', timezone: 'America/New_York', contracts: [{ ...contratto, calendar: CALENDARIO }],
-    }))
+    getActiveOLAContractsFor.mockResolvedValue([{ id: 'ola-1', name: 'Rete', type: 'ola', resolve_minutes: 240, business_hours: false }])
+    await new SLAEngine().process(event('incident.created', { id: 'inc-21', title: 'x', severity: 'medium', affected_ci_ids: [] }))
+    expect(getActiveOLAContractsFor).not.toHaveBeenCalled()
   })
 })
 
@@ -402,12 +391,6 @@ describe('SLAEngine — coerenza fra i ticket', () => {
     await new SLAEngine().process(stepEntered({ step_name: 'under_investigation', step_category: 'active', entered_at: '2026-05-02T11:00:00.000Z' }))
     expect(resumeSLA).toHaveBeenCalledWith('t1', 'inc-1', new Date('2026-05-02T11:00:00.000Z'))
     expect(pauseSLA).not.toHaveBeenCalled()
-  })
-
-  it('SL-1: i controlli OLA partono dalla creazione del ticket', async () => {
-    getActiveOLAContractsFor.mockResolvedValueOnce([{ id: 'ola-1', name: 'OLA', type: 'ola', resolve_minutes: 60, business_hours: false }])
-    await new SLAEngine().process(event('incident.created', { id: 'inc-1', severity: 'high', created_at: '2026-05-01T08:00:00.000Z' }))
-    expect(scheduleOLABreaches).toHaveBeenCalledWith(expect.objectContaining({ startedAt: new Date('2026-05-01T08:00:00.000Z') }))
   })
 
   it('SL-10: un gruppo assegnato che rende più specifica la policy la sostituisce', async () => {

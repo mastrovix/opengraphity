@@ -7,11 +7,10 @@
 import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
 import type { TFunction } from 'i18next'
-import { GET_ITIL_TYPES } from '@/graphql/queries'
+import { GET_ITIL_TYPES, GET_TICKET_CREATION_CUSTOM_FIELDS } from '@/graphql/queries'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { formatDate } from '@/lib/datetime'
 import type { FieldRules } from '@/hooks/useFormFieldRules'
-import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 
 export type TicketEntityType = 'incident' | 'problem' | 'change' | 'service_request'
 
@@ -34,29 +33,6 @@ export interface StepEditabilityView { mode: string; steps: string[] }
 /** Il valore di un campo come lo restituisce l'API (`CustomFieldValue`): `visible`/`editable` sono della fase del ticket. */
 export interface CustomFieldValueView extends CustomFieldDefView { value: string | null; visible?: boolean; editable?: boolean }
 
-/**
- * Visibile e modificabile in una fase: la stessa regola dell'API
- * (`lib/customFieldSteps.ts`), per il modulo di apertura, che non ha ancora un
- * ticket da chiedere. Secondo giro UI del 15 set 2026.
- */
-export function customFieldStepState(
-  d: Pick<CustomFieldDefView, 'stepVisibility' | 'stepEditability'>,
-  ctx: { current: string; steps: readonly { name: string; order: number }[] } | null,
-): { visible: boolean; editable: boolean } {
-  if (!ctx) return { visible: true, editable: true }
-  const v = d.stepVisibility ?? { mode: 'always', steps: [] }
-  const e = d.stepEditability ?? { mode: 'visible', steps: [] }
-  let visible = true
-  if (v.mode === 'steps') visible = v.steps.includes(ctx.current)
-  else if (v.mode === 'from') {
-    const from = ctx.steps.find((s) => s.name === v.step)
-    const here = ctx.steps.find((s) => s.name === ctx.current)
-    visible = !!from && !!here && here.order >= from.order
-  }
-  const editable = visible && (e.mode !== 'steps' || e.steps.includes(ctx.current))
-  return { visible, editable }
-}
-
 interface ItilTypesData {
   itilTypes: { name: string; fields: (CustomFieldDefView & { isSystem: boolean; order: number })[] }[]
 }
@@ -76,19 +52,23 @@ export function useTicketCustomFieldDefs(entityType: TicketEntityType): { defs: 
 }
 
 /**
- * I campi del modulo di APERTURA: solo quelli che nella fase iniziale del
- * workflow si modificano. «Outcome» della change, «da review in poi», non si
- * chiede più a chi apre la change (secondo giro UI del 15 set 2026).
+ * I campi del modulo di APERTURA: solo quelli che si modificano nella fase
+ * iniziale del workflow che il motore sceglierà per quel tipo e quella
+ * categoria. Li calcola l'API (`ticketCreationCustomFields`), con la stessa
+ * regola con cui poi li accetta: prima il web leggeva il workflow generico e
+ * l'API quello della categoria (secondo giro UI del 15 set 2026).
  */
-export function useCreationCustomFieldDefs(entityType: TicketEntityType): { defs: CustomFieldDefView[]; loading: boolean; error: Error | undefined } {
-  const all = useTicketCustomFieldDefs(entityType)
-  const workflow = useWorkflowSteps(entityType)
-  const defs = useMemo(() => {
-    const initial = workflow.initialStep
-    const ctx = initial ? { current: initial.name, steps: workflow.steps.map((s) => ({ name: s.name, order: s.order })) } : null
-    return all.defs.filter((d) => customFieldStepState(d, ctx).editable)
-  }, [all.defs, workflow.initialStep, workflow.steps])
-  return { defs, loading: all.loading || workflow.loading, error: all.error ?? (workflow.error as Error | undefined) }
+export function useCreationCustomFieldDefs(entityType: TicketEntityType, category: string | null = null): { defs: CustomFieldDefView[]; loading: boolean; error: Error | undefined } {
+  const { data, previousData, loading, error } = useQuery<{ ticketCreationCustomFields: CustomFieldValueView[] }>(GET_TICKET_CREATION_CUSTOM_FIELDS, {
+    variables: { entityType, category: category || null }, fetchPolicy: 'cache-and-network',
+  })
+  // Mentre la categoria cambia, il modulo tiene i campi di prima invece di svuotarsi.
+  const rows = (data ?? previousData)?.ticketCreationCustomFields
+  const defs = useMemo(() => (rows ?? []).filter((f) => f.editable !== false).map((f) => ({
+    name: f.name, label: f.label || f.name, fieldType: f.fieldType, required: f.required,
+    enumValues: f.enumValues ?? [], enumTypeName: f.enumTypeName ?? null, visibleToEndUser: f.visibleToEndUser === true,
+  })), [rows])
+  return { defs, loading, error }
 }
 
 /** Da `{nome: valore}` a quello che l'API vuole: tutti i campi del form, il vuoto come null. */

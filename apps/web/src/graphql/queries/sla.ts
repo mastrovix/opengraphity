@@ -44,7 +44,7 @@ export const GET_OLA_REPORT = gql`
       windowDays
       ola {
         id type name entityType partyType partyName resolveMinutes
-        evaluated met breached attainmentPct complianceTarget complianceWarning
+        evaluated met breached attainmentPct complianceTarget complianceWarning inferred
       }
     }
   }
@@ -71,7 +71,8 @@ export const GET_TICKET_OLAS = gql`
   query GetTicketOLAs($entityType: String!, $entityId: ID!) {
     ticketOLAs(entityType: $entityType, entityId: $entityId) {
       contractId name type teamName resolveMinutes calendarName
-      applies reason deadline concludedAt state
+      applies reason deadline concludedAt state usedMinutes remainingMinutes inferred
+      unitKind unitKey ciName responderRole stepTitle startsAt
     }
   }
 `

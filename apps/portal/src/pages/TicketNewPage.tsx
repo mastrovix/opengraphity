@@ -44,7 +44,7 @@ export function TicketNewPage() {
   const debounceRef                   = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   // I campi del cliente offerti nel portale (verifica «Cosa resta cablato», ondata 4).
-  const { fields: customFields } = usePortalCustomFields('incident')
+  const { fields: customFields } = usePortalCustomFields('incident', category)
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
 
   // The mutation creates an Incident (and attachments are uploaded with

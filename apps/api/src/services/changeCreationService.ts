@@ -13,11 +13,11 @@
  * Errors are thrown as lib/errors.js classes (ValidationError, ...): GraphQL
  * lets them bubble up as-is, the REST route translates them into HTTP 400.
  */
+import { firstTeamCypher } from '../lib/ticketTeamHistory.js'
 import { v4 as uuidv4 } from 'uuid'
 import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
 import { creationStepContext } from '../lib/customFieldSteps.js'
 import { workflowEngine } from '@opengraphity/workflow'
-import { getActiveOLAContractsFor, withContractCalendars, getTenantTimezone, scheduleOLABreaches } from '@opengraphity/sla'
 import { ValidationError } from '../lib/errors.js'
 import { logger } from '../lib/logger.js'
 import { publishEvent } from '../lib/publishEvent.js'
@@ -149,20 +149,20 @@ export async function createChangeRFC(
         responder_role: '${ASSESSMENT_ROLE.OWNER}', status: '${TASK_STATUS.PENDING}', score: null, created_at: $now
       })
       CREATE (c)-[:HAS_ASSESSMENT]->(ownerT)
-      CREATE (ownerT)-[:ASSIGNED_TO_TEAM]->(ownerTeam)
+      ${firstTeamCypher('ownerT', 'ownerTeam', '$now')}
       CREATE (supportT:AssessmentTask {
         id: randomUUID(), code: ct.supportCode, tenant_id: $tenantId, ci_id: ci.id,
         responder_role: '${ASSESSMENT_ROLE.SUPPORT}', status: '${TASK_STATUS.PENDING}', score: null, created_at: $now
       })
       CREATE (c)-[:HAS_ASSESSMENT]->(supportT)
-      CREATE (supportT)-[:ASSIGNED_TO_TEAM]->(supportTeam)
+      ${firstTeamCypher('supportT', 'supportTeam', '$now')}
       CREATE (dp:DeployPlanTask {
         id: randomUUID(), code: ct.planCode, tenant_id: $tenantId, ci_id: ci.id,
         status: '${TASK_STATUS.PENDING}', steps: '[]',
         created_at: $now
       })
       CREATE (c)-[:HAS_DEPLOY_PLAN]->(dp)
-      CREATE (dp)-[:ASSIGNED_TO_TEAM]->(supportTeam)
+      ${firstTeamCypher('dp', 'supportTeam', '$now')}
       `, {
         id, code, title, why, what,
         changeType,
@@ -181,29 +181,6 @@ export async function createChangeRFC(
         `Change ${code} created with ${affectedCIIds.length} CIs`,
         { key: 'changeCreated', params: { code, count: String(affectedCIIds.length) } })
     })
-
-    // Schedule OLA/UC breach checks for this change. Changes don't get an
-    // SLAStatus (their SLA is window-based), so — unlike incident/problem/SR,
-    // which the SLA engine schedules on entity.created — we schedule here.
-    // Best-effort: a scheduling failure must not fail the RFC creation.
-    try {
-      const contracts = await getActiveOLAContractsFor(ctx.tenantId, 'change')
-      if (contracts.length > 0) {
-        await scheduleOLABreaches({
-          entityId:   id,
-          entityType: 'change',
-          tenantId:   ctx.tenantId,
-          // Il fuso del cliente, non quello italiano per tutti (revisione del
-          // 14 set 2026 · CH-1), e l'istante di creazione della change (SL-1).
-          timezone:   await getTenantTimezone(ctx.tenantId),
-          // Ogni contratto conta con il SUO calendario (verifica «Cosa resta cablato», ondata 2).
-          contracts:  await withContractCalendars(ctx.tenantId, contracts),
-          startedAt:  new Date(now),
-        })
-      }
-    } catch (err) {
-      logger.error({ err, changeId: id, code }, '[changeCreationService] OLA breach scheduling failed')
-    }
 
     return { id, code }
   }, true)

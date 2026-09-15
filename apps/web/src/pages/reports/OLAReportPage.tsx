@@ -31,6 +31,8 @@ interface OLARow {
   partyName: string | null; resolveMinutes: number; evaluated: number; met: number
   breached: number; attainmentPct: number | null
   complianceTarget: number | null; complianceWarning: number | null
+  /** Valutazioni contate dall'apertura del ticket (tratto ricostruito). */
+  inferred: number
 }
 interface OLAReport { generatedAt: string; windowDays: number; ola: OLARow[] }
 
@@ -69,6 +71,7 @@ export function OLAReportPage() {
         const olaMet      = report.ola.reduce((n, r) => n + r.met, 0)
         const olaBreached = report.ola.reduce((n, r) => n + r.breached, 0)
         const olaPct      = valutazioni > 0 ? (olaMet / valutazioni) * 100 : null
+        const ricostruite = report.ola.reduce((n, r) => n + r.inferred, 0)
 
         const columns: ColumnDef<OLAContract>[] = [
           { key: 'type', label: t('common.type'), sortable: true, width: '80px', render: (v) => (
@@ -112,6 +115,11 @@ export function OLAReportPage() {
             <p style={{ marginTop: 16, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
               {t('pages.slaReport.generatedNote', { date: formatDateTime(report.generatedAt) })}
             </p>
+            {ricostruite > 0 && (
+              <p style={{ marginTop: 4, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', fontStyle: 'italic' }}>
+                {t('pages.slaReport.inferredNote', { count: ricostruite })}
+              </p>
+            )}
           </>
         )
       })()}
