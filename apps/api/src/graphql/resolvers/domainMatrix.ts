@@ -29,6 +29,7 @@ import { criticalServiceCriticalities } from '../../services/serviceImpact/incid
 import { preApprovedChangeTypes, setPreApprovedChangeTypes, changeTypeVocabulary } from '../../lib/changePolicy.js'
 import { riskBandThresholds, setRiskBandThresholds } from '../../lib/riskBands.js'
 import { changeEnvironmentWeight, setChangeEnvironmentWeight } from '../../lib/changeEnvironmentWeight.js'
+import { impactAnalysisWeights, setImpactAnalysisWeights } from '../../lib/impactWeights.js'
 import { configurationIssues } from '../../lib/configurationIssues.js'
 import { mapGaps, mapParams } from '../issueShape.js'
 
@@ -255,6 +256,19 @@ async function updateChangeEnvironmentWeight(_: unknown, args: { weight: number 
   return saved
 }
 
+async function impactAnalysisWeightsQuery(_: unknown, __: unknown, ctx: GraphQLContext) {
+  return impactAnalysisWeights(ctx.tenantId)
+}
+
+async function updateImpactAnalysisWeights(_: unknown, args: { input: Record<string, number> }, ctx: GraphQLContext) {
+  const before = await impactAnalysisWeights(ctx.tenantId)
+  const saved = await setImpactAnalysisWeights(ctx.tenantId, { ...args.input })
+  const { isDefault: _b, ...from } = before
+  const { isDefault: _s, ...to } = saved
+  void audit(ctx, 'change.impact_weights.updated', 'Tenant', ctx.tenantId, { from, to })
+  return saved
+}
+
 async function configurationIssuesQuery(_: unknown, __: unknown, ctx: GraphQLContext) {
   const issues = await configurationIssues(ctx.tenantId)
   // I parametri come lista di coppie: e la stessa cosa, nella forma che lo
@@ -270,6 +284,7 @@ export const domainMatrixResolvers = {
     preApprovedChangeTypes: preApprovedChangeTypesQuery,
     riskBandThresholds: riskBandThresholdsQuery,
     changeEnvironmentWeight: changeEnvironmentWeightQuery,
+    impactAnalysisWeights: impactAnalysisWeightsQuery,
   },
-  Mutation: { updateDomainMatrix, updatePreApprovedChangeTypes, updateRiskBandThresholds, updateChangeEnvironmentWeight },
+  Mutation: { updateDomainMatrix, updatePreApprovedChangeTypes, updateRiskBandThresholds, updateChangeEnvironmentWeight, updateImpactAnalysisWeights },
 }

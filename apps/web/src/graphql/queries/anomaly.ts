@@ -12,7 +12,7 @@ export const GET_ANOMALIES = gql`
         id ruleKey title severity status
         entityId entityType entitySubtype entityName
         description descriptionParams { key value } detectedAt resolvedAt
-        resolutionStatus resolutionNote resolvedBy
+        resolutionStatus resolutionNote resolvedBy resolvedReason
       }
     }
   }
@@ -47,4 +47,34 @@ export const GET_ANOMALY_SCAN_STATUS = gql`
       totalScans
     }
   }
+`
+
+// ── Configurazione delle regole (verifica «Cosa resta cablato», ondata 5) ─────
+
+const ANOMALY_RULE_FIELDS = gql`
+  fragment AnomalyRuleFields on AnomalyRuleConfig {
+    ruleKey enabled severity ciTypes relations threshold incidentSeverities
+    forbidden { fromType relation toType }
+    spec { ciTypes relations thresholdMin thresholdMax incidentSeverities forbidden }
+    isDefault updatedAt openCount
+    problem { key message params { key value } }
+  }
+`
+
+export const GET_ANOMALY_RULES = gql`
+  query GetAnomalyRules {
+    anomalyRules { ...AnomalyRuleFields }
+    anomalyRuleOptions {
+      ciTypes { name label neo4jLabel }
+      relations incidentSeverities severities
+    }
+  }
+  ${ANOMALY_RULE_FIELDS}
+`
+
+export const UPDATE_ANOMALY_RULE = gql`
+  mutation UpdateAnomalyRule($ruleKey: String!, $settings: AnomalyRuleSettingsInput!) {
+    updateAnomalyRule(ruleKey: $ruleKey, settings: $settings) { ...AnomalyRuleFields }
+  }
+  ${ANOMALY_RULE_FIELDS}
 `

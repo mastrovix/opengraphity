@@ -289,6 +289,8 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
     nomi dei disegnatori). Nel dubbio: come lo chiamerebbe, a voce, chi ci
     lavora?
   */
+  // «CMDB» e la sigla ITIL del registro dei CI: il gruppo delle entita dei widget.
+  'pages.dashboard.entityGroupCmdb',
   // «Root Cause Analysis» e il nome ITIL dell'analisi: in italiano si dice
   // cosi, e il campo del workflow si chiama `rootCause`.
   'pages.incidents.rootCauseAnalysis',
@@ -428,11 +430,6 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   'pages.cmdb.count_one',
   'pages.dashboard.badgeTeam',
   'pages.dashboard.cols_one',
-  'pages.dashboard.entity.change',
-  'pages.dashboard.entity.database',
-  'pages.dashboard.entity.incident',
-  'pages.dashboard.entity.problem',
-  'pages.dashboard.entity.server',
   'pages.dashboard.fieldType.enum',
   'pages.dashboard.timeRange.24h',
   'pages.dashboard.title',
@@ -441,6 +438,10 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   'pages.dictionary.scopeItil',
   'pages.import.columnsIncidents',
   'pages.import.columnsKb',
+  // Ondata 5 di «Nulla cablato»: i nomi delle colonne del CSV sono gli stessi in ogni lingua.
+  'pages.import.columnsProblems',
+  'pages.import.columnsChanges',
+  'pages.import.columnsRequests',
   'pages.incidents.count_one',
   'pages.incidents.impactedApplications.pathNodeFallback',
   'pages.kb.no',

@@ -31,6 +31,12 @@ export const UPDATE_CHANGE_ENVIRONMENT_WEIGHT = gql`
   }
 `
 
+export const UPDATE_IMPACT_ANALYSIS_WEIGHTS = gql`
+  mutation UpdateImpactAnalysisWeights($input: ImpactAnalysisWeightsInput!) {
+    updateImpactAnalysisWeights(input: $input) { productionCI blastRadiusCI blastRadiusCap openIncident failedChange ongoingChange recentChangesDays recentIncidentsDays isDefault }
+  }
+`
+
 export const UPDATE_RISK_BAND_THRESHOLDS = gql`
   mutation UpdateRiskBandThresholds($entries: [RiskBandThresholdInput!]!) {
     updateRiskBandThresholds(entries: $entries) {

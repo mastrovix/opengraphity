@@ -58,3 +58,18 @@ export async function nextSequenceBlock(sessionOrTx: SessionOrTx, tenantId: stri
   )
   return toNumber(res.records[0]!.get('value'))
 }
+
+/**
+ * Raise the counter to at least `value` (never lowers it). Used by the ticket
+ * importer after it preserves historical numbers, so the next ticket created
+ * by the app does not mint a number the import already wrote.
+ */
+export async function raiseSequenceTo(sessionOrTx: SessionOrTx, tenantId: string, kind: string, value: number): Promise<void> {
+  await runCounter(
+    sessionOrTx,
+    `MERGE (c:Counter {tenant_id: $tenantId, kind: $kind})
+     ON CREATE SET c.value = $value
+     ON MATCH  SET c.value = CASE WHEN c.value < $value THEN $value ELSE c.value END`,
+    { tenantId, kind, value: neo4j.int(value) },
+  )
+}

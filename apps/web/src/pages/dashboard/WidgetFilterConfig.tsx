@@ -1,12 +1,14 @@
 import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { FieldMeta } from './useWidgetConfig'
+import type { FieldMeta, WidgetCatalogEntity } from './useWidgetConfig'
 import {
-  ENTITY_TYPES, METRICS, TIME_RANGES, SIZE_OPTIONS, presetColors, widgetTint,
+  METRICS, TIME_RANGES, SIZE_OPTIONS, presetColors, widgetTint,
   FIELD_TYPE_LABEL_KEYS,
 } from './useWidgetConfig'
 import { colors, palette } from '@/lib/tokens'
-import { useMetamodel } from '@/contexts/MetamodelContext'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { ciTypeLabelKey } from '@/lib/ciEnums'
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -29,7 +31,10 @@ interface WidgetFilterConfigProps {
   onSizeChange:    (v: string) => void
   color:           string
   onColorChange:   (v: string) => void
-  fields:          string[]
+  /** Il catalogo del cliente (`widgetCatalog`). */
+  entities:        WidgetCatalogEntity[]
+  groupByFields:   FieldMeta[]
+  filterFields:    FieldMeta[]
   needsGroupBy:    boolean
   fieldMetaMap:    Record<string, FieldMeta>
   selectedFilterMeta: FieldMeta | null
@@ -47,15 +52,20 @@ export function WidgetFilterConfig({
   timeRange, onTimeRangeChange,
   size, onSizeChange,
   color, onColorChange,
-  fields, needsGroupBy,
+  entities, groupByFields, filterFields, needsGroupBy,
   fieldMetaMap, selectedFilterMeta,
 }: WidgetFilterConfigProps) {
-  // Solo i tipi di CI che il cliente ha davvero: la lista fissa offriva
-  // «Network Device» e «Virtual Machine» a un tenant che non li aveva.
-  const { ciTypes } = useMetamodel()
-  const ITSM = new Set(['incident', 'problem', 'change', 'service_request'])
-  const availableEntityTypes = ENTITY_TYPES.filter((e) => ITSM.has(e.value) || ciTypes.some((ct) => ct.name === e.value))
+  // Le entità sono quelle del catalogo del cliente (ondata 5 di «Nulla
+  // cablato»): i suoi tipi di ticket e di CI, anche quelli creati da lui.
   const { t } = useTranslation()
+  const { labelOf: itilLabel } = useItilTypeLabels()
+  const entityLabel = (e: WidgetCatalogEntity) => {
+    if (e.group === 'itsm') return itilLabel(e.entityType)
+    const key = ciTypeLabelKey(e.entityType)
+    return key ? t(key) : e.label
+  }
+  const itsm = entities.filter((e) => e.group === 'itsm')
+  const cmdb = entities.filter((e) => e.group !== 'itsm')
   const id = useId()
   const ids = {
     entity:  id + '-entity',
@@ -83,7 +93,17 @@ export function WidgetFilterConfig({
       <div>
         <label htmlFor={ids.entity} style={labelStyle}>{t('pages.dashboard.entityLabel')}</label>
         <select id={ids.entity} value={entityType} onChange={(e) => onEntityChange(e.target.value)} style={selectStyle}>
-          {availableEntityTypes.map((e) => <option key={e.value} value={e.value}>{t(e.labelKey)}</option>)}
+          {entities.length === 0 && <option value={entityType}>{entityType}</option>}
+          {itsm.length > 0 && (
+            <optgroup label={t('pages.dashboard.entityGroupItsm')}>
+              {itsm.map((e) => <option key={e.entityType} value={e.entityType}>{entityLabel(e)}</option>)}
+            </optgroup>
+          )}
+          {cmdb.length > 0 && (
+            <optgroup label={t('pages.dashboard.entityGroupCmdb')}>
+              {cmdb.map((e) => <option key={e.entityType} value={e.entityType}>{entityLabel(e)}</option>)}
+            </optgroup>
+          )}
         </select>
       </div>
 
@@ -101,8 +121,13 @@ export function WidgetFilterConfig({
           <label htmlFor={ids.groupBy} style={labelStyle}>{t('pages.dashboard.groupByField')}</label>
           <select id={ids.groupBy} value={groupByField} onChange={(e) => onGroupByChange(e.target.value)} style={selectStyle}>
             <option value="">{t('pages.dashboard.selectField')}</option>
-            {fields.map((f) => <option key={f} value={f}>{fieldOptionLabel(f)}</option>)}
+            {groupByFields.map((f) => <option key={f.name} value={f.name}>{fieldOptionLabel(f.name)}</option>)}
           </select>
+          {groupByFields.length === 0 && (
+            <p role="note" style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
+              {t(metric === 'count_by_field' ? 'pages.dashboard.noGroupableField' : 'pages.dashboard.noNumericField')}
+            </p>
+          )}
         </div>
       )}
 
@@ -112,7 +137,7 @@ export function WidgetFilterConfig({
         <div className="og-pair">
           <select id={ids.filter} value={filterField} onChange={(e) => onFilterFieldChange(e.target.value)} style={selectStyle}>
             <option value="">{t('pages.dashboard.noFilter')}</option>
-            {fields.map((f) => <option key={f} value={f}>{fieldOptionLabel(f)}</option>)}
+            {filterFields.map((f) => <option key={f.name} value={f.name}>{fieldOptionLabel(f.name)}</option>)}
           </select>
           <FilterValueInput
             meta={selectedFilterMeta}
@@ -214,6 +239,7 @@ function FilterValueInput({ meta, value, onChange, disabled, color }: {
   meta: FieldMeta | null; value: string; onChange: (v: string) => void; disabled: boolean; color: string
 }) {
   const { t } = useTranslation()
+  const { labelOf } = useDomainVocabularies()
   const opacityStyle = { opacity: disabled ? 0.45 : 1 }
   const valueLabel = t('pages.dashboard.filterValue')
 
@@ -227,7 +253,7 @@ function FilterValueInput({ meta, value, onChange, disabled, color }: {
     return (
       <select aria-label={valueLabel} value={value} onChange={(e) => onChange(e.target.value)} style={selectStyle}>
         <option value="">{t('pages.dashboard.allValues')}</option>
-        {meta.enumValues.map((v) => <option key={v} value={v}>{v}</option>)}
+        {meta.enumValues.map((v) => <option key={v} value={v}>{(meta.enumTypeName && labelOf(meta.enumTypeName, v)) || v}</option>)}
       </select>
     )
   }

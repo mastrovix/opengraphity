@@ -104,7 +104,7 @@ export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Pro
               timeRange={c.timeRange} onTimeRangeChange={c.setTimeRange}
               size={c.size} onSizeChange={c.setSize}
               color={c.color} onColorChange={c.setColor}
-              fields={c.fields} needsGroupBy={c.needsGroupBy}
+              entities={c.entities} groupByFields={c.groupByFields} filterFields={c.filterFields} needsGroupBy={c.needsGroupBy}
               fieldMetaMap={c.fieldMetaMap} selectedFilterMeta={c.selectedFilterMeta}
             />
           </div>

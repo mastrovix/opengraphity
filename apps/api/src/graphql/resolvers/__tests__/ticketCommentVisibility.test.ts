@@ -19,6 +19,12 @@ vi.mock('../ci-utils.js', async (importOriginal) => ({
   withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn({})),
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn() }))
+// Le notifiche ai watcher partono in fondo e leggono la lingua dal grafo: qui
+// non c'è un grafo, e il rifiuto non gestito sporcava l'intera suite.
+vi.mock('../collaboration.js', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  notifyWatchers: vi.fn(async () => undefined),
+}))
 
 const { incidentResolvers } = await import('../incident.js')
 const { problemResolvers } = await import('../problem.js')

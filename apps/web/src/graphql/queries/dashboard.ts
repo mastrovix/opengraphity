@@ -65,6 +65,16 @@ export const GET_WIDGET_DATA = gql`
   }
 `
 
+/** Entità e campi dei widget dal metamodello del cliente: la stessa lista con cui l'API valida (ondata 5). */
+export const GET_WIDGET_CATALOG = gql`
+  query GetWidgetCatalog {
+    widgetCatalog {
+      entityType label group
+      fields { name label fieldType enumTypeName enumValues groupable numeric custom }
+    }
+  }
+`
+
 export const GET_WIDGET_DATA_PREVIEW = gql`
   query GetWidgetDataPreview($entityType: String!, $metric: String!, $groupByField: String, $filterField: String, $filterValue: String, $timeRange: String) {
     widgetDataPreview(entityType: $entityType, metric: $metric, groupByField: $groupByField, filterField: $filterField, filterValue: $filterValue, timeRange: $timeRange) {

@@ -1,8 +1,10 @@
 /**
  * Historical data importer (migration from other ITSM tools).
  *
- * Imports Incidents and KB Articles from CSV rows. Used by BOTH:
- *   - the REST v1 routes  POST /api/v1/import/incidents | /import/kb-articles
+ * Imports tickets (incidents, problems, changes, service requests) and KB
+ * Articles from CSV rows. Used by BOTH:
+ *   - the REST v1 routes  POST /api/v1/import/incidents | problems | changes |
+ *                         service-requests | kb-articles
  *   - the CLI scripts     src/scripts/import-incidents.ts | import-kb.ts
  *
  * Idempotency: every imported node carries an `import_external_id` property;
@@ -10,7 +12,7 @@
  * CSV updates the existing nodes instead of duplicating them (comments created
  * by the importer are tagged with the same key and re-created on each run).
  *
- * Transaction strategy: ONE transaction PER ROW (see comment on writeIncidentRow).
+ * Transaction strategy: ONE transaction PER ROW (see comment in importTickets).
  * Rows are fully validated before any write; in execute mode invalid rows are
  * skipped (reported in `errors`) while valid rows proceed.
  */
@@ -25,6 +27,7 @@ import { getWorkflowSteps, type StepRow } from '../lib/workflowHelpers.js'
 import { domainVocabulary } from '../lib/domainMatrix.js'
 import { resolveDomainValue } from '../lib/domainValue.js'
 import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
+import { nextSequenceValue, raiseSequenceTo } from '../lib/sequence.js'
 
 type Session = ReturnType<typeof getSession>
 
@@ -61,7 +64,10 @@ const IMPORT_MESSAGES = {
   unknownStatusDraft:     (p: Record<string, string>) => `unknown status "${p['status']}" — using "draft"`,
   invalidDate:            (p: Record<string, string>) => `${p['field']} is not a valid ISO date: "${p['value']}"`,
   numberDuplicate:        (p: Record<string, string>) => `number duplicated in the file: "${p['number']}"`,
-  numberInUse:            (p: Record<string, string>) => `number "${p['number']}" is already used by another incident (uniqueness violation)`,
+  numberInUse:            (p: Record<string, string>) => `number "${p['number']}" is already used by another ticket (uniqueness violation)`,
+  columnRequired:         (p: Record<string, string>) => `${p['column']} is required`,
+  vocabularyUnknown:      (p: Record<string, string>) => `${p['column']} "${p['value']}" is not in the dictionary of this organization (${p['allowed']})`,
+  integerOutOfRange:      (p: Record<string, string>) => `${p['column']} "${p['value']}" must be an integer between ${p['min']} and ${p['max']}`,
   assigneeNotFound:       (p: Record<string, string>) => `assignee_email "${p['email']}" not found — assignment skipped`,
   teamNotFound:           (p: Record<string, string>) => `team_name "${p['team']}" not found — team assignment skipped`,
   commentsInvalidJson:    () => 'comments is not valid JSON',
@@ -262,31 +268,102 @@ async function ensureWorkflowInstance(
   }
 }
 
-// ── Incident import ───────────────────────────────────────────────────────────
+// ── Ticket import (incident, problem, change, service request) ────────────────
+//
+// Verifica «Cosa resta cablato», ondata 5: prima si importavano solo gli
+// incident. Ora i quattro tipi di ticket passano dalla stessa strada, con le
+// colonne che ciascuno ha davvero:
+//
+//   tutti:           external_id*, title*, status, number, created_at, updated_at,
+//                    comments, e una colonna per ogni campo del cliente
+//   incident:        severity* (matrice «Import Severity»), description, resolved_at,
+//                    assignee_email, team_name
+//   problem:         priority*, impact, urgency, description, workaround, root_cause,
+//                    resolved_at, assignee_email, team_name
+//   change:          change_type*, priority, why, what, aggregate_risk_score, completed_at
+//   service_request: priority*, description, due_date, completed_at, assignee_email, team_name
+//
+// Un valore di vocabolario si confronta con il vocabolario DEL CLIENTE (senza
+// distinguere maiuscole): fuori vocabolario è un errore di riga, mai un valore
+// scelto dal codice. La change importata è storica: nessuna approvazione,
+// nessun assessment, nessun CI — il suo passo del workflow viene dal file.
 
-interface IncidentComment {
+export type TicketImportKind = 'incident' | 'problem' | 'change' | 'service_request'
+
+interface VocabularyColumn { column: string; vocabulary: string; required: boolean }
+
+interface TicketImportSpec {
+  label:          'Incident' | 'Problem' | 'Change' | 'ServiceRequest'
+  /** Il prefisso del numero e il contatore (`lib/sequence.ts`) dei ticket creati dall'app. */
+  prefix:         string
+  /** La change porta il numero anche in `code`. */
+  numberIsCode:   boolean
+  dateColumns:    readonly string[]
+  textColumns:    readonly string[]
+  vocabularies:   readonly VocabularyColumn[]
+  /** Solo incident: la severità passa dalla matrice `import_severity`. */
+  severityMatrix: boolean
+  /** Assegnatario e team (la change si assegna per compiti, non come ticket). */
+  assignable:     boolean
+  /** Colonne intere con il loro intervallo. */
+  integers:       ReadonlyArray<{ column: string; min: number; max: number }>
+}
+
+export const TICKET_IMPORT_SPECS: Readonly<Record<TicketImportKind, TicketImportSpec>> = {
+  incident: {
+    label: 'Incident', prefix: 'INC', numberIsCode: false,
+    dateColumns: ['resolved_at'], textColumns: ['description'], vocabularies: [],
+    severityMatrix: true, assignable: true, integers: [],
+  },
+  problem: {
+    label: 'Problem', prefix: 'PRB', numberIsCode: false,
+    dateColumns: ['resolved_at'], textColumns: ['description', 'workaround', 'root_cause'],
+    vocabularies: [
+      { column: 'priority', vocabulary: 'priority', required: true },
+      { column: 'impact',   vocabulary: 'impact',   required: false },
+      { column: 'urgency',  vocabulary: 'urgency',  required: false },
+    ],
+    severityMatrix: false, assignable: true, integers: [],
+  },
+  change: {
+    label: 'Change', prefix: 'CHG', numberIsCode: true,
+    dateColumns: ['completed_at'], textColumns: ['why', 'what'],
+    vocabularies: [
+      { column: 'change_type', vocabulary: 'change_type', required: true },
+      { column: 'priority',    vocabulary: 'priority',    required: false },
+    ],
+    severityMatrix: false, assignable: false, integers: [{ column: 'aggregate_risk_score', min: 0, max: 100 }],
+  },
+  service_request: {
+    label: 'ServiceRequest', prefix: 'REQ', numberIsCode: false,
+    dateColumns: ['due_date', 'completed_at'], textColumns: ['description'],
+    vocabularies: [{ column: 'priority', vocabulary: 'priority', required: true }],
+    severityMatrix: false, assignable: true, integers: [],
+  },
+}
+
+interface TicketComment {
   text:        string
   authorEmail: string | null
   authorId:    string | null
   createdAt:   string
 }
 
-interface IncidentPlan {
+interface TicketPlan {
   row:           number
   externalId:    string
   exists:        boolean
   existingId:    string | null
   title:         string
-  description:   string | null
-  severity:      string
   stepName:      string
-  number:        string | null   // number to write (null on update = keep existing)
+  number:        string | null   // number to write (null on update = keep existing; null on create = generate)
   createdAt:     string | null   // null on update = keep existing
   updatedAt:     string
-  resolvedAt:    string | null
+  /** Le colonne del tipo presenti nel file, già convertite (descrizione, date, vocabolari…). */
+  props:         Record<string, unknown>
   assigneeId:    string | null
   teamId:        string | null
-  comments:      IncidentComment[] | null  // null = column absent, leave untouched
+  comments:      TicketComment[] | null  // null = column absent, leave untouched
   /** Le colonne dei campi del cliente presenti nel file (ondata 4), prima della validazione. */
   customInputs:  CustomFieldInput[]
   /** Le proprietà da scrivere, dopo la validazione. */
@@ -299,11 +376,32 @@ interface ExistingNode {
   number?:    string | null
 }
 
-export async function importIncidents(
+export function importIncidents(rows: CsvRow[], ctx: ServiceCtx, opts: ImportOptions = {}): Promise<ImportResult> {
+  return importTickets('incident', rows, ctx, opts)
+}
+export function importProblems(rows: CsvRow[], ctx: ServiceCtx, opts: ImportOptions = {}): Promise<ImportResult> {
+  return importTickets('problem', rows, ctx, opts)
+}
+export function importChanges(rows: CsvRow[], ctx: ServiceCtx, opts: ImportOptions = {}): Promise<ImportResult> {
+  return importTickets('change', rows, ctx, opts)
+}
+export function importServiceRequests(rows: CsvRow[], ctx: ServiceCtx, opts: ImportOptions = {}): Promise<ImportResult> {
+  return importTickets('service_request', rows, ctx, opts)
+}
+
+/** Il valore del vocabolario del cliente che corrisponde alla cella (maiuscole indifferenti), o null. */
+function vocabularyValue(allowed: readonly string[], raw: string): string | null {
+  const lower = raw.toLowerCase()
+  return allowed.find((v) => v.toLowerCase() === lower) ?? null
+}
+
+export async function importTickets(
+  kind: TicketImportKind,
   rows: CsvRow[],
   ctx: ServiceCtx,
   opts: ImportOptions = {},
 ): Promise<ImportResult> {
+  const spec = TICKET_IMPORT_SPECS[kind]
   const dryRun = opts.dryRun ?? false
   if (!ctx.tenantId) throw new ValidationError('tenantId is required', { key: 'errors.import.tenantRequired' })
   if (!Array.isArray(rows)) throw new ValidationError('rows must be an array', { key: 'errors.import.rowsArray' })
@@ -313,17 +411,18 @@ export async function importIncidents(
 
   return withSession(async (session) => {
     // ── Preload reference data (read-only, shared by dry-run and execute) ─────
-    const steps = await getWorkflowSteps(session, ctx.tenantId, 'incident')
+    const steps = await getWorkflowSteps(session, ctx.tenantId, kind)
     if (steps.length === 0) {
-      throw new ValidationError(`No active workflow definition for "incident" in tenant "${ctx.tenantId}"`, { key: 'errors.import.noWorkflow' })
+      throw new ValidationError(`No active workflow definition for "${kind}" in tenant "${ctx.tenantId}"`, { key: 'errors.import.noWorkflow', params: { entityType: kind } })
     }
     const initialStep = steps.find((s) => s.isInitial)
     if (!initialStep) {
-      throw new ValidationError(`The incident workflow of tenant "${ctx.tenantId}" has no initial step`, { key: 'errors.import.noInitialStep' })
+      throw new ValidationError(`The ${kind} workflow of tenant "${ctx.tenantId}" has no initial step`, { key: 'errors.import.noInitialStep', params: { entityType: kind } })
     }
     const stepByLowerName = new Map(steps.map((s) => [s.name.toLowerCase(), s.name]))
+    const csvColumns = new Set(rows.flatMap((r) => Object.keys(r)))
 
-    const emails = collectValues(rows, ['assignee_email'])
+    const emails = spec.assignable ? collectValues(rows, ['assignee_email']) : new Set<string>()
     for (const r of rows) {
       // comment author emails also need resolution
       const raw = r['comments']
@@ -340,45 +439,39 @@ export async function importIncidents(
       }
     }
     const usersByEmail = await loadUsersByEmail(session, ctx.tenantId, [...emails])
-    const teamsByName  = await loadTeamsByName(session, ctx.tenantId, [...collectValues(rows, ['team_name'])])
+    const teamsByName  = spec.assignable ? await loadTeamsByName(session, ctx.tenantId, [...collectValues(rows, ['team_name'])]) : new Map<string, string>()
 
     const externalIds = rows.map((r) => (r['external_id'] ?? '').trim()).filter(Boolean)
     const existingRows = externalIds.length === 0 ? [] : await runQuery<ExistingNode>(session, `
-      MATCH (i:Incident {tenant_id: $tenantId})
-      WHERE i.import_external_id IN $externalIds
-      RETURN i.id AS id, i.import_external_id AS externalId, i.number AS number
+      MATCH (n:${spec.label} {tenant_id: $tenantId})
+      WHERE n.import_external_id IN $externalIds
+      RETURN n.id AS id, n.import_external_id AS externalId, n.number AS number
     `, { tenantId: ctx.tenantId, externalIds })
     const existingByExternalId = new Map(existingRows.map((r) => [r.externalId, r]))
 
     // Numbers already taken in the tenant among those the CSV wants to preserve
     const csvNumbers = [...collectValues(rows, ['number'], false)]
     const numberRows = csvNumbers.length === 0 ? [] : await runQuery<{ number: string; externalId: string | null }>(session, `
-      MATCH (i:Incident {tenant_id: $tenantId})
-      WHERE i.number IN $numbers
-      RETURN i.number AS number, i.import_external_id AS externalId
+      MATCH (n:${spec.label} {tenant_id: $tenantId})
+      WHERE n.number IN $numbers
+      RETURN n.number AS number, n.import_external_id AS externalId
     `, { tenantId: ctx.tenantId, numbers: csvNumbers })
     const numberOwner = new Map(numberRows.map((r) => [r.number, r.externalId]))
 
-    // Progressive INC numbering for rows without a number: continue from the
-    // highest INC number in the tenant (same format as createIncident).
-    const maxRow = await runQueryOne<{ maxNum: number | null }>(session, `
-      MATCH (i:Incident {tenant_id: $tenantId})
-      WHERE i.number STARTS WITH 'INC'
-      RETURN max(toInteger(substring(i.number, 3))) AS maxNum
-    `, { tenantId: ctx.tenantId })
-    let nextIncNum = Number(maxRow?.maxNum ?? 0)
-
-    // Severità: un passaggio solo per valore distinto, PRIMA del ciclo per
-    // riga (il ciclo e' sincrono, e la matrice e' una lettura).
-    const severityByRaw  = await resolveImportSeverities(ctx.tenantId, rows)
+    // Severità (solo incident): un passaggio solo per valore distinto, PRIMA del
+    // ciclo per riga (il ciclo e' sincrono, e la matrice e' una lettura).
+    const severityByRaw = spec.severityMatrix ? await resolveImportSeverities(ctx.tenantId, rows) : new Map()
+    const vocabularies = new Map<string, readonly string[]>()
+    for (const v of spec.vocabularies) {
+      if (v.required || csvColumns.has(v.column)) vocabularies.set(v.column, await domainVocabulary(ctx.tenantId, v.vocabulary))
+    }
 
     // Campi del cliente (ondata 4): una colonna per campo, col nome del campo.
-    const customDefs = await customFieldDefs(session, ctx.tenantId, 'incident')
-    const csvColumns = new Set(rows.flatMap((r) => Object.keys(r)))
+    const customDefs = await customFieldDefs(session, ctx.tenantId, kind)
     const customColumns = customDefs.filter((d) => csvColumns.has(d.name))
 
     // ── Per-row validation → plan ─────────────────────────────────────────────
-    const plans: IncidentPlan[] = []
+    const plans: TicketPlan[] = []
     const seenExternalIds = new Set<string>()
     const seenNumbers     = new Set<string>()
     const now = new Date().toISOString()
@@ -388,33 +481,64 @@ export async function importIncidents(
       const externalId = (row['external_id'] ?? '').trim() || null
       const fail = (key: ImportIssueKey, params: Record<string, string> = {}) => { result.errors.push(importIssue(rowNum, externalId, key, params)) }
       const warn = (key: ImportIssueKey, params: Record<string, string> = {}) => { result.warnings.push(importIssue(rowNum, externalId, key, params)) }
+      const cell = (column: string) => (row[column] ?? '').trim()
 
       if (!externalId) { fail('externalIdRequired'); return }
       if (seenExternalIds.has(externalId)) { fail('externalIdDuplicate', { id: externalId }); return }
 
-      const title = (row['title'] ?? '').trim()
+      const title = cell('title')
       if (!title) { fail('titleRequired'); return }
       if (title.length > 500) { fail('titleTooLong', { max: '500' }); return }
 
-      // severity: tradotta dalla matrice `import_severity` del cliente
-      // (risolta una volta per valore distinto, sopra). Non risolvibile →
-      // riga in ERRORE: mai piu' un `medium` scritto al posto di quello che
-      // il file diceva.
-      // Una riga SENZA severità è in errore anche lei (verifica «Cosa resta
-      // cablato», ondata 1): prima nasceva `medium`, un valore che né il file
-      // né il cliente avevano scelto.
-      const rawSeverity = (row['severity'] ?? '').trim()
-      if (!rawSeverity) { fail('severityRequired'); return }
-      const resolved = severityByRaw.get(rawSeverity.toLowerCase())
-      if (!resolved) { fail('severityNotPrecomputed', { value: rawSeverity }); return }
-      if ('error' in resolved) {
-        fail('severityUntranslatable', { value: rawSeverity, reason: resolved.error })
-        return
-      }
-      const severity = resolved.severity
+      const props: Record<string, unknown> = {}
 
-      // status: matched case-insensitively on the tenant's incident workflow steps
-      const rawStatus = (row['status'] ?? '').trim()
+      // severity (incident): tradotta dalla matrice `import_severity` del
+      // cliente. Non risolvibile → riga in ERRORE: mai piu' un `medium` scritto
+      // al posto di quello che il file diceva. Una riga SENZA severità è in
+      // errore anche lei (verifica «Cosa resta cablato», ondata 1).
+      if (spec.severityMatrix) {
+        const rawSeverity = cell('severity')
+        if (!rawSeverity) { fail('severityRequired'); return }
+        const resolved = severityByRaw.get(rawSeverity.toLowerCase()) as { severity: string } | { error: string } | undefined
+        if (!resolved) { fail('severityNotPrecomputed', { value: rawSeverity }); return }
+        if ('error' in resolved) {
+          fail('severityUntranslatable', { value: rawSeverity, reason: resolved.error })
+          return
+        }
+        props['severity'] = resolved.severity
+      }
+
+      // Valori di vocabolario del tipo (priorità, impatto, tipo di change…).
+      for (const v of spec.vocabularies) {
+        const raw = cell(v.column)
+        if (!raw) {
+          if (v.required) { fail('columnRequired', { column: v.column }); return }
+          if (csvColumns.has(v.column)) props[v.column] = null
+          continue
+        }
+        const allowed = vocabularies.get(v.column) ?? []
+        const value = vocabularyValue(allowed, raw)
+        if (value === null) { fail('vocabularyUnknown', { column: v.column, value: raw, allowed: allowed.join(', ') }); return }
+        props[v.column] = value
+      }
+
+      for (const column of spec.textColumns) {
+        if (csvColumns.has(column)) props[column] = cell(column) || null
+      }
+      for (const n of spec.integers) {
+        if (!csvColumns.has(n.column)) continue
+        const raw = cell(n.column)
+        if (!raw) { props[n.column] = null; continue }
+        const value = Number(raw)
+        if (!Number.isInteger(value) || value < n.min || value > n.max) {
+          fail('integerOutOfRange', { column: n.column, value: raw, min: String(n.min), max: String(n.max) })
+          return
+        }
+        props[n.column] = value
+      }
+
+      // status: matched case-insensitively on the tenant's workflow steps
+      const rawStatus = cell('status')
       let stepName = initialStep.name
       if (rawStatus) {
         const matched = stepByLowerName.get(rawStatus.toLowerCase())
@@ -424,20 +548,22 @@ export async function importIncidents(
 
       // dates: invalid → row error
       const dates: Record<string, string | null> = {}
-      let dateError = false
-      for (const field of ['created_at', 'updated_at', 'resolved_at'] as const) {
-        const raw = (row[field] ?? '').trim()
+      for (const field of ['created_at', 'updated_at', ...spec.dateColumns]) {
+        const raw = cell(field)
         if (!raw) { dates[field] = null; continue }
         const iso = parseIsoDate(raw)
-        if (!iso) { fail('invalidDate', { field, value: raw }); dateError = true; break }
+        if (!iso) { fail('invalidDate', { field, value: raw }); return }
         dates[field] = iso
       }
-      if (dateError) return
+      for (const field of spec.dateColumns) {
+        if (csvColumns.has(field)) props[field] = dates[field]
+      }
 
       const existing = existingByExternalId.get(externalId) ?? null
 
-      // number: preserve when provided; collision with a different incident → row error
-      const rawNumber = (row['number'] ?? '').trim() || null
+      // number: preserve when provided; collision with a different ticket → row error.
+      // Without a number a new ticket gets the next value of the tenant's counter at write time.
+      const rawNumber = cell('number') || null
       let number: string | null = null
       if (rawNumber) {
         if (seenNumbers.has(rawNumber)) { fail('numberDuplicate', { number: rawNumber }); return }
@@ -448,30 +574,27 @@ export async function importIncidents(
         }
         number = rawNumber
         seenNumbers.add(rawNumber)
-      } else if (!existing) {
-        // generate progressive INC number, skipping any value the CSV preserves
-        do { nextIncNum += 1 } while (seenNumbers.has('INC' + String(nextIncNum).padStart(8, '0')))
-        number = 'INC' + String(nextIncNum).padStart(8, '0')
-        seenNumbers.add(number)
-      } // else: update without number → keep the existing one
+      }
 
       // assignee / team lookups: not found → warning, do not block
-      const assigneeEmail = (row['assignee_email'] ?? '').trim()
       let assigneeId: string | null = null
-      if (assigneeEmail) {
-        assigneeId = usersByEmail.get(assigneeEmail.toLowerCase()) ?? null
-        if (!assigneeId) warn('assigneeNotFound', { email: assigneeEmail })
-      }
-      const teamName = (row['team_name'] ?? '').trim()
       let teamId: string | null = null
-      if (teamName) {
-        teamId = teamsByName.get(teamName.toLowerCase()) ?? null
-        if (!teamId) warn('teamNotFound', { team: teamName })
+      if (spec.assignable) {
+        const assigneeEmail = cell('assignee_email')
+        if (assigneeEmail) {
+          assigneeId = usersByEmail.get(assigneeEmail.toLowerCase()) ?? null
+          if (!assigneeId) warn('assigneeNotFound', { email: assigneeEmail })
+        }
+        const teamName = cell('team_name')
+        if (teamName) {
+          teamId = teamsByName.get(teamName.toLowerCase()) ?? null
+          if (!teamId) warn('teamNotFound', { team: teamName })
+        }
       }
 
       // comments: optional JSON array [{author_email, text, created_at}]
-      let comments: IncidentComment[] | null = null
-      const rawComments = (row['comments'] ?? '').trim()
+      let comments: TicketComment[] | null = null
+      const rawComments = cell('comments')
       if (rawComments) {
         let parsed: unknown
         try { parsed = JSON.parse(rawComments) }
@@ -506,18 +629,16 @@ export async function importIncidents(
         exists:      existing !== null,
         existingId:  existing?.id ?? null,
         title,
-        description: (row['description'] ?? '').trim() || null,
-        severity,
         stepName,
         number,
         createdAt:   dates['created_at'] ?? (existing ? null : now),
         updatedAt:   dates['updated_at'] ?? dates['created_at'] ?? now,
-        resolvedAt:  dates['resolved_at'] ?? null,
+        props,
         assigneeId,
         teamId,
         comments,
         // Una cella vuota non cancella: nello storico importato «vuoto» vuol dire «non c'era».
-        customInputs: customColumns.filter((d) => (row[d.name] ?? '').trim() !== '').map((d) => ({ name: d.name, value: (row[d.name] ?? '').trim() })),
+        customInputs: customColumns.filter((d) => cell(d.name) !== '').map((d) => ({ name: d.name, value: cell(d.name) })),
         customProps:  {},
       })
     })
@@ -532,7 +653,7 @@ export async function importIncidents(
       // Colonna per colonna, così l'errore nomina la colonna sbagliata.
       for (const input of plan.customInputs) {
         try {
-          Object.assign(plan.customProps, await resolveCustomFieldWrites(ctx.tenantId, 'incident', customDefs, [input], { current: {} }))
+          Object.assign(plan.customProps, await resolveCustomFieldWrites(ctx.tenantId, kind, customDefs, [input], { current: {} }))
         } catch (err) {
           result.errors.push(importIssue(plan.row, plan.externalId, 'customFieldInvalid', { field: input.name, error: err instanceof Error ? err.message : String(err) }))
           plans.splice(i, 1)
@@ -540,6 +661,8 @@ export async function importIncidents(
         }
       }
     }
+    // Le righe si scrivono nell'ordine del file (il ciclo sopra toglie da destra).
+    plans.sort((x, y) => x.row - y.row)
 
     // ── Dry-run: report what would happen, zero writes ────────────────────────
     if (dryRun) {
@@ -547,8 +670,26 @@ export async function importIncidents(
       return result
     }
 
+    // ── Numbering: the tenant counter must stay ahead of every number ─────────
+    // Prima l'import generava i numeri da max()+1 senza toccare il contatore dei
+    // ticket creati dall'app: il primo incident aperto dopo un import prendeva
+    // un numero già usato e falliva sul vincolo di unicità. Ora il contatore sale
+    // almeno al numero più alto già presente o preservato dal file, e le righe
+    // senza numero ne prendono uno dal contatore, come dalla pagina.
+    const numericOf = (n: string | null | undefined): number => {
+      const m = n ? new RegExp(`^${spec.prefix}(\\d+)$`).exec(n) : null
+      return m ? Number(m[1]) : 0
+    }
+    const maxRow = await runQueryOne<{ maxNum: number | null }>(session, `
+      MATCH (n:${spec.label} {tenant_id: $tenantId})
+      WHERE n.number STARTS WITH $prefix
+      RETURN max(toInteger(substring(n.number, size($prefix)))) AS maxNum
+    `, { tenantId: ctx.tenantId, prefix: spec.prefix })
+    const floor = Math.max(Number(maxRow?.maxNum ?? 0), ...plans.map((p) => numericOf(p.number)))
+    if (floor > 0) await raiseSequenceTo(session, ctx.tenantId, kind, floor)
+
     // ── Execute: ONE transaction PER ROW ──────────────────────────────────────
-    // Rationale: each row is an independent unit (incident + relations +
+    // Rationale: each row is an independent unit (ticket + relations +
     // comments + workflow instance must commit or roll back together), and
     // per-row transactions let valid rows land even when a later row fails at
     // write time (the failure is attributed to exactly that row in `errors`).
@@ -556,7 +697,7 @@ export async function importIncidents(
     // error would roll back N-1 innocent rows.
     for (const p of plans) {
       try {
-        await writeIncidentRow(session, p, ctx)
+        await writeTicketRow(session, kind, p, ctx)
         if (p.exists) result.updated++; else result.created++
       } catch (err) {
         result.errors.push(importIssue(p.row, p.externalId, 'writeFailed', { error: err instanceof Error ? err.message : String(err) }))
@@ -564,47 +705,48 @@ export async function importIncidents(
     }
 
     logger.info({
-      tenantId: ctx.tenantId, totalRows: result.totalRows,
+      tenantId: ctx.tenantId, kind, totalRows: result.totalRows,
       created: result.created, updated: result.updated,
       errors: result.errors.length, warnings: result.warnings.length,
-    }, '[import] incidents import completed')
+    }, '[import] tickets import completed')
     return result
   }, !dryRun)
 }
 
-async function writeIncidentRow(session: Session, p: IncidentPlan, ctx: ServiceCtx): Promise<void> {
+async function writeTicketRow(session: Session, kind: TicketImportKind, p: TicketPlan, ctx: ServiceCtx): Promise<void> {
+  const spec = TICKET_IMPORT_SPECS[kind]
   const now = new Date().toISOString()
   const newId = uuidv4()
+  const label = spec.label
 
   await session.executeWrite(async (tx) => {
+    // Un ticket nuovo senza numero nel file prende il prossimo del contatore.
+    const number = p.number ?? (p.exists ? null : spec.prefix + String(await nextSequenceValue(tx, ctx.tenantId, kind)).padStart(8, '0'))
+
     // MERGE on (tenant_id, import_external_id) → idempotent re-runs
     await tx.run(`
-      MERGE (i:Incident {tenant_id: $tenantId, import_external_id: $externalId})
-      ON CREATE SET i.id         = $newId,
-                    i.number     = $number,
-                    i.created_at = $createdAt
-      SET i.title       = $title,
-          i.description = $description,
-          i.severity    = $severity,
-          i.status      = $status,
-          i.number      = coalesce($numberUpdate, i.number),
-          i.created_at  = coalesce($createdAt, i.created_at),
-          i.updated_at  = $updatedAt,
-          i.resolved_at = $resolvedAt
-      SET i += $customProps
+      MERGE (n:${label} {tenant_id: $tenantId, import_external_id: $externalId})
+      ON CREATE SET n.id         = $newId,
+                    n.number     = $number,${spec.numberIsCode ? '\n                    n.code       = $number,' : ''}
+                    n.created_at = $createdAt
+      SET n.title       = $title,
+          n.status      = $status,
+          n.number      = coalesce($numberUpdate, n.number),${spec.numberIsCode ? '\n          n.code        = coalesce($numberUpdate, n.code),' : ''}
+          n.created_at  = coalesce($createdAt, n.created_at),
+          n.updated_at  = $updatedAt
+      SET n += $props
+      SET n += $customProps
     `, {
       tenantId:     ctx.tenantId,
       externalId:   p.externalId,
       newId,
-      number:       p.number,
+      number,
       numberUpdate: p.exists ? p.number : null,
       title:        p.title,
-      description:  p.description,
-      severity:     p.severity,
       status:       p.stepName,
       createdAt:    p.createdAt,
       updatedAt:    p.updatedAt,
-      resolvedAt:   p.resolvedAt,
+      props:        p.props,
       customProps:  p.customProps,
     })
 
@@ -612,34 +754,34 @@ async function writeIncidentRow(session: Session, p: IncidentPlan, ctx: ServiceC
 
     if (p.assigneeId) {
       await tx.run(`
-        MATCH (i:Incident {tenant_id: $tenantId, import_external_id: $externalId})
-        OPTIONAL MATCH (i)-[old:ASSIGNED_TO]->()
+        MATCH (n:${label} {tenant_id: $tenantId, import_external_id: $externalId})
+        OPTIONAL MATCH (n)-[old:ASSIGNED_TO]->()
         DELETE old
-        WITH DISTINCT i
+        WITH DISTINCT n
         MATCH (u:User {id: $userId, tenant_id: $tenantId})
-        MERGE (i)-[:ASSIGNED_TO]->(u)
+        MERGE (n)-[:ASSIGNED_TO]->(u)
       `, { tenantId: ctx.tenantId, externalId: p.externalId, userId: p.assigneeId })
     }
     if (p.teamId) {
       await tx.run(`
-        MATCH (i:Incident {tenant_id: $tenantId, import_external_id: $externalId})
-        OPTIONAL MATCH (i)-[old:ASSIGNED_TO_TEAM]->()
+        MATCH (n:${label} {tenant_id: $tenantId, import_external_id: $externalId})
+        OPTIONAL MATCH (n)-[old:ASSIGNED_TO_TEAM]->()
         DELETE old
-        WITH DISTINCT i
+        WITH DISTINCT n
         MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
-        MERGE (i)-[:ASSIGNED_TO_TEAM]->(t)
+        MERGE (n)-[:ASSIGNED_TO_TEAM]->(t)
       `, { tenantId: ctx.tenantId, externalId: p.externalId, teamId: p.teamId })
     }
 
-    // Comments: same node shape as addIncidentComment, plus import_external_id
+    // Comments: same node shape as the ticket comments, plus import_external_id
     // so re-runs replace the imported thread instead of duplicating it.
     if (p.comments !== null) {
       await tx.run(`
-        MATCH (i:Incident {tenant_id: $tenantId, import_external_id: $externalId})
-        OPTIONAL MATCH (i)-[:HAS_COMMENT]->(old:Comment)
+        MATCH (n:${label} {tenant_id: $tenantId, import_external_id: $externalId})
+        OPTIONAL MATCH (n)-[:HAS_COMMENT]->(old:Comment)
         WHERE old.import_external_id = $externalId
         DETACH DELETE old
-        WITH DISTINCT i
+        WITH DISTINCT n
         UNWIND $comments AS cm
         CREATE (c:Comment {
           id:                 randomUUID(),
@@ -652,13 +794,13 @@ async function writeIncidentRow(session: Session, p: IncidentPlan, ctx: ServiceC
           updated_at:         cm.createdAt,
           import_external_id: $externalId
         })
-        CREATE (i)-[:HAS_COMMENT]->(c)
+        CREATE (n)-[:HAS_COMMENT]->(c)
       `, { tenantId: ctx.tenantId, externalId: p.externalId, comments: p.comments })
     }
 
     // Workflow: create the instance at the initial step (engine behavior),
     // then point it to the mapped step. entity.status already matches.
-    await ensureWorkflowInstance(tx, ctx.tenantId, entityId, 'incident')
+    await ensureWorkflowInstance(tx, ctx.tenantId, entityId, kind)
     await pointWorkflowToStep(tx, ctx.tenantId, entityId, p.stepName, ctx.userId, now)
   })
 }
@@ -847,7 +989,7 @@ export async function importKBArticles(
       return result
     }
 
-    // One tx per row — same rationale as importIncidents.
+    // One tx per row — same rationale as importTickets.
     for (const p of plans) {
       try {
         await writeKBRow(session, p, ctx)

@@ -79,6 +79,8 @@ import { catalogItemCategoryVocabulary } from './20260925_1120_catalog_item_cate
 import { namedServiceCalendars } from './20260925_1130_named_service_calendars.js'
 import { complianceObjectives } from './20260925_1140_compliance_objectives.js'
 import { stepDeadlines } from './20260925_1200_step_deadlines.js'
+import { impactAnalysisWeightsSeed } from './20260926_1000_impact_analysis_weights.js'
+import { anomalyRuleConfigsSeed } from './20260926_1010_anomaly_rule_configs.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -152,4 +154,6 @@ export const MIGRATIONS: readonly Migration[] = [
   namedServiceCalendars,
   complianceObjectives,
   stepDeadlines,
+  impactAnalysisWeightsSeed,
+  anomalyRuleConfigsSeed,
 ]

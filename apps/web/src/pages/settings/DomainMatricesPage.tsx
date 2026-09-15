@@ -30,6 +30,7 @@ import { GET_DOMAIN_MATRICES, GET_PRE_APPROVED_CHANGE_TYPES, GET_RISK_BAND_THRES
 import { UPDATE_DOMAIN_MATRIX, UPDATE_PRE_APPROVED_CHANGE_TYPES, UPDATE_RISK_BAND_THRESHOLDS, UPDATE_CHANGE_ENVIRONMENT_WEIGHT } from '@/graphql/mutations'
 import { colors } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
+import { ImpactWeightsCard } from './ImpactWeightsCard'
 
 // ── Tipi ──────────────────────────────────────────────────────────────────────
 
@@ -475,6 +476,7 @@ export function DomainMatricesPage() {
       {data?.domainMatrices.map((m) => <MatrixCard key={m.kind} matrix={m} />)}
       <RiskBandsCard />
       <EnvironmentWeightCard />
+      <ImpactWeightsCard />
       <PreApprovedChangeTypesCard />
     </PageContainer>
   )

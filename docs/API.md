@@ -119,6 +119,9 @@ The Apollo Sandbox is available at `http://localhost:4000/graphql` in developmen
 | `anomalies(status, severity, ruleKey, limit, offset, ...)` | List detected anomalies |
 | `anomaly(id)` | Single anomaly |
 | `anomalyStats` | Aggregate anomaly statistics |
+| `anomalyRules` / `anomalyRuleOptions` | The tenant's anomaly rule configuration and the CI types, relations and severities to choose from (admin) |
+| `widgetCatalog` | Entities and fields a dashboard widget can use, from the tenant's metamodel |
+| `impactAnalysisWeights` | Points and time windows of the change impact analysis (admin) |
 | `anomalyScanStatus` | Status of last scan |
 
 ### Discovery / CMDB Sync
@@ -443,16 +446,27 @@ curl -s "http://c-one.localhost/api/v1/changes/<id>/status" -H "X-API-Key: $API_
 
 ### Import (`/api/v1/import`)
 
-Historical data importer for migrations from other ITSM tools. Both endpoints accept `multipart/form-data` with a `file` field containing the CSV (max 20MB, header row required) and an optional `?dryRun=true` query parameter. In dry-run mode the whole file is validated but nothing is written. In execute mode rows with errors are skipped (and reported) while valid rows are imported.
+Historical data importer for migrations from other ITSM tools. All endpoints accept `multipart/form-data` with a `file` field containing the CSV (max 20MB, header row required) and an optional `?dryRun=true` query parameter. In dry-run mode the whole file is validated but nothing is written. In execute mode rows with errors are skipped (and reported) while valid rows are imported.
 
 | Method | Path | Permission | Description |
 |--------|------|------------|-------------|
 | `POST` | `/api/v1/import/incidents` | `incidents:write` | Import incidents from CSV |
+| `POST` | `/api/v1/import/problems` | `problems:write` | Import problems from CSV |
+| `POST` | `/api/v1/import/changes` | `changes:write` | Import changes from CSV |
+| `POST` | `/api/v1/import/service-requests` | `requests:write` | Import service requests from CSV |
 | `POST` | `/api/v1/import/kb-articles` | `kb:write` | Import KB articles from CSV |
 
 Idempotency: each row's `external_id` is stored as `import_external_id` on the node; re-running the same CSV updates the existing records (`updated`) instead of duplicating them.
 
-**Incident CSV columns** — `external_id` (required, idempotency key), `title` (required), `description`, `severity` (translated by the tenant's `import_severity` domain matrix — Settings → Domain matrices, seeded with 25 synonyms and editable; a value the matrix cannot resolve puts the **row in error**, it is never rewritten to `medium`; an empty cell is a row error too), `status` (matched case-insensitively against the tenant's incident workflow step names; unknown → warning + initial step), `number` (optional: preserved; collision with another incident → row error; generated progressively as `INC…` when absent), `created_at`/`updated_at`/`resolved_at` (ISO; invalid → row error), `assignee_email` (unknown user → warning, row still imported), `team_name` (unknown team → warning), `comments` (JSON array `[{author_email, text, created_at}]`), and one column per **custom field**, named like the field: the value is checked like everywhere else (type, vocabulary, validation script) and a wrong value puts the row in error; an empty cell leaves the field untouched, and the required flag does not apply to imported history.
+**Incident CSV columns** — `external_id` (required, idempotency key), `title` (required), `description`, `severity` (translated by the tenant's `import_severity` domain matrix — Settings → Domain matrices, seeded with 25 synonyms and editable; a value the matrix cannot resolve puts the **row in error**, it is never rewritten to `medium`; an empty cell is a row error too), `status` (matched case-insensitively against the tenant's incident workflow step names; unknown → warning + initial step), `number` (optional: preserved; collision with another incident → row error; when absent the next value of the tenant's `INC…` counter, the same one the app uses — the counter is also raised above every preserved number, so tickets created afterwards never reuse an imported number), `created_at`/`updated_at`/`resolved_at` (ISO; invalid → row error), `assignee_email` (unknown user → warning, row still imported), `team_name` (unknown team → warning), `comments` (JSON array `[{author_email, text, created_at}]`), and one column per **custom field**, named like the field: the value is checked like everywhere else (type, vocabulary, validation script) and a wrong value puts the row in error; an empty cell leaves the field untouched, and the required flag does not apply to imported history.
+
+**Problem, change and service request CSV columns** — the same common columns as incidents (`external_id`*, `title`*, `status`, `number` with the `PRB…`/`CHG…`/`REQ…` counter, `created_at`, `updated_at`, `comments`, one column per custom field of the type), plus:
+
+- problems: `priority` (required), `impact`, `urgency`, `description`, `workaround`, `root_cause`, `resolved_at`, `assignee_email`, `team_name`;
+- changes: `change_type` (required), `priority`, `why`, `what`, `aggregate_risk_score` (integer 0–100), `completed_at`. The number is also written as the change `code`. An imported change is history: no approval, assessment or CI is created, and its workflow step comes from `status`;
+- service requests: `priority` (required), `description`, `due_date`, `completed_at`, `assignee_email`, `team_name`.
+
+Vocabulary columns (`priority`, `impact`, `urgency`, `change_type`) are matched case-insensitively against the tenant's dictionary: a value outside it puts the row in error, listing the allowed values.
 
 **KB article CSV columns** — `external_id` (required), `title` (required), `body` (markdown), `category`, `tags` (separated by `;`), `status` (`published`/`draft`, default `draft`), `author_name`, `created_at`, `published_at`. The slug is generated from the title and deduplicated with `-2`, `-3`, … suffixes; on update the existing slug is kept.
 
@@ -473,7 +487,7 @@ curl -s -X POST "http://c-one.localhost/api/v1/import/kb-articles?dryRun=true" \
   -F "file=@samples/import/kb-articles-sample.csv"
 ```
 
-Response (`200`, same shape for both endpoints, top-level — not wrapped in `data`):
+Response (`200`, same shape for every endpoint, top-level — not wrapped in `data`):
 
 ```json
 {
@@ -491,6 +505,7 @@ The same importer is available from the CLI:
 
 ```bash
 pnpm --filter @opengraphity/api import:incidents -- --file samples/import/incidents-sample.csv --tenant-id c-one --dry-run
+pnpm --filter @opengraphity/api import:incidents -- --file problems.csv --tenant-id c-one --type problem
 pnpm --filter @opengraphity/api import:kb        -- --file samples/import/kb-articles-sample.csv --tenant-id c-one
 ```
 

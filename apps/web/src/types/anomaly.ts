@@ -17,6 +17,8 @@ export interface Anomaly {
   resolutionStatus: string | null
   resolutionNote:   string | null
   resolvedBy:       string | null
+  /** Perché lo scan l'ha chiusa: `not_detected` o `rule_disabled`. */
+  resolvedReason?:  string | null
 }
 
 export interface AnomalyStats {

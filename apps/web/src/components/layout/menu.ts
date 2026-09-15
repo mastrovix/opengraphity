@@ -45,6 +45,7 @@ export const CONFIG_ITEM_DEFS = [
   { to: '/settings/itil-designer',   labelKey: 'sidebar.itilDesigner',    icon: Settings2 },
   { to: '/settings/enum-designer',   labelKey: 'sidebar.enumDesigner',    icon: Tag      },
   { to: '/settings/domain-matrices', labelKey: 'sidebar.domainMatrices',  icon: Table2   },
+  { to: '/settings/anomaly-rules',   labelKey: 'sidebar.anomalyRules',    icon: ShieldAlert },
   { to: '/workflow',                  labelKey: 'sidebar.workflowDesigner', icon: Route    },
 ]
 

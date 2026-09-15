@@ -4,7 +4,8 @@ import { getSession } from '@opengraphity/neo4j'
 import { sendSlackMessage } from '@opengraphity/notifications'
 import { logger } from '../lib/logger.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
-import { ANOMALY_RULES, type AnomalyRule } from './rules.js'
+import { buildAnomalyRule, type AnomalyRule, type ResolvedRuleSettings } from './rules.js'
+import { anomalyRuleOptions, anomalyRuleProblem, loadAnomalyRuleConfigs, type AnomalyRuleConfig, type AnomalyRuleOptions } from './ruleConfig.js'
 
 export const ANOMALY_SCANNER_QUEUE = 'anomaly-scanner'
 
@@ -63,7 +64,7 @@ async function runRule(rule: AnomalyRule, tenantId: string): Promise<RuleHit[]> 
     const incidentTerminal = await getTerminalStepNames(session, tenantId, 'incident')
     // GDS-based rules may fail if the plugin is not installed — skip gracefully
     const result = await session.executeRead(tx =>
-      tx.run(rule.cypher, { tenantId, incidentTerminal }),
+      tx.run(rule.cypher, { ...rule.params, tenantId, incidentTerminal }),
     )
     return result.records.map(r => ({
       entityId:      r.get('entityId')      as string,
@@ -158,9 +159,10 @@ async function upsertAnomalies(
  * Auto-resolve anomalies that are no longer detected for a given rule+tenant.
  */
 async function autoResolveStale(
-  rule: AnomalyRule,
+  ruleKey: string,
   tenantId: string,
   currentEntityIds: string[],
+  reason: 'not_detected' | 'rule_disabled' = 'not_detected',
 ): Promise<void> {
   const now = new Date().toISOString()
   const session = getSession(undefined, 'WRITE')
@@ -169,8 +171,8 @@ async function autoResolveStale(
       tx.run(`
         MATCH (a:Anomaly {tenant_id: $tenantId, rule_key: $ruleKey, status: 'open'})
         WHERE NOT a.entity_id IN $currentEntityIds
-        SET a.status = 'resolved', a.resolved_at = $now
-      `, { tenantId, ruleKey: rule.key, currentEntityIds, now }),
+        SET a.status = 'resolved', a.resolved_at = $now, a.resolved_reason = $reason
+      `, { tenantId, ruleKey, currentEntityIds, now, reason }),
     )
   } finally {
     await session.close()
@@ -197,6 +199,7 @@ async function sendSlackAlert(
   webhookUrl: string,
   tenantId: string,
   newByRule: Map<string, number>,
+  titles: Map<string, string>,
 ): Promise<void> {
   const totalNew = [...newByRule.values()].reduce((a, b) => a + b, 0)
   if (totalNew === 0) return
@@ -218,8 +221,7 @@ async function sendSlackAlert(
   const fields: unknown[] = []
   for (const [ruleKey, count] of newByRule.entries()) {
     if (count > 0) {
-      const rule = ANOMALY_RULES.find(r => r.key === ruleKey)
-      fields.push({ type: 'mrkdwn', text: `*${rule?.title ?? ruleKey}*\n${count} new anomalies` })
+      fields.push({ type: 'mrkdwn', text: `*${titles.get(ruleKey) ?? ruleKey}*\n${count} new anomalies` })
     }
   }
 
@@ -238,24 +240,61 @@ async function sendSlackAlert(
 
 // ── Job processor ──────────────────────────────────────────────────────────────
 
-/** Runs every rule for one tenant. Returns the number of rules that failed. */
-async function scanTenant(tenantId: string): Promise<number> {
-  const newByRule = new Map<string, number>()
-  let ruleFailures = 0
+/** La regola eseguibile per la configurazione del cliente: i tipi diventano etichette del suo metamodello. */
+export function resolveRule(config: AnomalyRuleConfig, options: AnomalyRuleOptions): AnomalyRule {
+  // Una configurazione che cita un tipo o una relazione tolti dal metamodello
+  // fa fallire la regola dicendolo: filtrarla via lascerebbe la regola a
+  // cercare su un perimetro che l'admin non ha scelto.
+  const problem = anomalyRuleProblem(config, options)
+  if (problem) throw problem
+  const labelOf = new Map(options.ciTypes.map((t) => [t.name, t.neo4jLabel]))
+  const settings: ResolvedRuleSettings = {
+    ...config,
+    ciLabels:        config.ciTypes.map((t) => labelOf.get(t)!),
+    forbiddenLabels: config.forbidden.map((f) => ({ fromLabel: labelOf.get(f.fromType)!, relation: f.relation, toLabel: labelOf.get(f.toType)! })),
+  }
+  return buildAnomalyRule(config.ruleKey, settings)
+}
 
-  for (const rule of ANOMALY_RULES) {
+export interface TenantScanSummary {
+  ruleFailures: number
+  /** Per regola: risultati trovati, nuove anomalie, o `disabled`. */
+  rules: Array<{ ruleKey: string; title: string; hits: number; created: number; disabled: boolean; error: string | null }>
+}
+
+/** Runs every enabled rule for one tenant, with the tenant's configuration. */
+export async function scanTenant(tenantId: string): Promise<TenantScanSummary> {
+  const newByRule = new Map<string, number>()
+  const titles = new Map<string, string>()
+  const summary: TenantScanSummary = { ruleFailures: 0, rules: [] }
+
+  const configs = await loadAnomalyRuleConfigs(tenantId)
+  const options = await anomalyRuleOptions(tenantId)
+
+  for (const config of configs) {
     try {
+      if (!config.enabled) {
+        // Regola spenta: le sue anomalie aperte si chiudono dicendo perché,
+        // invece di restare aperte per sempre su una regola che non gira più.
+        await autoResolveStale(config.ruleKey, tenantId, [], 'rule_disabled')
+        summary.rules.push({ ruleKey: config.ruleKey, title: config.ruleKey, hits: 0, created: 0, disabled: true, error: null })
+        continue
+      }
+      const rule = resolveRule(config, options)
+      titles.set(rule.key, rule.title)
       const hits = await runRule(rule, tenantId)
       const created = await upsertAnomalies(rule, tenantId, hits)
-      await autoResolveStale(rule, tenantId, hits.map(h => h.entityId))
+      await autoResolveStale(rule.key, tenantId, hits.map(h => h.entityId))
 
       newByRule.set(rule.key, created)
+      summary.rules.push({ ruleKey: rule.key, title: rule.title, hits: hits.length, created, disabled: false, error: null })
       if (hits.length > 0 || created > 0) {
         logger.info({ ruleKey: rule.key, tenantId, hits: hits.length, created }, 'anomaly-engine: rule done')
       }
     } catch (err) {
-      ruleFailures++
-      logger.error({ err, ruleKey: rule.key, tenantId }, 'anomaly-engine: rule failed')
+      summary.ruleFailures++
+      summary.rules.push({ ruleKey: config.ruleKey, title: config.ruleKey, hits: 0, created: 0, disabled: false, error: err instanceof Error ? err.message : String(err) })
+      logger.error({ err, ruleKey: config.ruleKey, tenantId }, 'anomaly-engine: rule failed')
     }
   }
 
@@ -268,7 +307,7 @@ async function scanTenant(tenantId: string): Promise<number> {
     if (totalNew > 0) {
       const webhookUrl = await loadSlackWebhookForTenant(tenantId)
       if (webhookUrl) {
-        await sendSlackAlert(webhookUrl, tenantId, newByRule)
+        await sendSlackAlert(webhookUrl, tenantId, newByRule, titles)
         logger.info({ tenantId, totalNew }, 'anomaly-engine: slack alert sent')
       }
     }
@@ -276,7 +315,7 @@ async function scanTenant(tenantId: string): Promise<number> {
     logger.error({ err, tenantId }, 'anomaly-engine: slack notification failed')
   }
 
-  return ruleFailures
+  return summary
 }
 
 export async function anomalyScannerProcessor(job: Job<AnomalyScanJobData>): Promise<void> {
@@ -286,7 +325,7 @@ export async function anomalyScannerProcessor(job: Job<AnomalyScanJobData>): Pro
 
   let failures = 0
   for (const tenant of tenants) {
-    failures += await scanTenant(tenant.id)
+    failures += (await scanTenant(tenant.id)).ruleFailures
   }
   if (failures > 0) {
     // Visible failure: the scan status was persisted for the rules that ran,

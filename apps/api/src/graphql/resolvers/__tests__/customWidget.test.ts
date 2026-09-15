@@ -9,7 +9,27 @@ vi.mock('../reportAccess.js', () => ({
   resolveDashboardIdForWidget: vi.fn().mockResolvedValue('d1'),
 }))
 
-const { validateWidgetConfig, NUMERIC_FIELDS, customWidgetResolvers } = await import('../customWidget.js')
+// Ondata 5 di «Nulla cablato»: entità e campi vengono dal catalogo del metamodello.
+const CATALOG = [
+  { entityType: 'incident', label: 'Incident', neo4jLabel: 'Incident', group: 'itsm', fields: [
+    { name: 'status', label: 'Status', fieldType: 'enum', enumTypeName: null, enumValues: [], property: 'status', groupable: true, numeric: false, custom: false },
+    { name: 'priority', label: 'Priority', fieldType: 'enum', enumTypeName: null, enumValues: [], property: 'severity', groupable: true, numeric: false, custom: false },
+    { name: 'severity', label: 'Severity', fieldType: 'enum', enumTypeName: null, enumValues: [], property: 'severity', groupable: true, numeric: false, custom: false },
+  ] },
+  { entityType: 'change', label: 'Change', neo4jLabel: 'Change', group: 'itsm', fields: [
+    { name: 'type', label: 'Type', fieldType: 'enum', enumTypeName: 'change_type', enumValues: [], property: 'change_type', groupable: true, numeric: false, custom: false },
+    { name: 'aggregate_risk_score', label: 'Risk', fieldType: 'number', enumTypeName: null, enumValues: [], property: 'aggregate_risk_score', groupable: false, numeric: true, custom: false },
+  ] },
+  { entityType: 'firewall', label: 'Firewall', neo4jLabel: 'Firewall', group: 'cmdb', fields: [
+    { name: 'zona', label: 'Zona', fieldType: 'enum', enumTypeName: 'zona', enumValues: [], property: 'zona', groupable: true, numeric: false, custom: true },
+    { name: 'ramGb', label: 'RAM', fieldType: 'number', enumTypeName: null, enumValues: [], property: 'ram_gb', groupable: false, numeric: true, custom: true },
+  ] },
+  { entityType: 'certificate', label: 'Certificate', neo4jLabel: 'Certificate', group: 'cmdb', fields: [] },
+]
+vi.mock('../../../lib/widgetCatalog.js', () => ({ widgetCatalog: vi.fn(async () => CATALOG) }))
+
+const { validateWidgetConfig: validateWith, customWidgetResolvers } = await import('../customWidget.js')
+const validateWidgetConfig = (cfg: Parameters<typeof validateWith>[0]) => validateWith(cfg, CATALOG as never)
 const { getSession } = await import('@opengraphity/neo4j')
 
 const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator' } as never
@@ -18,27 +38,27 @@ function code(fn: () => unknown): string | null {
   try { fn(); return null } catch (e) { return ((e as GraphQLError).extensions?.code as string) ?? 'THROWN' }
 }
 
-describe('validateWidgetConfig (C-23)', () => {
-  it('business_application accepts snake_case business_unit and rejects the old camelCase', () => {
-    expect(code(() => validateWidgetConfig({ entityType: 'business_application', metric: 'count_by_field', groupByField: 'business_unit', filterField: null }))).toBeNull()
-    expect(code(() => validateWidgetConfig({ entityType: 'business_application', metric: 'count_by_field', groupByField: 'businessUnit', filterField: null }))).toBe('BAD_USER_INPUT')
+describe('validateWidgetConfig (C-23, ondata 5 di «Nulla cablato»)', () => {
+  it('un tipo di CI e un campo del cliente sono accettati, perché sono nel catalogo', () => {
+    expect(code(() => validateWidgetConfig({ entityType: 'firewall', metric: 'count_by_field', groupByField: 'zona', filterField: 'zona' }))).toBeNull()
+    expect(code(() => validateWidgetConfig({ entityType: 'firewall', metric: 'count_by_field', groupByField: 'zona_x', filterField: null }))).toBe('BAD_USER_INPUT')
   })
 
-  it.each(['avg_field', 'sum_field'])('%s only on numeric whitelisted fields', (metric) => {
-    expect(code(() => validateWidgetConfig({ entityType: 'server', metric, groupByField: 'cpu_cores', filterField: null }))).toBeNull()
-    // categorical field → refused up front (avg(status) would be null → previously rendered as 0)
-    const err = (() => { try { validateWidgetConfig({ entityType: 'server', metric, groupByField: 'status', filterField: null }); return null } catch (e) { return e as GraphQLError } })()
+  it.each(['avg_field', 'sum_field'])('%s only on numeric catalog fields', (metric) => {
+    expect(code(() => validateWidgetConfig({ entityType: 'firewall', metric, groupByField: 'ramGb', filterField: null }))).toBeNull()
+    expect(code(() => validateWidgetConfig({ entityType: 'change', metric, groupByField: 'aggregate_risk_score', filterField: null }))).toBeNull()
+    // categorical field → refused up front (avg(zona) would be null → previously rendered as 0)
+    const err = (() => { try { validateWidgetConfig({ entityType: 'firewall', metric, groupByField: 'zona', filterField: null }); return null } catch (e) { return e as GraphQLError } })()
     expect(err?.extensions?.code).toBe('BAD_USER_INPUT')
     expect(err?.message).toContain('is not numeric')
-    expect(err?.message).toContain('cpu_cores')
+    expect(err?.message).toContain('ramGb')
     expect(code(() => validateWidgetConfig({ entityType: 'incident', metric, groupByField: 'severity', filterField: null }))).toBe('BAD_USER_INPUT')
-    expect(code(() => validateWidgetConfig({ entityType: 'server', metric, groupByField: null, filterField: null }))).toBe('BAD_USER_INPUT')
+    expect(code(() => validateWidgetConfig({ entityType: 'firewall', metric, groupByField: null, filterField: null }))).toBe('BAD_USER_INPUT')
   })
 
-  it('numeric whitelist never overlaps with categorical fields used for grouping', () => {
-    for (const fields of Object.values(NUMERIC_FIELDS)) {
-      for (const f of fields) expect(['status', 'severity', 'priority', 'category', 'environment', 'type']).not.toContain(f)
-    }
+  it('a numeric field is not a grouping or filter field', () => {
+    expect(code(() => validateWidgetConfig({ entityType: 'firewall', metric: 'count_by_field', groupByField: 'ramGb', filterField: null }))).toBe('BAD_USER_INPUT')
+    expect(code(() => validateWidgetConfig({ entityType: 'firewall', metric: 'count', groupByField: null, filterField: 'ramGb' }))).toBe('BAD_USER_INPUT')
   })
 
   it('unknown entity / metric', () => {
@@ -61,6 +81,14 @@ describe('widget sugli incident (giro nel browser del 14 set 2026)', () => {
   it('environment non è un campo degli incident', () => {
     expect(code(() => validateWidgetConfig({ entityType: 'incident', metric: 'count_by_field', groupByField: 'environment', filterField: null }))).toBe('BAD_USER_INPUT')
   })
+
+  it('change per tipo legge n.change_type, dove il tipo è salvato', async () => {
+    const run = vi.fn().mockResolvedValue({ records: [{ get: (k: string) => ({ label: 'normal', value: 2 } as Record<string, unknown>)[k] }] })
+    vi.mocked(getSession).mockReturnValue({ run, executeRead: vi.fn().mockImplementation((fn: (tx: { run: typeof run }) => unknown) => fn({ run })), close: vi.fn() } as never)
+    await customWidgetResolvers.Query.widgetDataPreview(null, { entityType: 'change', metric: 'count_by_field', groupByField: 'type' }, ctx)
+    expect(String(run.mock.calls[0]![0])).toContain('MATCH (n:Change)')
+    expect(String(run.mock.calls[0]![0])).toContain('n.change_type AS label')
+  })
 })
 
 describe('widgetDataPreview — null aggregate is an error, never 0', () => {
@@ -76,17 +104,18 @@ describe('widgetDataPreview — null aggregate is an error, never 0', () => {
   it('avg over no matching nodes → NO_DATA error surfaced to the widget', async () => {
     sessionReturning([{ value: null }])
     let thrown: unknown
-    try { await customWidgetResolvers.Query.widgetDataPreview(null, { entityType: 'server', metric: 'avg_field', groupByField: 'ram_gb' }, ctx) }
+    try { await customWidgetResolvers.Query.widgetDataPreview(null, { entityType: 'firewall', metric: 'avg_field', groupByField: 'ramGb' }, ctx) }
     catch (e) { thrown = e }
     expect(thrown).toBeInstanceOf(GraphQLError)
     expect((thrown as GraphQLError).extensions?.code).toBe('NO_DATA')
-    expect((thrown as GraphQLError).message).toContain('avg(ram_gb)')
+    expect((thrown as GraphQLError).message).toContain('avg(ramGb)')
   })
 
   it('avg with data → rounded value, query uses the whitelisted field', async () => {
     const s = sessionReturning([{ value: 3.14159 }])
-    const out = await customWidgetResolvers.Query.widgetDataPreview(null, { entityType: 'server', metric: 'avg_field', groupByField: 'ram_gb' }, ctx)
+    const out = await customWidgetResolvers.Query.widgetDataPreview(null, { entityType: 'firewall', metric: 'avg_field', groupByField: 'ramGb' }, ctx)
     expect(out.value).toBe(3.14)
+    expect(s.run.mock.calls[0]![0]).toContain('MATCH (n:Firewall)')
     expect(s.run.mock.calls[0]![0]).toContain('RETURN avg(n.ram_gb) AS value')
   })
 

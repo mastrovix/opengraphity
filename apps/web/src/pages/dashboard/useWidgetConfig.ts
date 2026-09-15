@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { isITILEntity } from '@/lib/automationOperators'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { CREATE_CUSTOM_WIDGET, UPDATE_CUSTOM_WIDGET } from '@/graphql/mutations'
-import { GET_WIDGET_DATA_PREVIEW, GET_ITIL_TYPES, GET_CI_TYPES } from '@/graphql/queries'
+import { GET_WIDGET_DATA_PREVIEW, GET_WIDGET_CATALOG } from '@/graphql/queries'
 import type { CustomWidgetData } from './CustomWidgetCard'
 import { cssVar } from '@/lib/charts/cssVar'
 import { shippedLabel } from '@/lib/shippedLabel'
@@ -38,38 +37,12 @@ export const DATA_FREE_HINT_KEY: Record<string, string> = {
   service_health: 'pages.dashboard.serviceHealthHint',
 }
 
-export const ENTITY_TYPES = [
-  { value: 'incident',             labelKey: 'pages.dashboard.entity.incident' },
-  { value: 'problem',              labelKey: 'pages.dashboard.entity.problem' },
-  { value: 'change',               labelKey: 'pages.dashboard.entity.change' },
-  { value: 'service_request',      labelKey: 'pages.dashboard.entity.serviceRequest' },
-  { value: 'server',               labelKey: 'pages.dashboard.entity.server' },
-  { value: 'application',          labelKey: 'pages.dashboard.entity.application' },
-  { value: 'database',             labelKey: 'pages.dashboard.entity.database' },
-  { value: 'certificate',          labelKey: 'pages.dashboard.entity.certificate' },
-  { value: 'business_application', labelKey: 'pages.dashboard.entity.businessApplication' },
-]
-
 export const METRICS = [
   { value: 'count',          labelKey: 'pages.dashboard.metric.count' },
   { value: 'count_by_field', labelKey: 'pages.dashboard.metric.countByField' },
   { value: 'avg_field',      labelKey: 'pages.dashboard.metric.avgField' },
   { value: 'sum_field',      labelKey: 'pages.dashboard.metric.sumField' },
 ]
-
-// Stessi campi di WIDGET_ALLOWED_FIELDS nell'API: offrire un campo che l'API rifiuta
-// dava un errore al salvataggio (revisione del 14 set 2026 · F19, apps/api/src/lib/__tests__/staticCiLabels.test.ts).
-export const ALLOWED_FIELDS: Record<string, string[]> = {
-  incident:             ['status', 'priority', 'impact', 'urgency', 'category'],
-  problem:              ['status', 'priority', 'category'],
-  change:               ['status', 'type', 'priority', 'environment'],
-  service_request:      ['status', 'priority', 'category'],
-  server:               ['status', 'environment', 'os', 'type'],
-  application:          ['status', 'environment', 'category', 'type'],
-  database:             ['status', 'environment', 'type'],
-  certificate:          ['status', 'environment'],
-  business_application: ['status', 'environment', 'criticality', 'business_unit'],
-}
 
 export const TIME_RANGES = [
   { value: '24h', labelKey: 'pages.dashboard.timeRange.24h' },
@@ -128,10 +101,33 @@ export const FIELD_TYPE_LABEL_KEYS: Record<string, string> = {
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface FieldMeta {
-  name:       string
+  name:         string
+  label:        string
+  fieldType:    string
+  enumValues:   string[]
+  enumTypeName: string | null
+  groupable:    boolean
+  numeric:      boolean
+  custom:       boolean
+}
+
+/**
+ * Un tipo di ticket o di CI su cui costruire un widget, come lo manda l'API
+ * (`widgetCatalog`, ondata 5 di «Nulla cablato»). Prima entità e campi erano
+ * due liste scritte qui, copia di quelle dell'API: un tipo o un campo del
+ * cliente non c'era mai.
+ */
+export interface WidgetCatalogEntity {
+  entityType: string
   label:      string
-  fieldType:  string
-  enumValues: string[]
+  group:      'itsm' | 'cmdb' | string
+  fields:     FieldMeta[]
+}
+
+/** I campi offerti per il raggruppamento: numerici per medie e somme, gli altri per il conteggio. */
+export function groupByFieldsFor(entity: WidgetCatalogEntity | undefined, metric: string): FieldMeta[] {
+  const numeric = metric === 'avg_field' || metric === 'sum_field'
+  return (entity?.fields ?? []).filter((f) => (numeric ? f.numeric : f.groupable))
 }
 
 /** Le metriche che contano o sommano PER CAMPO: senza il campo non c'è niente da calcolare. */
@@ -170,7 +166,11 @@ export interface WidgetConfigState {
 
   // Computed
   isEdit:       boolean
-  fields:       string[]
+  entities:     WidgetCatalogEntity[]
+  /** Campi per il raggruppamento, secondo la metrica. */
+  groupByFields: FieldMeta[]
+  /** Campi per il filtro. */
+  filterFields: FieldMeta[]
   needsGroupBy: boolean
   fieldMetaMap: Record<string, FieldMeta>
   selectedFilterMeta: FieldMeta | null
@@ -215,39 +215,18 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
   } | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const fields      = ALLOWED_FIELDS[entityType] ?? []
   const needsGroupBy = metricNeedsGroupBy(metric)
 
-  // ── Load field metadata from type definitions ──────────────────────────────
-  const isITIL = isITILEntity(entityType)
-  const { data: itilTypesData } = useQuery(GET_ITIL_TYPES, { skip: !isITIL })
-  const { data: ciTypesData }   = useQuery(GET_CI_TYPES,   { skip: isITIL })
+  // ── Il catalogo del cliente: entità e campi ────────────────────────────────
+  const { data: catalogData } = useQuery<{ widgetCatalog: WidgetCatalogEntity[] }>(GET_WIDGET_CATALOG, { fetchPolicy: 'cache-and-network' })
+  const entities = useMemo(() => catalogData?.widgetCatalog ?? [], [catalogData])
+  const entity = entities.find((e) => e.entityType === entityType)
 
-  const fieldMetaMap = useMemo<Record<string, FieldMeta>>(() => {
-    const map: Record<string, FieldMeta> = {}
-
-    type TypeDef = { name: string; fields: { name: string; label: string; fieldType: string; enumValues?: string[] }[] }
-    const itilTypes = (itilTypesData as { itilTypes?: TypeDef[] } | undefined)?.itilTypes
-    const ciTypes   = (ciTypesData   as { ciTypes?:   TypeDef[] } | undefined)?.ciTypes
-
-    if (isITIL && itilTypes) {
-      const typeDef = itilTypes.find(t => t.name === entityType)
-      if (typeDef) {
-        for (const f of typeDef.fields) {
-          map[f.name] = { name: f.name, label: shippedLabel('field', f.name, f.label), fieldType: f.fieldType, enumValues: f.enumValues ?? [] }
-        }
-      }
-    } else if (!isITIL && ciTypes) {
-      const typeDef = ciTypes.find(t => t.name === entityType)
-      if (typeDef) {
-        for (const f of typeDef.fields) {
-          map[f.name] = { name: f.name, label: shippedLabel('field', f.name, f.label), fieldType: f.fieldType, enumValues: f.enumValues ?? [] }
-        }
-      }
-    }
-
-    return map
-  }, [isITIL, entityType, itilTypesData, ciTypesData])
+  const fieldMetaMap = useMemo<Record<string, FieldMeta>>(() => Object.fromEntries(
+    (entity?.fields ?? []).map((f) => [f.name, { ...f, label: shippedLabel('field', f.name, f.label) }]),
+  ), [entity])
+  const groupByFields = useMemo(() => groupByFieldsFor(entity, metric).map((f) => fieldMetaMap[f.name]!), [entity, metric, fieldMetaMap])
+  const filterFields  = useMemo(() => (entity?.fields ?? []).filter((f) => f.groupable).map((f) => fieldMetaMap[f.name]!), [entity, fieldMetaMap])
 
   const selectedFilterMeta = filterField ? fieldMetaMap[filterField] : null
 
@@ -346,7 +325,9 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
     color, setColor,
     saving,
     isEdit,
-    fields,
+    entities,
+    groupByFields,
+    filterFields,
     needsGroupBy,
     fieldMetaMap,
     selectedFilterMeta,

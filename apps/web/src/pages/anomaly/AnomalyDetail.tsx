@@ -78,6 +78,9 @@ export function DetailPanel({
         <Field label={t('pages.anomalies.entity')} value={`${anomaly.entityName} (${anomalyEntityTypeLabel(t, anomaly)})`} />
         <Field label={t('common.description')} value={anomalyDescription(t, anomaly)} />
         <Field label={t('pages.anomalies.detectedAtCol')} value={formatDateTime(anomaly.detectedAt)} />
+        {anomaly.resolvedReason === 'rule_disabled' && (
+          <Field label={t('pages.anomalies.resolvedReason')} value={t('pages.anomalies.resolvedByRuleDisabled')} />
+        )}
         {anomaly.resolvedAt && (
           <Field label={t('common.resolvedAt')} value={formatDateTime(anomaly.resolvedAt)} />
         )}

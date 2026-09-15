@@ -7,6 +7,10 @@ import { cache } from '../../lib/cache.js'
 import { validateStringLength } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
 import { requireRole } from '../../lib/requireRole.js'
+import {
+  ANOMALY_RULE_SPECS, ANOMALY_SEVERITIES, anomalyRuleOptions, anomalyRuleProblem, loadAnomalyRuleConfigs,
+  saveAnomalyRuleConfig, type AnomalyRuleConfig, type AnomalyRuleOptions,
+} from '../../anomaly/ruleConfig.js'
 
 /** Mirrors `enum ResolutionStatus` in schema-anomaly.ts — re-checked here so the stored status can never be an arbitrary string. */
 export const RESOLUTION_STATUSES = ['resolved', 'false_positive', 'accepted_risk'] as const
@@ -54,7 +58,44 @@ function mapAnomaly(p: Props) {
     resolutionStatus: p['resolution_status']  ? toStr(p['resolution_status'])  : null,
     resolutionNote:   p['resolution_note']    ? toStr(p['resolution_note'])    : null,
     resolvedBy:       p['resolved_by']        ? toStr(p['resolved_by'])        : null,
+    resolvedReason:   p['resolved_reason']    ? toStr(p['resolved_reason'])    : null,
     tenantId:         toStr(p['tenant_id']),
+  }
+}
+
+/** La regola come la espone l'API: con le scelte possibili e il motivo per cui non gira, se c'è. */
+function mapRuleConfig(config: AnomalyRuleConfig, options: AnomalyRuleOptions, openCount: number) {
+  const spec = ANOMALY_RULE_SPECS[config.ruleKey]
+  const problem = anomalyRuleProblem(config, options)
+  const i18n = problem?.extensions['i18n'] as { key: string; params?: Record<string, string | number> } | undefined
+  return {
+    ruleKey: config.ruleKey, enabled: config.enabled, severity: config.severity,
+    ciTypes: config.ciTypes, relations: config.relations, threshold: config.threshold,
+    incidentSeverities: config.incidentSeverities, forbidden: config.forbidden,
+    spec: {
+      ciTypes: spec.ciTypes, relations: spec.relations, incidentSeverities: spec.incidentSeverities, forbidden: spec.forbidden,
+      thresholdMin: spec.threshold?.min ?? null, thresholdMax: spec.threshold?.max ?? null,
+    },
+    isDefault: config.isDefault, updatedAt: config.updatedAt,
+    problem: problem ? {
+      key: i18n?.key ?? 'errors.anomalyRule.invalid',
+      params: Object.entries(i18n?.params ?? {}).map(([key, value]) => ({ key, value: String(value) })),
+      message: problem.message,
+    } : null,
+    openCount,
+  }
+}
+
+async function openCountsByRule(tenantId: string): Promise<Map<string, number>> {
+  const session = getSession()
+  try {
+    const rows = await runQuery<{ ruleKey: string; n: unknown }>(session, `
+      MATCH (a:Anomaly {tenant_id: $tenantId, status: 'open'})
+      RETURN a.rule_key AS ruleKey, count(a) AS n
+    `, { tenantId })
+    return new Map(rows.map((r) => [r.ruleKey, toNumber(r.n)]))
+  } finally {
+    await session.close()
   }
 }
 
@@ -62,6 +103,18 @@ const ANOMALY_ALLOWED_FIELDS = new Set(['title', 'severity', 'status', 'ruleKey'
 
 export const anomalyResolvers = {
   Query: {
+    anomalyRules: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
+      const [configs, options, counts] = await Promise.all([
+        loadAnomalyRuleConfigs(ctx.tenantId), anomalyRuleOptions(ctx.tenantId), openCountsByRule(ctx.tenantId),
+      ])
+      return configs.map((c) => mapRuleConfig(c, options, counts.get(c.ruleKey) ?? 0))
+    },
+
+    anomalyRuleOptions: async (_: unknown, __: unknown, ctx: GraphQLContext) => ({
+      ...await anomalyRuleOptions(ctx.tenantId),
+      severities: [...ANOMALY_SEVERITIES],
+    }),
+
     anomalies: async (
       _: unknown,
       args: { limit?: number; offset?: number; filters?: string; sortField?: string; sortDirection?: string },
@@ -181,6 +234,16 @@ export const anomalyResolvers = {
   },
 
   Mutation: {
+    updateAnomalyRule: async (_: unknown, args: { ruleKey: string; settings: Record<string, unknown> }, ctx: GraphQLContext) => {
+      const before = (await loadAnomalyRuleConfigs(ctx.tenantId)).find((c) => c.ruleKey === args.ruleKey)
+      const saved = await saveAnomalyRuleConfig(ctx.tenantId, args.ruleKey, { ...args.settings })
+      const { isDefault: _b, updatedAt: _bu, ...from } = before ?? ({} as AnomalyRuleConfig)
+      const { isDefault: _s, updatedAt: _su, ...to } = saved
+      void audit(ctx, 'anomaly.rule_updated', 'AnomalyRuleConfig', args.ruleKey, { from, to })
+      const [options, counts] = await Promise.all([anomalyRuleOptions(ctx.tenantId), openCountsByRule(ctx.tenantId)])
+      return mapRuleConfig(saved, options, counts.get(saved.ruleKey) ?? 0)
+    },
+
     resolveAnomaly: async (
       _: unknown,
       args: { id: string; resolutionStatus: string; note: string },

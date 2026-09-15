@@ -5,8 +5,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // esegue le scritture di ogni riga (MERGE nodo, relazioni, commenti, workflow)
 // dentro una executeWrite per riga.
 
+/** Il contatore dei numeri (lib/sequence.ts): ogni MERGE (c:Counter) restituisce il valore successivo. */
+let counter = 0
+const txRun = async (query: string) => {
+  if (query.includes('MERGE (c:Counter') && query.includes('RETURN c.value')) {
+    counter += 1
+    return { records: [{ get: () => counter }] }
+  }
+  return { records: [] }
+}
 const mockTx = {
-  run: vi.fn().mockResolvedValue({ records: [] }),
+  run: vi.fn(txRun),
 }
 
 const mockSession = {
@@ -37,6 +46,7 @@ vi.mock('@opengraphity/neo4j', () => ({
   runQuery:    vi.fn(),
   runQueryOne: vi.fn(),
   closeDriver: vi.fn(),
+  toNumber:    (v: unknown) => Number(v),
 }))
 
 const INCIDENT_STEPS = [
@@ -56,7 +66,7 @@ const KB_STEPS = [
 vi.mock('../../lib/workflowHelpers.js', () => ({
   getWorkflowSteps: vi.fn().mockImplementation(
     async (_s: unknown, _t: string, entityType: string) =>
-      entityType === 'incident' ? INCIDENT_STEPS : KB_STEPS,
+      entityType === 'kb_article' ? KB_STEPS : INCIDENT_STEPS,
   ),
   getInitialStepName: vi.fn().mockResolvedValue('new'),
 }))
@@ -81,7 +91,7 @@ vi.mock('../../lib/logger.js', () => ({
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
-const { parseCsv, importIncidents, importKBArticles } = await import('../ticketImportService.js')
+const { parseCsv, importIncidents, importProblems, importChanges, importServiceRequests, importKBArticles } = await import('../ticketImportService.js')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { workflowEngine } = await import('@opengraphity/workflow')
 
@@ -100,28 +110,32 @@ function mockReads(opts: {
   vi.mocked(runQuery).mockImplementation(async (_s: unknown, query: string) => {
     if (query.includes('MATCH (u:User'))               return (opts.users ?? []) as never
     if (query.includes('MATCH (t:Team'))               return (opts.teams ?? []) as never
-    if (query.includes('i.import_external_id IN'))     return (opts.existing ?? []) as never
-    if (query.includes('i.number IN'))                 return (opts.numbers ?? []) as never
+    if (query.includes('n.import_external_id IN'))     return (opts.existing ?? []) as never
+    if (query.includes('n.number IN'))                 return (opts.numbers ?? []) as never
     if (query.includes('a.import_external_id IN'))     return (opts.kbExisting ?? []) as never
     if (query.includes('RETURN a.slug'))               return (opts.slugs ?? []).map((slug) => ({ slug })) as never
     return [] as never
   })
   vi.mocked(runQueryOne).mockImplementation(async (_s: unknown, query: string) => {
-    if (query.includes("STARTS WITH 'INC'")) return { maxNum: opts.maxNum ?? 0 } as never
+    if (query.includes('STARTS WITH $prefix')) return { maxNum: opts.maxNum ?? 0 } as never
     return null as never
   })
 }
 
-/** Parametri della MERGE (i:Incident ...) per la riga n-esima scritta (0-based). */
-function mergedIncidentParams(n = 0): Record<string, unknown> {
-  const calls = mockTx.run.mock.calls.filter((c) => (c[0] as string).includes('MERGE (i:Incident'))
+/** Parametri della MERGE (n:<label> ...) per la riga n-esima scritta (0-based). */
+function mergedParams(label: string, n = 0): Record<string, unknown> {
+  const calls = mockTx.run.mock.calls.filter((c) => (c[0] as string).includes(`MERGE (n:${label}`))
   expect(calls.length).toBeGreaterThan(n)
   return calls[n]![1] as Record<string, unknown>
 }
+const mergedIncidentParams = (n = 0) => mergedParams('Incident', n)
+/** Le proprietà del tipo scritte sulla riga (severità, descrizione, date…). */
+const incidentProps = (n = 0) => mergedIncidentParams(n)['props'] as Record<string, unknown>
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockTx.run.mockResolvedValue({ records: [] })
+  counter = 0
+  mockTx.run.mockImplementation(txRun)
   mockSession.executeWrite.mockImplementation(
     async (work: (tx: typeof mockTx) => Promise<unknown>) => work(mockTx),
   )
@@ -182,7 +196,7 @@ describe('importIncidents', () => {
     expect(result.errors[0]!.message).toContain('urgentissimo')
     // Il messaggio dice la strada: il vocabolario e la matrice.
     expect(result.errors[0]!.message).toMatch(/Import Severity/)
-    expect(mergedIncidentParams(0)['severity']).toBe('critical')
+    expect(incidentProps(0)['severity']).toBe('critical')
   })
 
   // Verifica «Cosa resta cablato», ondata 1: senza severità non c'è più il
@@ -195,7 +209,7 @@ describe('importIncidents', () => {
     expect(result.created).toBe(1)
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0]).toMatchObject({ row: 1, externalId: 'A-1', messageKey: 'severityRequired' })
-    expect(mergedIncidentParams(0)['severity']).toBe('medium')
+    expect(incidentProps(0)['severity']).toBe('medium')
   })
 
   // Verifica «Cosa resta cablato», ondata 4: una colonna per campo del cliente.
@@ -297,8 +311,13 @@ describe('importIncidents', () => {
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
-  it('number preservato se già suo; generato progressivo se assente', async () => {
+  // Ondata 5 di «Nulla cablato»: il numero generato viene dal contatore dei
+  // ticket (lib/sequence.ts), e il contatore sale oltre i numeri già presenti o
+  // preservati. Prima era max()+1 senza toccare il contatore: il primo incident
+  // aperto dalla pagina dopo un import riprendeva un numero già scritto.
+  it('number preservato se già suo; generato dal contatore se assente, e il contatore sale oltre il più alto', async () => {
     mockReads({ numbers: [{ number: 'INC90000001', externalId: 'A-1' }], maxNum: 7, existing: [{ id: 'inc-1', externalId: 'A-1', number: 'INC90000001' }] })
+    counter = 90000001
 
     const result = await importIncidents([
       { external_id: 'A-1', title: 'T1', number: 'INC90000001', severity: 'med' },
@@ -306,8 +325,13 @@ describe('importIncidents', () => {
     ], ctx)
 
     expect(result.errors).toHaveLength(0)
+    const raise = mockSession.executeWrite.mock.calls.length
+    expect(raise).toBeGreaterThan(0)
     expect(mergedIncidentParams(0)['numberUpdate']).toBe('INC90000001')
-    expect(mergedIncidentParams(1)['number']).toBe('INC00000008')
+    expect(mergedIncidentParams(1)['number']).toBe('INC90000002')
+    const raised = mockTx.run.mock.calls.find((c) => (c[0] as string).includes('CASE WHEN c.value < $value'))
+    expect(raised?.[1]).toMatchObject({ kind: 'incident' })
+    expect(Number((raised![1] as { value: unknown }).value)).toBe(90000001)
   })
 
   it('external_id duplicato nel file → errore sulla seconda riga', async () => {
@@ -362,6 +386,55 @@ describe('importIncidents', () => {
     const repointCalls = mockTx.run.mock.calls.filter((c) => (c[0] as string).includes('wi.current_step <> $stepName'))
     expect(repointCalls).toHaveLength(1)
     expect((repointCalls[0]![1] as Record<string, unknown>)['stepName']).toBe('resolved')
+  })
+})
+
+// ── problem, change, service request (ondata 5 di «Nulla cablato») ──────────────
+
+describe('import dei problem, delle change e delle richieste', () => {
+  it('problem: priorità dal vocabolario del cliente (maiuscole indifferenti), impatto facoltativo; fuori vocabolario o senza priorità → riga in errore', async () => {
+    const result = await importProblems([
+      { external_id: 'P-1', title: 'Disco pieno', priority: 'HIGH', impact: 'medium', workaround: 'pulire /tmp', resolved_at: '2024-03-01T00:00:00Z' },
+      { external_id: 'P-2', title: 'Senza priorità' },
+      { external_id: 'P-3', title: 'Priorità strana', priority: 'altissima' },
+    ], ctx)
+    expect(result.created).toBe(1)
+    expect(result.errors.map((e) => [e.row, e.messageKey])).toEqual([[2, 'columnRequired'], [3, 'vocabularyUnknown']])
+    const params = mergedParams('Problem')
+    expect(params['props']).toMatchObject({ priority: 'high', impact: 'medium', workaround: 'pulire /tmp', resolved_at: '2024-03-01T00:00:00.000Z' })
+    expect(params['number']).toBe('PRB00000001')
+    expect(workflowEngine.createInstance).toHaveBeenCalledWith(mockTx, ctx.tenantId, expect.any(String), 'problem')
+  })
+
+  it('change: tipo obbligatorio dal vocabolario change_type, numero anche in code, rischio 0..100; niente assegnatario', async () => {
+    mockReads({ users: [{ email: 'mario@acme.it', id: 'u-1' }] })
+    const result = await importChanges([
+      { external_id: 'C-1', title: 'Patch kernel', change_type: 'Emergency', why: 'CVE', what: 'kernel', aggregate_risk_score: '72', number: 'CHG00000900', assignee_email: 'mario@acme.it' },
+      { external_id: 'C-2', title: 'Senza tipo' },
+      { external_id: 'C-3', title: 'Rischio fuori scala', change_type: 'normal', aggregate_risk_score: '140' },
+    ], ctx)
+    expect(result.created).toBe(1)
+    expect(result.errors.map((e) => e.messageKey)).toEqual(['columnRequired', 'integerOutOfRange'])
+    const call = mockTx.run.mock.calls.find((c) => (c[0] as string).includes('MERGE (n:Change'))!
+    expect(call[0]).toContain('n.code       = $number')
+    expect(call[1]).toMatchObject({ number: 'CHG00000900', props: { change_type: 'emergency', why: 'CVE', what: 'kernel', aggregate_risk_score: 72 } })
+    expect(mockTx.run.mock.calls.filter((c) => (c[0] as string).includes(':ASSIGNED_TO]'))).toHaveLength(0)
+    expect(workflowEngine.createInstance).toHaveBeenCalledWith(mockTx, ctx.tenantId, expect.any(String), 'change')
+  })
+
+  it('service request: priorità obbligatoria, date di scadenza e completamento, campi del cliente della richiesta', async () => {
+    customDefs = [{ name: 'office', label: 'Sede', fieldType: 'string', required: true, enumValues: [], enumTypeName: null, validationScript: null, visibleToEndUser: false, order: 1 }]
+    const result = await importServiceRequests([
+      { external_id: 'R-1', title: 'Nuovo PC', priority: 'low', due_date: '2024-05-10', office: 'Milano' },
+      { external_id: 'R-2', title: 'Data sbagliata', priority: 'low', due_date: 'domani' },
+    ], ctx)
+    customDefs = []
+    expect(result.created).toBe(1)
+    expect(result.errors).toEqual([expect.objectContaining({ row: 2, messageKey: 'invalidDate' })])
+    const params = mergedParams('ServiceRequest')
+    expect(params['props']).toMatchObject({ priority: 'low', due_date: '2024-05-10T00:00:00.000Z' })
+    expect(params['customProps']).toEqual({ office: 'Milano' })
+    expect(params['number']).toBe('REQ00000001')
   })
 })
 

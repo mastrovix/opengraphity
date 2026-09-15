@@ -35,6 +35,37 @@ export function dashboardSDL(): string {
 
   # ── Custom query-based widgets ─────────────────────────────────────────────
 
+  """
+  Un campo che un widget può usare: raggruppare e filtrare (\`groupable\`) o
+  fare medie e somme (\`numeric\`). Dal metamodello del cliente (ondata 5 di
+  «Nulla cablato»): prima erano liste scritte nell'API e copiate nel web.
+  """
+  type WidgetCatalogField {
+    name:         String!
+    label:        String!
+    fieldType:    String!
+    enumTypeName: String
+    enumValues:   [String!]!
+    groupable:    Boolean!
+    numeric:      Boolean!
+    """Aggiunto dal cliente."""
+    custom:       Boolean!
+  }
+
+  """Un tipo di ticket o di CI su cui si può costruire un widget."""
+  type WidgetCatalogEntity {
+    entityType: String!
+    label:      String!
+    """\`itsm\` o \`cmdb\`: dove sta nel pannello."""
+    group:      String!
+    fields:     [WidgetCatalogField!]!
+  }
+
+  extend type Query {
+    """Le entità e i campi dei widget per questo cliente: la stessa lista con cui l'API valida."""
+    widgetCatalog: [WidgetCatalogEntity!]!
+  }
+
   type CustomWidget {
     id: ID!
     title: String!

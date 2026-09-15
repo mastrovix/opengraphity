@@ -141,7 +141,8 @@
     "domainMatrices": "Domain matrices",
     "organization": "Organization",
     "olaContracts": "OLA / UC",
-    "olaReport": "OLA / UC Report"
+    "olaReport": "OLA / UC Report",
+    "anomalyRules": "Anomaly rules"
   },
   "pages": {
     "incidents": {
@@ -306,7 +307,10 @@
         "high": "High",
         "medium": "Medium",
         "low": "Low"
-      }
+      },
+      "configureRules": "Configure rules",
+      "resolvedReason": "Closed because",
+      "resolvedByRuleDisabled": "The rule was switched off"
     },
     "topology": {
       "title": "Topology Map",
@@ -615,7 +619,7 @@
     },
     "import": {
       "title": "Historical data import",
-      "intro": "Import historical incidents or knowledge base articles from a CSV file. Run a dry-run first to validate the file, then confirm the import.",
+      "intro": "Import historical incidents, problems, changes, service requests or knowledge base articles from a CSV file. Run a dry-run first to validate the file, then confirm the import.",
       "apiKey": "API key",
       "apiKeyPlaceholder": "Paste an API key with write permissions",
       "apiKeyHint": "Import endpoints are authenticated with an API key (X-API-Key header), not your user session. The key is kept in memory only for this session.",
@@ -628,7 +632,7 @@
       "noFile": "No file selected",
       "remove": "Remove",
       "columnsTitle": "Expected columns:",
-      "columnsIncidents": "external_id*, title*, description, severity, status, number, created_at, updated_at, resolved_at, assignee_email, team_name, comments",
+      "columnsIncidents": "external_id*, title*, severity*, description, status, number, created_at, updated_at, resolved_at, assignee_email, team_name, comments",
       "columnsKb": "external_id*, title*, body, category, tags, status, author_name, created_at, published_at",
       "requiredNote": "columns marked with * are required",
       "dryRun": "Dry-run",
@@ -668,7 +672,7 @@
         "unknownStatusDraft": "unknown status «{{status}}» — using «draft»",
         "invalidDate": "{{field}} is not a valid ISO date: «{{value}}»",
         "numberDuplicate": "number appears twice in the file: «{{number}}»",
-        "numberInUse": "number «{{number}}» is already used by another incident",
+        "numberInUse": "number «{{number}}» is already used by another ticket",
         "assigneeNotFound": "assignee_email «{{email}}» not found — assignment skipped",
         "teamNotFound": "team_name «{{team}}» not found — team assignment skipped",
         "commentsInvalidJson": "comments is not valid JSON",
@@ -680,8 +684,18 @@
         "kbNoPublishedStep": "the kb_article workflow has no «published» step — the article stays in «{{step}}»",
         "kbNoWorkflow": "no active kb_article workflow — article imported without a workflow instance",
         "writeFailed": "write failed: {{error}}",
-        "customFieldInvalid": "column «{{field}}»: {{error}}"
-      }
+        "customFieldInvalid": "column «{{field}}»: {{error}}",
+        "columnRequired": "{{column}} is required",
+        "vocabularyUnknown": "{{column}} «{{value}}» is not in the dictionary of this organization ({{allowed}})",
+        "integerOutOfRange": "{{column}} «{{value}}» must be an integer between {{min}} and {{max}}"
+      },
+      "columnsProblems": "external_id*, title*, priority*, impact, urgency, description, workaround, root_cause, status, number, created_at, updated_at, resolved_at, assignee_email, team_name, comments",
+      "columnsChanges": "external_id*, title*, change_type*, priority, why, what, aggregate_risk_score, status, number, created_at, updated_at, completed_at, comments",
+      "columnsRequests": "external_id*, title*, priority*, description, status, number, created_at, updated_at, due_date, completed_at, assignee_email, team_name, comments",
+      "entityProblems": "Problems",
+      "entityChanges": "Changes",
+      "entityRequests": "Service requests",
+      "customColumns": "Plus one column for each custom field:"
     },
     "monitoring": {
       "title": "Platform monitoring",
@@ -1172,17 +1186,6 @@
         "serviceHealth": "Down, degraded, in-maintenance and operational services"
       },
       "entityLabel": "Entity",
-      "entity": {
-        "incident": "Incident",
-        "problem": "Problem",
-        "change": "Change",
-        "serviceRequest": "Service Request",
-        "server": "Server",
-        "application": "Application",
-        "database": "Database",
-        "certificate": "Certificate",
-        "businessApplication": "Business Application"
-      },
       "metricLabel": "Metric",
       "metric": {
         "count": "Count",
@@ -1247,7 +1250,11 @@
       "activeAlarmsStaffOnly": "The alarm console is reserved to staff (administrators, operators and viewers).",
       "serviceHealthStaffOnly": "The Services page is reserved to staff (administrators, operators and viewers).",
       "unknownDataFreeWidget": "Unknown data-free widget type: {{type}}",
-      "serviceHealthHint": "This widget shows the monitored-service counters: no entity or metric to configure."
+      "serviceHealthHint": "This widget shows the monitored-service counters: no entity or metric to configure.",
+      "entityGroupItsm": "Tickets",
+      "entityGroupCmdb": "CMDB",
+      "noGroupableField": "This type has no field to group by.",
+      "noNumericField": "This type has no numeric field: add one in its designer to average or sum it."
     },
     "domainMatrices": {
       "title": "Domain matrices",
@@ -1331,6 +1338,33 @@
         "usingFactory": "Not chosen yet: the factory weight (5) applies.",
         "saved": "Environment weight saved",
         "range": "An integer between 0 and {{max}}."
+      },
+      "impactWeights": {
+        "title": "Change impact analysis",
+        "help": "The impact analysis of a change adds up points for what its CIs touch. The score stops at 100 and its level is the risk band declared above, not a scale of its own.",
+        "usingFactory": "Not chosen yet: the factory weights apply.",
+        "pointsGroup": "Points per factor",
+        "windowsGroup": "Time windows",
+        "points": "points",
+        "days": "days",
+        "productionCI": "CI in the highest-risk environment",
+        "productionCIHelp": "Per CI whose environment has the top score in the environment_risk matrix.",
+        "blastRadiusCI": "CI in the blast radius",
+        "blastRadiusCIHelp": "Per CI reached through the impact relations.",
+        "blastRadiusCap": "Blast radius maximum",
+        "blastRadiusCapHelp": "The blast radius never adds more than this.",
+        "openIncident": "Open incident",
+        "openIncidentHelp": "Per open incident on the CIs of the change.",
+        "failedChange": "Failed change",
+        "failedChangeHelp": "Per recent change on the same CIs that was rejected.",
+        "ongoingChange": "Ongoing change",
+        "ongoingChangeHelp": "Per recent change on the same CIs still in progress.",
+        "recentChangesDays": "Recent changes",
+        "recentChangesDaysHelp": "How far back a change counts as failed or ongoing.",
+        "recentIncidentsDays": "Recently closed incidents",
+        "recentIncidentsDaysHelp": "How far back closed incidents are listed.",
+        "range": "Points are integers from 0 to 100, windows from 1 to 365 days.",
+        "saved": "Impact weights saved"
       }
     },
     "reportBuilder": {
@@ -1928,6 +1962,59 @@
       "supplierTeam": "External team",
       "noInternalTeams": "No team with Sourcing = Internal. Set it on the team page, in Teams.",
       "noExternalTeams": "No team with Sourcing = External. Create the supplier as a team, with Sourcing = External, in Teams."
+    },
+    "anomalyRules": {
+      "title": "Anomaly rules",
+      "subtitle": "Choose what each rule looks at in your CMDB. What a rule looks for — an orphan, a cycle, an isolated cluster — belongs to the product; the choices below apply from the next scan.",
+      "backToAnomalies": "Anomalies",
+      "on": "On",
+      "off": "Off",
+      "openCount_one": "{{count}} open",
+      "openCount_other": "{{count}} open",
+      "hasProblem": "This rule cannot run",
+      "problemSaved": "The saved rule cannot run:",
+      "enabled": "Rule active",
+      "severity": "Severity of the anomaly",
+      "threshold": {
+        "spof": "Minimum direct dependents",
+        "dependency_cycle": "Longest cycle to look for",
+        "isolated_cluster": "Largest isolated cluster",
+        "risk_concentration": "Minimum open incidents"
+      },
+      "candidateTypes": "Start from these CI types",
+      "ciTypes": "CI types",
+      "allTypes": "None selected: every CI type, including those created later.",
+      "someTypes_one": "Only {{count}} CI type.",
+      "someTypes_other": "Only these {{count}} CI types.",
+      "relations": "Relations to follow",
+      "relationsHint": "At least one.",
+      "incidentSeverities": "Incident severities that count as critical",
+      "incidentSeveritiesHint": "Values of the severity dictionary.",
+      "forbidden": "Forbidden relations",
+      "forbiddenHint": "A CI of the first type must not have this relation towards a CI of the second type.",
+      "fromType": "From CI type",
+      "relation": "Relation",
+      "toType": "To CI type",
+      "removeForbidden": "Remove forbidden relation",
+      "addForbidden": "Add forbidden relation",
+      "saved": "Rule saved: it applies from the next scan",
+      "factory": "Factory settings",
+      "updatedAt": "Saved {{date}}",
+      "problemThreshold": "The threshold must be an integer between {{min}} and {{max}}.",
+      "problemRelations": "Choose at least one relation to follow.",
+      "problemSeverities": "Choose at least one incident severity.",
+      "problemForbiddenEmpty": "Declare at least one forbidden relation.",
+      "problemForbiddenIncomplete": "Complete every forbidden relation: from, relation and to.",
+      "problemForbiddenDuplicate": "The same forbidden relation appears twice.",
+      "logic": {
+        "orphan_ci": "A CI with no relation at all in the graph.",
+        "spof": "A CI that many other CIs point to through the chosen relations: if it stops, they are all affected.",
+        "dependency_cycle": "A CI that, following the chosen relations, comes back to itself.",
+        "missing_owner": "A CI without an owner team.",
+        "unauthorized_relation": "A relation you declared as not allowed between two CI types.",
+        "isolated_cluster": "A small group of CIs connected to each other but cut off from the rest of the graph (searched up to 6 steps away).",
+        "risk_concentration": "A CI with many open incidents of the severities you count as critical."
+      }
     }
   },
   "filter": {
@@ -1975,9 +2062,10 @@
       "spof": "CI with {{count}} direct dependents: potential single point of failure",
       "dependency_cycle": "Dependency cycle of length {{length}}",
       "missing_owner": "The CI has no owner team",
-      "unauthorized_relation": "Reversed DEPENDS_ON: Server → Application ({{application}})",
+      "unauthorized_relation": "Forbidden relation {{relation}} towards {{target}}",
       "isolated_cluster": "CI in an isolated cluster: it reaches only {{count}} other CIs",
-      "risk_concentration": "CI with {{count}} open critical incidents"
+      "risk_concentration": "CI with {{count}} open critical incidents",
+      "unauthorized_relation_legacy": "Reversed DEPENDS_ON: Server → Application ({{application}})"
     }
   },
   "notifications": {
@@ -2979,8 +3067,8 @@
     "import": {
       "tenantRequired": "The tenant is missing: the import does not know where to write.",
       "rowsArray": "The rows to import must be a list.",
-      "noWorkflow": "No active incident workflow: the import would not know which state to put them in.",
-      "noInitialStep": "The incident workflow has no initial step: the import would not know where to start.",
+      "noWorkflow": "No active {{entityType}} workflow: the import would not know which state to put the tickets in.",
+      "noInitialStep": "The {{entityType}} workflow has no initial step: the import would not know where to start.",
       "invalidCsv": "Invalid CSV: {{reason}}",
       "noRows": "The CSV has no data rows: a header and at least one row are needed."
     },
@@ -3367,6 +3455,25 @@
       "nameTaken": "«{{name}}» is already a field of this kind of ticket in the product: choose another name.",
       "nameInData": "Some tickets already carry a value called «{{name}}»: choose another name, so your field does not show old data.",
       "nameTypeFixed": "The name and the type of the field «{{name}}» cannot change, because tickets already store values under them. Remove the field and add a new one."
+    },
+    "impactWeights": {
+      "shape": "The impact weights must be an object.",
+      "unknown": "Unknown impact weight(s): {{names}}.",
+      "range": "«{{name}}» must be an integer between {{min}} and {{max}} (got {{got}})."
+    },
+    "anomalyRule": {
+      "shape": "Anomaly rule «{{rule}}»: a setting has the wrong shape ({{field}}).",
+      "duplicate": "Anomaly rule «{{rule}}»: «{{value}}» appears twice.",
+      "severity": "Anomaly rule «{{rule}}»: the severity must be one of {{allowed}}.",
+      "notApplicable": "Anomaly rule «{{rule}}» does not use «{{field}}».",
+      "unknownCIType": "Anomaly rule «{{rule}}»: «{{value}}» is not a CI type of this organization.",
+      "relationsRequired": "Anomaly rule «{{rule}}»: choose at least one relation to follow.",
+      "unknownRelation": "Anomaly rule «{{rule}}»: «{{value}}» is not a relation of this organization.",
+      "threshold": "Anomaly rule «{{rule}}»: the threshold must be an integer between {{min}} and {{max}} (got {{got}}).",
+      "severitiesRequired": "Anomaly rule «{{rule}}»: choose at least one incident severity.",
+      "forbiddenRequired": "Anomaly rule «{{rule}}»: declare at least one forbidden relation.",
+      "unknownRule": "There is no anomaly rule «{{rule}}».",
+      "invalid": "The anomaly rule is not valid."
     }
   },
   "errorBoundary": {

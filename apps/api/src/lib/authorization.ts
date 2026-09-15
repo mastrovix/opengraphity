@@ -72,7 +72,9 @@ export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
   // `preApprovedChangeTypes` NO: la creazione di una change (operatori) dice
   // quali tipi saltano l'approvazione, e lo legge da lì (verifica «Cosa resta
   // cablato», ondata 1). La scrittura resta admin.
-  'domainMatrices', 'changeEnvironmentWeight',
+  'domainMatrices', 'changeEnvironmentWeight', 'impactAnalysisWeights',
+  // Ondata 5 di «Nulla cablato»: le regole di anomalia sono configurazione.
+  'anomalyRules', 'anomalyRuleOptions',
   // La scelta delle severità del portale com'è salvata: configurazione.
   'portalSeverityOptions',
 ])
@@ -111,7 +113,7 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   'createITILCIRelationRule', 'deleteITILCIRelationRule',
   'createEnumType', 'updateEnumType', 'deleteEnumType', 'customizeEnumType',
   'renameEnumValue', 'reorderEnumValues',
-  'updateDomainMatrix', 'updatePreApprovedChangeTypes', 'updateRiskBandThresholds', 'updateChangeEnvironmentWeight',
+  'updateDomainMatrix', 'updatePreApprovedChangeTypes', 'updateRiskBandThresholds', 'updateChangeEnvironmentWeight', 'updateImpactAnalysisWeights',
   'createFieldVisibilityRule', 'updateFieldVisibilityRule', 'deleteFieldVisibilityRule',
   'setFieldRequirement', 'deleteFieldRequirement',
   // cataloghi e questionari
@@ -128,7 +130,7 @@ export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
   //  - incident e richieste: non si cancellano — si chiudono o si annullano con
   //    il loro workflow, e la loro storia resta.
   // Pinnata da graphql/__tests__/ticketDeletionPolicy.test.ts.
-  'runAnomalyScanner', 'retryQueueJob', 'updateReportSchedule', 'deleteChange', 'deleteProblem',
+  'runAnomalyScanner', 'updateAnomalyRule', 'retryQueueJob', 'updateReportSchedule', 'deleteChange', 'deleteProblem',
   // Event Management (alias dei CI, policy del tenant, prova di una sorgente,
   // anteprima del wizard: strumento admin come payloadKeys/sampleInboundPayload).
   // acknowledgeEvent/resolveEvent/linkEventToCI/createIncidentFromEvent/

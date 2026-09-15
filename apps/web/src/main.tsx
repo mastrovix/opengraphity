@@ -34,6 +34,7 @@ function CIDetailRedirect({ typeName }: { typeName: string }) {
 import { CIByIdRedirect } from '@/pages/ci/CIByIdRedirect'
 const WhatIfPage = lazy(() => import('@/pages/analysis/WhatIfPage').then(m => ({ default: m.WhatIfPage })))
 import { AnomalyPage } from '@/pages/anomaly/AnomalyPage'
+import { AnomalyRulesPage } from '@/pages/anomaly/AnomalyRulesPage'
 import { EventsPage } from '@/pages/events/EventsPage'
 import { EventDetailPage } from '@/pages/events/EventDetailPage'
 import { EventPolicyPage } from '@/pages/settings/EventPolicyPage'
@@ -210,6 +211,7 @@ const router = createBrowserRouter([
       { path: 'settings/itil-designer',   element: admin(<ITILTypeDesignerPage />), errorElement: <RouteError /> },
       { path: 'settings/enum-designer',  element: admin(<EnumDesignerPage />),     errorElement: <RouteError /> },
       { path: 'settings/domain-matrices', element: admin(<DomainMatricesPage />),   errorElement: <RouteError /> },
+      { path: 'settings/anomaly-rules',   element: admin(<AnomalyRulesPage />),     errorElement: <RouteError /> },
       { path: 'settings/sync',            element: admin(<SyncPage />),             errorElement: <RouteError /> },
       { path: 'settings/event-policy',    element: admin(<EventPolicyPage />),      errorElement: <RouteError /> },
       { path: 'reports',                   element: <Suspense fallback={<PageLoader />}><ReportsPage /></Suspense>,             errorElement: <RouteError /> },

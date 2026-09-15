@@ -141,7 +141,8 @@
     "domainMatrices": "Matrici di dominio",
     "organization": "Organizzazione",
     "olaContracts": "OLA / UC",
-    "olaReport": "Report OLA / UC"
+    "olaReport": "Report OLA / UC",
+    "anomalyRules": "Regole di anomalia"
   },
   "pages": {
     "incidents": {
@@ -306,7 +307,10 @@
         "high": "Alta",
         "medium": "Media",
         "low": "Bassa"
-      }
+      },
+      "configureRules": "Configura le regole",
+      "resolvedReason": "Chiusa perché",
+      "resolvedByRuleDisabled": "La regola è stata spenta"
     },
     "topology": {
       "title": "Mappa Topologica",
@@ -615,7 +619,7 @@
     },
     "import": {
       "title": "Import dati storici",
-      "intro": "Importa incident storici o articoli della knowledge base da un file CSV. Esegui prima un dry-run per validare il file, poi conferma l'import.",
+      "intro": "Importa incident, problem, change, richieste o articoli della knowledge base storici da un file CSV. Esegui prima un dry-run per validare il file, poi conferma l'import.",
       "apiKey": "Chiave API",
       "apiKeyPlaceholder": "Incolla una API key con permessi di scrittura",
       "apiKeyHint": "Gli endpoint di import sono autenticati con API key (header X-API-Key), non con la sessione utente. La chiave resta in memoria solo per questa sessione.",
@@ -628,7 +632,7 @@
       "noFile": "Nessun file selezionato",
       "remove": "Rimuovi",
       "columnsTitle": "Colonne attese:",
-      "columnsIncidents": "external_id*, title*, description, severity, status, number, created_at, updated_at, resolved_at, assignee_email, team_name, comments",
+      "columnsIncidents": "external_id*, title*, severity*, description, status, number, created_at, updated_at, resolved_at, assignee_email, team_name, comments",
       "columnsKb": "external_id*, title*, body, category, tags, status, author_name, created_at, published_at",
       "requiredNote": "le colonne con * sono obbligatorie",
       "dryRun": "Dry-run",
@@ -668,7 +672,7 @@
         "unknownStatusDraft": "status sconosciuto «{{status}}» — si usa «draft»",
         "invalidDate": "{{field}} non è una data ISO valida: «{{value}}»",
         "numberDuplicate": "number compare due volte nel file: «{{number}}»",
-        "numberInUse": "number «{{number}}» è già usato da un altro incident",
+        "numberInUse": "il numero «{{number}}» è già usato da un altro ticket",
         "assigneeNotFound": "assignee_email «{{email}}» non trovato — assegnazione saltata",
         "teamNotFound": "team_name «{{team}}» non trovato — assegnazione del team saltata",
         "commentsInvalidJson": "comments non è JSON valido",
@@ -680,8 +684,18 @@
         "kbNoPublishedStep": "il workflow kb_article non ha un passo «published» — l'articolo resta in «{{step}}»",
         "kbNoWorkflow": "nessun workflow kb_article attivo — articolo importato senza istanza di workflow",
         "writeFailed": "scrittura fallita: {{error}}",
-        "customFieldInvalid": "colonna «{{field}}»: {{error}}"
-      }
+        "customFieldInvalid": "colonna «{{field}}»: {{error}}",
+        "columnRequired": "{{column}} è obbligatorio",
+        "vocabularyUnknown": "{{column}} «{{value}}» non è nel dizionario di questa organizzazione ({{allowed}})",
+        "integerOutOfRange": "{{column}} «{{value}}» deve essere un intero fra {{min}} e {{max}}"
+      },
+      "columnsProblems": "external_id*, title*, priority*, impact, urgency, description, workaround, root_cause, status, number, created_at, updated_at, resolved_at, assignee_email, team_name, comments",
+      "columnsChanges": "external_id*, title*, change_type*, priority, why, what, aggregate_risk_score, status, number, created_at, updated_at, completed_at, comments",
+      "columnsRequests": "external_id*, title*, priority*, description, status, number, created_at, updated_at, due_date, completed_at, assignee_email, team_name, comments",
+      "entityProblems": "Problem",
+      "entityChanges": "Change",
+      "entityRequests": "Richieste di servizio",
+      "customColumns": "Più una colonna per ogni campo personalizzato:"
     },
     "monitoring": {
       "title": "Monitoraggio della piattaforma",
@@ -1172,17 +1186,6 @@
         "serviceHealth": "Servizi giù, degradati, in manutenzione e operativi"
       },
       "entityLabel": "Entità",
-      "entity": {
-        "incident": "Incident",
-        "problem": "Problem",
-        "change": "Change",
-        "serviceRequest": "Richiesta di servizio",
-        "server": "Server",
-        "application": "Applicazione",
-        "database": "Database",
-        "certificate": "Certificato",
-        "businessApplication": "Applicazione di business"
-      },
       "metricLabel": "Metrica",
       "metric": {
         "count": "Conteggio",
@@ -1247,7 +1250,11 @@
       "activeAlarmsStaffOnly": "La console allarmi è riservata allo staff (amministratori, operatori e visualizzatori).",
       "serviceHealthStaffOnly": "La pagina Servizi è riservata allo staff (amministratori, operatori e visualizzatori).",
       "unknownDataFreeWidget": "Tipo di widget senza dati sconosciuto: {{type}}",
-      "serviceHealthHint": "Questo widget mostra i contatori dei servizi monitorati: nessuna entità o metrica da configurare."
+      "serviceHealthHint": "Questo widget mostra i contatori dei servizi monitorati: nessuna entità o metrica da configurare.",
+      "entityGroupItsm": "Ticket",
+      "entityGroupCmdb": "CMDB",
+      "noGroupableField": "Questo tipo non ha campi per cui raggruppare.",
+      "noNumericField": "Questo tipo non ha campi numerici: aggiungine uno nel suo designer per farne medie o somme."
     },
     "domainMatrices": {
       "title": "Matrici di dominio",
@@ -1331,6 +1338,33 @@
         "usingFactory": "Non ancora scelto: vale il peso di fabbrica (5).",
         "saved": "Peso dell'ambiente salvato",
         "range": "Un intero fra 0 e {{max}}."
+      },
+      "impactWeights": {
+        "title": "Analisi d'impatto della change",
+        "help": "L'analisi d'impatto di una change somma punti per ciò che i suoi CI toccano. Il punteggio si ferma a 100 e il livello è la fascia di rischio dichiarata qui sopra, non una scala propria.",
+        "usingFactory": "Non ancora scelti: valgono i pesi di fabbrica.",
+        "pointsGroup": "Punti per fattore",
+        "windowsGroup": "Finestre di tempo",
+        "points": "punti",
+        "days": "giorni",
+        "productionCI": "CI nell'ambiente più a rischio",
+        "productionCIHelp": "Per ogni CI il cui ambiente ha il punteggio più alto nella matrice environment_risk.",
+        "blastRadiusCI": "CI nel blast radius",
+        "blastRadiusCIHelp": "Per ogni CI raggiunto attraverso le relazioni d'impatto.",
+        "blastRadiusCap": "Massimo del blast radius",
+        "blastRadiusCapHelp": "Il blast radius non aggiunge mai più di così.",
+        "openIncident": "Incident aperto",
+        "openIncidentHelp": "Per ogni incident aperto sui CI della change.",
+        "failedChange": "Change fallita",
+        "failedChangeHelp": "Per ogni change recente sugli stessi CI che è stata respinta.",
+        "ongoingChange": "Change in corso",
+        "ongoingChangeHelp": "Per ogni change recente sugli stessi CI ancora in corso.",
+        "recentChangesDays": "Change recenti",
+        "recentChangesDaysHelp": "Fin dove una change conta come fallita o in corso.",
+        "recentIncidentsDays": "Incident chiusi di recente",
+        "recentIncidentsDaysHelp": "Fin dove si elencano gli incident chiusi.",
+        "range": "I punti sono interi da 0 a 100, le finestre da 1 a 365 giorni.",
+        "saved": "Pesi dell'impatto salvati"
       }
     },
     "reportBuilder": {
@@ -1928,6 +1962,59 @@
       "supplierTeam": "Team esterno",
       "noInternalTeams": "Nessun team con Sourcing = Internal. Lo imposti nella pagina del team, in Team.",
       "noExternalTeams": "Nessun team con Sourcing = External. Crea il fornitore come team, con Sourcing = External, in Team."
+    },
+    "anomalyRules": {
+      "title": "Regole di anomalia",
+      "subtitle": "Scegli su cosa guarda ogni regola nella tua CMDB. Cosa cerca una regola — un orfano, un ciclo, un cluster isolato — è del prodotto; le scelte qui sotto valgono dal prossimo scan.",
+      "backToAnomalies": "Anomalie",
+      "on": "Attiva",
+      "off": "Spenta",
+      "openCount_one": "{{count}} aperta",
+      "openCount_other": "{{count}} aperte",
+      "hasProblem": "Questa regola non può girare",
+      "problemSaved": "La regola salvata non può girare:",
+      "enabled": "Regola attiva",
+      "severity": "Gravità dell'anomalia",
+      "threshold": {
+        "spof": "Dipendenti diretti minimi",
+        "dependency_cycle": "Ciclo più lungo da cercare",
+        "isolated_cluster": "Cluster isolato più grande",
+        "risk_concentration": "Incident aperti minimi"
+      },
+      "candidateTypes": "Parti da questi tipi di CI",
+      "ciTypes": "Tipi di CI",
+      "allTypes": "Nessuno scelto: tutti i tipi di CI, anche quelli creati dopo.",
+      "someTypes_one": "Solo {{count}} tipo di CI.",
+      "someTypes_other": "Solo questi {{count}} tipi di CI.",
+      "relations": "Relazioni da seguire",
+      "relationsHint": "Almeno una.",
+      "incidentSeverities": "Severità degli incident che contano come critiche",
+      "incidentSeveritiesHint": "Valori del dizionario delle severità.",
+      "forbidden": "Relazioni vietate",
+      "forbiddenHint": "Un CI del primo tipo non deve avere questa relazione verso un CI del secondo tipo.",
+      "fromType": "Dal tipo di CI",
+      "relation": "Relazione",
+      "toType": "Al tipo di CI",
+      "removeForbidden": "Togli la relazione vietata",
+      "addForbidden": "Aggiungi relazione vietata",
+      "saved": "Regola salvata: vale dal prossimo scan",
+      "factory": "Impostazioni di fabbrica",
+      "updatedAt": "Salvata il {{date}}",
+      "problemThreshold": "La soglia deve essere un intero fra {{min}} e {{max}}.",
+      "problemRelations": "Scegli almeno una relazione da seguire.",
+      "problemSeverities": "Scegli almeno una severità degli incident.",
+      "problemForbiddenEmpty": "Dichiara almeno una relazione vietata.",
+      "problemForbiddenIncomplete": "Completa ogni relazione vietata: da, relazione e verso.",
+      "problemForbiddenDuplicate": "La stessa relazione vietata compare due volte.",
+      "logic": {
+        "orphan_ci": "Un CI senza nessuna relazione nel grafo.",
+        "spof": "Un CI verso cui puntano molti altri CI con le relazioni scelte: se si ferma, sono tutti coinvolti.",
+        "dependency_cycle": "Un CI che, seguendo le relazioni scelte, torna su sé stesso.",
+        "missing_owner": "Un CI senza team owner.",
+        "unauthorized_relation": "Una relazione che hai dichiarato non ammessa fra due tipi di CI.",
+        "isolated_cluster": "Un piccolo gruppo di CI collegati fra loro ma staccati dal resto del grafo (cercato fino a 6 passi di distanza).",
+        "risk_concentration": "Un CI con molti incident aperti delle severità che conti come critiche."
+      }
     }
   },
   "filter": {
@@ -1975,9 +2062,10 @@
       "spof": "CI con {{count}} dipendenti diretti: potenziale single point of failure",
       "dependency_cycle": "Ciclo di dipendenze di lunghezza {{length}}",
       "missing_owner": "Il CI non ha un team proprietario",
-      "unauthorized_relation": "DEPENDS_ON rovesciata: Server → Application ({{application}})",
+      "unauthorized_relation": "Relazione vietata {{relation}} verso {{target}}",
       "isolated_cluster": "CI in un cluster isolato: raggiunge solo {{count}} altri CI",
-      "risk_concentration": "CI con {{count}} incident critici aperti"
+      "risk_concentration": "CI con {{count}} incident critici aperti",
+      "unauthorized_relation_legacy": "DEPENDS_ON rovesciata: Server → Application ({{application}})"
     }
   },
   "notifications": {
@@ -2979,8 +3067,8 @@
     "import": {
       "tenantRequired": "Manca il cliente: l'importazione non sa dove scrivere.",
       "rowsArray": "Le righe da importare devono essere una lista.",
-      "noWorkflow": "Nessun workflow attivo per gli incident: l'importazione non saprebbe in che stato metterli.",
-      "noInitialStep": "Il workflow degli incident non ha un passo iniziale: l'importazione non saprebbe da dove partire.",
+      "noWorkflow": "Nessun workflow attivo per {{entityType}}: l'importazione non saprebbe in che stato mettere i ticket.",
+      "noInitialStep": "Il workflow di {{entityType}} non ha un passo iniziale: l'importazione non saprebbe da dove partire.",
       "invalidCsv": "CSV non valido: {{reason}}",
       "noRows": "Il CSV non ha righe di dati: serve un'intestazione e almeno una riga."
     },
@@ -3367,6 +3455,25 @@
       "nameTaken": "«{{name}}» è già un campo di questo tipo di ticket nel prodotto: scegli un altro nome.",
       "nameInData": "Alcuni ticket portano già un valore chiamato «{{name}}»: scegli un altro nome, così il tuo campo non mostra dati vecchi.",
       "nameTypeFixed": "Il nome e il tipo del campo «{{name}}» non si possono cambiare, perché i ticket hanno già valori salvati con quel nome. Togli il campo e aggiungine uno nuovo."
+    },
+    "impactWeights": {
+      "shape": "I pesi dell'impatto devono essere un oggetto.",
+      "unknown": "Pesi dell'impatto sconosciuti: {{names}}.",
+      "range": "«{{name}}» deve essere un intero fra {{min}} e {{max}} (ricevuto {{got}})."
+    },
+    "anomalyRule": {
+      "shape": "Regola di anomalia «{{rule}}»: un'impostazione ha una forma sbagliata ({{field}}).",
+      "duplicate": "Regola di anomalia «{{rule}}»: «{{value}}» compare due volte.",
+      "severity": "Regola di anomalia «{{rule}}»: la gravità deve essere una fra {{allowed}}.",
+      "notApplicable": "La regola di anomalia «{{rule}}» non usa «{{field}}».",
+      "unknownCIType": "Regola di anomalia «{{rule}}»: «{{value}}» non è un tipo di CI di questa organizzazione.",
+      "relationsRequired": "Regola di anomalia «{{rule}}»: scegli almeno una relazione da seguire.",
+      "unknownRelation": "Regola di anomalia «{{rule}}»: «{{value}}» non è una relazione di questa organizzazione.",
+      "threshold": "Regola di anomalia «{{rule}}»: la soglia deve essere un intero fra {{min}} e {{max}} (ricevuto {{got}}).",
+      "severitiesRequired": "Regola di anomalia «{{rule}}»: scegli almeno una severità degli incident.",
+      "forbiddenRequired": "Regola di anomalia «{{rule}}»: dichiara almeno una relazione vietata.",
+      "unknownRule": "Non esiste la regola di anomalia «{{rule}}».",
+      "invalid": "La regola di anomalia non è valida."
     }
   },
   "errorBoundary": {

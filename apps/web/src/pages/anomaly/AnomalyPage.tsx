@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
-import { ShieldAlert, ShieldCheck, Radar, RefreshCw } from 'lucide-react'
+import { ShieldAlert, ShieldCheck, Radar, RefreshCw, SlidersHorizontal } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
@@ -19,6 +20,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { DetailPanel } from './AnomalyDetail'
 import type { Anomaly, AnomalyStats, AnomalyScanStatus } from '@/types/anomaly'
 import { StatTile, StatTileGrid } from '@/components/ui/StatTile'
+import { useMe } from '@/hooks/useMe'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -48,7 +50,12 @@ export function anomalyTitle(t: (k: string) => string, a: Pick<Anomaly, 'ruleKey
 
 export function anomalyDescription(t: (k: string, o?: Record<string, string>) => string, a: Pick<Anomaly, 'ruleKey' | 'description' | 'descriptionParams'>): string {
   if (!a.descriptionParams || !RULE_LABEL_KEYS[a.ruleKey]) return a.description
-  return t(`anomaly.hits.${a.ruleKey}`, Object.fromEntries(a.descriptionParams.map((p) => [p.key, p.value])))
+  const params: Record<string, string> = Object.fromEntries(a.descriptionParams.map((p) => [p.key, p.value]))
+  // Prima dell'ondata 5 la relazione vietata era una sola e il parametro si chiamava `application`.
+  if (a.ruleKey === 'unauthorized_relation' && params['target'] === undefined) {
+    return t('anomaly.hits.unauthorized_relation_legacy', params)
+  }
+  return t(`anomaly.hits.${a.ruleKey}`, params)
 }
 
 export const RULE_LABEL_KEYS: Record<string, string> = {
@@ -136,6 +143,7 @@ function AnomalyEmptyState({ scanStatus }: { scanStatus: AnomalyScanStatus | nul
 
 export function AnomalyPage() {
   const { t } = useTranslation()
+  const { isAdmin } = useMe()
   const [selected, setSelected]         = useState<Anomaly | null>(null)
 
   const columns: ColumnDef<Anomaly>[] = [
@@ -336,6 +344,19 @@ export function AnomalyPage() {
             {loading ? '—' : t('pages.anomalies.count', { count: total })}
           </p>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {isAdmin && (
+          <Link
+            to="/settings/anomaly-rules"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 6,
+              border: `1px solid ${colors.border}`, background: 'var(--surface)', textDecoration: 'none',
+              fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slate,
+            }}
+          >
+            <SlidersHorizontal size={14} aria-hidden="true" /> {t('pages.anomalies.configureRules')}
+          </Link>
+        )}
         <button
           type="button"
           onClick={() => void handleRunScanner()}
@@ -351,6 +372,7 @@ export function AnomalyPage() {
           <RefreshCw size={14} style={{ animation: scannerLoading ? 'spin 1s linear infinite' : undefined }} />
           {t('pages.anomalies.runScanner')}
         </button>
+        </div>
       </div>
 
       {/* Stats */}

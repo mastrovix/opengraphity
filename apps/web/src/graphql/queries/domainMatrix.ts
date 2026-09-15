@@ -58,6 +58,12 @@ export const GET_RISK_BAND_THRESHOLDS = gql`
 `
 
 /** Il peso dell'ambiente nel punteggio dell'assessment della change (era 5 nel codice). */
+export const GET_IMPACT_ANALYSIS_WEIGHTS = gql`
+  query GetImpactAnalysisWeights {
+    impactAnalysisWeights { productionCI blastRadiusCI blastRadiusCap openIncident failedChange ongoingChange recentChangesDays recentIncidentsDays isDefault }
+  }
+`
+
 export const GET_CHANGE_ENVIRONMENT_WEIGHT = gql`
   query GetChangeEnvironmentWeight {
     changeEnvironmentWeight { weight isDefault }

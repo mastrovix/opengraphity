@@ -11,10 +11,37 @@ import { Input, Select, FieldLabel } from '@/components/ui/FormControls'
 import { apiUrl } from '@/lib/apiBase'
 import { useConfirm } from '@/hooks/useConfirm'
 import { colors, palette } from '@/lib/tokens'
+import { useTicketCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 
 // ── Types (REST contract /api/v1/import/*) ────────────────────────────────────
 
-type EntityType = 'incidents' | 'kb-articles'
+type EntityType = 'incidents' | 'problems' | 'changes' | 'service-requests' | 'kb-articles'
+
+/**
+ * Le rotte di import e le colonne di ciascuna. Ondata 5 di «Nulla cablato»:
+ * prima si importavano solo incident e articoli; ora anche problem, change e
+ * richieste storiche, e per i ticket il pannello elenca anche le colonne dei
+ * campi del cliente (una per campo, col nome del campo).
+ */
+export const IMPORT_ENTITIES: ReadonlyArray<{ value: EntityType; labelKey: string; columnsKey: string; ticketType: 'incident' | 'problem' | 'change' | 'service_request' | null }> = [
+  { value: 'incidents',        labelKey: 'pages.import.entityIncidents', columnsKey: 'pages.import.columnsIncidents', ticketType: 'incident' },
+  { value: 'problems',         labelKey: 'pages.import.entityProblems',  columnsKey: 'pages.import.columnsProblems',  ticketType: 'problem' },
+  { value: 'changes',          labelKey: 'pages.import.entityChanges',   columnsKey: 'pages.import.columnsChanges',   ticketType: 'change' },
+  { value: 'service-requests', labelKey: 'pages.import.entityRequests',  columnsKey: 'pages.import.columnsRequests',  ticketType: 'service_request' },
+  { value: 'kb-articles',      labelKey: 'pages.import.entityKb',        columnsKey: 'pages.import.columnsKb',        ticketType: null },
+]
+
+function CustomFieldColumns({ ticketType }: { ticketType: 'incident' | 'problem' | 'change' | 'service_request' }) {
+  const { t } = useTranslation()
+  const { defs } = useTicketCustomFieldDefs(ticketType)
+  if (defs.length === 0) return null
+  return (
+    <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '4px 0 0', lineHeight: 1.5 }}>
+      {t('pages.import.customColumns')}{' '}
+      <code style={{ fontSize: 'var(--font-size-table)' }}>{defs.map((d) => d.name).join(', ')}</code>
+    </p>
+  )
+}
 
 interface ImportIssue {
   row:        number
@@ -127,6 +154,7 @@ export function ImportTab() {
     void runImport(false)
   }
 
+  const entity = IMPORT_ENTITIES.find((e) => e.value === entityType)!
   const canDryRun  = Boolean(file && apiKey) && !running
   // Import unlocks only after a dry-run on the current inputs (report cleared on change).
   const canImport  = Boolean(file && apiKey) && !running && reportKind === 'dry' && report !== null
@@ -177,8 +205,7 @@ export function ImportTab() {
             onChange={e => { setEntityType(e.target.value as EntityType); resetReport() }}
             style={{ maxWidth: 420 }}
           >
-            <option value="incidents">{t('pages.import.entityIncidents')}</option>
-            <option value="kb-articles">{t('pages.import.entityKb')}</option>
+            {IMPORT_ENTITIES.map((e) => <option key={e.value} value={e.value}>{t(e.labelKey)}</option>)}
           </Select>
         </div>
 
@@ -216,10 +243,11 @@ export function ImportTab() {
           <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '6px 0 0', lineHeight: 1.5 }}>
             {t('pages.import.columnsTitle')}{' '}
             <code style={{ fontSize: 'var(--font-size-table)' }}>
-              {entityType === 'incidents' ? t('pages.import.columnsIncidents') : t('pages.import.columnsKb')}
+              {t(entity.columnsKey)}
             </code>
             {' — '}{t('pages.import.requiredNote')}
           </p>
+          {entity.ticketType && <CustomFieldColumns ticketType={entity.ticketType} />}
         </div>
 
         {/* Actions */}

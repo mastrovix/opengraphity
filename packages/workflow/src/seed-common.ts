@@ -120,7 +120,7 @@ function assertStepMetadata(defName: string, stepName: string, metadata: Workflo
   if (!metadata) return {}
   for (const key of Object.keys(metadata)) {
     if (!STEP_METADATA_KEY_RE.test(key) || RESERVED_STEP_KEYS.has(key)) {
-      throw new Error(`Seed "${defName}", step "${stepName}": chiave metadata non ammessa "${key}"`)
+      throw new Error(`Seed "${defName}", step "${stepName}": metadata key not allowed "${key}"`)
     }
   }
   return metadata
