@@ -10,6 +10,7 @@ import { Input, Select } from '@/components/ui/FormControls'
 import { inputS, labelS, btnSecondary, btnDanger, btnPrimary as sharedBtnPrimary } from '@/components/ui/styles'
 import { toast } from 'sonner'
 import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT } from '@/graphql/queries'
+import { dictionaryList } from '@/lib/dictionaryList'
 import {
   CREATE_ENUM_TYPE,
   UPDATE_ENUM_TYPE,
@@ -228,8 +229,10 @@ function OwnerBadge({ shipped }: { shipped: boolean }) {
 
 // ── EnumEditor ────────────────────────────────────────────────────────────────
 
-function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
+function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomized }: {
   enumType:     EnumType
+  /** Copia del cliente di un vocabolario spedito (U-17): l'originale non è più nell'elenco. */
+  customizedFromShipped: boolean
   onDeleted:    () => void
   onCustomized: (copy: EnumType) => void
 }) {
@@ -466,6 +469,12 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
           </button>
         )}
       </div>
+
+      {customizedFromShipped && (
+        <p data-testid="dictionary-customized-note" style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: 0 }}>
+          {t('pages.dictionary.customizedFromShipped')}
+        </p>
+      )}
 
       {(shipped || e.isSystem) && (
         <p style={{
@@ -753,7 +762,8 @@ export function EnumDesignerPage() {
     fetchPolicy: 'cache-and-network',
   })
 
-  const allEnums: EnumType[] = data?.enumTypes ?? []
+  // U-17: un vocabolario per nome, quello che vale (la copia del cliente nasconde l'originale).
+  const allEnums = dictionaryList(data?.enumTypes ?? [])
 
   // Group by scope (use i18n scope labels)
   const SCOPE_LABELS: Record<string, string> = {
@@ -762,7 +772,7 @@ export function EnumDesignerPage() {
     cmdb:   t('pages.dictionary.scopeCmdb'),
   }
 
-  const groups: Record<string, EnumType[]> = {}
+  const groups: Record<string, typeof allEnums> = {}
   for (const e of allEnums) {
     const g = SCOPE_LABELS[e.scope] ?? e.scope
     if (!groups[g]) groups[g] = []
@@ -871,6 +881,7 @@ export function EnumDesignerPage() {
             <EnumEditor
               key={selected.id}
               enumType={selected}
+              customizedFromShipped={selected.customizedFromShipped}
               onDeleted={() => setSelectedId(null)}
               onCustomized={(copy) => setSelectedId(copy.id)}
             />

@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../context.js'
 import { logger } from './logger.js'
+import { noteAuditWritten } from './auditScope.js'
 
 export async function audit(
   ctx: GraphQLContext,
@@ -11,6 +12,9 @@ export async function audit(
   details?: Record<string, unknown>,
   ipAddress?: string,
 ): Promise<void> {
+  // Sincrono, prima di ogni await: il registro delle mutation lo legge alla
+  // fine del resolver per sapere che questa mutation ha già la sua voce.
+  noteAuditWritten()
   logger.debug({ action, entityType, entityId, tenantId: ctx.tenantId, userId: ctx.userId }, '[audit] writing entry')
   const session = getSession(undefined, 'WRITE')
   try {

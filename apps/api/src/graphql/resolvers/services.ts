@@ -24,6 +24,7 @@ import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
+import { logger } from '../../lib/logger.js'
 import { requirePermission } from '../../lib/permissions.js'
 import { mapIncident, mapTeam } from '../../lib/mappers.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
@@ -729,7 +730,24 @@ async function removeServiceMapExclusion(_: unknown, args: { id: string; expecte
   requirePermission(ctx, 'config.services')
   const r = await removeServiceMapExclusionService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, ciId: args.ciId, actorId: ctx.userId })
   void audit(ctx, 'service_map.exclusion_removed', 'ServiceMap', args.id, configAudit(r, { ciId: args.ciId }))
-  return requireServiceMap(args.id, ctx.tenantId)
+  const map = await requireServiceMap(args.id, ctx.tenantId)
+  // Giro UI del 15 set 2026 · U-2: su una mappa viva il CI riammesso tornava
+  // solo con «Sincronizza ora» o con la passata di sicurezza (fino a 30 min).
+  // Riammettere è il gesto che chiede di riaverlo: si sincronizza subito.
+  if (!map.autoSync || r.status === 'paused') return map
+  try {
+    const synced = await syncServiceMapService(ctx.tenantId, args.id, 'manual', ctx.userId)
+    void audit(ctx, 'service_map.synced', 'ServiceMap', args.id, {
+      trigger: 'readmitted', version: synced.version, added: synced.added, removed: synced.removed, moved: synced.moved,
+      changed: synced.changed, skipped: synced.skipped, note: synced.note,
+    })
+    return synced.changed ? requireServiceMap(args.id, ctx.tenantId) : map
+  } catch (err) {
+    // La riammissione è già scritta: non la si annulla. Detto ad alta severità;
+    // la passata di sicurezza recupera entro 30 minuti.
+    logger.error({ err, module: 'services', tenantId: ctx.tenantId, mapId: args.id, ciId: args.ciId }, 'Exclusion removed, but the live map could NOT be synchronized right away (the periodic pass will catch up)')
+    return map
+  }
 }
 
 // ── Mappa viva (ondata 5) ────────────────────────────────────────────────────

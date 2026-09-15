@@ -202,6 +202,24 @@ describe('CIDetailPage', () => {
     expect(within(panel).getByRole('button', { name: /DEPENDS ON \(1\)/ })).toBeInTheDocument()
     expect(within(panel).getByRole('button', { name: /HOSTED ON \(1\)/ })).toBeInTheDocument()
   })
+  /** Giro UI del 15 set 2026 · U-27: un gruppo obbligatorio non offre «— not assigned —» (l'API lo rifiuterebbe, CM-6). */
+  it('U-27: gruppo obbligatorio → niente «not assigned»; se manca lo dice e chiede di sceglierne uno', async () => {
+    const types = structuredClone(ciTypesMock.result) as { data: { ciTypes: Array<Record<string, unknown>> } }
+    types.data.ciTypes[0]!['systemRelations'] = [
+      { __typename: 'CISystemRelation', id: 'sr-own', name: 'ownerGroup', label: 'Owner Group', relationshipType: 'OWNED_BY', targetEntity: 'Team', required: true, order: 1 },
+      { __typename: 'CISystemRelation', id: 'sr-sup', name: 'supportGroup', label: 'Support Group', relationshipType: 'SUPPORTED_BY', targetEntity: 'Team', required: false, order: 2 },
+    ]
+    const list = mocks().map((m) => (m === ciTypesMock ? { ...ciTypesMock, result: types } : m))
+      .map((m) => (m.request.query === teamsMock().request.query ? teamsMock([{ id: 'tm-1', name: 'Sistemi e Server' }]) : m))
+    renderPage({ mocks: list })
+    const owner = await screen.findByRole('combobox', { name: T('pages.cmdb.ownerGroup') })
+    expect(within(owner).queryByRole('option', { name: T('pages.ci.notAssignedOption') })).toBeNull()
+    expect(within(owner).getByRole('option', { name: T('pages.ci.requiredGroupOption') })).toBeDisabled()
+    expect(owner).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByTestId('ci-required-group-missing')).toBeInTheDocument()
+    const support = screen.getByRole('combobox', { name: T('pages.ci.supportGroup') })
+    expect(within(support).getByRole('option', { name: T('pages.ci.notAssignedOption') })).toBeInTheDocument()
+  })
 })
 
 describe('CIDetailPage — sezione Salute (monitoraggio)', () => {

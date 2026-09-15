@@ -375,6 +375,22 @@ dice quale dipendenza è giù.
 
 ---
 
+### Audit Log: ogni mutation riuscita lascia una voce
+
+Le mutation scrivono la loro voce con un nome di dominio (`incident.resolved`,
+`service_map.synced`…). Quelle che non la scrivono sono coperte dal plugin
+`graphql/auditMutationsPlugin.ts`: a fine richiesta, per ogni mutation riuscita
+che non ha chiamato `audit()`, scrive `mutation.<nome>` con gli argomenti
+(chiavi con segreti oscurate — `secret`, `token`, `password`, `apiKey`,
+`webhookUrl`, `privateKey`… — stringhe oltre 500 caratteri e liste oltre 50
+elementi troncate) e `source: audit-registry`. Il conteggio è per richiesta
+(`lib/auditScope.ts`, AsyncLocalStorage aperto in `server.ts`). Sono escluse
+solo le mutation personali o di sola lettura elencate in
+`AUDIT_REGISTRY_SKIPPED`. Se nel log compare
+`Audit registry: the request has no audit scope`, la richiesta non è passata
+da `runInAuditScope`: è un difetto di cablaggio, non un caso normale.
+Il test `auditMutationsPlugin.test.ts` tiene il meccanismo.
+
 ## 7. Event Management
 
 Gli allarmi dei sistemi di monitoraggio (Alertmanager, Grafana, Zabbix,
@@ -1148,12 +1164,23 @@ status `active` o `draft`), `reevaluateServiceMap`, `setServiceMapStatus` (con
 `expectedVersion`: rimettere in servizio una mappa — da `paused` o da `draft` —
 la rivaluta subito),
 `updateServiceImpactRules`, `updateServiceMapNodes`,
-`applyServiceMapProposal`, `removeServiceMapExclusion`,
+`applyServiceMapProposal`, `removeServiceMapExclusion` (su una mappa viva
+sincronizza anche subito: un CI riammesso non aspetta la passata periodica;
+se la sincronizzazione fallisce la riammissione resta e il log dice
+`Exclusion removed, but the live map could NOT be synchronized right away`),
 `setServiceMapAutoSync` (interruttore mappa viva/congelata, con
 `expectedVersion`), `syncServiceMap` (sincronizza ora: restituisce
 `ServiceMapSyncResult` — mappa aggiornata, `added`/`removed`/`moved`,
 `skipped` + `reason` quando il tetto dei 500 ha rifiutato tutto), `deleteServiceMap`
 (mappa e cronologia; il servizio e i CI restano) solo admin.
+
+**Cronologia: voci di configurazione.** Esclusione, riammissione,
+sincronizzazione, regole e ambito scrivono una voce `rules_changed` o
+`map_changed` con `previous_health` null e salute e punteggio della mappa
+**prima** della rivalutazione; la rivalutazione che segue scrive la sua voce
+solo se la salute cambia. La pagina le presenta come «Mappa modificata. Salute
+in quel momento … (punteggio N, prima della rivalutazione)», non come un cambio
+di salute.
 
 **Cosa fa il motore quando…** (una riga per caso; il dettaglio è nelle
 sottosezioni che seguono):

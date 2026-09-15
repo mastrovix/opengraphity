@@ -31,7 +31,8 @@ describe('assign_team', () => {
   it('su un incident passa dal servizio (workflow, nota, evento), non da una scrittura nuda', async () => {
     const r = await executeActions([{ type: 'assign_team', params: { team_id: 'sd' } }], ctx('incident'))
     expect(r[0]!.success).toBe(true)
-    expect(assignIncidentToTeam).toHaveBeenCalledWith('x-1', 'sd', { tenantId: 't1', userId: 'system' })
+    // U-8: la nota del servizio porta il nome della regola come autore
+    expect(assignIncidentToTeam).toHaveBeenCalledWith('x-1', 'sd', { tenantId: 't1', userId: 'system', actorLabel: 'Hardware al Service Desk' })
     expect(runQuery).not.toHaveBeenCalled()
   })
   it('su un problem usa l\'assegnazione dei ticket', async () => {
@@ -57,7 +58,7 @@ describe('create_comment', () => {
 describe('assign_user', () => {
   it('incident → il servizio (gruppo prima, poi un suo membro)', async () => {
     await executeActions([{ type: 'assign_user', params: { user_id: 'u-9' } }], ctx('incident'))
-    expect(assignIncidentToUser).toHaveBeenCalledWith('x-1', 'u-9', { tenantId: 't1', userId: expect.any(String) })
+    expect(assignIncidentToUser).toHaveBeenCalledWith('x-1', 'u-9', { tenantId: 't1', userId: expect.any(String), actorLabel: 'Hardware al Service Desk' })
   })
   it('problem → il controllo di appartenenza al gruppo prima della scrittura', async () => {
     await executeActions([{ type: 'assign_user', params: { user_id: 'u-9' } }], ctx('problem'))

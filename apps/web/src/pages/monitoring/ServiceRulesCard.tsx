@@ -31,6 +31,7 @@ import { Input, Select, FieldLabel } from '@/components/ui/FormControls'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { UPDATE_SERVICE_IMPACT_RULES } from '@/graphql/mutations'
+import { toast } from 'sonner'
 import { colors, palette } from '@/lib/tokens'
 import { ServiceImpactPreviewLine } from './ServiceImpactPreviewLine'
 import {
@@ -157,6 +158,8 @@ export function ServiceRulesCard({ map, canEdit, onReload }: Props) {
     try {
       const res = await update({ variables: { id: map.id, expectedVersion: map.version, rules: form } })
       if (!res.data?.updateServiceImpactRules) throw new Error(t('monitoring.services.detail.noResult', { operation: 'updateServiceImpactRules' }))
+      // Giro UI del 15 set 2026 · U-5: il salvataggio riuscito non dava nessun riscontro.
+      toast.success(t('toast.services.rulesSaved', { version: res.data.updateServiceImpactRules.rules.version }))
     } catch (e) {
       setSaveError(errorMessage(e))
     }

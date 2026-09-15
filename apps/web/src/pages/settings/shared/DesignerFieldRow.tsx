@@ -19,6 +19,13 @@ interface DesignerFieldRowProps {
   onDelete:         () => void
   editLabel?:       string
   systemFieldLabel?: string
+  /**
+   * Al posto dei valori del vocabolario: da dove vengono DAVVERO i valori del
+   * campo. Giro UI del 15 set 2026 · U-13: lo «Status» delle richieste elencava
+   * il vocabolario `status_service_request`, mentre lo stato di un ticket è il
+   * passo del suo workflow.
+   */
+  valuesNote?:      string
 }
 
 export function DesignerFieldRow({
@@ -27,6 +34,7 @@ export function DesignerFieldRow({
   onDelete,
   editLabel = 'Edit',
   systemFieldLabel = 'System field',
+  valuesNote,
 }: DesignerFieldRowProps) {
   return (
     <div
@@ -56,7 +64,10 @@ export function DesignerFieldRow({
             {field.required && (
               <span style={{ marginLeft: 6, color: 'var(--color-danger)' }}>required</span>
             )}
-            {field.fieldType === 'enum' && field.enumValues && field.enumValues.length > 0 && (
+            {valuesNote !== undefined && (
+              <span style={{ marginLeft: 6 }} data-testid="field-values-note">{valuesNote}</span>
+            )}
+            {valuesNote === undefined && field.fieldType === 'enum' && field.enumValues && field.enumValues.length > 0 && (
               <span style={{ marginLeft: 6 }}>[{field.enumValues.join(', ')}]</span>
             )}
           </div>

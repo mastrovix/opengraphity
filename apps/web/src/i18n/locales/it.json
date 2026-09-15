@@ -549,6 +549,7 @@
       "invalidName": "Il nome deve essere in snake_case (es. \"my_enum\")",
       "shippedBadge": "Spedito col prodotto",
       "ownBadge": "Tuo",
+      "customizedFromShipped": "Personalizzato dal dizionario spedito col prodotto: questa copia vale per te al suo posto. Cancellandola torna quello spedito.",
       "shippedNote": "Questo dizionario è spedito col prodotto: è lo stesso per tutti i clienti, quindi non si modifica qui. Con «Personalizza» ne crei la tua copia, con gli stessi valori: da quel momento vale la tua, e solo per te.",
       "shippedValuesNote": "I valori di un dizionario spedito col prodotto non si cambiano qui: personalizzalo e modifica la tua copia.",
       "customizeButton": "Personalizza",
@@ -1076,6 +1077,8 @@
       "notes": "Note",
       "supportGroup": "Gruppo Support",
       "notAssignedOption": "— non assegnato —",
+      "requiredGroupOption": "— obbligatorio: scegli un gruppo —",
+      "requiredGroupMissing": "{{group}} è obbligatorio per questo tipo di CI e manca: scegli un gruppo.",
       "membersShownOfTotal": "{{shown}} di {{total}}",
       "membersTruncated": "Elenco troncato: il server restituisce al massimo {{shown}} membri su {{total}}. Restringi i criteri del gruppo per vederli tutti.",
       "membersMap": "Mappa Membri",
@@ -1327,6 +1330,9 @@
         "usingFactory": "Stai usando le soglie di fabbrica (≤30, ≤60, il resto). Salvando le rendi esplicite.",
         "band": "Fascia",
         "upTo": "Fino a",
+        "bandN": "Fascia {{n}}",
+        "upToBand": "Fino a — fascia {{band}}",
+        "upToN": "Fino a — fascia {{n}}",
         "lastMustBe100": "L'ultima fascia deve arrivare a 100: un punteggio più alto resterebbe senza fascia.",
         "ascending": "Le soglie devono crescere, dalla fascia più bassa alla più alta.",
         "saved": "Fasce di rischio salvate.",
@@ -1666,7 +1672,8 @@
       "approveOnBehalfBody": "Non fai parte di {{team}}: come admin approveresti a suo nome, e l'approvazione resta registrata col tuo nome.",
       "beforeWindowTitle": "Prima della finestra pianificata",
       "beforeWindowBody": "La finestra di rilascio pianificata comincia il {{when}}. Portare adesso la change a «{{step}}»?",
-      "beforeWindowConfirm": "Sì, adesso"
+      "beforeWindowConfirm": "Sì, adesso",
+      "riskNotAssessed": "Rischio non ancora valutato: priorità dal tipo di change"
     },
     "reportSchedule": {
       "lastRun": "Ultima esecuzione: {{date}}",
@@ -1978,6 +1985,8 @@
     },
     "createTicket": {
       "searchByName": "Cerca per nome...",
+      "ciTypesExcluded_one": "I CI di tipo {{types}} non vengono proposti: quel tipo è escluso per questo tipo di ticket.",
+      "ciTypesExcluded_other": "I CI dei tipi {{types}} non vengono proposti: quei tipi sono esclusi per questo tipo di ticket.",
       "searchTeam": "Cerca un team per nome...",
       "derivedPriority": "Priorità (calcolata)",
       "noSla": {
@@ -2528,8 +2537,9 @@
     "enumRef": "Enum di riferimento",
     "selectEnum": "— Seleziona enum —",
     "advancedScripts": "Script avanzati (validazione, visibilità, default)",
-    "systemFields_one": "CAMPO DI SISTEMA ({{count}}) — non modificabile",
-    "systemFields_other": "CAMPI DI SISTEMA ({{count}}) — non modificabili",
+    "systemFields_one": "CAMPO DI SISTEMA ({{count}}) — nome, tipo e obbligatorietà sono fissi; etichetta, ordine e script si modificano",
+    "systemFields_other": "CAMPI DI SISTEMA ({{count}}) — nome, tipo e obbligatorietà sono fissi; etichetta, ordine e script si modificano",
+    "statusFromWorkflow": "valori = i passi del workflow: {{steps}}",
     "customFields_one": "CAMPO PERSONALIZZATO ({{count}})",
     "customFields_other": "CAMPI PERSONALIZZATI ({{count}})",
     "noCustomFields": "Nessun campo personalizzato. Clicca \"+ Aggiungi campo\" per aggiungerne uno.",
@@ -2551,7 +2561,11 @@
       "summary": "Tipi di CI esclusi: {{selected}}.",
       "notLinked": "Questo tipo di ticket non si collega ai CI.",
       "loadError": "Non è stato possibile leggere le esclusioni: {{error}}"
-    }
+    },
+    "deleteFieldValues_one": "{{count}} ticket ha un valore in questo campo: viene cancellato insieme al campo (i valori di prima restano nell'Audit Log).",
+    "deleteFieldValues_other": "{{count}} ticket hanno un valore in questo campo: vengono cancellati insieme al campo (i valori di prima restano nell'Audit Log).",
+    "deleteFieldNoValues": "Nessun ticket ha un valore in questo campo.",
+    "deleteFieldCountFailed": "Non è stato possibile contare i ticket che usano il campo: {{error}}"
   },
   "ciTypeDesigner": {
     "chain": "Catena",
@@ -2577,6 +2591,8 @@
       "intro": "Insieme al tipo vengono cancellati:",
       "nothing": "Non viene cancellato nient'altro: il tipo non ha CI e niente lo cita.",
       "blocked": "«{{label}}» non si può eliminare: {{cis}} suoi CI sono collegati a {{tickets}} ticket, anche chiusi.",
+      "blockedByServiceMaps_one": "«{{label}}» non si può eliminare: le sue relazioni sono seguite dalla mappa di servizio «{{maps}}». Togli prima il tipo di relazione da quella mappa (dettaglio del servizio → Modifica ambito).",
+      "blockedByServiceMaps_other": "«{{label}}» non si può eliminare: le sue relazioni sono seguite da {{count}} mappe di servizio ({{maps}}). Togli prima il tipo di relazione da quelle mappe (dettaglio del servizio → Modifica ambito).",
       "unavailable": "Non è stato possibile calcolare cosa cancellerebbe l'eliminazione: {{error}}",
       "cis_one": "{{count}} CI di questo tipo, con le sue relazioni",
       "cis_other": "{{count}} CI di questo tipo, con le loro relazioni",
@@ -2704,6 +2720,7 @@
     "noTeamMembers": "Il team non ha membri: aggiungili in Team.",
     "commentByMonitoring": "Monitoraggio",
     "commentByAutomation": "Automazione: {{name}}",
+    "commentByAutomationUnnamed": "Automazione",
     "commentInternal": "Nota interna",
     "commentPublic": "Risposta pubblica",
     "commentVisibility": "Chi può leggere questo commento",
@@ -4157,7 +4174,8 @@
       "syncSkipped": "Sincronizzazione rifiutata: {{reason}}. Non è stato cambiato nulla.",
       "syncSkippedNoReason": "il motore non ha dato un motivo",
       "componentExcluded": "{{name}} escluso: è fuori dalla mappa e non verrà più riproposto",
-      "scopeChanged": "Ambito salvato (versione {{version}})"
+      "scopeChanged": "Ambito salvato (versione {{version}})",
+      "rulesSaved": "Regole salvate (versione {{version}})"
     },
     "user": {
       "teamsUpdated": "Team aggiornati"
@@ -4170,6 +4188,10 @@
     }
   },
   "components": {
+    "colorField": {
+      "token": "Colore del tema ({{token}}): segue il tema",
+      "unreadable": "non è un colore che il selettore sa mostrare"
+    },
     "reportChart": {
       "unavailable": "Grafico non disponibile con i parametri selezionati",
       "computeError": "Errore nel calcolo della sezione",
@@ -5303,6 +5325,10 @@
         "showAll": "Mostra tutte",
         "loadFailed": "Impossibile caricare la cronologia completa: {{error}}",
         "noPrevious": "nessuna salute precedente",
+        "configTrigger": {
+          "rules_changed": "Regole modificate. Salute in quel momento <health/> (punteggio {{score}}, prima della rivalutazione).",
+          "map_changed": "Mappa modificata. Salute in quel momento <health/> (punteggio {{score}}, prima della rivalutazione)."
+        },
         "causesMore_one": "{{causes}}, +{{count}} altra",
         "causesMore_other": "{{causes}}, +{{count}} altre",
         "trigger": {
@@ -5382,7 +5408,7 @@
         },
         "saveFailed": "Regole non salvate: {{error}}. Se un altro amministratore — o la sincronizzazione automatica — ha modificato la mappa, ricarica e riprova.",
         "reload": "Ricarica",
-        "openIncidentNote": "Un incident si apre da solo quando la salute raggiunge la soglia e si chiude quando il servizio torna sotto."
+        "openIncidentNote": "Un incident si apre da solo quando la salute raggiunge la soglia e si risolve solo quando il servizio torna operativo: sotto la soglia ma ancora degradato, resta aperto."
       },
       "componentsEdit": {
         "changed_one": "{{count}} componente modificato",

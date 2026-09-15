@@ -164,6 +164,14 @@ export const GET_CI_TYPE_DELETION_IMPACT = gql`
     ciTypeDeletionImpact(id: $id) {
       cis ticketCIs tickets ticketCIExclusions groupsUpdated groupsDeleted fieldVisibilityRules
       fieldRequirementRules businessRules autoTriggers customWidgets reportSections assessmentQuestionLinks
+      blockingServiceMaps
     }
+  }
+`
+
+/** Quanti ticket hanno un valore nel campo personalizzato (giro UI del 15 set · U-28): la conferma di cancellazione lo dice. */
+export const GET_ITIL_FIELD_VALUE_COUNT = gql`
+  query ITILFieldValueCount($typeId: ID!, $fieldId: ID!) {
+    itilFieldValueCount(typeId: $typeId, fieldId: $fieldId)
   }
 `

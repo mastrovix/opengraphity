@@ -58,6 +58,7 @@ import { SuppressedAlarmsSection } from '@/pages/events/CorrelatedEventsSection'
 import { colors, palette } from '@/lib/tokens'
 import { withLocalizedLabel, localizedLabel } from '@/lib/localizedLabel'
 import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
 
 interface ImpactedCIRow {
   ci: { id: string; name: string; type: string | null; environment: string | null }
@@ -68,6 +69,7 @@ interface ImpactedCIRow {
 
 export function ChangeDetailPage() {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const confirm = useConfirm()
   const { labelOf: typeLabel } = useItilTypeLabels()
   const { id } = useParams<{ id: string }>()
@@ -437,8 +439,8 @@ export function ChangeDetailPage() {
               {affected.map((a) => (
                 <div key={a.ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-body)' }}>
                   <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{a.ci.name}</span>
-                  {a.ci.type && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{a.ci.type}</span>}
-                  {a.ci.environment && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{a.ci.environment}</span>}
+                  {a.ci.type && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.typeLabel(a.ci.type)}</span>}
+                  {a.ci.environment && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.environmentLabel(a.ci.environment)}</span>}
                   {currentStep === wfInitialStep?.name && (
                     <button
                       type="button"
@@ -495,8 +497,8 @@ export function ChangeDetailPage() {
                             )}
                           </span>
                           <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{b.ci.name}</span>
-                          <span style={{ width: 80 }}>{b.ci.type ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{b.ci.type}</span> : null}</span>
-                          <span style={{ width: 80 }}>{b.ci.environment ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{b.ci.environment}</span> : null}</span>
+                          <span style={{ width: 80 }}>{b.ci.type ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.typeLabel(b.ci.type)}</span> : null}</span>
+                          <span style={{ width: 80 }}>{b.ci.environment ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.environmentLabel(b.ci.environment)}</span> : null}</span>
                           <span style={{ width: 60 }}><span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 4, backgroundColor: b.distance === 1 ? 'var(--color-danger-bg)' : b.distance === 2 ? palette.orange.bg : colors.slateBg, color: b.distance === 1 ? 'var(--color-danger)' : b.distance === 2 ? palette.warning.text : 'var(--color-slate)' }}>{b.distance} hop</span></span>
                           <span style={{ width: 140, fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{b.affectedBy.name}</span>
                           {currentStep === wfInitialStep?.name && (

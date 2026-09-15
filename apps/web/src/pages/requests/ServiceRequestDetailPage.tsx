@@ -41,7 +41,7 @@ import { showError } from '@/lib/showError'
 interface WorkflowTransition { toStep: string; label: string; requiresInput: boolean; inputField: string | null }
 interface ServiceRequest {
   customFields: CustomFieldValueView[]
-  id: string; title: string; description: string | null
+  id: string; number: string; title: string; description: string | null
   status: string; priority: string; dueDate: string | null
   createdAt: string; updatedAt: string; completedAt: string | null
   requestedBy: { id: string; name: string; email: string } | null
@@ -179,6 +179,8 @@ export function ServiceRequestDetailPage() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
         <div>
+          {/* Giro UI del 15 set 2026 · U-12: il numero non compariva da nessuna parte (incident, problem e change lo mostrano). */}
+          <div data-testid="request-number" style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 2 }}>{sr.number}</div>
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>{sr.title}</h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <Pill bg={stColor.bg} color={stColor.color}>{stepLabel(sr.status)}</Pill>
@@ -268,6 +270,7 @@ export function ServiceRequestDetailPage() {
           </div>
 
           <SectionCard collapsible={false} defaultOpen title={t('detail.sections.details')}>
+            <DetailField label={t('detail.ticketNumber')} value={<span style={{ fontWeight: 600 }}>{sr.number}</span>} />
             <DetailField label="SLA" value={sr.slaStatus ? <SlaBadge sla={sr.slaStatus} /> : t('pages.serviceRequestDetail.noSla')} />
             <DetailField label={t('detail.requester')} value={sr.requestedBy?.name ?? null} />
             {sr.completedAt ? (

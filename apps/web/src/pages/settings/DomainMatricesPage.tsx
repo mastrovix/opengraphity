@@ -32,6 +32,7 @@ import { colors } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
 import { ImpactWeightsCard } from './ImpactWeightsCard'
 import { showError } from '@/lib/showError'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 
 // ── Tipi ──────────────────────────────────────────────────────────────────────
 
@@ -70,8 +71,23 @@ const warnBox: React.CSSProperties = {
 
 // ── Una matrice ───────────────────────────────────────────────────────────────
 
+/**
+ * Giro UI del 15 set 2026 · U-20: righe, colonne e tendine mostravano i valori
+ * interni («high», «risk_band»). Qui le etichette del Dizionario; un valore che
+ * il vocabolario non ha resta com'è (è il dato vero, e la pagina lo segnala).
+ */
+function useVocabularyText() {
+  const { labelOf, vocabularyLabelOf } = useDomainVocabularies()
+  return {
+    vocab: (name: string) => vocabularyLabelOf(name) || name,
+    value: (vocabulary: string, value: string) => labelOf(vocabulary, value) || value,
+  }
+}
+
 function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
   const { t } = useTranslation()
+  const text = useVocabularyText()
+  const [inVocab, colVocab] = [matrix.inputs[0] ?? '', matrix.inputs[1] ?? '']
   const [draft, setDraft] = useState<Draft>({})
 
   // Quando il server ristampa la matrice (salvataggio, o vocabolario cambiato)
@@ -126,7 +142,7 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
         {valueOf(cell) !== '' && !matrix.outputValues.includes(valueOf(cell)) && (
           <option value={valueOf(cell)} disabled>{t('pages.domainMatrices.outOfVocabulary', { value: valueOf(cell) })}</option>
         )}
-        {matrix.outputValues.map((v) => <option key={v} value={v}>{v}</option>)}
+        {matrix.outputValues.map((v) => <option key={v} value={v}>{text.value(matrix.output, v)}</option>)}
       </Select>
     )
   }
@@ -171,21 +187,21 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
         {twoDimensions ? (
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <caption style={{ captionSide: 'top', textAlign: 'left', ...th }}>
-              {t('pages.domainMatrices.tableCaption', { rows: matrix.inputs[0], cols: matrix.inputs[1] })}
+              {t('pages.domainMatrices.tableCaption', { rows: text.vocab(inVocab), cols: text.vocab(colVocab) })}
             </caption>
             <thead>
               <tr>
-                <th scope="col" style={th}>{matrix.inputs[0]}</th>
-                {colValues.map((c) => <th key={c} scope="col" style={th}>{c}</th>)}
+                <th scope="col" style={th}>{text.vocab(inVocab)}</th>
+                {colValues.map((c) => <th key={c} scope="col" style={th}>{text.value(colVocab, c)}</th>)}
               </tr>
             </thead>
             <tbody>
               {rowValues.map((r) => (
                 <tr key={r}>
-                  <th scope="row" style={{ ...th, fontWeight: 500 }}>{r}</th>
+                  <th scope="row" style={{ ...th, fontWeight: 500 }}>{text.value(inVocab, r)}</th>
                   {colValues.map((c) => (
                     <td key={c} style={td}>
-                      {cellSelect(byKey.get(`${r}|${c}`), `${matrix.inputs[0]!} ${r}, ${matrix.inputs[1]!} ${c}`)}
+                      {cellSelect(byKey.get(`${r}|${c}`), `${text.vocab(inVocab)} ${text.value(inVocab, r)}, ${text.vocab(colVocab)} ${text.value(colVocab, c)}`)}
                     </td>
                   ))}
                 </tr>
@@ -198,15 +214,15 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead>
               <tr>
-                <th scope="col" style={th}>{matrix.inputs[0]}</th>
-                <th scope="col" style={th}>{matrix.output}</th>
+                <th scope="col" style={th}>{text.vocab(inVocab)}</th>
+                <th scope="col" style={th}>{text.vocab(matrix.output)}</th>
               </tr>
             </thead>
             <tbody>
               {(matrix.inputValues[0] ?? []).map((v) => (
                 <tr key={v}>
-                  <th scope="row" style={{ ...th, fontWeight: 500 }}>{v}</th>
-                  <td style={td}>{cellSelect(byKey.get(v), `${matrix.inputs[0]!} ${v}`)}</td>
+                  <th scope="row" style={{ ...th, fontWeight: 500 }}>{text.value(inVocab, v)}</th>
+                  <td style={td}>{cellSelect(byKey.get(v), `${text.vocab(inVocab)} ${text.value(inVocab, v)}`)}</td>
                 </tr>
               ))}
             </tbody>
@@ -242,6 +258,7 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
 
 function PreApprovedChangeTypesCard() {
   const { t } = useTranslation()
+  const text = useVocabularyText()
   const { data, loading, error } = useQuery<{ preApprovedChangeTypes: { types: string[]; vocabulary: string[] } }>(
     GET_PRE_APPROVED_CHANGE_TYPES, { fetchPolicy: 'cache-and-network' },
   )
@@ -280,7 +297,7 @@ function PreApprovedChangeTypesCard() {
                   onChange={() => toggle(value)}
                   style={{ accentColor: 'var(--color-brand)' }}
                 />
-                {value}
+                {text.value('change_type', value)}
               </label>
             ))}
           </div>
@@ -310,6 +327,7 @@ interface RiskBandThreshold { band: string; upTo: number }
 
 function RiskBandsCard() {
   const { t } = useTranslation()
+  const text = useVocabularyText()
   const { data, loading, error } = useQuery<{ riskBandThresholds: { thresholds: RiskBandThreshold[]; vocabulary: string[]; isDefault: boolean } }>(
     GET_RISK_BAND_THRESHOLDS, { fetchPolicy: 'cache-and-network' },
   )
@@ -361,10 +379,10 @@ function RiskBandsCard() {
                   value={row.band}
                   onChange={(ev) => setRow(i, { band: ev.target.value })}
                   style={{ flex: 1 }}
-                  aria-label={t('pages.domainMatrices.riskBands.band')}
+                  aria-label={t('pages.domainMatrices.riskBands.bandN', { n: i + 1 })}
                 >
                   <option value="">—</option>
-                  {saved.vocabulary.map((v) => <option key={v} value={v}>{v}</option>)}
+                  {saved.vocabulary.map((v) => <option key={v} value={v}>{text.value('risk_band', v)}</option>)}
                 </Select>
                 <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight }}>
                   {t('pages.domainMatrices.riskBands.upTo')}
@@ -374,11 +392,14 @@ function RiskBandsCard() {
                   value={String(row.upTo)}
                   onChange={(ev) => setRow(i, { upTo: Number(ev.target.value) })}
                   style={{ width: 90 }}
-                  aria-label={t('pages.domainMatrices.riskBands.upTo')}
+                  // U-20: tre campi con lo stesso nome «Up to»: ognuno dice di quale fascia è.
+                  aria-label={row.band
+                    ? t('pages.domainMatrices.riskBands.upToBand', { band: text.value('risk_band', row.band) })
+                    : t('pages.domainMatrices.riskBands.upToN', { n: i + 1 })}
                 />
                 <button type="button" onClick={() => removeRow(i)}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', display: 'flex' }}
-                  aria-label={t('pages.domainMatrices.riskBands.removeBand', { band: row.band })}>
+                  aria-label={t('pages.domainMatrices.riskBands.removeBand', { band: row.band ? text.value('risk_band', row.band) : String(i + 1) })}>
                   <X size={13} aria-hidden="true" />
                 </button>
               </div>

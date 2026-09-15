@@ -24,6 +24,8 @@ export interface CITypeDeletionImpactData {
   customWidgets:           number
   reportSections:          number
   assessmentQuestionLinks: number
+  /** Mappe di servizio che seguono una relazione dichiarata solo da questo tipo: la cancellazione è rifiutata (U-16). */
+  blockingServiceMaps:     string[]
 }
 
 /** Le voci nell'ordine in cui si leggono: prima i dati, poi la configurazione. */

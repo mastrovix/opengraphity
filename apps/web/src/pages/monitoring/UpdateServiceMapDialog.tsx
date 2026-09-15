@@ -107,6 +107,14 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
   const goneIds = new Set(proposal?.removed.map((n) => n.ci.id) ?? [])
   const autoIncluded = map.nodes.filter((n) => n.addedBy === 'auto' && !goneIds.has(n.ci.id))
 
+  /**
+   * Quanti componenti escono dalla mappa: i «togli» e gli esclusi che c'erano
+   * già. Giro UI del 15 set 2026 · U-1: escludere un componente incluso lo
+   * toglie, e riepilogo e toast dicevano «−0».
+   */
+  const inMap = new Set(map.nodes.map((n) => n.ci.id))
+  const leaving = remove.size + [...exclude].filter((id) => inMap.has(id)).length
+
   // «Includi» ed «escludi» si escludono a vicenda sullo stesso componente.
   const chooseAdd = (id: string) => { setAdd((s) => toggle(s, id)); setExclude((s) => { const n = new Set(s); n.delete(id); return n }) }
   const chooseExclude = (id: string) => { setExclude((s) => toggle(s, id)); setAdd((s) => { const n = new Set(s); n.delete(id); return n }) }
@@ -118,7 +126,7 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
       // `proposal.version`: la versione da cui gli elenchi sono stati letti.
       const res = await apply({ variables: { id: map.id, expectedVersion: proposal.version, add: [...add], exclude: [...exclude], remove: [...remove] } })
       if (!res.data?.applyServiceMapProposal) throw new Error(t('monitoring.services.detail.noResult', { operation: 'applyServiceMapProposal' }))
-      toast.success(t('toast.services.mapUpdated', { added: add.size, removed: remove.size, excluded: exclude.size }))
+      toast.success(t('toast.services.mapUpdated', { added: add.size, removed: leaving, excluded: exclude.size }))
       onClose()
     } catch (e) { setActionError(errorMessage(e)) }
   }
@@ -130,7 +138,10 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
       const res = await readmit({ variables: { id: map.id, expectedVersion: proposal.version, ciId } })
       if (!res.data?.removeServiceMapExclusion) throw new Error(t('monitoring.services.detail.noResult', { operation: 'removeServiceMapExclusion' }))
       toast.success(t('toast.services.exclusionRemoved', { name }))
-      // Il CI torna proponibile: la proposta va riletta.
+      // Il CI torna proponibile: la proposta va riletta. La versione nuova è
+      // opera nostra (su una mappa viva l'API sincronizza anche subito, U-2):
+      // non è «la mappa è cambiata mentre il dialogo era aperto».
+      refetchedFor.current = res.data.removeServiceMapExclusion.version
       await refetch()
     } catch (e) { setActionError(errorMessage(e)) }
   }
@@ -273,7 +284,7 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
 
         {proposal && (
           <p role="status" data-testid="proposal-summary" style={{ margin: 0, fontSize: 'var(--font-size-body)', fontWeight: 600, color: nothingChosen ? colors.slateLight : palette.warning.text }}>
-            {t('monitoring.services.update.summary', { add: add.size, remove: remove.size, exclude: exclude.size })}
+            {t('monitoring.services.update.summary', { add: add.size, remove: leaving, exclude: exclude.size })}
           </p>
         )}
 

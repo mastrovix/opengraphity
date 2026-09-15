@@ -58,7 +58,10 @@ export function ChangeInfoCard({
             <SeverityBadge value={change.priority} />
           </span>
         )}
-        {change.aggregateRiskScore != null && <RiskBadge score={change.aggregateRiskScore} />}
+        {/* Giro UI del 15 set · U-24: senza rischio aggregato (assessment non finito) si dice, invece di tacere accanto a una priorità provvisoria. */}
+        {change.aggregateRiskScore != null
+          ? <RiskBadge score={change.aggregateRiskScore} />
+          : <span data-testid="risk-not-assessed" style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{t('pages.changeDetail.riskNotAssessed')}</span>}
         {currentStep === initialStepName && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 180 }}>
             <div style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden', flex: 1 }}>

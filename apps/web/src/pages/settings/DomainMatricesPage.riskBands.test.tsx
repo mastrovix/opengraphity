@@ -32,9 +32,11 @@ describe('DomainMatricesPage — fasce di rischio', () => {
     }
     const { user } = renderWithProviders(<DomainMatricesPage />, { route: '/settings/domain-matrices', mocks: [read, save], showWarnings: false })
 
-    const upTo = await screen.findAllByRole('spinbutton', { name: 'Up to' })
-    await user.clear(upTo[1]!)
-    await user.type(upTo[1]!, '90')
+    // U-20: ogni soglia ha il nome della sua fascia (erano tre «Up to» indistinguibili).
+    const medium = await screen.findByRole('spinbutton', { name: 'Up to — medium band' })
+    expect(screen.getAllByRole('spinbutton').map((i) => i.getAttribute('aria-label'))).toEqual(['Up to — low band', 'Up to — medium band', 'Up to — high band'])
+    await user.clear(medium)
+    await user.type(medium, '90')
     // Il pulsante «Save» della card delle fasce: l'ultimo dei «Save» della pagina, quello dopo i campi soglia.
     const saveButtons = screen.getAllByRole('button', { name: 'Save' })
     await user.click(saveButtons[saveButtons.length - 1]!)

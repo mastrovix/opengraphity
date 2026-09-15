@@ -11,6 +11,7 @@ import { enumOptionLabel } from './shared/designerStyles'
 import type { ITILField, FieldFormState, EnumTypeOption } from './useITILTypeDesigner'
 import { emptyForm, fieldToForm } from './useITILTypeDesigner'
 import { colors } from '@/lib/tokens'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 
 // ── FieldEditor (inline) ──────────────────────────────────────────────────────
 
@@ -203,6 +204,11 @@ export function ITILTypeFields({
   const offerEndUser = typeName === 'incident' || typeName === 'service_request'
   const { t } = useTranslation()
   const systemFields = fields.filter((f) => f.isSystem).sort((a, b) => a.order - b.order)
+  // U-13: lo stato di un ticket è il passo del suo workflow, non il vocabolario agganciato al campo.
+  const workflow = useWorkflowSteps(typeName ?? '')
+  const statusNote = workflow.steps.length > 0
+    ? t('itilDesigner.statusFromWorkflow', { steps: workflow.steps.map((st) => workflow.labelFor(st.name)).join(', ') })
+    : undefined
   const customFields = fields.filter((f) => !f.isSystem).sort((a, b) => a.order - b.order)
 
   return (
@@ -243,6 +249,7 @@ export function ITILTypeFields({
                 onDelete={() => onDeleteField(typeId, f.id)}
                 editLabel={t('common.edit')}
                 systemFieldLabel={t('itilDesigner.systemField')}
+                valuesNote={f.name === 'status' ? statusNote : undefined}
               />
             )
           ))}

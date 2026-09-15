@@ -175,7 +175,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   },
   {
     anyOf: ['config.metamodel'],
-    query: ['domainMatrices', 'changeEnvironmentWeight', 'impactAnalysisWeights', 'ciTypeDeletionImpact'],
+    query: ['domainMatrices', 'changeEnvironmentWeight', 'impactAnalysisWeights', 'ciTypeDeletionImpact', 'itilFieldValueCount'],
     mutation: [
       'createCIType', 'updateCIType', 'deleteCIType', 'addCIField', 'updateCIField', 'removeCIField', 'addCIRelation', 'removeCIRelation',
       'updateITILType', 'createITILField', 'updateITILField', 'deleteITILField', 'setTicketCIExclusions',

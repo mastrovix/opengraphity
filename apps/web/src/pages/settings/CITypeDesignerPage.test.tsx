@@ -186,8 +186,8 @@ describe('ruolo nella mappa di un servizio (A-10)', () => {
 // quindi la conferma lo elenca PRIMA.
 
 describe('eliminare un tipo: la conferma dice cosa va via, e solo un ticket la blocca', () => {
-  const ZERO = { __typename: 'CITypeDeletionImpact', cis: 0, ticketCIs: 0, tickets: 0, ticketCIExclusions: 0, groupsUpdated: 0, groupsDeleted: 0, fieldVisibilityRules: 0, fieldRequirementRules: 0, businessRules: 0, autoTriggers: 0, customWidgets: 0, reportSections: 0, assessmentQuestionLinks: 0 }
-  const impactMock = (over: Record<string, number>): GqlMock => ({
+  const ZERO = { __typename: 'CITypeDeletionImpact', cis: 0, ticketCIs: 0, tickets: 0, ticketCIExclusions: 0, groupsUpdated: 0, groupsDeleted: 0, fieldVisibilityRules: 0, fieldRequirementRules: 0, businessRules: 0, autoTriggers: 0, customWidgets: 0, reportSections: 0, assessmentQuestionLinks: 0, blockingServiceMaps: [] as string[] }
+  const impactMock = (over: Record<string, number | string[]>): GqlMock => ({
     request: { query: GET_CI_TYPE_DELETION_IMPACT, variables: { id: 't-own' } },
     result: { data: { ciTypeDeletionImpact: { ...ZERO, ...over } } },
   })
@@ -223,6 +223,13 @@ describe('eliminare un tipo: la conferma dice cosa va via, e solo un ticket la b
     const r = await open([impactMock({ cis: 5, ticketCIs: 3, tickets: 4 })])
     await r.user.click(screen.getByRole('button', { name: /Delete the type/ }))
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('«Load Balancer» cannot be deleted: 3 of its CIs are linked to 4 ticket(s), closed ones included.'))
+    expect(screen.queryByTestId('ci-type-deletion-impact')).not.toBeInTheDocument()
+  })
+
+  it('U-16: una mappa di servizio che segue le sue relazioni lo blocca, e lo si dice prima della conferma', async () => {
+    const r = await open([impactMock({ cis: 1, blockingServiceMaps: ['Portale clienti'] })])
+    await r.user.click(screen.getByRole('button', { name: /Delete the type/ }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('its relationships are followed by service map «Portale clienti»')))
     expect(screen.queryByTestId('ci-type-deletion-impact')).not.toBeInTheDocument()
   })
 })

@@ -69,6 +69,7 @@ vi.mock('../../../lib/rulesEngine.js', () => ({ invalidateRulesCache: vi.fn() })
 const SERVICE_MAP_FOLLOWS = vi.hoisted(() => ({ error: null as Error | null }))
 vi.mock('../../../lib/serviceMapRelationUsage.js', () => ({
   assertNoServiceMapFollows: vi.fn(async () => { if (SERVICE_MAP_FOLLOWS.error) throw SERVICE_MAP_FOLLOWS.error }),
+  serviceMapsBlockingRemoval: vi.fn(async () => ({ lost: [], name: '', maps: [] })),
 }))
 // `@opengraphity/schema-generator` NON è più finto: la porta sui nomi (A-12)
 // usa le sue regole vere, e finger `toPascalCase` con una versione che divide

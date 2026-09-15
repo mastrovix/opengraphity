@@ -75,7 +75,7 @@ describe('computeAggregateRisk (integrazione con la route)', () => {
   })
 
   it('scrive aggregate_risk_score = max e approval_route derivata (80 → high)', async () => {
-    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: 80, changeType: 'normal' } as never)
+    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: 80, unassessed: 0, changeType: 'normal' } as never)
 
     await computeAggregateRisk(mockTx as never, 'chg-1', 'tenant-1')
 
@@ -87,22 +87,24 @@ describe('computeAggregateRisk (integrazione con la route)', () => {
   })
 
   it('45 → medium, 20 → low', async () => {
-    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: 45, changeType: 'normal' } as never)
+    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: 45, unassessed: 0, changeType: 'normal' } as never)
     await computeAggregateRisk(mockTx as never, 'chg-1', 'tenant-1')
     expect((mockTx.run.mock.calls[0]![1] as Record<string, unknown>)['route']).toBe('medium')
 
-    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: 20, changeType: 'normal' } as never)
+    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: 20, unassessed: 0, changeType: 'normal' } as never)
     await computeAggregateRisk(mockTx as never, 'chg-1', 'tenant-1')
     expect((mockTx.run.mock.calls[1]![1] as Record<string, unknown>)['route']).toBe('low')
   })
 
-  it('nessun risk score sui CI (maxRisk null) → 0 → low', async () => {
-    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: null, changeType: 'normal' } as never)
+  it('U-24: finché un CI non ha il suo rischio, il rischio aggregato non è noto → azzerato, priorità iniziale del tipo (non «LOW · 0»)', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ maxRisk: 89, unassessed: 2, changeType: 'normal' } as never)
 
     await computeAggregateRisk(mockTx as never, 'chg-1', 'tenant-1')
 
-    const params = mockTx.run.mock.calls[0]![1] as Record<string, unknown>
-    expect(params['maxRisk']).toBe(0)
-    expect(params['route']).toBe('low')
+    expect(mockTx.run).toHaveBeenCalledOnce()
+    const [cypher, params] = mockTx.run.mock.calls[0]! as [string, Record<string, unknown>]
+    expect(cypher).toContain('c.aggregate_risk_score = null, c.approval_route = null')
+    // `normal` non valutato → matrice change_priority_initial (medium), non la fascia bassa
+    expect(params['priority']).toBe('medium')
   })
 })

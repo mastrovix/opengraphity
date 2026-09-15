@@ -35,7 +35,7 @@ function withVocabulary(ui: React.ReactElement, entries: typeof CHANGE_TYPES | n
       valuesOf:  (n) => (n === 'change_type' && entries ? entries.map((e) => e.value) : null),
       labelOf:   () => null,
       colorOf:   () => null,
-      entriesOf: (n) => (n === 'change_type' ? entries : null),
+      vocabularyLabelOf: () => null, entriesOf: (n) => (n === 'change_type' ? entries : null),
       loading: false, error: null,
     }}>{ui}</DomainVocabularyContext.Provider>
   )

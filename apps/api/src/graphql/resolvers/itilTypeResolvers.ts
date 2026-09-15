@@ -32,6 +32,11 @@ import {
 } from '../../lib/enumScope.js'
 import { FIELD_SCOPE, mapFieldRows, mapITILField, loadITILTypes } from '../../lib/itilTypes.js'
 import { assertCustomFieldName } from '../../lib/customFieldName.js'
+import { removeTicketFieldValues, ticketFieldValues } from '../../lib/ticketCustomFields.js'
+import { audit } from '../../lib/audit.js'
+import { logger } from '../../lib/logger.js'
+
+const log = logger.child({ module: 'itil-designer' })
 
 type Props = Record<string, unknown>
 
@@ -109,6 +114,27 @@ export async function fetchITILTypeById(id: string, tenantId: string) {
 }
 
 // ── buildITILTypesResolver ────────────────────────────────────────────────────
+
+/** Il nome del tipo ITIL (incident, problem, change, service_request) dal suo id. */
+async function itilTypeName(session: Session, typeId: string, tenantId: string): Promise<string> {
+  const r = await session.executeRead(tx => tx.run(`
+    MATCH (t:CITypeDefinition {id: $typeId})
+    WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
+    RETURN t.name AS name
+  `, { typeId, tenantId }))
+  const name = r.records[0]?.get('name')
+  if (typeof name !== 'string') throw new NotFoundError('ITILType', typeId)
+  return name
+}
+
+/** Quanti ticket hanno un valore nel campo: la conferma del designer lo dice prima di cancellare (U-28). */
+export function buildITILFieldValueCountResolver() {
+  return async (_: unknown, args: { typeId: string; fieldId: string }, ctx: GraphQLContext) => withSession(async (session) => {
+    const field = await assertFieldWritable(session, args.typeId, args.fieldId, ctx.tenantId)
+    const typeName = await itilTypeName(session, args.typeId, ctx.tenantId)
+    return (await ticketFieldValues(session, ctx.tenantId, typeName, field.name)).count
+  })
+}
 
 export function buildITILTypesResolver() {
   return async (_: unknown, __: unknown, ctx: GraphQLContext) =>
@@ -473,20 +499,34 @@ export function buildITILMutations(requireMetamodelPermission: (ctx: GraphQLCont
       ctx: GraphQLContext,
     ) => {
       requireMetamodelPermission(ctx)
+      let outcome: { name: string; typeName: string; removed: number; sample: Record<string, string> } | null = null
       await withSession(async session => {
         // A-4: `f.is_system` non basta — i campi custom di un altro cliente
         // hanno `is_system = false` ed erano quindi cancellabili da qui.
-        await assertFieldWritable(session, args.typeId, args.fieldId, ctx.tenantId)
-
-        await session.executeWrite(tx =>
-          tx.run(`
+        const field = await assertFieldWritable(session, args.typeId, args.fieldId, ctx.tenantId)
+        const typeName = await itilTypeName(session, args.typeId, ctx.tenantId)
+        // Giro UI del 15 set 2026 · U-28 (scelta del proprietario, come CM-4 per
+        // i CI): i valori se ne vanno con il campo, nella stessa transazione, e
+        // un campione dei valori di prima resta nell'Audit Log.
+        const before = await ticketFieldValues(session, ctx.tenantId, typeName, field.name)
+        const removed = await session.executeWrite(async tx => {
+          const r = await tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId, tenant_id: $tenantId})
             WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
             DETACH DELETE f
-          `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId }),
-        )
+            RETURN count(*) AS deleted
+          `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId })
+          if (Number(r.records[0]?.get('deleted') ?? 0) === 0) throw new NotFoundError('Field', args.fieldId)
+          return removeTicketFieldValues(tx, ctx.tenantId, typeName, field.name)
+        })
+        if (removed !== before.count) {
+          log.warn({ tenantId: ctx.tenantId, field: field.name, counted: before.count, removed }, 'Custom field values changed while deleting the field')
+        }
+        outcome = { name: field.name, typeName, removed, sample: before.sample }
       }, true)
 
+      const done = outcome as { name: string; typeName: string; removed: number; sample: Record<string, string> } | null
+      if (done) void audit(ctx, 'itil_type.field_removed', 'CITypeDefinition', args.typeId, { entityType: done.typeName, field: done.name, valuesRemoved: done.removed, previousValues: done.sample })
       invalidateSchema(ctx.tenantId)
       return fetchITILTypeById(args.typeId, ctx.tenantId)
     },

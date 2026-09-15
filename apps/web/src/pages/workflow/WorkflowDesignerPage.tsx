@@ -121,8 +121,13 @@ export function WorkflowDesignerPage() {
         },
       })
     } catch (e) {
-      const code = CombinedGraphQLErrors.is(e) ? e.errors[0]?.extensions?.['code'] : undefined
-      if (code === 'CONFLICT') {
+      // Giro UI del 15 set · U-19: solo il conflitto di VERSIONE è «modificato
+      // da un altro utente». Anche le guardie del workflow rispondono CONFLICT
+      // (scopo di approvazione, finestra di rilascio): quelle le mostra già il
+      // link di Apollo, e aggiungere questo avviso le accompagnava con una bugia.
+      const ext = CombinedGraphQLErrors.is(e) ? e.errors[0]?.extensions : undefined
+      const versionConflict = ext?.['code'] === 'CONFLICT' && ext?.['currentVersion'] !== undefined
+      if (versionConflict) {
         // Le modifiche locali restano in coda: sta all'utente ricaricare (perdendole)
         // o confrontarle; non sovrascriviamo mai il lavoro dell'altro utente.
         toast.error(t('toast.workflow.saveConflict'), { duration: 10_000 })

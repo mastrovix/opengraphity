@@ -3,6 +3,7 @@
  *   createChange, addCIToChange, removeCIFromChange,
  *   executeChangeTransition, sendTaskReminder.
  */
+import { ciTypeFromLabels } from '../../../lib/ciTypeFromLabels.js'
 import { GraphQLError } from 'graphql'
 import type { CustomFieldInput } from '../../../lib/ticketCustomFields.js'
 import { systemText } from '../../../lib/systemText.js'
@@ -319,7 +320,7 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
       RETURN properties(ci) AS ciProps, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS ciLabel
     `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId })
     if (!row) throw new GraphQLError('CI not found after being added', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
-    row.ciProps['type'] = row.ciProps['type'] as string | undefined ?? row.ciLabel.toLowerCase()
+    row.ciProps['type'] = row.ciProps['type'] as string | undefined ?? ciTypeFromLabels(ctx.tenantId, [row.ciLabel])
     const { mapCI } = await import('../ci-utils.js')
     return {
       ci: mapCI(row.ciProps),

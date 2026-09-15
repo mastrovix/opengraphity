@@ -7,11 +7,12 @@ import { GET_TOPOLOGY, GET_ALL_CIS, GET_CI_TYPES } from '@/graphql/queries'
 import { fontFamily, alpha, colors, palette } from '@/lib/tokens'
 import { pausedWhenHidden } from '@/lib/polling'
 import { Pill } from '@/components/ui/Pill'
-import { ciStatusStyle, enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
+import { ciStatusStyle, useCIBaseEnums } from '@/lib/ciEnums'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import TopologyGraph, { TopologyLegend, type TopologyNode } from '@/components/topology/TopologyGraph'
 import { CIHealthBadge } from '@/pages/events/eventShared'
 import type { CIHealth } from '@/types/events'
+import { useCILabels } from '@/hooks/useCILabels'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,7 @@ interface Filters {
 
 export function TopologyPage() {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const navigate  = useNavigate()
   // `?health=1` accende l'evidenziazione della salute; `?ciId=` è il CI di
   // partenza (la pagina Salute CI manda qui con entrambi, D·1.3: senza un CI
@@ -216,13 +218,13 @@ export function TopologyPage() {
           {/* Environment filter */}
           <select aria-label={t('pages.cmdb.environment')} value={filters.environment} onChange={(e) => setFilters((f) => ({ ...f, environment: e.target.value }))} style={selectStyle} title={baseEnums.error ?? undefined}>
             <option value="">{t('pages.topology.allEnvironments')}</option>
-            {baseEnums.environments.map((v) => <option key={v} value={v}>{enumLabel(v)}</option>)}
+            {baseEnums.environments.map((v) => <option key={v} value={v}>{ciLabels.environmentLabel(v)}</option>)}
           </select>
 
           {/* Status filter */}
           <select aria-label={t('pages.cmdb.status')} value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} style={selectStyle} title={baseEnums.error ?? undefined}>
             <option value="">{t('pages.topology.allStatuses')}</option>
-            {baseEnums.statuses.map((v) => <option key={v} value={v}>{enumLabel(v)}</option>)}
+            {baseEnums.statuses.map((v) => <option key={v} value={v}>{ciLabels.statusLabel(v)}</option>)}
           </select>
           {baseEnums.error && (
             <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger)' }} title={baseEnums.error}>
@@ -379,7 +381,7 @@ export function TopologyPage() {
                   {selectedNode.name}
                 </div>
                 <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>
-                  {selectedNode.type.replace(/_/g, ' ')}
+                  {ciLabels.typeLabel(selectedNode.type)}
                 </div>
               </div>
               <button
@@ -406,7 +408,7 @@ export function TopologyPage() {
 
               {selectedNode.environment && (
                 <DetailField label={t('pages.cmdb.environment')}>
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{selectedNode.environment}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{ciLabels.environmentLabel(selectedNode.environment)}</span>
                 </DetailField>
               )}
 
@@ -509,6 +511,7 @@ interface CIComboboxProps {
  */
 function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxProps) {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const [search, setSearch]   = useState('')
   const [debounced, setDebounced] = useState('')
   const [open, setOpen]       = useState(false)
@@ -644,7 +647,7 @@ function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxPro
               <span>{o.name}</span>
               {o.environment && (
                 <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
-                  {o.environment}
+                  {ciLabels.environmentLabel(o.environment)}
                 </span>
               )}
             </button>
@@ -667,6 +670,7 @@ function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxPro
  */
 function StatusBadge({ status, statuses }: { status: string; statuses: readonly string[] | null }) {
   const { colorOf } = useDomainVocabularies()
+  const { statusLabel } = useCILabels()
   const s = ciStatusStyle(status, statuses, colorOf('ci_status', status))
-  return <Pill bg={s.bg} color={s.color} radius={10} style={{ fontSize: 'var(--font-size-body)' }}>{status}</Pill>
+  return <Pill bg={s.bg} color={s.color} radius={10} style={{ fontSize: 'var(--font-size-body)' }}>{statusLabel(status)}</Pill>
 }

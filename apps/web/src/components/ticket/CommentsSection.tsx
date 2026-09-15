@@ -12,7 +12,7 @@ import { useState } from 'react'
 import { useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Pencil, Trash2 } from 'lucide-react'
+import { Bot, Pencil, Trash2 } from 'lucide-react'
 import { UPDATE_COMMENT, DELETE_COMMENT } from '@/graphql/mutations'
 import { useMe } from '@/hooks/useMe'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -98,13 +98,17 @@ export function CommentsSection({ comments, onAdd, adding, defaultOpen = false, 
               <div key={c.id}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0' }}>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: 'var(--color-brand-light)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--font-size-body)', fontWeight: 700, flexShrink: 0 }}>
-                    {initials(c.author?.name ?? (c.authorKind === 'monitoring' ? t('detail.commentByMonitoring') : c.authorLabel ?? undefined))}
+                    {/* U-8: chi non è una persona ha l'icona, non le iniziali (o «?») di un nome che non ha. */}
+                    {!c.author?.name && c.authorKind
+                      ? <Bot size={16} aria-hidden="true" data-testid="comment-bot-avatar" />
+                      : initials(c.author?.name)}
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--text-primary)' }}>{c.author?.name
                         ?? (c.authorKind === 'monitoring' ? t('detail.commentByMonitoring')
-                          : c.authorKind === 'automation' ? t('detail.commentByAutomation', { name: c.authorLabel ?? '' })
+                          // U-8: senza il nome della regola si legge «Automazione», non «Automazione:» vuoto.
+                          : c.authorKind === 'automation' ? (c.authorLabel ? t('detail.commentByAutomation', { name: c.authorLabel }) : t('detail.commentByAutomationUnnamed'))
                           : t('detail.unknownUser'))}</span>
                       <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
                       <span

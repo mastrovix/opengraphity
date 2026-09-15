@@ -18,7 +18,7 @@
  * con la sua chiave, non un valore scartato in silenzio.
  */
 import type { Session } from 'neo4j-driver'
-import { type TicketCustomFieldEntityType } from '@opengraphity/types'
+import { CUSTOM_FIELD_NAME_RE, isTicketCustomFieldEntityType, type TicketCustomFieldEntityType } from '@opengraphity/types'
 import { ValidationError } from './errors.js'
 import { loadITILTypes } from './itilTypes.js'
 import { assertStepFieldValue, type StepFieldMeta } from './stepFieldWrites.js'
@@ -184,4 +184,48 @@ export function parseRestCustomFields(body: Record<string, unknown>): CustomFiel
 /** I valori del ticket per REST: `{nome: valore}`, con i campi senza valore a null. */
 export function restCustomFieldValues(defs: readonly CustomFieldDef[], props: Record<string, unknown>): Record<string, string | null> {
   return Object.fromEntries(customFieldValues(defs, props).map((v) => [v.name, v.value]))
+}
+
+/**
+ * I valori di un campo personalizzato sui ticket del tenant: quanti sono e un
+ * campione (numero → valore) per l'Audit Log. Giro UI del 15 set 2026 · U-28:
+ * la cancellazione del campo lasciava i valori sui ticket, e un campo ricreato
+ * con lo stesso nome li ritrovava (o non si poteva ricreare affatto).
+ */
+export const FIELD_VALUE_SAMPLE = 50
+
+function ticketFieldTarget(entityType: string, name: string): { label: string; property: string } {
+  if (!isTicketCustomFieldEntityType(entityType)) throw new ValidationError(`"${entityType}" is not a ticket type with custom fields`)
+  // Il nome finisce in una REMOVE: la forma del campo (la stessa della creazione) è la porta.
+  if (!CUSTOM_FIELD_NAME_RE.test(name)) throw new Error(`Custom field name "${name}" does not match the field name rule: refusing to use it as a property`)
+  return { label: TICKET_LABELS[entityType], property: name }
+}
+
+export async function ticketFieldValues(
+  session: Session, tenantId: string, entityType: string, name: string,
+): Promise<{ count: number; sample: Record<string, string> }> {
+  const { label } = ticketFieldTarget(entityType, name)
+  const res = await session.executeRead((tx) => tx.run(`
+    MATCH (e:${label} {tenant_id: $tenantId}) WHERE e[$name] IS NOT NULL
+    WITH e ORDER BY e.number
+    WITH collect({number: coalesce(e.number, e.code, e.id), value: toString(e[$name])}) AS rows
+    RETURN size(rows) AS count, rows[0..$limit] AS sample
+  `, { tenantId, name, limit: FIELD_VALUE_SAMPLE }))
+  const rec = res.records[0]
+  const sample = (rec?.get('sample') as Array<{ number: string; value: string }> | undefined) ?? []
+  return { count: Number(rec?.get('count') ?? 0), sample: Object.fromEntries(sample.map((r) => [String(r.number), r.value])) }
+}
+
+/** Toglie i valori del campo da tutti i ticket del tenant, nella transazione del chiamante. Restituisce quanti ne ha tolti. */
+export async function removeTicketFieldValues(
+  tx: { run: (q: string, p: Record<string, unknown>) => Promise<{ records: Array<{ get: (k: string) => unknown }> }> },
+  tenantId: string, entityType: string, name: string,
+): Promise<number> {
+  const { label, property } = ticketFieldTarget(entityType, name)
+  const res = await tx.run(`
+    MATCH (e:${label} {tenant_id: $tenantId}) WHERE e[$name] IS NOT NULL
+    REMOVE e.\`${property}\`
+    RETURN count(e) AS removed
+  `, { tenantId, name })
+  return Number(res.records[0]?.get('removed') ?? 0)
 }

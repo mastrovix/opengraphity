@@ -37,6 +37,7 @@ import { isActiveEvent, resourceKindLabel } from './eventShared'
 import { canReevaluate, isSuppressed } from './eventCorrelation'
 import type { EventRow, MonitoringEvent } from '@/types/events'
 import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
 
 interface CISearchRow { id: string; name: string; type: string; status: string; environment: string }
 
@@ -184,6 +185,7 @@ function ResolveDialog({ event, onClose, onDone }: { event: EventRow; onClose: (
 
 function LinkCIDialog({ event, onClose, onDone }: { event: EventRow; onClose: () => void; onDone: () => void }) {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const searchId = useId()
   const aliasId  = useId()
   const [search, setSearch] = useState('')
@@ -265,7 +267,7 @@ function LinkCIDialog({ event, onClose, onDone }: { event: EventRow; onClose: ()
                   }}
                 >
                   <span style={{ fontWeight: 500 }}>{ci.name}</span>
-                  <span style={{ color: 'var(--color-slate-light)' }}>{ci.type} · {ci.environment}</span>
+                  <span style={{ color: 'var(--color-slate-light)' }}>{ciLabels.subtitle(ci)}</span>
                 </button>
               </li>
             )

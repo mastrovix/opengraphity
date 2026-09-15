@@ -16,6 +16,20 @@ const comment = (over: Partial<TicketComment>): TicketComment =>
   ({ id: 'c1', text: 'testo', createdAt: new Date().toISOString(), author: { id: 'u1', name: 'Anna Neri' }, isInternal: true, ...over })
 
 describe('CommentsSection', () => {
+  it('U-8: automazione senza nome → «Automation» con l\'icona; con nome → il nome della regola; una persona ha le iniziali', () => {
+    renderWithProviders(<CommentsSection defaultOpen adding={false} onAdd={vi.fn()} comments={[
+      comment({ id: 'a', author: null, authorKind: 'automation', authorLabel: null }),
+      comment({ id: 'b', author: null, authorKind: 'automation', authorLabel: 'Hardware al Service Desk' }),
+      comment({ id: 'c' }),
+    ]} />)
+    expect(screen.getByText('Automation')).toBeInTheDocument()
+    expect(screen.queryByText('Automation:')).toBeNull()
+    expect(screen.getByText('Automation: Hardware al Service Desk')).toBeInTheDocument()
+    expect(screen.getAllByTestId('comment-bot-avatar')).toHaveLength(2)
+    expect(screen.getByText('AN')).toBeInTheDocument()
+    expect(screen.queryByText('?')).toBeNull()
+  })
+
   it('ogni commento dice se è una nota interna o una risposta pubblica', () => {
     renderWithProviders(<CommentsSection defaultOpen adding={false} onAdd={vi.fn()} comments={[
       comment({ id: 'a', isInternal: true }),

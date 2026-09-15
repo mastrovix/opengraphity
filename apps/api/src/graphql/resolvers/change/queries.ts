@@ -1,4 +1,5 @@
 import { withSession, runQuery, runQueryOne, getSession, type Props } from '../ci-utils.js'
+import { ciTypeFromLabels } from '../../../lib/ciTypeFromLabels.js'
 import type { GraphQLContext } from '../../../context.js'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../../../lib/taskStatus.js'
 import {
@@ -245,7 +246,7 @@ export async function changeAffectedCIs(_: unknown, args: { changeId: string }, 
     const assignments     = await loadAssignmentsForTasks(session, allTaskIds)
 
     return rows.map((r) => {
-      r.ciProps['type'] = r.ciProps['type'] as string | undefined ?? r.ciLabel.toLowerCase()
+      r.ciProps['type'] = r.ciProps['type'] as string | undefined ?? ciTypeFromLabels(ctx.tenantId, [r.ciLabel])
       const buildAssessTask = (t: Props | null) => {
         if (!t || !t['id']) return null
         const id = t['id'] as string
@@ -597,8 +598,8 @@ export async function changeImpactedCIs(_: unknown, args: { changeId: string; de
     `, { changeId: args.changeId, tenantId: ctx.tenantId })
 
     return rows.map((r) => {
-      r.impactedProps['type'] = r.impactedProps['type'] as string | undefined ?? r.impactedLabel.toLowerCase()
-      r.affectedProps['type'] = r.affectedProps['type'] as string | undefined ?? r.affectedLabel.toLowerCase()
+      r.impactedProps['type'] = r.impactedProps['type'] as string | undefined ?? ciTypeFromLabels(ctx.tenantId, [r.impactedLabel])
+      r.affectedProps['type'] = r.affectedProps['type'] as string | undefined ?? ciTypeFromLabels(ctx.tenantId, [r.affectedLabel])
       return {
         ci: mapCI(r.impactedProps),
         distance: r.distance == null ? 1 : toNumber(r.distance),

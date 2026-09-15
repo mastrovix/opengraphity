@@ -49,6 +49,11 @@ export function cmdbSDL(): string {
     customWidgets:           Int!
     reportSections:          Int!
     assessmentQuestionLinks: Int!
+    """
+    Service maps that follow a relationship type only this CI type declares: while any is listed, the type is not deleted
+    (remove the relationship type from those maps first).
+    """
+    blockingServiceMaps:     [String!]!
   }
 
   type CITypeDefinition {

@@ -69,3 +69,15 @@ describe('ServiceRequestDetailPage — assegnatario', () => {
     expect(screen.queryByRole('combobox', { name: 'Assignee' })).toBeNull()
   })
 })
+
+describe('ServiceRequestDetailPage — numero (giro UI 15 set · U-12)', () => {
+  it('il numero della richiesta sta nella testata e fra i dettagli', async () => {
+    const mocks: GqlMock[] = [
+      { request: { query: GET_SERVICE_REQUEST, variables: { id: 'sr-1' } }, result: { data: { serviceRequest: request() } }, maxUsageCount: Number.POSITIVE_INFINITY },
+      usersMock,
+    ]
+    renderWithProviders(<ServiceRequestDetailPage />, { mocks, route: '/requests/sr-1', path: '/requests/:id' })
+    expect(await screen.findByTestId('request-number')).toHaveTextContent('SR00000001')
+    expect(screen.getAllByText('SR00000001')).toHaveLength(2)
+  })
+})

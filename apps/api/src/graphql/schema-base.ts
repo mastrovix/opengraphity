@@ -72,6 +72,8 @@ export function buildBaseSDL(): string {
     ciTypeDeletionImpact(id: ID!): CITypeDeletionImpact!
     itilTypes: [CITypeDefinition!]!
     itilTypeFields(typeId: ID!): [CIFieldDef!]!
+    """Quanti ticket hanno un valore nel campo personalizzato: cancellando il campo, quei valori se ne vanno con lui."""
+    itilFieldValueCount(typeId: ID!, fieldId: ID!): Int!
 
     # Teams
     teams(filters: String, sortField: String, sortDirection: String): [Team!]!

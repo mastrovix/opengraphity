@@ -14,6 +14,8 @@ import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { colors, palette } from '@/lib/tokens'
 import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
+import { CIExclusionHint } from '@/components/ticket/CIExclusionHint'
 
 interface CIRef {
   id: string; name: string; type: string; environment?: string
@@ -53,6 +55,7 @@ const inputBase: React.CSSProperties = {
 
 export function CreateChangePage() {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const navigate = useNavigate()
   const ids = { title: useId(), why: useId(), what: useId(), owner: useId(), ciSearch: useId() }
   const [searchParams] = useSearchParams()
@@ -315,6 +318,7 @@ export function CreateChangePage() {
             <label htmlFor={ids.ciSearch} style={fieldLabel}>
               {t('attachments.affectedCIs')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
+            <CIExclusionHint excluded={excludedCITypes} />
             <div style={{ position: 'relative' }}>
               <span style={{
                 position:      'absolute',
@@ -384,7 +388,7 @@ export function CreateChangePage() {
                         backgroundColor: 'var(--color-border-light)',
                         color:           'var(--color-slate)',
                       }}>
-                        {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
+                        {ciLabels.subtitle(ci)}
                       </span>
                     </button>
                   ))}
@@ -417,7 +421,7 @@ export function CreateChangePage() {
                   >
                     <span style={{ fontWeight: 500 }}>{ci.name}</span>
                     <span style={{ opacity: 0.7, fontSize: 'var(--font-size-label)' }}>
-                      {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
+                      {ciLabels.subtitle(ci)}
                     </span>
                     <button
                       type="button"

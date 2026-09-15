@@ -333,6 +333,7 @@ export class WorkflowEngine {
             currentStep.id           AS currentStepId,
             currentStep.name         AS currentStepName,
             currentStep.exit_actions AS exitActions,
+            currentStep.category     AS currentStepCategory,
             coalesce(currentStep.is_initial, currentStep.type = 'start') AS currentStepInitial,
             nextStep.id                   AS nextStepId,
             nextStep.name                 AS nextStepName,
@@ -375,6 +376,12 @@ export class WorkflowEngine {
       // `root_cause` — e da lì il digest «risolti oggi» restava a zero, in
       // silenzio.
       const nextStepResolves  = nextStepCategory === 'resolved'
+      // Giro UI del 15 set 2026 · U-7: uscire dal passo di risoluzione verso un
+      // passo aperto è una RIAPERTURA. Il ticket mostrava ancora «Resolved il…»
+      // e la root cause di prima mentre era di nuovo in lavorazione. Scelta del
+      // proprietario: si svuotano, la risoluzione precedente resta nella
+      // timeline (esecuzione del passo e commento con la causa).
+      const currentStepResolved = rec.get('currentStepCategory') === 'resolved'
       // Una sola nozione di «terminale»: `is_terminal` con ripiego su
       // `type = 'end'`, la stessa di `workflowHelpers`. Prima l'istanza
       // diventava `completed` solo per `type = 'end'`, quindi un passo
@@ -566,6 +573,22 @@ export class WorkflowEngine {
             entityId: wi['entity_id'] as string,
             tenantId: wi['tenant_id'] as string,
             status:   nextStepName,
+            now,
+          })
+        } else if (currentStepResolved && !nextStepTerminal) {
+          // La root cause si svuota solo per gli incident: in un problem è
+          // l'analisi stessa, e resta anche se il problem si riapre.
+          await tx.run(`
+            MATCH (entity:${label} {id: $entityId, tenant_id: $tenantId})
+            SET entity.status      = $status,
+                entity.resolved_at = null,
+                entity.root_cause  = CASE WHEN $clearRootCause THEN null ELSE entity.root_cause END,
+                entity.updated_at  = $now
+          `, {
+            entityId:       wi['entity_id'] as string,
+            tenantId:       wi['tenant_id'] as string,
+            status:         nextStepName,
+            clearRootCause: label === 'Incident',
             now,
           })
         } else {

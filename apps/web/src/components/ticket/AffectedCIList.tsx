@@ -15,9 +15,10 @@ import { CollapsibleGroup } from '@/components/ui/CollapsibleGroup'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { ciPath } from '@/lib/ciPath'
 import type { ValueColor } from '@opengraphity/types'
-import { ciStatusStyle, enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
+import { ciStatusStyle, useCIBaseEnums } from '@/lib/ciEnums'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { alpha, colors } from '@/lib/tokens'
+import { useCILabels } from '@/hooks/useCILabels'
 
 export interface AffectedCIRef {
   id:          string
@@ -66,6 +67,7 @@ interface Props {
 }
 
 export function AffectedCIList({ affectedCIs, excludedTypes, ciResults, onSearchChange, onAddCI, onRemoveCI, defaultOpen = false }: Props) {
+  const ciLabels = useCILabels()
   const { t } = useTranslation()
   const navigate = useNavigate()
   const baseEnums = useCIBaseEnums()
@@ -111,7 +113,7 @@ export function AffectedCIList({ affectedCIs, excludedTypes, ciResults, onSearch
         {showSearch && (
           <div style={{ position: 'relative' }}>
             <Input type="text" value={search} onChange={(e) => { setSearch(e.target.value); onSearchChange(e.target.value) }}
-              placeholder={excludedTypes.length > 0 ? t('attachments.searchCIExcluding', { types: excludedTypes.join(', ') }) : t('attachments.searchCIByName')}
+              placeholder={excludedTypes.length > 0 ? t('attachments.searchCIExcluding', { types: excludedTypes.map(ciLabels.typeLabel).join(', ') }) : t('attachments.searchCIByName')}
               // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: campo di ricerca montato dopo il click su "Aggiungi CI"
               autoFocus style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)' }} />
             {filteredResults.length > 0 && (
@@ -122,7 +124,7 @@ export function AffectedCIList({ affectedCIs, excludedTypes, ciResults, onSearch
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                         <div>
                           <span style={{ fontWeight: 500, fontSize: 'var(--font-size-body)' }}>{ci.name}</span>
-                          <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', marginLeft: 8 }}>{ci.type} · {ci.environment}</span>
+                          <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', marginLeft: 8 }}>{ciLabels.subtitle(ci)}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                           <button type="button" onClick={() => handleAdd(ci)}
@@ -141,13 +143,13 @@ export function AffectedCIList({ affectedCIs, excludedTypes, ciResults, onSearch
         ) : (
           <div>
             {Object.entries(groupByType(affectedCIs)).map(([type, cis]) => (
-              <CollapsibleGroup key={type} title={type.replace(/_/g, ' ')} count={cis.length}>
+              <CollapsibleGroup key={type} title={ciLabels.typeLabel(type)} count={cis.length}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {cis.map((ci) => (
                     <div key={ci.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 0' }}>
                       <button type="button" onClick={() => navigate(ciPath(ci))} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{ci.name}</button>
-                      <MicroBadge {...statusBadgeStyle(ci.status, ciStatuses, colorOf('ci_status', ci.status))}>{enumLabel(ci.status)}</MicroBadge>
-                      <MicroBadge>{ci.environment}</MicroBadge>
+                      <MicroBadge {...statusBadgeStyle(ci.status, ciStatuses, colorOf('ci_status', ci.status))}>{ciLabels.statusLabel(ci.status)}</MicroBadge>
+                      {ci.environment && <MicroBadge>{ciLabels.environmentLabel(ci.environment)}</MicroBadge>}
                       <button type="button" onClick={() => onRemoveCI(ci.id)} title={t('components.affectedCI.remove')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 'auto' }}><X size={14} /></button>
                     </div>
                   ))}

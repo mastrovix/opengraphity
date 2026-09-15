@@ -41,6 +41,7 @@ import { BASE_TYPE_FIELDS } from '@opengraphity/schema-generator/names'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -78,6 +79,7 @@ function RelationList({
   /** When set, rows do not navigate (the page is in edit mode) and show this as tooltip. */
   navigationLockedReason?: string
 }) {
+  const ciLabels = useCILabels()
   const { t } = useTranslation()
   const locked = navigationLockedReason !== undefined
   const grouped = relations.reduce<Record<string, CIRelation[]>>((acc, rel) => {
@@ -108,7 +110,7 @@ function RelationList({
                   {rel.ci.name}
                 </div>
                 <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>
-                  {rel.ci.type.replace(/_/g, ' ')}{rel.ci.environment ? ` · ${rel.ci.environment}` : ''}
+                  {ciLabels.subtitle(rel.ci)}
                 </div>
               </div>
               {rel.ci.status && <StatusBadge value={rel.ci.status} />}
@@ -218,6 +220,39 @@ function CIGroupMembersCard({ groupId }: { groupId: string }) {
 
 // ── EditField ─────────────────────────────────────────────────────────────
 
+/**
+ * La tendina di un gruppo del CI (owner, supporto). Giro UI del 15 set 2026 ·
+ * U-27: per un gruppo che il tipo dichiara obbligatorio offriva
+ * «— not assigned —», e l'API poi lo rifiutava (CM-6). Ora quella voce non
+ * c'è; se il CI ne è già senza, la tendina lo dice e chiede di sceglierne uno.
+ */
+function CIGroupSelect({ label, required, value, teams, onChange }: {
+  label: string; required: boolean; value: string; teams: Team[]; onChange: (teamId: string | null) => void
+}) {
+  const { t } = useTranslation()
+  const missing = required && value === ''
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <Select
+        aria-label={label}
+        aria-invalid={missing || undefined}
+        value={value}
+        onChange={(e) => onChange(e.target.value || null)}
+        style={{ fontSize: 'var(--font-size-body)', padding: '4px 8px', maxWidth: 220, ...(missing ? { borderColor: palette.warning.border } : {}) }}
+      >
+        {!required && <option value="">{t('pages.ci.notAssignedOption')}</option>}
+        {missing && <option value="" disabled>{t('pages.ci.requiredGroupOption')}</option>}
+        {teams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
+      </Select>
+      {missing && (
+        <span role="status" data-testid="ci-required-group-missing" style={{ fontSize: 'var(--font-size-table)', color: palette.warning.text }}>
+          {t('pages.ci.requiredGroupMissing', { group: label })}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function EditField({ label, value, onChange, enumValues, enumTypeName, multiline }: {
   label: string
   value: string
@@ -256,6 +291,9 @@ export function CIDetailPage() {
   const { labelOf } = useDomainVocabularies()
 
   const ciType = typeName ? getCIType(typeName) : undefined
+  const ciLabels = useCILabels()
+  /** Il tipo dichiara obbligatorio questo gruppo (`systemRelations[].required`, lo stesso che l'API controlla). */
+  const groupRequired = (name: 'ownerGroup' | 'supportGroup') => (ciType?.systemRelations ?? []).some((r) => r.name === name && r.required)
 
   // id per le coppie label/controllo (a11y)
   const baseId = useId()
@@ -617,26 +655,22 @@ export function CIDetailPage() {
                   <DetailField label={t('pages.cmdb.createdAt')} value={formatDate(ci.createdAt)} />
                   <DetailField label={t('detail.updatedAt')} value={ci.updatedAt ? formatDate(ci.updatedAt) : null} />
                   <DetailField label={t('pages.cmdb.ownerGroup')} value={
-                    <Select
-                      aria-label={t('pages.cmdb.ownerGroup')}
+                    <CIGroupSelect
+                      label={t('pages.cmdb.ownerGroup')}
+                      required={groupRequired('ownerGroup')}
                       value={(ci.ownerGroup as Team | null)?.id ?? ''}
-                      onChange={(e) => void assignOwner({ variables: { ciId: ci.id, teamId: e.target.value || null } })}
-                      style={{ fontSize: 'var(--font-size-body)', padding: '4px 8px', maxWidth: 220 }}
-                    >
-                      <option value="">{t('pages.ci.notAssignedOption')}</option>
-                      {allTeams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
-                    </Select>
+                      teams={allTeams}
+                      onChange={(teamId) => void assignOwner({ variables: { ciId: ci.id, teamId } })}
+                    />
                   } />
                   <DetailField label={t('pages.ci.supportGroup')} value={
-                    <Select
-                      aria-label={t('pages.ci.supportGroup')}
+                    <CIGroupSelect
+                      label={t('pages.ci.supportGroup')}
+                      required={groupRequired('supportGroup')}
                       value={(ci.supportGroup as Team | null)?.id ?? ''}
-                      onChange={(e) => void assignSupport({ variables: { ciId: ci.id, teamId: e.target.value || null } })}
-                      style={{ fontSize: 'var(--font-size-body)', padding: '4px 8px', maxWidth: 220 }}
-                    >
-                      <option value="">{t('pages.ci.notAssignedOption')}</option>
-                      {allTeams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
-                    </Select>
+                      teams={allTeams}
+                      onChange={(teamId) => void assignSupport({ variables: { ciId: ci.id, teamId } })}
+                    />
                   } />
                   {specificFields.map(f => (
                     <DetailField
@@ -871,7 +905,7 @@ export function CIDetailPage() {
                               style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', font: 'inherit', color: 'inherit', padding: '8px 12px', fontSize: 'var(--font-size-body)', cursor: 'pointer', borderBottom: `1px solid ${palette.neutral.borderLight}`, ['--hover-bg' as string]: colors.slateBg }}
                             >
                               <span style={{ fontWeight: 500 }}>{c.name}</span>{' '}
-                              <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>({c.type.replace(/_/g, ' ')})</span>
+                              <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>({ciLabels.typeLabel(c.type)})</span>
                             </button>
                           ))}
                         </div>

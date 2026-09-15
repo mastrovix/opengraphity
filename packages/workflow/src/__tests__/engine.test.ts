@@ -405,6 +405,38 @@ describe('WorkflowEngine — ingresso nel passo', () => {
     expect(session.txRun.mock.calls.map((c) => String(c[0])).join('\n')).not.toMatch(/completed_at/)
   })
 
+  /**
+   * Giro UI del 15 set 2026 · U-7: INC00000019, riaperto dal monitoraggio,
+   * mostrava ancora «RESOLVED 14:02» e la root cause di prima mentre era In
+   * Progress. Uscire dal passo di risoluzione verso un passo aperto li svuota.
+   */
+  it('riapertura (dal passo di risoluzione a un passo aperto): resolved_at e root_cause dell\'incident si svuotano', async () => {
+    const session = makeWritableSession([stateRow({ currentStepCategory: 'resolved', nextStepName: 'in_progress', nextStepCategory: 'active', nextStepTerminal: false })], 1)
+    await new WorkflowEngine().transition(session as never, { ...manual, toStepName: 'in_progress' }, actx)
+    const [sync, params] = session.txRun.mock.calls[1]! as [string, Record<string, unknown>]
+    expect(sync).toContain('entity.resolved_at = null')
+    expect(sync).toContain('entity.root_cause  = CASE WHEN $clearRootCause THEN null ELSE entity.root_cause END')
+    expect(params['clearRootCause']).toBe(true)
+  })
+
+  it('riapertura di un problem: resolved_at si svuota, la root cause (l\'analisi) resta', async () => {
+    const row = stateRow({
+      wi: { properties: { id: 'wi-1', tenant_id: 'c-one', entity_id: 'prb-1', entity_type: 'problem', definition_id: 'def-1', created_at: 'x' } },
+      currentStepCategory: 'resolved', nextStepName: 'under_investigation', nextStepCategory: 'active', nextStepTerminal: false,
+    })
+    const session = makeWritableSession([row], 1)
+    await new WorkflowEngine().transition(session as never, { ...manual, toStepName: 'under_investigation' }, actx)
+    const sync = session.txRun.mock.calls.find((c) => String(c[0]).includes('entity.resolved_at = null'))
+    expect(sync).toBeTruthy()
+    expect((sync![1] as Record<string, unknown>)['clearRootCause']).toBe(false)
+  })
+
+  it('da resolved a closed (terminale) non è una riapertura: resolved_at resta', async () => {
+    const session = makeWritableSession([stateRow({ currentStepCategory: 'resolved', nextStepName: 'closed', nextStepCategory: 'closed', nextStepTerminal: true })], 1)
+    await new WorkflowEngine().transition(session as never, { ...manual, toStepName: 'closed' }, actx)
+    expect(session.txRun.mock.calls.map((c) => String(c[0])).join('\n')).not.toMatch(/resolved_at = null/)
+  })
+
   /** Giro del 14 set 2026 (#43): l'articolo pubblicato diceva «Published: —». */
   it('un articolo KB che entra in un passo di categoria published riceve published_at, anche se il passo è rinominato', async () => {
     const row = stateRow({

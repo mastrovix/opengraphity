@@ -453,6 +453,9 @@ async function reconcile(session: Session, input: ServiceIncidentInput): Promise
       }
       await reopenIncident(session, tenantId, open, info,
         systemTextIn(lingua, 'service.reopenNote', { service: input.serviceName, health: serviceHealthLabel(lingua, health), score: input.impactScore }))
+      // Giro UI del 15 set · U-6 (scelta del proprietario): il titolo segue la
+      // salute di adesso; quello di prima resta nel commento di riapertura.
+      await (await incidents()).setIncidentTitle(open.incidentId, monitoringCtx(tenantId), serviceIncidentTitle(lingua, input.serviceName, health))
       await (await incidents()).addIncidentComment(open.incidentId, monitoringCtx(tenantId),
         systemTextIn(lingua, 'service.reopenComment', { description: serviceIncidentDescription(lingua, input.serviceName, health, input.impactScore, input.causes) }))
       await linkServiceIncident(session, tenantId, mapId, open.incidentId, causeIds, NO_NOTES, input.now)

@@ -28,7 +28,7 @@ function page(mocks: GqlMock[]) {
       valuesOf: (n) => (n === 'priority' ? PRIORITIES.map((p) => p.value) : null),
       labelOf: (n, v) => (n === 'priority' ? PRIORITIES.find((p) => p.value === v)?.label ?? null : null),
       colorOf: () => null,
-      entriesOf: (n) => (n === 'priority' ? PRIORITIES : null),
+      vocabularyLabelOf: () => null, entriesOf: (n) => (n === 'priority' ? PRIORITIES : null),
       loading: false, error: null,
     }}><ServiceCatalogAdminPage /></DomainVocabularyContext.Provider>,
     { mocks },

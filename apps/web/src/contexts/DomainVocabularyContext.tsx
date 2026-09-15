@@ -34,7 +34,7 @@ import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 interface LocalizedLabelRow { language: string; label: string }
 interface EnumValueLabelRow { value: string; label: string; labels: LocalizedLabelRow[] }
 interface EnumValueColorRow { value: string; color: ValueColor }
-interface EnumTypeRow { name: string; values: string[]; isShipped: boolean; valueLabels: EnumValueLabelRow[]; valueColors: EnumValueColorRow[] }
+interface EnumTypeRow { name: string; label: string; values: string[]; isShipped: boolean; valueLabels: EnumValueLabelRow[]; valueColors: EnumValueColorRow[] }
 
 export interface DomainVocabularies {
   /** I valori ammessi, o `null` se non si conoscono (vedi sopra: non è «vuoto»). */
@@ -60,6 +60,12 @@ export interface DomainVocabularies {
   colorOf: (name: string, value: string) => ValueColor | null
   /** Valore + etichetta, nell'ordine del vocabolario: per le tendine e i gruppi di bottoni. */
   entriesOf: (name: string) => readonly EnumValueLabelRow[] | null
+  /**
+   * Il NOME con cui il Dizionario presenta il vocabolario («Impatto» per
+   * `impact`), o `null` se non lo sappiamo. Giro UI del 15 set 2026 · U-20: le
+   * matrici di dominio intestavano righe e colonne col nome interno.
+   */
+  vocabularyLabelOf: (name: string) => string | null
   loading:  boolean
   error:    string | null
 }
@@ -70,6 +76,7 @@ export const DomainVocabularyContext = createContext<DomainVocabularies>({
   labelOf:   () => null,
   colorOf:   () => null,
   entriesOf: () => null,
+  vocabularyLabelOf: () => null,
   loading:   false,
   error:     null,
 })
@@ -102,6 +109,7 @@ export function DomainVocabularyProvider({ children }: { children: ReactNode }) 
       entriesOf: (name) => riga(name)?.valueLabels ?? null,
       labelOf:   (name, value) => riga(name)?.valueLabels.find((v) => v.value === value)?.label ?? null,
       colorOf:   (name, value) => riga(name)?.valueColors.find((v) => v.value === value)?.color ?? null,
+      vocabularyLabelOf: (name) => riga(name)?.label || null,
       loading,
       error: error ? error.message : null,
     }

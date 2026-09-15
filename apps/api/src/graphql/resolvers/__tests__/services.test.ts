@@ -582,6 +582,26 @@ describe('reevaluateServiceMap / setServiceMapStatus / deleteServiceMap', () => 
     expect(config.removeServiceMapExclusion).not.toHaveBeenCalled()
   })
 
+  it('U-2: riammettere su una mappa viva sincronizza subito (e lo scrive nell\'audit); su una congelata no', async () => {
+    const written = { mapId: 'map-1', version: 3, status: 'active' as const, note: 'nota', evaluation: null }
+    vi.mocked(config.removeServiceMapExclusion).mockResolvedValue(written)
+    onCypher([[MAP_RE, mapRow({ version: 3 })]])
+    vi.mocked(sync.syncServiceMap).mockResolvedValue({ mapId: 'map-1', version: 4, status: 'active', added: 1, removed: 0, moved: 0, retired: 0, changed: true, skipped: null, reason: null, syncedAt: 'T', note: null, evaluation: null } as never)
+    await serviceResolvers.Mutation.removeServiceMapExclusion(null, { id: 'map-1', expectedVersion: 2, ciId: 'cert-x' }, admin)
+    expect(sync.syncServiceMap).toHaveBeenCalledWith('tenant-1', 'map-1', 'manual', 'adm-1')
+    expect(audit).toHaveBeenCalledWith(admin, 'service_map.synced', 'ServiceMap', 'map-1', expect.objectContaining({ trigger: 'readmitted', added: 1 }))
+
+    vi.mocked(sync.syncServiceMap).mockClear()
+    onCypher([[MAP_RE, mapRow({ version: 3, auto_sync: false })]])
+    await serviceResolvers.Mutation.removeServiceMapExclusion(null, { id: 'map-1', expectedVersion: 2, ciId: 'cert-x' }, admin)
+    expect(sync.syncServiceMap).not.toHaveBeenCalled()
+
+    // la sincronizzazione fallisce: la riammissione resta, la mappa si restituisce
+    onCypher([[MAP_RE, mapRow({ version: 3 })]])
+    vi.mocked(sync.syncServiceMap).mockRejectedValueOnce(new Error('neo4j down'))
+    expect(await serviceResolvers.Mutation.removeServiceMapExclusion(null, { id: 'map-1', expectedVersion: 2, ciId: 'cert-x' }, admin)).toMatchObject({ id: 'map-1' })
+  })
+
   it('mappa viva (ondata 5): setServiceMapAutoSync e syncServiceMap chiamano il servizio con l\'utente, scrivono l\'audit e rileggono la mappa; operator → FORBIDDEN', async () => {
     onCypher([[MAP_RE, mapRow({ version: 4, auto_sync: false })]])
     vi.mocked(config.setServiceMapAutoSync).mockResolvedValue({ mapId: 'map-1', version: 4, status: 'active', note: 'Aggiornamento automatico disattivato', evaluation: null })

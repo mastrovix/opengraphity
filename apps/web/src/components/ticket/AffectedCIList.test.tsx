@@ -36,7 +36,9 @@ const ci = (over: Partial<AffectedCIRef>): AffectedCIRef =>
 async function render(cis: AffectedCIRef[], statuses?: string[]) {
   // I colori del Dizionario (F9): `maintenance` giallo-avviso, come il seme del prodotto.
   const vocab = {
-    valuesOf: () => null, labelOf: () => null, entriesOf: () => null, loading: false, error: null,
+    // Giro UI · U-26: l'etichetta è quella del Dizionario (prima un title-case del valore).
+    valuesOf: () => null, vocabularyLabelOf: () => null, entriesOf: () => null, loading: false, error: null,
+    labelOf: (name: string, value: string) => (name === 'ci_status' ? ({ maintenance: 'Maintenance', expired: 'Expired' } as Record<string, string>)[value] ?? null : null),
     colorOf: (name: string, value: string) => (name === 'ci_status' && value === 'maintenance' ? 'warning' as const : null),
   }
   const r = renderWithProviders(
@@ -74,7 +76,8 @@ describe('AffectedCIList — pastiglia dello stato del CI', () => {
 
   it('stato FUORI dal vocabolario del cliente → rosso e console.error (è un record da sistemare)', async () => {
     await render([ci({ status: 'zombie' })], ['active', 'inactive'])
-    const pill = await screen.findByText('Zombie')
+    // un valore fuori vocabolario non ha etichetta: si legge com'è
+    const pill = await screen.findByText('zombie')
     expect(pill).toHaveStyle({ backgroundColor: 'var(--color-danger)' })
     expect(paletteErrors()).toContain('[ci_status] "zombie" is not in the vocabulary of this tenant (active, inactive)')
   })

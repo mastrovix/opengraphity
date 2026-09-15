@@ -45,7 +45,7 @@ const vocab = {
   valuesOf: (n: string) => (n === 'kb_category' ? ['how-to', 'faq'] : null),
   labelOf: (n: string, v: string) => (n === 'kb_category' ? ({ 'how-to': 'Come fare', faq: 'Domande frequenti' } as Record<string, string>)[v] ?? null : null),
   colorOf: (n: string, v: string) => (n === 'kb_category' && v === 'how-to' ? 'success' as const : null),
-  entriesOf: () => null, loading: false, error: null,
+  vocabularyLabelOf: () => null, entriesOf: () => null, loading: false, error: null,
 }
 
 describe('KnowledgeBasePage — categorie dal Dizionario', () => {

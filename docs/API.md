@@ -183,6 +183,8 @@ Notification links: the in-app panel and the "Vedi dettagli" link of the notific
 
 ## Main Mutations
 
+Every successful mutation leaves an Audit Log entry. Most write their own, with a domain action name; a mutation that did not is recorded by the server as `mutation.<name>` with its arguments (secrets redacted, long values truncated) and `source: audit-registry`. Only read-only or personal mutations are skipped (notifications read/dismissed, watch/unwatch, own e-mail preferences, KB article rating, event previews, report questions and exports).
+
 ### Incidents
 
 | Mutation | Description |
@@ -190,6 +192,8 @@ Notification links: the in-app panel and the "Vedi dettagli" link of the notific
 | `createIncident(input)` | Open a new incident |
 | `updateIncident(id, input)` | Update incident fields |
 | `resolveIncident(id, rootCause)` | Mark as resolved |
+
+Reopening an incident (a transition from a step of category `resolved` to a non-terminal step, by hand or by monitoring) clears `resolvedAt` and `rootCause`; the previous values stay in the timeline. A problem keeps its root cause. When monitoring reopens a service incident, the title follows the current service health.
 | `assignIncidentToTeam(id, teamId)` | Assign to team |
 | `assignIncidentToUser(id, userId)` | Assign to user |
 | `addIncidentComment(id, text)` | Add a comment |
@@ -202,6 +206,8 @@ The fields a tenant adds in the ITIL designer are real fields of the ticket. `In
 | Mutation | Description |
 |----------|-------------|
 | `setTicketCustomFields(entityType, id, values)` | Write custom fields from the ticket detail: publishes `ticket.updated` and writes `ticket.custom_fields_updated` in the Audit Log when something changed |
+| `itilFieldValueCount(typeId, fieldId)` *(query)* | How many tickets of the type carry a value in the custom field: the ITIL designer shows it in the delete confirmation |
+| `deleteITILField(typeId, fieldId)` | Delete a custom field **and its values** from every ticket of the type, in the same transaction. The Audit Log entry `itil_type.field_removed` keeps `valuesRemoved` and up to 50 previous values (`previousValues`, ticket number → value) |
 
 Every channel validates the same way: the field must exist for the ticket type, the value must fit its type (`number`, `boolean` as `true`/`false`, `date` as ISO) and its vocabulary, a `required` field needs a value (on creation, or when it is cleared), and the field's validation script runs. Channels that do not know the customer's fields (monitoring, service maps, Slack, workflow step actions) create tickets without them, like the field requirement rules. From the portal only the fields marked **visible to end users** are offered (`portalCustomFields(entityType)`), accepted, and returned. A field's name is its property on the ticket: it cannot reuse a field of the product or a property the tenant's tickets already carry, and name and type cannot change after creation. Custom fields are filterable in the lists (`entityFilterFields`), shown as list columns, in the PDF dossiers under «Additional fields», and settable by step deadlines and `update_field`.
 
@@ -215,6 +221,8 @@ Every channel validates the same way: the field must exist for the ticket type, 
 | `executeChangeTransition(instanceId, toStep, notes)` | Manual workflow step |
 | `saveDeploySteps(changeId, steps)` | Define deployment plan |
 | `updateDeployStepStatus(stepId, status, notes)` | Update step status |
+
+A change's `aggregateRiskScore` stays `null` until every impacted CI has a risk score from its assessment: meanwhile the priority is the initial one from the `change_priority_initial` matrix (change type only), and the change detail says the risk is not yet assessed. Once all assessments are complete, the priority comes from change type × risk band.
 
 ### Problems
 
@@ -234,7 +242,7 @@ Every channel validates the same way: the field must exist for the ticket type, 
 | `update<Type>(id, input)` / `updateCIFields(id, input)` | Update a CI. Both go through the same write: dictionary values, required fields and scripts are validated, the name key used by alarm matching follows the name, `ownerGroupId`/`supportGroupId` are applied, and the change is audited. `updateCIFields.customFields` accepts only fields of the CI's type, and text values take the field's type |
 | `addCIRelationship` / `removeCIRelationship` | Link / unlink two CIs. A relationship defined in the CI type designer can be created as long as one of the two types declares it (target: a type, or `any`); removing a link does not depend on its definition and fails if the link does not exist |
 | `deleteCIType(id)` | Delete a tenant CI type (`config.metamodel`). The **only** obstacle is a ticket (incident, problem, change or service request, closed ones included) linked to one of its CIs — `errors.ciType.inTicketsDelete` — or a service map following a relationship type only this type declares (`errors.ciType.relationUsedByServiceMaps`). Everything else goes with the type in the same transaction: its CIs (aliases, service map and history included), the ticket-type exclusions, the dynamic groups (the type leaves their criteria; a group that listed only this type is deleted), field visibility/requirement rules, business rules, triggers, dashboard widgets and report sections on the type, the links to assessment questions (the questions stay). Rule of 15 Sep 2026 |
-| `ciTypeDeletionImpact(id)` *(query)* | What `deleteCIType` would remove, with counts (`cis`, `ticketCIs`, `tickets`, `ticketCIExclusions`, `groupsUpdated`, `groupsDeleted`, `fieldVisibilityRules`, `fieldRequirementRules`, `businessRules`, `autoTriggers`, `customWidgets`, `reportSections`, `assessmentQuestionLinks`); `ticketCIs > 0` means it cannot be deleted. Deactivating a type (`updateCIType` with `active: false`) is refused when a ticket cites its CIs or while it still has CIs (`errors.ciType.hasCIsDeactivate`) |
+| `ciTypeDeletionImpact(id)` *(query)* | What `deleteCIType` would remove, with counts (`cis`, `ticketCIs`, `tickets`, `ticketCIExclusions`, `groupsUpdated`, `groupsDeleted`, `fieldVisibilityRules`, `fieldRequirementRules`, `businessRules`, `autoTriggers`, `customWidgets`, `reportSections`, `assessmentQuestionLinks`) plus `blockingServiceMaps` (names of the service maps that follow a relationship type only this CI type declares); `ticketCIs > 0` or a non-empty `blockingServiceMaps` means it cannot be deleted. Deactivating a type (`updateCIType` with `active: false`) is refused when a ticket cites its CIs or while it still has CIs (`errors.ciType.hasCIsDeactivate`) |
 | `setTicketCIExclusions(ticketType, ciTypes)` | Replace the excluded CI types of a ticket type (`config.metamodel`). An excluded CI cannot be linked to that ticket type at creation or later, from any channel — monitoring included |
 | `addCIToServiceRequest(requestId, ciId)` / `removeCIFromServiceRequest(requestId, ciId)` | The CIs a service request concerns (`request.write`) |
 
@@ -252,7 +260,7 @@ Every mutation below is `admin` only (`lib/authorization.ts`).
 | `updateServiceImpactRules(id, expectedVersion, rules)` | Save the impact rules (`degradedSharePct` ≤ `downSharePct`, `minNodes` ≤ number of components, `duringStorm` one of `hold` / `evaluate`); history entry `rules_changed` with the changed fields, then immediate re-evaluation. `duringStorm = hold` (default) suspends the evaluation while an alert source of the components is storming: health and incidents stay as they are and `healthNote` says why |
 | `updateServiceMapNodes(id, expectedVersion, nodes)` | Change `propagate`, `weight` (1..10) and `critical` of the listed components only; empty list or unknown `ciId` → `BAD_USER_INPUT` |
 | `applyServiceMapProposal(id, expectedVersion, add, exclude, remove)` | Apply the choices made on the diff in one transaction: `add` includes proposed CIs (`added_by: manual`), `exclude` never proposes them again (and removes them if included), `remove` drops included or vanished CIs; recomputes `node_ids` and `stale` |
-| `removeServiceMapExclusion(id, expectedVersion, ciId)` | Let an excluded CI come back in the next proposal |
+| `removeServiceMapExclusion(id, expectedVersion, ciId)` | Let an excluded CI come back in the next proposal. On a live map (`autoSync`, not paused) the map is also synchronized right away (Audit Log `service_map.synced` with `trigger: readmitted`); if that synchronization fails the re-admission stays and the periodic pass catches up |
 | `setServiceMapAutoSync(id, expectedVersion, autoSync)` | Live map (components follow the CMDB by themselves, the default) or frozen map (the diff is applied by hand). History entry `map_changed`; the map is **not** re-evaluated (nothing about its health changes). Writing the value it already has is a `BAD_USER_INPUT` |
 | `syncServiceMap(id)` | Synchronize the components with the CMDB now: adds the new ones (`added_by: auto`), drops the automatic ones that are gone, updates `level`/`via`. Manually added components and exclusions are never touched, and neither are `propagate`/`weight`/`critical`. Works on frozen maps too (it is an explicit action), never on `paused` ones (`BAD_USER_INPUT`). Over the 500-component cap nothing is applied and the map is flagged `stale` with `staleReason: over_limit`. Returns **`ServiceMapSyncResult`** (`map`, `added`, `removed`, `moved`, `skipped`, `reason`), not the bare map: `skipped = true` means the cap refused the whole synchronization and `reason` says so |
 | `updateServiceMapScope(id, expectedVersion, relationshipTypes, maxDepth)` | Change the relationship types followed and the depth of an existing map (review of 15 Sep 2026 · SV-6: they were fixed at creation). Types must be among `serviceRelationshipTypes` (so a type no longer declared can be dropped), depth 1..8; nothing changed is a `BAD_USER_INPUT`. History entry `map_changed`; a live map that is not paused is synchronized right away with the new scope |

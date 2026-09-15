@@ -54,6 +54,8 @@ import { withLocalizedLabel } from '@/lib/localizedLabel'
 import { useAIFeature } from '@/hooks/useAIFeature'
 import { useAIDisabledText } from '@/components/ai/AIDisabledNotice'
 import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
+import { ciPath } from '@/lib/ciPath'
 
 const RESOLUTION_DRAFT = gql`
   query ResolutionDraft($incidentId: ID!) {
@@ -159,6 +161,7 @@ export function IncidentDetailPage() {
   const { t }    = useTranslation()
   const confirm  = useConfirm()
   const { labelOf: typeLabel } = useItilTypeLabels()
+  const ciLabels = useCILabels()
   const editIds  = { title: useId(), description: useId(), impact: useId(), urgency: useId(), team: useId(), user: useId() }
   const { id }   = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -773,7 +776,7 @@ export function IncidentDetailPage() {
                 {incident.impactedApplications.map((a) => (
                   <div key={a.ci.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>
                     <div style={{ minWidth: 0 }}>
-                      <Link to={`/ci/${(a.ci.type || 'application').toLowerCase()}/${a.ci.id}`} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--accent)', textDecoration: 'none' }}>
+                      <Link to={ciPath(a.ci)} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--accent)', textDecoration: 'none' }}>
                         {a.ci.name}
                       </Link>
                       <div style={{ fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', marginTop: 2 }}>
@@ -783,7 +786,7 @@ export function IncidentDetailPage() {
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-                      {a.ci.environment && <Pill bg="var(--surface-2)" color="var(--text-muted)" radius={100} style={{ fontSize: 'var(--font-size-caption)', textTransform: 'capitalize' }}>{a.ci.environment}</Pill>}
+                      {a.ci.environment && <Pill bg="var(--surface-2)" color="var(--text-muted)" radius={100} style={{ fontSize: 'var(--font-size-caption)' }}>{ciLabels.environmentLabel(a.ci.environment)}</Pill>}
                       {a.ci.status && <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-caption)', textTransform: 'capitalize' }}>{a.ci.status}</Pill>}
                       <button
                         type="button"

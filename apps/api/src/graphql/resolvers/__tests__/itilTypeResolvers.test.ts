@@ -36,13 +36,15 @@ vi.mock('../ci-utils.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn(mockSession)),
 }))
 vi.mock('../../../lib/schemaInvalidator.js', () => ({ invalidateSchema: vi.fn() }))
+vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 // Il nome di un campo dei ticket ha il suo test (customFieldName.test.ts).
 const assertCustomFieldName = vi.fn(async () => {})
 vi.mock('../../../lib/customFieldName.js', () => ({ assertCustomFieldName: (...a: unknown[]) => assertCustomFieldName(...a) }))
 
-const { buildITILMutations, buildITILTypesResolver, buildITILTypeFieldsResolver, fetchITILTypeById } = await import('../itilTypeResolvers.js')
+const { buildITILMutations, buildITILFieldValueCountResolver, buildITILTypesResolver, buildITILTypeFieldsResolver, fetchITILTypeById } = await import('../itilTypeResolvers.js')
 const { withSession } = await import('../ci-utils.js')
 const { invalidateSchema } = await import('../../../lib/schemaInvalidator.js')
+const { audit } = await import('../../../lib/audit.js')
 
 const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
 const operator: GraphQLContext = { ...admin, role: 'operator', permissions: perms('operator') }
@@ -307,15 +309,51 @@ describe('updateITILField / deleteITILField — solo i campi del tenant (A1-2 / 
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
+  /** La sequenza di `deleteITILField` su un campo del tenant: controllo, nome del tipo, valori, DELETE, REMOVE dei valori, rilettura. */
+  const deleteSeq = (values = { count: 2, sample: [{ number: 'INC1', value: 'a' }, { number: 'INC2', value: 'b' }] }, removed = 2) => [
+    fieldRow({ name: 'origine' }), { records: [rec({ name: 'incident' })] }, { records: [rec(values)] },
+    { records: [rec({ deleted: 1 })] }, { records: [rec({ removed })] }, noOverrides, { records: [typeRecord()] },
+  ]
+
   it('deleteITILField: campo del tenant → DETACH DELETE vincolato a f.tenant_id, invalidateSchema', async () => {
-    reset([fieldRow(), { records: [] }, noOverrides, { records: [typeRecord()] }])
+    reset(deleteSeq())
     await mutations.deleteITILField(null, { typeId: 'it-1', fieldId: 'f-2' }, admin)
-    const { cypher, params } = call(1)
+    const { cypher, params } = call(3)
     expect(cypher).toContain('DETACH DELETE f')
     expect(cypher).toContain('{id: $fieldId, tenant_id: $tenantId}')
     expect(cypher).toContain(`WHERE ${ITIL_SCOPE}`)
     expect(params).toEqual({ typeId: 'it-1', fieldId: 'f-2', tenantId: 'tenant-1' })
     expect(invalidateSchema).toHaveBeenCalledWith('tenant-1')
+  })
+
+  /**
+   * Giro UI del 15 set 2026 · U-28: cancellato «asset_tag», RICH-000006 aveva
+   * ancora `asset_tag = AT-0042` nel grafo. Come per i campi dei CI (CM-4), i
+   * valori se ne vanno con il campo, e i valori di prima restano nell'Audit Log.
+   */
+  it('U-28: i valori del campo spariscono dai ticket nella stessa transazione, e l\'Audit Log tiene quelli di prima', async () => {
+    reset(deleteSeq())
+    await mutations.deleteITILField(null, { typeId: 'it-1', fieldId: 'f-2' }, admin)
+    const count = call(2)
+    expect(count.cypher).toContain('MATCH (e:Incident {tenant_id: $tenantId}) WHERE e[$name] IS NOT NULL')
+    const remove = call(4)
+    expect(remove.cypher).toContain('REMOVE e.`origine`')
+    expect(remove.params).toEqual({ tenantId: 'tenant-1', name: 'origine' })
+    expect(mockSession.executeWrite).toHaveBeenCalledTimes(1)
+    expect(audit).toHaveBeenCalledWith(admin, 'itil_type.field_removed', 'CITypeDefinition', 'it-1', { entityType: 'incident', field: 'origine', valuesRemoved: 2, previousValues: { INC1: 'a', INC2: 'b' } })
+  })
+
+  it('U-28: un nome di campo fuori forma non finisce mai in una REMOVE', async () => {
+    reset([fieldRow({ name: 'x` REMOVE e.tenant_id //' }), { records: [rec({ name: 'incident' })] }])
+    await expect(mutations.deleteITILField(null, { typeId: 'it-1', fieldId: 'f-2' }, admin)).rejects.toThrow(/does not match the field name rule/)
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('U-28: itilFieldValueCount conta i ticket che portano un valore, per chiederlo prima di cancellare', async () => {
+    reset(deleteSeq({ count: 7, sample: [] }))
+    const n = await buildITILFieldValueCountResolver()(null, { typeId: 'it-1', fieldId: 'f-2' }, admin)
+    expect(n).toBe(7)
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
   it('deleteITILField: campo inesistente → "Campo non trovato" senza DELETE', async () => {
@@ -325,7 +363,7 @@ describe('updateITILField / deleteITILField — solo i campi del tenant (A1-2 / 
   })
 
   it('la lettura di controllo scopa sia il tipo sia il campo', async () => {
-    reset([fieldRow(), { records: [] }, noOverrides, { records: [typeRecord()] }])
+    reset(deleteSeq())
     await mutations.deleteITILField(null, { typeId: 'it-1', fieldId: 'f-2' }, admin)
     const { cypher, params } = call(0)
     expect(cypher).toContain(`WHERE ${ITIL_SCOPE}`)

@@ -39,13 +39,25 @@ export async function relationshipTypesLostWithout(
   return { lost, name: relation?.label || relation?.name || type?.label || type?.name || without.relationId || without.typeId || '' }
 }
 
+/**
+ * Le mappe che bloccherebbero la rimozione, per nome. La conferma di
+ * cancellazione del tipo le legge PRIMA (giro UI del 15 set 2026 · U-16: la
+ * conferma elencava cosa sarebbe andato via e il rifiuto arrivava dopo).
+ */
+export async function serviceMapsBlockingRemoval(
+  session: Queryable, tenantId: string, without: { typeId?: string; relationId?: string },
+): Promise<{ lost: string[]; name: string; maps: string[] }> {
+  const { lost, name } = await relationshipTypesLostWithout(tenantId, without)
+  if (lost.length === 0) return { lost, name, maps: [] }
+  const maps = (await runQuery<{ name: string | null }>(session, SERVICE_MAPS_FOLLOWING_TYPES_CYPHER, { tenantId, types: lost })).map((r) => r.name ?? '')
+  return { lost, name, maps }
+}
+
 /** Rifiuta la rimozione se una mappa segue un tipo di relazione che sparirebbe. */
 export async function assertNoServiceMapFollows(
   session: Queryable, tenantId: string, without: { typeId?: string; relationId?: string },
 ): Promise<void> {
-  const { lost, name } = await relationshipTypesLostWithout(tenantId, without)
-  if (lost.length === 0) return
-  const maps = (await runQuery<{ name: string | null }>(session, SERVICE_MAPS_FOLLOWING_TYPES_CYPHER, { tenantId, types: lost })).map((r) => r.name ?? '')
+  const { lost, name, maps } = await serviceMapsBlockingRemoval(session, tenantId, without)
   if (maps.length === 0) return
   throw new ValidationError(
     `"${name}" was not removed: it is the only declaration of ${lost.join(', ')}, which ${maps.length} service map(s) follow (${maps.join(', ')}). `

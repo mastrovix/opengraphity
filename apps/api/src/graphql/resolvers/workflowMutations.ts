@@ -441,9 +441,13 @@ async function assertApprovalPurposeSurvives(
     WHERE wd.entity_type = 'change'
     // tenant-ok: i passi sono quelli della definizione già scopata sopra
     OPTIONAL MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep {purpose: 'approval'})
-    RETURN count(s) AS approvalSteps
+    RETURN wd.id AS definitionId, count(s) AS approvalSteps
   `, { definitionId, tenantId })
   // Nessuna riga = non è un workflow delle change: niente da verificare.
+  // La chiave di raggruppamento (`wd.id`) è ciò che rende vera questa frase:
+  // un `RETURN count(s)` da solo restituisce SEMPRE una riga (0), anche quando
+  // il MATCH non trova nulla, e la guardia rifiutava ogni salvataggio di passo
+  // nei workflow di incident, problem, richieste e KB (giro UI del 15 set · U-18).
   if (!res.records.length) return
   if (Number(res.records[0]!.get('approvalSteps')) > 0) return
 
@@ -498,7 +502,7 @@ async function countWindowPurposeSteps(
     // tenant-ok: i passi sono quelli della definizione già scopata sopra
     OPTIONAL MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
       WHERE s.purpose IN $windowPurposes
-    RETURN count(s) AS n
+    RETURN wd.id AS definitionId, count(s) AS n
   `, { definitionId, tenantId, windowPurposes: [...CHANGE_WINDOW_PURPOSES] })
   // Nessuna riga = non e un workflow delle change: niente da verificare.
   if (!res.records.length) return null

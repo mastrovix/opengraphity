@@ -164,9 +164,11 @@ describe('UpdateServiceMapDialog', () => {
     // cache-02 è già nell'elenco degli spariti: non si ripete qui
     expect(screen.getAllByTestId('proposal-auto').map((r) => r.getAttribute('data-ci-id'))).toEqual(['api-03', 'db-01', 'cert-billing'])
     await user.click(screen.getByLabelText('Exclude db-01 from the map'))
-    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+0 −0 excluded 1')
+    // U-1: escludere un componente già nella mappa lo toglie, e il riepilogo lo conta
+    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+0 −1 excluded 1')
     await user.click(screen.getByRole('button', { name: 'Apply' }))
     await waitFor(() => expect(seen).toEqual([{ id: 'map-1', expectedVersion: 3, add: [], exclude: ['db-01'], remove: [] }]))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Map updated: +0 −1, 1 excluded'))
   })
 
   it('C-5: in modalità viva «Includi» dice che il componente resterà per sempre', async () => {

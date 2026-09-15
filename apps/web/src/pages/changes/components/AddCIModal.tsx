@@ -14,6 +14,7 @@ import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { ADD_CI_TO_CHANGE } from '@/graphql/mutations'
 import { colors } from '@/lib/tokens'
 import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
 
 export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, refetchImpacted, refetchAudit }: {
   changeId: string
@@ -23,6 +24,7 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
   refetchImpacted: () => Promise<unknown>
   refetchAudit:    () => Promise<unknown>
 }) {
+  const ciLabels = useCILabels()
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
   // CM-8: i tipi di CI esclusi per le change non si propongono (l'API li rifiuta comunque).
@@ -66,8 +68,8 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 500, color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)' }}>{ci.name}</div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
-                    {ci.type && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 4px', borderRadius: 3, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ci.type}</span>}
-                    {ci.environment && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 4px', borderRadius: 3, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ci.environment}</span>}
+                    {ci.type && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 4px', borderRadius: 3, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.typeLabel(ci.type)}</span>}
+                    {ci.environment && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 4px', borderRadius: 3, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.environmentLabel(ci.environment)}</span>}
                   </div>
                   <div style={{ display: 'flex', gap: 12, marginTop: 3, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
                     <span><span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: hasOwner ? 'var(--color-success)' : 'var(--color-danger)', marginRight: 4, verticalAlign: 'middle' }} />Owner: {ci.ownerGroup?.name ?? '—'}</span>

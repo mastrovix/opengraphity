@@ -10,6 +10,7 @@ import {
 import { Input, Select } from '@/components/ui/FormControls'
 import { FormField } from './CIFieldInlineEditor'
 import { checkCITypeName, type KnownCIType } from '@/lib/ciTypeNames'
+import { ColorField } from '@/components/ui/ColorField'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -81,11 +82,7 @@ export function CreateTypeDialog({
         </div>
       </div>
       <FormField label={t('citypeDesigner.color')} htmlFor={`${id}-color`}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input id={`${id}-color`} type="color" value={form.color} onChange={(e) => set('color', e.target.value)}
-            style={{ width: 36, height: 36, border: 'none', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
-          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{form.color}</span>
-        </div>
+        <ColorField id={`${id}-color`} value={form.color} onChange={(hex) => set('color', hex)} />
       </FormField>
     </Modal>
   )

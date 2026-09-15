@@ -19,7 +19,7 @@ vi.mock('@opengraphity/neo4j', async (importOriginal) => {
 })
 
 const { traversableRelationshipTypes } = await import('../ciMetamodelForTenant.js')
-const { assertNoServiceMapFollows, relationshipTypesLostWithout, SERVICE_MAPS_FOLLOWING_TYPES_CYPHER } = await import('../serviceMapRelationUsage.js')
+const { assertNoServiceMapFollows, relationshipTypesLostWithout, serviceMapsBlockingRemoval, SERVICE_MAPS_FOLLOWING_TYPES_CYPHER } = await import('../serviceMapRelationUsage.js')
 const { runQuery } = await import('@opengraphity/neo4j')
 
 function type(id: string, name: string, scope: 'base' | 'tenant', relations: Array<{ id: string; name: string; relationshipType: string }>) {
@@ -48,6 +48,19 @@ describe('relationshipTypesLostWithout', () => {
     expect(await relationshipTypesLostWithout('t1', { relationId: 'r-bal' })).toEqual({ lost: ['BALANCES'], name: 'bilancia' })
     TYPES.value = [firewall]
     expect(await relationshipTypesLostWithout('t1', { typeId: 'ct-fw' })).toEqual({ lost: ['PROTECTS'], name: 'FIREWALL' })
+  })
+})
+
+describe('serviceMapsBlockingRemoval (giro UI 15 set · U-16: la conferma del tipo le legge prima)', () => {
+  const session = {} as never
+  it('restituisce le mappe per nome senza rifiutare; nessun tipo perso → nessuna domanda', async () => {
+    TYPES.value = [firewall]
+    vi.mocked(runQuery).mockResolvedValueOnce([{ name: 'Portale clienti' }] as never)
+    expect(await serviceMapsBlockingRemoval(session, 't1', { typeId: 'ct-fw' })).toEqual({ lost: ['PROTECTS'], name: 'FIREWALL', maps: ['Portale clienti'] })
+    vi.mocked(runQuery).mockClear()
+    TYPES.value = [firewall, balancer, server]
+    expect(await serviceMapsBlockingRemoval(session, 't1', { relationId: 'r-prot' })).toEqual({ lost: [], name: 'protegge', maps: [] })
+    expect(runQuery).not.toHaveBeenCalled()
   })
 })
 

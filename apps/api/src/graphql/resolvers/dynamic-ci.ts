@@ -9,7 +9,7 @@ import { cache } from '../../lib/cache.js'
 import { ALLOWED_BASE_FIELDS, ALL_CIS_ALLOWED_FIELDS, ciOrderBy, buildBaseWhere, buildAdvancedWhere } from './buildCIQuery.js'
 import { buildFieldResolvers, mapTeamProps } from './ciFieldResolvers.js'
 import { buildCreateMutation, buildUpdateMutation, buildDeleteMutation } from './ciMutations.js'
-import { mapITILField, fetchITILTypeById, buildITILTypesResolver, buildITILTypeFieldsResolver, buildITILMutations } from './itilTypeResolvers.js'
+import { mapITILField, fetchITILTypeById, buildITILTypesResolver, buildITILTypeFieldsResolver, buildITILFieldValueCountResolver, buildITILMutations } from './itilTypeResolvers.js'
 import { requireMetamodelPermission, buildCITypesResolver, buildBaseCITypeResolver, buildMetamodelMutations, ciTypeDeletionImpact } from './ciTypeMetamodel.js'
 import { impactRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
 
@@ -323,6 +323,7 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
   Query['baseCIType']    = buildBaseCITypeResolver()
   Query['itilTypes']     = buildITILTypesResolver()
   Query['itilTypeFields'] = buildITILTypeFieldsResolver()
+  Query['itilFieldValueCount'] = buildITILFieldValueCountResolver()
 
   // Metamodel mutations
   const metamodelMutations = buildMetamodelMutations()

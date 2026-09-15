@@ -1,4 +1,6 @@
 import express, { type Application, type Request, type Response, type NextFunction } from 'express'
+import { auditMutationsPlugin } from './graphql/auditMutationsPlugin.js'
+import { runInAuditScope } from './lib/auditScope.js'
 import cors from 'cors'
 import helmet from 'helmet'
 import compression from 'compression'
@@ -280,6 +282,8 @@ function buildApolloServer(schema: GraphQLSchema): ApolloServer<GraphQLContext> 
         : ApolloServerPluginLandingPageProductionDefault(),
       graphqlMetricsPlugin,
       graphqlRateLimiterPlugin,
+      // Giro UI del 15 set · U-25: ogni mutation riuscita senza una voce sua va nell'Audit Log.
+      auditMutationsPlugin(),
       {
         // ── GraphQL tracing plugin ─────────────────────────────────────────────
         // Creates an explicit OTEL root span per GraphQL operation. This is
@@ -469,7 +473,9 @@ export async function startServer(): Promise<http.Server> {
         const holder = req as unknown as Record<symbol, GraphQLContext>
         holder[CONTEXT_KEY] = ctx
         const { handler } = await apolloFor(ctx.tenantId, state.schema)
-        handler(req, res, next)
+        // Il conto delle voci d'Audit Log della richiesta (lib/auditScope.ts):
+        // lo legge il registro delle mutation per non scriverne una seconda.
+        runInAuditScope(() => handler(req, res, next))
       } catch (err) {
         next(err)
       }

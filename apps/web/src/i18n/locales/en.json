@@ -549,6 +549,7 @@
       "invalidName": "Name must be snake_case (e.g. \"my_enum\")",
       "shippedBadge": "Shipped with the product",
       "ownBadge": "Yours",
+      "customizedFromShipped": "Customized from the dictionary shipped with the product: this copy applies to you in its place. Deleting it brings the shipped one back.",
       "shippedNote": "This dictionary ships with the product: it is the same for every customer, so it cannot be edited here. «Customize» creates your own copy with the same values: from then on yours applies, and only to you.",
       "shippedValuesNote": "The values of a dictionary that ships with the product cannot be changed here: customize it and edit your copy.",
       "customizeButton": "Customize",
@@ -1076,6 +1077,8 @@
       "notes": "Notes",
       "supportGroup": "Support Group",
       "notAssignedOption": "— not assigned —",
+      "requiredGroupOption": "— required: choose a group —",
+      "requiredGroupMissing": "{{group}} is required for this type of CI and is missing: choose a group.",
       "membersShownOfTotal": "{{shown}} of {{total}}",
       "membersTruncated": "List truncated: the server returns at most {{shown}} of {{total}} members. Narrow the group criteria to see them all.",
       "membersMap": "Members Map",
@@ -1327,6 +1330,9 @@
         "usingFactory": "You are using the factory thresholds (≤30, ≤60, the rest). Saving makes them explicit.",
         "band": "Band",
         "upTo": "Up to",
+        "bandN": "Band {{n}}",
+        "upToBand": "Up to — {{band}} band",
+        "upToN": "Up to — band {{n}}",
         "lastMustBe100": "The last band must reach 100: a higher score would have no band.",
         "ascending": "Thresholds must ascend, from the lowest band to the highest.",
         "saved": "Risk bands saved.",
@@ -1666,7 +1672,8 @@
       "approveOnBehalfBody": "You are not a member of {{team}}: as an admin you would approve on its behalf, and the approval is recorded with your name.",
       "beforeWindowTitle": "Before the planned window",
       "beforeWindowBody": "The planned release window starts on {{when}}. Move the change to «{{step}}» now?",
-      "beforeWindowConfirm": "Yes, move it now"
+      "beforeWindowConfirm": "Yes, move it now",
+      "riskNotAssessed": "Risk not yet assessed: priority from the change type"
     },
     "reportSchedule": {
       "lastRun": "Last run: {{date}}",
@@ -1978,6 +1985,8 @@
     },
     "createTicket": {
       "searchByName": "Search by name...",
+      "ciTypesExcluded_one": "CIs of type {{types}} are not offered: that type is excluded for this kind of ticket.",
+      "ciTypesExcluded_other": "CIs of types {{types}} are not offered: those types are excluded for this kind of ticket.",
       "searchTeam": "Search a team by name...",
       "derivedPriority": "Priority (derived)",
       "noSla": {
@@ -2528,8 +2537,9 @@
     "enumRef": "Reference enum",
     "selectEnum": "— Select enum —",
     "advancedScripts": "Advanced scripts (validation, visibility, default)",
-    "systemFields_one": "SYSTEM FIELD ({{count}}) — not editable",
-    "systemFields_other": "SYSTEM FIELDS ({{count}}) — not editable",
+    "systemFields_one": "SYSTEM FIELD ({{count}}) — name, type and required are fixed; label, order and scripts can be edited",
+    "systemFields_other": "SYSTEM FIELDS ({{count}}) — name, type and required are fixed; label, order and scripts can be edited",
+    "statusFromWorkflow": "values = the steps of the workflow: {{steps}}",
     "customFields_one": "CUSTOM FIELD ({{count}})",
     "customFields_other": "CUSTOM FIELDS ({{count}})",
     "noCustomFields": "No custom fields. Click \"+ Add field\" to add one.",
@@ -2551,7 +2561,11 @@
       "summary": "Excluded CI types: {{selected}}.",
       "notLinked": "This ticket type is not linked to CIs.",
       "loadError": "The exclusions could not be loaded: {{error}}"
-    }
+    },
+    "deleteFieldValues_one": "{{count}} ticket has a value in this field: it is deleted with the field (the previous values stay in the Audit Log).",
+    "deleteFieldValues_other": "{{count}} tickets have a value in this field: they are deleted with the field (the previous values stay in the Audit Log).",
+    "deleteFieldNoValues": "No ticket has a value in this field.",
+    "deleteFieldCountFailed": "Could not count the tickets that use the field: {{error}}"
   },
   "ciTypeDesigner": {
     "chain": "Chain",
@@ -2577,6 +2591,8 @@
       "intro": "Together with the type, these are deleted:",
       "nothing": "Nothing else is deleted: the type has no CIs and nothing refers to it.",
       "blocked": "«{{label}}» cannot be deleted: {{cis}} of its CIs are linked to {{tickets}} ticket(s), closed ones included.",
+      "blockedByServiceMaps_one": "«{{label}}» cannot be deleted: its relationships are followed by service map «{{maps}}». Remove the relationship type from that map first (service detail → Change scope).",
+      "blockedByServiceMaps_other": "«{{label}}» cannot be deleted: its relationships are followed by {{count}} service maps ({{maps}}). Remove the relationship type from those maps first (service detail → Change scope).",
       "unavailable": "Could not compute what the deletion would remove: {{error}}",
       "cis_one": "{{count}} CI of this type, with its relationships",
       "cis_other": "{{count}} CIs of this type, with their relationships",
@@ -2704,6 +2720,7 @@
     "noTeamMembers": "The team has no members: add them in Teams.",
     "commentByMonitoring": "Monitoring",
     "commentByAutomation": "Automation: {{name}}",
+    "commentByAutomationUnnamed": "Automation",
     "commentInternal": "Internal note",
     "commentPublic": "Public reply",
     "commentVisibility": "Who can read this comment",
@@ -4157,7 +4174,8 @@
       "syncSkipped": "Sync refused: {{reason}}. Nothing was changed.",
       "syncSkippedNoReason": "the engine gave no reason",
       "componentExcluded": "{{name}} excluded: it is out of the map and will not be proposed again",
-      "scopeChanged": "Scope saved (version {{version}})"
+      "scopeChanged": "Scope saved (version {{version}})",
+      "rulesSaved": "Rules saved (version {{version}})"
     },
     "user": {
       "teamsUpdated": "Teams updated"
@@ -4170,6 +4188,10 @@
     }
   },
   "components": {
+    "colorField": {
+      "token": "Theme colour ({{token}}): it follows the theme",
+      "unreadable": "not a colour the picker can show"
+    },
     "reportChart": {
       "unavailable": "Chart not available with the selected parameters",
       "computeError": "Error computing the section",
@@ -5303,6 +5325,10 @@
         "showAll": "Show all",
         "loadFailed": "Could not load the full history: {{error}}",
         "noPrevious": "no previous health",
+        "configTrigger": {
+          "rules_changed": "Rules changed. Health at that moment <health/> (score {{score}}, before the re-evaluation).",
+          "map_changed": "Map changed. Health at that moment <health/> (score {{score}}, before the re-evaluation)."
+        },
         "causesMore_one": "{{causes}}, +{{count}} more",
         "causesMore_other": "{{causes}}, +{{count}} more",
         "trigger": {
@@ -5382,7 +5408,7 @@
         },
         "saveFailed": "Rules not saved: {{error}}. If another admin — or the automatic sync — changed the map, reload and try again.",
         "reload": "Reload",
-        "openIncidentNote": "An incident opens by itself when health reaches the threshold, and closes when the service falls back below it."
+        "openIncidentNote": "An incident opens by itself when health reaches the threshold, and is resolved only when the service is operational again: below the threshold but still degraded, it stays open."
       },
       "componentsEdit": {
         "changed_one": "{{count}} component changed",

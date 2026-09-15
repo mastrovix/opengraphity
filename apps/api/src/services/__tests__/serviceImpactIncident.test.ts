@@ -35,6 +35,7 @@ const incidentService = vi.hoisted(() => ({
   createIncident:     vi.fn(),
   addIncidentComment: vi.fn().mockResolvedValue(undefined),
   resolveIncident:    vi.fn().mockResolvedValue(undefined),
+  setIncidentTitle:   vi.fn().mockResolvedValue(undefined),
 }))
 const workflow = vi.hoisted(() => ({ getAvailableTransitions: vi.fn().mockResolvedValue([]) }))
 
@@ -380,6 +381,12 @@ describe('riapertura', () => {
       { resolvedStep: 'resolved', terminalSteps: ['resolved', 'closed'] },
       'Il servizio "Enterprise Billing" è di nuovo non disponibile (punteggio 62/100)')
     expect(incidentService.addIncidentComment.mock.calls[0]![2]).toContain('Riaperto dal monitoraggio')
+  })
+
+  it('U-6: alla riapertura il titolo segue la salute di adesso (riaperto per «degradato» non resta «non disponibile»)', async () => {
+    onCypher([[FIND_RE, openRow({ step: 'resolved' })], [LINK_RE, { at: NOW }]])
+    await reconcileServiceIncident(input({ health: 'degraded', rules: { ...DEFAULT_SERVICE_IMPACT_RULES, open_incident_from: 'degraded' } }))
+    expect(incidentService.setIncidentTitle).toHaveBeenCalledWith('inc-1', { tenantId: 't1', userId: 'monitoring' }, 'Servizio Enterprise Billing: degradato')
   })
 
   it('mappa non attiva → un incident risolto non viene riaperto', async () => {

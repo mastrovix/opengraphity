@@ -567,6 +567,23 @@ describe('gli scopi che il workflow delle change non puo perdere (B·N-1 + terza
   })
 
   /**
+   * Giro UI del 15 set 2026 · U-18. Il test qui sopra finge che una
+   * definizione non-change dia «nessuna riga», ma in Neo4j `RETURN count(s)`
+   * senza chiave di raggruppamento restituisce SEMPRE una riga (0): la guardia
+   * dell'approvazione rifiutava ogni salvataggio di passo nel workflow degli
+   * incident. Visto dal vivo nel disegnatore e con cypher-shell. Le due letture
+   * devono raggruppare per la definizione, così «nessuna riga» è vero.
+   */
+  it('U-18: le due letture raggruppano per la definizione (un count da solo dà sempre una riga)', async () => {
+    results = coda({ approvalSteps: 1 })
+    await esegui([step()])
+    const cypher = writtenCypher()
+    expect(cypher).toContain('RETURN wd.id AS definitionId, count(s) AS approvalSteps')
+    expect(cypher).toContain('RETURN wd.id AS definitionId, count(s) AS n')
+    expect(cypher).not.toMatch(/RETURN count\(s\) AS (approvalSteps|n)\b/)
+  })
+
+  /**
    * Terza revisione · G2, seconda metà: su `scheduled` e `implementation` e
    * indicizzato il varco dal lato del passo di ARRIVO. Togliendo lo scopo,
    * `entersWindow` da sempre `false` e il varco si spegne — e con lui la

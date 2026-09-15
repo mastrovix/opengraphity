@@ -1,15 +1,15 @@
 import { useState } from 'react'
-import { useQuery, useMutation } from '@apollo/client/react'
+import { useQuery, useMutation, useApolloClient } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useConfirm } from '@/hooks/useConfirm'
-import { GET_ITIL_TYPES, GET_ENUM_TYPES, GET_CI_TYPES, GET_WORKFLOW_LIST } from '@/graphql/queries'
+import { GET_ITIL_TYPES, GET_ENUM_TYPES, GET_CI_TYPES, GET_WORKFLOW_LIST, GET_ITIL_FIELD_VALUE_COUNT } from '@/graphql/queries'
 import {
   CREATE_ITIL_FIELD, UPDATE_ITIL_FIELD, DELETE_ITIL_FIELD, UPDATE_ITIL_TYPE,
 } from '@/graphql/mutations'
 import type { EnumTypeRef } from './shared/designerStyles'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
-import { showError } from '@/lib/showError'
+import { showError, errorMessage } from '@/lib/showError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -91,6 +91,7 @@ export interface SettingsFormState {
 export function useITILTypeDesigner() {
   const { t } = useTranslation()
   const confirm = useConfirm()
+  const apollo = useApolloClient()
 
   // ── State ───────────────────────────────────────────────────────────────────
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null)
@@ -207,7 +208,19 @@ export function useITILTypeDesigner() {
   }
 
   const handleDeleteField = async (typeId: string, fieldId: string) => {
-    if (!(await confirm({ title: t('itilDesigner.deleteFieldTitle'), danger: true }))) return
+    // Giro UI del 15 set · U-28: i valori se ne vanno con il campo, quindi la
+    // conferma dice PRIMA su quanti ticket.
+    let count: number
+    try {
+      const res = await apollo.query<{ itilFieldValueCount: number }>({ query: GET_ITIL_FIELD_VALUE_COUNT, variables: { typeId, fieldId }, fetchPolicy: 'network-only' })
+      if (res.data == null) throw new Error('itilFieldValueCount returned no data')
+      count = res.data.itilFieldValueCount
+    } catch (e) {
+      showError(e, t('itilDesigner.deleteFieldCountFailed', { error: errorMessage(e) }))
+      return
+    }
+    const body = count > 0 ? t('itilDesigner.deleteFieldValues', { count }) : t('itilDesigner.deleteFieldNoValues')
+    if (!(await confirm({ title: t('itilDesigner.deleteFieldTitle'), body, danger: true }))) return
     void deleteField({ variables: { typeId, fieldId } })
   }
 

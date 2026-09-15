@@ -37,6 +37,7 @@ import { useConfirm } from '@/hooks/useConfirm'
 import { colors, palette } from '@/lib/tokens'
 import { isShippedType } from '@/lib/ciTypeNames'
 import { Package } from 'lucide-react'
+import { ColorField } from '@/components/ui/ColorField'
 
 /**
  * I ruoli che un tipo può dichiarare per la mappa di un servizio (ondata 6 ·
@@ -273,6 +274,11 @@ export function CITypeDesignerPage() {
                       toast.error(t('ciTypeDesigner.deleteImpact.blocked', { label: selected.label, cis: impact.ticketCIs, tickets: impact.tickets }))
                       return
                     }
+                    // U-16: una mappa di servizio che segue una relazione del tipo lo blocca (SV-6): detto prima della conferma.
+                    if (impact.blockingServiceMaps.length > 0) {
+                      toast.error(t('ciTypeDesigner.deleteImpact.blockedByServiceMaps', { label: selected.label, count: impact.blockingServiceMaps.length, maps: impact.blockingServiceMaps.join(', ') }))
+                      return
+                    }
                     if (!(await confirm({ title: t('ciTypeDesigner.deleteTypeTitle', { label: selected.label }), body: <CITypeDeletionImpact impact={impact} t={t} />, danger: true }))) return
                     void deleteType({ variables: { id: selected.id } })
                   }}>
@@ -324,12 +330,7 @@ export function CITypeDesignerPage() {
                       </div>
                     </div>
                     <FormField label={t('citypeDesigner.color')}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="color" value={settingsForm.color}
-                          onChange={(e) => setSettingsForm((p) => p && ({ ...p, color: e.target.value }))}
-                          style={{ width: 36, height: 36, border: 'none', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
-                        <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{settingsForm.color}</span>
-                      </div>
+                      <ColorField value={settingsForm.color} onChange={(hex) => setSettingsForm((p) => p && ({ ...p, color: hex }))} />
                     </FormField>
                     {/* Chain Families */}
                     <div style={{ marginBottom: 16 }}>

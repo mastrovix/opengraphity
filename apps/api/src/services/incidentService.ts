@@ -31,6 +31,13 @@ export interface IncidentEventPayload {
 export interface ServiceCtx {
   tenantId: string
   userId: string
+  /**
+   * Chi agisce quando non è una persona: il nome della regola o del trigger
+   * (lib/actionExecutor.ts). Finisce in `author_label` dei commenti scritti
+   * dal servizio — giro UI del 15 set 2026 · U-8: la nota «Riassegnato al team»
+   * di una regola compariva come «Automation:» senza nome e con l'avatar «?».
+   */
+  actorLabel?: string
 }
 
 type Session = ReturnType<typeof getSession>
@@ -72,6 +79,7 @@ async function createTransitionComment(
   tenantId: string,
   userId: string,
   text: string,
+  authorLabel: string | null = null,
 ) {
   const now = new Date().toISOString()
   await session.executeWrite((tx) => tx.run(`
@@ -83,11 +91,12 @@ async function createTransitionComment(
       // Testo del sistema: nota interna (lib/ticketComments.ts).
       is_internal: true,
       author_id:  $userId,
+      author_label: $authorLabel,
       created_at: $now,
       updated_at: $now
     })
     CREATE (i)-[:HAS_COMMENT]->(c)
-  `, { incidentId, tenantId, text, userId, now }))
+  `, { incidentId, tenantId, text, userId, authorLabel, now }))
 }
 
 /**
@@ -101,8 +110,29 @@ export async function addIncidentComment(id: string, ctx: ServiceCtx, text: stri
       MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN i.id AS id
     `, { id, tenantId: ctx.tenantId })
     if (!row) throw new NotFoundError('Incident', id)
-    await createTransitionComment(session, id, ctx.tenantId, ctx.userId, text)
+    await createTransitionComment(session, id, ctx.tenantId, ctx.userId, text, ctx.actorLabel ?? null)
   }, true)
+}
+
+/**
+ * Cambia il titolo di un incident da un canale automatico (giro UI del 15 set
+ * 2026 · U-6: l'incident di un servizio riaperto per «degradato» restava
+ * intitolato «non disponibile»). Aggiorna anche la similarità, che legge il
+ * titolo. Un incident che non esiste è un errore.
+ */
+export async function setIncidentTitle(id: string, ctx: ServiceCtx, title: string): Promise<void> {
+  if (typeof title !== 'string' || title.trim() === '') throw new ValidationError('Incident title must not be empty')
+  await withSession(async (session) => {
+    const row = await runQueryOne<{ id: string }>(session, `
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      SET i.title = $title, i.updated_at = $now
+      RETURN i.id AS id
+    `, { id, tenantId: ctx.tenantId, title, now: new Date().toISOString() })
+    if (!row) throw new NotFoundError('Incident', id)
+  }, true)
+  enqueueEmbedding({ entityType: 'incident', entityId: id, tenantId: ctx.tenantId }).catch((err: unknown) => {
+    logger.error({ err, incidentId: id }, '[embeddings] enqueue failed — similarity will lag until backfill')
+  })
 }
 
 // buildEvent removed — using shared publishEvent from lib/publishEvent.ts
@@ -412,7 +442,7 @@ export async function assignIncidentToTeam(
           })
         `, { incidentId: id, tenantId: ctx.tenantId, now, userId: ctx.userId, notes: transitionNotes }))
       }
-      await createTransitionComment(session, id, ctx.tenantId, ctx.userId, transitionNotes)
+      await createTransitionComment(session, id, ctx.tenantId, ctx.userId, transitionNotes, ctx.actorLabel ?? null)
     }
 
     const r = await session.executeRead((tx) => tx.run(
@@ -538,7 +568,7 @@ export async function assignIncidentToUser(
           })
         `, { incidentId: id, tenantId: ctx.tenantId, now, userId: ctx.userId, notes: reassignedNote }))
       }
-      await createTransitionComment(session, id, ctx.tenantId, ctx.userId, assignedNote)
+      await createTransitionComment(session, id, ctx.tenantId, ctx.userId, assignedNote, ctx.actorLabel ?? null)
     }
 
     const r = await session.executeRead((tx) => tx.run(

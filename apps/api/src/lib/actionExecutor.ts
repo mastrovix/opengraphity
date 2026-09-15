@@ -164,7 +164,7 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
       // 2026). Per gli altri ticket: la stessa scrittura, con l'etichetta giusta.
       if (ctx.entityType === 'incident') {
         const { assignIncidentToTeam } = await import('../services/incidentService.js')
-        await assignIncidentToTeam(ctx.entityId, teamId, { tenantId: ctx.tenantId, userId: ctx.userId })
+        await assignIncidentToTeam(ctx.entityId, teamId, { tenantId: ctx.tenantId, userId: ctx.userId, actorLabel: ctx.sourceName })
       } else if (ctx.entityType === 'problem') {
         const { setTicketTeam } = await import('../services/ticketAssignment.js')
         await withSession((session) => setTicketTeam(session, 'Problem', ctx.entityId, teamId, ctx.tenantId), true)
@@ -201,7 +201,7 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
       // problem, e per gli altri ticket la scrittura che conta le righe.
       if (ctx.entityType === 'incident') {
         const { assignIncidentToUser } = await import('../services/incidentService.js')
-        await assignIncidentToUser(ctx.entityId, userId, { tenantId: ctx.tenantId, userId: ctx.userId })
+        await assignIncidentToUser(ctx.entityId, userId, { tenantId: ctx.tenantId, userId: ctx.userId, actorLabel: ctx.sourceName })
       } else if (ctx.entityType === 'problem') {
         const { assertUserInAssignedTeam, setTicketUser } = await import('../services/ticketAssignment.js')
         await withSession(async (session) => {

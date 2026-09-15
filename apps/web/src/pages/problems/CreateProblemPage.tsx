@@ -17,6 +17,8 @@ import { useValueStyle } from '@/hooks/useValueStyle'
 import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
 import { customFieldsInput, missingCustomFields, useTicketCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
+import { CIExclusionHint } from '@/components/ticket/CIExclusionHint'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -36,6 +38,7 @@ const inputBase: React.CSSProperties = {
 
 export function CreateProblemPage() {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const { labelOf } = useDomainVocabularies()
   // F9: il colore della priorità derivata è quello del Dizionario.
   const styleOf = useValueStyle()
@@ -241,6 +244,7 @@ export function CreateProblemPage() {
               <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>{t('common.optional')}</span>
             </label>
 
+            <CIExclusionHint excluded={excludedCITypes} />
             <div style={{ position: 'relative' }}>
               <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 'var(--font-size-card-title)', pointerEvents: 'none', color: 'var(--color-slate-light)' }}>
                 🔍
@@ -268,7 +272,7 @@ export function CreateProblemPage() {
                     >
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{ci.name}</span>
                       <span style={{ fontSize: 'var(--font-size-body)', padding: '1px 6px', borderRadius: 4, backgroundColor: 'var(--color-border-light)', color: 'var(--color-slate)' }}>
-                        {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
+                        {ciLabels.subtitle(ci)}
                       </span>
                     </button>
                   ))}

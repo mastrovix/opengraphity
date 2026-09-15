@@ -107,4 +107,15 @@ describe('avanzamento all\'assegnazione', () => {
     await svc.assignIncidentToTeam('inc-1', 'team-1', ctx)
     expect(vi.mocked(workflowEngine.transition).mock.calls[0]![1]).toMatchObject({ toStepName: 'assigned' })
   })
+  /** Giro UI del 15 set 2026 · U-8: la nota di una regola porta il nome della regola, non «Automation:» vuoto. */
+  it('U-8: la nota scritta per conto di una regola ha author_label = nome della regola', async () => {
+    const seen: Array<{ c: string; p: Record<string, unknown> }> = []
+    session.executeWrite.mockImplementation(async (fn: (tx: unknown) => unknown) => fn({ run: async (c: string, p: Record<string, unknown>) => { seen.push({ c, p }); return { records: [] } } }))
+    const { workflowEngine } = await import('@opengraphity/workflow')
+    vi.mocked(workflowEngine.transition).mockResolvedValueOnce({ success: true } as never)
+    await svc.assignIncidentToTeam('inc-1', 'team-1', { ...ctx, userId: 'automation', actorLabel: 'Hardware al Service Desk' })
+    const comment = seen.find((w) => w.c.includes('HAS_COMMENT'))
+    expect(comment?.c).toContain('author_label: $authorLabel')
+    expect(comment?.p).toMatchObject({ userId: 'automation', authorLabel: 'Hardware al Service Desk' })
+  })
 })

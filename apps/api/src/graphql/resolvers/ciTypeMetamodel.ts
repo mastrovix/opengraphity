@@ -1,5 +1,5 @@
 import { withSession } from './ci-utils.js'
-import { assertNoServiceMapFollows } from '../../lib/serviceMapRelationUsage.js'
+import { assertNoServiceMapFollows, serviceMapsBlockingRemoval } from '../../lib/serviceMapRelationUsage.js'
 import type { GraphQLContext } from '../../context.js'
 import { GraphQLError } from 'graphql'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
@@ -521,7 +521,10 @@ export async function ciTypeDeletionImpact(_: unknown, args: { id: string }, ctx
   requireMetamodelPermission(ctx)
   return withSession(async (session) => {
     const owned = await assertTenantOwnedType(session, args.id, ctx.tenantId, 'delete')
-    return loadCITypeDeletionImpact(session, ctx.tenantId, args.id, owned.name, toPascalCase(owned.name))
+    const impact = await loadCITypeDeletionImpact(session, ctx.tenantId, args.id, owned.name, toPascalCase(owned.name))
+    // U-16: le mappe di servizio che bloccano (SV-6) si dicono qui, non dopo la conferma.
+    const { maps } = await serviceMapsBlockingRemoval(session, ctx.tenantId, { typeId: args.id })
+    return { ...impact, blockingServiceMaps: maps }
   })
 }
 

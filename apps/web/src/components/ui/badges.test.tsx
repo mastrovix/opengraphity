@@ -28,7 +28,7 @@ function withVocabulary(
       valuesOf:  () => values,
       labelOf:   (_n, v) => labels[v] ?? null,
       colorOf:   (_n, v) => (valueColors[v] as never) ?? null,
-      entriesOf: () => (values ? values.map((v) => ({ value: v, label: labels[v] ?? v, labels: [] })) : null),
+      vocabularyLabelOf: () => null, entriesOf: () => (values ? values.map((v) => ({ value: v, label: labels[v] ?? v, labels: [] })) : null),
       loading: false,
       error: null,
     }}>
@@ -121,7 +121,7 @@ describe('RiskBadge — fasce del cliente (verifica «Cosa resta cablato», onda
     expect(el).toHaveAttribute('title', 'MEDIUM · score 45')
     expect(el.parentElement).toHaveStyle({ color: palette.warning.text })
     rerender(
-      <DomainVocabularyContext.Provider value={{ valuesOf: () => ['low', 'medium', 'high'], labelOf: () => null, colorOf: (_n, v) => ((RISK_COLORS as Record<string, string>)[v] as never) ?? null, entriesOf: () => null, loading: false, error: null }}>
+      <DomainVocabularyContext.Provider value={{ valuesOf: () => ['low', 'medium', 'high'], labelOf: () => null, colorOf: (_n, v) => ((RISK_COLORS as Record<string, string>)[v] as never) ?? null, vocabularyLabelOf: () => null, entriesOf: () => null, loading: false, error: null }}>
         <RiskBandContext.Provider value={{ bandOf: (score) => bandForScore(FACTORY, score), loading: false, error: null }}>
           <RiskBadge score={72} compact />
         </RiskBandContext.Provider>

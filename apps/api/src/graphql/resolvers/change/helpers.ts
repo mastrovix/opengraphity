@@ -321,15 +321,24 @@ export async function recomputeCIRiskIfReady(session: SessionOrTx, changeId: str
 }
 
 export async function computeAggregateRisk(session: SessionOrTx, changeId: string, tenantId: string) {
-  const row = await runQueryOne<{ maxRisk: unknown; changeType: string | null }>(session, `
+  const row = await runQueryOne<{ maxRisk: unknown; unassessed: unknown; changeType: string | null }>(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->()
-    RETURN max(r.risk_score) AS maxRisk, c.change_type AS changeType
+    RETURN max(r.risk_score) AS maxRisk, count(CASE WHEN r.risk_score IS NULL THEN 1 END) AS unassessed, c.change_type AS changeType
   `, { changeId, tenantId })
-  const maxRisk = row?.maxRisk != null ? toNumber(row.maxRisk) : 0
+  // Giro UI del 15 set 2026 · U-24 (scelta del proprietario): finché un CI
+  // della change non ha il suo rischio, il rischio aggregato NON è noto. Prima
+  // `max` ignorava i null e ne usciva 0: dopo la prima attività su tre la
+  // change passava da MEDIUM a «LOW · 0», una fascia bassa mai misurata. Ora
+  // resta la priorità iniziale del tipo, come in `resetChangeRisk`.
+  if (!row || toNumber(row.unassessed) > 0) {
+    await resetChangeRisk(session, changeId, tenantId)
+    return
+  }
+  const maxRisk = row.maxRisk != null ? toNumber(row.maxRisk) : 0
   const approvalRoute = await determineApprovalRoute(tenantId, maxRisk)
   // Priorità (ITIL) = tipo × rischio, ricalcolata e MEMORIZZATA quando il
   // rischio aggregato cambia.
-  const priority = await deriveChangePriority(tenantId, row?.changeType, maxRisk)
+  const priority = await deriveChangePriority(tenantId, row.changeType, maxRisk)
   await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     SET c.aggregate_risk_score = $maxRisk,

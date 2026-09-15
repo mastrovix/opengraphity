@@ -124,7 +124,7 @@ describe('OrganizationPage — severità del portale', () => {
       valuesOf:  (n) => (n === 'severity' ? SEVERITY.map((e) => e.value) : null),
       labelOf:   (n, v) => (n === 'severity' ? SEVERITY.find((e) => e.value === v)?.label ?? null : null),
       colorOf:   () => null,
-      entriesOf: (n) => (n === 'severity' ? SEVERITY : null),
+      vocabularyLabelOf: () => null, entriesOf: (n) => (n === 'severity' ? SEVERITY : null),
       loading: false, error: null,
     }}>{ui}</DomainVocabularyContext.Provider>
   )
