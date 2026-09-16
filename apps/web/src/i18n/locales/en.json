@@ -14,7 +14,6 @@
     "apply": "Apply",
     "reset": "Reset",
     "no": "No",
-    "of": "of",
     "description": "Description",
     "note": "Note",
     "resolvedAt": "Resolved at",
@@ -46,11 +45,10 @@
     "inactive": "Inactive",
     "enabled": "Enabled",
     "disabled": "Disabled",
-    "enable": "Enable",
-    "disable": "Disable",
     "showAllCount_one": "Show all ({{count}})",
     "showAllCount_other": "Show all ({{count}})",
-    "any": "any"
+    "any": "any",
+    "number": "Number"
   },
   "bulk": {
     "selected_one": "{{count}} selected",
@@ -251,8 +249,6 @@
       "health": "Health",
       "count_one": "{{count}} CI",
       "count_other": "{{count}} CIs",
-      "new": "New {{type}}",
-      "newFeminine": "New {{type}}",
       "name": "Name",
       "type": "Type",
       "status": "Status",
@@ -425,7 +421,6 @@
       "title": "Logs",
       "level": "Level",
       "message": "Message",
-      "source": "Source",
       "timestamp": "Timestamp",
       "refresh": "Refresh",
       "autoRefresh": "Auto-refresh 10s",
@@ -435,7 +430,8 @@
       "filterDate": "Date",
       "count_one": "{{count}} log",
       "count_other": "{{count}} logs",
-      "notJson": "Not JSON — raw value"
+      "notJson": "Not JSON — raw value",
+      "module": "Module"
     },
     "aiAnalysis": {
       "title": "AI Analysis",
@@ -920,7 +916,9 @@
       "chooseCategory": "Choose a category",
       "awaitingApproval": "Waiting for approval before publication:",
       "openApprovals": "open Approvals",
-      "colVersion": "Version"
+      "colVersion": "Version",
+      "colStatus": "Status",
+      "colViews": "Views"
     },
     "workflow": {
       "title": "Workflow",
@@ -1257,7 +1255,6 @@
         "title": "Change risk bands",
         "help": "Which risk score (0-100) falls into which band. The band, together with the change type, decides the priority through the «change_priority» matrix. The thresholds used to be hardcoded (30 and 60) and the bands were read by position in the vocabulary: reordering it silently inverted them, and a fourth band never fired even though it appeared in the matrix.",
         "usingFactory": "You are using the factory thresholds (≤30, ≤60, the rest). Saving makes them explicit.",
-        "band": "Band",
         "upTo": "Up to",
         "bandN": "Band {{n}}",
         "upToBand": "Up to — {{band}} band",
@@ -1523,11 +1520,8 @@
       "partyTeam": "Internal team",
       "partySupplier": "External supplier",
       "teamName": "Responsible team",
-      "teamPlaceholder": "E.g. Network Ops",
       "generatedNote": "Generated on {{date}}. Each OLA/UC contract measures the time its team had the ticket: the assignment periods to that team, counted from when the contract exists until the ticket was concluded, on the contract's calendar; the SLA pause does not stop it. Only tickets concluded in the period count.",
       "pickTeam": "Choose a team...",
-      "noTeams": "This tenant has no team yet: create one in Teams and Users.",
-      "contracts": "OLA / UC",
       "noContracts": "No OLA/UC defined. An OLA sets a target between internal teams; a UC ties it to an external supplier.",
       "editContract": "Edit the OLA/UC contract",
       "newContractTitle": "New OLA/UC contract",
@@ -1549,7 +1543,6 @@
       "noPolicyRecorded": "No policy recorded",
       "policy": "Policy",
       "setByRule": "Set by the rule «{{rule}}»",
-      "slaSection": "SLA",
       "noPolicyRecordedHint": "These SLAs were created before the policy that produced them was recorded: their origin is not reconstructed.",
       "targetsShort": "Targets",
       "pausedShort": "Paused",
@@ -2364,10 +2357,7 @@
     "stepNarrowingHint": "With no narrowing the rule applies to every step entry. Narrowing by purpose or category instead of by name is what makes it survive a step rename.",
     "escalationMessage": "Escalation message",
     "escalationMessagePlaceholder": "Incident not resolved after N minutes",
-    "slaWarningTarget": "SLA warning target",
     "escalationDelay": "Escalation delay (minutes)",
-    "escalationTarget": "Escalation target (a user, or \"all\")",
-    "slaThreshold": "SLA warning threshold (%)",
     "digestTime": "Digest time (HH:MM)",
     "customEventPlaceholder": "e.g. workflow.step.entered",
     "titleKeyPlaceholder": "e.g. notification.custom.my_event.title",
@@ -2459,7 +2449,6 @@
       "from_to": "From → To",
       "trigger": "Trigger",
       "richiede_input": "Requires input",
-      "campo_input": "Input field",
       "timer_ore": "Timer (hours)",
       "deleteStepTitle": "Delete the step \"{{step}}\"?",
       "deleteStepBody": "The transitions attached to it are removed too.",
@@ -2488,7 +2477,12 @@
       "timer": "Timer (auto-close)"
     },
     "actionParams": {
-      "approvalTitleExample": "Publication: {title}"
+      "approvalTitleExample": "Publication: {title}",
+      "approvalType": {
+        "any": "any (one approver is enough)",
+        "all": "all (every approver is required)",
+        "majority": "majority"
+      }
     },
     "deadline": {
       "intro": "How long a ticket can stay in this step. When the time is up the ticket moves on its own along one of the arcs that leave the step, and the fields you choose are set.",
@@ -2715,7 +2709,6 @@
     "commentPlaceholder": "Write a comment... Use @ to mention",
     "unknownUser": "Unknown user",
     "sending": "Sending…",
-    "sendComment": "Send comment",
     "workflowStep": "Workflow step",
     "assignedTo": "Assigned to",
     "notAssigned": "Not assigned",
@@ -2740,7 +2733,6 @@
     "assignTeam": "Assign team",
     "assign": "Assign",
     "assigning": "Assigning…",
-    "takeOwnership": "Take ownership",
     "backToList": "Back to list",
     "exportPdf": "Export PDF",
     "exportPdfFailed": "PDF export failed",
@@ -3034,7 +3026,6 @@
     "sla": {
       "deleteTitle": "Delete this SLA policy?",
       "toggleLabel": "Toggle {{name}}",
-      "businessHoursLabel": "Business hours only",
       "entityType": "Entity type",
       "category": "Category",
       "team": "Team",
@@ -3062,9 +3053,7 @@
         "days_one": "{{count}}d",
         "days_other": "{{count}}d"
       },
-      "businessHours": "Business hours",
       "appliesToColumn": "Applies to",
-      "previewBusinessHours": "(business hours)",
       "preview247": "(24/7)",
       "timezoneTenantDefault": "Empty: the organization's time zone",
       "severity": "Severity",
@@ -3269,7 +3258,6 @@
       "optionInUse": "These answers have already been chosen and cannot be removed: {{options}}. Change their text instead, or deactivate the question."
     },
     "enum": {
-      "dictionary": "{{what}}: dictionary \"{{name}}\" {{reason}}",
       "emptyValues": "Dictionary \"{{name}}\" has {{count}} empty values: every value needs a name.",
       "systemTenant": "The system tenant does not customize the shipped dictionaries: the product changes those.",
       "renameEmpty": "The new value cannot be empty.",
@@ -3675,9 +3663,6 @@
     "window": {
       "noApprovalStep": "The change is of type \"{{type}}\", which is not among the pre-approved types, and in the change workflow no step declares the «Approval» purpose: there is no place to approve it, so it cannot enter the release window. Give the «Approval» purpose to the step where approval happens, or add \"{{type}}\" to the pre-approved types (Settings → Domain matrices)."
     },
-    "itilRelation": {
-      "duplicate": "A relationship with this CI type already exists."
-    },
     "metamodelName": {
       "typeSyntax": "«{{name}}» is not a valid CI type name: it must start with a lowercase letter and contain only lowercase letters, digits and underscores (rule: {{pattern}}).{{instead}} The name is the technical slug; the name people read in the interface is the label, which may contain spaces, accents and capitals.",
       "typeTaken": "The name «{{name}}» is already taken: it would generate {{what}}, which already exists in the schema — {{owner}}. {{consequence}}. Pick another name (for example «{{suggestion}}»); the name people read in the interface is the label, which can stay the one you wanted.",
@@ -3746,7 +3731,6 @@
       "required": "Required fields are missing: {{fields}}.",
       "requiredForStep": "To go to «{{step}}» these fields are required: {{fields}}."
     },
-    "forbiddenAdmin": "Only an administrator can do this.",
     "triage": {
       "emptyTitle": "Write a title or a description first: there is nothing to analyse."
     },
@@ -4177,7 +4161,6 @@
       "majorUpdated": "Major Incident status updated",
       "teamAssigned": "Team assigned",
       "unassignFailed": "Could not remove assignee",
-      "takenOver": "Incident taken over",
       "commentAdded": "Comment added",
       "ciAdded": "CI added",
       "ciRemoved": "CI removed",
@@ -4924,7 +4907,6 @@
       "pathPlaceholder": "e.g. alert.level",
       "inWord": "in",
       "noKeys": "Paste a sample alarm to see its fields, or type the paths by hand.",
-      "unmapped": "— not used —",
       "sampleFailed": "Cannot load the example: {{error}}",
       "missingTarget": "translation missing",
       "defaultsTitle": "When the field is missing",
@@ -5760,7 +5742,6 @@
     "tasks": "Tasks",
     "completed": "COMPLETED",
     "notCompleted": "NOT YET COMPLETED",
-    "openTask": "Open the task",
     "reopenTask": "Reopen task",
     "notInTeam": "You are not in the team responsible for this task. You can nudge whoever has to act.",
     "assigned": "Assigned",

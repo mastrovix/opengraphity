@@ -280,10 +280,15 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
           {choice('approver_role', 'approver_role',
             roles.map((r) => ({ value: r.key, label: roleLabelOf(r.key) })),
             params['approver_role'] ?? roles[0]?.key ?? '')}
+          {/* Le tre modalità sono TESTO per chi legge, non nomi di parametro:
+              erano in inglese nel sorgente (revisione totale · i 29 warning).
+              I nomi dei parametri accanto (`approver_role`, `title_template`)
+              restano invece grezzi di proposito: sono il contratto con
+              l'automazione, e si scrivono così anche in italiano. */}
           {choice('approval_type', 'approval_type', [
-            { value: 'any', label: 'any (1 approver sufficient)' },
-            { value: 'all', label: 'all (all approvers required)' },
-            { value: 'majority', label: 'majority' },
+            { value: 'any',      label: t('workflow.actionParams.approvalType.any') },
+            { value: 'all',      label: t('workflow.actionParams.approvalType.all') },
+            { value: 'majority', label: t('workflow.actionParams.approvalType.majority') },
           ], 'any')}
         </div>
       )

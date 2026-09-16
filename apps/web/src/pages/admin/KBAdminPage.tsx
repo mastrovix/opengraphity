@@ -402,13 +402,15 @@ export function KBAdminPage() {
       <div style={{ fontWeight: 500, color: colors.slateDark, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(v)}</div>
     ) },
     { key: 'category', label: t('pages.kb.category'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{labelOf('kb_category', String(v)) ?? String(v)}</span> },
-    { key: 'status', label: 'Status', render: (v) => {
+    // Intestazioni TRADOTTE (revisione totale · i 29 warning): «Status» e
+    // «Views» erano stringhe inglesi in mezzo a colonne che passano da i18n.
+    { key: 'status', label: t('pages.kbAdmin.colStatus'), render: (v) => {
       const status = String(v)
       const meta = kbStepByName.get(status)
       return <StatusBadge status={status} label={meta?.label} category={meta?.category ?? null} />
     } },
     { key: 'authorName', label: t('pages.kbAdmin.colAuthor'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
-    { key: 'views', label: 'Views', render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
+    { key: 'views', label: t('pages.kbAdmin.colViews'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
     { key: 'updatedAt', label: t('pages.kbAdmin.colUpdated'), render: (v) => <span style={{ color: 'var(--color-slate-light)' }}>{formatDate(String(v))}</span> },
     { key: 'id', label: t('common.actions'), render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

@@ -14,7 +14,6 @@
     "apply": "Applica",
     "reset": "Ripristina",
     "no": "No",
-    "of": "di",
     "description": "Descrizione",
     "note": "Nota",
     "resolvedAt": "Risolta il",
@@ -46,11 +45,10 @@
     "inactive": "Inattivo",
     "enabled": "Attiva",
     "disabled": "Disattiva",
-    "enable": "Attiva",
-    "disable": "Disattiva",
     "showAllCount_one": "Mostra tutti ({{count}})",
     "showAllCount_other": "Mostra tutti ({{count}})",
-    "any": "qualsiasi"
+    "any": "qualsiasi",
+    "number": "Numero"
   },
   "bulk": {
     "selected_one": "{{count}} selezionato",
@@ -251,8 +249,6 @@
       "health": "Salute",
       "count_one": "{{count}} CI",
       "count_other": "{{count}} CI",
-      "new": "Nuovo {{type}}",
-      "newFeminine": "Nuova {{type}}",
       "name": "Nome",
       "type": "Tipo",
       "status": "Stato",
@@ -425,7 +421,6 @@
       "title": "Log",
       "level": "Livello",
       "message": "Messaggio",
-      "source": "Sorgente",
       "timestamp": "Timestamp",
       "refresh": "Aggiorna",
       "autoRefresh": "Aggiornamento automatico (10s)",
@@ -435,7 +430,8 @@
       "filterDate": "Data",
       "count_one": "{{count}} log",
       "count_other": "{{count}} log",
-      "notJson": "Non JSON — valore grezzo"
+      "notJson": "Non JSON — valore grezzo",
+      "module": "Modulo"
     },
     "aiAnalysis": {
       "title": "Analisi con l'AI",
@@ -920,7 +916,9 @@
       "chooseCategory": "Scegli una categoria",
       "awaitingApproval": "In attesa di approvazione prima della pubblicazione:",
       "openApprovals": "apri Approvazioni",
-      "colVersion": "Versione"
+      "colVersion": "Versione",
+      "colStatus": "Stato",
+      "colViews": "Letture"
     },
     "workflow": {
       "title": "Workflow",
@@ -1257,7 +1255,6 @@
         "title": "Fasce di rischio delle change",
         "help": "Quale punteggio di rischio (0-100) cade in quale fascia. La fascia, insieme al tipo di change, decide la priorità con la matrice «change_priority». Le soglie erano scritte nel codice (30 e 60) e le fasce venivano lette per posizione nel vocabolario: riordinarlo invertiva le fasce in silenzio, e una quarta fascia non scattava mai pur comparendo nella matrice.",
         "usingFactory": "Stai usando le soglie di fabbrica (≤30, ≤60, il resto). Salvando le rendi esplicite.",
-        "band": "Fascia",
         "upTo": "Fino a",
         "bandN": "Fascia {{n}}",
         "upToBand": "Fino a — fascia {{band}}",
@@ -1523,11 +1520,8 @@
       "partyTeam": "Team interno",
       "partySupplier": "Fornitore esterno",
       "teamName": "Team responsabile",
-      "teamPlaceholder": "Es. Network Ops",
       "generatedNote": "Generato il {{date}}. Ogni contratto OLA/UC misura il tempo in cui il ticket è stato del suo team: i periodi di assegnazione a quel team, contati da quando il contratto esiste fino alla conclusione del ticket, col calendario del contratto; la pausa dello SLA non lo ferma. Contano i ticket conclusi nel periodo.",
       "pickTeam": "Scegli un team...",
-      "noTeams": "Questo cliente non ha ancora nessun team: creane uno in Team e Utenti.",
-      "contracts": "OLA / UC",
       "noContracts": "Nessun OLA/UC definito. Un OLA fissa un obiettivo fra team interni; un UC lo lega a un fornitore esterno.",
       "editContract": "Modifica il contratto OLA/UC",
       "newContractTitle": "Nuovo contratto OLA/UC",
@@ -1549,7 +1543,6 @@
       "noPolicyRecorded": "Nessuna policy registrata",
       "policy": "Policy",
       "setByRule": "Impostato dalla regola «{{rule}}»",
-      "slaSection": "SLA",
       "noPolicyRecordedHint": "Questi SLA sono stati creati prima che si registrasse la policy da cui nascono: l'origine non viene ricostruita.",
       "targetsShort": "Obiettivi",
       "pausedShort": "In pausa",
@@ -2364,10 +2357,7 @@
     "stepNarrowingHint": "Senza restringimento la regola vale per ogni ingresso in un passo. Restringere per scopo o categoria, invece che per nome, è ciò che la fa sopravvivere alla rinomina di un passo.",
     "escalationMessage": "Messaggio di escalation",
     "escalationMessagePlaceholder": "Incident non risolto dopo N minuti",
-    "slaWarningTarget": "Destinatario dell'avviso SLA",
     "escalationDelay": "Ritardo dell'escalation (minuti)",
-    "escalationTarget": "Destinatario dell'escalation (un utente, o «all»)",
-    "slaThreshold": "Soglia dell'avviso SLA (%)",
     "digestTime": "Orario del riepilogo (HH:MM)",
     "customEventPlaceholder": "es. workflow.step.entered",
     "titleKeyPlaceholder": "es. notification.custom.my_event.title",
@@ -2459,7 +2449,6 @@
       "from_to": "Da → A",
       "trigger": "Innesco",
       "richiede_input": "Richiede un valore",
-      "campo_input": "Campo del valore",
       "timer_ore": "Timer (ore)",
       "deleteStepTitle": "Eliminare lo step «{{step}}»?",
       "deleteStepBody": "Verranno rimosse anche le transizioni collegate.",
@@ -2488,7 +2477,12 @@
       "timer": "Timer (chiusura automatica)"
     },
     "actionParams": {
-      "approvalTitleExample": "Pubblicazione: {title}"
+      "approvalTitleExample": "Pubblicazione: {title}",
+      "approvalType": {
+        "any": "uno qualsiasi (basta un approvatore)",
+        "all": "tutti (servono tutti gli approvatori)",
+        "majority": "maggioranza"
+      }
     },
     "deadline": {
       "intro": "Per quanto tempo un ticket può restare in questo passo. Allo scadere il ticket si sposta da solo lungo uno degli archi che escono dal passo, e i campi che scegli vengono impostati.",
@@ -2715,7 +2709,6 @@
     "commentPlaceholder": "Scrivi un commento... Usa @ per menzionare",
     "unknownUser": "Utente sconosciuto",
     "sending": "Invio…",
-    "sendComment": "Invia commento",
     "workflowStep": "Step workflow",
     "assignedTo": "Assegnato a",
     "notAssigned": "Non assegnato",
@@ -2740,7 +2733,6 @@
     "assignTeam": "Assegna team",
     "assign": "Assegna",
     "assigning": "Assegnazione…",
-    "takeOwnership": "Prendi in carico",
     "backToList": "Torna alla lista",
     "exportPdf": "Esporta PDF",
     "exportPdfFailed": "Esportazione PDF fallita",
@@ -3034,7 +3026,6 @@
     "sla": {
       "deleteTitle": "Eliminare la policy SLA?",
       "toggleLabel": "Attiva/disattiva {{name}}",
-      "businessHoursLabel": "Solo orario lavorativo",
       "entityType": "Tipo entità",
       "category": "Categoria",
       "team": "Team",
@@ -3062,9 +3053,7 @@
         "days_one": "{{count}}g",
         "days_other": "{{count}}gg"
       },
-      "businessHours": "Orario lavorativo",
       "appliesToColumn": "Si applica a",
-      "previewBusinessHours": "(orario lavorativo)",
       "preview247": "(24/7)",
       "timezoneTenantDefault": "Vuoto: il fuso dell'organizzazione",
       "severity": "Severità",
@@ -3269,7 +3258,6 @@
       "optionInUse": "Queste risposte sono già state scelte e non si possono togliere: {{options}}. Cambia il loro testo, oppure disattiva la domanda."
     },
     "enum": {
-      "dictionary": "{{what}}: il vocabolario «{{name}}» {{reason}}",
       "emptyValues": "Il vocabolario «{{name}}» ha {{count}} valori vuoti: ogni valore deve avere un nome.",
       "systemTenant": "Il cliente di sistema non personalizza i vocabolari spediti: li cambia il prodotto.",
       "renameEmpty": "Il valore nuovo non può essere vuoto.",
@@ -3675,9 +3663,6 @@
     "window": {
       "noApprovalStep": "La change è di tipo «{{type}}», che non è fra i tipi pre-approvati, e nel workflow delle change nessun passo dichiara lo scopo «Approvazione»: non esiste un posto dove approvarla, quindi non può entrare nella finestra di rilascio. Assegna lo scopo «Approvazione» al passo in cui si approva, oppure aggiungi «{{type}}» ai tipi pre-approvati (Impostazioni → Matrici di dominio)."
     },
-    "itilRelation": {
-      "duplicate": "Esiste già una relazione con questo tipo di CI."
-    },
     "metamodelName": {
       "typeSyntax": "«{{name}}» non va bene come nome di tipo CI: deve cominciare con una lettera minuscola e contenere solo lettere minuscole, cifre e trattini basso (regola: {{pattern}}).{{instead}} Il nome è lo slug tecnico; il nome che si legge nell'interfaccia è la label, che può contenere spazi, accenti e maiuscole.",
       "typeTaken": "Il nome «{{name}}» è già preso: genererebbe {{what}}, che nello schema esiste già — {{owner}}. {{consequence}}. Scegli un altro nome (per esempio «{{suggestion}}»); il nome che si legge nell'interfaccia lo decidi con la label, che può restare quella che volevi.",
@@ -3746,7 +3731,6 @@
       "required": "Mancano campi obbligatori: {{fields}}.",
       "requiredForStep": "Per passare a «{{step}}» servono questi campi: {{fields}}."
     },
-    "forbiddenAdmin": "Solo un amministratore può farlo.",
     "triage": {
       "emptyTitle": "Scrivi prima un titolo o una descrizione: non c'è niente da analizzare."
     },
@@ -4177,7 +4161,6 @@
       "majorUpdated": "Stato Major Incident aggiornato",
       "teamAssigned": "Team assegnato",
       "unassignFailed": "Rimozione assegnatario non riuscita",
-      "takenOver": "Incident preso in carico",
       "commentAdded": "Commento aggiunto",
       "ciAdded": "CI aggiunto",
       "ciRemoved": "CI rimosso",
@@ -4924,7 +4907,6 @@
       "pathPlaceholder": "es. alert.level",
       "inWord": "in",
       "noKeys": "Incolla un allarme di esempio per vederne i campi, oppure scrivi i percorsi a mano.",
-      "unmapped": "— non usato —",
       "sampleFailed": "Impossibile caricare l'esempio: {{error}}",
       "missingTarget": "manca la traduzione",
       "defaultsTitle": "Quando il campo manca",
@@ -5760,7 +5742,6 @@
     "tasks": "Task",
     "completed": "COMPLETATO",
     "notCompleted": "NON ANCORA COMPLETATO",
-    "openTask": "Apri il task",
     "reopenTask": "Riapri task",
     "notInTeam": "Non sei nel team responsabile di questo task. Puoi sollecitare chi deve agire.",
     "assigned": "Assegnato",

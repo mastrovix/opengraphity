@@ -376,10 +376,11 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   'reportBuilder.entity.incident',
   'reportBuilder.entity.change',
   // «OLA / UC» sono due sigle ITIL: la stessa cosa nelle due lingue.
-  'pages.slaReport.contracts',
+  // (`pages.slaReport.contracts` e `.slaSection` erano qui e sono state tolte
+  // insieme alle loro chiavi, rimaste indietro dalla separazione fra SLA
+  // Report e OLA/UC Report: un permesso che non serve piu e una porta aperta.)
   'sidebar.olaContracts',
   // Sigle e termini del reporting SLA, uguali nelle due lingue.
-  'pages.slaReport.slaSection',
   'pages.slaReport.policy',
   'pages.slaReport.attainmentShort',
   /*
@@ -1150,6 +1151,81 @@ function prosa(v) {
         }
       }
     }
+  }
+}
+
+// ── (h) ETICHETTE LETTERALI: `label: 'Testo'` ────────────────────────────────
+//
+// Da dove viene questo controllo: la pagina Log aveva QUATTRO intestazioni di
+// colonna scritte in inglese nel sorgente («Timestamp», «Level», «Module»,
+// «Message»), in un elenco a livello di modulo dove `t` non arriva. Le chiavi
+// tradotte esistevano da sempre e restavano inutilizzate — ed era l'unica
+// traccia del difetto, un warning «chiave definita e mai usata» fra i tanti.
+// Le liste di incident, problem e richieste avevano «Number», l'amministrazione
+// della Knowledge Base «Status» e «Views», l'editor delle azioni le tre
+// modalità di approvazione in inglese. Per quelle la chiave non era mai stata
+// scritta, quindi NESSUN controllo poteva accorgersene: il guardiano cerca
+// l'italiano cablato, non l'inglese.
+//
+// Cosa si segnala: `label: '…'` il cui valore SEMBRA testo da leggere, cioè
+// contiene uno spazio oppure comincia con la maiuscola.
+//
+// Cosa NON si segnala, e perché:
+//  - `label: ''` — una colonna senza intestazione (icone, azioni): non è testo;
+//  - una parola minuscola (`label: 'pause'`, `label: 'majority'`) — in questo
+//    codice è quasi sempre un FRAMMENTO DI CHIAVE (`t(\`…actions.${a.label}\`)`)
+//    o il nome di un parametro, non una frase. È il limite dichiarato di
+//    questo controllo: preferisce non gridare al lupo.
+//  - quello che sta in LABEL_LETTERALI_ACCETTATI qui sotto, con il suo perché.
+{
+  /**
+   * Etichette che restano letterali, ognuna con la sua ragione. Sono NOMI di
+   * valori tecnici che si scrivono così in ogni lingua: tradurli qui
+   * spezzerebbe la corrispondenza con quello che la riga accanto mostra.
+   */
+  const LABEL_LETTERALI_ACCETTATI = new Map([
+    // Operatori logici del costruttore di regole: si scrivono AND e OR ovunque.
+    ['AND', 'operatore logico'],
+    ['OR',  'operatore logico'],
+    // Livelli del logger (pino): la colonna «Livello» li mostra GREZZI e in
+    // maiuscolo (`LevelBadge`), quindi il filtro deve dire la stessa parola.
+    ['Trace', 'livello del logger'], ['Debug', 'livello del logger'],
+    ['Info',  'livello del logger'], ['Warn',  'livello del logger'],
+    ['Error', 'livello del logger'], ['Fatal', 'livello del logger'],
+    // Moduli che scrivono nel log: sono l'identificativo scritto nel record
+    // (`module: 'frontend'`), e la colonna «Modulo» li mostra grezzi.
+    ['HTTP', 'modulo del log'], ['GraphQL', 'modulo del log'], ['Auth', 'modulo del log'],
+    ['Workflow', 'modulo del log'], ['Notification', 'modulo del log'], ['Frontend', 'modulo del log'],
+  ])
+
+  const RE_LABEL_LETTERALE = /\blabel:\s*(['"])((?:[^'"\\]|\\.)*)\1/g
+  const sorgentiEtichette = [
+    ...files.map((f) => [f, WEB_SRC]),
+    ...(fs.existsSync(path.join(ROOT, 'apps/portal/src'))
+      ? [...walk(path.join(ROOT, 'apps/portal/src'))].map((f) => [f, path.join(ROOT, 'apps')])
+      : []),
+  ]
+
+  const usati = new Set()
+  for (const [file, base] of sorgentiEtichette) {
+    // I mock dei test dichiarano dati finti, non interfaccia.
+    if (file.includes('/test/') || /\.test\.[jt]sx?$/.test(file)) continue
+    const src = fs.readFileSync(file, 'utf8')
+    for (const m of src.matchAll(RE_LABEL_LETTERALE)) {
+      const valore = m[2]
+      if (valore === '') continue
+      const sembraTesto = valore.includes(' ') || /^[A-ZÀ-Ö]/.test(valore)
+      if (!sembraTesto) continue
+      if (LABEL_LETTERALI_ACCETTATI.has(valore)) { usati.add(valore); continue }
+      err(`[etichetta] ${path.relative(base, file)}:${lineOf(src, m.index)} etichetta scritta nel sorgente: label: "${valore}". `
+        + `Passa da i18n (t('…')), oppure aggiungila a LABEL_LETTERALI_ACCETTATI in scripts/check-i18n.mjs spiegando perche resta letterale`)
+    }
+  }
+
+  // Un permesso che non serve piu e una porta aperta: stessa regola di IT_EN_IDENTICHE_ACCETTATE.
+  const morti = [...LABEL_LETTERALI_ACCETTATI.keys()].filter((v) => !usati.has(v))
+  if (morti.length > 0) {
+    err(`[etichetta] LABEL_LETTERALI_ACCETTATI porta ${morti.length} voci che nessun sorgente usa piu: toglile. ${morti.join(', ')}`)
   }
 }
 

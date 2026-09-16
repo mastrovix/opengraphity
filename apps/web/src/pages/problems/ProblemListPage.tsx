@@ -67,7 +67,11 @@ export function ProblemListPage() {
   // Campi del cliente (verifica «Cosa resta cablato», ondata 4): una colonna per campo.
   const customColumns = useCustomFieldColumns<Problem>('problem')
   const baseColumns: ColumnDef<Problem>[] = [
-    { key: 'number',   label: 'Number',                               width: '120px', sortable: true },
+    // Intestazione TRADOTTA (revisione totale · i 29 warning): era la stringa
+    // inglese «Number» scritta nel codice, in mezzo a colonne che passano da
+    // i18n — e nessun guardiano poteva vederla, perché per quella colonna una
+    // chiave non era mai stata scritta.
+    { key: 'number',   label: t('common.number'),                               width: '120px', sortable: true },
     { key: 'title',    label: t('pages.problems.title_col'), sortable: true },
     {
       key:     'priority',

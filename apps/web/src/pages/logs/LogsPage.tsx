@@ -5,6 +5,7 @@ import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { ScrollText } from 'lucide-react'
@@ -84,50 +85,77 @@ function LevelBadge({ level }: { level: string }) {
   )
 }
 
-const LOG_COLUMNS: ColumnDef<LogEntry>[] = [
-  {
-    key: 'timestamp',
-    label: 'Timestamp',
-    width: '160px',
-    sortable: true,
-    render: (_val, row) => (
-      <span style={{ color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
-        {/* La lingua di chi guarda, come in tutta l'app (revisione totale ·
-            F-12): il locale era `it-IT` cablato, quindi un utente in inglese
-            vedeva le date dei log in formato italiano e diverse da ogni altra
-            pagina. `formatDateTime` passa da `currentLocale()`. */}
-        {formatDateTime(row.timestamp)}
-      </span>
-    ),
-  },
-  {
-    key: 'level',
-    label: 'Level',
-    width: '90px',
-    sortable: true,
-    render: (_val, row) => <LevelBadge level={row.level} />,
-  },
-  {
-    key: 'module',
-    label: 'Module',
-    width: '120px',
-    sortable: true,
-    render: (_val, row) => <span style={{ color: 'var(--color-slate-light)' }}>{row.module ?? '—'}</span>,
-  },
-  {
-    key: 'message',
-    label: 'Message',
-    sortable: true,
-    render: (_val, row) => <span style={{ color: 'var(--color-slate-dark)' }}>{row.message}</span>,
-  },
-]
+/**
+ * Le intestazioni della tabella passano da i18n (revisione totale · i 29
+ * warning del guardiano).
+ *
+ * Erano quattro stringhe INGLESI scritte qui — «Timestamp», «Level»,
+ * «Module», «Message» — in un elenco a livello di modulo, dove `t` non
+ * arriva: un cliente italiano leggeva quattro intestazioni in inglese in
+ * mezzo a una pagina tradotta. Le chiavi `pages.logs.timestamp`, `.level` e
+ * `.message` esistevano, tradotte, da sempre: erano fra le chiavi «definite e
+ * mai usate» che il guardiano non riusciva più a segnalare (H-23). La colonna
+ * `module` non aveva nessuna chiave: si chiamava `source` fino a marzo, e la
+ * sua vecchia etichetta era rimasta indietro.
+ *
+ * Resta una funzione di `t` invece di un elenco costante: le intestazioni
+ * cambiano con la lingua di chi guarda.
+ */
+function logColumns(t: TFunction): ColumnDef<LogEntry>[] {
+  return [
+    {
+      key: 'timestamp',
+      label: t('pages.logs.timestamp'),
+      width: '160px',
+      sortable: true,
+      render: (_val, row) => (
+        <span style={{ color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
+          {/* La lingua di chi guarda, come in tutta l'app (revisione totale ·
+              F-12): il locale era `it-IT` cablato, quindi un utente in inglese
+              vedeva le date dei log in formato italiano e diverse da ogni altra
+              pagina. `formatDateTime` passa da `currentLocale()`. */}
+          {formatDateTime(row.timestamp)}
+        </span>
+      ),
+    },
+    {
+      key: 'level',
+      label: t('pages.logs.level'),
+      width: '90px',
+      sortable: true,
+      render: (_val, row) => <LevelBadge level={row.level} />,
+    },
+    {
+      key: 'module',
+      label: t('pages.logs.module'),
+      width: '120px',
+      sortable: true,
+      render: (_val, row) => <span style={{ color: 'var(--color-slate-light)' }}>{row.module ?? '—'}</span>,
+    },
+    {
+      key: 'message',
+      label: t('pages.logs.message'),
+      sortable: true,
+      render: (_val, row) => <span style={{ color: 'var(--color-slate-dark)' }}>{row.message}</span>,
+    },
+  ]
+}
 
 
 export function LogsPage() {
   const { t } = useTranslation()
+  const LOG_COLUMNS = logColumns(t)
 
   const LOGS_FILTER_FIELDS: FieldConfig[] = [
     { key: 'message',   label: t('pages.logs.filterMessage'), type: 'text' },
+    /**
+     * I livelli e i moduli restano in INGLESE: sono i valori che il logger
+     * scrive nel record (`level: 'error'`, `module: 'frontend'`), non una
+     * descrizione — e la colonna «Livello» li mostra grezzi in maiuscolo
+     * (`LevelBadge`), quindi tradurre qui vorrebbe dire filtrare per
+     * «Errore» e leggere «ERROR» nella riga accanto. Regola delle parole
+     * tecniche: si traduce ciò che descrive, resta inglese ciò che nomina.
+     */
     { key: 'level',     label: t('pages.logs.filterLevel'),   type: 'enum', options: [
       { value: 'trace', label: 'Trace' },
       { value: 'debug', label: 'Debug' },
