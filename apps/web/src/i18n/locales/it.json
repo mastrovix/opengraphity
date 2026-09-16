@@ -486,6 +486,10 @@
       "failed": "falliti",
       "completed": "completati",
       "paused": "in pausa",
+      "keptHelp": {
+        "completed": "I job completati che la coda conserva. I più vecchi vengono rimossi quando ne arrivano di nuovi, quindi questo numero a un certo punto non cresce più: un job appena riuscito può non farlo salire.",
+        "failed": "I job falliti che la coda conserva per la diagnosi. Dopo un po' vengono rimossi, e un job rigiocato esce da questo conto appena riesce."
+      },
       "show": "Mostra:",
       "refresh": "Aggiorna",
       "loadingJobs": "Caricamento job…",

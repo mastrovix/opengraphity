@@ -270,12 +270,26 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
           </p>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, flex: 1 }}>
+          {/**
+            * `completed` e `failed` NON sono totali: sono i job che la coda
+            * conserva. `events-maintenance` tiene gli ultimi 20 completati,
+            * quindi rigiocare un job riuscito NON fa salire il contatore —
+            * il piu vecchio esce mentre il nuovo entra. Il proprietario ha
+            * rigiocato un job e cercato la conferma proprio qui: il numero
+            * era fermo a 20 e sembrava che il rigioco non avesse funzionato
+            * (era riuscito: il conto dei falliti era passato da 1 a 0).
+            * Adesso i due contatori lo dicono nel suggerimento.
+            */}
           {COUNTER_ORDER.map((key) => {
             const s   = COUNTER_STYLE[key]!
             const val = queue.counts[key]
+            const aiuto = key === 'completed' || key === 'failed'
+              ? t(`pages.queueStats.keptHelp.${key}`)
+              : undefined
             return (
               <span
                 key={key}
+                title={aiuto}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
                   padding: '3px 10px', borderRadius: 20, background: s.bg, fontSize: 'var(--font-size-body)',

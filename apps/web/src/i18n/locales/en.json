@@ -486,6 +486,10 @@
       "failed": "failed",
       "completed": "completed",
       "paused": "paused",
+      "keptHelp": {
+        "completed": "The completed jobs the queue keeps. The oldest are removed as new ones arrive, so this number stops growing: a job that has just succeeded may not make it go up.",
+        "failed": "The failed jobs the queue keeps for diagnosis. They are removed after a while, and a retried job leaves this count as soon as it succeeds."
+      },
       "show": "Show:",
       "refresh": "Refresh",
       "loadingJobs": "Loading jobs…",
