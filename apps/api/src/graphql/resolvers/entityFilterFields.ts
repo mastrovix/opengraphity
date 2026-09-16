@@ -118,7 +118,43 @@ export const entityFilterFieldsResolvers = {
             }
           })
       }).then((p) => Promise.all(p))
-      return [...fields, ...custom, ...daModuli]
+      /**
+       * Le TABELLE si filtrano per RIGA (ondata 7): un campo virtuale per
+       * colonna, `persone_da_abilitare__ruolo`, con l'etichetta che dice di che
+       * tabella si tratta — «Persone da abilitare · Ruolo».
+       *
+       * `rowFilter: true` non è decorazione: dice al client che qui gli
+       * operatori sono quelli che una relazione sa fare (uguale, contiene,
+       * vuoto). Gli altri l'API li rifiuta, e offrirli sarebbe mandare chi
+       * filtra contro un rifiuto.
+       */
+      const dalleTabelle = entityType !== 'service_request' ? [] : await withSession(async (session) => {
+        const libreria = await formFields(session, ctx.tenantId)
+        const promesse: Array<Promise<EntityFilterField>> = []
+        for (const campo of libreria) {
+          if (!isFormTableType(campo.fieldType) || !campo.tableDefinition) continue
+          for (const colonna of campo.tableDefinition.columns) {
+            promesse.push((async (): Promise<EntityFilterField> => {
+              const nome = formTableFilterName(campo.name, colonna.name)
+              const etichetta = `${campo.label} · ${formTableColumnLabel(colonna, lingua)}`
+              if (!colonna.vocabulary) {
+                return {
+                  name: nome, kind: 'SCALAR', scalarName: 'String', enumValues: null, label: etichetta,
+                  choices: [], formFieldType: colonna.fieldType, vocabulary: null, rowFilter: true, multi: false,
+                }
+              }
+              const v = await loadVocabularyEntries(ctx.tenantId, colonna.vocabulary)
+              return {
+                name: nome, kind: 'ENUM', scalarName: null, enumValues: v.values as string[], label: etichetta,
+                choices: (v.values as string[]).map((valore) => ({ value: valore, label: labelFor(valore, v.labels, lingua, ripiego) })),
+                formFieldType: colonna.fieldType, vocabulary: colonna.vocabulary, rowFilter: true, multi: false,
+              }
+            })())
+          }
+        }
+        return promesse
+      }).then((p) => Promise.all(p))
+      return [...fields, ...custom, ...daModuli, ...dalleTabelle]
     },
   },
 }
