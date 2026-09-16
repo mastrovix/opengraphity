@@ -133,3 +133,27 @@ export const GET_PORTAL_CUSTOM_FIELDS = gql`
 export const GET_TENANT_BRAND = gql`
   query GetTenantBrand { tenantBrand { displayName logoUrl isDefault } }
 `
+
+/**
+ * Il modulo della voce di catalogo (moduli del catalogo, ondata 1).
+ *
+ * `endUser: true` non è un dettaglio: chiede all'API di offrire SOLO i campi
+ * che il modulo destina agli utenti finali. Il server poi rifiuta comunque una
+ * risposta a un campo non offerto — il browser decide cosa mostrare, il server
+ * decide cosa accettare.
+ */
+export const GET_PORTAL_CATALOG_FORM = gql`
+  query GetPortalCatalogForm($itemId: ID!, $language: String) {
+    catalogFormToFill(itemId: $itemId, endUser: true) {
+      itemId
+      revision
+      definition
+      fields {
+        name fieldType label required vocabulary help
+        labels { language label }
+        helps { language label }
+        options(language: $language) { value label }
+      }
+    }
+  }
+`

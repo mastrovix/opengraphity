@@ -66,6 +66,14 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, readonly Permission[]>> 
   'settings/organization':         ['config.organization'],
   'settings/ci-types':             ['config.metamodel'],
   'settings/itil-designer':        ['config.metamodel'],
+  /**
+   * Moduli del catalogo (ondata 1): la pagina si apre con `config.catalog`,
+   * che e il permesso per comporre un modulo. La scheda della libreria dei
+   * campi tocca la forma dei dati e le sue mutation chiedono
+   * `config.metamodel`: chi ha solo il catalogo vede la libreria ma l'API gli
+   * rifiuta la creazione, con il suo messaggio.
+   */
+  'settings/catalog-forms':        ['config.catalog'],
   'settings/enum-designer':        ['config.metamodel'],
   'settings/domain-matrices':      ['config.metamodel'],
   'workflow':                      ['config.workflow'],

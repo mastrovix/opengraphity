@@ -21,6 +21,12 @@ export function catalogFormSDL(): string {
 
   # ── La libreria dei campi del tenant ──────────────────────────────────────
 
+  """Una scelta di un campo a vocabolario: il valore che finisce sul ticket e l'etichetta che si legge."""
+  type FormFieldOption {
+    value: String!
+    label: String!
+  }
+
   type FormField {
     id:               ID!
     """Il nome della proprietà sul ticket: immutabile, perché è la colonna nei report e nei filtri."""
@@ -35,6 +41,12 @@ export function catalogFormSDL(): string {
     """Il vocabolario del Dizionario da cui pesca le scelte (solo enum e multi_enum)."""
     vocabulary:       String
     validationScript: String
+    """
+    Le scelte del vocabolario, con l'etichetta nella lingua chiesta: vuote per i
+    tipi che non pescano dal Dizionario. Risolte qui perche' le rende sia il web
+    sia il portale, e il portale non ha accesso al Dizionario.
+    """
+    options(language: String): [FormFieldOption!]!
     """I nomi delle voci di catalogo che lo usano: da sapere PRIMA di cancellarlo."""
     usedBy:           [String!]!
     createdAt:        String

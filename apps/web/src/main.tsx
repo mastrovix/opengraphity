@@ -51,6 +51,7 @@ import NotificationsPage from '@/pages/settings/NotificationsPage'
 import NotificationRulesPage from '@/pages/settings/NotificationRulesPage'
 import { CITypeDesignerPage } from '@/pages/settings/CITypeDesignerPage'
 import { ITILTypeDesignerPage } from '@/pages/settings/ITILTypeDesignerPage'
+import { CatalogFormsPage } from '@/pages/settings/CatalogFormsPage'
 import { EnumDesignerPage }     from '@/pages/settings/EnumDesignerPage.js'
 import { OrganizationPage }     from '@/pages/settings/OrganizationPage'
 import { DomainMatricesPage }   from '@/pages/settings/DomainMatricesPage'
@@ -208,6 +209,8 @@ const router = createBrowserRouter([
       guarded('settings/organization', <OrganizationPage />),
       guarded('settings/ci-types', <CITypeDesignerPage />),
       guarded('settings/itil-designer', <ITILTypeDesignerPage />),
+      // Moduli del catalogo servizi (ondata 1): modulo per voce + libreria dei campi.
+      guarded('settings/catalog-forms', <CatalogFormsPage />),
       guarded('settings/enum-designer', <EnumDesignerPage />),
       guarded('settings/domain-matrices', <DomainMatricesPage />),
       guarded('settings/anomaly-rules', <AnomalyRulesPage />),

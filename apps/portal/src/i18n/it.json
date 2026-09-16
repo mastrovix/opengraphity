@@ -144,7 +144,8 @@
     "back": "← Indietro",
     "required": "Campo obbligatorio",
     "yes": "Sì",
-    "no": "No"
+    "no": "No",
+    "select": "Scegli"
   },
   "catalog": {
     "title": "Catalogo servizi",

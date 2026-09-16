@@ -53,7 +53,7 @@ import { knowledgeBaseResolvers } from './knowledgeBase.js'
 import { reportExportResolvers } from './reportExport.js'
 import { portalResolvers } from './portal.js'
 import { fieldRulesResolvers } from './fieldRules.js'
-import { catalogFormResolvers } from './catalogForm.js'
+import { catalogFormResolvers, formFieldOptions } from './catalogForm.js'
 import { ticketCIExclusionResolvers } from './ticketCIExclusions.js'
 import { customWidgetResolvers } from './customWidget.js'
 import { automationResolvers } from './automation.js'
@@ -445,6 +445,9 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     EnumTypeDefinition: {
       ...enumTypeResolvers.EnumTypeDefinition,
     },
+    // Moduli del catalogo (ondata 1): le scelte del vocabolario risolte dall'API,
+    // perche' le rende anche il portale, che non ha accesso al Dizionario.
+    FormField: { options: formFieldOptions },
     // `currentInstances`: quante istanze stanno ORA su uno step. Era stata
     // aggiunta allo SDL e a `workflowResolvers` senza essere unita QUI: i
     // resolver si uniscono tipo per tipo, a mano, quindi un tipo nuovo che non

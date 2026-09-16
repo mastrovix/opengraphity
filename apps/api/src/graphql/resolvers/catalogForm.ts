@@ -325,3 +325,25 @@ export async function serviceRequestFormAnswers(
     })
   } finally { await session.close() }
 }
+
+/**
+ * `FormField.options`: le scelte di un campo a vocabolario, con l'etichetta
+ * nella lingua chiesta. Risolte dall'API e non dal client perche' le rende sia
+ * il web sia il portale, e il portale non ha accesso al Dizionario.
+ *
+ * Il ripiego e' quello del resto del prodotto (enumValueLabels.labelFor):
+ * lingua chiesta, poi lingua del tenant, poi il valore con l'iniziale grande —
+ * mostrare il nome interno e' sempre meglio che mostrare niente.
+ */
+export const formFieldOptions = async (
+  parent: { fieldType: string; vocabulary: string | null },
+  args: { language?: string | null }, ctx: GraphQLContext,
+): Promise<Array<{ value: string; label: string }>> => {
+  if (!parent.vocabulary) return []
+  const { labelFor } = await import('../../lib/enumValueLabels.js')
+  const { isLingua, languageFor } = await import('../../lib/tenantLanguage.js')
+  const ripiego = await languageFor(ctx.tenantId)
+  const lingua = isLingua(args.language) ? args.language : ripiego
+  const v = await loadVocabularyEntries(ctx.tenantId, parent.vocabulary)
+  return v.values.map((valore) => ({ value: valore, label: labelFor(valore, v.labels, lingua, ripiego) }))
+}

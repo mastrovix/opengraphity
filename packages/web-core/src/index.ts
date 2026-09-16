@@ -41,3 +41,11 @@ export {
   type VisibilityRule,
   type RequirementRule,
 } from './useFormFieldRules.js'
+export {
+  CatalogFormRenderer,
+  visibleCatalogFormItems,
+  catalogFormAnswersToSend,
+  type CatalogFormAnswerToSend,
+  type CatalogFormRendererProps,
+  type CatalogFormFieldView,
+} from './CatalogFormRenderer.js'

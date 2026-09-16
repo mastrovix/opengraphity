@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { GET_SERVICE_CATALOG } from '@/graphql/queries'
+import { GET_PORTAL_CATALOG_FORM } from '../graphql/queries'
+import { CatalogFormRenderer, catalogFormAnswersToSend, visibleCatalogFormItems, type CatalogFormFieldView } from '@opengraphity/web-core'
+import type { CatalogFormDefinition, FormAnswerValue, FormAnswers } from '@opengraphity/types'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
 import { notifyError } from '@/lib/notify'
 import { colors, palette, alpha } from '@/lib/tokens'
@@ -20,7 +23,7 @@ interface CatalogItem {
 }
 
 export function ServiceCatalogPage() {
-  const { t }    = useTranslation()
+  const { t, i18n } = useTranslation()
   // Aprire una richiesta: il permesso `portal.submit` del ruolo (ondata 7).
   const { canSubmit } = usePortalAccess()
   const navigate = useNavigate()
@@ -34,13 +37,43 @@ export function ServiceCatalogPage() {
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
   const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
 
+  /**
+   * IL MODULO DELLA VOCE (moduli del catalogo, ondata 1). Lo rende lo STESSO
+   * componente dell'area di lavoro (`CatalogFormRenderer` di web-core), perché
+   * un utente finale deve compilare il modulo che l'amministratore ha
+   * disegnato, non una versione più povera: prima il portale sapeva fare solo
+   * `select` e `input`, senza sezioni, condizioni né aree di testo.
+   */
+  const { data: formData } = useQuery<{ catalogFormToFill: { itemId: string; revision: number; definition: string; fields: CatalogFormFieldView[] } | null }>(
+    GET_PORTAL_CATALOG_FORM,
+    { variables: { itemId: openItem?.id ?? '', language: i18n.language }, skip: !openItem, fetchPolicy: 'cache-and-network' },
+  )
+  const modulo = formData?.catalogFormToFill ?? null
+  const definizione: CatalogFormDefinition | null = useMemo(() => {
+    if (!modulo) return null
+    try { return JSON.parse(modulo.definition) as CatalogFormDefinition } catch { return null }
+  }, [modulo])
+  const [risposte, setRisposte] = useState<Record<string, FormAnswerValue>>({})
+
+  // Una condizione che si spegne fa dimenticare la risposta: il server
+  // rifiuterebbe un campo nascosto che arriva comunque.
+  const cambiaRisposta = (name: string, value: FormAnswerValue) => {
+    setRisposte((precedenti) => {
+      const aggiornate: Record<string, FormAnswerValue> = { ...precedenti, [name]: value }
+      if (!definizione) return aggiornate
+      const visibili = new Set(visibleCatalogFormItems(definizione, aggiornate as FormAnswers, true).map((i) => i.field))
+      for (const chiave of Object.keys(aggiornate)) if (!visibili.has(chiave)) delete aggiornate[chiave]
+      return aggiornate
+    })
+  }
+
   const [createRequest, { loading: submitting }] = useMutation<{ createServiceRequest: { id: string; number: string } }>(
     CREATE_SERVICE_REQUEST,
     {
       // Revisione totale · H-36: si apre la richiesta appena inviata, con la
       // conferma — prima si atterrava su «I miei ticket» con uno stato che
       // nessuno leggeva, e la richiesta non si vedeva nemmeno (H-2).
-      onCompleted: (d) => { setOpenItem(null); setDetails(''); navigate(`/tickets/${d.createServiceRequest.id}`, { state: { created: true } }) },
+      onCompleted: (d) => { setOpenItem(null); setDetails(''); setRisposte({}); navigate(`/tickets/${d.createServiceRequest.id}`, { state: { created: true } }) },
       onError: (e) => notifyError(e.message),
     },
   )
@@ -74,6 +107,11 @@ export function ServiceCatalogPage() {
       description: details.trim() || null,
       // Nessuna priorità: la decide la voce del catalogo (verifica «Cosa resta cablato», ondata 1).
       catalogItemId: openItem.id,
+      // Le risposte al modulo: la regola sta in web-core, la stessa dell'area di
+      // lavoro (solo i campi visibili, mai le note).
+      formAnswers: definizione && modulo
+        ? catalogFormAnswersToSend(definizione, modulo.fields, risposte as FormAnswers, true)
+        : undefined,
     } } })
   }
 
@@ -117,6 +155,22 @@ export function ServiceCatalogPage() {
                   onChange={(name, value) => { setCustomValues((v) => ({ ...v, [name]: value })); setCustomErrors((p) => { const n = { ...p }; delete n[name]; return n }) }}
                   labelStyle={{ fontSize: 12, fontWeight: 600, color: palette.neutral.textStrong, display: 'block', marginBottom: 6 }}
                   inputStyle={{ width: '100%', border: `1px solid ${colors.border}`, borderRadius: 8, padding: 10, fontSize: 13, boxSizing: 'border-box', background: colors.white }}
+                />
+              </div>
+            )}
+            {definizione && modulo && (
+              <div style={{ marginTop: 14 }}>
+                <CatalogFormRenderer
+                  definition={definizione}
+                  fields={modulo.fields}
+                  answers={risposte as FormAnswers}
+                  onChange={cambiaRisposta}
+                  language={i18n.language}
+                  endUser
+                  requiredLabel={t('common.required')}
+                  emptyChoiceLabel={t('common.select')}
+                  yesLabel={t('common.yes')}
+                  noLabel={t('common.no')}
                 />
               </div>
             )}

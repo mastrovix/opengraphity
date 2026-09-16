@@ -42,6 +42,7 @@ export const CONFIG_ITEM_DEFS = [
   { to: '/settings/organization',    labelKey: 'sidebar.organization',    icon: Building2 },
   { to: '/settings/ci-types',        labelKey: 'sidebar.ciTypeDesigner',  icon: Layers   },
   { to: '/settings/itil-designer',   labelKey: 'sidebar.itilDesigner',    icon: Settings2 },
+  { to: '/settings/catalog-forms',   labelKey: 'sidebar.catalogForms',    icon: ClipboardList },
   { to: '/settings/enum-designer',   labelKey: 'sidebar.enumDesigner',    icon: Tag      },
   { to: '/settings/domain-matrices', labelKey: 'sidebar.domainMatrices',  icon: Table2   },
   { to: '/settings/anomaly-rules',   labelKey: 'sidebar.anomalyRules',    icon: ShieldAlert },

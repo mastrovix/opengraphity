@@ -142,7 +142,8 @@
     "olaReport": "Report OLA / UC",
     "anomalyRules": "Regole di anomalia",
     "roles": "Ruoli",
-    "loginSecurity": "Accesso e password"
+    "loginSecurity": "Accesso e password",
+    "catalogForms": "Moduli del catalogo"
   },
   "pages": {
     "incidents": {
@@ -2242,6 +2243,93 @@
     "questionAdmin": {
       "coreBadge": "BASE",
       "inactiveBadge": "INATTIVA"
+    },
+    "catalogForms": {
+      "title": "Moduli del catalogo",
+      "intro": "Ogni voce di catalogo può chiedere quello che serve davvero a quella richiesta: sezioni, campi condizionali, il suo testo d'aiuto. I campi vengono dalla libreria, così la stessa domanda è una colonna sola in ogni report.",
+      "tabs": {
+        "forms": "Moduli",
+        "library": "Libreria dei campi"
+      },
+      "fieldType": {
+        "text": "Testo",
+        "textarea": "Testo lungo",
+        "number": "Numero",
+        "date": "Data",
+        "datetime": "Data e ora",
+        "boolean": "Sì/no",
+        "enum": "Una scelta",
+        "multi_enum": "Più scelte",
+        "note": "Nota (senza risposta)"
+      },
+      "conditionOp": {
+        "eq": "è",
+        "ne": "non è",
+        "gt": "è maggiore di",
+        "gte": "è almeno",
+        "lt": "è minore di",
+        "lte": "è al massimo",
+        "contains": "contiene",
+        "filled": "è compilato",
+        "empty": "è vuoto"
+      },
+      "builder": {
+        "item": "Voce di catalogo",
+        "revision": "Revisione pubblicata {{revision}}",
+        "neverPublished": "Nessun modulo, per ora",
+        "publish": "Salva e pubblica",
+        "published": "Modulo pubblicato, revisione {{revision}}",
+        "addSection": "Aggiungi una sezione",
+        "sectionTitle": "Titolo della sezione",
+        "removeSection": "Togli questa sezione",
+        "sectionEmpty": "Nessun campo: pescane uno dalla libreria, qui sotto.",
+        "addField": "Aggiungi un campo dalla libreria…",
+        "removeField": "Togli questo campo",
+        "moveUp": "Sposta su",
+        "moveDown": "Sposta giù",
+        "required": "Obbligatorio qui",
+        "halfWidth": "Mezza larghezza",
+        "endUser": "Offrilo nel portale",
+        "showWhen": "Mostralo quando",
+        "matchAll": "tutte queste",
+        "matchAny": "almeno una di queste",
+        "addCondition": "Mostralo solo a una condizione",
+        "addRule": "Aggiungi una regola",
+        "removeCondition": "Togli questa regola",
+        "preview": "Anteprima",
+        "previewHelp": "Il modulo vero, reso dallo stesso componente che usano l'area di lavoro e il portale: rispondi qui e guarda comparire i campi condizionali.",
+        "noItems": "Non c'è nessuna voce di catalogo attiva per cui disegnare un modulo. Aggiungila in Amministrazione → Catalogo servizi.",
+        "libraryEmpty": "La libreria dei campi è vuota: apri l'altra scheda e definisci il primo campo."
+      },
+      "library": {
+        "intro": "Un campo si definisce una volta e lo riusano tutti i moduli. Il suo nome diventa la proprietà sul ticket — è il motivo per cui si può filtrare e riportare, e il motivo per cui non si può rinominare.",
+        "add": "Campo nuovo",
+        "newField": "Campo nuovo",
+        "editing": "Modifica di «{{name}}»",
+        "name": "Nome",
+        "nameHelp": "Minuscole, cifre e trattino basso. Diventa la proprietà sul ticket e poi non si cambia.",
+        "nameFixed": "Il nome non si cambia: è la proprietà sul ticket, e rinominarlo perderebbe le risposte già raccolte.",
+        "type": "Tipo",
+        "typeFixed": "Il tipo non si cambia: le risposte già raccolte diventerebbero illeggibili.",
+        "label": "Etichetta",
+        "labelIt": "Etichetta (italiano)",
+        "labelEn": "Etichetta (inglese)",
+        "labelNeeded": "Un campo ha bisogno di un'etichetta in almeno una lingua.",
+        "helpIt": "Testo d'aiuto (italiano)",
+        "helpEn": "Testo d'aiuto (inglese)",
+        "vocabulary": "Vocabolario",
+        "vocabularyHelp": "Il vocabolario del Dizionario da cui vengono le scelte: etichette e colori arrivano con lui.",
+        "requiredByDefault": "Obbligatorio per difetto (ogni modulo può sovrascriverlo)",
+        "usedBy": "Usato da",
+        "usedByNone": "nessun modulo",
+        "empty": "Nessun campo, per ora. Il primo che aggiungi potrà essere usato da tutti i moduli.",
+        "created": "Campo creato",
+        "saved": "Campo salvato",
+        "deleted": "Campo cancellato",
+        "deleteTitle": "Cancellare questo campo?",
+        "deleteMessage": "«{{name}}» sparisce dalla libreria. Le risposte già raccolte sui ticket restano.",
+        "cannotDelete": "Usato dal modulo di: {{forms}}. Togli prima il campo da quei moduli."
+      }
     }
   },
   "filter": {
@@ -2728,7 +2816,9 @@
       "comments": "Commenti",
       "information": "Informazioni",
       "incidentInformation": "Informazioni sull'incident",
-      "problemInformation": "Informazioni sul problem"
+      "problemInformation": "Informazioni sul problem",
+      "formAnswers": "Risposte al modulo (revisione {{revision}})",
+      "formAnswersNoRevision": "Risposte al modulo"
     },
     "noDescription": "Nessuna descrizione.",
     "noCommentsYet": "Nessun commento ancora.",
@@ -2786,7 +2876,8 @@
     "editComment": "Modifica il commento",
     "commentDeletedBy": "Commento cancellato da {{name}} · {{date}}",
     "commentEditedBy": "Modificato da {{name}} · {{date}}",
-    "removeAssignment": "Togli l'assegnazione"
+    "removeAssignment": "Togli l'assegnazione",
+    "formAnswerEmpty": "senza risposta"
   },
   "search": {
     "placeholder": "Cerca ovunque... (Ctrl+K)",

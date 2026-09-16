@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import { TicketOLACard } from '@/components/ticket/ola/TicketOLACard'
 import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
+import { FormAnswersCard, type FormAnswer } from '@/components/ticket/FormAnswersCard'
 import type { CustomFieldValueView } from '@/components/ticket/customFields/customFields'
 import { useMe } from '@/hooks/useMe'
 import { useParams, useNavigate } from 'react-router-dom'
@@ -52,6 +53,10 @@ interface ServiceRequest {
   slaStatus: SlaStatusInfo | null
   /** I CI che la richiesta riguarda (revisione del 15 set 2026 · CM-8). */
   affectedCIs: AffectedCIRef[]
+  /** La revisione del modulo con cui e stata compilata (moduli del catalogo, ondata 1). */
+  formRevision: number | null
+  /** Le risposte al modulo, nell'ordine di QUELLA revisione. */
+  formAnswers: FormAnswer[]
 }
 
 /**
@@ -226,6 +231,8 @@ export function ServiceRequestDetailPage() {
           <div style={{ marginBottom: 16 }}>
             <TicketOLACard entityType="service_request" entityId={sr.id} />
             <CustomFieldsCard entityType="service_request" ticketId={sr.id} fields={sr.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
+            {/* Le risposte al modulo della voce di catalogo (moduli del catalogo, ondata 1) */}
+            <FormAnswersCard answers={sr.formAnswers ?? []} revision={sr.formRevision ?? null} />
           </div>
 
           {/* CI della richiesta (CM-8) */}

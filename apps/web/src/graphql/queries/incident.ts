@@ -87,6 +87,13 @@ export const GET_SERVICE_REQUESTS = gql`
   }
 `
 
+/**
+ * `formRevision` e `formAnswers`: le risposte al modulo della voce di catalogo
+ * (moduli del catalogo, ondata 1), nell'ordine del modulo CON CUI la richiesta
+ * e stata compilata — non di quello di adesso. Il commento sta qui e non dentro
+ * il documento GraphQL: un commento `#` dentro il template e una stringa, e il
+ * guardiano i18n lo legge come testo italiano cablato nel sorgente.
+ */
 export const GET_SERVICE_REQUEST = gql`
   query GetServiceRequest($id: ID!) {
     serviceRequest(id: $id) {
@@ -99,6 +106,8 @@ export const GET_SERVICE_REQUEST = gql`
       slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
       customFields { ...CustomFieldValueFields }
       affectedCIs { id name type status environment }
+      formRevision
+      formAnswers { name label fieldType value values }
     }
   }
   ${CUSTOM_FIELD_VALUE_FIELDS}

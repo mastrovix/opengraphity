@@ -144,7 +144,8 @@
     "back": "← Back",
     "required": "Required field",
     "yes": "Yes",
-    "no": "No"
+    "no": "No",
+    "select": "Select"
   },
   "catalog": {
     "title": "Service catalog",

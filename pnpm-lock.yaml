@@ -261,6 +261,9 @@ importers:
       '@apollo/client':
         specifier: ^4.1.6
         version: 4.1.6(graphql@16.13.1)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(rxjs@7.8.2)
+      '@opengraphity/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@opengraphity/web-core':
         specifier: workspace:*
         version: link:../../packages/web-core
@@ -692,6 +695,9 @@ importers:
       '@apollo/client':
         specifier: ^4.1.6
         version: 4.1.6(graphql@16.13.1)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(rxjs@7.8.2)
+      '@opengraphity/types':
+        specifier: workspace:*
+        version: link:../types
       '@types/react':
         specifier: ^19.2.14
         version: 19.2.14

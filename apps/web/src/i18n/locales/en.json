@@ -142,7 +142,8 @@
     "olaReport": "OLA / UC Report",
     "anomalyRules": "Anomaly rules",
     "roles": "Roles",
-    "loginSecurity": "Login & passwords"
+    "loginSecurity": "Login & passwords",
+    "catalogForms": "Catalog forms"
   },
   "pages": {
     "incidents": {
@@ -2242,6 +2243,93 @@
     "questionAdmin": {
       "coreBadge": "CORE",
       "inactiveBadge": "INACTIVE"
+    },
+    "catalogForms": {
+      "title": "Catalog forms",
+      "intro": "Each catalog item can ask for what that request actually needs: sections, conditional fields, its own help text. The fields come from the library, so the same question is one column in every report.",
+      "tabs": {
+        "forms": "Forms",
+        "library": "Field library"
+      },
+      "fieldType": {
+        "text": "Text",
+        "textarea": "Long text",
+        "number": "Number",
+        "date": "Date",
+        "datetime": "Date and time",
+        "boolean": "Yes/no",
+        "enum": "One choice",
+        "multi_enum": "Several choices",
+        "note": "Note (no answer)"
+      },
+      "conditionOp": {
+        "eq": "is",
+        "ne": "is not",
+        "gt": "is greater than",
+        "gte": "is at least",
+        "lt": "is less than",
+        "lte": "is at most",
+        "contains": "contains",
+        "filled": "is filled in",
+        "empty": "is empty"
+      },
+      "builder": {
+        "item": "Catalog item",
+        "revision": "Published revision {{revision}}",
+        "neverPublished": "No form yet",
+        "publish": "Save and publish",
+        "published": "Form published, revision {{revision}}",
+        "addSection": "Add a section",
+        "sectionTitle": "Section title",
+        "removeSection": "Remove this section",
+        "sectionEmpty": "No fields yet: pick one from the library below.",
+        "addField": "Add a field from the library…",
+        "removeField": "Remove this field",
+        "moveUp": "Move up",
+        "moveDown": "Move down",
+        "required": "Required here",
+        "halfWidth": "Half width",
+        "endUser": "Offer it in the portal",
+        "showWhen": "Show it when",
+        "matchAll": "all of these",
+        "matchAny": "any of these",
+        "addCondition": "Only show it under a condition",
+        "addRule": "Add a rule",
+        "removeCondition": "Remove this rule",
+        "preview": "Preview",
+        "previewHelp": "The real form, rendered by the same component the workspace and the portal use: answer here to watch the conditional fields appear.",
+        "noItems": "There is no active catalog item to build a form for. Add one in Admin → Service catalog.",
+        "libraryEmpty": "The field library is empty: open the other tab and define the first field."
+      },
+      "library": {
+        "intro": "A field is defined once and reused by every form. Its name becomes the property on the ticket, which is why it can be filtered and reported on — and why it cannot be renamed.",
+        "add": "New field",
+        "newField": "New field",
+        "editing": "Editing “{{name}}”",
+        "name": "Name",
+        "nameHelp": "Lowercase letters, digits and underscores. It becomes the property on the ticket and cannot be changed later.",
+        "nameFixed": "The name cannot change: it is the property on the ticket, and renaming it would lose the answers already collected.",
+        "type": "Type",
+        "typeFixed": "The type cannot change: the answers already collected would become unreadable.",
+        "label": "Label",
+        "labelIt": "Label (Italian)",
+        "labelEn": "Label (English)",
+        "labelNeeded": "A field needs a label in at least one language.",
+        "helpIt": "Help text (Italian)",
+        "helpEn": "Help text (English)",
+        "vocabulary": "Vocabulary",
+        "vocabularyHelp": "The Dictionary vocabulary the choices come from: labels and colours come with it.",
+        "requiredByDefault": "Required by default (each form can override it)",
+        "usedBy": "Used by",
+        "usedByNone": "no form",
+        "empty": "No fields yet. The first one you add can be used by every form.",
+        "created": "Field created",
+        "saved": "Field saved",
+        "deleted": "Field deleted",
+        "deleteTitle": "Delete this field?",
+        "deleteMessage": "“{{name}}” will disappear from the library. The answers already collected on tickets are kept.",
+        "cannotDelete": "Used by the form of: {{forms}}. Remove it from those forms first."
+      }
     }
   },
   "filter": {
@@ -2728,7 +2816,9 @@
       "comments": "Comments",
       "information": "Information",
       "incidentInformation": "Incident Information",
-      "problemInformation": "Problem Information"
+      "problemInformation": "Problem Information",
+      "formAnswers": "Form answers (revision {{revision}})",
+      "formAnswersNoRevision": "Form answers"
     },
     "noDescription": "No description.",
     "noCommentsYet": "No comments yet.",
@@ -2786,7 +2876,8 @@
     "editComment": "Edit comment",
     "commentDeletedBy": "Comment deleted by {{name}} · {{date}}",
     "commentEditedBy": "Edited by {{name}} · {{date}}",
-    "removeAssignment": "Remove the assignment"
+    "removeAssignment": "Remove the assignment",
+    "formAnswerEmpty": "not answered"
   },
   "search": {
     "placeholder": "Search everywhere... (Ctrl+K)",

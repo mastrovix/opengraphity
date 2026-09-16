@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
@@ -13,6 +13,9 @@ import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
 import { useValueStyle } from '@/hooks/useValueStyle'
 import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
+import { CatalogFormRenderer, catalogFormAnswersToSend, visibleCatalogFormItems, type CatalogFormFieldView } from '@opengraphity/web-core'
+import { GET_CATALOG_FORM_TO_FILL } from '@/graphql/queries'
+import type { CatalogFormDefinition, FormAnswerValue, FormAnswers } from '@opengraphity/types'
 import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 import { showError } from '@/lib/showError'
 // ── Shared styles ─────────────────────────────────────────────────────────────
@@ -56,7 +59,7 @@ function focusHandlers(hasError: boolean) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function CreateServiceRequestPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   // F9: il pallino della priorità col colore del Dizionario.
   const styleOf = useValueStyle()
   const { labelOf } = useDomainVocabularies()
@@ -110,6 +113,53 @@ export function CreateServiceRequestPage() {
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
   const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
 
+  /**
+   * IL MODULO DELLA VOCE DI CATALOGO (moduli del catalogo, ondata 1).
+   *
+   * Si carica quando la voce è scelta e non prima: prima non c'è un modulo di
+   * cui parlare. `catalogFormToFill` torna null se la voce non ha un modulo
+   * pubblicato, e allora la pagina resta quella di sempre — non una pagina
+   * vuota che sembra rotta.
+   */
+  const { data: formData } = useQuery<{ catalogFormToFill: { itemId: string; revision: number; definition: string; fields: CatalogFormFieldView[] } | null }>(
+    GET_CATALOG_FORM_TO_FILL,
+    { variables: { itemId: catalogItemId, endUser: false, language: i18n.language }, skip: !catalogItemId, fetchPolicy: 'cache-and-network' },
+  )
+  const modulo = formData?.catalogFormToFill ?? null
+  const definizione: CatalogFormDefinition | null = useMemo(() => {
+    if (!modulo) return null
+    try { return JSON.parse(modulo.definition) as CatalogFormDefinition } catch { return null }
+  }, [modulo])
+  const [risposte, setRisposte] = useState<Record<string, FormAnswerValue>>({})
+  const [erroriModulo, setErroriModulo] = useState<Record<string, string>>({})
+
+  /**
+   * Quando una condizione si spegne, la risposta del campo che non si vede più
+   * va DIMENTICATA: il server la rifiuterebbe (un campo nascosto che arriva
+   * comunque è un varco), e tenerla nello stato farebbe fallire l'invio per un
+   * campo che chi compila non vede nemmeno.
+   */
+  const cambiaRisposta = (name: string, value: FormAnswerValue) => {
+    setErroriModulo((p) => { const n = { ...p }; delete n[name]; return n })
+    setRisposte((precedenti) => {
+      const aggiornate: Record<string, FormAnswerValue> = { ...precedenti, [name]: value }
+      if (!definizione) return aggiornate
+      const visibili = new Set(visibleCatalogFormItems(definizione, aggiornate as FormAnswers).map((i) => i.field))
+      for (const chiave of Object.keys(aggiornate)) if (!visibili.has(chiave)) delete aggiornate[chiave]
+      return aggiornate
+    })
+  }
+
+  /**
+   * Le risposte da inviare. La regola sta in `catalogFormAnswersToSend`
+   * (web-core), condivisa col portale: solo i campi visibili adesso, e mai le
+   * note — che non portano una risposta e che il server rifiuta.
+   */
+  const risposteDaInviare = () => {
+    if (!definizione || !modulo) return undefined
+    return catalogFormAnswersToSend(definizione, modulo.fields, risposte as FormAnswers)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitted(true)
@@ -147,6 +197,8 @@ export function CreateServiceRequestPage() {
           dueDate:     dueDate || undefined,
           catalogItemId: catalogItemId || undefined,
           customFields: customFieldsInput(customDefs, customValues),
+          // Le risposte al modulo della voce (moduli del catalogo, ondata 1).
+          formAnswers: risposteDaInviare(),
           ...(decisione === 'accepted' ? { acknowledgeNoSla: true } : {}),
         },
       },
@@ -311,6 +363,24 @@ export function CreateServiceRequestPage() {
                 onChange={(name, value) => { setCustomValues((v) => ({ ...v, [name]: value })); setCustomErrors((p) => { const n = { ...p }; delete n[name]; return n }) }}
                 inputStyle={inputBase}
                 labelStyle={{ display: 'block', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6, letterSpacing: '0.01em' }}
+              />
+            </div>
+          )}
+
+          {/* Il modulo della voce di catalogo (moduli del catalogo, ondata 1) */}
+          {definizione && modulo && (
+            <div style={{ marginBottom: 24 }}>
+              <CatalogFormRenderer
+                definition={definizione}
+                fields={modulo.fields}
+                answers={risposte as FormAnswers}
+                onChange={cambiaRisposta}
+                language={i18n.language}
+                errors={erroriModulo}
+                requiredLabel={t('forms.fieldRequired')}
+                emptyChoiceLabel={t('common.select')}
+                yesLabel={t('common.yes')}
+                noLabel={t('common.no')}
               />
             </div>
           )}

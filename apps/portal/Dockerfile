@@ -12,6 +12,10 @@ WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.json ./
 COPY apps/portal/package.json       apps/portal/
 COPY packages/web-core/package.json packages/web-core/
+# @opengraphity/types: il contratto dei moduli del catalogo (tipi + valutatore
+# delle condizioni) che web-core importa. Senza il suo manifesto qui, pnpm non
+# installa la dipendenza e il build di web-core non trova il modulo.
+COPY packages/types/package.json    packages/types/
 
 # Lean install (G-05): just the portal + web-core dependency graph, and no
 # lifecycle scripts — the previous full-workspace install compiled isolated-vm
@@ -19,10 +23,14 @@ COPY packages/web-core/package.json packages/web-core/
 # esbuild/rollup ship prebuilt binaries as optional deps: no postinstall needed.
 RUN pnpm install --frozen-lockfile --ignore-scripts \
       --filter @opengraphity/portal... \
-      --filter @opengraphity/web-core...
+      --filter @opengraphity/web-core... \
+      --filter @opengraphity/types...
 
 # @opengraphity/web-core (auth/tenant/apollo shared with apps/web) is consumed
 # from its dist/, which .dockerignore excludes: build it in the container.
+# I tipi si costruiscono PRIMA di web-core: web-core li legge dal suo dist.
+COPY packages/types/ packages/types/
+RUN pnpm --filter @opengraphity/types build
 COPY packages/web-core/ packages/web-core/
 RUN pnpm --filter @opengraphity/web-core build
 
