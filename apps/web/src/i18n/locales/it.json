@@ -502,6 +502,7 @@
       "finished": "Terminato",
       "error": "Errore",
       "payload": "Payload",
+      "noPayload": "Nessun payload: questo job non porta dati",
       "stackTrace_one": "Stack trace ({{count}} riga)",
       "stackTrace_other": "Stack trace ({{count}} righe)",
       "returnValue": "Esito: {{value}}",

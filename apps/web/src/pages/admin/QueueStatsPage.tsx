@@ -93,6 +93,21 @@ function JobDetail({ job, retryable, onRetry, retrying }: { job: QueueJob; retry
   let prettyData = job.data
   try { prettyData = JSON.stringify(JSON.parse(job.data), null, 2) } catch { /* keep raw */ }
 
+  /**
+   * Un job che NON porta dati. Metà delle code della piattaforma gira su
+   * passate periodiche — `events-maintenance`, il giro dei servizi, il backup,
+   * il tick del digest, il controllo dei report, la scansione delle anomalie —
+   * e una passata e un battito, non un messaggio: il suo payload e `{}` per
+   * costruzione, non perche qualcosa si sia perso per strada.
+   *
+   * Prima la scheda offriva comunque il pulsante «Payload», che apriva una
+   * graffa vuota. Il proprietario, che nelle code con job conservati vede
+   * quasi solo passate periodiche, ne ha concluso che i payload fossero
+   * «sempre vuoti» — cioe che il prodotto li stesse perdendo. Ora la scheda
+   * lo DICE, e il pulsante resta solo dove c'e davvero qualcosa da aprire.
+   */
+  const senzaDati = ['{}', '', 'null', '[]'].includes(prettyData.trim())
+
   return (
     <div style={{ padding: '12px 16px', background: 'var(--color-slate-bg)', borderTop: '1px solid var(--border)', fontSize: 'var(--font-size-body)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 12 }}>
@@ -144,12 +159,18 @@ function JobDetail({ job, retryable, onRetry, retrying }: { job: QueueJob; retry
       )}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button type="button"
-          onClick={() => setShowPayload((p) => !p)}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: palette.neutral.textStrong }}
-        >
-          {showPayload ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {t('pages.queueStats.payload')}
-        </button>
+        {senzaDati ? (
+          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', padding: '4px 10px' }}>
+            {t('pages.queueStats.noPayload')}
+          </span>
+        ) : (
+          <button type="button"
+            onClick={() => setShowPayload((p) => !p)}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: palette.neutral.textStrong }}
+          >
+            {showPayload ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {t('pages.queueStats.payload')}
+          </button>
+        )}
         {job.stacktrace.length > 0 && (
           <button type="button"
             onClick={() => setShowStack((p) => !p)}
