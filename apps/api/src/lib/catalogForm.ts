@@ -131,6 +131,23 @@ export async function formFields(session: Session, tenantId: string): Promise<Fo
   return rows.map(mapField)
 }
 
+/**
+ * Le ETICHETTE dei campi che hanno una formula (ondata 6). La usa la
+ * diagnostica di configurazione per dire all'amministratore che i suoi campi
+ * calcolati non gireranno con gli script spenti.
+ */
+export async function formFieldsWithFormula(tenantId: string): Promise<string[]> {
+  const session = getSession(undefined, 'READ')
+  try {
+    const rows = await runQuery<{ label: string }>(session, `
+      MATCH (f:FormField {tenant_id: $tenantId})
+      WHERE f.formula IS NOT NULL AND f.formula <> ''
+      RETURN f.label AS label
+      ORDER BY toLower(f.label)`, { tenantId })
+    return rows.map((r) => String(r.label))
+  } finally { await session.close() }
+}
+
 /** I campi chiesti per nome (per validare un modulo senza rileggere tutta la libreria). */
 export async function formFieldsByName(session: Session, tenantId: string, names: readonly string[]): Promise<Map<string, FormFieldDef>> {
   if (names.length === 0) return new Map()
@@ -607,7 +624,14 @@ export async function resolveFormWrites(
           { key: 'errors.formField.formulaFailed', params: { field: campo.label, message: esito.error } })
       }
       const valore = esito.value
-      if (valore == null || String(valore).trim() === '') { out[campo.name] = null; continue }
+      // `NaN`/`Infinity` non sono valori: sono il segno che la formula ha
+      // moltiplicato qualcosa che non c'era. Il sandbox li fa già diventare
+      // `null` passando per JSON; il controllo esplicito c'è perché la regola
+      // sia scritta e non un effetto collaterale di come si serializza.
+      if (valore == null || (typeof valore === 'number' && !Number.isFinite(valore)) || String(valore).trim() === '') {
+        out[campo.name] = null
+        continue
+      }
       const allowed = campo.vocabulary ? await vocabolarioDi(campo.vocabulary) : null
       // Lo stesso `coerce` di un valore scritto a mano: una formula che
       // restituisce «pippo» per un numero, o un valore fuori vocabolario,

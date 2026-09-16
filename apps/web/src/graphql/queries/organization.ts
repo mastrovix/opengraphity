@@ -44,3 +44,10 @@ export const GET_AI_SETTINGS = gql`
     }
   }
 `
+
+/** L'interruttore degli script del cliente (ondata 6). */
+export const GET_SCRIPTING_SETTINGS = gql`
+  query GetScriptingSettings {
+    scriptingSettings { enabled plan }
+  }
+`

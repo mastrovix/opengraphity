@@ -18,11 +18,12 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { Plus, Trash2, Pencil, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY, FORM_FIELD_TYPES_WITH_VOCABULARY } from '@opengraphity/types'
+import { canBeComputed, FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY, FORM_FIELD_TYPES_WITH_VOCABULARY } from '@opengraphity/types'
 import { GET_CATALOG_FORM_LIMITS, GET_ENUM_TYPES, GET_FORM_FIELDS } from '@/graphql/queries'
 import { CREATE_FORM_FIELD, DELETE_FORM_FIELD, UPDATE_FORM_FIELD } from '@/graphql/mutations'
 import { showError } from '@/lib/showError'
 import { LimitsCard } from './LimitsCard'
+import { ScriptFields } from './ScriptFields'
 import { colors, fontWeight } from '@/lib/tokens'
 import { Input, Select, LabelledField } from '@/components/ui/FormControls'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
@@ -38,6 +39,9 @@ export interface FormFieldRow {
   required: boolean
   vocabulary: string | null
   inList: boolean
+  /** La formula di un campo calcolato, e lo script che rifiuta un valore (ondata 6). */
+  formula: string | null
+  validationScript: string | null
   usedBy: string[]
   options: Array<{ value: string; label: string }>
 }
@@ -52,9 +56,11 @@ interface Bozza {
   required: boolean
   vocabulary: string
   inList: boolean
+  formula: string
+  validationScript: string
 }
 
-const BOZZA_VUOTA: Bozza = { name: '', fieldType: 'text', labelIt: '', labelEn: '', helpIt: '', helpEn: '', required: false, vocabulary: '', inList: false }
+const BOZZA_VUOTA: Bozza = { name: '', fieldType: 'text', labelIt: '', labelEn: '', helpIt: '', helpEn: '', required: false, vocabulary: '', inList: false, formula: '', validationScript: '' }
 
 const th: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: `1px solid ${colors.border}` }
 const td: React.CSSProperties = { padding: '8px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', borderBottom: `1px solid ${colors.slateBg}`, verticalAlign: 'top' }
@@ -95,6 +101,9 @@ export function FieldLibraryPanel() {
       labels, helps,
       required: bozza.required,
       inList: bozza.inList,
+      // Vuoto = «togli»: l'API accetta la stringa vuota come «nessuna formula».
+      formula: bozza.formula.trim(),
+      validationScript: bozza.validationScript.trim(),
       vocabulary: bozza.vocabulary || null,
       help: bozza.helpIt.trim() || bozza.helpEn.trim() || null,
     }
@@ -109,6 +118,11 @@ export function FieldLibraryPanel() {
     }
     chiudi()
     void refetch()
+  }
+
+  /** I tipi che possono avere una FORMULA: valore singolo e proprietà del ticket. */
+  function calcolabile(tipo: string): boolean {
+    return canBeComputed(tipo)
   }
 
   /** I tipi che finiscono in una proprietà del ticket: gli unici che possono essere una colonna. */
@@ -231,6 +245,16 @@ export function FieldLibraryPanel() {
             </label>
           )}
 
+          {/* La formula e la validazione (ondata 6): due caselle di codice, con
+              i loro contratti e la prova. */}
+          <ScriptFields
+            formula={bozza.formula}
+            onFormula={(v) => setBozza({ ...bozza, formula: v })}
+            canCompute={calcolabile(inModifica?.fieldType ?? bozza.fieldType)}
+            validationScript={bozza.validationScript}
+            onValidationScript={(v) => setBozza({ ...bozza, validationScript: v })}
+          />
+
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             <button type="button" onClick={() => void salva()}
               style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium, cursor: 'pointer' }}>
@@ -288,6 +312,7 @@ export function FieldLibraryPanel() {
                         helpIt: c.helps.find((l) => l.language === 'it')?.label ?? '',
                         helpEn: c.helps.find((l) => l.language === 'en')?.label ?? '',
                         required: c.required, vocabulary: c.vocabulary ?? '', inList: c.inList,
+                        formula: c.formula ?? '', validationScript: c.validationScript ?? '',
                       })
                     }}
                     aria-label={t('common.edit')}

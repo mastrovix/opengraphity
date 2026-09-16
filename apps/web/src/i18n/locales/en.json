@@ -1530,7 +1530,12 @@
       "aiClusterHint": "Higher similarity and larger groups make fewer, more certain candidates.",
       "aiSimilarityInvalid": "The minimum similarity must be between 0.50 and 0.99.",
       "aiSizeInvalid": "The minimum group must be a whole number between 2 and 20.",
-      "aiSaved": "AI settings saved"
+      "aiSaved": "AI settings saved",
+      "scripting": "Scripts",
+      "scriptingHelp": "Scripts written by your organization: field validations, the \"run script\" automation action, webhook transforms, and the formulas of computed form fields. They run in a sandbox with no access to the network or the database.",
+      "scriptingEnabled": "Let this organization run its own scripts",
+      "scriptingEnabledHelp": "Off, nothing runs and whoever configured a script is told so: a validation, an action or a formula is refused naming what was skipped, never silently ignored.",
+      "scriptingSaved": "Scripts setting saved"
     },
     "slaReport": {
       "met": "Met",
@@ -2338,7 +2343,17 @@
         "deleted": "Field deleted",
         "deleteTitle": "Delete this field?",
         "deleteMessage": "“{{name}}” will disappear from the library. The answers already collected on tickets are kept.",
-        "cannotDelete": "Used by the form of: {{forms}}. Remove it from those forms first."
+        "cannotDelete": "Used by the form of: {{forms}}. Remove it from those forms first.",
+        "formula": "Formula (computed field)",
+        "formulaHelp": "JavaScript that receives the other answers in `input` and returns the value: return input.cost * input.quantity. A field with a formula is read-only: the value is computed while the form is filled and written by the server when it is saved. Leave it empty for a normal field.",
+        "testFormula": "Test",
+        "testInput": "Test values (JSON)",
+        "testInputInvalid": "The test values must be a JSON object, e.g. {\"cost\": 100}",
+        "testNoValue": "no value",
+        "validationScript": "Validation script",
+        "validationScriptHelp": "JavaScript that receives `input` (the other answers) and `value`, and throws an error to refuse it: if (value < 0) throw new Error(\"Cannot be negative\"). The message reaches whoever is filling the form. Leave it empty for no validation.",
+        "formulaPlaceholder": "return input.cost * input.quantity",
+        "validationScriptPlaceholder": "if (value < 0) throw new Error(\"Cannot be negative\")"
       },
       "limits": {
         "title": "Limits",
@@ -2357,7 +2372,8 @@
         "removeFile": "Remove",
         "searchReference": "Type at least two letters…",
         "noResults": "Nothing found",
-        "clearReference": "Clear the choice"
+        "clearReference": "Clear the choice",
+        "computed": "computed"
       },
       "itinerary": {
         "intro": "Each catalog item can follow its own workflow. Leave it on “by category” to keep the behaviour you have; pick one to give that request its own steps.",
@@ -5939,7 +5955,9 @@
       "ola_contract_without_team_one": "An active OLA/UC contract has no team ({{names}}): it never alerts, and the report counts it from ticket opening for any team. **Choose its team in Admin → OLA / UC**.",
       "ola_contract_without_team_other": "{{count}} active OLA/UC contracts have no team ({{names}}): they never alert, and the report counts them from ticket opening for any team. **Choose their team in Admin → OLA / UC**.",
       "ola_contract_unmeasurable_one": "An OLA/UC contract measures the time its team has the ticket, but no ticket of its type has ever been assigned to a team ({{names}}): it stays at zero. **Change its ticket type in Admin → OLA / UC, or assign those tickets to a team**.",
-      "ola_contract_unmeasurable_other": "{{count}} OLA/UC contracts measure the time their team has the ticket, but no ticket of their type has ever been assigned to a team ({{names}}): they stay at zero. **Change their ticket type in Admin → OLA / UC, or assign those tickets to a team**."
+      "ola_contract_unmeasurable_other": "{{count}} OLA/UC contracts measure the time their team has the ticket, but no ticket of their type has ever been assigned to a team ({{names}}): they stay at zero. **Change their ticket type in Admin → OLA / UC, or assign those tickets to a team**.",
+      "formulas_with_scripting_off_one": "A form field is computed by a formula, but scripts are switched off for this organization ({{names}}): no request using that form can be created — whoever fills it is refused, and cannot fix it. **Switch scripts on in Settings → Organization, or remove the formula from the field library**.",
+      "formulas_with_scripting_off_other": "{{count}} form fields are computed by a formula, but scripts are switched off for this organization ({{names}}): no request using those forms can be created — whoever fills one is refused, and cannot fix it. **Switch scripts on in Settings → Organization, or remove the formulas from the field library**."
     },
     "gap": {
       "tenant_missing": "no row: the tenant does not exist",

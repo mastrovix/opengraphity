@@ -40,6 +40,8 @@ import { slackChannelsWithoutWorkspace } from './slackChannelsWithoutWorkspace.j
 import { serviceMapsWithIncidentProblem } from './serviceIncidentProblems.js'
 import type { Session } from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
+import { getScriptingPlan } from './scriptingPlan.js'
+import { formFieldsWithFormula } from './catalogForm.js'
 import { PORTAL_SEVERITY_VOCABULARY, portalSeverityOptions } from './portalSeverityOptions.js'
 import { catalogItemsWithLegacyCategory, catalogItemsWithoutPriority } from './catalogItemPriority.js'
 import { tenantInAppRetentionDays } from './tenantInAppRetention.js'
@@ -105,6 +107,7 @@ export type ConfigurationIssueKind =
   | 'custom_field_from_step_absent'
   | 'ola_contract_without_team'
   | 'ola_contract_unmeasurable'
+  | 'formulas_with_scripting_off'
 
 export interface ConfigurationIssue {
   /** La CHIAVE del problema: il client la risolve nella sua lingua. */
@@ -156,7 +159,7 @@ async function computeConfigurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -472,6 +475,28 @@ async function checkMigrations(_tenantId: string): Promise<ConfigurationIssue[]>
   const pending = await pendingMigrations()
   if (pending.length === 0) return []
   return [{ kind: 'migrations_pending', severity: 'error', where: null, params: { count: String(pending.length), migrations: pending.join(', ') } }]
+}
+
+/**
+ * CAMPI CALCOLATI CON GLI SCRIPT SPENTI (moduli del catalogo, ondata 6).
+ *
+ * Una formula è uno script: con l'interruttore spento non gira, e la richiesta
+ * NON si crea — il rifiuto dice perché, ma arriva a chi sta compilando, che non
+ * può rimediare. Qui lo si dice a chi può: l'amministratore, nel posto dove
+ * guarda già.
+ *
+ * `error` e non `warning`: non è «sarà un problema», è già rotto — quei moduli
+ * non si possono compilare.
+ */
+async function checkFormulasScripting(tenantId: string): Promise<ConfigurationIssue[]> {
+  const { enabled } = await getScriptingPlan(tenantId)
+  if (enabled) return []
+  const names = await formFieldsWithFormula(tenantId)
+  if (names.length === 0) return []
+  return [{
+    kind: 'formulas_with_scripting_off', severity: 'error', where: '/settings/organization',
+    params: { count: String(names.length), names: names.join(', ') },
+  }]
 }
 
 /**

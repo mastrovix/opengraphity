@@ -691,6 +691,10 @@ importers:
         version: 5.9.3
 
   packages/web-core:
+    dependencies:
+      quickjs-emscripten:
+        specifier: ^0.32.0
+        version: 0.32.0
     devDependencies:
       '@apollo/client':
         specifier: ^4.1.6

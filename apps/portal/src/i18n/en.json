@@ -160,7 +160,8 @@
     "submit": "Submit request",
     "submitting": "Submitting…",
     "addFile": "Add a file",
-    "removeFile": "Remove"
+    "removeFile": "Remove",
+    "computed": "computed"
   },
   "notFound": {
     "title": "Page not found",

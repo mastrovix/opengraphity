@@ -51,3 +51,6 @@ export {
   type CatalogFormFile,
   type CatalogFormReference,
 } from './CatalogFormRenderer.js'
+// Le formule dei campi calcolati (ondata 6): il renderer le usa da sé, e la
+// pagina della libreria le usa per il pulsante «Prova».
+export { runFormula, computeFormulas, type FormulaEsito } from './formulaRunner.js'

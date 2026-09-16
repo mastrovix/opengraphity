@@ -204,6 +204,7 @@ export function ServiceCatalogPage() {
                   emptyChoiceLabel={t('common.select')}
                   yesLabel={t('common.yes')}
                   noLabel={t('common.no')}
+                  computedLabel={t('catalog.computed')}
                   files={fileDelModulo}
                   uploadingField={inCaricamento}
                   onUploadFile={caricaFile}

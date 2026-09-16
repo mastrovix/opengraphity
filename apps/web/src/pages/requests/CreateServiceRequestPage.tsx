@@ -467,6 +467,7 @@ export function CreateServiceRequestPage() {
                 emptyChoiceLabel={t('common.select')}
                 yesLabel={t('common.yes')}
                 noLabel={t('common.no')}
+                computedLabel={t('pages.catalogForms.fill.computed')}
                 files={fileDelModulo}
                 uploadingField={inCaricamento}
                 onUploadFile={caricaFile}

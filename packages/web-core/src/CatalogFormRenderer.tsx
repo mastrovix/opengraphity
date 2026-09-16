@@ -24,7 +24,7 @@
  * browser lo nasconderebbe, il server lo accetterebbe, o viceversa un
  * obbligatorio invisibile bloccherebbe l'invio senza che si capisca perché.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   FORM_FIELD_TYPES_WITHOUT_ANSWER, evaluateFormCondition, isFormAttachmentType, isFormReferenceType,
   localizedText,
@@ -42,6 +42,12 @@ export interface CatalogFormFieldView {
   required: boolean
   vocabulary?: string | null
   options?: ReadonlyArray<{ value: string; label: string }>
+  /**
+   * La FORMULA di un campo calcolato (ondata 6). Presente = il campo è in sola
+   * lettura: il valore lo calcola il renderer mentre si compila, per mostrarlo,
+   * e lo ricalcola l'API al salvataggio, che è quello che conta.
+   */
+  formula?: string | null
 }
 
 /** Un file caricato su una bozza: lo stato è del chiamante, il renderer lo mostra. */
@@ -76,6 +82,8 @@ export interface CatalogFormRendererProps {
   /** Le due voci di un campo sì/no, nella lingua dell'app: qui non si scrive testo. */
   yesLabel?: string
   noLabel?: string
+  /** La parola «calcolato», per il segno accanto a un campo con formula (ondata 6). */
+  computedLabel?: string
 
   // ── Ondata 2: allegati e riferimenti ──────────────────────────────────────
   //
@@ -169,8 +177,13 @@ export function catalogFormAnswersToSend(
 ): CatalogFormAnswerToSend[] {
   const tipoDi = new Map(fields.map((f) => [f.name, f.fieldType]))
   const senzaRisposta: readonly string[] = FORM_FIELD_TYPES_WITHOUT_ANSWER
+  // I CALCOLATI non si mandano (ondata 6): il valore è della formula, e l'API
+  // rifiuta chi lo manda. Nelle `answers` c'è per far vedere il totale e per
+  // farci passare le condizioni, non per essere spedito.
+  const calcolato = new Set(fields.filter((f) => f.formula && f.formula.trim() !== '').map((f) => f.name))
   return visibleCatalogFormItems(definition, answers, endUser)
     .filter((item) => !senzaRisposta.includes(tipoDi.get(item.field) ?? ''))
+    .filter((item) => !calcolato.has(item.field))
     .map((item) => {
       const v = answers[item.field]
       return Array.isArray(v)
@@ -182,9 +195,46 @@ export function catalogFormAnswersToSend(
 export function CatalogFormRenderer(props: CatalogFormRendererProps) {
   const {
     definition, fields, answers, onChange, language, endUser, errors, disabled,
-    requiredLabel, emptyChoiceLabel, yesLabel, noLabel,
+    requiredLabel, emptyChoiceLabel, yesLabel, noLabel, computedLabel,
   } = props
   const perNome = useMemo(() => new Map(fields.map((f) => [f.name, f])), [fields])
+
+  /**
+   * I CAMPI CALCOLATI, mentre si compila (ondata 6).
+   *
+   * Sta nel renderer e non nelle due pagine perché è comportamento, non
+   * aspetto: il portale e l'area di lavoro devono vedere lo stesso totale. Il
+   * valore finisce nelle `answers` — così le condizioni lo vedono — ma NON
+   * viene spedito (`catalogFormAnswersToSend` lo esclude): a scriverlo sul
+   * ticket pensa l'API, ricalcolandolo.
+   *
+   * L'attesa di 250 ms evita di eseguire una formula a ogni tasto premuto; il
+   * confronto con il valore attuale evita il giro infinito (scrivo, ricalcolo,
+   * scrivo). QuickJS si carica solo se un campo ha davvero una formula.
+   */
+  const conFormula = useMemo(() => fields.filter((f) => f.formula && f.formula.trim() !== ''), [fields])
+  const [erroriFormula, setErroriFormula] = useState<Record<string, string>>({})
+  useEffect(() => {
+    if (conFormula.length === 0) return
+    let annullato = false
+    const attesa = setTimeout(() => {
+      void (async () => {
+        const { computeFormulas } = await import('./formulaRunner.js')
+        const { values, errors: erroriNuovi } = await computeFormulas(conFormula, answers)
+        if (annullato) return
+        setErroriFormula(erroriNuovi)
+        for (const [nome, calcolato] of Object.entries(values)) {
+          const valore: FormAnswerValue = calcolato == null ? null
+            : typeof calcolato === 'boolean' || typeof calcolato === 'number' ? calcolato
+            : String(calcolato)
+          const attuale = answers[nome]
+          // `==` volutamente no: il confronto è fra due valori già normalizzati.
+          if ((attuale ?? null) !== (valore ?? null)) onChange(nome, valore)
+        }
+      })()
+    }, 250)
+    return () => { annullato = true; clearTimeout(attesa) }
+  }, [conFormula, answers, onChange])
 
   return (
     <div className="og-form">
@@ -229,6 +279,8 @@ export function CatalogFormRenderer(props: CatalogFormRendererProps) {
                     emptyChoiceLabel={emptyChoiceLabel}
                     yesLabel={yesLabel}
                     noLabel={noLabel}
+                    computedLabel={computedLabel}
+                    erroreFormula={erroriFormula[item.field]}
                     onChange={onChange}
                     extra={props}
                   />
@@ -247,6 +299,9 @@ interface CampoProps {
   item: CatalogFormItem
   valore: FormAnswerValue
   errore?: string
+  /** L'errore della FORMULA di questo campo, se ne ha una e non ha prodotto un valore. */
+  erroreFormula?: string
+  computedLabel?: string
   language?: string | null
   disabled?: boolean
   requiredLabel?: string
@@ -258,7 +313,7 @@ interface CampoProps {
   extra: CatalogFormRendererProps
 }
 
-function CampoDelModulo({ campo, item, valore, errore, language, disabled, requiredLabel, emptyChoiceLabel, yesLabel, noLabel, onChange, extra }: CampoProps) {
+function CampoDelModulo({ campo, item, valore, errore, erroreFormula, computedLabel, language, disabled, requiredLabel, emptyChoiceLabel, yesLabel, noLabel, onChange, extra }: CampoProps) {
   const obbligatorio = item.required ?? campo.required
   const testo = etichetta(campo, language)
   const spiegazione = aiuto(campo, item, language)
@@ -274,6 +329,34 @@ function CampoDelModulo({ campo, item, valore, errore, language, disabled, requi
       <div className="og-form-cell og-form-note">
         <p>{testo}</p>
         {spiegazione && <p className="og-form-help">{spiegazione}</p>}
+      </div>
+    )
+  }
+
+  /**
+   * UN CAMPO CALCOLATO non si compila: si legge (ondata 6). Niente controllo
+   * spento e niente campo di testo in sola lettura — sarebbero due modi di
+   * dire «qui potresti scrivere, ma no». Si mostra il valore, con il segno che
+   * dice da dove viene; se la formula è fallita, si dice quello invece del
+   * valore, perché un campo vuoto senza spiegazione sembrerebbe un dato che
+   * manca.
+   */
+  if (campo.formula && campo.formula.trim() !== '') {
+    const mostrato = valore == null || valore === '' ? '—'
+      : typeof valore === 'boolean' ? (valore ? (yesLabel ?? 'yes') : (noLabel ?? 'no'))
+      : Array.isArray(valore) ? valore.join(', ')
+      : String(valore)
+    return (
+      <div className={larghezza}>
+        <span className="og-form-label" id={`${id}-lbl`}>
+          {testo}
+          {computedLabel && <span className="og-form-computed-badge">{computedLabel}</span>}
+        </span>
+        {erroreFormula
+          ? <p className="og-form-error" role="alert">{erroreFormula}</p>
+          : <p className="og-form-computed" aria-labelledby={`${id}-lbl`}>{mostrato}</p>}
+        {spiegazione && <p className="og-form-help" id={idAiuto}>{spiegazione}</p>}
+        {errore && <p className="og-form-error" id={idErrore} role="alert">{errore}</p>}
       </div>
     )
   }

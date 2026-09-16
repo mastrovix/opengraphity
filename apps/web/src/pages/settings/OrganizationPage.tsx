@@ -48,6 +48,7 @@ import { BrandSection } from './organization/BrandSection'
 import { TicketNumberingSection } from './organization/TicketNumberingSection'
 import { AttachmentPolicySection } from './organization/AttachmentPolicySection'
 import { AISection } from './organization/AISection'
+import { ScriptingSection } from './organization/ScriptingSection'
 import { showError } from '@/lib/showError'
 
 /**
@@ -167,6 +168,11 @@ export function OrganizationPage() {
       </>}
 
       {tab === 'ai' && <AISection />}
+
+      {/* Gli script del cliente: stanno con le impostazioni generali perché non
+          sono di un'area sola — validazioni dei campi, azioni delle
+          automazioni, webhook e formule dei moduli (ondata 6). */}
+      {tab === 'general' && <ScriptingSection />}
     </PageContainer>
   )
 }

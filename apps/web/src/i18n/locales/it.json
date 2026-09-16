@@ -1530,7 +1530,12 @@
       "aiClusterHint": "Una somiglianza più alta e gruppi più grandi danno meno candidati, più sicuri.",
       "aiSimilarityInvalid": "La somiglianza minima deve essere fra 0,50 e 0,99.",
       "aiSizeInvalid": "Il gruppo minimo deve essere un numero intero fra 2 e 20.",
-      "aiSaved": "Impostazioni AI salvate"
+      "aiSaved": "Impostazioni AI salvate",
+      "scripting": "Script",
+      "scriptingHelp": "Gli script scritti dalla tua organizzazione: le validazioni dei campi, l'azione «esegui script» delle automazioni, le trasformazioni dei webhook e le formule dei campi calcolati dei moduli. Girano in un sandbox senza accesso alla rete né al database.",
+      "scriptingEnabled": "Consenti a questa organizzazione di eseguire i suoi script",
+      "scriptingEnabledHelp": "Spento, non gira niente e chi ha configurato uno script lo sente dire: una validazione, un'azione o una formula vengono rifiutate nominando quello che non è stato eseguito, mai ignorate in silenzio.",
+      "scriptingSaved": "Impostazione degli script salvata"
     },
     "slaReport": {
       "met": "Rispettati",
@@ -2338,7 +2343,17 @@
         "deleted": "Campo cancellato",
         "deleteTitle": "Cancellare questo campo?",
         "deleteMessage": "«{{name}}» sparisce dalla libreria. Le risposte già raccolte sui ticket restano.",
-        "cannotDelete": "Usato dal modulo di: {{forms}}. Togli prima il campo da quei moduli."
+        "cannotDelete": "Usato dal modulo di: {{forms}}. Togli prima il campo da quei moduli.",
+        "formula": "Formula (campo calcolato)",
+        "formulaHelp": "JavaScript che riceve le altre risposte in `input` e restituisce il valore: return input.costo * input.quantita. Un campo con formula è in sola lettura: il valore si calcola mentre si compila e lo scrive il server al salvataggio. Lascia vuoto per un campo normale.",
+        "testFormula": "Prova",
+        "testInput": "Valori di prova (JSON)",
+        "testInputInvalid": "I valori di prova devono essere un oggetto JSON, per esempio {\"costo\": 100}",
+        "testNoValue": "nessun valore",
+        "validationScript": "Script di validazione",
+        "validationScriptHelp": "JavaScript che riceve `input` (le altre risposte) e `value`, e lancia un errore per rifiutarlo: if (value < 0) throw new Error(\"Non può essere negativo\"). Il messaggio arriva a chi sta compilando. Lascia vuoto per non validare.",
+        "formulaPlaceholder": "return input.costo * input.quantita",
+        "validationScriptPlaceholder": "if (value < 0) throw new Error(\"Non può essere negativo\")"
       },
       "limits": {
         "title": "Tetti",
@@ -2357,7 +2372,8 @@
         "removeFile": "Togli",
         "searchReference": "Scrivi almeno due lettere…",
         "noResults": "Nessun risultato",
-        "clearReference": "Togli la scelta"
+        "clearReference": "Togli la scelta",
+        "computed": "calcolato"
       },
       "itinerary": {
         "intro": "Ogni voce di catalogo può seguire il suo workflow. Lascia «per categoria» per tenere il comportamento che hai; scegline uno per dare a quella richiesta i suoi passi.",
@@ -5939,7 +5955,9 @@
       "ola_contract_without_team_one": "Un contratto OLA/UC attivo non ha un team ({{names}}): non avvisa mai, e il report lo conta dall'apertura del ticket per qualunque team. **Scegli il suo team in Admin → OLA / UC**.",
       "ola_contract_without_team_other": "{{count}} contratti OLA/UC attivi non hanno un team ({{names}}): non avvisano mai, e il report li conta dall'apertura del ticket per qualunque team. **Scegli il loro team in Admin → OLA / UC**.",
       "ola_contract_unmeasurable_one": "Un contratto OLA/UC misura il tempo in cui il ticket è del suo team, ma nessun ticket del suo tipo è mai stato assegnato a un team ({{names}}): resta a zero. **Cambia il tipo di ticket in Admin → OLA / UC, o assegna quei ticket a un team**.",
-      "ola_contract_unmeasurable_other": "{{count}} contratti OLA/UC misurano il tempo in cui il ticket è del loro team, ma nessun ticket del loro tipo è mai stato assegnato a un team ({{names}}): restano a zero. **Cambia il tipo di ticket in Admin → OLA / UC, o assegna quei ticket a un team**."
+      "ola_contract_unmeasurable_other": "{{count}} contratti OLA/UC misurano il tempo in cui il ticket è del loro team, ma nessun ticket del loro tipo è mai stato assegnato a un team ({{names}}): restano a zero. **Cambia il tipo di ticket in Admin → OLA / UC, o assegna quei ticket a un team**.",
+      "formulas_with_scripting_off_one": "Un campo dei moduli è calcolato da una formula, ma gli script sono spenti per questa organizzazione ({{names}}): nessuna richiesta che usa quel modulo si può creare — chi compila viene rifiutato e non può rimediare. **Accendi gli script in Configurazione → Organizzazione, oppure togli la formula dalla libreria dei campi**.",
+      "formulas_with_scripting_off_other": "{{count}} campi dei moduli sono calcolati da una formula, ma gli script sono spenti per questa organizzazione ({{names}}): nessuna richiesta che usa quei moduli si può creare — chi compila viene rifiutato e non può rimediare. **Accendi gli script in Configurazione → Organizzazione, oppure togli le formule dalla libreria dei campi**."
     },
     "gap": {
       "tenant_missing": "nessuna riga: il tenant non esiste",

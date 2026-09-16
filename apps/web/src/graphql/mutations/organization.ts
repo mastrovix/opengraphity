@@ -48,3 +48,10 @@ export const UPDATE_COMMENT = gql`
 export const DELETE_COMMENT = gql`
   mutation DeleteComment($id: ID!) { deleteComment(id: $id) }
 `
+
+/** Accende o spegne gli script del cliente: validazioni, azioni, webhook e formule. */
+export const SET_SCRIPTING_ENABLED = gql`
+  mutation SetScriptingEnabled($enabled: Boolean!) {
+    setScriptingEnabled(enabled: $enabled) { enabled plan }
+  }
+`

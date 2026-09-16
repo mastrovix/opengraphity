@@ -21,6 +21,9 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "dependencies": {
+    "quickjs-emscripten": "^0.32.0"
+  },
   "peerDependencies": {
     "@apollo/client": "^4.1.6",
     "graphql": "^16.13.1",

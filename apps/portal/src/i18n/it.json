@@ -160,7 +160,8 @@
     "submit": "Invia richiesta",
     "submitting": "Invio…",
     "addFile": "Aggiungi un file",
-    "removeFile": "Togli"
+    "removeFile": "Togli",
+    "computed": "calcolato"
   },
   "notFound": {
     "title": "Pagina non trovata",

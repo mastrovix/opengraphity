@@ -346,3 +346,17 @@ input, textarea, select {
   background: var(--color-slate-bg); border-radius: 5px; padding: 4px 8px;
   font-size: var(--font-size-body, 14px); color: var(--color-slate-dark);
 }
+/* Un campo CALCOLATO (ondata 6): si legge, non si compila. Il valore ha il
+   corpo di un campo normale perché è un dato, non un'annotazione; il segno
+   accanto all'etichetta dice da dove viene. */
+.og-form-computed {
+  margin: 0; padding: 6px 0;
+  font-size: var(--font-size-body, 14px); color: var(--color-slate-dark);
+  font-variant-numeric: tabular-nums;
+}
+.og-form-computed-badge {
+  margin-left: 6px; padding: 1px 6px; border-radius: 9999px;
+  background: var(--color-slate-bg); color: var(--color-slate-light);
+  font-size: var(--font-size-table, 12.5px); font-weight: 400; text-transform: none;
+}
+

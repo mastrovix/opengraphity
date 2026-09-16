@@ -37,6 +37,15 @@ vi.mock('@opengraphity/neo4j', () => ({
   }),
 }))
 vi.mock('../schemaCache.js', () => ({ getSchemaState: vi.fn(async () => degraded) }))
+/**
+ * I campi con una formula e l'interruttore degli script (moduli del catalogo,
+ * ondata 6): di default nessun campo calcolato e script accesi, così questo
+ * controllo non compare nei casi degli altri.
+ */
+let campiConFormula: string[] = []
+let scriptAccesi = true
+vi.mock('../catalogForm.js', () => ({ formFieldsWithFormula: vi.fn(async () => campiConFormula) }))
+vi.mock('../scriptingPlan.js', () => ({ getScriptingPlan: vi.fn(async () => ({ plan: 'enterprise', enabled: scriptAccesi })) }))
 /*
   La lingua predefinita del cliente: da quando e configurazione, «non
   configurata» e uno stato che la diagnostica deve saper dire.
@@ -600,5 +609,38 @@ describe('configurationIssues — contratti OLA/UC che non misurano niente', () 
         { kind: 'ola_contract_unmeasurable', severity: 'warning', where: '/admin/ola-uc', params: { count: '1', names: 'Service Desk evade le richieste entro 1 giorno (service_request)' } },
       ])
     } finally { misurabilitaOLA = { withoutTeam: [], unmeasurable: [] } }
+  })
+})
+
+/**
+ * CAMPI CALCOLATI CON GLI SCRIPT SPENTI (ondata 6). Il rifiuto al salvataggio
+ * lo vede chi compila, che non può rimediare: questo controllo è il modo di
+ * dirlo a chi può.
+ */
+describe('formule e interruttore degli script', () => {
+  it('script spenti e campi con formula → un rilievo ERRORE che nomina i campi e dove si accende', async () => {
+    scriptAccesi = false
+    campiConFormula = ['Costo totale (EUR)', 'Giorni stimati']
+    const issues = await configurationIssues('t1')
+    const mio = issues.find((i) => i.kind === 'formulas_with_scripting_off')!
+    expect(mio).toBeDefined()
+    expect(mio.severity).toBe('error')
+    expect(mio.where).toBe('/settings/organization')
+    expect(mio.params['count']).toBe('2')
+    expect(mio.params['names']).toContain('Costo totale (EUR)')
+  })
+
+  it('script spenti ma NESSUN campo calcolato → niente rilievo: non c'+String.fromCharCode(39)+'è niente di rotto', async () => {
+    scriptAccesi = false
+    campiConFormula = []
+    const issues = await configurationIssues('t1')
+    expect(issues.some((i) => i.kind === 'formulas_with_scripting_off')).toBe(false)
+  })
+
+  it('script accesi → niente rilievo, e la libreria non si legge affatto', async () => {
+    scriptAccesi = true
+    campiConFormula = ['Costo totale (EUR)']
+    const issues = await configurationIssues('t1')
+    expect(issues.some((i) => i.kind === 'formulas_with_scripting_off')).toBe(false)
   })
 })
