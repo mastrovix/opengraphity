@@ -82,7 +82,9 @@ describe('createServiceRequest — item di catalogo', () => {
   it('item trovato → requiresApproval ereditato dal catalogo (true), passato al service con l\'input', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: true })
     const result = await createServiceRequest(undefined, { input: { title: 'VPN', priority: 'high', catalogItemId: 'cat-1' } }, ctx)
-    expect(createRequest).toHaveBeenCalledWith({ title: 'VPN', priority: 'high', catalogItemId: 'cat-1', requiresApproval: true, customFields: undefined }, ctx, 'agent')
+    // `formAnswers: null` c'è sempre (ondata 7): il resolver le converte dalla
+    // forma dello schema, quindi la chiave esiste anche quando non ce ne sono.
+    expect(createRequest).toHaveBeenCalledWith({ title: 'VPN', priority: 'high', catalogItemId: 'cat-1', requiresApproval: true, customFields: undefined, formAnswers: null }, ctx, 'agent')
     expect(result).toEqual({ id: 'sr-1', title: 'T' })
   })
 
@@ -94,7 +96,7 @@ describe('createServiceRequest — item di catalogo', () => {
     vi.clearAllMocks()
     await createServiceRequest(undefined, { input: { title: 'T', priority: 'low' } }, ctx)
     expect(runQueryOne).not.toHaveBeenCalled()
-    expect(vi.mocked(createRequest).mock.calls[0]![0]).toEqual({ title: 'T', priority: 'low', requiresApproval: false })
+    expect(vi.mocked(createRequest).mock.calls[0]![0]).toEqual({ title: 'T', priority: 'low', requiresApproval: false, formAnswers: null })
   })
 })
 

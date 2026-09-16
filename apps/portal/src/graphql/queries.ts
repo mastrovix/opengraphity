@@ -153,6 +153,7 @@ export const GET_PORTAL_CATALOG_FORM = gql`
         labels { language label }
         helps { language label }
         options(language: $language) { value label }
+        tableColumns(language: $language) { name label fieldType required options { value label } }
       }
     }
   }

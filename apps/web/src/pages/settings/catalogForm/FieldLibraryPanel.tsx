@@ -18,12 +18,16 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { Plus, Trash2, Pencil, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { canBeComputed, FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY, FORM_FIELD_TYPES_WITH_VOCABULARY } from '@opengraphity/types'
+import {
+  canBeComputed, emptyFormTable, FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY,
+  FORM_FIELD_TYPES_WITH_VOCABULARY, isFormTableType, type FormTableDefinition,
+} from '@opengraphity/types'
 import { GET_CATALOG_FORM_LIMITS, GET_ENUM_TYPES, GET_FORM_FIELDS } from '@/graphql/queries'
 import { CREATE_FORM_FIELD, DELETE_FORM_FIELD, UPDATE_FORM_FIELD } from '@/graphql/mutations'
 import { showError } from '@/lib/showError'
 import { LimitsCard } from './LimitsCard'
 import { ScriptFields } from './ScriptFields'
+import { TableColumnsEditor } from './TableColumnsEditor'
 import { colors, fontWeight } from '@/lib/tokens'
 import { Input, Select, LabelledField } from '@/components/ui/FormControls'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
@@ -42,6 +46,8 @@ export interface FormFieldRow {
   /** La formula di un campo calcolato, e lo script che rifiuta un valore (ondata 6). */
   formula: string | null
   validationScript: string | null
+  /** Le colonne, se è una tabella: JSON come lo manda l'API (ondata 7). */
+  tableDefinition: string | null
   usedBy: string[]
   options: Array<{ value: string; label: string }>
 }
@@ -58,9 +64,11 @@ interface Bozza {
   inList: boolean
   formula: string
   validationScript: string
+  /** Le colonne della tabella, già lette: il JSON lo ricuce chi salva. */
+  tabella: FormTableDefinition
 }
 
-const BOZZA_VUOTA: Bozza = { name: '', fieldType: 'text', labelIt: '', labelEn: '', helpIt: '', helpEn: '', required: false, vocabulary: '', inList: false, formula: '', validationScript: '' }
+const BOZZA_VUOTA: Bozza = { name: '', fieldType: 'text', labelIt: '', labelEn: '', helpIt: '', helpEn: '', required: false, vocabulary: '', inList: false, formula: '', validationScript: '', tabella: emptyFormTable() }
 
 const th: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: `1px solid ${colors.border}` }
 const td: React.CSSProperties = { padding: '8px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', borderBottom: `1px solid ${colors.slateBg}`, verticalAlign: 'top' }
@@ -104,6 +112,9 @@ export function FieldLibraryPanel() {
       // Vuoto = «togli»: l'API accetta la stringa vuota come «nessuna formula».
       formula: bozza.formula.trim(),
       validationScript: bozza.validationScript.trim(),
+      // Le colonne solo per una tabella: mandarle su un altro tipo è un rifiuto
+      // dell'API, e ha ragione lei.
+      tableDefinition: isFormTableType(inModifica?.fieldType ?? bozza.fieldType) ? JSON.stringify(bozza.tabella) : null,
       vocabulary: bozza.vocabulary || null,
       help: bozza.helpIt.trim() || bozza.helpEn.trim() || null,
     }
@@ -245,6 +256,15 @@ export function FieldLibraryPanel() {
             </label>
           )}
 
+          {/* Le colonne, solo per una tabella (ondata 7). */}
+          {isFormTableType(inModifica?.fieldType ?? bozza.fieldType) && (
+            <TableColumnsEditor
+              definizione={bozza.tabella}
+              onChange={(d) => setBozza({ ...bozza, tabella: d })}
+              vocabolari={enumData?.enumTypes ?? []}
+            />
+          )}
+
           {/* La formula e la validazione (ondata 6): due caselle di codice, con
               i loro contratti e la prova. */}
           <ScriptFields
@@ -313,6 +333,7 @@ export function FieldLibraryPanel() {
                         helpEn: c.helps.find((l) => l.language === 'en')?.label ?? '',
                         required: c.required, vocabulary: c.vocabulary ?? '', inList: c.inList,
                         formula: c.formula ?? '', validationScript: c.validationScript ?? '',
+                        tabella: c.tableDefinition ? (JSON.parse(c.tableDefinition) as FormTableDefinition) : emptyFormTable(),
                       })
                     }}
                     aria-label={t('common.edit')}

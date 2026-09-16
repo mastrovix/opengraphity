@@ -2270,7 +2270,8 @@
         "attachment": "File",
         "ref_ci": "A configuration item",
         "ref_user": "A person",
-        "ref_team": "A team"
+        "ref_team": "A team",
+        "table": "Table (rows)"
       },
       "conditionOp": {
         "eq": "is",
@@ -2353,7 +2354,17 @@
         "validationScript": "Validation script",
         "validationScriptHelp": "JavaScript that receives `input` (the other answers) and `value`, and throws an error to refuse it: if (value < 0) throw new Error(\"Cannot be negative\"). The message reaches whoever is filling the form. Leave it empty for no validation.",
         "formulaPlaceholder": "return input.cost * input.quantity",
-        "validationScriptPlaceholder": "if (value < 0) throw new Error(\"Cannot be negative\")"
+        "validationScriptPlaceholder": "if (value < 0) throw new Error(\"Cannot be negative\")",
+        "tableColumns": "Columns of the table",
+        "tableColumnsHelp": "A repeatable table: whoever fills the form adds a row at a time. A column is a plain value — text, number, date, yes/no, or a choice from the Dictionary. No help text, no conditions and no formula per column: those belong to a field, not to a cell.",
+        "columnName": "Name",
+        "columnNamePlaceholder": "role",
+        "columnLabelIt": "Label (Italian)",
+        "columnLabelEn": "Label (English)",
+        "columnRequired": "Required",
+        "addColumn": "Add a column",
+        "tableNoColumns": "No columns yet: a table needs at least one.",
+        "tableInList": "A table cannot be a list column, a widget or a report column: it is rows, not a value."
       },
       "limits": {
         "title": "Limits",
@@ -2373,7 +2384,9 @@
         "searchReference": "Type at least two letters…",
         "noResults": "Nothing found",
         "clearReference": "Clear the choice",
-        "computed": "computed"
+        "computed": "computed",
+        "addRow": "Add a row",
+        "removeRow": "Remove this row"
       },
       "itinerary": {
         "intro": "Each catalog item can follow its own workflow. Leave it on “by category” to keep the behaviour you have; pick one to give that request its own steps.",

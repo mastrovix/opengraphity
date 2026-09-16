@@ -14,8 +14,8 @@ import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
 import { useValueStyle } from '@/hooks/useValueStyle'
 import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
 import {
-  CatalogFormRenderer, catalogFormAnswersToSend, visibleCatalogFormItems,
-  type CatalogFormFieldView, type CatalogFormFile, type CatalogFormReference,
+  CatalogFormRenderer, catalogFormAnswersToSend, catalogFormTableAnswers, visibleCatalogFormItems,
+  type CatalogFormFieldView, type CatalogFormFile, type CatalogFormReference, type CatalogFormTableRow,
 } from '@opengraphity/web-core'
 import { isFormAttachmentType, isFormReferenceType } from '@opengraphity/types'
 import { uploadFormDraftFile } from '@/lib/formDraftUpload'
@@ -153,6 +153,11 @@ export function CreateServiceRequestPage() {
   const [fileDelModulo, setFileDelModulo] = useState<Record<string, CatalogFormFile[]>>({})
   const [inCaricamento, setInCaricamento] = useState<string | null>(null)
   const [riferimenti, setRiferimenti] = useState<Record<string, CatalogFormReference[]>>({})
+  /**
+   * Le righe delle tabelle (ondata 7): stato del chiamante, come i file e i
+   * riferimenti — una riga non è una risposta, quindi non sta in `risposte`.
+   */
+  const [righeTabelle, setRigheTabelle] = useState<Record<string, readonly CatalogFormTableRow[]>>({})
   const [cancellaAllegato] = useMutation(DELETE_ATTACHMENT, { onError: (e) => showError(e) })
   const apollo = useApolloClient()
 
@@ -235,13 +240,21 @@ export function CreateServiceRequestPage() {
      * che il nodo esista nel tenant e poi scrive una relazione. Gli allegati
      * non viaggiano affatto — sono già sulla bozza, e il server li reclama.
      */
-    return base
+    const risposteBase = base
       .filter((a) => !isFormAttachmentType(tipoDi.get(a.name) ?? ''))
       .map((a) => {
         if (!isFormReferenceType(tipoDi.get(a.name) ?? '')) return a
         const scelto = riferimenti[a.name]?.[0]
         return { name: a.name, refIds: scelto ? [scelto.id] : [] }
       })
+    /**
+     * Le RIGHE delle tabelle (ondata 7) viaggiano in `rows`, con le celle per
+     * nome di colonna: `catalogFormTableAnswers` tiene solo le tabelle visibili
+     * e le righe con qualcosa dentro, la stessa regola del portale.
+     */
+    const tabelle = catalogFormTableAnswers(definizione, modulo.fields, risposte as FormAnswers, righeTabelle)
+      .map((t) => ({ name: t.name, rows: t.rows.map((r) => ({ cells: Object.entries(r).map(([column, value]) => ({ column, value })) })) }))
+    return [...risposteBase, ...tabelle]
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -468,6 +481,10 @@ export function CreateServiceRequestPage() {
                 yesLabel={t('common.yes')}
                 noLabel={t('common.no')}
                 computedLabel={t('pages.catalogForms.fill.computed')}
+                tables={righeTabelle}
+                onTablesChange={(campo, rows) => { setRigheTabelle((p) => ({ ...p, [campo]: rows })) }}
+                tableAddRowLabel={t('pages.catalogForms.fill.addRow')}
+                tableRemoveRowLabel={t('pages.catalogForms.fill.removeRow')}
                 files={fileDelModulo}
                 uploadingField={inCaricamento}
                 onUploadFile={caricaFile}

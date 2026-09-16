@@ -161,7 +161,9 @@
     "submitting": "Submitting…",
     "addFile": "Add a file",
     "removeFile": "Remove",
-    "computed": "computed"
+    "computed": "computed",
+    "addRow": "Add a row",
+    "removeRow": "Remove this row"
   },
   "notFound": {
     "title": "Page not found",

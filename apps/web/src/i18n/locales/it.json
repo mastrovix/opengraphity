@@ -2270,7 +2270,8 @@
         "attachment": "File",
         "ref_ci": "Un elemento della CMDB",
         "ref_user": "Una persona",
-        "ref_team": "Una squadra"
+        "ref_team": "Una squadra",
+        "table": "Tabella (righe)"
       },
       "conditionOp": {
         "eq": "è",
@@ -2353,7 +2354,17 @@
         "validationScript": "Script di validazione",
         "validationScriptHelp": "JavaScript che riceve `input` (le altre risposte) e `value`, e lancia un errore per rifiutarlo: if (value < 0) throw new Error(\"Non può essere negativo\"). Il messaggio arriva a chi sta compilando. Lascia vuoto per non validare.",
         "formulaPlaceholder": "return input.costo * input.quantita",
-        "validationScriptPlaceholder": "if (value < 0) throw new Error(\"Non può essere negativo\")"
+        "validationScriptPlaceholder": "if (value < 0) throw new Error(\"Non può essere negativo\")",
+        "tableColumns": "Colonne della tabella",
+        "tableColumnsHelp": "Una tabella ripetibile: chi compila aggiunge una riga per volta. Una colonna è un valore semplice — testo, numero, data, sì/no, o una scelta dal Dizionario. Nessun testo d'aiuto, nessuna condizione e nessuna formula per colonna: quelle sono di un campo, non di una cella.",
+        "columnName": "Nome",
+        "columnNamePlaceholder": "ruolo",
+        "columnLabelIt": "Etichetta (italiano)",
+        "columnLabelEn": "Etichetta (inglese)",
+        "columnRequired": "Obbligatoria",
+        "addColumn": "Aggiungi una colonna",
+        "tableNoColumns": "Nessuna colonna: una tabella ne vuole almeno una.",
+        "tableInList": "Una tabella non può essere una colonna delle liste, un widget o una colonna di report: sono righe, non un valore."
       },
       "limits": {
         "title": "Tetti",
@@ -2373,7 +2384,9 @@
         "searchReference": "Scrivi almeno due lettere…",
         "noResults": "Nessun risultato",
         "clearReference": "Togli la scelta",
-        "computed": "calcolato"
+        "computed": "calcolato",
+        "addRow": "Aggiungi una riga",
+        "removeRow": "Togli questa riga"
       },
       "itinerary": {
         "intro": "Ogni voce di catalogo può seguire il suo workflow. Lascia «per categoria» per tenere il comportamento che hai; scegline uno per dare a quella richiesta i suoi passi.",

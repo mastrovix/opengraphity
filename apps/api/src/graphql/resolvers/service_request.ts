@@ -27,6 +27,7 @@ type Props = Record<string, unknown>
 // Mapper unico in requestService (la copia locale perdeva catalogItemId e
 // requiresApproval: dichiarati nello schema ma sempre null in lettura).
 import { mapRequest } from '../../services/requestService.js'
+import type { FormAnswerInput } from '../../lib/catalogForm.js'
 import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
 import { serviceRequestFormAnswers, serviceRequestFormFieldValues } from './catalogForm.js'
 import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
@@ -147,9 +148,37 @@ async function serviceRequest(
 
 // ── Mutation resolvers ───────────────────────────────────────────────────────
 
+/**
+ * Le risposte con le RIGHE appiattite: `rows: [{cells: [{column, value}]}]`
+ * diventa `rows: [{<colonna>: <valore>}]`.
+ *
+ * Perché lo schema chiede le celle per nome: un oggetto libero in GraphQL vuol
+ * dire uno scalare JSON, e con quello si perde il controllo dello schema su
+ * cosa arriva. Perché dentro sono una mappa: una riga è un record, e scriverla
+ * su un nodo vuol dire `SET r += $valori`.
+ */
+function righePiatte(answers: readonly FormAnswerGraphQLInput[]): FormAnswerInput[] {
+  return answers.map((a) => {
+    if (!a.rows) return a as FormAnswerInput
+    return {
+      ...a,
+      rows: a.rows.map((r) => Object.fromEntries(r.cells.map((c) => [c.column, c.value ?? null]))),
+    } as FormAnswerInput
+  })
+}
+
+/** Una risposta come arriva da GraphQL: le righe con le celle per nome. */
+interface FormAnswerGraphQLInput {
+  name: string
+  value?: string | null
+  values?: readonly string[] | null
+  refIds?: readonly string[] | null
+  rows?: ReadonlyArray<{ cells: ReadonlyArray<{ column: string; value?: string | null }> }> | null
+}
+
 async function createServiceRequest(
   _: unknown,
-  args: { input: { title: string; description?: string; priority?: string | null; dueDate?: string; catalogItemId?: string; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null } },
+  args: { input: { title: string; description?: string; priority?: string | null; dueDate?: string; catalogItemId?: string; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null; formAnswers?: FormAnswerGraphQLInput[] | null } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -204,7 +233,13 @@ async function createServiceRequest(
     // campo obbligatorio offerto all'utente finale va compilato.
     const customFields = isPortalOnly(ctx) ? (args.input.customFields ?? []) : args.input.customFields
     const result = await requestService.createRequest({
-      ...args.input, customFields, priority, requiresApproval,
+      ...args.input,
+      // Le righe delle tabelle arrivano nella forma dello SCHEMA (celle per
+      // nome, ondata 7) e il servizio le vuole piatte: la conversione sta qui,
+      // al confine, perché è una faccenda di trasporto — dentro, una riga è una
+      // mappa colonna → valore e basta.
+      formAnswers: args.input.formAnswers ? righePiatte(args.input.formAnswers) : null,
+      customFields, priority, requiresApproval,
       ...(category ? { category } : {}),
       // L'iter della voce: chi apre la richiesta non lo sceglie.
       ...(workflowDefinitionId ? { workflowDefinitionId } : {}),

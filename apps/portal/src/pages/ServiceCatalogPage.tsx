@@ -5,8 +5,8 @@ import { useTranslation } from 'react-i18next'
 import { GET_SERVICE_CATALOG } from '@/graphql/queries'
 import { GET_PORTAL_CATALOG_FORM } from '../graphql/queries'
 import {
-  CatalogFormRenderer, catalogFormAnswersToSend, visibleCatalogFormItems,
-  type CatalogFormFieldView, type CatalogFormFile,
+  CatalogFormRenderer, catalogFormAnswersToSend, catalogFormTableAnswers, visibleCatalogFormItems,
+  type CatalogFormFieldView, type CatalogFormFile, type CatalogFormTableRow,
 } from '@opengraphity/web-core'
 import { isFormAttachmentType } from '@opengraphity/types'
 import { uploadFormDraftFile } from '../lib/formDraftUpload'
@@ -71,6 +71,8 @@ export function ServiceCatalogPage() {
    */
   const [bozzaId] = useState(() => crypto.randomUUID())
   const [fileDelModulo, setFileDelModulo] = useState<Record<string, CatalogFormFile[]>>({})
+  /** Le righe delle tabelle (ondata 7): non sono risposte, quindi stanno a parte. */
+  const [righeTabelle, setRigheTabelle] = useState<Record<string, readonly CatalogFormTableRow[]>>({})
   const [inCaricamento, setInCaricamento] = useState<string | null>(null)
 
   const caricaFile = async (campo: string, file: File) => {
@@ -140,9 +142,15 @@ export function ServiceCatalogPage() {
       // Le risposte al modulo: la regola sta in web-core, la stessa dell'area di
       // lavoro (solo i campi visibili, mai le note).
       formAnswers: definizione && modulo
-        ? catalogFormAnswersToSend(definizione, modulo.fields, risposte as FormAnswers, true)
-          // Gli allegati non viaggiano come risposta: sono già sulla bozza.
-          .filter((a) => !isFormAttachmentType(modulo.fields.find((f) => f.name === a.name)?.fieldType ?? ''))
+        ? [
+            ...catalogFormAnswersToSend(definizione, modulo.fields, risposte as FormAnswers, true)
+              // Gli allegati non viaggiano come risposta: sono già sulla bozza.
+              .filter((a) => !isFormAttachmentType(modulo.fields.find((f) => f.name === a.name)?.fieldType ?? '')),
+            // Le righe delle tabelle (ondata 7): stessa regola dell'area di
+            // lavoro, perché la funzione è la stessa.
+            ...catalogFormTableAnswers(definizione, modulo.fields, risposte as FormAnswers, righeTabelle, true)
+              .map((tb) => ({ name: tb.name, rows: tb.rows.map((r) => ({ cells: Object.entries(r).map(([column, value]) => ({ column, value })) })) })),
+          ]
         : undefined,
       formDraftId: Object.values(fileDelModulo).some((l) => l.length > 0) ? bozzaId : undefined,
     } } })
@@ -205,6 +213,10 @@ export function ServiceCatalogPage() {
                   yesLabel={t('common.yes')}
                   noLabel={t('common.no')}
                   computedLabel={t('catalog.computed')}
+                  tables={righeTabelle}
+                  onTablesChange={(campo, rows) => { setRigheTabelle((p) => ({ ...p, [campo]: rows })) }}
+                  tableAddRowLabel={t('catalog.addRow')}
+                  tableRemoveRowLabel={t('catalog.removeRow')}
                   files={fileDelModulo}
                   uploadingField={inCaricamento}
                   onUploadFile={caricaFile}

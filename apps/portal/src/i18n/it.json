@@ -161,7 +161,9 @@
     "submitting": "Invio…",
     "addFile": "Aggiungi un file",
     "removeFile": "Togli",
-    "computed": "calcolato"
+    "computed": "calcolato",
+    "addRow": "Aggiungi una riga",
+    "removeRow": "Togli questa riga"
   },
   "notFound": {
     "title": "Pagina non trovata",

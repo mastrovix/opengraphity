@@ -71,10 +71,28 @@ export function catalogFormSDL(): string {
     sia il portale, e il portale non ha accesso al Dizionario.
     """
     options(language: String): [FormFieldOption!]!
+    """
+    Le colonne di una tabella GIA' RISOLTE, per chi la compila (ondata 7):
+    etichetta nella lingua chiesta e scelte del Dizionario dentro. Diverso da
+    \`tableDefinition\`, che e' il documento da modificare nella libreria: qui c'e'
+    quello che serve a disegnare una riga, e il browser non deve leggere
+    vocabolari.
+    """
+    tableColumns(language: String): [FormFieldTableColumn!]!
     """I nomi delle voci di catalogo che lo usano: da sapere PRIMA di cancellarlo."""
     usedBy:           [String!]!
     createdAt:        String
     updatedAt:        String
+  }
+
+  """Una colonna di tabella pronta da compilare."""
+  type FormFieldTableColumn {
+    name:      String!
+    label:     String!
+    fieldType: String!
+    required:  Boolean!
+    """Le scelte, solo per una colonna a vocabolario."""
+    options:   [FormFieldOption!]!
   }
 
   input LocalizedTextInput {

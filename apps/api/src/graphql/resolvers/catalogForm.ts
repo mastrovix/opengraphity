@@ -23,7 +23,7 @@ import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import { assertFormSize, assertLibraryRoom, assertLimitValue, CATALOG_FORM_LIMIT_MAX, CATALOG_FORM_LIMIT_MIN, catalogFormLimits as leggiTetti } from '../../lib/catalogFormLimits.js'
 import { assertFormTable, etichetteDeiValori, parseFormTable } from '../../lib/catalogForm.js'
 import { labelFor, type EnumValueLabels } from '../../lib/enumValueLabels.js'
-import { languageFor } from '../../lib/tenantLanguage.js'
+import { isLingua, languageFor } from '../../lib/tenantLanguage.js'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import {
   assertCatalogForm, assertFormFieldName, formAnswersOf, formFields, formFieldsByName, formFieldsCache,
@@ -493,6 +493,42 @@ export async function serviceRequestFormAnswers(
       return etichette && etichette[valore] ? labelFor(valore, etichette, lingua, lingua) : valore
     }))
   } finally { await session.close() }
+}
+
+/**
+ * `FormField.tableColumns`: le colonne di una tabella pronte da compilare
+ * (ondata 7) — etichetta nella lingua chiesta e scelte del Dizionario dentro.
+ *
+ * Risolte qui e non nel browser per la stessa ragione di `options`: le rende
+ * anche il portale, e il portale non legge il Dizionario. Un campo che non è
+ * una tabella non ha colonne, e restituisce una lista vuota invece di null:
+ * chi disegna una riga cicla, non controlla.
+ */
+export const formFieldTableColumns = async (
+  parent: { fieldType: string; tableDefinition: string | null },
+  args: { language?: string | null }, ctx: GraphQLContext,
+): Promise<Array<{ name: string; label: string; fieldType: string; required: boolean; options: Array<{ value: string; label: string }> }>> => {
+  if (!isFormTableType(parent.fieldType) || !parent.tableDefinition) return []
+  const def = parseFormTable(parent.tableDefinition, 'FormField (table)')
+  if (!def) return []
+  const ripiego = await languageFor(ctx.tenantId)
+  const lingua = isLingua(args.language) ? args.language : ripiego
+  const out: Array<{ name: string; label: string; fieldType: string; required: boolean; options: Array<{ value: string; label: string }> }> = []
+  for (const c of def.columns) {
+    const options: Array<{ value: string; label: string }> = []
+    if (c.vocabulary) {
+      const v = await loadVocabularyEntries(ctx.tenantId, c.vocabulary)
+      for (const valore of v.values) options.push({ value: valore, label: labelFor(valore, v.labels, lingua, ripiego) })
+    }
+    out.push({
+      name: c.name,
+      label: formTableColumnLabel(c, lingua),
+      fieldType: c.fieldType,
+      required: c.required === true,
+      options,
+    })
+  }
+  return out
 }
 
 /**
